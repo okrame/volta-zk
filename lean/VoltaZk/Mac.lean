@@ -44,14 +44,23 @@ instance : Add (Authed F) :=
 instance : Zero (Authed F) :=
   ⟨⟨0, 0, 0⟩⟩
 
-instance : AddCommMonoid (Authed F) where
+instance : Neg (Authed F) :=
+  ⟨fun a => ⟨-a.x, -a.m, -a.k⟩⟩
+
+instance : Sub (Authed F) :=
+  ⟨fun a b => ⟨a.x - b.x, a.m - b.m, a.k - b.k⟩⟩
+
+instance : AddCommGroup (Authed F) where
   add := (· + ·)
   zero := 0
   add_assoc a b c := by ext <;> apply add_assoc
   zero_add a := by ext <;> apply zero_add
   add_zero a := by ext <;> apply add_zero
   add_comm a b := by ext <;> apply add_comm
+  neg_add_cancel a := by ext <;> apply neg_add_cancel
+  sub_eq_add_neg a b := by ext <;> apply sub_eq_add_neg
   nsmul := nsmulRec
+  zsmul := zsmulRec
 
 /-- Scaling by a public field element: both parties scale locally. -/
 instance : SMul F (Authed F) :=
@@ -66,6 +75,12 @@ instance : SMul F (Authed F) :=
 @[simp] lemma smul_x (c : F) (a : Authed F) : (c • a).x = c * a.x := rfl
 @[simp] lemma smul_m (c : F) (a : Authed F) : (c • a).m = c * a.m := rfl
 @[simp] lemma smul_k (c : F) (a : Authed F) : (c • a).k = c * a.k := rfl
+@[simp] lemma neg_x (a : Authed F) : (-a).x = -a.x := rfl
+@[simp] lemma neg_m (a : Authed F) : (-a).m = -a.m := rfl
+@[simp] lemma neg_k (a : Authed F) : (-a).k = -a.k := rfl
+@[simp] lemma sub_x (a b : Authed F) : (a - b).x = a.x - b.x := rfl
+@[simp] lemma sub_m (a b : Authed F) : (a - b).m = a.m - b.m := rfl
+@[simp] lemma sub_k (a b : Authed F) : (a - b).k = a.k - b.k := rfl
 
 /-- Plaintext projection as an additive map. -/
 def xHom : Authed F →+ F where
@@ -113,6 +128,19 @@ theorem Valid.smul {Δ : F} {a : Authed F} (ha : a.Valid Δ) (c : F) :
     (c • a).Valid Δ := by
   unfold Valid at *
   simp only [smul_x, smul_m, smul_k, ha]
+  ring
+
+/-- Linearity of the MAC: negations of valid values are valid. -/
+theorem Valid.neg {Δ : F} {a : Authed F} (ha : a.Valid Δ) : (-a).Valid Δ := by
+  unfold Valid at *
+  simp only [neg_x, neg_m, neg_k, ha]
+  ring
+
+/-- Linearity of the MAC: differences of valid values are valid. -/
+theorem Valid.sub {Δ : F} {a b : Authed F} (ha : a.Valid Δ) (hb : b.Valid Δ) :
+    (a - b).Valid Δ := by
+  unfold Valid at *
+  simp only [sub_x, sub_m, sub_k, ha, hb]
   ring
 
 theorem Valid.sum {Δ : F} {ι : Type*} {s : Finset ι} {f : ι → Authed F}

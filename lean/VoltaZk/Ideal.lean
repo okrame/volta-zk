@@ -11,6 +11,9 @@ These are `axiom`s of type `Prop` with *deferred content*: they name an
 assumption whose precise formal statement is future work. Nothing in the
 proven lemmas of this development may depend on them (checked with
 `#print axioms`).
+
+Formerly listed here and since proved (M3): `BlindSumcheckSound` — see
+`VoltaZk.blind_sumcheck_sound` / `VoltaZk.blind_sumcheck_sound_mv`.
 -/
 
 namespace VoltaZk.Ideal
@@ -39,11 +42,6 @@ axiom WeightPCSBinding : Prop
 /-- (Deferred) Soundness of LogUp-GKR (fractional sumcheck) for the fused
 non-linearity lookups, composed with the authenticated transcript. -/
 axiom LogUpGKRSound : Prop
-
-/-- (Deferred) Soundness of the blind sumcheck under authenticated claims
-(cheating prover bound `≤ (Σ degrees + T)/|E|`); the present milestone proves
-only the zero-knowledge direction. -/
-axiom BlindSumcheckSound : Prop
 
 /-- (Deferred) Multi-session / append-only authenticated KV-cache soundness:
 replay or mix-and-match across (session, query, layer, head, position)

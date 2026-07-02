@@ -98,12 +98,21 @@ stated as equality of `PMF` transcript distributions.
 | Vector one-time pad for per-round corrections | `VoltaZk/BlindSumcheck.lean` (`uniformVec_zipWith_sub`) | proved |
 | Public transcript distributional equality (round induction) | `VoltaZk/BlindSumcheck.lean` (`realView_map_publicView`) | proved |
 | **`Π_BSC + Π_ZeroBatch` perfect ZK vs malicious V\*** | `VoltaZk/BlindSumcheck.lean` (`bsc_zeroBatch_perfect_zk`) | **proved** |
+| Counting toolkit (1-dim Schwartz–Zippel, forgery count, RLC count, slice bounds) | `VoltaZk/Counting.lean` | proved |
+| `Π_ZeroOpen` unforgeability (forge ⇒ guess `Δ`, error `1/|F|`) | `VoltaZk/ZeroBatchSound.lean` (`zeroOpen_sound`) | proved |
+| `Π_ZeroBatch` soundness (RLC + opening, error `≤ 2/|F|`) | `VoltaZk/ZeroBatchSound.lean` (`zeroBatch_sound`) | proved |
+| Clear-sumcheck core: deviation round + per-round SZ union bound | `VoltaZk/SumcheckSound.lean` (`exists_deviation`, `card_deviation_le`) | proved |
+| Blind→clear transcript reduction (specific sumcheck claim schema) | `VoltaZk/BlindSumcheckSound.lean` (`clear_of_claims_zero`) | proved |
+| **Blind sumcheck soundness vs malicious P\* (M3)**, error `≤ (Σ dᵢ + 2)/|F|` | `VoltaZk/BlindSumcheckSound.lean` (`blind_sumcheck_sound`) | **proved** |
+| `MvPolynomial` semantics: `Σ_{b∈{0,1}ⁿ} f(b) = σ₀` end-to-end (M3b) | `VoltaZk/SumcheckMv.lean` (`blind_sumcheck_sound_mv`) | **proved** |
 | PCG/Ferret realization, QuickSilver `Π_Prod`, PCS, LogUp, UC, subfield corrections, KV-cache soundness | `VoltaZk/Ideal.lean` | assumed (named axioms) |
 
-Axiom audit: every proved lemma — including the main ZK theorem — depends only
-on `propext`, `Classical.choice`, `Quot.sound` (checked with `#print axioms`).
-No `sorry` remains in the development; none of the named axioms in
-`VoltaZk/Ideal.lean` is used by any proof.
+Axiom audit: every proved lemma — including the main ZK theorem and the M3
+soundness theorems — depends only on `propext`, `Classical.choice`,
+`Quot.sound` (checked with `#print axioms` / `lean_verify`). No `sorry`
+remains in the development; none of the named axioms in `VoltaZk/Ideal.lean`
+is used by any proof. The former `BlindSumcheckSound` axiom has been removed:
+it is now a theorem.
 
 Modeling notes (to keep honest in the writeup): the malicious verifier is an
 arbitrary *deterministic* adaptive strategy (perfect ZK against all
@@ -111,15 +120,29 @@ deterministic V* extends to randomized V* by averaging); `Δ` and the VOLE keys
 are fixed upfront, WLOG in the ideal corrupted-V functionality; the round
 polynomials are abstracted as an arbitrary coefficient schedule, and the claim
 schema is an arbitrary public-linear schema — the ZK theorem is therefore
-*stronger* than needed (holds for every schema), while the upcoming soundness
-theorem will target the specific sumcheck schema.
+*stronger* than needed (holds for every schema), while the soundness theorem
+targets the specific sumcheck schema.
+
+Modeling notes for M3 (soundness): dual WLOG to the ZK side — the malicious
+prover is *deterministic*, and it is modeled at *value level*: in the
+corrupted-P branch of `F_sVOLE` the adversary chooses `(u, m)` and the
+functionality sets `k = m + u·Δ`, so composing with the `Π_Auth` correction
+the adversary directly picks plaintext/tag pairs, with keys determined and
+its view independent of `Δ`. Adaptivity is structural: round-`i` data reads
+the truncated challenge vector `trunc r i` only. Soundness statements are in
+*counting form* — `#bad ≤ ε·|Ω|` over the verifier randomness
+`Ω = (Δ, r, χ)` — matching Mathlib's Schwartz–Zippel style and avoiding
+`ℝ≥0∞` plumbing. The proved bound is `(∑ dᵢ + 2)/|F|`, tighter than the
+`(Σ degrees + T + 1)/|F|` target (`T = n+1` batched claims). The final
+evaluation check is scoped to *public-linear* authenticated openings
+(`hopen`: the opening computes `f(r)` — MAC linearity for MLE openings);
+degree-2 product claims remain behind the `QuickSilverProdCheck` axiom.
 
 ## Next Formal Targets (before implementation)
 
-1. **Soundness of the blind sumcheck (M3)**: corrupt `P*`, honest `V`;
-   error `≤ (Σ degrees + T + 1)/|F|`. Sub-lemmas: MAC unforgeability
-   (opening a nonzero claim requires guessing `Δ`), RLC soundness under
-   uniform `χ`, and the blind→clear transcript reduction.
+1. ~~**Soundness of the blind sumcheck (M3)**~~ — **done** (see table):
+   `blind_sumcheck_sound` (abstract schema) and `blind_sumcheck_sound_mv`
+   (`MvPolynomial` semantics), error `≤ (∑ dᵢ + 2)/|F|`.
 2. **KV-cache / statefulness lemma (M4)**: index domain separation ⇒
    replay/mix-and-match across (session, query, layer, head, position) is a
    MAC forgery; append-only cache soundness for `F_VDec`.

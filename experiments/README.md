@@ -1,3 +1,3 @@
 # Experiments
 
-Future prototypes and scripts live here.
+Future prototypes and measurement scripts.

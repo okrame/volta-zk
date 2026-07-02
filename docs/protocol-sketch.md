@@ -80,3 +80,52 @@ Formalize a GKR/sumcheck transcript where:
 - composition with LogUp-style lookup checks;
 - one-time use and domain separation of VOLE correlations;
 - multi-session and append-only cache soundness.
+
+## Formalization Status
+
+Lean 4 project in `lean/` (Mathlib-based). Perfect indistinguishability is
+stated as equality of `PMF` transcript distributions.
+
+| Protocol object | Lean location | Status |
+| --- | --- | --- |
+| MAC invariant `k = m + Δ·x`, linearity | `VoltaZk/Mac.lean` (`Authed`, `Valid`) | proved |
+| One-time pad (corrections uniform) | `VoltaZk/Otp.lean` (`sub_left_uniform`) | proved |
+| Ideal `F_sVOLE`, corrupted-V branch | `VoltaZk/Vole.lean` (`freshCorr`) | modeled |
+| `Π_Auth` correction simulatability | `VoltaZk/Vole.lean` (`auth_correction_uniform`) | proved |
+| `Π_ZeroOpen` / `Π_ZeroBatch` perfect simulator | `VoltaZk/ZeroBatch.lean` (`zeroBatch_perfect_sim`) | proved |
+| Claim `k`-side computable from public data | `VoltaZk/BlindSumcheck.lean` (`claimOf_k_public`) | proved |
+| Final opening = simulator's value (pointwise) | `VoltaZk/BlindSumcheck.lean` (`finalMsg_eq_sim`) | proved |
+| Vector one-time pad for per-round corrections | `VoltaZk/BlindSumcheck.lean` (`uniformVec_zipWith_sub`) | proved |
+| Public transcript distributional equality (round induction) | `VoltaZk/BlindSumcheck.lean` (`realView_map_publicView`) | proved |
+| **`Π_BSC + Π_ZeroBatch` perfect ZK vs malicious V\*** | `VoltaZk/BlindSumcheck.lean` (`bsc_zeroBatch_perfect_zk`) | **proved** |
+| PCG/Ferret realization, QuickSilver `Π_Prod`, PCS, LogUp, UC, subfield corrections, KV-cache soundness | `VoltaZk/Ideal.lean` | assumed (named axioms) |
+
+Axiom audit: every proved lemma — including the main ZK theorem — depends only
+on `propext`, `Classical.choice`, `Quot.sound` (checked with `#print axioms`).
+No `sorry` remains in the development; none of the named axioms in
+`VoltaZk/Ideal.lean` is used by any proof.
+
+Modeling notes (to keep honest in the writeup): the malicious verifier is an
+arbitrary *deterministic* adaptive strategy (perfect ZK against all
+deterministic V* extends to randomized V* by averaging); `Δ` and the VOLE keys
+are fixed upfront, WLOG in the ideal corrupted-V functionality; the round
+polynomials are abstracted as an arbitrary coefficient schedule, and the claim
+schema is an arbitrary public-linear schema — the ZK theorem is therefore
+*stronger* than needed (holds for every schema), while the upcoming soundness
+theorem will target the specific sumcheck schema.
+
+## Next Formal Targets (before implementation)
+
+1. **Soundness of the blind sumcheck (M3)**: corrupt `P*`, honest `V`;
+   error `≤ (Σ degrees + T + 1)/|F|`. Sub-lemmas: MAC unforgeability
+   (opening a nonzero claim requires guessing `Δ`), RLC soundness under
+   uniform `χ`, and the blind→clear transcript reduction.
+2. **KV-cache / statefulness lemma (M4)**: index domain separation ⇒
+   replay/mix-and-match across (session, query, layer, head, position) is a
+   MAC forgery; append-only cache soundness for `F_VDec`.
+3. **Subfield correction lemma (M5)**: 16-bit corrections in `F_p ⊆ E`
+   preserve both ZK (uniformity in the subdomain) and bandwidth claims.
+4. **Sequential composition**: multiple `Π_BSC` windows under one `Δ` with
+   fresh indices — perfect ZK composes; short hybrid argument.
+5. **`Π_Prod` (QuickSilver) ZK extension**: masked degree-2 check messages
+   are uniform (same OTP pattern); soundness may remain assumed.

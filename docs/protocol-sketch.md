@@ -105,14 +105,18 @@ stated as equality of `PMF` transcript distributions.
 | Blind→clear transcript reduction (specific sumcheck claim schema) | `VoltaZk/BlindSumcheckSound.lean` (`clear_of_claims_zero`) | proved |
 | **Blind sumcheck soundness vs malicious P\* (M3)**, error `≤ (Σ dᵢ + 2)/|F|` | `VoltaZk/BlindSumcheckSound.lean` (`blind_sumcheck_sound`) | **proved** |
 | `MvPolynomial` semantics: `Σ_{b∈{0,1}ⁿ} f(b) = σ₀` end-to-end (M3b) | `VoltaZk/SumcheckMv.lean` (`blind_sumcheck_sound_mv`) | **proved** |
-| PCG/Ferret realization, QuickSilver `Π_Prod`, PCS, LogUp, UC, subfield corrections, KV-cache soundness | `VoltaZk/Ideal.lean` | assumed (named axioms) |
+| Domain-separated append-only write log: unique binding per index, appends never rebind | `VoltaZk/KvCache.lean` (`WriteLog`, `read_eq_of_mem`, `append_read_stable`) | proved |
+| Cache replay / mix-and-match ⇒ MAC forgery (single opening, error `1/|F|`) | `VoltaZk/KvCache.lean` (`cache_open_forge`, `cache_read_sound`, `cache_mix_sound`) | proved |
+| **KV-cache anti-replay soundness (M4)**, batched reads, error `≤ 2/|F|` | `VoltaZk/KvCache.lean` (`kv_cache_sound`, `authenticated_cache_sound`) | **proved** |
+| PCG/Ferret realization, QuickSilver `Π_Prod`, PCS, LogUp, UC, subfield corrections | `VoltaZk/Ideal.lean` | assumed (named axioms) |
 
-Axiom audit: every proved lemma — including the main ZK theorem and the M3
-soundness theorems — depends only on `propext`, `Classical.choice`,
+Axiom audit: every proved lemma — including the main ZK theorem and the
+M3/M4 soundness theorems — depends only on `propext`, `Classical.choice`,
 `Quot.sound` (checked with `#print axioms` / `lean_verify`). No `sorry`
 remains in the development; none of the named axioms in `VoltaZk/Ideal.lean`
-is used by any proof. The former `BlindSumcheckSound` axiom has been removed:
-it is now a theorem.
+is used by any proof. The former `BlindSumcheckSound` (M3) and
+`AuthenticatedCacheSound` (M4) axioms have been removed: they are now
+theorems.
 
 Modeling notes (to keep honest in the writeup): the malicious verifier is an
 arbitrary *deterministic* adaptive strategy (perfect ZK against all
@@ -138,14 +142,30 @@ evaluation check is scoped to *public-linear* authenticated openings
 (`hopen`: the opening computes `f(r)` — MAC linearity for MLE openings);
 degree-2 product claims remain behind the `QuickSilverProdCheck` axiom.
 
+Modeling notes for M4 (KV-cache): the cache is a `WriteLog` — an append-only
+list of (full index, adversary pair) write events whose index projection is
+duplicate-free; that freshness condition *is* domain separation, and it makes
+the verifier's stored key per `(session, query, layer, head, position)` tuple
+canonical (`read_eq_of_mem`) and stable under appends (`append_read_stable`,
+the `F_VDec` statefulness lemma). A cache read re-enters the transcript as a
+claimed pair plus the zero-opening of claimed − stored, whose verifier key is
+computable from the stored key alone (`keyOf_sub`); replay, substitution, and
+cross-index mix-and-match all make the difference plaintext nonzero, so
+soundness is a direct reuse of the M3a unforgeability lemmas: `1/|F|` per
+single opening (`zeroOpen_sound`), `≤ 2/|F|` for `T` reads batched through
+`Π_ZeroBatch` (`zeroBatch_sound`). Multi-session: the session id is part of
+the index tuple, so cross-session replay under one `Δ` is covered; sessions
+with independent keys are independent games.
+
 ## Next Formal Targets (before implementation)
 
 1. ~~**Soundness of the blind sumcheck (M3)**~~ — **done** (see table):
    `blind_sumcheck_sound` (abstract schema) and `blind_sumcheck_sound_mv`
    (`MvPolynomial` semantics), error `≤ (∑ dᵢ + 2)/|F|`.
-2. **KV-cache / statefulness lemma (M4)**: index domain separation ⇒
-   replay/mix-and-match across (session, query, layer, head, position) is a
-   MAC forgery; append-only cache soundness for `F_VDec`.
+2. ~~**KV-cache / statefulness lemma (M4)**~~ — **done** (see table):
+   `kv_cache_sound` / `authenticated_cache_sound` in `VoltaZk/KvCache.lean`,
+   replay/mix-and-match is a MAC forgery, batched error `≤ 2/|F|`;
+   append-only statefulness via `WriteLog.append_read_stable`.
 3. **Subfield correction lemma (M5)**: 16-bit corrections in `F_p ⊆ E`
    preserve both ZK (uniformity in the subdomain) and bandwidth claims.
 4. **Sequential composition**: multiple `Π_BSC` windows under one `Δ` with

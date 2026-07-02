@@ -12,8 +12,10 @@ assumption whose precise formal statement is future work. Nothing in the
 proven lemmas of this development may depend on them (checked with
 `#print axioms`).
 
-Formerly listed here and since proved (M3): `BlindSumcheckSound` — see
-`VoltaZk.blind_sumcheck_sound` / `VoltaZk.blind_sumcheck_sound_mv`.
+Formerly listed here and since proved: `BlindSumcheckSound` (M3) — see
+`VoltaZk.blind_sumcheck_sound` / `VoltaZk.blind_sumcheck_sound_mv`; and
+`AuthenticatedCacheSound` (M4) — see `VoltaZk.kv_cache_sound` /
+`VoltaZk.authenticated_cache_sound` in `VoltaZk/KvCache.lean`.
 -/
 
 namespace VoltaZk.Ideal
@@ -42,11 +44,6 @@ axiom WeightPCSBinding : Prop
 /-- (Deferred) Soundness of LogUp-GKR (fractional sumcheck) for the fused
 non-linearity lookups, composed with the authenticated transcript. -/
 axiom LogUpGKRSound : Prop
-
-/-- (Deferred) Multi-session / append-only authenticated KV-cache soundness:
-replay or mix-and-match across (session, query, layer, head, position)
-indices forges a MAC. -/
-axiom AuthenticatedCacheSound : Prop
 
 /-- (Deferred) Full UC composition: `Π_VOLTA` realizes the stateful verifiable
 decoding functionality `F_VDec` in the `(F_sVOLE, F_PCS)`-hybrid model. -/

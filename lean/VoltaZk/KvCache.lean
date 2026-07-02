@@ -63,12 +63,14 @@ structure CacheIndex where
   pos : ℕ
 deriving DecidableEq
 
+omit [Fintype F] [DecidableEq F] in
 /-- Linearity of the verifier key in the adversary pair: keys of differences
 are differences of keys, so consistency checks between authenticated values
 are themselves zero-openings of authenticated values. -/
 theorem keyOf_sub (Δ : F) (a b : F × F) :
     keyOf Δ (a - b) = keyOf Δ a - keyOf Δ b := by
-  sorry
+  simp only [keyOf, Prod.fst_sub, Prod.snd_sub]
+  ring
 
 /-- Append-only authenticated cache: a write log of adversary pairs keyed by
 full indices, with **domain separation** — no index is ever written twice. -/
@@ -82,12 +84,13 @@ namespace WriteLog
 
 variable {I : Type*}
 
+omit [Field F] [Fintype F] [DecidableEq F] in
 /-- **Statefulness.** Domain separation makes the cache a partial function:
 each index binds a unique written pair, so "the stored value at `i`" is
 well-defined and the verifier's stored key is canonical. -/
 theorem read_eq_of_mem (L : WriteLog I F) {i : I} {vm vm' : F × F}
-    (h : (i, vm) ∈ L.entries) (h' : (i, vm') ∈ L.entries) : vm = vm' := by
-  sorry
+    (h : (i, vm) ∈ L.entries) (h' : (i, vm') ∈ L.entries) : vm = vm' :=
+  congrArg Prod.snd (List.inj_on_of_nodup_map L.fresh h h' rfl)
 
 /-- Appending a batch of writes at fresh indices (one decoding step of
 `F_VDec`): the extended log is again domain-separated. -/
@@ -97,16 +100,19 @@ def append (L : WriteLog I F) (new : List (I × (F × F)))
     WriteLog I F where
   entries := L.entries ++ new
   fresh := by
-    sorry
+    rw [List.map_append]
+    exact L.fresh.append hnew fun i hi hi' => hdisj i hi' hi
 
+omit [Field F] [Fintype F] [DecidableEq F] in
 /-- Old writes survive an append. -/
 theorem mem_append_left (L : WriteLog I F) {new : List (I × (F × F))}
     {hnew : (new.map Prod.fst).Nodup}
     {hdisj : ∀ i ∈ new.map Prod.fst, i ∉ L.entries.map Prod.fst}
     {i : I} {vm : F × F} (h : (i, vm) ∈ L.entries) :
-    (i, vm) ∈ (L.append new hnew hdisj).entries := by
-  sorry
+    (i, vm) ∈ (L.append new hnew hdisj).entries :=
+  List.mem_append_left new h
 
+omit [Field F] [Fintype F] [DecidableEq F] in
 /-- **Append-only soundness of the cache state.** A read from the extended
 log at an old index still returns the original write: appending can only add
 bindings at fresh indices, never rebind an existing one. -/
@@ -114,8 +120,8 @@ theorem append_read_stable (L : WriteLog I F) {new : List (I × (F × F))}
     {hnew : (new.map Prod.fst).Nodup}
     {hdisj : ∀ i ∈ new.map Prod.fst, i ∉ L.entries.map Prod.fst}
     {i : I} {vm vm' : F × F} (hold : (i, vm) ∈ L.entries)
-    (hread : (i, vm') ∈ (L.append new hnew hdisj).entries) : vm' = vm := by
-  sorry
+    (hread : (i, vm') ∈ (L.append new hnew hdisj).entries) : vm' = vm :=
+  (L.append new hnew hdisj).read_eq_of_mem hread (L.mem_append_left hold)
 
 end WriteLog
 
@@ -126,7 +132,9 @@ most one session key `Δ` — a MAC forgery, error `1/|F|`. Direct reuse of
 theorem cache_open_forge (stored claim : F × F) (hforge : claim.1 ≠ stored.1)
     (msg : F) :
     (univ.filter fun Δ : F => msg = keyOf Δ claim - keyOf Δ stored).card ≤ 1 := by
-  sorry
+  simp only [← keyOf_sub]
+  exact zeroOpen_sound (claim - stored)
+    (by rw [Prod.fst_sub]; exact sub_ne_zero.mpr hforge) msg
 
 /-- **Anti-replay, log-aware form.** Against a domain-separated write log,
 answering a read of index `i` with any pair whose plaintext differs from the
@@ -137,8 +145,9 @@ theorem cache_read_sound {I : Type*} (L : WriteLog I F) {i : I}
     {stored w₀ : F × F} (hstored : (i, stored) ∈ L.entries)
     (hw : (i, w₀) ∈ L.entries) (claim : F × F) (hforge : claim.1 ≠ w₀.1)
     (msg : F) :
-    (univ.filter fun Δ : F => msg = keyOf Δ claim - keyOf Δ stored).card ≤ 1 := by
-  sorry
+    (univ.filter fun Δ : F => msg = keyOf Δ claim - keyOf Δ stored).card ≤ 1 :=
+  cache_open_forge stored claim
+    (by rw [L.read_eq_of_mem hstored hw]; exact hforge) msg
 
 /-- **Mix-and-match.** Substituting the entry written at a *different*
 `(session, query, layer, head, position)` index — replay across sessions,
@@ -147,9 +156,9 @@ forged read, and fails on all but at most one key whenever the plaintexts
 differ. -/
 theorem cache_mix_sound {I : Type*} (L : WriteLog I F) {i i' : I}
     {stored vm' : F × F} (hstored : (i, stored) ∈ L.entries)
-    (hw : (i', vm') ∈ L.entries) (hne : vm'.1 ≠ stored.1) (msg : F) :
-    (univ.filter fun Δ : F => msg = keyOf Δ vm' - keyOf Δ stored).card ≤ 1 := by
-  sorry
+    (_hw : (i', vm') ∈ L.entries) (hne : vm'.1 ≠ stored.1) (msg : F) :
+    (univ.filter fun Δ : F => msg = keyOf Δ vm' - keyOf Δ stored).card ≤ 1 :=
+  cache_read_sound L hstored hstored vm' hne msg
 
 /-- **M4: append-only KV-cache soundness.** `T` cache reads are checked by
 batching the zero-openings of `claim j - stored j` with the `Π_ZeroBatch`
@@ -170,7 +179,11 @@ theorem kv_cache_sound {I : Type*} (L : WriteLog I F) {T : ℕ}
         msg Δχ.2 = ∑ j, Δχ.2 j *
           (keyOf Δχ.1 (claim j) - keyOf Δχ.1 (stored j))).card
       ≤ 2 * Fintype.card F ^ T := by
-  sorry
+  have hz : (claim j₀ - stored j₀).1 ≠ 0 := by
+    rw [Prod.fst_sub, L.read_eq_of_mem (hstored j₀) hw]
+    exact sub_ne_zero.mpr hforge
+  simp only [← keyOf_sub]
+  exact zeroBatch_sound (fun j => claim j - stored j) hz msg
 
 /-- **M4 at the concrete index type** — the statement deferred as
 `Ideal.AuthenticatedCacheSound`: replay or mix-and-match across
@@ -186,7 +199,7 @@ theorem authenticated_cache_sound (L : WriteLog CacheIndex F) {T : ℕ}
     (univ.filter fun Δχ : F × (Fin T → F) =>
         msg Δχ.2 = ∑ j, Δχ.2 j *
           (keyOf Δχ.1 (claim j) - keyOf Δχ.1 (stored j))).card
-      ≤ 2 * Fintype.card F ^ T := by
-  sorry
+      ≤ 2 * Fintype.card F ^ T :=
+  kv_cache_sound L idx stored hstored claim hw hforge msg
 
 end VoltaZk

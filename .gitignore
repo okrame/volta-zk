@@ -13,6 +13,9 @@ build/
 benchmarks/raw/
 benchmarks/tmp/
 
+# Local paper/reference dumps
+sota/
+
 # Local environment
 .env
 .env.*

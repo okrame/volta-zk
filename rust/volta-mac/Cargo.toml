@@ -1,0 +1,8 @@
+[package]
+name = "volta-mac"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+volta-field = { workspace = true }

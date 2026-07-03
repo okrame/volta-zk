@@ -1,0 +1,9 @@
+[package]
+name = "volta-proto"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+volta-field = { workspace = true }
+volta-mac = { workspace = true }

@@ -28,10 +28,11 @@ Here `F_sVOLE` appears only through its corrupted-verifier branch
 (`VoltaZk.freshCorr`). -/
 axiom FerretRealizesSVOLE : Prop
 
-/-- (Deferred) Soundness of the QuickSilver-style degree-`d` product check
-`Π_Prod` used to close multiplicative claims, batched into the same
-`Π_ZeroBatch` list. -/
-axiom QuickSilverProdCheck : Prop
+/-- (Deferred) **Soundness** of the QuickSilver-style degree-`d` product
+check `Π_Prod` used to close multiplicative claims, batched into the same
+`Π_ZeroBatch` list. The ZK half is proved: `VoltaZk.prod_perfect_sim` in
+`VoltaZk/Prod.lean` (M7). -/
+axiom QuickSilverProdSound : Prop
 
 /-- (Deferred) Binding and (blinded) ZK of the public multilinear PCS
 (Basefold/WHIR) for the weight commitment `C_W`, and soundness of the

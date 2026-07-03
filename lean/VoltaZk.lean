@@ -11,4 +11,5 @@ import VoltaZk.BlindSumcheckSound
 import VoltaZk.SumcheckMv
 import VoltaZk.KvCache
 import VoltaZk.Subfield
+import VoltaZk.Prod
 import VoltaZk.Ideal

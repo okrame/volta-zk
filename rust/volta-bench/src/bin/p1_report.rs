@@ -4,7 +4,7 @@
 //! Run: cargo run --release -p volta-bench --bin p1_report [-- --quick]
 
 use serde::Serialize;
-use volta_bench::{time_median, verifier_fused_scan};
+use volta_bench::{time_median, time_paired, verifier_fused_scan};
 use volta_field::{Fp, Fp2};
 use volta_gpt2::{gemm_requant, gemm_requant_auth, EpilogueSpec};
 
@@ -64,8 +64,12 @@ fn main() {
         let b: Vec<i16> = (0..k * n).map(|i| ((i * 53 + 5) % 4001) as i16 - 2000).collect();
         let ep = EpilogueSpec { shift: 8, seed: [1; 32], tensor_tag: 3 };
 
-        let t_native = time_median(warmup, iters, || gemm_requant(&a, &b, m, k, n, 8));
-        let t_fused = time_median(warmup, iters, || gemm_requant_auth(&a, &b, m, k, n, ep));
+        let (t_native, t_fused) = time_paired(
+            warmup,
+            iters,
+            || gemm_requant(&a, &b, m, k, n, 8),
+            || gemm_requant_auth(&a, &b, m, k, n, ep),
+        );
         let (native_ms, fused_ms) = (t_native.as_secs_f64() * 1e3, t_fused.as_secs_f64() * 1e3);
         let rho = fused_ms / native_ms;
         let epi_ns = (t_fused.as_secs_f64() - t_native.as_secs_f64()) * 1e9 / (m * n) as f64;

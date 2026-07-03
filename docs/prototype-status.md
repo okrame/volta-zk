@@ -14,8 +14,8 @@ CPU numbers validate architecture and counts; the ρ targets (≤2 decode,
 
 | Milestone | Status | Gate | Key numbers |
 | --- | --- | --- | --- |
-| P0 harness + analytic budget | **in progress** | workspace builds, budget pre-registered | see budget below |
-| P1 fused MAC epilogue microbench | pending | ρ_kernel ≤ ~1.3 (rework if > 1.5) | — |
+| P0 harness + analytic budget | **done** (2026-07-03) | workspace builds, budget pre-registered ✓ | budget below |
+| P1 fused MAC epilogue microbench | **done** (2026-07-03) | ρ_kernel ≤ ~1.3 ✓ **PASSED** | ρ_kernel 1.06–1.11 per shape, 1.06 layer-weighted; epilogue ~2 ns/elem; GEMM 25–31 GMAC/s (4 cores); verifier fused scan 33 ns/elem → 0.37 s prefill-100 (q=3). `benchmarks/results/p1-2026-07-03-5113243.json` |
 | P2 authenticated-value layer | pending | e2e auth→open, counters match budget | — |
 | P3 blind sumcheck + Thaler + Π_Prod | pending | single GEMM proved e2e | — |
 | P4 LogUp + fused blocks | pending | one full layer e2e, counts within 20% of budget | — |
@@ -49,6 +49,13 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-03 (P1)**: naive sequential timing showed ρ<1 (frequency drift on
+  the M2 VM); replaced with ABBA paired timing (`time_paired`), which is the
+  measurement of record. Criterion benches kept for CIs.
+- **2026-07-03 (P1)**: epilogue draws only the mask `r` (8 B ChaCha) at auth
+  time — prover tags `m_r` (16 B/value) are expanded lazily at *opening* time
+  (P3), not in the GEMM epilogue. Their cost must be counted in P3's prover
+  budget, not here.
 - **2026-07-03 (P0)**: correction bandwidth re-based from 2 B to 8 B per value
   (7.5 → 30.1 MB per prefill-100). Reason: M5 covers `F_p`-typed corrections
   (subfield of `E=F_p²` is Goldilocks itself); the 16-bit packing claim in

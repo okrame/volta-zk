@@ -85,6 +85,42 @@ pub fn time_median<T>(warmup: usize, iters: usize, mut f: impl FnMut() -> T) -> 
     times[times.len() / 2]
 }
 
+/// Drift-cancelling paired timing: alternates A/B in ABBA order per round so
+/// slow frequency/thermal drift (VM on M2) hits both sides equally. Returns
+/// (median A, median B).
+pub fn time_paired<T, U>(
+    warmup: usize,
+    rounds: usize,
+    mut fa: impl FnMut() -> T,
+    mut fb: impl FnMut() -> U,
+) -> (std::time::Duration, std::time::Duration) {
+    for _ in 0..warmup {
+        std::hint::black_box(fa());
+        std::hint::black_box(fb());
+    }
+    let mut ta = Vec::with_capacity(rounds * 2);
+    let mut tb = Vec::with_capacity(rounds * 2);
+    let mut run_a = |ts: &mut Vec<std::time::Duration>| {
+        let t0 = std::time::Instant::now();
+        std::hint::black_box(fa());
+        ts.push(t0.elapsed());
+    };
+    let mut run_b = |ts: &mut Vec<std::time::Duration>| {
+        let t0 = std::time::Instant::now();
+        std::hint::black_box(fb());
+        ts.push(t0.elapsed());
+    };
+    for _ in 0..rounds {
+        run_a(&mut ta);
+        run_b(&mut tb);
+        run_b(&mut tb);
+        run_a(&mut ta);
+    }
+    ta.sort();
+    tb.sort();
+    (ta[ta.len() / 2], tb[tb.len() / 2])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

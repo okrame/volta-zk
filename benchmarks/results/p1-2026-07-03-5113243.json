@@ -1,0 +1,54 @@
+{
+  "milestone": "P1",
+  "date": "2026-07-03",
+  "git_sha": "5113243",
+  "machine": "linux aarch64",
+  "threads": 4,
+  "iters": 9,
+  "shapes": [
+    {
+      "m": 100,
+      "k": 768,
+      "n": 768,
+      "label": "attn_out_proj / ffn_down-shape",
+      "native_ms": 1.9257600000000001,
+      "fused_ms": 2.129219,
+      "rho_kernel": 1.1056512753406447,
+      "epilogue_ns_per_elem": 2.649205729166664,
+      "correction_bytes_per_elem": 8,
+      "gmacs_native": 30.628115653040876
+    },
+    {
+      "m": 100,
+      "k": 768,
+      "n": 2304,
+      "label": "qkv_proj",
+      "native_ms": 5.997739,
+      "fused_ms": 6.38445,
+      "rho_kernel": 1.064476130088355,
+      "epilogue_ns_per_elem": 1.6784331597222206,
+      "correction_bytes_per_elem": 8,
+      "gmacs_native": 29.502317456628237
+    },
+    {
+      "m": 100,
+      "k": 768,
+      "n": 3072,
+      "label": "ffn_up (internal, worst case)",
+      "native_ms": 8.076001,
+      "fused_ms": 8.710170999999999,
+      "rho_kernel": 1.0785252503064324,
+      "epilogue_ns_per_elem": 2.0643554687499996,
+      "correction_bytes_per_elem": 8,
+      "gmacs_native": 29.21366651638602
+    }
+  ],
+  "rho_kernel_weighted_layer": 1.0599534691013208,
+  "verifier": {
+    "n_elems": 1048576,
+    "fused_scan_ms": 34.392346999999994,
+    "ns_per_elem": 32.79909801483154,
+    "elems_per_sec": 30488643.301953197,
+    "prefill_100tok_extrapolated_s": 0.37036426607006834
+  }
+}

@@ -17,7 +17,8 @@ CPU numbers validate architecture and counts; the ρ targets (≤2 decode,
 | P0 harness + analytic budget | **done** (2026-07-03) | workspace builds, budget pre-registered ✓ | budget below |
 | P1 fused MAC epilogue microbench | **done** (2026-07-03) | ρ_kernel ≤ ~1.3 ✓ **PASSED** | ρ_kernel 1.06–1.11 per shape, 1.06 layer-weighted; epilogue ~2 ns/elem; GEMM 25–31 GMAC/s (4 cores); verifier fused scan 33 ns/elem → 0.37 s prefill-100 (q=3). `benchmarks/results/p1-2026-07-03-5113243.json` |
 | P2 authenticated-value layer | pending | e2e auth→open, counters match budget | — |
-| P3 blind sumcheck + Thaler + Π_Prod | pending | single GEMM proved e2e | — |
+| P2.5 clear-LogUp constant spike | pending | informative: ns/lookup + E-mult/lookup pre-registered; iterate if >2× budget estimate | — |
+| P3 blind sumcheck + Thaler + Π_Prod | pending | single GEMM proved e2e; ρ decomposed: t(clear sumcheck)/t(GEMM) and t(blind)/t(clear) | — |
 | P4 LogUp + fused blocks | pending | one full layer e2e, counts within 20% of budget | — |
 | P5 GPT-2 e2e prefill 100 tok | pending | one-command reproducible run, golden check | — |
 | P6 decode + authenticated KV cache | pending | flat cost/token, anti-replay smoke | — |
@@ -48,6 +49,20 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-03 (plan amendment, pre-P2)**: risk re-read after P1 — the open
+  risk is prover *constant factors* (sumcheck + LogUp), not tensor
+  authentication (structurally 0.044% of native work, kernel confirmed by P1).
+  Two amendments to the plan of record: (1) new **P2.5** — clear-LogUp
+  constant-factor spike (synthetic 16-bit LUT, ~10M lookups, real shapes),
+  pulled forward from P4, independent of P2/P3, informative gate
+  (ns/lookup, E-mult/lookup pre-registered); (2) **P3 gate decomposed** — the
+  clear reference sumcheck is timed, and protocol ρ is recorded as
+  t(clear)/t(GEMM) and t(blind)/t(clear) separately, so a bad number is
+  attributable to sumcheck itself vs IT-blinding (incl. lazy m_r expansion).
+  Milestone order unchanged: P2 remains next (P3 consumes it). Note: phase P
+  has **no PCS** — DV setting with public GPT-2 weights; a committed-weights
+  variant would be a scope change to be logged separately if pursued.
 
 - **2026-07-03 (P1)**: naive sequential timing showed ρ<1 (frequency drift on
   the M2 VM); replaced with ABBA paired timing (`time_paired`), which is the

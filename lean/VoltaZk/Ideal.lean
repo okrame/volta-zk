@@ -13,9 +13,11 @@ proven lemmas of this development may depend on them (checked with
 `#print axioms`).
 
 Formerly listed here and since proved: `BlindSumcheckSound` (M3) — see
-`VoltaZk.blind_sumcheck_sound` / `VoltaZk.blind_sumcheck_sound_mv`; and
+`VoltaZk.blind_sumcheck_sound` / `VoltaZk.blind_sumcheck_sound_mv`;
 `AuthenticatedCacheSound` (M4) — see `VoltaZk.kv_cache_sound` /
-`VoltaZk.authenticated_cache_sound` in `VoltaZk/KvCache.lean`.
+`VoltaZk.authenticated_cache_sound` in `VoltaZk/KvCache.lean`; and
+`SubfieldCorrection` (M5) — see `VoltaZk.sub_correction_uniform` /
+`VoltaZk.sub_zeroOpen_sound` in `VoltaZk/Subfield.lean`.
 -/
 
 namespace VoltaZk.Ideal
@@ -25,11 +27,6 @@ against malicious parties, including selective-failure leakage handling.
 Here `F_sVOLE` appears only through its corrupted-verifier branch
 (`VoltaZk.freshCorr`). -/
 axiom FerretRealizesSVOLE : Prop
-
-/-- (Deferred) Subfield-correction lemma: 16-bit corrections for quantized
-values via subdomain sampling lose neither ZK nor bandwidth
-(`F_p ⊆ E` refinement of `VoltaZk.Authed`). -/
-axiom SubfieldCorrection : Prop
 
 /-- (Deferred) Soundness of the QuickSilver-style degree-`d` product check
 `Π_Prod` used to close multiplicative claims, batched into the same

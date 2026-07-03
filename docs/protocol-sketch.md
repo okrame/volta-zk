@@ -108,15 +108,20 @@ stated as equality of `PMF` transcript distributions.
 | Domain-separated append-only write log: unique binding per index, appends never rebind | `VoltaZk/KvCache.lean` (`WriteLog`, `read_eq_of_mem`, `append_read_stable`) | proved |
 | Cache replay / mix-and-match ⇒ MAC forgery (single opening, error `1/|F|`) | `VoltaZk/KvCache.lean` (`cache_open_forge`, `cache_read_sound`, `cache_mix_sound`) | proved |
 | **KV-cache anti-replay soundness (M4)**, batched reads, error `≤ 2/|F|` | `VoltaZk/KvCache.lean` (`kv_cache_sound`, `authenticated_cache_sound`) | **proved** |
-| PCG/Ferret realization, QuickSilver `Π_Prod`, PCS, LogUp, UC, subfield corrections | `VoltaZk/Ideal.lean` | assumed (named axioms) |
+| **Subfield corrections `F_p ⊆ E` (M5)**: ZK in the subdomain, `F_p`-typed bandwidth, soundness `1/|E|` via embedding | `VoltaZk/Subfield.lean` (`sub_correction_uniform`, `sub_zeroOpen_sound`) | **proved** |
+| **Sequential composition of `Π_BSC` windows under one `Δ` (M6)**, cross-window adaptive `V*`, perfect ZK | `VoltaZk/Composition.lean` (`sequential_composition_perfect_zk`) | **proved** |
+| **`Π_Prod` (QuickSilver) masked degree-2 check, perfect ZK (M7)** | `VoltaZk/Prod.lean` (`prod_perfect_sim`, `qs_check_complete`) | **proved** |
+| PCG/Ferret realization, `Π_Prod` soundness, PCS, LogUp, UC | `VoltaZk/Ideal.lean` | assumed (named axioms) |
 
-Axiom audit: every proved lemma — including the main ZK theorem and the
-M3/M4 soundness theorems — depends only on `propext`, `Classical.choice`,
-`Quot.sound` (checked with `#print axioms` / `lean_verify`). No `sorry`
-remains in the development; none of the named axioms in `VoltaZk/Ideal.lean`
-is used by any proof. The former `BlindSumcheckSound` (M3) and
-`AuthenticatedCacheSound` (M4) axioms have been removed: they are now
-theorems.
+Axiom audit: every proved lemma — including the main ZK theorem, the M3/M4
+soundness theorems, and the M5–M7 theorems — depends only on `propext`,
+`Classical.choice`, `Quot.sound` (checked with `#print axioms` /
+`lean_verify`). No `sorry` remains in the development; none of the named
+axioms in `VoltaZk/Ideal.lean` is used by any proof. The former
+`BlindSumcheckSound` (M3), `AuthenticatedCacheSound` (M4) and
+`SubfieldCorrection` (M5) axioms have been removed (now theorems);
+`QuickSilverProdCheck` has been narrowed to `QuickSilverProdSound` —
+soundness only, since the ZK half is now the theorem `prod_perfect_sim`.
 
 Modeling notes (to keep honest in the writeup): the malicious verifier is an
 arbitrary *deterministic* adaptive strategy (perfect ZK against all
@@ -157,6 +162,36 @@ single opening (`zeroOpen_sound`), `≤ 2/|F|` for `T` reads batched through
 the index tuple, so cross-session replay under one `Δ` is covered; sessions
 with independent keys are independent games.
 
+Modeling notes for M5 (subfield): quantized plaintexts live in `F_p`, tags,
+keys and `Δ` in the extension `E`; subfield `F_sVOLE` samples the mask in the
+subdomain, so the `Π_Auth` correction is *typed* `F_p` — the `log₂|F_p|`-bit
+bandwidth claim is structural — and uniform on `F_p` for adversarial `Δ, k`
+(`sub_correction_uniform`): the simulator samples in the subdomain and
+matches exactly. Soundness is unchanged at `1/|E|`: the embedding
+`SubAuthed.toAuthed` preserves validity and nonzeroness of plaintexts, so the
+M3a/M4 opening lemmas apply verbatim to embedded subfield values.
+
+Modeling notes for M6 (composition): windows run sequentially under one `Δ`;
+each window's batched opening enters the transcript, and later windows'
+challenges, keys and `χ` may depend on it. The per-window adversary is the
+residual strategy `wrapV` (global `V*` with the flat public prefix baked in,
+correlation keys shifted by an offset — the offset *is* index freshness,
+mirroring the M4 domain separation). The hybrid argument is degenerate
+because the per-window equalities are perfect: the proof is an induction over
+the window list where openings collapse to public functions of the prefix
+(`finalMsg_eq_sim`) and continuations factor through the public projection.
+The zero-claims hypothesis is quantified over all prefixes/offsets, not just
+reachable ones — stronger than needed, faithful for an honest prover.
+
+Modeling notes for M7 (`Π_Prod` ZK): for a true product claim `c = a·b` the
+degree-2 key identity `k_a·k_b − Δ·k_c = A₀ + A₁·Δ` holds (the `Δ²` terms
+cancel); the prover's message `(A₀ + m_r, A₁ + r)` masked by a fresh
+correlation has a uniform second component (OTP) whose value *determines* the
+first given `V*`'s keys — the same two ingredients as the `Π_ZeroBatch`
+simulator, so simulation is perfect against adversarial `Δ` and correlation
+key (`prod_perfect_sim`). Soundness of the check stays assumed
+(`QuickSilverProdSound`), per the target.
+
 ## Next Formal Targets (before implementation)
 
 1. ~~**Soundness of the blind sumcheck (M3)**~~ — **done** (see table):
@@ -166,9 +201,18 @@ with independent keys are independent games.
    `kv_cache_sound` / `authenticated_cache_sound` in `VoltaZk/KvCache.lean`,
    replay/mix-and-match is a MAC forgery, batched error `≤ 2/|F|`;
    append-only statefulness via `WriteLog.append_read_stable`.
-3. **Subfield correction lemma (M5)**: 16-bit corrections in `F_p ⊆ E`
-   preserve both ZK (uniformity in the subdomain) and bandwidth claims.
-4. **Sequential composition**: multiple `Π_BSC` windows under one `Δ` with
-   fresh indices — perfect ZK composes; short hybrid argument.
-5. **`Π_Prod` (QuickSilver) ZK extension**: masked degree-2 check messages
-   are uniform (same OTP pattern); soundness may remain assumed.
+3. ~~**Subfield correction lemma (M5)**~~ — **done** (see table):
+   `sub_correction_uniform` / `sub_zeroOpen_sound` in `VoltaZk/Subfield.lean`,
+   ZK in the subdomain + `F_p`-typed bandwidth, soundness `1/|E|` preserved.
+4. ~~**Sequential composition (M6)**~~ — **done** (see table):
+   `sequential_composition_perfect_zk` in `VoltaZk/Composition.lean`,
+   degenerate hybrid over windows, one `Δ`, fresh indices by key offset.
+5. ~~**`Π_Prod` (QuickSilver) ZK extension (M7)**~~ — **done** (see table):
+   `prod_perfect_sim` in `VoltaZk/Prod.lean`; soundness stays assumed
+   (`QuickSilverProdSound`).
+
+**The formal exit gate to the implementation phase is closed**: every
+security claim of the paper draft is either a Lean theorem (M1–M7) or a
+named, isolated assumption in `VoltaZk/Ideal.lean` (PCG/Ferret realization,
+`Π_Prod` soundness, weight-PCS binding, LogUp-GKR soundness, full UC
+composition). Next phase: CUDA/CPU prototype and the ρ benchmark protocol.

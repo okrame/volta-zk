@@ -4,6 +4,7 @@ import VoltaZk.Otp
 import VoltaZk.Vole
 import VoltaZk.ZeroBatch
 import VoltaZk.BlindSumcheck
+import VoltaZk.Composition
 import VoltaZk.Counting
 import VoltaZk.ZeroBatchSound
 import VoltaZk.SumcheckSound

@@ -17,7 +17,10 @@ Formerly listed here and since proved: `BlindSumcheckSound` (M3) — see
 `AuthenticatedCacheSound` (M4) — see `VoltaZk.kv_cache_sound` /
 `VoltaZk.authenticated_cache_sound` in `VoltaZk/KvCache.lean`; and
 `SubfieldCorrection` (M5) — see `VoltaZk.sub_correction_uniform` /
-`VoltaZk.sub_zeroOpen_sound` in `VoltaZk/Subfield.lean`.
+`VoltaZk.sub_zeroOpen_sound` in `VoltaZk/Subfield.lean`; and
+`QuickSilverProdSound` (M8) — see `VoltaZk.prodBatch_sound` in
+`VoltaZk/ProdSound.lean` (ZK half: `VoltaZk.prod_perfect_sim`, M7).
+Higher fan-in products reduce to chained degree-2 checks.
 -/
 
 namespace VoltaZk.Ideal
@@ -27,12 +30,6 @@ against malicious parties, including selective-failure leakage handling.
 Here `F_sVOLE` appears only through its corrupted-verifier branch
 (`VoltaZk.freshCorr`). -/
 axiom FerretRealizesSVOLE : Prop
-
-/-- (Deferred) **Soundness** of the QuickSilver-style degree-`d` product
-check `Π_Prod` used to close multiplicative claims, batched into the same
-`Π_ZeroBatch` list. The ZK half is proved: `VoltaZk.prod_perfect_sim` in
-`VoltaZk/Prod.lean` (M7). -/
-axiom QuickSilverProdSound : Prop
 
 /-- (Deferred) Binding and (blinded) ZK of the public multilinear PCS
 (Basefold/WHIR) for the weight commitment `C_W`, and soundness of the

@@ -4,8 +4,9 @@ import VoltaZk.Vole
 # `Π_Prod`: perfect ZK of the masked QuickSilver product check (M7)
 
 `docs/protocol-sketch.md` § "Next Formal Targets" item 5: the masked degree-2
-check messages are uniform (same OTP pattern as the corrections); soundness
-stays assumed (`VoltaZk.Ideal.QuickSilverProdSound`).
+check messages are uniform (same OTP pattern as the corrections). Soundness
+is the dual game, proved in `VoltaZk/ProdSound.lean` (M8,
+`VoltaZk.prodBatch_sound`).
 
 The check. For a product claim `⟦c⟧ = ⟦a⟧·⟦b⟧` over valid values, expanding
 the MAC invariant gives the degree-2 key identity

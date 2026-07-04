@@ -16,7 +16,7 @@ CPU numbers validate architecture and counts; the ρ targets (≤2 decode,
 | --- | --- | --- | --- |
 | P0 harness + analytic budget | **done** (2026-07-03) | workspace builds, budget pre-registered ✓ | budget below |
 | P1 fused MAC epilogue microbench | **done** (2026-07-03) | ρ_kernel ≤ ~1.3 ✓ **PASSED** | ρ_kernel 1.06–1.11 per shape, 1.06 layer-weighted; epilogue ~2 ns/elem; GEMM 25–31 GMAC/s (4 cores); verifier fused scan 33 ns/elem → 0.37 s prefill-100 (q=3). `benchmarks/results/p1-2026-07-03-5113243.json` |
-| P2 authenticated-value layer | pending | e2e auth→open, counters match budget | — |
+| P2 authenticated-value layer | **done** (2026-07-04) | e2e auth→open ✓, counters match budget ✓ | Π_Auth/Π_ZeroOpen/Π_ZeroBatch (fresh full-field mask) in `volta-mac`; corrections 8 B/value + 16 B/mask + 16 B/opened tag; soundness smoke 0/1000 forged accepts; P1-epilogue interop test green; counter formula reproduces 3,763,968 auth values |
 | P2.5 clear-LogUp constant spike | pending | informative: ns/lookup + E-mult/lookup pre-registered; iterate if >2× budget estimate | — |
 | P3 blind sumcheck + Thaler + Π_Prod | pending | single GEMM proved e2e; ρ decomposed: t(clear sumcheck)/t(GEMM) and t(blind)/t(clear) | — |
 | P3.5 static weight PCS (private weights) | pending | batched ZK opening ≤ ~15% native prefill standalone (~3% per 600-tok response); leakage smoke | — |

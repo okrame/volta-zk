@@ -6,3 +6,7 @@ license.workspace = true
 
 [dependencies]
 volta-field = { workspace = true }
+
+[dev-dependencies]
+volta-gpt2 = { workspace = true }
+rand = { workspace = true }

@@ -112,13 +112,17 @@ stated as equality of `PMF` transcript distributions.
 | **Sequential composition of `Π_BSC` windows under one `Δ` (M6)**, cross-window adaptive `V*`, perfect ZK | `VoltaZk/Composition.lean` (`sequential_composition_perfect_zk`) | **proved** |
 | **`Π_Prod` (QuickSilver) masked degree-2 check, perfect ZK (M7)** | `VoltaZk/Prod.lean` (`prod_perfect_sim`, `qs_check_complete`) | **proved** |
 | **`Π_Prod` batched soundness (M8)**, `T` claims + fresh mask, error `≤ 3/|F|` | `VoltaZk/ProdSound.lean` (`prodBatch_sound`) | **proved** |
+| **PCS opening-into-MAC interface (M9)**: accepted opening + difference zero-open ⇒ authenticated plaintext = committed evaluation, error `≤ εΩ/|Ω| + 1/|F|`; composes with M3 by discharging `hfin` for the weight leg; binding taken as explicit hypothesis (`BindsIntoMac`), not an axiom | `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, `transfers_eval`) | **proved** |
 | PCG/Ferret realization, PCS, LogUp, UC | `VoltaZk/Ideal.lean` | assumed (named axioms) |
 
 Axiom audit: every proved lemma — including the main ZK theorem, the M3/M4
 soundness theorems, and the M5–M8 theorems — depends only on `propext`,
 `Classical.choice`, `Quot.sound` (checked with `#print axioms` /
 `lean_verify`). No `sorry` remains in the development; none of the named
-axioms in `VoltaZk/Ideal.lean` is used by any proof. The former
+axioms in `VoltaZk/Ideal.lean` is used by any proof. M9 (2026-07-04) is
+conditional on the `BindsIntoMac` hypothesis, to be instantiated by the
+concrete code-based PCS chosen in P3.5 (`docs/private-weights-pcs.md`);
+`Ideal.WeightPCSBinding` remains as the named global placeholder it subsumes. The former
 `BlindSumcheckSound` (M3), `AuthenticatedCacheSound` (M4),
 `SubfieldCorrection` (M5) and `QuickSilverProdCheck`/`QuickSilverProdSound`
 (M7 ZK + M8 soundness) axioms have all been removed: they are now theorems.

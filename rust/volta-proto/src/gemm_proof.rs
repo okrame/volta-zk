@@ -157,6 +157,163 @@ pub fn prove_gemm_blind(
     (GemmBlindProof { corr_x, corr_y, sumcheck, prod }, tm, stream.counters)
 }
 
+/// P3.5 committed-W seam (M9): the W̃(r_l, r_j) leg is not public — the
+/// prover authenticates it with a fresh full correlation (16 B correction,
+/// uniform, leaks nothing) and the claim is handed outward, to be bound to
+/// the static commitment C_W by volta-pcs (batch reduction + ZK opening).
+pub struct WeightClaimP {
+    /// Point on the W MLE (k×n, column vars LSB): r_j ‖ r_l.
+    pub point: Vec<Fp2>,
+    pub value: ProverAuthed,
+}
+
+/// Same as `prove_gemm_blind`, but the W̃ leg is authenticated at
+/// `dom_w_claim` instead of public. Returns the outward weight claim.
+pub fn prove_gemm_blind_committed(
+    x: &[i16],
+    w: &[i16],
+    yacc: &[i64],
+    m: usize,
+    k: usize,
+    n: usize,
+    corr: (Vec<u64>, Vec<u64>),
+    dom_w_claim: u64,
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+) -> (GemmBlindProof, Fp2, WeightClaimP, ProveTimings, CorrCounters) {
+    let mut tm = ProveTimings::default();
+    let (corr_x, corr_y) = corr;
+
+    let t0 = Instant::now();
+    let r_i: Vec<Fp2> = (0..pad_bits(m)).map(|_| tx.challenge_fp2()).collect();
+    let r_j: Vec<Fp2> = (0..pad_bits(n)).map(|_| tx.challenge_fp2()).collect();
+    let eq_i = eq_vec(&r_i);
+    let eq_j = eq_vec(&r_j);
+    let a = fold_x(x, m, k, &eq_i);
+    let b = fold_w(w, k, n, &eq_j);
+    let y_val = fold_y_acc(yacc, m, n, &eq_i, &eq_j);
+    tm.t_fold_s = t0.elapsed().as_secs_f64();
+
+    let t1 = Instant::now();
+    let mut m_y = Fp2::ZERO;
+    for row in 0..m {
+        let tags = stream.draw_sub_tags(dom_y(row as u32), n);
+        let mut acc = Fp2::ZERO;
+        for (j, t) in tags.into_iter().enumerate() {
+            acc += eq_j[j] * t;
+        }
+        m_y += eq_i[row] * acc;
+    }
+    tm.t_open_tags_s = t1.elapsed().as_secs_f64();
+    let claim0 = ProverAuthed { x: y_val, m: m_y };
+
+    let t2 = Instant::now();
+    let (sumcheck, point, claim_n) =
+        blind_prove(a.clone(), b.clone(), claim0, stream, dom_round_masks(), tx);
+    tm.t_rounds_s = t2.elapsed().as_secs_f64();
+
+    let t3 = Instant::now();
+    let eq_l = eq_vec(&point);
+    let x_val = eval_mle(&a, &point);
+    let mut m_x = Fp2::ZERO;
+    for row in 0..m {
+        let tags = stream.draw_sub_tags(dom_x(row as u32), k);
+        let mut acc = Fp2::ZERO;
+        for (l, t) in tags.into_iter().enumerate() {
+            acc += eq_l[l] * t;
+        }
+        m_x += eq_i[row] * acc;
+    }
+    tm.t_open_tags_s += t3.elapsed().as_secs_f64();
+
+    let t4 = Instant::now();
+    let b_final = eval_mle(&b, &point);
+    let x_open = ProverAuthed { x: x_val, m: m_x };
+    // The committed-W leg: authenticate W̃(r_l, r_j) with a fresh full
+    // correlation — never sent in clear (corr_w = b_final − r is uniform).
+    let fc = stream.draw_fulls(dom_w_claim, 1)[0];
+    let corr_w = b_final - fc.x;
+    tx.append("w_claim_correction", 16);
+    let b_auth = ProverAuthed { x: b_final, m: fc.m };
+    debug_assert_eq!(claim_n.x, x_val * b_final, "honest final claim mismatch");
+    let mask = stream.draw_fulls(dom_prod_mask(), 1)[0];
+    let chi = tx.challenge_fp2();
+    let prod = prod_batch_prover(&[(x_open, b_auth, claim_n)], chi, mask, tx);
+    tm.t_prod_s = t4.elapsed().as_secs_f64();
+
+    let mut w_point = r_j.clone();
+    w_point.extend_from_slice(&point);
+    let claim = WeightClaimP { point: w_point, value: b_auth };
+    (GemmBlindProof { corr_x, corr_y, sumcheck, prod }, corr_w, claim, tm, stream.counters)
+}
+
+/// Verifier for the committed-W variant: never sees W. Returns the outward
+/// weight claim (point, MAC key) on acceptance of the local checks; the
+/// caller must still bind it to C_W (soundness is discharged there — this
+/// mirrors M9's `hfin` hand-off to the blind sumcheck statement).
+pub fn verify_gemm_blind_committed(
+    m: usize,
+    k: usize,
+    n: usize,
+    proof: &GemmBlindProof,
+    corr_w: Fp2,
+    dom_w_claim: u64,
+    ctx: &mut VerifierCtx,
+    tx: &mut Transcript,
+) -> Option<(Vec<Fp2>, VerifierKey)> {
+    if proof.corr_x.len() != m * k || proof.corr_y.len() != m * n {
+        return None;
+    }
+    let r_i: Vec<Fp2> = (0..pad_bits(m)).map(|_| tx.challenge_fp2()).collect();
+    let r_j: Vec<Fp2> = (0..pad_bits(n)).map(|_| tx.challenge_fp2()).collect();
+    let eq_i = eq_vec(&r_i);
+    let eq_j = eq_vec(&r_j);
+
+    let mut k_y = Fp2::ZERO;
+    for row in 0..m {
+        let keys = auth_verifier(ctx, dom_y(row as u32), &proof.corr_y[row * n..(row + 1) * n]);
+        let mut acc = Fp2::ZERO;
+        for (j, key) in keys.iter().enumerate() {
+            acc += eq_j[j] * key.k;
+        }
+        k_y += eq_i[row] * acc;
+    }
+
+    let n_vars = pad_bits(k);
+    let (point, k_claim_n) = blind_verify(
+        n_vars,
+        VerifierKey { k: k_y },
+        &proof.sumcheck,
+        ctx,
+        dom_round_masks(),
+        tx,
+    )?;
+
+    let eq_l = eq_vec(&point);
+    let mut k_x = Fp2::ZERO;
+    for row in 0..m {
+        let keys = auth_verifier(ctx, dom_x(row as u32), &proof.corr_x[row * k..(row + 1) * k]);
+        let mut acc = Fp2::ZERO;
+        for (l, key) in keys.iter().enumerate() {
+            acc += eq_l[l] * key.k;
+        }
+        k_x += eq_i[row] * acc;
+    }
+
+    // Committed W̃ leg: key from the correlation + correction, no cleartext.
+    let k_b = VerifierKey { k: ctx.expand_full_keys(dom_w_claim, 1)[0] + ctx.delta * corr_w };
+
+    let k_mask = ctx.expand_full_keys(dom_prod_mask(), 1)[0];
+    let chi = tx.challenge_fp2();
+    let keys = [(VerifierKey { k: k_x }, k_b, k_claim_n)];
+    if !prod_batch_verify(&keys, k_mask, ctx.delta, chi, &proof.prod) {
+        return None;
+    }
+    let mut w_point = r_j;
+    w_point.extend_from_slice(&point);
+    Some((w_point, k_b))
+}
+
 /// Verifier. Knows W (public in P3), Δ and the shared PCG seed.
 pub fn verify_gemm_blind(
     w: &[i16],

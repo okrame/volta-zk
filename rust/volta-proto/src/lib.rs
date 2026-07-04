@@ -10,7 +10,10 @@ pub mod sumcheck_blind;
 pub mod sumcheck_clear;
 pub mod thaler;
 
-pub use gemm_proof::{auth_phase, prove_gemm_blind, verify_gemm_blind, GemmBlindProof, ProveTimings};
+pub use gemm_proof::{
+    auth_phase, prove_gemm_blind, prove_gemm_blind_committed, verify_gemm_blind,
+    verify_gemm_blind_committed, GemmBlindProof, ProveTimings, WeightClaimP,
+};
 pub use prod_check::{prod_batch_prover, prod_batch_verify, ProdProof};
 pub use sumcheck_blind::{blind_prove, blind_verify, BlindSumcheckProof};
 pub use sumcheck_clear::{prove_clear, verify_clear, ClearProof};

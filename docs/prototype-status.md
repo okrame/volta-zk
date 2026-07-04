@@ -19,7 +19,7 @@ CPU numbers validate architecture and counts; the ρ targets (≤2 decode,
 | P2 authenticated-value layer | **done** (2026-07-04) | e2e auth→open ✓, counters match budget ✓ | Π_Auth/Π_ZeroOpen/Π_ZeroBatch (fresh full-field mask) in `volta-mac`; corrections 8 B/value + 16 B/mask + 16 B/opened tag; soundness smoke 0/1000 forged accepts; P1-epilogue interop test green; counter formula reproduces 3,763,968 auth values |
 | P2.5 clear-LogUp constant spike | **done** (2026-07-04) | informative — constant **23.2 E-mult/lookup, >2× budget est. ⇒ iteration plan logged** | 272 ns/lookup @2^23 (single-thread), verify 0.10 s, proof 20 KB; extrapolated prefill-100 LogUp prover 4.6 s vs native 0.30 s (ratio ~15.6 single-thread, ~4 on 4 cores). `benchmarks/results/p2.5-2026-07-04-a13cca4.json` |
 | P3 blind sumcheck + Thaler + Π_Prod | **done** (2026-07-04) | GEMM (100×768)·(768×768) proved+verified e2e ✓; ρ decomposed ✓ | ρ_clear 1.49, ρ_blind/clear 2.25, ρ_total 3.34; blind split: fold 3.1 ms + **m_r expand 2.8 ms** + rounds 0.04 ms + Π_Prod 0.01 ms; verify 6.5 ms; proof 352 B (excl. 1.2 MB auth corr); corrs 153,600 sub + 21 full. Attribution: blinding IT ≈ free, cost is Freivalds folds + lazy tag expansion. `benchmarks/results/p3-2026-07-04-cef997d.json` |
-| P3.5 static weight PCS (private weights) | pending | batched ZK opening ≤ ~15% native prefill standalone (~3% per 600-tok response); leakage smoke | — |
+| P3.5 static weight PCS (private weights) | **done** (2026-07-04) | opening ≤ 15% native prefill: **FAILED (230%)** — iteration plan logged below; leakage smoke ✓; M9 seam e2e ✓ | In-house Ligero (`volta-pcs`), full 2^27, rate 0.516, Q=200. Commit one-off 3.3 s; opening of record (row-local multi-eval, 220 claims) **0.70 s** = fixed 0.12 s + **~2.3 ms/claim**; verify 0.12 s; 73.8 MB/opening; peak RSS 7.3 GB. Rejected path (generic reduction sumcheck): 5.8 s. `benchmarks/results/p3.5-2026-07-04-1708c66.json` |
 | P4 LogUp + fused blocks | pending | one full layer e2e, counts within 20% of budget | — |
 | P5 GPT-2 e2e prefill 100 tok | pending | one-command reproducible run, golden check | — |
 | P6 decode + authenticated KV cache | pending | flat cost/token, anti-replay smoke | — |
@@ -55,6 +55,57 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-04 (P3.5)**: static weight PCS implemented and measured at full
+  scale (2^27 synthetic i16 coefficients — no weight export yet, that is P5;
+  PCS cost is data-independent). Decisions and findings:
+  1. **Library decision (closes the open "repo evaluation" risk)**: in-house
+     minimal Ligero in new crate `volta-pcs` (~700 lines: Goldilocks NTT,
+     blake3 Merkle — the only new external dep — ZK opening, batching). No
+     external library (Plonky3 / Binius / p3-basefold) provides the delicate
+     part, the ZK opening that resolves into a DV MAC (M9); they would only
+     supply NTT+Merkle, each ~150 lines here. Binius is binary-field,
+     off-target for Goldilocks.
+  2. **Opening architecture iterated once, in-milestone**: the generic
+     multi-point → single-point reduction (blind sumcheck over 2^27, path A)
+     measured **5.8 s** — E-field O(|W|) work dominates everything. Replaced
+     by the **row-local multi-eval opening** (path B, pipeline of record):
+     block-aligned claims need masked row combinations over only their
+     tensor's Ligero rows; all claims share one column-query set and resolve
+     via a single Π_ZeroBatch. **0.70 s** (8.4×), no reduction sumcheck.
+  3. **Gate FAILED and re-understood**: 0.70 s = 230% of native prefill
+     (gate ≤15%), 38% per 600-tok response (gate ≤3%). Attribution: the
+     design-note estimate assumed ONE O(|W|) pass at ~native throughput.
+     Measured: (1 + q_avg)·O(|W|) `mul_base` passes with q_avg ≈ 3.4
+     claims/tensor; the single global pass alone is 0.11 s = 36% (u64 field
+     mults are ~3–5× slower than i16 MACs). **Cost model**: opening ≈ fixed
+     0.12 s (proximity pass + columns) + **2.3 ms per claim** (block pass +
+     mask row). The "~3% amortized" story therefore holds only if
+     claims-per-response stays O(prefill count): naive decode adds ~49
+     claims/token ⇒ **cross-token claim reduction is a P6 interface
+     requirement**, not an optimization.
+  4. **Iteration levers (before/with P4–P6)**: (a) fewer claims/tensor
+     upstream (share the q=3 RLC opening points where sound: 220 → ~64
+     claims ⇒ ~0.35 s, 21 MB); (b) P6 cross-token claim accumulation;
+     (c) session-level batching (fixed part shared over k responses);
+     (d) NEON/lazy-reduction engineering of the mul_base passes;
+     (e) fallback knob: per-user MAC-auth (option B) breakeven is ~1.4
+     responses/GB-of-setup at current numbers — still a deployment knob.
+  5. **Leakage**: smoke passed (transcript structure identical across weight
+     sets, masked rows uniform, columns pad-randomized). Known limitation
+     pre-registered: pad=512 covers ONE opening's ≤200 distinct columns;
+     repeated openings accumulate column exposure → larger pad or periodic
+     re-commit (P7 line item).
+  6. **Soundness parameters pre-registered**: rate 0.516, δ≈0.48, Q=200,
+     error ≈ (1−δ/2)^Q ≈ 2^-81 (d/3-style analysis would need Q≈312; pad
+     keeps hiding headroom). PCS binding is the explicit M9 hypothesis.
+  7. Verifier stays cheap (0.12 s incl. 442 NTT encodes); commit one-off
+     3.3 s / 2 GB encoded matrix in RAM; peak RSS 7.3 GB (fits 11 GB).
+  8. Correlation use: 220 full corrs (claims) + 220 (s_g) + 1 (ZeroBatch);
+     opening communication 73.8 MB (u_g rows dominate), vs 30.1 MB auth
+     corrections — drops linearly with claim reduction (lever a).
+  P4 does not depend on PCS speed; PCS claim-count levers land with P4's
+  per-layer wiring and P6's decode design.
 
 - **2026-07-04 (private weights — supersedes the "no PCS" note of 2026-07-03)**:
   the public-weights assumption was implicit and is now retired: the target

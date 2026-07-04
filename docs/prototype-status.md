@@ -19,6 +19,7 @@ CPU numbers validate architecture and counts; the ρ targets (≤2 decode,
 | P2 authenticated-value layer | pending | e2e auth→open, counters match budget | — |
 | P2.5 clear-LogUp constant spike | pending | informative: ns/lookup + E-mult/lookup pre-registered; iterate if >2× budget estimate | — |
 | P3 blind sumcheck + Thaler + Π_Prod | pending | single GEMM proved e2e; ρ decomposed: t(clear sumcheck)/t(GEMM) and t(blind)/t(clear) | — |
+| P3.5 static weight PCS (private weights) | pending | batched ZK opening ≤ ~15% native prefill standalone (~3% per 600-tok response); leakage smoke | — |
 | P4 LogUp + fused blocks | pending | one full layer e2e, counts within 20% of budget | — |
 | P5 GPT-2 e2e prefill 100 tok | pending | one-command reproducible run, golden check | — |
 | P6 decode + authenticated KV cache | pending | flat cost/token, anti-replay smoke | — |
@@ -49,6 +50,22 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-04 (private weights — supersedes the "no PCS" note of 2026-07-03)**:
+  the public-weights assumption was implicit and is now retired: the target
+  deployment is a provider that does NOT reveal W. Decision (full analysis in
+  `docs/private-weights-pcs.md`): static public commitment `C_W` via a
+  field-native code-based PCS (Ligero/Brakedown/Basefold family over
+  Goldilocks) + **one batched ZK opening per response** resolving into a
+  VOLE-authenticated value (never a cleartext `W̃(r)` ⇒ no per-query weight
+  leakage). Per-response cost O(|W|) mults ≈ 1–3 % of native work for
+  realistic responses, model-size-independent as a ratio — the prover
+  advantage does not erode at 20B. Per-user weight MAC-auth (Mystique-style,
+  option B) rejected as architecture (O(|W|)/user correction bandwidth,
+  ~160 GB at 20B) but kept as a deployment knob. Consequences: new milestone
+  **P3.5**; formal phase reopens for one interface lemma (**M9**,
+  opening-into-MAC, composing with M3) — open, not yet scheduled; P0 budget
+  and P7 extrapolation gain a PCS line.
 
 - **2026-07-03 (plan amendment, pre-P2)**: risk re-read after P1 — the open
   risk is prover *constant factors* (sumcheck + LogUp), not tensor

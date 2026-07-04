@@ -5,4 +5,4 @@
 
 pub mod gemm;
 
-pub use gemm::{gemm_requant, gemm_requant_auth, EpilogueSpec};
+pub use gemm::{gemm_i64, gemm_requant, gemm_requant_auth, EpilogueSpec};

@@ -535,6 +535,8 @@ dependencies = [
  "serde_json",
  "volta-field",
  "volta-gpt2",
+ "volta-mac",
+ "volta-proto",
 ]
 
 [[package]]
@@ -557,14 +559,18 @@ dependencies = [
 name = "volta-mac"
 version = "0.0.0"
 dependencies = [
+ "rand",
  "volta-field",
+ "volta-gpt2",
 ]
 
 [[package]]
 name = "volta-proto"
 version = "0.0.0"
 dependencies = [
+ "rand",
  "volta-field",
+ "volta-gpt2",
  "volta-mac",
 ]
 

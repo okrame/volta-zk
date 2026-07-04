@@ -48,6 +48,18 @@ fn gemm_row(a_row: &[i16], b: &[i16], n: usize, acc: &mut [i64]) {
     }
 }
 
+/// Exact accumulator GEMM (no requant) — the tensor the P3 Thaler sumcheck
+/// binds; requant consistency is P4's lookup business.
+pub fn gemm_i64(a: &[i16], b: &[i16], m: usize, k: usize, n: usize) -> Vec<i64> {
+    assert_eq!(a.len(), m * k);
+    assert_eq!(b.len(), k * n);
+    let mut out = vec![0i64; m * n];
+    out.par_chunks_mut(n)
+        .enumerate()
+        .for_each(|(i, out_row)| gemm_row(&a[i * k..(i + 1) * k], b, n, out_row));
+    out
+}
+
 /// Native kernel: GEMM + requant. Row-major `a: m×k`, `b: k×n` → `i16 m×n`.
 pub fn gemm_requant(a: &[i16], b: &[i16], m: usize, k: usize, n: usize, shift: u32) -> Vec<i16> {
     assert_eq!(a.len(), m * k);

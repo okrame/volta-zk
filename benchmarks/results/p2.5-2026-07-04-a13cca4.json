@@ -1,0 +1,36 @@
+{
+  "milestone": "P2.5",
+  "date": "2026-07-04",
+  "git_sha": "a13cca4",
+  "machine": "linux aarch64",
+  "threads_note": "logup prover single-threaded (spike); native anchor uses rayon",
+  "native_prefill_est_s": 0.294883975007799,
+  "budget_lookups_prefill": 16940400,
+  "runs": [
+    {
+      "n_lookups": 1048576,
+      "table_bits": 16,
+      "prove_wall_s": 0.219417091,
+      "verify_wall_s": 0.012770907,
+      "ns_per_lookup": 209.25244426727295,
+      "emult_per_lookup_prover": 24.461733245849608,
+      "fp2_mults_prover": 25623772,
+      "base_mults_prover": 131072,
+      "proof_bytes": 17248,
+      "ratio_prove_vs_native_prefill": 0.7440793993440875
+    },
+    {
+      "n_lookups": 8388608,
+      "table_bits": 16,
+      "prove_wall_s": 2.284811763,
+      "verify_wall_s": 0.101986834,
+      "ns_per_lookup": 272.370787024498,
+      "emult_per_lookup_prover": 23.18270914554596,
+      "fp2_mults_prover": 194444445,
+      "base_mults_prover": 131072,
+      "proof_bytes": 20464,
+      "ratio_prove_vs_native_prefill": 7.748172015585356
+    }
+  ],
+  "extrapolated_prefill_logup_s": 4.614070080509806
+}

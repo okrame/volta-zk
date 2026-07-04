@@ -17,7 +17,7 @@ CPU numbers validate architecture and counts; the ρ targets (≤2 decode,
 | P0 harness + analytic budget | **done** (2026-07-03) | workspace builds, budget pre-registered ✓ | budget below |
 | P1 fused MAC epilogue microbench | **done** (2026-07-03) | ρ_kernel ≤ ~1.3 ✓ **PASSED** | ρ_kernel 1.06–1.11 per shape, 1.06 layer-weighted; epilogue ~2 ns/elem; GEMM 25–31 GMAC/s (4 cores); verifier fused scan 33 ns/elem → 0.37 s prefill-100 (q=3). `benchmarks/results/p1-2026-07-03-5113243.json` |
 | P2 authenticated-value layer | **done** (2026-07-04) | e2e auth→open ✓, counters match budget ✓ | Π_Auth/Π_ZeroOpen/Π_ZeroBatch (fresh full-field mask) in `volta-mac`; corrections 8 B/value + 16 B/mask + 16 B/opened tag; soundness smoke 0/1000 forged accepts; P1-epilogue interop test green; counter formula reproduces 3,763,968 auth values |
-| P2.5 clear-LogUp constant spike | pending | informative: ns/lookup + E-mult/lookup pre-registered; iterate if >2× budget estimate | — |
+| P2.5 clear-LogUp constant spike | **done** (2026-07-04) | informative — constant **23.2 E-mult/lookup, >2× budget est. ⇒ iteration plan logged** | 272 ns/lookup @2^23 (single-thread), verify 0.10 s, proof 20 KB; extrapolated prefill-100 LogUp prover 4.6 s vs native 0.30 s (ratio ~15.6 single-thread, ~4 on 4 cores). `benchmarks/results/p2.5-2026-07-04-a13cca4.json` |
 | P3 blind sumcheck + Thaler + Π_Prod | pending | single GEMM proved e2e; ρ decomposed: t(clear sumcheck)/t(GEMM) and t(blind)/t(clear) | — |
 | P3.5 static weight PCS (private weights) | pending | batched ZK opening ≤ ~15% native prefill standalone (~3% per 600-tok response); leakage smoke | — |
 | P4 LogUp + fused blocks | pending | one full layer e2e, counts within 20% of budget | — |
@@ -81,6 +81,16 @@ constant factors hold. That constant factor is what P3/P4 measure.
   has **no PCS** — DV setting with public GPT-2 weights; a committed-weights
   variant would be a scope change to be logged separately if pursued.
 
+- **2026-07-04 (P2.5)**: clear-LogUp prover constant measured at 23.2
+  E-mult/lookup — ~5× the budget's "O(1) ≈ 4–5" estimate, past the 2×
+  iteration trigger. Per the informative gate this does NOT block P3; the
+  **iteration plan (before P4)**: (a) Gruen eq-factor split (pull eq out of
+  the cubic round evals — saves ~1/3), (b) exploit base-field leaf structure
+  (α−f has constant c1; first 2–3 layers can run mostly in F_p — the leaf
+  combine already does, extend to their sumchecks), (c) rayon over the round
+  loops (spike was single-thread; native anchor uses 4 cores, so wall-ratio
+  15.6 → ~4 with parallelism alone). Target ≤ 8–10 E-mult/lookup measured
+  in P4's real LogUp. Note the *verifier* is already cheap (0.10 s @ 2^23).
 - **2026-07-03 (P1)**: naive sequential timing showed ρ<1 (frequency drift on
   the M2 VM); replaced with ABBA paired timing (`time_paired`), which is the
   measurement of record. Criterion benches kept for CIs.

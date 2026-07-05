@@ -20,7 +20,7 @@ CPU numbers validate architecture and counts; the ρ targets (≤2 decode,
 | P2.5 clear-LogUp constant spike | **done** (2026-07-04) | informative — constant **23.2 E-mult/lookup, >2× budget est. ⇒ iteration plan logged** | 272 ns/lookup @2^23 (single-thread), verify 0.10 s, proof 20 KB; extrapolated prefill-100 LogUp prover 4.6 s vs native 0.30 s (ratio ~15.6 single-thread, ~4 on 4 cores). `benchmarks/results/p2.5-2026-07-04-a13cca4.json` |
 | P3 blind sumcheck + Thaler + Π_Prod | **done** (2026-07-04) | GEMM (100×768)·(768×768) proved+verified e2e ✓; ρ decomposed ✓ | ρ_clear 1.49, ρ_blind/clear 2.25, ρ_total 3.34; blind split: fold 3.1 ms + **m_r expand 2.8 ms** + rounds 0.04 ms + Π_Prod 0.01 ms; verify 6.5 ms; proof 352 B (excl. 1.2 MB auth corr); corrs 153,600 sub + 21 full. Attribution: blinding IT ≈ free, cost is Freivalds folds + lazy tag expansion. `benchmarks/results/p3-2026-07-04-cef997d.json` |
 | P3.5 static weight PCS (private weights) | **done** (2026-07-04) | opening ≤ 15% native prefill: **FAILED (230%)** — iteration plan logged below; leakage smoke ✓; M9 seam e2e ✓ | In-house Ligero (`volta-pcs`), full 2^27, rate 0.516, Q=200. Commit one-off 3.3 s; opening of record (row-local multi-eval, 220 claims) **0.70 s** = fixed 0.12 s + **~2.3 ms/claim**; verify 0.12 s; 73.8 MB/opening; peak RSS 7.3 GB. Rejected path (generic reduction sumcheck): 5.8 s. `benchmarks/results/p3.5-2026-07-04-1708c66.json` |
-| P4 LogUp + fused blocks | pending | one full layer e2e, counts within 20% of budget | — |
+| P4 LogUp + fused blocks | **done** (2026-07-05) | one full layer proved+verified e2e (T=100, real PCS opening) ✓ **PASSED**; counts within 20% ✓ (witness streams = budget **exactly**, padded LogUp domains explained); LogUp ≤8–10 E-mult/lookup: **MISSED, motivated (12.20)**; 1 weight claim/tensor ✓ (4/layer) | prove 0.805 s vs native forward 0.034 s (ρ_layer 23.7, 4 cores); verify 0.057 s; LogUp lookup-side **12.20 E-mult/lookup** (~34 ns/lookup, 5.4× vs P2.5 spike wall), table-side 3.86 raw → 0.32 /12-amortized; full instance cost 126.5 M E-mult/layer (≈42/padded lookup incl. aux folding + tables + closures); corr bytes 7.64 MB/layer (mult vectors 3.87 MB — see deviations); layer PCS 2^24: commit 0.37 s one-off, **open 0.041 s**, verify 0.007 s; projections (P3.5 cost model, 49/98 claims): prefill **0.233 s**, per-response **0.345 s**. `benchmarks/results/p4-2026-07-05-8768fc4.json` |
 | P5 GPT-2 e2e prefill 100 tok | pending | one-command reproducible run, golden check | — |
 | P6 decode + authenticated KV cache | pending | flat cost/token, anti-replay smoke | — |
 | P7 report + GPU budget model | pending | extrapolation decides GPU go/no-go | — |
@@ -55,6 +55,78 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-05 (P4)**: one full transformer layer (attention + FFN fused
+  blocks, LogUp instances, chained GEMMs, hadamard, real Ligero opening)
+  proved + verified e2e at T=100. Gate passed; decisions and deviations:
+  1. **E-mult gate missed, motivated**: measured 12.20 E-mult/lookup
+     lookup-side vs pre-registered target ≤8–10. Attribution (matches the
+     cost model to <5%): leaf layers ≈2.8 (base-field + round-0 prescale) +
+     upper tree layers ≈7.0 (structural — Gruen doesn't touch the fraction
+     combines) + tree build ≈1.7 + suffix eq tables ≈0.5. The 8–10 target is
+     unreachable in this protocol family within the bandwidth budget:
+     helper-column LogUp reaches 2–4 E-mult but adds 16 B/lookup corrections
+     (≈48 MB/prefill — rejected); recounting mul-by-7 as shift-add would
+     game the pre-registered `emult_equiv = fp2 + base/5` convention
+     (rejected). Convention (pre-registered with the user): gate is
+     lookup-side only; table side reported raw (L=1) and /12-amortized.
+  2. **Full instance cost of record**: 126.5 M E-mult/layer for the 14 LogUp
+     instances all-in (≈42/padded lookup, ≈90/budget lookup) — the bare
+     fraction-tree floor (12.2) plus table-side trees, deg-3 aux-claim
+     folding, in-field packing closures and multiplicity bindings. Chain
+     cost outside instances: 2.2 M E-mult/layer. Wall: prove 0.805 s/layer
+     ≈ 23.7× native forward on 4 cores (naive ×12 ≈ 9.7 s prefill vs 0.41 s
+     native — the GPU-target ρ story is P7's job, not P4's).
+  3. **Rectangular padding (pre-registered)**: witness lookup streams match
+     the P0 budget exactly (1,412,000/layer, 0%); the LogUp instances run on
+     padded domains (3,016,960/layer, 2.14×) — attention instances expand
+     causal-packed wires to h_pad(16)×T_pad(128)×T_pad rectangles with valid
+     pad pairs, and pow2 padding elsewhere. Exp pad pair = least LUT index
+     with output exactly 0 (0x8000 at default scales), so rectangular row
+     sums equal causal ones and the denominator rowsum identity
+     `deñoms(ρ) = 2^rb·ẽxp(½..½,ρ)` needs no pad correction.
+  4. **Multiplicity binding (not in the P0 budget)**: multiplicity vectors
+     are authenticated element-wise per instance — 3.87 MB/layer, the
+     largest correction stream (boundary auth is 3.07 MB). Tables are shared
+     across the 12 layers ⇒ P5 amortizes to **one multiset argument per
+     table per model** (÷12), pre-registered.
+  5. **No-clamp assert (pre-registered with the user)**: the synthetic
+     witness is asserted at runtime to never saturate any requant; the
+     saturation side-table is P5 scope.
+  6. **Small-vector simplifications (pre-registered)**: LN per-row stats
+     (mean, var, rsqrt_in/out — 8·T_pad values/layer) and attention row
+     tables (denoms, recip_in, recips — 3·16·T_pad) are authenticated
+     element-wise instead of proved via rowsum/centering sumchecks; the LN
+     requant lookup, rsqrt/recip LUT membership, denominator=rowsum and the
+     hadamard bilinear step ARE proved. `recip_in = denoms >> 6` is bound
+     only by element auth of both vectors (P4-DEVIATION(recip-in) in code).
+     LN gain/bias are public verifier inputs in P4 (weights private via PCS).
+  7. **c_attn is committed on a permuted layout**: the single qkv requant
+     instance runs on a T×4096 domain with `col' = third·1024 + head·64 + l`
+     (third/head become bit fields; K/V thirds close via boundary MAC
+     openings with boolean selectors, q third via the 12 head aux claims).
+     Its chained GEMM therefore claims W̃ on the permuted 768×4096 tensor
+     (`cattn_permuted`); `layout_gpt2_layer` commits exactly that layout
+     (same 2^22 block, offsets unchanged). One claim per tensor holds:
+     4/layer, point lengths 22/20/22/22.
+  8. **PCS re-projection (measured P3.5 cost model, 0.12 s + 2.3 ms/claim)**:
+     49 prefill claims (4×12 + logits) → **0.233 s**; per-response with
+     deferred decode ≈ 2×49 claims → **0.345 s** — replaces P3.5's 220-claim
+     0.70 s projection (the per-layer wiring delivered lever (a): 1 claim
+     per tensor instead of q_avg≈3.4). Measured at layer scale (2^24):
+     open 0.041 s, verify 0.007 s. **P6 constraint (verbatim)**: i
+     weight-GEMM del decode si differiscono e si provano impilati a fine
+     risposta (claims/risposta ≈ claims/prefill), mai claim PCS per-token.
+     P5 girerà e2e in modalità committed-W di default.
+  9. Boundary auth measured 5 tensors/layer (x_in, K, V, attn/ffn_block_out)
+     vs budget's 4 — x_in is the previous layer's output (embed_out at layer
+     0), authenticated once per seam in the full model; a single-layer
+     report double-counts it. LUTs are Rust-built at synthetic scales; the
+     numpy reference + real weight export land in P5.
+  10. Causal-mask soundness is a dedicated blind product sumcheck row
+     (public maskAbove·eq(τ) table); the reject test is a wires-level
+     cheating-prover emulation (library debug_asserts force witness-honest
+     provers, so tampering is injected at the derived-wire layer).
 
 - **2026-07-04 (P3.5)**: static weight PCS implemented and measured at full
   scale (2^27 synthetic i16 coefficients — no weight export yet, that is P5;

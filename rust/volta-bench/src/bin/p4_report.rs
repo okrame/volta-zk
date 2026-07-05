@@ -114,6 +114,9 @@ struct Report {
     milestone: String,
     date: String,
     git_sha: String,
+    /// True if the working tree had uncommitted changes at run time — a
+    /// dirty run's sha names the PARENT commit, not the measured code.
+    git_dirty: bool,
     machine: String,
     threads: usize,
     t_tokens: usize,
@@ -354,6 +357,11 @@ fn main() {
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .unwrap_or_default();
+    let git_dirty = std::process::Command::new("git")
+        .args(["status", "--porcelain"])
+        .output()
+        .map(|o| !o.stdout.is_empty())
+        .unwrap_or(true);
 
     // 49 prefill weight-GEMM claims = 4 per layer × 12 layers + logits.
     let pcs_claims_prefill = 4 * 12 + 1;
@@ -368,6 +376,7 @@ fn main() {
         milestone: if quick { "P4-quick".into() } else { "P4".into() },
         date: date.clone(),
         git_sha: sha.clone(),
+        git_dirty,
         machine: format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
         threads: rayon::current_num_threads(),
         t_tokens: t,

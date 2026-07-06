@@ -1,4 +1,4 @@
-# Quantization Spec (P0, frozen for the CPU prototype)
+# Quantization Spec (P0, frozen for the CPU prototype; P5 amendments 2026-07-06)
 
 This is the exact arithmetic the witness generation must reproduce. The Rust
 fixed-point forward pass in `rust/volta-gpt2` *is* the witness generator; the
@@ -31,6 +31,40 @@ Rust witness generator, and the LogUp prover.
 
 LayerNorm mean/variance are computed in `i64` from the `i16` inputs
 (exact integer sums), then normalized via `ln_rsqrt` LUT + requant.
+
+## P5 amendments (real weights — ledger 2026-07-06)
+
+- **Stable softmax**: the exp LUT is base-e and is looked up on the shifted
+  score `s' = s − c_row`, where `c_row` is defined as the max of the causal
+  row of requantized scores. The LUT is faithful on `x ≤ 0` only (its proved
+  table content is the nonpositive domain — membership doubles as the range
+  check); soundness of `c_row = max` comes from `s' ≤ 0` plus a per-row
+  product-zero check `Π_j s'_j = 0` (Π_Prod).
+- **Embedding requant**: `wte`/`wpe` are quantized at their own scale
+  `f_wte`; `embed_out = round_half_up((wte[tok] + wpe[pos]) / 2^shift_embed)`
+  lands on the residual-stream scale — one extra 13th LUT (`requant_embed`),
+  T·d lookups per prefill. `wte` is tied: the last-position logits row is the
+  `i64` accumulator `final_ln_out · wteᵀ` with **no requant** (budget counts
+  its MACs, no lookups).
+- **Biases**: all GEMM biases and LN gains/biases are quantized at the
+  OUTPUT scale of their op and folded into the accumulator before requant
+  (`acc += b << shift_op`). They are public verifier inputs (the private
+  tensors are the four projection matrices and wte/wpe, committed via PCS).
+- **Residual-stream scales are per layer** (`f_res[l]`, monotone
+  non-increasing — GPT-2 outlier channels make a global scale destroy early
+  layers, measured 2026-07-06): segment `l` covers `x_in(l)`,
+  `attn_block_out(l)`, `ffn_block_out(l)`; between layers a **seam requant**
+  `x_in(l+1) = round_half_up(ffn_block_out(l) / 2^{seam_shift[l]})`
+  (shift 0 = identity, free). Everything not facing the residual (LN path,
+  qkv, scores, softmax, gelu tables) keeps ONE global shift/LUT set — the
+  `ln_rsqrt` table is scale-free in the input scale by construction. Weight
+  exponents are per tensor-type.
+- **Chained requant**: any requant with shift `s > 16` is DEFINED as the
+  two-stage `requant(requant(acc, s−16), 16)` (double rounding), so no
+  remainder range table exceeds 2^16.
+- All scales remain powers of two; the frozen real tables, shifts and prompt
+  live in `benchmarks/weights/gpt2s-q.{bin,json,params}` produced by
+  `scripts/export_gpt2.py`.
 
 ## Corrections and bandwidth (M5 honesty note)
 

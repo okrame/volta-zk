@@ -100,6 +100,61 @@ constant factors hold. That constant factor is what P3/P4 measure.
      across tokens; the lookup-side instances must batch too — never fixed
      per-token instance cost).
 
+- **2026-07-06 (P5 in progress — quantization semantics for real weights)**:
+  three spec amendments forced by real GPT-2 ranges, decided at export time
+  (quantization-spec.md updated in the same commit):
+  1. **Stable softmax (shifted exp)**: real attention scores reach ±20+, so a
+     direct base-e `exp` LUT saturates. New semantics: `s' = s − c_row` with
+     `c_row := max` of the causal row (spec definition; softmax is invariant
+     to any row shift in exact arithmetic), exp LUT is base-e, faithful on
+     `x ≤ 0`, and its **table content only covers the nonpositive domain** —
+     LogUp membership itself range-checks `s' ≤ 0`. Soundness that `c_row` is
+     the true max (a malicious shift could saturate/flatten attention):
+     `s' ≤ 0` from the table domain + **per-row product-zero check**
+     `Π_j s'_j = 0` via the existing Π_Prod machinery (M7/M8) proves
+     `c_row = max`. `c_row` itself is bound linearly (`c = s − s'` per entry).
+     Pad pairs unchanged (exp[0x8000] = 0 stays the least-index zero); the
+     product-zero rows are the real (unpadded) rows only — pad rows are
+     excluded by the same public row-selector approach as the causal mask.
+  2. **Embedding requant (13th table)**: `wte` is tied (embedding + logits
+     weight) and needs its own scale `f_wte` ≫ the residual-stream scale
+     `f_res` (real residual maxima are orders larger than |wte|). New
+     `requant_embed` table: `embed_out = (wte[tok] + wpe[pos]) >> shift_embed`
+     (round-half-up), T·d = 76,800 extra lookups per prefill — a new LogUp
+     instance at model level, not in the P0 budget (explained deviation).
+  3. **GEMM biases (real GPT-2 has them, P4 synthetic didn't)**: quantized at
+     the OUTPUT scale of their op and folded linearly into the accumulator
+     (`acc += b << shift_op`) before the requant lookup — same pattern as the
+     P4 LN bias. Biases and LN gain/bias are **public** verifier inputs in P5
+     (extends P4 deviation #6; the private tensors are the four big matrices
+     + wte/wpe via PCS).
+  Also fixed: ONE global shift/LUT set for all 12 layers (per-layer scales
+  would break the one-multiset-per-table amortization); weight exponents are
+  per tensor-type (max |w| across layers); calibration = float ranges on the
+  golden prompt + headroom bits, verified by a strict no-clamp fixed-point
+  pass (saturation ⇒ side-table contingency, pre-registered).
+
+  **Iteration 2 (same day, measured failure)**: with a single global residual
+  scale the calibrated f_res is 1 (late-layer outlier channels reach ~1e3
+  while the embedding is ~1e-1) and the fixed-point argmax broke on the
+  golden prompt (float ' way' vs fixed '\n') — no saturation, pure precision
+  loss in the early layers. Amendments (spec updated):
+  4. **Per-layer residual scales** `f_res[l]`, monotone non-increasing, with
+     **seam requants** between layers (`x_in(l+1) = ffn_block_out(l) >>
+     seam_shift`, shift 0 = free). Only the residual-facing sites go per
+     layer (attn_proj/ffn_down requant shifts + seams + embed); LN is
+     scale-free w.r.t. its input scale (`dev_int·r_int = x̂·2^R` for any f),
+     so the ln_rsqrt table, LN path, qkv/scores/softmax/gelu tables all stay
+     global. Extra lookups ≤ 11·T·d ≈ 845k/prefill (~5%).
+  5. **Chained requant for shift > 16** (real params already produce 18–19):
+     `requant(acc, s) := requant(requant(acc, s−16), 16)` — double-round
+     semantics by definition; keeps every remainder table ≤ 2^16 (the naive
+     2^19 table would cost a 4 MB multiplicity vector alone).
+  6. Amortization freebie (for the P5 prover): remainder range tables with
+     equal shift are content-identical ACROSS sites/layers — the multiset
+     argument merges per table *content*, so the per-layer shift lists cost
+     few distinct tables, not 12× per site.
+
 - **2026-07-05 (P4)**: one full transformer layer (attention + FFN fused
   blocks, LogUp instances, chained GEMMs, hadamard, real Ligero opening)
   proved + verified e2e at T=100. Gate passed; decisions and deviations:

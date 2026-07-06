@@ -24,3 +24,7 @@ lean/.lake/
 .env
 .env.*
 rust/target/
+
+# large weight artifacts (reproducible via scripts/export_gpt2.py)
+benchmarks/weights/model.safetensors
+benchmarks/weights/gpt2s-q.bin

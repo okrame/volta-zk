@@ -51,10 +51,13 @@ use crate::block_proof::{
     LayerBytes, LayerOut, LayerProof, LnChainProof,
 };
 use crate::gemm_proof::{WeightClaimP, WireKey, WireOut};
-use crate::logup::{Counters, ProdKeyTriples, ProdTriples};
-use crate::thaler::pad_bits;
+use crate::logup::{eval_mle_counted, Counters, ProdKeyTriples, ProdTriples};
+use crate::mle::eq_vec;
+use crate::sumcheck_blind::{blind_prove, blind_verify, BlindSumcheckProof};
+use crate::thaler::{fold_w, pad_bits};
+use rayon::prelude::*;
 use volta_field::{Fp, Fp2};
-use volta_gpt2::{Gpt2Model, ModelWitness, D, L};
+use volta_gpt2::{Gpt2Model, ModelWitness, D, L, NPOS, VOCAB};
 use volta_mac::{
     CorrCounters, CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey,
 };
@@ -79,6 +82,20 @@ fn add_counters(a: &mut Counters, b: &Counters) {
 /// Boolean MLE coordinates of `idx` over `bits` variables, LSB first (mirrors
 /// `head_bit_coords`, generalized to an arbitrary bit width — used to select
 /// a single row out of a T×D boundary matrix by its row-var coordinates).
+/// S̃(ρ_z) = Σ_i eq_i[i] · Π_b (tok_i bit b ? ρ_z[b] : 1 − ρ_z[b]), bits
+/// LSB-first (matching the MLE var order everywhere in this codebase).
+fn sel_s_eval(tokens: &[u32], eq_i: &[Fp2], rho_z: &[Fp2]) -> Fp2 {
+    let mut s = Fp2::ZERO;
+    for (i, &tok) in tokens.iter().enumerate() {
+        let mut p = eq_i[i];
+        for (b, &r) in rho_z.iter().enumerate() {
+            p = p * if (tok >> b) & 1 == 1 { r } else { Fp2::ONE - r };
+        }
+        s += p;
+    }
+    s
+}
+
 fn bit_coords(idx: usize, bits: usize) -> Vec<Fp2> {
     (0..bits).map(|b| if (idx >> b) & 1 == 1 { Fp2::ONE } else { Fp2::ZERO }).collect()
 }
@@ -119,23 +136,43 @@ pub struct FinalLnProof {
     pub ln: LnChainProof,
 }
 
+/// Logits claim (P5-D2): the public logits vector is bound at a random ρ_v
+/// and reduced by one blind matvec sumcheck over the d vars to one wte PCS
+/// claim × one MAC opening of the authenticated final-LN row (Π_Prod row).
+pub struct LogitsClaimProof {
+    pub sc: BlindSumcheckProof,
+    /// Correction authenticating the prover's w̃te(ρ_v, r_l).
+    pub wte_corr: Fp2,
+}
+
+/// Embedding-selection claim (P5-D2): the pending embed-acc claim equals
+/// Σ_z S(z)·w̃te(z, r_d) + w̃pe(r_d ‖ r_i ‖ 0…) with S public (tokens are
+/// public); one blind sumcheck over the 16 vocab-bit vars, resolved into one
+/// wte claim (zero row, S̃(ρ_z) public) and one wpe claim.
+pub struct SelectionProof {
+    pub sc: BlindSumcheckProof,
+    pub wte_corr: Fp2,
+    pub wpe_corr: Fp2,
+}
+
 pub struct ModelProof {
     pub layers: Vec<LayerProof>,
     /// Index `l` is the seam between layer `l` and `l+1` (11 entries).
     pub seams: Vec<Option<SeamProof>>,
     pub embed: EmbedProof,
     pub final_ln: FinalLnProof,
+    pub logits: LogitsClaimProof,
+    pub selection: SelectionProof,
 }
 
 pub struct ModelOut {
     /// Exactly 48 committed-weight claims, LAYER-MAJOR, canonical per-layer
     /// order [c_attn, attn_proj, ffn_up, ffn_down] (as `LayerOut`).
     pub weight_claims: Vec<WeightClaimP>,
-    /// The embedding requant's ACC claim (`= wte[tok]+wpe[pos]` at
-    /// `embed_acc_point`), left PENDING for the embedding-selection sumcheck
-    /// (see module docs) — NOT resolved by this module.
-    pub embed_acc_point: Vec<Fp2>,
-    pub embed_acc_claim: ProverAuthed,
+    /// The 3 embedding-commitment claims, order [wte(logits), wte(selection),
+    /// wpe]: the logits/selection sumchecks CONSUME the embed-acc claim, so
+    /// nothing is left pending — these resolve against `layout_gpt2_embed`.
+    pub embed_claims: Vec<WeightClaimP>,
     pub bytes: LayerBytes,
     pub ctr_instances: Counters,
     pub ctr_other: Counters,
@@ -145,8 +182,7 @@ pub struct ModelOut {
 
 pub struct ModelOutV {
     pub weight_keys: Vec<(Vec<Fp2>, VerifierKey)>,
-    pub embed_acc_point: Vec<Fp2>,
-    pub embed_acc_key: VerifierKey,
+    pub embed_keys: Vec<(Vec<Fp2>, VerifierKey)>,
 }
 
 // ---------------------------------------------------------------------------
@@ -398,11 +434,147 @@ pub fn prove_model(
     add_counters(&mut ctr_instances, &lci);
     add_counters(&mut ctr_other, &lco);
 
-    let proof = ModelProof { layers: layer_proofs, seams, embed, final_ln };
+    // ---- (f) logits claim ---------------------------------------------------
+    // L is PUBLIC (the model output). L̃(ρ_v) = Σ_l w̃te(ρ_v, l)·f̃in(l):
+    // blind matvec sumcheck over the d vars; resolution = one wte PCS claim
+    // (authenticated) × the MAC opening of the final-LN row (Π_Prod row).
+    let mut embed_claims: Vec<WeightClaimP> = Vec::with_capacity(3);
+    let mut cx = BlockCtxP::new(stream, tx, 230);
+    let rho_v: Vec<Fp2> = (0..16).map(|_| cx.tx.challenge_fp2()).collect();
+    let eq_v = eq_vec(&rho_v);
+    cx.ctr_other.fp2_mults += 1 << 16;
+    let mut l_eval = Fp2::ZERO;
+    for (v, &lv) in wit.logits.iter().enumerate() {
+        l_eval += eq_v[v].mul_base(Fp::from_i64(lv));
+    }
+    cx.ctr_other.base_mults += VOCAB as u64;
+    // A(l) = w̃te(ρ_v, l): row fold of wte by eq_v — the O(V·d) pass.
+    let a_tab: Vec<Fp2> = {
+        let wte = &model.wte;
+        (0..VOCAB)
+            .into_par_iter()
+            .fold(
+                || vec![Fp2::ZERO; 1 << d_cb],
+                |mut acc, v| {
+                    let e = eq_v[v];
+                    let row = &wte[v * D..(v + 1) * D];
+                    for (j, &w) in row.iter().enumerate() {
+                        if w != 0 {
+                            acc[j] += e.mul_base(Fp::from_i64(w as i64));
+                        }
+                    }
+                    acc
+                },
+            )
+            .reduce(
+                || vec![Fp2::ZERO; 1 << d_cb],
+                |mut a, b| {
+                    for (x, y) in a.iter_mut().zip(b) {
+                        *x += y;
+                    }
+                    a
+                },
+            )
+    };
+    cx.ctr_other.base_mults += (VOCAB * D) as u64;
+    let mut fin_lift = vec![Fp2::ZERO; 1 << d_cb];
+    for (j, &x) in wit.final_ln.out.iter().enumerate() {
+        fin_lift[j] = Fp2::from_base(Fp::from_i64(x as i64));
+    }
+    let dom_lg = cx.doms.take(d_cb as u64);
+    let (lg_sc, r_l, lg_claim_n) = blind_prove(
+        a_tab.clone(),
+        fin_lift,
+        ProverAuthed::from_public(l_eval),
+        cx.stream,
+        dom_lg,
+        cx.tx,
+    );
+    // f̃in(r_l): row-0 opening of the (duplicated) final-LN-out boundary.
+    let mut pt_fin = r_l.clone();
+    pt_fin.extend(bit_coords(0, rb_ln));
+    let fin_open = open_matrix_p(cx.stream, dom_out_f, &out2, t_ln, D, &pt_fin);
+    // Authenticated w̃te(ρ_v, r_l) → PCS claim on the embed commitment.
+    let wv = eval_mle_counted(&a_tab, &r_l, &mut cx.ctr_other);
+    let dom_wv = cx.doms.take(1);
+    let mk = cx.stream.draw_fulls(dom_wv, 1)[0];
+    let logits_wte_corr = wv - mk.x;
+    cx.tx.append("logits_wte_correction", 16);
+    let wte_auth = ProverAuthed { x: wv, m: mk.m };
+    cx.prod.push((fin_open, wte_auth, lg_claim_n));
+    let mut pt_wte = r_l.clone();
+    pt_wte.extend(rho_v.iter().copied());
+    embed_claims.push(WeightClaimP { point: pt_wte, value: wte_auth });
+    let logits_proof = LogitsClaimProof { sc: lg_sc, wte_corr: logits_wte_corr };
+    let BlockCtxP { prod: lp, zero: lz, ctr_instances: lci, ctr_other: lco, .. } = cx;
+    prod.extend(lp);
+    zero.extend(lz);
+    add_counters(&mut ctr_instances, &lci);
+    add_counters(&mut ctr_other, &lco);
+
+    // ---- (g) embedding selection ---------------------------------------------
+    // Consumes the pending embed-acc claim: ẽmbed_acc(r_d, r_i) =
+    // Σ_z S(z)·w̃te(z, r_d) + w̃pe(r_d ‖ r_i ‖ 0…), S(z) public from the
+    // prompt tokens. Blind sumcheck over the 16 vocab-bit vars, closed by a
+    // zero row (S̃(ρ_z) public) against one wte claim, plus one wpe claim.
+    let mut cx = BlockCtxP::new(stream, tx, 231);
+    let r_d = &embed_acc_point[..d_cb];
+    let r_i = &embed_acc_point[d_cb..];
+    let eq_i = eq_vec(r_i);
+    cx.ctr_other.fp2_mults += 1u64 << r_i.len();
+    let mut s_tab = vec![Fp2::ZERO; 1 << 16];
+    for (i, &tok) in model.p.tokens[..t].iter().enumerate() {
+        s_tab[tok as usize] += eq_i[i];
+    }
+    let eq_d = eq_vec(r_d);
+    // W(z) = w̃te(z, r_d): column fold of wte by eq_d (the second O(V·d) pass).
+    let mut w_tab = vec![Fp2::ZERO; 1 << 16];
+    let folded = fold_w(&model.wte, VOCAB, D, &eq_d);
+    w_tab[..folded.len()].copy_from_slice(&folded);
+    cx.ctr_other.base_mults += (VOCAB * D) as u64;
+    // wpe claim at (r_d ‖ r_i ‖ 0…): rows 0..t of the committed 1024×1024
+    // block — the row point is r_i zero-extended to the block's 10 row vars.
+    let mut wpe_pt = r_d.to_vec();
+    wpe_pt.extend_from_slice(r_i);
+    wpe_pt.extend(std::iter::repeat(Fp2::ZERO).take(10 - r_i.len()));
+    let wpe_folded = fold_w(&model.wpe, NPOS, D, &eq_d);
+    let wpe_val = eval_mle_counted(&wpe_folded, &wpe_pt[d_cb..], &mut cx.ctr_other);
+    let dom_wpe = cx.doms.take(1);
+    let mk_wpe = cx.stream.draw_fulls(dom_wpe, 1)[0];
+    let sel_wpe_corr = wpe_val - mk_wpe.x;
+    cx.tx.append("selection_wpe_correction", 16);
+    let wpe_auth = ProverAuthed { x: wpe_val, m: mk_wpe.m };
+    let claim0 = embed_acc_claim.sub(wpe_auth);
+    let dom_sel = cx.doms.take(16);
+    let (sel_sc, rho_z, sel_claim_n) =
+        blind_prove(s_tab, w_tab.clone(), claim0, cx.stream, dom_sel, cx.tx);
+    // S̃(ρ_z): public (tokens + eq weights).
+    let s_eval = sel_s_eval(&model.p.tokens[..t], &eq_i, &rho_z);
+    cx.ctr_other.fp2_mults += 16 * t as u64;
+    // Authenticated w̃te(ρ_z, r_d) → second wte claim.
+    let wv2 = eval_mle_counted(&w_tab, &rho_z, &mut cx.ctr_other);
+    let dom_wv2 = cx.doms.take(1);
+    let mk2 = cx.stream.draw_fulls(dom_wv2, 1)[0];
+    let sel_wte_corr = wv2 - mk2.x;
+    cx.tx.append("selection_wte_correction", 16);
+    let wte2_auth = ProverAuthed { x: wv2, m: mk2.m };
+    cx.zero.push(wte2_auth.scale(s_eval).sub(sel_claim_n));
+    let mut pt_wte2 = r_d.to_vec();
+    pt_wte2.extend(rho_z.iter().copied());
+    embed_claims.push(WeightClaimP { point: pt_wte2, value: wte2_auth });
+    embed_claims.push(WeightClaimP { point: wpe_pt, value: wpe_auth });
+    let selection = SelectionProof { sc: sel_sc, wte_corr: sel_wte_corr, wpe_corr: sel_wpe_corr };
+    let BlockCtxP { prod: lp, zero: lz, ctr_instances: lci, ctr_other: lco, .. } = cx;
+    prod.extend(lp);
+    zero.extend(lz);
+    add_counters(&mut ctr_instances, &lci);
+    add_counters(&mut ctr_other, &lco);
+
+    let proof =
+        ModelProof { layers: layer_proofs, seams, embed, final_ln, logits: logits_proof, selection };
     let out = ModelOut {
         weight_claims,
-        embed_acc_point,
-        embed_acc_claim,
+        embed_claims,
         bytes,
         ctr_instances,
         ctr_other,
@@ -420,6 +592,7 @@ pub fn prove_model(
 pub fn verify_model(
     model: &Gpt2Model,
     t: usize,
+    logits: &[i64],
     proof: &ModelProof,
     vc: &mut VerifierCtx,
     tx: &mut Transcript,
@@ -567,7 +740,72 @@ pub fn verify_model(
     kprod.extend(lkp);
     kzero.extend(lkz);
 
-    Some((ModelOutV { weight_keys, embed_acc_point, embed_acc_key }, kprod, kzero))
+    // ---- (f) logits claim (mirror) -----------------------------------------
+    let mut embed_keys: Vec<(Vec<Fp2>, VerifierKey)> = Vec::with_capacity(3);
+    let mut cx = BlockCtxV::new(vc, tx, 230);
+    let rho_v: Vec<Fp2> = (0..16).map(|_| cx.tx.challenge_fp2()).collect();
+    let eq_v = eq_vec(&rho_v);
+    let mut l_eval = Fp2::ZERO;
+    for (v, &lv) in logits.iter().enumerate() {
+        if v >= VOCAB {
+            return None;
+        }
+        l_eval += eq_v[v].mul_base(Fp::from_i64(lv));
+    }
+    let dom_lg = cx.doms.take(d_cb as u64);
+    let (r_l, k_claim_n) = blind_verify(
+        d_cb,
+        VerifierKey::from_public(l_eval, cx.ctx.delta),
+        &proof.logits.sc,
+        cx.ctx,
+        dom_lg,
+        cx.tx,
+    )?;
+    let mut pt_fin = r_l.clone();
+    pt_fin.extend(bit_coords(0, rb_ln));
+    let k_fin = open_matrix_k(&out_keys_f, t_ln, D, &pt_fin);
+    let dom_wv = cx.doms.take(1);
+    let k_wte = VerifierKey {
+        k: cx.ctx.expand_full_keys(dom_wv, 1)[0] + cx.ctx.delta * proof.logits.wte_corr,
+    };
+    cx.kprod.push((k_fin, k_wte, k_claim_n));
+    let mut pt_wte = r_l;
+    pt_wte.extend(rho_v.iter().copied());
+    embed_keys.push((pt_wte, k_wte));
+    let BlockCtxV { kprod: lkp, kzero: lkz, .. } = cx;
+    kprod.extend(lkp);
+    kzero.extend(lkz);
+
+    // ---- (g) embedding selection (mirror) ----------------------------------
+    let mut cx = BlockCtxV::new(vc, tx, 231);
+    let r_d = &embed_acc_point[..d_cb];
+    let r_i = &embed_acc_point[d_cb..];
+    let eq_i = eq_vec(r_i);
+    let mut wpe_pt = r_d.to_vec();
+    wpe_pt.extend_from_slice(r_i);
+    wpe_pt.extend(std::iter::repeat(Fp2::ZERO).take(10 - r_i.len()));
+    let dom_wpe = cx.doms.take(1);
+    let k_wpe = VerifierKey {
+        k: cx.ctx.expand_full_keys(dom_wpe, 1)[0] + cx.ctx.delta * proof.selection.wpe_corr,
+    };
+    let k_claim0 = embed_acc_key.sub(k_wpe);
+    let dom_sel = cx.doms.take(16);
+    let (rho_z, k_sel_n) = blind_verify(16, k_claim0, &proof.selection.sc, cx.ctx, dom_sel, cx.tx)?;
+    let s_eval = sel_s_eval(&model.p.tokens[..t], &eq_i, &rho_z);
+    let dom_wv2 = cx.doms.take(1);
+    let k_wte2 = VerifierKey {
+        k: cx.ctx.expand_full_keys(dom_wv2, 1)[0] + cx.ctx.delta * proof.selection.wte_corr,
+    };
+    cx.kzero.push(k_wte2.scale(s_eval).sub(k_sel_n));
+    let mut pt_wte2 = r_d.to_vec();
+    pt_wte2.extend(rho_z.iter().copied());
+    embed_keys.push((pt_wte2, k_wte2));
+    embed_keys.push((wpe_pt, k_wpe));
+    let BlockCtxV { kprod: lkp, kzero: lkz, .. } = cx;
+    kprod.extend(lkp);
+    kzero.extend(lkz);
+
+    Some((ModelOutV { weight_keys, embed_keys }, kprod, kzero))
 }
 
 // ---------------------------------------------------------------------------
@@ -579,7 +817,7 @@ mod tests {
     use super::*;
     use crate::block_proof::{cattn_permuted, layer_dom_base};
     use crate::logup::Doms;
-    use crate::mle::{eq_vec, eval_mle};
+    use crate::mle::eval_mle;
     use crate::prod_check::{prod_batch_prover, prod_batch_verify};
     use crate::thaler::fold_w;
     use rand::{Rng, SeedableRng};
@@ -594,23 +832,6 @@ mod tests {
         let cb = pad_bits(n);
         let b = fold_w(w, k, n, &eq_vec(&point[..cb]));
         eval_mle(&b, &point[cb..])
-    }
-
-    /// True MLE evaluation of the (unpadded) T×D `embed.acc` accumulator —
-    /// test-only stand-in for the embedding-selection sumcheck's opening.
-    fn embed_acc_true_eval(acc: &[i64], t: usize, point: &[Fp2]) -> Fp2 {
-        let d_cb = pad_bits(D);
-        let rb = pad_bits(t);
-        assert_eq!(point.len(), d_cb + rb);
-        let cp = 1usize << d_cb;
-        let rp = 1usize << rb;
-        let mut v = vec![Fp2::ZERO; cp * rp];
-        for i in 0..t {
-            for j in 0..D {
-                v[i * cp + j] = Fp2::from_base(Fp::from_i64(acc[i * D + j]));
-            }
-        }
-        eval_mle(&v, point)
     }
 
     #[test]
@@ -642,7 +863,8 @@ mod tests {
         let dt = t0.elapsed();
 
         let (outv, kprod, mut kzero) =
-            verify_model(&model, t, &proof, &mut vc, &mut txv).expect("model proof must verify");
+            verify_model(&model, t, &wit.logits, &proof, &mut vc, &mut txv)
+                .expect("model proof must verify");
 
         // Resolve all 48 weight claims (layer-major, canonical per-layer order).
         assert_eq!(out.weight_claims.len(), 4 * L, "expected 48 weight claims");
@@ -671,12 +893,24 @@ mod tests {
             }
         }
 
-        // Resolve the embed_acc claim against the true acc MLE evaluation
-        // (test-only stand-in for the embedding-selection sumcheck).
-        assert_eq!(outv.embed_acc_point, out.embed_acc_point, "embed acc point mismatch");
-        let tv_embed = embed_acc_true_eval(&wit.embed.acc, t, &out.embed_acc_point);
-        zero.push(out.embed_acc_claim.sub(ProverAuthed::from_public(tv_embed)));
-        kzero.push(outv.embed_acc_key.sub(VerifierKey::from_public(tv_embed, delta)));
+        // Resolve the 3 embedding-commitment claims [wte(logits),
+        // wte(selection), wpe] against the true tensor evaluations —
+        // test-only stand-in for the real `layout_gpt2_embed` PCS opening.
+        assert_eq!(out.embed_claims.len(), 3);
+        assert_eq!(outv.embed_keys.len(), 3);
+        let embed_dims: [(usize, usize, &[i16]); 3] = [
+            (VOCAB, D, &model.wte),
+            (VOCAB, D, &model.wte),
+            (NPOS, D, &model.wpe),
+        ];
+        for (i, wc) in out.embed_claims.iter().enumerate() {
+            let (kk, n, mat) = embed_dims[i];
+            assert_eq!(wc.point.len(), pad_bits(kk) + pad_bits(n), "embed claim {i} point len");
+            assert_eq!(outv.embed_keys[i].0, wc.point, "embed claim {i} point mismatch");
+            let tv = weight_true_eval(mat, kk, n, &wc.point);
+            zero.push(wc.value.sub(ProverAuthed::from_public(tv)));
+            kzero.push(outv.embed_keys[i].1.sub(VerifierKey::from_public(tv, delta)));
+        }
 
         // Close ONE Π_Prod batch + ONE Π_ZeroBatch over ALL accumulated rows.
         let mut domsp = Doms::new(layer_dom_base(255));

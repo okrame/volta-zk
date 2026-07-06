@@ -203,7 +203,7 @@ fn main() {
             let mut stream = CorrelationStream::new([0x33u8; 32]);
             let mut tx = Transcript::new([0x34u8; 32]);
             let mut cx = BlockCtxP::new(&mut stream, &mut tx, 0);
-            prove_layer(&wit, &w, &luts, &mut cx)
+            prove_layer(&wit, &w, &luts, &mut cx, None)
         },
     );
     let t_native_forward_s = t_native.as_secs_f64();
@@ -226,12 +226,14 @@ fn main() {
     let mut txv = Transcript::new(tx_seed);
 
     let mut cxp = BlockCtxP::new(&mut stream, &mut txp, 0);
-    let (proof, out) = prove_layer(&wit, &w, &luts, &mut cxp);
+    let (proof, out) = prove_layer(&wit, &w, &luts, &mut cxp, None);
     let BlockCtxP { doms: mut domsp, prod, zero, .. } = cxp;
 
     let tv0 = Instant::now();
     let mut cxv = BlockCtxV::new(&mut vc, &mut txv, 0);
-    let outv = verify_layer(t, &w.ln1_gain, &w.ln1_bias, &w.ln2_gain, &w.ln2_bias, &luts, &proof, &mut cxv)
+    let outv = verify_layer(
+        t, &w.ln1_gain, &w.ln1_bias, &w.ln2_gain, &w.ln2_bias, &luts, &proof, &mut cxv, None,
+    )
         .expect("honest layer must verify");
     let BlockCtxV { doms: mut domsv, kprod, kzero, .. } = cxv;
     let t_verify_layer_s = tv0.elapsed().as_secs_f64();

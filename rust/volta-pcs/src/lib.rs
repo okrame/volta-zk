@@ -16,7 +16,8 @@ pub mod ntt;
 
 pub use batch::{batch_reduce_prover, batch_reduce_verifier, BatchTimings, BlockClaim};
 pub use layer_layout::{
-    layout_gpt2_layer, pcs_cost_projection, LayerWeightLayout, TensorSlot, P4_LAYER,
+    layout_gpt2_embed, layout_gpt2_layer, pcs_cost_projection, LayerWeightLayout,
+    LayerWeightLayout2, TensorSlot, P4_LAYER,
 };
 pub use ligero::{
     commit, open_multi_zk, open_zk, verify_multi_open, verify_open, Commitment, LigeroParams,

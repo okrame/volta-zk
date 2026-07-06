@@ -126,6 +126,82 @@ pub fn layout_gpt2_layer() -> LayerWeightLayout {
     layout
 }
 
+/// P5 embedding commitment layout: wte (tied embedding/logits weight) and
+/// wpe in one `GPT2_FULL` (2^27) commitment.
+///
+/// | tensor |    k   ×  n  | k_pad × n_pad | block | offset |
+/// |--------|--------------|---------------|-------|--------|
+/// | wte    | 50257 ×  768 | 65536 × 1024  | 2^26  | 0      |
+/// | wpe    |  1024 ×  768 |  1024 × 1024  | 2^20  | 2^26   |
+///
+/// Claim points are (r_j ‖ r_l) with the 10 column vars LSB, then the row
+/// vars (16 for wte = the vocab-index bits, 10 for wpe), matching the
+/// logits / embedding-selection seams.
+///
+/// P5 memory decision (ledger 2026-07-06): the full model in ONE commitment
+/// would need a 2^28 message (≈4 GB encoded — over the 11 GB VM with the
+/// rest of the pipeline), so P5 runs 12×`P4_LAYER` layer commitments + this
+/// one, 13 batched openings per response; consolidation is a lever, not a
+/// requirement (the dominant fixed cost is the O(|W|) proximity pass, which
+/// is the same total either way).
+pub fn layout_gpt2_embed() -> LayerWeightLayout2 {
+    let layout = LayerWeightLayout2::for_shapes(vec![(50257, 768), (1024, 768)]);
+    debug_assert_eq!(layout.total_len, 1 << 27);
+    debug_assert_eq!(layout.tensors[0].offset, 0);
+    debug_assert_eq!(layout.tensors[1].offset, 1 << 26);
+    layout
+}
+
+/// N-tensor generalization of [`LayerWeightLayout`] (same invariants:
+/// largest-first placement, offsets aligned to own block size, zero pads).
+pub struct LayerWeightLayout2 {
+    pub tensors: Vec<TensorSlot>,
+    pub total_len: usize,
+}
+
+impl LayerWeightLayout2 {
+    pub fn for_shapes(shapes: Vec<(usize, usize)>) -> LayerWeightLayout2 {
+        let mut tensors: Vec<TensorSlot> = shapes
+            .into_iter()
+            .map(|(k, n)| {
+                let (k_pad, n_pad) = (k.next_power_of_two(), n.next_power_of_two());
+                TensorSlot { k, n, k_pad, n_pad, offset: 0, block_len: k_pad * n_pad }
+            })
+            .collect();
+        let mut order: Vec<usize> = (0..tensors.len()).collect();
+        order.sort_by_key(|&i| std::cmp::Reverse(tensors[i].block_len));
+        let mut cursor = 0usize;
+        for &i in &order {
+            tensors[i].offset = cursor;
+            cursor += tensors[i].block_len;
+        }
+        let total_len = cursor.next_power_of_two();
+        for t in &tensors {
+            assert!(t.offset % t.block_len == 0, "block offset not aligned");
+        }
+        LayerWeightLayout2 { tensors, total_len }
+    }
+
+    pub fn place(&self, tensors: &[&[i16]]) -> Vec<i16> {
+        assert_eq!(tensors.len(), self.tensors.len());
+        let mut w = vec![0i16; self.total_len];
+        for (t, src) in self.tensors.iter().zip(tensors) {
+            assert_eq!(src.len(), t.k * t.n, "tensor shape mismatch");
+            for l in 0..t.k {
+                w[t.offset + l * t.n_pad..t.offset + l * t.n_pad + t.n]
+                    .copy_from_slice(&src[l * t.n..(l + 1) * t.n]);
+            }
+        }
+        w
+    }
+
+    pub fn block_claim(&self, tensor_idx: usize, point: &[Fp2]) -> BlockClaim {
+        let t = &self.tensors[tensor_idx];
+        assert_eq!(point.len(), t.point_len(), "point must be r_j ‖ r_l for this tensor");
+        BlockClaim { offset: t.offset, point: point.to_vec() }
+    }
+}
+
 /// P3.5-measured PCS cost model (see ledger): one multi-claim opening costs
 /// a fixed 0.12 s plus 0.0023 s per claim. Returns
 /// `(prefill_s, response_s)` where `prefill_s` is the opening cost at
@@ -215,6 +291,31 @@ mod tests {
             }
             assert_eq!(seen as usize, t.k * t.n);
         }
+    }
+
+    #[test]
+    fn gpt2_embed_layout_geometry() {
+        let l = layout_gpt2_embed();
+        assert_eq!(l.total_len, 1 << 27);
+        let wte = &l.tensors[0];
+        assert_eq!((wte.k, wte.n, wte.k_pad, wte.n_pad, wte.offset), (50257, 768, 65536, 1024, 0));
+        assert_eq!(wte.block_len, 1 << 26);
+        assert_eq!(wte.point_len(), 26);
+        let wpe = &l.tensors[1];
+        assert_eq!((wpe.k_pad, wpe.n_pad, wpe.offset, wpe.block_len), (1024, 1024, 1 << 26, 1 << 20));
+        // GPT2_FULL carries a 2^27 message: 13 + 14 var bits.
+        let g = crate::ligero::GPT2_FULL;
+        assert_eq!(g.n_vars(), 27);
+        // Non-pow2 wte rows zero-pad correctly.
+        let small = LayerWeightLayout2::for_shapes(vec![(3, 2), (2, 2)]);
+        let a: Vec<i16> = (1..=6).collect();
+        let b: Vec<i16> = (10..=13).collect();
+        let w = small.place(&[&a, &b]);
+        assert_eq!(w.len(), small.total_len);
+        let t0 = &small.tensors[0];
+        assert_eq!(w[t0.offset], 1);
+        assert_eq!(w[t0.offset + t0.n_pad], 3); // row 1 starts at n_pad
+        assert_eq!(w[t0.offset + 3 * t0.n_pad], 0); // pad row
     }
 
     #[test]

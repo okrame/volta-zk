@@ -77,7 +77,7 @@ use crate::mle::{eq_vec, eval_mle};
 use crate::sumcheck_blind::{blind_prove, blind_verify, BlindSumcheckProof};
 use crate::thaler::pad_bits;
 use volta_field::{Fp, Fp2};
-use volta_gpt2::{gemm_i64, LayerWeights, LayerWitness, Luts, TableId, D, DFF, DH, H};
+use volta_gpt2::{gemm_i64, GemmBiases, LayerWeights, LayerWitness, Luts, TableId, D, DFF, DH, H};
 use volta_mac::{
     auth_verifier, CorrIndex, CorrelationStream, ProverAuthed, Transcript, VerifierCtx,
     VerifierKey,
@@ -571,6 +571,44 @@ pub(crate) fn transport_k(out: &InstanceOutV, shift: u32, delta: Fp2) -> Verifie
         .sub(VerifierKey::from_public(half, delta))
 }
 
+/// Subtract a per-GEMM bias's public contribution from a transported POST-bias
+/// accumulator claim, recovering the pre-bias `acc0 = X·W` claim the chained
+/// GEMM expects (P5 §per-GEMM biases; the LN affine's `bias·2^s·rowmask` term
+/// is the same pattern, see [`prove_ln_chain`]). `col_bits` is the padded
+/// column-var count, `pt` the instance's full point (`cols ‖ rows`).
+pub(crate) fn sub_bias_p(
+    claim: ProverAuthed,
+    bias: &[i16],
+    col_bits: usize,
+    pt: &[Fp2],
+    t: usize,
+    shift: u32,
+    ctr: &mut Counters,
+) -> ProverAuthed {
+    let bias_lift = lift_padded_i16(bias, col_bits);
+    let bias_eval = eval_mle_counted(&bias_lift, &pt[..col_bits], ctr);
+    let rmask = rowmask_eval(&pt[col_bits..], t);
+    let bias_term = bias_eval * rmask * Fp2::from_base(Fp::new(1u64 << shift));
+    claim.sub(ProverAuthed::from_public(bias_term))
+}
+
+/// Verifier mirror of [`sub_bias_p`].
+pub(crate) fn sub_bias_k(
+    key: VerifierKey,
+    bias: &[i16],
+    col_bits: usize,
+    pt: &[Fp2],
+    t: usize,
+    shift: u32,
+    delta: Fp2,
+) -> VerifierKey {
+    let bias_lift = lift_padded_i16(bias, col_bits);
+    let bias_eval = eval_mle(&bias_lift, &pt[..col_bits]);
+    let rmask = rowmask_eval(&pt[col_bits..], t);
+    let bias_term = bias_eval * rmask * Fp2::from_base(Fp::new(1u64 << shift));
+    key.sub(VerifierKey::from_public(bias_term, delta))
+}
+
 /// Resolve an instance's multiplicity claim against the element-wise
 /// authenticated (adjusted) multiplicity vector: streamed MAC opening at the
 /// table point, zero row.
@@ -950,6 +988,7 @@ pub fn prove_ffn_block(
     cx: &mut BlockCtxP,
     dom_abo: u64,
     dom_fbo: u64,
+    biases: Option<&GemmBiases>,
 ) -> (FfnBlockProof, Vec<WeightClaimP>) {
     let t = wit.t;
     assert!(t >= 2, "block proof needs at least 2 rows");
@@ -1019,7 +1058,11 @@ pub fn prove_ffn_block(
     close_mult_p(cx, dom_m_dn, &mult_dn_fp, &inst_down);
 
     // ---- 3: acc transport → GEMM-down (committed, chained) ----------------
-    let acc_dn_claim = transport_p(&inst_down, s_dn);
+    let mut acc_dn_claim = transport_p(&inst_down, s_dn);
+    if let Some(b) = biases {
+        acc_dn_claim =
+            sub_bias_p(acc_dn_claim, &b.ffn_down, d_cb, &pt, t, s_dn, &mut cx.ctr_other);
+    }
     let (r_j_dn, r_i_dn) = pt.split_at(d_cb);
     let cd_down = ChainDoms::alloc(&mut cx.doms, DFF);
     let (gemm_down, wire_gelu, w_down_corr, wclaim_down, _tm_dn, _cc_dn) =
@@ -1077,8 +1120,12 @@ pub fn prove_ffn_block(
         &mut cx.zero,
     );
     close_mult_p(cx, dom_m_up, &mult_up_fp, &inst_up);
-    let acc_up_claim = transport_p(&inst_up, s_up);
+    let mut acc_up_claim = transport_p(&inst_up, s_up);
     let pt_u = inst_up.point.clone();
+    if let Some(b) = biases {
+        acc_up_claim =
+            sub_bias_p(acc_up_claim, &b.ffn_up, f_cb, &pt_u, t, s_up, &mut cx.ctr_other);
+    }
     let (r_j_up, r_i_up) = pt_u.split_at(f_cb);
     let cd_up = ChainDoms::alloc(&mut cx.doms, D);
     let (gemm_up, wire_ln2, w_up_corr, wclaim_up, _tm_up, _cc_up) = prove_gemm_committed_chained(
@@ -1149,6 +1196,7 @@ pub fn verify_ffn_block(
     cx: &mut BlockCtxV,
     abo_keys: &[Fp2],
     fbo_keys: &[Fp2],
+    biases: Option<&GemmBiases>,
 ) -> Option<Vec<(Vec<Fp2>, VerifierKey)>> {
     let p = luts.params;
     let rb = pad_bits(t);
@@ -1199,7 +1247,10 @@ pub fn verify_ffn_block(
     cx.kzero.push(vd.col_keys[1].key.sub(f_k).add(a_k));
     close_mult_v(cx, &mult_keys[0], &vd.mult_key);
 
-    let k_acc_dn = transport_k(&vd, s_dn, cx.ctx.delta);
+    let mut k_acc_dn = transport_k(&vd, s_dn, cx.ctx.delta);
+    if let Some(b) = biases {
+        k_acc_dn = sub_bias_k(k_acc_dn, &b.ffn_down, d_cb, &pt, t, s_dn, cx.ctx.delta);
+    }
     let (r_j_dn, r_i_dn) = pt.split_at(d_cb);
     let cd_down = ChainDoms::alloc(&mut cx.doms, DFF);
     let (wk_gelu, w_pt_dn, k_w_dn) = verify_gemm_committed_chained(
@@ -1250,8 +1301,11 @@ pub fn verify_ffn_block(
         &mut cx.kzero,
     )?;
     close_mult_v(cx, &mult_keys[2], &vu.mult_key);
-    let k_acc_up = transport_k(&vu, s_up, cx.ctx.delta);
+    let mut k_acc_up = transport_k(&vu, s_up, cx.ctx.delta);
     let pt_u = vu.point.clone();
+    if let Some(b) = biases {
+        k_acc_up = sub_bias_k(k_acc_up, &b.ffn_up, f_cb, &pt_u, t, s_up, cx.ctx.delta);
+    }
     let (r_j_up, r_i_up) = pt_u.split_at(f_cb);
     let cd_up = ChainDoms::alloc(&mut cx.doms, D);
     let (wk_ln2, w_pt_up, k_w_up) = verify_gemm_committed_chained(
@@ -1305,6 +1359,22 @@ pub fn cattn_permuted(c_attn: &[i16]) -> Vec<i16> {
         }
     }
     w
+}
+
+/// The c_attn bias vector on the SAME permuted length-4096 column layout as
+/// [`cattn_permuted`] (col' = third·1024 + rest, `rest` = head·64 + l), zero
+/// at the pad columns (head 12..16 and third 3). Mirrors `cattn_permuted`'s
+/// index math exactly, applied to a length-3D vector instead of a D×3D
+/// matrix.
+pub fn cattn_bias_permuted(c_attn_bias: &[i16]) -> Vec<i16> {
+    assert_eq!(c_attn_bias.len(), 3 * D);
+    let mut b = vec![0i16; 4096];
+    for j in 0..3 * D {
+        let third = j / D;
+        let rest = j % D;
+        b[third * 1024 + rest] = c_attn_bias[j];
+    }
+    b
 }
 
 /// Prover-side derived attention wires: the rectangular expansions of the
@@ -1497,6 +1567,7 @@ pub fn prove_attn_block(
     dom_k: u64,
     dom_v: u64,
     dom_abo: u64,
+    biases: Option<&GemmBiases>,
 ) -> (AttnBlockProof, Vec<WeightClaimP>) {
     let t = wit.t;
     assert!(t >= 2, "block proof needs at least 2 rows");
@@ -1650,7 +1721,11 @@ pub fn prove_attn_block(
     close_mult_p(cx, dom_m_proj, &mult_proj_fp, &inst_proj);
 
     // ---- 2: transport → out-proj committed chained GEMM (768×768) ----------
-    let acc_ap_claim = transport_p(&inst_proj, s_ap);
+    let mut acc_ap_claim = transport_p(&inst_proj, s_ap);
+    if let Some(b) = biases {
+        acc_ap_claim =
+            sub_bias_p(acc_ap_claim, &b.attn_proj, d_cb, &pt_ap, t, s_ap, &mut cx.ctr_other);
+    }
     let (r_j_ap, r_i_ap) = pt_ap.split_at(d_cb);
     let cd_proj = ChainDoms::alloc(&mut cx.doms, D);
     let (gemm_proj, wire_av, w_proj_corr, wclaim_proj, _tm, _cc) = prove_gemm_committed_chained(
@@ -2081,8 +2156,13 @@ pub fn prove_attn_block(
         &mut cx.zero,
     );
     close_mult_p(cx, dom_m_qkv, &mult_qkv_fp, &inst_qkv);
-    let acc_qkv_claim = transport_p(&inst_qkv, s_qkv);
+    let mut acc_qkv_claim = transport_p(&inst_qkv, s_qkv);
     let pt_qkv = inst_qkv.point.clone();
+    if let Some(b) = biases {
+        let bias_perm = cattn_bias_permuted(&b.c_attn);
+        acc_qkv_claim =
+            sub_bias_p(acc_qkv_claim, &bias_perm, 12, &pt_qkv, t, s_qkv, &mut cx.ctr_other);
+    }
     let (r_j_qkv, r_i_qkv) = pt_qkv.split_at(12);
     let w_perm = cattn_permuted(&weights.c_attn);
     let cd_cattn = ChainDoms::alloc(&mut cx.doms, D);
@@ -2178,6 +2258,7 @@ pub fn verify_attn_block(
     k_keys: &[Fp2],
     v_keys: &[Fp2],
     abo_keys: &[Fp2],
+    biases: Option<&GemmBiases>,
 ) -> Option<Vec<(Vec<Fp2>, VerifierKey)>> {
     let p = luts.params;
     let rb = pad_bits(t);
@@ -2261,7 +2342,10 @@ pub fn verify_attn_block(
     let xin_k = open_matrix_k(xin_keys, t, D, &pt_ap);
     cx.kzero.push(vp.col_keys[1].key.sub(abo_k).add(xin_k));
     close_mult_v(cx, &mult_keys[0], &vp.mult_key);
-    let k_acc_ap = transport_k(&vp, s_ap, cx.ctx.delta);
+    let mut k_acc_ap = transport_k(&vp, s_ap, cx.ctx.delta);
+    if let Some(b) = biases {
+        k_acc_ap = sub_bias_k(k_acc_ap, &b.attn_proj, d_cb, &pt_ap, t, s_ap, cx.ctx.delta);
+    }
     let (r_j_ap, r_i_ap) = pt_ap.split_at(d_cb);
     let cd_proj = ChainDoms::alloc(&mut cx.doms, D);
     let (wk_av, w_pt_proj, k_w_proj) = verify_gemm_committed_chained(
@@ -2573,8 +2657,12 @@ pub fn verify_attn_block(
         &mut cx.kzero,
     )?;
     close_mult_v(cx, &mult_keys[6], &vqkv.mult_key);
-    let k_acc_qkv = transport_k(&vqkv, s_qkv, cx.ctx.delta);
+    let mut k_acc_qkv = transport_k(&vqkv, s_qkv, cx.ctx.delta);
     let pt_qkv = vqkv.point.clone();
+    if let Some(b) = biases {
+        let bias_perm = cattn_bias_permuted(&b.c_attn);
+        k_acc_qkv = sub_bias_k(k_acc_qkv, &bias_perm, 12, &pt_qkv, t, s_qkv, cx.ctx.delta);
+    }
     let (r_j_qkv, r_i_qkv) = pt_qkv.split_at(12);
     let cd_cattn = ChainDoms::alloc(&mut cx.doms, D);
     let (wk_ln1, w_pt_cattn, k_w_cattn) = verify_gemm_committed_chained(
@@ -2700,9 +2788,10 @@ pub fn prove_layer(
     weights: &LayerWeights,
     luts: &Luts,
     cx: &mut BlockCtxP,
+    biases: Option<&GemmBiases>,
 ) -> (LayerProof, LayerOut) {
     let wires = build_attn_wires(wit, luts);
-    prove_layer_with_wires(wit, weights, luts, &wires, cx)
+    prove_layer_with_wires(wit, weights, luts, &wires, cx, biases)
 }
 
 /// [`prove_layer`] with caller-supplied attention wires (the causal-tamper
@@ -2713,6 +2802,7 @@ pub fn prove_layer_with_wires(
     luts: &Luts,
     wires: &AttnWires,
     cx: &mut BlockCtxP,
+    biases: Option<&GemmBiases>,
 ) -> (LayerProof, LayerOut) {
     let t = wit.t;
     let rb = pad_bits(t);
@@ -2733,9 +2823,10 @@ pub fn prove_layer_with_wires(
     let fbo_corr = auth_matrix_rows_p(cx.stream, cx.tx, dom_fbo, &wit.ffn_block_out, t, D);
 
     // ---- reverse dataflow: FFN chain, then attention chain ------------------
-    let (ffn, w_ffn) = prove_ffn_block(wit, weights, luts, cx, dom_abo, dom_fbo);
-    let (attn, w_attn) =
-        prove_attn_block(wit, weights, luts, wires, cx, dom_xin, dom_k, dom_v, dom_abo);
+    let (ffn, w_ffn) = prove_ffn_block(wit, weights, luts, cx, dom_abo, dom_fbo, biases);
+    let (attn, w_attn) = prove_attn_block(
+        wit, weights, luts, wires, cx, dom_xin, dom_k, dom_v, dom_abo, biases,
+    );
 
     // Canonical weight-claim order: [c_attn, attn_proj, ffn_up, ffn_down].
     let mut w_attn = w_attn;
@@ -2795,6 +2886,7 @@ pub fn verify_layer(
     luts: &Luts,
     proof: &LayerProof,
     cx: &mut BlockCtxV,
+    biases: Option<&GemmBiases>,
 ) -> Option<LayerOutV> {
     for c in [&proof.xin_corr, &proof.k_corr, &proof.v_corr, &proof.abo_corr, &proof.fbo_corr] {
         if c.len() != t * D {
@@ -2812,10 +2904,12 @@ pub fn verify_layer(
     let dom_fbo = cx.doms.take(t as u64);
     let fbo_keys = auth_matrix_rows_v(cx.ctx, dom_fbo, &proof.fbo_corr, t, D);
 
-    let mut w_ffn =
-        verify_ffn_block(t, ln2_gain, ln2_bias, luts, &proof.ffn, cx, &abo_keys, &fbo_keys)?;
+    let mut w_ffn = verify_ffn_block(
+        t, ln2_gain, ln2_bias, luts, &proof.ffn, cx, &abo_keys, &fbo_keys, biases,
+    )?;
     let mut w_attn = verify_attn_block(
         t, ln1_gain, ln1_bias, luts, &proof.attn, cx, &xin_keys, &k_keys, &v_keys, &abo_keys,
+        biases,
     )?;
 
     let wk_cattn = w_attn.pop()?;
@@ -2892,13 +2986,13 @@ mod tests {
         let mut cxp = BlockCtxP::new(&mut stream, &mut txp, 0);
         let mut wires = build_attn_wires(&wit, luts);
         tamper_wires(&mut wires);
-        let (mut proof, out) = prove_layer_with_wires(&wit, w, luts, &wires, &mut cxp);
+        let (mut proof, out) = prove_layer_with_wires(&wit, w, luts, &wires, &mut cxp, None);
         let BlockCtxP { doms: mut domsp, prod, mut zero, .. } = cxp;
         tamper_proof(&mut proof);
 
         let mut cxv = BlockCtxV::new(&mut vc, &mut txv, 0);
         let Some(outv) = verify_layer(
-            T, &w.ln1_gain, &w.ln1_bias, &w.ln2_gain, &w.ln2_bias, luts, &proof, &mut cxv,
+            T, &w.ln1_gain, &w.ln1_bias, &w.ln2_gain, &w.ln2_bias, luts, &proof, &mut cxv, None,
         ) else {
             return false;
         };
@@ -3052,7 +3146,7 @@ mod tests {
         let mut stream = CorrelationStream::new([77; 32]);
         let mut txp = Transcript::new([78; 32]);
         let mut cxp = BlockCtxP::new(&mut stream, &mut txp, 0);
-        let (_proof, out) = prove_layer(wit, w, luts, &mut cxp);
+        let (_proof, out) = prove_layer(wit, w, luts, &mut cxp, None);
 
         // Exactly 4 weight claims with the right point shapes.
         assert_eq!(out.weight_claims.len(), 4);
@@ -3134,5 +3228,133 @@ mod tests {
             out.ctr_instances.fp2_mults > out.ctr_other.fp2_mults,
             "instance counter should dominate the chain-level public evals"
         );
+    }
+
+    /// Deterministic small synthetic biases (splitmix-style, magnitude
+    /// bounded so no requant saturates alongside `synthetic_weights`/
+    /// `synthetic_input`'s sizing at T = 4).
+    fn synthetic_biases(seed: u64) -> volta_gpt2::GemmBiases {
+        let mut st = seed;
+        let mut vec_of = |len: usize| -> Vec<i16> {
+            (0..len).map(|_| (splitmix64_test(&mut st) % 64) as i16 - 32).collect()
+        };
+        volta_gpt2::GemmBiases {
+            c_attn: vec_of(3 * D),
+            attn_proj: vec_of(D),
+            ffn_up: vec_of(DFF),
+            ffn_down: vec_of(D),
+        }
+    }
+
+    /// Test-local copy of the layer.rs splitmix64 (private there).
+    fn splitmix64_test(state: &mut u64) -> u64 {
+        *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = *state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+
+    /// Full layer round trip with per-GEMM biases threaded through prove and
+    /// verify (P5 §per-GEMM biases): synthetic weights/input/biases at T = 4,
+    /// `forward_layer_with(Some(&biases))` builds the POST-bias witness, and
+    /// the 4 `sub_bias_p`/`sub_bias_k` insertion points must recover the
+    /// pre-bias `X·W` claim the chained GEMMs expect. Mirrors `run_layer_case`
+    /// for the closing batches (biases aren't part of that harness's shared
+    /// fixture, so this test builds its own witness).
+    #[test]
+    fn layer_with_biases_proves_and_verifies() {
+        let luts = build_luts(LutParams::default());
+        let w = synthetic_weights(42);
+        let biases = synthetic_biases(0xB1A5);
+        let x = synthetic_input(43, T);
+        let wit = volta_gpt2::forward_layer_with(&x, &w, Some(&biases), &luts, luts.params, T);
+
+        let seed = 90u8;
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64 + 6000);
+        let delta = Fp2::new(
+            Fp::new(rng.gen_range(1..volta_field::P)),
+            Fp::new(rng.gen_range(0..volta_field::P)),
+        );
+        let pcg_seed = [seed; 32];
+        let tx_seed = [seed ^ 0x5A; 32];
+        let mut stream = CorrelationStream::new(pcg_seed);
+        let mut vc = VerifierCtx::new(pcg_seed, delta);
+        let mut txp = Transcript::new(tx_seed);
+        let mut txv = Transcript::new(tx_seed);
+
+        let mut cxp = BlockCtxP::new(&mut stream, &mut txp, 0);
+        let (proof, out) = prove_layer(&wit, &w, &luts, &mut cxp, Some(&biases));
+        let BlockCtxP { doms: mut domsp, prod, mut zero, .. } = cxp;
+
+        let mut cxv = BlockCtxV::new(&mut vc, &mut txv, 0);
+        let outv = verify_layer(
+            T, &w.ln1_gain, &w.ln1_bias, &w.ln2_gain, &w.ln2_bias, &luts, &proof, &mut cxv,
+            Some(&biases),
+        )
+        .expect("honest biased layer must verify");
+        let BlockCtxV { doms: mut domsv, kprod, mut kzero, .. } = cxv;
+
+        assert_eq!(out.weight_claims.len(), 4, "expected exactly 4 weight claims");
+        assert_eq!(outv.weight_keys.len(), 4);
+        let w_perm = cattn_permuted(&w.c_attn);
+        let dims: [(usize, usize, &[i16]); 4] = [
+            (D, 4096, &w_perm),
+            (D, D, &w.attn_proj),
+            (D, DFF, &w.ffn_up),
+            (DFF, D, &w.ffn_down),
+        ];
+        for (i, wc) in out.weight_claims.iter().enumerate() {
+            let (k, n, mat) = dims[i];
+            assert_eq!(wc.point.len(), pad_bits(k) + pad_bits(n));
+            assert_eq!(outv.weight_keys[i].0, wc.point, "weight point mismatch across parties");
+            let tv = weight_true_eval(mat, k, n, &wc.point);
+            zero.push(wc.value.sub(ProverAuthed::from_public(tv)));
+            kzero.push(outv.weight_keys[i].1.sub(VerifierKey::from_public(tv, delta)));
+        }
+
+        let chi = txp.challenge_fp2();
+        assert_eq!(chi, txv.challenge_fp2());
+        let md = domsp.take(1);
+        assert_eq!(md, domsv.take(1));
+        let mask = stream.draw_fulls(md, 1)[0];
+        let k_mask = vc.expand_full_keys(md, 1)[0];
+        let pp = prod_batch_prover(&prod, chi, mask, &mut txp);
+        let ok_prod = prod_batch_verify(&kprod, k_mask, delta, chi, &pp);
+        let mz = domsp.take(1);
+        assert_eq!(mz, domsv.take(1));
+        let ok_zero = zero_batch_exchange(&zero, &kzero, &mut stream, &mut vc, mz, &mut txp);
+        assert!(ok_prod && ok_zero, "honest biased layer's batches must close");
+    }
+
+    /// Negative: proving with biases but verifying with `None` (the verifier
+    /// unaware of the biases, or given the wrong ones) must be rejected — the
+    /// POST-bias witness accumulators no longer match the pre-bias claim the
+    /// chained GEMM would recompute without the `sub_bias_k` correction.
+    #[test]
+    fn layer_rejects_missing_biases_at_verify() {
+        let luts = build_luts(LutParams::default());
+        let w = synthetic_weights(42);
+        let biases = synthetic_biases(0xB1A5);
+        let x = synthetic_input(43, T);
+        let wit = volta_gpt2::forward_layer_with(&x, &w, Some(&biases), &luts, luts.params, T);
+
+        let seed = 91u8;
+        let delta = Fp2::new(Fp::new(0xD31C_5A17), Fp::new(0x0BAD_CAFE));
+        let pcg_seed = [seed; 32];
+        let tx_seed = [seed ^ 0x5A; 32];
+        let mut stream = CorrelationStream::new(pcg_seed);
+        let mut vc = VerifierCtx::new(pcg_seed, delta);
+        let mut txp = Transcript::new(tx_seed);
+        let mut txv = Transcript::new(tx_seed);
+
+        let mut cxp = BlockCtxP::new(&mut stream, &mut txp, 0);
+        let (proof, _out) = prove_layer(&wit, &w, &luts, &mut cxp, Some(&biases));
+
+        let mut cxv = BlockCtxV::new(&mut vc, &mut txv, 0);
+        let outv = verify_layer(
+            T, &w.ln1_gain, &w.ln1_bias, &w.ln2_gain, &w.ln2_bias, &luts, &proof, &mut cxv, None,
+        );
+        assert!(outv.is_none(), "verifying a biased proof with no biases must be rejected");
     }
 }

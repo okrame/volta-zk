@@ -468,6 +468,88 @@ pub(crate) fn range_mult(acc: &[i64], out: &[i16], rows: usize, cols: usize, shi
     m
 }
 
+/// One round-half-up shift stage (mirror of the witness generator's).
+#[inline]
+pub(crate) fn round_stage(acc: i64, s: u32) -> i64 {
+    (acc + (1i64 << (s - 1))) >> s
+}
+
+/// Chained requant columns (P5 spec §chained requant, shift s > 16):
+/// stage 1 rounds the accumulator by s−16 (`y1 = round(acc, s−16)`,
+/// `rem1 ∈ [0, 2^(s−16))`), stage 2 rounds `y1` by 16 (`rem2 ∈ [0, 2^16)`,
+/// `out` must equal the witness output — double-round semantics). Pads:
+/// acc = 0 ⇒ y1 = 0, rem1 = 2^(s−17), rem2 = 2^15, out = 0.
+/// Returns ((rem1, y1), (rem2, out)).
+#[allow(clippy::type_complexity)]
+pub(crate) fn range_cols_padded_chained(
+    acc: &[i64],
+    out: &[i16],
+    rows: usize,
+    cols: usize,
+    shift: u32,
+) -> ((Vec<Fp>, Vec<Fp>), (Vec<Fp>, Vec<Fp>)) {
+    assert!(shift > 16);
+    let s1 = shift - 16;
+    let (h1, h2) = (1i64 << (s1 - 1), 1i64 << 15);
+    let cp = 1usize << pad_bits(cols);
+    let rp = 1usize << pad_bits(rows);
+    let mut rem1 = vec![Fp::new(h1 as u64); rp * cp];
+    let mut y1c = vec![Fp::ZERO; rp * cp];
+    let mut rem2 = vec![Fp::new(h2 as u64); rp * cp];
+    let mut o = vec![Fp::ZERO; rp * cp];
+    for i in 0..rows {
+        for j in 0..cols {
+            let a = acc[i * cols + j];
+            let y = out[i * cols + j] as i64;
+            let y1 = round_stage(a, s1);
+            let r1 = a + h1 - (y1 << s1);
+            debug_assert_eq!(round_stage(y1, 16), y, "witness is not double-rounded");
+            let r2 = y1 + h2 - (y << 16);
+            assert!((0..1i64 << s1).contains(&r1), "chained stage-1 remainder out of range");
+            assert!((0..1i64 << 16).contains(&r2), "chained stage-2 remainder out of range");
+            rem1[i * cp + j] = Fp::new(r1 as u64);
+            y1c[i * cp + j] = Fp::from_i64(y1);
+            rem2[i * cp + j] = Fp::new(r2 as u64);
+            o[i * cp + j] = Fp::from_i64(y);
+        }
+    }
+    ((rem1, y1c), (rem2, o))
+}
+
+/// Multiplicities of both chained stages, pads bumped at their halves.
+pub(crate) fn range_mult_chained(
+    acc: &[i64],
+    rows: usize,
+    cols: usize,
+    shift: u32,
+) -> (Vec<u32>, Vec<u32>) {
+    assert!(shift > 16);
+    let s1 = shift - 16;
+    let (h1, h2) = (1i64 << (s1 - 1), 1i64 << 15);
+    let mut m1 = vec![0u32; 1 << s1];
+    let mut m2 = vec![0u32; 1 << 16];
+    for &a in acc {
+        let y1 = round_stage(a, s1);
+        m1[(a + h1 - (y1 << s1)) as usize] += 1;
+        let y = round_stage(y1, 16);
+        m2[(y1 + h2 - (y << 16)) as usize] += 1;
+    }
+    let pads = ((1usize << pad_bits(rows)) * (1usize << pad_bits(cols)) - rows * cols) as u32;
+    m1[h1 as usize] += pads;
+    m2[h2 as usize] += pads;
+    (m1, m2)
+}
+
+/// Element-wise corr bytes of a requant site's multiplicity vectors
+/// (single table for s ≤ 16, both chained-stage tables for s > 16).
+pub(crate) fn range_mult_len(shift: u32) -> u64 {
+    if shift <= 16 {
+        1u64 << shift
+    } else {
+        (1u64 << 16) + (1u64 << (shift - 16))
+    }
+}
+
 /// Pair-LUT instance columns over the padded matrix domain, pad pair
 /// `(pad_in, pad_out)` (must be a valid table pair — asserted by the caller).
 pub(crate) fn pair_cols_padded(
@@ -607,6 +689,174 @@ pub(crate) fn sub_bias_k(
     let rmask = rowmask_eval(&pt[col_bits..], t);
     let bias_term = bias_eval * rmask * Fp2::from_base(Fp::new(1u64 << shift));
     key.sub(VerifierKey::from_public(bias_term, delta))
+}
+
+/// A proved requant range site: `main` is the instance carrying the OUT
+/// column (the single instance for s ≤ 16, stage 2 for s > 16); `stage1` is
+/// the extra [rem1, y1] instance of a chained site. `acc_claim` is the
+/// transported (post-bias) accumulator claim at `main.point`… stage-1's
+/// point for chained sites — callers must use `main.point`/`main.col_claims`
+/// for OUT-wire closures and `acc_point()` for the GEMM seam.
+pub(crate) struct RangeSiteP {
+    pub main: InstanceOutP,
+    pub stage1: Option<InstanceOutP>,
+    pub acc_claim: ProverAuthed,
+}
+
+impl RangeSiteP {
+    /// Point the accumulator claim lives at (stage-1's for chained sites).
+    pub(crate) fn acc_point(&self) -> &[Fp2] {
+        match &self.stage1 {
+            Some(s1) => &s1.point,
+            None => &self.main.point,
+        }
+    }
+}
+
+/// Prove a requant range site, chained for shift > 16 (P5 spec). `aux`
+/// drains external claims into the OUT column (col 1) of the main instance.
+/// `mult_s1` must be Some exactly when shift > 16 (bound in phase 0, like
+/// `mult_main`).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prove_range_site(
+    acc: &[i64],
+    out: &[i16],
+    rows: usize,
+    cols: usize,
+    shift: u32,
+    mult_main: &[u32],
+    mult_s1: Option<&[u32]>,
+    aux: Vec<LeafAuxClaim>,
+    cx: &mut BlockCtxP,
+) -> RangeSiteP {
+    if shift <= 16 {
+        assert!(mult_s1.is_none());
+        let (rem, oc) = range_cols_padded(acc, out, rows, cols, shift);
+        let inst = blind_instance_prove(
+            &[rem, oc],
+            &[Some(0), None],
+            &range_table(shift),
+            mult_main,
+            aux,
+            cx.stream,
+            &mut cx.doms,
+            cx.tx,
+            &mut cx.ctr_instances,
+            &mut cx.prod,
+            &mut cx.zero,
+        );
+        let acc_claim = transport_p(&inst, shift);
+        RangeSiteP { main: inst, stage1: None, acc_claim }
+    } else {
+        let s1 = shift - 16;
+        let ((rem1, y1c), (rem2, oc)) = range_cols_padded_chained(acc, out, rows, cols, shift);
+        let inst2 = blind_instance_prove(
+            &[rem2, oc],
+            &[Some(0), None],
+            &range_table(16),
+            mult_main,
+            aux,
+            cx.stream,
+            &mut cx.doms,
+            cx.tx,
+            &mut cx.ctr_instances,
+            &mut cx.prod,
+            &mut cx.zero,
+        );
+        let y1_claim = transport_p(&inst2, 16);
+        let inst1 = blind_instance_prove(
+            &[rem1, y1c],
+            &[Some(0), None],
+            &range_table(s1),
+            mult_s1.expect("stage-1 multiplicities required for shift > 16"),
+            vec![LeafAuxClaim { col: 1, point: inst2.point.clone(), value: y1_claim }],
+            cx.stream,
+            &mut cx.doms,
+            cx.tx,
+            &mut cx.ctr_instances,
+            &mut cx.prod,
+            &mut cx.zero,
+        );
+        let acc_claim = transport_p(&inst1, s1);
+        RangeSiteP { main: inst2, stage1: Some(inst1), acc_claim }
+    }
+}
+
+pub(crate) struct RangeSiteV {
+    pub main: InstanceOutV,
+    pub stage1: Option<InstanceOutV>,
+    pub acc_key: VerifierKey,
+}
+
+impl RangeSiteV {
+    pub(crate) fn acc_point(&self) -> &[Fp2] {
+        match &self.stage1 {
+            Some(s1) => &s1.point,
+            None => &self.main.point,
+        }
+    }
+}
+
+/// Verifier mirror of [`prove_range_site`].
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn verify_range_site(
+    n_vars: usize,
+    shift: u32,
+    proof_main: &BlindInstance,
+    proof_s1: Option<&BlindInstance>,
+    aux: &[(usize, Vec<Fp2>, VerifierKey)],
+    cx: &mut BlockCtxV,
+) -> Option<RangeSiteV> {
+    let shifts_range = [Some(0u32), None];
+    if shift <= 16 {
+        if proof_s1.is_some() {
+            return None;
+        }
+        let v = blind_instance_verify(
+            n_vars,
+            &shifts_range,
+            &range_table(shift),
+            proof_main,
+            aux,
+            cx.ctx,
+            &mut cx.doms,
+            cx.tx,
+            &mut cx.kprod,
+            &mut cx.kzero,
+        )?;
+        let acc_key = transport_k(&v, shift, cx.ctx.delta);
+        Some(RangeSiteV { main: v, stage1: None, acc_key })
+    } else {
+        let s1 = shift - 16;
+        let v2 = blind_instance_verify(
+            n_vars,
+            &shifts_range,
+            &range_table(16),
+            proof_main,
+            aux,
+            cx.ctx,
+            &mut cx.doms,
+            cx.tx,
+            &mut cx.kprod,
+            &mut cx.kzero,
+        )?;
+        let y1_key = transport_k(&v2, 16, cx.ctx.delta);
+        let aux1 = [(1usize, v2.point.clone(), y1_key)];
+        let v1 = blind_instance_verify(
+            n_vars,
+            &shifts_range,
+            &range_table(s1),
+            proof_s1?,
+            &aux1,
+            cx.ctx,
+            &mut cx.doms,
+            cx.tx,
+            &mut cx.kprod,
+            &mut cx.kzero,
+        )?;
+        let acc_key = transport_k(&v1, s1, cx.ctx.delta);
+        Some(RangeSiteV { main: v2, stage1: Some(v1), acc_key })
+    }
 }
 
 /// Resolve an instance's multiplicity claim against the element-wise
@@ -756,6 +1006,8 @@ fn expand_ln_vecs_k(cx: &mut BlockCtxV, corrs: &[Vec<u64>; 4]) -> LnVecsK {
 /// instance closed against the authenticated vectors.
 pub struct LnChainProof {
     pub inst_ln: BlindInstance,
+    /// Stage-1 instance when shift_ln_norm > 16 (P5 chained requant).
+    pub inst_ln_stage1: Option<BlindInstance>,
     pub hadamard: HadamardProof,
     pub inst_rsqrt: BlindInstance,
 }
@@ -778,6 +1030,7 @@ fn prove_ln_chain(
     mult_ln: &[u32],
     mult_ln_fp: &[Fp],
     dom_m_ln: u64,
+    mult_ln_s1: Option<(&[u32], &[Fp], u64)>,
     mult_rsq: &[u32],
     mult_rsq_fp: &[Fp],
     dom_m_rsq: u64,
@@ -789,26 +1042,30 @@ fn prove_ln_chain(
     let t_pad = 1usize << rb;
     let d_cb = pad_bits(D);
 
-    // -- ln_norm_requant range instance (drains the GEMM X wire) ------------
-    let (rem_ln, out_col) = range_cols_padded(acc_ln, out_ln, t, D, s_ln);
-    let inst_ln = blind_instance_prove(
-        &[rem_ln, out_col],
-        &[Some(0), None],
-        &range_table(s_ln),
+    // -- ln_norm_requant range instance (drains the GEMM X wire; chained
+    //    two-stage for s_ln > 16 — P5) --------------------------------------
+    let site_ln = prove_range_site(
+        acc_ln,
+        out_ln,
+        t,
+        D,
+        s_ln,
         mult_ln,
+        mult_ln_s1.map(|(m, _, _)| m),
         vec![LeafAuxClaim { col: 1, point: wire.point.clone(), value: wire.value }],
-        cx.stream,
-        &mut cx.doms,
-        cx.tx,
-        &mut cx.ctr_instances,
-        &mut cx.prod,
-        &mut cx.zero,
+        cx,
     );
-    close_mult_p(cx, dom_m_ln, mult_ln_fp, &inst_ln);
+    let inst_ln = &site_ln.main;
+    close_mult_p(cx, dom_m_ln, mult_ln_fp, inst_ln);
+    if let Some(s1) = &site_ln.stage1 {
+        let (_, fp1, dom1) = mult_ln_s1.unwrap();
+        close_mult_p(cx, dom1, fp1, s1);
+    }
 
     // -- hadamard: acc_ln − bias·2^s·rowmask = (x − mean) ∘ (rsqrt·gain) ----
-    let pt_ln = inst_ln.point.clone();
-    let acc_ln_claim = transport_p(&inst_ln, s_ln);
+    // Runs at the ACC claim's point (stage-1's for a chained site).
+    let pt_ln = site_ln.acc_point().to_vec();
+    let acc_ln_claim = site_ln.acc_claim;
     let bias_lift = lift_padded_i16(bias, d_cb);
     let bias_eval = eval_mle_counted(&bias_lift, &pt_ln[..d_cb], &mut cx.ctr_other);
     let rmask = rowmask_eval(&pt_ln[d_cb..], t);
@@ -866,7 +1123,8 @@ fn prove_ln_chain(
     close_mult_p(cx, dom_m_rsq, mult_rsq_fp, &inst_rsqrt);
 
     LnChainProof {
-        inst_ln: inst_ln.proof,
+        inst_ln: site_ln.main.proof,
+        inst_ln_stage1: site_ln.stage1.map(|s1| s1.proof),
         hadamard: had_proof,
         inst_rsqrt: inst_rsqrt.proof,
     }
@@ -883,6 +1141,7 @@ fn verify_ln_chain(
     x_keys: &[Fp2],
     lvk: &LnVecsK,
     mult_ln_keys: &[Fp2],
+    mult_ln_s1_keys: Option<&[Fp2]>,
     mult_rsq_keys: &[Fp2],
     proof: &LnChainProof,
     wire: &WireKey,
@@ -891,26 +1150,28 @@ fn verify_ln_chain(
     let rb = pad_bits(t);
     let d_cb = pad_bits(D);
     let n_d = d_cb + rb;
-    let shifts_range = [Some(0u32), None];
     let shifts_pair = [Some(0u32), Some(16u32)];
 
+    if (s_ln > 16) != proof.inst_ln_stage1.is_some() {
+        return None;
+    }
     let aux_ln = [(1usize, wire.point.clone(), wire.key)];
-    let vl = blind_instance_verify(
+    let site_ln = verify_range_site(
         n_d,
-        &shifts_range,
-        &range_table(s_ln),
+        s_ln,
         &proof.inst_ln,
+        proof.inst_ln_stage1.as_ref(),
         &aux_ln,
-        cx.ctx,
-        &mut cx.doms,
-        cx.tx,
-        &mut cx.kprod,
-        &mut cx.kzero,
+        cx,
     )?;
+    let vl = &site_ln.main;
     close_mult_v(cx, mult_ln_keys, &vl.mult_key);
+    if let Some(s1) = &site_ln.stage1 {
+        close_mult_v(cx, mult_ln_s1_keys?, &s1.mult_key);
+    }
 
-    let pt_ln = vl.point.clone();
-    let k_acc_ln = transport_k(&vl, s_ln, cx.ctx.delta);
+    let pt_ln = site_ln.acc_point().to_vec();
+    let k_acc_ln = site_ln.acc_key;
     let bias_lift = lift_padded_i16(bias, d_cb);
     let bias_eval = eval_mle(&bias_lift, &pt_ln[..d_cb]);
     let rmask = rowmask_eval(&pt_ln[d_cb..], t);
@@ -965,6 +1226,8 @@ pub struct FfnBlockProof {
     pub ln_vec_corrs: [Vec<u64>; 4],
     /// Adjusted multiplicity vectors: [ffn_down, gelu, ffn_up, ln_norm, ln_rsqrt].
     pub mult_corr: [Vec<u64>; 5],
+    /// ln_norm stage-1 multiplicity corr when shift_ln_norm > 16 (P5).
+    pub m_ln_s1_corr: Option<Vec<u64>>,
     // Chain, reverse dataflow order.
     pub inst_down: BlindInstance,
     pub gemm_down: ChainedGemmProof,
@@ -1021,7 +1284,12 @@ pub fn prove_ffn_block(
     // LN2 half of the (LN1+LN2) ln_norm_requant trace: rows t·D..2·t·D.
     let ln_trace = &wit.traces[TableId::LnNormRequant as usize];
     let acc_ln = &ln_trace.inputs[t * D..2 * t * D];
-    let mult_ln = range_mult(acc_ln, &wit.ln2_out, t, D, s_ln);
+    let (mult_ln, mult_ln_s1) = if s_ln <= 16 {
+        (range_mult(acc_ln, &wit.ln2_out, t, D, s_ln), None)
+    } else {
+        let (m1, m2) = range_mult_chained(acc_ln, t, D, s_ln);
+        (m2, Some(m1))
+    };
     let mut mult_rsq = vec![0u32; 1 << 16];
     for i in 0..t {
         mult_rsq[wit.ln2_rsqrt_in[i] as usize] += 1;
@@ -1032,6 +1300,7 @@ pub fn prove_ffn_block(
     let (dom_m_gelu, mult_gelu_fp, m_gelu_corr) = auth_mult_p(cx, &mult_gelu);
     let (dom_m_up, mult_up_fp, m_up_corr) = auth_mult_p(cx, &mult_up);
     let (dom_m_ln, mult_ln_fp, m_ln_corr) = auth_mult_p(cx, &mult_ln);
+    let ln_s1_auth = mult_ln_s1.as_ref().map(|m1| auth_mult_p(cx, m1));
     let (dom_m_rsq, mult_rsq_fp, m_rsq_corr) = auth_mult_p(cx, &mult_rsq);
 
     // ---- 1+2: ffn_down range instance, closed against the residual --------
@@ -1157,6 +1426,9 @@ pub fn prove_ffn_block(
         &mult_ln,
         &mult_ln_fp,
         dom_m_ln,
+        mult_ln_s1
+            .as_ref()
+            .map(|m1| (m1.as_slice(), ln_s1_auth.as_ref().unwrap().1.as_slice(), ln_s1_auth.as_ref().unwrap().0)),
         &mult_rsq,
         &mult_rsq_fp,
         dom_m_rsq,
@@ -1168,6 +1440,7 @@ pub fn prove_ffn_block(
     let proof = FfnBlockProof {
         ln_vec_corrs,
         mult_corr: [m_dn_corr, m_gelu_corr, m_up_corr, m_ln_corr, m_rsq_corr],
+        m_ln_s1_corr: ln_s1_auth.map(|(_, _, c)| c),
         inst_down: inst_down.proof,
         gemm_down,
         gelu_wire_corr: wire_gelu.corr,
@@ -1213,17 +1486,32 @@ pub fn verify_ffn_block(
             return None;
         }
     }
-    let mult_lens = [1usize << s_dn, 1 << 16, 1usize << s_up, 1usize << s_ln, 1 << 16];
+    let ln_main_len = if s_ln <= 16 { 1usize << s_ln } else { 1 << 16 };
+    let mult_lens = [1usize << s_dn, 1 << 16, 1usize << s_up, ln_main_len, 1 << 16];
     for (mc, &ml) in proof.mult_corr.iter().zip(&mult_lens) {
         if mc.len() != ml {
             return None;
         }
     }
+    // Chained ln_norm (s_ln > 16): stage-1 corr must be present with the
+    // stage-1 table length, and absent otherwise.
+    match (&proof.m_ln_s1_corr, s_ln > 16) {
+        (Some(c), true) if c.len() == 1usize << (s_ln - 16) => {}
+        (None, false) => {}
+        _ => return None,
+    }
+    if (s_ln > 16) != proof.ln.inst_ln_stage1.is_some() {
+        return None;
+    }
 
     // ---- phase 0: expand + cache all element-wise keys --------------------
+    // Key expansion follows the prover's dom order: dn, gelu, up, ln,
+    // (ln stage-1), rsq.
     let lvk = expand_ln_vecs_k(cx, &proof.ln_vec_corrs);
-    let mult_keys: Vec<Vec<Fp2>> =
-        proof.mult_corr.iter().map(|mc| keys_mult_v(cx, mc)).collect();
+    let mut mult_keys: Vec<Vec<Fp2>> =
+        proof.mult_corr[..4].iter().map(|mc| keys_mult_v(cx, mc)).collect();
+    let ln_s1_keys = proof.m_ln_s1_corr.as_ref().map(|mc| keys_mult_v(cx, mc));
+    mult_keys.push(keys_mult_v(cx, &proof.mult_corr[4]));
 
     // ---- ffn_down instance + residual + transport → GEMM-down -------------
     let n_d = d_cb + rb;
@@ -1333,6 +1621,7 @@ pub fn verify_ffn_block(
         abo_keys,
         &lvk,
         &mult_keys[3],
+        ln_s1_keys.as_deref(),
         &mult_keys[4],
         &proof.ln,
         &wk_ln2,
@@ -1525,6 +1814,12 @@ pub struct AttnBlockProof {
     pub mult_corr: [Vec<u64>; 9],
     // Chain, reverse dataflow order.
     pub inst_proj: BlindInstance,
+    /// Stage-1 instance + its multiplicity corr when shift_attn_proj > 16
+    /// (P5 chained requant, per-layer residual scales).
+    pub inst_proj_stage1: Option<BlindInstance>,
+    pub m_proj_s1_corr: Option<Vec<u64>>,
+    /// ln1_norm stage-1 multiplicity corr when shift_ln_norm > 16 (P5).
+    pub m_ln1_s1_corr: Option<Vec<u64>>,
     pub gemm_proj: ChainedGemmProof,
     pub av_wire_corr: Fp2,
     pub w_proj_corr: Fp2,
@@ -1661,13 +1956,23 @@ pub fn prove_attn_block(
     );
     let ln_trace = &wit.traces[TableId::LnNormRequant as usize];
     let acc_ln1 = &ln_trace.inputs[..t * D];
-    let mult_ln1 = range_mult(acc_ln1, &wit.ln1_out, t, D, s_ln);
+    let (mult_ln1, mult_ln1_s1) = if s_ln <= 16 {
+        (range_mult(acc_ln1, &wit.ln1_out, t, D, s_ln), None)
+    } else {
+        let (m1, m2) = range_mult_chained(acc_ln1, t, D, s_ln);
+        (m2, Some(m1))
+    };
     let mut mult_rsq1 = vec![0u32; 1 << 16];
     for i in 0..t {
         mult_rsq1[wit.ln1_rsqrt_in[i] as usize] += 1;
     }
     mult_rsq1[0] += (t_pad - t) as u32;
-    let mult_proj = range_mult(&wit.proj_acc, &wit.attn_proj_q, t, D, s_ap);
+    let (mult_proj, mult_proj_s1) = if s_ap <= 16 {
+        (range_mult(&wit.proj_acc, &wit.attn_proj_q, t, D, s_ap), None)
+    } else {
+        let (m1, m2) = range_mult_chained(&wit.proj_acc, t, D, s_ap);
+        (m2, Some(m1))
+    };
     let mult_av = range_mult(&wit.av_acc, &wit.av_q, t, D, s_av);
 
     // ---- phase 0b: element-wise auth ---------------------------------------
@@ -1689,6 +1994,13 @@ pub fn prove_attn_block(
     let above_corr = auth_fp_vec_p(cx.stream, cx.tx, dom_above, &above_fp);
 
     let (dom_m_proj, mult_proj_fp, m_proj_corr) = auth_mult_p(cx, &mult_proj);
+    let (dom_m_proj_s1, mult_proj_s1_fp, m_proj_s1_corr) = match &mult_proj_s1 {
+        Some(m1) => {
+            let (d, f, c) = auth_mult_p(cx, m1);
+            (Some(d), Some(f), Some(c))
+        }
+        None => (None, None, None),
+    };
     let (dom_m_av, mult_av_fp, m_av_corr) = auth_mult_p(cx, &mult_av);
     let (dom_m_sn, mult_sn_fp, m_sn_corr) = auth_mult_p(cx, &mult_sn);
     let (dom_m_exp, mult_exp_fp, m_exp_corr) = auth_mult_p(cx, &mult_exp);
@@ -1696,37 +2008,41 @@ pub fn prove_attn_block(
     let (dom_m_sc, mult_sc_fp, m_sc_corr) = auth_mult_p(cx, &mult_sc);
     let (dom_m_qkv, mult_qkv_fp, m_qkv_corr) = auth_mult_p(cx, &mult_qkv);
     let (dom_m_ln1, mult_ln1_fp, m_ln1_corr) = auth_mult_p(cx, &mult_ln1);
+    let ln1_s1_auth = mult_ln1_s1.as_ref().map(|m1| auth_mult_p(cx, m1));
     let (dom_m_rsq1, mult_rsq1_fp, m_rsq1_corr) = auth_mult_p(cx, &mult_rsq1);
 
     // ---- 1: attn_proj range instance, closed against the residual ----------
-    let (rem_ap, out_ap) = range_cols_padded(&wit.proj_acc, &wit.attn_proj_q, t, D, s_ap);
-    let inst_proj = blind_instance_prove(
-        &[rem_ap, out_ap],
-        &[Some(0), None],
-        &range_table(s_ap),
+    // (chained two-stage for s_ap > 16 — P5 per-layer residual scales).
+    let site_proj = prove_range_site(
+        &wit.proj_acc,
+        &wit.attn_proj_q,
+        t,
+        D,
+        s_ap,
         &mult_proj,
+        mult_proj_s1.as_deref(),
         Vec::new(),
-        cx.stream,
-        &mut cx.doms,
-        cx.tx,
-        &mut cx.ctr_instances,
-        &mut cx.prod,
-        &mut cx.zero,
+        cx,
     );
+    let inst_proj = &site_proj.main;
     let pt_ap = inst_proj.point.clone();
     // Residual: attn_block_out = x_in + attn_proj_q ⇒ zero row at pt_ap.
     let abo_open = open_matrix_p(cx.stream, dom_abo, &wit.attn_block_out, t, D, &pt_ap);
     let xin_open = open_matrix_p(cx.stream, dom_xin, &wit.x_in, t, D, &pt_ap);
     cx.zero.push(inst_proj.col_claims[1].value.sub(abo_open).add(xin_open));
-    close_mult_p(cx, dom_m_proj, &mult_proj_fp, &inst_proj);
+    close_mult_p(cx, dom_m_proj, &mult_proj_fp, inst_proj);
+    if let Some(s1) = &site_proj.stage1 {
+        close_mult_p(cx, dom_m_proj_s1.unwrap(), mult_proj_s1_fp.as_ref().unwrap(), s1);
+    }
 
     // ---- 2: transport → out-proj committed chained GEMM (768×768) ----------
-    let mut acc_ap_claim = transport_p(&inst_proj, s_ap);
+    let pt_acc_ap = site_proj.acc_point().to_vec();
+    let mut acc_ap_claim = site_proj.acc_claim;
     if let Some(b) = biases {
         acc_ap_claim =
-            sub_bias_p(acc_ap_claim, &b.attn_proj, d_cb, &pt_ap, t, s_ap, &mut cx.ctr_other);
+            sub_bias_p(acc_ap_claim, &b.attn_proj, d_cb, &pt_acc_ap, t, s_ap, &mut cx.ctr_other);
     }
-    let (r_j_ap, r_i_ap) = pt_ap.split_at(d_cb);
+    let (r_j_ap, r_i_ap) = pt_acc_ap.split_at(d_cb);
     let cd_proj = ChainDoms::alloc(&mut cx.doms, D);
     let (gemm_proj, wire_av, w_proj_corr, wclaim_proj, _tm, _cc) = prove_gemm_committed_chained(
         &wit.av_q,
@@ -2196,6 +2512,9 @@ pub fn prove_attn_block(
         &mult_ln1,
         &mult_ln1_fp,
         dom_m_ln1,
+        mult_ln1_s1
+            .as_ref()
+            .map(|m1| (m1.as_slice(), ln1_s1_auth.as_ref().unwrap().1.as_slice(), ln1_s1_auth.as_ref().unwrap().0)),
         &mult_rsq1,
         &mult_rsq1_fp,
         dom_m_rsq1,
@@ -2214,7 +2533,10 @@ pub fn prove_attn_block(
             m_proj_corr, m_av_corr, m_sn_corr, m_exp_corr, m_rcp_corr, m_sc_corr, m_qkv_corr,
             m_ln1_corr, m_rsq1_corr,
         ],
-        inst_proj: inst_proj.proof,
+        inst_proj: site_proj.main.proof,
+        inst_proj_stage1: site_proj.stage1.map(|s1| s1.proof),
+        m_proj_s1_corr,
+        m_ln1_s1_corr: ln1_s1_auth.map(|(_, _, c)| c),
         gemm_proj,
         av_wire_corr: wire_av.corr,
         w_proj_corr,
@@ -2291,15 +2613,16 @@ pub fn verify_attn_block(
     {
         return None;
     }
+    let main_len = |s: u32| if s <= 16 { 1usize << s } else { 1 << 16 };
     let mult_lens = [
-        1usize << s_ap,
+        main_len(s_ap),
         1usize << s_av,
         1usize << s_sn,
         1 << 16,
         1 << 16,
         1usize << s_sc,
         1usize << s_qkv,
-        1usize << s_ln,
+        main_len(s_ln),
         1 << 16,
     ];
     for (mc, &ml) in proof.mult_corr.iter().zip(&mult_lens) {
@@ -2318,35 +2641,59 @@ pub fn verify_attn_block(
     let recips_keys = keys_fp_vec_v(cx.ctx, dom_recips, &proof.recips_corr);
     let dom_above = cx.doms.take(1);
     let above_keys = keys_fp_vec_v(cx.ctx, dom_above, &proof.above_corr);
-    let mult_keys: Vec<Vec<Fp2>> =
-        proof.mult_corr.iter().map(|mc| keys_mult_v(cx, mc)).collect();
+    // Mult keys expand in the prover's dom order: proj, (proj stage-1),
+    // av, sn, exp, rcp, sc, qkv, ln1, (ln1 stage-1), rsq1. Presence of the
+    // stage-1 corrs must match the shifts — reject otherwise.
+    if (s_ap > 16) != proof.m_proj_s1_corr.is_some()
+        || (s_ap > 16) != proof.inst_proj_stage1.is_some()
+        || (s_ln > 16) != proof.m_ln1_s1_corr.is_some()
+        || (s_ln > 16) != proof.ln.inst_ln_stage1.is_some()
+    {
+        return None;
+    }
+    if let Some(c) = &proof.m_proj_s1_corr {
+        if c.len() != 1usize << (s_ap - 16) {
+            return None;
+        }
+    }
+    if let Some(c) = &proof.m_ln1_s1_corr {
+        if c.len() != 1usize << (s_ln - 16) {
+            return None;
+        }
+    }
+    let mut mult_keys: Vec<Vec<Fp2>> = vec![keys_mult_v(cx, &proof.mult_corr[0])];
+    let mult_proj_s1_keys = proof.m_proj_s1_corr.as_ref().map(|mc| keys_mult_v(cx, mc));
+    mult_keys.extend(proof.mult_corr[1..8].iter().map(|mc| keys_mult_v(cx, mc)));
+    let mult_ln1_s1_keys = proof.m_ln1_s1_corr.as_ref().map(|mc| keys_mult_v(cx, mc));
+    mult_keys.push(keys_mult_v(cx, &proof.mult_corr[8]));
 
     // ---- 1+2: attn_proj instance + residual + GEMM -------------------------
     let n_d = d_cb + rb;
     let shifts_range = [Some(0u32), None];
     let shifts_pair = [Some(0u32), Some(16u32)];
-    let vp = blind_instance_verify(
+    let site_proj = verify_range_site(
         n_d,
-        &shifts_range,
-        &range_table(s_ap),
+        s_ap,
         &proof.inst_proj,
+        proof.inst_proj_stage1.as_ref(),
         &[],
-        cx.ctx,
-        &mut cx.doms,
-        cx.tx,
-        &mut cx.kprod,
-        &mut cx.kzero,
+        cx,
     )?;
+    let vp = &site_proj.main;
     let pt_ap = vp.point.clone();
     let abo_k = open_matrix_k(abo_keys, t, D, &pt_ap);
     let xin_k = open_matrix_k(xin_keys, t, D, &pt_ap);
     cx.kzero.push(vp.col_keys[1].key.sub(abo_k).add(xin_k));
     close_mult_v(cx, &mult_keys[0], &vp.mult_key);
-    let mut k_acc_ap = transport_k(&vp, s_ap, cx.ctx.delta);
-    if let Some(b) = biases {
-        k_acc_ap = sub_bias_k(k_acc_ap, &b.attn_proj, d_cb, &pt_ap, t, s_ap, cx.ctx.delta);
+    if let Some(s1) = &site_proj.stage1 {
+        close_mult_v(cx, mult_proj_s1_keys.as_ref().unwrap(), &s1.mult_key);
     }
-    let (r_j_ap, r_i_ap) = pt_ap.split_at(d_cb);
+    let pt_acc_ap = site_proj.acc_point().to_vec();
+    let mut k_acc_ap = site_proj.acc_key;
+    if let Some(b) = biases {
+        k_acc_ap = sub_bias_k(k_acc_ap, &b.attn_proj, d_cb, &pt_acc_ap, t, s_ap, cx.ctx.delta);
+    }
+    let (r_j_ap, r_i_ap) = pt_acc_ap.split_at(d_cb);
     let cd_proj = ChainDoms::alloc(&mut cx.doms, D);
     let (wk_av, w_pt_proj, k_w_proj) = verify_gemm_committed_chained(
         t,
@@ -2690,6 +3037,7 @@ pub fn verify_attn_block(
         xin_keys,
         &lvk1,
         &mult_keys[7],
+        mult_ln1_s1_keys.as_deref(),
         &mult_keys[8],
         &proof.ln,
         &wk_ln1,
@@ -2839,19 +3187,19 @@ pub fn prove_layer_with_wires(
     assert_eq!(weight_claims.len(), 4, "exactly one claim per committed weight tensor");
 
     // ---- byte accounting ------------------------------------------------------
-    let mult_len: u64 = (1u64 << p.shift_ffn_down)
+    let mult_len: u64 = range_mult_len(p.shift_ffn_down)
         + (1 << 16) // gelu
-        + (1u64 << p.shift_ffn_up)
-        + (1u64 << p.shift_ln_norm) // ln2
+        + range_mult_len(p.shift_ffn_up)
+        + range_mult_len(p.shift_ln_norm) // ln2 (both chained stages if >16)
         + (1 << 16) // ln2 rsqrt
-        + (1u64 << p.shift_attn_proj)
-        + (1u64 << p.shift_av)
-        + (1u64 << p.shift_softmax_norm)
+        + range_mult_len(p.shift_attn_proj)
+        + range_mult_len(p.shift_av)
+        + range_mult_len(p.shift_softmax_norm)
         + (1 << 16) // exp
         + (1 << 16) // softmax_recip
-        + (1u64 << p.shift_scores)
-        + (1u64 << p.shift_qkv)
-        + (1u64 << p.shift_ln_norm) // ln1
+        + range_mult_len(p.shift_scores)
+        + range_mult_len(p.shift_qkv)
+        + range_mult_len(p.shift_ln_norm) // ln1
         + (1 << 16); // ln1 rsqrt
     let n_above = (H * t * (t - 1) / 2) as u64;
     let bytes = LayerBytes {
@@ -3325,6 +3673,104 @@ mod tests {
         assert_eq!(mz, domsv.take(1));
         let ok_zero = zero_batch_exchange(&zero, &kzero, &mut stream, &mut vc, mz, &mut txp);
         assert!(ok_prod && ok_zero, "honest biased layer's batches must close");
+    }
+
+    /// P5 chained requant e2e: shift_attn_proj = shift_ln_norm = 18 forces
+    /// the two-stage range instances on both chained sites (per-layer
+    /// residual scales / real shift_ln_norm=20). Same closing harness as the
+    /// biases test.
+    #[test]
+    fn layer_with_chained_requant_proves_and_verifies() {
+        let params = LutParams { shift_attn_proj: 18, shift_ln_norm: 18, ..LutParams::default() };
+        let luts = build_luts(params);
+        let w = synthetic_weights(42);
+        let x = synthetic_input(43, T);
+        let wit = volta_gpt2::forward_layer_with(&x, &w, None, &luts, params, T);
+        // The chained trace really is two-stage on both sites.
+        assert_eq!(wit.traces[TableId::LnNormRequant as usize].stage1_shift, 2);
+        assert_eq!(wit.traces[TableId::RequantAttnProj as usize].stage1_shift, 2);
+
+        let seed = 92u8;
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64 + 6000);
+        let delta = Fp2::new(
+            Fp::new(rng.gen_range(1..volta_field::P)),
+            Fp::new(rng.gen_range(0..volta_field::P)),
+        );
+        let pcg_seed = [seed; 32];
+        let tx_seed = [seed ^ 0x5A; 32];
+        let mut stream = CorrelationStream::new(pcg_seed);
+        let mut vc = VerifierCtx::new(pcg_seed, delta);
+        let mut txp = Transcript::new(tx_seed);
+        let mut txv = Transcript::new(tx_seed);
+
+        let mut cxp = BlockCtxP::new(&mut stream, &mut txp, 0);
+        let (proof, out) = prove_layer(&wit, &w, &luts, &mut cxp, None);
+        assert!(proof.ffn.m_ln_s1_corr.is_some(), "ln2 stage-1 mult must be present");
+        assert!(proof.attn.inst_proj_stage1.is_some(), "proj stage-1 instance must be present");
+        let BlockCtxP { doms: mut domsp, prod, mut zero, .. } = cxp;
+
+        let mut cxv = BlockCtxV::new(&mut vc, &mut txv, 0);
+        let outv = verify_layer(
+            T, &w.ln1_gain, &w.ln1_bias, &w.ln2_gain, &w.ln2_bias, &luts, &proof, &mut cxv, None,
+        )
+        .expect("honest chained layer must verify");
+        let BlockCtxV { doms: mut domsv, kprod, mut kzero, .. } = cxv;
+
+        let w_perm = cattn_permuted(&w.c_attn);
+        let dims: [(usize, usize, &[i16]); 4] = [
+            (D, 4096, &w_perm),
+            (D, D, &w.attn_proj),
+            (D, DFF, &w.ffn_up),
+            (DFF, D, &w.ffn_down),
+        ];
+        for (i, wc) in out.weight_claims.iter().enumerate() {
+            let (k, n, mat) = dims[i];
+            assert_eq!(outv.weight_keys[i].0, wc.point);
+            let tv = weight_true_eval(mat, k, n, &wc.point);
+            zero.push(wc.value.sub(ProverAuthed::from_public(tv)));
+            kzero.push(outv.weight_keys[i].1.sub(VerifierKey::from_public(tv, delta)));
+        }
+
+        let chi = txp.challenge_fp2();
+        assert_eq!(chi, txv.challenge_fp2());
+        let md = domsp.take(1);
+        assert_eq!(md, domsv.take(1));
+        let mask = stream.draw_fulls(md, 1)[0];
+        let k_mask = vc.expand_full_keys(md, 1)[0];
+        let pp = prod_batch_prover(&prod, chi, mask, &mut txp);
+        let ok_prod = prod_batch_verify(&kprod, k_mask, delta, chi, &pp);
+        let mz = domsp.take(1);
+        assert_eq!(mz, domsv.take(1));
+        let ok_zero = zero_batch_exchange(&zero, &kzero, &mut stream, &mut vc, mz, &mut txp);
+        assert!(ok_prod && ok_zero, "honest chained layer's batches must close");
+    }
+
+    /// Negative: a chained proof whose stage-1 instance is stripped (or whose
+    /// stage-1 mult corr is dropped) must be rejected structurally.
+    #[test]
+    fn layer_rejects_stripped_chain_stage1() {
+        let params = LutParams { shift_attn_proj: 18, shift_ln_norm: 18, ..LutParams::default() };
+        let luts = build_luts(params);
+        let w = synthetic_weights(42);
+        let x = synthetic_input(43, T);
+        let wit = volta_gpt2::forward_layer_with(&x, &w, None, &luts, params, T);
+
+        let seed = 93u8;
+        let delta = Fp2::new(Fp::new(0xD31C_5A17), Fp::new(0x0BAD_CAFE));
+        let mut stream = CorrelationStream::new([seed; 32]);
+        let mut vc = VerifierCtx::new([seed; 32], delta);
+        let mut txp = Transcript::new([seed ^ 0x5A; 32]);
+        let mut txv = Transcript::new([seed ^ 0x5A; 32]);
+
+        let mut cxp = BlockCtxP::new(&mut stream, &mut txp, 0);
+        let (mut proof, _out) = prove_layer(&wit, &w, &luts, &mut cxp, None);
+        proof.attn.inst_proj_stage1 = None;
+
+        let mut cxv = BlockCtxV::new(&mut vc, &mut txv, 0);
+        let outv = verify_layer(
+            T, &w.ln1_gain, &w.ln1_bias, &w.ln2_gain, &w.ln2_bias, &luts, &proof, &mut cxv, None,
+        );
+        assert!(outv.is_none(), "stripped stage-1 must be rejected");
     }
 
     /// Negative: proving with biases but verifying with `None` (the verifier

@@ -96,6 +96,20 @@ fn sel_s_eval(tokens: &[u32], eq_i: &[Fp2], rho_z: &[Fp2]) -> Fp2 {
     s
 }
 
+/// G̃(ρ_w) for G(w) = [w<t]·eq(r_i, w) over 10 row vars: Σ_{i<t} eq_i[i] ·
+/// eq(bits(i), ρ_w), bits LSB-first.
+fn masked_eq_eval(eq_i: &[Fp2], t: usize, rho_w: &[Fp2]) -> Fp2 {
+    let mut s = Fp2::ZERO;
+    for (i, &e) in eq_i.iter().enumerate().take(t) {
+        let mut p = e;
+        for (b, &r) in rho_w.iter().enumerate() {
+            p = p * if (i >> b) & 1 == 1 { r } else { Fp2::ONE - r };
+        }
+        s += p;
+    }
+    s
+}
+
 fn bit_coords(idx: usize, bits: usize) -> Vec<Fp2> {
     (0..bits).map(|b| if (idx >> b) & 1 == 1 { Fp2::ONE } else { Fp2::ZERO }).collect()
 }
@@ -152,6 +166,14 @@ pub struct LogitsClaimProof {
 pub struct SelectionProof {
     pub sc: BlindSumcheckProof,
     pub wte_corr: Fp2,
+    /// Correction authenticating the claimed masked-wpe contribution
+    /// P = Σ_{i<t} eq_i[i]·w̃pe(i, r_d) (real rows only — the committed wpe
+    /// block has NONZERO rows t..1023 that the embed acc does not contain,
+    /// so a direct w̃pe point claim is wrong at any non-power-of-two t).
+    pub p_corr: Fp2,
+    /// The masked-wpe sumcheck over the block's 10 row vars:
+    /// P = Σ_w G(w)·w̃pe(w, r_d) with G(w) = [w<t]·eq(r_i, w) public.
+    pub sc_wpe: BlindSumcheckProof,
     pub wpe_corr: Fp2,
 }
 
@@ -532,19 +554,24 @@ pub fn prove_model(
     let folded = fold_w(&model.wte, VOCAB, D, &eq_d);
     w_tab[..folded.len()].copy_from_slice(&folded);
     cx.ctr_other.base_mults += (VOCAB * D) as u64;
-    // wpe claim at (r_d ‖ r_i ‖ 0…): rows 0..t of the committed 1024×1024
-    // block — the row point is r_i zero-extended to the block's 10 row vars.
-    let mut wpe_pt = r_d.to_vec();
-    wpe_pt.extend_from_slice(r_i);
-    wpe_pt.extend(std::iter::repeat(Fp2::ZERO).take(10 - r_i.len()));
-    let wpe_folded = fold_w(&model.wpe, NPOS, D, &eq_d);
-    let wpe_val = eval_mle_counted(&wpe_folded, &wpe_pt[d_cb..], &mut cx.ctr_other);
-    let dom_wpe = cx.doms.take(1);
-    let mk_wpe = cx.stream.draw_fulls(dom_wpe, 1)[0];
-    let sel_wpe_corr = wpe_val - mk_wpe.x;
-    cx.tx.append("selection_wpe_correction", 16);
-    let wpe_auth = ProverAuthed { x: wpe_val, m: mk_wpe.m };
-    let claim0 = embed_acc_claim.sub(wpe_auth);
+    // Masked-wpe contribution P = Σ_{i<t} eq_i[i]·w̃pe(i, r_d): the embed
+    // acc contains wpe rows 0..t only, while the committed block has nonzero
+    // rows up to 1023 — a direct w̃pe point claim over-counts at every
+    // non-power-of-two t (pad rows). P is claimed authenticated here and
+    // proved by a dedicated masked sumcheck below.
+    let wpe_folded = fold_w(&model.wpe, NPOS, D, &eq_d); // w̃pe(·, r_d), 2^10
+    cx.ctr_other.base_mults += (NPOS * D) as u64;
+    let mut p_val = Fp2::ZERO;
+    for i in 0..t {
+        p_val += eq_i[i] * wpe_folded[i];
+    }
+    cx.ctr_other.fp2_mults += t as u64;
+    let dom_p = cx.doms.take(1);
+    let mk_p = cx.stream.draw_fulls(dom_p, 1)[0];
+    let sel_p_corr = p_val - mk_p.x;
+    cx.tx.append("selection_p_correction", 16);
+    let p_auth = ProverAuthed { x: p_val, m: mk_p.m };
+    let claim0 = embed_acc_claim.sub(p_auth);
     let dom_sel = cx.doms.take(16);
     let (sel_sc, rho_z, sel_claim_n) =
         blind_prove(s_tab, w_tab.clone(), claim0, cx.stream, dom_sel, cx.tx);
@@ -562,8 +589,33 @@ pub fn prove_model(
     let mut pt_wte2 = r_d.to_vec();
     pt_wte2.extend(rho_z.iter().copied());
     embed_claims.push(WeightClaimP { point: pt_wte2, value: wte2_auth });
+    // Masked-wpe sumcheck: P = Σ_w G(w)·w̃pe(w, r_d) over the 10 row vars,
+    // G(w) = [w<t]·eq(r_i, w) public. Resolution: G̃(ρ_w) public × one wpe
+    // claim at (r_d ‖ ρ_w).
+    let mut g_tab = vec![Fp2::ZERO; 1 << 10];
+    g_tab[..t].copy_from_slice(&eq_i[..t]);
+    let dom_wpe_sc = cx.doms.take(10);
+    let (wpe_sc, rho_w, wpe_claim_n) =
+        blind_prove(g_tab, wpe_folded.clone(), p_auth, cx.stream, dom_wpe_sc, cx.tx);
+    let g_eval = masked_eq_eval(&eq_i, t, &rho_w);
+    cx.ctr_other.fp2_mults += 10 * t as u64;
+    let wpe_val = eval_mle_counted(&wpe_folded, &rho_w, &mut cx.ctr_other);
+    let dom_wpe = cx.doms.take(1);
+    let mk_wpe = cx.stream.draw_fulls(dom_wpe, 1)[0];
+    let sel_wpe_corr = wpe_val - mk_wpe.x;
+    cx.tx.append("selection_wpe_correction", 16);
+    let wpe_auth = ProverAuthed { x: wpe_val, m: mk_wpe.m };
+    cx.zero.push(wpe_auth.scale(g_eval).sub(wpe_claim_n));
+    let mut wpe_pt = r_d.to_vec();
+    wpe_pt.extend(rho_w.iter().copied());
     embed_claims.push(WeightClaimP { point: wpe_pt, value: wpe_auth });
-    let selection = SelectionProof { sc: sel_sc, wte_corr: sel_wte_corr, wpe_corr: sel_wpe_corr };
+    let selection = SelectionProof {
+        sc: sel_sc,
+        wte_corr: sel_wte_corr,
+        p_corr: sel_p_corr,
+        sc_wpe: wpe_sc,
+        wpe_corr: sel_wpe_corr,
+    };
     let BlockCtxP { prod: lp, zero: lz, ctr_instances: lci, ctr_other: lco, .. } = cx;
     prod.extend(lp);
     zero.extend(lz);
@@ -781,14 +833,11 @@ pub fn verify_model(
     let r_d = &embed_acc_point[..d_cb];
     let r_i = &embed_acc_point[d_cb..];
     let eq_i = eq_vec(r_i);
-    let mut wpe_pt = r_d.to_vec();
-    wpe_pt.extend_from_slice(r_i);
-    wpe_pt.extend(std::iter::repeat(Fp2::ZERO).take(10 - r_i.len()));
-    let dom_wpe = cx.doms.take(1);
-    let k_wpe = VerifierKey {
-        k: cx.ctx.expand_full_keys(dom_wpe, 1)[0] + cx.ctx.delta * proof.selection.wpe_corr,
+    let dom_p = cx.doms.take(1);
+    let k_p = VerifierKey {
+        k: cx.ctx.expand_full_keys(dom_p, 1)[0] + cx.ctx.delta * proof.selection.p_corr,
     };
-    let k_claim0 = embed_acc_key.sub(k_wpe);
+    let k_claim0 = embed_acc_key.sub(k_p);
     let dom_sel = cx.doms.take(16);
     let (rho_z, k_sel_n) = blind_verify(16, k_claim0, &proof.selection.sc, cx.ctx, dom_sel, cx.tx)?;
     let s_eval = sel_s_eval(&model.p.tokens[..t], &eq_i, &rho_z);
@@ -800,6 +849,18 @@ pub fn verify_model(
     let mut pt_wte2 = r_d.to_vec();
     pt_wte2.extend(rho_z.iter().copied());
     embed_keys.push((pt_wte2, k_wte2));
+    // Masked-wpe sumcheck (mirror): P = Σ_w G(w)·w̃pe(w, r_d).
+    let dom_wpe_sc = cx.doms.take(10);
+    let (rho_w, k_wpe_n) =
+        blind_verify(10, k_p, &proof.selection.sc_wpe, cx.ctx, dom_wpe_sc, cx.tx)?;
+    let g_eval = masked_eq_eval(&eq_i, t, &rho_w);
+    let dom_wpe = cx.doms.take(1);
+    let k_wpe = VerifierKey {
+        k: cx.ctx.expand_full_keys(dom_wpe, 1)[0] + cx.ctx.delta * proof.selection.wpe_corr,
+    };
+    cx.kzero.push(k_wpe.scale(g_eval).sub(k_wpe_n));
+    let mut wpe_pt = r_d.to_vec();
+    wpe_pt.extend(rho_w.iter().copied());
     embed_keys.push((wpe_pt, k_wpe));
     let BlockCtxV { kprod: lkp, kzero: lkz, .. } = cx;
     kprod.extend(lkp);
@@ -842,7 +903,9 @@ mod tests {
             return;
         }
         let model = load_model(&dir).unwrap();
-        let t = 16usize;
+        // Non-power-of-two on purpose: the padded-row/masked-wpe class of
+        // bugs (selection identity) is invisible at t == t_pad.
+        let t = 20usize;
         let wit = forward_model(&model, t);
 
         let seed = 200u8;

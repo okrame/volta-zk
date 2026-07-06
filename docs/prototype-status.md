@@ -154,6 +154,41 @@ constant factors hold. That constant factor is what P3/P4 measure.
      equal shift are content-identical ACROSS sites/layers — the multiset
      argument merges per table *content*, so the per-layer shift lists cost
      few distinct tables, not 12× per site.
+  7. **PCS memory decision**: one full-model commitment needs a 2^28 message
+     (48 layer blocks 163.6M + wte 2^26 + wpe 2^20 → pow2 232M; ≈4 GB encoded
+     — over the 11 GB VM with the rest of the pipeline). P5 baseline: **12 ×
+     P4_LAYER (2^24) layer commitments + 1 × GPT2_FULL (2^27) embedding
+     commitment (wte+wpe, `layout_gpt2_embed`)**, 13 batched openings per
+     response. Prover cost is ~unchanged (the dominant fixed cost is the
+     O(|W|) proximity pass — same total data either way); consolidation and
+     the verifier-side 13× column checks are levers to re-measure, not
+     requirements.
+  8. **Implementation state (2026-07-06, evening)**: the full-model proof is
+     e2e green on the frozen artifact (t=16 smoke): (A) GEMM biases as public
+     transport corrections; (B) chained requant (2-stage range sites,
+     shift_ln_norm=20 and shift_attn_proj 17/19 exercised); (C) stable
+     softmax per #9 below; (D) model driver — 12 layers + seam requants +
+     embed requant + final-LN + logits claim + embedding-selection sumcheck,
+     ONE model-wide Π_Prod/Π_ZeroBatch closure; 51 committed-tensor claims
+     (48 layer + 2 wte + 1 wpe), nothing pending. Known accepted deviations:
+     final-LN at t=1 runs as a duplicated-row t=2 batch (machinery needs ≥2
+     rows; dup row bound to nothing — sound); x_in is re-authenticated per
+     layer (double-auth ≈ +6.9 MB corr vs the budget's once-per-seam
+     counting — explained, reuse is a lever); `verify_model` takes the whole
+     Gpt2Model but reads only public fields (biases/LN params/luts/tokens) —
+     prototype interface, not a leakage.
+  9. **Row-max soundness design (stable softmax, refines #1)**: the shared
+     scores/exp wire becomes s′ = s − c_row; c_row is an authenticated
+     h_pad×T_pad row table; the scores-instance acc transport gains an
+     authenticated public-coefficient fold 2^s·⟨gc, c⟩ (gc_i = Σ_{causal y ∈
+     row i} eq(pt,y), same cost class as P4's pad-mask term). Existence of
+     the row zero (c = max, given s′ ≤ 0 from the table domain): witness
+     indicator wire `is_max` carried as a non-membership column of the exp
+     instance, with (a) one hadamard-with-claim-0 row (ĩs_max ∘ s̃′ ≡ 0) and
+     (b) one rowsum identity (row sums of is_max = 1 on real rows, the
+     denominator-rowsum trick). No per-row product gates, no element auth of
+     wires; booleanity of is_max is not needed ((a)+(b) already force a zero
+     per row).
 
 - **2026-07-05 (P4)**: one full transformer layer (attention + FFN fused
   blocks, LogUp instances, chained GEMMs, hadamard, real Ligero opening)

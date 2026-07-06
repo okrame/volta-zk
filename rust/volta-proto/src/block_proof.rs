@@ -1674,6 +1674,15 @@ pub fn cattn_bias_permuted(c_attn_bias: &[i16]) -> Vec<i16> {
 pub struct AttnWires {
     /// h_pad×T_pad×T_pad, non-causal = exp pad INPUT (least zero-output idx).
     pub scores_rect: Vec<i16>,
+    /// The SHARED scores/exp wire (P5 stable softmax): causal = s − c_row,
+    /// non-causal/pads = the exp pad input. With `softmax_row_shift` off
+    /// (c ≡ 0) this is byte-identical to `scores_rect`.
+    pub sprime_rect: Vec<i16>,
+    /// h_pad×T_pad row table of the per-(head,row) shifts c (pads 0).
+    pub row_shift_row: Vec<i16>,
+    /// Row-max indicator: 1 at the first causal position with s′ = 0 of each
+    /// real row, 0 elsewhere (all zeros when the flag is off — unused).
+    pub is_max_rect: Vec<i16>,
     /// h_pad×T_pad×T_pad, non-causal = 0 (the exp pad pair's output).
     pub exp_rect: Vec<i16>,
     /// h_pad×T_pad×T_pad, non-causal = 0.
@@ -1714,17 +1723,35 @@ pub fn build_attn_wires(wit: &LayerWitness, luts: &Luts) -> AttnWires {
     let pad_in = (exp_pad_u as u16) as i16;
 
     let mut scores_rect = vec![pad_in; H_PAD * tp2];
+    let mut sprime_rect = vec![pad_in; H_PAD * tp2];
     let mut exp_rect = vec![0i16; H_PAD * tp2];
     let mut w_rect = vec![0i16; H_PAD * tp2];
+    let row_shift_on = luts.params.softmax_row_shift;
+    let mut row_shift_row = vec![0i16; H_PAD * t_pad];
+    let mut is_max_rect = vec![0i16; H_PAD * tp2];
     for h in 0..H {
         for i in 0..t {
+            let c = if row_shift_on { wit.row_shift[h * t + i] } else { 0 };
+            row_shift_row[h * t_pad + i] = c;
+            let mut max_marked = false;
             for j in 0..=i {
                 let pidx = h * caus + i * (i + 1) / 2 + j;
                 let y = h * tp2 + i * t_pad + j;
                 scores_rect[y] = wit.scores_q[pidx];
+                let sp = wit.scores_q[pidx] as i32 - c as i32;
+                assert!(sp >= i16::MIN as i32, "row spread exceeds the exp domain");
+                sprime_rect[y] = sp as i16;
+                if row_shift_on && sp == 0 && !max_marked {
+                    is_max_rect[y] = 1;
+                    max_marked = true;
+                }
                 exp_rect[y] = wit.exp_out[pidx];
                 w_rect[y] = wit.softmax_w[pidx];
             }
+            assert!(
+                !row_shift_on || max_marked,
+                "row shift is not the row max (no zero s′ in row)"
+            );
         }
     }
 
@@ -1785,6 +1812,9 @@ pub fn build_attn_wires(wit: &LayerWitness, luts: &Luts) -> AttnWires {
 
     AttnWires {
         scores_rect,
+        sprime_rect,
+        row_shift_row,
+        is_max_rect,
         exp_rect,
         w_rect_causal: w_rect.clone(),
         w_rect,
@@ -1809,6 +1839,12 @@ pub struct AttnBlockProof {
     pub recips_corr: Vec<u64>,
     /// Above-diagonal QKᵀ accumulators (fixed sparse order), 8 B each.
     pub above_corr: Vec<u64>,
+    /// P5 stable softmax (present iff softmax_row_shift): the authenticated
+    /// row-shift table c, the is_max∘s′ ≡ 0 hadamard, and the is_max rowsum
+    /// correction.
+    pub row_shift_corr: Option<Vec<u64>>,
+    pub hadamard2: Option<HadamardProof>,
+    pub ismax_rowsum_corr: Option<Fp2>,
     /// [attn_proj, av, softmax_norm, exp, softmax_recip, scores, qkv,
     ///  ln1_norm, ln1_rsqrt].
     pub mult_corr: [Vec<u64>; 9],
@@ -1898,6 +1934,9 @@ pub fn prove_attn_block(
         mult_sn[r as usize] += 1;
     }
     // scores remainder: causal from the witness accumulators, 2^(s−1) pads.
+    // The requant relation stays on the TRUE scores s; the instance's out
+    // column is the shared s′ wire, so the implied-acc transport picks up a
+    // +2^s·⟨gc, c⟩ correction below (P5 stable softmax).
     let half_sc = 1i64 << (s_sc - 1);
     let mut rem_sc = vec![half_sc; 1 << nr];
     for h in 0..H {
@@ -1915,9 +1954,10 @@ pub fn prove_attn_block(
     for &r in &rem_sc {
         mult_sc[r as usize] += 1;
     }
-    // exp multiplicities: recount over the rect input column.
+    // exp multiplicities: recount over the rect input column (the SHARED
+    // wire s′ — equals scores_rect when the row shift is off).
     let mut mult_exp = vec![0u32; 1 << 16];
-    for &s in &wires.scores_rect {
+    for &s in &wires.sprime_rect {
         mult_exp[(s as u16) as usize] += 1;
     }
     // softmax_recip multiplicities over the row-table domain.
@@ -1992,6 +2032,15 @@ pub fn prove_attn_block(
     let above_fp = fp_col_i64(&wires.above_acc);
     let dom_above = cx.doms.take(1);
     let above_corr = auth_fp_vec_p(cx.stream, cx.tx, dom_above, &above_fp);
+    // P5 stable softmax: authenticate the row-shift table c (h_pad×t_pad).
+    let rowshift_fp = fp_col_i16(&wires.row_shift_row);
+    let (dom_rowshift, row_shift_corr) = if p.softmax_row_shift {
+        let dom = cx.doms.take(1);
+        let corr = auth_fp_vec_p(cx.stream, cx.tx, dom, &rowshift_fp);
+        (Some(dom), Some(corr))
+    } else {
+        (None, None)
+    };
 
     let (dom_m_proj, mult_proj_fp, m_proj_corr) = auth_mult_p(cx, &mult_proj);
     let (dom_m_proj_s1, mult_proj_s1_fp, m_proj_s1_corr) = match &mult_proj_s1 {
@@ -2258,18 +2307,73 @@ pub fn prove_attn_block(
     cx.zero.push(den_open.sub(rs_auth.scale(two_rb)));
 
     // ---- 10: exp pair instance ----------------------------------------------
-    let sc_col = fp_col_i16(&wires.scores_rect);
+    // Input column = the shared s′ wire. With the row shift on, the row-max
+    // soundness rows run first (P5 ledger 2026-07-06 #8): (a) hadamard with
+    // public claim 0 at fresh τ₂ proves ĩs_max ∘ s̃′ ≡ 0; (b) an is_max
+    // rowsum identity forces Σ_j is_max = 1 on every real row. Their claims
+    // drain into the instance's s′ (col 0) and is_max (col 2) columns.
+    let sc_col = fp_col_i16(&wires.sprime_rect);
     let exp_col = fp_col_i16(&wires.exp_rect);
     let exp_tv = pair_table(&luts.exp, true);
+    let mut exp_aux = vec![
+        LeafAuxClaim { col: 1, point: r_h.clone(), value: e_claim },
+        LeafAuxClaim { col: 1, point: half_pt.clone(), value: rs_auth },
+    ];
+    let mut hadamard2 = None;
+    let mut ismax_rowsum_corr = None;
+    if p.softmax_row_shift {
+        let ismax_tab = lift_i16_fp2(&wires.is_max_rect);
+        let sprime_tab = lift_i16_fp2(&wires.sprime_rect);
+        let tau2: Vec<Fp2> = (0..nr).map(|_| cx.tx.challenge_fp2()).collect();
+        let hd2 = HadamardDoms::alloc(&mut cx.doms, nr);
+        let (had2, r_h2, e2_claim, r2_claim) = hadamard_prove(
+            &tau2,
+            ismax_tab,
+            sprime_tab,
+            ProverAuthed::from_public(Fp2::ZERO),
+            &hd2,
+            cx.stream,
+            cx.tx,
+            &mut cx.prod,
+            &mut cx.zero,
+        );
+        hadamard2 = Some(had2);
+        // Rowsum: ĩs_max(½..½, ρ₂)·2^rb = realmask̃(ρ₂) (public RHS).
+        let rho2: Vec<Fp2> = (0..rb + HEAD_BITS).map(|_| cx.tx.challenge_fp2()).collect();
+        let mut half_pt2 = vec![half_scalar; rb];
+        half_pt2.extend_from_slice(&rho2);
+        let ismax_lift = lift_i16_fp2(&wires.is_max_rect);
+        let rs2_val = eval_mle_counted(&ismax_lift, &half_pt2, &mut cx.ctr_other);
+        let dom_rs2 = cx.doms.take(1);
+        let fr2 = cx.stream.draw_fulls(dom_rs2, 1)[0];
+        ismax_rowsum_corr = Some(rs2_val - fr2.x);
+        cx.tx.append("ismax_rowsum_correction", 16);
+        let rs2_auth = ProverAuthed { x: rs2_val, m: fr2.m };
+        let eq_rho2 = eq_vec(&rho2);
+        cx.ctr_other.fp2_mults += 1u64 << (rb + HEAD_BITS);
+        let mut realmask = Fp2::ZERO;
+        for h in 0..H {
+            for i in 0..t {
+                realmask += eq_rho2[h * t_pad + i];
+            }
+        }
+        cx.zero.push(rs2_auth.scale(two_rb).sub(ProverAuthed::from_public(realmask)));
+        exp_aux.push(LeafAuxClaim { col: 0, point: r_h2.clone(), value: r2_claim });
+        exp_aux.push(LeafAuxClaim { col: 2, point: r_h2, value: e2_claim });
+        exp_aux.push(LeafAuxClaim { col: 2, point: half_pt2, value: rs2_auth });
+    }
+    let ismax_col = fp_col_i16(&wires.is_max_rect);
+    let (exp_cols, exp_shifts): (Vec<Vec<Fp>>, Vec<Option<u32>>) = if p.softmax_row_shift {
+        (vec![sc_col.clone(), exp_col, ismax_col], vec![Some(0), Some(16), None])
+    } else {
+        (vec![sc_col.clone(), exp_col], vec![Some(0), Some(16)])
+    };
     let inst_exp = blind_instance_prove(
-        &[sc_col.clone(), exp_col],
-        &[Some(0), Some(16)],
+        &exp_cols,
+        &exp_shifts,
         &exp_tv,
         &mult_exp,
-        vec![
-            LeafAuxClaim { col: 1, point: r_h.clone(), value: e_claim },
-            LeafAuxClaim { col: 1, point: half_pt.clone(), value: rs_auth },
-        ],
+        exp_aux,
         cx.stream,
         &mut cx.doms,
         cx.tx,
@@ -2349,8 +2453,22 @@ pub fn prove_attn_block(
         }
     }
     let above_open = open_weighted_p(cx.stream, dom_above, &above_fp, &wts);
-    let acc_sc_true =
+    let mut acc_sc_true =
         tr_sc.sub(ProverAuthed::from_public(c_pad * padmask)).add(above_open);
+    if p.softmax_row_shift {
+        // The out column is s′ = s − c: add back 2^s·⟨gc, c⟩, gc_i = the
+        // causal eq mass of row i (authenticated weighted opening of c).
+        let mut gcw = vec![Fp2::ZERO; H_PAD * t_pad];
+        for h in 0..H {
+            for i in 0..t {
+                for j in 0..=i {
+                    gcw[h * t_pad + i] += eq_sc[h * tp2 + i * t_pad + j];
+                }
+            }
+        }
+        let gc_open = open_weighted_p(cx.stream, dom_rowshift.unwrap(), &rowshift_fp, &gcw);
+        acc_sc_true = acc_sc_true.add(gc_open.scale(Fp2::from_base(Fp::new(1u64 << s_sc))));
+    }
 
     // ---- 13: scores head split ------------------------------------------------
     let eqh_sc = eq_vec(&pt_sc[2 * rb..]);
@@ -2529,6 +2647,9 @@ pub fn prove_attn_block(
         recip_in_corr,
         recips_corr,
         above_corr,
+        row_shift_corr,
+        hadamard2,
+        ismax_rowsum_corr,
         mult_corr: [
             m_proj_corr, m_av_corr, m_sn_corr, m_exp_corr, m_rcp_corr, m_sc_corr, m_qkv_corr,
             m_ln1_corr, m_rsq1_corr,
@@ -2613,6 +2734,20 @@ pub fn verify_attn_block(
     {
         return None;
     }
+    // P5 stable softmax: presence of the row-shift machinery must match the
+    // flag; the row-shift table has the row-table length.
+    let row_shift_on = p.softmax_row_shift;
+    if row_shift_on != proof.row_shift_corr.is_some()
+        || row_shift_on != proof.hadamard2.is_some()
+        || row_shift_on != proof.ismax_rowsum_corr.is_some()
+    {
+        return None;
+    }
+    if let Some(c) = &proof.row_shift_corr {
+        if c.len() != H_PAD * t_pad {
+            return None;
+        }
+    }
     let main_len = |s: u32| if s <= 16 { 1usize << s } else { 1 << 16 };
     let mult_lens = [
         main_len(s_ap),
@@ -2641,6 +2776,10 @@ pub fn verify_attn_block(
     let recips_keys = keys_fp_vec_v(cx.ctx, dom_recips, &proof.recips_corr);
     let dom_above = cx.doms.take(1);
     let above_keys = keys_fp_vec_v(cx.ctx, dom_above, &proof.above_corr);
+    let rowshift_keys = proof.row_shift_corr.as_ref().map(|corr| {
+        let dom = cx.doms.take(1);
+        keys_fp_vec_v(cx.ctx, dom, corr)
+    });
     // Mult keys expand in the prover's dom order: proj, (proj stage-1),
     // av, sn, exp, rcp, sc, qkv, ln1, (ln1 stage-1), rsq1. Presence of the
     // stage-1 corrs must match the shifts — reject otherwise.
@@ -2849,10 +2988,51 @@ pub fn verify_attn_block(
 
     // ---- 10: exp instance --------------------------------------------------------
     let exp_tv = pair_table(&luts.exp, true);
-    let aux_exp = [(1usize, r_h.clone(), k_e), (1usize, half_pt.clone(), k_rs)];
+    let mut aux_exp = vec![(1usize, r_h.clone(), k_e), (1usize, half_pt.clone(), k_rs)];
+    if row_shift_on {
+        // (a) is_max ∘ s′ ≡ 0 via hadamard with public claim 0 at fresh τ₂.
+        let tau2: Vec<Fp2> = (0..nr).map(|_| cx.tx.challenge_fp2()).collect();
+        let hd2 = HadamardDoms::alloc(&mut cx.doms, nr);
+        let (r_h2, k_e2, k_r2) = hadamard_verify(
+            &tau2,
+            VerifierKey::from_public(Fp2::ZERO, cx.ctx.delta),
+            proof.hadamard2.as_ref()?,
+            &hd2,
+            cx.ctx,
+            cx.tx,
+            &mut cx.kprod,
+            &mut cx.kzero,
+        )?;
+        // (b) is_max rowsum = 1 per real row (public realmask RHS).
+        let rho2: Vec<Fp2> = (0..rb + HEAD_BITS).map(|_| cx.tx.challenge_fp2()).collect();
+        let mut half_pt2 = vec![half_scalar; rb];
+        half_pt2.extend_from_slice(&rho2);
+        let dom_rs2 = cx.doms.take(1);
+        let k_rs2 = VerifierKey {
+            k: cx.ctx.expand_full_keys(dom_rs2, 1)[0]
+                + cx.ctx.delta * proof.ismax_rowsum_corr?,
+        };
+        let eq_rho2 = eq_vec(&rho2);
+        let mut realmask = Fp2::ZERO;
+        for h in 0..H {
+            for i in 0..t {
+                realmask += eq_rho2[h * t_pad + i];
+            }
+        }
+        cx.kzero
+            .push(k_rs2.scale(two_rb).sub(VerifierKey::from_public(realmask, cx.ctx.delta)));
+        aux_exp.push((0usize, r_h2.clone(), k_r2));
+        aux_exp.push((2usize, r_h2, k_e2));
+        aux_exp.push((2usize, half_pt2, k_rs2));
+    }
+    let exp_shifts: Vec<Option<u32>> = if row_shift_on {
+        vec![Some(0), Some(16), None]
+    } else {
+        vec![Some(0), Some(16)]
+    };
     let vexp = blind_instance_verify(
         nr,
-        &shifts_pair,
+        &exp_shifts,
         &exp_tv,
         &proof.inst_exp,
         &aux_exp,
@@ -2923,9 +3103,22 @@ pub fn verify_attn_block(
         }
     }
     let above_k = open_weighted_k(&above_keys, &wts);
-    let k_acc_sc_true = k_tr_sc
+    let mut k_acc_sc_true = k_tr_sc
         .sub(VerifierKey::from_public(c_pad * padmask, cx.ctx.delta))
         .add(above_k);
+    if row_shift_on {
+        let mut gcw = vec![Fp2::ZERO; H_PAD * t_pad];
+        for h in 0..H {
+            for i in 0..t {
+                for j in 0..=i {
+                    gcw[h * t_pad + i] += eq_sc[h * tp2 + i * t_pad + j];
+                }
+            }
+        }
+        let gc_k = open_weighted_k(rowshift_keys.as_ref()?, &gcw);
+        k_acc_sc_true =
+            k_acc_sc_true.add(gc_k.scale(Fp2::from_base(Fp::new(1u64 << s_sc))));
+    }
 
     // ---- 13: scores head split ---------------------------------------------------
     let eqh_sc = eq_vec(&pt_sc[2 * rb..]);
@@ -3206,7 +3399,8 @@ pub fn prove_layer_with_wires(
         boundary: 8 * 5 * (t * D) as u64,
         mult: 8 * mult_len,
         ln_vectors: 8 * 8 * t_pad,
-        attn_vectors: 8 * (3 * H_PAD as u64 * t_pad + n_above),
+        attn_vectors: 8
+            * ((3 + p.softmax_row_shift as u64) * H_PAD as u64 * t_pad + n_above),
         rounds_claims: 16 * (cx.stream.counters.full_corrs - fulls0),
     };
 
@@ -3743,6 +3937,121 @@ mod tests {
         assert_eq!(mz, domsv.take(1));
         let ok_zero = zero_batch_exchange(&zero, &kzero, &mut stream, &mut vc, mz, &mut txp);
         assert!(ok_prod && ok_zero, "honest chained layer's batches must close");
+    }
+
+    /// Shared harness for the P5 stable-softmax (row-shift) tests: proves a
+    /// row-shifted layer (optionally with tampered wires), verifies, closes.
+    fn run_row_shift_case(
+        seed: u8,
+        tamper_wires: impl FnOnce(&mut AttnWires),
+        tamper_proof: impl FnOnce(&mut LayerProof),
+    ) -> bool {
+        let params = LutParams { softmax_row_shift: true, ..LutParams::default() };
+        let luts = build_luts(params);
+        let w = synthetic_weights(42);
+        let x = synthetic_input(43, T);
+        let wit = volta_gpt2::forward_layer_with(&x, &w, None, &luts, params, T);
+        assert!(wit.row_shift.iter().any(|&c| c != 0), "row shifts should be nontrivial");
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64 + 6000);
+        let delta = Fp2::new(
+            Fp::new(rng.gen_range(1..volta_field::P)),
+            Fp::new(rng.gen_range(0..volta_field::P)),
+        );
+        let mut stream = CorrelationStream::new([seed; 32]);
+        let mut vc = VerifierCtx::new([seed; 32], delta);
+        let mut txp = Transcript::new([seed ^ 0x5A; 32]);
+        let mut txv = Transcript::new([seed ^ 0x5A; 32]);
+
+        let mut cxp = BlockCtxP::new(&mut stream, &mut txp, 0);
+        let mut wires = build_attn_wires(&wit, &luts);
+        assert!(wires.is_max_rect.iter().any(|&m| m == 1));
+        tamper_wires(&mut wires);
+        let (mut proof, out) = prove_layer_with_wires(&wit, &w, &luts, &wires, &mut cxp, None);
+        assert!(proof.attn.row_shift_corr.is_some() && proof.attn.hadamard2.is_some());
+        let BlockCtxP { doms: mut domsp, prod, mut zero, .. } = cxp;
+        tamper_proof(&mut proof);
+
+        let mut cxv = BlockCtxV::new(&mut vc, &mut txv, 0);
+        let Some(outv) = verify_layer(
+            T, &w.ln1_gain, &w.ln1_bias, &w.ln2_gain, &w.ln2_bias, &luts, &proof, &mut cxv, None,
+        ) else {
+            return false;
+        };
+        let BlockCtxV { doms: mut domsv, kprod, mut kzero, .. } = cxv;
+
+        let w_perm = cattn_permuted(&w.c_attn);
+        let dims: [(usize, usize, &[i16]); 4] = [
+            (D, 4096, &w_perm),
+            (D, D, &w.attn_proj),
+            (D, DFF, &w.ffn_up),
+            (DFF, D, &w.ffn_down),
+        ];
+        for (i, wc) in out.weight_claims.iter().enumerate() {
+            let (k, n, mat) = dims[i];
+            let tv = weight_true_eval(mat, k, n, &wc.point);
+            zero.push(wc.value.sub(ProverAuthed::from_public(tv)));
+            kzero.push(outv.weight_keys[i].1.sub(VerifierKey::from_public(tv, delta)));
+        }
+        // Cheating-prover emulation (wires tampers): clear nonzero zero rows.
+        for row in zero.iter_mut() {
+            row.x = Fp2::ZERO;
+        }
+
+        let chi = txp.challenge_fp2();
+        assert_eq!(chi, txv.challenge_fp2());
+        let md = domsp.take(1);
+        assert_eq!(md, domsv.take(1));
+        let mask = stream.draw_fulls(md, 1)[0];
+        let k_mask = vc.expand_full_keys(md, 1)[0];
+        let pp = prod_batch_prover(&prod, chi, mask, &mut txp);
+        let ok_prod = prod_batch_verify(&kprod, k_mask, delta, chi, &pp);
+        let mz = domsp.take(1);
+        assert_eq!(mz, domsv.take(1));
+        let ok_zero = zero_batch_exchange(&zero, &kzero, &mut stream, &mut vc, mz, &mut txp);
+        ok_prod && ok_zero
+    }
+
+    /// P5 stable softmax e2e: honest row-shifted layer must verify.
+    #[test]
+    fn layer_with_row_shift_proves_and_verifies() {
+        assert!(run_row_shift_case(94, |_| {}, |_| {}), "honest row-shifted layer rejected");
+    }
+
+    /// Negative: moving an is_max marker to a position with s′ ≠ 0 (a lying
+    /// row-max) must be rejected by the is_max∘s′ hadamard row.
+    #[test]
+    fn layer_rejects_lying_row_max() {
+        assert!(!run_row_shift_case(
+            95,
+            |wires| {
+                // Find a marked row with >1 causal entries and move the 1 to
+                // a neighbor whose s′ is nonzero.
+                let n = wires.is_max_rect.len();
+                for y in 0..n {
+                    if wires.is_max_rect[y] == 1 {
+                        for d in [y.wrapping_sub(1), y + 1] {
+                            if d < n && wires.sprime_rect[d] != 0 {
+                                wires.is_max_rect[y] = 0;
+                                wires.is_max_rect[d] = 1;
+                                return;
+                            }
+                        }
+                    }
+                }
+                panic!("no movable is_max marker found");
+            },
+            |_| {},
+        ));
+    }
+
+    /// Negative: stripping the row-shift machinery from a row-shifted proof
+    /// must be rejected structurally.
+    #[test]
+    fn layer_rejects_stripped_row_shift() {
+        assert!(!run_row_shift_case(96, |_| {}, |proof| {
+            proof.attn.hadamard2 = None;
+        }));
     }
 
     /// Negative: a chained proof whose stage-1 instance is stripped (or whose

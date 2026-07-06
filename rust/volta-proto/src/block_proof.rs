@@ -873,14 +873,14 @@ pub(crate) fn close_mult_v(cx: &mut BlockCtxV, keys: &[Fp2], mult_key: &OpenKey)
 }
 
 /// Authenticate one multiplicity vector (dom taken from the ctx allocator).
-fn auth_mult_p(cx: &mut BlockCtxP, mult: &[u32]) -> (u64, Vec<Fp>, Vec<u64>) {
+pub(crate) fn auth_mult_p(cx: &mut BlockCtxP, mult: &[u32]) -> (u64, Vec<Fp>, Vec<u64>) {
     let fp = fp_vec_u32(mult);
     let dom = cx.doms.take(1);
     let corr = auth_fp_vec_p(cx.stream, cx.tx, dom, &fp);
     (dom, fp, corr)
 }
 
-fn keys_mult_v(cx: &mut BlockCtxV, corr: &[u64]) -> Vec<Fp2> {
+pub(crate) fn keys_mult_v(cx: &mut BlockCtxV, corr: &[u64]) -> Vec<Fp2> {
     let dom = cx.doms.take(1);
     keys_fp_vec_v(cx.ctx, dom, corr)
 }
@@ -897,7 +897,7 @@ pub(crate) fn rowmask_eval(r_rows: &[Fp2], t: usize) -> Fp2 {
 
 /// Prover-side consistency check of LN statistics vectors against the
 /// pre-LN input `x` — the P4-DEVIATION(ln-stats) fallback (see module doc).
-fn assert_ln_stats(
+pub(crate) fn assert_ln_stats(
     x: &[i16],
     t: usize,
     mean: &[i64],
@@ -936,7 +936,7 @@ fn assert_ln_stats(
 // ---------------------------------------------------------------------------
 
 /// One LayerNorm's authenticated small vectors (padded to `t_pad`).
-struct LnVecsP {
+pub(crate) struct LnVecsP {
     mean_fp: Vec<Fp>,
     rin_fp: Vec<Fp>,
     rout_fp: Vec<Fp>,
@@ -948,7 +948,7 @@ struct LnVecsP {
 /// Authenticate mean/var/rsqrt_in/rsqrt_out (var is authenticated for the
 /// record — the ln-stats deviation — but unused by the in-field relations).
 /// Returns the vectors + domains and the 4 correction vectors.
-fn auth_ln_vecs_p(
+pub(crate) fn auth_ln_vecs_p(
     cx: &mut BlockCtxP,
     rb: usize,
     mean: &[i64],
@@ -983,13 +983,13 @@ fn auth_ln_vecs_p(
     )
 }
 
-struct LnVecsK {
+pub(crate) struct LnVecsK {
     mean_keys: Vec<Fp2>,
     rin_keys: Vec<Fp2>,
     rout_keys: Vec<Fp2>,
 }
 
-fn expand_ln_vecs_k(cx: &mut BlockCtxV, corrs: &[Vec<u64>; 4]) -> LnVecsK {
+pub(crate) fn expand_ln_vecs_k(cx: &mut BlockCtxV, corrs: &[Vec<u64>; 4]) -> LnVecsK {
     let dom_mean = cx.doms.take(1);
     let mean_keys = keys_fp_vec_v(cx.ctx, dom_mean, &corrs[0]);
     let dom_var = cx.doms.take(1);
@@ -1016,7 +1016,7 @@ pub struct LnChainProof {
 /// `x` is the pre-LN boundary tensor (dom `dom_x`), `wire` the upstream
 /// GEMM's X wire claim on `out_ln`.
 #[allow(clippy::too_many_arguments)]
-fn prove_ln_chain(
+pub(crate) fn prove_ln_chain(
     t: usize,
     s_ln: u32,
     acc_ln: &[i64],
@@ -1132,7 +1132,7 @@ fn prove_ln_chain(
 
 /// LN chain verifier (mirror of [`prove_ln_chain`]).
 #[allow(clippy::too_many_arguments)]
-fn verify_ln_chain(
+pub(crate) fn verify_ln_chain(
     t: usize,
     s_ln: u32,
     gain: &[i16],
@@ -3291,11 +3291,20 @@ pub struct LayerOut {
     pub ctr_other: Counters,
     /// Per-instance measured lookups (p4_report budget gate input).
     pub lookups: Vec<InstanceLookups>,
+    /// Boundary domains for `x_in` / `ffn_block_out` (P5 model-level seam
+    /// closures need to re-open these streamed MAC-authenticated matrices at
+    /// fresh points).
+    pub dom_xin: u64,
+    pub dom_fbo: u64,
 }
 
 pub struct LayerOutV {
     /// (point, key) of the 4 weight claims, canonical order (as LayerOut).
     pub weight_keys: Vec<(Vec<Fp2>, VerifierKey)>,
+    /// Cached per-element keys of the `x_in` / `ffn_block_out` boundaries
+    /// (P5 model-level seam closures).
+    pub xin_keys: Vec<Fp2>,
+    pub fbo_keys: Vec<Fp2>,
 }
 
 /// Per-instance measured lookups for the layer (domain sizes).
@@ -3411,6 +3420,8 @@ pub fn prove_layer_with_wires(
         ctr_instances: cx.ctr_instances,
         ctr_other: cx.ctr_other,
         lookups: layer_lookups(t),
+        dom_xin,
+        dom_fbo,
     };
     (proof, out)
 }
@@ -3458,7 +3469,11 @@ pub fn verify_layer(
     let wk_proj = w_attn.pop()?;
     let wk_up = w_ffn.pop()?;
     let wk_down = w_ffn.pop()?;
-    Some(LayerOutV { weight_keys: vec![wk_cattn, wk_proj, wk_up, wk_down] })
+    Some(LayerOutV {
+        weight_keys: vec![wk_cattn, wk_proj, wk_up, wk_down],
+        xin_keys,
+        fbo_keys,
+    })
 }
 
 // ---------------------------------------------------------------------------

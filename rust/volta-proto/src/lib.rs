@@ -8,6 +8,7 @@ pub mod gemm_proof;
 pub mod hadamard;
 pub mod logup;
 pub mod mle;
+pub mod model_proof;
 pub mod wires;
 pub mod prod_check;
 pub mod sumcheck_blind;
@@ -31,6 +32,10 @@ pub use gemm_proof::{
     GemmDomains, WireKey, WireOut,
 };
 pub use hadamard::{hadamard_prove, hadamard_verify, HadamardDoms, HadamardProof};
+pub use model_proof::{
+    prove_model, verify_model, EmbedProof, FinalLnProof, ModelOut, ModelOutV, ModelProof,
+    SeamProof,
+};
 pub use prod_check::{prod_batch_prover, prod_batch_verify, ProdProof};
 pub use sumcheck_blind::{blind_prove, blind_verify, BlindSumcheckProof};
 pub use sumcheck_clear::{prove_clear, verify_clear, ClearProof};

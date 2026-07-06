@@ -33,6 +33,8 @@ plan.** Raw bench runs go to `benchmarks/results/<milestone>-<date>-<sha>.json`
   when implementation needs something the theorems don't cover, log it in the
   ledger's deviations section — don't silently assume.
 - Corrections are 8 bytes (F_p), not 16-bit — see ledger deviation 2026-07-03.
+- Cost trades: prover time may be bought with verifier time (currently cheap),
+  never with final proof size / communication — ledger convention 2026-07-06.
 - Correlations are mock-PCG (shared ChaCha seed, Δ verifier-only), one-time
   use, domain-separated indices (session, layer, head, position, tensor_tag);
   every consumption is counted.

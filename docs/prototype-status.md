@@ -21,7 +21,7 @@ CPU numbers validate architecture and counts; the ρ targets (≤2 decode,
 | P3 blind sumcheck + Thaler + Π_Prod | **done** (2026-07-04) | GEMM (100×768)·(768×768) proved+verified e2e ✓; ρ decomposed ✓ | ρ_clear 1.49, ρ_blind/clear 2.25, ρ_total 3.34; blind split: fold 3.1 ms + **m_r expand 2.8 ms** + rounds 0.04 ms + Π_Prod 0.01 ms; verify 6.5 ms; proof 352 B (excl. 1.2 MB auth corr); corrs 153,600 sub + 21 full. Attribution: blinding IT ≈ free, cost is Freivalds folds + lazy tag expansion. `benchmarks/results/p3-2026-07-04-cef997d.json` |
 | P3.5 static weight PCS (private weights) | **done** (2026-07-04) | opening ≤ 15% native prefill: **FAILED (230%)** — iteration plan logged below; leakage smoke ✓; M9 seam e2e ✓ | In-house Ligero (`volta-pcs`), full 2^27, rate 0.516, Q=200. Commit one-off 3.3 s; opening of record (row-local multi-eval, 220 claims) **0.70 s** = fixed 0.12 s + **~2.3 ms/claim**; verify 0.12 s; 73.8 MB/opening; peak RSS 7.3 GB. Rejected path (generic reduction sumcheck): 5.8 s. `benchmarks/results/p3.5-2026-07-04-1708c66.json` |
 | P4 LogUp + fused blocks | **done** (2026-07-05) | one full layer proved+verified e2e (T=100, real PCS opening) ✓ **PASSED**; counts within 20% ✓ (witness streams = budget **exactly**, padded LogUp domains explained); LogUp ≤8–10 E-mult/lookup: **MISSED, motivated (12.20)**; 1 weight claim/tensor ✓ (4/layer) | prove 0.800 s vs native forward 0.033 s (ρ_layer ~24, 4 cores); verify 0.041 s; LogUp lookup-side **12.20 E-mult/lookup** (~34 ns/lookup, 5.4× vs P2.5 spike wall), table-side 3.86 raw → 0.32 /12-amortized; full instance cost 126.5 M E-mult/layer (≈42/padded lookup incl. aux folding + tables + closures); corr bytes 7.64 MB/layer (mult vectors 3.87 MB — see deviations); layer PCS 2^24: commit 0.34 s one-off, **open 0.035 s**, verify 0.006 s; projections (P3.5 cost model, 49/98 claims): prefill **0.233 s**, per-response **0.345 s**. Run of record `benchmarks/results/p4-2026-07-06-8b4ca11.json` (clean tree, `git_dirty:false`; the 07-05 JSON was a dirty-tree run whose sha names the parent commit) |
-| P5 GPT-2 e2e prefill 100 tok | pending | one-command reproducible run, golden check | — |
+| P5 GPT-2 e2e prefill 100 tok | pending | one-command reproducible run, golden check | plan pre-registered 2026-07-06, see deviations log |
 | P6 decode + authenticated KV cache | pending | flat cost/token, anti-replay smoke | — |
 | P7 report + GPU budget model | pending | extrapolation decides GPU go/no-go | — |
 
@@ -55,6 +55,50 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-06 (P5 plan, pre-registered)**: pre-P5 assessment closed with the
+  user: **no CPU optimization cycle before P5** — the remaining LogUp/PCS
+  levers (helper-column family, padding layout, NEON/lazy reduction) are
+  design trade-offs whose payoff depends on the GPU cost model (P7 decides),
+  and P5's own amortizations (÷12 tables, batched PCS claims) change the
+  numbers first; the dev loop (~10 s/prefill prove) is iterable. Scope:
+  1. Work items: (a) `scripts/export_gpt2.py` — one-off HF safetensors
+     download, per-tensor pow-2 scales calibrated on the golden prompt, the
+     12 LUTs at real scales, `cattn_permuted` weight layout (dev. 2026-07-05
+     #7), fixed prompt-token file, quantized format read by Rust via memmap2;
+     (b) numpy fixed-point reference (~200 lines, bit-exact vs the Rust
+     witness generator; golden check = logits/argmax at the last position);
+     (c) full-model driver: embedding, 12 chained layers with x_in
+     authenticated once per seam (fixes the single-layer double-count,
+     dev. #9), final LN + logits row; (d) **one multiset argument per table
+     per model** — table-side LogUp and multiplicity binding lifted from
+     per-layer to per-model (÷12, pre-registered in dev. #4); (e) one batched
+     PCS opening for all 49 claims, committed-W mode by default;
+     (f) `scripts/run_prefill.sh` + `p5_report` — one command, full JSON.
+  2. Report schema additions (pre-registered): **PCS opening bytes** (absent
+     from the P4 JSON) and **total communication per response** as a
+     first-class measured number, broken down (auth corrections /
+     LogUp+sumcheck transcripts / multiplicity vectors / PCS opening).
+     Analytic estimate to confirm or kill: ≈49 MB corrections with mult ÷12,
+     plus opening — the ~55 MB/response ballpark is a product constraint.
+  3. Saturation contingency (dev. #5): calibration first tries exponents with
+     zero saturations on the golden prompt; if the no-clamp assert fires on
+     real weights, the **saturation side-table becomes the first P5 work
+     item** (clamp-range side lookup), not a redesign.
+  4. **New convention (user)**: prover time may be bought with verifier time
+     (verifier is currently cheap, ~NanoZK-level: 0.041 s/layer) but **never
+     with final proof size** — communication is already the binding product
+     constraint. Applies to all P5+ design choices.
+  5. Gate unchanged from the plan of record: one-command reproducible run,
+     complete JSON, golden check green; counts vs P0 budget <20% or explained;
+     peak RSS ≤ 11 GB. ρ_prefill is recorded and analyzed, not gated (GPU
+     target, P7).
+  6. Agenda items logged here, NOT P5 scope: (a) real-PCG (silent VOLE)
+     setup/expansion cost spike **before the P7 go/no-go**; (b) the P6
+     interface requirement is extended from PCS claims to **cross-token
+     batching of lookups** (per-model tables already amortize the table side
+     across tokens; the lookup-side instances must batch too — never fixed
+     per-token instance cost).
 
 - **2026-07-05 (P4)**: one full transformer layer (attention + FFN fused
   blocks, LogUp instances, chained GEMMs, hadamard, real Ligero opening)

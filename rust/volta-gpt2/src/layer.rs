@@ -12,7 +12,7 @@
 //! synthetic weights/scales below are sized so this holds at T = 100.
 
 use crate::gemm::gemm_i64;
-use crate::luts::Luts;
+use crate::luts::{LutParams, Luts};
 
 /// GPT-2 small layer shape (d = 768, h = 12, d_h = 64, d_ff = 3072).
 pub const D: usize = 768;
@@ -95,11 +95,41 @@ pub struct LookupTrace {
     pub inputs: Vec<i64>,
     pub outputs: Vec<i16>,
     pub multiplicity: Vec<u32>,
+    /// Chained requant (P5, spec §chained requant): when the site's shift is
+    /// s > 16 the requant is DEFINED as two round-half-up stages (s−16, then
+    /// 16). `inputs` stays the original accumulator; the stage-1 output
+    /// y1 = round(acc, s−16) is recomputed deterministically by the prover.
+    /// `multiplicity` then ranges over the stage-2 remainder domain [0, 2^16)
+    /// and `stage1_mult` over [0, 2^(s−16)). Empty for single-stage sites.
+    pub stage1_shift: u32,
+    pub stage1_mult: Vec<u32>,
 }
 
 impl LookupTrace {
-    fn new(table_len: usize) -> Self {
-        LookupTrace { inputs: Vec::new(), outputs: Vec::new(), multiplicity: vec![0; table_len] }
+    pub(crate) fn new(table_len: usize) -> Self {
+        LookupTrace {
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            multiplicity: vec![0; table_len],
+            stage1_shift: 0,
+            stage1_mult: Vec::new(),
+        }
+    }
+
+    /// Trace for a requant site with shift `s`: single-stage remainder table
+    /// [0, 2^s) when s ≤ 16, otherwise the two chained-stage tables.
+    pub(crate) fn new_requant(shift: u32) -> Self {
+        if shift <= 16 {
+            Self::new(1 << shift)
+        } else {
+            LookupTrace {
+                inputs: Vec::new(),
+                outputs: Vec::new(),
+                multiplicity: vec![0; 1 << 16],
+                stage1_shift: shift - 16,
+                stage1_mult: vec![0; 1 << (shift - 16)],
+            }
+        }
     }
 
     #[inline]
@@ -118,21 +148,44 @@ impl LookupTrace {
     }
 }
 
+/// One round-half-up arithmetic shift stage (no range constraint).
+#[inline]
+fn round_shift(acc: i64, shift: u32) -> i64 {
+    (acc + (1i64 << (shift - 1))) >> shift
+}
+
 /// Requant + trace: round-half-up shift, no-clamp assertion (debug AND
-/// release), stream entry `(acc, y)`, multiplicity over the remainder domain.
-/// Bit-identical to `gemm::requant` whenever that one does not clamp.
+/// release), stream entry `(acc, y)`, multiplicity over the remainder
+/// domain(s). Bit-identical to `gemm::requant` whenever that one does not
+/// clamp; for shift > 16 this is the chained two-stage requant of the P5
+/// spec (double-round semantics), recording both remainder multiplicities.
 #[inline]
 fn requant_traced(traces: &mut [LookupTrace; 12], id: TableId, acc: i64, shift: u32) -> i16 {
-    let half = 1i64 << (shift - 1);
-    let rounded = (acc + half) >> shift;
+    requant_into(&mut traces[id as usize], id.name(), acc, shift)
+}
+
+/// Same, on a standalone trace (model-level sites: embed, seams, final LN).
+#[inline]
+pub(crate) fn requant_into(tr: &mut LookupTrace, site: &str, acc: i64, shift: u32) -> i16 {
+    let (stage2_in, s2) = if shift <= 16 {
+        (acc, shift)
+    } else {
+        debug_assert_eq!(tr.stage1_shift, shift - 16, "{site}");
+        let s1 = shift - 16;
+        let y1 = round_shift(acc, s1);
+        let rem1 = (acc + (1i64 << (s1 - 1)) - (y1 << s1)) as usize;
+        tr.stage1_mult[rem1] += 1;
+        (y1, 16)
+    };
+    let half = 1i64 << (s2 - 1);
+    let rounded = (stage2_in + half) >> s2;
     assert!(
         (i16::MIN as i64..=i16::MAX as i64).contains(&rounded),
-        "requant saturated in {} (P4 no-clamp deviation violated): acc={acc}, shift={shift}",
-        id.name(),
+        "requant saturated in {site} (no-clamp deviation violated): acc={acc}, shift={shift}",
     );
-    let rem = (acc + half - (rounded << shift)) as usize; // in [0, 2^shift)
+    let rem = (stage2_in + half - (rounded << s2)) as usize;
     let y = rounded as i16;
-    traces[id as usize].push(acc, y, rem);
+    tr.push(acc, y, rem);
     y
 }
 
@@ -156,6 +209,18 @@ pub struct LayerWeights {
     pub ln1_bias: Vec<i16>,
     pub ln2_gain: Vec<i16>,
     pub ln2_bias: Vec<i16>,
+}
+
+/// Per-GEMM biases (P5, real GPT-2). Quantized at the OUTPUT scale of their
+/// op and folded into the accumulator as `acc += b << shift` before the
+/// requant lookup (spec §P5 biases). Public verifier inputs, like LN
+/// gain/bias.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GemmBiases {
+    pub c_attn: Vec<i16>,    // 3d, at f_qkv
+    pub attn_proj: Vec<i16>, // d, at the layer's residual scale
+    pub ffn_up: Vec<i16>,    // d_ff, at f_ffn
+    pub ffn_down: Vec<i16>,  // d, at the layer's residual scale
 }
 
 /// splitmix64 — tiny deterministic PRNG for synthetic data.
@@ -233,6 +298,10 @@ pub struct LayerWitness {
     pub q: Vec<i16>,         // T×d
     pub scores_acc: Vec<i64>, // causal-packed, h·caus (QK^T accumulators)
     pub scores_q: Vec<i16>,  // causal-packed (requantized scores)
+    /// P5 stable softmax: per-(head,row) shift c = max of the causal row of
+    /// scores_q (h×T, head-major). All zeros when softmax_row_shift is off;
+    /// the exp trace inputs are then s' = s − c.
+    pub row_shift: Vec<i16>,
     pub exp_out: Vec<i16>,   // causal-packed
     pub denoms: Vec<i64>,    // h×T (row sums of exp)
     pub recips: Vec<i16>,    // h×T (softmax_recip outputs)
@@ -275,21 +344,22 @@ impl LayerWitness {
 /// the accumulator so the whole affine costs exactly one lookup per element
 /// (matching the 2Td budget count); the var → u16 reduction is deterministic
 /// pre-scaling folded into the table semantics (asserted to fit).
-struct LnOut {
-    mean: Vec<i64>,
-    var: Vec<i64>,
-    rsqrt_in: Vec<i64>,
-    rsqrt_out: Vec<i16>,
-    out: Vec<i16>,
+pub(crate) struct LnOut {
+    pub(crate) mean: Vec<i64>,
+    pub(crate) var: Vec<i64>,
+    pub(crate) rsqrt_in: Vec<i64>,
+    pub(crate) rsqrt_out: Vec<i16>,
+    pub(crate) out: Vec<i16>,
 }
 
-fn layer_norm(
+pub(crate) fn layer_norm(
     x: &[i16],
     gain: &[i16],
     bias: &[i16],
     luts: &Luts,
     t: usize,
-    traces: &mut [LookupTrace; 12],
+    rsqrt_trace: &mut LookupTrace,
+    norm_trace: &mut LookupTrace,
 ) -> LnOut {
     let p = &luts.params;
     let d = D as i64;
@@ -311,12 +381,13 @@ fn layer_norm(
         let vin = vr >> p.ln_var_shift;
         assert!(vin < 1 << 16, "ln_rsqrt input exceeds u16 domain: var={vr}");
         let r = luts.ln_rsqrt[vin as usize];
-        traces[TableId::LnRsqrt as usize].push(vin, r, vin as usize);
+        rsqrt_trace.push(vin, r, vin as usize);
 
         for j in 0..D {
             let dev = row[j] as i64 - m;
             let acc = dev * r as i64 * gain[j] as i64 + ((bias[j] as i64) << p.shift_ln_norm);
-            out[i * D + j] = requant_traced(traces, TableId::LnNormRequant, acc, p.shift_ln_norm);
+            out[i * D + j] =
+                requant_into(norm_trace, TableId::LnNormRequant.name(), acc, p.shift_ln_norm);
         }
         mean.push(m);
         var.push(vr);
@@ -347,37 +418,66 @@ fn residual_add(a: &[i16], b: &[i16]) -> Vec<i16> {
 // Forward pass
 // ---------------------------------------------------------------------------
 
+/// Full one-layer forward with the P4 defaults (no biases, params from
+/// `luts.params`). See `forward_layer_with`.
+pub fn forward_layer(x_in: &[i16], w: &LayerWeights, luts: &Luts, t: usize) -> LayerWitness {
+    forward_layer_with(x_in, w, None, luts, luts.params, t)
+}
+
 /// Full one-layer forward: LN1 → c_attn → causal softmax attention →
 /// out-proj → residual → LN2 → FFN (up, GELU, down) → residual.
 /// GEMMs run on `gemm_i64` (rayon); the lookup-traced epilogues are serial,
 /// so stream order is deterministic (head-major, then row-major).
-pub fn forward_layer(x_in: &[i16], w: &LayerWeights, luts: &Luts, t: usize) -> LayerWitness {
+///
+/// `params` may differ from `luts.params` for the per-layer residual shifts
+/// (`shift_attn_proj`, `shift_ffn_down` — P5 spec §per-layer residual
+/// scales); every other field must match the tables in `luts`.
+pub fn forward_layer_with(
+    x_in: &[i16],
+    w: &LayerWeights,
+    biases: Option<&GemmBiases>,
+    luts: &Luts,
+    params: LutParams,
+    t: usize,
+) -> LayerWitness {
     assert_eq!(x_in.len(), t * D);
-    let p = luts.params;
+    let p = params;
     let caus = t * (t + 1) / 2;
 
     // Table domain sizes: nonlinear LUTs are 2^16, requant tables 2^shift
-    // (the rounding-remainder range table).
+    // (the rounding-remainder range table; chained two-stage when shift>16).
     let mut traces = [
-        LookupTrace::new(1 << 16),                    // ln_rsqrt
-        LookupTrace::new(1 << p.shift_ln_norm),       // ln_norm_requant
-        LookupTrace::new(1 << p.shift_qkv),           // requant_qkv
-        LookupTrace::new(1 << p.shift_scores),        // requant_scores
-        LookupTrace::new(1 << 16),                    // exp
-        LookupTrace::new(1 << 16),                    // softmax_recip
-        LookupTrace::new(1 << p.shift_softmax_norm),  // softmax_norm_requant
-        LookupTrace::new(1 << p.shift_av),            // requant_av
-        LookupTrace::new(1 << p.shift_attn_proj),     // requant_attn_proj
-        LookupTrace::new(1 << p.shift_ffn_up),        // requant_ffn_up
-        LookupTrace::new(1 << 16),                    // gelu
-        LookupTrace::new(1 << p.shift_ffn_down),      // requant_ffn_down
+        LookupTrace::new(1 << 16),                       // ln_rsqrt
+        LookupTrace::new_requant(p.shift_ln_norm),       // ln_norm_requant
+        LookupTrace::new_requant(p.shift_qkv),           // requant_qkv
+        LookupTrace::new_requant(p.shift_scores),        // requant_scores
+        LookupTrace::new(1 << 16),                       // exp
+        LookupTrace::new(1 << 16),                       // softmax_recip
+        LookupTrace::new_requant(p.shift_softmax_norm),  // softmax_norm_requant
+        LookupTrace::new_requant(p.shift_av),            // requant_av
+        LookupTrace::new_requant(p.shift_attn_proj),     // requant_attn_proj
+        LookupTrace::new_requant(p.shift_ffn_up),        // requant_ffn_up
+        LookupTrace::new(1 << 16),                       // gelu
+        LookupTrace::new_requant(p.shift_ffn_down),      // requant_ffn_down
     ];
 
     // ---- LN1 ----
-    let ln1 = layer_norm(x_in, &w.ln1_gain, &w.ln1_bias, luts, t, &mut traces);
+    let ln1 = {
+        let (t0, rest) = traces.split_at_mut(1);
+        layer_norm(x_in, &w.ln1_gain, &w.ln1_bias, luts, t, &mut t0[0], &mut rest[0])
+    };
 
     // ---- fused QKV projection ----
-    let qkv_acc = gemm_i64(&ln1.out, &w.c_attn, t, D, 3 * D);
+    let mut qkv_acc = gemm_i64(&ln1.out, &w.c_attn, t, D, 3 * D);
+    if let Some(b) = biases {
+        // Bias folded at the requant output scale (spec §P5 biases); witness
+        // accumulators are post-bias (what the requant lookup consumes).
+        for i in 0..t {
+            for j in 0..3 * D {
+                qkv_acc[i * 3 * D + j] += (b.c_attn[j] as i64) << p.shift_qkv;
+            }
+        }
+    }
     let mut q = vec![0i16; t * D];
     let mut k = vec![0i16; t * D];
     let mut v = vec![0i16; t * D];
@@ -395,6 +495,7 @@ pub fn forward_layer(x_in: &[i16], w: &LayerWeights, luts: &Luts, t: usize) -> L
     // ---- per-head causal attention ----
     let mut scores_acc = Vec::with_capacity(H * caus);
     let mut scores_q = Vec::with_capacity(H * caus);
+    let mut row_shift = Vec::with_capacity(H * t);
     let mut exp_out = Vec::with_capacity(H * caus);
     let mut denoms = Vec::with_capacity(H * t);
     let mut recips = Vec::with_capacity(H * t);
@@ -420,15 +521,32 @@ pub fn forward_layer(x_in: &[i16], w: &LayerWeights, luts: &Luts, t: usize) -> L
         // w·V GEMM (zeros above the diagonal contribute nothing).
         let mut w_pad = vec![0i16; t * t];
         for i in 0..t {
-            let mut denom: i64 = 0;
             let row_start = softmax_w.len(); // == exp row start too
+            // Pass 1: requant the causal row of scores (the row shift needs
+            // the whole requantized row before any exp lookup).
+            let s_row_start = scores_q.len();
             for j in 0..=i {
                 let acc = s_full[i * t + j];
                 let s = requant_traced(&mut traces, TableId::RequantScores, acc, p.shift_scores);
-                let e = luts.exp[(s as u16) as usize];
-                traces[TableId::Exp as usize].push(s as i64, e, (s as u16) as usize);
                 scores_acc.push(acc);
                 scores_q.push(s);
+            }
+            // P5 stable softmax: c = row max, exp looked up on s' = s − c
+            // (c = 0 reproduces the P4 path bit-for-bit).
+            let c: i16 = if p.softmax_row_shift {
+                *scores_q[s_row_start..].iter().max().unwrap()
+            } else {
+                0
+            };
+            row_shift.push(c);
+            // Pass 2: exp lookups + denominator.
+            let mut denom: i64 = 0;
+            for j in 0..=i {
+                let sp = scores_q[s_row_start + j] as i32 - c as i32;
+                assert!(sp >= i16::MIN as i32, "softmax row spread exceeds the exp table domain");
+                let idx = (sp as i16 as u16) as usize;
+                let e = luts.exp[idx];
+                traces[TableId::Exp as usize].push(sp as i64, e, idx);
                 exp_out.push(e);
                 denom += e as i64;
             }
@@ -469,7 +587,14 @@ pub fn forward_layer(x_in: &[i16], w: &LayerWeights, luts: &Luts, t: usize) -> L
     }
 
     // ---- attention output projection + residual ----
-    let proj_acc = gemm_i64(&av_q, &w.attn_proj, t, D, D);
+    let mut proj_acc = gemm_i64(&av_q, &w.attn_proj, t, D, D);
+    if let Some(b) = biases {
+        for i in 0..t {
+            for j in 0..D {
+                proj_acc[i * D + j] += (b.attn_proj[j] as i64) << p.shift_attn_proj;
+            }
+        }
+    }
     let attn_proj_q: Vec<i16> = proj_acc
         .iter()
         .map(|&acc| requant_traced(&mut traces, TableId::RequantAttnProj, acc, p.shift_attn_proj))
@@ -477,10 +602,20 @@ pub fn forward_layer(x_in: &[i16], w: &LayerWeights, luts: &Luts, t: usize) -> L
     let attn_block_out = residual_add(x_in, &attn_proj_q);
 
     // ---- LN2 ----
-    let ln2 = layer_norm(&attn_block_out, &w.ln2_gain, &w.ln2_bias, luts, t, &mut traces);
+    let ln2 = {
+        let (t0, rest) = traces.split_at_mut(1);
+        layer_norm(&attn_block_out, &w.ln2_gain, &w.ln2_bias, luts, t, &mut t0[0], &mut rest[0])
+    };
 
     // ---- FFN ----
-    let ffn_up_acc = gemm_i64(&ln2.out, &w.ffn_up, t, D, DFF);
+    let mut ffn_up_acc = gemm_i64(&ln2.out, &w.ffn_up, t, D, DFF);
+    if let Some(b) = biases {
+        for i in 0..t {
+            for j in 0..DFF {
+                ffn_up_acc[i * DFF + j] += (b.ffn_up[j] as i64) << p.shift_ffn_up;
+            }
+        }
+    }
     let ffn_up_q: Vec<i16> = ffn_up_acc
         .iter()
         .map(|&acc| requant_traced(&mut traces, TableId::RequantFfnUp, acc, p.shift_ffn_up))
@@ -493,7 +628,14 @@ pub fn forward_layer(x_in: &[i16], w: &LayerWeights, luts: &Luts, t: usize) -> L
             g
         })
         .collect();
-    let ffn_down_acc = gemm_i64(&gelu_out, &w.ffn_down, t, DFF, D);
+    let mut ffn_down_acc = gemm_i64(&gelu_out, &w.ffn_down, t, DFF, D);
+    if let Some(b) = biases {
+        for i in 0..t {
+            for j in 0..D {
+                ffn_down_acc[i * D + j] += (b.ffn_down[j] as i64) << p.shift_ffn_down;
+            }
+        }
+    }
     let ffn_down_q: Vec<i16> = ffn_down_acc
         .iter()
         .map(|&acc| requant_traced(&mut traces, TableId::RequantFfnDown, acc, p.shift_ffn_down))
@@ -516,6 +658,7 @@ pub fn forward_layer(x_in: &[i16], w: &LayerWeights, luts: &Luts, t: usize) -> L
         q,
         scores_acc,
         scores_q,
+        row_shift,
         exp_out,
         denoms,
         recips,

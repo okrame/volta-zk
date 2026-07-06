@@ -54,6 +54,9 @@ pub struct LutParams {
     pub shift_attn_proj: u32,
     pub shift_ffn_up: u32,
     pub shift_ffn_down: u32,
+    /// P5 stable softmax (spec §P5): exp is looked up on `s' = s − c_row`
+    /// with `c_row` = max of the causal row. False = P4 behavior.
+    pub softmax_row_shift: bool,
 }
 
 impl Default for LutParams {
@@ -77,6 +80,7 @@ impl Default for LutParams {
             shift_attn_proj: 10,
             shift_ffn_up: 10,
             shift_ffn_down: 10,
+            softmax_row_shift: false,
         }
     }
 }

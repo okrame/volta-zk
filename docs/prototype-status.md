@@ -56,6 +56,62 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-06 (P6 plan, pre-registered)**: scope, design decisions and gate,
+  fixed before implementation (user constraints: still the 11 GB / 4-core VM;
+  P7 moves to cloud CUDA; comm up to ~150–200 MB/response acceptable as a
+  post-response download, but every saved MB counts):
+  1. **Two-phase shared-α LogUp restructure** (the deferred ÷12 amortization,
+     P5 closing #2, unified with cross-token batching): phase 1 binds ALL
+     element-wise auths model-wide — boundaries, LN/attn vectors, and ONE
+     global multiplicity vector per **table content** (content key =
+     `Range(shift)` for requant/remainder tables, `Pair(lut)` for exp / gelu /
+     ln_rsqrt / softmax_recip; equal-shift range tables merge across sites,
+     layers AND phases — the ledger 2026-07-06 #6 freebie). One α per content
+     is drawn only after phase 1 (strictly later than every binding it
+     depends on — a strengthening of the current per-instance ordering).
+     Phase 2 runs the per-site lookup-side trees with the shared α (no
+     per-site table side, no per-site mult auth), collecting authenticated
+     root fractions per content; per content, ONE table-side tree against the
+     global multiplicity vector + an authenticated fraction-sum chain
+     (running (P,Q), 3 Π_Prod rows + 3 full corrs per site) ties
+     Σ_sites p_s/q_s = p_t/q_t, closed by the existing root cross-check.
+     Expected effect at T=100: multiplicity corr 59.4 MB → ~10 MB (one 8 B
+     vector per content, ~20 contents), table-side E-mults ÷(sites/content).
+  2. **Decode = deferred stacked chunk proving** (P4 dev. #8 verbatim
+     constraint): witness generation is autoregressive (prompt 100 + 50
+     greedy-argmax tokens, KV cache append-only), proving is deferred to end
+     of response and covers each decode chunk (default ONE chunk of Q=50) as
+     a batch of Q rows — never per-token instances, never per-token PCS
+     claims. Attention generalizes to a **rectangular offset-causal band**:
+     queries = the chunk's Q rows (positions t0..t0+Q), keys/values = the
+     full cache S = t0+Q, mask `j ≤ t0+i`, rect domains h_pad×Q_pad×S_pad
+     (prefill = the degenerate band t0=0, Q=S=T — same code path). All
+     row-local machinery (LN, FFN, requant sites, seams, embed requant +
+     selection with the wpe window at offset t0) runs unchanged at t=Q.
+  3. **Authenticated KV cache across phases** (mirror of M4): decode K/V rows
+     are authenticated once per chunk under fresh position-separated domains;
+     the band's K̃/Ṽ full-cache openings resolve as weighted streamed MAC
+     openings over BOTH segments (prefill auth + chunk auths). Anti-replay
+     gate: reusing / mixing a cache row's corrections across positions or
+     layers must fail verification (smoke test, cheating-prover emulation).
+  4. **Logits at every decode position**: final-LN runs as a t=Q batch on the
+     last layer's decode rows; the public logits matrix (Q×V) is bound at one
+     random (ρ_v, ρ_q) and reduced by one blind matvec sumcheck to one wte
+     claim (same machinery as P5's single-row logits claim); token sampling
+     is then a PUBLIC argmax check per position. The response tokens are
+     public output, so decode selection S(z) stays public.
+  5. **Gate (architectural, CPU)**: per-token proving cost ~flat as the cache
+     grows — measured with a chunked run (5 chunks × 10 tokens, cache
+     100→150): cost/chunk may grow only by the O(S·d) attention term, never
+     O(S²); anti-replay smoke passes; golden check (numpy decode reference,
+     50 tokens bit-exact). Recorded, not gated: ρ_decode, verified tokens/s,
+     bytes/token with breakdown, PCS opening with stacked prefill+decode
+     claims (~2× prefill claims), peak RSS ≤ 11 GB.
+  6. Out of scope, logged for P7: real-PCG spike (pre-registered P5 agenda),
+     PCS commitment consolidation / query-count levers, per-tensor RLC
+     merging of prefill+decode weight claims (the batch opening at
+     2.3 ms/claim absorbs ~100 claims fine on CPU).
+
 - **2026-07-06 (P5 plan, pre-registered)**: pre-P5 assessment closed with the
   user: **no CPU optimization cycle before P5** — the remaining LogUp/PCS
   levers (helper-column family, padding layout, NEON/lazy reduction) are

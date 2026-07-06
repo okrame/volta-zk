@@ -509,18 +509,23 @@ fn main() {
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .unwrap_or_default();
+    // Dirty = TRACKED modifications only (untracked result JSONs and notes
+    // are expected at run time and don't change the measured code).
     let git_dirty = std::process::Command::new("git")
-        .args(["status", "--porcelain"])
+        .args(["status", "--porcelain", "--untracked-files=no"])
         .output()
         .map(|o| !o.stdout.is_empty())
         .unwrap_or(true);
 
     let bytes_total =
         out.bytes.boundary + out.bytes.mult + out.bytes.ln_vectors + out.bytes.attn_vectors + out.bytes.rounds_claims;
+    // The Transcript byte ledger counts EVERY prover→verifier byte — the
+    // correction streams above AND the PCS opening messages are already in
+    // it, so it IS the total communication (adding the breakdown fields
+    // again would double-count).
     let transcript_bytes_total = txp.total_bytes();
-    let total_comm_response_bytes = bytes_total + transcript_bytes_total + opening_bytes_total;
-    let total_comm_response_projected_2x_pcs_bytes =
-        bytes_total + transcript_bytes_total + 2 * opening_bytes_total;
+    let total_comm_response_bytes = transcript_bytes_total;
+    let total_comm_response_projected_2x_pcs_bytes = transcript_bytes_total + opening_bytes_total;
 
     let report = Report {
         milestone: if quick { "P5-quick".into() } else { "P5".into() },

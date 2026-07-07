@@ -44,12 +44,15 @@
 //! exercised here exactly as it is per-layer.
 
 use crate::block_proof::{
-    auth_ln_vecs_p, auth_matrix_rows_p, auth_matrix_rows_v, auth_mult_p, close_mult_p,
-    close_mult_v, expand_ln_vecs_k, keys_mult_v, open_matrix_k,
-    open_matrix_p, prove_layer, prove_ln_chain, prove_range_site, range_mult, range_mult_chained,
-    verify_layer, verify_ln_chain, verify_range_site, BlockCtxP, BlockCtxV, InstanceLookups,
-    LayerBytes, LayerOut, LayerProof, LnChainProof,
+    add_range_mult, auth_ln_vecs_p, auth_matrix_rows_p, auth_matrix_rows_v, expand_ln_vecs_k,
+    layer_content_keys, layer_dom_base, open_matrix_k, open_matrix_p, prove_layer_phase1,
+    prove_layer_phase2, prove_ln_chain, prove_range_site, range_keys, verify_layer_phase1,
+    verify_layer_phase2, verify_ln_chain, verify_range_site, BlockCtxP, BlockCtxV,
+    InstanceLookups, LayerBytes, LayerOut, LayerP1, LayerProof, LayerV1, LnChainProof,
+    TableBankP, TableBankV, TableCloseProof,
 };
+use crate::logup::{Doms, TableKey};
+use std::collections::BTreeSet;
 use crate::gemm_proof::{WeightClaimP, WireKey, WireOut};
 use crate::logup::{eval_mle_counted, Counters, ProdKeyTriples, ProdTriples};
 use crate::mle::eq_vec;
@@ -122,7 +125,6 @@ fn bit_coords(idx: usize, bits: usize) -> Vec<Fp2> {
 /// chain). `None` at the model level means shift == 0 (identity, no
 /// instance — see module docs).
 pub struct SeamProof {
-    pub mult_corr: Vec<u64>,
     pub inst: crate::logup::BlindInstance,
 }
 
@@ -130,7 +132,6 @@ pub struct EmbedProof {
     /// Boundary auth of `embed.out` (T×d, 8 B/value — same convention as the
     /// per-layer boundaries).
     pub out_corr: Vec<u64>,
-    pub mult_corr: Vec<u64>,
     pub inst: crate::logup::BlindInstance,
 }
 
@@ -142,11 +143,6 @@ pub struct FinalLnProof {
     pub row_corr: Vec<u64>,
     /// LN vector corrections [mean, var, rsqrt_in, rsqrt_out] at t = 1.
     pub ln_vec_corrs: [Vec<u64>; 4],
-    /// [ln_norm (main/stage-2), ln_rsqrt] multiplicity corrections.
-    pub mult_corr: [Vec<u64>; 2],
-    /// ln_norm stage-1 multiplicity corr — Some iff shift_ln_norm > 16 (the
-    /// real artifact has shift_ln_norm = 20, so this path IS exercised).
-    pub m_ln_s1_corr: Option<Vec<u64>>,
     pub ln: LnChainProof,
 }
 
@@ -185,6 +181,9 @@ pub struct ModelProof {
     pub final_ln: FinalLnProof,
     pub logits: LogitsClaimProof,
     pub selection: SelectionProof,
+    /// Per-content table closures (ONE multiset argument per table content
+    /// per model — P6 shared-α restructure), canonical `TableKey` order.
+    pub tables: Vec<TableCloseProof>,
 }
 
 pub struct ModelOut {
@@ -211,11 +210,39 @@ pub struct ModelOutV {
 // Prover
 // ---------------------------------------------------------------------------
 
-/// Prove the whole model. Boundary/instance machinery is IDENTICAL to
-/// `prove_layer`'s (this function is pure orchestration); it accumulates
-/// every layer's + every model-level context's Π_Prod / Π_ZeroBatch rows
-/// into ONE pair of vectors, returned to the caller for a single closure
-/// (exactly `run_layer_case`'s pattern, scaled to the model).
+/// The model's expected table-content set, from PUBLIC parameters (per-layer
+/// shift overrides, seam shifts, embed shift). Both parties derive it.
+pub fn model_content_keys(model: &Gpt2Model) -> BTreeSet<TableKey> {
+    let mut keys = BTreeSet::new();
+    for l in 0..L {
+        let mut luts_l = model.luts.clone();
+        luts_l.params.shift_attn_proj = model.p.shift_attn_proj[l];
+        luts_l.params.shift_ffn_down = model.p.shift_ffn_down[l];
+        layer_content_keys(&luts_l, &mut keys);
+    }
+    for &shift in &model.p.seam_shifts[..L - 1] {
+        if shift > 0 {
+            let (k, k1) = range_keys(shift);
+            keys.insert(k);
+            if let Some(k1) = k1 {
+                keys.insert(k1);
+            }
+        }
+    }
+    let (ke, ke1) = range_keys(model.p.shift_embed as u32);
+    keys.insert(ke);
+    if let Some(k1) = ke1 {
+        keys.insert(k1);
+    }
+    keys
+}
+
+/// Prove the whole model (P6 two-phase pipeline). Phase 1 binds every
+/// boundary / element auth and ONE global multiplicity vector per table
+/// content, model-wide; per-content αs are drawn only then; phase 2 runs all
+/// chains/instances with the shared αs and closes ONE table side per
+/// content. Π_Prod / Π_ZeroBatch rows accumulate into ONE pair of vectors,
+/// returned to the caller for a single closure.
 pub fn prove_model(
     model: &Gpt2Model,
     wit: &ModelWitness,
@@ -227,6 +254,7 @@ pub fn prove_model(
     let rb_t = pad_bits(t);
     let n_vars_td = d_cb + rb_t;
 
+    let mut bank = TableBankP::new();
     let mut prod: ProdTriples = Vec::new();
     let mut zero: Vec<ProverAuthed> = Vec::new();
     let mut weight_claims: Vec<WeightClaimP> = Vec::with_capacity(4 * L);
@@ -235,20 +263,106 @@ pub fn prove_model(
     let mut ctr_other = Counters::default();
     let mut lookups: Vec<InstanceLookups> = Vec::new();
     let mut layer_proofs: Vec<LayerProof> = Vec::with_capacity(L);
-    // (dom_xin, dom_fbo) per layer — needed for the seam / embed / final-LN
-    // boundary re-openings.
     let mut boundary_doms: Vec<(u64, u64)> = Vec::with_capacity(L);
 
-    // ---- (a) 12 layers -----------------------------------------------------
-    for l in 0..L {
+    let luts_for = |l: usize| {
         let mut luts_l = model.luts.clone();
         luts_l.params.shift_attn_proj = model.p.shift_attn_proj[l];
         luts_l.params.shift_ffn_down = model.p.shift_ffn_down[l];
-        let mut cx = BlockCtxP::new(stream, tx, l as u8);
-        let (proof, out): (LayerProof, LayerOut) = prove_layer(
+        luts_l
+    };
+
+    // ======================= PHASE 1 (bind everything) =====================
+    let mut layer_p1s: Vec<LayerP1> = Vec::with_capacity(L);
+    for l in 0..L {
+        let luts_l = luts_for(l);
+        let mut cx = BlockCtxP::new(stream, tx, l as u8, &mut bank);
+        let p1 = prove_layer_phase1(&wit.layers[l], &luts_l, &mut cx);
+        layer_p1s.push(p1);
+    }
+    // Seams: multiplicity contributions only (auth-free phase 1).
+    for l in 0..L - 1 {
+        let shift = model.p.seam_shifts[l];
+        assert!(
+            shift <= 16,
+            "P5 seam shifts must be ≤16 (no chained seams supported here) — got {shift} at seam {l}"
+        );
+        if shift > 0 {
+            let acc: Vec<i64> = wit.layers[l].ffn_block_out.iter().map(|&v| v as i64).collect();
+            add_range_mult(&mut bank, &acc, &wit.layers[l + 1].x_in, t, D, shift);
+        }
+    }
+    // Embedding: out boundary auth + requant multiplicities.
+    let s_emb = model.p.shift_embed;
+    assert!(
+        s_emb > 0 && s_emb <= 16,
+        "P5 embed shift must be single-stage positive ≤16 (got {s_emb}) — left-shift/chained embed not implemented here"
+    );
+    let s_emb = s_emb as u32;
+    let (embed_doms, dom_out, out_corr) = {
+        let mut cx = BlockCtxP::new(stream, tx, 220, &mut bank);
+        let dom_out = cx.doms.take(t as u64);
+        let out_corr = auth_matrix_rows_p(cx.stream, cx.tx, dom_out, &wit.embed.out, t, D);
+        add_range_mult(cx.bank, &wit.embed.acc, &wit.embed.out, t, D, s_emb);
+        (cx.doms, dom_out, out_corr)
+    };
+    // Final LN (t=2 duplicated-row batch — see the P5-DEVIATION note below).
+    let t_ln = 2usize;
+    let rb_ln = 1usize;
+    let s_ln = model.p.lut.shift_ln_norm;
+    let out2: Vec<i16> =
+        wit.final_ln.out.iter().chain(wit.final_ln.out.iter()).copied().collect();
+    let acc_ln2: Vec<i64> = wit
+        .final_ln
+        .norm_trace
+        .inputs
+        .iter()
+        .chain(wit.final_ln.norm_trace.inputs.iter())
+        .copied()
+        .collect();
+    let last_row: Vec<i16> = wit.layers[L - 1].ffn_block_out[(t - 1) * D..t * D].to_vec();
+    let x2: Vec<i16> = last_row.iter().chain(last_row.iter()).copied().collect();
+    let mean2 = [wit.final_ln.mean, wit.final_ln.mean];
+    let var2 = [wit.final_ln.var, wit.final_ln.var];
+    let rin2 = [wit.final_ln.rsqrt_in, wit.final_ln.rsqrt_in];
+    let rout2 = [wit.final_ln.rsqrt_out, wit.final_ln.rsqrt_out];
+    let (fl_doms, dom_out_f, out_corr_f, lv_f, ln_vec_corrs_f, dom_row, row_corr) = {
+        let mut cx = BlockCtxP::new(stream, tx, 221, &mut bank);
+        let dom_out_f = cx.doms.take(t_ln as u64);
+        let out_corr_f = auth_matrix_rows_p(cx.stream, cx.tx, dom_out_f, &out2, t_ln, D);
+        let rout_pad = Fp::from_i64(model.luts.ln_rsqrt[0] as i64);
+        let (lv, ln_vec_corrs) =
+            auth_ln_vecs_p(&mut cx, rb_ln, &mean2, &var2, &rin2, &rout2, rout_pad);
+        let dom_row = cx.doms.take(t_ln as u64);
+        let row_corr = auth_matrix_rows_p(cx.stream, cx.tx, dom_row, &x2, t_ln, D);
+        add_range_mult(cx.bank, &acc_ln2, &out2, t_ln, D, s_ln);
+        let mut mult_rsq = vec![0u32; 1 << 16];
+        for &r in &rin2 {
+            mult_rsq[r as usize] += 1;
+        }
+        cx.bank.add_mult(TableKey::LnRsqrt, &mult_rsq);
+        (cx.doms, dom_out_f, out_corr_f, lv, ln_vec_corrs, dom_row, row_corr)
+    };
+    // End of phase 1: authenticate every content vector, draw the αs.
+    debug_assert_eq!(
+        bank.content_keys(),
+        model_content_keys(model).into_iter().collect::<Vec<_>>(),
+        "prover bank contents diverge from the public content set"
+    );
+    let mut table_doms = Doms::new(layer_dom_base(240));
+    bank.finalize(stream, tx, &mut table_doms);
+    bytes.mult += bank.mult_bytes();
+
+    // ======================= PHASE 2 (chains + instances) ==================
+    // ---- (a) 12 layers -----------------------------------------------------
+    for (l, p1) in layer_p1s.into_iter().enumerate() {
+        let luts_l = luts_for(l);
+        let mut cx = BlockCtxP::with_doms(stream, tx, p1.doms, &mut bank);
+        let (proof, out): (LayerProof, LayerOut) = prove_layer_phase2(
             &wit.layers[l],
             &model.layers[l].0,
             &luts_l,
+            p1,
             &mut cx,
             Some(&model.layers[l].1),
         );
@@ -268,26 +382,19 @@ pub fn prove_model(
     let mut seams: Vec<Option<SeamProof>> = Vec::with_capacity(L - 1);
     for l in 0..L - 1 {
         let shift = model.p.seam_shifts[l];
-        assert!(
-            shift <= 16,
-            "P5 seam shifts must be ≤16 (no chained seams supported here) — got {shift} at seam {l}"
-        );
-        let mut cx = BlockCtxP::new(stream, tx, 200 + l as u8);
+        let mut cx = BlockCtxP::new(stream, tx, 200 + l as u8, &mut bank);
         let (dom_xin_next, _) = boundary_doms[l + 1];
         let (_, dom_fbo_l) = boundary_doms[l];
         if shift > 0 {
             let acc: Vec<i64> = wit.layers[l].ffn_block_out.iter().map(|&v| v as i64).collect();
             let out16 = &wit.layers[l + 1].x_in;
-            let mult = range_mult(&acc, out16, t, D, shift);
-            let (dom_m, mult_fp, mult_corr) = auth_mult_p(&mut cx, &mult);
-            let site = prove_range_site(&acc, out16, t, D, shift, &mult, None, Vec::new(), &mut cx);
-            close_mult_p(&mut cx, dom_m, &mult_fp, &site.main);
+            let site = prove_range_site(&acc, out16, t, D, shift, Vec::new(), &mut cx);
             let out_open = open_matrix_p(cx.stream, dom_xin_next, out16, t, D, &site.main.point);
             cx.zero.push(site.main.col_claims[1].value.sub(out_open));
             let acc_open =
                 open_matrix_p(cx.stream, dom_fbo_l, &wit.layers[l].ffn_block_out, t, D, site.acc_point());
             cx.zero.push(site.acc_claim.sub(acc_open));
-            seams.push(Some(SeamProof { mult_corr, inst: site.main.proof }));
+            seams.push(Some(SeamProof { inst: site.main.proof }));
         } else {
             let rho: Vec<Fp2> = (0..n_vars_td).map(|_| cx.tx.challenge_fp2()).collect();
             let a = open_matrix_p(cx.stream, dom_fbo_l, &wit.layers[l].ffn_block_out, t, D, &rho);
@@ -303,20 +410,9 @@ pub fn prove_model(
     }
 
     // ---- (d) embedding ---------------------------------------------------
-    let mut cx = BlockCtxP::new(stream, tx, 220);
-    let dom_out = cx.doms.take(t as u64);
-    let out_corr = auth_matrix_rows_p(cx.stream, cx.tx, dom_out, &wit.embed.out, t, D);
-    let s_emb = model.p.shift_embed;
-    assert!(
-        s_emb > 0 && s_emb <= 16,
-        "P5 embed shift must be single-stage positive ≤16 (got {s_emb}) — left-shift/chained embed not implemented here"
-    );
-    let s_emb = s_emb as u32;
-    let mult = range_mult(&wit.embed.acc, &wit.embed.out, t, D, s_emb);
-    let (dom_m, mult_fp, mult_corr) = auth_mult_p(&mut cx, &mult);
+    let mut cx = BlockCtxP::with_doms(stream, tx, embed_doms, &mut bank);
     let site =
-        prove_range_site(&wit.embed.acc, &wit.embed.out, t, D, s_emb, &mult, None, Vec::new(), &mut cx);
-    close_mult_p(&mut cx, dom_m, &mult_fp, &site.main);
+        prove_range_site(&wit.embed.acc, &wit.embed.out, t, D, s_emb, Vec::new(), &mut cx);
     let out_open = open_matrix_p(cx.stream, dom_out, &wit.embed.out, t, D, &site.main.point);
     cx.zero.push(site.main.col_claims[1].value.sub(out_open));
     let embed_acc_point = site.acc_point().to_vec();
@@ -326,7 +422,7 @@ pub fn prove_model(
     let e_open = open_matrix_p(cx.stream, dom_out, &wit.embed.out, t, D, &rho_e);
     let x0_open = open_matrix_p(cx.stream, dom_xin0, &wit.layers[0].x_in, t, D, &rho_e);
     cx.zero.push(e_open.sub(x0_open));
-    let embed = EmbedProof { out_corr, mult_corr, inst: site.main.proof };
+    let embed = EmbedProof { out_corr, inst: site.main.proof };
     let BlockCtxP { prod: lp, zero: lz, ctr_instances: lci, ctr_other: lco, .. } = cx;
     prod.extend(lp);
     zero.extend(lz);
@@ -334,69 +430,12 @@ pub fn prove_model(
     add_counters(&mut ctr_other, &lco);
 
     // ---- (e) final LN (last row only) --------------------------------------
-    // **P5-DEVIATION(final-ln-t1)**: the LogUp/blind-sumcheck machinery
-    // (`blind_prove` et al.) asserts `n.is_power_of_two() && n >= 2` — it has
-    // no 0-round degenerate case. `t = 1` is ALREADY a power of two with
-    // `pad_bits(1) = 0`, so every t=1 instance here (ln_rsqrt pair, the
-    // ln_norm_requant range site, the hadamard) would be a length-1
-    // sumcheck, which the shared machinery cannot run. Fix: run the whole
-    // final-LN chain on a length-2 batch where row 1 is an HONEST
-    // byte-identical duplicate of row 0 (the real last row) — every relation
-    // here (LN stats, LUT membership, hadamard) is per-row-independent, so a
-    // duplicate row trivially satisfies them, and row 1's output is bound to
-    // nothing downstream (only row 0 is tied to the public `final_ln.out`
-    // boundary and to `layer[11].ffn_block_out`'s real last row below). This
-    // is NOT a soundness relaxation — a cheating prover gains nothing by
-    // deviating row 1, since nothing consumes it.
-    let mut cx = BlockCtxP::new(stream, tx, 221);
-    let t_ln = 2usize; // pad_bits(2) = 1 ⇒ n = 2, satisfies the machinery's floor.
-    let rb_ln = 1usize;
-
-    let out2: Vec<i16> =
-        wit.final_ln.out.iter().chain(wit.final_ln.out.iter()).copied().collect();
-    let dom_out_f = cx.doms.take(t_ln as u64);
-    let out_corr_f = auth_matrix_rows_p(cx.stream, cx.tx, dom_out_f, &out2, t_ln, D);
-
-    let rout_pad = Fp::from_i64(model.luts.ln_rsqrt[0] as i64);
-    let mean2 = [wit.final_ln.mean, wit.final_ln.mean];
-    let var2 = [wit.final_ln.var, wit.final_ln.var];
-    let rin2 = [wit.final_ln.rsqrt_in, wit.final_ln.rsqrt_in];
-    let rout2 = [wit.final_ln.rsqrt_out, wit.final_ln.rsqrt_out];
-    let (lv, ln_vec_corrs) = auth_ln_vecs_p(&mut cx, rb_ln, &mean2, &var2, &rin2, &rout2, rout_pad);
-
-    let s_ln = model.p.lut.shift_ln_norm;
-    let acc_ln2: Vec<i64> = wit
-        .final_ln
-        .norm_trace
-        .inputs
-        .iter()
-        .chain(wit.final_ln.norm_trace.inputs.iter())
-        .copied()
-        .collect();
-    let (mult_ln, mult_ln_s1) = if s_ln <= 16 {
-        (range_mult(&acc_ln2, &out2, t_ln, D, s_ln), None)
-    } else {
-        let (m1, m2) = range_mult_chained(&acc_ln2, t_ln, D, s_ln);
-        (m2, Some(m1))
-    };
-    let mut mult_rsq = vec![0u32; 1 << 16];
-    for &r in &rin2 {
-        mult_rsq[r as usize] += 1;
-    }
-
-    let (dom_m_ln, mult_ln_fp, m_ln_corr) = auth_mult_p(&mut cx, &mult_ln);
-    let ln_s1_auth = mult_ln_s1.as_ref().map(|m1| auth_mult_p(&mut cx, m1));
-    let (dom_m_rsq, mult_rsq_fp, m_rsq_corr) = auth_mult_p(&mut cx, &mult_rsq);
-
-    // Re-auth the pre-LN input's last row, duplicated the same way (2×D) —
-    // see module docs and the deviation note above.
-    let last_row: Vec<i16> = wit.layers[L - 1].ffn_block_out[(t - 1) * D..t * D].to_vec();
-    let x2: Vec<i16> = last_row.iter().chain(last_row.iter()).copied().collect();
-    let dom_row = cx.doms.take(t_ln as u64);
-    let row_corr = auth_matrix_rows_p(cx.stream, cx.tx, dom_row, &x2, t_ln, D);
-
+    // **P5-DEVIATION(final-ln-t1)**: run on a length-2 batch where row 1 is
+    // an HONEST duplicate of row 0 (the machinery needs n ≥ 2; row 1 is
+    // bound to nothing downstream — not a soundness relaxation).
+    let mut cx = BlockCtxP::with_doms(stream, tx, fl_doms, &mut bank);
     // Bind row 0 of the duplicated x-auth to layer[11].ffn_block_out's real
-    // last row (row 1 is an honest duplicate, unbound — see deviation note).
+    // last row (row 1 is an honest duplicate, unbound).
     let rho_r: Vec<Fp2> = (0..d_cb).map(|_| cx.tx.challenge_fp2()).collect();
     let mut pt_row0 = rho_r.clone();
     pt_row0.extend(bit_coords(0, rb_ln));
@@ -426,18 +465,7 @@ pub fn prove_model(
         &mean2,
         &model.lnf_gain,
         &model.lnf_bias,
-        &lv,
-        &mult_ln,
-        &mult_ln_fp,
-        dom_m_ln,
-        mult_ln_s1.as_ref().map(|m1| {
-            let (d, fp, _) = ln_s1_auth.as_ref().unwrap();
-            (m1.as_slice(), fp.as_slice(), *d)
-        }),
-        &mult_rsq,
-        &mult_rsq_fp,
-        dom_m_rsq,
-        &model.luts.ln_rsqrt,
+        &lv_f,
         &wire,
         &mut cx,
     );
@@ -445,9 +473,7 @@ pub fn prove_model(
     let final_ln = FinalLnProof {
         out_corr: out_corr_f,
         row_corr,
-        ln_vec_corrs,
-        mult_corr: [m_ln_corr, m_rsq_corr],
-        m_ln_s1_corr: ln_s1_auth.map(|(_, _, c)| c),
+        ln_vec_corrs: ln_vec_corrs_f,
         ln,
     };
     let BlockCtxP { prod: lp, zero: lz, ctr_instances: lci, ctr_other: lco, .. } = cx;
@@ -461,7 +487,7 @@ pub fn prove_model(
     // blind matvec sumcheck over the d vars; resolution = one wte PCS claim
     // (authenticated) × the MAC opening of the final-LN row (Π_Prod row).
     let mut embed_claims: Vec<WeightClaimP> = Vec::with_capacity(3);
-    let mut cx = BlockCtxP::new(stream, tx, 230);
+    let mut cx = BlockCtxP::new(stream, tx, 230, &mut bank);
     let rho_v: Vec<Fp2> = (0..16).map(|_| cx.tx.challenge_fp2()).collect();
     let eq_v = eq_vec(&rho_v);
     cx.ctr_other.fp2_mults += 1 << 16;
@@ -539,7 +565,7 @@ pub fn prove_model(
     // Σ_z S(z)·w̃te(z, r_d) + w̃pe(r_d ‖ r_i ‖ 0…), S(z) public from the
     // prompt tokens. Blind sumcheck over the 16 vocab-bit vars, closed by a
     // zero row (S̃(ρ_z) public) against one wte claim, plus one wpe claim.
-    let mut cx = BlockCtxP::new(stream, tx, 231);
+    let mut cx = BlockCtxP::new(stream, tx, 231, &mut bank);
     let r_d = &embed_acc_point[..d_cb];
     let r_i = &embed_acc_point[d_cb..];
     let eq_i = eq_vec(r_i);
@@ -622,8 +648,26 @@ pub fn prove_model(
     add_counters(&mut ctr_instances, &lci);
     add_counters(&mut ctr_other, &lco);
 
-    let proof =
-        ModelProof { layers: layer_proofs, seams, embed, final_ln, logits: logits_proof, selection };
+    // ---- (h) per-content table sides (ONE multiset argument per content) ----
+    let tables = bank.close(
+        &model.luts,
+        stream,
+        &mut table_doms,
+        tx,
+        &mut ctr_instances,
+        &mut prod,
+        &mut zero,
+    );
+
+    let proof = ModelProof {
+        layers: layer_proofs,
+        seams,
+        embed,
+        final_ln,
+        logits: logits_proof,
+        selection,
+        tables,
+    };
     let out = ModelOut {
         weight_claims,
         embed_claims,
@@ -662,15 +706,68 @@ pub fn verify_model(
     // (xin_keys, fbo_keys) per layer.
     let mut boundary_keys: Vec<(Vec<Fp2>, Vec<Fp2>)> = Vec::with_capacity(L);
 
-    // ---- (a) 12 layers -----------------------------------------------------
-    for l in 0..L {
+    let luts_for = |l: usize| {
         let mut luts_l = model.luts.clone();
         luts_l.params.shift_attn_proj = model.p.shift_attn_proj[l];
         luts_l.params.shift_ffn_down = model.p.shift_ffn_down[l];
+        luts_l
+    };
+
+    // ======================= PHASE 1 mirror (key expansion) =================
+    let mut pre_bank = TableBankV::empty();
+    let mut layer_v1s: Vec<LayerV1> = Vec::with_capacity(L);
+    for l in 0..L {
+        let luts_l = luts_for(l);
+        let mut cx = BlockCtxV::new(vc, tx, l as u8, &mut pre_bank);
+        let v1 = verify_layer_phase1(t, &luts_l, &proof.layers[l], &mut cx)?;
+        layer_v1s.push(v1);
+    }
+    let s_emb = model.p.shift_embed;
+    if !(s_emb > 0 && s_emb <= 16) {
+        return None;
+    }
+    let s_emb = s_emb as u32;
+    let (embed_doms, out_keys) = {
+        let mut cx = BlockCtxV::new(vc, tx, 220, &mut pre_bank);
+        let dom_out = cx.doms.take(t as u64);
+        if proof.embed.out_corr.len() != t * D {
+            return None;
+        }
+        let out_keys = auth_matrix_rows_v(cx.ctx, dom_out, &proof.embed.out_corr, t, D);
+        (cx.doms, out_keys)
+    };
+    let t_ln = 2usize;
+    let rb_ln = 1usize;
+    let (fl_doms, out_keys_f, lvk_f, row_keys) = {
+        let mut cx = BlockCtxV::new(vc, tx, 221, &mut pre_bank);
+        if proof.final_ln.out_corr.len() != t_ln * D
+            || proof.final_ln.row_corr.len() != t_ln * D
+            || proof.final_ln.ln_vec_corrs.iter().any(|c| c.len() != t_ln)
+        {
+            return None;
+        }
+        let dom_out_f = cx.doms.take(t_ln as u64);
+        let out_keys_f =
+            auth_matrix_rows_v(cx.ctx, dom_out_f, &proof.final_ln.out_corr, t_ln, D);
+        let lvk = expand_ln_vecs_k(&mut cx, &proof.final_ln.ln_vec_corrs);
+        let dom_row = cx.doms.take(t_ln as u64);
+        let row_keys = auth_matrix_rows_v(cx.ctx, dom_row, &proof.final_ln.row_corr, t_ln, D);
+        (cx.doms, out_keys_f, lvk, row_keys)
+    };
+    // End of phase 1: expand the per-content multiplicity keys against the
+    // PUBLIC expected content set, draw the shared αs.
+    let expected = model_content_keys(model);
+    let mut table_doms = Doms::new(layer_dom_base(240));
+    let mut bank = TableBankV::finalize(&expected, &proof.tables, vc, tx, &mut table_doms)?;
+
+    // ======================= PHASE 2 mirror =================================
+    // ---- (a) 12 layers -----------------------------------------------------
+    for (l, v1) in layer_v1s.into_iter().enumerate() {
+        let luts_l = luts_for(l);
         let w = &model.layers[l].0;
         let b = &model.layers[l].1;
-        let mut cx = BlockCtxV::new(vc, tx, l as u8);
-        let out = verify_layer(
+        let mut cx = BlockCtxV::with_doms(vc, tx, v1.doms, &mut bank);
+        let out = verify_layer_phase2(
             t,
             &w.ln1_gain,
             &w.ln1_bias,
@@ -678,6 +775,7 @@ pub fn verify_model(
             &w.ln2_bias,
             &luts_l,
             &proof.layers[l],
+            v1,
             &mut cx,
             Some(b),
         )?;
@@ -691,16 +789,13 @@ pub fn verify_model(
     // ---- (c) seams -----------------------------------------------------------
     for l in 0..L - 1 {
         let shift = model.p.seam_shifts[l];
-        assert!(
-            shift <= 16,
-            "P5 seam shifts must be ≤16 (no chained seams supported here) — got {shift} at seam {l}"
-        );
-        let mut cx = BlockCtxV::new(vc, tx, 200 + l as u8);
+        if shift > 16 {
+            return None;
+        }
+        let mut cx = BlockCtxV::new(vc, tx, 200 + l as u8, &mut bank);
         match (&proof.seams[l], shift > 0) {
             (Some(sp), true) => {
-                let mult_keys = keys_mult_v(&mut cx, &sp.mult_corr);
                 let site = verify_range_site(n_vars_td, shift, &sp.inst, None, &[], &mut cx)?;
-                close_mult_v(&mut cx, &mult_keys, &site.main.mult_key);
                 let out_k = open_matrix_k(&boundary_keys[l + 1].0, t, D, &site.main.point);
                 cx.kzero.push(site.main.col_keys[1].key.sub(out_k));
                 let acc_open_k = open_matrix_k(&boundary_keys[l].1, t, D, site.acc_point());
@@ -720,17 +815,8 @@ pub fn verify_model(
     }
 
     // ---- (d) embedding ---------------------------------------------------
-    let mut cx = BlockCtxV::new(vc, tx, 220);
-    let dom_out = cx.doms.take(t as u64);
-    let out_keys = auth_matrix_rows_v(cx.ctx, dom_out, &proof.embed.out_corr, t, D);
-    let s_emb = model.p.shift_embed;
-    if !(s_emb > 0 && s_emb <= 16) {
-        return None;
-    }
-    let s_emb = s_emb as u32;
-    let mult_keys = keys_mult_v(&mut cx, &proof.embed.mult_corr);
+    let mut cx = BlockCtxV::with_doms(vc, tx, embed_doms, &mut bank);
     let site = verify_range_site(n_vars_td, s_emb, &proof.embed.inst, None, &[], &mut cx)?;
-    close_mult_v(&mut cx, &mult_keys, &site.main.mult_key);
     let out_k = open_matrix_k(&out_keys, t, D, &site.main.point);
     cx.kzero.push(site.main.col_keys[1].key.sub(out_k));
     let embed_acc_point = site.acc_point().to_vec();
@@ -743,20 +829,8 @@ pub fn verify_model(
     kprod.extend(lkp);
     kzero.extend(lkz);
 
-    // ---- (e) final LN (mirrors the t=2 duplicated-row fix — see the
-    // P5-DEVIATION(final-ln-t1) note in `prove_model`) -----------------------
-    let mut cx = BlockCtxV::new(vc, tx, 221);
-    let t_ln = 2usize;
-    let rb_ln = 1usize;
-    let dom_out_f = cx.doms.take(t_ln as u64);
-    let out_keys_f = auth_matrix_rows_v(cx.ctx, dom_out_f, &proof.final_ln.out_corr, t_ln, D);
-    let lvk = expand_ln_vecs_k(&mut cx, &proof.final_ln.ln_vec_corrs);
-    let mult_ln_keys = keys_mult_v(&mut cx, &proof.final_ln.mult_corr[0]);
-    let mult_ln_s1_keys = proof.final_ln.m_ln_s1_corr.as_ref().map(|c| keys_mult_v(&mut cx, c));
-    let mult_rsq_keys = keys_mult_v(&mut cx, &proof.final_ln.mult_corr[1]);
-
-    let dom_row = cx.doms.take(t_ln as u64);
-    let row_keys = auth_matrix_rows_v(cx.ctx, dom_row, &proof.final_ln.row_corr, t_ln, D);
+    // ---- (e) final LN (mirrors the t=2 duplicated-row fix) -----------------
+    let mut cx = BlockCtxV::with_doms(vc, tx, fl_doms, &mut bank);
     let rho_r: Vec<Fp2> = (0..d_cb).map(|_| cx.tx.challenge_fp2()).collect();
     let mut pt_row0 = rho_r.clone();
     pt_row0.extend(bit_coords(0, rb_ln));
@@ -778,12 +852,8 @@ pub fn verify_model(
         s_ln,
         &model.lnf_gain,
         &model.lnf_bias,
-        &model.luts.ln_rsqrt,
         &row_keys,
-        &lvk,
-        &mult_ln_keys,
-        mult_ln_s1_keys.as_deref(),
-        &mult_rsq_keys,
+        &lvk_f,
         &proof.final_ln.ln,
         &wk,
         &mut cx,
@@ -794,7 +864,7 @@ pub fn verify_model(
 
     // ---- (f) logits claim (mirror) -----------------------------------------
     let mut embed_keys: Vec<(Vec<Fp2>, VerifierKey)> = Vec::with_capacity(3);
-    let mut cx = BlockCtxV::new(vc, tx, 230);
+    let mut cx = BlockCtxV::new(vc, tx, 230, &mut bank);
     let rho_v: Vec<Fp2> = (0..16).map(|_| cx.tx.challenge_fp2()).collect();
     let eq_v = eq_vec(&rho_v);
     let mut l_eval = Fp2::ZERO;
@@ -829,7 +899,7 @@ pub fn verify_model(
     kzero.extend(lkz);
 
     // ---- (g) embedding selection (mirror) ----------------------------------
-    let mut cx = BlockCtxV::new(vc, tx, 231);
+    let mut cx = BlockCtxV::new(vc, tx, 231, &mut bank);
     let r_d = &embed_acc_point[..d_cb];
     let r_i = &embed_acc_point[d_cb..];
     let eq_i = eq_vec(r_i);
@@ -865,6 +935,17 @@ pub fn verify_model(
     let BlockCtxV { kprod: lkp, kzero: lkz, .. } = cx;
     kprod.extend(lkp);
     kzero.extend(lkz);
+
+    // ---- (h) per-content table sides (mirror) -------------------------------
+    bank.close(
+        &model.luts,
+        &proof.tables,
+        vc,
+        &mut table_doms,
+        tx,
+        &mut kprod,
+        &mut kzero,
+    )?;
 
     Some((ModelOutV { weight_keys, embed_keys }, kprod, kzero))
 }

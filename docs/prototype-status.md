@@ -112,6 +112,26 @@ constant factors hold. That constant factor is what P3/P4 measure.
      merging of prefill+decode weight claims (the batch opening at
      2.3 ms/claim absorbs ~100 claims fine on CPU).
 
+- **2026-07-07 (P6 in progress — shared-α restructure landed, measured)**:
+  the two-phase pipeline (P6 plan #1) is implemented on the prefill path and
+  re-measured at T=100 on the frozen artifact
+  (`benchmarks/results/p5-2026-07-07-9a19662.json`, accepted e2e with the 13
+  real PCS openings): **multiplicity corr 59.4 MB → 2.85 MB** (beats the
+  ~10 MB estimate — equal-shift range tables merge more than 12×), **total
+  comm 159.6 MB → 101.2 MB/prefill** (projected response 154 MB), prove
+  11.2 → 10.1 s, verify 0.65 → 0.32 s, E-mult all-in 100.6 → 93.6/budget
+  lookup, peak RSS 2.82 GB. Structural changes: `TableKey` content keys,
+  `TableBankP/V` (phase-1 global mult auth + per-content α + per-content
+  table side with an authenticated fraction-sum chain over all site roots),
+  `prove/verify_layer` split into phase1/phase2, per-instance table sides and
+  mult vectors deleted. PCS numbers in this JSON are noisier than the run of
+  record (embed commit 6.5 s vs 3.5 s — background load; PCS code untouched).
+  Also observed (pre-existing, reproduced at the P5 commit `18e883d` in dev
+  profile): `layer_rejects_lying_row_max` trips the honest-prover
+  `debug_assert` in `hadamard_prove` before the proof exists — the wires
+  tamper cannot be emulated in dev builds; the test now counts a prover-side
+  panic as detection (release exercises the verifier reject).
+
 - **2026-07-06 (P5 plan, pre-registered)**: pre-P5 assessment closed with the
   user: **no CPU optimization cycle before P5** — the remaining LogUp/PCS
   levers (helper-column family, padding layout, NEON/lazy reduction) are

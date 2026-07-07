@@ -16,10 +16,10 @@ pub mod sumcheck_clear;
 pub mod thaler;
 
 pub use block_proof::{
-    build_attn_wires, cattn_permuted, prove_attn_block, prove_ffn_block, prove_layer,
-    prove_layer_with_wires, verify_attn_block, verify_ffn_block, verify_layer, AttnBlockProof,
-    AttnWires, BlockCtxP, BlockCtxV, FfnBlockProof, InstanceLookups, LayerBytes, LayerOut,
-    LayerOutV, LayerProof, LnChainProof,
+    build_attn_wires, cattn_permuted, layer_content_keys, layer_dom_base, prove_layer_phase1,
+    prove_layer_phase1_with_wires, prove_layer_phase2, verify_layer_phase1, verify_layer_phase2,
+    AttnBlockProof, AttnWires, BlockCtxP, BlockCtxV, FfnBlockProof, InstanceLookups, LayerBytes,
+    LayerOut, LayerOutV, LayerProof, LnChainProof, TableBankP, TableBankV, TableCloseProof,
 };
 pub use gemm_proof::{
     auth_phase, prove_gemm_blind, prove_gemm_blind_committed, verify_gemm_blind,

@@ -24,8 +24,10 @@ use volta_pcs::{
 };
 use volta_proto::logup::{lift_q, prove_frac_tree, Counters, LeafP};
 use volta_proto::{
-    cattn_permuted, prod_batch_prover, prod_batch_verify, prove_layer, verify_layer, BlockCtxP,
+    cattn_permuted, prod_batch_prover, prod_batch_verify, prove_layer_phase1, prove_layer_phase2,
+    verify_layer_phase1, verify_layer_phase2, BlockCtxP,
     BlockCtxV,
+    TableBankP, TableBankV, layer_content_keys, layer_dom_base,
 };
 
 const D: usize = 768;
@@ -202,8 +204,21 @@ fn main() {
         || {
             let mut stream = CorrelationStream::new([0x33u8; 32]);
             let mut tx = Transcript::new([0x34u8; 32]);
-            let mut cx = BlockCtxP::new(&mut stream, &mut tx, 0);
-            prove_layer(&wit, &w, &luts, &mut cx, None)
+            let mut bank = TableBankP::new();
+            let p1 = {
+                let mut cx = BlockCtxP::new(&mut stream, &mut tx, 0, &mut bank);
+                prove_layer_phase1(&wit, &luts, &mut cx)
+            };
+            let mut table_doms = volta_proto::logup::Doms::new(layer_dom_base(240));
+            bank.finalize(&mut stream, &mut tx, &mut table_doms);
+            let mut cx = BlockCtxP::with_doms(&mut stream, &mut tx, p1.doms, &mut bank);
+            let out = prove_layer_phase2(&wit, &w, &luts, p1, &mut cx, None);
+            let BlockCtxP { mut prod, mut zero, mut ctr_instances, .. } = cx;
+            let _tables = bank.close(
+                &luts, &mut stream, &mut table_doms, &mut tx, &mut ctr_instances, &mut prod,
+                &mut zero,
+            );
+            out
         },
     );
     let t_native_forward_s = t_native.as_secs_f64();
@@ -225,17 +240,40 @@ fn main() {
     let mut txp = Transcript::new(tx_seed);
     let mut txv = Transcript::new(tx_seed);
 
-    let mut cxp = BlockCtxP::new(&mut stream, &mut txp, 0);
-    let (proof, out) = prove_layer(&wit, &w, &luts, &mut cxp, None);
-    let BlockCtxP { doms: mut domsp, prod, zero, .. } = cxp;
+    let mut bank = TableBankP::new();
+    let p1 = {
+        let mut cxp = BlockCtxP::new(&mut stream, &mut txp, 0, &mut bank);
+        prove_layer_phase1(&wit, &luts, &mut cxp)
+    };
+    let mut table_doms = volta_proto::logup::Doms::new(layer_dom_base(240));
+    bank.finalize(&mut stream, &mut txp, &mut table_doms);
+    let mut cxp = BlockCtxP::with_doms(&mut stream, &mut txp, p1.doms, &mut bank);
+    let (proof, out) = prove_layer_phase2(&wit, &w, &luts, p1, &mut cxp, None);
+    let BlockCtxP { doms: mut domsp, mut prod, mut zero, mut ctr_instances, .. } = cxp;
+    let tables = bank.close(
+        &luts, &mut stream, &mut table_doms, &mut txp, &mut ctr_instances, &mut prod, &mut zero,
+    );
 
     let tv0 = Instant::now();
-    let mut cxv = BlockCtxV::new(&mut vc, &mut txv, 0);
-    let outv = verify_layer(
-        t, &w.ln1_gain, &w.ln1_bias, &w.ln2_gain, &w.ln2_bias, &luts, &proof, &mut cxv, None,
+    let mut pre_bank = TableBankV::empty();
+    let v1 = {
+        let mut cxv = BlockCtxV::new(&mut vc, &mut txv, 0, &mut pre_bank);
+        verify_layer_phase1(t, &luts, &proof, &mut cxv).expect("phase-1 keys must expand")
+    };
+    let mut expected = std::collections::BTreeSet::new();
+    layer_content_keys(&luts, &mut expected);
+    let mut table_doms_v = volta_proto::logup::Doms::new(layer_dom_base(240));
+    let mut bankv = TableBankV::finalize(&expected, &tables, &mut vc, &mut txv, &mut table_doms_v)
+        .expect("table bank must finalize");
+    let mut cxv = BlockCtxV::with_doms(&mut vc, &mut txv, v1.doms, &mut bankv);
+    let outv = verify_layer_phase2(
+        t, &w.ln1_gain, &w.ln1_bias, &w.ln2_gain, &w.ln2_bias, &luts, &proof, v1, &mut cxv, None,
     )
         .expect("honest layer must verify");
-    let BlockCtxV { doms: mut domsv, kprod, kzero, .. } = cxv;
+    let BlockCtxV { doms: mut domsv, mut kprod, mut kzero, .. } = cxv;
+    bankv
+        .close(&luts, &tables, &mut vc, &mut table_doms_v, &mut txv, &mut kprod, &mut kzero)
+        .expect("table sides must verify");
     let t_verify_layer_s = tv0.elapsed().as_secs_f64();
 
     // PCS: the four weight tensors in one 2^24 Ligero commitment; the layer's

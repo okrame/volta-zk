@@ -1,0 +1,251 @@
+{
+  "milestone": "P5",
+  "date": "2026-07-07",
+  "git_sha": "9a19662",
+  "git_dirty": true,
+  "machine": "linux aarch64",
+  "threads": 4,
+  "t_tokens": 100,
+  "accepted": true,
+  "golden": {
+    "checked": true,
+    "argmax": 835,
+    "expected_argmax": 835,
+    "logits_match": true
+  },
+  "tables": [
+    {
+      "table": "ln_rsqrt",
+      "budget_lookups_model": 2400,
+      "witness_lookups_model": 2400,
+      "padded_lookups_model": 3072,
+      "witness_vs_budget_pct": 0.0
+    },
+    {
+      "table": "ln_norm_requant",
+      "budget_lookups_model": 1843200,
+      "witness_lookups_model": 1843200,
+      "padded_lookups_model": 3145728,
+      "witness_vs_budget_pct": 0.0
+    },
+    {
+      "table": "requant_qkv",
+      "budget_lookups_model": 2764800,
+      "witness_lookups_model": 2764800,
+      "padded_lookups_model": 6291456,
+      "witness_vs_budget_pct": 0.0
+    },
+    {
+      "table": "requant_scores",
+      "budget_lookups_model": 727200,
+      "witness_lookups_model": 727200,
+      "padded_lookups_model": 3145728,
+      "witness_vs_budget_pct": 0.0
+    },
+    {
+      "table": "exp",
+      "budget_lookups_model": 727200,
+      "witness_lookups_model": 727200,
+      "padded_lookups_model": 3145728,
+      "witness_vs_budget_pct": 0.0
+    },
+    {
+      "table": "softmax_recip",
+      "budget_lookups_model": 14400,
+      "witness_lookups_model": 14400,
+      "padded_lookups_model": 24576,
+      "witness_vs_budget_pct": 0.0
+    },
+    {
+      "table": "softmax_norm_requant",
+      "budget_lookups_model": 727200,
+      "witness_lookups_model": 727200,
+      "padded_lookups_model": 3145728,
+      "witness_vs_budget_pct": 0.0
+    },
+    {
+      "table": "requant_av",
+      "budget_lookups_model": 921600,
+      "witness_lookups_model": 921600,
+      "padded_lookups_model": 1572864,
+      "witness_vs_budget_pct": 0.0
+    },
+    {
+      "table": "requant_attn_proj",
+      "budget_lookups_model": 921600,
+      "witness_lookups_model": 921600,
+      "padded_lookups_model": 1572864,
+      "witness_vs_budget_pct": 0.0
+    },
+    {
+      "table": "requant_ffn_up",
+      "budget_lookups_model": 3686400,
+      "witness_lookups_model": 3686400,
+      "padded_lookups_model": 6291456,
+      "witness_vs_budget_pct": 0.0
+    },
+    {
+      "table": "gelu",
+      "budget_lookups_model": 3686400,
+      "witness_lookups_model": 3686400,
+      "padded_lookups_model": 6291456,
+      "witness_vs_budget_pct": 0.0
+    },
+    {
+      "table": "requant_ffn_down",
+      "budget_lookups_model": 921600,
+      "witness_lookups_model": 921600,
+      "padded_lookups_model": 1572864,
+      "witness_vs_budget_pct": 0.0
+    }
+  ],
+  "total_budget_lookups_model": 16944000,
+  "total_witness_lookups_model": 16944000,
+  "total_padded_lookups_model": 36203520,
+  "gate_counts_within_20pct": true,
+  "embed_lookups_note": "embedding requant (13th table, T·d extra lookups/prefill) and the 11 seam requants are NOT tracked in ModelOut.lookups (only the 12 per-layer LayerOut.lookups are collected) and are outside scripts/budget_p0.py's L*lookups_layer formula — pre-registered deviation, see docs/prototype-status.md 2026-07-06",
+  "emult_instances_total": 1585567733.2,
+  "emult_instances_per_budget_lookup": 93.5769436496695,
+  "emult_other_total": 45372876.8,
+  "corr_sub_corrs": 5867174,
+  "corr_full_corrs": 92759,
+  "corr_domains": 45468,
+  "t_witness_native_s": 0.415444654,
+  "t_prove_model_abba_s": 10.07775808,
+  "prove_over_native": 24.25776329763531,
+  "t_prove_model_record_s": 10.144958906,
+  "t_verify_model_s": 0.323370191,
+  "pcs": {
+    "commitments": [
+      {
+        "name": "layer_0",
+        "commit_s": 0.355300904,
+        "open_s": 0.039773588,
+        "verify_s": 0.004372356,
+        "opening_bytes": 3199008,
+        "verified": true
+      },
+      {
+        "name": "layer_1",
+        "commit_s": 0.51464159,
+        "open_s": 0.039589628,
+        "verify_s": 0.005742906,
+        "opening_bytes": 3199008,
+        "verified": true
+      },
+      {
+        "name": "layer_2",
+        "commit_s": 0.510461276,
+        "open_s": 0.03793262,
+        "verify_s": 0.004188814,
+        "opening_bytes": 3199008,
+        "verified": true
+      },
+      {
+        "name": "layer_3",
+        "commit_s": 0.34519864,
+        "open_s": 0.038382789,
+        "verify_s": 0.005782406,
+        "opening_bytes": 3199008,
+        "verified": true
+      },
+      {
+        "name": "layer_4",
+        "commit_s": 0.344727304,
+        "open_s": 0.033447595,
+        "verify_s": 0.004185772,
+        "opening_bytes": 3199008,
+        "verified": true
+      },
+      {
+        "name": "layer_5",
+        "commit_s": 0.355192942,
+        "open_s": 0.036703697,
+        "verify_s": 0.005005068,
+        "opening_bytes": 3199008,
+        "verified": true
+      },
+      {
+        "name": "layer_6",
+        "commit_s": 0.335310961,
+        "open_s": 0.038827208,
+        "verify_s": 0.004256023,
+        "opening_bytes": 3199008,
+        "verified": true
+      },
+      {
+        "name": "layer_7",
+        "commit_s": 0.630193955,
+        "open_s": 0.049947559,
+        "verify_s": 0.005948531,
+        "opening_bytes": 3199008,
+        "verified": true
+      },
+      {
+        "name": "layer_8",
+        "commit_s": 0.528770787,
+        "open_s": 0.040344757,
+        "verify_s": 0.005800114,
+        "opening_bytes": 3199008,
+        "verified": true
+      },
+      {
+        "name": "layer_9",
+        "commit_s": 0.370404106,
+        "open_s": 0.03676603,
+        "verify_s": 0.008085168,
+        "opening_bytes": 3199008,
+        "verified": true
+      },
+      {
+        "name": "layer_10",
+        "commit_s": 0.3412742,
+        "open_s": 0.034640186,
+        "verify_s": 0.004291148,
+        "opening_bytes": 3199008,
+        "verified": true
+      },
+      {
+        "name": "layer_11",
+        "commit_s": 0.345058636,
+        "open_s": 0.038015786,
+        "verify_s": 0.004209772,
+        "opening_bytes": 3199008,
+        "verified": true
+      },
+      {
+        "name": "embed",
+        "commit_s": 6.49620856,
+        "open_s": 1.058865062,
+        "verify_s": 0.012699359,
+        "opening_bytes": 14394256,
+        "verified": true
+      }
+    ],
+    "commit_total_s": 11.472743861000001,
+    "commit_layers_mean_s": 0.41471127508333333,
+    "commit_embed_s": 6.49620856,
+    "open_total_s": 1.523236505,
+    "open_per_commitment_mean_s": 0.11717203884615385,
+    "verify_total_s": 0.074567437,
+    "opening_bytes_total": 52782352,
+    "n_weight_claims": 48,
+    "n_embed_claims": 3,
+    "claims_prefill": 51,
+    "projection_prefill_s": 0.2373,
+    "projection_response_s": 0.3546,
+    "p6_constraint": "P6: decode weight-GEMM claims are deferred and proved stacked at end-of-response (claims/response ≈ 2× claims/prefill), never per-token PCS claims; P5 runs e2e in committed-W mode by default"
+  },
+  "bytes": {
+    "boundary": 36864000,
+    "mult_vectors": 2847216,
+    "ln_vectors": 98304,
+    "attn_vectors": 6488832,
+    "rounds_claims": 9053568,
+    "total": 55351920
+  },
+  "transcript_bytes_total": 101209328,
+  "total_comm_response_bytes": 101209328,
+  "total_comm_response_projected_2x_pcs_bytes": 153991680,
+  "peak_rss_gb": 2.8208084106445312
+}

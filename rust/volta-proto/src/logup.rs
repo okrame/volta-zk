@@ -1042,6 +1042,7 @@ use volta_mac::{CorrelationStream, ProverAuthed, Transcript, VerifierCtx, Verifi
 
 /// Sequential one-time-domain allocator; prover and verifier consume the
 /// same sequence (the `DomainLedger` enforces global uniqueness).
+#[derive(Clone, Copy)]
 pub struct Doms {
     next: u64,
 }
@@ -1673,16 +1674,35 @@ fn cross_verifier(
 /// Pair-LUTs pack two columns (shifts 0, 16); requant range instances pack
 /// only the rounding remainder and carry the output as an unpacked aux col
 /// (bound by claims + the linear requant relation, not by the table).
+///
+/// **P6 shared-α restructure**: an instance is now LOOKUP-SIDE ONLY. The
+/// table side runs ONCE per table CONTENT per model ([`table_side_prove`])
+/// against one global multiplicity vector; each instance's authenticated
+/// root fraction is tied to it by the fraction-sum chain there. α is drawn
+/// by the caller per content, strictly after phase 1 (all element auths +
+/// all multiplicity vectors bound model-wide).
 pub struct BlindInstance {
     pub lookup: BlindFracProof,
-    pub table: BlindFracProof,
-    pub cross_corrs: [Fp2; 4],
 }
 
 impl BlindInstance {
     pub fn bytes(&self) -> u64 {
-        self.lookup.bytes() + self.table.bytes() + 64
+        self.lookup.bytes()
     }
+}
+
+/// Identity of a table CONTENT (the merge key of the per-model multiset
+/// argument). `Range(s)` covers every requant/remainder range table of shift
+/// `s` (equal shifts are content-identical across sites, layers and decode
+/// chunks); the pair LUTs are global per model (P5 froze one LUT set).
+/// `Ord` gives both parties the same canonical content order.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum TableKey {
+    Range(u32),
+    Exp,
+    Gelu,
+    LnRsqrt,
+    SoftmaxRecip,
 }
 
 pub struct InstanceOutP {
@@ -1694,21 +1714,21 @@ pub struct InstanceOutP {
     /// the leaf closure AND every folded external claim; they must be
     /// resolved upstream (producer GEMM / boundary / relation).
     pub col_claims: Vec<OpenClaim>,
-    /// m̃ at the table point — resolves against the authenticated
-    /// multiplicity vector.
-    pub mult_claim: OpenClaim,
+    /// Authenticated root fraction (p, q) of the lookup tree — consumed by
+    /// the per-content fraction-sum chain in [`table_side_prove`].
+    pub roots: (ProverAuthed, ProverAuthed),
 }
 
-/// Prove one instance. `cols` are base-lifted, padded to a power of two;
-/// `aux_claims` are the external claims to drain (col index, point, value).
-/// Contract: cols and multiplicities are already bound (authenticated /
-/// claimed) before α is drawn here.
+/// Prove one lookup-side instance with a caller-drawn shared α. `cols` are
+/// base-lifted, padded to a power of two; `aux_claims` are the external
+/// claims to drain (col index, point, value). Contract: cols and the global
+/// multiplicity vectors were bound (authenticated / claimed) before α was
+/// drawn by the caller.
 #[allow(clippy::too_many_arguments)]
 pub fn blind_instance_prove(
     cols: &[Vec<Fp>],
     shifts: &[Option<u32>],
-    table_vals: &[Fp],
-    mult: &[u32],
+    alpha: Fp2,
     aux_claims: Vec<LeafAuxClaim>,
     stream: &mut CorrelationStream,
     doms: &mut Doms,
@@ -1720,7 +1740,6 @@ pub fn blind_instance_prove(
     assert_eq!(cols.len(), shifts.len());
     assert!(shifts.iter().any(|s| s.is_some()), "at least one packed column");
     let n = cols[0].len();
-    let alpha = tx.challenge_fp2();
     let packed: Vec<Fp> = (0..n)
         .map(|i| {
             cols.iter().zip(shifts).fold(Fp::ZERO, |a, (c, &s)| match s {
@@ -1734,18 +1753,8 @@ pub fn blind_instance_prove(
     let mut ax = LeafAux { cols: cols.iter().map(|c| aux_col(c)).collect(), claims: aux_claims };
     let (lp, point, cp_f, cq_f, roots_f, col_authed) =
         blind_prove_frac_tree_aux(&leaf_q, &mut ax, stream, doms, tx, ctr, prod, zero);
-    let (tp, pt_t, cp_t, cq_t, roots_t) = blind_prove_frac_tree(
-        &LeafP::NegMult(mult),
-        &lift_q_fp(table_vals, alpha),
-        stream,
-        doms,
-        tx,
-        ctr,
-        prod,
-        zero,
-    );
 
-    // Leaf closures: p_f ≡ 1; q_f = α − Σ_c 2^{shift_c}·col̃_c; q_t public.
+    // Leaf closures: p_f ≡ 1; q_f = α − Σ_c 2^{shift_c}·col̃_c.
     zero.push(cp_f.sub(ProverAuthed::from_public(Fp2::ONE)));
     let mut row = cq_f.sub(ProverAuthed::from_public(alpha));
     for (ca, &s) in col_authed.iter().zip(shifts) {
@@ -1756,22 +1765,15 @@ pub fn blind_instance_prove(
     debug_assert_eq!(row.x, Fp2::ZERO, "packed leaf closure violated");
     zero.push(row);
     ctr.bulk(2 * cols.len() as u64, 0);
-    let t_eval = {
-        let lifted: Vec<Fp2> = table_vals.iter().map(|&v| alpha - Fp2::from_base(v)).collect();
-        eval_mle_counted(&lifted, &pt_t, ctr)
-    };
-    zero.push(cq_t.sub(ProverAuthed::from_public(t_eval)));
-
-    let cross_corrs = cross_prover(roots_f, roots_t, stream, doms, tx, ctr, prod, zero);
 
     InstanceOutP {
-        proof: BlindInstance { lookup: lp, table: tp, cross_corrs },
+        proof: BlindInstance { lookup: lp },
         alpha,
         col_claims: col_authed
             .into_iter()
             .map(|value| OpenClaim { point: point.clone(), value })
             .collect(),
-        mult_claim: OpenClaim { point: pt_t, value: ProverAuthed::ZERO.sub(cp_t) },
+        roots: roots_f,
         point,
     }
 }
@@ -1779,15 +1781,16 @@ pub fn blind_instance_prove(
 pub struct InstanceOutV {
     pub point: Vec<Fp2>,
     pub col_keys: Vec<OpenKey>,
-    pub mult_key: OpenKey,
+    pub kroots: (VerifierKey, VerifierKey),
 }
 
-/// Verify one instance; `aux_claims` mirror the prover's (col, point, key).
+/// Verify one lookup-side instance; `aux_claims` mirror the prover's
+/// (col, point, key) and `alpha` is the caller-drawn shared challenge.
 #[allow(clippy::too_many_arguments)]
 pub fn blind_instance_verify(
     n_bits: usize,
     shifts: &[Option<u32>],
-    table_vals: &[Fp],
+    alpha: Fp2,
     proof: &BlindInstance,
     aux_claims: &[(usize, Vec<Fp2>, VerifierKey)],
     ctx: &mut VerifierCtx,
@@ -1796,8 +1799,6 @@ pub fn blind_instance_verify(
     kprod: &mut ProdKeyTriples,
     kzero: &mut Vec<VerifierKey>,
 ) -> Option<InstanceOutV> {
-    let t_bits = table_vals.len().trailing_zeros() as usize;
-    let alpha = tx.challenge_fp2();
     let (point, kcp_f, kcq_f, kroots_f, col_keys) = blind_verify_frac_tree_aux(
         n_bits,
         &proof.lookup,
@@ -1809,8 +1810,6 @@ pub fn blind_instance_verify(
         kprod,
         kzero,
     )?;
-    let (pt_t, kcp_t, kcq_t, kroots_t) =
-        blind_verify_frac_tree(t_bits, &proof.table, ctx, doms, tx, kprod, kzero)?;
 
     kzero.push(kcp_f.sub(VerifierKey::from_public(Fp2::ONE, ctx.delta)));
     let mut row = kcq_f.sub(VerifierKey::from_public(alpha, ctx.delta));
@@ -1820,22 +1819,146 @@ pub fn blind_instance_verify(
         }
     }
     kzero.push(row);
-    let t_eval = {
-        let lifted: Vec<Fp2> = table_vals.iter().map(|&v| alpha - Fp2::from_base(v)).collect();
-        crate::mle::eval_mle(&lifted, &pt_t)
-    };
-    kzero.push(kcq_t.sub(VerifierKey::from_public(t_eval, ctx.delta)));
-
-    cross_verifier(kroots_f, kroots_t, &proof.cross_corrs, ctx, doms, kprod, kzero);
 
     Some(InstanceOutV {
         col_keys: col_keys
             .into_iter()
             .map(|key| OpenKey { point: point.clone(), key })
             .collect(),
-        mult_key: OpenKey { point: pt_t, key: VerifierKey::ZERO.sub(kcp_t) },
+        kroots: kroots_f,
         point,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Per-content shared table side (P6): one multiset argument per table content
+// ---------------------------------------------------------------------------
+
+/// Proof of one table CONTENT's side: the table fraction tree over the ONE
+/// global multiplicity vector, plus the authenticated fraction-sum chain
+/// tying Σ_sites p_s/q_s = p_t/q_t (3 corrections per site beyond the first,
+/// then the standard root cross-check).
+pub struct TableSideProof {
+    pub table: BlindFracProof,
+    /// Per additional site: corrections for (P·q_s, p_s·Q, Q·q_s).
+    pub agg_corrs: Vec<[Fp2; 3]>,
+    pub cross_corrs: [Fp2; 4],
+}
+
+impl TableSideProof {
+    pub fn bytes(&self) -> u64 {
+        self.table.bytes() + 48 * self.agg_corrs.len() as u64 + 64
+    }
+}
+
+/// Prove one content's table side. `sites` are the authenticated lookup-tree
+/// root fractions of EVERY instance of this content, in canonical program
+/// order (both parties push them identically). Returns the proof and the m̃
+/// open claim to resolve against the global authenticated multiplicity
+/// vector.
+#[allow(clippy::too_many_arguments)]
+pub fn table_side_prove(
+    table_vals: &[Fp],
+    mult: &[u32],
+    alpha: Fp2,
+    sites: &[(ProverAuthed, ProverAuthed)],
+    stream: &mut CorrelationStream,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+    ctr: &mut Counters,
+    prod: &mut ProdTriples,
+    zero: &mut Vec<ProverAuthed>,
+) -> (TableSideProof, OpenClaim) {
+    assert!(!sites.is_empty(), "table content with no lookup sites");
+    let (tp, pt_t, cp_t, cq_t, roots_t) = blind_prove_frac_tree(
+        &LeafP::NegMult(mult),
+        &lift_q_fp(table_vals, alpha),
+        stream,
+        doms,
+        tx,
+        ctr,
+        prod,
+        zero,
+    );
+    let t_eval = {
+        let lifted: Vec<Fp2> = table_vals.iter().map(|&v| alpha - Fp2::from_base(v)).collect();
+        eval_mle_counted(&lifted, &pt_t, ctr)
+    };
+    zero.push(cq_t.sub(ProverAuthed::from_public(t_eval)));
+
+    // Fraction-sum chain: (P, Q) += (p_s, q_s) via P' = P·q_s + p_s·Q,
+    // Q' = Q·q_s — three authenticated products per additional site. The
+    // final Q = Π_s q_s, so the cross-check's inv(Q) row certifies EVERY
+    // site's q_s ≠ 0.
+    let (mut pr, mut qr) = sites[0];
+    let mut agg_corrs = Vec::with_capacity(sites.len().saturating_sub(1));
+    for &(ps, qs) in &sites[1..] {
+        let zx = [pr.x * qs.x, ps.x * qr.x, qr.x * qs.x];
+        let dom = doms.take(1);
+        let masks = stream.draw_fulls(dom, 3);
+        agg_corrs.push([zx[0] - masks[0].x, zx[1] - masks[1].x, zx[2] - masks[2].x]);
+        tx.append("logup_aggregate_corrections", 48);
+        let z1 = ProverAuthed { x: zx[0], m: masks[0].m };
+        let z2 = ProverAuthed { x: zx[1], m: masks[1].m };
+        let z3 = ProverAuthed { x: zx[2], m: masks[2].m };
+        prod.push((pr, qs, z1));
+        prod.push((ps, qr, z2));
+        prod.push((qr, qs, z3));
+        pr = z1.add(z2);
+        qr = z3;
+        ctr.bulk(3, 0);
+    }
+    let cross_corrs =
+        cross_prover((pr, qr), roots_t, stream, doms, tx, ctr, prod, zero);
+
+    (
+        TableSideProof { table: tp, agg_corrs, cross_corrs },
+        OpenClaim { point: pt_t, value: ProverAuthed::ZERO.sub(cp_t) },
+    )
+}
+
+/// Verifier mirror of [`table_side_prove`].
+#[allow(clippy::too_many_arguments)]
+pub fn table_side_verify(
+    table_vals: &[Fp],
+    alpha: Fp2,
+    proof: &TableSideProof,
+    ksites: &[(VerifierKey, VerifierKey)],
+    ctx: &mut VerifierCtx,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+    kprod: &mut ProdKeyTriples,
+    kzero: &mut Vec<VerifierKey>,
+) -> Option<OpenKey> {
+    if ksites.is_empty() || proof.agg_corrs.len() != ksites.len() - 1 {
+        return None;
+    }
+    let t_bits = table_vals.len().trailing_zeros() as usize;
+    let (pt_t, kcp_t, kcq_t, kroots_t) =
+        blind_verify_frac_tree(t_bits, &proof.table, ctx, doms, tx, kprod, kzero)?;
+    let t_eval = {
+        let lifted: Vec<Fp2> = table_vals.iter().map(|&v| alpha - Fp2::from_base(v)).collect();
+        crate::mle::eval_mle(&lifted, &pt_t)
+    };
+    kzero.push(kcq_t.sub(VerifierKey::from_public(t_eval, ctx.delta)));
+
+    let (mut kpr, mut kqr) = ksites[0];
+    for (&(kps, kqs), corrs) in ksites[1..].iter().zip(&proof.agg_corrs) {
+        let kms = ctx.expand_full_keys(doms.take(1), 3);
+        let kz: Vec<VerifierKey> = kms
+            .iter()
+            .zip(corrs)
+            .map(|(&k, &c)| VerifierKey { k: k + ctx.delta * c })
+            .collect();
+        kprod.push((kpr, kqs, kz[0]));
+        kprod.push((kps, kqr, kz[1]));
+        kprod.push((kqr, kqs, kz[2]));
+        kpr = kz[0].add(kz[1]);
+        kqr = kz[2];
+    }
+    cross_verifier((kpr, kqr), kroots_t, &proof.cross_corrs, ctx, doms, kprod, kzero);
+
+    Some(OpenKey { point: pt_t, key: VerifierKey::ZERO.sub(kcp_t) })
 }
 
 pub struct BlindLogupProof {
@@ -2352,12 +2475,24 @@ mod tests {
             LeafAuxClaim { col: 1, point: rho_y.clone(), value: ay },
         ];
         let shifts = [Some(0u32), Some(16u32)];
+        let alpha = h.txp.challenge_fp2();
         let mut out = blind_instance_prove(
             &[xcol.clone(), ycol.clone()],
             &shifts,
+            alpha,
+            aux_claims,
+            &mut h.ps,
+            &mut domsp,
+            &mut h.txp,
+            &mut ctr,
+            &mut prod,
+            &mut zero,
+        );
+        let (ts, mult_claim) = table_side_prove(
             &table_vals,
             &mult,
-            aux_claims,
+            alpha,
+            &[out.roots],
             &mut h.ps,
             &mut domsp,
             &mut h.txp,
@@ -2371,12 +2506,27 @@ mod tests {
         let mut kprod: ProdKeyTriples = Vec::new();
         let mut kzero: Vec<VerifierKey> = Vec::new();
         let aux_meta = vec![(0usize, rho_x, kx), (1usize, rho_y, ky)];
+        let alpha_v = h.txv.challenge_fp2();
+        assert_eq!(alpha, alpha_v);
         let Some(vout) = blind_instance_verify(
             n_bits,
             &shifts,
-            &table_vals,
+            alpha_v,
             &out.proof,
             &aux_meta,
+            &mut h.vc,
+            &mut domsv,
+            &mut h.txv,
+            &mut kprod,
+            &mut kzero,
+        ) else {
+            return false;
+        };
+        let Some(mult_key) = table_side_verify(
+            &table_vals,
+            alpha_v,
+            &ts,
+            &[vout.kroots],
             &mut h.vc,
             &mut domsv,
             &mut h.txv,
@@ -2390,15 +2540,15 @@ mod tests {
         let x_true = crate::mle::eval_mle(&xf, &out.point);
         let y_true = crate::mle::eval_mle(&yf, &out.point);
         let m_vals: Vec<Fp2> = mult.iter().map(|&m| Fp2::from_base(Fp::new(m as u64))).collect();
-        let m_true = crate::mle::eval_mle(&m_vals, &out.mult_claim.point);
+        let m_true = crate::mle::eval_mle(&m_vals, &mult_claim.point);
         for (claim, (key, tv)) in out.col_claims.iter().zip(
             vout.col_keys.iter().zip([x_true, y_true]),
         ) {
             zero.push(claim.value.sub(ProverAuthed::from_public(tv)));
             kzero.push(key.key.sub(VerifierKey::from_public(tv, h.vc.delta)));
         }
-        zero.push(out.mult_claim.value.sub(ProverAuthed::from_public(m_true)));
-        kzero.push(vout.mult_key.key.sub(VerifierKey::from_public(m_true, h.vc.delta)));
+        zero.push(mult_claim.value.sub(ProverAuthed::from_public(m_true)));
+        kzero.push(mult_key.key.sub(VerifierKey::from_public(m_true, h.vc.delta)));
 
         let chi = h.txp.challenge_fp2();
         assert_eq!(chi, h.txv.challenge_fp2());
@@ -2463,12 +2613,24 @@ mod tests {
         let mut prod: ProdTriples = Vec::new();
         let mut zero: Vec<ProverAuthed> = Vec::new();
         let shifts = [Some(0u32), None];
+        let alpha = h.txp.challenge_fp2();
         let out_p = blind_instance_prove(
             &[rem_col.clone(), out_col.clone()],
             &shifts,
+            alpha,
+            vec![LeafAuxClaim { col: 1, point: rho.clone(), value: ao }],
+            &mut h.ps,
+            &mut domsp,
+            &mut h.txp,
+            &mut ctr,
+            &mut prod,
+            &mut zero,
+        );
+        let (ts, mult_claim) = table_side_prove(
             &table_vals,
             &mult,
-            vec![LeafAuxClaim { col: 1, point: rho.clone(), value: ao }],
+            alpha,
+            &[out_p.roots],
             &mut h.ps,
             &mut domsp,
             &mut h.txp,
@@ -2479,10 +2641,12 @@ mod tests {
         let mut domsv = Doms::new(500);
         let mut kprod: ProdKeyTriples = Vec::new();
         let mut kzero: Vec<VerifierKey> = Vec::new();
+        let alpha_v = h.txv.challenge_fp2();
+        assert_eq!(alpha, alpha_v);
         let vout = blind_instance_verify(
             n_bits,
             &shifts,
-            &table_vals,
+            alpha_v,
             &out_p.proof,
             &[(1usize, rho, ko)],
             &mut h.vc,
@@ -2492,6 +2656,18 @@ mod tests {
             &mut kzero,
         )
         .expect("verify");
+        let mult_key = table_side_verify(
+            &table_vals,
+            alpha_v,
+            &ts,
+            &[vout.kroots],
+            &mut h.vc,
+            &mut domsv,
+            &mut h.txv,
+            &mut kprod,
+            &mut kzero,
+        )
+        .expect("table side");
 
         // Emit the acc claim from the requant relation and check it against
         // the true accumulator MLE (the upstream GEMM would consume this).
@@ -2514,9 +2690,9 @@ mod tests {
         kzero.push(acc_key.sub(VerifierKey::from_public(acc_true, h.vc.delta)));
         // mult claim
         let m_vals: Vec<Fp2> = mult.iter().map(|&m| Fp2::from_base(Fp::new(m as u64))).collect();
-        let m_true = crate::mle::eval_mle(&m_vals, &out_p.mult_claim.point);
-        zero.push(out_p.mult_claim.value.sub(ProverAuthed::from_public(m_true)));
-        kzero.push(vout.mult_key.key.sub(VerifierKey::from_public(m_true, h.vc.delta)));
+        let m_true = crate::mle::eval_mle(&m_vals, &mult_claim.point);
+        zero.push(mult_claim.value.sub(ProverAuthed::from_public(m_true)));
+        kzero.push(mult_key.key.sub(VerifierKey::from_public(m_true, h.vc.delta)));
 
         let chi = h.txp.challenge_fp2();
         assert_eq!(chi, h.txv.challenge_fp2());

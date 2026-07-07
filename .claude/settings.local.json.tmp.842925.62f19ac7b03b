@@ -48,7 +48,8 @@
       "Bash(cargo run *)",
       "Bash(./scripts/run_decode.sh)",
       "Bash(python3 *)",
-      "Bash(git commit -q -m 'P6 CLOSED: run of record — gate PASSED \\(flat cost/token 1.12, anti-replay, golden decode\\), ledger milestone row + closing deviations *)"
+      "Bash(git commit -q -m 'P6 CLOSED: run of record — gate PASSED \\(flat cost/token 1.12, anti-replay, golden decode\\), ledger milestone row + closing deviations *)",
+      "Bash(git commit -q -m 'chore: drop stray harness tmp file accidentally committed with P6 close *)"
     ]
   },
   "enabledMcpjsonServers": [

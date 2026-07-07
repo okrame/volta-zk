@@ -1,0 +1,78 @@
+{
+  "milestone": "P7-real-pcg-phase-b",
+  "backend": "phase-b",
+  "date": "2026-07-07",
+  "git_sha": "a7a2a85",
+  "git_dirty": false,
+  "machine": "linux aarch64",
+  "source": "benchmarks/results/p6-2026-07-07-515bb1c.json",
+  "source_milestone": "P6",
+  "source_git_sha": "515bb1c",
+  "source_git_dirty": false,
+  "corr_sub_corrs": 8479926,
+  "corr_full_corrs": 176880,
+  "t_total_real_expansion_s": 4.407687045,
+  "sub_corrs_per_s_prover": 1923894.757823034,
+  "sub_corrs_per_s_verifier": 1923894.757823034,
+  "full_corrs_per_s_prover": 40129.89084618643,
+  "full_corrs_per_s_verifier": 40129.89084618643,
+  "sub_equiv_corrs_per_s_joint": 2004154.5395154068,
+  "expanded_prover_bytes": 209178384,
+  "expanded_verifier_bytes": 138508896,
+  "setup_comm_bytes": 1081408,
+  "base_vole": "setup-cost-model",
+  "lpn_parameters": {
+    "profile": "p7-phase-a-goldilocks-regular-lpn-v1",
+    "security_bits": 128,
+    "output_sub_equiv": 8833686,
+    "lpn_k": 589760,
+    "lpn_noise_weight": 1280,
+    "base_vole_len": 591041,
+    "code_fanout": 10,
+    "ggm_block_size": 6902,
+    "ggm_depth": 13,
+    "consistency_reps": 2,
+    "full_field_combiner": "x=x0+phi*x1, m=m0+phi*m1, k=k0+phi*k1",
+    "parameter_source": "P7 cost model; production table citation pending"
+  },
+  "phase_b_timings": {
+    "t_base_ot_s": 0.020602736,
+    "t_ot_extension_s": 0.00825977,
+    "t_base_vole_from_setup_s": 0.016121661,
+    "t_ggm_pprf_s": 1.934482284,
+    "t_lpn_expand_s": 2.186304971,
+    "t_full_combine_s": 0.002205224,
+    "t_consistency_check_s": 0.239698982,
+    "t_total_setup_and_expansion_s": 4.407687045
+  },
+  "phase_b_setup": {
+    "params": {
+      "profile": "p7-phase-b-two-party-setup-v0",
+      "base_ot_count": 128,
+      "extended_ot_count": 16640,
+      "ggm_path_depth": 13,
+      "setup_security_bits": 128,
+      "lpn_parameter_source": "P7 cost model; production table citation pending",
+      "production_ready": false
+    },
+    "comm": {
+      "base_ot_bytes": 16384,
+      "ot_extension_bytes": 1064960,
+      "consistency_bytes": 64,
+      "total_bytes": 1081408
+    },
+    "base_ot_transcript_digest": "e9f38af96a56e358664096d32eca4ec7228aecb484064aa1c9949900b26ac952",
+    "ot_extension_digest": "5f66b3967094dad0ef62913fbd843007725d76b417412381558ab3394611fbdb",
+    "setup_binding_digest": "3223075836d528966b599b8d2bbf59192b08305e5435482995f83fd53397d6dc",
+    "consistency_challenge_source": "blake3(setup transcript binding), after base-OT and GGM-OT binding"
+  },
+  "production_ready": false,
+  "consistency": {
+    "ok": true,
+    "checksum": 15387744285060218077
+  },
+  "peak_rss_gb": 0.3609771728515625,
+  "checksum": 4780813825370526953,
+  "is_real_pcg": true,
+  "note": "Phase-B setup COST measurement (single-process, shared-seed simulation with real curve25519/Ristretto group operations and measured OT-extension bytes; GGM PPRF expansion charged as in phase A). Not a two-party execution; production-ready remains false until WYKW malicious checks and table-derived LPN parameters are closed."
+}

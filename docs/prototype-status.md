@@ -56,6 +56,28 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-07 (P7 real-PCG phase B — measurement CORRECTED; supersedes the
+  1.602 s entry below)**: review found two defects in the landed phase B.
+  (1) **Accounting error**: the phase-B path derived the noise leaves
+  directly from the setup digest, silently dropping the GGM PPRF leaf
+  expansion — the dominant cost phase A measured — so phase B totalled
+  1.602 s, i.e. *faster than phase A despite adding setup*, which is
+  impossible for the real protocol. Fixed (commit `a7a2a85`): phase B
+  reuses the phase-A GGM expansion with a setup-bound root and reports
+  `t_ggm_pprf_s`. (2) **Label overstatement**: `base_vole:"real"` renamed
+  to `"setup-cost-model"` — the group operations and bytes are real, but
+  both parties run in one process from a shared seed and the base VOLE is
+  still dealer-derived; a two-party execution remains future hardening.
+  Corrected clean measurement
+  `benchmarks/results/p7-real-pcg-2026-07-07-a7a2a85.json`
+  (`git_dirty:false`): **total 4.408 s** = base OT 0.021 + OT ext 0.008 +
+  base-VOLE 0.016 + **GGM PPRF 1.934** + LPN 2.186 + checks 0.240;
+  `setup_comm_bytes` unchanged at 1,081,408 B; consistency `ok:true`;
+  `production_ready:false`. The 2026-07-07 numbers of record for the PCG
+  line are therefore: expansion ≈ 3.2–4.4 s CPU single-thread
+  (load-sensitive VM, trap #6.7), setup compute ≈ 0.05 s, setup comm
+  ≈ 1.08 MB/session. Aggregate `benchmarks/results/p7-2026-07-07-a7a2a85.json`.
+
 - **2026-07-07 (P7 real-PCG phase B, pre-registered)**:
   implement `p7_pcg_report --backend phase-b` as an opt-in setup
   measurement: real public-key base OT dependency (`curve25519-dalek`),

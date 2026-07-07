@@ -48,9 +48,11 @@ python3 scripts/report.py --write-json
 
 ## GPU spike order
 
-1. Real-PCG or explicit external real-PCG budget for the P6 volume:
-   `8,479,926` subfield + `176,880` full-field correlations. The local
-   `p7_pcg_report` is only a mock ChaCha lower bound, not a real-PCG result.
+1. ~~Real-PCG budget~~ **SATISFIED locally** (2026-07-07): `volta-pcg`
+   phase A/B measured 3.2–4.4 s expansion + 1.08 MB setup comm for the P6
+   volume (`p7-real-pcg-2026-07-07-a7a2a85.json`, corrected run). No cloud
+   PCG work needed for the go/no-go; see handoff spec §4.4 for the
+   remaining hardening (not on the critical path).
 2. Goldilocks/Fp2 arithmetic roofline on the target GPU.
 3. Fused MAC epilogue kernel. Keep it fused with GEMM.
 4. LogUp fraction-tree kernels.

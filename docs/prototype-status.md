@@ -22,7 +22,7 @@ CPU numbers validate architecture and counts; the ρ targets (≤2 decode,
 | P3.5 static weight PCS (private weights) | **done** (2026-07-04) | opening ≤ 15% native prefill: **FAILED (230%)** — iteration plan logged below; leakage smoke ✓; M9 seam e2e ✓ | In-house Ligero (`volta-pcs`), full 2^27, rate 0.516, Q=200. Commit one-off 3.3 s; opening of record (row-local multi-eval, 220 claims) **0.70 s** = fixed 0.12 s + **~2.3 ms/claim**; verify 0.12 s; 73.8 MB/opening; peak RSS 7.3 GB. Rejected path (generic reduction sumcheck): 5.8 s. `benchmarks/results/p3.5-2026-07-04-1708c66.json` |
 | P4 LogUp + fused blocks | **done** (2026-07-05) | one full layer proved+verified e2e (T=100, real PCS opening) ✓ **PASSED**; counts within 20% ✓ (witness streams = budget **exactly**, padded LogUp domains explained); LogUp ≤8–10 E-mult/lookup: **MISSED, motivated (12.20)**; 1 weight claim/tensor ✓ (4/layer) | prove 0.800 s vs native forward 0.033 s (ρ_layer ~24, 4 cores); verify 0.041 s; LogUp lookup-side **12.20 E-mult/lookup** (~34 ns/lookup, 5.4× vs P2.5 spike wall), table-side 3.86 raw → 0.32 /12-amortized; full instance cost 126.5 M E-mult/layer (≈42/padded lookup incl. aux folding + tables + closures); corr bytes 7.64 MB/layer (mult vectors 3.87 MB — see deviations); layer PCS 2^24: commit 0.34 s one-off, **open 0.035 s**, verify 0.006 s; projections (P3.5 cost model, 49/98 claims): prefill **0.233 s**, per-response **0.345 s**. Run of record `benchmarks/results/p4-2026-07-06-8b4ca11.json` (clean tree, `git_dirty:false`; the 07-05 JSON was a dirty-tree run whose sha names the parent commit) |
 | P5 GPT-2 e2e prefill 100 tok | **done** (2026-07-06) | one-command run ✓ (`scripts/run_prefill.sh`), golden check ✓ (full logits bit-exact vs numpy at T=100, argmax 835 ' way'), counts vs budget: witness lookups = budget **exactly** (16,944,000) ✓ | **accepted e2e with real weights + 13 real Ligero commitments**: native (witness) 0.459 s, prove 11.0–11.2 s, **ρ ≈ 24** (matches P4's ×12 projection); verify 0.65 s + 0.07 s PCS; PCS open **0.73 s** / 52.8 MB (vs 0.237 s projection — 13× fixed costs, see deviations), commit one-off 7.6 s; **comm 159.6 MB/prefill** (mult vectors 59.4 + PCS 52.8 + boundary 36.9 + rest), projected response 212 MB; E-mult all-in 100.6/budget lookup; peak RSS 2.86 GB. `benchmarks/results/p5-2026-07-06-e52ce79.json` (clean tree) |
-| P6 decode + authenticated KV cache | pending | flat cost/token, anti-replay smoke | — |
+| P6 decode + authenticated KV cache | **done** (2026-07-07) | flat cost/token ✓ **PASSED** (curve last/first 1.12 ≤ 1.5, 5×10 chunks, cache 100→150); anti-replay smoke ✓ (prefill-row replay + position swap rejected); golden decode ✓ (50 tokens bit-exact vs numpy) | **accepted e2e, prompt 100 + 50 decode, one two-phase session, real 13-commitment PCS with STACKED claims (96 weight + 6 embed)**: native decode 30.9 tok/s (KV-cached baseline); prove_response 18.7 s = prefill 10.5 s + **decode marginal 8.2 s (0.164 s/token, ρ_decode 5.07 CPU)**; verified 2.67 tok/s; verify 0.57 s + 0.10 s PCS. Comm: transcript 137.4 MB (prefill 48.4 + PCS opening 66.7 + decode marginal 22.3 = **445 KB/token**) + public band logits 20.5 MB → **total response download 157.9 MB** (inside the 150–200 MB product envelope; the PCS opening is now the dominant lever, P7). Shared-α restructure landed with P6: mult corr 59.4 → 2.85 MB. PCS commit one-off 9.5 s; peak RSS 3.47 GB. `benchmarks/results/p6-2026-07-07-515bb1c.json` (clean tree) |
 | P7 report + GPU budget model | pending | extrapolation decides GPU go/no-go | — |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
@@ -111,6 +111,44 @@ constant factors hold. That constant factor is what P3/P4 measure.
      PCS commitment consolidation / query-count levers, per-tensor RLC
      merging of prefill+decode weight claims (the batch opening at
      2.3 ms/claim absorbs ~100 claims fine on CPU).
+
+- **2026-07-07 (P6 CLOSED — run-of-record decisions and open levers)**:
+  1. **Gate passed** (see milestone row). Architectural claim confirmed on
+     CPU: per-token proving cost is ~flat as the cache grows (chunk curve
+     0.236 → 0.263 s/token over cache 100→150 — the O(seq·d) attention term
+     only; an O(seq²) design would have doubled immediately). The decode
+     marginal ratio ρ_decode = 5.07 (marginal prove / native KV-decode wall)
+     is ~4.6× BETTER than ρ_prefill (23.1): decode proving batches 50 rows
+     into one stacked chunk while native decode is matvec-bound.
+  2. **One code path for prefill and decode**: attention generalized to the
+     offset-causal band (`BandShape`, prefill = t0 0 square band) — the P4/P5
+     regression suite validates the band machinery directly. Cross-phase
+     cache openings are segmented streamed MAC openings (`CacheSegP/K`);
+     anti-replay holds by position-separated domains (smoke-tested).
+  3. **Chunking trade measured**: 5×10 chunks prove 23.1 s vs 18.7 s for the
+     single Q=50 chunk (+23% — per-chunk fixed instance costs). Deferred
+     single-chunk proving is the mode of record; chunking is a
+     latency/streaming knob, never per-token (P4 dev. #8 upheld: claims per
+     response = 2× prefill, one stacked PCS opening).
+  4. **Band logits are public response output** (20.5 MB for 50 positions):
+     each sampled token is checked as a PUBLIC argmax of the previous
+     position's logits row inside `verify_response`. Counted in the download
+     total, not in the proof transcript. Lever if it ever matters: an is_max
+     argmax argument (P5's row-max machinery reused per vocab row) would
+     replace 20.5 MB with ~2.5 M lookups — logged, not scheduled.
+  5. **Comm decomposition at 150 tokens: 157.9 MB total download** = 48.4
+     (prefill corrections/transcript) + 22.3 (decode marginal, 445 KB/token)
+     + 66.7 (PCS opening, 102 claims over 13 commitments) + 20.5 (public
+     logits). The PCS opening replaced multiplicity vectors as the single
+     largest lever (P7: commitment consolidation, query count, per-tensor
+     RLC claim merging — the 2.3 ms/claim model held: open 1.05 s).
+  6. Final-LN/logits machinery now runs on ALL band rows (t=q batch) — the
+     P5 t=1 duplicated-row deviation stays prefill-only.
+  7. Witness-side: band witnesses are SLICES of one full causal re-forward
+     (prefix-consistency, asserted bit-exact vs the KV-cached incremental
+     decode and vs numpy over 50 tokens); prover accumulators (LN affine,
+     gelu multiplicities) are recomputed from boundaries + stats, so bands
+     carry no lookup traces.
 
 - **2026-07-07 (P6 in progress — shared-α restructure landed, measured)**:
   the two-phase pipeline (P6 plan #1) is implemented on the prefill path and

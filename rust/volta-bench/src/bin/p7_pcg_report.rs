@@ -11,7 +11,10 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 use volta_mac::{CorrelationStream, VerifierCtx};
-use volta_pcg::{expand_phase_a, ConsistencyReport, PhaseAParams, PhaseATimings};
+use volta_pcg::{
+    expand_phase_a, expand_phase_b, ConsistencyReport, PhaseAParams, PhaseATimings,
+    PhaseBSetupReport, PhaseBTimings,
+};
 
 #[derive(Deserialize)]
 struct SourceRun {
@@ -63,6 +66,12 @@ struct Report {
     #[serde(skip_serializing_if = "Option::is_none")]
     phase_a_timings: Option<PhaseATimings>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    phase_b_timings: Option<PhaseBTimings>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    phase_b_setup: Option<PhaseBSetupReport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    production_ready: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     consistency: Option<ConsistencyReport>,
     #[serde(skip_serializing_if = "Option::is_none")]
     ggm_checksum: Option<u64>,
@@ -84,21 +93,23 @@ fn results_dir() -> PathBuf {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Backend {
     Mock,
-    Real,
+    PhaseA,
+    PhaseB,
 }
 
 impl Backend {
     fn as_str(self) -> &'static str {
         match self {
             Backend::Mock => "mock",
-            Backend::Real => "real",
+            Backend::PhaseA => "phase-a",
+            Backend::PhaseB => "phase-b",
         }
     }
 }
 
 fn usage() -> ! {
     eprintln!(
-        "usage: p7_pcg_report [--backend mock|real] [--source benchmarks/results/p6-....json]"
+        "usage: p7_pcg_report [--backend mock|real|phase-a|phase-b] [--source benchmarks/results/p6-....json]"
     );
     std::process::exit(2);
 }
@@ -128,7 +139,8 @@ fn parse_args() -> (PathBuf, Backend) {
 fn parse_backend(s: &str) -> Backend {
     match s {
         "mock" => Backend::Mock,
-        "real" => Backend::Real,
+        "real" | "phase-a" => Backend::PhaseA,
+        "phase-b" => Backend::PhaseB,
         _ => usage(),
     }
 }
@@ -206,7 +218,8 @@ fn main() {
 
     let report = match backend {
         Backend::Mock => run_mock(&source, &source_path, seed, delta, &mut checksum),
-        Backend::Real => run_real(&source, &source_path, seed, delta, &mut checksum),
+        Backend::PhaseA => run_phase_a(&source, &source_path, seed, delta, &mut checksum),
+        Backend::PhaseB => run_phase_b(&source, &source_path, seed, delta, &mut checksum),
     };
 
     let date = report.date.clone();
@@ -220,14 +233,12 @@ fn main() {
             report.t_total_mock_expansion_s.unwrap_or_default()
         );
     } else {
-        let tm = report.phase_a_timings.expect("phase-A timings");
+        let total = report.t_total_real_expansion_s.unwrap_or_default();
         eprintln!(
-            "real phase-A total {:.3}s (setup {:.3}s, ggm {:.3}s, lpn {:.3}s, check {:.3}s)",
-            tm.t_total_real_expansion_s,
-            tm.t_setup_stub_s,
-            tm.t_ggm_pprf_s,
-            tm.t_lpn_expand_s,
-            tm.t_consistency_check_s
+            "{} total {:.3}s setup_comm={} B",
+            backend.as_str(),
+            total,
+            report.setup_comm_bytes
         );
     }
     eprintln!("wrote {}", path.display());
@@ -280,6 +291,9 @@ fn common_report(
         base_vole: String::new(),
         lpn_parameters: None,
         phase_a_timings: None,
+        phase_b_timings: None,
+        phase_b_setup: None,
+        production_ready: None,
         consistency: None,
         ggm_checksum: None,
         peak_rss_gb: 0.0,
@@ -365,7 +379,7 @@ fn run_mock(
     report
 }
 
-fn run_real(
+fn run_phase_a(
     source: &SourceRun,
     source_path: &Path,
     seed: [u8; 32],
@@ -398,7 +412,7 @@ fn run_real(
     let sub_equiv = source.corr_sub_corrs + 2 * source.corr_full_corrs;
     let mut report = common_report(
         "P7-real-pcg-phase-a",
-        Backend::Real,
+        Backend::PhaseA,
         source,
         source_path,
         *checksum,
@@ -419,6 +433,66 @@ fn run_real(
     report.phase_a_timings = Some(expansion.timings);
     report.consistency = Some(expansion.consistency);
     report.ggm_checksum = Some(expansion.ggm_checksum);
+    report.peak_rss_gb = peak_rss_gb();
+    report
+}
+
+fn run_phase_b(
+    source: &SourceRun,
+    source_path: &Path,
+    seed: [u8; 32],
+    delta: Fp2,
+    checksum: &mut u64,
+) -> Report {
+    let n_sub = source.corr_sub_corrs as usize;
+    let n_full = source.corr_full_corrs as usize;
+    let params = PhaseAParams::for_counts(n_sub, n_full);
+    let expansion = expand_phase_b(seed, delta, n_sub, n_full, params);
+
+    for s in &expansion.prover.subs {
+        mix_fp(checksum, s.r);
+        mix_fp2(checksum, s.m);
+    }
+    for k in &expansion.verifier.sub_keys {
+        mix_fp2(checksum, *k);
+    }
+    for f in &expansion.prover.fulls {
+        mix_fp2(checksum, f.x);
+        mix_fp2(checksum, f.m);
+    }
+    for k in &expansion.verifier.full_keys {
+        mix_fp2(checksum, *k);
+    }
+    mix_fp(checksum, Fp::new(expansion.consistency.checksum));
+
+    let total = expansion.timings.t_total_setup_and_expansion_s;
+    let sub_equiv = source.corr_sub_corrs + 2 * source.corr_full_corrs;
+    let production_ready = expansion.setup.params.production_ready;
+    let setup_comm = expansion.setup.comm.total_bytes;
+    let mut report = common_report(
+        "P7-real-pcg-phase-b",
+        Backend::PhaseB,
+        source,
+        source_path,
+        *checksum,
+        true,
+        "Phase-B setup measurement: real curve25519/Ristretto base OTs plus measured GGM OT-extension delivery and transcript-bound consistency challenge. Production-ready remains false until WYKW malicious checks and table-derived LPN parameters are closed.".into(),
+    );
+    report.t_total_real_expansion_s = Some(total);
+    report.sub_corrs_per_s_prover = source.corr_sub_corrs as f64 / total;
+    report.sub_corrs_per_s_verifier = source.corr_sub_corrs as f64 / total;
+    report.full_corrs_per_s_prover = source.corr_full_corrs as f64 / total;
+    report.full_corrs_per_s_verifier = source.corr_full_corrs as f64 / total;
+    report.sub_equiv_corrs_per_s_joint = Some(sub_equiv as f64 / total);
+    report.expanded_prover_bytes = expansion.prover.expanded_bytes();
+    report.expanded_verifier_bytes = expansion.verifier.expanded_bytes();
+    report.setup_comm_bytes = setup_comm;
+    report.base_vole = "real".into();
+    report.lpn_parameters = Some(expansion.params);
+    report.phase_b_timings = Some(expansion.timings);
+    report.phase_b_setup = Some(expansion.setup);
+    report.production_ready = Some(production_ready);
+    report.consistency = Some(expansion.consistency);
     report.peak_rss_gb = peak_rss_gb();
     report
 }

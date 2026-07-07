@@ -1,0 +1,77 @@
+{
+  "milestone": "P7-real-pcg-phase-b",
+  "backend": "phase-b",
+  "date": "2026-07-07",
+  "git_sha": "f73ca5b",
+  "git_dirty": true,
+  "machine": "linux aarch64",
+  "source": "benchmarks/results/p6-2026-07-07-515bb1c.json",
+  "source_milestone": "P6",
+  "source_git_sha": "515bb1c",
+  "source_git_dirty": false,
+  "corr_sub_corrs": 8479926,
+  "corr_full_corrs": 176880,
+  "t_total_real_expansion_s": 1.6255657380000001,
+  "sub_corrs_per_s_prover": 5216599.859217751,
+  "sub_corrs_per_s_verifier": 5216599.859217751,
+  "full_corrs_per_s_prover": 108811.34848328108,
+  "full_corrs_per_s_verifier": 108811.34848328108,
+  "sub_equiv_corrs_per_s_joint": 5434222.556184313,
+  "expanded_prover_bytes": 209178384,
+  "expanded_verifier_bytes": 138508896,
+  "setup_comm_bytes": 1081408,
+  "base_vole": "real",
+  "lpn_parameters": {
+    "profile": "p7-phase-a-goldilocks-regular-lpn-v1",
+    "security_bits": 128,
+    "output_sub_equiv": 8833686,
+    "lpn_k": 589760,
+    "lpn_noise_weight": 1280,
+    "base_vole_len": 591041,
+    "code_fanout": 10,
+    "ggm_block_size": 6902,
+    "ggm_depth": 13,
+    "consistency_reps": 2,
+    "full_field_combiner": "x=x0+phi*x1, m=m0+phi*m1, k=k0+phi*k1",
+    "parameter_source": "P7 cost model; production table citation pending"
+  },
+  "phase_b_timings": {
+    "t_base_ot_s": 0.021480806,
+    "t_ot_extension_s": 0.008465638,
+    "t_base_vole_from_setup_s": 0.015050848,
+    "t_lpn_expand_s": 1.340056054,
+    "t_full_combine_s": 0.004162569,
+    "t_consistency_check_s": 0.236342906,
+    "t_total_setup_and_expansion_s": 1.6255657380000001
+  },
+  "phase_b_setup": {
+    "params": {
+      "profile": "p7-phase-b-two-party-setup-v0",
+      "base_ot_count": 128,
+      "extended_ot_count": 16640,
+      "ggm_path_depth": 13,
+      "setup_security_bits": 128,
+      "lpn_parameter_source": "P7 cost model; production table citation pending",
+      "production_ready": false
+    },
+    "comm": {
+      "base_ot_bytes": 16384,
+      "ot_extension_bytes": 1064960,
+      "consistency_bytes": 64,
+      "total_bytes": 1081408
+    },
+    "base_ot_transcript_digest": "e9f38af96a56e358664096d32eca4ec7228aecb484064aa1c9949900b26ac952",
+    "ot_extension_digest": "5f66b3967094dad0ef62913fbd843007725d76b417412381558ab3394611fbdb",
+    "setup_binding_digest": "3223075836d528966b599b8d2bbf59192b08305e5435482995f83fd53397d6dc",
+    "consistency_challenge_source": "blake3(setup transcript binding), after base-OT and GGM-OT binding"
+  },
+  "production_ready": false,
+  "consistency": {
+    "ok": true,
+    "checksum": 15387744285060218077
+  },
+  "peak_rss_gb": 0.3608436584472656,
+  "checksum": 13200822502928652649,
+  "is_real_pcg": true,
+  "note": "Phase-B setup measurement: real curve25519/Ristretto base OTs plus measured GGM OT-extension delivery and transcript-bound consistency challenge. Production-ready remains false until WYKW malicious checks and table-derived LPN parameters are closed."
+}

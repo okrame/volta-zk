@@ -431,6 +431,43 @@ def real_pcg_phase_a(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return rows
 
 
+def real_pcg_phase_b(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for r in results:
+        if r.get("milestone") != "P7-real-pcg-phase-b":
+            continue
+        timings = r.get("phase_b_timings") or {}
+        setup = r.get("phase_b_setup") or {}
+        comm = setup.get("comm") or {}
+        rows.append(
+            {
+                "source": r["_path"],
+                "git_dirty": r.get("git_dirty"),
+                "is_real_pcg": r.get("is_real_pcg"),
+                "base_vole": r.get("base_vole"),
+                "production_ready": r.get("production_ready"),
+                "setup_comm_bytes": r.get("setup_comm_bytes"),
+                "base_ot_bytes": comm.get("base_ot_bytes"),
+                "ot_extension_bytes": comm.get("ot_extension_bytes"),
+                "corr_sub_corrs": r.get("corr_sub_corrs"),
+                "corr_full_corrs": r.get("corr_full_corrs"),
+                "t_total_real_expansion_s": r.get(
+                    "t_total_real_expansion_s", timings.get("t_total_setup_and_expansion_s")
+                ),
+                "t_base_ot_s": timings.get("t_base_ot_s"),
+                "t_ot_extension_s": timings.get("t_ot_extension_s"),
+                "t_lpn_expand_s": timings.get("t_lpn_expand_s"),
+                "t_consistency_check_s": timings.get("t_consistency_check_s"),
+                "peak_rss_gb": r.get("peak_rss_gb"),
+                "setup": setup,
+                "consistency": r.get("consistency"),
+                "note": r.get("note"),
+            }
+        )
+    rows.sort(key=lambda x: x["source"])
+    return rows
+
+
 def decode_marginal_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows = []
     for r in results:
@@ -472,11 +509,20 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
     formula_matches = current_formula == current_measured
     mock_pcg = mock_pcg_lower_bounds(results)
     real_pcg = real_pcg_phase_a(results)
-    pcg_status = "phase_a_measured_mock_stub" if real_pcg else "not_measured_in_local_vm"
+    real_pcg_b = real_pcg_phase_b(results)
+    pcg_status = (
+        "phase_b_measured_not_production"
+        if real_pcg_b
+        else "phase_a_measured_mock_stub" if real_pcg else "not_measured_in_local_vm"
+    )
     pcg_note = (
+        "Real-PCG phase B setup measured, but production_ready is false until WYKW malicious checks and table-derived LPN parameters are closed."
+        if real_pcg_b
+        else (
         "Real-PCG phase A measured with a mock-stub base VOLE; phase B still needs real base OTs/OT extension/setup communication."
         if real_pcg
         else "P7 final go/no-go still needs a real silent-VOLE setup/expansion measurement for this volume."
+        )
     )
 
     p6_comm = {
@@ -537,6 +583,7 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
             "corr_full_corrs": baseline.get("corr_full_corrs"),
             "mock_pcg_lower_bounds": mock_pcg,
             "real_pcg_phase_a": real_pcg,
+            "real_pcg_phase_b": real_pcg_b,
             "note": pcg_note,
         },
         "go_no_go": {
@@ -622,6 +669,17 @@ def print_summary(report: dict[str, Any]) -> None:
                 f"lpn={row['t_lpn_expand_s']:.3f}s check={row['t_consistency_check_s']:.3f}s "
                 f"base={row['base_vole']} setup_comm={row['setup_comm_bytes']} B "
                 f"{row['source']}"
+            )
+        print()
+    real_pcg_b = report["real_pcg_spike"].get("real_pcg_phase_b") or []
+    if real_pcg_b:
+        print("Real-PCG phase B")
+        for row in real_pcg_b:
+            print(
+                f"  total={row['t_total_real_expansion_s']:.3f}s "
+                f"baseOT={row['t_base_ot_s']:.3f}s otExt={row['t_ot_extension_s']:.3f}s "
+                f"lpn={row['t_lpn_expand_s']:.3f}s setup_comm={row['setup_comm_bytes']} B "
+                f"production_ready={row['production_ready']} {row['source']}"
             )
         print()
     decode_profiles = report.get("decode_marginal_profiles") or []

@@ -56,6 +56,16 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-07 (P7 real-PCG phase B, pre-registered)**:
+  implement `p7_pcg_report --backend phase-b` as an opt-in setup
+  measurement: real public-key base OT dependency (`curve25519-dalek`),
+  measured OT-extension/GGM-delivery bytes, transcript-bound consistency
+  challenge after setup binding, and JSON `base_vole:"real"` with
+  `setup_comm_bytes`. This is not a default/backend flip. Production status
+  remains false until the WYKW malicious checks and the LPN code/parameters
+  are tied to cited WYKW/Ferret tables; docs stay limited to this ledger
+  entry plus measured JSON.
+
 - **2026-07-07 (P7 real-PCG phase A, pre-registered)**:
   implement the §4.4 phase-A backend in-repo before cloud GPU spend. Scope:
   add `volta-pcg` with a WYKW/Wolverine-style Goldilocks subfield VOLE

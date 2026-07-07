@@ -24,6 +24,7 @@ volta-gpt2 = { path = "volta-gpt2" }
 volta-pcs = { path = "volta-pcs" }
 rand = "0.8"
 blake3 = "1"
+curve25519-dalek = "4"
 rand_chacha = "0.3"
 rayon = "1.10"
 serde = { version = "1", features = ["derive"] }

@@ -59,6 +59,12 @@ def test_p7_report_selects_record_and_packed_sources():
         assert row["setup_comm_bytes"] == 0
         assert row["lpn_parameters"]["security_bits"] == 128
         assert row["consistency"]["ok"] is True
+    for row in data["real_pcg_spike"]["real_pcg_phase_b"]:
+        assert row["is_real_pcg"] is True
+        assert row["base_vole"] == "real"
+        assert row["setup_comm_bytes"] > 0
+        assert row["production_ready"] is False
+        assert row["consistency"]["ok"] is True
     decode = [
         row
         for row in data["decode_marginal_profiles"]

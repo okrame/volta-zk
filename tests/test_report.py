@@ -53,3 +53,11 @@ def test_p7_report_selects_record_and_packed_sources():
     assert len(pcg) == 1
     assert pcg[0]["is_real_pcg"] is False
     assert pcg[0]["corr_sub_corrs"] == 8_479_926
+    decode = [
+        row
+        for row in data["decode_marginal_profiles"]
+        if row["source"].endswith("p6-quick-2026-07-07-179cd3d.json")
+    ]
+    assert len(decode) == 1
+    assert decode[0]["label_sum_bytes"] == decode[0]["comm_decode_marginal_bytes"]
+    assert decode[0]["top_labels"][0] == {"label": "auth_corrections", "bytes": 3_135_232}

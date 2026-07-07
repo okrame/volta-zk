@@ -79,7 +79,7 @@ use crate::mle::{eq_vec, eval_mle};
 use crate::sumcheck_blind::{blind_prove, blind_verify, BlindSumcheckProof};
 use crate::thaler::pad_bits;
 use volta_field::{Fp, Fp2};
-use volta_gpt2::{gemm_i64, GemmBiases, LayerWeights, LayerWitness, Luts, TableId, D, DFF, DH, H};
+use volta_gpt2::{gemm_i64, GemmBiases, LayerWeights, LayerWitness, Luts, D, DFF, DH, H};
 use volta_mac::{
     auth_verifier, CorrIndex, CorrelationStream, ProverAuthed, Transcript, VerifierCtx,
     VerifierKey,
@@ -3065,7 +3065,6 @@ pub(crate) fn verify_attn_phase1(
     cx: &mut BlockCtxV,
 ) -> Option<AttnV1> {
     let p = luts.params;
-    let t = sh.q;
     let t_pad = sh.q_pad();
     let n_above = H * sh.n_above_head();
 
@@ -3149,7 +3148,6 @@ pub(crate) fn verify_attn_block(
     let s_len = sh.s();
     let nr = sh.nr();
     let rb = qb;
-    let t_pad = q_pad;
     let d_cb = pad_bits(D);
     let s_ap = p.shift_attn_proj;
     let s_av = p.shift_av;

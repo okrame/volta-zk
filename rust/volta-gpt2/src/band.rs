@@ -10,7 +10,7 @@
 //! checkable) are computed here since the full forward only materializes the
 //! last row's.
 
-use crate::layer::{layer_norm, LayerWitness, LookupTrace, TableId, D, DFF, H};
+use crate::layer::{layer_norm, LayerWitness, LookupTrace, D, DFF, H};
 use crate::model::{Gpt2Model, ModelWitness, L, VOCAB};
 use rayon::prelude::*;
 

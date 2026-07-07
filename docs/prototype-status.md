@@ -56,6 +56,14 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-07 (P7 decode marginal breakdown, pre-registered)**:
+  add transcript-label snapshots to `p6_report` so the 445 KB/token decode
+  marginal can be decomposed before any optimization. Scope is accounting
+  only: clone the existing `Transcript` byte ledger, snapshot PCS labels
+  around the real opening, and report response / prefill / PCS /
+  decode-non-PCS marginal by label. No transcript message, challenge order,
+  proof content, or communication byte count changes.
+
 - **2026-07-07 (P7 mock-PCG lower-bound spike, pre-registered)**:
   no real Ferret/silent-VOLE implementation or dependency is present in the
   repo. Add a local `p7_pcg_report` binary that reads a P6 JSON's counted

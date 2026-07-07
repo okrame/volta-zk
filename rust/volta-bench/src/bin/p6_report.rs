@@ -20,6 +20,7 @@
 //! (`--quick`: prompt 16 + 8 decode, 2×4 curve, golden skipped.)
 
 use serde::Serialize;
+use std::collections::BTreeMap;
 use std::time::Instant;
 use volta_bench::logits_pack;
 use volta_field::{Fp, Fp2};
@@ -103,6 +104,10 @@ struct Report {
     comm_response_bytes: u64,
     comm_decode_marginal_bytes: u64,
     comm_decode_bytes_per_token: u64,
+    comm_prefill_by_label: BTreeMap<String, u64>,
+    comm_response_by_label: BTreeMap<String, u64>,
+    comm_pcs_by_label: BTreeMap<String, u64>,
+    comm_decode_marginal_by_label: BTreeMap<String, u64>,
     /// PCS opening bytes are inside comm_response_bytes (transcript ledger).
     pcs_opening_bytes_total: u64,
     /// Accounting-only P7 lever: marginal PCS bytes if raw data columns plus
@@ -147,6 +152,27 @@ fn peak_rss_gb() -> f64 {
 
 fn weights_dir() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../benchmarks/weights")
+}
+
+fn ledger_to_owned(tx: &Transcript) -> BTreeMap<String, u64> {
+    tx.ledger().iter().map(|(&k, &v)| (k.to_string(), v)).collect()
+}
+
+fn ledger_delta(
+    total: &BTreeMap<String, u64>,
+    subtract: &[&BTreeMap<String, u64>],
+) -> BTreeMap<String, u64> {
+    let mut out = BTreeMap::new();
+    for (k, &v) in total {
+        let mut x = v;
+        for s in subtract {
+            x = x.saturating_sub(s.get(k).copied().unwrap_or(0));
+        }
+        if x > 0 {
+            out.insert(k.clone(), x);
+        }
+    }
+    out
 }
 
 #[derive(Clone, Copy)]
@@ -208,6 +234,8 @@ struct SessionResult {
     prove_s: f64,
     verify_s: f64,
     comm_bytes: u64,
+    transcript_by_label: BTreeMap<String, u64>,
+    pcs_by_label: BTreeMap<String, u64>,
     pcs_rows: Vec<PcsCommitmentRow>,
     pcs_opening_bytes: u64,
     pcs_cached_query_marginal_bytes: u64,
@@ -282,6 +310,7 @@ fn run_session(
     let mut pcs_opening_bytes = 0u64;
     let mut pcs_cached_query_marginal_bytes = 0u64;
     let mut pcs_all_ok = true;
+    let tx_before_pcs = ledger_to_owned(&txp);
     if with_pcs {
         assert_eq!(out.weight_claims.len(), 4 * L * phases);
         let layout = layout_gpt2_layer();
@@ -424,6 +453,8 @@ fn run_session(
         drop((e_flat, pm_e, com_e));
         eprintln!("  embed: {} claims, commit {commit_s:.2}s open {open_s:.3}s ok={ok}", 3 * phases);
     }
+    let tx_after_pcs = ledger_to_owned(&txp);
+    let pcs_by_label = ledger_delta(&tx_after_pcs, &[&tx_before_pcs]);
 
     // --- closures ------------------------------------------------------------
     let chi = txp.challenge_fp2();
@@ -448,6 +479,8 @@ fn run_session(
         prove_s,
         verify_s,
         comm_bytes: txp.total_bytes(),
+        transcript_by_label: ledger_to_owned(&txp),
+        pcs_by_label,
         pcs_rows,
         pcs_opening_bytes,
         pcs_cached_query_marginal_bytes,
@@ -545,11 +578,11 @@ fn main() {
     }
     let t_prove_prefill_only_s = tpp0.elapsed().as_secs_f64();
     // Prefill-only comm for the marginal (fresh ledger, no PCS).
-    let comm_prefill_bytes = {
+    let (comm_prefill_bytes, comm_prefill_by_label) = {
         let mut stream = CorrelationStream::new([0x35u8; 32]);
         let mut tx = Transcript::new([0x36u8; 32]);
         let _ = prove_model(&model, &wit0, &mut stream, &mut tx);
-        tx.total_bytes()
+        (tx.total_bytes(), ledger_to_owned(&tx))
     };
 
     // --- full-response session: prefill + ONE Q=n_gen chunk + real PCS ----------
@@ -689,6 +722,13 @@ fn main() {
         comm_response_bytes: rec.comm_bytes,
         comm_decode_marginal_bytes: comm_decode_marginal,
         comm_decode_bytes_per_token: comm_decode_marginal / n_gen as u64,
+        comm_prefill_by_label: comm_prefill_by_label.clone(),
+        comm_response_by_label: rec.transcript_by_label.clone(),
+        comm_pcs_by_label: rec.pcs_by_label.clone(),
+        comm_decode_marginal_by_label: ledger_delta(
+            &rec.transcript_by_label,
+            &[&comm_prefill_by_label, &rec.pcs_by_label],
+        ),
         pcs_opening_bytes_total: rec.pcs_opening_bytes,
         pcs_cached_query_marginal_bytes_total: rec.pcs_cached_query_marginal_bytes,
         public_logits_bytes,

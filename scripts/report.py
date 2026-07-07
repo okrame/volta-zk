@@ -385,6 +385,30 @@ def mock_pcg_lower_bounds(results: list[dict[str, Any]]) -> list[dict[str, Any]]
     return rows
 
 
+def decode_marginal_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for r in results:
+        labels = r.get("comm_decode_marginal_by_label")
+        if not labels:
+            continue
+        top = sorted(labels.items(), key=lambda kv: (-kv[1], kv[0]))[:12]
+        rows.append(
+            {
+                "source": r["_path"],
+                "milestone": r.get("milestone"),
+                "git_dirty": r.get("git_dirty"),
+                "t_prefill": r.get("t_prefill"),
+                "n_decode": r.get("n_decode"),
+                "comm_decode_marginal_bytes": r.get("comm_decode_marginal_bytes"),
+                "comm_decode_bytes_per_token": r.get("comm_decode_bytes_per_token"),
+                "label_sum_bytes": sum(labels.values()),
+                "top_labels": [{"label": k, "bytes": v} for k, v in top],
+            }
+        )
+    rows.sort(key=lambda x: (x["t_prefill"] or 0, x["n_decode"] or 0, x["source"]))
+    return rows
+
+
 def p7_report(results_dir: Path) -> dict[str, Any]:
     results = load_results(results_dir)
     baseline = select_p6_record(results)
@@ -440,6 +464,7 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
         "rho_history": summarize_rhos(results),
         "communication": p6_comm,
         "measured_pcs_profiles": measured_pcs_profiles(results, baseline),
+        "decode_marginal_profiles": decode_marginal_profiles(results),
         "pcs_formula_check": {
             "matches_p6_measured_bytes": formula_matches,
             "formula_total_bytes": current_formula,
@@ -532,6 +557,17 @@ def print_summary(report: dict[str, Any]) -> None:
                 f"sub={row['corr_sub_corrs']} full={row['corr_full_corrs']} "
                 f"{row['source']}"
             )
+        print()
+    decode_profiles = report.get("decode_marginal_profiles") or []
+    if decode_profiles:
+        print("Decode marginal profiles")
+        for row in decode_profiles:
+            print(
+                f"  {row['milestone']:<8} {row['comm_decode_marginal_bytes']} B "
+                f"({row['comm_decode_bytes_per_token']} B/token) {row['source']}"
+            )
+            for item in row["top_labels"][:5]:
+                print(f"    {item['label']:<32} {item['bytes']}")
         print()
     print("PCS scenarios (packed response MB)")
     for row in report["pcs_scenarios"]:

@@ -1,0 +1,448 @@
+{
+  "baseline": {
+    "accepted": true,
+    "git_dirty": false,
+    "n_decode": 50,
+    "pcs_open_s": 1.0479342859999998,
+    "pcs_verify_s": 0.103148593,
+    "peak_rss_gb": 3.4689102172851562,
+    "prove_decode_marginal_s": 8.195819496999999,
+    "prove_response_s": 18.738631475,
+    "rho_decode_cpu": 5.07301648142616,
+    "rho_prefill_cpu": 23.116002552474924,
+    "source": "benchmarks/results/p6-2026-07-07-515bb1c.json",
+    "t_prefill": 100,
+    "verify_response_s": 0.567143475
+  },
+  "communication": {
+    "comm_decode_bytes_per_token": 445067,
+    "comm_decode_marginal_bytes": 22253392,
+    "comm_prefill_bytes": 48426912,
+    "packed_logits_source": "benchmarks/results/p6-2026-07-07-d71e339.json",
+    "pcs_opening_bytes": 66733504,
+    "public_logits_packed_bytes": 7407122,
+    "public_logits_raw_bytes": 20504856,
+    "source": "benchmarks/results/p6-2026-07-07-515bb1c.json",
+    "total_response_download_packed_bytes": 144820930,
+    "total_response_download_raw_bytes": 157918664
+  },
+  "date": "2026-07-07",
+  "decode_marginal_profiles": [
+    {
+      "comm_decode_bytes_per_token": 507144,
+      "comm_decode_marginal_bytes": 4057152,
+      "git_dirty": true,
+      "label_sum_bytes": 4057152,
+      "milestone": "P6-quick",
+      "n_decode": 8,
+      "source": "benchmarks/results/p6-quick-2026-07-07-179cd3d.json",
+      "t_prefill": 16,
+      "top_labels": [
+        {
+          "bytes": 3135232,
+          "label": "auth_corrections"
+        },
+        {
+          "bytes": 385952,
+          "label": "logup_round_corrections"
+        },
+        {
+          "bytes": 155584,
+          "label": "logup_split_corrections"
+        },
+        {
+          "bytes": 116688,
+          "label": "logup_prod_corrections"
+        },
+        {
+          "bytes": 106656,
+          "label": "logup_aux_round_corrections"
+        },
+        {
+          "bytes": 72576,
+          "label": "blind_round_corrections"
+        },
+        {
+          "bytes": 29424,
+          "label": "hadamard_round_corrections"
+        },
+        {
+          "bytes": 13760,
+          "label": "logup_col_corrections"
+        },
+        {
+          "bytes": 10784,
+          "label": "prod_check_m0_m1"
+        },
+        {
+          "bytes": 10032,
+          "label": "logup_aggregate_corrections"
+        },
+        {
+          "bytes": 6688,
+          "label": "logup_root_corrections"
+        },
+        {
+          "bytes": 5376,
+          "label": "x_claim_correction"
+        }
+      ]
+    }
+  ],
+  "git_dirty": true,
+  "git_sha": "179cd3d",
+  "go_no_go": {
+    "do_not_start_full_cuda_until": [
+      "real-PCG cost spike is measured or explicitly budgeted",
+      "cloud CPU native baseline is re-measured on the target instance",
+      "Goldilocks/LogUp/PCS roofline kernels demonstrate the required relative prover-vs-native speedup"
+    ],
+    "local_recommendation": "conditional-go-to-cloud-spikes-only",
+    "summary": "Communication is inside the 150-200 MB envelope after the shipped logits packing, and PCS projections show enough headroom without changing the proof path locally. The rho targets require measured GPU roofline data and the real-PCG spike before a final go/no-go."
+  },
+  "gpu_budget_model": {
+    "definition": "predicted_gpu_rho = cpu_rho / relative_prover_vs_native_gpu_speedup",
+    "required_relative_prover_vs_native_speedup": {
+      "decode": 2.53650824071308,
+      "prefill": 4.623200510494985
+    },
+    "sensitivity": [
+      {
+        "decode_target_met": false,
+        "prefill_target_met": false,
+        "relative_prover_vs_native_speedup": 1.0,
+        "rho_decode": 5.07301648142616,
+        "rho_prefill": 23.116002552474924
+      },
+      {
+        "decode_target_met": false,
+        "prefill_target_met": false,
+        "relative_prover_vs_native_speedup": 2.0,
+        "rho_decode": 2.53650824071308,
+        "rho_prefill": 11.558001276237462
+      },
+      {
+        "decode_target_met": false,
+        "prefill_target_met": false,
+        "relative_prover_vs_native_speedup": 2.5,
+        "rho_decode": 2.029206592570464,
+        "rho_prefill": 9.24640102098997
+      },
+      {
+        "decode_target_met": true,
+        "prefill_target_met": false,
+        "relative_prover_vs_native_speedup": 3.0,
+        "rho_decode": 1.69100549380872,
+        "rho_prefill": 7.705334184158308
+      },
+      {
+        "decode_target_met": true,
+        "prefill_target_met": true,
+        "relative_prover_vs_native_speedup": 5.0,
+        "rho_decode": 1.014603296285232,
+        "rho_prefill": 4.623200510494985
+      },
+      {
+        "decode_target_met": true,
+        "prefill_target_met": true,
+        "relative_prover_vs_native_speedup": 8.0,
+        "rho_decode": 0.63412706017827,
+        "rho_prefill": 2.8895003190593656
+      },
+      {
+        "decode_target_met": true,
+        "prefill_target_met": true,
+        "relative_prover_vs_native_speedup": 10.0,
+        "rho_decode": 0.507301648142616,
+        "rho_prefill": 2.3116002552474924
+      }
+    ],
+    "targets": {
+      "decode": 2.0,
+      "prefill": 5.0
+    }
+  },
+  "machine": "linux aarch64",
+  "measured_pcs_profiles": [
+    {
+      "comm_response_bytes": 72045400,
+      "git_dirty": true,
+      "milestone": "P6-quick",
+      "n_decode": 8,
+      "pcs_cached_query_marginal_bytes_total": 32310904,
+      "pcs_n_queries": 150,
+      "pcs_opening_bytes_total": 57822904,
+      "pcs_query_error_bits": 60.01307367193085,
+      "source": "benchmarks/results/p6-quick-q150-2026-07-07-fa40a1d.json",
+      "t_prefill": 16,
+      "total_response_download_packed_bytes": 73371042
+    },
+    {
+      "comm_response_bytes": 80956000,
+      "git_dirty": true,
+      "milestone": "P6-quick",
+      "n_decode": 8,
+      "pcs_cached_query_marginal_bytes_total": 32717504,
+      "pcs_n_queries": 200,
+      "pcs_opening_bytes_total": 66733504,
+      "pcs_query_error_bits": 80.01743156257446,
+      "source": "benchmarks/results/p6-quick-2026-07-07-179cd3d.json",
+      "t_prefill": 16,
+      "total_response_download_packed_bytes": 82281642
+    },
+    {
+      "comm_response_bytes": 80956000,
+      "git_dirty": true,
+      "milestone": "P6-quick",
+      "n_decode": 8,
+      "pcs_cached_query_marginal_bytes_total": 32717504,
+      "pcs_n_queries": 200,
+      "pcs_opening_bytes_total": 66733504,
+      "pcs_query_error_bits": 80.01743156257446,
+      "source": "benchmarks/results/p6-quick-2026-07-07-2b3beab.json",
+      "t_prefill": 16,
+      "total_response_download_packed_bytes": 82281642
+    },
+    {
+      "comm_response_bytes": 80956000,
+      "git_dirty": true,
+      "milestone": "P6-quick",
+      "n_decode": 8,
+      "pcs_cached_query_marginal_bytes_total": null,
+      "pcs_n_queries": 200,
+      "pcs_opening_bytes_total": 66733504,
+      "pcs_query_error_bits": 80.01743156257446,
+      "source": "benchmarks/results/p6-quick-2026-07-07-8322db4.json",
+      "t_prefill": 16,
+      "total_response_download_packed_bytes": null
+    },
+    {
+      "comm_response_bytes": 80956000,
+      "git_dirty": true,
+      "milestone": "P6-quick",
+      "n_decode": 8,
+      "pcs_cached_query_marginal_bytes_total": null,
+      "pcs_n_queries": 200,
+      "pcs_opening_bytes_total": 66733504,
+      "pcs_query_error_bits": 80.01743156257446,
+      "source": "benchmarks/results/p6-quick-2026-07-07-d71e339.json",
+      "t_prefill": 16,
+      "total_response_download_packed_bytes": 82281642
+    },
+    {
+      "comm_response_bytes": 137413808,
+      "git_dirty": false,
+      "milestone": "P6",
+      "n_decode": 50,
+      "pcs_cached_query_marginal_bytes_total": null,
+      "pcs_n_queries": 200,
+      "pcs_opening_bytes_total": 66733504,
+      "pcs_query_error_bits": 80.01743156257446,
+      "source": "benchmarks/results/p6-2026-07-07-515bb1c.json",
+      "t_prefill": 100,
+      "total_response_download_packed_bytes": null
+    },
+    {
+      "comm_response_bytes": 137413808,
+      "git_dirty": true,
+      "milestone": "P6",
+      "n_decode": 50,
+      "pcs_cached_query_marginal_bytes_total": null,
+      "pcs_n_queries": 200,
+      "pcs_opening_bytes_total": 66733504,
+      "pcs_query_error_bits": 80.01743156257446,
+      "source": "benchmarks/results/p6-2026-07-07-d71e339.json",
+      "t_prefill": 100,
+      "total_response_download_packed_bytes": 144820930
+    }
+  ],
+  "milestone": "P7",
+  "pcs_formula_check": {
+    "embed_opening": {
+      "cached_query_cut_bytes": 13203200,
+      "column_indices": 800,
+      "columns_total": 13322400,
+      "corr_ss": 96,
+      "data_columns": 13107200,
+      "mask_columns": 22400,
+      "mask_root": 32,
+      "merkle_paths": 192000,
+      "total": 15214912,
+      "u_vectors": 1892352,
+      "zero_batch": 32
+    },
+    "formula_total_bytes": 66733504,
+    "layer_one_opening": {
+      "cached_query_cut_bytes": 1734400,
+      "column_indices": 800,
+      "columns_total": 1860000,
+      "corr_ss": 128,
+      "data_columns": 1638400,
+      "mask_columns": 28800,
+      "mask_root": 32,
+      "merkle_paths": 192000,
+      "total": 4293216,
+      "u_vectors": 2433024,
+      "zero_batch": 32
+    },
+    "matches_p6_measured_bytes": true,
+    "measured_total_bytes": 66733504,
+    "q200_error_bits": 80.01743156257446,
+    "q_for_60_bits": 150,
+    "rate": 0.515625,
+    "relative_distance": 0.484375
+  },
+  "pcs_scenarios": [
+    {
+      "name": "current",
+      "note": "measured shape and claims",
+      "packed_response_download_bytes": 144820930,
+      "pcs_delta_bytes": 0,
+      "pcs_opening_bytes": 66733504,
+      "status": "implemented"
+    },
+    {
+      "error_bits": 60.01307367193085,
+      "n_queries": 150,
+      "name": "q60_same_rate",
+      "note": "projection only: Q=150, same rate/distance, >=60-bit query error",
+      "packed_response_download_bytes": 135910330,
+      "pcs_delta_bytes": -8910600,
+      "pcs_opening_bytes": 57822904,
+      "status": "soundness-decision-required"
+    },
+    {
+      "name": "per_tensor_rlc",
+      "note": "projection only: layer claims 8->4, embed claims 6->3",
+      "packed_response_download_bytes": 130869778,
+      "pcs_delta_bytes": -13951152,
+      "pcs_opening_bytes": 52782352,
+      "status": "protocol-design-required"
+    },
+    {
+      "error_bits": 60.01307367193085,
+      "n_queries": 150,
+      "name": "q60_plus_rlc",
+      "note": "projection only: Q=150 plus per-tensor RLC",
+      "packed_response_download_bytes": 121999978,
+      "pcs_delta_bytes": -22820952,
+      "pcs_opening_bytes": 43912552,
+      "status": "soundness-and-protocol-design-required"
+    },
+    {
+      "embed_error_bits": 81.50859254638392,
+      "embed_params": {
+        "code_bits": 16,
+        "cols": 32768,
+        "n_queries": 200,
+        "pad": 512,
+        "rows": 4096
+      },
+      "name": "embed_4096_rows",
+      "note": "projection only: embed rows=2^12, cols=2^15, code_bits=16",
+      "packed_response_download_bytes": 140115138,
+      "pcs_delta_bytes": -4705792,
+      "pcs_opening_bytes": 62027712,
+      "status": "layout-variant-required"
+    },
+    {
+      "name": "static_query_cache_marginal",
+      "note": "projection only: verifier caches data columns and their Merkle paths after setup",
+      "packed_response_download_bytes": 110804930,
+      "pcs_delta_bytes": -34016000,
+      "pcs_opening_bytes": 32717504,
+      "status": "stateful-verifier-design-required"
+    },
+    {
+      "name": "static_query_cache_plus_rlc_marginal",
+      "note": "projection only: static query cache plus per-tensor RLC",
+      "packed_response_download_bytes": 96853778,
+      "pcs_delta_bytes": -47967152,
+      "pcs_opening_bytes": 18766352,
+      "status": "stateful-verifier-and-protocol-design-required"
+    }
+  ],
+  "real_pcg_spike": {
+    "corr_full_corrs": 176880,
+    "corr_sub_corrs": 8479926,
+    "mock_pcg_lower_bounds": [
+      {
+        "corr_full_corrs": 176880,
+        "corr_sub_corrs": 8479926,
+        "expanded_prover_bytes": 209178384,
+        "expanded_verifier_bytes": 138508896,
+        "git_dirty": true,
+        "is_real_pcg": false,
+        "note": "Mock ChaCha expansion lower bound only; this is not a Ferret/silent-VOLE real-PCG setup+expansion measurement.",
+        "peak_rss_gb": 0.19115066528320312,
+        "source": "benchmarks/results/p7-mock-pcg-2026-07-07-d16a69c.json",
+        "t_total_mock_expansion_s": 0.35145660300000003
+      }
+    ],
+    "note": "P7 final go/no-go still needs a real silent-VOLE setup/expansion measurement for this volume.",
+    "status": "not_measured_in_local_vm"
+  },
+  "rho_history": [
+    {
+      "git_dirty": null,
+      "milestone": "P1",
+      "rho_kernel_weighted_layer": 1.0599534691013208,
+      "source": "benchmarks/results/p1-2026-07-03-5113243.json"
+    },
+    {
+      "git_dirty": null,
+      "milestone": "P3",
+      "rho_blind_total": 3.338489865313317,
+      "source": "benchmarks/results/p3-2026-07-04-cef997d.json"
+    },
+    {
+      "git_dirty": false,
+      "milestone": "P6",
+      "rho_decode": 5.07301648142616,
+      "rho_prefill": 23.116002552474924,
+      "source": "benchmarks/results/p6-2026-07-07-515bb1c.json"
+    },
+    {
+      "git_dirty": true,
+      "milestone": "P6",
+      "rho_decode": 5.006383943913601,
+      "rho_prefill": 20.857933585316164,
+      "source": "benchmarks/results/p6-2026-07-07-d71e339.json"
+    },
+    {
+      "git_dirty": true,
+      "milestone": "P6-quick",
+      "rho_decode": 5.104270006462208,
+      "rho_prefill": 15.074993978148024,
+      "source": "benchmarks/results/p6-quick-2026-07-07-179cd3d.json"
+    },
+    {
+      "git_dirty": true,
+      "milestone": "P6-quick",
+      "rho_decode": 5.045227517646013,
+      "rho_prefill": 15.897657158890878,
+      "source": "benchmarks/results/p6-quick-2026-07-07-2b3beab.json"
+    },
+    {
+      "git_dirty": true,
+      "milestone": "P6-quick",
+      "rho_decode": 4.279084087294988,
+      "rho_prefill": 7.530933538912597,
+      "source": "benchmarks/results/p6-quick-2026-07-07-8322db4.json"
+    },
+    {
+      "git_dirty": true,
+      "milestone": "P6-quick",
+      "rho_decode": 5.218528920810535,
+      "rho_prefill": 13.972311617593785,
+      "source": "benchmarks/results/p6-quick-2026-07-07-d71e339.json"
+    },
+    {
+      "git_dirty": true,
+      "milestone": "P6-quick",
+      "rho_decode": 5.319942574590296,
+      "rho_prefill": 17.09608960881489,
+      "source": "benchmarks/results/p6-quick-q150-2026-07-07-fa40a1d.json"
+    }
+  ]
+}

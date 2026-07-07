@@ -216,7 +216,16 @@ the budget model. This is a cost-model spike, not an integration.
    timing as P1, see §6). Weight artifacts regenerate via
    `scripts/export_gpt2.py` (downloads HF safetensors once) +
    `scripts/dump_golden.py`; nothing large needs copying.
-4. **Gate (pre-register the exact numbers in the ledger before running)**:
+4. **Operational cloud choice (2026-07-07)**: do not spend cloud GPU time
+   until §§4.1–4.4 have either reduced or explicitly modeled PCS bytes and
+   landed in the report/budget assumptions. First option: Thunder Compute.
+   Use an H100 PCIe 80GB to measure the CUDA/roofline regime; use an A100
+   80GB when the same measurements should be cost-constrained. Document the
+   exact instance, region, image, driver/CUDA versions, and availability in
+   the ledger and JSON output. Keep RunPod as the fallback provider so P7 is
+   repeatable when a Thunder region or GPU SKU is unavailable; fallback runs
+   must re-measure the native CPU baseline before quoting any ρ.
+5. **Gate (pre-register the exact numbers in the ledger before running)**:
    report published, budget model with explicit assumptions, go/no-go
    recommendation on the ρ targets; if GPU kernels are actually built, the
    flat-cost, golden-decode and anti-replay gates must pass unchanged on

@@ -486,19 +486,59 @@ pub struct MultiOpenProof {
     pub columns: Vec<MultiColumnOpening>,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MultiOpenByteBreakdown {
+    pub mask_root: u64,
+    pub u_vectors: u64,
+    pub corr_ss: u64,
+    pub zero_batch: u64,
+    pub column_indices: u64,
+    pub data_columns: u64,
+    pub mask_columns: u64,
+    pub commitment_merkle_paths: u64,
+    pub mask_merkle_paths: u64,
+    pub columns_total: u64,
+    pub total: u64,
+    /// Conservative marginal byte cut if the verifier already has the static
+    /// queried data columns and their commitment Merkle paths cached.
+    pub cached_query_cut_bytes: u64,
+    pub cached_query_marginal_bytes: u64,
+}
+
 impl MultiOpenProof {
+    pub fn byte_breakdown(&self) -> MultiOpenByteBreakdown {
+        let mut b = MultiOpenByteBreakdown {
+            mask_root: 32,
+            u_vectors: 16
+                * (self.u_c.len() + self.u_gs.iter().map(|u| u.len()).sum::<usize>()) as u64,
+            corr_ss: 16 * self.corr_ss.len() as u64,
+            zero_batch: 32, // mask_corr + m_z
+            ..Default::default()
+        };
+        for c in &self.columns {
+            b.column_indices += 4;
+            b.data_columns += 8 * c.col.len() as u64;
+            b.mask_columns += 16 * c.mask_col.len() as u64;
+            b.commitment_merkle_paths += 32 * c.path.len() as u64;
+            b.mask_merkle_paths += 32 * c.mask_path.len() as u64;
+        }
+        b.columns_total = b.column_indices
+            + b.data_columns
+            + b.mask_columns
+            + b.commitment_merkle_paths
+            + b.mask_merkle_paths;
+        b.total = b.mask_root + b.u_vectors + b.corr_ss + b.zero_batch + b.columns_total;
+        b.cached_query_cut_bytes = b.data_columns + b.commitment_merkle_paths;
+        b.cached_query_marginal_bytes = b.total - b.cached_query_cut_bytes;
+        b
+    }
+
     pub fn bytes(&self) -> u64 {
-        let u_b: u64 = 16 * (self.u_c.len() + self.u_gs.iter().map(|u| u.len()).sum::<usize>()) as u64;
-        let cols_b: u64 = self
-            .columns
-            .iter()
-            .map(|c| {
-                4 + 8 * c.col.len() as u64
-                    + 16 * c.mask_col.len() as u64
-                    + 32 * (c.path.len() + c.mask_path.len()) as u64
-            })
-            .sum();
-        32 + u_b + 16 * self.corr_ss.len() as u64 + 16 + 16 + cols_b
+        self.byte_breakdown().total
+    }
+
+    pub fn cached_query_marginal_bytes(&self) -> u64 {
+        self.byte_breakdown().cached_query_marginal_bytes
     }
 }
 

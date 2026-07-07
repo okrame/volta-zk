@@ -57,6 +57,8 @@ struct PcsCommitmentRow {
     open_s: f64,
     verify_s: f64,
     opening_bytes: u64,
+    opening_cached_query_cut_bytes: u64,
+    opening_cached_query_marginal_bytes: u64,
     verified: bool,
 }
 
@@ -103,6 +105,9 @@ struct Report {
     comm_decode_bytes_per_token: u64,
     /// PCS opening bytes are inside comm_response_bytes (transcript ledger).
     pcs_opening_bytes_total: u64,
+    /// Accounting-only P7 lever: marginal PCS bytes if raw data columns plus
+    /// their static commitment Merkle paths are verifier-cached.
+    pcs_cached_query_marginal_bytes_total: u64,
     /// Public response outputs, NOT in the transcript: the band logits
     /// matrix (q×VOCAB×8) + the prefill last-row logits (VOCAB×8).
     public_logits_bytes: u64,
@@ -151,6 +156,7 @@ struct SessionResult {
     comm_bytes: u64,
     pcs_rows: Vec<PcsCommitmentRow>,
     pcs_opening_bytes: u64,
+    pcs_cached_query_marginal_bytes: u64,
     n_weight_claims: usize,
     n_embed_claims: usize,
     emult_instances: f64,
@@ -218,6 +224,7 @@ fn run_session(
     let phases = 1 + bands.len();
     let mut pcs_rows = Vec::new();
     let mut pcs_opening_bytes = 0u64;
+    let mut pcs_cached_query_marginal_bytes = 0u64;
     let mut pcs_all_ok = true;
     if with_pcs {
         assert_eq!(out.weight_claims.len(), 4 * L * phases);
@@ -255,7 +262,9 @@ fn run_session(
             );
             let open_s = to0.elapsed().as_secs_f64();
             let ob = mproof.bytes();
+            let mbd = mproof.byte_breakdown();
             pcs_opening_bytes += ob;
+            pcs_cached_query_marginal_bytes += mbd.cached_query_marginal_bytes;
             let claims_v: Vec<_> = idxs
                 .iter()
                 .map(|&i| {
@@ -276,6 +285,8 @@ fn run_session(
                 open_s,
                 verify_s,
                 opening_bytes: ob,
+                opening_cached_query_cut_bytes: mbd.cached_query_cut_bytes,
+                opening_cached_query_marginal_bytes: mbd.cached_query_marginal_bytes,
                 verified: ok,
             });
             drop((w_flat, pm, com));
@@ -311,7 +322,9 @@ fn run_session(
         );
         let open_s = to0.elapsed().as_secs_f64();
         let ob = mproof_e.bytes();
+        let mbd = mproof_e.byte_breakdown();
         pcs_opening_bytes += ob;
+        pcs_cached_query_marginal_bytes += mbd.cached_query_marginal_bytes;
         let claims_v: Vec<_> = outv
             .embed_keys
             .iter()
@@ -334,6 +347,8 @@ fn run_session(
             open_s,
             verify_s,
             opening_bytes: ob,
+            opening_cached_query_cut_bytes: mbd.cached_query_cut_bytes,
+            opening_cached_query_marginal_bytes: mbd.cached_query_marginal_bytes,
             verified: ok,
         });
         drop((e_flat, pm_e, com_e));
@@ -365,6 +380,7 @@ fn run_session(
         comm_bytes: txp.total_bytes(),
         pcs_rows,
         pcs_opening_bytes,
+        pcs_cached_query_marginal_bytes,
         n_weight_claims: out.weight_claims.len(),
         n_embed_claims: out.embed_claims.len(),
         emult_instances: out.ctr_instances.emult_equiv(),
@@ -572,6 +588,7 @@ fn main() {
         comm_decode_marginal_bytes: comm_decode_marginal,
         comm_decode_bytes_per_token: comm_decode_marginal / n_gen as u64,
         pcs_opening_bytes_total: rec.pcs_opening_bytes,
+        pcs_cached_query_marginal_bytes_total: rec.pcs_cached_query_marginal_bytes,
         public_logits_bytes,
         public_logits_packed_bytes: rec.public_logits_packed_bytes,
         total_response_download_bytes: rec.comm_bytes + public_logits_bytes,

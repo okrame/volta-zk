@@ -23,7 +23,7 @@ CPU numbers validate architecture and counts; the ρ targets (≤2 decode,
 | P4 LogUp + fused blocks | **done** (2026-07-05) | one full layer proved+verified e2e (T=100, real PCS opening) ✓ **PASSED**; counts within 20% ✓ (witness streams = budget **exactly**, padded LogUp domains explained); LogUp ≤8–10 E-mult/lookup: **MISSED, motivated (12.20)**; 1 weight claim/tensor ✓ (4/layer) | prove 0.800 s vs native forward 0.033 s (ρ_layer ~24, 4 cores); verify 0.041 s; LogUp lookup-side **12.20 E-mult/lookup** (~34 ns/lookup, 5.4× vs P2.5 spike wall), table-side 3.86 raw → 0.32 /12-amortized; full instance cost 126.5 M E-mult/layer (≈42/padded lookup incl. aux folding + tables + closures); corr bytes 7.64 MB/layer (mult vectors 3.87 MB — see deviations); layer PCS 2^24: commit 0.34 s one-off, **open 0.035 s**, verify 0.006 s; projections (P3.5 cost model, 49/98 claims): prefill **0.233 s**, per-response **0.345 s**. Run of record `benchmarks/results/p4-2026-07-06-8b4ca11.json` (clean tree, `git_dirty:false`; the 07-05 JSON was a dirty-tree run whose sha names the parent commit) |
 | P5 GPT-2 e2e prefill 100 tok | **done** (2026-07-06) | one-command run ✓ (`scripts/run_prefill.sh`), golden check ✓ (full logits bit-exact vs numpy at T=100, argmax 835 ' way'), counts vs budget: witness lookups = budget **exactly** (16,944,000) ✓ | **accepted e2e with real weights + 13 real Ligero commitments**: native (witness) 0.459 s, prove 11.0–11.2 s, **ρ ≈ 24** (matches P4's ×12 projection); verify 0.65 s + 0.07 s PCS; PCS open **0.73 s** / 52.8 MB (vs 0.237 s projection — 13× fixed costs, see deviations), commit one-off 7.6 s; **comm 159.6 MB/prefill** (mult vectors 59.4 + PCS 52.8 + boundary 36.9 + rest), projected response 212 MB; E-mult all-in 100.6/budget lookup; peak RSS 2.86 GB. `benchmarks/results/p5-2026-07-06-e52ce79.json` (clean tree) |
 | P6 decode + authenticated KV cache | **done** (2026-07-07) | flat cost/token ✓ **PASSED** (curve last/first 1.12 ≤ 1.5, 5×10 chunks, cache 100→150); anti-replay smoke ✓ (prefill-row replay + position swap rejected); golden decode ✓ (50 tokens bit-exact vs numpy) | **accepted e2e, prompt 100 + 50 decode, one two-phase session, real 13-commitment PCS with STACKED claims (96 weight + 6 embed)**: native decode 30.9 tok/s (KV-cached baseline); prove_response 18.7 s = prefill 10.5 s + **decode marginal 8.2 s (0.164 s/token, ρ_decode 5.07 CPU)**; verified 2.67 tok/s; verify 0.57 s + 0.10 s PCS. Comm: transcript 137.4 MB (prefill 48.4 + PCS opening 66.7 + decode marginal 22.3 = **445 KB/token**) + public band logits 20.5 MB → **total response download 157.9 MB** (inside the 150–200 MB product envelope; the PCS opening is now the dominant lever, P7). Shared-α restructure landed with P6: mult corr 59.4 → 2.85 MB. PCS commit one-off 9.5 s; peak RSS 3.47 GB. `benchmarks/results/p6-2026-07-07-515bb1c.json` (clean tree) |
-| P7 report + GPU budget model | **partial** (local VM pass done 2026-07-07; real-PCG/cloud open) | local report/budget model ✓; PCS byte formula reproduces P6 ✓; no protocol/soundness parameter change without separate ledger entry | `benchmarks/results/p7-2026-07-07-754626f.json` (`git_dirty:true`): current packed download 144.8 MB; PCS formula matches 66.733 MB; projections: Q=150 same-rate 135.9 MB, RLC 130.9 MB, Q+RLC 122.0 MB, static-query-cache marginal 110.8 MB, cache+RLC marginal 96.9 MB. GPU sensitivity: targets need prover/native relative speedup 4.62× prefill, 2.54× decode. Recommendation: cloud spikes only after real-PCG cost is measured/budgeted. |
+| P7 report + GPU budget model | **partial** (local VM pass done 2026-07-07; real-PCG/cloud open) | local report/budget model ✓; PCS byte formula reproduces P6 ✓; static-query-cache marginal accounting in Rust ✓; no protocol/soundness parameter change without separate ledger entry | `benchmarks/results/p7-2026-07-07-754626f.json` (`git_dirty:true`): current packed download 144.8 MB; PCS formula matches 66.733 MB; projections: Q=150 same-rate 135.9 MB, RLC 130.9 MB, Q+RLC 122.0 MB, static-query-cache marginal 110.8 MB, cache+RLC marginal 96.9 MB. GPU sensitivity: targets need prover/native relative speedup 4.62× prefill, 2.54× decode. Accounting quick run `p6-quick-2026-07-07-2b3beab.json`: PCS current 66.733 MB, cached-query marginal 32.718 MB. Recommendation: cloud spikes only after real-PCG cost is measured/budgeted. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -55,6 +55,30 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-07 (P7 next step, pre-registered)**: add Rust-side
+  accounting-only support for the static-query-cache PCS lever. Scope:
+  expose a `MultiOpenProof` byte breakdown and a
+  `cached_query_marginal_bytes` count in `volta-pcs`, then thread those
+  numbers into future `p6_report` JSONs. This does **not** change
+  `open_multi_zk`, `verify_multi_open`, challenge order, transcript bytes,
+  proof contents, or soundness parameters; it only computes the marginal
+  bytes that would remain if raw data columns plus their commitment Merkle
+  paths were served from a verifier cache keyed by the static commitment
+  root. Any actual split of setup/per-response proof remains a separate
+  protocol-design entry.
+
+- **2026-07-07 (P7 static-query-cache accounting landed)**:
+  `MultiOpenProof::byte_breakdown()` now exposes the measured byte
+  decomposition of the real PCS proof, and `p6_report` writes
+  `opening_cached_query_cut_bytes`, `opening_cached_query_marginal_bytes`,
+  and `pcs_cached_query_marginal_bytes_total`. Dirty quick schema check
+  `benchmarks/results/p6-quick-2026-07-07-2b3beab.json` accepted the
+  response and confirmed the same full-scale PCS accounting as P7 report:
+  layer opening 4,293,216 B with a 1,734,400 B conservative static-cache
+  cut, embed opening 15,214,912 B with a 13,203,200 B cut, total PCS
+  **66,733,504 B → 32,717,504 B marginal**. This is still accounting-only:
+  proof contents and transcript bytes are unchanged.
 
 - **2026-07-07 (P7 local report landed)**: `scripts/report.py --write-json`
   produced `benchmarks/results/p7-2026-07-07-754626f.json` (dirty tree:

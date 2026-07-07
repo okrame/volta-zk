@@ -110,6 +110,28 @@ fn run_layer(params: &LigeroParams, layout: &LayerWeightLayout, seed_tag: u8, cr
     );
     let t_open = t2.elapsed().as_secs_f64();
     assert_eq!(oproof.u_gs.len(), 4, "n_claims must be 4");
+    let bd = oproof.byte_breakdown();
+    assert_eq!(bd.total, oproof.bytes());
+    assert_eq!(oproof.cached_query_marginal_bytes(), bd.cached_query_marginal_bytes);
+    assert_eq!(bd.mask_root, 32);
+    assert_eq!(bd.u_vectors, 16 * params.msg_len() as u64 * 5);
+    assert_eq!(bd.corr_ss, 16 * 4);
+    assert_eq!(bd.zero_batch, 32);
+    assert_eq!(bd.column_indices, 4 * params.n_queries as u64);
+    assert_eq!(bd.data_columns, 8 * params.rows() as u64 * params.n_queries as u64);
+    assert_eq!(bd.mask_columns, 16 * 5 * params.n_queries as u64);
+    assert_eq!(
+        bd.commitment_merkle_paths,
+        32 * params.code_bits as u64 * params.n_queries as u64
+    );
+    assert_eq!(
+        bd.mask_merkle_paths,
+        32 * params.code_bits as u64 * params.n_queries as u64
+    );
+    assert_eq!(
+        bd.cached_query_marginal_bytes,
+        bd.total - bd.data_columns - bd.commitment_merkle_paths
+    );
 
     // Verifier (honest): all 4 claim keys bound to C_W.
     let claim_keys = |ctx: &mut VerifierCtx| -> Vec<VerifierKey> {

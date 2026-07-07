@@ -393,6 +393,44 @@ def mock_pcg_lower_bounds(results: list[dict[str, Any]]) -> list[dict[str, Any]]
     return rows
 
 
+def real_pcg_phase_a(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for r in results:
+        if r.get("milestone") != "P7-real-pcg-phase-a":
+            continue
+        timings = r.get("phase_a_timings") or {}
+        params = r.get("lpn_parameters") or {}
+        rows.append(
+            {
+                "source": r["_path"],
+                "git_dirty": r.get("git_dirty"),
+                "is_real_pcg": r.get("is_real_pcg"),
+                "base_vole": r.get("base_vole"),
+                "setup_comm_bytes": r.get("setup_comm_bytes"),
+                "corr_sub_corrs": r.get("corr_sub_corrs"),
+                "corr_full_corrs": r.get("corr_full_corrs"),
+                "sub_equiv_corrs": (r.get("corr_sub_corrs") or 0)
+                + 2 * (r.get("corr_full_corrs") or 0),
+                "t_total_real_expansion_s": r.get(
+                    "t_total_real_expansion_s", timings.get("t_total_real_expansion_s")
+                ),
+                "t_setup_stub_s": timings.get("t_setup_stub_s"),
+                "t_ggm_pprf_s": timings.get("t_ggm_pprf_s"),
+                "t_lpn_expand_s": timings.get("t_lpn_expand_s"),
+                "t_consistency_check_s": timings.get("t_consistency_check_s"),
+                "sub_equiv_corrs_per_s_joint": r.get("sub_equiv_corrs_per_s_joint"),
+                "expanded_prover_bytes": r.get("expanded_prover_bytes"),
+                "expanded_verifier_bytes": r.get("expanded_verifier_bytes"),
+                "peak_rss_gb": r.get("peak_rss_gb"),
+                "lpn_parameters": params,
+                "consistency": r.get("consistency"),
+                "note": r.get("note"),
+            }
+        )
+    rows.sort(key=lambda x: x["source"])
+    return rows
+
+
 def decode_marginal_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows = []
     for r in results:
@@ -433,6 +471,13 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
     current_measured = int(baseline["pcs_opening_bytes_total"])
     formula_matches = current_formula == current_measured
     mock_pcg = mock_pcg_lower_bounds(results)
+    real_pcg = real_pcg_phase_a(results)
+    pcg_status = "phase_a_measured_mock_stub" if real_pcg else "not_measured_in_local_vm"
+    pcg_note = (
+        "Real-PCG phase A measured with a mock-stub base VOLE; phase B still needs real base OTs/OT extension/setup communication."
+        if real_pcg
+        else "P7 final go/no-go still needs a real silent-VOLE setup/expansion measurement for this volume."
+    )
 
     p6_comm = {
         "source": baseline["_path"],
@@ -487,11 +532,12 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
         "pcs_scenarios": pcs_scenarios(baseline, current_packed_download),
         "gpu_budget_model": rho_model(baseline),
         "real_pcg_spike": {
-            "status": "not_measured_in_local_vm",
+            "status": pcg_status,
             "corr_sub_corrs": baseline.get("corr_sub_corrs"),
             "corr_full_corrs": baseline.get("corr_full_corrs"),
             "mock_pcg_lower_bounds": mock_pcg,
-            "note": "P7 final go/no-go still needs a real silent-VOLE setup/expansion measurement for this volume.",
+            "real_pcg_phase_a": real_pcg,
+            "note": pcg_note,
         },
         "go_no_go": {
             "local_recommendation": "conditional-go-to-cloud-spikes-only",
@@ -563,6 +609,18 @@ def print_summary(report: dict[str, Any]) -> None:
             print(
                 f"  mock total={row['t_total_mock_expansion_s']:.3f}s "
                 f"sub={row['corr_sub_corrs']} full={row['corr_full_corrs']} "
+                f"{row['source']}"
+            )
+        print()
+    real_pcg = report["real_pcg_spike"].get("real_pcg_phase_a") or []
+    if real_pcg:
+        print("Real-PCG phase A")
+        for row in real_pcg:
+            print(
+                f"  total={row['t_total_real_expansion_s']:.3f}s "
+                f"setup={row['t_setup_stub_s']:.3f}s ggm={row['t_ggm_pprf_s']:.3f}s "
+                f"lpn={row['t_lpn_expand_s']:.3f}s check={row['t_consistency_check_s']:.3f}s "
+                f"base={row['base_vole']} setup_comm={row['setup_comm_bytes']} B "
                 f"{row['source']}"
             )
         print()

@@ -8,6 +8,7 @@ license.workspace = true
 volta-field = { workspace = true }
 volta-gpt2 = { workspace = true }
 volta-mac = { workspace = true }
+volta-pcg = { workspace = true }
 volta-proto = { workspace = true }
 volta-pcs = { workspace = true }
 rayon = { workspace = true }

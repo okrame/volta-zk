@@ -216,7 +216,7 @@ interface-specific part is not importable, and a proxy measurement on
 another field would buy a number but no reusable code. The mock ChaCha
 lower bound for the P6 volume is 0.351 s
 (`p7-mock-pcg-2026-07-07-d16a69c.json`); the real backend replaces that
-row with a real one. This is 1–2 weeks of work, not a spike — phase it.
+row with a real one.
 
 **What to build — WYKW/Wolverine-style subfield VOLE, NOT Ferret.** Ferret
 is F_2/COT machinery; the correlation consumed here is exactly WYKW sVOLE

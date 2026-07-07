@@ -600,6 +600,7 @@ dependencies = [
  "volta-field",
  "volta-gpt2",
  "volta-mac",
+ "volta-pcg",
  "volta-pcs",
  "volta-proto",
 ]
@@ -624,9 +625,20 @@ dependencies = [
 name = "volta-mac"
 version = "0.0.0"
 dependencies = [
+ "blake3",
  "rand",
  "volta-field",
  "volta-gpt2",
+ "volta-pcg",
+]
+
+[[package]]
+name = "volta-pcg"
+version = "0.0.0"
+dependencies = [
+ "blake3",
+ "serde",
+ "volta-field",
 ]
 
 [[package]]

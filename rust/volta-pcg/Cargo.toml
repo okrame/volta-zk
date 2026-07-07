@@ -1,14 +1,10 @@
 [package]
-name = "volta-mac"
+name = "volta-pcg"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
 volta-field = { workspace = true }
-volta-pcg = { workspace = true }
 blake3 = { workspace = true }
-
-[dev-dependencies]
-volta-gpt2 = { workspace = true }
-rand = { workspace = true }
+serde = { workspace = true }

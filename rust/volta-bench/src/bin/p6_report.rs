@@ -29,6 +29,7 @@ use volta_gpt2::{
     BandModelWitness, Gpt2Model, KvCache, L, VOCAB,
 };
 use volta_mac::{zero_batch_exchange, CorrelationStream, Transcript, VerifierCtx};
+use volta_pcg::{expand_phase_a, PhaseATimings, ProverPcgPool, VerifierPcgPool};
 use volta_pcs::{
     commit, layout_gpt2_embed, layout_gpt2_layer, open_multi_zk, verify_multi_open, GPT2_FULL,
     LigeroParams, P4_LAYER,
@@ -138,6 +139,25 @@ struct Report {
     corr_sub_corrs: u64,
     corr_full_corrs: u64,
     peak_rss_gb: f64,
+    // --- PCG backend gate ---------------------------------------------------------
+    pcg_backend: String,
+    pcg_setup_comm_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_base_vole: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_real_phase_a_total_s: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_real_phase_a_setup_stub_s: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_real_phase_a_ggm_pprf_s: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_real_phase_a_lpn_expand_s: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_real_phase_a_consistency_check_s: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_mock_prepass_counters_match: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_allocation_hash_match: Option<bool>,
 }
 
 fn peak_rss_gb() -> f64 {
@@ -179,15 +199,31 @@ fn ledger_delta(
 struct Args {
     quick: bool,
     pcs_q: Option<usize>,
+    pcg_backend: PcgBackendArg,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PcgBackendArg {
+    Mock,
+    Real,
+}
+
+impl PcgBackendArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            PcgBackendArg::Mock => "mock",
+            PcgBackendArg::Real => "real",
+        }
+    }
 }
 
 fn usage() -> ! {
-    eprintln!("usage: p6_report [--quick] [--pcs-q Q]");
+    eprintln!("usage: p6_report [--quick] [--pcs-q Q] [--pcg-backend mock|real]");
     std::process::exit(2);
 }
 
 fn parse_args() -> Args {
-    let mut out = Args { quick: false, pcs_q: None };
+    let mut out = Args { quick: false, pcs_q: None, pcg_backend: PcgBackendArg::Mock };
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         if a == "--quick" {
@@ -197,11 +233,24 @@ fn parse_args() -> Args {
             out.pcs_q = Some(q.parse().unwrap_or_else(|_| usage()));
         } else if let Some(q) = a.strip_prefix("--pcs-q=") {
             out.pcs_q = Some(q.parse().unwrap_or_else(|_| usage()));
+        } else if a == "--pcg-backend" {
+            let Some(b) = args.next() else { usage() };
+            out.pcg_backend = parse_pcg_backend(&b);
+        } else if let Some(b) = a.strip_prefix("--pcg-backend=") {
+            out.pcg_backend = parse_pcg_backend(b);
         } else {
             usage();
         }
     }
     out
+}
+
+fn parse_pcg_backend(s: &str) -> PcgBackendArg {
+    match s {
+        "mock" => PcgBackendArg::Mock,
+        "real" => PcgBackendArg::Real,
+        _ => usage(),
+    }
 }
 
 fn pcs_query_error_bits(params: &LigeroParams) -> f64 {
@@ -244,9 +293,57 @@ struct SessionResult {
     emult_instances: f64,
     sub_corrs: u64,
     full_corrs: u64,
+    pcg_pool_sub_corrs: u64,
+    pcg_pool_full_corrs: u64,
     chunk_p1_s: Vec<f64>,
     chunk_p2_s: Vec<f64>,
     public_logits_packed_bytes: u64,
+    pcg_allocation_hash_match: Option<bool>,
+}
+
+enum SessionPcgBackend {
+    Mock,
+    Real { prover: ProverPcgPool, verifier: VerifierPcgPool },
+}
+
+#[derive(Default)]
+struct PcgGateStats {
+    setup_comm_bytes: u64,
+    timings: Option<PhaseATimings>,
+    mock_prepass_counters_match: Option<bool>,
+    allocation_hash_match: Option<bool>,
+}
+
+fn session_delta() -> Fp2 {
+    Fp2::new(Fp::new(0xD31C_5A17), Fp::new(0x0BAD_CAFE))
+}
+
+fn real_session_backend(
+    seed: u8,
+    sub_corrs: u64,
+    full_corrs: u64,
+) -> (SessionPcgBackend, PhaseATimings, u64) {
+    let params = volta_pcg::PhaseAParams::for_counts(sub_corrs as usize, full_corrs as usize);
+    let expansion = expand_phase_a([seed; 32], session_delta(), sub_corrs as usize, full_corrs as usize, params);
+    let setup_comm = expansion.params.setup_comm_bytes();
+    (
+        SessionPcgBackend::Real { prover: expansion.prover, verifier: expansion.verifier },
+        expansion.timings,
+        setup_comm,
+    )
+}
+
+fn add_timings(dst: &mut Option<PhaseATimings>, src: PhaseATimings) {
+    if let Some(d) = dst {
+        d.t_setup_stub_s += src.t_setup_stub_s;
+        d.t_ggm_pprf_s += src.t_ggm_pprf_s;
+        d.t_lpn_expand_s += src.t_lpn_expand_s;
+        d.t_full_combine_s += src.t_full_combine_s;
+        d.t_consistency_check_s += src.t_consistency_check_s;
+        d.t_total_real_expansion_s += src.t_total_real_expansion_s;
+    } else {
+        *dst = Some(src);
+    }
 }
 
 fn run_session(
@@ -258,11 +355,18 @@ fn run_session(
     embed_params: &LigeroParams,
     with_pcs: bool,
     seed: u8,
+    pcg_backend: SessionPcgBackend,
 ) -> SessionResult {
     let t = wit.t;
-    let delta = Fp2::new(Fp::new(0xD31C_5A17), Fp::new(0x0BAD_CAFE));
-    let mut stream = CorrelationStream::new([seed; 32]);
-    let mut vc = VerifierCtx::new([seed; 32], delta);
+    let delta = session_delta();
+    let (mut stream, mut vc) = match pcg_backend {
+        SessionPcgBackend::Mock => {
+            (CorrelationStream::new([seed; 32]), VerifierCtx::new([seed; 32], delta))
+        }
+        SessionPcgBackend::Real { prover, verifier } => {
+            (CorrelationStream::from_pcg_pool(prover), VerifierCtx::from_pcg_pool(delta, verifier))
+        }
+    };
     let mut txp = Transcript::new([seed ^ 0x5A; 32]);
     let mut txv = Transcript::new([seed ^ 0x5A; 32]);
 
@@ -473,6 +577,12 @@ fn run_session(
     // run over the accumulated rows only (curve session: architecture-only).
     let ok_zero = zero_batch_exchange(&zero, &kzero, &mut stream, &mut vc, mz, &mut txp);
     let accepted = ok_prod && ok_zero && (!with_pcs || pcs_all_ok);
+    let pcg_allocation_hash_match = match (stream.allocation_digest_hex(), vc.allocation_digest_hex()) {
+        (Some(p), Some(v)) => Some(p == v),
+        _ => None,
+    };
+    let pcg_pool_sub_corrs = stream.counters.sub_corrs;
+    let pcg_pool_full_corrs = stream.counters.full_corrs;
 
     SessionResult {
         accepted,
@@ -489,15 +599,22 @@ fn run_session(
         emult_instances: out.ctr_instances.emult_equiv(),
         sub_corrs: out.corr_counters.sub_corrs,
         full_corrs: out.corr_counters.full_corrs,
+        pcg_pool_sub_corrs,
+        pcg_pool_full_corrs,
         chunk_p1_s: out.chunk_p1_s,
         chunk_p2_s: out.chunk_p2_s,
         public_logits_packed_bytes,
+        pcg_allocation_hash_match,
     }
 }
 
 fn main() {
     let args = parse_args();
     let quick = args.quick;
+    if args.pcg_backend == PcgBackendArg::Real && !quick {
+        eprintln!("p6_report: --pcg-backend real is a P7 correctness gate and is currently quick-only");
+        std::process::exit(2);
+    }
     let (t0, n_gen, curve_chunk) = if quick { (16usize, 8usize, 4usize) } else { (100, 50, 10) };
     let mut layer_params = P4_LAYER;
     let mut embed_params = GPT2_FULL;
@@ -587,16 +704,60 @@ fn main() {
 
     // --- full-response session: prefill + ONE Q=n_gen chunk + real PCS ----------
     eprintln!("full-response session: prove_response (prefill + Q={n_gen} chunk) + PCS ...");
-    let rec = run_session(
-        &model,
-        &wit0,
-        &[&band50],
-        &seq,
-        &layer_params,
-        &embed_params,
-        true,
-        0x21,
-    );
+    let mut pcg_gate = PcgGateStats::default();
+    let rec = if args.pcg_backend == PcgBackendArg::Real {
+        eprintln!("  real PCG gate: mock prepass for exact full-response counts ...");
+        let pre = run_session(
+            &model,
+            &wit0,
+            &[&band50],
+            &seq,
+            &layer_params,
+            &embed_params,
+            true,
+            0x21,
+            SessionPcgBackend::Mock,
+        );
+        let (backend, timings, setup_comm) =
+            real_session_backend(0x21, pre.pcg_pool_sub_corrs, pre.pcg_pool_full_corrs);
+        pcg_gate.setup_comm_bytes += setup_comm;
+        add_timings(&mut pcg_gate.timings, timings);
+        let real = run_session(
+            &model,
+            &wit0,
+            &[&band50],
+            &seq,
+            &layer_params,
+            &embed_params,
+            true,
+            0x21,
+            backend,
+        );
+        let counters_match = pre.sub_corrs == real.sub_corrs
+            && pre.full_corrs == real.full_corrs
+            && pre.pcg_pool_sub_corrs == real.pcg_pool_sub_corrs
+            && pre.pcg_pool_full_corrs == real.pcg_pool_full_corrs;
+        pcg_gate.mock_prepass_counters_match =
+            Some(pcg_gate.mock_prepass_counters_match.unwrap_or(true) && counters_match);
+        pcg_gate.allocation_hash_match = Some(
+            pcg_gate.allocation_hash_match.unwrap_or(true)
+                && real.pcg_allocation_hash_match.unwrap_or(false),
+        );
+        assert!(counters_match, "real-PCG full-response counters must match mock prepass");
+        real
+    } else {
+        run_session(
+            &model,
+            &wit0,
+            &[&band50],
+            &seq,
+            &layer_params,
+            &embed_params,
+            true,
+            0x21,
+            SessionPcgBackend::Mock,
+        )
+    };
     eprintln!(
         "  prove {:.2}s verify {:.2}s comm {:.1} MB accepted={}",
         rec.prove_s,
@@ -619,16 +780,59 @@ fn main() {
         })
         .collect();
     let band_refs: Vec<&BandModelWitness> = bands.iter().collect();
-    let chk = run_session(
-        &model,
-        &wit0,
-        &band_refs,
-        &seq,
-        &layer_params,
-        &embed_params,
-        false,
-        0x22,
-    );
+    let chk = if args.pcg_backend == PcgBackendArg::Real {
+        eprintln!("  real PCG gate: mock prepass for chunk-curve counts ...");
+        let pre = run_session(
+            &model,
+            &wit0,
+            &band_refs,
+            &seq,
+            &layer_params,
+            &embed_params,
+            false,
+            0x22,
+            SessionPcgBackend::Mock,
+        );
+        let (backend, timings, setup_comm) =
+            real_session_backend(0x22, pre.pcg_pool_sub_corrs, pre.pcg_pool_full_corrs);
+        pcg_gate.setup_comm_bytes += setup_comm;
+        add_timings(&mut pcg_gate.timings, timings);
+        let real = run_session(
+            &model,
+            &wit0,
+            &band_refs,
+            &seq,
+            &layer_params,
+            &embed_params,
+            false,
+            0x22,
+            backend,
+        );
+        let counters_match = pre.sub_corrs == real.sub_corrs
+            && pre.full_corrs == real.full_corrs
+            && pre.pcg_pool_sub_corrs == real.pcg_pool_sub_corrs
+            && pre.pcg_pool_full_corrs == real.pcg_pool_full_corrs;
+        pcg_gate.mock_prepass_counters_match =
+            Some(pcg_gate.mock_prepass_counters_match.unwrap_or(true) && counters_match);
+        pcg_gate.allocation_hash_match = Some(
+            pcg_gate.allocation_hash_match.unwrap_or(true)
+                && real.pcg_allocation_hash_match.unwrap_or(false),
+        );
+        assert!(counters_match, "real-PCG chunk-curve counters must match mock prepass");
+        real
+    } else {
+        run_session(
+            &model,
+            &wit0,
+            &band_refs,
+            &seq,
+            &layer_params,
+            &embed_params,
+            false,
+            0x22,
+            SessionPcgBackend::Mock,
+        )
+    };
     let mut chunk_curve = Vec::with_capacity(n_chunks);
     for c in 0..n_chunks {
         let total = chk.chunk_p1_s[c] + chk.chunk_p2_s[c];
@@ -749,6 +953,20 @@ fn main() {
         corr_sub_corrs: rec.sub_corrs,
         corr_full_corrs: rec.full_corrs,
         peak_rss_gb: peak_rss_gb(),
+        pcg_backend: args.pcg_backend.as_str().into(),
+        pcg_setup_comm_bytes: pcg_gate.setup_comm_bytes,
+        pcg_base_vole: if args.pcg_backend == PcgBackendArg::Real {
+            Some("mock-stub".into())
+        } else {
+            None
+        },
+        pcg_real_phase_a_total_s: pcg_gate.timings.map(|t| t.t_total_real_expansion_s),
+        pcg_real_phase_a_setup_stub_s: pcg_gate.timings.map(|t| t.t_setup_stub_s),
+        pcg_real_phase_a_ggm_pprf_s: pcg_gate.timings.map(|t| t.t_ggm_pprf_s),
+        pcg_real_phase_a_lpn_expand_s: pcg_gate.timings.map(|t| t.t_lpn_expand_s),
+        pcg_real_phase_a_consistency_check_s: pcg_gate.timings.map(|t| t.t_consistency_check_s),
+        pcg_mock_prepass_counters_match: pcg_gate.mock_prepass_counters_match,
+        pcg_allocation_hash_match: pcg_gate.allocation_hash_match,
     };
     let mut report = report;
     report.pcs_commit_total_s = report.pcs_commitments.iter().map(|r| r.commit_s).sum();
@@ -760,6 +978,9 @@ fn main() {
     let mut label = if quick { "p6-quick".to_string() } else { "p6".to_string() };
     if layer_params.n_queries != P4_LAYER.n_queries {
         label.push_str(&format!("-q{}", layer_params.n_queries));
+    }
+    if args.pcg_backend == PcgBackendArg::Real {
+        label.push_str("-realpcg");
     }
     let path = unique_result_path(&label, &date, &sha);
     std::fs::write(&path, serde_json::to_string_pretty(&report).unwrap()).unwrap();

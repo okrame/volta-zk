@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "volta-field",
+    "volta-pcg",
     "volta-mac",
     "volta-proto",
     "volta-gpt2",
@@ -16,6 +17,7 @@ license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 volta-field = { path = "volta-field" }
+volta-pcg = { path = "volta-pcg" }
 volta-mac = { path = "volta-mac" }
 volta-proto = { path = "volta-proto" }
 volta-gpt2 = { path = "volta-gpt2" }

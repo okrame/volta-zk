@@ -56,6 +56,53 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-07 (P7 real-PCG phase A, pre-registered)**:
+  implement the §4.4 phase-A backend in-repo before cloud GPU spend. Scope:
+  add `volta-pcg` with a WYKW/Wolverine-style Goldilocks subfield VOLE
+  expansion model: trusted-dealer base sVOLE stub from the shared seed,
+  GGM single-point noise generation, regular-noise local-linear LPN
+  expansion, and transcript-invisible consistency-check arithmetic. Mock
+  remains the default proving backend and regression baseline; phase A is
+  selected explicitly by `p7_pcg_report --backend real`. Pre-registered
+  phase-A profile: `p7-phase-a-goldilocks-regular-lpn-v1`, security target
+  128 bits, one sub-equivalent output batch covering the P6 volume
+  (`8,479,926` sub + `2*176,880` full limbs = `8,833,686` sub-equivalent
+  VOLEs), base length `k+t+1`, `k=589,760`, regular noise weight
+  `t=1,280`, local-linear fanout `10`, one GGM PPRF single point per
+  regular-noise block, GGM depth `ceil(log2(ceil(n/t)))`, and two F_p²
+  random-linear consistency checks. Full-field correlations are two
+  subfield sVOLEs sharing the same Δ and combined F_p-linearly. JSON must
+  be `benchmarks/results/p7-real-pcg-<date>-<sha>.json` with
+  `is_real_pcg:true`, `base_vole:"mock-stub"`, setup vs expansion vs check
+  timing split, corrs/s for both sides, peak RSS, `setup_comm_bytes`, and
+  the LPN parameters. PCG/setup bytes are a separate counted category and
+  are not response download. Formal position: Lean still consumes ideal
+  VOLE; this PCG is an external LPN/PPRF realization assumption, same
+  status as PCS binding in M9; no Lean work in phase A.
+
+- **2026-07-07 (P7 real-PCG phase A landed, dirty local measurement)**:
+  new `volta-pcg` crate implements the phase-A Goldilocks PCG expansion
+  path and `p7_pcg_report --backend real` measured the P6 volume from
+  `p6-2026-07-07-515bb1c.json`: `8,479,926` subfield + `176,880`
+  full-field correlations (`8,833,686` sub-equivalent limbs). JSON
+  `benchmarks/results/p7-real-pcg-2026-07-07-995bfb7.json`
+  (`git_dirty:true`, implementation tree) reports `is_real_pcg:true`,
+  `base_vole:"mock-stub"`, `setup_comm_bytes:0`, profile
+  `p7-phase-a-goldilocks-regular-lpn-v1`, and consistency `ok:true`.
+  Timing: **3.240 s** total = setup stub 0.016 s + GGM PPRF 1.977 s +
+  LPN expand 1.017 s + full combine 0.002 s + consistency checks 0.228 s;
+  joint throughput 2.73 M sub-equivalent correlations/s; peak RSS
+  0.361 GB; expanded pools are 209.2 MB prover + 138.5 MB verifier.
+  `scripts/report.py --write-json` refreshed
+  `benchmarks/results/p7-2026-07-07-995bfb7.json`, whose
+  `real_pcg_spike.status` is now `phase_a_measured_mock_stub`.
+  Correctness gate: `p6_report --quick --pcg-backend real` accepted and
+  wrote `benchmarks/results/p6-quick-realpcg-2026-07-07-995bfb7.json`
+  (`accepted:true`, flat-cost 1.022, `pcg_mock_prepass_counters_match:true`,
+  `pcg_allocation_hash_match:true`). Mock remains the default backend;
+  phase B still needs real base OTs / OT extension and measured setup
+  communication.
+
 - **2026-07-07 (P7 decision — real-PCG becomes an in-repo implementation,
   supersedes the "cost spike only" scope)**: user decision. Instead of a
   proxy measurement on a foreign field (emp-zk Mersenne-61 / ocelot), a

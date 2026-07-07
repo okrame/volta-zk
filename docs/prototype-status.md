@@ -56,6 +56,29 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-07 (P7 Q=150 exploratory profile, pre-registered)**:
+  add a non-default `p6_report --pcs-q <Q>` switch to measure the PCS query
+  count lever without changing the run-of-record parameters. The default
+  remains Q=200 and ~80-bit query error. The exploratory profile uses
+  Q=150 at the existing rate/distance, giving ~60.0-bit query error under
+  the same `(1-δ/2)^Q` model; `pad=512` still covers the one-response
+  hiding headroom. This is **not** an adopted production soundness parameter
+  and does not change `P4_LAYER`, `GPT2_FULL`, transcript structure, claim
+  stacking, or verifier logic. Any adoption of Q=150 as default requires a
+  separate ledger decision and final report update.
+
+- **2026-07-07 (P7 Q=150 exploratory quick measurement landed)**:
+  `cargo run --release -p volta-bench --bin p6_report -- --quick --pcs-q
+  150` accepted and wrote
+  `benchmarks/results/p6-quick-q150-2026-07-07-fa40a1d.json` (dirty tree,
+  quick workload only). The JSON records `pcs_n_queries=150`,
+  `pcs_query_error_bits=60.013`, and the real PCS path verified with
+  `pcs_opening_bytes_total=57,822,904` B vs 66,733,504 B at Q=200 (the
+  exact P7 projection). Packed quick-response download was 73.4 MB vs
+  ~82.3 MB for the prior Q=200 quick profile on the same schema. The
+  default constants remain Q=200; this measurement only validates the
+  lever plumbing and byte model.
+
 - **2026-07-07 (P7 next step, pre-registered)**: add Rust-side
   accounting-only support for the static-query-cache PCS lever. Scope:
   expose a `MultiOpenProof` byte breakdown and a

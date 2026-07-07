@@ -25,12 +25,12 @@ use volta_bench::logits_pack;
 use volta_field::{Fp, Fp2};
 use volta_gpt2::{
     band_model_witness, decode_step, forward_model, forward_model_tokens, load_model,
-    BandModelWitness, Gpt2Model, KvCache, D, L, VOCAB,
+    BandModelWitness, Gpt2Model, KvCache, L, VOCAB,
 };
 use volta_mac::{zero_batch_exchange, CorrelationStream, Transcript, VerifierCtx};
 use volta_pcs::{
     commit, layout_gpt2_embed, layout_gpt2_layer, open_multi_zk, verify_multi_open, GPT2_FULL,
-    P4_LAYER,
+    LigeroParams, P4_LAYER,
 };
 use volta_proto::block_proof::layer_dom_base;
 use volta_proto::logup::Doms;
@@ -118,6 +118,10 @@ struct Report {
     /// comm_response_bytes + public_logits_packed_bytes (packed download).
     total_response_download_packed_bytes: u64,
     // --- PCS (stacked claims) -----------------------------------------------------
+    pcs_n_queries: usize,
+    pcs_rate: f64,
+    pcs_relative_distance: f64,
+    pcs_query_error_bits: f64,
     pcs_commitments: Vec<PcsCommitmentRow>,
     pcs_commit_total_s: f64,
     pcs_open_total_s: f64,
@@ -143,6 +147,56 @@ fn peak_rss_gb() -> f64 {
 
 fn weights_dir() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../benchmarks/weights")
+}
+
+#[derive(Clone, Copy)]
+struct Args {
+    quick: bool,
+    pcs_q: Option<usize>,
+}
+
+fn usage() -> ! {
+    eprintln!("usage: p6_report [--quick] [--pcs-q Q]");
+    std::process::exit(2);
+}
+
+fn parse_args() -> Args {
+    let mut out = Args { quick: false, pcs_q: None };
+    let mut args = std::env::args().skip(1);
+    while let Some(a) = args.next() {
+        if a == "--quick" {
+            out.quick = true;
+        } else if a == "--pcs-q" {
+            let Some(q) = args.next() else { usage() };
+            out.pcs_q = Some(q.parse().unwrap_or_else(|_| usage()));
+        } else if let Some(q) = a.strip_prefix("--pcs-q=") {
+            out.pcs_q = Some(q.parse().unwrap_or_else(|_| usage()));
+        } else {
+            usage();
+        }
+    }
+    out
+}
+
+fn pcs_query_error_bits(params: &LigeroParams) -> f64 {
+    let rate = params.msg_len() as f64 / params.code_len() as f64;
+    let delta = 1.0 - rate;
+    -(params.n_queries as f64) * (1.0 - delta / 2.0).log2()
+}
+
+fn unique_result_path(label: &str, date: &str, sha: &str) -> std::path::PathBuf {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../benchmarks/results");
+    let first = dir.join(format!("{label}-{date}-{sha}.json"));
+    if !first.exists() {
+        return first;
+    }
+    for i in 1..1000 {
+        let p = dir.join(format!("{label}-{date}-{sha}-{i}.json"));
+        if !p.exists() {
+            return p;
+        }
+    }
+    panic!("could not find unused result path for {label}-{date}-{sha}");
 }
 
 /// One full response session: prove + verify + PCS + closures. Returns
@@ -172,6 +226,8 @@ fn run_session(
     wit: &volta_gpt2::ModelWitness,
     bands: &[&BandModelWitness],
     seq: &[u32],
+    layer_params: &LigeroParams,
+    embed_params: &LigeroParams,
     with_pcs: bool,
     seed: u8,
 ) -> SessionResult {
@@ -236,7 +292,7 @@ fn run_session(
             let mut pad_seed = [0x51u8; 32];
             pad_seed[31] = l as u8;
             let tc0 = Instant::now();
-            let (com, pm) = commit(&w_flat, &P4_LAYER, pad_seed);
+            let (com, pm) = commit(&w_flat, layer_params, pad_seed);
             let commit_s = tc0.elapsed().as_secs_f64();
 
             // Stacked claims: every phase's 4 claims for this layer.
@@ -274,7 +330,14 @@ fn run_session(
                 .collect();
             let tv1 = Instant::now();
             let ok = verify_multi_open(
-                &com.root, &P4_LAYER, &claims_v, &mproof, &mut vc, dom_s0, dom_s1, &mut txv,
+                &com.root,
+                layer_params,
+                &claims_v,
+                &mproof,
+                &mut vc,
+                dom_s0,
+                dom_s1,
+                &mut txv,
             );
             let verify_s = tv1.elapsed().as_secs_f64();
             pcs_all_ok &= ok;
@@ -300,7 +363,7 @@ fn run_session(
         let layout_e = layout_gpt2_embed();
         let e_flat = layout_e.place(&[&model.wte, &model.wpe]);
         let tc0 = Instant::now();
-        let (com_e, pm_e) = commit(&e_flat, &GPT2_FULL, [0x52u8; 32]);
+        let (com_e, pm_e) = commit(&e_flat, embed_params, [0x52u8; 32]);
         let commit_s = tc0.elapsed().as_secs_f64();
         let claims_p: Vec<_> = out
             .embed_claims
@@ -336,7 +399,14 @@ fn run_session(
             .collect();
         let tv1 = Instant::now();
         let ok = verify_multi_open(
-            &com_e.root, &GPT2_FULL, &claims_v, &mproof_e, &mut vc, dom_s0, dom_s1, &mut txv,
+            &com_e.root,
+            embed_params,
+            &claims_v,
+            &mproof_e,
+            &mut vc,
+            dom_s0,
+            dom_s1,
+            &mut txv,
         );
         let verify_s = tv1.elapsed().as_secs_f64();
         pcs_all_ok &= ok;
@@ -393,8 +463,22 @@ fn run_session(
 }
 
 fn main() {
-    let quick = std::env::args().any(|a| a == "--quick");
+    let args = parse_args();
+    let quick = args.quick;
     let (t0, n_gen, curve_chunk) = if quick { (16usize, 8usize, 4usize) } else { (100, 50, 10) };
+    let mut layer_params = P4_LAYER;
+    let mut embed_params = GPT2_FULL;
+    if let Some(q) = args.pcs_q {
+        layer_params.n_queries = q;
+        embed_params.n_queries = q;
+        layer_params.validate();
+        embed_params.validate();
+        eprintln!(
+            "P7 exploratory PCS query profile: Q={q}, error_bits≈{:.1} (default Q={})",
+            pcs_query_error_bits(&layer_params),
+            P4_LAYER.n_queries
+        );
+    }
 
     let dir = weights_dir();
     if !dir.join("gpt2s-q.bin").exists() {
@@ -468,9 +552,18 @@ fn main() {
         tx.total_bytes()
     };
 
-    // --- run of record: prefill + ONE Q=n_gen chunk + real PCS -------------------
-    eprintln!("run of record: prove_response (prefill + Q={n_gen} chunk) + PCS ...");
-    let rec = run_session(&model, &wit0, &[&band50], &seq, true, 0x21);
+    // --- full-response session: prefill + ONE Q=n_gen chunk + real PCS ----------
+    eprintln!("full-response session: prove_response (prefill + Q={n_gen} chunk) + PCS ...");
+    let rec = run_session(
+        &model,
+        &wit0,
+        &[&band50],
+        &seq,
+        &layer_params,
+        &embed_params,
+        true,
+        0x21,
+    );
     eprintln!(
         "  prove {:.2}s verify {:.2}s comm {:.1} MB accepted={}",
         rec.prove_s,
@@ -493,7 +586,16 @@ fn main() {
         })
         .collect();
     let band_refs: Vec<&BandModelWitness> = bands.iter().collect();
-    let chk = run_session(&model, &wit0, &band_refs, &seq, false, 0x22);
+    let chk = run_session(
+        &model,
+        &wit0,
+        &band_refs,
+        &seq,
+        &layer_params,
+        &embed_params,
+        false,
+        0x22,
+    );
     let mut chunk_curve = Vec::with_capacity(n_chunks);
     for c in 0..n_chunks {
         let total = chk.chunk_p1_s[c] + chk.chunk_p2_s[c];
@@ -593,6 +695,10 @@ fn main() {
         public_logits_packed_bytes: rec.public_logits_packed_bytes,
         total_response_download_bytes: rec.comm_bytes + public_logits_bytes,
         total_response_download_packed_bytes: rec.comm_bytes + rec.public_logits_packed_bytes,
+        pcs_n_queries: layer_params.n_queries,
+        pcs_rate: layer_params.msg_len() as f64 / layer_params.code_len() as f64,
+        pcs_relative_distance: 1.0 - layer_params.msg_len() as f64 / layer_params.code_len() as f64,
+        pcs_query_error_bits: pcs_query_error_bits(&layer_params),
         pcs_commitments: rec.pcs_rows,
         pcs_commit_total_s: 0.0,
         pcs_open_total_s: 0.0,
@@ -611,11 +717,11 @@ fn main() {
 
     assert!(accepted, "P6 sanity: honest response (both sessions) must verify");
     assert!(gate_flat, "P6 gate: per-token cost must stay ~flat as the cache grows");
-    let label = if quick { "p6-quick" } else { "p6" };
-    let path = format!(
-        "{}/../../benchmarks/results/{label}-{date}-{sha}.json",
-        env!("CARGO_MANIFEST_DIR")
-    );
+    let mut label = if quick { "p6-quick".to_string() } else { "p6".to_string() };
+    if layer_params.n_queries != P4_LAYER.n_queries {
+        label.push_str(&format!("-q{}", layer_params.n_queries));
+    }
+    let path = unique_result_path(&label, &date, &sha);
     std::fs::write(&path, serde_json::to_string_pretty(&report).unwrap()).unwrap();
-    eprintln!("wrote {path}");
+    eprintln!("wrote {}", path.display());
 }

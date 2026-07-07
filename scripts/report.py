@@ -62,6 +62,7 @@ def load_json(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as f:
         data = json.load(f)
     data["_path"] = str(path.relative_to(REPO))
+    data["_mtime"] = path.stat().st_mtime
     return data
 
 
@@ -81,10 +82,10 @@ def p6_shape(data: dict[str, Any]) -> bool:
 def select_p6_record(results: list[dict[str, Any]]) -> dict[str, Any]:
     clean = [r for r in results if p6_shape(r) and not r.get("git_dirty", True)]
     if clean:
-        return clean[-1]
+        return max(clean, key=lambda r: r["_mtime"])
     dirty = [r for r in results if p6_shape(r)]
     if dirty:
-        return dirty[-1]
+        return max(dirty, key=lambda r: r["_mtime"])
     raise SystemExit("no accepted P6 result for prompt 100 + decode 50")
 
 
@@ -97,7 +98,7 @@ def select_packed_source(results: list[dict[str, Any]], baseline: dict[str, Any]
         and r.get("n_decode") == baseline.get("n_decode")
         and "public_logits_packed_bytes" in r
     ]
-    return same_shape[-1] if same_shape else None
+    return max(same_shape, key=lambda r: r["_mtime"]) if same_shape else None
 
 
 def msg_len(params: dict[str, int]) -> int:
@@ -325,7 +326,7 @@ def summarize_rhos(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def measured_pcs_profiles(results: list[dict[str, Any]], baseline: dict[str, Any]) -> list[dict[str, Any]]:
-    rows = []
+    rows_by_shape: dict[tuple[Any, Any, Any, Any], dict[str, Any]] = {}
     seen: set[str] = set()
     candidates = [baseline] + [
         r
@@ -345,6 +346,7 @@ def measured_pcs_profiles(results: list[dict[str, Any]], baseline: dict[str, Any
         if packed is None and "public_logits_packed_bytes" in r:
             packed = int(r["comm_response_bytes"]) + int(r["public_logits_packed_bytes"])
         row = {
+            "_mtime": r["_mtime"],
             "source": source,
             "milestone": r.get("milestone"),
             "git_dirty": r.get("git_dirty"),
@@ -357,7 +359,13 @@ def measured_pcs_profiles(results: list[dict[str, Any]], baseline: dict[str, Any
             "comm_response_bytes": r.get("comm_response_bytes"),
             "total_response_download_packed_bytes": packed,
         }
-        rows.append(row)
+        key = (row["milestone"], row["t_prefill"], row["n_decode"], row["pcs_n_queries"])
+        prev = rows_by_shape.get(key)
+        if prev is None or row["_mtime"] > prev["_mtime"]:
+            rows_by_shape[key] = row
+    rows = list(rows_by_shape.values())
+    for row in rows:
+        row.pop("_mtime", None)
     rows.sort(key=lambda x: (x["t_prefill"] or 0, x["n_decode"] or 0, x["pcs_n_queries"], x["source"]))
     return rows
 

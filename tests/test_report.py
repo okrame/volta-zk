@@ -35,8 +35,8 @@ def test_p7_report_selects_record_and_packed_sources():
     data = report.p7_report(report.DEFAULT_RESULTS)
 
     assert data["pcs_formula_check"]["matches_p6_measured_bytes"] is True
-    assert data["baseline"]["source"].endswith("p6-2026-07-07-515bb1c.json")
-    assert data["communication"]["packed_logits_source"].endswith("p6-2026-07-07-d71e339.json")
+    assert data["baseline"]["source"].endswith("p6-2026-07-07-382bb56.json")
+    assert data["communication"]["packed_logits_source"].endswith("p6-2026-07-07-382bb56.json")
     q150 = [
         row
         for row in data["measured_pcs_profiles"]
@@ -56,8 +56,8 @@ def test_p7_report_selects_record_and_packed_sources():
     decode = [
         row
         for row in data["decode_marginal_profiles"]
-        if row["source"].endswith("p6-quick-2026-07-07-179cd3d.json")
+        if row["source"].endswith("p6-2026-07-07-382bb56.json")
     ]
     assert len(decode) == 1
     assert decode[0]["label_sum_bytes"] == decode[0]["comm_decode_marginal_bytes"]
-    assert decode[0]["top_labels"][0] == {"label": "auth_corrections", "bytes": 3_135_232}
+    assert decode[0]["top_labels"][0] == {"label": "auth_corrections", "bytes": 20_902_016}

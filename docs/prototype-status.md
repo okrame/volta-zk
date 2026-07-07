@@ -56,6 +56,26 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-07 (P7 decision — real-PCG becomes an in-repo implementation,
+  supersedes the "cost spike only" scope)**: user decision. Instead of a
+  proxy measurement on a foreign field (emp-zk Mersenne-61 / ocelot), a
+  WYKW/Wolverine-style subfield VOLE over Goldilocks (m = k + r·Δ, Δ ∈
+  F_p², full-field corrs as two sVOLEs sharing Δ) is implemented in a new
+  `volta-pcg` crate as the eventual production backend — same rationale as
+  the in-house Ligero decision (P3.5 #1). Two phases, each with its own
+  pre-registration: **A** (GGM PPRF + LPN expansion, base sVOLE stubbed
+  from the mock seed — real expansion cost of record, required before
+  cloud GPU spend) and **B** (real base OTs + OT extension + malicious
+  consistency checks; first public-key dep, allowed since the "no curves"
+  invariant binds the PCS/proof path only). Hard constraints: mock backend
+  stays default until measured phase-B parity; CorrIndex domain separation
+  and one-time-use counting unchanged; PCG/setup bytes are a NEW counted
+  category (`setup_comm_bytes`), never folded into response download; no
+  proving-path/transcript change. LPN parameters (≥128-bit) are a security
+  assumption to pre-register, same status as PCS binding in M9; no Lean
+  work expected (optional future M10 interface lemma). Full work item:
+  handoff spec §4.4.
+
 - **2026-07-07 (P7 pre-cloud local complete)**:
   clean full P6 rerun with transcript-label accounting landed as
   `benchmarks/results/p6-2026-07-07-382bb56.json` (`git_dirty:false`,

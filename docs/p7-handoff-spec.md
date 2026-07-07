@@ -43,7 +43,9 @@ architecture and counts, and P7 decides GPU go/no-go by extrapolation.
    verifier time (verifier is cheap, ~0.5 s/response), **never with final
    proof size / communication**. Communication is the binding product
    constraint (envelope: 150–200 MB per response as a post-response
-   download; currently 157.9 MB).
+   download; currently 144.8 MB packed, 157.9 MB raw). Session setup bytes
+   (PCG, §4.4) are a separate counted category, not response download —
+   but they must be reported, never hidden.
 5. **Bit-exactness**: the Rust fixed-point forward (`rust/volta-gpt2/`) is
    the witness generator and must match the numpy reference
    (`scripts/gpt2_fixed.py`) bit-for-bit. Quantization semantics are frozen
@@ -51,8 +53,10 @@ architecture and counts, and P7 decides GPU go/no-go by extrapolation.
    `golden-p6.bin`) are load-bearing gates.
 6. **Correlations are mock-PCG** (shared ChaCha seed, Δ verifier-only),
    one-time use, domain-separated indices (session, layer, head, position,
-   tensor_tag); every consumption is counted. Real-PCG cost is a P7 spike
-   (§4.4), pre-registered.
+   tensor_tag); every consumption is counted. A real Goldilocks silent-VOLE
+   backend is a P7 work item (§4.4, decision 2026-07-07); the mock stays the
+   default and the test baseline until the real backend reaches measured
+   parity.
 7. Measured counts are compared against the analytic budget
    (`scripts/budget_p0.py`, table in the ledger); deviations > 20% must be
    explained in the ledger.
@@ -68,7 +72,7 @@ one two-phase proving session, real 13-commitment PCS with stacked claims.
 | ρ_prefill / ρ_decode (CPU, 4 cores) | 23.1 / 5.07 (decode batches 50 rows per chunk) |
 | flat-cost gate | curve 5×10 chunks, last/first 1.12 (≤ 1.5) — O(seq·d), no O(seq²) |
 | verify | 0.57 s + 0.10 s PCS; verified 2.67 tok/s |
-| **total response download** | **157.9 MB** = 48.4 prefill transcript + 22.3 decode marginal (445 KB/token) + **66.7 PCS opening** + 20.5 public band logits |
+| **total response download** | **157.9 MB** = 48.4 prefill transcript + 22.3 decode marginal (445 KB/token) + **66.7 PCS opening** + 20.5 public band logits; **144.8 MB packed** after §4.6.E logits packing (landed) |
 | PCS | 13 commitments (12 × layer 2^24 + 1 × embed 2^27), 102 claims (96 weight + 6 embed), open 1.05 s, commit one-off 9.5 s |
 | peak RSS | 3.47 GB (limit 11 GB) |
 
@@ -119,8 +123,17 @@ Repo map (verified 2026-07-07):
 P7 has two halves: (A) the **report + GPU budget model** that decides GPU
 go/no-go (this was P7's original definition), and (B) the **e2e communication
 levers** left open by P6, of which the PCS opening is the dominant one.
-Recommended order: 4.1 → 4.2 → 4.3 (they change the numbers the report
-extrapolates from) → 4.4 → 4.5 (cloud GPU).
+
+**Status 2026-07-07 (pre-cloud local pass complete — see the ledger P7 row)**:
+`scripts/report.py` + `tests/test_report.py` exist and the local report of
+record is `benchmarks/results/p7-2026-07-07-d0812a7.json`; the PCS byte
+formula is verified against the measured opening; the decode marginal is
+profiled by transcript label; Q=150 was measured as an exploratory profile
+(NOT adopted); the static-query-cache accounting landed in `volta-pcs`
+(`MultiOpenProof::byte_breakdown()`). The cloud runbook is
+`docs/p7-cloud-runbook.md`. Remaining work, in order: **4.4 phase A
+(real-PCG expansion cost) → 4.5 (cloud GPU spikes) → 4.4 phase B**, with
+4.1/4.6 levers taken up only when a measured number motivates them.
 
 ### 4.1 PCS opening bytes (66.7 MB → target ≈ 25–35 MB)
 
@@ -185,22 +198,124 @@ The sampled tokens stay public output either way.
 ### 4.3 Smaller known levers
 
 - x_in re-auth per layer: −6.9 MB (reuse across seams, ledger P5 #8).
-- Decode marginal is 445 KB/token of corrections/transcript — profile its
-  breakdown before optimizing; no pre-analyzed lever here yet.
+- Decode marginal: **profiled** (ledger 2026-07-07, clean rerun
+  `p6-2026-07-07-382bb56.json`): 445 KB/token, dominated by
+  `auth_corrections` 20.9 of 22.3 MB — i.e. the real lever here is the
+  formal-touching 2-byte correction packing (§4.6.B), not a transcript
+  tweak. LogUp round/split/prod corrections are ~1.2 MB combined.
 
-### 4.4 Real-PCG spike (pre-registered, BEFORE the GPU go/no-go)
+### 4.4 Real-PCG: implement silent VOLE over Goldilocks in-repo
+**(decision 2026-07-07 — supersedes the earlier "cost spike only" scope)**
 
-Mock-PCG hides the correlation-generation cost. Measure a real silent-VOLE
-(Ferret-style) setup+expansion for the counted correlation volume of one
-response (~8.5 M sub + 177 K full corrs in the P6 JSON) and add the line to
-the budget model. This is a cost-model spike, not an integration.
+Mock-PCG hides the correlation-generation cost, and no off-the-shelf silent
+VOLE exists over Goldilocks (emp-zk is C++ over Mersenne-61; swanky/ocelot
+is Rust over other primes). Decision: **implement the real PCG in this repo
+as the eventual production backend** — same rationale as the in-house
+Ligero decision (ledger P3.5 #1): the delicate, field- and
+interface-specific part is not importable, and a proxy measurement on
+another field would buy a number but no reusable code. The mock ChaCha
+lower bound for the P6 volume is 0.351 s
+(`p7-mock-pcg-2026-07-07-d16a69c.json`); the real backend replaces that
+row with a real one. This is 1–2 weeks of work, not a spike — phase it.
+
+**What to build — WYKW/Wolverine-style subfield VOLE, NOT Ferret.** Ferret
+is F_2/COT machinery; the correlation consumed here is exactly WYKW sVOLE
+(Weng–Yang–Katz–Wang, "Wolverine", IEEE S&P 2021): prover gets
+(r ∈ F_p, m ∈ F_p²), verifier gets (k ∈ F_p², global Δ ∈ F_p²) with
+**m = k + r·Δ** — the MAC relation `volta-mac` already uses, with Δ chosen
+by the verifier during setup as today. Reference implementations to study
+for structure (not to vendor): emp-zk (C++), swanky/`ocelot`'s svole
+(Rust, MIT). Construction pipeline, per the paper:
+
+1. **Base sVOLE** of small size (~k + t + 1) — from base OTs in phase B,
+   stubbed in phase A (below).
+2. **Batched single-point sVOLE (SPsVOLE)** via GGM PPRF trees
+   (log(n/t) OTs per point) with the paper's malicious-security
+   consistency checks.
+3. **LPN expansion** (primal LPN, local-linear / regular-noise code) to
+   n ≈ 10^7 per iteration; bootstrap iteratively (part of the output seeds
+   the next base). LPN (n, k, t, code) parameters: take them from the
+   WYKW/Ferret parameter tables at ≥128-bit and **pre-register them in the
+   ledger before implementing** — they are a security assumption, logged
+   with the same status as PCS binding in M9.
+4. **Full-field correlations** (x ∈ F_p²): two sVOLE instances sharing the
+   same Δ, combined F_p-linearly (x = x₀ + γ·x₁; MACs add). Volume per
+   response (P6 count): **8,479,926 sub + 176,880 full**.
+
+**Phasing** (each phase = its own ledger pre-registration + JSON):
+
+- **Phase A — expansion cost of record (BEFORE cloud GPU spend)**: GGM
+  PPRF + LPN expansion + consistency-check arithmetic, with the base sVOLE
+  stubbed from the mock shared seed (trusted-dealer base). The expansion
+  is the dominant cost at this volume, so phase A yields the real number
+  the GPU budget model needs. JSON `p7-real-pcg-<date>-<sha>.json`:
+  `is_real_pcg: true`, `base_vole: "mock-stub"`, setup vs expansion timing
+  split, corrs/s both sides, peak RSS, and the LPN parameters used.
+- **Phase B — real two-party setup (production backend; may overlap with
+  4.5)**: base OTs + OT extension for the GGM trees + all consistency
+  checks, maliciously secure per the paper (do NOT skip the checks). This
+  introduces the repo's first public-key dependency (e.g.
+  `curve25519-dalek` for base OTs) — allowed: the "no curves / no trusted
+  setup" invariant (§5) constrains the PCS/proof path, not the correlation
+  setup; log the new dependency in the ledger. JSON gains
+  `base_vole: "real"` and measured **setup communication bytes**.
+
+**Integration contract (hard constraints)**:
+
+- New crate `volta-pcg`. `CorrelationStream`/`VerifierCtx` grow a backend
+  abstraction (enum or trait); **mock stays the default and the regression
+  baseline** until phase-B parity is demonstrated and a ledger decision
+  flips the default.
+- CorrIndex domain separation and one-time-use counting are **unchanged**.
+  The PCG produces flat per-session pools; the CorrIndex → pool-offset
+  allocation must be a deterministic function of the protocol schedule,
+  identical on both sides (the mock already relies on schedule agreement);
+  add a cheap cross-check (hash of the allocation map exchanged in the
+  transcript).
+- PCG/setup communication is a **new accounting category**
+  (`setup_comm_bytes` per session), counted and reported in the JSON,
+  never added to the response download and never silently dropped (§2.4).
+- **No change** to transcript messages, challenge order, proof contents,
+  or soundness parameters anywhere in the proving path: the backend swap
+  must be invisible to `prove_response`/`verify_response` except for where
+  correlations come from.
+
+**Correctness gates (pre-register in the ledger)**:
+
+- Unit: the MAC relation m = k + r·Δ holds for every expanded correlation,
+  both phases, sub and full.
+- e2e: `p6_report --quick` accepted with the real backend, with
+  consumption counters identical to the mock-backend run.
+- Soundness smoke: tampered-correlation attempt rejected (as in P2).
+- Golden decode unchanged (the witness path is untouched — assert anyway).
+- Bench: extend `p7_pcg_report` with `--backend real`; report against the
+  mock lower-bound row in `scripts/report.py`'s `real_pcg_spike` section
+  (drop the "not_measured_in_local_vm" status when phase A lands).
+
+**Formal/Lean position (log as a ledger deviation, no Lean work
+expected)**: the Lean theorems consume ideal VOLE correlations; the PCG
+realizes that ideal object under the LPN assumption — an explicit external
+assumption, same status as PCS binding in M9. An interface lemma (an
+"M10") is optional future work, not a P7 blocker. Lean stays frozen.
+
+**Interaction with the budget model**: expansion is input-independent, so
+it can be precomputed/pipelined before the response — it hits per-response
+**cost/throughput**, not necessarily ρ latency. Decide and pre-register
+how it is counted (recommended: a separate "PCG s/response" line in the
+report, not folded into ρ) before quoting the phase-A number.
 
 ### 4.5 Report + GPU budget model + cloud CUDA (the go/no-go)
 
-1. **`scripts/report.py`**: from `benchmarks/results/*.json` to ρ tables and
-   per-token curves; extrapolation model (measured mult/lookup/byte/corr
-   counts → predicted GPU budget) that decides whether ρ ≤ 2 (decode) and
-   ρ ≤ 5 (prefill) are reachable **before writing a line of CUDA**.
+1. **`scripts/report.py` — DONE** (ledger 2026-07-07): ρ tables, PCS
+   byte-formula check, lever projections, GPU sensitivity model; report of
+   record `p7-2026-07-07-d0812a7.json`. Regenerate with
+   `python3 scripts/report.py --write-json` whenever a new measured JSON
+   lands (tests: `tests/test_report.py`). The go/no-go stays blocked on
+   §4.4 phase A and the measured GPU roofline — the sensitivity model says
+   the GPU proof kernels must beat the native-inference GPU speedup by
+   ~3.7× (prefill) / ~2.6× (decode); note this ratio moved 4.62→3.67
+   between two clean CPU runs (VM noise), so re-measure baselines with
+   ABBA timing on the cloud box before trusting any single ratio.
 2. **GPU state today: zero.** No CUDA/FFI/feature flags anywhere;
    parallelism is rayon throughout (`gemm.rs`, `band.rs`, `logup.rs`,
    `ligero.rs`, `batch.rs` are the parallel hot spots).
@@ -217,8 +332,8 @@ the budget model. This is a cost-model spike, not an integration.
    `scripts/export_gpt2.py` (downloads HF safetensors once) +
    `scripts/dump_golden.py`; nothing large needs copying.
 4. **Operational cloud choice (2026-07-07)**: do not spend cloud GPU time
-   until §§4.1–4.4 have either reduced or explicitly modeled PCS bytes and
-   landed in the report/budget assumptions. First option: Thunder Compute.
+   before §4.4 phase A has landed a real expansion number (the PCS bytes
+   are already modeled in the report). First option: Thunder Compute.
    Use an H100 PCIe 80GB to measure the CUDA/roofline regime; use an A100
    80GB when the same measurements should be cost-constrained. Document the
    exact instance, region, image, driver/CUDA versions, and availability in
@@ -257,7 +372,11 @@ Interaction: if columns become one-time setup, the Q-reduction lever
 (§4.1.1) loses most of its value — re-rank before spending effort there.
 Implementation surface: `open_multi_zk`/`verify_multi_open` split into a
 one-time column transcript + a per-response part; verifier state keyed by
-commitment root.
+commitment root. **Accounting already landed** (2026-07-07):
+`MultiOpenProof::byte_breakdown()` measures the cut — PCS 66.7 MB →
+32.7 MB marginal, packed response 144.8 → 110.8 MB (96.9 with per-tensor
+RLC). The protocol split itself remains a separate pre-registered design
+entry.
 
 **B. 2-byte packed corrections with an authenticated carry bit (the
 deferred M5 extension) — attacks the 48.4 + 22.3 MB, not the PCS.** The

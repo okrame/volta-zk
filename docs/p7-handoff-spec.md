@@ -160,10 +160,9 @@ otherwise → 15.2 MB). Levers, ranked by measured impact:
    13× fixed passes (time) and 13× Merkle/mask overhead (small in bytes).
    On the 11 GB VM this was blocked (a 2^28 single commitment ≈ 4 GB
    encoded); **in the cloud phase RAM is no longer the binding constraint**
-   — re-evaluate there. Caveat from `docs/top-tier-positioning-2026-07-06.md`:
-   don't go monolithic in a way that breaks per-tensor/sparse openability
-   (future MoE story — scaling thesis, projections and phase-X mini-spec
-   in `docs/scaling-note.md`).
+   — re-evaluate there. Preserve per-tensor/sparse openability for the future
+   MoE story; don't go monolithic in a way that breaks the scaling thesis,
+   projections, or phase-X mini-spec in `docs/scaling-note.md`.
 4. **Per-tensor RLC claim merging** (prefill+decode claims per tensor,
    8→4 / 6→3 per commitment): halves the `16·msg_len·(n_claims+1)` u-vector
    term — worth ~1.2 MB/layer-commitment (~57% of layer bytes is u-vectors)
@@ -205,13 +204,12 @@ the budget model. This is a cost-model spike, not an integration.
 2. **GPU state today: zero.** No CUDA/FFI/feature flags anywhere;
    parallelism is rayon throughout (`gemm.rs`, `band.rs`, `logup.rs`,
    `ligero.rs`, `batch.rs` are the parallel hot spots).
-   `docs/top-tier-positioning-2026-07-06.md` §"Why cloud GPU…" is the
-   design sketch: kernels to port are the fused MAC epilogue, GEMM-proof
-   sumcheck passes, LogUp fraction trees, and the PCS row/global passes +
-   blake3 hashing. Known risks written there: Goldilocks F_p² arithmetic
-   runs on the integer pipeline, not tensor cores (roofline risk); the MAC
-   epilogue must stay **fused** with the GEMM or the near-native ρ_kernel
-   (1.06 on CPU) is lost.
+   Cloud GPU design sketch: kernels to port are the fused MAC epilogue,
+   GEMM-proof sumcheck passes, LogUp fraction trees, and the PCS row/global
+   passes + blake3 hashing. Known risks: Goldilocks F_p² arithmetic runs on
+   the integer pipeline, not tensor cores (roofline risk); the MAC epilogue
+   must stay **fused** with the GEMM or the near-native ρ_kernel (1.06 on CPU)
+   is lost.
 3. **Cloud environment notes**: `rust/.cargo/config.toml` sets
    `target-cpu=native` — CPU baselines are machine-specific; re-measure the
    native baseline on the cloud box before quoting any ρ (same ABBA paired

@@ -23,7 +23,7 @@ CPU numbers validate architecture and counts; the ρ targets (≤2 decode,
 | P4 LogUp + fused blocks | **done** (2026-07-05) | one full layer proved+verified e2e (T=100, real PCS opening) ✓ **PASSED**; counts within 20% ✓ (witness streams = budget **exactly**, padded LogUp domains explained); LogUp ≤8–10 E-mult/lookup: **MISSED, motivated (12.20)**; 1 weight claim/tensor ✓ (4/layer) | prove 0.800 s vs native forward 0.033 s (ρ_layer ~24, 4 cores); verify 0.041 s; LogUp lookup-side **12.20 E-mult/lookup** (~34 ns/lookup, 5.4× vs P2.5 spike wall), table-side 3.86 raw → 0.32 /12-amortized; full instance cost 126.5 M E-mult/layer (≈42/padded lookup incl. aux folding + tables + closures); corr bytes 7.64 MB/layer (mult vectors 3.87 MB — see deviations); layer PCS 2^24: commit 0.34 s one-off, **open 0.035 s**, verify 0.006 s; projections (P3.5 cost model, 49/98 claims): prefill **0.233 s**, per-response **0.345 s**. Run of record `benchmarks/results/p4-2026-07-06-8b4ca11.json` (clean tree, `git_dirty:false`; the 07-05 JSON was a dirty-tree run whose sha names the parent commit) |
 | P5 GPT-2 e2e prefill 100 tok | **done** (2026-07-06) | one-command run ✓ (`scripts/run_prefill.sh`), golden check ✓ (full logits bit-exact vs numpy at T=100, argmax 835 ' way'), counts vs budget: witness lookups = budget **exactly** (16,944,000) ✓ | **accepted e2e with real weights + 13 real Ligero commitments**: native (witness) 0.459 s, prove 11.0–11.2 s, **ρ ≈ 24** (matches P4's ×12 projection); verify 0.65 s + 0.07 s PCS; PCS open **0.73 s** / 52.8 MB (vs 0.237 s projection — 13× fixed costs, see deviations), commit one-off 7.6 s; **comm 159.6 MB/prefill** (mult vectors 59.4 + PCS 52.8 + boundary 36.9 + rest), projected response 212 MB; E-mult all-in 100.6/budget lookup; peak RSS 2.86 GB. `benchmarks/results/p5-2026-07-06-e52ce79.json` (clean tree) |
 | P6 decode + authenticated KV cache | **done** (2026-07-07) | flat cost/token ✓ **PASSED** (curve last/first 1.12 ≤ 1.5, 5×10 chunks, cache 100→150); anti-replay smoke ✓ (prefill-row replay + position swap rejected); golden decode ✓ (50 tokens bit-exact vs numpy) | **accepted e2e, prompt 100 + 50 decode, one two-phase session, real 13-commitment PCS with STACKED claims (96 weight + 6 embed)**: native decode 30.9 tok/s (KV-cached baseline); prove_response 18.7 s = prefill 10.5 s + **decode marginal 8.2 s (0.164 s/token, ρ_decode 5.07 CPU)**; verified 2.67 tok/s; verify 0.57 s + 0.10 s PCS. Comm: transcript 137.4 MB (prefill 48.4 + PCS opening 66.7 + decode marginal 22.3 = **445 KB/token**) + public band logits 20.5 MB → **total response download 157.9 MB** (inside the 150–200 MB product envelope; the PCS opening is now the dominant lever, P7). Shared-α restructure landed with P6: mult corr 59.4 → 2.85 MB. PCS commit one-off 9.5 s; peak RSS 3.47 GB. `benchmarks/results/p6-2026-07-07-515bb1c.json` (clean tree) |
-| P7 report + GPU budget model | pending | extrapolation decides GPU go/no-go | — |
+| P7 report + GPU budget model | **partial** (local VM pass done 2026-07-07; real-PCG/cloud open) | local report/budget model ✓; PCS byte formula reproduces P6 ✓; no protocol/soundness parameter change without separate ledger entry | `benchmarks/results/p7-2026-07-07-754626f.json` (`git_dirty:true`): current packed download 144.8 MB; PCS formula matches 66.733 MB; projections: Q=150 same-rate 135.9 MB, RLC 130.9 MB, Q+RLC 122.0 MB, static-query-cache marginal 110.8 MB, cache+RLC marginal 96.9 MB. GPU sensitivity: targets need prover/native relative speedup 4.62× prefill, 2.54× decode. Recommendation: cloud spikes only after real-PCG cost is measured/budgeted. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -55,6 +55,41 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-07 (P7 local report landed)**: `scripts/report.py --write-json`
+  produced `benchmarks/results/p7-2026-07-07-754626f.json` (dirty tree:
+  ledger/script/test changes plus the pre-existing handoff-spec edit). The
+  report consumes the clean P6 run of record
+  `p6-2026-07-07-515bb1c.json` and the P7-prep dirty packing source
+  `p6-2026-07-07-d71e339.json`; `tests/test_report.py` verifies that the
+  PCS formula reproduces the measured 66,733,504 B exactly (4,293,216 B per
+  layer opening ×12 + 15,214,912 B embed). Current packed download is
+  **144.8 MB**. Projection-only PCS levers: same-rate Q=150 for ~60-bit
+  query error → **135.9 MB** packed response; per-tensor RLC 8→4 / 6→3
+  claims → **130.9 MB**; Q=150+RLC → **122.0 MB**; embed 2^12-row shape
+  → **140.1 MB**; static-query verifier cache marginal → **110.8 MB** and
+  cache+RLC marginal → **96.9 MB**. No proving path changed and no
+  soundness parameter was adopted. GPU rho sensitivity: CPU P6 rho implies
+  the GPU proof kernels must beat native-inference GPU speedup by **4.62×**
+  for prefill and **2.54×** for decode to hit rho≤5/≤2. Local
+  recommendation is conditional cloud spikes only; final P7 go/no-go remains
+  blocked on real-PCG cost and actual GPU roofline/native-baseline
+  measurements.
+
+- **2026-07-07 (P7 local plan, pre-registered)**: scope for this VM pass is
+  deliberately conservative. Add `scripts/report.py` plus focused tests: it
+  consumes `benchmarks/results/*.json`, uses the clean P6 run of record for
+  proof/PCS timing and the P7-prep dirty P6 run only for the measured
+  public-logits packing delta, writes a non-overwriting `p7-*.json`, and
+  prints the rho / communication / PCS-lever tables. PCS changes here are
+  projections only: Q/rate alternatives, per-tensor RLC claim merging,
+  static-query verifier caching, and embed shape are modeled from the
+  checked `MultiOpenProof::bytes()` formula, not enabled in the proving
+  path. No Q/rate soundness parameter, commitment layout, PCS transcript, or
+  Lean-facing invariant changes in this pass. Real-PCG and cloud CUDA remain
+  unmeasured local blockers; the report records the counted correlation
+  volume and a conditional go/no-go/sensitivity model instead of pretending a
+  GPU run happened.
 
 - **2026-07-07 (P7 prep — public-logits bit-packing landed, measured)**:
   handoff spec §4.6.E implemented: the public band logits (i64, true range

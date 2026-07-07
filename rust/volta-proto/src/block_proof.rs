@@ -3984,7 +3984,9 @@ mod tests {
     use crate::thaler::fold_w;
     use rand::{Rng, SeedableRng};
     use std::sync::OnceLock;
-    use volta_gpt2::{build_luts, forward_layer, synthetic_input, synthetic_weights, LutParams};
+    use volta_gpt2::{
+        build_luts, forward_layer, synthetic_input, synthetic_weights, LutParams, TableId,
+    };
     use volta_mac::zero_batch_exchange;
 
     const T: usize = 4;

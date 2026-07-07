@@ -717,6 +717,163 @@ pub(crate) fn head_bit_coords(h: usize) -> [Fp2; HEAD_BITS] {
     core::array::from_fn(|b| if (h >> b) & 1 == 1 { Fp2::ONE } else { Fp2::ZERO })
 }
 
+
+// ---------------------------------------------------------------------------
+// P6 band shapes + cross-phase K/V cache segments
+// ---------------------------------------------------------------------------
+
+/// Attention band shape: `q` query rows at positions `t0..t0+q`, attending
+/// over the full cache of `s = t0+q` positions. Prefill is the SQUARE band
+/// `t0 = 0` (q = s = t) — one code path serves both (ledger P6 plan #2).
+#[derive(Clone, Copy, Debug)]
+pub struct BandShape {
+    pub t0: usize,
+    pub q: usize,
+}
+
+impl BandShape {
+    pub fn square(t: usize) -> BandShape {
+        BandShape { t0: 0, q: t }
+    }
+    pub fn s(&self) -> usize {
+        self.t0 + self.q
+    }
+    pub fn qb(&self) -> usize {
+        pad_bits(self.q)
+    }
+    pub fn sb(&self) -> usize {
+        pad_bits(self.s())
+    }
+    pub fn q_pad(&self) -> usize {
+        1 << self.qb()
+    }
+    pub fn s_pad(&self) -> usize {
+        1 << self.sb()
+    }
+    /// Per-head rectangle size (q_pad × s_pad).
+    pub fn sp2(&self) -> usize {
+        self.q_pad() * self.s_pad()
+    }
+    /// Rect domain vars: within-row (sb, LSB) ‖ rows (qb) ‖ heads (4).
+    pub fn nr(&self) -> usize {
+        self.sb() + self.qb() + HEAD_BITS
+    }
+    /// Causal window length of band row `i` (positions 0..=t0+i).
+    pub fn win(&self, i: usize) -> usize {
+        self.t0 + i + 1
+    }
+    /// Packed offset of band row `i` within one head's causal-packed data.
+    pub fn packed_off(&self, i: usize) -> usize {
+        i * self.t0 + i * (i + 1) / 2
+    }
+    /// Packed length per head.
+    pub fn caus(&self) -> usize {
+        self.packed_off(self.q)
+    }
+    /// Above-causal real-cell count per head (j in win(i)..s).
+    pub fn n_above_head(&self) -> usize {
+        (0..self.q).map(|i| self.s() - self.win(i)).sum()
+    }
+}
+
+/// One authenticated K/V cache segment (rows×D matrix, per-row domains) —
+/// the prover side. A layer's cache = the prefill segment(s) followed by the
+/// band's own new rows; the square path is the single own segment.
+pub struct CacheSegP<'a> {
+    pub dom: u64,
+    pub rows: usize,
+    pub data: &'a [i16],
+}
+
+/// Verifier mirror: cached per-element keys of one segment.
+pub struct CacheSegK<'a> {
+    pub rows: usize,
+    pub keys: &'a [Fp2],
+}
+
+/// One earlier phase's authenticated K/V (prover side): the prefill (or a
+/// previous decode chunk's) boundary tensors + their domains.
+pub struct KvPrefixP<'a> {
+    pub rows: usize,
+    pub dom_k: u64,
+    pub k: &'a [i16],
+    pub dom_v: u64,
+    pub v: &'a [i16],
+}
+
+/// Verifier mirror of [`KvPrefixP`] (cached keys).
+pub struct KvPrefixK<'a> {
+    pub rows: usize,
+    pub k_keys: &'a [Fp2],
+    pub v_keys: &'a [Fp2],
+}
+
+/// Fold a segmented cache over its ROWS (global row index into `wr`),
+/// restricted to the column window `[c0, c0+w)` — segment-general
+/// [`fold_rows_window_p`].
+pub(crate) fn cache_fold_rows_p(
+    stream: &mut CorrelationStream,
+    segs: &[CacheSegP],
+    wr: &[Fp2],
+    c0: usize,
+    w: usize,
+) -> (Vec<Fp2>, Vec<Fp2>) {
+    let mut vals = vec![Fp2::ZERO; w];
+    let mut tags_out = vec![Fp2::ZERO; w];
+    let mut base = 0usize;
+    for seg in segs {
+        let (sv, st) = fold_rows_window_p(
+            stream, seg.dom, seg.data, seg.rows, D, &wr[base..base + seg.rows], c0, w,
+        );
+        for l in 0..w {
+            vals[l] += sv[l];
+            tags_out[l] += st[l];
+        }
+        base += seg.rows;
+    }
+    (vals, tags_out)
+}
+
+pub(crate) fn cache_fold_rows_k(segs: &[CacheSegK], wr: &[Fp2], c0: usize, w: usize) -> Vec<Fp2> {
+    let mut out = vec![Fp2::ZERO; w];
+    let mut base = 0usize;
+    for seg in segs {
+        let sv = fold_rows_window_k(seg.keys, seg.rows, D, &wr[base..base + seg.rows], c0, w);
+        for l in 0..w {
+            out[l] += sv[l];
+        }
+        base += seg.rows;
+    }
+    out
+}
+
+/// Fold a segmented cache over a COLUMN WINDOW per row (segment-general
+/// [`fold_cols_window_p`]): returns per-GLOBAL-row (values, tags).
+pub(crate) fn cache_fold_cols_p(
+    stream: &mut CorrelationStream,
+    segs: &[CacheSegP],
+    wc: &[Fp2],
+    c0: usize,
+    w: usize,
+) -> (Vec<Fp2>, Vec<Fp2>) {
+    let mut vals = Vec::new();
+    let mut tags = Vec::new();
+    for seg in segs {
+        let (sv, st) = fold_cols_window_p(stream, seg.dom, seg.data, seg.rows, D, wc, c0, w);
+        vals.extend(sv);
+        tags.extend(st);
+    }
+    (vals, tags)
+}
+
+pub(crate) fn cache_fold_cols_k(segs: &[CacheSegK], wc: &[Fp2], c0: usize, w: usize) -> Vec<Fp2> {
+    let mut out = Vec::new();
+    for seg in segs {
+        out.extend(fold_cols_window_k(seg.keys, seg.rows, D, wc, c0, w));
+    }
+    out
+}
+
 // ---------------------------------------------------------------------------
 // Column / table builders
 // ---------------------------------------------------------------------------
@@ -1093,6 +1250,31 @@ pub(crate) fn rowmask_eval(r_rows: &[Fp2], t: usize) -> Fp2 {
     eq[..t].iter().fold(Fp2::ZERO, |s, &e| s + e)
 }
 
+
+/// Recompute the LN affine accumulators from the boundary + stats + public
+/// gain/bias (bit-identical to the witness trace inputs — pure function, so
+/// the band slices need no trace bookkeeping):
+/// `acc[i,j] = (x[i,j] − mean[i])·rsqrt_out[i]·gain[j] + (bias[j] << s_ln)`.
+pub(crate) fn ln_acc_recompute(
+    x: &[i16],
+    t: usize,
+    mean: &[i64],
+    rsqrt_out: &[i16],
+    gain: &[i16],
+    bias: &[i16],
+    s_ln: u32,
+) -> Vec<i64> {
+    let mut acc = vec![0i64; t * D];
+    for i in 0..t {
+        for j in 0..D {
+            acc[i * D + j] = (x[i * D + j] as i64 - mean[i]) * rsqrt_out[i] as i64
+                * gain[j] as i64
+                + ((bias[j] as i64) << s_ln);
+        }
+    }
+    acc
+}
+
 /// Prover-side consistency check of LN statistics vectors against the
 /// pre-LN input `x` — the P4-DEVIATION(ln-stats) fallback (see module doc).
 pub(crate) fn assert_ln_stats(
@@ -1399,7 +1581,12 @@ pub struct FfnP1 {
 
 /// FFN phase 1: bind everything the FFN instances will look up (LN vectors +
 /// the content-global multiplicity contributions) BEFORE any α is drawn.
-pub(crate) fn ffn_phase1(wit: &LayerWitness, luts: &Luts, cx: &mut BlockCtxP) -> FfnP1 {
+pub(crate) fn ffn_phase1(
+    wit: &LayerWitness,
+    weights: &LayerWeights,
+    luts: &Luts,
+    cx: &mut BlockCtxP,
+) -> FfnP1 {
     let t = wit.t;
     let p = luts.params;
     let rb = pad_bits(t);
@@ -1419,14 +1606,19 @@ pub(crate) fn ffn_phase1(wit: &LayerWitness, luts: &Luts, cx: &mut BlockCtxP) ->
     add_range_mult(cx.bank, &wit.ffn_down_acc, &wit.ffn_down_q, t, D, s_dn);
     assert_eq!(luts.gelu[0], 0, "gelu pad pair (0,0) requires gelu[0] == 0");
     let ff_pads = (t_pad << f_cb) - t * DFF;
-    let mut mult_gelu = wit.traces[TableId::Gelu as usize].multiplicity.clone();
+    let mut mult_gelu = vec![0u32; 1 << 16];
+    for &y in &wit.ffn_up_q {
+        mult_gelu[(y as u16) as usize] += 1;
+    }
     mult_gelu[0] += ff_pads as u32; // pad pair (0, gelu[0]=0) at index 0
     cx.bank.add_mult(TableKey::Gelu, &mult_gelu);
     add_range_mult(cx.bank, &wit.ffn_up_acc, &wit.ffn_up_q, t, DFF, s_up);
-    // LN2 half of the (LN1+LN2) ln_norm_requant trace: rows t·D..2·t·D.
-    let ln_trace = &wit.traces[TableId::LnNormRequant as usize];
-    let acc_ln = &ln_trace.inputs[t * D..2 * t * D];
-    add_range_mult(cx.bank, acc_ln, &wit.ln2_out, t, D, s_ln);
+    // LN2 accumulators, recomputed (bit-identical to the trace inputs).
+    let acc_ln = ln_acc_recompute(
+        &wit.attn_block_out, t, &wit.ln2_mean, &wit.ln2_rsqrt_out, &weights.ln2_gain,
+        &weights.ln2_bias, s_ln,
+    );
+    add_range_mult(cx.bank, &acc_ln, &wit.ln2_out, t, D, s_ln);
     let mut mult_rsq = vec![0u32; 1 << 16];
     for i in 0..t {
         mult_rsq[wit.ln2_rsqrt_in[i] as usize] += 1;
@@ -1481,8 +1673,10 @@ pub(crate) fn prove_ffn_block(
     let s_dn = p.shift_ffn_down;
     let s_up = p.shift_ffn_up;
     let s_ln = p.shift_ln_norm;
-    let ln_trace = &wit.traces[TableId::LnNormRequant as usize];
-    let acc_ln = &ln_trace.inputs[t * D..2 * t * D];
+    let acc_ln = ln_acc_recompute(
+        &wit.attn_block_out, t, &wit.ln2_mean, &wit.ln2_rsqrt_out, &weights.ln2_gain,
+        &weights.ln2_bias, s_ln,
+    );
 
     // ---- 1+2: ffn_down range site, closed against the residual ------------
     let site_dn =
@@ -1569,7 +1763,7 @@ pub(crate) fn prove_ffn_block(
     let ln = prove_ln_chain(
         t,
         s_ln,
-        acc_ln,
+        &acc_ln,
         &wit.ln2_out,
         &wit.attn_block_out,
         dom_abo,
@@ -1748,30 +1942,90 @@ pub fn cattn_bias_permuted(c_attn_bias: &[i16]) -> Vec<i16> {
 /// the recomputed above-diagonal QKᵀ accumulators. Built honestly by
 /// [`build_attn_wires`]; the tamper tests mutate a copy (cheating-prover
 /// emulation, as in the FFN tests).
+/// Band-general view of one layer's attention witness: causal-packed wires
+/// with per-row windows `t0+i+1` plus the layer's K cache segments (prefill
+/// segment(s) followed by the band's own new rows). The square/prefill case
+/// is `BandAttnRefs::square` (t0 = 0, single own segment).
+pub struct BandAttnRefs<'a> {
+    pub shape: BandShape,
+    pub scores_acc: &'a [i64],
+    pub scores_q: &'a [i16],
+    pub exp_out: &'a [i16],
+    pub softmax_w: &'a [i16],
+    /// h×q row tables.
+    pub row_shift: &'a [i16],
+    pub denoms: &'a [i64],
+    pub recips: &'a [i16],
+    /// q×D.
+    pub q_mat: &'a [i16],
+    /// K cache segment data (rows×D each), Σ rows = s; the LAST segment is
+    /// the band's own K rows.
+    pub k_cache: Vec<&'a [i16]>,
+}
+
+impl<'a> BandAttnRefs<'a> {
+    pub fn square(wit: &'a LayerWitness) -> Self {
+        BandAttnRefs {
+            shape: BandShape::square(wit.t),
+            scores_acc: &wit.scores_acc,
+            scores_q: &wit.scores_q,
+            exp_out: &wit.exp_out,
+            softmax_w: &wit.softmax_w,
+            row_shift: &wit.row_shift,
+            denoms: &wit.denoms,
+            recips: &wit.recips,
+            q_mat: &wit.q,
+            k_cache: vec![&wit.k],
+        }
+    }
+
+    /// Band view: `wit` is the band-packed LayerWitness (t = q, windows
+    /// t0+i+1); `prefix_k` are the earlier phases' K segments.
+    pub fn banded(wit: &'a LayerWitness, shape: BandShape, prefix_k: &[&'a [i16]]) -> Self {
+        assert_eq!(wit.t, shape.q);
+        let mut k_cache: Vec<&'a [i16]> = prefix_k.to_vec();
+        k_cache.push(&wit.k);
+        assert_eq!(k_cache.iter().map(|k| k.len()).sum::<usize>(), shape.s() * D);
+        BandAttnRefs {
+            shape,
+            scores_acc: &wit.scores_acc,
+            scores_q: &wit.scores_q,
+            exp_out: &wit.exp_out,
+            softmax_w: &wit.softmax_w,
+            row_shift: &wit.row_shift,
+            denoms: &wit.denoms,
+            recips: &wit.recips,
+            q_mat: &wit.q,
+            k_cache,
+        }
+    }
+}
+
 pub struct AttnWires {
-    /// h_pad×T_pad×T_pad, non-causal = exp pad INPUT (least zero-output idx).
+    pub shape: BandShape,
+    /// h_pad×q_pad×s_pad, non-causal = exp pad INPUT (least zero-output idx).
     pub scores_rect: Vec<i16>,
     /// The SHARED scores/exp wire (P5 stable softmax): causal = s − c_row,
     /// non-causal/pads = the exp pad input. With `softmax_row_shift` off
     /// (c ≡ 0) this is byte-identical to `scores_rect`.
     pub sprime_rect: Vec<i16>,
-    /// h_pad×T_pad row table of the per-(head,row) shifts c (pads 0).
+    /// h_pad×q_pad row table of the per-(head,row) shifts c (pads 0).
     pub row_shift_row: Vec<i16>,
     /// Row-max indicator: 1 at the first causal position with s′ = 0 of each
     /// real row, 0 elsewhere (all zeros when the flag is off — unused).
     pub is_max_rect: Vec<i16>,
-    /// h_pad×T_pad×T_pad, non-causal = 0 (the exp pad pair's output).
+    /// h_pad×q_pad×s_pad, non-causal = 0 (the exp pad pair's output).
     pub exp_rect: Vec<i16>,
-    /// h_pad×T_pad×T_pad, non-causal = 0.
+    /// h_pad×q_pad×s_pad, non-causal = 0.
     pub w_rect: Vec<i16>,
     /// The copy the causal sumcheck's B leg folds (== w_rect honestly).
     pub w_rect_causal: Vec<i16>,
-    /// Full per-head QKᵀ accumulators (H·t·t, row-major t×t per head) —
-    /// recomputed; the forward discards the above-diagonal half.
+    /// Full per-head Q·Kᵀ accumulators over the CACHE (H·q·s, row-major q×s
+    /// per head) — recomputed; the forward discards the above-causal half.
     pub acc_full: Vec<i64>,
-    /// Above-diagonal accumulators in fixed order (h, then i, then j>i).
+    /// Above-causal accumulators in fixed order (h, then i, then j≥win(i)).
     pub above_acc: Vec<i64>,
-    /// h_pad·T_pad row tables (index = head·T_pad + i), zero pads.
+    /// h_pad·q_pad row tables (index = head·q_pad + i), zero pads.
     pub denoms_row: Vec<i64>,
     pub recip_in_row: Vec<i64>,
     /// Pads = softmax_recip[0] (the pad PAIR output — mirrors ln_rsqrt).
@@ -1786,12 +2040,16 @@ impl AttnWires {
     }
 }
 
+/// Square/prefill wires (band with t0 = 0).
 pub fn build_attn_wires(wit: &LayerWitness, luts: &Luts) -> AttnWires {
-    let t = wit.t;
-    let rb = pad_bits(t);
-    let t_pad = 1usize << rb;
-    let tp2 = t_pad * t_pad;
-    let caus = t * (t + 1) / 2;
+    build_attn_wires_band(&BandAttnRefs::square(wit), luts)
+}
+
+pub fn build_attn_wires_band(b: &BandAttnRefs, luts: &Luts) -> AttnWires {
+    let sh = b.shape;
+    let (q, s) = (sh.q, sh.s());
+    let (q_pad, s_pad, sp2) = (sh.q_pad(), sh.s_pad(), sh.sp2());
+    let caus = sh.caus();
 
     // Exp pad pair: (pad_in, 0) — asserted to exist (exp underflows to 0).
     let exp_pad_u = (0..1usize << 16)
@@ -1799,31 +2057,31 @@ pub fn build_attn_wires(wit: &LayerWitness, luts: &Luts) -> AttnWires {
         .expect("exp LUT has no zero output — rectangular padding impossible");
     let pad_in = (exp_pad_u as u16) as i16;
 
-    let mut scores_rect = vec![pad_in; H_PAD * tp2];
-    let mut sprime_rect = vec![pad_in; H_PAD * tp2];
-    let mut exp_rect = vec![0i16; H_PAD * tp2];
-    let mut w_rect = vec![0i16; H_PAD * tp2];
+    let mut scores_rect = vec![pad_in; H_PAD * sp2];
+    let mut sprime_rect = vec![pad_in; H_PAD * sp2];
+    let mut exp_rect = vec![0i16; H_PAD * sp2];
+    let mut w_rect = vec![0i16; H_PAD * sp2];
     let row_shift_on = luts.params.softmax_row_shift;
-    let mut row_shift_row = vec![0i16; H_PAD * t_pad];
-    let mut is_max_rect = vec![0i16; H_PAD * tp2];
+    let mut row_shift_row = vec![0i16; H_PAD * q_pad];
+    let mut is_max_rect = vec![0i16; H_PAD * sp2];
     for h in 0..H {
-        for i in 0..t {
-            let c = if row_shift_on { wit.row_shift[h * t + i] } else { 0 };
-            row_shift_row[h * t_pad + i] = c;
+        for i in 0..q {
+            let c = if row_shift_on { b.row_shift[h * q + i] } else { 0 };
+            row_shift_row[h * q_pad + i] = c;
             let mut max_marked = false;
-            for j in 0..=i {
-                let pidx = h * caus + i * (i + 1) / 2 + j;
-                let y = h * tp2 + i * t_pad + j;
-                scores_rect[y] = wit.scores_q[pidx];
-                let sp = wit.scores_q[pidx] as i32 - c as i32;
+            for j in 0..sh.win(i) {
+                let pidx = h * caus + sh.packed_off(i) + j;
+                let y = h * sp2 + i * s_pad + j;
+                scores_rect[y] = b.scores_q[pidx];
+                let sp = b.scores_q[pidx] as i32 - c as i32;
                 assert!(sp >= i16::MIN as i32, "row spread exceeds the exp domain");
                 sprime_rect[y] = sp as i16;
                 if row_shift_on && sp == 0 && !max_marked {
                     is_max_rect[y] = 1;
                     max_marked = true;
                 }
-                exp_rect[y] = wit.exp_out[pidx];
-                w_rect[y] = wit.softmax_w[pidx];
+                exp_rect[y] = b.exp_out[pidx];
+                w_rect[y] = b.softmax_w[pidx];
             }
             assert!(
                 !row_shift_on || max_marked,
@@ -1832,62 +2090,75 @@ pub fn build_attn_wires(wit: &LayerWitness, luts: &Luts) -> AttnWires {
         }
     }
 
-    // Recompute the FULL per-head QKᵀ accumulators (above-diagonal included).
-    let mut acc_full = vec![0i64; H * t * t];
-    let mut above_acc = Vec::with_capacity(H * t * (t - 1) / 2);
+    // Recompute the FULL per-head Q·Kᵀ accumulators over the cache.
+    let k_all: Vec<i16> = {
+        let mut v = Vec::with_capacity(s * D);
+        for seg in &b.k_cache {
+            v.extend_from_slice(seg);
+        }
+        v
+    };
+    assert_eq!(k_all.len(), s * D);
+    let mut acc_full = vec![0i64; H * q * s];
+    let mut above_acc = Vec::with_capacity(H * sh.n_above_head());
     for h in 0..H {
-        let mut qh = vec![0i16; t * DH];
-        let mut kht = vec![0i16; DH * t];
-        for i in 0..t {
+        let mut qh = vec![0i16; q * DH];
+        let mut kht = vec![0i16; DH * s];
+        for i in 0..q {
             for l in 0..DH {
-                qh[i * DH + l] = wit.q[i * D + h * DH + l];
-                kht[l * t + i] = wit.k[i * D + h * DH + l];
+                qh[i * DH + l] = b.q_mat[i * D + h * DH + l];
             }
         }
-        let s_full = gemm_i64(&qh, &kht, t, DH, t);
-        for i in 0..t {
-            for j in 0..=i {
-                let pidx = h * caus + i * (i + 1) / 2 + j;
+        for j in 0..s {
+            for l in 0..DH {
+                kht[l * s + j] = k_all[j * D + h * DH + l];
+            }
+        }
+        let s_full = gemm_i64(&qh, &kht, q, DH, s);
+        for i in 0..q {
+            for j in 0..sh.win(i) {
+                let pidx = h * caus + sh.packed_off(i) + j;
                 assert_eq!(
-                    s_full[i * t + j], wit.scores_acc[pidx],
-                    "witness scores_acc inconsistent with QK^T recompute"
+                    s_full[i * s + j], b.scores_acc[pidx],
+                    "witness scores_acc inconsistent with Q·Kᵀ recompute"
                 );
             }
         }
-        acc_full[h * t * t..(h + 1) * t * t].copy_from_slice(&s_full);
-        for i in 0..t {
-            for j in (i + 1)..t {
-                above_acc.push(s_full[i * t + j]);
+        acc_full[h * q * s..(h + 1) * q * s].copy_from_slice(&s_full);
+        for i in 0..q {
+            for j in sh.win(i)..s {
+                above_acc.push(s_full[i * s + j]);
             }
         }
     }
 
     // Row tables + the P4-DEVIATION(recip-in) prover-side consistency check.
     let recip0 = luts.softmax_recip[0];
-    let mut denoms_row = vec![0i64; H_PAD * t_pad];
-    let mut recip_in_row = vec![0i64; H_PAD * t_pad];
-    let mut recips_row = vec![recip0; H_PAD * t_pad];
-    for idx in 0..H_PAD * t_pad {
-        let (h, i) = (idx / t_pad, idx % t_pad);
-        if h >= H || i >= t {
+    let mut denoms_row = vec![0i64; H_PAD * q_pad];
+    let mut recip_in_row = vec![0i64; H_PAD * q_pad];
+    let mut recips_row = vec![recip0; H_PAD * q_pad];
+    for idx in 0..H_PAD * q_pad {
+        let (h, i) = (idx / q_pad, idx % q_pad);
+        if h >= H || i >= q {
             denoms_row[idx] = 0;
             recip_in_row[idx] = 0;
             continue;
         }
-        let denom = wit.denoms[h * t + i];
+        let denom = b.denoms[h * q + i];
         let rin = denom >> luts.params.recip_den_shift;
         assert!(rin < 1 << 16, "softmax_recip input exceeds u16 domain");
         assert_eq!(
             luts.softmax_recip[rin as usize],
-            wit.recips[h * t + i],
+            b.recips[h * q + i],
             "P4-DEVIATION(recip-in): recips inconsistent with denoms >> shift"
         );
         denoms_row[idx] = denom;
         recip_in_row[idx] = rin;
-        recips_row[idx] = wit.recips[h * t + i];
+        recips_row[idx] = b.recips[h * q + i];
     }
 
     AttnWires {
+        shape: sh,
         scores_rect,
         sprime_rect,
         row_shift_row,
@@ -1956,12 +2227,13 @@ pub struct AttnBlockProof {
 
 /// Build the softmax_norm remainder column over the rect domain:
 /// rem = e·rc + 2^(s−1) − w·2^s (pads: e = w = 0 ⇒ rem = 2^(s−1)).
-pub(crate) fn build_rem_sn(wires: &AttnWires, s_sn: u32, nr: usize, rb: usize) -> Vec<i64> {
+pub(crate) fn build_rem_sn(wires: &AttnWires, s_sn: u32) -> Vec<i64> {
+    let sh = wires.shape;
     let half_sn = 1i64 << (s_sn - 1);
-    let mut rem_sn = vec![0i64; 1 << nr];
+    let mut rem_sn = vec![0i64; 1 << sh.nr()];
     for (y, r) in rem_sn.iter_mut().enumerate() {
         let e = wires.exp_rect[y] as i64;
-        let rc = wires.recips_row[y >> rb] as i64;
+        let rc = wires.recips_row[y >> sh.sb()] as i64;
         let w = wires.w_rect[y] as i64;
         let v = e * rc + half_sn - (w << s_sn);
         assert!((0..1i64 << s_sn).contains(&v), "softmax_norm remainder out of range");
@@ -1972,20 +2244,22 @@ pub(crate) fn build_rem_sn(wires: &AttnWires, s_sn: u32, nr: usize, rb: usize) -
 
 /// Build the scores remainder column: causal from the witness accumulators,
 /// 2^(s−1) pads.
-pub(crate) fn build_rem_sc(wit: &LayerWitness, s_sc: u32, nr: usize, rb: usize) -> Vec<i64> {
-    let t = wit.t;
-    let t_pad = 1usize << rb;
-    let tp2 = t_pad * t_pad;
-    let caus = t * (t + 1) / 2;
+pub(crate) fn build_rem_sc_packed(
+    scores_acc: &[i64],
+    scores_q: &[i16],
+    sh: BandShape,
+    s_sc: u32,
+) -> Vec<i64> {
+    let (s_pad, sp2, caus) = (sh.s_pad(), sh.sp2(), sh.caus());
     let half_sc = 1i64 << (s_sc - 1);
-    let mut rem_sc = vec![half_sc; 1 << nr];
+    let mut rem_sc = vec![half_sc; 1 << sh.nr()];
     for h in 0..H {
-        for i in 0..t {
-            for j in 0..=i {
-                let pidx = h * caus + i * (i + 1) / 2 + j;
-                let r = wit.scores_acc[pidx] + half_sc - ((wit.scores_q[pidx] as i64) << s_sc);
+        for i in 0..sh.q {
+            for j in 0..sh.win(i) {
+                let pidx = h * caus + sh.packed_off(i) + j;
+                let r = scores_acc[pidx] + half_sc - ((scores_q[pidx] as i64) << s_sc);
                 assert!((0..1i64 << s_sc).contains(&r), "scores remainder out of range");
-                rem_sc[h * tp2 + i * t_pad + j] = r;
+                rem_sc[h * sp2 + i * s_pad + j] = r;
             }
         }
     }
@@ -2046,25 +2320,29 @@ pub struct AttnP1 {
 /// mutates a copy — cheating-prover emulation).
 pub(crate) fn attn_phase1_with_wires(
     wit: &LayerWitness,
+    weights: &LayerWeights,
     luts: &Luts,
     wires: AttnWires,
     cx: &mut BlockCtxP,
 ) -> AttnP1 {
     let t = wit.t;
     let p = luts.params;
+    let sh = wires.shape;
+    assert_eq!(sh.q, t, "band wires row count must match the witness");
     let rb = pad_bits(t);
     let t_pad = 1usize << rb;
-    let nr = 2 * rb + HEAD_BITS;
 
     // ---- multiplicities (before ANY α) --------------------------------------
-    let rem_sn = build_rem_sn(&wires, p.shift_softmax_norm, nr, rb);
+    let rem_sn = build_rem_sn(&wires, p.shift_softmax_norm);
     let mut mult_sn = vec![0u32; 1 << p.shift_softmax_norm];
     for &r in &rem_sn {
         mult_sn[r as usize] += 1;
     }
     cx.bank.add_mult(TableKey::Range(p.shift_softmax_norm), &mult_sn);
     drop(rem_sn);
-    let rem_sc = build_rem_sc(wit, p.shift_scores, nr, rb);
+    let rem_sc = build_rem_sc_packed(
+        &wit.scores_acc, &wit.scores_q, sh, p.shift_scores,
+    );
     let mut mult_sc = vec![0u32; 1 << p.shift_scores];
     for &r in &rem_sc {
         mult_sc[r as usize] += 1;
@@ -2095,9 +2373,11 @@ pub(crate) fn attn_phase1_with_wires(
     assert_ln_stats(
         &wit.x_in, t, &wit.ln1_mean, &wit.ln1_var, &wit.ln1_rsqrt_in, &wit.ln1_rsqrt_out, luts,
     );
-    let ln_trace = &wit.traces[TableId::LnNormRequant as usize];
-    let acc_ln1 = &ln_trace.inputs[..t * D];
-    add_range_mult(cx.bank, acc_ln1, &wit.ln1_out, t, D, p.shift_ln_norm);
+    let acc_ln1 = ln_acc_recompute(
+        &wit.x_in, t, &wit.ln1_mean, &wit.ln1_rsqrt_out, &weights.ln1_gain, &weights.ln1_bias,
+        p.shift_ln_norm,
+    );
+    add_range_mult(cx.bank, &acc_ln1, &wit.ln1_out, t, D, p.shift_ln_norm);
     let mut mult_rsq1 = vec![0u32; 1 << 16];
     for i in 0..t {
         mult_rsq1[wit.ln1_rsqrt_in[i] as usize] += 1;
@@ -2169,18 +2449,32 @@ pub(crate) fn prove_attn_block(
     p1: AttnP1,
     cx: &mut BlockCtxP,
     dom_xin: u64,
-    dom_k: u64,
-    dom_v: u64,
+    k_segs: &[CacheSegP],
+    v_segs: &[CacheSegP],
     dom_abo: u64,
     biases: Option<&GemmBiases>,
 ) -> (AttnBlockProof, Vec<WeightClaimP>) {
     let t = wit.t;
     assert!(t >= 2, "block proof needs at least 2 rows");
     let p = luts.params;
-    let rb = pad_bits(t);
-    let t_pad = 1usize << rb;
-    let tp2 = t_pad * t_pad;
-    let nr = 2 * rb + HEAD_BITS;
+    // Band shape: queries = the witness's t rows, cache = the segments. The
+    // band's OWN K/V rows are the LAST segment (its dom also serves the qkv
+    // third-slice binding).
+    let sh = p1.wires.shape;
+    assert_eq!(sh.q, t);
+    assert_eq!(k_segs.iter().map(|g| g.rows).sum::<usize>(), sh.s());
+    assert_eq!(v_segs.iter().map(|g| g.rows).sum::<usize>(), sh.s());
+    let own_k = k_segs.last().unwrap();
+    let own_v = v_segs.last().unwrap();
+    assert_eq!(own_k.rows, t);
+    assert_eq!(own_v.rows, t);
+    let (dom_k, dom_v) = (own_k.dom, own_v.dom);
+    let (qb, sb) = (sh.qb(), sh.sb());
+    let (q_pad, s_pad, sp2) = (sh.q_pad(), sh.s_pad(), sh.sp2());
+    let s_len = sh.s();
+    let nr = sh.nr();
+    let rb = qb; // row bits of the q×D domains (av/proj/qkv/LN)
+    let t_pad = q_pad;
     let d_cb = pad_bits(D); // 10
     let s_ap = p.shift_attn_proj;
     let s_av = p.shift_av;
@@ -2212,11 +2506,13 @@ pub(crate) fn prove_attn_block(
 
     // Rebuild the cheap derived columns (their multiplicities were bound in
     // phase 1; the columns themselves are pure witness functions).
-    let rem_sn = build_rem_sn(wires, s_sn, nr, rb);
-    let rem_sc = build_rem_sc(wit, s_sc, nr, rb);
+    let rem_sn = build_rem_sn(wires, s_sn);
+    let rem_sc = build_rem_sc_packed(&wit.scores_acc, &wit.scores_q, sh, s_sc);
     let (rem_qkv, out_qkv) = build_qkv_cols(wit, s_qkv, t_pad);
-    let ln_trace = &wit.traces[TableId::LnNormRequant as usize];
-    let acc_ln1 = &ln_trace.inputs[..t * D];
+    let acc_ln1 = ln_acc_recompute(
+        &wit.x_in, t, &wit.ln1_mean, &wit.ln1_rsqrt_out, &weights.ln1_gain, &weights.ln1_bias,
+        s_ln,
+    );
 
     // ---- 1: attn_proj range instance, closed against the residual ----------
     // (chained two-stage for s_ap > 16 — P5 per-layer residual scales).
@@ -2306,27 +2602,26 @@ pub(crate) fn prove_attn_block(
     let mut gemm_wv = Vec::with_capacity(H);
     let mut aux_sn: Vec<LeafAuxClaim> = Vec::with_capacity(H + 1);
     for h in 0..H {
-        let (bvals, btags) =
-            fold_cols_window_p(cx.stream, dom_v, &wit.v, t, D, &eq_within, h * DH, DH);
-        let mut b_folded = vec![Fp2::ZERO; t_pad];
-        b_folded[..t].copy_from_slice(&bvals);
+        let (bvals, btags) = cache_fold_cols_p(cx.stream, v_segs, &eq_within, h * DH, DH);
+        let mut b_folded = vec![Fp2::ZERO; s_pad];
+        b_folded[..s_len].copy_from_slice(&bvals);
         let open_b = move |ptl: &[Fp2]| {
             let eq_l = eq_vec(ptl);
             let mut v = Fp2::ZERO;
             let mut m = Fp2::ZERO;
-            for row in 0..t {
+            for row in 0..s_len {
                 v += eq_l[row] * bvals[row];
                 m += eq_l[row] * btags[row];
             }
             ProverAuthed { x: v, m }
         };
-        let x_slice = &wires.w_rect[h * tp2..h * tp2 + t * t_pad];
-        let cd = ChainDoms::alloc(&mut cx.doms, t_pad);
+        let x_slice = &wires.w_rect[h * sp2..h * sp2 + t * s_pad];
+        let cd = ChainDoms::alloc(&mut cx.doms, s_pad);
         let (gp, wire, _r_l, _tm, _cc) = prove_gemm_act_chained(
             x_slice,
             b_folded,
             t,
-            t_pad,
+            s_pad,
             DH,
             &pt_av[d_cb..],
             &pt_av[..6],
@@ -2354,8 +2649,8 @@ pub(crate) fn prove_attn_block(
     let mut m_tab = vec![Fp2::ZERO; 1 << nr];
     for h in 0..H {
         for i in 0..t {
-            for j in (i + 1)..t {
-                let y = h * tp2 + i * t_pad + j;
+            for j in sh.win(i)..s_len {
+                let y = h * sp2 + i * s_pad + j;
                 m_tab[y] = eq_tau[y];
             }
         }
@@ -2403,21 +2698,21 @@ pub(crate) fn prove_attn_block(
     // point IS the recips row-table claim at the (rows ‖ head) part.
     let e_tab = lift_i16_fp2(&wires.exp_rect);
     let r_tab: Vec<Fp2> = (0..1usize << nr)
-        .map(|y| Fp2::from_base(recips_fp[y >> rb]))
+        .map(|y| Fp2::from_base(recips_fp[y >> sb]))
         .collect();
     let hd = HadamardDoms::alloc(&mut cx.doms, nr);
     let (had_proof, r_h, e_claim, r_claim) = hadamard_prove(
         &pt_sn, e_tab, r_tab, wacc_claim, &hd, cx.stream, cx.tx, &mut cx.prod, &mut cx.zero,
     );
-    let rec_open = open_fp_vec_p(cx.stream, dom_recips, &recips_fp, &r_h[rb..]);
+    let rec_open = open_fp_vec_p(cx.stream, dom_recips, &recips_fp, &r_h[sb..]);
     cx.zero.push(r_claim.sub(rec_open));
 
     // ---- 9: denominator row sums --------------------------------------------
     // deñoms(ρ) = 2^rb·ẽxp_rect(½..½, ρ): the rect row sums equal the causal
     // ones because every non-causal exp entry is exactly 0 (pad pair).
-    let rho: Vec<Fp2> = (0..rb + HEAD_BITS).map(|_| cx.tx.challenge_fp2()).collect();
+    let rho: Vec<Fp2> = (0..qb + HEAD_BITS).map(|_| cx.tx.challenge_fp2()).collect();
     let half_scalar = Fp2::from_base(Fp::new(2).inv());
-    let mut half_pt = vec![half_scalar; rb];
+    let mut half_pt = vec![half_scalar; sb];
     half_pt.extend_from_slice(&rho);
     let exp_lift = lift_i16_fp2(&wires.exp_rect);
     let rs_val = eval_mle_counted(&exp_lift, &half_pt, &mut cx.ctr_other);
@@ -2427,8 +2722,8 @@ pub(crate) fn prove_attn_block(
     cx.tx.append("rowsum_correction", 16);
     let rs_auth = ProverAuthed { x: rs_val, m: fr.m };
     let den_open = open_fp_vec_p(cx.stream, dom_denoms, &denoms_fp, &rho);
-    let two_rb = Fp2::from_base(Fp::new(1u64 << rb));
-    cx.zero.push(den_open.sub(rs_auth.scale(two_rb)));
+    let two_sb = Fp2::from_base(Fp::new(1u64 << sb));
+    cx.zero.push(den_open.sub(rs_auth.scale(two_sb)));
 
     // ---- 10: exp pair instance ----------------------------------------------
     // Input column = the shared s′ wire. With the row shift on, the row-max
@@ -2462,8 +2757,8 @@ pub(crate) fn prove_attn_block(
         );
         hadamard2 = Some(had2);
         // Rowsum: ĩs_max(½..½, ρ₂)·2^rb = realmask̃(ρ₂) (public RHS).
-        let rho2: Vec<Fp2> = (0..rb + HEAD_BITS).map(|_| cx.tx.challenge_fp2()).collect();
-        let mut half_pt2 = vec![half_scalar; rb];
+        let rho2: Vec<Fp2> = (0..qb + HEAD_BITS).map(|_| cx.tx.challenge_fp2()).collect();
+        let mut half_pt2 = vec![half_scalar; sb];
         half_pt2.extend_from_slice(&rho2);
         let ismax_lift = lift_i16_fp2(&wires.is_max_rect);
         let rs2_val = eval_mle_counted(&ismax_lift, &half_pt2, &mut cx.ctr_other);
@@ -2473,14 +2768,14 @@ pub(crate) fn prove_attn_block(
         cx.tx.append("ismax_rowsum_correction", 16);
         let rs2_auth = ProverAuthed { x: rs2_val, m: fr2.m };
         let eq_rho2 = eq_vec(&rho2);
-        cx.ctr_other.fp2_mults += 1u64 << (rb + HEAD_BITS);
+        cx.ctr_other.fp2_mults += 1u64 << (qb + HEAD_BITS);
         let mut realmask = Fp2::ZERO;
         for h in 0..H {
             for i in 0..t {
-                realmask += eq_rho2[h * t_pad + i];
+                realmask += eq_rho2[h * q_pad + i];
             }
         }
-        cx.zero.push(rs2_auth.scale(two_rb).sub(ProverAuthed::from_public(realmask)));
+        cx.zero.push(rs2_auth.scale(two_sb).sub(ProverAuthed::from_public(realmask)));
         exp_aux.push(LeafAuxClaim { col: 0, point: r_h2.clone(), value: r2_claim });
         exp_aux.push(LeafAuxClaim { col: 2, point: r_h2, value: e2_claim });
         exp_aux.push(LeafAuxClaim { col: 2, point: half_pt2, value: rs2_auth });
@@ -2530,8 +2825,8 @@ pub(crate) fn prove_attn_block(
     let mut caus_sum = Fp2::ZERO;
     for h in 0..H {
         for i in 0..t {
-            for j in 0..=i {
-                caus_sum += eq_sc[h * tp2 + i * t_pad + j];
+            for j in 0..sh.win(i) {
+                caus_sum += eq_sc[h * sp2 + i * s_pad + j];
             }
         }
     }
@@ -2540,8 +2835,8 @@ pub(crate) fn prove_attn_block(
     let mut wts = Vec::with_capacity(wires.above_acc.len());
     for h in 0..H {
         for i in 0..t {
-            for j in (i + 1)..t {
-                wts.push(eq_sc[h * tp2 + i * t_pad + j]);
+            for j in sh.win(i)..s_len {
+                wts.push(eq_sc[h * sp2 + i * s_pad + j]);
             }
         }
     }
@@ -2551,11 +2846,11 @@ pub(crate) fn prove_attn_block(
     if p.softmax_row_shift {
         // The out column is s′ = s − c: add back 2^s·⟨gc, c⟩, gc_i = the
         // causal eq mass of row i (authenticated weighted opening of c).
-        let mut gcw = vec![Fp2::ZERO; H_PAD * t_pad];
+        let mut gcw = vec![Fp2::ZERO; H_PAD * q_pad];
         for h in 0..H {
             for i in 0..t {
-                for j in 0..=i {
-                    gcw[h * t_pad + i] += eq_sc[h * tp2 + i * t_pad + j];
+                for j in 0..sh.win(i) {
+                    gcw[h * q_pad + i] += eq_sc[h * sp2 + i * s_pad + j];
                 }
             }
         }
@@ -2564,17 +2859,17 @@ pub(crate) fn prove_attn_block(
     }
 
     // ---- 13: scores head split ------------------------------------------------
-    let eqh_sc = eq_vec(&pt_sc[2 * rb..]);
+    let eqh_sc = eq_vec(&pt_sc[sb + qb..]);
     let mut sc_vals = [Fp2::ZERO; H];
     for (h, val) in sc_vals.iter_mut().enumerate() {
-        let mut slice = vec![Fp2::ZERO; tp2];
+        let mut slice = vec![Fp2::ZERO; sp2];
         for i in 0..t {
-            for j in 0..t {
-                slice[i * t_pad + j] =
-                    Fp2::from_base(Fp::from_i64(wires.acc_full[h * t * t + i * t + j]));
+            for j in 0..s_len {
+                slice[i * s_pad + j] =
+                    Fp2::from_base(Fp::from_i64(wires.acc_full[h * t * s_len + i * s_len + j]));
             }
         }
-        *val = eval_mle_counted(&slice, &pt_sc[..2 * rb], &mut cx.ctr_other);
+        *val = eval_mle_counted(&slice, &pt_sc[..sb + qb], &mut cx.ctr_other);
     }
     let dom_split_sc = cx.doms.take(1);
     let masks_sc = cx.stream.draw_fulls(dom_split_sc, H);
@@ -2598,12 +2893,11 @@ pub(crate) fn prove_attn_block(
     // score-column point r_j weights K's ROWS (positions): the B opening is
     // K̃ at (r_l ‖ head bits ‖ r_j) — K rows pre-folded by eq(r_j), the
     // closure finishes over the 64-column window at r_l.
-    let eq_rj_sc = eq_vec(&pt_sc[..rb]);
+    let eq_rj_sc = eq_vec(&pt_sc[..sb]);
     let mut gemm_qk = Vec::with_capacity(H);
     let mut aux_qkv: Vec<LeafAuxClaim> = Vec::with_capacity(H + 2);
     for h in 0..H {
-        let (kvals, ktags) =
-            fold_rows_window_p(cx.stream, dom_k, &wit.k, t, D, &eq_rj_sc, h * DH, DH);
+        let (kvals, ktags) = cache_fold_rows_p(cx.stream, k_segs, &eq_rj_sc, h * DH, DH);
         let b_folded = kvals.clone();
         let open_b = move |ptl: &[Fp2]| {
             let eq_l = eq_vec(ptl);
@@ -2627,9 +2921,9 @@ pub(crate) fn prove_attn_block(
             b_folded,
             t,
             DH,
-            t,
-            &pt_sc[rb..2 * rb],
-            &pt_sc[..rb],
+            s_len,
+            &pt_sc[sb..sb + qb],
+            &pt_sc[..sb],
             sc_auth[h],
             open_b,
             &cd,
@@ -2700,7 +2994,7 @@ pub(crate) fn prove_attn_block(
     let ln = prove_ln_chain(
         t,
         s_ln,
-        acc_ln1,
+        &acc_ln1,
         &wit.ln1_out,
         &wit.x_in,
         dom_xin,
@@ -2765,15 +3059,15 @@ pub struct AttnV1 {
 /// Mirror of [`attn_phase1_with_wires`]: length checks + key expansion, in
 /// the prover's exact dom/correction order.
 pub(crate) fn verify_attn_phase1(
-    t: usize,
+    sh: BandShape,
     luts: &Luts,
     proof: &AttnBlockProof,
     cx: &mut BlockCtxV,
 ) -> Option<AttnV1> {
     let p = luts.params;
-    let rb = pad_bits(t);
-    let t_pad = 1usize << rb;
-    let n_above = H * t * (t - 1) / 2;
+    let t = sh.q;
+    let t_pad = sh.q_pad();
+    let n_above = H * sh.n_above_head();
 
     // Length checks before consuming any correlations.
     for v in &proof.ln_vec_corrs {
@@ -2826,7 +3120,7 @@ pub(crate) fn verify_attn_phase1(
 /// Returns the `[attn_proj, c_attn]` weight-claim (point, key) pairs.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn verify_attn_block(
-    t: usize,
+    sh: BandShape,
     ln1_gain: &[i16],
     ln1_bias: &[i16],
     luts: &Luts,
@@ -2834,16 +3128,28 @@ pub(crate) fn verify_attn_block(
     v1: AttnV1,
     cx: &mut BlockCtxV,
     xin_keys: &[Fp2],
-    k_keys: &[Fp2],
-    v_keys: &[Fp2],
+    k_segs: &[CacheSegK],
+    v_segs: &[CacheSegK],
     abo_keys: &[Fp2],
     biases: Option<&GemmBiases>,
 ) -> Option<Vec<(Vec<Fp2>, VerifierKey)>> {
     let p = luts.params;
-    let rb = pad_bits(t);
-    let t_pad = 1usize << rb;
-    let tp2 = t_pad * t_pad;
-    let nr = 2 * rb + HEAD_BITS;
+    let t = sh.q;
+    if k_segs.iter().map(|g| g.rows).sum::<usize>() != sh.s()
+        || v_segs.iter().map(|g| g.rows).sum::<usize>() != sh.s()
+        || k_segs.last()?.rows != t
+        || v_segs.last()?.rows != t
+    {
+        return None;
+    }
+    let k_keys = k_segs.last()?.keys;
+    let v_keys = v_segs.last()?.keys;
+    let (qb, sb) = (sh.qb(), sh.sb());
+    let (q_pad, s_pad, sp2) = (sh.q_pad(), sh.s_pad(), sh.sp2());
+    let s_len = sh.s();
+    let nr = sh.nr();
+    let rb = qb;
+    let t_pad = q_pad;
     let d_cb = pad_bits(D);
     let s_ap = p.shift_attn_proj;
     let s_av = p.shift_av;
@@ -2851,7 +3157,7 @@ pub(crate) fn verify_attn_block(
     let s_sc = p.shift_scores;
     let s_qkv = p.shift_qkv;
     let s_ln = p.shift_ln_norm;
-    let n_above = H * t * (t - 1) / 2;
+    let n_above = H * sh.n_above_head();
     let row_shift_on = p.softmax_row_shift;
     let AttnV1 { lvk1, denoms_keys, rin_row_keys, recips_keys, above_keys, rowshift_keys } = v1;
 
@@ -2924,17 +3230,17 @@ pub(crate) fn verify_attn_block(
     let eq_within = eq_vec(&pt_av[..6]);
     let mut aux_sn: Vec<(usize, Vec<Fp2>, VerifierKey)> = Vec::with_capacity(H + 1);
     for h in 0..H {
-        let vkeys_row = fold_cols_window_k(v_keys, t, D, &eq_within, h * DH, DH);
+        let vkeys_row = cache_fold_cols_k(v_segs, &eq_within, h * DH, DH);
         let open_b_key = move |ptl: &[Fp2]| {
             let eq_l = eq_vec(ptl);
             VerifierKey {
-                k: (0..t).fold(Fp2::ZERO, |s, row| s + eq_l[row] * vkeys_row[row]),
+                k: (0..s_len).fold(Fp2::ZERO, |s, row| s + eq_l[row] * vkeys_row[row]),
             }
         };
-        let cd = ChainDoms::alloc(&mut cx.doms, t_pad);
+        let cd = ChainDoms::alloc(&mut cx.doms, s_pad);
         let (wk, _r_l) = verify_gemm_act_chained(
             t,
-            t_pad,
+            s_pad,
             DH,
             &pt_av[d_cb..],
             &pt_av[..6],
@@ -2957,8 +3263,8 @@ pub(crate) fn verify_attn_block(
     let mut m_tab = vec![Fp2::ZERO; 1 << nr];
     for h in 0..H {
         for i in 0..t {
-            for j in (i + 1)..t {
-                let y = h * tp2 + i * t_pad + j;
+            for j in sh.win(i)..s_len {
+                let y = h * sp2 + i * s_pad + j;
                 m_tab[y] = eq_tau[y];
             }
         }
@@ -2999,20 +3305,20 @@ pub(crate) fn verify_attn_block(
         &mut cx.kprod,
         &mut cx.kzero,
     )?;
-    let rec_k = open_fp_vec_k(&recips_keys, &r_h[rb..]);
+    let rec_k = open_fp_vec_k(&recips_keys, &r_h[sb..]);
     cx.kzero.push(k_r.sub(rec_k));
 
     // ---- 9: denominator row sums ----------------------------------------------
-    let rho: Vec<Fp2> = (0..rb + HEAD_BITS).map(|_| cx.tx.challenge_fp2()).collect();
+    let rho: Vec<Fp2> = (0..qb + HEAD_BITS).map(|_| cx.tx.challenge_fp2()).collect();
     let half_scalar = Fp2::from_base(Fp::new(2).inv());
-    let mut half_pt = vec![half_scalar; rb];
+    let mut half_pt = vec![half_scalar; sb];
     half_pt.extend_from_slice(&rho);
     let dom_rs = cx.doms.take(1);
     let k_rs =
         VerifierKey { k: cx.ctx.expand_full_keys(dom_rs, 1)[0] + cx.ctx.delta * proof.rowsum_corr };
     let den_k = open_fp_vec_k(&denoms_keys, &rho);
-    let two_rb = Fp2::from_base(Fp::new(1u64 << rb));
-    cx.kzero.push(den_k.sub(k_rs.scale(two_rb)));
+    let two_sb = Fp2::from_base(Fp::new(1u64 << sb));
+    cx.kzero.push(den_k.sub(k_rs.scale(two_sb)));
 
     // ---- 10: exp instance --------------------------------------------------------
     let mut aux_exp = vec![(1usize, r_h.clone(), k_e), (1usize, half_pt.clone(), k_rs)];
@@ -3031,8 +3337,8 @@ pub(crate) fn verify_attn_block(
             &mut cx.kzero,
         )?;
         // (b) is_max rowsum = 1 per real row (public realmask RHS).
-        let rho2: Vec<Fp2> = (0..rb + HEAD_BITS).map(|_| cx.tx.challenge_fp2()).collect();
-        let mut half_pt2 = vec![half_scalar; rb];
+        let rho2: Vec<Fp2> = (0..qb + HEAD_BITS).map(|_| cx.tx.challenge_fp2()).collect();
+        let mut half_pt2 = vec![half_scalar; sb];
         half_pt2.extend_from_slice(&rho2);
         let dom_rs2 = cx.doms.take(1);
         let k_rs2 = VerifierKey {
@@ -3043,11 +3349,11 @@ pub(crate) fn verify_attn_block(
         let mut realmask = Fp2::ZERO;
         for h in 0..H {
             for i in 0..t {
-                realmask += eq_rho2[h * t_pad + i];
+                realmask += eq_rho2[h * q_pad + i];
             }
         }
         cx.kzero
-            .push(k_rs2.scale(two_rb).sub(VerifierKey::from_public(realmask, cx.ctx.delta)));
+            .push(k_rs2.scale(two_sb).sub(VerifierKey::from_public(realmask, cx.ctx.delta)));
         aux_exp.push((0usize, r_h2.clone(), k_r2));
         aux_exp.push((2usize, r_h2, k_e2));
         aux_exp.push((2usize, half_pt2, k_rs2));
@@ -3083,8 +3389,8 @@ pub(crate) fn verify_attn_block(
     let mut caus_sum = Fp2::ZERO;
     for h in 0..H {
         for i in 0..t {
-            for j in 0..=i {
-                caus_sum += eq_sc[h * tp2 + i * t_pad + j];
+            for j in 0..sh.win(i) {
+                caus_sum += eq_sc[h * sp2 + i * s_pad + j];
             }
         }
     }
@@ -3093,8 +3399,8 @@ pub(crate) fn verify_attn_block(
     let mut wts = Vec::with_capacity(n_above);
     for h in 0..H {
         for i in 0..t {
-            for j in (i + 1)..t {
-                wts.push(eq_sc[h * tp2 + i * t_pad + j]);
+            for j in sh.win(i)..s_len {
+                wts.push(eq_sc[h * sp2 + i * s_pad + j]);
             }
         }
     }
@@ -3103,11 +3409,11 @@ pub(crate) fn verify_attn_block(
         .sub(VerifierKey::from_public(c_pad * padmask, cx.ctx.delta))
         .add(above_k);
     if row_shift_on {
-        let mut gcw = vec![Fp2::ZERO; H_PAD * t_pad];
+        let mut gcw = vec![Fp2::ZERO; H_PAD * q_pad];
         for h in 0..H {
             for i in 0..t {
-                for j in 0..=i {
-                    gcw[h * t_pad + i] += eq_sc[h * tp2 + i * t_pad + j];
+                for j in 0..sh.win(i) {
+                    gcw[h * q_pad + i] += eq_sc[h * sp2 + i * s_pad + j];
                 }
             }
         }
@@ -3117,7 +3423,7 @@ pub(crate) fn verify_attn_block(
     }
 
     // ---- 13: scores head split ---------------------------------------------------
-    let eqh_sc = eq_vec(&pt_sc[2 * rb..]);
+    let eqh_sc = eq_vec(&pt_sc[sb + qb..]);
     let dom_split_sc = cx.doms.take(1);
     let ks_sc = cx.ctx.expand_full_keys(dom_split_sc, H);
     let sc_keys: Vec<VerifierKey> = (0..H)
@@ -3130,10 +3436,10 @@ pub(crate) fn verify_attn_block(
     cx.kzero.push(krow);
 
     // ---- 14: per-head QKᵀ GEMMs ---------------------------------------------------
-    let eq_rj_sc = eq_vec(&pt_sc[..rb]);
+    let eq_rj_sc = eq_vec(&pt_sc[..sb]);
     let mut aux_qkv: Vec<(usize, Vec<Fp2>, VerifierKey)> = Vec::with_capacity(H + 2);
     for h in 0..H {
-        let kkeys_col = fold_rows_window_k(k_keys, t, D, &eq_rj_sc, h * DH, DH);
+        let kkeys_col = cache_fold_rows_k(k_segs, &eq_rj_sc, h * DH, DH);
         let open_b_key = move |ptl: &[Fp2]| {
             let eq_l = eq_vec(ptl);
             VerifierKey {
@@ -3144,9 +3450,9 @@ pub(crate) fn verify_attn_block(
         let (wk, _r_l) = verify_gemm_act_chained(
             t,
             DH,
-            t,
-            &pt_sc[rb..2 * rb],
-            &pt_sc[..rb],
+            s_len,
+            &pt_sc[sb..sb + qb],
+            &pt_sc[..sb],
             sc_keys[h],
             &proof.gemm_qk[h].0,
             proof.gemm_qk[h].1,
@@ -3267,6 +3573,10 @@ pub struct LayerOut {
     /// fresh points).
     pub dom_xin: u64,
     pub dom_fbo: u64,
+    /// K/V boundary domains (P6 decode chunks reference the prefill's — and
+    /// previous chunks' — cache segments through these).
+    pub dom_k: u64,
+    pub dom_v: u64,
 }
 
 pub struct LayerOutV {
@@ -3275,14 +3585,17 @@ pub struct LayerOutV {
     /// Cached per-element keys of the `x_in` / `ffn_block_out` boundaries
     /// (P5 model-level seam closures).
     pub xin_keys: Vec<Fp2>,
+    /// Cached K/V boundary keys (P6 decode chunks reference the prefill's —
+    /// and previous chunks' — cache segments through these).
+    pub k_keys: Vec<Fp2>,
+    pub v_keys: Vec<Fp2>,
     pub fbo_keys: Vec<Fp2>,
 }
 
 /// Per-instance measured lookups for the layer (domain sizes).
-fn layer_lookups(t: usize) -> Vec<InstanceLookups> {
-    let rb = pad_bits(t);
-    let tp = 1u64 << rb;
-    let rect = tp * tp * H_PAD as u64;
+fn layer_lookups(sh: BandShape) -> Vec<InstanceLookups> {
+    let tp = sh.q_pad() as u64;
+    let rect = sh.sp2() as u64 * H_PAD as u64;
     vec![
         InstanceLookups { name: "attn_proj", table: "requant_attn_proj", lookups: tp << 10 },
         InstanceLookups { name: "av", table: "requant_av", lookups: tp << 10 },
@@ -3324,15 +3637,38 @@ pub struct LayerP1 {
 /// Layer phase 1: authenticate every boundary + element vector and
 /// accumulate every multiplicity vector into the bank — all strictly before
 /// any α is drawn.
-pub fn prove_layer_phase1(wit: &LayerWitness, luts: &Luts, cx: &mut BlockCtxP) -> LayerP1 {
+pub fn prove_layer_phase1(
+    wit: &LayerWitness,
+    weights: &LayerWeights,
+    luts: &Luts,
+    cx: &mut BlockCtxP,
+) -> LayerP1 {
     let wires = build_attn_wires(wit, luts);
-    prove_layer_phase1_with_wires(wit, luts, wires, cx)
+    prove_layer_phase1_with_wires(wit, weights, luts, wires, cx)
+}
+
+/// Band phase 1: the witness is a band-packed LayerWitness (t = q rows at
+/// positions t0..t0+q); `prefix` supplies the earlier phases' K data for the
+/// Q·Kᵀ recompute in the wires build.
+pub fn prove_layer_phase1_band(
+    wit: &LayerWitness,
+    weights: &LayerWeights,
+    luts: &Luts,
+    prefix_k: &[&[i16]],
+    cx: &mut BlockCtxP,
+) -> LayerP1 {
+    let t0: usize = prefix_k.iter().map(|k| k.len() / D).sum();
+    let sh = BandShape { t0, q: wit.t };
+    let refs = BandAttnRefs::banded(wit, sh, prefix_k);
+    let wires = build_attn_wires_band(&refs, luts);
+    prove_layer_phase1_with_wires(wit, weights, luts, wires, cx)
 }
 
 /// [`prove_layer_phase1`] with caller-supplied attention wires (the
 /// causal-tamper test mutates a copy — cheating-prover emulation).
 pub fn prove_layer_phase1_with_wires(
     wit: &LayerWitness,
+    weights: &LayerWeights,
     luts: &Luts,
     wires: AttnWires,
     cx: &mut BlockCtxP,
@@ -3352,8 +3688,8 @@ pub fn prove_layer_phase1_with_wires(
     let dom_fbo = cx.doms.take(t as u64);
     let fbo_corr = auth_matrix_rows_p(cx.stream, cx.tx, dom_fbo, &wit.ffn_block_out, t, D);
 
-    let ffn = ffn_phase1(wit, luts, cx);
-    let attn = attn_phase1_with_wires(wit, luts, wires, cx);
+    let ffn = ffn_phase1(wit, weights, luts, cx);
+    let attn = attn_phase1_with_wires(wit, weights, luts, wires, cx);
 
     LayerP1 {
         doms: cx.doms,
@@ -3385,10 +3721,24 @@ pub fn prove_layer_phase2(
     cx: &mut BlockCtxP,
     biases: Option<&GemmBiases>,
 ) -> (LayerProof, LayerOut) {
+    prove_layer_phase2_band(wit, weights, luts, p1, &[], cx, biases)
+}
+
+/// Band phase 2: `prefix` are the earlier phases' authenticated K/V segments
+/// (empty for the square/prefill case).
+pub fn prove_layer_phase2_band(
+    wit: &LayerWitness,
+    weights: &LayerWeights,
+    luts: &Luts,
+    p1: LayerP1,
+    prefix: &[KvPrefixP],
+    cx: &mut BlockCtxP,
+    biases: Option<&GemmBiases>,
+) -> (LayerProof, LayerOut) {
     let t = wit.t;
-    let rb = pad_bits(t);
-    let t_pad = 1u64 << rb;
+    let t_pad = 1u64 << pad_bits(t);
     let p = luts.params;
+    let sh = p1.attn.wires.shape;
     let LayerP1 {
         doms: _,
         dom_xin,
@@ -3409,8 +3759,18 @@ pub fn prove_layer_phase2(
     // ---- reverse dataflow: FFN chain, then attention chain ------------------
     let (ffn, w_ffn) =
         prove_ffn_block(wit, weights, luts, ffn_p1, cx, dom_abo, dom_fbo, biases);
+    let mut k_segs: Vec<CacheSegP> = prefix
+        .iter()
+        .map(|pf| CacheSegP { dom: pf.dom_k, rows: pf.rows, data: pf.k })
+        .collect();
+    k_segs.push(CacheSegP { dom: dom_k, rows: t, data: &wit.k });
+    let mut v_segs: Vec<CacheSegP> = prefix
+        .iter()
+        .map(|pf| CacheSegP { dom: pf.dom_v, rows: pf.rows, data: pf.v })
+        .collect();
+    v_segs.push(CacheSegP { dom: dom_v, rows: t, data: &wit.v });
     let (attn, w_attn) = prove_attn_block(
-        wit, weights, luts, attn_p1, cx, dom_xin, dom_k, dom_v, dom_abo, biases,
+        wit, weights, luts, attn_p1, cx, dom_xin, &k_segs, &v_segs, dom_abo, biases,
     );
 
     // Canonical weight-claim order: [c_attn, attn_proj, ffn_up, ffn_down].
@@ -3425,7 +3785,7 @@ pub fn prove_layer_phase2(
 
     // ---- byte accounting (multiplicity bytes live at the MODEL level now —
     // one vector per table content, see `TableBankP::mult_bytes`) -------------
-    let n_above = (H * t * (t - 1) / 2) as u64;
+    let n_above = (H * sh.n_above_head()) as u64;
     let bytes = LayerBytes {
         boundary: 8 * 5 * (t * D) as u64,
         mult: 0,
@@ -3441,9 +3801,11 @@ pub fn prove_layer_phase2(
         bytes,
         ctr_instances: cx.ctr_instances,
         ctr_other: cx.ctr_other,
-        lookups: layer_lookups(t),
+        lookups: layer_lookups(sh),
         dom_xin,
         dom_fbo,
+        dom_k,
+        dom_v,
     };
     (proof, out)
 }
@@ -3494,6 +3856,17 @@ pub fn verify_layer_phase1(
     proof: &LayerProof,
     cx: &mut BlockCtxV,
 ) -> Option<LayerV1> {
+    verify_layer_phase1_band(BandShape::square(t), luts, proof, cx)
+}
+
+/// Band phase 1 (verifier).
+pub fn verify_layer_phase1_band(
+    sh: BandShape,
+    luts: &Luts,
+    proof: &LayerProof,
+    cx: &mut BlockCtxV,
+) -> Option<LayerV1> {
+    let t = sh.q;
     for c in [&proof.xin_corr, &proof.k_corr, &proof.v_corr, &proof.abo_corr, &proof.fbo_corr] {
         if c.len() != t * D {
             return None;
@@ -3517,7 +3890,7 @@ pub fn verify_layer_phase1(
     let fbo_keys = auth_matrix_rows_v(cx.ctx, dom_fbo, &proof.fbo_corr, t, D);
 
     let lvk2 = expand_ln_vecs_k(cx, &proof.ffn.ln_vec_corrs);
-    let attn = verify_attn_phase1(t, luts, &proof.attn, cx)?;
+    let attn = verify_attn_phase1(sh, luts, &proof.attn, cx)?;
 
     Some(LayerV1 { doms: cx.doms, xin_keys, k_keys, v_keys, abo_keys, fbo_keys, lvk2, attn })
 }
@@ -3538,15 +3911,56 @@ pub fn verify_layer_phase2(
     cx: &mut BlockCtxV,
     biases: Option<&GemmBiases>,
 ) -> Option<LayerOutV> {
+    verify_layer_phase2_band(
+        BandShape::square(t),
+        ln1_gain,
+        ln1_bias,
+        ln2_gain,
+        ln2_bias,
+        luts,
+        proof,
+        v1,
+        &[],
+        cx,
+        biases,
+    )
+}
+
+/// Band phase 2 (verifier): `prefix` are the earlier phases' cached K/V key
+/// segments (empty for the square/prefill case).
+#[allow(clippy::too_many_arguments)]
+pub fn verify_layer_phase2_band(
+    sh: BandShape,
+    ln1_gain: &[i16],
+    ln1_bias: &[i16],
+    ln2_gain: &[i16],
+    ln2_bias: &[i16],
+    luts: &Luts,
+    proof: &LayerProof,
+    v1: LayerV1,
+    prefix: &[KvPrefixK],
+    cx: &mut BlockCtxV,
+    biases: Option<&GemmBiases>,
+) -> Option<LayerOutV> {
+    let t = sh.q;
     let LayerV1 { doms: _, xin_keys, k_keys, v_keys, abo_keys, fbo_keys, lvk2, attn } = v1;
 
     let mut w_ffn = verify_ffn_block(
         t, ln2_gain, ln2_bias, luts, &proof.ffn, &lvk2, cx, &abo_keys, &fbo_keys, biases,
     )?;
-    let mut w_attn = verify_attn_block(
-        t, ln1_gain, ln1_bias, luts, &proof.attn, attn, cx, &xin_keys, &k_keys, &v_keys,
-        &abo_keys, biases,
-    )?;
+    let w_attn_res = {
+        let mut k_segs: Vec<CacheSegK> =
+            prefix.iter().map(|pf| CacheSegK { rows: pf.rows, keys: pf.k_keys }).collect();
+        k_segs.push(CacheSegK { rows: t, keys: &k_keys });
+        let mut v_segs: Vec<CacheSegK> =
+            prefix.iter().map(|pf| CacheSegK { rows: pf.rows, keys: pf.v_keys }).collect();
+        v_segs.push(CacheSegK { rows: t, keys: &v_keys });
+        verify_attn_block(
+            sh, ln1_gain, ln1_bias, luts, &proof.attn, attn, cx, &xin_keys, &k_segs, &v_segs,
+            &abo_keys, biases,
+        )
+    };
+    let mut w_attn = w_attn_res?;
 
     let wk_cattn = w_attn.pop()?;
     let wk_proj = w_attn.pop()?;
@@ -3555,6 +3969,8 @@ pub fn verify_layer_phase2(
     Some(LayerOutV {
         weight_keys: vec![wk_cattn, wk_proj, wk_up, wk_down],
         xin_keys,
+        k_keys,
+        v_keys,
         fbo_keys,
     })
 }
@@ -3619,7 +4035,7 @@ mod tests {
         let wires = wires.unwrap_or_else(|| build_attn_wires(wit, luts));
         let p1 = {
             let mut cx = BlockCtxP::new(stream, txp, 0, &mut bank);
-            prove_layer_phase1_with_wires(wit, luts, wires, &mut cx)
+            prove_layer_phase1_with_wires(wit, w, luts, wires, &mut cx)
         };
         let mut table_doms = Doms::new(layer_dom_base(240));
         bank.finalize(stream, txp, &mut table_doms);

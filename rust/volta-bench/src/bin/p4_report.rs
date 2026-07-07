@@ -207,7 +207,7 @@ fn main() {
             let mut bank = TableBankP::new();
             let p1 = {
                 let mut cx = BlockCtxP::new(&mut stream, &mut tx, 0, &mut bank);
-                prove_layer_phase1(&wit, &luts, &mut cx)
+                prove_layer_phase1(&wit, &w, &luts, &mut cx)
             };
             let mut table_doms = volta_proto::logup::Doms::new(layer_dom_base(240));
             bank.finalize(&mut stream, &mut tx, &mut table_doms);
@@ -243,7 +243,7 @@ fn main() {
     let mut bank = TableBankP::new();
     let p1 = {
         let mut cxp = BlockCtxP::new(&mut stream, &mut txp, 0, &mut bank);
-        prove_layer_phase1(&wit, &luts, &mut cxp)
+        prove_layer_phase1(&wit, &w, &luts, &mut cxp)
     };
     let mut table_doms = volta_proto::logup::Doms::new(layer_dom_base(240));
     bank.finalize(&mut stream, &mut txp, &mut table_doms);

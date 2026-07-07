@@ -45,11 +45,12 @@
 
 use crate::block_proof::{
     add_range_mult, auth_ln_vecs_p, auth_matrix_rows_p, auth_matrix_rows_v, expand_ln_vecs_k,
-    layer_content_keys, layer_dom_base, open_matrix_k, open_matrix_p, prove_layer_phase1,
-    prove_layer_phase2, prove_ln_chain, prove_range_site, range_keys, verify_layer_phase1,
-    verify_layer_phase2, verify_ln_chain, verify_range_site, BlockCtxP, BlockCtxV,
-    InstanceLookups, LayerBytes, LayerOut, LayerP1, LayerProof, LayerV1, LnChainProof,
-    TableBankP, TableBankV, TableCloseProof,
+    layer_content_keys, layer_dom_base, ln_acc_recompute, open_matrix_k, open_matrix_p,
+    prove_layer_phase1, prove_layer_phase1_band, prove_layer_phase2, prove_layer_phase2_band,
+    prove_ln_chain, prove_range_site, range_keys, verify_layer_phase1, verify_layer_phase1_band,
+    verify_layer_phase2, verify_layer_phase2_band, verify_ln_chain, verify_range_site,
+    BandShape, BlockCtxP, BlockCtxV, InstanceLookups, KvPrefixK, KvPrefixP, LayerBytes, LayerOut,
+    LayerP1, LayerProof, LayerV1, LnChainProof, TableBankP, TableBankV, TableCloseProof,
 };
 use crate::logup::{Doms, TableKey};
 use std::collections::BTreeSet;
@@ -60,7 +61,7 @@ use crate::sumcheck_blind::{blind_prove, blind_verify, BlindSumcheckProof};
 use crate::thaler::{fold_w, pad_bits};
 use rayon::prelude::*;
 use volta_field::{Fp, Fp2};
-use volta_gpt2::{Gpt2Model, ModelWitness, D, L, NPOS, VOCAB};
+use volta_gpt2::{BandModelWitness, Gpt2Model, ModelWitness, D, L, NPOS, VOCAB};
 use volta_mac::{
     CorrCounters, CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey,
 };
@@ -99,14 +100,16 @@ fn sel_s_eval(tokens: &[u32], eq_i: &[Fp2], rho_z: &[Fp2]) -> Fp2 {
     s
 }
 
-/// G̃(ρ_w) for G(w) = [w<t]·eq(r_i, w) over 10 row vars: Σ_{i<t} eq_i[i] ·
-/// eq(bits(i), ρ_w), bits LSB-first.
-fn masked_eq_eval(eq_i: &[Fp2], t: usize, rho_w: &[Fp2]) -> Fp2 {
+/// G̃(ρ_w) for G(w) = [t0 ≤ w < t0+q]·eq(r_i, w−t0) over the wpe row vars:
+/// Σ_{r<q} eq_i[r] · eq(bits(t0+r), ρ_w), bits LSB-first. The P5 prefill case
+/// is the window at t0 = 0.
+fn masked_eq_eval(eq_i: &[Fp2], t0: usize, q: usize, rho_w: &[Fp2]) -> Fp2 {
     let mut s = Fp2::ZERO;
-    for (i, &e) in eq_i.iter().enumerate().take(t) {
+    for (r, &e) in eq_i.iter().enumerate().take(q) {
+        let w = t0 + r;
         let mut p = e;
-        for (b, &r) in rho_w.iter().enumerate() {
-            p = p * if (i >> b) & 1 == 1 { r } else { Fp2::ONE - r };
+        for (b, &rr) in rho_w.iter().enumerate() {
+            p = p * if (w >> b) & 1 == 1 { rr } else { Fp2::ONE - rr };
         }
         s += p;
     }
@@ -173,6 +176,46 @@ pub struct SelectionProof {
     pub wpe_corr: Fp2,
 }
 
+/// One decode chunk's PUBLIC data (verifier side): its band logits matrix
+/// (q×VOCAB, the response's per-position logits) and the full token sequence.
+pub struct ChunkPub<'a> {
+    pub q: usize,
+    pub logits: &'a [i64],
+    pub seq: &'a [u32],
+}
+
+/// One decode chunk's witness + the full public token sequence.
+pub struct ChunkRef<'a> {
+    pub band: &'a BandModelWitness,
+    /// Full response tokens (prompt ++ generated), len ≥ t0+q.
+    pub seq: &'a [u32],
+}
+
+/// Per-chunk section ids (CorrIndex.layer bytes): base 16+32c, disjoint from
+/// the prefill's (0..11, 200..210, 220, 221, 230, 231) for c < 5.
+fn chunk_ids(c: usize) -> (u8, u8, u8, u8, u8, u8) {
+    assert!(c < 5, "at most 5 decode chunks per response (id space)");
+    let b = (16 + 32 * c) as u8;
+    (b, b + 12, b + 23, b + 24, b + 25, b + 26)
+}
+
+/// One decode chunk's proof: 12 band layers + band seams + band embedding
+/// (+ selection at the position window) + band final LN + the band logits
+/// claim. Same machinery as the prefill sections, at t = q with the
+/// cross-phase K/V cache segments.
+pub struct ChunkProof {
+    pub layers: Vec<LayerProof>,
+    pub seams: Vec<Option<SeamProof>>,
+    pub embed: EmbedProof,
+    /// Boundary auth of the band final-LN output (q×D).
+    pub fin_out_corr: Vec<u64>,
+    /// Final-LN vector corrections [mean, var, rsqrt_in, rsqrt_out] (q_pad).
+    pub fin_ln_vec_corrs: [Vec<u64>; 4],
+    pub fin_ln: LnChainProof,
+    pub logits: LogitsClaimProof,
+    pub selection: SelectionProof,
+}
+
 pub struct ModelProof {
     pub layers: Vec<LayerProof>,
     /// Index `l` is the seam between layer `l` and `l+1` (11 entries).
@@ -181,6 +224,8 @@ pub struct ModelProof {
     pub final_ln: FinalLnProof,
     pub logits: LogitsClaimProof,
     pub selection: SelectionProof,
+    /// Decode chunks (P6), in response order.
+    pub chunks: Vec<ChunkProof>,
     /// Per-content table closures (ONE multiset argument per table content
     /// per model — P6 shared-α restructure), canonical `TableKey` order.
     pub tables: Vec<TableCloseProof>,
@@ -249,6 +294,19 @@ pub fn prove_model(
     stream: &mut CorrelationStream,
     tx: &mut Transcript,
 ) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
+    prove_response(model, wit, &[], stream, tx)
+}
+
+/// Prove a full RESPONSE: the prefill (`wit`, t rows) plus any number of
+/// deferred decode chunks (P6) — one two-phase session, one table bank, one
+/// Π_Prod/Π_ZeroBatch closure, weight claims stacked for one PCS opening.
+pub fn prove_response(
+    model: &Gpt2Model,
+    wit: &ModelWitness,
+    chunks: &[ChunkRef],
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
     let t = wit.t;
     let d_cb = pad_bits(D);
     let rb_t = pad_bits(t);
@@ -264,6 +322,8 @@ pub fn prove_model(
     let mut lookups: Vec<InstanceLookups> = Vec::new();
     let mut layer_proofs: Vec<LayerProof> = Vec::with_capacity(L);
     let mut boundary_doms: Vec<(u64, u64)> = Vec::with_capacity(L);
+    // Prefill (dom_k, dom_v) per layer — the decode chunks' first cache segment.
+    let mut layer_kv_doms: Vec<(u64, u64)> = Vec::with_capacity(L);
 
     let luts_for = |l: usize| {
         let mut luts_l = model.luts.clone();
@@ -277,7 +337,7 @@ pub fn prove_model(
     for l in 0..L {
         let luts_l = luts_for(l);
         let mut cx = BlockCtxP::new(stream, tx, l as u8, &mut bank);
-        let p1 = prove_layer_phase1(&wit.layers[l], &luts_l, &mut cx);
+        let p1 = prove_layer_phase1(&wit.layers[l], &model.layers[l].0, &luts_l, &mut cx);
         layer_p1s.push(p1);
     }
     // Seams: multiplicity contributions only (auth-free phase 1).
@@ -343,6 +403,116 @@ pub fn prove_model(
         cx.bank.add_mult(TableKey::LnRsqrt, &mult_rsq);
         (cx.doms, dom_out_f, out_corr_f, lv, ln_vec_corrs, dom_row, row_corr)
     };
+    // ---- decode chunks, phase 1 -------------------------------------------
+    // Band layer auths + band mults; band embedding/final-LN auths + mults.
+    struct ChunkP1 {
+        layer_p1s: Vec<LayerP1>,
+        embed_doms: Doms,
+        dom_out: u64,
+        out_corr: Vec<u64>,
+        fin_doms: Doms,
+        dom_out_f: u64,
+        fin_out_corr: Vec<u64>,
+        fin_lv: crate::block_proof::LnVecsP,
+        fin_ln_vec_corrs: [Vec<u64>; 4],
+        acc_fin: Vec<i64>,
+    }
+    let s_lnf = model.p.lut.shift_ln_norm;
+    let mut chunk_p1s: Vec<ChunkP1> = Vec::with_capacity(chunks.len());
+    {
+        let mut t0_expect = t;
+        for (c, ch) in chunks.iter().enumerate() {
+            let bw = ch.band;
+            assert_eq!(bw.t0, t0_expect, "chunk {c} does not extend the cache");
+            assert!(bw.q >= 2, "chunk needs at least 2 rows");
+            t0_expect += bw.q;
+            let (lb, _sb_id, eb, fb, _gb, _zb) = chunk_ids(c);
+            let mut layer_p1s = Vec::with_capacity(L);
+            for l in 0..L {
+                let luts_l = luts_for(l);
+                // K prefix DATA for the Q·Kᵀ wires recompute: prefill rows +
+                // every earlier chunk's band rows.
+                let mut prefix_k: Vec<&[i16]> = vec![&wit.layers[l].k];
+                for cc in chunks[..c].iter() {
+                    prefix_k.push(&cc.band.layers[l].k);
+                }
+                let mut cx = BlockCtxP::new(stream, tx, lb + l as u8, &mut bank);
+                let p1 = prove_layer_phase1_band(
+                    &bw.layers[l],
+                    &model.layers[l].0,
+                    &luts_l,
+                    &prefix_k,
+                    &mut cx,
+                );
+                layer_p1s.push(p1);
+            }
+            // Band seams: multiplicity contributions only.
+            for l in 0..L - 1 {
+                let shift = model.p.seam_shifts[l];
+                if shift > 0 {
+                    let acc: Vec<i64> =
+                        bw.layers[l].ffn_block_out.iter().map(|&v| v as i64).collect();
+                    add_range_mult(&mut bank, &acc, &bw.layers[l + 1].x_in, bw.q, D, shift);
+                }
+            }
+            // Band embedding: out auth + requant mults.
+            let (embed_doms, dom_out, out_corr) = {
+                let mut cx = BlockCtxP::new(stream, tx, eb, &mut bank);
+                let dom_out = cx.doms.take(bw.q as u64);
+                let out_corr =
+                    auth_matrix_rows_p(cx.stream, cx.tx, dom_out, &bw.embed_out, bw.q, D);
+                add_range_mult(cx.bank, &bw.embed_acc, &bw.embed_out, bw.q, D, s_emb);
+                (cx.doms, dom_out, out_corr)
+            };
+            // Band final LN: out auth + LN vectors + mults (t = q).
+            let (fin_doms, dom_out_f, fin_out_corr, fin_lv, fin_ln_vec_corrs, acc_fin) = {
+                let mut cx = BlockCtxP::new(stream, tx, fb, &mut bank);
+                let dom_out_f = cx.doms.take(bw.q as u64);
+                let out_corr_f =
+                    auth_matrix_rows_p(cx.stream, cx.tx, dom_out_f, &bw.fin_out, bw.q, D);
+                let rout_pad = Fp::from_i64(model.luts.ln_rsqrt[0] as i64);
+                let (lv, corrs) = auth_ln_vecs_p(
+                    &mut cx,
+                    pad_bits(bw.q),
+                    &bw.fin_mean,
+                    &bw.fin_var,
+                    &bw.fin_rsqrt_in,
+                    &bw.fin_rsqrt_out,
+                    rout_pad,
+                );
+                let acc_fin = ln_acc_recompute(
+                    &bw.layers[L - 1].ffn_block_out,
+                    bw.q,
+                    &bw.fin_mean,
+                    &bw.fin_rsqrt_out,
+                    &model.lnf_gain,
+                    &model.lnf_bias,
+                    s_lnf,
+                );
+                add_range_mult(cx.bank, &acc_fin, &bw.fin_out, bw.q, D, s_lnf);
+                let mut mult_rsq = vec![0u32; 1 << 16];
+                for &r in &bw.fin_rsqrt_in {
+                    mult_rsq[r as usize] += 1;
+                }
+                mult_rsq[0] += ((1usize << pad_bits(bw.q)) - bw.q) as u32;
+                cx.bank.add_mult(TableKey::LnRsqrt, &mult_rsq);
+                (cx.doms, dom_out_f, out_corr_f, lv, corrs, acc_fin)
+            };
+            chunk_p1s.push(ChunkP1 {
+                layer_p1s,
+                embed_doms,
+                dom_out,
+                out_corr,
+                fin_doms,
+                dom_out_f,
+                fin_out_corr,
+                fin_lv,
+                fin_ln_vec_corrs,
+                acc_fin,
+            });
+        }
+    }
+
     // End of phase 1: authenticate every content vector, draw the αs.
     debug_assert_eq!(
         bank.content_keys(),
@@ -373,6 +543,7 @@ pub fn prove_model(
         add_counters(&mut ctr_other, &lco);
         add_bytes(&mut bytes, &out.bytes);
         boundary_doms.push((out.dom_xin, out.dom_fbo));
+        layer_kv_doms.push((out.dom_k, out.dom_v));
         lookups.extend(out.lookups);
         weight_claims.extend(out.weight_claims);
         layer_proofs.push(proof);
@@ -623,7 +794,7 @@ pub fn prove_model(
     let dom_wpe_sc = cx.doms.take(10);
     let (wpe_sc, rho_w, wpe_claim_n) =
         blind_prove(g_tab, wpe_folded.clone(), p_auth, cx.stream, dom_wpe_sc, cx.tx);
-    let g_eval = masked_eq_eval(&eq_i, t, &rho_w);
+    let g_eval = masked_eq_eval(&eq_i, 0, t, &rho_w);
     cx.ctr_other.fp2_mults += 10 * t as u64;
     let wpe_val = eval_mle_counted(&wpe_folded, &rho_w, &mut cx.ctr_other);
     let dom_wpe = cx.doms.take(1);
@@ -648,6 +819,317 @@ pub fn prove_model(
     add_counters(&mut ctr_instances, &lci);
     add_counters(&mut ctr_other, &lco);
 
+    // ---- decode chunks, phase 2 (P6) ----------------------------------------
+    let mut chunk_proofs: Vec<ChunkProof> = Vec::with_capacity(chunks.len());
+    // (dom_k, dom_v) of every proven segment per layer, prefill first —
+    // extended chunk by chunk (the cache prefixes).
+    let mut kv_doms: Vec<Vec<(u64, u64)>> = Vec::with_capacity(L);
+    for l in 0..L {
+        kv_doms.push(vec![(layer_kv_doms[l].0, layer_kv_doms[l].1)]);
+    }
+    for (c, (ch, p1c)) in chunks.iter().zip(chunk_p1s.into_iter()).enumerate() {
+        let bw = ch.band;
+        let q = bw.q;
+        let qb = pad_bits(q);
+        let n_vars_qd = d_cb + qb;
+        let (lb, sb_id, eb, fb, gb, zb) = chunk_ids(c);
+        let mut band_boundary_doms: Vec<(u64, u64)> = Vec::with_capacity(L);
+        let mut layer_proofs_c: Vec<LayerProof> = Vec::with_capacity(L);
+        // ---- 12 band layers -------------------------------------------------
+        for (l, p1) in p1c.layer_p1s.into_iter().enumerate() {
+            let luts_l = luts_for(l);
+            let prefix: Vec<KvPrefixP> = {
+                let mut v = vec![KvPrefixP {
+                    rows: t,
+                    dom_k: kv_doms[l][0].0,
+                    k: &wit.layers[l].k,
+                    dom_v: kv_doms[l][0].1,
+                    v: &wit.layers[l].v,
+                }];
+                for (cc, chc) in chunks[..c].iter().enumerate() {
+                    v.push(KvPrefixP {
+                        rows: chc.band.q,
+                        dom_k: kv_doms[l][cc + 1].0,
+                        k: &chc.band.layers[l].k,
+                        dom_v: kv_doms[l][cc + 1].1,
+                        v: &chc.band.layers[l].v,
+                    });
+                }
+                v
+            };
+            let mut cx = BlockCtxP::with_doms(stream, tx, p1.doms, &mut bank);
+            let (proof, out) = prove_layer_phase2_band(
+                &bw.layers[l],
+                &model.layers[l].0,
+                &luts_l,
+                p1,
+                &prefix,
+                &mut cx,
+                Some(&model.layers[l].1),
+            );
+            let BlockCtxP { prod: lp, zero: lz, ctr_instances: lci, ctr_other: lco, .. } = cx;
+            prod.extend(lp);
+            zero.extend(lz);
+            add_counters(&mut ctr_instances, &lci);
+            add_counters(&mut ctr_other, &lco);
+            add_bytes(&mut bytes, &out.bytes);
+            band_boundary_doms.push((out.dom_xin, out.dom_fbo));
+            kv_doms[l].push((out.dom_k, out.dom_v));
+            lookups.extend(out.lookups);
+            weight_claims.extend(out.weight_claims);
+            layer_proofs_c.push(proof);
+        }
+        let _ = lb;
+        // ---- band seams ------------------------------------------------------
+        let mut seams_c: Vec<Option<SeamProof>> = Vec::with_capacity(L - 1);
+        for l in 0..L - 1 {
+            let shift = model.p.seam_shifts[l];
+            let mut cx = BlockCtxP::new(stream, tx, sb_id + l as u8, &mut bank);
+            let (dom_xin_next, _) = band_boundary_doms[l + 1];
+            let (_, dom_fbo_l) = band_boundary_doms[l];
+            if shift > 0 {
+                let acc: Vec<i64> =
+                    bw.layers[l].ffn_block_out.iter().map(|&v| v as i64).collect();
+                let out16 = &bw.layers[l + 1].x_in;
+                let site = prove_range_site(&acc, out16, q, D, shift, Vec::new(), &mut cx);
+                let out_open =
+                    open_matrix_p(cx.stream, dom_xin_next, out16, q, D, &site.main.point);
+                cx.zero.push(site.main.col_claims[1].value.sub(out_open));
+                let acc_open = open_matrix_p(
+                    cx.stream, dom_fbo_l, &bw.layers[l].ffn_block_out, q, D, site.acc_point(),
+                );
+                cx.zero.push(site.acc_claim.sub(acc_open));
+                seams_c.push(Some(SeamProof { inst: site.main.proof }));
+            } else {
+                let rho: Vec<Fp2> = (0..n_vars_qd).map(|_| cx.tx.challenge_fp2()).collect();
+                let a =
+                    open_matrix_p(cx.stream, dom_fbo_l, &bw.layers[l].ffn_block_out, q, D, &rho);
+                let b = open_matrix_p(cx.stream, dom_xin_next, &bw.layers[l + 1].x_in, q, D, &rho);
+                cx.zero.push(a.sub(b));
+                seams_c.push(None);
+            }
+            let BlockCtxP { prod: lp, zero: lz, ctr_instances: lci, ctr_other: lco, .. } = cx;
+            prod.extend(lp);
+            zero.extend(lz);
+            add_counters(&mut ctr_instances, &lci);
+            add_counters(&mut ctr_other, &lco);
+        }
+        let _ = eb;
+        // ---- band embedding ---------------------------------------------------
+        let mut cx = BlockCtxP::with_doms(stream, tx, p1c.embed_doms, &mut bank);
+        let site =
+            prove_range_site(&bw.embed_acc, &bw.embed_out, q, D, s_emb, Vec::new(), &mut cx);
+        let out_open = open_matrix_p(cx.stream, p1c.dom_out, &bw.embed_out, q, D, &site.main.point);
+        cx.zero.push(site.main.col_claims[1].value.sub(out_open));
+        let embed_acc_point_c = site.acc_point().to_vec();
+        let embed_acc_claim_c = site.acc_claim;
+        let (dom_xin0, _) = band_boundary_doms[0];
+        let rho_e: Vec<Fp2> = (0..n_vars_qd).map(|_| cx.tx.challenge_fp2()).collect();
+        let e_open = open_matrix_p(cx.stream, p1c.dom_out, &bw.embed_out, q, D, &rho_e);
+        let x0_open = open_matrix_p(cx.stream, dom_xin0, &bw.layers[0].x_in, q, D, &rho_e);
+        cx.zero.push(e_open.sub(x0_open));
+        let embed_c = EmbedProof { out_corr: p1c.out_corr, inst: site.main.proof };
+        let BlockCtxP { prod: lp, zero: lz, ctr_instances: lci, ctr_other: lco, .. } = cx;
+        prod.extend(lp);
+        zero.extend(lz);
+        add_counters(&mut ctr_instances, &lci);
+        add_counters(&mut ctr_other, &lco);
+        let _ = fb;
+        // ---- band final LN (all q rows; x = the band fbo boundary itself) -----
+        let mut cx = BlockCtxP::with_doms(stream, tx, p1c.fin_doms, &mut bank);
+        let (_, dom_fbo_last) = band_boundary_doms[L - 1];
+        let rho_f: Vec<Fp2> = (0..n_vars_qd).map(|_| cx.tx.challenge_fp2()).collect();
+        let wire_val = open_matrix_p(cx.stream, p1c.dom_out_f, &bw.fin_out, q, D, &rho_f);
+        let wire = WireOut { point: rho_f, value: wire_val, corr: Fp2::ZERO };
+        let fin_ln = prove_ln_chain(
+            q,
+            s_lnf,
+            &p1c.acc_fin,
+            &bw.fin_out,
+            &bw.layers[L - 1].ffn_block_out,
+            dom_fbo_last,
+            &bw.fin_mean,
+            &model.lnf_gain,
+            &model.lnf_bias,
+            &p1c.fin_lv,
+            &wire,
+            &mut cx,
+        );
+        let BlockCtxP { prod: lp, zero: lz, ctr_instances: lci, ctr_other: lco, .. } = cx;
+        prod.extend(lp);
+        zero.extend(lz);
+        add_counters(&mut ctr_instances, &lci);
+        add_counters(&mut ctr_other, &lco);
+        let _ = gb;
+        // ---- band logits claim (q×VOCAB public output) --------------------------
+        let mut cx = BlockCtxP::new(stream, tx, gb, &mut bank);
+        let rho_v: Vec<Fp2> = (0..16).map(|_| cx.tx.challenge_fp2()).collect();
+        let rho_q: Vec<Fp2> = (0..qb).map(|_| cx.tx.challenge_fp2()).collect();
+        let eq_v = eq_vec(&rho_v);
+        let eq_q = eq_vec(&rho_q);
+        cx.ctr_other.fp2_mults += (1 << 16) + (1u64 << qb);
+        let mut l_eval = Fp2::ZERO;
+        for r in 0..q {
+            let mut row_e = Fp2::ZERO;
+            for (v, &lv) in bw.logits[r * VOCAB..(r + 1) * VOCAB].iter().enumerate() {
+                row_e += eq_v[v].mul_base(Fp::from_i64(lv));
+            }
+            l_eval += eq_q[r] * row_e;
+        }
+        cx.ctr_other.base_mults += (q * VOCAB) as u64;
+        let a_tab: Vec<Fp2> = {
+            let wte = &model.wte;
+            (0..VOCAB)
+                .into_par_iter()
+                .fold(
+                    || vec![Fp2::ZERO; 1 << d_cb],
+                    |mut acc, v| {
+                        let e = eq_v[v];
+                        let row = &wte[v * D..(v + 1) * D];
+                        for (j, &w) in row.iter().enumerate() {
+                            if w != 0 {
+                                acc[j] += e.mul_base(Fp::from_i64(w as i64));
+                            }
+                        }
+                        acc
+                    },
+                )
+                .reduce(
+                    || vec![Fp2::ZERO; 1 << d_cb],
+                    |mut a, b| {
+                        for (x, y) in a.iter_mut().zip(b) {
+                            *x += y;
+                        }
+                        a
+                    },
+                )
+        };
+        cx.ctr_other.base_mults += (VOCAB * D) as u64;
+        // B(j) = Σ_r eq_q[r]·fin[r,j] — the row fold of the band final-LN out.
+        let mut b_tab = vec![Fp2::ZERO; 1 << d_cb];
+        for r in 0..q {
+            for j in 0..D {
+                b_tab[j] += eq_q[r].mul_base(Fp::from_i64(bw.fin_out[r * D + j] as i64));
+            }
+        }
+        cx.ctr_other.base_mults += (q * D) as u64;
+        let dom_lg = cx.doms.take(d_cb as u64);
+        let (lg_sc, r_l, lg_claim_n) = blind_prove(
+            a_tab.clone(),
+            b_tab,
+            ProverAuthed::from_public(l_eval),
+            cx.stream,
+            dom_lg,
+            cx.tx,
+        );
+        let mut pt_fin = r_l.clone();
+        pt_fin.extend(rho_q.iter().copied());
+        let fin_open = open_matrix_p(cx.stream, p1c.dom_out_f, &bw.fin_out, q, D, &pt_fin);
+        let wv = eval_mle_counted(&a_tab, &r_l, &mut cx.ctr_other);
+        let dom_wv = cx.doms.take(1);
+        let mk = cx.stream.draw_fulls(dom_wv, 1)[0];
+        let logits_wte_corr = wv - mk.x;
+        cx.tx.append("logits_wte_correction", 16);
+        let wte_auth = ProverAuthed { x: wv, m: mk.m };
+        cx.prod.push((fin_open, wte_auth, lg_claim_n));
+        let mut pt_wte = r_l.clone();
+        pt_wte.extend(rho_v.iter().copied());
+        embed_claims.push(WeightClaimP { point: pt_wte, value: wte_auth });
+        let logits_c = LogitsClaimProof { sc: lg_sc, wte_corr: logits_wte_corr };
+        let BlockCtxP { prod: lp, zero: lz, ctr_instances: lci, ctr_other: lco, .. } = cx;
+        prod.extend(lp);
+        zero.extend(lz);
+        add_counters(&mut ctr_instances, &lci);
+        add_counters(&mut ctr_other, &lco);
+        let _ = zb;
+        // ---- band embedding selection (window at t0) ---------------------------
+        let mut cx = BlockCtxP::new(stream, tx, zb, &mut bank);
+        let r_d = &embed_acc_point_c[..d_cb];
+        let r_i = &embed_acc_point_c[d_cb..];
+        let eq_i = eq_vec(r_i);
+        cx.ctr_other.fp2_mults += 1u64 << r_i.len();
+        let band_tokens = &ch.seq[bw.t0..bw.t0 + q];
+        let mut s_tab = vec![Fp2::ZERO; 1 << 16];
+        for (r, &tok) in band_tokens.iter().enumerate() {
+            s_tab[tok as usize] += eq_i[r];
+        }
+        let eq_d = eq_vec(r_d);
+        let mut w_tab = vec![Fp2::ZERO; 1 << 16];
+        let folded = fold_w(&model.wte, VOCAB, D, &eq_d);
+        w_tab[..folded.len()].copy_from_slice(&folded);
+        cx.ctr_other.base_mults += (VOCAB * D) as u64;
+        let wpe_folded = fold_w(&model.wpe, NPOS, D, &eq_d);
+        cx.ctr_other.base_mults += (NPOS * D) as u64;
+        let mut p_val = Fp2::ZERO;
+        for r in 0..q {
+            p_val += eq_i[r] * wpe_folded[bw.t0 + r];
+        }
+        cx.ctr_other.fp2_mults += q as u64;
+        let dom_p = cx.doms.take(1);
+        let mk_p = cx.stream.draw_fulls(dom_p, 1)[0];
+        let sel_p_corr = p_val - mk_p.x;
+        cx.tx.append("selection_p_correction", 16);
+        let p_auth = ProverAuthed { x: p_val, m: mk_p.m };
+        let claim0 = embed_acc_claim_c.sub(p_auth);
+        let dom_sel = cx.doms.take(16);
+        let (sel_sc, rho_z, sel_claim_n) =
+            blind_prove(s_tab, w_tab.clone(), claim0, cx.stream, dom_sel, cx.tx);
+        let s_eval = sel_s_eval(band_tokens, &eq_i, &rho_z);
+        cx.ctr_other.fp2_mults += 16 * q as u64;
+        let wv2 = eval_mle_counted(&w_tab, &rho_z, &mut cx.ctr_other);
+        let dom_wv2 = cx.doms.take(1);
+        let mk2 = cx.stream.draw_fulls(dom_wv2, 1)[0];
+        let sel_wte_corr = wv2 - mk2.x;
+        cx.tx.append("selection_wte_correction", 16);
+        let wte2_auth = ProverAuthed { x: wv2, m: mk2.m };
+        cx.zero.push(wte2_auth.scale(s_eval).sub(sel_claim_n));
+        let mut pt_wte2 = r_d.to_vec();
+        pt_wte2.extend(rho_z.iter().copied());
+        embed_claims.push(WeightClaimP { point: pt_wte2, value: wte2_auth });
+        let mut g_tab = vec![Fp2::ZERO; 1 << 10];
+        for r in 0..q {
+            g_tab[bw.t0 + r] = eq_i[r];
+        }
+        let dom_wpe_sc = cx.doms.take(10);
+        let (wpe_sc, rho_w, wpe_claim_n) =
+            blind_prove(g_tab, wpe_folded.clone(), p_auth, cx.stream, dom_wpe_sc, cx.tx);
+        let g_eval = masked_eq_eval(&eq_i, bw.t0, q, &rho_w);
+        cx.ctr_other.fp2_mults += 10 * q as u64;
+        let wpe_val = eval_mle_counted(&wpe_folded, &rho_w, &mut cx.ctr_other);
+        let dom_wpe = cx.doms.take(1);
+        let mk_wpe = cx.stream.draw_fulls(dom_wpe, 1)[0];
+        let sel_wpe_corr = wpe_val - mk_wpe.x;
+        cx.tx.append("selection_wpe_correction", 16);
+        let wpe_auth = ProverAuthed { x: wpe_val, m: mk_wpe.m };
+        cx.zero.push(wpe_auth.scale(g_eval).sub(wpe_claim_n));
+        let mut wpe_pt = r_d.to_vec();
+        wpe_pt.extend(rho_w.iter().copied());
+        embed_claims.push(WeightClaimP { point: wpe_pt, value: wpe_auth });
+        let selection_c = SelectionProof {
+            sc: sel_sc,
+            wte_corr: sel_wte_corr,
+            p_corr: sel_p_corr,
+            sc_wpe: wpe_sc,
+            wpe_corr: sel_wpe_corr,
+        };
+        let BlockCtxP { prod: lp, zero: lz, ctr_instances: lci, ctr_other: lco, .. } = cx;
+        prod.extend(lp);
+        zero.extend(lz);
+        add_counters(&mut ctr_instances, &lci);
+        add_counters(&mut ctr_other, &lco);
+
+        chunk_proofs.push(ChunkProof {
+            layers: layer_proofs_c,
+            seams: seams_c,
+            embed: embed_c,
+            fin_out_corr: p1c.fin_out_corr,
+            fin_ln_vec_corrs: p1c.fin_ln_vec_corrs,
+            fin_ln,
+            logits: logits_c,
+            selection: selection_c,
+        });
+    }
+
     // ---- (h) per-content table sides (ONE multiset argument per content) ----
     let tables = bank.close(
         &model.luts,
@@ -666,6 +1148,7 @@ pub fn prove_model(
         final_ln,
         logits: logits_proof,
         selection,
+        chunks: chunk_proofs,
         tables,
     };
     let out = ModelOut {
@@ -693,8 +1176,60 @@ pub fn verify_model(
     vc: &mut VerifierCtx,
     tx: &mut Transcript,
 ) -> Option<(ModelOutV, ProdKeyTriples, Vec<VerifierKey>)> {
+    verify_response(model, t, logits, &[], proof, vc, tx)
+}
+
+/// Verify a full response (prefill + decode chunks — mirror of
+/// [`prove_response`], same order throughout). Also runs the PUBLIC greedy
+/// checks: every sampled token must be the argmax of the logits row at the
+/// previous position.
+pub fn verify_response(
+    model: &Gpt2Model,
+    t: usize,
+    logits: &[i64],
+    chunks: &[ChunkPub],
+    proof: &ModelProof,
+    vc: &mut VerifierCtx,
+    tx: &mut Transcript,
+) -> Option<(ModelOutV, ProdKeyTriples, Vec<VerifierKey>)> {
     if proof.layers.len() != L || proof.seams.len() != L - 1 {
         return None;
+    }
+    if proof.chunks.len() != chunks.len() {
+        return None;
+    }
+    // ---- PUBLIC greedy checks + chunk shape checks --------------------------
+    {
+        let mut t0 = t;
+        for (c, ch) in chunks.iter().enumerate() {
+            if ch.q < 2
+                || ch.logits.len() != ch.q * VOCAB
+                || ch.seq.len() < t0 + ch.q
+                || ch.seq[..t] != model.p.tokens[..t]
+            {
+                return None;
+            }
+            // Token at position t0 is sampled by the PREVIOUS position's
+            // logits: the prefill's last row for c = 0 (r = -1), the chunk's
+            // own rows after.
+            if c == 0 {
+                let am = (0..VOCAB).max_by_key(|&v| logits[v])?;
+                if ch.seq[t] != am as u32 {
+                    return None;
+                }
+            }
+            for r in 0..ch.q {
+                let nxt = t0 + r + 1;
+                if nxt < ch.seq.len() {
+                    let row = &ch.logits[r * VOCAB..(r + 1) * VOCAB];
+                    let am = (0..VOCAB).max_by_key(|&v| row[v])?;
+                    if ch.seq[nxt] != am as u32 {
+                        return None;
+                    }
+                }
+            }
+            t0 += ch.q;
+        }
     }
     let d_cb = pad_bits(D);
     let rb_t = pad_bits(t);
@@ -705,6 +1240,8 @@ pub fn verify_model(
     let mut weight_keys: Vec<(Vec<Fp2>, VerifierKey)> = Vec::with_capacity(4 * L);
     // (xin_keys, fbo_keys) per layer.
     let mut boundary_keys: Vec<(Vec<Fp2>, Vec<Fp2>)> = Vec::with_capacity(L);
+    // Prefill (k_keys, v_keys) per layer — the chunks' first cache segment.
+    let mut boundary_kv_keys: Vec<(Vec<Fp2>, Vec<Fp2>)> = Vec::with_capacity(L);
 
     let luts_for = |l: usize| {
         let mut luts_l = model.luts.clone();
@@ -754,6 +1291,56 @@ pub fn verify_model(
         let row_keys = auth_matrix_rows_v(cx.ctx, dom_row, &proof.final_ln.row_corr, t_ln, D);
         (cx.doms, out_keys_f, lvk, row_keys)
     };
+    // ---- decode chunks, phase 1 mirror --------------------------------------
+    struct ChunkV1 {
+        layer_v1s: Vec<LayerV1>,
+        embed_doms: Doms,
+        out_keys: Vec<Fp2>,
+        fin_doms: Doms,
+        fin_out_keys: Vec<Fp2>,
+        fin_lvk: crate::block_proof::LnVecsK,
+    }
+    let mut chunk_v1s: Vec<ChunkV1> = Vec::with_capacity(chunks.len());
+    {
+        let mut t0 = t;
+        for (c, (ch, cp)) in chunks.iter().zip(&proof.chunks).enumerate() {
+            let q = ch.q;
+            let sh_c = BandShape { t0, q };
+            let q_pad = 1usize << pad_bits(q);
+            let (lb, _sb_id, eb, fb, _gb, _zb) = chunk_ids(c);
+            let mut layer_v1s = Vec::with_capacity(L);
+            for l in 0..L {
+                let luts_l = luts_for(l);
+                let mut cx = BlockCtxV::new(vc, tx, lb + l as u8, &mut pre_bank);
+                let v1 = verify_layer_phase1_band(sh_c, &luts_l, &cp.layers[l], &mut cx)?;
+                layer_v1s.push(v1);
+            }
+            let (embed_doms, out_keys) = {
+                let mut cx = BlockCtxV::new(vc, tx, eb, &mut pre_bank);
+                let dom_out = cx.doms.take(q as u64);
+                if cp.embed.out_corr.len() != q * D {
+                    return None;
+                }
+                let out_keys = auth_matrix_rows_v(cx.ctx, dom_out, &cp.embed.out_corr, q, D);
+                (cx.doms, out_keys)
+            };
+            let (fin_doms, fin_out_keys, fin_lvk) = {
+                let mut cx = BlockCtxV::new(vc, tx, fb, &mut pre_bank);
+                if cp.fin_out_corr.len() != q * D
+                    || cp.fin_ln_vec_corrs.iter().any(|cc| cc.len() != q_pad)
+                {
+                    return None;
+                }
+                let dom_out_f = cx.doms.take(q as u64);
+                let out_keys_f = auth_matrix_rows_v(cx.ctx, dom_out_f, &cp.fin_out_corr, q, D);
+                let lvk = expand_ln_vecs_k(&mut cx, &cp.fin_ln_vec_corrs);
+                (cx.doms, out_keys_f, lvk)
+            };
+            chunk_v1s.push(ChunkV1 { layer_v1s, embed_doms, out_keys, fin_doms, fin_out_keys, fin_lvk });
+            t0 += q;
+        }
+    }
+
     // End of phase 1: expand the per-content multiplicity keys against the
     // PUBLIC expected content set, draw the shared αs.
     let expected = model_content_keys(model);
@@ -784,6 +1371,7 @@ pub fn verify_model(
         kzero.extend(lkz);
         weight_keys.extend(out.weight_keys);
         boundary_keys.push((out.xin_keys, out.fbo_keys));
+        boundary_kv_keys.push((out.k_keys, out.v_keys));
     }
 
     // ---- (c) seams -----------------------------------------------------------
@@ -923,7 +1511,7 @@ pub fn verify_model(
     let dom_wpe_sc = cx.doms.take(10);
     let (rho_w, k_wpe_n) =
         blind_verify(10, k_p, &proof.selection.sc_wpe, cx.ctx, dom_wpe_sc, cx.tx)?;
-    let g_eval = masked_eq_eval(&eq_i, t, &rho_w);
+    let g_eval = masked_eq_eval(&eq_i, 0, t, &rho_w);
     let dom_wpe = cx.doms.take(1);
     let k_wpe = VerifierKey {
         k: cx.ctx.expand_full_keys(dom_wpe, 1)[0] + cx.ctx.delta * proof.selection.wpe_corr,
@@ -935,6 +1523,203 @@ pub fn verify_model(
     let BlockCtxV { kprod: lkp, kzero: lkz, .. } = cx;
     kprod.extend(lkp);
     kzero.extend(lkz);
+
+    // ---- decode chunks, phase 2 mirror (P6) ----------------------------------
+    // Prefill boundary keys are the chunks' first cache segment; each proven
+    // chunk extends the per-layer segment lists.
+    let mut kv_keys: Vec<Vec<(Vec<Fp2>, Vec<Fp2>)>> = Vec::with_capacity(L);
+    for bk in &boundary_kv_keys {
+        kv_keys.push(vec![(bk.0.clone(), bk.1.clone())]);
+    }
+    {
+        let mut t0 = t;
+        for (c, (ch, (cp, v1c))) in
+            chunks.iter().zip(proof.chunks.iter().zip(chunk_v1s.into_iter())).enumerate()
+        {
+            let q = ch.q;
+            let qb = pad_bits(q);
+            let sh_c = BandShape { t0, q };
+            let n_vars_qd = d_cb + qb;
+            let (_lb, sb_id, _eb, _fb, gb, zb) = chunk_ids(c);
+            let mut band_boundary_keys: Vec<(Vec<Fp2>, Vec<Fp2>)> = Vec::with_capacity(L);
+            // ---- 12 band layers ------------------------------------------------
+            for (l, v1) in v1c.layer_v1s.into_iter().enumerate() {
+                let luts_l = luts_for(l);
+                let w = &model.layers[l].0;
+                let b = &model.layers[l].1;
+                let prefix: Vec<KvPrefixK> = kv_keys[l]
+                    .iter()
+                    .map(|(kk, vk)| KvPrefixK {
+                        rows: kk.len() / D,
+                        k_keys: kk,
+                        v_keys: vk,
+                    })
+                    .collect();
+                let mut cx = BlockCtxV::with_doms(vc, tx, v1.doms, &mut bank);
+                let out = verify_layer_phase2_band(
+                    sh_c,
+                    &w.ln1_gain,
+                    &w.ln1_bias,
+                    &w.ln2_gain,
+                    &w.ln2_bias,
+                    &luts_l,
+                    &cp.layers[l],
+                    v1,
+                    &prefix,
+                    &mut cx,
+                    Some(b),
+                )?;
+                let BlockCtxV { kprod: lkp, kzero: lkz, .. } = cx;
+                kprod.extend(lkp);
+                kzero.extend(lkz);
+                weight_keys.extend(out.weight_keys);
+                band_boundary_keys.push((out.xin_keys, out.fbo_keys));
+                kv_keys[l].push((out.k_keys, out.v_keys));
+            }
+            // ---- band seams -----------------------------------------------------
+            for l in 0..L - 1 {
+                let shift = model.p.seam_shifts[l];
+                if shift > 16 {
+                    return None;
+                }
+                let mut cx = BlockCtxV::new(vc, tx, sb_id + l as u8, &mut bank);
+                match (&cp.seams[l], shift > 0) {
+                    (Some(sp), true) => {
+                        let site =
+                            verify_range_site(n_vars_qd, shift, &sp.inst, None, &[], &mut cx)?;
+                        let out_k =
+                            open_matrix_k(&band_boundary_keys[l + 1].0, q, D, &site.main.point);
+                        cx.kzero.push(site.main.col_keys[1].key.sub(out_k));
+                        let acc_open_k =
+                            open_matrix_k(&band_boundary_keys[l].1, q, D, site.acc_point());
+                        cx.kzero.push(site.acc_key.sub(acc_open_k));
+                    }
+                    (None, false) => {
+                        let rho: Vec<Fp2> =
+                            (0..n_vars_qd).map(|_| cx.tx.challenge_fp2()).collect();
+                        let a = open_matrix_k(&band_boundary_keys[l].1, q, D, &rho);
+                        let b = open_matrix_k(&band_boundary_keys[l + 1].0, q, D, &rho);
+                        cx.kzero.push(a.sub(b));
+                    }
+                    _ => return None,
+                }
+                let BlockCtxV { kprod: lkp, kzero: lkz, .. } = cx;
+                kprod.extend(lkp);
+                kzero.extend(lkz);
+            }
+            // ---- band embedding -------------------------------------------------
+            let mut cx = BlockCtxV::with_doms(vc, tx, v1c.embed_doms, &mut bank);
+            let site = verify_range_site(n_vars_qd, s_emb, &cp.embed.inst, None, &[], &mut cx)?;
+            let out_k = open_matrix_k(&v1c.out_keys, q, D, &site.main.point);
+            cx.kzero.push(site.main.col_keys[1].key.sub(out_k));
+            let embed_acc_point_c = site.acc_point().to_vec();
+            let embed_acc_key_c = site.acc_key;
+            let rho_e: Vec<Fp2> = (0..n_vars_qd).map(|_| cx.tx.challenge_fp2()).collect();
+            let e_k = open_matrix_k(&v1c.out_keys, q, D, &rho_e);
+            let x0_k = open_matrix_k(&band_boundary_keys[0].0, q, D, &rho_e);
+            cx.kzero.push(e_k.sub(x0_k));
+            let BlockCtxV { kprod: lkp, kzero: lkz, .. } = cx;
+            kprod.extend(lkp);
+            kzero.extend(lkz);
+            // ---- band final LN ---------------------------------------------------
+            let mut cx = BlockCtxV::with_doms(vc, tx, v1c.fin_doms, &mut bank);
+            let rho_f: Vec<Fp2> = (0..n_vars_qd).map(|_| cx.tx.challenge_fp2()).collect();
+            let wire_key = open_matrix_k(&v1c.fin_out_keys, q, D, &rho_f);
+            let wk = WireKey { point: rho_f, key: wire_key };
+            let s_lnf = model.p.lut.shift_ln_norm;
+            verify_ln_chain(
+                q,
+                s_lnf,
+                &model.lnf_gain,
+                &model.lnf_bias,
+                &band_boundary_keys[L - 1].1,
+                &v1c.fin_lvk,
+                &cp.fin_ln,
+                &wk,
+                &mut cx,
+            )?;
+            let BlockCtxV { kprod: lkp, kzero: lkz, .. } = cx;
+            kprod.extend(lkp);
+            kzero.extend(lkz);
+            // ---- band logits claim ----------------------------------------------
+            let mut cx = BlockCtxV::new(vc, tx, gb, &mut bank);
+            let rho_v: Vec<Fp2> = (0..16).map(|_| cx.tx.challenge_fp2()).collect();
+            let rho_q: Vec<Fp2> = (0..qb).map(|_| cx.tx.challenge_fp2()).collect();
+            let eq_v = eq_vec(&rho_v);
+            let eq_q = eq_vec(&rho_q);
+            let mut l_eval = Fp2::ZERO;
+            for r in 0..q {
+                let mut row_e = Fp2::ZERO;
+                for (v, &lv) in ch.logits[r * VOCAB..(r + 1) * VOCAB].iter().enumerate() {
+                    row_e += eq_v[v].mul_base(Fp::from_i64(lv));
+                }
+                l_eval += eq_q[r] * row_e;
+            }
+            let dom_lg = cx.doms.take(d_cb as u64);
+            let (r_l, k_claim_n) = blind_verify(
+                d_cb,
+                VerifierKey::from_public(l_eval, cx.ctx.delta),
+                &cp.logits.sc,
+                cx.ctx,
+                dom_lg,
+                cx.tx,
+            )?;
+            let mut pt_fin = r_l.clone();
+            pt_fin.extend(rho_q.iter().copied());
+            let k_fin = open_matrix_k(&v1c.fin_out_keys, q, D, &pt_fin);
+            let dom_wv = cx.doms.take(1);
+            let k_wte = VerifierKey {
+                k: cx.ctx.expand_full_keys(dom_wv, 1)[0] + cx.ctx.delta * cp.logits.wte_corr,
+            };
+            cx.kprod.push((k_fin, k_wte, k_claim_n));
+            let mut pt_wte = r_l;
+            pt_wte.extend(rho_v.iter().copied());
+            embed_keys.push((pt_wte, k_wte));
+            let BlockCtxV { kprod: lkp, kzero: lkz, .. } = cx;
+            kprod.extend(lkp);
+            kzero.extend(lkz);
+            // ---- band embedding selection ------------------------------------------
+            let mut cx = BlockCtxV::new(vc, tx, zb, &mut bank);
+            let r_d = &embed_acc_point_c[..d_cb];
+            let r_i = &embed_acc_point_c[d_cb..];
+            let eq_i = eq_vec(r_i);
+            let band_tokens = &ch.seq[t0..t0 + q];
+            let dom_p = cx.doms.take(1);
+            let k_p = VerifierKey {
+                k: cx.ctx.expand_full_keys(dom_p, 1)[0] + cx.ctx.delta * cp.selection.p_corr,
+            };
+            let k_claim0 = embed_acc_key_c.sub(k_p);
+            let dom_sel = cx.doms.take(16);
+            let (rho_z, k_sel_n) =
+                blind_verify(16, k_claim0, &cp.selection.sc, cx.ctx, dom_sel, cx.tx)?;
+            let s_eval = sel_s_eval(band_tokens, &eq_i, &rho_z);
+            let dom_wv2 = cx.doms.take(1);
+            let k_wte2 = VerifierKey {
+                k: cx.ctx.expand_full_keys(dom_wv2, 1)[0] + cx.ctx.delta * cp.selection.wte_corr,
+            };
+            cx.kzero.push(k_wte2.scale(s_eval).sub(k_sel_n));
+            let mut pt_wte2 = r_d.to_vec();
+            pt_wte2.extend(rho_z.iter().copied());
+            embed_keys.push((pt_wte2, k_wte2));
+            let dom_wpe_sc = cx.doms.take(10);
+            let (rho_w, k_wpe_n) =
+                blind_verify(10, k_p, &cp.selection.sc_wpe, cx.ctx, dom_wpe_sc, cx.tx)?;
+            let g_eval = masked_eq_eval(&eq_i, t0, q, &rho_w);
+            let dom_wpe = cx.doms.take(1);
+            let k_wpe = VerifierKey {
+                k: cx.ctx.expand_full_keys(dom_wpe, 1)[0] + cx.ctx.delta * cp.selection.wpe_corr,
+            };
+            cx.kzero.push(k_wpe.scale(g_eval).sub(k_wpe_n));
+            let mut wpe_pt = r_d.to_vec();
+            wpe_pt.extend(rho_w.iter().copied());
+            embed_keys.push((wpe_pt, k_wpe));
+            let BlockCtxV { kprod: lkp, kzero: lkz, .. } = cx;
+            kprod.extend(lkp);
+            kzero.extend(lkz);
+
+            t0 += q;
+        }
+    }
 
     // ---- (h) per-content table sides (mirror) -------------------------------
     bank.close(
@@ -974,6 +1759,184 @@ mod tests {
         let cb = pad_bits(n);
         let b = fold_w(w, k, n, &eq_vec(&point[..cb]));
         eval_mle(&b, &point[cb..])
+    }
+
+    /// P6 response e2e: prefill (t=12) + ONE decode chunk (q=4) proven in one
+    /// two-phase session — band layers over the cross-phase KV cache, band
+    /// seams/embed/selection/final-LN/logits, stacked weight claims, one
+    /// Π_Prod + one Π_ZeroBatch. Greedy argmax checks run inside
+    /// `verify_response`.
+    #[test]
+    fn response_e2e_on_frozen_artifact() {
+        let dir = weights_dir();
+        if !dir.join("gpt2s-q.bin").exists() {
+            eprintln!("skipping response_e2e_on_frozen_artifact: artifact not present");
+            return;
+        }
+        let model = load_model(&dir).unwrap();
+        let (t, n_gen) = (12usize, 4usize);
+        let wit0 = volta_gpt2::forward_model(&model, t);
+        let kv: Vec<(&[i16], &[i16])> =
+            wit0.layers.iter().map(|lw| (lw.k.as_slice(), lw.v.as_slice())).collect();
+        let mut cache = volta_gpt2::KvCache::from_prefill(&kv, t);
+        let (gen, _rows) = volta_gpt2::generate(&model, &mut cache, &wit0.logits, t, n_gen);
+        let mut seq: Vec<u32> = model.p.tokens[..t].to_vec();
+        seq.extend_from_slice(&gen);
+        let full = volta_gpt2::forward_model_tokens(&model, &seq);
+        let band = volta_gpt2::band_model_witness(&model, &full, t);
+
+        let seed = 201u8;
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64 + 9000);
+        let delta = Fp2::new(
+            Fp::new(rng.gen_range(1..volta_field::P)),
+            Fp::new(rng.gen_range(0..volta_field::P)),
+        );
+        let pcg_seed = [seed; 32];
+        let tx_seed = [seed ^ 0x5A; 32];
+        let mut stream = CorrelationStream::new(pcg_seed);
+        let mut vc = VerifierCtx::new(pcg_seed, delta);
+        let mut txp = Transcript::new(tx_seed);
+        let mut txv = Transcript::new(tx_seed);
+
+        let chunks_p = [ChunkRef { band: &band, seq: &seq }];
+        let (proof, out, prod, mut zero) =
+            prove_response(&model, &wit0, &chunks_p, &mut stream, &mut txp);
+
+        let chunks_v =
+            [ChunkPub { q: n_gen, logits: &band.logits, seq: &seq }];
+        let (outv, kprod, mut kzero) = verify_response(
+            &model, t, &wit0.logits, &chunks_v, &proof, &mut vc, &mut txv,
+        )
+        .expect("response proof must verify");
+
+        // Stacked weight claims: 48 prefill + 48 chunk, layer-major.
+        assert_eq!(out.weight_claims.len(), 8 * L, "expected 96 stacked weight claims");
+        assert_eq!(outv.weight_keys.len(), 8 * L);
+        for idx in 0..8 * L {
+            let l = (idx / 4) % L;
+            let k4 = idx % 4;
+            let w = &model.layers[l].0;
+            let w_perm = cattn_permuted(&w.c_attn);
+            let dims: [(usize, usize, &[i16]); 4] = [
+                (D, 4096, &w_perm),
+                (D, D, &w.attn_proj),
+                (D, DFF, &w.ffn_up),
+                (DFF, D, &w.ffn_down),
+            ];
+            let (kk, n, mat) = dims[k4];
+            let wc = &out.weight_claims[idx];
+            assert_eq!(outv.weight_keys[idx].0, wc.point, "weight point mismatch at {idx}");
+            let tv = weight_true_eval(mat, kk, n, &wc.point);
+            zero.push(wc.value.sub(ProverAuthed::from_public(tv)));
+            kzero.push(outv.weight_keys[idx].1.sub(VerifierKey::from_public(tv, delta)));
+        }
+        // Embedding claims: 3 prefill + 3 chunk, order [wte, wte, wpe] each.
+        assert_eq!(out.embed_claims.len(), 6);
+        assert_eq!(outv.embed_keys.len(), 6);
+        for (i, wc) in out.embed_claims.iter().enumerate() {
+            let (kk, n, mat): (usize, usize, &[i16]) = if i % 3 == 2 {
+                (NPOS, D, &model.wpe)
+            } else {
+                (VOCAB, D, &model.wte)
+            };
+            assert_eq!(wc.point.len(), pad_bits(kk) + pad_bits(n), "embed claim {i} point len");
+            assert_eq!(outv.embed_keys[i].0, wc.point, "embed claim {i} point mismatch");
+            let tv = weight_true_eval(mat, kk, n, &wc.point);
+            zero.push(wc.value.sub(ProverAuthed::from_public(tv)));
+            kzero.push(outv.embed_keys[i].1.sub(VerifierKey::from_public(tv, delta)));
+        }
+
+        let mut domsp = Doms::new(layer_dom_base(255));
+        let mut domsv = Doms::new(layer_dom_base(255));
+        let chi = txp.challenge_fp2();
+        assert_eq!(chi, txv.challenge_fp2());
+        let md = domsp.take(1);
+        assert_eq!(md, domsv.take(1));
+        let mask = stream.draw_fulls(md, 1)[0];
+        let k_mask = vc.expand_full_keys(md, 1)[0];
+        let pp = prod_batch_prover(&prod, chi, mask, &mut txp);
+        let ok_prod = prod_batch_verify(&kprod, k_mask, delta, chi, &pp);
+        let mz = domsp.take(1);
+        assert_eq!(mz, domsv.take(1));
+        let ok_zero = zero_batch_exchange(&zero, &kzero, &mut stream, &mut vc, mz, &mut txp);
+        assert!(ok_prod && ok_zero, "response e2e must verify");
+        eprintln!("response_e2e: t={t} q={n_gen} tokens {gen:?} accepted");
+    }
+
+    /// P6 anti-replay smoke: reusing another position's cache-row corrections
+    /// (prefill rows replayed as the chunk's K rows, or two chunk K rows
+    /// swapped) must be rejected — domains are position-separated.
+    #[test]
+    fn response_rejects_kv_replay() {
+        let dir = weights_dir();
+        if !dir.join("gpt2s-q.bin").exists() {
+            eprintln!("skipping response_rejects_kv_replay: artifact not present");
+            return;
+        }
+        let model = load_model(&dir).unwrap();
+        let (t, n_gen) = (12usize, 4usize);
+        let wit0 = volta_gpt2::forward_model(&model, t);
+        let kv: Vec<(&[i16], &[i16])> =
+            wit0.layers.iter().map(|lw| (lw.k.as_slice(), lw.v.as_slice())).collect();
+        let mut cache = volta_gpt2::KvCache::from_prefill(&kv, t);
+        let (gen, _rows) = volta_gpt2::generate(&model, &mut cache, &wit0.logits, t, n_gen);
+        let mut seq: Vec<u32> = model.p.tokens[..t].to_vec();
+        seq.extend_from_slice(&gen);
+        let full = volta_gpt2::forward_model_tokens(&model, &seq);
+        let band = volta_gpt2::band_model_witness(&model, &full, t);
+
+        for case in 0..2 {
+            let seed = 205 + case as u8;
+            let delta = Fp2::new(Fp::new(0xD31C_5A17), Fp::new(0x0BAD_CAFE));
+            let mut stream = CorrelationStream::new([seed; 32]);
+            let mut vc = VerifierCtx::new([seed; 32], delta);
+            let mut txp = Transcript::new([seed ^ 0x5A; 32]);
+            let mut txv = Transcript::new([seed ^ 0x5A; 32]);
+            let chunks_p = [ChunkRef { band: &band, seq: &seq }];
+            let (mut proof, _out, prod, mut zero) =
+                prove_response(&model, &wit0, &chunks_p, &mut stream, &mut txp);
+            match case {
+                0 => {
+                    // Replay: the chunk's K corrections replaced by the
+                    // prefill's first q rows (cache-row reuse across phases).
+                    let q = n_gen;
+                    proof.chunks[0].layers[0].k_corr
+                        .copy_from_slice(&proof.layers[0].k_corr[..q * D]);
+                }
+                _ => {
+                    // Position swap within the chunk's own K rows.
+                    let (a, b) = (0usize, 1usize);
+                    for j in 0..D {
+                        proof.chunks[0].layers[0].k_corr.swap(a * D + j, b * D + j);
+                    }
+                }
+            }
+            let chunks_v = [ChunkPub { q: n_gen, logits: &band.logits, seq: &seq }];
+            let Some((_outv, kprod, kzero)) = verify_response(
+                &model, t, &wit0.logits, &chunks_v, &proof, &mut vc, &mut txv,
+            ) else {
+                continue; // structural reject also counts
+            };
+            // Cheating-prover emulation: clear the prover's zero rows so the
+            // MAC keys carry the discrepancy, then close the batches.
+            for row in zero.iter_mut() {
+                row.x = Fp2::ZERO;
+            }
+            let mut domsp = Doms::new(layer_dom_base(255));
+            let mut domsv = Doms::new(layer_dom_base(255));
+            let chi = txp.challenge_fp2();
+            assert_eq!(chi, txv.challenge_fp2());
+            let md = domsp.take(1);
+            assert_eq!(md, domsv.take(1));
+            let mask = stream.draw_fulls(md, 1)[0];
+            let k_mask = vc.expand_full_keys(md, 1)[0];
+            let pp = prod_batch_prover(&prod, chi, mask, &mut txp);
+            let _ = prod_batch_verify(&kprod, k_mask, delta, chi, &pp);
+            let mz = domsp.take(1);
+            assert_eq!(mz, domsv.take(1));
+            let ok_zero = zero_batch_exchange(&zero, &kzero, &mut stream, &mut vc, mz, &mut txp);
+            assert!(!ok_zero, "K/V replay case {case} accepted");
+        }
     }
 
     #[test]

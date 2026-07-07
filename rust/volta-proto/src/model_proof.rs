@@ -232,9 +232,14 @@ pub struct ModelProof {
 }
 
 pub struct ModelOut {
-    /// Exactly 48 committed-weight claims, LAYER-MAJOR, canonical per-layer
-    /// order [c_attn, attn_proj, ffn_up, ffn_down] (as `LayerOut`).
+    /// Committed-weight claims, LAYER-MAJOR per phase (48 prefill, then 48
+    /// per chunk), canonical per-layer order [c_attn, attn_proj, ffn_up,
+    /// ffn_down] (as `LayerOut`).
     pub weight_claims: Vec<WeightClaimP>,
+    /// Wall time of each decode chunk's phase-1 / phase-2 sections (P6
+    /// flat-cost curve; empty without chunks).
+    pub chunk_p1_s: Vec<f64>,
+    pub chunk_p2_s: Vec<f64>,
     /// The 3 embedding-commitment claims, order [wte(logits), wte(selection),
     /// wpe]: the logits/selection sumchecks CONSUME the embed-acc claim, so
     /// nothing is left pending — these resolve against `layout_gpt2_embed`.
@@ -419,9 +424,12 @@ pub fn prove_response(
     }
     let s_lnf = model.p.lut.shift_ln_norm;
     let mut chunk_p1s: Vec<ChunkP1> = Vec::with_capacity(chunks.len());
+    let mut chunk_p1_s: Vec<f64> = Vec::with_capacity(chunks.len());
+    let mut chunk_p2_s: Vec<f64> = Vec::with_capacity(chunks.len());
     {
         let mut t0_expect = t;
         for (c, ch) in chunks.iter().enumerate() {
+            let c_t0 = std::time::Instant::now();
             let bw = ch.band;
             assert_eq!(bw.t0, t0_expect, "chunk {c} does not extend the cache");
             assert!(bw.q >= 2, "chunk needs at least 2 rows");
@@ -510,6 +518,7 @@ pub fn prove_response(
                 fin_ln_vec_corrs,
                 acc_fin,
             });
+            chunk_p1_s.push(c_t0.elapsed().as_secs_f64());
         }
     }
 
@@ -828,6 +837,7 @@ pub fn prove_response(
         kv_doms.push(vec![(layer_kv_doms[l].0, layer_kv_doms[l].1)]);
     }
     for (c, (ch, p1c)) in chunks.iter().zip(chunk_p1s.into_iter()).enumerate() {
+        let c_t0 = std::time::Instant::now();
         let bw = ch.band;
         let q = bw.q;
         let qb = pad_bits(q);
@@ -1128,6 +1138,7 @@ pub fn prove_response(
             logits: logits_c,
             selection: selection_c,
         });
+        chunk_p2_s.push(c_t0.elapsed().as_secs_f64());
     }
 
     // ---- (h) per-content table sides (ONE multiset argument per content) ----
@@ -1153,6 +1164,8 @@ pub fn prove_response(
     };
     let out = ModelOut {
         weight_claims,
+        chunk_p1_s,
+        chunk_p2_s,
         embed_claims,
         bytes,
         ctr_instances,

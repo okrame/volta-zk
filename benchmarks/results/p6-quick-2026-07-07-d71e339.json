@@ -1,0 +1,196 @@
+{
+  "milestone": "P6-quick",
+  "date": "2026-07-07",
+  "git_sha": "d71e339",
+  "git_dirty": true,
+  "machine": "linux aarch64",
+  "threads": 4,
+  "t_prefill": 16,
+  "n_decode": 8,
+  "accepted": true,
+  "golden_decode_checked": false,
+  "golden_decode_match": null,
+  "generated_tokens": [
+    262,
+    1266,
+    286,
+    1661,
+    13,
+    632,
+    373,
+    262
+  ],
+  "t_native_prefill_s": 0.114121618,
+  "t_native_decode_s": 0.233538631,
+  "native_decode_tokens_per_s": 34.25557461626124,
+  "t_prove_prefill_only_s": 1.594542809,
+  "t_prove_response_s": 2.813270909,
+  "t_prove_decode_marginal_s": 1.2187280999999999,
+  "rho_prefill": 13.972311617593785,
+  "rho_decode": 5.218528920810535,
+  "verified_tokens_per_s": 2.8436649930893663,
+  "t_verify_response_s": 0.114466871,
+  "chunk_curve": [
+    {
+      "chunk": 0,
+      "t0": 16,
+      "q": 4,
+      "cache_end": 20,
+      "prove_p1_s": 0.0061314,
+      "prove_p2_s": 0.900937066,
+      "prove_total_s": 0.907068466,
+      "per_token_s": 0.2267671165
+    },
+    {
+      "chunk": 1,
+      "t0": 20,
+      "q": 4,
+      "cache_end": 24,
+      "prove_p1_s": 0.006356359,
+      "prove_p2_s": 0.955007869,
+      "prove_total_s": 0.961364228,
+      "per_token_s": 0.240341057
+    }
+  ],
+  "curve_last_over_first": 1.0598585046611024,
+  "gate_flat_cost_per_token": true,
+  "t_prove_response_chunked_s": 3.469217348,
+  "chunked_accepted": true,
+  "comm_prefill_bytes": 10165344,
+  "comm_response_bytes": 80956000,
+  "comm_decode_marginal_bytes": 4057152,
+  "comm_decode_bytes_per_token": 507144,
+  "pcs_opening_bytes_total": 66733504,
+  "public_logits_bytes": 3618504,
+  "public_logits_packed_bytes": 1325642,
+  "total_response_download_bytes": 84574504,
+  "total_response_download_packed_bytes": 82281642,
+  "pcs_commitments": [
+    {
+      "name": "layer_0",
+      "n_claims": 8,
+      "commit_s": 0.979042388,
+      "open_s": 0.055550179,
+      "verify_s": 0.008521326,
+      "opening_bytes": 4293216,
+      "verified": true
+    },
+    {
+      "name": "layer_1",
+      "n_claims": 8,
+      "commit_s": 0.349807973,
+      "open_s": 0.061143243,
+      "verify_s": 0.008343242,
+      "opening_bytes": 4293216,
+      "verified": true
+    },
+    {
+      "name": "layer_2",
+      "n_claims": 8,
+      "commit_s": 0.366836249,
+      "open_s": 0.063405502,
+      "verify_s": 0.009034578,
+      "opening_bytes": 4293216,
+      "verified": true
+    },
+    {
+      "name": "layer_3",
+      "n_claims": 8,
+      "commit_s": 0.546220922,
+      "open_s": 0.053757297,
+      "verify_s": 0.006689776,
+      "opening_bytes": 4293216,
+      "verified": true
+    },
+    {
+      "name": "layer_4",
+      "n_claims": 8,
+      "commit_s": 0.354518535,
+      "open_s": 0.049156904,
+      "verify_s": 0.008505367,
+      "opening_bytes": 4293216,
+      "verified": true
+    },
+    {
+      "name": "layer_5",
+      "n_claims": 8,
+      "commit_s": 0.395309531,
+      "open_s": 0.05736352,
+      "verify_s": 0.007773406,
+      "opening_bytes": 4293216,
+      "verified": true
+    },
+    {
+      "name": "layer_6",
+      "n_claims": 8,
+      "commit_s": 0.364785076,
+      "open_s": 0.052075749,
+      "verify_s": 0.00830195,
+      "opening_bytes": 4293216,
+      "verified": true
+    },
+    {
+      "name": "layer_7",
+      "n_claims": 8,
+      "commit_s": 0.370497766,
+      "open_s": 0.052524417,
+      "verify_s": 0.008357491,
+      "opening_bytes": 4293216,
+      "verified": true
+    },
+    {
+      "name": "layer_8",
+      "n_claims": 8,
+      "commit_s": 0.351622233,
+      "open_s": 0.052345167,
+      "verify_s": 0.00649786,
+      "opening_bytes": 4293216,
+      "verified": true
+    },
+    {
+      "name": "layer_9",
+      "n_claims": 8,
+      "commit_s": 0.343680786,
+      "open_s": 0.052851335,
+      "verify_s": 0.00658211,
+      "opening_bytes": 4293216,
+      "verified": true
+    },
+    {
+      "name": "layer_10",
+      "n_claims": 8,
+      "commit_s": 0.361983984,
+      "open_s": 0.049780574,
+      "verify_s": 0.007883906,
+      "opening_bytes": 4293216,
+      "verified": true
+    },
+    {
+      "name": "layer_11",
+      "n_claims": 8,
+      "commit_s": 0.345887337,
+      "open_s": 0.048436818,
+      "verify_s": 0.008105407,
+      "opening_bytes": 4293216,
+      "verified": true
+    },
+    {
+      "name": "embed",
+      "n_claims": 6,
+      "commit_s": 5.131874402,
+      "open_s": 0.348150725,
+      "verify_s": 0.017242527,
+      "opening_bytes": 15214912,
+      "verified": true
+    }
+  ],
+  "pcs_commit_total_s": 10.262067182,
+  "pcs_open_total_s": 0.99654143,
+  "pcs_verify_total_s": 0.111838946,
+  "n_weight_claims": 96,
+  "n_embed_claims": 6,
+  "emult_instances_total": 228188205.8,
+  "corr_sub_corrs": 1531558,
+  "corr_full_corrs": 122451,
+  "peak_rss_gb": 2.6279869079589844
+}

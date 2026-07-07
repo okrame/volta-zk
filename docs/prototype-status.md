@@ -56,6 +56,40 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-07 (P7 prep — public-logits bit-packing landed, measured)**:
+  handoff spec §4.6.E implemented: the public band logits (i64, true range
+  ≪ 2^64) travel bit-packed (per-row min + fixed-width offsets, "VLPK1"
+  codec in `volta-bench/src/logits_pack.rs`); the verifier consumes the
+  DECODED matrix (asserted bit-exact) inside `p6_report`'s e2e session, so
+  the packed size is the real download and the codec sits on the accepted
+  path. Transport-only — nothing enters the transcript, no protocol or
+  soundness surface touched. Measured at the P6 workload (accepted e2e,
+  golden decode ✓, flat-cost gate 1.18): **public logits 20.50 → 7.41 MB
+  (2.77×), total response download 157.9 → 144.8 MB**. JSON schema gains
+  `public_logits_packed_bytes` + `total_response_download_packed_bytes`
+  (old fields keep their meaning). Dirty-tree measurement
+  `p6-2026-07-07-d71e339.json`; the clean-tree run of record lands with
+  the commit checkpoint. The §4.2 is_max argmax argument stays logged as
+  the deeper lever (would remove the remaining 7.4 MB at ~2.5 M lookups).
+
+- **2026-07-07 (P7 prep — two notes for the record, CLOSED, no P7 action)**:
+  1. **Chunking trade is a closed decision.** 5×10 decode chunks prove 23.1 s
+     vs 18.7 s for the single deferred Q=50 chunk (+23%, per-chunk fixed
+     instance costs). The single deferred chunk is the mode of record
+     (`p6_report` run of record; the 5×10 curve exists only as the flat-cost
+     gate). Chunking stays available as a latency/streaming knob — never
+     per-token (P4 dev. #8) — and is NOT a P7 work item; do not revisit
+     unless a streaming product requirement lands.
+  2. **`layer_rejects_lying_row_max` dev-profile behavior is documented and
+     robust, not a bug.** Pre-existing since P5 (reproduced at commit
+     `18e883d`, dev profile): the wires tamper trips the honest-prover
+     `debug_assert` in `hadamard_prove` before any proof exists — dev builds
+     cannot emulate this cheating prover at the wires level (P4 dev. #10
+     caveat). The test (`volta-proto/src/block_proof.rs`) wraps the case in
+     `catch_unwind` and counts a prover-side panic as detection; release
+     builds exercise the verifier-side reject. No action needed; do NOT
+     "fix" by removing the library debug_asserts.
+
 - **2026-07-06 (P6 plan, pre-registered)**: scope, design decisions and gate,
   fixed before implementation (user constraints: still the 11 GB / 4-core VM;
   P7 moves to cloud CUDA; comm up to ~150–200 MB/response acceptable as a

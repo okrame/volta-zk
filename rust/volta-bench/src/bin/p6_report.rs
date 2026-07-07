@@ -21,6 +21,7 @@
 
 use serde::Serialize;
 use std::time::Instant;
+use volta_bench::logits_pack;
 use volta_field::{Fp, Fp2};
 use volta_gpt2::{
     band_model_witness, decode_step, forward_model, forward_model_tokens, load_model,
@@ -105,7 +106,12 @@ struct Report {
     /// Public response outputs, NOT in the transcript: the band logits
     /// matrix (q×VOCAB×8) + the prefill last-row logits (VOCAB×8).
     public_logits_bytes: u64,
+    /// Same logits bit-packed (VLPK1 row codec, handoff spec §4.6.E) — the
+    /// actual download; the verifier consumes the decoded matrix.
+    public_logits_packed_bytes: u64,
     total_response_download_bytes: u64,
+    /// comm_response_bytes + public_logits_packed_bytes (packed download).
+    total_response_download_packed_bytes: u64,
     // --- PCS (stacked claims) -----------------------------------------------------
     pcs_commitments: Vec<PcsCommitmentRow>,
     pcs_commit_total_s: f64,
@@ -152,6 +158,7 @@ struct SessionResult {
     full_corrs: u64,
     chunk_p1_s: Vec<f64>,
     chunk_p2_s: Vec<f64>,
+    public_logits_packed_bytes: u64,
 }
 
 fn run_session(
@@ -174,13 +181,36 @@ fn run_session(
     let (proof, out, prod, zero) = prove_response(model, wit, &chunks_p, &mut stream, &mut txp);
     let prove_s = tp0.elapsed().as_secs_f64();
 
+    // P7 prep (handoff spec §4.6.E): the public logits travel bit-packed;
+    // the verifier consumes the DECODED matrix (asserted bit-exact), so the
+    // packed size is the real download and the codec is on the e2e path.
+    // Transport-only — nothing enters the transcript.
+    let mut public_logits_packed_bytes = 0u64;
+    let dec_prefill = {
+        let buf = logits_pack::pack_logits(1, wit.logits.len(), &wit.logits);
+        public_logits_packed_bytes += buf.len() as u64;
+        let (_, _, dec) = logits_pack::unpack_logits(&buf).expect("prefill logits decode");
+        assert_eq!(dec, wit.logits, "logits codec must be bit-exact");
+        dec
+    };
+    let dec_bands: Vec<Vec<i64>> = bands
+        .iter()
+        .map(|b| {
+            let buf = logits_pack::pack_logits(b.q, b.logits.len() / b.q, &b.logits);
+            public_logits_packed_bytes += buf.len() as u64;
+            let (_, _, dec) = logits_pack::unpack_logits(&buf).expect("band logits decode");
+            assert_eq!(dec, b.logits, "logits codec must be bit-exact");
+            dec
+        })
+        .collect();
     let chunks_v: Vec<ChunkPub> = bands
         .iter()
-        .map(|b| ChunkPub { q: b.q, logits: &b.logits, seq })
+        .zip(&dec_bands)
+        .map(|(b, dec)| ChunkPub { q: b.q, logits: dec, seq })
         .collect();
     let tv0 = Instant::now();
     let (outv, kprod, kzero) =
-        verify_response(model, t, &wit.logits, &chunks_v, &proof, &mut vc, &mut txv)
+        verify_response(model, t, &dec_prefill, &chunks_v, &proof, &mut vc, &mut txv)
             .expect("honest response must verify");
     let verify_s = tv0.elapsed().as_secs_f64();
 
@@ -342,6 +372,7 @@ fn run_session(
         full_corrs: out.corr_counters.full_corrs,
         chunk_p1_s: out.chunk_p1_s,
         chunk_p2_s: out.chunk_p2_s,
+        public_logits_packed_bytes,
     }
 }
 
@@ -542,7 +573,9 @@ fn main() {
         comm_decode_bytes_per_token: comm_decode_marginal / n_gen as u64,
         pcs_opening_bytes_total: rec.pcs_opening_bytes,
         public_logits_bytes,
+        public_logits_packed_bytes: rec.public_logits_packed_bytes,
         total_response_download_bytes: rec.comm_bytes + public_logits_bytes,
+        total_response_download_packed_bytes: rec.comm_bytes + rec.public_logits_packed_bytes,
         pcs_commitments: rec.pcs_rows,
         pcs_commit_total_s: 0.0,
         pcs_open_total_s: 0.0,

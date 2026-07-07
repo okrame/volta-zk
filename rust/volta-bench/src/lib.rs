@@ -5,6 +5,7 @@
 //! the fused pass expands mock-PCG keys, applies the correction update
 //! `k_x = k_r + Δ·δ`, and accumulates `⟨eq(r,·), k_x⟩` in one scan.
 
+pub mod logits_pack;
 pub mod logup;
 
 use volta_field::{Fp, Fp2, FpStream};

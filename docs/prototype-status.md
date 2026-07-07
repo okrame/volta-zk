@@ -66,6 +66,17 @@ constant factors hold. That constant factor is what P3/P4 measure.
   are tied to cited WYKW/Ferret tables; docs stay limited to this ledger
   entry plus measured JSON.
 
+- **2026-07-07 (P7 real-PCG phase B clean measurement)**:
+  clean run `benchmarks/results/p7-real-pcg-2026-07-07-ec6e4f7.json`
+  (`git_dirty:false`) reports `base_vole:"real"`, `setup_comm_bytes:
+  1,081,408` B = 16,384 base OT + 1,064,960 GGM OT-extension + 64
+  consistency, total **1.602 s** = base OT 0.021 s + OT extension 0.008 s
+  + base-VOLE derivation 0.016 s + LPN 1.323 s + checks 0.231 s, peak RSS
+  0.361 GB, consistency `ok:true`, `production_ready:false`. Aggregate:
+  `benchmarks/results/p7-2026-07-07-ec6e4f7.json`. Remaining blockers are
+  exactly the phase-B hardening items above: paper-level malicious checks
+  and table-derived LPN/code parameters.
+
 - **2026-07-07 (P7 real-PCG phase A, pre-registered)**:
   implement the §4.4 phase-A backend in-repo before cloud GPU spend. Scope:
   add `volta-pcg` with a WYKW/Wolverine-style Goldilocks subfield VOLE

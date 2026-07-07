@@ -327,9 +327,7 @@ pub fn expand_phase_b(
         base_ot_bytes: base_ot.comm_bytes,
         ot_extension_bytes: ot_ext.comm_bytes,
         consistency_bytes: (params.consistency_reps as u64) * 32,
-        total_bytes: base_ot.comm_bytes
-            + ot_ext.comm_bytes
-            + (params.consistency_reps as u64) * 32,
+        total_bytes: base_ot.comm_bytes + ot_ext.comm_bytes + (params.consistency_reps as u64) * 32,
     };
     let setup = PhaseBSetupReport {
         params: setup_params,
@@ -337,7 +335,8 @@ pub fn expand_phase_b(
         base_ot_transcript_digest: hex32(base_ot.digest),
         ot_extension_digest: hex32(ot_ext.digest),
         setup_binding_digest: hex32(binding),
-        consistency_challenge_source: "blake3(setup transcript binding), after base-OT and GGM-OT binding".into(),
+        consistency_challenge_source:
+            "blake3(setup transcript binding), after base-OT and GGM-OT binding".into(),
     };
     let timings = PhaseBTimings {
         t_base_ot_s,
@@ -682,7 +681,11 @@ fn scalar_from_seed(seed: [u8; 32], label: &[u8], ctr: u64) -> Scalar {
     Scalar::from_bytes_mod_order_wide(&wide)
 }
 
-fn point_key(point: curve25519_dalek::ristretto::RistrettoPoint, label: &[u8], ctr: u64) -> [u8; 32] {
+fn point_key(
+    point: curve25519_dalek::ristretto::RistrettoPoint,
+    label: &[u8],
+    ctr: u64,
+) -> [u8; 32] {
     let compressed: CompressedRistretto = point.compress();
     let mut h = blake3::Hasher::new();
     h.update(compressed.as_bytes());

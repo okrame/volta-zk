@@ -103,6 +103,21 @@ constant factors hold. That constant factor is what P3/P4 measure.
   phase B still needs real base OTs / OT extension and measured setup
   communication.
 
+- **2026-07-07 (P7 real-PCG phase A clean checkpoint rerun)**:
+  after checkpoint `fe4857b`, reran phase A on a clean tracked tree
+  (untracked result files ignored by the report's `git_dirty` check).
+  Clean JSON `benchmarks/results/p7-real-pcg-2026-07-07-fe4857b.json`
+  reports `git_dirty:false`, same P6 volume and parameters as above,
+  **3.709 s** total = setup stub 0.019 s + GGM PPRF 2.177 s + LPN expand
+  1.279 s + full combine 0.002 s + consistency checks 0.231 s; peak RSS
+  0.361 GB; consistency `ok:true`; setup communication remains 0 B because
+  base VOLE is still `mock-stub`. Clean correctness gate
+  `benchmarks/results/p6-quick-realpcg-2026-07-07-fe4857b.json` reports
+  `git_dirty:false`, `accepted:true`, flat-cost 0.993,
+  `pcg_mock_prepass_counters_match:true`, and
+  `pcg_allocation_hash_match:true`. Refreshed clean aggregate report:
+  `benchmarks/results/p7-2026-07-07-fe4857b.json`.
+
 - **2026-07-07 (P7 decision — real-PCG becomes an in-repo implementation,
   supersedes the "cost spike only" scope)**: user decision. Instead of a
   proxy measurement on a foreign field (emp-zk Mersenne-61 / ocelot), a

@@ -65,17 +65,15 @@ pub fn gemm_requant(a: &[i16], b: &[i16], m: usize, k: usize, n: usize, shift: u
     assert_eq!(a.len(), m * k);
     assert_eq!(b.len(), k * n);
     let mut out = vec![0i16; m * n];
-    out.par_chunks_mut(n)
-        .enumerate()
-        .for_each_init(
-            || vec![0i64; n],
-            |acc, (i, out_row)| {
-                gemm_row(&a[i * k..(i + 1) * k], b, n, acc);
-                for (o, &v) in out_row.iter_mut().zip(acc.iter()) {
-                    *o = requant(v, shift);
-                }
-            },
-        );
+    out.par_chunks_mut(n).enumerate().for_each_init(
+        || vec![0i64; n],
+        |acc, (i, out_row)| {
+            gemm_row(&a[i * k..(i + 1) * k], b, n, acc);
+            for (o, &v) in out_row.iter_mut().zip(acc.iter()) {
+                *o = requant(v, shift);
+            }
+        },
+    );
     out
 }
 
@@ -95,27 +93,24 @@ pub fn gemm_requant_auth(
     assert_eq!(b.len(), k * n);
     let mut out = vec![0i16; m * n];
     let mut corr = vec![0u64; m * n];
-    out.par_chunks_mut(n)
-        .zip(corr.par_chunks_mut(n))
-        .enumerate()
-        .for_each_init(
-            || vec![0i64; n],
-            |acc, (i, (out_row, corr_row))| {
-                gemm_row(&a[i * k..(i + 1) * k], b, n, acc);
-                // Per-row stream: deterministic under any thread schedule.
-                let domain = ((ep.tensor_tag as u64) << 32) | i as u64;
-                let mut masks = FpStream::domain_separated(ep.seed, domain);
-                for ((o, c), &v) in out_row.iter_mut().zip(corr_row.iter_mut()).zip(acc.iter()) {
-                    let y = requant(v, ep.shift);
-                    *o = y;
-                    let x = Fp::from_i64(y as i64);
-                    let r = masks.next_fp();
-                    *c = (x - r).value();
-                    // Prover tag: m_x = m_r — no arithmetic, the tag stream
-                    // stays aligned with the mask stream by construction.
-                }
-            },
-        );
+    out.par_chunks_mut(n).zip(corr.par_chunks_mut(n)).enumerate().for_each_init(
+        || vec![0i64; n],
+        |acc, (i, (out_row, corr_row))| {
+            gemm_row(&a[i * k..(i + 1) * k], b, n, acc);
+            // Per-row stream: deterministic under any thread schedule.
+            let domain = ((ep.tensor_tag as u64) << 32) | i as u64;
+            let mut masks = FpStream::domain_separated(ep.seed, domain);
+            for ((o, c), &v) in out_row.iter_mut().zip(corr_row.iter_mut()).zip(acc.iter()) {
+                let y = requant(v, ep.shift);
+                *o = y;
+                let x = Fp::from_i64(y as i64);
+                let r = masks.next_fp();
+                *c = (x - r).value();
+                // Prover tag: m_x = m_r — no arithmetic, the tag stream
+                // stays aligned with the mask stream by construction.
+            }
+        },
+    );
     (out, corr)
 }
 
@@ -142,10 +137,8 @@ mod tests {
         let b: Vec<i16> = (0..k * n).map(|i| ((i * 53 + 5) % 4001) as i16 - 2000).collect();
         let shift = 8;
         let native = gemm_requant(&a, &b, m, k, n, shift);
-        let reference: Vec<i16> = ref_gemm(&a, &b, m, k, n)
-            .iter()
-            .map(|&v| requant(v, shift))
-            .collect();
+        let reference: Vec<i16> =
+            ref_gemm(&a, &b, m, k, n).iter().map(|&v| requant(v, shift)).collect();
         assert_eq!(native, reference);
 
         let ep = EpilogueSpec { shift, seed: [1; 32], tensor_tag: 3 };

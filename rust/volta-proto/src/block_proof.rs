@@ -74,15 +74,14 @@ use crate::logup::{
     table_side_verify, BlindInstance, Counters, Doms, InstanceOutP, InstanceOutV, LeafAuxClaim,
     TableKey, TableSideProof,
 };
-use std::collections::BTreeMap;
 use crate::mle::{eq_vec, eval_mle};
 use crate::sumcheck_blind::{blind_prove, blind_verify, BlindSumcheckProof};
 use crate::thaler::pad_bits;
+use std::collections::BTreeMap;
 use volta_field::{Fp, Fp2};
 use volta_gpt2::{gemm_i64, GemmBiases, LayerWeights, LayerWitness, Luts, D, DFF, DH, H};
 use volta_mac::{
-    auth_verifier, CorrIndex, CorrelationStream, ProverAuthed, Transcript, VerifierCtx,
-    VerifierKey,
+    auth_verifier, CorrIndex, CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey,
 };
 
 /// Padded head count (4 head bits).
@@ -226,10 +225,9 @@ impl TableBankP {
         assert!(self.finalized);
         let mut out = Vec::with_capacity(self.mult.len());
         for (key, m) in &self.mult {
-            let sites = self
-                .roots
-                .get(key)
-                .unwrap_or_else(|| panic!("content {key:?} has a multiplicity vector but no sites"));
+            let sites = self.roots.get(key).unwrap_or_else(|| {
+                panic!("content {key:?} has a multiplicity vector but no sites")
+            });
             let tv = table_vals(*key, luts);
             let alpha = self.alphas[key];
             let (side, mult_claim) =
@@ -659,9 +657,7 @@ pub(crate) fn fold_cols_window_k(
     w: usize,
 ) -> Vec<Fp2> {
     (0..rows)
-        .map(|row| {
-            (0..w).fold(Fp2::ZERO, |s, l| s + wc[l] * keys[row * cols + c0 + l])
-        })
+        .map(|row| (0..w).fold(Fp2::ZERO, |s, l| s + wc[l] * keys[row * cols + c0 + l]))
         .collect()
 }
 
@@ -716,7 +712,6 @@ pub(crate) fn fold_rows_window_k(
 pub(crate) fn head_bit_coords(h: usize) -> [Fp2; HEAD_BITS] {
     core::array::from_fn(|b| if (h >> b) & 1 == 1 { Fp2::ONE } else { Fp2::ZERO })
 }
-
 
 // ---------------------------------------------------------------------------
 // P6 band shapes + cross-phase K/V cache segments
@@ -823,7 +818,14 @@ pub(crate) fn cache_fold_rows_p(
     let mut base = 0usize;
     for seg in segs {
         let (sv, st) = fold_rows_window_p(
-            stream, seg.dom, seg.data, seg.rows, D, &wr[base..base + seg.rows], c0, w,
+            stream,
+            seg.dom,
+            seg.data,
+            seg.rows,
+            D,
+            &wr[base..base + seg.rows],
+            c0,
+            w,
         );
         for l in 0..w {
             vals[l] += sv[l];
@@ -914,7 +916,13 @@ pub(crate) fn range_cols_padded(
 
 /// Multiplicities of a range instance over the remainder domain, with the
 /// pad element `2^(s−1)` bumped by the pad count.
-pub(crate) fn range_mult(acc: &[i64], out: &[i16], rows: usize, cols: usize, shift: u32) -> Vec<u32> {
+pub(crate) fn range_mult(
+    acc: &[i64],
+    out: &[i16],
+    rows: usize,
+    cols: usize,
+    shift: u32,
+) -> Vec<u32> {
     let half = 1i64 << (shift - 1);
     let mut m = vec![0u32; 1 << shift];
     for (&a, &y) in acc.iter().zip(out) {
@@ -1250,7 +1258,6 @@ pub(crate) fn rowmask_eval(r_rows: &[Fp2], t: usize) -> Fp2 {
     eq[..t].iter().fold(Fp2::ZERO, |s, &e| s + e)
 }
 
-
 /// Recompute the LN affine accumulators from the boundary + stats + public
 /// gain/bias (bit-identical to the witness trace inputs — pure function, so
 /// the band slices need no trace bookkeeping):
@@ -1267,8 +1274,7 @@ pub(crate) fn ln_acc_recompute(
     let mut acc = vec![0i64; t * D];
     for i in 0..t {
         for j in 0..D {
-            acc[i * D + j] = (x[i * D + j] as i64 - mean[i]) * rsqrt_out[i] as i64
-                * gain[j] as i64
+            acc[i * D + j] = (x[i * D + j] as i64 - mean[i]) * rsqrt_out[i] as i64 * gain[j] as i64
                 + ((bias[j] as i64) << s_ln);
         }
     }
@@ -1446,14 +1452,21 @@ pub(crate) fn prove_ln_chain(
                 e_tab[i * cp_d + j] = Fp2::from_base(Fp::from_i64(a - mean[i]));
             }
             if j < D {
-                r_tab[i * cp_d + j] =
-                    Fp2::from_base(lv.rout_fp[i] * Fp::from_i64(gain[j] as i64));
+                r_tab[i * cp_d + j] = Fp2::from_base(lv.rout_fp[i] * Fp::from_i64(gain[j] as i64));
             }
         }
     }
     let hd = HadamardDoms::alloc(&mut cx.doms, pt_ln.len());
     let (had_proof, r_h, e_claim, r_claim) = hadamard_prove(
-        &pt_ln, e_tab, r_tab, claim0_h, &hd, cx.stream, cx.tx, &mut cx.prod, &mut cx.zero,
+        &pt_ln,
+        e_tab,
+        r_tab,
+        claim0_h,
+        &hd,
+        cx.stream,
+        cx.tx,
+        &mut cx.prod,
+        &mut cx.zero,
     );
     // ẽ(r) = x̃(r) − meañ(r_rows): streamed boundary + vector openings.
     let x_open_r = open_matrix_p(cx.stream, dom_x, x, t, D, &r_h);
@@ -1507,14 +1520,8 @@ pub(crate) fn verify_ln_chain(
         return None;
     }
     let aux_ln = [(1usize, wire.point.clone(), wire.key)];
-    let site_ln = verify_range_site(
-        n_d,
-        s_ln,
-        &proof.inst_ln,
-        proof.inst_ln_stage1.as_ref(),
-        &aux_ln,
-        cx,
-    )?;
+    let site_ln =
+        verify_range_site(n_d, s_ln, &proof.inst_ln, proof.inst_ln_stage1.as_ref(), &aux_ln, cx)?;
 
     let pt_ln = site_ln.acc_point().to_vec();
     let k_acc_ln = site_ln.acc_key;
@@ -1594,12 +1601,23 @@ pub(crate) fn ffn_phase1(
     let f_cb = pad_bits(DFF);
 
     assert_ln_stats(
-        &wit.attn_block_out, t, &wit.ln2_mean, &wit.ln2_var, &wit.ln2_rsqrt_in,
-        &wit.ln2_rsqrt_out, luts,
+        &wit.attn_block_out,
+        t,
+        &wit.ln2_mean,
+        &wit.ln2_var,
+        &wit.ln2_rsqrt_in,
+        &wit.ln2_rsqrt_out,
+        luts,
     );
     let rout_pad = Fp::from_i64(luts.ln_rsqrt[0] as i64);
     let (lv, ln_vec_corrs) = auth_ln_vecs_p(
-        cx, rb, &wit.ln2_mean, &wit.ln2_var, &wit.ln2_rsqrt_in, &wit.ln2_rsqrt_out, rout_pad,
+        cx,
+        rb,
+        &wit.ln2_mean,
+        &wit.ln2_var,
+        &wit.ln2_rsqrt_in,
+        &wit.ln2_rsqrt_out,
+        rout_pad,
     );
 
     let (s_dn, s_up, s_ln) = (p.shift_ffn_down, p.shift_ffn_up, p.shift_ln_norm);
@@ -1615,8 +1633,13 @@ pub(crate) fn ffn_phase1(
     add_range_mult(cx.bank, &wit.ffn_up_acc, &wit.ffn_up_q, t, DFF, s_up);
     // LN2 accumulators, recomputed (bit-identical to the trace inputs).
     let acc_ln = ln_acc_recompute(
-        &wit.attn_block_out, t, &wit.ln2_mean, &wit.ln2_rsqrt_out, &weights.ln2_gain,
-        &weights.ln2_bias, s_ln,
+        &wit.attn_block_out,
+        t,
+        &wit.ln2_mean,
+        &wit.ln2_rsqrt_out,
+        &weights.ln2_gain,
+        &weights.ln2_bias,
+        s_ln,
     );
     add_range_mult(cx.bank, &acc_ln, &wit.ln2_out, t, D, s_ln);
     let mut mult_rsq = vec![0u32; 1 << 16];
@@ -1674,13 +1697,17 @@ pub(crate) fn prove_ffn_block(
     let s_up = p.shift_ffn_up;
     let s_ln = p.shift_ln_norm;
     let acc_ln = ln_acc_recompute(
-        &wit.attn_block_out, t, &wit.ln2_mean, &wit.ln2_rsqrt_out, &weights.ln2_gain,
-        &weights.ln2_bias, s_ln,
+        &wit.attn_block_out,
+        t,
+        &wit.ln2_mean,
+        &wit.ln2_rsqrt_out,
+        &weights.ln2_gain,
+        &weights.ln2_bias,
+        s_ln,
     );
 
     // ---- 1+2: ffn_down range site, closed against the residual ------------
-    let site_dn =
-        prove_range_site(&wit.ffn_down_acc, &wit.ffn_down_q, t, D, s_dn, Vec::new(), cx);
+    let site_dn = prove_range_site(&wit.ffn_down_acc, &wit.ffn_down_q, t, D, s_dn, Vec::new(), cx);
     let inst_down = &site_dn.main;
     let pt_out = inst_down.point.clone();
     // Residual zero row: ffn_down_q̃(pt) − f̃bo(pt) + ãbo(pt) = 0, both
@@ -1693,8 +1720,7 @@ pub(crate) fn prove_ffn_block(
     let pt = site_dn.acc_point().to_vec();
     let mut acc_dn_claim = site_dn.acc_claim;
     if let Some(b) = biases {
-        acc_dn_claim =
-            sub_bias_p(acc_dn_claim, &b.ffn_down, d_cb, &pt, t, s_dn, &mut cx.ctr_other);
+        acc_dn_claim = sub_bias_p(acc_dn_claim, &b.ffn_down, d_cb, &pt, t, s_dn, &mut cx.ctr_other);
     }
     let (r_j_dn, r_i_dn) = pt.split_at(d_cb);
     let cd_down = ChainDoms::alloc(&mut cx.doms, DFF);
@@ -1740,8 +1766,7 @@ pub(crate) fn prove_ffn_block(
     let mut acc_up_claim = transport_p(&inst_up, s_up);
     let pt_u = inst_up.point.clone();
     if let Some(b) = biases {
-        acc_up_claim =
-            sub_bias_p(acc_up_claim, &b.ffn_up, f_cb, &pt_u, t, s_up, &mut cx.ctr_other);
+        acc_up_claim = sub_bias_p(acc_up_claim, &b.ffn_up, f_cb, &pt_u, t, s_up, &mut cx.ctr_other);
     }
     let (r_j_up, r_i_up) = pt_u.split_at(f_cb);
     let cd_up = ChainDoms::alloc(&mut cx.doms, D);
@@ -1827,14 +1852,8 @@ pub(crate) fn verify_ffn_block(
     let n_d = d_cb + rb;
     let n_ff = f_cb + rb;
     let shifts_range = [Some(0u32), None];
-    let site_dn = verify_range_site(
-        n_d,
-        s_dn,
-        &proof.inst_down,
-        proof.inst_down_stage1.as_ref(),
-        &[],
-        cx,
-    )?;
+    let site_dn =
+        verify_range_site(n_d, s_dn, &proof.inst_down, proof.inst_down_stage1.as_ref(), &[], cx)?;
     let vd = &site_dn.main;
     let pt_out = vd.point.clone();
     let f_k = open_matrix_k(fbo_keys, t, D, &pt_out);
@@ -2119,7 +2138,8 @@ pub fn build_attn_wires_band(b: &BandAttnRefs, luts: &Luts) -> AttnWires {
             for j in 0..sh.win(i) {
                 let pidx = h * caus + sh.packed_off(i) + j;
                 assert_eq!(
-                    s_full[i * s + j], b.scores_acc[pidx],
+                    s_full[i * s + j],
+                    b.scores_acc[pidx],
                     "witness scores_acc inconsistent with Q·Kᵀ recompute"
                 );
             }
@@ -2340,9 +2360,7 @@ pub(crate) fn attn_phase1_with_wires(
     }
     cx.bank.add_mult(TableKey::Range(p.shift_softmax_norm), &mult_sn);
     drop(rem_sn);
-    let rem_sc = build_rem_sc_packed(
-        &wit.scores_acc, &wit.scores_q, sh, p.shift_scores,
-    );
+    let rem_sc = build_rem_sc_packed(&wit.scores_acc, &wit.scores_q, sh, p.shift_scores);
     let mut mult_sc = vec![0u32; 1 << p.shift_scores];
     for &r in &rem_sc {
         mult_sc[r as usize] += 1;
@@ -2371,10 +2389,21 @@ pub(crate) fn attn_phase1_with_wires(
     drop(rem_qkv);
     // LN1 (first half of the shared ln_norm_requant trace) + attn_proj/av.
     assert_ln_stats(
-        &wit.x_in, t, &wit.ln1_mean, &wit.ln1_var, &wit.ln1_rsqrt_in, &wit.ln1_rsqrt_out, luts,
+        &wit.x_in,
+        t,
+        &wit.ln1_mean,
+        &wit.ln1_var,
+        &wit.ln1_rsqrt_in,
+        &wit.ln1_rsqrt_out,
+        luts,
     );
     let acc_ln1 = ln_acc_recompute(
-        &wit.x_in, t, &wit.ln1_mean, &wit.ln1_rsqrt_out, &weights.ln1_gain, &weights.ln1_bias,
+        &wit.x_in,
+        t,
+        &wit.ln1_mean,
+        &wit.ln1_rsqrt_out,
+        &weights.ln1_gain,
+        &weights.ln1_bias,
         p.shift_ln_norm,
     );
     add_range_mult(cx.bank, &acc_ln1, &wit.ln1_out, t, D, p.shift_ln_norm);
@@ -2390,7 +2419,13 @@ pub(crate) fn attn_phase1_with_wires(
     // ---- element-wise auth ---------------------------------------------------
     let rout_pad = Fp::from_i64(luts.ln_rsqrt[0] as i64);
     let (lv1, ln_vec_corrs) = auth_ln_vecs_p(
-        cx, rb, &wit.ln1_mean, &wit.ln1_var, &wit.ln1_rsqrt_in, &wit.ln1_rsqrt_out, rout_pad,
+        cx,
+        rb,
+        &wit.ln1_mean,
+        &wit.ln1_var,
+        &wit.ln1_rsqrt_in,
+        &wit.ln1_rsqrt_out,
+        rout_pad,
     );
     let denoms_fp = fp_col_i64(&wires.denoms_row);
     let dom_denoms = cx.doms.take(1);
@@ -2510,14 +2545,18 @@ pub(crate) fn prove_attn_block(
     let rem_sc = build_rem_sc_packed(&wit.scores_acc, &wit.scores_q, sh, s_sc);
     let (rem_qkv, out_qkv) = build_qkv_cols(wit, s_qkv, t_pad);
     let acc_ln1 = ln_acc_recompute(
-        &wit.x_in, t, &wit.ln1_mean, &wit.ln1_rsqrt_out, &weights.ln1_gain, &weights.ln1_bias,
+        &wit.x_in,
+        t,
+        &wit.ln1_mean,
+        &wit.ln1_rsqrt_out,
+        &weights.ln1_gain,
+        &weights.ln1_bias,
         s_ln,
     );
 
     // ---- 1: attn_proj range instance, closed against the residual ----------
     // (chained two-stage for s_ap > 16 — P5 per-layer residual scales).
-    let site_proj =
-        prove_range_site(&wit.proj_acc, &wit.attn_proj_q, t, D, s_ap, Vec::new(), cx);
+    let site_proj = prove_range_site(&wit.proj_acc, &wit.attn_proj_q, t, D, s_ap, Vec::new(), cx);
     let inst_proj = &site_proj.main;
     let pt_ap = inst_proj.point.clone();
     // Residual: attn_block_out = x_in + attn_proj_q ⇒ zero row at pt_ap.
@@ -2572,8 +2611,7 @@ pub(crate) fn prove_attn_block(
         let mut slice = vec![Fp2::ZERO; 64 * t_pad];
         for i in 0..t {
             for l in 0..DH {
-                slice[i * 64 + l] =
-                    Fp2::from_base(Fp::from_i64(wit.av_acc[i * D + h * DH + l]));
+                slice[i * 64 + l] = Fp2::from_base(Fp::from_i64(wit.av_acc[i * D + h * DH + l]));
             }
         }
         *val = eval_mle_counted(&slice, &pt_wv, &mut cx.ctr_other);
@@ -2697,12 +2735,18 @@ pub(crate) fn prove_attn_block(
     // R is constant in the column (LSB) vars, so R̃ at the full sumcheck
     // point IS the recips row-table claim at the (rows ‖ head) part.
     let e_tab = lift_i16_fp2(&wires.exp_rect);
-    let r_tab: Vec<Fp2> = (0..1usize << nr)
-        .map(|y| Fp2::from_base(recips_fp[y >> sb]))
-        .collect();
+    let r_tab: Vec<Fp2> = (0..1usize << nr).map(|y| Fp2::from_base(recips_fp[y >> sb])).collect();
     let hd = HadamardDoms::alloc(&mut cx.doms, nr);
     let (had_proof, r_h, e_claim, r_claim) = hadamard_prove(
-        &pt_sn, e_tab, r_tab, wacc_claim, &hd, cx.stream, cx.tx, &mut cx.prod, &mut cx.zero,
+        &pt_sn,
+        e_tab,
+        r_tab,
+        wacc_claim,
+        &hd,
+        cx.stream,
+        cx.tx,
+        &mut cx.prod,
+        &mut cx.zero,
     );
     let rec_open = open_fp_vec_p(cx.stream, dom_recips, &recips_fp, &r_h[sb..]);
     cx.zero.push(r_claim.sub(rec_open));
@@ -2841,8 +2885,7 @@ pub(crate) fn prove_attn_block(
         }
     }
     let above_open = open_weighted_p(cx.stream, dom_above, &above_fp, &wts);
-    let mut acc_sc_true =
-        tr_sc.sub(ProverAuthed::from_public(c_pad * padmask)).add(above_open);
+    let mut acc_sc_true = tr_sc.sub(ProverAuthed::from_public(c_pad * padmask)).add(above_open);
     if p.softmax_row_shift {
         // The out column is s′ = s − c: add back 2^s·⟨gc, c⟩, gc_i = the
         // causal eq mass of row i (authenticated weighted opening of c).
@@ -3079,10 +3122,7 @@ pub(crate) fn verify_attn_phase1(
             return None;
         }
     }
-    if proof.above_corr.len() != n_above
-        || proof.gemm_wv.len() != H
-        || proof.gemm_qk.len() != H
-    {
+    if proof.above_corr.len() != n_above || proof.gemm_wv.len() != H || proof.gemm_qk.len() != H {
         return None;
     }
     // P5 stable softmax: presence of the row-shift machinery must match the
@@ -3170,14 +3210,8 @@ pub(crate) fn verify_attn_block(
     let n_d = d_cb + rb;
     let shifts_range = [Some(0u32), None];
     let shifts_pair = [Some(0u32), Some(16u32)];
-    let site_proj = verify_range_site(
-        n_d,
-        s_ap,
-        &proof.inst_proj,
-        proof.inst_proj_stage1.as_ref(),
-        &[],
-        cx,
-    )?;
+    let site_proj =
+        verify_range_site(n_d, s_ap, &proof.inst_proj, proof.inst_proj_stage1.as_ref(), &[], cx)?;
     let vp = &site_proj.main;
     let pt_ap = vp.point.clone();
     let abo_k = open_matrix_k(abo_keys, t, D, &pt_ap);
@@ -3231,9 +3265,7 @@ pub(crate) fn verify_attn_block(
         let vkeys_row = cache_fold_cols_k(v_segs, &eq_within, h * DH, DH);
         let open_b_key = move |ptl: &[Fp2]| {
             let eq_l = eq_vec(ptl);
-            VerifierKey {
-                k: (0..s_len).fold(Fp2::ZERO, |s, row| s + eq_l[row] * vkeys_row[row]),
-            }
+            VerifierKey { k: (0..s_len).fold(Fp2::ZERO, |s, row| s + eq_l[row] * vkeys_row[row]) }
         };
         let cd = ChainDoms::alloc(&mut cx.doms, s_pad);
         let (wk, _r_l) = verify_gemm_act_chained(
@@ -3281,8 +3313,9 @@ pub(crate) fn verify_attn_block(
         return None; // negligible-probability event; redraw/panic acceptable
     }
     let dom_cw = cx.doms.take(1);
-    let k_w_causal =
-        VerifierKey { k: cx.ctx.expand_full_keys(dom_cw, 1)[0] + cx.ctx.delta * proof.causal_w_corr };
+    let k_w_causal = VerifierKey {
+        k: cx.ctx.expand_full_keys(dom_cw, 1)[0] + cx.ctx.delta * proof.causal_w_corr,
+    };
     cx.kzero.push(k_w_causal.scale(m_eval).sub(k_causal_n));
     aux_sn.push((1, r_c.clone(), k_w_causal));
 
@@ -3340,8 +3373,7 @@ pub(crate) fn verify_attn_block(
         half_pt2.extend_from_slice(&rho2);
         let dom_rs2 = cx.doms.take(1);
         let k_rs2 = VerifierKey {
-            k: cx.ctx.expand_full_keys(dom_rs2, 1)[0]
-                + cx.ctx.delta * proof.ismax_rowsum_corr?,
+            k: cx.ctx.expand_full_keys(dom_rs2, 1)[0] + cx.ctx.delta * proof.ismax_rowsum_corr?,
         };
         let eq_rho2 = eq_vec(&rho2);
         let mut realmask = Fp2::ZERO;
@@ -3350,27 +3382,18 @@ pub(crate) fn verify_attn_block(
                 realmask += eq_rho2[h * q_pad + i];
             }
         }
-        cx.kzero
-            .push(k_rs2.scale(two_sb).sub(VerifierKey::from_public(realmask, cx.ctx.delta)));
+        cx.kzero.push(k_rs2.scale(two_sb).sub(VerifierKey::from_public(realmask, cx.ctx.delta)));
         aux_exp.push((0usize, r_h2.clone(), k_r2));
         aux_exp.push((2usize, r_h2, k_e2));
         aux_exp.push((2usize, half_pt2, k_rs2));
     }
-    let exp_shifts: Vec<Option<u32>> = if row_shift_on {
-        vec![Some(0), Some(16), None]
-    } else {
-        vec![Some(0), Some(16)]
-    };
+    let exp_shifts: Vec<Option<u32>> =
+        if row_shift_on { vec![Some(0), Some(16), None] } else { vec![Some(0), Some(16)] };
     let vexp = cx.inst(TableKey::Exp, nr, &exp_shifts, &proof.inst_exp, &aux_exp)?;
 
     // ---- 11: softmax_recip instance -----------------------------------------------
-    let vrc = cx.inst(
-        TableKey::SoftmaxRecip,
-        rb + HEAD_BITS,
-        &shifts_pair,
-        &proof.inst_recip,
-        &[],
-    )?;
+    let vrc =
+        cx.inst(TableKey::SoftmaxRecip, rb + HEAD_BITS, &shifts_pair, &proof.inst_recip, &[])?;
     let rin_k = open_fp_vec_k(&rin_row_keys, &vrc.point);
     cx.kzero.push(vrc.col_keys[0].key.sub(rin_k));
     let rec_k2 = open_fp_vec_k(&recips_keys, &vrc.point);
@@ -3403,9 +3426,8 @@ pub(crate) fn verify_attn_block(
         }
     }
     let above_k = open_weighted_k(&above_keys, &wts);
-    let mut k_acc_sc_true = k_tr_sc
-        .sub(VerifierKey::from_public(c_pad * padmask, cx.ctx.delta))
-        .add(above_k);
+    let mut k_acc_sc_true =
+        k_tr_sc.sub(VerifierKey::from_public(c_pad * padmask, cx.ctx.delta)).add(above_k);
     if row_shift_on {
         let mut gcw = vec![Fp2::ZERO; H_PAD * q_pad];
         for h in 0..H {
@@ -3416,8 +3438,7 @@ pub(crate) fn verify_attn_block(
             }
         }
         let gc_k = open_weighted_k(rowshift_keys.as_ref()?, &gcw);
-        k_acc_sc_true =
-            k_acc_sc_true.add(gc_k.scale(Fp2::from_base(Fp::new(1u64 << s_sc))));
+        k_acc_sc_true = k_acc_sc_true.add(gc_k.scale(Fp2::from_base(Fp::new(1u64 << s_sc))));
     }
 
     // ---- 13: scores head split ---------------------------------------------------
@@ -3440,9 +3461,7 @@ pub(crate) fn verify_attn_block(
         let kkeys_col = cache_fold_rows_k(k_segs, &eq_rj_sc, h * DH, DH);
         let open_b_key = move |ptl: &[Fp2]| {
             let eq_l = eq_vec(ptl);
-            VerifierKey {
-                k: (0..DH).fold(Fp2::ZERO, |s, l| s + eq_l[l] * kkeys_col[l]),
-            }
+            VerifierKey { k: (0..DH).fold(Fp2::ZERO, |s, l| s + eq_l[l] * kkeys_col[l]) }
         };
         let cd = ChainDoms::alloc(&mut cx.doms, DH);
         let (wk, _r_l) = verify_gemm_act_chained(
@@ -3599,7 +3618,11 @@ fn layer_lookups(sh: BandShape) -> Vec<InstanceLookups> {
         InstanceLookups { name: "av", table: "requant_av", lookups: tp << 10 },
         InstanceLookups { name: "softmax_norm", table: "softmax_norm_requant", lookups: rect },
         InstanceLookups { name: "exp", table: "exp", lookups: rect },
-        InstanceLookups { name: "softmax_recip", table: "softmax_recip", lookups: tp * H_PAD as u64 },
+        InstanceLookups {
+            name: "softmax_recip",
+            table: "softmax_recip",
+            lookups: tp * H_PAD as u64,
+        },
         InstanceLookups { name: "scores", table: "requant_scores", lookups: rect },
         InstanceLookups { name: "qkv", table: "requant_qkv", lookups: tp << 12 },
         InstanceLookups { name: "ln1_norm", table: "ln_norm_requant", lookups: tp << 10 },
@@ -3755,17 +3778,12 @@ pub fn prove_layer_phase2_band(
     } = p1;
 
     // ---- reverse dataflow: FFN chain, then attention chain ------------------
-    let (ffn, w_ffn) =
-        prove_ffn_block(wit, weights, luts, ffn_p1, cx, dom_abo, dom_fbo, biases);
-    let mut k_segs: Vec<CacheSegP> = prefix
-        .iter()
-        .map(|pf| CacheSegP { dom: pf.dom_k, rows: pf.rows, data: pf.k })
-        .collect();
+    let (ffn, w_ffn) = prove_ffn_block(wit, weights, luts, ffn_p1, cx, dom_abo, dom_fbo, biases);
+    let mut k_segs: Vec<CacheSegP> =
+        prefix.iter().map(|pf| CacheSegP { dom: pf.dom_k, rows: pf.rows, data: pf.k }).collect();
     k_segs.push(CacheSegP { dom: dom_k, rows: t, data: &wit.k });
-    let mut v_segs: Vec<CacheSegP> = prefix
-        .iter()
-        .map(|pf| CacheSegP { dom: pf.dom_v, rows: pf.rows, data: pf.v })
-        .collect();
+    let mut v_segs: Vec<CacheSegP> =
+        prefix.iter().map(|pf| CacheSegP { dom: pf.dom_v, rows: pf.rows, data: pf.v }).collect();
     v_segs.push(CacheSegP { dom: dom_v, rows: t, data: &wit.v });
     let (attn, w_attn) = prove_attn_block(
         wit, weights, luts, attn_p1, cx, dom_xin, &k_segs, &v_segs, dom_abo, biases,
@@ -3788,8 +3806,7 @@ pub fn prove_layer_phase2_band(
         boundary: 8 * 5 * (t * D) as u64,
         mult: 0,
         ln_vectors: 8 * 8 * t_pad,
-        attn_vectors: 8
-            * ((3 + p.softmax_row_shift as u64) * H_PAD as u64 * t_pad + n_above),
+        attn_vectors: 8 * ((3 + p.softmax_row_shift as u64) * H_PAD as u64 * t_pad + n_above),
         rounds_claims: 16 * (cx.stream.counters.full_corrs - fulls0),
     };
 
@@ -3954,8 +3971,18 @@ pub fn verify_layer_phase2_band(
             prefix.iter().map(|pf| CacheSegK { rows: pf.rows, keys: pf.v_keys }).collect();
         v_segs.push(CacheSegK { rows: t, keys: &v_keys });
         verify_attn_block(
-            sh, ln1_gain, ln1_bias, luts, &proof.attn, attn, cx, &xin_keys, &k_segs, &v_segs,
-            &abo_keys, biases,
+            sh,
+            ln1_gain,
+            ln1_bias,
+            luts,
+            &proof.attn,
+            attn,
+            cx,
+            &xin_keys,
+            &k_segs,
+            &v_segs,
+            &abo_keys,
+            biases,
         )
     };
     let mut w_attn = w_attn_res?;
@@ -4043,7 +4070,13 @@ mod tests {
         let (proof, out) = prove_layer_phase2(wit, w, luts, p1, &mut cx, biases);
         let BlockCtxP { doms, mut prod, mut zero, mut ctr_instances, .. } = cx;
         let tables = bank.close(
-            luts, stream, &mut table_doms, txp, &mut ctr_instances, &mut prod, &mut zero,
+            luts,
+            stream,
+            &mut table_doms,
+            txp,
+            &mut ctr_instances,
+            &mut prod,
+            &mut zero,
         );
         (proof, out, tables, prod, zero, doms)
     }
@@ -4070,7 +4103,15 @@ mod tests {
         let mut bankv = TableBankV::finalize(&expected, tables, vc, txv, &mut table_doms)?;
         let mut cx = BlockCtxV::with_doms(vc, txv, v1.doms, &mut bankv);
         let outv = verify_layer_phase2(
-            T, &w.ln1_gain, &w.ln1_bias, &w.ln2_gain, &w.ln2_bias, luts, proof, v1, &mut cx,
+            T,
+            &w.ln1_gain,
+            &w.ln1_bias,
+            &w.ln2_gain,
+            &w.ln2_bias,
+            luts,
+            proof,
+            v1,
+            &mut cx,
             biases,
         )?;
         let BlockCtxV { doms, mut kprod, mut kzero, .. } = cx;
@@ -4123,12 +4164,8 @@ mod tests {
         assert_eq!(out.weight_claims.len(), 4, "expected exactly 4 weight claims");
         assert_eq!(outv.weight_keys.len(), 4);
         let w_perm = cattn_permuted(&w.c_attn);
-        let dims: [(usize, usize, &[i16]); 4] = [
-            (D, 4096, &w_perm),
-            (D, D, &w.attn_proj),
-            (D, DFF, &w.ffn_up),
-            (DFF, D, &w.ffn_down),
-        ];
+        let dims: [(usize, usize, &[i16]); 4] =
+            [(D, 4096, &w_perm), (D, D, &w.attn_proj), (D, DFF, &w.ffn_up), (DFF, D, &w.ffn_down)];
         for (i, wc) in out.weight_claims.iter().enumerate() {
             let (k, n, mat) = dims[i];
             assert_eq!(wc.point.len(), pad_bits(k) + pad_bits(n));
@@ -4160,10 +4197,7 @@ mod tests {
 
     #[test]
     fn attn_block_e2e() {
-        assert!(
-            run_layer_case(21, |_, _, _| {}, |_| {}, |_| {}),
-            "honest full layer rejected"
-        );
+        assert!(run_layer_case(21, |_, _, _| {}, |_| {}, |_| {}), "honest full layer rejected");
     }
 
     /// Nonzero softmax weight above the diagonal in the prover's causal-B
@@ -4191,9 +4225,14 @@ mod tests {
     #[test]
     fn layer_rejects_forged_boundary() {
         assert!(
-            !run_layer_case(23, |_, _, _| {}, |_| {}, |p| {
-                p.k_corr[57] = p.k_corr[57].wrapping_add(1);
-            }),
+            !run_layer_case(
+                23,
+                |_, _, _| {},
+                |_| {},
+                |p| {
+                    p.k_corr[57] = p.k_corr[57].wrapping_add(1);
+                }
+            ),
             "forged K boundary accepted"
         );
     }
@@ -4203,9 +4242,14 @@ mod tests {
     #[test]
     fn layer_rejects_tampered_weight_claim() {
         assert!(
-            !run_layer_case(24, |_, _, _| {}, |_| {}, |p| {
-                p.attn.w_cattn_corr += Fp2::ONE;
-            }),
+            !run_layer_case(
+                24,
+                |_, _, _| {},
+                |_| {},
+                |p| {
+                    p.attn.w_cattn_corr += Fp2::ONE;
+                }
+            ),
             "tampered c_attn weight claim accepted"
         );
     }
@@ -4253,9 +4297,14 @@ mod tests {
     #[test]
     fn layer_rejects_tampered_wire_corr() {
         assert!(
-            !run_layer_case(27, |_, _, _| {}, |_| {}, |p| {
-                p.ffn.gelu_wire_corr += Fp2::ONE;
-            }),
+            !run_layer_case(
+                27,
+                |_, _, _| {},
+                |_| {},
+                |p| {
+                    p.ffn.gelu_wire_corr += Fp2::ONE;
+                }
+            ),
             "tampered wire-claim correction accepted"
         );
     }
@@ -4402,12 +4451,8 @@ mod tests {
         assert_eq!(out.weight_claims.len(), 4, "expected exactly 4 weight claims");
         assert_eq!(outv.weight_keys.len(), 4);
         let w_perm = cattn_permuted(&w.c_attn);
-        let dims: [(usize, usize, &[i16]); 4] = [
-            (D, 4096, &w_perm),
-            (D, D, &w.attn_proj),
-            (D, DFF, &w.ffn_up),
-            (DFF, D, &w.ffn_down),
-        ];
+        let dims: [(usize, usize, &[i16]); 4] =
+            [(D, 4096, &w_perm), (D, D, &w.attn_proj), (D, DFF, &w.ffn_up), (DFF, D, &w.ffn_down)];
         for (i, wc) in out.weight_claims.iter().enumerate() {
             let (k, n, mat) = dims[i];
             assert_eq!(wc.point.len(), pad_bits(k) + pad_bits(n));
@@ -4469,12 +4514,8 @@ mod tests {
                 .expect("honest chained layer must verify");
 
         let w_perm = cattn_permuted(&w.c_attn);
-        let dims: [(usize, usize, &[i16]); 4] = [
-            (D, 4096, &w_perm),
-            (D, D, &w.attn_proj),
-            (D, DFF, &w.ffn_up),
-            (DFF, D, &w.ffn_down),
-        ];
+        let dims: [(usize, usize, &[i16]); 4] =
+            [(D, 4096, &w_perm), (D, D, &w.attn_proj), (D, DFF, &w.ffn_up), (DFF, D, &w.ffn_down)];
         for (i, wc) in out.weight_claims.iter().enumerate() {
             let (k, n, mat) = dims[i];
             assert_eq!(outv.weight_keys[i].0, wc.point);
@@ -4536,12 +4577,8 @@ mod tests {
         };
 
         let w_perm = cattn_permuted(&w.c_attn);
-        let dims: [(usize, usize, &[i16]); 4] = [
-            (D, 4096, &w_perm),
-            (D, D, &w.attn_proj),
-            (D, DFF, &w.ffn_up),
-            (DFF, D, &w.ffn_down),
-        ];
+        let dims: [(usize, usize, &[i16]); 4] =
+            [(D, 4096, &w_perm), (D, D, &w.attn_proj), (D, DFF, &w.ffn_up), (DFF, D, &w.ffn_down)];
         for (i, wc) in out.weight_claims.iter().enumerate() {
             let (k, n, mat) = dims[i];
             let tv = weight_true_eval(mat, k, n, &wc.point);
@@ -4584,27 +4621,29 @@ mod tests {
     /// verifier-side reject.
     #[test]
     fn layer_rejects_lying_row_max() {
-        let outcome = std::panic::catch_unwind(|| run_row_shift_case(
-            95,
-            |wires| {
-                // Find a marked row with >1 causal entries and move the 1 to
-                // a neighbor whose s′ is nonzero.
-                let n = wires.is_max_rect.len();
-                for y in 0..n {
-                    if wires.is_max_rect[y] == 1 {
-                        for d in [y.wrapping_sub(1), y + 1] {
-                            if d < n && wires.sprime_rect[d] != 0 {
-                                wires.is_max_rect[y] = 0;
-                                wires.is_max_rect[d] = 1;
-                                return;
+        let outcome = std::panic::catch_unwind(|| {
+            run_row_shift_case(
+                95,
+                |wires| {
+                    // Find a marked row with >1 causal entries and move the 1 to
+                    // a neighbor whose s′ is nonzero.
+                    let n = wires.is_max_rect.len();
+                    for y in 0..n {
+                        if wires.is_max_rect[y] == 1 {
+                            for d in [y.wrapping_sub(1), y + 1] {
+                                if d < n && wires.sprime_rect[d] != 0 {
+                                    wires.is_max_rect[y] = 0;
+                                    wires.is_max_rect[d] = 1;
+                                    return;
+                                }
                             }
                         }
                     }
-                }
-                panic!("no movable is_max marker found");
-            },
-            |_| {},
-        ));
+                    panic!("no movable is_max marker found");
+                },
+                |_| {},
+            )
+        });
         assert!(
             !outcome.unwrap_or(false),
             "lying row max accepted (neither prover assert nor verifier reject fired)"
@@ -4615,9 +4654,13 @@ mod tests {
     /// must be rejected structurally.
     #[test]
     fn layer_rejects_stripped_row_shift() {
-        assert!(!run_row_shift_case(96, |_| {}, |proof| {
-            proof.attn.hadamard2 = None;
-        }));
+        assert!(!run_row_shift_case(
+            96,
+            |_| {},
+            |proof| {
+                proof.attn.hadamard2 = None;
+            }
+        ));
     }
 
     /// Negative: a chained proof whose stage-1 instance is stripped (or whose

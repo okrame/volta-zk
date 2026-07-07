@@ -24,10 +24,9 @@ use volta_pcs::{
 };
 use volta_proto::logup::{lift_q, prove_frac_tree, Counters, LeafP};
 use volta_proto::{
-    cattn_permuted, prod_batch_prover, prod_batch_verify, prove_layer_phase1, prove_layer_phase2,
-    verify_layer_phase1, verify_layer_phase2, BlockCtxP,
-    BlockCtxV,
-    TableBankP, TableBankV, layer_content_keys, layer_dom_base,
+    cattn_permuted, layer_content_keys, layer_dom_base, prod_batch_prover, prod_batch_verify,
+    prove_layer_phase1, prove_layer_phase2, verify_layer_phase1, verify_layer_phase2, BlockCtxP,
+    BlockCtxV, TableBankP, TableBankV,
 };
 
 const D: usize = 768;
@@ -215,7 +214,12 @@ fn main() {
             let out = prove_layer_phase2(&wit, &w, &luts, p1, &mut cx, None);
             let BlockCtxP { mut prod, mut zero, mut ctr_instances, .. } = cx;
             let _tables = bank.close(
-                &luts, &mut stream, &mut table_doms, &mut tx, &mut ctr_instances, &mut prod,
+                &luts,
+                &mut stream,
+                &mut table_doms,
+                &mut tx,
+                &mut ctr_instances,
+                &mut prod,
                 &mut zero,
             );
             out
@@ -227,8 +231,8 @@ fn main() {
         "  native {t_native_forward_s:.3} s | prove {t_prove_layer_s:.3} s | ratio {:.1}x",
         t_prove_layer_s / t_native_forward_s
     );
-    let t_build_wires_s = time_median(1, 3, || volta_proto::build_attn_wires(&wit, &luts))
-        .as_secs_f64();
+    let t_build_wires_s =
+        time_median(1, 3, || volta_proto::build_attn_wires(&wit, &luts)).as_secs_f64();
 
     // --- the run of record: prove, verify, close, open the PCS --------------
     eprintln!("run of record: prove + verify + closures + PCS ...");
@@ -251,7 +255,13 @@ fn main() {
     let (proof, out) = prove_layer_phase2(&wit, &w, &luts, p1, &mut cxp, None);
     let BlockCtxP { doms: mut domsp, mut prod, mut zero, mut ctr_instances, .. } = cxp;
     let tables = bank.close(
-        &luts, &mut stream, &mut table_doms, &mut txp, &mut ctr_instances, &mut prod, &mut zero,
+        &luts,
+        &mut stream,
+        &mut table_doms,
+        &mut txp,
+        &mut ctr_instances,
+        &mut prod,
+        &mut zero,
     );
 
     let tv0 = Instant::now();
@@ -267,9 +277,18 @@ fn main() {
         .expect("table bank must finalize");
     let mut cxv = BlockCtxV::with_doms(&mut vc, &mut txv, v1.doms, &mut bankv);
     let outv = verify_layer_phase2(
-        t, &w.ln1_gain, &w.ln1_bias, &w.ln2_gain, &w.ln2_bias, &luts, &proof, v1, &mut cxv, None,
+        t,
+        &w.ln1_gain,
+        &w.ln1_bias,
+        &w.ln2_gain,
+        &w.ln2_bias,
+        &luts,
+        &proof,
+        v1,
+        &mut cxv,
+        None,
     )
-        .expect("honest layer must verify");
+    .expect("honest layer must verify");
     let BlockCtxV { doms: mut domsv, mut kprod, mut kzero, .. } = cxv;
     bankv
         .close(&luts, &tables, &mut vc, &mut table_doms_v, &mut txv, &mut kprod, &mut kzero)
@@ -334,9 +353,7 @@ fn main() {
     let t_closures_s = tc0.elapsed().as_secs_f64();
 
     let accepted = ok_prod && ok_zero && ok_pcs;
-    eprintln!(
-        "  verdict: prod {ok_prod} | zero {ok_zero} | pcs {ok_pcs} → accepted = {accepted}"
-    );
+    eprintln!("  verdict: prod {ok_prod} | zero {ok_zero} | pcs {ok_pcs} → accepted = {accepted}");
     eprintln!(
         "  pcs: place {t_pcs_place_s:.3} s | commit {t_pcs_commit_s:.2} s | open {t_pcs_open_s:.3} s | verify {t_pcs_verify_s:.3} s"
     );

@@ -28,12 +28,12 @@
 //! repeated openings reveal cumulative columns; pad covers one response's
 //! queries (production: larger pad or periodic re-commit — P7 line item).
 
+use crate::batch::BlockClaim;
 use crate::merkle::{hash_leaf, verify_path, Hash, MerkleTree};
 use crate::ntt::NttPlan;
 use rayon::prelude::*;
 use std::time::Instant;
 use volta_field::{Fp, Fp2, FpStream};
-use crate::batch::BlockClaim;
 use volta_mac::{
     fresh_zero_mask, zero_batch_prover, zero_batch_verify, zero_mask_key, zero_open_prover,
     zero_open_verify, CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey,
@@ -117,16 +117,13 @@ pub fn commit(w: &[i16], params: &LigeroParams, pad_seed: [u8; 32]) -> (Commitme
 
     // Encode every row: (embed(w row) ‖ pads) zero-padded to code_len.
     let mut encoded = vec![Fp::ZERO; rows * code_len];
-    encoded
-        .par_chunks_mut(code_len)
-        .enumerate()
-        .for_each(|(r, out)| {
-            for j in 0..cols {
-                out[j] = Fp::from_i64(w[r * cols + j] as i64);
-            }
-            out[cols..cols + pad].copy_from_slice(&pads[r * pad..(r + 1) * pad]);
-            plan.forward(out);
-        });
+    encoded.par_chunks_mut(code_len).enumerate().for_each(|(r, out)| {
+        for j in 0..cols {
+            out[j] = Fp::from_i64(w[r * cols + j] as i64);
+        }
+        out[cols..cols + pad].copy_from_slice(&pads[r * pad..(r + 1) * pad]);
+        plan.forward(out);
+    });
 
     // Column leaf hashes, tiled so the strided gather stays cache-friendly.
     let tile = 128.min(code_len);
@@ -179,7 +176,9 @@ impl OpeningProof {
         let cols_b: u64 = self
             .columns
             .iter()
-            .map(|c| 4 + 8 * c.col.len() as u64 + 64 + 32 * (c.path.len() + c.mask_path.len()) as u64)
+            .map(|c| {
+                4 + 8 * c.col.len() as u64 + 64 + 32 * (c.path.len() + c.mask_path.len()) as u64
+            })
             .sum();
         32 + 16 * (self.u_q.len() + self.u_c.len()) as u64 + 16 + cols_b + 16
     }
@@ -219,11 +218,8 @@ fn combine_rows(
     // Data block: chunk the column range; each task walks all rows once.
     let n_chunks = rayon::current_num_threads() * 4;
     let chunk = cols.div_ceil(n_chunks);
-    u_q[..cols]
-        .par_chunks_mut(chunk)
-        .zip(u_c[..cols].par_chunks_mut(chunk))
-        .enumerate()
-        .for_each(|(ci, (uq, uc))| {
+    u_q[..cols].par_chunks_mut(chunk).zip(u_c[..cols].par_chunks_mut(chunk)).enumerate().for_each(
+        |(ci, (uq, uc))| {
             let j0 = ci * chunk;
             for i in 0..rows {
                 let (qi, cpi) = (q_row[i], c_pows[i]);
@@ -234,7 +230,8 @@ fn combine_rows(
                     uc[dj] += cpi.mul_base(x);
                 }
             }
-        });
+        },
+    );
     // Pad block (rows × pad, small).
     for i in 0..rows {
         let (qi, cpi) = (q_row[i], c_pows[i]);
@@ -291,9 +288,8 @@ pub fn open_zk(
     let r2: Vec<Fp2> = (0..msg_len).map(|_| ms.next_fp2()).collect();
     let r1_enc = encode_fp2(&plan, &r1);
     let r2_enc = encode_fp2(&plan, &r2);
-    let mask_tree = MerkleTree::from_leaves(
-        (0..code_len).map(|j| mask_leaf(r1_enc[j], r2_enc[j])).collect(),
-    );
+    let mask_tree =
+        MerkleTree::from_leaves((0..code_len).map(|j| mask_leaf(r1_enc[j], r2_enc[j])).collect());
     tx.append("pcs_mask_root", 32);
     tm.t_masks_s = t0.elapsed().as_secs_f64();
 
@@ -410,8 +406,12 @@ pub fn verify_open(
         if !verify_path(root, j, hash_leaf(&col_bytes(&co.col)), &co.path) {
             return false;
         }
-        if !verify_path(&proof.mask_root, j, mask_leaf(co.mask_col[0], co.mask_col[1]), &co.mask_path)
-        {
+        if !verify_path(
+            &proof.mask_root,
+            j,
+            mask_leaf(co.mask_col[0], co.mask_col[1]),
+            &co.mask_path,
+        ) {
             return false;
         }
         let mut sum_q = Fp2::ZERO;
@@ -455,11 +455,7 @@ fn claim_geom(params: &LigeroParams, c: &BlockClaim) -> ClaimGeom {
     let bv = c.point.len();
     assert!(bv >= cb, "block smaller than a matrix row");
     assert!(c.offset % (1 << bv) == 0, "block offset not aligned");
-    ClaimGeom {
-        row0: c.offset >> cb,
-        q_row: eq_vec(&c.point[cb..]),
-        q_col: eq_vec(&c.point[..cb]),
-    }
+    ClaimGeom { row0: c.offset >> cb, q_row: eq_vec(&c.point[cb..]), q_col: eq_vec(&c.point[..cb]) }
 }
 
 pub struct MultiColumnOpening {
@@ -558,7 +554,10 @@ pub struct MultiOpenTimings {
 
 impl MultiOpenTimings {
     pub fn total_s(&self) -> f64 {
-        self.t_masks_s + self.t_global_pass_s + self.t_block_passes_s + self.t_ip_zb_s
+        self.t_masks_s
+            + self.t_global_pass_s
+            + self.t_block_passes_s
+            + self.t_ip_zb_s
             + self.t_columns_s
     }
 }
@@ -735,7 +734,10 @@ pub fn open_multi_zk(
     tx.append("pcs_columns", col_b);
     tm.t_columns_s = t4.elapsed().as_secs_f64();
 
-    (MultiOpenProof { mask_root: mask_tree.root(), u_c, u_gs, corr_ss, mask_corr, m_z, columns }, tm)
+    (
+        MultiOpenProof { mask_root: mask_tree.root(), u_c, u_gs, corr_ss, mask_corr, m_z, columns },
+        tm,
+    )
 }
 
 /// Verifier for the multi-claim opening. Accepting binds every claim key to
@@ -797,35 +799,31 @@ pub fn verify_multi_open(
     let enc_uc = encode_fp2(&plan, &proof.u_c);
     let enc_ugs: Vec<Vec<Fp2>> = proof.u_gs.par_iter().map(|u| encode_fp2(&plan, u)).collect();
 
-    let ok = proof
-        .columns
-        .par_iter()
-        .enumerate()
-        .all(|(q, co)| {
-            let j = co.j as usize;
-            if j != js[q]
-                || !verify_path(root, j, hash_leaf(&col_bytes(&co.col)), &co.path)
-                || !verify_path(&proof.mask_root, j, multi_mask_leaf(&co.mask_col), &co.mask_path)
-            {
+    let ok = proof.columns.par_iter().enumerate().all(|(q, co)| {
+        let j = co.j as usize;
+        if j != js[q]
+            || !verify_path(root, j, hash_leaf(&col_bytes(&co.col)), &co.path)
+            || !verify_path(&proof.mask_root, j, multi_mask_leaf(&co.mask_col), &co.mask_path)
+        {
+            return false;
+        }
+        let mut sum_c = Fp2::ZERO;
+        for i in 0..rows {
+            sum_c += c_pows[i].mul_base(co.col[i]);
+        }
+        if enc_uc[j] != sum_c + co.mask_col[0] {
+            return false;
+        }
+        for (g, geo) in geoms.iter().enumerate() {
+            let mut sum_g = Fp2::ZERO;
+            for (di, &qi) in geo.q_row.iter().enumerate() {
+                sum_g += qi.mul_base(co.col[geo.row0 + di]);
+            }
+            if enc_ugs[g][j] != sum_g + co.mask_col[1 + g] {
                 return false;
             }
-            let mut sum_c = Fp2::ZERO;
-            for i in 0..rows {
-                sum_c += c_pows[i].mul_base(co.col[i]);
-            }
-            if enc_uc[j] != sum_c + co.mask_col[0] {
-                return false;
-            }
-            for (g, geo) in geoms.iter().enumerate() {
-                let mut sum_g = Fp2::ZERO;
-                for (di, &qi) in geo.q_row.iter().enumerate() {
-                    sum_g += qi.mul_base(co.col[geo.row0 + di]);
-                }
-                if enc_ugs[g][j] != sum_g + co.mask_col[1 + g] {
-                    return false;
-                }
-            }
-            true
-        });
+        }
+        true
+    });
     ok
 }

@@ -39,13 +39,14 @@ struct Report {
 
 fn run_one(n_bits: u32, table_bits: u32, native_prefill_s: f64) -> LogupResult {
     let n = 1usize << n_bits;
-    let table: Vec<i16> = (0..1i32 << table_bits)
-        .map(|j| (j - (1 << (table_bits - 1))) as i16)
-        .collect();
+    let table: Vec<i16> =
+        (0..1i32 << table_bits).map(|j| (j - (1 << (table_bits - 1))) as i16).collect();
     let offset = 1i32 << (table_bits - 1);
     // Deterministic synthetic lookup mix (stands in for requant/exp/LN values).
     let f: Vec<i16> = (0..n)
-        .map(|i| table[((i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 32) as usize % table.len()])
+        .map(|i| {
+            table[((i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 32) as usize % table.len()]
+        })
         .collect();
     let mut mult = vec![0u32; table.len()];
     for &v in &f {
@@ -142,10 +143,8 @@ fn main() {
         runs,
         extrapolated_prefill_logup_s: extrapolated,
     };
-    let path = format!(
-        "{}/../../benchmarks/results/p2.5-{date}-{sha}.json",
-        env!("CARGO_MANIFEST_DIR")
-    );
+    let path =
+        format!("{}/../../benchmarks/results/p2.5-{date}-{sha}.json", env!("CARGO_MANIFEST_DIR"));
     std::fs::write(&path, serde_json::to_string_pretty(&report).unwrap()).unwrap();
     eprintln!("wrote {path}");
 }

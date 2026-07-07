@@ -234,7 +234,8 @@ fn main() {
 
     eprintln!("ZK opening ...");
     let t2 = Instant::now();
-    let (oproof, ot) = open_zk(&w, &pm, &rstar, vstar, &mut ps, dom(T_OPEN_S, 0), [0x33u8; 32], &mut tx);
+    let (oproof, ot) =
+        open_zk(&w, &pm, &rstar, vstar, &mut ps, dom(T_OPEN_S, 0), [0x33u8; 32], &mut tx);
     let t_open = t2.elapsed().as_secs_f64();
     eprintln!(
         "  masks {:.3} s | row_combine {:.3} s | ip {:.3} s | columns {:.3} s  (total {t_open:.3} s)",
@@ -253,10 +254,23 @@ fn main() {
             VerifierKey { k: kf + delta * corr_vs[g] },
         ));
     }
-    let red_accepted = match batch_reduce_verifier(n_vars, &claims_v, &bproof, &mut ctx, dom(T_BATCH, 0), &mut txv)
-    {
+    let red_accepted = match batch_reduce_verifier(
+        n_vars,
+        &claims_v,
+        &bproof,
+        &mut ctx,
+        dom(T_BATCH, 0),
+        &mut txv,
+    ) {
         Some((rstar_v, k_vstar)) => verify_open(
-            &com.root, &params, &rstar_v, k_vstar, &oproof, &mut ctx, dom(T_OPEN_S, 0), &mut txv,
+            &com.root,
+            &params,
+            &rstar_v,
+            k_vstar,
+            &oproof,
+            &mut ctx,
+            dom(T_OPEN_S, 0),
+            &mut txv,
         ),
         None => false,
     };

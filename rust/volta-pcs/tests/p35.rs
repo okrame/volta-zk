@@ -171,7 +171,14 @@ fn ligero_rejects_wrong_committed_weights() {
     )
     .unwrap();
     assert!(!verify_open(
-        &com2.root, params, &rstar_v, k_vstar, &oproof, &mut ctx, dom(DOM_S, 0), &mut txv
+        &com2.root,
+        params,
+        &rstar_v,
+        k_vstar,
+        &oproof,
+        &mut ctx,
+        dom(DOM_S, 0),
+        &mut txv
     ));
 }
 
@@ -220,8 +227,7 @@ fn gemm_committed_w_e2e() {
     // The outward claim is exactly an MLE evaluation of the flat W.
     assert_eq!(wclaim.value.x, eval_mle(&embed(&w), &wclaim.point));
 
-    let claims_p =
-        [(BlockClaim { offset: 0, point: wclaim.point.clone() }, wclaim.value)];
+    let claims_p = [(BlockClaim { offset: 0, point: wclaim.point.clone() }, wclaim.value)];
     let (bproof, rstar, vstar, _bt) =
         batch_reduce_prover(&w, 10, &claims_p, &mut ps, dom(DOM_BATCH_MASKS, 0), &mut tx);
     assert_eq!(vstar.x, eval_mle(&embed(&w), &rstar));
@@ -244,17 +250,18 @@ fn gemm_committed_w_e2e() {
     .expect("committed GEMM verification");
     assert_eq!(w_point, wclaim.point);
     let claims_v = [(BlockClaim { offset: 0, point: w_point }, k_b)];
-    let (rstar_v, k_vstar) = batch_reduce_verifier(
-        10,
-        &claims_v,
-        &bproof,
-        &mut ctx,
-        dom(DOM_BATCH_MASKS, 0),
-        &mut txv,
-    )
-    .expect("batch reduction verification");
+    let (rstar_v, k_vstar) =
+        batch_reduce_verifier(10, &claims_v, &bproof, &mut ctx, dom(DOM_BATCH_MASKS, 0), &mut txv)
+            .expect("batch reduction verification");
     assert!(verify_open(
-        &com.root, &params, &rstar_v, k_vstar, &oproof, &mut ctx, dom(DOM_S, 0), &mut txv
+        &com.root,
+        &params,
+        &rstar_v,
+        k_vstar,
+        &oproof,
+        &mut ctx,
+        dom(DOM_S, 0),
+        &mut txv
     ));
 
     // Perturbed W-claim correction ⇒ the chain rejects at Π_Prod already.
@@ -329,7 +336,14 @@ fn run_multi_once(
         })
         .collect();
     verify_multi_open(
-        &com.root, params, &claims_v, &oproof, &mut ctx, dom(DOM_S, 0), dom(DOM_S, 1), &mut txv,
+        &com.root,
+        params,
+        &claims_v,
+        &oproof,
+        &mut ctx,
+        dom(DOM_S, 0),
+        dom(DOM_S, 1),
+        &mut txv,
     )
 }
 
@@ -377,22 +391,52 @@ fn gemm_committed_w_e2e_multi_open() {
     let mut tx = Transcript::new(tx_seed);
     let corr = auth_phase(&x, &yacc, m, k, n, &mut ps, &mut tx);
     let (gproof, corr_w, wclaim, _, _) = prove_gemm_blind_committed(
-        &x, &w, &yacc, m, k, n, corr, dom(DOM_W_CLAIM, 0), &mut ps, &mut tx,
+        &x,
+        &w,
+        &yacc,
+        m,
+        k,
+        n,
+        corr,
+        dom(DOM_W_CLAIM, 0),
+        &mut ps,
+        &mut tx,
     );
     let claims_p = [(BlockClaim { offset: 0, point: wclaim.point.clone() }, wclaim.value)];
     let (oproof, _) = open_multi_zk(
-        &w, &pm, &claims_p, &mut ps, dom(DOM_S, 0), dom(DOM_S, 1), [0x64u8; 32], &mut tx,
+        &w,
+        &pm,
+        &claims_p,
+        &mut ps,
+        dom(DOM_S, 0),
+        dom(DOM_S, 1),
+        [0x64u8; 32],
+        &mut tx,
     );
 
     let mut ctx = VerifierCtx::new(seed, delta);
     let mut txv = Transcript::new(tx_seed);
     let (w_point, k_b) = verify_gemm_blind_committed(
-        m, k, n, &gproof, corr_w, dom(DOM_W_CLAIM, 0), &mut ctx, &mut txv,
+        m,
+        k,
+        n,
+        &gproof,
+        corr_w,
+        dom(DOM_W_CLAIM, 0),
+        &mut ctx,
+        &mut txv,
     )
     .expect("committed GEMM verification");
     let claims_v = [(BlockClaim { offset: 0, point: w_point }, k_b)];
     assert!(verify_multi_open(
-        &com.root, &params, &claims_v, &oproof, &mut ctx, dom(DOM_S, 0), dom(DOM_S, 1), &mut txv,
+        &com.root,
+        &params,
+        &claims_v,
+        &oproof,
+        &mut ctx,
+        dom(DOM_S, 0),
+        dom(DOM_S, 1),
+        &mut txv,
     ));
 }
 
@@ -402,8 +446,7 @@ fn gemm_committed_w_e2e_multi_open() {
 /// structure, (c) opened C_W columns uniform (row pads randomize symbols).
 #[test]
 fn leakage_smoke_two_weight_sets() {
-    let params =
-        LigeroParams { row_bits: 6, col_bits: 6, pad: 40, code_bits: 7, n_queries: 32 };
+    let params = LigeroParams { row_bits: 6, col_bits: 6, pad: 40, code_bits: 7, n_queries: 32 };
     let n_vars = params.n_vars();
 
     let chi2_top4 = |vals: &[Fp]| -> f64 {
@@ -433,16 +476,8 @@ fn leakage_smoke_two_weight_sets() {
         let claims = [(BlockClaim { offset: 0, point }, v_auth)];
         let (_bp, rstar, vstar, _) =
             batch_reduce_prover(&w, n_vars, &claims, &mut ps, dom(DOM_BATCH_MASKS, 0), &mut tx);
-        let (oproof, _) = open_zk(
-            &w,
-            &pm,
-            &rstar,
-            vstar,
-            &mut ps,
-            dom(DOM_S, 0),
-            [0x36u8 ^ tag; 32],
-            &mut tx,
-        );
+        let (oproof, _) =
+            open_zk(&w, &pm, &rstar, vstar, &mut ps, dom(DOM_S, 0), [0x36u8 ^ tag; 32], &mut tx);
 
         // (b) masked u vectors: uniform top bits, no small values.
         let mut comps: Vec<Fp> = Vec::new();
@@ -455,8 +490,7 @@ fn leakage_smoke_two_weight_sets() {
         assert_eq!(comps.iter().filter(|v| v.value() < (1 << 32)).count(), 0);
 
         // (c) opened columns: symbols carry the pad entropy, uniform top bits.
-        let col_vals: Vec<Fp> =
-            oproof.columns.iter().flat_map(|c| c.col.iter().copied()).collect();
+        let col_vals: Vec<Fp> = oproof.columns.iter().flat_map(|c| c.col.iter().copied()).collect();
         let x2c = chi2_top4(&col_vals);
         assert!(x2c < 60.0, "column χ² too high: {x2c}");
 

@@ -9,11 +9,11 @@ pub mod hadamard;
 pub mod logup;
 pub mod mle;
 pub mod model_proof;
-pub mod wires;
 pub mod prod_check;
 pub mod sumcheck_blind;
 pub mod sumcheck_clear;
 pub mod thaler;
+pub mod wires;
 
 pub use block_proof::{
     build_attn_wires, cattn_permuted, layer_content_keys, layer_dom_base, prove_layer_phase1,
@@ -33,8 +33,7 @@ pub use gemm_proof::{
 };
 pub use hadamard::{hadamard_prove, hadamard_verify, HadamardDoms, HadamardProof};
 pub use model_proof::{
-    prove_model, verify_model, EmbedProof, FinalLnProof, ModelOut, ModelOutV, ModelProof,
-    SeamProof,
+    prove_model, verify_model, EmbedProof, FinalLnProof, ModelOut, ModelOutV, ModelProof, SeamProof,
 };
 pub use prod_check::{prod_batch_prover, prod_batch_verify, ProdProof};
 pub use sumcheck_blind::{blind_prove, blind_verify, BlindSumcheckProof};

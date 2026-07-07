@@ -45,8 +45,7 @@ impl GemmDomains {
         GemmDomains {
             x_row_base: CorrIndex { session: 1, layer: 0, head: 0, tensor: 1, row: 0 }.domain(),
             y_row_base: CorrIndex { session: 1, layer: 0, head: 0, tensor: 2, row: 0 }.domain(),
-            round_masks: CorrIndex { session: 1, layer: 0, head: 0, tensor: 0xF0, row: 0 }
-                .domain(),
+            round_masks: CorrIndex { session: 1, layer: 0, head: 0, tensor: 0xF0, row: 0 }.domain(),
             prod_mask: CorrIndex { session: 1, layer: 0, head: 0, tensor: 0xF1, row: 0 }.domain(),
         }
     }
@@ -402,14 +401,8 @@ pub fn verify_gemm_blind_committed_at(
     }
 
     let n_vars = pad_bits(k);
-    let (point, k_claim_n) = blind_verify(
-        n_vars,
-        VerifierKey { k: k_y },
-        &proof.sumcheck,
-        ctx,
-        doms.round_masks,
-        tx,
-    )?;
+    let (point, k_claim_n) =
+        blind_verify(n_vars, VerifierKey { k: k_y }, &proof.sumcheck, ctx, doms.round_masks, tx)?;
 
     let eq_l = eq_vec(&point);
     let mut k_x = Fp2::ZERO;
@@ -481,14 +474,9 @@ pub fn verify_gemm_blind_at(
     }
 
     let n_vars = pad_bits(k);
-    let Some((point, k_claim_n)) = blind_verify(
-        n_vars,
-        VerifierKey { k: k_y },
-        &proof.sumcheck,
-        ctx,
-        doms.round_masks,
-        tx,
-    ) else {
+    let Some((point, k_claim_n)) =
+        blind_verify(n_vars, VerifierKey { k: k_y }, &proof.sumcheck, ctx, doms.round_masks, tx)
+    else {
         return false;
     };
 
@@ -510,11 +498,7 @@ pub fn verify_gemm_blind_at(
 
     let k_mask = ctx.expand_full_keys(doms.prod_mask, 1)[0];
     let chi = tx.challenge_fp2();
-    let keys = [(
-        VerifierKey { k: k_x },
-        VerifierKey::from_public(b_final, ctx.delta),
-        k_claim_n,
-    )];
+    let keys = [(VerifierKey { k: k_x }, VerifierKey::from_public(b_final, ctx.delta), k_claim_n)];
     prod_batch_verify(&keys, k_mask, ctx.delta, chi, &proof.prod)
 }
 
@@ -850,7 +834,8 @@ mod tests {
         let mut stream = CorrelationStream::new([9; 32]);
         let mut tx = Transcript::new([8; 32]);
         let corr = auth_phase(&x, &yacc, m, k, n, &mut stream, &mut tx);
-        let (_p, _t, counters) = prove_gemm_blind(&x, &w, &yacc, m, k, n, corr, &mut stream, &mut tx);
+        let (_p, _t, counters) =
+            prove_gemm_blind(&x, &w, &yacc, m, k, n, corr, &mut stream, &mut tx);
         // 2 full masks per sumcheck round + 1 Π_Prod mask; subfield corrs =
         // every authenticated element, exactly once.
         assert_eq!(counters.full_corrs, 2 * pad_bits(k) as u64 + 1);
@@ -926,15 +911,35 @@ mod tests {
         let mut alloc = Doms::new(0xA000);
         let cd = ChainDoms::alloc(&mut alloc, k);
         let (mut proof, wire, corr_w, wclaim, _tm, _ctr) = prove_gemm_committed_chained(
-            &x, &w, m, k, n, &r_i, &r_j, claim0, &cd, &mut stream, &mut tx,
+            &x,
+            &w,
+            m,
+            k,
+            n,
+            &r_i,
+            &r_j,
+            claim0,
+            &cd,
+            &mut stream,
+            &mut tx,
         );
         if tamper == 1 {
             proof.sumcheck.round_corrs[1][0] += Fp2::ONE;
         }
 
         let Some((wk, w_point_v, k_w)) = verify_gemm_committed_chained(
-            m, k, n, &r_i_v, &r_j_v, VerifierKey { k: k0 }, &proof, wire.corr, corr_w, &cd,
-            &mut ctx, &mut vtx,
+            m,
+            k,
+            n,
+            &r_i_v,
+            &r_j_v,
+            VerifierKey { k: k0 },
+            &proof,
+            wire.corr,
+            corr_w,
+            &cd,
+            &mut ctx,
+            &mut vtx,
         ) else {
             return false;
         };
@@ -992,7 +997,17 @@ mod tests {
         let before = stream.counters;
         let cd = ChainDoms::alloc(&mut Doms::new(0xA000), k);
         let (_p, _w, _cw, _wc, _tm, after) = prove_gemm_committed_chained(
-            &x, &w, m, k, n, &r_i, &r_j, claim0, &cd, &mut stream, &mut tx,
+            &x,
+            &w,
+            m,
+            k,
+            n,
+            &r_i,
+            &r_j,
+            claim0,
+            &cd,
+            &mut stream,
+            &mut tx,
         );
         assert_eq!(after.full_corrs - before.full_corrs, 2 * pad_bits(k) as u64 + 3);
         assert_eq!(after.sub_corrs - before.sub_corrs, 0);
@@ -1042,9 +1057,8 @@ mod tests {
         let mut tag_rows: Vec<Fp2> = Vec::with_capacity(k);
         for l in 0..k {
             let tags = stream.draw_sub_tags(dom_b(l), n);
-            tag_rows.push(tags.into_iter().enumerate().fold(Fp2::ZERO, |s, (j, t)| {
-                s + eq_j[j] * t
-            }));
+            tag_rows
+                .push(tags.into_iter().enumerate().fold(Fp2::ZERO, |s, (j, t)| s + eq_j[j] * t));
         }
         let b_folded_p = b_folded.clone();
         let open_b = move |pt: &[Fp2]| {
@@ -1066,7 +1080,18 @@ mod tests {
 
         let cd = ChainDoms::alloc(&mut Doms::new(0xA100), k);
         let (mut proof, wire, r_l, _tm, _ctr) = prove_gemm_act_chained(
-            &x, b_folded, m, k, n, &r_i, &r_j, claim0, open_b, &cd, &mut stream, &mut tx,
+            &x,
+            b_folded,
+            m,
+            k,
+            n,
+            &r_i,
+            &r_j,
+            claim0,
+            open_b,
+            &cd,
+            &mut stream,
+            &mut tx,
         );
         if tamper {
             proof.sumcheck.round_corrs[0][1] += Fp2::ONE;
@@ -1077,9 +1102,8 @@ mod tests {
         let mut key_rows: Vec<Fp2> = Vec::with_capacity(k);
         for l in 0..k {
             let keys = auth_verifier(&mut ctx, dom_b(l), &corr_b[l]);
-            key_rows.push(keys.iter().enumerate().fold(Fp2::ZERO, |s, (j, key)| {
-                s + eq_j_v[j] * key.k
-            }));
+            key_rows
+                .push(keys.iter().enumerate().fold(Fp2::ZERO, |s, (j, key)| s + eq_j_v[j] * key.k));
         }
         let open_b_key = move |pt: &[Fp2]| {
             let eq_l = eq_vec(pt);
@@ -1088,8 +1112,18 @@ mod tests {
         };
 
         let Some((wk, r_l_v)) = verify_gemm_act_chained(
-            m, k, n, &r_i_v, &r_j_v, VerifierKey { k: k0 }, &proof, wire.corr, open_b_key, &cd,
-            &mut ctx, &mut vtx,
+            m,
+            k,
+            n,
+            &r_i_v,
+            &r_j_v,
+            VerifierKey { k: k0 },
+            &proof,
+            wire.corr,
+            open_b_key,
+            &cd,
+            &mut ctx,
+            &mut vtx,
         ) else {
             return false;
         };

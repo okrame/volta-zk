@@ -97,7 +97,9 @@ impl Backend {
 }
 
 fn usage() -> ! {
-    eprintln!("usage: p7_pcg_report [--backend mock|real] [--source benchmarks/results/p6-....json]");
+    eprintln!(
+        "usage: p7_pcg_report [--backend mock|real] [--source benchmarks/results/p6-....json]"
+    );
     std::process::exit(2);
 }
 
@@ -200,10 +202,7 @@ fn main() {
     let delta = Fp2::new(Fp::new(0xD31C_5A17), Fp::new(0x0BAD_CAFE));
     let mut checksum = 0xA5A5_5A5Au64;
 
-    eprintln!(
-        "{} PCG expansion for {n_sub} sub + {n_full} full correlations",
-        backend.as_str()
-    );
+    eprintln!("{} PCG expansion for {n_sub} sub + {n_full} full correlations", backend.as_str());
 
     let report = match backend {
         Backend::Mock => run_mock(&source, &source_path, seed, delta, &mut checksum),
@@ -339,8 +338,7 @@ fn run_mock(
     }
     drop(full_keys);
 
-    let total =
-        t_prover_subs_s + t_verifier_sub_keys_s + t_prover_fulls_s + t_verifier_full_keys_s;
+    let total = t_prover_subs_s + t_verifier_sub_keys_s + t_prover_fulls_s + t_verifier_full_keys_s;
     let mut report = common_report(
         "P7-mock-pcg-lower-bound",
         Backend::Mock,

@@ -60,7 +60,13 @@ pub fn key_update(k_r: Fp2, delta: Fp2, corr: u64) -> Fp2 {
 /// elements (padded to the next power of two with zero corrections):
 /// expand `k_r` from the mock-PCG stream, update with the correction, and
 /// accumulate the MLE-opening inner product `⟨eq(r,·), k_x⟩`.
-pub fn verifier_fused_scan(seed: [u8; 32], domain: u64, delta: Fp2, rs: &[Fp2], corr: &[u64]) -> Fp2 {
+pub fn verifier_fused_scan(
+    seed: [u8; 32],
+    domain: u64,
+    delta: Fp2,
+    rs: &[Fp2],
+    corr: &[u64],
+) -> Fp2 {
     assert!(corr.len() <= 1usize << rs.len());
     let mut keys = FpStream::domain_separated(seed, domain);
     let mut eq = EqStream::new(rs);
@@ -73,7 +79,11 @@ pub fn verifier_fused_scan(seed: [u8; 32], domain: u64, delta: Fp2, rs: &[Fp2], 
 }
 
 /// Median wall time of `iters` runs after `warmup` runs.
-pub fn time_median<T>(warmup: usize, iters: usize, mut f: impl FnMut() -> T) -> std::time::Duration {
+pub fn time_median<T>(
+    warmup: usize,
+    iters: usize,
+    mut f: impl FnMut() -> T,
+) -> std::time::Duration {
     for _ in 0..warmup {
         std::hint::black_box(f());
     }
@@ -133,7 +143,12 @@ mod tests {
     fn eq_stream_matches_direct_product_and_sums_to_one() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(9);
         let rs: Vec<Fp2> = (0..5)
-            .map(|_| Fp2::new(Fp::new(rng.gen_range(0..volta_field::P)), Fp::new(rng.gen_range(0..volta_field::P))))
+            .map(|_| {
+                Fp2::new(
+                    Fp::new(rng.gen_range(0..volta_field::P)),
+                    Fp::new(rng.gen_range(0..volta_field::P)),
+                )
+            })
             .collect();
         let mut eq = EqStream::new(&rs);
         let mut total = Fp2::ZERO;
@@ -156,10 +171,12 @@ mod tests {
         let seed = [7u8; 32];
         let domain = 42;
         let mut rng = rand::rngs::StdRng::seed_from_u64(3);
-        let delta = Fp2::new(Fp::new(rng.gen_range(0..volta_field::P)), Fp::new(rng.gen_range(0..volta_field::P)));
-        let rs: Vec<Fp2> = (0..4)
-            .map(|_| Fp2::new(Fp::new(rng.gen_range(0..volta_field::P)), Fp::ZERO))
-            .collect();
+        let delta = Fp2::new(
+            Fp::new(rng.gen_range(0..volta_field::P)),
+            Fp::new(rng.gen_range(0..volta_field::P)),
+        );
+        let rs: Vec<Fp2> =
+            (0..4).map(|_| Fp2::new(Fp::new(rng.gen_range(0..volta_field::P)), Fp::ZERO)).collect();
         let xs: Vec<Fp> = (0..16).map(|_| Fp::new(rng.gen_range(0..1000))).collect();
 
         // Prover side: k_r plays the tag role here (value-level VOLE mock:

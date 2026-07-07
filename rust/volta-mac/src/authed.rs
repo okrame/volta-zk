@@ -113,7 +113,10 @@ mod tests {
     use rand::{Rng, SeedableRng};
 
     fn rand_fp2(rng: &mut impl Rng) -> Fp2 {
-        Fp2::new(Fp::new(rng.gen_range(0..volta_field::P)), Fp::new(rng.gen_range(0..volta_field::P)))
+        Fp2::new(
+            Fp::new(rng.gen_range(0..volta_field::P)),
+            Fp::new(rng.gen_range(0..volta_field::P)),
+        )
     }
 
     fn rand_authed(rng: &mut impl Rng, delta: Fp2) -> BothSides {
@@ -134,7 +137,10 @@ mod tests {
             let sum = BothSides { p: a.p.add(b.p), k: a.k.add(b.k) };
             let dif = BothSides { p: a.p.sub(b.p), k: a.k.sub(b.k) };
             let scl = BothSides { p: a.p.scale(c), k: a.k.scale(c) };
-            let pubc = BothSides { p: ProverAuthed::from_public(c), k: VerifierKey::from_public(c, delta) };
+            let pubc = BothSides {
+                p: ProverAuthed::from_public(c),
+                k: VerifierKey::from_public(c, delta),
+            };
             assert!(sum.valid(delta) && dif.valid(delta) && scl.valid(delta) && pubc.valid(delta));
         }
     }

@@ -97,11 +97,14 @@ pub fn blind_verify(
 mod tests {
     use super::*;
     use crate::sumcheck_clear::prove_clear;
-    use volta_field::{Fp, FpStream};
     use rand::{Rng, SeedableRng};
+    use volta_field::{Fp, FpStream};
 
     fn rand_fp2(rng: &mut impl Rng) -> Fp2 {
-        Fp2::new(Fp::new(rng.gen_range(0..volta_field::P)), Fp::new(rng.gen_range(0..volta_field::P)))
+        Fp2::new(
+            Fp::new(rng.gen_range(0..volta_field::P)),
+            Fp::new(rng.gen_range(0..volta_field::P)),
+        )
     }
 
     #[test]
@@ -116,12 +119,14 @@ mod tests {
         // Clear reference with the transcript's challenge stream: Transcript
         // challenges come from domain u64::MAX of the tx seed.
         let tx_seed = [4u8; 32];
-        let (clear, _) = prove_clear(a.clone(), b.clone(), &mut FpStream::domain_separated(tx_seed, u64::MAX));
+        let (clear, _) =
+            prove_clear(a.clone(), b.clone(), &mut FpStream::domain_separated(tx_seed, u64::MAX));
 
         let mut ps = CorrelationStream::new([5u8; 32]);
         let mut tx = Transcript::new(tx_seed);
         let claim0 = ProverAuthed { x: claim_val, m: rand_fp2(&mut rng) };
-        let (blind, _, final_claim) = blind_prove(a.clone(), b.clone(), claim0, &mut ps, 1000, &mut tx);
+        let (blind, _, final_claim) =
+            blind_prove(a.clone(), b.clone(), claim0, &mut ps, 1000, &mut tx);
 
         // Reconstruct blind g values from corrections + the same mask stream.
         let mut check = CorrelationStream::new([5u8; 32]);

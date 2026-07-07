@@ -169,8 +169,22 @@ pub fn load_model(dir: &Path) -> std::io::Result<Gpt2Model> {
         let ln2_gain = take(D);
         let ln2_bias = take(D);
         layers.push((
-            LayerWeights { c_attn, attn_proj, ffn_up, ffn_down, ln1_gain, ln1_bias, ln2_gain, ln2_bias },
-            GemmBiases { c_attn: c_attn_bias, attn_proj: attn_proj_bias, ffn_up: ffn_up_bias, ffn_down: ffn_down_bias },
+            LayerWeights {
+                c_attn,
+                attn_proj,
+                ffn_up,
+                ffn_down,
+                ln1_gain,
+                ln1_bias,
+                ln2_gain,
+                ln2_bias,
+            },
+            GemmBiases {
+                c_attn: c_attn_bias,
+                attn_proj: attn_proj_bias,
+                ffn_up: ffn_up_bias,
+                ffn_down: ffn_down_bias,
+            },
         ));
     }
     let wte = take(VOCAB * D);
@@ -250,7 +264,8 @@ pub fn forward_model_tokens(m: &Gpt2Model, tokens: &[u32]) -> ModelWitness {
     let s_emb = m.p.shift_embed;
     let (out, trace) = if s_emb > 0 {
         let mut tr = LookupTrace::new_requant(s_emb as u32);
-        let out = acc.iter().map(|&a| requant_into(&mut tr, "requant_embed", a, s_emb as u32)).collect();
+        let out =
+            acc.iter().map(|&a| requant_into(&mut tr, "requant_embed", a, s_emb as u32)).collect();
         (out, Some(tr))
     } else {
         let out = acc
@@ -296,15 +311,8 @@ pub fn forward_model_tokens(m: &Gpt2Model, tokens: &[u32]) -> ModelWitness {
     let last = &x[(t - 1) * D..t * D];
     let mut rsqrt_trace = LookupTrace::new(1 << 16);
     let mut norm_trace = LookupTrace::new_requant(m.p.lut.shift_ln_norm);
-    let ln = layer_norm(
-        last,
-        &m.lnf_gain,
-        &m.lnf_bias,
-        &m.luts,
-        1,
-        &mut rsqrt_trace,
-        &mut norm_trace,
-    );
+    let ln =
+        layer_norm(last, &m.lnf_gain, &m.lnf_bias, &m.luts, 1, &mut rsqrt_trace, &mut norm_trace);
     let final_ln = FinalLnWitness {
         mean: ln.mean[0],
         var: ln.var[0],

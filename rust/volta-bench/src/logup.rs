@@ -82,11 +82,7 @@ pub struct FracProof {
 impl FracProof {
     /// Transcript bytes: 16 B per Fp2 message.
     pub fn bytes(&self) -> u64 {
-        32 + self
-            .layers
-            .iter()
-            .map(|l| 16 * (3 * l.rounds.len() as u64 + 4))
-            .sum::<u64>()
+        32 + self.layers.iter().map(|l| 16 * (3 * l.rounds.len() as u64 + 4)).sum::<u64>()
     }
 }
 
@@ -391,7 +387,8 @@ pub fn logup_verify(
     verify_frac_tree(
         &proof.table_side,
         |pt_, c| {
-            let vals: Vec<Fp2> = mult.iter().map(|&m| neg(Fp2::from_base(Fp::new(m as u64)))).collect();
+            let vals: Vec<Fp2> =
+                mult.iter().map(|&m| neg(Fp2::from_base(Fp::new(m as u64)))).collect();
             eval_mle(&vals, pt_, c)
         },
         |pt_, c| eval_mle(&lift_q(table, alpha), pt_, c),
@@ -411,7 +408,8 @@ mod tests {
     }
 
     fn instance(n: usize, table_bits: u32, rng: &mut impl Rng) -> (Vec<i16>, Vec<i16>, Vec<u32>) {
-        let table: Vec<i16> = (0..1i32 << table_bits).map(|j| (j - (1 << (table_bits - 1))) as i16).collect();
+        let table: Vec<i16> =
+            (0..1i32 << table_bits).map(|j| (j - (1 << (table_bits - 1))) as i16).collect();
         let f: Vec<i16> = (0..n).map(|_| table[rng.gen_range(0..table.len())]).collect();
         let mut mult = vec![0u32; table.len()];
         let offset = 1i32 << (table_bits - 1);

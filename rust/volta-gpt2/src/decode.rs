@@ -153,8 +153,7 @@ pub fn decode_step(m: &Gpt2Model, cache: &mut KvCache, token: u32, pos: usize) -
                 }
                 s_q.push(requant_plain(a, p.shift_scores));
             }
-            let c: i16 =
-                if p.softmax_row_shift { *s_q.iter().max().unwrap() } else { 0 };
+            let c: i16 = if p.softmax_row_shift { *s_q.iter().max().unwrap() } else { 0 };
             let mut denom = 0i64;
             let mut e_row = Vec::with_capacity(seq);
             for &s in &s_q {

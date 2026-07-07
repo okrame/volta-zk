@@ -73,8 +73,8 @@ mod tests {
     use super::*;
     use crate::mle::eval_mle;
     use crate::sumcheck_clear::{prove_clear, verify_clear};
-    use volta_field::FpStream;
     use rand::{Rng, SeedableRng};
+    use volta_field::FpStream;
 
     #[test]
     fn thaler_matches_direct_eval() {
@@ -107,7 +107,8 @@ mod tests {
         assert_eq!(proof.b_final, eval_mle(&b, &point));
         // And A/B really are X̃(r_i,·), W̃(·,r_j): spot-check on hypercube l.
         for l in 0..k {
-            let col: Vec<Fp2> = (0..m).map(|i| Fp2::from_base(Fp::from_i64(x[i * k + l] as i64))).collect();
+            let col: Vec<Fp2> =
+                (0..m).map(|i| Fp2::from_base(Fp::from_i64(x[i * k + l] as i64))).collect();
             assert_eq!(a[l], eval_mle(&col, &r_i));
         }
     }

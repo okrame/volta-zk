@@ -116,13 +116,9 @@ impl LayerWeightLayout {
 /// head·64 + l, 768 rows × 4096 cols row-major) — same 2^22 block, the
 /// third/head fields become plain bit positions of the claim point.
 pub fn layout_gpt2_layer() -> LayerWeightLayout {
-    let layout =
-        LayerWeightLayout::for_shapes([(768, 4096), (768, 768), (768, 3072), (3072, 768)]);
+    let layout = LayerWeightLayout::for_shapes([(768, 4096), (768, 768), (768, 3072), (3072, 768)]);
     debug_assert_eq!(layout.total_len, 1 << 24);
-    debug_assert_eq!(
-        layout.tensors.map(|t| t.offset),
-        [0, 3 << 22, 1 << 22, 1 << 23]
-    );
+    debug_assert_eq!(layout.tensors.map(|t| t.offset), [0, 3 << 22, 1 << 22, 1 << 23]);
     layout
 }
 
@@ -215,10 +211,7 @@ impl LayerWeightLayout2 {
 pub fn pcs_cost_projection(n_claims: usize) -> (f64, f64) {
     const FIXED_S: f64 = 0.12;
     const PER_CLAIM_S: f64 = 0.0023;
-    (
-        FIXED_S + PER_CLAIM_S * n_claims as f64,
-        FIXED_S + PER_CLAIM_S * (2 * n_claims) as f64,
-    )
+    (FIXED_S + PER_CLAIM_S * n_claims as f64, FIXED_S + PER_CLAIM_S * (2 * n_claims) as f64)
 }
 
 #[cfg(test)]
@@ -302,7 +295,10 @@ mod tests {
         assert_eq!(wte.block_len, 1 << 26);
         assert_eq!(wte.point_len(), 26);
         let wpe = &l.tensors[1];
-        assert_eq!((wpe.k_pad, wpe.n_pad, wpe.offset, wpe.block_len), (1024, 1024, 1 << 26, 1 << 20));
+        assert_eq!(
+            (wpe.k_pad, wpe.n_pad, wpe.offset, wpe.block_len),
+            (1024, 1024, 1 << 26, 1 << 20)
+        );
         // GPT2_FULL carries a 2^27 message: 13 + 14 var bits.
         let g = crate::ligero::GPT2_FULL;
         assert_eq!(g.n_vars(), 27);

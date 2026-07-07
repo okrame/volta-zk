@@ -180,11 +180,14 @@ pub fn hadamard_verify(
         let k_g1 = k_claim.sub(k_g0);
         let r = tx.challenge_fp2();
         let w = lagrange4(r);
-        k_claim = k_g0.scale(w[0]).add(k_g1.scale(w[1])).add(k_g2.scale(w[2])).add(k_g3.scale(w[3]));
+        k_claim =
+            k_g0.scale(w[0]).add(k_g1.scale(w[1])).add(k_g2.scale(w[2])).add(k_g3.scale(w[3]));
         point.push(r);
     }
-    let k_e = VerifierKey { k: ctx.expand_full_keys(doms.e_claim, 1)[0] + ctx.delta * proof.e_corr };
-    let k_r = VerifierKey { k: ctx.expand_full_keys(doms.r_claim, 1)[0] + ctx.delta * proof.r_corr };
+    let k_e =
+        VerifierKey { k: ctx.expand_full_keys(doms.e_claim, 1)[0] + ctx.delta * proof.e_corr };
+    let k_r =
+        VerifierKey { k: ctx.expand_full_keys(doms.r_claim, 1)[0] + ctx.delta * proof.r_corr };
     let k_z = VerifierKey { k: ctx.expand_full_keys(doms.z, 1)[0] + ctx.delta * proof.z_corr };
     prod.push((k_e, k_r, k_z));
     zero.push(k_z.scale(eq_points(rho, &point)).sub(k_claim));
@@ -200,7 +203,10 @@ mod tests {
     use volta_field::Fp;
 
     fn rand_fp2(rng: &mut impl Rng) -> Fp2 {
-        Fp2::new(Fp::new(rng.gen_range(0..volta_field::P)), Fp::new(rng.gen_range(0..volta_field::P)))
+        Fp2::new(
+            Fp::new(rng.gen_range(0..volta_field::P)),
+            Fp::new(rng.gen_range(0..volta_field::P)),
+        )
     }
 
     /// T = 8 rows × 4 broadcast columns (5 vars, column vars LSB). Closes
@@ -239,7 +245,14 @@ mod tests {
         let mut prod_p: ProdTriples = Vec::new();
         let mut zero_p: Vec<ProverAuthed> = Vec::new();
         let (mut proof, point, e_claim, r_claim) = hadamard_prove(
-            &rho, e.clone(), r_tab.clone(), claim0, &hd, &mut stream, &mut tx, &mut prod_p,
+            &rho,
+            e.clone(),
+            r_tab.clone(),
+            claim0,
+            &hd,
+            &mut stream,
+            &mut tx,
+            &mut prod_p,
             &mut zero_p,
         );
         if tamper {
@@ -248,9 +261,9 @@ mod tests {
 
         let mut prod_k: ProdKeyTriples = Vec::new();
         let mut zero_k: Vec<VerifierKey> = Vec::new();
-        let Some((point_v, k_e, k_r)) = hadamard_verify(
-            &rho_v, k0, &proof, &hd, &mut ctx, &mut vtx, &mut prod_k, &mut zero_k,
-        ) else {
+        let Some((point_v, k_e, k_r)) =
+            hadamard_verify(&rho_v, k0, &proof, &hd, &mut ctx, &mut vtx, &mut prod_k, &mut zero_k)
+        else {
             return false;
         };
         assert_eq!(point_v, point, "sumcheck point mismatch across parties");
@@ -283,8 +296,8 @@ mod tests {
                 .zip(&zero_k)
                 .all(|(row, key)| row.x == Fp2::ZERO && key.k == row.m + delta * row.x);
         // Outward claim keys are valid MACs on the returned values.
-        let keys_ok = k_e.k == e_claim.m + delta * e_claim.x
-            && k_r.k == r_claim.m + delta * r_claim.x;
+        let keys_ok =
+            k_e.k == e_claim.m + delta * e_claim.x && k_r.k == r_claim.m + delta * r_claim.x;
         prod_ok && zeros_ok && keys_ok
     }
 

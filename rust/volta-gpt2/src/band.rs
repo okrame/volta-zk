@@ -144,15 +144,8 @@ pub fn band_model_witness(m: &Gpt2Model, full: &ModelWitness, t0: usize) -> Band
     let x_fin = slice_rows_i16(&full.layers[L - 1].ffn_block_out, t0, t);
     let mut rsqrt_trace = LookupTrace::new(1 << 16);
     let mut norm_trace = LookupTrace::new_requant(m.p.lut.shift_ln_norm);
-    let ln = layer_norm(
-        &x_fin,
-        &m.lnf_gain,
-        &m.lnf_bias,
-        &m.luts,
-        q,
-        &mut rsqrt_trace,
-        &mut norm_trace,
-    );
+    let ln =
+        layer_norm(&x_fin, &m.lnf_gain, &m.lnf_bias, &m.luts, q, &mut rsqrt_trace, &mut norm_trace);
 
     // Band logits (q×VOCAB): fin_out · wteᵀ, i64, no requant.
     let fin = &ln.out;
@@ -194,8 +187,7 @@ mod tests {
     /// full forward's last-position logits.
     #[test]
     fn band_extraction_consistency() {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../benchmarks/weights");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../benchmarks/weights");
         if !dir.join("gpt2s-q.bin").exists() {
             eprintln!("skipping band_extraction_consistency: artifact not present");
             return;

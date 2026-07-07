@@ -32,7 +32,12 @@ fn main() {
     let mut chal = FpStream::domain_separated(seed, 0x1004);
     let alpha = chal.next_fp2();
     let mut ctr_f = new_lu::Counters::default();
-    let _ = new_lu::prove_frac_tree(&new_lu::LeafP::Ones, &new_lu::lift_q(&f, alpha), &mut chal, &mut ctr_f);
+    let _ = new_lu::prove_frac_tree(
+        &new_lu::LeafP::Ones,
+        &new_lu::lift_q(&f, alpha),
+        &mut chal,
+        &mut ctr_f,
+    );
     let mut ctr_t = new_lu::Counters::default();
     let _ = new_lu::prove_frac_tree(
         &new_lu::LeafP::NegMult(&mult),
@@ -42,7 +47,10 @@ fn main() {
     );
     let lk = ctr_f.emult_equiv() / n as f64;
     let tb = ctr_t.emult_equiv() / n as f64;
-    eprintln!("new  lookup-side : {:>7.2} E-mult/lookup  (fp2 {} base {})", lk, ctr_f.fp2_mults, ctr_f.base_mults);
+    eprintln!(
+        "new  lookup-side : {:>7.2} E-mult/lookup  (fp2 {} base {})",
+        lk, ctr_f.fp2_mults, ctr_f.base_mults
+    );
     eprintln!("new  table-side  : {:>7.2} E-mult/lookup raw, {:>5.2} /12-amortized", tb, tb / 12.0);
     eprintln!("new  total       : {:>7.2} (gate is on lookup-side, target ≤ 8–10)", lk + tb);
 
@@ -59,7 +67,11 @@ fn main() {
     let mut c2 = new_lu::Counters::default();
     let (_a2, proof) = new_lu::logup_prove(&f, &table, &mult, &mut cp, &mut c1);
     assert!(new_lu::logup_verify(&f, &table, &mult, &proof, &mut cv, &mut c2), "verify failed");
-    eprintln!("verify           : ok, {:.0} E-mult total, proof {} KB", c2.emult_equiv(), proof.bytes() / 1024);
+    eprintln!(
+        "verify           : ok, {:.0} E-mult total, proof {} KB",
+        c2.emult_equiv(),
+        proof.bytes() / 1024
+    );
 
     // --- wall time, ABBA vs spike ---
     let rounds = if quick { 3 } else { 5 };

@@ -29,7 +29,9 @@ use volta_pcs::{
 };
 use volta_proto::block_proof::layer_dom_base;
 use volta_proto::logup::Doms;
-use volta_proto::{cattn_permuted, prod_batch_prover, prod_batch_verify, prove_model, verify_model};
+use volta_proto::{
+    cattn_permuted, prod_batch_prover, prod_batch_verify, prove_model, verify_model,
+};
 
 /// P0 per-layer lookup budget (scripts/budget_p0.py `lk_layer`), T-generic —
 /// copied verbatim from `p4_report.rs` (model-level budget = 12× this, per
@@ -196,11 +198,7 @@ fn read_golden(path: &std::path::Path) -> Golden {
 }
 
 fn argmax_i64(v: &[i64]) -> u32 {
-    v.iter()
-        .enumerate()
-        .max_by_key(|&(_, &x)| x)
-        .map(|(i, _)| i as u32)
-        .unwrap_or(0)
+    v.iter().enumerate().max_by_key(|&(_, &x)| x).map(|(i, _)| i as u32).unwrap_or(0)
 }
 
 fn main() {
@@ -292,8 +290,9 @@ fn main() {
     let t_prove_model_record_s = tp0.elapsed().as_secs_f64();
 
     let tv0 = Instant::now();
-    let (outv, mut kprod, mut kzero) = verify_model(&model, t, &wit.logits, &proof, &mut vc, &mut txv)
-        .expect("honest model proof must verify");
+    let (outv, mut kprod, mut kzero) =
+        verify_model(&model, t, &wit.logits, &proof, &mut vc, &mut txv)
+            .expect("honest model proof must verify");
     let t_verify_model_s = tv0.elapsed().as_secs_f64();
 
     // --- REAL PCS: 13 commitments (ledger deviation 2026-07-06 #7) -----------
@@ -339,8 +338,16 @@ fn main() {
         mask_seed[31] = l as u8;
 
         let to0 = Instant::now();
-        let (mproof, _mt) =
-            open_multi_zk(&w_flat, &pm, &claims_p, &mut stream, dom_s0, dom_s1, mask_seed, &mut txp);
+        let (mproof, _mt) = open_multi_zk(
+            &w_flat,
+            &pm,
+            &claims_p,
+            &mut stream,
+            dom_s0,
+            dom_s1,
+            mask_seed,
+            &mut txp,
+        );
         let open_s = to0.elapsed().as_secs_f64();
         open_times.push(open_s);
         let ob = mproof.bytes();
@@ -396,8 +403,16 @@ fn main() {
     debug_assert_eq!((dom_s0, dom_s1), (doms_v.take(1), doms_v.take(1)));
 
     let to0 = Instant::now();
-    let (mproof_e, _mt) =
-        open_multi_zk(&e_flat, &pm_e, &claims_p, &mut stream, dom_s0, dom_s1, [0x45u8; 32], &mut txp);
+    let (mproof_e, _mt) = open_multi_zk(
+        &e_flat,
+        &pm_e,
+        &claims_p,
+        &mut stream,
+        dom_s0,
+        dom_s1,
+        [0x45u8; 32],
+        &mut txp,
+    );
     let open_embed_s = to0.elapsed().as_secs_f64();
     open_times.push(open_embed_s);
     let ob_e = mproof_e.bytes();
@@ -411,7 +426,14 @@ fn main() {
         .collect();
     let tv1 = Instant::now();
     let ok_e = verify_multi_open(
-        &com_e.root, &GPT2_FULL, &claims_v, &mproof_e, &mut vc, dom_s0, dom_s1, &mut txv,
+        &com_e.root,
+        &GPT2_FULL,
+        &claims_v,
+        &mproof_e,
+        &mut vc,
+        dom_s0,
+        dom_s1,
+        &mut txv,
     );
     let verify_embed_s = tv1.elapsed().as_secs_f64();
     pcs_all_ok &= ok_e;
@@ -473,7 +495,8 @@ fn main() {
     // --- lookups vs budget (×12) -----------------------------------------------
     eprintln!("lookups vs P0 budget (×12) ...");
     let budget = budget_lookups(t as u64);
-    let mut wit_by_table: std::collections::HashMap<&'static str, u64> = std::collections::HashMap::new();
+    let mut wit_by_table: std::collections::HashMap<&'static str, u64> =
+        std::collections::HashMap::new();
     for lw in &wit.layers {
         for (name, n) in lw.lookup_counts() {
             *wit_by_table.entry(name).or_insert(0) += n as u64;
@@ -484,7 +507,8 @@ fn main() {
     for &(name, b) in budget.iter() {
         let b12 = b * L as u64;
         let wl = *wit_by_table.get(name).unwrap_or(&0);
-        let padded: u64 = out.lookups.iter().filter(|il| il.table == name).map(|il| il.lookups).sum();
+        let padded: u64 =
+            out.lookups.iter().filter(|il| il.table == name).map(|il| il.lookups).sum();
         tot_budget += b12;
         tot_wit += wl;
         tot_padded += padded;
@@ -517,8 +541,11 @@ fn main() {
         .map(|o| !o.stdout.is_empty())
         .unwrap_or(true);
 
-    let bytes_total =
-        out.bytes.boundary + out.bytes.mult + out.bytes.ln_vectors + out.bytes.attn_vectors + out.bytes.rounds_claims;
+    let bytes_total = out.bytes.boundary
+        + out.bytes.mult
+        + out.bytes.ln_vectors
+        + out.bytes.attn_vectors
+        + out.bytes.rounds_claims;
     // The Transcript byte ledger counts EVERY prover→verifier byte — the
     // correction streams above AND the PCS opening messages are already in
     // it, so it IS the total communication (adding the breakdown fields

@@ -48,18 +48,18 @@ use crate::block_proof::{
     layer_content_keys, layer_dom_base, ln_acc_recompute, open_matrix_k, open_matrix_p,
     prove_layer_phase1, prove_layer_phase1_band, prove_layer_phase2, prove_layer_phase2_band,
     prove_ln_chain, prove_range_site, range_keys, verify_layer_phase1, verify_layer_phase1_band,
-    verify_layer_phase2, verify_layer_phase2_band, verify_ln_chain, verify_range_site,
-    BandShape, BlockCtxP, BlockCtxV, InstanceLookups, KvPrefixK, KvPrefixP, LayerBytes, LayerOut,
-    LayerP1, LayerProof, LayerV1, LnChainProof, TableBankP, TableBankV, TableCloseProof,
+    verify_layer_phase2, verify_layer_phase2_band, verify_ln_chain, verify_range_site, BandShape,
+    BlockCtxP, BlockCtxV, InstanceLookups, KvPrefixK, KvPrefixP, LayerBytes, LayerOut, LayerP1,
+    LayerProof, LayerV1, LnChainProof, TableBankP, TableBankV, TableCloseProof,
 };
-use crate::logup::{Doms, TableKey};
-use std::collections::BTreeSet;
 use crate::gemm_proof::{WeightClaimP, WireKey, WireOut};
 use crate::logup::{eval_mle_counted, Counters, ProdKeyTriples, ProdTriples};
+use crate::logup::{Doms, TableKey};
 use crate::mle::eq_vec;
 use crate::sumcheck_blind::{blind_prove, blind_verify, BlindSumcheckProof};
 use crate::thaler::{fold_w, pad_bits};
 use rayon::prelude::*;
+use std::collections::BTreeSet;
 use volta_field::{Fp, Fp2};
 use volta_gpt2::{BandModelWitness, Gpt2Model, ModelWitness, D, L, NPOS, VOCAB};
 use volta_mac::{
@@ -375,8 +375,7 @@ pub fn prove_response(
     let t_ln = 2usize;
     let rb_ln = 1usize;
     let s_ln = model.p.lut.shift_ln_norm;
-    let out2: Vec<i16> =
-        wit.final_ln.out.iter().chain(wit.final_ln.out.iter()).copied().collect();
+    let out2: Vec<i16> = wit.final_ln.out.iter().chain(wit.final_ln.out.iter()).copied().collect();
     let acc_ln2: Vec<i64> = wit
         .final_ln
         .norm_trace
@@ -571,8 +570,14 @@ pub fn prove_response(
             let site = prove_range_site(&acc, out16, t, D, shift, Vec::new(), &mut cx);
             let out_open = open_matrix_p(cx.stream, dom_xin_next, out16, t, D, &site.main.point);
             cx.zero.push(site.main.col_claims[1].value.sub(out_open));
-            let acc_open =
-                open_matrix_p(cx.stream, dom_fbo_l, &wit.layers[l].ffn_block_out, t, D, site.acc_point());
+            let acc_open = open_matrix_p(
+                cx.stream,
+                dom_fbo_l,
+                &wit.layers[l].ffn_block_out,
+                t,
+                D,
+                site.acc_point(),
+            );
             cx.zero.push(site.acc_claim.sub(acc_open));
             seams.push(Some(SeamProof { inst: site.main.proof }));
         } else {
@@ -591,8 +596,7 @@ pub fn prove_response(
 
     // ---- (d) embedding ---------------------------------------------------
     let mut cx = BlockCtxP::with_doms(stream, tx, embed_doms, &mut bank);
-    let site =
-        prove_range_site(&wit.embed.acc, &wit.embed.out, t, D, s_emb, Vec::new(), &mut cx);
+    let site = prove_range_site(&wit.embed.acc, &wit.embed.out, t, D, s_emb, Vec::new(), &mut cx);
     let out_open = open_matrix_p(cx.stream, dom_out, &wit.embed.out, t, D, &site.main.point);
     cx.zero.push(site.main.col_claims[1].value.sub(out_open));
     let embed_acc_point = site.acc_point().to_vec();
@@ -650,12 +654,8 @@ pub fn prove_response(
         &mut cx,
     );
 
-    let final_ln = FinalLnProof {
-        out_corr: out_corr_f,
-        row_corr,
-        ln_vec_corrs: ln_vec_corrs_f,
-        ln,
-    };
+    let final_ln =
+        FinalLnProof { out_corr: out_corr_f, row_corr, ln_vec_corrs: ln_vec_corrs_f, ln };
     let BlockCtxP { prod: lp, zero: lz, ctr_instances: lci, ctr_other: lco, .. } = cx;
     prod.extend(lp);
     zero.extend(lz);
@@ -898,15 +898,19 @@ pub fn prove_response(
             let (dom_xin_next, _) = band_boundary_doms[l + 1];
             let (_, dom_fbo_l) = band_boundary_doms[l];
             if shift > 0 {
-                let acc: Vec<i64> =
-                    bw.layers[l].ffn_block_out.iter().map(|&v| v as i64).collect();
+                let acc: Vec<i64> = bw.layers[l].ffn_block_out.iter().map(|&v| v as i64).collect();
                 let out16 = &bw.layers[l + 1].x_in;
                 let site = prove_range_site(&acc, out16, q, D, shift, Vec::new(), &mut cx);
                 let out_open =
                     open_matrix_p(cx.stream, dom_xin_next, out16, q, D, &site.main.point);
                 cx.zero.push(site.main.col_claims[1].value.sub(out_open));
                 let acc_open = open_matrix_p(
-                    cx.stream, dom_fbo_l, &bw.layers[l].ffn_block_out, q, D, site.acc_point(),
+                    cx.stream,
+                    dom_fbo_l,
+                    &bw.layers[l].ffn_block_out,
+                    q,
+                    D,
+                    site.acc_point(),
                 );
                 cx.zero.push(site.acc_claim.sub(acc_open));
                 seams_c.push(Some(SeamProof { inst: site.main.proof }));
@@ -927,8 +931,7 @@ pub fn prove_response(
         let _ = eb;
         // ---- band embedding ---------------------------------------------------
         let mut cx = BlockCtxP::with_doms(stream, tx, p1c.embed_doms, &mut bank);
-        let site =
-            prove_range_site(&bw.embed_acc, &bw.embed_out, q, D, s_emb, Vec::new(), &mut cx);
+        let site = prove_range_site(&bw.embed_acc, &bw.embed_out, q, D, s_emb, Vec::new(), &mut cx);
         let out_open = open_matrix_p(cx.stream, p1c.dom_out, &bw.embed_out, q, D, &site.main.point);
         cx.zero.push(site.main.col_claims[1].value.sub(out_open));
         let embed_acc_point_c = site.acc_point().to_vec();
@@ -1297,8 +1300,7 @@ pub fn verify_response(
             return None;
         }
         let dom_out_f = cx.doms.take(t_ln as u64);
-        let out_keys_f =
-            auth_matrix_rows_v(cx.ctx, dom_out_f, &proof.final_ln.out_corr, t_ln, D);
+        let out_keys_f = auth_matrix_rows_v(cx.ctx, dom_out_f, &proof.final_ln.out_corr, t_ln, D);
         let lvk = expand_ln_vecs_k(&mut cx, &proof.final_ln.ln_vec_corrs);
         let dom_row = cx.doms.take(t_ln as u64);
         let row_keys = auth_matrix_rows_v(cx.ctx, dom_row, &proof.final_ln.row_corr, t_ln, D);
@@ -1349,7 +1351,14 @@ pub fn verify_response(
                 let lvk = expand_ln_vecs_k(&mut cx, &cp.fin_ln_vec_corrs);
                 (cx.doms, out_keys_f, lvk)
             };
-            chunk_v1s.push(ChunkV1 { layer_v1s, embed_doms, out_keys, fin_doms, fin_out_keys, fin_lvk });
+            chunk_v1s.push(ChunkV1 {
+                layer_v1s,
+                embed_doms,
+                out_keys,
+                fin_doms,
+                fin_out_keys,
+                fin_lvk,
+            });
             t0 += q;
         }
     }
@@ -1562,11 +1571,7 @@ pub fn verify_response(
                 let b = &model.layers[l].1;
                 let prefix: Vec<KvPrefixK> = kv_keys[l]
                     .iter()
-                    .map(|(kk, vk)| KvPrefixK {
-                        rows: kk.len() / D,
-                        k_keys: kk,
-                        v_keys: vk,
-                    })
+                    .map(|(kk, vk)| KvPrefixK { rows: kk.len() / D, k_keys: kk, v_keys: vk })
                     .collect();
                 let mut cx = BlockCtxV::with_doms(vc, tx, v1.doms, &mut bank);
                 let out = verify_layer_phase2_band(
@@ -1608,8 +1613,7 @@ pub fn verify_response(
                         cx.kzero.push(site.acc_key.sub(acc_open_k));
                     }
                     (None, false) => {
-                        let rho: Vec<Fp2> =
-                            (0..n_vars_qd).map(|_| cx.tx.challenge_fp2()).collect();
+                        let rho: Vec<Fp2> = (0..n_vars_qd).map(|_| cx.tx.challenge_fp2()).collect();
                         let a = open_matrix_k(&band_boundary_keys[l].1, q, D, &rho);
                         let b = open_matrix_k(&band_boundary_keys[l + 1].0, q, D, &rho);
                         cx.kzero.push(a.sub(b));
@@ -1735,15 +1739,7 @@ pub fn verify_response(
     }
 
     // ---- (h) per-content table sides (mirror) -------------------------------
-    bank.close(
-        &model.luts,
-        &proof.tables,
-        vc,
-        &mut table_doms,
-        tx,
-        &mut kprod,
-        &mut kzero,
-    )?;
+    bank.close(&model.luts, &proof.tables, vc, &mut table_doms, tx, &mut kprod, &mut kzero)?;
 
     Some((ModelOutV { weight_keys, embed_keys }, kprod, kzero))
 }
@@ -1815,12 +1811,10 @@ mod tests {
         let (proof, out, prod, mut zero) =
             prove_response(&model, &wit0, &chunks_p, &mut stream, &mut txp);
 
-        let chunks_v =
-            [ChunkPub { q: n_gen, logits: &band.logits, seq: &seq }];
-        let (outv, kprod, mut kzero) = verify_response(
-            &model, t, &wit0.logits, &chunks_v, &proof, &mut vc, &mut txv,
-        )
-        .expect("response proof must verify");
+        let chunks_v = [ChunkPub { q: n_gen, logits: &band.logits, seq: &seq }];
+        let (outv, kprod, mut kzero) =
+            verify_response(&model, t, &wit0.logits, &chunks_v, &proof, &mut vc, &mut txv)
+                .expect("response proof must verify");
 
         // Stacked weight claims: 48 prefill + 48 chunk, layer-major.
         assert_eq!(out.weight_claims.len(), 8 * L, "expected 96 stacked weight claims");
@@ -1847,11 +1841,8 @@ mod tests {
         assert_eq!(out.embed_claims.len(), 6);
         assert_eq!(outv.embed_keys.len(), 6);
         for (i, wc) in out.embed_claims.iter().enumerate() {
-            let (kk, n, mat): (usize, usize, &[i16]) = if i % 3 == 2 {
-                (NPOS, D, &model.wpe)
-            } else {
-                (VOCAB, D, &model.wte)
-            };
+            let (kk, n, mat): (usize, usize, &[i16]) =
+                if i % 3 == 2 { (NPOS, D, &model.wpe) } else { (VOCAB, D, &model.wte) };
             assert_eq!(wc.point.len(), pad_bits(kk) + pad_bits(n), "embed claim {i} point len");
             assert_eq!(outv.embed_keys[i].0, wc.point, "embed claim {i} point mismatch");
             let tv = weight_true_eval(mat, kk, n, &wc.point);
@@ -1913,7 +1904,8 @@ mod tests {
                     // Replay: the chunk's K corrections replaced by the
                     // prefill's first q rows (cache-row reuse across phases).
                     let q = n_gen;
-                    proof.chunks[0].layers[0].k_corr
+                    proof.chunks[0].layers[0]
+                        .k_corr
                         .copy_from_slice(&proof.layers[0].k_corr[..q * D]);
                 }
                 _ => {
@@ -1925,9 +1917,9 @@ mod tests {
                 }
             }
             let chunks_v = [ChunkPub { q: n_gen, logits: &band.logits, seq: &seq }];
-            let Some((_outv, kprod, kzero)) = verify_response(
-                &model, t, &wit0.logits, &chunks_v, &proof, &mut vc, &mut txv,
-            ) else {
+            let Some((_outv, kprod, kzero)) =
+                verify_response(&model, t, &wit0.logits, &chunks_v, &proof, &mut vc, &mut txv)
+            else {
                 continue; // structural reject also counts
             };
             // Cheating-prover emulation: clear the prover's zero rows so the
@@ -2018,11 +2010,8 @@ mod tests {
         // test-only stand-in for the real `layout_gpt2_embed` PCS opening.
         assert_eq!(out.embed_claims.len(), 3);
         assert_eq!(outv.embed_keys.len(), 3);
-        let embed_dims: [(usize, usize, &[i16]); 3] = [
-            (VOCAB, D, &model.wte),
-            (VOCAB, D, &model.wte),
-            (NPOS, D, &model.wpe),
-        ];
+        let embed_dims: [(usize, usize, &[i16]); 3] =
+            [(VOCAB, D, &model.wte), (VOCAB, D, &model.wte), (NPOS, D, &model.wpe)];
         for (i, wc) in out.embed_claims.iter().enumerate() {
             let (kk, n, mat) = embed_dims[i];
             assert_eq!(wc.point.len(), pad_bits(kk) + pad_bits(n), "embed claim {i} point len");

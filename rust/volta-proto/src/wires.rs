@@ -9,9 +9,9 @@
 //! been drained — `finish()` panics otherwise (prover-side bug, not an
 //! attack path; the verifier's checks fail independently).
 
+use std::collections::BTreeMap;
 use volta_field::Fp2;
 use volta_mac::{ProverAuthed, VerifierKey};
-use std::collections::BTreeMap;
 
 /// Wire identity: (layer, name). Names are the witness field names.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]

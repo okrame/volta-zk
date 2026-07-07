@@ -12,7 +12,9 @@ pub mod corr;
 pub mod open;
 pub mod transcript;
 
-pub use auth::{auth_prover, auth_verifier, auth_verifier_from_epilogue, prover_tags_from_epilogue};
+pub use auth::{
+    auth_prover, auth_verifier, auth_verifier_from_epilogue, prover_tags_from_epilogue,
+};
 pub use authed::{ProverAuthed, ProverSubAuthed, VerifierKey};
 pub use corr::{CorrCounters, CorrIndex, CorrelationStream, FullCorr, SubCorr, VerifierCtx};
 pub use open::{

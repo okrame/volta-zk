@@ -174,10 +174,7 @@ impl Fp2 {
     #[inline]
     pub fn mul(self, rhs: Fp2) -> Fp2 {
         let w = Fp::new(W);
-        Fp2::new(
-            self.c0 * rhs.c0 + w * (self.c1 * rhs.c1),
-            self.c0 * rhs.c1 + self.c1 * rhs.c0,
-        )
+        Fp2::new(self.c0 * rhs.c0 + w * (self.c1 * rhs.c1), self.c0 * rhs.c1 + self.c1 * rhs.c0)
     }
 
     /// Multiply by a base-field scalar (the hot verifier path: `k_r + Δ·δ`

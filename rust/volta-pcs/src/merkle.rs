@@ -29,8 +29,7 @@ impl MerkleTree {
         let mut levels = vec![leaves];
         while levels.last().unwrap().len() > 1 {
             let prev = levels.last().unwrap();
-            let next: Vec<Hash> =
-                prev.chunks(2).map(|p| hash_pair(&p[0], &p[1])).collect();
+            let next: Vec<Hash> = prev.chunks(2).map(|p| hash_pair(&p[0], &p[1])).collect();
             levels.push(next);
         }
         MerkleTree { levels }

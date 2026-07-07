@@ -20,7 +20,11 @@ pub struct ClearProof {
 
 /// Prove; `a`/`b` are consumed (folded in place). Returns the proof and the
 /// bound point r_l (LSB-first).
-pub fn prove_clear(mut a: Vec<Fp2>, mut b: Vec<Fp2>, chal: &mut FpStream) -> (ClearProof, Vec<Fp2>) {
+pub fn prove_clear(
+    mut a: Vec<Fp2>,
+    mut b: Vec<Fp2>,
+    chal: &mut FpStream,
+) -> (ClearProof, Vec<Fp2>) {
     assert_eq!(a.len(), b.len());
     assert!(a.len().is_power_of_two());
     let n_vars = a.len().trailing_zeros() as usize;
@@ -69,11 +73,14 @@ pub fn verify_clear(claim: Fp2, proof: &ClearProof, chal: &mut FpStream) -> Opti
 #[cfg(test)]
 mod tests {
     use super::*;
-    use volta_field::{Fp, FpStream};
     use rand::{Rng, SeedableRng};
+    use volta_field::{Fp, FpStream};
 
     fn rand_fp2(rng: &mut impl Rng) -> Fp2 {
-        Fp2::new(Fp::new(rng.gen_range(0..volta_field::P)), Fp::new(rng.gen_range(0..volta_field::P)))
+        Fp2::new(
+            Fp::new(rng.gen_range(0..volta_field::P)),
+            Fp::new(rng.gen_range(0..volta_field::P)),
+        )
     }
 
     #[test]
@@ -83,8 +90,10 @@ mod tests {
         let b: Vec<Fp2> = (0..64).map(|_| rand_fp2(&mut rng)).collect();
         let claim = a.iter().zip(&b).fold(Fp2::ZERO, |s, (&x, &y)| s + x * y);
         let seed = [1u8; 32];
-        let (proof, point_p) = prove_clear(a.clone(), b.clone(), &mut FpStream::domain_separated(seed, 1));
-        let point_v = verify_clear(claim, &proof, &mut FpStream::domain_separated(seed, 1)).expect("accept");
+        let (proof, point_p) =
+            prove_clear(a.clone(), b.clone(), &mut FpStream::domain_separated(seed, 1));
+        let point_v =
+            verify_clear(claim, &proof, &mut FpStream::domain_separated(seed, 1)).expect("accept");
         assert_eq!(point_p, point_v);
         assert_eq!(crate::mle::eval_mle(&a, &point_v), proof.a_final);
         assert_eq!(crate::mle::eval_mle(&b, &point_v), proof.b_final);
@@ -103,7 +112,9 @@ mod tests {
             proof.rounds[k][rng.gen_range(0..2)] += Fp2::ONE;
             // Perturbing a round leaves final a·b unchanged but shifts the
             // running claim — the final check must catch it.
-            assert!(verify_clear(claim, &proof, &mut FpStream::domain_separated(seed, trial)).is_none());
+            assert!(
+                verify_clear(claim, &proof, &mut FpStream::domain_separated(seed, trial)).is_none()
+            );
         }
     }
 }

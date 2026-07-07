@@ -95,7 +95,11 @@ fn main() {
     // requant-only. Weight fused vs native GEMM times accordingly:
     // fused for qkv_proj + out_proj + ffn_down-shape, native for ffn_up.
     let t_of = |i: usize, fused: bool| -> f64 {
-        if fused { results[i].fused_ms } else { results[i].native_ms }
+        if fused {
+            results[i].fused_ms
+        } else {
+            results[i].native_ms
+        }
     };
     // per-layer big GEMMs: qkv(idx1), out_proj(idx0), ffn_up(idx2), ffn_down≈idx2 shape native time
     let ffn_down_native = results[2].native_ms; // same MAC count as ffn_up
@@ -107,9 +111,11 @@ fn main() {
     // Verifier: fused scan (PCG key expansion + key update + eq inner product)
     // over one layer's worth of authenticated values, padded to 2^20.
     let n_elems = 1usize << 20;
-    let corr: Vec<u64> = (0..n_elems).map(|i| (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)).collect();
+    let corr: Vec<u64> =
+        (0..n_elems).map(|i| (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)).collect();
     let delta = Fp2::new(Fp::new(123456789), Fp::new(987654321));
-    let rs: Vec<Fp2> = (0..20).map(|j| Fp2::new(Fp::new(j as u64 + 2), Fp::new(3 * j as u64 + 1))).collect();
+    let rs: Vec<Fp2> =
+        (0..20).map(|j| Fp2::new(Fp::new(j as u64 + 2), Fp::new(3 * j as u64 + 1))).collect();
     let t_scan = time_median(warmup, iters, || verifier_fused_scan([2; 32], 5, delta, &rs, &corr));
     let scan_s = t_scan.as_secs_f64();
     let elems_per_sec = n_elems as f64 / scan_s;

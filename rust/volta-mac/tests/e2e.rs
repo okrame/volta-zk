@@ -13,7 +13,11 @@ fn rand_fp2(rng: &mut impl Rng) -> Fp2 {
 fn setup(seed_byte: u8, rng: &mut impl Rng) -> (CorrelationStream, VerifierCtx, Transcript) {
     let seed = [seed_byte; 32];
     let delta = rand_fp2(rng);
-    (CorrelationStream::new(seed), VerifierCtx::new(seed, delta), Transcript::new([seed_byte ^ 0xAA; 32]))
+    (
+        CorrelationStream::new(seed),
+        VerifierCtx::new(seed, delta),
+        Transcript::new([seed_byte ^ 0xAA; 32]),
+    )
 }
 
 /// Claims "authenticated x_j equals public v_j" as authenticated zeros, on
@@ -27,12 +31,16 @@ fn equality_claims(
     let ys: Vec<ProverAuthed> = authed
         .iter()
         .zip(claimed)
-        .map(|(a, &v)| a.embed().sub(ProverAuthed::from_public(Fp2::from_base(Fp::from_i64(v as i64)))))
+        .map(|(a, &v)| {
+            a.embed().sub(ProverAuthed::from_public(Fp2::from_base(Fp::from_i64(v as i64))))
+        })
         .collect();
     let ks: Vec<VerifierKey> = keys
         .iter()
         .zip(claimed)
-        .map(|(k, &v)| k.sub(VerifierKey::from_public(Fp2::from_base(Fp::from_i64(v as i64)), delta)))
+        .map(|(k, &v)| {
+            k.sub(VerifierKey::from_public(Fp2::from_base(Fp::from_i64(v as i64)), delta))
+        })
         .collect();
     (ys, ks)
 }

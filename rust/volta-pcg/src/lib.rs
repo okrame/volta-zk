@@ -214,7 +214,9 @@ pub fn consistency_check(
     reps: usize,
     seed: [u8; 32],
 ) -> ConsistencyReport {
-    if prover.subs.len() != verifier.sub_keys.len() || prover.fulls.len() != verifier.full_keys.len() {
+    if prover.subs.len() != verifier.sub_keys.len()
+        || prover.fulls.len() != verifier.full_keys.len()
+    {
         return ConsistencyReport { ok: false, checksum: 0 };
     }
     let mut checksum = 0xC0DE_5EEDu64;
@@ -268,9 +270,10 @@ fn ggm_single_point_noise(
         }
         let end = n.min(start + params.ggm_block_size);
         let width = end - start;
-        let alpha = (splitmix64(seed_word(seed) ^ (point as u64).wrapping_mul(0xD1B5_4A32_D192_ED03))
-            as usize)
-            % width;
+        let alpha =
+            (splitmix64(seed_word(seed) ^ (point as u64).wrapping_mul(0xD1B5_4A32_D192_ED03))
+                as usize)
+                % width;
         let (leaf, tree_mix) = ggm_selected_leaf(seed, point as u64, params.ggm_depth, alpha);
         checksum ^= tree_mix.rotate_left((point & 63) as u32);
         let mut fs = FpStream::from_seed(derive_seed(leaf, b"noise", point as u64));
@@ -343,10 +346,9 @@ fn combine_full_limbs(
     for pair in pending_full.chunks_exact(2) {
         let a = pair[0];
         let b = pair[1];
-        prover.fulls.push(FullVole {
-            x: Fp2::from_base(a.r) + GAMMA.mul_base(b.r),
-            m: a.m + GAMMA * b.m,
-        });
+        prover
+            .fulls
+            .push(FullVole { x: Fp2::from_base(a.r) + GAMMA.mul_base(b.r), m: a.m + GAMMA * b.m });
         verifier.full_keys.push(a.k + GAMMA * b.k);
     }
 }

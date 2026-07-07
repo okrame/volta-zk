@@ -31,8 +31,8 @@ use volta_gpt2::{
 use volta_mac::{zero_batch_exchange, CorrelationStream, Transcript, VerifierCtx};
 use volta_pcg::{expand_phase_a, PhaseATimings, ProverPcgPool, VerifierPcgPool};
 use volta_pcs::{
-    commit, layout_gpt2_embed, layout_gpt2_layer, open_multi_zk, verify_multi_open, GPT2_FULL,
-    LigeroParams, P4_LAYER,
+    commit, layout_gpt2_embed, layout_gpt2_layer, open_multi_zk, verify_multi_open, LigeroParams,
+    GPT2_FULL, P4_LAYER,
 };
 use volta_proto::block_proof::layer_dom_base;
 use volta_proto::logup::Doms;
@@ -324,7 +324,13 @@ fn real_session_backend(
     full_corrs: u64,
 ) -> (SessionPcgBackend, PhaseATimings, u64) {
     let params = volta_pcg::PhaseAParams::for_counts(sub_corrs as usize, full_corrs as usize);
-    let expansion = expand_phase_a([seed; 32], session_delta(), sub_corrs as usize, full_corrs as usize, params);
+    let expansion = expand_phase_a(
+        [seed; 32],
+        session_delta(),
+        sub_corrs as usize,
+        full_corrs as usize,
+        params,
+    );
     let setup_comm = expansion.params.setup_comm_bytes();
     (
         SessionPcgBackend::Real { prover: expansion.prover, verifier: expansion.verifier },
@@ -447,7 +453,14 @@ fn run_session(
             mask_seed[31] = l as u8;
             let to0 = Instant::now();
             let (mproof, _mt) = open_multi_zk(
-                &w_flat, &pm, &claims_p, &mut stream, dom_s0, dom_s1, mask_seed, &mut txp,
+                &w_flat,
+                &pm,
+                &claims_p,
+                &mut stream,
+                dom_s0,
+                dom_s1,
+                mask_seed,
+                &mut txp,
             );
             let open_s = to0.elapsed().as_secs_f64();
             let ob = mproof.bytes();
@@ -514,7 +527,14 @@ fn run_session(
         debug_assert_eq!((dom_s0, dom_s1), (doms_v.take(1), doms_v.take(1)));
         let to0 = Instant::now();
         let (mproof_e, _mt) = open_multi_zk(
-            &e_flat, &pm_e, &claims_p, &mut stream, dom_s0, dom_s1, [0x45u8; 32], &mut txp,
+            &e_flat,
+            &pm_e,
+            &claims_p,
+            &mut stream,
+            dom_s0,
+            dom_s1,
+            [0x45u8; 32],
+            &mut txp,
         );
         let open_s = to0.elapsed().as_secs_f64();
         let ob = mproof_e.bytes();
@@ -555,7 +575,10 @@ fn run_session(
             verified: ok,
         });
         drop((e_flat, pm_e, com_e));
-        eprintln!("  embed: {} claims, commit {commit_s:.2}s open {open_s:.3}s ok={ok}", 3 * phases);
+        eprintln!(
+            "  embed: {} claims, commit {commit_s:.2}s open {open_s:.3}s ok={ok}",
+            3 * phases
+        );
     }
     let tx_after_pcs = ledger_to_owned(&txp);
     let pcs_by_label = ledger_delta(&tx_after_pcs, &[&tx_before_pcs]);
@@ -577,10 +600,11 @@ fn run_session(
     // run over the accumulated rows only (curve session: architecture-only).
     let ok_zero = zero_batch_exchange(&zero, &kzero, &mut stream, &mut vc, mz, &mut txp);
     let accepted = ok_prod && ok_zero && (!with_pcs || pcs_all_ok);
-    let pcg_allocation_hash_match = match (stream.allocation_digest_hex(), vc.allocation_digest_hex()) {
-        (Some(p), Some(v)) => Some(p == v),
-        _ => None,
-    };
+    let pcg_allocation_hash_match =
+        match (stream.allocation_digest_hex(), vc.allocation_digest_hex()) {
+            (Some(p), Some(v)) => Some(p == v),
+            _ => None,
+        };
     let pcg_pool_sub_corrs = stream.counters.sub_corrs;
     let pcg_pool_full_corrs = stream.counters.full_corrs;
 
@@ -612,7 +636,9 @@ fn main() {
     let args = parse_args();
     let quick = args.quick;
     if args.pcg_backend == PcgBackendArg::Real && !quick {
-        eprintln!("p6_report: --pcg-backend real is a P7 correctness gate and is currently quick-only");
+        eprintln!(
+            "p6_report: --pcg-backend real is a P7 correctness gate and is currently quick-only"
+        );
         std::process::exit(2);
     }
     let (t0, n_gen, curve_chunk) = if quick { (16usize, 8usize, 4usize) } else { (100, 50, 10) };
@@ -872,10 +898,8 @@ fn main() {
     // Transcript-only marginal: the run-of-record ledger minus its PCS
     // opening bytes (the prefill-only measurement has no PCS), minus the
     // prefill transcript.
-    let comm_decode_marginal = rec
-        .comm_bytes
-        .saturating_sub(rec.pcs_opening_bytes)
-        .saturating_sub(comm_prefill_bytes);
+    let comm_decode_marginal =
+        rec.comm_bytes.saturating_sub(rec.pcs_opening_bytes).saturating_sub(comm_prefill_bytes);
     let sha = std::process::Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])
         .output()

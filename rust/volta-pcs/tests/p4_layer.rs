@@ -57,11 +57,17 @@ fn padded_eval(t: &[i16], k: usize, n: usize, point: &[Fp2]) -> Fp2 {
 /// tensor) at random (r_j ‖ r_l) points → open_multi_zk → verify (honest
 /// passes, tampered claim value fails). `cross_check_mle` additionally
 /// asserts padded_eval == block-slice MLE (cheap only at small scale).
-fn run_layer(params: &LigeroParams, layout: &LayerWeightLayout, seed_tag: u8, cross_check_mle: bool) {
+fn run_layer(
+    params: &LigeroParams,
+    layout: &LayerWeightLayout,
+    seed_tag: u8,
+    cross_check_mle: bool,
+) {
     assert_eq!(layout.total_len, 1 << params.n_vars(), "layout does not fill the commitment");
     let shapes: Vec<(usize, usize)> = layout.tensors.iter().map(|t| (t.k, t.n)).collect();
-    let tensors: Vec<Vec<i16>> =
-        (0..4).map(|g| rand_w(seed_tag as u64 * 100 + g as u64, shapes[g].0 * shapes[g].1)).collect();
+    let tensors: Vec<Vec<i16>> = (0..4)
+        .map(|g| rand_w(seed_tag as u64 * 100 + g as u64, shapes[g].0 * shapes[g].1))
+        .collect();
 
     let t0 = Instant::now();
     let w = layout.place([&tensors[0], &tensors[1], &tensors[2], &tensors[3]]);
@@ -120,14 +126,8 @@ fn run_layer(params: &LigeroParams, layout: &LayerWeightLayout, seed_tag: u8, cr
     assert_eq!(bd.column_indices, 4 * params.n_queries as u64);
     assert_eq!(bd.data_columns, 8 * params.rows() as u64 * params.n_queries as u64);
     assert_eq!(bd.mask_columns, 16 * 5 * params.n_queries as u64);
-    assert_eq!(
-        bd.commitment_merkle_paths,
-        32 * params.code_bits as u64 * params.n_queries as u64
-    );
-    assert_eq!(
-        bd.mask_merkle_paths,
-        32 * params.code_bits as u64 * params.n_queries as u64
-    );
+    assert_eq!(bd.commitment_merkle_paths, 32 * params.code_bits as u64 * params.n_queries as u64);
+    assert_eq!(bd.mask_merkle_paths, 32 * params.code_bits as u64 * params.n_queries as u64);
     assert_eq!(
         bd.cached_query_marginal_bytes,
         bd.total - bd.data_columns - bd.commitment_merkle_paths
@@ -145,10 +145,16 @@ fn run_layer(params: &LigeroParams, layout: &LayerWeightLayout, seed_tag: u8, cr
     let mut ctx = VerifierCtx::new(seed, delta);
     let mut txv = Transcript::new(tx_seed);
     let keys = claim_keys(&mut ctx);
-    let claims_v: Vec<_> =
-        claims_p.iter().zip(&keys).map(|((c, _), &k)| (c.clone(), k)).collect();
+    let claims_v: Vec<_> = claims_p.iter().zip(&keys).map(|((c, _), &k)| (c.clone(), k)).collect();
     assert!(verify_multi_open(
-        &com.root, params, &claims_v, &oproof, &mut ctx, dom(DOM_S, 0), dom(DOM_S, 1), &mut txv,
+        &com.root,
+        params,
+        &claims_v,
+        &oproof,
+        &mut ctx,
+        dom(DOM_S, 0),
+        dom(DOM_S, 1),
+        &mut txv,
     ));
     let t_verify = t3.elapsed().as_secs_f64();
 
@@ -160,7 +166,14 @@ fn run_layer(params: &LigeroParams, layout: &LayerWeightLayout, seed_tag: u8, cr
     let claims_v2: Vec<_> =
         claims_p.iter().zip(&keys2).map(|((c, _), &k)| (c.clone(), k)).collect();
     assert!(!verify_multi_open(
-        &com.root, params, &claims_v2, &oproof, &mut ctx2, dom(DOM_S, 0), dom(DOM_S, 1), &mut txv2,
+        &com.root,
+        params,
+        &claims_v2,
+        &oproof,
+        &mut ctx2,
+        dom(DOM_S, 0),
+        dom(DOM_S, 1),
+        &mut txv2,
     ));
 
     println!(

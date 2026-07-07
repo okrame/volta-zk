@@ -27,9 +27,11 @@ fn bench_gemm(c: &mut Criterion) {
 
 fn bench_verifier(c: &mut Criterion) {
     let n_elems = 1usize << 20;
-    let corr: Vec<u64> = (0..n_elems).map(|i| (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)).collect();
+    let corr: Vec<u64> =
+        (0..n_elems).map(|i| (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)).collect();
     let delta = Fp2::new(Fp::new(123456789), Fp::new(987654321));
-    let rs: Vec<Fp2> = (0..20).map(|j| Fp2::new(Fp::new(j as u64 + 2), Fp::new(3 * j as u64 + 1))).collect();
+    let rs: Vec<Fp2> =
+        (0..20).map(|j| Fp2::new(Fp::new(j as u64 + 2), Fp::new(3 * j as u64 + 1))).collect();
     let mut g = c.benchmark_group("p1_verifier");
     g.sample_size(10);
     g.bench_function("fused_scan_2^20", |bch| {

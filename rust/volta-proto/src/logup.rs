@@ -80,7 +80,10 @@ impl LeafQ {
 
 /// α − f_i for i16 values (no multiplications).
 pub fn lift_q(values: &[i16], alpha: Fp2) -> LeafQ {
-    LeafQ { a: values.iter().map(|&v| alpha.c0 - Fp::from_i64(v as i64)).collect(), alpha1: alpha.c1 }
+    LeafQ {
+        a: values.iter().map(|&v| alpha.c0 - Fp::from_i64(v as i64)).collect(),
+        alpha1: alpha.c1,
+    }
 }
 
 /// α − f_i for pre-lifted base-field leaf values.
@@ -371,7 +374,14 @@ fn run_general_rounds(
     }
 }
 
-fn fold4(p0: &mut Vec<Fp2>, p1: &mut Vec<Fp2>, q0: &mut Vec<Fp2>, q1: &mut Vec<Fp2>, r: Fp2, half: usize) {
+fn fold4(
+    p0: &mut Vec<Fp2>,
+    p1: &mut Vec<Fp2>,
+    q0: &mut Vec<Fp2>,
+    q1: &mut Vec<Fp2>,
+    r: Fp2,
+    half: usize,
+) {
     for v in [p0, p1, q0, q1] {
         fold_vec(v, r, half);
     }
@@ -406,8 +416,18 @@ fn layer_general(
     let mut cpref = Fp2::ONE;
     let mut rprime = Vec::with_capacity(point.len());
     run_general_rounds(
-        &mut p0, &mut p1, &mut q0, &mut q1, &stables, point, 0, lambda, &mut cpref, &mut rprime,
-        sink, ctr,
+        &mut p0,
+        &mut p1,
+        &mut q0,
+        &mut q1,
+        &stables,
+        point,
+        0,
+        lambda,
+        &mut cpref,
+        &mut rprime,
+        sink,
+        ctr,
     );
     (rprime, [p0[0], p1[0], q0[0], q1[0]])
 }
@@ -544,12 +564,7 @@ fn layer_leaf_negmult(
     let nm = |i: usize| -Fp::new(mult[i] as u64);
 
     if l == 0 {
-        let splits = [
-            Fp2::from_base(nm(0)),
-            Fp2::from_base(nm(1)),
-            leaf_q.get(0),
-            leaf_q.get(1),
-        ];
+        let splits = [Fp2::from_base(nm(0)), Fp2::from_base(nm(1)), leaf_q.get(0), leaf_q.get(1)];
         return (rprime, splits);
     }
 
@@ -587,16 +602,28 @@ fn layer_leaf_negmult(
     let mk = |f: &dyn Fn(usize) -> Fp2| (0..half).map(f).collect::<Vec<_>>();
     let mut p0v = mk(&|i| fold_base(nm(4 * i), nm(4 * i + 2)));
     let mut p1v = mk(&|i| fold_base(nm(4 * i + 1), nm(4 * i + 3)));
-    let mut q0v = mk(&|i| Fp2::new(leaf_q.a[4 * i], a1) + r.mul_base(leaf_q.a[4 * i + 2] - leaf_q.a[4 * i]));
-    let mut q1v =
-        mk(&|i| Fp2::new(leaf_q.a[4 * i + 1], a1) + r.mul_base(leaf_q.a[4 * i + 3] - leaf_q.a[4 * i + 1]));
+    let mut q0v =
+        mk(&|i| Fp2::new(leaf_q.a[4 * i], a1) + r.mul_base(leaf_q.a[4 * i + 2] - leaf_q.a[4 * i]));
+    let mut q1v = mk(&|i| {
+        Fp2::new(leaf_q.a[4 * i + 1], a1) + r.mul_base(leaf_q.a[4 * i + 3] - leaf_q.a[4 * i + 1])
+    });
     let pr = point[0] * r;
     cpref = cpref * (pr + pr - point[0] - r + Fp2::ONE);
     rprime.push(r);
 
     run_general_rounds(
-        &mut p0v, &mut p1v, &mut q0v, &mut q1v, &stables, point, 1, lambda, &mut cpref,
-        &mut rprime, sink, ctr,
+        &mut p0v,
+        &mut p1v,
+        &mut q0v,
+        &mut q1v,
+        &stables,
+        point,
+        1,
+        lambda,
+        &mut cpref,
+        &mut rprime,
+        sink,
+        ctr,
     );
     (rprime, [p0v[0], p1v[0], q0v[0], q1v[0]])
 }
@@ -635,11 +662,8 @@ fn layer_leaf_ones_aux(
         .map(|(c, &mu)| (mu * (Fp2::ONE - c.point[0]), mu * c.point[0]))
         .collect();
     ctr.bulk(2 * ws.len() as u64, 0);
-    let mut eqk: Vec<Vec<Fp2>> = ax
-        .claims
-        .iter()
-        .map(|c| crate::mle::eq_vec(&c.point[1..]))
-        .collect();
+    let mut eqk: Vec<Vec<Fp2>> =
+        ax.claims.iter().map(|c| crate::mle::eq_vec(&c.point[1..])).collect();
     ctr.bulk(eqk.iter().map(|t| t.len() as u64).sum(), 0);
 
     // Leaf q as working vectors: round 0 uses the structured form, later
@@ -711,7 +735,8 @@ fn layer_leaf_ones_aux(
             lt * (cpref * (lambda * acc[t] + acc[t + 3])) + aux[t]
         };
         ctr.bulk(9, 0);
-        let g = [fin(0, l0, &acc, &aux_acc), fin(1, l2, &acc, &aux_acc), fin(2, l3, &acc, &aux_acc)];
+        let g =
+            [fin(0, l0, &acc, &aux_acc), fin(1, l2, &acc, &aux_acc), fin(2, l3, &acc, &aux_acc)];
         let r = sink.round3(g, point[j]);
 
         // Folds: q (structured → general on round 0), aux cols, eq tables.
@@ -750,8 +775,7 @@ fn layer_leaf_ones_aux(
             assert_eq!(col.half0.len(), 1);
         }
     }
-    let colsp: Vec<[Fp2; 2]> =
-        ax.cols.iter().map(|c| [c.half0[0], c.half1[0]]).collect();
+    let colsp: Vec<[Fp2; 2]> = ax.cols.iter().map(|c| [c.half0[0], c.half1[0]]).collect();
     let finals: Vec<AuxFinal> = ax
         .claims
         .iter()
@@ -1022,7 +1046,8 @@ pub fn logup_verify(
     verify_frac_tree(
         &proof.table_side,
         |pt_, c| {
-            let vals: Vec<Fp2> = mult.iter().map(|&m| neg(Fp2::from_base(Fp::new(m as u64)))).collect();
+            let vals: Vec<Fp2> =
+                mult.iter().map(|&m| neg(Fp2::from_base(Fp::new(m as u64)))).collect();
             eval_mle_counted(&vals, pt_, c)
         },
         |pt_, c| eval_mle_counted(&lift_vals(table), pt_, c),
@@ -1137,10 +1162,7 @@ impl Sink for BlindSink<'_> {
         let masks = self.stream.draw_fulls(dom, 2);
         self.root_corrs = [p - masks[0].x, q - masks[1].x];
         self.tx.append("logup_root_corrections", 32);
-        self.roots = (
-            ProverAuthed { x: p, m: masks[0].m },
-            ProverAuthed { x: q, m: masks[1].m },
-        );
+        self.roots = (ProverAuthed { x: p, m: masks[0].m }, ProverAuthed { x: q, m: masks[1].m });
         self.cp = self.roots.0;
         self.cq = self.roots.1;
     }
@@ -1291,10 +1313,7 @@ impl Sink for BlindSink<'_> {
         let t = self.tx.challenge_fp2();
         self.cp = p0.add(p1.sub(p0).scale(t));
         self.cq = q0.add(q1.sub(q0).scale(t));
-        self.aux_col_claims = cols_a
-            .iter()
-            .map(|c| c[0].add(c[1].sub(c[0]).scale(t)))
-            .collect();
+        self.aux_col_claims = cols_a.iter().map(|c| c[0].add(c[1].sub(c[0]).scale(t))).collect();
         self.ctr.bulk(3 + 8 + 4 + 6 * finals.len() as u64 + 2 * cols.len() as u64, 0);
         self.layers.push(BlindLayerProof {
             round_corrs: std::mem::take(&mut self.rounds_cur),
@@ -1368,8 +1387,14 @@ pub fn blind_prove_frac_tree_aux(
     ctr: &mut Counters,
     prod: &mut ProdTriples,
     zero: &mut Vec<ProverAuthed>,
-) -> (BlindFracProof, Vec<Fp2>, ProverAuthed, ProverAuthed, (ProverAuthed, ProverAuthed), Vec<ProverAuthed>)
-{
+) -> (
+    BlindFracProof,
+    Vec<Fp2>,
+    ProverAuthed,
+    ProverAuthed,
+    (ProverAuthed, ProverAuthed),
+    Vec<ProverAuthed>,
+) {
     let mut sink = new_blind_sink(stream, tx, doms, prod, zero);
     let (_rp, _rq, point) = prove_engine(&LeafP::Ones, leaf_q, Some(ax), &mut sink, ctr);
     ctr.bulk(sink.ctr.fp2_mults, sink.ctr.base_mults);
@@ -1449,13 +1474,7 @@ pub fn blind_verify_frac_tree(
         kprod.push((ksp[0], ksp[3], kz[0]));
         kprod.push((ksp[1], ksp[2], kz[1]));
         kprod.push((ksp[2], ksp[3], kz[2]));
-        kzero.push(
-            kz[0]
-                .add(kz[1])
-                .scale(lambda * cpref)
-                .add(kz[2].scale(cpref))
-                .sub(kclaim),
-        );
+        kzero.push(kz[0].add(kz[1]).scale(lambda * cpref).add(kz[2].scale(cpref)).sub(kclaim));
         let t = tx.challenge_fp2();
         kcp = ksp[0].add(ksp[1].sub(ksp[0]).scale(t));
         kcq = ksp[2].add(ksp[3].sub(ksp[2]).scale(t));
@@ -1529,8 +1548,11 @@ pub fn blind_verify_frac_tree_aux(
                 let r = tx.challenge_fp2();
                 let kg1 = kclaim.sub(kg[0]);
                 let w = lagrange4(r);
-                kclaim =
-                    kg[0].scale(w[0]).add(kg1.scale(w[1])).add(kg[1].scale(w[2])).add(kg[2].scale(w[3]));
+                kclaim = kg[0]
+                    .scale(w[0])
+                    .add(kg1.scale(w[1]))
+                    .add(kg[1].scale(w[2]))
+                    .add(kg[2].scale(w[3]));
                 let ptj = point[j];
                 let pr = ptj * r;
                 cpref = cpref * (pr + pr - ptj - r + Fp2::ONE);
@@ -1652,11 +1674,8 @@ fn cross_verifier(
     kzero: &mut Vec<VerifierKey>,
 ) {
     let kms = ctx.expand_full_keys(doms.take(1), 4);
-    let kz: Vec<VerifierKey> = kms
-        .iter()
-        .zip(cross_corrs)
-        .map(|(&k, &c)| VerifierKey { k: k + ctx.delta * c })
-        .collect();
+    let kz: Vec<VerifierKey> =
+        kms.iter().zip(cross_corrs).map(|(&k, &c)| VerifierKey { k: k + ctx.delta * c }).collect();
     let one_k = VerifierKey::from_public(Fp2::ONE, ctx.delta);
     kprod.push((kroots_f.0, kroots_t.1, kz[0]));
     kprod.push((kroots_t.0, kroots_f.1, kz[1]));
@@ -1821,10 +1840,7 @@ pub fn blind_instance_verify(
     kzero.push(row);
 
     Some(InstanceOutV {
-        col_keys: col_keys
-            .into_iter()
-            .map(|key| OpenKey { point: point.clone(), key })
-            .collect(),
+        col_keys: col_keys.into_iter().map(|key| OpenKey { point: point.clone(), key }).collect(),
         kroots: kroots_f,
         point,
     })
@@ -1908,8 +1924,7 @@ pub fn table_side_prove(
         qr = z3;
         ctr.bulk(3, 0);
     }
-    let cross_corrs =
-        cross_prover((pr, qr), roots_t, stream, doms, tx, ctr, prod, zero);
+    let cross_corrs = cross_prover((pr, qr), roots_t, stream, doms, tx, ctr, prod, zero);
 
     (
         TableSideProof { table: tp, agg_corrs, cross_corrs },
@@ -1945,11 +1960,8 @@ pub fn table_side_verify(
     let (mut kpr, mut kqr) = ksites[0];
     for (&(kps, kqs), corrs) in ksites[1..].iter().zip(&proof.agg_corrs) {
         let kms = ctx.expand_full_keys(doms.take(1), 3);
-        let kz: Vec<VerifierKey> = kms
-            .iter()
-            .zip(corrs)
-            .map(|(&k, &c)| VerifierKey { k: k + ctx.delta * c })
-            .collect();
+        let kz: Vec<VerifierKey> =
+            kms.iter().zip(corrs).map(|(&k, &c)| VerifierKey { k: k + ctx.delta * c }).collect();
         kprod.push((kpr, kqs, kz[0]));
         kprod.push((kps, kqr, kz[1]));
         kprod.push((kqr, kqs, kz[2]));
@@ -2021,12 +2033,7 @@ pub fn blind_logup_prove(
     // Open claims: f̃(pt_f) = α − cq_f (value side), m̃(pt_t) = −cp_t.
     let f_claim = OpenClaim { point: pt_f, value: ProverAuthed::from_public(alpha).sub(cq_f) };
     let m_claim = OpenClaim { point: pt_t, value: ProverAuthed::ZERO.sub(cp_t) };
-    (
-        BlindLogupProof { lookup: pf_proof, table: pt_proof, cross_corrs },
-        alpha,
-        f_claim,
-        m_claim,
-    )
+    (BlindLogupProof { lookup: pf_proof, table: pt_proof, cross_corrs }, alpha, f_claim, m_claim)
 }
 
 /// Blind LogUp verifier. `n_bits`/`t_bits` are the two tree depths. The
@@ -2060,10 +2067,7 @@ pub fn blind_logup_verify(
 
     cross_verifier(kroots_f, kroots_t, &proof.cross_corrs, ctx, doms, kprod, kzero);
 
-    let f_key = OpenKey {
-        point: pt_f,
-        key: VerifierKey::from_public(alpha, ctx.delta).sub(kcq_f),
-    };
+    let f_key = OpenKey { point: pt_f, key: VerifierKey::from_public(alpha, ctx.delta).sub(kcq_f) };
     let m_key = OpenKey { point: pt_t, key: VerifierKey::ZERO.sub(kcp_t) };
     Some((f_key, m_key))
 }
@@ -2123,7 +2127,8 @@ mod tests {
             let alpha = cp.next_fp2();
             assert_eq!(alpha, cv.next_fp2());
             let mut ctr = Counters::default();
-            let proof = prove_frac_tree(&LeafP::NegMult(&mult), &lift_q(&t, alpha), &mut cp, &mut ctr);
+            let proof =
+                prove_frac_tree(&LeafP::NegMult(&mult), &lift_q(&t, alpha), &mut cp, &mut ctr);
             let lifted: Vec<Fp2> =
                 t.iter().map(|&v| alpha - Fp2::from_base(Fp::from_i64(v as i64))).collect();
             let mvals: Vec<Fp2> =
@@ -2211,7 +2216,10 @@ mod tests {
     fn harness(seed: u8, rng: &mut impl Rng) -> BlindHarness {
         let cs = [seed; 32];
         let ts = [seed ^ 0xAA; 32];
-        let delta = Fp2::new(Fp::new(rng.gen_range(1..volta_field::P)), Fp::new(rng.gen_range(0..volta_field::P)));
+        let delta = Fp2::new(
+            Fp::new(rng.gen_range(1..volta_field::P)),
+            Fp::new(rng.gen_range(0..volta_field::P)),
+        );
         BlindHarness {
             ps: CorrelationStream::new(cs),
             vc: VerifierCtx::new(cs, delta),
@@ -2269,8 +2277,7 @@ mod tests {
         let k_mask = h.vc.expand_full_keys(9000, 1)[0];
         let pp = prod_batch_prover(&prod, chi, mask, &mut h.txp);
         let ok_prod = prod_batch_verify(&kprod, k_mask, h.vc.delta, chi, &pp);
-        let ok_zero =
-            zero_batch_exchange(&zero, &kzero, &mut h.ps, &mut h.vc, 9001, &mut h.txp);
+        let ok_zero = zero_batch_exchange(&zero, &kzero, &mut h.ps, &mut h.vc, 9001, &mut h.txp);
         ok_prod && ok_zero
     }
 
@@ -2353,8 +2360,7 @@ mod tests {
         let k_mask = h.vc.expand_full_keys(9000, 1)[0];
         let pp = prod_batch_prover(&prod, chi, mask, &mut h.txp);
         let ok_prod = prod_batch_verify(&kprod, k_mask, h.vc.delta, chi, &pp);
-        let ok_zero =
-            zero_batch_exchange(&zero, &kzero, &mut h.ps, &mut h.vc, 9001, &mut h.txp);
+        let ok_zero = zero_batch_exchange(&zero, &kzero, &mut h.ps, &mut h.vc, 9001, &mut h.txp);
         assert!(!(ok_prod && ok_zero), "wrong multiplicity accepted in blind mode");
     }
 
@@ -2509,16 +2515,8 @@ mod tests {
         let alpha_v = h.txv.challenge_fp2();
         assert_eq!(alpha, alpha_v);
         let Some(vout) = blind_instance_verify(
-            n_bits,
-            &shifts,
-            alpha_v,
-            &out.proof,
-            &aux_meta,
-            &mut h.vc,
-            &mut domsv,
-            &mut h.txv,
-            &mut kprod,
-            &mut kzero,
+            n_bits, &shifts, alpha_v, &out.proof, &aux_meta, &mut h.vc, &mut domsv, &mut h.txv,
+            &mut kprod, &mut kzero,
         ) else {
             return false;
         };
@@ -2541,9 +2539,9 @@ mod tests {
         let y_true = crate::mle::eval_mle(&yf, &out.point);
         let m_vals: Vec<Fp2> = mult.iter().map(|&m| Fp2::from_base(Fp::new(m as u64))).collect();
         let m_true = crate::mle::eval_mle(&m_vals, &mult_claim.point);
-        for (claim, (key, tv)) in out.col_claims.iter().zip(
-            vout.col_keys.iter().zip([x_true, y_true]),
-        ) {
+        for (claim, (key, tv)) in
+            out.col_claims.iter().zip(vout.col_keys.iter().zip([x_true, y_true]))
+        {
             zero.push(claim.value.sub(ProverAuthed::from_public(tv)));
             kzero.push(key.key.sub(VerifierKey::from_public(tv, h.vc.delta)));
         }
@@ -2556,8 +2554,7 @@ mod tests {
         let k_mask = h.vc.expand_full_keys(9000, 1)[0];
         let pp = prod_batch_prover(&prod, chi, mask, &mut h.txp);
         let ok_prod = prod_batch_verify(&kprod, k_mask, h.vc.delta, chi, &pp);
-        let ok_zero =
-            zero_batch_exchange(&zero, &kzero, &mut h.ps, &mut h.vc, 9001, &mut h.txp);
+        let ok_zero = zero_batch_exchange(&zero, &kzero, &mut h.ps, &mut h.vc, 9001, &mut h.txp);
         ok_prod && ok_zero
     }
 

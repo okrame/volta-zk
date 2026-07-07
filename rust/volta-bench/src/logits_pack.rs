@@ -117,8 +117,7 @@ mod tests {
         };
         // Logits-like magnitudes: a few rows around ±2^30.
         let (rows, cols) = (5, 1237);
-        let data: Vec<i64> =
-            (0..rows * cols).map(|_| (next() as i64) >> 34).collect();
+        let data: Vec<i64> = (0..rows * cols).map(|_| (next() as i64) >> 34).collect();
         let packed = roundtrip(rows, cols, &data);
         assert!(packed < rows * cols * 8, "must beat raw i64 on ranged data");
     }

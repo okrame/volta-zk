@@ -67,7 +67,10 @@ mod tests {
     use rand::{Rng, SeedableRng};
 
     fn rand_fp2(rng: &mut impl Rng) -> Fp2 {
-        Fp2::new(Fp::new(rng.gen_range(0..volta_field::P)), Fp::new(rng.gen_range(0..volta_field::P)))
+        Fp2::new(
+            Fp::new(rng.gen_range(0..volta_field::P)),
+            Fp::new(rng.gen_range(0..volta_field::P)),
+        )
     }
 
     #[test]
@@ -95,9 +98,8 @@ mod tests {
             let g = |t: Fp2| a + b * t + c * t * t;
             let r = rand_fp2(&mut rng);
             let w = lagrange3(r);
-            let interp = w[0] * g(Fp2::ZERO)
-                + w[1] * g(Fp2::ONE)
-                + w[2] * g(Fp2::from_base(Fp::new(2)));
+            let interp =
+                w[0] * g(Fp2::ZERO) + w[1] * g(Fp2::ONE) + w[2] * g(Fp2::from_base(Fp::new(2)));
             assert_eq!(interp, g(r));
         }
     }

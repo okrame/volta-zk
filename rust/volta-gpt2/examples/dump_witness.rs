@@ -16,8 +16,8 @@
 
 use std::env;
 
-use volta_gpt2::luts::{build_luts, LutParams};
 use volta_gpt2::layer::{forward_layer, synthetic_input, synthetic_weights, TableId};
+use volta_gpt2::luts::{build_luts, LutParams};
 
 fn print_i16_array(name: &str, v: &[i16], trailing_comma: bool) {
     print!("\"{name}\":[");

@@ -294,21 +294,21 @@ pub struct LayerWitness {
     pub ln1_rsqrt_out: Vec<i16>, // T
     pub ln1_out: Vec<i16>,       // T×d
     // -- attention internals --
-    pub qkv_acc: Vec<i64>,   // T×3d (c_attn GEMM accumulators)
-    pub q: Vec<i16>,         // T×d
+    pub qkv_acc: Vec<i64>,    // T×3d (c_attn GEMM accumulators)
+    pub q: Vec<i16>,          // T×d
     pub scores_acc: Vec<i64>, // causal-packed, h·caus (QK^T accumulators)
-    pub scores_q: Vec<i16>,  // causal-packed (requantized scores)
+    pub scores_q: Vec<i16>,   // causal-packed (requantized scores)
     /// P5 stable softmax: per-(head,row) shift c = max of the causal row of
     /// scores_q (h×T, head-major). All zeros when softmax_row_shift is off;
     /// the exp trace inputs are then s' = s − c.
     pub row_shift: Vec<i16>,
-    pub exp_out: Vec<i16>,   // causal-packed
-    pub denoms: Vec<i64>,    // h×T (row sums of exp)
-    pub recips: Vec<i16>,    // h×T (softmax_recip outputs)
-    pub softmax_w: Vec<i16>, // causal-packed (normalized weights)
-    pub av_acc: Vec<i64>,    // T×d, head h in cols h·64.. (w·V accumulators)
-    pub av_q: Vec<i16>,      // T×d
-    pub proj_acc: Vec<i64>,  // T×d (out-proj accumulators)
+    pub exp_out: Vec<i16>,     // causal-packed
+    pub denoms: Vec<i64>,      // h×T (row sums of exp)
+    pub recips: Vec<i16>,      // h×T (softmax_recip outputs)
+    pub softmax_w: Vec<i16>,   // causal-packed (normalized weights)
+    pub av_acc: Vec<i64>,      // T×d, head h in cols h·64.. (w·V accumulators)
+    pub av_q: Vec<i16>,        // T×d
+    pub proj_acc: Vec<i64>,    // T×d (out-proj accumulators)
     pub attn_proj_q: Vec<i16>, // T×d (requantized out-proj, pre-residual)
     // -- LN2 internals --
     pub ln2_mean: Vec<i64>,
@@ -317,11 +317,11 @@ pub struct LayerWitness {
     pub ln2_rsqrt_out: Vec<i16>,
     pub ln2_out: Vec<i16>,
     // -- FFN internals --
-    pub ffn_up_acc: Vec<i64>,  // T×d_ff
-    pub ffn_up_q: Vec<i16>,    // T×d_ff
-    pub gelu_out: Vec<i16>,    // T×d_ff
+    pub ffn_up_acc: Vec<i64>,   // T×d_ff
+    pub ffn_up_q: Vec<i16>,     // T×d_ff
+    pub gelu_out: Vec<i16>,     // T×d_ff
     pub ffn_down_acc: Vec<i64>, // T×d
-    pub ffn_down_q: Vec<i16>,  // T×d (pre-residual)
+    pub ffn_down_q: Vec<i16>,   // T×d (pre-residual)
     // -- lookups, indexed by TableId as usize --
     pub traces: [LookupTrace; 12],
 }
@@ -447,18 +447,18 @@ pub fn forward_layer_with(
     // Table domain sizes: nonlinear LUTs are 2^16, requant tables 2^shift
     // (the rounding-remainder range table; chained two-stage when shift>16).
     let mut traces = [
-        LookupTrace::new(1 << 16),                       // ln_rsqrt
-        LookupTrace::new_requant(p.shift_ln_norm),       // ln_norm_requant
-        LookupTrace::new_requant(p.shift_qkv),           // requant_qkv
-        LookupTrace::new_requant(p.shift_scores),        // requant_scores
-        LookupTrace::new(1 << 16),                       // exp
-        LookupTrace::new(1 << 16),                       // softmax_recip
-        LookupTrace::new_requant(p.shift_softmax_norm),  // softmax_norm_requant
-        LookupTrace::new_requant(p.shift_av),            // requant_av
-        LookupTrace::new_requant(p.shift_attn_proj),     // requant_attn_proj
-        LookupTrace::new_requant(p.shift_ffn_up),        // requant_ffn_up
-        LookupTrace::new(1 << 16),                       // gelu
-        LookupTrace::new_requant(p.shift_ffn_down),      // requant_ffn_down
+        LookupTrace::new(1 << 16),                      // ln_rsqrt
+        LookupTrace::new_requant(p.shift_ln_norm),      // ln_norm_requant
+        LookupTrace::new_requant(p.shift_qkv),          // requant_qkv
+        LookupTrace::new_requant(p.shift_scores),       // requant_scores
+        LookupTrace::new(1 << 16),                      // exp
+        LookupTrace::new(1 << 16),                      // softmax_recip
+        LookupTrace::new_requant(p.shift_softmax_norm), // softmax_norm_requant
+        LookupTrace::new_requant(p.shift_av),           // requant_av
+        LookupTrace::new_requant(p.shift_attn_proj),    // requant_attn_proj
+        LookupTrace::new_requant(p.shift_ffn_up),       // requant_ffn_up
+        LookupTrace::new(1 << 16),                      // gelu
+        LookupTrace::new_requant(p.shift_ffn_down),     // requant_ffn_down
     ];
 
     // ---- LN1 ----
@@ -483,7 +483,12 @@ pub fn forward_layer_with(
     let mut v = vec![0i16; t * D];
     for i in 0..t {
         for j in 0..3 * D {
-            let y = requant_traced(&mut traces, TableId::RequantQkv, qkv_acc[i * 3 * D + j], p.shift_qkv);
+            let y = requant_traced(
+                &mut traces,
+                TableId::RequantQkv,
+                qkv_acc[i * 3 * D + j],
+                p.shift_qkv,
+            );
             match j / D {
                 0 => q[i * D + j] = y,
                 1 => k[i * D + (j - D)] = y,
@@ -522,8 +527,8 @@ pub fn forward_layer_with(
         let mut w_pad = vec![0i16; t * t];
         for i in 0..t {
             let row_start = softmax_w.len(); // == exp row start too
-            // Pass 1: requant the causal row of scores (the row shift needs
-            // the whole requantized row before any exp lookup).
+                                             // Pass 1: requant the causal row of scores (the row shift needs
+                                             // the whole requantized row before any exp lookup).
             let s_row_start = scores_q.len();
             for j in 0..=i {
                 let acc = s_full[i * t + j];
@@ -801,8 +806,7 @@ mod tests {
         let mut idx = 0usize;
         for head in 0..H {
             for i in 0..t {
-                let row_sum: i64 =
-                    wit.exp_out[idx..idx + i + 1].iter().map(|&e| e as i64).sum();
+                let row_sum: i64 = wit.exp_out[idx..idx + i + 1].iter().map(|&e| e as i64).sum();
                 assert_eq!(row_sum, wit.denoms[head * t + i]);
                 idx += i + 1;
             }

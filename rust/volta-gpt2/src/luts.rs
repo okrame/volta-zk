@@ -143,10 +143,9 @@ pub fn build_luts(params: LutParams) -> Luts {
 
         // gelu[x] = round(gelu(x/2^s) · 2^s), tanh approximation (GPT-2's).
         let xr = f64::from(x) / gelu_s;
-        let g = 0.5 * xr * (1.0 + (0.797_884_560_802_865_4 * (xr + 0.044715 * xr * xr * xr)).tanh());
-        gelu[u] = (g * gelu_s)
-            .round()
-            .clamp(f64::from(i16::MIN), f64::from(i16::MAX)) as i16;
+        let g =
+            0.5 * xr * (1.0 + (0.797_884_560_802_865_4 * (xr + 0.044715 * xr * xr * xr)).tanh());
+        gelu[u] = (g * gelu_s).round().clamp(f64::from(i16::MIN), f64::from(i16::MAX)) as i16;
 
         // ln_rsqrt[v] over the u16 domain v = var >> ln_var_shift:
         // round(2^R / floor_sqrt((v+1) << ln_var_shift)) — the "+1" keeps the
@@ -159,7 +158,8 @@ pub fn build_luts(params: LutParams) -> Luts {
         // round(2^R / (v·2^den_shift + 2^(den_shift-1))) (midpoint of the
         // bucket), saturated at i16::MAX for tiny denominators. Integer-only.
         let den_back = ((u as u64) << params.recip_den_shift) + (1 << (params.recip_den_shift - 1));
-        softmax_recip[u] = div_round(1u64 << params.recip_log2, den_back).min(i16::MAX as u64) as i16;
+        softmax_recip[u] =
+            div_round(1u64 << params.recip_log2, den_back).min(i16::MAX as u64) as i16;
     }
 
     Luts { params, exp, gelu, ln_rsqrt, softmax_recip }

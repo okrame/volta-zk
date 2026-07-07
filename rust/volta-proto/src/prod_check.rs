@@ -55,12 +55,15 @@ pub fn prod_batch_verify(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::{Rng, SeedableRng};
     use volta_field::Fp;
     use volta_mac::{CorrelationStream, VerifierCtx};
-    use rand::{Rng, SeedableRng};
 
     fn rand_fp2(rng: &mut impl Rng) -> Fp2 {
-        Fp2::new(Fp::new(rng.gen_range(0..volta_field::P)), Fp::new(rng.gen_range(0..volta_field::P)))
+        Fp2::new(
+            Fp::new(rng.gen_range(0..volta_field::P)),
+            Fp::new(rng.gen_range(0..volta_field::P)),
+        )
     }
 
     fn setup(seed_byte: u8, rng: &mut impl Rng) -> (CorrelationStream, VerifierCtx) {

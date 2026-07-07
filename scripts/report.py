@@ -362,6 +362,29 @@ def measured_pcs_profiles(results: list[dict[str, Any]], baseline: dict[str, Any
     return rows
 
 
+def mock_pcg_lower_bounds(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for r in results:
+        if r.get("milestone") != "P7-mock-pcg-lower-bound":
+            continue
+        rows.append(
+            {
+                "source": r["_path"],
+                "git_dirty": r.get("git_dirty"),
+                "is_real_pcg": r.get("is_real_pcg"),
+                "corr_sub_corrs": r.get("corr_sub_corrs"),
+                "corr_full_corrs": r.get("corr_full_corrs"),
+                "t_total_mock_expansion_s": r.get("t_total_mock_expansion_s"),
+                "expanded_prover_bytes": r.get("expanded_prover_bytes"),
+                "expanded_verifier_bytes": r.get("expanded_verifier_bytes"),
+                "peak_rss_gb": r.get("peak_rss_gb"),
+                "note": r.get("note"),
+            }
+        )
+    rows.sort(key=lambda x: x["source"])
+    return rows
+
+
 def p7_report(results_dir: Path) -> dict[str, Any]:
     results = load_results(results_dir)
     baseline = select_p6_record(results)
@@ -377,6 +400,7 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
     current_formula = pcs_total(LAYER_PARAMS, 8, EMBED_PARAMS, 6)
     current_measured = int(baseline["pcs_opening_bytes_total"])
     formula_matches = current_formula == current_measured
+    mock_pcg = mock_pcg_lower_bounds(results)
 
     p6_comm = {
         "source": baseline["_path"],
@@ -433,6 +457,7 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
             "status": "not_measured_in_local_vm",
             "corr_sub_corrs": baseline.get("corr_sub_corrs"),
             "corr_full_corrs": baseline.get("corr_full_corrs"),
+            "mock_pcg_lower_bounds": mock_pcg,
             "note": "P7 final go/no-go still needs a real silent-VOLE setup/expansion measurement for this volume.",
         },
         "go_no_go": {
@@ -495,6 +520,16 @@ def print_summary(report: dict[str, Any]) -> None:
             print(
                 f"  {row['milestone']:<8} Q={row['pcs_n_queries']:<3} "
                 f"pcs={mb(row['pcs_opening_bytes_total']):7.2f}{packed_s} "
+                f"{row['source']}"
+            )
+    print()
+    pcg = report["real_pcg_spike"].get("mock_pcg_lower_bounds") or []
+    if pcg:
+        print("Mock-PCG lower bounds")
+        for row in pcg:
+            print(
+                f"  mock total={row['t_total_mock_expansion_s']:.3f}s "
+                f"sub={row['corr_sub_corrs']} full={row['corr_full_corrs']} "
                 f"{row['source']}"
             )
         print()

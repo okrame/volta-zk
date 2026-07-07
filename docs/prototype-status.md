@@ -23,7 +23,7 @@ CPU numbers validate architecture and counts; the ρ targets (≤2 decode,
 | P4 LogUp + fused blocks | **done** (2026-07-05) | one full layer proved+verified e2e (T=100, real PCS opening) ✓ **PASSED**; counts within 20% ✓ (witness streams = budget **exactly**, padded LogUp domains explained); LogUp ≤8–10 E-mult/lookup: **MISSED, motivated (12.20)**; 1 weight claim/tensor ✓ (4/layer) | prove 0.800 s vs native forward 0.033 s (ρ_layer ~24, 4 cores); verify 0.041 s; LogUp lookup-side **12.20 E-mult/lookup** (~34 ns/lookup, 5.4× vs P2.5 spike wall), table-side 3.86 raw → 0.32 /12-amortized; full instance cost 126.5 M E-mult/layer (≈42/padded lookup incl. aux folding + tables + closures); corr bytes 7.64 MB/layer (mult vectors 3.87 MB — see deviations); layer PCS 2^24: commit 0.34 s one-off, **open 0.035 s**, verify 0.006 s; projections (P3.5 cost model, 49/98 claims): prefill **0.233 s**, per-response **0.345 s**. Run of record `benchmarks/results/p4-2026-07-06-8b4ca11.json` (clean tree, `git_dirty:false`; the 07-05 JSON was a dirty-tree run whose sha names the parent commit) |
 | P5 GPT-2 e2e prefill 100 tok | **done** (2026-07-06) | one-command run ✓ (`scripts/run_prefill.sh`), golden check ✓ (full logits bit-exact vs numpy at T=100, argmax 835 ' way'), counts vs budget: witness lookups = budget **exactly** (16,944,000) ✓ | **accepted e2e with real weights + 13 real Ligero commitments**: native (witness) 0.459 s, prove 11.0–11.2 s, **ρ ≈ 24** (matches P4's ×12 projection); verify 0.65 s + 0.07 s PCS; PCS open **0.73 s** / 52.8 MB (vs 0.237 s projection — 13× fixed costs, see deviations), commit one-off 7.6 s; **comm 159.6 MB/prefill** (mult vectors 59.4 + PCS 52.8 + boundary 36.9 + rest), projected response 212 MB; E-mult all-in 100.6/budget lookup; peak RSS 2.86 GB. `benchmarks/results/p5-2026-07-06-e52ce79.json` (clean tree) |
 | P6 decode + authenticated KV cache | **done** (2026-07-07) | flat cost/token ✓ **PASSED** (curve last/first 1.12 ≤ 1.5, 5×10 chunks, cache 100→150); anti-replay smoke ✓ (prefill-row replay + position swap rejected); golden decode ✓ (50 tokens bit-exact vs numpy) | **accepted e2e, prompt 100 + 50 decode, one two-phase session, real 13-commitment PCS with STACKED claims (96 weight + 6 embed)**: native decode 30.9 tok/s (KV-cached baseline); prove_response 18.7 s = prefill 10.5 s + **decode marginal 8.2 s (0.164 s/token, ρ_decode 5.07 CPU)**; verified 2.67 tok/s; verify 0.57 s + 0.10 s PCS. Comm: transcript 137.4 MB (prefill 48.4 + PCS opening 66.7 + decode marginal 22.3 = **445 KB/token**) + public band logits 20.5 MB → **total response download 157.9 MB** (inside the 150–200 MB product envelope; the PCS opening is now the dominant lever, P7). Shared-α restructure landed with P6: mult corr 59.4 → 2.85 MB. PCS commit one-off 9.5 s; peak RSS 3.47 GB. `benchmarks/results/p6-2026-07-07-515bb1c.json` (clean tree) |
-| P7 report + GPU budget model | **partial** (local VM pass done 2026-07-07; real-PCG/cloud open) | local report/budget model ✓; PCS byte formula reproduces P6 ✓; static-query-cache marginal accounting in Rust ✓; Q=150 exploratory profile measured ✓; no protocol/soundness parameter change without separate ledger entry | Latest local report `benchmarks/results/p7-2026-07-07-5390144.json` (`git_dirty:true`): current packed download 144.8 MB; PCS formula matches 66.733 MB; measured quick Q=150 PCS 57.823 MB; projections: Q=150 same-rate 135.9 MB, RLC 130.9 MB, Q+RLC 122.0 MB, static-query-cache marginal 110.8 MB, cache+RLC marginal 96.9 MB. GPU sensitivity: targets need prover/native relative speedup 4.62× prefill, 2.54× decode. Accounting quick run `p6-quick-2026-07-07-2b3beab.json`: PCS current 66.733 MB, cached-query marginal 32.718 MB. Recommendation: cloud spikes only after real-PCG cost is measured/budgeted. |
+| P7 report + GPU budget model | **partial** (local VM pass done 2026-07-07; real-PCG/cloud open) | local report/budget model ✓; PCS byte formula reproduces P6 ✓; static-query-cache marginal accounting in Rust ✓; Q=150 exploratory profile measured ✓; mock-PCG lower-bound measured ✓; no protocol/soundness parameter change without separate ledger entry | Latest local report `benchmarks/results/p7-2026-07-07-d16a69c.json` (`git_dirty:true`): current packed download 144.8 MB; PCS formula matches 66.733 MB; measured quick Q=150 PCS 57.823 MB; projections: Q=150 same-rate 135.9 MB, RLC 130.9 MB, Q+RLC 122.0 MB, static-query-cache marginal 110.8 MB, cache+RLC marginal 96.9 MB. GPU sensitivity: targets need prover/native relative speedup 4.62× prefill, 2.54× decode. Mock-PCG lower-bound `p7-mock-pcg-2026-07-07-d16a69c.json`: 0.351 s for 8.48 M sub + 176.9 K full expanded both sides (not real-PCG). Recommendation: cloud spikes only after real-PCG cost is measured/budgeted. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -55,6 +55,30 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-07 (P7 mock-PCG lower-bound spike, pre-registered)**:
+  no real Ferret/silent-VOLE implementation or dependency is present in the
+  repo. Add a local `p7_pcg_report` binary that reads a P6 JSON's counted
+  `corr_sub_corrs` / `corr_full_corrs` and measures the current mock-PCG
+  ChaCha expansion over the same element volume. This is explicitly a lower
+  bound / plumbing measurement, **not** the real-PCG spike required for the
+  final go/no-go; the ledger and JSON must say so. It does not affect any
+  proof path or correlation semantics.
+
+- **2026-07-07 (P7 mock-PCG lower-bound landed)**:
+  `cargo run --release -p volta-bench --bin p7_pcg_report` measured the
+  current mock ChaCha expansion for the clean P6 correlation volume
+  (`8,479,926` subfield + `176,880` full-field correlations) and wrote
+  `benchmarks/results/p7-mock-pcg-2026-07-07-d16a69c.json` (dirty tree).
+  Expanded both prover and verifier sides in **0.351 s** total: prover sub
+  0.172 s, verifier sub keys 0.170 s, prover full 0.0046 s, verifier full
+  keys 0.0052 s; peak RSS 0.19 GB. This is a lower-bound/plumbing number
+  only (`is_real_pcg:false` in JSON), because no Ferret/silent-VOLE
+  implementation is present locally. The final P7 go/no-go still requires
+  a real-PCG setup+expansion measurement or an explicit external budget.
+  `scripts/report.py` now includes these mock lower-bound rows under
+  `real_pcg_spike.mock_pcg_lower_bounds`; refreshed report
+  `benchmarks/results/p7-2026-07-07-d16a69c.json`.
 
 - **2026-07-07 (P7 Q=150 exploratory profile, pre-registered)**:
   add a non-default `p6_report --pcs-q <Q>` switch to measure the PCS query

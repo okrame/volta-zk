@@ -45,3 +45,11 @@ def test_p7_report_selects_record_and_packed_sources():
     assert len(q150) == 1
     assert q150[0]["pcs_n_queries"] == 150
     assert q150[0]["pcs_opening_bytes_total"] == 57_822_904
+    pcg = [
+        row
+        for row in data["real_pcg_spike"]["mock_pcg_lower_bounds"]
+        if row["source"].endswith("p7-mock-pcg-2026-07-07-d16a69c.json")
+    ]
+    assert len(pcg) == 1
+    assert pcg[0]["is_real_pcg"] is False
+    assert pcg[0]["corr_sub_corrs"] == 8_479_926

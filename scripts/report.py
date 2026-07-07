@@ -456,6 +456,7 @@ def real_pcg_phase_b(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 ),
                 "t_base_ot_s": timings.get("t_base_ot_s"),
                 "t_ot_extension_s": timings.get("t_ot_extension_s"),
+                "t_ggm_pprf_s": timings.get("t_ggm_pprf_s"),
                 "t_lpn_expand_s": timings.get("t_lpn_expand_s"),
                 "t_consistency_check_s": timings.get("t_consistency_check_s"),
                 "peak_rss_gb": r.get("peak_rss_gb"),
@@ -678,6 +679,7 @@ def print_summary(report: dict[str, Any]) -> None:
             print(
                 f"  total={row['t_total_real_expansion_s']:.3f}s "
                 f"baseOT={row['t_base_ot_s']:.3f}s otExt={row['t_ot_extension_s']:.3f}s "
+                f"ggm={(row['t_ggm_pprf_s'] or 0.0):.3f}s "
                 f"lpn={row['t_lpn_expand_s']:.3f}s setup_comm={row['setup_comm_bytes']} B "
                 f"production_ready={row['production_ready']} {row['source']}"
             )

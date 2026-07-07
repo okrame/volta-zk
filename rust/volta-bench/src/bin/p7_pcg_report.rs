@@ -476,7 +476,7 @@ fn run_phase_b(
         source_path,
         *checksum,
         true,
-        "Phase-B setup measurement: real curve25519/Ristretto base OTs plus measured GGM OT-extension delivery and transcript-bound consistency challenge. Production-ready remains false until WYKW malicious checks and table-derived LPN parameters are closed.".into(),
+        "Phase-B setup COST measurement (single-process, shared-seed simulation with real curve25519/Ristretto group operations and measured OT-extension bytes; GGM PPRF expansion charged as in phase A). Not a two-party execution; production-ready remains false until WYKW malicious checks and table-derived LPN parameters are closed.".into(),
     );
     report.t_total_real_expansion_s = Some(total);
     report.sub_corrs_per_s_prover = source.corr_sub_corrs as f64 / total;
@@ -487,7 +487,10 @@ fn run_phase_b(
     report.expanded_prover_bytes = expansion.prover.expanded_bytes();
     report.expanded_verifier_bytes = expansion.verifier.expanded_bytes();
     report.setup_comm_bytes = setup_comm;
-    report.base_vole = "real".into();
+    // Honest label: the base-OT/OT-extension COST is real and measured, but
+    // both parties still run in one process from a shared seed — this is a
+    // setup cost model, not a two-party execution.
+    report.base_vole = "setup-cost-model".into();
     report.lpn_parameters = Some(expansion.params);
     report.phase_b_timings = Some(expansion.timings);
     report.phase_b_setup = Some(expansion.setup);

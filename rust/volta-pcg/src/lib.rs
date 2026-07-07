@@ -178,6 +178,7 @@ pub struct PhaseBTimings {
     pub t_base_ot_s: f64,
     pub t_ot_extension_s: f64,
     pub t_base_vole_from_setup_s: f64,
+    pub t_ggm_pprf_s: f64,
     pub t_lpn_expand_s: f64,
     pub t_full_combine_s: f64,
     pub t_consistency_check_s: f64,
@@ -300,13 +301,25 @@ pub fn expand_phase_b(
     let ot_ext = run_ggm_ot_extension(seed, &base_ot, &params);
     let t_ot_extension_s = ot_ext_start.elapsed().as_secs_f64();
 
+    let binding = setup_binding_digest(&base_ot, &ot_ext);
+
     let base_vole_start = Instant::now();
     let base = setup_bound_base_vole(seed, delta, params.base_vole_len, &base_ot, &ot_ext);
     let t_base_vole_from_setup_s = base_vole_start.elapsed().as_secs_f64();
 
+    // The GGM PPRF leaf expansion is real per-party work (n leaves across the
+    // t punctured trees) and must be charged in phase B exactly as in phase A;
+    // only the tree root derivation is setup-bound.
+    let ggm_start = Instant::now();
+    let (noise, _noise_checksum) = ggm_single_point_noise(
+        derive_seed(binding, b"phase-b-ggm", 0),
+        delta,
+        params.output_sub_equiv,
+        &params,
+    );
+    let t_ggm_pprf_s = ggm_start.elapsed().as_secs_f64();
+
     let lpn_start = Instant::now();
-    let (noise, _noise_checksum) =
-        setup_bound_noise(seed, delta, params.output_sub_equiv, &params, &base_ot, &ot_ext);
     let (mut prover, mut verifier, pending_full) =
         lpn_expand_to_pools(seed, &base, &noise, sub_corrs, full_corrs, &params);
     let t_lpn_expand_s = lpn_start.elapsed().as_secs_f64();
@@ -314,8 +327,6 @@ pub fn expand_phase_b(
     let full_start = Instant::now();
     combine_full_limbs(pending_full, full_corrs, &mut prover, &mut verifier);
     let t_full_combine_s = full_start.elapsed().as_secs_f64();
-
-    let binding = setup_binding_digest(&base_ot, &ot_ext);
     let check_start = Instant::now();
     let consistency_seed = derive_seed(binding, b"phase-b-consistency", 0);
     let consistency =
@@ -342,6 +353,7 @@ pub fn expand_phase_b(
         t_base_ot_s,
         t_ot_extension_s,
         t_base_vole_from_setup_s,
+        t_ggm_pprf_s,
         t_lpn_expand_s,
         t_full_combine_s,
         t_consistency_check_s,
@@ -493,36 +505,6 @@ fn setup_bound_base_vole(
         k.push(mi + delta.mul_base(ri));
     }
     BaseVole { r, m, k }
-}
-
-fn setup_bound_noise(
-    seed: [u8; 32],
-    delta: Fp2,
-    n: usize,
-    params: &PhaseAParams,
-    base_ot: &BaseOtTranscript,
-    ot_ext: &OtExtensionTranscript,
-) -> (Vec<(usize, SubTriple)>, u64) {
-    let setup = setup_binding_digest(base_ot, ot_ext);
-    let mut out = Vec::with_capacity(params.lpn_noise_weight);
-    let mut checksum = 0xB17B_5EEDu64;
-    for point in 0..params.lpn_noise_weight {
-        let start = point * params.ggm_block_size;
-        if start >= n {
-            break;
-        }
-        let end = n.min(start + params.ggm_block_size);
-        let width = end - start;
-        let alpha = derive_alpha(seed, point, width);
-        let mut fs = FpStream::from_seed(derive_seed(setup, b"phase-b-noise", point as u64));
-        let r = fs.next_fp();
-        let m = fs.next_fp2();
-        let k = m + delta.mul_base(r);
-        checksum ^= r.value().rotate_left((point & 63) as u32);
-        out.push((start + alpha, SubTriple { r, m, k }));
-    }
-    out.sort_by_key(|(pos, _)| *pos);
-    (out, checksum)
 }
 
 fn derive_alpha(seed: [u8; 32], point: usize, width: usize) -> usize {

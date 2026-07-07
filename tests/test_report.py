@@ -61,7 +61,9 @@ def test_p7_report_selects_record_and_packed_sources():
         assert row["consistency"]["ok"] is True
     for row in data["real_pcg_spike"]["real_pcg_phase_b"]:
         assert row["is_real_pcg"] is True
-        assert row["base_vole"] == "real"
+        # "real" is the label of the two 2026-07-07 pre-fix JSONs; the honest
+        # label after the GGM-accounting fix is "setup-cost-model".
+        assert row["base_vole"] in {"real", "setup-cost-model"}
         assert row["setup_comm_bytes"] > 0
         assert row["production_ready"] is False
         assert row["consistency"]["ok"] is True

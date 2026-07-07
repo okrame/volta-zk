@@ -37,3 +37,11 @@ def test_p7_report_selects_record_and_packed_sources():
     assert data["pcs_formula_check"]["matches_p6_measured_bytes"] is True
     assert data["baseline"]["source"].endswith("p6-2026-07-07-515bb1c.json")
     assert data["communication"]["packed_logits_source"].endswith("p6-2026-07-07-d71e339.json")
+    q150 = [
+        row
+        for row in data["measured_pcs_profiles"]
+        if row["source"].endswith("p6-quick-q150-2026-07-07-fa40a1d.json")
+    ]
+    assert len(q150) == 1
+    assert q150[0]["pcs_n_queries"] == 150
+    assert q150[0]["pcs_opening_bytes_total"] == 57_822_904

@@ -324,6 +324,44 @@ def summarize_rhos(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return rows
 
 
+def measured_pcs_profiles(results: list[dict[str, Any]], baseline: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = []
+    seen: set[str] = set()
+    candidates = [baseline] + [
+        r
+        for r in results
+        if r.get("accepted") is True
+        and r.get("milestone") in {"P6", "P6-quick"}
+        and "pcs_opening_bytes_total" in r
+    ]
+    for r in candidates:
+        source = r["_path"]
+        if source in seen:
+            continue
+        seen.add(source)
+        n_queries = int(r.get("pcs_n_queries", 200))
+        params = with_queries(LAYER_PARAMS, n_queries)
+        packed = r.get("total_response_download_packed_bytes")
+        if packed is None and "public_logits_packed_bytes" in r:
+            packed = int(r["comm_response_bytes"]) + int(r["public_logits_packed_bytes"])
+        row = {
+            "source": source,
+            "milestone": r.get("milestone"),
+            "git_dirty": r.get("git_dirty"),
+            "t_prefill": r.get("t_prefill"),
+            "n_decode": r.get("n_decode"),
+            "pcs_n_queries": n_queries,
+            "pcs_query_error_bits": float(r.get("pcs_query_error_bits", query_error_bits(params))),
+            "pcs_opening_bytes_total": int(r["pcs_opening_bytes_total"]),
+            "pcs_cached_query_marginal_bytes_total": r.get("pcs_cached_query_marginal_bytes_total"),
+            "comm_response_bytes": r.get("comm_response_bytes"),
+            "total_response_download_packed_bytes": packed,
+        }
+        rows.append(row)
+    rows.sort(key=lambda x: (x["t_prefill"] or 0, x["n_decode"] or 0, x["pcs_n_queries"], x["source"]))
+    return rows
+
+
 def p7_report(results_dir: Path) -> dict[str, Any]:
     results = load_results(results_dir)
     baseline = select_p6_record(results)
@@ -377,6 +415,7 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
         },
         "rho_history": summarize_rhos(results),
         "communication": p6_comm,
+        "measured_pcs_profiles": measured_pcs_profiles(results, baseline),
         "pcs_formula_check": {
             "matches_p6_measured_bytes": formula_matches,
             "formula_total_bytes": current_formula,
@@ -448,6 +487,17 @@ def print_summary(report: dict[str, Any]) -> None:
     print(f"  total raw:           {mb(comm['total_response_download_raw_bytes']):8.2f}")
     print(f"  total packed:        {mb(comm['total_response_download_packed_bytes']):8.2f}")
     print()
+    if report.get("measured_pcs_profiles"):
+        print("Measured PCS profiles")
+        for row in report["measured_pcs_profiles"]:
+            packed = row.get("total_response_download_packed_bytes")
+            packed_s = f" total={mb(packed):7.2f}" if packed is not None else ""
+            print(
+                f"  {row['milestone']:<8} Q={row['pcs_n_queries']:<3} "
+                f"pcs={mb(row['pcs_opening_bytes_total']):7.2f}{packed_s} "
+                f"{row['source']}"
+            )
+        print()
     print("PCS scenarios (packed response MB)")
     for row in report["pcs_scenarios"]:
         print(

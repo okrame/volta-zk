@@ -7,9 +7,8 @@
 //! NATIVE decode baseline for ρ_decode: no lookup traces, no witness
 //! bookkeeping — just the O(seq·d) per-token work.
 
-use crate::layer::{GemmBiases, LayerWeights, DH, H};
-use crate::model::{Gpt2Model, NPOS, VOCAB};
-use crate::{D, DFF, L};
+use crate::layer::{GemmBiases, LayerWeights, D, DFF, DH, H};
+use crate::model::{Gpt2Model, L, NPOS, VOCAB};
 use rayon::prelude::*;
 
 /// Traceless mirror of `layer::requant_into` (round-half-up, double-round
@@ -256,4 +255,104 @@ pub fn generate(
         logits_rows.push(lg);
     }
     (tokens, logits_rows)
+}
+
+// ---------------------------------------------------------------------------
+// Tests (skipped when the frozen artifact is not present)
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{forward_model, forward_model_tokens, load_model};
+
+    fn weights_dir() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../benchmarks/weights")
+    }
+
+    fn cache_from_wit(wit: &crate::model::ModelWitness, t0: usize) -> KvCache {
+        let kv: Vec<(&[i16], &[i16])> =
+            wit.layers.iter().map(|lw| (lw.k.as_slice(), lw.v.as_slice())).collect();
+        KvCache::from_prefill(&kv, t0)
+    }
+
+    /// KV-cached decode is bit-exact with the full causal re-forward: K/V
+    /// caches, residual outputs and every sampled logits row must match.
+    #[test]
+    fn decode_matches_full_forward_small() {
+        let dir = weights_dir();
+        if !dir.join("gpt2s-q.bin").exists() {
+            eprintln!("skipping decode_matches_full_forward_small: artifact not present");
+            return;
+        }
+        let m = load_model(&dir).unwrap();
+        let (t0, n_gen) = (12usize, 4usize);
+        let wit0 = forward_model(&m, t0);
+        let mut cache = cache_from_wit(&wit0, t0);
+        let (gen, logits_rows) = generate(&m, &mut cache, &wit0.logits, t0, n_gen);
+        assert_eq!(cache.len, t0 + n_gen);
+
+        // Naive reference: full re-forward at each length.
+        let mut seq: Vec<u32> = m.p.tokens[..t0].to_vec();
+        for (i, &tk) in gen.iter().enumerate() {
+            seq.push(tk);
+            let wit_i = forward_model_tokens(&m, &seq);
+            assert_eq!(wit_i.logits, logits_rows[i], "logits row mismatch at step {i}");
+            for l in 0..L {
+                assert_eq!(
+                    &cache.k[l][..wit_i.layers[l].k.len()],
+                    &wit_i.layers[l].k[..],
+                    "K cache mismatch at step {i} layer {l}"
+                );
+                assert_eq!(
+                    &cache.v[l][..wit_i.layers[l].v.len()],
+                    &wit_i.layers[l].v[..],
+                    "V cache mismatch at step {i} layer {l}"
+                );
+            }
+            // Greedy chain: token i+1 = argmax of row i.
+            if i + 1 < n_gen {
+                assert_eq!(gen[i + 1], argmax(&logits_rows[i]));
+            }
+        }
+    }
+
+    /// Golden decode vs the numpy reference (scripts/dump_golden.py --gen):
+    /// generated tokens + per-step logits checksums, bit-exact.
+    #[test]
+    fn golden_decode_check() {
+        let dir = weights_dir();
+        let path = dir.join("golden-p6.bin");
+        if !path.exists() || !dir.join("gpt2s-q.bin").exists() {
+            eprintln!("skipping golden_decode_check: golden-p6.bin not present");
+            return;
+        }
+        let g = std::fs::read(path).unwrap();
+        assert_eq!(&g[..8], b"VGOLD2\0\0");
+        let rd_u32 = |o: usize| u32::from_le_bytes(g[o..o + 4].try_into().unwrap());
+        let rd_i64 = |o: usize| i64::from_le_bytes(g[o..o + 8].try_into().unwrap());
+        let t0 = rd_u32(8) as usize;
+        let n_gen = rd_u32(12) as usize;
+        let tokens_ref: Vec<u32> = (0..n_gen).map(|i| rd_u32(16 + 4 * i)).collect();
+        let off = 16 + 4 * n_gen;
+        let sums_ref: Vec<i64> = (0..n_gen).map(|i| rd_i64(off + 8 * i)).collect();
+        assert_eq!(off + 8 * n_gen, g.len());
+
+        let m = load_model(&dir).unwrap();
+        let wit0 = forward_model(&m, t0);
+        let mut cache = cache_from_wit(&wit0, t0);
+        let (gen, logits_rows) = generate(&m, &mut cache, &wit0.logits, t0, n_gen);
+        assert_eq!(gen, tokens_ref, "generated tokens diverge from numpy");
+        // Checksum i pins the logits row that SAMPLED token i: row t0-1+i,
+        // i.e. wit0.logits for i = 0 and decode row i-1 after.
+        assert_eq!(wit0.logits.iter().sum::<i64>(), sums_ref[0]);
+        for i in 1..n_gen {
+            assert_eq!(
+                logits_rows[i - 1].iter().sum::<i64>(),
+                sums_ref[i],
+                "logits checksum mismatch at sampled position {}",
+                t0 + i - 1
+            );
+        }
+    }
 }

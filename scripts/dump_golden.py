@@ -57,6 +57,9 @@ def load_artifact():
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--t", type=int, default=100)
+    ap.add_argument(
+        "--gen", type=int, default=0, help="P6: greedy-generate N tokens (golden-p6.bin)"
+    )
     args = ap.parse_args()
 
     model, luts, p, tokens = load_artifact()
@@ -76,6 +79,35 @@ def main() -> int:
         out += struct.pack("<q", int(np.asarray(lr["row_shift"], dtype=np.int64).sum()))
     (WDIR / "golden-p5.bin").write_bytes(bytes(out))
     print(f"wrote golden-p5.bin (t={args.t}, argmax={int(np.argmax(logits))})")
+
+    # ---- P6 decode golden: greedy generation by full re-forward ------------
+    # The fixed-point forward is causal, so re-running the whole model on the
+    # growing sequence is bit-identical to a KV-cached decode — this is the
+    # slow-but-unarguable reference for the Rust `generate`. golden-p6.bin:
+    # magic VGOLD2, u32 t0, u32 n_gen, u32 tokens[n_gen], then i64 logits-row
+    # checksums at each sampled position (t0-1 .. t0+n_gen-2), n_gen entries.
+    if args.gen > 0:
+        seq = list(tokens)
+        gen_tokens: list = []
+        checksums: list = [int(logits.sum())]
+        nxt = int(np.argmax(logits))
+        for i in range(args.gen):
+            gen_tokens.append(nxt)
+            seq.append(nxt)
+            if i + 1 < args.gen:
+                res_i = gpt2_fixed.forward_model(seq, model, luts, p, mode="strict")
+                lg = np.asarray(res_i["logits"], dtype=np.int64)
+                checksums.append(int(lg.sum()))
+                nxt = int(np.argmax(lg))
+            print(f"  gen step {i}: token {gen_tokens[-1]}")
+        out6 = bytearray(b"VGOLD2\0\0")
+        out6 += struct.pack("<II", args.t, args.gen)
+        for tk in gen_tokens:
+            out6 += struct.pack("<I", tk)
+        for c in checksums:
+            out6 += struct.pack("<q", c)
+        (WDIR / "golden-p6.bin").write_bytes(bytes(out6))
+        print(f"wrote golden-p6.bin (t0={args.t}, n_gen={args.gen})")
     return 0
 
 

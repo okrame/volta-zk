@@ -227,8 +227,16 @@ pub struct ModelWitness {
 
 /// Fixed-point forward of the whole model on the first `t` prompt tokens.
 pub fn forward_model(m: &Gpt2Model, t: usize) -> ModelWitness {
-    assert!(t <= m.p.tokens.len() && t <= NPOS);
-    let tokens = &m.p.tokens[..t];
+    assert!(t <= m.p.tokens.len());
+    forward_model_tokens(m, &m.p.tokens[..t])
+}
+
+/// [`forward_model`] on an EXPLICIT token sequence (P6: prompt + generated
+/// tokens — the fixed-point forward is causal, so the first `t0` rows are
+/// bit-identical to the prefill run's).
+pub fn forward_model_tokens(m: &Gpt2Model, tokens: &[u32]) -> ModelWitness {
+    let t = tokens.len();
+    assert!(t <= NPOS);
 
     // ---- embedding ----
     let mut acc = vec![0i64; t * D];

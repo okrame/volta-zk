@@ -57,5 +57,7 @@ Bootstrap done. Next (docs/p7-cloud-runbook.md):
   4. cargo run --release -p volta-bench --bin p6_report    # NEW CPU baseline
   5. python3 scripts/report.py --write-json                # regenerate P7 aggregate
 Result JSONs are append-only; helpers add -1/-2 suffixes on same date+sha.
+This disk is ephemeral: run scripts/cloud_pull_results.sh locally after every
+important JSON-producing command and before stopping the instance.
 Remember: target-cpu=native ⇒ old JSON ratios are NOT comparable on this box.
 MSG

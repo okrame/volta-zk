@@ -15,7 +15,9 @@ availability in `docs/prototype-status.md` and in every cloud JSON.
 ## Result Hygiene
 
 Bench outputs are append-only. The cloud box must not overwrite local
-numbers or reuse a local rho:
+numbers or reuse a local rho. Treat Thunder/RunPod disks as ephemeral:
+after every baseline or GPU spike, pull the JSONs back to this local checkout
+before stopping the instance.
 
 - Keep cloud work on a clean checkout/commit (`git status --short` empty
   before run-of-record commands). Commit cloud JSONs separately from local
@@ -32,6 +34,13 @@ numbers or reuse a local rho:
 - Because `target-cpu=native` is enabled, first regenerate the cloud CPU
   baselines and use those denominators for rho. Never divide cloud prover
   or GPU timings by a local VM native baseline.
+- Store cloud connection details only in the local `.env`, e.g.
+  `CLOUD_HOST=64.247.206.140`, `CLOUD_PORT=30174`,
+  `CLOUD_USER=ubuntu`, `CLOUD_SSH_KEY=...`. Do not commit secrets or live
+  credentials.
+- Pull results back locally with `scripts/cloud_pull_results.sh`. The helper
+  copies `benchmarks/results/*.json` from `CLOUD_REMOTE_REPO` into the local
+  `benchmarks/results/`; run it before terminating the box.
 
 ## Setup
 
@@ -68,6 +77,15 @@ Then regenerate the P7 aggregate:
 cd ..
 python3 scripts/report.py --write-json
 ```
+
+After each command that writes a JSON, return to the local machine and run:
+
+```sh
+scripts/cloud_pull_results.sh
+```
+
+Then inspect and commit the pulled JSONs locally. Do not rely on the cloud
+disk as storage.
 
 ## GPU spike order
 

@@ -44,6 +44,21 @@ struct Report {
     verifier: VerifierResult,
 }
 
+fn unique_result_path(label: &str, date: &str, sha: &str) -> std::path::PathBuf {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../benchmarks/results");
+    let first = dir.join(format!("{label}-{date}-{sha}.json"));
+    if !first.exists() {
+        return first;
+    }
+    for i in 1..1000 {
+        let p = dir.join(format!("{label}-{date}-{sha}-{i}.json"));
+        if !p.exists() {
+            return p;
+        }
+    }
+    panic!("could not find unused result path for {label}-{date}-{sha}");
+}
+
 fn main() {
     let quick = std::env::args().any(|a| a == "--quick");
     let iters = if quick { 3 } else { 9 };
@@ -156,8 +171,7 @@ fn main() {
         rho_kernel_weighted_layer: rho_layer,
         verifier,
     };
-    let out_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../benchmarks/results");
-    let path = out_dir.join(format!("p1-{date}-{sha}.json"));
+    let path = unique_result_path("p1", &date, &sha);
     std::fs::write(&path, serde_json::to_string_pretty(&report).unwrap()).unwrap();
     eprintln!("wrote {}", path.display());
 }

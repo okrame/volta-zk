@@ -51,9 +51,11 @@ free -h | head -2
 cat <<'MSG'
 
 Bootstrap done. Next (docs/p7-cloud-runbook.md):
-  1. cargo test --workspace              # full suite green on the new box
-  2. cargo run --release -p volta-bench --bin p1_report    # NEW native baseline
-  3. cargo run --release -p volta-bench --bin p6_report    # NEW CPU baseline
-  4. python3 scripts/report.py --write-json                # regenerate P7 aggregate
+  1. git status --short                  # clean tracked tree for runs of record
+  2. cargo test --workspace              # full suite green on the new box
+  3. cargo run --release -p volta-bench --bin p1_report    # NEW native baseline
+  4. cargo run --release -p volta-bench --bin p6_report    # NEW CPU baseline
+  5. python3 scripts/report.py --write-json                # regenerate P7 aggregate
+Result JSONs are append-only; helpers add -1/-2 suffixes on same date+sha.
 Remember: target-cpu=native ⇒ old JSON ratios are NOT comparable on this box.
 MSG

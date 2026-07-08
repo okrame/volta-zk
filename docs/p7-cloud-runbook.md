@@ -1,7 +1,7 @@
 # P7 cloud runbook
 
 Status: local pre-cloud P7 is complete as of 2026-07-07. The local report of
-record is `benchmarks/results/p7-2026-07-07-d0812a7.json`; the clean CPU
+record is `benchmarks/results/p7-2026-07-07-a7a2a85.json`; the clean CPU
 baseline with transcript-label breakdown is
 `benchmarks/results/p6-2026-07-07-382bb56.json`.
 
@@ -12,10 +12,32 @@ A100 80GB when cost-constrained comparison is needed. Fallback: RunPod. Record
 provider, region, image, driver, CUDA version, GPU SKU, CPU model, RAM, and
 availability in `docs/prototype-status.md` and in every cloud JSON.
 
+## Result Hygiene
+
+Bench outputs are append-only. The cloud box must not overwrite local
+numbers or reuse a local rho:
+
+- Keep cloud work on a clean checkout/commit (`git status --short` empty
+  before run-of-record commands). Commit cloud JSONs separately from local
+  JSONs.
+- Result filenames include date + git sha; current P7/P6/P1/report helpers
+  choose a `-1`, `-2`, ... suffix if the exact filename already exists. Do
+  not rename cloud files over local files.
+- Local and cloud JSONs may live in the same `benchmarks/results/`
+  directory, but compare only runs with the same machine/provider class.
+  Provider, region, image, CUDA/driver, GPU SKU, CPU model and RAM must be
+  recorded in the ledger before quoting cloud numbers.
+- `git_dirty:false` is required for any cloud run of record. Untracked result
+  files do not make the tree dirty; tracked code/config/doc edits do.
+- Because `target-cpu=native` is enabled, first regenerate the cloud CPU
+  baselines and use those denominators for rho. Never divide cloud prover
+  or GPU timings by a local VM native baseline.
+
 ## Setup
 
 ```sh
 source ~/.cargo/env
+git status --short
 cd rust
 cargo check --workspace
 ```
@@ -31,7 +53,8 @@ Regenerate generated artifacts if absent:
 
 Re-measure native CPU baselines on the cloud box before quoting any rho.
 `rust/.cargo/config.toml` uses `target-cpu=native`, so local CPU ratios are
-not portable.
+not portable. These runs create cloud-specific JSONs; do not overwrite or
+delete the local JSONs already in `benchmarks/results/`.
 
 ```sh
 cd rust

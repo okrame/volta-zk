@@ -23,6 +23,7 @@ lean/.lake/
 # Local environment
 .env
 .env.*
+!.env.example
 rust/target/
 
 # large weight artifacts (reproducible via scripts/export_gpt2.py)

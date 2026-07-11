@@ -6,8 +6,11 @@ Status: cloud CPU baselines landed on the Thunder A100 instance on
 `benchmarks/results/p6-2026-07-11-11e5630.json`; aggregate
 `benchmarks/results/p7-2026-07-11-11e5630.json`. For this box the measured
 relative prover-vs-native speedup requirement is 5.48x prefill / 3.97x
-decode. The next step is the Goldilocks/Fp2 GPU roofline; no proving kernel
-has landed yet.
+decode. The Goldilocks/Fp2 GPU roofline subsequently passed on replacement
+instance `nc1k4a0g`: `p7-gpu-roofline-2026-07-11-a43d105.json` reports
+55.48x stream / 300.94x chain speedup with full differential correctness.
+The next step is the fused GEMM-MAC epilogue; no proving-path GPU kernel has
+landed yet.
 
 ## Provider / instance
 

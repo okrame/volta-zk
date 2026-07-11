@@ -23,7 +23,7 @@ CPU numbers validate architecture and counts; the ρ targets (≤2 decode,
 | P4 LogUp + fused blocks | **done** (2026-07-05) | one full layer proved+verified e2e (T=100, real PCS opening) ✓ **PASSED**; counts within 20% ✓ (witness streams = budget **exactly**, padded LogUp domains explained); LogUp ≤8–10 E-mult/lookup: **MISSED, motivated (12.20)**; 1 weight claim/tensor ✓ (4/layer) | prove 0.800 s vs native forward 0.033 s (ρ_layer ~24, 4 cores); verify 0.041 s; LogUp lookup-side **12.20 E-mult/lookup** (~34 ns/lookup, 5.4× vs P2.5 spike wall), table-side 3.86 raw → 0.32 /12-amortized; full instance cost 126.5 M E-mult/layer (≈42/padded lookup incl. aux folding + tables + closures); corr bytes 7.64 MB/layer (mult vectors 3.87 MB — see deviations); layer PCS 2^24: commit 0.34 s one-off, **open 0.035 s**, verify 0.006 s; projections (P3.5 cost model, 49/98 claims): prefill **0.233 s**, per-response **0.345 s**. Run of record `benchmarks/results/p4-2026-07-06-8b4ca11.json` (clean tree, `git_dirty:false`; the 07-05 JSON was a dirty-tree run whose sha names the parent commit) |
 | P5 GPT-2 e2e prefill 100 tok | **done** (2026-07-06) | one-command run ✓ (`scripts/run_prefill.sh`), golden check ✓ (full logits bit-exact vs numpy at T=100, argmax 835 ' way'), counts vs budget: witness lookups = budget **exactly** (16,944,000) ✓ | **accepted e2e with real weights + 13 real Ligero commitments**: native (witness) 0.459 s, prove 11.0–11.2 s, **ρ ≈ 24** (matches P4's ×12 projection); verify 0.65 s + 0.07 s PCS; PCS open **0.73 s** / 52.8 MB (vs 0.237 s projection — 13× fixed costs, see deviations), commit one-off 7.6 s; **comm 159.6 MB/prefill** (mult vectors 59.4 + PCS 52.8 + boundary 36.9 + rest), projected response 212 MB; E-mult all-in 100.6/budget lookup; peak RSS 2.86 GB. `benchmarks/results/p5-2026-07-06-e52ce79.json` (clean tree) |
 | P6 decode + authenticated KV cache | **done** (2026-07-07) | flat cost/token ✓ **PASSED** (curve last/first 1.12 ≤ 1.5, 5×10 chunks, cache 100→150); anti-replay smoke ✓ (prefill-row replay + position swap rejected); golden decode ✓ (50 tokens bit-exact vs numpy) | **accepted e2e, prompt 100 + 50 decode, one two-phase session, real 13-commitment PCS with STACKED claims (96 weight + 6 embed)**: native decode 30.9 tok/s (KV-cached baseline); prove_response 18.7 s = prefill 10.5 s + **decode marginal 8.2 s (0.164 s/token, ρ_decode 5.07 CPU)**; verified 2.67 tok/s; verify 0.57 s + 0.10 s PCS. Comm: transcript 137.4 MB (prefill 48.4 + PCS opening 66.7 + decode marginal 22.3 = **445 KB/token**) + public band logits 20.5 MB → **total response download 157.9 MB** (inside the 150–200 MB product envelope; the PCS opening is now the dominant lever, P7). Shared-α restructure landed with P6: mult corr 59.4 → 2.85 MB. PCS commit one-off 9.5 s; peak RSS 3.47 GB. `benchmarks/results/p6-2026-07-07-515bb1c.json` (clean tree) |
-| P7 report + GPU budget model | **cloud CPU baselines complete; GPU kernels open** (2026-07-11) | local report/budget model ✓; real-PCG cost model ✓; cloud workspace/golden/anti-replay gates ✓; clean A100-host P1/P6 baselines ✓; GPU roofline + kernels open; no protocol/soundness parameter change without separate ledger entry | Local packed download remains 144.8 MB; PCS 66.733 MB; decode marginal 445,067 B/token. Cloud CPU anchors: P1 weighted fused-MAC `rho_kernel=1.043`; clean ABBA P6 `rho_prefill=27.38`, `rho_decode=7.93`, prove_response 52.06 s, packed download unchanged at 144.8 MB. On this Thunder A100 instance the measured GPU sensitivity gate is now **5.48× prefill / 3.97× decode** relative prover-vs-native acceleration (supersedes the local-VM 3.67×/2.60× sensitivity for this box). Sources: `benchmarks/results/p1-2026-07-11-64a8ead.json`, `p6-2026-07-11-11e5630.json`, `p7-2026-07-11-11e5630.json`. Next: Goldilocks/F_p² roofline, fused MAC epilogue, LogUp, PCS/hash kernels; final go/no-go remains open. |
+| P7 report + GPU budget model | **A100 arithmetic roofline passed; fused kernels open** (2026-07-11) | local report/budget model ✓; real-PCG cost model ✓; cloud workspace/golden/anti-replay gates ✓; clean A100-host P1/P6 baselines ✓; Goldilocks/F_p² roofline correctness + screening ✓; fused MAC/LogUp/PCS kernels open; no protocol/soundness parameter change without separate ledger entry | Packed download remains 144.8 MB. Cloud CPU anchors: P1 `rho_kernel=1.043`; P6 `rho_prefill=27.38`, `rho_decode=7.93`; required relative acceleration **5.48× prefill / 3.97× decode**. A100 roofline: stream 55.48× CPU at 418.0 GB/s; dependent chain 300.94× at 41.18 G F_p²-mul/s, full differential correctness. Sources: `p1-2026-07-11-64a8ead.json`, `p6-2026-07-11-11e5630.json`, `p7-gpu-roofline-2026-07-11-a43d105.json`. Screening passes; next is the fused GEMM-MAC epilogue, then LogUp and PCS/hash. Final go/no-go remains open. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -55,6 +55,24 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-11 (P7 A100 Goldilocks/F_p² roofline landed)**: run of record
+  `benchmarks/results/p7-gpu-roofline-2026-07-11-a43d105.json` on replacement
+  Thunder instance `nc1k4a0g` (same A100-SXM4-80GB / CPU quota as the
+  pre-registered box), clean tree, sm_80, reports full bit-for-bit CPU/GPU
+  agreement and timing sanity. Stream 2^24: CPU 0.10688 s, GPU 0.001926 s,
+  **55.48x**, 418.0 GB/s and 8.71 G F_p²-mul/s. Dependent chain
+  2^20 x 256: CPU 1.9617 s, GPU 0.006518 s, **300.94x** and 41.18 G
+  F_p²-mul/s. The raw arithmetic screening gate passes by wide margin over
+  5.48x/3.97x, but this is not an e2e go decision. Thunder trap: CUDA events
+  and `cudaDeviceSynchronize` returned before provider-observable completion,
+  producing an invalid early quick diagnostic
+  `p7-gpu-roofline-quick-2026-07-11-5ead965.json` (0 s / impossible
+  5.2 TB/s). Timings of record therefore force a 16-byte D2H read after every
+  kernel and reject stream bandwidth above 2.5 TB/s; valid quick
+  `p7-gpu-roofline-quick-2026-07-11-a43d105.json` passed before the full run.
+  Next authorized spike is the fused GEMM-MAC epilogue; no proving-path or
+  protocol change has landed yet.
 
 - **2026-07-11 (P7 GPU Goldilocks/F_p² roofline — pre-registered)**:
   add a standalone CUDA 13 / sm_80 microbenchmark plus a Python JSON

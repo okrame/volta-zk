@@ -42,6 +42,13 @@ def test_p7_report_selects_record_and_packed_sources():
     required = data["gpu_budget_model"]["required_relative_prover_vs_native_speedup"]
     assert 5.47 < required["prefill"] < 5.48
     assert 3.96 < required["decode"] < 3.97
+    roofline = data["gpu_roofline"]["run_of_record"]
+    assert roofline["source"].endswith("p7-gpu-roofline-2026-07-11-a43d105.json")
+    assert roofline["correctness"] is True
+    assert roofline["timing_sane"] is True
+    assert roofline["stream_gpu_cpu_speedup"] == 55.4816444611
+    assert roofline["chain_gpu_cpu_speedup"] == 300.94133017
+    assert all("5ead965" not in row["source"] for row in data["gpu_roofline"]["profiles"])
     q150 = [
         row
         for row in data["measured_pcs_profiles"]

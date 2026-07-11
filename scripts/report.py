@@ -469,6 +469,45 @@ def real_pcg_phase_b(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return rows
 
 
+def gpu_roofline_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for r in results:
+        if r.get("milestone") not in {"P7-gpu-roofline", "P7-gpu-roofline-quick"}:
+            continue
+        kernel = r.get("kernel") or {}
+        # Early Thunder diagnostics had correct outputs but non-blocking event
+        # timings (0 s / impossible bandwidth). Keep the raw JSON append-only,
+        # but never promote it into the aggregate roofline profiles.
+        if not kernel.get("correctness") or not kernel.get("timing_sane"):
+            continue
+        stream = kernel.get("stream") or {}
+        chain = kernel.get("chain") or {}
+        rows.append(
+            {
+                "_mtime": r["_mtime"],
+                "source": r["_path"],
+                "milestone": r.get("milestone"),
+                "git_dirty": r.get("git_dirty"),
+                "cloud": r.get("cloud"),
+                "device": kernel.get("device"),
+                "parameters": kernel.get("parameters"),
+                "correctness": kernel.get("correctness"),
+                "timing_sane": kernel.get("timing_sane"),
+                "stream_gpu_s": stream.get("gpu_s"),
+                "stream_gpu_cpu_speedup": stream.get("gpu_cpu_speedup"),
+                "stream_gpu_bandwidth_gb_s": stream.get("gpu_bandwidth_gb_s"),
+                "chain_gpu_s": chain.get("gpu_s"),
+                "chain_gpu_cpu_speedup": chain.get("gpu_cpu_speedup"),
+                "chain_gpu_fp2_mul_s": chain.get("gpu_fp2_mul_s"),
+                "screening": r.get("screening"),
+            }
+        )
+    rows.sort(key=lambda x: (x["milestone"], x["_mtime"], x["source"]))
+    for row in rows:
+        row.pop("_mtime", None)
+    return rows
+
+
 def decode_marginal_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows = []
     for r in results:
@@ -511,6 +550,9 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
     mock_pcg = mock_pcg_lower_bounds(results)
     real_pcg = real_pcg_phase_a(results)
     real_pcg_b = real_pcg_phase_b(results)
+    gpu_rooflines = gpu_roofline_profiles(results)
+    full_gpu_rooflines = [r for r in gpu_rooflines if r["milestone"] == "P7-gpu-roofline"]
+    gpu_roofline_record = full_gpu_rooflines[-1] if full_gpu_rooflines else None
     pcg_status = (
         "phase_b_measured_not_production"
         if real_pcg_b
@@ -580,6 +622,12 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
         },
         "pcs_scenarios": pcs_scenarios(baseline, current_packed_download),
         "gpu_budget_model": rho_model(baseline),
+        "gpu_roofline": {
+            "status": "measured_screening_pass" if gpu_roofline_record else "not_measured",
+            "run_of_record": gpu_roofline_record,
+            "profiles": gpu_rooflines,
+            "note": "Arithmetic roofline only; fused proving kernels and e2e GPU rho remain open.",
+        },
         "real_pcg_spike": {
             "status": pcg_status,
             "corr_sub_corrs": baseline.get("corr_sub_corrs"),
@@ -590,16 +638,21 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
             "note": pcg_note,
         },
         "go_no_go": {
-            "local_recommendation": "conditional-go-to-cloud-spikes-only",
+            "local_recommendation": (
+                "proceed-to-fused-kernel-spikes"
+                if gpu_roofline_record
+                else "conditional-go-to-cloud-spikes-only"
+            ),
             "summary": (
                 "Communication is inside the 150-200 MB envelope after the shipped logits packing, "
-                "and PCS projections show enough headroom without changing the proof path locally. "
-                "The rho targets require measured GPU roofline data and the real-PCG spike before a final go/no-go."
+                "PCS projections retain headroom, and the A100 Goldilocks/Fp2 arithmetic roofline passes screening. "
+                "A final rho decision still requires fused proving kernels and a native GPU inference anchor."
             ),
-            "do_not_start_full_cuda_until": [
-                "real-PCG cost spike is measured or explicitly budgeted",
-                "cloud CPU native baseline is re-measured on the target instance",
-                "Goldilocks/LogUp/PCS roofline kernels demonstrate the required relative prover-vs-native speedup",
+            "remaining_before_final_go_no_go": [
+                "fused GEMM-MAC epilogue measured without materializing a correction-only pass",
+                "LogUp and PCS/hash GPU kernels measured on representative P6 volumes",
+                "native GPU inference baseline measured on the same instance",
+                "GPU path passes golden decode, flat-cost, and anti-replay gates",
             ],
         },
     }
@@ -685,6 +738,17 @@ def print_summary(report: dict[str, Any]) -> None:
                 f"lpn={row['t_lpn_expand_s']:.3f}s setup_comm={row['setup_comm_bytes']} B "
                 f"production_ready={row['production_ready']} {row['source']}"
             )
+        print()
+    roofline = report.get("gpu_roofline", {}).get("run_of_record")
+    if roofline:
+        print("GPU Goldilocks/Fp2 roofline")
+        print(
+            f"  stream {roofline['stream_gpu_cpu_speedup']:.2f}x, "
+            f"{roofline['stream_gpu_bandwidth_gb_s']:.1f} GB/s; "
+            f"chain {roofline['chain_gpu_cpu_speedup']:.2f}x, "
+            f"{roofline['chain_gpu_fp2_mul_s'] / 1e9:.2f} G Fp2-mul/s "
+            f"{roofline['source']}"
+        )
         print()
     decode_profiles = report.get("decode_marginal_profiles") or []
     if decode_profiles:

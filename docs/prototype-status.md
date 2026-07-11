@@ -67,6 +67,8 @@ constant factors hold. That constant factor is what P3/P4 measure.
   a 64-byte D2H message barrier before every challenge/fold and therefore
   does not elide interaction. Blind correction generation and proving-path
   integration remain open; no transcript or proof-byte change.
+  Clean refreshed aggregate: `benchmarks/results/p7-2026-07-11-fd67e64.json`
+  (`git_dirty:false`, recommendation `proceed-to-pcs-hash-spikes`).
 
 - **2026-07-11 (P7 GPU LogUp general round/fold — pre-registered)**:
   implement the exact P4 `run_general_rounds` hot loop over four F_p²

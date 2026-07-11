@@ -23,6 +23,7 @@ The LogUp general round/fold sequence passed narrowly at N=2^22: 6.766x with
 all 22 per-round D2H barriers retained
 (`p7-gpu-logup-rounds-2026-07-11-e4470bf.json`). Next: PCS row/global passes
 plus blake3; blind correction plumbing and proving-path integration remain.
+Current clean aggregate: `benchmarks/results/p7-2026-07-11-fd67e64.json`.
 
 ## Provider / instance
 

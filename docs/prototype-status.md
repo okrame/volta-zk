@@ -56,6 +56,25 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-11 (P7 GPU blind LogUp correction plumbing — pre-registered)**:
+  extend the already-passed `N=2^22` general-round spike without changing its
+  arithmetic or challenge order. Keep the 64-byte device-to-host barrier at
+  every one of the 22 rounds. Immediately after each round message reaches
+  the host, subtract two pre-expanded one-time F_p^2 masks, account the
+  resulting 32 correction bytes, and only then consume the next independent
+  verifier challenge. Also generate the layer's two root, four split and
+  three product corrections around the same sequence, for **848 bytes total**
+  (`32 + 22*32 + 64 + 48`), exactly the current Rust transcript layout.
+  Compare every root/round/split/product correction and every folded element
+  against an independent 7-thread CPU implementation outside timing. Use one
+  warmup + 7 GPU and 3 CPU repetitions. Hard gates: correctness, timing
+  sanity, blind whole-sequence GPU/CPU speedup >=5.48x, and paired blind/clear
+  GPU overhead <=1.05x. Resident masks are charged to the separate PCG budget;
+  no correction-only GPU kernel or extra transcript round is allowed. Scope
+  is one general fraction-tree layer: aux-leaf/column corrections and the
+  Rust proving-path FFI remain follow-ups. No proof bytes, challenge order,
+  domains, PCS, Q/rate, communication formula or protocol change.
+
 - **2026-07-11 (P7 GPU PCS column gather + BLAKE3/Merkle landed)**:
   clean run of record
   `benchmarks/results/p7-gpu-blake3-merkle-2026-07-11-3b0a916.json` on

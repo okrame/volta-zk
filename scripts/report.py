@@ -508,6 +508,40 @@ def gpu_roofline_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]
     return rows
 
 
+def gpu_fused_epilogue_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for r in results:
+        if r.get("milestone") not in {
+            "P7-gpu-fused-epilogue",
+            "P7-gpu-fused-epilogue-quick",
+        }:
+            continue
+        kernel = r.get("kernel") or {}
+        if not kernel.get("correctness") or not kernel.get("timing_sane"):
+            continue
+        rows.append(
+            {
+                "_mtime": r["_mtime"],
+                "source": r["_path"],
+                "milestone": r.get("milestone"),
+                "git_dirty": r.get("git_dirty"),
+                "cloud": r.get("cloud"),
+                "device": kernel.get("device"),
+                "parameters": kernel.get("parameters"),
+                "correctness": kernel.get("correctness"),
+                "timing_sane": kernel.get("timing_sane"),
+                "weighted_rho_kernel": kernel.get("weighted_rho_kernel"),
+                "gate_weighted_rho_le_1_30": kernel.get("gate_weighted_rho_le_1_30"),
+                "shapes": kernel.get("shapes"),
+                "scope": r.get("scope"),
+            }
+        )
+    rows.sort(key=lambda x: (x["milestone"], x["_mtime"], x["source"]))
+    for row in rows:
+        row.pop("_mtime", None)
+    return rows
+
+
 def decode_marginal_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows = []
     for r in results:
@@ -553,6 +587,9 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
     gpu_rooflines = gpu_roofline_profiles(results)
     full_gpu_rooflines = [r for r in gpu_rooflines if r["milestone"] == "P7-gpu-roofline"]
     gpu_roofline_record = full_gpu_rooflines[-1] if full_gpu_rooflines else None
+    gpu_fused = gpu_fused_epilogue_profiles(results)
+    full_gpu_fused = [r for r in gpu_fused if r["milestone"] == "P7-gpu-fused-epilogue"]
+    gpu_fused_record = full_gpu_fused[-1] if full_gpu_fused else None
     pcg_status = (
         "phase_b_measured_not_production"
         if real_pcg_b
@@ -626,7 +663,13 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
             "status": "measured_screening_pass" if gpu_roofline_record else "not_measured",
             "run_of_record": gpu_roofline_record,
             "profiles": gpu_rooflines,
-            "note": "Arithmetic roofline only; fused proving kernels and e2e GPU rho remain open.",
+            "note": "Arithmetic roofline only; protocol kernels, integration, and e2e GPU rho remain open.",
+        },
+        "gpu_fused_epilogue": {
+            "status": "measured_gate_pass" if gpu_fused_record else "not_measured",
+            "run_of_record": gpu_fused_record,
+            "profiles": gpu_fused,
+            "note": "P1-equivalent spike with resident PCG masks; proving-path integration remains open.",
         },
         "real_pcg_spike": {
             "status": pcg_status,
@@ -639,7 +682,9 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
         },
         "go_no_go": {
             "local_recommendation": (
-                "proceed-to-fused-kernel-spikes"
+                "proceed-to-logup-pcs-kernel-spikes"
+                if gpu_fused_record
+                else "proceed-to-fused-kernel-spikes"
                 if gpu_roofline_record
                 else "conditional-go-to-cloud-spikes-only"
             ),
@@ -649,9 +694,9 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
                 "A final rho decision still requires fused proving kernels and a native GPU inference anchor."
             ),
             "remaining_before_final_go_no_go": [
-                "fused GEMM-MAC epilogue measured without materializing a correction-only pass",
                 "LogUp and PCS/hash GPU kernels measured on representative P6 volumes",
                 "native GPU inference baseline measured on the same instance",
+                "measured GPU kernels integrated into the proving path without extra transcript passes",
                 "GPU path passes golden decode, flat-cost, and anti-replay gates",
             ],
         },
@@ -748,6 +793,15 @@ def print_summary(report: dict[str, Any]) -> None:
             f"chain {roofline['chain_gpu_cpu_speedup']:.2f}x, "
             f"{roofline['chain_gpu_fp2_mul_s'] / 1e9:.2f} G Fp2-mul/s "
             f"{roofline['source']}"
+        )
+        print()
+    fused = report.get("gpu_fused_epilogue", {}).get("run_of_record")
+    if fused:
+        shape_rhos = ", ".join(f"{row['n']}:{row['rho_kernel']:.3f}" for row in fused["shapes"])
+        print("GPU fused GEMM-MAC epilogue")
+        print(
+            f"  weighted rho={fused['weighted_rho_kernel']:.3f}; "
+            f"shape rhos [{shape_rhos}] {fused['source']}"
         )
         print()
     decode_profiles = report.get("decode_marginal_profiles") or []

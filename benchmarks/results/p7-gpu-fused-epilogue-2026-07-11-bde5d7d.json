@@ -1,0 +1,98 @@
+{
+  "cloud": {
+    "cpu_model": "Intel Xeon Platinum 8352Y / cgroup quota 7.92 cores",
+    "cuda_version": "toolkit 13.0 / UMD 13.3",
+    "driver_version": "610.43.02",
+    "gpu_sku": "NVIDIA A100-SXM4-80GB / Thunder A100XL",
+    "image": "base / Ubuntu 22.04.5 LTS",
+    "instance_id": "nc1k4a0g",
+    "provider": "Thunder Compute",
+    "ram_gib": "64",
+    "region": "not exposed by provider API",
+    "vcpus": "8 (quota 7.92)"
+  },
+  "compiler": {
+    "arch": "sm_80",
+    "nvcc": "/usr/local/cuda/bin/nvcc"
+  },
+  "date": "2026-07-11",
+  "git_dirty": false,
+  "git_sha": "bde5d7d",
+  "kernel": {
+    "correctness": true,
+    "device": {
+      "cc": "8.0",
+      "global_memory_bytes": 85119205376,
+      "name": "NVIDIA A100-SXM4-80GB",
+      "sm_count": 108
+    },
+    "gate_weighted_rho_le_1_30": true,
+    "parameters": {
+      "correction_bytes_per_output": 8,
+      "cpu_reps": 3,
+      "cpu_threads": 7,
+      "gpu_rounds": 9,
+      "gpu_samples_per_variant": 18,
+      "k": 768,
+      "m": 100,
+      "resident_masks": true,
+      "shift": 8
+    },
+    "shapes": [
+      {
+        "correct": true,
+        "correction_bytes": 614400,
+        "correction_checksum": "0x6602b2041ac9cfc4",
+        "cpu_native_s": 0.012126946,
+        "gpu_fused_s": 0.000395553,
+        "gpu_native_gmac_s": 150.41005345,
+        "gpu_native_s": 0.000392144,
+        "k": 768,
+        "m": 100,
+        "n": 768,
+        "native_gpu_cpu_speedup": 30.924726631,
+        "output_checksum": "0x7fac93d5b09e3279",
+        "rho_kernel": 1.00869323514
+      },
+      {
+        "correct": true,
+        "correction_bytes": 1843200,
+        "correction_checksum": "0x657f2372e3e080c3",
+        "cpu_native_s": 0.053271386,
+        "gpu_fused_s": 0.000514536,
+        "gpu_native_gmac_s": 342.482870747,
+        "gpu_native_s": 0.00051666,
+        "k": 768,
+        "m": 100,
+        "n": 2304,
+        "native_gpu_cpu_speedup": 103.107238803,
+        "output_checksum": "0x98d0ad1723fb5ba4",
+        "rho_kernel": 0.995888979213
+      },
+      {
+        "correct": true,
+        "correction_bytes": 2457600,
+        "correction_checksum": "0x0a16ee945a99dea3",
+        "cpu_native_s": 0.086381447,
+        "gpu_fused_s": 0.000569041,
+        "gpu_native_gmac_s": 407.560076907,
+        "gpu_native_s": 0.000578883,
+        "k": 768,
+        "m": 100,
+        "n": 3072,
+        "native_gpu_cpu_speedup": 149.220908197,
+        "output_checksum": "0x622a3f3b6103a2a0",
+        "rho_kernel": 0.982998291537
+      }
+    ],
+    "timing_sane": true,
+    "weighted_rho_kernel": 1.003056933
+  },
+  "milestone": "P7-gpu-fused-epilogue",
+  "scope": {
+    "correction_only_followup_kernel": false,
+    "note": "P1-equivalent GPU spike; not an e2e rho measurement.",
+    "pcg_masks": "resident pre-expanded pool; setup/expansion budgeted separately",
+    "proving_path_integrated": false
+  }
+}

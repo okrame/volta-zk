@@ -49,6 +49,12 @@ def test_p7_report_selects_record_and_packed_sources():
     assert roofline["stream_gpu_cpu_speedup"] == 55.4816444611
     assert roofline["chain_gpu_cpu_speedup"] == 300.94133017
     assert all("5ead965" not in row["source"] for row in data["gpu_roofline"]["profiles"])
+    fused = data["gpu_fused_epilogue"]["run_of_record"]
+    assert fused["source"].endswith("p7-gpu-fused-epilogue-2026-07-11-bde5d7d.json")
+    assert fused["correctness"] is True
+    assert fused["gate_weighted_rho_le_1_30"] is True
+    assert fused["weighted_rho_kernel"] == 1.003056933
+    assert data["go_no_go"]["local_recommendation"] == "proceed-to-logup-pcs-kernel-spikes"
     q150 = [
         row
         for row in data["measured_pcs_profiles"]

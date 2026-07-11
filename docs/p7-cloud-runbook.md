@@ -10,8 +10,10 @@ decode. The Goldilocks/Fp2 GPU roofline subsequently passed on replacement
 instance `nc1k4a0g`: `p7-gpu-roofline-2026-07-11-a43d105.json` reports
 55.48x stream / 300.94x chain speedup with full differential correctness.
 Clean aggregate: `benchmarks/results/p7-2026-07-11-14bafb8.json`.
-The next step is the fused GEMM-MAC epilogue; no proving-path GPU kernel has
-landed yet.
+The fused GEMM-MAC spike then passed at weighted `rho_kernel=1.003`
+(`p7-gpu-fused-epilogue-2026-07-11-bde5d7d.json`). The next step is the
+LogUp fraction-tree spike, followed by PCS row/global passes plus blake3;
+proving-path integration remains open.
 
 ## Provider / instance
 

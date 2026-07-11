@@ -56,6 +56,21 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-11 (P7 GPU LogUp fraction-tree build — pre-registered)**:
+  implement the exact dominant lookup-side (`LeafP::Ones`) P4 tree build at
+  N=2^24: structured base-field first combine from `LeafQ {a, alpha1}`, then
+  every general `(p1*q2+p2*q1, q1*q2)` F_p² level through the root. Inputs
+  and all intermediate layers remain GPU-resident during timing; one forced
+  32-byte root D2H read is the completion barrier. Use 1 warmup + 7 GPU
+  repetitions and 3 CPU repetitions on the same 7-thread quota. Outside the
+  timed region, compare **every p/q element at every level** against the CPU
+  Goldilocks reference and record root/checksum/counts. Hard gates:
+  correctness, sane timing, GPU/CPU tree-build speedup >=5.48x (the stricter
+  cloud prefill requirement). This covers tree construction only; LogUp
+  sumcheck round-evaluation/fold kernels, blind corrections and proving-path
+  integration remain separate open work and must not be implied by a pass.
+  No transcript, lookup, soundness, correlation or communication change.
+
 - **2026-07-11 (P7 GPU fused GEMM-MAC epilogue landed)**: clean run of
   record `benchmarks/results/p7-gpu-fused-epilogue-2026-07-11-bde5d7d.json`
   on Thunder `nc1k4a0g`, sm_80, resident pre-expanded PCG masks. Full

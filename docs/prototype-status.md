@@ -71,6 +71,9 @@ constant factors hold. That constant factor is what P3/P4 measure.
   5.48x/3.97x only on `6mprfo7p`; older-instance measurements remain
   historical and must retain their own denominators. This is still a CPU
   fixed-point baseline, not the native GPU inference anchor.
+  Clean refreshed aggregate: `benchmarks/results/p7-2026-07-11-0ea449a.json`
+  (`git_dirty:false`, recommendation
+  `proceed-to-proving-path-integration-and-native-gpu-anchor`).
 
 - **2026-07-11 (P7 GPU blind LogUp general-layer plumbing landed)**: clean
   pinned-barrier run of record

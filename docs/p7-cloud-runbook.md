@@ -31,7 +31,7 @@ GPU 1.407 ms = 31.10x, with exact Rust root and every host/device node
 (`p7-gpu-blake3-merkle-2026-07-11-3b0a916.json`). NTT + hash totals 7.793 ms
 on GPU. Next: mask/blind plumbing, proving-path integration, native GPU
 inference anchor and unchanged e2e gates.
-Current clean aggregate: `benchmarks/results/p7-2026-07-11-0ea449a.json`.
+Current clean aggregate: `benchmarks/results/p7-2026-07-11-18c3fea.json`.
 Blind general-layer LogUp plumbing subsequently passed on replacement instance
 `6mprfo7p`: CPU 265.26 ms versus GPU 41.30 ms = 6.423x, all 848 correction
 bytes exact, blind/clear 0.903 <=1.05 and zero extra transcript rounds

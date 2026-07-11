@@ -74,6 +74,9 @@ constant factors hold. That constant factor is what P3/P4 measure.
   into these numbers to claim rho; an integrated proving measurement is now
   the decision-critical next step. No Rust witness, protocol, proof, PCS,
   transcript, correlation or communication change.
+  Clean refreshed aggregate: `benchmarks/results/p7-2026-07-11-18c3fea.json`
+  (`git_dirty:false`, recommendation
+  `proceed-to-integrated-gpu-prover-measurement`).
 
 - **2026-07-11 (P7 native fixed-point GPU inference anchor —
   pre-registered)**: implement a standalone sm_80 CUDA anchor over the exact

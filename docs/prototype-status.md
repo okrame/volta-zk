@@ -73,6 +73,9 @@ constant factors hold. That constant factor is what P3/P4 measure.
   integration; no hash, root, PCS layout, proof bytes, Q/rate, transcript or
   protocol change. Next: blind correction plumbing, native GPU inference
   anchor and integrated e2e gates.
+  Clean refreshed aggregate: `benchmarks/results/p7-2026-07-11-b971a93.json`
+  (`git_dirty:false`, recommendation
+  `proceed-to-blind-integration-and-native-gpu-anchor`).
 
 - **2026-07-11 (P7 GPU PCS column gather + blake3/Merkle — pre-registered)**:
   at `P4_LAYER` geometry, hash all 32768 encoded columns of 1024 Goldilocks

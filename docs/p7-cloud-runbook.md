@@ -31,7 +31,7 @@ GPU 1.407 ms = 31.10x, with exact Rust root and every host/device node
 (`p7-gpu-blake3-merkle-2026-07-11-3b0a916.json`). NTT + hash totals 7.793 ms
 on GPU. Next: mask/blind plumbing, proving-path integration, native GPU
 inference anchor and unchanged e2e gates.
-Current clean aggregate: `benchmarks/results/p7-2026-07-11-1b99864.json`.
+Current clean aggregate: `benchmarks/results/p7-2026-07-11-b971a93.json`.
 
 ## Provider / instance
 

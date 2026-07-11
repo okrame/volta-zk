@@ -1,0 +1,1800 @@
+{
+  "baseline": {
+    "accepted": true,
+    "cloud": {
+      "cpu_model": "Intel Xeon Platinum 8352Y / cgroup quota 7.92 cores",
+      "cuda_version": "toolkit 13.0 / UMD 13.3",
+      "driver_version": "610.43.02",
+      "gpu_sku": "NVIDIA A100-SXM4-80GB / Thunder A100XL",
+      "image": "base / Ubuntu 22.04.5 LTS",
+      "instance_id": "bdthpmts",
+      "provider": "Thunder Compute",
+      "ram_gib": "64",
+      "region": "not exposed by provider API",
+      "vcpus": "8 (quota 7.92)"
+    },
+    "git_dirty": false,
+    "n_decode": 50,
+    "pcs_open_s": 1.762446711,
+    "pcs_verify_s": 0.324976461,
+    "peak_rss_gb": 3.5556678771972656,
+    "prove_decode_marginal_s": 20.182472853999997,
+    "prove_response_s": 52.060068779,
+    "rho_decode_cpu": 7.933946014126555,
+    "rho_prefill_cpu": 27.381968833439082,
+    "source": "benchmarks/results/p6-2026-07-11-11e5630.json",
+    "t_prefill": 100,
+    "verify_response_s": 1.056118718
+  },
+  "cloud": {
+    "cpu_model": "Intel Xeon Platinum 8352Y / cgroup quota 7.92 cores",
+    "cuda_version": "toolkit 13.0 / UMD 13.3",
+    "driver_version": "610.43.02",
+    "gpu_sku": "NVIDIA A100-SXM4-80GB / Thunder A100XL",
+    "image": "base / Ubuntu 22.04.5 LTS",
+    "instance_id": "bdthpmts",
+    "provider": "Thunder Compute",
+    "ram_gib": "64",
+    "region": "not exposed by provider API",
+    "vcpus": "8 (quota 7.92)"
+  },
+  "communication": {
+    "comm_decode_bytes_per_token": 445067,
+    "comm_decode_marginal_bytes": 22253392,
+    "comm_prefill_bytes": 48426912,
+    "packed_logits_source": "benchmarks/results/p6-2026-07-11-11e5630.json",
+    "pcs_opening_bytes": 66733504,
+    "public_logits_packed_bytes": 7407122,
+    "public_logits_raw_bytes": 20504856,
+    "source": "benchmarks/results/p6-2026-07-11-11e5630.json",
+    "total_response_download_packed_bytes": 144820930,
+    "total_response_download_raw_bytes": 157918664
+  },
+  "date": "2026-07-11",
+  "decode_marginal_profiles": [
+    {
+      "comm_decode_bytes_per_token": 507144,
+      "comm_decode_marginal_bytes": 4057152,
+      "git_dirty": true,
+      "label_sum_bytes": 4057152,
+      "milestone": "P6-quick",
+      "n_decode": 8,
+      "source": "benchmarks/results/p6-quick-2026-07-07-179cd3d.json",
+      "t_prefill": 16,
+      "top_labels": [
+        {
+          "bytes": 3135232,
+          "label": "auth_corrections"
+        },
+        {
+          "bytes": 385952,
+          "label": "logup_round_corrections"
+        },
+        {
+          "bytes": 155584,
+          "label": "logup_split_corrections"
+        },
+        {
+          "bytes": 116688,
+          "label": "logup_prod_corrections"
+        },
+        {
+          "bytes": 106656,
+          "label": "logup_aux_round_corrections"
+        },
+        {
+          "bytes": 72576,
+          "label": "blind_round_corrections"
+        },
+        {
+          "bytes": 29424,
+          "label": "hadamard_round_corrections"
+        },
+        {
+          "bytes": 13760,
+          "label": "logup_col_corrections"
+        },
+        {
+          "bytes": 10784,
+          "label": "prod_check_m0_m1"
+        },
+        {
+          "bytes": 10032,
+          "label": "logup_aggregate_corrections"
+        },
+        {
+          "bytes": 6688,
+          "label": "logup_root_corrections"
+        },
+        {
+          "bytes": 5376,
+          "label": "x_claim_correction"
+        }
+      ]
+    },
+    {
+      "comm_decode_bytes_per_token": 507144,
+      "comm_decode_marginal_bytes": 4057152,
+      "git_dirty": true,
+      "label_sum_bytes": 4057152,
+      "milestone": "P6-quick",
+      "n_decode": 8,
+      "source": "benchmarks/results/p6-quick-realpcg-2026-07-07-995bfb7.json",
+      "t_prefill": 16,
+      "top_labels": [
+        {
+          "bytes": 3135232,
+          "label": "auth_corrections"
+        },
+        {
+          "bytes": 385952,
+          "label": "logup_round_corrections"
+        },
+        {
+          "bytes": 155584,
+          "label": "logup_split_corrections"
+        },
+        {
+          "bytes": 116688,
+          "label": "logup_prod_corrections"
+        },
+        {
+          "bytes": 106656,
+          "label": "logup_aux_round_corrections"
+        },
+        {
+          "bytes": 72576,
+          "label": "blind_round_corrections"
+        },
+        {
+          "bytes": 29424,
+          "label": "hadamard_round_corrections"
+        },
+        {
+          "bytes": 13760,
+          "label": "logup_col_corrections"
+        },
+        {
+          "bytes": 10784,
+          "label": "prod_check_m0_m1"
+        },
+        {
+          "bytes": 10032,
+          "label": "logup_aggregate_corrections"
+        },
+        {
+          "bytes": 6688,
+          "label": "logup_root_corrections"
+        },
+        {
+          "bytes": 5376,
+          "label": "x_claim_correction"
+        }
+      ]
+    },
+    {
+      "comm_decode_bytes_per_token": 507144,
+      "comm_decode_marginal_bytes": 4057152,
+      "git_dirty": false,
+      "label_sum_bytes": 4057152,
+      "milestone": "P6-quick",
+      "n_decode": 8,
+      "source": "benchmarks/results/p6-quick-realpcg-2026-07-07-fe4857b.json",
+      "t_prefill": 16,
+      "top_labels": [
+        {
+          "bytes": 3135232,
+          "label": "auth_corrections"
+        },
+        {
+          "bytes": 385952,
+          "label": "logup_round_corrections"
+        },
+        {
+          "bytes": 155584,
+          "label": "logup_split_corrections"
+        },
+        {
+          "bytes": 116688,
+          "label": "logup_prod_corrections"
+        },
+        {
+          "bytes": 106656,
+          "label": "logup_aux_round_corrections"
+        },
+        {
+          "bytes": 72576,
+          "label": "blind_round_corrections"
+        },
+        {
+          "bytes": 29424,
+          "label": "hadamard_round_corrections"
+        },
+        {
+          "bytes": 13760,
+          "label": "logup_col_corrections"
+        },
+        {
+          "bytes": 10784,
+          "label": "prod_check_m0_m1"
+        },
+        {
+          "bytes": 10032,
+          "label": "logup_aggregate_corrections"
+        },
+        {
+          "bytes": 6688,
+          "label": "logup_root_corrections"
+        },
+        {
+          "bytes": 5376,
+          "label": "x_claim_correction"
+        }
+      ]
+    },
+    {
+      "comm_decode_bytes_per_token": 445067,
+      "comm_decode_marginal_bytes": 22253392,
+      "git_dirty": false,
+      "label_sum_bytes": 22253392,
+      "milestone": "P6",
+      "n_decode": 50,
+      "source": "benchmarks/results/p6-2026-07-07-382bb56.json",
+      "t_prefill": 100,
+      "top_labels": [
+        {
+          "bytes": 20902016,
+          "label": "auth_corrections"
+        },
+        {
+          "bytes": 671168,
+          "label": "logup_round_corrections"
+        },
+        {
+          "bytes": 202624,
+          "label": "logup_split_corrections"
+        },
+        {
+          "bytes": 151968,
+          "label": "logup_prod_corrections"
+        },
+        {
+          "bytes": 141936,
+          "label": "logup_aux_round_corrections"
+        },
+        {
+          "bytes": 88704,
+          "label": "blind_round_corrections"
+        },
+        {
+          "bytes": 39936,
+          "label": "hadamard_round_corrections"
+        },
+        {
+          "bytes": 13760,
+          "label": "logup_col_corrections"
+        },
+        {
+          "bytes": 10784,
+          "label": "prod_check_m0_m1"
+        },
+        {
+          "bytes": 10032,
+          "label": "logup_aggregate_corrections"
+        },
+        {
+          "bytes": 6688,
+          "label": "logup_root_corrections"
+        },
+        {
+          "bytes": 5376,
+          "label": "x_claim_correction"
+        }
+      ]
+    },
+    {
+      "comm_decode_bytes_per_token": 445067,
+      "comm_decode_marginal_bytes": 22253392,
+      "git_dirty": false,
+      "label_sum_bytes": 22253392,
+      "milestone": "P6",
+      "n_decode": 50,
+      "source": "benchmarks/results/p6-2026-07-11-11e5630.json",
+      "t_prefill": 100,
+      "top_labels": [
+        {
+          "bytes": 20902016,
+          "label": "auth_corrections"
+        },
+        {
+          "bytes": 671168,
+          "label": "logup_round_corrections"
+        },
+        {
+          "bytes": 202624,
+          "label": "logup_split_corrections"
+        },
+        {
+          "bytes": 151968,
+          "label": "logup_prod_corrections"
+        },
+        {
+          "bytes": 141936,
+          "label": "logup_aux_round_corrections"
+        },
+        {
+          "bytes": 88704,
+          "label": "blind_round_corrections"
+        },
+        {
+          "bytes": 39936,
+          "label": "hadamard_round_corrections"
+        },
+        {
+          "bytes": 13760,
+          "label": "logup_col_corrections"
+        },
+        {
+          "bytes": 10784,
+          "label": "prod_check_m0_m1"
+        },
+        {
+          "bytes": 10032,
+          "label": "logup_aggregate_corrections"
+        },
+        {
+          "bytes": 6688,
+          "label": "logup_root_corrections"
+        },
+        {
+          "bytes": 5376,
+          "label": "x_claim_correction"
+        }
+      ]
+    }
+  ],
+  "git_dirty": false,
+  "git_sha": "1b99864",
+  "go_no_go": {
+    "local_recommendation": "proceed-to-blake3-merkle-spike",
+    "remaining_before_final_go_no_go": [
+      "blake3/Merkle and PCS column-gather GPU costs measured on representative P6 volumes",
+      "blind LogUp correction plumbing measured without extra transcript rounds",
+      "native GPU inference baseline measured on the same instance",
+      "measured GPU kernels integrated into the proving path without extra transcript passes",
+      "GPU path passes golden decode, flat-cost, and anti-replay gates"
+    ],
+    "summary": "Communication is inside the 150-200 MB envelope after the shipped logits packing, PCS projections retain headroom, and the A100 Goldilocks/Fp2 arithmetic roofline passes screening. A final rho decision still requires fused proving kernels and a native GPU inference anchor."
+  },
+  "gpu_budget_model": {
+    "definition": "predicted_gpu_rho = cpu_rho / relative_prover_vs_native_gpu_speedup",
+    "required_relative_prover_vs_native_speedup": {
+      "decode": 3.9669730070632774,
+      "prefill": 5.476393766687816
+    },
+    "sensitivity": [
+      {
+        "decode_target_met": false,
+        "prefill_target_met": false,
+        "relative_prover_vs_native_speedup": 1.0,
+        "rho_decode": 7.933946014126555,
+        "rho_prefill": 27.381968833439082
+      },
+      {
+        "decode_target_met": false,
+        "prefill_target_met": false,
+        "relative_prover_vs_native_speedup": 2.0,
+        "rho_decode": 3.9669730070632774,
+        "rho_prefill": 13.690984416719541
+      },
+      {
+        "decode_target_met": false,
+        "prefill_target_met": false,
+        "relative_prover_vs_native_speedup": 2.5,
+        "rho_decode": 3.173578405650622,
+        "rho_prefill": 10.952787533375632
+      },
+      {
+        "decode_target_met": false,
+        "prefill_target_met": false,
+        "relative_prover_vs_native_speedup": 3.0,
+        "rho_decode": 2.6446486713755184,
+        "rho_prefill": 9.127322944479694
+      },
+      {
+        "decode_target_met": true,
+        "prefill_target_met": false,
+        "relative_prover_vs_native_speedup": 5.0,
+        "rho_decode": 1.586789202825311,
+        "rho_prefill": 5.476393766687816
+      },
+      {
+        "decode_target_met": true,
+        "prefill_target_met": true,
+        "relative_prover_vs_native_speedup": 8.0,
+        "rho_decode": 0.9917432517658193,
+        "rho_prefill": 3.4227461041798852
+      },
+      {
+        "decode_target_met": true,
+        "prefill_target_met": true,
+        "relative_prover_vs_native_speedup": 10.0,
+        "rho_decode": 0.7933946014126555,
+        "rho_prefill": 2.738196883343908
+      }
+    ],
+    "targets": {
+      "decode": 2.0,
+      "prefill": 5.0
+    }
+  },
+  "gpu_fused_epilogue": {
+    "note": "P1-equivalent spike with resident PCG masks; proving-path integration remains open.",
+    "profiles": [
+      {
+        "cloud": {
+          "cpu_model": "Intel Xeon Platinum 8352Y / cgroup quota 7.92 cores",
+          "cuda_version": "toolkit 13.0 / UMD 13.3",
+          "driver_version": "610.43.02",
+          "gpu_sku": "NVIDIA A100-SXM4-80GB / Thunder A100XL",
+          "image": "base / Ubuntu 22.04.5 LTS",
+          "instance_id": "nc1k4a0g",
+          "provider": "Thunder Compute",
+          "ram_gib": "64",
+          "region": "not exposed by provider API",
+          "vcpus": "8 (quota 7.92)"
+        },
+        "correctness": true,
+        "device": {
+          "cc": "8.0",
+          "global_memory_bytes": 85119205376,
+          "name": "NVIDIA A100-SXM4-80GB",
+          "sm_count": 108
+        },
+        "gate_weighted_rho_le_1_30": true,
+        "git_dirty": false,
+        "milestone": "P7-gpu-fused-epilogue",
+        "parameters": {
+          "correction_bytes_per_output": 8,
+          "cpu_reps": 3,
+          "cpu_threads": 7,
+          "gpu_rounds": 9,
+          "gpu_samples_per_variant": 18,
+          "k": 768,
+          "m": 100,
+          "resident_masks": true,
+          "shift": 8
+        },
+        "scope": {
+          "correction_only_followup_kernel": false,
+          "note": "P1-equivalent GPU spike; not an e2e rho measurement.",
+          "pcg_masks": "resident pre-expanded pool; setup/expansion budgeted separately",
+          "proving_path_integrated": false
+        },
+        "shapes": [
+          {
+            "correct": true,
+            "correction_bytes": 614400,
+            "correction_checksum": "0x6602b2041ac9cfc4",
+            "cpu_native_s": 0.012126946,
+            "gpu_fused_s": 0.000395553,
+            "gpu_native_gmac_s": 150.41005345,
+            "gpu_native_s": 0.000392144,
+            "k": 768,
+            "m": 100,
+            "n": 768,
+            "native_gpu_cpu_speedup": 30.924726631,
+            "output_checksum": "0x7fac93d5b09e3279",
+            "rho_kernel": 1.00869323514
+          },
+          {
+            "correct": true,
+            "correction_bytes": 1843200,
+            "correction_checksum": "0x657f2372e3e080c3",
+            "cpu_native_s": 0.053271386,
+            "gpu_fused_s": 0.000514536,
+            "gpu_native_gmac_s": 342.482870747,
+            "gpu_native_s": 0.00051666,
+            "k": 768,
+            "m": 100,
+            "n": 2304,
+            "native_gpu_cpu_speedup": 103.107238803,
+            "output_checksum": "0x98d0ad1723fb5ba4",
+            "rho_kernel": 0.995888979213
+          },
+          {
+            "correct": true,
+            "correction_bytes": 2457600,
+            "correction_checksum": "0x0a16ee945a99dea3",
+            "cpu_native_s": 0.086381447,
+            "gpu_fused_s": 0.000569041,
+            "gpu_native_gmac_s": 407.560076907,
+            "gpu_native_s": 0.000578883,
+            "k": 768,
+            "m": 100,
+            "n": 3072,
+            "native_gpu_cpu_speedup": 149.220908197,
+            "output_checksum": "0x622a3f3b6103a2a0",
+            "rho_kernel": 0.982998291537
+          }
+        ],
+        "source": "benchmarks/results/p7-gpu-fused-epilogue-2026-07-11-bde5d7d.json",
+        "timing_sane": true,
+        "weighted_rho_kernel": 1.003056933
+      },
+      {
+        "cloud": {
+          "cpu_model": "Intel Xeon Platinum 8352Y / cgroup quota 7.92 cores",
+          "cuda_version": "toolkit 13.0 / UMD 13.3",
+          "driver_version": "610.43.02",
+          "gpu_sku": "NVIDIA A100-SXM4-80GB / Thunder A100XL",
+          "image": "base / Ubuntu 22.04.5 LTS",
+          "instance_id": "nc1k4a0g",
+          "provider": "Thunder Compute",
+          "ram_gib": "64",
+          "region": "not exposed by provider API",
+          "vcpus": "8 (quota 7.92)"
+        },
+        "correctness": true,
+        "device": {
+          "cc": "8.0",
+          "global_memory_bytes": 85119205376,
+          "name": "NVIDIA A100-SXM4-80GB",
+          "sm_count": 108
+        },
+        "gate_weighted_rho_le_1_30": true,
+        "git_dirty": false,
+        "milestone": "P7-gpu-fused-epilogue-quick",
+        "parameters": {
+          "correction_bytes_per_output": 8,
+          "cpu_reps": 1,
+          "cpu_threads": 7,
+          "gpu_rounds": 3,
+          "gpu_samples_per_variant": 6,
+          "k": 128,
+          "m": 16,
+          "resident_masks": true,
+          "shift": 8
+        },
+        "scope": {
+          "correction_only_followup_kernel": false,
+          "note": "P1-equivalent GPU spike; not an e2e rho measurement.",
+          "pcg_masks": "resident pre-expanded pool; setup/expansion budgeted separately",
+          "proving_path_integrated": false
+        },
+        "shapes": [
+          {
+            "correct": true,
+            "correction_bytes": 98304,
+            "correction_checksum": "0xdd63d6266710a934",
+            "cpu_native_s": 0.000705051,
+            "gpu_fused_s": 0.001209735,
+            "gpu_native_gmac_s": 1.2984357161,
+            "gpu_native_s": 0.001211353,
+            "k": 128,
+            "m": 16,
+            "n": 768,
+            "native_gpu_cpu_speedup": 0.582035954837,
+            "output_checksum": "0xd627d7c8948ce1e4",
+            "rho_kernel": 0.998664303469
+          },
+          {
+            "correct": true,
+            "correction_bytes": 294912,
+            "correction_checksum": "0x61b14ea07fa256bf",
+            "cpu_native_s": 0.002862059,
+            "gpu_fused_s": 0.001188828,
+            "gpu_native_gmac_s": 3.76438752212,
+            "gpu_native_s": 0.001253482,
+            "k": 128,
+            "m": 16,
+            "n": 2304,
+            "native_gpu_cpu_speedup": 2.28328687608,
+            "output_checksum": "0xcdf862e2f38c3d44",
+            "rho_kernel": 0.948420479911
+          },
+          {
+            "correct": true,
+            "correction_bytes": 393216,
+            "correction_checksum": "0xc0fe66101c12085d",
+            "cpu_native_s": 0.003807199,
+            "gpu_fused_s": 0.001207685,
+            "gpu_native_gmac_s": 4.81436905804,
+            "gpu_native_s": 0.001306808,
+            "k": 128,
+            "m": 16,
+            "n": 3072,
+            "native_gpu_cpu_speedup": 2.91335758581,
+            "output_checksum": "0xed00f0c37fa1b89a",
+            "rho_kernel": 0.924148765542
+          }
+        ],
+        "source": "benchmarks/results/p7-gpu-fused-epilogue-quick-2026-07-11-bde5d7d.json",
+        "timing_sane": true,
+        "weighted_rho_kernel": 0.986606644642
+      }
+    ],
+    "run_of_record": {
+      "cloud": {
+        "cpu_model": "Intel Xeon Platinum 8352Y / cgroup quota 7.92 cores",
+        "cuda_version": "toolkit 13.0 / UMD 13.3",
+        "driver_version": "610.43.02",
+        "gpu_sku": "NVIDIA A100-SXM4-80GB / Thunder A100XL",
+        "image": "base / Ubuntu 22.04.5 LTS",
+        "instance_id": "nc1k4a0g",
+        "provider": "Thunder Compute",
+        "ram_gib": "64",
+        "region": "not exposed by provider API",
+        "vcpus": "8 (quota 7.92)"
+      },
+      "correctness": true,
+      "device": {
+        "cc": "8.0",
+        "global_memory_bytes": 85119205376,
+        "name": "NVIDIA A100-SXM4-80GB",
+        "sm_count": 108
+      },
+      "gate_weighted_rho_le_1_30": true,
+      "git_dirty": false,
+      "milestone": "P7-gpu-fused-epilogue",
+      "parameters": {
+        "correction_bytes_per_output": 8,
+        "cpu_reps": 3,
+        "cpu_threads": 7,
+        "gpu_rounds": 9,
+        "gpu_samples_per_variant": 18,
+        "k": 768,
+        "m": 100,
+        "resident_masks": true,
+        "shift": 8
+      },
+      "scope": {
+        "correction_only_followup_kernel": false,
+        "note": "P1-equivalent GPU spike; not an e2e rho measurement.",
+        "pcg_masks": "resident pre-expanded pool; setup/expansion budgeted separately",
+        "proving_path_integrated": false
+      },
+      "shapes": [
+        {
+          "correct": true,
+          "correction_bytes": 614400,
+          "correction_checksum": "0x6602b2041ac9cfc4",
+          "cpu_native_s": 0.012126946,
+          "gpu_fused_s": 0.000395553,
+          "gpu_native_gmac_s": 150.41005345,
+          "gpu_native_s": 0.000392144,
+          "k": 768,
+          "m": 100,
+          "n": 768,
+          "native_gpu_cpu_speedup": 30.924726631,
+          "output_checksum": "0x7fac93d5b09e3279",
+          "rho_kernel": 1.00869323514
+        },
+        {
+          "correct": true,
+          "correction_bytes": 1843200,
+          "correction_checksum": "0x657f2372e3e080c3",
+          "cpu_native_s": 0.053271386,
+          "gpu_fused_s": 0.000514536,
+          "gpu_native_gmac_s": 342.482870747,
+          "gpu_native_s": 0.00051666,
+          "k": 768,
+          "m": 100,
+          "n": 2304,
+          "native_gpu_cpu_speedup": 103.107238803,
+          "output_checksum": "0x98d0ad1723fb5ba4",
+          "rho_kernel": 0.995888979213
+        },
+        {
+          "correct": true,
+          "correction_bytes": 2457600,
+          "correction_checksum": "0x0a16ee945a99dea3",
+          "cpu_native_s": 0.086381447,
+          "gpu_fused_s": 0.000569041,
+          "gpu_native_gmac_s": 407.560076907,
+          "gpu_native_s": 0.000578883,
+          "k": 768,
+          "m": 100,
+          "n": 3072,
+          "native_gpu_cpu_speedup": 149.220908197,
+          "output_checksum": "0x622a3f3b6103a2a0",
+          "rho_kernel": 0.982998291537
+        }
+      ],
+      "source": "benchmarks/results/p7-gpu-fused-epilogue-2026-07-11-bde5d7d.json",
+      "timing_sane": true,
+      "weighted_rho_kernel": 1.003056933
+    },
+    "status": "measured_gate_pass"
+  },
+  "gpu_logup_rounds": {
+    "note": "Clear general rounds with per-round barriers; blind corrections and integration remain open.",
+    "profiles": [
+      {
+        "all_rounds_checksum": "0x26139daf10dc7707",
+        "cloud": {
+          "cpu_model": "Intel Xeon Platinum 8352Y / cgroup quota 7.92 cores",
+          "cuda_version": "toolkit 13.0 / UMD 13.3",
+          "driver_version": "610.43.02",
+          "gpu_sku": "NVIDIA A100-SXM4-80GB / Thunder A100XL",
+          "image": "base / Ubuntu 22.04.5 LTS",
+          "instance_id": "nc1k4a0g",
+          "provider": "Thunder Compute",
+          "ram_gib": "64",
+          "region": "not exposed by provider API",
+          "vcpus": "8 (quota 7.92)"
+        },
+        "correctness": true,
+        "cpu_s": 0.386595784,
+        "gate_speedup_ge_5_48": true,
+        "git_dirty": false,
+        "gpu_cpu_speedup": 6.7660424204,
+        "gpu_s": 0.057137653,
+        "milestone": "P7-gpu-logup-rounds",
+        "parameters": {
+          "cpu_reps": 3,
+          "cpu_threads": 7,
+          "fp2_mults_per_pair_eval": 10,
+          "fp2_mults_per_pair_fold": 4,
+          "gpu_reps": 7,
+          "log2_n": 22,
+          "n": 4194304,
+          "round_message_d2h_bytes": 64,
+          "rounds": 22
+        },
+        "scope": {
+          "blind_corrections_integrated": false,
+          "clear_general_rounds": true,
+          "per_round_transcript_barrier": true,
+          "proving_path_integrated": false
+        },
+        "source": "benchmarks/results/p7-gpu-logup-rounds-2026-07-11-e4470bf.json",
+        "timing_sane": true
+      },
+      {
+        "all_rounds_checksum": "0x7eaefbd02661f35b",
+        "cloud": {
+          "cpu_model": "Intel Xeon Platinum 8352Y / cgroup quota 7.92 cores",
+          "cuda_version": "toolkit 13.0 / UMD 13.3",
+          "driver_version": "610.43.02",
+          "gpu_sku": "NVIDIA A100-SXM4-80GB / Thunder A100XL",
+          "image": "base / Ubuntu 22.04.5 LTS",
+          "instance_id": "nc1k4a0g",
+          "provider": "Thunder Compute",
+          "ram_gib": "64",
+          "region": "not exposed by provider API",
+          "vcpus": "8 (quota 7.92)"
+        },
+        "correctness": true,
+        "cpu_s": 0.012651458,
+        "gate_speedup_ge_5_48": false,
+        "git_dirty": false,
+        "gpu_cpu_speedup": 1.40865287511,
+        "gpu_s": 0.008981246,
+        "milestone": "P7-gpu-logup-rounds-quick",
+        "parameters": {
+          "cpu_reps": 1,
+          "cpu_threads": 7,
+          "fp2_mults_per_pair_eval": 10,
+          "fp2_mults_per_pair_fold": 4,
+          "gpu_reps": 3,
+          "log2_n": 16,
+          "n": 65536,
+          "round_message_d2h_bytes": 64,
+          "rounds": 16
+        },
+        "scope": {
+          "blind_corrections_integrated": false,
+          "clear_general_rounds": true,
+          "per_round_transcript_barrier": true,
+          "proving_path_integrated": false
+        },
+        "source": "benchmarks/results/p7-gpu-logup-rounds-quick-2026-07-11-e4470bf.json",
+        "timing_sane": true
+      }
+    ],
+    "run_of_record": {
+      "all_rounds_checksum": "0x26139daf10dc7707",
+      "cloud": {
+        "cpu_model": "Intel Xeon Platinum 8352Y / cgroup quota 7.92 cores",
+        "cuda_version": "toolkit 13.0 / UMD 13.3",
+        "driver_version": "610.43.02",
+        "gpu_sku": "NVIDIA A100-SXM4-80GB / Thunder A100XL",
+        "image": "base / Ubuntu 22.04.5 LTS",
+        "instance_id": "nc1k4a0g",
+        "provider": "Thunder Compute",
+        "ram_gib": "64",
+        "region": "not exposed by provider API",
+        "vcpus": "8 (quota 7.92)"
+      },
+      "correctness": true,
+      "cpu_s": 0.386595784,
+      "gate_speedup_ge_5_48": true,
+      "git_dirty": false,
+      "gpu_cpu_speedup": 6.7660424204,
+      "gpu_s": 0.057137653,
+      "milestone": "P7-gpu-logup-rounds",
+      "parameters": {
+        "cpu_reps": 3,
+        "cpu_threads": 7,
+        "fp2_mults_per_pair_eval": 10,
+        "fp2_mults_per_pair_fold": 4,
+        "gpu_reps": 7,
+        "log2_n": 22,
+        "n": 4194304,
+        "round_message_d2h_bytes": 64,
+        "rounds": 22
+      },
+      "scope": {
+        "blind_corrections_integrated": false,
+        "clear_general_rounds": true,
+        "per_round_transcript_barrier": true,
+        "proving_path_integrated": false
+      },
+      "source": "benchmarks/results/p7-gpu-logup-rounds-2026-07-11-e4470bf.json",
+      "timing_sane": true
+    },
+    "status": "measured_gate_pass"
+  },
+  "gpu_logup_tree": {
+    "note": "Lookup-side tree build only; sumcheck round/fold kernels and integration remain open.",
+    "profiles": [
+      {
+        "all_layers_checksum": "0x0350749ee82bd237",
+        "cloud": {
+          "cpu_model": "Intel Xeon Platinum 8352Y / cgroup quota 7.92 cores",
+          "cuda_version": "toolkit 13.0 / UMD 13.3",
+          "driver_version": "610.43.02",
+          "gpu_sku": "NVIDIA A100-SXM4-80GB / Thunder A100XL",
+          "image": "base / Ubuntu 22.04.5 LTS",
+          "instance_id": "nc1k4a0g",
+          "provider": "Thunder Compute",
+          "ram_gib": "64",
+          "region": "not exposed by provider API",
+          "vcpus": "8 (quota 7.92)"
+        },
+        "correctness": true,
+        "cpu_s": 0.189339205,
+        "gate_speedup_ge_5_48": true,
+        "git_dirty": false,
+        "gpu_cpu_speedup": 66.1188534508,
+        "gpu_s": 0.002863619,
+        "milestone": "P7-gpu-logup-tree",
+        "operation_counts": {
+          "first_level_base_mults": 16777216,
+          "first_level_pairs": 8388608,
+          "general_fp2_mults": 25165821,
+          "general_pairs": 8388607
+        },
+        "parameters": {
+          "completion_d2h_bytes": 32,
+          "cpu_reps": 3,
+          "cpu_threads": 7,
+          "depth": 24,
+          "gpu_reps": 7,
+          "leaf_side": "ones",
+          "log2_n": 24,
+          "n": 16777216
+        },
+        "scope": {
+          "leaf_side": "lookup / LeafP::Ones",
+          "proving_path_integrated": false,
+          "sumcheck_rounds_integrated": false,
+          "tree_build_only": true
+        },
+        "source": "benchmarks/results/p7-gpu-logup-tree-2026-07-11-5f7b443.json",
+        "timing_sane": true
+      },
+      {
+        "all_layers_checksum": "0xac5455f699d2b292",
+        "cloud": {
+          "cpu_model": "Intel Xeon Platinum 8352Y / cgroup quota 7.92 cores",
+          "cuda_version": "toolkit 13.0 / UMD 13.3",
+          "driver_version": "610.43.02",
+          "gpu_sku": "NVIDIA A100-SXM4-80GB / Thunder A100XL",
+          "image": "base / Ubuntu 22.04.5 LTS",
+          "instance_id": "nc1k4a0g",
+          "provider": "Thunder Compute",
+          "ram_gib": "64",
+          "region": "not exposed by provider API",
+          "vcpus": "8 (quota 7.92)"
+        },
+        "correctness": true,
+        "cpu_s": 0.003102797,
+        "gate_speedup_ge_5_48": false,
+        "git_dirty": false,
+        "gpu_cpu_speedup": 2.19394916889,
+        "gpu_s": 0.001414252,
+        "milestone": "P7-gpu-logup-tree-quick",
+        "operation_counts": {
+          "first_level_base_mults": 262144,
+          "first_level_pairs": 131072,
+          "general_fp2_mults": 393213,
+          "general_pairs": 131071
+        },
+        "parameters": {
+          "completion_d2h_bytes": 32,
+          "cpu_reps": 1,
+          "cpu_threads": 7,
+          "depth": 18,
+          "gpu_reps": 3,
+          "leaf_side": "ones",
+          "log2_n": 18,
+          "n": 262144
+        },
+        "scope": {
+          "leaf_side": "lookup / LeafP::Ones",
+          "proving_path_integrated": false,
+          "sumcheck_rounds_integrated": false,
+          "tree_build_only": true
+        },
+        "source": "benchmarks/results/p7-gpu-logup-tree-quick-2026-07-11-5f7b443.json",
+        "timing_sane": true
+      }
+    ],
+    "run_of_record": {
+      "all_layers_checksum": "0x0350749ee82bd237",
+      "cloud": {
+        "cpu_model": "Intel Xeon Platinum 8352Y / cgroup quota 7.92 cores",
+        "cuda_version": "toolkit 13.0 / UMD 13.3",
+        "driver_version": "610.43.02",
+        "gpu_sku": "NVIDIA A100-SXM4-80GB / Thunder A100XL",
+        "image": "base / Ubuntu 22.04.5 LTS",
+        "instance_id": "nc1k4a0g",
+        "provider": "Thunder Compute",
+        "ram_gib": "64",
+        "region": "not exposed by provider API",
+        "vcpus": "8 (quota 7.92)"
+      },
+      "correctness": true,
+      "cpu_s": 0.189339205,
+      "gate_speedup_ge_5_48": true,
+      "git_dirty": false,
+      "gpu_cpu_speedup": 66.1188534508,
+      "gpu_s": 0.002863619,
+      "milestone": "P7-gpu-logup-tree",
+      "operation_counts": {
+        "first_level_base_mults": 16777216,
+        "first_level_pairs": 8388608,
+        "general_fp2_mults": 25165821,
+        "general_pairs": 8388607
+      },
+      "parameters": {
+        "completion_d2h_bytes": 32,
+        "cpu_reps": 3,
+        "cpu_threads": 7,
+        "depth": 24,
+        "gpu_reps": 7,
+        "leaf_side": "ones",
+        "log2_n": 24,
+        "n": 16777216
+      },
+      "scope": {
+        "leaf_side": "lookup / LeafP::Ones",
+        "proving_path_integrated": false,
+        "sumcheck_rounds_integrated": false,
+        "tree_build_only": true
+      },
+      "source": "benchmarks/results/p7-gpu-logup-tree-2026-07-11-5f7b443.json",
+      "timing_sane": true
+    },
+    "status": "measured_gate_pass"
+  },
+  "gpu_pcs_arithmetic": {
+    "note": "P4_LAYER NTT + combine_rows only; masks, columns, blake3 and integration remain open.",
+    "profiles": [
+      {
+        "cloud": {
+          "cpu_model": "Intel Xeon Platinum 8352Y / cgroup quota 7.92 cores",
+          "cuda_version": "toolkit 13.0 / UMD 13.3",
+          "driver_version": "610.43.02",
+          "gpu_sku": "NVIDIA A100-SXM4-80GB / Thunder A100XL",
+          "image": "base / Ubuntu 22.04.5 LTS",
+          "instance_id": "nc1k4a0g",
+          "provider": "Thunder Compute",
+          "ram_gib": "64",
+          "region": "not exposed by provider API",
+          "vcpus": "8 (quota 7.92)"
+        },
+        "combine_rows": {
+          "base_mul_equiv": 67108864,
+          "checksum": "0x856f9a96d8e01901",
+          "correct": true,
+          "cpu_s": 0.145927853,
+          "gpu_cpu_speedup": 76.0996903402,
+          "gpu_s": 0.001917588,
+          "weight_bytes": 134217728
+        },
+        "correctness": true,
+        "gate_each_speedup_ge_5_48": true,
+        "git_dirty": false,
+        "milestone": "P7-gpu-pcs-arithmetic",
+        "ntt": {
+          "butterflies": 251658240,
+          "checksum": "0xbe7b90425a4c7229",
+          "correct": true,
+          "cpu_s": 0.512933422,
+          "gpu_cpu_speedup": 80.3253115046,
+          "gpu_s": 0.006385701,
+          "resident_bytes": 268435456
+        },
+        "parameters": {
+          "code_bits": 15,
+          "code_len": 32768,
+          "cols": 16384,
+          "cpu_reps": 3,
+          "cpu_threads": 7,
+          "gpu_reps": 7,
+          "msg_len": 16896,
+          "rows": 1024
+        },
+        "scope": {
+          "blake3_integrated": false,
+          "column_gather_integrated": false,
+          "ligero_params": "P4_LAYER",
+          "mask_rows_integrated": false,
+          "ntt_and_combine_rows": true,
+          "pad_tail_integrated": false,
+          "proving_path_integrated": false
+        },
+        "source": "benchmarks/results/p7-gpu-pcs-arithmetic-2026-07-11-366ec4a.json",
+        "timing_sane": true
+      },
+      {
+        "cloud": {
+          "cpu_model": "Intel Xeon Platinum 8352Y / cgroup quota 7.92 cores",
+          "cuda_version": "toolkit 13.0 / UMD 13.3",
+          "driver_version": "610.43.02",
+          "gpu_sku": "NVIDIA A100-SXM4-80GB / Thunder A100XL",
+          "image": "base / Ubuntu 22.04.5 LTS",
+          "instance_id": "nc1k4a0g",
+          "provider": "Thunder Compute",
+          "ram_gib": "64",
+          "region": "not exposed by provider API",
+          "vcpus": "8 (quota 7.92)"
+        },
+        "combine_rows": {
+          "base_mul_equiv": 262144,
+          "checksum": "0x0852323a5805ed2c",
+          "correct": true,
+          "cpu_s": 0.000816148,
+          "gpu_cpu_speedup": 0.507702174699,
+          "gpu_s": 0.001607533,
+          "weight_bytes": 524288
+        },
+        "correctness": true,
+        "gate_each_speedup_ge_5_48": false,
+        "git_dirty": false,
+        "milestone": "P7-gpu-pcs-arithmetic-quick",
+        "ntt": {
+          "butterflies": 786432,
+          "checksum": "0xa87a560725f2d016",
+          "correct": true,
+          "cpu_s": 0.001716016,
+          "gpu_cpu_speedup": 1.40656933888,
+          "gpu_s": 0.001220001,
+          "resident_bytes": 1048576
+        },
+        "parameters": {
+          "code_bits": 12,
+          "code_len": 4096,
+          "cols": 2048,
+          "cpu_reps": 1,
+          "cpu_threads": 7,
+          "gpu_reps": 3,
+          "msg_len": 2304,
+          "rows": 32
+        },
+        "scope": {
+          "blake3_integrated": false,
+          "column_gather_integrated": false,
+          "ligero_params": "quick",
+          "mask_rows_integrated": false,
+          "ntt_and_combine_rows": true,
+          "pad_tail_integrated": false,
+          "proving_path_integrated": false
+        },
+        "source": "benchmarks/results/p7-gpu-pcs-arithmetic-quick-2026-07-11-366ec4a.json",
+        "timing_sane": true
+      }
+    ],
+    "run_of_record": {
+      "cloud": {
+        "cpu_model": "Intel Xeon Platinum 8352Y / cgroup quota 7.92 cores",
+        "cuda_version": "toolkit 13.0 / UMD 13.3",
+        "driver_version": "610.43.02",
+        "gpu_sku": "NVIDIA A100-SXM4-80GB / Thunder A100XL",
+        "image": "base / Ubuntu 22.04.5 LTS",
+        "instance_id": "nc1k4a0g",
+        "provider": "Thunder Compute",
+        "ram_gib": "64",
+        "region": "not exposed by provider API",
+        "vcpus": "8 (quota 7.92)"
+      },
+      "combine_rows": {
+        "base_mul_equiv": 67108864,
+        "checksum": "0x856f9a96d8e01901",
+        "correct": true,
+        "cpu_s": 0.145927853,
+        "gpu_cpu_speedup": 76.0996903402,
+        "gpu_s": 0.001917588,
+        "weight_bytes": 134217728
+      },
+      "correctness": true,
+      "gate_each_speedup_ge_5_48": true,
+      "git_dirty": false,
+      "milestone": "P7-gpu-pcs-arithmetic",
+      "ntt": {
+        "butterflies": 251658240,
+        "checksum": "0xbe7b90425a4c7229",
+        "correct": true,
+        "cpu_s": 0.512933422,
+        "gpu_cpu_speedup": 80.3253115046,
+        "gpu_s": 0.006385701,
+        "resident_bytes": 268435456
+      },
+      "parameters": {
+        "code_bits": 15,
+        "code_len": 32768,
+        "cols": 16384,
+        "cpu_reps": 3,
+        "cpu_threads": 7,
+        "gpu_reps": 7,
+        "msg_len": 16896,
+        "rows": 1024
+      },
+      "scope": {
+        "blake3_integrated": false,
+        "column_gather_integrated": false,
+        "ligero_params": "P4_LAYER",
+        "mask_rows_integrated": false,
+        "ntt_and_combine_rows": true,
+        "pad_tail_integrated": false,
+        "proving_path_integrated": false
+      },
+      "source": "benchmarks/results/p7-gpu-pcs-arithmetic-2026-07-11-366ec4a.json",
+      "timing_sane": true
+    },
+    "status": "measured_gate_pass"
+  },
+  "gpu_roofline": {
+    "note": "Arithmetic roofline only; protocol kernels, integration, and e2e GPU rho remain open.",
+    "profiles": [
+      {
+        "chain_gpu_cpu_speedup": 300.94133017,
+        "chain_gpu_fp2_mul_s": 41180802646.5,
+        "chain_gpu_s": 0.006518461,
+        "cloud": {
+          "cpu_model": "Intel Xeon Platinum 8352Y / cgroup quota 7.92 cores",
+          "cuda_version": "toolkit 13.0 / UMD 13.3",
+          "driver_version": "610.43.02",
+          "gpu_sku": "NVIDIA A100-SXM4-80GB / Thunder A100XL",
+          "image": "base / Ubuntu 22.04.5 LTS",
+          "instance_id": "nc1k4a0g",
+          "provider": "Thunder Compute",
+          "ram_gib": "64",
+          "region": "not exposed by provider API",
+          "vcpus": "8 (quota 7.92)"
+        },
+        "correctness": true,
+        "device": {
+          "cc": "8.0",
+          "cuda_driver_version": 13030,
+          "cuda_runtime_version": 13000,
+          "global_memory_bytes": 85119205376,
+          "memory_bus_width_bits": 5120,
+          "name": "NVIDIA A100-SXM4-80GB",
+          "sm_count": 108
+        },
+        "git_dirty": false,
+        "milestone": "P7-gpu-roofline",
+        "parameters": {
+          "chain_log2": 20,
+          "chain_rounds": 256,
+          "cpu_reps": 3,
+          "cpu_threads": 7,
+          "fp_mul_per_fp2_mul": 5,
+          "gpu_reps": 7,
+          "stream_log2": 24
+        },
+        "screening": {
+          "min_observed_raw_gpu_cpu_speedup": 55.4816444611,
+          "note": "Roofline screening only; not an end-to-end proving-path gate.",
+          "plausible_headroom": true,
+          "required_relative_prover_vs_native_speedup": {
+            "decode": 3.9669730070632774,
+            "prefill": 5.476393766687816
+          }
+        },
+        "source": "benchmarks/results/p7-gpu-roofline-2026-07-11-a43d105.json",
+        "stream_gpu_bandwidth_gb_s": 418.038245551,
+        "stream_gpu_cpu_speedup": 55.4816444611,
+        "stream_gpu_s": 0.001926394,
+        "timing_sane": true
+      },
+      {
+        "chain_gpu_cpu_speedup": 67.249135523,
+        "chain_gpu_fp2_mul_s": 9417867952.83,
+        "chain_gpu_s": 0.000445356,
+        "cloud": {
+          "cpu_model": "Intel Xeon Platinum 8352Y / cgroup quota 7.92 cores",
+          "cuda_version": "toolkit 13.0 / UMD 13.3",
+          "driver_version": "610.43.02",
+          "gpu_sku": "NVIDIA A100-SXM4-80GB / Thunder A100XL",
+          "image": "base / Ubuntu 22.04.5 LTS",
+          "instance_id": "nc1k4a0g",
+          "provider": "Thunder Compute",
+          "ram_gib": "64",
+          "region": "not exposed by provider API",
+          "vcpus": "8 (quota 7.92)"
+        },
+        "correctness": true,
+        "device": {
+          "cc": "8.0",
+          "cuda_driver_version": 13030,
+          "cuda_runtime_version": 13000,
+          "global_memory_bytes": 85119205376,
+          "memory_bus_width_bits": 5120,
+          "name": "NVIDIA A100-SXM4-80GB",
+          "sm_count": 108
+        },
+        "git_dirty": false,
+        "milestone": "P7-gpu-roofline-quick",
+        "parameters": {
+          "chain_log2": 16,
+          "chain_rounds": 64,
+          "cpu_reps": 1,
+          "cpu_threads": 7,
+          "fp_mul_per_fp2_mul": 5,
+          "gpu_reps": 3,
+          "stream_log2": 20
+        },
+        "screening": {
+          "min_observed_raw_gpu_cpu_speedup": 14.8100646344,
+          "note": "Roofline screening only; not an end-to-end proving-path gate.",
+          "plausible_headroom": true,
+          "required_relative_prover_vs_native_speedup": {
+            "decode": 3.9669730070632774,
+            "prefill": 5.476393766687816
+          }
+        },
+        "source": "benchmarks/results/p7-gpu-roofline-quick-2026-07-11-a43d105.json",
+        "stream_gpu_bandwidth_gb_s": 119.513432652,
+        "stream_gpu_cpu_speedup": 14.8100646344,
+        "stream_gpu_s": 0.000421138,
+        "timing_sane": true
+      }
+    ],
+    "run_of_record": {
+      "chain_gpu_cpu_speedup": 300.94133017,
+      "chain_gpu_fp2_mul_s": 41180802646.5,
+      "chain_gpu_s": 0.006518461,
+      "cloud": {
+        "cpu_model": "Intel Xeon Platinum 8352Y / cgroup quota 7.92 cores",
+        "cuda_version": "toolkit 13.0 / UMD 13.3",
+        "driver_version": "610.43.02",
+        "gpu_sku": "NVIDIA A100-SXM4-80GB / Thunder A100XL",
+        "image": "base / Ubuntu 22.04.5 LTS",
+        "instance_id": "nc1k4a0g",
+        "provider": "Thunder Compute",
+        "ram_gib": "64",
+        "region": "not exposed by provider API",
+        "vcpus": "8 (quota 7.92)"
+      },
+      "correctness": true,
+      "device": {
+        "cc": "8.0",
+        "cuda_driver_version": 13030,
+        "cuda_runtime_version": 13000,
+        "global_memory_bytes": 85119205376,
+        "memory_bus_width_bits": 5120,
+        "name": "NVIDIA A100-SXM4-80GB",
+        "sm_count": 108
+      },
+      "git_dirty": false,
+      "milestone": "P7-gpu-roofline",
+      "parameters": {
+        "chain_log2": 20,
+        "chain_rounds": 256,
+        "cpu_reps": 3,
+        "cpu_threads": 7,
+        "fp_mul_per_fp2_mul": 5,
+        "gpu_reps": 7,
+        "stream_log2": 24
+      },
+      "screening": {
+        "min_observed_raw_gpu_cpu_speedup": 55.4816444611,
+        "note": "Roofline screening only; not an end-to-end proving-path gate.",
+        "plausible_headroom": true,
+        "required_relative_prover_vs_native_speedup": {
+          "decode": 3.9669730070632774,
+          "prefill": 5.476393766687816
+        }
+      },
+      "source": "benchmarks/results/p7-gpu-roofline-2026-07-11-a43d105.json",
+      "stream_gpu_bandwidth_gb_s": 418.038245551,
+      "stream_gpu_cpu_speedup": 55.4816444611,
+      "stream_gpu_s": 0.001926394,
+      "timing_sane": true
+    },
+    "status": "measured_screening_pass"
+  },
+  "machine": "linux aarch64",
+  "measured_pcs_profiles": [
+    {
+      "comm_response_bytes": 72045400,
+      "git_dirty": true,
+      "milestone": "P6-quick",
+      "n_decode": 8,
+      "pcs_cached_query_marginal_bytes_total": 32310904,
+      "pcs_n_queries": 150,
+      "pcs_opening_bytes_total": 57822904,
+      "pcs_query_error_bits": 60.01307367193085,
+      "source": "benchmarks/results/p6-quick-q150-2026-07-07-fa40a1d.json",
+      "t_prefill": 16,
+      "total_response_download_packed_bytes": 73371042
+    },
+    {
+      "comm_response_bytes": 80956000,
+      "git_dirty": false,
+      "milestone": "P6-quick",
+      "n_decode": 8,
+      "pcs_cached_query_marginal_bytes_total": 32717504,
+      "pcs_n_queries": 200,
+      "pcs_opening_bytes_total": 66733504,
+      "pcs_query_error_bits": 80.01743156257446,
+      "source": "benchmarks/results/p6-quick-realpcg-2026-07-07-fe4857b.json",
+      "t_prefill": 16,
+      "total_response_download_packed_bytes": 82281642
+    },
+    {
+      "comm_response_bytes": 137413808,
+      "git_dirty": false,
+      "milestone": "P6",
+      "n_decode": 50,
+      "pcs_cached_query_marginal_bytes_total": 32717504,
+      "pcs_n_queries": 200,
+      "pcs_opening_bytes_total": 66733504,
+      "pcs_query_error_bits": 80.01743156257446,
+      "source": "benchmarks/results/p6-2026-07-11-11e5630.json",
+      "t_prefill": 100,
+      "total_response_download_packed_bytes": 144820930
+    }
+  ],
+  "milestone": "P7",
+  "pcs_formula_check": {
+    "embed_opening": {
+      "cached_query_cut_bytes": 13203200,
+      "column_indices": 800,
+      "columns_total": 13322400,
+      "corr_ss": 96,
+      "data_columns": 13107200,
+      "mask_columns": 22400,
+      "mask_root": 32,
+      "merkle_paths": 192000,
+      "total": 15214912,
+      "u_vectors": 1892352,
+      "zero_batch": 32
+    },
+    "formula_total_bytes": 66733504,
+    "layer_one_opening": {
+      "cached_query_cut_bytes": 1734400,
+      "column_indices": 800,
+      "columns_total": 1860000,
+      "corr_ss": 128,
+      "data_columns": 1638400,
+      "mask_columns": 28800,
+      "mask_root": 32,
+      "merkle_paths": 192000,
+      "total": 4293216,
+      "u_vectors": 2433024,
+      "zero_batch": 32
+    },
+    "matches_p6_measured_bytes": true,
+    "measured_total_bytes": 66733504,
+    "q200_error_bits": 80.01743156257446,
+    "q_for_60_bits": 150,
+    "rate": 0.515625,
+    "relative_distance": 0.484375
+  },
+  "pcs_scenarios": [
+    {
+      "name": "current",
+      "note": "measured shape and claims",
+      "packed_response_download_bytes": 144820930,
+      "pcs_delta_bytes": 0,
+      "pcs_opening_bytes": 66733504,
+      "status": "implemented"
+    },
+    {
+      "error_bits": 60.01307367193085,
+      "n_queries": 150,
+      "name": "q60_same_rate",
+      "note": "projection only: Q=150, same rate/distance, >=60-bit query error",
+      "packed_response_download_bytes": 135910330,
+      "pcs_delta_bytes": -8910600,
+      "pcs_opening_bytes": 57822904,
+      "status": "soundness-decision-required"
+    },
+    {
+      "name": "per_tensor_rlc",
+      "note": "projection only: layer claims 8->4, embed claims 6->3",
+      "packed_response_download_bytes": 130869778,
+      "pcs_delta_bytes": -13951152,
+      "pcs_opening_bytes": 52782352,
+      "status": "protocol-design-required"
+    },
+    {
+      "error_bits": 60.01307367193085,
+      "n_queries": 150,
+      "name": "q60_plus_rlc",
+      "note": "projection only: Q=150 plus per-tensor RLC",
+      "packed_response_download_bytes": 121999978,
+      "pcs_delta_bytes": -22820952,
+      "pcs_opening_bytes": 43912552,
+      "status": "soundness-and-protocol-design-required"
+    },
+    {
+      "embed_error_bits": 81.50859254638392,
+      "embed_params": {
+        "code_bits": 16,
+        "cols": 32768,
+        "n_queries": 200,
+        "pad": 512,
+        "rows": 4096
+      },
+      "name": "embed_4096_rows",
+      "note": "projection only: embed rows=2^12, cols=2^15, code_bits=16",
+      "packed_response_download_bytes": 140115138,
+      "pcs_delta_bytes": -4705792,
+      "pcs_opening_bytes": 62027712,
+      "status": "layout-variant-required"
+    },
+    {
+      "name": "static_query_cache_marginal",
+      "note": "projection only: verifier caches data columns and their Merkle paths after setup",
+      "packed_response_download_bytes": 110804930,
+      "pcs_delta_bytes": -34016000,
+      "pcs_opening_bytes": 32717504,
+      "status": "stateful-verifier-design-required"
+    },
+    {
+      "name": "static_query_cache_plus_rlc_marginal",
+      "note": "projection only: static query cache plus per-tensor RLC",
+      "packed_response_download_bytes": 96853778,
+      "pcs_delta_bytes": -47967152,
+      "pcs_opening_bytes": 18766352,
+      "status": "stateful-verifier-and-protocol-design-required"
+    }
+  ],
+  "real_pcg_spike": {
+    "corr_full_corrs": 176880,
+    "corr_sub_corrs": 8479926,
+    "mock_pcg_lower_bounds": [
+      {
+        "corr_full_corrs": 176880,
+        "corr_sub_corrs": 8479926,
+        "expanded_prover_bytes": 209178384,
+        "expanded_verifier_bytes": 138508896,
+        "git_dirty": true,
+        "is_real_pcg": false,
+        "note": "Mock ChaCha expansion lower bound only; this is not a Ferret/silent-VOLE real-PCG setup+expansion measurement.",
+        "peak_rss_gb": 0.19115066528320312,
+        "source": "benchmarks/results/p7-mock-pcg-2026-07-07-d16a69c.json",
+        "t_total_mock_expansion_s": 0.35145660300000003
+      }
+    ],
+    "note": "Real-PCG phase B setup measured, but production_ready is false until WYKW malicious checks and table-derived LPN parameters are closed.",
+    "real_pcg_phase_a": [
+      {
+        "base_vole": "mock-stub",
+        "consistency": {
+          "checksum": 15387744285060218077,
+          "ok": true
+        },
+        "corr_full_corrs": 176880,
+        "corr_sub_corrs": 8479926,
+        "expanded_prover_bytes": 209178384,
+        "expanded_verifier_bytes": 138508896,
+        "git_dirty": true,
+        "is_real_pcg": true,
+        "lpn_parameters": {
+          "base_vole_len": 591041,
+          "code_fanout": 10,
+          "consistency_reps": 2,
+          "full_field_combiner": "x=x0+phi*x1, m=m0+phi*m1, k=k0+phi*k1",
+          "ggm_block_size": 6902,
+          "ggm_depth": 13,
+          "lpn_k": 589760,
+          "lpn_noise_weight": 1280,
+          "output_sub_equiv": 8833686,
+          "profile": "p7-phase-a-goldilocks-regular-lpn-v1",
+          "security_bits": 128
+        },
+        "note": "Phase-A Goldilocks WYKW/Wolverine-style expansion: GGM PPRF + regular-noise local-linear LPN + consistency-check arithmetic; base sVOLE is a mock trusted-dealer stub, not phase-B real setup.",
+        "peak_rss_gb": 0.3608970642089844,
+        "setup_comm_bytes": 0,
+        "source": "benchmarks/results/p7-real-pcg-2026-07-07-995bfb7.json",
+        "sub_equiv_corrs": 8833686,
+        "sub_equiv_corrs_per_s_joint": 2726129.187732512,
+        "t_consistency_check_s": 0.228316703,
+        "t_ggm_pprf_s": 1.976655888,
+        "t_lpn_expand_s": 1.017346191,
+        "t_setup_stub_s": 0.015803631,
+        "t_total_real_expansion_s": 3.240376883
+      },
+      {
+        "base_vole": "mock-stub",
+        "consistency": {
+          "checksum": 15387744285060218077,
+          "ok": true
+        },
+        "corr_full_corrs": 176880,
+        "corr_sub_corrs": 8479926,
+        "expanded_prover_bytes": 209178384,
+        "expanded_verifier_bytes": 138508896,
+        "git_dirty": false,
+        "is_real_pcg": true,
+        "lpn_parameters": {
+          "base_vole_len": 591041,
+          "code_fanout": 10,
+          "consistency_reps": 2,
+          "full_field_combiner": "x=x0+phi*x1, m=m0+phi*m1, k=k0+phi*k1",
+          "ggm_block_size": 6902,
+          "ggm_depth": 13,
+          "lpn_k": 589760,
+          "lpn_noise_weight": 1280,
+          "output_sub_equiv": 8833686,
+          "profile": "p7-phase-a-goldilocks-regular-lpn-v1",
+          "security_bits": 128
+        },
+        "note": "Phase-A Goldilocks WYKW/Wolverine-style expansion: GGM PPRF + regular-noise local-linear LPN + consistency-check arithmetic; base sVOLE is a mock trusted-dealer stub, not phase-B real setup.",
+        "peak_rss_gb": 0.3609504699707031,
+        "setup_comm_bytes": 0,
+        "source": "benchmarks/results/p7-real-pcg-2026-07-07-fe4857b.json",
+        "sub_equiv_corrs": 8833686,
+        "sub_equiv_corrs_per_s_joint": 2381819.2065560045,
+        "t_consistency_check_s": 0.231351244,
+        "t_ggm_pprf_s": 2.176730028,
+        "t_lpn_expand_s": 1.278630417,
+        "t_setup_stub_s": 0.018575021,
+        "t_total_real_expansion_s": 3.70879787
+      }
+    ],
+    "real_pcg_phase_b": [
+      {
+        "base_ot_bytes": 16384,
+        "base_vole": "setup-cost-model",
+        "consistency": {
+          "checksum": 15387744285060218077,
+          "ok": true
+        },
+        "corr_full_corrs": 176880,
+        "corr_sub_corrs": 8479926,
+        "git_dirty": false,
+        "is_real_pcg": true,
+        "note": "Phase-B setup COST measurement (single-process, shared-seed simulation with real curve25519/Ristretto group operations and measured OT-extension bytes; GGM PPRF expansion charged as in phase A). Not a two-party execution; production-ready remains false until WYKW malicious checks and table-derived LPN parameters are closed.",
+        "ot_extension_bytes": 1064960,
+        "peak_rss_gb": 0.3609771728515625,
+        "production_ready": false,
+        "setup": {
+          "base_ot_transcript_digest": "e9f38af96a56e358664096d32eca4ec7228aecb484064aa1c9949900b26ac952",
+          "comm": {
+            "base_ot_bytes": 16384,
+            "consistency_bytes": 64,
+            "ot_extension_bytes": 1064960,
+            "total_bytes": 1081408
+          },
+          "consistency_challenge_source": "blake3(setup transcript binding), after base-OT and GGM-OT binding",
+          "ot_extension_digest": "5f66b3967094dad0ef62913fbd843007725d76b417412381558ab3394611fbdb",
+          "params": {
+            "base_ot_count": 128,
+            "extended_ot_count": 16640,
+            "ggm_path_depth": 13,
+            "lpn_parameter_source": "P7 cost model; production table citation pending",
+            "production_ready": false,
+            "profile": "p7-phase-b-two-party-setup-v0",
+            "setup_security_bits": 128
+          },
+          "setup_binding_digest": "3223075836d528966b599b8d2bbf59192b08305e5435482995f83fd53397d6dc"
+        },
+        "setup_comm_bytes": 1081408,
+        "source": "benchmarks/results/p7-real-pcg-2026-07-07-a7a2a85.json",
+        "t_base_ot_s": 0.020602736,
+        "t_consistency_check_s": 0.239698982,
+        "t_ggm_pprf_s": 1.934482284,
+        "t_lpn_expand_s": 2.186304971,
+        "t_ot_extension_s": 0.00825977,
+        "t_total_real_expansion_s": 4.407687045
+      },
+      {
+        "base_ot_bytes": 16384,
+        "base_vole": "real",
+        "consistency": {
+          "checksum": 15387744285060218077,
+          "ok": true
+        },
+        "corr_full_corrs": 176880,
+        "corr_sub_corrs": 8479926,
+        "git_dirty": false,
+        "is_real_pcg": true,
+        "note": "Phase-B setup measurement: real curve25519/Ristretto base OTs plus measured GGM OT-extension delivery and transcript-bound consistency challenge. Production-ready remains false until WYKW malicious checks and table-derived LPN parameters are closed.",
+        "ot_extension_bytes": 1064960,
+        "peak_rss_gb": 0.3609046936035156,
+        "production_ready": false,
+        "setup": {
+          "base_ot_transcript_digest": "e9f38af96a56e358664096d32eca4ec7228aecb484064aa1c9949900b26ac952",
+          "comm": {
+            "base_ot_bytes": 16384,
+            "consistency_bytes": 64,
+            "ot_extension_bytes": 1064960,
+            "total_bytes": 1081408
+          },
+          "consistency_challenge_source": "blake3(setup transcript binding), after base-OT and GGM-OT binding",
+          "ot_extension_digest": "5f66b3967094dad0ef62913fbd843007725d76b417412381558ab3394611fbdb",
+          "params": {
+            "base_ot_count": 128,
+            "extended_ot_count": 16640,
+            "ggm_path_depth": 13,
+            "lpn_parameter_source": "P7 cost model; production table citation pending",
+            "production_ready": false,
+            "profile": "p7-phase-b-two-party-setup-v0",
+            "setup_security_bits": 128
+          },
+          "setup_binding_digest": "3223075836d528966b599b8d2bbf59192b08305e5435482995f83fd53397d6dc"
+        },
+        "setup_comm_bytes": 1081408,
+        "source": "benchmarks/results/p7-real-pcg-2026-07-07-ec6e4f7.json",
+        "t_base_ot_s": 0.020721426,
+        "t_consistency_check_s": 0.230491907,
+        "t_ggm_pprf_s": null,
+        "t_lpn_expand_s": 1.32293414,
+        "t_ot_extension_s": 0.008293554,
+        "t_total_real_expansion_s": 1.601648318
+      },
+      {
+        "base_ot_bytes": 16384,
+        "base_vole": "real",
+        "consistency": {
+          "checksum": 15387744285060218077,
+          "ok": true
+        },
+        "corr_full_corrs": 176880,
+        "corr_sub_corrs": 8479926,
+        "git_dirty": true,
+        "is_real_pcg": true,
+        "note": "Phase-B setup measurement: real curve25519/Ristretto base OTs plus measured GGM OT-extension delivery and transcript-bound consistency challenge. Production-ready remains false until WYKW malicious checks and table-derived LPN parameters are closed.",
+        "ot_extension_bytes": 1064960,
+        "peak_rss_gb": 0.3608436584472656,
+        "production_ready": false,
+        "setup": {
+          "base_ot_transcript_digest": "e9f38af96a56e358664096d32eca4ec7228aecb484064aa1c9949900b26ac952",
+          "comm": {
+            "base_ot_bytes": 16384,
+            "consistency_bytes": 64,
+            "ot_extension_bytes": 1064960,
+            "total_bytes": 1081408
+          },
+          "consistency_challenge_source": "blake3(setup transcript binding), after base-OT and GGM-OT binding",
+          "ot_extension_digest": "5f66b3967094dad0ef62913fbd843007725d76b417412381558ab3394611fbdb",
+          "params": {
+            "base_ot_count": 128,
+            "extended_ot_count": 16640,
+            "ggm_path_depth": 13,
+            "lpn_parameter_source": "P7 cost model; production table citation pending",
+            "production_ready": false,
+            "profile": "p7-phase-b-two-party-setup-v0",
+            "setup_security_bits": 128
+          },
+          "setup_binding_digest": "3223075836d528966b599b8d2bbf59192b08305e5435482995f83fd53397d6dc"
+        },
+        "setup_comm_bytes": 1081408,
+        "source": "benchmarks/results/p7-real-pcg-2026-07-07-f73ca5b.json",
+        "t_base_ot_s": 0.021480806,
+        "t_consistency_check_s": 0.236342906,
+        "t_ggm_pprf_s": null,
+        "t_lpn_expand_s": 1.340056054,
+        "t_ot_extension_s": 0.008465638,
+        "t_total_real_expansion_s": 1.6255657380000001
+      }
+    ],
+    "status": "phase_b_measured_not_production"
+  },
+  "rho_history": [
+    {
+      "git_dirty": null,
+      "milestone": "P1",
+      "rho_kernel_weighted_layer": 1.0599534691013208,
+      "source": "benchmarks/results/p1-2026-07-03-5113243.json"
+    },
+    {
+      "git_dirty": false,
+      "milestone": "P1",
+      "rho_kernel_weighted_layer": 1.0425301600213812,
+      "source": "benchmarks/results/p1-2026-07-11-64a8ead.json"
+    },
+    {
+      "git_dirty": null,
+      "milestone": "P3",
+      "rho_blind_total": 3.338489865313317,
+      "source": "benchmarks/results/p3-2026-07-04-cef997d.json"
+    },
+    {
+      "git_dirty": false,
+      "milestone": "P6",
+      "rho_decode": 5.2095152343809525,
+      "rho_prefill": 18.339968036700796,
+      "source": "benchmarks/results/p6-2026-07-07-382bb56.json"
+    },
+    {
+      "git_dirty": false,
+      "milestone": "P6",
+      "rho_decode": 5.07301648142616,
+      "rho_prefill": 23.116002552474924,
+      "source": "benchmarks/results/p6-2026-07-07-515bb1c.json"
+    },
+    {
+      "git_dirty": true,
+      "milestone": "P6",
+      "rho_decode": 5.006383943913601,
+      "rho_prefill": 20.857933585316164,
+      "source": "benchmarks/results/p6-2026-07-07-d71e339.json"
+    },
+    {
+      "git_dirty": false,
+      "milestone": "P6",
+      "rho_decode": 7.933946014126555,
+      "rho_prefill": 27.381968833439082,
+      "source": "benchmarks/results/p6-2026-07-11-11e5630.json"
+    },
+    {
+      "git_dirty": true,
+      "milestone": "P6-quick",
+      "rho_decode": 5.104270006462208,
+      "rho_prefill": 15.074993978148024,
+      "source": "benchmarks/results/p6-quick-2026-07-07-179cd3d.json"
+    },
+    {
+      "git_dirty": true,
+      "milestone": "P6-quick",
+      "rho_decode": 5.045227517646013,
+      "rho_prefill": 15.897657158890878,
+      "source": "benchmarks/results/p6-quick-2026-07-07-2b3beab.json"
+    },
+    {
+      "git_dirty": true,
+      "milestone": "P6-quick",
+      "rho_decode": 4.279084087294988,
+      "rho_prefill": 7.530933538912597,
+      "source": "benchmarks/results/p6-quick-2026-07-07-8322db4.json"
+    },
+    {
+      "git_dirty": true,
+      "milestone": "P6-quick",
+      "rho_decode": 5.218528920810535,
+      "rho_prefill": 13.972311617593785,
+      "source": "benchmarks/results/p6-quick-2026-07-07-d71e339.json"
+    },
+    {
+      "git_dirty": true,
+      "milestone": "P6-quick",
+      "rho_decode": 5.319942574590296,
+      "rho_prefill": 17.09608960881489,
+      "source": "benchmarks/results/p6-quick-q150-2026-07-07-fa40a1d.json"
+    },
+    {
+      "git_dirty": true,
+      "milestone": "P6-quick",
+      "rho_decode": 4.608604061652423,
+      "rho_prefill": 16.387606614935194,
+      "source": "benchmarks/results/p6-quick-realpcg-2026-07-07-995bfb7.json"
+    },
+    {
+      "git_dirty": false,
+      "milestone": "P6-quick",
+      "rho_decode": 5.1154354777829125,
+      "rho_prefill": 12.826627006369145,
+      "source": "benchmarks/results/p6-quick-realpcg-2026-07-07-fe4857b.json"
+    }
+  ]
+}

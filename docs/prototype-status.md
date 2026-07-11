@@ -68,6 +68,8 @@ constant factors hold. That constant factor is what P3/P4 measure.
   tail, mask rows, column gather, blake3/Merkle and proving integration; no
   parameter, proof-size or protocol change. Next authorized spike is
   blake3/Merkle plus representative column gathering.
+  Clean refreshed aggregate: `benchmarks/results/p7-2026-07-11-1b99864.json`
+  (`git_dirty:false`, recommendation `proceed-to-blake3-merkle-spike`).
 
 - **2026-07-11 (P7 GPU PCS row/global arithmetic — pre-registered)**:
   implement two exact sm_80 spikes at `P4_LAYER` geometry. (A) Batched

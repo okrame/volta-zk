@@ -27,6 +27,7 @@ Current clean aggregate: `benchmarks/results/p7-2026-07-11-fd67e64.json`.
 PCS P4_LAYER arithmetic passed: NTT 80.33x and combine_rows 76.10x with exact
 outputs (`p7-gpu-pcs-arithmetic-2026-07-11-366ec4a.json`). Next: blake3/
 Merkle plus column gather, then blind plumbing and proving-path integration.
+Current clean aggregate: `benchmarks/results/p7-2026-07-11-1b99864.json`.
 
 ## Provider / instance
 

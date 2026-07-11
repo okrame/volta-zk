@@ -15,11 +15,6 @@ namespace {
 
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr int BLOCK = 128;
-constexpr uint32_t IV[8] = {
-    0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
-    0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19,
-};
-constexpr uint8_t PERM[16] = {2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8};
 constexpr uint32_t CHUNK_START = 1;
 constexpr uint32_t CHUNK_END = 2;
 constexpr uint32_t PARENT = 4;
@@ -36,6 +31,21 @@ struct Output {
     uint32_t block_len;
     uint32_t flags;
 };
+
+__host__ __device__ constexpr uint32_t iv(int i) {
+    constexpr uint32_t words[8] = {
+        0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
+        0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19,
+    };
+    return words[i];
+}
+
+__host__ __device__ constexpr uint8_t perm(int i) {
+    constexpr uint8_t indices[16] = {
+        2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8,
+    };
+    return indices[i];
+}
 
 #define CUDA_CHECK(call)                                                                    \
     do {                                                                                    \
@@ -67,7 +77,7 @@ __host__ __device__ void compress(
     uint32_t block_len, uint32_t flags, uint32_t out[16]) {
     uint32_t s[16], m[16], p[16];
     for (int i = 0; i < 8; ++i) s[i] = cv[i];
-    for (int i = 0; i < 4; ++i) s[8 + i] = IV[i];
+    for (int i = 0; i < 4; ++i) s[8 + i] = iv(i);
     s[12] = static_cast<uint32_t>(counter);
     s[13] = static_cast<uint32_t>(counter >> 32);
     s[14] = block_len;
@@ -82,7 +92,7 @@ __host__ __device__ void compress(
         g(s, 1, 6, 11, 12, m[10], m[11]);
         g(s, 2, 7, 8, 13, m[12], m[13]);
         g(s, 3, 4, 9, 14, m[14], m[15]);
-        for (int i = 0; i < 16; ++i) p[i] = m[PERM[i]];
+        for (int i = 0; i < 16; ++i) p[i] = m[perm(i)];
         for (int i = 0; i < 16; ++i) m[i] = p[i];
     }
     for (int i = 0; i < 8; ++i) {
@@ -110,7 +120,7 @@ __host__ __device__ Hash32 root_hash(const Output& o) {
 __host__ __device__ Output parent_output(Hash32 left, Hash32 right) {
     Output o{};
     for (int i = 0; i < 8; ++i) {
-        o.cv[i] = IV[i];
+        o.cv[i] = iv(i);
         o.block[i] = left.w[i];
         o.block[8 + i] = right.w[i];
     }
@@ -123,7 +133,7 @@ __host__ __device__ Output chunk_output_column(
     const uint64_t* matrix, size_t rows, size_t cols, size_t col, size_t chunk) {
     Output o{};
     uint32_t cv[8];
-    for (int i = 0; i < 8; ++i) cv[i] = IV[i];
+    for (int i = 0; i < 8; ++i) cv[i] = iv(i);
     const size_t row0 = chunk * 128;
     const size_t remaining = rows - row0;
     const int blocks = static_cast<int>((remaining < 128 ? remaining : 128) / 8);
@@ -173,7 +183,7 @@ __host__ __device__ Hash32 hash_column(
 __host__ __device__ Hash32 hash_pair(Hash32 left, Hash32 right) {
     Output o{};
     for (int i = 0; i < 8; ++i) {
-        o.cv[i] = IV[i];
+        o.cv[i] = iv(i);
         o.block[i] = left.w[i];
         o.block[8 + i] = right.w[i];
     }

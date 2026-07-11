@@ -67,6 +67,8 @@ constant factors hold. That constant factor is what P3/P4 measure.
   correctness; this confirms batching at P6 scale is load-bearing. Scope is
   tree build only: sumcheck evaluation/folds, blind correction plumbing and
   proving-path integration remain open. No protocol or communication change.
+  Clean refreshed aggregate: `benchmarks/results/p7-2026-07-11-959b40b.json`
+  (`git_dirty:false`, recommendation `proceed-to-logup-rounds-and-pcs-spikes`).
 
 - **2026-07-11 (P7 GPU LogUp fraction-tree build — pre-registered)**:
   implement the exact dominant lookup-side (`LeafP::Ones`) P4 tree build at

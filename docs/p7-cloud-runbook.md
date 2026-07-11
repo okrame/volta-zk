@@ -18,6 +18,7 @@ Current clean aggregate: `benchmarks/results/p7-2026-07-11-27cc9a8.json`.
 The LogUp lookup-side tree build also passed at N=2^24: 66.12x CPU/GPU with
 every internal layer exact (`p7-gpu-logup-tree-2026-07-11-5f7b443.json`).
 Next: LogUp sumcheck round/fold kernels, then PCS row/global + blake3.
+Current clean aggregate: `benchmarks/results/p7-2026-07-11-959b40b.json`.
 
 ## Provider / instance
 

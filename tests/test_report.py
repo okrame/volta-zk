@@ -35,13 +35,13 @@ def test_p7_report_selects_record_and_packed_sources():
     data = report.p7_report(report.DEFAULT_RESULTS)
 
     assert data["pcs_formula_check"]["matches_p6_measured_bytes"] is True
-    assert data["baseline"]["source"].endswith("p6-2026-07-11-11e5630.json")
+    assert data["baseline"]["source"].endswith("p6-2026-07-11-f72e4dd.json")
     assert data["baseline"]["cloud"]["provider"] == "Thunder Compute"
     assert data["cloud"] == data["baseline"]["cloud"]
-    assert data["communication"]["packed_logits_source"].endswith("p6-2026-07-11-11e5630.json")
+    assert data["communication"]["packed_logits_source"].endswith("p6-2026-07-11-f72e4dd.json")
     required = data["gpu_budget_model"]["required_relative_prover_vs_native_speedup"]
-    assert 5.47 < required["prefill"] < 5.48
-    assert 3.96 < required["decode"] < 3.97
+    assert 4.102 < required["prefill"] < 4.103
+    assert 4.146 < required["decode"] < 4.147
     roofline = data["gpu_roofline"]["run_of_record"]
     assert roofline["source"].endswith("p7-gpu-roofline-2026-07-11-a43d105.json")
     assert roofline["correctness"] is True

@@ -723,6 +723,46 @@ def gpu_blake3_merkle_profiles(results: list[dict[str, Any]]) -> list[dict[str, 
     return rows
 
 
+def gpu_native_inference_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for r in results:
+        if r.get("milestone") not in {
+            "P7-gpu-native-inference",
+            "P7-gpu-native-inference-quick",
+        }:
+            continue
+        kernel = r.get("kernel") or {}
+        if (
+            not r.get("correctness")
+            or not r.get("golden_match")
+            or not kernel.get("deterministic")
+            or kernel.get("fixed_point_errors")
+        ):
+            continue
+        rows.append(
+            {
+                "_mtime": r["_mtime"],
+                "source": r["_path"],
+                "milestone": r.get("milestone"),
+                "git_dirty": r.get("git_dirty"),
+                "cloud": r.get("cloud"),
+                "baseline": r.get("baseline"),
+                "correctness": r.get("correctness"),
+                "golden_match": r.get("golden_match"),
+                "parameters": kernel.get("parameters"),
+                "prefill_s": kernel.get("prefill_s"),
+                "decode_50_s": kernel.get("decode_50_s"),
+                "prefill_argmax": kernel.get("prefill_argmax"),
+                "native_gpu_speedup": r.get("native_gpu_speedup"),
+                "scope": r.get("scope"),
+            }
+        )
+    rows.sort(key=lambda x: (x["milestone"], x["_mtime"], x["source"]))
+    for row in rows:
+        row.pop("_mtime", None)
+    return rows
+
+
 def decode_marginal_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows = []
     for r in results:
@@ -797,6 +837,17 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
     gpu_blake3 = gpu_blake3_merkle_profiles(results)
     full_gpu_blake3 = [r for r in gpu_blake3 if r["milestone"] == "P7-gpu-blake3-merkle"]
     gpu_blake3_record = full_gpu_blake3[-1] if full_gpu_blake3 else None
+    gpu_native = gpu_native_inference_profiles(results)
+    full_gpu_native = [r for r in gpu_native if r["milestone"] == "P7-gpu-native-inference"]
+    gpu_native_record = full_gpu_native[-1] if full_gpu_native else None
+    gpu_budget = rho_model(baseline)
+    required_prover_gpu_speedup = None
+    if gpu_native_record:
+        relative = gpu_budget["required_relative_prover_vs_native_speedup"]
+        native = gpu_native_record["native_gpu_speedup"]
+        required_prover_gpu_speedup = {
+            phase: relative[phase] * native[phase] for phase in ("prefill", "decode")
+        }
     pcg_status = (
         "phase_b_measured_not_production"
         if real_pcg_b
@@ -865,7 +916,7 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
             "q_for_60_bits": queries_for_bits(LAYER_PARAMS, 60.0),
         },
         "pcs_scenarios": pcs_scenarios(baseline, current_packed_download),
-        "gpu_budget_model": rho_model(baseline),
+        "gpu_budget_model": gpu_budget,
         "gpu_roofline": {
             "status": "measured_screening_pass" if gpu_roofline_record else "not_measured",
             "run_of_record": gpu_roofline_record,
@@ -908,6 +959,13 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
             "profiles": gpu_blake3,
             "note": "P4_LAYER column gather + exact BLAKE3/Merkle measured; mask rows and proving-path integration remain open.",
         },
+        "gpu_native_inference": {
+            "status": "measured_exact_golden_pass" if gpu_native_record else "not_measured",
+            "run_of_record": gpu_native_record,
+            "profiles": gpu_native,
+            "required_prover_gpu_speedup_vs_cpu": required_prover_gpu_speedup,
+            "note": "Exact fixed-point full-model prefill and KV decode anchor; weights resident, per-token logits D2H + argmax included, proving path not integrated.",
+        },
         "real_pcg_spike": {
             "status": pcg_status,
             "corr_sub_corrs": baseline.get("corr_sub_corrs"),
@@ -919,7 +977,9 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
         },
         "go_no_go": {
             "local_recommendation": (
-                "proceed-to-proving-path-integration-and-native-gpu-anchor"
+                "proceed-to-integrated-gpu-prover-measurement"
+                if gpu_native_record
+                else "proceed-to-proving-path-integration-and-native-gpu-anchor"
                 if gpu_logup_blind_round_record
                 else "proceed-to-blind-integration-and-native-gpu-anchor"
                 if gpu_blake3_record
@@ -942,7 +1002,6 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
             ),
             "remaining_before_final_go_no_go": [
                 "aux-leaf/column blind corrections integrated without extra transcript rounds",
-                "native GPU inference baseline measured on the same instance",
                 "measured GPU kernels integrated into the proving path without extra transcript passes",
                 "GPU path passes golden decode, flat-cost, and anti-replay gates",
             ],
@@ -1098,6 +1157,21 @@ def print_summary(report: dict[str, Any]) -> None:
             f"Rust={blake3['rust_cpu_s'] * 1e3:.2f} ms "
             f"GPU={blake3['gpu_s'] * 1e3:.2f} ms "
             f"speedup={blake3['gpu_cpu_speedup']:.2f}x {blake3['source']}"
+        )
+        print()
+    native_gpu = report.get("gpu_native_inference", {}).get("run_of_record")
+    if native_gpu:
+        targets = report["gpu_native_inference"]["required_prover_gpu_speedup_vs_cpu"]
+        print("Native fixed-point GPU inference")
+        print(
+            f"  prefill={native_gpu['prefill_s'] * 1e3:.2f} ms "
+            f"({native_gpu['native_gpu_speedup']['prefill']:.2f}x CPU); "
+            f"decode50={native_gpu['decode_50_s'] * 1e3:.2f} ms "
+            f"({native_gpu['native_gpu_speedup']['decode']:.2f}x CPU) {native_gpu['source']}"
+        )
+        print(
+            f"  required integrated prover speedup vs CPU: "
+            f"prefill {targets['prefill']:.2f}x, decode {targets['decode']:.2f}x"
         )
         print()
     decode_profiles = report.get("decode_marginal_profiles") or []

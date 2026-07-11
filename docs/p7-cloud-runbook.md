@@ -45,6 +45,13 @@ That replacement baseline is now complete:
 CPU rho 20.512/8.294 and replacement-instance requirements **4.1025x prefill /
 4.1468x decode**. It supersedes 5.48x/3.97x only for `6mprfo7p`; the native
 GPU inference anchor remains open.
+The exact native GPU anchor has now landed on `6mprfo7p`:
+`p7-gpu-native-inference-2026-07-11-c06f323.json` is golden-exact at
+17.663 ms prefill (56.364x CPU) and 633.895 ms decode50 (2.728x CPU), including
+per-token logits D2H + argmax. Therefore the integrated prover needs 231.23x
+prefill / 11.31x decode acceleration versus its CPU proving times for
+rho<=5/<=2. Next: integrated GPU prover measurement; component spikes alone
+must not be reported as e2e rho.
 
 ## Provider / instance
 

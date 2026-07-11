@@ -106,8 +106,19 @@ def test_p7_report_selects_record_and_packed_sources():
         and row["gate_speedup_ge_5_48_and_overhead_le_1_05"] is False
         for row in data["gpu_logup_blind_rounds"]["profiles"]
     )
+    native = data["gpu_native_inference"]["run_of_record"]
+    assert native["source"].endswith("p7-gpu-native-inference-2026-07-11-c06f323.json")
+    assert native["correctness"] is True
+    assert native["golden_match"] is True
+    assert native["prefill_s"] == 0.017663136
+    assert native["decode_50_s"] == 0.633894507
+    assert native["native_gpu_speedup"]["prefill"] == 56.36387892840773
+    assert native["native_gpu_speedup"]["decode"] == 2.728360443104455
+    prover_targets = data["gpu_native_inference"]["required_prover_gpu_speedup_vs_cpu"]
+    assert prover_targets["prefill"] == 231.2326785685169
+    assert prover_targets["decode"] == 11.314079219493856
     assert data["go_no_go"]["local_recommendation"] == (
-        "proceed-to-proving-path-integration-and-native-gpu-anchor"
+        "proceed-to-integrated-gpu-prover-measurement"
     )
     q150 = [
         row

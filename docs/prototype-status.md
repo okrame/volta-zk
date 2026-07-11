@@ -56,6 +56,24 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-11 (P7 GPU Goldilocks/F_p² roofline — pre-registered)**:
+  add a standalone CUDA 13 / sm_80 microbenchmark plus a Python JSON
+  harness; this is measurement-only and does not enter the proving path.
+  Two resident-data kernels mirror `volta-field` exactly: (1) an F_p²
+  stream multiply over 2^24 elements (5 base-field multiplications per
+  output) to expose the memory/integer-pipeline roofline; (2) a dependent
+  chain over 2^20 elements with 256 F_p² multiply-add rounds to expose
+  compute throughput. Use 1 warmup + 7 GPU repetitions and 3 same-host CPU
+  repetitions, median timing; compile explicitly for `sm_80`; validate every
+  output limb bit-for-bit against the CPU Goldilocks reference and report a
+  deterministic checksum. JSON must carry the cloud fingerprint, clean-tree
+  status, CUDA/device properties, absolute throughput/bandwidth and same-code
+  GPU/CPU speedups. Correctness is a hard gate. Performance is a screening
+  gate: raw stream and chain speedups must show plausible headroom against
+  the measured 5.48x prefill / 3.97x decode requirements before building the
+  fused proving kernels; passing it is not itself an end-to-end go decision.
+  No protocol, transcript, Q, PCS, correlation, or communication change.
+
 - **2026-07-11 (P7 cloud A100 P6 CPU baseline + sensitivity landed)**:
   clean ABBA run `benchmarks/results/p6-2026-07-11-11e5630.json`
   (`git_dirty:false`, accepted, golden decode true, 7 rayon threads) reports

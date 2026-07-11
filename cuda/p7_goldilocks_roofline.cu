@@ -104,25 +104,18 @@ double cpu_median(int reps, F&& f) {
 }
 
 template <typename F>
-double gpu_median_ms(int reps, F&& launch) {
+double gpu_median(int reps, F&& launch) {
     launch();
     CUDA_CHECK(cudaDeviceSynchronize());  // pre-registered warmup
-    cudaEvent_t start, stop;
-    CUDA_CHECK(cudaEventCreate(&start));
-    CUDA_CHECK(cudaEventCreate(&stop));
-    std::vector<float> samples;
+    std::vector<double> samples;
     samples.reserve(reps);
     for (int rep = 0; rep < reps; ++rep) {
-        CUDA_CHECK(cudaEventRecord(start));
+        const auto t0 = std::chrono::steady_clock::now();
         launch();
-        CUDA_CHECK(cudaEventRecord(stop));
-        CUDA_CHECK(cudaEventSynchronize(stop));
-        float ms = 0.0f;
-        CUDA_CHECK(cudaEventElapsedTime(&ms, start, stop));
-        samples.push_back(ms);
+        CUDA_CHECK(cudaDeviceSynchronize());
+        const auto t1 = std::chrono::steady_clock::now();
+        samples.push_back(std::chrono::duration<double>(t1 - t0).count());
     }
-    CUDA_CHECK(cudaEventDestroy(start));
-    CUDA_CHECK(cudaEventDestroy(stop));
     std::sort(samples.begin(), samples.end());
     return samples[samples.size() / 2];
 }
@@ -210,12 +203,10 @@ int main(int argc, char** argv) {
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_out), stream_n * sizeof(Fp2)));
     CUDA_CHECK(cudaMemcpy(d_a, stream_a.data(), stream_n * sizeof(Fp2), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_b, stream_b.data(), stream_n * sizeof(Fp2), cudaMemcpyHostToDevice));
-    const double stream_gpu_s = gpu_median_ms(gpu_reps, [&] {
-                                    stream_kernel<<<(stream_n + block - 1) / block, block>>>(
-                                        d_a, d_b, d_out, stream_n);
-                                    CUDA_CHECK(cudaGetLastError());
-                                }) /
-        1e3;
+    const double stream_gpu_s = gpu_median(gpu_reps, [&] {
+        stream_kernel<<<(stream_n + block - 1) / block, block>>>(d_a, d_b, d_out, stream_n);
+        CUDA_CHECK(cudaGetLastError());
+    });
     CUDA_CHECK(
         cudaMemcpy(stream_gpu.data(), d_out, stream_n * sizeof(Fp2), cudaMemcpyDeviceToHost));
     const bool stream_ok = equal_outputs(stream_cpu, stream_gpu);
@@ -249,12 +240,11 @@ int main(int argc, char** argv) {
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_out), chain_n * sizeof(Fp2)));
     CUDA_CHECK(cudaMemcpy(d_a, chain_a.data(), chain_n * sizeof(Fp2), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_b, chain_b.data(), chain_n * sizeof(Fp2), cudaMemcpyHostToDevice));
-    const double chain_gpu_s = gpu_median_ms(gpu_reps, [&] {
-                                   chain_kernel<<<(chain_n + block - 1) / block, block>>>(
-                                       d_a, d_b, d_out, chain_n, chain_rounds);
-                                   CUDA_CHECK(cudaGetLastError());
-                               }) /
-        1e3;
+    const double chain_gpu_s = gpu_median(gpu_reps, [&] {
+        chain_kernel<<<(chain_n + block - 1) / block, block>>>(
+            d_a, d_b, d_out, chain_n, chain_rounds);
+        CUDA_CHECK(cudaGetLastError());
+    });
     CUDA_CHECK(cudaMemcpy(chain_gpu.data(), d_out, chain_n * sizeof(Fp2), cudaMemcpyDeviceToHost));
     const bool chain_ok = equal_outputs(chain_cpu, chain_gpu);
     const uint64_t chain_checksum = checksum(chain_gpu);

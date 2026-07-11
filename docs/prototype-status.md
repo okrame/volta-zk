@@ -23,7 +23,7 @@ CPU numbers validate architecture and counts; the ρ targets (≤2 decode,
 | P4 LogUp + fused blocks | **done** (2026-07-05) | one full layer proved+verified e2e (T=100, real PCS opening) ✓ **PASSED**; counts within 20% ✓ (witness streams = budget **exactly**, padded LogUp domains explained); LogUp ≤8–10 E-mult/lookup: **MISSED, motivated (12.20)**; 1 weight claim/tensor ✓ (4/layer) | prove 0.800 s vs native forward 0.033 s (ρ_layer ~24, 4 cores); verify 0.041 s; LogUp lookup-side **12.20 E-mult/lookup** (~34 ns/lookup, 5.4× vs P2.5 spike wall), table-side 3.86 raw → 0.32 /12-amortized; full instance cost 126.5 M E-mult/layer (≈42/padded lookup incl. aux folding + tables + closures); corr bytes 7.64 MB/layer (mult vectors 3.87 MB — see deviations); layer PCS 2^24: commit 0.34 s one-off, **open 0.035 s**, verify 0.006 s; projections (P3.5 cost model, 49/98 claims): prefill **0.233 s**, per-response **0.345 s**. Run of record `benchmarks/results/p4-2026-07-06-8b4ca11.json` (clean tree, `git_dirty:false`; the 07-05 JSON was a dirty-tree run whose sha names the parent commit) |
 | P5 GPT-2 e2e prefill 100 tok | **done** (2026-07-06) | one-command run ✓ (`scripts/run_prefill.sh`), golden check ✓ (full logits bit-exact vs numpy at T=100, argmax 835 ' way'), counts vs budget: witness lookups = budget **exactly** (16,944,000) ✓ | **accepted e2e with real weights + 13 real Ligero commitments**: native (witness) 0.459 s, prove 11.0–11.2 s, **ρ ≈ 24** (matches P4's ×12 projection); verify 0.65 s + 0.07 s PCS; PCS open **0.73 s** / 52.8 MB (vs 0.237 s projection — 13× fixed costs, see deviations), commit one-off 7.6 s; **comm 159.6 MB/prefill** (mult vectors 59.4 + PCS 52.8 + boundary 36.9 + rest), projected response 212 MB; E-mult all-in 100.6/budget lookup; peak RSS 2.86 GB. `benchmarks/results/p5-2026-07-06-e52ce79.json` (clean tree) |
 | P6 decode + authenticated KV cache | **done** (2026-07-07) | flat cost/token ✓ **PASSED** (curve last/first 1.12 ≤ 1.5, 5×10 chunks, cache 100→150); anti-replay smoke ✓ (prefill-row replay + position swap rejected); golden decode ✓ (50 tokens bit-exact vs numpy) | **accepted e2e, prompt 100 + 50 decode, one two-phase session, real 13-commitment PCS with STACKED claims (96 weight + 6 embed)**: native decode 30.9 tok/s (KV-cached baseline); prove_response 18.7 s = prefill 10.5 s + **decode marginal 8.2 s (0.164 s/token, ρ_decode 5.07 CPU)**; verified 2.67 tok/s; verify 0.57 s + 0.10 s PCS. Comm: transcript 137.4 MB (prefill 48.4 + PCS opening 66.7 + decode marginal 22.3 = **445 KB/token**) + public band logits 20.5 MB → **total response download 157.9 MB** (inside the 150–200 MB product envelope; the PCS opening is now the dominant lever, P7). Shared-α restructure landed with P6: mult corr 59.4 → 2.85 MB. PCS commit one-off 9.5 s; peak RSS 3.47 GB. `benchmarks/results/p6-2026-07-07-515bb1c.json` (clean tree) |
-| P7 report + GPU budget model | **A100 proving spikes through blind LogUp + PCS hashing passed; integration open** (2026-07-11) | report/PCG/cloud anchors ✓; field roofline ✓; fused GEMM-MAC ✓; LogUp tree, general rounds and blind general-layer corrections ✓; PCS NTT/combine_rows ✓; column gather + BLAKE3/Merkle ✓; aux-leaf/mask rows, native-GPU anchor and proving-path integration open | Required relative acceleration **5.48× prefill / 3.97× decode** on the original cloud baseline. Narrowest passing spike is blind LogUp at **6.42×**, 41.30 ms GPU, all 848 correction bytes exact and no extra rounds. PCS NTT + hash is 7.793 ms GPU. Sources `p7-gpu-logup-blind-rounds-2026-07-11-534dcad.json` and `p7-gpu-blake3-merkle-2026-07-11-3b0a916.json`. A new native baseline is required before quoting rho on replacement instance `6mprfo7p`; final go/no-go open. |
+| P7 report + GPU budget model | **A100 proving spikes through blind LogUp + PCS hashing passed; integration open** (2026-07-11) | report/PCG/cloud anchors ✓; replacement-instance P6 baseline ✓; field roofline ✓; fused GEMM-MAC ✓; LogUp tree, general rounds and blind general-layer corrections ✓; PCS NTT/combine_rows ✓; column gather + BLAKE3/Merkle ✓; aux-leaf/mask rows, native-GPU anchor and proving-path integration open | On replacement `6mprfo7p`, required relative acceleration is **4.10× prefill / 4.15× decode** (supersedes 5.48×/3.97× for that box). Blind LogUp passes at **6.42×**, 41.30 ms GPU, all 848 correction bytes exact and no extra rounds. PCS NTT + hash is 7.793 ms GPU. Sources `p6-2026-07-11-f72e4dd.json`, `p7-gpu-logup-blind-rounds-2026-07-11-534dcad.json` and `p7-gpu-blake3-merkle-2026-07-11-3b0a916.json`. Native GPU inference and integrated e2e remain open; final go/no-go open. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -56,6 +56,22 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-11 (P7 replacement-instance P6 baseline landed)**: clean full
+  run `benchmarks/results/p6-2026-07-11-f72e4dd.json` on Thunder
+  `6mprfo7p` (A100-SXM4-80GB, Xeon Platinum 8470, 7.92-core quota) is
+  accepted, golden decode exact, and preserves the 144,820,930-byte packed
+  response. ABBA native prefill is 0.9956 s and native 50-token decode is
+  1.7295 s (28.91 tok/s). Proving prefill is 20.4215 s; full response
+  34.7653 s with decode marginal 14.3439 s, hence CPU rho prefill **20.512**
+  and decode **8.294**. The replacement-instance relative prover/native
+  acceleration requirements are therefore **4.1025x prefill** for rho<=5
+  and **4.1468x decode** for rho<=2. Verify 0.710 s; PCS commit/open/verify
+  5.920/1.164/0.204 s; flat-cost last/first 1.249 <=1.5 and anti-replay
+  gates remain accepted; peak RSS 3.53 GiB. These requirements supersede
+  5.48x/3.97x only on `6mprfo7p`; older-instance measurements remain
+  historical and must retain their own denominators. This is still a CPU
+  fixed-point baseline, not the native GPU inference anchor.
+
 - **2026-07-11 (P7 GPU blind LogUp general-layer plumbing landed)**: clean
   pinned-barrier run of record
   `benchmarks/results/p7-gpu-logup-blind-rounds-2026-07-11-534dcad.json`
@@ -70,9 +86,10 @@ constant factors hold. That constant factor is what P3/P4 measure.
   Thunder; the pre-fix failures remain recorded below. The quick N=2^16 run
   was correct but launch dominated at 1.55x and is retained. Scope excludes
   aux-leaf/column corrections and Rust proving-path integration. Because the
-  CPU model changed, this spike passes the fixed preregistered screen but does
-  not provide a portable rho; remeasure native P6 on `6mprfo7p` before any
-  final relative prover/native claim. No protocol or communication change.
+  CPU model changed, this spike passed the fixed preregistered screen before
+  the replacement P6 denominator landed; the subsequent baseline above gives
+  4.10x/4.15x requirements, which it also passes. No protocol or
+  communication change.
   Clean refreshed aggregate: `benchmarks/results/p7-2026-07-11-e4e0772.json`
   (`git_dirty:false`, recommendation
   `proceed-to-proving-path-integration-and-native-gpu-anchor`).

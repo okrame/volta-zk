@@ -40,6 +40,11 @@ four-micro-copy failures are retained in the ledger. This replacement has a
 different Xeon 8470 CPU, so its native P6 baseline must be remeasured before
 quoting a new rho. Next: aux-leaf corrections, proving-path integration and
 native GPU inference anchor.
+That replacement baseline is now complete:
+`p6-2026-07-11-f72e4dd.json` reports native prefill/decode 0.9956/1.7295 s,
+CPU rho 20.512/8.294 and replacement-instance requirements **4.1025x prefill /
+4.1468x decode**. It supersedes 5.48x/3.97x only for `6mprfo7p`; the native
+GPU inference anchor remains open.
 
 ## Provider / instance
 

@@ -71,6 +71,8 @@ constant factors hold. That constant factor is what P3/P4 measure.
   5.2 TB/s). Timings of record therefore force a 16-byte D2H read after every
   kernel and reject stream bandwidth above 2.5 TB/s; valid quick
   `p7-gpu-roofline-quick-2026-07-11-a43d105.json` passed before the full run.
+  Clean refreshed aggregate: `benchmarks/results/p7-2026-07-11-14bafb8.json`
+  (`git_dirty:false`, recommendation `proceed-to-fused-kernel-spikes`).
   Next authorized spike is the fused GEMM-MAC epilogue; no proving-path or
   protocol change has landed yet.
 

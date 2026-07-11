@@ -9,6 +9,7 @@ relative prover-vs-native speedup requirement is 5.48x prefill / 3.97x
 decode. The Goldilocks/Fp2 GPU roofline subsequently passed on replacement
 instance `nc1k4a0g`: `p7-gpu-roofline-2026-07-11-a43d105.json` reports
 55.48x stream / 300.94x chain speedup with full differential correctness.
+Clean aggregate: `benchmarks/results/p7-2026-07-11-14bafb8.json`.
 The next step is the fused GEMM-MAC epilogue; no proving-path GPU kernel has
 landed yet.
 

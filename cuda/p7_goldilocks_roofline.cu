@@ -103,16 +103,16 @@ double cpu_median(int reps, F&& f) {
     return samples[samples.size() / 2];
 }
 
-template <typename F>
-double gpu_median(int reps, F&& launch) {
+template <typename F, typename S>
+double gpu_median(int reps, F&& launch, S&& force_completion) {
     launch();
-    CUDA_CHECK(cudaDeviceSynchronize());  // pre-registered warmup
+    force_completion();  // pre-registered warmup; D2H is the Thunder-visible barrier
     std::vector<double> samples;
     samples.reserve(reps);
     for (int rep = 0; rep < reps; ++rep) {
         const auto t0 = std::chrono::steady_clock::now();
         launch();
-        CUDA_CHECK(cudaDeviceSynchronize());
+        force_completion();
         const auto t1 = std::chrono::steady_clock::now();
         samples.push_back(std::chrono::duration<double>(t1 - t0).count());
     }
@@ -203,10 +203,17 @@ int main(int argc, char** argv) {
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_out), stream_n * sizeof(Fp2)));
     CUDA_CHECK(cudaMemcpy(d_a, stream_a.data(), stream_n * sizeof(Fp2), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_b, stream_b.data(), stream_n * sizeof(Fp2), cudaMemcpyHostToDevice));
-    const double stream_gpu_s = gpu_median(gpu_reps, [&] {
-        stream_kernel<<<(stream_n + block - 1) / block, block>>>(d_a, d_b, d_out, stream_n);
-        CUDA_CHECK(cudaGetLastError());
-    });
+    Fp2 completion_sentinel{};
+    const double stream_gpu_s = gpu_median(
+        gpu_reps,
+        [&] {
+            stream_kernel<<<(stream_n + block - 1) / block, block>>>(d_a, d_b, d_out, stream_n);
+            CUDA_CHECK(cudaGetLastError());
+        },
+        [&] {
+            CUDA_CHECK(cudaMemcpy(
+                &completion_sentinel, d_out + stream_n - 1, sizeof(Fp2), cudaMemcpyDeviceToHost));
+        });
     CUDA_CHECK(
         cudaMemcpy(stream_gpu.data(), d_out, stream_n * sizeof(Fp2), cudaMemcpyDeviceToHost));
     const bool stream_ok = equal_outputs(stream_cpu, stream_gpu);
@@ -240,11 +247,17 @@ int main(int argc, char** argv) {
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_out), chain_n * sizeof(Fp2)));
     CUDA_CHECK(cudaMemcpy(d_a, chain_a.data(), chain_n * sizeof(Fp2), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_b, chain_b.data(), chain_n * sizeof(Fp2), cudaMemcpyHostToDevice));
-    const double chain_gpu_s = gpu_median(gpu_reps, [&] {
-        chain_kernel<<<(chain_n + block - 1) / block, block>>>(
-            d_a, d_b, d_out, chain_n, chain_rounds);
-        CUDA_CHECK(cudaGetLastError());
-    });
+    const double chain_gpu_s = gpu_median(
+        gpu_reps,
+        [&] {
+            chain_kernel<<<(chain_n + block - 1) / block, block>>>(
+                d_a, d_b, d_out, chain_n, chain_rounds);
+            CUDA_CHECK(cudaGetLastError());
+        },
+        [&] {
+            CUDA_CHECK(cudaMemcpy(
+                &completion_sentinel, d_out + chain_n - 1, sizeof(Fp2), cudaMemcpyDeviceToHost));
+        });
     CUDA_CHECK(cudaMemcpy(chain_gpu.data(), d_out, chain_n * sizeof(Fp2), cudaMemcpyDeviceToHost));
     const bool chain_ok = equal_outputs(chain_cpu, chain_gpu);
     const uint64_t chain_checksum = checksum(chain_gpu);
@@ -254,12 +267,18 @@ int main(int argc, char** argv) {
 
     const double stream_bytes = static_cast<double>(stream_n) * 3.0 * sizeof(Fp2);
     const double chain_ops = static_cast<double>(chain_n) * chain_rounds;
+    const double stream_bandwidth_gb_s = stream_bytes / stream_gpu_s / 1e9;
+    // A100-SXM4-80GB peak HBM bandwidth is ~2 TB/s. Leave generous margin
+    // for provider variants while rejecting deferred/non-blocking timings.
+    const bool timing_sane = stream_gpu_s > 0.0 && chain_gpu_s > 0.0 &&
+        stream_bandwidth_gb_s < 2500.0;
     std::ostringstream stream_hex, chain_hex;
     stream_hex << "0x" << std::hex << std::setw(16) << std::setfill('0') << stream_checksum;
     chain_hex << "0x" << std::hex << std::setw(16) << std::setfill('0') << chain_checksum;
 
     std::cout << std::setprecision(12) << "{\n"
               << "  \"correctness\": " << ((stream_ok && chain_ok) ? "true" : "false") << ",\n"
+              << "  \"timing_sane\": " << (timing_sane ? "true" : "false") << ",\n"
               << "  \"device\": {\"name\": \"" << json_escape(prop.name) << "\", \"cc\": \""
               << prop.major << '.' << prop.minor << "\", \"sm_count\": " << prop.multiProcessorCount
               << ", \"memory_bus_width_bits\": " << prop.memoryBusWidth
@@ -272,7 +291,7 @@ int main(int argc, char** argv) {
               << ", \"cpu_threads\": " << cpu_threads << ", \"fp_mul_per_fp2_mul\": 5},\n"
               << "  \"stream\": {\"cpu_s\": " << stream_cpu_s << ", \"gpu_s\": " << stream_gpu_s
               << ", \"gpu_cpu_speedup\": " << stream_cpu_s / stream_gpu_s
-              << ", \"gpu_bandwidth_gb_s\": " << stream_bytes / stream_gpu_s / 1e9
+              << ", \"gpu_bandwidth_gb_s\": " << stream_bandwidth_gb_s
               << ", \"gpu_fp2_mul_s\": " << static_cast<double>(stream_n) / stream_gpu_s
               << ", \"gpu_base_mul_equiv_s\": " << 5.0 * stream_n / stream_gpu_s
               << ", \"checksum\": \"" << stream_hex.str() << "\", \"matches_cpu\": "
@@ -284,5 +303,5 @@ int main(int argc, char** argv) {
               << ", \"checksum\": \"" << chain_hex.str() << "\", \"matches_cpu\": "
               << (chain_ok ? "true" : "false") << "}\n"
               << "}\n";
-    return (stream_ok && chain_ok) ? 0 : 1;
+    return (stream_ok && chain_ok && timing_sane) ? 0 : 1;
 }

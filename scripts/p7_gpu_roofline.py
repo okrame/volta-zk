@@ -58,12 +58,12 @@ def detected_cpu_threads() -> int:
     return os.cpu_count() or 1
 
 
-def unique_result_path(date: str, sha: str) -> Path:
-    first = RESULTS / f"p7-gpu-roofline-{date}-{sha}.json"
+def unique_result_path(label: str, date: str, sha: str) -> Path:
+    first = RESULTS / f"{label}-{date}-{sha}.json"
     if not first.exists():
         return first
     for i in range(1, 1000):
-        candidate = RESULTS / f"p7-gpu-roofline-{date}-{sha}-{i}.json"
+        candidate = RESULTS / f"{label}-{date}-{sha}-{i}.json"
         if not candidate.exists():
             return candidate
     raise SystemExit("could not allocate an append-only result filename")
@@ -116,6 +116,8 @@ def main() -> int:
 
     if not kernel.get("correctness"):
         raise SystemExit("GPU/CPU Goldilocks differential check failed")
+    if not kernel.get("timing_sane"):
+        raise SystemExit("GPU timing sanity check failed (completion was not observed)")
     required = {"prefill": 5.476393766687816, "decode": 3.9669730070632774}
     observed = min(
         kernel["stream"]["gpu_cpu_speedup"], kernel["chain"]["gpu_cpu_speedup"]
@@ -136,7 +138,8 @@ def main() -> int:
         },
     }
     RESULTS.mkdir(parents=True, exist_ok=True)
-    path = unique_result_path(report["date"], sha)
+    label = "p7-gpu-roofline-quick" if args.quick else "p7-gpu-roofline"
+    path = unique_result_path(label, report["date"], sha)
     path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(json.dumps(report["screening"], indent=2, sort_keys=True))
     print(f"wrote {path.relative_to(REPO)}")

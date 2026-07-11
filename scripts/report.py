@@ -546,9 +546,11 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
         "git_sha": git(["rev-parse", "--short", "HEAD"]),
         "git_dirty": git_dirty(),
         "machine": f"{platform.system().lower()} {platform.machine()}",
+        "cloud": baseline.get("cloud"),
         "baseline": {
             "source": baseline["_path"],
             "git_dirty": baseline.get("git_dirty"),
+            "cloud": baseline.get("cloud"),
             "accepted": baseline.get("accepted"),
             "t_prefill": baseline.get("t_prefill"),
             "n_decode": baseline.get("n_decode"),

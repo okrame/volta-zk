@@ -22,7 +22,7 @@
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::time::Instant;
-use volta_bench::logits_pack;
+use volta_bench::{cloud_metadata_from_env, logits_pack, time_paired, CloudMetadata};
 use volta_field::{Fp, Fp2};
 use volta_gpt2::{
     band_model_witness, decode_step, forward_model, forward_model_tokens, load_model,
@@ -71,6 +71,8 @@ struct Report {
     git_sha: String,
     git_dirty: bool,
     machine: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cloud: Option<CloudMetadata>,
     threads: usize,
     t_prefill: usize,
     n_decode: usize,
@@ -83,6 +85,8 @@ struct Report {
     t_native_prefill_s: f64,
     /// KV-cached incremental decode, 50 steps (witness-free native anchor).
     t_native_decode_s: f64,
+    native_timing_method: String,
+    native_timing_rounds: usize,
     native_decode_tokens_per_s: f64,
     // --- proving (run of record: prefill + ONE Q=50 chunk) ---------------------
     t_prove_prefill_only_s: f64,
@@ -663,26 +667,33 @@ fn main() {
     }
     eprintln!("loading artifact + prefill witness at t0={t0} ...");
     let model = load_model(&dir).expect("load_model");
-    let tn0 = Instant::now();
     let wit0 = forward_model(&model, t0);
-    let t_native_prefill_s = tn0.elapsed().as_secs_f64();
 
-    // --- native decode baseline (KV-cached, witness-free) --------------------
-    eprintln!("native decode baseline: {n_gen} KV-cached steps ...");
-    let kv: Vec<(&[i16], &[i16])> =
-        wit0.layers.iter().map(|lw| (lw.k.as_slice(), lw.v.as_slice())).collect();
-    let mut cache = KvCache::from_prefill(&kv, t0);
-    let td0 = Instant::now();
-    let mut gen: Vec<u32> = Vec::with_capacity(n_gen);
-    let mut next = volta_gpt2::argmax(&wit0.logits);
-    for i in 0..n_gen {
-        gen.push(next);
-        let lg = decode_step(&model, &mut cache, next, t0 + i);
-        next = volta_gpt2::argmax(&lg);
-    }
-    let t_native_decode_s = td0.elapsed().as_secs_f64();
+    // --- native baselines (ABBA paired, new-machine load-bearing rule) -------
+    let run_decode = || {
+        let kv: Vec<(&[i16], &[i16])> =
+            wit0.layers.iter().map(|lw| (lw.k.as_slice(), lw.v.as_slice())).collect();
+        let mut cache = KvCache::from_prefill(&kv, t0);
+        let mut gen: Vec<u32> = Vec::with_capacity(n_gen);
+        let mut next = volta_gpt2::argmax(&wit0.logits);
+        for i in 0..n_gen {
+            gen.push(next);
+            let lg = decode_step(&model, &mut cache, next, t0 + i);
+            next = volta_gpt2::argmax(&lg);
+        }
+        gen
+    };
+    let native_timing_rounds = if quick { 1 } else { 3 };
     eprintln!(
-        "  {n_gen} tokens in {t_native_decode_s:.3} s ({:.1} tok/s): {gen:?}",
+        "native baselines: ABBA paired, {native_timing_rounds} rounds (prefill {t0}, decode {n_gen}) ..."
+    );
+    let (t_native_prefill, t_native_decode) =
+        time_paired(1, native_timing_rounds, || forward_model(&model, t0), &run_decode);
+    let t_native_prefill_s = t_native_prefill.as_secs_f64();
+    let t_native_decode_s = t_native_decode.as_secs_f64();
+    let gen = run_decode();
+    eprintln!(
+        "  median prefill {t_native_prefill_s:.3} s; {n_gen} decode tokens in {t_native_decode_s:.3} s ({:.1} tok/s): {gen:?}",
         n_gen as f64 / t_native_decode_s
     );
 
@@ -924,6 +935,7 @@ fn main() {
         git_sha: sha.clone(),
         git_dirty,
         machine: format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
+        cloud: cloud_metadata_from_env(),
         threads: rayon::current_num_threads(),
         t_prefill: t0,
         n_decode: n_gen,
@@ -933,6 +945,8 @@ fn main() {
         generated_tokens: gen.clone(),
         t_native_prefill_s,
         t_native_decode_s,
+        native_timing_method: "ABBA paired median".into(),
+        native_timing_rounds,
         native_decode_tokens_per_s: n_gen as f64 / t_native_decode_s,
         t_prove_prefill_only_s,
         t_prove_response_s: rec.prove_s,

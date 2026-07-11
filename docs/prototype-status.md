@@ -56,6 +56,21 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-11 (P7 cloud A100 baseline — pre-registered before measured
+  runs)**: target instance is Thunder Compute `bdthpmts`, provider region
+  not exposed by the instance-list API, base template / Ubuntu 22.04.5,
+  NVIDIA A100-SXM4-80GB (Thunder `A100XL`), driver 610.43.02, CUDA UMD
+  13.3, Intel Xeon Platinum 8352Y with 792000/100000 cgroup CPU quota
+  (`nproc=8`), 64 GiB RAM and 100 GB primary disk. Before any quoted rho:
+  full workspace tests must pass; P1 and P6 must run from a clean tracked
+  tree; P6 native prefill/decode denominators use ABBA paired timing; every
+  cloud JSON carries this fingerprint. GPU spike order remains Goldilocks/
+  F_p2 roofline, fused GEMM-MAC epilogue, LogUp fraction trees, then PCS
+  row/global passes plus blake3. Go/no-go gates remain relative
+  prover-vs-native GPU speedup >=3.67x prefill and >=2.60x decode, with
+  golden decode, flat-cost <=1.5 and anti-replay unchanged. This entry does
+  not change protocol, soundness parameters, Q=200, or communication.
+
 - **2026-07-07 (P7 real-PCG phase B — measurement CORRECTED; supersedes the
   1.602 s entry below)**: review found two defects in the landed phase B.
   (1) **Accounting error**: the phase-B path derived the noise leaves

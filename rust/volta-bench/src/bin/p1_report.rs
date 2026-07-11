@@ -4,7 +4,9 @@
 //! Run: cargo run --release -p volta-bench --bin p1_report [-- --quick]
 
 use serde::Serialize;
-use volta_bench::{time_median, time_paired, verifier_fused_scan};
+use volta_bench::{
+    cloud_metadata_from_env, time_median, time_paired, verifier_fused_scan, CloudMetadata,
+};
 use volta_field::{Fp, Fp2};
 use volta_gpt2::{gemm_requant, gemm_requant_auth, EpilogueSpec};
 
@@ -36,7 +38,10 @@ struct Report {
     milestone: String,
     date: String,
     git_sha: String,
+    git_dirty: bool,
     machine: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cloud: Option<CloudMetadata>,
     threads: usize,
     iters: usize,
     shapes: Vec<ShapeResult>,
@@ -160,11 +165,18 @@ fn main() {
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .unwrap_or_default();
+    let git_dirty = std::process::Command::new("git")
+        .args(["status", "--porcelain", "--untracked-files=no"])
+        .output()
+        .map(|o| !o.stdout.is_empty())
+        .unwrap_or(true);
     let report = Report {
         milestone: "P1".into(),
         date: date.clone(),
         git_sha: sha.clone(),
+        git_dirty,
         machine: format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
+        cloud: cloud_metadata_from_env(),
         threads: std::thread::available_parallelism().map(|p| p.get()).unwrap_or(1),
         iters,
         shapes: results,

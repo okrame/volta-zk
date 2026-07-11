@@ -10,6 +10,49 @@ pub mod logup;
 
 use volta_field::{Fp, Fp2, FpStream};
 
+/// Cloud-instance fingerprint carried by every cloud run of record.
+///
+/// The harness intentionally reads these values from explicit environment
+/// variables instead of guessing provider metadata from the host.  Setting
+/// `VOLTA_CLOUD_PROVIDER` enables the record and makes every other field
+/// mandatory, so a partially-described cloud JSON cannot be written.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct CloudMetadata {
+    pub provider: String,
+    pub instance_id: String,
+    pub region: String,
+    pub image: String,
+    pub driver_version: String,
+    pub cuda_version: String,
+    pub gpu_sku: String,
+    pub cpu_model: String,
+    pub ram_gib: String,
+    pub vcpus: String,
+}
+
+pub fn cloud_metadata_from_env() -> Option<CloudMetadata> {
+    let provider = match std::env::var("VOLTA_CLOUD_PROVIDER") {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => return None,
+    };
+    let required = |name: &str| {
+        std::env::var(name)
+            .unwrap_or_else(|_| panic!("{name} is required when VOLTA_CLOUD_PROVIDER is set"))
+    };
+    Some(CloudMetadata {
+        provider,
+        instance_id: required("VOLTA_CLOUD_INSTANCE_ID"),
+        region: required("VOLTA_CLOUD_REGION"),
+        image: required("VOLTA_CLOUD_IMAGE"),
+        driver_version: required("VOLTA_CLOUD_DRIVER_VERSION"),
+        cuda_version: required("VOLTA_CLOUD_CUDA_VERSION"),
+        gpu_sku: required("VOLTA_CLOUD_GPU_SKU"),
+        cpu_model: required("VOLTA_CLOUD_CPU_MODEL"),
+        ram_gib: required("VOLTA_CLOUD_RAM_GIB"),
+        vcpus: required("VOLTA_CLOUD_VCPUS"),
+    })
+}
+
 /// Streaming eq(r, ·) over `{0,1}^n_vars` in index order, O(n_vars) state,
 /// amortized ~2 Fp2 mults per element (tensor-product suffix recomputation).
 pub struct EqStream {

@@ -36,6 +36,7 @@ def test_p7_report_selects_record_and_packed_sources():
 
     assert data["pcs_formula_check"]["matches_p6_measured_bytes"] is True
     assert data["baseline"]["source"].endswith("p6-2026-07-07-382bb56.json")
+    assert data["baseline"]["cloud"] is None
     assert data["communication"]["packed_logits_source"].endswith("p6-2026-07-07-382bb56.json")
     q150 = [
         row

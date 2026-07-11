@@ -378,6 +378,8 @@ int main(int argc, char** argv) {
     DeviceVec4 d0{}, d1{};
     Fp2* d_s = nullptr;
     Fp2* d_splits = nullptr;
+    Fp2* h_splits = nullptr;
+    RoundAcc* h_message = nullptr;
     RoundAcc *d_acc0 = nullptr, *d_acc1 = nullptr;
     for (int col = 0; col < 4; ++col) {
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d0.v[col]), n * sizeof(Fp2)));
@@ -385,6 +387,8 @@ int main(int argc, char** argv) {
     }
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_s), max_pairs * sizeof(Fp2)));
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_splits), 4 * sizeof(Fp2)));
+    CUDA_CHECK(cudaMallocHost(reinterpret_cast<void**>(&h_splits), 4 * sizeof(Fp2)));
+    CUDA_CHECK(cudaMallocHost(reinterpret_cast<void**>(&h_message), sizeof(RoundAcc)));
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_acc0), max_pairs * sizeof(RoundAcc)));
     CUDA_CHECK(cudaMalloc(
         reinterpret_cast<void**>(&d_acc1), ((max_pairs + BLOCK - 1) / BLOCK) * sizeof(RoundAcc)));
@@ -408,9 +412,8 @@ int main(int argc, char** argv) {
                 src->v[0], src->v[1], src->v[2], src->v[3], d_s, d_acc0, pairs);
             CUDA_CHECK(cudaGetLastError());
             RoundAcc* root = reduce_acc(d_acc0, d_acc1, pairs);
-            RoundAcc message{};
-            CUDA_CHECK(cudaMemcpy(&message, root, sizeof(message), cudaMemcpyDeviceToHost));
-            if (blind) blind_round(artifacts, blind_in, round, message, cpref);
+            CUDA_CHECK(cudaMemcpy(h_message, root, sizeof(*h_message), cudaMemcpyDeviceToHost));
+            if (blind) blind_round(artifacts, blind_in, round, *h_message, cpref);
             fold_kernel<<<(pairs + BLOCK - 1) / BLOCK, BLOCK>>>(
                 src->v[0], src->v[1], src->v[2], src->v[3], dst->v[0], dst->v[1],
                 dst->v[2], dst->v[3], pairs, challenges[round]);
@@ -422,8 +425,8 @@ int main(int argc, char** argv) {
         pack_splits_kernel<<<1, 1>>>(
             src->v[0], src->v[1], src->v[2], src->v[3], d_splits);
         CUDA_CHECK(cudaGetLastError());
-        CUDA_CHECK(cudaMemcpy(
-            splits.data(), d_splits, splits.size() * sizeof(Fp2), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(h_splits, d_splits, 4 * sizeof(Fp2), cudaMemcpyDeviceToHost));
+        std::copy_n(h_splits, 4, splits.begin());
         if (blind) blind_finish(artifacts, blind_in, splits);
         return artifacts;
     };
@@ -513,8 +516,8 @@ int main(int argc, char** argv) {
             dsrc->v[0], dsrc->v[1], dsrc->v[2], dsrc->v[3], d_s, d_acc0, pairs);
         CUDA_CHECK(cudaGetLastError());
         RoundAcc* root = reduce_acc(d_acc0, d_acc1, pairs);
-        RoundAcc got{};
-        CUDA_CHECK(cudaMemcpy(&got, root, sizeof(got), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(h_message, root, sizeof(*h_message), cudaMemcpyDeviceToHost));
+        const RoundAcc got = *h_message;
         correct = equal(expected, got);
         blind_round(gpu_artifacts, blind_in, round, got, gpu_cpref);
         for (Fp2 x : {got.pq0, got.pq2, got.qq0, got.qq2}) checksum = hash_fp2(checksum, x);
@@ -540,8 +543,8 @@ int main(int argc, char** argv) {
     pack_splits_kernel<<<1, 1>>>(
         dsrc->v[0], dsrc->v[1], dsrc->v[2], dsrc->v[3], d_splits);
     CUDA_CHECK(cudaGetLastError());
-    CUDA_CHECK(cudaMemcpy(
-        gpu_splits.data(), d_splits, gpu_splits.size() * sizeof(Fp2), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_splits, d_splits, 4 * sizeof(Fp2), cudaMemcpyDeviceToHost));
+    std::copy_n(h_splits, 4, gpu_splits.begin());
     blind_finish(cpu_artifacts, blind_in, cpu_splits);
     blind_finish(gpu_artifacts, blind_in, gpu_splits);
     correct = correct && equal(cpu_artifacts, gpu_artifacts);
@@ -560,6 +563,8 @@ int main(int argc, char** argv) {
     }
     CUDA_CHECK(cudaFree(d_s));
     CUDA_CHECK(cudaFree(d_splits));
+    CUDA_CHECK(cudaFreeHost(h_splits));
+    CUDA_CHECK(cudaFreeHost(h_message));
     CUDA_CHECK(cudaFree(d_acc0));
     CUDA_CHECK(cudaFree(d_acc1));
 
@@ -585,7 +590,8 @@ int main(int argc, char** argv) {
               << ", \"round_correction_bytes\": " << 32 * log2_n
               << ", \"split_correction_bytes\": 64, \"product_correction_bytes\": 48"
               << ", \"correction_bytes_total\": " << 32 + 32 * log2_n + 64 + 48
-              << ", \"extra_transcript_rounds\": 0, \"resident_preexpanded_masks\": true}\n"
+              << ", \"extra_transcript_rounds\": 0, \"resident_preexpanded_masks\": true"
+              << ", \"pinned_host_barriers\": true}\n"
               << "}\n";
     return (correct && timing_sane) ? 0 : 1;
 }

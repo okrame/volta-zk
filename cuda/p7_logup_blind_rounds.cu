@@ -142,6 +142,16 @@ __global__ void fold_kernel(
     oq1[i] = add(q1[2 * i], mul(sub(q1[2 * i + 1], q1[2 * i]), r));
 }
 
+__global__ void pack_splits_kernel(
+    const Fp2* p0, const Fp2* p1, const Fp2* q0, const Fp2* q1, Fp2* out) {
+    if (blockIdx.x == 0 && threadIdx.x == 0) {
+        out[0] = p0[0];
+        out[1] = p1[0];
+        out[2] = q0[0];
+        out[3] = q1[0];
+    }
+}
+
 struct DeviceVec4 {
     Fp2* v[4];
 };
@@ -367,12 +377,14 @@ int main(int argc, char** argv) {
 
     DeviceVec4 d0{}, d1{};
     Fp2* d_s = nullptr;
+    Fp2* d_splits = nullptr;
     RoundAcc *d_acc0 = nullptr, *d_acc1 = nullptr;
     for (int col = 0; col < 4; ++col) {
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d0.v[col]), n * sizeof(Fp2)));
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d1.v[col]), n * sizeof(Fp2)));
     }
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_s), max_pairs * sizeof(Fp2)));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_splits), 4 * sizeof(Fp2)));
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_acc0), max_pairs * sizeof(RoundAcc)));
     CUDA_CHECK(cudaMalloc(
         reinterpret_cast<void**>(&d_acc1), ((max_pairs + BLOCK - 1) / BLOCK) * sizeof(RoundAcc)));
@@ -407,9 +419,11 @@ int main(int argc, char** argv) {
             len = pairs;
         }
         std::array<Fp2, 4> splits{};
-        for (int col = 0; col < 4; ++col) {
-            CUDA_CHECK(cudaMemcpy(&splits[col], src->v[col], sizeof(Fp2), cudaMemcpyDeviceToHost));
-        }
+        pack_splits_kernel<<<1, 1>>>(
+            src->v[0], src->v[1], src->v[2], src->v[3], d_splits);
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaMemcpy(
+            splits.data(), d_splits, splits.size() * sizeof(Fp2), cudaMemcpyDeviceToHost));
         if (blind) blind_finish(artifacts, blind_in, splits);
         return artifacts;
     };
@@ -522,10 +536,12 @@ int main(int argc, char** argv) {
     }
 
     std::array<Fp2, 4> cpu_splits{}, gpu_splits{};
-    for (int col = 0; col < 4; ++col) {
-        cpu_splits[col] = hsrc->v[col][0];
-        CUDA_CHECK(cudaMemcpy(&gpu_splits[col], dsrc->v[col], sizeof(Fp2), cudaMemcpyDeviceToHost));
-    }
+    for (int col = 0; col < 4; ++col) cpu_splits[col] = hsrc->v[col][0];
+    pack_splits_kernel<<<1, 1>>>(
+        dsrc->v[0], dsrc->v[1], dsrc->v[2], dsrc->v[3], d_splits);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaMemcpy(
+        gpu_splits.data(), d_splits, gpu_splits.size() * sizeof(Fp2), cudaMemcpyDeviceToHost));
     blind_finish(cpu_artifacts, blind_in, cpu_splits);
     blind_finish(gpu_artifacts, blind_in, gpu_splits);
     correct = correct && equal(cpu_artifacts, gpu_artifacts);
@@ -543,6 +559,7 @@ int main(int argc, char** argv) {
         CUDA_CHECK(cudaFree(d1.v[col]));
     }
     CUDA_CHECK(cudaFree(d_s));
+    CUDA_CHECK(cudaFree(d_splits));
     CUDA_CHECK(cudaFree(d_acc0));
     CUDA_CHECK(cudaFree(d_acc1));
 

@@ -19,6 +19,10 @@ The LogUp lookup-side tree build also passed at N=2^24: 66.12x CPU/GPU with
 every internal layer exact (`p7-gpu-logup-tree-2026-07-11-5f7b443.json`).
 Next: LogUp sumcheck round/fold kernels, then PCS row/global + blake3.
 Current clean aggregate: `benchmarks/results/p7-2026-07-11-959b40b.json`.
+The LogUp general round/fold sequence passed narrowly at N=2^22: 6.766x with
+all 22 per-round D2H barriers retained
+(`p7-gpu-logup-rounds-2026-07-11-e4470bf.json`). Next: PCS row/global passes
+plus blake3; blind correction plumbing and proving-path integration remain.
 
 ## Provider / instance
 

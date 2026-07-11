@@ -64,7 +64,17 @@ def test_p7_report_selects_record_and_packed_sources():
         and row["gate_speedup_ge_5_48"] is False
         for row in data["gpu_logup_tree"]["profiles"]
     )
-    assert data["go_no_go"]["local_recommendation"] == "proceed-to-logup-rounds-and-pcs-spikes"
+    rounds = data["gpu_logup_rounds"]["run_of_record"]
+    assert rounds["source"].endswith("p7-gpu-logup-rounds-2026-07-11-e4470bf.json")
+    assert rounds["correctness"] is True
+    assert rounds["gate_speedup_ge_5_48"] is True
+    assert rounds["gpu_cpu_speedup"] == 6.7660424204
+    assert any(
+        row["milestone"] == "P7-gpu-logup-rounds-quick"
+        and row["gate_speedup_ge_5_48"] is False
+        for row in data["gpu_logup_rounds"]["profiles"]
+    )
+    assert data["go_no_go"]["local_recommendation"] == "proceed-to-pcs-hash-spikes"
     q150 = [
         row
         for row in data["measured_pcs_profiles"]

@@ -575,6 +575,38 @@ def gpu_logup_tree_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any
     return rows
 
 
+def gpu_logup_round_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for r in results:
+        if r.get("milestone") not in {"P7-gpu-logup-rounds", "P7-gpu-logup-rounds-quick"}:
+            continue
+        kernel = r.get("kernel") or {}
+        if not kernel.get("correctness") or not kernel.get("timing_sane"):
+            continue
+        rows.append(
+            {
+                "_mtime": r["_mtime"],
+                "source": r["_path"],
+                "milestone": r.get("milestone"),
+                "git_dirty": r.get("git_dirty"),
+                "cloud": r.get("cloud"),
+                "parameters": kernel.get("parameters"),
+                "correctness": kernel.get("correctness"),
+                "timing_sane": kernel.get("timing_sane"),
+                "cpu_s": kernel.get("cpu_s"),
+                "gpu_s": kernel.get("gpu_s"),
+                "gpu_cpu_speedup": kernel.get("gpu_cpu_speedup"),
+                "gate_speedup_ge_5_48": kernel.get("gate_speedup_ge_5_48"),
+                "all_rounds_checksum": kernel.get("all_rounds_checksum"),
+                "scope": r.get("scope"),
+            }
+        )
+    rows.sort(key=lambda x: (x["milestone"], x["_mtime"], x["source"]))
+    for row in rows:
+        row.pop("_mtime", None)
+    return rows
+
+
 def decode_marginal_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows = []
     for r in results:
@@ -626,6 +658,11 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
     gpu_logup = gpu_logup_tree_profiles(results)
     full_gpu_logup = [r for r in gpu_logup if r["milestone"] == "P7-gpu-logup-tree"]
     gpu_logup_record = full_gpu_logup[-1] if full_gpu_logup else None
+    gpu_logup_rounds = gpu_logup_round_profiles(results)
+    full_gpu_logup_rounds = [
+        r for r in gpu_logup_rounds if r["milestone"] == "P7-gpu-logup-rounds"
+    ]
+    gpu_logup_round_record = full_gpu_logup_rounds[-1] if full_gpu_logup_rounds else None
     pcg_status = (
         "phase_b_measured_not_production"
         if real_pcg_b
@@ -713,6 +750,12 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
             "profiles": gpu_logup,
             "note": "Lookup-side tree build only; sumcheck round/fold kernels and integration remain open.",
         },
+        "gpu_logup_rounds": {
+            "status": "measured_gate_pass" if gpu_logup_round_record else "not_measured",
+            "run_of_record": gpu_logup_round_record,
+            "profiles": gpu_logup_rounds,
+            "note": "Clear general rounds with per-round barriers; blind corrections and integration remain open.",
+        },
         "real_pcg_spike": {
             "status": pcg_status,
             "corr_sub_corrs": baseline.get("corr_sub_corrs"),
@@ -724,7 +767,9 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
         },
         "go_no_go": {
             "local_recommendation": (
-                "proceed-to-logup-rounds-and-pcs-spikes"
+                "proceed-to-pcs-hash-spikes"
+                if gpu_logup_round_record
+                else "proceed-to-logup-rounds-and-pcs-spikes"
                 if gpu_logup_record
                 else "proceed-to-logup-pcs-kernel-spikes"
                 if gpu_fused_record
@@ -738,7 +783,8 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
                 "A final rho decision still requires fused proving kernels and a native GPU inference anchor."
             ),
             "remaining_before_final_go_no_go": [
-                "LogUp sumcheck round/fold and PCS/hash GPU kernels measured on representative P6 volumes",
+                "PCS/hash GPU kernels measured on representative P6 volumes",
+                "blind LogUp correction plumbing measured without extra transcript rounds",
                 "native GPU inference baseline measured on the same instance",
                 "measured GPU kernels integrated into the proving path without extra transcript passes",
                 "GPU path passes golden decode, flat-cost, and anti-replay gates",
@@ -855,6 +901,15 @@ def print_summary(report: dict[str, Any]) -> None:
             f"  N={logup['parameters']['n']} CPU={logup['cpu_s']:.3f}s "
             f"GPU={logup['gpu_s']:.4f}s speedup={logup['gpu_cpu_speedup']:.2f}x "
             f"{logup['source']}"
+        )
+        print()
+    logup_rounds = report.get("gpu_logup_rounds", {}).get("run_of_record")
+    if logup_rounds:
+        print("GPU LogUp general rounds/folds")
+        print(
+            f"  N={logup_rounds['parameters']['n']} CPU={logup_rounds['cpu_s']:.3f}s "
+            f"GPU={logup_rounds['gpu_s']:.4f}s speedup={logup_rounds['gpu_cpu_speedup']:.2f}x "
+            f"{logup_rounds['source']}"
         )
         print()
     decode_profiles = report.get("decode_marginal_profiles") or []

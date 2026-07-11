@@ -56,6 +56,21 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-11 (P7 GPU LogUp general round/fold — pre-registered)**:
+  implement the exact P4 `run_general_rounds` hot loop over four F_p²
+  vectors at representative N=2^22: per pair compute the four Gruen round
+  accumulators (10 F_p² multiplications), reduce them, force a 64-byte D2H
+  round-message barrier, then fold p0/p1/q0/q1 by the deterministic challenge
+  (4 F_p² multiplications/pair) and continue to length one. The per-round
+  barrier is load-bearing and models the actual transcript challenge order;
+  it may not be fused away across rounds. Use 1 warmup + 7 GPU repetitions
+  and 3 same-host CPU repetitions. Outside timing, compare every round
+  accumulator and every folded element at every depth bit-for-bit. Hard
+  gates: correctness, timing sanity, whole-sequence GPU/CPU speedup >=5.48x.
+  This clear arithmetic spike excludes blind correction generation and does
+  not integrate the Rust proving path; those remain explicit follow-up work.
+  No transcript, challenge order, proof bytes, lookup count or protocol change.
+
 - **2026-07-11 (P7 GPU LogUp lookup-tree build landed)**: clean run of
   record `benchmarks/results/p7-gpu-logup-tree-2026-07-11-5f7b443.json`
   on Thunder `nc1k4a0g`, N=2^24, exact P4 structured first combine and all

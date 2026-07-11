@@ -68,6 +68,8 @@ constant factors hold. That constant factor is what P3/P4 measure.
   `p7-gpu-fused-epilogue-quick-2026-07-11-bde5d7d.json`. This remains a
   P1-equivalent standalone spike: the Rust proving path is unchanged, PCG
   expansion/setup stays separately budgeted, and e2e GPU rho is still open.
+  Clean refreshed aggregate: `benchmarks/results/p7-2026-07-11-27cc9a8.json`
+  (`git_dirty:false`, recommendation `proceed-to-logup-pcs-kernel-spikes`).
   Next authorized spike is a representative LogUp fraction tree.
 
 - **2026-07-11 (P7 GPU fused GEMM-MAC epilogue — pre-registered)**:

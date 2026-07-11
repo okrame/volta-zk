@@ -14,6 +14,7 @@ The fused GEMM-MAC spike then passed at weighted `rho_kernel=1.003`
 (`p7-gpu-fused-epilogue-2026-07-11-bde5d7d.json`). The next step is the
 LogUp fraction-tree spike, followed by PCS row/global passes plus blake3;
 proving-path integration remains open.
+Current clean aggregate: `benchmarks/results/p7-2026-07-11-27cc9a8.json`.
 
 ## Provider / instance
 

@@ -56,6 +56,23 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-11 (P7 GPU PCS column gather + blake3/Merkle — pre-registered)**:
+  at `P4_LAYER` geometry, hash all 32768 encoded columns of 1024 Goldilocks
+  values directly from the resident row-major matrix (gather fused into the
+  BLAKE3 leaf kernel), then build the full 2^15-leaf Merkle tree on GPU. Use
+  exact unkeyed BLAKE3 flags/tree semantics and cross-check the final root
+  against the optimized Rust `blake3` crate; additionally compare every leaf
+  and internal hash against an independent host implementation outside the
+  timed region. Time 1 warmup + 7 GPU runs with a forced 32-byte root D2H;
+  time the actual Rayon/Rust gather+blake3+Merkle reference for 3 runs.
+  Because scalar host code is not a fair denominator, the hard performance
+  gate is absolute: GPU gather+hash+tree <=75 ms. Together with the measured
+  6.39 ms NTT this keeps the P4 layer commitment below 81.4 ms, i.e. >=5.5x
+  versus the ~0.45 s cloud CPU commitment. Correctness and timing sanity are
+  hard gates. This does not change the hash, commitment root, PCS layout,
+  proof bytes, Q/rate, transcript or protocol; mask-row hashing and selected
+  column serialization remain integration work.
+
 - **2026-07-11 (P7 GPU PCS row/global arithmetic landed)**: clean run of
   record `benchmarks/results/p7-gpu-pcs-arithmetic-2026-07-11-366ec4a.json`
   on Thunder `nc1k4a0g`, exact `P4_LAYER` geometry. Batched 1024x32768

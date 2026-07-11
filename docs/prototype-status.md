@@ -56,6 +56,22 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-11 (P7 GPU fused GEMM-MAC epilogue — pre-registered)**:
+  implement a measurement-only sm_80 CUDA kernel for the three P1 GPT-2
+  shapes (100x768x{768,2304,3072}), with exact i16xi16->i64 accumulation and
+  frozen round-half-up/clamp requantization. Compare one native kernel
+  (requantized i16 output) against the identical GEMM with a **same-kernel**
+  fused epilogue that reads a resident F_p mask and writes the 8-byte
+  correction `delta=x-r`; no correction-only follow-up pass is allowed.
+  Resident masks model the already separate PCG pool/setup budget and do not
+  hide any response bytes. Use 2 paired warmups + 9 ABBA rounds, a forced
+  16-byte D2H completion read per launch (Thunder trap above), and report
+  medians plus weighted `rho_kernel`. Validate every native/fused i16 output
+  and every reconstructed field value bit-for-bit against a same-host CPU
+  reference. Hard gates: correctness; fused/native weighted rho <=1.30; no
+  output/correction layout or count change. This spike does not yet replace
+  Rust inference/proving code and cannot by itself establish e2e GPU rho.
+
 - **2026-07-11 (P7 A100 Goldilocks/F_p² roofline landed)**: run of record
   `benchmarks/results/p7-gpu-roofline-2026-07-11-a43d105.json` on replacement
   Thunder instance `nc1k4a0g` (same A100-SXM4-80GB / CPU quota as the

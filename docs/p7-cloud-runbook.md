@@ -1,57 +1,14 @@
 # P7 cloud runbook
 
-Status: cloud CPU baselines landed on the Thunder A100 instance on
-2026-07-11. The clean cloud runs are
-`benchmarks/results/p1-2026-07-11-64a8ead.json` and
-`benchmarks/results/p6-2026-07-11-11e5630.json`; aggregate
-`benchmarks/results/p7-2026-07-11-11e5630.json`. For this box the measured
-relative prover-vs-native speedup requirement is 5.48x prefill / 3.97x
-decode. The Goldilocks/Fp2 GPU roofline subsequently passed on replacement
-instance `nc1k4a0g`: `p7-gpu-roofline-2026-07-11-a43d105.json` reports
-55.48x stream / 300.94x chain speedup with full differential correctness.
-Clean aggregate: `benchmarks/results/p7-2026-07-11-14bafb8.json`.
-The fused GEMM-MAC spike then passed at weighted `rho_kernel=1.003`
-(`p7-gpu-fused-epilogue-2026-07-11-bde5d7d.json`). The next step is the
-LogUp fraction-tree spike, followed by PCS row/global passes plus blake3;
-proving-path integration remains open.
-Current clean aggregate: `benchmarks/results/p7-2026-07-11-27cc9a8.json`.
-The LogUp lookup-side tree build also passed at N=2^24: 66.12x CPU/GPU with
-every internal layer exact (`p7-gpu-logup-tree-2026-07-11-5f7b443.json`).
-Next: LogUp sumcheck round/fold kernels, then PCS row/global + blake3.
-Current clean aggregate: `benchmarks/results/p7-2026-07-11-959b40b.json`.
-The LogUp general round/fold sequence passed narrowly at N=2^22: 6.766x with
-all 22 per-round D2H barriers retained
-(`p7-gpu-logup-rounds-2026-07-11-e4470bf.json`). Next: PCS row/global passes
-plus blake3; blind correction plumbing and proving-path integration remain.
-Current clean aggregate: `benchmarks/results/p7-2026-07-11-fd67e64.json`.
-PCS P4_LAYER arithmetic passed: NTT 80.33x and combine_rows 76.10x with exact
-outputs (`p7-gpu-pcs-arithmetic-2026-07-11-366ec4a.json`). Column gather +
-BLAKE3/Merkle then passed at exact P4_LAYER geometry: Rust 43.779 ms versus
-GPU 1.407 ms = 31.10x, with exact Rust root and every host/device node
-(`p7-gpu-blake3-merkle-2026-07-11-3b0a916.json`). NTT + hash totals 7.793 ms
-on GPU. Next: mask/blind plumbing, proving-path integration, native GPU
-inference anchor and unchanged e2e gates.
-Current clean aggregate: `benchmarks/results/p7-2026-07-11-18c3fea.json`.
-Blind general-layer LogUp plumbing subsequently passed on replacement instance
-`6mprfo7p`: CPU 265.26 ms versus GPU 41.30 ms = 6.423x, all 848 correction
-bytes exact, blind/clear 0.903 <=1.05 and zero extra transcript rounds
-(`p7-gpu-logup-blind-rounds-2026-07-11-534dcad.json`). Pageable-buffer and
-four-micro-copy failures are retained in the ledger. This replacement has a
-different Xeon 8470 CPU, so its native P6 baseline must be remeasured before
-quoting a new rho. Next: aux-leaf corrections, proving-path integration and
-native GPU inference anchor.
-That replacement baseline is now complete:
-`p6-2026-07-11-f72e4dd.json` reports native prefill/decode 0.9956/1.7295 s,
-CPU rho 20.512/8.294 and replacement-instance requirements **4.1025x prefill /
-4.1468x decode**. It supersedes 5.48x/3.97x only for `6mprfo7p`; the native
-GPU inference anchor remains open.
-The exact native GPU anchor has now landed on `6mprfo7p`:
-`p7-gpu-native-inference-2026-07-11-c06f323.json` is golden-exact at
-17.663 ms prefill (56.364x CPU) and 633.895 ms decode50 (2.728x CPU), including
-per-token logits D2H + argmax. Therefore the integrated prover needs 231.23x
-prefill / 11.31x decode acceleration versus its CPU proving times for
-rho<=5/<=2. Next: integrated GPU prover measurement; component spikes alone
-must not be reported as e2e rho.
+Status: cloud screening and exact native GPU inference are complete; detailed
+run history stays in the ledger and append-only JSONs. On replacement A100
+instance `6mprfo7p`, baseline `p6-2026-07-11-f72e4dd.json` and golden-exact
+anchor `p7-gpu-native-inference-2026-07-11-c06f323.json` imply, for
+ρ≤10/≤2: **176.631 ms** proof-only prefill budget, **2.05125× /
+4.14684×** required relative prover/native speedup, and **115.616× /
+11.3141×** required integrated prover GPU/CPU speedup. Next: integrated GPU
+prover measurement. Microkernel gates remain independent preregistered
+screening and must not be relabeled as e2e ρ.
 
 ## Provider / instance
 

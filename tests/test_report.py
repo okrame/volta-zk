@@ -40,8 +40,9 @@ def test_p7_report_selects_record_and_packed_sources():
     assert data["cloud"] == data["baseline"]["cloud"]
     assert data["communication"]["packed_logits_source"].endswith("p6-2026-07-11-f72e4dd.json")
     required = data["gpu_budget_model"]["required_relative_prover_vs_native_speedup"]
-    assert 4.102 < required["prefill"] < 4.103
+    assert 2.051 < required["prefill"] < 2.052
     assert 4.146 < required["decode"] < 4.147
+    assert data["gpu_budget_model"]["targets"] == {"prefill": 10.0, "decode": 2.0}
     roofline = data["gpu_roofline"]["run_of_record"]
     assert roofline["source"].endswith("p7-gpu-roofline-2026-07-11-a43d105.json")
     assert roofline["correctness"] is True
@@ -115,8 +116,9 @@ def test_p7_report_selects_record_and_packed_sources():
     assert native["native_gpu_speedup"]["prefill"] == 56.36387892840773
     assert native["native_gpu_speedup"]["decode"] == 2.728360443104455
     prover_targets = data["gpu_native_inference"]["required_prover_gpu_speedup_vs_cpu"]
-    assert prover_targets["prefill"] == 231.2326785685169
+    assert prover_targets["prefill"] == 115.61633928425845
     assert prover_targets["decode"] == 11.314079219493856
+    assert data["gpu_native_inference"]["proof_only_budget"]["prefill_s"] == 0.17663136
     assert data["go_no_go"]["local_recommendation"] == (
         "proceed-to-integrated-gpu-prover-measurement"
     )

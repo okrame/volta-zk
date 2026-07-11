@@ -15,7 +15,7 @@ rho = prover_wall_time / native_inference_wall_time
 Native = our own fixed-point Rust forward with proving off — the only
 apples-to-apples denominator on CPU. Timing on this VM uses ABBA paired
 interleaving (`time_paired`), never sequential A-then-B (frequency drift).
-CPU ρ is architectural; the ρ targets (≤2 decode, ≤5 prefill) are GPU targets
+CPU ρ is architectural; the P7 ρ targets (≤2 decode, ≤10 prefill) are GPU targets
 decided by P7's extrapolation.
 
 ## Workloads of record

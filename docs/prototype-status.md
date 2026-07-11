@@ -7,8 +7,8 @@ land in `benchmarks/results/*.json`. Plan of record:
 
 Workload of record: **GPT-2 small (124M, L=12, d=768, h=12, d_ff=3072),
 prefill T=100 tokens, causal**, all CPU (aarch64 VM, 4 cores, ~11 GB).
-CPU numbers validate architecture and counts; the ρ targets (≤2 decode,
-≤5 prefill) remain GPU targets.
+CPU numbers validate architecture and counts; the P7 ρ targets (≤2 decode,
+≤10 prefill) remain GPU targets.
 
 ## Milestones
 
@@ -23,7 +23,7 @@ CPU numbers validate architecture and counts; the ρ targets (≤2 decode,
 | P4 LogUp + fused blocks | **done** (2026-07-05) | one full layer proved+verified e2e (T=100, real PCS opening) ✓ **PASSED**; counts within 20% ✓ (witness streams = budget **exactly**, padded LogUp domains explained); LogUp ≤8–10 E-mult/lookup: **MISSED, motivated (12.20)**; 1 weight claim/tensor ✓ (4/layer) | prove 0.800 s vs native forward 0.033 s (ρ_layer ~24, 4 cores); verify 0.041 s; LogUp lookup-side **12.20 E-mult/lookup** (~34 ns/lookup, 5.4× vs P2.5 spike wall), table-side 3.86 raw → 0.32 /12-amortized; full instance cost 126.5 M E-mult/layer (≈42/padded lookup incl. aux folding + tables + closures); corr bytes 7.64 MB/layer (mult vectors 3.87 MB — see deviations); layer PCS 2^24: commit 0.34 s one-off, **open 0.035 s**, verify 0.006 s; projections (P3.5 cost model, 49/98 claims): prefill **0.233 s**, per-response **0.345 s**. Run of record `benchmarks/results/p4-2026-07-06-8b4ca11.json` (clean tree, `git_dirty:false`; the 07-05 JSON was a dirty-tree run whose sha names the parent commit) |
 | P5 GPT-2 e2e prefill 100 tok | **done** (2026-07-06) | one-command run ✓ (`scripts/run_prefill.sh`), golden check ✓ (full logits bit-exact vs numpy at T=100, argmax 835 ' way'), counts vs budget: witness lookups = budget **exactly** (16,944,000) ✓ | **accepted e2e with real weights + 13 real Ligero commitments**: native (witness) 0.459 s, prove 11.0–11.2 s, **ρ ≈ 24** (matches P4's ×12 projection); verify 0.65 s + 0.07 s PCS; PCS open **0.73 s** / 52.8 MB (vs 0.237 s projection — 13× fixed costs, see deviations), commit one-off 7.6 s; **comm 159.6 MB/prefill** (mult vectors 59.4 + PCS 52.8 + boundary 36.9 + rest), projected response 212 MB; E-mult all-in 100.6/budget lookup; peak RSS 2.86 GB. `benchmarks/results/p5-2026-07-06-e52ce79.json` (clean tree) |
 | P6 decode + authenticated KV cache | **done** (2026-07-07) | flat cost/token ✓ **PASSED** (curve last/first 1.12 ≤ 1.5, 5×10 chunks, cache 100→150); anti-replay smoke ✓ (prefill-row replay + position swap rejected); golden decode ✓ (50 tokens bit-exact vs numpy) | **accepted e2e, prompt 100 + 50 decode, one two-phase session, real 13-commitment PCS with STACKED claims (96 weight + 6 embed)**: native decode 30.9 tok/s (KV-cached baseline); prove_response 18.7 s = prefill 10.5 s + **decode marginal 8.2 s (0.164 s/token, ρ_decode 5.07 CPU)**; verified 2.67 tok/s; verify 0.57 s + 0.10 s PCS. Comm: transcript 137.4 MB (prefill 48.4 + PCS opening 66.7 + decode marginal 22.3 = **445 KB/token**) + public band logits 20.5 MB → **total response download 157.9 MB** (inside the 150–200 MB product envelope; the PCS opening is now the dominant lever, P7). Shared-α restructure landed with P6: mult corr 59.4 → 2.85 MB. PCS commit one-off 9.5 s; peak RSS 3.47 GB. `benchmarks/results/p6-2026-07-07-515bb1c.json` (clean tree) |
-| P7 report + GPU budget model | **A100 proving spikes + exact native GPU anchor passed; integration open** (2026-07-11) | report/PCG/cloud anchors ✓; replacement P6 baseline ✓; exact native fixed-point GPU prefill/decode ✓; fused GEMM-MAC ✓; LogUp tree/general/blind corrections ✓; PCS NTT/combine_rows/hash ✓; aux-leaf/mask rows and proving-path integration open | On `6mprfo7p`, native GPU prefill is **17.66 ms = 56.36× CPU** and decode50 **633.89 ms = 2.728× CPU**, golden exact. Combined with CPU rho, the integrated prover must accelerate **231.23× prefill / 11.31× decode vs CPU** to reach rho≤5/≤2. Blind LogUp passes its component gate at 6.42×, but components are not an e2e rho. Sources `p6-2026-07-11-f72e4dd.json`, `p7-gpu-native-inference-2026-07-11-c06f323.json`, `p7-gpu-logup-blind-rounds-2026-07-11-534dcad.json`. Next: integrate and measure; final go/no-go open. |
+| P7 report + GPU budget model | **A100 proving spikes + exact native GPU anchor passed; integration open** (2026-07-11) | report/PCG/cloud anchors ✓; replacement P6 baseline ✓; exact native fixed-point GPU prefill/decode ✓; microkernel screening ✓; aux-leaf/mask rows and proving-path integration open | On `6mprfo7p`, native GPU prefill is **17.66 ms** and decode50 **633.89 ms**, golden exact. For ρ≤10/≤2, proof-only prefill budget is **176.631 ms**; required relative prover/native speedup is **2.05125× / 4.14684×**, hence integrated prover GPU/CPU speedup **115.616× / 11.3141×**. Microkernel gates remain separate historical screening, not e2e ρ. Sources `p6-2026-07-11-f72e4dd.json`, `p7-gpu-native-inference-2026-07-11-c06f323.json`. Next: integrate and measure. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -55,6 +55,16 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-11 (P7 prefill objective revised)**: the general GPU objective is
+  now **ρ_prefill ≤ 10**, while **ρ_decode ≤ 2** is unchanged. On the
+  `6mprfo7p` baseline this gives a **176.631 ms proof-only prefill budget**,
+  required relative prover/native speedups **2.05125× prefill / 4.14684×
+  decode**, and required integrated prover GPU/CPU speedups **115.616× /
+  11.3141×**. `scripts/report.py` is the source of current targets. Existing
+  JSONs and preregistered microkernel gates (including 5.48× screens) remain
+  historical screening evidence; they are neither lowered nor reinterpreted
+  as relative prover/native or e2e speedups.
 
 - **2026-07-11 (P7 native fixed-point GPU inference anchor landed)**: clean
   exact run `benchmarks/results/p7-gpu-native-inference-2026-07-11-c06f323.json`

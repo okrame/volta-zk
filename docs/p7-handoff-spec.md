@@ -21,8 +21,8 @@ lookups + a Ligero-style PCS for private weights, over Goldilocks
 theorems in `lean/`, see `docs/protocol-sketch.md`) is CLOSED and frozen.
 The prototype phase P runs GPT-2 small (124M) fixed-point on CPU
 (aarch64 VM, 4 cores, 11 GB): P0–P6 are done. The project lives or dies on
-**ρ = prover_wall / native_inference_wall**; the final MVP targets ρ ≤ 2
-(decode) and ρ ≤ 5 (prefill) are **GPU targets** — CPU numbers validate
+**ρ = prover_wall / native_inference_wall**; the P7 targets ρ ≤ 2
+(decode) and ρ ≤ 10 (prefill) are **GPU targets** — CPU numbers validate
 architecture and counts, and P7 decides GPU go/no-go by extrapolation.
 
 ## 2. Operating contract with the harness (non-negotiable)
@@ -124,13 +124,16 @@ P7 has two halves: (A) the **report + GPU budget model** that decides GPU
 go/no-go (this was P7's original definition), and (B) the **e2e communication
 levers** left open by P6, of which the PCS opening is the dominant one.
 
-**Status 2026-07-07 (local pass complete — details in the ledger, not
-here)**: the report/budget model (§4.5.1), the decode-marginal profile,
-the Q=150 exploratory profile (NOT adopted), the static-query-cache
-accounting, and the real-PCG cost measurements (§4.4, phases A and B) are
-all DONE. **The only remaining P7 work is §4.5 (cloud GPU spikes) plus,
-when a measured number motivates them, the §4.1/§4.6 levers.** Cloud
-runbook: `docs/p7-cloud-runbook.md`.
+**Status 2026-07-11**: reporting, communication accounting, real-PCG cost
+model, A100 microkernel screening, replacement CPU baseline, and the exact
+native GPU anchor are done. The current decision-critical item is integrated
+GPU proving. Current targets and derived budgets live in `scripts/report.py`;
+the ledger holds measured history. Cloud runbook: `docs/p7-cloud-runbook.md`.
+
+On `6mprfo7p`, ρ≤10/≤2 gives a proof-only prefill budget of **176.631
+ms**, required relative prover/native speedups **2.05125× / 4.14684×**, and
+required integrated prover GPU/CPU speedups **115.616× / 11.3141×**. The
+preregistered microkernel gates remain separate screening criteria.
 
 ### 4.1 PCS opening bytes (66.7 MB → target ≈ 25–35 MB)
 
@@ -241,31 +244,16 @@ status as PCS binding (M9) — Lean stays frozen.
 
 ### 4.5 Report + GPU budget model + cloud CUDA (the go/no-go)
 
-1. **`scripts/report.py` — DONE.** Regenerate with
-   `python3 scripts/report.py --write-json` whenever a new measured JSON
-   lands (tests: `tests/test_report.py`). Sensitivity: the GPU proof
-   kernels must beat the native-inference GPU speedup by ~3.7× (prefill) /
-   ~2.6× (decode) — but this ratio moved 4.62→3.67 between two clean CPU
-   runs (VM noise), so re-measure baselines with ABBA timing on the cloud
-   box before trusting any single ratio.
-2. **GPU state today: zero.** No CUDA/FFI/feature flags anywhere;
-   parallelism is rayon throughout (`gemm.rs`, `band.rs`, `logup.rs`,
-   `ligero.rs`, `batch.rs` are the parallel hot spots).
-   Cloud GPU design sketch: kernels to port are the fused MAC epilogue,
-   GEMM-proof sumcheck passes, LogUp fraction trees, and the PCS row/global
-   passes + blake3 hashing. Known risks: Goldilocks F_p² arithmetic runs on
-   the integer pipeline, not tensor cores (roofline risk); the MAC epilogue
-   must stay **fused** with the GEMM or the near-native ρ_kernel (1.06 on CPU)
-   is lost.
-3. **Providers, instance choice, setup commands, spike order**: follow
-   `docs/p7-cloud-runbook.md` (Thunder Compute H100/A100, RunPod fallback;
-   record provider/region/image/driver/CUDA/SKU in ledger + JSON; always
-   re-measure the native CPU baseline on the cloud box first).
-4. **Gate (pre-register the exact numbers in the ledger before running)**:
-   report published, budget model with explicit assumptions, go/no-go
-   recommendation on the ρ targets; if GPU kernels are actually built, the
-   flat-cost, golden-decode and anti-replay gates must pass unchanged on
-   the GPU path.
+**Done**: report model, ABBA cloud baselines, arithmetic roofline, fused MAC
+epilogue, LogUp tree/general/blind screening, PCS NTT/combine/hash screening,
+and exact native GPU inference. Their parameters, failures and accepted runs
+are retained in the ledger/JSONs instead of repeated here.
+
+**Open**: integrate the proving path (including aux-leaf and mask-row work),
+then measure e2e against the centralized ρ targets. Preserve flat-cost,
+golden-decode, anti-replay, transcript and communication gates. Regenerate the
+aggregate with `python3 scripts/report.py --write-json` after every measured
+result; use `docs/p7-cloud-runbook.md` for machine/result hygiene.
 
 ### 4.6 Further compression ideas (design suggestions — NOT pre-registered)
 

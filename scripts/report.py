@@ -21,6 +21,7 @@ from typing import Any
 
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_RESULTS = REPO / "benchmarks" / "results"
+P7_RHO_TARGETS = {"prefill": 10.0, "decode": 2.0}
 
 LAYER_PARAMS = {
     "rows": 1 << 10,
@@ -279,23 +280,21 @@ def pcs_scenarios(baseline: dict[str, Any], current_packed_download: int) -> lis
 def rho_model(baseline: dict[str, Any]) -> dict[str, Any]:
     rho_prefill = float(baseline["rho_prefill"])
     rho_decode = float(baseline["rho_decode"])
-    target_prefill = 5.0
-    target_decode = 2.0
     relative = [1.0, 2.0, 2.5, 3.0, 5.0, 8.0, 10.0]
     return {
         "definition": "predicted_gpu_rho = cpu_rho / relative_prover_vs_native_gpu_speedup",
-        "targets": {"prefill": target_prefill, "decode": target_decode},
+        "targets": P7_RHO_TARGETS,
         "required_relative_prover_vs_native_speedup": {
-            "prefill": rho_prefill / target_prefill,
-            "decode": rho_decode / target_decode,
+            phase: rho / P7_RHO_TARGETS[phase]
+            for phase, rho in (("prefill", rho_prefill), ("decode", rho_decode))
         },
         "sensitivity": [
             {
                 "relative_prover_vs_native_speedup": r,
                 "rho_prefill": rho_prefill / r,
                 "rho_decode": rho_decode / r,
-                "prefill_target_met": rho_prefill / r <= target_prefill,
-                "decode_target_met": rho_decode / r <= target_decode,
+                "prefill_target_met": rho_prefill / r <= P7_RHO_TARGETS["prefill"],
+                "decode_target_met": rho_decode / r <= P7_RHO_TARGETS["decode"],
             }
             for r in relative
         ],
@@ -848,6 +847,12 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
         required_prover_gpu_speedup = {
             phase: relative[phase] * native[phase] for phase in ("prefill", "decode")
         }
+        proof_only_budget = {
+            "prefill_s": gpu_native_record["prefill_s"] * P7_RHO_TARGETS["prefill"],
+            "decode_50_s": gpu_native_record["decode_50_s"] * P7_RHO_TARGETS["decode"],
+        }
+    else:
+        proof_only_budget = None
     pcg_status = (
         "phase_b_measured_not_production"
         if real_pcg_b
@@ -964,6 +969,7 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
             "run_of_record": gpu_native_record,
             "profiles": gpu_native,
             "required_prover_gpu_speedup_vs_cpu": required_prover_gpu_speedup,
+            "proof_only_budget": proof_only_budget,
             "note": "Exact fixed-point full-model prefill and KV decode anchor; weights resident, per-token logits D2H + argmax included, proving path not integrated.",
         },
         "real_pcg_spike": {

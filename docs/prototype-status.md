@@ -73,6 +73,9 @@ constant factors hold. That constant factor is what P3/P4 measure.
   CPU model changed, this spike passes the fixed preregistered screen but does
   not provide a portable rho; remeasure native P6 on `6mprfo7p` before any
   final relative prover/native claim. No protocol or communication change.
+  Clean refreshed aggregate: `benchmarks/results/p7-2026-07-11-e4e0772.json`
+  (`git_dirty:false`, recommendation
+  `proceed-to-proving-path-integration-and-native-gpu-anchor`).
 
 - **2026-07-11 (P7 GPU blind LogUp plumbing — first full runs failed;
   pinned-barrier follow-up authorized)**: all blind root/round/split/product

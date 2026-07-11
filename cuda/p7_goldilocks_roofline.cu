@@ -272,8 +272,6 @@ int main(int argc, char** argv) {
               << "  \"correctness\": " << ((stream_ok && chain_ok) ? "true" : "false") << ",\n"
               << "  \"device\": {\"name\": \"" << json_escape(prop.name) << "\", \"cc\": \""
               << prop.major << '.' << prop.minor << "\", \"sm_count\": " << prop.multiProcessorCount
-              << ", \"clock_rate_khz\": " << prop.clockRate
-              << ", \"memory_clock_rate_khz\": " << prop.memoryClockRate
               << ", \"memory_bus_width_bits\": " << prop.memoryBusWidth
               << ", \"global_memory_bytes\": " << prop.totalGlobalMem
               << ", \"cuda_runtime_version\": " << runtime_version

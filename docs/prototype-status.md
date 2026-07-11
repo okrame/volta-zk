@@ -56,6 +56,28 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-11 (P7 native fixed-point GPU inference anchor —
+  pre-registered)**: implement a standalone sm_80 CUDA anchor over the exact
+  frozen `gpt2s-q.bin` semantics, not a GEMM-only or FP16 proxy. Prefill must
+  execute embedding, both layer norms, biased QKV, causal score/row-max/exp/
+  reciprocal/softmax, AV, attention projection + residual, FFN up + GELU,
+  FFN down + residual, seams, final LN and tied-WTE logits for T=100 across
+  all 12 layers. Decode must seed all 12 K/V caches from that prefill and run
+  50 true incremental steps at positions 100..149, including logits D2H and
+  host argmax before the next token. Arithmetic is exact i16*i16->i64 with
+  the frozen chained round-half-up requant and LUT tables; weights/LUTs stay
+  device-resident and their one-time upload is outside timing. Time one
+  warmup + 7 GPU prefill and decode repetitions, median wall time with a
+  completion/logits D2H barrier; reset cache via an untimed prefill before
+  each decode repetition. Hard gates: prefill argmax and all 50 generated
+  tokens match `golden-p6.bin`, repeated runs are deterministic, timing is
+  sane, and no saturation/assertion is hidden. Report absolute prefill/decode
+  time and acceleration versus the clean same-box P6 native baselines
+  0.995562859/1.729492698 s. This anchor changes neither the Rust witness nor
+  the proving path and makes no GPU-rho claim by itself; final rho still
+  requires integrated proving timings. No protocol, proof, PCS, transcript,
+  correlation or communication change.
+
 - **2026-07-11 (P7 replacement-instance P6 baseline landed)**: clean full
   run `benchmarks/results/p6-2026-07-11-f72e4dd.json` on Thunder
   `6mprfo7p` (A100-SXM4-80GB, Xeon Platinum 8470, 7.92-core quota) is

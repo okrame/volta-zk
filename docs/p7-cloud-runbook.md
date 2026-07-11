@@ -1,9 +1,13 @@
 # P7 cloud runbook
 
-Status: local pre-cloud P7 is complete as of 2026-07-07. The local report of
-record is `benchmarks/results/p7-2026-07-07-a7a2a85.json`; the clean CPU
-baseline with transcript-label breakdown is
-`benchmarks/results/p6-2026-07-07-382bb56.json`.
+Status: cloud CPU baselines landed on the Thunder A100 instance on
+2026-07-11. The clean cloud runs are
+`benchmarks/results/p1-2026-07-11-64a8ead.json` and
+`benchmarks/results/p6-2026-07-11-11e5630.json`; aggregate
+`benchmarks/results/p7-2026-07-11-11e5630.json`. For this box the measured
+relative prover-vs-native speedup requirement is 5.48x prefill / 3.97x
+decode. The next step is the Goldilocks/Fp2 GPU roofline; no proving kernel
+has landed yet.
 
 ## Provider / instance
 

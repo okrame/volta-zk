@@ -33,7 +33,8 @@ pub use gemm_proof::{
 };
 pub use hadamard::{hadamard_prove, hadamard_verify, HadamardDoms, HadamardProof};
 pub use model_proof::{
-    prove_model, verify_model, EmbedProof, FinalLnProof, ModelOut, ModelOutV, ModelProof, SeamProof,
+    prove_model, prove_model_with_backend, verify_model, EmbedProof, FinalLnProof, ModelOut,
+    ModelOutV, ModelProof, SeamProof,
 };
 pub use prod_check::{prod_batch_prover, prod_batch_verify, ProdProof};
 pub use sumcheck_blind::{blind_prove, blind_verify, BlindSumcheckProof};

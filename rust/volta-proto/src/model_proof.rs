@@ -60,6 +60,7 @@ use crate::sumcheck_blind::{blind_prove, blind_verify, BlindSumcheckProof};
 use crate::thaler::{fold_w, pad_bits};
 use rayon::prelude::*;
 use std::collections::BTreeSet;
+use volta_accel::{Backend, BackendKind};
 use volta_field::{Fp, Fp2};
 use volta_gpt2::{BandModelWitness, Gpt2Model, ModelWitness, D, L, NPOS, VOCAB};
 use volta_mac::{
@@ -302,6 +303,16 @@ pub fn prove_model(
     prove_response(model, wit, &[], stream, tx)
 }
 
+pub fn prove_model_with_backend(
+    model: &Gpt2Model,
+    wit: &ModelWitness,
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+    backend: &mut Backend,
+) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
+    prove_response_with_backend(model, wit, &[], stream, tx, backend)
+}
+
 /// Prove a full RESPONSE: the prefill (`wit`, t rows) plus any number of
 /// deferred decode chunks (P6) — one two-phase session, one table bank, one
 /// Π_Prod/Π_ZeroBatch closure, weight claims stacked for one PCS opening.
@@ -311,6 +322,33 @@ pub fn prove_response(
     chunks: &[ChunkRef],
     stream: &mut CorrelationStream,
     tx: &mut Transcript,
+) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
+    prove_response_impl(model, wit, chunks, stream, tx, None)
+}
+
+pub fn prove_response_with_backend(
+    model: &Gpt2Model,
+    wit: &ModelWitness,
+    chunks: &[ChunkRef],
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+    backend: &mut Backend,
+) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
+    assert_eq!(
+        backend.kind(),
+        BackendKind::CudaHybrid,
+        "host ModelWitness proving is the hybrid gate; resident proving requires a device witness"
+    );
+    prove_response_impl(model, wit, chunks, stream, tx, Some(backend))
+}
+
+fn prove_response_impl(
+    model: &Gpt2Model,
+    wit: &ModelWitness,
+    chunks: &[ChunkRef],
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+    mut backend: Option<&mut Backend>,
 ) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
     let t = wit.t;
     let d_cb = pad_bits(D);
@@ -337,11 +375,21 @@ pub fn prove_response(
         luts_l
     };
 
+    macro_rules! new_block_ctx {
+        ($layer:expr) => {{
+            if let Some(accel) = backend.as_deref_mut() {
+                BlockCtxP::with_backend(stream, tx, $layer, &mut bank, accel)
+            } else {
+                BlockCtxP::new(stream, tx, $layer, &mut bank)
+            }
+        }};
+    }
+
     // ======================= PHASE 1 (bind everything) =====================
     let mut layer_p1s: Vec<LayerP1> = Vec::with_capacity(L);
     for l in 0..L {
         let luts_l = luts_for(l);
-        let mut cx = BlockCtxP::new(stream, tx, l as u8, &mut bank);
+        let mut cx = new_block_ctx!(l as u8);
         let p1 = prove_layer_phase1(&wit.layers[l], &model.layers[l].0, &luts_l, &mut cx);
         layer_p1s.push(p1);
     }
@@ -365,7 +413,7 @@ pub fn prove_response(
     );
     let s_emb = s_emb as u32;
     let (embed_doms, dom_out, out_corr) = {
-        let mut cx = BlockCtxP::new(stream, tx, 220, &mut bank);
+        let mut cx = new_block_ctx!(220);
         let dom_out = cx.doms.take(t as u64);
         let out_corr = auth_matrix_rows_p(cx.stream, cx.tx, dom_out, &wit.embed.out, t, D);
         add_range_mult(cx.bank, &wit.embed.acc, &wit.embed.out, t, D, s_emb);
@@ -391,7 +439,7 @@ pub fn prove_response(
     let rin2 = [wit.final_ln.rsqrt_in, wit.final_ln.rsqrt_in];
     let rout2 = [wit.final_ln.rsqrt_out, wit.final_ln.rsqrt_out];
     let (fl_doms, dom_out_f, out_corr_f, lv_f, ln_vec_corrs_f, dom_row, row_corr) = {
-        let mut cx = BlockCtxP::new(stream, tx, 221, &mut bank);
+        let mut cx = new_block_ctx!(221);
         let dom_out_f = cx.doms.take(t_ln as u64);
         let out_corr_f = auth_matrix_rows_p(cx.stream, cx.tx, dom_out_f, &out2, t_ln, D);
         let rout_pad = Fp::from_i64(model.luts.ln_rsqrt[0] as i64);
@@ -443,7 +491,7 @@ pub fn prove_response(
                 for cc in chunks[..c].iter() {
                     prefix_k.push(&cc.band.layers[l].k);
                 }
-                let mut cx = BlockCtxP::new(stream, tx, lb + l as u8, &mut bank);
+                let mut cx = new_block_ctx!(lb + l as u8);
                 let p1 = prove_layer_phase1_band(
                     &bw.layers[l],
                     &model.layers[l].0,
@@ -464,7 +512,7 @@ pub fn prove_response(
             }
             // Band embedding: out auth + requant mults.
             let (embed_doms, dom_out, out_corr) = {
-                let mut cx = BlockCtxP::new(stream, tx, eb, &mut bank);
+                let mut cx = new_block_ctx!(eb);
                 let dom_out = cx.doms.take(bw.q as u64);
                 let out_corr =
                     auth_matrix_rows_p(cx.stream, cx.tx, dom_out, &bw.embed_out, bw.q, D);
@@ -473,7 +521,7 @@ pub fn prove_response(
             };
             // Band final LN: out auth + LN vectors + mults (t = q).
             let (fin_doms, dom_out_f, fin_out_corr, fin_lv, fin_ln_vec_corrs, acc_fin) = {
-                let mut cx = BlockCtxP::new(stream, tx, fb, &mut bank);
+                let mut cx = new_block_ctx!(fb);
                 let dom_out_f = cx.doms.take(bw.q as u64);
                 let out_corr_f =
                     auth_matrix_rows_p(cx.stream, cx.tx, dom_out_f, &bw.fin_out, bw.q, D);
@@ -561,7 +609,7 @@ pub fn prove_response(
     let mut seams: Vec<Option<SeamProof>> = Vec::with_capacity(L - 1);
     for l in 0..L - 1 {
         let shift = model.p.seam_shifts[l];
-        let mut cx = BlockCtxP::new(stream, tx, 200 + l as u8, &mut bank);
+        let mut cx = new_block_ctx!(200 + l as u8);
         let (dom_xin_next, _) = boundary_doms[l + 1];
         let (_, dom_fbo_l) = boundary_doms[l];
         if shift > 0 {
@@ -667,7 +715,7 @@ pub fn prove_response(
     // blind matvec sumcheck over the d vars; resolution = one wte PCS claim
     // (authenticated) × the MAC opening of the final-LN row (Π_Prod row).
     let mut embed_claims: Vec<WeightClaimP> = Vec::with_capacity(3);
-    let mut cx = BlockCtxP::new(stream, tx, 230, &mut bank);
+    let mut cx = new_block_ctx!(230);
     let rho_v: Vec<Fp2> = (0..16).map(|_| cx.tx.challenge_fp2()).collect();
     let eq_v = eq_vec(&rho_v);
     cx.ctr_other.fp2_mults += 1 << 16;
@@ -745,7 +793,7 @@ pub fn prove_response(
     // Σ_z S(z)·w̃te(z, r_d) + w̃pe(r_d ‖ r_i ‖ 0…), S(z) public from the
     // prompt tokens. Blind sumcheck over the 16 vocab-bit vars, closed by a
     // zero row (S̃(ρ_z) public) against one wte claim, plus one wpe claim.
-    let mut cx = BlockCtxP::new(stream, tx, 231, &mut bank);
+    let mut cx = new_block_ctx!(231);
     let r_d = &embed_acc_point[..d_cb];
     let r_i = &embed_acc_point[d_cb..];
     let eq_i = eq_vec(r_i);
@@ -894,7 +942,7 @@ pub fn prove_response(
         let mut seams_c: Vec<Option<SeamProof>> = Vec::with_capacity(L - 1);
         for l in 0..L - 1 {
             let shift = model.p.seam_shifts[l];
-            let mut cx = BlockCtxP::new(stream, tx, sb_id + l as u8, &mut bank);
+            let mut cx = new_block_ctx!(sb_id + l as u8);
             let (dom_xin_next, _) = band_boundary_doms[l + 1];
             let (_, dom_fbo_l) = band_boundary_doms[l];
             if shift > 0 {
@@ -975,7 +1023,7 @@ pub fn prove_response(
         add_counters(&mut ctr_other, &lco);
         let _ = gb;
         // ---- band logits claim (q×VOCAB public output) --------------------------
-        let mut cx = BlockCtxP::new(stream, tx, gb, &mut bank);
+        let mut cx = new_block_ctx!(gb);
         let rho_v: Vec<Fp2> = (0..16).map(|_| cx.tx.challenge_fp2()).collect();
         let rho_q: Vec<Fp2> = (0..qb).map(|_| cx.tx.challenge_fp2()).collect();
         let eq_v = eq_vec(&rho_v);
@@ -1056,7 +1104,7 @@ pub fn prove_response(
         add_counters(&mut ctr_other, &lco);
         let _ = zb;
         // ---- band embedding selection (window at t0) ---------------------------
-        let mut cx = BlockCtxP::new(stream, tx, zb, &mut bank);
+        let mut cx = new_block_ctx!(zb);
         let r_d = &embed_acc_point_c[..d_cb];
         let r_i = &embed_acc_point_c[d_cb..];
         let eq_i = eq_vec(r_i);
@@ -1145,15 +1193,28 @@ pub fn prove_response(
     }
 
     // ---- (h) per-content table sides (ONE multiset argument per content) ----
-    let tables = bank.close(
-        &model.luts,
-        stream,
-        &mut table_doms,
-        tx,
-        &mut ctr_instances,
-        &mut prod,
-        &mut zero,
-    );
+    let tables = if let Some(accel) = backend.as_deref_mut() {
+        bank.close_with_backend(
+            &model.luts,
+            stream,
+            &mut table_doms,
+            tx,
+            &mut ctr_instances,
+            &mut prod,
+            &mut zero,
+            accel,
+        )
+    } else {
+        bank.close(
+            &model.luts,
+            stream,
+            &mut table_doms,
+            tx,
+            &mut ctr_instances,
+            &mut prod,
+            &mut zero,
+        )
+    };
 
     let proof = ModelProof {
         layers: layer_proofs,
@@ -2041,5 +2102,102 @@ mod tests {
             "model_e2e_on_frozen_artifact: t={t} prove_model wall time = {:.3} s",
             dt.as_secs_f64()
         );
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn cuda_full_model_proof_matches_cpu_and_fault_is_rejected() {
+        let dir = weights_dir();
+        if !dir.join("gpt2s-q.bin").exists() {
+            eprintln!("skipping CUDA full-proof differential: artifact not present");
+            return;
+        }
+        let mut backend = match Backend::cuda_hybrid() {
+            Ok(gpu) => gpu,
+            Err(e) if std::env::var("VOLTA_REQUIRE_CUDA").as_deref() != Ok("1") => {
+                eprintln!("skipping CUDA full-proof differential: {e}");
+                return;
+            }
+            Err(e) => panic!("CUDA required: {e}"),
+        };
+        let model = load_model(&dir).unwrap();
+        let t = 3usize; // non-power-of-two padding path
+        let wit = forward_model(&model, t);
+        let pcg_seed = [231; 32];
+        let tx_seed = [0xA7; 32];
+
+        let mut cpu_stream = CorrelationStream::new(pcg_seed);
+        let mut cpu_tx = Transcript::new(tx_seed);
+        let (_cpu_proof, cpu_out, cpu_prod, cpu_zero) =
+            prove_model(&model, &wit, &mut cpu_stream, &mut cpu_tx);
+
+        backend.begin_measurement().unwrap();
+        let mut gpu_stream = CorrelationStream::new(pcg_seed);
+        let mut gpu_tx = Transcript::new(tx_seed);
+        let (gpu_proof, gpu_out, gpu_prod, gpu_zero) =
+            prove_model_with_backend(&model, &wit, &mut gpu_stream, &mut gpu_tx, &mut backend);
+        assert_eq!(gpu_out.weight_claims, cpu_out.weight_claims);
+        assert_eq!(gpu_out.embed_claims, cpu_out.embed_claims);
+        assert_eq!(gpu_out.bytes, cpu_out.bytes);
+        assert_eq!(gpu_out.ctr_instances, cpu_out.ctr_instances);
+        assert_eq!(gpu_out.ctr_other, cpu_out.ctr_other);
+        assert_eq!(gpu_out.lookups, cpu_out.lookups);
+        assert_eq!(gpu_out.corr_counters, cpu_out.corr_counters);
+        assert_eq!(gpu_prod, cpu_prod);
+        assert_eq!(gpu_zero, cpu_zero);
+        assert_eq!(gpu_stream.counters, cpu_stream.counters);
+        assert_eq!(gpu_tx.ledger(), cpu_tx.ledger());
+        assert_eq!(gpu_tx.total_bytes(), cpu_tx.total_bytes());
+
+        let delta = Fp2::new(Fp::new(0xD31C_5A17), Fp::new(0x0BAD_CAFE));
+        let mut vc = VerifierCtx::new(pcg_seed, delta);
+        let mut txv = Transcript::new(tx_seed);
+        assert!(verify_model(&model, t, &wit.logits, &gpu_proof, &mut vc, &mut txv).is_some());
+
+        // Same persistent context, fresh protocol correlations. The proof
+        // outputs stay deterministic, then a device-derived boundary
+        // correction is faulted and the final zero batch must reject it.
+        let mut fault_stream = CorrelationStream::new(pcg_seed);
+        let mut fault_tx = Transcript::new(tx_seed);
+        let (mut fault_proof, fault_out, fault_prod, fault_zero) =
+            prove_model_with_backend(&model, &wit, &mut fault_stream, &mut fault_tx, &mut backend);
+        assert_eq!(fault_out.weight_claims, gpu_out.weight_claims);
+        assert_eq!(fault_out.embed_claims, gpu_out.embed_claims);
+        assert_eq!(fault_prod, gpu_prod);
+        assert_eq!(fault_zero, gpu_zero);
+        fault_proof.layers[0].k_corr[0] ^= 1;
+
+        let mut fault_vc = VerifierCtx::new(pcg_seed, delta);
+        let mut fault_txv = Transcript::new(tx_seed);
+        if let Some((_outv, kprod, kzero)) =
+            verify_model(&model, t, &wit.logits, &fault_proof, &mut fault_vc, &mut fault_txv)
+        {
+            let mut domsp = Doms::new(layer_dom_base(255));
+            let mut domsv = Doms::new(layer_dom_base(255));
+            let chi = fault_tx.challenge_fp2();
+            assert_eq!(chi, fault_txv.challenge_fp2());
+            let md = domsp.take(1);
+            assert_eq!(md, domsv.take(1));
+            let mask = fault_stream.draw_fulls(md, 1)[0];
+            let k_mask = fault_vc.expand_full_keys(md, 1)[0];
+            let pp = prod_batch_prover(&fault_prod, chi, mask, &mut fault_tx);
+            let _ = prod_batch_verify(&kprod, k_mask, delta, chi, &pp);
+            let mz = domsp.take(1);
+            assert_eq!(mz, domsv.take(1));
+            assert!(
+                !zero_batch_exchange(
+                    &fault_zero,
+                    &kzero,
+                    &mut fault_stream,
+                    &mut fault_vc,
+                    mz,
+                    &mut fault_tx,
+                ),
+                "faulted CUDA-derived correction was accepted"
+            );
+        }
+        let stats = backend.finish_measurement().unwrap();
+        assert!(stats.operation(volta_accel::Operation::Logup).calls > 0);
+        assert!(stats.operation(volta_accel::Operation::Logup).cpu_residual_ns > 0);
     }
 }

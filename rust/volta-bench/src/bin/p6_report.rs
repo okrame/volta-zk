@@ -22,22 +22,28 @@
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::time::Instant;
+use volta_accel::{Backend, BackendStats, Operation};
 use volta_bench::{cloud_metadata_from_env, logits_pack, time_paired, CloudMetadata};
 use volta_field::{Fp, Fp2};
 use volta_gpt2::{
-    band_model_witness, decode_step, forward_model, forward_model_tokens, load_model,
-    BandModelWitness, Gpt2Model, KvCache, L, VOCAB,
+    band_model_witness, decode_step, forward_model, forward_model_tokens,
+    forward_model_tokens_with_backend, forward_model_with_backend, load_model, BandModelWitness,
+    Gpt2Model, KvCache, L, VOCAB,
 };
 use volta_mac::{zero_batch_exchange, CorrelationStream, Transcript, VerifierCtx};
 use volta_pcg::{expand_phase_a, PhaseATimings, ProverPcgPool, VerifierPcgPool};
 use volta_pcs::{
-    commit, layout_gpt2_embed, layout_gpt2_layer, open_multi_zk, verify_multi_open, LigeroParams,
-    GPT2_FULL, P4_LAYER,
+    commit, commit_with_backend, layout_gpt2_embed, layout_gpt2_layer, open_multi_zk,
+    open_multi_zk_with_backend, verify_multi_open, LigeroParams, GPT2_FULL, P4_LAYER,
 };
 use volta_proto::block_proof::layer_dom_base;
 use volta_proto::logup::Doms;
-use volta_proto::model_proof::{prove_response, verify_response, ChunkPub, ChunkRef};
-use volta_proto::{cattn_permuted, prod_batch_prover, prod_batch_verify, prove_model};
+use volta_proto::model_proof::{
+    prove_response, prove_response_with_backend, verify_response, ChunkPub, ChunkRef,
+};
+use volta_proto::{
+    cattn_permuted, prod_batch_prover, prod_batch_verify, prove_model, prove_model_with_backend,
+};
 
 #[derive(Serialize)]
 struct ChunkCurveRow {
@@ -64,6 +70,62 @@ struct PcsCommitmentRow {
     verified: bool,
 }
 
+#[derive(Clone, Serialize)]
+struct AcceleratorOperationRow {
+    calls: u64,
+    kernel_s: f64,
+    cpu_residual_s: f64,
+}
+
+#[derive(Clone, Serialize)]
+struct AcceleratorStatsRow {
+    operations: BTreeMap<String, AcceleratorOperationRow>,
+    h2d_bytes: u64,
+    d2h_bytes: u64,
+    h2d_s: f64,
+    d2h_s: f64,
+    synchronizations: u64,
+    synchronization_s: f64,
+    allocation_calls: u64,
+    live_device_bytes: u64,
+    peak_device_bytes: u64,
+    kernel_s: f64,
+    cpu_residual_s: f64,
+}
+
+impl From<BackendStats> for AcceleratorStatsRow {
+    fn from(stats: BackendStats) -> Self {
+        let operations = Operation::ALL
+            .into_iter()
+            .map(|op| {
+                let row = stats.operation(op);
+                (
+                    op.name().to_string(),
+                    AcceleratorOperationRow {
+                        calls: row.calls,
+                        kernel_s: row.kernel_ns as f64 / 1e9,
+                        cpu_residual_s: row.cpu_residual_ns as f64 / 1e9,
+                    },
+                )
+            })
+            .collect();
+        AcceleratorStatsRow {
+            operations,
+            h2d_bytes: stats.h2d_bytes,
+            d2h_bytes: stats.d2h_bytes,
+            h2d_s: stats.h2d_ns as f64 / 1e9,
+            d2h_s: stats.d2h_ns as f64 / 1e9,
+            synchronizations: stats.synchronizations,
+            synchronization_s: stats.synchronization_ns as f64 / 1e9,
+            allocation_calls: stats.allocation_calls,
+            live_device_bytes: stats.live_device_bytes,
+            peak_device_bytes: stats.peak_device_bytes,
+            kernel_s: stats.kernel_ns() as f64 / 1e9,
+            cpu_residual_s: stats.cpu_residual_ns() as f64 / 1e9,
+        }
+    }
+}
+
 #[derive(Serialize)]
 struct Report {
     milestone: String,
@@ -74,6 +136,11 @@ struct Report {
     #[serde(skip_serializing_if = "Option::is_none")]
     cloud: Option<CloudMetadata>,
     threads: usize,
+    accelerator_backend: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    accelerator_witness: Option<AcceleratorStatsRow>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    accelerator_proving: Option<AcceleratorStatsRow>,
     t_prefill: usize,
     n_decode: usize,
     // --- verdicts -------------------------------------------------------------
@@ -204,12 +271,30 @@ struct Args {
     quick: bool,
     pcs_q: Option<usize>,
     pcg_backend: PcgBackendArg,
+    accelerator: AcceleratorArg,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PcgBackendArg {
     Mock,
     Real,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AcceleratorArg {
+    Cpu,
+    CudaHybrid,
+    CudaResident,
+}
+
+impl AcceleratorArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            AcceleratorArg::Cpu => "cpu",
+            AcceleratorArg::CudaHybrid => "cuda-hybrid",
+            AcceleratorArg::CudaResident => "cuda-resident",
+        }
+    }
 }
 
 impl PcgBackendArg {
@@ -222,12 +307,20 @@ impl PcgBackendArg {
 }
 
 fn usage() -> ! {
-    eprintln!("usage: p6_report [--quick] [--pcs-q Q] [--pcg-backend mock|real]");
+    eprintln!(
+        "usage: p6_report [--quick] [--pcs-q Q] [--pcg-backend mock|real] \
+         [--accelerator cpu|cuda-hybrid|cuda-resident]"
+    );
     std::process::exit(2);
 }
 
 fn parse_args() -> Args {
-    let mut out = Args { quick: false, pcs_q: None, pcg_backend: PcgBackendArg::Mock };
+    let mut out = Args {
+        quick: false,
+        pcs_q: None,
+        pcg_backend: PcgBackendArg::Mock,
+        accelerator: AcceleratorArg::Cpu,
+    };
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         if a == "--quick" {
@@ -242,11 +335,25 @@ fn parse_args() -> Args {
             out.pcg_backend = parse_pcg_backend(&b);
         } else if let Some(b) = a.strip_prefix("--pcg-backend=") {
             out.pcg_backend = parse_pcg_backend(b);
+        } else if a == "--accelerator" {
+            let Some(b) = args.next() else { usage() };
+            out.accelerator = parse_accelerator(&b);
+        } else if let Some(b) = a.strip_prefix("--accelerator=") {
+            out.accelerator = parse_accelerator(b);
         } else {
             usage();
         }
     }
     out
+}
+
+fn parse_accelerator(s: &str) -> AcceleratorArg {
+    match s {
+        "cpu" => AcceleratorArg::Cpu,
+        "cuda-hybrid" => AcceleratorArg::CudaHybrid,
+        "cuda-resident" => AcceleratorArg::CudaResident,
+        _ => usage(),
+    }
 }
 
 fn parse_pcg_backend(s: &str) -> PcgBackendArg {
@@ -303,6 +410,7 @@ struct SessionResult {
     chunk_p2_s: Vec<f64>,
     public_logits_packed_bytes: u64,
     pcg_allocation_hash_match: Option<bool>,
+    accelerator_stats: Option<BackendStats>,
 }
 
 enum SessionPcgBackend {
@@ -366,7 +474,11 @@ fn run_session(
     with_pcs: bool,
     seed: u8,
     pcg_backend: SessionPcgBackend,
+    mut accelerator: Option<&mut Backend>,
 ) -> SessionResult {
+    if let Some(accel) = accelerator.as_deref_mut() {
+        accel.begin_measurement().expect("begin accelerator measurement");
+    }
     let t = wit.t;
     let delta = session_delta();
     let (mut stream, mut vc) = match pcg_backend {
@@ -382,7 +494,11 @@ fn run_session(
 
     let chunks_p: Vec<ChunkRef> = bands.iter().map(|b| ChunkRef { band: b, seq }).collect();
     let tp0 = Instant::now();
-    let (proof, out, prod, zero) = prove_response(model, wit, &chunks_p, &mut stream, &mut txp);
+    let (proof, out, prod, zero) = if let Some(accel) = accelerator.as_deref_mut() {
+        prove_response_with_backend(model, wit, &chunks_p, &mut stream, &mut txp, accel)
+    } else {
+        prove_response(model, wit, &chunks_p, &mut stream, &mut txp)
+    };
     let prove_s = tp0.elapsed().as_secs_f64();
 
     // P7 prep (handoff spec §4.6.E): the public logits travel bit-packed;
@@ -435,7 +551,12 @@ fn run_session(
             let mut pad_seed = [0x51u8; 32];
             pad_seed[31] = l as u8;
             let tc0 = Instant::now();
-            let (com, pm) = commit(&w_flat, layer_params, pad_seed);
+            let (com, pm) = if let Some(accel) = accelerator.as_deref_mut() {
+                commit_with_backend(&w_flat, layer_params, pad_seed, accel)
+                    .expect("CUDA layer commitment")
+            } else {
+                commit(&w_flat, layer_params, pad_seed)
+            };
             let commit_s = tc0.elapsed().as_secs_f64();
 
             // Stacked claims: every phase's 4 claims for this layer.
@@ -456,16 +577,31 @@ fn run_session(
             let mut mask_seed = [0x44u8; 32];
             mask_seed[31] = l as u8;
             let to0 = Instant::now();
-            let (mproof, _mt) = open_multi_zk(
-                &w_flat,
-                &pm,
-                &claims_p,
-                &mut stream,
-                dom_s0,
-                dom_s1,
-                mask_seed,
-                &mut txp,
-            );
+            let (mproof, _mt) = if let Some(accel) = accelerator.as_deref_mut() {
+                open_multi_zk_with_backend(
+                    &w_flat,
+                    &pm,
+                    &claims_p,
+                    &mut stream,
+                    dom_s0,
+                    dom_s1,
+                    mask_seed,
+                    &mut txp,
+                    accel,
+                )
+                .expect("CUDA layer opening")
+            } else {
+                open_multi_zk(
+                    &w_flat,
+                    &pm,
+                    &claims_p,
+                    &mut stream,
+                    dom_s0,
+                    dom_s1,
+                    mask_seed,
+                    &mut txp,
+                )
+            };
             let open_s = to0.elapsed().as_secs_f64();
             let ob = mproof.bytes();
             let mbd = mproof.byte_breakdown();
@@ -513,7 +649,12 @@ fn run_session(
         let layout_e = layout_gpt2_embed();
         let e_flat = layout_e.place(&[&model.wte, &model.wpe]);
         let tc0 = Instant::now();
-        let (com_e, pm_e) = commit(&e_flat, embed_params, [0x52u8; 32]);
+        let (com_e, pm_e) = if let Some(accel) = accelerator.as_deref_mut() {
+            commit_with_backend(&e_flat, embed_params, [0x52u8; 32], accel)
+                .expect("CUDA embed commitment")
+        } else {
+            commit(&e_flat, embed_params, [0x52u8; 32])
+        };
         let commit_s = tc0.elapsed().as_secs_f64();
         let claims_p: Vec<_> = out
             .embed_claims
@@ -530,16 +671,31 @@ fn run_session(
         let dom_s1 = doms_p.take(1);
         debug_assert_eq!((dom_s0, dom_s1), (doms_v.take(1), doms_v.take(1)));
         let to0 = Instant::now();
-        let (mproof_e, _mt) = open_multi_zk(
-            &e_flat,
-            &pm_e,
-            &claims_p,
-            &mut stream,
-            dom_s0,
-            dom_s1,
-            [0x45u8; 32],
-            &mut txp,
-        );
+        let (mproof_e, _mt) = if let Some(accel) = accelerator.as_deref_mut() {
+            open_multi_zk_with_backend(
+                &e_flat,
+                &pm_e,
+                &claims_p,
+                &mut stream,
+                dom_s0,
+                dom_s1,
+                [0x45u8; 32],
+                &mut txp,
+                accel,
+            )
+            .expect("CUDA embed opening")
+        } else {
+            open_multi_zk(
+                &e_flat,
+                &pm_e,
+                &claims_p,
+                &mut stream,
+                dom_s0,
+                dom_s1,
+                [0x45u8; 32],
+                &mut txp,
+            )
+        };
         let open_s = to0.elapsed().as_secs_f64();
         let ob = mproof_e.bytes();
         let mbd = mproof_e.byte_breakdown();
@@ -611,6 +767,8 @@ fn run_session(
         };
     let pcg_pool_sub_corrs = stream.counters.sub_corrs;
     let pcg_pool_full_corrs = stream.counters.full_corrs;
+    let accelerator_stats = accelerator
+        .map(|accel| accel.finish_measurement().expect("finish accelerator measurement"));
 
     SessionResult {
         accepted,
@@ -633,12 +791,31 @@ fn run_session(
         chunk_p2_s: out.chunk_p2_s,
         public_logits_packed_bytes,
         pcg_allocation_hash_match,
+        accelerator_stats,
     }
 }
 
 fn main() {
     let args = parse_args();
     let quick = args.quick;
+    if args.pcg_backend == PcgBackendArg::Real && args.accelerator != AcceleratorArg::Cpu {
+        eprintln!("p6_report: real-PCG and CUDA integration gates must be measured separately");
+        std::process::exit(2);
+    }
+    if args.accelerator == AcceleratorArg::CudaResident {
+        eprintln!(
+            "p6_report: cuda-resident requires the device-witness entry point; use cuda-hybrid"
+        );
+        std::process::exit(2);
+    }
+    let mut accelerator = match args.accelerator {
+        AcceleratorArg::Cpu => None,
+        AcceleratorArg::CudaHybrid => Some(Backend::cuda_hybrid().unwrap_or_else(|e| {
+            eprintln!("p6_report: CUDA requested but unavailable: {e}");
+            std::process::exit(2);
+        })),
+        AcceleratorArg::CudaResident => unreachable!(),
+    };
     if args.pcg_backend == PcgBackendArg::Real && !quick {
         eprintln!(
             "p6_report: --pcg-backend real is a P7 correctness gate and is currently quick-only"
@@ -667,7 +844,16 @@ fn main() {
     }
     eprintln!("loading artifact + prefill witness at t0={t0} ...");
     let model = load_model(&dir).expect("load_model");
-    let wit0 = forward_model(&model, t0);
+    let cpu_wit0 = forward_model(&model, t0);
+    let (wit0, accelerator_witness_stats) = if let Some(accel) = accelerator.as_mut() {
+        accel.begin_measurement().expect("begin CUDA witness measurement");
+        let gpu_wit = forward_model_with_backend(&model, t0, accel).expect("CUDA hybrid witness");
+        let stats = accel.finish_measurement().expect("finish CUDA witness measurement");
+        assert_eq!(gpu_wit, cpu_wit0, "CPU/CUDA ModelWitness must be bit-exact");
+        (gpu_wit, Some(stats))
+    } else {
+        (cpu_wit0, None)
+    };
 
     // --- native baselines (ABBA paired, new-machine load-bearing rule) -------
     let run_decode = || {
@@ -718,7 +904,17 @@ fn main() {
     let mut seq: Vec<u32> = model.p.tokens[..t0].to_vec();
     seq.extend_from_slice(&gen);
     eprintln!("full-response witness (T={}) + band extraction ...", seq.len());
-    let full = forward_model_tokens(&model, &seq);
+    let cpu_full = forward_model_tokens(&model, &seq);
+    let full = if let Some(accel) = accelerator.as_mut() {
+        accel.begin_measurement().expect("begin CUDA response witness");
+        let gpu_full =
+            forward_model_tokens_with_backend(&model, &seq, accel).expect("CUDA response witness");
+        let _ = accel.finish_measurement().expect("finish CUDA response witness");
+        assert_eq!(gpu_full, cpu_full, "CPU/CUDA response witness must be bit-exact");
+        gpu_full
+    } else {
+        cpu_full
+    };
     let band50 = band_model_witness(&model, &full, t0);
     assert_eq!(band50.q, n_gen);
 
@@ -728,14 +924,26 @@ fn main() {
     {
         let mut stream = CorrelationStream::new([0x33u8; 32]);
         let mut tx = Transcript::new([0x34u8; 32]);
-        let _ = prove_model(&model, &wit0, &mut stream, &mut tx);
+        if let Some(accel) = accelerator.as_mut() {
+            accel.begin_measurement().expect("begin CUDA prefill measurement");
+            let _ = prove_model_with_backend(&model, &wit0, &mut stream, &mut tx, accel);
+            let _ = accel.finish_measurement().expect("finish CUDA prefill measurement");
+        } else {
+            let _ = prove_model(&model, &wit0, &mut stream, &mut tx);
+        }
     }
     let t_prove_prefill_only_s = tpp0.elapsed().as_secs_f64();
     // Prefill-only comm for the marginal (fresh ledger, no PCS).
     let (comm_prefill_bytes, comm_prefill_by_label) = {
         let mut stream = CorrelationStream::new([0x35u8; 32]);
         let mut tx = Transcript::new([0x36u8; 32]);
-        let _ = prove_model(&model, &wit0, &mut stream, &mut tx);
+        if let Some(accel) = accelerator.as_mut() {
+            accel.begin_measurement().expect("begin CUDA prefill ledger");
+            let _ = prove_model_with_backend(&model, &wit0, &mut stream, &mut tx, accel);
+            let _ = accel.finish_measurement().expect("finish CUDA prefill ledger");
+        } else {
+            let _ = prove_model(&model, &wit0, &mut stream, &mut tx);
+        }
         (tx.total_bytes(), ledger_to_owned(&tx))
     };
 
@@ -754,6 +962,7 @@ fn main() {
             true,
             0x21,
             SessionPcgBackend::Mock,
+            accelerator.as_mut(),
         );
         let (backend, timings, setup_comm) =
             real_session_backend(0x21, pre.pcg_pool_sub_corrs, pre.pcg_pool_full_corrs);
@@ -769,6 +978,7 @@ fn main() {
             true,
             0x21,
             backend,
+            accelerator.as_mut(),
         );
         let counters_match = pre.sub_corrs == real.sub_corrs
             && pre.full_corrs == real.full_corrs
@@ -793,6 +1003,7 @@ fn main() {
             true,
             0x21,
             SessionPcgBackend::Mock,
+            accelerator.as_mut(),
         )
     };
     eprintln!(
@@ -829,6 +1040,7 @@ fn main() {
             false,
             0x22,
             SessionPcgBackend::Mock,
+            accelerator.as_mut(),
         );
         let (backend, timings, setup_comm) =
             real_session_backend(0x22, pre.pcg_pool_sub_corrs, pre.pcg_pool_full_corrs);
@@ -844,6 +1056,7 @@ fn main() {
             false,
             0x22,
             backend,
+            accelerator.as_mut(),
         );
         let counters_match = pre.sub_corrs == real.sub_corrs
             && pre.full_corrs == real.full_corrs
@@ -868,6 +1081,7 @@ fn main() {
             false,
             0x22,
             SessionPcgBackend::Mock,
+            accelerator.as_mut(),
         )
     };
     let mut chunk_curve = Vec::with_capacity(n_chunks);
@@ -930,13 +1144,26 @@ fn main() {
 
     let accepted = rec.accepted && chk.accepted;
     let report = Report {
-        milestone: if quick { "P6-quick".into() } else { "P6".into() },
+        milestone: if args.accelerator == AcceleratorArg::CudaHybrid {
+            if quick {
+                "P7-integrated-hybrid-quick".into()
+            } else {
+                "P7-integrated-hybrid".into()
+            }
+        } else if quick {
+            "P6-quick".into()
+        } else {
+            "P6".into()
+        },
         date: date.clone(),
         git_sha: sha.clone(),
         git_dirty,
         machine: format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
         cloud: cloud_metadata_from_env(),
         threads: rayon::current_num_threads(),
+        accelerator_backend: args.accelerator.as_str().into(),
+        accelerator_witness: accelerator_witness_stats.map(Into::into),
+        accelerator_proving: rec.accelerator_stats.map(Into::into),
         t_prefill: t0,
         n_decode: n_gen,
         accepted,
@@ -1013,7 +1240,17 @@ fn main() {
 
     assert!(accepted, "P6 sanity: honest response (both sessions) must verify");
     assert!(gate_flat, "P6 gate: per-token cost must stay ~flat as the cache grows");
-    let mut label = if quick { "p6-quick".to_string() } else { "p6".to_string() };
+    let mut label = if args.accelerator == AcceleratorArg::CudaHybrid {
+        if quick {
+            "p7-integrated-hybrid-quick".to_string()
+        } else {
+            "p7-integrated-hybrid".to_string()
+        }
+    } else if quick {
+        "p6-quick".to_string()
+    } else {
+        "p6".to_string()
+    };
     if layer_params.n_queries != P4_LAYER.n_queries {
         label.push_str(&format!("-q{}", layer_params.n_queries));
     }

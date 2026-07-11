@@ -651,6 +651,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
+name = "volta-accel"
+version = "0.0.0"
+dependencies = [
+ "blake3",
+ "volta-field",
+]
+
+[[package]]
 name = "volta-bench"
 version = "0.0.0"
 dependencies = [
@@ -660,6 +668,7 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
+ "volta-accel",
  "volta-field",
  "volta-gpt2",
  "volta-mac",
@@ -681,6 +690,7 @@ name = "volta-gpt2"
 version = "0.0.0"
 dependencies = [
  "rayon",
+ "volta-accel",
  "volta-field",
 ]
 
@@ -712,6 +722,7 @@ dependencies = [
  "blake3",
  "rand",
  "rayon",
+ "volta-accel",
  "volta-field",
  "volta-mac",
  "volta-proto",
@@ -723,6 +734,7 @@ version = "0.0.0"
 dependencies = [
  "rand",
  "rayon",
+ "volta-accel",
  "volta-field",
  "volta-gpt2",
  "volta-mac",

@@ -23,12 +23,14 @@
 
 use crate::mle::lagrange3;
 use rayon::prelude::*;
+use std::time::Instant;
+use volta_accel::{Backend, BackendKind, Operation};
 use volta_field::{Fp, Fp2, FpStream, W};
 
 /// Below this vector length the round loops stay serial.
 pub const PAR_THRESHOLD: usize = 1 << 12;
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Counters {
     pub fp2_mults: u64,
     pub base_mults: u64,
@@ -92,6 +94,7 @@ pub fn lift_q_fp(values: &[Fp], alpha: Fp2) -> LeafQ {
 }
 
 /// One layer: Gruen round messages [h(0), h(2)] plus the four split claims.
+#[derive(Debug, PartialEq, Eq)]
 pub struct LayerProof {
     pub rounds: Vec<[Fp2; 2]>,
     pub p0: Fp2,
@@ -100,6 +103,7 @@ pub struct LayerProof {
     pub q1: Fp2,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct FracProof {
     pub root_p: Fp2,
     pub root_q: Fp2,
@@ -124,7 +128,40 @@ struct Tree {
     depth: usize,
 }
 
-fn build_tree(leaf_p: &LeafP, leaf_q: &LeafQ, ctr: &mut Counters) -> Tree {
+fn build_tree(
+    leaf_p: &LeafP,
+    leaf_q: &LeafQ,
+    ctr: &mut Counters,
+    backend: Option<&mut Backend>,
+) -> Tree {
+    if let Some(backend) = backend {
+        if !backend.is_cpu() {
+            assert_eq!(
+                backend.kind(),
+                BackendKind::CudaHybrid,
+                "staged LogUp is not the cuda-resident gate"
+            );
+            let mult = match leaf_p {
+                LeafP::Ones => None,
+                LeafP::NegMult(m) => Some(*m),
+            };
+            let (p, q) = backend
+                .logup_tree(&leaf_q.a, leaf_q.alpha1, mult)
+                .unwrap_or_else(|e| panic!("CUDA LogUp tree failed: {e}"));
+            let half = leaf_q.a.len() / 2;
+            ctr.bulk(0, (if mult.is_some() { 5 } else { 2 }) * half as u64);
+            let mut len = half;
+            while len > 1 {
+                len /= 2;
+                ctr.bulk(3 * len as u64, 0);
+            }
+            return Tree { depth: p.len(), p, q };
+        }
+    }
+    build_tree_cpu(leaf_p, leaf_q, ctr)
+}
+
+fn build_tree_cpu(leaf_p: &LeafP, leaf_q: &LeafQ, ctr: &mut Counters) -> Tree {
     let n = leaf_q.a.len();
     assert!(n.is_power_of_two() && n >= 2);
     let depth = n.trailing_zeros() as usize;
@@ -338,6 +375,7 @@ fn run_general_rounds(
     rprime: &mut Vec<Fp2>,
     sink: &mut impl Sink,
     ctr: &mut Counters,
+    backend: &mut Option<&mut Backend>,
 ) {
     let l = point.len();
     for j in start..l {
@@ -357,7 +395,12 @@ fn run_general_rounds(
                 qq2: s[i] * (c2 * d2),
             }
         };
-        let acc = if half >= PAR_THRESHOLD {
+        let acc = if let Some(cuda) = backend.as_deref_mut().filter(|b| !b.is_cpu()) {
+            let [pq0, pq2, qq0, qq2] = cuda
+                .logup_general_round(p0, p1, q0, q1, s)
+                .unwrap_or_else(|e| panic!("CUDA LogUp round failed: {e}"));
+            RoundAcc { pq0, pq2, qq0, qq2 }
+        } else if half >= PAR_THRESHOLD {
             (0..half).into_par_iter().map(body).reduce(RoundAcc::default, RoundAcc::add)
         } else {
             (0..half).map(body).fold(RoundAcc::default(), RoundAcc::add)
@@ -366,7 +409,17 @@ fn run_general_rounds(
         let h2 = *cpref * (lambda * acc.pq2 + acc.qq2);
         let r = sink.round([h0, h2], point[j]);
         ctr.bulk(4 * half as u64 + 2, 0);
-        fold4(p0, p1, q0, q1, r, half);
+        if let Some(cuda) = backend.as_deref_mut().filter(|b| !b.is_cpu()) {
+            let [np0, np1, nq0, nq1] = cuda
+                .logup_fold4(p0, p1, q0, q1, r)
+                .unwrap_or_else(|e| panic!("CUDA LogUp fold failed: {e}"));
+            *p0 = np0;
+            *p1 = np1;
+            *q0 = nq0;
+            *q1 = nq1;
+        } else {
+            fold4(p0, p1, q0, q1, r, half);
+        }
         // c ← c·eq(point_j, r): 2 fp2 (counted above).
         let pr = point[j] * r;
         *cpref = *cpref * (pr + pr - point[j] - r + Fp2::ONE);
@@ -410,11 +463,13 @@ fn layer_general(
     point: &[Fp2],
     sink: &mut impl Sink,
     ctr: &mut Counters,
+    backend: Option<&mut Backend>,
 ) -> (Vec<Fp2>, [Fp2; 4]) {
     let lambda = sink.lambda();
     let stables = suffix_eq_tables(point, ctr);
     let mut cpref = Fp2::ONE;
     let mut rprime = Vec::with_capacity(point.len());
+    let mut backend = backend;
     run_general_rounds(
         &mut p0,
         &mut p1,
@@ -428,6 +483,7 @@ fn layer_general(
         &mut rprime,
         sink,
         ctr,
+        &mut backend,
     );
     (rprime, [p0[0], p1[0], q0[0], q1[0]])
 }
@@ -553,6 +609,7 @@ fn layer_leaf_negmult(
     point: &[Fp2],
     sink: &mut impl Sink,
     ctr: &mut Counters,
+    backend: Option<&mut Backend>,
 ) -> (Vec<Fp2>, [Fp2; 4]) {
     let lambda = sink.lambda();
     let l = point.len();
@@ -611,6 +668,7 @@ fn layer_leaf_negmult(
     cpref = cpref * (pr + pr - point[0] - r + Fp2::ONE);
     rprime.push(r);
 
+    let mut backend = backend;
     run_general_rounds(
         &mut p0v,
         &mut p1v,
@@ -624,6 +682,7 @@ fn layer_leaf_negmult(
         &mut rprime,
         sink,
         ctr,
+        &mut backend,
     );
     (rprime, [p0v[0], p1v[0], q0v[0], q1v[0]])
 }
@@ -830,8 +889,18 @@ fn prove_engine(
     mut aux: Option<&mut LeafAux>,
     sink: &mut impl Sink,
     ctr: &mut Counters,
+    mut backend: Option<&mut Backend>,
 ) -> (Fp2, Fp2, Vec<Fp2>) {
-    let tree = build_tree(leaf_p, leaf_q, ctr);
+    if let Some(b) = backend.as_deref() {
+        assert_eq!(
+            b.kind(),
+            BackendKind::CudaHybrid,
+            "staged LogUp cannot be used for the cuda-resident gate"
+        );
+    }
+    let stats_before = backend.as_deref().map(|b| b.stats().expect("CUDA stats"));
+    let wall_start = Instant::now();
+    let tree = build_tree(leaf_p, leaf_q, ctr, backend.as_deref_mut());
     sink.root(tree.p[0][0], tree.q[0][0]);
     let mut point: Vec<Fp2> = Vec::new();
 
@@ -848,7 +917,9 @@ fn prove_engine(
         let (rprime, splits) = if leaf_layer {
             match leaf_p {
                 LeafP::Ones => layer_leaf_ones(leaf_q, &point, sink, ctr),
-                LeafP::NegMult(m) => layer_leaf_negmult(m, leaf_q, &point, sink, ctr),
+                LeafP::NegMult(m) => {
+                    layer_leaf_negmult(m, leaf_q, &point, sink, ctr, backend.as_deref_mut())
+                }
             }
         } else {
             let evens = |v: &Vec<Fp2>| (0..v.len() / 2).map(|i| v[2 * i]).collect::<Vec<_>>();
@@ -861,12 +932,18 @@ fn prove_engine(
                 &point,
                 sink,
                 ctr,
+                backend.as_deref_mut(),
             )
         };
         let t = sink.splits(splits);
         point = std::iter::once(t).chain(rprime.iter().copied()).collect();
     }
-    (tree.p[0][0], tree.q[0][0], point)
+    let out = (tree.p[0][0], tree.q[0][0], point);
+    if let (Some(b), Some(before)) = (backend, stats_before) {
+        b.account_staged_wall(Operation::Logup, wall_start.elapsed(), before)
+            .expect("CUDA LogUp residual accounting");
+    }
+    out
 }
 
 /// Clear sink: records messages, draws challenges from an `FpStream`.
@@ -906,7 +983,7 @@ pub fn prove_frac_tree(
     ctr: &mut Counters,
 ) -> FracProof {
     let mut sink = ClearSink { chal, rounds_cur: Vec::new(), layers: Vec::new() };
-    let (root_p, root_q, _) = prove_engine(leaf_p, leaf_q, None, &mut sink, ctr);
+    let (root_p, root_q, _) = prove_engine(leaf_p, leaf_q, None, &mut sink, ctr, None);
     FracProof { root_p, root_q, layers: sink.layers }
 }
 
@@ -1083,6 +1160,7 @@ impl Doms {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct BlindLayerProof {
     /// Per round: corrections for h(0), h(2).
     pub round_corrs: Vec<[Fp2; 2]>,
@@ -1094,11 +1172,13 @@ pub struct BlindLayerProof {
 
 /// Aux-folded leaf layer extras: degree-3 round corrections and the per-col
 /// [ṽ0, ṽ1] split-claim corrections.
+#[derive(Debug, PartialEq, Eq)]
 pub struct BlindAuxPart {
     pub rounds3: Vec<[Fp2; 3]>,
     pub col_corrs: Vec<[Fp2; 2]>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct BlindFracProof {
     /// Corrections for root_p, root_q.
     pub root_corrs: [Fp2; 2],
@@ -1339,8 +1419,38 @@ pub fn blind_prove_frac_tree(
     prod: &mut ProdTriples,
     zero: &mut Vec<ProverAuthed>,
 ) -> (BlindFracProof, Vec<Fp2>, ProverAuthed, ProverAuthed, (ProverAuthed, ProverAuthed)) {
+    blind_prove_frac_tree_impl(leaf_p, leaf_q, stream, doms, tx, ctr, prod, zero, None)
+}
+
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+pub fn blind_prove_frac_tree_with_backend(
+    leaf_p: &LeafP,
+    leaf_q: &LeafQ,
+    stream: &mut CorrelationStream,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+    ctr: &mut Counters,
+    prod: &mut ProdTriples,
+    zero: &mut Vec<ProverAuthed>,
+    backend: &mut Backend,
+) -> (BlindFracProof, Vec<Fp2>, ProverAuthed, ProverAuthed, (ProverAuthed, ProverAuthed)) {
+    blind_prove_frac_tree_impl(leaf_p, leaf_q, stream, doms, tx, ctr, prod, zero, Some(backend))
+}
+
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn blind_prove_frac_tree_impl(
+    leaf_p: &LeafP,
+    leaf_q: &LeafQ,
+    stream: &mut CorrelationStream,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+    ctr: &mut Counters,
+    prod: &mut ProdTriples,
+    zero: &mut Vec<ProverAuthed>,
+    backend: Option<&mut Backend>,
+) -> (BlindFracProof, Vec<Fp2>, ProverAuthed, ProverAuthed, (ProverAuthed, ProverAuthed)) {
     let mut sink = new_blind_sink(stream, tx, doms, prod, zero);
-    let (_rp, _rq, point) = prove_engine(leaf_p, leaf_q, None, &mut sink, ctr);
+    let (_rp, _rq, point) = prove_engine(leaf_p, leaf_q, None, &mut sink, ctr, backend);
     ctr.bulk(sink.ctr.fp2_mults, sink.ctr.base_mults);
     let proof = BlindFracProof { root_corrs: sink.root_corrs, layers: sink.layers, aux: None };
     (proof, point, sink.cp, sink.cq, sink.roots)
@@ -1395,8 +1505,52 @@ pub fn blind_prove_frac_tree_aux(
     (ProverAuthed, ProverAuthed),
     Vec<ProverAuthed>,
 ) {
+    blind_prove_frac_tree_aux_impl(leaf_q, ax, stream, doms, tx, ctr, prod, zero, None)
+}
+
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+pub fn blind_prove_frac_tree_aux_with_backend(
+    leaf_q: &LeafQ,
+    ax: &mut LeafAux,
+    stream: &mut CorrelationStream,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+    ctr: &mut Counters,
+    prod: &mut ProdTriples,
+    zero: &mut Vec<ProverAuthed>,
+    backend: &mut Backend,
+) -> (
+    BlindFracProof,
+    Vec<Fp2>,
+    ProverAuthed,
+    ProverAuthed,
+    (ProverAuthed, ProverAuthed),
+    Vec<ProverAuthed>,
+) {
+    blind_prove_frac_tree_aux_impl(leaf_q, ax, stream, doms, tx, ctr, prod, zero, Some(backend))
+}
+
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn blind_prove_frac_tree_aux_impl(
+    leaf_q: &LeafQ,
+    ax: &mut LeafAux,
+    stream: &mut CorrelationStream,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+    ctr: &mut Counters,
+    prod: &mut ProdTriples,
+    zero: &mut Vec<ProverAuthed>,
+    backend: Option<&mut Backend>,
+) -> (
+    BlindFracProof,
+    Vec<Fp2>,
+    ProverAuthed,
+    ProverAuthed,
+    (ProverAuthed, ProverAuthed),
+    Vec<ProverAuthed>,
+) {
     let mut sink = new_blind_sink(stream, tx, doms, prod, zero);
-    let (_rp, _rq, point) = prove_engine(&LeafP::Ones, leaf_q, Some(ax), &mut sink, ctr);
+    let (_rp, _rq, point) = prove_engine(&LeafP::Ones, leaf_q, Some(ax), &mut sink, ctr, backend);
     ctr.bulk(sink.ctr.fp2_mults, sink.ctr.base_mults);
     let aux_part = BlindAuxPart {
         rounds3: std::mem::take(&mut sink.rounds3_cur),
@@ -1756,6 +1910,54 @@ pub fn blind_instance_prove(
     prod: &mut ProdTriples,
     zero: &mut Vec<ProverAuthed>,
 ) -> InstanceOutP {
+    blind_instance_prove_impl(
+        cols, shifts, alpha, aux_claims, stream, doms, tx, ctr, prod, zero, None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn blind_instance_prove_with_backend(
+    cols: &[Vec<Fp>],
+    shifts: &[Option<u32>],
+    alpha: Fp2,
+    aux_claims: Vec<LeafAuxClaim>,
+    stream: &mut CorrelationStream,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+    ctr: &mut Counters,
+    prod: &mut ProdTriples,
+    zero: &mut Vec<ProverAuthed>,
+    backend: &mut Backend,
+) -> InstanceOutP {
+    blind_instance_prove_impl(
+        cols,
+        shifts,
+        alpha,
+        aux_claims,
+        stream,
+        doms,
+        tx,
+        ctr,
+        prod,
+        zero,
+        Some(backend),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn blind_instance_prove_impl(
+    cols: &[Vec<Fp>],
+    shifts: &[Option<u32>],
+    alpha: Fp2,
+    aux_claims: Vec<LeafAuxClaim>,
+    stream: &mut CorrelationStream,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+    ctr: &mut Counters,
+    prod: &mut ProdTriples,
+    zero: &mut Vec<ProverAuthed>,
+    backend: Option<&mut Backend>,
+) -> InstanceOutP {
     assert_eq!(cols.len(), shifts.len());
     assert!(shifts.iter().any(|s| s.is_some()), "at least one packed column");
     let n = cols[0].len();
@@ -1770,8 +1972,9 @@ pub fn blind_instance_prove(
     ctr.bulk(0, (n * shifts.iter().flatten().count()) as u64);
     let leaf_q = lift_q_fp(&packed, alpha);
     let mut ax = LeafAux { cols: cols.iter().map(|c| aux_col(c)).collect(), claims: aux_claims };
-    let (lp, point, cp_f, cq_f, roots_f, col_authed) =
-        blind_prove_frac_tree_aux(&leaf_q, &mut ax, stream, doms, tx, ctr, prod, zero);
+    let (lp, point, cp_f, cq_f, roots_f, col_authed) = blind_prove_frac_tree_aux_impl(
+        &leaf_q, &mut ax, stream, doms, tx, ctr, prod, zero, backend,
+    );
 
     // Leaf closures: p_f ≡ 1; q_f = α − Σ_c 2^{shift_c}·col̃_c.
     zero.push(cp_f.sub(ProverAuthed::from_public(Fp2::ONE)));
@@ -1885,8 +2088,54 @@ pub fn table_side_prove(
     prod: &mut ProdTriples,
     zero: &mut Vec<ProverAuthed>,
 ) -> (TableSideProof, OpenClaim) {
+    table_side_prove_impl(table_vals, mult, alpha, sites, stream, doms, tx, ctr, prod, zero, None)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn table_side_prove_with_backend(
+    table_vals: &[Fp],
+    mult: &[u32],
+    alpha: Fp2,
+    sites: &[(ProverAuthed, ProverAuthed)],
+    stream: &mut CorrelationStream,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+    ctr: &mut Counters,
+    prod: &mut ProdTriples,
+    zero: &mut Vec<ProverAuthed>,
+    backend: &mut Backend,
+) -> (TableSideProof, OpenClaim) {
+    table_side_prove_impl(
+        table_vals,
+        mult,
+        alpha,
+        sites,
+        stream,
+        doms,
+        tx,
+        ctr,
+        prod,
+        zero,
+        Some(backend),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn table_side_prove_impl(
+    table_vals: &[Fp],
+    mult: &[u32],
+    alpha: Fp2,
+    sites: &[(ProverAuthed, ProverAuthed)],
+    stream: &mut CorrelationStream,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+    ctr: &mut Counters,
+    prod: &mut ProdTriples,
+    zero: &mut Vec<ProverAuthed>,
+    backend: Option<&mut Backend>,
+) -> (TableSideProof, OpenClaim) {
     assert!(!sites.is_empty(), "table content with no lookup sites");
-    let (tp, pt_t, cp_t, cq_t, roots_t) = blind_prove_frac_tree(
+    let (tp, pt_t, cp_t, cq_t, roots_t) = blind_prove_frac_tree_impl(
         &LeafP::NegMult(mult),
         &lift_q_fp(table_vals, alpha),
         stream,
@@ -1895,6 +2144,7 @@ pub fn table_side_prove(
         ctr,
         prod,
         zero,
+        backend,
     );
     let t_eval = {
         let lifted: Vec<Fp2> = table_vals.iter().map(|&v| alpha - Fp2::from_base(v)).collect();
@@ -2717,5 +2967,78 @@ mod tests {
             per_lookup < 16.0,
             "prover E-mult/lookup {per_lookup:.1} not clearly below spike's 23.2"
         );
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn cuda_blind_tree_and_aux_proofs_match_cpu_byte_for_byte() {
+        let mut gpu = match Backend::cuda_hybrid() {
+            Ok(gpu) => gpu,
+            Err(e) if std::env::var("VOLTA_REQUIRE_CUDA").as_deref() != Ok("1") => {
+                eprintln!("skipping CUDA LogUp differential: {e}");
+                return;
+            }
+            Err(e) => panic!("CUDA required: {e}"),
+        };
+        let n = 1 << 10;
+        let vals: Vec<Fp> =
+            (0..n).map(|i| Fp::new((i as u64 * 0x9E37_79B9 + 17) % volta_field::P)).collect();
+        let mult: Vec<u32> = (0..n).map(|i| ((i * 19 + 7) % 31) as u32).collect();
+        let alpha = Fp2::new(Fp::new(12345), Fp::new(67890));
+
+        let run = |backend: Option<&mut Backend>| {
+            let q = lift_q_fp(&vals, alpha);
+            let mut stream = CorrelationStream::new([41; 32]);
+            let mut doms = Doms::new(0x4100);
+            let mut tx = Transcript::new([42; 32]);
+            let mut ctr = Counters::default();
+            let mut prod = Vec::new();
+            let mut zero = Vec::new();
+            let out = blind_prove_frac_tree_impl(
+                &LeafP::NegMult(&mult),
+                &q,
+                &mut stream,
+                &mut doms,
+                &mut tx,
+                &mut ctr,
+                &mut prod,
+                &mut zero,
+                backend,
+            );
+            (out, prod, zero, ctr, stream.counters, tx.ledger().clone())
+        };
+        let expected = run(None);
+        gpu.begin_measurement().unwrap();
+        let got = run(Some(&mut gpu));
+        assert_eq!(got, expected);
+
+        let run_aux = |backend: Option<&mut Backend>| {
+            let q = lift_q_fp(&vals, alpha);
+            let mut aux = LeafAux { cols: vec![aux_col(&vals)], claims: Vec::new() };
+            let mut stream = CorrelationStream::new([51; 32]);
+            let mut doms = Doms::new(0x5100);
+            let mut tx = Transcript::new([52; 32]);
+            let mut ctr = Counters::default();
+            let mut prod = Vec::new();
+            let mut zero = Vec::new();
+            let out = blind_prove_frac_tree_aux_impl(
+                &q,
+                &mut aux,
+                &mut stream,
+                &mut doms,
+                &mut tx,
+                &mut ctr,
+                &mut prod,
+                &mut zero,
+                backend,
+            );
+            (out, prod, zero, ctr, stream.counters, tx.ledger().clone())
+        };
+        let expected_aux = run_aux(None);
+        let got_aux = run_aux(Some(&mut gpu));
+        assert_eq!(got_aux, expected_aux);
+        let stats = gpu.finish_measurement().unwrap();
+        assert!(stats.operation(Operation::Logup).calls > 0);
+        assert!(stats.operation(Operation::Logup).cpu_residual_ns > 0);
     }
 }

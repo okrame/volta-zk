@@ -70,14 +70,16 @@ use crate::gemm_proof::{
 };
 use crate::hadamard::{hadamard_prove, hadamard_verify, HadamardDoms, HadamardProof};
 use crate::logup::{
-    blind_instance_prove, blind_instance_verify, eval_mle_counted, table_side_prove,
-    table_side_verify, BlindInstance, Counters, Doms, InstanceOutP, InstanceOutV, LeafAuxClaim,
-    TableKey, TableSideProof,
+    blind_instance_prove, blind_instance_prove_with_backend, blind_instance_verify,
+    eval_mle_counted, table_side_prove, table_side_prove_with_backend, table_side_verify,
+    BlindInstance, Counters, Doms, InstanceOutP, InstanceOutV, LeafAuxClaim, TableKey,
+    TableSideProof,
 };
 use crate::mle::{eq_vec, eval_mle};
 use crate::sumcheck_blind::{blind_prove, blind_verify, BlindSumcheckProof};
 use crate::thaler::pad_bits;
 use std::collections::BTreeMap;
+use volta_accel::Backend;
 use volta_field::{Fp, Fp2};
 use volta_gpt2::{gemm_i64, GemmBiases, LayerWeights, LayerWitness, Luts, D, DFF, DH, H};
 use volta_mac::{
@@ -222,6 +224,36 @@ impl TableBankP {
         prod: &mut crate::logup::ProdTriples,
         zero: &mut Vec<ProverAuthed>,
     ) -> Vec<TableCloseProof> {
+        self.close_impl(luts, stream, doms, tx, ctr, prod, zero, None)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn close_with_backend(
+        self,
+        luts: &Luts,
+        stream: &mut CorrelationStream,
+        doms: &mut Doms,
+        tx: &mut Transcript,
+        ctr: &mut Counters,
+        prod: &mut crate::logup::ProdTriples,
+        zero: &mut Vec<ProverAuthed>,
+        backend: &mut Backend,
+    ) -> Vec<TableCloseProof> {
+        self.close_impl(luts, stream, doms, tx, ctr, prod, zero, Some(backend))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn close_impl(
+        self,
+        luts: &Luts,
+        stream: &mut CorrelationStream,
+        doms: &mut Doms,
+        tx: &mut Transcript,
+        ctr: &mut Counters,
+        prod: &mut crate::logup::ProdTriples,
+        zero: &mut Vec<ProverAuthed>,
+        mut backend: Option<&mut Backend>,
+    ) -> Vec<TableCloseProof> {
         assert!(self.finalized);
         let mut out = Vec::with_capacity(self.mult.len());
         for (key, m) in &self.mult {
@@ -230,8 +262,13 @@ impl TableBankP {
             });
             let tv = table_vals(*key, luts);
             let alpha = self.alphas[key];
-            let (side, mult_claim) =
-                table_side_prove(&tv, m, alpha, sites, stream, doms, tx, ctr, prod, zero);
+            let (side, mult_claim) = if let Some(backend) = backend.as_deref_mut() {
+                table_side_prove_with_backend(
+                    &tv, m, alpha, sites, stream, doms, tx, ctr, prod, zero, backend,
+                )
+            } else {
+                table_side_prove(&tv, m, alpha, sites, stream, doms, tx, ctr, prod, zero)
+            };
             let (dom, fp, corr) = &self.auth[key];
             let opened = open_fp_vec_p(stream, *dom, fp, &mult_claim.point);
             zero.push(mult_claim.value.sub(opened));
@@ -324,6 +361,7 @@ pub struct BlockCtxP<'a> {
     pub tx: &'a mut Transcript,
     pub doms: Doms,
     pub bank: &'a mut TableBankP,
+    pub backend: Option<&'a mut Backend>,
     pub prod: crate::logup::ProdTriples,
     pub zero: Vec<ProverAuthed>,
     /// E-mults spent inside LogUp instances (the p4_report gate number).
@@ -354,11 +392,36 @@ impl<'a> BlockCtxP<'a> {
             tx,
             doms,
             bank,
+            backend: None,
             prod: Vec::new(),
             zero: Vec::new(),
             ctr_instances: Counters::default(),
             ctr_other: Counters::default(),
         }
+    }
+
+    pub fn with_backend(
+        stream: &'a mut CorrelationStream,
+        tx: &'a mut Transcript,
+        layer: u8,
+        bank: &'a mut TableBankP,
+        backend: &'a mut Backend,
+    ) -> Self {
+        let mut out = Self::with_doms(stream, tx, Doms::new(layer_dom_base(layer)), bank);
+        out.backend = Some(backend);
+        out
+    }
+
+    pub fn with_doms_and_backend(
+        stream: &'a mut CorrelationStream,
+        tx: &'a mut Transcript,
+        doms: Doms,
+        bank: &'a mut TableBankP,
+        backend: &'a mut Backend,
+    ) -> Self {
+        let mut out = Self::with_doms(stream, tx, doms, bank);
+        out.backend = Some(backend);
+        out
     }
 
     /// Prove one lookup-side instance with the content's shared α and
@@ -371,18 +434,34 @@ impl<'a> BlockCtxP<'a> {
         aux: Vec<LeafAuxClaim>,
     ) -> InstanceOutP {
         let alpha = self.bank.alpha(key);
-        let out = blind_instance_prove(
-            cols,
-            shifts,
-            alpha,
-            aux,
-            self.stream,
-            &mut self.doms,
-            self.tx,
-            &mut self.ctr_instances,
-            &mut self.prod,
-            &mut self.zero,
-        );
+        let out = if let Some(backend) = self.backend.as_deref_mut() {
+            blind_instance_prove_with_backend(
+                cols,
+                shifts,
+                alpha,
+                aux,
+                self.stream,
+                &mut self.doms,
+                self.tx,
+                &mut self.ctr_instances,
+                &mut self.prod,
+                &mut self.zero,
+                backend,
+            )
+        } else {
+            blind_instance_prove(
+                cols,
+                shifts,
+                alpha,
+                aux,
+                self.stream,
+                &mut self.doms,
+                self.tx,
+                &mut self.ctr_instances,
+                &mut self.prod,
+                &mut self.zero,
+            )
+        };
         self.bank.push_roots(key, out.roots);
         out
     }
@@ -3550,7 +3629,7 @@ pub struct LayerProof {
 }
 
 /// Correlation bytes consumed by the layer, by category.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LayerBytes {
     /// Element-wise boundary auth (x_in, K, V, attn/ffn_block_out), 8 B/val.
     pub boundary: u64,
@@ -3566,7 +3645,7 @@ pub struct LayerBytes {
 
 /// Measured lookup count of one LogUp instance (= its padded lookup-side
 /// leaf count: witness stream length + rectangular/pow2 pads).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct InstanceLookups {
     pub name: &'static str,
     pub table: &'static str,

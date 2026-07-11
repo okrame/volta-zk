@@ -225,6 +225,7 @@ pub fn prove_gemm_blind_at(
 /// prover authenticates it with a fresh full correlation (16 B correction,
 /// uniform, leaks nothing) and the claim is handed outward, to be bound to
 /// the static commitment C_W by volta-pcs (batch reduction + ZK opening).
+#[derive(Debug, PartialEq, Eq)]
 pub struct WeightClaimP {
     /// Point on the W MLE (k×n, column vars LSB): r_j ‖ r_l.
     pub point: Vec<Fp2>,

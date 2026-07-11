@@ -12,9 +12,10 @@
 use std::path::Path;
 
 use rayon::prelude::*;
+use volta_accel::{AccelError, Backend, BackendKind, Operation};
 
 use crate::layer::{
-    forward_layer_with, layer_norm, requant_into, GemmBiases, LayerWeights, LayerWitness,
+    forward_layer_with_backend, layer_norm, requant_into, GemmBiases, LayerWeights, LayerWitness,
     LookupTrace, D, DFF,
 };
 use crate::luts::{LutParams, Luts};
@@ -208,6 +209,7 @@ pub fn load_model(dir: &Path) -> std::io::Result<Gpt2Model> {
 /// Embedding witness: `acc = wte[tok] + wpe[pos]` (T×d, i64), requantized to
 /// the segment-0 residual scale. `trace` is None for `shift_embed ≤ 0`
 /// (exact left shift — linear, no lookup).
+#[derive(Debug, PartialEq, Eq)]
 pub struct EmbedWitness {
     pub acc: Vec<i64>,
     pub out: Vec<i16>,
@@ -216,6 +218,7 @@ pub struct EmbedWitness {
 
 /// Final-LN witness (last position only) + its two lookup traces (the tables
 /// are the shared ln_rsqrt / ln_norm_requant).
+#[derive(Debug, PartialEq, Eq)]
 pub struct FinalLnWitness {
     pub mean: i64,
     pub var: i64,
@@ -226,6 +229,7 @@ pub struct FinalLnWitness {
     pub norm_trace: LookupTrace,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct ModelWitness {
     pub t: usize,
     pub embed: EmbedWitness,
@@ -241,47 +245,74 @@ pub struct ModelWitness {
 
 /// Fixed-point forward of the whole model on the first `t` prompt tokens.
 pub fn forward_model(m: &Gpt2Model, t: usize) -> ModelWitness {
+    let mut backend = Backend::cpu();
+    forward_model_with_backend(m, t, &mut backend).expect("CPU backend is infallible")
+}
+
+pub fn forward_model_with_backend(
+    m: &Gpt2Model,
+    t: usize,
+    backend: &mut Backend,
+) -> Result<ModelWitness, AccelError> {
     assert!(t <= m.p.tokens.len());
-    forward_model_tokens(m, &m.p.tokens[..t])
+    forward_model_tokens_with_backend(m, &m.p.tokens[..t], backend)
 }
 
 /// [`forward_model`] on an EXPLICIT token sequence (P6: prompt + generated
 /// tokens — the fixed-point forward is causal, so the first `t0` rows are
 /// bit-identical to the prefill run's).
 pub fn forward_model_tokens(m: &Gpt2Model, tokens: &[u32]) -> ModelWitness {
+    let mut backend = Backend::cpu();
+    forward_model_tokens_with_backend(m, tokens, &mut backend).expect("CPU backend is infallible")
+}
+
+pub fn forward_model_tokens_with_backend(
+    m: &Gpt2Model,
+    tokens: &[u32],
+    backend: &mut Backend,
+) -> Result<ModelWitness, AccelError> {
+    if backend.kind() == BackendKind::CudaResident {
+        return Err(AccelError::InvalidInput(
+            "cuda-resident requires the device-witness API; staged ModelWitness materialization is forbidden",
+        ));
+    }
     let t = tokens.len();
     assert!(t <= NPOS);
 
     // ---- embedding ----
-    let mut acc = vec![0i64; t * D];
-    for (i, &tok) in tokens.iter().enumerate() {
-        let wt = &m.wte[tok as usize * D..(tok as usize + 1) * D];
-        let wp = &m.wpe[i * D..(i + 1) * D];
-        for j in 0..D {
-            acc[i * D + j] = wt[j] as i64 + wp[j] as i64;
+    let embed = backend.cpu_residual(Operation::Gemm, || {
+        let mut acc = vec![0i64; t * D];
+        for (i, &tok) in tokens.iter().enumerate() {
+            let wt = &m.wte[tok as usize * D..(tok as usize + 1) * D];
+            let wp = &m.wpe[i * D..(i + 1) * D];
+            for j in 0..D {
+                acc[i * D + j] = wt[j] as i64 + wp[j] as i64;
+            }
         }
-    }
-    let s_emb = m.p.shift_embed;
-    let (out, trace) = if s_emb > 0 {
-        let mut tr = LookupTrace::new_requant(s_emb as u32);
-        let out =
-            acc.iter().map(|&a| requant_into(&mut tr, "requant_embed", a, s_emb as u32)).collect();
-        (out, Some(tr))
-    } else {
-        let out = acc
-            .iter()
-            .map(|&a| {
-                let v = a << (-s_emb) as u32;
-                assert!(
-                    (i16::MIN as i64..=i16::MAX as i64).contains(&v),
-                    "embed left shift overflows i16"
-                );
-                v as i16
-            })
-            .collect();
-        (out, None)
-    };
-    let embed = EmbedWitness { acc, out, trace };
+        let s_emb = m.p.shift_embed;
+        let (out, trace) = if s_emb > 0 {
+            let mut tr = LookupTrace::new_requant(s_emb as u32);
+            let out = acc
+                .iter()
+                .map(|&a| requant_into(&mut tr, "requant_embed", a, s_emb as u32))
+                .collect();
+            (out, Some(tr))
+        } else {
+            let out = acc
+                .iter()
+                .map(|&a| {
+                    let v = a << (-s_emb) as u32;
+                    assert!(
+                        (i16::MIN as i64..=i16::MAX as i64).contains(&v),
+                        "embed left shift overflows i16"
+                    );
+                    v as i16
+                })
+                .collect();
+            (out, None)
+        };
+        EmbedWitness { acc, out, trace }
+    })?;
 
     // ---- layers + seams ----
     let mut layers = Vec::with_capacity(L);
@@ -292,14 +323,21 @@ pub fn forward_model_tokens(m: &Gpt2Model, tokens: &[u32]) -> ModelWitness {
         params.shift_attn_proj = m.p.shift_attn_proj[l];
         params.shift_ffn_down = m.p.shift_ffn_down[l];
         let (w, b) = &m.layers[l];
-        let wit = forward_layer_with(&x, w, Some(b), &m.luts, params, t);
+        let wit = forward_layer_with_backend(&x, w, Some(b), &m.luts, params, t, backend)?;
         x = wit.ffn_block_out.clone();
         layers.push(wit);
         if l < L - 1 {
             let s = m.p.seam_shifts[l];
             if s > 0 {
-                let mut tr = LookupTrace::new_requant(s);
-                x = x.iter().map(|&v| requant_into(&mut tr, "seam_requant", v as i64, s)).collect();
+                let (next, tr) = backend.cpu_residual(Operation::Gemm, || {
+                    let mut tr = LookupTrace::new_requant(s);
+                    let next = x
+                        .iter()
+                        .map(|&v| requant_into(&mut tr, "seam_requant", v as i64, s))
+                        .collect();
+                    (next, tr)
+                })?;
+                x = next;
                 seams.push(Some(tr));
             } else {
                 seams.push(None);
@@ -308,36 +346,47 @@ pub fn forward_model_tokens(m: &Gpt2Model, tokens: &[u32]) -> ModelWitness {
     }
 
     // ---- final LN (last row) ----
-    let last = &x[(t - 1) * D..t * D];
-    let mut rsqrt_trace = LookupTrace::new(1 << 16);
-    let mut norm_trace = LookupTrace::new_requant(m.p.lut.shift_ln_norm);
-    let ln =
-        layer_norm(last, &m.lnf_gain, &m.lnf_bias, &m.luts, 1, &mut rsqrt_trace, &mut norm_trace);
-    let final_ln = FinalLnWitness {
-        mean: ln.mean[0],
-        var: ln.var[0],
-        rsqrt_in: ln.rsqrt_in[0],
-        rsqrt_out: ln.rsqrt_out[0],
-        out: ln.out,
-        rsqrt_trace,
-        norm_trace,
-    };
+    let final_ln = backend.cpu_residual(Operation::Gemm, || {
+        let last = &x[(t - 1) * D..t * D];
+        let mut rsqrt_trace = LookupTrace::new(1 << 16);
+        let mut norm_trace = LookupTrace::new_requant(m.p.lut.shift_ln_norm);
+        let ln = layer_norm(
+            last,
+            &m.lnf_gain,
+            &m.lnf_bias,
+            &m.luts,
+            1,
+            &mut rsqrt_trace,
+            &mut norm_trace,
+        );
+        FinalLnWitness {
+            mean: ln.mean[0],
+            var: ln.var[0],
+            rsqrt_in: ln.rsqrt_in[0],
+            rsqrt_out: ln.rsqrt_out[0],
+            out: ln.out,
+            rsqrt_trace,
+            norm_trace,
+        }
+    })?;
 
     // ---- logits (tied wte, i64 accumulators, no requant) ----
-    let fin = &final_ln.out;
-    let logits: Vec<i64> = (0..VOCAB)
-        .into_par_iter()
-        .map(|v| {
-            let row = &m.wte[v * D..(v + 1) * D];
-            let mut s = 0i64;
-            for j in 0..D {
-                s += fin[j] as i64 * row[j] as i64;
-            }
-            s
-        })
-        .collect();
+    let logits = backend.cpu_residual(Operation::Gemm, || {
+        let fin = &final_ln.out;
+        (0..VOCAB)
+            .into_par_iter()
+            .map(|v| {
+                let row = &m.wte[v * D..(v + 1) * D];
+                let mut s = 0i64;
+                for j in 0..D {
+                    s += fin[j] as i64 * row[j] as i64;
+                }
+                s
+            })
+            .collect::<Vec<i64>>()
+    })?;
 
-    ModelWitness { t, embed, layers, seams, final_ln, logits }
+    Ok(ModelWitness { t, embed, layers, seams, final_ln, logits })
 }
 
 // ---------------------------------------------------------------------------

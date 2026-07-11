@@ -33,6 +33,7 @@ use crate::merkle::{hash_leaf, verify_path, Hash, MerkleTree};
 use crate::ntt::NttPlan;
 use rayon::prelude::*;
 use std::time::Instant;
+use volta_accel::{AccelError, Backend, BackendKind, Operation};
 use volta_field::{Fp, Fp2, FpStream};
 use volta_mac::{
     fresh_zero_mask, zero_batch_prover, zero_batch_verify, zero_mask_key, zero_open_prover,
@@ -101,51 +102,104 @@ fn col_bytes(col: &[Fp]) -> Vec<u8> {
 /// One-off commit. `w` is the padded coefficient vector (`rows*cols` i16,
 /// caller zero-pads); `pad_seed` is prover-secret randomness for the row pads.
 pub fn commit(w: &[i16], params: &LigeroParams, pad_seed: [u8; 32]) -> (Commitment, ProverMatrix) {
+    commit_impl(w, params, pad_seed, None).expect("CPU PCS commitment is infallible")
+}
+
+pub fn commit_with_backend(
+    w: &[i16],
+    params: &LigeroParams,
+    pad_seed: [u8; 32],
+    backend: &mut Backend,
+) -> Result<(Commitment, ProverMatrix), AccelError> {
+    if backend.kind() != BackendKind::CudaHybrid {
+        return Err(AccelError::InvalidInput(
+            "host ProverMatrix commitment is the CUDA hybrid gate",
+        ));
+    }
+    commit_impl(w, params, pad_seed, Some(backend))
+}
+
+fn commit_impl(
+    w: &[i16],
+    params: &LigeroParams,
+    pad_seed: [u8; 32],
+    mut backend: Option<&mut Backend>,
+) -> Result<(Commitment, ProverMatrix), AccelError> {
     params.validate();
     let (rows, cols, pad, code_len) = (params.rows(), params.cols(), params.pad, params.code_len());
     assert_eq!(w.len(), rows * cols, "caller pads W to rows*cols");
     let plan = NttPlan::new(code_len);
 
     // Per-row random pads (prover secret, one stream per row).
-    let pads: Vec<Fp> = (0..rows)
-        .into_par_iter()
-        .flat_map_iter(|r| {
-            let mut s = FpStream::domain_separated(pad_seed, r as u64);
-            (0..pad).map(move |_| s.next_fp()).collect::<Vec<_>>()
-        })
-        .collect();
+    let make_pads = || {
+        (0..rows)
+            .into_par_iter()
+            .flat_map_iter(|r| {
+                let mut s = FpStream::domain_separated(pad_seed, r as u64);
+                (0..pad).map(move |_| s.next_fp()).collect::<Vec<_>>()
+            })
+            .collect::<Vec<Fp>>()
+    };
+    let pads = if let Some(accel) = backend.as_deref_mut() {
+        accel.cpu_residual(Operation::PcsRows, make_pads)?
+    } else {
+        make_pads()
+    };
 
     // Encode every row: (embed(w row) ‖ pads) zero-padded to code_len.
-    let mut encoded = vec![Fp::ZERO; rows * code_len];
-    encoded.par_chunks_mut(code_len).enumerate().for_each(|(r, out)| {
-        for j in 0..cols {
-            out[j] = Fp::from_i64(w[r * cols + j] as i64);
-        }
-        out[cols..cols + pad].copy_from_slice(&pads[r * pad..(r + 1) * pad]);
-        plan.forward(out);
-    });
+    let encoded = if let Some(accel) = backend.as_deref_mut() {
+        let messages = accel.cpu_residual(Operation::PcsRows, || {
+            let mut messages = vec![Fp::ZERO; rows * params.msg_len()];
+            messages.par_chunks_mut(params.msg_len()).enumerate().for_each(|(r, out)| {
+                for j in 0..cols {
+                    out[j] = Fp::from_i64(w[r * cols + j] as i64);
+                }
+                out[cols..cols + pad].copy_from_slice(&pads[r * pad..(r + 1) * pad]);
+            });
+            messages
+        })?;
+        accel.ntt_fp_batch(&messages, rows, params.msg_len(), code_len)?
+    } else {
+        let mut encoded = vec![Fp::ZERO; rows * code_len];
+        encoded.par_chunks_mut(code_len).enumerate().for_each(|(r, out)| {
+            for j in 0..cols {
+                out[j] = Fp::from_i64(w[r * cols + j] as i64);
+            }
+            out[cols..cols + pad].copy_from_slice(&pads[r * pad..(r + 1) * pad]);
+            plan.forward(out);
+        });
+        encoded
+    };
 
     // Column leaf hashes, tiled so the strided gather stays cache-friendly.
     let tile = 128.min(code_len);
-    let leaves: Vec<Hash> = (0..code_len / tile)
-        .into_par_iter()
-        .flat_map_iter(|t| {
-            let j0 = t * tile;
-            let mut buf = vec![Fp::ZERO; rows * tile];
-            for i in 0..rows {
-                let row = &encoded[i * code_len + j0..i * code_len + j0 + tile];
-                for (dj, &v) in row.iter().enumerate() {
-                    buf[dj * rows + i] = v;
+    let leaves: Vec<Hash> = if let Some(accel) = backend.as_deref_mut() {
+        accel.hash_fp_columns(&encoded, rows, code_len)?
+    } else {
+        (0..code_len / tile)
+            .into_par_iter()
+            .flat_map_iter(|t| {
+                let j0 = t * tile;
+                let mut buf = vec![Fp::ZERO; rows * tile];
+                for i in 0..rows {
+                    let row = &encoded[i * code_len + j0..i * code_len + j0 + tile];
+                    for (dj, &v) in row.iter().enumerate() {
+                        buf[dj * rows + i] = v;
+                    }
                 }
-            }
-            (0..tile)
-                .map(|dj| hash_leaf(&col_bytes(&buf[dj * rows..(dj + 1) * rows])))
-                .collect::<Vec<_>>()
-        })
-        .collect();
-    let tree = MerkleTree::from_leaves(leaves);
+                (0..tile)
+                    .map(|dj| hash_leaf(&col_bytes(&buf[dj * rows..(dj + 1) * rows])))
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    };
+    let tree = if let Some(accel) = backend.as_deref_mut() {
+        accel.cpu_residual(Operation::PcsMerkle, || MerkleTree::from_leaves(leaves))?
+    } else {
+        MerkleTree::from_leaves(leaves)
+    };
 
-    (Commitment { root: tree.root() }, ProverMatrix { params: *params, pads, encoded, tree })
+    Ok((Commitment { root: tree.root() }, ProverMatrix { params: *params, pads, encoded, tree }))
 }
 
 pub struct ColumnOpening {
@@ -458,6 +512,7 @@ fn claim_geom(params: &LigeroParams, c: &BlockClaim) -> ClaimGeom {
     ClaimGeom { row0: c.offset >> cb, q_row: eq_vec(&c.point[cb..]), q_col: eq_vec(&c.point[..cb]) }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct MultiColumnOpening {
     pub j: u32,
     pub col: Vec<Fp>,
@@ -467,6 +522,7 @@ pub struct MultiColumnOpening {
     pub mask_path: Vec<Hash>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct MultiOpenProof {
     pub mask_root: Hash,
     /// Blinded global proximity combination c^T·Msg + R_c.
@@ -608,6 +664,40 @@ pub fn open_multi_zk(
     mask_seed: [u8; 32],
     tx: &mut Transcript,
 ) -> (MultiOpenProof, MultiOpenTimings) {
+    open_multi_zk_impl(w, pm, claims, stream, dom_s, dom_zb, mask_seed, tx, None)
+        .expect("CPU PCS opening is infallible")
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn open_multi_zk_with_backend(
+    w: &[i16],
+    pm: &ProverMatrix,
+    claims: &[(BlockClaim, ProverAuthed)],
+    stream: &mut CorrelationStream,
+    dom_s: u64,
+    dom_zb: u64,
+    mask_seed: [u8; 32],
+    tx: &mut Transcript,
+    backend: &mut Backend,
+) -> Result<(MultiOpenProof, MultiOpenTimings), AccelError> {
+    if backend.kind() != BackendKind::CudaHybrid {
+        return Err(AccelError::InvalidInput("host ProverMatrix opening is the CUDA hybrid gate"));
+    }
+    open_multi_zk_impl(w, pm, claims, stream, dom_s, dom_zb, mask_seed, tx, Some(backend))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn open_multi_zk_impl(
+    w: &[i16],
+    pm: &ProverMatrix,
+    claims: &[(BlockClaim, ProverAuthed)],
+    stream: &mut CorrelationStream,
+    dom_s: u64,
+    dom_zb: u64,
+    mask_seed: [u8; 32],
+    tx: &mut Transcript,
+    mut backend: Option<&mut Backend>,
+) -> Result<(MultiOpenProof, MultiOpenTimings), AccelError> {
     let params = &pm.params;
     let (rows, cols, msg_len, code_len) =
         (params.rows(), params.cols(), params.msg_len(), params.code_len());
@@ -619,22 +709,44 @@ pub fn open_multi_zk(
 
     // 1. Fresh mask rows: R_c (proximity) + one per claim, committed first.
     let t0 = Instant::now();
-    let masks: Vec<Vec<Fp2>> = (0..=n_claims)
-        .into_par_iter()
-        .map(|g| {
-            let mut ms = FpStream::domain_separated(mask_seed, g as u64);
-            (0..msg_len).map(|_| ms.next_fp2()).collect()
-        })
-        .collect();
-    let masks_enc: Vec<Vec<Fp2>> = masks.par_iter().map(|m| encode_fp2(&plan, m)).collect();
-    let mask_leaves: Vec<Hash> = (0..code_len)
-        .into_par_iter()
-        .map(|j| {
-            let vals: Vec<Fp2> = masks_enc.iter().map(|m| m[j]).collect();
-            multi_mask_leaf(&vals)
-        })
-        .collect();
-    let mask_tree = MerkleTree::from_leaves(mask_leaves);
+    let make_masks = || {
+        (0..=n_claims)
+            .into_par_iter()
+            .map(|g| {
+                let mut ms = FpStream::domain_separated(mask_seed, g as u64);
+                (0..msg_len).map(|_| ms.next_fp2()).collect()
+            })
+            .collect::<Vec<Vec<Fp2>>>()
+    };
+    let masks = if let Some(accel) = backend.as_deref_mut() {
+        accel.cpu_residual(Operation::PcsNtt, make_masks)?
+    } else {
+        make_masks()
+    };
+    let masks_enc: Vec<Vec<Fp2>> = if let Some(accel) = backend.as_deref_mut() {
+        let mut encoded = Vec::with_capacity(masks.len());
+        for mask in &masks {
+            encoded.push(accel.ntt_fp2(mask, code_len)?);
+        }
+        encoded
+    } else {
+        masks.par_iter().map(|m| encode_fp2(&plan, m)).collect()
+    };
+    let build_mask_tree = || {
+        let mask_leaves: Vec<Hash> = (0..code_len)
+            .into_par_iter()
+            .map(|j| {
+                let vals: Vec<Fp2> = masks_enc.iter().map(|m| m[j]).collect();
+                multi_mask_leaf(&vals)
+            })
+            .collect();
+        MerkleTree::from_leaves(mask_leaves)
+    };
+    let mask_tree = if let Some(accel) = backend.as_deref_mut() {
+        accel.cpu_residual(Operation::PcsMerkle, build_mask_tree)?
+    } else {
+        build_mask_tree()
+    };
     tx.append("pcs_mask_root", 32);
     tm.t_masks_s = t0.elapsed().as_secs_f64();
 
@@ -647,28 +759,32 @@ pub fn open_multi_zk(
         c_pows.push(acc);
     }
     let t1 = Instant::now();
-    // Chunked over rows in parallel, then reduced (row-major w stays sequential).
-    let n_chunks = rayon::current_num_threads() * 4;
-    let rows_per = rows.div_ceil(n_chunks);
-    let mut u_c = (0..n_chunks)
-        .into_par_iter()
-        .map(|ci| {
-            let r0 = ci * rows_per;
-            let r1 = rows.min(r0 + rows_per);
-            if r0 >= r1 {
-                return vec![Fp2::ZERO; msg_len];
-            }
-            combine_row_range(w, &pm.pads, params, r0, &c_pows[r0..r1])
-        })
-        .reduce(
-            || vec![Fp2::ZERO; msg_len],
-            |mut a, b| {
-                for (x, y) in a.iter_mut().zip(&b) {
-                    *x += *y;
+    // Chunked CPU pass or one CUDA row-combination pass.
+    let mut u_c = if let Some(accel) = backend.as_deref_mut() {
+        accel.pcs_combine_rows(w, &pm.pads, &c_pows, rows, cols, params.pad, 1)?.pop().unwrap()
+    } else {
+        let n_chunks = rayon::current_num_threads() * 4;
+        let rows_per = rows.div_ceil(n_chunks);
+        (0..n_chunks)
+            .into_par_iter()
+            .map(|ci| {
+                let r0 = ci * rows_per;
+                let r1 = rows.min(r0 + rows_per);
+                if r0 >= r1 {
+                    return vec![Fp2::ZERO; msg_len];
                 }
-                a
-            },
-        );
+                combine_row_range(w, &pm.pads, params, r0, &c_pows[r0..r1])
+            })
+            .reduce(
+                || vec![Fp2::ZERO; msg_len],
+                |mut a, b| {
+                    for (x, y) in a.iter_mut().zip(&b) {
+                        *x += *y;
+                    }
+                    a
+                },
+            )
+    };
     for j in 0..msg_len {
         u_c[j] += masks[0][j];
     }
@@ -676,17 +792,24 @@ pub fn open_multi_zk(
 
     // 3. Per-claim block-local combinations.
     let t2 = Instant::now();
-    let u_gs: Vec<Vec<Fp2>> = geoms
-        .par_iter()
-        .enumerate()
-        .map(|(g, geo)| {
-            let mut u = combine_row_range(w, &pm.pads, params, geo.row0, &geo.q_row);
-            for j in 0..msg_len {
-                u[j] += masks[1 + g][j];
-            }
-            u
-        })
-        .collect();
+    let mut u_gs: Vec<Vec<Fp2>> = if let Some(accel) = backend.as_deref_mut() {
+        let mut coeffs = vec![Fp2::ZERO; n_claims * rows];
+        for (g, geo) in geoms.iter().enumerate() {
+            coeffs[g * rows + geo.row0..g * rows + geo.row0 + geo.q_row.len()]
+                .copy_from_slice(&geo.q_row);
+        }
+        accel.pcs_combine_rows(w, &pm.pads, &coeffs, rows, cols, params.pad, n_claims)?
+    } else {
+        geoms
+            .par_iter()
+            .map(|geo| combine_row_range(w, &pm.pads, params, geo.row0, &geo.q_row))
+            .collect()
+    };
+    for (g, u) in u_gs.iter_mut().enumerate() {
+        for j in 0..msg_len {
+            u[j] += masks[1 + g][j];
+        }
+    }
     tx.append("pcs_u_vectors", 16 * (msg_len * (n_claims + 1)) as u64);
     tm.t_block_passes_s = t2.elapsed().as_secs_f64();
 
@@ -713,16 +836,32 @@ pub fn open_multi_zk(
     let t4 = Instant::now();
     let js: Vec<usize> =
         (0..params.n_queries).map(|_| tx.challenge_fp2().c0.value() as usize % code_len).collect();
-    let columns: Vec<MultiColumnOpening> = js
-        .par_iter()
-        .map(|&j| MultiColumnOpening {
-            j: j as u32,
-            col: (0..rows).map(|i| pm.encoded[i * code_len + j]).collect(),
-            mask_col: masks_enc.iter().map(|m| m[j]).collect(),
-            path: pm.tree.open(j),
-            mask_path: mask_tree.open(j),
-        })
-        .collect();
+    let gathered = if let Some(accel) = backend.as_deref_mut() {
+        let indices: Vec<u32> = js.iter().map(|&j| j as u32).collect();
+        Some(accel.pcs_gather_columns(&pm.encoded, rows, code_len, &indices)?)
+    } else {
+        None
+    };
+    let build_columns = || {
+        js.par_iter()
+            .enumerate()
+            .map(|(q, &j)| MultiColumnOpening {
+                j: j as u32,
+                col: gathered.as_ref().map_or_else(
+                    || (0..rows).map(|i| pm.encoded[i * code_len + j]).collect(),
+                    |cols| cols[q].clone(),
+                ),
+                mask_col: masks_enc.iter().map(|m| m[j]).collect(),
+                path: pm.tree.open(j),
+                mask_path: mask_tree.open(j),
+            })
+            .collect::<Vec<_>>()
+    };
+    let columns = if let Some(accel) = backend.as_deref_mut() {
+        accel.cpu_residual(Operation::PcsMerkle, build_columns)?
+    } else {
+        build_columns()
+    };
     let col_b: u64 = columns
         .iter()
         .map(|c| {
@@ -734,10 +873,10 @@ pub fn open_multi_zk(
     tx.append("pcs_columns", col_b);
     tm.t_columns_s = t4.elapsed().as_secs_f64();
 
-    (
+    Ok((
         MultiOpenProof { mask_root: mask_tree.root(), u_c, u_gs, corr_ss, mask_corr, m_z, columns },
         tm,
-    )
+    ))
 }
 
 /// Verifier for the multi-claim opening. Accepting binds every claim key to

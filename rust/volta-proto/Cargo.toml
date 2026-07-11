@@ -4,7 +4,12 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = []
+cuda = ["volta-accel/cuda", "volta-gpt2/cuda"]
+
 [dependencies]
+volta-accel = { workspace = true }
 volta-field = { workspace = true }
 volta-mac = { workspace = true }
 volta-gpt2 = { workspace = true }

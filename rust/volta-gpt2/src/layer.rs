@@ -11,8 +11,10 @@
 //! in debug AND release — that the pre-clamp value already fits i16. The
 //! synthetic weights/scales below are sized so this holds at T = 100.
 
-use crate::gemm::gemm_i64;
+use crate::gemm::gemm_i64_with_backend;
 use crate::luts::{LutParams, Luts};
+use std::time::Instant;
+use volta_accel::{AccelError, Backend, BackendKind, Operation};
 
 /// GPT-2 small layer shape (d = 768, h = 12, d_h = 64, d_ff = 3072).
 pub const D: usize = 768;
@@ -440,6 +442,30 @@ pub fn forward_layer_with(
     params: LutParams,
     t: usize,
 ) -> LayerWitness {
+    let mut backend = Backend::cpu();
+    forward_layer_with_backend(x_in, w, biases, luts, params, t, &mut backend)
+        .expect("CPU backend is infallible")
+}
+
+/// Backend-explicit witness generation. CUDA hybrid returns the same host
+/// `LayerWitness` after counted staging; the resident gate uses a separate
+/// device-witness entry point and must not call this staged API.
+pub fn forward_layer_with_backend(
+    x_in: &[i16],
+    w: &LayerWeights,
+    biases: Option<&GemmBiases>,
+    luts: &Luts,
+    params: LutParams,
+    t: usize,
+    backend: &mut Backend,
+) -> Result<LayerWitness, AccelError> {
+    if backend.kind() == BackendKind::CudaResident {
+        return Err(AccelError::InvalidInput(
+            "cuda-resident cannot materialize a staged LayerWitness",
+        ));
+    }
+    let stats_before = backend.stats()?;
+    let wall_start = Instant::now();
     assert_eq!(x_in.len(), t * D);
     let p = params;
     let caus = t * (t + 1) / 2;
@@ -468,7 +494,7 @@ pub fn forward_layer_with(
     };
 
     // ---- fused QKV projection ----
-    let mut qkv_acc = gemm_i64(&ln1.out, &w.c_attn, t, D, 3 * D);
+    let mut qkv_acc = gemm_i64_with_backend(&ln1.out, &w.c_attn, t, D, 3 * D, backend)?;
     if let Some(b) = biases {
         // Bias folded at the requant output scale (spec §P5 biases); witness
         // accumulators are post-bias (what the requant lookup consumes).
@@ -520,7 +546,7 @@ pub fn forward_layer_with(
         }
         // Rectangular t×t GEMM; the upper triangle (j > i) is computed but
         // discarded — witness fields and lookup streams are causal-only.
-        let s_full = gemm_i64(&qh, &kht, t, DH, t);
+        let s_full = gemm_i64_with_backend(&qh, &kht, t, DH, t, backend)?;
 
         // Causal-packed weight matrix, re-expanded to padded t×t for the
         // w·V GEMM (zeros above the diagonal contribute nothing).
@@ -580,7 +606,7 @@ pub fn forward_layer_with(
             vh[i * DH..(i + 1) * DH]
                 .copy_from_slice(&v[i * D + head * DH..i * D + (head + 1) * DH]);
         }
-        let avh = gemm_i64(&w_pad, &vh, t, t, DH);
+        let avh = gemm_i64_with_backend(&w_pad, &vh, t, t, DH, backend)?;
         for i in 0..t {
             for l in 0..DH {
                 let acc = avh[i * DH + l];
@@ -592,7 +618,7 @@ pub fn forward_layer_with(
     }
 
     // ---- attention output projection + residual ----
-    let mut proj_acc = gemm_i64(&av_q, &w.attn_proj, t, D, D);
+    let mut proj_acc = gemm_i64_with_backend(&av_q, &w.attn_proj, t, D, D, backend)?;
     if let Some(b) = biases {
         for i in 0..t {
             for j in 0..D {
@@ -613,7 +639,7 @@ pub fn forward_layer_with(
     };
 
     // ---- FFN ----
-    let mut ffn_up_acc = gemm_i64(&ln2.out, &w.ffn_up, t, D, DFF);
+    let mut ffn_up_acc = gemm_i64_with_backend(&ln2.out, &w.ffn_up, t, D, DFF, backend)?;
     if let Some(b) = biases {
         for i in 0..t {
             for j in 0..DFF {
@@ -633,7 +659,7 @@ pub fn forward_layer_with(
             g
         })
         .collect();
-    let mut ffn_down_acc = gemm_i64(&gelu_out, &w.ffn_down, t, DFF, D);
+    let mut ffn_down_acc = gemm_i64_with_backend(&gelu_out, &w.ffn_down, t, DFF, D, backend)?;
     if let Some(b) = biases {
         for i in 0..t {
             for j in 0..D {
@@ -647,7 +673,7 @@ pub fn forward_layer_with(
         .collect();
     let ffn_block_out = residual_add(&attn_block_out, &ffn_down_q);
 
-    LayerWitness {
+    let witness = LayerWitness {
         t,
         x_in: x_in.to_vec(),
         k,
@@ -683,7 +709,9 @@ pub fn forward_layer_with(
         ffn_down_acc,
         ffn_down_q,
         traces,
-    }
+    };
+    backend.account_staged_wall(Operation::Gemm, wall_start.elapsed(), stats_before)?;
+    Ok(witness)
 }
 
 // ---------------------------------------------------------------------------
@@ -811,5 +839,40 @@ mod tests {
                 idx += i + 1;
             }
         }
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn cuda_hybrid_layer_matches_cpu_at_non_power_t_and_reuses_context() {
+        let mut gpu = match Backend::cuda_hybrid() {
+            Ok(gpu) => gpu,
+            Err(e) if std::env::var("VOLTA_REQUIRE_CUDA").as_deref() != Ok("1") => {
+                eprintln!("skipping CUDA layer differential: {e}");
+                return;
+            }
+            Err(e) => panic!("CUDA required: {e}"),
+        };
+        let t = 3;
+        let luts = build_luts(LutParams::default());
+        let weights = synthetic_weights(91);
+        let x = synthetic_input(92, t);
+        let expected = forward_layer(&x, &weights, &luts, t);
+        gpu.begin_measurement().unwrap();
+        for _ in 0..2 {
+            let got =
+                forward_layer_with_backend(&x, &weights, None, &luts, luts.params, t, &mut gpu)
+                    .unwrap();
+            assert_eq!(got, expected);
+        }
+        let stats = gpu.finish_measurement().unwrap();
+        assert_eq!(stats.operation(Operation::Gemm).calls, 56);
+        assert!(stats.operation(Operation::Gemm).cpu_residual_ns > 0);
+        assert!(stats.peak_device_bytes > 0);
+
+        let mut resident = Backend::cuda_resident().unwrap();
+        assert!(matches!(
+            forward_layer_with_backend(&x, &weights, None, &luts, luts.params, t, &mut resident),
+            Err(AccelError::InvalidInput(_))
+        ));
     }
 }

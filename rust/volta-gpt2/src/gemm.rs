@@ -10,6 +10,7 @@
 //! ρ_kernel = t(fused) / t(native) is the P1 gate number.
 
 use rayon::prelude::*;
+use volta_accel::{AccelError, Backend};
 use volta_field::{Fp, FpStream};
 
 /// Requantization: `clamp(round_half_up(acc / 2^shift))` — must match the
@@ -60,6 +61,23 @@ pub fn gemm_i64(a: &[i16], b: &[i16], m: usize, k: usize, n: usize) -> Vec<i64> 
     out
 }
 
+/// Backend-explicit accumulator GEMM. Existing callers keep the CPU wrapper
+/// above; P7 integration passes a persistent backend here.
+pub fn gemm_i64_with_backend(
+    a: &[i16],
+    b: &[i16],
+    m: usize,
+    k: usize,
+    n: usize,
+    backend: &mut Backend,
+) -> Result<Vec<i64>, AccelError> {
+    if backend.is_cpu() {
+        Ok(gemm_i64(a, b, m, k, n))
+    } else {
+        backend.gemm_i64(a, b, m, k, n)
+    }
+}
+
 /// Native kernel: GEMM + requant. Row-major `a: m×k`, `b: k×n` → `i16 m×n`.
 pub fn gemm_requant(a: &[i16], b: &[i16], m: usize, k: usize, n: usize, shift: u32) -> Vec<i16> {
     assert_eq!(a.len(), m * k);
@@ -75,6 +93,24 @@ pub fn gemm_requant(a: &[i16], b: &[i16], m: usize, k: usize, n: usize, shift: u
         },
     );
     out
+}
+
+pub fn gemm_requant_with_backend(
+    a: &[i16],
+    b: &[i16],
+    m: usize,
+    k: usize,
+    n: usize,
+    shift: u32,
+    backend: &mut Backend,
+) -> Result<Vec<i16>, AccelError> {
+    if backend.is_cpu() {
+        return Ok(gemm_requant(a, b, m, k, n, shift));
+    }
+    let acc = backend.gemm_i64(a, b, m, k, n)?;
+    backend.cpu_residual(volta_accel::Operation::Gemm, || {
+        acc.into_iter().map(|x| requant(x, shift)).collect()
+    })
 }
 
 /// Fused kernel: GEMM + requant + MAC authentication of every output element.
@@ -112,6 +148,32 @@ pub fn gemm_requant_auth(
         },
     );
     (out, corr)
+}
+
+/// CUDA path keeps requantization and correction production in the same
+/// kernel. Mask expansion remains in Rust/PCG and is therefore identical to
+/// the CPU path; the device receives only the already allocated one-time
+/// masks.
+pub fn gemm_requant_auth_with_backend(
+    a: &[i16],
+    b: &[i16],
+    m: usize,
+    k: usize,
+    n: usize,
+    ep: EpilogueSpec,
+    backend: &mut Backend,
+) -> Result<(Vec<i16>, Vec<u64>), AccelError> {
+    if backend.is_cpu() {
+        return Ok(gemm_requant_auth(a, b, m, k, n, ep));
+    }
+    let masks: Vec<Fp> = (0..m)
+        .flat_map(|i| {
+            let domain = ((ep.tensor_tag as u64) << 32) | i as u64;
+            let mut stream = FpStream::domain_separated(ep.seed, domain);
+            (0..n).map(move |_| stream.next_fp()).collect::<Vec<_>>()
+        })
+        .collect();
+    backend.gemm_requant_auth(a, b, &masks, m, k, n, ep.shift)
 }
 
 #[cfg(test)]

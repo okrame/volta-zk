@@ -14,12 +14,16 @@ pub mod model;
 
 pub use band::{band_model_witness, BandModelWitness};
 pub use decode::{argmax, decode_step, generate, requant_plain, KvCache};
-pub use gemm::{gemm_i64, gemm_requant, gemm_requant_auth, EpilogueSpec};
+pub use gemm::{
+    gemm_i64, gemm_i64_with_backend, gemm_requant, gemm_requant_auth,
+    gemm_requant_auth_with_backend, gemm_requant_with_backend, EpilogueSpec,
+};
 pub use layer::{
-    forward_layer, forward_layer_with, synthetic_input, synthetic_weights, GemmBiases,
-    LayerWeights, LayerWitness, LookupTrace, TableId, D, DFF, DH, H,
+    forward_layer, forward_layer_with, forward_layer_with_backend, synthetic_input,
+    synthetic_weights, GemmBiases, LayerWeights, LayerWitness, LookupTrace, TableId, D, DFF, DH, H,
 };
 pub use luts::{build_luts, LutParams, Luts};
 pub use model::{
-    forward_model, forward_model_tokens, load_model, Gpt2Model, ModelWitness, L, NPOS, VOCAB,
+    forward_model, forward_model_tokens, forward_model_tokens_with_backend,
+    forward_model_with_backend, load_model, Gpt2Model, ModelWitness, L, NPOS, VOCAB,
 };

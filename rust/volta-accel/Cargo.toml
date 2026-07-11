@@ -1,14 +1,15 @@
 [package]
-name = "volta-gpt2"
+name = "volta-accel"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [features]
 default = []
-cuda = ["volta-accel/cuda"]
+cuda = []
 
 [dependencies]
-volta-accel = { workspace = true }
 volta-field = { workspace = true }
-rayon = { workspace = true }
+
+[dev-dependencies]
+blake3 = { workspace = true }

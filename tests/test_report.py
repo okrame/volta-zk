@@ -54,7 +54,17 @@ def test_p7_report_selects_record_and_packed_sources():
     assert fused["correctness"] is True
     assert fused["gate_weighted_rho_le_1_30"] is True
     assert fused["weighted_rho_kernel"] == 1.003056933
-    assert data["go_no_go"]["local_recommendation"] == "proceed-to-logup-pcs-kernel-spikes"
+    logup = data["gpu_logup_tree"]["run_of_record"]
+    assert logup["source"].endswith("p7-gpu-logup-tree-2026-07-11-5f7b443.json")
+    assert logup["correctness"] is True
+    assert logup["gate_speedup_ge_5_48"] is True
+    assert logup["gpu_cpu_speedup"] == 66.1188534508
+    assert any(
+        row["milestone"] == "P7-gpu-logup-tree-quick"
+        and row["gate_speedup_ge_5_48"] is False
+        for row in data["gpu_logup_tree"]["profiles"]
+    )
+    assert data["go_no_go"]["local_recommendation"] == "proceed-to-logup-rounds-and-pcs-spikes"
     q150 = [
         row
         for row in data["measured_pcs_profiles"]

@@ -1,0 +1,58 @@
+{
+  "cloud": {
+    "cpu_model": "Intel Xeon Platinum 8352Y / cgroup quota 7.92 cores",
+    "cuda_version": "toolkit 13.0 / UMD 13.3",
+    "driver_version": "610.43.02",
+    "gpu_sku": "NVIDIA A100-SXM4-80GB / Thunder A100XL",
+    "image": "base / Ubuntu 22.04.5 LTS",
+    "instance_id": "nc1k4a0g",
+    "provider": "Thunder Compute",
+    "ram_gib": "64",
+    "region": "not exposed by provider API",
+    "vcpus": "8 (quota 7.92)"
+  },
+  "compiler": {
+    "arch": "sm_80",
+    "nvcc": "/usr/local/cuda/bin/nvcc"
+  },
+  "date": "2026-07-11",
+  "gate_gpu_s_le_0_075_and_correct": true,
+  "git_dirty": false,
+  "git_sha": "3b0a916",
+  "kernel": {
+    "device": {
+      "cc": "8.0",
+      "global_memory_bytes": 85119205376,
+      "name": "NVIDIA A100-SXM4-80GB",
+      "sm_count": 108
+    },
+    "gate_gpu_s_le_0_075": true,
+    "gpu_s": 0.001407478,
+    "host_device_correctness": true,
+    "parameters": {
+      "cols": 32768,
+      "gpu_reps": 7,
+      "leaf_bytes": 8192,
+      "resident_matrix_bytes": 268435456,
+      "rows": 1024
+    },
+    "root": "c90027afa35e9f24dd436d51d734b63e52c9788f50a1658c7a6a2a2685ca4d5f",
+    "timing_sane": true
+  },
+  "milestone": "P7-gpu-blake3-merkle",
+  "root_matches_rust_blake3": true,
+  "rust_reference": {
+    "cols": 32768,
+    "cpu_s": 0.043778791,
+    "reps": 3,
+    "root": "c90027afa35e9f24dd436d51d734b63e52c9788f50a1658c7a6a2a2685ca4d5f",
+    "rows": 1024,
+    "threads": 7
+  },
+  "scope": {
+    "blake3_merkle": true,
+    "column_gather_fused": true,
+    "mask_rows_integrated": false,
+    "proving_path_integrated": false
+  }
+}

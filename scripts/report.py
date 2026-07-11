@@ -640,6 +640,49 @@ def gpu_pcs_arithmetic_profiles(results: list[dict[str, Any]]) -> list[dict[str,
     return rows
 
 
+def gpu_blake3_merkle_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for r in results:
+        if r.get("milestone") not in {
+            "P7-gpu-blake3-merkle",
+            "P7-gpu-blake3-merkle-quick",
+        }:
+            continue
+        kernel = r.get("kernel") or {}
+        rust = r.get("rust_reference") or {}
+        if (
+            not kernel.get("host_device_correctness")
+            or not kernel.get("timing_sane")
+            or not r.get("root_matches_rust_blake3")
+        ):
+            continue
+        gpu_s = kernel.get("gpu_s")
+        cpu_s = rust.get("cpu_s")
+        rows.append(
+            {
+                "_mtime": r["_mtime"],
+                "source": r["_path"],
+                "milestone": r.get("milestone"),
+                "git_dirty": r.get("git_dirty"),
+                "cloud": r.get("cloud"),
+                "parameters": kernel.get("parameters"),
+                "host_device_correctness": kernel.get("host_device_correctness"),
+                "root_matches_rust_blake3": r.get("root_matches_rust_blake3"),
+                "timing_sane": kernel.get("timing_sane"),
+                "root": kernel.get("root"),
+                "gpu_s": gpu_s,
+                "rust_cpu_s": cpu_s,
+                "gpu_cpu_speedup": cpu_s / gpu_s if cpu_s and gpu_s else None,
+                "gate_gpu_s_le_0_075": kernel.get("gate_gpu_s_le_0_075"),
+                "scope": r.get("scope"),
+            }
+        )
+    rows.sort(key=lambda x: (x["milestone"], x["_mtime"], x["source"]))
+    for row in rows:
+        row.pop("_mtime", None)
+    return rows
+
+
 def decode_marginal_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows = []
     for r in results:
@@ -699,6 +742,9 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
     gpu_pcs = gpu_pcs_arithmetic_profiles(results)
     full_gpu_pcs = [r for r in gpu_pcs if r["milestone"] == "P7-gpu-pcs-arithmetic"]
     gpu_pcs_record = full_gpu_pcs[-1] if full_gpu_pcs else None
+    gpu_blake3 = gpu_blake3_merkle_profiles(results)
+    full_gpu_blake3 = [r for r in gpu_blake3 if r["milestone"] == "P7-gpu-blake3-merkle"]
+    gpu_blake3_record = full_gpu_blake3[-1] if full_gpu_blake3 else None
     pcg_status = (
         "phase_b_measured_not_production"
         if real_pcg_b
@@ -796,7 +842,13 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
             "status": "measured_gate_pass" if gpu_pcs_record else "not_measured",
             "run_of_record": gpu_pcs_record,
             "profiles": gpu_pcs,
-            "note": "P4_LAYER NTT + combine_rows only; masks, columns, blake3 and integration remain open.",
+            "note": "P4_LAYER NTT + combine_rows only; masks and proving-path integration remain open.",
+        },
+        "gpu_blake3_merkle": {
+            "status": "measured_gate_pass" if gpu_blake3_record else "not_measured",
+            "run_of_record": gpu_blake3_record,
+            "profiles": gpu_blake3,
+            "note": "P4_LAYER column gather + exact BLAKE3/Merkle measured; mask rows and proving-path integration remain open.",
         },
         "real_pcg_spike": {
             "status": pcg_status,
@@ -809,7 +861,9 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
         },
         "go_no_go": {
             "local_recommendation": (
-                "proceed-to-blake3-merkle-spike"
+                "proceed-to-blind-integration-and-native-gpu-anchor"
+                if gpu_blake3_record
+                else "proceed-to-blake3-merkle-spike"
                 if gpu_pcs_record
                 else "proceed-to-pcs-hash-spikes"
                 if gpu_logup_round_record
@@ -827,7 +881,6 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
                 "A final rho decision still requires fused proving kernels and a native GPU inference anchor."
             ),
             "remaining_before_final_go_no_go": [
-                "blake3/Merkle and PCS column-gather GPU costs measured on representative P6 volumes",
                 "blind LogUp correction plumbing measured without extra transcript rounds",
                 "native GPU inference baseline measured on the same instance",
                 "measured GPU kernels integrated into the proving path without extra transcript passes",
@@ -964,6 +1017,16 @@ def print_summary(report: dict[str, Any]) -> None:
             f"({pcs['ntt']['gpu_s'] * 1e3:.2f} ms); combine_rows "
             f"{pcs['combine_rows']['gpu_cpu_speedup']:.2f}x "
             f"({pcs['combine_rows']['gpu_s'] * 1e3:.2f} ms) {pcs['source']}"
+        )
+        print()
+    blake3 = report.get("gpu_blake3_merkle", {}).get("run_of_record")
+    if blake3:
+        print("GPU PCS column gather + BLAKE3/Merkle")
+        print(
+            f"  {blake3['parameters']['rows']}x{blake3['parameters']['cols']} "
+            f"Rust={blake3['rust_cpu_s'] * 1e3:.2f} ms "
+            f"GPU={blake3['gpu_s'] * 1e3:.2f} ms "
+            f"speedup={blake3['gpu_cpu_speedup']:.2f}x {blake3['source']}"
         )
         print()
     decode_profiles = report.get("decode_marginal_profiles") or []

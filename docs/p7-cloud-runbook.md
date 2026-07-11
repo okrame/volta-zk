@@ -25,8 +25,12 @@ all 22 per-round D2H barriers retained
 plus blake3; blind correction plumbing and proving-path integration remain.
 Current clean aggregate: `benchmarks/results/p7-2026-07-11-fd67e64.json`.
 PCS P4_LAYER arithmetic passed: NTT 80.33x and combine_rows 76.10x with exact
-outputs (`p7-gpu-pcs-arithmetic-2026-07-11-366ec4a.json`). Next: blake3/
-Merkle plus column gather, then blind plumbing and proving-path integration.
+outputs (`p7-gpu-pcs-arithmetic-2026-07-11-366ec4a.json`). Column gather +
+BLAKE3/Merkle then passed at exact P4_LAYER geometry: Rust 43.779 ms versus
+GPU 1.407 ms = 31.10x, with exact Rust root and every host/device node
+(`p7-gpu-blake3-merkle-2026-07-11-3b0a916.json`). NTT + hash totals 7.793 ms
+on GPU. Next: mask/blind plumbing, proving-path integration, native GPU
+inference anchor and unchanged e2e gates.
 Current clean aggregate: `benchmarks/results/p7-2026-07-11-1b99864.json`.
 
 ## Provider / instance

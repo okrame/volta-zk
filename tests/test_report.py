@@ -80,7 +80,16 @@ def test_p7_report_selects_record_and_packed_sources():
     assert pcs["gate_each_speedup_ge_5_48"] is True
     assert pcs["ntt"]["gpu_cpu_speedup"] == 80.3253115046
     assert pcs["combine_rows"]["gpu_cpu_speedup"] == 76.0996903402
-    assert data["go_no_go"]["local_recommendation"] == "proceed-to-blake3-merkle-spike"
+    blake3 = data["gpu_blake3_merkle"]["run_of_record"]
+    assert blake3["source"].endswith("p7-gpu-blake3-merkle-2026-07-11-3b0a916.json")
+    assert blake3["host_device_correctness"] is True
+    assert blake3["root_matches_rust_blake3"] is True
+    assert blake3["gate_gpu_s_le_0_075"] is True
+    assert blake3["gpu_s"] == 0.001407478
+    assert blake3["gpu_cpu_speedup"] == 31.10442294657536
+    assert data["go_no_go"]["local_recommendation"] == (
+        "proceed-to-blind-integration-and-native-gpu-anchor"
+    )
     q150 = [
         row
         for row in data["measured_pcs_profiles"]

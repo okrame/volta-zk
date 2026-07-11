@@ -25,6 +25,7 @@ lean/.lake/
 .env.*
 !.env.example
 rust/target/
+/target/
 
 # large weight artifacts (reproducible via scripts/export_gpt2.py)
 benchmarks/weights/model.safetensors

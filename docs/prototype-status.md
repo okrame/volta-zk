@@ -56,6 +56,16 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-11 (P7 cloud A100 P1 CPU baseline landed)**: clean run
+  `benchmarks/results/p1-2026-07-11-64a8ead.json` on the pre-registered
+  Thunder A100 instance (`git_dirty:false`, linux x86_64, 7 worker threads
+  visible under the 7.92-core quota). ABBA P1 result: weighted fused-MAC
+  `rho_kernel=1.043`; native throughput 29.9--34.9 GMAC/s across the GPT-2
+  shapes; epilogue 1.6--2.0 ns/output; verifier fused scan 66.4 ms per 2^20
+  values (63.3 ns/value, 0.715 s prefill-100 extrapolation). This is the
+  required cloud-host CPU anchor; the A100 was idle and no GPU acceleration
+  is claimed by this run.
+
 - **2026-07-11 (P7 cloud A100 baseline — pre-registered before measured
   runs)**: target instance is Thunder Compute `bdthpmts`, provider region
   not exposed by the instance-list API, base template / Ubuntu 22.04.5,

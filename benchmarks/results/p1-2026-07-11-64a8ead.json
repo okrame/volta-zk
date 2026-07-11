@@ -1,0 +1,67 @@
+{
+  "milestone": "P1",
+  "date": "2026-07-11",
+  "git_sha": "64a8ead",
+  "git_dirty": false,
+  "machine": "linux x86_64",
+  "cloud": {
+    "provider": "Thunder Compute",
+    "instance_id": "bdthpmts",
+    "region": "not exposed by provider API",
+    "image": "base / Ubuntu 22.04.5 LTS",
+    "driver_version": "610.43.02",
+    "cuda_version": "toolkit 13.0 / UMD 13.3",
+    "gpu_sku": "NVIDIA A100-SXM4-80GB / Thunder A100XL",
+    "cpu_model": "Intel Xeon Platinum 8352Y / cgroup quota 7.92 cores",
+    "ram_gib": "64",
+    "vcpus": "8 (quota 7.92)"
+  },
+  "threads": 7,
+  "iters": 9,
+  "shapes": [
+    {
+      "m": 100,
+      "k": 768,
+      "n": 768,
+      "label": "attn_out_proj / ffn_down-shape",
+      "native_ms": 1.974561,
+      "fused_ms": 2.095142,
+      "rho_kernel": 1.0610672448204943,
+      "epilogue_ns_per_elem": 1.5700651041666642,
+      "correction_bytes_per_elem": 8,
+      "gmacs_native": 29.871146042082263
+    },
+    {
+      "m": 100,
+      "k": 768,
+      "n": 2304,
+      "label": "qkv_proj",
+      "native_ms": 5.7856749999999995,
+      "fused_ms": 6.157343,
+      "rho_kernel": 1.0642393497733627,
+      "epilogue_ns_per_elem": 1.6131423611111126,
+      "correction_bytes_per_elem": 8,
+      "gmacs_native": 30.583674333591155
+    },
+    {
+      "m": 100,
+      "k": 768,
+      "n": 3072,
+      "label": "ffn_up (internal, worst case)",
+      "native_ms": 6.760489,
+      "fused_ms": 7.360751,
+      "rho_kernel": 1.0887897310386867,
+      "epilogue_ns_per_elem": 1.953977864583333,
+      "correction_bytes_per_elem": 8,
+      "gmacs_native": 34.898303954048295
+    }
+  ],
+  "rho_kernel_weighted_layer": 1.0425301600213812,
+  "verifier": {
+    "n_elems": 1048576,
+    "fused_scan_ms": 66.403523,
+    "ns_per_elem": 63.327334403991706,
+    "elems_per_sec": 15790969.403837202,
+    "prefill_100tok_extrapolated_s": 0.7150861806657716
+  }
+}

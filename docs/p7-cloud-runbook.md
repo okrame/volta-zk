@@ -32,6 +32,14 @@ GPU 1.407 ms = 31.10x, with exact Rust root and every host/device node
 on GPU. Next: mask/blind plumbing, proving-path integration, native GPU
 inference anchor and unchanged e2e gates.
 Current clean aggregate: `benchmarks/results/p7-2026-07-11-b971a93.json`.
+Blind general-layer LogUp plumbing subsequently passed on replacement instance
+`6mprfo7p`: CPU 265.26 ms versus GPU 41.30 ms = 6.423x, all 848 correction
+bytes exact, blind/clear 0.903 <=1.05 and zero extra transcript rounds
+(`p7-gpu-logup-blind-rounds-2026-07-11-534dcad.json`). Pageable-buffer and
+four-micro-copy failures are retained in the ledger. This replacement has a
+different Xeon 8470 CPU, so its native P6 baseline must be remeasured before
+quoting a new rho. Next: aux-leaf corrections, proving-path integration and
+native GPU inference anchor.
 
 ## Provider / instance
 

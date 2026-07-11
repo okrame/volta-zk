@@ -65,12 +65,17 @@ def test_p7_report_selects_record_and_packed_sources():
         for row in data["gpu_logup_tree"]["profiles"]
     )
     rounds = data["gpu_logup_rounds"]["run_of_record"]
-    assert rounds["source"].endswith("p7-gpu-logup-rounds-2026-07-11-e4470bf.json")
+    assert rounds["source"].endswith("p7-gpu-logup-rounds-2026-07-11-f7f54a2.json")
     assert rounds["correctness"] is True
     assert rounds["gate_speedup_ge_5_48"] is True
-    assert rounds["gpu_cpu_speedup"] == 6.7660424204
+    assert rounds["gpu_cpu_speedup"] == 8.92029391681
     assert any(
         row["milestone"] == "P7-gpu-logup-rounds-quick"
+        and row["gate_speedup_ge_5_48"] is False
+        for row in data["gpu_logup_rounds"]["profiles"]
+    )
+    assert any(
+        row["milestone"] == "P7-gpu-logup-rounds"
         and row["gate_speedup_ge_5_48"] is False
         for row in data["gpu_logup_rounds"]["profiles"]
     )
@@ -87,8 +92,22 @@ def test_p7_report_selects_record_and_packed_sources():
     assert blake3["gate_gpu_s_le_0_075"] is True
     assert blake3["gpu_s"] == 0.001407478
     assert blake3["gpu_cpu_speedup"] == 31.10442294657536
+    blind = data["gpu_logup_blind_rounds"]["run_of_record"]
+    assert blind["source"].endswith("p7-gpu-logup-blind-rounds-2026-07-11-534dcad.json")
+    assert blind["blind_corrections_correct"] is True
+    assert blind["parameters"]["correction_bytes_total"] == 848
+    assert blind["parameters"]["extra_transcript_rounds"] == 0
+    assert blind["parameters"]["pinned_host_barriers"] is True
+    assert blind["gpu_cpu_speedup"] == 6.4232076889
+    assert blind["blind_over_clear"] == 0.903391144688
+    assert blind["gate_speedup_ge_5_48_and_overhead_le_1_05"] is True
+    assert any(
+        row["milestone"] == "P7-gpu-logup-blind-rounds"
+        and row["gate_speedup_ge_5_48_and_overhead_le_1_05"] is False
+        for row in data["gpu_logup_blind_rounds"]["profiles"]
+    )
     assert data["go_no_go"]["local_recommendation"] == (
-        "proceed-to-blind-integration-and-native-gpu-anchor"
+        "proceed-to-proving-path-integration-and-native-gpu-anchor"
     )
     q150 = [
         row

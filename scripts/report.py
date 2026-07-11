@@ -607,6 +607,46 @@ def gpu_logup_round_profiles(results: list[dict[str, Any]]) -> list[dict[str, An
     return rows
 
 
+def gpu_logup_blind_round_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for r in results:
+        if r.get("milestone") not in {
+            "P7-gpu-logup-blind-rounds",
+            "P7-gpu-logup-blind-rounds-quick",
+        }:
+            continue
+        kernel = r.get("kernel") or {}
+        if not kernel.get("correctness") or not kernel.get("timing_sane"):
+            continue
+        rows.append(
+            {
+                "_mtime": r["_mtime"],
+                "source": r["_path"],
+                "milestone": r.get("milestone"),
+                "git_dirty": r.get("git_dirty"),
+                "cloud": r.get("cloud"),
+                "parameters": kernel.get("parameters"),
+                "correctness": kernel.get("correctness"),
+                "blind_corrections_correct": kernel.get("blind_corrections_correct"),
+                "timing_sane": kernel.get("timing_sane"),
+                "cpu_blind_s": kernel.get("cpu_blind_s"),
+                "gpu_blind_s": kernel.get("gpu_blind_s"),
+                "gpu_clear_s": kernel.get("gpu_clear_s"),
+                "gpu_cpu_speedup": kernel.get("gpu_cpu_speedup"),
+                "blind_over_clear": kernel.get("blind_over_clear"),
+                "gate_speedup_ge_5_48_and_overhead_le_1_05": kernel.get(
+                    "gate_speedup_ge_5_48_and_overhead_le_1_05"
+                ),
+                "all_rounds_checksum": kernel.get("all_rounds_checksum"),
+                "scope": r.get("scope"),
+            }
+        )
+    rows.sort(key=lambda x: (x["milestone"], x["_mtime"], x["source"]))
+    for row in rows:
+        row.pop("_mtime", None)
+    return rows
+
+
 def gpu_pcs_arithmetic_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows = []
     for r in results:
@@ -736,9 +776,21 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
     gpu_logup_record = full_gpu_logup[-1] if full_gpu_logup else None
     gpu_logup_rounds = gpu_logup_round_profiles(results)
     full_gpu_logup_rounds = [
-        r for r in gpu_logup_rounds if r["milestone"] == "P7-gpu-logup-rounds"
+        r
+        for r in gpu_logup_rounds
+        if r["milestone"] == "P7-gpu-logup-rounds" and r["gate_speedup_ge_5_48"]
     ]
     gpu_logup_round_record = full_gpu_logup_rounds[-1] if full_gpu_logup_rounds else None
+    gpu_logup_blind_rounds = gpu_logup_blind_round_profiles(results)
+    full_gpu_logup_blind_rounds = [
+        r
+        for r in gpu_logup_blind_rounds
+        if r["milestone"] == "P7-gpu-logup-blind-rounds"
+        and r["gate_speedup_ge_5_48_and_overhead_le_1_05"]
+    ]
+    gpu_logup_blind_round_record = (
+        full_gpu_logup_blind_rounds[-1] if full_gpu_logup_blind_rounds else None
+    )
     gpu_pcs = gpu_pcs_arithmetic_profiles(results)
     full_gpu_pcs = [r for r in gpu_pcs if r["milestone"] == "P7-gpu-pcs-arithmetic"]
     gpu_pcs_record = full_gpu_pcs[-1] if full_gpu_pcs else None
@@ -836,7 +888,13 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
             "status": "measured_gate_pass" if gpu_logup_round_record else "not_measured",
             "run_of_record": gpu_logup_round_record,
             "profiles": gpu_logup_rounds,
-            "note": "Clear general rounds with per-round barriers; blind corrections and integration remain open.",
+            "note": "Clear general rounds with per-round barriers; see the blind-round section for correction plumbing.",
+        },
+        "gpu_logup_blind_rounds": {
+            "status": "measured_gate_pass" if gpu_logup_blind_round_record else "not_measured",
+            "run_of_record": gpu_logup_blind_round_record,
+            "profiles": gpu_logup_blind_rounds,
+            "note": "General-layer root/round/split/product corrections measured with no extra rounds; aux-leaf corrections and proving-path integration remain open.",
         },
         "gpu_pcs_arithmetic": {
             "status": "measured_gate_pass" if gpu_pcs_record else "not_measured",
@@ -861,7 +919,9 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
         },
         "go_no_go": {
             "local_recommendation": (
-                "proceed-to-blind-integration-and-native-gpu-anchor"
+                "proceed-to-proving-path-integration-and-native-gpu-anchor"
+                if gpu_logup_blind_round_record
+                else "proceed-to-blind-integration-and-native-gpu-anchor"
                 if gpu_blake3_record
                 else "proceed-to-blake3-merkle-spike"
                 if gpu_pcs_record
@@ -881,7 +941,7 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
                 "A final rho decision still requires fused proving kernels and a native GPU inference anchor."
             ),
             "remaining_before_final_go_no_go": [
-                "blind LogUp correction plumbing measured without extra transcript rounds",
+                "aux-leaf/column blind corrections integrated without extra transcript rounds",
                 "native GPU inference baseline measured on the same instance",
                 "measured GPU kernels integrated into the proving path without extra transcript passes",
                 "GPU path passes golden decode, flat-cost, and anti-replay gates",
@@ -1007,6 +1067,17 @@ def print_summary(report: dict[str, Any]) -> None:
             f"  N={logup_rounds['parameters']['n']} CPU={logup_rounds['cpu_s']:.3f}s "
             f"GPU={logup_rounds['gpu_s']:.4f}s speedup={logup_rounds['gpu_cpu_speedup']:.2f}x "
             f"{logup_rounds['source']}"
+        )
+        print()
+    blind_rounds = report.get("gpu_logup_blind_rounds", {}).get("run_of_record")
+    if blind_rounds:
+        print("GPU blind LogUp correction plumbing")
+        print(
+            f"  N={blind_rounds['parameters']['n']} CPU={blind_rounds['cpu_blind_s']:.3f}s "
+            f"GPU={blind_rounds['gpu_blind_s']:.4f}s "
+            f"speedup={blind_rounds['gpu_cpu_speedup']:.2f}x "
+            f"blind/clear={blind_rounds['blind_over_clear']:.3f} "
+            f"{blind_rounds['source']}"
         )
         print()
     pcs = report.get("gpu_pcs_arithmetic", {}).get("run_of_record")

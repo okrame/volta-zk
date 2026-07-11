@@ -56,6 +56,20 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-11 (P7 GPU PCS row/global arithmetic — pre-registered)**:
+  implement two exact sm_80 spikes at `P4_LAYER` geometry. (A) Batched
+  Goldilocks forward NTT for 1024 rows x 2^15 code symbols, including
+  bit-reversal and all 15 butterfly stages with the same root/twiddles as
+  `NttPlan`; immutable resident messages are zero-padded at msg_len=16896.
+  (B) `combine_rows` data block for 1024x16384 base-field weights, producing
+  both u_q and u_c via F_p² x F_p operations. Use 1 warmup + 7 GPU and 3
+  7-thread CPU repetitions, forced small D2H completion barriers, and compare
+  every output limb bit-for-bit. Hard gates for **each** pass: correctness,
+  timing sanity, GPU/CPU speedup >=5.48x. Report bytes, operation counts and
+  checksums. This excludes pad-tail addition, fresh mask-row encoding, column
+  gather and blake3/Merkle; those remain explicit PCS follow-ups. No PCS
+  shape, rate, Q, opening bytes, transcript or protocol change.
+
 - **2026-07-11 (P7 GPU LogUp general rounds/folds landed)**: clean run of
   record `benchmarks/results/p7-gpu-logup-rounds-2026-07-11-e4470bf.json`
   on Thunder `nc1k4a0g`, N=2^22, 22 transcript-ordered rounds, reports every

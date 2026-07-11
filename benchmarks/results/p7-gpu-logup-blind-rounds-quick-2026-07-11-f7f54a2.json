@@ -1,0 +1,66 @@
+{
+  "cloud": {
+    "cpu_model": "Intel Xeon Platinum 8352Y / cgroup quota 7.92 cores",
+    "cuda_version": "toolkit 13.0 / UMD 13.3",
+    "driver_version": "610.43.02",
+    "gpu_sku": "NVIDIA A100-SXM4-80GB / Thunder A100XL",
+    "image": "base / Ubuntu 22.04.5 LTS",
+    "instance_id": "nc1k4a0g",
+    "provider": "Thunder Compute",
+    "ram_gib": "64",
+    "region": "not exposed by provider API",
+    "vcpus": "8 (quota 7.92)"
+  },
+  "compiler": {
+    "arch": "sm_80",
+    "nvcc": "/usr/local/cuda/bin/nvcc"
+  },
+  "date": "2026-07-11",
+  "git_dirty": false,
+  "git_sha": "f7f54a2",
+  "kernel": {
+    "all_rounds_checksum": "0xa0cd787a9d565b4d",
+    "blind_corrections_correct": true,
+    "blind_over_clear": 0.810483103176,
+    "correctness": true,
+    "cpu_blind_s": 0.016037457,
+    "device": {
+      "cc": "8.0",
+      "global_memory_bytes": 85119205376,
+      "name": "NVIDIA A100-SXM4-80GB",
+      "sm_count": 108
+    },
+    "gate_speedup_ge_5_48_and_overhead_le_1_05": false,
+    "gpu_blind_s": 0.010368747,
+    "gpu_clear_s": 0.012793292,
+    "gpu_cpu_speedup": 1.54671118892,
+    "parameters": {
+      "correction_bytes_total": 656,
+      "cpu_reps": 1,
+      "cpu_threads": 7,
+      "extra_transcript_rounds": 0,
+      "fp2_mults_per_pair_eval": 10,
+      "fp2_mults_per_pair_fold": 4,
+      "gpu_reps": 3,
+      "log2_n": 16,
+      "n": 65536,
+      "product_correction_bytes": 48,
+      "resident_preexpanded_masks": true,
+      "root_correction_bytes": 32,
+      "round_correction_bytes": 512,
+      "round_message_d2h_bytes": 64,
+      "rounds": 16,
+      "split_correction_bytes": 64
+    },
+    "timing_sane": true
+  },
+  "milestone": "P7-gpu-logup-blind-rounds-quick",
+  "scope": {
+    "aux_leaf_column_corrections": false,
+    "extra_transcript_rounds": 0,
+    "general_fraction_tree_layer": true,
+    "per_round_transcript_barrier": true,
+    "proving_path_integrated": false,
+    "root_round_split_product_corrections": true
+  }
+}

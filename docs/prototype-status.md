@@ -56,6 +56,30 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-11 (P7 GPU blind LogUp plumbing — first full runs failed;
+  pinned-barrier follow-up authorized)**: all blind root/round/split/product
+  corrections (848 bytes), every round accumulator and every folded element
+  were exact, with zero extra transcript rounds, but the preregistered
+  performance gates did not pass. On Thunder `nc1k4a0g`, the first driver
+  used four separate 16-byte final split copies and reported CPU 383.75 ms,
+  GPU blind 133.76 ms = 2.87x and blind/clear 1.077; the unchanged clear
+  control on the same commit later ran at 44.56 ms = 8.92x, identifying the
+  micro-copy path as invalid for a single 64-byte split message. After packing
+  that message, a clean run on replacement instance `6mprfo7p` (same A100,
+  Xeon Platinum 8470, CUDA toolkit 13.2 / UMD 13.3) reported CPU blind
+  258.70 ms, GPU blind 54.60 ms = **4.738x**, blind/clear **1.098**: both
+  >=5.48x and <=1.05x gates still fail. The unchanged clear control there was
+  CPU 259.83 ms, GPU 58.29 ms = 4.457x. Thus the new CPU is materially faster
+  while GPU absolute latency is comparable; the old instance's 5.48x
+  sensitivity is not a portable rho denominator, but the fixed preregistered
+  gate is still recorded as failed. Preserve all diagnostic JSONs. One
+  implementation follow-up is authorized before stopping this lever: replace
+  pageable stack destinations for the 22 round messages plus one split
+  message with reusable CUDA pinned-host buffers, then rerun the same quick/
+  full protocol and unchanged gates. This changes no arithmetic, mask,
+  correction, message, challenge, proof byte or transcript round. A final rho
+  claim on `6mprfo7p` still requires a fresh native P6 baseline on that box.
+
 - **2026-07-11 (P7 GPU blind LogUp correction plumbing — pre-registered)**:
   extend the already-passed `N=2^22` general-round spike without changing its
   arithmetic or challenge order. Keep the 64-byte device-to-host barrier at

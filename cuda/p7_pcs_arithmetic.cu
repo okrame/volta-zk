@@ -189,12 +189,6 @@ std::string hex64(uint64_t x) {
     return out.str();
 }
 
-std::string hex64(uint64_t x) {
-    std::ostringstream out;
-    out << "0x" << std::hex << std::setw(16) << std::setfill('0') << x;
-    return out.str();
-}
-
 struct PassResult {
     double cpu_s;
     double gpu_s;

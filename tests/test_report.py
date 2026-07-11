@@ -74,7 +74,13 @@ def test_p7_report_selects_record_and_packed_sources():
         and row["gate_speedup_ge_5_48"] is False
         for row in data["gpu_logup_rounds"]["profiles"]
     )
-    assert data["go_no_go"]["local_recommendation"] == "proceed-to-pcs-hash-spikes"
+    pcs = data["gpu_pcs_arithmetic"]["run_of_record"]
+    assert pcs["source"].endswith("p7-gpu-pcs-arithmetic-2026-07-11-366ec4a.json")
+    assert pcs["correctness"] is True
+    assert pcs["gate_each_speedup_ge_5_48"] is True
+    assert pcs["ntt"]["gpu_cpu_speedup"] == 80.3253115046
+    assert pcs["combine_rows"]["gpu_cpu_speedup"] == 76.0996903402
+    assert data["go_no_go"]["local_recommendation"] == "proceed-to-blake3-merkle-spike"
     q150 = [
         row
         for row in data["measured_pcs_profiles"]

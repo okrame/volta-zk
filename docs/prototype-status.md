@@ -23,7 +23,7 @@ CPU numbers validate architecture and counts; the ρ targets (≤2 decode,
 | P4 LogUp + fused blocks | **done** (2026-07-05) | one full layer proved+verified e2e (T=100, real PCS opening) ✓ **PASSED**; counts within 20% ✓ (witness streams = budget **exactly**, padded LogUp domains explained); LogUp ≤8–10 E-mult/lookup: **MISSED, motivated (12.20)**; 1 weight claim/tensor ✓ (4/layer) | prove 0.800 s vs native forward 0.033 s (ρ_layer ~24, 4 cores); verify 0.041 s; LogUp lookup-side **12.20 E-mult/lookup** (~34 ns/lookup, 5.4× vs P2.5 spike wall), table-side 3.86 raw → 0.32 /12-amortized; full instance cost 126.5 M E-mult/layer (≈42/padded lookup incl. aux folding + tables + closures); corr bytes 7.64 MB/layer (mult vectors 3.87 MB — see deviations); layer PCS 2^24: commit 0.34 s one-off, **open 0.035 s**, verify 0.006 s; projections (P3.5 cost model, 49/98 claims): prefill **0.233 s**, per-response **0.345 s**. Run of record `benchmarks/results/p4-2026-07-06-8b4ca11.json` (clean tree, `git_dirty:false`; the 07-05 JSON was a dirty-tree run whose sha names the parent commit) |
 | P5 GPT-2 e2e prefill 100 tok | **done** (2026-07-06) | one-command run ✓ (`scripts/run_prefill.sh`), golden check ✓ (full logits bit-exact vs numpy at T=100, argmax 835 ' way'), counts vs budget: witness lookups = budget **exactly** (16,944,000) ✓ | **accepted e2e with real weights + 13 real Ligero commitments**: native (witness) 0.459 s, prove 11.0–11.2 s, **ρ ≈ 24** (matches P4's ×12 projection); verify 0.65 s + 0.07 s PCS; PCS open **0.73 s** / 52.8 MB (vs 0.237 s projection — 13× fixed costs, see deviations), commit one-off 7.6 s; **comm 159.6 MB/prefill** (mult vectors 59.4 + PCS 52.8 + boundary 36.9 + rest), projected response 212 MB; E-mult all-in 100.6/budget lookup; peak RSS 2.86 GB. `benchmarks/results/p5-2026-07-06-e52ce79.json` (clean tree) |
 | P6 decode + authenticated KV cache | **done** (2026-07-07) | flat cost/token ✓ **PASSED** (curve last/first 1.12 ≤ 1.5, 5×10 chunks, cache 100→150); anti-replay smoke ✓ (prefill-row replay + position swap rejected); golden decode ✓ (50 tokens bit-exact vs numpy) | **accepted e2e, prompt 100 + 50 decode, one two-phase session, real 13-commitment PCS with STACKED claims (96 weight + 6 embed)**: native decode 30.9 tok/s (KV-cached baseline); prove_response 18.7 s = prefill 10.5 s + **decode marginal 8.2 s (0.164 s/token, ρ_decode 5.07 CPU)**; verified 2.67 tok/s; verify 0.57 s + 0.10 s PCS. Comm: transcript 137.4 MB (prefill 48.4 + PCS opening 66.7 + decode marginal 22.3 = **445 KB/token**) + public band logits 20.5 MB → **total response download 157.9 MB** (inside the 150–200 MB product envelope; the PCS opening is now the dominant lever, P7). Shared-α restructure landed with P6: mult corr 59.4 → 2.85 MB. PCS commit one-off 9.5 s; peak RSS 3.47 GB. `benchmarks/results/p6-2026-07-07-515bb1c.json` (clean tree) |
-| P7 report + GPU budget model | **A100 roofline + fused MAC + LogUp arithmetic passed; PCS open** (2026-07-11) | report/PCG/cloud anchors ✓; Goldilocks/F_p² roofline ✓; fused GEMM-MAC ✓; LogUp tree N=2^24 ✓; LogUp general round/fold N=2^22 ✓; PCS/hash, blind plumbing and proving-path integration open | Required relative acceleration **5.48× prefill / 3.97× decode**. A100: fused MAC `rho_kernel=1.003`; LogUp tree 66.12×; LogUp interactive general rounds CPU 386.6 ms -> GPU 57.14 ms = **6.77×** including 22 round barriers (narrow 1.23× headroom over prefill gate). Sources: `p7-gpu-fused-epilogue-2026-07-11-bde5d7d.json`, `p7-gpu-logup-tree-2026-07-11-5f7b443.json`, `p7-gpu-logup-rounds-2026-07-11-e4470bf.json`. Next: PCS row/global + blake3; final go/no-go remains open. |
+| P7 report + GPU budget model | **A100 proving arithmetic spikes passed; Blake3/integration open** (2026-07-11) | report/PCG/cloud anchors ✓; field roofline ✓; fused GEMM-MAC ✓; LogUp tree + general rounds ✓; PCS P4_LAYER NTT + combine_rows ✓; blake3/Merkle, columns, blind plumbing and integration open | Required relative acceleration **5.48× prefill / 3.97× decode**. Narrowest arithmetic pass remains LogUp rounds at 6.77×. PCS: batched row NTT CPU 512.9 ms -> GPU 6.386 ms = **80.33×**; combine_rows 145.9 ms -> 1.918 ms = **76.10×**, all limbs exact. Source `p7-gpu-pcs-arithmetic-2026-07-11-366ec4a.json`. Next: blake3/Merkle + column gather, then blind/integration/e2e; final go/no-go open. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -55,6 +55,19 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-11 (P7 GPU PCS row/global arithmetic landed)**: clean run of
+  record `benchmarks/results/p7-gpu-pcs-arithmetic-2026-07-11-366ec4a.json`
+  on Thunder `nc1k4a0g`, exact `P4_LAYER` geometry. Batched 1024x32768
+  Goldilocks NTT (bit reversal + 15 stages, 251.7 M butterflies) matches every
+  symbol: CPU 0.51293 s vs GPU 0.006386 s = **80.33x**. `combine_rows` data
+  block over 1024x16384 weights matches u_q/u_c exactly: CPU 0.14593 s vs
+  GPU 0.001918 s = **76.10x**. Both independently pass >=5.48. Quick small
+  geometry was correct but launch dominated and failed, retained as
+  `p7-gpu-pcs-arithmetic-quick-2026-07-11-366ec4a.json`. Scope excludes pad
+  tail, mask rows, column gather, blake3/Merkle and proving integration; no
+  parameter, proof-size or protocol change. Next authorized spike is
+  blake3/Merkle plus representative column gathering.
 
 - **2026-07-11 (P7 GPU PCS row/global arithmetic — pre-registered)**:
   implement two exact sm_80 spikes at `P4_LAYER` geometry. (A) Batched

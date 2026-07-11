@@ -607,6 +607,39 @@ def gpu_logup_round_profiles(results: list[dict[str, Any]]) -> list[dict[str, An
     return rows
 
 
+def gpu_pcs_arithmetic_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for r in results:
+        if r.get("milestone") not in {
+            "P7-gpu-pcs-arithmetic",
+            "P7-gpu-pcs-arithmetic-quick",
+        }:
+            continue
+        kernel = r.get("kernel") or {}
+        if not kernel.get("correctness") or not kernel.get("timing_sane"):
+            continue
+        rows.append(
+            {
+                "_mtime": r["_mtime"],
+                "source": r["_path"],
+                "milestone": r.get("milestone"),
+                "git_dirty": r.get("git_dirty"),
+                "cloud": r.get("cloud"),
+                "parameters": kernel.get("parameters"),
+                "correctness": kernel.get("correctness"),
+                "timing_sane": kernel.get("timing_sane"),
+                "gate_each_speedup_ge_5_48": kernel.get("gate_each_speedup_ge_5_48"),
+                "ntt": kernel.get("ntt"),
+                "combine_rows": kernel.get("combine_rows"),
+                "scope": r.get("scope"),
+            }
+        )
+    rows.sort(key=lambda x: (x["milestone"], x["_mtime"], x["source"]))
+    for row in rows:
+        row.pop("_mtime", None)
+    return rows
+
+
 def decode_marginal_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows = []
     for r in results:
@@ -663,6 +696,9 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
         r for r in gpu_logup_rounds if r["milestone"] == "P7-gpu-logup-rounds"
     ]
     gpu_logup_round_record = full_gpu_logup_rounds[-1] if full_gpu_logup_rounds else None
+    gpu_pcs = gpu_pcs_arithmetic_profiles(results)
+    full_gpu_pcs = [r for r in gpu_pcs if r["milestone"] == "P7-gpu-pcs-arithmetic"]
+    gpu_pcs_record = full_gpu_pcs[-1] if full_gpu_pcs else None
     pcg_status = (
         "phase_b_measured_not_production"
         if real_pcg_b
@@ -756,6 +792,12 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
             "profiles": gpu_logup_rounds,
             "note": "Clear general rounds with per-round barriers; blind corrections and integration remain open.",
         },
+        "gpu_pcs_arithmetic": {
+            "status": "measured_gate_pass" if gpu_pcs_record else "not_measured",
+            "run_of_record": gpu_pcs_record,
+            "profiles": gpu_pcs,
+            "note": "P4_LAYER NTT + combine_rows only; masks, columns, blake3 and integration remain open.",
+        },
         "real_pcg_spike": {
             "status": pcg_status,
             "corr_sub_corrs": baseline.get("corr_sub_corrs"),
@@ -767,7 +809,9 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
         },
         "go_no_go": {
             "local_recommendation": (
-                "proceed-to-pcs-hash-spikes"
+                "proceed-to-blake3-merkle-spike"
+                if gpu_pcs_record
+                else "proceed-to-pcs-hash-spikes"
                 if gpu_logup_round_record
                 else "proceed-to-logup-rounds-and-pcs-spikes"
                 if gpu_logup_record
@@ -783,7 +827,7 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
                 "A final rho decision still requires fused proving kernels and a native GPU inference anchor."
             ),
             "remaining_before_final_go_no_go": [
-                "PCS/hash GPU kernels measured on representative P6 volumes",
+                "blake3/Merkle and PCS column-gather GPU costs measured on representative P6 volumes",
                 "blind LogUp correction plumbing measured without extra transcript rounds",
                 "native GPU inference baseline measured on the same instance",
                 "measured GPU kernels integrated into the proving path without extra transcript passes",
@@ -910,6 +954,16 @@ def print_summary(report: dict[str, Any]) -> None:
             f"  N={logup_rounds['parameters']['n']} CPU={logup_rounds['cpu_s']:.3f}s "
             f"GPU={logup_rounds['gpu_s']:.4f}s speedup={logup_rounds['gpu_cpu_speedup']:.2f}x "
             f"{logup_rounds['source']}"
+        )
+        print()
+    pcs = report.get("gpu_pcs_arithmetic", {}).get("run_of_record")
+    if pcs:
+        print("GPU PCS arithmetic")
+        print(
+            f"  NTT {pcs['ntt']['gpu_cpu_speedup']:.2f}x "
+            f"({pcs['ntt']['gpu_s'] * 1e3:.2f} ms); combine_rows "
+            f"{pcs['combine_rows']['gpu_cpu_speedup']:.2f}x "
+            f"({pcs['combine_rows']['gpu_s'] * 1e3:.2f} ms) {pcs['source']}"
         )
         print()
     decode_profiles = report.get("decode_marginal_profiles") or []

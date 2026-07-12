@@ -77,7 +77,11 @@ constant factors hold. That constant factor is what P3/P4 measure.
   compares embedding, all fields of all 12 layers, final-LN and the complete
   logits vector against the CPU `ModelWitness` bit-for-bit. It repeats the
   full forward twice on one context and returns live device bytes to the
-  post-model-upload baseline after each explicit witness free. Inside the
+  post-model-upload baseline after each explicit witness free. A forced
+  fixed-point overflow additionally exercises transactional rollback: the
+  call fails explicitly, every allocation made by that call is released,
+  and a subsequent valid forward on the same context remains bit-exact.
+  Inside the
   measured forward the only D2H boundary is the four-byte sticky
   no-clamp/domain error flag; online H2D is the token vector plus its
   four-byte initialization. The entire CPU workspace, including golden,

@@ -200,8 +200,9 @@ impl ResidentLayerWitness {
     }
 
     fn free(self, backend: &mut Backend) -> Result<(), AccelError> {
-        backend.free_device(self.i64_values)?;
-        backend.free_device(self.i16_values)
+        let first = backend.free_device(self.i64_values).err();
+        let second = backend.free_device(self.i16_values).err();
+        first.or(second).map_or(Ok(()), Err)
     }
 }
 
@@ -403,14 +404,81 @@ impl ResidentModelWitness {
     }
 
     pub fn free(self, backend: &mut Backend) -> Result<(), AccelError> {
+        let mut first = None;
         for layer in self.layers {
-            layer.free(backend)?;
+            remember_error(&mut first, layer.free(backend));
         }
-        backend.free_device(self.logits)?;
-        backend.free_device(self.final_i64)?;
-        backend.free_device(self.final_i16)?;
-        backend.free_device(self.embed_acc)?;
-        backend.free_device(self.embed_out)
+        remember_error(&mut first, backend.free_device(self.logits));
+        remember_error(&mut first, backend.free_device(self.final_i64));
+        remember_error(&mut first, backend.free_device(self.final_i16));
+        remember_error(&mut first, backend.free_device(self.embed_acc));
+        remember_error(&mut first, backend.free_device(self.embed_out));
+        first.map_or(Ok(()), Err)
+    }
+}
+
+fn remember_error(first: &mut Option<AccelError>, result: Result<(), AccelError>) {
+    if first.is_none() {
+        *first = result.err();
+    }
+}
+
+#[derive(Default)]
+struct PendingForward {
+    tokens: Option<DeviceBuffer<u32>>,
+    error: Option<DeviceBuffer<u32>>,
+    embed_out: Option<DeviceBuffer<i16>>,
+    embed_acc: Option<DeviceBuffer<i64>>,
+    layers: Vec<ResidentLayerWitness>,
+    temporary_i16: Option<DeviceBuffer<i16>>,
+    final_i16: Option<DeviceBuffer<i16>>,
+    final_i64: Option<DeviceBuffer<i64>>,
+    logits: Option<DeviceBuffer<i64>>,
+}
+
+impl PendingForward {
+    fn cleanup(mut self, backend: &mut Backend) -> Result<(), AccelError> {
+        let mut first = None;
+        if let Some(buffer) = self.temporary_i16.take() {
+            remember_error(&mut first, backend.free_device(buffer));
+        }
+        if let Some(buffer) = self.logits.take() {
+            remember_error(&mut first, backend.free_device(buffer));
+        }
+        if let Some(buffer) = self.final_i64.take() {
+            remember_error(&mut first, backend.free_device(buffer));
+        }
+        if let Some(buffer) = self.final_i16.take() {
+            remember_error(&mut first, backend.free_device(buffer));
+        }
+        for layer in self.layers.drain(..) {
+            remember_error(&mut first, layer.free(backend));
+        }
+        if let Some(buffer) = self.embed_acc.take() {
+            remember_error(&mut first, backend.free_device(buffer));
+        }
+        if let Some(buffer) = self.embed_out.take() {
+            remember_error(&mut first, backend.free_device(buffer));
+        }
+        if let Some(buffer) = self.error.take() {
+            remember_error(&mut first, backend.free_device(buffer));
+        }
+        if let Some(buffer) = self.tokens.take() {
+            remember_error(&mut first, backend.free_device(buffer));
+        }
+        first.map_or(Ok(()), Err)
+    }
+
+    fn finish(mut self, t: usize) -> ResidentModelWitness {
+        ResidentModelWitness {
+            t,
+            embed_out: self.embed_out.take().expect("built embed output"),
+            embed_acc: self.embed_acc.take().expect("built embed accumulator"),
+            layers: std::mem::take(&mut self.layers),
+            final_i16: self.final_i16.take().expect("built final i16 witness"),
+            final_i64: self.final_i64.take().expect("built final i64 witness"),
+            logits: self.logits.take().expect("built logits"),
+        }
     }
 }
 
@@ -440,19 +508,63 @@ pub fn forward_model_tokens_resident(
         return Err(AccelError::InvalidInput("invalid resident token sequence"));
     }
     let td = t.checked_mul(D).ok_or(AccelError::InvalidInput("shape overflow"))?;
-    let token_buffer = backend.upload_new_device(tokens)?;
-    let error_buffer = backend.upload_new_device(&[0u32])?;
-    let error = DeviceSlice::new(&error_buffer, 0, 1)?;
-    let embed_out = backend.alloc_device(td)?;
-    let embed_acc = backend.alloc_device(td)?;
+    let mut pending = PendingForward { layers: Vec::with_capacity(L), ..Default::default() };
+    if let Err(error) = build_resident_forward(model, tokens, t, td, backend, &mut pending) {
+        let _ = pending.cleanup(backend);
+        return Err(error);
+    }
 
+    let error_buffer = pending.error.take().expect("built error flag");
+    let error_value = match backend.download_device(&error_buffer, 0, 1) {
+        Ok(value) => value[0],
+        Err(error) => {
+            let _ = backend.free_device(error_buffer);
+            let _ = pending.cleanup(backend);
+            return Err(error);
+        }
+    };
+    if let Err(error) = backend.free_device(error_buffer) {
+        let _ = pending.cleanup(backend);
+        return Err(error);
+    }
+    let token_buffer = pending.tokens.take().expect("built token buffer");
+    if let Err(error) = backend.free_device(token_buffer) {
+        let _ = pending.cleanup(backend);
+        return Err(error);
+    }
+    if error_value != 0 {
+        let _ = pending.cleanup(backend);
+        return Err(AccelError::Cuda(
+            "resident fixed-point forward violated a no-clamp/domain invariant".to_owned(),
+        ));
+    }
+    Ok(pending.finish(t))
+}
+
+fn pending_error(pending: &PendingForward) -> DeviceSlice<'_, u32> {
+    DeviceSlice::new(pending.error.as_ref().expect("allocated error flag"), 0, 1)
+        .expect("valid error flag")
+}
+
+fn build_resident_forward(
+    model: &ResidentGpt2Model,
+    tokens: &[u32],
+    t: usize,
+    td: usize,
+    backend: &mut Backend,
+    pending: &mut PendingForward,
+) -> Result<(), AccelError> {
+    pending.tokens = Some(backend.upload_new_device(tokens)?);
+    pending.error = Some(backend.upload_new_device(&[0u32])?);
+    pending.embed_out = Some(backend.alloc_device(td)?);
+    pending.embed_acc = Some(backend.alloc_device(td)?);
     backend.fixed_embed_device(
-        DeviceSlice::new(&token_buffer, 0, t)?,
+        DeviceSlice::new(pending.tokens.as_ref().expect("tokens"), 0, t)?,
         model.slice(model.layout.wte),
         model.slice(model.layout.wpe),
-        DeviceSlice::new(&embed_acc, 0, td)?,
-        DeviceSlice::new(&embed_out, 0, td)?,
-        error,
+        DeviceSlice::new(pending.embed_acc.as_ref().expect("embed acc"), 0, td)?,
+        DeviceSlice::new(pending.embed_out.as_ref().expect("embed out"), 0, td)?,
+        pending_error(pending),
         t,
         D,
         VOCAB,
@@ -461,25 +573,26 @@ pub fn forward_model_tokens_resident(
         model.params.shift_embed,
     )?;
 
-    let mut layers = Vec::with_capacity(L);
     for layer_index in 0..L {
         let layout = LayerLayout::new(t);
-        let i16_values = backend.alloc_device(layout.i16_len)?;
+        pending.temporary_i16 = Some(backend.alloc_device(layout.i16_len)?);
         let i64_values = backend.alloc_device(layout.i64_len)?;
+        let i16_values = pending.temporary_i16.take().expect("pending layer i16 allocation");
         let layer = ResidentLayerWitness { t, layout, i16_values, i64_values };
+        pending.layers.push(layer);
 
         let (source, seam_shift) = if layer_index == 0 {
-            (DeviceSlice::new(&embed_out, 0, td)?, 0)
+            (DeviceSlice::new(pending.embed_out.as_ref().expect("embed out"), 0, td)?, 0)
         } else {
             (
-                layer_slice16(layers.last().expect("previous layer"), LayerI16Field::FfnBlockOut),
+                layer_slice16(&pending.layers[layer_index - 1], LayerI16Field::FfnBlockOut),
                 model.params.seam_shifts[layer_index - 1],
             )
         };
         backend.fixed_requant_i16_device(
             source,
-            layer_slice16(&layer, LayerI16Field::XIn),
-            error,
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::XIn),
+            pending_error(pending),
             seam_shift,
         )?;
 
@@ -489,16 +602,16 @@ pub fn forward_model_tokens_resident(
         params.shift_ffn_down = model.params.shift_ffn_down[layer_index];
 
         backend.fixed_layer_norm_device(
-            layer_slice16(&layer, LayerI16Field::XIn),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::XIn),
             model.slice(weights.ln1_gain),
             model.slice(weights.ln1_bias),
             model.slice(model.layout.ln_rsqrt),
-            layer_slice64(&layer, LayerI64Field::Ln1Mean),
-            layer_slice64(&layer, LayerI64Field::Ln1Var),
-            layer_slice64(&layer, LayerI64Field::Ln1RsqrtIn),
-            layer_slice16(&layer, LayerI16Field::Ln1RsqrtOut),
-            layer_slice16(&layer, LayerI16Field::Ln1Out),
-            error,
+            layer_slice64(&pending.layers[layer_index], LayerI64Field::Ln1Mean),
+            layer_slice64(&pending.layers[layer_index], LayerI64Field::Ln1Var),
+            layer_slice64(&pending.layers[layer_index], LayerI64Field::Ln1RsqrtIn),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::Ln1RsqrtOut),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::Ln1Out),
+            pending_error(pending),
             t,
             D,
             params.ln_var_shift,
@@ -506,37 +619,37 @@ pub fn forward_model_tokens_resident(
         )?;
 
         let qkv_len = 3 * td;
-        let qkv_requant = backend.alloc_device(qkv_len)?;
+        pending.temporary_i16 = Some(backend.alloc_device(qkv_len)?);
         backend.fixed_gemm_device(
-            layer_slice16(&layer, LayerI16Field::Ln1Out),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::Ln1Out),
             model.slice(weights.c_attn),
             Some(model.slice(weights.c_attn_bias)),
             None,
-            layer_slice64(&layer, LayerI64Field::QkvAcc),
-            DeviceSlice::new(&qkv_requant, 0, qkv_len)?,
+            layer_slice64(&pending.layers[layer_index], LayerI64Field::QkvAcc),
+            DeviceSlice::new(pending.temporary_i16.as_ref().expect("qkv temporary"), 0, qkv_len)?,
             None,
-            error,
+            pending_error(pending),
             t,
             D,
             3 * D,
             params.shift_qkv,
         )?;
         backend.fixed_qkv_split_device(
-            DeviceSlice::new(&qkv_requant, 0, qkv_len)?,
-            layer_slice16(&layer, LayerI16Field::Q),
-            layer_slice16(&layer, LayerI16Field::K),
-            layer_slice16(&layer, LayerI16Field::V),
+            DeviceSlice::new(pending.temporary_i16.as_ref().expect("qkv temporary"), 0, qkv_len)?,
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::Q),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::K),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::V),
             t,
             D,
         )?;
-        backend.free_device(qkv_requant)?;
+        backend.free_device(pending.temporary_i16.take().expect("qkv temporary"))?;
 
         backend.fixed_attention_scores_device(
-            layer_slice16(&layer, LayerI16Field::Q),
-            layer_slice16(&layer, LayerI16Field::K),
-            layer_slice64(&layer, LayerI64Field::ScoresAcc),
-            layer_slice16(&layer, LayerI16Field::ScoresQ),
-            error,
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::Q),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::K),
+            layer_slice64(&pending.layers[layer_index], LayerI64Field::ScoresAcc),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::ScoresQ),
+            pending_error(pending),
             t,
             t,
             0,
@@ -545,15 +658,15 @@ pub fn forward_model_tokens_resident(
             params.shift_scores,
         )?;
         backend.fixed_softmax_device(
-            layer_slice16(&layer, LayerI16Field::ScoresQ),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::ScoresQ),
             model.slice(model.layout.exp),
             model.slice(model.layout.softmax_recip),
-            layer_slice16(&layer, LayerI16Field::RowShift),
-            layer_slice16(&layer, LayerI16Field::ExpOut),
-            layer_slice64(&layer, LayerI64Field::Denoms),
-            layer_slice16(&layer, LayerI16Field::Recips),
-            layer_slice16(&layer, LayerI16Field::SoftmaxW),
-            error,
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::RowShift),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::ExpOut),
+            layer_slice64(&pending.layers[layer_index], LayerI64Field::Denoms),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::Recips),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::SoftmaxW),
+            pending_error(pending),
             t,
             t,
             0,
@@ -563,11 +676,11 @@ pub fn forward_model_tokens_resident(
             params.softmax_row_shift,
         )?;
         backend.fixed_av_device(
-            layer_slice16(&layer, LayerI16Field::SoftmaxW),
-            layer_slice16(&layer, LayerI16Field::V),
-            layer_slice64(&layer, LayerI64Field::AvAcc),
-            layer_slice16(&layer, LayerI16Field::AvQ),
-            error,
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::SoftmaxW),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::V),
+            layer_slice64(&pending.layers[layer_index], LayerI64Field::AvAcc),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::AvQ),
+            pending_error(pending),
             t,
             t,
             0,
@@ -576,14 +689,14 @@ pub fn forward_model_tokens_resident(
             params.shift_av,
         )?;
         backend.fixed_gemm_device(
-            layer_slice16(&layer, LayerI16Field::AvQ),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::AvQ),
             model.slice(weights.attn_proj),
             Some(model.slice(weights.attn_proj_bias)),
-            Some(layer_slice16(&layer, LayerI16Field::XIn)),
-            layer_slice64(&layer, LayerI64Field::ProjAcc),
-            layer_slice16(&layer, LayerI16Field::AttnProjQ),
-            Some(layer_slice16(&layer, LayerI16Field::AttnBlockOut)),
-            error,
+            Some(layer_slice16(&pending.layers[layer_index], LayerI16Field::XIn)),
+            layer_slice64(&pending.layers[layer_index], LayerI64Field::ProjAcc),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::AttnProjQ),
+            Some(layer_slice16(&pending.layers[layer_index], LayerI16Field::AttnBlockOut)),
+            pending_error(pending),
             t,
             D,
             D,
@@ -591,99 +704,87 @@ pub fn forward_model_tokens_resident(
         )?;
 
         backend.fixed_layer_norm_device(
-            layer_slice16(&layer, LayerI16Field::AttnBlockOut),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::AttnBlockOut),
             model.slice(weights.ln2_gain),
             model.slice(weights.ln2_bias),
             model.slice(model.layout.ln_rsqrt),
-            layer_slice64(&layer, LayerI64Field::Ln2Mean),
-            layer_slice64(&layer, LayerI64Field::Ln2Var),
-            layer_slice64(&layer, LayerI64Field::Ln2RsqrtIn),
-            layer_slice16(&layer, LayerI16Field::Ln2RsqrtOut),
-            layer_slice16(&layer, LayerI16Field::Ln2Out),
-            error,
+            layer_slice64(&pending.layers[layer_index], LayerI64Field::Ln2Mean),
+            layer_slice64(&pending.layers[layer_index], LayerI64Field::Ln2Var),
+            layer_slice64(&pending.layers[layer_index], LayerI64Field::Ln2RsqrtIn),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::Ln2RsqrtOut),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::Ln2Out),
+            pending_error(pending),
             t,
             D,
             params.ln_var_shift,
             params.shift_ln_norm,
         )?;
         backend.fixed_gemm_device(
-            layer_slice16(&layer, LayerI16Field::Ln2Out),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::Ln2Out),
             model.slice(weights.ffn_up),
             Some(model.slice(weights.ffn_up_bias)),
             None,
-            layer_slice64(&layer, LayerI64Field::FfnUpAcc),
-            layer_slice16(&layer, LayerI16Field::FfnUpQ),
+            layer_slice64(&pending.layers[layer_index], LayerI64Field::FfnUpAcc),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::FfnUpQ),
             None,
-            error,
+            pending_error(pending),
             t,
             D,
             DFF,
             params.shift_ffn_up,
         )?;
         backend.fixed_lookup_device(
-            layer_slice16(&layer, LayerI16Field::FfnUpQ),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::FfnUpQ),
             model.slice(model.layout.gelu),
-            layer_slice16(&layer, LayerI16Field::GeluOut),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::GeluOut),
         )?;
         backend.fixed_gemm_device(
-            layer_slice16(&layer, LayerI16Field::GeluOut),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::GeluOut),
             model.slice(weights.ffn_down),
             Some(model.slice(weights.ffn_down_bias)),
-            Some(layer_slice16(&layer, LayerI16Field::AttnBlockOut)),
-            layer_slice64(&layer, LayerI64Field::FfnDownAcc),
-            layer_slice16(&layer, LayerI16Field::FfnDownQ),
-            Some(layer_slice16(&layer, LayerI16Field::FfnBlockOut)),
-            error,
+            Some(layer_slice16(&pending.layers[layer_index], LayerI16Field::AttnBlockOut)),
+            layer_slice64(&pending.layers[layer_index], LayerI64Field::FfnDownAcc),
+            layer_slice16(&pending.layers[layer_index], LayerI16Field::FfnDownQ),
+            Some(layer_slice16(&pending.layers[layer_index], LayerI16Field::FfnBlockOut)),
+            pending_error(pending),
             t,
             DFF,
             D,
             params.shift_ffn_down,
         )?;
-        layers.push(layer);
     }
 
-    let final_i16 = backend.alloc_device(D + 1)?;
-    let final_i64 = backend.alloc_device(3)?;
-    let last = layer_slice16(layers.last().expect("non-empty model"), LayerI16Field::FfnBlockOut);
+    pending.final_i16 = Some(backend.alloc_device(D + 1)?);
+    pending.final_i64 = Some(backend.alloc_device(3)?);
+    let last =
+        layer_slice16(pending.layers.last().expect("non-empty model"), LayerI16Field::FfnBlockOut);
     let last_row = DeviceSlice::new(last.buffer(), last.offset() + (t - 1) * D, D)?;
     backend.fixed_layer_norm_device(
         last_row,
         model.slice(model.layout.lnf_gain),
         model.slice(model.layout.lnf_bias),
         model.slice(model.layout.ln_rsqrt),
-        DeviceSlice::new(&final_i64, 0, 1)?,
-        DeviceSlice::new(&final_i64, 1, 1)?,
-        DeviceSlice::new(&final_i64, 2, 1)?,
-        DeviceSlice::new(&final_i16, 0, 1)?,
-        DeviceSlice::new(&final_i16, 1, D)?,
-        error,
+        DeviceSlice::new(pending.final_i64.as_ref().expect("final i64"), 0, 1)?,
+        DeviceSlice::new(pending.final_i64.as_ref().expect("final i64"), 1, 1)?,
+        DeviceSlice::new(pending.final_i64.as_ref().expect("final i64"), 2, 1)?,
+        DeviceSlice::new(pending.final_i16.as_ref().expect("final i16"), 0, 1)?,
+        DeviceSlice::new(pending.final_i16.as_ref().expect("final i16"), 1, D)?,
+        pending_error(pending),
         1,
         D,
         model.params.lut.ln_var_shift,
         model.params.lut.shift_ln_norm,
     )?;
-    let logits = backend.alloc_device(VOCAB)?;
+    pending.logits = Some(backend.alloc_device(VOCAB)?);
     backend.fixed_logits_device(
-        DeviceSlice::new(&final_i16, 1, D)?,
+        DeviceSlice::new(pending.final_i16.as_ref().expect("final i16"), 1, D)?,
         model.slice(model.layout.wte),
-        DeviceSlice::new(&logits, 0, VOCAB)?,
+        DeviceSlice::new(pending.logits.as_ref().expect("logits"), 0, VOCAB)?,
         1,
         D,
         VOCAB,
     )?;
-
-    let witness =
-        ResidentModelWitness { t, embed_out, embed_acc, layers, final_i16, final_i64, logits };
-    let error_value = backend.download_device(&error_buffer, 0, 1)?[0];
-    backend.free_device(error_buffer)?;
-    backend.free_device(token_buffer)?;
-    if error_value != 0 {
-        let _ = witness.free(backend);
-        return Err(AccelError::Cuda(
-            "resident fixed-point forward violated a no-clamp/domain invariant".to_owned(),
-        ));
-    }
-    Ok(witness)
+    Ok(())
 }
 
 #[cfg(all(test, feature = "cuda"))]
@@ -798,7 +899,7 @@ mod tests {
         let host = load_model(&dir).unwrap();
         let tokens = host.p.tokens[..3].to_vec();
         let expected = forward_model_tokens(&host, &tokens);
-        let resident_model = upload_resident_model(&host, &mut gpu).unwrap();
+        let mut resident_model = upload_resident_model(&host, &mut gpu).unwrap();
         let setup_live = gpu.stats().unwrap().live_device_bytes;
 
         for _ in 0..2 {
@@ -817,6 +918,22 @@ mod tests {
                 "resident forward leaked across context reuse"
             );
         }
+        let original_embed_shift = resident_model.params.shift_embed;
+        resident_model.params.shift_embed = -30;
+        assert!(matches!(
+            forward_model_tokens_resident(&resident_model, &tokens, &mut gpu),
+            Err(AccelError::Cuda(_))
+        ));
+        assert_eq!(
+            gpu.stats().unwrap().live_device_bytes,
+            setup_live,
+            "failed resident forward did not roll back every allocation"
+        );
+        resident_model.params.shift_embed = original_embed_shift;
+        let recovered = forward_model_tokens_resident(&resident_model, &tokens, &mut gpu).unwrap();
+        compare_witness(&mut gpu, &recovered, &expected);
+        recovered.free(&mut gpu).unwrap();
+        assert_eq!(gpu.stats().unwrap().live_device_bytes, setup_live);
         resident_model.free(&mut gpu).unwrap();
     }
 }

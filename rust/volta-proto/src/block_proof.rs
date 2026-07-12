@@ -89,7 +89,7 @@ use volta_accel::{
 use volta_field::{Fp, Fp2};
 use volta_gpt2::{
     gemm_i64, GemmBiases, LayerI16Field, LayerI64Field, LayerWeightField, LayerWeights,
-    LayerWitness, Luts, ModelWeightField, ResidentGpt2Model, ResidentLayerWitness, D, DFF, DH, H,
+    LayerWitness, Luts, ModelWeightField, ResidentGpt2Model, ResidentLayerView, D, DFF, DH, H,
 };
 use volta_mac::{
     auth_verifier, CorrIndex, CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey,
@@ -1227,6 +1227,23 @@ pub struct KvPrefixP<'a> {
     pub v: &'a [i16],
 }
 
+/// Resident prover cache segment. Plaintext values are read from the
+/// contiguous cache view supplied by [`ResidentLayerView`]; this record owns
+/// only the per-row authentication domain needed to derive the matching MAC
+/// tags without materializing prefix data on the host.
+#[derive(Clone, Copy)]
+pub(crate) struct ResidentCacheSegP {
+    pub dom: u64,
+    pub rows: usize,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct ResidentKvPrefixP {
+    pub rows: usize,
+    pub dom_k: u64,
+    pub dom_v: u64,
+}
+
 /// Verifier mirror of [`KvPrefixP`] (cached keys).
 pub struct KvPrefixK<'a> {
     pub rows: usize,
@@ -1345,24 +1362,23 @@ pub(crate) fn public_window_fold_resident<T: ResidentMatrixElement>(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn boundary_fold_cols_resident_p(
+fn cache_fold_cols_resident_p(
     stream: &mut CorrelationStream,
-    base_dom: u64,
+    segments: &[ResidentCacheSegP],
     data: DeviceSlice<'_, i16>,
     rows: usize,
-    cols: usize,
     weights: &[Fp2],
     column_offset: usize,
     width: usize,
     backend: &mut Backend,
 ) -> Result<(DeviceBuffer<volta_accel::Fp2Repr>, Vec<Fp2>), AccelError> {
-    if weights.len() != width || data.len() < rows.saturating_mul(cols) {
-        return Err(AccelError::InvalidInput("resident boundary column-fold geometry mismatch"));
+    if segments.iter().map(|segment| segment.rows).sum::<usize>() != rows {
+        return Err(AccelError::InvalidInput("resident cache segment rows do not cover cache"));
     }
     let values = public_window_fold_resident(
         data,
         rows,
-        cols,
+        D,
         column_offset,
         width,
         weights,
@@ -1370,34 +1386,37 @@ fn boundary_fold_cols_resident_p(
         backend,
     )?;
     let mut tags_out = Vec::with_capacity(rows);
-    for row in 0..rows {
-        let tags = stream.draw_sub_tags(base_dom + row as u64, cols);
-        let tag = (0..width)
-            .fold(Fp2::ZERO, |sum, index| sum + weights[index] * tags[column_offset + index]);
-        tags_out.push(tag);
+    for segment in segments {
+        for row in 0..segment.rows {
+            let tags = stream.draw_sub_tags(segment.dom + row as u64, D);
+            tags_out.push(
+                (0..width).fold(Fp2::ZERO, |sum, index| {
+                    sum + weights[index] * tags[column_offset + index]
+                }),
+            );
+        }
     }
     Ok((values, tags_out))
 }
 
 #[allow(clippy::too_many_arguments)]
-fn boundary_fold_rows_resident_p(
+fn cache_fold_rows_resident_p(
     stream: &mut CorrelationStream,
-    base_dom: u64,
+    segments: &[ResidentCacheSegP],
     data: DeviceSlice<'_, i16>,
     rows: usize,
-    cols: usize,
     weights: &[Fp2],
     column_offset: usize,
     width: usize,
     backend: &mut Backend,
 ) -> Result<(DeviceBuffer<volta_accel::Fp2Repr>, Vec<Fp2>), AccelError> {
-    if weights.len() < rows || data.len() < rows.saturating_mul(cols) {
-        return Err(AccelError::InvalidInput("resident boundary row-fold geometry mismatch"));
+    if segments.iter().map(|segment| segment.rows).sum::<usize>() != rows || weights.len() < rows {
+        return Err(AccelError::InvalidInput("invalid resident cache row-fold geometry"));
     }
     let values = public_window_fold_resident(
         data,
         rows,
-        cols,
+        D,
         column_offset,
         width,
         weights,
@@ -1405,11 +1424,15 @@ fn boundary_fold_rows_resident_p(
         backend,
     )?;
     let mut tags_out = vec![Fp2::ZERO; width];
-    for row in 0..rows {
-        let tags = stream.draw_sub_tags(base_dom + row as u64, cols);
-        for index in 0..width {
-            tags_out[index] += weights[row] * tags[column_offset + index];
+    let mut base = 0;
+    for segment in segments {
+        for row in 0..segment.rows {
+            let tags = stream.draw_sub_tags(segment.dom + row as u64, D);
+            for index in 0..width {
+                tags_out[index] += weights[base + row] * tags[column_offset + index];
+            }
         }
+        base += segment.rows;
     }
     Ok((values, tags_out))
 }
@@ -2485,13 +2508,13 @@ pub(crate) fn ffn_phase1(
     FfnP1 { lv, ln_vec_corrs }
 }
 
-pub(crate) fn ffn_phase1_resident(
-    wit: &ResidentLayerWitness,
+pub(crate) fn ffn_phase1_resident<W: ResidentLayerView>(
+    wit: &W,
     luts: &Luts,
     error: DeviceSlice<'_, u32>,
     cx: &mut BlockCtxP,
 ) -> Result<ResidentFfnP1, AccelError> {
-    let t = wit.t();
+    let t = wit.rows();
     let p = luts.params;
     let rb = pad_bits(t);
     let backend = cx
@@ -2811,8 +2834,8 @@ pub(crate) fn prove_ffn_block(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn prove_ffn_block_resident(
-    wit: &ResidentLayerWitness,
+pub(crate) fn prove_ffn_block_resident<W: ResidentLayerView>(
+    wit: &W,
     resident_model: &ResidentGpt2Model,
     layer: usize,
     weights: &LayerWeights,
@@ -2824,7 +2847,7 @@ pub(crate) fn prove_ffn_block_resident(
     biases: Option<&GemmBiases>,
 ) -> Result<(FfnBlockProof, Vec<WeightClaimP>), AccelError> {
     let result = (|| {
-        let t = wit.t();
+        let t = wit.rows();
         if t < 2 {
             return Err(AccelError::InvalidInput("resident FFN proof needs at least two rows"));
         }
@@ -3561,18 +3584,19 @@ impl ResidentAttnP1 {
     }
 }
 
-/// Resident square/prefill attention phase 1. The lower accelerator builder
-/// is band-general, but this entry point deliberately requires the square
-/// resident witness layout. A decode-band entry must carry explicit prefix
-/// K/V owners and domains; it must not alias them through this square type.
-pub(crate) fn attn_phase1_resident(
-    wit: &ResidentLayerWitness,
+/// Resident attention phase 1 over either a square witness or a compact band
+/// view. The view supplies an explicit full K-cache slice while its own K/V
+/// rows remain the boundary-authenticated current segment.
+pub(crate) fn attn_phase1_resident<W: ResidentLayerView>(
+    wit: &W,
     resident_model: &ResidentGpt2Model,
     luts: &Luts,
     error: DeviceSlice<'_, u32>,
     cx: &mut BlockCtxP,
 ) -> Result<ResidentAttnP1, AccelError> {
-    let t = wit.t();
+    let t = wit.rows();
+    let seq = wit.seq();
+    let pos0 = wit.pos0();
     let params = luts.params;
     let rb = pad_bits(t);
     let exp_pad_u = (0..1usize << 16)
@@ -3584,7 +3608,7 @@ pub(crate) fn attn_phase1_resident(
         .ok_or(AccelError::InvalidInput("resident attention phase 1 requires a backend"))?;
     let wires = backend.attention_proof_wires_device(
         wit.i16(LayerI16Field::Q),
-        wit.i16(LayerI16Field::K),
+        wit.k_cache(),
         wit.i16(LayerI16Field::K),
         wit.i16(LayerI16Field::V),
         wit.i64(LayerI64Field::ScoresAcc),
@@ -3598,8 +3622,8 @@ pub(crate) fn attn_phase1_resident(
         wit.i64(LayerI64Field::QkvAcc),
         error,
         t,
-        t,
-        0,
+        seq,
+        pos0,
         H,
         H_PAD,
         DH,
@@ -4521,14 +4545,16 @@ pub(crate) fn prove_attn_block(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn prove_attn_block_resident(
-    wit: &ResidentLayerWitness,
+pub(crate) fn prove_attn_block_resident<W: ResidentLayerView>(
+    wit: &W,
     resident_model: &ResidentGpt2Model,
     layer: usize,
     weights: &LayerWeights,
     luts: &Luts,
     mut p1: ResidentAttnP1,
     cx: &mut BlockCtxP,
+    k_segments: &[ResidentCacheSegP],
+    v_segments: &[ResidentCacheSegP],
     dom_xin: u64,
     dom_k: u64,
     dom_v: u64,
@@ -4536,14 +4562,14 @@ pub(crate) fn prove_attn_block_resident(
     biases: Option<&GemmBiases>,
 ) -> Result<(AttnBlockProof, Vec<WeightClaimP>), AccelError> {
     let result = (|| {
-        let t = wit.t();
+        let t = wit.rows();
         if t < 2 {
             return Err(AccelError::InvalidInput(
                 "resident attention proof needs at least two rows",
             ));
         }
         let params = luts.params;
-        let shape = BandShape::square(t);
+        let shape = BandShape { t0: wit.pos0(), q: t };
         let (qb, sb) = (shape.qb(), shape.sb());
         let (q_pad, s_pad, sp2) = (shape.q_pad(), shape.s_pad(), shape.sp2());
         let nr = shape.nr();
@@ -4682,12 +4708,11 @@ pub(crate) fn prove_attn_block_resident(
                 volta_accel::MatrixFoldAxis::Rows,
                 cx.backend.as_deref_mut().expect("resident attention backend"),
             )?;
-            let b_folded = match boundary_fold_cols_resident_p(
+            let b_folded = match cache_fold_cols_resident_p(
                 cx.stream,
-                dom_v,
-                wit.i16(LayerI16Field::V),
-                t,
-                D,
+                v_segments,
+                wit.v_cache(),
+                shape.s(),
                 &eq_within,
                 head * DH,
                 DH,
@@ -4716,7 +4741,8 @@ pub(crate) fn prove_attn_block_resident(
                 av_auth[head],
                 move |point, value| {
                     let eq = eq_vec(point);
-                    let tag = (0..t).fold(Fp2::ZERO, |sum, row| sum + eq[row] * b_tags[row]);
+                    let tag =
+                        (0..shape.s()).fold(Fp2::ZERO, |sum, row| sum + eq[row] * b_tags[row]);
                     Ok(ProverAuthed { x: value, m: tag })
                 },
                 &gemm_doms,
@@ -4735,7 +4761,9 @@ pub(crate) fn prove_attn_block_resident(
         let tau: Vec<Fp2> = (0..nr).map(|_| cx.tx.challenge_fp2()).collect();
         let backend = cx.backend.as_deref_mut().expect("resident attention backend");
         let mask_sumcheck = backend.equality_weights_device(&tau)?;
-        if let Err(error) = backend.attention_above_mask_device(&mask_sumcheck, t, t, 0, H, H_PAD) {
+        if let Err(error) =
+            backend.attention_above_mask_device(&mask_sumcheck, t, shape.s(), shape.t0, H, H_PAD)
+        {
             let _ = backend.free_device(mask_sumcheck);
             return Err(error);
         }
@@ -4746,7 +4774,9 @@ pub(crate) fn prove_attn_block_resident(
                 return Err(error);
             }
         };
-        if let Err(error) = backend.attention_above_mask_device(&mask_eval, t, t, 0, H, H_PAD) {
+        if let Err(error) =
+            backend.attention_above_mask_device(&mask_eval, t, shape.s(), shape.t0, H, H_PAD)
+        {
             let _ = backend.free_device(mask_eval);
             let _ = backend.free_device(mask_sumcheck);
             return Err(error);
@@ -5020,7 +5050,7 @@ pub(crate) fn prove_attn_block_resident(
         let mut causal_mass = Fp2::ZERO;
         for head in 0..H {
             for row in 0..t {
-                for col in 0..=row {
+                for col in 0..shape.win(row) {
                     causal_mass += eq_scores[head * sp2 + row * s_pad + col];
                 }
             }
@@ -5034,7 +5064,7 @@ pub(crate) fn prove_attn_block_resident(
         let mut above_weights = Vec::with_capacity(H * shape.n_above_head());
         for head in 0..H {
             for row in 0..t {
-                for col in row + 1..t {
+                for col in shape.win(row)..shape.s() {
                     above_weights.push(eq_scores[head * sp2 + row * s_pad + col]);
                 }
             }
@@ -5052,7 +5082,7 @@ pub(crate) fn prove_attn_block_resident(
             let mut row_weights = vec![Fp2::ZERO; H_PAD * q_pad];
             for head in 0..H {
                 for row in 0..t {
-                    for col in 0..=row {
+                    for col in 0..shape.win(row) {
                         row_weights[head * q_pad + row] +=
                             eq_scores[head * sp2 + row * s_pad + col];
                     }
@@ -5114,12 +5144,11 @@ pub(crate) fn prove_attn_block_resident(
                 volta_accel::MatrixFoldAxis::Rows,
                 cx.backend.as_deref_mut().expect("resident attention backend"),
             )?;
-            let b_folded = match boundary_fold_rows_resident_p(
+            let b_folded = match cache_fold_rows_resident_p(
                 cx.stream,
-                dom_k,
-                wit.i16(LayerI16Field::K),
-                t,
-                D,
+                k_segments,
+                wit.k_cache(),
+                shape.s(),
                 &eq_score_columns,
                 head * DH,
                 DH,
@@ -5142,7 +5171,7 @@ pub(crate) fn prove_attn_block_resident(
                 b_folded,
                 t,
                 DH,
-                t,
+                shape.s(),
                 &score_point[sb..sb + qb],
                 &score_point[..sb],
                 score_auth[head],
@@ -5893,14 +5922,14 @@ impl ResidentLayerP1 {
     }
 }
 
-pub(crate) fn prove_layer_phase1_resident(
-    wit: &ResidentLayerWitness,
+pub(crate) fn prove_layer_phase1_resident<W: ResidentLayerView>(
+    wit: &W,
     resident_model: &ResidentGpt2Model,
     luts: &Luts,
     error: DeviceSlice<'_, u32>,
     cx: &mut BlockCtxP,
 ) -> Result<ResidentLayerP1, AccelError> {
-    let t = wit.t();
+    let t = wit.rows();
     let fulls0 = cx.stream.counters.full_corrs;
     let dom_xin = cx.doms.take(t as u64);
     let xin_corr = auth_matrix_rows_resident_p(
@@ -6155,8 +6184,8 @@ pub fn prove_layer_phase2_band(
 /// phase-1 table bank and correlation cursor; no alternate proof or verifier
 /// representation is introduced.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn prove_layer_phase2_resident(
-    wit: &ResidentLayerWitness,
+pub(crate) fn prove_layer_phase2_resident<W: ResidentLayerView>(
+    wit: &W,
     resident_model: &ResidentGpt2Model,
     layer: usize,
     weights: &LayerWeights,
@@ -6165,7 +6194,22 @@ pub(crate) fn prove_layer_phase2_resident(
     cx: &mut BlockCtxP,
     biases: Option<&GemmBiases>,
 ) -> Result<(LayerProof, LayerOut), AccelError> {
-    let t = wit.t();
+    prove_layer_phase2_resident_band(wit, resident_model, layer, weights, luts, p1, &[], cx, biases)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prove_layer_phase2_resident_band<W: ResidentLayerView>(
+    wit: &W,
+    resident_model: &ResidentGpt2Model,
+    layer: usize,
+    weights: &LayerWeights,
+    luts: &Luts,
+    p1: ResidentLayerP1,
+    prefix: &[ResidentKvPrefixP],
+    cx: &mut BlockCtxP,
+    biases: Option<&GemmBiases>,
+) -> Result<(LayerProof, LayerOut), AccelError> {
+    let t = wit.rows();
     let t_pad = 1u64 << pad_bits(t);
     let params = luts.params;
     let ResidentLayerP1 {
@@ -6211,6 +6255,26 @@ pub(crate) fn prove_layer_phase2_resident(
             };
         }
     };
+    let mut k_segments: Vec<ResidentCacheSegP> = prefix
+        .iter()
+        .map(|segment| ResidentCacheSegP { dom: segment.dom_k, rows: segment.rows })
+        .collect();
+    k_segments.push(ResidentCacheSegP { dom: dom_k, rows: t });
+    let mut v_segments: Vec<ResidentCacheSegP> = prefix
+        .iter()
+        .map(|segment| ResidentCacheSegP { dom: segment.dom_v, rows: segment.rows })
+        .collect();
+    v_segments.push(ResidentCacheSegP { dom: dom_v, rows: t });
+    if k_segments.iter().map(|segment| segment.rows).sum::<usize>() != wit.seq()
+        || v_segments.iter().map(|segment| segment.rows).sum::<usize>() != wit.seq()
+    {
+        let _ = attn_p1.free(
+            cx.backend
+                .as_deref_mut()
+                .ok_or(AccelError::InvalidInput("resident layer cleanup requires a backend"))?,
+        );
+        return Err(AccelError::InvalidInput("resident K/V prefix geometry mismatch"));
+    }
     let (attn, mut attn_claims) = prove_attn_block_resident(
         wit,
         resident_model,
@@ -6219,6 +6283,8 @@ pub(crate) fn prove_layer_phase2_resident(
         luts,
         attn_p1,
         cx,
+        &k_segments,
+        &v_segments,
         dom_xin,
         dom_k,
         dom_v,
@@ -6240,7 +6306,7 @@ pub(crate) fn prove_layer_phase2_resident(
     if !attn_claims.is_empty() || !ffn_claims.is_empty() {
         return Err(AccelError::InvalidInput("resident layer claim count mismatch"));
     }
-    let shape = BandShape::square(t);
+    let shape = BandShape { t0: wit.pos0(), q: t };
     let n_above = (H * shape.n_above_head()) as u64;
     let bytes = LayerBytes {
         boundary: 8 * 5 * (t * D) as u64,
@@ -6439,21 +6505,6 @@ pub fn verify_layer_phase2_band(
         fbo_keys,
     })
 }
-
-// These internal entry points are intentionally kept crate-private until the
-// attention/model resident orchestrator lands. The anonymous const records
-// that they form the next integration boundary without widening the public
-// API; remove it once model_proof calls them directly.
-const _: () = {
-    let _ = auth_matrix_rows_resident_p::<i16>;
-    let _ = ffn_phase1_resident;
-    let _ = prove_ffn_block_resident;
-    let _ = attn_phase1_resident;
-    let _ = prove_attn_block_resident;
-    let _ = ResidentAttnP1::free;
-    let _ = prove_layer_phase1_resident;
-    let _ = prove_layer_phase2_resident;
-};
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -6843,6 +6894,8 @@ mod tests {
         let (proof, claims, mut prod, mut zero, mut counters) = {
             let mut cx =
                 BlockCtxP::with_doms_and_backend(&mut stream, &mut tx, doms, &mut bank, &mut gpu);
+            let k_segments = [ResidentCacheSegP { dom: dom_k, rows: t }];
+            let v_segments = [ResidentCacheSegP { dom: dom_v, rows: t }];
             let (proof, claims) = prove_attn_block_resident(
                 &resident_witness.layers[0],
                 &resident_model,
@@ -6851,6 +6904,8 @@ mod tests {
                 &luts,
                 p1,
                 &mut cx,
+                &k_segments,
+                &v_segments,
                 dom_xin,
                 dom_k,
                 dom_v,

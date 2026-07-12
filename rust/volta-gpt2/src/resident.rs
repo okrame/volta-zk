@@ -225,6 +225,8 @@ pub trait ResidentLayerView: resident_layer_view_sealed::Sealed {
     fn pos0(&self) -> usize;
     fn i16(&self, field: LayerI16Field) -> DeviceSlice<'_, i16>;
     fn i64(&self, field: LayerI64Field) -> DeviceSlice<'_, i64>;
+    fn k_cache(&self) -> DeviceSlice<'_, i16>;
+    fn v_cache(&self) -> DeviceSlice<'_, i16>;
 
     fn seq(&self) -> usize {
         self.pos0() + self.rows()
@@ -248,6 +250,14 @@ impl ResidentLayerView for ResidentLayerWitness {
 
     fn i64(&self, field: LayerI64Field) -> DeviceSlice<'_, i64> {
         self.i64(field)
+    }
+
+    fn k_cache(&self) -> DeviceSlice<'_, i16> {
+        self.i16(LayerI16Field::K)
+    }
+
+    fn v_cache(&self) -> DeviceSlice<'_, i16> {
+        self.i16(LayerI16Field::V)
     }
 }
 
@@ -482,6 +492,18 @@ impl ResidentLayerView for ResidentBandLayerWitness<'_> {
             LayerI64Field::FfnUpAcc => self.source_i64(field, DFF),
             _ => self.source_i64(field, D),
         }
+    }
+
+    fn k_cache(&self) -> DeviceSlice<'_, i16> {
+        let source = self.source.i16(LayerI16Field::K);
+        DeviceSlice::new(source.buffer(), source.offset(), self.seq() * D)
+            .expect("valid resident band K cache")
+    }
+
+    fn v_cache(&self) -> DeviceSlice<'_, i16> {
+        let source = self.source.i16(LayerI16Field::V);
+        DeviceSlice::new(source.buffer(), source.offset(), self.seq() * D)
+            .expect("valid resident band V cache")
     }
 }
 

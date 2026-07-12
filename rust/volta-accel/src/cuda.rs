@@ -320,6 +320,7 @@ type LnHadamardFactorsDevice = unsafe extern "C" fn(
 ) -> c_int;
 type BaseBroadcastFp2Device =
     unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize, usize, c_int) -> c_int;
+type RepeatVectorDevice = BaseBroadcastFp2Device;
 type AttentionAboveMaskDevice = unsafe extern "C" fn(
     *mut c_void,
     u64,
@@ -404,6 +405,7 @@ type RequantColumnsDevice = unsafe extern "C" fn(
     usize,
     usize,
     usize,
+    c_int,
     u32,
 ) -> c_int;
 type PairColumnsDevice = unsafe extern "C" fn(
@@ -668,6 +670,7 @@ struct Api {
     fp2_triple_product_round_device: Fp2TripleProductRoundDevice,
     ln_hadamard_factors_device: LnHadamardFactorsDevice,
     base_broadcast_fp2_device: BaseBroadcastFp2Device,
+    repeat_vector_device: RepeatVectorDevice,
     attention_above_mask_device: AttentionAboveMaskDevice,
     attention_proof_wires_device: AttentionProofWiresDevice,
     requant_columns_device: RequantColumnsDevice,
@@ -819,6 +822,9 @@ impl CudaContext {
             },
             base_broadcast_fp2_device: unsafe {
                 load_symbol(handle, b"volta_cuda_base_broadcast_fp2_device\0")?
+            },
+            repeat_vector_device: unsafe {
+                load_symbol(handle, b"volta_cuda_repeat_vector_device\0")?
             },
             attention_above_mask_device: unsafe {
                 load_symbol(handle, b"volta_cuda_attention_above_mask_device\0")?
@@ -1767,6 +1773,32 @@ impl CudaContext {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub(super) fn repeat_vector_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        output: u64,
+        output_offset: usize,
+        input_len: usize,
+        repeat: usize,
+        kind: i32,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates both regions and the sealed element kind.
+        self.check(unsafe {
+            (self.api.repeat_vector_device)(
+                self.raw,
+                input,
+                input_offset,
+                output,
+                output_offset,
+                input_len,
+                repeat,
+                kind,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn attention_above_mask_device(
         &mut self,
         equality: u64,
@@ -1928,6 +1960,7 @@ impl CudaContext {
         cols: usize,
         row_pad: usize,
         col_pad: usize,
+        acc_kind: i32,
         shift: u32,
     ) -> Result<(), AccelError> {
         // SAFETY: Backend validates every typed region and padded geometry.
@@ -1946,6 +1979,7 @@ impl CudaContext {
                 cols,
                 row_pad,
                 col_pad,
+                acc_kind,
                 shift,
             )
         })

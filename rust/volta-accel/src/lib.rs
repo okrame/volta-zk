@@ -17,7 +17,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 14;
+pub const CUDA_ABI_VERSION: u32 = 15;
 pub const OPERATION_COUNT: usize = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -250,6 +250,17 @@ impl ResidentBaseElement for i16 {}
 impl ResidentBaseElement for i64 {}
 impl ResidentBaseElement for u32 {}
 impl ResidentBaseElement for u64 {}
+
+mod resident_signed_element {
+    pub trait Sealed {}
+    impl Sealed for i16 {}
+    impl Sealed for i64 {}
+}
+
+/// Signed integer sources accepted by resident requant-column builders.
+pub trait ResidentSignedElement: ResidentBaseElement + resident_signed_element::Sealed {}
+impl ResidentSignedElement for i16 {}
+impl ResidentSignedElement for i64 {}
 
 /// Opaque allocation owned by one [`Backend`] CUDA context.  It exposes no
 /// device pointer, is deliberately non-`Clone`, and can only be freed by
@@ -1885,6 +1896,38 @@ impl Backend {
         Ok(output)
     }
 
+    /// Repeat a typed resident vector contiguously without changing its
+    /// scalar representation. Used for protocol batch padding/duplication.
+    pub fn repeat_vector_device<T: ResidentMatrixElement>(
+        &mut self,
+        input: DeviceSlice<'_, T>,
+        repeat: usize,
+    ) -> Result<DeviceBuffer<T>, AccelError> {
+        if input.is_empty() || repeat == 0 {
+            return Err(AccelError::InvalidInput("invalid resident vector repeat geometry"));
+        }
+        self.validate_device_slice(input, input.len())?;
+        let output_len = checked_product(input.len(), repeat)?;
+        let output = self.alloc_device(output_len)?;
+        #[cfg(feature = "cuda")]
+        let result = self.cuda.as_mut().expect("CUDA kind without context").repeat_vector_device(
+            input.buffer.id,
+            input.offset,
+            output.id,
+            0,
+            input.len(),
+            repeat,
+            T::CUDA_KIND,
+        );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
+    }
+
     /// Zero an equality row outside the real above-causal attention cells.
     /// The buffer is modified in place and retains the same ownership.
     #[allow(clippy::too_many_arguments)]
@@ -2147,9 +2190,9 @@ impl Backend {
     /// `[remainder, output]`; chained order is
     /// `[stage1_remainder, stage1_output, stage2_remainder, final_output]`.
     #[allow(clippy::too_many_arguments)]
-    pub fn requant_lookup_columns_device(
+    pub fn requant_lookup_columns_device<A: ResidentSignedElement>(
         &mut self,
-        accumulators: DeviceSlice<'_, i64>,
+        accumulators: DeviceSlice<'_, A>,
         outputs: DeviceSlice<'_, i16>,
         error: DeviceSlice<'_, u32>,
         rows: usize,
@@ -2184,6 +2227,7 @@ impl Backend {
             cols,
             row_pad,
             col_pad,
+            A::CUDA_KIND,
             shift,
         );
         #[cfg(not(feature = "cuda"))]
@@ -4529,6 +4573,13 @@ mod cuda_tests {
         }
         gpu.free_device(broadcast).unwrap();
 
+        let repeated = gpu
+            .repeat_vector_device(DeviceSlice::new(&dinput, 0, input.len()).unwrap(), 3)
+            .unwrap();
+        let repeated_values = gpu.download_device(&repeated, 0, 3 * input.len()).unwrap();
+        assert_eq!(repeated_values, input.repeat(3));
+        gpu.free_device(repeated).unwrap();
+
         let mask_entries = 4 * 4 * 4;
         let mask_source: Vec<Fp2> = (0..mask_entries)
             .map(|i| Fp2::new(Fp::new(101 + i as u64), Fp::new(401 + i as u64)))
@@ -4720,6 +4771,24 @@ mod cuda_tests {
                 }
             }
         }
+        let accumulators_i16: Vec<i16> =
+            accumulators.iter().map(|&value| i16::try_from(value).unwrap()).collect();
+        let dacc_i16 = gpu.upload_new_device(&accumulators_i16).unwrap();
+        let columns_i16 = gpu
+            .requant_lookup_columns_device(
+                DeviceSlice::new(&dacc_i16, 0, accumulators_i16.len()).unwrap(),
+                DeviceSlice::new(&dout, 0, outputs.len()).unwrap(),
+                DeviceSlice::new(&error, 0, 1).unwrap(),
+                rows,
+                cols,
+                shift,
+            )
+            .unwrap();
+        let raw_i16 =
+            gpu.download_device(columns_i16.view(0, 2).unwrap().buffer(), 0, 2 * entries).unwrap();
+        assert_eq!(raw_i16, raw, "i16/i64 requant sources diverged");
+        gpu.free_lookup_columns(columns_i16).unwrap();
+        gpu.free_device(dacc_i16).unwrap();
         let histogram = gpu.histogram_fp_device(columns.column(0).unwrap(), 1 << shift).unwrap();
         let expected_hist = {
             let mut values = vec![0u32; 1 << shift];

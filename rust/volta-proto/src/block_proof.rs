@@ -432,7 +432,7 @@ impl TableBankP {
         Ok(out)
     }
 
-    fn free_resident_multiplicities(&mut self, backend: &mut Backend) {
+    pub(crate) fn free_resident_multiplicities(&mut self, backend: &mut Backend) {
         for (_, mult) in std::mem::take(&mut self.resident_mult) {
             let _ = backend.free_device(mult);
         }
@@ -1308,7 +1308,7 @@ pub(crate) fn cache_fold_cols_k(segs: &[CacheSegK], wc: &[Fp2], c0: usize, w: us
 }
 
 #[allow(clippy::too_many_arguments)]
-fn public_window_fold_resident<T: ResidentMatrixElement>(
+pub(crate) fn public_window_fold_resident<T: ResidentMatrixElement>(
     data: DeviceSlice<'_, T>,
     rows: usize,
     stride: usize,
@@ -1963,7 +1963,7 @@ pub(crate) struct ResidentLnVecsP {
 }
 
 impl ResidentLnVecsP {
-    fn free(self, backend: &mut Backend) -> Result<(), AccelError> {
+    pub(crate) fn free(self, backend: &mut Backend) -> Result<(), AccelError> {
         let first = backend.free_device(self.rout).err();
         let second = backend.free_device(self.rin).err();
         let third = backend.free_device(self.mean).err();
@@ -2610,9 +2610,9 @@ pub fn add_range_mult(
     }
 }
 
-pub(crate) fn bind_range_site_resident(
+pub(crate) fn bind_range_site_resident<A: volta_accel::ResidentSignedElement>(
     bank: &mut TableBankP,
-    accumulators: DeviceSlice<'_, i64>,
+    accumulators: DeviceSlice<'_, A>,
     outputs: DeviceSlice<'_, i16>,
     error: DeviceSlice<'_, u32>,
     rows: usize,
@@ -3562,9 +3562,9 @@ impl ResidentAttnP1 {
 }
 
 /// Resident square/prefill attention phase 1. The lower accelerator builder
-/// is band-general; this first protocol integration deliberately consumes the
-/// current square resident witness layout. Decode-band ownership is wired at
-/// the model seam rather than smuggling prefix buffers into this type.
+/// is band-general, but this entry point deliberately requires the square
+/// resident witness layout. A decode-band entry must carry explicit prefix
+/// K/V owners and domains; it must not alias them through this square type.
 pub(crate) fn attn_phase1_resident(
     wit: &ResidentLayerWitness,
     resident_model: &ResidentGpt2Model,
@@ -5750,6 +5750,7 @@ pub(crate) fn verify_attn_block(
 // Layer orchestration
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct LayerProof {
     // Boundary auth corrections (8 B each), hoisted here — owned once.
     pub xin_corr: Vec<u64>,
@@ -5865,6 +5866,119 @@ pub struct LayerP1 {
     attn: AttnP1,
     /// Full corrs consumed by phase 1 (byte accounting continuity).
     fulls0: u64,
+}
+
+pub(crate) struct ResidentLayerP1 {
+    pub doms: Doms,
+    dom_xin: u64,
+    dom_k: u64,
+    dom_v: u64,
+    dom_abo: u64,
+    dom_fbo: u64,
+    xin_corr: Vec<u64>,
+    k_corr: Vec<u64>,
+    v_corr: Vec<u64>,
+    abo_corr: Vec<u64>,
+    fbo_corr: Vec<u64>,
+    ffn: ResidentFfnP1,
+    attn: ResidentAttnP1,
+    fulls0: u64,
+}
+
+impl ResidentLayerP1 {
+    pub(crate) fn free(self, backend: &mut Backend) -> Result<(), AccelError> {
+        let first = self.attn.free(backend).err();
+        let second = self.ffn.free(backend).err();
+        first.or(second).map_or(Ok(()), Err)
+    }
+}
+
+pub(crate) fn prove_layer_phase1_resident(
+    wit: &ResidentLayerWitness,
+    resident_model: &ResidentGpt2Model,
+    luts: &Luts,
+    error: DeviceSlice<'_, u32>,
+    cx: &mut BlockCtxP,
+) -> Result<ResidentLayerP1, AccelError> {
+    let t = wit.t();
+    let fulls0 = cx.stream.counters.full_corrs;
+    let dom_xin = cx.doms.take(t as u64);
+    let xin_corr = auth_matrix_rows_resident_p(
+        cx.stream,
+        cx.tx,
+        dom_xin,
+        wit.i16(LayerI16Field::XIn),
+        t,
+        D,
+        cx.backend
+            .as_deref_mut()
+            .ok_or(AccelError::InvalidInput("resident layer phase 1 requires a backend"))?,
+    )?;
+    let dom_k = cx.doms.take(t as u64);
+    let k_corr = auth_matrix_rows_resident_p(
+        cx.stream,
+        cx.tx,
+        dom_k,
+        wit.i16(LayerI16Field::K),
+        t,
+        D,
+        cx.backend.as_deref_mut().expect("resident layer backend"),
+    )?;
+    let dom_v = cx.doms.take(t as u64);
+    let v_corr = auth_matrix_rows_resident_p(
+        cx.stream,
+        cx.tx,
+        dom_v,
+        wit.i16(LayerI16Field::V),
+        t,
+        D,
+        cx.backend.as_deref_mut().expect("resident layer backend"),
+    )?;
+    let dom_abo = cx.doms.take(t as u64);
+    let abo_corr = auth_matrix_rows_resident_p(
+        cx.stream,
+        cx.tx,
+        dom_abo,
+        wit.i16(LayerI16Field::AttnBlockOut),
+        t,
+        D,
+        cx.backend.as_deref_mut().expect("resident layer backend"),
+    )?;
+    let dom_fbo = cx.doms.take(t as u64);
+    let fbo_corr = auth_matrix_rows_resident_p(
+        cx.stream,
+        cx.tx,
+        dom_fbo,
+        wit.i16(LayerI16Field::FfnBlockOut),
+        t,
+        D,
+        cx.backend.as_deref_mut().expect("resident layer backend"),
+    )?;
+
+    let ffn = ffn_phase1_resident(wit, luts, error, cx)?;
+    let attn = match attn_phase1_resident(wit, resident_model, luts, error, cx) {
+        Ok(value) => value,
+        Err(error) => {
+            let _ = ffn.free(cx.backend.as_deref_mut().expect("resident layer backend"));
+            return Err(error);
+        }
+    };
+    Ok(ResidentLayerP1 {
+        doms: cx.doms,
+        dom_xin,
+        dom_k,
+        dom_v,
+        dom_abo,
+        dom_fbo,
+        xin_corr,
+        k_corr,
+        v_corr,
+        abo_corr,
+        fbo_corr,
+        ffn,
+        attn,
+        fulls0,
+    })
 }
 
 /// Layer phase 1: authenticate every boundary + element vector and
@@ -6035,6 +6149,120 @@ pub fn prove_layer_phase2_band(
         dom_v,
     };
     (proof, out)
+}
+
+/// Resident square/prefill layer phase 2. Both subgraphs consume the same
+/// phase-1 table bank and correlation cursor; no alternate proof or verifier
+/// representation is introduced.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prove_layer_phase2_resident(
+    wit: &ResidentLayerWitness,
+    resident_model: &ResidentGpt2Model,
+    layer: usize,
+    weights: &LayerWeights,
+    luts: &Luts,
+    p1: ResidentLayerP1,
+    cx: &mut BlockCtxP,
+    biases: Option<&GemmBiases>,
+) -> Result<(LayerProof, LayerOut), AccelError> {
+    let t = wit.t();
+    let t_pad = 1u64 << pad_bits(t);
+    let params = luts.params;
+    let ResidentLayerP1 {
+        doms: _,
+        dom_xin,
+        dom_k,
+        dom_v,
+        dom_abo,
+        dom_fbo,
+        xin_corr,
+        k_corr,
+        v_corr,
+        abo_corr,
+        fbo_corr,
+        ffn: ffn_p1,
+        attn: attn_p1,
+        fulls0,
+    } = p1;
+    let ffn_result = prove_ffn_block_resident(
+        wit,
+        resident_model,
+        layer,
+        weights,
+        luts,
+        ffn_p1,
+        cx,
+        dom_abo,
+        dom_fbo,
+        biases,
+    );
+    let (ffn, mut ffn_claims) = match ffn_result {
+        Ok(value) => value,
+        Err(error) => {
+            // FFN owns and releases its own phase-1 state. Attention has not
+            // started yet, so release that independent owner explicitly too.
+            let cleanup =
+                attn_p1.free(cx.backend.as_deref_mut().ok_or(AccelError::InvalidInput(
+                    "resident layer cleanup requires a backend",
+                ))?);
+            return match cleanup {
+                Ok(()) => Err(error),
+                Err(cleanup_error) => Err(cleanup_error),
+            };
+        }
+    };
+    let (attn, mut attn_claims) = prove_attn_block_resident(
+        wit,
+        resident_model,
+        layer,
+        weights,
+        luts,
+        attn_p1,
+        cx,
+        dom_xin,
+        dom_k,
+        dom_v,
+        dom_abo,
+        biases,
+    )?;
+    let cattn = attn_claims
+        .pop()
+        .ok_or(AccelError::InvalidInput("resident attention returned the wrong claim count"))?;
+    let projection = attn_claims
+        .pop()
+        .ok_or(AccelError::InvalidInput("resident attention returned the wrong claim count"))?;
+    let up = ffn_claims
+        .pop()
+        .ok_or(AccelError::InvalidInput("resident FFN returned the wrong claim count"))?;
+    let down = ffn_claims
+        .pop()
+        .ok_or(AccelError::InvalidInput("resident FFN returned the wrong claim count"))?;
+    if !attn_claims.is_empty() || !ffn_claims.is_empty() {
+        return Err(AccelError::InvalidInput("resident layer claim count mismatch"));
+    }
+    let shape = BandShape::square(t);
+    let n_above = (H * shape.n_above_head()) as u64;
+    let bytes = LayerBytes {
+        boundary: 8 * 5 * (t * D) as u64,
+        mult: 0,
+        ln_vectors: 8 * 8 * t_pad,
+        attn_vectors: 8 * ((3 + params.softmax_row_shift as u64) * H_PAD as u64 * t_pad + n_above),
+        rounds_claims: 16 * (cx.stream.counters.full_corrs - fulls0),
+    };
+    Ok((
+        LayerProof { xin_corr, k_corr, v_corr, abo_corr, fbo_corr, ffn, attn },
+        LayerOut {
+            weight_claims: vec![cattn, projection, up, down],
+            bytes,
+            ctr_instances: cx.ctr_instances,
+            ctr_other: cx.ctr_other,
+            lookups: layer_lookups(shape),
+            dom_xin,
+            dom_fbo,
+            dom_k,
+            dom_v,
+        },
+    ))
 }
 
 /// The table-content set of one layer (from PUBLIC shift parameters) — the
@@ -6223,6 +6451,8 @@ const _: () = {
     let _ = attn_phase1_resident;
     let _ = prove_attn_block_resident;
     let _ = ResidentAttnP1::free;
+    let _ = prove_layer_phase1_resident;
+    let _ = prove_layer_phase2_resident;
 };
 
 // ---------------------------------------------------------------------------
@@ -6750,6 +6980,270 @@ mod tests {
         assert!(prod_batch_verify(&key_prod, product_key, delta, challenge, &product_proof));
         let zero_domain = prover_batch_doms.take(1);
         assert_eq!(zero_domain, verifier_batch_doms.take(1));
+        assert!(zero_batch_exchange(
+            &prover_zero,
+            &key_zero,
+            &mut stream,
+            &mut verifier,
+            zero_domain,
+            &mut tx,
+        ));
+        let stats = gpu.finish_measurement().unwrap();
+        assert_eq!(stats.operation(volta_accel::Operation::Logup).cpu_residual_ns, 0);
+        assert_eq!(stats.operation(volta_accel::Operation::Gemm).cpu_residual_ns, 0);
+        gpu.free_device(proof_error).unwrap();
+        resident_witness.free(&mut gpu).unwrap();
+        resident_model.free(&mut gpu).unwrap();
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn cuda_resident_full_layer_matches_cpu_byte_for_byte() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../benchmarks/weights");
+        if !dir.join("gpt2s-q.bin").exists() {
+            eprintln!("skipping CUDA resident full-layer differential: artifact absent");
+            return;
+        }
+        let mut gpu = match Backend::cuda_resident() {
+            Ok(gpu) => gpu,
+            Err(e) if std::env::var("VOLTA_REQUIRE_CUDA").as_deref() != Ok("1") => {
+                eprintln!("skipping CUDA resident full-layer differential: {e}");
+                return;
+            }
+            Err(e) => panic!("CUDA required: {e}"),
+        };
+        let model = load_model(&dir).unwrap();
+        let tokens = model.p.tokens[..3].to_vec();
+        let host_witness = forward_model_tokens(&model, &tokens);
+        let resident_model = upload_resident_model(&model, &mut gpu).unwrap();
+        let resident_witness =
+            forward_model_tokens_resident(&resident_model, &tokens, &mut gpu).unwrap();
+        let proof_error = gpu.upload_new_device(&[0u32]).unwrap();
+        let t = tokens.len();
+        let mut luts = model.luts.clone();
+        luts.params.shift_attn_proj = model.p.shift_attn_proj[0];
+        luts.params.shift_ffn_down = model.p.shift_ffn_down[0];
+        let host_layer = &host_witness.layers[0];
+        let weights = &model.layers[0].0;
+        let biases = &model.layers[0].1;
+
+        let run_cpu = || {
+            let mut stream = CorrelationStream::new([131; 32]);
+            let mut tx = Transcript::new([132; 32]);
+            let mut bank = TableBankP::new();
+            let p1 = {
+                let mut cx = BlockCtxP::new(&mut stream, &mut tx, 0, &mut bank);
+                prove_layer_phase1(host_layer, weights, &luts, &mut cx)
+            };
+            let mut table_doms = Doms::new(layer_dom_base(237));
+            bank.finalize(&mut stream, &mut tx, &mut table_doms);
+            let (proof, out, mut prod, mut zero, mut counters, doms, other) = {
+                let mut cx = BlockCtxP::with_doms(&mut stream, &mut tx, p1.doms, &mut bank);
+                let (proof, out) =
+                    prove_layer_phase2(host_layer, weights, &luts, p1, &mut cx, Some(biases));
+                (proof, out, cx.prod, cx.zero, cx.ctr_instances, cx.doms, cx.ctr_other)
+            };
+            let tables = bank.close(
+                &luts,
+                &mut stream,
+                &mut table_doms,
+                &mut tx,
+                &mut counters,
+                &mut prod,
+                &mut zero,
+            );
+            (
+                proof,
+                out.weight_claims,
+                out.bytes,
+                out.ctr_instances,
+                out.ctr_other,
+                out.lookups,
+                out.dom_xin,
+                out.dom_fbo,
+                out.dom_k,
+                out.dom_v,
+                tables,
+                prod,
+                zero,
+                counters,
+                other,
+                doms,
+                stream.counters,
+                tx.ledger().clone(),
+            )
+        };
+        let expected = run_cpu();
+
+        gpu.begin_measurement().unwrap();
+        let mut stream = CorrelationStream::new([131; 32]);
+        let mut tx = Transcript::new([132; 32]);
+        let mut bank = TableBankP::new();
+        let p1 = {
+            let mut cx = BlockCtxP::with_backend(&mut stream, &mut tx, 0, &mut bank, &mut gpu);
+            prove_layer_phase1_resident(
+                &resident_witness.layers[0],
+                &resident_model,
+                &luts,
+                DeviceSlice::new(&proof_error, 0, 1).unwrap(),
+                &mut cx,
+            )
+            .unwrap()
+        };
+        let mut table_doms = Doms::new(layer_dom_base(237));
+        bank.finalize_resident(&mut stream, &mut tx, &mut table_doms, &mut gpu).unwrap();
+        let (proof, out, mut prod, mut zero, mut counters, doms, other) = {
+            let mut cx = BlockCtxP::with_doms_and_backend(
+                &mut stream,
+                &mut tx,
+                p1.doms,
+                &mut bank,
+                &mut gpu,
+            );
+            let (proof, out) = prove_layer_phase2_resident(
+                &resident_witness.layers[0],
+                &resident_model,
+                0,
+                weights,
+                &luts,
+                p1,
+                &mut cx,
+                Some(biases),
+            )
+            .unwrap();
+            (proof, out, cx.prod, cx.zero, cx.ctr_instances, cx.doms, cx.ctr_other)
+        };
+        let tables = bank
+            .close_resident(
+                &luts,
+                &mut stream,
+                &mut table_doms,
+                &mut tx,
+                &mut counters,
+                &mut prod,
+                &mut zero,
+                &mut gpu,
+            )
+            .unwrap();
+        let mut got = (
+            proof,
+            out.weight_claims,
+            out.bytes,
+            out.ctr_instances,
+            out.ctr_other,
+            out.lookups,
+            out.dom_xin,
+            out.dom_fbo,
+            out.dom_k,
+            out.dom_v,
+            tables,
+            prod,
+            zero,
+            counters,
+            other,
+            doms,
+            stream.counters,
+            tx.ledger().clone(),
+        );
+        assert_eq!(got.0, expected.0);
+        assert_eq!(got.1, expected.1);
+        assert_eq!(got.2, expected.2);
+        assert_eq!(got.3, expected.3);
+        assert_eq!(got.4, expected.4);
+        assert_eq!(got.5, expected.5);
+        assert_eq!(got.6, expected.6);
+        assert_eq!(got.7, expected.7);
+        assert_eq!(got.8, expected.8);
+        assert_eq!(got.9, expected.9);
+        assert_eq!(got.10, expected.10);
+        assert_eq!(got.11, expected.11);
+        assert_eq!(got.12, expected.12);
+        assert_eq!(got.13, expected.13);
+        assert_eq!(got.14, expected.14);
+        assert_eq!(got.15, expected.15);
+        assert_eq!(got.16, expected.16);
+        assert_eq!(got.17, expected.17);
+        assert_eq!(gpu.download_device(&proof_error, 0, 1).unwrap(), vec![0]);
+
+        let delta = Fp2::new(Fp::new(0xBB11_A100), Fp::new(0x1A73));
+        let mut verifier = VerifierCtx::new([131; 32], delta);
+        let mut verifier_tx = Transcript::new([132; 32]);
+        let mut pre_bank = TableBankV::empty();
+        let verifier_p1 = {
+            let mut cx = BlockCtxV::new(&mut verifier, &mut verifier_tx, 0, &mut pre_bank);
+            verify_layer_phase1(t, &luts, &got.0, &mut cx).expect("resident layer phase 1 verifies")
+        };
+        let mut expected_contents = std::collections::BTreeSet::new();
+        layer_content_keys(&luts, &mut expected_contents);
+        let mut verifier_table_doms = Doms::new(layer_dom_base(237));
+        let mut verifier_bank = TableBankV::finalize(
+            &expected_contents,
+            &got.10,
+            &mut verifier,
+            &mut verifier_tx,
+            &mut verifier_table_doms,
+        )
+        .expect("resident layer table phase 1 verifies");
+        let (verifier_out, mut key_prod, mut key_zero, mut verifier_doms) = {
+            let mut cx = BlockCtxV::with_doms(
+                &mut verifier,
+                &mut verifier_tx,
+                verifier_p1.doms,
+                &mut verifier_bank,
+            );
+            let out = verify_layer_phase2(
+                t,
+                &weights.ln1_gain,
+                &weights.ln1_bias,
+                &weights.ln2_gain,
+                &weights.ln2_bias,
+                &luts,
+                &got.0,
+                verifier_p1,
+                &mut cx,
+                Some(biases),
+            )
+            .expect("resident full layer verifies");
+            (out, cx.kprod, cx.kzero, cx.doms)
+        };
+        verifier_bank
+            .close(
+                &luts,
+                &got.10,
+                &mut verifier,
+                &mut verifier_table_doms,
+                &mut verifier_tx,
+                &mut key_prod,
+                &mut key_zero,
+            )
+            .expect("resident layer table closure verifies");
+        let cattn = cattn_permuted(&weights.c_attn);
+        let dimensions: [(usize, usize, &[i16]); 4] = [
+            (D, 4096, &cattn),
+            (D, D, &weights.attn_proj),
+            (D, DFF, &weights.ffn_up),
+            (DFF, D, &weights.ffn_down),
+        ];
+        let mut prover_zero = got.12.clone();
+        for (index, claim) in got.1.iter().enumerate() {
+            let (rows, cols, matrix) = dimensions[index];
+            assert_eq!(verifier_out.weight_keys[index].0, claim.point);
+            let value = weight_true_eval(matrix, rows, cols, &claim.point);
+            prover_zero.push(claim.value.sub(ProverAuthed::from_public(value)));
+            key_zero.push(
+                verifier_out.weight_keys[index].1.sub(VerifierKey::from_public(value, delta)),
+            );
+        }
+        let challenge = tx.challenge_fp2();
+        assert_eq!(challenge, verifier_tx.challenge_fp2());
+        let product_domain = got.15.take(1);
+        assert_eq!(product_domain, verifier_doms.take(1));
+        let product_mask = stream.draw_fulls(product_domain, 1)[0];
+        let product_key = verifier.expand_full_keys(product_domain, 1)[0];
+        let product_proof = prod_batch_prover(&got.11, challenge, product_mask, &mut tx);
+        assert!(prod_batch_verify(&key_prod, product_key, delta, challenge, &product_proof));
+        let zero_domain = got.15.take(1);
+        assert_eq!(zero_domain, verifier_doms.take(1));
         assert!(zero_batch_exchange(
             &prover_zero,
             &key_zero,

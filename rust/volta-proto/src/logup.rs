@@ -1681,7 +1681,7 @@ use volta_mac::{CorrelationStream, ProverAuthed, Transcript, VerifierCtx, Verifi
 
 /// Sequential one-time-domain allocator; prover and verifier consume the
 /// same sequence (the `DomainLedger` enforces global uniqueness).
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Doms {
     next: u64,
 }

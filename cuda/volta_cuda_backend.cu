@@ -13,7 +13,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 14;
+constexpr uint32_t ABI_VERSION = 15;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -1047,17 +1047,23 @@ __device__ inline int64_t round_stage_i64(int64_t value, uint32_t shift) {
 /// Columns are stored column-major by proof column: `[col0[n], col1[n], …]`.
 /// For chained shifts the order is `[rem1, y1, rem2, out]`; otherwise it is
 /// `[rem, out]`.
+__device__ inline int64_t load_signed_scalar(const void* input, size_t index, int kind) {
+    return kind == SCALAR_I16
+        ? static_cast<int64_t>(static_cast<const int16_t*>(input)[index])
+        : static_cast<const int64_t*>(input)[index];
+}
+
 __global__ void requant_columns_kernel(
-    const int64_t* accumulators, const int16_t* outputs, uint64_t* columns,
+    const void* accumulators, const int16_t* outputs, uint64_t* columns,
     uint32_t* error, size_t rows, size_t cols, size_t row_pad,
-    size_t col_pad, uint32_t shift) {
+    size_t col_pad, int acc_kind, uint32_t shift) {
     const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
     const size_t padded = row_pad * col_pad;
     if (z >= padded) return;
     const size_t row = z / col_pad;
     const size_t col = z - row * col_pad;
     const bool real = row < rows && col < cols;
-    const int64_t acc = real ? accumulators[row * cols + col] : 0;
+    const int64_t acc = real ? load_signed_scalar(accumulators, row * cols + col, acc_kind) : 0;
     const int64_t out = real ? outputs[row * cols + col] : 0;
     if (shift <= 16) {
         const int64_t half = int64_t{1} << (shift - 1);
@@ -2375,6 +2381,29 @@ extern "C" int volta_cuda_base_broadcast_fp2_device(
     return finish_timing(c, OP_GEMM, 0, 0);
 }
 
+extern "C" int volta_cuda_repeat_vector_device(
+    void* raw, uint64_t input_id, size_t input_offset,
+    uint64_t output_id, size_t output_offset, size_t input_len,
+    size_t repeat, int kind) {
+    Context* c = static_cast<Context*>(raw);
+    const size_t elem = resident_scalar_size(kind);
+    if (!c || !input_len || !repeat || !elem)
+        return fail_message(c, "invalid resident vector repeat geometry");
+    void *input = nullptr, *output = nullptr;
+    if (resident_region(c, input_id, input_offset * elem, input_len * elem, &input) ||
+        resident_region(c, output_id, output_offset * elem,
+                        input_len * repeat * elem, &output)) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    for (size_t copy = 0; copy < repeat; ++copy) {
+        CUDA_OR_RETURN(c, cudaMemcpyAsync(
+            static_cast<uint8_t*>(output) + copy * input_len * elem,
+            input, input_len * elem, cudaMemcpyDeviceToDevice, c->stream));
+    }
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_GEMM, 0, 0);
+}
+
 extern "C" int volta_cuda_attention_above_mask_device(
     void* raw, uint64_t equality_id, size_t equality_offset, size_t entries,
     size_t rows, size_t seq, size_t pos0, size_t heads, size_t head_pad,
@@ -2502,25 +2531,27 @@ extern "C" int volta_cuda_requant_columns_device(
     uint64_t out_id, size_t out_offset,
     uint64_t columns_id, size_t columns_offset,
     uint64_t error_id, size_t error_offset, size_t rows, size_t cols,
-    size_t row_pad, size_t col_pad, uint32_t shift) {
+    size_t row_pad, size_t col_pad, int acc_kind, uint32_t shift) {
     Context* c = static_cast<Context*>(raw);
+    const size_t acc_elem = resident_scalar_size(acc_kind);
     if (!c || !rows || !cols || row_pad < rows || col_pad < cols ||
         (row_pad & (row_pad - 1)) || (col_pad & (col_pad - 1)) ||
+        (acc_kind != SCALAR_I16 && acc_kind != SCALAR_I64) || !acc_elem ||
         !shift || shift >= 63)
         return fail_message(c, "invalid resident requant-column geometry");
     const size_t real = rows * cols, padded = row_pad * col_pad;
     const size_t count = shift > 16 ? 4 : 2;
     void *acc = nullptr, *out = nullptr, *columns = nullptr, *error = nullptr;
-    if (resident_region(c, acc_id, acc_offset * sizeof(int64_t), real * sizeof(int64_t), &acc) ||
+    if (resident_region(c, acc_id, acc_offset * acc_elem, real * acc_elem, &acc) ||
         resident_region(c, out_id, out_offset * sizeof(int16_t), real * sizeof(int16_t), &out) ||
         resident_region(c, columns_id, columns_offset * sizeof(uint64_t), count * padded * sizeof(uint64_t), &columns) ||
         resident_region(c, error_id, error_offset * sizeof(uint32_t), sizeof(uint32_t), &error)) return -1;
     if (begin_timing(c)) return -1;
     if (mark_timing(c, 1)) return -1;
     requant_columns_kernel<<<(padded + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
-        static_cast<const int64_t*>(acc), static_cast<const int16_t*>(out),
+        acc, static_cast<const int16_t*>(out),
         static_cast<uint64_t*>(columns), static_cast<uint32_t*>(error),
-        rows, cols, row_pad, col_pad, shift);
+        rows, cols, row_pad, col_pad, acc_kind, shift);
     CUDA_OR_RETURN(c, cudaPeekAtLastError());
     if (mark_timing(c, 2)) return -1;
     return finish_timing(c, OP_LOGUP, 0, 0);

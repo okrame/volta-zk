@@ -13,7 +13,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 11;
+constexpr uint32_t ABI_VERSION = 12;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -686,7 +686,8 @@ __global__ void pad_base_vector_kernel(
 /// `rows × cols` rectangle is read; padded outputs are zero.
 __global__ void matrix_fold_kernel(
     const void* input, const Fp2* weights, Fp2* output,
-    size_t rows, size_t cols, size_t out_pad, int kind, int axis) {
+    size_t rows, size_t stride, size_t column_offset, size_t cols,
+    size_t out_pad, int kind, int axis) {
     const size_t out_index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
     if (out_index >= out_pad) return;
     const size_t real_outputs = axis == 0 ? cols : rows;
@@ -697,7 +698,9 @@ __global__ void matrix_fold_kernel(
     const size_t terms = axis == 0 ? rows : cols;
     Fp2 acc{0, 0};
     for (size_t term = 0; term < terms; ++term) {
-        const size_t index = axis == 0 ? term * cols + out_index : out_index * cols + term;
+        const size_t index = axis == 0
+            ? term * stride + column_offset + out_index
+            : out_index * stride + column_offset + term;
         if (kind == SCALAR_FP2) {
             acc = fp2_add(acc, fp2_mul(weights[term], static_cast<const Fp2*>(input)[index]));
         } else {
@@ -1980,24 +1983,25 @@ extern "C" int volta_cuda_pad_base_vector_device(
 extern "C" int volta_cuda_matrix_fold_device(
     void* raw, uint64_t input_id, size_t input_offset,
     uint64_t weights_id, size_t weights_offset,
-    uint64_t output_id, size_t output_offset, size_t rows, size_t cols,
-    size_t out_pad, int kind, int axis) {
+    uint64_t output_id, size_t output_offset, size_t rows, size_t stride,
+    size_t column_offset, size_t cols, size_t out_pad, int kind, int axis) {
     Context* c = static_cast<Context*>(raw);
     const size_t elem = resident_scalar_size(kind);
     const size_t terms = axis == 0 ? rows : cols;
     const size_t real_outputs = axis == 0 ? cols : rows;
-    if (!c || !rows || !cols || !elem || (axis != 0 && axis != 1) ||
+    if (!c || !rows || !stride || !cols || column_offset > stride ||
+        cols > stride - column_offset || !elem || (axis != 0 && axis != 1) ||
         out_pad < real_outputs || (out_pad & (out_pad - 1)))
-        return fail_message(c, "invalid resident matrix-fold geometry");
+        return fail_message(c, "invalid resident matrix-window fold geometry");
     void *input = nullptr, *weights = nullptr, *output = nullptr;
-    if (resident_region(c, input_id, input_offset * elem, rows * cols * elem, &input) ||
+    if (resident_region(c, input_id, input_offset * elem, rows * stride * elem, &input) ||
         resident_region(c, weights_id, weights_offset * sizeof(Fp2), terms * sizeof(Fp2), &weights) ||
         resident_region(c, output_id, output_offset * sizeof(Fp2), out_pad * sizeof(Fp2), &output)) return -1;
     if (begin_timing(c)) return -1;
     if (mark_timing(c, 1)) return -1;
     matrix_fold_kernel<<<(out_pad + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
         input, static_cast<const Fp2*>(weights), static_cast<Fp2*>(output),
-        rows, cols, out_pad, kind, axis);
+        rows, stride, column_offset, cols, out_pad, kind, axis);
     CUDA_OR_RETURN(c, cudaPeekAtLastError());
     if (mark_timing(c, 2)) return -1;
     return finish_timing(c, OP_GEMM, 0, 0);

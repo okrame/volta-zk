@@ -881,6 +881,90 @@ pub fn prove_gemm_act_chained(
     )
 }
 
+/// Resident activation×activation chained GEMM after both public-point
+/// matrix folds have been constructed on device. The two buffers are
+/// consumed on every path. `open_b` supplies the MAC tag for the boundary B
+/// tensor at the sumcheck point; its plaintext scalar is the device-computed
+/// `b_final`, so no witness-sized host mirror is required.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_gemm_act_chained_resident(
+    a_folded: DeviceBuffer<Fp2Repr>,
+    b_folded: DeviceBuffer<Fp2Repr>,
+    m: usize,
+    k: usize,
+    n: usize,
+    r_i: &[Fp2],
+    r_j: &[Fp2],
+    claim0: ProverAuthed,
+    open_b: impl FnOnce(&[Fp2], Fp2) -> Result<ProverAuthed, AccelError>,
+    doms: &ChainDoms,
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+    backend: &mut Backend,
+) -> Result<(ChainedGemmProof, WireOut, Vec<Fp2>, ProveTimings, CorrCounters), AccelError> {
+    let expected = 1usize
+        .checked_shl(pad_bits(k) as u32)
+        .ok_or(AccelError::InvalidInput("resident activation GEMM dimension overflow"))?;
+    if r_i.len() != pad_bits(m)
+        || r_j.len() != pad_bits(n)
+        || a_folded.len() != expected
+        || b_folded.len() != expected
+    {
+        let _ = free_resident_fp2_pair(backend, a_folded, b_folded);
+        return Err(AccelError::InvalidInput("resident activation GEMM fold geometry mismatch"));
+    }
+    #[cfg(debug_assertions)]
+    {
+        let total = match backend.fp2_dot_device(
+            DeviceSlice::new(&a_folded, 0, expected).expect("whole resident A fold"),
+            DeviceSlice::new(&b_folded, 0, expected).expect("whole resident B fold"),
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = free_resident_fp2_pair(backend, a_folded, b_folded);
+                return Err(error);
+            }
+        };
+        debug_assert_eq!(claim0.x, total, "claim0 is not the resident activation GEMM total");
+    }
+
+    let mut timings = ProveTimings::default();
+    let rounds_started = Instant::now();
+    let (sumcheck, point, claim_n, x_final, b_final) =
+        blind_prove_resident(a_folded, b_folded, claim0, stream, doms.round_masks, tx, backend)?;
+    timings.t_rounds_s = rounds_started.elapsed().as_secs_f64();
+
+    let open_started = Instant::now();
+    let b_open = open_b(&point, b_final)?;
+    timings.t_open_tags_s = open_started.elapsed().as_secs_f64();
+    if b_open.x != b_final {
+        return Err(AccelError::InvalidInput(
+            "resident activation GEMM boundary opening value mismatch",
+        ));
+    }
+
+    let product_started = Instant::now();
+    let x_mask = stream.draw_fulls(doms.x_claim, 1)[0];
+    let corr_x = x_final - x_mask.x;
+    tx.append("x_claim_correction", 16);
+    let x_auth = ProverAuthed { x: x_final, m: x_mask.m };
+    debug_assert_eq!(claim_n.x, x_final * b_final, "honest final claim mismatch");
+    let product_mask = stream.draw_fulls(doms.prod_mask, 1)[0];
+    let chi = tx.challenge_fp2();
+    let prod = prod_batch_prover(&[(x_auth, b_open, claim_n)], chi, product_mask, tx);
+    timings.t_prod_s = product_started.elapsed().as_secs_f64();
+
+    let mut x_point = point.clone();
+    x_point.extend_from_slice(r_i);
+    Ok((
+        ChainedGemmProof { sumcheck, prod },
+        WireOut { point: x_point, value: x_auth, corr: corr_x },
+        point,
+        timings,
+        stream.counters,
+    ))
+}
+
 /// Verifier for [`prove_gemm_act_chained`]: `open_b_key` is the caller's key
 /// side of the B opening at the sumcheck point. Returns the X wire key and
 /// the sumcheck point `r_l` (for placing the caller's B claim).
@@ -1235,6 +1319,141 @@ mod tests {
             }
         }
         gpu.free_device(dw).unwrap();
+        gpu.free_device(dx).unwrap();
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn resident_activation_chained_matches_cpu_byte_for_byte() {
+        let mut gpu = match Backend::cuda_resident() {
+            Ok(gpu) => gpu,
+            Err(error) if std::env::var("VOLTA_REQUIRE_CUDA").as_deref() != Ok("1") => {
+                eprintln!("skipping resident activation GEMM differential: {error}");
+                return;
+            }
+            Err(error) => panic!("CUDA required: {error}"),
+        };
+        let (m, k, n) = (6usize, 12usize, 10usize);
+        let mut rng = rand::rngs::StdRng::seed_from_u64(0xAC71_7712);
+        let x: Vec<i16> = (0..m * k).map(|_| rng.gen_range(-600..600)).collect();
+        let b: Vec<i16> = (0..k * n).map(|_| rng.gen_range(-600..600)).collect();
+        let yacc = volta_gpt2::gemm_i64(&x, &b, m, k, n);
+        let pcg_seed = [0x71; 32];
+        let tx_seed = [0xB2; 32];
+        let mut cpu_tx = Transcript::new(tx_seed);
+        let r_i: Vec<Fp2> = (0..pad_bits(m)).map(|_| cpu_tx.challenge_fp2()).collect();
+        let r_j: Vec<Fp2> = (0..pad_bits(n)).map(|_| cpu_tx.challenge_fp2()).collect();
+        let eq_i = eq_vec(&r_i);
+        let eq_j = eq_vec(&r_j);
+        let b_folded = fold_w(&b, k, n, &eq_j);
+        let tags: Vec<Fp2> = (0..k.next_power_of_two())
+            .map(|i| Fp2::new(Fp::new(1009 + i as u64 * 17), Fp::new(2017 + i as u64 * 29)))
+            .collect();
+        let b_for_open = b_folded.clone();
+        let tags_for_open = tags.clone();
+        let claim0 = ProverAuthed {
+            x: fold_y_acc(&yacc, m, n, &eq_i, &eq_j),
+            m: Fp2::new(Fp::new(0xAA55), Fp::new(0x55AA)),
+        };
+        let doms = ChainDoms::alloc(&mut Doms::new(0xC000), k);
+        let mut cpu_stream = CorrelationStream::new(pcg_seed);
+        let (cpu_proof, cpu_wire, cpu_point, _, cpu_counters) = prove_gemm_act_chained(
+            &x,
+            b_folded,
+            m,
+            k,
+            n,
+            &r_i,
+            &r_j,
+            claim0,
+            move |point| {
+                let eq = eq_vec(point);
+                ProverAuthed {
+                    x: eq.iter().zip(&b_for_open).fold(Fp2::ZERO, |sum, (&w, &v)| sum + w * v),
+                    m: eq
+                        .iter()
+                        .zip(&tags_for_open)
+                        .fold(Fp2::ZERO, |sum, (&w, &tag)| sum + w * tag),
+                }
+            },
+            &doms,
+            &mut cpu_stream,
+            &mut cpu_tx,
+        );
+
+        let dx = gpu.upload_new_device(&x).unwrap();
+        let db = gpu.upload_new_device(&b).unwrap();
+        let eq_i_raw: Vec<Fp2Repr> = eq_i.iter().copied().map(Into::into).collect();
+        let eq_j_raw: Vec<Fp2Repr> = eq_j.iter().copied().map(Into::into).collect();
+        let d_eq_i = gpu.upload_new_device(&eq_i_raw).unwrap();
+        let d_eq_j = gpu.upload_new_device(&eq_j_raw).unwrap();
+        let mut live_after_first = None;
+        for _ in 0..2 {
+            let mut tx = Transcript::new(tx_seed);
+            let r_i_gpu: Vec<Fp2> = (0..pad_bits(m)).map(|_| tx.challenge_fp2()).collect();
+            let r_j_gpu: Vec<Fp2> = (0..pad_bits(n)).map(|_| tx.challenge_fp2()).collect();
+            assert_eq!(r_i_gpu, r_i);
+            assert_eq!(r_j_gpu, r_j);
+            let a_device = gpu
+                .matrix_fold_device(
+                    DeviceSlice::new(&dx, 0, x.len()).unwrap(),
+                    DeviceSlice::new(&d_eq_i, 0, eq_i.len()).unwrap(),
+                    m,
+                    k,
+                    MatrixFoldAxis::Rows,
+                )
+                .unwrap();
+            let b_device = gpu
+                .matrix_fold_device(
+                    DeviceSlice::new(&db, 0, b.len()).unwrap(),
+                    DeviceSlice::new(&d_eq_j, 0, eq_j.len()).unwrap(),
+                    k,
+                    n,
+                    MatrixFoldAxis::Columns,
+                )
+                .unwrap();
+            let tags_for_open = tags.clone();
+            let mut stream = CorrelationStream::new(pcg_seed);
+            let (proof, wire, point, _, counters) = prove_gemm_act_chained_resident(
+                a_device,
+                b_device,
+                m,
+                k,
+                n,
+                &r_i_gpu,
+                &r_j_gpu,
+                claim0,
+                move |point, value| {
+                    let eq = eq_vec(point);
+                    Ok(ProverAuthed {
+                        x: value,
+                        m: eq
+                            .iter()
+                            .zip(&tags_for_open)
+                            .fold(Fp2::ZERO, |sum, (&w, &tag)| sum + w * tag),
+                    })
+                },
+                &doms,
+                &mut stream,
+                &mut tx,
+                &mut gpu,
+            )
+            .unwrap();
+            assert_eq!(proof, cpu_proof);
+            assert_eq!(wire, cpu_wire);
+            assert_eq!(point, cpu_point);
+            assert_eq!(counters, cpu_counters);
+            assert_eq!(tx.ledger(), cpu_tx.ledger());
+            let live = gpu.stats().unwrap().live_device_bytes;
+            if let Some(first) = live_after_first {
+                assert_eq!(live, first, "resident activation GEMM leaked across reuse");
+            } else {
+                live_after_first = Some(live);
+            }
+        }
+        gpu.free_device(d_eq_j).unwrap();
+        gpu.free_device(d_eq_i).unwrap();
+        gpu.free_device(db).unwrap();
         gpu.free_device(dx).unwrap();
     }
 

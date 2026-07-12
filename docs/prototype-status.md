@@ -56,6 +56,28 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-12 (`P7-integrated-resident` attention substrate checkpoint;
+  attention proof still open)**: ABI v12 generalizes the resident matrix fold
+  to a checked column window with an explicit physical row stride. This is
+  the internal operation needed to fold per-head Q/K/V views without a
+  gathered buffer; the accelerator receives only runtime geometry and a
+  sealed scalar/axis tag. The original whole-matrix API remains a wrapper,
+  so existing CPU/CUDA call sites and ownership rules are unchanged.
+  `prove_gemm_act_chained_resident` consumes already-folded opaque device
+  vectors and mirrors the existing activation×activation proof exactly:
+  Rust still owns challenges, transcript messages, correlation domains and
+  the caller-provided boundary MAC tag; only compressed round values and the
+  final two field scalars cross D2H. Error paths consume both folds, and no
+  new verifier or proof representation was introduced.
+
+  CUDA 13.0/sm_80 on A100 `3mq19up4` validates the strided non-power-of-two
+  fold bit-for-bit. A separate activation-GEMM differential compares the
+  complete `ChainedGemmProof`, wire claim, bound point, transcript ledger and
+  correlation counters with CPU over two uses of one context; all are exact
+  and live device bytes remain stable. This checkpoint is intentionally a
+  reusable attention substrate, **not** an attention/layer/e2e result and
+  carries no resident rho.
+
 - **2026-07-12 (`P7-integrated-resident` complete FFN proof checkpoint;
   attention/model orchestration still open)**: ABI v11 adds only
   shape-parametric proof-data operations: canonical base-vector padding,

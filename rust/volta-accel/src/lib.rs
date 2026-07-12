@@ -17,7 +17,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 11;
+pub const CUDA_ABI_VERSION: u32 = 12;
 pub const OPERATION_COUNT: usize = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1332,10 +1332,33 @@ impl Backend {
         cols: usize,
         axis: MatrixFoldAxis,
     ) -> Result<DeviceBuffer<Fp2Repr>, AccelError> {
-        if rows == 0 || cols == 0 {
-            return Err(AccelError::InvalidInput("invalid resident matrix-fold geometry"));
+        self.matrix_window_fold_device(input, weights, rows, cols, 0, cols, axis)
+    }
+
+    /// Fold one axis of a column window in a resident row-major matrix.
+    /// `stride` is the physical row width and `[column_offset, column_offset
+    /// + cols)` is the logical matrix. This keeps head/tensor slices resident
+    /// without allocating a gathered copy. The untouched axis is padded to a
+    /// power of two exactly as in [`Self::matrix_fold_device`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn matrix_window_fold_device<T: ResidentMatrixElement>(
+        &mut self,
+        input: DeviceSlice<'_, T>,
+        weights: DeviceSlice<'_, Fp2Repr>,
+        rows: usize,
+        stride: usize,
+        column_offset: usize,
+        cols: usize,
+        axis: MatrixFoldAxis,
+    ) -> Result<DeviceBuffer<Fp2Repr>, AccelError> {
+        if rows == 0
+            || cols == 0
+            || stride == 0
+            || column_offset.checked_add(cols).filter(|&end| end <= stride).is_none()
+        {
+            return Err(AccelError::InvalidInput("invalid resident matrix-window fold geometry"));
         }
-        self.validate_device_slice(input, checked_product(rows, cols)?)?;
+        self.validate_device_slice(input, checked_product(rows, stride)?)?;
         let (terms, real_outputs) = match axis {
             MatrixFoldAxis::Rows => (rows, cols),
             MatrixFoldAxis::Columns => (cols, rows),
@@ -1354,6 +1377,8 @@ impl Backend {
             output.id,
             0,
             rows,
+            stride,
+            column_offset,
             cols,
             out_pad,
             T::CUDA_KIND,
@@ -3932,6 +3957,45 @@ mod cuda_tests {
             };
             assert_eq!(got_cols[i], expected, "column fold output {i}");
         }
+
+        // Per-head proof paths use a logical matrix window inside a wider
+        // row stride. It must fold directly without a gathered host mirror.
+        let window_offset = 1usize;
+        let window_cols = 3usize;
+        let window_weights = &col_weights[..window_cols];
+        let window_weights_raw: Vec<Fp2Repr> =
+            window_weights.iter().copied().map(Into::into).collect();
+        let dwindow_weights = gpu.upload_new_device(&window_weights_raw).unwrap();
+        let folded_window = gpu
+            .matrix_window_fold_device(
+                DeviceSlice::new(&dinput, 0, input.len()).unwrap(),
+                DeviceSlice::new(&dwindow_weights, 0, window_cols).unwrap(),
+                rows,
+                cols,
+                window_offset,
+                window_cols,
+                MatrixFoldAxis::Columns,
+            )
+            .unwrap();
+        let got_window: Vec<Fp2> = gpu
+            .download_device(&folded_window, 0, rows.next_power_of_two())
+            .unwrap()
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        for i in 0..rows.next_power_of_two() {
+            let expected = if i < rows {
+                (0..window_cols).fold(Fp2::ZERO, |sum, j| {
+                    sum + window_weights[j]
+                        .mul_base(Fp::from_i64(input[i * cols + window_offset + j] as i64))
+                })
+            } else {
+                Fp2::ZERO
+            };
+            assert_eq!(got_window[i], expected, "window fold output {i}");
+        }
+        gpu.free_device(folded_window).unwrap();
+        gpu.free_device(dwindow_weights).unwrap();
 
         let av: Vec<Fp2> =
             (0..8).map(|i| Fp2::new(Fp::new(i * 47 + 2), Fp::new(i * 53 + 7))).collect();

@@ -79,8 +79,12 @@ struct AcceleratorOperationRow {
 
 #[derive(Clone, Serialize)]
 struct AcceleratorStatsRow {
+    scope: String,
     operations: BTreeMap<String, AcceleratorOperationRow>,
     timing_method: String,
+    measurement_wall_s: f64,
+    operation_cpu_residual_s: f64,
+    unattributed_cpu_residual_s: f64,
     h2d_bytes: u64,
     d2h_bytes: u64,
     h2d_s: f64,
@@ -94,8 +98,8 @@ struct AcceleratorStatsRow {
     cpu_residual_s: f64,
 }
 
-impl From<BackendStats> for AcceleratorStatsRow {
-    fn from(stats: BackendStats) -> Self {
+impl AcceleratorStatsRow {
+    fn from_stats(stats: BackendStats, scope: &str) -> Self {
         let operations = Operation::ALL
             .into_iter()
             .map(|op| {
@@ -111,8 +115,12 @@ impl From<BackendStats> for AcceleratorStatsRow {
             })
             .collect();
         AcceleratorStatsRow {
+            scope: scope.to_string(),
             operations,
             timing_method: stats.timing_mode.name().to_string(),
+            measurement_wall_s: stats.measurement_wall_ns as f64 / 1e9,
+            operation_cpu_residual_s: stats.operation_cpu_residual_ns() as f64 / 1e9,
+            unattributed_cpu_residual_s: stats.unattributed_cpu_residual_ns as f64 / 1e9,
             h2d_bytes: stats.h2d_bytes,
             d2h_bytes: stats.d2h_bytes,
             h2d_s: stats.h2d_ns as f64 / 1e9,
@@ -1164,8 +1172,11 @@ fn main() {
         cloud: cloud_metadata_from_env(),
         threads: rayon::current_num_threads(),
         accelerator_backend: args.accelerator.as_str().into(),
-        accelerator_witness: accelerator_witness_stats.map(Into::into),
-        accelerator_proving: rec.accelerator_stats.map(Into::into),
+        accelerator_witness: accelerator_witness_stats
+            .map(|stats| AcceleratorStatsRow::from_stats(stats, "witness-forward")),
+        accelerator_proving: rec.accelerator_stats.map(|stats| {
+            AcceleratorStatsRow::from_stats(stats, "response-session-including-pcs-and-verifier")
+        }),
         t_prefill: t0,
         n_decode: n_gen,
         accepted,

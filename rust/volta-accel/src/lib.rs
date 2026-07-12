@@ -98,6 +98,8 @@ pub struct OperationStats {
 pub struct BackendStats {
     pub operations: [OperationStats; OPERATION_COUNT],
     pub timing_mode: DeviceTimingMode,
+    pub measurement_wall_ns: u64,
+    pub unattributed_cpu_residual_ns: u64,
     pub h2d_bytes: u64,
     pub d2h_bytes: u64,
     pub h2d_ns: u64,
@@ -118,8 +120,12 @@ impl BackendStats {
         self.operations.iter().map(|x| x.kernel_ns).sum()
     }
 
-    pub fn cpu_residual_ns(&self) -> u64 {
+    pub fn operation_cpu_residual_ns(&self) -> u64 {
         self.operations.iter().map(|x| x.cpu_residual_ns).sum()
+    }
+
+    pub fn cpu_residual_ns(&self) -> u64 {
+        self.operation_cpu_residual_ns() + self.unattributed_cpu_residual_ns
     }
 }
 
@@ -134,6 +140,7 @@ pub enum AccelError {
     ResidualForbidden(Operation),
     MeasurementAlreadyActive,
     MeasurementNotActive,
+    AttributionInconsistent { wall_ns: u64, attributed_ns: u64 },
 }
 
 impl fmt::Display for AccelError {
@@ -156,6 +163,10 @@ impl fmt::Display for AccelError {
                 write!(f, "accelerator measurement already active")
             }
             AccelError::MeasurementNotActive => write!(f, "accelerator measurement is not active"),
+            AccelError::AttributionInconsistent { wall_ns, attributed_ns } => write!(
+                f,
+                "accelerator attribution exceeds measurement wall: {attributed_ns} ns > {wall_ns} ns"
+            ),
         }
     }
 }
@@ -187,6 +198,7 @@ pub struct Backend {
     cuda: Option<cuda::CudaContext>,
     cpu_residual_ns: [u64; OPERATION_COUNT],
     measurement_active: bool,
+    measurement_started: Option<Instant>,
 }
 
 impl Backend {
@@ -197,6 +209,7 @@ impl Backend {
             cuda: None,
             cpu_residual_ns: [0; OPERATION_COUNT],
             measurement_active: false,
+            measurement_started: None,
         }
     }
 
@@ -216,6 +229,7 @@ impl Backend {
             cuda: Some(cuda),
             cpu_residual_ns: [0; OPERATION_COUNT],
             measurement_active: false,
+            measurement_started: None,
         })
     }
 
@@ -241,6 +255,7 @@ impl Backend {
         if let Some(cuda) = &mut self.cuda {
             cuda.reset_stats()?;
         }
+        self.measurement_started = Some(Instant::now());
         self.measurement_active = true;
         Ok(())
     }
@@ -249,8 +264,24 @@ impl Backend {
         if !self.measurement_active {
             return Err(AccelError::MeasurementNotActive);
         }
-        let stats = self.stats()?;
+        let wall_ns = self
+            .measurement_started
+            .expect("active measurement without start time")
+            .elapsed()
+            .as_nanos() as u64;
+        let mut stats = self.stats()?;
+        let phase_ns = stats.h2d_ns + stats.d2h_ns + stats.kernel_ns();
+        let operation_cpu_ns = stats.operation_cpu_residual_ns();
+        let attributed_ns = phase_ns
+            .checked_add(operation_cpu_ns)
+            .ok_or(AccelError::AttributionInconsistent { wall_ns, attributed_ns: u64::MAX })?;
+        if attributed_ns > wall_ns {
+            return Err(AccelError::AttributionInconsistent { wall_ns, attributed_ns });
+        }
+        stats.measurement_wall_ns = wall_ns;
+        stats.unattributed_cpu_residual_ns = wall_ns - attributed_ns;
         self.measurement_active = false;
+        self.measurement_started = None;
         Ok(stats)
     }
 
@@ -623,7 +654,9 @@ mod tests {
         assert_eq!(b.kind(), BackendKind::Cpu);
         b.begin_measurement().unwrap();
         assert_eq!(b.cpu_residual(Operation::Logup, || 7).unwrap(), 7);
-        assert_eq!(b.finish_measurement().unwrap().cpu_residual_ns(), 0);
+        let stats = b.finish_measurement().unwrap();
+        assert_eq!(stats.operation_cpu_residual_ns(), 0);
+        assert_eq!(stats.cpu_residual_ns(), stats.measurement_wall_ns);
     }
 
     #[test]
@@ -769,6 +802,10 @@ mod cuda_tests {
         assert!(stats.h2d_bytes > 0 && stats.d2h_bytes > 0);
         assert!(stats.h2d_ns > 0 && stats.d2h_ns > 0);
         assert!(stats.operation(Operation::Gemm).kernel_ns > 0);
+        assert_eq!(
+            stats.measurement_wall_ns,
+            stats.h2d_ns + stats.d2h_ns + stats.kernel_ns() + stats.cpu_residual_ns()
+        );
         assert_eq!(
             stats.synchronizations,
             match stats.timing_mode {

@@ -11,6 +11,7 @@ pub mod gemm;
 pub mod layer;
 pub mod luts;
 pub mod model;
+pub mod resident;
 
 pub use band::{band_model_witness, BandModelWitness};
 pub use decode::{argmax, decode_step, generate, requant_plain, KvCache};
@@ -26,4 +27,8 @@ pub use luts::{build_luts, LutParams, Luts};
 pub use model::{
     forward_model, forward_model_tokens, forward_model_tokens_with_backend,
     forward_model_with_backend, load_model, Gpt2Model, ModelWitness, L, NPOS, VOCAB,
+};
+pub use resident::{
+    forward_model_tokens_resident, upload_resident_model, LayerI16Field, LayerI64Field,
+    ResidentGpt2Model, ResidentLayerWitness, ResidentModelWitness,
 };

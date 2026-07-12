@@ -23,7 +23,7 @@ CPU numbers validate architecture and counts; the P7 ρ targets (≤2 decode,
 | P4 LogUp + fused blocks | **done** (2026-07-05) | one full layer proved+verified e2e (T=100, real PCS opening) ✓ **PASSED**; counts within 20% ✓ (witness streams = budget **exactly**, padded LogUp domains explained); LogUp ≤8–10 E-mult/lookup: **MISSED, motivated (12.20)**; 1 weight claim/tensor ✓ (4/layer) | prove 0.800 s vs native forward 0.033 s (ρ_layer ~24, 4 cores); verify 0.041 s; LogUp lookup-side **12.20 E-mult/lookup** (~34 ns/lookup, 5.4× vs P2.5 spike wall), table-side 3.86 raw → 0.32 /12-amortized; full instance cost 126.5 M E-mult/layer (≈42/padded lookup incl. aux folding + tables + closures); corr bytes 7.64 MB/layer (mult vectors 3.87 MB — see deviations); layer PCS 2^24: commit 0.34 s one-off, **open 0.035 s**, verify 0.006 s; projections (P3.5 cost model, 49/98 claims): prefill **0.233 s**, per-response **0.345 s**. Run of record `benchmarks/results/p4-2026-07-06-8b4ca11.json` (clean tree, `git_dirty:false`; the 07-05 JSON was a dirty-tree run whose sha names the parent commit) |
 | P5 GPT-2 e2e prefill 100 tok | **done** (2026-07-06) | one-command run ✓ (`scripts/run_prefill.sh`), golden check ✓ (full logits bit-exact vs numpy at T=100, argmax 835 ' way'), counts vs budget: witness lookups = budget **exactly** (16,944,000) ✓ | **accepted e2e with real weights + 13 real Ligero commitments**: native (witness) 0.459 s, prove 11.0–11.2 s, **ρ ≈ 24** (matches P4's ×12 projection); verify 0.65 s + 0.07 s PCS; PCS open **0.73 s** / 52.8 MB (vs 0.237 s projection — 13× fixed costs, see deviations), commit one-off 7.6 s; **comm 159.6 MB/prefill** (mult vectors 59.4 + PCS 52.8 + boundary 36.9 + rest), projected response 212 MB; E-mult all-in 100.6/budget lookup; peak RSS 2.86 GB. `benchmarks/results/p5-2026-07-06-e52ce79.json` (clean tree) |
 | P6 decode + authenticated KV cache | **done** (2026-07-07) | flat cost/token ✓ **PASSED** (curve last/first 1.12 ≤ 1.5, 5×10 chunks, cache 100→150); anti-replay smoke ✓ (prefill-row replay + position swap rejected); golden decode ✓ (50 tokens bit-exact vs numpy) | **accepted e2e, prompt 100 + 50 decode, one two-phase session, real 13-commitment PCS with STACKED claims (96 weight + 6 embed)**: native decode 30.9 tok/s (KV-cached baseline); prove_response 18.7 s = prefill 10.5 s + **decode marginal 8.2 s (0.164 s/token, ρ_decode 5.07 CPU)**; verified 2.67 tok/s; verify 0.57 s + 0.10 s PCS. Comm: transcript 137.4 MB (prefill 48.4 + PCS opening 66.7 + decode marginal 22.3 = **445 KB/token**) + public band logits 20.5 MB → **total response download 157.9 MB** (inside the 150–200 MB product envelope; the PCS opening is now the dominant lever, P7). Shared-α restructure landed with P6: mult corr 59.4 → 2.85 MB. PCS commit one-off 9.5 s; peak RSS 3.47 GB. `benchmarks/results/p6-2026-07-07-515bb1c.json` (clean tree) |
-| P7 report + GPU budget model | **integrated-hybrid full + same-host native anchor complete; resident ABI + LogUp/PCS families landed, gate open** (2026-07-12) | full T=100+50/Q=200 golden exact ✓; repeated exact attribution ✓; flat-cost 1.363 ✓; packed response 144.821 MB ✓; same-seed differential/fault/reuse/anti-replay ✓; corrected same-host native GPU 7-rep anchor ✓; resident buffer/GEMM, LogUp and PCS contracts A100-tested ✓; resident witness/proving gate open | On `3mq19up4`, native A100 prefill is **20.929±0.389 ms MAD**, decode50 **770.045±8.648 ms**, golden exact; CPU speedups 53.542×/2.901×. Hybrid proof prefill **42.039±1.419 s**, decode marginal **21.975±0.659 s**, so same-host staged ρ_proof is **2008.584/28.537** (diagnostic, not paper). Representative hybrid session: 6.868 H2D + 25.433 D2H + 0.110 kernels + 68.439 CPU; 17.813/5.560 GB transferred, 4.313 GB peak device. Sources `p7-integrated-hybrid-2026-07-12-706d067.json`, `p7-gpu-native-inference-2026-07-12-faa7667.json`; aggregate `p7-2026-07-12-a5d4fa5.json`. Resident infrastructure/kernel checkpoints have no resident e2e number yet. |
+| P7 report + GPU budget model | **integrated-hybrid full + same-host native anchor complete; resident ABI + forward witness + LogUp/PCS families landed, prover gate open** (2026-07-12) | full T=100+50/Q=200 golden exact ✓; repeated exact attribution ✓; flat-cost 1.363 ✓; packed response 144.821 MB ✓; same-seed differential/fault/reuse/anti-replay ✓; corrected same-host native GPU 7-rep anchor ✓; resident buffer/GEMM, full forward witness, LogUp and PCS contracts A100-tested ✓; resident prover gate open | On `3mq19up4`, native A100 prefill is **20.929±0.389 ms MAD**, decode50 **770.045±8.648 ms**, golden exact; CPU speedups 53.542×/2.901×. Hybrid proof prefill **42.039±1.419 s**, decode marginal **21.975±0.659 s**, so same-host staged ρ_proof is **2008.584/28.537** (diagnostic, not paper). Representative hybrid session: 6.868 H2D + 25.433 D2H + 0.110 kernels + 68.439 CPU; 17.813/5.560 GB transferred, 4.313 GB peak device. Sources `p7-integrated-hybrid-2026-07-12-706d067.json`, `p7-gpu-native-inference-2026-07-12-faa7667.json`; aggregate `p7-2026-07-12-a5d4fa5.json`. Resident infrastructure/kernel checkpoints have no resident e2e number yet. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -55,6 +55,36 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-12 (`P7-integrated-resident` full forward + witness checkpoint;
+  prover integration still open)**: ABI v7 adds shape-parametric fixed-point
+  primitives for embedding, LayerNorm, biased GEMM/requant/residual, QKV
+  split, causal-packed scores and softmax, AV, LUT application, seam requant
+  and batched logits. The accelerator API receives runtime geometry and
+  shifts only; GPT-2 constants and orchestration remain in `volta-gpt2`, and
+  no `ModelConfig`, product CLI or stable public API is introduced.
+  `ResidentGpt2Model` owns one persistent typed weight/LUT allocation;
+  `ResidentModelWitness` owns packed i16/i64 allocations for every
+  proof-relevant wire but deliberately has no lookup traces, which the
+  protocol already recomputes from those wires. Accumulators, requantized
+  values and residual boundaries remain distinct device regions, so later
+  proving does not need to reconstruct or download them. A borrowed
+  `DeviceSlice` carries only context-owned buffer identity, element offset
+  and length, never a raw pointer.
+
+  The CUDA 13.0/sm_80 library compiles on A100 `3mq19up4`. With the frozen
+  weight artifact checksum-verified, the non-power-of-two T=3 differential
+  compares embedding, all fields of all 12 layers, final-LN and the complete
+  logits vector against the CPU `ModelWitness` bit-for-bit. It repeats the
+  full forward twice on one context and returns live device bytes to the
+  post-model-upload baseline after each explicit witness free. Inside the
+  measured forward the only D2H boundary is the four-byte sticky
+  no-clamp/domain error flag; online H2D is the token vector plus its
+  four-byte initialization. The entire CPU workspace, including golden,
+  full-proof and anti-replay tests, remains green without CUDA. This is a
+  forward/witness contract checkpoint, **not** a resident e2e result: the
+  current block/model prover still reads host `Vec` wires, so no resident rho
+  is recorded and the report's `cuda-resident` guard remains in place.
 
 - **2026-07-12 (`P7-integrated-resident` PCS family device path landed;
   model-witness integration still open)**: ABI v6 adds resident padded message

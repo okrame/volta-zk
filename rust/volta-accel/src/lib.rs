@@ -17,7 +17,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 6;
+pub const CUDA_ABI_VERSION: u32 = 7;
 pub const OPERATION_COUNT: usize = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -217,6 +217,39 @@ pub struct DeviceBuffer<T: DeviceElement> {
     len: usize,
     context_id: u64,
     _element: PhantomData<T>,
+}
+
+/// Borrowed typed region of an opaque resident allocation.  This is the
+/// internal cross-crate view used by the forward/prover seam: it carries only
+/// an element offset and length, never a raw device pointer.
+#[derive(Clone, Copy, Debug)]
+pub struct DeviceSlice<'a, T: DeviceElement> {
+    buffer: &'a DeviceBuffer<T>,
+    offset: usize,
+    len: usize,
+}
+
+impl<'a, T: DeviceElement> DeviceSlice<'a, T> {
+    pub fn new(buffer: &'a DeviceBuffer<T>, offset: usize, len: usize) -> Result<Self, AccelError> {
+        validate_region(buffer.len, offset, len)?;
+        Ok(DeviceSlice { buffer, offset, len })
+    }
+
+    pub fn buffer(self) -> &'a DeviceBuffer<T> {
+        self.buffer
+    }
+
+    pub fn offset(self) -> usize {
+        self.offset
+    }
+
+    pub fn len(self) -> usize {
+        self.len
+    }
+
+    pub fn is_empty(self) -> bool {
+        self.len == 0
+    }
 }
 
 /// Opaque leaves-to-root BLAKE3 Merkle tree in resident device storage.
@@ -582,6 +615,560 @@ impl Backend {
             return Err(error);
         }
         Ok((out, corr))
+    }
+
+    fn validate_device_slice<T: DeviceElement>(
+        &self,
+        slice: DeviceSlice<'_, T>,
+        required: usize,
+    ) -> Result<(), AccelError> {
+        self.validate_buffer(slice.buffer)?;
+        if slice.len < required {
+            return Err(AccelError::InvalidInput(
+                "resident device slice is shorter than its shape",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Shape-parametric fixed-point embedding. All witness outputs remain in
+    /// resident buffers; `error` is a sticky one-word no-clamp/domain flag.
+    #[allow(clippy::too_many_arguments)]
+    pub fn fixed_embed_device(
+        &mut self,
+        tokens: DeviceSlice<'_, u32>,
+        wte: DeviceSlice<'_, i16>,
+        wpe: DeviceSlice<'_, i16>,
+        acc: DeviceSlice<'_, i64>,
+        out: DeviceSlice<'_, i16>,
+        error: DeviceSlice<'_, u32>,
+        rows: usize,
+        d: usize,
+        vocab: usize,
+        positions: usize,
+        pos0: usize,
+        shift: i32,
+    ) -> Result<(), AccelError> {
+        let rd = checked_product(rows, d)?;
+        self.validate_device_slice(tokens, rows)?;
+        self.validate_device_slice(wte, checked_product(vocab, d)?)?;
+        self.validate_device_slice(wpe, checked_product(positions, d)?)?;
+        self.validate_device_slice(acc, rd)?;
+        self.validate_device_slice(out, rd)?;
+        self.validate_device_slice(error, 1)?;
+        if rows == 0
+            || d == 0
+            || vocab == 0
+            || pos0.checked_add(rows).filter(|&end| end <= positions).is_none()
+            || !(-62..=62).contains(&shift)
+        {
+            return Err(AccelError::InvalidInput("invalid resident embedding geometry"));
+        }
+        #[cfg(feature = "cuda")]
+        {
+            return self.cuda.as_mut().expect("CUDA kind without context").fixed_embed_device(
+                tokens.buffer.id,
+                tokens.offset,
+                wte.buffer.id,
+                wte.offset,
+                wpe.buffer.id,
+                wpe.offset,
+                acc.buffer.id,
+                acc.offset,
+                out.buffer.id,
+                out.offset,
+                error.buffer.id,
+                error.offset,
+                rows,
+                d,
+                vocab,
+                positions,
+                pos0,
+                shift,
+            );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn fixed_layer_norm_device(
+        &mut self,
+        input: DeviceSlice<'_, i16>,
+        gain: DeviceSlice<'_, i16>,
+        bias: DeviceSlice<'_, i16>,
+        rsqrt_lut: DeviceSlice<'_, i16>,
+        mean: DeviceSlice<'_, i64>,
+        var: DeviceSlice<'_, i64>,
+        rsqrt_input: DeviceSlice<'_, i64>,
+        rsqrt_output: DeviceSlice<'_, i16>,
+        output: DeviceSlice<'_, i16>,
+        error: DeviceSlice<'_, u32>,
+        rows: usize,
+        d: usize,
+        var_shift: u32,
+        norm_shift: u32,
+    ) -> Result<(), AccelError> {
+        let rd = checked_product(rows, d)?;
+        for slice in [input, output] {
+            self.validate_device_slice(slice, rd)?;
+        }
+        for slice in [gain, bias] {
+            self.validate_device_slice(slice, d)?;
+        }
+        self.validate_device_slice(rsqrt_lut, 1 << 16)?;
+        for slice in [mean, var, rsqrt_input] {
+            self.validate_device_slice(slice, rows)?;
+        }
+        self.validate_device_slice(rsqrt_output, rows)?;
+        self.validate_device_slice(error, 1)?;
+        if rows == 0 || d == 0 || norm_shift == 0 || norm_shift >= 63 || var_shift >= 63 {
+            return Err(AccelError::InvalidInput("invalid resident layer-norm geometry"));
+        }
+        #[cfg(feature = "cuda")]
+        {
+            return self.cuda.as_mut().expect("CUDA kind without context").fixed_layer_norm_device(
+                input.buffer.id,
+                input.offset,
+                gain.buffer.id,
+                gain.offset,
+                bias.buffer.id,
+                bias.offset,
+                rsqrt_lut.buffer.id,
+                rsqrt_lut.offset,
+                mean.buffer.id,
+                mean.offset,
+                var.buffer.id,
+                var.offset,
+                rsqrt_input.buffer.id,
+                rsqrt_input.offset,
+                rsqrt_output.buffer.id,
+                rsqrt_output.offset,
+                output.buffer.id,
+                output.offset,
+                error.buffer.id,
+                error.offset,
+                rows,
+                d,
+                var_shift,
+                norm_shift,
+            );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Fixed GEMM with optional public bias and residual. The original i64
+    /// accumulators, requantized wire, and residual boundary are distinct
+    /// outputs so the prover can consume each without reconstructing it.
+    #[allow(clippy::too_many_arguments)]
+    pub fn fixed_gemm_device(
+        &mut self,
+        input: DeviceSlice<'_, i16>,
+        weights: DeviceSlice<'_, i16>,
+        bias: Option<DeviceSlice<'_, i16>>,
+        residual: Option<DeviceSlice<'_, i16>>,
+        accumulators: DeviceSlice<'_, i64>,
+        requantized: DeviceSlice<'_, i16>,
+        residual_output: Option<DeviceSlice<'_, i16>>,
+        error: DeviceSlice<'_, u32>,
+        m: usize,
+        k: usize,
+        n: usize,
+        shift: u32,
+    ) -> Result<(), AccelError> {
+        let mk = checked_product(m, k)?;
+        let kn = checked_product(k, n)?;
+        let mn = checked_product(m, n)?;
+        self.validate_device_slice(input, mk)?;
+        self.validate_device_slice(weights, kn)?;
+        if let Some(slice) = bias {
+            self.validate_device_slice(slice, n)?;
+        }
+        if let Some(slice) = residual {
+            self.validate_device_slice(slice, mn)?;
+        }
+        self.validate_device_slice(accumulators, mn)?;
+        self.validate_device_slice(requantized, mn)?;
+        if let Some(slice) = residual_output {
+            self.validate_device_slice(slice, mn)?;
+        }
+        self.validate_device_slice(error, 1)?;
+        if m == 0
+            || k == 0
+            || n == 0
+            || shift == 0
+            || shift >= 63
+            || residual.is_some() != residual_output.is_some()
+        {
+            return Err(AccelError::InvalidInput("invalid resident fixed GEMM geometry"));
+        }
+        #[cfg(feature = "cuda")]
+        let raw = |slice: DeviceSlice<'_, i16>| (slice.buffer.id, slice.offset);
+        #[cfg(feature = "cuda")]
+        {
+            return self.cuda.as_mut().expect("CUDA kind without context").fixed_gemm_device(
+                input.buffer.id,
+                input.offset,
+                weights.buffer.id,
+                weights.offset,
+                bias.map(raw),
+                residual.map(raw),
+                accumulators.buffer.id,
+                accumulators.offset,
+                requantized.buffer.id,
+                requantized.offset,
+                residual_output.map(raw),
+                error.buffer.id,
+                error.offset,
+                m,
+                k,
+                n,
+                shift,
+            );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn fixed_qkv_split_device(
+        &mut self,
+        input: DeviceSlice<'_, i16>,
+        q: DeviceSlice<'_, i16>,
+        k: DeviceSlice<'_, i16>,
+        v: DeviceSlice<'_, i16>,
+        rows: usize,
+        d: usize,
+    ) -> Result<(), AccelError> {
+        let rd = checked_product(rows, d)?;
+        self.validate_device_slice(input, checked_product(rd, 3)?)?;
+        for slice in [q, k, v] {
+            self.validate_device_slice(slice, rd)?;
+        }
+        if rows == 0 || d == 0 {
+            return Err(AccelError::InvalidInput("invalid resident QKV split geometry"));
+        }
+        #[cfg(feature = "cuda")]
+        {
+            return self.cuda.as_mut().expect("CUDA kind without context").fixed_qkv_split_device(
+                input.buffer.id,
+                input.offset,
+                q.buffer.id,
+                q.offset,
+                k.buffer.id,
+                k.offset,
+                v.buffer.id,
+                v.offset,
+                rows,
+                d,
+            );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn fixed_attention_scores_device(
+        &mut self,
+        q: DeviceSlice<'_, i16>,
+        k: DeviceSlice<'_, i16>,
+        accumulators: DeviceSlice<'_, i64>,
+        outputs: DeviceSlice<'_, i16>,
+        error: DeviceSlice<'_, u32>,
+        rows: usize,
+        seq: usize,
+        pos0: usize,
+        heads: usize,
+        head_dim: usize,
+        shift: u32,
+    ) -> Result<(), AccelError> {
+        let d = checked_product(heads, head_dim)?;
+        let packed_per_head = rows
+            .checked_mul(pos0)
+            .and_then(|x| rows.checked_mul(rows + 1).and_then(|tri2| x.checked_add(tri2 / 2)))
+            .ok_or(AccelError::InvalidInput("shape overflow"))?;
+        let packed = checked_product(heads, packed_per_head)?;
+        self.validate_device_slice(q, checked_product(rows, d)?)?;
+        self.validate_device_slice(k, checked_product(seq, d)?)?;
+        self.validate_device_slice(accumulators, packed)?;
+        self.validate_device_slice(outputs, packed)?;
+        self.validate_device_slice(error, 1)?;
+        if rows == 0
+            || seq == 0
+            || heads == 0
+            || head_dim == 0
+            || shift == 0
+            || shift >= 63
+            || pos0.checked_add(rows).filter(|&end| end <= seq).is_none()
+        {
+            return Err(AccelError::InvalidInput("invalid resident attention-score geometry"));
+        }
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .expect("CUDA kind without context")
+                .fixed_attention_scores_device(
+                    q.buffer.id,
+                    q.offset,
+                    k.buffer.id,
+                    k.offset,
+                    accumulators.buffer.id,
+                    accumulators.offset,
+                    outputs.buffer.id,
+                    outputs.offset,
+                    error.buffer.id,
+                    error.offset,
+                    rows,
+                    seq,
+                    pos0,
+                    heads,
+                    head_dim,
+                    shift,
+                );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn fixed_softmax_device(
+        &mut self,
+        scores: DeviceSlice<'_, i16>,
+        exp_lut: DeviceSlice<'_, i16>,
+        recip_lut: DeviceSlice<'_, i16>,
+        row_shifts: DeviceSlice<'_, i16>,
+        exp_outputs: DeviceSlice<'_, i16>,
+        denoms: DeviceSlice<'_, i64>,
+        recips: DeviceSlice<'_, i16>,
+        weights: DeviceSlice<'_, i16>,
+        error: DeviceSlice<'_, u32>,
+        rows: usize,
+        seq: usize,
+        pos0: usize,
+        heads: usize,
+        recip_den_shift: u32,
+        norm_shift: u32,
+        use_row_shift: bool,
+    ) -> Result<(), AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        let _ = use_row_shift;
+        let packed_per_head = rows
+            .checked_mul(pos0)
+            .and_then(|x| rows.checked_mul(rows + 1).and_then(|tri2| x.checked_add(tri2 / 2)))
+            .ok_or(AccelError::InvalidInput("shape overflow"))?;
+        let packed = checked_product(heads, packed_per_head)?;
+        let row_count = checked_product(heads, rows)?;
+        for slice in [scores, exp_outputs, weights] {
+            self.validate_device_slice(slice, packed)?;
+        }
+        for slice in [row_shifts, recips] {
+            self.validate_device_slice(slice, row_count)?;
+        }
+        self.validate_device_slice(denoms, row_count)?;
+        self.validate_device_slice(exp_lut, 1 << 16)?;
+        self.validate_device_slice(recip_lut, 1 << 16)?;
+        self.validate_device_slice(error, 1)?;
+        if rows == 0
+            || seq == 0
+            || heads == 0
+            || norm_shift == 0
+            || norm_shift >= 63
+            || recip_den_shift >= 63
+            || pos0.checked_add(rows).filter(|&end| end <= seq).is_none()
+        {
+            return Err(AccelError::InvalidInput("invalid resident softmax geometry"));
+        }
+        #[cfg(feature = "cuda")]
+        {
+            return self.cuda.as_mut().expect("CUDA kind without context").fixed_softmax_device(
+                scores.buffer.id,
+                scores.offset,
+                exp_lut.buffer.id,
+                exp_lut.offset,
+                recip_lut.buffer.id,
+                recip_lut.offset,
+                row_shifts.buffer.id,
+                row_shifts.offset,
+                exp_outputs.buffer.id,
+                exp_outputs.offset,
+                denoms.buffer.id,
+                denoms.offset,
+                recips.buffer.id,
+                recips.offset,
+                weights.buffer.id,
+                weights.offset,
+                error.buffer.id,
+                error.offset,
+                rows,
+                seq,
+                pos0,
+                heads,
+                recip_den_shift,
+                norm_shift,
+                use_row_shift,
+            );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn fixed_av_device(
+        &mut self,
+        weights: DeviceSlice<'_, i16>,
+        values: DeviceSlice<'_, i16>,
+        accumulators: DeviceSlice<'_, i64>,
+        outputs: DeviceSlice<'_, i16>,
+        error: DeviceSlice<'_, u32>,
+        rows: usize,
+        seq: usize,
+        pos0: usize,
+        d: usize,
+        heads: usize,
+        shift: u32,
+    ) -> Result<(), AccelError> {
+        let packed_per_head = rows
+            .checked_mul(pos0)
+            .and_then(|x| rows.checked_mul(rows + 1).and_then(|tri2| x.checked_add(tri2 / 2)))
+            .ok_or(AccelError::InvalidInput("shape overflow"))?;
+        self.validate_device_slice(weights, checked_product(heads, packed_per_head)?)?;
+        self.validate_device_slice(values, checked_product(seq, d)?)?;
+        let rd = checked_product(rows, d)?;
+        self.validate_device_slice(accumulators, rd)?;
+        self.validate_device_slice(outputs, rd)?;
+        self.validate_device_slice(error, 1)?;
+        if rows == 0
+            || seq == 0
+            || d == 0
+            || heads == 0
+            || d % heads != 0
+            || shift == 0
+            || shift >= 63
+            || pos0.checked_add(rows).filter(|&end| end <= seq).is_none()
+        {
+            return Err(AccelError::InvalidInput("invalid resident AV geometry"));
+        }
+        #[cfg(feature = "cuda")]
+        {
+            return self.cuda.as_mut().expect("CUDA kind without context").fixed_av_device(
+                weights.buffer.id,
+                weights.offset,
+                values.buffer.id,
+                values.offset,
+                accumulators.buffer.id,
+                accumulators.offset,
+                outputs.buffer.id,
+                outputs.offset,
+                error.buffer.id,
+                error.offset,
+                rows,
+                seq,
+                pos0,
+                d,
+                heads,
+                shift,
+            );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    pub fn fixed_lookup_device(
+        &mut self,
+        input: DeviceSlice<'_, i16>,
+        lut: DeviceSlice<'_, i16>,
+        output: DeviceSlice<'_, i16>,
+    ) -> Result<(), AccelError> {
+        if input.is_empty() || output.len() < input.len() {
+            return Err(AccelError::InvalidInput("invalid resident lookup geometry"));
+        }
+        self.validate_device_slice(input, input.len())?;
+        self.validate_device_slice(lut, 1 << 16)?;
+        self.validate_device_slice(output, input.len())?;
+        #[cfg(feature = "cuda")]
+        {
+            return self.cuda.as_mut().expect("CUDA kind without context").fixed_lookup_device(
+                input.buffer.id,
+                input.offset,
+                lut.buffer.id,
+                lut.offset,
+                output.buffer.id,
+                output.offset,
+                input.len,
+            );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    pub fn fixed_requant_i16_device(
+        &mut self,
+        input: DeviceSlice<'_, i16>,
+        output: DeviceSlice<'_, i16>,
+        error: DeviceSlice<'_, u32>,
+        shift: u32,
+    ) -> Result<(), AccelError> {
+        if input.is_empty() || output.len() < input.len() || shift >= 63 {
+            return Err(AccelError::InvalidInput("invalid resident i16 requant geometry"));
+        }
+        self.validate_device_slice(input, input.len())?;
+        self.validate_device_slice(output, input.len())?;
+        self.validate_device_slice(error, 1)?;
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .expect("CUDA kind without context")
+                .fixed_requant_i16_device(
+                    input.buffer.id,
+                    input.offset,
+                    output.buffer.id,
+                    output.offset,
+                    error.buffer.id,
+                    error.offset,
+                    input.len,
+                    shift,
+                );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    pub fn fixed_logits_device(
+        &mut self,
+        input: DeviceSlice<'_, i16>,
+        weights: DeviceSlice<'_, i16>,
+        output: DeviceSlice<'_, i64>,
+        rows: usize,
+        d: usize,
+        vocab: usize,
+    ) -> Result<(), AccelError> {
+        self.validate_device_slice(input, checked_product(rows, d)?)?;
+        self.validate_device_slice(weights, checked_product(vocab, d)?)?;
+        self.validate_device_slice(output, checked_product(rows, vocab)?)?;
+        if rows == 0 || d == 0 || vocab == 0 {
+            return Err(AccelError::InvalidInput("invalid resident logits geometry"));
+        }
+        #[cfg(feature = "cuda")]
+        {
+            return self.cuda.as_mut().expect("CUDA kind without context").fixed_logits_device(
+                input.buffer.id,
+                input.offset,
+                weights.buffer.id,
+                weights.offset,
+                output.buffer.id,
+                output.offset,
+                rows,
+                d,
+                vocab,
+            );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
     }
 
     /// Run explicitly residual host work. Hybrid accounting is deliberate;

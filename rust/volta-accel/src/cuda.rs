@@ -97,6 +97,172 @@ type GemmRequantAuthDevice = unsafe extern "C" fn(
     usize,
     u32,
 ) -> c_int;
+type FixedEmbedDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    i32,
+) -> c_int;
+type FixedLayerNormDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    usize,
+    u32,
+    u32,
+) -> c_int;
+type FixedGemmDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    usize,
+    usize,
+    u32,
+) -> c_int;
+type FixedQkvSplitDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    usize,
+) -> c_int;
+type FixedAttentionScoresDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    u32,
+) -> c_int;
+type FixedSoftmaxDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    u32,
+    u32,
+    c_int,
+) -> c_int;
+type FixedAvDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    u32,
+) -> c_int;
+type FixedLookupDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, u64, usize, usize) -> c_int;
+type FixedRequantI16Device =
+    unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, u64, usize, usize, u32) -> c_int;
+type FixedLogitsDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    usize,
+    usize,
+) -> c_int;
 type NttFp = unsafe extern "C" fn(*mut c_void, *const u64, usize, usize, *mut u64) -> c_int;
 type NttFpBatch =
     unsafe extern "C" fn(*mut c_void, *const u64, usize, usize, usize, *mut u64) -> c_int;
@@ -304,6 +470,16 @@ struct Api {
     gemm_i64_device: GemmI64Device,
     gemm_requant_auth: GemmRequantAuth,
     gemm_requant_auth_device: GemmRequantAuthDevice,
+    fixed_embed_device: FixedEmbedDevice,
+    fixed_layer_norm_device: FixedLayerNormDevice,
+    fixed_gemm_device: FixedGemmDevice,
+    fixed_qkv_split_device: FixedQkvSplitDevice,
+    fixed_attention_scores_device: FixedAttentionScoresDevice,
+    fixed_softmax_device: FixedSoftmaxDevice,
+    fixed_av_device: FixedAvDevice,
+    fixed_lookup_device: FixedLookupDevice,
+    fixed_requant_i16_device: FixedRequantI16Device,
+    fixed_logits_device: FixedLogitsDevice,
     ntt_fp: NttFp,
     ntt_fp_batch: NttFpBatch,
     ntt_fp2: NttFp2,
@@ -402,6 +578,30 @@ impl CudaContext {
             gemm_requant_auth: unsafe { load_symbol(handle, b"volta_cuda_gemm_requant_auth\0")? },
             gemm_requant_auth_device: unsafe {
                 load_symbol(handle, b"volta_cuda_gemm_requant_auth_device\0")?
+            },
+            fixed_embed_device: unsafe { load_symbol(handle, b"volta_cuda_fixed_embed_device\0")? },
+            fixed_layer_norm_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fixed_layer_norm_device\0")?
+            },
+            fixed_gemm_device: unsafe { load_symbol(handle, b"volta_cuda_fixed_gemm_device\0")? },
+            fixed_qkv_split_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fixed_qkv_split_device\0")?
+            },
+            fixed_attention_scores_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fixed_attention_scores_device\0")?
+            },
+            fixed_softmax_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fixed_softmax_device\0")?
+            },
+            fixed_av_device: unsafe { load_symbol(handle, b"volta_cuda_fixed_av_device\0")? },
+            fixed_lookup_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fixed_lookup_device\0")?
+            },
+            fixed_requant_i16_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fixed_requant_i16_device\0")?
+            },
+            fixed_logits_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fixed_logits_device\0")?
             },
             ntt_fp: unsafe { load_symbol(handle, b"volta_cuda_ntt_fp\0")? },
             ntt_fp_batch: unsafe { load_symbol(handle, b"volta_cuda_ntt_fp_batch\0")? },
@@ -652,6 +852,432 @@ impl CudaContext {
                 k,
                 n,
                 shift,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn fixed_embed_device(
+        &mut self,
+        tokens: u64,
+        tokens_offset: usize,
+        wte: u64,
+        wte_offset: usize,
+        wpe: u64,
+        wpe_offset: usize,
+        acc: u64,
+        acc_offset: usize,
+        out: u64,
+        out_offset: usize,
+        error: u64,
+        error_offset: usize,
+        rows: usize,
+        d: usize,
+        vocab: usize,
+        positions: usize,
+        pos0: usize,
+        shift: i32,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all opaque ids and typed regions.
+        self.check(unsafe {
+            (self.api.fixed_embed_device)(
+                self.raw,
+                tokens,
+                tokens_offset,
+                wte,
+                wte_offset,
+                wpe,
+                wpe_offset,
+                acc,
+                acc_offset,
+                out,
+                out_offset,
+                error,
+                error_offset,
+                rows,
+                d,
+                vocab,
+                positions,
+                pos0,
+                shift,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn fixed_layer_norm_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        gain: u64,
+        gain_offset: usize,
+        bias: u64,
+        bias_offset: usize,
+        lut: u64,
+        lut_offset: usize,
+        mean: u64,
+        mean_offset: usize,
+        var: u64,
+        var_offset: usize,
+        rin: u64,
+        rin_offset: usize,
+        rout: u64,
+        rout_offset: usize,
+        out: u64,
+        out_offset: usize,
+        error: u64,
+        error_offset: usize,
+        rows: usize,
+        d: usize,
+        var_shift: u32,
+        norm_shift: u32,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all opaque ids and typed regions.
+        self.check(unsafe {
+            (self.api.fixed_layer_norm_device)(
+                self.raw,
+                input,
+                input_offset,
+                gain,
+                gain_offset,
+                bias,
+                bias_offset,
+                lut,
+                lut_offset,
+                mean,
+                mean_offset,
+                var,
+                var_offset,
+                rin,
+                rin_offset,
+                rout,
+                rout_offset,
+                out,
+                out_offset,
+                error,
+                error_offset,
+                rows,
+                d,
+                var_shift,
+                norm_shift,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn fixed_gemm_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        weights: u64,
+        weights_offset: usize,
+        bias: Option<(u64, usize)>,
+        residual: Option<(u64, usize)>,
+        acc: u64,
+        acc_offset: usize,
+        requant: u64,
+        requant_offset: usize,
+        residual_out: Option<(u64, usize)>,
+        error: u64,
+        error_offset: usize,
+        m: usize,
+        k: usize,
+        n: usize,
+        shift: u32,
+    ) -> Result<(), AccelError> {
+        let (bias, bias_offset) = bias.unwrap_or((0, 0));
+        let (residual, residual_offset) = residual.unwrap_or((0, 0));
+        let (residual_out, residual_out_offset) = residual_out.unwrap_or((0, 0));
+        // SAFETY: Backend validates all opaque ids and typed regions.
+        self.check(unsafe {
+            (self.api.fixed_gemm_device)(
+                self.raw,
+                input,
+                input_offset,
+                weights,
+                weights_offset,
+                bias,
+                bias_offset,
+                residual,
+                residual_offset,
+                acc,
+                acc_offset,
+                requant,
+                requant_offset,
+                residual_out,
+                residual_out_offset,
+                error,
+                error_offset,
+                m,
+                k,
+                n,
+                shift,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn fixed_qkv_split_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        q: u64,
+        q_offset: usize,
+        k: u64,
+        k_offset: usize,
+        v: u64,
+        v_offset: usize,
+        rows: usize,
+        d: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all opaque ids and typed regions.
+        self.check(unsafe {
+            (self.api.fixed_qkv_split_device)(
+                self.raw,
+                input,
+                input_offset,
+                q,
+                q_offset,
+                k,
+                k_offset,
+                v,
+                v_offset,
+                rows,
+                d,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn fixed_attention_scores_device(
+        &mut self,
+        q: u64,
+        q_offset: usize,
+        k: u64,
+        k_offset: usize,
+        acc: u64,
+        acc_offset: usize,
+        out: u64,
+        out_offset: usize,
+        error: u64,
+        error_offset: usize,
+        rows: usize,
+        seq: usize,
+        pos0: usize,
+        heads: usize,
+        head_dim: usize,
+        shift: u32,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all opaque ids and typed regions.
+        self.check(unsafe {
+            (self.api.fixed_attention_scores_device)(
+                self.raw,
+                q,
+                q_offset,
+                k,
+                k_offset,
+                acc,
+                acc_offset,
+                out,
+                out_offset,
+                error,
+                error_offset,
+                rows,
+                seq,
+                pos0,
+                heads,
+                head_dim,
+                shift,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn fixed_softmax_device(
+        &mut self,
+        scores: u64,
+        scores_offset: usize,
+        exp_lut: u64,
+        exp_lut_offset: usize,
+        recip_lut: u64,
+        recip_lut_offset: usize,
+        row_shift: u64,
+        row_shift_offset: usize,
+        exp: u64,
+        exp_offset: usize,
+        denoms: u64,
+        denoms_offset: usize,
+        recips: u64,
+        recips_offset: usize,
+        weights: u64,
+        weights_offset: usize,
+        error: u64,
+        error_offset: usize,
+        rows: usize,
+        seq: usize,
+        pos0: usize,
+        heads: usize,
+        recip_den_shift: u32,
+        norm_shift: u32,
+        use_row_shift: bool,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all opaque ids and typed regions.
+        self.check(unsafe {
+            (self.api.fixed_softmax_device)(
+                self.raw,
+                scores,
+                scores_offset,
+                exp_lut,
+                exp_lut_offset,
+                recip_lut,
+                recip_lut_offset,
+                row_shift,
+                row_shift_offset,
+                exp,
+                exp_offset,
+                denoms,
+                denoms_offset,
+                recips,
+                recips_offset,
+                weights,
+                weights_offset,
+                error,
+                error_offset,
+                rows,
+                seq,
+                pos0,
+                heads,
+                recip_den_shift,
+                norm_shift,
+                i32::from(use_row_shift),
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn fixed_av_device(
+        &mut self,
+        weights: u64,
+        weights_offset: usize,
+        values: u64,
+        values_offset: usize,
+        acc: u64,
+        acc_offset: usize,
+        out: u64,
+        out_offset: usize,
+        error: u64,
+        error_offset: usize,
+        rows: usize,
+        seq: usize,
+        pos0: usize,
+        d: usize,
+        heads: usize,
+        shift: u32,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all opaque ids and typed regions.
+        self.check(unsafe {
+            (self.api.fixed_av_device)(
+                self.raw,
+                weights,
+                weights_offset,
+                values,
+                values_offset,
+                acc,
+                acc_offset,
+                out,
+                out_offset,
+                error,
+                error_offset,
+                rows,
+                seq,
+                pos0,
+                d,
+                heads,
+                shift,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn fixed_lookup_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        lut: u64,
+        lut_offset: usize,
+        out: u64,
+        out_offset: usize,
+        n: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all opaque ids and typed regions.
+        self.check(unsafe {
+            (self.api.fixed_lookup_device)(
+                self.raw,
+                input,
+                input_offset,
+                lut,
+                lut_offset,
+                out,
+                out_offset,
+                n,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn fixed_requant_i16_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        out: u64,
+        out_offset: usize,
+        error: u64,
+        error_offset: usize,
+        n: usize,
+        shift: u32,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all opaque ids and typed regions.
+        self.check(unsafe {
+            (self.api.fixed_requant_i16_device)(
+                self.raw,
+                input,
+                input_offset,
+                out,
+                out_offset,
+                error,
+                error_offset,
+                n,
+                shift,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn fixed_logits_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        weights: u64,
+        weights_offset: usize,
+        out: u64,
+        out_offset: usize,
+        rows: usize,
+        d: usize,
+        vocab: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all opaque ids and typed regions.
+        self.check(unsafe {
+            (self.api.fixed_logits_device)(
+                self.raw,
+                input,
+                input_offset,
+                weights,
+                weights_offset,
+                out,
+                out_offset,
+                rows,
+                d,
+                vocab,
             )
         })
     }

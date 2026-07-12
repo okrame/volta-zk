@@ -13,7 +13,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 6;
+constexpr uint32_t ABI_VERSION = 7;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -375,6 +375,265 @@ __global__ void gemm_requant_auth_kernel(
     out[z] = y;
     const uint64_t fy = y >= 0 ? static_cast<uint64_t>(y) : P - static_cast<uint64_t>(-int64_t{y});
     corrections[z] = fp_sub(fy, masks[z]);
+}
+
+// -------------------------------------------------------------------------
+// Shape-parametric fixed-point forward primitives
+// -------------------------------------------------------------------------
+
+__device__ inline int64_t fixed_floor_div(int64_t a, int64_t b) {
+    const int64_t q = a / b;
+    const int64_t r = a % b;
+    return r < 0 ? q - 1 : q;
+}
+
+/// Frozen quantization semantics: shifts above 16 are two round-half-up
+/// stages (s-16, then 16), and saturation is forbidden rather than clamped.
+__device__ inline int16_t fixed_requant_no_clamp(
+    int64_t acc, uint32_t shift, uint32_t* error) {
+    int64_t stage = acc;
+    uint32_t final_shift = shift;
+    if (shift > 16) {
+        const uint32_t first = shift - 16;
+        stage = (stage + (int64_t{1} << (first - 1))) >> first;
+        final_shift = 16;
+    }
+    const int64_t rounded =
+        (stage + (int64_t{1} << (final_shift - 1))) >> final_shift;
+    if (rounded < INT16_MIN || rounded > INT16_MAX) atomicExch(error, 1u);
+    return static_cast<int16_t>(rounded);
+}
+
+__global__ void fixed_embed_kernel(
+    const uint32_t* tokens, const int16_t* wte, const int16_t* wpe,
+    int64_t* acc_out, int16_t* out, uint32_t* error, size_t rows,
+    size_t d, size_t vocab, size_t positions, size_t pos0, int32_t shift) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    const size_t total = rows * d;
+    if (z >= total) return;
+    const size_t row = z / d;
+    const size_t col = z % d;
+    const uint32_t token = tokens[row];
+    if (token >= vocab || pos0 + row >= positions) {
+        atomicExch(error, 1u);
+        acc_out[z] = 0;
+        out[z] = 0;
+        return;
+    }
+    const int64_t acc = static_cast<int64_t>(wte[static_cast<size_t>(token) * d + col]) +
+        static_cast<int64_t>(wpe[(pos0 + row) * d + col]);
+    acc_out[z] = acc;
+    if (shift > 0) {
+        out[z] = fixed_requant_no_clamp(acc, static_cast<uint32_t>(shift), error);
+    } else {
+        const int64_t value = acc << static_cast<uint32_t>(-shift);
+        if (value < INT16_MIN || value > INT16_MAX) atomicExch(error, 1u);
+        out[z] = static_cast<int16_t>(value);
+    }
+}
+
+__global__ void fixed_layer_norm_kernel(
+    const int16_t* input, const int16_t* gain, const int16_t* bias,
+    const int16_t* rsqrt_lut, int64_t* means, int64_t* vars,
+    int64_t* rsqrt_inputs, int16_t* rsqrt_outputs, int16_t* outputs,
+    uint32_t* error, size_t rows, size_t d, uint32_t var_shift,
+    uint32_t norm_shift) {
+    const size_t row_index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (row_index >= rows) return;
+    const int16_t* row = input + row_index * d;
+    int64_t sum = 0;
+    for (size_t j = 0; j < d; ++j) sum += row[j];
+    const int64_t di = static_cast<int64_t>(d);
+    const int64_t mean = fixed_floor_div(sum + di / 2, di);
+    int64_t variance_sum = 0;
+    for (size_t j = 0; j < d; ++j) {
+        const int64_t delta = static_cast<int64_t>(row[j]) - mean;
+        variance_sum += delta * delta;
+    }
+    const int64_t variance = fixed_floor_div(variance_sum + di / 2, di);
+    int64_t rsqrt_input = variance >> var_shift;
+    if (rsqrt_input < 0 || rsqrt_input >= (int64_t{1} << 16)) {
+        atomicExch(error, 1u);
+        rsqrt_input = 0;
+    }
+    const int16_t rsqrt_output = rsqrt_lut[rsqrt_input];
+    means[row_index] = mean;
+    vars[row_index] = variance;
+    rsqrt_inputs[row_index] = rsqrt_input;
+    rsqrt_outputs[row_index] = rsqrt_output;
+    for (size_t j = 0; j < d; ++j) {
+        const int64_t delta = static_cast<int64_t>(row[j]) - mean;
+        const int64_t acc = delta * static_cast<int64_t>(rsqrt_output) *
+            static_cast<int64_t>(gain[j]) +
+            (static_cast<int64_t>(bias[j]) << norm_shift);
+        outputs[row_index * d + j] =
+            fixed_requant_no_clamp(acc, norm_shift, error);
+    }
+}
+
+__global__ void fixed_gemm_kernel(
+    const int16_t* input, const int16_t* weights, const int16_t* bias,
+    const int16_t* residual, int64_t* accumulators, int16_t* requantized,
+    int16_t* residual_out, uint32_t* error, size_t m, size_t k, size_t n,
+    uint32_t shift) {
+    const size_t j = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    const size_t i = static_cast<size_t>(blockIdx.y) * blockDim.y + threadIdx.y;
+    if (i >= m || j >= n) return;
+    int64_t acc = 0;
+    for (size_t q = 0; q < k; ++q) {
+        acc += static_cast<int64_t>(input[i * k + q]) *
+            static_cast<int64_t>(weights[q * n + j]);
+    }
+    if (bias) acc += static_cast<int64_t>(bias[j]) << shift;
+    const size_t z = i * n + j;
+    accumulators[z] = acc;
+    const int16_t q = fixed_requant_no_clamp(acc, shift, error);
+    requantized[z] = q;
+    if (residual_out) {
+        const int32_t value = static_cast<int32_t>(q) + residual[z];
+        if (value < INT16_MIN || value > INT16_MAX) atomicExch(error, 1u);
+        residual_out[z] = static_cast<int16_t>(value);
+    }
+}
+
+__global__ void fixed_qkv_split_kernel(
+    const int16_t* qkv, int16_t* q, int16_t* k, int16_t* v,
+    size_t rows, size_t d) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z >= rows * d) return;
+    const size_t row = z / d;
+    const size_t col = z % d;
+    const int16_t* source = qkv + row * 3 * d;
+    q[z] = source[col];
+    k[z] = source[d + col];
+    v[z] = source[2 * d + col];
+}
+
+__host__ __device__ inline size_t packed_row_prefix(size_t row, size_t pos0) {
+    return row * pos0 + row * (row + 1) / 2;
+}
+
+__global__ void fixed_attention_scores_kernel(
+    const int16_t* q, const int16_t* k, int64_t* accumulators,
+    int16_t* outputs, uint32_t* error, size_t rows, size_t seq,
+    size_t pos0, size_t heads, size_t head_dim, uint32_t shift) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    const size_t total = heads * rows * seq;
+    if (z >= total) return;
+    const size_t col = z % seq;
+    const size_t tmp = z / seq;
+    const size_t row = tmp % rows;
+    const size_t head = tmp / rows;
+    const size_t qpos = pos0 + row;
+    if (col > qpos) return;
+    const size_t d = heads * head_dim;
+    int64_t acc = 0;
+    for (size_t l = 0; l < head_dim; ++l) {
+        acc += static_cast<int64_t>(q[row * d + head * head_dim + l]) *
+            static_cast<int64_t>(k[col * d + head * head_dim + l]);
+    }
+    const size_t per_head = rows * pos0 + rows * (rows + 1) / 2;
+    const size_t packed = head * per_head + packed_row_prefix(row, pos0) + col;
+    accumulators[packed] = acc;
+    outputs[packed] = fixed_requant_no_clamp(acc, shift, error);
+}
+
+__global__ void fixed_softmax_kernel(
+    const int16_t* scores, const int16_t* exp_lut, const int16_t* recip_lut,
+    int16_t* row_shifts, int16_t* exp_outputs, int64_t* denoms,
+    int16_t* recips, int16_t* weights, uint32_t* error, size_t rows,
+    size_t pos0, size_t heads, uint32_t recip_den_shift,
+    uint32_t norm_shift, int use_row_shift) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z >= heads * rows) return;
+    const size_t row = z % rows;
+    const size_t head = z / rows;
+    const size_t width = pos0 + row + 1;
+    const size_t per_head = rows * pos0 + rows * (rows + 1) / 2;
+    const size_t start = head * per_head + packed_row_prefix(row, pos0);
+    int16_t shift_value = 0;
+    if (use_row_shift) {
+        shift_value = scores[start];
+        for (size_t j = 1; j < width; ++j) {
+            if (scores[start + j] > shift_value) shift_value = scores[start + j];
+        }
+    }
+    row_shifts[head * rows + row] = shift_value;
+    int64_t denom = 0;
+    for (size_t j = 0; j < width; ++j) {
+        const int32_t shifted = static_cast<int32_t>(scores[start + j]) -
+            static_cast<int32_t>(shift_value);
+        if (shifted < INT16_MIN || shifted > INT16_MAX) atomicExch(error, 1u);
+        const int16_t table_input = static_cast<int16_t>(shifted);
+        const int16_t value = exp_lut[static_cast<uint16_t>(table_input)];
+        exp_outputs[start + j] = value;
+        denom += value;
+    }
+    int64_t recip_input = denom >> recip_den_shift;
+    if (recip_input < 0 || recip_input >= (int64_t{1} << 16)) {
+        atomicExch(error, 1u);
+        recip_input = 0;
+    }
+    const int16_t recip = recip_lut[recip_input];
+    denoms[head * rows + row] = denom;
+    recips[head * rows + row] = recip;
+    for (size_t j = 0; j < width; ++j) {
+        weights[start + j] = fixed_requant_no_clamp(
+            static_cast<int64_t>(exp_outputs[start + j]) * recip,
+            norm_shift, error);
+    }
+}
+
+__global__ void fixed_av_kernel(
+    const int16_t* weights, const int16_t* values, int64_t* accumulators,
+    int16_t* outputs, uint32_t* error, size_t rows, size_t seq,
+    size_t pos0, size_t d, size_t heads, uint32_t shift) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z >= rows * d) return;
+    const size_t row = z / d;
+    const size_t col = z % d;
+    const size_t head_dim = d / heads;
+    const size_t head = col / head_dim;
+    const size_t width = pos0 + row + 1;
+    const size_t per_head = rows * pos0 + rows * (rows + 1) / 2;
+    const size_t start = head * per_head + packed_row_prefix(row, pos0);
+    int64_t acc = 0;
+    for (size_t j = 0; j < width; ++j) {
+        acc += static_cast<int64_t>(weights[start + j]) *
+            static_cast<int64_t>(values[j * d + col]);
+    }
+    accumulators[z] = acc;
+    outputs[z] = fixed_requant_no_clamp(acc, shift, error);
+}
+
+__global__ void fixed_lookup_kernel(
+    const int16_t* input, const int16_t* lut, int16_t* output, size_t n) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z < n) output[z] = lut[static_cast<uint16_t>(input[z])];
+}
+
+__global__ void fixed_requant_i16_kernel(
+    const int16_t* input, int16_t* output, uint32_t* error, size_t n,
+    uint32_t shift) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z >= n) return;
+    output[z] = shift == 0 ? input[z] :
+        fixed_requant_no_clamp(static_cast<int64_t>(input[z]), shift, error);
+}
+
+__global__ void fixed_logits_kernel(
+    const int16_t* input, const int16_t* weights, int64_t* output,
+    size_t rows, size_t d, size_t vocab) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z >= rows * vocab) return;
+    const size_t row = z / vocab;
+    const size_t word = z % vocab;
+    int64_t acc = 0;
+    for (size_t j = 0; j < d; ++j) {
+        acc += static_cast<int64_t>(input[row * d + j]) *
+            static_cast<int64_t>(weights[word * d + j]);
+    }
+    output[z] = acc;
 }
 
 // -------------------------------------------------------------------------
@@ -1073,6 +1332,296 @@ extern "C" int volta_cuda_gemm_requant_auth_device(
         static_cast<const int16_t*>(av), static_cast<const int16_t*>(bv),
         static_cast<const uint64_t*>(mv), static_cast<int16_t*>(ov),
         static_cast<uint64_t*>(cv), m, k, n, shift);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_GEMM, 0, 0);
+}
+
+extern "C" int volta_cuda_fixed_embed_device(
+    void* raw, uint64_t tokens_id, size_t tokens_offset,
+    uint64_t wte_id, size_t wte_offset, uint64_t wpe_id, size_t wpe_offset,
+    uint64_t acc_id, size_t acc_offset, uint64_t out_id, size_t out_offset,
+    uint64_t error_id, size_t error_offset, size_t rows, size_t d,
+    size_t vocab, size_t positions, size_t pos0, int32_t shift) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !rows || !d || !vocab || pos0 + rows > positions || shift >= 63 || shift <= -63)
+        return fail_message(c, "invalid resident embedding geometry");
+    void *tokens = nullptr, *wte = nullptr, *wpe = nullptr, *acc = nullptr,
+         *out = nullptr, *error = nullptr;
+    if (resident_region(c, tokens_id, tokens_offset * sizeof(uint32_t), rows * sizeof(uint32_t), &tokens) ||
+        resident_region(c, wte_id, wte_offset * sizeof(int16_t), vocab * d * sizeof(int16_t), &wte) ||
+        resident_region(c, wpe_id, wpe_offset * sizeof(int16_t), positions * d * sizeof(int16_t), &wpe) ||
+        resident_region(c, acc_id, acc_offset * sizeof(int64_t), rows * d * sizeof(int64_t), &acc) ||
+        resident_region(c, out_id, out_offset * sizeof(int16_t), rows * d * sizeof(int16_t), &out) ||
+        resident_region(c, error_id, error_offset * sizeof(uint32_t), sizeof(uint32_t), &error)) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    const size_t total = rows * d;
+    fixed_embed_kernel<<<(total + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const uint32_t*>(tokens), static_cast<const int16_t*>(wte),
+        static_cast<const int16_t*>(wpe), static_cast<int64_t*>(acc),
+        static_cast<int16_t*>(out), static_cast<uint32_t*>(error), rows, d,
+        vocab, positions, pos0, shift);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_GEMM, 0, 0);
+}
+
+extern "C" int volta_cuda_fixed_layer_norm_device(
+    void* raw, uint64_t input_id, size_t input_offset,
+    uint64_t gain_id, size_t gain_offset, uint64_t bias_id, size_t bias_offset,
+    uint64_t lut_id, size_t lut_offset, uint64_t mean_id, size_t mean_offset,
+    uint64_t var_id, size_t var_offset, uint64_t rin_id, size_t rin_offset,
+    uint64_t rout_id, size_t rout_offset, uint64_t out_id, size_t out_offset,
+    uint64_t error_id, size_t error_offset, size_t rows, size_t d,
+    uint32_t var_shift, uint32_t norm_shift) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !rows || !d || !norm_shift || norm_shift >= 63 || var_shift >= 63)
+        return fail_message(c, "invalid resident layer-norm geometry");
+    void *input = nullptr, *gain = nullptr, *bias = nullptr, *lut = nullptr,
+         *mean = nullptr, *var = nullptr, *rin = nullptr, *rout = nullptr,
+         *out = nullptr, *error = nullptr;
+    if (resident_region(c, input_id, input_offset * sizeof(int16_t), rows * d * sizeof(int16_t), &input) ||
+        resident_region(c, gain_id, gain_offset * sizeof(int16_t), d * sizeof(int16_t), &gain) ||
+        resident_region(c, bias_id, bias_offset * sizeof(int16_t), d * sizeof(int16_t), &bias) ||
+        resident_region(c, lut_id, lut_offset * sizeof(int16_t), (size_t{1} << 16) * sizeof(int16_t), &lut) ||
+        resident_region(c, mean_id, mean_offset * sizeof(int64_t), rows * sizeof(int64_t), &mean) ||
+        resident_region(c, var_id, var_offset * sizeof(int64_t), rows * sizeof(int64_t), &var) ||
+        resident_region(c, rin_id, rin_offset * sizeof(int64_t), rows * sizeof(int64_t), &rin) ||
+        resident_region(c, rout_id, rout_offset * sizeof(int16_t), rows * sizeof(int16_t), &rout) ||
+        resident_region(c, out_id, out_offset * sizeof(int16_t), rows * d * sizeof(int16_t), &out) ||
+        resident_region(c, error_id, error_offset * sizeof(uint32_t), sizeof(uint32_t), &error)) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    fixed_layer_norm_kernel<<<(rows + 31) / 32, 32, 0, c->stream>>>(
+        static_cast<const int16_t*>(input), static_cast<const int16_t*>(gain),
+        static_cast<const int16_t*>(bias), static_cast<const int16_t*>(lut),
+        static_cast<int64_t*>(mean), static_cast<int64_t*>(var),
+        static_cast<int64_t*>(rin), static_cast<int16_t*>(rout),
+        static_cast<int16_t*>(out), static_cast<uint32_t*>(error), rows, d,
+        var_shift, norm_shift);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_GEMM, 0, 0);
+}
+
+extern "C" int volta_cuda_fixed_gemm_device(
+    void* raw, uint64_t input_id, size_t input_offset,
+    uint64_t weights_id, size_t weights_offset,
+    uint64_t bias_id, size_t bias_offset,
+    uint64_t residual_id, size_t residual_offset,
+    uint64_t acc_id, size_t acc_offset, uint64_t requant_id, size_t requant_offset,
+    uint64_t residual_out_id, size_t residual_out_offset,
+    uint64_t error_id, size_t error_offset, size_t m, size_t k, size_t n,
+    uint32_t shift) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !m || !k || !n || !shift || shift >= 63 ||
+        ((residual_id == 0) != (residual_out_id == 0)))
+        return fail_message(c, "invalid resident fixed GEMM geometry");
+    void *input = nullptr, *weights = nullptr, *bias = nullptr, *residual = nullptr,
+         *acc = nullptr, *requant = nullptr, *residual_out = nullptr, *error = nullptr;
+    if (resident_region(c, input_id, input_offset * sizeof(int16_t), m * k * sizeof(int16_t), &input) ||
+        resident_region(c, weights_id, weights_offset * sizeof(int16_t), k * n * sizeof(int16_t), &weights) ||
+        (bias_id && resident_region(c, bias_id, bias_offset * sizeof(int16_t), n * sizeof(int16_t), &bias)) ||
+        (residual_id && resident_region(c, residual_id, residual_offset * sizeof(int16_t), m * n * sizeof(int16_t), &residual)) ||
+        resident_region(c, acc_id, acc_offset * sizeof(int64_t), m * n * sizeof(int64_t), &acc) ||
+        resident_region(c, requant_id, requant_offset * sizeof(int16_t), m * n * sizeof(int16_t), &requant) ||
+        (residual_out_id && resident_region(c, residual_out_id, residual_out_offset * sizeof(int16_t), m * n * sizeof(int16_t), &residual_out)) ||
+        resident_region(c, error_id, error_offset * sizeof(uint32_t), sizeof(uint32_t), &error)) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    dim3 block(16, 16), grid((n + 15) / 16, (m + 15) / 16);
+    fixed_gemm_kernel<<<grid, block, 0, c->stream>>>(
+        static_cast<const int16_t*>(input), static_cast<const int16_t*>(weights),
+        static_cast<const int16_t*>(bias), static_cast<const int16_t*>(residual),
+        static_cast<int64_t*>(acc), static_cast<int16_t*>(requant),
+        static_cast<int16_t*>(residual_out), static_cast<uint32_t*>(error),
+        m, k, n, shift);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_GEMM, 0, 0);
+}
+
+extern "C" int volta_cuda_fixed_qkv_split_device(
+    void* raw, uint64_t input_id, size_t input_offset,
+    uint64_t q_id, size_t q_offset, uint64_t k_id, size_t k_offset,
+    uint64_t v_id, size_t v_offset, size_t rows, size_t d) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !rows || !d) return fail_message(c, "invalid resident QKV split geometry");
+    void *input = nullptr, *q = nullptr, *k = nullptr, *v = nullptr;
+    if (resident_region(c, input_id, input_offset * sizeof(int16_t), rows * 3 * d * sizeof(int16_t), &input) ||
+        resident_region(c, q_id, q_offset * sizeof(int16_t), rows * d * sizeof(int16_t), &q) ||
+        resident_region(c, k_id, k_offset * sizeof(int16_t), rows * d * sizeof(int16_t), &k) ||
+        resident_region(c, v_id, v_offset * sizeof(int16_t), rows * d * sizeof(int16_t), &v)) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    const size_t total = rows * d;
+    fixed_qkv_split_kernel<<<(total + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const int16_t*>(input), static_cast<int16_t*>(q),
+        static_cast<int16_t*>(k), static_cast<int16_t*>(v), rows, d);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_GEMM, 0, 0);
+}
+
+extern "C" int volta_cuda_fixed_attention_scores_device(
+    void* raw, uint64_t q_id, size_t q_offset, uint64_t k_id, size_t k_offset,
+    uint64_t acc_id, size_t acc_offset, uint64_t out_id, size_t out_offset,
+    uint64_t error_id, size_t error_offset, size_t rows, size_t seq,
+    size_t pos0, size_t heads, size_t head_dim, uint32_t shift) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !rows || !seq || !heads || !head_dim || pos0 + rows > seq ||
+        !shift || shift >= 63)
+        return fail_message(c, "invalid resident attention-score geometry");
+    const size_t d = heads * head_dim;
+    const size_t packed = heads * (rows * pos0 + rows * (rows + 1) / 2);
+    void *q = nullptr, *k = nullptr, *acc = nullptr, *out = nullptr, *error = nullptr;
+    if (resident_region(c, q_id, q_offset * sizeof(int16_t), rows * d * sizeof(int16_t), &q) ||
+        resident_region(c, k_id, k_offset * sizeof(int16_t), seq * d * sizeof(int16_t), &k) ||
+        resident_region(c, acc_id, acc_offset * sizeof(int64_t), packed * sizeof(int64_t), &acc) ||
+        resident_region(c, out_id, out_offset * sizeof(int16_t), packed * sizeof(int16_t), &out) ||
+        resident_region(c, error_id, error_offset * sizeof(uint32_t), sizeof(uint32_t), &error)) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    const size_t total = heads * rows * seq;
+    fixed_attention_scores_kernel<<<(total + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const int16_t*>(q), static_cast<const int16_t*>(k),
+        static_cast<int64_t*>(acc), static_cast<int16_t*>(out),
+        static_cast<uint32_t*>(error), rows, seq, pos0, heads, head_dim, shift);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_GEMM, 0, 0);
+}
+
+extern "C" int volta_cuda_fixed_softmax_device(
+    void* raw, uint64_t scores_id, size_t scores_offset,
+    uint64_t exp_lut_id, size_t exp_lut_offset,
+    uint64_t recip_lut_id, size_t recip_lut_offset,
+    uint64_t row_shift_id, size_t row_shift_offset,
+    uint64_t exp_id, size_t exp_offset, uint64_t denoms_id, size_t denoms_offset,
+    uint64_t recips_id, size_t recips_offset, uint64_t weights_id, size_t weights_offset,
+    uint64_t error_id, size_t error_offset, size_t rows, size_t seq,
+    size_t pos0, size_t heads, uint32_t recip_den_shift,
+    uint32_t norm_shift, int use_row_shift) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !rows || !seq || !heads || pos0 + rows > seq || !norm_shift ||
+        norm_shift >= 63 || recip_den_shift >= 63)
+        return fail_message(c, "invalid resident softmax geometry");
+    const size_t packed = heads * (rows * pos0 + rows * (rows + 1) / 2);
+    const size_t row_count = heads * rows;
+    void *scores = nullptr, *exp_lut = nullptr, *recip_lut = nullptr,
+         *row_shift = nullptr, *exp = nullptr, *denoms = nullptr,
+         *recips = nullptr, *weights = nullptr, *error = nullptr;
+    if (resident_region(c, scores_id, scores_offset * sizeof(int16_t), packed * sizeof(int16_t), &scores) ||
+        resident_region(c, exp_lut_id, exp_lut_offset * sizeof(int16_t), (size_t{1} << 16) * sizeof(int16_t), &exp_lut) ||
+        resident_region(c, recip_lut_id, recip_lut_offset * sizeof(int16_t), (size_t{1} << 16) * sizeof(int16_t), &recip_lut) ||
+        resident_region(c, row_shift_id, row_shift_offset * sizeof(int16_t), row_count * sizeof(int16_t), &row_shift) ||
+        resident_region(c, exp_id, exp_offset * sizeof(int16_t), packed * sizeof(int16_t), &exp) ||
+        resident_region(c, denoms_id, denoms_offset * sizeof(int64_t), row_count * sizeof(int64_t), &denoms) ||
+        resident_region(c, recips_id, recips_offset * sizeof(int16_t), row_count * sizeof(int16_t), &recips) ||
+        resident_region(c, weights_id, weights_offset * sizeof(int16_t), packed * sizeof(int16_t), &weights) ||
+        resident_region(c, error_id, error_offset * sizeof(uint32_t), sizeof(uint32_t), &error)) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    fixed_softmax_kernel<<<(row_count + 63) / 64, 64, 0, c->stream>>>(
+        static_cast<const int16_t*>(scores), static_cast<const int16_t*>(exp_lut),
+        static_cast<const int16_t*>(recip_lut), static_cast<int16_t*>(row_shift),
+        static_cast<int16_t*>(exp), static_cast<int64_t*>(denoms),
+        static_cast<int16_t*>(recips), static_cast<int16_t*>(weights),
+        static_cast<uint32_t*>(error), rows, pos0, heads, recip_den_shift,
+        norm_shift, use_row_shift);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_GEMM, 0, 0);
+}
+
+extern "C" int volta_cuda_fixed_av_device(
+    void* raw, uint64_t weights_id, size_t weights_offset,
+    uint64_t values_id, size_t values_offset,
+    uint64_t acc_id, size_t acc_offset, uint64_t out_id, size_t out_offset,
+    uint64_t error_id, size_t error_offset, size_t rows, size_t seq,
+    size_t pos0, size_t d, size_t heads, uint32_t shift) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !rows || !seq || !d || !heads || d % heads || pos0 + rows > seq ||
+        !shift || shift >= 63)
+        return fail_message(c, "invalid resident AV geometry");
+    const size_t packed = heads * (rows * pos0 + rows * (rows + 1) / 2);
+    void *weights = nullptr, *values = nullptr, *acc = nullptr, *out = nullptr, *error = nullptr;
+    if (resident_region(c, weights_id, weights_offset * sizeof(int16_t), packed * sizeof(int16_t), &weights) ||
+        resident_region(c, values_id, values_offset * sizeof(int16_t), seq * d * sizeof(int16_t), &values) ||
+        resident_region(c, acc_id, acc_offset * sizeof(int64_t), rows * d * sizeof(int64_t), &acc) ||
+        resident_region(c, out_id, out_offset * sizeof(int16_t), rows * d * sizeof(int16_t), &out) ||
+        resident_region(c, error_id, error_offset * sizeof(uint32_t), sizeof(uint32_t), &error)) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    const size_t total = rows * d;
+    fixed_av_kernel<<<(total + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const int16_t*>(weights), static_cast<const int16_t*>(values),
+        static_cast<int64_t*>(acc), static_cast<int16_t*>(out),
+        static_cast<uint32_t*>(error), rows, seq, pos0, d, heads, shift);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_GEMM, 0, 0);
+}
+
+extern "C" int volta_cuda_fixed_lookup_device(
+    void* raw, uint64_t input_id, size_t input_offset,
+    uint64_t lut_id, size_t lut_offset, uint64_t out_id, size_t out_offset,
+    size_t n) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !n) return fail_message(c, "invalid resident lookup geometry");
+    void *input = nullptr, *lut = nullptr, *out = nullptr;
+    if (resident_region(c, input_id, input_offset * sizeof(int16_t), n * sizeof(int16_t), &input) ||
+        resident_region(c, lut_id, lut_offset * sizeof(int16_t), (size_t{1} << 16) * sizeof(int16_t), &lut) ||
+        resident_region(c, out_id, out_offset * sizeof(int16_t), n * sizeof(int16_t), &out)) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    fixed_lookup_kernel<<<(n + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const int16_t*>(input), static_cast<const int16_t*>(lut),
+        static_cast<int16_t*>(out), n);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_GEMM, 0, 0);
+}
+
+extern "C" int volta_cuda_fixed_requant_i16_device(
+    void* raw, uint64_t input_id, size_t input_offset,
+    uint64_t out_id, size_t out_offset, uint64_t error_id, size_t error_offset,
+    size_t n, uint32_t shift) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !n || shift >= 63)
+        return fail_message(c, "invalid resident i16 requant geometry");
+    void *input = nullptr, *out = nullptr, *error = nullptr;
+    if (resident_region(c, input_id, input_offset * sizeof(int16_t), n * sizeof(int16_t), &input) ||
+        resident_region(c, out_id, out_offset * sizeof(int16_t), n * sizeof(int16_t), &out) ||
+        resident_region(c, error_id, error_offset * sizeof(uint32_t), sizeof(uint32_t), &error)) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    fixed_requant_i16_kernel<<<(n + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const int16_t*>(input), static_cast<int16_t*>(out),
+        static_cast<uint32_t*>(error), n, shift);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_GEMM, 0, 0);
+}
+
+extern "C" int volta_cuda_fixed_logits_device(
+    void* raw, uint64_t input_id, size_t input_offset,
+    uint64_t weights_id, size_t weights_offset,
+    uint64_t out_id, size_t out_offset, size_t rows, size_t d, size_t vocab) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !rows || !d || !vocab)
+        return fail_message(c, "invalid resident logits geometry");
+    void *input = nullptr, *weights = nullptr, *out = nullptr;
+    if (resident_region(c, input_id, input_offset * sizeof(int16_t), rows * d * sizeof(int16_t), &input) ||
+        resident_region(c, weights_id, weights_offset * sizeof(int16_t), vocab * d * sizeof(int16_t), &weights) ||
+        resident_region(c, out_id, out_offset * sizeof(int64_t), rows * vocab * sizeof(int64_t), &out)) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    const size_t total = rows * vocab;
+    fixed_logits_kernel<<<(total + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const int16_t*>(input), static_cast<const int16_t*>(weights),
+        static_cast<int64_t*>(out), rows, d, vocab);
     CUDA_OR_RETURN(c, cudaPeekAtLastError());
     if (mark_timing(c, 2)) return -1;
     return finish_timing(c, OP_GEMM, 0, 0);

@@ -24,7 +24,9 @@
 use crate::mle::lagrange3;
 use rayon::prelude::*;
 use std::time::Instant;
-use volta_accel::{Backend, BackendKind, DeviceBuffer, Fp2Repr, Operation};
+use volta_accel::{
+    AccelError, Backend, BackendKind, DeviceBuffer, DeviceSlice, Fp2Repr, Operation,
+};
 use volta_field::{Fp, Fp2, FpStream, W};
 
 /// Below this vector length the round loops stay serial.
@@ -874,6 +876,13 @@ pub struct LeafAux {
     pub claims: Vec<LeafAuxClaim>,
 }
 
+struct ResidentAuxState<'a> {
+    /// Per column: even half followed by odd half, each base-lifted to Fp2.
+    columns: Option<DeviceBuffer<Fp2Repr>>,
+    column_count: usize,
+    claims: &'a [LeafAuxClaim],
+}
+
 /// Build aux columns from a base-lifted padded column (LSB split).
 pub fn aux_col(vals: &[Fp]) -> LeafAuxCol {
     LeafAuxCol {
@@ -890,14 +899,13 @@ pub fn aux_col(vals: &[Fp]) -> LeafAuxCol {
 fn prove_engine_resident_from_host_leaves(
     leaf_p: &LeafP,
     leaf_q: &LeafQ,
-    mut aux: Option<&mut LeafAux>,
+    aux: Option<&mut LeafAux>,
     sink: &mut impl Sink,
     ctr: &mut Counters,
     backend: &mut Backend,
 ) -> (Fp2, Fp2, Vec<Fp2>) {
     let n = leaf_q.a.len();
     assert!(n >= 2 && n.is_power_of_two());
-    let depth = n.trailing_zeros() as usize;
     let leaf_raw: Vec<u64> = leaf_q.a.iter().map(|x| x.value()).collect();
     let dleaf = backend
         .upload_new_device(&leaf_raw)
@@ -910,9 +918,58 @@ fn prove_engine_resident_from_host_leaves(
                 .unwrap_or_else(|e| panic!("resident LogUp multiplicity upload failed: {e}")),
         ),
     };
-    let mult_ref = dmult.as_ref().map(|m| (m, 0));
+    let resident_aux = aux.map(|ax| {
+        let vector_len = n / 2;
+        let mut columns_raw = Vec::with_capacity(ax.cols.len() * n);
+        for col in &ax.cols {
+            assert_eq!(col.half0.len(), vector_len);
+            assert_eq!(col.half1.len(), vector_len);
+            columns_raw.extend(col.half0.iter().copied().map(Fp2Repr::from));
+            columns_raw.extend(col.half1.iter().copied().map(Fp2Repr::from));
+        }
+        let columns = backend
+            .upload_new_device(&columns_raw)
+            .unwrap_or_else(|e| panic!("resident LogUp aux-column upload failed: {e}"));
+        ResidentAuxState { columns: Some(columns), column_count: ax.cols.len(), claims: &ax.claims }
+    });
+    let result = prove_engine_resident_from_device_leaves(
+        &dleaf,
+        dmult.as_ref(),
+        n,
+        leaf_q.alpha1,
+        resident_aux,
+        sink,
+        ctr,
+        backend,
+    );
+    if let Some(mult) = dmult {
+        backend.free_device(mult).expect("resident LogUp multiplicity free");
+    }
+    backend.free_device(dleaf).expect("resident LogUp leaf free");
+    result
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_engine_resident_from_device_leaves(
+    dleaf: &DeviceBuffer<u64>,
+    dmult: Option<&DeviceBuffer<u32>>,
+    n: usize,
+    alpha1: Fp,
+    mut aux: Option<ResidentAuxState<'_>>,
+    sink: &mut impl Sink,
+    ctr: &mut Counters,
+    backend: &mut Backend,
+) -> (Fp2, Fp2, Vec<Fp2>) {
+    assert!(n >= 2 && n.is_power_of_two());
+    assert_eq!(dleaf.len(), n);
+    if let Some(mult) = dmult {
+        assert_eq!(mult.len(), n);
+    }
+    assert!(aux.is_none() || dmult.is_none(), "aux folding is lookup-side only");
+    let depth = n.trailing_zeros() as usize;
+    let mult_ref = dmult.map(|m| (m, 0));
     let (tree_p, tree_q) = backend
-        .logup_tree_device(&dleaf, 0, leaf_q.alpha1, mult_ref, n)
+        .logup_tree_device(dleaf, 0, alpha1, mult_ref, n)
         .unwrap_or_else(|e| panic!("resident LogUp tree failed: {e}"));
 
     let half = n / 2;
@@ -932,22 +989,22 @@ fn prove_engine_resident_from_host_leaves(
     for l in 0..depth {
         let leaf_layer = l + 1 == depth;
         if leaf_layer && aux.is_some() {
-            assert!(matches!(leaf_p, LeafP::Ones), "aux folding is lookup-side only");
-            let ax = aux.as_deref_mut().unwrap();
+            let ax = aux.as_mut().unwrap();
             let (rprime, splits, colsp, finals) =
-                layer_leaf_ones_aux_resident(&dleaf, leaf_q, ax, &point, sink, ctr, backend);
+                layer_leaf_ones_aux_resident(dleaf, n, alpha1, ax, &point, sink, ctr, backend);
             let t = sink.splits_aux(splits, &colsp, &finals);
             point = std::iter::once(t).chain(rprime).collect();
             continue;
         }
         let (rprime, splits) = if leaf_layer {
-            let mode = match leaf_p {
-                LeafP::Ones => ResidentLayerCount::LeafOnes,
-                LeafP::NegMult(_) => ResidentLayerCount::LeafNegMult,
+            let mode = if dmult.is_some() {
+                ResidentLayerCount::LeafNegMult
+            } else {
+                ResidentLayerCount::LeafOnes
             };
-            let leaf_mult = dmult.as_ref().map(|m| (m, 0));
+            let leaf_mult = dmult.map(|m| (m, 0));
             let (leaf_p_device, leaf_q_device) = backend
-                .logup_materialize_leaves_device(&dleaf, 0, leaf_q.alpha1, leaf_mult, n)
+                .logup_materialize_leaves_device(dleaf, 0, alpha1, leaf_mult, n)
                 .unwrap_or_else(|e| panic!("resident LogUp leaf materialization failed: {e}"));
             let result = layer_general_resident(
                 &leaf_p_device,
@@ -981,10 +1038,6 @@ fn prove_engine_resident_from_host_leaves(
         let t = sink.splits(splits);
         point = std::iter::once(t).chain(rprime).collect();
     }
-    if let Some(mult) = dmult {
-        backend.free_device(mult).expect("resident LogUp multiplicity free");
-    }
-    backend.free_device(dleaf).expect("resident LogUp leaf free");
     backend.free_device(tree_q).expect("resident LogUp q-tree free");
     backend.free_device(tree_p).expect("resident LogUp p-tree free");
     (root_p, root_q, point)
@@ -993,8 +1046,9 @@ fn prove_engine_resident_from_host_leaves(
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn layer_leaf_ones_aux_resident(
     dleaf: &DeviceBuffer<u64>,
-    leaf_q: &LeafQ,
-    ax: &mut LeafAux,
+    n: usize,
+    alpha1: Fp,
+    ax: &mut ResidentAuxState<'_>,
     point: &[Fp2],
     sink: &mut impl Sink,
     ctr: &mut Counters,
@@ -1004,12 +1058,11 @@ fn layer_leaf_ones_aux_resident(
     let claim_values: Vec<ProverAuthed> = ax.claims.iter().map(|c| c.value).collect();
     let mus = sink.aux_mus(&claim_values);
     let l = point.len();
-    let n = leaf_q.a.len();
     let vector_len = n / 2;
     assert_eq!(vector_len, 1usize << l);
-    for claim in &ax.claims {
+    for claim in ax.claims {
         assert_eq!(claim.point.len(), l + 1, "aux claim dimension mismatch");
-        assert!(claim.col < ax.cols.len(), "aux claim column out of range");
+        assert!(claim.col < ax.column_count, "aux claim column out of range");
     }
 
     let weights_host: Vec<(Fp2, Fp2)> = ax
@@ -1020,16 +1073,8 @@ fn layer_leaf_ones_aux_resident(
         .collect();
     ctr.bulk(2 * weights_host.len() as u64, 0);
 
-    let mut columns_raw = Vec::with_capacity(2 * ax.cols.len() * vector_len);
-    for col in &ax.cols {
-        assert_eq!(col.half0.len(), vector_len);
-        assert_eq!(col.half1.len(), vector_len);
-        columns_raw.extend(col.half0.iter().copied().map(Fp2Repr::from));
-        columns_raw.extend(col.half1.iter().copied().map(Fp2Repr::from));
-    }
-    let mut columns = backend
-        .upload_new_device(&columns_raw)
-        .unwrap_or_else(|e| panic!("resident LogUp aux-column upload failed: {e}"));
+    let mut columns = ax.columns.take().expect("resident aux columns already consumed");
+    assert_eq!(columns.len(), ax.column_count * n, "resident aux-column geometry mismatch");
 
     let claim_count = ax.claims.len();
     let claim_points = if claim_count > 0 && l > 0 {
@@ -1082,7 +1127,7 @@ fn layer_leaf_ones_aux_resident(
     };
 
     let (leaf_p_device, leaf_q_device) = backend
-        .logup_materialize_leaves_device(dleaf, 0, leaf_q.alpha1, None, n)
+        .logup_materialize_leaves_device(dleaf, 0, alpha1, None, n)
         .unwrap_or_else(|e| panic!("resident LogUp aux-leaf materialization failed: {e}"));
     backend.free_device(leaf_p_device).expect("resident LogUp aux leaf-p free");
     let (mut q0, mut q1) = backend
@@ -1132,7 +1177,7 @@ fn layer_leaf_ones_aux_resident(
                 eq_rows.as_ref(),
                 claim_cols.as_ref(),
                 weights.as_ref(),
-                ax.cols.len(),
+                ax.column_count,
                 claim_count,
                 current_len,
                 lambda,
@@ -1149,7 +1194,7 @@ fn layer_leaf_ones_aux_resident(
             .fp2_fold_rows_device(&q1, 0, 1, current_len, r)
             .unwrap_or_else(|e| panic!("resident LogUp aux q1 fold failed: {e}"));
         let next_columns = backend
-            .fp2_fold_rows_device(&columns, 0, 2 * ax.cols.len(), current_len, r)
+            .fp2_fold_rows_device(&columns, 0, 2 * ax.column_count, current_len, r)
             .unwrap_or_else(|e| panic!("resident LogUp aux column fold failed: {e}"));
         let next_eq = eq_rows.as_ref().map(|eq| {
             backend
@@ -1172,7 +1217,7 @@ fn layer_leaf_ones_aux_resident(
         } else {
             ctr.bulk(2 * half as u64 + 2, 0);
         }
-        ctr.bulk(2 * half as u64 * ax.cols.len() as u64, 0);
+        ctr.bulk(2 * half as u64 * ax.column_count as u64, 0);
         ctr.bulk(half as u64 * claim_count as u64, 0);
         let pr = pt_j * r;
         cpref = cpref * (pr + pr - pt_j - r + Fp2::ONE);
@@ -1186,7 +1231,7 @@ fn layer_leaf_ones_aux_resident(
     let q1_final: Fp2 =
         backend.download_device(&q1, 0, 1).expect("resident LogUp aux q1 split")[0].into();
     let col_values: Vec<Fp2> = backend
-        .download_device(&columns, 0, 2 * ax.cols.len())
+        .download_device(&columns, 0, 2 * ax.column_count)
         .expect("resident LogUp aux column splits")
         .into_iter()
         .map(Into::into)
@@ -2053,6 +2098,52 @@ fn blind_prove_frac_tree_aux_impl(
     (proof, point, sink.cp, sink.cq, sink.roots, sink.aux_col_claims)
 }
 
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn blind_prove_frac_tree_aux_resident(
+    dleaf: &DeviceBuffer<u64>,
+    n: usize,
+    alpha1: Fp,
+    aux_columns: DeviceBuffer<Fp2Repr>,
+    column_count: usize,
+    aux_claims: &[LeafAuxClaim],
+    stream: &mut CorrelationStream,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+    ctr: &mut Counters,
+    prod: &mut ProdTriples,
+    zero: &mut Vec<ProverAuthed>,
+    backend: &mut Backend,
+) -> (
+    BlindFracProof,
+    Vec<Fp2>,
+    ProverAuthed,
+    ProverAuthed,
+    (ProverAuthed, ProverAuthed),
+    Vec<ProverAuthed>,
+) {
+    let mut sink = new_blind_sink(stream, tx, doms, prod, zero);
+    let resident_aux =
+        ResidentAuxState { columns: Some(aux_columns), column_count, claims: aux_claims };
+    let (_rp, _rq, point) = prove_engine_resident_from_device_leaves(
+        dleaf,
+        None,
+        n,
+        alpha1,
+        Some(resident_aux),
+        &mut sink,
+        ctr,
+        backend,
+    );
+    ctr.bulk(sink.ctr.fp2_mults, sink.ctr.base_mults);
+    let aux_part = BlindAuxPart {
+        rounds3: std::mem::take(&mut sink.rounds3_cur),
+        col_corrs: std::mem::take(&mut sink.col_corrs),
+    };
+    let proof =
+        BlindFracProof { root_corrs: sink.root_corrs, layers: sink.layers, aux: Some(aux_part) };
+    (proof, point, sink.cp, sink.cq, sink.roots, sink.aux_col_claims)
+}
+
 /// Blind verifier for one fraction tree: mirrors the recursion on keys.
 /// Returns the leaf point, the leaf-claim keys and the root keys.
 #[allow(clippy::type_complexity)]
@@ -2346,6 +2437,7 @@ fn cross_verifier(
 /// root fraction is tied to it by the fraction-sum chain there. α is drawn
 /// by the caller per content, strictly after phase 1 (all element auths +
 /// all multiplicity vectors bound model-wide).
+#[derive(Debug, PartialEq, Eq)]
 pub struct BlindInstance {
     pub lookup: BlindFracProof,
 }
@@ -2434,6 +2526,85 @@ pub fn blind_instance_prove_with_backend(
         zero,
         Some(backend),
     )
+}
+
+/// Lookup-side instance whose padded base-field columns already reside on
+/// the GPU. Packing `α−f`, tree construction, aux-column folds and every
+/// upper round stay resident; only protocol roots/rounds/splits return to
+/// Rust. The source column view remains owned by the caller.
+#[allow(clippy::too_many_arguments)]
+pub fn blind_instance_prove_resident(
+    columns: DeviceSlice<'_, u64>,
+    column_count: usize,
+    entries: usize,
+    shifts: &[Option<u32>],
+    alpha: Fp2,
+    aux_claims: Vec<LeafAuxClaim>,
+    stream: &mut CorrelationStream,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+    ctr: &mut Counters,
+    prod: &mut ProdTriples,
+    zero: &mut Vec<ProverAuthed>,
+    backend: &mut Backend,
+) -> Result<InstanceOutP, AccelError> {
+    if column_count == 0
+        || shifts.len() != column_count
+        || entries < 2
+        || !entries.is_power_of_two()
+        || columns.len() < column_count * entries
+    {
+        return Err(AccelError::InvalidInput("invalid resident LogUp instance geometry"));
+    }
+    let dleaf =
+        backend.pack_lookup_leaf_device(columns, column_count, entries, shifts, alpha.c0)?;
+    let aux_columns = match backend.deinterleave_base_columns_device(columns, column_count, entries)
+    {
+        Ok(value) => value,
+        Err(error) => {
+            let _ = backend.free_device(dleaf);
+            return Err(error);
+        }
+    };
+    ctr.bulk(0, (entries * shifts.iter().flatten().count()) as u64);
+    let (lookup, point, cp_f, cq_f, roots_f, col_authed) = blind_prove_frac_tree_aux_resident(
+        &dleaf,
+        entries,
+        alpha.c1,
+        aux_columns,
+        column_count,
+        &aux_claims,
+        stream,
+        doms,
+        tx,
+        ctr,
+        prod,
+        zero,
+        backend,
+    );
+    backend.free_device(dleaf)?;
+
+    zero.push(cp_f.sub(ProverAuthed::from_public(Fp2::ONE)));
+    let mut row = cq_f.sub(ProverAuthed::from_public(alpha));
+    for (claim, &shift) in col_authed.iter().zip(shifts) {
+        if let Some(shift) = shift {
+            row = row.add(claim.scale(Fp2::from_base(Fp::new(1u64 << shift))));
+        }
+    }
+    debug_assert_eq!(row.x, Fp2::ZERO, "resident packed leaf closure violated");
+    zero.push(row);
+    ctr.bulk(2 * column_count as u64, 0);
+
+    Ok(InstanceOutP {
+        proof: BlindInstance { lookup },
+        alpha,
+        col_claims: col_authed
+            .into_iter()
+            .map(|value| OpenClaim { point: point.clone(), value })
+            .collect(),
+        roots: roots_f,
+        point,
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3458,6 +3629,144 @@ mod tests {
         assert!(
             per_lookup < 16.0,
             "prover E-mult/lookup {per_lookup:.1} not clearly below spike's 23.2"
+        );
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn cuda_resident_lookup_instance_matches_cpu_and_reuses_source() {
+        let mut resident = match Backend::cuda_resident() {
+            Ok(gpu) => gpu,
+            Err(e) if std::env::var("VOLTA_REQUIRE_CUDA").as_deref() != Ok("1") => {
+                eprintln!("skipping CUDA resident lookup-instance differential: {e}");
+                return;
+            }
+            Err(e) => panic!("CUDA required: {e}"),
+        };
+
+        // Model a padded range-lookup site: the remainder is packed into the
+        // leaf while the output column participates only in the aux closure.
+        let entries = 64usize;
+        let logical_entries = 45usize;
+        let mut remainder = vec![Fp::ZERO; entries];
+        let mut output = vec![Fp::ZERO; entries];
+        for i in 0..logical_entries {
+            remainder[i] = Fp::new(((i * 11 + 3) % 16) as u64);
+            output[i] = Fp::from_i64((i as i64 * 37 - 701) / 9);
+        }
+        let columns = [remainder.clone(), output.clone()];
+        let shifts = [Some(0u32), None];
+        let alpha = Fp2::new(Fp::new(0x1234_5678), Fp::new(0x9abc_def0));
+        let external_point: Vec<Fp2> = (0..entries.ilog2())
+            .map(|i| Fp2::new(Fp::new(i as u64 * 101 + 7), Fp::new(i as u64 * 127 + 11)))
+            .collect();
+        let output_lifted: Vec<Fp2> = output.iter().copied().map(Fp2::from_base).collect();
+        let external_value = crate::mle::eval_mle(&output_lifted, &external_point);
+        let external_auth =
+            ProverAuthed { x: external_value, m: Fp2::new(Fp::new(0xfeed), Fp::new(0xcafe)) };
+
+        let make_aux =
+            || vec![LeafAuxClaim { col: 1, point: external_point.clone(), value: external_auth }];
+        let finish = |out: InstanceOutP,
+                      prod: ProdTriples,
+                      zero: Vec<ProverAuthed>,
+                      ctr: Counters,
+                      stream: CorrelationStream,
+                      tx: Transcript| {
+            let InstanceOutP { proof, alpha, point, col_claims, roots } = out;
+            let claims: Vec<(Vec<Fp2>, ProverAuthed)> =
+                col_claims.into_iter().map(|claim| (claim.point, claim.value)).collect();
+            (
+                proof,
+                alpha,
+                point,
+                claims,
+                roots,
+                prod,
+                zero,
+                ctr,
+                stream.counters,
+                tx.ledger().clone(),
+            )
+        };
+
+        let expected = {
+            let mut stream = CorrelationStream::new([71; 32]);
+            let mut doms = Doms::new(0x7100);
+            let mut tx = Transcript::new([72; 32]);
+            let mut ctr = Counters::default();
+            let mut prod = Vec::new();
+            let mut zero = Vec::new();
+            let out = blind_instance_prove(
+                &columns,
+                &shifts,
+                alpha,
+                make_aux(),
+                &mut stream,
+                &mut doms,
+                &mut tx,
+                &mut ctr,
+                &mut prod,
+                &mut zero,
+            );
+            finish(out, prod, zero, ctr, stream, tx)
+        };
+
+        let raw_columns: Vec<u64> =
+            columns.iter().flat_map(|column| column.iter().map(|value| value.value())).collect();
+        let live_before_source = resident.stats().unwrap().live_device_bytes;
+        let device_columns = resident.upload_new_device(&raw_columns).unwrap();
+        resident.begin_measurement().unwrap();
+        let run_resident = |backend: &mut Backend| {
+            let mut stream = CorrelationStream::new([71; 32]);
+            let mut doms = Doms::new(0x7100);
+            let mut tx = Transcript::new([72; 32]);
+            let mut ctr = Counters::default();
+            let mut prod = Vec::new();
+            let mut zero = Vec::new();
+            let view = DeviceSlice::new(&device_columns, 0, raw_columns.len()).unwrap();
+            let out = blind_instance_prove_resident(
+                view,
+                columns.len(),
+                entries,
+                &shifts,
+                alpha,
+                make_aux(),
+                &mut stream,
+                &mut doms,
+                &mut tx,
+                &mut ctr,
+                &mut prod,
+                &mut zero,
+                backend,
+            )
+            .unwrap();
+            finish(out, prod, zero, ctr, stream, tx)
+        };
+
+        let got = run_resident(&mut resident);
+        assert_eq!(got, expected);
+        let live_after_first = resident.stats().unwrap().live_device_bytes;
+        let got_reused = run_resident(&mut resident);
+        assert_eq!(got_reused, expected);
+        assert_eq!(
+            resident.stats().unwrap().live_device_bytes,
+            live_after_first,
+            "resident lookup instance leaked across context reuse"
+        );
+        let stats = resident.finish_measurement().unwrap();
+        assert!(stats.operation(Operation::Logup).calls > 0);
+        assert_eq!(stats.operation(Operation::Logup).cpu_residual_ns, 0);
+        resident.free_device(device_columns).unwrap();
+        let live_after_source_free = resident.stats().unwrap().live_device_bytes;
+        assert_eq!(
+            live_after_source_free + (raw_columns.len() * std::mem::size_of::<u64>()) as u64,
+            live_after_first,
+            "resident lookup source allocation was not released exactly once"
+        );
+        assert!(
+            live_after_source_free >= live_before_source,
+            "persistent CUDA workspace accounting moved backwards"
         );
     }
 

@@ -13,7 +13,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 8;
+constexpr uint32_t ABI_VERSION = 9;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -645,6 +645,7 @@ enum ResidentScalarKind : int {
     SCALAR_I64 = 1,
     SCALAR_FP = 2,
     SCALAR_FP2 = 3,
+    SCALAR_U32 = 4,
 };
 
 __device__ inline uint64_t fp_from_i64_device(int64_t value) {
@@ -659,6 +660,8 @@ __device__ inline uint64_t load_base_scalar(const void* input, size_t index, int
         return fp_from_i64_device(static_cast<const int16_t*>(input)[index]);
     if (kind == SCALAR_I64)
         return fp_from_i64_device(static_cast<const int64_t*>(input)[index]);
+    if (kind == SCALAR_U32)
+        return static_cast<const uint32_t*>(input)[index];
     return static_cast<const uint64_t*>(input)[index];
 }
 
@@ -740,6 +743,100 @@ __global__ void reduce_product_round(
         value.g2 = fp2_add(value.g2, input[2 * z + 1].g2);
     }
     output[z] = value;
+}
+
+__device__ inline int64_t round_stage_i64(int64_t value, uint32_t shift) {
+    return (value + (int64_t{1} << (shift - 1))) >> shift;
+}
+
+/// Columns are stored column-major by proof column: `[col0[n], col1[n], …]`.
+/// For chained shifts the order is `[rem1, y1, rem2, out]`; otherwise it is
+/// `[rem, out]`.
+__global__ void requant_columns_kernel(
+    const int64_t* accumulators, const int16_t* outputs, uint64_t* columns,
+    uint32_t* error, size_t rows, size_t cols, size_t row_pad,
+    size_t col_pad, uint32_t shift) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    const size_t padded = row_pad * col_pad;
+    if (z >= padded) return;
+    const size_t row = z / col_pad;
+    const size_t col = z - row * col_pad;
+    const bool real = row < rows && col < cols;
+    const int64_t acc = real ? accumulators[row * cols + col] : 0;
+    const int64_t out = real ? outputs[row * cols + col] : 0;
+    if (shift <= 16) {
+        const int64_t half = int64_t{1} << (shift - 1);
+        const int64_t rem = acc + half - (out << shift);
+        if (real && (rem < 0 || rem >= (int64_t{1} << shift) ||
+                     round_stage_i64(acc, shift) != out)) atomicExch(error, 1u);
+        columns[z] = static_cast<uint64_t>(rem);
+        columns[padded + z] = fp_from_i64_device(out);
+        return;
+    }
+    const uint32_t first = shift - 16;
+    const int64_t half1 = int64_t{1} << (first - 1);
+    const int64_t half2 = int64_t{1} << 15;
+    const int64_t y1 = round_stage_i64(acc, first);
+    const int64_t rem1 = acc + half1 - (y1 << first);
+    const int64_t rem2 = y1 + half2 - (out << 16);
+    if (real && (rem1 < 0 || rem1 >= (int64_t{1} << first) ||
+                 rem2 < 0 || rem2 >= (int64_t{1} << 16) ||
+                 round_stage_i64(y1, 16) != out)) atomicExch(error, 1u);
+    columns[z] = static_cast<uint64_t>(rem1);
+    columns[padded + z] = fp_from_i64_device(y1);
+    columns[2 * padded + z] = static_cast<uint64_t>(rem2);
+    columns[3 * padded + z] = fp_from_i64_device(out);
+}
+
+__global__ void pair_columns_kernel(
+    const int16_t* inputs, const int16_t* outputs, uint64_t* columns,
+    size_t rows, size_t cols, size_t row_pad, size_t col_pad,
+    int16_t pad_input, int16_t pad_output) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    const size_t padded = row_pad * col_pad;
+    if (z >= padded) return;
+    const size_t row = z / col_pad;
+    const size_t col = z - row * col_pad;
+    const bool real = row < rows && col < cols;
+    columns[z] = fp_from_i64_device(real ? inputs[row * cols + col] : pad_input);
+    columns[padded + z] = fp_from_i64_device(real ? outputs[row * cols + col] : pad_output);
+}
+
+__global__ void histogram_fp_kernel(
+    const uint64_t* input, uint32_t* output, size_t n, size_t bins) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z < n && input[z] < bins) atomicAdd(output + input[z], 1u);
+}
+
+__global__ void u32_add_inplace_kernel(uint32_t* target, const uint32_t* add, size_t n) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z < n) target[z] += add[z];
+}
+
+__global__ void pack_lookup_leaf_kernel(
+    const uint64_t* columns, const uint32_t* shifts, uint64_t* leaf,
+    size_t column_count, size_t n, uint64_t alpha0) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z >= n) return;
+    uint64_t packed = 0;
+    for (size_t column = 0; column < column_count; ++column) {
+        const uint32_t shift = shifts[column];
+        if (shift != UINT32_MAX) {
+            packed = fp_add(packed, fp_mul(columns[column * n + z], uint64_t{1} << shift));
+        }
+    }
+    leaf[z] = fp_sub(alpha0, packed);
+}
+
+__global__ void deinterleave_base_columns_kernel(
+    const uint64_t* columns, Fp2* output, size_t column_count, size_t n) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z >= column_count * n) return;
+    const size_t column = z / n;
+    const size_t local = z - column * n;
+    const size_t half = n / 2;
+    const size_t source_local = local < half ? 2 * local : 2 * (local - half) + 1;
+    output[z] = Fp2{columns[column * n + source_local], 0};
 }
 
 // -------------------------------------------------------------------------
@@ -1735,6 +1832,7 @@ extern "C" int volta_cuda_fixed_logits_device(
 
 size_t resident_scalar_size(int kind) {
     if (kind == SCALAR_I16) return sizeof(int16_t);
+    if (kind == SCALAR_U32) return sizeof(uint32_t);
     if (kind == SCALAR_I64 || kind == SCALAR_FP) return sizeof(uint64_t);
     if (kind == SCALAR_FP2) return sizeof(Fp2);
     return 0;
@@ -1846,6 +1944,136 @@ extern "C" int volta_cuda_fp2_product_round_device(
     CUDA_OR_RETURN(c, cudaMemcpyAsync(output, &src[0], sizeof(ProductRoundAcc),
                                      cudaMemcpyDeviceToHost, c->stream));
     return finish_timing(c, OP_GEMM, 0, sizeof(ProductRoundAcc));
+}
+
+extern "C" int volta_cuda_requant_columns_device(
+    void* raw, uint64_t acc_id, size_t acc_offset,
+    uint64_t out_id, size_t out_offset,
+    uint64_t columns_id, size_t columns_offset,
+    uint64_t error_id, size_t error_offset, size_t rows, size_t cols,
+    size_t row_pad, size_t col_pad, uint32_t shift) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !rows || !cols || row_pad < rows || col_pad < cols ||
+        (row_pad & (row_pad - 1)) || (col_pad & (col_pad - 1)) ||
+        !shift || shift >= 63)
+        return fail_message(c, "invalid resident requant-column geometry");
+    const size_t real = rows * cols, padded = row_pad * col_pad;
+    const size_t count = shift > 16 ? 4 : 2;
+    void *acc = nullptr, *out = nullptr, *columns = nullptr, *error = nullptr;
+    if (resident_region(c, acc_id, acc_offset * sizeof(int64_t), real * sizeof(int64_t), &acc) ||
+        resident_region(c, out_id, out_offset * sizeof(int16_t), real * sizeof(int16_t), &out) ||
+        resident_region(c, columns_id, columns_offset * sizeof(uint64_t), count * padded * sizeof(uint64_t), &columns) ||
+        resident_region(c, error_id, error_offset * sizeof(uint32_t), sizeof(uint32_t), &error)) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    requant_columns_kernel<<<(padded + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const int64_t*>(acc), static_cast<const int16_t*>(out),
+        static_cast<uint64_t*>(columns), static_cast<uint32_t*>(error),
+        rows, cols, row_pad, col_pad, shift);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_LOGUP, 0, 0);
+}
+
+extern "C" int volta_cuda_pair_columns_device(
+    void* raw, uint64_t input_id, size_t input_offset,
+    uint64_t out_id, size_t out_offset,
+    uint64_t columns_id, size_t columns_offset, size_t rows, size_t cols,
+    size_t row_pad, size_t col_pad, int16_t pad_input, int16_t pad_output) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !rows || !cols || row_pad < rows || col_pad < cols ||
+        (row_pad & (row_pad - 1)) || (col_pad & (col_pad - 1)))
+        return fail_message(c, "invalid resident pair-column geometry");
+    const size_t real = rows * cols, padded = row_pad * col_pad;
+    void *input = nullptr, *out = nullptr, *columns = nullptr;
+    if (resident_region(c, input_id, input_offset * sizeof(int16_t), real * sizeof(int16_t), &input) ||
+        resident_region(c, out_id, out_offset * sizeof(int16_t), real * sizeof(int16_t), &out) ||
+        resident_region(c, columns_id, columns_offset * sizeof(uint64_t), 2 * padded * sizeof(uint64_t), &columns)) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    pair_columns_kernel<<<(padded + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const int16_t*>(input), static_cast<const int16_t*>(out),
+        static_cast<uint64_t*>(columns), rows, cols, row_pad, col_pad,
+        pad_input, pad_output);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_LOGUP, 0, 0);
+}
+
+extern "C" int volta_cuda_histogram_fp_device(
+    void* raw, uint64_t input_id, size_t input_offset,
+    uint64_t output_id, size_t output_offset, size_t n, size_t bins) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !n || !bins) return fail_message(c, "invalid resident histogram geometry");
+    void *input = nullptr, *output = nullptr;
+    if (resident_region(c, input_id, input_offset * sizeof(uint64_t), n * sizeof(uint64_t), &input) ||
+        resident_region(c, output_id, output_offset * sizeof(uint32_t), bins * sizeof(uint32_t), &output)) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    CUDA_OR_RETURN(c, cudaMemsetAsync(output, 0, bins * sizeof(uint32_t), c->stream));
+    histogram_fp_kernel<<<(n + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const uint64_t*>(input), static_cast<uint32_t*>(output), n, bins);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_LOGUP, 0, 0);
+}
+
+extern "C" int volta_cuda_u32_add_inplace_device(
+    void* raw, uint64_t target_id, size_t target_offset,
+    uint64_t add_id, size_t add_offset, size_t n) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !n) return fail_message(c, "invalid resident u32-add geometry");
+    void *target = nullptr, *add = nullptr;
+    if (resident_region(c, target_id, target_offset * sizeof(uint32_t), n * sizeof(uint32_t), &target) ||
+        resident_region(c, add_id, add_offset * sizeof(uint32_t), n * sizeof(uint32_t), &add)) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    u32_add_inplace_kernel<<<(n + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<uint32_t*>(target), static_cast<const uint32_t*>(add), n);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_LOGUP, 0, 0);
+}
+
+extern "C" int volta_cuda_pack_lookup_leaf_device(
+    void* raw, uint64_t columns_id, size_t columns_offset,
+    uint64_t shifts_id, size_t shifts_offset,
+    uint64_t leaf_id, size_t leaf_offset, size_t column_count, size_t n,
+    uint64_t alpha0) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !column_count || n < 2 || (n & (n - 1)))
+        return fail_message(c, "invalid resident lookup-leaf geometry");
+    void *columns = nullptr, *shifts = nullptr, *leaf = nullptr;
+    if (resident_region(c, columns_id, columns_offset * sizeof(uint64_t), column_count * n * sizeof(uint64_t), &columns) ||
+        resident_region(c, shifts_id, shifts_offset * sizeof(uint32_t), column_count * sizeof(uint32_t), &shifts) ||
+        resident_region(c, leaf_id, leaf_offset * sizeof(uint64_t), n * sizeof(uint64_t), &leaf)) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    pack_lookup_leaf_kernel<<<(n + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const uint64_t*>(columns), static_cast<const uint32_t*>(shifts),
+        static_cast<uint64_t*>(leaf), column_count, n, alpha0);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_LOGUP, 0, 0);
+}
+
+extern "C" int volta_cuda_deinterleave_base_columns_device(
+    void* raw, uint64_t columns_id, size_t columns_offset,
+    uint64_t output_id, size_t output_offset, size_t column_count, size_t n) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !column_count || n < 2 || n % 2)
+        return fail_message(c, "invalid resident base-column deinterleave geometry");
+    void *columns = nullptr, *output = nullptr;
+    if (resident_region(c, columns_id, columns_offset * sizeof(uint64_t), column_count * n * sizeof(uint64_t), &columns) ||
+        resident_region(c, output_id, output_offset * sizeof(Fp2), column_count * n * sizeof(Fp2), &output)) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    const size_t total = column_count * n;
+    deinterleave_base_columns_kernel<<<(total + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const uint64_t*>(columns), static_cast<Fp2*>(output), column_count, n);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_LOGUP, 0, 0);
 }
 
 extern "C" int volta_cuda_ntt_fp(void* raw,const uint64_t* msg,size_t msg_len,size_t n,uint64_t* out) {

@@ -282,6 +282,55 @@ type MatrixFoldDevice = unsafe extern "C" fn(
 type Fp2DotDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize, *mut Fp2Repr) -> c_int;
 type Fp2ProductRoundDevice = Fp2DotDevice;
+type RequantColumnsDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    u32,
+) -> c_int;
+type PairColumnsDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    i16,
+    i16,
+) -> c_int;
+type HistogramFpDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize, usize) -> c_int;
+type U32AddInplaceDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize) -> c_int;
+type PackLookupLeafDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    usize,
+    u64,
+) -> c_int;
+type DeinterleaveBaseColumnsDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize, usize) -> c_int;
 type NttFp = unsafe extern "C" fn(*mut c_void, *const u64, usize, usize, *mut u64) -> c_int;
 type NttFpBatch =
     unsafe extern "C" fn(*mut c_void, *const u64, usize, usize, usize, *mut u64) -> c_int;
@@ -503,6 +552,12 @@ struct Api {
     matrix_fold_device: MatrixFoldDevice,
     fp2_dot_device: Fp2DotDevice,
     fp2_product_round_device: Fp2ProductRoundDevice,
+    requant_columns_device: RequantColumnsDevice,
+    pair_columns_device: PairColumnsDevice,
+    histogram_fp_device: HistogramFpDevice,
+    u32_add_inplace_device: U32AddInplaceDevice,
+    pack_lookup_leaf_device: PackLookupLeafDevice,
+    deinterleave_base_columns_device: DeinterleaveBaseColumnsDevice,
     ntt_fp: NttFp,
     ntt_fp_batch: NttFpBatch,
     ntt_fp2: NttFp2,
@@ -633,6 +688,24 @@ impl CudaContext {
             fp2_dot_device: unsafe { load_symbol(handle, b"volta_cuda_fp2_dot_device\0")? },
             fp2_product_round_device: unsafe {
                 load_symbol(handle, b"volta_cuda_fp2_product_round_device\0")?
+            },
+            requant_columns_device: unsafe {
+                load_symbol(handle, b"volta_cuda_requant_columns_device\0")?
+            },
+            pair_columns_device: unsafe {
+                load_symbol(handle, b"volta_cuda_pair_columns_device\0")?
+            },
+            histogram_fp_device: unsafe {
+                load_symbol(handle, b"volta_cuda_histogram_fp_device\0")?
+            },
+            u32_add_inplace_device: unsafe {
+                load_symbol(handle, b"volta_cuda_u32_add_inplace_device\0")?
+            },
+            pack_lookup_leaf_device: unsafe {
+                load_symbol(handle, b"volta_cuda_pack_lookup_leaf_device\0")?
+            },
+            deinterleave_base_columns_device: unsafe {
+                load_symbol(handle, b"volta_cuda_deinterleave_base_columns_device\0")?
             },
             ntt_fp: unsafe { load_symbol(handle, b"volta_cuda_ntt_fp\0")? },
             ntt_fp_batch: unsafe { load_symbol(handle, b"volta_cuda_ntt_fp_batch\0")? },
@@ -1415,6 +1488,170 @@ impl CudaContext {
             )
         })?;
         Ok(output.map(Into::into))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn requant_columns_device(
+        &mut self,
+        acc: u64,
+        acc_offset: usize,
+        out: u64,
+        out_offset: usize,
+        columns: u64,
+        columns_offset: usize,
+        error: u64,
+        error_offset: usize,
+        rows: usize,
+        cols: usize,
+        row_pad: usize,
+        col_pad: usize,
+        shift: u32,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates every typed region and padded geometry.
+        self.check(unsafe {
+            (self.api.requant_columns_device)(
+                self.raw,
+                acc,
+                acc_offset,
+                out,
+                out_offset,
+                columns,
+                columns_offset,
+                error,
+                error_offset,
+                rows,
+                cols,
+                row_pad,
+                col_pad,
+                shift,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn pair_columns_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        out: u64,
+        out_offset: usize,
+        columns: u64,
+        columns_offset: usize,
+        rows: usize,
+        cols: usize,
+        row_pad: usize,
+        col_pad: usize,
+        pad_input: i16,
+        pad_output: i16,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates every typed region and padded geometry.
+        self.check(unsafe {
+            (self.api.pair_columns_device)(
+                self.raw,
+                input,
+                input_offset,
+                out,
+                out_offset,
+                columns,
+                columns_offset,
+                rows,
+                cols,
+                row_pad,
+                col_pad,
+                pad_input,
+                pad_output,
+            )
+        })
+    }
+
+    pub(super) fn histogram_fp_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        output: u64,
+        output_offset: usize,
+        n: usize,
+        bins: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates both typed ranges and bin count.
+        self.check(unsafe {
+            (self.api.histogram_fp_device)(
+                self.raw,
+                input,
+                input_offset,
+                output,
+                output_offset,
+                n,
+                bins,
+            )
+        })
+    }
+
+    pub(super) fn u32_add_inplace_device(
+        &mut self,
+        target: u64,
+        target_offset: usize,
+        add: u64,
+        add_offset: usize,
+        n: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates both typed regions.
+        self.check(unsafe {
+            (self.api.u32_add_inplace_device)(self.raw, target, target_offset, add, add_offset, n)
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn pack_lookup_leaf_device(
+        &mut self,
+        columns: u64,
+        columns_offset: usize,
+        shifts: u64,
+        shifts_offset: usize,
+        leaf: u64,
+        leaf_offset: usize,
+        column_count: usize,
+        n: usize,
+        alpha0: Fp,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all buffers, shifts, and power-of-two n.
+        self.check(unsafe {
+            (self.api.pack_lookup_leaf_device)(
+                self.raw,
+                columns,
+                columns_offset,
+                shifts,
+                shifts_offset,
+                leaf,
+                leaf_offset,
+                column_count,
+                n,
+                alpha0.value(),
+            )
+        })
+    }
+
+    pub(super) fn deinterleave_base_columns_device(
+        &mut self,
+        columns: u64,
+        columns_offset: usize,
+        output: u64,
+        output_offset: usize,
+        column_count: usize,
+        n: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates both typed regions and even n.
+        self.check(unsafe {
+            (self.api.deinterleave_base_columns_device)(
+                self.raw,
+                columns,
+                columns_offset,
+                output,
+                output_offset,
+                column_count,
+                n,
+            )
+        })
     }
 
     pub(super) fn ntt_fp(&mut self, msg: &[Fp], size: usize) -> Result<Vec<Fp>, AccelError> {

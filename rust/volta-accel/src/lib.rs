@@ -17,7 +17,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 8;
+pub const CUDA_ABI_VERSION: u32 = 9;
 pub const OPERATION_COUNT: usize = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -217,6 +217,7 @@ mod resident_matrix_element {
     pub trait Sealed {}
     impl Sealed for i16 {}
     impl Sealed for i64 {}
+    impl Sealed for u32 {}
     impl Sealed for u64 {}
     impl Sealed for super::Fp2Repr {}
 }
@@ -234,6 +235,9 @@ impl ResidentMatrixElement for i16 {
 impl ResidentMatrixElement for i64 {
     const CUDA_KIND: i32 = 1;
 }
+impl ResidentMatrixElement for u32 {
+    const CUDA_KIND: i32 = 4;
+}
 impl ResidentMatrixElement for u64 {
     const CUDA_KIND: i32 = 2;
 }
@@ -244,6 +248,7 @@ impl ResidentMatrixElement for Fp2Repr {
 pub trait ResidentBaseElement: ResidentMatrixElement {}
 impl ResidentBaseElement for i16 {}
 impl ResidentBaseElement for i64 {}
+impl ResidentBaseElement for u32 {}
 impl ResidentBaseElement for u64 {}
 
 /// Opaque allocation owned by one [`Backend`] CUDA context.  It exposes no
@@ -297,6 +302,37 @@ impl<'a, T: DeviceElement> DeviceSlice<'a, T> {
 pub struct DeviceMerkleTree {
     storage: DeviceBuffer<u8>,
     leaves: usize,
+}
+
+/// Column-major resident proof columns: `columns` consecutive vectors, each
+/// of the same power-of-two `entries` length. This is an internal ownership
+/// boundary shared by range/pair builders and resident LogUp.
+#[derive(Debug)]
+pub struct DeviceLookupColumns {
+    storage: DeviceBuffer<u64>,
+    columns: usize,
+    entries: usize,
+}
+
+impl DeviceLookupColumns {
+    pub fn columns(&self) -> usize {
+        self.columns
+    }
+
+    pub fn entries(&self) -> usize {
+        self.entries
+    }
+
+    pub fn view(&self, first: usize, count: usize) -> Result<DeviceSlice<'_, u64>, AccelError> {
+        if count == 0 || first > self.columns || count > self.columns - first {
+            return Err(AccelError::InvalidInput("lookup-column view is out of bounds"));
+        }
+        DeviceSlice::new(&self.storage, first * self.entries, count * self.entries)
+    }
+
+    pub fn column(&self, index: usize) -> Result<DeviceSlice<'_, u64>, AccelError> {
+        self.view(index, 1)
+    }
 }
 
 impl DeviceMerkleTree {
@@ -1343,6 +1379,250 @@ impl Backend {
         }
         #[cfg(not(feature = "cuda"))]
         Err(AccelError::FeatureDisabled)
+    }
+
+    /// Build padded requant lookup columns. Single-stage order is
+    /// `[remainder, output]`; chained order is
+    /// `[stage1_remainder, stage1_output, stage2_remainder, final_output]`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn requant_lookup_columns_device(
+        &mut self,
+        accumulators: DeviceSlice<'_, i64>,
+        outputs: DeviceSlice<'_, i16>,
+        error: DeviceSlice<'_, u32>,
+        rows: usize,
+        cols: usize,
+        shift: u32,
+    ) -> Result<DeviceLookupColumns, AccelError> {
+        if rows == 0 || cols == 0 || shift == 0 || shift >= 63 {
+            return Err(AccelError::InvalidInput("invalid resident requant-column geometry"));
+        }
+        let real = checked_product(rows, cols)?;
+        self.validate_device_slice(accumulators, real)?;
+        self.validate_device_slice(outputs, real)?;
+        self.validate_device_slice(error, 1)?;
+        let row_pad =
+            rows.checked_next_power_of_two().ok_or(AccelError::InvalidInput("shape overflow"))?;
+        let col_pad =
+            cols.checked_next_power_of_two().ok_or(AccelError::InvalidInput("shape overflow"))?;
+        let entries = checked_product(row_pad, col_pad)?;
+        let columns = if shift > 16 { 4 } else { 2 };
+        let storage = self.alloc_device(checked_product(columns, entries)?)?;
+        #[cfg(feature = "cuda")]
+        let result = self.cuda.as_mut().expect("CUDA kind without context").requant_columns_device(
+            accumulators.buffer.id,
+            accumulators.offset,
+            outputs.buffer.id,
+            outputs.offset,
+            storage.id,
+            0,
+            error.buffer.id,
+            error.offset,
+            rows,
+            cols,
+            row_pad,
+            col_pad,
+            shift,
+        );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(storage);
+            return Err(error);
+        }
+        Ok(DeviceLookupColumns { storage, columns, entries })
+    }
+
+    pub fn pair_lookup_columns_device(
+        &mut self,
+        inputs: DeviceSlice<'_, i16>,
+        outputs: DeviceSlice<'_, i16>,
+        rows: usize,
+        cols: usize,
+        pad_input: i16,
+        pad_output: i16,
+    ) -> Result<DeviceLookupColumns, AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        let _ = (pad_input, pad_output);
+        if rows == 0 || cols == 0 {
+            return Err(AccelError::InvalidInput("invalid resident pair-column geometry"));
+        }
+        let real = checked_product(rows, cols)?;
+        self.validate_device_slice(inputs, real)?;
+        self.validate_device_slice(outputs, real)?;
+        let row_pad =
+            rows.checked_next_power_of_two().ok_or(AccelError::InvalidInput("shape overflow"))?;
+        let col_pad =
+            cols.checked_next_power_of_two().ok_or(AccelError::InvalidInput("shape overflow"))?;
+        let entries = checked_product(row_pad, col_pad)?;
+        let storage = self.alloc_device(checked_product(2, entries)?)?;
+        #[cfg(feature = "cuda")]
+        let result = self.cuda.as_mut().expect("CUDA kind without context").pair_columns_device(
+            inputs.buffer.id,
+            inputs.offset,
+            outputs.buffer.id,
+            outputs.offset,
+            storage.id,
+            0,
+            rows,
+            cols,
+            row_pad,
+            col_pad,
+            pad_input,
+            pad_output,
+        );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(storage);
+            return Err(error);
+        }
+        Ok(DeviceLookupColumns { storage, columns: 2, entries })
+    }
+
+    pub fn histogram_fp_device(
+        &mut self,
+        input: DeviceSlice<'_, u64>,
+        bins: usize,
+    ) -> Result<DeviceBuffer<u32>, AccelError> {
+        if input.is_empty() || bins == 0 {
+            return Err(AccelError::InvalidInput("invalid resident histogram geometry"));
+        }
+        self.validate_device_slice(input, input.len())?;
+        let output = self.alloc_device(bins)?;
+        #[cfg(feature = "cuda")]
+        let result = self.cuda.as_mut().expect("CUDA kind without context").histogram_fp_device(
+            input.buffer.id,
+            input.offset,
+            output.id,
+            0,
+            input.len,
+            bins,
+        );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
+    }
+
+    pub fn u32_add_inplace_device(
+        &mut self,
+        target: DeviceSlice<'_, u32>,
+        add: DeviceSlice<'_, u32>,
+    ) -> Result<(), AccelError> {
+        if target.is_empty() || target.len() != add.len() {
+            return Err(AccelError::InvalidInput("invalid resident u32-add geometry"));
+        }
+        self.validate_device_slice(target, target.len())?;
+        self.validate_device_slice(add, add.len())?;
+        #[cfg(feature = "cuda")]
+        {
+            return self.cuda.as_mut().expect("CUDA kind without context").u32_add_inplace_device(
+                target.buffer.id,
+                target.offset,
+                add.buffer.id,
+                add.offset,
+                target.len,
+            );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    pub fn pack_lookup_leaf_device(
+        &mut self,
+        columns: DeviceSlice<'_, u64>,
+        column_count: usize,
+        entries: usize,
+        shifts: &[Option<u32>],
+        alpha0: Fp,
+    ) -> Result<DeviceBuffer<u64>, AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        let _ = alpha0;
+        if column_count == 0
+            || shifts.len() != column_count
+            || entries < 2
+            || !entries.is_power_of_two()
+            || shifts.iter().flatten().any(|&shift| shift >= 63)
+            || !shifts.iter().any(Option::is_some)
+        {
+            return Err(AccelError::InvalidInput("invalid resident lookup-leaf geometry"));
+        }
+        self.validate_device_slice(columns, checked_product(column_count, entries)?)?;
+        let raw_shifts: Vec<u32> = shifts.iter().map(|shift| shift.unwrap_or(u32::MAX)).collect();
+        let dshifts = self.upload_new_device(&raw_shifts)?;
+        let leaf = match self.alloc_device(entries) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = self.free_device(dshifts);
+                return Err(error);
+            }
+        };
+        #[cfg(feature = "cuda")]
+        let result =
+            self.cuda.as_mut().expect("CUDA kind without context").pack_lookup_leaf_device(
+                columns.buffer.id,
+                columns.offset,
+                dshifts.id,
+                0,
+                leaf.id,
+                0,
+                column_count,
+                entries,
+                alpha0,
+            );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        let free_result = self.free_device(dshifts);
+        if let Err(error) = result {
+            let _ = self.free_device(leaf);
+            return Err(error);
+        }
+        free_result?;
+        Ok(leaf)
+    }
+
+    pub fn deinterleave_base_columns_device(
+        &mut self,
+        columns: DeviceSlice<'_, u64>,
+        column_count: usize,
+        entries: usize,
+    ) -> Result<DeviceBuffer<Fp2Repr>, AccelError> {
+        if column_count == 0 || entries < 2 || entries % 2 != 0 {
+            return Err(AccelError::InvalidInput(
+                "invalid resident base-column deinterleave geometry",
+            ));
+        }
+        let total = checked_product(column_count, entries)?;
+        self.validate_device_slice(columns, total)?;
+        let output = self.alloc_device(total)?;
+        #[cfg(feature = "cuda")]
+        let result = self
+            .cuda
+            .as_mut()
+            .expect("CUDA kind without context")
+            .deinterleave_base_columns_device(
+                columns.buffer.id,
+                columns.offset,
+                output.id,
+                0,
+                column_count,
+                entries,
+            );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
+    }
+
+    pub fn free_lookup_columns(&mut self, columns: DeviceLookupColumns) -> Result<(), AccelError> {
+        self.free_device(columns.storage)
     }
 
     /// Run explicitly residual host work. Hybrid accounting is deliberate;
@@ -3345,6 +3625,191 @@ mod cuda_tests {
         gpu.free_device(drow_weights).unwrap();
         gpu.free_device(dmasks).unwrap();
         gpu.free_device(dinput).unwrap();
+    }
+
+    #[test]
+    fn resident_lookup_columns_histograms_and_packing_are_bit_exact() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
+        let (rows, cols) = (3usize, 5usize);
+        let entries = rows.next_power_of_two() * cols.next_power_of_two();
+        let shift = 8u32;
+        let outputs: Vec<i16> = (0..rows * cols).map(|i| ((i * 13 + 5) % 81) as i16 - 40).collect();
+        let remainders: Vec<i64> = (0..rows * cols).map(|i| (i % (1 << shift)) as i64).collect();
+        let accumulators: Vec<i64> = outputs
+            .iter()
+            .zip(&remainders)
+            .map(|(&out, &rem)| ((out as i64) << shift) + rem - (1 << (shift - 1)))
+            .collect();
+        let dacc = gpu.upload_new_device(&accumulators).unwrap();
+        let dout = gpu.upload_new_device(&outputs).unwrap();
+        let error = gpu.upload_new_device(&[0u32]).unwrap();
+        let columns = gpu
+            .requant_lookup_columns_device(
+                DeviceSlice::new(&dacc, 0, accumulators.len()).unwrap(),
+                DeviceSlice::new(&dout, 0, outputs.len()).unwrap(),
+                DeviceSlice::new(&error, 0, 1).unwrap(),
+                rows,
+                cols,
+                shift,
+            )
+            .unwrap();
+        assert_eq!(columns.columns(), 2);
+        assert_eq!(columns.entries(), entries);
+        let raw =
+            gpu.download_device(columns.view(0, 2).unwrap().buffer(), 0, 2 * entries).unwrap();
+        for row in 0..rows.next_power_of_two() {
+            for col in 0..cols.next_power_of_two() {
+                let z = row * cols.next_power_of_two() + col;
+                if row < rows && col < cols {
+                    let source = row * cols + col;
+                    assert_eq!(raw[z], remainders[source] as u64);
+                    assert_eq!(Fp::new(raw[entries + z]), Fp::from_i64(outputs[source] as i64));
+                } else {
+                    assert_eq!(raw[z], 1 << (shift - 1));
+                    assert_eq!(raw[entries + z], 0);
+                }
+            }
+        }
+        let histogram = gpu.histogram_fp_device(columns.column(0).unwrap(), 1 << shift).unwrap();
+        let expected_hist = {
+            let mut values = vec![0u32; 1 << shift];
+            for &value in &raw[..entries] {
+                values[value as usize] += 1;
+            }
+            values
+        };
+        assert_eq!(gpu.download_device(&histogram, 0, 1 << shift).unwrap(), expected_hist);
+        let histogram2 = gpu.histogram_fp_device(columns.column(0).unwrap(), 1 << shift).unwrap();
+        gpu.u32_add_inplace_device(
+            DeviceSlice::new(&histogram, 0, 1 << shift).unwrap(),
+            DeviceSlice::new(&histogram2, 0, 1 << shift).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            gpu.download_device(&histogram, 0, 1 << shift).unwrap(),
+            expected_hist.iter().map(|x| x * 2).collect::<Vec<_>>()
+        );
+
+        let alpha0 = Fp::new(0xCAFE_BABE);
+        let leaf = gpu
+            .pack_lookup_leaf_device(
+                columns.view(0, 2).unwrap(),
+                2,
+                entries,
+                &[Some(0), None],
+                alpha0,
+            )
+            .unwrap();
+        let leaf_host: Vec<Fp> =
+            gpu.download_device(&leaf, 0, entries).unwrap().into_iter().map(Fp::new).collect();
+        for z in 0..entries {
+            assert_eq!(leaf_host[z], alpha0 - Fp::new(raw[z]));
+        }
+        let aux =
+            gpu.deinterleave_base_columns_device(columns.view(0, 2).unwrap(), 2, entries).unwrap();
+        let aux_host: Vec<Fp2> = gpu
+            .download_device(&aux, 0, 2 * entries)
+            .unwrap()
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        for column in 0..2 {
+            for i in 0..entries / 2 {
+                assert_eq!(
+                    aux_host[column * entries + i],
+                    Fp2::from_base(Fp::new(raw[column * entries + 2 * i]))
+                );
+                assert_eq!(
+                    aux_host[column * entries + entries / 2 + i],
+                    Fp2::from_base(Fp::new(raw[column * entries + 2 * i + 1]))
+                );
+            }
+        }
+
+        let pair_outputs: Vec<i16> = outputs.iter().map(|&x| -x).collect();
+        let dpair_out = gpu.upload_new_device(&pair_outputs).unwrap();
+        let pair = gpu
+            .pair_lookup_columns_device(
+                DeviceSlice::new(&dout, 0, outputs.len()).unwrap(),
+                DeviceSlice::new(&dpair_out, 0, pair_outputs.len()).unwrap(),
+                rows,
+                cols,
+                -123,
+                77,
+            )
+            .unwrap();
+        let pair_raw =
+            gpu.download_device(pair.view(0, 2).unwrap().buffer(), 0, 2 * entries).unwrap();
+        for row in 0..rows.next_power_of_two() {
+            for col in 0..cols.next_power_of_two() {
+                let z = row * cols.next_power_of_two() + col;
+                let (input, output) = if row < rows && col < cols {
+                    let source = row * cols + col;
+                    (outputs[source], pair_outputs[source])
+                } else {
+                    (-123, 77)
+                };
+                assert_eq!(Fp::new(pair_raw[z]), Fp::from_i64(input as i64));
+                assert_eq!(Fp::new(pair_raw[entries + z]), Fp::from_i64(output as i64));
+            }
+        }
+
+        let chain_shift = 20u32;
+        let chain_acc: Vec<i64> = (0..rows * cols).map(|i| i as i64 * 91_337 - 500_000).collect();
+        let chain_out: Vec<i16> = chain_acc
+            .iter()
+            .map(|&a| {
+                let y1 = (a + (1 << 3)) >> 4;
+                ((y1 + (1 << 15)) >> 16) as i16
+            })
+            .collect();
+        let dchain_acc = gpu.upload_new_device(&chain_acc).unwrap();
+        let dchain_out = gpu.upload_new_device(&chain_out).unwrap();
+        let chained = gpu
+            .requant_lookup_columns_device(
+                DeviceSlice::new(&dchain_acc, 0, chain_acc.len()).unwrap(),
+                DeviceSlice::new(&dchain_out, 0, chain_out.len()).unwrap(),
+                DeviceSlice::new(&error, 0, 1).unwrap(),
+                rows,
+                cols,
+                chain_shift,
+            )
+            .unwrap();
+        assert_eq!(chained.columns(), 4);
+        let chained_raw =
+            gpu.download_device(chained.view(0, 4).unwrap().buffer(), 0, 4 * entries).unwrap();
+        for row in 0..rows {
+            for col in 0..cols {
+                let source = row * cols + col;
+                let z = row * cols.next_power_of_two() + col;
+                let y1 = (chain_acc[source] + 8) >> 4;
+                assert_eq!(chained_raw[z] as i64, chain_acc[source] + 8 - (y1 << 4));
+                assert_eq!(Fp::new(chained_raw[entries + z]), Fp::from_i64(y1));
+                assert_eq!(
+                    chained_raw[2 * entries + z] as i64,
+                    y1 + (1 << 15) - ((chain_out[source] as i64) << 16)
+                );
+                assert_eq!(
+                    Fp::new(chained_raw[3 * entries + z]),
+                    Fp::from_i64(chain_out[source] as i64)
+                );
+            }
+        }
+        assert_eq!(gpu.download_device(&error, 0, 1).unwrap(), vec![0]);
+
+        gpu.free_lookup_columns(chained).unwrap();
+        gpu.free_device(dchain_out).unwrap();
+        gpu.free_device(dchain_acc).unwrap();
+        gpu.free_lookup_columns(pair).unwrap();
+        gpu.free_device(dpair_out).unwrap();
+        gpu.free_device(aux).unwrap();
+        gpu.free_device(leaf).unwrap();
+        gpu.free_device(histogram2).unwrap();
+        gpu.free_device(histogram).unwrap();
+        gpu.free_lookup_columns(columns).unwrap();
+        gpu.free_device(error).unwrap();
+        gpu.free_device(dout).unwrap();
+        gpu.free_device(dacc).unwrap();
     }
 
     #[test]

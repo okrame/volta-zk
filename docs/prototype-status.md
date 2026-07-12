@@ -56,6 +56,35 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-12 (`P7-integrated-resident` device lookup-instance checkpoint;
+  table-bank/layer integration still open)**: ABI v9 replaces the last
+  host-built lookup-side inputs with shape-parametric resident operations.
+  Requantization sites emit column-major proof columns directly from their
+  accumulator/output buffers (single and chained forms), pair-LUT sites emit
+  their two columns, and device histograms can be accumulated without a
+  round-trip. A typed `DeviceLookupColumns` owns the allocation and exposes
+  checked borrowed views; the protocol layer can pack `alpha_0 - f`, split
+  every base column into even/odd Fp2 aux halves, and run the existing resident
+  LogUp engine from that view. The source stays caller-owned. No raw pointer,
+  GPT-2 dimension, transcript challenge, proof byte or verifier-format change
+  enters the accelerator API.
+
+  On A100 `3mq19up4`, the primitive differential covers single/chained range
+  columns (including padded entries), pair columns, histograms plus in-device
+  accumulation, packed leaves and aux deinterleaving bit-for-bit. The new real
+  `blind_instance_prove_resident` gate uses a padded two-column range instance
+  with a non-empty externally authenticated aux claim: proof object, roots,
+  every open claim, product/zero rows, arithmetic counters, correlation
+  consumption and transcript ledger equal the CPU path exactly. A second run
+  reuses the same source/context with stable live allocation bytes; freeing the
+  source subtracts exactly its allocation while the context's intentional
+  workspace remains persistent. The earlier host-fed LogUp differential also
+  remains green, as do all 56 CPU `volta-proto` tests (full frozen model,
+  response proof and anti-replay included). This closes the lookup-side
+  resident input seam, **not** a layer/e2e gate: global table multiplicities
+  and table-side proofs still need resident ownership before wiring FFN and
+  attention.
+
 - **2026-07-12 (`P7-integrated-resident` protocol-algebra + chained-GEMM
   checkpoint; layer integration still open)**: ABI v8 introduces a sealed,
   typed resident field-algebra seam rather than GPT-specific proof kernels:

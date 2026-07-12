@@ -331,7 +331,8 @@ def measured_pcs_profiles(results: list[dict[str, Any]], baseline: dict[str, Any
         r
         for r in results
         if r.get("accepted") is True
-        and r.get("milestone") in {"P6", "P6-quick"}
+        and r.get("milestone")
+        in {"P6", "P6-quick", "P7-integrated-hybrid", "P7-integrated-hybrid-quick"}
         and "pcs_opening_bytes_total" in r
     ]
     for r in candidates:
@@ -751,9 +752,67 @@ def gpu_native_inference_profiles(results: list[dict[str, Any]]) -> list[dict[st
                 "parameters": kernel.get("parameters"),
                 "prefill_s": kernel.get("prefill_s"),
                 "decode_50_s": kernel.get("decode_50_s"),
+                "prefill_timing": kernel.get("prefill_timing"),
+                "decode_50_timing": kernel.get("decode_50_timing"),
+                "memory": kernel.get("memory"),
                 "prefill_argmax": kernel.get("prefill_argmax"),
                 "native_gpu_speedup": r.get("native_gpu_speedup"),
+                "report_schema_version": r.get("report_schema_version"),
                 "scope": r.get("scope"),
+            }
+        )
+    rows.sort(key=lambda x: (x["milestone"], x["_mtime"], x["source"]))
+    for row in rows:
+        row.pop("_mtime", None)
+    return rows
+
+
+def integrated_hybrid_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for r in results:
+        if r.get("milestone") not in {
+            "P7-integrated-hybrid",
+            "P7-integrated-hybrid-quick",
+        }:
+            continue
+        if not r.get("accepted") or r.get("accelerator_backend") != "cuda-hybrid":
+            continue
+        rows.append(
+            {
+                "_mtime": r["_mtime"],
+                "source": r["_path"],
+                "milestone": r.get("milestone"),
+                "git_dirty": r.get("git_dirty"),
+                "cloud": r.get("cloud"),
+                "report_schema_version": r.get("report_schema_version"),
+                "t_prefill": r.get("t_prefill"),
+                "n_decode": r.get("n_decode"),
+                "benchmark_warmup_repetitions": r.get("benchmark_warmup_repetitions"),
+                "benchmark_repetitions": r.get("benchmark_repetitions"),
+                "prove_prefill_s": r.get("t_prove_prefill_only_s"),
+                "prove_response_s": r.get("t_prove_response_s"),
+                "prove_decode_marginal_s": r.get("t_prove_decode_marginal_s"),
+                "prove_prefill_timing": r.get("prove_prefill_timing"),
+                "prove_response_timing": r.get("prove_response_timing"),
+                "prove_decode_marginal_timing": r.get("prove_decode_marginal_timing"),
+                "cpu_relative_rho": {
+                    "prefill": r.get("rho_prefill"),
+                    "decode": r.get("rho_decode"),
+                },
+                "golden_decode_checked": r.get("golden_decode_checked"),
+                "golden_decode_match": r.get("golden_decode_match"),
+                "flat_cost_last_over_first": r.get("curve_last_over_first"),
+                "flat_cost_gate": r.get("gate_flat_cost_per_token"),
+                "packed_response_bytes": r.get("total_response_download_packed_bytes"),
+                "pcs_commit_timing": r.get("pcs_commit_timing"),
+                "pcs_open_timing": r.get("pcs_open_timing"),
+                "pcs_verify_timing": r.get("pcs_verify_timing"),
+                "verify_response_timing": r.get("verify_response_timing"),
+                "accelerator_prefill": r.get("accelerator_prefill_proving"),
+                "accelerator_session": r.get("accelerator_proving"),
+                "peak_rss_gb": r.get("peak_rss_gb"),
+                "corr_sub_corrs": r.get("corr_sub_corrs"),
+                "corr_full_corrs": r.get("corr_full_corrs"),
             }
         )
     rows.sort(key=lambda x: (x["milestone"], x["_mtime"], x["source"]))
@@ -836,23 +895,68 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
     gpu_blake3 = gpu_blake3_merkle_profiles(results)
     full_gpu_blake3 = [r for r in gpu_blake3 if r["milestone"] == "P7-gpu-blake3-merkle"]
     gpu_blake3_record = full_gpu_blake3[-1] if full_gpu_blake3 else None
+    gpu_hybrid = integrated_hybrid_profiles(results)
+    full_gpu_hybrid = [
+        r
+        for r in gpu_hybrid
+        if r["milestone"] == "P7-integrated-hybrid" and not r.get("git_dirty", True)
+    ]
+    gpu_hybrid_record = full_gpu_hybrid[-1] if full_gpu_hybrid else None
     gpu_native = gpu_native_inference_profiles(results)
     full_gpu_native = [r for r in gpu_native if r["milestone"] == "P7-gpu-native-inference"]
-    gpu_native_record = full_gpu_native[-1] if full_gpu_native else None
+    if gpu_hybrid_record:
+        hybrid_instance = (gpu_hybrid_record.get("cloud") or {}).get("instance_id")
+        matching_native = [
+            r
+            for r in full_gpu_native
+            if (r.get("cloud") or {}).get("instance_id") == hybrid_instance
+        ]
+        gpu_native_record = matching_native[-1] if matching_native else None
+    else:
+        gpu_native_record = full_gpu_native[-1] if full_gpu_native else None
     gpu_budget = rho_model(baseline)
     required_prover_gpu_speedup = None
     if gpu_native_record:
-        relative = gpu_budget["required_relative_prover_vs_native_speedup"]
-        native = gpu_native_record["native_gpu_speedup"]
-        required_prover_gpu_speedup = {
-            phase: relative[phase] * native[phase] for phase in ("prefill", "decode")
-        }
         proof_only_budget = {
             "prefill_s": gpu_native_record["prefill_s"] * P7_RHO_TARGETS["prefill"],
             "decode_50_s": gpu_native_record["decode_50_s"] * P7_RHO_TARGETS["decode"],
         }
+        if (gpu_native_record.get("baseline") or {}).get("source") == baseline["_path"]:
+            relative = gpu_budget["required_relative_prover_vs_native_speedup"]
+            native = gpu_native_record["native_gpu_speedup"]
+            required_prover_gpu_speedup = {
+                phase: relative[phase] * native[phase] for phase in ("prefill", "decode")
+            }
     else:
         proof_only_budget = None
+    integrated_hybrid_rho = None
+    if gpu_hybrid_record and gpu_native_record:
+        measured = {
+            "prefill": gpu_hybrid_record["prove_prefill_s"] / gpu_native_record["prefill_s"],
+            "decode": gpu_hybrid_record["prove_decode_marginal_s"]
+            / gpu_native_record["decode_50_s"],
+        }
+        integrated_hybrid_rho = {
+            "same_instance": True,
+            "native_source": gpu_native_record["source"],
+            "proof_source": gpu_hybrid_record["source"],
+            "proof_rho": measured,
+            "targets": P7_RHO_TARGETS,
+            "target_met": {
+                phase: measured[phase] <= P7_RHO_TARGETS[phase]
+                for phase in ("prefill", "decode")
+            },
+            "required_speedup_from_hybrid_to_target": {
+                phase: measured[phase] / P7_RHO_TARGETS[phase]
+                for phase in ("prefill", "decode")
+            },
+            "inference_plus_proving_s": {
+                "prefill": gpu_native_record["prefill_s"]
+                + gpu_hybrid_record["prove_prefill_s"],
+                "decode_50": gpu_native_record["decode_50_s"]
+                + gpu_hybrid_record["prove_decode_marginal_s"],
+            },
+        }
     pcg_status = (
         "phase_b_measured_not_production"
         if real_pcg_b
@@ -883,12 +987,13 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
     }
 
     report = {
+        "report_schema_version": 2,
         "milestone": "P7",
         "date": _dt.date.today().isoformat(),
         "git_sha": git(["rev-parse", "--short", "HEAD"]),
         "git_dirty": git_dirty(),
         "machine": f"{platform.system().lower()} {platform.machine()}",
-        "cloud": baseline.get("cloud"),
+        "cloud": gpu_hybrid_record.get("cloud") if gpu_hybrid_record else baseline.get("cloud"),
         "baseline": {
             "source": baseline["_path"],
             "git_dirty": baseline.get("git_dirty"),
@@ -926,43 +1031,59 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
             "status": "measured_screening_pass" if gpu_roofline_record else "not_measured",
             "run_of_record": gpu_roofline_record,
             "profiles": gpu_rooflines,
-            "note": "Arithmetic roofline only; protocol kernels, integration, and e2e GPU rho remain open.",
+            "note": "Historical arithmetic screening; full hybrid integration is measured and the device-resident gate remains open.",
         },
         "gpu_fused_epilogue": {
             "status": "measured_gate_pass" if gpu_fused_record else "not_measured",
             "run_of_record": gpu_fused_record,
             "profiles": gpu_fused,
-            "note": "P1-equivalent spike with resident PCG masks; proving-path integration remains open.",
+            "note": "Historical P1-equivalent screening; hybrid proving integration landed, resident witness/proving remains open.",
         },
         "gpu_logup_tree": {
             "status": "measured_gate_pass" if gpu_logup_record else "not_measured",
             "run_of_record": gpu_logup_record,
             "profiles": gpu_logup,
-            "note": "Lookup-side tree build only; sumcheck round/fold kernels and integration remain open.",
+            "note": "Historical lookup-tree screening; rounds and hybrid proving integration are now measured separately.",
         },
         "gpu_logup_rounds": {
             "status": "measured_gate_pass" if gpu_logup_round_record else "not_measured",
             "run_of_record": gpu_logup_round_record,
             "profiles": gpu_logup_rounds,
-            "note": "Clear general rounds with per-round barriers; see the blind-round section for correction plumbing.",
+            "note": "Historical clear-round screening; see blind-round and integrated-hybrid sections for correction plumbing and e2e attribution.",
         },
         "gpu_logup_blind_rounds": {
             "status": "measured_gate_pass" if gpu_logup_blind_round_record else "not_measured",
             "run_of_record": gpu_logup_blind_round_record,
             "profiles": gpu_logup_blind_rounds,
-            "note": "General-layer root/round/split/product corrections measured with no extra rounds; aux-leaf corrections and proving-path integration remain open.",
+            "note": "Historical blind-round screening; aux leaves and corrections are covered by differential/full hybrid integration, resident buffers remain open.",
         },
         "gpu_pcs_arithmetic": {
             "status": "measured_gate_pass" if gpu_pcs_record else "not_measured",
             "run_of_record": gpu_pcs_record,
             "profiles": gpu_pcs,
-            "note": "P4_LAYER NTT + combine_rows only; masks and proving-path integration remain open.",
+            "note": "Historical arithmetic screening; mask rows and hybrid proving integration are covered by the integrated gate.",
         },
         "gpu_blake3_merkle": {
             "status": "measured_gate_pass" if gpu_blake3_record else "not_measured",
             "run_of_record": gpu_blake3_record,
             "profiles": gpu_blake3,
-            "note": "P4_LAYER column gather + exact BLAKE3/Merkle measured; mask rows and proving-path integration remain open.",
+            "note": "Historical gather/hash screening; mask rows and hybrid proving integration are covered by the integrated gate.",
+        },
+        "integrated_hybrid": {
+            "status": (
+                "measured_attribution_pass_resident_required"
+                if integrated_hybrid_rho
+                else "measured_without_same_host_native_anchor"
+                if gpu_hybrid_record
+                else "not_measured"
+            ),
+            "run_of_record": gpu_hybrid_record,
+            "profiles": gpu_hybrid,
+            "same_host_result": integrated_hybrid_rho,
+            "note": (
+                "Full staged integration preserves correctness, transcript, communication and flat-cost gates, "
+                "but H2D/D2H plus CPU residual dominate. This is the attribution gate, not the resident paper result."
+            ),
         },
         "gpu_native_inference": {
             "status": "measured_exact_golden_pass" if gpu_native_record else "not_measured",
@@ -970,7 +1091,7 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
             "profiles": gpu_native,
             "required_prover_gpu_speedup_vs_cpu": required_prover_gpu_speedup,
             "proof_only_budget": proof_only_budget,
-            "note": "Exact fixed-point full-model prefill and KV decode anchor; weights resident, per-token logits D2H + argmax included, proving path not integrated.",
+            "note": "Exact fixed-point full-model prefill and KV decode anchor paired by instance; weights resident, cache-seeding prefill excluded from decode, per-token logits D2H + argmax included.",
         },
         "real_pcg_spike": {
             "status": pcg_status,
@@ -983,7 +1104,11 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
         },
         "go_no_go": {
             "local_recommendation": (
-                "proceed-to-integrated-gpu-prover-measurement"
+                "proceed-to-device-resident-prover-integration"
+                if integrated_hybrid_rho
+                else "measure-same-host-native-gpu-anchor"
+                if gpu_hybrid_record
+                else "proceed-to-integrated-gpu-prover-measurement"
                 if gpu_native_record
                 else "proceed-to-proving-path-integration-and-native-gpu-anchor"
                 if gpu_logup_blind_round_record
@@ -1002,15 +1127,25 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
                 else "conditional-go-to-cloud-spikes-only"
             ),
             "summary": (
-                "Communication is inside the 150-200 MB envelope after the shipped logits packing, "
-                "PCS projections retain headroom, and the A100 Goldilocks/Fp2 arithmetic roofline passes screening. "
-                "A final rho decision still requires fused proving kernels and a native GPU inference anchor."
+                "Communication, golden decode, verifier and flat-cost gates pass in the full CUDA-hybrid path. "
+                "Same-host attribution shows staged transfers and CPU residual dominate by orders of magnitude; "
+                "the preregistered resident witness/proving path is required before the final rho go/no-go."
+                if integrated_hybrid_rho
+                else "Communication is inside the 150-200 MB envelope, but a final rho decision still requires same-host integrated proving and native GPU measurements."
             ),
-            "remaining_before_final_go_no_go": [
-                "aux-leaf/column blind corrections integrated without extra transcript rounds",
-                "measured GPU kernels integrated into the proving path without extra transcript passes",
-                "GPU path passes golden decode, flat-cost, and anti-replay gates",
-            ],
+            "remaining_before_final_go_no_go": (
+                [
+                    "device-resident witness consumed directly by the prover without full host materialization",
+                    "resident forward/proving share persistent buffers and transfer only protocol messages",
+                    "resident 1-warmup/3-repetition full gate passes rho<=10/<=2 with the existing correctness and communication gates",
+                ]
+                if integrated_hybrid_rho
+                else [
+                    "same-host native GPU and integrated proving measurements",
+                    "device-resident witness/proving path",
+                    "golden decode, flat-cost, anti-replay and communication gates",
+                ]
+            ),
         },
     }
     return report
@@ -1175,10 +1310,30 @@ def print_summary(report: dict[str, Any]) -> None:
             f"decode50={native_gpu['decode_50_s'] * 1e3:.2f} ms "
             f"({native_gpu['native_gpu_speedup']['decode']:.2f}x CPU) {native_gpu['source']}"
         )
+        if targets:
+            print(
+                f"  required integrated prover speedup vs CPU: "
+                f"prefill {targets['prefill']:.2f}x, decode {targets['decode']:.2f}x"
+            )
+        print()
+    hybrid = report.get("integrated_hybrid", {}).get("run_of_record")
+    hybrid_rho = report.get("integrated_hybrid", {}).get("same_host_result")
+    if hybrid:
+        print("Integrated CUDA-hybrid prover")
         print(
-            f"  required integrated prover speedup vs CPU: "
-            f"prefill {targets['prefill']:.2f}x, decode {targets['decode']:.2f}x"
+            f"  proof prefill={hybrid['prove_prefill_s']:.3f}s; "
+            f"decode marginal={hybrid['prove_decode_marginal_s']:.3f}s; "
+            f"flat={hybrid['flat_cost_last_over_first']:.3f}; "
+            f"packed={mb(hybrid['packed_response_bytes']):.2f} MB {hybrid['source']}"
         )
+        if hybrid_rho:
+            measured = hybrid_rho["proof_rho"]
+            gap = hybrid_rho["required_speedup_from_hybrid_to_target"]
+            print(
+                f"  same-host proof rho: prefill {measured['prefill']:.2f}, "
+                f"decode {measured['decode']:.2f}; resident gap to target "
+                f"{gap['prefill']:.2f}x/{gap['decode']:.2f}x"
+            )
         print()
     decode_profiles = report.get("decode_marginal_profiles") or []
     if decode_profiles:

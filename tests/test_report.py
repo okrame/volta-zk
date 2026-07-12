@@ -37,7 +37,8 @@ def test_p7_report_selects_record_and_packed_sources():
     assert data["pcs_formula_check"]["matches_p6_measured_bytes"] is True
     assert data["baseline"]["source"].endswith("p6-2026-07-11-f72e4dd.json")
     assert data["baseline"]["cloud"]["provider"] == "Thunder Compute"
-    assert data["cloud"] == data["baseline"]["cloud"]
+    assert data["cloud"]["instance_id"] == "3mq19up4"
+    assert data["cloud"] != data["baseline"]["cloud"]
     assert data["communication"]["packed_logits_source"].endswith("p6-2026-07-11-f72e4dd.json")
     required = data["gpu_budget_model"]["required_relative_prover_vs_native_speedup"]
     assert 2.051 < required["prefill"] < 2.052
@@ -108,19 +109,31 @@ def test_p7_report_selects_record_and_packed_sources():
         for row in data["gpu_logup_blind_rounds"]["profiles"]
     )
     native = data["gpu_native_inference"]["run_of_record"]
-    assert native["source"].endswith("p7-gpu-native-inference-2026-07-11-c06f323.json")
+    assert native["source"].endswith("p7-gpu-native-inference-2026-07-12-faa7667.json")
     assert native["correctness"] is True
     assert native["golden_match"] is True
-    assert native["prefill_s"] == 0.017663136
-    assert native["decode_50_s"] == 0.633894507
-    assert native["native_gpu_speedup"]["prefill"] == 56.36387892840773
-    assert native["native_gpu_speedup"]["decode"] == 2.728360443104455
+    assert native["prefill_s"] == 0.020929462
+    assert native["decode_50_s"] == 0.770044957
+    assert native["prefill_timing"]["mad_s"] == 0.000388815
+    assert native["decode_50_timing"]["mad_s"] == 0.008648443
+    assert native["memory"]["peak_device_bytes"] == 258_181_700
+    assert native["native_gpu_speedup"]["prefill"] == 53.54229554491177
+    assert native["native_gpu_speedup"]["decode"] == 2.9007435003564344
     prover_targets = data["gpu_native_inference"]["required_prover_gpu_speedup_vs_cpu"]
-    assert prover_targets["prefill"] == 115.61633928425845
-    assert prover_targets["decode"] == 11.314079219493856
-    assert data["gpu_native_inference"]["proof_only_budget"]["prefill_s"] == 0.17663136
+    assert prover_targets is None  # aggregate P6 baseline is a different instance
+    assert data["gpu_native_inference"]["proof_only_budget"]["prefill_s"] == 0.20929462
+    hybrid = data["integrated_hybrid"]["run_of_record"]
+    assert hybrid["source"].endswith("p7-integrated-hybrid-2026-07-12-706d067.json")
+    assert hybrid["golden_decode_match"] is True
+    assert hybrid["flat_cost_gate"] is True
+    assert hybrid["packed_response_bytes"] == 144_820_930
+    same_host = data["integrated_hybrid"]["same_host_result"]
+    assert same_host["same_instance"] is True
+    assert abs(same_host["proof_rho"]["prefill"] - 2008.58387043107) < 1e-9
+    assert abs(same_host["proof_rho"]["decode"] - 28.53693406240955) < 1e-9
+    assert same_host["target_met"] == {"prefill": False, "decode": False}
     assert data["go_no_go"]["local_recommendation"] == (
-        "proceed-to-integrated-gpu-prover-measurement"
+        "proceed-to-device-resident-prover-integration"
     )
     q150 = [
         row

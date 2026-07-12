@@ -23,7 +23,7 @@ CPU numbers validate architecture and counts; the P7 ρ targets (≤2 decode,
 | P4 LogUp + fused blocks | **done** (2026-07-05) | one full layer proved+verified e2e (T=100, real PCS opening) ✓ **PASSED**; counts within 20% ✓ (witness streams = budget **exactly**, padded LogUp domains explained); LogUp ≤8–10 E-mult/lookup: **MISSED, motivated (12.20)**; 1 weight claim/tensor ✓ (4/layer) | prove 0.800 s vs native forward 0.033 s (ρ_layer ~24, 4 cores); verify 0.041 s; LogUp lookup-side **12.20 E-mult/lookup** (~34 ns/lookup, 5.4× vs P2.5 spike wall), table-side 3.86 raw → 0.32 /12-amortized; full instance cost 126.5 M E-mult/layer (≈42/padded lookup incl. aux folding + tables + closures); corr bytes 7.64 MB/layer (mult vectors 3.87 MB — see deviations); layer PCS 2^24: commit 0.34 s one-off, **open 0.035 s**, verify 0.006 s; projections (P3.5 cost model, 49/98 claims): prefill **0.233 s**, per-response **0.345 s**. Run of record `benchmarks/results/p4-2026-07-06-8b4ca11.json` (clean tree, `git_dirty:false`; the 07-05 JSON was a dirty-tree run whose sha names the parent commit) |
 | P5 GPT-2 e2e prefill 100 tok | **done** (2026-07-06) | one-command run ✓ (`scripts/run_prefill.sh`), golden check ✓ (full logits bit-exact vs numpy at T=100, argmax 835 ' way'), counts vs budget: witness lookups = budget **exactly** (16,944,000) ✓ | **accepted e2e with real weights + 13 real Ligero commitments**: native (witness) 0.459 s, prove 11.0–11.2 s, **ρ ≈ 24** (matches P4's ×12 projection); verify 0.65 s + 0.07 s PCS; PCS open **0.73 s** / 52.8 MB (vs 0.237 s projection — 13× fixed costs, see deviations), commit one-off 7.6 s; **comm 159.6 MB/prefill** (mult vectors 59.4 + PCS 52.8 + boundary 36.9 + rest), projected response 212 MB; E-mult all-in 100.6/budget lookup; peak RSS 2.86 GB. `benchmarks/results/p5-2026-07-06-e52ce79.json` (clean tree) |
 | P6 decode + authenticated KV cache | **done** (2026-07-07) | flat cost/token ✓ **PASSED** (curve last/first 1.12 ≤ 1.5, 5×10 chunks, cache 100→150); anti-replay smoke ✓ (prefill-row replay + position swap rejected); golden decode ✓ (50 tokens bit-exact vs numpy) | **accepted e2e, prompt 100 + 50 decode, one two-phase session, real 13-commitment PCS with STACKED claims (96 weight + 6 embed)**: native decode 30.9 tok/s (KV-cached baseline); prove_response 18.7 s = prefill 10.5 s + **decode marginal 8.2 s (0.164 s/token, ρ_decode 5.07 CPU)**; verified 2.67 tok/s; verify 0.57 s + 0.10 s PCS. Comm: transcript 137.4 MB (prefill 48.4 + PCS opening 66.7 + decode marginal 22.3 = **445 KB/token**) + public band logits 20.5 MB → **total response download 157.9 MB** (inside the 150–200 MB product envelope; the PCS opening is now the dominant lever, P7). Shared-α restructure landed with P6: mult corr 59.4 → 2.85 MB. PCS commit one-off 9.5 s; peak RSS 3.47 GB. `benchmarks/results/p6-2026-07-07-515bb1c.json` (clean tree) |
-| P7 report + GPU budget model | **integrated-hybrid quick correctness + phase timing passed; complete host residual open** (2026-07-12) | report/PCG/cloud anchors ✓; exact native GPU anchor ✓; integrated CPU/CUDA differential + fault/reuse/anti-replay ✓; clean hybrid quick accepted and flat-cost ✓; nonzero H2D/kernel/D2H timing ✓; whole-session CPU residual **BLOCKED**; full hybrid and resident open | ABI-v2 clean quick T=16+8/Q=200 on `3mq19up4`: prove prefill **11.022 s**, response **16.683 s**, flat last/first **0.765**, packed response **82.282 MB**. Host-barrier timing attributes the staged session to 6.655 s H2D + 0.331 s kernels + 21.985 s D2H + 2.177 s operation-local CPU, with 7,791 counted barriers and 4.312 GB peak device allocation. Roughly 23.0 s of Rust/PCS session wall remains outside operation-local residual accounting; add measurement-wall closure before the full hybrid gate. `benchmarks/results/p7-integrated-hybrid-quick-2026-07-12-8f0eb17.json`. |
+| P7 report + GPU budget model | **integrated-hybrid quick attribution passed; repeated full workload open** (2026-07-12) | report/PCG/cloud anchors ✓; exact native GPU anchor ✓; integrated CPU/CUDA differential + fault/reuse/anti-replay ✓; clean hybrid quick accepted and flat-cost ✓; exact whole-session H2D/kernel/D2H/CPU closure ✓; per-repetition dispersion **BLOCKED**; full hybrid and resident open | Clean T=16+8/Q=200 wall-closure run on `3mq19up4`: 98.7219 s session = **25.0867 H2D + 46.5694 D2H + 1.2931 kernels + 25.7727 CPU**, 17.763/5.538 GB transferred, 7,791 counted barriers, 4.312 GB peak device allocation; accepted, flat last/first **1.039**, packed response **82.282 MB**. Same-host transfer times varied >2× across quick runs, so no speed or rho claim is valid without repetitions/dispersion. `benchmarks/results/p7-integrated-hybrid-quick-2026-07-12-d0de22c.json`. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -55,6 +55,24 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-12 (`P7-integrated-hybrid-quick` whole-session attribution
+  landed)**: clean run
+  `benchmarks/results/p7-integrated-hybrid-quick-2026-07-12-d0de22c.json`
+  closes the accelerator measurement exactly: 98.721858941 s wall =
+  25.086696863 s H2D + 46.569393394 s D2H + 1.293115331 s kernels +
+  25.772653353 s CPU residual. The latter is explicitly split into 2.130 s
+  local to staged operations and 23.643 s Rust work outside backend calls;
+  the JSON declares its scope as `response-session-including-pcs-and-verifier`
+  to prevent double counting with the separate verifier lines. The run is
+  accepted, Q=200 communication is unchanged, flat last/first is 1.039, and
+  peak live device allocation is 4,311,678,976 bytes. This satisfies the
+  hybrid quick correctness/attribution purpose, not the paper e2e gate.
+  Same-host D2H phase time changed from 21.985 s in the immediately preceding
+  clean quick to 46.569 s here (H2D 6.655 -> 25.087 s), while bytes and calls
+  were identical. Therefore a single full sample would be non-publishable:
+  add per-repetition raw times plus median/dispersion before running the full
+  T=100+50 hybrid workload. Quick-shape rho remains explicitly non-record.
 
 - **2026-07-12 (`P7-integrated-hybrid-quick` ABI-v2 phase timing landed;
   whole-session residual open)**: clean rerun

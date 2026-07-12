@@ -190,6 +190,34 @@ type Fp2DeinterleaveDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, usize, u64, usize, u64, usize) -> c_int;
 type LogupSuffixEqDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, usize, u64, usize) -> c_int;
+type Fp2FoldRowsDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, usize, usize, Fp2Repr, u64, usize) -> c_int;
+type LogupEqRowsDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, usize, usize, u64, usize) -> c_int;
+type LogupAuxRoundDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    usize,
+    usize,
+    Fp2Repr,
+    Fp2Repr,
+    Fp2Repr,
+    *mut Fp2Repr,
+) -> c_int;
 type HashFpColumns = unsafe extern "C" fn(*mut c_void, *const u64, usize, usize, *mut u8) -> c_int;
 type PcsCombineRows = unsafe extern "C" fn(
     *mut c_void,
@@ -239,6 +267,9 @@ struct Api {
     logup_fold4_device: LogupFold4Device,
     fp2_deinterleave_device: Fp2DeinterleaveDevice,
     logup_suffix_eq_device: LogupSuffixEqDevice,
+    fp2_fold_rows_device: Fp2FoldRowsDevice,
+    logup_eq_rows_device: LogupEqRowsDevice,
+    logup_aux_round_device: LogupAuxRoundDevice,
     pcs_combine_rows: PcsCombineRows,
     pcs_gather_columns: PcsGatherColumns,
     hash_fp_columns: HashFpColumns,
@@ -335,6 +366,15 @@ impl CudaContext {
             },
             logup_suffix_eq_device: unsafe {
                 load_symbol(handle, b"volta_cuda_logup_suffix_eq_device\0")?
+            },
+            fp2_fold_rows_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fp2_fold_rows_device\0")?
+            },
+            logup_eq_rows_device: unsafe {
+                load_symbol(handle, b"volta_cuda_logup_eq_rows_device\0")?
+            },
+            logup_aux_round_device: unsafe {
+                load_symbol(handle, b"volta_cuda_logup_aux_round_device\0")?
             },
             pcs_combine_rows: unsafe { load_symbol(handle, b"volta_cuda_pcs_combine_rows\0")? },
             pcs_gather_columns: unsafe { load_symbol(handle, b"volta_cuda_pcs_gather_columns\0")? },
@@ -856,6 +896,112 @@ impl CudaContext {
                 output_offset,
             )
         })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn fp2_fold_rows_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        rows: usize,
+        len: usize,
+        r: Fp2,
+        output: u64,
+        output_offset: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all opaque ids and typed ranges.
+        self.check(unsafe {
+            (self.api.fp2_fold_rows_device)(
+                self.raw,
+                input,
+                input_offset,
+                rows,
+                len,
+                r.into(),
+                output,
+                output_offset,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn logup_eq_rows_device(
+        &mut self,
+        points: u64,
+        points_offset: usize,
+        rows: usize,
+        dims: usize,
+        output: u64,
+        output_offset: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all opaque ids and typed ranges.
+        self.check(unsafe {
+            (self.api.logup_eq_rows_device)(
+                self.raw,
+                points,
+                points_offset,
+                rows,
+                dims,
+                output,
+                output_offset,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn logup_aux_round_device(
+        &mut self,
+        q0: u64,
+        q0_offset: usize,
+        q1: u64,
+        q1_offset: usize,
+        suffix: u64,
+        suffix_offset: usize,
+        columns: u64,
+        columns_offset: usize,
+        eq: u64,
+        eq_offset: usize,
+        claim_cols: u64,
+        claim_cols_offset: usize,
+        weights: u64,
+        weights_offset: usize,
+        column_count: usize,
+        claim_count: usize,
+        vector_len: usize,
+        lambda: Fp2,
+        cpref: Fp2,
+        point: Fp2,
+    ) -> Result<[Fp2; 3], AccelError> {
+        let mut output = [Fp2Repr::default(); 3];
+        // SAFETY: Backend validates all opaque ids and typed ranges; output is
+        // exactly the degree-3 protocol message and the ABI synchronizes it.
+        self.check(unsafe {
+            (self.api.logup_aux_round_device)(
+                self.raw,
+                q0,
+                q0_offset,
+                q1,
+                q1_offset,
+                suffix,
+                suffix_offset,
+                columns,
+                columns_offset,
+                eq,
+                eq_offset,
+                claim_cols,
+                claim_cols_offset,
+                weights,
+                weights_offset,
+                column_count,
+                claim_count,
+                vector_len,
+                lambda.into(),
+                cpref.into(),
+                point.into(),
+                output.as_mut_ptr(),
+            )
+        })?;
+        Ok(output.map(Into::into))
     }
 
     pub(super) fn hash_fp_columns(

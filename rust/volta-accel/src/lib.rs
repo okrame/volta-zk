@@ -17,7 +17,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 4;
+pub const CUDA_ABI_VERSION: u32 = 5;
 pub const OPERATION_COUNT: usize = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1084,6 +1084,166 @@ impl Backend {
             return Err(error);
         }
         Ok(output)
+    }
+
+    /// Fold `rows` independent resident Fp2 vectors of equal even length.
+    pub fn fp2_fold_rows_device(
+        &mut self,
+        input: &DeviceBuffer<Fp2Repr>,
+        input_offset: usize,
+        rows: usize,
+        len: usize,
+        r: Fp2,
+    ) -> Result<DeviceBuffer<Fp2Repr>, AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        let _ = r;
+        self.validate_buffer(input)?;
+        if rows == 0 || len < 2 || len % 2 != 0 {
+            return Err(AccelError::InvalidInput("invalid resident row-fold geometry"));
+        }
+        validate_region(input.len, input_offset, checked_product(rows, len)?)?;
+        let output = self.alloc_device(checked_product(rows, len / 2)?)?;
+        #[cfg(feature = "cuda")]
+        let result = self.cuda.as_mut().expect("CUDA kind without context").fp2_fold_rows_device(
+            input.id,
+            input_offset,
+            rows,
+            len,
+            r,
+            output.id,
+            0,
+        );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
+    }
+
+    /// Build `rows` full equality tables from row-major resident points.
+    pub fn logup_eq_rows_device(
+        &mut self,
+        points: Option<&DeviceBuffer<Fp2Repr>>,
+        rows: usize,
+        dims: usize,
+    ) -> Result<DeviceBuffer<Fp2Repr>, AccelError> {
+        if rows == 0 || dims >= usize::BITS as usize {
+            return Err(AccelError::InvalidInput("invalid resident eq-row geometry"));
+        }
+        match (dims, points) {
+            (0, None) => {}
+            (0, Some(points)) => self.validate_buffer(points)?,
+            (_, Some(points)) => {
+                self.validate_buffer(points)?;
+                validate_region(points.len, 0, checked_product(rows, dims)?)?;
+            }
+            (_, None) => {
+                return Err(AccelError::InvalidInput(
+                    "non-empty equality rows require resident points",
+                ));
+            }
+        }
+        let width = 1usize << dims;
+        let output = self.alloc_device(checked_product(rows, width)?)?;
+        #[cfg(feature = "cuda")]
+        let result = self.cuda.as_mut().expect("CUDA kind without context").logup_eq_rows_device(
+            points.map_or(0, |p| p.id),
+            0,
+            rows,
+            dims,
+            output.id,
+            0,
+        );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
+    }
+
+    /// Evaluate one aux leaf round while q vectors, aux columns and equality
+    /// rows stay resident. Only `[g(0), g(2), g(3)]` is returned.
+    #[allow(clippy::too_many_arguments)]
+    pub fn logup_aux_round_device(
+        &mut self,
+        q0: &DeviceBuffer<Fp2Repr>,
+        q1: &DeviceBuffer<Fp2Repr>,
+        suffix: &DeviceBuffer<Fp2Repr>,
+        suffix_offset: usize,
+        columns: &DeviceBuffer<Fp2Repr>,
+        eq_rows: Option<&DeviceBuffer<Fp2Repr>>,
+        claim_cols: Option<&DeviceBuffer<u32>>,
+        weights: Option<&DeviceBuffer<Fp2Repr>>,
+        column_count: usize,
+        claim_count: usize,
+        vector_len: usize,
+        lambda: Fp2,
+        cpref: Fp2,
+        point: Fp2,
+    ) -> Result<[Fp2; 3], AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        let _ = (lambda, cpref, point);
+        for buffer in [q0, q1, columns] {
+            self.validate_buffer(buffer)?;
+        }
+        self.validate_buffer(suffix)?;
+        if column_count == 0 || vector_len < 2 || vector_len % 2 != 0 {
+            return Err(AccelError::InvalidInput("invalid resident aux-round geometry"));
+        }
+        validate_region(q0.len, 0, vector_len)?;
+        validate_region(q1.len, 0, vector_len)?;
+        validate_region(suffix.len, suffix_offset, vector_len / 2)?;
+        validate_region(columns.len, 0, checked_product(2 * column_count, vector_len)?)?;
+        let optional_ids = if claim_count == 0 {
+            (0, 0, 0)
+        } else {
+            let eq_rows =
+                eq_rows.ok_or(AccelError::InvalidInput("missing resident aux eq rows"))?;
+            let claim_cols =
+                claim_cols.ok_or(AccelError::InvalidInput("missing resident aux column ids"))?;
+            let weights =
+                weights.ok_or(AccelError::InvalidInput("missing resident aux weights"))?;
+            self.validate_buffer(eq_rows)?;
+            self.validate_buffer(claim_cols)?;
+            self.validate_buffer(weights)?;
+            validate_region(eq_rows.len, 0, checked_product(claim_count, vector_len)?)?;
+            validate_region(claim_cols.len, 0, claim_count)?;
+            validate_region(weights.len, 0, checked_product(2, claim_count)?)?;
+            (eq_rows.id, claim_cols.id, weights.id)
+        };
+        #[cfg(not(feature = "cuda"))]
+        let _ = optional_ids;
+        #[cfg(feature = "cuda")]
+        {
+            return self.cuda.as_mut().expect("CUDA kind without context").logup_aux_round_device(
+                q0.id,
+                0,
+                q1.id,
+                0,
+                suffix.id,
+                suffix_offset,
+                columns.id,
+                0,
+                optional_ids.0,
+                0,
+                optional_ids.1,
+                0,
+                optional_ids.2,
+                0,
+                column_count,
+                claim_count,
+                vector_len,
+                lambda,
+                cpref,
+                point,
+            );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
     }
 
     pub fn hash_fp_columns(

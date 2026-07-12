@@ -13,7 +13,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 4;
+constexpr uint32_t ABI_VERSION = 5;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -587,6 +587,104 @@ __global__ void suffix_eq_expand(
     output[2 * i + 1] = v1;
 }
 
+__global__ void fp2_fold_rows(
+    const Fp2* input, Fp2* output, size_t rows, size_t pairs, Fp2 r) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z >= rows * pairs) return;
+    const size_t row = z / pairs;
+    const size_t i = z - row * pairs;
+    const Fp2* src = input + row * (2 * pairs);
+    const Fp2 a = src[2 * i];
+    output[z] = fp2_add(a, fp2_mul(fp2_sub(src[2 * i + 1], a), r));
+}
+
+__global__ void eq_rows_init(Fp2* output, size_t rows) {
+    const size_t row = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (row < rows) output[row] = Fp2{1, 0};
+}
+
+__global__ void eq_rows_expand(
+    const Fp2* input, Fp2* output, const Fp2* points, size_t rows,
+    size_t dims, size_t dim, size_t current) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z >= rows * current) return;
+    const size_t row = z / current;
+    const size_t i = z - row * current;
+    const Fp2 v = input[row * current + i];
+    const Fp2 v1 = fp2_mul(v, points[row * dims + dim]);
+    output[row * (2 * current) + 2 * i] = fp2_sub(v, v1);
+    output[row * (2 * current) + 2 * i + 1] = v1;
+}
+
+struct AuxRoundAcc {
+    Fp2 pq0, pq2, pq3, qq0, qq2, qq3, aux0, aux2, aux3;
+};
+
+__host__ __device__ inline AuxRoundAcc aux_acc_add(AuxRoundAcc a, AuxRoundAcc b) {
+    return AuxRoundAcc{
+        fp2_add(a.pq0,b.pq0),fp2_add(a.pq2,b.pq2),fp2_add(a.pq3,b.pq3),
+        fp2_add(a.qq0,b.qq0),fp2_add(a.qq2,b.qq2),fp2_add(a.qq3,b.qq3),
+        fp2_add(a.aux0,b.aux0),fp2_add(a.aux2,b.aux2),fp2_add(a.aux3,b.aux3)};
+}
+
+__host__ __device__ inline Fp2 at3(Fp2 a, Fp2 b) {
+    const Fp2 d = fp2_sub(b, a);
+    return fp2_add(fp2_add(fp2_add(a, d), d), d);
+}
+
+__global__ void logup_aux_round_eval(
+    const Fp2* q0, const Fp2* q1, const Fp2* suffix,
+    const Fp2* columns, const Fp2* eq_rows, const uint32_t* claim_cols,
+    const Fp2* weights, size_t column_count, size_t claim_count,
+    size_t vector_len, size_t pairs, AuxRoundAcc* output) {
+    const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (i >= pairs) return;
+    const Fp2 c0=q0[2*i], c2=at2(c0,q0[2*i+1]), c3=at3(c0,q0[2*i+1]);
+    const Fp2 d0=q1[2*i], d2=at2(d0,q1[2*i+1]), d3=at3(d0,q1[2*i+1]);
+    const Fp2 s=suffix[i];
+    AuxRoundAcc acc{};
+    acc.pq0=fp2_mul(s,fp2_add(c0,d0));acc.pq2=fp2_mul(s,fp2_add(c2,d2));
+    acc.pq3=fp2_mul(s,fp2_add(c3,d3));acc.qq0=fp2_mul(s,fp2_mul(c0,d0));
+    acc.qq2=fp2_mul(s,fp2_mul(c2,d2));acc.qq3=fp2_mul(s,fp2_mul(c3,d3));
+    for(size_t k=0;k<claim_count;++k){
+        const size_t col=claim_cols[k];
+        if(col>=column_count)continue;
+        const Fp2* v0=columns+(2*col)*vector_len;
+        const Fp2* v1=columns+(2*col+1)*vector_len;
+        const Fp2* eq=eq_rows+k*vector_len;
+        const Fp2 v00=v0[2*i],v02=at2(v00,v0[2*i+1]),v03=at3(v00,v0[2*i+1]);
+        const Fp2 v10=v1[2*i],v12=at2(v10,v1[2*i+1]),v13=at3(v10,v1[2*i+1]);
+        const Fp2 e0=eq[2*i],e2=at2(e0,eq[2*i+1]),e3=at3(e0,eq[2*i+1]);
+        const Fp2 w0=weights[2*k],w1=weights[2*k+1];
+        acc.aux0=fp2_add(acc.aux0,fp2_mul(e0,fp2_add(fp2_mul(w0,v00),fp2_mul(w1,v10))));
+        acc.aux2=fp2_add(acc.aux2,fp2_mul(e2,fp2_add(fp2_mul(w0,v02),fp2_mul(w1,v12))));
+        acc.aux3=fp2_add(acc.aux3,fp2_mul(e3,fp2_add(fp2_mul(w0,v03),fp2_mul(w1,v13))));
+    }
+    output[i]=acc;
+}
+
+__global__ void reduce_aux_round(const AuxRoundAcc* input, AuxRoundAcc* output, size_t n) {
+    __shared__ AuxRoundAcc shared[BLOCK];
+    const size_t i=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
+    shared[threadIdx.x]=i<n?input[i]:AuxRoundAcc{};__syncthreads();
+    for(int stride=BLOCK/2;stride;stride>>=1){if(threadIdx.x<stride)
+        shared[threadIdx.x]=aux_acc_add(shared[threadIdx.x],shared[threadIdx.x+stride]);__syncthreads();}
+    if(threadIdx.x==0)output[blockIdx.x]=shared[0];
+}
+
+__global__ void assemble_aux_round(
+    const AuxRoundAcc* input, Fp2* output, Fp2 lambda, Fp2 cpref, Fp2 point) {
+    if(blockIdx.x||threadIdx.x)return;const AuxRoundAcc a=input[0];
+    const Fp2 l0=fp2_sub(Fp2{1,0},point);
+    const Fp2 l2=fp2_sub(fp2_add(fp2_add(point,point),point),Fp2{1,0});
+    const Fp2 fivep=fp2_add(fp2_add(fp2_add(point,point),fp2_add(point,point)),point);
+    const Fp2 l3=fp2_sub(fivep,Fp2{2,0});
+    const Fp2 pq[3]={a.pq0,a.pq2,a.pq3},qq[3]={a.qq0,a.qq2,a.qq3};
+    const Fp2 aux[3]={a.aux0,a.aux2,a.aux3},ell[3]={l0,l2,l3};
+    for(int i=0;i<3;++i)output[i]=fp2_add(
+        fp2_mul(ell[i],fp2_mul(cpref,fp2_add(fp2_mul(lambda,pq[i]),qq[i]))),aux[i]);
+}
+
 // -------------------------------------------------------------------------
 // PCS row combinations and selected-column gather
 // -------------------------------------------------------------------------
@@ -1145,6 +1243,106 @@ extern "C" int volta_cuda_logup_suffix_eq_device(
     CUDA_OR_RETURN(c, cudaPeekAtLastError());
     if (mark_timing(c, 2)) return -1;
     return finish_timing(c, OP_LOGUP, 0, 0);
+}
+
+extern "C" int volta_cuda_fp2_fold_rows_device(
+    void* raw, uint64_t input_id, size_t input_offset, size_t rows, size_t len,
+    Fp2 r, uint64_t output_id, size_t output_offset) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !rows || len < 2 || (len & 1))
+        return fail_message(c, "invalid resident row-fold geometry");
+    const size_t pairs = len / 2;
+    void *input = nullptr, *output = nullptr;
+    if (resident_region(c, input_id, input_offset * sizeof(Fp2),
+                        rows * len * sizeof(Fp2), &input) ||
+        resident_region(c, output_id, output_offset * sizeof(Fp2),
+                        rows * pairs * sizeof(Fp2), &output))
+        return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    fp2_fold_rows<<<(rows * pairs + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const Fp2*>(input), static_cast<Fp2*>(output), rows, pairs, r);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_LOGUP, 0, 0);
+}
+
+extern "C" int volta_cuda_logup_eq_rows_device(
+    void* raw, uint64_t points_id, size_t points_offset, size_t rows, size_t dims,
+    uint64_t output_id, size_t output_offset) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !rows || dims >= 63 || (dims && !points_id))
+        return fail_message(c, "invalid resident eq-row geometry");
+    const size_t width = size_t{1} << dims, total = rows * width;
+    void *points = nullptr, *output = nullptr;
+    if ((dims && resident_region(c, points_id, points_offset * sizeof(Fp2),
+                                 rows * dims * sizeof(Fp2), &points)) ||
+        resident_region(c, output_id, output_offset * sizeof(Fp2),
+                        total * sizeof(Fp2), &output))
+        return -1;
+    if (ensure(c, 8, total * sizeof(Fp2))) return -1;
+    Fp2* final_out = static_cast<Fp2*>(output);
+    Fp2* in = final_out;
+    Fp2* out = buf<Fp2>(c, 8);
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    eq_rows_init<<<(rows + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(in, rows);
+    size_t current = 1;
+    for (size_t dim = dims; dim-- > 0;) {
+        eq_rows_expand<<<(rows * current + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+            in, out, static_cast<const Fp2*>(points), rows, dims, dim, current);
+        current *= 2;
+        std::swap(in, out);
+    }
+    if (in != final_out)
+        CUDA_OR_RETURN(c, cudaMemcpyAsync(final_out, in, total * sizeof(Fp2),
+                                          cudaMemcpyDeviceToDevice, c->stream));
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_LOGUP, 0, 0);
+}
+
+extern "C" int volta_cuda_logup_aux_round_device(
+    void* raw, uint64_t q0_id, size_t q0_offset, uint64_t q1_id, size_t q1_offset,
+    uint64_t suffix_id, size_t suffix_offset, uint64_t columns_id, size_t columns_offset,
+    uint64_t eq_id, size_t eq_offset, uint64_t claim_cols_id, size_t claim_cols_offset,
+    uint64_t weights_id, size_t weights_offset, size_t column_count, size_t claim_count,
+    size_t vector_len, Fp2 lambda, Fp2 cpref, Fp2 point, Fp2* output) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !output || !column_count || vector_len < 2 || (vector_len & 1))
+        return fail_message(c, "invalid resident aux-round geometry");
+    const size_t pairs = vector_len / 2;
+    void *q0 = nullptr, *q1 = nullptr, *suffix = nullptr, *columns = nullptr;
+    void *eq = nullptr, *claim_cols = nullptr, *weights = nullptr;
+    if (resident_region(c,q0_id,q0_offset*sizeof(Fp2),vector_len*sizeof(Fp2),&q0) ||
+        resident_region(c,q1_id,q1_offset*sizeof(Fp2),vector_len*sizeof(Fp2),&q1) ||
+        resident_region(c,suffix_id,suffix_offset*sizeof(Fp2),pairs*sizeof(Fp2),&suffix) ||
+        resident_region(c,columns_id,columns_offset*sizeof(Fp2),
+                        2*column_count*vector_len*sizeof(Fp2),&columns) ||
+        (claim_count && resident_region(c,eq_id,eq_offset*sizeof(Fp2),
+                                       claim_count*vector_len*sizeof(Fp2),&eq)) ||
+        (claim_count && resident_region(c,claim_cols_id,claim_cols_offset*sizeof(uint32_t),
+                                       claim_count*sizeof(uint32_t),&claim_cols)) ||
+        (claim_count && resident_region(c,weights_id,weights_offset*sizeof(Fp2),
+                                       2*claim_count*sizeof(Fp2),&weights)))
+        return -1;
+    const size_t bytes=pairs*sizeof(AuxRoundAcc);
+    if(ensure(c,12,bytes)||ensure(c,13,bytes)||ensure(c,14,3*sizeof(Fp2)))return -1;
+    if(begin_timing(c))return -1;if(mark_timing(c,1))return -1;
+    logup_aux_round_eval<<<(pairs+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+        static_cast<const Fp2*>(q0),static_cast<const Fp2*>(q1),
+        static_cast<const Fp2*>(suffix),static_cast<const Fp2*>(columns),
+        static_cast<const Fp2*>(eq),static_cast<const uint32_t*>(claim_cols),
+        static_cast<const Fp2*>(weights),column_count,claim_count,vector_len,pairs,
+        buf<AuxRoundAcc>(c,12));
+    size_t count=pairs;AuxRoundAcc* in=buf<AuxRoundAcc>(c,12);AuxRoundAcc* out=buf<AuxRoundAcc>(c,13);
+    while(count>1){const size_t blocks=(count+BLOCK-1)/BLOCK;
+        reduce_aux_round<<<blocks,BLOCK,0,c->stream>>>(in,out,count);count=blocks;std::swap(in,out);}
+    assemble_aux_round<<<1,1,0,c->stream>>>(in,buf<Fp2>(c,14),lambda,cpref,point);
+    CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
+    CUDA_OR_RETURN(c,cudaMemcpyAsync(output,buf<Fp2>(c,14),3*sizeof(Fp2),
+                                     cudaMemcpyDeviceToHost,c->stream));
+    return finish_timing(c,OP_LOGUP,0,3*sizeof(Fp2));
 }
 
 extern "C" int volta_cuda_pcs_combine_rows(void* raw,const int16_t* weights,const uint64_t* pads,

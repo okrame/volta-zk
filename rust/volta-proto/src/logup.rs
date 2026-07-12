@@ -935,7 +935,7 @@ fn prove_engine_resident_from_host_leaves(
             assert!(matches!(leaf_p, LeafP::Ones), "aux folding is lookup-side only");
             let ax = aux.as_deref_mut().unwrap();
             let (rprime, splits, colsp, finals) =
-                layer_leaf_ones_aux(leaf_q, ax, &point, sink, ctr);
+                layer_leaf_ones_aux_resident(&dleaf, leaf_q, ax, &point, sink, ctr, backend);
             let t = sink.splits_aux(splits, &colsp, &finals);
             point = std::iter::once(t).chain(rprime).collect();
             continue;
@@ -988,6 +988,245 @@ fn prove_engine_resident_from_host_leaves(
     backend.free_device(tree_q).expect("resident LogUp q-tree free");
     backend.free_device(tree_p).expect("resident LogUp p-tree free");
     (root_p, root_q, point)
+}
+
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn layer_leaf_ones_aux_resident(
+    dleaf: &DeviceBuffer<u64>,
+    leaf_q: &LeafQ,
+    ax: &mut LeafAux,
+    point: &[Fp2],
+    sink: &mut impl Sink,
+    ctr: &mut Counters,
+    backend: &mut Backend,
+) -> (Vec<Fp2>, [Fp2; 4], Vec<[Fp2; 2]>, Vec<AuxFinal>) {
+    let lambda = sink.lambda();
+    let claim_values: Vec<ProverAuthed> = ax.claims.iter().map(|c| c.value).collect();
+    let mus = sink.aux_mus(&claim_values);
+    let l = point.len();
+    let n = leaf_q.a.len();
+    let vector_len = n / 2;
+    assert_eq!(vector_len, 1usize << l);
+    for claim in &ax.claims {
+        assert_eq!(claim.point.len(), l + 1, "aux claim dimension mismatch");
+        assert!(claim.col < ax.cols.len(), "aux claim column out of range");
+    }
+
+    let weights_host: Vec<(Fp2, Fp2)> = ax
+        .claims
+        .iter()
+        .zip(&mus)
+        .map(|(claim, &mu)| (mu * (Fp2::ONE - claim.point[0]), mu * claim.point[0]))
+        .collect();
+    ctr.bulk(2 * weights_host.len() as u64, 0);
+
+    let mut columns_raw = Vec::with_capacity(2 * ax.cols.len() * vector_len);
+    for col in &ax.cols {
+        assert_eq!(col.half0.len(), vector_len);
+        assert_eq!(col.half1.len(), vector_len);
+        columns_raw.extend(col.half0.iter().copied().map(Fp2Repr::from));
+        columns_raw.extend(col.half1.iter().copied().map(Fp2Repr::from));
+    }
+    let mut columns = backend
+        .upload_new_device(&columns_raw)
+        .unwrap_or_else(|e| panic!("resident LogUp aux-column upload failed: {e}"));
+
+    let claim_count = ax.claims.len();
+    let claim_points = if claim_count > 0 && l > 0 {
+        let raw: Vec<Fp2Repr> = ax
+            .claims
+            .iter()
+            .flat_map(|claim| claim.point[1..].iter().copied().map(Fp2Repr::from))
+            .collect();
+        Some(
+            backend
+                .upload_new_device(&raw)
+                .unwrap_or_else(|e| panic!("resident LogUp aux-point upload failed: {e}")),
+        )
+    } else {
+        None
+    };
+    let mut eq_rows = if claim_count > 0 {
+        Some(
+            backend
+                .logup_eq_rows_device(claim_points.as_ref(), claim_count, l)
+                .unwrap_or_else(|e| panic!("resident LogUp aux-eq build failed: {e}")),
+        )
+    } else {
+        None
+    };
+    ctr.bulk((claim_count * vector_len) as u64, 0);
+
+    let claim_cols = if claim_count > 0 {
+        let raw: Vec<u32> = ax.claims.iter().map(|claim| claim.col as u32).collect();
+        Some(
+            backend
+                .upload_new_device(&raw)
+                .unwrap_or_else(|e| panic!("resident LogUp aux-column-id upload failed: {e}")),
+        )
+    } else {
+        None
+    };
+    let weights = if claim_count > 0 {
+        let raw: Vec<Fp2Repr> = weights_host
+            .iter()
+            .flat_map(|&(w0, w1)| [Fp2Repr::from(w0), Fp2Repr::from(w1)])
+            .collect();
+        Some(
+            backend
+                .upload_new_device(&raw)
+                .unwrap_or_else(|e| panic!("resident LogUp aux-weight upload failed: {e}")),
+        )
+    } else {
+        None
+    };
+
+    let (leaf_p_device, leaf_q_device) = backend
+        .logup_materialize_leaves_device(dleaf, 0, leaf_q.alpha1, None, n)
+        .unwrap_or_else(|e| panic!("resident LogUp aux-leaf materialization failed: {e}"));
+    backend.free_device(leaf_p_device).expect("resident LogUp aux leaf-p free");
+    let (mut q0, mut q1) = backend
+        .fp2_deinterleave_device(&leaf_q_device, 0, vector_len)
+        .unwrap_or_else(|e| panic!("resident LogUp aux q deinterleave failed: {e}"));
+    backend.free_device(leaf_q_device).expect("resident LogUp aux leaf-q free");
+
+    let point_device = if l > 0 {
+        let raw: Vec<Fp2Repr> = point.iter().copied().map(Fp2Repr::from).collect();
+        Some(
+            backend
+                .upload_new_device(&raw)
+                .unwrap_or_else(|e| panic!("resident LogUp aux challenge upload failed: {e}")),
+        )
+    } else {
+        None
+    };
+    let suffix = point_device.as_ref().map(|points| {
+        backend
+            .logup_suffix_eq_device(points, 0, l)
+            .unwrap_or_else(|e| panic!("resident LogUp aux suffix build failed: {e}"))
+    });
+    if l > 1 {
+        ctr.bulk((1usize << (l - 1)) as u64 - 1, 0);
+    }
+
+    let mut cpref = Fp2::ONE;
+    let mut rprime = Vec::with_capacity(l);
+    let mut current_len = vector_len;
+    for (j, &pt_j) in point.iter().enumerate() {
+        let half = current_len / 2;
+        if j == 0 {
+            ctr.bulk(0, 24 * half as u64);
+        } else {
+            ctr.bulk(9 * half as u64, 0);
+        }
+        ctr.bulk(9 * half as u64 * claim_count as u64, 0);
+        ctr.bulk(9, 0);
+        let suffix_offset = (1usize << (l - 1 - j)) - 1;
+        let g = backend
+            .logup_aux_round_device(
+                &q0,
+                &q1,
+                suffix.as_ref().expect("aux round without suffix table"),
+                suffix_offset,
+                &columns,
+                eq_rows.as_ref(),
+                claim_cols.as_ref(),
+                weights.as_ref(),
+                ax.cols.len(),
+                claim_count,
+                current_len,
+                lambda,
+                cpref,
+                pt_j,
+            )
+            .unwrap_or_else(|e| panic!("resident LogUp aux round failed: {e}"));
+        let r = sink.round3(g, pt_j);
+
+        let next_q0 = backend
+            .fp2_fold_rows_device(&q0, 0, 1, current_len, r)
+            .unwrap_or_else(|e| panic!("resident LogUp aux q0 fold failed: {e}"));
+        let next_q1 = backend
+            .fp2_fold_rows_device(&q1, 0, 1, current_len, r)
+            .unwrap_or_else(|e| panic!("resident LogUp aux q1 fold failed: {e}"));
+        let next_columns = backend
+            .fp2_fold_rows_device(&columns, 0, 2 * ax.cols.len(), current_len, r)
+            .unwrap_or_else(|e| panic!("resident LogUp aux column fold failed: {e}"));
+        let next_eq = eq_rows.as_ref().map(|eq| {
+            backend
+                .fp2_fold_rows_device(eq, 0, claim_count, current_len, r)
+                .unwrap_or_else(|e| panic!("resident LogUp aux eq fold failed: {e}"))
+        });
+        backend.free_device(q0).expect("resident LogUp aux old-q0 free");
+        backend.free_device(q1).expect("resident LogUp aux old-q1 free");
+        backend.free_device(columns).expect("resident LogUp aux old-columns free");
+        if let Some(eq) = eq_rows {
+            backend.free_device(eq).expect("resident LogUp aux old-eq free");
+        }
+        q0 = next_q0;
+        q1 = next_q1;
+        columns = next_columns;
+        eq_rows = next_eq;
+
+        if j == 0 {
+            ctr.bulk(2, 4 * half as u64);
+        } else {
+            ctr.bulk(2 * half as u64 + 2, 0);
+        }
+        ctr.bulk(2 * half as u64 * ax.cols.len() as u64, 0);
+        ctr.bulk(half as u64 * claim_count as u64, 0);
+        let pr = pt_j * r;
+        cpref = cpref * (pr + pr - pt_j - r + Fp2::ONE);
+        rprime.push(r);
+        current_len = half;
+    }
+    assert_eq!(current_len, 1);
+
+    let q0_final: Fp2 =
+        backend.download_device(&q0, 0, 1).expect("resident LogUp aux q0 split")[0].into();
+    let q1_final: Fp2 =
+        backend.download_device(&q1, 0, 1).expect("resident LogUp aux q1 split")[0].into();
+    let col_values: Vec<Fp2> = backend
+        .download_device(&columns, 0, 2 * ax.cols.len())
+        .expect("resident LogUp aux column splits")
+        .into_iter()
+        .map(Into::into)
+        .collect();
+    let colsp: Vec<[Fp2; 2]> = col_values.chunks_exact(2).map(|c| [c[0], c[1]]).collect();
+    let finals: Vec<AuxFinal> = ax
+        .claims
+        .iter()
+        .zip(&weights_host)
+        .map(|(claim, &(w0, w1))| AuxFinal {
+            col: claim.col,
+            w0,
+            w1,
+            eq_r: crate::mle::eq_points(&claim.point[1..], &rprime),
+        })
+        .collect();
+    ctr.bulk(2 * l as u64 * finals.len() as u64, 0);
+
+    backend.free_device(columns).expect("resident LogUp aux columns free");
+    backend.free_device(q1).expect("resident LogUp aux q1 free");
+    backend.free_device(q0).expect("resident LogUp aux q0 free");
+    if let Some(eq) = eq_rows {
+        backend.free_device(eq).expect("resident LogUp aux eq free");
+    }
+    if let Some(buffer) = weights {
+        backend.free_device(buffer).expect("resident LogUp aux weights free");
+    }
+    if let Some(buffer) = claim_cols {
+        backend.free_device(buffer).expect("resident LogUp aux column ids free");
+    }
+    if let Some(buffer) = suffix {
+        backend.free_device(buffer).expect("resident LogUp aux suffix free");
+    }
+    if let Some(buffer) = point_device {
+        backend.free_device(buffer).expect("resident LogUp aux challenges free");
+    }
+    if let Some(buffer) = claim_points {
+        backend.free_device(buffer).expect("resident LogUp aux points free");
+    }
+    (rprime, [Fp2::ONE, Fp2::ONE, q0_final, q1_final], colsp, finals)
 }
 
 #[derive(Clone, Copy)]
@@ -3267,7 +3506,19 @@ mod tests {
 
         let run_aux = |backend: Option<&mut Backend>| {
             let q = lift_q_fp(&vals, alpha);
-            let mut aux = LeafAux { cols: vec![aux_col(&vals)], claims: Vec::new() };
+            let point: Vec<Fp2> = (0..10)
+                .map(|i| Fp2::new(Fp::new(i as u64 * 101 + 7), Fp::new(i as u64 * 127 + 11)))
+                .collect();
+            let lifted: Vec<Fp2> = vals.iter().copied().map(Fp2::from_base).collect();
+            let value = crate::mle::eval_mle(&lifted, &point);
+            let mut aux = LeafAux {
+                cols: vec![aux_col(&vals)],
+                claims: vec![LeafAuxClaim {
+                    col: 0,
+                    point,
+                    value: ProverAuthed::from_public(value),
+                }],
+            };
             let mut stream = CorrelationStream::new([51; 32]);
             let mut doms = Doms::new(0x5100);
             let mut tx = Transcript::new([52; 32]);
@@ -3301,6 +3552,16 @@ mod tests {
         assert_eq!(got_resident, expected);
         let got_aux_resident = run_aux(Some(&mut resident));
         assert_eq!(got_aux_resident, expected_aux);
+        let live_after_first = resident.stats().unwrap().live_device_bytes;
+        let got_resident_reused = run(Some(&mut resident));
+        let got_aux_resident_reused = run_aux(Some(&mut resident));
+        assert_eq!(got_resident_reused, expected);
+        assert_eq!(got_aux_resident_reused, expected_aux);
+        assert_eq!(
+            resident.stats().unwrap().live_device_bytes,
+            live_after_first,
+            "resident LogUp leaked across context reuse"
+        );
         let resident_stats = resident.finish_measurement().unwrap();
         assert!(resident_stats.operation(Operation::Logup).calls > 0);
         assert_eq!(resident_stats.operation(Operation::Logup).cpu_residual_ns, 0);

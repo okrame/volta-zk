@@ -33,7 +33,9 @@ use crate::merkle::{hash_leaf, verify_path, Hash, MerkleTree};
 use crate::ntt::NttPlan;
 use rayon::prelude::*;
 use std::time::Instant;
-use volta_accel::{AccelError, Backend, BackendKind, Operation};
+use volta_accel::{
+    AccelError, Backend, BackendKind, DeviceBuffer, DeviceMerkleTree, Fp2Repr, Operation,
+};
 use volta_field::{Fp, Fp2, FpStream};
 use volta_mac::{
     fresh_zero_mask, zero_batch_prover, zero_batch_verify, zero_mask_key, zero_open_prover,
@@ -91,6 +93,17 @@ pub struct ProverMatrix {
     tree: MerkleTree,
 }
 
+/// Device-owned commitment state. It is intentionally distinct from
+/// [`ProverMatrix`]: no host encoded matrix or host Merkle tree exists, and
+/// callers must explicitly return it to the creating backend for cleanup.
+pub struct ResidentProverMatrix {
+    pub params: LigeroParams,
+    weights: DeviceBuffer<i16>,
+    pads: DeviceBuffer<u64>,
+    encoded: DeviceBuffer<u64>,
+    tree: DeviceMerkleTree,
+}
+
 fn col_bytes(col: &[Fp]) -> Vec<u8> {
     let mut b = Vec::with_capacity(col.len() * 8);
     for v in col {
@@ -117,6 +130,86 @@ pub fn commit_with_backend(
         ));
     }
     commit_impl(w, params, pad_seed, Some(backend))
+}
+
+/// Host-fed resident commitment checkpoint. Weights and deterministic pad
+/// rows are uploaded once; message construction, batched NTT, column hashes
+/// and every Merkle parent remain device-side. Only the public root returns.
+pub fn commit_resident(
+    w: &[i16],
+    params: &LigeroParams,
+    pad_seed: [u8; 32],
+    backend: &mut Backend,
+) -> Result<(Commitment, ResidentProverMatrix), AccelError> {
+    if backend.kind() != BackendKind::CudaResident {
+        return Err(AccelError::InvalidInput(
+            "resident PCS commitment requires the cuda-resident backend",
+        ));
+    }
+    params.validate();
+    let (rows, cols, pad, code_len) = (params.rows(), params.cols(), params.pad, params.code_len());
+    if w.len() != rows * cols {
+        return Err(AccelError::InvalidInput("resident PCS weight geometry mismatch"));
+    }
+    let pads_host: Vec<Fp> = (0..rows)
+        .into_par_iter()
+        .flat_map_iter(|row| {
+            let mut stream = FpStream::domain_separated(pad_seed, row as u64);
+            (0..pad).map(move |_| stream.next_fp()).collect::<Vec<_>>()
+        })
+        .collect();
+    let pads_raw: Vec<u64> = pads_host.iter().map(|x| x.value()).collect();
+    let weights = backend.upload_new_device(w)?;
+    let pads = match backend.upload_new_device(&pads_raw) {
+        Ok(pads) => pads,
+        Err(error) => {
+            let _ = backend.free_device(weights);
+            return Err(error);
+        }
+    };
+    let messages =
+        match backend.pcs_messages_device(&weights, 0, &pads, 0, rows, cols, pad, code_len) {
+            Ok(messages) => messages,
+            Err(error) => {
+                let _ = backend.free_device(pads);
+                let _ = backend.free_device(weights);
+                return Err(error);
+            }
+        };
+    let encoded = match backend.ntt_fp_batch_device(&messages, 0, rows, code_len) {
+        Ok(encoded) => encoded,
+        Err(error) => {
+            let _ = backend.free_device(messages);
+            let _ = backend.free_device(pads);
+            let _ = backend.free_device(weights);
+            return Err(error);
+        }
+    };
+    backend.free_device(messages)?;
+    let tree = match backend.hash_fp_tree_device(&encoded, rows, code_len) {
+        Ok(tree) => tree,
+        Err(error) => {
+            let _ = backend.free_device(encoded);
+            let _ = backend.free_device(pads);
+            let _ = backend.free_device(weights);
+            return Err(error);
+        }
+    };
+    let root = backend.merkle_root_device(&tree)?;
+    Ok((
+        Commitment { root },
+        ResidentProverMatrix { params: *params, weights, pads, encoded, tree },
+    ))
+}
+
+pub fn free_resident_matrix(
+    pm: ResidentProverMatrix,
+    backend: &mut Backend,
+) -> Result<(), AccelError> {
+    backend.free_device_merkle_tree(pm.tree)?;
+    backend.free_device(pm.encoded)?;
+    backend.free_device(pm.pads)?;
+    backend.free_device(pm.weights)
 }
 
 fn commit_impl(
@@ -684,6 +777,222 @@ pub fn open_multi_zk_with_backend(
         return Err(AccelError::InvalidInput("host ProverMatrix opening is the CUDA hybrid gate"));
     }
     open_multi_zk_impl(w, pm, claims, stream, dom_s, dom_zb, mask_seed, tx, Some(backend))
+}
+
+/// Multi-claim opening over a resident commitment state. All large matrices,
+/// NTTs, row combinations, gathers and both Merkle trees stay on the device;
+/// D2H consists only of proof fields (roots, u-vectors, queried columns and
+/// sibling paths). Transcript/challenge orchestration remains in Rust.
+#[allow(clippy::too_many_arguments)]
+pub fn open_multi_zk_resident(
+    pm: &ResidentProverMatrix,
+    claims: &[(BlockClaim, ProverAuthed)],
+    stream: &mut CorrelationStream,
+    dom_s: u64,
+    dom_zb: u64,
+    mask_seed: [u8; 32],
+    tx: &mut Transcript,
+    backend: &mut Backend,
+) -> Result<(MultiOpenProof, MultiOpenTimings), AccelError> {
+    if backend.kind() != BackendKind::CudaResident {
+        return Err(AccelError::InvalidInput(
+            "resident PCS opening requires the cuda-resident backend",
+        ));
+    }
+    let params = &pm.params;
+    let (rows, cols, msg_len, code_len) =
+        (params.rows(), params.cols(), params.msg_len(), params.code_len());
+    let n_claims = claims.len();
+    if n_claims == 0 {
+        return Err(AccelError::InvalidInput("resident PCS opening needs a claim"));
+    }
+    let geoms: Vec<ClaimGeom> = claims.iter().map(|(claim, _)| claim_geom(params, claim)).collect();
+    let mut tm = MultiOpenTimings::default();
+
+    // 1. Fresh mask rows. Generation remains deterministic host setup in this
+    // checkpoint; padded rows, NTT and the complete mask Merkle tree are
+    // resident. The compact copy feeds row-combination masking directly.
+    let t0 = Instant::now();
+    let masks: Vec<Vec<Fp2>> = (0..=n_claims)
+        .into_par_iter()
+        .map(|g| {
+            let mut generator = FpStream::domain_separated(mask_seed, g as u64);
+            (0..msg_len).map(|_| generator.next_fp2()).collect()
+        })
+        .collect();
+    let mask_rows = n_claims + 1;
+    let mut mask_padded = vec![Fp2Repr::default(); mask_rows * code_len];
+    let mut mask_compact = Vec::with_capacity(mask_rows * msg_len);
+    for (row, mask) in masks.iter().enumerate() {
+        let raw: Vec<Fp2Repr> = mask.iter().copied().map(Fp2Repr::from).collect();
+        mask_padded[row * code_len..row * code_len + msg_len].copy_from_slice(&raw);
+        mask_compact.extend_from_slice(&raw);
+    }
+    let mask_messages = backend.upload_new_device(&mask_padded)?;
+    let mask_compact_device = backend.upload_new_device(&mask_compact)?;
+    let mask_encoded = backend.ntt_fp2_batch_device(&mask_messages, 0, mask_rows, code_len)?;
+    backend.free_device(mask_messages)?;
+    let mask_tree = backend.hash_fp2_tree_device(&mask_encoded, mask_rows, code_len)?;
+    let mask_root = backend.merkle_root_device(&mask_tree)?;
+    tx.append("pcs_mask_root", 32);
+    tm.t_masks_s = t0.elapsed().as_secs_f64();
+
+    // 2. Proximity challenge and one resident global row pass.
+    let c = tx.challenge_fp2();
+    let mut c_pows = Vec::with_capacity(rows);
+    let mut acc = Fp2::ONE;
+    for _ in 0..rows {
+        acc = acc * c;
+        c_pows.push(acc);
+    }
+    let t1 = Instant::now();
+    let c_raw: Vec<Fp2Repr> = c_pows.iter().copied().map(Fp2Repr::from).collect();
+    let c_device = backend.upload_new_device(&c_raw)?;
+    let u_c_device = backend.pcs_combine_rows_device(
+        &pm.weights,
+        0,
+        &pm.pads,
+        0,
+        &c_device,
+        0,
+        rows,
+        cols,
+        params.pad,
+        1,
+    )?;
+    backend.fp2_add_inplace_device(&u_c_device, 0, &mask_compact_device, 0, msg_len)?;
+    let u_c: Vec<Fp2> =
+        backend.download_device(&u_c_device, 0, msg_len)?.into_iter().map(Into::into).collect();
+    backend.free_device(u_c_device)?;
+    backend.free_device(c_device)?;
+    tm.t_global_pass_s = t1.elapsed().as_secs_f64();
+
+    // 3. All block-local claim combinations in one resident pass.
+    let t2 = Instant::now();
+    let mut coeffs = vec![Fp2::ZERO; n_claims * rows];
+    for (g, geo) in geoms.iter().enumerate() {
+        coeffs[g * rows + geo.row0..g * rows + geo.row0 + geo.q_row.len()]
+            .copy_from_slice(&geo.q_row);
+    }
+    let coeff_raw: Vec<Fp2Repr> = coeffs.into_iter().map(Fp2Repr::from).collect();
+    let coeff_device = backend.upload_new_device(&coeff_raw)?;
+    let u_g_device = backend.pcs_combine_rows_device(
+        &pm.weights,
+        0,
+        &pm.pads,
+        0,
+        &coeff_device,
+        0,
+        rows,
+        cols,
+        params.pad,
+        n_claims,
+    )?;
+    backend.fp2_add_inplace_device(
+        &u_g_device,
+        0,
+        &mask_compact_device,
+        msg_len,
+        n_claims * msg_len,
+    )?;
+    let u_g_flat: Vec<Fp2> = backend
+        .download_device(&u_g_device, 0, n_claims * msg_len)?
+        .into_iter()
+        .map(Into::into)
+        .collect();
+    let u_gs: Vec<Vec<Fp2>> = u_g_flat.chunks_exact(msg_len).map(|row| row.to_vec()).collect();
+    backend.free_device(u_g_device)?;
+    backend.free_device(coeff_device)?;
+    backend.free_device(mask_compact_device)?;
+    tx.append("pcs_u_vectors", 16 * (msg_len * (n_claims + 1)) as u64);
+    tm.t_block_passes_s = t2.elapsed().as_secs_f64();
+
+    // 4. Authenticated s_g and the unchanged zero-batch closure.
+    let t3 = Instant::now();
+    let fcs = stream.draw_fulls(dom_s, n_claims);
+    let mut corr_ss = Vec::with_capacity(n_claims);
+    let mut zs = Vec::with_capacity(n_claims);
+    for (g, geo) in geoms.iter().enumerate() {
+        let s_val = (0..cols).fold(Fp2::ZERO, |sum, j| sum + masks[1 + g][j] * geo.q_col[j]);
+        corr_ss.push(s_val - fcs[g].x);
+        let s_auth = ProverAuthed { x: s_val, m: fcs[g].m };
+        let ip = (0..cols).fold(Fp2::ZERO, |sum, j| sum + u_gs[g][j] * geo.q_col[j]);
+        zs.push(claims[g].1.add(s_auth).sub(ProverAuthed::from_public(ip)));
+    }
+    tx.append("pcs_s_corrections", 16 * n_claims as u64);
+    let zb_corr = stream.draw_fulls(dom_zb, 1)[0];
+    let (zb_mask, mask_corr) = fresh_zero_mask(zb_corr, tx);
+    let chi = tx.challenge_fp2();
+    let m_z = zero_batch_prover(&zs, &zb_mask, chi, tx);
+    tm.t_ip_zb_s = t3.elapsed().as_secs_f64();
+
+    // 5. Shared query columns and Merkle paths. Indices are transcript
+    // messages; everything they select remains resident until the final proof
+    // payload is downloaded.
+    let t4 = Instant::now();
+    let js: Vec<usize> =
+        (0..params.n_queries).map(|_| tx.challenge_fp2().c0.value() as usize % code_len).collect();
+    let indices_raw: Vec<u32> = js.iter().map(|&j| j as u32).collect();
+    let indices = backend.upload_new_device(&indices_raw)?;
+    let data_columns_device =
+        backend.pcs_gather_fp_device(&pm.encoded, rows, code_len, &indices, js.len())?;
+    let mask_columns_device =
+        backend.pcs_gather_fp2_device(&mask_encoded, mask_rows, code_len, &indices, js.len())?;
+    let data_paths_device = backend.merkle_paths_device(&pm.tree, &indices, js.len())?;
+    let mask_paths_device = backend.merkle_paths_device(&mask_tree, &indices, js.len())?;
+    let data_columns: Vec<Fp> = backend
+        .download_device(&data_columns_device, 0, js.len() * rows)?
+        .into_iter()
+        .map(Fp::new)
+        .collect();
+    let mask_columns: Vec<Fp2> = backend
+        .download_device(&mask_columns_device, 0, js.len() * mask_rows)?
+        .into_iter()
+        .map(Into::into)
+        .collect();
+    let path_len = params.code_bits as usize;
+    let data_path_bytes =
+        backend.download_device(&data_paths_device, 0, js.len() * path_len * 32)?;
+    let mask_path_bytes =
+        backend.download_device(&mask_paths_device, 0, js.len() * path_len * 32)?;
+    let decode_path = |bytes: &[u8], query: usize| -> Vec<Hash> {
+        (0..path_len)
+            .map(|level| {
+                let offset = (query * path_len + level) * 32;
+                bytes[offset..offset + 32].try_into().unwrap()
+            })
+            .collect()
+    };
+    let columns: Vec<MultiColumnOpening> = js
+        .iter()
+        .enumerate()
+        .map(|(q, &j)| MultiColumnOpening {
+            j: j as u32,
+            col: data_columns[q * rows..(q + 1) * rows].to_vec(),
+            mask_col: mask_columns[q * mask_rows..(q + 1) * mask_rows].to_vec(),
+            path: decode_path(&data_path_bytes, q),
+            mask_path: decode_path(&mask_path_bytes, q),
+        })
+        .collect();
+    backend.free_device(mask_paths_device)?;
+    backend.free_device(data_paths_device)?;
+    backend.free_device(mask_columns_device)?;
+    backend.free_device(data_columns_device)?;
+    backend.free_device(indices)?;
+    backend.free_device_merkle_tree(mask_tree)?;
+    backend.free_device(mask_encoded)?;
+    let col_b: u64 = columns
+        .iter()
+        .map(|column| {
+            4 + 8 * column.col.len() as u64
+                + 16 * column.mask_col.len() as u64
+                + 32 * (column.path.len() + column.mask_path.len()) as u64
+        })
+        .sum();
+    tx.append("pcs_columns", col_b);
+    tm.t_columns_s = t4.elapsed().as_secs_f64();
+
+    Ok((MultiOpenProof { mask_root, u_c, u_gs, corr_ss, mask_corr, m_z, columns }, tm))
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -13,7 +13,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 5;
+constexpr uint32_t ABI_VERSION = 6;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -447,6 +447,33 @@ __global__ void ntt_stage_fp_batch(
     values[i1] = fp_sub(u, v);
 }
 
+__global__ void bit_reverse_fp2_batch(
+    const Fp2* in, Fp2* out, size_t rows, size_t n, int bits) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z >= rows * n) return;
+    const size_t row = z / n;
+    const size_t i = z - row * n;
+    out[row * n + (__brevll(i) >> (64 - bits))] = in[z];
+}
+
+__global__ void ntt_stage_fp2_batch(
+    Fp2* values, const uint64_t* tw, size_t rows, size_t n, size_t len) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    const size_t per_row = n / 2;
+    if (z >= rows * per_row) return;
+    const size_t row = z / per_row;
+    const size_t i = z - row * per_row;
+    const size_t half = len / 2;
+    const size_t group = i / half;
+    const size_t k = i - group * half;
+    const size_t i0 = row * n + group * len + k;
+    const size_t i1 = i0 + half;
+    const Fp2 u = values[i0];
+    const Fp2 v = fp2_mul_base(values[i1], tw[k * (n / len)]);
+    values[i0] = fp2_add(u, v);
+    values[i1] = fp2_sub(u, v);
+}
+
 int ensure_twiddles(Context* c, size_t n, uint64_t* h2d) {
     if (ensure(c, 11, (n / 2) * sizeof(uint64_t))) return -1;
     if (c->twiddle_size == n) return 0;
@@ -693,6 +720,21 @@ __host__ __device__ inline uint64_t fp_from_i16(int16_t x) {
     return x >= 0 ? static_cast<uint64_t>(x) : P - static_cast<uint64_t>(-static_cast<int64_t>(x));
 }
 
+__global__ void pcs_messages_kernel(
+    const int16_t* weights,const uint64_t* pads,uint64_t* messages,
+    size_t rows,size_t cols,size_t pad,size_t code_len){
+    const size_t z=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(z>=rows*code_len)return;const size_t row=z/code_len,j=z-row*code_len;
+    if(j<cols)messages[z]=fp_from_i16(weights[row*cols+j]);
+    else if(j<cols+pad)messages[z]=pads[row*pad+j-cols];
+    else messages[z]=0;
+}
+
+__global__ void fp2_add_inplace_kernel(Fp2* target,const Fp2* add,size_t n){
+    const size_t i=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(i<n)target[i]=fp2_add(target[i],add[i]);
+}
+
 __global__ void pcs_combine_rows_kernel(
     const int16_t* weights, const uint64_t* pads, const Fp2* coeffs, Fp2* out,
     size_t rows, size_t cols, size_t pad, size_t combinations) {
@@ -718,6 +760,14 @@ __global__ void gather_columns_kernel(
     const size_t q = z / rows;
     const size_t i = z - q * rows;
     out[z] = matrix[i * cols + indices[q]];
+}
+
+__global__ void gather_fp2_columns_kernel(
+    const Fp2* matrix,const uint32_t* indices,Fp2* out,
+    size_t rows,size_t cols,size_t queries){
+    const size_t z=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(z>=rows*queries)return;const size_t q=z/rows,i=z-q*rows;
+    out[z]=matrix[i*cols+indices[q]];
 }
 
 // -------------------------------------------------------------------------
@@ -773,20 +823,37 @@ __host__ __device__ HashOutput parent_output(Hash32 l,Hash32 r) {
     HashOutput o{};for(int i=0;i<8;++i){o.cv[i]=iv(i);o.block[i]=l.w[i];o.block[8+i]=r.w[i];}
     o.block_len=64;o.flags=PARENT;return o;
 }
-__device__ HashOutput chunk_output_column(const uint64_t* matrix,size_t rows,size_t cols,size_t col,size_t chunk) {
+__device__ uint64_t column_word(
+    const uint64_t* matrix,size_t cols,size_t col,size_t word,size_t words_per_value) {
+    const size_t row=word/words_per_value,part=word-row*words_per_value;
+    if(words_per_value==1)return matrix[row*cols+col];
+    const Fp2 x=reinterpret_cast<const Fp2*>(matrix)[row*cols+col];
+    return part?x.c1:x.c0;
+}
+__device__ HashOutput chunk_output_column_words(
+    const uint64_t* matrix,size_t total_words,size_t cols,size_t col,size_t chunk,
+    size_t words_per_value) {
     HashOutput o{};uint32_t cv[8];for(int i=0;i<8;++i)cv[i]=iv(i);
-    const size_t row0=chunk*128, take=min(size_t{128},rows-row0);const int blocks=take/8;
-    for(int b=0;b<blocks;++b){uint32_t words[16];for(int i=0;i<8;++i){
-        const uint64_t x=matrix[(row0+b*8+i)*cols+col];words[2*i]=x;words[2*i+1]=x>>32;}
+    const size_t word0=chunk*128,take=min(size_t{128},total_words-word0);
+    const int blocks=(take+7)/8;
+    for(int b=0;b<blocks;++b){uint32_t words[16]{};
+        const size_t block_words=min(size_t{8},take-static_cast<size_t>(b)*8);
+        for(size_t i=0;i<block_words;++i){const uint64_t x=column_word(
+            matrix,cols,col,word0+static_cast<size_t>(b)*8+i,words_per_value);
+            words[2*i]=x;words[2*i+1]=x>>32;}
         const uint32_t flags=(b==0?CHUNK_START:0)|(b+1==blocks?CHUNK_END:0);
+        const uint32_t block_len=static_cast<uint32_t>(block_words*8);
         if(b+1==blocks){for(int i=0;i<8;++i)o.cv[i]=cv[i];for(int i=0;i<16;++i)o.block[i]=words[i];
-            o.counter=chunk;o.block_len=64;o.flags=flags;}
-        else{uint32_t v[16];compress(cv,words,chunk,64,flags,v);for(int i=0;i<8;++i)cv[i]=v[i];}
+            o.counter=chunk;o.block_len=block_len;o.flags=flags;}
+        else{uint32_t v[16];compress(cv,words,chunk,block_len,flags,v);for(int i=0;i<8;++i)cv[i]=v[i];}
     }return o;
 }
-__device__ Hash32 hash_column(const uint64_t* matrix,size_t rows,size_t cols,size_t col) {
-    const size_t chunks=(rows+127)/128;Hash32 stack[16];int depth=0;HashOutput root_out{},single{};
-    for(size_t c=0;c<chunks;++c){HashOutput co=chunk_output_column(matrix,rows,cols,col,c);if(chunks==1)single=co;
+__device__ Hash32 hash_column_words(
+    const uint64_t* matrix,size_t rows,size_t cols,size_t col,size_t words_per_value) {
+    const size_t total_words=rows*words_per_value,chunks=(total_words+127)/128;
+    Hash32 stack[16];int depth=0;HashOutput root_out{},single{};
+    for(size_t c=0;c<chunks;++c){HashOutput co=chunk_output_column_words(
+        matrix,total_words,cols,col,c,words_per_value);if(chunks==1)single=co;
         Hash32 cv=chaining_value(co);size_t total=c;
         while(total&1){root_out=parent_output(stack[--depth],cv);cv=chaining_value(root_out);total>>=1;}
         stack[depth++]=cv;}
@@ -795,7 +862,30 @@ __device__ Hash32 hash_column(const uint64_t* matrix,size_t rows,size_t cols,siz
 }
 __global__ void hash_columns_kernel(const uint64_t* matrix,Hash32* leaves,size_t rows,size_t cols) {
     const size_t col=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
-    if(col<cols)leaves[col]=hash_column(matrix,rows,cols,col);
+    if(col<cols)leaves[col]=hash_column_words(matrix,rows,cols,col,1);
+}
+__global__ void hash_fp2_columns_kernel(const Fp2* matrix,Hash32* leaves,size_t rows,size_t cols) {
+    const size_t col=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(col<cols)leaves[col]=hash_column_words(reinterpret_cast<const uint64_t*>(matrix),rows,cols,col,2);
+}
+__device__ Hash32 hash_merkle_pair(Hash32 left,Hash32 right){
+    HashOutput o{};for(int i=0;i<8;++i)o.cv[i]=iv(i);
+    for(int i=0;i<8;++i){o.block[i]=left.w[i];o.block[8+i]=right.w[i];}
+    o.block_len=64;o.flags=CHUNK_START|CHUNK_END;return root_hash(o);
+}
+__global__ void merkle_parent_kernel(
+    const Hash32* children,Hash32* parents,size_t parent_count){
+    const size_t i=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(i<parent_count)parents[i]=hash_merkle_pair(children[2*i],children[2*i+1]);
+}
+__global__ void merkle_paths_kernel(
+    const Hash32* tree,const uint32_t* indices,Hash32* paths,
+    size_t leaves,size_t queries,size_t bits){
+    const size_t z=static_cast<size_t>(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(z>=queries*bits)return;const size_t q=z/bits,level=z-q*bits;
+    size_t idx=indices[q],len=leaves,off=0;
+    for(size_t l=0;l<level;++l){off+=len;len>>=1;idx>>=1;}
+    paths[z]=tree[off+(idx^1)];
 }
 
 } // namespace volta_cuda_internal
@@ -1025,6 +1115,42 @@ extern "C" int volta_cuda_ntt_fp2(void* raw,const Fp2* msg,size_t msg_len,size_t
     CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
     CUDA_OR_RETURN(c,cudaMemcpyAsync(out,buf<Fp2>(c,1),n*sizeof(Fp2),cudaMemcpyDeviceToHost,c->stream));
     return finish_timing(c,OP_PCS_NTT,h2d,n*sizeof(Fp2));
+}
+
+extern "C" int volta_cuda_ntt_fp_batch_device(
+    void* raw,uint64_t input_id,size_t input_offset,size_t rows,size_t n,
+    uint64_t output_id,size_t output_offset){
+    Context* c=static_cast<Context*>(raw);if(!c||!rows||n<2||(n&(n-1)))
+        return fail_message(c,"invalid resident Fp NTT geometry");
+    void *input=nullptr,*output=nullptr;const size_t total=rows*n,bytes=total*sizeof(uint64_t);
+    if(resident_region(c,input_id,input_offset*sizeof(uint64_t),bytes,&input)||
+       resident_region(c,output_id,output_offset*sizeof(uint64_t),bytes,&output))return -1;
+    uint64_t h2d=0;if(begin_timing(c))return -1;if(ensure_twiddles(c,n,&h2d))return -1;
+    if(mark_timing(c,1))return -1;const int bits=__builtin_ctzll(n);
+    bit_reverse_fp_batch<<<(total+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+        static_cast<const uint64_t*>(input),static_cast<uint64_t*>(output),rows,n,bits);
+    for(size_t len=2;len<=n;len*=2)ntt_stage_fp_batch<<<(rows*n/2+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+        static_cast<uint64_t*>(output),buf<uint64_t>(c,11),rows,n,len);
+    CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
+    return finish_timing(c,OP_PCS_NTT,h2d,0);
+}
+
+extern "C" int volta_cuda_ntt_fp2_batch_device(
+    void* raw,uint64_t input_id,size_t input_offset,size_t rows,size_t n,
+    uint64_t output_id,size_t output_offset){
+    Context* c=static_cast<Context*>(raw);if(!c||!rows||n<2||(n&(n-1)))
+        return fail_message(c,"invalid resident Fp2 NTT geometry");
+    void *input=nullptr,*output=nullptr;const size_t total=rows*n,bytes=total*sizeof(Fp2);
+    if(resident_region(c,input_id,input_offset*sizeof(Fp2),bytes,&input)||
+       resident_region(c,output_id,output_offset*sizeof(Fp2),bytes,&output))return -1;
+    uint64_t h2d=0;if(begin_timing(c))return -1;if(ensure_twiddles(c,n,&h2d))return -1;
+    if(mark_timing(c,1))return -1;const int bits=__builtin_ctzll(n);
+    bit_reverse_fp2_batch<<<(total+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+        static_cast<const Fp2*>(input),static_cast<Fp2*>(output),rows,n,bits);
+    for(size_t len=2;len<=n;len*=2)ntt_stage_fp2_batch<<<(rows*n/2+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+        static_cast<Fp2*>(output),buf<uint64_t>(c,11),rows,n,len);
+    CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
+    return finish_timing(c,OP_PCS_NTT,h2d,0);
 }
 
 extern "C" int volta_cuda_logup_tree(void* raw,const uint64_t* leaf,const uint32_t* mult,size_t n,
@@ -1343,6 +1469,133 @@ extern "C" int volta_cuda_logup_aux_round_device(
     CUDA_OR_RETURN(c,cudaMemcpyAsync(output,buf<Fp2>(c,14),3*sizeof(Fp2),
                                      cudaMemcpyDeviceToHost,c->stream));
     return finish_timing(c,OP_LOGUP,0,3*sizeof(Fp2));
+}
+
+extern "C" int volta_cuda_pcs_messages_device(
+    void* raw,uint64_t weights_id,size_t weights_offset,uint64_t pads_id,size_t pads_offset,
+    size_t rows,size_t cols,size_t pad,size_t code_len,uint64_t output_id,size_t output_offset){
+    Context* c=static_cast<Context*>(raw);if(!c||!rows||!cols||!code_len||cols+pad>code_len)
+        return fail_message(c,"invalid resident PCS message geometry");
+    void *weights=nullptr,*pads=nullptr,*output=nullptr;
+    if(resident_region(c,weights_id,weights_offset*sizeof(int16_t),rows*cols*sizeof(int16_t),&weights)||
+       (pad&&resident_region(c,pads_id,pads_offset*sizeof(uint64_t),rows*pad*sizeof(uint64_t),&pads))||
+       resident_region(c,output_id,output_offset*sizeof(uint64_t),rows*code_len*sizeof(uint64_t),&output))return -1;
+    if(begin_timing(c))return -1;if(mark_timing(c,1))return -1;
+    const size_t total=rows*code_len;pcs_messages_kernel<<<(total+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+        static_cast<const int16_t*>(weights),static_cast<const uint64_t*>(pads),
+        static_cast<uint64_t*>(output),rows,cols,pad,code_len);
+    CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
+    return finish_timing(c,OP_PCS_ROWS,0,0);
+}
+
+extern "C" int volta_cuda_pcs_combine_rows_device(
+    void* raw,uint64_t weights_id,size_t weights_offset,uint64_t pads_id,size_t pads_offset,
+    uint64_t coeffs_id,size_t coeffs_offset,size_t rows,size_t cols,size_t pad,
+    size_t combinations,uint64_t output_id,size_t output_offset){
+    Context* c=static_cast<Context*>(raw);if(!c||!rows||!cols||!combinations)
+        return fail_message(c,"invalid resident PCS combination geometry");
+    void *weights=nullptr,*pads=nullptr,*coeffs=nullptr,*output=nullptr;
+    const size_t msg_len=cols+pad;
+    if(resident_region(c,weights_id,weights_offset*sizeof(int16_t),rows*cols*sizeof(int16_t),&weights)||
+       (pad&&resident_region(c,pads_id,pads_offset*sizeof(uint64_t),rows*pad*sizeof(uint64_t),&pads))||
+       resident_region(c,coeffs_id,coeffs_offset*sizeof(Fp2),combinations*rows*sizeof(Fp2),&coeffs)||
+       resident_region(c,output_id,output_offset*sizeof(Fp2),combinations*msg_len*sizeof(Fp2),&output))return -1;
+    if(begin_timing(c))return -1;if(mark_timing(c,1))return -1;
+    const size_t count=combinations*msg_len;pcs_combine_rows_kernel<<<(count+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+        static_cast<const int16_t*>(weights),static_cast<const uint64_t*>(pads),
+        static_cast<const Fp2*>(coeffs),static_cast<Fp2*>(output),rows,cols,pad,combinations);
+    CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
+    return finish_timing(c,OP_PCS_ROWS,0,0);
+}
+
+extern "C" int volta_cuda_fp2_add_inplace_device(
+    void* raw,uint64_t target_id,size_t target_offset,uint64_t add_id,size_t add_offset,size_t n){
+    Context* c=static_cast<Context*>(raw);if(!c||!n)return fail_message(c,"invalid resident Fp2 add");
+    void *target=nullptr,*add=nullptr;
+    if(resident_region(c,target_id,target_offset*sizeof(Fp2),n*sizeof(Fp2),&target)||
+       resident_region(c,add_id,add_offset*sizeof(Fp2),n*sizeof(Fp2),&add))return -1;
+    if(begin_timing(c))return -1;if(mark_timing(c,1))return -1;
+    fp2_add_inplace_kernel<<<(n+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+        static_cast<Fp2*>(target),static_cast<const Fp2*>(add),n);
+    CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
+    return finish_timing(c,OP_PCS_ROWS,0,0);
+}
+
+int hash_tree_device_impl(
+    Context* c,void* matrix,size_t rows,size_t cols,bool fp2,Hash32* tree){
+    if(begin_timing(c))return -1;if(mark_timing(c,1))return -1;
+    if(fp2)hash_fp2_columns_kernel<<<(cols+127)/128,128,0,c->stream>>>(
+        static_cast<const Fp2*>(matrix),tree,rows,cols);
+    else hash_columns_kernel<<<(cols+127)/128,128,0,c->stream>>>(
+        static_cast<const uint64_t*>(matrix),tree,rows,cols);
+    size_t len=cols,off=0;
+    while(len>1){const size_t parent=len/2;
+        merkle_parent_kernel<<<(parent+127)/128,128,0,c->stream>>>(tree+off,tree+off+len,parent);
+        off+=len;len=parent;}
+    CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
+    return finish_timing(c,OP_PCS_MERKLE,0,0);
+}
+
+extern "C" int volta_cuda_hash_fp_tree_device(
+    void* raw,uint64_t matrix_id,size_t matrix_offset,size_t rows,size_t cols,
+    uint64_t tree_id,size_t tree_offset_bytes){
+    Context* c=static_cast<Context*>(raw);if(!c||!rows||!cols||(cols&(cols-1)))
+        return fail_message(c,"invalid resident Fp Merkle geometry");
+    void *matrix=nullptr,*tree=nullptr;
+    if(resident_region(c,matrix_id,matrix_offset*sizeof(uint64_t),rows*cols*sizeof(uint64_t),&matrix)||
+       resident_region(c,tree_id,tree_offset_bytes,(2*cols-1)*sizeof(Hash32),&tree))return -1;
+    return hash_tree_device_impl(c,matrix,rows,cols,false,static_cast<Hash32*>(tree));
+}
+
+extern "C" int volta_cuda_hash_fp2_tree_device(
+    void* raw,uint64_t matrix_id,size_t matrix_offset,size_t rows,size_t cols,
+    uint64_t tree_id,size_t tree_offset_bytes){
+    Context* c=static_cast<Context*>(raw);if(!c||!rows||!cols||(cols&(cols-1)))
+        return fail_message(c,"invalid resident Fp2 Merkle geometry");
+    void *matrix=nullptr,*tree=nullptr;
+    if(resident_region(c,matrix_id,matrix_offset*sizeof(Fp2),rows*cols*sizeof(Fp2),&matrix)||
+       resident_region(c,tree_id,tree_offset_bytes,(2*cols-1)*sizeof(Hash32),&tree))return -1;
+    return hash_tree_device_impl(c,matrix,rows,cols,true,static_cast<Hash32*>(tree));
+}
+
+extern "C" int volta_cuda_merkle_paths_device(
+    void* raw,uint64_t tree_id,size_t tree_offset_bytes,size_t leaves,
+    uint64_t indices_id,size_t indices_offset,size_t queries,
+    uint64_t paths_id,size_t paths_offset_bytes){
+    Context* c=static_cast<Context*>(raw);if(!c||leaves<2||(leaves&(leaves-1))||!queries)
+        return fail_message(c,"invalid resident Merkle path geometry");
+    const size_t bits=__builtin_ctzll(leaves);void *tree=nullptr,*indices=nullptr,*paths=nullptr;
+    if(resident_region(c,tree_id,tree_offset_bytes,(2*leaves-1)*sizeof(Hash32),&tree)||
+       resident_region(c,indices_id,indices_offset*sizeof(uint32_t),queries*sizeof(uint32_t),&indices)||
+       resident_region(c,paths_id,paths_offset_bytes,queries*bits*sizeof(Hash32),&paths))return -1;
+    if(begin_timing(c))return -1;if(mark_timing(c,1))return -1;
+    merkle_paths_kernel<<<(queries*bits+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+        static_cast<const Hash32*>(tree),static_cast<const uint32_t*>(indices),
+        static_cast<Hash32*>(paths),leaves,queries,bits);
+    CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
+    return finish_timing(c,OP_PCS_MERKLE,0,0);
+}
+
+extern "C" int volta_cuda_pcs_gather_columns_device(
+    void* raw,uint64_t matrix_id,size_t matrix_offset,size_t rows,size_t cols,
+    uint64_t indices_id,size_t indices_offset,size_t queries,
+    uint64_t output_id,size_t output_offset,int fp2){
+    Context* c=static_cast<Context*>(raw);if(!c||!rows||!cols||!queries)
+        return fail_message(c,"invalid resident PCS gather geometry");
+    const size_t elem=fp2?sizeof(Fp2):sizeof(uint64_t);void *matrix=nullptr,*indices=nullptr,*output=nullptr;
+    if(resident_region(c,matrix_id,matrix_offset*elem,rows*cols*elem,&matrix)||
+       resident_region(c,indices_id,indices_offset*sizeof(uint32_t),queries*sizeof(uint32_t),&indices)||
+       resident_region(c,output_id,output_offset*elem,rows*queries*elem,&output))return -1;
+    if(begin_timing(c))return -1;if(mark_timing(c,1))return -1;
+    const size_t total=rows*queries;
+    if(fp2)gather_fp2_columns_kernel<<<(total+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+        static_cast<const Fp2*>(matrix),static_cast<const uint32_t*>(indices),
+        static_cast<Fp2*>(output),rows,cols,queries);
+    else gather_columns_kernel<<<(total+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
+        static_cast<const uint64_t*>(matrix),static_cast<const uint32_t*>(indices),
+        static_cast<uint64_t*>(output),rows,cols,queries);
+    CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
+    return finish_timing(c,OP_PCS_ROWS,0,0);
 }
 
 extern "C" int volta_cuda_pcs_combine_rows(void* raw,const int16_t* weights,const uint64_t* pads,

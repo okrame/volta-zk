@@ -17,7 +17,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 5;
+pub const CUDA_ABI_VERSION: u32 = 6;
 pub const OPERATION_COUNT: usize = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -217,6 +217,19 @@ pub struct DeviceBuffer<T: DeviceElement> {
     len: usize,
     context_id: u64,
     _element: PhantomData<T>,
+}
+
+/// Opaque leaves-to-root BLAKE3 Merkle tree in resident device storage.
+#[derive(Debug)]
+pub struct DeviceMerkleTree {
+    storage: DeviceBuffer<u8>,
+    leaves: usize,
+}
+
+impl DeviceMerkleTree {
+    pub fn leaves(&self) -> usize {
+        self.leaves
+    }
 }
 
 impl<T: DeviceElement> DeviceBuffer<T> {
@@ -711,6 +724,68 @@ impl Backend {
         }
         #[cfg(not(feature = "cuda"))]
         Err(AccelError::FeatureDisabled)
+    }
+
+    /// Batched NTT over already padded resident base-field rows.
+    pub fn ntt_fp_batch_device(
+        &mut self,
+        input: &DeviceBuffer<u64>,
+        input_offset: usize,
+        rows: usize,
+        size: usize,
+    ) -> Result<DeviceBuffer<u64>, AccelError> {
+        self.validate_buffer(input)?;
+        validate_ntt(size, size)?;
+        let total = checked_product(rows, size)?;
+        validate_region(input.len, input_offset, total)?;
+        let output = self.alloc_device(total)?;
+        #[cfg(feature = "cuda")]
+        let result = self.cuda.as_mut().expect("CUDA kind without context").ntt_fp_batch_device(
+            input.id,
+            input_offset,
+            rows,
+            size,
+            output.id,
+            0,
+        );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
+    }
+
+    /// Batched NTT over already padded resident extension-field rows.
+    pub fn ntt_fp2_batch_device(
+        &mut self,
+        input: &DeviceBuffer<Fp2Repr>,
+        input_offset: usize,
+        rows: usize,
+        size: usize,
+    ) -> Result<DeviceBuffer<Fp2Repr>, AccelError> {
+        self.validate_buffer(input)?;
+        validate_ntt(size, size)?;
+        let total = checked_product(rows, size)?;
+        validate_region(input.len, input_offset, total)?;
+        let output = self.alloc_device(total)?;
+        #[cfg(feature = "cuda")]
+        let result = self.cuda.as_mut().expect("CUDA kind without context").ntt_fp2_batch_device(
+            input.id,
+            input_offset,
+            rows,
+            size,
+            output.id,
+            0,
+        );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
     }
 
     /// Return internal fraction-tree layers in root-to-leaf order.  Each
@@ -1340,6 +1415,279 @@ impl Backend {
         #[cfg(not(feature = "cuda"))]
         Err(AccelError::FeatureDisabled)
     }
+
+    /// Construct padded PCS message rows from resident i16 weights and Fp
+    /// pad tails. The output is base-field canonical u64 row-major storage.
+    #[allow(clippy::too_many_arguments)]
+    pub fn pcs_messages_device(
+        &mut self,
+        weights: &DeviceBuffer<i16>,
+        weights_offset: usize,
+        pads: &DeviceBuffer<u64>,
+        pads_offset: usize,
+        rows: usize,
+        cols: usize,
+        pad: usize,
+        code_len: usize,
+    ) -> Result<DeviceBuffer<u64>, AccelError> {
+        self.validate_buffer(weights)?;
+        self.validate_buffer(pads)?;
+        if rows == 0 || cols == 0 || cols.checked_add(pad).is_none_or(|n| n > code_len) {
+            return Err(AccelError::InvalidInput("invalid resident PCS message geometry"));
+        }
+        validate_region(weights.len, weights_offset, checked_product(rows, cols)?)?;
+        validate_region(pads.len, pads_offset, checked_product(rows, pad)?)?;
+        let output = self.alloc_device(checked_product(rows, code_len)?)?;
+        #[cfg(feature = "cuda")]
+        let result = self.cuda.as_mut().expect("CUDA kind without context").pcs_messages_device(
+            weights.id,
+            weights_offset,
+            pads.id,
+            pads_offset,
+            rows,
+            cols,
+            pad,
+            code_len,
+            output.id,
+            0,
+        );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
+    }
+
+    /// Resident PCS row combinations. Coefficients are row-major
+    /// `combinations × rows`; outputs remain resident Fp2 message rows.
+    #[allow(clippy::too_many_arguments)]
+    pub fn pcs_combine_rows_device(
+        &mut self,
+        weights: &DeviceBuffer<i16>,
+        weights_offset: usize,
+        pads: &DeviceBuffer<u64>,
+        pads_offset: usize,
+        coeffs: &DeviceBuffer<Fp2Repr>,
+        coeffs_offset: usize,
+        rows: usize,
+        cols: usize,
+        pad: usize,
+        combinations: usize,
+    ) -> Result<DeviceBuffer<Fp2Repr>, AccelError> {
+        self.validate_buffer(weights)?;
+        self.validate_buffer(pads)?;
+        self.validate_buffer(coeffs)?;
+        if rows == 0 || cols == 0 || combinations == 0 {
+            return Err(AccelError::InvalidInput("invalid resident PCS combination geometry"));
+        }
+        validate_region(weights.len, weights_offset, checked_product(rows, cols)?)?;
+        validate_region(pads.len, pads_offset, checked_product(rows, pad)?)?;
+        validate_region(coeffs.len, coeffs_offset, checked_product(combinations, rows)?)?;
+        let msg_len = cols.checked_add(pad).ok_or(AccelError::InvalidInput("shape overflow"))?;
+        let output = self.alloc_device(checked_product(combinations, msg_len)?)?;
+        #[cfg(feature = "cuda")]
+        let result =
+            self.cuda.as_mut().expect("CUDA kind without context").pcs_combine_rows_device(
+                weights.id,
+                weights_offset,
+                pads.id,
+                pads_offset,
+                coeffs.id,
+                coeffs_offset,
+                rows,
+                cols,
+                pad,
+                combinations,
+                output.id,
+                0,
+            );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
+    }
+
+    pub fn fp2_add_inplace_device(
+        &mut self,
+        target: &DeviceBuffer<Fp2Repr>,
+        target_offset: usize,
+        add: &DeviceBuffer<Fp2Repr>,
+        add_offset: usize,
+        len: usize,
+    ) -> Result<(), AccelError> {
+        self.validate_buffer(target)?;
+        self.validate_buffer(add)?;
+        validate_region(target.len, target_offset, len)?;
+        validate_region(add.len, add_offset, len)?;
+        #[cfg(feature = "cuda")]
+        {
+            return self.cuda.as_mut().expect("CUDA kind without context").fp2_add_inplace_device(
+                target.id,
+                target_offset,
+                add.id,
+                add_offset,
+                len,
+            );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    pub fn hash_fp_tree_device(
+        &mut self,
+        matrix: &DeviceBuffer<u64>,
+        rows: usize,
+        cols: usize,
+    ) -> Result<DeviceMerkleTree, AccelError> {
+        self.hash_tree_device_impl(matrix, rows, cols, false)
+    }
+
+    pub fn hash_fp2_tree_device(
+        &mut self,
+        matrix: &DeviceBuffer<Fp2Repr>,
+        rows: usize,
+        cols: usize,
+    ) -> Result<DeviceMerkleTree, AccelError> {
+        self.hash_tree_device_impl(matrix, rows, cols, true)
+    }
+
+    fn hash_tree_device_impl<T: DeviceElement>(
+        &mut self,
+        matrix: &DeviceBuffer<T>,
+        rows: usize,
+        cols: usize,
+        fp2: bool,
+    ) -> Result<DeviceMerkleTree, AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        let _ = fp2;
+        self.validate_buffer(matrix)?;
+        if rows == 0 || cols == 0 || !cols.is_power_of_two() {
+            return Err(AccelError::InvalidInput("invalid resident Merkle matrix geometry"));
+        }
+        validate_region(matrix.len, 0, checked_product(rows, cols)?)?;
+        let hashes = cols
+            .checked_mul(2)
+            .and_then(|n| n.checked_sub(1))
+            .ok_or(AccelError::InvalidInput("shape overflow"))?;
+        let storage = self.alloc_device(checked_product(hashes, 32)?)?;
+        #[cfg(feature = "cuda")]
+        let result = self
+            .cuda
+            .as_mut()
+            .expect("CUDA kind without context")
+            .hash_tree_device(fp2, matrix.id, 0, rows, cols, storage.id, 0);
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(storage);
+            return Err(error);
+        }
+        Ok(DeviceMerkleTree { storage, leaves: cols })
+    }
+
+    pub fn merkle_root_device(&mut self, tree: &DeviceMerkleTree) -> Result<[u8; 32], AccelError> {
+        self.validate_buffer(&tree.storage)?;
+        let offset = (2 * tree.leaves - 2) * 32;
+        Ok(self.download_device(&tree.storage, offset, 32)?.try_into().unwrap())
+    }
+
+    pub fn merkle_paths_device(
+        &mut self,
+        tree: &DeviceMerkleTree,
+        indices: &DeviceBuffer<u32>,
+        queries: usize,
+    ) -> Result<DeviceBuffer<u8>, AccelError> {
+        self.validate_buffer(&tree.storage)?;
+        self.validate_buffer(indices)?;
+        validate_region(indices.len, 0, queries)?;
+        if queries == 0 {
+            return Err(AccelError::InvalidInput("empty resident Merkle query set"));
+        }
+        let bits = tree.leaves.trailing_zeros() as usize;
+        let paths = self.alloc_device(checked_product(checked_product(queries, bits)?, 32)?)?;
+        #[cfg(feature = "cuda")]
+        let result = self.cuda.as_mut().expect("CUDA kind without context").merkle_paths_device(
+            tree.storage.id,
+            0,
+            tree.leaves,
+            indices.id,
+            0,
+            queries,
+            paths.id,
+            0,
+        );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(paths);
+            return Err(error);
+        }
+        Ok(paths)
+    }
+
+    pub fn free_device_merkle_tree(&mut self, tree: DeviceMerkleTree) -> Result<(), AccelError> {
+        self.free_device(tree.storage)
+    }
+
+    pub fn pcs_gather_fp_device(
+        &mut self,
+        matrix: &DeviceBuffer<u64>,
+        rows: usize,
+        cols: usize,
+        indices: &DeviceBuffer<u32>,
+        queries: usize,
+    ) -> Result<DeviceBuffer<u64>, AccelError> {
+        self.pcs_gather_device_impl(matrix, rows, cols, indices, queries, false)
+    }
+
+    pub fn pcs_gather_fp2_device(
+        &mut self,
+        matrix: &DeviceBuffer<Fp2Repr>,
+        rows: usize,
+        cols: usize,
+        indices: &DeviceBuffer<u32>,
+        queries: usize,
+    ) -> Result<DeviceBuffer<Fp2Repr>, AccelError> {
+        self.pcs_gather_device_impl(matrix, rows, cols, indices, queries, true)
+    }
+
+    fn pcs_gather_device_impl<T: DeviceElement>(
+        &mut self,
+        matrix: &DeviceBuffer<T>,
+        rows: usize,
+        cols: usize,
+        indices: &DeviceBuffer<u32>,
+        queries: usize,
+        fp2: bool,
+    ) -> Result<DeviceBuffer<T>, AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        let _ = fp2;
+        self.validate_buffer(matrix)?;
+        self.validate_buffer(indices)?;
+        validate_region(matrix.len, 0, checked_product(rows, cols)?)?;
+        validate_region(indices.len, 0, queries)?;
+        if rows == 0 || cols == 0 || queries == 0 {
+            return Err(AccelError::InvalidInput("invalid resident PCS gather geometry"));
+        }
+        let output = self.alloc_device(checked_product(rows, queries)?)?;
+        #[cfg(feature = "cuda")]
+        let result =
+            self.cuda.as_mut().expect("CUDA kind without context").pcs_gather_columns_device(
+                fp2, matrix.id, 0, rows, cols, indices.id, 0, queries, output.id, 0,
+            );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
+    }
 }
 
 fn validate_gemm(a: &[i16], b: &[i16], m: usize, k: usize, n: usize) -> Result<(), AccelError> {
@@ -1504,6 +1852,23 @@ mod cuda_tests {
     fn at2(a: Fp2, b: Fp2) -> Fp2 {
         let d = b - a;
         a + d + d
+    }
+
+    fn cpu_merkle_levels(mut leaves: Vec<[u8; 32]>) -> Vec<Vec<[u8; 32]>> {
+        let mut levels = vec![leaves.clone()];
+        while leaves.len() > 1 {
+            leaves = leaves
+                .chunks_exact(2)
+                .map(|pair| {
+                    let mut hasher = blake3::Hasher::new();
+                    hasher.update(&pair[0]);
+                    hasher.update(&pair[1]);
+                    *hasher.finalize().as_bytes()
+                })
+                .collect();
+            levels.push(leaves.clone());
+        }
+        levels
     }
 
     #[test]
@@ -1769,6 +2134,221 @@ mod cuda_tests {
         gpu.free_device(dp0).unwrap();
         gpu.free_device(dmult).unwrap();
         gpu.free_device(dleaf).unwrap();
+    }
+
+    #[test]
+    fn resident_pcs_ntt_gather_and_merkle_are_bit_exact() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
+        let (rows, cols, pad, code_len) = (5usize, 11usize, 3usize, 16usize);
+        let weights: Vec<i16> =
+            (0..rows * cols).map(|i| ((i * 37 + 9) % 1001) as i16 - 500).collect();
+        let pads: Vec<Fp> = (0..rows * pad).map(|i| Fp::new(i as u64 * 53 + 5)).collect();
+        let pads_raw: Vec<u64> = pads.iter().map(|x| x.value()).collect();
+        let dweights = gpu.upload_new_device(&weights).unwrap();
+        let dpads = gpu.upload_new_device(&pads_raw).unwrap();
+
+        let combinations = 2usize;
+        let mask_rows = 3usize; // 48-byte leaves: exercises a partial BLAKE3 block.
+        let mask_messages: Vec<Fp2> = (0..mask_rows * code_len)
+            .map(|i| {
+                if i % code_len < cols + pad {
+                    Fp2::new(Fp::new(i as u64 * 71 + 7), Fp::new(i as u64 * 97 + 13))
+                } else {
+                    Fp2::ZERO
+                }
+            })
+            .collect();
+        let mask_raw: Vec<Fp2Repr> = mask_messages.iter().copied().map(Fp2Repr::from).collect();
+        let dmasks = gpu.upload_new_device(&mask_raw).unwrap();
+        let mask_compact: Vec<Fp2Repr> = (0..combinations)
+            .flat_map(|row| {
+                mask_messages[row * code_len..row * code_len + cols + pad]
+                    .iter()
+                    .copied()
+                    .map(Fp2Repr::from)
+            })
+            .collect();
+        let dmask_compact = gpu.upload_new_device(&mask_compact).unwrap();
+        let indices = [0u32, 7, 15];
+        let dindices = gpu.upload_new_device(&indices).unwrap();
+
+        let coeffs: Vec<Fp2> = (0..combinations * rows)
+            .map(|i| Fp2::new(Fp::new(i as u64 * 109 + 17), Fp::new(i as u64 * 131 + 19)))
+            .collect();
+        let coeff_raw: Vec<Fp2Repr> = coeffs.iter().copied().map(Into::into).collect();
+        let dcoeffs = gpu.upload_new_device(&coeff_raw).unwrap();
+
+        gpu.begin_measurement().unwrap();
+        let dmessages =
+            gpu.pcs_messages_device(&dweights, 0, &dpads, 0, rows, cols, pad, code_len).unwrap();
+        let dencoded = gpu.ntt_fp_batch_device(&dmessages, 0, rows, code_len).unwrap();
+        let dmask_encoded = gpu.ntt_fp2_batch_device(&dmasks, 0, mask_rows, code_len).unwrap();
+        let weight_tree = gpu.hash_fp_tree_device(&dencoded, rows, code_len).unwrap();
+        let mask_tree = gpu.hash_fp2_tree_device(&dmask_encoded, mask_rows, code_len).unwrap();
+        let weight_root = gpu.merkle_root_device(&weight_tree).unwrap();
+        let mask_root = gpu.merkle_root_device(&mask_tree).unwrap();
+        let weight_paths = gpu.merkle_paths_device(&weight_tree, &dindices, indices.len()).unwrap();
+        let mask_paths = gpu.merkle_paths_device(&mask_tree, &dindices, indices.len()).unwrap();
+        let gathered =
+            gpu.pcs_gather_fp_device(&dencoded, rows, code_len, &dindices, indices.len()).unwrap();
+        let mask_gathered = gpu
+            .pcs_gather_fp2_device(&dmask_encoded, mask_rows, code_len, &dindices, indices.len())
+            .unwrap();
+        let combined = gpu
+            .pcs_combine_rows_device(
+                &dweights,
+                0,
+                &dpads,
+                0,
+                &dcoeffs,
+                0,
+                rows,
+                cols,
+                pad,
+                combinations,
+            )
+            .unwrap();
+        gpu.fp2_add_inplace_device(&combined, 0, &dmask_compact, 0, combinations * (cols + pad))
+            .unwrap();
+        let resident_stats = gpu.stats().unwrap();
+        assert_eq!(resident_stats.d2h_bytes, 64, "only two Merkle roots cross D2H");
+
+        let messages: Vec<Fp> = gpu
+            .download_device(&dmessages, 0, rows * code_len)
+            .unwrap()
+            .into_iter()
+            .map(Fp::new)
+            .collect();
+        let encoded: Vec<Fp> = gpu
+            .download_device(&dencoded, 0, rows * code_len)
+            .unwrap()
+            .into_iter()
+            .map(Fp::new)
+            .collect();
+        for row in 0..rows {
+            let mut expected = vec![Fp::ZERO; code_len];
+            for j in 0..cols {
+                expected[j] = Fp::from_i64(weights[row * cols + j] as i64);
+            }
+            expected[cols..cols + pad].copy_from_slice(&pads[row * pad..(row + 1) * pad]);
+            assert_eq!(&messages[row * code_len..(row + 1) * code_len], &expected);
+            assert_eq!(&encoded[row * code_len..(row + 1) * code_len], cpu_ntt(expected));
+        }
+        let mask_encoded: Vec<Fp2> = gpu
+            .download_device(&dmask_encoded, 0, mask_rows * code_len)
+            .unwrap()
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        for row in 0..mask_rows {
+            let src = &mask_messages[row * code_len..(row + 1) * code_len];
+            let c0 = cpu_ntt(src.iter().map(|x| x.c0).collect());
+            let c1 = cpu_ntt(src.iter().map(|x| x.c1).collect());
+            let expected: Vec<Fp2> = c0.into_iter().zip(c1).map(|(a, b)| Fp2::new(a, b)).collect();
+            assert_eq!(&mask_encoded[row * code_len..(row + 1) * code_len], &expected);
+        }
+
+        let weight_leaves: Vec<[u8; 32]> = (0..code_len)
+            .map(|j| {
+                let mut bytes = Vec::with_capacity(rows * 8);
+                for i in 0..rows {
+                    bytes.extend_from_slice(&encoded[i * code_len + j].value().to_le_bytes());
+                }
+                *blake3::hash(&bytes).as_bytes()
+            })
+            .collect();
+        let mask_leaves: Vec<[u8; 32]> = (0..code_len)
+            .map(|j| {
+                let mut bytes = Vec::with_capacity(mask_rows * 16);
+                for i in 0..mask_rows {
+                    let x = mask_encoded[i * code_len + j];
+                    bytes.extend_from_slice(&x.c0.value().to_le_bytes());
+                    bytes.extend_from_slice(&x.c1.value().to_le_bytes());
+                }
+                *blake3::hash(&bytes).as_bytes()
+            })
+            .collect();
+        let weight_levels = cpu_merkle_levels(weight_leaves);
+        let mask_levels = cpu_merkle_levels(mask_leaves);
+        assert_eq!(weight_root, weight_levels.last().unwrap()[0]);
+        assert_eq!(mask_root, mask_levels.last().unwrap()[0]);
+
+        let path_bytes = gpu.download_device(&weight_paths, 0, indices.len() * 4 * 32).unwrap();
+        let mask_path_bytes = gpu.download_device(&mask_paths, 0, indices.len() * 4 * 32).unwrap();
+        for (q, &index) in indices.iter().enumerate() {
+            let mut idx = index as usize;
+            for level in 0..4 {
+                let off = (q * 4 + level) * 32;
+                assert_eq!(&path_bytes[off..off + 32], &weight_levels[level][idx ^ 1]);
+                assert_eq!(&mask_path_bytes[off..off + 32], &mask_levels[level][idx ^ 1]);
+                idx >>= 1;
+            }
+        }
+        let gathered_host: Vec<Fp> = gpu
+            .download_device(&gathered, 0, rows * indices.len())
+            .unwrap()
+            .into_iter()
+            .map(Fp::new)
+            .collect();
+        let mask_gathered_host: Vec<Fp2> = gpu
+            .download_device(&mask_gathered, 0, mask_rows * indices.len())
+            .unwrap()
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        for (q, &j) in indices.iter().enumerate() {
+            assert_eq!(
+                &gathered_host[q * rows..(q + 1) * rows],
+                &(0..rows).map(|i| encoded[i * code_len + j as usize]).collect::<Vec<_>>()
+            );
+            assert_eq!(
+                &mask_gathered_host[q * mask_rows..(q + 1) * mask_rows],
+                &(0..mask_rows)
+                    .map(|i| mask_encoded[i * code_len + j as usize])
+                    .collect::<Vec<_>>()
+            );
+        }
+        let combined_host: Vec<Fp2> = gpu
+            .download_device(&combined, 0, combinations * (cols + pad))
+            .unwrap()
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        for combo in 0..combinations {
+            for j in 0..cols + pad {
+                let expected = (0..rows).fold(Fp2::ZERO, |acc, i| {
+                    let x = if j < cols {
+                        Fp::from_i64(weights[i * cols + j] as i64)
+                    } else {
+                        pads[i * pad + j - cols]
+                    };
+                    acc + coeffs[combo * rows + i].mul_base(x)
+                }) + mask_messages[combo * code_len + j];
+                assert_eq!(combined_host[combo * (cols + pad) + j], expected);
+            }
+        }
+        let stats = gpu.finish_measurement().unwrap();
+        assert_eq!(
+            stats.measurement_wall_ns,
+            stats.h2d_ns + stats.d2h_ns + stats.kernel_ns() + stats.cpu_residual_ns()
+        );
+
+        gpu.free_device(combined).unwrap();
+        gpu.free_device(mask_gathered).unwrap();
+        gpu.free_device(gathered).unwrap();
+        gpu.free_device(mask_paths).unwrap();
+        gpu.free_device(weight_paths).unwrap();
+        gpu.free_device_merkle_tree(mask_tree).unwrap();
+        gpu.free_device_merkle_tree(weight_tree).unwrap();
+        gpu.free_device(dmask_encoded).unwrap();
+        gpu.free_device(dencoded).unwrap();
+        gpu.free_device(dmessages).unwrap();
+        gpu.free_device(dcoeffs).unwrap();
+        gpu.free_device(dindices).unwrap();
+        gpu.free_device(dmask_compact).unwrap();
+        gpu.free_device(dmasks).unwrap();
+        gpu.free_device(dpads).unwrap();
+        gpu.free_device(dweights).unwrap();
     }
 
     #[test]

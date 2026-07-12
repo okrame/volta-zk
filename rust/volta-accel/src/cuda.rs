@@ -102,6 +102,8 @@ type NttFpBatch =
     unsafe extern "C" fn(*mut c_void, *const u64, usize, usize, usize, *mut u64) -> c_int;
 type NttFp2 =
     unsafe extern "C" fn(*mut c_void, *const Fp2Repr, usize, usize, *mut Fp2Repr) -> c_int;
+type NttBatchDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, usize, usize, u64, usize) -> c_int;
 type LogupTree = unsafe extern "C" fn(
     *mut c_void,
     *const u64,
@@ -239,6 +241,53 @@ type PcsGatherColumns = unsafe extern "C" fn(
     usize,
     *mut u64,
 ) -> c_int;
+type PcsMessagesDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    u64,
+    usize,
+) -> c_int;
+type PcsCombineRowsDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    u64,
+    usize,
+) -> c_int;
+type Fp2AddInplaceDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize) -> c_int;
+type HashTreeDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, usize, usize, u64, usize) -> c_int;
+type MerklePathsDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, usize, u64, usize, usize, u64, usize) -> c_int;
+type PcsGatherColumnsDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    usize,
+    usize,
+    u64,
+    usize,
+    usize,
+    u64,
+    usize,
+    c_int,
+) -> c_int;
 
 struct Api {
     handle: *mut c_void,
@@ -258,6 +307,8 @@ struct Api {
     ntt_fp: NttFp,
     ntt_fp_batch: NttFpBatch,
     ntt_fp2: NttFp2,
+    ntt_fp_batch_device: NttBatchDevice,
+    ntt_fp2_batch_device: NttBatchDevice,
     logup_tree: LogupTree,
     logup_tree_device: LogupTreeDevice,
     logup_materialize_leaves_device: LogupMaterializeLeavesDevice,
@@ -273,6 +324,13 @@ struct Api {
     pcs_combine_rows: PcsCombineRows,
     pcs_gather_columns: PcsGatherColumns,
     hash_fp_columns: HashFpColumns,
+    pcs_messages_device: PcsMessagesDevice,
+    pcs_combine_rows_device: PcsCombineRowsDevice,
+    fp2_add_inplace_device: Fp2AddInplaceDevice,
+    hash_fp_tree_device: HashTreeDevice,
+    hash_fp2_tree_device: HashTreeDevice,
+    merkle_paths_device: MerklePathsDevice,
+    pcs_gather_columns_device: PcsGatherColumnsDevice,
 }
 
 pub(super) struct CudaContext {
@@ -348,6 +406,12 @@ impl CudaContext {
             ntt_fp: unsafe { load_symbol(handle, b"volta_cuda_ntt_fp\0")? },
             ntt_fp_batch: unsafe { load_symbol(handle, b"volta_cuda_ntt_fp_batch\0")? },
             ntt_fp2: unsafe { load_symbol(handle, b"volta_cuda_ntt_fp2\0")? },
+            ntt_fp_batch_device: unsafe {
+                load_symbol(handle, b"volta_cuda_ntt_fp_batch_device\0")?
+            },
+            ntt_fp2_batch_device: unsafe {
+                load_symbol(handle, b"volta_cuda_ntt_fp2_batch_device\0")?
+            },
             logup_tree: unsafe { load_symbol(handle, b"volta_cuda_logup_tree\0")? },
             logup_tree_device: unsafe { load_symbol(handle, b"volta_cuda_logup_tree_device\0")? },
             logup_materialize_leaves_device: unsafe {
@@ -379,6 +443,27 @@ impl CudaContext {
             pcs_combine_rows: unsafe { load_symbol(handle, b"volta_cuda_pcs_combine_rows\0")? },
             pcs_gather_columns: unsafe { load_symbol(handle, b"volta_cuda_pcs_gather_columns\0")? },
             hash_fp_columns: unsafe { load_symbol(handle, b"volta_cuda_hash_fp_columns\0")? },
+            pcs_messages_device: unsafe {
+                load_symbol(handle, b"volta_cuda_pcs_messages_device\0")?
+            },
+            pcs_combine_rows_device: unsafe {
+                load_symbol(handle, b"volta_cuda_pcs_combine_rows_device\0")?
+            },
+            fp2_add_inplace_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fp2_add_inplace_device\0")?
+            },
+            hash_fp_tree_device: unsafe {
+                load_symbol(handle, b"volta_cuda_hash_fp_tree_device\0")?
+            },
+            hash_fp2_tree_device: unsafe {
+                load_symbol(handle, b"volta_cuda_hash_fp2_tree_device\0")?
+            },
+            merkle_paths_device: unsafe {
+                load_symbol(handle, b"volta_cuda_merkle_paths_device\0")?
+            },
+            pcs_gather_columns_device: unsafe {
+                load_symbol(handle, b"volta_cuda_pcs_gather_columns_device\0")?
+            },
         })
     }
 
@@ -612,6 +697,54 @@ impl CudaContext {
             (self.api.ntt_fp2)(self.raw, input.as_ptr(), input.len(), size, output.as_mut_ptr())
         })?;
         Ok(output.into_iter().map(Into::into).collect())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn ntt_fp_batch_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        rows: usize,
+        size: usize,
+        output: u64,
+        output_offset: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all resident ids and padded geometries.
+        self.check(unsafe {
+            (self.api.ntt_fp_batch_device)(
+                self.raw,
+                input,
+                input_offset,
+                rows,
+                size,
+                output,
+                output_offset,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn ntt_fp2_batch_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        rows: usize,
+        size: usize,
+        output: u64,
+        output_offset: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all resident ids and padded geometries.
+        self.check(unsafe {
+            (self.api.ntt_fp2_batch_device)(
+                self.raw,
+                input,
+                input_offset,
+                rows,
+                size,
+                output,
+                output_offset,
+            )
+        })
     }
 
     pub(super) fn logup_tree(
@@ -1078,6 +1211,167 @@ impl CudaContext {
             .chunks_exact(rows)
             .map(|col| col.iter().copied().map(Fp::new).collect())
             .collect())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn pcs_messages_device(
+        &mut self,
+        weights: u64,
+        weights_offset: usize,
+        pads: u64,
+        pads_offset: usize,
+        rows: usize,
+        cols: usize,
+        pad: usize,
+        code_len: usize,
+        output: u64,
+        output_offset: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all resident ids and matrix geometries.
+        self.check(unsafe {
+            (self.api.pcs_messages_device)(
+                self.raw,
+                weights,
+                weights_offset,
+                pads,
+                pads_offset,
+                rows,
+                cols,
+                pad,
+                code_len,
+                output,
+                output_offset,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn pcs_combine_rows_device(
+        &mut self,
+        weights: u64,
+        weights_offset: usize,
+        pads: u64,
+        pads_offset: usize,
+        coeffs: u64,
+        coeffs_offset: usize,
+        rows: usize,
+        cols: usize,
+        pad: usize,
+        combinations: usize,
+        output: u64,
+        output_offset: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all resident ids and matrix geometries.
+        self.check(unsafe {
+            (self.api.pcs_combine_rows_device)(
+                self.raw,
+                weights,
+                weights_offset,
+                pads,
+                pads_offset,
+                coeffs,
+                coeffs_offset,
+                rows,
+                cols,
+                pad,
+                combinations,
+                output,
+                output_offset,
+            )
+        })
+    }
+
+    pub(super) fn fp2_add_inplace_device(
+        &mut self,
+        target: u64,
+        target_offset: usize,
+        add: u64,
+        add_offset: usize,
+        len: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all resident ids and typed regions.
+        self.check(unsafe {
+            (self.api.fp2_add_inplace_device)(self.raw, target, target_offset, add, add_offset, len)
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn hash_tree_device(
+        &mut self,
+        fp2: bool,
+        matrix: u64,
+        matrix_offset: usize,
+        rows: usize,
+        cols: usize,
+        tree: u64,
+        tree_offset_bytes: usize,
+    ) -> Result<(), AccelError> {
+        let function =
+            if fp2 { self.api.hash_fp2_tree_device } else { self.api.hash_fp_tree_device };
+        // SAFETY: Backend validates all resident ids and matrix/tree regions.
+        self.check(unsafe {
+            function(self.raw, matrix, matrix_offset, rows, cols, tree, tree_offset_bytes)
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn merkle_paths_device(
+        &mut self,
+        tree: u64,
+        tree_offset_bytes: usize,
+        leaves: usize,
+        indices: u64,
+        indices_offset: usize,
+        queries: usize,
+        paths: u64,
+        paths_offset_bytes: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all resident ids and tree/path regions.
+        self.check(unsafe {
+            (self.api.merkle_paths_device)(
+                self.raw,
+                tree,
+                tree_offset_bytes,
+                leaves,
+                indices,
+                indices_offset,
+                queries,
+                paths,
+                paths_offset_bytes,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn pcs_gather_columns_device(
+        &mut self,
+        fp2: bool,
+        matrix: u64,
+        matrix_offset: usize,
+        rows: usize,
+        cols: usize,
+        indices: u64,
+        indices_offset: usize,
+        queries: usize,
+        output: u64,
+        output_offset: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all resident ids and typed regions.
+        self.check(unsafe {
+            (self.api.pcs_gather_columns_device)(
+                self.raw,
+                matrix,
+                matrix_offset,
+                rows,
+                cols,
+                indices,
+                indices_offset,
+                queries,
+                output,
+                output_offset,
+                fp2 as c_int,
+            )
+        })
     }
 }
 

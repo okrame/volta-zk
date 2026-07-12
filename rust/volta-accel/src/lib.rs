@@ -17,7 +17,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 7;
+pub const CUDA_ABI_VERSION: u32 = 8;
 pub const OPERATION_COUNT: usize = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -55,6 +55,13 @@ pub enum BackendKind {
     Cpu,
     CudaHybrid,
     CudaResident,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(i32)]
+pub enum MatrixFoldAxis {
+    Rows = 0,
+    Columns = 1,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -205,6 +212,39 @@ impl DeviceElement for i64 {}
 impl DeviceElement for u32 {}
 impl DeviceElement for u64 {}
 impl DeviceElement for Fp2Repr {}
+
+mod resident_matrix_element {
+    pub trait Sealed {}
+    impl Sealed for i16 {}
+    impl Sealed for i64 {}
+    impl Sealed for u64 {}
+    impl Sealed for super::Fp2Repr {}
+}
+
+/// Scalar types accepted by the generic resident matrix-fold kernels.
+/// The trait is sealed so its CUDA ABI kind tag cannot be forged downstream.
+pub trait ResidentMatrixElement: DeviceElement + resident_matrix_element::Sealed {
+    #[doc(hidden)]
+    const CUDA_KIND: i32;
+}
+
+impl ResidentMatrixElement for i16 {
+    const CUDA_KIND: i32 = 0;
+}
+impl ResidentMatrixElement for i64 {
+    const CUDA_KIND: i32 = 1;
+}
+impl ResidentMatrixElement for u64 {
+    const CUDA_KIND: i32 = 2;
+}
+impl ResidentMatrixElement for Fp2Repr {
+    const CUDA_KIND: i32 = 3;
+}
+
+pub trait ResidentBaseElement: ResidentMatrixElement {}
+impl ResidentBaseElement for i16 {}
+impl ResidentBaseElement for i64 {}
+impl ResidentBaseElement for u64 {}
 
 /// Opaque allocation owned by one [`Backend`] CUDA context.  It exposes no
 /// device pointer, is deliberately non-`Clone`, and can only be freed by
@@ -1166,6 +1206,140 @@ impl Backend {
                 d,
                 vocab,
             );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Compute subfield Π_Auth corrections from a resident base-field source
+    /// and resident canonical masks. The correction vector remains resident
+    /// until the caller explicitly emits it as a protocol message.
+    pub fn subfield_corrections_device<T: ResidentBaseElement>(
+        &mut self,
+        input: DeviceSlice<'_, T>,
+        masks: DeviceSlice<'_, u64>,
+    ) -> Result<DeviceBuffer<u64>, AccelError> {
+        if input.is_empty() || masks.len() < input.len() {
+            return Err(AccelError::InvalidInput("invalid resident subfield-correction geometry"));
+        }
+        self.validate_device_slice(input, input.len())?;
+        self.validate_device_slice(masks, input.len())?;
+        let output = self.alloc_device(input.len())?;
+        #[cfg(feature = "cuda")]
+        let result =
+            self.cuda.as_mut().expect("CUDA kind without context").subfield_corrections_device(
+                input.buffer.id,
+                input.offset,
+                masks.buffer.id,
+                masks.offset,
+                output.id,
+                0,
+                input.len,
+                T::CUDA_KIND,
+            );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
+    }
+
+    /// Fold one axis of a resident row-major matrix with public Fp2 weights.
+    /// The untouched axis is zero-padded to its next power of two.
+    pub fn matrix_fold_device<T: ResidentMatrixElement>(
+        &mut self,
+        input: DeviceSlice<'_, T>,
+        weights: DeviceSlice<'_, Fp2Repr>,
+        rows: usize,
+        cols: usize,
+        axis: MatrixFoldAxis,
+    ) -> Result<DeviceBuffer<Fp2Repr>, AccelError> {
+        if rows == 0 || cols == 0 {
+            return Err(AccelError::InvalidInput("invalid resident matrix-fold geometry"));
+        }
+        self.validate_device_slice(input, checked_product(rows, cols)?)?;
+        let (terms, real_outputs) = match axis {
+            MatrixFoldAxis::Rows => (rows, cols),
+            MatrixFoldAxis::Columns => (cols, rows),
+        };
+        self.validate_device_slice(weights, terms)?;
+        let out_pad = real_outputs
+            .checked_next_power_of_two()
+            .ok_or(AccelError::InvalidInput("shape overflow"))?;
+        let output = self.alloc_device(out_pad)?;
+        #[cfg(feature = "cuda")]
+        let result = self.cuda.as_mut().expect("CUDA kind without context").matrix_fold_device(
+            input.buffer.id,
+            input.offset,
+            weights.buffer.id,
+            weights.offset,
+            output.id,
+            0,
+            rows,
+            cols,
+            out_pad,
+            T::CUDA_KIND,
+            axis as i32,
+        );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
+    }
+
+    /// Dot product of two resident Fp2 vectors. The returned scalar is a
+    /// protocol-sized host message; neither input crosses D2H.
+    pub fn fp2_dot_device(
+        &mut self,
+        a: DeviceSlice<'_, Fp2Repr>,
+        b: DeviceSlice<'_, Fp2Repr>,
+    ) -> Result<Fp2, AccelError> {
+        if a.is_empty() || a.len() != b.len() {
+            return Err(AccelError::InvalidInput("invalid resident Fp2 dot geometry"));
+        }
+        self.validate_device_slice(a, a.len())?;
+        self.validate_device_slice(b, b.len())?;
+        #[cfg(feature = "cuda")]
+        {
+            return self.cuda.as_mut().expect("CUDA kind without context").fp2_dot_device(
+                a.buffer.id,
+                a.offset,
+                b.buffer.id,
+                b.offset,
+                a.len,
+            );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Compressed `[g(0), g(2)]` product-sumcheck round over two resident
+    /// Fp2 vectors. Folding remains a separate D2D operation so Rust retains
+    /// transcript/challenge orchestration.
+    pub fn fp2_product_round_device(
+        &mut self,
+        a: DeviceSlice<'_, Fp2Repr>,
+        b: DeviceSlice<'_, Fp2Repr>,
+    ) -> Result<[Fp2; 2], AccelError> {
+        if a.len() != b.len() || a.len() < 2 || a.len() % 2 != 0 {
+            return Err(AccelError::InvalidInput(
+                "invalid resident product-sumcheck round geometry",
+            ));
+        }
+        self.validate_device_slice(a, a.len())?;
+        self.validate_device_slice(b, b.len())?;
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .expect("CUDA kind without context")
+                .fp2_product_round_device(a.buffer.id, a.offset, b.buffer.id, b.offset, a.len / 2);
         }
         #[cfg(not(feature = "cuda"))]
         Err(AccelError::FeatureDisabled)
@@ -3028,6 +3202,149 @@ mod cuda_tests {
         gpu.free_device(db).unwrap();
         gpu.free_device(da).unwrap();
         assert_eq!(gpu.stats().unwrap().live_device_bytes, 0);
+    }
+
+    #[test]
+    fn resident_protocol_field_algebra_is_bit_exact() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
+        let (rows, cols) = (3usize, 5usize);
+        let input: Vec<i16> = (0..rows * cols).map(|i| ((i * 41 + 7) % 211) as i16 - 105).collect();
+        let masks: Vec<Fp> = (0..input.len()).map(|i| Fp::new(i as u64 * 0x1021 + 19)).collect();
+        let raw_masks: Vec<u64> = masks.iter().map(|x| x.value()).collect();
+        let row_weights: Vec<Fp2> = (0..rows.next_power_of_two())
+            .map(|i| Fp2::new(Fp::new(i as u64 * 17 + 3), Fp::new(i as u64 * 29 + 5)))
+            .collect();
+        let col_weights: Vec<Fp2> = (0..cols.next_power_of_two())
+            .map(|i| Fp2::new(Fp::new(i as u64 * 31 + 11), Fp::new(i as u64 * 43 + 13)))
+            .collect();
+        let dinput = gpu.upload_new_device(&input).unwrap();
+        let dmasks = gpu.upload_new_device(&raw_masks).unwrap();
+        let drow_weights = gpu
+            .upload_new_device(&row_weights.iter().copied().map(Into::into).collect::<Vec<_>>())
+            .unwrap();
+        let dcol_weights = gpu
+            .upload_new_device(&col_weights.iter().copied().map(Into::into).collect::<Vec<_>>())
+            .unwrap();
+
+        let dcorr = gpu
+            .subfield_corrections_device(
+                DeviceSlice::new(&dinput, 0, input.len()).unwrap(),
+                DeviceSlice::new(&dmasks, 0, masks.len()).unwrap(),
+            )
+            .unwrap();
+        let corrections = gpu.download_device(&dcorr, 0, input.len()).unwrap();
+        for i in 0..input.len() {
+            assert_eq!(
+                Fp::new(corrections[i]) + masks[i],
+                Fp::from_i64(input[i] as i64),
+                "subfield correction {i}"
+            );
+        }
+
+        let folded_rows = gpu
+            .matrix_fold_device(
+                DeviceSlice::new(&dinput, 0, input.len()).unwrap(),
+                DeviceSlice::new(&drow_weights, 0, row_weights.len()).unwrap(),
+                rows,
+                cols,
+                MatrixFoldAxis::Rows,
+            )
+            .unwrap();
+        let got_rows: Vec<Fp2> = gpu
+            .download_device(&folded_rows, 0, cols.next_power_of_two())
+            .unwrap()
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        for j in 0..cols.next_power_of_two() {
+            let expected = if j < cols {
+                (0..rows).fold(Fp2::ZERO, |sum, i| {
+                    sum + row_weights[i].mul_base(Fp::from_i64(input[i * cols + j] as i64))
+                })
+            } else {
+                Fp2::ZERO
+            };
+            assert_eq!(got_rows[j], expected, "row fold output {j}");
+        }
+
+        let folded_cols = gpu
+            .matrix_fold_device(
+                DeviceSlice::new(&dinput, 0, input.len()).unwrap(),
+                DeviceSlice::new(&dcol_weights, 0, col_weights.len()).unwrap(),
+                rows,
+                cols,
+                MatrixFoldAxis::Columns,
+            )
+            .unwrap();
+        let got_cols: Vec<Fp2> = gpu
+            .download_device(&folded_cols, 0, rows.next_power_of_two())
+            .unwrap()
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        for i in 0..rows.next_power_of_two() {
+            let expected = if i < rows {
+                (0..cols).fold(Fp2::ZERO, |sum, j| {
+                    sum + col_weights[j].mul_base(Fp::from_i64(input[i * cols + j] as i64))
+                })
+            } else {
+                Fp2::ZERO
+            };
+            assert_eq!(got_cols[i], expected, "column fold output {i}");
+        }
+
+        let av: Vec<Fp2> =
+            (0..8).map(|i| Fp2::new(Fp::new(i * 47 + 2), Fp::new(i * 53 + 7))).collect();
+        let bv: Vec<Fp2> =
+            (0..8).map(|i| Fp2::new(Fp::new(i * 59 + 3), Fp::new(i * 61 + 11))).collect();
+        let da =
+            gpu.upload_new_device(&av.iter().copied().map(Into::into).collect::<Vec<_>>()).unwrap();
+        let db =
+            gpu.upload_new_device(&bv.iter().copied().map(Into::into).collect::<Vec<_>>()).unwrap();
+        let dot = gpu
+            .fp2_dot_device(
+                DeviceSlice::new(&da, 0, av.len()).unwrap(),
+                DeviceSlice::new(&db, 0, bv.len()).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(dot, av.iter().zip(&bv).fold(Fp2::ZERO, |sum, (&a, &b)| sum + a * b));
+        let round = gpu
+            .fp2_product_round_device(
+                DeviceSlice::new(&da, 0, av.len()).unwrap(),
+                DeviceSlice::new(&db, 0, bv.len()).unwrap(),
+            )
+            .unwrap();
+        let expected_round = (0..4).fold([Fp2::ZERO; 2], |mut out, i| {
+            let (a0, a1) = (av[2 * i], av[2 * i + 1]);
+            let (b0, b1) = (bv[2 * i], bv[2 * i + 1]);
+            out[0] += a0 * b0;
+            out[1] += (a0 + (a1 - a0) + (a1 - a0)) * (b0 + (b1 - b0) + (b1 - b0));
+            out
+        });
+        assert_eq!(round, expected_round);
+        let challenge = Fp2::new(Fp::new(123), Fp::new(456));
+        let folded_a = gpu.fp2_fold_rows_device(&da, 0, 1, av.len(), challenge).unwrap();
+        let got_fold: Vec<Fp2> = gpu
+            .download_device(&folded_a, 0, av.len() / 2)
+            .unwrap()
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        let expected_fold: Vec<Fp2> = (0..av.len() / 2)
+            .map(|i| av[2 * i] + (av[2 * i + 1] - av[2 * i]) * challenge)
+            .collect();
+        assert_eq!(got_fold, expected_fold);
+
+        gpu.free_device(folded_a).unwrap();
+        gpu.free_device(db).unwrap();
+        gpu.free_device(da).unwrap();
+        gpu.free_device(folded_cols).unwrap();
+        gpu.free_device(folded_rows).unwrap();
+        gpu.free_device(dcorr).unwrap();
+        gpu.free_device(dcol_weights).unwrap();
+        gpu.free_device(drow_weights).unwrap();
+        gpu.free_device(dmasks).unwrap();
+        gpu.free_device(dinput).unwrap();
     }
 
     #[test]

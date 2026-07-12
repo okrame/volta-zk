@@ -15,9 +15,10 @@
 use crate::logup::Doms;
 use crate::mle::{eq_vec, eval_mle};
 use crate::prod_check::{prod_batch_prover, prod_batch_verify, ProdProof};
-use crate::sumcheck_blind::{blind_prove, blind_verify, BlindSumcheckProof};
+use crate::sumcheck_blind::{blind_prove, blind_prove_resident, blind_verify, BlindSumcheckProof};
 use crate::thaler::{fold_w, fold_x, fold_y_acc, pad_bits};
 use std::time::Instant;
+use volta_accel::{AccelError, Backend, DeviceBuffer, DeviceSlice, Fp2Repr, MatrixFoldAxis};
 use volta_field::{Fp, Fp2};
 use volta_mac::{
     auth_verifier, CorrCounters, CorrIndex, CorrelationStream, ProverAuthed, Transcript,
@@ -633,6 +634,137 @@ pub fn prove_gemm_committed_chained(
     )
 }
 
+fn free_resident_fp2_pair(
+    backend: &mut Backend,
+    a: DeviceBuffer<Fp2Repr>,
+    b: DeviceBuffer<Fp2Repr>,
+) -> Result<(), AccelError> {
+    let first = backend.free_device(a).err();
+    let second = backend.free_device(b).err();
+    first.or(second).map_or(Ok(()), Err)
+}
+
+/// Device-resident counterpart of [`prove_gemm_committed_chained`]. The X/W
+/// matrices never leave their owning context: public equality weights are
+/// uploaded, both Thaler folds remain resident, and only compressed
+/// sumcheck messages/final claims cross D2H. Proof and verifier formats are
+/// unchanged.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_gemm_committed_chained_resident(
+    x: DeviceSlice<'_, i16>,
+    w: DeviceSlice<'_, i16>,
+    m: usize,
+    k: usize,
+    n: usize,
+    r_i: &[Fp2],
+    r_j: &[Fp2],
+    claim0: ProverAuthed,
+    doms: &ChainDoms,
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+    backend: &mut Backend,
+) -> Result<(ChainedGemmProof, WireOut, Fp2, WeightClaimP, ProveTimings, CorrCounters), AccelError>
+{
+    if r_i.len() != pad_bits(m) || r_j.len() != pad_bits(n) {
+        return Err(AccelError::InvalidInput(
+            "resident chained GEMM point split does not match geometry",
+        ));
+    }
+    let mut tm = ProveTimings::default();
+    let t0 = Instant::now();
+    let eq_i = eq_vec(r_i);
+    let eq_j = eq_vec(r_j);
+    let eq_i_raw: Vec<Fp2Repr> = eq_i.iter().copied().map(Into::into).collect();
+    let eq_j_raw: Vec<Fp2Repr> = eq_j.iter().copied().map(Into::into).collect();
+    let d_eq_i = backend.upload_new_device(&eq_i_raw)?;
+    let d_eq_j = match backend.upload_new_device(&eq_j_raw) {
+        Ok(value) => value,
+        Err(error) => {
+            let _ = backend.free_device(d_eq_i);
+            return Err(error);
+        }
+    };
+    let a = match backend.matrix_fold_device(
+        x,
+        DeviceSlice::new(&d_eq_i, 0, eq_i_raw.len()).expect("whole row-eq buffer"),
+        m,
+        k,
+        MatrixFoldAxis::Rows,
+    ) {
+        Ok(value) => value,
+        Err(error) => {
+            let _ = free_resident_fp2_pair(backend, d_eq_i, d_eq_j);
+            return Err(error);
+        }
+    };
+    let b = match backend.matrix_fold_device(
+        w,
+        DeviceSlice::new(&d_eq_j, 0, eq_j_raw.len()).expect("whole column-eq buffer"),
+        k,
+        n,
+        MatrixFoldAxis::Columns,
+    ) {
+        Ok(value) => value,
+        Err(error) => {
+            let _ = backend.free_device(a);
+            let _ = free_resident_fp2_pair(backend, d_eq_i, d_eq_j);
+            return Err(error);
+        }
+    };
+    if let Err(error) = free_resident_fp2_pair(backend, d_eq_i, d_eq_j) {
+        let _ = free_resident_fp2_pair(backend, a, b);
+        return Err(error);
+    }
+    tm.t_fold_s = t0.elapsed().as_secs_f64();
+    #[cfg(debug_assertions)]
+    {
+        let total = match backend.fp2_dot_device(
+            DeviceSlice::new(&a, 0, a.len()).expect("whole A fold"),
+            DeviceSlice::new(&b, 0, b.len()).expect("whole B fold"),
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = free_resident_fp2_pair(backend, a, b);
+                return Err(error);
+            }
+        };
+        debug_assert_eq!(claim0.x, total, "claim0 is not the resident sumcheck total");
+    }
+
+    let t2 = Instant::now();
+    let (sumcheck, point, claim_n, x_val, b_final) =
+        blind_prove_resident(a, b, claim0, stream, doms.round_masks, tx, backend)?;
+    tm.t_rounds_s = t2.elapsed().as_secs_f64();
+
+    let t4 = Instant::now();
+    let fx = stream.draw_fulls(doms.x_claim, 1)[0];
+    let corr_x = x_val - fx.x;
+    tx.append("x_claim_correction", 16);
+    let x_auth = ProverAuthed { x: x_val, m: fx.m };
+    let fw = stream.draw_fulls(doms.w_claim, 1)[0];
+    let corr_w = b_final - fw.x;
+    tx.append("w_claim_correction", 16);
+    let b_auth = ProverAuthed { x: b_final, m: fw.m };
+    debug_assert_eq!(claim_n.x, x_val * b_final, "honest final claim mismatch");
+    let mask = stream.draw_fulls(doms.prod_mask, 1)[0];
+    let chi = tx.challenge_fp2();
+    let prod = prod_batch_prover(&[(x_auth, b_auth, claim_n)], chi, mask, tx);
+    tm.t_prod_s = t4.elapsed().as_secs_f64();
+
+    let mut x_point = point.clone();
+    x_point.extend_from_slice(r_i);
+    let mut w_point = r_j.to_vec();
+    w_point.extend_from_slice(&point);
+    Ok((
+        ChainedGemmProof { sumcheck, prod },
+        WireOut { point: x_point, value: x_auth, corr: corr_x },
+        corr_w,
+        WeightClaimP { point: w_point, value: b_auth },
+        tm,
+        stream.counters,
+    ))
+}
+
 /// Verifier for [`prove_gemm_committed_chained`]: mirrors the recursion on
 /// keys from `k_claim0` (the key the downstream instance handed over), then
 /// returns the two outward key claims — the X wire key (to the `KeyLedger`)
@@ -1012,6 +1144,96 @@ mod tests {
         );
         assert_eq!(after.full_corrs - before.full_corrs, 2 * pad_bits(k) as u64 + 3);
         assert_eq!(after.sub_corrs - before.sub_corrs, 0);
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn resident_committed_chained_matches_cpu_byte_for_byte() {
+        let mut gpu = match Backend::cuda_resident() {
+            Ok(gpu) => gpu,
+            Err(error) if std::env::var("VOLTA_REQUIRE_CUDA").as_deref() != Ok("1") => {
+                eprintln!("skipping resident chained GEMM differential: {error}");
+                return;
+            }
+            Err(error) => panic!("CUDA required: {error}"),
+        };
+        let (m, k, n) = (6usize, 12usize, 10usize);
+        let mut rng = rand::rngs::StdRng::seed_from_u64(0xC0DE_7711);
+        let x: Vec<i16> = (0..m * k).map(|_| rng.gen_range(-600..600)).collect();
+        let w: Vec<i16> = (0..k * n).map(|_| rng.gen_range(-600..600)).collect();
+        let yacc = volta_gpt2::gemm_i64(&x, &w, m, k, n);
+        let pcg_seed = [0x35; 32];
+        let tx_seed = [0xA9; 32];
+        let mut cpu_tx = Transcript::new(tx_seed);
+        let r_i: Vec<Fp2> = (0..pad_bits(m)).map(|_| cpu_tx.challenge_fp2()).collect();
+        let r_j: Vec<Fp2> = (0..pad_bits(n)).map(|_| cpu_tx.challenge_fp2()).collect();
+        let eq_i = eq_vec(&r_i);
+        let eq_j = eq_vec(&r_j);
+        let claim0 = ProverAuthed {
+            x: fold_y_acc(&yacc, m, n, &eq_i, &eq_j),
+            m: Fp2::new(Fp::new(0x1234), Fp::new(0x5678)),
+        };
+        let doms = ChainDoms::alloc(&mut Doms::new(0xB000), k);
+        let mut cpu_stream = CorrelationStream::new(pcg_seed);
+        let (cpu_proof, cpu_wire, cpu_corr_w, cpu_weight, _, cpu_counters) =
+            prove_gemm_committed_chained(
+                &x,
+                &w,
+                m,
+                k,
+                n,
+                &r_i,
+                &r_j,
+                claim0,
+                &doms,
+                &mut cpu_stream,
+                &mut cpu_tx,
+            );
+
+        let dx = gpu.upload_new_device(&x).unwrap();
+        let dw = gpu.upload_new_device(&w).unwrap();
+        let mut live_after_first = None;
+        for _ in 0..2 {
+            let mut tx = Transcript::new(tx_seed);
+            let r_i_gpu: Vec<Fp2> = (0..pad_bits(m)).map(|_| tx.challenge_fp2()).collect();
+            let r_j_gpu: Vec<Fp2> = (0..pad_bits(n)).map(|_| tx.challenge_fp2()).collect();
+            assert_eq!(r_i_gpu, r_i);
+            assert_eq!(r_j_gpu, r_j);
+            let mut stream = CorrelationStream::new(pcg_seed);
+            let (proof, wire, corr_w, weight, _, counters) = prove_gemm_committed_chained_resident(
+                DeviceSlice::new(&dx, 0, x.len()).unwrap(),
+                DeviceSlice::new(&dw, 0, w.len()).unwrap(),
+                m,
+                k,
+                n,
+                &r_i_gpu,
+                &r_j_gpu,
+                claim0,
+                &doms,
+                &mut stream,
+                &mut tx,
+                &mut gpu,
+            )
+            .unwrap();
+            assert_eq!(proof.sumcheck, cpu_proof.sumcheck);
+            assert_eq!(proof.prod.m0, cpu_proof.prod.m0);
+            assert_eq!(proof.prod.m1, cpu_proof.prod.m1);
+            assert_eq!(wire.point, cpu_wire.point);
+            assert_eq!(wire.value, cpu_wire.value);
+            assert_eq!(wire.corr, cpu_wire.corr);
+            assert_eq!(corr_w, cpu_corr_w);
+            assert_eq!(weight, cpu_weight);
+            assert_eq!(counters, cpu_counters);
+            assert_eq!(tx.ledger(), cpu_tx.ledger());
+            let live = gpu.stats().unwrap().live_device_bytes;
+            if let Some(first) = live_after_first {
+                assert_eq!(live, first, "resident chained GEMM leaked across reuse");
+            } else {
+                live_after_first = Some(live);
+            }
+        }
+        gpu.free_device(dw).unwrap();
+        gpu.free_device(dx).unwrap();
     }
 
     fn run_act_chained(m: usize, k: usize, n: usize, seed: u8, tamper: bool) -> bool {

@@ -263,6 +263,25 @@ type FixedLogitsDevice = unsafe extern "C" fn(
     usize,
     usize,
 ) -> c_int;
+type SubfieldCorrectionsDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, u64, usize, usize, c_int) -> c_int;
+type MatrixFoldDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    usize,
+    usize,
+    c_int,
+    c_int,
+) -> c_int;
+type Fp2DotDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize, *mut Fp2Repr) -> c_int;
+type Fp2ProductRoundDevice = Fp2DotDevice;
 type NttFp = unsafe extern "C" fn(*mut c_void, *const u64, usize, usize, *mut u64) -> c_int;
 type NttFpBatch =
     unsafe extern "C" fn(*mut c_void, *const u64, usize, usize, usize, *mut u64) -> c_int;
@@ -480,6 +499,10 @@ struct Api {
     fixed_lookup_device: FixedLookupDevice,
     fixed_requant_i16_device: FixedRequantI16Device,
     fixed_logits_device: FixedLogitsDevice,
+    subfield_corrections_device: SubfieldCorrectionsDevice,
+    matrix_fold_device: MatrixFoldDevice,
+    fp2_dot_device: Fp2DotDevice,
+    fp2_product_round_device: Fp2ProductRoundDevice,
     ntt_fp: NttFp,
     ntt_fp_batch: NttFpBatch,
     ntt_fp2: NttFp2,
@@ -602,6 +625,14 @@ impl CudaContext {
             },
             fixed_logits_device: unsafe {
                 load_symbol(handle, b"volta_cuda_fixed_logits_device\0")?
+            },
+            subfield_corrections_device: unsafe {
+                load_symbol(handle, b"volta_cuda_subfield_corrections_device\0")?
+            },
+            matrix_fold_device: unsafe { load_symbol(handle, b"volta_cuda_matrix_fold_device\0")? },
+            fp2_dot_device: unsafe { load_symbol(handle, b"volta_cuda_fp2_dot_device\0")? },
+            fp2_product_round_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fp2_product_round_device\0")?
             },
             ntt_fp: unsafe { load_symbol(handle, b"volta_cuda_ntt_fp\0")? },
             ntt_fp_batch: unsafe { load_symbol(handle, b"volta_cuda_ntt_fp_batch\0")? },
@@ -1280,6 +1311,110 @@ impl CudaContext {
                 vocab,
             )
         })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn subfield_corrections_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        masks: u64,
+        masks_offset: usize,
+        output: u64,
+        output_offset: usize,
+        n: usize,
+        kind: i32,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates typed regions and the scalar-kind tag.
+        self.check(unsafe {
+            (self.api.subfield_corrections_device)(
+                self.raw,
+                input,
+                input_offset,
+                masks,
+                masks_offset,
+                output,
+                output_offset,
+                n,
+                kind,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn matrix_fold_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        weights: u64,
+        weights_offset: usize,
+        output: u64,
+        output_offset: usize,
+        rows: usize,
+        cols: usize,
+        out_pad: usize,
+        kind: i32,
+        axis: i32,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates typed regions, shape, axis, and scalar kind.
+        self.check(unsafe {
+            (self.api.matrix_fold_device)(
+                self.raw,
+                input,
+                input_offset,
+                weights,
+                weights_offset,
+                output,
+                output_offset,
+                rows,
+                cols,
+                out_pad,
+                kind,
+                axis,
+            )
+        })
+    }
+
+    pub(super) fn fp2_dot_device(
+        &mut self,
+        a: u64,
+        a_offset: usize,
+        b: u64,
+        b_offset: usize,
+        n: usize,
+    ) -> Result<Fp2, AccelError> {
+        let mut output = Fp2Repr::default();
+        // SAFETY: Backend validates both resident Fp2 ranges; output is one
+        // protocol scalar and the ABI synchronizes before returning.
+        self.check(unsafe {
+            (self.api.fp2_dot_device)(self.raw, a, a_offset, b, b_offset, n, &mut output)
+        })?;
+        Ok(output.into())
+    }
+
+    pub(super) fn fp2_product_round_device(
+        &mut self,
+        a: u64,
+        a_offset: usize,
+        b: u64,
+        b_offset: usize,
+        pairs: usize,
+    ) -> Result<[Fp2; 2], AccelError> {
+        let mut output = [Fp2Repr::default(); 2];
+        // SAFETY: Backend validates both 2*pairs resident ranges; output is
+        // the compressed round message and the ABI synchronizes.
+        self.check(unsafe {
+            (self.api.fp2_product_round_device)(
+                self.raw,
+                a,
+                a_offset,
+                b,
+                b_offset,
+                pairs,
+                output.as_mut_ptr(),
+            )
+        })?;
+        Ok(output.map(Into::into))
     }
 
     pub(super) fn ntt_fp(&mut self, msg: &[Fp], size: usize) -> Result<Vec<Fp>, AccelError> {

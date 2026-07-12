@@ -56,6 +56,32 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-12 (`P7-integrated-resident` protocol-algebra + chained-GEMM
+  checkpoint; layer integration still open)**: ABI v8 introduces a sealed,
+  typed resident field-algebra seam rather than GPT-specific proof kernels:
+  subfield-auth correction generation for i16/i64/Fp inputs, Fp2-weighted
+  matrix folds along either axis with power-of-two output padding, Fp2 dot
+  reduction, compressed product-sumcheck rounds and D2D vector folds. Rust
+  retains transcript challenges, correlation-domain allocation and proof
+  construction; only the two compressed round values and final scalar claims
+  cross D2H. Input matrices and every intermediate fold stay in opaque
+  context-owned buffers. Scalar-kind tags and fold axes are sealed/validated
+  on the Rust side, so downstream crates cannot forge an ABI layout.
+
+  All 13 `volta-accel` CUDA tests pass on A100 `3mq19up4`, including signed
+  conversion, non-power-of-two matrix shapes, both fold axes, padding,
+  correction identities, Fp2 dot/product rounds and context ownership. The
+  resident blind product-sumcheck is byte-for-byte equal to CPU for all round
+  corrections, points, authenticated claims, correlation counts and
+  transcript ledger, with stable live memory across reuse. Building on that
+  shared primitive, the first real protocol path — a non-power-of-two
+  committed chained GEMM — produces identical `ChainedGemmProof`, X/W claims
+  and Π_Prod messages on CPU and CUDA across repeated use. Proof/verifier
+  formats and CPU entry points are unchanged. This remains a substrate
+  checkpoint: FFN/attention derived columns, LogUp leaf handles and model
+  orchestration are not yet wired to it, so no layer/e2e resident result or
+  rho is recorded.
+
 - **2026-07-12 (`P7-integrated-resident` full forward + witness checkpoint;
   prover integration still open)**: ABI v7 adds shape-parametric fixed-point
   primitives for embedding, LayerNorm, biased GEMM/requant/residual, QKV

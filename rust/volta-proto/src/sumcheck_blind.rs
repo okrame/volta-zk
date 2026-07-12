@@ -11,12 +11,110 @@
 //! closes with Π_Prod / ZeroBatch against authenticated tensor openings.
 
 use crate::mle::{fold_low, lagrange3};
+use volta_accel::{AccelError, Backend, DeviceBuffer, DeviceSlice, Fp2Repr};
 use volta_field::Fp2;
 use volta_mac::{CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey};
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct BlindSumcheckProof {
     /// Per round: corrections (16 B each) transferring g(0), g(2) onto masks.
     pub round_corrs: Vec<[Fp2; 2]>,
+}
+
+fn free_fp2_pair(
+    backend: &mut Backend,
+    a: DeviceBuffer<Fp2Repr>,
+    b: DeviceBuffer<Fp2Repr>,
+) -> Result<(), AccelError> {
+    let first = backend.free_device(a).err();
+    let second = backend.free_device(b).err();
+    first.or(second).map_or(Ok(()), Err)
+}
+
+/// Resident counterpart of [`blind_prove`]. Rust retains transcript and MAC
+/// orchestration; each round returns only `[g(0), g(2)]`, then folds both
+/// witness vectors D2D. The input buffers are consumed on every path.
+pub fn blind_prove_resident(
+    mut a: DeviceBuffer<Fp2Repr>,
+    mut b: DeviceBuffer<Fp2Repr>,
+    claim0: ProverAuthed,
+    stream: &mut CorrelationStream,
+    mask_dom_base: u64,
+    tx: &mut Transcript,
+    backend: &mut Backend,
+) -> Result<(BlindSumcheckProof, Vec<Fp2>, ProverAuthed, Fp2, Fp2), AccelError> {
+    if a.len() != b.len() || a.len() < 2 || !a.len().is_power_of_two() {
+        let _ = free_fp2_pair(backend, a, b);
+        return Err(AccelError::InvalidInput(
+            "resident blind sumcheck requires equal power-of-two vectors",
+        ));
+    }
+    let n_vars = a.len().trailing_zeros() as usize;
+    let mut round_corrs = Vec::with_capacity(n_vars);
+    let mut point = Vec::with_capacity(n_vars);
+    let mut claim = claim0;
+    for round in 0..n_vars {
+        let len = a.len();
+        let round_values = match backend.fp2_product_round_device(
+            DeviceSlice::new(&a, 0, len).expect("whole resident A vector"),
+            DeviceSlice::new(&b, 0, len).expect("whole resident B vector"),
+        ) {
+            Ok(values) => values,
+            Err(error) => {
+                let _ = free_fp2_pair(backend, a, b);
+                return Err(error);
+            }
+        };
+        let [g0, g2] = round_values;
+        let masks = stream.draw_fulls(mask_dom_base + round as u64, 2);
+        round_corrs.push([g0 - masks[0].x, g2 - masks[1].x]);
+        tx.append("blind_round_corrections", 32);
+        let g0_a = ProverAuthed { x: g0, m: masks[0].m };
+        let g2_a = ProverAuthed { x: g2, m: masks[1].m };
+        let g1_a = claim.sub(g0_a);
+        let r = tx.challenge_fp2();
+        let w = lagrange3(r);
+        claim = g0_a.scale(w[0]).add(g1_a.scale(w[1])).add(g2_a.scale(w[2]));
+
+        let next_a = match backend.fp2_fold_rows_device(&a, 0, 1, len, r) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = free_fp2_pair(backend, a, b);
+                return Err(error);
+            }
+        };
+        let next_b = match backend.fp2_fold_rows_device(&b, 0, 1, len, r) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = backend.free_device(next_a);
+                let _ = free_fp2_pair(backend, a, b);
+                return Err(error);
+            }
+        };
+        if let Err(error) = free_fp2_pair(backend, a, b) {
+            let _ = free_fp2_pair(backend, next_a, next_b);
+            return Err(error);
+        }
+        a = next_a;
+        b = next_b;
+        point.push(r);
+    }
+    let a_final = match backend.download_device(&a, 0, 1) {
+        Ok(value) => Fp2::from(value[0]),
+        Err(error) => {
+            let _ = free_fp2_pair(backend, a, b);
+            return Err(error);
+        }
+    };
+    let b_final = match backend.download_device(&b, 0, 1) {
+        Ok(value) => Fp2::from(value[0]),
+        Err(error) => {
+            let _ = free_fp2_pair(backend, a, b);
+            return Err(error);
+        }
+    };
+    free_fp2_pair(backend, a, b)?;
+    Ok((BlindSumcheckProof { round_corrs }, point, claim, a_final, b_final))
 }
 
 /// Prover. `claim0` is the (authenticated) initial claim Ỹ(r_i, r_j).
@@ -138,5 +236,59 @@ mod tests {
         assert_eq!(final_claim.x, clear.a_final * clear.b_final);
         // Mask freshness: 2 fresh full correlations per round, all counted.
         assert_eq!(ps.counters.full_corrs, 2 * blind.round_corrs.len() as u64);
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn resident_blind_sumcheck_matches_cpu_and_reuses_context() {
+        let mut gpu = match Backend::cuda_resident() {
+            Ok(gpu) => gpu,
+            Err(error) if std::env::var("VOLTA_REQUIRE_CUDA").as_deref() != Ok("1") => {
+                eprintln!("skipping resident sumcheck differential: {error}");
+                return;
+            }
+            Err(error) => panic!("CUDA required: {error}"),
+        };
+        let mut rng = rand::rngs::StdRng::seed_from_u64(0x51A7);
+        let a: Vec<Fp2> = (0..128).map(|_| rand_fp2(&mut rng)).collect();
+        let b: Vec<Fp2> = (0..128).map(|_| rand_fp2(&mut rng)).collect();
+        let total = a.iter().zip(&b).fold(Fp2::ZERO, |sum, (&x, &y)| sum + x * y);
+        let claim0 = ProverAuthed { x: total, m: rand_fp2(&mut rng) };
+        let pcg_seed = [0xA3; 32];
+        let tx_seed = [0x6C; 32];
+        let mut cpu_stream = CorrelationStream::new(pcg_seed);
+        let mut cpu_tx = Transcript::new(tx_seed);
+        let (cpu_proof, cpu_point, cpu_claim) =
+            blind_prove(a.clone(), b.clone(), claim0, &mut cpu_stream, 0xD000, &mut cpu_tx);
+        let mut live_after_first = None;
+        for _ in 0..2 {
+            let da = gpu
+                .upload_new_device(&a.iter().copied().map(Into::into).collect::<Vec<_>>())
+                .unwrap();
+            let db = gpu
+                .upload_new_device(&b.iter().copied().map(Into::into).collect::<Vec<_>>())
+                .unwrap();
+            let mut stream = CorrelationStream::new(pcg_seed);
+            let mut tx = Transcript::new(tx_seed);
+            let (proof, point, claim, a_final, b_final) =
+                blind_prove_resident(da, db, claim0, &mut stream, 0xD000, &mut tx, &mut gpu)
+                    .unwrap();
+            assert_eq!(proof, cpu_proof);
+            assert_eq!(point, cpu_point);
+            assert_eq!(claim, cpu_claim);
+            assert_eq!(a_final, crate::mle::eval_mle(&a, &point));
+            assert_eq!(b_final, crate::mle::eval_mle(&b, &point));
+            assert_eq!(stream.counters, cpu_stream.counters);
+            assert_eq!(tx.ledger(), cpu_tx.ledger());
+            let live = gpu.stats().unwrap().live_device_bytes;
+            if let Some(first) = live_after_first {
+                assert_eq!(live, first, "resident sumcheck leaked across context reuse");
+            } else {
+                // Workspace is persistent by design; resident inputs/folds
+                // have already been freed by the sumcheck.
+                assert!(live > 0);
+                live_after_first = Some(live);
+            }
+        }
     }
 }

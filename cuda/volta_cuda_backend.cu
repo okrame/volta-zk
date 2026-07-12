@@ -13,7 +13,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 3;
+constexpr uint32_t ABI_VERSION = 4;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -222,9 +222,9 @@ int finish_timing(Context* c, int operation, uint64_t h2d, uint64_t d2h) {
     ++c->stats.calls[operation];
     c->stats.h2d_bytes += h2d;
     c->stats.d2h_bytes += d2h;
-    c->stats.h2d_ns += h2d_ns;
+    if (h2d) c->stats.h2d_ns += h2d_ns;
     c->stats.kernel_ns[operation] += kernel_ns;
-    c->stats.d2h_ns += d2h_ns;
+    if (d2h) c->stats.d2h_ns += d2h_ns;
     return 0;
 }
 
@@ -487,6 +487,15 @@ __global__ void logup_first_combine(
     q[offset + i] = Fp2{fp_add(fp_mul(av, bv), a1sq7), fp_mul(sum, alpha1)};
 }
 
+__global__ void logup_materialize_leaves(
+    const uint64_t* a, const uint32_t* mult, Fp2* p, Fp2* q, size_t n,
+    uint64_t alpha1, int neg_mult) {
+    const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    p[i] = neg_mult ? Fp2{fp_neg(static_cast<uint64_t>(mult[i])), 0} : Fp2{1, 0};
+    q[i] = Fp2{a[i], alpha1};
+}
+
 __global__ void logup_general_combine(
     const Fp2* p, const Fp2* q, Fp2* po, Fp2* qo, size_t pairs,
     size_t child_offset, size_t parent_offset) {
@@ -555,6 +564,27 @@ __global__ void logup_fold(
         const Fp2 a = inputs[c][2 * i];
         outputs[c][i] = fp2_add(a, fp2_mul(fp2_sub(inputs[c][2 * i + 1], a), r));
     }
+}
+
+__global__ void fp2_deinterleave(
+    const Fp2* input, Fp2* even, Fp2* odd, size_t pairs) {
+    const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (i >= pairs) return;
+    even[i] = input[2 * i];
+    odd[i] = input[2 * i + 1];
+}
+
+__global__ void fp2_set_one(Fp2* output) {
+    if (blockIdx.x == 0 && threadIdx.x == 0) output[0] = Fp2{1, 0};
+}
+
+__global__ void suffix_eq_expand(
+    const Fp2* input, Fp2* output, size_t n, const Fp2* challenge) {
+    const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    const Fp2 v1 = fp2_mul(input[i], challenge[0]);
+    output[2 * i] = fp2_sub(input[i], v1);
+    output[2 * i + 1] = v1;
 }
 
 // -------------------------------------------------------------------------
@@ -916,6 +946,63 @@ extern "C" int volta_cuda_logup_tree(void* raw,const uint64_t* leaf,const uint32
     return finish_timing(c,OP_LOGUP,lb+mb,2*tb);
 }
 
+extern "C" int volta_cuda_logup_tree_device(
+    void* raw, uint64_t leaf_id, size_t leaf_offset, uint64_t mult_id, size_t mult_offset,
+    size_t n, uint64_t alpha1, int neg_mult, uint64_t p_id, size_t p_offset,
+    uint64_t q_id, size_t q_offset) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || n < 2 || (n & (n - 1)) || (neg_mult && !mult_id))
+        return fail_message(c, "invalid resident LogUp tree geometry");
+    void *leafv = nullptr, *multv = nullptr, *pv = nullptr, *qv = nullptr;
+    if (resident_region(c, leaf_id, leaf_offset * sizeof(uint64_t), n * sizeof(uint64_t), &leafv) ||
+        (neg_mult && resident_region(c, mult_id, mult_offset * sizeof(uint32_t),
+                                     n * sizeof(uint32_t), &multv)) ||
+        resident_region(c, p_id, p_offset * sizeof(Fp2), (n - 1) * sizeof(Fp2), &pv) ||
+        resident_region(c, q_id, q_offset * sizeof(Fp2), (n - 1) * sizeof(Fp2), &qv))
+        return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    size_t len = n / 2, off = len - 1;
+    logup_first_combine<<<(len + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const uint64_t*>(leafv), static_cast<const uint32_t*>(multv),
+        static_cast<Fp2*>(pv), static_cast<Fp2*>(qv), len, off, alpha1, neg_mult);
+    while (len > 1) {
+        const size_t parent = len / 2;
+        logup_general_combine<<<(parent + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+            static_cast<Fp2*>(pv), static_cast<Fp2*>(qv),
+            static_cast<Fp2*>(pv), static_cast<Fp2*>(qv), parent, len - 1, parent - 1);
+        len = parent;
+    }
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_LOGUP, 0, 0);
+}
+
+extern "C" int volta_cuda_logup_materialize_leaves_device(
+    void* raw, uint64_t leaf_id, size_t leaf_offset, uint64_t mult_id,
+    size_t mult_offset, size_t n, uint64_t alpha1, int neg_mult,
+    uint64_t p_id, size_t p_offset, uint64_t q_id, size_t q_offset) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !n || (neg_mult && !mult_id))
+        return fail_message(c, "invalid resident LogUp leaf geometry");
+    void *leaf = nullptr, *mult = nullptr, *p = nullptr, *q = nullptr;
+    if (resident_region(c, leaf_id, leaf_offset * sizeof(uint64_t),
+                        n * sizeof(uint64_t), &leaf) ||
+        (neg_mult && resident_region(c, mult_id, mult_offset * sizeof(uint32_t),
+                                     n * sizeof(uint32_t), &mult)) ||
+        resident_region(c, p_id, p_offset * sizeof(Fp2), n * sizeof(Fp2), &p) ||
+        resident_region(c, q_id, q_offset * sizeof(Fp2), n * sizeof(Fp2), &q))
+        return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    logup_materialize_leaves<<<(n + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const uint64_t*>(leaf), static_cast<const uint32_t*>(mult),
+        static_cast<Fp2*>(p), static_cast<Fp2*>(q), n, alpha1, neg_mult);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_LOGUP, 0, 0);
+}
+
 extern "C" int volta_cuda_logup_general_round(void* raw,const Fp2* p0,const Fp2* p1,const Fp2* q0,
     const Fp2* q1,const Fp2* suffix,size_t pairs,Fp2* output) {
     Context* c=static_cast<Context*>(raw);if(!c||!p0||!p1||!q0||!q1||!suffix||!output||!pairs)return -1;
@@ -931,6 +1018,44 @@ extern "C" int volta_cuda_logup_general_round(void* raw,const Fp2* p0,const Fp2*
     return finish_timing(c,OP_LOGUP,4*vb+sb,sizeof(RoundAcc));
 }
 
+extern "C" int volta_cuda_logup_general_round_device(
+    void* raw, uint64_t p0_id, size_t p0_offset, uint64_t p1_id, size_t p1_offset,
+    uint64_t q0_id, size_t q0_offset, uint64_t q1_id, size_t q1_offset,
+    uint64_t suffix_id, size_t suffix_offset, size_t pairs, Fp2* output) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !pairs || !output)
+        return fail_message(c, "invalid resident LogUp round geometry");
+    void *p0v = nullptr, *p1v = nullptr, *q0v = nullptr, *q1v = nullptr, *sv = nullptr;
+    const size_t vb = 2 * pairs * sizeof(Fp2), sb = pairs * sizeof(Fp2);
+    if (resident_region(c, p0_id, p0_offset * sizeof(Fp2), vb, &p0v) ||
+        resident_region(c, p1_id, p1_offset * sizeof(Fp2), vb, &p1v) ||
+        resident_region(c, q0_id, q0_offset * sizeof(Fp2), vb, &q0v) ||
+        resident_region(c, q1_id, q1_offset * sizeof(Fp2), vb, &q1v) ||
+        resident_region(c, suffix_id, suffix_offset * sizeof(Fp2), sb, &sv))
+        return -1;
+    const size_t ab = pairs * sizeof(RoundAcc);
+    if (ensure(c, 5, ab) || ensure(c, 6, ab)) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    logup_round_eval<<<(pairs + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const Fp2*>(p0v), static_cast<const Fp2*>(p1v),
+        static_cast<const Fp2*>(q0v), static_cast<const Fp2*>(q1v),
+        static_cast<const Fp2*>(sv), buf<RoundAcc>(c, 5), pairs);
+    size_t count = pairs;
+    RoundAcc* in = buf<RoundAcc>(c, 5);
+    RoundAcc* out = buf<RoundAcc>(c, 6);
+    while (count > 1) {
+        const size_t blocks = (count + BLOCK - 1) / BLOCK;
+        reduce_round<<<blocks, BLOCK, 0, c->stream>>>(in, out, count);
+        count = blocks;
+        std::swap(in, out);
+    }
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    CUDA_OR_RETURN(c, cudaMemcpyAsync(output, in, sizeof(RoundAcc), cudaMemcpyDeviceToHost, c->stream));
+    return finish_timing(c, OP_LOGUP, 0, sizeof(RoundAcc));
+}
+
 extern "C" int volta_cuda_logup_fold4(void* raw,const Fp2* p0,const Fp2* p1,const Fp2* q0,const Fp2* q1,
     size_t pairs,Fp2 r,Fp2* o0,Fp2* o1,Fp2* o2,Fp2* o3) {
     Context* c=static_cast<Context*>(raw);if(!c||!p0||!p1||!q0||!q1||!o0||!o1||!o2||!o3||!pairs)return -1;
@@ -939,6 +1064,87 @@ extern "C" int volta_cuda_logup_fold4(void* raw,const Fp2* p0,const Fp2* p1,cons
     if(mark_timing(c,1))return -1;logup_fold<<<(pairs+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(buf<Fp2>(c,0),buf<Fp2>(c,1),buf<Fp2>(c,2),buf<Fp2>(c,3),buf<Fp2>(c,4),buf<Fp2>(c,5),buf<Fp2>(c,6),buf<Fp2>(c,7),pairs,r);
     CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;Fp2* dst[4]={o0,o1,o2,o3};for(int i=0;i<4;++i)CUDA_OR_RETURN(c,cudaMemcpyAsync(dst[i],buf<Fp2>(c,4+i),ob,cudaMemcpyDeviceToHost,c->stream));
     return finish_timing(c,OP_LOGUP,4*ib,4*ob);
+}
+
+extern "C" int volta_cuda_logup_fold4_device(
+    void* raw, uint64_t p0_id, size_t p0_offset, uint64_t p1_id, size_t p1_offset,
+    uint64_t q0_id, size_t q0_offset, uint64_t q1_id, size_t q1_offset, size_t pairs,
+    Fp2 r, uint64_t o0_id, size_t o0_offset, uint64_t o1_id, size_t o1_offset,
+    uint64_t o2_id, size_t o2_offset, uint64_t o3_id, size_t o3_offset) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !pairs) return fail_message(c, "invalid resident LogUp fold geometry");
+    void *iv[4]{}, *ov[4]{};
+    const uint64_t ii[4] = {p0_id, p1_id, q0_id, q1_id};
+    const size_t io[4] = {p0_offset, p1_offset, q0_offset, q1_offset};
+    const uint64_t oi[4] = {o0_id, o1_id, o2_id, o3_id};
+    const size_t oo[4] = {o0_offset, o1_offset, o2_offset, o3_offset};
+    for (int i = 0; i < 4; ++i) {
+        if (resident_region(c, ii[i], io[i] * sizeof(Fp2), 2 * pairs * sizeof(Fp2), &iv[i]) ||
+            resident_region(c, oi[i], oo[i] * sizeof(Fp2), pairs * sizeof(Fp2), &ov[i]))
+            return -1;
+    }
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    logup_fold<<<(pairs + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const Fp2*>(iv[0]), static_cast<const Fp2*>(iv[1]),
+        static_cast<const Fp2*>(iv[2]), static_cast<const Fp2*>(iv[3]),
+        static_cast<Fp2*>(ov[0]), static_cast<Fp2*>(ov[1]),
+        static_cast<Fp2*>(ov[2]), static_cast<Fp2*>(ov[3]), pairs, r);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_LOGUP, 0, 0);
+}
+
+extern "C" int volta_cuda_fp2_deinterleave_device(
+    void* raw, uint64_t input_id, size_t input_offset, size_t pairs,
+    uint64_t even_id, size_t even_offset, uint64_t odd_id, size_t odd_offset) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !pairs) return fail_message(c, "invalid resident deinterleave geometry");
+    void *input = nullptr, *even = nullptr, *odd = nullptr;
+    if (resident_region(c, input_id, input_offset * sizeof(Fp2),
+                        2 * pairs * sizeof(Fp2), &input) ||
+        resident_region(c, even_id, even_offset * sizeof(Fp2),
+                        pairs * sizeof(Fp2), &even) ||
+        resident_region(c, odd_id, odd_offset * sizeof(Fp2),
+                        pairs * sizeof(Fp2), &odd))
+        return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    fp2_deinterleave<<<(pairs + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const Fp2*>(input), static_cast<Fp2*>(even),
+        static_cast<Fp2*>(odd), pairs);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_LOGUP, 0, 0);
+}
+
+extern "C" int volta_cuda_logup_suffix_eq_device(
+    void* raw, uint64_t points_id, size_t points_offset, size_t point_len,
+    uint64_t output_id, size_t output_offset) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !point_len || point_len >= 63)
+        return fail_message(c, "invalid resident suffix-eq geometry");
+    const size_t total = (size_t{1} << point_len) - 1;
+    void *points = nullptr, *output = nullptr;
+    if (resident_region(c, points_id, points_offset * sizeof(Fp2),
+                        point_len * sizeof(Fp2), &points) ||
+        resident_region(c, output_id, output_offset * sizeof(Fp2),
+                        total * sizeof(Fp2), &output))
+        return -1;
+    Fp2* out = static_cast<Fp2*>(output);
+    const Fp2* pts = static_cast<const Fp2*>(points);
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    fp2_set_one<<<1, 1, 0, c->stream>>>(out);
+    size_t size = 1;
+    for (size_t j = point_len - 1; j > 0; --j) {
+        suffix_eq_expand<<<(size + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+            out + size - 1, out + 2 * size - 1, size, pts + j);
+        size *= 2;
+    }
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_LOGUP, 0, 0);
 }
 
 extern "C" int volta_cuda_pcs_combine_rows(void* raw,const int16_t* weights,const uint64_t* pads,

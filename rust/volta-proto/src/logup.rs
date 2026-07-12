@@ -24,7 +24,7 @@
 use crate::mle::lagrange3;
 use rayon::prelude::*;
 use std::time::Instant;
-use volta_accel::{Backend, BackendKind, Operation};
+use volta_accel::{Backend, BackendKind, DeviceBuffer, Fp2Repr, Operation};
 use volta_field::{Fp, Fp2, FpStream, W};
 
 /// Below this vector length the round loops stay serial.
@@ -882,6 +882,249 @@ pub fn aux_col(vals: &[Fp]) -> LeafAuxCol {
     }
 }
 
+/// Resident upper-tree engine fed from host leaves. This is an incremental
+/// bridge, not the P7 resident witness gate: the leaf layer (including aux
+/// columns) still executes on the host. Internal tree nodes, upper-layer
+/// round vectors, folds and suffix-equality tables never leave the device;
+/// Rust receives only roots, round messages and split claims.
+fn prove_engine_resident_from_host_leaves(
+    leaf_p: &LeafP,
+    leaf_q: &LeafQ,
+    mut aux: Option<&mut LeafAux>,
+    sink: &mut impl Sink,
+    ctr: &mut Counters,
+    backend: &mut Backend,
+) -> (Fp2, Fp2, Vec<Fp2>) {
+    let n = leaf_q.a.len();
+    assert!(n >= 2 && n.is_power_of_two());
+    let depth = n.trailing_zeros() as usize;
+    let leaf_raw: Vec<u64> = leaf_q.a.iter().map(|x| x.value()).collect();
+    let dleaf = backend
+        .upload_new_device(&leaf_raw)
+        .unwrap_or_else(|e| panic!("resident LogUp leaf upload failed: {e}"));
+    let dmult = match leaf_p {
+        LeafP::Ones => None,
+        LeafP::NegMult(mult) => Some(
+            backend
+                .upload_new_device(*mult)
+                .unwrap_or_else(|e| panic!("resident LogUp multiplicity upload failed: {e}")),
+        ),
+    };
+    let mult_ref = dmult.as_ref().map(|m| (m, 0));
+    let (tree_p, tree_q) = backend
+        .logup_tree_device(&dleaf, 0, leaf_q.alpha1, mult_ref, n)
+        .unwrap_or_else(|e| panic!("resident LogUp tree failed: {e}"));
+
+    let half = n / 2;
+    ctr.bulk(0, (if dmult.is_some() { 5 } else { 2 }) * half as u64);
+    let mut len = half;
+    while len > 1 {
+        len /= 2;
+        ctr.bulk(3 * len as u64, 0);
+    }
+    let root_p: Fp2 =
+        backend.download_device(&tree_p, 0, 1).expect("resident LogUp root-p download")[0].into();
+    let root_q: Fp2 =
+        backend.download_device(&tree_q, 0, 1).expect("resident LogUp root-q download")[0].into();
+    sink.root(root_p, root_q);
+    let mut point: Vec<Fp2> = Vec::new();
+
+    for l in 0..depth {
+        let leaf_layer = l + 1 == depth;
+        if leaf_layer && aux.is_some() {
+            assert!(matches!(leaf_p, LeafP::Ones), "aux folding is lookup-side only");
+            let ax = aux.as_deref_mut().unwrap();
+            let (rprime, splits, colsp, finals) =
+                layer_leaf_ones_aux(leaf_q, ax, &point, sink, ctr);
+            let t = sink.splits_aux(splits, &colsp, &finals);
+            point = std::iter::once(t).chain(rprime).collect();
+            continue;
+        }
+        let (rprime, splits) = if leaf_layer {
+            let mode = match leaf_p {
+                LeafP::Ones => ResidentLayerCount::LeafOnes,
+                LeafP::NegMult(_) => ResidentLayerCount::LeafNegMult,
+            };
+            let leaf_mult = dmult.as_ref().map(|m| (m, 0));
+            let (leaf_p_device, leaf_q_device) = backend
+                .logup_materialize_leaves_device(&dleaf, 0, leaf_q.alpha1, leaf_mult, n)
+                .unwrap_or_else(|e| panic!("resident LogUp leaf materialization failed: {e}"));
+            let result = layer_general_resident(
+                &leaf_p_device,
+                &leaf_q_device,
+                0,
+                n,
+                &point,
+                sink,
+                ctr,
+                backend,
+                mode,
+            );
+            backend.free_device(leaf_q_device).expect("resident LogUp leaf-q free");
+            backend.free_device(leaf_p_device).expect("resident LogUp leaf-p free");
+            result
+        } else {
+            let child_len = 1usize << (l + 1);
+            let child_offset = child_len - 1;
+            layer_general_resident(
+                &tree_p,
+                &tree_q,
+                child_offset,
+                child_len,
+                &point,
+                sink,
+                ctr,
+                backend,
+                ResidentLayerCount::General,
+            )
+        };
+        let t = sink.splits(splits);
+        point = std::iter::once(t).chain(rprime).collect();
+    }
+    if let Some(mult) = dmult {
+        backend.free_device(mult).expect("resident LogUp multiplicity free");
+    }
+    backend.free_device(dleaf).expect("resident LogUp leaf free");
+    backend.free_device(tree_q).expect("resident LogUp q-tree free");
+    backend.free_device(tree_p).expect("resident LogUp p-tree free");
+    (root_p, root_q, point)
+}
+
+#[derive(Clone, Copy)]
+enum ResidentLayerCount {
+    General,
+    LeafOnes,
+    LeafNegMult,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn layer_general_resident(
+    tree_p: &DeviceBuffer<Fp2Repr>,
+    tree_q: &DeviceBuffer<Fp2Repr>,
+    child_offset: usize,
+    child_len: usize,
+    point: &[Fp2],
+    sink: &mut impl Sink,
+    ctr: &mut Counters,
+    backend: &mut Backend,
+    count_mode: ResidentLayerCount,
+) -> (Vec<Fp2>, [Fp2; 4]) {
+    let vector_len = child_len / 2;
+    assert_eq!(vector_len, 1usize << point.len());
+    let (p0, p1) = backend
+        .fp2_deinterleave_device(tree_p, child_offset, vector_len)
+        .unwrap_or_else(|e| panic!("resident LogUp p deinterleave failed: {e}"));
+    let (q0, q1) = backend
+        .fp2_deinterleave_device(tree_q, child_offset, vector_len)
+        .unwrap_or_else(|e| panic!("resident LogUp q deinterleave failed: {e}"));
+    let mut vectors = [p0, p1, q0, q1];
+    let lambda = sink.lambda();
+    let mut cpref = Fp2::ONE;
+    let mut rprime = Vec::with_capacity(point.len());
+
+    let point_device = if point.is_empty() {
+        None
+    } else {
+        let raw: Vec<Fp2Repr> = point.iter().copied().map(Into::into).collect();
+        Some(
+            backend
+                .upload_new_device(&raw)
+                .unwrap_or_else(|e| panic!("resident LogUp challenge upload failed: {e}")),
+        )
+    };
+    let suffix_device = point_device.as_ref().map(|points| {
+        backend
+            .logup_suffix_eq_device(points, 0, point.len())
+            .unwrap_or_else(|e| panic!("resident LogUp suffix-eq build failed: {e}"))
+    });
+    if point.len() > 1 {
+        ctr.bulk((1usize << (point.len() - 1)) as u64 - 1, 0);
+    }
+
+    let mut current_len = vector_len;
+    for (j, &pt_j) in point.iter().enumerate() {
+        let half = current_len / 2;
+        let suffix_offset = (1usize << (point.len() - 1 - j)) - 1;
+        match (count_mode, j) {
+            (ResidentLayerCount::General, _)
+            | (ResidentLayerCount::LeafNegMult, 1..)
+            | (ResidentLayerCount::LeafOnes, 1..) => {
+                let per_pair =
+                    if matches!(count_mode, ResidentLayerCount::LeafOnes) { 6 } else { 10 };
+                ctr.bulk(per_pair * half as u64 + 4, 0);
+            }
+            (ResidentLayerCount::LeafOnes, 0) => ctr.bulk(4, 16 * half as u64),
+            (ResidentLayerCount::LeafNegMult, 0) => {
+                ctr.bulk(4 * half as u64 + 4, 12 * half as u64);
+            }
+        }
+        let [pq0, pq2, qq0, qq2] = backend
+            .logup_general_round_device(
+                &vectors[0],
+                0,
+                &vectors[1],
+                0,
+                &vectors[2],
+                0,
+                &vectors[3],
+                0,
+                suffix_device.as_ref().expect("non-empty point without suffix tables"),
+                suffix_offset,
+                half,
+            )
+            .unwrap_or_else(|e| panic!("resident LogUp round failed: {e}"));
+        let h0 = cpref * (lambda * pq0 + qq0);
+        let h2 = cpref * (lambda * pq2 + qq2);
+        let r = sink.round([h0, h2], pt_j);
+        match (count_mode, j) {
+            (ResidentLayerCount::General, _) | (ResidentLayerCount::LeafNegMult, 1..) => {
+                ctr.bulk(4 * half as u64 + 2, 0)
+            }
+            (ResidentLayerCount::LeafOnes, 1..) => ctr.bulk(2 * half as u64 + 2, 0),
+            (ResidentLayerCount::LeafOnes, 0) => ctr.bulk(2, 4 * half as u64),
+            (ResidentLayerCount::LeafNegMult, 0) => ctr.bulk(2, 16 * half as u64),
+        }
+        let next = backend
+            .logup_fold4_device(
+                &vectors[0],
+                0,
+                &vectors[1],
+                0,
+                &vectors[2],
+                0,
+                &vectors[3],
+                0,
+                half,
+                r,
+            )
+            .unwrap_or_else(|e| panic!("resident LogUp fold failed: {e}"));
+        let old = std::mem::replace(&mut vectors, next);
+        for buffer in old {
+            backend.free_device(buffer).expect("resident LogUp folded-input free");
+        }
+        let pr = pt_j * r;
+        cpref = cpref * (pr + pr - pt_j - r + Fp2::ONE);
+        rprime.push(r);
+        current_len = half;
+    }
+    assert_eq!(current_len, 1);
+    let mut splits = [Fp2::ZERO; 4];
+    for (dst, buffer) in splits.iter_mut().zip(&vectors) {
+        *dst =
+            backend.download_device(buffer, 0, 1).expect("resident LogUp split download")[0].into();
+    }
+    for buffer in vectors {
+        backend.free_device(buffer).expect("resident LogUp final-vector free");
+    }
+    if let Some(suffix) = suffix_device {
+        backend.free_device(suffix).expect("resident LogUp suffix free");
+    }
+    if let Some(points) = point_device {
+        backend.free_device(points).expect("resident LogUp challenge free");
+    }
+    (rprime, splits)
+}
+
 /// Returns the roots and the final leaf point (LSB-first).
 fn prove_engine(
     leaf_p: &LeafP,
@@ -891,6 +1134,16 @@ fn prove_engine(
     ctr: &mut Counters,
     mut backend: Option<&mut Backend>,
 ) -> (Fp2, Fp2, Vec<Fp2>) {
+    if backend.as_deref().map(Backend::kind) == Some(BackendKind::CudaResident) {
+        return prove_engine_resident_from_host_leaves(
+            leaf_p,
+            leaf_q,
+            aux,
+            sink,
+            ctr,
+            backend.take().expect("resident backend disappeared"),
+        );
+    }
     if let Some(b) = backend.as_deref() {
         assert_eq!(
             b.kind(),
@@ -3037,8 +3290,23 @@ mod tests {
         let expected_aux = run_aux(None);
         let got_aux = run_aux(Some(&mut gpu));
         assert_eq!(got_aux, expected_aux);
-        let stats = gpu.finish_measurement().unwrap();
-        assert!(stats.operation(Operation::Logup).calls > 0);
-        assert!(stats.operation(Operation::Logup).cpu_residual_ns > 0);
+        let hybrid_stats = gpu.finish_measurement().unwrap();
+        assert!(hybrid_stats.operation(Operation::Logup).calls > 0);
+        assert!(hybrid_stats.operation(Operation::Logup).cpu_residual_ns > 0);
+
+        let mut resident =
+            Backend::cuda_resident().unwrap_or_else(|e| panic!("CUDA required: {e}"));
+        resident.begin_measurement().unwrap();
+        let got_resident = run(Some(&mut resident));
+        assert_eq!(got_resident, expected);
+        let got_aux_resident = run_aux(Some(&mut resident));
+        assert_eq!(got_aux_resident, expected_aux);
+        let resident_stats = resident.finish_measurement().unwrap();
+        assert!(resident_stats.operation(Operation::Logup).calls > 0);
+        assert_eq!(resident_stats.operation(Operation::Logup).cpu_residual_ns, 0);
+        assert!(
+            resident_stats.d2h_bytes < hybrid_stats.d2h_bytes,
+            "resident upper tree must return fewer bytes than staged LogUp"
+        );
     }
 }

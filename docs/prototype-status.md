@@ -56,6 +56,28 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-12 (`P7-integrated-resident` LogUp core checkpoint; aux leaf
+  still open)**: ABI v4 keeps the complete fraction tree, upper-layer round
+  vectors, folds and suffix-equality tables in context-owned device buffers.
+  Even/odd child separation and suffix tables are constructed by device
+  kernels from the resident tree and the small transcript challenges; Rust
+  receives only the two roots, four round accumulators and four final split
+  claims required by the protocol. The table-side/non-aux leaf is
+  materialized as resident Fp2 `(p,q)` from base-field leaves and uses the
+  same device round/fold engine. The specialized CPU E-mult accounting is
+  preserved exactly even though the GPU uses a uniform representation.
+
+  On A100 `3mq19up4`, the targeted `volta-accel` residency test and
+  `cuda_blind_tree_and_aux_proofs_match_cpu_byte_for_byte` pass with
+  `VOLTA_REQUIRE_CUDA=1`: roots, proof, correlation products/zeros, counters
+  and transcript ledger equal CPU. The aux case in that differential still
+  executes its degree-3 leaf round and column/eq folds on the host; the test
+  already exercises resident tree and upper layers around it. Consequently
+  this is a progressive-kernel checkpoint, **not** the completed LogUp
+  family and not a resident e2e gate. Next is the aux-leaf/column fold with
+  only its three transcript evaluations and final column claims crossing
+  D2H.
+
 - **2026-07-12 (`P7-integrated-resident` ABI-v3 substrate landed; gate still
   open)**: the staged ABI could not preserve a value across calls because its
   16 workspace slots are freely resized and every primitive performs its own

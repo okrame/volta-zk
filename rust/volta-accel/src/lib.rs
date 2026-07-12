@@ -17,7 +17,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 3;
+pub const CUDA_ABI_VERSION: u32 = 4;
 pub const OPERATION_COUNT: usize = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -744,6 +744,110 @@ impl Backend {
         Err(AccelError::FeatureDisabled)
     }
 
+    /// Build a complete LogUp fraction tree in resident buffers. The outputs
+    /// are flattened root-to-leaf (level offsets 0, 1, 3, ...); no tree node
+    /// crosses the host boundary.
+    pub fn logup_tree_device(
+        &mut self,
+        leaf_a: &DeviceBuffer<u64>,
+        leaf_offset: usize,
+        alpha1: Fp,
+        mult: Option<(&DeviceBuffer<u32>, usize)>,
+        n: usize,
+    ) -> Result<(DeviceBuffer<Fp2Repr>, DeviceBuffer<Fp2Repr>), AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        let _ = alpha1;
+        self.validate_buffer(leaf_a)?;
+        if n < 2 || !n.is_power_of_two() {
+            return Err(AccelError::InvalidInput("LogUp leaf count must be a power of two >= 2"));
+        }
+        validate_region(leaf_a.len, leaf_offset, n)?;
+        if let Some((m, offset)) = mult {
+            self.validate_buffer(m)?;
+            validate_region(m.len, offset, n)?;
+        }
+        let p = self.alloc_device(n - 1)?;
+        let q = match self.alloc_device(n - 1) {
+            Ok(q) => q,
+            Err(error) => {
+                let _ = self.free_device(p);
+                return Err(error);
+            }
+        };
+        #[cfg(feature = "cuda")]
+        let result = self.cuda.as_mut().expect("CUDA kind without context").logup_tree_device(
+            leaf_a.id,
+            leaf_offset,
+            mult.map(|(m, offset)| (m.id, offset)),
+            n,
+            alpha1,
+            p.id,
+            0,
+            q.id,
+            0,
+        );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(q);
+            let _ = self.free_device(p);
+            return Err(error);
+        }
+        Ok((p, q))
+    }
+
+    /// Materialize structured base-field leaves as full resident Fp2 `(p,q)`
+    /// vectors for the leaf-layer round engine.
+    pub fn logup_materialize_leaves_device(
+        &mut self,
+        leaf_a: &DeviceBuffer<u64>,
+        leaf_offset: usize,
+        alpha1: Fp,
+        mult: Option<(&DeviceBuffer<u32>, usize)>,
+        n: usize,
+    ) -> Result<(DeviceBuffer<Fp2Repr>, DeviceBuffer<Fp2Repr>), AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        let _ = alpha1;
+        self.validate_buffer(leaf_a)?;
+        validate_region(leaf_a.len, leaf_offset, n)?;
+        if n == 0 {
+            return Err(AccelError::InvalidInput("zero LogUp leaf count"));
+        }
+        if let Some((m, offset)) = mult {
+            self.validate_buffer(m)?;
+            validate_region(m.len, offset, n)?;
+        }
+        let p = self.alloc_device(n)?;
+        let q = match self.alloc_device(n) {
+            Ok(q) => q,
+            Err(error) => {
+                let _ = self.free_device(p);
+                return Err(error);
+            }
+        };
+        #[cfg(feature = "cuda")]
+        let result =
+            self.cuda.as_mut().expect("CUDA kind without context").logup_materialize_leaves_device(
+                leaf_a.id,
+                leaf_offset,
+                mult.map(|(m, offset)| (m.id, offset)),
+                n,
+                alpha1,
+                p.id,
+                0,
+                q.id,
+                0,
+            );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(q);
+            let _ = self.free_device(p);
+            return Err(error);
+        }
+        Ok((p, q))
+    }
+
     pub fn logup_general_round(
         &mut self,
         p0: &[Fp2],
@@ -774,6 +878,56 @@ impl Backend {
         Err(AccelError::FeatureDisabled)
     }
 
+    /// Evaluate one resident LogUp round. Exactly four Fp2 protocol values
+    /// are returned to Rust; all polynomial vectors remain on device.
+    #[allow(clippy::too_many_arguments)]
+    pub fn logup_general_round_device(
+        &mut self,
+        p0: &DeviceBuffer<Fp2Repr>,
+        p0_offset: usize,
+        p1: &DeviceBuffer<Fp2Repr>,
+        p1_offset: usize,
+        q0: &DeviceBuffer<Fp2Repr>,
+        q0_offset: usize,
+        q1: &DeviceBuffer<Fp2Repr>,
+        q1_offset: usize,
+        suffix_eq: &DeviceBuffer<Fp2Repr>,
+        suffix_offset: usize,
+        pairs: usize,
+    ) -> Result<[Fp2; 4], AccelError> {
+        for buffer in [p0, p1, q0, q1, suffix_eq] {
+            self.validate_buffer(buffer)?;
+        }
+        let values = checked_product(2, pairs)?;
+        for (buffer, offset) in [(p0, p0_offset), (p1, p1_offset), (q0, q0_offset), (q1, q1_offset)]
+        {
+            validate_region(buffer.len, offset, values)?;
+        }
+        validate_region(suffix_eq.len, suffix_offset, pairs)?;
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .expect("CUDA kind without context")
+                .logup_general_round_device(
+                    p0.id,
+                    p0_offset,
+                    p1.id,
+                    p1_offset,
+                    q0.id,
+                    q0_offset,
+                    q1.id,
+                    q1_offset,
+                    suffix_eq.id,
+                    suffix_offset,
+                    pairs,
+                );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
     pub fn logup_fold4(
         &mut self,
         p0: &[Fp2],
@@ -798,6 +952,138 @@ impl Backend {
         }
         #[cfg(not(feature = "cuda"))]
         Err(AccelError::FeatureDisabled)
+    }
+
+    /// Fold four resident Fp2 vectors and keep all four outputs resident.
+    #[allow(clippy::too_many_arguments)]
+    pub fn logup_fold4_device(
+        &mut self,
+        p0: &DeviceBuffer<Fp2Repr>,
+        p0_offset: usize,
+        p1: &DeviceBuffer<Fp2Repr>,
+        p1_offset: usize,
+        q0: &DeviceBuffer<Fp2Repr>,
+        q0_offset: usize,
+        q1: &DeviceBuffer<Fp2Repr>,
+        q1_offset: usize,
+        pairs: usize,
+        r: Fp2,
+    ) -> Result<[DeviceBuffer<Fp2Repr>; 4], AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        let _ = r;
+        for buffer in [p0, p1, q0, q1] {
+            self.validate_buffer(buffer)?;
+        }
+        let values = checked_product(2, pairs)?;
+        for (buffer, offset) in [(p0, p0_offset), (p1, p1_offset), (q0, q0_offset), (q1, q1_offset)]
+        {
+            validate_region(buffer.len, offset, values)?;
+        }
+        let o0 = self.alloc_device(pairs)?;
+        let o1 = match self.alloc_device(pairs) {
+            Ok(x) => x,
+            Err(e) => {
+                let _ = self.free_device(o0);
+                return Err(e);
+            }
+        };
+        let o2 = match self.alloc_device(pairs) {
+            Ok(x) => x,
+            Err(e) => {
+                let _ = self.free_device(o1);
+                let _ = self.free_device(o0);
+                return Err(e);
+            }
+        };
+        let o3 = match self.alloc_device(pairs) {
+            Ok(x) => x,
+            Err(e) => {
+                let _ = self.free_device(o2);
+                let _ = self.free_device(o1);
+                let _ = self.free_device(o0);
+                return Err(e);
+            }
+        };
+        #[cfg(feature = "cuda")]
+        let result = self.cuda.as_mut().expect("CUDA kind without context").logup_fold4_device(
+            p0.id, p0_offset, p1.id, p1_offset, q0.id, q0_offset, q1.id, q1_offset, pairs, r,
+            o0.id, 0, o1.id, 0, o2.id, 0, o3.id, 0,
+        );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(o3);
+            let _ = self.free_device(o2);
+            let _ = self.free_device(o1);
+            let _ = self.free_device(o0);
+            return Err(error);
+        }
+        Ok([o0, o1, o2, o3])
+    }
+
+    /// Split an interleaved resident Fp2 vector into its even and odd halves.
+    pub fn fp2_deinterleave_device(
+        &mut self,
+        input: &DeviceBuffer<Fp2Repr>,
+        input_offset: usize,
+        pairs: usize,
+    ) -> Result<(DeviceBuffer<Fp2Repr>, DeviceBuffer<Fp2Repr>), AccelError> {
+        self.validate_buffer(input)?;
+        validate_region(input.len, input_offset, checked_product(2, pairs)?)?;
+        let even = self.alloc_device(pairs)?;
+        let odd = match self.alloc_device(pairs) {
+            Ok(odd) => odd,
+            Err(error) => {
+                let _ = self.free_device(even);
+                return Err(error);
+            }
+        };
+        #[cfg(feature = "cuda")]
+        let result = self
+            .cuda
+            .as_mut()
+            .expect("CUDA kind without context")
+            .fp2_deinterleave_device(input.id, input_offset, pairs, even.id, 0, odd.id, 0);
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(odd);
+            let _ = self.free_device(even);
+            return Err(error);
+        }
+        Ok((even, odd))
+    }
+
+    /// Construct every suffix-equality table from resident transcript
+    /// challenges. Table `j` starts at `2^(point_len-1-j)-1`.
+    pub fn logup_suffix_eq_device(
+        &mut self,
+        points: &DeviceBuffer<Fp2Repr>,
+        points_offset: usize,
+        point_len: usize,
+    ) -> Result<DeviceBuffer<Fp2Repr>, AccelError> {
+        self.validate_buffer(points)?;
+        if point_len == 0 || point_len >= usize::BITS as usize {
+            return Err(AccelError::InvalidInput("invalid LogUp suffix-eq dimension"));
+        }
+        validate_region(points.len, points_offset, point_len)?;
+        let total = (1usize << point_len) - 1;
+        let output = self.alloc_device(total)?;
+        #[cfg(feature = "cuda")]
+        let result = self.cuda.as_mut().expect("CUDA kind without context").logup_suffix_eq_device(
+            points.id,
+            points_offset,
+            point_len,
+            output.id,
+            0,
+        );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
     }
 
     pub fn hash_fp_columns(
@@ -1186,6 +1472,143 @@ mod cuda_tests {
                 assert_eq!(folded[i], src[2 * i] + (src[2 * i + 1] - src[2 * i]) * r);
             }
         }
+    }
+
+    #[test]
+    fn resident_logup_tree_round_and_fold_keep_vectors_on_device() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
+        let n = 1024usize;
+        let leaf: Vec<Fp> = (0..n).map(|i| Fp::new(i as u64 * 0x85EB_CA6B + 29)).collect();
+        let leaf_raw: Vec<u64> = leaf.iter().map(|x| x.value()).collect();
+        let mult: Vec<u32> = (0..n).map(|i| ((i * 17 + 3) % 41) as u32).collect();
+        let alpha1 = Fp::new(991);
+        let dleaf = gpu.upload_new_device(&leaf_raw).unwrap();
+        let dmult = gpu.upload_new_device(&mult).unwrap();
+
+        let values = 256usize;
+        let pairs = values / 2;
+        let make = |tag: u64| {
+            (0..values)
+                .map(|i| Fp2::new(Fp::new(i as u64 * 37 + tag), Fp::new(i as u64 * 53 + tag + 1)))
+                .collect::<Vec<_>>()
+        };
+        let p0 = make(1);
+        let p1 = make(2);
+        let q0 = make(3);
+        let q1 = make(4);
+        let suffix: Vec<Fp2> = (0..pairs)
+            .map(|i| Fp2::new(Fp::new(i as u64 * 71 + 7), Fp::new(i as u64 * 97 + 13)))
+            .collect();
+        let repr = |v: &[Fp2]| v.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>();
+        let dp0 = gpu.upload_new_device(&repr(&p0)).unwrap();
+        let dp1 = gpu.upload_new_device(&repr(&p1)).unwrap();
+        let dq0 = gpu.upload_new_device(&repr(&q0)).unwrap();
+        let dq1 = gpu.upload_new_device(&repr(&q1)).unwrap();
+        let ds = gpu.upload_new_device(&repr(&suffix)).unwrap();
+        let points: Vec<Fp2> = (0..8)
+            .map(|i| Fp2::new(Fp::new(i as u64 * 101 + 17), Fp::new(i as u64 * 127 + 23)))
+            .collect();
+        let dpoints = gpu.upload_new_device(&repr(&points)).unwrap();
+
+        let mut expected_round = [Fp2::ZERO; 4];
+        for i in 0..pairs {
+            let (a0, a2) = (p0[2 * i], at2(p0[2 * i], p0[2 * i + 1]));
+            let (b0, b2) = (p1[2 * i], at2(p1[2 * i], p1[2 * i + 1]));
+            let (c0, c2) = (q0[2 * i], at2(q0[2 * i], q0[2 * i + 1]));
+            let (d0, d2) = (q1[2 * i], at2(q1[2 * i], q1[2 * i + 1]));
+            expected_round[0] += suffix[i] * (a0 * d0 + b0 * c0);
+            expected_round[1] += suffix[i] * (a2 * d2 + b2 * c2);
+            expected_round[2] += suffix[i] * (c0 * d0);
+            expected_round[3] += suffix[i] * (c2 * d2);
+        }
+        let r = Fp2::new(Fp::new(123), Fp::new(456));
+
+        gpu.begin_measurement().unwrap();
+        let (dtp, dtq) = gpu.logup_tree_device(&dleaf, 0, alpha1, Some((&dmult, 0)), n).unwrap();
+        let got_round = gpu
+            .logup_general_round_device(&dp0, 0, &dp1, 0, &dq0, 0, &dq1, 0, &ds, 0, pairs)
+            .unwrap();
+        assert_eq!(got_round, expected_round);
+        let folded = gpu.logup_fold4_device(&dp0, 0, &dp1, 0, &dq0, 0, &dq1, 0, pairs, r).unwrap();
+        let (deven, dodd) = gpu.fp2_deinterleave_device(&dp0, 0, pairs).unwrap();
+        let dsuffix = gpu.logup_suffix_eq_device(&dpoints, 0, points.len()).unwrap();
+        let resident_stats = gpu.stats().unwrap();
+        assert_eq!(resident_stats.h2d_bytes, 0);
+        assert_eq!(resident_stats.d2h_bytes, 4 * size_of::<Fp2Repr>() as u64);
+        assert_eq!(resident_stats.operation(Operation::Logup).calls, 5);
+
+        // Differential downloads are outside the resident-path assertion.
+        let expected_tree = cpu_tree(&leaf, alpha1, Some(&mult));
+        let flat = |layers: Vec<Vec<Fp2>>| layers.into_iter().flatten().collect::<Vec<_>>();
+        let got_p: Vec<Fp2> =
+            gpu.download_device(&dtp, 0, n - 1).unwrap().into_iter().map(Into::into).collect();
+        let got_q: Vec<Fp2> =
+            gpu.download_device(&dtq, 0, n - 1).unwrap().into_iter().map(Into::into).collect();
+        assert_eq!(got_p, flat(expected_tree.0));
+        assert_eq!(got_q, flat(expected_tree.1));
+        let got_even: Vec<Fp2> =
+            gpu.download_device(&deven, 0, pairs).unwrap().into_iter().map(Into::into).collect();
+        let got_odd: Vec<Fp2> =
+            gpu.download_device(&dodd, 0, pairs).unwrap().into_iter().map(Into::into).collect();
+        assert_eq!(got_even, (0..pairs).map(|i| p0[2 * i]).collect::<Vec<_>>());
+        assert_eq!(got_odd, (0..pairs).map(|i| p0[2 * i + 1]).collect::<Vec<_>>());
+
+        let mut expected_suffix = vec![Fp2::ONE];
+        let mut current = vec![Fp2::ONE];
+        for j in (1..points.len()).rev() {
+            let mut next = Vec::with_capacity(current.len() * 2);
+            for &v in &current {
+                let v1 = v * points[j];
+                next.push(v - v1);
+                next.push(v1);
+            }
+            expected_suffix.extend_from_slice(&next);
+            current = next;
+        }
+        let got_suffix: Vec<Fp2> = gpu
+            .download_device(&dsuffix, 0, expected_suffix.len())
+            .unwrap()
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        assert_eq!(got_suffix, expected_suffix);
+        for ((src, device), label) in
+            [(&p0, &folded[0]), (&p1, &folded[1]), (&q0, &folded[2]), (&q1, &folded[3])]
+                .into_iter()
+                .zip(["p0", "p1", "q0", "q1"])
+        {
+            let got: Vec<Fp2> = gpu
+                .download_device(device, 0, pairs)
+                .unwrap()
+                .into_iter()
+                .map(Into::into)
+                .collect();
+            for i in 0..pairs {
+                assert_eq!(got[i], src[2 * i] + (src[2 * i + 1] - src[2 * i]) * r, "{label}[{i}]");
+            }
+        }
+        let stats = gpu.finish_measurement().unwrap();
+        assert_eq!(
+            stats.measurement_wall_ns,
+            stats.h2d_ns + stats.d2h_ns + stats.kernel_ns() + stats.cpu_residual_ns()
+        );
+
+        for output in folded {
+            gpu.free_device(output).unwrap();
+        }
+        gpu.free_device(dsuffix).unwrap();
+        gpu.free_device(dodd).unwrap();
+        gpu.free_device(deven).unwrap();
+        gpu.free_device(dtq).unwrap();
+        gpu.free_device(dtp).unwrap();
+        gpu.free_device(dpoints).unwrap();
+        gpu.free_device(ds).unwrap();
+        gpu.free_device(dq1).unwrap();
+        gpu.free_device(dq0).unwrap();
+        gpu.free_device(dp1).unwrap();
+        gpu.free_device(dp0).unwrap();
+        gpu.free_device(dmult).unwrap();
+        gpu.free_device(dleaf).unwrap();
     }
 
     #[test]

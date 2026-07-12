@@ -112,6 +112,21 @@ type LogupTree = unsafe extern "C" fn(
     *mut Fp2Repr,
     *mut Fp2Repr,
 ) -> c_int;
+type LogupTreeDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    u64,
+    c_int,
+    u64,
+    usize,
+    u64,
+    usize,
+) -> c_int;
+type LogupMaterializeLeavesDevice = LogupTreeDevice;
 type LogupGeneralRound = unsafe extern "C" fn(
     *mut c_void,
     *const Fp2Repr,
@@ -119,6 +134,21 @@ type LogupGeneralRound = unsafe extern "C" fn(
     *const Fp2Repr,
     *const Fp2Repr,
     *const Fp2Repr,
+    usize,
+    *mut Fp2Repr,
+) -> c_int;
+type LogupGeneralRoundDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
     usize,
     *mut Fp2Repr,
 ) -> c_int;
@@ -135,6 +165,31 @@ type LogupFold4 = unsafe extern "C" fn(
     *mut Fp2Repr,
     *mut Fp2Repr,
 ) -> c_int;
+type LogupFold4Device = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    Fp2Repr,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+) -> c_int;
+type Fp2DeinterleaveDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, usize, u64, usize, u64, usize) -> c_int;
+type LogupSuffixEqDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, usize, u64, usize) -> c_int;
 type HashFpColumns = unsafe extern "C" fn(*mut c_void, *const u64, usize, usize, *mut u8) -> c_int;
 type PcsCombineRows = unsafe extern "C" fn(
     *mut c_void,
@@ -176,8 +231,14 @@ struct Api {
     ntt_fp_batch: NttFpBatch,
     ntt_fp2: NttFp2,
     logup_tree: LogupTree,
+    logup_tree_device: LogupTreeDevice,
+    logup_materialize_leaves_device: LogupMaterializeLeavesDevice,
     logup_general_round: LogupGeneralRound,
+    logup_general_round_device: LogupGeneralRoundDevice,
     logup_fold4: LogupFold4,
+    logup_fold4_device: LogupFold4Device,
+    fp2_deinterleave_device: Fp2DeinterleaveDevice,
+    logup_suffix_eq_device: LogupSuffixEqDevice,
     pcs_combine_rows: PcsCombineRows,
     pcs_gather_columns: PcsGatherColumns,
     hash_fp_columns: HashFpColumns,
@@ -257,10 +318,24 @@ impl CudaContext {
             ntt_fp_batch: unsafe { load_symbol(handle, b"volta_cuda_ntt_fp_batch\0")? },
             ntt_fp2: unsafe { load_symbol(handle, b"volta_cuda_ntt_fp2\0")? },
             logup_tree: unsafe { load_symbol(handle, b"volta_cuda_logup_tree\0")? },
+            logup_tree_device: unsafe { load_symbol(handle, b"volta_cuda_logup_tree_device\0")? },
+            logup_materialize_leaves_device: unsafe {
+                load_symbol(handle, b"volta_cuda_logup_materialize_leaves_device\0")?
+            },
             logup_general_round: unsafe {
                 load_symbol(handle, b"volta_cuda_logup_general_round\0")?
             },
+            logup_general_round_device: unsafe {
+                load_symbol(handle, b"volta_cuda_logup_general_round_device\0")?
+            },
             logup_fold4: unsafe { load_symbol(handle, b"volta_cuda_logup_fold4\0")? },
+            logup_fold4_device: unsafe { load_symbol(handle, b"volta_cuda_logup_fold4_device\0")? },
+            fp2_deinterleave_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fp2_deinterleave_device\0")?
+            },
+            logup_suffix_eq_device: unsafe {
+                load_symbol(handle, b"volta_cuda_logup_suffix_eq_device\0")?
+            },
             pcs_combine_rows: unsafe { load_symbol(handle, b"volta_cuda_pcs_combine_rows\0")? },
             pcs_gather_columns: unsafe { load_symbol(handle, b"volta_cuda_pcs_gather_columns\0")? },
             hash_fp_columns: unsafe { load_symbol(handle, b"volta_cuda_hash_fp_columns\0")? },
@@ -526,6 +601,72 @@ impl CudaContext {
         Ok((unflatten_tree(p, n), unflatten_tree(q, n)))
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn logup_tree_device(
+        &mut self,
+        leaf: u64,
+        leaf_offset: usize,
+        mult: Option<(u64, usize)>,
+        n: usize,
+        alpha1: Fp,
+        p: u64,
+        p_offset: usize,
+        q: u64,
+        q_offset: usize,
+    ) -> Result<(), AccelError> {
+        let (mult_id, mult_offset, kind) = mult.map_or((0, 0, 0), |(id, offset)| (id, offset, 1));
+        // SAFETY: opaque ids and typed ranges were validated by Backend.
+        self.check(unsafe {
+            (self.api.logup_tree_device)(
+                self.raw,
+                leaf,
+                leaf_offset,
+                mult_id,
+                mult_offset,
+                n,
+                alpha1.value(),
+                kind,
+                p,
+                p_offset,
+                q,
+                q_offset,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn logup_materialize_leaves_device(
+        &mut self,
+        leaf: u64,
+        leaf_offset: usize,
+        mult: Option<(u64, usize)>,
+        n: usize,
+        alpha1: Fp,
+        p: u64,
+        p_offset: usize,
+        q: u64,
+        q_offset: usize,
+    ) -> Result<(), AccelError> {
+        let (mult_id, mult_offset, kind) = mult.map_or((0, 0, 0), |(id, offset)| (id, offset, 1));
+        // SAFETY: Backend validates all opaque ids and typed ranges.
+        self.check(unsafe {
+            (self.api.logup_materialize_leaves_device)(
+                self.raw,
+                leaf,
+                leaf_offset,
+                mult_id,
+                mult_offset,
+                n,
+                alpha1.value(),
+                kind,
+                p,
+                p_offset,
+                q,
+                q_offset,
+            )
+        })
+    }
+
     pub(super) fn logup_general_round(
         &mut self,
         p0: &[Fp2],
@@ -547,6 +688,44 @@ impl CudaContext {
                 q1.as_ptr(),
                 suffix.as_ptr(),
                 suffix.len(),
+                out.as_mut_ptr(),
+            )
+        })?;
+        Ok(out.map(Into::into))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn logup_general_round_device(
+        &mut self,
+        p0: u64,
+        p0_offset: usize,
+        p1: u64,
+        p1_offset: usize,
+        q0: u64,
+        q0_offset: usize,
+        q1: u64,
+        q1_offset: usize,
+        suffix: u64,
+        suffix_offset: usize,
+        pairs: usize,
+    ) -> Result<[Fp2; 4], AccelError> {
+        let mut out = [Fp2Repr::default(); 4];
+        // SAFETY: opaque ids and typed ranges were validated by Backend; the
+        // output is one protocol round message and the ABI synchronizes it.
+        self.check(unsafe {
+            (self.api.logup_general_round_device)(
+                self.raw,
+                p0,
+                p0_offset,
+                p1,
+                p1_offset,
+                q0,
+                q0_offset,
+                q1,
+                q1_offset,
+                suffix,
+                suffix_offset,
+                pairs,
                 out.as_mut_ptr(),
             )
         })?;
@@ -582,6 +761,101 @@ impl CudaContext {
             )
         })?;
         Ok(output.map(|v| v.into_iter().map(Into::into).collect()))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn logup_fold4_device(
+        &mut self,
+        p0: u64,
+        p0_offset: usize,
+        p1: u64,
+        p1_offset: usize,
+        q0: u64,
+        q0_offset: usize,
+        q1: u64,
+        q1_offset: usize,
+        pairs: usize,
+        r: Fp2,
+        o0: u64,
+        o0_offset: usize,
+        o1: u64,
+        o1_offset: usize,
+        o2: u64,
+        o2_offset: usize,
+        o3: u64,
+        o3_offset: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: opaque ids and typed ranges were validated by Backend.
+        self.check(unsafe {
+            (self.api.logup_fold4_device)(
+                self.raw,
+                p0,
+                p0_offset,
+                p1,
+                p1_offset,
+                q0,
+                q0_offset,
+                q1,
+                q1_offset,
+                pairs,
+                r.into(),
+                o0,
+                o0_offset,
+                o1,
+                o1_offset,
+                o2,
+                o2_offset,
+                o3,
+                o3_offset,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn fp2_deinterleave_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        pairs: usize,
+        even: u64,
+        even_offset: usize,
+        odd: u64,
+        odd_offset: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all opaque ids and typed ranges.
+        self.check(unsafe {
+            (self.api.fp2_deinterleave_device)(
+                self.raw,
+                input,
+                input_offset,
+                pairs,
+                even,
+                even_offset,
+                odd,
+                odd_offset,
+            )
+        })
+    }
+
+    pub(super) fn logup_suffix_eq_device(
+        &mut self,
+        points: u64,
+        points_offset: usize,
+        point_len: usize,
+        output: u64,
+        output_offset: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all opaque ids and typed ranges.
+        self.check(unsafe {
+            (self.api.logup_suffix_eq_device)(
+                self.raw,
+                points,
+                points_offset,
+                point_len,
+                output,
+                output_offset,
+            )
+        })
     }
 
     pub(super) fn hash_fp_columns(

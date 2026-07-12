@@ -1,0 +1,156 @@
+{
+  "baseline": {
+    "milestone": "P7-integrated-hybrid",
+    "native_decode_50_s": 2.233702904,
+    "native_prefill_s": 1.12061144,
+    "source": "benchmarks/results/p7-integrated-hybrid-2026-07-12-706d067.json"
+  },
+  "cloud": {
+    "cpu_model": "Intel Xeon Platinum 8352Y / cgroup quota 7.92 cores",
+    "cuda_version": "toolkit 13.0 / UMD 13.3",
+    "driver_version": "610.43.02",
+    "gpu_sku": "NVIDIA A100-SXM4-80GB / Thunder A100XL",
+    "image": "base / Ubuntu 22.04.5 LTS",
+    "instance_id": "3mq19up4",
+    "provider": "Thunder Compute",
+    "ram_gib": "64",
+    "region": "not exposed by provider API",
+    "vcpus": "8 (quota 7.92)"
+  },
+  "compiler": {
+    "arch": "sm_80",
+    "nvcc": "/usr/local/cuda/bin/nvcc"
+  },
+  "correctness": true,
+  "date": "2026-07-12",
+  "git_dirty": false,
+  "git_sha": "faa7667",
+  "golden_match": true,
+  "kernel": {
+    "decode_50_s": 0.770044957,
+    "decode_50_timing": {
+      "mad_s": 0.008648443,
+      "max_s": 0.785886475,
+      "median_s": 0.770044957,
+      "min_s": 0.726181598,
+      "samples_s": [
+        0.7786934,
+        0.770044957,
+        0.763079336,
+        0.785886475,
+        0.726181598,
+        0.756737957,
+        0.772712632
+      ]
+    },
+    "deterministic": true,
+    "device": {
+      "cc": "8.0",
+      "global_memory_bytes": 85119205376,
+      "name": "NVIDIA A100-SXM4-80GB",
+      "sm_count": 108
+    },
+    "fixed_point_errors": false,
+    "generated_tokens": [
+      835,
+      11,
+      356,
+      547,
+      477,
+      1016,
+      1277,
+      284,
+      11225,
+      11,
+      356,
+      547,
+      477,
+      1016,
+      1277,
+      284,
+      11225,
+      11,
+      356,
+      547,
+      477,
+      1016,
+      1277,
+      284,
+      11225,
+      11,
+      356,
+      547,
+      477,
+      1016,
+      1277,
+      284,
+      11225,
+      11,
+      356,
+      547,
+      477,
+      1016,
+      1277,
+      284,
+      11225,
+      11,
+      356,
+      547,
+      477,
+      1016,
+      1277,
+      284,
+      11225,
+      11
+    ],
+    "memory": {
+      "live_device_bytes": 258181700,
+      "peak_device_bytes": 258181700,
+      "peak_rss_bytes": 732692480
+    },
+    "parameters": {
+      "decode_d2h_bytes": 20103000,
+      "decode_h2d_bytes": 200,
+      "decode_logits_d2h_per_token": 402056,
+      "decode_tokens": 50,
+      "gpu_reps": 7,
+      "prefill_d2h_bytes": 402060,
+      "prefill_h2d_bytes": 400,
+      "prefill_tokens": 100,
+      "weights_resident": true,
+      "weights_upload_bytes": 249403904
+    },
+    "prefill_argmax": 835,
+    "prefill_s": 0.020929462,
+    "prefill_timing": {
+      "mad_s": 0.000388815,
+      "max_s": 0.02146499,
+      "median_s": 0.020929462,
+      "min_s": 0.01925193,
+      "samples_s": [
+        0.02146499,
+        0.020378653,
+        0.020765342,
+        0.021318277,
+        0.021305675,
+        0.01925193,
+        0.020929462
+      ]
+    }
+  },
+  "milestone": "P7-gpu-native-inference",
+  "native_gpu_speedup": {
+    "decode": 2.9007435003564344,
+    "prefill": 53.54229554491177
+  },
+  "report_schema_version": 2,
+  "scope": {
+    "decode_cache_seed_prefill_timed": false,
+    "decode_exactly_50_append_steps_timed": true,
+    "decode_logits_d2h_and_argmax_timed": true,
+    "exact_fixed_point_full_model": true,
+    "kv_cached_incremental_decode": true,
+    "proving_path_integrated": false,
+    "weights_upload_timed": false
+  }
+}

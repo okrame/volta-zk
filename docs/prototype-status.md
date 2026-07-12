@@ -23,7 +23,7 @@ CPU numbers validate architecture and counts; the P7 ρ targets (≤2 decode,
 | P4 LogUp + fused blocks | **done** (2026-07-05) | one full layer proved+verified e2e (T=100, real PCS opening) ✓ **PASSED**; counts within 20% ✓ (witness streams = budget **exactly**, padded LogUp domains explained); LogUp ≤8–10 E-mult/lookup: **MISSED, motivated (12.20)**; 1 weight claim/tensor ✓ (4/layer) | prove 0.800 s vs native forward 0.033 s (ρ_layer ~24, 4 cores); verify 0.041 s; LogUp lookup-side **12.20 E-mult/lookup** (~34 ns/lookup, 5.4× vs P2.5 spike wall), table-side 3.86 raw → 0.32 /12-amortized; full instance cost 126.5 M E-mult/layer (≈42/padded lookup incl. aux folding + tables + closures); corr bytes 7.64 MB/layer (mult vectors 3.87 MB — see deviations); layer PCS 2^24: commit 0.34 s one-off, **open 0.035 s**, verify 0.006 s; projections (P3.5 cost model, 49/98 claims): prefill **0.233 s**, per-response **0.345 s**. Run of record `benchmarks/results/p4-2026-07-06-8b4ca11.json` (clean tree, `git_dirty:false`; the 07-05 JSON was a dirty-tree run whose sha names the parent commit) |
 | P5 GPT-2 e2e prefill 100 tok | **done** (2026-07-06) | one-command run ✓ (`scripts/run_prefill.sh`), golden check ✓ (full logits bit-exact vs numpy at T=100, argmax 835 ' way'), counts vs budget: witness lookups = budget **exactly** (16,944,000) ✓ | **accepted e2e with real weights + 13 real Ligero commitments**: native (witness) 0.459 s, prove 11.0–11.2 s, **ρ ≈ 24** (matches P4's ×12 projection); verify 0.65 s + 0.07 s PCS; PCS open **0.73 s** / 52.8 MB (vs 0.237 s projection — 13× fixed costs, see deviations), commit one-off 7.6 s; **comm 159.6 MB/prefill** (mult vectors 59.4 + PCS 52.8 + boundary 36.9 + rest), projected response 212 MB; E-mult all-in 100.6/budget lookup; peak RSS 2.86 GB. `benchmarks/results/p5-2026-07-06-e52ce79.json` (clean tree) |
 | P6 decode + authenticated KV cache | **done** (2026-07-07) | flat cost/token ✓ **PASSED** (curve last/first 1.12 ≤ 1.5, 5×10 chunks, cache 100→150); anti-replay smoke ✓ (prefill-row replay + position swap rejected); golden decode ✓ (50 tokens bit-exact vs numpy) | **accepted e2e, prompt 100 + 50 decode, one two-phase session, real 13-commitment PCS with STACKED claims (96 weight + 6 embed)**: native decode 30.9 tok/s (KV-cached baseline); prove_response 18.7 s = prefill 10.5 s + **decode marginal 8.2 s (0.164 s/token, ρ_decode 5.07 CPU)**; verified 2.67 tok/s; verify 0.57 s + 0.10 s PCS. Comm: transcript 137.4 MB (prefill 48.4 + PCS opening 66.7 + decode marginal 22.3 = **445 KB/token**) + public band logits 20.5 MB → **total response download 157.9 MB** (inside the 150–200 MB product envelope; the PCS opening is now the dominant lever, P7). Shared-α restructure landed with P6: mult corr 59.4 → 2.85 MB. PCS commit one-off 9.5 s; peak RSS 3.47 GB. `benchmarks/results/p6-2026-07-07-515bb1c.json` (clean tree) |
-| P7 report + GPU budget model | **integrated-hybrid full gate complete; same-host native anchor + resident open** (2026-07-12) | full T=100+50/Q=200 golden exact ✓; 1 warmup + 3 accepted repetitions ✓; exact whole-session attribution ✓; flat-cost 1.363 ✓; packed response 144.821 MB ✓; same-seed differential/fault/reuse/anti-replay suite ✓; same-host native GPU denominator and resident gate open | Clean full run on `3mq19up4`: proof prefill **42.039±1.419 s MAD**, response **64.013±7.764 s**, decode marginal **21.975±0.659 s**; same-host CPU rho 37.514/9.838 (not paper rho). Representative 100.850 s session = 6.868 H2D + 25.433 D2H + 0.110 kernels + 68.439 CPU; 17.813/5.560 GB transferred, 8,763 barriers, 4.313 GB peak device, 8.637 GiB peak RSS. PCS commit/open/verify medians 24.236/9.365/0.365 s; verifier 0.979 s. `benchmarks/results/p7-integrated-hybrid-2026-07-12-706d067.json`. |
+| P7 report + GPU budget model | **integrated-hybrid full + same-host native anchor complete; resident open** (2026-07-12) | full T=100+50/Q=200 golden exact ✓; repeated exact attribution ✓; flat-cost 1.363 ✓; packed response 144.821 MB ✓; same-seed differential/fault/reuse/anti-replay ✓; corrected same-host native GPU 7-rep anchor ✓; resident gate open | On `3mq19up4`, native A100 prefill is **20.929±0.389 ms MAD**, decode50 **770.045±8.648 ms**, golden exact; CPU speedups 53.542×/2.901×. Hybrid proof prefill **42.039±1.419 s**, decode marginal **21.975±0.659 s**, so same-host staged ρ_proof is **2008.584/28.537** (diagnostic, not paper). Representative hybrid session: 6.868 H2D + 25.433 D2H + 0.110 kernels + 68.439 CPU; 17.813/5.560 GB transferred, 4.313 GB peak device. Sources `p7-integrated-hybrid-2026-07-12-706d067.json`, `p7-gpu-native-inference-2026-07-12-faa7667.json`. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -55,6 +55,30 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-12 (same-host corrected native GPU anchor landed)**: clean
+  schema-v2 run
+  `benchmarks/results/p7-gpu-native-inference-2026-07-12-faa7667.json` on
+  `3mq19up4`, explicitly paired with
+  `p7-integrated-hybrid-2026-07-12-706d067.json`. The corrected timer excludes
+  cache-seeding prefill from decode and times exactly 50 append-only steps,
+  including 20,103,000 bytes logits/error D2H and host argmax; weights remain
+  resident and their 249,403,904-byte one-time upload is excluded. Seven
+  prefill samples give **20.929 ms median, 0.389 ms MAD** (19.252--21.465 ms);
+  seven decode50 samples give **770.045 ms median, 8.648 ms MAD**
+  (726.182--785.886 ms). All outputs are deterministic, prefill argmax 835
+  and all 50 tokens match the frozen golden sequence, with no fixed-point
+  error. Same-host CPU/native GPU speedups are 53.542x prefill and 2.901x
+  decode. Persistent device allocation is 258,181,700 bytes and peak process
+  RSS is 732,692,480 bytes.
+
+  Combining this denominator with the *hybrid* proof medians yields
+  rho_proof,prefill **2008.584** and rho_proof,decode **28.537**; absolute
+  inference+proof is 42.0595/22.7448 s. These numbers quantify why staged
+  materialization is not the paper result; they do not decide the preregistered
+  resident <=10/<=2 gates. The 2026-07-11 native JSON remains immutable with
+  its older timer semantics and machine fingerprint; comparisons must name
+  which anchor they use.
 
 - **2026-07-12 (same-host native GPU anchor rerun — pre-registered harness
   correction)**: before quoting rho for `3mq19up4`, rerun the exact fixed-point

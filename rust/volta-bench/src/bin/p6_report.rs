@@ -80,6 +80,7 @@ struct AcceleratorOperationRow {
 #[derive(Clone, Serialize)]
 struct AcceleratorStatsRow {
     operations: BTreeMap<String, AcceleratorOperationRow>,
+    timing_method: String,
     h2d_bytes: u64,
     d2h_bytes: u64,
     h2d_s: f64,
@@ -111,6 +112,7 @@ impl From<BackendStats> for AcceleratorStatsRow {
             .collect();
         AcceleratorStatsRow {
             operations,
+            timing_method: stats.timing_mode.name().to_string(),
             h2d_bytes: stats.h2d_bytes,
             d2h_bytes: stats.d2h_bytes,
             h2d_s: stats.h2d_ns as f64 / 1e9,

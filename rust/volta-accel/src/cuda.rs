@@ -1,4 +1,7 @@
-use super::{AccelError, BackendStats, Fp2Repr, OperationStats, CUDA_ABI_VERSION, OPERATION_COUNT};
+use super::{
+    AccelError, BackendStats, DeviceTimingMode, Fp2Repr, OperationStats, CUDA_ABI_VERSION,
+    OPERATION_COUNT,
+};
 use std::ffi::{c_char, c_int, c_void, CStr, CString};
 use std::ptr;
 use volta_field::{Fp, Fp2};
@@ -28,7 +31,11 @@ struct RawStats {
     allocation_calls: u64,
     live_device_bytes: u64,
     peak_device_bytes: u64,
+    timing_mode: u32,
+    reserved: u32,
 }
+
+const _: () = assert!(std::mem::size_of::<RawStats>() == 160);
 
 type AbiVersion = unsafe extern "C" fn() -> u32;
 type Create = unsafe extern "C" fn(*mut *mut c_void) -> c_int;
@@ -232,6 +239,15 @@ impl CudaContext {
         // SAFETY: output points to a correctly sized C representation.
         self.check(unsafe { (self.api.get_stats)(self.raw, &mut raw) })?;
         let mut out = BackendStats {
+            timing_mode: match raw.timing_mode {
+                1 => DeviceTimingMode::CudaEvents,
+                2 => DeviceTimingMode::HostBarrierWall,
+                value => {
+                    return Err(AccelError::Cuda(format!(
+                        "CUDA backend returned unknown timing mode {value}"
+                    )));
+                }
+            },
             h2d_bytes: raw.h2d_bytes,
             d2h_bytes: raw.d2h_bytes,
             h2d_ns: raw.h2d_ns,

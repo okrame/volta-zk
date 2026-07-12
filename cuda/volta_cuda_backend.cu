@@ -12,7 +12,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 1;
+constexpr uint32_t ABI_VERSION = 2;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -23,6 +23,8 @@ constexpr int OP_PCS_ROWS = 2;
 constexpr int OP_PCS_NTT = 3;
 constexpr int OP_PCS_MERKLE = 4;
 constexpr int BUFFER_COUNT = 16;
+constexpr uint32_t TIMING_CUDA_EVENTS = 1;
+constexpr uint32_t TIMING_HOST_BARRIER_WALL = 2;
 
 struct alignas(16) Fp2 {
     uint64_t c0;
@@ -41,7 +43,11 @@ struct RawStats {
     uint64_t allocation_calls;
     uint64_t live_device_bytes;
     uint64_t peak_device_bytes;
+    uint32_t timing_mode;
+    uint32_t reserved;
 };
+
+static_assert(sizeof(RawStats) == 160, "RawStats ABI layout changed");
 
 struct Buffer {
     void* ptr = nullptr;
@@ -54,6 +60,9 @@ struct Context {
     Buffer buffers[BUFFER_COUNT];
     RawStats stats{};
     size_t twiddle_size = 0;
+    uint32_t timing_mode = TIMING_CUDA_EVENTS;
+    std::chrono::steady_clock::time_point phase_started{};
+    std::array<uint64_t, 3> phase_ns{};
     std::string error;
 };
 
@@ -97,35 +106,93 @@ T* buf(Context* c, int slot) {
 }
 
 int begin_timing(Context* c) {
-    CUDA_OR_RETURN(c, cudaEventRecord(c->events[0], c->stream));
+    c->phase_ns.fill(0);
+    if (c->timing_mode == TIMING_CUDA_EVENTS) {
+        CUDA_OR_RETURN(c, cudaEventRecord(c->events[0], c->stream));
+    } else {
+        c->phase_started = std::chrono::steady_clock::now();
+    }
+    return 0;
+}
+
+int finish_host_phase(Context* c, int phase) {
+    if (phase < 0 || phase >= 3) return fail_message(c, "invalid timing phase");
+    const auto sync_started = std::chrono::steady_clock::now();
+    CUDA_OR_RETURN(c, cudaStreamSynchronize(c->stream));
+    const auto finished = std::chrono::steady_clock::now();
+    c->phase_ns[phase] =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(finished - c->phase_started).count();
+    ++c->stats.synchronizations;
+    c->stats.synchronization_ns +=
+        std::chrono::duration_cast<std::chrono::nanoseconds>(finished - sync_started).count();
+    c->phase_started = finished;
     return 0;
 }
 
 int mark_timing(Context* c, int event) {
-    CUDA_OR_RETURN(c, cudaEventRecord(c->events[event], c->stream));
+    if (event != 1 && event != 2) return fail_message(c, "invalid timing event");
+    if (c->timing_mode == TIMING_CUDA_EVENTS) {
+        CUDA_OR_RETURN(c, cudaEventRecord(c->events[event], c->stream));
+        return 0;
+    }
+    return finish_host_phase(c, event - 1);
+}
+
+int event_ns(Context* c, cudaEvent_t a, cudaEvent_t b, uint64_t* out) {
+    float ms = -1.0f;
+    const cudaError_t e = cudaEventElapsedTime(&ms, a, b);
+    if (e != cudaSuccess) return fail(c, "cudaEventElapsedTime", e);
+    if (ms < 0.0f) {
+        return fail_message(c, "cudaEventElapsedTime returned success without a duration");
+    }
+    *out = static_cast<uint64_t>(ms * 1'000'000.0f);
     return 0;
 }
 
-uint64_t event_ns(cudaEvent_t a, cudaEvent_t b) {
-    float ms = 0.0f;
-    if (cudaEventElapsedTime(&ms, a, b) != cudaSuccess) return 0;
-    return static_cast<uint64_t>(ms * 1'000'000.0f);
+int select_timing_mode(Context* c) {
+    CUDA_OR_RETURN(c, cudaEventRecord(c->events[0], c->stream));
+    CUDA_OR_RETURN(c, cudaEventRecord(c->events[1], c->stream));
+    CUDA_OR_RETURN(c, cudaStreamSynchronize(c->stream));
+    float ms = -1.0f;
+    const cudaError_t e = cudaEventElapsedTime(&ms, c->events[0], c->events[1]);
+    if (e == cudaSuccess && ms >= 0.0f) {
+        c->timing_mode = TIMING_CUDA_EVENTS;
+    } else {
+        // Some virtualized CUDA runtimes return success without writing the
+        // elapsed-time output. Clear any sticky error and use explicit host
+        // barriers rather than silently reporting zero device time.
+        cudaGetLastError();
+        c->timing_mode = TIMING_HOST_BARRIER_WALL;
+    }
+    c->stats.timing_mode = c->timing_mode;
+    return 0;
 }
 
 int finish_timing(Context* c, int operation, uint64_t h2d, uint64_t d2h) {
-    CUDA_OR_RETURN(c, cudaEventRecord(c->events[3], c->stream));
-    const auto s0 = std::chrono::steady_clock::now();
-    CUDA_OR_RETURN(c, cudaStreamSynchronize(c->stream));
-    const auto s1 = std::chrono::steady_clock::now();
+    uint64_t h2d_ns = 0, kernel_ns = 0, d2h_ns = 0;
+    if (c->timing_mode == TIMING_CUDA_EVENTS) {
+        CUDA_OR_RETURN(c, cudaEventRecord(c->events[3], c->stream));
+        const auto s0 = std::chrono::steady_clock::now();
+        CUDA_OR_RETURN(c, cudaStreamSynchronize(c->stream));
+        const auto s1 = std::chrono::steady_clock::now();
+        ++c->stats.synchronizations;
+        c->stats.synchronization_ns +=
+            std::chrono::duration_cast<std::chrono::nanoseconds>(s1 - s0).count();
+        if (event_ns(c, c->events[0], c->events[1], &h2d_ns) ||
+            event_ns(c, c->events[1], c->events[2], &kernel_ns) ||
+            event_ns(c, c->events[2], c->events[3], &d2h_ns)) return -1;
+    } else {
+        if (finish_host_phase(c, 2)) return -1;
+        h2d_ns = c->phase_ns[0];
+        kernel_ns = c->phase_ns[1];
+        d2h_ns = c->phase_ns[2];
+    }
     ++c->stats.calls[operation];
     c->stats.h2d_bytes += h2d;
     c->stats.d2h_bytes += d2h;
-    c->stats.h2d_ns += event_ns(c->events[0], c->events[1]);
-    c->stats.kernel_ns[operation] += event_ns(c->events[1], c->events[2]);
-    c->stats.d2h_ns += event_ns(c->events[2], c->events[3]);
-    ++c->stats.synchronizations;
-    c->stats.synchronization_ns +=
-        std::chrono::duration_cast<std::chrono::nanoseconds>(s1 - s0).count();
+    c->stats.h2d_ns += h2d_ns;
+    c->stats.kernel_ns[operation] += kernel_ns;
+    c->stats.d2h_ns += d2h_ns;
     return 0;
 }
 
@@ -548,6 +615,7 @@ extern "C" int volta_cuda_create(void** out) {
     for (auto& event : c->events) {
         if ((e = cudaEventCreate(&event)) != cudaSuccess) return fail(c, "cudaEventCreate", e);
     }
+    if (select_timing_mode(c)) return -1;
     return 0;
 }
 
@@ -569,9 +637,11 @@ extern "C" int volta_cuda_reset_stats(void* raw) {
     Context* c = static_cast<Context*>(raw);
     if (!c) return -1;
     const uint64_t live = c->stats.live_device_bytes;
+    const uint32_t timing_mode = c->timing_mode;
     c->stats = RawStats{};
     c->stats.live_device_bytes = live;
     c->stats.peak_device_bytes = live;
+    c->stats.timing_mode = timing_mode;
     return 0;
 }
 

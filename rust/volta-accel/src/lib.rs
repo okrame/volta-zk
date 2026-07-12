@@ -12,7 +12,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 1;
+pub const CUDA_ABI_VERSION: u32 = 2;
 pub const OPERATION_COUNT: usize = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -52,6 +52,31 @@ pub enum BackendKind {
     CudaResident,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DeviceTimingMode {
+    /// CPU/default stats have no device timing source.
+    #[default]
+    None,
+    /// Asynchronous phase timing from CUDA events; one final stream barrier
+    /// per staged operation.
+    CudaEvents,
+    /// Fallback for runtimes where event elapsed-time is unavailable: each
+    /// H2D/kernel/D2H phase is delimited by a timed host stream barrier.
+    /// These are phase wall times (including launch overhead), and the three
+    /// barriers per operation are counted explicitly.
+    HostBarrierWall,
+}
+
+impl DeviceTimingMode {
+    pub const fn name(self) -> &'static str {
+        match self {
+            DeviceTimingMode::None => "none",
+            DeviceTimingMode::CudaEvents => "cuda-events",
+            DeviceTimingMode::HostBarrierWall => "host-barrier-wall",
+        }
+    }
+}
+
 impl BackendKind {
     pub const fn name(self) -> &'static str {
         match self {
@@ -72,6 +97,7 @@ pub struct OperationStats {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct BackendStats {
     pub operations: [OperationStats; OPERATION_COUNT],
+    pub timing_mode: DeviceTimingMode,
     pub h2d_bytes: u64,
     pub d2h_bytes: u64,
     pub h2d_ns: u64,
@@ -741,7 +767,16 @@ mod cuda_tests {
         let stats = gpu.finish_measurement().unwrap();
         assert_eq!(stats.operation(Operation::Gemm).calls, 6);
         assert!(stats.h2d_bytes > 0 && stats.d2h_bytes > 0);
-        assert_eq!(stats.synchronizations, 6);
+        assert!(stats.h2d_ns > 0 && stats.d2h_ns > 0);
+        assert!(stats.operation(Operation::Gemm).kernel_ns > 0);
+        assert_eq!(
+            stats.synchronizations,
+            match stats.timing_mode {
+                DeviceTimingMode::CudaEvents => 6,
+                DeviceTimingMode::HostBarrierWall => 18,
+                DeviceTimingMode::None => panic!("CUDA stats have no timing mode"),
+            }
+        );
     }
 
     #[test]

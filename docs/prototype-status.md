@@ -56,6 +56,22 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-12 (same-host native GPU anchor rerun — pre-registered harness
+  correction)**: before quoting rho for `3mq19up4`, rerun the exact fixed-point
+  native GPU anchor against the clean CPU-native samples embedded in
+  `p7-integrated-hybrid-2026-07-12-706d067.json`. Audit found that the prior
+  CUDA harness performed the documented untimed cache-seeding prefill and
+  then called `decode50()`, which performed a second prefill *inside* the
+  decode timer. Retain the 2026-07-11 JSON unchanged, but correct the harness
+  so `decode50` consumes the argmax/cache produced by the untimed prefill and
+  times exactly 50 append-only decode steps including logits D2H + host
+  argmax. One warmup + 7 repetitions, frozen 50-token golden equality and
+  determinism remain mandatory. Schema v2 must retain raw prefill/decode
+  samples plus median/MAD/min/max, live/peak device allocation estimate and
+  process peak RSS; the baseline path is explicit rather than selected by
+  machine-global filename heuristics. This is measurement-only: no Rust
+  witness, proof, transcript, PCS, correlation or communication change.
+
 - **2026-07-12 (`P7-integrated-hybrid` full attribution gate complete)**:
   clean schema-v2 run
   `benchmarks/results/p7-integrated-hybrid-2026-07-12-706d067.json` on

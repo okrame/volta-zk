@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <cstdlib>
@@ -212,6 +213,7 @@ struct GpuModel {
   int16_t *x0=nullptr,*x1=nullptr,*ln=nullptr,*q=nullptr,*av=nullptr,*abo=nullptr,*up=nullptr;
   int16_t *scores=nullptr,*final_ln=nullptr,*kc=nullptr,*vc=nullptr;
   std::vector<int64_t> hlogits;
+  size_t device_bytes = 0;
 
   const int16_t* w(size_t off) const { return db + off; }
   int16_t* cache(int16_t* base, int l) { return base + static_cast<size_t>(l) * MAX_SEQ * D; }
@@ -220,15 +222,19 @@ struct GpuModel {
     auto bytes = read_bytes(bin); if (bytes.size() != o.count * 2) { std::cerr << "weight size mismatch\n"; std::exit(2); }
     blob.resize(o.count); std::memcpy(blob.data(), bytes.data(), bytes.size());
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&db), bytes.size()));
+    device_bytes += bytes.size();
     CUDA_CHECK(cudaMemcpy(db, blob.data(), bytes.size(), cudaMemcpyHostToDevice));
-    auto alloc16=[&](int16_t** z,size_t n){CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(z),n*2));};
+    auto alloc16=[&](int16_t** z,size_t n){const size_t bytes=n*2;CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(z),bytes));device_bytes+=bytes;};
     alloc16(&x0, MAX_SEQ*D); alloc16(&x1, MAX_SEQ*D); alloc16(&ln, MAX_SEQ*D);
     alloc16(&q, MAX_SEQ*D); alloc16(&av, MAX_SEQ*D); alloc16(&abo, MAX_SEQ*D);
     alloc16(&up, MAX_SEQ*DFF); alloc16(&scores, H*MAX_SEQ*MAX_SEQ);
     alloc16(&final_ln,D); alloc16(&kc,L*MAX_SEQ*D); alloc16(&vc,L*MAX_SEQ*D);
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&dtok), MAX_SEQ*sizeof(uint32_t)));
+    device_bytes += MAX_SEQ*sizeof(uint32_t);
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&derr), sizeof(int)));
+    device_bytes += sizeof(int);
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&dlogits), VOCAB*sizeof(int64_t)));
+    device_bytes += VOCAB*sizeof(int64_t);
     hlogits.resize(VOCAB);
   }
 
@@ -272,32 +278,57 @@ struct GpuModel {
     int16_t* a=x0; int16_t* b=x1; for(int l=0;l<L;++l) layer(l,1,pos,a,b); return finish(a,1);
   }
 
-  std::vector<uint32_t> decode50() {
-    uint32_t next=prefill(100); std::vector<uint32_t> out; out.reserve(50);
+  std::vector<uint32_t> decode50(uint32_t next) {
+    std::vector<uint32_t> out; out.reserve(50);
     for(int i=0;i<50;++i){out.push_back(next);next=decode_step(next,100+i);} return out;
   }
 };
 
 double median(std::vector<double> x){std::sort(x.begin(),x.end());return x[x.size()/2];}
 
+double mad(const std::vector<double>& x) {
+  const double m=median(x);std::vector<double>d;d.reserve(x.size());
+  for(double v:x)d.push_back(std::abs(v-m));return median(d);
+}
+
+void print_timing(const char* name,const std::vector<double>& x) {
+  const auto mm=std::minmax_element(x.begin(),x.end());
+  std::cout<<"  \""<<name<<"\": {\"samples_s\": [";
+  for(size_t i=0;i<x.size();++i)std::cout<<(i?", ":"")<<x[i];
+  std::cout<<"], \"median_s\": "<<median(x)<<", \"mad_s\": "<<mad(x)
+    <<", \"min_s\": "<<*mm.first<<", \"max_s\": "<<*mm.second<<"}";
+}
+
+uint64_t peak_rss_bytes() {
+  std::ifstream f("/proc/self/status");std::string label,line;uint64_t kb=0;
+  while(f>>label){if(label=="VmHWM:"){f>>kb;return kb*1024;}std::getline(f,line);}return 0;
+}
+
 } // namespace
 
 int main(int argc,char**argv){
   if(argc!=4){std::cerr<<"usage: p7_native_inference WEIGHTS PARAMS REPS\n";return 2;}
   int reps=std::stoi(argv[3]); GpuModel m(argv[1],argv[2]);
-  uint32_t warm=m.prefill(100); auto warm_tokens=m.decode50();
+  uint32_t warm=m.prefill(100); auto warm_tokens=m.decode50(warm);
   std::vector<double> ps,ds; std::vector<uint32_t> tokens; bool deterministic=true; uint32_t prefill_argmax=0;
   for(int r=0;r<reps;++r){auto t0=std::chrono::steady_clock::now();uint32_t a=m.prefill(100);auto t1=std::chrono::steady_clock::now();
     ps.push_back(std::chrono::duration<double>(t1-t0).count());prefill_argmax=a;if(a!=warm)deterministic=false;
-    m.prefill(100);t0=std::chrono::steady_clock::now();auto v=m.decode50();t1=std::chrono::steady_clock::now();
-    ds.push_back(std::chrono::duration<double>(t1-t0).count());if(r==0)tokens=v;else if(v!=tokens)deterministic=false;}
+    uint32_t next=m.prefill(100);t0=std::chrono::steady_clock::now();auto v=m.decode50(next);t1=std::chrono::steady_clock::now();
+    ds.push_back(std::chrono::duration<double>(t1-t0).count());if(r==0)tokens=v;else if(v!=tokens)deterministic=false;
+    if(v!=warm_tokens)deterministic=false;}
   cudaDeviceProp prop{};CUDA_CHECK(cudaGetDeviceProperties(&prop,0));
   std::cout<<std::setprecision(12)<<"{\n  \"prefill_s\": "<<median(ps)<<", \"decode_50_s\": "<<median(ds)
-    <<",\n  \"prefill_argmax\": "<<prefill_argmax<<", \"deterministic\": "<<(deterministic?"true":"false")
+    <<",\n";print_timing("prefill_timing",ps);std::cout<<",\n";print_timing("decode_50_timing",ds);
+  std::cout<<",\n  \"prefill_argmax\": "<<prefill_argmax<<", \"deterministic\": "<<(deterministic?"true":"false")
     <<", \"fixed_point_errors\": false,\n  \"generated_tokens\": [";
   for(size_t i=0;i<tokens.size();++i)std::cout<<(i?", ":"")<<tokens[i];
   std::cout<<"],\n  \"parameters\": {\"prefill_tokens\": 100, \"decode_tokens\": 50, \"gpu_reps\": "<<reps
-    <<", \"weights_resident\": true, \"decode_logits_d2h_per_token\": "<<VOCAB*8<<"},\n"
+    <<", \"weights_resident\": true, \"weights_upload_bytes\": "<<m.blob.size()*2
+    <<", \"prefill_h2d_bytes\": "<<100*sizeof(uint32_t)<<", \"prefill_d2h_bytes\": "<<VOCAB*8+sizeof(int)
+    <<", \"decode_h2d_bytes\": "<<50*sizeof(uint32_t)<<", \"decode_d2h_bytes\": "<<50*(VOCAB*8+sizeof(int))
+    <<", \"decode_logits_d2h_per_token\": "<<VOCAB*8<<"},\n"
+    <<"  \"memory\": {\"live_device_bytes\": "<<m.device_bytes<<", \"peak_device_bytes\": "<<m.device_bytes
+    <<", \"peak_rss_bytes\": "<<peak_rss_bytes()<<"},\n"
     <<"  \"device\": {\"name\": \""<<prop.name<<"\", \"cc\": \""<<prop.major<<'.'<<prop.minor
     <<"\", \"sm_count\": "<<prop.multiProcessorCount<<", \"global_memory_bytes\": "<<prop.totalGlobalMem<<"}\n}\n";
   return deterministic?0:1;

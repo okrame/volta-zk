@@ -41,22 +41,51 @@ def cloud() -> dict[str, str]:
     return {k: os.environ[v] for k, v in CLOUD_ENV.items()}
 
 
-def baseline(instance_id: str) -> tuple[Path, dict]:
+def baseline(instance_id: str, explicit: str | None) -> tuple[Path, dict]:
+    allowed = {"P6", "P7-integrated-hybrid"}
+
+    def accepted(_path: Path, data: dict) -> bool:
+        return (
+            data.get("milestone") in allowed
+            and data.get("accepted")
+            and not data.get("git_dirty")
+            and (data.get("cloud") or {}).get("instance_id") == instance_id
+            and isinstance(data.get("generated_tokens"), list)
+            and data.get("t_native_prefill_s", 0) > 0
+            and data.get("t_native_decode_s", 0) > 0
+        )
+
+    if explicit:
+        path = Path(explicit)
+        if not path.is_absolute():
+            path = REPO / path
+        path = path.resolve()
+        try:
+            path.relative_to(REPO)
+            data = json.loads(path.read_text())
+        except (ValueError, OSError, json.JSONDecodeError) as exc:
+            raise SystemExit(f"invalid explicit native baseline {path}: {exc}") from exc
+        if not accepted(path, data):
+            raise SystemExit(
+                f"baseline {path} must be clean, accepted, same-instance P6/P7-integrated-hybrid"
+            )
+        return path, data
+
     rows: list[tuple[float, Path, dict]] = []
-    for path in RESULTS.glob("p6-*.json"):
+    candidates = list(RESULTS.glob("p6-*.json")) + list(
+        RESULTS.glob("p7-integrated-hybrid-*.json")
+    )
+    for path in candidates:
         try:
             data = json.loads(path.read_text())
         except (OSError, json.JSONDecodeError):
             continue
-        if (
-            data.get("milestone") == "P6"
-            and data.get("accepted")
-            and not data.get("git_dirty")
-            and (data.get("cloud") or {}).get("instance_id") == instance_id
-        ):
+        if accepted(path, data):
             rows.append((path.stat().st_mtime, path, data))
     if not rows:
-        raise SystemExit(f"no clean accepted P6 baseline for cloud instance {instance_id}")
+        raise SystemExit(
+            f"no clean accepted P6/P7-integrated-hybrid baseline for cloud instance {instance_id}"
+        )
     _, path, data = max(rows)
     return path, data
 
@@ -77,6 +106,10 @@ def main() -> int:
     ap.add_argument("--nvcc", default="/usr/local/cuda/bin/nvcc")
     ap.add_argument("--arch", default="sm_80")
     ap.add_argument("--quick", action="store_true")
+    ap.add_argument(
+        "--baseline",
+        help="explicit clean same-instance P6 or P7-integrated-hybrid JSON",
+    )
     args = ap.parse_args()
     meta = cloud()
     sha = git("rev-parse", "--short", "HEAD")
@@ -85,7 +118,7 @@ def main() -> int:
         raise SystemExit("refusing native-inference run from a dirty tracked tree")
     if not WEIGHTS.exists() or not PARAMS.exists():
         raise SystemExit("missing benchmarks/weights/gpt2s-q.{bin,params}")
-    base_path, base = baseline(meta["instance_id"])
+    base_path, base = baseline(meta["instance_id"], args.baseline)
     reps = 1 if args.quick else 7
 
     with tempfile.TemporaryDirectory(prefix="volta-p7-native-inference-") as tmp:
@@ -108,9 +141,16 @@ def main() -> int:
     expected = base["generated_tokens"]
     golden = kernel["prefill_argmax"] == expected[0] and kernel["generated_tokens"] == expected
     correctness = golden and kernel["deterministic"] and not kernel["fixed_point_errors"]
+    for name, legacy in (("prefill_timing", "prefill_s"), ("decode_50_timing", "decode_50_s")):
+        timing = kernel[name]
+        if len(timing["samples_s"]) != reps or timing["median_s"] != kernel[legacy]:
+            raise SystemExit(f"invalid {name} distribution from CUDA harness")
+    if kernel["memory"]["peak_device_bytes"] <= 0 or kernel["memory"]["peak_rss_bytes"] <= 0:
+        raise SystemExit("native CUDA harness did not report peak memory")
     prefill_speedup = base["t_native_prefill_s"] / kernel["prefill_s"]
     decode_speedup = base["t_native_decode_s"] / kernel["decode_50_s"]
     report = {
+        "report_schema_version": 2,
         "milestone": "P7-gpu-native-inference-quick" if args.quick else "P7-gpu-native-inference",
         "date": dt.date.today().isoformat(),
         "git_sha": sha,
@@ -119,6 +159,7 @@ def main() -> int:
         "compiler": {"nvcc": args.nvcc, "arch": args.arch},
         "baseline": {
             "source": str(base_path.relative_to(REPO)),
+            "milestone": base["milestone"],
             "native_prefill_s": base["t_native_prefill_s"],
             "native_decode_50_s": base["t_native_decode_s"],
         },
@@ -131,6 +172,8 @@ def main() -> int:
             "kv_cached_incremental_decode": True,
             "weights_upload_timed": False,
             "decode_logits_d2h_and_argmax_timed": True,
+            "decode_cache_seed_prefill_timed": False,
+            "decode_exactly_50_append_steps_timed": True,
             "proving_path_integrated": False,
         },
     }

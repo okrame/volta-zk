@@ -29,7 +29,8 @@ pub use model::{
     forward_model_with_backend, load_model, Gpt2Model, ModelWitness, L, NPOS, VOCAB,
 };
 pub use resident::{
-    forward_model_tokens_resident, upload_resident_model, LayerI16Field, LayerI64Field,
-    LayerWeightField, ModelWeightField, ResidentGpt2Model, ResidentLayerWitness,
+    band_model_witness_resident, forward_model_tokens_resident, upload_resident_model,
+    LayerI16Field, LayerI64Field, LayerWeightField, ModelWeightField, ResidentBandLayerWitness,
+    ResidentBandModelWitness, ResidentGpt2Model, ResidentLayerView, ResidentLayerWitness,
     ResidentModelWitness,
 };

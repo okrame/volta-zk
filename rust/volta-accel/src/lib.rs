@@ -17,7 +17,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 15;
+pub const CUDA_ABI_VERSION: u32 = 16;
 pub const OPERATION_COUNT: usize = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1926,6 +1926,83 @@ impl Backend {
             return Err(error);
         }
         Ok(output)
+    }
+
+    /// Copy the same contiguous column window from each physical source row
+    /// into a compact resident matrix. This is the shape-parametric D2D
+    /// primitive used to view suffix/band data without a host staging copy.
+    pub fn compact_strided_rows_device<T: ResidentMatrixElement>(
+        &mut self,
+        input: DeviceSlice<'_, T>,
+        rows: usize,
+        source_stride: usize,
+        width: usize,
+    ) -> Result<DeviceBuffer<T>, AccelError> {
+        if rows == 0 || width == 0 || source_stride < width {
+            return Err(AccelError::InvalidInput("invalid resident strided-copy geometry"));
+        }
+        let source_len = rows
+            .checked_sub(1)
+            .and_then(|n| n.checked_mul(source_stride))
+            .and_then(|n| n.checked_add(width))
+            .ok_or(AccelError::InvalidInput("shape overflow"))?;
+        self.validate_device_slice(input, source_len)?;
+        let output_len = checked_product(rows, width)?;
+        let output = self.alloc_device(output_len)?;
+        let result = self.compact_strided_rows_into_device(
+            input,
+            DeviceSlice::new(&output, 0, output_len).expect("whole compact output"),
+            rows,
+            source_stride,
+            width,
+        );
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
+    }
+
+    /// In-place destination form of [`Backend::compact_strided_rows_device`]
+    /// for callers that pack several derived views into one owned allocation.
+    pub fn compact_strided_rows_into_device<T: ResidentMatrixElement>(
+        &mut self,
+        input: DeviceSlice<'_, T>,
+        output: DeviceSlice<'_, T>,
+        rows: usize,
+        source_stride: usize,
+        width: usize,
+    ) -> Result<(), AccelError> {
+        if rows == 0 || width == 0 || source_stride < width {
+            return Err(AccelError::InvalidInput("invalid resident strided-copy geometry"));
+        }
+        let source_len = rows
+            .checked_sub(1)
+            .and_then(|n| n.checked_mul(source_stride))
+            .and_then(|n| n.checked_add(width))
+            .ok_or(AccelError::InvalidInput("shape overflow"))?;
+        let output_len = checked_product(rows, width)?;
+        self.validate_device_slice(input, source_len)?;
+        self.validate_device_slice(output, output_len)?;
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .expect("CUDA kind without context")
+                .compact_strided_rows_device(
+                    input.buffer.id,
+                    input.offset,
+                    output.buffer.id,
+                    output.offset,
+                    rows,
+                    source_stride,
+                    width,
+                    T::CUDA_KIND,
+                );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
     }
 
     /// Zero an equality row outside the real above-causal attention cells.
@@ -4579,6 +4656,25 @@ mod cuda_tests {
         let repeated_values = gpu.download_device(&repeated, 0, 3 * input.len()).unwrap();
         assert_eq!(repeated_values, input.repeat(3));
         gpu.free_device(repeated).unwrap();
+
+        let compact = gpu
+            .compact_strided_rows_device(
+                DeviceSlice::new(&dinput, window_offset, input.len() - window_offset).unwrap(),
+                rows,
+                cols,
+                window_cols,
+            )
+            .unwrap();
+        let compact_values = gpu.download_device(&compact, 0, rows * window_cols).unwrap();
+        let expected_compact: Vec<i16> = (0..rows)
+            .flat_map(|row| {
+                input[row * cols + window_offset..row * cols + window_offset + window_cols]
+                    .iter()
+                    .copied()
+            })
+            .collect();
+        assert_eq!(compact_values, expected_compact);
+        gpu.free_device(compact).unwrap();
 
         let mask_entries = 4 * 4 * 4;
         let mask_source: Vec<Fp2> = (0..mask_entries)

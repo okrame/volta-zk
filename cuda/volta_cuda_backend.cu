@@ -13,7 +13,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 15;
+constexpr uint32_t ABI_VERSION = 16;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -2400,6 +2400,29 @@ extern "C" int volta_cuda_repeat_vector_device(
             static_cast<uint8_t*>(output) + copy * input_len * elem,
             input, input_len * elem, cudaMemcpyDeviceToDevice, c->stream));
     }
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_GEMM, 0, 0);
+}
+
+extern "C" int volta_cuda_compact_strided_rows_device(
+    void* raw, uint64_t input_id, size_t input_offset,
+    uint64_t output_id, size_t output_offset, size_t rows,
+    size_t source_stride, size_t width, int kind) {
+    Context* c = static_cast<Context*>(raw);
+    const size_t elem = resident_scalar_size(kind);
+    if (!c || !rows || !width || source_stride < width || !elem)
+        return fail_message(c, "invalid resident strided-copy geometry");
+    const size_t source_len = (rows - 1) * source_stride + width;
+    const size_t output_len = rows * width;
+    void *input = nullptr, *output = nullptr;
+    if (resident_region(c, input_id, input_offset * elem, source_len * elem, &input) ||
+        resident_region(c, output_id, output_offset * elem, output_len * elem, &output))
+        return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    CUDA_OR_RETURN(c, cudaMemcpy2DAsync(
+        output, width * elem, input, source_stride * elem,
+        width * elem, rows, cudaMemcpyDeviceToDevice, c->stream));
     if (mark_timing(c, 2)) return -1;
     return finish_timing(c, OP_GEMM, 0, 0);
 }

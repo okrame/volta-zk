@@ -212,6 +212,279 @@ impl ResidentLayerWitness {
     }
 }
 
+mod resident_layer_view_sealed {
+    pub trait Sealed {}
+}
+
+/// Workspace-internal proof view shared by a square resident layer and a
+/// D2D-compacted decode band. It exposes checked typed slices, never device
+/// addresses or a stable model-description API.
+#[doc(hidden)]
+pub trait ResidentLayerView: resident_layer_view_sealed::Sealed {
+    fn rows(&self) -> usize;
+    fn pos0(&self) -> usize;
+    fn i16(&self, field: LayerI16Field) -> DeviceSlice<'_, i16>;
+    fn i64(&self, field: LayerI64Field) -> DeviceSlice<'_, i64>;
+
+    fn seq(&self) -> usize {
+        self.pos0() + self.rows()
+    }
+}
+
+impl resident_layer_view_sealed::Sealed for ResidentLayerWitness {}
+
+impl ResidentLayerView for ResidentLayerWitness {
+    fn rows(&self) -> usize {
+        self.t
+    }
+
+    fn pos0(&self) -> usize {
+        0
+    }
+
+    fn i16(&self, field: LayerI16Field) -> DeviceSlice<'_, i16> {
+        self.i16(field)
+    }
+
+    fn i64(&self, field: LayerI64Field) -> DeviceSlice<'_, i64> {
+        self.i64(field)
+    }
+}
+
+#[derive(Debug)]
+struct BandDerivedLayout {
+    // scores_q, row_shift, exp_out, recips, softmax_w
+    i16: [Region; 5],
+    // scores_acc, denoms
+    i64: [Region; 2],
+    i16_len: usize,
+    i64_len: usize,
+    score_entries: usize,
+}
+
+impl BandDerivedLayout {
+    fn new(t0: usize, q: usize) -> Self {
+        let packed_per_head = q
+            .checked_mul(t0)
+            .and_then(|prefix| q.checked_mul(q + 1).map(|triangle| prefix + triangle / 2))
+            .expect("resident band shape overflow");
+        let scores = H.checked_mul(packed_per_head).expect("resident band shape overflow");
+        let rows = H.checked_mul(q).expect("resident band shape overflow");
+        let mut p16 = 0;
+        let i16 = [
+            take(&mut p16, scores),
+            take(&mut p16, rows),
+            take(&mut p16, scores),
+            take(&mut p16, rows),
+            take(&mut p16, scores),
+        ];
+        let mut p64 = 0;
+        let i64 = [take(&mut p64, scores), take(&mut p64, rows)];
+        BandDerivedLayout { i16, i64, i16_len: p16, i64_len: p64, score_entries: scores }
+    }
+}
+
+fn compact_field<T: volta_accel::ResidentMatrixElement>(
+    backend: &mut Backend,
+    source: DeviceSlice<'_, T>,
+    source_start: usize,
+    rows: usize,
+    source_stride: usize,
+    width: usize,
+    destination: &DeviceBuffer<T>,
+    region: Region,
+) -> Result<(), AccelError> {
+    let source_offset = source
+        .offset()
+        .checked_add(source_start)
+        .ok_or(AccelError::InvalidInput("resident band source offset overflow"))?;
+    let source_len = source
+        .len()
+        .checked_sub(source_start)
+        .ok_or(AccelError::InvalidInput("resident band source window out of bounds"))?;
+    let source = DeviceSlice::new(source.buffer(), source_offset, source_len)?;
+    let destination = DeviceSlice::new(destination, region.offset, region.len)?;
+    backend.compact_strided_rows_into_device(source, destination, rows, source_stride, width)
+}
+
+/// Borrowed row-local view plus the seven attention fields that require D2D
+/// compaction from a larger causal-packed forward. Only those non-contiguous
+/// fields are copied; every q×D/q×DFF row-major wire aliases the original
+/// resident response witness.
+#[derive(Debug)]
+pub struct ResidentBandLayerWitness<'a> {
+    source: &'a ResidentLayerWitness,
+    t0: usize,
+    q: usize,
+    layout: BandDerivedLayout,
+    derived_i16: DeviceBuffer<i16>,
+    derived_i64: DeviceBuffer<i64>,
+}
+
+impl<'a> ResidentBandLayerWitness<'a> {
+    fn new(
+        source: &'a ResidentLayerWitness,
+        t0: usize,
+        q: usize,
+        backend: &mut Backend,
+    ) -> Result<Self, AccelError> {
+        if t0 == 0 || q == 0 || t0.checked_add(q).filter(|&end| end <= source.t).is_none() {
+            return Err(AccelError::InvalidInput("invalid resident band layer geometry"));
+        }
+        let layout = BandDerivedLayout::new(t0, q);
+        let derived_i16 = backend.alloc_device(layout.i16_len)?;
+        let derived_i64 = match backend.alloc_device(layout.i64_len) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = backend.free_device(derived_i16);
+                return Err(error);
+            }
+        };
+        let full_caus = source.t * (source.t + 1) / 2;
+        let packed_start = t0 * (t0 + 1) / 2;
+        let band_caus = q * t0 + q * (q + 1) / 2;
+        let result = (|| {
+            compact_field(
+                backend,
+                source.i64(LayerI64Field::ScoresAcc),
+                packed_start,
+                H,
+                full_caus,
+                band_caus,
+                &derived_i64,
+                layout.i64[0],
+            )?;
+            for (field, region) in [
+                (LayerI16Field::ScoresQ, layout.i16[0]),
+                (LayerI16Field::ExpOut, layout.i16[2]),
+                (LayerI16Field::SoftmaxW, layout.i16[4]),
+            ] {
+                compact_field(
+                    backend,
+                    source.i16(field),
+                    packed_start,
+                    H,
+                    full_caus,
+                    band_caus,
+                    &derived_i16,
+                    region,
+                )?;
+            }
+            compact_field(
+                backend,
+                source.i16(LayerI16Field::RowShift),
+                t0,
+                H,
+                source.t,
+                q,
+                &derived_i16,
+                layout.i16[1],
+            )?;
+            compact_field(
+                backend,
+                source.i16(LayerI16Field::Recips),
+                t0,
+                H,
+                source.t,
+                q,
+                &derived_i16,
+                layout.i16[3],
+            )?;
+            compact_field(
+                backend,
+                source.i64(LayerI64Field::Denoms),
+                t0,
+                H,
+                source.t,
+                q,
+                &derived_i64,
+                layout.i64[1],
+            )
+        })();
+        if let Err(error) = result {
+            let _ = backend.free_device(derived_i64);
+            let _ = backend.free_device(derived_i16);
+            return Err(error);
+        }
+        Ok(ResidentBandLayerWitness { source, t0, q, layout, derived_i16, derived_i64 })
+    }
+
+    pub fn score_entries(&self) -> usize {
+        self.layout.score_entries
+    }
+
+    fn source_i16(&self, field: LayerI16Field, stride: usize) -> DeviceSlice<'_, i16> {
+        let source = self.source.i16(field);
+        DeviceSlice::new(source.buffer(), source.offset() + self.t0 * stride, self.q * stride)
+            .expect("validated resident band i16 source")
+    }
+
+    fn source_i64(&self, field: LayerI64Field, stride: usize) -> DeviceSlice<'_, i64> {
+        let source = self.source.i64(field);
+        DeviceSlice::new(source.buffer(), source.offset() + self.t0 * stride, self.q * stride)
+            .expect("validated resident band i64 source")
+    }
+
+    fn derived16(&self, index: usize) -> DeviceSlice<'_, i16> {
+        let region = self.layout.i16[index];
+        DeviceSlice::new(&self.derived_i16, region.offset, region.len)
+            .expect("valid resident band i16 layout")
+    }
+
+    fn derived64(&self, index: usize) -> DeviceSlice<'_, i64> {
+        let region = self.layout.i64[index];
+        DeviceSlice::new(&self.derived_i64, region.offset, region.len)
+            .expect("valid resident band i64 layout")
+    }
+
+    fn free(self, backend: &mut Backend) -> Result<(), AccelError> {
+        let first = backend.free_device(self.derived_i64).err();
+        let second = backend.free_device(self.derived_i16).err();
+        first.or(second).map_or(Ok(()), Err)
+    }
+}
+
+impl resident_layer_view_sealed::Sealed for ResidentBandLayerWitness<'_> {}
+
+impl ResidentLayerView for ResidentBandLayerWitness<'_> {
+    fn rows(&self) -> usize {
+        self.q
+    }
+
+    fn pos0(&self) -> usize {
+        self.t0
+    }
+
+    fn i16(&self, field: LayerI16Field) -> DeviceSlice<'_, i16> {
+        match field {
+            LayerI16Field::ScoresQ => self.derived16(0),
+            LayerI16Field::RowShift => self.derived16(1),
+            LayerI16Field::ExpOut => self.derived16(2),
+            LayerI16Field::Recips => self.derived16(3),
+            LayerI16Field::SoftmaxW => self.derived16(4),
+            LayerI16Field::Ln1RsqrtOut | LayerI16Field::Ln2RsqrtOut => self.source_i16(field, 1),
+            LayerI16Field::FfnUpQ | LayerI16Field::GeluOut => self.source_i16(field, DFF),
+            _ => self.source_i16(field, D),
+        }
+    }
+
+    fn i64(&self, field: LayerI64Field) -> DeviceSlice<'_, i64> {
+        match field {
+            LayerI64Field::ScoresAcc => self.derived64(0),
+            LayerI64Field::Denoms => self.derived64(1),
+            LayerI64Field::Ln1Mean
+            | LayerI64Field::Ln1Var
+            | LayerI64Field::Ln1RsqrtIn
+            | LayerI64Field::Ln2Mean
+            | LayerI64Field::Ln2Var
+            | LayerI64Field::Ln2RsqrtIn => self.source_i64(field, 1),
+            LayerI64Field::QkvAcc => self.source_i64(field, 3 * D),
+            LayerI64Field::FfnUpAcc => self.source_i64(field, DFF),
+            _ => self.source_i64(field, D),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 struct LayerWeightLayout {
     c_attn: Region,
@@ -514,6 +787,213 @@ impl ResidentModelWitness {
         remember_error(&mut first, backend.free_device(self.embed_out));
         first.map_or(Ok(()), Err)
     }
+}
+
+/// Device-resident decode-band witness derived from a larger causal forward.
+/// Row-major tensors borrow suffix windows from `source`; only causal-packed
+/// attention fields plus final-LN/logits own additional device allocations.
+#[derive(Debug)]
+pub struct ResidentBandModelWitness<'a> {
+    source: &'a ResidentModelWitness,
+    pub t0: usize,
+    pub q: usize,
+    pub layers: Vec<ResidentBandLayerWitness<'a>>,
+    final_i16: DeviceBuffer<i16>, // [rsqrt_out[q] | out[q*D]]
+    final_i64: DeviceBuffer<i64>, // [mean[q] | var[q] | rsqrt_in[q] | acc[q*D]]
+    logits: DeviceBuffer<i64>,
+}
+
+impl ResidentBandModelWitness<'_> {
+    pub fn embed_out(&self) -> DeviceSlice<'_, i16> {
+        let source = self.source.embed_out();
+        DeviceSlice::new(source.buffer(), source.offset() + self.t0 * D, self.q * D)
+            .expect("valid resident band embed output")
+    }
+
+    pub fn embed_acc(&self) -> DeviceSlice<'_, i64> {
+        let source = self.source.embed_acc();
+        DeviceSlice::new(source.buffer(), source.offset() + self.t0 * D, self.q * D)
+            .expect("valid resident band embed accumulator")
+    }
+
+    pub fn final_mean(&self) -> DeviceSlice<'_, i64> {
+        DeviceSlice::new(&self.final_i64, 0, self.q).expect("valid band final-LN layout")
+    }
+
+    pub fn final_var(&self) -> DeviceSlice<'_, i64> {
+        DeviceSlice::new(&self.final_i64, self.q, self.q).expect("valid band final-LN layout")
+    }
+
+    pub fn final_rsqrt_in(&self) -> DeviceSlice<'_, i64> {
+        DeviceSlice::new(&self.final_i64, 2 * self.q, self.q).expect("valid band final-LN layout")
+    }
+
+    pub fn final_acc(&self) -> DeviceSlice<'_, i64> {
+        DeviceSlice::new(&self.final_i64, 3 * self.q, self.q * D)
+            .expect("valid band final-LN layout")
+    }
+
+    pub fn final_rsqrt_out(&self) -> DeviceSlice<'_, i16> {
+        DeviceSlice::new(&self.final_i16, 0, self.q).expect("valid band final-LN layout")
+    }
+
+    pub fn final_out(&self) -> DeviceSlice<'_, i16> {
+        DeviceSlice::new(&self.final_i16, self.q, self.q * D).expect("valid band final-LN layout")
+    }
+
+    pub fn logits(&self) -> DeviceSlice<'_, i64> {
+        DeviceSlice::new(&self.logits, 0, self.q * VOCAB).expect("valid band logits layout")
+    }
+
+    pub fn free(self, backend: &mut Backend) -> Result<(), AccelError> {
+        let mut first = None;
+        for layer in self.layers {
+            remember_error(&mut first, layer.free(backend));
+        }
+        remember_error(&mut first, backend.free_device(self.logits));
+        remember_error(&mut first, backend.free_device(self.final_i64));
+        remember_error(&mut first, backend.free_device(self.final_i16));
+        first.map_or(Ok(()), Err)
+    }
+}
+
+struct PendingBand<'a> {
+    layers: Vec<ResidentBandLayerWitness<'a>>,
+    error: Option<DeviceBuffer<u32>>,
+    final_i16: Option<DeviceBuffer<i16>>,
+    final_i64: Option<DeviceBuffer<i64>>,
+    logits: Option<DeviceBuffer<i64>>,
+}
+
+impl<'a> PendingBand<'a> {
+    fn cleanup(mut self, backend: &mut Backend) -> Result<(), AccelError> {
+        let mut first = None;
+        if let Some(buffer) = self.logits.take() {
+            remember_error(&mut first, backend.free_device(buffer));
+        }
+        if let Some(buffer) = self.final_i64.take() {
+            remember_error(&mut first, backend.free_device(buffer));
+        }
+        if let Some(buffer) = self.final_i16.take() {
+            remember_error(&mut first, backend.free_device(buffer));
+        }
+        for layer in self.layers.drain(..) {
+            remember_error(&mut first, layer.free(backend));
+        }
+        if let Some(buffer) = self.error.take() {
+            remember_error(&mut first, backend.free_device(buffer));
+        }
+        first.map_or(Ok(()), Err)
+    }
+
+    fn finish(
+        mut self,
+        source: &'a ResidentModelWitness,
+        t0: usize,
+        q: usize,
+    ) -> ResidentBandModelWitness<'a> {
+        ResidentBandModelWitness {
+            source,
+            t0,
+            q,
+            layers: std::mem::take(&mut self.layers),
+            final_i16: self.final_i16.take().expect("built band final i16 witness"),
+            final_i64: self.final_i64.take().expect("built band final i64 witness"),
+            logits: self.logits.take().expect("built band logits"),
+        }
+    }
+}
+
+/// Build one proof band entirely D2D from a resident full-response witness.
+/// `t0 + q` may be smaller than the source length, which lets the same full
+/// forward back the 5×10 flat-cost curve without extra host witnesses.
+pub fn band_model_witness_resident<'a>(
+    model: &ResidentGpt2Model,
+    source: &'a ResidentModelWitness,
+    t0: usize,
+    q: usize,
+    backend: &mut Backend,
+) -> Result<ResidentBandModelWitness<'a>, AccelError> {
+    if backend.kind() != BackendKind::CudaResident {
+        return Err(AccelError::InvalidInput(
+            "resident band extraction requires the cuda-resident backend",
+        ));
+    }
+    if t0 == 0
+        || q == 0
+        || t0.checked_add(q).filter(|&end| end <= source.t).is_none()
+        || source.layers.len() != L
+    {
+        return Err(AccelError::InvalidInput("invalid resident model band geometry"));
+    }
+    let mut pending = PendingBand {
+        layers: Vec::with_capacity(L),
+        error: None,
+        final_i16: None,
+        final_i64: None,
+        logits: None,
+    };
+    let result = (|| {
+        pending.error = Some(backend.upload_new_device(&[0u32])?);
+        for layer in &source.layers {
+            pending.layers.push(ResidentBandLayerWitness::new(layer, t0, q, backend)?);
+        }
+        pending.final_i16 = Some(backend.alloc_device(q + q * D)?);
+        pending.final_i64 = Some(backend.alloc_device(3 * q + q * D)?);
+        let last = source.layers[L - 1].i16(LayerI16Field::FfnBlockOut);
+        let last_rows = DeviceSlice::new(last.buffer(), last.offset() + t0 * D, q * D)?;
+        let error = DeviceSlice::new(pending.error.as_ref().expect("band error"), 0, 1)?;
+        backend.fixed_layer_norm_device(
+            last_rows,
+            model.slice(model.layout.lnf_gain),
+            model.slice(model.layout.lnf_bias),
+            model.slice(model.layout.ln_rsqrt),
+            DeviceSlice::new(pending.final_i64.as_ref().expect("band final i64"), 0, q)?,
+            DeviceSlice::new(pending.final_i64.as_ref().expect("band final i64"), q, q)?,
+            DeviceSlice::new(pending.final_i64.as_ref().expect("band final i64"), 2 * q, q)?,
+            DeviceSlice::new(pending.final_i16.as_ref().expect("band final i16"), 0, q)?,
+            DeviceSlice::new(pending.final_i64.as_ref().expect("band final i64"), 3 * q, q * D)?,
+            DeviceSlice::new(pending.final_i16.as_ref().expect("band final i16"), q, q * D)?,
+            error,
+            q,
+            D,
+            model.params.lut.ln_var_shift,
+            model.params.lut.shift_ln_norm,
+        )?;
+        pending.logits = Some(backend.alloc_device(q * VOCAB)?);
+        backend.fixed_logits_device(
+            DeviceSlice::new(pending.final_i16.as_ref().expect("band final i16"), q, q * D)?,
+            model.slice(model.layout.wte),
+            DeviceSlice::new(pending.logits.as_ref().expect("band logits"), 0, q * VOCAB)?,
+            q,
+            D,
+            VOCAB,
+        )
+    })();
+    if let Err(error) = result {
+        let _ = pending.cleanup(backend);
+        return Err(error);
+    }
+    let error_buffer = pending.error.take().expect("built band error flag");
+    let error_value = match backend.download_device(&error_buffer, 0, 1) {
+        Ok(values) => values[0],
+        Err(error) => {
+            let _ = backend.free_device(error_buffer);
+            let _ = pending.cleanup(backend);
+            return Err(error);
+        }
+    };
+    if let Err(error) = backend.free_device(error_buffer) {
+        let _ = pending.cleanup(backend);
+        return Err(error);
+    }
+    if error_value != 0 {
+        let _ = pending.cleanup(backend);
+        return Err(AccelError::Cuda(
+            "resident band final-LN violated a no-clamp/domain invariant".to_owned(),
+        ));
+    }
+    Ok(pending.finish(source, t0, q))
 }
 
 fn remember_error(first: &mut Option<AccelError>, result: Result<(), AccelError>) {
@@ -892,6 +1372,7 @@ fn build_resident_forward(
 #[cfg(all(test, feature = "cuda"))]
 mod tests {
     use super::*;
+    use crate::band::band_model_witness;
     use crate::model::{forward_model_tokens, load_model};
     use std::path::Path;
 
@@ -918,6 +1399,69 @@ mod tests {
         backend.download_device(slice.buffer(), slice.offset(), slice.len()).unwrap()
     }
 
+    fn compare_layer(
+        backend: &mut Backend,
+        got: &impl ResidentLayerView,
+        expected: &crate::layer::LayerWitness,
+        index: usize,
+    ) {
+        macro_rules! eq16 {
+            ($field:ident, $expected:ident) => {
+                assert_eq!(
+                    download16(backend, got.i16(LayerI16Field::$field)),
+                    expected.$expected,
+                    "layer {index} {}",
+                    stringify!($expected),
+                );
+            };
+        }
+        macro_rules! eq64 {
+            ($field:ident, $expected:ident) => {
+                assert_eq!(
+                    download64(backend, got.i64(LayerI64Field::$field)),
+                    expected.$expected,
+                    "layer {index} {}",
+                    stringify!($expected),
+                );
+            };
+        }
+        eq16!(XIn, x_in);
+        eq16!(K, k);
+        eq16!(V, v);
+        eq16!(AttnBlockOut, attn_block_out);
+        eq16!(FfnBlockOut, ffn_block_out);
+        eq64!(Ln1Mean, ln1_mean);
+        eq64!(Ln1Var, ln1_var);
+        eq64!(Ln1RsqrtIn, ln1_rsqrt_in);
+        eq16!(Ln1RsqrtOut, ln1_rsqrt_out);
+        eq64!(Ln1Acc, ln1_acc);
+        eq16!(Ln1Out, ln1_out);
+        eq64!(QkvAcc, qkv_acc);
+        eq16!(Q, q);
+        eq64!(ScoresAcc, scores_acc);
+        eq16!(ScoresQ, scores_q);
+        eq16!(RowShift, row_shift);
+        eq16!(ExpOut, exp_out);
+        eq64!(Denoms, denoms);
+        eq16!(Recips, recips);
+        eq16!(SoftmaxW, softmax_w);
+        eq64!(AvAcc, av_acc);
+        eq16!(AvQ, av_q);
+        eq64!(ProjAcc, proj_acc);
+        eq16!(AttnProjQ, attn_proj_q);
+        eq64!(Ln2Mean, ln2_mean);
+        eq64!(Ln2Var, ln2_var);
+        eq64!(Ln2RsqrtIn, ln2_rsqrt_in);
+        eq16!(Ln2RsqrtOut, ln2_rsqrt_out);
+        eq64!(Ln2Acc, ln2_acc);
+        eq16!(Ln2Out, ln2_out);
+        eq64!(FfnUpAcc, ffn_up_acc);
+        eq16!(FfnUpQ, ffn_up_q);
+        eq16!(GeluOut, gelu_out);
+        eq64!(FfnDownAcc, ffn_down_acc);
+        eq16!(FfnDownQ, ffn_down_q);
+    }
+
     fn compare_witness(
         backend: &mut Backend,
         got: &ResidentModelWitness,
@@ -928,61 +1472,7 @@ mod tests {
         assert_eq!(download16(backend, got.embed_out()), expected.embed.out);
         assert_eq!(got.layers.len(), expected.layers.len());
         for (index, (got, expected)) in got.layers.iter().zip(&expected.layers).enumerate() {
-            macro_rules! eq16 {
-                ($field:ident, $expected:ident) => {
-                    assert_eq!(
-                        download16(backend, got.i16(LayerI16Field::$field)),
-                        expected.$expected,
-                        "layer {index} {}",
-                        stringify!($expected),
-                    );
-                };
-            }
-            macro_rules! eq64 {
-                ($field:ident, $expected:ident) => {
-                    assert_eq!(
-                        download64(backend, got.i64(LayerI64Field::$field)),
-                        expected.$expected,
-                        "layer {index} {}",
-                        stringify!($expected),
-                    );
-                };
-            }
-            eq16!(XIn, x_in);
-            eq16!(K, k);
-            eq16!(V, v);
-            eq16!(AttnBlockOut, attn_block_out);
-            eq16!(FfnBlockOut, ffn_block_out);
-            eq64!(Ln1Mean, ln1_mean);
-            eq64!(Ln1Var, ln1_var);
-            eq64!(Ln1RsqrtIn, ln1_rsqrt_in);
-            eq16!(Ln1RsqrtOut, ln1_rsqrt_out);
-            eq64!(Ln1Acc, ln1_acc);
-            eq16!(Ln1Out, ln1_out);
-            eq64!(QkvAcc, qkv_acc);
-            eq16!(Q, q);
-            eq64!(ScoresAcc, scores_acc);
-            eq16!(ScoresQ, scores_q);
-            eq16!(RowShift, row_shift);
-            eq16!(ExpOut, exp_out);
-            eq64!(Denoms, denoms);
-            eq16!(Recips, recips);
-            eq16!(SoftmaxW, softmax_w);
-            eq64!(AvAcc, av_acc);
-            eq16!(AvQ, av_q);
-            eq64!(ProjAcc, proj_acc);
-            eq16!(AttnProjQ, attn_proj_q);
-            eq64!(Ln2Mean, ln2_mean);
-            eq64!(Ln2Var, ln2_var);
-            eq64!(Ln2RsqrtIn, ln2_rsqrt_in);
-            eq16!(Ln2RsqrtOut, ln2_rsqrt_out);
-            eq64!(Ln2Acc, ln2_acc);
-            eq16!(Ln2Out, ln2_out);
-            eq64!(FfnUpAcc, ffn_up_acc);
-            eq16!(FfnUpQ, ffn_up_q);
-            eq16!(GeluOut, gelu_out);
-            eq64!(FfnDownAcc, ffn_down_acc);
-            eq16!(FfnDownQ, ffn_down_q);
+            compare_layer(backend, got, expected, index);
         }
         assert_eq!(download64(backend, got.final_mean()), vec![expected.final_ln.mean]);
         assert_eq!(download64(backend, got.final_var()), vec![expected.final_ln.var]);
@@ -990,6 +1480,28 @@ mod tests {
         assert_eq!(download16(backend, got.final_rsqrt_out()), vec![expected.final_ln.rsqrt_out]);
         assert_eq!(download64(backend, got.final_acc()), expected.final_ln.acc);
         assert_eq!(download16(backend, got.final_out()), expected.final_ln.out);
+        assert_eq!(download64(backend, got.logits()), expected.logits);
+    }
+
+    fn compare_band(
+        backend: &mut Backend,
+        got: &ResidentBandModelWitness<'_>,
+        expected: &crate::band::BandModelWitness,
+    ) {
+        assert_eq!((got.t0, got.q), (expected.t0, expected.q));
+        assert_eq!(download64(backend, got.embed_acc()), expected.embed_acc);
+        assert_eq!(download16(backend, got.embed_out()), expected.embed_out);
+        assert_eq!(got.layers.len(), expected.layers.len());
+        for (index, (got, expected)) in got.layers.iter().zip(&expected.layers).enumerate() {
+            assert_eq!(got.score_entries(), expected.scores_q.len());
+            compare_layer(backend, got, expected, index);
+        }
+        assert_eq!(download64(backend, got.final_mean()), expected.fin_mean);
+        assert_eq!(download64(backend, got.final_var()), expected.fin_var);
+        assert_eq!(download64(backend, got.final_rsqrt_in()), expected.fin_rsqrt_in);
+        assert_eq!(download16(backend, got.final_rsqrt_out()), expected.fin_rsqrt_out);
+        assert_eq!(download64(backend, got.final_acc()), expected.fin_acc);
+        assert_eq!(download16(backend, got.final_out()), expected.fin_out);
         assert_eq!(download64(backend, got.logits()), expected.logits);
     }
 
@@ -1039,6 +1551,43 @@ mod tests {
         compare_witness(&mut gpu, &recovered, &expected);
         recovered.free(&mut gpu).unwrap();
         assert_eq!(gpu.stats().unwrap().live_device_bytes, setup_live);
+        resident_model.free(&mut gpu).unwrap();
+    }
+
+    #[test]
+    fn cuda_resident_band_witness_is_bit_exact_and_reusable() {
+        let dir = weights_dir();
+        if !dir.join("gpt2s-q.bin").exists() {
+            eprintln!("skipping resident band differential: frozen artifact absent");
+            return;
+        }
+        let Some(mut gpu) = required_gpu() else { return };
+        let host = load_model(&dir).unwrap();
+        let tokens = host.p.tokens[..6].to_vec();
+        let host_prefix = forward_model_tokens(&host, &tokens[..5]);
+        let expected = band_model_witness(&host, &host_prefix, 2);
+        assert_eq!(expected.q, 3);
+        let resident_model = upload_resident_model(&host, &mut gpu).unwrap();
+        let source = forward_model_tokens_resident(&resident_model, &tokens, &mut gpu).unwrap();
+        let source_live = gpu.stats().unwrap().live_device_bytes;
+
+        for _ in 0..2 {
+            gpu.begin_measurement().unwrap();
+            let band =
+                band_model_witness_resident(&resident_model, &source, 2, 3, &mut gpu).unwrap();
+            let stats = gpu.finish_measurement().unwrap();
+            assert_eq!(stats.h2d_bytes, 4);
+            assert_eq!(stats.d2h_bytes, 4);
+            assert_eq!(stats.operation(volta_accel::Operation::Gemm).cpu_residual_ns, 0);
+            compare_band(&mut gpu, &band, &expected);
+            band.free(&mut gpu).unwrap();
+            assert_eq!(
+                gpu.stats().unwrap().live_device_bytes,
+                source_live,
+                "resident band extraction leaked across context reuse"
+            );
+        }
+        source.free(&mut gpu).unwrap();
         resident_model.free(&mut gpu).unwrap();
     }
 }

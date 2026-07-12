@@ -321,6 +321,8 @@ type LnHadamardFactorsDevice = unsafe extern "C" fn(
 type BaseBroadcastFp2Device =
     unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize, usize, c_int) -> c_int;
 type RepeatVectorDevice = BaseBroadcastFp2Device;
+type CompactStridedRowsDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize, usize, usize, c_int) -> c_int;
 type AttentionAboveMaskDevice = unsafe extern "C" fn(
     *mut c_void,
     u64,
@@ -671,6 +673,7 @@ struct Api {
     ln_hadamard_factors_device: LnHadamardFactorsDevice,
     base_broadcast_fp2_device: BaseBroadcastFp2Device,
     repeat_vector_device: RepeatVectorDevice,
+    compact_strided_rows_device: CompactStridedRowsDevice,
     attention_above_mask_device: AttentionAboveMaskDevice,
     attention_proof_wires_device: AttentionProofWiresDevice,
     requant_columns_device: RequantColumnsDevice,
@@ -825,6 +828,9 @@ impl CudaContext {
             },
             repeat_vector_device: unsafe {
                 load_symbol(handle, b"volta_cuda_repeat_vector_device\0")?
+            },
+            compact_strided_rows_device: unsafe {
+                load_symbol(handle, b"volta_cuda_compact_strided_rows_device\0")?
             },
             attention_above_mask_device: unsafe {
                 load_symbol(handle, b"volta_cuda_attention_above_mask_device\0")?
@@ -1793,6 +1799,34 @@ impl CudaContext {
                 output_offset,
                 input_len,
                 repeat,
+                kind,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn compact_strided_rows_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        output: u64,
+        output_offset: usize,
+        rows: usize,
+        source_stride: usize,
+        width: usize,
+        kind: i32,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates both typed regions and every pitch.
+        self.check(unsafe {
+            (self.api.compact_strided_rows_device)(
+                self.raw,
+                input,
+                input_offset,
+                output,
+                output_offset,
+                rows,
+                source_stride,
+                width,
                 kind,
             )
         })

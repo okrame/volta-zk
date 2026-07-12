@@ -17,7 +17,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 12;
+pub const CUDA_ABI_VERSION: u32 = 14;
 pub const OPERATION_COUNT: usize = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -312,6 +312,87 @@ pub struct DeviceLookupColumns {
     storage: DeviceBuffer<u64>,
     columns: usize,
     entries: usize,
+}
+
+/// Shape-parametric proof-only attention materialization. The four
+/// allocations are column-major base-field vectors; they deliberately carry
+/// no model configuration or raw pointer. Layout access is through checked
+/// views so the protocol layer can share columns across LogUp, authentication
+/// and sumcheck without duplicating them.
+#[derive(Debug)]
+pub struct DeviceAttentionProofWires {
+    rect: DeviceBuffer<u64>,
+    rect_entries: usize,
+    rows: DeviceBuffer<u64>,
+    row_entries: usize,
+    above: DeviceBuffer<u64>,
+    qkv: DeviceBuffer<u64>,
+    qkv_entries: usize,
+}
+
+impl DeviceAttentionProofWires {
+    pub fn rect_entries(&self) -> usize {
+        self.rect_entries
+    }
+
+    /// `[softmax_norm remainder, softmax weight]`.
+    pub fn softmax_norm_columns(&self) -> DeviceSlice<'_, u64> {
+        DeviceSlice::new(&self.rect, 0, 2 * self.rect_entries).expect("valid attention rect layout")
+    }
+
+    /// `[scores remainder, row-shifted score]`.
+    pub fn scores_columns(&self) -> DeviceSlice<'_, u64> {
+        DeviceSlice::new(&self.rect, 2 * self.rect_entries, 2 * self.rect_entries)
+            .expect("valid attention rect layout")
+    }
+
+    /// `[row-shifted score, exp output, is-max]`.
+    pub fn exp_columns(&self) -> DeviceSlice<'_, u64> {
+        DeviceSlice::new(&self.rect, 3 * self.rect_entries, 3 * self.rect_entries)
+            .expect("valid attention rect layout")
+    }
+
+    pub fn rect_column(&self, index: usize) -> Result<DeviceSlice<'_, u64>, AccelError> {
+        if index >= 7 {
+            return Err(AccelError::InvalidInput("attention rect column out of bounds"));
+        }
+        DeviceSlice::new(&self.rect, index * self.rect_entries, self.rect_entries)
+    }
+
+    pub fn full_scores(&self) -> DeviceSlice<'_, u64> {
+        self.rect_column(6).expect("valid full-score column")
+    }
+
+    pub fn row_entries(&self) -> usize {
+        self.row_entries
+    }
+
+    /// Row columns: denoms, reciprocal inputs, reciprocals, row shifts.
+    pub fn row_column(&self, index: usize) -> Result<DeviceSlice<'_, u64>, AccelError> {
+        if index >= 4 {
+            return Err(AccelError::InvalidInput("attention row column out of bounds"));
+        }
+        DeviceSlice::new(&self.rows, index * self.row_entries, self.row_entries)
+    }
+
+    pub fn above(&self) -> DeviceSlice<'_, u64> {
+        DeviceSlice::new(&self.above, 0, self.above.len()).expect("whole above-score vector")
+    }
+
+    pub fn qkv_entries(&self) -> usize {
+        self.qkv_entries
+    }
+
+    pub fn qkv_columns(&self) -> DeviceSlice<'_, u64> {
+        DeviceSlice::new(&self.qkv, 0, 2 * self.qkv_entries).expect("valid QKV proof layout")
+    }
+
+    pub fn qkv_column(&self, index: usize) -> Result<DeviceSlice<'_, u64>, AccelError> {
+        if index >= 2 {
+            return Err(AccelError::InvalidInput("attention QKV column out of bounds"));
+        }
+        DeviceSlice::new(&self.qkv, index * self.qkv_entries, self.qkv_entries)
+    }
 }
 
 impl DeviceLookupColumns {
@@ -1521,6 +1602,108 @@ impl Backend {
         }
     }
 
+    /// MLE of a logical column window inside a wider row-major matrix.
+    /// Point order is padded window columns followed by padded rows.
+    #[allow(clippy::too_many_arguments)]
+    pub fn matrix_window_mle_eval_device<T: ResidentMatrixElement>(
+        &mut self,
+        input: DeviceSlice<'_, T>,
+        rows: usize,
+        stride: usize,
+        column_offset: usize,
+        cols: usize,
+        point: &[Fp2],
+    ) -> Result<Fp2, AccelError> {
+        let col_bits = cols
+            .checked_next_power_of_two()
+            .ok_or(AccelError::InvalidInput("shape overflow"))?
+            .trailing_zeros() as usize;
+        let row_bits = rows
+            .checked_next_power_of_two()
+            .ok_or(AccelError::InvalidInput("shape overflow"))?
+            .trailing_zeros() as usize;
+        if point.len() != col_bits + row_bits {
+            return Err(AccelError::InvalidInput("resident matrix-window MLE point mismatch"));
+        }
+        let col_weights = self.equality_weights_device(&point[..col_bits])?;
+        let row_weights = match self.equality_weights_device(&point[col_bits..]) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = self.free_device(col_weights);
+                return Err(error);
+            }
+        };
+        let folded = match self.matrix_window_fold_device(
+            input,
+            DeviceSlice::new(&col_weights, 0, cols).expect("real window equality prefix"),
+            rows,
+            stride,
+            column_offset,
+            cols,
+            MatrixFoldAxis::Columns,
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = self.free_device(row_weights);
+                let _ = self.free_device(col_weights);
+                return Err(error);
+            }
+        };
+        let first_free = self.free_device(col_weights).err();
+        if let Some(error) = first_free {
+            let _ = self.free_device(folded);
+            let _ = self.free_device(row_weights);
+            return Err(error);
+        }
+        let value = self.fp2_dot_device(
+            DeviceSlice::new(&folded, 0, folded.len()).expect("whole window row fold"),
+            DeviceSlice::new(&row_weights, 0, row_weights.len()).expect("whole row equality"),
+        );
+        let folded_free = self.free_device(folded).err();
+        let weights_free = self.free_device(row_weights).err();
+        match (value, folded_free.or(weights_free)) {
+            (Ok(value), None) => Ok(value),
+            (Err(error), _) | (_, Some(error)) => Err(error),
+        }
+    }
+
+    /// Weighted sum of an arbitrary resident base/Fp2 vector. Public weights
+    /// are protocol data and are uploaded once; only the scalar crosses D2H.
+    pub fn weighted_sum_device<T: ResidentMatrixElement>(
+        &mut self,
+        input: DeviceSlice<'_, T>,
+        weights: &[Fp2],
+    ) -> Result<Fp2, AccelError> {
+        if input.is_empty() || input.len() != weights.len() {
+            return Err(AccelError::InvalidInput("resident weighted-sum geometry mismatch"));
+        }
+        let raw: Vec<Fp2Repr> = weights.iter().copied().map(Into::into).collect();
+        let device_weights = self.upload_new_device(&raw)?;
+        let folded = match self.matrix_fold_device(
+            input,
+            DeviceSlice::new(&device_weights, 0, raw.len()).expect("whole weighted-sum row"),
+            1,
+            input.len(),
+            MatrixFoldAxis::Columns,
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = self.free_device(device_weights);
+                return Err(error);
+            }
+        };
+        if let Err(error) = self.free_device(device_weights) {
+            let _ = self.free_device(folded);
+            return Err(error);
+        }
+        let value = self.download_device(&folded, 0, 1).map(|values| Fp2::from(values[0]));
+        let free_result = self.free_device(folded);
+        match (value, free_result) {
+            (Ok(value), Ok(())) => Ok(value),
+            (Err(error), _) | (_, Err(error)) => Err(error),
+        }
+    }
+
     /// Dot product of two resident Fp2 vectors. The returned scalar is a
     /// protocol-sized host message; neither input crosses D2H.
     pub fn fp2_dot_device(
@@ -1666,6 +1849,298 @@ impl Backend {
             return Err(error);
         }
         Ok((centered, scaled))
+    }
+
+    /// Canonically lift a resident base vector to Fp2 and repeat each input
+    /// element `repeat` times. `repeat = 1` is the ordinary lift; larger
+    /// values implement row-table broadcasts without a host materialization.
+    pub fn base_to_fp2_broadcast_device<T: ResidentBaseElement>(
+        &mut self,
+        input: DeviceSlice<'_, T>,
+        repeat: usize,
+    ) -> Result<DeviceBuffer<Fp2Repr>, AccelError> {
+        if input.is_empty() || repeat == 0 {
+            return Err(AccelError::InvalidInput("invalid resident base broadcast geometry"));
+        }
+        self.validate_device_slice(input, input.len())?;
+        let output_len = checked_product(input.len(), repeat)?;
+        let output = self.alloc_device(output_len)?;
+        #[cfg(feature = "cuda")]
+        let result =
+            self.cuda.as_mut().expect("CUDA kind without context").base_broadcast_fp2_device(
+                input.buffer.id,
+                input.offset,
+                output.id,
+                0,
+                input.len(),
+                repeat,
+                T::CUDA_KIND,
+            );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
+    }
+
+    /// Zero an equality row outside the real above-causal attention cells.
+    /// The buffer is modified in place and retains the same ownership.
+    #[allow(clippy::too_many_arguments)]
+    pub fn attention_above_mask_device(
+        &mut self,
+        equality: &DeviceBuffer<Fp2Repr>,
+        rows: usize,
+        seq: usize,
+        pos0: usize,
+        heads: usize,
+        head_pad: usize,
+    ) -> Result<(), AccelError> {
+        if rows == 0
+            || seq == 0
+            || heads == 0
+            || head_pad < heads
+            || !head_pad.is_power_of_two()
+            || pos0.checked_add(rows).filter(|&end| end == seq).is_none()
+        {
+            return Err(AccelError::InvalidInput("invalid resident above-causal mask geometry"));
+        }
+        let q_pad =
+            rows.checked_next_power_of_two().ok_or(AccelError::InvalidInput("shape overflow"))?;
+        let s_pad =
+            seq.checked_next_power_of_two().ok_or(AccelError::InvalidInput("shape overflow"))?;
+        let entries = checked_product(head_pad, checked_product(q_pad, s_pad)?)?;
+        if equality.len() != entries {
+            return Err(AccelError::InvalidInput("above-causal equality dimension mismatch"));
+        }
+        self.validate_device_slice(
+            DeviceSlice::new(equality, 0, equality.len()).expect("whole above-mask equality"),
+            entries,
+        )?;
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .expect("CUDA kind without context")
+                .attention_above_mask_device(
+                    equality.id,
+                    0,
+                    entries,
+                    rows,
+                    seq,
+                    pos0,
+                    heads,
+                    head_pad,
+                    q_pad,
+                    s_pad,
+                );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Materialize the attention columns consumed by the proof from the
+    /// causal-packed forward witness. All dimensions are runtime parameters;
+    /// `own_k`/`v` contain the current band's rows while `k_cache` may include
+    /// a prefix. Returned values are canonical Goldilocks elements.
+    #[allow(clippy::too_many_arguments)]
+    pub fn attention_proof_wires_device(
+        &mut self,
+        q: DeviceSlice<'_, i16>,
+        k_cache: DeviceSlice<'_, i16>,
+        own_k: DeviceSlice<'_, i16>,
+        v: DeviceSlice<'_, i16>,
+        scores_acc: DeviceSlice<'_, i64>,
+        scores_q: DeviceSlice<'_, i16>,
+        row_shifts: DeviceSlice<'_, i16>,
+        exp_outputs: DeviceSlice<'_, i16>,
+        denoms: DeviceSlice<'_, i64>,
+        recips: DeviceSlice<'_, i16>,
+        softmax_weights: DeviceSlice<'_, i16>,
+        recip_lut: DeviceSlice<'_, i16>,
+        qkv_acc: DeviceSlice<'_, i64>,
+        error: DeviceSlice<'_, u32>,
+        rows: usize,
+        seq: usize,
+        pos0: usize,
+        heads: usize,
+        head_pad: usize,
+        head_dim: usize,
+        shift_scores: u32,
+        shift_softmax_norm: u32,
+        shift_qkv: u32,
+        recip_den_shift: u32,
+        exp_pad_input: i16,
+        recip_pad_output: i16,
+        use_row_shift: bool,
+    ) -> Result<DeviceAttentionProofWires, AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        let _ = (exp_pad_input, recip_pad_output, use_row_shift);
+        if rows < 2
+            || seq == 0
+            || heads == 0
+            || head_dim == 0
+            || head_pad < heads
+            || !head_pad.is_power_of_two()
+            || pos0.checked_add(rows).filter(|&end| end == seq).is_none()
+            || !(1..=16).contains(&shift_scores)
+            || !(1..=16).contains(&shift_softmax_norm)
+            || !(1..=16).contains(&shift_qkv)
+            || recip_den_shift >= 63
+        {
+            return Err(AccelError::InvalidInput("invalid resident attention-proof geometry"));
+        }
+        let d = checked_product(heads, head_dim)?;
+        let packed_per_head = rows
+            .checked_mul(pos0)
+            .and_then(|prefix| {
+                rows.checked_mul(rows + 1)
+                    .and_then(|twice_triangle| prefix.checked_add(twice_triangle / 2))
+            })
+            .ok_or(AccelError::InvalidInput("shape overflow"))?;
+        let packed = checked_product(heads, packed_per_head)?;
+        let real_rows = checked_product(heads, rows)?;
+        for slice in [q, own_k, v] {
+            self.validate_device_slice(slice, checked_product(rows, d)?)?;
+        }
+        self.validate_device_slice(k_cache, checked_product(seq, d)?)?;
+        self.validate_device_slice(scores_acc, packed)?;
+        self.validate_device_slice(scores_q, packed)?;
+        self.validate_device_slice(row_shifts, real_rows)?;
+        self.validate_device_slice(exp_outputs, packed)?;
+        self.validate_device_slice(denoms, real_rows)?;
+        self.validate_device_slice(recips, real_rows)?;
+        self.validate_device_slice(softmax_weights, packed)?;
+        self.validate_device_slice(recip_lut, 1 << 16)?;
+        self.validate_device_slice(qkv_acc, checked_product(rows, checked_product(3, d)?)?)?;
+        self.validate_device_slice(error, 1)?;
+
+        let q_pad =
+            rows.checked_next_power_of_two().ok_or(AccelError::InvalidInput("shape overflow"))?;
+        let s_pad =
+            seq.checked_next_power_of_two().ok_or(AccelError::InvalidInput("shape overflow"))?;
+        let d_pad =
+            d.checked_next_power_of_two().ok_or(AccelError::InvalidInput("shape overflow"))?;
+        let rect_entries = checked_product(head_pad, checked_product(q_pad, s_pad)?)?;
+        let row_entries = checked_product(head_pad, q_pad)?;
+        let above_per_head =
+            rows.checked_mul(rows - 1).ok_or(AccelError::InvalidInput("shape overflow"))? / 2;
+        let above_entries = checked_product(heads, above_per_head)?;
+        let qkv_entries = checked_product(q_pad, checked_product(4, d_pad)?)?;
+
+        let rect = self.alloc_device(checked_product(7, rect_entries)?)?;
+        let row_values = match self.alloc_device(checked_product(4, row_entries)?) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = self.free_device(rect);
+                return Err(error);
+            }
+        };
+        let above = match self.alloc_device(above_entries) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = self.free_device(row_values);
+                let _ = self.free_device(rect);
+                return Err(error);
+            }
+        };
+        let qkv = match self.alloc_device(checked_product(2, qkv_entries)?) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = self.free_device(above);
+                let _ = self.free_device(row_values);
+                let _ = self.free_device(rect);
+                return Err(error);
+            }
+        };
+
+        #[cfg(feature = "cuda")]
+        let result =
+            self.cuda.as_mut().expect("CUDA kind without context").attention_proof_wires_device(
+                q.buffer.id,
+                q.offset,
+                k_cache.buffer.id,
+                k_cache.offset,
+                own_k.buffer.id,
+                own_k.offset,
+                v.buffer.id,
+                v.offset,
+                scores_acc.buffer.id,
+                scores_acc.offset,
+                scores_q.buffer.id,
+                scores_q.offset,
+                row_shifts.buffer.id,
+                row_shifts.offset,
+                exp_outputs.buffer.id,
+                exp_outputs.offset,
+                denoms.buffer.id,
+                denoms.offset,
+                recips.buffer.id,
+                recips.offset,
+                softmax_weights.buffer.id,
+                softmax_weights.offset,
+                recip_lut.buffer.id,
+                recip_lut.offset,
+                qkv_acc.buffer.id,
+                qkv_acc.offset,
+                error.buffer.id,
+                error.offset,
+                rect.id,
+                0,
+                row_values.id,
+                0,
+                above.id,
+                0,
+                qkv.id,
+                0,
+                rows,
+                seq,
+                pos0,
+                heads,
+                head_pad,
+                head_dim,
+                q_pad,
+                s_pad,
+                d_pad,
+                shift_scores,
+                shift_softmax_norm,
+                shift_qkv,
+                recip_den_shift,
+                exp_pad_input,
+                recip_pad_output,
+                use_row_shift,
+            );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(qkv);
+            let _ = self.free_device(above);
+            let _ = self.free_device(row_values);
+            let _ = self.free_device(rect);
+            return Err(error);
+        }
+        Ok(DeviceAttentionProofWires {
+            rect,
+            rect_entries,
+            rows: row_values,
+            row_entries,
+            above,
+            qkv,
+            qkv_entries,
+        })
+    }
+
+    pub fn free_attention_proof_wires(
+        &mut self,
+        wires: DeviceAttentionProofWires,
+    ) -> Result<(), AccelError> {
+        let first = self.free_device(wires.qkv).err();
+        let second = self.free_device(wires.above).err();
+        let third = self.free_device(wires.rows).err();
+        let fourth = self.free_device(wires.rect).err();
+        first.or(second).or(third).or(fourth).map_or(Ok(()), Err)
     }
 
     /// Build padded requant lookup columns. Single-stage order is
@@ -3997,6 +4472,88 @@ mod cuda_tests {
         gpu.free_device(folded_window).unwrap();
         gpu.free_device(dwindow_weights).unwrap();
 
+        let window_point = &point[..4];
+        let window_eval = gpu
+            .matrix_window_mle_eval_device(
+                DeviceSlice::new(&dinput, 0, input.len()).unwrap(),
+                rows,
+                cols,
+                window_offset,
+                window_cols,
+                window_point,
+            )
+            .unwrap();
+        let mut padded_window = vec![Fp2::ZERO; rows.next_power_of_two() * 4];
+        for i in 0..rows {
+            for j in 0..window_cols {
+                padded_window[i * 4 + j] =
+                    Fp2::from_base(Fp::from_i64(input[i * cols + window_offset + j] as i64));
+            }
+        }
+        for &challenge in window_point {
+            let half = padded_window.len() / 2;
+            for i in 0..half {
+                padded_window[i] = padded_window[2 * i]
+                    + (padded_window[2 * i + 1] - padded_window[2 * i]) * challenge;
+            }
+            padded_window.truncate(half);
+        }
+        assert_eq!(window_eval, padded_window[0]);
+
+        let public_weights: Vec<Fp2> = (0..input.len())
+            .map(|i| Fp2::new(Fp::new(7 + i as u64 * 11), Fp::new(13 + i as u64 * 17)))
+            .collect();
+        let weighted = gpu
+            .weighted_sum_device(
+                DeviceSlice::new(&dinput, 0, input.len()).unwrap(),
+                &public_weights,
+            )
+            .unwrap();
+        let expected_weighted =
+            input.iter().zip(&public_weights).fold(Fp2::ZERO, |sum, (&value, &weight)| {
+                sum + weight.mul_base(Fp::from_i64(value as i64))
+            });
+        assert_eq!(weighted, expected_weighted);
+
+        let broadcast = gpu
+            .base_to_fp2_broadcast_device(DeviceSlice::new(&dinput, 0, input.len()).unwrap(), 2)
+            .unwrap();
+        let broadcast_values: Vec<Fp2> = gpu
+            .download_device(&broadcast, 0, 2 * input.len())
+            .unwrap()
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        for (i, pair) in broadcast_values.chunks_exact(2).enumerate() {
+            assert_eq!(pair, [Fp2::from_base(Fp::from_i64(input[i] as i64)); 2]);
+        }
+        gpu.free_device(broadcast).unwrap();
+
+        let mask_entries = 4 * 4 * 4;
+        let mask_source: Vec<Fp2> = (0..mask_entries)
+            .map(|i| Fp2::new(Fp::new(101 + i as u64), Fp::new(401 + i as u64)))
+            .collect();
+        let mask_raw: Vec<Fp2Repr> = mask_source.iter().copied().map(Into::into).collect();
+        let mask = gpu.upload_new_device(&mask_raw).unwrap();
+        gpu.attention_above_mask_device(&mask, 3, 3, 0, 2, 4).unwrap();
+        let masked: Vec<Fp2> = gpu
+            .download_device(&mask, 0, mask_entries)
+            .unwrap()
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        for h in 0..4 {
+            for i in 0..4 {
+                for j in 0..4 {
+                    let z = h * 16 + i * 4 + j;
+                    let expected =
+                        if h < 2 && i < 3 && j < 3 && j > i { mask_source[z] } else { Fp2::ZERO };
+                    assert_eq!(masked[z], expected);
+                }
+            }
+        }
+        gpu.free_device(mask).unwrap();
+
         let av: Vec<Fp2> =
             (0..8).map(|i| Fp2::new(Fp::new(i * 47 + 2), Fp::new(i * 53 + 7))).collect();
         let bv: Vec<Fp2> =
@@ -4350,6 +4907,241 @@ mod cuda_tests {
         gpu.free_device(error).unwrap();
         gpu.free_device(dout).unwrap();
         gpu.free_device(dacc).unwrap();
+    }
+
+    #[test]
+    fn resident_attention_proof_wires_are_bit_exact() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
+        let (query_rows, seq, pos0) = (3usize, 3usize, 0usize);
+        let (heads, head_pad, head_dim) = (2usize, 4usize, 2usize);
+        let d = heads * head_dim;
+        let (shift_scores, shift_norm, shift_qkv) = (4u32, 4u32, 4u32);
+        let q: Vec<i16> = (0..query_rows * d).map(|i| (i as i16 % 7) - 3).collect();
+        let k: Vec<i16> = (0..seq * d).map(|i| ((i * 3) as i16 % 9) - 4).collect();
+        let v: Vec<i16> = (0..query_rows * d).map(|i| ((i * 5) as i16 % 11) - 5).collect();
+        let per_head = query_rows * (query_rows + 1) / 2;
+        let mut scores_acc = vec![0i64; heads * per_head];
+        let mut scores_q = vec![0i16; heads * per_head];
+        let mut row_shifts = vec![0i16; heads * query_rows];
+        let mut exp_outputs = vec![2i16; heads * per_head];
+        let mut denoms = vec![0i64; heads * query_rows];
+        let recips = vec![3i16; heads * query_rows];
+        let softmax_weights = vec![0i16; heads * per_head];
+        for h in 0..heads {
+            for i in 0..query_rows {
+                let start = h * per_head + i * (i + 1) / 2;
+                let mut maximum = i16::MIN;
+                for j in 0..=i {
+                    let acc = (0..head_dim).fold(0i64, |sum, l| {
+                        sum + q[i * d + h * head_dim + l] as i64
+                            * k[j * d + h * head_dim + l] as i64
+                    });
+                    scores_acc[start + j] = acc;
+                    scores_q[start + j] = ((acc + 8) >> shift_scores) as i16;
+                    maximum = maximum.max(scores_q[start + j]);
+                }
+                row_shifts[h * query_rows + i] = maximum;
+                denoms[h * query_rows + i] = 2 * (i + 1) as i64;
+            }
+        }
+        // Keep ownership distinct even where the values are simple constants.
+        exp_outputs.iter_mut().for_each(|value| *value = 2);
+        let mut recip_lut = vec![0i16; 1 << 16];
+        recip_lut[0] = 7;
+        for &denom in &denoms {
+            recip_lut[denom as usize] = 3;
+        }
+        let mut qkv_acc = vec![0i64; query_rows * 3 * d];
+        for i in 0..query_rows {
+            for third in 0..3 {
+                for j in 0..d {
+                    let output = match third {
+                        0 => q[i * d + j],
+                        1 => k[i * d + j],
+                        _ => v[i * d + j],
+                    };
+                    qkv_acc[i * 3 * d + third * d + j] = (output as i64) << shift_qkv;
+                }
+            }
+        }
+
+        let dq = gpu.upload_new_device(&q).unwrap();
+        let dk = gpu.upload_new_device(&k).unwrap();
+        let dv = gpu.upload_new_device(&v).unwrap();
+        let d_scores_acc = gpu.upload_new_device(&scores_acc).unwrap();
+        let d_scores_q = gpu.upload_new_device(&scores_q).unwrap();
+        let d_row_shifts = gpu.upload_new_device(&row_shifts).unwrap();
+        let d_exp = gpu.upload_new_device(&exp_outputs).unwrap();
+        let d_denoms = gpu.upload_new_device(&denoms).unwrap();
+        let d_recips = gpu.upload_new_device(&recips).unwrap();
+        let d_weights = gpu.upload_new_device(&softmax_weights).unwrap();
+        let d_recip_lut = gpu.upload_new_device(&recip_lut).unwrap();
+        let d_qkv_acc = gpu.upload_new_device(&qkv_acc).unwrap();
+        let error = gpu.upload_new_device(&[0u32]).unwrap();
+        let exp_pad = i16::MIN;
+        let wires = gpu
+            .attention_proof_wires_device(
+                DeviceSlice::new(&dq, 0, q.len()).unwrap(),
+                DeviceSlice::new(&dk, 0, k.len()).unwrap(),
+                DeviceSlice::new(&dk, 0, k.len()).unwrap(),
+                DeviceSlice::new(&dv, 0, v.len()).unwrap(),
+                DeviceSlice::new(&d_scores_acc, 0, scores_acc.len()).unwrap(),
+                DeviceSlice::new(&d_scores_q, 0, scores_q.len()).unwrap(),
+                DeviceSlice::new(&d_row_shifts, 0, row_shifts.len()).unwrap(),
+                DeviceSlice::new(&d_exp, 0, exp_outputs.len()).unwrap(),
+                DeviceSlice::new(&d_denoms, 0, denoms.len()).unwrap(),
+                DeviceSlice::new(&d_recips, 0, recips.len()).unwrap(),
+                DeviceSlice::new(&d_weights, 0, softmax_weights.len()).unwrap(),
+                DeviceSlice::new(&d_recip_lut, 0, recip_lut.len()).unwrap(),
+                DeviceSlice::new(&d_qkv_acc, 0, qkv_acc.len()).unwrap(),
+                DeviceSlice::new(&error, 0, 1).unwrap(),
+                query_rows,
+                seq,
+                pos0,
+                heads,
+                head_pad,
+                head_dim,
+                shift_scores,
+                shift_norm,
+                shift_qkv,
+                0,
+                exp_pad,
+                recip_lut[0],
+                true,
+            )
+            .unwrap();
+        assert_eq!(gpu.download_device(&error, 0, 1).unwrap(), vec![0]);
+
+        let q_pad = query_rows.next_power_of_two();
+        let s_pad = seq.next_power_of_two();
+        let sp2 = q_pad * s_pad;
+        let rect_entries = head_pad * sp2;
+        assert_eq!(wires.rect_entries(), rect_entries);
+        let rect = gpu
+            .download_device(wires.rect_column(0).unwrap().buffer(), 0, 7 * rect_entries)
+            .unwrap();
+        let mut expected = vec![0u64; 7 * rect_entries];
+        for h in 0..head_pad {
+            for i in 0..q_pad {
+                for j in 0..s_pad {
+                    let z = h * sp2 + i * s_pad + j;
+                    let mut norm_rem = 8i64;
+                    let mut weight = 0i64;
+                    let mut score_rem = 8i64;
+                    let mut sprime = exp_pad as i64;
+                    let mut exp_value = 0i64;
+                    let mut is_max = 0i64;
+                    let mut full = 0i64;
+                    if h < heads && i < query_rows && j < seq {
+                        full = (0..head_dim).fold(0i64, |sum, l| {
+                            sum + q[i * d + h * head_dim + l] as i64
+                                * k[j * d + h * head_dim + l] as i64
+                        });
+                        if j <= i {
+                            let packed = h * per_head + i * (i + 1) / 2 + j;
+                            sprime =
+                                scores_q[packed] as i64 - row_shifts[h * query_rows + i] as i64;
+                            score_rem = scores_acc[packed] + 8 - ((scores_q[packed] as i64) << 4);
+                            exp_value = 2;
+                            weight = 0;
+                            norm_rem = 14;
+                            is_max = i64::from(
+                                sprime == 0
+                                    && (0..j).all(|prior| {
+                                        let p = h * per_head + i * (i + 1) / 2 + prior;
+                                        scores_q[p] != row_shifts[h * query_rows + i]
+                                    }),
+                            );
+                        }
+                    }
+                    expected[z] = norm_rem as u64;
+                    expected[rect_entries + z] = Fp::from_i64(weight).value();
+                    expected[2 * rect_entries + z] = score_rem as u64;
+                    expected[3 * rect_entries + z] = Fp::from_i64(sprime).value();
+                    expected[4 * rect_entries + z] = Fp::from_i64(exp_value).value();
+                    expected[5 * rect_entries + z] = is_max as u64;
+                    expected[6 * rect_entries + z] = Fp::from_i64(full).value();
+                }
+            }
+        }
+        assert_eq!(rect, expected);
+
+        let row_entries = head_pad * q_pad;
+        let row_values =
+            gpu.download_device(wires.row_column(0).unwrap().buffer(), 0, 4 * row_entries).unwrap();
+        for h in 0..head_pad {
+            for i in 0..q_pad {
+                let z = h * q_pad + i;
+                if h < heads && i < query_rows {
+                    assert_eq!(Fp::new(row_values[z]), Fp::from_i64(denoms[h * query_rows + i]));
+                    assert_eq!(row_values[row_entries + z], denoms[h * query_rows + i] as u64);
+                    assert_eq!(Fp::new(row_values[2 * row_entries + z]), Fp::from_i64(3));
+                    assert_eq!(
+                        Fp::new(row_values[3 * row_entries + z]),
+                        Fp::from_i64(row_shifts[h * query_rows + i] as i64)
+                    );
+                } else {
+                    assert_eq!(row_values[z], 0);
+                    assert_eq!(row_values[row_entries + z], 0);
+                    assert_eq!(Fp::new(row_values[2 * row_entries + z]), Fp::from_i64(7));
+                    assert_eq!(row_values[3 * row_entries + z], 0);
+                }
+            }
+        }
+        let above = gpu
+            .download_device(wires.above().buffer(), wires.above().offset(), wires.above().len())
+            .unwrap();
+        let mut expected_above = Vec::new();
+        for h in 0..heads {
+            for i in 0..query_rows {
+                for j in i + 1..seq {
+                    let full = (0..head_dim).fold(0i64, |sum, l| {
+                        sum + q[i * d + h * head_dim + l] as i64
+                            * k[j * d + h * head_dim + l] as i64
+                    });
+                    expected_above.push(Fp::from_i64(full).value());
+                }
+            }
+        }
+        assert_eq!(above, expected_above);
+
+        let d_pad = d.next_power_of_two();
+        let qkv_entries = q_pad * 4 * d_pad;
+        let qkv_columns =
+            gpu.download_device(wires.qkv_column(0).unwrap().buffer(), 0, 2 * qkv_entries).unwrap();
+        for i in 0..q_pad {
+            for col in 0..4 * d_pad {
+                let z = i * 4 * d_pad + col;
+                let third = col / d_pad;
+                let rest = col % d_pad;
+                let output = if i < query_rows && third < 3 && rest < d {
+                    match third {
+                        0 => q[i * d + rest],
+                        1 => k[i * d + rest],
+                        _ => v[i * d + rest],
+                    }
+                } else {
+                    0
+                };
+                assert_eq!(qkv_columns[z], 8);
+                assert_eq!(Fp::new(qkv_columns[qkv_entries + z]), Fp::from_i64(output as i64));
+            }
+        }
+
+        gpu.free_attention_proof_wires(wires).unwrap();
+        gpu.free_device(error).unwrap();
+        gpu.free_device(d_qkv_acc).unwrap();
+        gpu.free_device(d_recip_lut).unwrap();
+        gpu.free_device(d_weights).unwrap();
+        gpu.free_device(d_recips).unwrap();
+        gpu.free_device(d_denoms).unwrap();
+        gpu.free_device(d_exp).unwrap();
+        gpu.free_device(d_row_shifts).unwrap();
+        gpu.free_device(d_scores_q).unwrap();
+        gpu.free_device(d_scores_acc).unwrap();
+        gpu.free_device(dv).unwrap();
+        gpu.free_device(dk).unwrap();
+        gpu.free_device(dq).unwrap();
     }
 
     #[test]

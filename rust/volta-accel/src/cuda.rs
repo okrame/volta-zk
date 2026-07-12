@@ -318,6 +318,78 @@ type LnHadamardFactorsDevice = unsafe extern "C" fn(
     usize,
     usize,
 ) -> c_int;
+type BaseBroadcastFp2Device =
+    unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize, usize, c_int) -> c_int;
+type AttentionAboveMaskDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+) -> c_int;
+#[repr(C)]
+struct RawAttentionProofWiresArgs {
+    q_id: u64,
+    q_offset: usize,
+    k_cache_id: u64,
+    k_cache_offset: usize,
+    own_k_id: u64,
+    own_k_offset: usize,
+    v_id: u64,
+    v_offset: usize,
+    scores_acc_id: u64,
+    scores_acc_offset: usize,
+    scores_q_id: u64,
+    scores_q_offset: usize,
+    row_shifts_id: u64,
+    row_shifts_offset: usize,
+    exp_outputs_id: u64,
+    exp_outputs_offset: usize,
+    denoms_id: u64,
+    denoms_offset: usize,
+    recips_id: u64,
+    recips_offset: usize,
+    softmax_weights_id: u64,
+    softmax_weights_offset: usize,
+    recip_lut_id: u64,
+    recip_lut_offset: usize,
+    qkv_acc_id: u64,
+    qkv_acc_offset: usize,
+    error_id: u64,
+    error_offset: usize,
+    rect_id: u64,
+    rect_offset: usize,
+    rows_id: u64,
+    rows_offset: usize,
+    above_id: u64,
+    above_offset: usize,
+    qkv_id: u64,
+    qkv_offset: usize,
+    query_rows: usize,
+    seq: usize,
+    pos0: usize,
+    heads: usize,
+    head_pad: usize,
+    head_dim: usize,
+    query_pad: usize,
+    seq_pad: usize,
+    d_pad: usize,
+    shift_scores: u32,
+    shift_softmax_norm: u32,
+    shift_qkv: u32,
+    recip_den_shift: u32,
+    exp_pad_input: c_int,
+    recip_pad_output: c_int,
+    use_row_shift: c_int,
+}
+type AttentionProofWiresDevice =
+    unsafe extern "C" fn(*mut c_void, *const RawAttentionProofWiresArgs) -> c_int;
 type RequantColumnsDevice = unsafe extern "C" fn(
     *mut c_void,
     u64,
@@ -595,6 +667,9 @@ struct Api {
     fp2_product_round_device: Fp2ProductRoundDevice,
     fp2_triple_product_round_device: Fp2TripleProductRoundDevice,
     ln_hadamard_factors_device: LnHadamardFactorsDevice,
+    base_broadcast_fp2_device: BaseBroadcastFp2Device,
+    attention_above_mask_device: AttentionAboveMaskDevice,
+    attention_proof_wires_device: AttentionProofWiresDevice,
     requant_columns_device: RequantColumnsDevice,
     pair_columns_device: PairColumnsDevice,
     histogram_fp_device: HistogramFpDevice,
@@ -741,6 +816,15 @@ impl CudaContext {
             },
             ln_hadamard_factors_device: unsafe {
                 load_symbol(handle, b"volta_cuda_ln_hadamard_factors_device\0")?
+            },
+            base_broadcast_fp2_device: unsafe {
+                load_symbol(handle, b"volta_cuda_base_broadcast_fp2_device\0")?
+            },
+            attention_above_mask_device: unsafe {
+                load_symbol(handle, b"volta_cuda_attention_above_mask_device\0")?
+            },
+            attention_proof_wires_device: unsafe {
+                load_symbol(handle, b"volta_cuda_attention_proof_wires_device\0")?
             },
             requant_columns_device: unsafe {
                 load_symbol(handle, b"volta_cuda_requant_columns_device\0")?
@@ -1654,6 +1738,179 @@ impl CudaContext {
                 col_pad,
             )
         })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn base_broadcast_fp2_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        output: u64,
+        output_offset: usize,
+        input_len: usize,
+        repeat: usize,
+        kind: i32,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates both typed regions, scalar kind and product length.
+        self.check(unsafe {
+            (self.api.base_broadcast_fp2_device)(
+                self.raw,
+                input,
+                input_offset,
+                output,
+                output_offset,
+                input_len,
+                repeat,
+                kind,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn attention_above_mask_device(
+        &mut self,
+        equality: u64,
+        equality_offset: usize,
+        entries: usize,
+        rows: usize,
+        seq: usize,
+        pos0: usize,
+        heads: usize,
+        head_pad: usize,
+        query_pad: usize,
+        seq_pad: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates the full Fp2 region and all padded shape invariants.
+        self.check(unsafe {
+            (self.api.attention_above_mask_device)(
+                self.raw,
+                equality,
+                equality_offset,
+                entries,
+                rows,
+                seq,
+                pos0,
+                heads,
+                head_pad,
+                query_pad,
+                seq_pad,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn attention_proof_wires_device(
+        &mut self,
+        q_id: u64,
+        q_offset: usize,
+        k_cache_id: u64,
+        k_cache_offset: usize,
+        own_k_id: u64,
+        own_k_offset: usize,
+        v_id: u64,
+        v_offset: usize,
+        scores_acc_id: u64,
+        scores_acc_offset: usize,
+        scores_q_id: u64,
+        scores_q_offset: usize,
+        row_shifts_id: u64,
+        row_shifts_offset: usize,
+        exp_outputs_id: u64,
+        exp_outputs_offset: usize,
+        denoms_id: u64,
+        denoms_offset: usize,
+        recips_id: u64,
+        recips_offset: usize,
+        softmax_weights_id: u64,
+        softmax_weights_offset: usize,
+        recip_lut_id: u64,
+        recip_lut_offset: usize,
+        qkv_acc_id: u64,
+        qkv_acc_offset: usize,
+        error_id: u64,
+        error_offset: usize,
+        rect_id: u64,
+        rect_offset: usize,
+        rows_id: u64,
+        rows_offset: usize,
+        above_id: u64,
+        above_offset: usize,
+        qkv_id: u64,
+        qkv_offset: usize,
+        query_rows: usize,
+        seq: usize,
+        pos0: usize,
+        heads: usize,
+        head_pad: usize,
+        head_dim: usize,
+        query_pad: usize,
+        seq_pad: usize,
+        d_pad: usize,
+        shift_scores: u32,
+        shift_softmax_norm: u32,
+        shift_qkv: u32,
+        recip_den_shift: u32,
+        exp_pad_input: i16,
+        recip_pad_output: i16,
+        use_row_shift: bool,
+    ) -> Result<(), AccelError> {
+        let args = RawAttentionProofWiresArgs {
+            q_id,
+            q_offset,
+            k_cache_id,
+            k_cache_offset,
+            own_k_id,
+            own_k_offset,
+            v_id,
+            v_offset,
+            scores_acc_id,
+            scores_acc_offset,
+            scores_q_id,
+            scores_q_offset,
+            row_shifts_id,
+            row_shifts_offset,
+            exp_outputs_id,
+            exp_outputs_offset,
+            denoms_id,
+            denoms_offset,
+            recips_id,
+            recips_offset,
+            softmax_weights_id,
+            softmax_weights_offset,
+            recip_lut_id,
+            recip_lut_offset,
+            qkv_acc_id,
+            qkv_acc_offset,
+            error_id,
+            error_offset,
+            rect_id,
+            rect_offset,
+            rows_id,
+            rows_offset,
+            above_id,
+            above_offset,
+            qkv_id,
+            qkv_offset,
+            query_rows,
+            seq,
+            pos0,
+            heads,
+            head_pad,
+            head_dim,
+            query_pad,
+            seq_pad,
+            d_pad,
+            shift_scores,
+            shift_softmax_norm,
+            shift_qkv,
+            recip_den_shift,
+            exp_pad_input: i32::from(exp_pad_input),
+            recip_pad_output: i32::from(recip_pad_output),
+            use_row_shift: i32::from(use_row_shift),
+        };
+        // SAFETY: Backend validates all ids, typed regions and output sizes;
+        // this versioned POD argument has the matching C++ layout.
+        self.check(unsafe { (self.api.attention_proof_wires_device)(self.raw, &args) })
     }
 
     #[allow(clippy::too_many_arguments)]

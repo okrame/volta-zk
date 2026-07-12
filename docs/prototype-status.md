@@ -56,6 +56,41 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-12 (`P7-integrated-resident` complete square-attention proof
+  checkpoint; layer/model orchestration still open)**: ABI v13 materializes
+  the proof-only attention view directly from the causal-packed resident
+  witness: shared rectangular score/exp/weight columns, stable-softmax
+  `is_max`, padded row tables, full and sparse-above QK accumulators, and the
+  padded/permuted QKV range columns. One checked owner exposes only typed
+  column views. The builder takes runtime q/s/head geometry, shifts and pad
+  pairs; it contains no GPT-2 dimension or model configuration. Phase 1
+  consumes these views for five lookup families/global histograms and
+  authenticates LN vectors plus denom/recip/above/row-shift data without a
+  host witness mirror. The real T=3 layer-0 differential checks every column
+  in order against `build_attn_wires`, then matches all corrections, global
+  multiplicities, alphas, counters and transcript exactly.
+
+  ABI v14 adds the remaining reusable algebra: base-to-Fp2 lift/broadcast,
+  a shape-parametric above-causal mask over a device equality row, weighted
+  base-vector reduction, and strided-window MLE. Rust still generates every
+  challenge and owns transcript/MAC orchestration. The resident attention
+  phase 2 now covers projection, AV head splits, twelve W·V GEMMs, causal
+  blind sumcheck, softmax normalization/row sums/row-max, twelve QK GEMMs,
+  QKV and LN1. Mock-PCG boundary tags remain host-generated, while all
+  plaintext folds and witnesses stay device-resident. The proof permutation
+  of `c_attn` is prepared once in the internal GPT-2 model upload (setup), not
+  embedded in the accelerator API.
+
+  On A100 `3mq19up4`, the complete real `AttnBlockProof`, both PCS-bound
+  weight claims, table closures, product/zero rows, theoretical counters,
+  correlation consumption and transcript ledger are byte-for-byte equal to
+  CPU. The unchanged verifier accepts after real-weight claim resolution and
+  final batch closures. New primitive tests cover non-power-of-two window
+  MLE, base broadcast, arbitrary weighted sums and above-mask indexing.
+  CPU/default entry points and proof format are unchanged. This result is the
+  full **square/prefill attention subgraph**, not yet a full layer/model or
+  decode-band resident result and therefore carries no resident rho.
+
 - **2026-07-12 (`P7-integrated-resident` attention substrate checkpoint;
   attention proof still open)**: ABI v12 generalizes the resident matrix fold
   to a checked column window with an explicit physical row stride. This is

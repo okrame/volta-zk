@@ -65,9 +65,9 @@
 //! authenticated denominators.
 
 use crate::gemm_proof::{
-    prove_gemm_act_chained, prove_gemm_committed_chained, prove_gemm_committed_chained_resident,
-    verify_gemm_act_chained, verify_gemm_committed_chained, ChainDoms, ChainedGemmProof,
-    WeightClaimP, WireKey, WireOut,
+    prove_gemm_act_chained, prove_gemm_act_chained_resident, prove_gemm_committed_chained,
+    prove_gemm_committed_chained_resident, verify_gemm_act_chained, verify_gemm_committed_chained,
+    ChainDoms, ChainedGemmProof, WeightClaimP, WireKey, WireOut,
 };
 use crate::hadamard::{
     hadamard_prove, hadamard_prove_resident, hadamard_verify, HadamardDoms, HadamardProof,
@@ -79,17 +79,17 @@ use crate::logup::{
     InstanceOutV, LeafAuxClaim, TableKey, TableSideProof,
 };
 use crate::mle::{eq_vec, eval_mle};
-use crate::sumcheck_blind::{blind_prove, blind_verify, BlindSumcheckProof};
+use crate::sumcheck_blind::{blind_prove, blind_prove_resident, blind_verify, BlindSumcheckProof};
 use crate::thaler::pad_bits;
 use std::collections::BTreeMap;
 use volta_accel::{
-    AccelError, Backend, DeviceBuffer, DeviceLookupColumns, DeviceSlice, ResidentBaseElement,
-    ResidentMatrixElement,
+    AccelError, Backend, DeviceAttentionProofWires, DeviceBuffer, DeviceLookupColumns, DeviceSlice,
+    ResidentBaseElement, ResidentMatrixElement,
 };
 use volta_field::{Fp, Fp2};
 use volta_gpt2::{
     gemm_i64, GemmBiases, LayerI16Field, LayerI64Field, LayerWeightField, LayerWeights,
-    LayerWitness, Luts, ResidentGpt2Model, ResidentLayerWitness, D, DFF, DH, H,
+    LayerWitness, Luts, ModelWeightField, ResidentGpt2Model, ResidentLayerWitness, D, DFF, DH, H,
 };
 use volta_mac::{
     auth_verifier, CorrIndex, CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey,
@@ -409,8 +409,13 @@ impl TableBankP {
                 let (dom, corr) = self.resident_auth.get(&key).ok_or(AccelError::InvalidInput(
                     "resident multiplicity was not authenticated",
                 ))?;
-                let opened =
-                    open_fp_vec_resident_p(stream, *dom, &mult, &mult_claim.point, backend)?;
+                let opened = open_fp_vec_resident_p(
+                    stream,
+                    *dom,
+                    DeviceSlice::new(&mult, 0, mult.len()).expect("whole resident multiplicity"),
+                    &mult_claim.point,
+                    backend,
+                )?;
                 zero.push(mult_claim.value.sub(opened));
                 Ok(TableCloseProof { key, mult_corr: corr.clone(), side })
             })();
@@ -969,7 +974,7 @@ pub(crate) fn open_fp_vec_p(
 fn open_fp_vec_resident_p<T: ResidentMatrixElement>(
     stream: &mut CorrelationStream,
     dom: u64,
-    vals: &DeviceBuffer<T>,
+    vals: DeviceSlice<'_, T>,
     point: &[Fp2],
     backend: &mut Backend,
 ) -> Result<ProverAuthed, AccelError> {
@@ -982,10 +987,7 @@ fn open_fp_vec_resident_p<T: ResidentMatrixElement>(
     let tags = stream.draw_sub_tags(dom, vals.len());
     let eq = eq_vec(point);
     let tag = tags.into_iter().zip(eq).fold(Fp2::ZERO, |acc, (value, weight)| acc + weight * value);
-    let value = backend.mle_eval_device(
-        DeviceSlice::new(vals, 0, vals.len()).expect("whole resident multiplicity"),
-        point,
-    )?;
+    let value = backend.mle_eval_device(vals, point)?;
     Ok(ProverAuthed { x: value, m: tag })
 }
 
@@ -1019,6 +1021,23 @@ pub(crate) fn open_weighted_p(
         tag += weights[i] * t;
     }
     ProverAuthed { x: val, m: tag }
+}
+
+pub(crate) fn open_weighted_resident_p<T: ResidentMatrixElement>(
+    stream: &mut CorrelationStream,
+    dom: u64,
+    vals: DeviceSlice<'_, T>,
+    weights: &[Fp2],
+    backend: &mut Backend,
+) -> Result<ProverAuthed, AccelError> {
+    if vals.len() != weights.len() || vals.is_empty() {
+        return Err(AccelError::InvalidInput("resident weighted opening geometry mismatch"));
+    }
+    let tags = stream.draw_sub_tags(dom, vals.len());
+    let tag =
+        tags.into_iter().zip(weights).fold(Fp2::ZERO, |sum, (value, &weight)| sum + weight * value);
+    let value = backend.weighted_sum_device(vals, weights)?;
+    Ok(ProverAuthed { x: value, m: tag })
 }
 
 pub(crate) fn open_weighted_k(keys: &[Fp2], weights: &[Fp2]) -> VerifierKey {
@@ -1286,6 +1305,113 @@ pub(crate) fn cache_fold_cols_k(segs: &[CacheSegK], wc: &[Fp2], c0: usize, w: us
         out.extend(fold_cols_window_k(seg.keys, seg.rows, D, wc, c0, w));
     }
     out
+}
+
+#[allow(clippy::too_many_arguments)]
+fn public_window_fold_resident<T: ResidentMatrixElement>(
+    data: DeviceSlice<'_, T>,
+    rows: usize,
+    stride: usize,
+    column_offset: usize,
+    width: usize,
+    weights: &[Fp2],
+    axis: volta_accel::MatrixFoldAxis,
+    backend: &mut Backend,
+) -> Result<DeviceBuffer<volta_accel::Fp2Repr>, AccelError> {
+    let expected = match axis {
+        volta_accel::MatrixFoldAxis::Rows => rows,
+        volta_accel::MatrixFoldAxis::Columns => width,
+    };
+    if weights.len() < expected || data.len() < rows.saturating_mul(stride) {
+        return Err(AccelError::InvalidInput("resident public matrix-fold geometry mismatch"));
+    }
+    let raw: Vec<volta_accel::Fp2Repr> =
+        weights[..expected].iter().copied().map(Into::into).collect();
+    let device_weights = backend.upload_new_device(&raw)?;
+    let values = backend.matrix_window_fold_device(
+        DeviceSlice::new(data.buffer(), data.offset(), rows * stride).expect("validated matrix"),
+        DeviceSlice::new(&device_weights, 0, expected).expect("whole public fold weights"),
+        rows,
+        stride,
+        column_offset,
+        width,
+        axis,
+    );
+    let free_result = backend.free_device(device_weights);
+    match (values, free_result) {
+        (Ok(values), Ok(())) => Ok(values),
+        (Err(error), _) | (_, Err(error)) => Err(error),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn boundary_fold_cols_resident_p(
+    stream: &mut CorrelationStream,
+    base_dom: u64,
+    data: DeviceSlice<'_, i16>,
+    rows: usize,
+    cols: usize,
+    weights: &[Fp2],
+    column_offset: usize,
+    width: usize,
+    backend: &mut Backend,
+) -> Result<(DeviceBuffer<volta_accel::Fp2Repr>, Vec<Fp2>), AccelError> {
+    if weights.len() != width || data.len() < rows.saturating_mul(cols) {
+        return Err(AccelError::InvalidInput("resident boundary column-fold geometry mismatch"));
+    }
+    let values = public_window_fold_resident(
+        data,
+        rows,
+        cols,
+        column_offset,
+        width,
+        weights,
+        volta_accel::MatrixFoldAxis::Columns,
+        backend,
+    )?;
+    let mut tags_out = Vec::with_capacity(rows);
+    for row in 0..rows {
+        let tags = stream.draw_sub_tags(base_dom + row as u64, cols);
+        let tag = (0..width)
+            .fold(Fp2::ZERO, |sum, index| sum + weights[index] * tags[column_offset + index]);
+        tags_out.push(tag);
+    }
+    Ok((values, tags_out))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn boundary_fold_rows_resident_p(
+    stream: &mut CorrelationStream,
+    base_dom: u64,
+    data: DeviceSlice<'_, i16>,
+    rows: usize,
+    cols: usize,
+    weights: &[Fp2],
+    column_offset: usize,
+    width: usize,
+    backend: &mut Backend,
+) -> Result<(DeviceBuffer<volta_accel::Fp2Repr>, Vec<Fp2>), AccelError> {
+    if weights.len() < rows || data.len() < rows.saturating_mul(cols) {
+        return Err(AccelError::InvalidInput("resident boundary row-fold geometry mismatch"));
+    }
+    let values = public_window_fold_resident(
+        data,
+        rows,
+        cols,
+        column_offset,
+        width,
+        weights,
+        volta_accel::MatrixFoldAxis::Rows,
+        backend,
+    )?;
+    let mut tags_out = vec![Fp2::ZERO; width];
+    for row in 0..rows {
+        let tags = stream.draw_sub_tags(base_dom + row as u64, cols);
+        for index in 0..width {
+            tags_out[index] += weights[row] * tags[column_offset + index];
+        }
+    }
+    Ok((values, tags_out))
 }
 
 // ---------------------------------------------------------------------------
@@ -2125,13 +2251,23 @@ pub(crate) fn prove_ln_chain_resident(
         backend,
     )?;
     let x_open = open_matrix_resident_p(cx.stream, dom_x, x, t, D, &bound_point, backend)?;
-    let mean_open =
-        open_fp_vec_resident_p(cx.stream, lv.dom_mean, &lv.mean, &bound_point[d_cb..], backend)?;
+    let mean_open = open_fp_vec_resident_p(
+        cx.stream,
+        lv.dom_mean,
+        DeviceSlice::new(&lv.mean, 0, lv.mean.len()).expect("whole resident LN mean"),
+        &bound_point[d_cb..],
+        backend,
+    )?;
     cx.zero.push(centered_claim.sub(x_open.sub(mean_open)));
     let gain_eval =
         eval_mle_counted(&lift_padded_i16(gain, d_cb), &bound_point[..d_cb], &mut cx.ctr_other);
-    let rsqrt_open =
-        open_fp_vec_resident_p(cx.stream, lv.dom_rout, &lv.rout, &bound_point[d_cb..], backend)?;
+    let rsqrt_open = open_fp_vec_resident_p(
+        cx.stream,
+        lv.dom_rout,
+        DeviceSlice::new(&lv.rout, 0, lv.rout.len()).expect("whole resident LN rsqrt"),
+        &bound_point[d_cb..],
+        backend,
+    )?;
     cx.zero.push(scaled_claim.sub(rsqrt_open.scale(gain_eval)));
 
     let rsqrt_instance = cx.inst_resident(
@@ -2145,7 +2281,7 @@ pub(crate) fn prove_ln_chain_resident(
     let rin_open = open_fp_vec_resident_p(
         cx.stream,
         lv.dom_rin,
-        &lv.rin,
+        DeviceSlice::new(&lv.rin, 0, lv.rin.len()).expect("whole resident LN input"),
         &rsqrt_instance.point,
         cx.backend.as_deref_mut().expect("resident LN backend"),
     )?;
@@ -2153,7 +2289,7 @@ pub(crate) fn prove_ln_chain_resident(
     let rout_open = open_fp_vec_resident_p(
         cx.stream,
         lv.dom_rout,
-        &lv.rout,
+        DeviceSlice::new(&lv.rout, 0, lv.rout.len()).expect("whole resident LN output"),
         &rsqrt_instance.point,
         cx.backend.as_deref_mut().expect("resident LN backend"),
     )?;
@@ -3235,6 +3371,7 @@ pub fn build_attn_wires_band(b: &BandAttnRefs, luts: &Luts) -> AttnWires {
 // Attention block — proof object
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct AttnBlockProof {
     /// LN1 vector corrections: [mean, var, rsqrt_in, rsqrt_out].
     pub ln_vec_corrs: [Vec<u64>; 4],
@@ -3370,6 +3507,275 @@ pub struct AttnP1 {
     rowshift_fp: Vec<Fp>,
     dom_rowshift: Option<u64>,
     row_shift_corr: Option<Vec<u64>>,
+}
+
+pub(crate) struct ResidentAttnP1 {
+    wires: DeviceAttentionProofWires,
+    lv1: ResidentLnVecsP,
+    ln_vec_corrs: [Vec<u64>; 4],
+    dom_denoms: u64,
+    denoms_corr: Vec<u64>,
+    dom_rin_row: u64,
+    recip_in_corr: Vec<u64>,
+    dom_recips: u64,
+    recips_corr: Vec<u64>,
+    dom_above: u64,
+    above_corr: Vec<u64>,
+    dom_rowshift: Option<u64>,
+    row_shift_corr: Option<Vec<u64>>,
+    proj: DeviceLookupColumns,
+    av: DeviceLookupColumns,
+    ln: DeviceLookupColumns,
+    rsqrt: DeviceLookupColumns,
+}
+
+impl ResidentAttnP1 {
+    fn free(self, backend: &mut Backend) -> Result<(), AccelError> {
+        let mut first = backend.free_lookup_columns(self.rsqrt).err();
+        if first.is_none() {
+            first = backend.free_lookup_columns(self.ln).err();
+        } else {
+            let _ = backend.free_lookup_columns(self.ln);
+        }
+        if first.is_none() {
+            first = backend.free_lookup_columns(self.av).err();
+        } else {
+            let _ = backend.free_lookup_columns(self.av);
+        }
+        if first.is_none() {
+            first = backend.free_lookup_columns(self.proj).err();
+        } else {
+            let _ = backend.free_lookup_columns(self.proj);
+        }
+        if first.is_none() {
+            first = self.lv1.free(backend).err();
+        } else {
+            let _ = self.lv1.free(backend);
+        }
+        if first.is_none() {
+            first = backend.free_attention_proof_wires(self.wires).err();
+        } else {
+            let _ = backend.free_attention_proof_wires(self.wires);
+        }
+        first.map_or(Ok(()), Err)
+    }
+}
+
+/// Resident square/prefill attention phase 1. The lower accelerator builder
+/// is band-general; this first protocol integration deliberately consumes the
+/// current square resident witness layout. Decode-band ownership is wired at
+/// the model seam rather than smuggling prefix buffers into this type.
+pub(crate) fn attn_phase1_resident(
+    wit: &ResidentLayerWitness,
+    resident_model: &ResidentGpt2Model,
+    luts: &Luts,
+    error: DeviceSlice<'_, u32>,
+    cx: &mut BlockCtxP,
+) -> Result<ResidentAttnP1, AccelError> {
+    let t = wit.t();
+    let params = luts.params;
+    let rb = pad_bits(t);
+    let exp_pad_u = (0..1usize << 16)
+        .find(|&index| luts.exp[index] == 0)
+        .ok_or(AccelError::InvalidInput("exp LUT has no zero-output padding pair"))?;
+    let backend = cx
+        .backend
+        .as_deref_mut()
+        .ok_or(AccelError::InvalidInput("resident attention phase 1 requires a backend"))?;
+    let wires = backend.attention_proof_wires_device(
+        wit.i16(LayerI16Field::Q),
+        wit.i16(LayerI16Field::K),
+        wit.i16(LayerI16Field::K),
+        wit.i16(LayerI16Field::V),
+        wit.i64(LayerI64Field::ScoresAcc),
+        wit.i16(LayerI16Field::ScoresQ),
+        wit.i16(LayerI16Field::RowShift),
+        wit.i16(LayerI16Field::ExpOut),
+        wit.i64(LayerI64Field::Denoms),
+        wit.i16(LayerI16Field::Recips),
+        wit.i16(LayerI16Field::SoftmaxW),
+        resident_model.model_weight(ModelWeightField::SoftmaxRecipLut),
+        wit.i64(LayerI64Field::QkvAcc),
+        error,
+        t,
+        t,
+        0,
+        H,
+        H_PAD,
+        DH,
+        params.shift_scores,
+        params.shift_softmax_norm,
+        params.shift_qkv,
+        params.recip_den_shift,
+        exp_pad_u as u16 as i16,
+        luts.softmax_recip[0],
+        params.softmax_row_shift,
+    )?;
+
+    let rout_pad = Fp::from_i64(luts.ln_rsqrt[0] as i64);
+    let (lv1, ln_vec_corrs) = match auth_ln_vecs_resident_p(
+        wit.i64(LayerI64Field::Ln1Mean),
+        wit.i64(LayerI64Field::Ln1Var),
+        wit.i64(LayerI64Field::Ln1RsqrtIn),
+        wit.i16(LayerI16Field::Ln1RsqrtOut),
+        rb,
+        rout_pad,
+        cx.stream,
+        cx.tx,
+        &mut cx.doms,
+        backend,
+    ) {
+        Ok(value) => value,
+        Err(error) => {
+            let _ = backend.free_attention_proof_wires(wires);
+            return Err(error);
+        }
+    };
+
+    let mut direct_sites = Vec::with_capacity(4);
+    let bind_result = (|| {
+        let mult_sn =
+            backend.histogram_fp_device(wires.rect_column(0)?, 1 << params.shift_softmax_norm)?;
+        cx.bank.add_mult_resident(TableKey::Range(params.shift_softmax_norm), mult_sn, backend)?;
+        let mult_sc =
+            backend.histogram_fp_device(wires.rect_column(2)?, 1 << params.shift_scores)?;
+        cx.bank.add_mult_resident(TableKey::Range(params.shift_scores), mult_sc, backend)?;
+        let mult_exp = backend.histogram_lut_device(wires.rect_column(3)?, true)?;
+        cx.bank.add_mult_resident(TableKey::Exp, mult_exp, backend)?;
+        let mult_recip = backend.histogram_lut_device(wires.row_column(1)?, false)?;
+        cx.bank.add_mult_resident(TableKey::SoftmaxRecip, mult_recip, backend)?;
+        let mult_qkv = backend.histogram_fp_device(wires.qkv_column(0)?, 1 << params.shift_qkv)?;
+        cx.bank.add_mult_resident(TableKey::Range(params.shift_qkv), mult_qkv, backend)?;
+
+        direct_sites.push(bind_range_site_resident(
+            cx.bank,
+            wit.i64(LayerI64Field::Ln1Acc),
+            wit.i16(LayerI16Field::Ln1Out),
+            error,
+            t,
+            D,
+            params.shift_ln_norm,
+            backend,
+        )?);
+        direct_sites.push(bind_pair_site_resident(
+            cx.bank,
+            TableKey::LnRsqrt,
+            wit.i64(LayerI64Field::Ln1RsqrtIn),
+            wit.i16(LayerI16Field::Ln1RsqrtOut),
+            t,
+            1,
+            Fp::ZERO,
+            rout_pad,
+            false,
+            backend,
+        )?);
+        direct_sites.push(bind_range_site_resident(
+            cx.bank,
+            wit.i64(LayerI64Field::ProjAcc),
+            wit.i16(LayerI16Field::AttnProjQ),
+            error,
+            t,
+            D,
+            params.shift_attn_proj,
+            backend,
+        )?);
+        direct_sites.push(bind_range_site_resident(
+            cx.bank,
+            wit.i64(LayerI64Field::AvAcc),
+            wit.i16(LayerI16Field::AvQ),
+            error,
+            t,
+            D,
+            params.shift_av,
+            backend,
+        )?);
+        Ok(())
+    })();
+    if let Err(error) = bind_result {
+        for site in direct_sites {
+            let _ = backend.free_lookup_columns(site);
+        }
+        let _ = lv1.free(backend);
+        let _ = backend.free_attention_proof_wires(wires);
+        return Err(error);
+    }
+
+    let auth_result = (|| {
+        let dom_denoms = cx.doms.take(1);
+        let denoms_corr =
+            auth_device_vector_p(cx.stream, cx.tx, dom_denoms, wires.row_column(0)?, backend)?;
+        let dom_rin_row = cx.doms.take(1);
+        let recip_in_corr =
+            auth_device_vector_p(cx.stream, cx.tx, dom_rin_row, wires.row_column(1)?, backend)?;
+        let dom_recips = cx.doms.take(1);
+        let recips_corr =
+            auth_device_vector_p(cx.stream, cx.tx, dom_recips, wires.row_column(2)?, backend)?;
+        let dom_above = cx.doms.take(1);
+        let above_corr = auth_device_vector_p(cx.stream, cx.tx, dom_above, wires.above(), backend)?;
+        let (dom_rowshift, row_shift_corr) = if params.softmax_row_shift {
+            let domain = cx.doms.take(1);
+            let corrections =
+                auth_device_vector_p(cx.stream, cx.tx, domain, wires.row_column(3)?, backend)?;
+            (Some(domain), Some(corrections))
+        } else {
+            (None, None)
+        };
+        Ok((
+            dom_denoms,
+            denoms_corr,
+            dom_rin_row,
+            recip_in_corr,
+            dom_recips,
+            recips_corr,
+            dom_above,
+            above_corr,
+            dom_rowshift,
+            row_shift_corr,
+        ))
+    })();
+    let (
+        dom_denoms,
+        denoms_corr,
+        dom_rin_row,
+        recip_in_corr,
+        dom_recips,
+        recips_corr,
+        dom_above,
+        above_corr,
+        dom_rowshift,
+        row_shift_corr,
+    ) = match auth_result {
+        Ok(values) => values,
+        Err(error) => {
+            for site in direct_sites {
+                let _ = backend.free_lookup_columns(site);
+            }
+            let _ = lv1.free(backend);
+            let _ = backend.free_attention_proof_wires(wires);
+            return Err(error);
+        }
+    };
+
+    let mut direct_sites = direct_sites.into_iter();
+    Ok(ResidentAttnP1 {
+        wires,
+        lv1,
+        ln_vec_corrs,
+        dom_denoms,
+        denoms_corr,
+        dom_rin_row,
+        recip_in_corr,
+        dom_recips,
+        recips_corr,
+        dom_above,
+        above_corr,
+        dom_rowshift,
+        row_shift_corr,
+        ln: direct_sites.next().expect("resident attention LN site"),
+        rsqrt: direct_sites.next().expect("resident attention rsqrt site"),
+        proj: direct_sites.next().expect("resident attention projection site"),
+        av: direct_sites.next().expect("resident attention AV site"),
+    })
 }
 
 /// Attention phase 1 with caller-supplied wires (the causal-tamper test
@@ -4112,6 +4518,783 @@ pub(crate) fn prove_attn_block(
         ln,
     };
     (proof, vec![wclaim_proj, wclaim_cattn])
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prove_attn_block_resident(
+    wit: &ResidentLayerWitness,
+    resident_model: &ResidentGpt2Model,
+    layer: usize,
+    weights: &LayerWeights,
+    luts: &Luts,
+    mut p1: ResidentAttnP1,
+    cx: &mut BlockCtxP,
+    dom_xin: u64,
+    dom_k: u64,
+    dom_v: u64,
+    dom_abo: u64,
+    biases: Option<&GemmBiases>,
+) -> Result<(AttnBlockProof, Vec<WeightClaimP>), AccelError> {
+    let result = (|| {
+        let t = wit.t();
+        if t < 2 {
+            return Err(AccelError::InvalidInput(
+                "resident attention proof needs at least two rows",
+            ));
+        }
+        let params = luts.params;
+        let shape = BandShape::square(t);
+        let (qb, sb) = (shape.qb(), shape.sb());
+        let (q_pad, s_pad, sp2) = (shape.q_pad(), shape.s_pad(), shape.sp2());
+        let nr = shape.nr();
+        let rect_entries = 1usize << nr;
+        let d_cb = pad_bits(D);
+        let s_ap = params.shift_attn_proj;
+        let s_av = params.shift_av;
+        let s_sn = params.shift_softmax_norm;
+        let s_sc = params.shift_scores;
+        let s_qkv = params.shift_qkv;
+        let s_ln = params.shift_ln_norm;
+
+        // 1–2: projection range/residual and committed out projection.
+        let proj_site = prove_range_site_resident(&p1.proj, s_ap, Vec::new(), cx)?;
+        let projection_point = proj_site.main.point.clone();
+        let backend = cx
+            .backend
+            .as_deref_mut()
+            .ok_or(AccelError::InvalidInput("resident attention proof requires a backend"))?;
+        let abo_open = open_matrix_resident_p(
+            cx.stream,
+            dom_abo,
+            wit.i16(LayerI16Field::AttnBlockOut),
+            t,
+            D,
+            &projection_point,
+            backend,
+        )?;
+        let xin_open = open_matrix_resident_p(
+            cx.stream,
+            dom_xin,
+            wit.i16(LayerI16Field::XIn),
+            t,
+            D,
+            &projection_point,
+            backend,
+        )?;
+        cx.zero.push(proj_site.main.col_claims[1].value.sub(abo_open).add(xin_open));
+        let projection_acc_point = proj_site.acc_point().to_vec();
+        let mut projection_claim = proj_site.acc_claim;
+        if let Some(biases) = biases {
+            projection_claim = sub_bias_p(
+                projection_claim,
+                &biases.attn_proj,
+                d_cb,
+                &projection_acc_point,
+                t,
+                s_ap,
+                &mut cx.ctr_other,
+            );
+        }
+        let (r_j_projection, r_i_projection) = projection_acc_point.split_at(d_cb);
+        let projection_doms = ChainDoms::alloc(&mut cx.doms, D);
+        let (gemm_proj, wire_av, w_proj_corr, wclaim_proj, _, _) =
+            prove_gemm_committed_chained_resident(
+                wit.i16(LayerI16Field::AvQ),
+                resident_model.layer_weight(layer, LayerWeightField::AttnProj)?,
+                t,
+                D,
+                D,
+                r_i_projection,
+                r_j_projection,
+                projection_claim,
+                &projection_doms,
+                cx.stream,
+                cx.tx,
+                cx.backend.as_deref_mut().expect("resident attention backend"),
+            )?;
+
+        // 3–5: AV range, head split, and per-head W·V activation GEMMs.
+        if s_av > 16 {
+            return Err(AccelError::InvalidInput(
+                "resident chained AV range is not represented in AttnBlockProof",
+            ));
+        }
+        let av_site = prove_range_site_resident(
+            &p1.av,
+            s_av,
+            vec![LeafAuxClaim { col: 1, point: wire_av.point.clone(), value: wire_av.value }],
+            cx,
+        )?;
+        debug_assert!(av_site.stage1.is_none());
+        let av_claim = av_site.acc_claim;
+        let av_point = av_site.main.point.clone();
+        let mut wv_point = av_point[..6].to_vec();
+        wv_point.extend_from_slice(&av_point[d_cb..]);
+        let eq_head_av = eq_vec(&av_point[6..d_cb]);
+        cx.ctr_other.fp2_mults += 16 + (DH * q_pad) as u64;
+        let mut av_values = [Fp2::ZERO; H];
+        for (head, value) in av_values.iter_mut().enumerate() {
+            *value = cx
+                .backend
+                .as_deref_mut()
+                .expect("resident attention backend")
+                .matrix_window_mle_eval_device(
+                    wit.i64(LayerI64Field::AvAcc),
+                    t,
+                    D,
+                    head * DH,
+                    DH,
+                    &wv_point,
+                )?;
+            cx.ctr_other.fp2_mults += (DH * q_pad - 1) as u64;
+        }
+        let split_av_dom = cx.doms.take(1);
+        let split_av_masks = cx.stream.draw_fulls(split_av_dom, H);
+        let mut av_split_corrs = [Fp2::ZERO; H];
+        let mut av_auth = Vec::with_capacity(H);
+        for head in 0..H {
+            av_split_corrs[head] = av_values[head] - split_av_masks[head].x;
+            av_auth.push(ProverAuthed { x: av_values[head], m: split_av_masks[head].m });
+        }
+        cx.tx.append("head_split_corrections", 16 * H as u64);
+        let mut split_row = ProverAuthed::ZERO.sub(av_claim);
+        for head in 0..H {
+            split_row = split_row.add(av_auth[head].scale(eq_head_av[head]));
+        }
+        debug_assert_eq!(split_row.x, Fp2::ZERO, "resident AV head split violated");
+        cx.zero.push(split_row);
+
+        let eq_within = eq_vec(&av_point[..6]);
+        let eq_query_rows = eq_vec(&av_point[d_cb..]);
+        let mut gemm_wv = Vec::with_capacity(H);
+        let mut aux_sn = Vec::with_capacity(H + 1);
+        for head in 0..H {
+            let w_column = p1.wires.rect_column(1)?;
+            let head_weights =
+                DeviceSlice::new(w_column.buffer(), w_column.offset() + head * sp2, sp2)?;
+            let a_folded = public_window_fold_resident(
+                head_weights,
+                t,
+                s_pad,
+                0,
+                s_pad,
+                &eq_query_rows,
+                volta_accel::MatrixFoldAxis::Rows,
+                cx.backend.as_deref_mut().expect("resident attention backend"),
+            )?;
+            let b_folded = match boundary_fold_cols_resident_p(
+                cx.stream,
+                dom_v,
+                wit.i16(LayerI16Field::V),
+                t,
+                D,
+                &eq_within,
+                head * DH,
+                DH,
+                cx.backend.as_deref_mut().expect("resident attention backend"),
+            ) {
+                Ok(value) => value,
+                Err(error) => {
+                    let _ = cx
+                        .backend
+                        .as_deref_mut()
+                        .expect("resident attention backend")
+                        .free_device(a_folded);
+                    return Err(error);
+                }
+            };
+            let (b_folded, b_tags) = b_folded;
+            let gemm_doms = ChainDoms::alloc(&mut cx.doms, s_pad);
+            let (proof, wire, _, _, _) = prove_gemm_act_chained_resident(
+                a_folded,
+                b_folded,
+                t,
+                s_pad,
+                DH,
+                &av_point[d_cb..],
+                &av_point[..6],
+                av_auth[head],
+                move |point, value| {
+                    let eq = eq_vec(point);
+                    let tag = (0..t).fold(Fp2::ZERO, |sum, row| sum + eq[row] * b_tags[row]);
+                    Ok(ProverAuthed { x: value, m: tag })
+                },
+                &gemm_doms,
+                cx.stream,
+                cx.tx,
+                cx.backend.as_deref_mut().expect("resident attention backend"),
+            )?;
+            let mut lifted_point = wire.point.clone();
+            lifted_point.extend(head_bit_coords(head));
+            aux_sn.push(LeafAuxClaim { col: 1, point: lifted_point, value: wire.value });
+            gemm_wv.push((proof, wire.corr));
+        }
+
+        // 6: causal mask sumcheck. Equality rows and the mask are built D2D;
+        // one duplicate is retained solely for the final public MLE scalar.
+        let tau: Vec<Fp2> = (0..nr).map(|_| cx.tx.challenge_fp2()).collect();
+        let backend = cx.backend.as_deref_mut().expect("resident attention backend");
+        let mask_sumcheck = backend.equality_weights_device(&tau)?;
+        if let Err(error) = backend.attention_above_mask_device(&mask_sumcheck, t, t, 0, H, H_PAD) {
+            let _ = backend.free_device(mask_sumcheck);
+            return Err(error);
+        }
+        let mask_eval = match backend.equality_weights_device(&tau) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = backend.free_device(mask_sumcheck);
+                return Err(error);
+            }
+        };
+        if let Err(error) = backend.attention_above_mask_device(&mask_eval, t, t, 0, H, H_PAD) {
+            let _ = backend.free_device(mask_eval);
+            let _ = backend.free_device(mask_sumcheck);
+            return Err(error);
+        }
+        let w_lift = match backend.base_to_fp2_broadcast_device(p1.wires.rect_column(1)?, 1) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = backend.free_device(mask_eval);
+                let _ = backend.free_device(mask_sumcheck);
+                return Err(error);
+            }
+        };
+        cx.ctr_other.fp2_mults += 3 * rect_entries as u64;
+        let causal_doms = cx.doms.take(nr as u64);
+        let causal_result = blind_prove_resident(
+            mask_sumcheck,
+            w_lift,
+            ProverAuthed::from_public(Fp2::ZERO),
+            cx.stream,
+            causal_doms,
+            cx.tx,
+            cx.backend.as_deref_mut().expect("resident attention backend"),
+        );
+        let (causal, causal_point, causal_claim) = match causal_result {
+            Ok((proof, point, claim, _, _)) => (proof, point, claim),
+            Err(error) => {
+                let _ = cx
+                    .backend
+                    .as_deref_mut()
+                    .expect("resident attention backend")
+                    .free_device(mask_eval);
+                return Err(error);
+            }
+        };
+        let backend = cx.backend.as_deref_mut().expect("resident attention backend");
+        let mask_value = backend.mle_eval_device(
+            DeviceSlice::new(&mask_eval, 0, mask_eval.len()).expect("whole causal mask"),
+            &causal_point,
+        );
+        let mask_free = backend.free_device(mask_eval);
+        let mask_value = match (mask_value, mask_free) {
+            (Ok(value), Ok(())) => value,
+            (Err(error), _) | (_, Err(error)) => return Err(error),
+        };
+        if mask_value == Fp2::ZERO {
+            return Err(AccelError::InvalidInput("causal mask MLE vanished at challenge"));
+        }
+        cx.ctr_other.fp2_mults += (rect_entries - 1) as u64;
+        let w_value = backend.mle_eval_device(p1.wires.rect_column(1)?, &causal_point)?;
+        cx.ctr_other.fp2_mults += rect_entries as u64;
+        cx.ctr_other.base_mults += rect_entries as u64;
+        let causal_wire_dom = cx.doms.take(1);
+        let causal_mask = cx.stream.draw_fulls(causal_wire_dom, 1)[0];
+        let causal_w_corr = w_value - causal_mask.x;
+        cx.tx.append("causal_w_correction", 16);
+        let causal_w_auth = ProverAuthed { x: w_value, m: causal_mask.m };
+        cx.zero.push(causal_w_auth.scale(mask_value).sub(causal_claim));
+        aux_sn.push(LeafAuxClaim { col: 1, point: causal_point, value: causal_w_auth });
+
+        // 7–9: softmax normalization, exp×recip Hadamard and row sums.
+        let sn_instance = cx.inst_resident(
+            TableKey::Range(s_sn),
+            p1.wires.softmax_norm_columns(),
+            2,
+            rect_entries,
+            &[Some(0), None],
+            aux_sn,
+        )?;
+        let softmax_acc_claim = transport_p(&sn_instance, s_sn);
+        let exp_factor = cx
+            .backend
+            .as_deref_mut()
+            .expect("resident attention backend")
+            .base_to_fp2_broadcast_device(p1.wires.rect_column(4)?, 1)?;
+        let recip_factor = match cx
+            .backend
+            .as_deref_mut()
+            .expect("resident attention backend")
+            .base_to_fp2_broadcast_device(p1.wires.row_column(2)?, s_pad)
+        {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = cx
+                    .backend
+                    .as_deref_mut()
+                    .expect("resident attention backend")
+                    .free_device(exp_factor);
+                return Err(error);
+            }
+        };
+        let hadamard_doms = HadamardDoms::alloc(&mut cx.doms, nr);
+        let (hadamard, hadamard_point, exp_claim, recip_claim) = hadamard_prove_resident(
+            &sn_instance.point,
+            exp_factor,
+            recip_factor,
+            softmax_acc_claim,
+            &hadamard_doms,
+            cx.stream,
+            cx.tx,
+            &mut cx.prod,
+            &mut cx.zero,
+            cx.backend.as_deref_mut().expect("resident attention backend"),
+        )?;
+        let recip_open = open_fp_vec_resident_p(
+            cx.stream,
+            p1.dom_recips,
+            p1.wires.row_column(2)?,
+            &hadamard_point[sb..],
+            cx.backend.as_deref_mut().expect("resident attention backend"),
+        )?;
+        cx.zero.push(recip_claim.sub(recip_open));
+
+        let rho: Vec<Fp2> = (0..qb + HEAD_BITS).map(|_| cx.tx.challenge_fp2()).collect();
+        let half = Fp2::from_base(Fp::new(2).inv());
+        let mut half_point = vec![half; sb];
+        half_point.extend_from_slice(&rho);
+        let rowsum_value = cx
+            .backend
+            .as_deref_mut()
+            .expect("resident attention backend")
+            .mle_eval_device(p1.wires.rect_column(4)?, &half_point)?;
+        cx.ctr_other.fp2_mults += (rect_entries - 1) as u64;
+        let rowsum_dom = cx.doms.take(1);
+        let rowsum_mask = cx.stream.draw_fulls(rowsum_dom, 1)[0];
+        let rowsum_corr = rowsum_value - rowsum_mask.x;
+        cx.tx.append("rowsum_correction", 16);
+        let rowsum_auth = ProverAuthed { x: rowsum_value, m: rowsum_mask.m };
+        let denom_open = open_fp_vec_resident_p(
+            cx.stream,
+            p1.dom_denoms,
+            p1.wires.row_column(0)?,
+            &rho,
+            cx.backend.as_deref_mut().expect("resident attention backend"),
+        )?;
+        let two_sb = Fp2::from_base(Fp::new(1u64 << sb));
+        cx.zero.push(denom_open.sub(rowsum_auth.scale(two_sb)));
+
+        // 10: exp lookup plus stable-softmax row-max relations.
+        let mut exp_aux = vec![
+            LeafAuxClaim { col: 1, point: hadamard_point, value: exp_claim },
+            LeafAuxClaim { col: 1, point: half_point.clone(), value: rowsum_auth },
+        ];
+        let mut hadamard2 = None;
+        let mut ismax_rowsum_corr = None;
+        if params.softmax_row_shift {
+            let ismax = cx
+                .backend
+                .as_deref_mut()
+                .expect("resident attention backend")
+                .base_to_fp2_broadcast_device(p1.wires.rect_column(5)?, 1)?;
+            let sprime = match cx
+                .backend
+                .as_deref_mut()
+                .expect("resident attention backend")
+                .base_to_fp2_broadcast_device(p1.wires.rect_column(3)?, 1)
+            {
+                Ok(value) => value,
+                Err(error) => {
+                    let _ = cx
+                        .backend
+                        .as_deref_mut()
+                        .expect("resident attention backend")
+                        .free_device(ismax);
+                    return Err(error);
+                }
+            };
+            let tau2: Vec<Fp2> = (0..nr).map(|_| cx.tx.challenge_fp2()).collect();
+            let rowmax_doms = HadamardDoms::alloc(&mut cx.doms, nr);
+            let (proof, point, ismax_claim, sprime_claim) = hadamard_prove_resident(
+                &tau2,
+                ismax,
+                sprime,
+                ProverAuthed::from_public(Fp2::ZERO),
+                &rowmax_doms,
+                cx.stream,
+                cx.tx,
+                &mut cx.prod,
+                &mut cx.zero,
+                cx.backend.as_deref_mut().expect("resident attention backend"),
+            )?;
+            hadamard2 = Some(proof);
+            let rho2: Vec<Fp2> = (0..qb + HEAD_BITS).map(|_| cx.tx.challenge_fp2()).collect();
+            let mut half_point2 = vec![half; sb];
+            half_point2.extend_from_slice(&rho2);
+            let rowmax_sum = cx
+                .backend
+                .as_deref_mut()
+                .expect("resident attention backend")
+                .mle_eval_device(p1.wires.rect_column(5)?, &half_point2)?;
+            cx.ctr_other.fp2_mults += (rect_entries - 1) as u64;
+            let rowmax_sum_dom = cx.doms.take(1);
+            let rowmax_sum_mask = cx.stream.draw_fulls(rowmax_sum_dom, 1)[0];
+            ismax_rowsum_corr = Some(rowmax_sum - rowmax_sum_mask.x);
+            cx.tx.append("ismax_rowsum_correction", 16);
+            let rowmax_sum_auth = ProverAuthed { x: rowmax_sum, m: rowmax_sum_mask.m };
+            let eq_rho2 = eq_vec(&rho2);
+            cx.ctr_other.fp2_mults += 1u64 << (qb + HEAD_BITS);
+            let mut real_mask = Fp2::ZERO;
+            for head in 0..H {
+                for row in 0..t {
+                    real_mask += eq_rho2[head * q_pad + row];
+                }
+            }
+            cx.zero.push(rowmax_sum_auth.scale(two_sb).sub(ProverAuthed::from_public(real_mask)));
+            exp_aux.push(LeafAuxClaim { col: 0, point: point.clone(), value: sprime_claim });
+            exp_aux.push(LeafAuxClaim { col: 2, point, value: ismax_claim });
+            exp_aux.push(LeafAuxClaim { col: 2, point: half_point2, value: rowmax_sum_auth });
+        }
+        let exp_count = if params.softmax_row_shift { 3 } else { 2 };
+        let exp_all = p1.wires.exp_columns();
+        let exp_view =
+            DeviceSlice::new(exp_all.buffer(), exp_all.offset(), exp_count * rect_entries)?;
+        let exp_shifts = [Some(0), Some(16), None];
+        let exp_instance = cx.inst_resident(
+            TableKey::Exp,
+            exp_view,
+            exp_count,
+            rect_entries,
+            &exp_shifts[..exp_count],
+            exp_aux,
+        )?;
+
+        // 11–12: reciprocal and score lookups, including pad/above/rowshift correction.
+        let recip_first = p1.wires.row_column(1)?;
+        let recip_view = DeviceSlice::new(
+            recip_first.buffer(),
+            recip_first.offset(),
+            2 * p1.wires.row_entries(),
+        )?;
+        let recip_instance = cx.inst_resident(
+            TableKey::SoftmaxRecip,
+            recip_view,
+            2,
+            p1.wires.row_entries(),
+            &[Some(0), Some(16)],
+            Vec::new(),
+        )?;
+        let rin_open = open_fp_vec_resident_p(
+            cx.stream,
+            p1.dom_rin_row,
+            p1.wires.row_column(1)?,
+            &recip_instance.point,
+            cx.backend.as_deref_mut().expect("resident attention backend"),
+        )?;
+        cx.zero.push(recip_instance.col_claims[0].value.sub(rin_open));
+        let recips_open = open_fp_vec_resident_p(
+            cx.stream,
+            p1.dom_recips,
+            p1.wires.row_column(2)?,
+            &recip_instance.point,
+            cx.backend.as_deref_mut().expect("resident attention backend"),
+        )?;
+        cx.zero.push(recip_instance.col_claims[1].value.sub(recips_open));
+
+        let scores_instance = cx.inst_resident(
+            TableKey::Range(s_sc),
+            p1.wires.scores_columns(),
+            2,
+            rect_entries,
+            &[Some(0), None],
+            vec![LeafAuxClaim {
+                col: 1,
+                point: exp_instance.point.clone(),
+                value: exp_instance.col_claims[0].value,
+            }],
+        )?;
+        let transported_scores = transport_p(&scores_instance, s_sc);
+        let score_point = scores_instance.point.clone();
+        let eq_scores = eq_vec(&score_point);
+        cx.ctr_other.fp2_mults += rect_entries as u64;
+        let mut causal_mass = Fp2::ZERO;
+        for head in 0..H {
+            for row in 0..t {
+                for col in 0..=row {
+                    causal_mass += eq_scores[head * sp2 + row * s_pad + col];
+                }
+            }
+        }
+        let pad_mask = Fp2::ONE - causal_mass;
+        let exp_pad = (0..1usize << 16)
+            .find(|&index| luts.exp[index] == 0)
+            .ok_or(AccelError::InvalidInput("exp LUT has no padding input"))?
+            as u16 as i16;
+        let pad_acc = Fp2::from_base(Fp::from_i64((exp_pad as i64) << s_sc));
+        let mut above_weights = Vec::with_capacity(H * shape.n_above_head());
+        for head in 0..H {
+            for row in 0..t {
+                for col in row + 1..t {
+                    above_weights.push(eq_scores[head * sp2 + row * s_pad + col]);
+                }
+            }
+        }
+        let above_open = open_weighted_resident_p(
+            cx.stream,
+            p1.dom_above,
+            p1.wires.above(),
+            &above_weights,
+            cx.backend.as_deref_mut().expect("resident attention backend"),
+        )?;
+        let mut true_score_claim =
+            transported_scores.sub(ProverAuthed::from_public(pad_acc * pad_mask)).add(above_open);
+        if params.softmax_row_shift {
+            let mut row_weights = vec![Fp2::ZERO; H_PAD * q_pad];
+            for head in 0..H {
+                for row in 0..t {
+                    for col in 0..=row {
+                        row_weights[head * q_pad + row] +=
+                            eq_scores[head * sp2 + row * s_pad + col];
+                    }
+                }
+            }
+            let shift_open = open_weighted_resident_p(
+                cx.stream,
+                p1.dom_rowshift.expect("row-shift domain"),
+                p1.wires.row_column(3)?,
+                &row_weights,
+                cx.backend.as_deref_mut().expect("resident attention backend"),
+            )?;
+            true_score_claim =
+                true_score_claim.add(shift_open.scale(Fp2::from_base(Fp::new(1u64 << s_sc))));
+        }
+
+        // 13–15: score head split, QK GEMMs, and K/V boundary selectors.
+        let eq_head_scores = eq_vec(&score_point[sb + qb..]);
+        let mut score_values = [Fp2::ZERO; H];
+        let full_scores = p1.wires.full_scores();
+        for (head, value) in score_values.iter_mut().enumerate() {
+            let head_scores =
+                DeviceSlice::new(full_scores.buffer(), full_scores.offset() + head * sp2, sp2)?;
+            *value = cx
+                .backend
+                .as_deref_mut()
+                .expect("resident attention backend")
+                .mle_eval_device(head_scores, &score_point[..sb + qb])?;
+            cx.ctr_other.fp2_mults += (sp2 - 1) as u64;
+        }
+        let split_scores_dom = cx.doms.take(1);
+        let split_scores_masks = cx.stream.draw_fulls(split_scores_dom, H);
+        let mut sc_split_corrs = [Fp2::ZERO; H];
+        let mut score_auth = Vec::with_capacity(H);
+        for head in 0..H {
+            sc_split_corrs[head] = score_values[head] - split_scores_masks[head].x;
+            score_auth.push(ProverAuthed { x: score_values[head], m: split_scores_masks[head].m });
+        }
+        cx.tx.append("head_split_corrections", 16 * H as u64);
+        let mut score_split_row = ProverAuthed::ZERO.sub(true_score_claim);
+        for head in 0..H {
+            score_split_row = score_split_row.add(score_auth[head].scale(eq_head_scores[head]));
+        }
+        debug_assert_eq!(score_split_row.x, Fp2::ZERO, "resident score head split violated");
+        cx.zero.push(score_split_row);
+
+        let eq_score_columns = eq_vec(&score_point[..sb]);
+        let eq_score_rows = eq_vec(&score_point[sb..sb + qb]);
+        let mut gemm_qk = Vec::with_capacity(H);
+        let mut aux_qkv = Vec::with_capacity(H + 2);
+        for head in 0..H {
+            let a_folded = public_window_fold_resident(
+                wit.i16(LayerI16Field::Q),
+                t,
+                D,
+                head * DH,
+                DH,
+                &eq_score_rows,
+                volta_accel::MatrixFoldAxis::Rows,
+                cx.backend.as_deref_mut().expect("resident attention backend"),
+            )?;
+            let b_folded = match boundary_fold_rows_resident_p(
+                cx.stream,
+                dom_k,
+                wit.i16(LayerI16Field::K),
+                t,
+                D,
+                &eq_score_columns,
+                head * DH,
+                DH,
+                cx.backend.as_deref_mut().expect("resident attention backend"),
+            ) {
+                Ok(value) => value,
+                Err(error) => {
+                    let _ = cx
+                        .backend
+                        .as_deref_mut()
+                        .expect("resident attention backend")
+                        .free_device(a_folded);
+                    return Err(error);
+                }
+            };
+            let (b_folded, b_tags) = b_folded;
+            let gemm_doms = ChainDoms::alloc(&mut cx.doms, DH);
+            let (proof, wire, _, _, _) = prove_gemm_act_chained_resident(
+                a_folded,
+                b_folded,
+                t,
+                DH,
+                t,
+                &score_point[sb..sb + qb],
+                &score_point[..sb],
+                score_auth[head],
+                move |point, value| {
+                    let eq = eq_vec(point);
+                    let tag = (0..DH).fold(Fp2::ZERO, |sum, index| sum + eq[index] * b_tags[index]);
+                    Ok(ProverAuthed { x: value, m: tag })
+                },
+                &gemm_doms,
+                cx.stream,
+                cx.tx,
+                cx.backend.as_deref_mut().expect("resident attention backend"),
+            )?;
+            let mut lifted_point = wire.point[..6].to_vec();
+            lifted_point.extend(head_bit_coords(head));
+            lifted_point.push(Fp2::ZERO);
+            lifted_point.push(Fp2::ZERO);
+            lifted_point.extend_from_slice(&wire.point[6..]);
+            aux_qkv.push(LeafAuxClaim { col: 1, point: lifted_point, value: wire.value });
+            gemm_qk.push((proof, wire.corr));
+        }
+        let rho_k: Vec<Fp2> = (0..d_cb + qb).map(|_| cx.tx.challenge_fp2()).collect();
+        let k_open = open_matrix_resident_p(
+            cx.stream,
+            dom_k,
+            wit.i16(LayerI16Field::K),
+            t,
+            D,
+            &rho_k,
+            cx.backend.as_deref_mut().expect("resident attention backend"),
+        )?;
+        let mut k_point = rho_k[..d_cb].to_vec();
+        k_point.push(Fp2::ONE);
+        k_point.push(Fp2::ZERO);
+        k_point.extend_from_slice(&rho_k[d_cb..]);
+        aux_qkv.push(LeafAuxClaim { col: 1, point: k_point, value: k_open });
+        let rho_v: Vec<Fp2> = (0..d_cb + qb).map(|_| cx.tx.challenge_fp2()).collect();
+        let v_open = open_matrix_resident_p(
+            cx.stream,
+            dom_v,
+            wit.i16(LayerI16Field::V),
+            t,
+            D,
+            &rho_v,
+            cx.backend.as_deref_mut().expect("resident attention backend"),
+        )?;
+        let mut v_point = rho_v[..d_cb].to_vec();
+        v_point.push(Fp2::ZERO);
+        v_point.push(Fp2::ONE);
+        v_point.extend_from_slice(&rho_v[d_cb..]);
+        aux_qkv.push(LeafAuxClaim { col: 1, point: v_point, value: v_open });
+
+        // 16–17: QKV lookup, permuted committed c_attn, and LN1.
+        let qkv_instance = cx.inst_resident(
+            TableKey::Range(s_qkv),
+            p1.wires.qkv_columns(),
+            2,
+            p1.wires.qkv_entries(),
+            &[Some(0), None],
+            aux_qkv,
+        )?;
+        let mut qkv_claim = transport_p(&qkv_instance, s_qkv);
+        let qkv_point = qkv_instance.point.clone();
+        if let Some(biases) = biases {
+            qkv_claim = sub_bias_p(
+                qkv_claim,
+                &cattn_bias_permuted(&biases.c_attn),
+                12,
+                &qkv_point,
+                t,
+                s_qkv,
+                &mut cx.ctr_other,
+            );
+        }
+        let (r_j_qkv, r_i_qkv) = qkv_point.split_at(12);
+        let cattn_doms = ChainDoms::alloc(&mut cx.doms, D);
+        let (gemm_cattn, wire_ln1, w_cattn_corr, wclaim_cattn, _, _) =
+            prove_gemm_committed_chained_resident(
+                wit.i16(LayerI16Field::Ln1Out),
+                resident_model.layer_weight(layer, LayerWeightField::CAttnProof)?,
+                t,
+                D,
+                4096,
+                r_i_qkv,
+                r_j_qkv,
+                qkv_claim,
+                &cattn_doms,
+                cx.stream,
+                cx.tx,
+                cx.backend.as_deref_mut().expect("resident attention backend"),
+            )?;
+        let ln = prove_ln_chain_resident(
+            t,
+            s_ln,
+            &p1.ln,
+            &p1.rsqrt,
+            wit.i16(LayerI16Field::XIn),
+            dom_xin,
+            resident_model.layer_weight(layer, LayerWeightField::Ln1Gain)?,
+            &weights.ln1_gain,
+            &weights.ln1_bias,
+            &p1.lv1,
+            &wire_ln1,
+            cx,
+        )?;
+
+        Ok((
+            AttnBlockProof {
+                ln_vec_corrs: std::mem::take(&mut p1.ln_vec_corrs),
+                denoms_corr: std::mem::take(&mut p1.denoms_corr),
+                recip_in_corr: std::mem::take(&mut p1.recip_in_corr),
+                recips_corr: std::mem::take(&mut p1.recips_corr),
+                above_corr: std::mem::take(&mut p1.above_corr),
+                row_shift_corr: p1.row_shift_corr.take(),
+                hadamard2,
+                ismax_rowsum_corr,
+                inst_proj: proj_site.main.proof,
+                inst_proj_stage1: proj_site.stage1.map(|stage| stage.proof),
+                gemm_proj,
+                av_wire_corr: wire_av.corr,
+                w_proj_corr,
+                inst_av: av_site.main.proof,
+                av_split_corrs,
+                gemm_wv,
+                causal,
+                causal_w_corr,
+                inst_sn: sn_instance.proof,
+                hadamard,
+                rowsum_corr,
+                inst_exp: exp_instance.proof,
+                inst_recip: recip_instance.proof,
+                inst_sc: scores_instance.proof,
+                sc_split_corrs,
+                gemm_qk,
+                inst_qkv: qkv_instance.proof,
+                gemm_cattn,
+                ln1_wire_corr: wire_ln1.corr,
+                w_cattn_corr,
+                ln,
+            },
+            vec![wclaim_proj, wclaim_cattn],
+        ))
+    })();
+    let free_result = p1.free(
+        cx.backend
+            .as_deref_mut()
+            .ok_or(AccelError::InvalidInput("resident attention cleanup requires a backend"))?,
+    );
+    match (result, free_result) {
+        (Ok(value), Ok(())) => Ok(value),
+        (Err(error), _) | (_, Err(error)) => Err(error),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -5037,6 +6220,9 @@ const _: () = {
     let _ = auth_matrix_rows_resident_p::<i16>;
     let _ = ffn_phase1_resident;
     let _ = prove_ffn_block_resident;
+    let _ = attn_phase1_resident;
+    let _ = prove_attn_block_resident;
+    let _ = ResidentAttnP1::free;
 };
 
 // ---------------------------------------------------------------------------
@@ -5071,6 +6257,513 @@ mod tests {
             let wit = forward_layer(&x, &w, &luts, T);
             (luts, w, wit)
         })
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn cuda_resident_attention_phase1_matches_cpu_bindings() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../benchmarks/weights");
+        if !dir.join("gpt2s-q.bin").exists() {
+            eprintln!("skipping CUDA resident attention phase-1 differential: artifact absent");
+            return;
+        }
+        let mut gpu = match Backend::cuda_resident() {
+            Ok(gpu) => gpu,
+            Err(e) if std::env::var("VOLTA_REQUIRE_CUDA").as_deref() != Ok("1") => {
+                eprintln!("skipping CUDA resident attention phase-1 differential: {e}");
+                return;
+            }
+            Err(e) => panic!("CUDA required: {e}"),
+        };
+        let model = load_model(&dir).unwrap();
+        let tokens = model.p.tokens[..3].to_vec();
+        let host_witness = forward_model_tokens(&model, &tokens);
+        let resident_model = upload_resident_model(&model, &mut gpu).unwrap();
+        let resident_witness =
+            forward_model_tokens_resident(&resident_model, &tokens, &mut gpu).unwrap();
+        let proof_error = gpu.upload_new_device(&[0u32]).unwrap();
+        let mut luts = model.luts.clone();
+        luts.params.shift_attn_proj = model.p.shift_attn_proj[0];
+        luts.params.shift_ffn_down = model.p.shift_ffn_down[0];
+        let host_layer = &host_witness.layers[0];
+        let expected_wires = build_attn_wires(host_layer, &luts);
+
+        let mut cpu_stream = CorrelationStream::new([81; 32]);
+        let mut cpu_tx = Transcript::new([82; 32]);
+        let mut cpu_bank = TableBankP::new();
+        let cpu_p1 = {
+            let mut cx = BlockCtxP::new(&mut cpu_stream, &mut cpu_tx, 0, &mut cpu_bank);
+            attn_phase1_with_wires(
+                host_layer,
+                &model.layers[0].0,
+                &luts,
+                build_attn_wires(host_layer, &luts),
+                &mut cx,
+            )
+        };
+        let mut cpu_table_doms = Doms::new(layer_dom_base(239));
+        cpu_bank.finalize(&mut cpu_stream, &mut cpu_tx, &mut cpu_table_doms);
+
+        let mut resident_stream = CorrelationStream::new([81; 32]);
+        let mut resident_tx = Transcript::new([82; 32]);
+        let mut resident_bank = TableBankP::new();
+        let resident_p1 = {
+            let mut cx = BlockCtxP::with_backend(
+                &mut resident_stream,
+                &mut resident_tx,
+                0,
+                &mut resident_bank,
+                &mut gpu,
+            );
+            attn_phase1_resident(
+                &resident_witness.layers[0],
+                &resident_model,
+                &luts,
+                DeviceSlice::new(&proof_error, 0, 1).unwrap(),
+                &mut cx,
+            )
+            .unwrap()
+        };
+        let mut resident_table_doms = Doms::new(layer_dom_base(239));
+        resident_bank
+            .finalize_resident(
+                &mut resident_stream,
+                &mut resident_tx,
+                &mut resident_table_doms,
+                &mut gpu,
+            )
+            .unwrap();
+
+        assert_eq!(resident_p1.ln_vec_corrs, cpu_p1.ln_vec_corrs);
+        assert_eq!(resident_p1.denoms_corr, cpu_p1.denoms_corr);
+        assert_eq!(resident_p1.recip_in_corr, cpu_p1.recip_in_corr);
+        assert_eq!(resident_p1.recips_corr, cpu_p1.recips_corr);
+        assert_eq!(resident_p1.above_corr, cpu_p1.above_corr);
+        assert_eq!(resident_p1.row_shift_corr, cpu_p1.row_shift_corr);
+        assert_eq!(resident_bank.content_keys(), cpu_bank.content_keys());
+        assert_eq!(resident_bank.mult_bytes(), cpu_bank.mult_bytes());
+        assert_eq!(resident_bank.alphas, cpu_bank.alphas);
+        let cpu_mult_corrs: Vec<_> =
+            cpu_bank.auth.iter().map(|(&key, value)| (key, value.2.clone())).collect();
+        let resident_mult_corrs: Vec<_> = resident_bank
+            .resident_auth
+            .iter()
+            .map(|(&key, value)| (key, value.1.clone()))
+            .collect();
+        assert_eq!(resident_mult_corrs, cpu_mult_corrs);
+        assert_eq!(resident_stream.counters, cpu_stream.counters);
+        assert_eq!(resident_tx.ledger(), cpu_tx.ledger());
+        assert_eq!(gpu.download_device(&proof_error, 0, 1).unwrap(), vec![0]);
+
+        let rect_entries = resident_p1.wires.rect_entries();
+        let rect = gpu
+            .download_device(
+                resident_p1.wires.rect_column(0).unwrap().buffer(),
+                0,
+                7 * rect_entries,
+            )
+            .unwrap();
+        let mut expected_rect = vec![0u64; 7 * rect_entries];
+        let rem_sn = build_rem_sn(&expected_wires, luts.params.shift_softmax_norm);
+        let rem_sc = build_rem_sc_packed(
+            &host_layer.scores_acc,
+            &host_layer.scores_q,
+            expected_wires.shape,
+            luts.params.shift_scores,
+        );
+        for index in 0..rect_entries {
+            expected_rect[index] = rem_sn[index] as u64;
+            expected_rect[rect_entries + index] =
+                Fp::from_i64(expected_wires.w_rect[index] as i64).value();
+            expected_rect[2 * rect_entries + index] = rem_sc[index] as u64;
+            expected_rect[3 * rect_entries + index] =
+                Fp::from_i64(expected_wires.sprime_rect[index] as i64).value();
+            expected_rect[4 * rect_entries + index] =
+                Fp::from_i64(expected_wires.exp_rect[index] as i64).value();
+            expected_rect[5 * rect_entries + index] =
+                Fp::from_i64(expected_wires.is_max_rect[index] as i64).value();
+        }
+        let sp2 = expected_wires.shape.sp2();
+        let s_pad = expected_wires.shape.s_pad();
+        for h in 0..H {
+            for i in 0..tokens.len() {
+                for j in 0..tokens.len() {
+                    let rect_index = h * sp2 + i * s_pad + j;
+                    let source = h * tokens.len() * tokens.len() + i * tokens.len() + j;
+                    expected_rect[6 * rect_entries + rect_index] =
+                        Fp::from_i64(expected_wires.acc_full[source]).value();
+                }
+            }
+        }
+        assert_eq!(rect, expected_rect);
+
+        let row_entries = resident_p1.wires.row_entries();
+        let row_values = gpu
+            .download_device(resident_p1.wires.row_column(0).unwrap().buffer(), 0, 4 * row_entries)
+            .unwrap();
+        for index in 0..row_entries {
+            assert_eq!(Fp::new(row_values[index]), Fp::from_i64(expected_wires.denoms_row[index]));
+            assert_eq!(
+                Fp::new(row_values[row_entries + index]),
+                Fp::from_i64(expected_wires.recip_in_row[index])
+            );
+            assert_eq!(
+                Fp::new(row_values[2 * row_entries + index]),
+                Fp::from_i64(expected_wires.recips_row[index] as i64)
+            );
+            assert_eq!(
+                Fp::new(row_values[3 * row_entries + index]),
+                Fp::from_i64(expected_wires.row_shift_row[index] as i64)
+            );
+        }
+        let above = resident_p1.wires.above();
+        let above_values =
+            gpu.download_device(above.buffer(), above.offset(), above.len()).unwrap();
+        assert_eq!(
+            above_values,
+            expected_wires
+                .above_acc
+                .iter()
+                .map(|&value| Fp::from_i64(value).value())
+                .collect::<Vec<_>>()
+        );
+        let (rem_qkv, out_qkv) =
+            build_qkv_cols(host_layer, luts.params.shift_qkv, tokens.len().next_power_of_two());
+        let qkv_entries = resident_p1.wires.qkv_entries();
+        let qkv = gpu
+            .download_device(resident_p1.wires.qkv_column(0).unwrap().buffer(), 0, 2 * qkv_entries)
+            .unwrap();
+        assert_eq!(qkv[..qkv_entries], rem_qkv.iter().map(|&x| x as u64).collect::<Vec<_>>());
+        assert_eq!(
+            qkv[qkv_entries..],
+            out_qkv.iter().map(|&x| Fp::from_i64(x as i64).value()).collect::<Vec<_>>()
+        );
+
+        resident_p1.free(&mut gpu).unwrap();
+        resident_bank.free_resident_multiplicities(&mut gpu);
+        gpu.free_device(proof_error).unwrap();
+        resident_witness.free(&mut gpu).unwrap();
+        resident_model.free(&mut gpu).unwrap();
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn cuda_resident_attention_proof_matches_cpu_byte_for_byte() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../benchmarks/weights");
+        if !dir.join("gpt2s-q.bin").exists() {
+            eprintln!("skipping CUDA resident attention proof differential: artifact absent");
+            return;
+        }
+        let mut gpu = match Backend::cuda_resident() {
+            Ok(gpu) => gpu,
+            Err(e) if std::env::var("VOLTA_REQUIRE_CUDA").as_deref() != Ok("1") => {
+                eprintln!("skipping CUDA resident attention proof differential: {e}");
+                return;
+            }
+            Err(e) => panic!("CUDA required: {e}"),
+        };
+        let model = load_model(&dir).unwrap();
+        let tokens = model.p.tokens[..3].to_vec();
+        let host_witness = forward_model_tokens(&model, &tokens);
+        let resident_model = upload_resident_model(&model, &mut gpu).unwrap();
+        let resident_witness =
+            forward_model_tokens_resident(&resident_model, &tokens, &mut gpu).unwrap();
+        let proof_error = gpu.upload_new_device(&[0u32]).unwrap();
+        let t = tokens.len();
+        let mut luts = model.luts.clone();
+        luts.params.shift_attn_proj = model.p.shift_attn_proj[0];
+        luts.params.shift_ffn_down = model.p.shift_ffn_down[0];
+        let host_layer = &host_witness.layers[0];
+        let weights = &model.layers[0].0;
+        let biases = &model.layers[0].1;
+
+        let run_cpu = || {
+            let mut stream = CorrelationStream::new([121; 32]);
+            let mut tx = Transcript::new([122; 32]);
+            let mut bank = TableBankP::new();
+            let (p1, doms, dom_xin, dom_k, dom_v, dom_abo, xin_corr, k_corr, v_corr, abo_corr) = {
+                let mut cx = BlockCtxP::new(&mut stream, &mut tx, 0, &mut bank);
+                let dom_xin = cx.doms.take(t as u64);
+                let xin_corr =
+                    auth_matrix_rows_p(cx.stream, cx.tx, dom_xin, &host_layer.x_in, t, D);
+                let dom_k = cx.doms.take(t as u64);
+                let k_corr = auth_matrix_rows_p(cx.stream, cx.tx, dom_k, &host_layer.k, t, D);
+                let dom_v = cx.doms.take(t as u64);
+                let v_corr = auth_matrix_rows_p(cx.stream, cx.tx, dom_v, &host_layer.v, t, D);
+                let dom_abo = cx.doms.take(t as u64);
+                let abo_corr =
+                    auth_matrix_rows_p(cx.stream, cx.tx, dom_abo, &host_layer.attn_block_out, t, D);
+                let p1 = attn_phase1_with_wires(
+                    host_layer,
+                    weights,
+                    &luts,
+                    build_attn_wires(host_layer, &luts),
+                    &mut cx,
+                );
+                (p1, cx.doms, dom_xin, dom_k, dom_v, dom_abo, xin_corr, k_corr, v_corr, abo_corr)
+            };
+            let mut table_doms = Doms::new(layer_dom_base(238));
+            bank.finalize(&mut stream, &mut tx, &mut table_doms);
+            let (proof, claims, mut prod, mut zero, mut counters) = {
+                let mut cx = BlockCtxP::with_doms(&mut stream, &mut tx, doms, &mut bank);
+                let k_segment = [CacheSegP { dom: dom_k, rows: t, data: &host_layer.k }];
+                let v_segment = [CacheSegP { dom: dom_v, rows: t, data: &host_layer.v }];
+                let (proof, claims) = prove_attn_block(
+                    host_layer,
+                    weights,
+                    &luts,
+                    p1,
+                    &mut cx,
+                    dom_xin,
+                    &k_segment,
+                    &v_segment,
+                    dom_abo,
+                    Some(biases),
+                );
+                (proof, claims, cx.prod, cx.zero, cx.ctr_instances)
+            };
+            let tables = bank.close(
+                &luts,
+                &mut stream,
+                &mut table_doms,
+                &mut tx,
+                &mut counters,
+                &mut prod,
+                &mut zero,
+            );
+            (
+                proof,
+                claims,
+                tables,
+                prod,
+                zero,
+                counters,
+                stream.counters,
+                tx.ledger().clone(),
+                xin_corr,
+                k_corr,
+                v_corr,
+                abo_corr,
+            )
+        };
+        let expected = run_cpu();
+
+        gpu.begin_measurement().unwrap();
+        let mut stream = CorrelationStream::new([121; 32]);
+        let mut tx = Transcript::new([122; 32]);
+        let mut bank = TableBankP::new();
+        let (p1, doms, dom_xin, dom_k, dom_v, dom_abo, xin_corr, k_corr, v_corr, abo_corr) = {
+            let mut cx = BlockCtxP::with_backend(&mut stream, &mut tx, 0, &mut bank, &mut gpu);
+            let dom_xin = cx.doms.take(t as u64);
+            let xin_corr = auth_matrix_rows_resident_p(
+                cx.stream,
+                cx.tx,
+                dom_xin,
+                resident_witness.layers[0].i16(LayerI16Field::XIn),
+                t,
+                D,
+                cx.backend.as_deref_mut().unwrap(),
+            )
+            .unwrap();
+            let dom_k = cx.doms.take(t as u64);
+            let k_corr = auth_matrix_rows_resident_p(
+                cx.stream,
+                cx.tx,
+                dom_k,
+                resident_witness.layers[0].i16(LayerI16Field::K),
+                t,
+                D,
+                cx.backend.as_deref_mut().unwrap(),
+            )
+            .unwrap();
+            let dom_v = cx.doms.take(t as u64);
+            let v_corr = auth_matrix_rows_resident_p(
+                cx.stream,
+                cx.tx,
+                dom_v,
+                resident_witness.layers[0].i16(LayerI16Field::V),
+                t,
+                D,
+                cx.backend.as_deref_mut().unwrap(),
+            )
+            .unwrap();
+            let dom_abo = cx.doms.take(t as u64);
+            let abo_corr = auth_matrix_rows_resident_p(
+                cx.stream,
+                cx.tx,
+                dom_abo,
+                resident_witness.layers[0].i16(LayerI16Field::AttnBlockOut),
+                t,
+                D,
+                cx.backend.as_deref_mut().unwrap(),
+            )
+            .unwrap();
+            let p1 = attn_phase1_resident(
+                &resident_witness.layers[0],
+                &resident_model,
+                &luts,
+                DeviceSlice::new(&proof_error, 0, 1).unwrap(),
+                &mut cx,
+            )
+            .unwrap();
+            (p1, cx.doms, dom_xin, dom_k, dom_v, dom_abo, xin_corr, k_corr, v_corr, abo_corr)
+        };
+        let mut table_doms = Doms::new(layer_dom_base(238));
+        bank.finalize_resident(&mut stream, &mut tx, &mut table_doms, &mut gpu).unwrap();
+        let (proof, claims, mut prod, mut zero, mut counters) = {
+            let mut cx =
+                BlockCtxP::with_doms_and_backend(&mut stream, &mut tx, doms, &mut bank, &mut gpu);
+            let (proof, claims) = prove_attn_block_resident(
+                &resident_witness.layers[0],
+                &resident_model,
+                0,
+                weights,
+                &luts,
+                p1,
+                &mut cx,
+                dom_xin,
+                dom_k,
+                dom_v,
+                dom_abo,
+                Some(biases),
+            )
+            .unwrap();
+            (proof, claims, cx.prod, cx.zero, cx.ctr_instances)
+        };
+        let tables = bank
+            .close_resident(
+                &luts,
+                &mut stream,
+                &mut table_doms,
+                &mut tx,
+                &mut counters,
+                &mut prod,
+                &mut zero,
+                &mut gpu,
+            )
+            .unwrap();
+        let got = (
+            proof,
+            claims,
+            tables,
+            prod,
+            zero,
+            counters,
+            stream.counters,
+            tx.ledger().clone(),
+            xin_corr,
+            k_corr,
+            v_corr,
+            abo_corr,
+        );
+        assert_eq!(got, expected);
+        assert_eq!(gpu.download_device(&proof_error, 0, 1).unwrap(), vec![0]);
+
+        let delta = Fp2::new(Fp::new(0xAA11_A100), Fp::new(0xA771));
+        let mut verifier = VerifierCtx::new([121; 32], delta);
+        let mut verifier_tx = Transcript::new([122; 32]);
+        let mut pre_bank = TableBankV::empty();
+        let (verifier_doms, xin_keys, k_keys, v_keys, abo_keys, attn_v1) = {
+            let mut cx = BlockCtxV::new(&mut verifier, &mut verifier_tx, 0, &mut pre_bank);
+            let dom_xin_v = cx.doms.take(t as u64);
+            let xin_keys = auth_matrix_rows_v(cx.ctx, dom_xin_v, &got.8, t, D);
+            let dom_k_v = cx.doms.take(t as u64);
+            let k_keys = auth_matrix_rows_v(cx.ctx, dom_k_v, &got.9, t, D);
+            let dom_v_v = cx.doms.take(t as u64);
+            let v_keys = auth_matrix_rows_v(cx.ctx, dom_v_v, &got.10, t, D);
+            let dom_abo_v = cx.doms.take(t as u64);
+            let abo_keys = auth_matrix_rows_v(cx.ctx, dom_abo_v, &got.11, t, D);
+            let attn_v1 = verify_attn_phase1(BandShape::square(t), &luts, &got.0, &mut cx)
+                .expect("resident attention phase 1 verifies");
+            (cx.doms, xin_keys, k_keys, v_keys, abo_keys, attn_v1)
+        };
+        let expected_contents: std::collections::BTreeSet<_> =
+            got.2.iter().map(|proof| proof.key).collect();
+        let mut verifier_table_doms = Doms::new(layer_dom_base(238));
+        let mut verifier_bank = TableBankV::finalize(
+            &expected_contents,
+            &got.2,
+            &mut verifier,
+            &mut verifier_tx,
+            &mut verifier_table_doms,
+        )
+        .expect("resident attention table phase 1 verifies");
+        let (weight_keys, mut key_prod, mut key_zero) = {
+            let mut cx = BlockCtxV::with_doms(
+                &mut verifier,
+                &mut verifier_tx,
+                verifier_doms,
+                &mut verifier_bank,
+            );
+            let k_segments = [CacheSegK { rows: t, keys: &k_keys }];
+            let v_segments = [CacheSegK { rows: t, keys: &v_keys }];
+            let keys = verify_attn_block(
+                BandShape::square(t),
+                &weights.ln1_gain,
+                &weights.ln1_bias,
+                &luts,
+                &got.0,
+                attn_v1,
+                &mut cx,
+                &xin_keys,
+                &k_segments,
+                &v_segments,
+                &abo_keys,
+                Some(biases),
+            )
+            .expect("resident attention proof verifies");
+            (keys, cx.kprod, cx.kzero)
+        };
+        verifier_bank
+            .close(
+                &luts,
+                &got.2,
+                &mut verifier,
+                &mut verifier_table_doms,
+                &mut verifier_tx,
+                &mut key_prod,
+                &mut key_zero,
+            )
+            .expect("resident attention table closure verifies");
+        let cattn = cattn_permuted(&weights.c_attn);
+        let mut prover_zero = got.4.clone();
+        for ((claim, (point, key)), (matrix, rows, cols)) in got
+            .1
+            .iter()
+            .zip(&weight_keys)
+            .zip([(&weights.attn_proj[..], D, D), (&cattn[..], D, 4096)])
+        {
+            assert_eq!(&claim.point, point);
+            let value = weight_true_eval(matrix, rows, cols, point);
+            prover_zero.push(claim.value.sub(ProverAuthed::from_public(value)));
+            key_zero.push(key.sub(VerifierKey::from_public(value, delta)));
+        }
+        let mut prover_batch_doms = Doms::new(layer_dom_base(254));
+        let mut verifier_batch_doms = Doms::new(layer_dom_base(254));
+        let challenge = tx.challenge_fp2();
+        assert_eq!(challenge, verifier_tx.challenge_fp2());
+        let product_domain = prover_batch_doms.take(1);
+        assert_eq!(product_domain, verifier_batch_doms.take(1));
+        let product_mask = stream.draw_fulls(product_domain, 1)[0];
+        let product_key = verifier.expand_full_keys(product_domain, 1)[0];
+        let product_proof = prod_batch_prover(&got.3, challenge, product_mask, &mut tx);
+        assert!(prod_batch_verify(&key_prod, product_key, delta, challenge, &product_proof));
+        let zero_domain = prover_batch_doms.take(1);
+        assert_eq!(zero_domain, verifier_batch_doms.take(1));
+        assert!(zero_batch_exchange(
+            &prover_zero,
+            &key_zero,
+            &mut stream,
+            &mut verifier,
+            zero_domain,
+            &mut tx,
+        ));
+        let stats = gpu.finish_measurement().unwrap();
+        assert_eq!(stats.operation(volta_accel::Operation::Logup).cpu_residual_ns, 0);
+        assert_eq!(stats.operation(volta_accel::Operation::Gemm).cpu_residual_ns, 0);
+        gpu.free_device(proof_error).unwrap();
+        resident_witness.free(&mut gpu).unwrap();
+        resident_model.free(&mut gpu).unwrap();
     }
 
     #[cfg(feature = "cuda")]

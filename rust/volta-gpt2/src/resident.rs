@@ -215,6 +215,7 @@ impl ResidentLayerWitness {
 #[derive(Clone, Copy, Debug)]
 struct LayerWeightLayout {
     c_attn: Region,
+    c_attn_proof: Region,
     c_attn_bias: Region,
     attn_proj: Region,
     attn_proj_bias: Region,
@@ -234,6 +235,7 @@ struct LayerWeightLayout {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LayerWeightField {
     CAttn,
+    CAttnProof,
     CAttnBias,
     AttnProj,
     AttnProjBias,
@@ -278,6 +280,7 @@ impl ModelWeightLayout {
         let mut p = 0;
         let layers = std::array::from_fn(|_| LayerWeightLayout {
             c_attn: take(&mut p, D * 3 * D),
+            c_attn_proof: take(&mut p, D * 4096),
             c_attn_bias: take(&mut p, 3 * D),
             attn_proj: take(&mut p, D * D),
             attn_proj_bias: take(&mut p, D),
@@ -338,6 +341,7 @@ impl ResidentGpt2Model {
             .ok_or(AccelError::InvalidInput("resident layer index out of range"))?;
         let region = match field {
             LayerWeightField::CAttn => layout.c_attn,
+            LayerWeightField::CAttnProof => layout.c_attn_proof,
             LayerWeightField::CAttnBias => layout.c_attn_bias,
             LayerWeightField::AttnProj => layout.attn_proj,
             LayerWeightField::AttnProjBias => layout.attn_proj_bias,
@@ -406,6 +410,19 @@ pub fn upload_resident_model(
         {
             let _ = index;
             upload_region(backend, &values, region.c_attn, &weights.c_attn)?;
+            // Proof-only padded/permuted view: col' = third*1024 + rest.
+            // It is prepared once during model setup; the CUDA backend stays
+            // shape-parametric and never learns these GPT-2 layout constants.
+            let mut c_attn_proof = vec![0i16; D * 4096];
+            for row in 0..D {
+                for column in 0..3 * D {
+                    let third = column / D;
+                    let rest = column % D;
+                    c_attn_proof[row * 4096 + third * 1024 + rest] =
+                        weights.c_attn[row * 3 * D + column];
+                }
+            }
+            upload_region(backend, &values, region.c_attn_proof, &c_attn_proof)?;
             upload_region(backend, &values, region.c_attn_bias, &biases.c_attn)?;
             upload_region(backend, &values, region.attn_proj, &weights.attn_proj)?;
             upload_region(backend, &values, region.attn_proj_bias, &biases.attn_proj)?;

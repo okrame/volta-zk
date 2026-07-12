@@ -13,7 +13,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 12;
+constexpr uint32_t ABI_VERSION = 14;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -820,6 +820,224 @@ __global__ void ln_hadamard_factors_kernel(
     scaled[z] = col < cols
         ? Fp2{fp_mul(rsqrt[row], fp_from_i64_device(gain[col])), 0}
         : Fp2{0, 0};
+}
+
+__global__ void base_broadcast_fp2_kernel(
+    const void* input, Fp2* output, size_t input_len, size_t repeat,
+    size_t output_len, int kind) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z < output_len) output[z] = Fp2{load_base_scalar(input, z / repeat, kind), 0};
+}
+
+__global__ void attention_above_mask_kernel(
+    Fp2* equality, size_t entries, size_t rows, size_t seq, size_t pos0,
+    size_t heads, size_t query_pad, size_t seq_pad) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z >= entries) return;
+    const size_t sp2 = query_pad * seq_pad;
+    const size_t head = z / sp2;
+    const size_t rem = z - head * sp2;
+    const size_t row = rem / seq_pad;
+    const size_t col = rem - row * seq_pad;
+    if (head >= heads || row >= rows || col >= seq || col < pos0 + row + 1)
+        equality[z] = Fp2{0, 0};
+}
+
+struct AttentionProofWiresArgs {
+    uint64_t q_id; size_t q_offset;
+    uint64_t k_cache_id; size_t k_cache_offset;
+    uint64_t own_k_id; size_t own_k_offset;
+    uint64_t v_id; size_t v_offset;
+    uint64_t scores_acc_id; size_t scores_acc_offset;
+    uint64_t scores_q_id; size_t scores_q_offset;
+    uint64_t row_shifts_id; size_t row_shifts_offset;
+    uint64_t exp_outputs_id; size_t exp_outputs_offset;
+    uint64_t denoms_id; size_t denoms_offset;
+    uint64_t recips_id; size_t recips_offset;
+    uint64_t softmax_weights_id; size_t softmax_weights_offset;
+    uint64_t recip_lut_id; size_t recip_lut_offset;
+    uint64_t qkv_acc_id; size_t qkv_acc_offset;
+    uint64_t error_id; size_t error_offset;
+    uint64_t rect_id; size_t rect_offset;
+    uint64_t rows_id; size_t rows_offset;
+    uint64_t above_id; size_t above_offset;
+    uint64_t qkv_id; size_t qkv_offset;
+    size_t query_rows;
+    size_t seq;
+    size_t pos0;
+    size_t heads;
+    size_t head_pad;
+    size_t head_dim;
+    size_t query_pad;
+    size_t seq_pad;
+    size_t d_pad;
+    uint32_t shift_scores;
+    uint32_t shift_softmax_norm;
+    uint32_t shift_qkv;
+    uint32_t recip_den_shift;
+    int exp_pad_input;
+    int recip_pad_output;
+    int use_row_shift;
+};
+
+__global__ void attention_rect_columns_kernel(
+    const int16_t* q, const int16_t* k_cache,
+    const int64_t* scores_acc, const int16_t* scores_q,
+    const int16_t* row_shifts, const int16_t* exp_outputs,
+    const int16_t* recips, const int16_t* softmax_weights,
+    uint64_t* rect, uint64_t* above, uint32_t* error,
+    size_t query_rows, size_t seq, size_t pos0, size_t heads,
+    size_t head_pad, size_t head_dim, size_t query_pad, size_t seq_pad,
+    uint32_t shift_scores, uint32_t shift_softmax_norm,
+    int16_t exp_pad_input, int use_row_shift) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    const size_t sp2 = query_pad * seq_pad;
+    const size_t entries = head_pad * sp2;
+    if (z >= entries) return;
+    const size_t head = z / sp2;
+    const size_t rem = z - head * sp2;
+    const size_t row = rem / seq_pad;
+    const size_t col = rem - row * seq_pad;
+    const int64_t half_scores = int64_t{1} << (shift_scores - 1);
+    const int64_t half_norm = int64_t{1} << (shift_softmax_norm - 1);
+    int64_t norm_rem = half_norm;
+    int64_t weight = 0;
+    int64_t score_rem = half_scores;
+    int64_t shifted_score = exp_pad_input;
+    int64_t exp_value = 0;
+    int64_t is_max = 0;
+    int64_t full_score = 0;
+    if (head < heads && row < query_rows && col < seq) {
+        const size_t d = heads * head_dim;
+        for (size_t l = 0; l < head_dim; ++l) {
+            full_score += static_cast<int64_t>(q[row * d + head * head_dim + l]) *
+                static_cast<int64_t>(k_cache[col * d + head * head_dim + l]);
+        }
+        const size_t width = pos0 + row + 1;
+        if (col < width) {
+            const size_t per_head =
+                query_rows * pos0 + query_rows * (query_rows + 1) / 2;
+            const size_t packed =
+                head * per_head + packed_row_prefix(row, pos0) + col;
+            const int64_t score = scores_q[packed];
+            const int64_t row_shift = use_row_shift ? row_shifts[head * query_rows + row] : 0;
+            shifted_score = score - row_shift;
+            if (shifted_score < INT16_MIN || shifted_score > INT16_MAX)
+                atomicExch(error, 1u);
+            score_rem = scores_acc[packed] + half_scores -
+                score * (int64_t{1} << shift_scores);
+            if (score_rem < 0 || score_rem >= (int64_t{1} << shift_scores))
+                atomicExch(error, 1u);
+            if (scores_acc[packed] != full_score) atomicExch(error, 1u);
+            exp_value = exp_outputs[packed];
+            weight = softmax_weights[packed];
+            const int64_t recip = recips[head * query_rows + row];
+            norm_rem = exp_value * recip + half_norm -
+                weight * (int64_t{1} << shift_softmax_norm);
+            if (norm_rem < 0 || norm_rem >= (int64_t{1} << shift_softmax_norm))
+                atomicExch(error, 1u);
+            if (use_row_shift && shifted_score == 0) {
+                bool first = true;
+                const size_t start = head * per_head + packed_row_prefix(row, pos0);
+                for (size_t prior = 0; prior < col; ++prior) {
+                    if (static_cast<int64_t>(scores_q[start + prior]) - row_shift == 0) {
+                        first = false;
+                        break;
+                    }
+                }
+                is_max = first ? 1 : 0;
+            }
+        } else {
+            const size_t local = col - width;
+            const size_t row_prefix = row * (query_rows - 1) - row * (row - 1) / 2;
+            const size_t above_per_head = query_rows * (query_rows - 1) / 2;
+            above[head * above_per_head + row_prefix + local] =
+                fp_from_i64_device(full_score);
+        }
+    }
+    rect[z] = static_cast<uint64_t>(norm_rem);
+    rect[entries + z] = fp_from_i64_device(weight);
+    rect[2 * entries + z] = static_cast<uint64_t>(score_rem);
+    rect[3 * entries + z] = fp_from_i64_device(shifted_score);
+    rect[4 * entries + z] = fp_from_i64_device(exp_value);
+    rect[5 * entries + z] = static_cast<uint64_t>(is_max);
+    rect[6 * entries + z] = fp_from_i64_device(full_score);
+}
+
+__global__ void attention_row_columns_kernel(
+    const int64_t* denoms, const int16_t* recips, const int16_t* row_shifts,
+    const int16_t* recip_lut, uint64_t* rows_out, uint32_t* error,
+    size_t query_rows, size_t heads, size_t head_pad, size_t query_pad,
+    size_t seq, size_t pos0, uint32_t recip_den_shift,
+    int16_t recip_pad_output, int use_row_shift,
+    const int16_t* scores_q) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    const size_t entries = head_pad * query_pad;
+    if (z >= entries) return;
+    const size_t head = z / query_pad;
+    const size_t row = z - head * query_pad;
+    int64_t denom = 0;
+    int64_t recip_input = 0;
+    int64_t recip = recip_pad_output;
+    int64_t row_shift = 0;
+    if (head < heads && row < query_rows) {
+        denom = denoms[head * query_rows + row];
+        recip_input = denom >> recip_den_shift;
+        recip = recips[head * query_rows + row];
+        row_shift = use_row_shift ? row_shifts[head * query_rows + row] : 0;
+        if (recip_input < 0 || recip_input >= (int64_t{1} << 16)) {
+            atomicExch(error, 1u);
+            recip_input = 0;
+        } else if (recip_lut[static_cast<size_t>(recip_input)] != recip) {
+            atomicExch(error, 1u);
+        }
+        if (use_row_shift) {
+            const size_t per_head =
+                query_rows * pos0 + query_rows * (query_rows + 1) / 2;
+            const size_t start = head * per_head + packed_row_prefix(row, pos0);
+            const size_t width = pos0 + row + 1;
+            bool found = false;
+            for (size_t col = 0; col < width; ++col) {
+                if (scores_q[start + col] == row_shift) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found || width > seq) atomicExch(error, 1u);
+        }
+    }
+    rows_out[z] = fp_from_i64_device(denom);
+    rows_out[entries + z] = static_cast<uint64_t>(recip_input);
+    rows_out[2 * entries + z] = fp_from_i64_device(recip);
+    rows_out[3 * entries + z] = fp_from_i64_device(row_shift);
+}
+
+__global__ void attention_qkv_columns_kernel(
+    const int64_t* qkv_acc, const int16_t* q, const int16_t* own_k,
+    const int16_t* v, uint64_t* qkv_columns, uint32_t* error,
+    size_t query_rows, size_t d, size_t query_pad, size_t d_pad,
+    uint32_t shift_qkv) {
+    const size_t width = 4 * d_pad;
+    const size_t entries = query_pad * width;
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z >= entries) return;
+    const size_t row = z / width;
+    const size_t col = z - row * width;
+    const size_t third = col / d_pad;
+    const size_t rest = col - third * d_pad;
+    const int64_t half = int64_t{1} << (shift_qkv - 1);
+    int64_t remainder = half;
+    int64_t output = 0;
+    if (row < query_rows && third < 3 && rest < d) {
+        const size_t natural = row * 3 * d + third * d + rest;
+        output = third == 0 ? q[row * d + rest]
+            : (third == 1 ? own_k[row * d + rest] : v[row * d + rest]);
+        remainder = qkv_acc[natural] + half - output * (int64_t{1} << shift_qkv);
+        if (remainder < 0 || remainder >= (int64_t{1} << shift_qkv))
+            atomicExch(error, 1u);
+    }
+    qkv_columns[z] = static_cast<uint64_t>(remainder);
+    qkv_columns[entries + z] = fp_from_i64_device(output);
 }
 
 __device__ inline int64_t round_stage_i64(int64_t value, uint32_t shift) {
@@ -2133,6 +2351,150 @@ extern "C" int volta_cuda_ln_hadamard_factors_device(
     CUDA_OR_RETURN(context, cudaPeekAtLastError());
     if (mark_timing(context, 2)) return -1;
     return finish_timing(context, OP_GEMM, 0, 0);
+}
+
+extern "C" int volta_cuda_base_broadcast_fp2_device(
+    void* raw, uint64_t input_id, size_t input_offset,
+    uint64_t output_id, size_t output_offset, size_t input_len,
+    size_t repeat, int kind) {
+    Context* c = static_cast<Context*>(raw);
+    const size_t elem = resident_scalar_size(kind);
+    if (!c || !input_len || !repeat || !elem || kind == SCALAR_FP2)
+        return fail_message(c, "invalid resident base broadcast geometry");
+    const size_t output_len = input_len * repeat;
+    void *input = nullptr, *output = nullptr;
+    if (resident_region(c, input_id, input_offset * elem, input_len * elem, &input) ||
+        resident_region(c, output_id, output_offset * sizeof(Fp2),
+                        output_len * sizeof(Fp2), &output)) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    base_broadcast_fp2_kernel<<<(output_len + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        input, static_cast<Fp2*>(output), input_len, repeat, output_len, kind);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_GEMM, 0, 0);
+}
+
+extern "C" int volta_cuda_attention_above_mask_device(
+    void* raw, uint64_t equality_id, size_t equality_offset, size_t entries,
+    size_t rows, size_t seq, size_t pos0, size_t heads, size_t head_pad,
+    size_t query_pad, size_t seq_pad) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !entries || !rows || !seq || !heads || head_pad < heads ||
+        (head_pad & (head_pad - 1)) || query_pad < rows ||
+        (query_pad & (query_pad - 1)) || seq_pad < seq ||
+        (seq_pad & (seq_pad - 1)) || pos0 + rows != seq ||
+        entries != head_pad * query_pad * seq_pad)
+        return fail_message(c, "invalid resident above-causal mask geometry");
+    void* equality = nullptr;
+    if (resident_region(c, equality_id, equality_offset * sizeof(Fp2),
+                        entries * sizeof(Fp2), &equality)) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    attention_above_mask_kernel<<<(entries + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<Fp2*>(equality), entries, rows, seq, pos0, heads,
+        query_pad, seq_pad);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_GEMM, 0, 0);
+}
+
+extern "C" int volta_cuda_attention_proof_wires_device(
+    void* raw, const AttentionProofWiresArgs* a) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !a || a->query_rows < 2 || !a->seq || !a->heads ||
+        !a->head_dim || a->head_pad < a->heads ||
+        (a->head_pad & (a->head_pad - 1)) || a->pos0 + a->query_rows != a->seq ||
+        a->query_pad < a->query_rows || (a->query_pad & (a->query_pad - 1)) ||
+        a->seq_pad < a->seq || (a->seq_pad & (a->seq_pad - 1)) ||
+        a->d_pad < a->heads * a->head_dim || (a->d_pad & (a->d_pad - 1)) ||
+        !a->shift_scores || a->shift_scores > 16 ||
+        !a->shift_softmax_norm || a->shift_softmax_norm > 16 ||
+        !a->shift_qkv || a->shift_qkv > 16 || a->recip_den_shift >= 63 ||
+        a->exp_pad_input < INT16_MIN || a->exp_pad_input > INT16_MAX ||
+        a->recip_pad_output < INT16_MIN || a->recip_pad_output > INT16_MAX ||
+        (a->use_row_shift != 0 && a->use_row_shift != 1))
+        return fail_message(c, "invalid resident attention-proof geometry");
+    const size_t d = a->heads * a->head_dim;
+    const size_t packed_per_head =
+        a->query_rows * a->pos0 + a->query_rows * (a->query_rows + 1) / 2;
+    const size_t packed = a->heads * packed_per_head;
+    const size_t real_rows = a->heads * a->query_rows;
+    const size_t rect_entries = a->head_pad * a->query_pad * a->seq_pad;
+    const size_t row_entries = a->head_pad * a->query_pad;
+    const size_t above_entries =
+        a->heads * a->query_rows * (a->query_rows - 1) / 2;
+    const size_t qkv_entries = a->query_pad * 4 * a->d_pad;
+    void *q = nullptr, *k_cache = nullptr, *own_k = nullptr, *v = nullptr,
+         *scores_acc = nullptr, *scores_q = nullptr, *row_shifts = nullptr,
+         *exp_outputs = nullptr, *denoms = nullptr, *recips = nullptr,
+         *softmax_weights = nullptr, *recip_lut = nullptr, *qkv_acc = nullptr,
+         *error = nullptr, *rect = nullptr, *row_values = nullptr,
+         *above = nullptr, *qkv = nullptr;
+    if (resident_region(c, a->q_id, a->q_offset * sizeof(int16_t),
+                        a->query_rows * d * sizeof(int16_t), &q) ||
+        resident_region(c, a->k_cache_id, a->k_cache_offset * sizeof(int16_t),
+                        a->seq * d * sizeof(int16_t), &k_cache) ||
+        resident_region(c, a->own_k_id, a->own_k_offset * sizeof(int16_t),
+                        a->query_rows * d * sizeof(int16_t), &own_k) ||
+        resident_region(c, a->v_id, a->v_offset * sizeof(int16_t),
+                        a->query_rows * d * sizeof(int16_t), &v) ||
+        resident_region(c, a->scores_acc_id, a->scores_acc_offset * sizeof(int64_t),
+                        packed * sizeof(int64_t), &scores_acc) ||
+        resident_region(c, a->scores_q_id, a->scores_q_offset * sizeof(int16_t),
+                        packed * sizeof(int16_t), &scores_q) ||
+        resident_region(c, a->row_shifts_id, a->row_shifts_offset * sizeof(int16_t),
+                        real_rows * sizeof(int16_t), &row_shifts) ||
+        resident_region(c, a->exp_outputs_id, a->exp_outputs_offset * sizeof(int16_t),
+                        packed * sizeof(int16_t), &exp_outputs) ||
+        resident_region(c, a->denoms_id, a->denoms_offset * sizeof(int64_t),
+                        real_rows * sizeof(int64_t), &denoms) ||
+        resident_region(c, a->recips_id, a->recips_offset * sizeof(int16_t),
+                        real_rows * sizeof(int16_t), &recips) ||
+        resident_region(c, a->softmax_weights_id,
+                        a->softmax_weights_offset * sizeof(int16_t),
+                        packed * sizeof(int16_t), &softmax_weights) ||
+        resident_region(c, a->recip_lut_id, a->recip_lut_offset * sizeof(int16_t),
+                        (size_t{1} << 16) * sizeof(int16_t), &recip_lut) ||
+        resident_region(c, a->qkv_acc_id, a->qkv_acc_offset * sizeof(int64_t),
+                        a->query_rows * 3 * d * sizeof(int64_t), &qkv_acc) ||
+        resident_region(c, a->error_id, a->error_offset * sizeof(uint32_t),
+                        sizeof(uint32_t), &error) ||
+        resident_region(c, a->rect_id, a->rect_offset * sizeof(uint64_t),
+                        7 * rect_entries * sizeof(uint64_t), &rect) ||
+        resident_region(c, a->rows_id, a->rows_offset * sizeof(uint64_t),
+                        4 * row_entries * sizeof(uint64_t), &row_values) ||
+        resident_region(c, a->above_id, a->above_offset * sizeof(uint64_t),
+                        above_entries * sizeof(uint64_t), &above) ||
+        resident_region(c, a->qkv_id, a->qkv_offset * sizeof(uint64_t),
+                        2 * qkv_entries * sizeof(uint64_t), &qkv)) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    attention_rect_columns_kernel<<<(rect_entries + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const int16_t*>(q), static_cast<const int16_t*>(k_cache),
+        static_cast<const int64_t*>(scores_acc), static_cast<const int16_t*>(scores_q),
+        static_cast<const int16_t*>(row_shifts), static_cast<const int16_t*>(exp_outputs),
+        static_cast<const int16_t*>(recips), static_cast<const int16_t*>(softmax_weights),
+        static_cast<uint64_t*>(rect), static_cast<uint64_t*>(above),
+        static_cast<uint32_t*>(error), a->query_rows, a->seq, a->pos0,
+        a->heads, a->head_pad, a->head_dim, a->query_pad, a->seq_pad,
+        a->shift_scores, a->shift_softmax_norm,
+        static_cast<int16_t>(a->exp_pad_input), a->use_row_shift);
+    attention_row_columns_kernel<<<(row_entries + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const int64_t*>(denoms), static_cast<const int16_t*>(recips),
+        static_cast<const int16_t*>(row_shifts), static_cast<const int16_t*>(recip_lut),
+        static_cast<uint64_t*>(row_values), static_cast<uint32_t*>(error),
+        a->query_rows, a->heads, a->head_pad, a->query_pad, a->seq, a->pos0,
+        a->recip_den_shift, static_cast<int16_t>(a->recip_pad_output),
+        a->use_row_shift, static_cast<const int16_t*>(scores_q));
+    attention_qkv_columns_kernel<<<(qkv_entries + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const int64_t*>(qkv_acc), static_cast<const int16_t*>(q),
+        static_cast<const int16_t*>(own_k), static_cast<const int16_t*>(v),
+        static_cast<uint64_t*>(qkv), static_cast<uint32_t*>(error),
+        a->query_rows, d, a->query_pad, a->d_pad, a->shift_qkv);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_LOGUP, 0, 0);
 }
 
 extern "C" int volta_cuda_requant_columns_device(

@@ -30,5 +30,6 @@ pub use model::{
 };
 pub use resident::{
     forward_model_tokens_resident, upload_resident_model, LayerI16Field, LayerI64Field,
-    ResidentGpt2Model, ResidentLayerWitness, ResidentModelWitness,
+    LayerWeightField, ModelWeightField, ResidentGpt2Model, ResidentLayerWitness,
+    ResidentModelWitness,
 };

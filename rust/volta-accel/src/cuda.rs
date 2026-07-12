@@ -267,6 +267,8 @@ type FixedLogitsDevice = unsafe extern "C" fn(
 ) -> c_int;
 type SubfieldCorrectionsDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, u64, usize, usize, c_int) -> c_int;
+type PadBaseVectorDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize, usize, u64, c_int) -> c_int;
 type MatrixFoldDevice = unsafe extern "C" fn(
     *mut c_void,
     u64,
@@ -284,6 +286,36 @@ type MatrixFoldDevice = unsafe extern "C" fn(
 type Fp2DotDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize, *mut Fp2Repr) -> c_int;
 type Fp2ProductRoundDevice = Fp2DotDevice;
+type Fp2TripleProductRoundDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    *mut Fp2Repr,
+) -> c_int;
+type LnHadamardFactorsDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+) -> c_int;
 type RequantColumnsDevice = unsafe extern "C" fn(
     *mut c_void,
     u64,
@@ -312,11 +344,15 @@ type PairColumnsDevice = unsafe extern "C" fn(
     usize,
     usize,
     usize,
-    i16,
-    i16,
+    u64,
+    u64,
+    c_int,
+    c_int,
 ) -> c_int;
 type HistogramFpDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize, usize) -> c_int;
+type HistogramLutDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize, c_int) -> c_int;
 type U32AddInplaceDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize) -> c_int;
 type PackLookupLeafDevice = unsafe extern "C" fn(
@@ -551,12 +587,16 @@ struct Api {
     fixed_requant_i16_device: FixedRequantI16Device,
     fixed_logits_device: FixedLogitsDevice,
     subfield_corrections_device: SubfieldCorrectionsDevice,
+    pad_base_vector_device: PadBaseVectorDevice,
     matrix_fold_device: MatrixFoldDevice,
     fp2_dot_device: Fp2DotDevice,
     fp2_product_round_device: Fp2ProductRoundDevice,
+    fp2_triple_product_round_device: Fp2TripleProductRoundDevice,
+    ln_hadamard_factors_device: LnHadamardFactorsDevice,
     requant_columns_device: RequantColumnsDevice,
     pair_columns_device: PairColumnsDevice,
     histogram_fp_device: HistogramFpDevice,
+    histogram_lut_device: HistogramLutDevice,
     u32_add_inplace_device: U32AddInplaceDevice,
     pack_lookup_leaf_device: PackLookupLeafDevice,
     deinterleave_base_columns_device: DeinterleaveBaseColumnsDevice,
@@ -686,10 +726,19 @@ impl CudaContext {
             subfield_corrections_device: unsafe {
                 load_symbol(handle, b"volta_cuda_subfield_corrections_device\0")?
             },
+            pad_base_vector_device: unsafe {
+                load_symbol(handle, b"volta_cuda_pad_base_vector_device\0")?
+            },
             matrix_fold_device: unsafe { load_symbol(handle, b"volta_cuda_matrix_fold_device\0")? },
             fp2_dot_device: unsafe { load_symbol(handle, b"volta_cuda_fp2_dot_device\0")? },
             fp2_product_round_device: unsafe {
                 load_symbol(handle, b"volta_cuda_fp2_product_round_device\0")?
+            },
+            fp2_triple_product_round_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fp2_triple_product_round_device\0")?
+            },
+            ln_hadamard_factors_device: unsafe {
+                load_symbol(handle, b"volta_cuda_ln_hadamard_factors_device\0")?
             },
             requant_columns_device: unsafe {
                 load_symbol(handle, b"volta_cuda_requant_columns_device\0")?
@@ -699,6 +748,9 @@ impl CudaContext {
             },
             histogram_fp_device: unsafe {
                 load_symbol(handle, b"volta_cuda_histogram_fp_device\0")?
+            },
+            histogram_lut_device: unsafe {
+                load_symbol(handle, b"volta_cuda_histogram_lut_device\0")?
             },
             u32_add_inplace_device: unsafe {
                 load_symbol(handle, b"volta_cuda_u32_add_inplace_device\0")?
@@ -1421,6 +1473,34 @@ impl CudaContext {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub(super) fn pad_base_vector_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        output: u64,
+        output_offset: usize,
+        real: usize,
+        padded: usize,
+        pad: Fp,
+        kind: i32,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates typed regions, padding, and scalar kind.
+        self.check(unsafe {
+            (self.api.pad_base_vector_device)(
+                self.raw,
+                input,
+                input_offset,
+                output,
+                output_offset,
+                real,
+                padded,
+                pad.value(),
+                kind,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn matrix_fold_device(
         &mut self,
         input: u64,
@@ -1497,6 +1577,80 @@ impl CudaContext {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub(super) fn fp2_triple_product_round_device(
+        &mut self,
+        a: u64,
+        a_offset: usize,
+        b: u64,
+        b_offset: usize,
+        c: u64,
+        c_offset: usize,
+        pairs: usize,
+    ) -> Result<[Fp2; 3], AccelError> {
+        let mut output = [Fp2Repr::default(); 3];
+        // SAFETY: Backend validates all three 2*pairs Fp2 regions; output is
+        // one compressed degree-3 round message.
+        self.check(unsafe {
+            (self.api.fp2_triple_product_round_device)(
+                self.raw,
+                a,
+                a_offset,
+                b,
+                b_offset,
+                c,
+                c_offset,
+                pairs,
+                output.as_mut_ptr(),
+            )
+        })?;
+        Ok(output.map(Into::into))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn ln_hadamard_factors_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        mean: u64,
+        mean_offset: usize,
+        rsqrt: u64,
+        rsqrt_offset: usize,
+        gain: u64,
+        gain_offset: usize,
+        centered: u64,
+        centered_offset: usize,
+        scaled: u64,
+        scaled_offset: usize,
+        rows: usize,
+        cols: usize,
+        row_pad: usize,
+        col_pad: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates every typed region and padded geometry.
+        self.check(unsafe {
+            (self.api.ln_hadamard_factors_device)(
+                self.raw,
+                input,
+                input_offset,
+                mean,
+                mean_offset,
+                rsqrt,
+                rsqrt_offset,
+                gain,
+                gain_offset,
+                centered,
+                centered_offset,
+                scaled,
+                scaled_offset,
+                rows,
+                cols,
+                row_pad,
+                col_pad,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn requant_columns_device(
         &mut self,
         acc: u64,
@@ -1547,8 +1701,10 @@ impl CudaContext {
         cols: usize,
         row_pad: usize,
         col_pad: usize,
-        pad_input: i16,
-        pad_output: i16,
+        pad_input: Fp,
+        pad_output: Fp,
+        input_kind: i32,
+        output_kind: i32,
     ) -> Result<(), AccelError> {
         // SAFETY: Backend validates every typed region and padded geometry.
         self.check(unsafe {
@@ -1564,8 +1720,33 @@ impl CudaContext {
                 cols,
                 row_pad,
                 col_pad,
-                pad_input,
-                pad_output,
+                pad_input.value(),
+                pad_output.value(),
+                input_kind,
+                output_kind,
+            )
+        })
+    }
+
+    pub(super) fn histogram_lut_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        output: u64,
+        output_offset: usize,
+        n: usize,
+        signed_input: bool,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates both typed ranges; the mode is sealed.
+        self.check(unsafe {
+            (self.api.histogram_lut_device)(
+                self.raw,
+                input,
+                input_offset,
+                output,
+                output_offset,
+                n,
+                i32::from(signed_input),
             )
         })
     }

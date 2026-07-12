@@ -10,6 +10,7 @@
 use volta_field::Fp2;
 use volta_mac::{FullCorr, ProverAuthed, Transcript, VerifierKey};
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct ProdProof {
     pub m0: Fp2,
     pub m1: Fp2,

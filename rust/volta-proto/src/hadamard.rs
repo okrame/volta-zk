@@ -24,6 +24,7 @@
 
 use crate::logup::{lagrange4, Doms, ProdKeyTriples, ProdTriples};
 use crate::mle::{eq_points, eq_vec, fold_low};
+use volta_accel::{AccelError, Backend, DeviceBuffer, DeviceSlice, Fp2Repr};
 use volta_field::Fp2;
 use volta_mac::{CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey};
 
@@ -53,6 +54,7 @@ impl HadamardDoms {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct HadamardProof {
     /// Per round: corrections (16 B each) transferring g(0), g(2), g(3).
     pub round_corrs: Vec<[Fp2; 3]>,
@@ -150,6 +152,144 @@ pub fn hadamard_prove(
     zero.push(row);
 
     (HadamardProof { round_corrs, e_corr, r_corr, z_corr }, point, e_a, r_a)
+}
+
+fn free_resident_triple(
+    backend: &mut Backend,
+    a: DeviceBuffer<Fp2Repr>,
+    b: DeviceBuffer<Fp2Repr>,
+    c: DeviceBuffer<Fp2Repr>,
+) -> Result<(), AccelError> {
+    let first = backend.free_device(a).err();
+    let second = backend.free_device(b).err();
+    let third = backend.free_device(c).err();
+    first.or(second).or(third).map_or(Ok(()), Err)
+}
+
+/// Device-resident counterpart of [`hadamard_prove`]. The two factors and
+/// equality table are folded D2D; Rust receives only the three round values
+/// and two final scalar openings required to construct the unchanged proof.
+#[allow(clippy::too_many_arguments)]
+pub fn hadamard_prove_resident(
+    rho: &[Fp2],
+    e: DeviceBuffer<Fp2Repr>,
+    r_tab: DeviceBuffer<Fp2Repr>,
+    claim0: ProverAuthed,
+    doms: &HadamardDoms,
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+    prod: &mut ProdTriples,
+    zero: &mut Vec<ProverAuthed>,
+    backend: &mut Backend,
+) -> Result<(HadamardProof, Vec<Fp2>, ProverAuthed, ProverAuthed), AccelError> {
+    let expected = 1usize
+        .checked_shl(rho.len() as u32)
+        .ok_or(AccelError::InvalidInput("resident Hadamard dimension overflow"))?;
+    if e.len() != expected || r_tab.len() != expected || expected < 2 {
+        let _ = backend.free_device(r_tab);
+        let _ = backend.free_device(e);
+        return Err(AccelError::InvalidInput("resident Hadamard geometry mismatch"));
+    }
+    let mut eq_t = match backend.equality_weights_device(rho) {
+        Ok(value) => value,
+        Err(error) => {
+            let _ = backend.free_device(r_tab);
+            let _ = backend.free_device(e);
+            return Err(error);
+        }
+    };
+    let mut e = e;
+    let mut r_tab = r_tab;
+    let mut len = expected;
+    let mut round_corrs = Vec::with_capacity(rho.len());
+    let mut point = Vec::with_capacity(rho.len());
+    let mut claim = claim0;
+    for round in 0..rho.len() {
+        let values = backend.fp2_triple_product_round_device(
+            DeviceSlice::new(&eq_t, 0, len).expect("resident Hadamard eq prefix"),
+            DeviceSlice::new(&e, 0, len).expect("resident Hadamard e prefix"),
+            DeviceSlice::new(&r_tab, 0, len).expect("resident Hadamard R prefix"),
+        );
+        let [g0, g2, g3] = match values {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = free_resident_triple(backend, eq_t, e, r_tab);
+                return Err(error);
+            }
+        };
+        let masks = stream.draw_fulls(doms.round_masks + round as u64, 3);
+        round_corrs.push([g0 - masks[0].x, g2 - masks[1].x, g3 - masks[2].x]);
+        tx.append("hadamard_round_corrections", 48);
+        let g0_a = ProverAuthed { x: g0, m: masks[0].m };
+        let g2_a = ProverAuthed { x: g2, m: masks[1].m };
+        let g3_a = ProverAuthed { x: g3, m: masks[2].m };
+        let g1_a = claim.sub(g0_a);
+        let challenge = tx.challenge_fp2();
+        let weights = lagrange4(challenge);
+        claim = g0_a
+            .scale(weights[0])
+            .add(g1_a.scale(weights[1]))
+            .add(g2_a.scale(weights[2]))
+            .add(g3_a.scale(weights[3]));
+
+        let next_eq = match backend.fp2_fold_rows_device(&eq_t, 0, 1, len, challenge) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = free_resident_triple(backend, eq_t, e, r_tab);
+                return Err(error);
+            }
+        };
+        let next_e = match backend.fp2_fold_rows_device(&e, 0, 1, len, challenge) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = backend.free_device(next_eq);
+                let _ = free_resident_triple(backend, eq_t, e, r_tab);
+                return Err(error);
+            }
+        };
+        let next_r = match backend.fp2_fold_rows_device(&r_tab, 0, 1, len, challenge) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = backend.free_device(next_e);
+                let _ = backend.free_device(next_eq);
+                let _ = free_resident_triple(backend, eq_t, e, r_tab);
+                return Err(error);
+            }
+        };
+        if let Err(error) = free_resident_triple(backend, eq_t, e, r_tab) {
+            let _ = free_resident_triple(backend, next_eq, next_e, next_r);
+            return Err(error);
+        }
+        eq_t = next_eq;
+        e = next_e;
+        r_tab = next_r;
+        len /= 2;
+        point.push(challenge);
+    }
+
+    let e_final = backend.download_device(&e, 0, 1).map(|values| Fp2::from(values[0]));
+    let r_final = backend.download_device(&r_tab, 0, 1).map(|values| Fp2::from(values[0]));
+    let free_result = free_resident_triple(backend, eq_t, e, r_tab);
+    let (e_final, r_final) = match (e_final, r_final, free_result) {
+        (Ok(e), Ok(r), Ok(())) => (e, r),
+        (Err(error), _, _) | (_, Err(error), _) | (_, _, Err(error)) => return Err(error),
+    };
+    let fe = stream.draw_fulls(doms.e_claim, 1)[0];
+    let e_corr = e_final - fe.x;
+    let fr = stream.draw_fulls(doms.r_claim, 1)[0];
+    let r_corr = r_final - fr.x;
+    let product = e_final * r_final;
+    let fz = stream.draw_fulls(doms.z, 1)[0];
+    let z_corr = product - fz.x;
+    tx.append("hadamard_claim_corrections", 48);
+    let e_auth = ProverAuthed { x: e_final, m: fe.m };
+    let r_auth = ProverAuthed { x: r_final, m: fr.m };
+    let z_auth = ProverAuthed { x: product, m: fz.m };
+    prod.push((e_auth, r_auth, z_auth));
+    let row = z_auth.scale(eq_points(rho, &point)).sub(claim);
+    debug_assert_eq!(row.x, Fp2::ZERO, "resident Hadamard closing relation violated");
+    zero.push(row);
+    Ok((HadamardProof { round_corrs, e_corr, r_corr, z_corr }, point, e_auth, r_auth))
 }
 
 /// Verifier: mirrors the recursion on the key side, pushes the key triple
@@ -315,5 +455,94 @@ mod tests {
         for s in 0..10u8 {
             assert!(!run(s, true), "tampered hadamard accepted, seed {s}");
         }
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn resident_hadamard_matches_cpu_and_reuses_context() {
+        let mut gpu = match Backend::cuda_resident() {
+            Ok(gpu) => gpu,
+            Err(error) if std::env::var("VOLTA_REQUIRE_CUDA").as_deref() != Ok("1") => {
+                eprintln!("skipping resident Hadamard differential: {error}");
+                return;
+            }
+            Err(error) => panic!("CUDA required: {error}"),
+        };
+        let n_vars = 6usize;
+        let len = 1usize << n_vars;
+        let rho: Vec<Fp2> = (0..n_vars)
+            .map(|i| Fp2::new(Fp::new(i as u64 * 73 + 5), Fp::new(i as u64 * 89 + 7)))
+            .collect();
+        let e: Vec<Fp2> = (0..len)
+            .map(|i| Fp2::new(Fp::new(i as u64 * 97 + 11), Fp::new(i as u64 * 101 + 13)))
+            .collect();
+        let r_tab: Vec<Fp2> = (0..len)
+            .map(|i| Fp2::new(Fp::new(i as u64 * 103 + 17), Fp::new(i as u64 * 107 + 19)))
+            .collect();
+        let eq = eq_vec(&rho);
+        let total =
+            eq.iter().zip(&e).zip(&r_tab).fold(Fp2::ZERO, |sum, ((&q, &a), &b)| sum + q * a * b);
+
+        let run_cpu = || {
+            let mut stream = CorrelationStream::new([101; 32]);
+            let mut tx = Transcript::new([102; 32]);
+            let initial = stream.draw_fulls(1, 1)[0];
+            let claim0 = ProverAuthed { x: total, m: initial.m };
+            let doms = HadamardDoms::alloc(&mut Doms::new(0xA100), n_vars);
+            let mut prod = Vec::new();
+            let mut zero = Vec::new();
+            let out = hadamard_prove(
+                &rho,
+                e.clone(),
+                r_tab.clone(),
+                claim0,
+                &doms,
+                &mut stream,
+                &mut tx,
+                &mut prod,
+                &mut zero,
+            );
+            (out, prod, zero, stream.counters, tx.ledger().clone())
+        };
+        let expected = run_cpu();
+
+        gpu.begin_measurement().unwrap();
+        let run_resident = |backend: &mut Backend| {
+            let de = backend
+                .upload_new_device(&e.iter().copied().map(Into::into).collect::<Vec<_>>())
+                .unwrap();
+            let dr = backend
+                .upload_new_device(&r_tab.iter().copied().map(Into::into).collect::<Vec<_>>())
+                .unwrap();
+            let mut stream = CorrelationStream::new([101; 32]);
+            let mut tx = Transcript::new([102; 32]);
+            let initial = stream.draw_fulls(1, 1)[0];
+            let claim0 = ProverAuthed { x: total, m: initial.m };
+            let doms = HadamardDoms::alloc(&mut Doms::new(0xA100), n_vars);
+            let mut prod = Vec::new();
+            let mut zero = Vec::new();
+            let out = hadamard_prove_resident(
+                &rho,
+                de,
+                dr,
+                claim0,
+                &doms,
+                &mut stream,
+                &mut tx,
+                &mut prod,
+                &mut zero,
+                backend,
+            )
+            .unwrap();
+            (out, prod, zero, stream.counters, tx.ledger().clone())
+        };
+        let got = run_resident(&mut gpu);
+        assert_eq!(got, expected);
+        let live_after_first = gpu.stats().unwrap().live_device_bytes;
+        let got_reused = run_resident(&mut gpu);
+        assert_eq!(got_reused, expected);
+        assert_eq!(gpu.stats().unwrap().live_device_bytes, live_after_first);
+        let stats = gpu.finish_measurement().unwrap();
+        assert_eq!(stats.operation(volta_accel::Operation::Gemm).cpu_residual_ns, 0);
     }
 }

@@ -56,6 +56,37 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-12 (`P7-integrated-resident` complete FFN proof checkpoint;
+  attention/model orchestration still open)**: ABI v11 adds only
+  shape-parametric proof-data operations: canonical base-vector padding,
+  zero-padded matrix MLE evaluation, typed pair columns for i16/i64/Fp
+  sources, signed/nonnegative LUT histograms, a resident degree-3 triple
+  product round, and broadcast Hadamard-factor construction. None embeds a
+  GPT dimension or changes a protocol message. The mock correlation provider
+  still supplies masks/tags on the host; witness values never cross D2H.
+  `ResidentFfnP1` retains all five bound lookup-column allocations across the
+  alpha boundary, authenticates the four padded LN vectors, and contributes
+  its histograms directly to the global resident `TableBankP`. Phase 2 then
+  consumes those columns, resident boundary openings, two resident committed
+  GEMMs and a D2D-folded LN Hadamard proof. All owned phase-1 buffers are
+  released transactionally on success or error. The existing verifier and
+  proof structs are shared literally with CPU.
+
+  On A100 `3mq19up4`, primitive tests cover non-power-of-two matrix MLE,
+  nonzero vector pads, signed pair indices, LN inputs above i16 range,
+  triple-product rounds and every padded LN factor bit-for-bit. The standalone
+  Hadamard prover matches CPU proof/claims/product/zero rows, correlation
+  counts and transcript across context reuse. The real layer-0 T=3 FFN gate
+  uses frozen weights and biases: phase-1 corrections/global multiplicities,
+  the complete `FfnBlockProof`, both PCS-bound weight claims, table closures,
+  product/zero batches, theoretical counters, correlation consumption and
+  transcript ledger equal CPU byte-for-byte. The unchanged verifier accepts
+  the resident proof after true-weight claim resolution and both final batch
+  closures. CPU `volta-proto` remains 56/56 and the CPU-default accelerator
+  tests remain 3/3. This is a full FFN subgraph result, **not** yet a resident
+  layer/e2e result; attention, layer/model seams, embedding/final-LN and PCS
+  orchestration remain to be connected before reporting rho.
+
 - **2026-07-12 (`P7-integrated-resident` explicit LayerNorm-accumulator
   checkpoint; no protocol change)**: the dataflow audit found that every
   LayerNorm affine accumulator is consumed by a requant proof but was not a

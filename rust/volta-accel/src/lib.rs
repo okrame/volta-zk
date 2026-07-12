@@ -17,7 +17,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 10;
+pub const CUDA_ABI_VERSION: u32 = 11;
 pub const OPERATION_COUNT: usize = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1286,6 +1286,42 @@ impl Backend {
         Ok(output)
     }
 
+    /// Canonically lift and pad a resident base vector into an Fp/u64
+    /// allocation. This is used for authenticated vectors whose protocol
+    /// domain is the next power of two, including nonzero public pad values.
+    pub fn pad_base_vector_device<T: ResidentBaseElement>(
+        &mut self,
+        input: DeviceSlice<'_, T>,
+        padded_len: usize,
+        pad: Fp,
+    ) -> Result<DeviceBuffer<u64>, AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        let _ = pad;
+        if input.is_empty() || padded_len < input.len() || !padded_len.is_power_of_two() {
+            return Err(AccelError::InvalidInput("invalid resident base-vector padding"));
+        }
+        self.validate_device_slice(input, input.len())?;
+        let output = self.alloc_device(padded_len)?;
+        #[cfg(feature = "cuda")]
+        let result = self.cuda.as_mut().expect("CUDA kind without context").pad_base_vector_device(
+            input.buffer.id,
+            input.offset,
+            output.id,
+            0,
+            input.len,
+            padded_len,
+            pad,
+            T::CUDA_KIND,
+        );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
+    }
+
     /// Fold one axis of a resident row-major matrix with public Fp2 weights.
     /// The untouched axis is zero-padded to its next power of two.
     pub fn matrix_fold_device<T: ResidentMatrixElement>(
@@ -1332,6 +1368,25 @@ impl Backend {
         Ok(output)
     }
 
+    pub fn equality_weights_device(
+        &mut self,
+        point: &[Fp2],
+    ) -> Result<DeviceBuffer<Fp2Repr>, AccelError> {
+        let point_raw: Vec<Fp2Repr> = point.iter().copied().map(Into::into).collect();
+        let points =
+            if point_raw.is_empty() { None } else { Some(self.upload_new_device(&point_raw)?) };
+        let weights = self.logup_eq_rows_device(points.as_ref(), 1, point.len());
+        let free_result = if let Some(points) = points { self.free_device(points) } else { Ok(()) };
+        match (weights, free_result) {
+            (Ok(weights), Ok(())) => Ok(weights),
+            (Ok(weights), Err(error)) => {
+                let _ = self.free_device(weights);
+                Err(error)
+            }
+            (Err(error), _) => Err(error),
+        }
+    }
+
     /// Evaluate a power-of-two resident base/Fp2 vector at an LSB-first MLE
     /// point. Only the transcript-sized point is uploaded and the resulting
     /// scalar is downloaded; the equality row and fold stay device-resident.
@@ -1348,24 +1403,7 @@ impl Backend {
         }
         self.validate_device_slice(input, expected)?;
 
-        let point_raw: Vec<Fp2Repr> = point.iter().copied().map(Into::into).collect();
-        let points =
-            if point_raw.is_empty() { None } else { Some(self.upload_new_device(&point_raw)?) };
-        let weights = match self.logup_eq_rows_device(points.as_ref(), 1, point.len()) {
-            Ok(value) => value,
-            Err(error) => {
-                if let Some(points) = points {
-                    let _ = self.free_device(points);
-                }
-                return Err(error);
-            }
-        };
-        if let Some(points) = points {
-            if let Err(error) = self.free_device(points) {
-                let _ = self.free_device(weights);
-                return Err(error);
-            }
-        }
+        let weights = self.equality_weights_device(point)?;
 
         let folded = match self.matrix_fold_device(
             input,
@@ -1389,6 +1427,72 @@ impl Backend {
         match (value, free_result) {
             (Ok(value), Ok(())) => Ok(value),
             (Err(error), _) | (_, Err(error)) => Err(error),
+        }
+    }
+
+    /// Evaluate the zero-padded multilinear extension of a real row-major
+    /// matrix. Point order is padded columns (LSB) followed by padded rows.
+    /// Equality tables and both folds stay resident; only the scalar result
+    /// crosses D2H.
+    pub fn matrix_mle_eval_device<T: ResidentMatrixElement>(
+        &mut self,
+        input: DeviceSlice<'_, T>,
+        rows: usize,
+        cols: usize,
+        point: &[Fp2],
+    ) -> Result<Fp2, AccelError> {
+        if rows == 0 || cols == 0 {
+            return Err(AccelError::InvalidInput("invalid resident matrix MLE geometry"));
+        }
+        self.validate_device_slice(input, checked_product(rows, cols)?)?;
+        let col_bits = cols
+            .checked_next_power_of_two()
+            .ok_or(AccelError::InvalidInput("shape overflow"))?
+            .trailing_zeros() as usize;
+        let row_bits = rows
+            .checked_next_power_of_two()
+            .ok_or(AccelError::InvalidInput("shape overflow"))?
+            .trailing_zeros() as usize;
+        if point.len() != col_bits + row_bits {
+            return Err(AccelError::InvalidInput("resident matrix MLE point mismatch"));
+        }
+        let col_weights = self.equality_weights_device(&point[..col_bits])?;
+        let row_weights = match self.equality_weights_device(&point[col_bits..]) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = self.free_device(col_weights);
+                return Err(error);
+            }
+        };
+        let folded = match self.matrix_fold_device(
+            input,
+            DeviceSlice::new(&col_weights, 0, cols).expect("real column equality prefix"),
+            rows,
+            cols,
+            MatrixFoldAxis::Columns,
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = self.free_device(row_weights);
+                let _ = self.free_device(col_weights);
+                return Err(error);
+            }
+        };
+        let first_free = self.free_device(col_weights).err();
+        if let Some(error) = first_free {
+            let _ = self.free_device(folded);
+            let _ = self.free_device(row_weights);
+            return Err(error);
+        }
+        let value = self.fp2_dot_device(
+            DeviceSlice::new(&folded, 0, folded.len()).expect("whole row fold"),
+            DeviceSlice::new(&row_weights, 0, row_weights.len()).expect("whole row equality"),
+        );
+        let folded_free = self.free_device(folded).err();
+        let weights_free = self.free_device(row_weights).err();
+        match (value, folded_free.or(weights_free)) {
+            (Ok(value), None) => Ok(value),
+            (Err(error), _) | (_, Some(error)) => Err(error),
         }
     }
 
@@ -1443,6 +1547,100 @@ impl Backend {
         }
         #[cfg(not(feature = "cuda"))]
         Err(AccelError::FeatureDisabled)
+    }
+
+    pub fn fp2_triple_product_round_device(
+        &mut self,
+        a: DeviceSlice<'_, Fp2Repr>,
+        b: DeviceSlice<'_, Fp2Repr>,
+        c: DeviceSlice<'_, Fp2Repr>,
+    ) -> Result<[Fp2; 3], AccelError> {
+        if a.len() != b.len() || a.len() != c.len() || a.len() < 2 || a.len() % 2 != 0 {
+            return Err(AccelError::InvalidInput("invalid resident triple-product round geometry"));
+        }
+        for input in [a, b, c] {
+            self.validate_device_slice(input, input.len())?;
+        }
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .expect("CUDA kind without context")
+                .fp2_triple_product_round_device(
+                    a.buffer.id,
+                    a.offset,
+                    b.buffer.id,
+                    b.offset,
+                    c.buffer.id,
+                    c.offset,
+                    a.len / 2,
+                );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Construct the two full-domain factors used by the broadcast
+    /// LayerNorm Hadamard relation: `(x-mean)` and `(rsqrt*gain)`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn ln_hadamard_factors_device(
+        &mut self,
+        input: DeviceSlice<'_, i16>,
+        mean: DeviceSlice<'_, u64>,
+        rsqrt: DeviceSlice<'_, u64>,
+        gain: DeviceSlice<'_, i16>,
+        rows: usize,
+        cols: usize,
+    ) -> Result<(DeviceBuffer<Fp2Repr>, DeviceBuffer<Fp2Repr>), AccelError> {
+        if rows == 0 || cols == 0 {
+            return Err(AccelError::InvalidInput("invalid resident LN Hadamard geometry"));
+        }
+        self.validate_device_slice(input, checked_product(rows, cols)?)?;
+        self.validate_device_slice(gain, cols)?;
+        let row_pad =
+            rows.checked_next_power_of_two().ok_or(AccelError::InvalidInput("shape overflow"))?;
+        let col_pad =
+            cols.checked_next_power_of_two().ok_or(AccelError::InvalidInput("shape overflow"))?;
+        self.validate_device_slice(mean, row_pad)?;
+        self.validate_device_slice(rsqrt, row_pad)?;
+        let total = checked_product(row_pad, col_pad)?;
+        let centered = self.alloc_device(total)?;
+        let scaled = match self.alloc_device(total) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = self.free_device(centered);
+                return Err(error);
+            }
+        };
+        #[cfg(feature = "cuda")]
+        let result =
+            self.cuda.as_mut().expect("CUDA kind without context").ln_hadamard_factors_device(
+                input.buffer.id,
+                input.offset,
+                mean.buffer.id,
+                mean.offset,
+                rsqrt.buffer.id,
+                rsqrt.offset,
+                gain.buffer.id,
+                gain.offset,
+                centered.id,
+                0,
+                scaled.id,
+                0,
+                rows,
+                cols,
+                row_pad,
+                col_pad,
+            );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(scaled);
+            let _ = self.free_device(centered);
+            return Err(error);
+        }
+        Ok((centered, scaled))
     }
 
     /// Build padded requant lookup columns. Single-stage order is
@@ -1506,6 +1704,25 @@ impl Backend {
         pad_input: i16,
         pad_output: i16,
     ) -> Result<DeviceLookupColumns, AccelError> {
+        self.pair_lookup_columns_base_device(
+            inputs,
+            outputs,
+            rows,
+            cols,
+            Fp::from_i64(pad_input as i64),
+            Fp::from_i64(pad_output as i64),
+        )
+    }
+
+    pub fn pair_lookup_columns_base_device<A: ResidentBaseElement, B: ResidentBaseElement>(
+        &mut self,
+        inputs: DeviceSlice<'_, A>,
+        outputs: DeviceSlice<'_, B>,
+        rows: usize,
+        cols: usize,
+        pad_input: Fp,
+        pad_output: Fp,
+    ) -> Result<DeviceLookupColumns, AccelError> {
         #[cfg(not(feature = "cuda"))]
         let _ = (pad_input, pad_output);
         if rows == 0 || cols == 0 {
@@ -1534,6 +1751,8 @@ impl Backend {
             col_pad,
             pad_input,
             pad_output,
+            A::CUDA_KIND,
+            B::CUDA_KIND,
         );
         #[cfg(not(feature = "cuda"))]
         let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
@@ -1542,6 +1761,39 @@ impl Backend {
             return Err(error);
         }
         Ok(DeviceLookupColumns { storage, columns: 2, entries })
+    }
+
+    /// Histogram a padded pair-LUT input column in the table's canonical
+    /// u16 index order. Signed LUTs map negative field representatives back
+    /// to their two's-complement indices; nonnegative LUTs require <2^16.
+    pub fn histogram_lut_device(
+        &mut self,
+        input: DeviceSlice<'_, u64>,
+        signed_input: bool,
+    ) -> Result<DeviceBuffer<u32>, AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        let _ = signed_input;
+        if input.is_empty() {
+            return Err(AccelError::InvalidInput("invalid resident LUT histogram geometry"));
+        }
+        self.validate_device_slice(input, input.len())?;
+        let output = self.alloc_device(1 << 16)?;
+        #[cfg(feature = "cuda")]
+        let result = self.cuda.as_mut().expect("CUDA kind without context").histogram_lut_device(
+            input.buffer.id,
+            input.offset,
+            output.id,
+            0,
+            input.len,
+            signed_input,
+        );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
     }
 
     pub fn histogram_fp_device(
@@ -3585,6 +3837,50 @@ mod cuda_tests {
             );
         }
 
+        let padded = gpu
+            .pad_base_vector_device(
+                DeviceSlice::new(&dinput, 0, input.len()).unwrap(),
+                32,
+                Fp::new(17),
+            )
+            .unwrap();
+        let padded_host = gpu.download_device(&padded, 0, 32).unwrap();
+        for (got, expected) in padded_host[..input.len()]
+            .iter()
+            .zip(input.iter().map(|&value| Fp::from_i64(value as i64).value()))
+        {
+            assert_eq!(*got, expected);
+        }
+        assert!(padded_host[input.len()..].iter().all(|&value| value == 17));
+
+        let point: Vec<Fp2> =
+            (0..5).map(|i| Fp2::new(Fp::new(i * 71 + 9), Fp::new(i * 83 + 15))).collect();
+        let matrix_eval = gpu
+            .matrix_mle_eval_device(
+                DeviceSlice::new(&dinput, 0, input.len()).unwrap(),
+                rows,
+                cols,
+                &point,
+            )
+            .unwrap();
+        let mut padded_matrix =
+            vec![Fp2::ZERO; rows.next_power_of_two() * cols.next_power_of_two()];
+        for i in 0..rows {
+            for j in 0..cols {
+                padded_matrix[i * cols.next_power_of_two() + j] =
+                    Fp2::from_base(Fp::from_i64(input[i * cols + j] as i64));
+            }
+        }
+        for &challenge in &point {
+            let half = padded_matrix.len() / 2;
+            for i in 0..half {
+                padded_matrix[i] = padded_matrix[2 * i]
+                    + (padded_matrix[2 * i + 1] - padded_matrix[2 * i]) * challenge;
+            }
+            padded_matrix.truncate(half);
+        }
+        assert_eq!(matrix_eval, padded_matrix[0]);
+
         let folded_rows = gpu
             .matrix_fold_device(
                 DeviceSlice::new(&dinput, 0, input.len()).unwrap(),
@@ -3641,10 +3937,14 @@ mod cuda_tests {
             (0..8).map(|i| Fp2::new(Fp::new(i * 47 + 2), Fp::new(i * 53 + 7))).collect();
         let bv: Vec<Fp2> =
             (0..8).map(|i| Fp2::new(Fp::new(i * 59 + 3), Fp::new(i * 61 + 11))).collect();
+        let cv: Vec<Fp2> =
+            (0..8).map(|i| Fp2::new(Fp::new(i * 67 + 5), Fp::new(i * 71 + 13))).collect();
         let da =
             gpu.upload_new_device(&av.iter().copied().map(Into::into).collect::<Vec<_>>()).unwrap();
         let db =
             gpu.upload_new_device(&bv.iter().copied().map(Into::into).collect::<Vec<_>>()).unwrap();
+        let dc =
+            gpu.upload_new_device(&cv.iter().copied().map(Into::into).collect::<Vec<_>>()).unwrap();
         let dot = gpu
             .fp2_dot_device(
                 DeviceSlice::new(&da, 0, av.len()).unwrap(),
@@ -3666,6 +3966,64 @@ mod cuda_tests {
             out
         });
         assert_eq!(round, expected_round);
+        let triple_round = gpu
+            .fp2_triple_product_round_device(
+                DeviceSlice::new(&da, 0, av.len()).unwrap(),
+                DeviceSlice::new(&db, 0, bv.len()).unwrap(),
+                DeviceSlice::new(&dc, 0, cv.len()).unwrap(),
+            )
+            .unwrap();
+        let expected_triple = (0..4).fold([Fp2::ZERO; 3], |mut out, i| {
+            let values = |source: &[Fp2], at: u64| {
+                let v0 = source[2 * i];
+                v0 + (source[2 * i + 1] - v0) * Fp2::from_base(Fp::new(at))
+            };
+            for (slot, at) in [0u64, 2, 3].into_iter().enumerate() {
+                out[slot] += values(&av, at) * values(&bv, at) * values(&cv, at);
+            }
+            out
+        });
+        assert_eq!(triple_round, expected_triple);
+
+        let means: Vec<u64> =
+            [-3i64, 7, 2, 0].into_iter().map(|value| Fp::from_i64(value).value()).collect();
+        let rsqrt = vec![2u64, 3, 4, 5];
+        let gain = vec![-2i16, 3, 5, -7, 11];
+        let dmeans = gpu.upload_new_device(&means).unwrap();
+        let drsqrt = gpu.upload_new_device(&rsqrt).unwrap();
+        let dgain = gpu.upload_new_device(&gain).unwrap();
+        let (centered, scaled) = gpu
+            .ln_hadamard_factors_device(
+                DeviceSlice::new(&dinput, 0, input.len()).unwrap(),
+                DeviceSlice::new(&dmeans, 0, means.len()).unwrap(),
+                DeviceSlice::new(&drsqrt, 0, rsqrt.len()).unwrap(),
+                DeviceSlice::new(&dgain, 0, gain.len()).unwrap(),
+                rows,
+                cols,
+            )
+            .unwrap();
+        let centered_host: Vec<Fp2> =
+            gpu.download_device(&centered, 0, 32).unwrap().into_iter().map(Into::into).collect();
+        let scaled_host: Vec<Fp2> =
+            gpu.download_device(&scaled, 0, 32).unwrap().into_iter().map(Into::into).collect();
+        for row in 0..4 {
+            for col in 0..8 {
+                let z = row * 8 + col;
+                let expected_centered = if row < rows {
+                    let value = if col < cols { input[row * cols + col] as i64 } else { 0 };
+                    Fp2::from_base(Fp::from_i64(value) - Fp::new(means[row]))
+                } else {
+                    Fp2::ZERO
+                };
+                let expected_scaled = if col < cols {
+                    Fp2::from_base(Fp::new(rsqrt[row]) * Fp::from_i64(gain[col] as i64))
+                } else {
+                    Fp2::ZERO
+                };
+                assert_eq!(centered_host[z], expected_centered);
+                assert_eq!(scaled_host[z], expected_scaled);
+            }
+        }
         let challenge = Fp2::new(Fp::new(123), Fp::new(456));
         let folded_a = gpu.fp2_fold_rows_device(&da, 0, 1, av.len(), challenge).unwrap();
         let got_fold: Vec<Fp2> = gpu
@@ -3680,10 +4038,17 @@ mod cuda_tests {
         assert_eq!(got_fold, expected_fold);
 
         gpu.free_device(folded_a).unwrap();
+        gpu.free_device(scaled).unwrap();
+        gpu.free_device(centered).unwrap();
+        gpu.free_device(dgain).unwrap();
+        gpu.free_device(drsqrt).unwrap();
+        gpu.free_device(dmeans).unwrap();
+        gpu.free_device(dc).unwrap();
         gpu.free_device(db).unwrap();
         gpu.free_device(da).unwrap();
         gpu.free_device(folded_cols).unwrap();
         gpu.free_device(folded_rows).unwrap();
+        gpu.free_device(padded).unwrap();
         gpu.free_device(dcorr).unwrap();
         gpu.free_device(dcol_weights).unwrap();
         gpu.free_device(drow_weights).unwrap();
@@ -3817,6 +4182,49 @@ mod cuda_tests {
                 assert_eq!(Fp::new(pair_raw[entries + z]), Fp::from_i64(output as i64));
             }
         }
+        let signed_hist = gpu.histogram_lut_device(pair.column(0).unwrap(), true).unwrap();
+        let mut expected_signed = vec![0u32; 1 << 16];
+        for row in 0..rows.next_power_of_two() {
+            for col in 0..cols.next_power_of_two() {
+                let input = if row < rows && col < cols { outputs[row * cols + col] } else { -123 };
+                expected_signed[input as u16 as usize] += 1;
+            }
+        }
+        assert_eq!(gpu.download_device(&signed_hist, 0, 1 << 16).unwrap(), expected_signed);
+
+        let nonnegative_inputs: Vec<i64> =
+            (0..rows * cols).map(|i| 40_000 + (i * 997 % 20_000) as i64).collect();
+        let dnonnegative = gpu.upload_new_device(&nonnegative_inputs).unwrap();
+        let nonnegative_pair = gpu
+            .pair_lookup_columns_base_device(
+                DeviceSlice::new(&dnonnegative, 0, nonnegative_inputs.len()).unwrap(),
+                DeviceSlice::new(&dpair_out, 0, pair_outputs.len()).unwrap(),
+                rows,
+                cols,
+                Fp::new(0),
+                Fp::new(77),
+            )
+            .unwrap();
+        let nonnegative_raw = gpu
+            .download_device(nonnegative_pair.view(0, 2).unwrap().buffer(), 0, 2 * entries)
+            .unwrap();
+        for row in 0..rows.next_power_of_two() {
+            for col in 0..cols.next_power_of_two() {
+                let z = row * cols.next_power_of_two() + col;
+                let expected = if row < rows && col < cols {
+                    nonnegative_inputs[row * cols + col] as u64
+                } else {
+                    0
+                };
+                assert_eq!(nonnegative_raw[z], expected);
+            }
+        }
+        let nonnegative_hist =
+            gpu.histogram_lut_device(nonnegative_pair.column(0).unwrap(), false).unwrap();
+        assert_eq!(
+            gpu.download_device(&nonnegative_hist, 0, 1 << 16).unwrap().iter().sum::<u32>(),
+            entries as u32
+        );
 
         let chain_shift = 20u32;
         let chain_acc: Vec<i64> = (0..rows * cols).map(|i| i as i64 * 91_337 - 500_000).collect();
@@ -3864,6 +4272,10 @@ mod cuda_tests {
         gpu.free_lookup_columns(chained).unwrap();
         gpu.free_device(dchain_out).unwrap();
         gpu.free_device(dchain_acc).unwrap();
+        gpu.free_device(nonnegative_hist).unwrap();
+        gpu.free_lookup_columns(nonnegative_pair).unwrap();
+        gpu.free_device(dnonnegative).unwrap();
+        gpu.free_device(signed_hist).unwrap();
         gpu.free_lookup_columns(pair).unwrap();
         gpu.free_device(dpair_out).unwrap();
         gpu.free_device(aux).unwrap();

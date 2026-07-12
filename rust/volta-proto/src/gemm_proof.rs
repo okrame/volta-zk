@@ -539,6 +539,7 @@ impl ChainDoms {
 /// (contraction vars LSB: r_l ‖ r_i), authenticated by a fresh full
 /// correlation — `corr` is the 16 B transfer the verifier consumed. The
 /// caller routes it to the wire's producer via the `ClaimLedger`.
+#[derive(Debug, PartialEq, Eq)]
 pub struct WireOut {
     pub point: Vec<Fp2>,
     pub value: ProverAuthed,
@@ -553,6 +554,7 @@ pub struct WireKey {
 
 /// Chained GEMM proof: no element-wise corrections at all — both tensor
 /// legs leave as outward claims (compare [`GemmBlindProof`]).
+#[derive(Debug, PartialEq, Eq)]
 pub struct ChainedGemmProof {
     pub sumcheck: BlindSumcheckProof,
     pub prod: ProdProof,

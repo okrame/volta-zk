@@ -43,11 +43,27 @@ type Destroy = unsafe extern "C" fn(*mut c_void);
 type LastError = unsafe extern "C" fn(*mut c_void) -> *const c_char;
 type ResetStats = unsafe extern "C" fn(*mut c_void) -> c_int;
 type GetStats = unsafe extern "C" fn(*mut c_void, *mut RawStats) -> c_int;
+type ResidentAlloc = unsafe extern "C" fn(*mut c_void, usize, *mut u64) -> c_int;
+type ResidentFree = unsafe extern "C" fn(*mut c_void, u64) -> c_int;
+type ResidentUpload = unsafe extern "C" fn(*mut c_void, u64, usize, *const c_void, usize) -> c_int;
+type ResidentDownload = unsafe extern "C" fn(*mut c_void, u64, usize, *mut c_void, usize) -> c_int;
 type GemmI64 = unsafe extern "C" fn(
     *mut c_void,
     *const i16,
     *const i16,
     *mut i64,
+    usize,
+    usize,
+    usize,
+) -> c_int;
+type GemmI64Device = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
     usize,
     usize,
     usize,
@@ -59,6 +75,23 @@ type GemmRequantAuth = unsafe extern "C" fn(
     *const u64,
     *mut i16,
     *mut u64,
+    usize,
+    usize,
+    usize,
+    u32,
+) -> c_int;
+type GemmRequantAuthDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
     usize,
     usize,
     usize,
@@ -131,8 +164,14 @@ struct Api {
     last_error: LastError,
     reset_stats: ResetStats,
     get_stats: GetStats,
+    resident_alloc: ResidentAlloc,
+    resident_free: ResidentFree,
+    resident_upload: ResidentUpload,
+    resident_download: ResidentDownload,
     gemm_i64: GemmI64,
+    gemm_i64_device: GemmI64Device,
     gemm_requant_auth: GemmRequantAuth,
+    gemm_requant_auth_device: GemmRequantAuthDevice,
     ntt_fp: NttFp,
     ntt_fp_batch: NttFpBatch,
     ntt_fp2: NttFp2,
@@ -204,8 +243,16 @@ impl CudaContext {
             last_error: unsafe { load_symbol(handle, b"volta_cuda_last_error\0")? },
             reset_stats: unsafe { load_symbol(handle, b"volta_cuda_reset_stats\0")? },
             get_stats: unsafe { load_symbol(handle, b"volta_cuda_get_stats\0")? },
+            resident_alloc: unsafe { load_symbol(handle, b"volta_cuda_resident_alloc\0")? },
+            resident_free: unsafe { load_symbol(handle, b"volta_cuda_resident_free\0")? },
+            resident_upload: unsafe { load_symbol(handle, b"volta_cuda_resident_upload\0")? },
+            resident_download: unsafe { load_symbol(handle, b"volta_cuda_resident_download\0")? },
             gemm_i64: unsafe { load_symbol(handle, b"volta_cuda_gemm_i64\0")? },
+            gemm_i64_device: unsafe { load_symbol(handle, b"volta_cuda_gemm_i64_device\0")? },
             gemm_requant_auth: unsafe { load_symbol(handle, b"volta_cuda_gemm_requant_auth\0")? },
+            gemm_requant_auth_device: unsafe {
+                load_symbol(handle, b"volta_cuda_gemm_requant_auth_device\0")?
+            },
             ntt_fp: unsafe { load_symbol(handle, b"volta_cuda_ntt_fp\0")? },
             ntt_fp_batch: unsafe { load_symbol(handle, b"volta_cuda_ntt_fp_batch\0")? },
             ntt_fp2: unsafe { load_symbol(handle, b"volta_cuda_ntt_fp2\0")? },
@@ -269,6 +316,40 @@ impl CudaContext {
         Ok(out)
     }
 
+    pub(super) fn resident_alloc(&mut self, bytes: usize) -> Result<u64, AccelError> {
+        let mut id = 0;
+        // SAFETY: context is live and id points to one u64 result.
+        self.check(unsafe { (self.api.resident_alloc)(self.raw, bytes, &mut id) })?;
+        Ok(id)
+    }
+
+    pub(super) fn resident_free(&mut self, id: u64) -> Result<(), AccelError> {
+        // SAFETY: context validates the opaque allocation id.
+        self.check(unsafe { (self.api.resident_free)(self.raw, id) })
+    }
+
+    pub(super) fn resident_upload(
+        &mut self,
+        id: u64,
+        offset_bytes: usize,
+        src: *const c_void,
+        bytes: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: safe caller retains the typed input slice for the synchronous ABI call.
+        self.check(unsafe { (self.api.resident_upload)(self.raw, id, offset_bytes, src, bytes) })
+    }
+
+    pub(super) fn resident_download(
+        &mut self,
+        id: u64,
+        offset_bytes: usize,
+        dst: *mut c_void,
+        bytes: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: safe caller allocated the typed output slice and the ABI synchronizes.
+        self.check(unsafe { (self.api.resident_download)(self.raw, id, offset_bytes, dst, bytes) })
+    }
+
     pub(super) fn gemm_i64(
         &mut self,
         a: &[i16],
@@ -283,6 +364,25 @@ impl CudaContext {
             (self.api.gemm_i64)(self.raw, a.as_ptr(), b.as_ptr(), out.as_mut_ptr(), m, k, n)
         })?;
         Ok(out)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn gemm_i64_device(
+        &mut self,
+        a: u64,
+        a_offset: usize,
+        b: u64,
+        b_offset: usize,
+        out: u64,
+        out_offset: usize,
+        m: usize,
+        k: usize,
+        n: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: context owns every opaque id; Rust validated typed regions.
+        self.check(unsafe {
+            (self.api.gemm_i64_device)(self.raw, a, a_offset, b, b_offset, out, out_offset, m, k, n)
+        })
     }
 
     pub(super) fn gemm_requant_auth(
@@ -314,6 +414,46 @@ impl CudaContext {
             )
         })?;
         Ok((out, corr))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn gemm_requant_auth_device(
+        &mut self,
+        a: u64,
+        a_offset: usize,
+        b: u64,
+        b_offset: usize,
+        masks: u64,
+        masks_offset: usize,
+        out: u64,
+        out_offset: usize,
+        corr: u64,
+        corr_offset: usize,
+        m: usize,
+        k: usize,
+        n: usize,
+        shift: u32,
+    ) -> Result<(), AccelError> {
+        // SAFETY: context owns every opaque id; Rust validated typed regions.
+        self.check(unsafe {
+            (self.api.gemm_requant_auth_device)(
+                self.raw,
+                a,
+                a_offset,
+                b,
+                b_offset,
+                masks,
+                masks_offset,
+                out,
+                out_offset,
+                corr,
+                corr_offset,
+                m,
+                k,
+                n,
+                shift,
+            )
+        })
     }
 
     pub(super) fn ntt_fp(&mut self, msg: &[Fp], size: usize) -> Result<Vec<Fp>, AccelError> {

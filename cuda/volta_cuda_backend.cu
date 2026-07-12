@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -12,7 +13,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 2;
+constexpr uint32_t ABI_VERSION = 3;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -54,10 +55,23 @@ struct Buffer {
     size_t capacity = 0;
 };
 
+/// Allocation owned by a CUDA context and addressed through an opaque id.
+/// The Rust side never observes a device pointer.  Workspace slots above are
+/// still free to grow/reuse independently, so resident values cannot be
+/// invalidated by a later staged primitive.
+struct ResidentBuffer {
+    uint64_t id = 0;
+    void* ptr = nullptr;
+    size_t bytes = 0;
+};
+
+std::atomic<uint64_t> next_resident_id{1};
+
 struct Context {
     cudaStream_t stream = nullptr;
     cudaEvent_t events[4]{};
     Buffer buffers[BUFFER_COUNT];
+    std::vector<ResidentBuffer> resident;
     RawStats stats{};
     size_t twiddle_size = 0;
     uint32_t timing_mode = TIMING_CUDA_EVENTS;
@@ -65,6 +79,24 @@ struct Context {
     std::array<uint64_t, 3> phase_ns{};
     std::string error;
 };
+
+int fail_message(Context* c, const char* message);
+
+ResidentBuffer* find_resident(Context* c, uint64_t id) {
+    if (!c || id == 0) return nullptr;
+    for (auto& b : c->resident) if (b.id == id) return &b;
+    return nullptr;
+}
+
+int resident_region(
+    Context* c, uint64_t id, size_t offset, size_t bytes, void** out) {
+    ResidentBuffer* b = find_resident(c, id);
+    if (!b) return fail_message(c, "unknown resident buffer id");
+    if (offset > b->bytes || bytes > b->bytes - offset)
+        return fail_message(c, "resident buffer region is out of bounds");
+    *out = static_cast<unsigned char*>(b->ptr) + offset;
+    return 0;
+}
 
 int fail(Context* c, const char* expr, cudaError_t e) {
     if (c) c->error = std::string(expr) + ": " + cudaGetErrorString(e);
@@ -193,6 +225,49 @@ int finish_timing(Context* c, int operation, uint64_t h2d, uint64_t d2h) {
     c->stats.h2d_ns += h2d_ns;
     c->stats.kernel_ns[operation] += kernel_ns;
     c->stats.d2h_ns += d2h_ns;
+    return 0;
+}
+
+/// Time one explicit host/device transfer without inventing a kernel call.
+/// Resident uploads/downloads are protocol-visible boundaries and therefore
+/// remain fully counted even when they happen outside a staged primitive.
+int begin_transfer_timing(Context* c) {
+    if (c->timing_mode == TIMING_CUDA_EVENTS) {
+        CUDA_OR_RETURN(c, cudaEventRecord(c->events[0], c->stream));
+    } else {
+        c->phase_started = std::chrono::steady_clock::now();
+    }
+    return 0;
+}
+
+int finish_transfer_timing(Context* c, size_t bytes, bool h2d) {
+    uint64_t elapsed_ns = 0;
+    if (c->timing_mode == TIMING_CUDA_EVENTS) {
+        CUDA_OR_RETURN(c, cudaEventRecord(c->events[1], c->stream));
+        const auto s0 = std::chrono::steady_clock::now();
+        CUDA_OR_RETURN(c, cudaStreamSynchronize(c->stream));
+        const auto s1 = std::chrono::steady_clock::now();
+        ++c->stats.synchronizations;
+        c->stats.synchronization_ns +=
+            std::chrono::duration_cast<std::chrono::nanoseconds>(s1 - s0).count();
+        if (event_ns(c, c->events[0], c->events[1], &elapsed_ns)) return -1;
+    } else {
+        const auto s0 = std::chrono::steady_clock::now();
+        CUDA_OR_RETURN(c, cudaStreamSynchronize(c->stream));
+        const auto s1 = std::chrono::steady_clock::now();
+        elapsed_ns =
+            std::chrono::duration_cast<std::chrono::nanoseconds>(s1 - c->phase_started).count();
+        ++c->stats.synchronizations;
+        c->stats.synchronization_ns +=
+            std::chrono::duration_cast<std::chrono::nanoseconds>(s1 - s0).count();
+    }
+    if (h2d) {
+        c->stats.h2d_bytes += bytes;
+        c->stats.h2d_ns += elapsed_ns;
+    } else {
+        c->stats.d2h_bytes += bytes;
+        c->stats.d2h_ns += elapsed_ns;
+    }
     return 0;
 }
 
@@ -623,6 +698,7 @@ extern "C" void volta_cuda_destroy(void* raw) {
     Context* c = static_cast<Context*>(raw);
     if (!c) return;
     for (auto& b : c->buffers) if (b.ptr) cudaFree(b.ptr);
+    for (auto& b : c->resident) if (b.ptr) cudaFree(b.ptr);
     for (auto event : c->events) if (event) cudaEventDestroy(event);
     if (c->stream) cudaStreamDestroy(c->stream);
     delete c;
@@ -652,6 +728,58 @@ extern "C" int volta_cuda_get_stats(void* raw, RawStats* out) {
     return 0;
 }
 
+extern "C" int volta_cuda_resident_alloc(void* raw, size_t bytes, uint64_t* out_id) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !bytes || !out_id) return fail_message(c, "invalid resident allocation");
+    ResidentBuffer b;
+    b.id = next_resident_id.fetch_add(1, std::memory_order_relaxed);
+    if (b.id == 0) return fail_message(c, "resident buffer id space exhausted");
+    CUDA_OR_RETURN(c, cudaMalloc(&b.ptr, bytes));
+    b.bytes = bytes;
+    c->resident.push_back(b);
+    ++c->stats.allocation_calls;
+    c->stats.live_device_bytes += bytes;
+    c->stats.peak_device_bytes =
+        std::max(c->stats.peak_device_bytes, c->stats.live_device_bytes);
+    *out_id = b.id;
+    return 0;
+}
+
+extern "C" int volta_cuda_resident_free(void* raw, uint64_t id) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !id) return fail_message(c, "invalid resident free");
+    for (size_t i = 0; i < c->resident.size(); ++i) {
+        if (c->resident[i].id != id) continue;
+        CUDA_OR_RETURN(c, cudaFree(c->resident[i].ptr));
+        c->stats.live_device_bytes -= c->resident[i].bytes;
+        c->resident.erase(c->resident.begin() + i);
+        return 0;
+    }
+    return fail_message(c, "unknown resident buffer id");
+}
+
+extern "C" int volta_cuda_resident_upload(
+    void* raw, uint64_t id, size_t offset_bytes, const void* src, size_t bytes) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !src || !bytes) return fail_message(c, "invalid resident upload");
+    void* dst = nullptr;
+    if (resident_region(c, id, offset_bytes, bytes, &dst)) return -1;
+    if (begin_transfer_timing(c)) return -1;
+    CUDA_OR_RETURN(c, cudaMemcpyAsync(dst, src, bytes, cudaMemcpyHostToDevice, c->stream));
+    return finish_transfer_timing(c, bytes, true);
+}
+
+extern "C" int volta_cuda_resident_download(
+    void* raw, uint64_t id, size_t offset_bytes, void* dst, size_t bytes) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !dst || !bytes) return fail_message(c, "invalid resident download");
+    void* src = nullptr;
+    if (resident_region(c, id, offset_bytes, bytes, &src)) return -1;
+    if (begin_transfer_timing(c)) return -1;
+    CUDA_OR_RETURN(c, cudaMemcpyAsync(dst, src, bytes, cudaMemcpyDeviceToHost, c->stream));
+    return finish_transfer_timing(c, bytes, false);
+}
+
 extern "C" int volta_cuda_gemm_i64(
     void* raw,const int16_t* a,const int16_t* b,int64_t* out,size_t m,size_t k,size_t n) {
     Context* c=static_cast<Context*>(raw);if(!c||!a||!b||!out||!m||!k||!n)return -1;
@@ -665,6 +793,27 @@ extern "C" int volta_cuda_gemm_i64(
     CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
     CUDA_OR_RETURN(c,cudaMemcpyAsync(out,buf<int64_t>(c,2),ob,cudaMemcpyDeviceToHost,c->stream));
     return finish_timing(c,OP_GEMM,ab+bb,ob);
+}
+
+extern "C" int volta_cuda_gemm_i64_device(
+    void* raw, uint64_t a_id, size_t a_offset, uint64_t b_id, size_t b_offset,
+    uint64_t out_id, size_t out_offset, size_t m, size_t k, size_t n) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !m || !k || !n) return fail_message(c, "invalid resident GEMM geometry");
+    void *av = nullptr, *bv = nullptr, *ov = nullptr;
+    if (resident_region(c, a_id, a_offset * sizeof(int16_t), m * k * sizeof(int16_t), &av) ||
+        resident_region(c, b_id, b_offset * sizeof(int16_t), k * n * sizeof(int16_t), &bv) ||
+        resident_region(c, out_id, out_offset * sizeof(int64_t), m * n * sizeof(int64_t), &ov))
+        return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    dim3 block(16, 16), grid((n + 15) / 16, (m + 15) / 16);
+    gemm_i64_kernel<<<grid, block, 0, c->stream>>>(
+        static_cast<const int16_t*>(av), static_cast<const int16_t*>(bv),
+        static_cast<int64_t*>(ov), m, k, n);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_GEMM, 0, 0);
 }
 
 extern "C" int volta_cuda_gemm_requant_auth(void* raw,const int16_t* a,const int16_t* b,
@@ -683,6 +832,32 @@ extern "C" int volta_cuda_gemm_requant_auth(void* raw,const int16_t* a,const int
     CUDA_OR_RETURN(c,cudaMemcpyAsync(out,buf<int16_t>(c,3),ob,cudaMemcpyDeviceToHost,c->stream));
     CUDA_OR_RETURN(c,cudaMemcpyAsync(corr,buf<uint64_t>(c,4),cb,cudaMemcpyDeviceToHost,c->stream));
     return finish_timing(c,OP_GEMM,ab+bb+mb,ob+cb);
+}
+
+extern "C" int volta_cuda_gemm_requant_auth_device(
+    void* raw, uint64_t a_id, size_t a_offset, uint64_t b_id, size_t b_offset,
+    uint64_t masks_id, size_t masks_offset, uint64_t out_id, size_t out_offset,
+    uint64_t corr_id, size_t corr_offset, size_t m, size_t k, size_t n, uint32_t shift) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !m || !k || !n || !shift || shift >= 63)
+        return fail_message(c, "invalid resident fused GEMM geometry");
+    void *av = nullptr, *bv = nullptr, *mv = nullptr, *ov = nullptr, *cv = nullptr;
+    if (resident_region(c, a_id, a_offset * sizeof(int16_t), m * k * sizeof(int16_t), &av) ||
+        resident_region(c, b_id, b_offset * sizeof(int16_t), k * n * sizeof(int16_t), &bv) ||
+        resident_region(c, masks_id, masks_offset * sizeof(uint64_t), m * n * sizeof(uint64_t), &mv) ||
+        resident_region(c, out_id, out_offset * sizeof(int16_t), m * n * sizeof(int16_t), &ov) ||
+        resident_region(c, corr_id, corr_offset * sizeof(uint64_t), m * n * sizeof(uint64_t), &cv))
+        return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    dim3 block(16, 16), grid((n + 15) / 16, (m + 15) / 16);
+    gemm_requant_auth_kernel<<<grid, block, 0, c->stream>>>(
+        static_cast<const int16_t*>(av), static_cast<const int16_t*>(bv),
+        static_cast<const uint64_t*>(mv), static_cast<int16_t*>(ov),
+        static_cast<uint64_t*>(cv), m, k, n, shift);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_GEMM, 0, 0);
 }
 
 extern "C" int volta_cuda_ntt_fp(void* raw,const uint64_t* msg,size_t msg_len,size_t n,uint64_t* out) {

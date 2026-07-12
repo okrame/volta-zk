@@ -8,11 +8,16 @@
 //! reported as the resident gate.
 
 use std::fmt;
+use std::marker::PhantomData;
+use std::mem::size_of;
+use std::sync::atomic::AtomicU64;
+#[cfg(feature = "cuda")]
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 2;
+pub const CUDA_ABI_VERSION: u32 = 3;
 pub const OPERATION_COUNT: usize = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -180,6 +185,53 @@ pub struct Fp2Repr {
     pub c1: u64,
 }
 
+mod device_element {
+    pub trait Sealed {}
+    impl Sealed for u8 {}
+    impl Sealed for i16 {}
+    impl Sealed for i64 {}
+    impl Sealed for u32 {}
+    impl Sealed for u64 {}
+    impl Sealed for super::Fp2Repr {}
+}
+
+/// Plain-old-data values supported by the internal resident-buffer ABI.
+/// This trait is sealed so a type with padding or drop glue cannot cross the
+/// C boundary accidentally.
+pub trait DeviceElement: device_element::Sealed + Copy + Default + 'static {}
+impl DeviceElement for u8 {}
+impl DeviceElement for i16 {}
+impl DeviceElement for i64 {}
+impl DeviceElement for u32 {}
+impl DeviceElement for u64 {}
+impl DeviceElement for Fp2Repr {}
+
+/// Opaque allocation owned by one [`Backend`] CUDA context.  It exposes no
+/// device pointer, is deliberately non-`Clone`, and can only be freed by
+/// moving it back into the context that created it.  Dropping the context
+/// releases every still-live allocation.
+#[derive(Debug)]
+pub struct DeviceBuffer<T: DeviceElement> {
+    #[cfg_attr(not(feature = "cuda"), allow(dead_code))]
+    id: u64,
+    len: usize,
+    context_id: u64,
+    _element: PhantomData<T>,
+}
+
+impl<T: DeviceElement> DeviceBuffer<T> {
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+}
+
+#[cfg_attr(not(feature = "cuda"), allow(dead_code))]
+static NEXT_CONTEXT_ID: AtomicU64 = AtomicU64::new(1);
+
 impl From<Fp2> for Fp2Repr {
     fn from(x: Fp2) -> Self {
         Fp2Repr { c0: x.c0.value(), c1: x.c1.value() }
@@ -194,6 +246,7 @@ impl From<Fp2Repr> for Fp2 {
 
 pub struct Backend {
     kind: BackendKind,
+    context_id: u64,
     #[cfg(feature = "cuda")]
     cuda: Option<cuda::CudaContext>,
     cpu_residual_ns: [u64; OPERATION_COUNT],
@@ -205,6 +258,7 @@ impl Backend {
     pub fn cpu() -> Backend {
         Backend {
             kind: BackendKind::Cpu,
+            context_id: 0,
             #[cfg(feature = "cuda")]
             cuda: None,
             cpu_residual_ns: [0; OPERATION_COUNT],
@@ -226,6 +280,7 @@ impl Backend {
         let cuda = cuda::CudaContext::load()?;
         Ok(Backend {
             kind,
+            context_id: NEXT_CONTEXT_ID.fetch_add(1, Ordering::Relaxed),
             cuda: Some(cuda),
             cpu_residual_ns: [0; OPERATION_COUNT],
             measurement_active: false,
@@ -295,6 +350,225 @@ impl Backend {
             dst.cpu_residual_ns = ns;
         }
         Ok(out)
+    }
+
+    fn require_resident(&self) -> Result<(), AccelError> {
+        if self.kind != BackendKind::CudaResident {
+            return Err(AccelError::InvalidInput(
+                "resident buffers require the cuda-resident backend",
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_buffer<T: DeviceElement>(
+        &self,
+        buffer: &DeviceBuffer<T>,
+    ) -> Result<(), AccelError> {
+        self.require_resident()?;
+        if buffer.context_id != self.context_id {
+            return Err(AccelError::InvalidInput(
+                "device buffer belongs to a different CUDA context",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Allocate a persistent typed device buffer. Allocation is intentionally
+    /// separate from upload so setup and online transfers remain attributable.
+    pub fn alloc_device<T: DeviceElement>(
+        &mut self,
+        len: usize,
+    ) -> Result<DeviceBuffer<T>, AccelError> {
+        self.require_resident()?;
+        let bytes = len
+            .checked_mul(size_of::<T>())
+            .filter(|&n| n > 0)
+            .ok_or(AccelError::InvalidInput("zero or overflowing device allocation"))?;
+        #[cfg(not(feature = "cuda"))]
+        let _ = bytes;
+        #[cfg(feature = "cuda")]
+        {
+            let id =
+                self.cuda.as_mut().expect("CUDA kind without context").resident_alloc(bytes)?;
+            return Ok(DeviceBuffer {
+                id,
+                len,
+                context_id: self.context_id,
+                _element: PhantomData,
+            });
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    pub fn free_device<T: DeviceElement>(
+        &mut self,
+        buffer: DeviceBuffer<T>,
+    ) -> Result<(), AccelError> {
+        self.validate_buffer(&buffer)?;
+        #[cfg(feature = "cuda")]
+        {
+            return self.cuda.as_mut().expect("CUDA kind without context").resident_free(buffer.id);
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    pub fn upload_device<T: DeviceElement>(
+        &mut self,
+        buffer: &DeviceBuffer<T>,
+        offset: usize,
+        values: &[T],
+    ) -> Result<(), AccelError> {
+        self.validate_buffer(buffer)?;
+        validate_region(buffer.len, offset, values.len())?;
+        if values.is_empty() {
+            return Ok(());
+        }
+        #[cfg(feature = "cuda")]
+        {
+            return self.cuda.as_mut().expect("CUDA kind without context").resident_upload(
+                buffer.id,
+                offset * size_of::<T>(),
+                values.as_ptr().cast(),
+                values.len() * size_of::<T>(),
+            );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Explicit device-to-host boundary. Resident proving code must call this
+    /// only for protocol messages; tests also use it for differential checks.
+    pub fn download_device<T: DeviceElement>(
+        &mut self,
+        buffer: &DeviceBuffer<T>,
+        offset: usize,
+        len: usize,
+    ) -> Result<Vec<T>, AccelError> {
+        self.validate_buffer(buffer)?;
+        validate_region(buffer.len, offset, len)?;
+        if len == 0 {
+            return Ok(Vec::new());
+        }
+        #[cfg(feature = "cuda")]
+        {
+            let mut out = vec![T::default(); len];
+            self.cuda.as_mut().expect("CUDA kind without context").resident_download(
+                buffer.id,
+                offset * size_of::<T>(),
+                out.as_mut_ptr().cast(),
+                len * size_of::<T>(),
+            )?;
+            return Ok(out);
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    pub fn upload_new_device<T: DeviceElement>(
+        &mut self,
+        values: &[T],
+    ) -> Result<DeviceBuffer<T>, AccelError> {
+        let buffer = self.alloc_device(values.len())?;
+        if let Err(error) = self.upload_device(&buffer, 0, values) {
+            let _ = self.free_device(buffer);
+            return Err(error);
+        }
+        Ok(buffer)
+    }
+
+    /// Resident GEMM: inputs and output stay in the same CUDA context.
+    pub fn gemm_i64_device(
+        &mut self,
+        a: &DeviceBuffer<i16>,
+        a_offset: usize,
+        b: &DeviceBuffer<i16>,
+        b_offset: usize,
+        m: usize,
+        k: usize,
+        n: usize,
+    ) -> Result<DeviceBuffer<i64>, AccelError> {
+        self.validate_buffer(a)?;
+        self.validate_buffer(b)?;
+        validate_region(a.len, a_offset, checked_product(m, k)?)?;
+        validate_region(b.len, b_offset, checked_product(k, n)?)?;
+        let out = self.alloc_device(checked_product(m, n)?)?;
+        #[cfg(feature = "cuda")]
+        let result = self
+            .cuda
+            .as_mut()
+            .expect("CUDA kind without context")
+            .gemm_i64_device(a.id, a_offset, b.id, b_offset, out.id, 0, m, k, n);
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(out);
+            return Err(error);
+        }
+        Ok(out)
+    }
+
+    /// Resident fused GEMM/requant/MAC-correction primitive. Only the final
+    /// corrections need cross the protocol boundary.
+    pub fn gemm_requant_auth_device(
+        &mut self,
+        a: &DeviceBuffer<i16>,
+        a_offset: usize,
+        b: &DeviceBuffer<i16>,
+        b_offset: usize,
+        masks: &DeviceBuffer<u64>,
+        masks_offset: usize,
+        m: usize,
+        k: usize,
+        n: usize,
+        shift: u32,
+    ) -> Result<(DeviceBuffer<i16>, DeviceBuffer<u64>), AccelError> {
+        self.validate_buffer(a)?;
+        self.validate_buffer(b)?;
+        self.validate_buffer(masks)?;
+        let mn = checked_product(m, n)?;
+        validate_region(a.len, a_offset, checked_product(m, k)?)?;
+        validate_region(b.len, b_offset, checked_product(k, n)?)?;
+        validate_region(masks.len, masks_offset, mn)?;
+        if shift == 0 || shift >= 63 {
+            return Err(AccelError::InvalidInput("requant shift must be in 1..63"));
+        }
+        let out = self.alloc_device(mn)?;
+        let corr = match self.alloc_device(mn) {
+            Ok(corr) => corr,
+            Err(error) => {
+                let _ = self.free_device(out);
+                return Err(error);
+            }
+        };
+        #[cfg(feature = "cuda")]
+        let result =
+            self.cuda.as_mut().expect("CUDA kind without context").gemm_requant_auth_device(
+                a.id,
+                a_offset,
+                b.id,
+                b_offset,
+                masks.id,
+                masks_offset,
+                out.id,
+                0,
+                corr.id,
+                0,
+                m,
+                k,
+                n,
+                shift,
+            );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(corr);
+            let _ = self.free_device(out);
+            return Err(error);
+        }
+        Ok((out, corr))
     }
 
     /// Run explicitly residual host work. Hybrid accounting is deliberate;
@@ -634,6 +908,17 @@ fn validate_gemm(a: &[i16], b: &[i16], m: usize, k: usize, n: usize) -> Result<(
     Ok(())
 }
 
+fn checked_product(a: usize, b: usize) -> Result<usize, AccelError> {
+    a.checked_mul(b).ok_or(AccelError::InvalidInput("shape overflow"))
+}
+
+fn validate_region(total: usize, offset: usize, len: usize) -> Result<(), AccelError> {
+    if offset > total || len > total - offset {
+        return Err(AccelError::InvalidInput("device buffer region is out of bounds"));
+    }
+    Ok(())
+}
+
 fn validate_ntt(msg_len: usize, size: usize) -> Result<(), AccelError> {
     if size < 2 || !size.is_power_of_two() || msg_len > size {
         return Err(AccelError::InvalidInput("invalid NTT geometry"));
@@ -935,6 +1220,76 @@ mod cuda_tests {
             resident.cpu_residual(Operation::PcsRows, || ()),
             Err(AccelError::ResidualForbidden(Operation::PcsRows))
         );
+    }
+
+    #[test]
+    fn resident_buffers_and_device_gemm_are_bit_exact_and_attributed() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
+        let (m, k, n) = (3usize, 5usize, 7usize);
+        let a: Vec<i16> = (0..m * k).map(|i| ((37 * i + 11) % 401) as i16 - 200).collect();
+        let b: Vec<i16> = (0..k * n).map(|i| ((53 * i + 5) % 401) as i16 - 200).collect();
+        let expected = cpu_gemm(&a, &b, m, k, n);
+        let masks: Vec<Fp> =
+            (0..m * n).map(|i| Fp::new((i as u64 * 97 + 13) % volta_field::P)).collect();
+        let raw_masks: Vec<u64> = masks.iter().map(|x| x.value()).collect();
+
+        // Exercise non-zero typed offsets: padding must never enter a kernel.
+        let da = gpu.alloc_device::<i16>(2 + a.len() + 3).unwrap();
+        let db = gpu.alloc_device::<i16>(4 + b.len() + 1).unwrap();
+        let dm = gpu.alloc_device::<u64>(1 + masks.len() + 2).unwrap();
+        gpu.begin_measurement().unwrap();
+        gpu.upload_device(&da, 2, &a).unwrap();
+        gpu.upload_device(&db, 4, &b).unwrap();
+        gpu.upload_device(&dm, 1, &raw_masks).unwrap();
+        let after_upload = gpu.stats().unwrap();
+
+        let dacc = gpu.gemm_i64_device(&da, 2, &db, 4, m, k, n).unwrap();
+        let (dout, dcorr) =
+            gpu.gemm_requant_auth_device(&da, 2, &db, 4, &dm, 1, m, k, n, 8).unwrap();
+        let after_kernels = gpu.stats().unwrap();
+        assert_eq!(after_kernels.h2d_bytes, after_upload.h2d_bytes);
+        assert_eq!(after_kernels.d2h_bytes, after_upload.d2h_bytes);
+        assert_eq!(
+            after_kernels.operation(Operation::Gemm).calls,
+            after_upload.operation(Operation::Gemm).calls + 2
+        );
+
+        assert_eq!(gpu.download_device(&dacc, 0, m * n).unwrap(), expected);
+        let out = gpu.download_device(&dout, 0, m * n).unwrap();
+        let corr = gpu.download_device(&dcorr, 0, m * n).unwrap();
+        for z in 0..m * n {
+            let rounded = ((expected[z] + 128) >> 8).clamp(-32768, 32767) as i16;
+            assert_eq!(out[z], rounded);
+            assert_eq!(Fp::new(corr[z]) + masks[z], Fp::from_i64(rounded as i64), "correction {z}");
+        }
+        let stats = gpu.finish_measurement().unwrap();
+        assert_eq!(stats.h2d_bytes, (a.len() + b.len()) as u64 * 2 + masks.len() as u64 * 8);
+        assert_eq!(stats.d2h_bytes, m as u64 * n as u64 * (8 + 2 + 8));
+        assert!(stats.operation(Operation::Gemm).kernel_ns > 0);
+        assert_eq!(
+            stats.measurement_wall_ns,
+            stats.h2d_ns + stats.d2h_ns + stats.kernel_ns() + stats.cpu_residual_ns()
+        );
+
+        gpu.free_device(dcorr).unwrap();
+        gpu.free_device(dout).unwrap();
+        gpu.free_device(dacc).unwrap();
+        gpu.free_device(dm).unwrap();
+        gpu.free_device(db).unwrap();
+        gpu.free_device(da).unwrap();
+        assert_eq!(gpu.stats().unwrap().live_device_bytes, 0);
+    }
+
+    #[test]
+    fn resident_buffer_context_ownership_is_enforced() {
+        let Some(mut owner) = cuda(BackendKind::CudaResident) else { return };
+        let Some(mut other) = cuda(BackendKind::CudaResident) else { return };
+        let buffer = owner.upload_new_device(&[1u64, 2, 3, 4]).unwrap();
+        assert!(matches!(
+            other.download_device(&buffer, 0, buffer.len()),
+            Err(AccelError::InvalidInput("device buffer belongs to a different CUDA context"))
+        ));
+        owner.free_device(buffer).unwrap();
     }
 
     #[test]

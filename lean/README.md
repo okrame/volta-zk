@@ -1,30 +1,43 @@
-# VOLTA-ZK Lean Formalization
+# VOLTA-ZK Lean formalization
 
-Lean 4 / Lake project for the first formal target: perfect simulation of
-`Pi_BSC + Pi_ZeroBatch` against a malicious designated verifier in the ideal
-`F_sVOLE` hybrid model.
+This Lake project contains the frozen M1–M9 formal layer for VOLTA's
+designated-verifier protocol: authenticated values, blind sumcheck,
+ZeroBatch, sequential composition, authenticated KV-cache anti-replay,
+subfield corrections, product checks and the PCS opening-into-MAC interface.
 
 ## Build
 
 ```bash
-lake exe cache get
+lake exe cache get   # first build only
 lake build
+../scripts/audit_lean.sh
 ```
 
-## Files
+The development contains no `sorry` or `admit`. The only declared axioms are
+the four named future assumptions in `VoltaZk/Ideal.lean`:
 
-- `VoltaZk.Mac`: authenticated values and linearity.
-- `VoltaZk.Otp`: uniformity of masked corrections.
-- `VoltaZk.Vole`: ideal corrupted-verifier `F_sVOLE` branch.
-- `VoltaZk.ZeroBatch`: `Pi_ZeroOpen` / `Pi_ZeroBatch` simulator.
-- `VoltaZk.BlindSumcheck`: blind transcript model and main target theorem.
-- `VoltaZk.Ideal`: deferred assumptions outside this milestone.
+- `FerretRealizesSVOLE`
+- `WeightPCSBinding`
+- `LogUpGKRSound`
+- `UCComposition`
 
-## Status
+The proved M1–M9 lemmas do not use those placeholders. Their ordinary Lean
+axiom footprint is limited to `propext`, `Classical.choice` and `Quot.sound`;
+M9 takes PCS binding as an explicit `BindsIntoMac` hypothesis. The audited
+output is reproduced by `Audit.lean`; the boundary and theorem-to-file index are maintained in
+[`docs/protocol-sketch.md`](../docs/protocol-sketch.md).
 
-`lake build` succeeds with one expected `sorry`:
+## Main files
 
-- `VoltaZk.bsc_zeroBatch_perfect_zk`
+- `Mac`, `Otp`, `Vole`, `ZeroBatch`, `ZeroBatchSound`: authenticated-value
+  and zero-opening foundations.
+- `BlindSumcheck`, `BlindSumcheckSound`, `SumcheckMv`: perfect simulation and
+  malicious-prover soundness.
+- `KvCache`, `Subfield`, `Composition`: replay resistance, correction domain
+  and sequential composition.
+- `Prod`, `ProdSound`: masked degree-2 product checks.
+- `OpeningMac`: M9 PCS opening-into-MAC composition.
+- `Ideal`: the four explicitly deferred system assumptions above.
 
-VOLTA end-to-end soundness, LogUp, product checks, PCS, subfield VOLE,
-KV-cache soundness, and UC composition are not proved here.
+Protocol changes require a ledger deviation before this frozen formal layer
+is modified.

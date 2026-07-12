@@ -1993,6 +1993,36 @@ fn blind_prove_frac_tree_impl(
     (proof, point, sink.cp, sink.cq, sink.roots)
 }
 
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn blind_prove_frac_tree_table_resident(
+    dleaf: &DeviceBuffer<u64>,
+    dmult: &DeviceBuffer<u32>,
+    entries: usize,
+    alpha1: Fp,
+    stream: &mut CorrelationStream,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+    ctr: &mut Counters,
+    prod: &mut ProdTriples,
+    zero: &mut Vec<ProverAuthed>,
+    backend: &mut Backend,
+) -> (BlindFracProof, Vec<Fp2>, ProverAuthed, ProverAuthed, (ProverAuthed, ProverAuthed)) {
+    let mut sink = new_blind_sink(stream, tx, doms, prod, zero);
+    let (_rp, _rq, point) = prove_engine_resident_from_device_leaves(
+        dleaf,
+        Some(dmult),
+        entries,
+        alpha1,
+        None,
+        &mut sink,
+        ctr,
+        backend,
+    );
+    ctr.bulk(sink.ctr.fp2_mults, sink.ctr.base_mults);
+    let proof = BlindFracProof { root_corrs: sink.root_corrs, layers: sink.layers, aux: None };
+    (proof, point, sink.cp, sink.cq, sink.roots)
+}
+
 fn new_blind_sink<'a>(
     stream: &'a mut CorrelationStream,
     tx: &'a mut Transcript,
@@ -2720,6 +2750,7 @@ pub fn blind_instance_verify(
 /// global multiplicity vector, plus the authenticated fraction-sum chain
 /// tying Σ_sites p_s/q_s = p_t/q_t (3 corrections per site beyond the first,
 /// then the standard root cross-check).
+#[derive(Debug, PartialEq, Eq)]
 pub struct TableSideProof {
     pub table: BlindFracProof,
     /// Per additional site: corrections for (P·q_s, p_s·Q, Q·q_s).
@@ -2783,6 +2814,83 @@ pub fn table_side_prove_with_backend(
     )
 }
 
+/// Resident table-side proof over a public table and a device-owned global
+/// multiplicity vector. Table leaves are uploaded from public data; the
+/// multiplicities, fraction tree and final MLE evaluation never materialize
+/// on the host. The returned scalar/open claim are existing protocol
+/// messages, so the proof and verifier formats remain unchanged.
+#[allow(clippy::too_many_arguments)]
+pub fn table_side_prove_resident(
+    table_vals: &[Fp],
+    mult: &DeviceBuffer<u32>,
+    alpha: Fp2,
+    sites: &[(ProverAuthed, ProverAuthed)],
+    stream: &mut CorrelationStream,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+    ctr: &mut Counters,
+    prod: &mut ProdTriples,
+    zero: &mut Vec<ProverAuthed>,
+    backend: &mut Backend,
+) -> Result<(TableSideProof, OpenClaim), AccelError> {
+    if sites.is_empty()
+        || table_vals.len() < 2
+        || !table_vals.len().is_power_of_two()
+        || mult.len() != table_vals.len()
+    {
+        return Err(AccelError::InvalidInput("invalid resident table-side geometry"));
+    }
+
+    let table_raw: Vec<u64> = table_vals.iter().map(|value| value.value()).collect();
+    let table = backend.upload_new_device(&table_raw)?;
+    let leaf = match backend.pack_lookup_leaf_device(
+        DeviceSlice::new(&table, 0, table.len()).expect("whole public table"),
+        1,
+        table_vals.len(),
+        &[Some(0)],
+        alpha.c0,
+    ) {
+        Ok(value) => value,
+        Err(error) => {
+            let _ = backend.free_device(table);
+            return Err(error);
+        }
+    };
+    if let Err(error) = backend.free_device(table) {
+        let _ = backend.free_device(leaf);
+        return Err(error);
+    }
+
+    let (tp, pt_t, cp_t, cq_t, roots_t) = blind_prove_frac_tree_table_resident(
+        &leaf,
+        mult,
+        table_vals.len(),
+        alpha.c1,
+        stream,
+        doms,
+        tx,
+        ctr,
+        prod,
+        zero,
+        backend,
+    );
+    let t_eval = backend.mle_eval_device(
+        DeviceSlice::new(&leaf, 0, leaf.len()).expect("whole resident table leaf"),
+        &pt_t,
+    );
+    let free_result = backend.free_device(leaf);
+    let mut t_eval = match (t_eval, free_result) {
+        (Ok(value), Ok(())) => value,
+        (Err(error), _) | (_, Err(error)) => return Err(error),
+    };
+    t_eval += Fp2::new(Fp::ZERO, alpha.c1);
+    ctr.bulk((table_vals.len() - 1) as u64, 0);
+
+    Ok(finish_table_side_prove(
+        tp, pt_t, cp_t, cq_t, roots_t, t_eval, sites, stream, doms, tx, ctr, prod, zero,
+    ))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn table_side_prove_impl(
     table_vals: &[Fp],
@@ -2813,6 +2921,27 @@ fn table_side_prove_impl(
         let lifted: Vec<Fp2> = table_vals.iter().map(|&v| alpha - Fp2::from_base(v)).collect();
         eval_mle_counted(&lifted, &pt_t, ctr)
     };
+    finish_table_side_prove(
+        tp, pt_t, cp_t, cq_t, roots_t, t_eval, sites, stream, doms, tx, ctr, prod, zero,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finish_table_side_prove(
+    tp: BlindFracProof,
+    pt_t: Vec<Fp2>,
+    cp_t: ProverAuthed,
+    cq_t: ProverAuthed,
+    roots_t: (ProverAuthed, ProverAuthed),
+    t_eval: Fp2,
+    sites: &[(ProverAuthed, ProverAuthed)],
+    stream: &mut CorrelationStream,
+    doms: &mut Doms,
+    tx: &mut Transcript,
+    ctr: &mut Counters,
+    prod: &mut ProdTriples,
+    zero: &mut Vec<ProverAuthed>,
+) -> (TableSideProof, OpenClaim) {
     zero.push(cq_t.sub(ProverAuthed::from_public(t_eval)));
 
     // Fraction-sum chain: (P, Q) += (p_s, q_s) via P' = P·q_s + p_s·Q,

@@ -56,6 +56,33 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-12 (`P7-integrated-resident` global table-bank checkpoint;
+  layer wiring still open)**: the P6 one-vector-per-table-content construction
+  now has a resident ownership mode inside the existing `TableBankP`, not a
+  second protocol implementation. Per-site device histograms are accumulated
+  D2D into one opaque `u32` allocation per `TableKey`. At phase-1 close, the
+  replaceable mock-correlation seam supplies canonical masks H2D and only the
+  existing 8-byte correction vector returns D2H; alpha ordering, domains and
+  transcript labels are unchanged. At phase 2 the public table is uploaded,
+  while its negative-multiplicity fraction tree and the global multiplicity
+  MLE remain resident. A generic typed resident-MLE helper builds equality
+  weights from the small transcript point on device and returns one scalar;
+  the shared fraction-sum/cross-check tail is literally the CPU function.
+  Error paths consume and release all owned multiplicity buffers, so a failed
+  bank cannot leak allocations into context reuse.
+
+  The A100 `3mq19up4` differential accumulates two padded range sites under
+  the same content key, authenticates/finalizes them, proves both resident
+  lookup instances, closes the resident table side, and repeats the full
+  sequence on one context. Both site proofs, the complete `TableCloseProof`,
+  product/zero rows, theoretical counters, correlation consumption and
+  transcript ledger equal CPU exactly; live device bytes are stable across
+  reuse and both caller-owned source buffers are freed exactly once. All 56
+  CPU `volta-proto` tests remain green. This closes global multiplicity and
+  table-side ownership, but is not yet a layer/e2e result: the FFN and
+  attention phase-1 builders still construct their lookup sites from host
+  `LayerWitness` vectors.
+
 - **2026-07-12 (`P7-integrated-resident` device lookup-instance checkpoint;
   table-bank/layer integration still open)**: ABI v9 replaces the last
   host-built lookup-side inputs with shape-parametric resident operations.

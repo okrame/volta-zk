@@ -1328,6 +1328,66 @@ impl Backend {
         Ok(output)
     }
 
+    /// Evaluate a power-of-two resident base/Fp2 vector at an LSB-first MLE
+    /// point. Only the transcript-sized point is uploaded and the resulting
+    /// scalar is downloaded; the equality row and fold stay device-resident.
+    pub fn mle_eval_device<T: ResidentMatrixElement>(
+        &mut self,
+        input: DeviceSlice<'_, T>,
+        point: &[Fp2],
+    ) -> Result<Fp2, AccelError> {
+        let expected = 1usize
+            .checked_shl(point.len() as u32)
+            .ok_or(AccelError::InvalidInput("resident MLE dimension overflow"))?;
+        if input.len() != expected {
+            return Err(AccelError::InvalidInput("resident MLE point does not match vector"));
+        }
+        self.validate_device_slice(input, expected)?;
+
+        let point_raw: Vec<Fp2Repr> = point.iter().copied().map(Into::into).collect();
+        let points =
+            if point_raw.is_empty() { None } else { Some(self.upload_new_device(&point_raw)?) };
+        let weights = match self.logup_eq_rows_device(points.as_ref(), 1, point.len()) {
+            Ok(value) => value,
+            Err(error) => {
+                if let Some(points) = points {
+                    let _ = self.free_device(points);
+                }
+                return Err(error);
+            }
+        };
+        if let Some(points) = points {
+            if let Err(error) = self.free_device(points) {
+                let _ = self.free_device(weights);
+                return Err(error);
+            }
+        }
+
+        let folded = match self.matrix_fold_device(
+            input,
+            DeviceSlice::new(&weights, 0, weights.len()).expect("whole equality row"),
+            1,
+            expected,
+            MatrixFoldAxis::Columns,
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = self.free_device(weights);
+                return Err(error);
+            }
+        };
+        if let Err(error) = self.free_device(weights) {
+            let _ = self.free_device(folded);
+            return Err(error);
+        }
+        let value = self.download_device(&folded, 0, 1).map(|values| Fp2::from(values[0]));
+        let free_result = self.free_device(folded);
+        match (value, free_result) {
+            (Ok(value), Ok(())) => Ok(value),
+            (Err(error), _) | (_, Err(error)) => Err(error),
+        }
+    }
+
     /// Dot product of two resident Fp2 vectors. The returned scalar is a
     /// protocol-sized host message; neither input crosses D2H.
     pub fn fp2_dot_device(

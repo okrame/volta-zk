@@ -70,16 +70,16 @@ use crate::gemm_proof::{
 };
 use crate::hadamard::{hadamard_prove, hadamard_verify, HadamardDoms, HadamardProof};
 use crate::logup::{
-    blind_instance_prove, blind_instance_prove_with_backend, blind_instance_verify,
-    eval_mle_counted, table_side_prove, table_side_prove_with_backend, table_side_verify,
-    BlindInstance, Counters, Doms, InstanceOutP, InstanceOutV, LeafAuxClaim, TableKey,
-    TableSideProof,
+    blind_instance_prove, blind_instance_prove_resident, blind_instance_prove_with_backend,
+    blind_instance_verify, eval_mle_counted, table_side_prove, table_side_prove_resident,
+    table_side_prove_with_backend, table_side_verify, BlindInstance, Counters, Doms, InstanceOutP,
+    InstanceOutV, LeafAuxClaim, TableKey, TableSideProof,
 };
 use crate::mle::{eq_vec, eval_mle};
 use crate::sumcheck_blind::{blind_prove, blind_verify, BlindSumcheckProof};
 use crate::thaler::pad_bits;
 use std::collections::BTreeMap;
-use volta_accel::Backend;
+use volta_accel::{AccelError, Backend, DeviceBuffer, DeviceSlice};
 use volta_field::{Fp, Fp2};
 use volta_gpt2::{gemm_i64, GemmBiases, LayerWeights, LayerWitness, Luts, D, DFF, DH, H};
 use volta_mac::{
@@ -106,6 +106,7 @@ pub fn layer_dom_base(layer: u8) -> u64 {
 /// The proof of one table content's closure (per model): its global
 /// multiplicity-vector corrections + the shared table side (table fraction
 /// tree, fraction-sum chain over all sites, root cross-check).
+#[derive(Debug, PartialEq, Eq)]
 pub struct TableCloseProof {
     pub key: TableKey,
     pub mult_corr: Vec<u64>,
@@ -120,9 +121,11 @@ pub struct TableCloseProof {
 #[derive(Default)]
 pub struct TableBankP {
     mult: BTreeMap<TableKey, Vec<u32>>,
+    resident_mult: BTreeMap<TableKey, DeviceBuffer<u32>>,
     alphas: BTreeMap<TableKey, Fp2>,
     roots: BTreeMap<TableKey, Vec<(ProverAuthed, ProverAuthed)>>,
     auth: BTreeMap<TableKey, (u64, Vec<Fp>, Vec<u64>)>,
+    resident_auth: BTreeMap<TableKey, (u64, Vec<u64>)>,
     finalized: bool,
 }
 
@@ -164,11 +167,43 @@ impl TableBankP {
     /// Accumulate a site's multiplicities into the content's global vector.
     pub fn add_mult(&mut self, key: TableKey, m: &[u32]) {
         assert!(!self.finalized, "phase 1 is closed — α already drawn");
+        assert!(
+            self.resident_mult.is_empty(),
+            "host and resident multiplicity ownership cannot be mixed"
+        );
         assert_eq!(m.len(), table_len(key), "site multiplicity length mismatch for {key:?}");
         let g = self.mult.entry(key).or_insert_with(|| vec![0u32; m.len()]);
         for (a, &b) in g.iter_mut().zip(m) {
             *a += b;
         }
+    }
+
+    /// Consume one device-owned site histogram into the model-wide global
+    /// multiplicity vector. Equal content keys are accumulated in place and
+    /// the temporary input allocation is released exactly once.
+    pub fn add_mult_resident(
+        &mut self,
+        key: TableKey,
+        mult: DeviceBuffer<u32>,
+        backend: &mut Backend,
+    ) -> Result<(), AccelError> {
+        if self.finalized || !self.mult.is_empty() || mult.len() != table_len(key) {
+            let _ = backend.free_device(mult);
+            return Err(AccelError::InvalidInput("invalid resident table multiplicity"));
+        }
+        if let Some(global) = self.resident_mult.get(&key) {
+            let add_result = backend.u32_add_inplace_device(
+                DeviceSlice::new(global, 0, global.len()).expect("whole global multiplicity"),
+                DeviceSlice::new(&mult, 0, mult.len()).expect("whole site multiplicity"),
+            );
+            let free_result = backend.free_device(mult);
+            return match (add_result, free_result) {
+                (Ok(()), Ok(())) => Ok(()),
+                (Err(error), _) | (_, Err(error)) => Err(error),
+            };
+        }
+        self.resident_mult.insert(key, mult);
+        Ok(())
     }
 
     /// End of phase 1: authenticate every content's global vector, then draw
@@ -180,6 +215,10 @@ impl TableBankP {
         doms: &mut Doms,
     ) {
         assert!(!self.finalized);
+        assert!(
+            self.resident_mult.is_empty(),
+            "host finalize cannot consume resident multiplicities"
+        );
         for (key, m) in &self.mult {
             let fp = fp_vec_u32(m);
             let dom = doms.take(1);
@@ -190,6 +229,64 @@ impl TableBankP {
             self.alphas.insert(*key, tx.challenge_fp2());
         }
         self.finalized = true;
+    }
+
+    /// Resident phase-1 closure. Mock-PCG masks remain a replaceable host
+    /// correlation-provider seam; only masks travel H2D and the existing
+    /// correction message travels D2H. Multiplicity values stay resident.
+    pub fn finalize_resident(
+        &mut self,
+        stream: &mut CorrelationStream,
+        tx: &mut Transcript,
+        doms: &mut Doms,
+        backend: &mut Backend,
+    ) -> Result<(), AccelError> {
+        if self.finalized || !self.mult.is_empty() || self.resident_mult.is_empty() {
+            self.free_resident_multiplicities(backend);
+            return Err(AccelError::InvalidInput("invalid resident table-bank finalize state"));
+        }
+        let result = (|| {
+            for (key, mult) in &self.resident_mult {
+                let dom = doms.take(1);
+                let masks = stream.draw_sub_masks(dom, mult.len());
+                let masks_raw: Vec<u64> = masks.iter().map(|mask| mask.value()).collect();
+                let device_masks = backend.upload_new_device(&masks_raw)?;
+                let corrections = match backend.subfield_corrections_device(
+                    DeviceSlice::new(mult, 0, mult.len()).expect("whole resident multiplicity"),
+                    DeviceSlice::new(&device_masks, 0, device_masks.len())
+                        .expect("whole resident mask vector"),
+                ) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        let _ = backend.free_device(device_masks);
+                        return Err(error);
+                    }
+                };
+                if let Err(error) = backend.free_device(device_masks) {
+                    let _ = backend.free_device(corrections);
+                    return Err(error);
+                }
+                let corr = backend.download_device(&corrections, 0, corrections.len());
+                let free_result = backend.free_device(corrections);
+                let corr = match (corr, free_result) {
+                    (Ok(value), Ok(())) => value,
+                    (Err(error), _) | (_, Err(error)) => return Err(error),
+                };
+                tx.append("auth_corrections", 8 * corr.len() as u64);
+                self.resident_auth.insert(*key, (dom, corr));
+            }
+            for key in self.resident_mult.keys() {
+                self.alphas.insert(*key, tx.challenge_fp2());
+            }
+            self.finalized = true;
+            Ok(())
+        })();
+        if result.is_err() {
+            self.free_resident_multiplicities(backend);
+            self.resident_auth.clear();
+            self.alphas.clear();
+        }
+        result
     }
 
     pub fn alpha(&self, key: TableKey) -> Fp2 {
@@ -203,11 +300,16 @@ impl TableBankP {
     /// Multiplicity correction bytes (8 B/entry over all contents).
     /// Canonical (sorted) content keys accumulated so far.
     pub fn content_keys(&self) -> Vec<TableKey> {
-        self.mult.keys().copied().collect()
+        assert!(
+            self.mult.is_empty() || self.resident_mult.is_empty(),
+            "mixed table-bank ownership"
+        );
+        self.mult.keys().chain(self.resident_mult.keys()).copied().collect()
     }
 
     pub fn mult_bytes(&self) -> u64 {
-        8 * self.mult.values().map(|m| m.len() as u64).sum::<u64>()
+        8 * (self.mult.values().map(|m| m.len() as u64).sum::<u64>()
+            + self.resident_mult.values().map(|m| m.len() as u64).sum::<u64>())
     }
 
     /// Close every content: ONE table side against the global multiplicity
@@ -255,6 +357,10 @@ impl TableBankP {
         mut backend: Option<&mut Backend>,
     ) -> Vec<TableCloseProof> {
         assert!(self.finalized);
+        assert!(
+            self.resident_mult.is_empty(),
+            "host table-bank close cannot consume resident multiplicities"
+        );
         let mut out = Vec::with_capacity(self.mult.len());
         for (key, m) in &self.mult {
             let sites = self.roots.get(key).unwrap_or_else(|| {
@@ -275,6 +381,65 @@ impl TableBankP {
             out.push(TableCloseProof { key: *key, mult_corr: corr.clone(), side });
         }
         out
+    }
+
+    /// Resident counterpart of [`TableBankP::close`]. It consumes and frees
+    /// every global multiplicity allocation, including all remaining buffers
+    /// on an error path, so a failed proof cannot poison context reuse.
+    #[allow(clippy::too_many_arguments)]
+    pub fn close_resident(
+        mut self,
+        luts: &Luts,
+        stream: &mut CorrelationStream,
+        doms: &mut Doms,
+        tx: &mut Transcript,
+        ctr: &mut Counters,
+        prod: &mut crate::logup::ProdTriples,
+        zero: &mut Vec<ProverAuthed>,
+        backend: &mut Backend,
+    ) -> Result<Vec<TableCloseProof>, AccelError> {
+        if !self.finalized || !self.mult.is_empty() || self.resident_mult.is_empty() {
+            self.free_resident_multiplicities(backend);
+            return Err(AccelError::InvalidInput("invalid resident table-bank close state"));
+        }
+        let keys: Vec<TableKey> = self.resident_mult.keys().copied().collect();
+        let mut out = Vec::with_capacity(keys.len());
+        for key in keys {
+            let mult = self.resident_mult.remove(&key).expect("resident key disappeared");
+            let result = (|| {
+                let sites = self.roots.get(&key).ok_or(AccelError::InvalidInput(
+                    "resident table content has no lookup sites",
+                ))?;
+                let tv = table_vals(key, luts);
+                let alpha = self.alphas[&key];
+                let (side, mult_claim) = table_side_prove_resident(
+                    &tv, &mult, alpha, sites, stream, doms, tx, ctr, prod, zero, backend,
+                )?;
+                let (dom, corr) = self.resident_auth.get(&key).ok_or(AccelError::InvalidInput(
+                    "resident multiplicity was not authenticated",
+                ))?;
+                let opened =
+                    open_fp_vec_resident_p(stream, *dom, &mult, &mult_claim.point, backend)?;
+                zero.push(mult_claim.value.sub(opened));
+                Ok(TableCloseProof { key, mult_corr: corr.clone(), side })
+            })();
+            let free_result = backend.free_device(mult);
+            let proof = match (result, free_result) {
+                (Ok(proof), Ok(())) => proof,
+                (Err(error), _) | (_, Err(error)) => {
+                    self.free_resident_multiplicities(backend);
+                    return Err(error);
+                }
+            };
+            out.push(proof);
+        }
+        Ok(out)
+    }
+
+    fn free_resident_multiplicities(&mut self, backend: &mut Backend) {
+        for (_, mult) in std::mem::take(&mut self.resident_mult) {
+            let _ = backend.free_device(mult);
+        }
     }
 }
 
@@ -465,6 +630,43 @@ impl<'a> BlockCtxP<'a> {
         self.bank.push_roots(key, out.roots);
         out
     }
+
+    /// Lookup-side instance sourced directly from device-owned padded proof
+    /// columns. This is intentionally separate from the CPU wrapper so a
+    /// resident call cannot silently stage through host vectors.
+    #[allow(dead_code)] // consumed by the resident layer entry point in the next checkpoint
+    pub(crate) fn inst_resident(
+        &mut self,
+        key: TableKey,
+        columns: DeviceSlice<'_, u64>,
+        column_count: usize,
+        entries: usize,
+        shifts: &[Option<u32>],
+        aux: Vec<LeafAuxClaim>,
+    ) -> Result<InstanceOutP, AccelError> {
+        let alpha = self.bank.alpha(key);
+        let backend = self
+            .backend
+            .as_deref_mut()
+            .ok_or(AccelError::InvalidInput("resident lookup requires an explicit backend"))?;
+        let out = blind_instance_prove_resident(
+            columns,
+            column_count,
+            entries,
+            shifts,
+            alpha,
+            aux,
+            self.stream,
+            &mut self.doms,
+            self.tx,
+            &mut self.ctr_instances,
+            &mut self.prod,
+            &mut self.zero,
+            backend,
+        )?;
+        self.bank.push_roots(key, out.roots);
+        Ok(out)
+    }
 }
 
 /// Verifier mirror of [`BlockCtxP`].
@@ -654,6 +856,32 @@ pub(crate) fn open_fp_vec_p(
         tag += eq[i] * t;
     }
     ProverAuthed { x: val, m: tag }
+}
+
+/// Streamed opening of a resident u32/Fp multiplicity vector. Mock-PCG tags
+/// are folded by the protocol host, while the plaintext MLE is evaluated on
+/// device and only its scalar claim crosses D2H.
+fn open_fp_vec_resident_p(
+    stream: &mut CorrelationStream,
+    dom: u64,
+    vals: &DeviceBuffer<u32>,
+    point: &[Fp2],
+    backend: &mut Backend,
+) -> Result<ProverAuthed, AccelError> {
+    let expected = 1usize
+        .checked_shl(point.len() as u32)
+        .ok_or(AccelError::InvalidInput("resident multiplicity point overflow"))?;
+    if vals.len() != expected {
+        return Err(AccelError::InvalidInput("resident multiplicity point does not match vector"));
+    }
+    let tags = stream.draw_sub_tags(dom, vals.len());
+    let eq = eq_vec(point);
+    let tag = tags.into_iter().zip(eq).fold(Fp2::ZERO, |acc, (value, weight)| acc + weight * value);
+    let value = backend.mle_eval_device(
+        DeviceSlice::new(vals, 0, vals.len()).expect("whole resident multiplicity"),
+        point,
+    )?;
+    Ok(ProverAuthed { x: value, m: tag })
 }
 
 pub(crate) fn keys_fp_vec_v(ctx: &mut VerifierCtx, dom: u64, corr: &[u64]) -> Vec<Fp2> {
@@ -4107,6 +4335,158 @@ mod tests {
             let wit = forward_layer(&x, &w, &luts, T);
             (luts, w, wit)
         })
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn cuda_resident_table_bank_matches_cpu_and_reuses_context() {
+        let mut resident = match Backend::cuda_resident() {
+            Ok(gpu) => gpu,
+            Err(e) if std::env::var("VOLTA_REQUIRE_CUDA").as_deref() != Ok("1") => {
+                eprintln!("skipping CUDA resident table-bank differential: {e}");
+                return;
+            }
+            Err(e) => panic!("CUDA required: {e}"),
+        };
+        let luts = build_luts(LutParams::default());
+        let key = TableKey::Range(4);
+        let entries = 64usize;
+        let site0: Vec<Fp> = (0..entries)
+            .map(|i| if i < 45 { Fp::new(((i * 11 + 3) % 16) as u64) } else { Fp::ZERO })
+            .collect();
+        let site1: Vec<Fp> = (0..entries)
+            .map(|i| if i < 53 { Fp::new(((i * 7 + 5) % 16) as u64) } else { Fp::ZERO })
+            .collect();
+        let histogram = |site: &[Fp]| {
+            let mut out = vec![0u32; table_len(key)];
+            for value in site {
+                out[value.value() as usize] += 1;
+            }
+            out
+        };
+
+        let expected = {
+            let mut stream = CorrelationStream::new([81; 32]);
+            let mut tx = Transcript::new([82; 32]);
+            let mut bank = TableBankP::new();
+            bank.add_mult(key, &histogram(&site0));
+            bank.add_mult(key, &histogram(&site1));
+            let mut table_doms = Doms::new(0x8100);
+            bank.finalize(&mut stream, &mut tx, &mut table_doms);
+            let (site_proofs, mut prod, mut zero, mut ctr) = {
+                let mut cx =
+                    BlockCtxP::with_doms(&mut stream, &mut tx, Doms::new(0x8200), &mut bank);
+                let proof0 = cx.inst(key, &[site0.clone()], &[Some(0)], Vec::new()).proof;
+                let proof1 = cx.inst(key, &[site1.clone()], &[Some(0)], Vec::new()).proof;
+                ([proof0, proof1], cx.prod, cx.zero, cx.ctr_instances)
+            };
+            let tables = bank.close(
+                &luts,
+                &mut stream,
+                &mut table_doms,
+                &mut tx,
+                &mut ctr,
+                &mut prod,
+                &mut zero,
+            );
+            (site_proofs, tables, prod, zero, ctr, stream.counters, tx.ledger().clone())
+        };
+
+        let raw0: Vec<u64> = site0.iter().map(|value| value.value()).collect();
+        let raw1: Vec<u64> = site1.iter().map(|value| value.value()).collect();
+        let live_before_sources = resident.stats().unwrap().live_device_bytes;
+        let device0 = resident.upload_new_device(&raw0).unwrap();
+        let device1 = resident.upload_new_device(&raw1).unwrap();
+        resident.begin_measurement().unwrap();
+        let run_resident = |backend: &mut Backend| {
+            let mut stream = CorrelationStream::new([81; 32]);
+            let mut tx = Transcript::new([82; 32]);
+            let mut bank = TableBankP::new();
+            let mult0 = backend
+                .histogram_fp_device(
+                    DeviceSlice::new(&device0, 0, entries).expect("whole lookup site 0"),
+                    table_len(key),
+                )
+                .unwrap();
+            bank.add_mult_resident(key, mult0, backend).unwrap();
+            let mult1 = backend
+                .histogram_fp_device(
+                    DeviceSlice::new(&device1, 0, entries).expect("whole lookup site 1"),
+                    table_len(key),
+                )
+                .unwrap();
+            bank.add_mult_resident(key, mult1, backend).unwrap();
+            let mut table_doms = Doms::new(0x8100);
+            bank.finalize_resident(&mut stream, &mut tx, &mut table_doms, backend).unwrap();
+            let (site_proofs, mut prod, mut zero, mut ctr) = {
+                let mut cx = BlockCtxP::with_doms_and_backend(
+                    &mut stream,
+                    &mut tx,
+                    Doms::new(0x8200),
+                    &mut bank,
+                    backend,
+                );
+                let proof0 = cx
+                    .inst_resident(
+                        key,
+                        DeviceSlice::new(&device0, 0, entries).expect("whole lookup site 0"),
+                        1,
+                        entries,
+                        &[Some(0)],
+                        Vec::new(),
+                    )
+                    .unwrap()
+                    .proof;
+                let proof1 = cx
+                    .inst_resident(
+                        key,
+                        DeviceSlice::new(&device1, 0, entries).expect("whole lookup site 1"),
+                        1,
+                        entries,
+                        &[Some(0)],
+                        Vec::new(),
+                    )
+                    .unwrap()
+                    .proof;
+                ([proof0, proof1], cx.prod, cx.zero, cx.ctr_instances)
+            };
+            let tables = bank
+                .close_resident(
+                    &luts,
+                    &mut stream,
+                    &mut table_doms,
+                    &mut tx,
+                    &mut ctr,
+                    &mut prod,
+                    &mut zero,
+                    backend,
+                )
+                .unwrap();
+            (site_proofs, tables, prod, zero, ctr, stream.counters, tx.ledger().clone())
+        };
+
+        let got = run_resident(&mut resident);
+        assert_eq!(got, expected);
+        let live_after_first = resident.stats().unwrap().live_device_bytes;
+        let got_reused = run_resident(&mut resident);
+        assert_eq!(got_reused, expected);
+        assert_eq!(
+            resident.stats().unwrap().live_device_bytes,
+            live_after_first,
+            "resident table bank leaked across context reuse"
+        );
+        let stats = resident.finish_measurement().unwrap();
+        assert!(stats.operation(volta_accel::Operation::Logup).calls > 0);
+        assert_eq!(stats.operation(volta_accel::Operation::Logup).cpu_residual_ns, 0);
+        resident.free_device(device1).unwrap();
+        resident.free_device(device0).unwrap();
+        assert_eq!(
+            resident.stats().unwrap().live_device_bytes
+                + ((raw0.len() + raw1.len()) * std::mem::size_of::<u64>()) as u64,
+            live_after_first,
+            "resident table-bank source buffers were not released exactly once"
+        );
+        assert!(resident.stats().unwrap().live_device_bytes >= live_before_sources);
     }
 
     /// True W̃ evaluation for a k×n weight tensor at a claim point

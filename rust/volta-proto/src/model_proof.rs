@@ -424,14 +424,8 @@ fn prove_response_impl(
     let rb_ln = 1usize;
     let s_ln = model.p.lut.shift_ln_norm;
     let out2: Vec<i16> = wit.final_ln.out.iter().chain(wit.final_ln.out.iter()).copied().collect();
-    let acc_ln2: Vec<i64> = wit
-        .final_ln
-        .norm_trace
-        .inputs
-        .iter()
-        .chain(wit.final_ln.norm_trace.inputs.iter())
-        .copied()
-        .collect();
+    let acc_ln2: Vec<i64> =
+        wit.final_ln.acc.iter().chain(wit.final_ln.acc.iter()).copied().collect();
     let last_row: Vec<i16> = wit.layers[L - 1].ffn_block_out[(t - 1) * D..t * D].to_vec();
     let x2: Vec<i16> = last_row.iter().chain(last_row.iter()).copied().collect();
     let mean2 = [wit.final_ln.mean, wit.final_ln.mean];
@@ -535,7 +529,7 @@ fn prove_response_impl(
                     &bw.fin_rsqrt_out,
                     rout_pad,
                 );
-                let acc_fin = ln_acc_recompute(
+                let expected_acc_fin = ln_acc_recompute(
                     &bw.layers[L - 1].ffn_block_out,
                     bw.q,
                     &bw.fin_mean,
@@ -544,14 +538,15 @@ fn prove_response_impl(
                     &model.lnf_bias,
                     s_lnf,
                 );
-                add_range_mult(cx.bank, &acc_fin, &bw.fin_out, bw.q, D, s_lnf);
+                assert_eq!(bw.fin_acc, expected_acc_fin, "band final-LN accumulator mismatch");
+                add_range_mult(cx.bank, &bw.fin_acc, &bw.fin_out, bw.q, D, s_lnf);
                 let mut mult_rsq = vec![0u32; 1 << 16];
                 for &r in &bw.fin_rsqrt_in {
                     mult_rsq[r as usize] += 1;
                 }
                 mult_rsq[0] += ((1usize << pad_bits(bw.q)) - bw.q) as u32;
                 cx.bank.add_mult(TableKey::LnRsqrt, &mult_rsq);
-                (cx.doms, dom_out_f, out_corr_f, lv, corrs, acc_fin)
+                (cx.doms, dom_out_f, out_corr_f, lv, corrs, bw.fin_acc.clone())
             };
             chunk_p1s.push(ChunkP1 {
                 layer_p1s,

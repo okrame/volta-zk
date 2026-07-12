@@ -30,6 +30,7 @@ pub struct BandModelWitness {
     pub fin_var: Vec<i64>,
     pub fin_rsqrt_in: Vec<i64>,
     pub fin_rsqrt_out: Vec<i16>,
+    pub fin_acc: Vec<i64>,
     pub fin_out: Vec<i16>, // q×D
     /// Band logits (q×VOCAB, i64 accumulators over the tied wte): PUBLIC
     /// response output — row r (position t0+r) samples the token at t0+r+1.
@@ -111,6 +112,7 @@ pub fn band_model_witness(m: &Gpt2Model, full: &ModelWitness, t0: usize) -> Band
                 ln1_var: lw.ln1_var[t0..t].to_vec(),
                 ln1_rsqrt_in: lw.ln1_rsqrt_in[t0..t].to_vec(),
                 ln1_rsqrt_out: lw.ln1_rsqrt_out[t0..t].to_vec(),
+                ln1_acc: slice_rows_i64(&lw.ln1_acc, t0, t),
                 ln1_out: slice_rows_i16(&lw.ln1_out, t0, t),
                 qkv_acc: lw.qkv_acc[t0 * 3 * D..t * 3 * D].to_vec(),
                 q: slice_rows_i16(&lw.q, t0, t),
@@ -129,6 +131,7 @@ pub fn band_model_witness(m: &Gpt2Model, full: &ModelWitness, t0: usize) -> Band
                 ln2_var: lw.ln2_var[t0..t].to_vec(),
                 ln2_rsqrt_in: lw.ln2_rsqrt_in[t0..t].to_vec(),
                 ln2_rsqrt_out: lw.ln2_rsqrt_out[t0..t].to_vec(),
+                ln2_acc: slice_rows_i64(&lw.ln2_acc, t0, t),
                 ln2_out: slice_rows_i16(&lw.ln2_out, t0, t),
                 ffn_up_acc: lw.ffn_up_acc[t0 * DFF..t * DFF].to_vec(),
                 ffn_up_q: lw.ffn_up_q[t0 * DFF..t * DFF].to_vec(),
@@ -173,6 +176,7 @@ pub fn band_model_witness(m: &Gpt2Model, full: &ModelWitness, t0: usize) -> Band
         fin_var: ln.var,
         fin_rsqrt_in: ln.rsqrt_in,
         fin_rsqrt_out: ln.rsqrt_out,
+        fin_acc: ln.acc,
         fin_out: ln.out,
         logits,
     }

@@ -1938,8 +1938,9 @@ pub(crate) fn ffn_phase1(
     mult_gelu[0] += ff_pads as u32; // pad pair (0, gelu[0]=0) at index 0
     cx.bank.add_mult(TableKey::Gelu, &mult_gelu);
     add_range_mult(cx.bank, &wit.ffn_up_acc, &wit.ffn_up_q, t, DFF, s_up);
-    // LN2 accumulators, recomputed (bit-identical to the trace inputs).
-    let acc_ln = ln_acc_recompute(
+    // The accumulator is an explicit witness wire; recomputation remains the
+    // prover-side consistency assertion required by the logged LN deviation.
+    let expected_acc_ln = ln_acc_recompute(
         &wit.attn_block_out,
         t,
         &wit.ln2_mean,
@@ -1948,7 +1949,8 @@ pub(crate) fn ffn_phase1(
         &weights.ln2_bias,
         s_ln,
     );
-    add_range_mult(cx.bank, &acc_ln, &wit.ln2_out, t, D, s_ln);
+    assert_eq!(wit.ln2_acc, expected_acc_ln, "LN2 accumulator witness mismatch");
+    add_range_mult(cx.bank, &wit.ln2_acc, &wit.ln2_out, t, D, s_ln);
     let mut mult_rsq = vec![0u32; 1 << 16];
     for i in 0..t {
         mult_rsq[wit.ln2_rsqrt_in[i] as usize] += 1;
@@ -2003,15 +2005,7 @@ pub(crate) fn prove_ffn_block(
     let s_dn = p.shift_ffn_down;
     let s_up = p.shift_ffn_up;
     let s_ln = p.shift_ln_norm;
-    let acc_ln = ln_acc_recompute(
-        &wit.attn_block_out,
-        t,
-        &wit.ln2_mean,
-        &wit.ln2_rsqrt_out,
-        &weights.ln2_gain,
-        &weights.ln2_bias,
-        s_ln,
-    );
+    let acc_ln = &wit.ln2_acc;
 
     // ---- 1+2: ffn_down range site, closed against the residual ------------
     let site_dn = prove_range_site(&wit.ffn_down_acc, &wit.ffn_down_q, t, D, s_dn, Vec::new(), cx);
@@ -2095,7 +2089,7 @@ pub(crate) fn prove_ffn_block(
     let ln = prove_ln_chain(
         t,
         s_ln,
-        &acc_ln,
+        acc_ln,
         &wit.ln2_out,
         &wit.attn_block_out,
         dom_abo,
@@ -2704,7 +2698,7 @@ pub(crate) fn attn_phase1_with_wires(
         &wit.ln1_rsqrt_out,
         luts,
     );
-    let acc_ln1 = ln_acc_recompute(
+    let expected_acc_ln1 = ln_acc_recompute(
         &wit.x_in,
         t,
         &wit.ln1_mean,
@@ -2713,7 +2707,8 @@ pub(crate) fn attn_phase1_with_wires(
         &weights.ln1_bias,
         p.shift_ln_norm,
     );
-    add_range_mult(cx.bank, &acc_ln1, &wit.ln1_out, t, D, p.shift_ln_norm);
+    assert_eq!(wit.ln1_acc, expected_acc_ln1, "LN1 accumulator witness mismatch");
+    add_range_mult(cx.bank, &wit.ln1_acc, &wit.ln1_out, t, D, p.shift_ln_norm);
     let mut mult_rsq1 = vec![0u32; 1 << 16];
     for i in 0..t {
         mult_rsq1[wit.ln1_rsqrt_in[i] as usize] += 1;
@@ -2851,15 +2846,7 @@ pub(crate) fn prove_attn_block(
     let rem_sn = build_rem_sn(wires, s_sn);
     let rem_sc = build_rem_sc_packed(&wit.scores_acc, &wit.scores_q, sh, s_sc);
     let (rem_qkv, out_qkv) = build_qkv_cols(wit, s_qkv, t_pad);
-    let acc_ln1 = ln_acc_recompute(
-        &wit.x_in,
-        t,
-        &wit.ln1_mean,
-        &wit.ln1_rsqrt_out,
-        &weights.ln1_gain,
-        &weights.ln1_bias,
-        s_ln,
-    );
+    let acc_ln1 = &wit.ln1_acc;
 
     // ---- 1: attn_proj range instance, closed against the residual ----------
     // (chained two-stage for s_ap > 16 — P5 per-layer residual scales).
@@ -3344,7 +3331,7 @@ pub(crate) fn prove_attn_block(
     let ln = prove_ln_chain(
         t,
         s_ln,
-        &acc_ln1,
+        acc_ln1,
         &wit.ln1_out,
         &wit.x_in,
         dom_xin,

@@ -294,6 +294,7 @@ pub struct LayerWitness {
     pub ln1_var: Vec<i64>,       // T
     pub ln1_rsqrt_in: Vec<i64>,  // T (var >> ln_var_shift, the LUT index)
     pub ln1_rsqrt_out: Vec<i16>, // T
+    pub ln1_acc: Vec<i64>,       // T×d affine accumulator before requant
     pub ln1_out: Vec<i16>,       // T×d
     // -- attention internals --
     pub qkv_acc: Vec<i64>,    // T×3d (c_attn GEMM accumulators)
@@ -317,6 +318,7 @@ pub struct LayerWitness {
     pub ln2_var: Vec<i64>,
     pub ln2_rsqrt_in: Vec<i64>,
     pub ln2_rsqrt_out: Vec<i16>,
+    pub ln2_acc: Vec<i64>,
     pub ln2_out: Vec<i16>,
     // -- FFN internals --
     pub ffn_up_acc: Vec<i64>,   // T×d_ff
@@ -351,6 +353,7 @@ pub(crate) struct LnOut {
     pub(crate) var: Vec<i64>,
     pub(crate) rsqrt_in: Vec<i64>,
     pub(crate) rsqrt_out: Vec<i16>,
+    pub(crate) acc: Vec<i64>,
     pub(crate) out: Vec<i16>,
 }
 
@@ -369,6 +372,7 @@ pub(crate) fn layer_norm(
     let mut var = Vec::with_capacity(t);
     let mut rsqrt_in = Vec::with_capacity(t);
     let mut rsqrt_out = Vec::with_capacity(t);
+    let mut acc_out = vec![0i64; t * D];
     let mut out = vec![0i16; t * D];
 
     for i in 0..t {
@@ -388,6 +392,7 @@ pub(crate) fn layer_norm(
         for j in 0..D {
             let dev = row[j] as i64 - m;
             let acc = dev * r as i64 * gain[j] as i64 + ((bias[j] as i64) << p.shift_ln_norm);
+            acc_out[i * D + j] = acc;
             out[i * D + j] =
                 requant_into(norm_trace, TableId::LnNormRequant.name(), acc, p.shift_ln_norm);
         }
@@ -396,7 +401,7 @@ pub(crate) fn layer_norm(
         rsqrt_in.push(vin);
         rsqrt_out.push(r);
     }
-    LnOut { mean, var, rsqrt_in, rsqrt_out, out }
+    LnOut { mean, var, rsqrt_in, rsqrt_out, acc: acc_out, out }
 }
 
 /// Residual add in i32 with an i16-fit assertion (adds are linear — no
@@ -684,6 +689,7 @@ pub fn forward_layer_with_backend(
         ln1_var: ln1.var,
         ln1_rsqrt_in: ln1.rsqrt_in,
         ln1_rsqrt_out: ln1.rsqrt_out,
+        ln1_acc: ln1.acc,
         ln1_out: ln1.out,
         qkv_acc,
         q,
@@ -702,6 +708,7 @@ pub fn forward_layer_with_backend(
         ln2_var: ln2.var,
         ln2_rsqrt_in: ln2.rsqrt_in,
         ln2_rsqrt_out: ln2.rsqrt_out,
+        ln2_acc: ln2.acc,
         ln2_out: ln2.out,
         ffn_up_acc,
         ffn_up_q,

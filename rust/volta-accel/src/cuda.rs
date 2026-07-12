@@ -121,25 +121,27 @@ type FixedEmbedDevice = unsafe extern "C" fn(
 type FixedLayerNormDevice = unsafe extern "C" fn(
     *mut c_void,
     u64,
-    usize,
+    usize, // input
     u64,
-    usize,
+    usize, // gain
     u64,
-    usize,
+    usize, // bias
     u64,
-    usize,
+    usize, // LUT
     u64,
-    usize,
+    usize, // mean
     u64,
-    usize,
+    usize, // variance
     u64,
-    usize,
+    usize, // rsqrt input
     u64,
-    usize,
+    usize, // rsqrt output
     u64,
-    usize,
+    usize, // affine accumulator
     u64,
-    usize,
+    usize, // requantized output
+    u64,
+    usize, // error flag
     usize,
     usize,
     u32,
@@ -1027,6 +1029,8 @@ impl CudaContext {
         rin_offset: usize,
         rout: u64,
         rout_offset: usize,
+        accumulators: u64,
+        accumulators_offset: usize,
         out: u64,
         out_offset: usize,
         error: u64,
@@ -1056,6 +1060,8 @@ impl CudaContext {
                 rin_offset,
                 rout,
                 rout_offset,
+                accumulators,
+                accumulators_offset,
                 out,
                 out_offset,
                 error,

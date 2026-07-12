@@ -79,6 +79,7 @@ pub enum LayerI64Field {
     Ln1Mean = 0,
     Ln1Var,
     Ln1RsqrtIn,
+    Ln1Acc,
     QkvAcc,
     ScoresAcc,
     Denoms,
@@ -87,15 +88,17 @@ pub enum LayerI64Field {
     Ln2Mean,
     Ln2Var,
     Ln2RsqrtIn,
+    Ln2Acc,
     FfnUpAcc,
     FfnDownAcc,
 }
 
 impl LayerI64Field {
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 15] = [
         Self::Ln1Mean,
         Self::Ln1Var,
         Self::Ln1RsqrtIn,
+        Self::Ln1Acc,
         Self::QkvAcc,
         Self::ScoresAcc,
         Self::Denoms,
@@ -104,6 +107,7 @@ impl LayerI64Field {
         Self::Ln2Mean,
         Self::Ln2Var,
         Self::Ln2RsqrtIn,
+        Self::Ln2Acc,
         Self::FfnUpAcc,
         Self::FfnDownAcc,
     ];
@@ -112,7 +116,7 @@ impl LayerI64Field {
 #[derive(Debug)]
 struct LayerLayout {
     i16: [Region; 20],
-    i64: [Region; 13],
+    i64: [Region; 15],
     i16_len: usize,
     i64_len: usize,
     score_entries: usize,
@@ -155,6 +159,7 @@ impl LayerLayout {
             take(&mut p64, t),      // ln1_mean
             take(&mut p64, t),      // ln1_var
             take(&mut p64, t),      // ln1_rsqrt_in
+            take(&mut p64, td),     // ln1_acc
             take(&mut p64, 3 * td), // qkv_acc
             take(&mut p64, scores), // scores_acc
             take(&mut p64, rows),   // denoms
@@ -163,6 +168,7 @@ impl LayerLayout {
             take(&mut p64, t),      // ln2_mean
             take(&mut p64, t),      // ln2_var
             take(&mut p64, t),      // ln2_rsqrt_in
+            take(&mut p64, td),     // ln2_acc
             take(&mut p64, tdff),   // ffn_up_acc
             take(&mut p64, td),     // ffn_down_acc
         ];
@@ -220,6 +226,37 @@ struct LayerWeightLayout {
     ln1_bias: Region,
     ln2_gain: Region,
     ln2_bias: Region,
+}
+
+/// Internal typed selector for persistent per-layer resident parameters.
+/// It deliberately exposes only a checked device slice, never an address or
+/// a stable model-description API.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayerWeightField {
+    CAttn,
+    CAttnBias,
+    AttnProj,
+    AttnProjBias,
+    FfnUp,
+    FfnUpBias,
+    FfnDown,
+    FfnDownBias,
+    Ln1Gain,
+    Ln1Bias,
+    Ln2Gain,
+    Ln2Bias,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ModelWeightField {
+    TokenEmbedding,
+    PositionEmbedding,
+    FinalLnGain,
+    FinalLnBias,
+    ExpLut,
+    GeluLut,
+    LnRsqrtLut,
+    SoftmaxRecipLut,
 }
 
 #[derive(Debug)]
@@ -287,6 +324,47 @@ pub struct ResidentGpt2Model {
 impl ResidentGpt2Model {
     fn slice(&self, region: Region) -> DeviceSlice<'_, i16> {
         DeviceSlice::new(&self.values, region.offset, region.len).expect("valid weight layout")
+    }
+
+    pub fn layer_weight(
+        &self,
+        layer: usize,
+        field: LayerWeightField,
+    ) -> Result<DeviceSlice<'_, i16>, AccelError> {
+        let layout = self
+            .layout
+            .layers
+            .get(layer)
+            .ok_or(AccelError::InvalidInput("resident layer index out of range"))?;
+        let region = match field {
+            LayerWeightField::CAttn => layout.c_attn,
+            LayerWeightField::CAttnBias => layout.c_attn_bias,
+            LayerWeightField::AttnProj => layout.attn_proj,
+            LayerWeightField::AttnProjBias => layout.attn_proj_bias,
+            LayerWeightField::FfnUp => layout.ffn_up,
+            LayerWeightField::FfnUpBias => layout.ffn_up_bias,
+            LayerWeightField::FfnDown => layout.ffn_down,
+            LayerWeightField::FfnDownBias => layout.ffn_down_bias,
+            LayerWeightField::Ln1Gain => layout.ln1_gain,
+            LayerWeightField::Ln1Bias => layout.ln1_bias,
+            LayerWeightField::Ln2Gain => layout.ln2_gain,
+            LayerWeightField::Ln2Bias => layout.ln2_bias,
+        };
+        Ok(self.slice(region))
+    }
+
+    pub fn model_weight(&self, field: ModelWeightField) -> DeviceSlice<'_, i16> {
+        let region = match field {
+            ModelWeightField::TokenEmbedding => self.layout.wte,
+            ModelWeightField::PositionEmbedding => self.layout.wpe,
+            ModelWeightField::FinalLnGain => self.layout.lnf_gain,
+            ModelWeightField::FinalLnBias => self.layout.lnf_bias,
+            ModelWeightField::ExpLut => self.layout.exp,
+            ModelWeightField::GeluLut => self.layout.gelu,
+            ModelWeightField::LnRsqrtLut => self.layout.ln_rsqrt,
+            ModelWeightField::SoftmaxRecipLut => self.layout.softmax_recip,
+        };
+        self.slice(region)
     }
 
     pub fn free(self, backend: &mut Backend) -> Result<(), AccelError> {
@@ -366,7 +444,7 @@ pub struct ResidentModelWitness {
     embed_acc: DeviceBuffer<i64>,
     pub layers: Vec<ResidentLayerWitness>,
     final_i16: DeviceBuffer<i16>, // [rsqrt_out | out[D]]
-    final_i64: DeviceBuffer<i64>, // [mean | var | rsqrt_in]
+    final_i64: DeviceBuffer<i64>, // [mean | var | rsqrt_in | acc[D]]
     logits: DeviceBuffer<i64>,
 }
 
@@ -389,6 +467,10 @@ impl ResidentModelWitness {
 
     pub fn final_rsqrt_in(&self) -> DeviceSlice<'_, i64> {
         DeviceSlice::new(&self.final_i64, 2, 1).expect("valid final-LN layout")
+    }
+
+    pub fn final_acc(&self) -> DeviceSlice<'_, i64> {
+        DeviceSlice::new(&self.final_i64, 3, D).expect("valid final-LN layout")
     }
 
     pub fn final_rsqrt_out(&self) -> DeviceSlice<'_, i16> {
@@ -610,6 +692,7 @@ fn build_resident_forward(
             layer_slice64(&pending.layers[layer_index], LayerI64Field::Ln1Var),
             layer_slice64(&pending.layers[layer_index], LayerI64Field::Ln1RsqrtIn),
             layer_slice16(&pending.layers[layer_index], LayerI16Field::Ln1RsqrtOut),
+            layer_slice64(&pending.layers[layer_index], LayerI64Field::Ln1Acc),
             layer_slice16(&pending.layers[layer_index], LayerI16Field::Ln1Out),
             pending_error(pending),
             t,
@@ -712,6 +795,7 @@ fn build_resident_forward(
             layer_slice64(&pending.layers[layer_index], LayerI64Field::Ln2Var),
             layer_slice64(&pending.layers[layer_index], LayerI64Field::Ln2RsqrtIn),
             layer_slice16(&pending.layers[layer_index], LayerI16Field::Ln2RsqrtOut),
+            layer_slice64(&pending.layers[layer_index], LayerI64Field::Ln2Acc),
             layer_slice16(&pending.layers[layer_index], LayerI16Field::Ln2Out),
             pending_error(pending),
             t,
@@ -755,7 +839,7 @@ fn build_resident_forward(
     }
 
     pending.final_i16 = Some(backend.alloc_device(D + 1)?);
-    pending.final_i64 = Some(backend.alloc_device(3)?);
+    pending.final_i64 = Some(backend.alloc_device(3 + D)?);
     let last =
         layer_slice16(pending.layers.last().expect("non-empty model"), LayerI16Field::FfnBlockOut);
     let last_row = DeviceSlice::new(last.buffer(), last.offset() + (t - 1) * D, D)?;
@@ -768,6 +852,7 @@ fn build_resident_forward(
         DeviceSlice::new(pending.final_i64.as_ref().expect("final i64"), 1, 1)?,
         DeviceSlice::new(pending.final_i64.as_ref().expect("final i64"), 2, 1)?,
         DeviceSlice::new(pending.final_i16.as_ref().expect("final i16"), 0, 1)?,
+        DeviceSlice::new(pending.final_i64.as_ref().expect("final i64"), 3, D)?,
         DeviceSlice::new(pending.final_i16.as_ref().expect("final i16"), 1, D)?,
         pending_error(pending),
         1,
@@ -855,6 +940,7 @@ mod tests {
             eq64!(Ln1Var, ln1_var);
             eq64!(Ln1RsqrtIn, ln1_rsqrt_in);
             eq16!(Ln1RsqrtOut, ln1_rsqrt_out);
+            eq64!(Ln1Acc, ln1_acc);
             eq16!(Ln1Out, ln1_out);
             eq64!(QkvAcc, qkv_acc);
             eq16!(Q, q);
@@ -873,6 +959,7 @@ mod tests {
             eq64!(Ln2Var, ln2_var);
             eq64!(Ln2RsqrtIn, ln2_rsqrt_in);
             eq16!(Ln2RsqrtOut, ln2_rsqrt_out);
+            eq64!(Ln2Acc, ln2_acc);
             eq16!(Ln2Out, ln2_out);
             eq64!(FfnUpAcc, ffn_up_acc);
             eq16!(FfnUpQ, ffn_up_q);
@@ -884,6 +971,7 @@ mod tests {
         assert_eq!(download64(backend, got.final_var()), vec![expected.final_ln.var]);
         assert_eq!(download64(backend, got.final_rsqrt_in()), vec![expected.final_ln.rsqrt_in]);
         assert_eq!(download16(backend, got.final_rsqrt_out()), vec![expected.final_ln.rsqrt_out]);
+        assert_eq!(download64(backend, got.final_acc()), expected.final_ln.acc);
         assert_eq!(download16(backend, got.final_out()), expected.final_ln.out);
         assert_eq!(download64(backend, got.logits()), expected.logits);
     }

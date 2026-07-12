@@ -224,6 +224,7 @@ pub struct FinalLnWitness {
     pub var: i64,
     pub rsqrt_in: i64,
     pub rsqrt_out: i16,
+    pub acc: Vec<i64>, // d affine accumulator before requant
     pub out: Vec<i16>, // d
     pub rsqrt_trace: LookupTrace,
     pub norm_trace: LookupTrace,
@@ -364,6 +365,7 @@ pub fn forward_model_tokens_with_backend(
             var: ln.var[0],
             rsqrt_in: ln.rsqrt_in[0],
             rsqrt_out: ln.rsqrt_out[0],
+            acc: ln.acc,
             out: ln.out,
             rsqrt_trace,
             norm_trace,

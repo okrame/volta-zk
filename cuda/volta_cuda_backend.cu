@@ -13,7 +13,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 9;
+constexpr uint32_t ABI_VERSION = 10;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -435,7 +435,8 @@ __global__ void fixed_embed_kernel(
 __global__ void fixed_layer_norm_kernel(
     const int16_t* input, const int16_t* gain, const int16_t* bias,
     const int16_t* rsqrt_lut, int64_t* means, int64_t* vars,
-    int64_t* rsqrt_inputs, int16_t* rsqrt_outputs, int16_t* outputs,
+    int64_t* rsqrt_inputs, int16_t* rsqrt_outputs, int64_t* accumulators,
+    int16_t* outputs,
     uint32_t* error, size_t rows, size_t d, uint32_t var_shift,
     uint32_t norm_shift) {
     const size_t row_index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -466,6 +467,7 @@ __global__ void fixed_layer_norm_kernel(
         const int64_t acc = delta * static_cast<int64_t>(rsqrt_output) *
             static_cast<int64_t>(gain[j]) +
             (static_cast<int64_t>(bias[j]) << norm_shift);
+        accumulators[row_index * d + j] = acc;
         outputs[row_index * d + j] =
             fixed_requant_no_clamp(acc, norm_shift, error);
     }
@@ -1575,7 +1577,8 @@ extern "C" int volta_cuda_fixed_layer_norm_device(
     uint64_t gain_id, size_t gain_offset, uint64_t bias_id, size_t bias_offset,
     uint64_t lut_id, size_t lut_offset, uint64_t mean_id, size_t mean_offset,
     uint64_t var_id, size_t var_offset, uint64_t rin_id, size_t rin_offset,
-    uint64_t rout_id, size_t rout_offset, uint64_t out_id, size_t out_offset,
+    uint64_t rout_id, size_t rout_offset, uint64_t acc_id, size_t acc_offset,
+    uint64_t out_id, size_t out_offset,
     uint64_t error_id, size_t error_offset, size_t rows, size_t d,
     uint32_t var_shift, uint32_t norm_shift) {
     Context* c = static_cast<Context*>(raw);
@@ -1583,7 +1586,7 @@ extern "C" int volta_cuda_fixed_layer_norm_device(
         return fail_message(c, "invalid resident layer-norm geometry");
     void *input = nullptr, *gain = nullptr, *bias = nullptr, *lut = nullptr,
          *mean = nullptr, *var = nullptr, *rin = nullptr, *rout = nullptr,
-         *out = nullptr, *error = nullptr;
+         *out = nullptr, *acc = nullptr, *error = nullptr;
     if (resident_region(c, input_id, input_offset * sizeof(int16_t), rows * d * sizeof(int16_t), &input) ||
         resident_region(c, gain_id, gain_offset * sizeof(int16_t), d * sizeof(int16_t), &gain) ||
         resident_region(c, bias_id, bias_offset * sizeof(int16_t), d * sizeof(int16_t), &bias) ||
@@ -1593,6 +1596,7 @@ extern "C" int volta_cuda_fixed_layer_norm_device(
         resident_region(c, rin_id, rin_offset * sizeof(int64_t), rows * sizeof(int64_t), &rin) ||
         resident_region(c, rout_id, rout_offset * sizeof(int16_t), rows * sizeof(int16_t), &rout) ||
         resident_region(c, out_id, out_offset * sizeof(int16_t), rows * d * sizeof(int16_t), &out) ||
+        resident_region(c, acc_id, acc_offset * sizeof(int64_t), rows * d * sizeof(int64_t), &acc) ||
         resident_region(c, error_id, error_offset * sizeof(uint32_t), sizeof(uint32_t), &error)) return -1;
     if (begin_timing(c)) return -1;
     if (mark_timing(c, 1)) return -1;
@@ -1601,7 +1605,8 @@ extern "C" int volta_cuda_fixed_layer_norm_device(
         static_cast<const int16_t*>(bias), static_cast<const int16_t*>(lut),
         static_cast<int64_t*>(mean), static_cast<int64_t*>(var),
         static_cast<int64_t*>(rin), static_cast<int16_t*>(rout),
-        static_cast<int16_t*>(out), static_cast<uint32_t*>(error), rows, d,
+        static_cast<int64_t*>(acc), static_cast<int16_t*>(out),
+        static_cast<uint32_t*>(error), rows, d,
         var_shift, norm_shift);
     CUDA_OR_RETURN(c, cudaPeekAtLastError());
     if (mark_timing(c, 2)) return -1;

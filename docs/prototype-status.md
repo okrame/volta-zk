@@ -56,6 +56,30 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-12 (`P7-integrated-resident` explicit LayerNorm-accumulator
+  checkpoint; no protocol change)**: the dataflow audit found that every
+  LayerNorm affine accumulator is consumed by a requant proof but was not a
+  first-class `LayerWitness` field; the CPU prover reconstructed it from the
+  boundary/statistics/gain/bias values. ABI v10 removes that architectural
+  asymmetry. The frozen CPU witness now records `ln1_acc`, `ln2_acc` and the
+  final/band LN accumulator, while retaining the same recomputation as a
+  prover-side consistency assertion for the already-logged LN-statistics
+  deviation. The CUDA LayerNorm kernel writes the identical i64 accumulator
+  in the same pass that emits mean, variance, rsqrt and requantized output;
+  resident layouts expose it as a checked typed slice. Persistent model
+  parameters also gain typed field selectors for later proof consumption,
+  without exposing addresses, backend model constants or a `ModelConfig`.
+
+  CUDA 13.0/sm_80 ABI v10 builds on A100 `3mq19up4`. The full non-power-of-two
+  T=3 forward differential now checks both new accumulators in all 12 layers
+  plus the final LN accumulator, alongside every pre-existing wire and full
+  logits, bit-for-bit against CPU. Two context-reuse passes, forced-overflow
+  rollback and recovery remain green; the measured online transfer boundary
+  is unchanged (tokens/error initialization H2D, four-byte sticky error D2H).
+  Quantization, proof/verifier formats, transcript and lookup counts are
+  unchanged. This is a witness-contract correction required by resident
+  proving, not a resident layer/e2e timing result.
+
 - **2026-07-12 (`P7-integrated-resident` global table-bank checkpoint;
   layer wiring still open)**: the P6 one-vector-per-table-content construction
   now has a resident ownership mode inside the existing `TableBankP`, not a

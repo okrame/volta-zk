@@ -17,7 +17,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 9;
+pub const CUDA_ABI_VERSION: u32 = 10;
 pub const OPERATION_COUNT: usize = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -778,6 +778,7 @@ impl Backend {
         var: DeviceSlice<'_, i64>,
         rsqrt_input: DeviceSlice<'_, i64>,
         rsqrt_output: DeviceSlice<'_, i16>,
+        accumulators: DeviceSlice<'_, i64>,
         output: DeviceSlice<'_, i16>,
         error: DeviceSlice<'_, u32>,
         rows: usize,
@@ -789,6 +790,7 @@ impl Backend {
         for slice in [input, output] {
             self.validate_device_slice(slice, rd)?;
         }
+        self.validate_device_slice(accumulators, rd)?;
         for slice in [gain, bias] {
             self.validate_device_slice(slice, d)?;
         }
@@ -820,6 +822,8 @@ impl Backend {
                 rsqrt_input.offset,
                 rsqrt_output.buffer.id,
                 rsqrt_output.offset,
+                accumulators.buffer.id,
+                accumulators.offset,
                 output.buffer.id,
                 output.offset,
                 error.buffer.id,

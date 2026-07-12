@@ -17,13 +17,15 @@
 //! prove_prefill) / native-decode wall.
 //!
 //! Run: cargo run --release -p volta-bench --bin p6_report [-- --quick]
-//! (`--quick`: prompt 16 + 8 decode, 2×4 curve, golden skipped.)
+//! (`--quick`: prompt 16 + 8 decode, 2×4 curve, golden skipped.) Full runs
+//! default to one warmup plus three measured repetitions; override with
+//! `--warmup-repetitions N --repetitions N`.
 
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::time::Instant;
 use volta_accel::{Backend, BackendStats, Operation};
-use volta_bench::{cloud_metadata_from_env, logits_pack, time_paired, CloudMetadata};
+use volta_bench::{cloud_metadata_from_env, logits_pack, time_paired_samples, CloudMetadata};
 use volta_field::{Fp, Fp2};
 use volta_gpt2::{
     band_model_witness, decode_step, forward_model, forward_model_tokens,
@@ -98,6 +100,59 @@ struct AcceleratorStatsRow {
     cpu_residual_s: f64,
 }
 
+#[derive(Clone, Serialize)]
+struct TimingDistribution {
+    samples_s: Vec<f64>,
+    median_s: f64,
+    mad_s: f64,
+    min_s: f64,
+    max_s: f64,
+}
+
+impl TimingDistribution {
+    fn new(samples_s: Vec<f64>) -> Self {
+        assert!(!samples_s.is_empty(), "timing distribution needs a sample");
+        assert!(samples_s.iter().all(|x| x.is_finite() && *x >= 0.0));
+        let mut sorted = samples_s.clone();
+        sorted.sort_by(f64::total_cmp);
+        let median_s = sorted[sorted.len() / 2];
+        let mut deviations: Vec<f64> = samples_s.iter().map(|x| (x - median_s).abs()).collect();
+        deviations.sort_by(f64::total_cmp);
+        let mad_s = deviations[deviations.len() / 2];
+        TimingDistribution {
+            samples_s,
+            median_s,
+            mad_s,
+            min_s: sorted[0],
+            max_s: *sorted.last().unwrap(),
+        }
+    }
+}
+
+fn median_index(samples: &[f64]) -> usize {
+    assert!(!samples.is_empty());
+    let mut indices: Vec<usize> = (0..samples.len()).collect();
+    indices.sort_by(|&a, &b| samples[a].total_cmp(&samples[b]));
+    indices[indices.len() / 2]
+}
+
+#[derive(Clone, Serialize)]
+struct BenchmarkRepetitionRow {
+    repetition: usize,
+    seed: u8,
+    t_prove_prefill_only_s: f64,
+    t_prove_response_s: f64,
+    t_prove_decode_marginal_s: f64,
+    t_verify_response_s: f64,
+    pcs_commit_total_s: f64,
+    pcs_open_total_s: f64,
+    pcs_verify_total_s: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    accelerator_prefill: Option<AcceleratorStatsRow>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    accelerator_session: Option<AcceleratorStatsRow>,
+}
+
 impl AcceleratorStatsRow {
     fn from_stats(stats: BackendStats, scope: &str) -> Self {
         let operations = Operation::ALL
@@ -138,6 +193,7 @@ impl AcceleratorStatsRow {
 
 #[derive(Serialize)]
 struct Report {
+    report_schema_version: u32,
     milestone: String,
     date: String,
     git_sha: String,
@@ -150,7 +206,13 @@ struct Report {
     #[serde(skip_serializing_if = "Option::is_none")]
     accelerator_witness: Option<AcceleratorStatsRow>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    accelerator_prefill_proving: Option<AcceleratorStatsRow>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     accelerator_proving: Option<AcceleratorStatsRow>,
+    benchmark_warmup_repetitions: usize,
+    benchmark_repetitions: usize,
+    representative_repetition: usize,
+    repetitions: Vec<BenchmarkRepetitionRow>,
     t_prefill: usize,
     n_decode: usize,
     // --- verdicts -------------------------------------------------------------
@@ -164,6 +226,8 @@ struct Report {
     t_native_decode_s: f64,
     native_timing_method: String,
     native_timing_rounds: usize,
+    native_prefill_timing: TimingDistribution,
+    native_decode_timing: TimingDistribution,
     native_decode_tokens_per_s: f64,
     // --- proving (run of record: prefill + ONE Q=50 chunk) ---------------------
     t_prove_prefill_only_s: f64,
@@ -175,6 +239,10 @@ struct Report {
     rho_decode: f64,
     verified_tokens_per_s: f64,
     t_verify_response_s: f64,
+    prove_prefill_timing: TimingDistribution,
+    prove_response_timing: TimingDistribution,
+    prove_decode_marginal_timing: TimingDistribution,
+    verify_response_timing: TimingDistribution,
     // --- flat-cost gate (5 chunks × 10 tokens, cache 100→150) ------------------
     chunk_curve: Vec<ChunkCurveRow>,
     curve_last_over_first: f64,
@@ -213,6 +281,9 @@ struct Report {
     pcs_commit_total_s: f64,
     pcs_open_total_s: f64,
     pcs_verify_total_s: f64,
+    pcs_commit_timing: TimingDistribution,
+    pcs_open_timing: TimingDistribution,
+    pcs_verify_timing: TimingDistribution,
     n_weight_claims: usize,
     n_embed_claims: usize,
     // --- counters -------------------------------------------------------------------
@@ -282,6 +353,8 @@ struct Args {
     pcs_q: Option<usize>,
     pcg_backend: PcgBackendArg,
     accelerator: AcceleratorArg,
+    repetitions: Option<usize>,
+    warmup_repetitions: Option<usize>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -319,7 +392,8 @@ impl PcgBackendArg {
 fn usage() -> ! {
     eprintln!(
         "usage: p6_report [--quick] [--pcs-q Q] [--pcg-backend mock|real] \
-         [--accelerator cpu|cuda-hybrid|cuda-resident]"
+         [--accelerator cpu|cuda-hybrid|cuda-resident] [--repetitions N] \
+         [--warmup-repetitions N]"
     );
     std::process::exit(2);
 }
@@ -330,6 +404,8 @@ fn parse_args() -> Args {
         pcs_q: None,
         pcg_backend: PcgBackendArg::Mock,
         accelerator: AcceleratorArg::Cpu,
+        repetitions: None,
+        warmup_repetitions: None,
     };
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
@@ -350,6 +426,16 @@ fn parse_args() -> Args {
             out.accelerator = parse_accelerator(&b);
         } else if let Some(b) = a.strip_prefix("--accelerator=") {
             out.accelerator = parse_accelerator(b);
+        } else if a == "--repetitions" {
+            let Some(n) = args.next() else { usage() };
+            out.repetitions = Some(n.parse().unwrap_or_else(|_| usage()));
+        } else if let Some(n) = a.strip_prefix("--repetitions=") {
+            out.repetitions = Some(n.parse().unwrap_or_else(|_| usage()));
+        } else if a == "--warmup-repetitions" {
+            let Some(n) = args.next() else { usage() };
+            out.warmup_repetitions = Some(n.parse().unwrap_or_else(|_| usage()));
+        } else if let Some(n) = a.strip_prefix("--warmup-repetitions=") {
+            out.warmup_repetitions = Some(n.parse().unwrap_or_else(|_| usage()));
         } else {
             usage();
         }
@@ -421,6 +507,38 @@ struct SessionResult {
     public_logits_packed_bytes: u64,
     pcg_allocation_hash_match: Option<bool>,
     accelerator_stats: Option<BackendStats>,
+}
+
+struct PrefillResult {
+    prove_s: f64,
+    comm_bytes: u64,
+    transcript_by_label: BTreeMap<String, u64>,
+    accelerator_stats: Option<BackendStats>,
+}
+
+fn run_prefill(
+    model: &Gpt2Model,
+    wit: &volta_gpt2::ModelWitness,
+    seed: u8,
+    mut accelerator: Option<&mut Backend>,
+) -> PrefillResult {
+    let t0 = Instant::now();
+    let mut stream = CorrelationStream::new([seed; 32]);
+    let mut tx = Transcript::new([seed ^ 0x5A; 32]);
+    let accelerator_stats = if let Some(accel) = accelerator.as_deref_mut() {
+        accel.begin_measurement().expect("begin CUDA prefill measurement");
+        let _ = prove_model_with_backend(model, wit, &mut stream, &mut tx, accel);
+        Some(accel.finish_measurement().expect("finish CUDA prefill measurement"))
+    } else {
+        let _ = prove_model(model, wit, &mut stream, &mut tx);
+        None
+    };
+    PrefillResult {
+        prove_s: t0.elapsed().as_secs_f64(),
+        comm_bytes: tx.total_bytes(),
+        transcript_by_label: ledger_to_owned(&tx),
+        accelerator_stats,
+    }
 }
 
 enum SessionPcgBackend {
@@ -808,6 +926,16 @@ fn run_session(
 fn main() {
     let args = parse_args();
     let quick = args.quick;
+    let repetitions = args.repetitions.unwrap_or(if quick { 1 } else { 3 });
+    let warmup_repetitions = args.warmup_repetitions.unwrap_or(if quick { 0 } else { 1 });
+    if repetitions == 0 {
+        eprintln!("p6_report: --repetitions must be at least 1");
+        std::process::exit(2);
+    }
+    if repetitions + warmup_repetitions > 32 {
+        eprintln!("p6_report: at most 32 measured + warmup repetitions are supported");
+        std::process::exit(2);
+    }
     if args.pcg_backend == PcgBackendArg::Real && args.accelerator != AcceleratorArg::Cpu {
         eprintln!("p6_report: real-PCG and CUDA integration gates must be measured separately");
         std::process::exit(2);
@@ -830,6 +958,10 @@ fn main() {
         eprintln!(
             "p6_report: --pcg-backend real is a P7 correctness gate and is currently quick-only"
         );
+        std::process::exit(2);
+    }
+    if args.pcg_backend == PcgBackendArg::Real && (repetitions != 1 || warmup_repetitions != 0) {
+        eprintln!("p6_report: real-PCG gate currently requires one repetition and no warmup");
         std::process::exit(2);
     }
     let (t0, n_gen, curve_chunk) = if quick { (16usize, 8usize, 4usize) } else { (100, 50, 10) };
@@ -883,8 +1015,13 @@ fn main() {
     eprintln!(
         "native baselines: ABBA paired, {native_timing_rounds} rounds (prefill {t0}, decode {n_gen}) ..."
     );
-    let (t_native_prefill, t_native_decode) =
-        time_paired(1, native_timing_rounds, || forward_model(&model, t0), &run_decode);
+    let native_samples =
+        time_paired_samples(1, native_timing_rounds, || forward_model(&model, t0), &run_decode);
+    let (t_native_prefill, t_native_decode) = native_samples.medians();
+    let native_prefill_timing =
+        TimingDistribution::new(native_samples.a.iter().map(|x| x.as_secs_f64()).collect());
+    let native_decode_timing =
+        TimingDistribution::new(native_samples.b.iter().map(|x| x.as_secs_f64()).collect());
     let t_native_prefill_s = t_native_prefill.as_secs_f64();
     let t_native_decode_s = t_native_decode.as_secs_f64();
     let gen = run_decode();
@@ -928,39 +1065,13 @@ fn main() {
     let band50 = band_model_witness(&model, &full, t0);
     assert_eq!(band50.q, n_gen);
 
-    // --- prefill-only prove (decode marginal baseline) ---------------------------
-    eprintln!("prefill-only prove_model (marginal baseline) ...");
-    let tpp0 = Instant::now();
-    {
-        let mut stream = CorrelationStream::new([0x33u8; 32]);
-        let mut tx = Transcript::new([0x34u8; 32]);
-        if let Some(accel) = accelerator.as_mut() {
-            accel.begin_measurement().expect("begin CUDA prefill measurement");
-            let _ = prove_model_with_backend(&model, &wit0, &mut stream, &mut tx, accel);
-            let _ = accel.finish_measurement().expect("finish CUDA prefill measurement");
-        } else {
-            let _ = prove_model(&model, &wit0, &mut stream, &mut tx);
-        }
-    }
-    let t_prove_prefill_only_s = tpp0.elapsed().as_secs_f64();
-    // Prefill-only comm for the marginal (fresh ledger, no PCS).
-    let (comm_prefill_bytes, comm_prefill_by_label) = {
-        let mut stream = CorrelationStream::new([0x35u8; 32]);
-        let mut tx = Transcript::new([0x36u8; 32]);
-        if let Some(accel) = accelerator.as_mut() {
-            accel.begin_measurement().expect("begin CUDA prefill ledger");
-            let _ = prove_model_with_backend(&model, &wit0, &mut stream, &mut tx, accel);
-            let _ = accel.finish_measurement().expect("finish CUDA prefill ledger");
-        } else {
-            let _ = prove_model(&model, &wit0, &mut stream, &mut tx);
-        }
-        (tx.total_bytes(), ledger_to_owned(&tx))
-    };
-
-    // --- full-response session: prefill + ONE Q=n_gen chunk + real PCS ----------
-    eprintln!("full-response session: prove_response (prefill + Q={n_gen} chunk) + PCS ...");
+    // --- repeated prefill + full-response proving -------------------------------
+    eprintln!("timed proving: {warmup_repetitions} warmup + {repetitions} measured repetitions");
     let mut pcg_gate = PcgGateStats::default();
-    let rec = if args.pcg_backend == PcgBackendArg::Real {
+    let mut prefill_results = Vec::with_capacity(repetitions);
+    let mut session_results = Vec::with_capacity(repetitions);
+    if args.pcg_backend == PcgBackendArg::Real {
+        prefill_results.push(run_prefill(&model, &wit0, 0x60, accelerator.as_mut()));
         eprintln!("  real PCG gate: mock prepass for exact full-response counts ...");
         let pre = run_session(
             &model,
@@ -1001,27 +1112,130 @@ fn main() {
                 && real.pcg_allocation_hash_match.unwrap_or(false),
         );
         assert!(counters_match, "real-PCG full-response counters must match mock prepass");
-        real
+        session_results.push(real);
     } else {
-        run_session(
-            &model,
-            &wit0,
-            &[&band50],
-            &seq,
-            &layer_params,
-            &embed_params,
-            true,
-            0x21,
-            SessionPcgBackend::Mock,
-            accelerator.as_mut(),
-        )
-    };
+        for warmup in 0..warmup_repetitions {
+            let i = warmup as u8;
+            let _ = run_prefill(&model, &wit0, 0xC0 + i, accelerator.as_mut());
+            let warm = run_session(
+                &model,
+                &wit0,
+                &[&band50],
+                &seq,
+                &layer_params,
+                &embed_params,
+                true,
+                0xA0 + i,
+                SessionPcgBackend::Mock,
+                accelerator.as_mut(),
+            );
+            assert!(warm.accepted, "warmup response must verify");
+            eprintln!("  warmup {} accepted", warmup + 1);
+        }
+        for repetition in 0..repetitions {
+            let i = repetition as u8;
+            let prefill = run_prefill(&model, &wit0, 0x60 + i, accelerator.as_mut());
+            let response = run_session(
+                &model,
+                &wit0,
+                &[&band50],
+                &seq,
+                &layer_params,
+                &embed_params,
+                true,
+                0x40 + i,
+                SessionPcgBackend::Mock,
+                accelerator.as_mut(),
+            );
+            eprintln!(
+                "  repetition {}: prefill {:.2}s response {:.2}s verify {:.2}s accepted={}",
+                repetition + 1,
+                prefill.prove_s,
+                response.prove_s,
+                response.verify_s,
+                response.accepted
+            );
+            prefill_results.push(prefill);
+            session_results.push(response);
+        }
+    }
+
+    let comm_prefill_bytes = prefill_results[0].comm_bytes;
+    let comm_prefill_by_label = prefill_results[0].transcript_by_label.clone();
+    for prefill in &prefill_results {
+        assert_eq!(prefill.comm_bytes, comm_prefill_bytes);
+        assert_eq!(prefill.transcript_by_label, comm_prefill_by_label);
+    }
+    let reference = &session_results[0];
+    for response in &session_results {
+        assert!(response.accepted, "measured response must verify");
+        assert_eq!(response.comm_bytes, reference.comm_bytes);
+        assert_eq!(response.transcript_by_label, reference.transcript_by_label);
+        assert_eq!(response.pcs_by_label, reference.pcs_by_label);
+        assert_eq!(response.pcs_opening_bytes, reference.pcs_opening_bytes);
+        assert_eq!(response.sub_corrs, reference.sub_corrs);
+        assert_eq!(response.full_corrs, reference.full_corrs);
+    }
+
+    let prefill_samples: Vec<f64> = prefill_results.iter().map(|x| x.prove_s).collect();
+    let response_samples: Vec<f64> = session_results.iter().map(|x| x.prove_s).collect();
+    let decode_samples: Vec<f64> = response_samples
+        .iter()
+        .zip(&prefill_samples)
+        .map(|(response, prefill)| response - prefill)
+        .collect();
+    assert!(decode_samples.iter().all(|x| *x >= 0.0));
+    let verify_samples: Vec<f64> = session_results.iter().map(|x| x.verify_s).collect();
+    let pcs_commit_samples: Vec<f64> =
+        session_results.iter().map(|x| x.pcs_rows.iter().map(|r| r.commit_s).sum()).collect();
+    let pcs_open_samples: Vec<f64> =
+        session_results.iter().map(|x| x.pcs_rows.iter().map(|r| r.open_s).sum()).collect();
+    let pcs_verify_samples: Vec<f64> =
+        session_results.iter().map(|x| x.pcs_rows.iter().map(|r| r.verify_s).sum()).collect();
+    let prove_prefill_timing = TimingDistribution::new(prefill_samples);
+    let prove_response_timing = TimingDistribution::new(response_samples.clone());
+    let prove_decode_marginal_timing = TimingDistribution::new(decode_samples);
+    let verify_response_timing = TimingDistribution::new(verify_samples);
+    let pcs_commit_timing = TimingDistribution::new(pcs_commit_samples);
+    let pcs_open_timing = TimingDistribution::new(pcs_open_samples);
+    let pcs_verify_timing = TimingDistribution::new(pcs_verify_samples);
+    let representative_index = median_index(&response_samples);
+    let representative_repetition = representative_index + 1;
+    let repetitions_rows: Vec<BenchmarkRepetitionRow> = prefill_results
+        .iter()
+        .zip(&session_results)
+        .enumerate()
+        .map(|(i, (prefill, response))| BenchmarkRepetitionRow {
+            repetition: i + 1,
+            seed: if args.pcg_backend == PcgBackendArg::Real { 0x21 } else { 0x40 + i as u8 },
+            t_prove_prefill_only_s: prefill.prove_s,
+            t_prove_response_s: response.prove_s,
+            t_prove_decode_marginal_s: response.prove_s - prefill.prove_s,
+            t_verify_response_s: response.verify_s,
+            pcs_commit_total_s: response.pcs_rows.iter().map(|r| r.commit_s).sum(),
+            pcs_open_total_s: response.pcs_rows.iter().map(|r| r.open_s).sum(),
+            pcs_verify_total_s: response.pcs_rows.iter().map(|r| r.verify_s).sum(),
+            accelerator_prefill: prefill
+                .accelerator_stats
+                .map(|stats| AcceleratorStatsRow::from_stats(stats, "prefill-proof")),
+            accelerator_session: response.accelerator_stats.map(|stats| {
+                AcceleratorStatsRow::from_stats(
+                    stats,
+                    "response-session-including-pcs-and-verifier",
+                )
+            }),
+        })
+        .collect();
+    let accelerator_prefill_proving_stats = prefill_results[representative_index].accelerator_stats;
+    let rec = session_results.swap_remove(representative_index);
+    let t_prove_prefill_only_s = prove_prefill_timing.median_s;
+    let t_prove_decode_marginal_s = prove_decode_marginal_timing.median_s;
     eprintln!(
-        "  prove {:.2}s verify {:.2}s comm {:.1} MB accepted={}",
-        rec.prove_s,
-        rec.verify_s,
-        rec.comm_bytes as f64 / 1e6,
-        rec.accepted
+        "  medians: prefill {:.2}s response {:.2}s decode marginal {:.2}s; representative repetition {}",
+        t_prove_prefill_only_s,
+        prove_response_timing.median_s,
+        t_prove_decode_marginal_s,
+        representative_repetition
     );
 
     // --- flat-cost curve: n chunks of curve_chunk tokens --------------------------
@@ -1129,7 +1343,6 @@ fn main() {
 
     // --- report --------------------------------------------------------------------
     let public_logits_bytes = ((n_gen * VOCAB + VOCAB) * 8) as u64;
-    let t_prove_decode_marginal_s = rec.prove_s - t_prove_prefill_only_s;
     // Transcript-only marginal: the run-of-record ledger minus its PCS
     // opening bytes (the prefill-only measurement has no PCS), minus the
     // prefill transcript.
@@ -1153,7 +1366,13 @@ fn main() {
         .unwrap_or(true);
 
     let accepted = rec.accepted && chk.accepted;
+    let t_prove_response_s = prove_response_timing.median_s;
+    let t_verify_response_s = verify_response_timing.median_s;
+    let pcs_commit_total_s = pcs_commit_timing.median_s;
+    let pcs_open_total_s = pcs_open_timing.median_s;
+    let pcs_verify_total_s = pcs_verify_timing.median_s;
     let report = Report {
+        report_schema_version: 2,
         milestone: if args.accelerator == AcceleratorArg::CudaHybrid {
             if quick {
                 "P7-integrated-hybrid-quick".into()
@@ -1174,9 +1393,15 @@ fn main() {
         accelerator_backend: args.accelerator.as_str().into(),
         accelerator_witness: accelerator_witness_stats
             .map(|stats| AcceleratorStatsRow::from_stats(stats, "witness-forward")),
+        accelerator_prefill_proving: accelerator_prefill_proving_stats
+            .map(|stats| AcceleratorStatsRow::from_stats(stats, "prefill-proof")),
         accelerator_proving: rec.accelerator_stats.map(|stats| {
             AcceleratorStatsRow::from_stats(stats, "response-session-including-pcs-and-verifier")
         }),
+        benchmark_warmup_repetitions: warmup_repetitions,
+        benchmark_repetitions: repetitions,
+        representative_repetition,
+        repetitions: repetitions_rows,
         t_prefill: t0,
         n_decode: n_gen,
         accepted,
@@ -1187,14 +1412,20 @@ fn main() {
         t_native_decode_s,
         native_timing_method: "ABBA paired median".into(),
         native_timing_rounds,
+        native_prefill_timing,
+        native_decode_timing,
         native_decode_tokens_per_s: n_gen as f64 / t_native_decode_s,
         t_prove_prefill_only_s,
-        t_prove_response_s: rec.prove_s,
+        t_prove_response_s,
         t_prove_decode_marginal_s,
         rho_prefill: t_prove_prefill_only_s / t_native_prefill_s,
         rho_decode: t_prove_decode_marginal_s / t_native_decode_s,
-        verified_tokens_per_s: n_gen as f64 / rec.prove_s,
-        t_verify_response_s: rec.verify_s,
+        verified_tokens_per_s: n_gen as f64 / t_prove_response_s,
+        t_verify_response_s,
+        prove_prefill_timing,
+        prove_response_timing,
+        prove_decode_marginal_timing,
+        verify_response_timing,
         chunk_curve,
         curve_last_over_first,
         gate_flat_cost_per_token: gate_flat,
@@ -1222,9 +1453,12 @@ fn main() {
         pcs_relative_distance: 1.0 - layer_params.msg_len() as f64 / layer_params.code_len() as f64,
         pcs_query_error_bits: pcs_query_error_bits(&layer_params),
         pcs_commitments: rec.pcs_rows,
-        pcs_commit_total_s: 0.0,
-        pcs_open_total_s: 0.0,
-        pcs_verify_total_s: 0.0,
+        pcs_commit_total_s,
+        pcs_open_total_s,
+        pcs_verify_total_s,
+        pcs_commit_timing,
+        pcs_open_timing,
+        pcs_verify_timing,
         n_weight_claims: rec.n_weight_claims,
         n_embed_claims: rec.n_embed_claims,
         emult_instances_total: rec.emult_instances,
@@ -1246,10 +1480,6 @@ fn main() {
         pcg_mock_prepass_counters_match: pcg_gate.mock_prepass_counters_match,
         pcg_allocation_hash_match: pcg_gate.allocation_hash_match,
     };
-    let mut report = report;
-    report.pcs_commit_total_s = report.pcs_commitments.iter().map(|r| r.commit_s).sum();
-    report.pcs_open_total_s = report.pcs_commitments.iter().map(|r| r.open_s).sum();
-    report.pcs_verify_total_s = report.pcs_commitments.iter().map(|r| r.verify_s).sum();
 
     assert!(accepted, "P6 sanity: honest response (both sessions) must verify");
     assert!(gate_flat, "P6 gate: per-token cost must stay ~flat as the cache grows");
@@ -1273,4 +1503,19 @@ fn main() {
     let path = unique_result_path(&label, &date, &sha);
     std::fs::write(&path, serde_json::to_string_pretty(&report).unwrap()).unwrap();
     eprintln!("wrote {}", path.display());
+}
+
+#[cfg(test)]
+mod report_tests {
+    use super::*;
+
+    #[test]
+    fn timing_distribution_keeps_samples_and_reports_upper_median_mad() {
+        let distribution = TimingDistribution::new(vec![9.0, 1.0, 5.0, 3.0]);
+        assert_eq!(distribution.samples_s, vec![9.0, 1.0, 5.0, 3.0]);
+        assert_eq!(distribution.median_s, 5.0);
+        assert_eq!(distribution.mad_s, 4.0);
+        assert_eq!((distribution.min_s, distribution.max_s), (1.0, 9.0));
+        assert_eq!(median_index(&[9.0, 1.0, 5.0, 3.0]), 2);
+    }
 }

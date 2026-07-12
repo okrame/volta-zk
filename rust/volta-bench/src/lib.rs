@@ -142,14 +142,31 @@ pub fn time_median<T>(
 }
 
 /// Drift-cancelling paired timing: alternates A/B in ABBA order per round so
-/// slow frequency/thermal drift (VM on M2) hits both sides equally. Returns
-/// (median A, median B).
-pub fn time_paired<T, U>(
+/// slow frequency/thermal drift (VM on M2) hits both sides equally. Raw
+/// samples remain in execution order so reports can retain dispersion.
+pub struct PairedTimingSamples {
+    pub a: Vec<std::time::Duration>,
+    pub b: Vec<std::time::Duration>,
+}
+
+impl PairedTimingSamples {
+    pub fn medians(&self) -> (std::time::Duration, std::time::Duration) {
+        fn median(xs: &[std::time::Duration]) -> std::time::Duration {
+            let mut sorted = xs.to_vec();
+            sorted.sort();
+            sorted[sorted.len() / 2]
+        }
+        (median(&self.a), median(&self.b))
+    }
+}
+
+pub fn time_paired_samples<T, U>(
     warmup: usize,
     rounds: usize,
     mut fa: impl FnMut() -> T,
     mut fb: impl FnMut() -> U,
-) -> (std::time::Duration, std::time::Duration) {
+) -> PairedTimingSamples {
+    assert!(rounds > 0, "paired timing needs at least one round");
     for _ in 0..warmup {
         std::hint::black_box(fa());
         std::hint::black_box(fb());
@@ -172,15 +189,35 @@ pub fn time_paired<T, U>(
         run_b(&mut tb);
         run_a(&mut ta);
     }
-    ta.sort();
-    tb.sort();
-    (ta[ta.len() / 2], tb[tb.len() / 2])
+    PairedTimingSamples { a: ta, b: tb }
+}
+
+/// Compatibility wrapper returning only the ABBA medians.
+pub fn time_paired<T, U>(
+    warmup: usize,
+    rounds: usize,
+    fa: impl FnMut() -> T,
+    fb: impl FnMut() -> U,
+) -> (std::time::Duration, std::time::Duration) {
+    time_paired_samples(warmup, rounds, fa, fb).medians()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use rand::{Rng, SeedableRng};
+
+    #[test]
+    fn paired_timing_medians_do_not_destroy_raw_order() {
+        use std::time::Duration;
+        let samples = PairedTimingSamples {
+            a: vec![Duration::from_millis(9), Duration::from_millis(1), Duration::from_millis(5)],
+            b: vec![Duration::from_millis(2), Duration::from_millis(8), Duration::from_millis(4)],
+        };
+        assert_eq!(samples.medians(), (Duration::from_millis(5), Duration::from_millis(4)));
+        assert_eq!(samples.a[0], Duration::from_millis(9));
+        assert_eq!(samples.b[0], Duration::from_millis(2));
+    }
 
     #[test]
     fn eq_stream_matches_direct_product_and_sums_to_one() {

@@ -1,0 +1,607 @@
+{
+  "cloud": {
+    "cpu_model": "Intel Xeon Platinum 8470 / cgroup quota 7.92 cores",
+    "cuda_version": "toolkit 13.2 / driver 610.43.02",
+    "driver_version": "610.43.02",
+    "gpu_sku": "NVIDIA A100-SXM4-80GB / Thunder A100XL",
+    "image": "base / Ubuntu 22.04.5 LTS",
+    "instance_id": "tc-machineid-sha256-42069fd5fa86",
+    "provider": "Thunder Compute",
+    "ram_gib": "64",
+    "region": "not exposed by provider API",
+    "vcpus": "8 (quota 7.92)"
+  },
+  "compiler": {
+    "arch": "sm_80",
+    "nvcc": "/usr/local/cuda/bin/nvcc"
+  },
+  "date": "2026-07-13",
+  "decision": {
+    "blocking_d2h_8b_median_us": 356.984,
+    "cuda_free_8b_median_us": 3.582,
+    "cuda_graph_material_lever": true,
+    "cuda_malloc_8b_median_us": 1.142,
+    "direct_async_launches_pipelined": false,
+    "direct_enqueue_per_launch_us": 2.44430639648,
+    "direct_total_per_launch_us": 2.44490283203,
+    "empty_launch_sync_median_us": 3.578,
+    "graph_material_threshold_speedup": 1.2,
+    "graph_replay_total_us": 8.951,
+    "graph_speedup_vs_direct_burst": 1118.793654340297,
+    "implementation_branch": "coarsen-launch-surface-and-eliminate-blocking-d2h",
+    "largest_burst_kernels": 4096,
+    "note": "Classification selects the P7b implementation order only; it is not an end-to-end prover performance claim.",
+    "pipelined_threshold_fraction_of_blocking_rtt": 0.1
+  },
+  "git_dirty": false,
+  "git_sha": "8b5d177",
+  "kernel": {
+    "allocation_8b": {
+      "free": {
+        "count": 270592,
+        "mad_us": 0.95,
+        "max_us": 97.975,
+        "mean_us": 4.21895881253,
+        "median_us": 3.582,
+        "min_us": 1.887,
+        "p95_us": 6.383
+      },
+      "malloc": {
+        "count": 270592,
+        "mad_us": 0.022,
+        "max_us": 50.885,
+        "mean_us": 1.21258275559,
+        "median_us": 1.142,
+        "min_us": 1.086,
+        "p95_us": 1.262
+      },
+      "total": {
+        "count": 270592,
+        "mad_us": 0.962,
+        "max_us": 99.94,
+        "mean_us": 5.43154156812,
+        "median_us": 4.753,
+        "min_us": 3.004,
+        "p95_us": 7.59245
+      }
+    },
+    "blocking_d2h_8b": {
+      "count": 4182,
+      "mad_us": 24.2555,
+      "max_us": 803.466,
+      "mean_us": 358.4936956,
+      "median_us": 356.984,
+      "min_us": 298.274,
+      "p95_us": 398.0534
+    },
+    "correctness": true,
+    "cuda_graphs": [
+      {
+        "barrier": {
+          "count": 7,
+          "mad_us": 0.2,
+          "max_us": 6.139,
+          "mean_us": 2.50014285714,
+          "median_us": 1.684,
+          "min_us": 1.466,
+          "p95_us": 5.3305
+        },
+        "build_us": 655.598,
+        "enqueue": {
+          "count": 7,
+          "mad_us": 0.287,
+          "max_us": 29.367,
+          "mean_us": 6.40842857143,
+          "median_us": 1.783,
+          "min_us": 1.364,
+          "p95_us": 22.7175
+        },
+        "enqueue_per_launch": {
+          "count": 7,
+          "mad_us": 0.287,
+          "max_us": 29.367,
+          "mean_us": 6.40842857143,
+          "median_us": 1.783,
+          "min_us": 1.364,
+          "p95_us": 22.7175
+        },
+        "instantiate_us": 321.945,
+        "kernels": 1,
+        "total": {
+          "count": 7,
+          "mad_us": 0.408,
+          "max_us": 35.506,
+          "mean_us": 8.90857142857,
+          "median_us": 3.37,
+          "min_us": 2.962,
+          "p95_us": 27.5239
+        },
+        "total_per_launch": {
+          "count": 7,
+          "mad_us": 0.408,
+          "max_us": 35.506,
+          "mean_us": 8.90857142857,
+          "median_us": 3.37,
+          "min_us": 2.962,
+          "p95_us": 27.5239
+        }
+      },
+      {
+        "barrier": {
+          "count": 7,
+          "mad_us": 0.422,
+          "max_us": 3.762,
+          "mean_us": 2.27614285714,
+          "median_us": 1.935,
+          "min_us": 1.513,
+          "p95_us": 3.6018
+        },
+        "build_us": 2752.323,
+        "enqueue": {
+          "count": 7,
+          "mad_us": 0.211,
+          "max_us": 5.598,
+          "mean_us": 2.45371428571,
+          "median_us": 1.571,
+          "min_us": 1.243,
+          "p95_us": 5.1108
+        },
+        "enqueue_per_launch": {
+          "count": 7,
+          "mad_us": 0.211,
+          "max_us": 5.598,
+          "mean_us": 2.45371428571,
+          "median_us": 1.571,
+          "min_us": 1.243,
+          "p95_us": 5.1108
+        },
+        "instantiate_us": 244.711,
+        "kernels": 8,
+        "total": {
+          "count": 7,
+          "mad_us": 1.17,
+          "max_us": 7.147,
+          "mean_us": 4.72985714286,
+          "median_us": 4.799,
+          "min_us": 3.037,
+          "p95_us": 6.7756
+        },
+        "total_per_launch": {
+          "count": 7,
+          "mad_us": 1.17,
+          "max_us": 7.147,
+          "mean_us": 4.72985714286,
+          "median_us": 4.799,
+          "min_us": 3.037,
+          "p95_us": 6.7756
+        }
+      },
+      {
+        "barrier": {
+          "count": 7,
+          "mad_us": 0.057,
+          "max_us": 1.685,
+          "mean_us": 1.20671428571,
+          "median_us": 1.091,
+          "min_us": 1.024,
+          "p95_us": 1.6187
+        },
+        "build_us": 16278.803,
+        "enqueue": {
+          "count": 7,
+          "mad_us": 0.239,
+          "max_us": 6.948,
+          "mean_us": 1.93771428571,
+          "median_us": 1.215,
+          "min_us": 0.918,
+          "p95_us": 5.262
+        },
+        "enqueue_per_launch": {
+          "count": 7,
+          "mad_us": 0.239,
+          "max_us": 6.948,
+          "mean_us": 1.93771428571,
+          "median_us": 1.215,
+          "min_us": 0.918,
+          "p95_us": 5.262
+        },
+        "instantiate_us": 317.835,
+        "kernels": 64,
+        "total": {
+          "count": 7,
+          "mad_us": 0.355,
+          "max_us": 8.412,
+          "mean_us": 3.14442857143,
+          "median_us": 2.31,
+          "min_us": 1.942,
+          "p95_us": 6.7923
+        },
+        "total_per_launch": {
+          "count": 7,
+          "mad_us": 0.355,
+          "max_us": 8.412,
+          "mean_us": 3.14442857143,
+          "median_us": 2.31,
+          "min_us": 1.942,
+          "p95_us": 6.7923
+        }
+      },
+      {
+        "barrier": {
+          "count": 7,
+          "mad_us": 0.204,
+          "max_us": 8.074,
+          "mean_us": 5.14057142857,
+          "median_us": 4.83,
+          "min_us": 4.086,
+          "p95_us": 7.162
+        },
+        "build_us": 166674.965,
+        "enqueue": {
+          "count": 7,
+          "mad_us": 0.741,
+          "max_us": 11.369,
+          "mean_us": 5.854,
+          "median_us": 4.435,
+          "min_us": 3.68,
+          "p95_us": 10.5023
+        },
+        "enqueue_per_launch": {
+          "count": 7,
+          "mad_us": 0.741,
+          "max_us": 11.369,
+          "mean_us": 5.854,
+          "median_us": 4.435,
+          "min_us": 3.68,
+          "p95_us": 10.5023
+        },
+        "instantiate_us": 4585.822,
+        "kernels": 512,
+        "total": {
+          "count": 7,
+          "mad_us": 1.584,
+          "max_us": 16.124,
+          "mean_us": 10.9945714286,
+          "median_us": 9.469,
+          "min_us": 7.885,
+          "p95_us": 15.233
+        },
+        "total_per_launch": {
+          "count": 7,
+          "mad_us": 1.584,
+          "max_us": 16.124,
+          "mean_us": 10.9945714286,
+          "median_us": 9.469,
+          "min_us": 7.885,
+          "p95_us": 15.233
+        }
+      },
+      {
+        "barrier": {
+          "count": 7,
+          "mad_us": 0.199,
+          "max_us": 4.995,
+          "mean_us": 4.54414285714,
+          "median_us": 4.421,
+          "min_us": 4.21,
+          "p95_us": 4.983
+        },
+        "build_us": 1455666.018,
+        "enqueue": {
+          "count": 7,
+          "mad_us": 0.38,
+          "max_us": 13.615,
+          "mean_us": 6.30928571429,
+          "median_us": 4.361,
+          "min_us": 3.755,
+          "p95_us": 12.2665
+        },
+        "enqueue_per_launch": {
+          "count": 7,
+          "mad_us": 0.38,
+          "max_us": 13.615,
+          "mean_us": 6.30928571429,
+          "median_us": 4.361,
+          "min_us": 3.755,
+          "p95_us": 12.2665
+        },
+        "instantiate_us": 37791.794,
+        "kernels": 4096,
+        "total": {
+          "count": 7,
+          "mad_us": 0.368,
+          "max_us": 18.57,
+          "mean_us": 10.8534285714,
+          "median_us": 8.951,
+          "min_us": 8.039,
+          "p95_us": 17.0613
+        },
+        "total_per_launch": {
+          "count": 7,
+          "mad_us": 0.368,
+          "max_us": 18.57,
+          "mean_us": 10.8534285714,
+          "median_us": 8.951,
+          "min_us": 8.039,
+          "p95_us": 17.0613
+        }
+      }
+    ],
+    "device": {
+      "cc": "8.0",
+      "cuda_driver_version": 13030,
+      "cuda_runtime_version": 13020,
+      "global_memory_bytes": 85119205376,
+      "name": "NVIDIA A100-SXM4-80GB",
+      "sm_count": 108
+    },
+    "direct_bursts": [
+      {
+        "barrier": {
+          "count": 110441,
+          "mad_us": 0.266,
+          "max_us": 642110.249,
+          "mean_us": 14.1180698744,
+          "median_us": 1.457,
+          "min_us": 0.986,
+          "p95_us": 2.978
+        },
+        "enqueue": {
+          "count": 110441,
+          "mad_us": 0.303,
+          "max_us": 44.45,
+          "mean_us": 1.88334280747,
+          "median_us": 1.581,
+          "min_us": 1.004,
+          "p95_us": 3.15
+        },
+        "enqueue_per_launch": {
+          "count": 110441,
+          "mad_us": 0.303,
+          "max_us": 44.45,
+          "mean_us": 1.88334280747,
+          "median_us": 1.581,
+          "min_us": 1.004,
+          "p95_us": 3.15
+        },
+        "kernels": 1,
+        "total": {
+          "count": 110441,
+          "mad_us": 0.725,
+          "max_us": 642112.043,
+          "mean_us": 16.0014126819,
+          "median_us": 3.617,
+          "min_us": 1.999,
+          "p95_us": 5.795
+        },
+        "total_per_launch": {
+          "count": 110441,
+          "mad_us": 0.725,
+          "max_us": 642112.043,
+          "mean_us": 16.0014126819,
+          "median_us": 3.617,
+          "min_us": 1.999,
+          "p95_us": 5.795
+        }
+      },
+      {
+        "barrier": {
+          "count": 25186,
+          "mad_us": 0.217,
+          "max_us": 338.156,
+          "mean_us": 1.80205566585,
+          "median_us": 1.431,
+          "min_us": 1.005,
+          "p95_us": 3.6265
+        },
+        "enqueue": {
+          "count": 25186,
+          "mad_us": 1.165,
+          "max_us": 939076.636,
+          "mean_us": 57.6824235686,
+          "median_us": 12.759,
+          "min_us": 8.082,
+          "p95_us": 26.6085
+        },
+        "enqueue_per_launch": {
+          "count": 25186,
+          "mad_us": 0.145625,
+          "max_us": 117384.5795,
+          "mean_us": 7.21030294608,
+          "median_us": 1.594875,
+          "min_us": 1.01025,
+          "p95_us": 3.3260625
+        },
+        "kernels": 8,
+        "total": {
+          "count": 25186,
+          "mad_us": 1.2545,
+          "max_us": 939093.22,
+          "mean_us": 59.4844792345,
+          "median_us": 14.268,
+          "min_us": 9.119,
+          "p95_us": 30.1705
+        },
+        "total_per_launch": {
+          "count": 25186,
+          "mad_us": 0.1568125,
+          "max_us": 117386.6525,
+          "mean_us": 7.43555990431,
+          "median_us": 1.7835,
+          "min_us": 1.139875,
+          "p95_us": 3.7713125
+        }
+      },
+      {
+        "barrier": {
+          "count": 6346,
+          "mad_us": 0.243,
+          "max_us": 19.699,
+          "mean_us": 1.80074850299,
+          "median_us": 1.459,
+          "min_us": 1.007,
+          "p95_us": 3.45475
+        },
+        "enqueue": {
+          "count": 6346,
+          "mad_us": 7.7945,
+          "max_us": 228363.035,
+          "mean_us": 234.51160936,
+          "median_us": 102.963,
+          "min_us": 64.995,
+          "p95_us": 152.2125
+        },
+        "enqueue_per_launch": {
+          "count": 6346,
+          "mad_us": 0.1217890625,
+          "max_us": 3568.17242188,
+          "mean_us": 3.66424389625,
+          "median_us": 1.608796875,
+          "min_us": 1.015546875,
+          "p95_us": 2.3783203125
+        },
+        "kernels": 64,
+        "total": {
+          "count": 6346,
+          "mad_us": 7.9415,
+          "max_us": 228379.785,
+          "mean_us": 236.312357863,
+          "median_us": 104.6655,
+          "min_us": 66.044,
+          "p95_us": 154.829
+        },
+        "total_per_launch": {
+          "count": 6346,
+          "mad_us": 0.1240859375,
+          "max_us": 3568.43414063,
+          "mean_us": 3.69238059161,
+          "median_us": 1.6353984375,
+          "min_us": 1.0319375,
+          "p95_us": 2.419203125
+        }
+      },
+      {
+        "barrier": {
+          "count": 804,
+          "mad_us": 0.2255,
+          "max_us": 15.036,
+          "mean_us": 2.03124502488,
+          "median_us": 1.562,
+          "min_us": 1.066,
+          "p95_us": 3.50285
+        },
+        "enqueue": {
+          "count": 804,
+          "mad_us": 29.7165,
+          "max_us": 140936.984,
+          "mean_us": 1864.39596269,
+          "median_us": 846.1455,
+          "min_us": 527.632,
+          "p95_us": 1248.72095
+        },
+        "enqueue_per_launch": {
+          "count": 804,
+          "mad_us": 0.0580400390625,
+          "max_us": 275.267546875,
+          "mean_us": 3.64139836462,
+          "median_us": 1.65262792969,
+          "min_us": 1.03053125,
+          "p95_us": 2.43890810547
+        },
+        "kernels": 512,
+        "total": {
+          "count": 804,
+          "mad_us": 29.5705,
+          "max_us": 140951.433,
+          "mean_us": 1866.42720771,
+          "median_us": 847.883,
+          "min_us": 528.744,
+          "p95_us": 1250.8402
+        },
+        "total_per_launch": {
+          "count": 804,
+          "mad_us": 0.0577548828125,
+          "max_us": 275.295767578,
+          "mean_us": 3.64536564006,
+          "median_us": 1.65602148438,
+          "min_us": 1.032703125,
+          "p95_us": 2.44304726562
+        }
+      },
+      {
+        "barrier": {
+          "count": 105,
+          "mad_us": 0.798,
+          "max_us": 14.536,
+          "mean_us": 3.21585714286,
+          "median_us": 2.49,
+          "min_us": 1.28,
+          "p95_us": 5.876
+        },
+        "enqueue": {
+          "count": 105,
+          "mad_us": 175.817,
+          "max_us": 90276.952,
+          "mean_us": 14441.222381,
+          "median_us": 10011.879,
+          "min_us": 6735.673,
+          "p95_us": 45068.609
+        },
+        "enqueue_per_launch": {
+          "count": 105,
+          "mad_us": 0.0429240722656,
+          "max_us": 22.0402714844,
+          "mean_us": 3.52568905785,
+          "median_us": 2.44430639648,
+          "min_us": 1.64445141602,
+          "p95_us": 11.0030783691
+        },
+        "kernels": 4096,
+        "total": {
+          "count": 105,
+          "mad_us": 178.131,
+          "max_us": 90281.392,
+          "mean_us": 14444.4382381,
+          "median_us": 10014.322,
+          "min_us": 6737.091,
+          "p95_us": 45078.2314
+        },
+        "total_per_launch": {
+          "count": 105,
+          "mad_us": 0.0434890136719,
+          "max_us": 22.0413554688,
+          "mean_us": 3.52647417922,
+          "median_us": 2.44490283203,
+          "min_us": 1.64479760742,
+          "p95_us": 11.0054275879
+        }
+      }
+    ],
+    "empty_launch_sync": {
+      "count": 138741,
+      "mad_us": 0.828,
+      "max_us": 724323.545,
+      "mean_us": 10.7276635241,
+      "median_us": 3.578,
+      "min_us": 1.985,
+      "p95_us": 8.856
+    },
+    "measurement_wall_s": 14.154295005,
+    "parameters": {
+      "burst_sizes": [
+        1,
+        8,
+        64,
+        512,
+        4096
+      ],
+      "graph_replay_samples": 7,
+      "min_samples": 7,
+      "phase_seconds": 1.5,
+      "target_seconds": 12,
+      "warmups": 16
+    },
+    "timing_sane": true
+  },
+  "milestone": "P7b-thunder-cuda-rtt-quick"
+}

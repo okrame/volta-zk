@@ -122,6 +122,42 @@ constant factors hold. That constant factor is what P3/P4 measure.
   is a logged harness deviation driven by a provider-stability observation,
   not a discarded performance sample; the failed quick emitted no result.
 
+  **Mandatory microbench result (closed before any prover refactor)**: clean
+  SHA `8b5d177`, full measurement wall **1,802.864 s**, append-only result
+  `benchmarks/results/p7b-thunder-cuda-rtt-2026-07-13-8b5d177.json`
+  (SHA-256 `4063bfa6f4cb22622fd1500201fd767ec867a4dd7d74720976eb8c3be7283107`;
+  local/remote checksum identical, `git_dirty:false`). The smoke companion is
+  `p7b-thunder-cuda-rtt-quick-2026-07-13-8b5d177.json` (SHA-256
+  `241f10d169eea9acaddbd6836a097348114203a58b55f4b353c40964207f489c`).
+  Full medians: empty launch+sync **3.709 us** (p95 8.883 us, with a provider
+  outlier of 1.473 s); blocking 8-byte D2H **301.208 us** (p95 350.633 us);
+  8-byte `cudaMalloc` **1.149 us**, `cudaFree` **2.593 us**. A direct
+  4,096-kernel burst takes **7,956.171 us**, of which **7,953.301 us** is
+  enqueue time: **1.942 us/kernel** total, far above the preregistered
+  0.371-us "pipelined/free" threshold. Replaying the corresponding fixed CUDA
+  graph takes **17.945 us**, a **443.36x** reduction, but construction costs
+  1.429 s and instantiation 38.484 ms, so graphs must be retained/replayed and
+  cannot be rebuilt per proof. Decision branch is therefore exactly
+  `coarsen-launch-surface-and-eliminate-blocking-d2h`: stable/generational
+  buffer ownership first, removal of profiling barriers and coalescing of
+  true host outputs second, then retained graphs for fixed device-only
+  segments. Eliminating D2H alone is not the selected branch.
+
+  **Formal audit gate before round-RLC batching**: the proposed batching is a
+  real M3 extension, not a byte-identical refactor, and the audit found a
+  pre-existing code/theorem mismatch that must be closed in the same formal
+  checkpoint. Rust `zero_batch_{prover,verify}` and `prod_batch_*` weight a
+  closed list by powers `chi^(j+1)` of one scalar challenge; the current Lean
+  `zeroBatch_sound` / `prodBatch_sound` quantify an independently uniform
+  coefficient vector `Fin T -> F` and hence prove the stated 2/|F| and 3/|F|
+  bounds. The implementation is complete, but those theorems do not justify
+  its scalar-power collapse probability. P7b will retain the one-scalar wire
+  format and add the missing nonzero-polynomial root lemma, yielding explicit
+  list-length-dependent bounds (at most `(T+1)/|E|` for ZeroBatch and
+  `(T+2)/|E|` for Prod), then separately prove soundness of shared-round
+  aggregation before enabling it. No verifier challenge seed or future
+  challenge schedule may be exposed to the prover/GPU as a shortcut.
+
 - **2026-07-13 (P7 publication artifact closed)**: clean aggregate
   `benchmarks/results/p7-2026-07-13-2c836b3.json` (SHA-256
   `6aa5d6927e8f511b4d9ca7881ac4e6c50ffd32b8fb48fbb9badc764dcc9aa78a`)

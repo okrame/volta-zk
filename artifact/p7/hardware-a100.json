@@ -36,6 +36,10 @@
   },
   "measured_commit": "1fd5195402782b47f7e0fe4f4f7a788080fcf6d6",
   "results": {
+    "aggregate": {
+      "path": "benchmarks/results/p7-2026-07-13-2c836b3.json",
+      "sha256": "6aa5d6927e8f511b4d9ca7881ac4e6c50ffd32b8fb48fbb9badc764dcc9aa78a"
+    },
     "resident_full": {
       "path": "benchmarks/results/p7-integrated-resident-2026-07-13-1fd5195.json",
       "sha256": "02538a48511354f7ce92ba0602240edab9eede344aa30e351b7c03d338679c6b"

@@ -49,12 +49,13 @@ use crate::block_proof::{
     layer_content_keys, layer_dom_base, ln_acc_recompute, open_matrix_k, open_matrix_p,
     open_matrix_resident_p, prove_layer_phase1, prove_layer_phase1_band,
     prove_layer_phase1_resident, prove_layer_phase2, prove_layer_phase2_band,
-    prove_layer_phase2_resident, prove_ln_chain, prove_ln_chain_resident, prove_range_site,
-    prove_range_site_resident, public_window_fold_resident, range_keys, verify_layer_phase1,
-    verify_layer_phase1_band, verify_layer_phase2, verify_layer_phase2_band, verify_ln_chain,
-    verify_range_site, BandShape, BlockCtxP, BlockCtxV, InstanceLookups, KvPrefixK, KvPrefixP,
-    LayerBytes, LayerOut, LayerP1, LayerProof, LayerV1, LnChainProof, ResidentLayerP1,
-    ResidentLnVecsP, TableBankP, TableBankV, TableCloseProof,
+    prove_layer_phase2_resident, prove_layer_phase2_resident_band, prove_ln_chain,
+    prove_ln_chain_resident, prove_range_site, prove_range_site_resident,
+    public_window_fold_resident, range_keys, verify_layer_phase1, verify_layer_phase1_band,
+    verify_layer_phase2, verify_layer_phase2_band, verify_ln_chain, verify_range_site, BandShape,
+    BlockCtxP, BlockCtxV, InstanceLookups, KvPrefixK, KvPrefixP, LayerBytes, LayerOut, LayerP1,
+    LayerProof, LayerV1, LnChainProof, ResidentKvPrefixP, ResidentLayerP1, ResidentLnVecsP,
+    TableBankP, TableBankV, TableCloseProof,
 };
 use crate::gemm_proof::{WeightClaimP, WireKey, WireOut};
 use crate::logup::{eval_mle_counted, Counters, ProdKeyTriples, ProdTriples};
@@ -70,8 +71,9 @@ use volta_accel::{
 };
 use volta_field::{Fp, Fp2};
 use volta_gpt2::{
-    BandModelWitness, Gpt2Model, LayerI16Field, ModelWeightField, ModelWitness, ResidentGpt2Model,
-    ResidentModelWitness, D, L, NPOS, VOCAB,
+    BandModelWitness, Gpt2Model, LayerI16Field, ModelWeightField, ModelWitness,
+    ResidentBandModelWitness, ResidentGpt2Model, ResidentLayerView, ResidentModelWitness, D, L,
+    NPOS, VOCAB,
 };
 use volta_mac::{
     CorrCounters, CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey,
@@ -204,6 +206,16 @@ pub struct ChunkPub<'a> {
 pub struct ChunkRef<'a> {
     pub band: &'a BandModelWitness,
     /// Full response tokens (prompt ++ generated), len ≥ t0+q.
+    pub seq: &'a [u32],
+}
+
+/// Device-resident decode chunk plus the public messages that the protocol
+/// already requires on the host. The witness itself remains borrowed from
+/// opaque CUDA allocations; only logits and tokens cross this boundary.
+#[doc(hidden)]
+pub struct ResidentChunkRef<'a, 'source> {
+    pub band: &'a ResidentBandModelWitness<'source>,
+    pub logits: &'a [i64],
     pub seq: &'a [u32],
 }
 
@@ -377,6 +389,54 @@ impl ResidentFinalP1 {
         let fourth = backend.free_device(self.x2).err();
         let fifth = backend.free_device(self.out2).err();
         first.or(second).or(third).or(fourth).or(fifth).map_or(Ok(()), Err)
+    }
+}
+
+/// Phase-1 state for a decode band's final LayerNorm. Unlike the square
+/// prefill tail, the band proves all q rows directly and therefore needs no
+/// duplicated-row compatibility buffers or fresh row authentication.
+struct ResidentBandFinalP1 {
+    doms: Doms,
+    dom_out: u64,
+    out_corr: Vec<u64>,
+    ln_vec_corrs: [Vec<u64>; 4],
+    lv: ResidentLnVecsP,
+    ln_columns: DeviceLookupColumns,
+    rsqrt_columns: DeviceLookupColumns,
+}
+
+impl ResidentBandFinalP1 {
+    fn free(self, backend: &mut Backend) -> Result<(), AccelError> {
+        let first = backend.free_lookup_columns(self.rsqrt_columns).err();
+        let second = backend.free_lookup_columns(self.ln_columns).err();
+        let third = self.lv.free(backend).err();
+        first.or(second).or(third).map_or(Ok(()), Err)
+    }
+}
+
+struct ResidentChunkP1 {
+    layer_p1s: Vec<ResidentLayerP1>,
+    seam_columns: Vec<Option<DeviceLookupColumns>>,
+    embed: ResidentEmbedP1,
+    final_ln: ResidentBandFinalP1,
+}
+
+impl ResidentChunkP1 {
+    fn free(self, backend: &mut Backend) {
+        for layer in self.layer_p1s {
+            let _ = layer.free(backend);
+        }
+        for columns in self.seam_columns.into_iter().flatten() {
+            let _ = backend.free_lookup_columns(columns);
+        }
+        let _ = self.embed.free(backend);
+        let _ = self.final_ln.free(backend);
+    }
+}
+
+fn free_resident_chunk_phase1s(chunks: Vec<ResidentChunkP1>, backend: &mut Backend) {
+    for chunk in chunks {
+        chunk.free(backend);
     }
 }
 
@@ -556,6 +616,519 @@ fn build_resident_final_phase1(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
+fn build_resident_band_final_phase1(
+    model: &Gpt2Model,
+    band: &ResidentBandModelWitness<'_>,
+    section: u8,
+    error: DeviceSlice<'_, u32>,
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+    bank: &mut TableBankP,
+    backend: &mut Backend,
+) -> Result<ResidentBandFinalP1, AccelError> {
+    let q = band.q;
+    let mut lv = None;
+    let mut ln_columns = None;
+    let mut rsqrt_columns = None;
+    let phase = (|| {
+        let mut cx = BlockCtxP::with_backend(stream, tx, section, bank, backend);
+        let dom_out = cx.doms.take(q as u64);
+        let out_corr = auth_matrix_rows_resident_p(
+            cx.stream,
+            cx.tx,
+            dom_out,
+            band.final_out(),
+            q,
+            D,
+            cx.backend.as_deref_mut().unwrap(),
+        )?;
+        let rout_pad = Fp::from_i64(model.luts.ln_rsqrt[0] as i64);
+        let (vectors, corrs) = auth_ln_vecs_resident_p(
+            band.final_mean(),
+            band.final_var(),
+            band.final_rsqrt_in(),
+            band.final_rsqrt_out(),
+            pad_bits(q),
+            rout_pad,
+            cx.stream,
+            cx.tx,
+            &mut cx.doms,
+            cx.backend.as_deref_mut().unwrap(),
+        )?;
+        lv = Some(vectors);
+        ln_columns = Some(bind_range_site_resident(
+            cx.bank,
+            band.final_acc(),
+            band.final_out(),
+            error,
+            q,
+            D,
+            model.p.lut.shift_ln_norm,
+            cx.backend.as_deref_mut().unwrap(),
+        )?);
+        rsqrt_columns = Some(crate::block_proof::bind_pair_site_resident(
+            cx.bank,
+            TableKey::LnRsqrt,
+            band.final_rsqrt_in(),
+            band.final_rsqrt_out(),
+            q,
+            1,
+            Fp::ZERO,
+            rout_pad,
+            false,
+            cx.backend.as_deref_mut().unwrap(),
+        )?);
+        Ok((cx.doms, dom_out, out_corr, corrs))
+    })();
+    match phase {
+        Ok((doms, dom_out, out_corr, ln_vec_corrs)) => Ok(ResidentBandFinalP1 {
+            doms,
+            dom_out,
+            out_corr,
+            ln_vec_corrs,
+            lv: lv.take().expect("built resident band LN vectors"),
+            ln_columns: ln_columns.take().expect("built resident band LN range columns"),
+            rsqrt_columns: rsqrt_columns.take().expect("built resident band rsqrt columns"),
+        }),
+        Err(error_value) => {
+            if let Some(columns) = rsqrt_columns.take() {
+                let _ = backend.free_lookup_columns(columns);
+            }
+            if let Some(columns) = ln_columns.take() {
+                let _ = backend.free_lookup_columns(columns);
+            }
+            if let Some(vectors) = lv.take() {
+                let _ = vectors.free(backend);
+            }
+            Err(error_value)
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_resident_chunk_phase1(
+    model: &Gpt2Model,
+    resident_model: &ResidentGpt2Model,
+    chunk: &ResidentChunkRef<'_, '_>,
+    chunk_index: usize,
+    error: DeviceSlice<'_, u32>,
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+    bank: &mut TableBankP,
+    backend: &mut Backend,
+) -> Result<ResidentChunkP1, AccelError> {
+    let band = chunk.band;
+    let q = band.q;
+    let (layer_base, _seam_base, embed_section, final_section, _logits_section, _selection_section) =
+        chunk_ids(chunk_index);
+    let mut layer_p1s = Vec::with_capacity(L);
+    for layer in 0..L {
+        let mut luts = model.luts.clone();
+        luts.params.shift_attn_proj = model.p.shift_attn_proj[layer];
+        luts.params.shift_ffn_down = model.p.shift_ffn_down[layer];
+        let result = {
+            let mut cx =
+                BlockCtxP::with_backend(stream, tx, layer_base + layer as u8, bank, backend);
+            prove_layer_phase1_resident(&band.layers[layer], resident_model, &luts, error, &mut cx)
+        };
+        match result {
+            Ok(value) => layer_p1s.push(value),
+            Err(error_value) => {
+                for pending in layer_p1s {
+                    let _ = pending.free(backend);
+                }
+                return Err(error_value);
+            }
+        }
+    }
+
+    let mut seam_columns = Vec::with_capacity(L - 1);
+    for layer in 0..L - 1 {
+        let shift = model.p.seam_shifts[layer];
+        if shift > 16 {
+            for pending in layer_p1s {
+                let _ = pending.free(backend);
+            }
+            for columns in seam_columns.into_iter().flatten() {
+                let _ = backend.free_lookup_columns(columns);
+            }
+            return Err(AccelError::InvalidInput("resident seam shift exceeds single-stage range"));
+        }
+        if shift == 0 {
+            seam_columns.push(None);
+            continue;
+        }
+        let columns = bind_range_site_resident(
+            bank,
+            band.layers[layer].i16(LayerI16Field::FfnBlockOut),
+            band.layers[layer + 1].i16(LayerI16Field::XIn),
+            error,
+            q,
+            D,
+            shift,
+            backend,
+        );
+        match columns {
+            Ok(value) => seam_columns.push(Some(value)),
+            Err(error_value) => {
+                for pending in layer_p1s {
+                    let _ = pending.free(backend);
+                }
+                for columns in seam_columns.into_iter().flatten() {
+                    let _ = backend.free_lookup_columns(columns);
+                }
+                return Err(error_value);
+            }
+        }
+    }
+
+    let shift_embed = model.p.shift_embed;
+    if shift_embed <= 0 || shift_embed > 16 {
+        for pending in layer_p1s {
+            let _ = pending.free(backend);
+        }
+        for columns in seam_columns.into_iter().flatten() {
+            let _ = backend.free_lookup_columns(columns);
+        }
+        return Err(AccelError::InvalidInput("resident embedding shift must be in 1..=16"));
+    }
+    let embed_result = (|| {
+        let mut cx = BlockCtxP::with_backend(stream, tx, embed_section, bank, backend);
+        let dom_out = cx.doms.take(q as u64);
+        let out_corr = auth_matrix_rows_resident_p(
+            cx.stream,
+            cx.tx,
+            dom_out,
+            band.embed_out(),
+            q,
+            D,
+            cx.backend.as_deref_mut().unwrap(),
+        )?;
+        let columns = bind_range_site_resident(
+            cx.bank,
+            band.embed_acc(),
+            band.embed_out(),
+            error,
+            q,
+            D,
+            shift_embed as u32,
+            cx.backend.as_deref_mut().unwrap(),
+        )?;
+        Ok(ResidentEmbedP1 { doms: cx.doms, dom_out, out_corr, columns })
+    })();
+    let embed = match embed_result {
+        Ok(value) => value,
+        Err(error_value) => {
+            for pending in layer_p1s {
+                let _ = pending.free(backend);
+            }
+            for columns in seam_columns.into_iter().flatten() {
+                let _ = backend.free_lookup_columns(columns);
+            }
+            return Err(error_value);
+        }
+    };
+    let final_ln = match build_resident_band_final_phase1(
+        model,
+        band,
+        final_section,
+        error,
+        stream,
+        tx,
+        bank,
+        backend,
+    ) {
+        Ok(value) => value,
+        Err(error_value) => {
+            for pending in layer_p1s {
+                let _ = pending.free(backend);
+            }
+            for columns in seam_columns.into_iter().flatten() {
+                let _ = backend.free_lookup_columns(columns);
+            }
+            let _ = embed.free(backend);
+            return Err(error_value);
+        }
+    };
+    Ok(ResidentChunkP1 { layer_p1s, seam_columns, embed, final_ln })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_resident_band_logits(
+    resident_model: &ResidentGpt2Model,
+    band: &ResidentBandModelWitness<'_>,
+    public_logits: &[i64],
+    dom_out: u64,
+    section: u8,
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+    bank: &mut TableBankP,
+    backend: &mut Backend,
+) -> Result<
+    (LogitsClaimProof, WeightClaimP, ProdTriples, Vec<ProverAuthed>, Counters, Counters),
+    AccelError,
+> {
+    let q = band.q;
+    let qb = pad_bits(q);
+    let d_cb = pad_bits(D);
+    let mut cx = BlockCtxP::with_backend(stream, tx, section, bank, backend);
+    let rho_v: Vec<Fp2> = (0..16).map(|_| cx.tx.challenge_fp2()).collect();
+    let rho_q: Vec<Fp2> = (0..qb).map(|_| cx.tx.challenge_fp2()).collect();
+    let eq_v = eq_vec(&rho_v);
+    let eq_q = eq_vec(&rho_q);
+    cx.ctr_other.fp2_mults += (1 << 16) + (1u64 << qb);
+    let mut logits_eval = Fp2::ZERO;
+    for row in 0..q {
+        let mut row_eval = Fp2::ZERO;
+        for (vocab, &value) in public_logits[row * VOCAB..(row + 1) * VOCAB].iter().enumerate() {
+            row_eval += eq_v[vocab].mul_base(Fp::from_i64(value));
+        }
+        logits_eval += eq_q[row] * row_eval;
+    }
+    cx.ctr_other.base_mults += (q * VOCAB) as u64;
+    let weights = public_window_fold_resident(
+        resident_model.model_weight(ModelWeightField::TokenEmbedding),
+        VOCAB,
+        D,
+        0,
+        D,
+        &eq_v,
+        MatrixFoldAxis::Rows,
+        cx.backend.as_deref_mut().unwrap(),
+    )?;
+    cx.ctr_other.base_mults += (VOCAB * D) as u64;
+    let final_rows = match public_window_fold_resident(
+        band.final_out(),
+        q,
+        D,
+        0,
+        D,
+        &eq_q,
+        MatrixFoldAxis::Rows,
+        cx.backend.as_deref_mut().unwrap(),
+    ) {
+        Ok(value) => value,
+        Err(error) => {
+            let _ = cx.backend.as_deref_mut().unwrap().free_device(weights);
+            return Err(error);
+        }
+    };
+    cx.ctr_other.base_mults += (q * D) as u64;
+    let domain = cx.doms.take(d_cb as u64);
+    let (sumcheck, point, claim, wte_value, _) = blind_prove_resident(
+        weights,
+        final_rows,
+        ProverAuthed::from_public(logits_eval),
+        cx.stream,
+        domain,
+        cx.tx,
+        cx.backend.as_deref_mut().unwrap(),
+    )?;
+    let mut final_point = point.clone();
+    final_point.extend(rho_q);
+    let final_open = open_matrix_resident_p(
+        cx.stream,
+        dom_out,
+        band.final_out(),
+        q,
+        D,
+        &final_point,
+        cx.backend.as_deref_mut().unwrap(),
+    )?;
+    cx.ctr_other.fp2_mults += ((1usize << d_cb) - 1) as u64;
+    let claim_domain = cx.doms.take(1);
+    let mask = cx.stream.draw_fulls(claim_domain, 1)[0];
+    let correction = wte_value - mask.x;
+    cx.tx.append("logits_wte_correction", 16);
+    let wte_auth = ProverAuthed { x: wte_value, m: mask.m };
+    cx.prod.push((final_open, wte_auth, claim));
+    let mut claim_point = point;
+    claim_point.extend(rho_v);
+    Ok((
+        LogitsClaimProof { sc: sumcheck, wte_corr: correction },
+        WeightClaimP { point: claim_point, value: wte_auth },
+        cx.prod,
+        cx.zero,
+        cx.ctr_instances,
+        cx.ctr_other,
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_resident_band_selection(
+    resident_model: &ResidentGpt2Model,
+    band: &ResidentBandModelWitness<'_>,
+    sequence: &[u32],
+    embed_acc_point: &[Fp2],
+    embed_acc_claim: ProverAuthed,
+    section: u8,
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+    bank: &mut TableBankP,
+    backend: &mut Backend,
+) -> Result<
+    (
+        SelectionProof,
+        WeightClaimP,
+        WeightClaimP,
+        ProdTriples,
+        Vec<ProverAuthed>,
+        Counters,
+        Counters,
+    ),
+    AccelError,
+> {
+    let q = band.q;
+    let t0 = band.t0;
+    let d_cb = pad_bits(D);
+    let mut cx = BlockCtxP::with_backend(stream, tx, section, bank, backend);
+    let r_d = &embed_acc_point[..d_cb];
+    let r_i = &embed_acc_point[d_cb..];
+    let eq_i = eq_vec(r_i);
+    cx.ctr_other.fp2_mults += 1u64 << r_i.len();
+    let band_tokens = &sequence[t0..t0 + q];
+    let mut selection_values = vec![Fp2::ZERO; 1 << 16];
+    for (row, &token) in band_tokens.iter().enumerate() {
+        selection_values[token as usize] += eq_i[row];
+    }
+    let selection_raw: Vec<Fp2Repr> = selection_values.iter().copied().map(Into::into).collect();
+    let selection_device = cx.backend.as_deref_mut().unwrap().upload_new_device(&selection_raw)?;
+    let eq_d = eq_vec(r_d);
+    let wte_folded = match public_window_fold_resident(
+        resident_model.model_weight(ModelWeightField::TokenEmbedding),
+        VOCAB,
+        D,
+        0,
+        D,
+        &eq_d,
+        MatrixFoldAxis::Columns,
+        cx.backend.as_deref_mut().unwrap(),
+    ) {
+        Ok(value) => value,
+        Err(error) => {
+            let _ = cx.backend.as_deref_mut().unwrap().free_device(selection_device);
+            return Err(error);
+        }
+    };
+    cx.ctr_other.base_mults += (VOCAB * D) as u64;
+    let wpe_folded = match public_window_fold_resident(
+        resident_model.model_weight(ModelWeightField::PositionEmbedding),
+        NPOS,
+        D,
+        0,
+        D,
+        &eq_d,
+        MatrixFoldAxis::Columns,
+        cx.backend.as_deref_mut().unwrap(),
+    ) {
+        Ok(value) => value,
+        Err(error) => {
+            let backend = cx.backend.as_deref_mut().unwrap();
+            let _ = backend.free_device(wte_folded);
+            let _ = backend.free_device(selection_device);
+            return Err(error);
+        }
+    };
+    cx.ctr_other.base_mults += (NPOS * D) as u64;
+    let mut position_weights = vec![Fp2::ZERO; NPOS];
+    position_weights[t0..t0 + q].copy_from_slice(&eq_i[..q]);
+    let position_value = match cx.backend.as_deref_mut().unwrap().weighted_sum_device(
+        DeviceSlice::new(&wpe_folded, 0, wpe_folded.len()).expect("whole resident position fold"),
+        &position_weights,
+    ) {
+        Ok(value) => value,
+        Err(error) => {
+            let backend = cx.backend.as_deref_mut().unwrap();
+            let _ = backend.free_device(wpe_folded);
+            let _ = backend.free_device(wte_folded);
+            let _ = backend.free_device(selection_device);
+            return Err(error);
+        }
+    };
+    cx.ctr_other.fp2_mults += q as u64;
+    let position_domain = cx.doms.take(1);
+    let position_mask = cx.stream.draw_fulls(position_domain, 1)[0];
+    let position_correction = position_value - position_mask.x;
+    cx.tx.append("selection_p_correction", 16);
+    let position_auth = ProverAuthed { x: position_value, m: position_mask.m };
+    let selection_domain = cx.doms.take(16);
+    let selection_result = blind_prove_resident(
+        selection_device,
+        wte_folded,
+        embed_acc_claim.sub(position_auth),
+        cx.stream,
+        selection_domain,
+        cx.tx,
+        cx.backend.as_deref_mut().unwrap(),
+    );
+    let (selection_sc, rho_z, selection_claim, _, wte_value) = match selection_result {
+        Ok(value) => value,
+        Err(error) => {
+            let _ = cx.backend.as_deref_mut().unwrap().free_device(wpe_folded);
+            return Err(error);
+        }
+    };
+    let selection_eval = sel_s_eval(band_tokens, &eq_i, &rho_z);
+    cx.ctr_other.fp2_mults += 16 * q as u64;
+    cx.ctr_other.fp2_mults += ((1usize << 16) - 1) as u64;
+    let wte_domain = cx.doms.take(1);
+    let wte_mask = cx.stream.draw_fulls(wte_domain, 1)[0];
+    let wte_correction = wte_value - wte_mask.x;
+    cx.tx.append("selection_wte_correction", 16);
+    let wte_auth = ProverAuthed { x: wte_value, m: wte_mask.m };
+    cx.zero.push(wte_auth.scale(selection_eval).sub(selection_claim));
+    let mut wte_point = r_d.to_vec();
+    wte_point.extend(rho_z);
+
+    let mut g_values = vec![Fp2::ZERO; 1 << 10];
+    g_values[t0..t0 + q].copy_from_slice(&eq_i[..q]);
+    let g_raw: Vec<Fp2Repr> = g_values.iter().copied().map(Into::into).collect();
+    let g_device = match cx.backend.as_deref_mut().unwrap().upload_new_device(&g_raw) {
+        Ok(value) => value,
+        Err(error) => {
+            let _ = cx.backend.as_deref_mut().unwrap().free_device(wpe_folded);
+            return Err(error);
+        }
+    };
+    let wpe_domain = cx.doms.take(10);
+    let (wpe_sc, rho_w, wpe_claim, _, wpe_value) = blind_prove_resident(
+        g_device,
+        wpe_folded,
+        position_auth,
+        cx.stream,
+        wpe_domain,
+        cx.tx,
+        cx.backend.as_deref_mut().unwrap(),
+    )?;
+    let g_eval = masked_eq_eval(&eq_i, t0, q, &rho_w);
+    cx.ctr_other.fp2_mults += 10 * q as u64;
+    cx.ctr_other.fp2_mults += ((1usize << 10) - 1) as u64;
+    let wpe_claim_domain = cx.doms.take(1);
+    let wpe_mask = cx.stream.draw_fulls(wpe_claim_domain, 1)[0];
+    let wpe_correction = wpe_value - wpe_mask.x;
+    cx.tx.append("selection_wpe_correction", 16);
+    let wpe_auth = ProverAuthed { x: wpe_value, m: wpe_mask.m };
+    cx.zero.push(wpe_auth.scale(g_eval).sub(wpe_claim));
+    let mut wpe_point = r_d.to_vec();
+    wpe_point.extend(rho_w);
+    Ok((
+        SelectionProof {
+            sc: selection_sc,
+            wte_corr: wte_correction,
+            p_corr: position_correction,
+            sc_wpe: wpe_sc,
+            wpe_corr: wpe_correction,
+        },
+        WeightClaimP { point: wte_point, value: wte_auth },
+        WeightClaimP { point: wpe_point, value: wpe_auth },
+        cx.prod,
+        cx.zero,
+        cx.ctr_instances,
+        cx.ctr_other,
+    ))
+}
+
 /// Prove the whole model (P6 two-phase pipeline). Phase 1 binds every
 /// boundary / element auth and ONE global multiplicity vector per table
 /// content, model-wide; per-content αs are drawn only then; phase 2 runs all
@@ -597,6 +1170,36 @@ pub fn prove_model_resident(
     tx: &mut Transcript,
     backend: &mut Backend,
 ) -> Result<(ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>), AccelError> {
+    prove_response_resident(
+        model,
+        resident_model,
+        wit,
+        public_logits,
+        &[],
+        error,
+        stream,
+        tx,
+        backend,
+    )
+}
+
+/// Resident counterpart of [`prove_response`]. Prefill and every decode band
+/// contribute to one phase-1 table bank before any shared alpha is drawn,
+/// then close one model-wide product/zero batch and one table side per public
+/// content. The square-only entry point above remains a compatibility wrapper.
+#[doc(hidden)]
+#[allow(clippy::too_many_arguments)]
+pub fn prove_response_resident<'chunk, 'source>(
+    model: &Gpt2Model,
+    resident_model: &ResidentGpt2Model,
+    wit: &ResidentModelWitness,
+    public_logits: &[i64],
+    chunks: &[ResidentChunkRef<'chunk, 'source>],
+    error: DeviceSlice<'_, u32>,
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+    backend: &mut Backend,
+) -> Result<(ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>), AccelError> {
     if backend.kind() != BackendKind::CudaResident {
         return Err(AccelError::InvalidInput(
             "resident model proving requires the cuda-resident backend",
@@ -605,6 +1208,18 @@ pub fn prove_model_resident(
     let t = wit.t;
     if t < 2 || wit.layers.len() != L || public_logits.len() != VOCAB {
         return Err(AccelError::InvalidInput("resident model witness geometry mismatch"));
+    }
+    let mut expected_t0 = t;
+    for chunk in chunks {
+        if chunk.band.t0 != expected_t0
+            || chunk.band.q < 2
+            || chunk.band.layers.len() != L
+            || chunk.logits.len() != chunk.band.q * VOCAB
+            || chunk.seq.len() < chunk.band.t0 + chunk.band.q
+        {
+            return Err(AccelError::InvalidInput("resident response chunk geometry mismatch"));
+        }
+        expected_t0 += chunk.band.q;
     }
     let d_cb = pad_bits(D);
     let rb_t = pad_bits(t);
@@ -716,9 +1331,45 @@ pub fn prove_model_resident(
             }
         };
 
+    let mut chunk_p1s = Vec::with_capacity(chunks.len());
+    let mut chunk_p1_s = Vec::with_capacity(chunks.len());
+    let mut chunk_p2_s = Vec::with_capacity(chunks.len());
+    for (chunk_index, chunk) in chunks.iter().enumerate() {
+        let started = std::time::Instant::now();
+        match build_resident_chunk_phase1(
+            model,
+            resident_model,
+            chunk,
+            chunk_index,
+            error,
+            stream,
+            tx,
+            &mut bank,
+            backend,
+        ) {
+            Ok(value) => {
+                chunk_p1s.push(value);
+                chunk_p1_s.push(started.elapsed().as_secs_f64());
+            }
+            Err(error_value) => {
+                free_resident_chunk_phase1s(chunk_p1s, backend);
+                free_resident_model_phase1(
+                    layer_p1s,
+                    seam_columns,
+                    Some(embed_p1),
+                    Some(final_p1),
+                    &mut bank,
+                    backend,
+                );
+                return Err(error_value);
+            }
+        }
+    }
+
     match backend.download_device(error.buffer(), error.offset(), 1) {
         Ok(value) if value == [0] => {}
         Ok(_) => {
+            free_resident_chunk_phase1s(chunk_p1s, backend);
             free_resident_model_phase1(
                 layer_p1s,
                 seam_columns,
@@ -732,6 +1383,7 @@ pub fn prove_model_resident(
             ));
         }
         Err(error_value) => {
+            free_resident_chunk_phase1s(chunk_p1s, backend);
             free_resident_model_phase1(
                 layer_p1s,
                 seam_columns,
@@ -745,6 +1397,7 @@ pub fn prove_model_resident(
     }
 
     if bank.content_keys() != model_content_keys(model).into_iter().collect::<Vec<_>>() {
+        free_resident_chunk_phase1s(chunk_p1s, backend);
         free_resident_model_phase1(
             layer_p1s,
             seam_columns,
@@ -757,6 +1410,7 @@ pub fn prove_model_resident(
     }
     let mut table_doms = Doms::new(layer_dom_base(240));
     if let Err(error_value) = bank.finalize_resident(stream, tx, &mut table_doms, backend) {
+        free_resident_chunk_phase1s(chunk_p1s, backend);
         free_resident_model_phase1(
             layer_p1s,
             seam_columns,
@@ -778,6 +1432,7 @@ pub fn prove_model_resident(
     let mut lookups = Vec::new();
     let mut layer_proofs = Vec::with_capacity(L);
     let mut boundary_doms = Vec::with_capacity(L);
+    let mut layer_kv_doms = Vec::with_capacity(L);
 
     let mut layer_iter = layer_p1s.into_iter().enumerate();
     while let Some((layer, p1)) = layer_iter.next() {
@@ -803,6 +1458,7 @@ pub fn prove_model_resident(
                 for (_, pending) in layer_iter {
                     let _ = pending.free(backend);
                 }
+                free_resident_chunk_phase1s(chunk_p1s, backend);
                 free_resident_model_phase1(
                     Vec::new(),
                     seam_columns,
@@ -820,6 +1476,7 @@ pub fn prove_model_resident(
         add_counters(&mut ctr_other, &layer_other);
         add_bytes(&mut bytes, &out.bytes);
         boundary_doms.push((out.dom_xin, out.dom_fbo));
+        layer_kv_doms.push((out.dom_k, out.dom_v));
         lookups.extend(out.lookups);
         weight_claims.extend(out.weight_claims);
         layer_proofs.push(proof);
@@ -897,6 +1554,7 @@ pub fn prove_model_resident(
                 }
                 let _ = embed_p1.free(backend);
                 let _ = final_p1.free(backend);
+                free_resident_chunk_phase1s(chunk_p1s, backend);
                 bank.free_resident_multiplicities(backend);
                 return Err(error_value);
             }
@@ -960,6 +1618,7 @@ pub fn prove_model_resident(
             Ok(value) => value,
             Err(error_value) => {
                 let _ = final_p1.free(backend);
+                free_resident_chunk_phase1s(chunk_p1s, backend);
                 bank.free_resident_multiplicities(backend);
                 return Err(error_value);
             }
@@ -1049,6 +1708,7 @@ pub fn prove_model_resident(
             (Ok(value), None) => value,
             (Err(error), _) | (_, Some(error)) => {
                 let _ = backend.free_device(out2);
+                free_resident_chunk_phase1s(chunk_p1s, backend);
                 bank.free_resident_multiplicities(backend);
                 return Err(error);
             }
@@ -1146,6 +1806,7 @@ pub fn prove_model_resident(
             Ok(value) => value,
             Err(error_value) => {
                 let _ = backend.free_device(out2);
+                free_resident_chunk_phase1s(chunk_p1s, backend);
                 bank.free_resident_multiplicities(backend);
                 return Err(error_value);
             }
@@ -1156,6 +1817,7 @@ pub fn prove_model_resident(
     add_counters(&mut ctr_instances, &logits_ctr);
     add_counters(&mut ctr_other, &logits_other);
     if let Err(error_value) = backend.free_device(out2) {
+        free_resident_chunk_phase1s(chunk_p1s, backend);
         bank.free_resident_multiplicities(backend);
         return Err(error_value);
     }
@@ -1316,6 +1978,7 @@ pub fn prove_model_resident(
     ) = match selection_result {
         Ok(value) => value,
         Err(error_value) => {
+            free_resident_chunk_phase1s(chunk_p1s, backend);
             bank.free_resident_multiplicities(backend);
             return Err(error_value);
         }
@@ -1326,6 +1989,384 @@ pub fn prove_model_resident(
     zero.extend(selection_zero);
     add_counters(&mut ctr_instances, &sel_ctr);
     add_counters(&mut ctr_other, &sel_other);
+
+    let mut chunk_proofs = Vec::with_capacity(chunks.len());
+    let mut kv_doms: Vec<Vec<(u64, u64)>> =
+        layer_kv_doms.iter().map(|&domains| vec![domains]).collect();
+    let mut kv_rows = vec![t];
+    let mut pending_chunks: std::collections::VecDeque<_> = chunk_p1s.into();
+    for (chunk_index, chunk) in chunks.iter().enumerate() {
+        let started = std::time::Instant::now();
+        let ResidentChunkP1 { layer_p1s, seam_columns, embed, final_ln: band_final_p1 } =
+            pending_chunks
+                .pop_front()
+                .ok_or(AccelError::InvalidInput("missing resident chunk phase-1 state"))?;
+        let band = chunk.band;
+        let q = band.q;
+        let qb = pad_bits(q);
+        let n_vars_qd = d_cb + qb;
+        let (
+            layer_base,
+            seam_base,
+            _embed_section,
+            _final_section,
+            logits_section,
+            selection_section,
+        ) = chunk_ids(chunk_index);
+        let mut band_boundary_doms = Vec::with_capacity(L);
+        let mut band_layer_proofs = Vec::with_capacity(L);
+
+        let mut layer_iter = layer_p1s.into_iter().enumerate();
+        while let Some((layer, p1)) = layer_iter.next() {
+            let luts = luts_for(layer);
+            let prefix: Vec<ResidentKvPrefixP> = kv_doms[layer]
+                .iter()
+                .zip(&kv_rows)
+                .map(|(&(dom_k, dom_v), &rows)| ResidentKvPrefixP { rows, dom_k, dom_v })
+                .collect();
+            let result = {
+                let mut cx =
+                    BlockCtxP::with_doms_and_backend(stream, tx, p1.doms, &mut bank, backend);
+                prove_layer_phase2_resident_band(
+                    &band.layers[layer],
+                    resident_model,
+                    layer,
+                    &model.layers[layer].0,
+                    &luts,
+                    p1,
+                    &prefix,
+                    &mut cx,
+                    Some(&model.layers[layer].1),
+                )
+                .map(|(proof, out)| (proof, out, cx.prod, cx.zero, cx.ctr_instances, cx.ctr_other))
+            };
+            let (proof, out, layer_prod, layer_zero, layer_ctr, layer_other) = match result {
+                Ok(value) => value,
+                Err(error_value) => {
+                    for (_, pending) in layer_iter {
+                        let _ = pending.free(backend);
+                    }
+                    for columns in seam_columns.into_iter().flatten() {
+                        let _ = backend.free_lookup_columns(columns);
+                    }
+                    let _ = embed.free(backend);
+                    let _ = band_final_p1.free(backend);
+                    free_resident_chunk_phase1s(pending_chunks.into_iter().collect(), backend);
+                    bank.free_resident_multiplicities(backend);
+                    return Err(error_value);
+                }
+            };
+            prod.extend(layer_prod);
+            zero.extend(layer_zero);
+            add_counters(&mut ctr_instances, &layer_ctr);
+            add_counters(&mut ctr_other, &layer_other);
+            add_bytes(&mut bytes, &out.bytes);
+            band_boundary_doms.push((out.dom_xin, out.dom_fbo));
+            kv_doms[layer].push((out.dom_k, out.dom_v));
+            lookups.extend(out.lookups);
+            weight_claims.extend(out.weight_claims);
+            band_layer_proofs.push(proof);
+        }
+        let _ = layer_base;
+
+        let mut band_seams = Vec::with_capacity(L - 1);
+        let mut seam_iter = seam_columns.into_iter().enumerate();
+        while let Some((layer, columns)) = seam_iter.next() {
+            let shift = model.p.seam_shifts[layer];
+            let mut cx =
+                BlockCtxP::with_backend(stream, tx, seam_base + layer as u8, &mut bank, backend);
+            let (dom_xin_next, _) = band_boundary_doms[layer + 1];
+            let (_, dom_fbo) = band_boundary_doms[layer];
+            let proof_result = if let Some(columns) = columns {
+                let value = (|| {
+                    let site = prove_range_site_resident(&columns, shift, Vec::new(), &mut cx)?;
+                    let out_open = open_matrix_resident_p(
+                        cx.stream,
+                        dom_xin_next,
+                        band.layers[layer + 1].i16(LayerI16Field::XIn),
+                        q,
+                        D,
+                        &site.main.point,
+                        cx.backend.as_deref_mut().unwrap(),
+                    )?;
+                    cx.zero.push(site.main.col_claims[1].value.sub(out_open));
+                    let acc_open = open_matrix_resident_p(
+                        cx.stream,
+                        dom_fbo,
+                        band.layers[layer].i16(LayerI16Field::FfnBlockOut),
+                        q,
+                        D,
+                        site.acc_point(),
+                        cx.backend.as_deref_mut().unwrap(),
+                    )?;
+                    cx.zero.push(site.acc_claim.sub(acc_open));
+                    Ok(Some(SeamProof { inst: site.main.proof }))
+                })();
+                let cleanup = cx.backend.as_deref_mut().unwrap().free_lookup_columns(columns);
+                match (value, cleanup) {
+                    (Ok(value), Ok(())) => Ok(value),
+                    (Err(error), _) | (_, Err(error)) => Err(error),
+                }
+            } else {
+                let rho: Vec<Fp2> = (0..n_vars_qd).map(|_| cx.tx.challenge_fp2()).collect();
+                (|| {
+                    let left = open_matrix_resident_p(
+                        cx.stream,
+                        dom_fbo,
+                        band.layers[layer].i16(LayerI16Field::FfnBlockOut),
+                        q,
+                        D,
+                        &rho,
+                        cx.backend.as_deref_mut().unwrap(),
+                    )?;
+                    let right = open_matrix_resident_p(
+                        cx.stream,
+                        dom_xin_next,
+                        band.layers[layer + 1].i16(LayerI16Field::XIn),
+                        q,
+                        D,
+                        &rho,
+                        cx.backend.as_deref_mut().unwrap(),
+                    )?;
+                    cx.zero.push(left.sub(right));
+                    Ok(None)
+                })()
+            };
+            let proof = match proof_result {
+                Ok(value) => value,
+                Err(error_value) => {
+                    for (_, pending) in seam_iter {
+                        if let Some(columns) = pending {
+                            let _ = backend.free_lookup_columns(columns);
+                        }
+                    }
+                    let _ = embed.free(backend);
+                    let _ = band_final_p1.free(backend);
+                    free_resident_chunk_phase1s(pending_chunks.into_iter().collect(), backend);
+                    bank.free_resident_multiplicities(backend);
+                    return Err(error_value);
+                }
+            };
+            band_seams.push(proof);
+            prod.extend(cx.prod);
+            zero.extend(cx.zero);
+            add_counters(&mut ctr_instances, &cx.ctr_instances);
+            add_counters(&mut ctr_other, &cx.ctr_other);
+        }
+
+        let ResidentEmbedP1 {
+            doms: embed_doms,
+            dom_out: embed_dom_out,
+            out_corr: embed_out_corr,
+            columns: embed_columns,
+        } = embed;
+        let embed_result = {
+            let mut cx =
+                BlockCtxP::with_doms_and_backend(stream, tx, embed_doms, &mut bank, backend);
+            let value = (|| {
+                let site =
+                    prove_range_site_resident(&embed_columns, shift_embed, Vec::new(), &mut cx)?;
+                let out_open = open_matrix_resident_p(
+                    cx.stream,
+                    embed_dom_out,
+                    band.embed_out(),
+                    q,
+                    D,
+                    &site.main.point,
+                    cx.backend.as_deref_mut().unwrap(),
+                )?;
+                cx.zero.push(site.main.col_claims[1].value.sub(out_open));
+                let acc_point = site.acc_point().to_vec();
+                let acc_claim = site.acc_claim;
+                let rho: Vec<Fp2> = (0..n_vars_qd).map(|_| cx.tx.challenge_fp2()).collect();
+                let embed_open = open_matrix_resident_p(
+                    cx.stream,
+                    embed_dom_out,
+                    band.embed_out(),
+                    q,
+                    D,
+                    &rho,
+                    cx.backend.as_deref_mut().unwrap(),
+                )?;
+                let x_open = open_matrix_resident_p(
+                    cx.stream,
+                    band_boundary_doms[0].0,
+                    band.layers[0].i16(LayerI16Field::XIn),
+                    q,
+                    D,
+                    &rho,
+                    cx.backend.as_deref_mut().unwrap(),
+                )?;
+                cx.zero.push(embed_open.sub(x_open));
+                Ok((
+                    EmbedProof { out_corr: embed_out_corr, inst: site.main.proof },
+                    acc_point,
+                    acc_claim,
+                ))
+            })();
+            let cleanup = cx.backend.as_deref_mut().unwrap().free_lookup_columns(embed_columns);
+            match (value, cleanup) {
+                (Ok((proof, point, claim)), Ok(())) => {
+                    Ok((proof, point, claim, cx.prod, cx.zero, cx.ctr_instances, cx.ctr_other))
+                }
+                (Err(error), _) | (_, Err(error)) => Err(error),
+            }
+        };
+        let (
+            band_embed,
+            embed_acc_point,
+            embed_acc_claim,
+            embed_prod,
+            embed_zero,
+            embed_ctr,
+            embed_other,
+        ) = match embed_result {
+            Ok(value) => value,
+            Err(error_value) => {
+                let _ = band_final_p1.free(backend);
+                free_resident_chunk_phase1s(pending_chunks.into_iter().collect(), backend);
+                bank.free_resident_multiplicities(backend);
+                return Err(error_value);
+            }
+        };
+        prod.extend(embed_prod);
+        zero.extend(embed_zero);
+        add_counters(&mut ctr_instances, &embed_ctr);
+        add_counters(&mut ctr_other, &embed_other);
+
+        let ResidentBandFinalP1 {
+            doms: final_doms,
+            dom_out: final_dom_out,
+            out_corr: final_out_corr,
+            ln_vec_corrs: final_ln_vec_corrs,
+            lv: final_vectors,
+            ln_columns: final_ln_columns,
+            rsqrt_columns: final_rsqrt_columns,
+        } = band_final_p1;
+        let final_result = {
+            let mut cx =
+                BlockCtxP::with_doms_and_backend(stream, tx, final_doms, &mut bank, backend);
+            (|| {
+                let rho: Vec<Fp2> = (0..n_vars_qd).map(|_| cx.tx.challenge_fp2()).collect();
+                let wire_value = open_matrix_resident_p(
+                    cx.stream,
+                    final_dom_out,
+                    band.final_out(),
+                    q,
+                    D,
+                    &rho,
+                    cx.backend.as_deref_mut().unwrap(),
+                )?;
+                let wire = WireOut { point: rho, value: wire_value, corr: Fp2::ZERO };
+                let proof = prove_ln_chain_resident(
+                    q,
+                    model.p.lut.shift_ln_norm,
+                    &final_ln_columns,
+                    &final_rsqrt_columns,
+                    band.layers[L - 1].i16(LayerI16Field::FfnBlockOut),
+                    band_boundary_doms[L - 1].1,
+                    resident_model.model_weight(ModelWeightField::FinalLnGain),
+                    &model.lnf_gain,
+                    &model.lnf_bias,
+                    &final_vectors,
+                    &wire,
+                    &mut cx,
+                )?;
+                Ok((proof, cx.prod, cx.zero, cx.ctr_instances, cx.ctr_other))
+            })()
+        };
+        let final_cleanup = backend
+            .free_lookup_columns(final_rsqrt_columns)
+            .err()
+            .or(backend.free_lookup_columns(final_ln_columns).err())
+            .or(final_vectors.free(backend).err());
+        let (band_final_ln, final_prod, final_zero, final_ctr, final_other) =
+            match (final_result, final_cleanup) {
+                (Ok(value), None) => value,
+                (Err(error), _) | (_, Some(error)) => {
+                    free_resident_chunk_phase1s(pending_chunks.into_iter().collect(), backend);
+                    bank.free_resident_multiplicities(backend);
+                    return Err(error);
+                }
+            };
+        prod.extend(final_prod);
+        zero.extend(final_zero);
+        add_counters(&mut ctr_instances, &final_ctr);
+        add_counters(&mut ctr_other, &final_other);
+
+        let (band_logits, logits_claim, logits_prod, logits_zero, logits_ctr, logits_other) =
+            match prove_resident_band_logits(
+                resident_model,
+                band,
+                chunk.logits,
+                final_dom_out,
+                logits_section,
+                stream,
+                tx,
+                &mut bank,
+                backend,
+            ) {
+                Ok(value) => value,
+                Err(error_value) => {
+                    free_resident_chunk_phase1s(pending_chunks.into_iter().collect(), backend);
+                    bank.free_resident_multiplicities(backend);
+                    return Err(error_value);
+                }
+            };
+        embed_claims.push(logits_claim);
+        prod.extend(logits_prod);
+        zero.extend(logits_zero);
+        add_counters(&mut ctr_instances, &logits_ctr);
+        add_counters(&mut ctr_other, &logits_other);
+
+        let (
+            band_selection,
+            selection_wte,
+            selection_wpe,
+            selection_prod,
+            selection_zero,
+            selection_ctr,
+            selection_other,
+        ) = match prove_resident_band_selection(
+            resident_model,
+            band,
+            chunk.seq,
+            &embed_acc_point,
+            embed_acc_claim,
+            selection_section,
+            stream,
+            tx,
+            &mut bank,
+            backend,
+        ) {
+            Ok(value) => value,
+            Err(error_value) => {
+                free_resident_chunk_phase1s(pending_chunks.into_iter().collect(), backend);
+                bank.free_resident_multiplicities(backend);
+                return Err(error_value);
+            }
+        };
+        embed_claims.push(selection_wte);
+        embed_claims.push(selection_wpe);
+        prod.extend(selection_prod);
+        zero.extend(selection_zero);
+        add_counters(&mut ctr_instances, &selection_ctr);
+        add_counters(&mut ctr_other, &selection_other);
+
+        chunk_proofs.push(ChunkProof {
+            layers: band_layer_proofs,
+            seams: band_seams,
+            embed: band_embed,
+            fin_out_corr: final_out_corr,
+            fin_ln_vec_corrs: final_ln_vec_corrs,
+            fin_ln: band_final_ln,
+            logits: band_logits,
+            selection: band_selection,
+        });
+        kv_rows.push(q);
+        chunk_p2_s.push(started.elapsed().as_secs_f64());
+    }
+    debug_assert!(pending_chunks.is_empty());
 
     let tables = bank.close_resident(
         &model.luts,
@@ -1345,13 +2386,13 @@ pub fn prove_model_resident(
             final_ln,
             logits,
             selection,
-            chunks: Vec::new(),
+            chunks: chunk_proofs,
             tables,
         },
         ModelOut {
             weight_claims,
-            chunk_p1_s: Vec::new(),
-            chunk_p2_s: Vec::new(),
+            chunk_p1_s,
+            chunk_p2_s,
             embed_claims,
             bytes,
             ctr_instances,
@@ -2864,9 +3905,11 @@ mod tests {
     use crate::prod_check::{prod_batch_prover, prod_batch_verify};
     use crate::thaler::fold_w;
     use rand::{Rng, SeedableRng};
-    use volta_gpt2::{forward_model, load_model, DFF};
     #[cfg(feature = "cuda")]
-    use volta_gpt2::{forward_model_tokens_resident, upload_resident_model};
+    use volta_gpt2::{
+        band_model_witness_resident, forward_model_tokens_resident, upload_resident_model,
+    };
+    use volta_gpt2::{forward_model, load_model, DFF};
     use volta_mac::zero_batch_exchange;
 
     fn weights_dir() -> std::path::PathBuf {
@@ -3451,6 +4494,254 @@ mod tests {
         assert_eq!(stats.operation(volta_accel::Operation::Gemm).cpu_residual_ns, 0);
         backend.free_device(proof_error).unwrap();
         resident_witness.free(&mut backend).unwrap();
+        resident_model.free(&mut backend).unwrap();
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn cuda_resident_response_matches_cpu_reuses_verifies_and_rejects_replay() {
+        let dir = weights_dir();
+        if !dir.join("gpt2s-q.bin").exists() {
+            eprintln!("skipping CUDA resident response differential: artifact not present");
+            return;
+        }
+        let mut backend = match Backend::cuda_resident() {
+            Ok(gpu) => gpu,
+            Err(e) if std::env::var("VOLTA_REQUIRE_CUDA").as_deref() != Ok("1") => {
+                eprintln!("skipping CUDA resident response differential: {e}");
+                return;
+            }
+            Err(e) => panic!("CUDA required: {e}"),
+        };
+        let model = load_model(&dir).unwrap();
+        let (t, q) = (3usize, 3usize);
+        let host_prefill = forward_model(&model, t);
+        let kv: Vec<(&[i16], &[i16])> = host_prefill
+            .layers
+            .iter()
+            .map(|layer| (layer.k.as_slice(), layer.v.as_slice()))
+            .collect();
+        let mut cache = volta_gpt2::KvCache::from_prefill(&kv, t);
+        let (generated, _) = volta_gpt2::generate(&model, &mut cache, &host_prefill.logits, t, q);
+        let mut sequence = model.p.tokens[..t].to_vec();
+        sequence.extend_from_slice(&generated);
+        let host_source = volta_gpt2::forward_model_tokens(&model, &sequence);
+        let host_band = volta_gpt2::band_model_witness(&model, &host_source, t);
+
+        let resident_model = upload_resident_model(&model, &mut backend).unwrap();
+        let resident_prefill =
+            forward_model_tokens_resident(&resident_model, &sequence[..t], &mut backend).unwrap();
+        let resident_source =
+            forward_model_tokens_resident(&resident_model, &sequence, &mut backend).unwrap();
+        let resident_band =
+            band_model_witness_resident(&resident_model, &resident_source, t, q, &mut backend)
+                .unwrap();
+        let prefill_logits = backend
+            .download_device(
+                resident_prefill.logits().buffer(),
+                resident_prefill.logits().offset(),
+                VOCAB,
+            )
+            .unwrap();
+        let band_logits = backend
+            .download_device(
+                resident_band.logits().buffer(),
+                resident_band.logits().offset(),
+                q * VOCAB,
+            )
+            .unwrap();
+        assert_eq!(prefill_logits, host_prefill.logits);
+        assert_eq!(band_logits, host_band.logits);
+        let proof_error = backend.upload_new_device(&[0u32]).unwrap();
+        let pcg_seed = [243; 32];
+        let tx_seed = [0xBD; 32];
+
+        let mut cpu_stream = CorrelationStream::new(pcg_seed);
+        let mut cpu_tx = Transcript::new(tx_seed);
+        let cpu_chunks = [ChunkRef { band: &host_band, seq: &sequence }];
+        let (cpu_proof, cpu_out, cpu_prod, cpu_zero) =
+            prove_response(&model, &host_prefill, &cpu_chunks, &mut cpu_stream, &mut cpu_tx);
+
+        let run_resident = |backend: &mut Backend| {
+            let mut stream = CorrelationStream::new(pcg_seed);
+            let mut tx = Transcript::new(tx_seed);
+            let chunks =
+                [ResidentChunkRef { band: &resident_band, logits: &band_logits, seq: &sequence }];
+            let result = prove_response_resident(
+                &model,
+                &resident_model,
+                &resident_prefill,
+                &prefill_logits,
+                &chunks,
+                DeviceSlice::new(&proof_error, 0, 1).unwrap(),
+                &mut stream,
+                &mut tx,
+                backend,
+            )
+            .unwrap();
+            (result, stream, tx)
+        };
+
+        backend.begin_measurement().unwrap();
+        let ((proof, out, prod, zero), mut prover_stream, mut prover_tx) =
+            run_resident(&mut backend);
+        assert_eq!(proof, cpu_proof);
+        assert_eq!(out.weight_claims, cpu_out.weight_claims);
+        assert_eq!(out.embed_claims, cpu_out.embed_claims);
+        assert_eq!(out.bytes, cpu_out.bytes);
+        assert_eq!(out.ctr_instances, cpu_out.ctr_instances);
+        assert_eq!(out.ctr_other, cpu_out.ctr_other);
+        assert_eq!(out.lookups, cpu_out.lookups);
+        assert_eq!(out.corr_counters, cpu_out.corr_counters);
+        assert_eq!(out.chunk_p1_s.len(), 1);
+        assert_eq!(out.chunk_p2_s.len(), 1);
+        assert_eq!(prod, cpu_prod);
+        assert_eq!(zero, cpu_zero);
+        assert_eq!(prover_stream.counters, cpu_stream.counters);
+        assert_eq!(prover_tx.ledger(), cpu_tx.ledger());
+        assert_eq!(prover_tx.total_bytes(), cpu_tx.total_bytes());
+        assert_eq!(backend.download_device(&proof_error, 0, 1).unwrap(), vec![0]);
+
+        let live_after_first = backend.stats().unwrap().live_device_bytes;
+        let (
+            (mut replay_proof, replay_out, replay_prod, replay_zero),
+            mut replay_stream,
+            mut replay_tx,
+        ) = run_resident(&mut backend);
+        assert_eq!(replay_proof, proof);
+        assert_eq!(replay_out.weight_claims, out.weight_claims);
+        assert_eq!(replay_out.embed_claims, out.embed_claims);
+        assert_eq!(replay_out.bytes, out.bytes);
+        assert_eq!(replay_out.ctr_instances, out.ctr_instances);
+        assert_eq!(replay_out.ctr_other, out.ctr_other);
+        assert_eq!(replay_out.lookups, out.lookups);
+        assert_eq!(replay_out.corr_counters, out.corr_counters);
+        assert_eq!(replay_prod, prod);
+        assert_eq!(replay_zero, zero);
+        assert_eq!(replay_stream.counters, prover_stream.counters);
+        assert_eq!(replay_tx.ledger(), prover_tx.ledger());
+        assert_eq!(replay_tx.total_bytes(), prover_tx.total_bytes());
+        assert_eq!(
+            backend.stats().unwrap().live_device_bytes,
+            live_after_first,
+            "resident response prover leaked across context reuse"
+        );
+
+        let delta = Fp2::new(Fp::new(0xF31C_5A17), Fp::new(0x3BAD_CAFE));
+        let mut verifier = VerifierCtx::new(pcg_seed, delta);
+        let mut verifier_tx = Transcript::new(tx_seed);
+        let public_chunks = [ChunkPub { q, logits: &band_logits, seq: &sequence }];
+        let (verifier_out, key_prod, mut key_zero) = verify_response(
+            &model,
+            t,
+            &prefill_logits,
+            &public_chunks,
+            &proof,
+            &mut verifier,
+            &mut verifier_tx,
+        )
+        .expect("resident response proof verifies structurally and passes public greedy checks");
+        let mut prover_zero = zero.clone();
+        assert_eq!(out.weight_claims.len(), 8 * L);
+        assert_eq!(verifier_out.weight_keys.len(), 8 * L);
+        for index in 0..8 * L {
+            let layer = (index / 4) % L;
+            let slot = index % 4;
+            let weights = &model.layers[layer].0;
+            let permuted = cattn_permuted(&weights.c_attn);
+            let dimensions: [(usize, usize, &[i16]); 4] = [
+                (D, 4096, &permuted),
+                (D, D, &weights.attn_proj),
+                (D, DFF, &weights.ffn_up),
+                (DFF, D, &weights.ffn_down),
+            ];
+            let (rows, cols, matrix) = dimensions[slot];
+            assert_eq!(verifier_out.weight_keys[index].0, out.weight_claims[index].point);
+            let value = weight_true_eval(matrix, rows, cols, &out.weight_claims[index].point);
+            prover_zero.push(out.weight_claims[index].value.sub(ProverAuthed::from_public(value)));
+            key_zero.push(
+                verifier_out.weight_keys[index].1.sub(VerifierKey::from_public(value, delta)),
+            );
+        }
+        assert_eq!(out.embed_claims.len(), 6);
+        assert_eq!(verifier_out.embed_keys.len(), 6);
+        for (index, claim) in out.embed_claims.iter().enumerate() {
+            let (rows, cols, matrix): (usize, usize, &[i16]) =
+                if index % 3 == 2 { (NPOS, D, &model.wpe) } else { (VOCAB, D, &model.wte) };
+            assert_eq!(verifier_out.embed_keys[index].0, claim.point);
+            let value = weight_true_eval(matrix, rows, cols, &claim.point);
+            prover_zero.push(claim.value.sub(ProverAuthed::from_public(value)));
+            key_zero
+                .push(verifier_out.embed_keys[index].1.sub(VerifierKey::from_public(value, delta)));
+        }
+        let mut prover_doms = Doms::new(layer_dom_base(255));
+        let mut verifier_doms = Doms::new(layer_dom_base(255));
+        let challenge = prover_tx.challenge_fp2();
+        assert_eq!(challenge, verifier_tx.challenge_fp2());
+        let product_domain = prover_doms.take(1);
+        assert_eq!(product_domain, verifier_doms.take(1));
+        let product_mask = prover_stream.draw_fulls(product_domain, 1)[0];
+        let product_key = verifier.expand_full_keys(product_domain, 1)[0];
+        let product_proof = prod_batch_prover(&prod, challenge, product_mask, &mut prover_tx);
+        assert!(prod_batch_verify(&key_prod, product_key, delta, challenge, &product_proof));
+        let zero_domain = prover_doms.take(1);
+        assert_eq!(zero_domain, verifier_doms.take(1));
+        assert!(zero_batch_exchange(
+            &prover_zero,
+            &key_zero,
+            &mut prover_stream,
+            &mut verifier,
+            zero_domain,
+            &mut prover_tx,
+        ));
+
+        replay_proof.chunks[0].layers[0].k_corr[0] ^= 1;
+        let mut replay_verifier = VerifierCtx::new(pcg_seed, delta);
+        let mut replay_verifier_tx = Transcript::new(tx_seed);
+        let replay_rejected = if let Some((_out, replay_key_prod, replay_key_zero)) =
+            verify_response(
+                &model,
+                t,
+                &prefill_logits,
+                &public_chunks,
+                &replay_proof,
+                &mut replay_verifier,
+                &mut replay_verifier_tx,
+            ) {
+            let mut prover_doms = Doms::new(layer_dom_base(255));
+            let mut verifier_doms = Doms::new(layer_dom_base(255));
+            let challenge = replay_tx.challenge_fp2();
+            assert_eq!(challenge, replay_verifier_tx.challenge_fp2());
+            let product_domain = prover_doms.take(1);
+            assert_eq!(product_domain, verifier_doms.take(1));
+            let product_mask = replay_stream.draw_fulls(product_domain, 1)[0];
+            let product_key = replay_verifier.expand_full_keys(product_domain, 1)[0];
+            let product_proof =
+                prod_batch_prover(&replay_prod, challenge, product_mask, &mut replay_tx);
+            let _ =
+                prod_batch_verify(&replay_key_prod, product_key, delta, challenge, &product_proof);
+            let zero_domain = prover_doms.take(1);
+            assert_eq!(zero_domain, verifier_doms.take(1));
+            !zero_batch_exchange(
+                &replay_zero,
+                &replay_key_zero,
+                &mut replay_stream,
+                &mut replay_verifier,
+                zero_domain,
+                &mut replay_tx,
+            )
+        } else {
+            true
+        };
+        assert!(replay_rejected, "replayed resident chunk K correction was accepted");
+
+        let stats = backend.finish_measurement().unwrap();
+        assert_eq!(stats.operation(volta_accel::Operation::Logup).cpu_residual_ns, 0);
+        assert_eq!(stats.operation(volta_accel::Operation::Gemm).cpu_residual_ns, 0);
+        backend.free_device(proof_error).unwrap();
+        resident_band.free(&mut backend).unwrap();
+        resident_source.free(&mut backend).unwrap();
+        resident_prefill.free(&mut backend).unwrap();
         resident_model.free(&mut backend).unwrap();
     }
 }

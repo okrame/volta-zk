@@ -23,7 +23,7 @@ CPU numbers validate architecture and counts; the P7 ρ targets (≤2 decode,
 | P4 LogUp + fused blocks | **done** (2026-07-05) | one full layer proved+verified e2e (T=100, real PCS opening) ✓ **PASSED**; counts within 20% ✓ (witness streams = budget **exactly**, padded LogUp domains explained); LogUp ≤8–10 E-mult/lookup: **MISSED, motivated (12.20)**; 1 weight claim/tensor ✓ (4/layer) | prove 0.800 s vs native forward 0.033 s (ρ_layer ~24, 4 cores); verify 0.041 s; LogUp lookup-side **12.20 E-mult/lookup** (~34 ns/lookup, 5.4× vs P2.5 spike wall), table-side 3.86 raw → 0.32 /12-amortized; full instance cost 126.5 M E-mult/layer (≈42/padded lookup incl. aux folding + tables + closures); corr bytes 7.64 MB/layer (mult vectors 3.87 MB — see deviations); layer PCS 2^24: commit 0.34 s one-off, **open 0.035 s**, verify 0.006 s; projections (P3.5 cost model, 49/98 claims): prefill **0.233 s**, per-response **0.345 s**. Run of record `benchmarks/results/p4-2026-07-06-8b4ca11.json` (clean tree, `git_dirty:false`; the 07-05 JSON was a dirty-tree run whose sha names the parent commit) |
 | P5 GPT-2 e2e prefill 100 tok | **done** (2026-07-06) | one-command run ✓ (`scripts/run_prefill.sh`), golden check ✓ (full logits bit-exact vs numpy at T=100, argmax 835 ' way'), counts vs budget: witness lookups = budget **exactly** (16,944,000) ✓ | **accepted e2e with real weights + 13 real Ligero commitments**: native (witness) 0.459 s, prove 11.0–11.2 s, **ρ ≈ 24** (matches P4's ×12 projection); verify 0.65 s + 0.07 s PCS; PCS open **0.73 s** / 52.8 MB (vs 0.237 s projection — 13× fixed costs, see deviations), commit one-off 7.6 s; **comm 159.6 MB/prefill** (mult vectors 59.4 + PCS 52.8 + boundary 36.9 + rest), projected response 212 MB; E-mult all-in 100.6/budget lookup; peak RSS 2.86 GB. `benchmarks/results/p5-2026-07-06-e52ce79.json` (clean tree) |
 | P6 decode + authenticated KV cache | **done** (2026-07-07) | flat cost/token ✓ **PASSED** (curve last/first 1.12 ≤ 1.5, 5×10 chunks, cache 100→150); anti-replay smoke ✓ (prefill-row replay + position swap rejected); golden decode ✓ (50 tokens bit-exact vs numpy) | **accepted e2e, prompt 100 + 50 decode, one two-phase session, real 13-commitment PCS with STACKED claims (96 weight + 6 embed)**: native decode 30.9 tok/s (KV-cached baseline); prove_response 18.7 s = prefill 10.5 s + **decode marginal 8.2 s (0.164 s/token, ρ_decode 5.07 CPU)**; verified 2.67 tok/s; verify 0.57 s + 0.10 s PCS. Comm: transcript 137.4 MB (prefill 48.4 + PCS opening 66.7 + decode marginal 22.3 = **445 KB/token**) + public band logits 20.5 MB → **total response download 157.9 MB** (inside the 150–200 MB product envelope; the PCS opening is now the dominant lever, P7). Shared-α restructure landed with P6: mult corr 59.4 → 2.85 MB. PCS commit one-off 9.5 s; peak RSS 3.47 GB. `benchmarks/results/p6-2026-07-07-515bb1c.json` (clean tree) |
-| P7 report + GPU budget model | **integrated-hybrid full + same-host native anchor complete; resident e2e harness landed, clean publication timing pending** (2026-07-13) | full T=100+50/Q=200 golden exact ✓; repeated exact attribution ✓; flat-cost 1.363 ✓; packed response 144.821 MB ✓; corrected same-host native GPU 7-rep anchor ✓; resident buffer/GEMM, full forward witness, LogUp/PCS, full square model, authenticated-prefix decode band and stacked-response same-seed proof/verifier/fault/reuse A100-tested ✓; resident quick/full clean-tree timing gate open | On `3mq19up4`, native A100 prefill is **20.929±0.389 ms MAD**, decode50 **770.045±8.648 ms**, golden exact; CPU speedups 53.542×/2.901×. Hybrid proof prefill **42.039±1.419 s**, decode marginal **21.975±0.659 s**, so same-host staged ρ_proof is **2008.584/28.537** (diagnostic, not paper). Representative hybrid session: 6.868 H2D + 25.433 D2H + 0.110 kernels + 68.439 CPU; 17.813/5.560 GB transferred, 4.313 GB peak device. Sources `p7-integrated-hybrid-2026-07-12-706d067.json`, `p7-gpu-native-inference-2026-07-12-faa7667.json`; aggregate `p7-2026-07-12-a5d4fa5.json`. Resident correctness checkpoints and the new harness intentionally carry no resident e2e number until the clean A100 run lands. |
+| P7 report + GPU budget model | **resident clean quick e2e passed; full publication timing pending** (2026-07-13) | full hybrid T=100+50/Q=200 golden/exact/flat/packed gates ✓; resident buffer/GEMM, forward witness, LogUp/PCS, full square/band/stacked response proof/verifier/fault/reuse ✓; resident quick proof + 13 PCS + verifier + flat cost + zero explicit-buffer cleanup ✓; resident full 1+3 and same-host native anchor open | Resident quick `1fd5195` at T=16+8: proof core prefill **46.874 s**, response **85.853 s**, online-accounted **86.585 s**, full session wall **88.354 s**; flat 0.995 ✓, packed 82.282 MB, explicit resident bytes after cleanup 0 (workspace 14.287 MB), peak GPU 4.991 GB. This is a harness/lifecycle artifact, not paper rho. Prior hybrid/native numbers remain `p7-integrated-hybrid-2026-07-12-706d067.json` / `p7-gpu-native-inference-2026-07-12-faa7667.json`; clean resident source `p7-integrated-resident-quick-2026-07-13-1fd5195.json`. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -55,6 +55,29 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-13 (`P7-integrated-resident-quick` clean ABI-v17 harness gate
+  passed; full remains mandatory)**: immutable clean-tree run
+  `benchmarks/results/p7-integrated-resident-quick-2026-07-13-1fd5195.json`
+  (SHA-256 `630629287213978f8dd6aa5e46703e962d5fe2226ca843e5050bd5f048f7ddc1`)
+  on A100-SXM4-80GB/CUDA 13.2 accepts the resident proof, all 13 Q=200 PCS
+  openings, the unchanged verifier and the two-chunk flat-cost session at
+  T=16+8. Protocol-core wall is 46.874 s prefill and 85.853 s response;
+  online-accounted response (core + PCS open + closure) is 86.585 s, and the
+  complete single-process response session is 88.354 s. PCS commit/open/
+  verify are 0.851/0.724/0.311 s, flat last/first is 0.995 <=1.5, packed
+  download is 82,281,642 bytes and peak device memory is 4,991,265,544 bytes.
+  After dependency-ordered cleanup, total live equals the reusable workspace
+  exactly (14,286,896 bytes) and explicit resident allocations are zero.
+
+  Attribution is intentionally retained: the response session performs
+  151,835 synchronizations, 873,917,300 B H2D, 81,516,788 B D2H, 4.002 s of
+  kernels and 61.541 s of host residual. This exposes substantial remaining
+  orchestration/transfer cost rather than relabeling device-resident witness
+  storage as a fully GPU-saturated prover. Quick skips the full golden-decode
+  gate and has one repetition, so its rho must not be quoted. Proceed with the
+  preregistered T=100+50, one-warmup/three-repetition run before deciding the
+  resident targets.
 
 - **2026-07-13 (`P7-integrated-resident-quick` cleanup-accounting gate caught
   a workspace/ownership ambiguity; no JSON emitted)**: the first clean quick

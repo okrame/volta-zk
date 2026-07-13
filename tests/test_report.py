@@ -37,7 +37,8 @@ def test_p7_report_selects_record_and_packed_sources():
     assert data["pcs_formula_check"]["matches_p6_measured_bytes"] is True
     assert data["baseline"]["source"].endswith("p6-2026-07-11-f72e4dd.json")
     assert data["baseline"]["cloud"]["provider"] == "Thunder Compute"
-    assert data["cloud"]["instance_id"] == "3mq19up4"
+    assert data["report_schema_version"] == 3
+    assert data["cloud"]["instance_id"] == "tc-machineid-sha256-42069fd5fa86"
     assert data["cloud"] != data["baseline"]["cloud"]
     assert data["communication"]["packed_logits_source"].endswith("p6-2026-07-11-f72e4dd.json")
     required = data["gpu_budget_model"]["required_relative_prover_vs_native_speedup"]
@@ -109,19 +110,21 @@ def test_p7_report_selects_record_and_packed_sources():
         for row in data["gpu_logup_blind_rounds"]["profiles"]
     )
     native = data["gpu_native_inference"]["run_of_record"]
-    assert native["source"].endswith("p7-gpu-native-inference-2026-07-12-faa7667.json")
+    assert native["source"].endswith("p7-gpu-native-inference-2026-07-13-1fd5195.json")
     assert native["correctness"] is True
     assert native["golden_match"] is True
-    assert native["prefill_s"] == 0.020929462
-    assert native["decode_50_s"] == 0.770044957
-    assert native["prefill_timing"]["mad_s"] == 0.000388815
-    assert native["decode_50_timing"]["mad_s"] == 0.008648443
+    assert native["prefill_s"] == 0.017341642
+    assert native["decode_50_s"] == 0.599345878
+    assert native["prefill_timing"]["mad_s"] == 0.000062169
+    assert native["decode_50_timing"]["mad_s"] == 0.000989627
     assert native["memory"]["peak_device_bytes"] == 258_181_700
-    assert native["native_gpu_speedup"]["prefill"] == 53.54229554491177
-    assert native["native_gpu_speedup"]["decode"] == 2.9007435003564344
+    assert native["native_gpu_speedup"]["prefill"] == 57.2201883189608
+    assert native["native_gpu_speedup"]["decode"] == 3.6205070138148177
     prover_targets = data["gpu_native_inference"]["required_prover_gpu_speedup_vs_cpu"]
     assert prover_targets is None  # aggregate P6 baseline is a different instance
-    assert data["gpu_native_inference"]["proof_only_budget"]["prefill_s"] == 0.20929462
+    proof_budget = data["gpu_native_inference"]["proof_only_budget"]
+    assert abs(proof_budget["prefill_s"] - 0.17341642) < 1e-15
+    assert abs(proof_budget["decode_50_s"] - 1.198691756) < 1e-15
     hybrid = data["integrated_hybrid"]["run_of_record"]
     assert hybrid["source"].endswith("p7-integrated-hybrid-2026-07-12-706d067.json")
     assert hybrid["golden_decode_match"] is True
@@ -132,8 +135,26 @@ def test_p7_report_selects_record_and_packed_sources():
     assert abs(same_host["proof_rho"]["prefill"] - 2008.58387043107) < 1e-9
     assert abs(same_host["proof_rho"]["decode"] - 28.53693406240955) < 1e-9
     assert same_host["target_met"] == {"prefill": False, "decode": False}
+    resident = data["integrated_resident"]["run_of_record"]
+    assert resident["source"].endswith("p7-integrated-resident-2026-07-13-1fd5195.json")
+    assert resident["golden_decode_match"] is True
+    assert resident["flat_cost_gate"] is True
+    assert resident["packed_response_bytes"] == 144_820_930
+    assert resident["accelerator_resident_device_bytes_after_cleanup"] == 0
+    assert resident["accelerator_workspace_device_bytes_after_cleanup"] == 104_988_720
+    resident_same_host = data["integrated_resident"]["same_host_result"]
+    assert abs(resident_same_host["proof_rho"]["prefill"] - 3707.595455551441) < 1e-9
+    assert abs(resident_same_host["proof_rho"]["decode"] - 95.59733125585956) < 1e-9
+    assert resident_same_host["target_met"] == {"prefill": False, "decode": False}
+    assert resident_same_host["online_accounted"]["decode_rho"] == 96.64629855684099
+    assert resident_same_host["measured_resident_pipeline_s"] == {
+        "prefill_inference_plus_protocol_core": 64.40694849100001,
+        "response_inference_plus_online_accounted": 122.02173956600001,
+        "response_inference_plus_full_session_wall": 124.175154845,
+    }
+    assert data["integrated_resident"]["status"] == "measured_same_host_targets_fail"
     assert data["go_no_go"]["local_recommendation"] == (
-        "proceed-to-device-resident-prover-integration"
+        "resident-gates-fail-report-result-without-production-claim"
     )
     q150 = [
         row

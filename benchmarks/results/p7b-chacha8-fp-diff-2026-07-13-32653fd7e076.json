@@ -1,0 +1,261 @@
+{
+  "byte_identical": true,
+  "cases": [
+    {
+      "arguments": [
+        "--mode",
+        "fp",
+        "--seed-hex",
+        "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        "--base-domain",
+        "0x0123456789abcdef",
+        "--rows",
+        "3",
+        "--count",
+        "10"
+      ],
+      "base_domain": "0x0123456789abcdef",
+      "byte_identical": true,
+      "count": 10,
+      "cuda": {
+        "canonical_json_sha256": "946218bd4212b7c8643947e796bfb879e2613edb7aebdd88abff2f0eec062d11",
+        "stdout_bytes": 868,
+        "stdout_sha256": "1570f825215b0e38da4857fc32b40a97b8bf0efed7f90f6c44431e801b7c2634"
+      },
+      "mode": "fp",
+      "name": "fp-default-multi-block",
+      "rows": 3,
+      "rust": {
+        "canonical_json_sha256": "946218bd4212b7c8643947e796bfb879e2613edb7aebdd88abff2f0eec062d11",
+        "stdout_bytes": 868,
+        "stdout_sha256": "1570f825215b0e38da4857fc32b40a97b8bf0efed7f90f6c44431e801b7c2634"
+      },
+      "seed_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "structurally_identical": true
+    },
+    {
+      "arguments": [
+        "--mode",
+        "fp2",
+        "--seed-hex",
+        "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0efeeedecebeae9e8e7e6e5e4e3e2e1e0",
+        "--base-domain",
+        "0xfedcba9876543210",
+        "--rows",
+        "4",
+        "--count",
+        "17"
+      ],
+      "base_domain": "0xfedcba9876543210",
+      "byte_identical": true,
+      "count": 17,
+      "cuda": {
+        "canonical_json_sha256": "5f099cfbbc2fbc3c032f803a22edf62513f84b8cd7287fe7971c3dd1ebf631fc",
+        "stdout_bytes": 3238,
+        "stdout_sha256": "90abbd2a0773f9c455313a3eab8172a1647a2c7cea152fa71324ef996c220051"
+      },
+      "mode": "fp2",
+      "name": "fp2-high-seed-domain",
+      "rows": 4,
+      "rust": {
+        "canonical_json_sha256": "5f099cfbbc2fbc3c032f803a22edf62513f84b8cd7287fe7971c3dd1ebf631fc",
+        "stdout_bytes": 3238,
+        "stdout_sha256": "90abbd2a0773f9c455313a3eab8172a1647a2c7cea152fa71324ef996c220051"
+      },
+      "seed_hex": "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0efeeedecebeae9e8e7e6e5e4e3e2e1e0",
+      "structurally_identical": true
+    }
+  ],
+  "commands": {
+    "case_runs": [
+      {
+        "cuda": [
+          "/tmp/volta-p7b-chacha8-fp-diff-c10b5eot/p7b_chacha8_fp_diff",
+          "--mode",
+          "fp",
+          "--seed-hex",
+          "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "--base-domain",
+          "0x0123456789abcdef",
+          "--rows",
+          "3",
+          "--count",
+          "10"
+        ],
+        "cwd": "/home/ubuntu/volta-zk-p7b-32653fd",
+        "name": "fp-default-multi-block",
+        "rust": [
+          "/home/ubuntu/volta-zk-p7b-32653fd/rust/target/release/p7b_chacha8_fp_vectors",
+          "--mode",
+          "fp",
+          "--seed-hex",
+          "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "--base-domain",
+          "0x0123456789abcdef",
+          "--rows",
+          "3",
+          "--count",
+          "10"
+        ]
+      },
+      {
+        "cuda": [
+          "/tmp/volta-p7b-chacha8-fp-diff-c10b5eot/p7b_chacha8_fp_diff",
+          "--mode",
+          "fp2",
+          "--seed-hex",
+          "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0efeeedecebeae9e8e7e6e5e4e3e2e1e0",
+          "--base-domain",
+          "0xfedcba9876543210",
+          "--rows",
+          "4",
+          "--count",
+          "17"
+        ],
+        "cwd": "/home/ubuntu/volta-zk-p7b-32653fd",
+        "name": "fp2-high-seed-domain",
+        "rust": [
+          "/home/ubuntu/volta-zk-p7b-32653fd/rust/target/release/p7b_chacha8_fp_vectors",
+          "--mode",
+          "fp2",
+          "--seed-hex",
+          "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0efeeedecebeae9e8e7e6e5e4e3e2e1e0",
+          "--base-domain",
+          "0xfedcba9876543210",
+          "--rows",
+          "4",
+          "--count",
+          "17"
+        ]
+      }
+    ],
+    "cuda_compile": [
+      "/usr/local/cuda/bin/nvcc",
+      "-O3",
+      "-std=c++17",
+      "-arch=sm_80",
+      "/home/ubuntu/volta-zk-p7b-32653fd/cuda/p7b_chacha8_fp_diff.cu",
+      "-o",
+      "/tmp/volta-p7b-chacha8-fp-diff-c10b5eot/p7b_chacha8_fp_diff"
+    ],
+    "cuda_compile_cwd": "/home/ubuntu/volta-zk-p7b-32653fd",
+    "metadata": {
+      "cargo": [
+        "cargo",
+        "--version"
+      ],
+      "gpu": [
+        "/usr/bin/nvidia-smi",
+        "--query-gpu=index,name,uuid,driver_version,memory.total",
+        "--format=csv,noheader,nounits"
+      ],
+      "nvcc": [
+        "/usr/local/cuda/bin/nvcc",
+        "--version"
+      ],
+      "rustc": [
+        "rustc",
+        "--version",
+        "--verbose"
+      ]
+    },
+    "rust_compile": [
+      "cargo",
+      "build",
+      "--offline",
+      "--release",
+      "-p",
+      "volta-bench",
+      "--bin",
+      "p7b_chacha8_fp_vectors"
+    ],
+    "rust_compile_cwd": "/home/ubuntu/volta-zk-p7b-32653fd/rust"
+  },
+  "compiler": {
+    "cuda": {
+      "arch": "sm_80",
+      "executable": "/usr/local/cuda/bin/nvcc",
+      "version": {
+        "command": [
+          "/usr/local/cuda/bin/nvcc",
+          "--version"
+        ],
+        "exit_code": 0,
+        "stderr": "",
+        "stdout": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2026 NVIDIA Corporation\nBuilt on Thu_Mar_19_11:12:51_PM_PDT_2026\nCuda compilation tools, release 13.2, V13.2.78\nBuild cuda_13.2.r13.2/compiler.37668154_0"
+      }
+    },
+    "rust": {
+      "cargo": {
+        "command": [
+          "cargo",
+          "--version"
+        ],
+        "exit_code": 0,
+        "stderr": "",
+        "stdout": "cargo 1.97.0 (c980f4866 2026-06-30)"
+      },
+      "rustc": {
+        "command": [
+          "rustc",
+          "--version",
+          "--verbose"
+        ],
+        "exit_code": 0,
+        "stderr": "",
+        "stdout": "rustc 1.97.0 (2d8144b78 2026-07-07)\nbinary: rustc\ncommit-hash: 2d8144b7880597b6e6d3dfd63a9a9efae3f533d3\ncommit-date: 2026-07-07\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.0\nLLVM version: 22.1.6"
+      }
+    }
+  },
+  "date": "2026-07-13",
+  "git_dirty": false,
+  "git_sha": "32653fd7e076dff400636b7c1f04989165460f8f",
+  "gpu": {
+    "available": true,
+    "cuda_visible_devices": null,
+    "devices": [
+      {
+        "driver_version": "610.43.02",
+        "index": 0,
+        "memory_total_mib": 81920,
+        "name": "NVIDIA A100-SXM4-80GB",
+        "uuid": "GPU-52e3ccd5-4bc8-17f8-365c-ead10cffd3b0"
+      }
+    ],
+    "query_exit_code": 0,
+    "query_stderr": ""
+  },
+  "milestone": "P7b-chacha8-fp-differential",
+  "schema": "p7b-chacha8-fp-differential-report-v1",
+  "source_control": {
+    "git_dirty": false,
+    "git_sha": "32653fd7e076dff400636b7c1f04989165460f8f",
+    "git_status_entries": 0,
+    "git_status_exit_code": 0,
+    "git_status_stderr": "",
+    "git_status_stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "sources": [
+    {
+      "bytes": 17645,
+      "path": "scripts/p7b_chacha8_fp_diff.py",
+      "sha256": "a20d2f4cea7f0cd93ee20ae210b38f67ba00e64cacb9ce411faa443fbc5c7e0d"
+    },
+    {
+      "bytes": 11253,
+      "path": "cuda/p7b_chacha8_fp_diff.cu",
+      "sha256": "2d0941466274c7f0583b4e7a87e8b799b2794f5c19db5a46c312a96c480c25b0"
+    },
+    {
+      "bytes": 4938,
+      "path": "cuda/volta_chacha8_fp.cuh",
+      "sha256": "e5cda061b12db674b1e5fe9b784cbdbc3bd1f1d6ab4045d812d9d6752ea1e1f8"
+    },
+    {
+      "bytes": 7247,
+      "path": "rust/volta-bench/src/bin/p7b_chacha8_fp_vectors.rs",
+      "sha256": "b85e7a38c7a756411eecf3eef289937c44a5105926f179735a8955a420c5ba64"
+    }
+  ],
+  "structurally_identical": true
+}

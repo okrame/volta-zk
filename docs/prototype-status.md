@@ -223,13 +223,17 @@ constant factors hold. That constant factor is what P3/P4 measure.
   ChaCha8 stream layout plus Goldilocks rejection sampling is now available
   for device-side prover-owned pads/masks. It explicitly excludes verifier
   challenges and `Delta`. CUDA 13.2 / sm_80 results are byte-identical to the
-  Rust `FpStream` oracle for an Fp multi-block case (SHA-256
-  `1570f825215b0e38da4857fc32b40a97b8bf0efed7f90f6c44431e801b7c2634`)
-  and an Fp2/high-64-bit-domain multi-block case (SHA-256
-  `90abbd2a0773f9c455313a3eab8172a1647a2c7cea152fa71324ef996c220051`).
-  This checkpoint only validates the generator and ownership boundary; H2D
-  savings are not claimed until it is integrated into the PCS kernels and a
-  clean immutable differential/result is recorded.
+  Rust `FpStream` oracle in the clean immutable result
+  `benchmarks/results/p7b-chacha8-fp-diff-2026-07-13-32653fd7e076.json`
+  (source SHA `32653fd`, `git_dirty:false`, result SHA-256
+  `21207d234e32b8eec56545e0e652e2c97f56787c62ab4e138b361c67f3c97906`)
+  on A100-SXM4-80GB. The Fp multi-block case has stdout SHA-256
+  `1570f825215b0e38da4857fc32b40a97b8bf0efed7f90f6c44431e801b7c2634`
+  and the Fp2/high-64-bit-domain multi-block case has stdout SHA-256
+  `90abbd2a0773f9c455313a3eab8172a1647a2c7cea152fa71324ef996c220051`.
+  Both raw stdout and parsed structures match. This checkpoint validates the
+  generator and ownership boundary only; H2D savings are not claimed until
+  it is integrated into the PCS kernels and measured in the full session.
 
 - **2026-07-13 (P7 publication artifact closed)**: clean aggregate
   `benchmarks/results/p7-2026-07-13-2c836b3.json` (SHA-256

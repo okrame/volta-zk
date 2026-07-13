@@ -109,6 +109,10 @@ struct AcceleratorStatsRow {
     physical_free_calls: u64,
     live_device_bytes: u64,
     peak_device_bytes: u64,
+    timing_records: u64,
+    timing_event_queries: u64,
+    timing_pending_high_water: u64,
+    timing_flush_count: u64,
     kernel_s: f64,
     cpu_residual_s: f64,
 }
@@ -212,6 +216,10 @@ impl AcceleratorStatsRow {
             physical_free_calls: stats.physical_free_calls,
             live_device_bytes: stats.live_device_bytes,
             peak_device_bytes: stats.peak_device_bytes,
+            timing_records: stats.timing_records,
+            timing_event_queries: stats.timing_event_queries,
+            timing_pending_high_water: stats.timing_pending_high_water,
+            timing_flush_count: stats.timing_flush_count,
             kernel_s: stats.kernel_ns() as f64 / 1e9,
             cpu_residual_s: stats.cpu_residual_ns() as f64 / 1e9,
         }

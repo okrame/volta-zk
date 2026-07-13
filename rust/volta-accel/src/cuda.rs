@@ -40,16 +40,22 @@ struct RawStats {
     physical_free_calls: u64,
     live_device_bytes: u64,
     peak_device_bytes: u64,
+    timing_records: u64,
+    timing_event_queries: u64,
+    timing_pending_high_water: u64,
+    timing_flush_count: u64,
     timing_mode: u32,
     reserved: u32,
 }
 
-const _: () = assert!(std::mem::size_of::<RawStats>() == 232);
+const _: () = assert!(std::mem::size_of::<RawStats>() == 264);
 
 type AbiVersion = unsafe extern "C" fn() -> u32;
 type Create = unsafe extern "C" fn(*mut *mut c_void) -> c_int;
 type Destroy = unsafe extern "C" fn(*mut c_void);
 type LastError = unsafe extern "C" fn(*mut c_void) -> *const c_char;
+type EnableDeferredProfiling = unsafe extern "C" fn(*mut c_void) -> c_int;
+type FlushProfiling = unsafe extern "C" fn(*mut c_void) -> c_int;
 type ResetStats = unsafe extern "C" fn(*mut c_void) -> c_int;
 type GetStats = unsafe extern "C" fn(*mut c_void, *mut RawStats) -> c_int;
 type MemoryBreakdown = unsafe extern "C" fn(*mut c_void, *mut u64, *mut u64, *mut u64) -> c_int;
@@ -655,6 +661,8 @@ struct Api {
     create: Create,
     destroy: Destroy,
     last_error: LastError,
+    enable_deferred_profiling: EnableDeferredProfiling,
+    flush_profiling: FlushProfiling,
     reset_stats: ResetStats,
     get_stats: GetStats,
     memory_breakdown: MemoryBreakdown,
@@ -783,6 +791,10 @@ impl CudaContext {
             create: unsafe { load_symbol(handle, b"volta_cuda_create\0")? },
             destroy: unsafe { load_symbol(handle, b"volta_cuda_destroy\0")? },
             last_error: unsafe { load_symbol(handle, b"volta_cuda_last_error\0")? },
+            enable_deferred_profiling: unsafe {
+                load_symbol(handle, b"volta_cuda_enable_deferred_profiling\0")?
+            },
+            flush_profiling: unsafe { load_symbol(handle, b"volta_cuda_flush_profiling\0")? },
             reset_stats: unsafe { load_symbol(handle, b"volta_cuda_reset_stats\0")? },
             get_stats: unsafe { load_symbol(handle, b"volta_cuda_get_stats\0")? },
             memory_breakdown: unsafe { load_symbol(handle, b"volta_cuda_memory_breakdown\0")? },
@@ -949,6 +961,16 @@ impl CudaContext {
         }
     }
 
+    pub(super) fn enable_deferred_profiling(&mut self) -> Result<(), AccelError> {
+        // SAFETY: context is live and the ABI mutates only its timing mode.
+        self.check(unsafe { (self.api.enable_deferred_profiling)(self.raw) })
+    }
+
+    pub(super) fn flush_profiling(&mut self) -> Result<(), AccelError> {
+        // SAFETY: context is live and exclusively borrowed by the backend.
+        self.check(unsafe { (self.api.flush_profiling)(self.raw) })
+    }
+
     pub(super) fn reset_stats(&mut self) -> Result<(), AccelError> {
         // SAFETY: context is live and exclusively borrowed.
         self.check(unsafe { (self.api.reset_stats)(self.raw) })
@@ -962,6 +984,7 @@ impl CudaContext {
             timing_mode: match raw.timing_mode {
                 1 => DeviceTimingMode::CudaEvents,
                 2 => DeviceTimingMode::HostBarrierWall,
+                3 => DeviceTimingMode::CudaEventsDeferred,
                 value => {
                     return Err(AccelError::Cuda(format!(
                         "CUDA backend returned unknown timing mode {value}"
@@ -986,6 +1009,10 @@ impl CudaContext {
             physical_free_calls: raw.physical_free_calls,
             live_device_bytes: raw.live_device_bytes,
             peak_device_bytes: raw.peak_device_bytes,
+            timing_records: raw.timing_records,
+            timing_event_queries: raw.timing_event_queries,
+            timing_pending_high_water: raw.timing_pending_high_water,
+            timing_flush_count: raw.timing_flush_count,
             ..Default::default()
         };
         for i in 0..OPERATION_COUNT {

@@ -219,6 +219,29 @@ constant factors hold. That constant factor is what P3/P4 measure.
   three barriers to H2D/kernel/D2H causes rather than labelling all of them as
   profiling.
 
+  **Deferred resident profiling checkpoint (2026-07-13; timing result still
+  pending a clean-tree run)**: ABI 20 adds a resident-only fixed ring of 512
+  lazily allocated CUDA-event records. Device-only primitives and pageable
+  H2D uploads now enqueue without a host barrier; D2H host outputs, a full
+  ring, explicit stats/measurement completion, reset, and physical
+  reclamation flush the stream with the existing reason accounting. The ring
+  retains metadata only (no shadow upload payload or host-RSS growth), and a
+  flush queries the complete batch before committing attribution. Failed
+  calls abort the active record, while destroy/reset/reclaim preserve stream
+  ordering. New exact counters report records, event queries, pending high
+  water, and non-empty flushes; report rows expose all four.
+
+  The pageable-H2D lifetime assumption is load-bearing and is therefore a
+  measured platform contract: on Thunder A100, immediate source mutation
+  after a 4 MiB upload, source drop followed by generational free/reuse of the
+  same physical allocation, and a 513-record ring-wrap all pass. The full
+  rebuilt backend passes **19/19** CUDA tests and the resident PCS suite passes
+  **3/3**; the local Rust workspace is green. Hybrid mode remains on the
+  legacy timing path, and runtimes without usable event elapsed time retain
+  the synchronous host-barrier fallback. No prover timing or sync reduction
+  is claimed in this checkpoint until the committed source is run from a
+  clean tree.
+
   A standalone CUDA implementation of the exact `rand_chacha 0.3.1`
   ChaCha8 stream layout plus Goldilocks rejection sampling is now available
   for device-side prover-owned pads/masks. It explicitly excludes verifier

@@ -17,7 +17,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 19;
+pub const CUDA_ABI_VERSION: u32 = 20;
 pub const OPERATION_COUNT: usize = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -72,6 +72,10 @@ pub enum DeviceTimingMode {
     /// Asynchronous phase timing from CUDA events; one final stream barrier
     /// per staged operation.
     CudaEvents,
+    /// Resident-only fixed-ring CUDA-event timing. Device-only work and
+    /// pageable H2D uploads enqueue without a barrier; records are attributed
+    /// at one coarse flush boundary.
+    CudaEventsDeferred,
     /// Fallback for runtimes where event elapsed-time is unavailable: each
     /// H2D/kernel/D2H phase is delimited by a timed host stream barrier.
     /// These are phase wall times (including launch overhead), and the three
@@ -84,6 +88,7 @@ impl DeviceTimingMode {
         match self {
             DeviceTimingMode::None => "none",
             DeviceTimingMode::CudaEvents => "cuda-events",
+            DeviceTimingMode::CudaEventsDeferred => "cuda-events-deferred",
             DeviceTimingMode::HostBarrierWall => "host-barrier-wall",
         }
     }
@@ -120,8 +125,9 @@ pub struct BackendStats {
     pub synchronization_ns: u64,
     /// Barriers required before protocol-visible device-to-host output.
     pub sync_host_output: u64,
-    /// Legacy barriers retaining pageable host upload lifetime. P7b removes
-    /// these only after the CUDA staging contract is differentially tested.
+    /// Legacy barriers retaining pageable host upload lifetime. Deferred
+    /// resident mode relies on the CUDA pageable-H2D staging contract and
+    /// keeps this counter at zero.
     pub sync_upload_lifetime: u64,
     /// Coarse flushes of deferred timing records (zero in legacy mode).
     pub sync_timing_flush: u64,
@@ -143,6 +149,14 @@ pub struct BackendStats {
     pub physical_free_calls: u64,
     pub live_device_bytes: u64,
     pub peak_device_bytes: u64,
+    /// Deferred timing records enqueued since the most recent reset.
+    pub timing_records: u64,
+    /// Successful `cudaEventElapsedTime` queries used to attribute records.
+    pub timing_event_queries: u64,
+    /// Maximum number of unflushed records in the fixed ring.
+    pub timing_pending_high_water: u64,
+    /// Non-empty coarse ring flushes, regardless of synchronization reason.
+    pub timing_flush_count: u64,
 }
 
 /// Physical allocations owned by a CUDA context. Active resident storage is
@@ -543,7 +557,10 @@ impl Backend {
 
     #[cfg(feature = "cuda")]
     fn load_cuda(kind: BackendKind) -> Result<Backend, AccelError> {
-        let cuda = cuda::CudaContext::load()?;
+        let mut cuda = cuda::CudaContext::load()?;
+        if kind == BackendKind::CudaResident {
+            cuda.enable_deferred_profiling()?;
+        }
         Ok(Backend {
             kind,
             context_id: NEXT_CONTEXT_ID.fetch_add(1, Ordering::Relaxed),
@@ -585,6 +602,12 @@ impl Backend {
         if !self.measurement_active {
             return Err(AccelError::MeasurementNotActive);
         }
+        #[cfg(feature = "cuda")]
+        if let Some(cuda) = &mut self.cuda {
+            cuda.flush_profiling()?;
+        }
+        // Sample wall only after the required deferred flush: its barrier and
+        // event-query work belong to the measurement window.
         let wall_ns = self
             .measurement_started
             .expect("active measurement without start time")
@@ -3980,6 +4003,9 @@ mod cuda_tests {
                 assert_eq!(stats.sync_profiling_legacy, 6);
                 assert_eq!(stats.synchronizations, 19);
             }
+            DeviceTimingMode::CudaEventsDeferred => {
+                panic!("cuda-hybrid must not enable deferred profiling")
+            }
             DeviceTimingMode::None => panic!("CUDA stats have no timing mode"),
         }
     }
@@ -4563,6 +4589,113 @@ mod cuda_tests {
         assert_eq!(trimmed_stats.physical_free_calls, 2);
         assert_eq!(trimmed_stats.sync_allocator_flush, 1);
         assert_eq!(trimmed_stats.synchronization_reason_total(), trimmed_stats.synchronizations);
+    }
+
+    #[test]
+    fn resident_deferred_pageable_upload_survives_immediate_source_mutation() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
+        // Large enough that an incorrectly retained pageable pointer is very
+        // likely to race the immediate overwrite on a remote A100 runtime.
+        let bytes = 4 * 1024 * 1024;
+        let buffer = gpu.alloc_device::<u8>(bytes).unwrap();
+        let mut source: Vec<u8> = (0..bytes).map(|i| (i.wrapping_mul(131) as u8) ^ 0x5a).collect();
+        let expected = source.clone();
+
+        gpu.begin_measurement().unwrap();
+        gpu.upload_device(&buffer, 0, &source).unwrap();
+        source.fill(0xa5);
+        let downloaded = gpu.download_device(&buffer, 0, bytes).unwrap();
+        let stats = gpu.finish_measurement().unwrap();
+        assert_eq!(downloaded, expected);
+        assert_eq!(stats.h2d_bytes, bytes as u64);
+        assert_eq!(stats.d2h_bytes, bytes as u64);
+        assert_eq!(stats.synchronization_reason_total(), stats.synchronizations);
+        if stats.timing_mode == DeviceTimingMode::CudaEventsDeferred {
+            assert_eq!(stats.timing_records, 2);
+            assert_eq!(stats.timing_event_queries, 2);
+            assert_eq!(stats.timing_pending_high_water, 2);
+            assert_eq!(stats.timing_flush_count, 1);
+            assert_eq!(stats.synchronizations, 1);
+            assert_eq!(stats.sync_host_output, 1);
+            assert_eq!(stats.sync_upload_lifetime, 0);
+            assert_eq!(stats.sync_timing_flush, 0);
+            assert_eq!(stats.sync_profiling_legacy, 0);
+        }
+        gpu.free_device(buffer).unwrap();
+    }
+
+    #[test]
+    fn resident_deferred_upload_orders_drop_and_arena_reuse_before_flush() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
+        let bytes = 2 * 1024 * 1024;
+        let original = gpu.alloc_device::<u8>(bytes).unwrap();
+        let original_slot = original.id as u32;
+        gpu.begin_measurement().unwrap();
+
+        let first = vec![0x31u8; bytes];
+        gpu.upload_device(&original, 0, &first).unwrap();
+        drop(first);
+        gpu.free_device(original).unwrap();
+
+        // Best-fit reuse returns the same physical device allocation under a
+        // fresh generation while the first H2D record is still pending. The
+        // single stream must order the replacement upload after it.
+        let reused = gpu.alloc_device::<u8>(bytes).unwrap();
+        assert_eq!(reused.id as u32, original_slot);
+        let second = vec![0xc7u8; bytes];
+        gpu.upload_device(&reused, 0, &second).unwrap();
+        drop(second);
+        let downloaded = gpu.download_device(&reused, 0, bytes).unwrap();
+        let stats = gpu.finish_measurement().unwrap();
+        assert!(downloaded.iter().all(|&byte| byte == 0xc7));
+        assert_eq!(stats.synchronization_reason_total(), stats.synchronizations);
+        if stats.timing_mode == DeviceTimingMode::CudaEventsDeferred {
+            assert_eq!(stats.timing_records, 3);
+            assert_eq!(stats.timing_event_queries, 3);
+            assert_eq!(stats.timing_pending_high_water, 3);
+            assert_eq!(stats.timing_flush_count, 1);
+            assert_eq!(stats.synchronizations, 1);
+            assert_eq!(stats.sync_host_output, 1);
+            assert_eq!(stats.sync_upload_lifetime, 0);
+            assert_eq!(stats.resident_reuse_hits, 1);
+        }
+        gpu.free_device(reused).unwrap();
+    }
+
+    #[test]
+    fn resident_deferred_ring_full_and_finish_flushes_are_counted() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
+        let Some(hybrid) = cuda(BackendKind::CudaHybrid) else { return };
+        assert_ne!(hybrid.stats().unwrap().timing_mode, DeviceTimingMode::CudaEventsDeferred);
+
+        let n = 32usize;
+        let target = vec![Fp2Repr { c0: 7, c1: 11 }; n];
+        let add = vec![Fp2Repr { c0: 13, c1: 17 }; n];
+        let dtarget = gpu.upload_new_device(&target).unwrap();
+        let dadd = gpu.upload_new_device(&add).unwrap();
+        gpu.begin_measurement().unwrap();
+        for _ in 0..513 {
+            gpu.fp2_add_inplace_device(&dtarget, 0, &dadd, 0, n).unwrap();
+        }
+        let stats = gpu.finish_measurement().unwrap();
+        assert_eq!(stats.synchronization_reason_total(), stats.synchronizations);
+        if stats.timing_mode == DeviceTimingMode::CudaEventsDeferred {
+            assert_eq!(stats.operation(Operation::PcsRows).calls, 513);
+            assert_eq!(stats.timing_records, 513);
+            assert_eq!(stats.timing_event_queries, 3 * 513);
+            assert_eq!(stats.timing_pending_high_water, 512);
+            assert_eq!(stats.timing_flush_count, 2);
+            assert_eq!(stats.synchronizations, 2);
+            assert_eq!(stats.sync_timing_flush, 2);
+            assert_eq!(stats.sync_host_output, 0);
+            assert_eq!(stats.sync_upload_lifetime, 0);
+            assert_eq!(stats.sync_profiling_legacy, 0);
+            assert_eq!(stats.sync_allocator_flush, 0);
+        }
+        let result = gpu.download_device(&dtarget, 0, n).unwrap();
+        assert!(result.iter().all(|x| *x == Fp2Repr { c0: 6676, c1: 8732 }));
+        gpu.free_device(dadd).unwrap();
+        gpu.free_device(dtarget).unwrap();
     }
 
     #[test]

@@ -126,6 +126,12 @@ def validate_kernel(kernel: dict[str, Any], duration_seconds: float) -> None:
     graph_sizes = tuple(row["kernels"] for row in kernel["cuda_graphs"])
     if direct_sizes != BURST_SIZES or graph_sizes != BURST_SIZES:
         raise SystemExit("CUDA microbenchmark burst grid differs from preregistration")
+    expected_graph_samples = 31 if duration_seconds >= 60 else 7
+    if any(
+        row["total"]["count"] != expected_graph_samples
+        for row in kernel["cuda_graphs"]
+    ):
+        raise SystemExit("CUDA graph replay sample count differs from preregistration")
     if duration_seconds >= 60 and kernel["measurement_wall_s"] < duration_seconds * 0.90:
         raise SystemExit("CUDA microbenchmark ended materially before its target duration")
 

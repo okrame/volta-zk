@@ -114,6 +114,23 @@ SplitSamples measure_split_for(
     return samples;
 }
 
+template <typename Launch>
+SplitSamples measure_split_reps(
+    cudaStream_t stream, size_t repetitions, Launch&& launch) {
+    SplitSamples samples;
+    for (size_t i = 0; i < repetitions; ++i) {
+        const auto begin = Clock::now();
+        launch();
+        const auto enqueued = Clock::now();
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+        const auto completed = Clock::now();
+        samples.enqueue.push(elapsed_us(begin, enqueued));
+        samples.barrier.push(elapsed_us(enqueued, completed));
+        samples.total.push(elapsed_us(begin, completed));
+    }
+    return samples;
+}
+
 AllocationSamples measure_allocations_for(double target_s, size_t min_samples) {
     AllocationSamples samples;
     const auto phase_begin = Clock::now();
@@ -203,10 +220,13 @@ int main(int argc, char** argv) {
         return 2;
     }
     const std::vector<size_t> burst_sizes{1, 8, 64, 512, 4096};
-    constexpr size_t timed_cases = 13;  // scalar + 5 direct + D2H + alloc/free + 5 graph.
+    // Graph replay is deliberately sample-capped below: repeated 4,096-node
+    // replay stalled in the provider runtime during the first clean quick.
+    constexpr size_t timed_cases = 8;  // scalar + 5 direct + D2H + alloc/free.
     const double phase_seconds = target_seconds / static_cast<double>(timed_cases);
     constexpr size_t warmups = 16;
     constexpr size_t min_samples = 7;
+    const size_t graph_replay_samples = target_seconds >= 60.0 ? 31 : 7;
 
     int device = 0;
     CUDA_CHECK(cudaSetDevice(device));
@@ -270,7 +290,7 @@ int main(int argc, char** argv) {
             CUDA_CHECK(cudaStreamSynchronize(stream));
         }
         std::cerr << "measuring graph replay N=" << kernels << "\n";
-        replay.push_back(measure_split_for(stream, phase_seconds, min_samples, [&] {
+        replay.push_back(measure_split_reps(stream, graph_replay_samples, [&] {
             CUDA_CHECK(cudaGraphLaunch(graph.executable, stream));
         }));
     }
@@ -302,7 +322,9 @@ int main(int argc, char** argv) {
               << ",\"cuda_driver_version\":" << driver_version << "},\n"
               << "\"parameters\":{\"target_seconds\":" << target_seconds
               << ",\"phase_seconds\":" << phase_seconds << ",\"warmups\":" << warmups
-              << ",\"min_samples\":" << min_samples << ",\"burst_sizes\":[1,8,64,512,4096]},\n"
+              << ",\"min_samples\":" << min_samples
+              << ",\"graph_replay_samples\":" << graph_replay_samples
+              << ",\"burst_sizes\":[1,8,64,512,4096]},\n"
               << "\"measurement_wall_s\":" << measurement_wall_s << ",\n"
               << "\"empty_launch_sync\":" << stats_json(launch_sync) << ",\n"
               << "\"blocking_d2h_8b\":" << stats_json(d2h) << ",\n"

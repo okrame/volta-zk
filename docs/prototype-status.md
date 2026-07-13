@@ -112,7 +112,15 @@ constant factors hold. That constant factor is what P3/P4 measure.
   "pipelined" only if both max-N enqueue and total time amortize to <=10% of
   the one-launch-plus-sync median. A max-N graph replay is a material lever at
   >=1.2x lower total wall than the direct burst. These classifications choose
-  implementation order only; they are not prover performance claims.
+  implementation order only; they are not prover performance claims. The
+  first clean quick attempt produced no JSON: after the required cases had
+  passed, repeated replay of the 4,096-node graph stalled inside the provider
+  runtime (a separate 7-sample compile smoke had completed). Before the full
+  run, graph replay is therefore capped at 7 quick / 31 full samples per N;
+  graph build and instantiate remain measured, and the 1,800 s budget is
+  distributed over launch/sync, direct bursts, D2H and allocator probes. This
+  is a logged harness deviation driven by a provider-stability observation,
+  not a discarded performance sample; the failed quick emitted no result.
 
 - **2026-07-13 (P7 publication artifact closed)**: clean aggregate
   `benchmarks/results/p7-2026-07-13-2c836b3.json` (SHA-256

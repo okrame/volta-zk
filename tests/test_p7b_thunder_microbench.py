@@ -16,7 +16,7 @@ def load_module():
 
 
 def fixture(enqueue_per_launch=8.0, total_per_launch=9.0, graph_total=10_000.0):
-    stats = lambda median: {"median_us": median}
+    stats = lambda median, count=31: {"median_us": median, "count": count}
     direct = []
     graphs = []
     for kernels in (1, 8, 64, 512, 4096):

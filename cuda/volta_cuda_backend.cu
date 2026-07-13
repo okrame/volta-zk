@@ -375,9 +375,14 @@ int flush_deferred_timing(Context* c, SyncReason reason) {
         TimingRecord& record =
             c->timing_ring[(c->timing_ring_begin + offset) % TIMING_RING_SIZE];
         if (record.kind == TimingRecordKind::Operation) {
-            if (event_ns(c, record.events[0], record.events[1], &record.measured_ns[0]) ||
+            // Every elapsed-time query is itself a CUDA API call. On a
+            // remote runtime, do not issue empty phase queries merely to
+            // recover a zero already known from the byte counters.
+            if ((record.h2d_bytes &&
+                 event_ns(c, record.events[0], record.events[1], &record.measured_ns[0])) ||
                 event_ns(c, record.events[1], record.events[2], &record.measured_ns[1]) ||
-                event_ns(c, record.events[2], record.events[3], &record.measured_ns[2]))
+                (record.d2h_bytes &&
+                 event_ns(c, record.events[2], record.events[3], &record.measured_ns[2])))
                 return -1;
         } else {
             if (event_ns(c, record.events[0], record.events[1], &record.measured_ns[0])) return -1;

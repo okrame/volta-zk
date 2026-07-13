@@ -151,7 +151,7 @@ pub struct BackendStats {
     pub peak_device_bytes: u64,
     /// Deferred timing records enqueued since the most recent reset.
     pub timing_records: u64,
-    /// Successful `cudaEventElapsedTime` queries used to attribute records.
+    /// Successful `cudaEventElapsedTime` calls used for timing attribution.
     pub timing_event_queries: u64,
     /// Maximum number of unflushed records in the fixed ring.
     pub timing_pending_high_water: u64,
@@ -629,6 +629,9 @@ impl Backend {
         Ok(stats)
     }
 
+    /// Return a complete snapshot. In deferred resident mode this is an
+    /// explicit observation boundary: pending event records are flushed and
+    /// the resulting synchronization is included in the returned counters.
     pub fn stats(&self) -> Result<BackendStats, AccelError> {
         let mut out = BackendStats::default();
         #[cfg(feature = "cuda")]
@@ -4682,7 +4685,9 @@ mod cuda_tests {
         if stats.timing_mode == DeviceTimingMode::CudaEventsDeferred {
             assert_eq!(stats.operation(Operation::PcsRows).calls, 513);
             assert_eq!(stats.timing_records, 513);
-            assert_eq!(stats.timing_event_queries, 3 * 513);
+            // Device-only operations need only the kernel interval; empty
+            // H2D/D2H phases must not create remote elapsed-time calls.
+            assert_eq!(stats.timing_event_queries, 513);
             assert_eq!(stats.timing_pending_high_water, 512);
             assert_eq!(stats.timing_flush_count, 2);
             assert_eq!(stats.synchronizations, 2);

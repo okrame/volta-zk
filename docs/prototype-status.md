@@ -229,7 +229,12 @@ constant factors hold. That constant factor is what P3/P4 measure.
   flush queries the complete batch before committing attribution. Failed
   calls abort the active record, while destroy/reset/reclaim preserve stream
   ordering. New exact counters report records, event queries, pending high
-  water, and non-empty flushes; report rows expose all four.
+  water, and non-empty flushes; report rows expose all four. Empty H2D/D2H
+  phases do not issue elapsed-time queries (a remote CUDA API call): a
+  device-only primitive needs one query, not three. `synchronizations` and the
+  <=5,000 gate count explicit backend stream barriers; pageable-H2D staging
+  wall remains visible in end-to-end wall/residual rather than being
+  mislabelled as an explicit barrier.
 
   The pageable-H2D lifetime assumption is load-bearing and is therefore a
   measured platform contract: on Thunder A100, immediate source mutation

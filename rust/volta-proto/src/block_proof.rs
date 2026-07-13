@@ -6517,12 +6517,13 @@ mod tests {
     use crate::thaler::fold_w;
     use rand::{Rng, SeedableRng};
     use std::sync::OnceLock;
-    use volta_gpt2::{
-        build_luts, forward_layer, synthetic_input, synthetic_weights, LutParams, TableId,
-    };
     #[cfg(feature = "cuda")]
     use volta_gpt2::{
-        forward_model_tokens, forward_model_tokens_resident, load_model, upload_resident_model,
+        band_model_witness, band_model_witness_resident, forward_model_tokens,
+        forward_model_tokens_resident, load_model, upload_resident_model,
+    };
+    use volta_gpt2::{
+        build_luts, forward_layer, synthetic_input, synthetic_weights, LutParams, TableId,
     };
     use volta_mac::zero_batch_exchange;
 
@@ -7312,6 +7313,254 @@ mod tests {
         assert_eq!(stats.operation(volta_accel::Operation::Gemm).cpu_residual_ns, 0);
         gpu.free_device(proof_error).unwrap();
         resident_witness.free(&mut gpu).unwrap();
+        resident_model.free(&mut gpu).unwrap();
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn cuda_resident_band_layer_matches_cpu_byte_for_byte() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../benchmarks/weights");
+        if !dir.join("gpt2s-q.bin").exists() {
+            eprintln!("skipping CUDA resident band-layer differential: artifact absent");
+            return;
+        }
+        let mut gpu = match Backend::cuda_resident() {
+            Ok(gpu) => gpu,
+            Err(e) if std::env::var("VOLTA_REQUIRE_CUDA").as_deref() != Ok("1") => {
+                eprintln!("skipping CUDA resident band-layer differential: {e}");
+                return;
+            }
+            Err(e) => panic!("CUDA required: {e}"),
+        };
+        let model = load_model(&dir).unwrap();
+        let t0 = 2;
+        let q = 3;
+        let tokens = model.p.tokens[..t0 + q].to_vec();
+        let host_source = forward_model_tokens(&model, &tokens);
+        let host_band = band_model_witness(&model, &host_source, t0);
+        let resident_model = upload_resident_model(&model, &mut gpu).unwrap();
+        let resident_source =
+            forward_model_tokens_resident(&resident_model, &tokens, &mut gpu).unwrap();
+        let resident_band =
+            band_model_witness_resident(&resident_model, &resident_source, t0, q, &mut gpu)
+                .unwrap();
+        let proof_error = gpu.upload_new_device(&[0u32]).unwrap();
+        let mut luts = model.luts.clone();
+        luts.params.shift_attn_proj = model.p.shift_attn_proj[0];
+        luts.params.shift_ffn_down = model.p.shift_ffn_down[0];
+        let host_layer = &host_band.layers[0];
+        let weights = &model.layers[0].0;
+        let biases = &model.layers[0].1;
+        let prefix_k = &host_source.layers[0].k[..t0 * D];
+        let prefix_v = &host_source.layers[0].v[..t0 * D];
+
+        let run_cpu = || {
+            let mut stream = CorrelationStream::new([141; 32]);
+            let mut tx = Transcript::new([142; 32]);
+            let mut bank = TableBankP::new();
+            let (p1, prefix_dom_k, prefix_dom_v, prefix_k_corr, prefix_v_corr) = {
+                let mut cx = BlockCtxP::new(&mut stream, &mut tx, 0, &mut bank);
+                let prefix_dom_k = cx.doms.take(t0 as u64);
+                let prefix_k_corr =
+                    auth_matrix_rows_p(cx.stream, cx.tx, prefix_dom_k, prefix_k, t0, D);
+                let prefix_dom_v = cx.doms.take(t0 as u64);
+                let prefix_v_corr =
+                    auth_matrix_rows_p(cx.stream, cx.tx, prefix_dom_v, prefix_v, t0, D);
+                let p1 = prove_layer_phase1_band(host_layer, weights, &luts, &[prefix_k], &mut cx);
+                (p1, prefix_dom_k, prefix_dom_v, prefix_k_corr, prefix_v_corr)
+            };
+            let mut table_doms = Doms::new(layer_dom_base(236));
+            bank.finalize(&mut stream, &mut tx, &mut table_doms);
+            let (proof, out, mut prod, mut zero, mut counters, doms, other) = {
+                let mut cx = BlockCtxP::with_doms(&mut stream, &mut tx, p1.doms, &mut bank);
+                let prefix = [KvPrefixP {
+                    rows: t0,
+                    dom_k: prefix_dom_k,
+                    k: prefix_k,
+                    dom_v: prefix_dom_v,
+                    v: prefix_v,
+                }];
+                let (proof, out) = prove_layer_phase2_band(
+                    host_layer,
+                    weights,
+                    &luts,
+                    p1,
+                    &prefix,
+                    &mut cx,
+                    Some(biases),
+                );
+                (proof, out, cx.prod, cx.zero, cx.ctr_instances, cx.doms, cx.ctr_other)
+            };
+            let tables = bank.close(
+                &luts,
+                &mut stream,
+                &mut table_doms,
+                &mut tx,
+                &mut counters,
+                &mut prod,
+                &mut zero,
+            );
+            (
+                proof,
+                out.weight_claims,
+                out.bytes,
+                out.ctr_instances,
+                out.ctr_other,
+                out.lookups,
+                out.dom_xin,
+                out.dom_fbo,
+                out.dom_k,
+                out.dom_v,
+                tables,
+                prod,
+                zero,
+                counters,
+                other,
+                doms,
+                stream.counters,
+                tx.ledger().clone(),
+                prefix_k_corr,
+                prefix_v_corr,
+                prefix_dom_k,
+                prefix_dom_v,
+            )
+        };
+        let expected = run_cpu();
+
+        gpu.begin_measurement().unwrap();
+        let mut stream = CorrelationStream::new([141; 32]);
+        let mut tx = Transcript::new([142; 32]);
+        let mut bank = TableBankP::new();
+        let (p1, prefix_dom_k, prefix_dom_v, prefix_k_corr, prefix_v_corr) = {
+            let mut cx = BlockCtxP::with_backend(&mut stream, &mut tx, 0, &mut bank, &mut gpu);
+            let k_cache = resident_band.layers[0].k_cache();
+            let resident_prefix_k =
+                DeviceSlice::new(k_cache.buffer(), k_cache.offset(), t0 * D).unwrap();
+            let prefix_dom_k = cx.doms.take(t0 as u64);
+            let prefix_k_corr = auth_matrix_rows_resident_p(
+                cx.stream,
+                cx.tx,
+                prefix_dom_k,
+                resident_prefix_k,
+                t0,
+                D,
+                cx.backend.as_deref_mut().unwrap(),
+            )
+            .unwrap();
+            let v_cache = resident_band.layers[0].v_cache();
+            let resident_prefix_v =
+                DeviceSlice::new(v_cache.buffer(), v_cache.offset(), t0 * D).unwrap();
+            let prefix_dom_v = cx.doms.take(t0 as u64);
+            let prefix_v_corr = auth_matrix_rows_resident_p(
+                cx.stream,
+                cx.tx,
+                prefix_dom_v,
+                resident_prefix_v,
+                t0,
+                D,
+                cx.backend.as_deref_mut().unwrap(),
+            )
+            .unwrap();
+            let p1 = prove_layer_phase1_resident(
+                &resident_band.layers[0],
+                &resident_model,
+                &luts,
+                DeviceSlice::new(&proof_error, 0, 1).unwrap(),
+                &mut cx,
+            )
+            .unwrap();
+            (p1, prefix_dom_k, prefix_dom_v, prefix_k_corr, prefix_v_corr)
+        };
+        let mut table_doms = Doms::new(layer_dom_base(236));
+        bank.finalize_resident(&mut stream, &mut tx, &mut table_doms, &mut gpu).unwrap();
+        let (proof, out, mut prod, mut zero, mut counters, doms, other) = {
+            let mut cx = BlockCtxP::with_doms_and_backend(
+                &mut stream,
+                &mut tx,
+                p1.doms,
+                &mut bank,
+                &mut gpu,
+            );
+            let prefix = [ResidentKvPrefixP { rows: t0, dom_k: prefix_dom_k, dom_v: prefix_dom_v }];
+            let (proof, out) = prove_layer_phase2_resident_band(
+                &resident_band.layers[0],
+                &resident_model,
+                0,
+                weights,
+                &luts,
+                p1,
+                &prefix,
+                &mut cx,
+                Some(biases),
+            )
+            .unwrap();
+            (proof, out, cx.prod, cx.zero, cx.ctr_instances, cx.doms, cx.ctr_other)
+        };
+        let tables = bank
+            .close_resident(
+                &luts,
+                &mut stream,
+                &mut table_doms,
+                &mut tx,
+                &mut counters,
+                &mut prod,
+                &mut zero,
+                &mut gpu,
+            )
+            .unwrap();
+        let got = (
+            proof,
+            out.weight_claims,
+            out.bytes,
+            out.ctr_instances,
+            out.ctr_other,
+            out.lookups,
+            out.dom_xin,
+            out.dom_fbo,
+            out.dom_k,
+            out.dom_v,
+            tables,
+            prod,
+            zero,
+            counters,
+            other,
+            doms,
+            stream.counters,
+            tx.ledger().clone(),
+            prefix_k_corr,
+            prefix_v_corr,
+            prefix_dom_k,
+            prefix_dom_v,
+        );
+        assert_eq!(got.0, expected.0);
+        assert_eq!(got.1, expected.1);
+        assert_eq!(got.2, expected.2);
+        assert_eq!(got.3, expected.3);
+        assert_eq!(got.4, expected.4);
+        assert_eq!(got.5, expected.5);
+        assert_eq!(got.6, expected.6);
+        assert_eq!(got.7, expected.7);
+        assert_eq!(got.8, expected.8);
+        assert_eq!(got.9, expected.9);
+        assert_eq!(got.10, expected.10);
+        assert_eq!(got.11, expected.11);
+        assert_eq!(got.12, expected.12);
+        assert_eq!(got.13, expected.13);
+        assert_eq!(got.14, expected.14);
+        assert_eq!(got.15, expected.15);
+        assert_eq!(got.16, expected.16);
+        assert_eq!(got.17, expected.17);
+        assert_eq!(got.18, expected.18);
+        assert_eq!(got.19, expected.19);
+        assert_eq!(got.20, expected.20);
+        assert_eq!(got.21, expected.21);
+        assert_eq!(gpu.download_device(&proof_error, 0, 1).unwrap(), vec![0]);
+        let stats = gpu.finish_measurement().unwrap();
+        assert_eq!(stats.operation(volta_accel::Operation::Logup).cpu_residual_ns, 0);
+        assert_eq!(stats.operation(volta_accel::Operation::Gemm).cpu_residual_ns, 0);
+        gpu.free_device(proof_error).unwrap();
+        resident_band.free(&mut gpu).unwrap();
+        resident_source.free(&mut gpu).unwrap();
         resident_model.free(&mut gpu).unwrap();
     }
 

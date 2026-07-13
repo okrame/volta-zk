@@ -219,8 +219,8 @@ constant factors hold. That constant factor is what P3/P4 measure.
   three barriers to H2D/kernel/D2H causes rather than labelling all of them as
   profiling.
 
-  **Deferred resident profiling checkpoint (2026-07-13; timing result still
-  pending a clean-tree run)**: ABI 20 adds a resident-only fixed ring of 512
+  **Deferred resident profiling checkpoint (2026-07-13)**: ABI 20 adds a
+  resident-only fixed ring of 512
   lazily allocated CUDA-event records. Device-only primitives and pageable
   H2D uploads now enqueue without a host barrier; D2H host outputs, a full
   ring, explicit stats/measurement completion, reset, and physical
@@ -243,9 +243,27 @@ constant factors hold. That constant factor is what P3/P4 measure.
   rebuilt backend passes **19/19** CUDA tests and the resident PCS suite passes
   **3/3**; the local Rust workspace is green. Hybrid mode remains on the
   legacy timing path, and runtimes without usable event elapsed time retain
-  the synchronous host-barrier fallback. No prover timing or sync reduction
-  is claimed in this checkpoint until the committed source is run from a
-  clean tree.
+  the synchronous host-barrier fallback.
+
+  Clean quick diagnostic at SHA `956f81f` (T=16+8, Q=200, one repetition;
+  not the preregistered T=100+50 gate): immutable
+  `benchmarks/results/p7-integrated-resident-quick-2026-07-13-956f81f.json`
+  (SHA-256
+  `bed809772fb926cf2328502a0572011a3dc2cca9696aaec2cc6c72af5c087a8a`,
+  `git_dirty:false`) is accepted and flat-cost passes at **1.05**. Prefill
+  proof is **28.599 s** and response proof **50.363 s** (decode marginal
+  **21.764 s**); these quick-shape values are diagnostic, not gate results.
+  The response-session attribution is **52.208 s** wall, **4.684 s** kernels,
+  873,917,300 B H2D and 81,516,788 B D2H. Explicit barriers fall to
+  **61,675**, all host-output; legacy profiling and upload-lifetime barriers
+  are both zero. Prefill has 32,851 barriers = 32,819 host-output + 32
+  allocator. Thus deferred timing closes exactly the profiling-barrier lever
+  but misses the <=5,000 sync gate by 12.3x even at quick geometry: the next
+  required lever is cross-instance host-output coalescing/RLC, not cheaper
+  synchronization. The arena records only 239 physical allocations for
+  181,021 logical requests (180,783 reuse hits). Empty-phase suppression
+  reduces session elapsed-time queries to 189,426 for 151,835 records, but
+  per-kernel queries remain a measured remote-call surface.
 
   A standalone CUDA implementation of the exact `rand_chacha 0.3.1`
   ChaCha8 stream layout plus Goldilocks rejection sampling is now available

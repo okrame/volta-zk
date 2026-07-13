@@ -15,7 +15,12 @@
 use crate::logup::Doms;
 use crate::mle::{eq_vec, eval_mle};
 use crate::prod_check::{prod_batch_prover, prod_batch_verify, ProdProof};
-use crate::sumcheck_blind::{blind_prove, blind_prove_resident, blind_verify, BlindSumcheckProof};
+use crate::schedule::SiteId;
+use crate::sumcheck_blind::{
+    blind_prove, blind_prove_resident, blind_verify, BlindSumcheckBatchJob,
+    BlindSumcheckBatchOutput, BlindSumcheckBatchVerifyOutput, BlindSumcheckProof,
+    BlindSumcheckResidentBatchJob, BlindSumcheckResidentBatchOutput,
+};
 use crate::thaler::{fold_w, fold_x, fold_y_acc, pad_bits};
 use std::time::Instant;
 use volta_accel::{AccelError, Backend, DeviceBuffer, DeviceSlice, Fp2Repr, MatrixFoldAxis};
@@ -560,6 +565,45 @@ pub struct ChainedGemmProof {
     pub prod: ProdProof,
 }
 
+/// Round result shared by the sequential, CPU-scheduled, and resident-
+/// scheduled activation GEMM paths.  The proof representation does not gain
+/// a cohort wrapper: batching changes only when the existing round messages
+/// consume challenges.
+pub(crate) struct GemmActRoundOutput {
+    pub site_id: Option<SiteId>,
+    pub sumcheck: BlindSumcheckProof,
+    pub point: Vec<Fp2>,
+    pub claim: ProverAuthed,
+    pub x_final: Fp2,
+    pub b_final: Fp2,
+}
+
+impl From<BlindSumcheckBatchOutput> for GemmActRoundOutput {
+    fn from(output: BlindSumcheckBatchOutput) -> Self {
+        Self {
+            site_id: Some(output.site_id),
+            sumcheck: output.proof,
+            point: output.point,
+            claim: output.claim,
+            x_final: output.a_final,
+            b_final: output.b_final,
+        }
+    }
+}
+
+impl From<BlindSumcheckResidentBatchOutput> for GemmActRoundOutput {
+    fn from(output: BlindSumcheckResidentBatchOutput) -> Self {
+        Self {
+            site_id: Some(output.site_id),
+            sumcheck: output.proof,
+            point: output.point,
+            claim: output.claim,
+            x_final: output.a_final,
+            b_final: output.b_final,
+        }
+    }
+}
+
 /// Chained committed-W GEMM prover: the downstream instance already holds
 /// the authenticated `claim0 = ỹacc(r_i, r_j)` at ITS point split — nothing
 /// is drawn fresh here. X is an internal wire (never element-wise
@@ -808,15 +852,12 @@ pub fn verify_gemm_committed_chained(
     Some((WireKey { point: x_point, key: k_x }, w_point, k_w))
 }
 
-/// Chained activation×activation GEMM prover: same shape as the committed
-/// variant, but the B leg is a boundary-authenticated tensor OPENED BY THE
-/// CALLER — `b_folded` is B̃ already folded over its non-contraction vars
-/// (length `2^pad_bits(k)`), and `open_b` produces the authenticated
-/// B̃ opening at the sumcheck point (streamed MAC-tag fold). Returns the
-/// sumcheck point `r_l` so the caller can place the B claim. No `w_claim`
-/// domain is consumed.
+/// Prepare one activation×activation GEMM for a sealed CPU cohort.  This is
+/// deliberately transcript-free: callers can prepare every public head and
+/// seal the complete schedule before the first round message is consumed.
 #[allow(clippy::too_many_arguments)]
-pub fn prove_gemm_act_chained(
+pub(crate) fn prepare_gemm_act_chained_batch(
+    site_id: SiteId,
     x: &[i16],
     b_folded: Vec<Fp2>,
     m: usize,
@@ -825,69 +866,32 @@ pub fn prove_gemm_act_chained(
     r_i: &[Fp2],
     r_j: &[Fp2],
     claim0: ProverAuthed,
-    open_b: impl FnOnce(&[Fp2]) -> ProverAuthed,
     doms: &ChainDoms,
-    stream: &mut CorrelationStream,
-    tx: &mut Transcript,
-) -> (ChainedGemmProof, WireOut, Vec<Fp2>, ProveTimings, CorrCounters) {
+) -> (BlindSumcheckBatchJob, ProveTimings) {
     assert_eq!(r_i.len(), pad_bits(m), "r_i must split the downstream row vars");
     assert_eq!(r_j.len(), pad_bits(n), "r_j must split the downstream col vars");
     assert_eq!(b_folded.len(), 1 << pad_bits(k), "b_folded must cover the padded contraction");
-    let mut tm = ProveTimings::default();
 
-    let t0 = Instant::now();
-    let eq_i = eq_vec(r_i);
-    let a = fold_x(x, m, k, &eq_i);
-    tm.t_fold_s = t0.elapsed().as_secs_f64();
+    let started = Instant::now();
+    let a = fold_x(x, m, k, &eq_vec(r_i));
+    let timings = ProveTimings { t_fold_s: started.elapsed().as_secs_f64(), ..Default::default() };
     debug_assert_eq!(
         claim0.x,
-        a.iter().zip(&b_folded).fold(Fp2::ZERO, |s, (&p, &q)| s + p * q),
+        a.iter().zip(&b_folded).fold(Fp2::ZERO, |sum, (&left, &right)| sum + left * right),
         "claim0 is not the sumcheck total"
     );
-
-    let t2 = Instant::now();
-    let (sumcheck, point, claim_n) =
-        blind_prove(a.clone(), b_folded.clone(), claim0, stream, doms.round_masks, tx);
-    tm.t_rounds_s = t2.elapsed().as_secs_f64();
-
-    // B leg: the caller opens its element-wise-authenticated tensor at the
-    // sumcheck point (lazy tag fold — same pattern as the X opening in
-    // `prove_gemm_blind`, but owned by the tensor's boundary instance).
-    let t1 = Instant::now();
-    let b_open = open_b(&point);
-    tm.t_open_tags_s = t1.elapsed().as_secs_f64();
-    debug_assert_eq!(b_open.x, eval_mle(&b_folded, &point), "open_b value mismatch");
-
-    let t4 = Instant::now();
-    let x_val = eval_mle(&a, &point);
-    let fx = stream.draw_fulls(doms.x_claim, 1)[0];
-    let corr_x = x_val - fx.x;
-    tx.append("x_claim_correction", 16);
-    let x_auth = ProverAuthed { x: x_val, m: fx.m };
-    debug_assert_eq!(claim_n.x, x_val * b_open.x, "honest final claim mismatch");
-    let mask = stream.draw_fulls(doms.prod_mask, 1)[0];
-    let chi = tx.challenge_fp2();
-    let prod = prod_batch_prover(&[(x_auth, b_open, claim_n)], chi, mask, tx);
-    tm.t_prod_s = t4.elapsed().as_secs_f64();
-
-    let mut x_point = point.clone();
-    x_point.extend_from_slice(r_i);
     (
-        ChainedGemmProof { sumcheck, prod },
-        WireOut { point: x_point, value: x_auth, corr: corr_x },
-        point,
-        tm,
-        stream.counters,
+        BlindSumcheckBatchJob { site_id, a, b: b_folded, claim0, mask_dom_base: doms.round_masks },
+        timings,
     )
 }
 
-/// Resident activation×activation chained GEMM after both public-point
-/// matrix folds have been constructed on device. The two buffers are
-/// consumed on every path. `open_b` supplies the MAC tag for the boundary B
-/// tensor at the sumcheck point; its plaintext scalar is the device-computed
-/// `b_final`, so no witness-sized host mirror is required.
+/// Prepare one already-folded resident activation GEMM for the same sealed
+/// cohort.  Both buffers transfer to the returned job and are released by
+/// the resident batch on every path except its explicit wrong-backend retry.
 #[allow(clippy::too_many_arguments)]
-pub fn prove_gemm_act_chained_resident(
+pub(crate) fn prepare_gemm_act_chained_resident_batch(
+    site_id: SiteId,
     a_folded: DeviceBuffer<Fp2Repr>,
     b_folded: DeviceBuffer<Fp2Repr>,
     m: usize,
@@ -896,12 +900,9 @@ pub fn prove_gemm_act_chained_resident(
     r_i: &[Fp2],
     r_j: &[Fp2],
     claim0: ProverAuthed,
-    open_b: impl FnOnce(&[Fp2], Fp2) -> Result<ProverAuthed, AccelError>,
     doms: &ChainDoms,
-    stream: &mut CorrelationStream,
-    tx: &mut Transcript,
     backend: &mut Backend,
-) -> Result<(ChainedGemmProof, WireOut, Vec<Fp2>, ProveTimings, CorrCounters), AccelError> {
+) -> Result<BlindSumcheckResidentBatchJob, AccelError> {
     let expected = 1usize
         .checked_shl(pad_bits(k) as u32)
         .ok_or(AccelError::InvalidInput("resident activation GEMM dimension overflow"))?;
@@ -927,37 +928,52 @@ pub fn prove_gemm_act_chained_resident(
         };
         debug_assert_eq!(claim0.x, total, "claim0 is not the resident activation GEMM total");
     }
+    Ok(BlindSumcheckResidentBatchJob {
+        site_id,
+        a: a_folded,
+        b: b_folded,
+        claim0,
+        mask_dom_base: doms.round_masks,
+    })
+}
 
-    let mut timings = ProveTimings::default();
-    let rounds_started = Instant::now();
-    let (sumcheck, point, claim_n, x_final, b_final) =
-        blind_prove_resident(a_folded, b_folded, claim0, stream, doms.round_masks, tx, backend)?;
-    timings.t_rounds_s = rounds_started.elapsed().as_secs_f64();
-
-    let open_started = Instant::now();
-    let b_open = open_b(&point, b_final)?;
-    timings.t_open_tags_s = open_started.elapsed().as_secs_f64();
-    if b_open.x != b_final {
-        return Err(AccelError::InvalidInput(
-            "resident activation GEMM boundary opening value mismatch",
-        ));
+/// Finalize the unchanged X-claim/Π_Prod tail after either sequential or
+/// scheduled rounds.  Boundary opening work stays with the caller because
+/// W·V folds rows while Q·Kᵀ folds within-head columns.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn finalize_gemm_act_chained(
+    rounds: GemmActRoundOutput,
+    r_i: &[Fp2],
+    b_open: ProverAuthed,
+    doms: &ChainDoms,
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+    mut timings: ProveTimings,
+) -> Result<(ChainedGemmProof, WireOut, Vec<Fp2>, ProveTimings, CorrCounters), AccelError> {
+    if b_open.x != rounds.b_final {
+        return Err(AccelError::InvalidInput("activation GEMM boundary opening value mismatch"));
     }
 
     let product_started = Instant::now();
     let x_mask = stream.draw_fulls(doms.x_claim, 1)[0];
-    let corr_x = x_final - x_mask.x;
+    let corr_x = rounds.x_final - x_mask.x;
     tx.append("x_claim_correction", 16);
-    let x_auth = ProverAuthed { x: x_final, m: x_mask.m };
-    debug_assert_eq!(claim_n.x, x_final * b_final, "honest final claim mismatch");
+    let x_auth = ProverAuthed { x: rounds.x_final, m: x_mask.m };
+    debug_assert_eq!(
+        rounds.claim.x,
+        rounds.x_final * rounds.b_final,
+        "honest final claim mismatch"
+    );
     let product_mask = stream.draw_fulls(doms.prod_mask, 1)[0];
     let chi = tx.challenge_fp2();
-    let prod = prod_batch_prover(&[(x_auth, b_open, claim_n)], chi, product_mask, tx);
+    let prod = prod_batch_prover(&[(x_auth, b_open, rounds.claim)], chi, product_mask, tx);
     timings.t_prod_s = product_started.elapsed().as_secs_f64();
 
+    let point = rounds.point;
     let mut x_point = point.clone();
     x_point.extend_from_slice(r_i);
     Ok((
-        ChainedGemmProof { sumcheck, prod },
+        ChainedGemmProof { sumcheck: rounds.sumcheck, prod },
         WireOut { point: x_point, value: x_auth, corr: corr_x },
         point,
         timings,
@@ -965,9 +981,137 @@ pub fn prove_gemm_act_chained_resident(
     ))
 }
 
+/// Chained activation×activation GEMM prover: same shape as the committed
+/// variant, but the B leg is a boundary-authenticated tensor OPENED BY THE
+/// CALLER — `b_folded` is B̃ already folded over its non-contraction vars
+/// (length `2^pad_bits(k)`), and `open_b` produces the authenticated
+/// B̃ opening at the sumcheck point (streamed MAC-tag fold). Returns the
+/// sumcheck point `r_l` so the caller can place the B claim. No `w_claim`
+/// domain is consumed.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_gemm_act_chained(
+    x: &[i16],
+    b_folded: Vec<Fp2>,
+    m: usize,
+    k: usize,
+    n: usize,
+    r_i: &[Fp2],
+    r_j: &[Fp2],
+    claim0: ProverAuthed,
+    open_b: impl FnOnce(&[Fp2]) -> ProverAuthed,
+    doms: &ChainDoms,
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+) -> (ChainedGemmProof, WireOut, Vec<Fp2>, ProveTimings, CorrCounters) {
+    let legacy_site = SiteId::new(0, crate::schedule::RoundFamily::BlindProduct, 0);
+    let (job, mut timings) =
+        prepare_gemm_act_chained_batch(legacy_site, x, b_folded, m, k, n, r_i, r_j, claim0, doms);
+    let rounds_started = Instant::now();
+    let (sumcheck, point, claim_n) =
+        blind_prove(job.a.clone(), job.b.clone(), job.claim0, stream, job.mask_dom_base, tx);
+    timings.t_rounds_s = rounds_started.elapsed().as_secs_f64();
+    let x_final = eval_mle(&job.a, &point);
+    let b_final = eval_mle(&job.b, &point);
+
+    // B leg: the caller opens its element-wise-authenticated tensor at the
+    // sumcheck point (lazy tag fold — same pattern as the X opening in
+    // `prove_gemm_blind`, but owned by the tensor's boundary instance).
+    let open_started = Instant::now();
+    let b_open = open_b(&point);
+    timings.t_open_tags_s = open_started.elapsed().as_secs_f64();
+    finalize_gemm_act_chained(
+        GemmActRoundOutput { site_id: None, sumcheck, point, claim: claim_n, x_final, b_final },
+        r_i,
+        b_open,
+        doms,
+        stream,
+        tx,
+        timings,
+    )
+    .expect("CPU activation GEMM boundary opening must match the folded witness")
+}
+
+/// Resident activation×activation chained GEMM after both public-point
+/// matrix folds have been constructed on device. The two buffers are
+/// consumed on every path. `open_b` supplies the MAC tag for the boundary B
+/// tensor at the sumcheck point; its plaintext scalar is the device-computed
+/// `b_final`, so no witness-sized host mirror is required.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_gemm_act_chained_resident(
+    a_folded: DeviceBuffer<Fp2Repr>,
+    b_folded: DeviceBuffer<Fp2Repr>,
+    m: usize,
+    k: usize,
+    n: usize,
+    r_i: &[Fp2],
+    r_j: &[Fp2],
+    claim0: ProverAuthed,
+    open_b: impl FnOnce(&[Fp2], Fp2) -> Result<ProverAuthed, AccelError>,
+    doms: &ChainDoms,
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+    backend: &mut Backend,
+) -> Result<(ChainedGemmProof, WireOut, Vec<Fp2>, ProveTimings, CorrCounters), AccelError> {
+    let legacy_site = SiteId::new(0, crate::schedule::RoundFamily::BlindProduct, 0);
+    let job = prepare_gemm_act_chained_resident_batch(
+        legacy_site,
+        a_folded,
+        b_folded,
+        m,
+        k,
+        n,
+        r_i,
+        r_j,
+        claim0,
+        doms,
+        backend,
+    )?;
+    let mut timings = ProveTimings::default();
+    let rounds_started = Instant::now();
+    let (sumcheck, point, claim_n, x_final, b_final) =
+        blind_prove_resident(job.a, job.b, job.claim0, stream, job.mask_dom_base, tx, backend)?;
+    timings.t_rounds_s = rounds_started.elapsed().as_secs_f64();
+
+    let open_started = Instant::now();
+    let b_open = open_b(&point, b_final)?;
+    timings.t_open_tags_s = open_started.elapsed().as_secs_f64();
+    finalize_gemm_act_chained(
+        GemmActRoundOutput { site_id: None, sumcheck, point, claim: claim_n, x_final, b_final },
+        r_i,
+        b_open,
+        doms,
+        stream,
+        tx,
+        timings,
+    )
+}
+
 /// Verifier for [`prove_gemm_act_chained`]: `open_b_key` is the caller's key
 /// side of the B opening at the sumcheck point. Returns the X wire key and
 /// the sumcheck point `r_l` (for placing the caller's B claim).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn finalize_verify_gemm_act_chained(
+    rounds: BlindSumcheckBatchVerifyOutput,
+    r_i: &[Fp2],
+    proof: &ChainedGemmProof,
+    x_corr: Fp2,
+    k_b: VerifierKey,
+    doms: &ChainDoms,
+    ctx: &mut VerifierCtx,
+    tx: &mut Transcript,
+) -> Option<(WireKey, Vec<Fp2>)> {
+    let k_x = VerifierKey { k: ctx.expand_full_keys(doms.x_claim, 1)[0] + ctx.delta * x_corr };
+    let k_mask = ctx.expand_full_keys(doms.prod_mask, 1)[0];
+    let chi = tx.challenge_fp2();
+    if !prod_batch_verify(&[(k_x, k_b, rounds.claim)], k_mask, ctx.delta, chi, &proof.prod) {
+        return None;
+    }
+    let point = rounds.point;
+    let mut x_point = point.clone();
+    x_point.extend_from_slice(r_i);
+    Some((WireKey { point: x_point, key: k_x }, point))
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn verify_gemm_act_chained(
     m: usize,
@@ -989,15 +1133,20 @@ pub fn verify_gemm_act_chained(
     let (point, k_claim_n) =
         blind_verify(pad_bits(k), k_claim0, &proof.sumcheck, ctx, doms.round_masks, tx)?;
     let k_b = open_b_key(&point);
-    let k_x = VerifierKey { k: ctx.expand_full_keys(doms.x_claim, 1)[0] + ctx.delta * x_corr };
-    let k_mask = ctx.expand_full_keys(doms.prod_mask, 1)[0];
-    let chi = tx.challenge_fp2();
-    if !prod_batch_verify(&[(k_x, k_b, k_claim_n)], k_mask, ctx.delta, chi, &proof.prod) {
-        return None;
-    }
-    let mut x_point = point.clone();
-    x_point.extend_from_slice(r_i);
-    Some((WireKey { point: x_point, key: k_x }, point))
+    finalize_verify_gemm_act_chained(
+        BlindSumcheckBatchVerifyOutput {
+            site_id: SiteId::new(0, crate::schedule::RoundFamily::BlindProduct, 0),
+            point,
+            claim: k_claim_n,
+        },
+        r_i,
+        proof,
+        x_corr,
+        k_b,
+        doms,
+        ctx,
+        tx,
+    )
 }
 
 #[cfg(test)]

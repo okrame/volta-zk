@@ -24,7 +24,9 @@
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::time::Instant;
-use volta_accel::{Backend, BackendKind, BackendStats, DeviceBuffer, DeviceSlice, Operation};
+use volta_accel::{
+    Backend, BackendKind, BackendStats, DeviceBuffer, DeviceSlice, Operation, CUDA_ABI_VERSION,
+};
 use volta_bench::{cloud_metadata_from_env, logits_pack, time_paired_samples, CloudMetadata};
 use volta_field::{Fp, Fp2, P};
 use volta_gpt2::{
@@ -57,6 +59,16 @@ const P7B_DECODE_MARGINAL_GATE_S: f64 = 4.0;
 const P7B_SYNC_GATE: u64 = 5_000;
 // Decimal MB, matching the preregistered ledger threshold.
 const P7B_H2D_GATE_BYTES: u64 = 100_000_000;
+// This is an unchanged product invariant, not a fifth P7b performance gate.
+// It covers the complete packed response download (proof transcript plus
+// public output), matching the handoff's 150--200 MB envelope.
+const RESPONSE_COMMUNICATION_ENVELOPE_BYTES: u64 = 200_000_000;
+// Clean P7 response reference at T=100+50/Q=200. P7b may reduce these values,
+// but orchestration work may not buy prover time by increasing any component.
+const P7B_TRANSCRIPT_REFERENCE_BYTES: u64 = 137_413_808;
+const P7B_PCS_OPENING_REFERENCE_BYTES: u64 = 66_733_504;
+const P7B_PACKED_LOGITS_REFERENCE_BYTES: u64 = 7_407_122;
+const P7B_PACKED_RESPONSE_REFERENCE_BYTES: u64 = 144_820_930;
 
 #[derive(Serialize)]
 struct ChunkCurveRow {
@@ -122,9 +134,15 @@ struct AcceleratorStatsRow {
     live_device_bytes: u64,
     peak_device_bytes: u64,
     timing_records: u64,
+    timing_elapsed_query_attempts: u64,
+    timing_elapsed_no_write: u64,
     timing_event_queries: u64,
     timing_pending_high_water: u64,
     timing_flush_count: u64,
+    coarse_timing_scopes: u64,
+    /// CUDA-event time spanned by coarse epochs. This can include device idle
+    /// gaps while a remote runtime awaits subsequent launch submissions.
+    coarse_timing_s: f64,
     kernel_s: f64,
     cpu_residual_s: f64,
 }
@@ -165,6 +183,111 @@ fn median_index(samples: &[f64]) -> usize {
     indices[indices.len() / 2]
 }
 
+fn git_worktree_dirty() -> bool {
+    std::process::Command::new("git")
+        .args(["status", "--porcelain"])
+        .output()
+        .map(|o| !o.status.success() || !o.stdout.is_empty())
+        .unwrap_or(true)
+}
+
+fn git_head_sha() -> String {
+    std::process::Command::new("git")
+        .args(["rev-parse", "--verify", "HEAD"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .unwrap_or_default()
+}
+
+fn git_revision_unchanged(before_benchmark: &str, before_serialization: &str) -> bool {
+    !before_benchmark.is_empty()
+        && !before_serialization.is_empty()
+        && before_benchmark == before_serialization
+}
+
+fn short_git_sha(full_sha: &str) -> String {
+    full_sha.chars().take(7).collect()
+}
+
+fn p7b_machine_eligible(cloud: Option<&CloudMetadata>) -> bool {
+    let Some(cloud) = cloud else {
+        return false;
+    };
+    let metadata_present = [
+        &cloud.provider,
+        &cloud.instance_id,
+        &cloud.region,
+        &cloud.image,
+        &cloud.driver_version,
+        &cloud.cuda_version,
+        &cloud.gpu_sku,
+        &cloud.cpu_model,
+        &cloud.ram_gib,
+        &cloud.vcpus,
+    ]
+    .into_iter()
+    .all(|value| !value.trim().is_empty());
+    metadata_present
+        && cloud.provider.to_ascii_lowercase().contains("thunder")
+        && cloud.gpu_sku.to_ascii_uppercase().contains("A100")
+}
+
+fn p7b_communication_no_growth(
+    transcript_bytes: u64,
+    pcs_opening_bytes: u64,
+    packed_logits_bytes: u64,
+) -> bool {
+    transcript_bytes <= P7B_TRANSCRIPT_REFERENCE_BYTES
+        && pcs_opening_bytes <= P7B_PCS_OPENING_REFERENCE_BYTES
+        && packed_logits_bytes <= P7B_PACKED_LOGITS_REFERENCE_BYTES
+        && transcript_bytes
+            .checked_add(packed_logits_bytes)
+            .is_some_and(|total| total <= P7B_PACKED_RESPONSE_REFERENCE_BYTES)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn p7b_gate_eligible(
+    git_sha_before_benchmark: &str,
+    git_sha_before_serialization: &str,
+    git_dirty_before_benchmark: bool,
+    git_dirty_before_serialization: bool,
+    machine_eligible: bool,
+    quick: bool,
+    t_prefill: usize,
+    n_decode: usize,
+    pcs_queries: usize,
+    expected_pcs_queries: usize,
+    warmup_repetitions: usize,
+    measured_repetitions: usize,
+) -> bool {
+    git_revision_unchanged(git_sha_before_benchmark, git_sha_before_serialization)
+        && !git_dirty_before_benchmark
+        && !git_dirty_before_serialization
+        && machine_eligible
+        && !quick
+        && t_prefill == 100
+        && n_decode == 50
+        && pcs_queries == expected_pcs_queries
+        && warmup_repetitions >= 1
+        && measured_repetitions >= 3
+}
+
+#[derive(Serialize)]
+struct GitProvenance {
+    /// Compatibility field: always the full commit captured before benchmark work.
+    git_sha: String,
+    git_dirty: bool,
+    git_dirty_before_benchmark: bool,
+    git_dirty_before_serialization: bool,
+    /// Schema-6 provenance window. CPU schema-2 reports omit these additive fields.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    git_sha_before_benchmark: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    git_sha_before_serialization: Option<String>,
+}
+
 #[derive(Clone, Serialize)]
 struct BenchmarkRepetitionRow {
     repetition: usize,
@@ -189,6 +312,11 @@ struct BenchmarkRepetitionRow {
 
 impl AcceleratorStatsRow {
     fn from_stats(stats: BackendStats, scope: &str) -> Self {
+        assert_eq!(
+            stats.timing_elapsed_query_attempts,
+            stats.timing_event_queries + stats.timing_elapsed_no_write,
+            "elapsed CUDA timing query accounting must close"
+        );
         let operations = Operation::ALL
             .into_iter()
             .map(|op| {
@@ -232,9 +360,13 @@ impl AcceleratorStatsRow {
             live_device_bytes: stats.live_device_bytes,
             peak_device_bytes: stats.peak_device_bytes,
             timing_records: stats.timing_records,
+            timing_elapsed_query_attempts: stats.timing_elapsed_query_attempts,
+            timing_elapsed_no_write: stats.timing_elapsed_no_write,
             timing_event_queries: stats.timing_event_queries,
             timing_pending_high_water: stats.timing_pending_high_water,
             timing_flush_count: stats.timing_flush_count,
+            coarse_timing_scopes: stats.coarse_timing_scopes,
+            coarse_timing_s: stats.coarse_timing_ns as f64 / 1e9,
             kernel_s: stats.kernel_ns() as f64 / 1e9,
             cpu_residual_s: stats.cpu_residual_ns() as f64 / 1e9,
         }
@@ -246,13 +378,15 @@ struct Report {
     report_schema_version: u32,
     milestone: String,
     date: String,
-    git_sha: String,
-    git_dirty: bool,
+    #[serde(flatten)]
+    git: GitProvenance,
     machine: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     cloud: Option<CloudMetadata>,
     threads: usize,
     accelerator_backend: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    accelerator_cuda_abi_version: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     accelerator_witness: Option<AcceleratorStatsRow>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -293,6 +427,8 @@ struct Report {
     #[serde(skip_serializing_if = "Option::is_none")]
     p7b_gate_evaluated: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_machine_eligible: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     p7b_timing_statistic: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     p7b_counter_statistic: Option<String>,
@@ -320,6 +456,22 @@ struct Report {
     p7b_sync_gate_pass: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     p7b_h2d_gate_pass: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    response_communication_envelope_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    response_communication_observed_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    response_communication_invariant_pass: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_transcript_reference_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_pcs_opening_reference_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_packed_logits_reference_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_packed_response_reference_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_response_communication_no_growth_pass: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     p7b_all_gates_pass: Option<bool>,
     // --- native baselines -------------------------------------------------------
@@ -420,6 +572,7 @@ struct Report {
     peak_rss_gb: f64,
     // --- PCG backend gate ---------------------------------------------------------
     pcg_backend: String,
+    pcg_production_ready: bool,
     pcg_setup_comm_bytes: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pcg_base_vole: Option<String>,
@@ -593,19 +746,26 @@ fn pcs_query_error_bits(params: &LigeroParams) -> f64 {
     -(params.n_queries as f64) * (1.0 - delta / 2.0).log2()
 }
 
-fn unique_result_path(label: &str, date: &str, sha: &str) -> std::path::PathBuf {
+fn create_unique_result_file(
+    label: &str,
+    date: &str,
+    sha: &str,
+) -> (std::path::PathBuf, std::fs::File) {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../benchmarks/results");
-    let first = dir.join(format!("{label}-{date}-{sha}.json"));
-    if !first.exists() {
-        return first;
-    }
-    for i in 1..1000 {
-        let p = dir.join(format!("{label}-{date}-{sha}-{i}.json"));
-        if !p.exists() {
-            return p;
+    for suffix in 0..1000 {
+        let filename = if suffix == 0 {
+            format!("{label}-{date}-{sha}.json")
+        } else {
+            format!("{label}-{date}-{sha}-{suffix}.json")
+        };
+        let path = dir.join(filename);
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(file) => return (path, file),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => panic!("could not create append-only result {}: {error}", path.display()),
         }
     }
-    panic!("could not find unused result path for {label}-{date}-{sha}");
+    panic!("could not find unused append-only result path for {label}-{date}-{sha}");
 }
 
 /// One full response session: prove + verify + PCS + closures. Returns
@@ -1359,6 +1519,19 @@ fn run_session_impl<'source>(
 
 fn main() {
     let args = parse_args();
+    // Capture the full revision before any benchmark setup. The closing
+    // fingerprint below prevents a clean A -> clean B checkout during a long
+    // run from being attributed to B.
+    let git_sha_before_benchmark = git_head_sha();
+    if git_sha_before_benchmark.is_empty() {
+        eprintln!("p6_report: git HEAD is unavailable; refusing to start an unattributed run");
+        std::process::exit(2);
+    }
+    let cloud = cloud_metadata_from_env();
+    let p7b_machine_is_eligible = p7b_machine_eligible(cloud.as_ref());
+    // A run of record must stay clean for the complete benchmark window, not
+    // merely happen to be clean when the JSON verdict is assembled.
+    let git_dirty_before_benchmark = git_worktree_dirty();
     let quick = args.quick;
     let repetitions = args.repetitions.unwrap_or(if quick { 1 } else { 3 });
     let warmup_repetitions = args.warmup_repetitions.unwrap_or(if quick { 0 } else { 1 });
@@ -1780,8 +1953,6 @@ fn main() {
     let representative_index = median_index(&response_samples);
     let representative_repetition = representative_index + 1;
     let is_resident = args.accelerator == AcceleratorArg::CudaResident;
-    let p7b_gate_evaluated =
-        is_resident.then_some(!quick && layer_params.n_queries == P4_LAYER.n_queries);
     // Timing gates use the distributions' preregistered upper medians. For
     // count/traffic gates use the maximum measured session: selecting the
     // response-median repetition could otherwise hide cold-arena barriers.
@@ -1813,25 +1984,6 @@ fn main() {
             })
             .max()
             .expect("resident run needs a measured session")
-    });
-    let gate_is_official = p7b_gate_evaluated == Some(true);
-    let p7b_prefill_core_gate_pass = gate_is_official.then(|| {
-        p7b_prefill_core_observed_s.expect("resident prefill observation")
-            <= P7B_PREFILL_CORE_GATE_S
-    });
-    let p7b_decode_marginal_gate_pass = gate_is_official.then(|| {
-        p7b_decode_marginal_observed_s.expect("resident decode observation")
-            <= P7B_DECODE_MARGINAL_GATE_S
-    });
-    let p7b_sync_gate_pass = gate_is_official
-        .then(|| p7b_sync_observed.expect("resident sync observation") <= P7B_SYNC_GATE);
-    let p7b_h2d_gate_pass = gate_is_official
-        .then(|| p7b_h2d_observed_bytes.expect("resident H2D observation") <= P7B_H2D_GATE_BYTES);
-    let p7b_all_gates_pass = gate_is_official.then(|| {
-        p7b_prefill_core_gate_pass.expect("prefill P7b verdict")
-            && p7b_decode_marginal_gate_pass.expect("decode P7b verdict")
-            && p7b_sync_gate_pass.expect("sync P7b verdict")
-            && p7b_h2d_gate_pass.expect("H2D P7b verdict")
     });
     let repetitions_rows: Vec<BenchmarkRepetitionRow> = prefill_results
         .iter()
@@ -2119,46 +2271,110 @@ fn main() {
     // prefill transcript.
     let comm_decode_marginal =
         rec.comm_bytes.saturating_sub(rec.pcs_opening_bytes).saturating_sub(comm_prefill_bytes);
-    let sha = std::process::Command::new("git")
-        .args(["rev-parse", "--short", "HEAD"])
-        .output()
-        .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .unwrap_or_default();
     let date = std::process::Command::new("date")
         .arg("+%Y-%m-%d")
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .unwrap_or_default();
-    let git_dirty = std::process::Command::new("git")
-        .args(["status", "--porcelain"])
-        .output()
-        .map(|o| !o.status.success() || !o.stdout.is_empty())
-        .unwrap_or(true);
-
+    // This is the second half of the clean-tree invariant. It is deliberately
+    // taken after every benchmark/cleanup action and before verdict assembly.
+    let git_sha_before_serialization = git_head_sha();
+    let git_dirty_before_serialization = git_worktree_dirty();
+    if !git_revision_unchanged(&git_sha_before_benchmark, &git_sha_before_serialization) {
+        eprintln!(
+            "p6_report: git HEAD is unavailable or changed during the benchmark; refusing to write a result"
+        );
+        std::process::exit(2);
+    }
+    let git_dirty = git_dirty_before_benchmark || git_dirty_before_serialization;
     let accepted = rec.accepted && chk.accepted;
+    let p7b_gate_evaluated = is_resident.then_some(p7b_gate_eligible(
+        &git_sha_before_benchmark,
+        &git_sha_before_serialization,
+        git_dirty_before_benchmark,
+        git_dirty_before_serialization,
+        p7b_machine_is_eligible,
+        quick,
+        t0,
+        n_gen,
+        layer_params.n_queries,
+        P4_LAYER.n_queries,
+        warmup_repetitions,
+        repetitions,
+    ));
+    let gate_is_official = p7b_gate_evaluated == Some(true);
+    let p7b_prefill_core_gate_pass = gate_is_official.then(|| {
+        p7b_prefill_core_observed_s.expect("resident prefill observation")
+            <= P7B_PREFILL_CORE_GATE_S
+    });
+    let p7b_decode_marginal_gate_pass = gate_is_official.then(|| {
+        p7b_decode_marginal_observed_s.expect("resident decode observation")
+            <= P7B_DECODE_MARGINAL_GATE_S
+    });
+    let p7b_sync_gate_pass = gate_is_official
+        .then(|| p7b_sync_observed.expect("resident sync observation") <= P7B_SYNC_GATE);
+    let p7b_h2d_gate_pass = gate_is_official
+        .then(|| p7b_h2d_observed_bytes.expect("resident H2D observation") <= P7B_H2D_GATE_BYTES);
+    let response_communication_observed_bytes = is_resident.then(|| {
+        rec.comm_bytes
+            .checked_add(rec.public_logits_packed_bytes)
+            .expect("packed response communication accounting overflow")
+    });
+    let response_communication_invariant_pass = response_communication_observed_bytes
+        .map(|bytes| bytes <= RESPONSE_COMMUNICATION_ENVELOPE_BYTES);
+    let p7b_response_communication_no_growth_pass = gate_is_official.then(|| {
+        p7b_communication_no_growth(
+            rec.comm_bytes,
+            rec.pcs_opening_bytes,
+            rec.public_logits_packed_bytes,
+        )
+    });
+    let p7b_all_gates_pass = gate_is_official.then(|| {
+        accepted
+            && golden_checked
+            && golden_match == Some(true)
+            && gate_flat
+            && response_communication_invariant_pass == Some(true)
+            && p7b_response_communication_no_growth_pass == Some(true)
+            && p7b_prefill_core_gate_pass.expect("prefill P7b verdict")
+            && p7b_decode_marginal_gate_pass.expect("decode P7b verdict")
+            && p7b_sync_gate_pass.expect("sync P7b verdict")
+            && p7b_h2d_gate_pass.expect("H2D P7b verdict")
+    });
     let t_prove_response_s = prove_response_timing.median_s;
     let t_verify_response_s = verify_response_timing.median_s;
     let pcs_commit_total_s = pcs_commit_timing.median_s;
     let pcs_open_total_s = pcs_open_timing.median_s;
     let pcs_verify_total_s = pcs_verify_timing.median_s;
     let report = Report {
-        report_schema_version: if args.accelerator == AcceleratorArg::CudaResident { 5 } else { 2 },
+        report_schema_version: if args.accelerator == AcceleratorArg::Cpu { 2 } else { 6 },
         milestone: match (args.accelerator, quick) {
-            (AcceleratorArg::CudaHybrid, true) => "P7-integrated-hybrid-quick".into(),
-            (AcceleratorArg::CudaHybrid, false) => "P7-integrated-hybrid".into(),
-            (AcceleratorArg::CudaResident, true) => "P7-integrated-resident-quick".into(),
-            (AcceleratorArg::CudaResident, false) => "P7-integrated-resident".into(),
+            // Every CUDA schema-6 result belongs to the active P7b code line.
+            // P7 is closed and its schema-2/4 selectors stay immutable.
+            (AcceleratorArg::CudaHybrid, true) => "P7b-integrated-hybrid-quick".into(),
+            (AcceleratorArg::CudaHybrid, false) => "P7b-integrated-hybrid".into(),
+            (AcceleratorArg::CudaResident, true) => "P7b-integrated-resident-quick".into(),
+            (AcceleratorArg::CudaResident, false) => "P7b-integrated-resident".into(),
             (AcceleratorArg::Cpu, true) => "P6-quick".into(),
             (AcceleratorArg::Cpu, false) => "P6".into(),
         },
         date: date.clone(),
-        git_sha: sha.clone(),
-        git_dirty,
+        git: GitProvenance {
+            git_sha: git_sha_before_benchmark.clone(),
+            git_dirty,
+            git_dirty_before_benchmark,
+            git_dirty_before_serialization,
+            git_sha_before_benchmark: (args.accelerator != AcceleratorArg::Cpu)
+                .then(|| git_sha_before_benchmark.clone()),
+            git_sha_before_serialization: (args.accelerator != AcceleratorArg::Cpu)
+                .then(|| git_sha_before_serialization.clone()),
+        },
         machine: format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
-        cloud: cloud_metadata_from_env(),
+        cloud,
         threads: rayon::current_num_threads(),
         accelerator_backend: args.accelerator.as_str().into(),
+        accelerator_cuda_abi_version: (args.accelerator != AcceleratorArg::Cpu)
+            .then_some(CUDA_ABI_VERSION),
         accelerator_witness: accelerator_witness_stats
             .map(|stats| AcceleratorStatsRow::from_stats(stats, "witness-forward")),
         accelerator_response_witness: accelerator_response_witness_stats
@@ -2187,6 +2403,7 @@ fn main() {
         golden_decode_match: golden_match,
         generated_tokens: gen.clone(),
         p7b_gate_evaluated,
+        p7b_machine_eligible: is_resident.then_some(p7b_machine_is_eligible),
         p7b_timing_statistic: is_resident
             .then_some("upper median across measured repetitions".into()),
         p7b_counter_statistic: is_resident.then_some("maximum across measured sessions".into()),
@@ -2202,6 +2419,16 @@ fn main() {
         p7b_decode_marginal_gate_pass,
         p7b_sync_gate_pass,
         p7b_h2d_gate_pass,
+        response_communication_envelope_bytes: is_resident
+            .then_some(RESPONSE_COMMUNICATION_ENVELOPE_BYTES),
+        response_communication_observed_bytes,
+        response_communication_invariant_pass,
+        p7b_transcript_reference_bytes: is_resident.then_some(P7B_TRANSCRIPT_REFERENCE_BYTES),
+        p7b_pcs_opening_reference_bytes: is_resident.then_some(P7B_PCS_OPENING_REFERENCE_BYTES),
+        p7b_packed_logits_reference_bytes: is_resident.then_some(P7B_PACKED_LOGITS_REFERENCE_BYTES),
+        p7b_packed_response_reference_bytes: is_resident
+            .then_some(P7B_PACKED_RESPONSE_REFERENCE_BYTES),
+        p7b_response_communication_no_growth_pass,
         p7b_all_gates_pass,
         t_native_prefill_s,
         t_native_decode_s,
@@ -2289,6 +2516,7 @@ fn main() {
         corr_full_corrs: rec.full_corrs,
         peak_rss_gb: peak_rss_gb(),
         pcg_backend: args.pcg_backend.as_str().into(),
+        pcg_production_ready: false,
         pcg_setup_comm_bytes: pcg_gate.setup_comm_bytes,
         pcg_base_vole: if args.pcg_backend == PcgBackendArg::Real {
             Some("mock-stub".into())
@@ -2307,10 +2535,10 @@ fn main() {
     assert!(accepted, "P6 sanity: honest response (both sessions) must verify");
     assert!(gate_flat, "P6 gate: per-token cost must stay ~flat as the cache grows");
     let mut label = match (args.accelerator, quick) {
-        (AcceleratorArg::CudaHybrid, true) => "p7-integrated-hybrid-quick".to_string(),
-        (AcceleratorArg::CudaHybrid, false) => "p7-integrated-hybrid".to_string(),
-        (AcceleratorArg::CudaResident, true) => "p7-integrated-resident-quick".to_string(),
-        (AcceleratorArg::CudaResident, false) => "p7-integrated-resident".to_string(),
+        (AcceleratorArg::CudaHybrid, true) => "p7b-integrated-hybrid-quick".to_string(),
+        (AcceleratorArg::CudaHybrid, false) => "p7b-integrated-hybrid".to_string(),
+        (AcceleratorArg::CudaResident, true) => "p7b-integrated-resident-quick".to_string(),
+        (AcceleratorArg::CudaResident, false) => "p7b-integrated-resident".to_string(),
         (AcceleratorArg::Cpu, true) => "p6-quick".to_string(),
         (AcceleratorArg::Cpu, false) => "p6".to_string(),
     };
@@ -2320,8 +2548,10 @@ fn main() {
     if args.pcg_backend == PcgBackendArg::Real {
         label.push_str("-realpcg");
     }
-    let path = unique_result_path(&label, &date, &sha);
-    std::fs::write(&path, serde_json::to_string_pretty(&report).unwrap()).unwrap();
+    let json = serde_json::to_string_pretty(&report).unwrap();
+    let filename_sha = short_git_sha(&git_sha_before_benchmark);
+    let (path, mut file) = create_unique_result_file(&label, &date, &filename_sha);
+    std::io::Write::write_all(&mut file, json.as_bytes()).unwrap();
     eprintln!("wrote {}", path.display());
 }
 
@@ -2337,5 +2567,102 @@ mod report_tests {
         assert_eq!(distribution.mad_s, 4.0);
         assert_eq!((distribution.min_s, distribution.max_s), (1.0, 9.0));
         assert_eq!(median_index(&[9.0, 1.0, 5.0, 3.0]), 2);
+    }
+
+    #[test]
+    fn p7b_gate_requires_clean_full_geometry_and_preregistered_sampling() {
+        let sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let other_sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        assert!(p7b_gate_eligible(sha, sha, false, false, true, false, 100, 50, 200, 200, 1, 3));
+        assert!(!p7b_gate_eligible(
+            sha, other_sha, false, false, true, false, 100, 50, 200, 200, 1, 3
+        ));
+        assert!(!p7b_gate_eligible("", "", false, false, true, false, 100, 50, 200, 200, 1, 3));
+        assert!(!p7b_gate_eligible(sha, sha, true, false, true, false, 100, 50, 200, 200, 1, 3));
+        assert!(!p7b_gate_eligible(sha, sha, false, true, true, false, 100, 50, 200, 200, 1, 3));
+        assert!(!p7b_gate_eligible(sha, sha, false, false, false, false, 100, 50, 200, 200, 1, 3));
+        assert!(!p7b_gate_eligible(sha, sha, false, false, true, true, 16, 8, 200, 200, 0, 1));
+        assert!(!p7b_gate_eligible(sha, sha, false, false, true, false, 100, 50, 200, 200, 0, 3));
+        assert!(!p7b_gate_eligible(sha, sha, false, false, true, false, 100, 50, 200, 200, 1, 1));
+        assert!(!p7b_gate_eligible(sha, sha, false, false, true, false, 100, 50, 199, 200, 1, 3));
+    }
+
+    #[test]
+    fn schema6_serializes_stable_full_git_revision_window() {
+        let sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let provenance = GitProvenance {
+            git_sha: sha.into(),
+            git_dirty: false,
+            git_dirty_before_benchmark: false,
+            git_dirty_before_serialization: false,
+            git_sha_before_benchmark: Some(sha.into()),
+            git_sha_before_serialization: Some(sha.into()),
+        };
+        let value = serde_json::to_value(provenance).unwrap();
+        assert_eq!(value["git_sha"], sha);
+        assert_eq!(value["git_sha_before_benchmark"], sha);
+        assert_eq!(value["git_sha_before_serialization"], sha);
+        assert!(git_revision_unchanged(sha, sha));
+        assert!(!git_revision_unchanged(sha, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
+        assert_eq!(short_git_sha(sha), "aaaaaaa");
+    }
+
+    #[test]
+    fn p7b_machine_requires_complete_thunder_a100_metadata() {
+        let cloud = CloudMetadata {
+            provider: "Thunder Compute".into(),
+            instance_id: "instance".into(),
+            region: "not exposed".into(),
+            image: "ubuntu".into(),
+            driver_version: "610".into(),
+            cuda_version: "13.2".into(),
+            gpu_sku: "NVIDIA A100-SXM4-80GB".into(),
+            cpu_model: "Xeon".into(),
+            ram_gib: "64".into(),
+            vcpus: "8".into(),
+        };
+        assert!(p7b_machine_eligible(Some(&cloud)));
+        assert!(!p7b_machine_eligible(None));
+        assert!(!p7b_machine_eligible(Some(&CloudMetadata {
+            provider: "another provider".into(),
+            ..cloud.clone()
+        })));
+        assert!(!p7b_machine_eligible(Some(&CloudMetadata {
+            gpu_sku: "NVIDIA H100".into(),
+            ..cloud.clone()
+        })));
+        assert!(!p7b_machine_eligible(Some(&CloudMetadata {
+            instance_id: String::new(),
+            ..cloud
+        })));
+    }
+
+    #[test]
+    fn p7b_communication_may_shrink_but_no_component_may_grow() {
+        assert!(p7b_communication_no_growth(
+            P7B_TRANSCRIPT_REFERENCE_BYTES,
+            P7B_PCS_OPENING_REFERENCE_BYTES,
+            P7B_PACKED_LOGITS_REFERENCE_BYTES,
+        ));
+        assert!(p7b_communication_no_growth(
+            P7B_TRANSCRIPT_REFERENCE_BYTES - 1,
+            P7B_PCS_OPENING_REFERENCE_BYTES - 1,
+            P7B_PACKED_LOGITS_REFERENCE_BYTES - 1,
+        ));
+        assert!(!p7b_communication_no_growth(
+            P7B_TRANSCRIPT_REFERENCE_BYTES + 1,
+            P7B_PCS_OPENING_REFERENCE_BYTES,
+            P7B_PACKED_LOGITS_REFERENCE_BYTES,
+        ));
+        assert!(!p7b_communication_no_growth(
+            P7B_TRANSCRIPT_REFERENCE_BYTES,
+            P7B_PCS_OPENING_REFERENCE_BYTES + 1,
+            P7B_PACKED_LOGITS_REFERENCE_BYTES,
+        ));
+        assert!(!p7b_communication_no_growth(
+            P7B_TRANSCRIPT_REFERENCE_BYTES,
+            P7B_PCS_OPENING_REFERENCE_BYTES,
+            P7B_PACKED_LOGITS_REFERENCE_BYTES + 1,
+        ));
     }
 }

@@ -22,6 +22,19 @@ from typing import Any
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_RESULTS = REPO / "benchmarks" / "results"
 P7_RHO_TARGETS = {"prefill": 10.0, "decode": 2.0}
+P7B_REPORT_SCHEMA_VERSION = 6
+P7B_CUDA_ABI_VERSION = 26
+P7B_PREFILL_CORE_GATE_S = 10.0
+P7B_DECODE_MARGINAL_GATE_S = 4.0
+P7B_SYNC_GATE = 5_000
+P7B_H2D_GATE_BYTES = 100_000_000
+P7B_RESPONSE_COMMUNICATION_ENVELOPE_BYTES = 200_000_000
+P7B_TRANSCRIPT_REFERENCE_BYTES = 137_413_808
+P7B_PCS_OPENING_REFERENCE_BYTES = 66_733_504
+P7B_PACKED_LOGITS_REFERENCE_BYTES = 7_407_122
+P7B_PACKED_RESPONSE_REFERENCE_BYTES = 144_820_930
+P7B_TIMING_STATISTIC = "upper median across measured repetitions"
+P7B_COUNTER_STATISTIC = "maximum across measured sessions"
 
 LAYER_PARAMS = {
     "rows": 1 << 10,
@@ -777,7 +790,11 @@ def gpu_native_inference_profiles(results: list[dict[str, Any]]) -> list[dict[st
 
 
 def integrated_accelerator_profiles(
-    results: list[dict[str, Any]], milestones: set[str], backend: str
+    results: list[dict[str, Any]],
+    milestones: set[str],
+    backend: str,
+    *,
+    include_p7b_fields: bool = False,
 ) -> list[dict[str, Any]]:
     rows = []
     for r in results:
@@ -904,6 +921,79 @@ def integrated_accelerator_profiles(
                 "pcg_real_phase_a_total_s": r.get("pcg_real_phase_a_total_s"),
             }
         )
+        if include_p7b_fields:
+            rows[-1].update(
+                {
+                    "accepted": r.get("accepted"),
+                    "accelerator_backend": r.get("accelerator_backend"),
+                    "git_sha": r.get("git_sha"),
+                    "git_sha_before_benchmark": r.get("git_sha_before_benchmark"),
+                    "git_sha_before_serialization": r.get(
+                        "git_sha_before_serialization"
+                    ),
+                    "git_dirty_before_benchmark": r.get("git_dirty_before_benchmark"),
+                    "git_dirty_before_serialization": r.get(
+                        "git_dirty_before_serialization"
+                    ),
+                    "accelerator_cuda_abi_version": r.get(
+                        "accelerator_cuda_abi_version"
+                    ),
+                    "p7b_gate_evaluated": r.get("p7b_gate_evaluated"),
+                    "p7b_machine_eligible": r.get("p7b_machine_eligible"),
+                    "p7b_timing_statistic": r.get("p7b_timing_statistic"),
+                    "p7b_counter_statistic": r.get("p7b_counter_statistic"),
+                    "p7b_prefill_core_gate_s": r.get("p7b_prefill_core_gate_s"),
+                    "p7b_decode_marginal_gate_s": r.get(
+                        "p7b_decode_marginal_gate_s"
+                    ),
+                    "p7b_sync_gate": r.get("p7b_sync_gate"),
+                    "p7b_h2d_gate_bytes": r.get("p7b_h2d_gate_bytes"),
+                    "p7b_prefill_core_observed_s": r.get(
+                        "p7b_prefill_core_observed_s"
+                    ),
+                    "p7b_decode_marginal_observed_s": r.get(
+                        "p7b_decode_marginal_observed_s"
+                    ),
+                    "p7b_sync_observed": r.get("p7b_sync_observed"),
+                    "p7b_h2d_observed_bytes": r.get("p7b_h2d_observed_bytes"),
+                    "p7b_prefill_core_gate_pass": r.get(
+                        "p7b_prefill_core_gate_pass"
+                    ),
+                    "p7b_decode_marginal_gate_pass": r.get(
+                        "p7b_decode_marginal_gate_pass"
+                    ),
+                    "p7b_sync_gate_pass": r.get("p7b_sync_gate_pass"),
+                    "p7b_h2d_gate_pass": r.get("p7b_h2d_gate_pass"),
+                    "response_communication_envelope_bytes": r.get(
+                        "response_communication_envelope_bytes"
+                    ),
+                    "response_communication_observed_bytes": r.get(
+                        "response_communication_observed_bytes"
+                    ),
+                    "response_communication_invariant_pass": r.get(
+                        "response_communication_invariant_pass"
+                    ),
+                    "p7b_transcript_reference_bytes": r.get(
+                        "p7b_transcript_reference_bytes"
+                    ),
+                    "p7b_pcs_opening_reference_bytes": r.get(
+                        "p7b_pcs_opening_reference_bytes"
+                    ),
+                    "p7b_packed_logits_reference_bytes": r.get(
+                        "p7b_packed_logits_reference_bytes"
+                    ),
+                    "p7b_packed_response_reference_bytes": r.get(
+                        "p7b_packed_response_reference_bytes"
+                    ),
+                    "p7b_response_communication_no_growth_pass": r.get(
+                        "p7b_response_communication_no_growth_pass"
+                    ),
+                    "p7b_all_gates_pass": r.get("p7b_all_gates_pass"),
+                    "pcs_n_queries": r.get("pcs_n_queries"),
+                    "repetitions": r.get("repetitions"),
+                    "pcg_production_ready": r.get("pcg_production_ready"),
+                }
+            )
     rows.sort(key=lambda x: (x["milestone"], x["_mtime"], x["source"]))
     for row in rows:
         row.pop("_mtime", None)
@@ -926,16 +1016,249 @@ def integrated_resident_profiles(results: list[dict[str, Any]]) -> list[dict[str
     )
 
 
+def integrated_p7b_resident_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return integrated_accelerator_profiles(
+        results,
+        {"P7b-integrated-resident", "P7b-integrated-resident-quick"},
+        "cuda-resident",
+        include_p7b_fields=True,
+    )
+
+
 def resident_run_of_record_eligible(row: dict[str, Any]) -> bool:
     """Require schema-4 arena invariants while retaining historical schema-3 records."""
     if row.get("milestone") != "P7-integrated-resident" or row.get("git_dirty", True):
         return False
-    if (row.get("report_schema_version") or 0) < 4:
+    schema = row.get("report_schema_version") or 0
+    # P7 is a closed historical artifact. Later P7b schemas must never replace
+    # its negative run of record even if a caller mislabels one as P7.
+    if schema > 4 or row.get("p7b_gate_evaluated") is not None:
+        return False
+    if schema < 4:
         return True
     return (
         row.get("accelerator_cleanup_memory_accounting_ok") is True
         and row.get("accelerator_cache_trim_memory_accounting_ok") is True
     )
+
+
+def p7b_resident_run_of_record_eligible(row: dict[str, Any]) -> bool:
+    """Recognize a complete official P7b verdict, whether performance passes or fails.
+
+    This is intentionally a fail-closed schema validator, not a selector for
+    successful runs. A valid measured failure is a run of record; missing or
+    internally inconsistent gate evidence is not.
+    """
+    fixed_invariants = (
+        row.get("milestone") == "P7b-integrated-resident"
+        and type(row.get("report_schema_version")) is int
+        and row.get("report_schema_version") == P7B_REPORT_SCHEMA_VERSION
+        and row.get("accelerator_backend") == "cuda-resident"
+        and type(row.get("accelerator_cuda_abi_version")) is int
+        and row.get("accelerator_cuda_abi_version") == P7B_CUDA_ABI_VERSION
+        and row.get("accepted") is True
+        and row.get("git_dirty") is False
+        and row.get("git_dirty_before_benchmark") is False
+        and row.get("git_dirty_before_serialization") is False
+        and _p7b_git_provenance_valid(row)
+        and _p7b_machine_metadata_valid(row)
+        and row.get("p7b_machine_eligible") is True
+        and row.get("p7b_gate_evaluated") is True
+        and type(row.get("benchmark_warmup_repetitions")) is int
+        and row.get("benchmark_warmup_repetitions") >= 1
+        and type(row.get("benchmark_repetitions")) is int
+        and row.get("benchmark_repetitions") >= 3
+        and type(row.get("t_prefill")) is int
+        and row.get("t_prefill") == 100
+        and type(row.get("n_decode")) is int
+        and row.get("n_decode") == 50
+        and type(row.get("pcs_n_queries")) is int
+        and row.get("pcs_n_queries") == 200
+        and row.get("golden_decode_checked") is True
+        and row.get("golden_decode_match") is True
+        and row.get("flat_cost_gate") is True
+        and _finite_nonnegative(row.get("flat_cost_last_over_first"))
+        and row.get("flat_cost_last_over_first") <= 1.5
+        and row.get("pcg_backend") == "mock"
+        and row.get("pcg_production_ready") is False
+        and row.get("accelerator_cleanup_memory_accounting_ok") is True
+        and row.get("accelerator_cache_trim_memory_accounting_ok") is True
+    )
+    return (
+        fixed_invariants
+        and _p7b_sampling_statistics_valid(row)
+        and _p7b_communication_valid(row)
+        and _p7b_performance_verdict_valid(row)
+    )
+
+
+def _finite_nonnegative(value: Any) -> bool:
+    return type(value) in (int, float) and math.isfinite(value) and value >= 0
+
+
+def _nonnegative_int(value: Any) -> bool:
+    return type(value) is int and value >= 0
+
+
+def _same_number(left: Any, right: Any) -> bool:
+    return _finite_nonnegative(left) and _finite_nonnegative(right) and math.isclose(
+        left, right, rel_tol=0.0, abs_tol=1e-12
+    )
+
+
+def _full_git_sha(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 40
+        and all(char in "0123456789abcdefABCDEF" for char in value)
+    )
+
+
+def _p7b_git_provenance_valid(row: dict[str, Any]) -> bool:
+    before = row.get("git_sha_before_benchmark")
+    after = row.get("git_sha_before_serialization")
+    return _full_git_sha(before) and before == after and row.get("git_sha") == before
+
+
+def _p7b_machine_metadata_valid(row: dict[str, Any]) -> bool:
+    cloud = row.get("cloud")
+    if not isinstance(cloud, dict):
+        return False
+    fields = (
+        "provider",
+        "instance_id",
+        "region",
+        "image",
+        "driver_version",
+        "cuda_version",
+        "gpu_sku",
+        "cpu_model",
+        "ram_gib",
+        "vcpus",
+    )
+    if not all(isinstance(cloud.get(field), str) and cloud[field].strip() for field in fields):
+        return False
+    return "thunder" in cloud["provider"].lower() and "A100" in cloud["gpu_sku"].upper()
+
+
+def _timing_distribution_valid(timing: Any, samples: list[float]) -> bool:
+    if not isinstance(timing, dict) or timing.get("samples_s") != samples or not samples:
+        return False
+    if not all(_finite_nonnegative(sample) for sample in samples):
+        return False
+    upper_median = sorted(samples)[len(samples) // 2]
+    return _same_number(timing.get("median_s"), upper_median)
+
+
+def _p7b_sampling_statistics_valid(row: dict[str, Any]) -> bool:
+    measured = row.get("benchmark_repetitions")
+    repetitions = row.get("repetitions")
+    if (
+        type(measured) is not int
+        or measured < 3
+        or not isinstance(repetitions, list)
+        or len(repetitions) != measured
+        or row.get("p7b_timing_statistic") != P7B_TIMING_STATISTIC
+        or row.get("p7b_counter_statistic") != P7B_COUNTER_STATISTIC
+    ):
+        return False
+    if any(not isinstance(rep, dict) for rep in repetitions):
+        return False
+    if [rep.get("repetition") for rep in repetitions] != list(range(1, measured + 1)):
+        return False
+    prefill_samples = [rep.get("t_prove_prefill_only_s") for rep in repetitions]
+    decode_samples = [rep.get("t_prove_decode_marginal_s") for rep in repetitions]
+    if not _timing_distribution_valid(row.get("prove_prefill_timing"), prefill_samples):
+        return False
+    if not _timing_distribution_valid(row.get("prove_decode_marginal_timing"), decode_samples):
+        return False
+    sessions = [rep.get("accelerator_session") for rep in repetitions]
+    if any(not isinstance(session, dict) for session in sessions):
+        return False
+    syncs = [session.get("synchronizations") for session in sessions]
+    h2d = [session.get("h2d_bytes") for session in sessions]
+    if not all(_nonnegative_int(value) for value in syncs + h2d):
+        return False
+    return (
+        _same_number(
+            row.get("p7b_prefill_core_observed_s"),
+            row["prove_prefill_timing"]["median_s"],
+        )
+        and _same_number(
+            row.get("p7b_decode_marginal_observed_s"),
+            row["prove_decode_marginal_timing"]["median_s"],
+        )
+        and row.get("p7b_sync_observed") == max(syncs)
+        and row.get("p7b_h2d_observed_bytes") == max(h2d)
+    )
+
+
+def _p7b_communication_valid(row: dict[str, Any]) -> bool:
+    communication = row.get("communication")
+    if not isinstance(communication, dict):
+        return False
+    transcript = communication.get("response_bytes")
+    pcs = communication.get("pcs_opening_bytes")
+    packed_logits = communication.get("public_logits_packed_bytes")
+    observed = row.get("response_communication_observed_bytes")
+    if not all(_nonnegative_int(value) for value in (transcript, pcs, packed_logits, observed)):
+        return False
+    return (
+        row.get("response_communication_envelope_bytes")
+        == P7B_RESPONSE_COMMUNICATION_ENVELOPE_BYTES
+        and row.get("p7b_transcript_reference_bytes") == P7B_TRANSCRIPT_REFERENCE_BYTES
+        and row.get("p7b_pcs_opening_reference_bytes") == P7B_PCS_OPENING_REFERENCE_BYTES
+        and row.get("p7b_packed_logits_reference_bytes") == P7B_PACKED_LOGITS_REFERENCE_BYTES
+        and row.get("p7b_packed_response_reference_bytes")
+        == P7B_PACKED_RESPONSE_REFERENCE_BYTES
+        and observed == transcript + packed_logits
+        and row.get("packed_response_bytes") == observed
+        and observed <= P7B_RESPONSE_COMMUNICATION_ENVELOPE_BYTES
+        and transcript <= P7B_TRANSCRIPT_REFERENCE_BYTES
+        and pcs <= P7B_PCS_OPENING_REFERENCE_BYTES
+        and packed_logits <= P7B_PACKED_LOGITS_REFERENCE_BYTES
+        and transcript + packed_logits <= P7B_PACKED_RESPONSE_REFERENCE_BYTES
+        and row.get("response_communication_invariant_pass") is True
+        and row.get("p7b_response_communication_no_growth_pass") is True
+    )
+
+
+def _p7b_performance_verdict_valid(row: dict[str, Any]) -> bool:
+    thresholds = (
+        row.get("p7b_prefill_core_gate_s") == P7B_PREFILL_CORE_GATE_S
+        and row.get("p7b_decode_marginal_gate_s") == P7B_DECODE_MARGINAL_GATE_S
+        and row.get("p7b_sync_gate") == P7B_SYNC_GATE
+        and row.get("p7b_h2d_gate_bytes") == P7B_H2D_GATE_BYTES
+    )
+    observations = (
+        row.get("p7b_prefill_core_observed_s"),
+        row.get("p7b_decode_marginal_observed_s"),
+        row.get("p7b_sync_observed"),
+        row.get("p7b_h2d_observed_bytes"),
+    )
+    passes = (
+        row.get("p7b_prefill_core_gate_pass"),
+        row.get("p7b_decode_marginal_gate_pass"),
+        row.get("p7b_sync_gate_pass"),
+        row.get("p7b_h2d_gate_pass"),
+    )
+    if (
+        not thresholds
+        or not _finite_nonnegative(observations[0])
+        or not _finite_nonnegative(observations[1])
+        or not _nonnegative_int(observations[2])
+        or not _nonnegative_int(observations[3])
+        or any(type(value) is not bool for value in passes)
+        or type(row.get("p7b_all_gates_pass")) is not bool
+    ):
+        return False
+    expected = (
+        observations[0] <= P7B_PREFILL_CORE_GATE_S,
+        observations[1] <= P7B_DECODE_MARGINAL_GATE_S,
+        observations[2] <= P7B_SYNC_GATE,
+        observations[3] <= P7B_H2D_GATE_BYTES,
+    )
+    return passes == expected and row.get("p7b_all_gates_pass") is all(expected)
 
 
 def shape_memory_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -267,12 +267,14 @@ pub fn hadamard_prove_resident(
         point.push(challenge);
     }
 
-    let e_final = backend.download_device(&e, 0, 1).map(|values| Fp2::from(values[0]));
-    let r_final = backend.download_device(&r_tab, 0, 1).map(|values| Fp2::from(values[0]));
+    let finals = backend.download_device_segments(&[
+        DeviceSlice::new(&e, 0, 1).expect("resident Hadamard e scalar"),
+        DeviceSlice::new(&r_tab, 0, 1).expect("resident Hadamard R scalar"),
+    ]);
     let free_result = free_resident_triple(backend, eq_t, e, r_tab);
-    let (e_final, r_final) = match (e_final, r_final, free_result) {
-        (Ok(e), Ok(r), Ok(())) => (e, r),
-        (Err(error), _, _) | (_, Err(error), _) | (_, _, Err(error)) => return Err(error),
+    let (e_final, r_final) = match (finals, free_result) {
+        (Ok(values), Ok(())) => (Fp2::from(values[0]), Fp2::from(values[1])),
+        (Err(error), _) | (_, Err(error)) => return Err(error),
     };
     let fe = stream.draw_fulls(doms.e_claim, 1)[0];
     let e_corr = e_final - fe.x;

@@ -2,11 +2,14 @@
 
 Designated-verifier proving system for transformer inference (VOLE-MAC blind
 GKR), GPT-2 small fixed-point. Formal phase M1–M9 is CLOSED (Lean theorems in
-`lean/`, frozen). Prototype milestones P0–P6 are CLOSED. Current phase:
-**P7** — report + GPU budget model + e2e communication levers.
+`lean/`, frozen). Prototype milestones P0–P7 are CLOSED. Current phase:
+**P7b iteration 2** — resident-A100 orchestration and prover optimization on
+Thunder. Current gates and permitted levers are pre-registered in the
+2026-07-13 `P7b target re-registration` ledger deviation. P7b is in progress;
+no checkpoint or projection is itself a gate verdict.
 
-**Read `docs/p7-handoff-spec.md` first** — it is the handoff spec and plan of
-record: state and numbers of record, the P7 work items with quantified
+**Read `docs/p7-handoff-spec.md` first**, including its P7b override — it and
+the ledger are the plan of record: state and numbers of record, quantified
 levers, invariants, and known traps.
 
 ## State ledger — single source of truth

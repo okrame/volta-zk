@@ -1,14 +1,15 @@
-# Prototype Status Ledger (phase P — CPU prototype)
+# Prototype Status Ledger (P7b iteration 2 — Thunder resident A100)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
-land in `benchmarks/results/*.json`. Plan of record:
-`~/.claude/plans/streamed-hugging-bunny.md` (approved 2026-07-03).
+land in `benchmarks/results/*.json`. The repo-local plan of record is
+`docs/p7-handoff-spec.md` plus this ledger; no external plan is authoritative.
 
 Workload of record: **GPT-2 small (124M, L=12, d=768, h=12, d_ff=3072),
-prefill T=100 tokens, causal**, all CPU (aarch64 VM, 4 cores, ~11 GB).
-CPU numbers validate architecture and counts; the P7 ρ targets (≤2 decode,
-≤10 prefill) remain GPU targets.
+prefill T=100 + 50 deferred decode tokens, causal, PCS Q=200**, on the
+designated Thunder A100. P7 is closed; its CPU and rho numbers below are
+historical. The active P7b gates and measurement hygiene are the preregistered
+2026-07-13 deviation below, and P7b currently has no gate verdict.
 
 ## Milestones
 
@@ -24,6 +25,7 @@ CPU numbers validate architecture and counts; the P7 ρ targets (≤2 decode,
 | P5 GPT-2 e2e prefill 100 tok | **done** (2026-07-06) | one-command run ✓ (`scripts/run_prefill.sh`), golden check ✓ (full logits bit-exact vs numpy at T=100, argmax 835 ' way'), counts vs budget: witness lookups = budget **exactly** (16,944,000) ✓ | **accepted e2e with real weights + 13 real Ligero commitments**: native (witness) 0.459 s, prove 11.0–11.2 s, **ρ ≈ 24** (matches P4's ×12 projection); verify 0.65 s + 0.07 s PCS; PCS open **0.73 s** / 52.8 MB (vs 0.237 s projection — 13× fixed costs, see deviations), commit one-off 7.6 s; **comm 159.6 MB/prefill** (mult vectors 59.4 + PCS 52.8 + boundary 36.9 + rest), projected response 212 MB; E-mult all-in 100.6/budget lookup; peak RSS 2.86 GB. `benchmarks/results/p5-2026-07-06-e52ce79.json` (clean tree) |
 | P6 decode + authenticated KV cache | **done** (2026-07-07) | flat cost/token ✓ **PASSED** (curve last/first 1.12 ≤ 1.5, 5×10 chunks, cache 100→150); anti-replay smoke ✓ (prefill-row replay + position swap rejected); golden decode ✓ (50 tokens bit-exact vs numpy) | **accepted e2e, prompt 100 + 50 decode, one two-phase session, real 13-commitment PCS with STACKED claims (96 weight + 6 embed)**: native decode 30.9 tok/s (KV-cached baseline); prove_response 18.7 s = prefill 10.5 s + **decode marginal 8.2 s (0.164 s/token, ρ_decode 5.07 CPU)**; verified 2.67 tok/s; verify 0.57 s + 0.10 s PCS. Comm: transcript 137.4 MB (prefill 48.4 + PCS opening 66.7 + decode marginal 22.3 = **445 KB/token**) + public band logits 20.5 MB → **total response download 157.9 MB** (inside the 150–200 MB product envelope; the PCS opening is now the dominant lever, P7). Shared-α restructure landed with P6: mult corr 59.4 → 2.85 MB. PCS commit one-off 9.5 s; peak RSS 3.47 GB. `benchmarks/results/p6-2026-07-07-515bb1c.json` (clean tree) |
 | P7 report + GPU budget model | **complete: resident full e2e + publication artifact; correctness/communication/flat PASS, rho FAIL** (2026-07-13) | T=100+50/Q=200, clean 1+3: golden ✓, proof/verifier ✓, flat 0.950 ✓, packed 144.821 MB ✓, explicit resident cleanup 0 B ✓; same-host exact native anchor ✓; **rho prefill 3707.60 >10 FAIL, decode 95.60 >2 FAIL**; tables/figures, hardware/checksum manifest, synthetic shape sweep and Lean audit ✓ | A100 resident core median: prefill **64.296±0.329 s MAD**, response **121.156±0.373 s**, decode marginal **57.296±0.809 s**. Native GPU: prefill **17.342±0.062 ms**, decode50 **599.346±0.990 ms**. Online-accounted response 121.774 s; full response-session wall 123.928 s; representative session 5.998 s kernels + 89.055 s host residual, 945.442 MB H2D + 138.488 MB D2H, 211,709 sync, 5.405 GB peak GPU. Raw sources `p7-integrated-resident-2026-07-13-1fd5195.json` / `p7-gpu-native-inference-2026-07-13-1fd5195.json`; aggregate `p7-2026-07-13-2c836b3.json`. Mock-PCG remains non-production. |
+| P7b iteration 2 resident-A100 orchestration | **in progress** (2026-07-13 checkpoint; no gate verdict) | Official clean T=100+50/Q=200, Thunder A100, >=1 warmup and >=3 measured repetitions still pending; no clean full or quick result exists for this checkpoint | ABI 26/schema 6 exact profiling and coarse scopes; exact correlation reservations/device mock masks; local scalar, product, generic LogUp and all-site GELU scheduling landed. The GELU response geometry projects 3,993 fewer blocking synchronizations, but neither this projection nor development differentials satisfy or evaluate a gate. Mock-PCG remains non-production. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -196,10 +198,11 @@ constant factors hold. That constant factor is what P3/P4 measure.
   round readbacks (51,122 LogUp + 5,400 blind product + 1,683 Hadamard), plus
   433 LogUp roots and 6,639 layer/split boundaries. Local root/split batching
   cannot reach 5,000 while instances remain sequential. The first scheduling
-  lever is therefore protocol-neutral round-synchronous co-scheduling, not
-  RLC: every instance retains its own message, independent challenge, fold,
-  proof bytes, and verifier path; one contiguous mailbox D2H serves all jobs
-  ready in the same public epoch. Cohorts and initial claims are sealed before
+  lever is therefore **proof-format/communication-neutral** round-synchronous
+  co-scheduling, not RLC: it is an explicitly logged transcript-scheduling
+  change, while every instance retains its own message, independent challenge,
+  fold, proof bytes, and verifier path. One contiguous mailbox D2H serves all
+  jobs ready in the same public epoch. Cohorts and initial claims are sealed before
   enqueue, challenges are drawn only after the complete epoch returns, no job
   may join after sealing, public depth/path controls membership, and canonical
   `SiteId` order (never completion order) binds all roots/splits.
@@ -215,6 +218,49 @@ constant factors hold. That constant factor is what P3/P4 measure.
   inject a timing flush inside a sealed cohort. The scalar-RLC theorem remains
   the second lever only if exact co-scheduling fails the gate; CUDA graphs are
   subsequent device-only replay work and may not cross challenge barriers.
+
+  **Schedule/transcript semantics fixed before Rust enablement**: "proof
+  unchanged" means the existing proof structs, correction labels, message
+  count and communication bytes are unchanged; it does **not** mean that a
+  multi-job scheduled proof has the same field values as the historical
+  sequential proof at the same deterministic mock-verifier seed. The current
+  `Transcript::append` is accounting-only and the verifier challenge stream
+  is global. In a scheduled epoch P first sends every active SiteId's message,
+  then V returns the same number of fresh challenges in canonical SiteId
+  order. Consequently CPU-scheduled and GPU-scheduled proofs must be byte
+  identical to each other, while scheduled-vs-legacy values normally differ.
+  Per-SiteId challenge substreams are rejected: they add a second transcript
+  semantics without reducing barriers and would require separately routing
+  every global chi/rho/finalizer challenge.
+
+  `SiteId` v1 is a stable packed `(version, public section, round family,
+  public lane)`, never a `Debug` string or runtime completion index. A sealed
+  `SchedulePlan` is built from public geometry and both parties preflight exact
+  membership, family, depth and reserved correlation range before consuming a
+  transcript byte or one-time correlation. The active set may only shrink;
+  missing/extra/duplicate jobs, refill and partial retry are errors. Product,
+  degree-3 and LogUp messages may share one heterogeneous mailbox epoch, but
+  every instance retains an independent challenge and verifier recursion.
+  The public plan publishes mailbox bounds, but no CUDA timing metadata.
+  Resident LogUp's private, deterministic preparation chunks are the sole
+  source of truth for profiler-ring capacity; the last chunk reserves two
+  additional records for the coarse mailbox interval and its D2H. These
+  chunks never split protocol membership or add a proof-message epoch. An
+  automatic timing flush inside the sealed epoch remains forbidden and cannot
+  be hidden from the <=5,000 count.
+
+  The first byte-identical mechanism before cross-instance scheduling
+  coalesces already-independent scalar buffers at each local boundary: two
+  LogUp roots, four normal splits, aux q0/q1/column splits, and final
+  product/Hadamard scalars use one D2H mailbox per boundary. Exact full
+  structure projects **19,932 fewer response-session barriers** (10,434
+  prefill, 9,498 decode), about 6.00 s at the measured 301.208-us median
+  8-byte D2H RTT, with unchanged D2H/H2D and about 0.45 MB extra D2D. This is a
+  mechanism projection pending measurement and remains far above 5,000 by
+  itself. The audited role-antichain LogUp plan is 2,446 epochs (873 FFN +
+  1,573 attention; max 1,573 when those independent phase-2 branches are
+  interleaved), validating the ledger's earlier ~2,450 projection without a
+  coroutine or cross-layer mutable-context redesign.
 
   **P7b architecture-hygiene checkpoint (2026-07-13; no timing claim)**:
   before changing the round schedule, the resident allocation registry was
@@ -362,6 +408,97 @@ constant factors hold. That constant factor is what P3/P4 measure.
   mechanism, not any of the T=100+50 official verdicts. The full-geometry H2D
   projection remains about 96.43 MB and must be confirmed, not inferred, by
   the later clean gate run.
+
+  **P7b iteration-2 orchestration checkpoint (ABI 26 / report schema 6;
+  implementation and correctness only, no timing claim)**: deferred CUDA
+  timing now retries an elapsed-time query that returns success without
+  writing its output, using one complete first pass followed by at most three
+  exact retry sweeps and failing closed if a record remains unresolved.
+  Separate attempt, successful-query and no-write counters must balance
+  exactly. Measurement reset synchronizes and discards
+  pre-window records without querying elapsed time before zeroing statistics;
+  in-window records retain exact attribution. Aborting a coarse scope after
+  any accounted primitive now poisons the measurement: statistics and finish
+  fail closed until an explicit synchronizing reset, so discarded event
+  intervals cannot reappear as host residual. Checked coarse timing scopes
+  cover device-only cohort work, while segmented host outputs use one coarse
+  mailbox scope and one D2H. None of these paths fabricates a duration or
+  relabels remote CUDA calls as CPU work. The C ABI independently rejects
+  mock-auth mask domains entering reserved bits 61--63 rather than relying on
+  the safe Rust wrapper alone; ABI and `RawStats` layout remain version 26.
+
+  Schema 6 retains the upper-median timing and maximum-session traffic/count
+  rules from schema 5, but emits only `P7b-*` CUDA milestone names and makes
+  an official verdict conditional on Thunder provider metadata, an A100,
+  clean-tree checks both before benchmarking and before serialization, and
+  one identical nonempty full Git SHA across that complete window,
+  T=100+50/Q=200, at least one warmup and at least three measured repetitions.
+  Acceptance, golden/flat checks, the 200 MB envelope and no growth in the
+  P7 transcript, PCS-opening, packed-logits and packed-response components are
+  mandatory alongside the four P7b gates. Mock-PCG is serialized with
+  `pcg_production_ready:false`; the harness cannot present it as production.
+  The Python selector independently reconstructs upper medians and maximum
+  session counts from the raw repetitions and rechecks every invariant and
+  exact threshold; a coherent measured failure remains an official verdict,
+  while a missing or self-inconsistent boolean cannot become one.
+
+  Correlation ownership is now sealed through exact, disjoint full-correlation
+  range reservations and exact submask-row reservations before transcript or
+  one-time stream consumption. Reservation failure is atomic, and unused
+  reserved draws are released on error. Prover authentication masks may be
+  expanded on device only for the named deterministic mock backend, using the
+  byte-identical ChaCha8/Goldilocks stream and host-owned domain counters. The
+  pooled/real-PCG backend retains its host-produced authenticated masks and is
+  never silently routed through this device generator; mock remains explicitly
+  non-production. Thunder A100 differentials for the ABI-26 substrate and
+  fault injection, pre-window reset, segmented mailbox, device mock-auth mask,
+  resident product batch and heterogeneous LogUp batch are green.
+
+  The scheduling implementation now includes coalesced local scalar
+  mailboxes; one canonical round mailbox for the twelve attention heads in
+  each W·V and Q·K product cohort; and a generic heterogeneous-depth LogUp
+  batch with sealed `SiteId`, exact correlation-role ranges and all-site
+  `TableBank` manifests. Its leaf path keeps and folds only q0/q1; public
+  p0/p1=1 values are reconstructed on the host rather than copied or assigned
+  correlations. Existing proof structs, correction labels, message counts
+  and communication bytes are preserved; CPU-scheduled and resident-scheduled
+  outputs are the required exact differential, not scheduled-vs-legacy field
+  values under a globally reordered challenge stream.
+
+  GELU is the first response call-site integration: all twelve prefill layers
+  and all twelve layers of every deferred decode band are preflighted into one
+  response-wide manifest before table-bank finalization or scheduled-root
+  mutation, then each public band runs one CPU/resident/verifier cohort. For
+  the official one-T=100-prefill +
+  one-q=50-band geometry this projects **3,993 fewer blocking
+  synchronizations** than twelve sequential GELU sites; it is a geometry
+  projection, not a measurement or gate result. A latent resident decode
+  `SiteId` mismatch was also fixed: attention product sites had used the
+  physical layer index where CPU/verifier used the public decode-domain
+  section. Canonical ordering had masked the mismatch; the resident path now
+  derives the same public section and has a dedicated regression test.
+
+  The final architecture audit also made verifier entry and resident cleanup
+  fail closed. `verify_response` validates public dimensions, every indexed
+  phase-1 proof shape, table cardinalities, the at-most-five-chunk namespace
+  and checked position arithmetic before consuming a challenge or correlation
+  key. Greedy decoding now binds the first token of every later chunk to the
+  final logits row of its predecessor; malformed calls leave transcript bytes,
+  transcript ledger, allocation digest and verifier counters unchanged. The
+  FFN scheduler, generic LogUp cohort and resident blind-sumcheck batch perform
+  exhaustive ownership sweeps and propagate the first release error ahead of
+  the operational error. In particular, a timing-capacity failure on LogUp's
+  second preparation chunk can no longer strand the first 56 device owners.
+
+  The actual checkpoint evidence is deliberately separated from the pending
+  benchmark: CPU full-response e2e at T=12 plus one q=4 decode band is green;
+  the full local workspace (including 80 protocol tests after the cleanup
+  regressions), the five report tests, the five Python selector tests and the
+  CUDA-feature `--no-run` build are green; the A100 ABI-26 accelerator suite is
+  32/32 and the substrate/auth/product/LogUp differentials above are green. No
+  clean full or quick JSON has yet been produced for ABI 26 plus the call-site
+  scheduler, so **none of the <=10 s / <=4 s / <=5,000 sync / <=100 MB gates
+  is evaluated or claimed here**.
 
 - **2026-07-13 (P7 publication artifact closed)**: clean aggregate
   `benchmarks/results/p7-2026-07-13-2c836b3.json` (SHA-256

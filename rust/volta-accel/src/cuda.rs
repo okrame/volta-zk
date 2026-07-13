@@ -1,6 +1,7 @@
 use super::{
-    AccelError, BackendStats, DeviceMemoryBreakdown, DeviceTimingMode, Fp2Repr, OperationStats,
-    CUDA_ABI_VERSION, OPERATION_COUNT,
+    AccelError, BackendStats, DeviceMemoryBreakdown, DeviceTimingMode, Fp2Repr, Operation,
+    OperationStats, TimingCapacityPreflight, CUDA_ABI_VERSION, DEFERRED_TIMING_CAPACITY,
+    OPERATION_COUNT,
 };
 use std::ffi::{c_char, c_int, c_void, CStr, CString};
 use std::ptr;
@@ -44,20 +45,31 @@ struct RawStats {
     live_device_bytes: u64,
     peak_device_bytes: u64,
     timing_records: u64,
+    timing_elapsed_query_attempts: u64,
+    timing_elapsed_no_write: u64,
     timing_event_queries: u64,
     timing_pending_high_water: u64,
     timing_flush_count: u64,
+    coarse_timing_scopes: u64,
+    coarse_timing_ns: u64,
     timing_mode: u32,
     reserved: u32,
 }
 
-const _: () = assert!(std::mem::size_of::<RawStats>() == 288);
+const _: () = assert!(std::mem::size_of::<RawStats>() == 352);
 
 type AbiVersion = unsafe extern "C" fn() -> u32;
 type Create = unsafe extern "C" fn(*mut *mut c_void) -> c_int;
 type Destroy = unsafe extern "C" fn(*mut c_void);
 type LastError = unsafe extern "C" fn(*mut c_void) -> *const c_char;
 type EnableDeferredProfiling = unsafe extern "C" fn(*mut c_void) -> c_int;
+#[cfg(test)]
+type TestInjectElapsedNoWriteOnce = unsafe extern "C" fn(*mut c_void) -> c_int;
+type BeginCoarseTiming = unsafe extern "C" fn(*mut c_void, c_int) -> c_int;
+type EndCoarseTiming = unsafe extern "C" fn(*mut c_void) -> c_int;
+type AbortCoarseTiming = unsafe extern "C" fn(*mut c_void) -> c_int;
+type EnsureTimingCapacity =
+    unsafe extern "C" fn(*mut c_void, usize, *mut usize, *mut usize, *mut c_int) -> c_int;
 type FlushProfiling = unsafe extern "C" fn(*mut c_void) -> c_int;
 type ResetStats = unsafe extern "C" fn(*mut c_void) -> c_int;
 type GetStats = unsafe extern "C" fn(*mut c_void, *mut RawStats) -> c_int;
@@ -70,8 +82,10 @@ type ResidentDownload = unsafe extern "C" fn(*mut c_void, u64, usize, *mut c_voi
 type ResidentZero = unsafe extern "C" fn(*mut c_void, u64, usize, usize) -> c_int;
 type ResidentCopyRows =
     unsafe extern "C" fn(*mut c_void, u64, usize, usize, u64, usize, usize, usize, usize) -> c_int;
+type ResidentMailboxCopyRows = ResidentCopyRows;
 type Chacha8ProverSecretFpRowsDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, *const u8, u64, usize, usize) -> c_int;
+type MockCorrelationSubMasksDevice = Chacha8ProverSecretFpRowsDevice;
 type Chacha8ProverSecretFp2RowsPaddedDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, *const u8, u64, usize, usize, usize) -> c_int;
 type Fp2RowDotsDevice = unsafe extern "C" fn(
@@ -329,6 +343,8 @@ type MatrixFoldDevice = unsafe extern "C" fn(
 type Fp2DotDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize, *mut Fp2Repr) -> c_int;
 type Fp2ProductRoundDevice = Fp2DotDevice;
+type Fp2ProductRoundIntoDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize, u64, usize) -> c_int;
 type Fp2TripleProductRoundDevice = unsafe extern "C" fn(
     *mut c_void,
     u64,
@@ -339,6 +355,18 @@ type Fp2TripleProductRoundDevice = unsafe extern "C" fn(
     usize,
     usize,
     *mut Fp2Repr,
+) -> c_int;
+type Fp2TripleProductRoundIntoDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    u64,
+    usize,
 ) -> c_int;
 type LnHadamardFactorsDevice = unsafe extern "C" fn(
     *mut c_void,
@@ -545,6 +573,22 @@ type LogupGeneralRoundDevice = unsafe extern "C" fn(
     usize,
     *mut Fp2Repr,
 ) -> c_int;
+type LogupGeneralRoundIntoDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    u64,
+    usize,
+) -> c_int;
 type LogupFold4 = unsafe extern "C" fn(
     *mut c_void,
     *const Fp2Repr,
@@ -610,6 +654,31 @@ type LogupAuxRoundDevice = unsafe extern "C" fn(
     Fp2Repr,
     Fp2Repr,
     *mut Fp2Repr,
+) -> c_int;
+type LogupAuxRoundIntoDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    usize,
+    usize,
+    Fp2Repr,
+    Fp2Repr,
+    Fp2Repr,
+    u64,
+    usize,
 ) -> c_int;
 type HashFpColumns = unsafe extern "C" fn(*mut c_void, *const u64, usize, usize, *mut u8) -> c_int;
 type PcsCombineRows = unsafe extern "C" fn(
@@ -679,6 +748,8 @@ type PcsGatherColumnsDevice = unsafe extern "C" fn(
     usize,
     c_int,
 ) -> c_int;
+type ReserveFp2ProductRoundWorkspace = unsafe extern "C" fn(*mut c_void, usize) -> c_int;
+type ReserveLogupRoundWorkspace = unsafe extern "C" fn(*mut c_void, usize) -> c_int;
 
 struct Api {
     handle: *mut c_void,
@@ -686,6 +757,12 @@ struct Api {
     destroy: Destroy,
     last_error: LastError,
     enable_deferred_profiling: EnableDeferredProfiling,
+    #[cfg(test)]
+    test_inject_elapsed_no_write_once: TestInjectElapsedNoWriteOnce,
+    begin_coarse_timing: BeginCoarseTiming,
+    end_coarse_timing: EndCoarseTiming,
+    abort_coarse_timing: AbortCoarseTiming,
+    ensure_timing_capacity: EnsureTimingCapacity,
     flush_profiling: FlushProfiling,
     reset_stats: ResetStats,
     get_stats: GetStats,
@@ -697,7 +774,9 @@ struct Api {
     resident_download: ResidentDownload,
     resident_zero: ResidentZero,
     resident_copy_rows: ResidentCopyRows,
+    resident_mailbox_copy_rows: ResidentMailboxCopyRows,
     chacha8_prover_secret_fp_rows_device: Chacha8ProverSecretFpRowsDevice,
+    mock_correlation_sub_masks_device: MockCorrelationSubMasksDevice,
     chacha8_prover_secret_fp2_rows_padded_device: Chacha8ProverSecretFp2RowsPaddedDevice,
     fp2_row_dots_device: Fp2RowDotsDevice,
     fp2_powers_device: Fp2PowersDevice,
@@ -720,7 +799,11 @@ struct Api {
     matrix_fold_device: MatrixFoldDevice,
     fp2_dot_device: Fp2DotDevice,
     fp2_product_round_device: Fp2ProductRoundDevice,
+    fp2_product_round_into_device: Fp2ProductRoundIntoDevice,
+    reserve_fp2_product_round_workspace: ReserveFp2ProductRoundWorkspace,
+    reserve_logup_round_workspace: ReserveLogupRoundWorkspace,
     fp2_triple_product_round_device: Fp2TripleProductRoundDevice,
+    fp2_triple_product_round_into_device: Fp2TripleProductRoundIntoDevice,
     ln_hadamard_factors_device: LnHadamardFactorsDevice,
     base_broadcast_fp2_device: BaseBroadcastFp2Device,
     repeat_vector_device: RepeatVectorDevice,
@@ -744,6 +827,7 @@ struct Api {
     logup_materialize_leaves_device: LogupMaterializeLeavesDevice,
     logup_general_round: LogupGeneralRound,
     logup_general_round_device: LogupGeneralRoundDevice,
+    logup_general_round_into_device: LogupGeneralRoundIntoDevice,
     logup_fold4: LogupFold4,
     logup_fold4_device: LogupFold4Device,
     fp2_deinterleave_device: Fp2DeinterleaveDevice,
@@ -751,6 +835,7 @@ struct Api {
     fp2_fold_rows_device: Fp2FoldRowsDevice,
     logup_eq_rows_device: LogupEqRowsDevice,
     logup_aux_round_device: LogupAuxRoundDevice,
+    logup_aux_round_into_device: LogupAuxRoundIntoDevice,
     pcs_combine_rows: PcsCombineRows,
     pcs_gather_columns: PcsGatherColumns,
     hash_fp_columns: HashFpColumns,
@@ -824,6 +909,20 @@ impl CudaContext {
             enable_deferred_profiling: unsafe {
                 load_symbol(handle, b"volta_cuda_enable_deferred_profiling\0")?
             },
+            #[cfg(test)]
+            test_inject_elapsed_no_write_once: unsafe {
+                load_symbol(handle, b"volta_cuda_test_inject_elapsed_no_write_once\0")?
+            },
+            begin_coarse_timing: unsafe {
+                load_symbol(handle, b"volta_cuda_begin_coarse_timing\0")?
+            },
+            end_coarse_timing: unsafe { load_symbol(handle, b"volta_cuda_end_coarse_timing\0")? },
+            abort_coarse_timing: unsafe {
+                load_symbol(handle, b"volta_cuda_abort_coarse_timing\0")?
+            },
+            ensure_timing_capacity: unsafe {
+                load_symbol(handle, b"volta_cuda_ensure_timing_capacity\0")?
+            },
             flush_profiling: unsafe { load_symbol(handle, b"volta_cuda_flush_profiling\0")? },
             reset_stats: unsafe { load_symbol(handle, b"volta_cuda_reset_stats\0")? },
             get_stats: unsafe { load_symbol(handle, b"volta_cuda_get_stats\0")? },
@@ -837,8 +936,14 @@ impl CudaContext {
             resident_download: unsafe { load_symbol(handle, b"volta_cuda_resident_download\0")? },
             resident_zero: unsafe { load_symbol(handle, b"volta_cuda_resident_zero\0")? },
             resident_copy_rows: unsafe { load_symbol(handle, b"volta_cuda_resident_copy_rows\0")? },
+            resident_mailbox_copy_rows: unsafe {
+                load_symbol(handle, b"volta_cuda_resident_mailbox_copy_rows\0")?
+            },
             chacha8_prover_secret_fp_rows_device: unsafe {
                 load_symbol(handle, b"volta_cuda_chacha8_prover_secret_fp_rows_device\0")?
+            },
+            mock_correlation_sub_masks_device: unsafe {
+                load_symbol(handle, b"volta_cuda_mock_correlation_sub_masks_device\0")?
             },
             chacha8_prover_secret_fp2_rows_padded_device: unsafe {
                 load_symbol(handle, b"volta_cuda_chacha8_prover_secret_fp2_rows_padded_device\0")?
@@ -888,8 +993,20 @@ impl CudaContext {
             fp2_product_round_device: unsafe {
                 load_symbol(handle, b"volta_cuda_fp2_product_round_device\0")?
             },
+            fp2_product_round_into_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fp2_product_round_into_device\0")?
+            },
+            reserve_fp2_product_round_workspace: unsafe {
+                load_symbol(handle, b"volta_cuda_reserve_fp2_product_round_workspace\0")?
+            },
+            reserve_logup_round_workspace: unsafe {
+                load_symbol(handle, b"volta_cuda_reserve_logup_round_workspace\0")?
+            },
             fp2_triple_product_round_device: unsafe {
                 load_symbol(handle, b"volta_cuda_fp2_triple_product_round_device\0")?
+            },
+            fp2_triple_product_round_into_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fp2_triple_product_round_into_device\0")?
             },
             ln_hadamard_factors_device: unsafe {
                 load_symbol(handle, b"volta_cuda_ln_hadamard_factors_device\0")?
@@ -950,6 +1067,9 @@ impl CudaContext {
             logup_general_round_device: unsafe {
                 load_symbol(handle, b"volta_cuda_logup_general_round_device\0")?
             },
+            logup_general_round_into_device: unsafe {
+                load_symbol(handle, b"volta_cuda_logup_general_round_into_device\0")?
+            },
             logup_fold4: unsafe { load_symbol(handle, b"volta_cuda_logup_fold4\0")? },
             logup_fold4_device: unsafe { load_symbol(handle, b"volta_cuda_logup_fold4_device\0")? },
             fp2_deinterleave_device: unsafe {
@@ -966,6 +1086,9 @@ impl CudaContext {
             },
             logup_aux_round_device: unsafe {
                 load_symbol(handle, b"volta_cuda_logup_aux_round_device\0")?
+            },
+            logup_aux_round_into_device: unsafe {
+                load_symbol(handle, b"volta_cuda_logup_aux_round_into_device\0")?
             },
             pcs_combine_rows: unsafe { load_symbol(handle, b"volta_cuda_pcs_combine_rows\0")? },
             pcs_gather_columns: unsafe { load_symbol(handle, b"volta_cuda_pcs_gather_columns\0")? },
@@ -1006,6 +1129,56 @@ impl CudaContext {
     pub(super) fn enable_deferred_profiling(&mut self) -> Result<(), AccelError> {
         // SAFETY: context is live and the ABI mutates only its timing mode.
         self.check(unsafe { (self.api.enable_deferred_profiling)(self.raw) })
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_inject_elapsed_no_write_once(&mut self) -> Result<(), AccelError> {
+        // SAFETY: this diagnostic ABI mutates only a per-context one-shot
+        // counter and is called by the exact deferred-retry regression.
+        self.check(unsafe { (self.api.test_inject_elapsed_no_write_once)(self.raw) })
+    }
+
+    pub(super) fn begin_coarse_timing(&mut self, operation: Operation) -> Result<(), AccelError> {
+        // SAFETY: context is live, exclusively borrowed, and Operation uses the
+        // same stable discriminants as the versioned CUDA ABI.
+        self.check(unsafe { (self.api.begin_coarse_timing)(self.raw, operation as c_int) })
+    }
+
+    pub(super) fn end_coarse_timing(&mut self) -> Result<(), AccelError> {
+        // SAFETY: context is live and exclusively borrowed by the Rust guard.
+        self.check(unsafe { (self.api.end_coarse_timing)(self.raw) })
+    }
+
+    pub(super) fn abort_coarse_timing(&mut self) -> Result<(), AccelError> {
+        // SAFETY: the abort entry point is idempotent in deferred mode.
+        self.check(unsafe { (self.api.abort_coarse_timing)(self.raw) })
+    }
+
+    pub(super) fn ensure_timing_capacity(
+        &mut self,
+        bound: usize,
+    ) -> Result<TimingCapacityPreflight, AccelError> {
+        let mut pending_before = 0usize;
+        let mut pending_after = 0usize;
+        let mut flushed = 0;
+        // SAFETY: all output pointers are live and exclusive. The C boundary
+        // repeats the fixed-capacity and inactive-record checks.
+        self.check(unsafe {
+            (self.api.ensure_timing_capacity)(
+                self.raw,
+                bound,
+                &mut pending_before,
+                &mut pending_after,
+                &mut flushed,
+            )
+        })?;
+        Ok(TimingCapacityPreflight {
+            requested_records: bound,
+            capacity: DEFERRED_TIMING_CAPACITY,
+            pending_before,
+            pending_after,
+            flushed: flushed != 0,
+        })
     }
 
     pub(super) fn flush_profiling(&mut self) -> Result<(), AccelError> {
@@ -1055,9 +1228,13 @@ impl CudaContext {
             live_device_bytes: raw.live_device_bytes,
             peak_device_bytes: raw.peak_device_bytes,
             timing_records: raw.timing_records,
+            timing_elapsed_query_attempts: raw.timing_elapsed_query_attempts,
+            timing_elapsed_no_write: raw.timing_elapsed_no_write,
             timing_event_queries: raw.timing_event_queries,
             timing_pending_high_water: raw.timing_pending_high_water,
             timing_flush_count: raw.timing_flush_count,
+            coarse_timing_scopes: raw.coarse_timing_scopes,
+            coarse_timing_ns: raw.coarse_timing_ns,
             ..Default::default()
         };
         for i in 0..OPERATION_COUNT {
@@ -1164,6 +1341,35 @@ impl CudaContext {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn resident_mailbox_copy_rows(
+        &mut self,
+        src_id: u64,
+        src_offset_bytes: usize,
+        src_stride_bytes: usize,
+        dst_id: u64,
+        dst_offset_bytes: usize,
+        dst_stride_bytes: usize,
+        rows: usize,
+        row_bytes: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: the safe caller performs the same geometry/non-overlap
+        // validation as PCS copies; only the timing classification differs.
+        self.check(unsafe {
+            (self.api.resident_mailbox_copy_rows)(
+                self.raw,
+                src_id,
+                src_offset_bytes,
+                src_stride_bytes,
+                dst_id,
+                dst_offset_bytes,
+                dst_stride_bytes,
+                rows,
+                row_bytes,
+            )
+        })
+    }
+
     pub(super) fn chacha8_prover_secret_fp_rows_device(
         &mut self,
         output_id: u64,
@@ -1184,6 +1390,58 @@ impl CudaContext {
                 base_domain,
                 rows,
                 count,
+            )
+        })
+    }
+
+    pub(super) fn mock_correlation_sub_masks_device(
+        &mut self,
+        output_id: u64,
+        output_offset_bytes: usize,
+        mock_correlation_seed: &[u8; 32],
+        base_domain: u64,
+        rows: usize,
+        cols: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: the safe caller validates the mock-only domain namespace,
+        // exact output region, and seed lifetime. The seed is a copied launch
+        // argument and is never retained by CUDA.
+        self.check(unsafe {
+            (self.api.mock_correlation_sub_masks_device)(
+                self.raw,
+                output_id,
+                output_offset_bytes,
+                mock_correlation_seed.as_ptr(),
+                base_domain,
+                rows,
+                cols,
+            )
+        })
+    }
+
+    /// Test-only direct C-ABI call that deliberately bypasses the safe Rust
+    /// domain preflight. This proves that a non-Rust caller cannot enter the
+    /// reserved mock-correlation namespace through ABI 26.
+    #[cfg(test)]
+    pub(super) fn test_mock_correlation_sub_masks_device_raw(
+        &mut self,
+        output_id: u64,
+        mock_correlation_seed: &[u8; 32],
+        base_domain: u64,
+        rows: usize,
+        cols: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: the output allocation and seed are live. Geometry/domain
+        // values are intentionally untrusted so the C boundary validates them.
+        self.check(unsafe {
+            (self.api.mock_correlation_sub_masks_device)(
+                self.raw,
+                output_id,
+                0,
+                mock_correlation_seed.as_ptr(),
+                base_domain,
+                rows,
+                cols,
             )
         })
     }
@@ -1939,6 +2197,51 @@ impl CudaContext {
         Ok(output.map(Into::into))
     }
 
+    pub(super) fn reserve_fp2_product_round_workspace(
+        &mut self,
+        max_pairs: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: the safe caller rejects zero. The C boundary performs all
+        // byte-overflow checks and only grows the two private scratch slots.
+        self.check(unsafe { (self.api.reserve_fp2_product_round_workspace)(self.raw, max_pairs) })
+    }
+
+    pub(super) fn reserve_logup_round_workspace(
+        &mut self,
+        max_pairs: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: the safe caller rejects zero. The C boundary preflights
+        // byte arithmetic and grows only private general/aux reduction slots.
+        self.check(unsafe { (self.api.reserve_logup_round_workspace)(self.raw, max_pairs) })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn fp2_product_round_into_device(
+        &mut self,
+        a: u64,
+        a_offset: usize,
+        b: u64,
+        b_offset: usize,
+        pairs: usize,
+        output: u64,
+        output_offset: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates both input regions and the two-element
+        // mailbox slot. All work remains ordered on the context stream.
+        self.check(unsafe {
+            (self.api.fp2_product_round_into_device)(
+                self.raw,
+                a,
+                a_offset,
+                b,
+                b_offset,
+                pairs,
+                output,
+                output_offset,
+            )
+        })
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(super) fn fp2_triple_product_round_device(
         &mut self,
@@ -1967,6 +2270,37 @@ impl CudaContext {
             )
         })?;
         Ok(output.map(Into::into))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn fp2_triple_product_round_into_device(
+        &mut self,
+        a: u64,
+        a_offset: usize,
+        b: u64,
+        b_offset: usize,
+        c: u64,
+        c_offset: usize,
+        pairs: usize,
+        output: u64,
+        output_offset: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates every input region and the three-element
+        // mailbox slot. The call enqueues no device-to-host transfer.
+        self.check(unsafe {
+            (self.api.fp2_triple_product_round_into_device)(
+                self.raw,
+                a,
+                a_offset,
+                b,
+                b_offset,
+                c,
+                c_offset,
+                pairs,
+                output,
+                output_offset,
+            )
+        })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -2682,6 +3016,45 @@ impl CudaContext {
         Ok(out.map(Into::into))
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn logup_general_round_into_device(
+        &mut self,
+        p0: u64,
+        p0_offset: usize,
+        p1: u64,
+        p1_offset: usize,
+        q0: u64,
+        q0_offset: usize,
+        q1: u64,
+        q1_offset: usize,
+        suffix: u64,
+        suffix_offset: usize,
+        pairs: usize,
+        output: u64,
+        output_offset: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all resident regions. The four raw
+        // accumulators are copied D2D into one caller-owned mailbox slot.
+        self.check(unsafe {
+            (self.api.logup_general_round_into_device)(
+                self.raw,
+                p0,
+                p0_offset,
+                p1,
+                p1_offset,
+                q0,
+                q0_offset,
+                q1,
+                q1_offset,
+                suffix,
+                suffix_offset,
+                pairs,
+                output,
+                output_offset,
+            )
+        })
+    }
+
     pub(super) fn logup_fold4(
         &mut self,
         p0: &[Fp2],
@@ -2912,6 +3285,63 @@ impl CudaContext {
             )
         })?;
         Ok(output.map(Into::into))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn logup_aux_round_into_device(
+        &mut self,
+        q0: u64,
+        q0_offset: usize,
+        q1: u64,
+        q1_offset: usize,
+        suffix: u64,
+        suffix_offset: usize,
+        columns: u64,
+        columns_offset: usize,
+        eq: u64,
+        eq_offset: usize,
+        claim_cols: u64,
+        claim_cols_offset: usize,
+        weights: u64,
+        weights_offset: usize,
+        column_count: usize,
+        claim_count: usize,
+        vector_len: usize,
+        lambda: Fp2,
+        cpref: Fp2,
+        point: Fp2,
+        output: u64,
+        output_offset: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates all resident inputs and the three-element
+        // output slot. No host pointer crosses this ABI boundary.
+        self.check(unsafe {
+            (self.api.logup_aux_round_into_device)(
+                self.raw,
+                q0,
+                q0_offset,
+                q1,
+                q1_offset,
+                suffix,
+                suffix_offset,
+                columns,
+                columns_offset,
+                eq,
+                eq_offset,
+                claim_cols,
+                claim_cols_offset,
+                weights,
+                weights_offset,
+                column_count,
+                claim_count,
+                vector_len,
+                lambda.into(),
+                cpref.into(),
+                point.into(),
+                output,
+                output_offset,
+            )
+        })
     }
 
     pub(super) fn hash_fp_columns(

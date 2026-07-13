@@ -1,14 +1,36 @@
-# P7 handoff spec — for the incoming coding agent
+# P7b iteration 2 handoff spec — for the incoming coding agent
 
-**Audience**: an autonomous coding agent (Codex) taking over VOLTA-ZK from P7
-onward. You can and should explore the repo yourself; this document exists to
-give you (a) the operating contract with the harness, (b) the state and
+**Audience**: an autonomous coding agent (Codex) working on the active P7b
+resident-A100 iteration. You can and should explore the repo yourself; this
+document exists to give you (a) the operating contract with the harness, (b) the state and
 numbers of record, (c) the P7 work items with their levers already quantified,
 and (d) the invariants and known traps that are NOT derivable from the code.
 
 The former plan of record lived outside the repo (`~/.claude/plans/`); its P7
 content is folded into §4 below. From now on, this file plus the ledger ARE
 the plan of record.
+
+> **P7b override — 2026-07-13.** P7 itself is closed with a measured negative
+> performance verdict. Sections 3–4 below retain the P6/P7 historical design
+> and must not be read as the current performance gate. The authoritative
+> current plan is the `P7b target re-registration` deviation in
+> `docs/prototype-status.md`: Thunder remains the designated A100 host;
+> prefill core must be <=10 s, decode marginal <=4 s, response-session
+> blocking synchronizations <=5,000 and H2D <=100,000,000 bytes (stretch:
+> 6 s / 2.5 s). An official verdict requires T=100+50, Q=200, a clean tree,
+> one or more warmups and at least three measured repetitions. The old
+> rho<=10/<=2 batch-1 gates are retired because the native denominator is
+> launch-latency-bound below the measured prover kernel floor. The transcript
+> remains interactive designated-verifier ChaCha, not Fiat–Shamir: future
+> verifier challenges may not be exposed to the prover/GPU. The implementation
+> order is therefore deferred/coarse profiling, resident traffic, then the
+> explicitly logged proof-format-neutral (but transcript-scheduling-changing)
+> canonical round-synchronous mailboxes with exact public schedules, and only
+> then separately preregistered algebraic/proof-size changes. Raw
+> measurements and the live implementation checkpoint remain in the ledger.
+> P7b is still **in progress**: implementation tests and analytic scheduler
+> projections are not a gate verdict, and no clean full or quick result for
+> the current checkpoint has been registered yet.
 
 ---
 
@@ -19,11 +41,11 @@ inference**: VOLE-MAC authenticated values + blind GKR/sumcheck + LogUp
 lookups + a Ligero-style PCS for private weights, over Goldilocks
 (p = 2^64 − 2^32 + 1, extension E = F_p²). The formal phase (M1–M9, Lean
 theorems in `lean/`, see `docs/protocol-sketch.md`) is CLOSED and frozen.
-The prototype phase P runs GPT-2 small (124M) fixed-point on CPU
-(aarch64 VM, 4 cores, 11 GB): P0–P6 are done. The project lives or dies on
-**ρ = prover_wall / native_inference_wall**; the P7 targets ρ ≤ 2
-(decode) and ρ ≤ 10 (prefill) are **GPU targets** — CPU numbers validate
-architecture and counts, and P7 decides GPU go/no-go by extrapolation.
+The prototype phase P runs GPT-2 small (124M) fixed-point; P0–P7 are done and
+P7b is the active resident-A100 optimization iteration. Historically the
+project used **ρ = prover_wall / native_inference_wall** and P7 tested
+ρ <=2 (decode) / <=10 (prefill). Those values remain useful at compute-bound
+scale, but the P7b override above replaces them for GPT-2-small batch-1.
 
 ## 2. Operating contract with the harness (non-negotiable)
 
@@ -124,11 +146,12 @@ P7 has two halves: (A) the **report + GPU budget model** that decides GPU
 go/no-go (this was P7's original definition), and (B) the **e2e communication
 levers** left open by P6, of which the PCS opening is the dominant one.
 
-**Status 2026-07-11**: reporting, communication accounting, real-PCG cost
-model, A100 microkernel screening, replacement CPU baseline, and the exact
-native GPU anchor are done. The current decision-critical item is integrated
-GPU proving. Current targets and derived budgets live in `scripts/report.py`;
-the ledger holds measured history. Cloud runbook: `docs/p7-cloud-runbook.md`.
+**Historical P7 status (closed 2026-07-13)**: reporting, communication
+accounting, real-PCG cost model, A100 microkernel screening, replacement CPU
+baseline, and the exact native GPU anchor were completed. Its final
+decision-critical item was integrated GPU proving. Historical targets and
+derived budgets live in `scripts/report.py`; the ledger holds measured history.
+Cloud runbook: `docs/p7-cloud-runbook.md`.
 
 On `6mprfo7p`, ρ≤10/≤2 gives a proof-only prefill budget of **176.631
 ms**, required relative prover/native speedups **2.05125× / 4.14684×**, and

@@ -29,6 +29,9 @@ use volta_accel::{
 };
 use volta_field::{Fp, Fp2, FpStream, W};
 
+mod batch;
+pub use batch::*;
+
 /// Below this vector length the round loops stay serial.
 pub const PAR_THRESHOLD: usize = 1 << 12;
 
@@ -979,10 +982,14 @@ fn prove_engine_resident_from_device_leaves(
         len /= 2;
         ctr.bulk(3 * len as u64, 0);
     }
-    let root_p: Fp2 =
-        backend.download_device(&tree_p, 0, 1).expect("resident LogUp root-p download")[0].into();
-    let root_q: Fp2 =
-        backend.download_device(&tree_q, 0, 1).expect("resident LogUp root-q download")[0].into();
+    let root_values = backend
+        .download_device_segments(&[
+            DeviceSlice::new(&tree_p, 0, 1).expect("resident LogUp root-p scalar"),
+            DeviceSlice::new(&tree_q, 0, 1).expect("resident LogUp root-q scalar"),
+        ])
+        .expect("resident LogUp root mailbox download");
+    let root_p = Fp2::from(root_values[0]);
+    let root_q = Fp2::from(root_values[1]);
     sink.root(root_p, root_q);
     let mut point: Vec<Fp2> = Vec::new();
 
@@ -1226,16 +1233,20 @@ fn layer_leaf_ones_aux_resident(
     }
     assert_eq!(current_len, 1);
 
-    let q0_final: Fp2 =
-        backend.download_device(&q0, 0, 1).expect("resident LogUp aux q0 split")[0].into();
-    let q1_final: Fp2 =
-        backend.download_device(&q1, 0, 1).expect("resident LogUp aux q1 split")[0].into();
-    let col_values: Vec<Fp2> = backend
-        .download_device(&columns, 0, 2 * ax.column_count)
-        .expect("resident LogUp aux column splits")
+    let final_values: Vec<Fp2> = backend
+        .download_device_segments(&[
+            DeviceSlice::new(&q0, 0, 1).expect("resident LogUp aux q0 scalar"),
+            DeviceSlice::new(&q1, 0, 1).expect("resident LogUp aux q1 scalar"),
+            DeviceSlice::new(&columns, 0, 2 * ax.column_count)
+                .expect("resident LogUp aux column scalars"),
+        ])
+        .expect("resident LogUp aux split mailbox download")
         .into_iter()
         .map(Into::into)
         .collect();
+    let q0_final = final_values[0];
+    let q1_final = final_values[1];
+    let col_values = &final_values[2..];
     let colsp: Vec<[Fp2; 2]> = col_values.chunks_exact(2).map(|c| [c[0], c[1]]).collect();
     let finals: Vec<AuxFinal> = ax
         .claims
@@ -1392,11 +1403,20 @@ fn layer_general_resident(
         current_len = half;
     }
     assert_eq!(current_len, 1);
-    let mut splits = [Fp2::ZERO; 4];
-    for (dst, buffer) in splits.iter_mut().zip(&vectors) {
-        *dst =
-            backend.download_device(buffer, 0, 1).expect("resident LogUp split download")[0].into();
-    }
+    let split_raw = backend
+        .download_device_segments(&[
+            DeviceSlice::new(&vectors[0], 0, 1).expect("resident LogUp p0 split"),
+            DeviceSlice::new(&vectors[1], 0, 1).expect("resident LogUp p1 split"),
+            DeviceSlice::new(&vectors[2], 0, 1).expect("resident LogUp q0 split"),
+            DeviceSlice::new(&vectors[3], 0, 1).expect("resident LogUp q1 split"),
+        ])
+        .expect("resident LogUp split mailbox download");
+    let splits = [
+        Fp2::from(split_raw[0]),
+        Fp2::from(split_raw[1]),
+        Fp2::from(split_raw[2]),
+        Fp2::from(split_raw[3]),
+    ];
     for buffer in vectors {
         backend.free_device(buffer).expect("resident LogUp final-vector free");
     }
@@ -1692,8 +1712,18 @@ impl Doms {
     }
     pub fn take(&mut self, n: u64) -> u64 {
         let d = self.next;
-        self.next += n;
+        let next = self.next.checked_add(n).expect("correlation domain cursor overflow");
+        assert!(
+            self.next < crate::schedule::CORRELATION_DOMAIN_LIMIT
+                && next <= crate::schedule::CORRELATION_DOMAIN_LIMIT,
+            "correlation domain cursor entered reserved top bits"
+        );
+        self.next = next;
         d
+    }
+
+    pub(crate) fn cursor(&self) -> u64 {
+        self.next
     }
 }
 

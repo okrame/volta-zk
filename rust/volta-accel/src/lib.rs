@@ -17,8 +17,9 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 21;
-pub const OPERATION_COUNT: usize = 5;
+pub const CUDA_ABI_VERSION: u32 = 26;
+pub const OPERATION_COUNT: usize = 7;
+pub const DEFERRED_TIMING_CAPACITY: usize = 512;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(usize)]
@@ -28,6 +29,8 @@ pub enum Operation {
     PcsRows = 2,
     PcsNtt = 3,
     PcsMerkle = 4,
+    AuthMasks = 5,
+    Mailbox = 6,
 }
 
 impl Operation {
@@ -37,6 +40,8 @@ impl Operation {
         Operation::PcsRows,
         Operation::PcsNtt,
         Operation::PcsMerkle,
+        Operation::AuthMasks,
+        Operation::Mailbox,
     ];
 
     pub const fn name(self) -> &'static str {
@@ -46,6 +51,8 @@ impl Operation {
             Operation::PcsRows => "pcs_rows",
             Operation::PcsNtt => "pcs_ntt",
             Operation::PcsMerkle => "pcs_merkle",
+            Operation::AuthMasks => "auth_masks",
+            Operation::Mailbox => "mailbox",
         }
     }
 }
@@ -83,6 +90,19 @@ pub enum DeviceTimingMode {
     HostBarrierWall,
 }
 
+/// Result of a resident deferred-timing ring preflight. Callers can audit the
+/// exact boundary without reading stats (which itself flushes pending timing
+/// records). A `flushed` result is one synchronization classified solely as
+/// `sync_timing_flush` before the caller mutates its cohort.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TimingCapacityPreflight {
+    pub requested_records: usize,
+    pub capacity: usize,
+    pub pending_before: usize,
+    pub pending_after: usize,
+    pub flushed: bool,
+}
+
 impl DeviceTimingMode {
     pub const fn name(self) -> &'static str {
         match self {
@@ -107,6 +127,10 @@ impl BackendKind {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct OperationStats {
     pub calls: u64,
+    /// CUDA-event attribution for this operation. When the enclosing backend
+    /// has any `coarse_timing_scopes`, this includes coarse epoch intervals:
+    /// those are an upper bound on kernel execution because a remote runtime
+    /// may leave the stream idle while it awaits later launch submissions.
     pub kernel_ns: u64,
     pub cpu_residual_ns: u64,
 }
@@ -158,12 +182,24 @@ pub struct BackendStats {
     pub peak_device_bytes: u64,
     /// Deferred timing records enqueued since the most recent reset.
     pub timing_records: u64,
+    /// All elapsed-time query attempts, including provider success/no-write.
+    pub timing_elapsed_query_attempts: u64,
+    /// `cudaSuccess` elapsed queries that did not populate a finite duration.
+    /// Successful runs resolve every such query in a later exact sweep.
+    pub timing_elapsed_no_write: u64,
     /// Successful `cudaEventElapsedTime` calls used for timing attribution.
     pub timing_event_queries: u64,
     /// Maximum number of unflushed records in the fixed ring.
     pub timing_pending_high_water: u64,
     /// Non-empty coarse ring flushes, regardless of synchronization reason.
     pub timing_flush_count: u64,
+    /// Successfully sealed epoch-level timing scopes. Each contributes one
+    /// deferred timing record regardless of its inner primitive call count.
+    pub coarse_timing_scopes: u64,
+    /// Exact sum of the CUDA-event intervals contributed by coarse scopes.
+    /// These intervals can contain device idle launch-submit gaps and must not
+    /// be interpreted as a pure-kernel floor.
+    pub coarse_timing_ns: u64,
 }
 
 /// Physical allocations owned by a CUDA context. Active resident storage is
@@ -541,6 +577,71 @@ pub struct Backend {
     measurement_started: Option<Instant>,
 }
 
+/// Exclusive resident/deferred timing scope for one public GPU epoch.
+///
+/// Device-only primitives may be invoked through [`Self::backend_mut`]. The
+/// CUDA backend suppresses their individual timing events while retaining
+/// exact operation calls and byte-materialization counters. Calling
+/// [`Self::finish`] seals one aggregate kernel interval. Dropping the guard
+/// first aborts that uncommitted interval on a best-effort basis so the CUDA
+/// context remains usable after early returns and inner errors.
+#[must_use = "dropping an unfinished coarse timing scope aborts its timing record"]
+pub struct CoarseTimingScope<'a> {
+    backend: &'a mut Backend,
+    active: bool,
+}
+
+impl CoarseTimingScope<'_> {
+    pub fn backend_mut(&mut self) -> &mut Backend {
+        self.backend
+    }
+
+    pub fn finish(mut self) -> Result<(), AccelError> {
+        #[cfg(feature = "cuda")]
+        let result = self
+            .backend
+            .cuda
+            .as_mut()
+            .expect("resident backend without CUDA context")
+            .end_coarse_timing();
+        #[cfg(not(feature = "cuda"))]
+        let result = Err(AccelError::FeatureDisabled);
+        if result.is_ok() {
+            self.active = false;
+        }
+        result
+    }
+
+    pub fn abort(mut self) -> Result<(), AccelError> {
+        #[cfg(feature = "cuda")]
+        let result = self
+            .backend
+            .cuda
+            .as_mut()
+            .expect("resident backend without CUDA context")
+            .abort_coarse_timing();
+        #[cfg(not(feature = "cuda"))]
+        let result = Err(AccelError::FeatureDisabled);
+        if result.is_ok() {
+            self.active = false;
+        }
+        result
+    }
+}
+
+impl Drop for CoarseTimingScope<'_> {
+    fn drop(&mut self) {
+        if !self.active {
+            return;
+        }
+        #[cfg(feature = "cuda")]
+        if let Some(cuda) = self.backend.cuda.as_mut() {
+            let _ = cuda.abort_coarse_timing();
+        }
+        self.active = false;
+    }
+}
+
 impl Backend {
     pub fn cpu() -> Backend {
         Backend {
@@ -587,6 +688,58 @@ impl Backend {
         self.kind
     }
 
+    /// Start one coarse CUDA-event interval for a sealed resident epoch.
+    /// Legacy/hybrid timing modes are rejected by the versioned CUDA ABI.
+    /// Allocate/upload all inputs and the output mailbox before entering.
+    pub fn coarse_timing_scope(
+        &mut self,
+        operation: Operation,
+    ) -> Result<CoarseTimingScope<'_>, AccelError> {
+        self.require_resident()?;
+        #[cfg(not(feature = "cuda"))]
+        let _ = operation;
+        #[cfg(feature = "cuda")]
+        {
+            self.cuda
+                .as_mut()
+                .expect("resident backend without CUDA context")
+                .begin_coarse_timing(operation)?;
+            return Ok(CoarseTimingScope { backend: self, active: true });
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Ensure that a sealed resident cohort can enqueue at most `bound`
+    /// deferred timing records without triggering a hidden mid-cohort flush.
+    /// If the existing records plus the bound exceed the fixed ring, this
+    /// performs exactly one pre-cohort `sync_timing_flush`; equality fits and
+    /// does not synchronize.
+    pub fn ensure_timing_capacity(
+        &mut self,
+        bound: usize,
+    ) -> Result<TimingCapacityPreflight, AccelError> {
+        self.require_resident()?;
+        if bound > DEFERRED_TIMING_CAPACITY {
+            return Err(AccelError::InvalidInput(
+                "deferred timing cohort bound exceeds ring capacity",
+            ));
+        }
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .expect("resident backend without CUDA context")
+                .ensure_timing_capacity(bound);
+        }
+        #[cfg(not(feature = "cuda"))]
+        {
+            let _ = bound;
+            Err(AccelError::FeatureDisabled)
+        }
+    }
+
     pub fn is_cpu(&self) -> bool {
         self.kind == BackendKind::Cpu
     }
@@ -602,6 +755,21 @@ impl Backend {
         }
         self.measurement_started = Some(Instant::now());
         self.measurement_active = true;
+        Ok(())
+    }
+
+    /// Abandon the current measurement and establish a fresh empty stats
+    /// boundary. On CUDA this is a synchronizing recovery operation when an
+    /// unfinished coarse timing scope had already accounted device work: the
+    /// incomplete measurement remains unreadable until this reset succeeds.
+    pub fn reset_measurement(&mut self) -> Result<(), AccelError> {
+        #[cfg(feature = "cuda")]
+        if let Some(cuda) = &mut self.cuda {
+            cuda.reset_stats()?;
+        }
+        self.cpu_residual_ns = [0; OPERATION_COUNT];
+        self.measurement_active = false;
+        self.measurement_started = None;
         Ok(())
     }
 
@@ -787,6 +955,65 @@ impl Backend {
         Err(AccelError::FeatureDisabled)
     }
 
+    /// Concatenate non-empty resident slices into a temporary device mailbox
+    /// and cross the device-to-host boundary exactly once. This is the common
+    /// batching seam for protocol scalars that originate in disjoint buffers.
+    pub fn download_device_segments<T: DeviceElement>(
+        &mut self,
+        segments: &[DeviceSlice<'_, T>],
+    ) -> Result<Vec<T>, AccelError> {
+        if segments.is_empty() {
+            return Err(AccelError::InvalidInput(
+                "device segment download requires a non-empty cohort",
+            ));
+        }
+        let mut total = 0usize;
+        for segment in segments {
+            if segment.is_empty() {
+                return Err(AccelError::InvalidInput(
+                    "device segment download contains an empty segment",
+                ));
+            }
+            self.validate_buffer(segment.buffer())?;
+            total = total
+                .checked_add(segment.len())
+                .ok_or(AccelError::InvalidInput("device segment cohort length overflow"))?;
+        }
+
+        let mailbox = self.alloc_device(total)?;
+        let operation = (|| {
+            // One coarse copy epoch plus the following D2H transfer must fit
+            // without a hidden ring flush between them.
+            self.ensure_timing_capacity(2)?;
+            {
+                let mut scope = self.coarse_timing_scope(Operation::Mailbox)?;
+                let mut output_offset = 0usize;
+                for &segment in segments {
+                    scope.backend_mut().copy_mailbox_rows(
+                        segment,
+                        segment.len(),
+                        &mailbox,
+                        output_offset,
+                        segment.len(),
+                        1,
+                        segment.len(),
+                    )?;
+                    output_offset = output_offset
+                        .checked_add(segment.len())
+                        .ok_or(AccelError::InvalidInput("device segment cohort length overflow"))?;
+                }
+                scope.finish()?;
+            }
+            self.download_device(&mailbox, 0, total)
+        })();
+        let cleanup = self.free_device(mailbox);
+        match (operation, cleanup) {
+            (Err(error), _) => Err(error),
+            (Ok(_), Err(error)) => Err(error),
+            (Ok(values), Ok(())) => Ok(values),
+        }
+    }
+
     /// Fill a typed resident region with canonical all-zero bytes. This is a
     /// device operation attributed to [`Operation::PcsRows`], not an upload.
     pub fn zero_device<T: DeviceElement>(
@@ -831,6 +1058,57 @@ impl Backend {
         rows: usize,
         cols: usize,
     ) -> Result<(), AccelError> {
+        self.copy_device_rows_classified(
+            src,
+            src_stride,
+            dst,
+            dst_offset,
+            dst_stride,
+            rows,
+            cols,
+            Operation::PcsRows,
+        )
+    }
+
+    /// Copy non-overlapping rows into a protocol mailbox. Geometry and D2D
+    /// bytes match [`Self::copy_device_rows`], but timing is attributed to
+    /// [`Operation::Mailbox`] and never silently charged to PCS.
+    #[allow(clippy::too_many_arguments)]
+    pub fn copy_mailbox_rows<T: DeviceElement>(
+        &mut self,
+        src: DeviceSlice<'_, T>,
+        src_stride: usize,
+        dst: &DeviceBuffer<T>,
+        dst_offset: usize,
+        dst_stride: usize,
+        rows: usize,
+        cols: usize,
+    ) -> Result<(), AccelError> {
+        self.copy_device_rows_classified(
+            src,
+            src_stride,
+            dst,
+            dst_offset,
+            dst_stride,
+            rows,
+            cols,
+            Operation::Mailbox,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn copy_device_rows_classified<T: DeviceElement>(
+        &mut self,
+        src: DeviceSlice<'_, T>,
+        src_stride: usize,
+        dst: &DeviceBuffer<T>,
+        dst_offset: usize,
+        dst_stride: usize,
+        rows: usize,
+        cols: usize,
+        operation: Operation,
+    ) -> Result<(), AccelError> {
+        debug_assert!(matches!(operation, Operation::PcsRows | Operation::Mailbox));
         self.validate_buffer(src.buffer())?;
         self.validate_buffer(dst)?;
         let src_span = checked_strided_span(rows, src_stride, cols)?;
@@ -870,19 +1148,36 @@ impl Backend {
             let row_bytes = cols
                 .checked_mul(element_bytes)
                 .ok_or(AccelError::InvalidInput("device row-copy byte width overflow"))?;
-            return self.cuda.as_mut().expect("CUDA kind without context").resident_copy_rows(
-                src.buffer().id,
-                src_offset_bytes,
-                src_stride_bytes,
-                dst.id,
-                dst_offset_bytes,
-                dst_stride_bytes,
-                rows,
-                row_bytes,
-            );
+            let cuda = self.cuda.as_mut().expect("CUDA kind without context");
+            return match operation {
+                Operation::PcsRows => cuda.resident_copy_rows(
+                    src.buffer().id,
+                    src_offset_bytes,
+                    src_stride_bytes,
+                    dst.id,
+                    dst_offset_bytes,
+                    dst_stride_bytes,
+                    rows,
+                    row_bytes,
+                ),
+                Operation::Mailbox => cuda.resident_mailbox_copy_rows(
+                    src.buffer().id,
+                    src_offset_bytes,
+                    src_stride_bytes,
+                    dst.id,
+                    dst_offset_bytes,
+                    dst_stride_bytes,
+                    rows,
+                    row_bytes,
+                ),
+                _ => unreachable!("validated D2D copy classification"),
+            };
         }
         #[cfg(not(feature = "cuda"))]
-        Err(AccelError::FeatureDisabled)
+        {
+            let _ = operation;
+            Err(AccelError::FeatureDisabled)
+        }
     }
 
     /// Generate compact per-row `FpStream` values from a prover-secret PCS
@@ -896,23 +1191,69 @@ impl Backend {
         count: usize,
     ) -> Result<DeviceBuffer<u64>, AccelError> {
         validate_chacha8_rows(base_domain, rows, count)?;
+        self.chacha8_fp_rows_device_impl(prover_secret_seed, base_domain, rows, count)
+    }
+
+    /// Expand row-major subfield masks for the explicitly mock-PCG
+    /// correlation backend without uploading the masks.
+    ///
+    /// This is a non-production compatibility seam for
+    /// `volta_mac::SubMaskRowsReservation::ChaCha8`. `mock_correlation_seed`
+    /// is the shared mock correlation seed only: callers must never pass
+    /// `Delta`, verifier randomness, transcript state, or a Fiat-Shamir
+    /// challenge. Pooled PCG reservations must use their returned host masks
+    /// instead of this deterministic generator.
+    pub fn mock_correlation_sub_masks_device(
+        &mut self,
+        mock_correlation_seed: [u8; 32],
+        base_domain: u64,
+        rows: usize,
+        cols: usize,
+    ) -> Result<DeviceBuffer<u64>, AccelError> {
+        validate_mock_correlation_mask_rows(base_domain, rows, cols)?;
+        let output = self.alloc_device(checked_product(rows, cols)?)?;
+        #[cfg(feature = "cuda")]
+        let result = self
+            .cuda
+            .as_mut()
+            .expect("CUDA kind without context")
+            .mock_correlation_sub_masks_device(
+                output.id,
+                0,
+                &mock_correlation_seed,
+                base_domain,
+                rows,
+                cols,
+            );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = {
+            let _ = (mock_correlation_seed, base_domain);
+            Err(AccelError::FeatureDisabled)
+        };
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
+    }
+
+    fn chacha8_fp_rows_device_impl(
+        &mut self,
+        seed: [u8; 32],
+        base_domain: u64,
+        rows: usize,
+        count: usize,
+    ) -> Result<DeviceBuffer<u64>, AccelError> {
         let output = self.alloc_device(checked_product(rows, count)?)?;
         #[cfg(feature = "cuda")]
         let result = self
             .cuda
             .as_mut()
             .expect("CUDA kind without context")
-            .chacha8_prover_secret_fp_rows_device(
-                output.id,
-                0,
-                &prover_secret_seed,
-                base_domain,
-                rows,
-                count,
-            );
+            .chacha8_prover_secret_fp_rows_device(output.id, 0, &seed, base_domain, rows, count);
         #[cfg(not(feature = "cuda"))]
         let result: Result<(), AccelError> = {
-            let _ = prover_secret_seed;
+            let _ = (seed, base_domain);
             Err(AccelError::FeatureDisabled)
         };
         if let Err(error) = result {
@@ -2120,6 +2461,93 @@ impl Backend {
         Err(AccelError::FeatureDisabled)
     }
 
+    /// Preallocate the private reduction scratch needed by every product
+    /// round up to `max_pairs`. This launches no kernel and enqueues no timing
+    /// record; call it before a coarse scope so no lazy workspace growth can
+    /// split or reject the sealed cohort.
+    pub fn reserve_fp2_product_round_workspace(
+        &mut self,
+        max_pairs: usize,
+    ) -> Result<(), AccelError> {
+        if max_pairs == 0 {
+            return Err(AccelError::InvalidInput(
+                "product-round workspace reservation requires non-zero pairs",
+            ));
+        }
+        self.require_resident()?;
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .expect("resident backend without CUDA context")
+                .reserve_fp2_product_round_workspace(max_pairs);
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Preallocate all private reduction scratch needed by resident LogUp
+    /// general and auxiliary rounds up to `max_pairs`. This launches no
+    /// kernel and must run before entering a coarse cohort scope.
+    pub fn reserve_logup_round_workspace(&mut self, max_pairs: usize) -> Result<(), AccelError> {
+        if max_pairs == 0 {
+            return Err(AccelError::InvalidInput(
+                "LogUp round workspace reservation requires non-zero pairs",
+            ));
+        }
+        self.require_resident()?;
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .expect("resident backend without CUDA context")
+                .reserve_logup_round_workspace(max_pairs);
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Enqueue one product-sumcheck round and place `[g(0), g(2)]` in a
+    /// caller-owned resident mailbox. This call performs no D2H transfer;
+    /// one later [`Self::download_device`] can seal an entire round cohort.
+    pub fn fp2_product_round_into_device(
+        &mut self,
+        a: DeviceSlice<'_, Fp2Repr>,
+        b: DeviceSlice<'_, Fp2Repr>,
+        output: &DeviceBuffer<Fp2Repr>,
+        output_offset: usize,
+    ) -> Result<(), AccelError> {
+        if a.len() != b.len() || a.len() < 2 || a.len() % 2 != 0 {
+            return Err(AccelError::InvalidInput(
+                "invalid resident product-sumcheck mailbox geometry",
+            ));
+        }
+        self.validate_device_slice(a, a.len())?;
+        self.validate_device_slice(b, b.len())?;
+        self.validate_buffer(output)?;
+        validate_region(output.len, output_offset, 2)?;
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .expect("CUDA kind without context")
+                .fp2_product_round_into_device(
+                    a.buffer.id,
+                    a.offset,
+                    b.buffer.id,
+                    b.offset,
+                    a.len / 2,
+                    output.id,
+                    output_offset,
+                );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
     pub fn fp2_triple_product_round_device(
         &mut self,
         a: DeviceSlice<'_, Fp2Repr>,
@@ -2146,6 +2574,48 @@ impl Backend {
                     c.buffer.id,
                     c.offset,
                     a.len / 2,
+                );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Enqueue one degree-3 product round and place `[g(0), g(2), g(3)]` in
+    /// a resident mailbox without exposing a protocol scalar to the host.
+    pub fn fp2_triple_product_round_into_device(
+        &mut self,
+        a: DeviceSlice<'_, Fp2Repr>,
+        b: DeviceSlice<'_, Fp2Repr>,
+        c: DeviceSlice<'_, Fp2Repr>,
+        output: &DeviceBuffer<Fp2Repr>,
+        output_offset: usize,
+    ) -> Result<(), AccelError> {
+        if a.len() != b.len() || a.len() != c.len() || a.len() < 2 || a.len() % 2 != 0 {
+            return Err(AccelError::InvalidInput(
+                "invalid resident triple-product mailbox geometry",
+            ));
+        }
+        for input in [a, b, c] {
+            self.validate_device_slice(input, input.len())?;
+        }
+        self.validate_buffer(output)?;
+        validate_region(output.len, output_offset, 3)?;
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .expect("CUDA kind without context")
+                .fp2_triple_product_round_into_device(
+                    a.buffer.id,
+                    a.offset,
+                    b.buffer.id,
+                    b.offset,
+                    c.buffer.id,
+                    c.offset,
+                    a.len / 2,
+                    output.id,
+                    output_offset,
                 );
         }
         #[cfg(not(feature = "cuda"))]
@@ -3333,6 +3803,63 @@ impl Backend {
         Err(AccelError::FeatureDisabled)
     }
 
+    /// Enqueue one resident LogUp round and write four raw accumulators
+    /// `[pq(0), pq(2), qq(0), qq(2)]` into a contiguous device mailbox.
+    /// Transcript-dependent assembly remains host-side after a cohort-wide
+    /// mailbox download.
+    #[allow(clippy::too_many_arguments)]
+    pub fn logup_general_round_into_device(
+        &mut self,
+        p0: &DeviceBuffer<Fp2Repr>,
+        p0_offset: usize,
+        p1: &DeviceBuffer<Fp2Repr>,
+        p1_offset: usize,
+        q0: &DeviceBuffer<Fp2Repr>,
+        q0_offset: usize,
+        q1: &DeviceBuffer<Fp2Repr>,
+        q1_offset: usize,
+        suffix_eq: &DeviceBuffer<Fp2Repr>,
+        suffix_offset: usize,
+        pairs: usize,
+        output: &DeviceBuffer<Fp2Repr>,
+        output_offset: usize,
+    ) -> Result<(), AccelError> {
+        for buffer in [p0, p1, q0, q1, suffix_eq, output] {
+            self.validate_buffer(buffer)?;
+        }
+        let values = checked_product(2, pairs)?;
+        for (buffer, offset) in [(p0, p0_offset), (p1, p1_offset), (q0, q0_offset), (q1, q1_offset)]
+        {
+            validate_region(buffer.len, offset, values)?;
+        }
+        validate_region(suffix_eq.len, suffix_offset, pairs)?;
+        validate_region(output.len, output_offset, 4)?;
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .expect("CUDA kind without context")
+                .logup_general_round_into_device(
+                    p0.id,
+                    p0_offset,
+                    p1.id,
+                    p1_offset,
+                    q0.id,
+                    q0_offset,
+                    q1.id,
+                    q1_offset,
+                    suffix_eq.id,
+                    suffix_offset,
+                    pairs,
+                    output.id,
+                    output_offset,
+                );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
     pub fn logup_fold4(
         &mut self,
         p0: &[Fp2],
@@ -3359,6 +3886,91 @@ impl Backend {
         Err(AccelError::FeatureDisabled)
     }
 
+    /// Fold four resident Fp2 vectors into caller-owned, pairwise-disjoint
+    /// output regions. This form performs no allocation and is safe inside a
+    /// coarse LogUp timing scope when all storage was prepared beforehand.
+    #[allow(clippy::too_many_arguments)]
+    pub fn logup_fold4_into_device(
+        &mut self,
+        p0: DeviceSlice<'_, Fp2Repr>,
+        p1: DeviceSlice<'_, Fp2Repr>,
+        q0: DeviceSlice<'_, Fp2Repr>,
+        q1: DeviceSlice<'_, Fp2Repr>,
+        pairs: usize,
+        r: Fp2,
+        o0: &DeviceBuffer<Fp2Repr>,
+        o0_offset: usize,
+        o1: &DeviceBuffer<Fp2Repr>,
+        o1_offset: usize,
+        o2: &DeviceBuffer<Fp2Repr>,
+        o2_offset: usize,
+        o3: &DeviceBuffer<Fp2Repr>,
+        o3_offset: usize,
+    ) -> Result<(), AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        let _ = r;
+        if pairs == 0 {
+            return Err(AccelError::InvalidInput("invalid resident LogUp fold geometry"));
+        }
+        let values = checked_product(2, pairs)?;
+        let inputs = [p0, p1, q0, q1];
+        let outputs = [(o0, o0_offset), (o1, o1_offset), (o2, o2_offset), (o3, o3_offset)];
+        for &input in &inputs {
+            self.validate_device_slice(input, values)?;
+        }
+        for &(output, offset) in &outputs {
+            self.validate_buffer(output)?;
+            validate_region(output.len, offset, pairs)?;
+        }
+        for &input in &inputs {
+            for &(output, output_offset) in &outputs {
+                if input.buffer().id == output.id
+                    && checked_regions_overlap(input.offset(), values, output_offset, pairs)?
+                {
+                    return Err(AccelError::InvalidInput(
+                        "resident LogUp fold input and output overlap",
+                    ));
+                }
+            }
+        }
+        for i in 0..outputs.len() {
+            for j in i + 1..outputs.len() {
+                if outputs[i].0.id == outputs[j].0.id
+                    && checked_regions_overlap(outputs[i].1, pairs, outputs[j].1, pairs)?
+                {
+                    return Err(AccelError::InvalidInput(
+                        "resident LogUp fold output regions overlap",
+                    ));
+                }
+            }
+        }
+        #[cfg(feature = "cuda")]
+        {
+            return self.cuda.as_mut().expect("CUDA kind without context").logup_fold4_device(
+                p0.buffer().id,
+                p0.offset(),
+                p1.buffer().id,
+                p1.offset(),
+                q0.buffer().id,
+                q0.offset(),
+                q1.buffer().id,
+                q1.offset(),
+                pairs,
+                r,
+                o0.id,
+                o0_offset,
+                o1.id,
+                o1_offset,
+                o2.id,
+                o2_offset,
+                o3.id,
+                o3_offset,
+            );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
     /// Fold four resident Fp2 vectors and keep all four outputs resident.
     #[allow(clippy::too_many_arguments)]
     pub fn logup_fold4_device(
@@ -3374,16 +3986,17 @@ impl Backend {
         pairs: usize,
         r: Fp2,
     ) -> Result<[DeviceBuffer<Fp2Repr>; 4], AccelError> {
-        #[cfg(not(feature = "cuda"))]
-        let _ = r;
+        if pairs == 0 {
+            return Err(AccelError::InvalidInput("invalid resident LogUp fold geometry"));
+        }
         for buffer in [p0, p1, q0, q1] {
             self.validate_buffer(buffer)?;
         }
         let values = checked_product(2, pairs)?;
-        for (buffer, offset) in [(p0, p0_offset), (p1, p1_offset), (q0, q0_offset), (q1, q1_offset)]
-        {
-            validate_region(buffer.len, offset, values)?;
-        }
+        let p0_slice = DeviceSlice::new(p0, p0_offset, values)?;
+        let p1_slice = DeviceSlice::new(p1, p1_offset, values)?;
+        let q0_slice = DeviceSlice::new(q0, q0_offset, values)?;
+        let q1_slice = DeviceSlice::new(q1, q1_offset, values)?;
         let o0 = self.alloc_device(pairs)?;
         let o1 = match self.alloc_device(pairs) {
             Ok(x) => x,
@@ -3409,13 +4022,9 @@ impl Backend {
                 return Err(e);
             }
         };
-        #[cfg(feature = "cuda")]
-        let result = self.cuda.as_mut().expect("CUDA kind without context").logup_fold4_device(
-            p0.id, p0_offset, p1.id, p1_offset, q0.id, q0_offset, q1.id, q1_offset, pairs, r,
-            o0.id, 0, o1.id, 0, o2.id, 0, o3.id, 0,
+        let result = self.logup_fold4_into_device(
+            p0_slice, p1_slice, q0_slice, q1_slice, pairs, r, &o0, 0, &o1, 0, &o2, 0, &o3, 0,
         );
-        #[cfg(not(feature = "cuda"))]
-        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
         if let Err(error) = result {
             let _ = self.free_device(o3);
             let _ = self.free_device(o2);
@@ -3491,6 +4100,50 @@ impl Backend {
         Ok(output)
     }
 
+    /// Fold `rows` independent resident Fp2 vectors of equal even length into
+    /// caller-owned storage. This non-allocating form is safe inside a coarse
+    /// timing scope when both buffers were allocated beforehand.
+    #[allow(clippy::too_many_arguments)]
+    pub fn fp2_fold_rows_into_device(
+        &mut self,
+        input: DeviceSlice<'_, Fp2Repr>,
+        rows: usize,
+        len: usize,
+        r: Fp2,
+        output: &DeviceBuffer<Fp2Repr>,
+        output_offset: usize,
+    ) -> Result<(), AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        let _ = r;
+        if rows == 0 || len < 2 || len % 2 != 0 {
+            return Err(AccelError::InvalidInput("invalid resident row-fold geometry"));
+        }
+        let input_len = checked_product(rows, len)?;
+        let output_len = checked_product(rows, len / 2)?;
+        self.validate_device_slice(input, input_len)?;
+        self.validate_buffer(output)?;
+        validate_region(output.len, output_offset, output_len)?;
+        if input.buffer().id == output.id
+            && checked_regions_overlap(input.offset(), input_len, output_offset, output_len)?
+        {
+            return Err(AccelError::InvalidInput("resident row-fold input and output overlap"));
+        }
+        #[cfg(feature = "cuda")]
+        {
+            return self.cuda.as_mut().expect("CUDA kind without context").fp2_fold_rows_device(
+                input.buffer().id,
+                input.offset(),
+                rows,
+                len,
+                r,
+                output.id,
+                output_offset,
+            );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
     /// Fold `rows` independent resident Fp2 vectors of equal even length.
     pub fn fp2_fold_rows_device(
         &mut self,
@@ -3500,26 +4153,14 @@ impl Backend {
         len: usize,
         r: Fp2,
     ) -> Result<DeviceBuffer<Fp2Repr>, AccelError> {
-        #[cfg(not(feature = "cuda"))]
-        let _ = r;
         self.validate_buffer(input)?;
         if rows == 0 || len < 2 || len % 2 != 0 {
             return Err(AccelError::InvalidInput("invalid resident row-fold geometry"));
         }
-        validate_region(input.len, input_offset, checked_product(rows, len)?)?;
+        let input_len = checked_product(rows, len)?;
+        let input = DeviceSlice::new(input, input_offset, input_len)?;
         let output = self.alloc_device(checked_product(rows, len / 2)?)?;
-        #[cfg(feature = "cuda")]
-        let result = self.cuda.as_mut().expect("CUDA kind without context").fp2_fold_rows_device(
-            input.id,
-            input_offset,
-            rows,
-            len,
-            r,
-            output.id,
-            0,
-        );
-        #[cfg(not(feature = "cuda"))]
-        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        let result = self.fp2_fold_rows_into_device(input, rows, len, r, &output, 0);
         if let Err(error) = result {
             let _ = self.free_device(output);
             return Err(error);
@@ -3646,6 +4287,96 @@ impl Backend {
                 cpref,
                 point,
             );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Enqueue one aux LogUp round and place `[g(0), g(2), g(3)]` in a
+    /// resident mailbox. No protocol-visible D2H transfer occurs here.
+    #[allow(clippy::too_many_arguments)]
+    pub fn logup_aux_round_into_device(
+        &mut self,
+        q0: &DeviceBuffer<Fp2Repr>,
+        q1: &DeviceBuffer<Fp2Repr>,
+        suffix: &DeviceBuffer<Fp2Repr>,
+        suffix_offset: usize,
+        columns: &DeviceBuffer<Fp2Repr>,
+        eq_rows: Option<&DeviceBuffer<Fp2Repr>>,
+        claim_cols: Option<&DeviceBuffer<u32>>,
+        weights: Option<&DeviceBuffer<Fp2Repr>>,
+        column_count: usize,
+        claim_count: usize,
+        vector_len: usize,
+        lambda: Fp2,
+        cpref: Fp2,
+        point: Fp2,
+        output: &DeviceBuffer<Fp2Repr>,
+        output_offset: usize,
+    ) -> Result<(), AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        let _ = (lambda, cpref, point);
+        for buffer in [q0, q1, columns, output] {
+            self.validate_buffer(buffer)?;
+        }
+        self.validate_buffer(suffix)?;
+        if column_count == 0 || vector_len < 2 || vector_len % 2 != 0 {
+            return Err(AccelError::InvalidInput("invalid resident aux-round mailbox geometry"));
+        }
+        validate_region(q0.len, 0, vector_len)?;
+        validate_region(q1.len, 0, vector_len)?;
+        validate_region(suffix.len, suffix_offset, vector_len / 2)?;
+        validate_region(columns.len, 0, checked_product(2 * column_count, vector_len)?)?;
+        validate_region(output.len, output_offset, 3)?;
+        let optional_ids = if claim_count == 0 {
+            (0, 0, 0)
+        } else {
+            let eq_rows =
+                eq_rows.ok_or(AccelError::InvalidInput("missing resident aux eq rows"))?;
+            let claim_cols =
+                claim_cols.ok_or(AccelError::InvalidInput("missing resident aux column ids"))?;
+            let weights =
+                weights.ok_or(AccelError::InvalidInput("missing resident aux weights"))?;
+            self.validate_buffer(eq_rows)?;
+            self.validate_buffer(claim_cols)?;
+            self.validate_buffer(weights)?;
+            validate_region(eq_rows.len, 0, checked_product(claim_count, vector_len)?)?;
+            validate_region(claim_cols.len, 0, claim_count)?;
+            validate_region(weights.len, 0, checked_product(2, claim_count)?)?;
+            (eq_rows.id, claim_cols.id, weights.id)
+        };
+        #[cfg(not(feature = "cuda"))]
+        let _ = optional_ids;
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .expect("CUDA kind without context")
+                .logup_aux_round_into_device(
+                    q0.id,
+                    0,
+                    q1.id,
+                    0,
+                    suffix.id,
+                    suffix_offset,
+                    columns.id,
+                    0,
+                    optional_ids.0,
+                    0,
+                    optional_ids.1,
+                    0,
+                    optional_ids.2,
+                    0,
+                    column_count,
+                    claim_count,
+                    vector_len,
+                    lambda,
+                    cpref,
+                    point,
+                    output.id,
+                    output_offset,
+                );
         }
         #[cfg(not(feature = "cuda"))]
         Err(AccelError::FeatureDisabled)
@@ -4036,6 +4767,21 @@ fn checked_product(a: usize, b: usize) -> Result<usize, AccelError> {
     a.checked_mul(b).ok_or(AccelError::InvalidInput("shape overflow"))
 }
 
+fn checked_regions_overlap(
+    a_offset: usize,
+    a_len: usize,
+    b_offset: usize,
+    b_len: usize,
+) -> Result<bool, AccelError> {
+    let a_end = a_offset
+        .checked_add(a_len)
+        .ok_or(AccelError::InvalidInput("device region envelope overflow"))?;
+    let b_end = b_offset
+        .checked_add(b_len)
+        .ok_or(AccelError::InvalidInput("device region envelope overflow"))?;
+    Ok(a_offset < b_end && b_offset < a_end)
+}
+
 fn checked_strided_span(rows: usize, stride: usize, width: usize) -> Result<usize, AccelError> {
     if rows == 0 || width == 0 || stride < width {
         return Err(AccelError::InvalidInput("invalid strided-row geometry"));
@@ -4058,6 +4804,34 @@ fn validate_chacha8_rows(base_domain: u64, rows: usize, count: usize) -> Result<
         .checked_add(last_row)
         .ok_or(AccelError::InvalidInput("prover-secret ChaCha8 row domain overflows u64"))?;
     checked_product(rows, count)?;
+    Ok(())
+}
+
+const MOCK_CORRELATION_RESERVED_DOMAIN_BITS: u64 = (1 << 63) | (1 << 62) | (1 << 61);
+
+fn validate_mock_correlation_mask_rows(
+    base_domain: u64,
+    rows: usize,
+    cols: usize,
+) -> Result<(), AccelError> {
+    if rows == 0 || cols == 0 {
+        return Err(AccelError::InvalidInput(
+            "mock correlation masks require non-zero row geometry",
+        ));
+    }
+    let last_row = u64::try_from(rows - 1)
+        .map_err(|_| AccelError::InvalidInput("mock correlation mask row count exceeds u64"))?;
+    let last_domain = base_domain
+        .checked_add(last_row)
+        .ok_or(AccelError::InvalidInput("mock correlation mask row domain overflows u64"))?;
+    if base_domain & MOCK_CORRELATION_RESERVED_DOMAIN_BITS != 0
+        || last_domain & MOCK_CORRELATION_RESERVED_DOMAIN_BITS != 0
+    {
+        return Err(AccelError::InvalidInput(
+            "mock correlation mask domain sets reserved correlation bits",
+        ));
+    }
+    checked_product(rows, cols)?;
     Ok(())
 }
 
@@ -4223,6 +4997,191 @@ mod cuda_tests {
         a + d + d
     }
 
+    #[test]
+    fn resident_round_mailbox_is_exact_with_one_host_output_barrier() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
+        let len = 8usize;
+        let pairs = len / 2;
+        let make = |tag: u64| {
+            (0..len)
+                .map(|i| Fp2::new(Fp::new(tag + i as u64 * 37), Fp::new(tag + 11 + i as u64 * 53)))
+                .collect::<Vec<_>>()
+        };
+        let a = make(3);
+        let b = make(101);
+        let c = make(211);
+        let q1 = make(307);
+        let suffix: Vec<Fp2> = (0..pairs)
+            .map(|i| Fp2::new(Fp::new(401 + i as u64 * 71), Fp::new(503 + i as u64 * 97)))
+            .collect();
+        let repr = |values: &[Fp2]| values.iter().copied().map(Into::into).collect::<Vec<_>>();
+        let da = gpu.upload_new_device(&repr(&a)).unwrap();
+        let db = gpu.upload_new_device(&repr(&b)).unwrap();
+        let dc = gpu.upload_new_device(&repr(&c)).unwrap();
+        let dq1 = gpu.upload_new_device(&repr(&q1)).unwrap();
+        let dsuffix = gpu.upload_new_device(&repr(&suffix)).unwrap();
+        let columns_host: Vec<Fp2> = a.iter().chain(&b).copied().collect();
+        let dcolumns = gpu.upload_new_device(&repr(&columns_host)).unwrap();
+        let mailbox = gpu.alloc_device::<Fp2Repr>(12).unwrap();
+
+        assert!(matches!(
+            gpu.fp2_product_round_into_device(
+                DeviceSlice::new(&da, 0, len).unwrap(),
+                DeviceSlice::new(&db, 0, len).unwrap(),
+                &mailbox,
+                11,
+            ),
+            Err(AccelError::InvalidInput(_))
+        ));
+
+        let product_expected = (0..pairs).fold([Fp2::ZERO; 2], |mut out, i| {
+            out[0] += a[2 * i] * b[2 * i];
+            out[1] += at2(a[2 * i], a[2 * i + 1]) * at2(b[2 * i], b[2 * i + 1]);
+            out
+        });
+        let triple_expected = (0..pairs).fold([Fp2::ZERO; 3], |mut out, i| {
+            for (slot, at) in [0u64, 2, 3].into_iter().enumerate() {
+                let eval = |values: &[Fp2]| {
+                    values[2 * i]
+                        + (values[2 * i + 1] - values[2 * i]) * Fp2::from_base(Fp::new(at))
+                };
+                out[slot] += eval(&a) * eval(&b) * eval(&c);
+            }
+            out
+        });
+        let general_expected = (0..pairs).fold([Fp2::ZERO; 4], |mut out, i| {
+            let (a0, a2) = (a[2 * i], at2(a[2 * i], a[2 * i + 1]));
+            let (b0, b2) = (b[2 * i], at2(b[2 * i], b[2 * i + 1]));
+            let (c0, c2) = (c[2 * i], at2(c[2 * i], c[2 * i + 1]));
+            let (d0, d2) = (q1[2 * i], at2(q1[2 * i], q1[2 * i + 1]));
+            out[0] += suffix[i] * (a0 * d0 + b0 * c0);
+            out[1] += suffix[i] * (a2 * d2 + b2 * c2);
+            out[2] += suffix[i] * c0 * d0;
+            out[3] += suffix[i] * c2 * d2;
+            out
+        });
+        let lambda = Fp2::new(Fp::new(17), Fp::new(19));
+        let cpref = Fp2::new(Fp::new(23), Fp::new(29));
+        let point = Fp2::new(Fp::new(31), Fp::new(37));
+        let ell = [
+            Fp2::ONE - point,
+            point + point + point - Fp2::ONE,
+            point + point + point + point + point - Fp2::from_base(Fp::new(2)),
+        ];
+        let mut aux_expected = [Fp2::ZERO; 3];
+        for (slot, at) in [0u64, 2, 3].into_iter().enumerate() {
+            let mut pq = Fp2::ZERO;
+            let mut qq = Fp2::ZERO;
+            for i in 0..pairs {
+                let eval = |values: &[Fp2]| {
+                    values[2 * i]
+                        + (values[2 * i + 1] - values[2 * i]) * Fp2::from_base(Fp::new(at))
+                };
+                let q0 = eval(&c);
+                let q1 = eval(&b);
+                pq += suffix[i] * (q0 + q1);
+                qq += suffix[i] * q0 * q1;
+            }
+            aux_expected[slot] = ell[slot] * cpref * (lambda * pq + qq);
+        }
+
+        // Warm the largest shared reduction workspace outside the measured
+        // cohort so allocator growth cannot masquerade as a protocol barrier.
+        gpu.logup_aux_round_into_device(
+            &dc, &db, &dsuffix, 0, &dcolumns, None, None, None, 1, 0, len, lambda, cpref, point,
+            &mailbox, 9,
+        )
+        .unwrap();
+        gpu.download_device(&mailbox, 9, 3).unwrap();
+
+        gpu.begin_measurement().unwrap();
+        gpu.fp2_product_round_into_device(
+            DeviceSlice::new(&da, 0, len).unwrap(),
+            DeviceSlice::new(&db, 0, len).unwrap(),
+            &mailbox,
+            0,
+        )
+        .unwrap();
+        gpu.fp2_triple_product_round_into_device(
+            DeviceSlice::new(&da, 0, len).unwrap(),
+            DeviceSlice::new(&db, 0, len).unwrap(),
+            DeviceSlice::new(&dc, 0, len).unwrap(),
+            &mailbox,
+            2,
+        )
+        .unwrap();
+        gpu.logup_general_round_into_device(
+            &da, 0, &db, 0, &dc, 0, &dq1, 0, &dsuffix, 0, pairs, &mailbox, 5,
+        )
+        .unwrap();
+        gpu.logup_aux_round_into_device(
+            &dc, &db, &dsuffix, 0, &dcolumns, None, None, None, 1, 0, len, lambda, cpref, point,
+            &mailbox, 9,
+        )
+        .unwrap();
+        let output: Vec<Fp2> = gpu
+            .download_device(&mailbox, 0, mailbox.len())
+            .unwrap()
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        let stats = gpu.finish_measurement().unwrap();
+
+        assert_eq!(&output[0..2], &product_expected);
+        assert_eq!(&output[2..5], &triple_expected);
+        assert_eq!(&output[5..9], &general_expected);
+        assert_eq!(&output[9..12], &aux_expected);
+        assert_eq!(stats.h2d_bytes, 0);
+        assert_eq!(stats.d2h_bytes, (12 * size_of::<Fp2Repr>()) as u64);
+        assert_eq!(stats.sync_host_output, 1);
+        assert_eq!(stats.synchronizations, 1);
+        assert_eq!(stats.operation(Operation::Gemm).calls, 2);
+        assert_eq!(stats.operation(Operation::Logup).calls, 2);
+
+        gpu.free_device(mailbox).unwrap();
+        gpu.free_device(dcolumns).unwrap();
+        gpu.free_device(dsuffix).unwrap();
+        gpu.free_device(dq1).unwrap();
+        gpu.free_device(dc).unwrap();
+        gpu.free_device(db).unwrap();
+        gpu.free_device(da).unwrap();
+    }
+
+    #[test]
+    fn resident_segment_download_concatenates_with_one_barrier() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
+        let values: Vec<u64> = (10..20).collect();
+        let source = gpu.upload_new_device(&values).unwrap();
+        let segments =
+            [DeviceSlice::new(&source, 1, 2).unwrap(), DeviceSlice::new(&source, 5, 4).unwrap()];
+        assert!(matches!(
+            gpu.download_device_segments::<u64>(&[]),
+            Err(AccelError::InvalidInput(_))
+        ));
+        let resident_before = gpu.device_memory_breakdown().unwrap().resident_bytes;
+
+        gpu.begin_measurement().unwrap();
+        let output = gpu.download_device_segments(&segments).unwrap();
+        let stats = gpu.finish_measurement().unwrap();
+
+        assert_eq!(output, vec![11, 12, 15, 16, 17, 18]);
+        assert_eq!(stats.h2d_bytes, 0);
+        assert_eq!(stats.d2h_bytes, (6 * size_of::<u64>()) as u64);
+        assert_eq!(stats.explicit_d2d_copy_bytes, (6 * size_of::<u64>()) as u64);
+        assert_eq!(stats.sync_host_output, 1);
+        assert_eq!(stats.synchronizations, 1);
+        assert_eq!(stats.operation(Operation::Mailbox).calls, 2);
+        assert_eq!(stats.operation(Operation::PcsRows).calls, 0);
+        assert_eq!(stats.coarse_timing_scopes, 1);
+        assert_eq!(stats.timing_records, 2);
+        assert_eq!(stats.timing_event_queries, 2);
+        assert_eq!(stats.timing_pending_high_water, 2);
+        assert_eq!(stats.timing_flush_count, 1);
+        assert_eq!(gpu.device_memory_breakdown().unwrap().resident_bytes, resident_before);
+
+        gpu.free_device(source).unwrap();
+    }
+
     fn cpu_merkle_levels(mut leaves: Vec<[u8; 32]>) -> Vec<Vec<[u8; 32]>> {
         let mut levels = vec![leaves.clone()];
         while leaves.len() > 1 {
@@ -4238,6 +5197,103 @@ mod cuda_tests {
             levels.push(leaves.clone());
         }
         levels
+    }
+
+    #[test]
+    fn mock_correlation_sub_masks_are_byte_exact_device_generated_and_domain_safe() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else {
+            return;
+        };
+        let seed = std::array::from_fn(|i| (i as u8).wrapping_mul(17).wrapping_add(3));
+
+        for base_domain in [1u64 << 61, 1u64 << 62, 1u64 << 63] {
+            assert!(matches!(
+                gpu.mock_correlation_sub_masks_device(seed, base_domain, 1, 1),
+                Err(AccelError::InvalidInput(message))
+                    if message.contains("reserved correlation bits")
+            ));
+        }
+        assert!(matches!(
+            gpu.mock_correlation_sub_masks_device(seed, (1u64 << 61) - 1, 2, 1),
+            Err(AccelError::InvalidInput(message))
+                if message.contains("reserved correlation bits")
+        ));
+        assert!(matches!(
+            gpu.mock_correlation_sub_masks_device(seed, u64::MAX, 2, 1),
+            Err(AccelError::InvalidInput(message)) if message.contains("overflows u64")
+        ));
+        assert!(matches!(
+            gpu.mock_correlation_sub_masks_device(seed, 0, 0, 1),
+            Err(AccelError::InvalidInput(message)) if message.contains("non-zero")
+        ));
+
+        // The sixth raw u64 for this seed and first row is
+        // 0xffffffffb1461b28 >= P, so this multi-row oracle covers both the
+        // rejection loop and row-wise domain separation.
+        let base_domain = 0x0000_0000_1966_4bca;
+        let (rows, cols) = (3usize, 10usize);
+        let expected: Vec<u64> = (0..rows)
+            .flat_map(|row| {
+                let mut stream = FpStream::domain_separated(seed, base_domain + row as u64);
+                (0..cols).map(move |_| stream.next_fp().value())
+            })
+            .collect();
+        assert_ne!(expected[5], 0xffff_ffff_b146_1b28);
+
+        gpu.begin_measurement().unwrap();
+        let masks = gpu.mock_correlation_sub_masks_device(seed, base_domain, rows, cols).unwrap();
+        let got = gpu.download_device(&masks, 0, masks.len()).unwrap();
+        let stats = gpu.finish_measurement().unwrap();
+
+        assert_eq!(got, expected);
+        let payload_bytes = (rows * cols * size_of::<u64>()) as u64;
+        assert_eq!(stats.h2d_bytes, 0, "mock masks must not cross H2D");
+        assert_eq!(stats.d2h_bytes, payload_bytes, "the test oracle is the only D2H payload");
+        assert_eq!(stats.device_generated_bytes, payload_bytes);
+        assert_eq!(stats.device_zeroed_bytes, 0);
+        assert_eq!(stats.explicit_d2d_copy_bytes, 0);
+        assert_eq!(stats.operation(Operation::AuthMasks).calls, 1);
+        assert_eq!(stats.operation(Operation::PcsRows).calls, 0);
+        assert_eq!(stats.sync_host_output, 1);
+        assert_eq!(stats.synchronization_reason_total(), stats.synchronizations);
+
+        gpu.free_device(masks).unwrap();
+    }
+
+    #[test]
+    fn mock_correlation_reserved_domains_are_rejected_at_the_c_abi() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else {
+            return;
+        };
+        let seed = [0x5au8; 32];
+        let output = gpu.alloc_device::<u64>(2).unwrap();
+
+        for base_domain in [1u64 << 61, 1u64 << 62, 1u64 << 63] {
+            let error = gpu
+                .cuda
+                .as_mut()
+                .expect("CUDA resident backend without context")
+                .test_mock_correlation_sub_masks_device_raw(output.id, &seed, base_domain, 1, 1)
+                .unwrap_err();
+            assert!(error.to_string().contains("reserved correlation bits"));
+        }
+        let last_domain_error = gpu
+            .cuda
+            .as_mut()
+            .expect("CUDA resident backend without context")
+            .test_mock_correlation_sub_masks_device_raw(output.id, &seed, (1u64 << 61) - 1, 2, 1)
+            .unwrap_err();
+        assert!(last_domain_error.to_string().contains("reserved correlation bits"));
+
+        let overflow_error = gpu
+            .cuda
+            .as_mut()
+            .expect("CUDA resident backend without context")
+            .test_mock_correlation_sub_masks_device_raw(output.id, &seed, u64::MAX, 2, 1)
+            .unwrap_err();
+        assert!(overflow_error.to_string().contains("domain overflows u64"));
+
+        gpu.free_device(output).unwrap();
     }
 
     #[test]
@@ -4704,6 +5760,7 @@ mod cuda_tests {
             .map(|i| Fp2::new(Fp::new(i as u64 * 101 + 17), Fp::new(i as u64 * 127 + 23)))
             .collect();
         let dpoints = gpu.upload_new_device(&repr(&points)).unwrap();
+        let folded_mailbox = gpu.alloc_device(4 * pairs + 2).unwrap();
 
         let mut expected_round = [Fp2::ZERO; 4];
         for i in 0..pairs {
@@ -4717,6 +5774,25 @@ mod cuda_tests {
             expected_round[3] += suffix[i] * (c2 * d2);
         }
         let r = Fp2::new(Fp::new(123), Fp::new(456));
+        let input_overlap = gpu
+            .logup_fold4_into_device(
+                DeviceSlice::new(&dp0, 0, values).unwrap(),
+                DeviceSlice::new(&dp1, 0, values).unwrap(),
+                DeviceSlice::new(&dq0, 0, values).unwrap(),
+                DeviceSlice::new(&dq1, 0, values).unwrap(),
+                pairs,
+                r,
+                &dp0,
+                0,
+                &folded_mailbox,
+                1,
+                &folded_mailbox,
+                1 + pairs,
+                &folded_mailbox,
+                1 + 2 * pairs,
+            )
+            .unwrap_err();
+        assert!(input_overlap.to_string().contains("input and output overlap"));
 
         gpu.begin_measurement().unwrap();
         let (dtp, dtq) = gpu.logup_tree_device(&dleaf, 0, alpha1, Some((&dmult, 0)), n).unwrap();
@@ -4725,12 +5801,29 @@ mod cuda_tests {
             .unwrap();
         assert_eq!(got_round, expected_round);
         let folded = gpu.logup_fold4_device(&dp0, 0, &dp1, 0, &dq0, 0, &dq1, 0, pairs, r).unwrap();
+        gpu.logup_fold4_into_device(
+            DeviceSlice::new(&dp0, 0, values).unwrap(),
+            DeviceSlice::new(&dp1, 0, values).unwrap(),
+            DeviceSlice::new(&dq0, 0, values).unwrap(),
+            DeviceSlice::new(&dq1, 0, values).unwrap(),
+            pairs,
+            r,
+            &folded_mailbox,
+            1,
+            &folded_mailbox,
+            1 + pairs,
+            &folded_mailbox,
+            1 + 2 * pairs,
+            &folded_mailbox,
+            1 + 3 * pairs,
+        )
+        .unwrap();
         let (deven, dodd) = gpu.fp2_deinterleave_device(&dp0, 0, pairs).unwrap();
         let dsuffix = gpu.logup_suffix_eq_device(&dpoints, 0, points.len()).unwrap();
         let resident_stats = gpu.stats().unwrap();
         assert_eq!(resident_stats.h2d_bytes, 0);
         assert_eq!(resident_stats.d2h_bytes, 4 * size_of::<Fp2Repr>() as u64);
-        assert_eq!(resident_stats.operation(Operation::Logup).calls, 5);
+        assert_eq!(resident_stats.operation(Operation::Logup).calls, 6);
 
         // Differential downloads are outside the resident-path assertion.
         let expected_tree = cpu_tree(&leaf, alpha1, Some(&mult));
@@ -4767,6 +5860,17 @@ mod cuda_tests {
             .map(Into::into)
             .collect();
         assert_eq!(got_suffix, expected_suffix);
+        let got_mailbox: Vec<Fp2> = gpu
+            .download_device(&folded_mailbox, 1, 4 * pairs)
+            .unwrap()
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        for (chunk, src) in got_mailbox.chunks_exact(pairs).zip([&p0, &p1, &q0, &q1]) {
+            for i in 0..pairs {
+                assert_eq!(chunk[i], src[2 * i] + (src[2 * i + 1] - src[2 * i]) * r);
+            }
+        }
         for ((src, device), label) in
             [(&p0, &folded[0]), (&p1, &folded[1]), (&q0, &folded[2]), (&q1, &folded[3])]
                 .into_iter()
@@ -4791,6 +5895,7 @@ mod cuda_tests {
         for output in folded {
             gpu.free_device(output).unwrap();
         }
+        gpu.free_device(folded_mailbox).unwrap();
         gpu.free_device(dsuffix).unwrap();
         gpu.free_device(dodd).unwrap();
         gpu.free_device(deven).unwrap();
@@ -5197,6 +6302,70 @@ mod cuda_tests {
     }
 
     #[test]
+    fn resident_deferred_elapsed_no_write_is_retried_exactly_after_other_queries() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
+        if gpu.stats().unwrap().timing_mode != DeviceTimingMode::CudaEventsDeferred {
+            return;
+        }
+        let buffer = gpu.alloc_device::<u8>(16).unwrap();
+        gpu.begin_measurement().unwrap();
+        gpu.cuda
+            .as_mut()
+            .expect("CUDA-resident backend has a context")
+            .test_inject_elapsed_no_write_once()
+            .unwrap();
+        let expected = [0x3du8; 16];
+        gpu.upload_device(&buffer, 0, &expected).unwrap();
+        let actual = gpu.download_device(&buffer, 0, expected.len()).unwrap();
+        let stats = gpu.finish_measurement().unwrap();
+        assert_eq!(actual, expected);
+        assert_eq!(stats.timing_event_queries, 2);
+        assert_eq!(stats.timing_elapsed_no_write, 1);
+        assert_eq!(stats.timing_elapsed_query_attempts, 3);
+        assert_eq!(
+            stats.timing_elapsed_query_attempts,
+            stats.timing_event_queries + stats.timing_elapsed_no_write
+        );
+        assert_eq!(stats.timing_records, 2);
+        assert_eq!(stats.timing_flush_count, 1);
+        assert_eq!(stats.synchronizations, 1);
+        assert_eq!(stats.sync_host_output, 1);
+        gpu.free_device(buffer).unwrap();
+    }
+
+    #[test]
+    fn resident_measurement_boundary_discards_synchronized_pre_window_timing() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
+        if gpu.stats().unwrap().timing_mode != DeviceTimingMode::CudaEventsDeferred {
+            return;
+        }
+        let buffer = gpu.alloc_device::<u8>(32).unwrap();
+        let expected = [0x71u8; 32];
+        // This upload is complete at the reset boundary but deliberately not
+        // attributed to the measurement window that starts afterward.
+        gpu.upload_device(&buffer, 0, &expected).unwrap();
+        gpu.begin_measurement().unwrap();
+        let empty = gpu.stats().unwrap();
+        assert_eq!(empty.timing_records, 0);
+        assert_eq!(empty.timing_elapsed_query_attempts, 0);
+        assert_eq!(empty.timing_elapsed_no_write, 0);
+        assert_eq!(empty.timing_event_queries, 0);
+        assert_eq!(empty.synchronizations, 0);
+        assert_eq!(empty.h2d_bytes, 0);
+
+        let actual = gpu.download_device(&buffer, 0, expected.len()).unwrap();
+        let measured = gpu.finish_measurement().unwrap();
+        assert_eq!(actual, expected);
+        assert_eq!(measured.h2d_bytes, 0);
+        assert_eq!(measured.d2h_bytes, expected.len() as u64);
+        assert_eq!(
+            measured.timing_elapsed_query_attempts,
+            measured.timing_event_queries + measured.timing_elapsed_no_write
+        );
+        gpu.free_device(buffer).unwrap();
+    }
+
+    #[test]
     fn resident_deferred_upload_orders_drop_and_arena_reuse_before_flush() {
         let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
         let bytes = 2 * 1024 * 1024;
@@ -5235,7 +6404,7 @@ mod cuda_tests {
     }
 
     #[test]
-    fn resident_deferred_ring_full_and_finish_flushes_are_counted() {
+    fn resident_deferred_capacity_preflight_and_finish_flushes_are_counted() {
         let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
         let Some(hybrid) = cuda(BackendKind::CudaHybrid) else { return };
         assert_ne!(hybrid.stats().unwrap().timing_mode, DeviceTimingMode::CudaEventsDeferred);
@@ -5246,9 +6415,47 @@ mod cuda_tests {
         let dtarget = gpu.upload_new_device(&target).unwrap();
         let dadd = gpu.upload_new_device(&add).unwrap();
         gpu.begin_measurement().unwrap();
-        for _ in 0..513 {
+        assert!(matches!(
+            gpu.ensure_timing_capacity(DEFERRED_TIMING_CAPACITY + 1),
+            Err(AccelError::InvalidInput(message)) if message.contains("exceeds ring capacity")
+        ));
+        for _ in 0..510 {
             gpu.fp2_add_inplace_device(&dtarget, 0, &dadd, 0, n).unwrap();
         }
+        let exact_fit = gpu.ensure_timing_capacity(2).unwrap();
+        assert_eq!(
+            exact_fit,
+            TimingCapacityPreflight {
+                requested_records: 2,
+                capacity: DEFERRED_TIMING_CAPACITY,
+                pending_before: 510,
+                pending_after: 510,
+                flushed: false,
+            }
+        );
+        gpu.fp2_add_inplace_device(&dtarget, 0, &dadd, 0, n).unwrap();
+        let preflight = gpu.ensure_timing_capacity(2).unwrap();
+        assert_eq!(
+            preflight,
+            TimingCapacityPreflight {
+                requested_records: 2,
+                capacity: DEFERRED_TIMING_CAPACITY,
+                pending_before: 511,
+                pending_after: 0,
+                flushed: true,
+            }
+        );
+        let empty_exact_fit = gpu.ensure_timing_capacity(DEFERRED_TIMING_CAPACITY).unwrap();
+        assert_eq!(empty_exact_fit.pending_before, 0);
+        assert_eq!(empty_exact_fit.pending_after, 0);
+        assert!(!empty_exact_fit.flushed);
+        for _ in 0..2 {
+            gpu.fp2_add_inplace_device(&dtarget, 0, &dadd, 0, n).unwrap();
+        }
+        let pending = gpu.ensure_timing_capacity(0).unwrap();
+        assert_eq!(pending.pending_before, 2);
+        assert_eq!(pending.pending_after, 2);
+        assert!(!pending.flushed);
         let stats = gpu.finish_measurement().unwrap();
         assert_eq!(stats.synchronization_reason_total(), stats.synchronizations);
         if stats.timing_mode == DeviceTimingMode::CudaEventsDeferred {
@@ -5257,7 +6464,7 @@ mod cuda_tests {
             // Device-only operations need only the kernel interval; empty
             // H2D/D2H phases must not create remote elapsed-time calls.
             assert_eq!(stats.timing_event_queries, 513);
-            assert_eq!(stats.timing_pending_high_water, 512);
+            assert_eq!(stats.timing_pending_high_water, 511);
             assert_eq!(stats.timing_flush_count, 2);
             assert_eq!(stats.synchronizations, 2);
             assert_eq!(stats.sync_timing_flush, 2);
@@ -5268,6 +6475,213 @@ mod cuda_tests {
         }
         let result = gpu.download_device(&dtarget, 0, n).unwrap();
         assert!(result.iter().all(|x| *x == Fp2Repr { c0: 6676, c1: 8732 }));
+        gpu.free_device(dadd).unwrap();
+        gpu.free_device(dtarget).unwrap();
+    }
+
+    #[test]
+    fn coarse_timing_is_resident_only() {
+        let mut cpu = Backend::cpu();
+        let cpu_error = match cpu.coarse_timing_scope(Operation::PcsRows) {
+            Ok(_) => panic!("CPU backend accepted a coarse CUDA timing scope"),
+            Err(error) => error,
+        };
+        assert!(cpu_error.to_string().contains("cuda-resident backend"));
+
+        let Some(mut hybrid) = cuda(BackendKind::CudaHybrid) else { return };
+        let hybrid_error = match hybrid.coarse_timing_scope(Operation::PcsRows) {
+            Ok(_) => panic!("hybrid backend accepted a coarse timing scope"),
+            Err(error) => error,
+        };
+        assert!(hybrid_error.to_string().contains("cuda-resident backend"));
+    }
+
+    #[test]
+    fn product_workspace_reservation_prevents_growth_inside_coarse_scope() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else {
+            return;
+        };
+        assert!(matches!(
+            gpu.reserve_fp2_product_round_workspace(0),
+            Err(AccelError::InvalidInput(message)) if message.contains("non-zero")
+        ));
+
+        let pairs = 17usize;
+        gpu.reserve_fp2_product_round_workspace(pairs).unwrap();
+        let workspace = gpu.device_memory_breakdown().unwrap().workspace_bytes;
+        assert!(workspace >= (pairs * 2 * size_of::<Fp2Repr>()) as u64);
+
+        let a = vec![Fp2Repr { c0: 3, c1: 5 }; 2 * pairs];
+        let b = vec![Fp2Repr { c0: 7, c1: 11 }; 2 * pairs];
+        let da = gpu.upload_new_device(&a).unwrap();
+        let db = gpu.upload_new_device(&b).unwrap();
+        let mailbox = gpu.alloc_device::<Fp2Repr>(2).unwrap();
+        gpu.begin_measurement().unwrap();
+        {
+            let mut epoch = gpu.coarse_timing_scope(Operation::Gemm).unwrap();
+            epoch
+                .backend_mut()
+                .fp2_product_round_into_device(
+                    DeviceSlice::new(&da, 0, da.len()).unwrap(),
+                    DeviceSlice::new(&db, 0, db.len()).unwrap(),
+                    &mailbox,
+                    0,
+                )
+                .unwrap();
+            epoch.finish().unwrap();
+        }
+        let output = gpu.download_device(&mailbox, 0, 2).unwrap();
+        let stats = gpu.finish_measurement().unwrap();
+
+        assert_ne!(output, [Fp2Repr::default(); 2]);
+        assert_eq!(stats.operation(Operation::Gemm).calls, 1);
+        assert_eq!(stats.coarse_timing_scopes, 1);
+        assert_eq!(stats.allocation_calls, 0, "reserved scratch must not grow in the scope");
+        assert_eq!(stats.sync_allocator_flush, 0);
+        assert_eq!(stats.synchronization_reason_total(), stats.synchronizations);
+
+        gpu.free_device(mailbox).unwrap();
+        gpu.free_device(db).unwrap();
+        gpu.free_device(da).unwrap();
+    }
+
+    #[test]
+    fn resident_coarse_timing_collapses_large_device_epoch() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
+        if gpu.stats().unwrap().timing_mode != DeviceTimingMode::CudaEventsDeferred {
+            let error = match gpu.coarse_timing_scope(Operation::PcsRows) {
+                Ok(_) => panic!("legacy timing mode accepted a coarse scope"),
+                Err(error) => error,
+            };
+            assert!(error.to_string().contains("coarse timing requires deferred"));
+            return;
+        }
+
+        let n = 32usize;
+        let target = vec![Fp2Repr { c0: 7, c1: 11 }; n];
+        let add = vec![Fp2Repr { c0: 13, c1: 17 }; n];
+        let dtarget = gpu.upload_new_device(&target).unwrap();
+        let dadd = gpu.upload_new_device(&add).unwrap();
+        gpu.begin_measurement().unwrap();
+        {
+            let mut epoch = gpu.coarse_timing_scope(Operation::PcsRows).unwrap();
+            for _ in 0..513 {
+                epoch.backend_mut().fp2_add_inplace_device(&dtarget, 0, &dadd, 0, n).unwrap();
+            }
+            epoch.finish().unwrap();
+        }
+
+        // This one protocol-visible D2H both returns the result and flushes the
+        // single coarse operation record. It contributes its own transfer
+        // record, hence two total records but exactly one coarse scope.
+        let result = gpu.download_device(&dtarget, 0, n).unwrap();
+        let stats = gpu.finish_measurement().unwrap();
+        assert!(result.iter().all(|x| *x == Fp2Repr { c0: 6676, c1: 8732 }));
+        assert_eq!(stats.operation(Operation::PcsRows).calls, 513);
+        assert!(stats.operation(Operation::PcsRows).kernel_ns > 0);
+        assert_eq!(stats.coarse_timing_scopes, 1);
+        assert_eq!(stats.coarse_timing_ns, stats.operation(Operation::PcsRows).kernel_ns);
+        assert_eq!(stats.timing_records, 2);
+        assert_eq!(stats.timing_event_queries, 2);
+        assert_eq!(stats.timing_pending_high_water, 2);
+        assert_eq!(stats.timing_flush_count, 1);
+        assert_eq!(stats.synchronizations, 1);
+        assert_eq!(stats.sync_host_output, 1);
+        assert_eq!(stats.sync_timing_flush, 0);
+        assert_eq!(stats.sync_upload_lifetime, 0);
+        assert_eq!(stats.sync_profiling_legacy, 0);
+        assert_eq!(stats.sync_allocator_flush, 0);
+        assert_eq!(stats.synchronization_reason_total(), stats.synchronizations);
+        gpu.free_device(dadd).unwrap();
+        gpu.free_device(dtarget).unwrap();
+    }
+
+    #[test]
+    fn resident_coarse_timing_rejects_nested_and_host_boundary_then_recovers() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
+        if gpu.stats().unwrap().timing_mode != DeviceTimingMode::CudaEventsDeferred {
+            return;
+        }
+        let n = 8usize;
+        let target = vec![Fp2Repr { c0: 3, c1: 5 }; n];
+        let add = vec![Fp2Repr { c0: 7, c1: 11 }; n];
+        let dtarget = gpu.upload_new_device(&target).unwrap();
+        let dadd = gpu.upload_new_device(&add).unwrap();
+        gpu.begin_measurement().unwrap();
+
+        let mut outer = gpu.coarse_timing_scope(Operation::PcsRows).unwrap();
+        let nested_error = match outer.backend_mut().coarse_timing_scope(Operation::PcsRows) {
+            Ok(_) => panic!("nested coarse scope was accepted"),
+            Err(error) => error,
+        };
+        assert!(nested_error.to_string().contains("nested coarse timing scope"));
+        outer.backend_mut().fp2_add_inplace_device(&dtarget, 0, &dadd, 0, n).unwrap();
+        outer.finish().unwrap();
+
+        let mut forbidden = gpu.coarse_timing_scope(Operation::PcsRows).unwrap();
+        let download_error = forbidden.backend_mut().download_device(&dtarget, 0, n).unwrap_err();
+        assert!(download_error.to_string().contains("host transfer is forbidden"));
+        // Drop aborts the uncommitted second record. The context must accept a
+        // new scope and host boundary immediately afterwards.
+        drop(forbidden);
+        {
+            let mut recovered = gpu.coarse_timing_scope(Operation::PcsRows).unwrap();
+            recovered.backend_mut().fp2_add_inplace_device(&dtarget, 0, &dadd, 0, n).unwrap();
+            recovered.finish().unwrap();
+        }
+        let result = gpu.download_device(&dtarget, 0, n).unwrap();
+        let stats = gpu.finish_measurement().unwrap();
+        assert!(result.iter().all(|x| *x == Fp2Repr { c0: 17, c1: 27 }));
+        assert_eq!(stats.operation(Operation::PcsRows).calls, 2);
+        assert_eq!(stats.coarse_timing_scopes, 2);
+        assert_eq!(stats.coarse_timing_ns, stats.operation(Operation::PcsRows).kernel_ns);
+        assert_eq!(stats.sync_host_output, 1);
+        assert_eq!(stats.sync_timing_flush, 0);
+        assert_eq!(stats.synchronization_reason_total(), stats.synchronizations);
+        gpu.free_device(dadd).unwrap();
+        gpu.free_device(dtarget).unwrap();
+    }
+
+    #[test]
+    fn aborted_coarse_scope_with_accounted_work_poisons_until_synchronizing_reset() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
+        if gpu.stats().unwrap().timing_mode != DeviceTimingMode::CudaEventsDeferred {
+            return;
+        }
+        let n = 8usize;
+        let target = vec![Fp2Repr { c0: 3, c1: 5 }; n];
+        let add = vec![Fp2Repr { c0: 7, c1: 11 }; n];
+        let dtarget = gpu.upload_new_device(&target).unwrap();
+        let dadd = gpu.upload_new_device(&add).unwrap();
+
+        gpu.begin_measurement().unwrap();
+        {
+            let mut epoch = gpu.coarse_timing_scope(Operation::PcsRows).unwrap();
+            epoch.backend_mut().fp2_add_inplace_device(&dtarget, 0, &dadd, 0, n).unwrap();
+            // The primitive call is already counted, but dropping the guard
+            // discards the only event interval that could time it.
+        }
+        let stats_error = gpu.stats().unwrap_err();
+        assert!(stats_error.to_string().contains("measurement timing is poisoned"));
+        let finish_error = gpu.finish_measurement().unwrap_err();
+        assert!(finish_error.to_string().contains("measurement timing is poisoned"));
+
+        // This boundary synchronizes the unsealed device work before throwing
+        // away its unusable call/byte counters, then permits a clean window.
+        gpu.reset_measurement().unwrap();
+        gpu.begin_measurement().unwrap();
+        {
+            let mut epoch = gpu.coarse_timing_scope(Operation::PcsRows).unwrap();
+            epoch.backend_mut().fp2_add_inplace_device(&dtarget, 0, &dadd, 0, n).unwrap();
+            epoch.finish().unwrap();
+        }
+        let stats = gpu.finish_measurement().unwrap();
+        assert_eq!(stats.operation(Operation::PcsRows).calls, 1);
+        assert_eq!(stats.coarse_timing_scopes, 1);
+        assert!(stats.operation(Operation::PcsRows).kernel_ns > 0);
+
+        let result = gpu.download_device(&dtarget, 0, n).unwrap();
+        assert!(result.iter().all(|x| *x == Fp2Repr { c0: 17, c1: 27 }));
         gpu.free_device(dadd).unwrap();
         gpu.free_device(dtarget).unwrap();
     }
@@ -5719,6 +7133,37 @@ mod cuda_tests {
             .collect();
         assert_eq!(got_fold, expected_fold);
 
+        let sentinel = Fp2Repr { c0: 991, c1: 997 };
+        let folded_into = gpu.upload_new_device(&vec![sentinel; expected_fold.len() + 2]).unwrap();
+        gpu.fp2_fold_rows_into_device(
+            DeviceSlice::new(&da, 0, av.len()).unwrap(),
+            1,
+            av.len(),
+            challenge,
+            &folded_into,
+            1,
+        )
+        .unwrap();
+        let got_into = gpu.download_device(&folded_into, 0, expected_fold.len() + 2).unwrap();
+        assert_eq!(got_into[0], sentinel);
+        assert_eq!(got_into[expected_fold.len() + 1], sentinel);
+        assert_eq!(
+            got_into[1..=expected_fold.len()].iter().copied().map(Fp2::from).collect::<Vec<_>>(),
+            expected_fold
+        );
+        let overlap_error = gpu
+            .fp2_fold_rows_into_device(
+                DeviceSlice::new(&da, 0, av.len()).unwrap(),
+                1,
+                av.len(),
+                challenge,
+                &da,
+                1,
+            )
+            .unwrap_err();
+        assert!(overlap_error.to_string().contains("input and output overlap"));
+
+        gpu.free_device(folded_into).unwrap();
         gpu.free_device(folded_a).unwrap();
         gpu.free_device(scaled).unwrap();
         gpu.free_device(centered).unwrap();

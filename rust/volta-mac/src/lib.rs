@@ -16,7 +16,12 @@ pub use auth::{
     auth_prover, auth_verifier, auth_verifier_from_epilogue, prover_tags_from_epilogue,
 };
 pub use authed::{ProverAuthed, ProverSubAuthed, VerifierKey};
-pub use corr::{CorrCounters, CorrIndex, CorrelationStream, FullCorr, SubCorr, VerifierCtx};
+pub use corr::{
+    CorrCounters, CorrIndex, CorrReservationError, CorrelationStream, FullCorr,
+    FullCorrBatchReservation, FullCorrRange, FullKeyBatchReservation, SubCorr,
+    SubMaskRowsReservation, VerifierCtx, FULL_BIT, LEDGER_SHADOW_BIT, RESERVED_DOMAIN_BITS,
+    TAG_BIT,
+};
 pub use open::{
     fresh_zero_mask, zero_batch_exchange, zero_batch_prover, zero_batch_verify, zero_mask_key,
     zero_open_prover, zero_open_verify,

@@ -48,14 +48,16 @@ use crate::block_proof::{
     auth_matrix_rows_resident_p, auth_matrix_rows_v, bind_range_site_resident, expand_ln_vecs_k,
     layer_content_keys, layer_dom_base, ln_acc_recompute, open_matrix_k, open_matrix_p,
     open_matrix_resident_p, prove_layer_phase1, prove_layer_phase1_band,
-    prove_layer_phase1_resident, prove_layer_phase2, prove_layer_phase2_band,
-    prove_layer_phase2_resident, prove_layer_phase2_resident_band, prove_ln_chain,
-    prove_ln_chain_resident, prove_range_site, prove_range_site_resident,
-    public_window_fold_resident, range_keys, verify_layer_phase1, verify_layer_phase1_band,
-    verify_layer_phase2, verify_layer_phase2_band, verify_ln_chain, verify_range_site, BandShape,
-    BlockCtxP, BlockCtxV, InstanceLookups, KvPrefixK, KvPrefixP, LayerBytes, LayerOut, LayerP1,
-    LayerProof, LayerV1, LnChainProof, ResidentKvPrefixP, ResidentLayerP1, ResidentLnVecsP,
-    TableBankP, TableBankV, TableCloseProof,
+    prove_layer_phase1_resident, prove_ln_chain, prove_ln_chain_resident, prove_range_site,
+    prove_range_site_resident, public_window_fold_resident, range_keys, verify_layer_phase1,
+    verify_layer_phase1_band, verify_ln_chain, verify_range_site, BandShape, BlockCtxP, BlockCtxV,
+    InstanceLookups, KvPrefixK, KvPrefixP, LayerBytes, LayerP1, LayerProof, LayerV1, LnChainProof,
+    ResidentKvPrefixP, ResidentLayerP1, ResidentLnVecsP, TableBankP, TableBankV, TableCloseProof,
+};
+use crate::ffn_schedule::{
+    preflight_cpu_gelu_sources, preflight_gelu_plan, preflight_gelu_proofs,
+    preflight_resident_gelu_sources, prove_layers_resident_scheduled, prove_layers_scheduled,
+    register_gelu_manifest_p, register_gelu_manifest_v, verify_layers_scheduled,
 };
 use crate::gemm_proof::{WeightClaimP, WireKey, WireOut};
 use crate::logup::{eval_mle_counted, Counters, ProdKeyTriples, ProdTriples};
@@ -72,7 +74,7 @@ use volta_accel::{
 use volta_field::{Fp, Fp2};
 use volta_gpt2::{
     BandModelWitness, Gpt2Model, LayerI16Field, ModelWeightField, ModelWitness,
-    ResidentBandModelWitness, ResidentGpt2Model, ResidentLayerView, ResidentModelWitness, D, L,
+    ResidentBandModelWitness, ResidentGpt2Model, ResidentLayerView, ResidentModelWitness, D, H, L,
     NPOS, VOCAB,
 };
 use volta_mac::{
@@ -221,8 +223,10 @@ pub struct ResidentChunkRef<'a, 'source> {
 
 /// Per-chunk section ids (CorrIndex.layer bytes): base 16+32c, disjoint from
 /// the prefill's (0..11, 200..210, 220, 221, 230, 231) for c < 5.
+const MAX_RESPONSE_CHUNKS: usize = 5;
+
 fn chunk_ids(c: usize) -> (u8, u8, u8, u8, u8, u8) {
-    assert!(c < 5, "at most 5 decode chunks per response (id space)");
+    assert!(c < MAX_RESPONSE_CHUNKS, "at most 5 decode chunks per response (id space)");
     let b = (16 + 32 * c) as u8;
     (b, b + 12, b + 23, b + 24, b + 25, b + 26)
 }
@@ -1206,20 +1210,32 @@ pub fn prove_response_resident<'chunk, 'source>(
         ));
     }
     let t = wit.t;
-    if t < 2 || wit.layers.len() != L || public_logits.len() != VOCAB {
+    if t < 2
+        || t > NPOS
+        || wit.layers.len() != L
+        || public_logits.len() != VOCAB
+        || chunks.len() > MAX_RESPONSE_CHUNKS
+    {
         return Err(AccelError::InvalidInput("resident model witness geometry mismatch"));
     }
     let mut expected_t0 = t;
     for chunk in chunks {
+        let Some(logits_len) = chunk.band.q.checked_mul(VOCAB) else {
+            return Err(AccelError::InvalidInput("resident response chunk geometry mismatch"));
+        };
+        let Some(end) = expected_t0.checked_add(chunk.band.q) else {
+            return Err(AccelError::InvalidInput("resident response chunk geometry mismatch"));
+        };
         if chunk.band.t0 != expected_t0
             || chunk.band.q < 2
             || chunk.band.layers.len() != L
-            || chunk.logits.len() != chunk.band.q * VOCAB
-            || chunk.seq.len() < chunk.band.t0 + chunk.band.q
+            || chunk.logits.len() != logits_len
+            || end > NPOS
+            || chunk.seq.len() < end
         {
             return Err(AccelError::InvalidInput("resident response chunk geometry mismatch"));
         }
-        expected_t0 += chunk.band.q;
+        expected_t0 = end;
     }
     let d_cb = pad_bits(D);
     let rb_t = pad_bits(t);
@@ -1408,6 +1424,57 @@ pub fn prove_response_resident<'chunk, 'source>(
         );
         return Err(AccelError::InvalidInput("resident model table content set mismatch"));
     }
+    // Build and validate the entire public response schedule while the table
+    // bank is still in phase 1.  Finalization authenticates multiplicities and
+    // draws shared alphas, so no malformed schedule may be discovered after it.
+    let gelu_manifest_result = (|| {
+        let prefill = preflight_gelu_plan(
+            t,
+            0,
+            0,
+            layer_p1s
+                .iter()
+                .enumerate()
+                .map(|(layer, p1)| (layer, p1.doms, model.p.shift_ffn_down[layer])),
+        )?;
+        preflight_resident_gelu_sources(&wit.layers, &layer_p1s, &prefill, backend)?;
+        let mut plans = Vec::with_capacity(1 + chunks.len());
+        plans.push(prefill);
+        for (chunk_index, (chunk, p1)) in chunks.iter().zip(&chunk_p1s).enumerate() {
+            let (layer_base, ..) = chunk_ids(chunk_index);
+            let plan = preflight_gelu_plan(
+                chunk.band.q,
+                chunk.band.t0,
+                layer_base,
+                p1.layer_p1s
+                    .iter()
+                    .enumerate()
+                    .map(|(layer, p1)| (layer, p1.doms, model.p.shift_ffn_down[layer])),
+            )?;
+            preflight_resident_gelu_sources(&chunk.band.layers, &p1.layer_p1s, &plan, backend)?;
+            plans.push(plan);
+        }
+        Ok::<_, crate::ffn_schedule::FfnScheduleError>(plans)
+    })();
+    let gelu_manifest = match gelu_manifest_result {
+        Ok(plans) => plans,
+        Err(error_value) => {
+            free_resident_chunk_phase1s(chunk_p1s, backend);
+            free_resident_model_phase1(
+                layer_p1s,
+                seam_columns,
+                Some(embed_p1),
+                Some(final_p1),
+                &mut bank,
+                backend,
+            );
+            return Err(match error_value {
+                crate::ffn_schedule::FfnScheduleError::Accel(error) => error,
+                _ => AccelError::InvalidInput("invalid resident GELU response manifest"),
+            });
+        }
+    };
+
     let mut table_doms = Doms::new(layer_dom_base(240));
     if let Err(error_value) = bank.finalize_resident(stream, tx, &mut table_doms, backend) {
         free_resident_chunk_phase1s(chunk_p1s, backend);
@@ -1420,6 +1487,18 @@ pub fn prove_response_resident<'chunk, 'source>(
             backend,
         );
         return Err(error_value);
+    }
+    if register_gelu_manifest_p(&mut bank, &gelu_manifest).is_err() {
+        free_resident_chunk_phase1s(chunk_p1s, backend);
+        free_resident_model_phase1(
+            layer_p1s,
+            seam_columns,
+            Some(embed_p1),
+            Some(final_p1),
+            &mut bank,
+            backend,
+        );
+        return Err(AccelError::InvalidInput("invalid resident GELU response manifest"));
     }
 
     let mut prod = ProdTriples::new();
@@ -1434,52 +1513,48 @@ pub fn prove_response_resident<'chunk, 'source>(
     let mut boundary_doms = Vec::with_capacity(L);
     let mut layer_kv_doms = Vec::with_capacity(L);
 
-    let mut layer_iter = layer_p1s.into_iter().enumerate();
-    while let Some((layer, p1)) = layer_iter.next() {
-        let luts = luts_for(layer);
-        let result = {
-            let mut cx = BlockCtxP::with_doms_and_backend(stream, tx, p1.doms, &mut bank, backend);
-            let result = prove_layer_phase2_resident(
-                &wit.layers[layer],
-                resident_model,
-                layer,
-                &model.layers[layer].0,
-                &luts,
-                p1,
-                &mut cx,
-                Some(&model.layers[layer].1),
+    let prefill_prefixes: Vec<Vec<ResidentKvPrefixP>> = (0..L).map(|_| Vec::new()).collect();
+    let scheduled = match prove_layers_resident_scheduled(
+        model,
+        resident_model,
+        &wit.layers,
+        layer_p1s,
+        &prefill_prefixes,
+        &gelu_manifest[0],
+        stream,
+        tx,
+        &mut bank,
+        backend,
+    ) {
+        Ok(value) => value,
+        Err(error_value) => {
+            free_resident_chunk_phase1s(chunk_p1s, backend);
+            free_resident_model_phase1(
+                Vec::new(),
+                seam_columns,
+                Some(embed_p1),
+                Some(final_p1),
+                &mut bank,
+                backend,
             );
-            result
-                .map(|(proof, out)| (proof, out, cx.prod, cx.zero, cx.ctr_instances, cx.ctr_other))
-        };
-        let (proof, out, layer_prod, layer_zero, layer_instances, layer_other) = match result {
-            Ok(value) => value,
-            Err(error_value) => {
-                for (_, pending) in layer_iter {
-                    let _ = pending.free(backend);
-                }
-                free_resident_chunk_phase1s(chunk_p1s, backend);
-                free_resident_model_phase1(
-                    Vec::new(),
-                    seam_columns,
-                    Some(embed_p1),
-                    Some(final_p1),
-                    &mut bank,
-                    backend,
-                );
-                return Err(error_value);
-            }
-        };
-        prod.extend(layer_prod);
-        zero.extend(layer_zero);
-        add_counters(&mut ctr_instances, &layer_instances);
-        add_counters(&mut ctr_other, &layer_other);
+            return Err(match error_value {
+                crate::ffn_schedule::FfnScheduleError::Accel(error) => error,
+                _ => AccelError::InvalidInput("invalid resident prefill FFN schedule"),
+            });
+        }
+    };
+    for layer in scheduled {
+        let out = layer.out;
+        prod.extend(layer.prod);
+        zero.extend(layer.zero);
+        add_counters(&mut ctr_instances, &out.ctr_instances);
+        add_counters(&mut ctr_other, &out.ctr_other);
         add_bytes(&mut bytes, &out.bytes);
         boundary_doms.push((out.dom_xin, out.dom_fbo));
         layer_kv_doms.push((out.dom_k, out.dom_v));
         lookups.extend(out.lookups);
         weight_claims.extend(out.weight_claims);
-        layer_proofs.push(proof);
+        layer_proofs.push(layer.proof);
     }
 
     let mut seams = Vec::with_capacity(L - 1);
@@ -2016,56 +2091,54 @@ pub fn prove_response_resident<'chunk, 'source>(
         let mut band_boundary_doms = Vec::with_capacity(L);
         let mut band_layer_proofs = Vec::with_capacity(L);
 
-        let mut layer_iter = layer_p1s.into_iter().enumerate();
-        while let Some((layer, p1)) = layer_iter.next() {
-            let luts = luts_for(layer);
-            let prefix: Vec<ResidentKvPrefixP> = kv_doms[layer]
-                .iter()
-                .zip(&kv_rows)
-                .map(|(&(dom_k, dom_v), &rows)| ResidentKvPrefixP { rows, dom_k, dom_v })
-                .collect();
-            let result = {
-                let mut cx =
-                    BlockCtxP::with_doms_and_backend(stream, tx, p1.doms, &mut bank, backend);
-                prove_layer_phase2_resident_band(
-                    &band.layers[layer],
-                    resident_model,
-                    layer,
-                    &model.layers[layer].0,
-                    &luts,
-                    p1,
-                    &prefix,
-                    &mut cx,
-                    Some(&model.layers[layer].1),
-                )
-                .map(|(proof, out)| (proof, out, cx.prod, cx.zero, cx.ctr_instances, cx.ctr_other))
-            };
-            let (proof, out, layer_prod, layer_zero, layer_ctr, layer_other) = match result {
-                Ok(value) => value,
-                Err(error_value) => {
-                    for (_, pending) in layer_iter {
-                        let _ = pending.free(backend);
-                    }
-                    for columns in seam_columns.into_iter().flatten() {
-                        let _ = backend.free_lookup_columns(columns);
-                    }
-                    let _ = embed.free(backend);
-                    let _ = band_final_p1.free(backend);
-                    free_resident_chunk_phase1s(pending_chunks.into_iter().collect(), backend);
-                    bank.free_resident_multiplicities(backend);
-                    return Err(error_value);
+        let prefixes: Vec<Vec<ResidentKvPrefixP>> = (0..L)
+            .map(|layer| {
+                kv_doms[layer]
+                    .iter()
+                    .zip(&kv_rows)
+                    .map(|(&(dom_k, dom_v), &rows)| ResidentKvPrefixP { rows, dom_k, dom_v })
+                    .collect()
+            })
+            .collect();
+        let scheduled = match prove_layers_resident_scheduled(
+            model,
+            resident_model,
+            &band.layers,
+            layer_p1s,
+            &prefixes,
+            &gelu_manifest[chunk_index + 1],
+            stream,
+            tx,
+            &mut bank,
+            backend,
+        ) {
+            Ok(value) => value,
+            Err(error_value) => {
+                for columns in seam_columns.into_iter().flatten() {
+                    let _ = backend.free_lookup_columns(columns);
                 }
-            };
-            prod.extend(layer_prod);
-            zero.extend(layer_zero);
-            add_counters(&mut ctr_instances, &layer_ctr);
-            add_counters(&mut ctr_other, &layer_other);
+                let _ = embed.free(backend);
+                let _ = band_final_p1.free(backend);
+                free_resident_chunk_phase1s(pending_chunks.into_iter().collect(), backend);
+                bank.free_resident_multiplicities(backend);
+                return Err(match error_value {
+                    crate::ffn_schedule::FfnScheduleError::Accel(error) => error,
+                    _ => AccelError::InvalidInput("invalid resident decode FFN schedule"),
+                });
+            }
+        };
+        for (layer, scheduled_layer) in scheduled.into_iter().enumerate() {
+            let out = scheduled_layer.out;
+            prod.extend(scheduled_layer.prod);
+            zero.extend(scheduled_layer.zero);
+            add_counters(&mut ctr_instances, &out.ctr_instances);
+            add_counters(&mut ctr_other, &out.ctr_other);
             add_bytes(&mut bytes, &out.bytes);
             band_boundary_doms.push((out.dom_xin, out.dom_fbo));
             kv_doms[layer].push((out.dom_k, out.dom_v));
             lookups.extend(out.lookups);
             weight_claims.extend(out.weight_claims);
-            band_layer_proofs.push(proof);
+            band_layer_proofs.push(scheduled_layer.proof);
         }
         let _ = layer_base;
 
@@ -2443,6 +2516,10 @@ fn prove_response_impl(
     mut backend: Option<&mut Backend>,
 ) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
     let t = wit.t;
+    assert!(
+        chunks.len() <= MAX_RESPONSE_CHUNKS,
+        "at most {MAX_RESPONSE_CHUNKS} decode chunks per response (id space)"
+    );
     let d_cb = pad_bits(D);
     let rb_t = pad_bits(t);
     let n_vars_td = d_cb + rb_t;
@@ -2656,7 +2733,44 @@ fn prove_response_impl(
         }
     }
 
-    // End of phase 1: authenticate every content vector, draw the αs.
+    // Validate the complete response-wide GELU site set while the table bank
+    // is still in phase 1. Finalization authenticates multiplicities and draws
+    // shared alphas, so no malformed schedule may be discovered afterwards.
+    let prefill_gelu = preflight_gelu_plan(
+        t,
+        0,
+        0,
+        layer_p1s
+            .iter()
+            .enumerate()
+            .map(|(layer, p1)| (layer, p1.doms, model.p.shift_ffn_down[layer])),
+    )
+    .unwrap_or_else(|error| panic!("invalid public prefill GELU plan: {error}"));
+    preflight_cpu_gelu_sources(&wit.layers, &prefill_gelu)
+        .unwrap_or_else(|error| panic!("invalid prefill GELU sources: {error}"));
+    let mut chunk_gelu = Vec::with_capacity(chunks.len());
+    for (chunk_index, (chunk, p1)) in chunks.iter().zip(&chunk_p1s).enumerate() {
+        let (layer_base, ..) = chunk_ids(chunk_index);
+        let plan = preflight_gelu_plan(
+            chunk.band.q,
+            chunk.band.t0,
+            layer_base,
+            p1.layer_p1s
+                .iter()
+                .enumerate()
+                .map(|(layer, p1)| (layer, p1.doms, model.p.shift_ffn_down[layer])),
+        )
+        .unwrap_or_else(|error| panic!("invalid public decode GELU plan: {error}"));
+        preflight_cpu_gelu_sources(&chunk.band.layers, &plan)
+            .unwrap_or_else(|error| panic!("invalid decode GELU sources: {error}"));
+        chunk_gelu.push(plan);
+    }
+    let mut gelu_manifest = Vec::with_capacity(1 + chunk_gelu.len());
+    gelu_manifest.push(prefill_gelu);
+    gelu_manifest.extend(chunk_gelu);
+
+    // End of phase 1: authenticate every content vector, draw the αs, then
+    // register the already validated manifest in the finalized bank.
     debug_assert_eq!(
         bank.content_keys(),
         model_content_keys(model).into_iter().collect::<Vec<_>>(),
@@ -2665,31 +2779,40 @@ fn prove_response_impl(
     let mut table_doms = Doms::new(layer_dom_base(240));
     bank.finalize(stream, tx, &mut table_doms);
     bytes.mult += bank.mult_bytes();
+    register_gelu_manifest_p(&mut bank, &gelu_manifest)
+        .unwrap_or_else(|error| panic!("invalid response GELU manifest: {error}"));
 
     // ======================= PHASE 2 (chains + instances) ==================
     // ---- (a) 12 layers -----------------------------------------------------
-    for (l, p1) in layer_p1s.into_iter().enumerate() {
-        let luts_l = luts_for(l);
-        let mut cx = BlockCtxP::with_doms(stream, tx, p1.doms, &mut bank);
-        let (proof, out): (LayerProof, LayerOut) = prove_layer_phase2(
-            &wit.layers[l],
-            &model.layers[l].0,
-            &luts_l,
-            p1,
-            &mut cx,
-            Some(&model.layers[l].1),
-        );
-        let BlockCtxP { prod: lp, zero: lz, ctr_instances: lci, ctr_other: lco, .. } = cx;
-        prod.extend(lp);
-        zero.extend(lz);
-        add_counters(&mut ctr_instances, &lci);
-        add_counters(&mut ctr_other, &lco);
+    // The square/prefill-only model path is the first real P7b scheduler
+    // All twelve prefill layers stop after FFN-down, run one GELU cohort,
+    // then resume in canonical layer order. The response manifest already
+    // includes every later decode cohort under the same TableKey::Gelu.
+    let prefill_prefixes: Vec<Vec<KvPrefixP<'_>>> = (0..L).map(|_| Vec::new()).collect();
+    let scheduled = prove_layers_scheduled(
+        model,
+        &wit.layers,
+        layer_p1s,
+        &prefill_prefixes,
+        &gelu_manifest[0],
+        stream,
+        tx,
+        &mut bank,
+        backend.as_deref_mut(),
+    )
+    .unwrap_or_else(|error| panic!("invalid public prefill FFN schedule: {error}"));
+    for layer in scheduled {
+        let out = layer.out;
+        prod.extend(layer.prod);
+        zero.extend(layer.zero);
+        add_counters(&mut ctr_instances, &out.ctr_instances);
+        add_counters(&mut ctr_other, &out.ctr_other);
         add_bytes(&mut bytes, &out.bytes);
         boundary_doms.push((out.dom_xin, out.dom_fbo));
         layer_kv_doms.push((out.dom_k, out.dom_v));
         lookups.extend(out.lookups);
         weight_claims.extend(out.weight_claims);
-        layer_proofs.push(proof);
+        layer_proofs.push(layer.proof);
     }
 
     // ---- (c) seams -----------------------------------------------------------
@@ -2981,9 +3104,8 @@ fn prove_response_impl(
         let mut band_boundary_doms: Vec<(u64, u64)> = Vec::with_capacity(L);
         let mut layer_proofs_c: Vec<LayerProof> = Vec::with_capacity(L);
         // ---- 12 band layers -------------------------------------------------
-        for (l, p1) in p1c.layer_p1s.into_iter().enumerate() {
-            let luts_l = luts_for(l);
-            let prefix: Vec<KvPrefixP> = {
+        let prefixes: Vec<Vec<KvPrefixP<'_>>> = (0..L)
+            .map(|l| {
                 let mut v = vec![KvPrefixP {
                     rows: t,
                     dom_k: kv_doms[l][0].0,
@@ -3001,28 +3123,32 @@ fn prove_response_impl(
                     });
                 }
                 v
-            };
-            let mut cx = BlockCtxP::with_doms(stream, tx, p1.doms, &mut bank);
-            let (proof, out) = prove_layer_phase2_band(
-                &bw.layers[l],
-                &model.layers[l].0,
-                &luts_l,
-                p1,
-                &prefix,
-                &mut cx,
-                Some(&model.layers[l].1),
-            );
-            let BlockCtxP { prod: lp, zero: lz, ctr_instances: lci, ctr_other: lco, .. } = cx;
-            prod.extend(lp);
-            zero.extend(lz);
-            add_counters(&mut ctr_instances, &lci);
-            add_counters(&mut ctr_other, &lco);
+            })
+            .collect();
+        let scheduled = prove_layers_scheduled(
+            model,
+            &bw.layers,
+            p1c.layer_p1s,
+            &prefixes,
+            &gelu_manifest[c + 1],
+            stream,
+            tx,
+            &mut bank,
+            backend.as_deref_mut(),
+        )
+        .unwrap_or_else(|error| panic!("invalid public decode FFN schedule: {error}"));
+        for (l, layer) in scheduled.into_iter().enumerate() {
+            let out = layer.out;
+            prod.extend(layer.prod);
+            zero.extend(layer.zero);
+            add_counters(&mut ctr_instances, &out.ctr_instances);
+            add_counters(&mut ctr_other, &out.ctr_other);
             add_bytes(&mut bytes, &out.bytes);
             band_boundary_doms.push((out.dom_xin, out.dom_fbo));
             kv_doms[l].push((out.dom_k, out.dom_v));
             lookups.extend(out.lookups);
             weight_claims.extend(out.weight_claims);
-            layer_proofs_c.push(proof);
+            layer_proofs_c.push(layer.proof);
         }
         let _ = lb;
         // ---- band seams ------------------------------------------------------
@@ -3343,6 +3469,200 @@ pub fn verify_model(
     verify_response(model, t, logits, &[], proof, vc, tx)
 }
 
+/// Validate every public response dimension and every proof collection that
+/// the verifier later indexes.  This runs before the first transcript append,
+/// challenge or correlation-key expansion so malformed public input cannot
+/// panic after partially consuming a reusable verifier session.
+fn preflight_layer_proof_shape(
+    shape: BandShape,
+    proof: &LayerProof,
+    softmax_row_shift: bool,
+) -> Option<()> {
+    let rows = shape.q;
+    let boundary_len = rows.checked_mul(D)?;
+    let row_pad = rows.checked_next_power_of_two()?;
+    if [&proof.xin_corr, &proof.k_corr, &proof.v_corr, &proof.abo_corr, &proof.fbo_corr]
+        .into_iter()
+        .any(|corrections| corrections.len() != boundary_len)
+        || proof.ffn.ln_vec_corrs.iter().any(|corrections| corrections.len() != row_pad)
+        || proof.attn.ln_vec_corrs.iter().any(|corrections| corrections.len() != row_pad)
+    {
+        return None;
+    }
+
+    // Attention row tables use the protocol's fixed 16-head padding, while
+    // the sparse above-diagonal stream contains only the twelve real heads.
+    let attention_rows = 16usize.checked_mul(row_pad)?;
+    let above_len = H.checked_mul(shape.n_above_head())?;
+    if [&proof.attn.denoms_corr, &proof.attn.recip_in_corr, &proof.attn.recips_corr]
+        .into_iter()
+        .any(|corrections| corrections.len() != attention_rows)
+        || proof.attn.above_corr.len() != above_len
+        || proof.attn.gemm_wv.len() != H
+        || proof.attn.gemm_qk.len() != H
+        || proof.attn.row_shift_corr.is_some() != softmax_row_shift
+        || proof.attn.hadamard2.is_some() != softmax_row_shift
+        || proof.attn.ismax_rowsum_corr.is_some() != softmax_row_shift
+        || proof
+            .attn
+            .row_shift_corr
+            .as_ref()
+            .is_some_and(|corrections| corrections.len() != attention_rows)
+    {
+        return None;
+    }
+    Some(())
+}
+
+/// Public greedy-decoding relation across chunk boundaries.  Row `r` of a
+/// chunk samples the token at the next position, so the final row of chunk
+/// `c-1` must select the first token carried by chunk `c`.
+fn preflight_greedy_tokens(
+    t: usize,
+    prefill_logits: &[i64],
+    chunks: &[ChunkPub<'_>],
+) -> Option<()> {
+    let mut t0 = t;
+    for (chunk_index, chunk) in chunks.iter().enumerate() {
+        if chunk.q < 2 || chunk.logits.len() != chunk.q.checked_mul(VOCAB)? {
+            return None;
+        }
+
+        let predecessor_logits = if chunk_index == 0 {
+            prefill_logits
+        } else {
+            let previous = chunks.get(chunk_index - 1)?;
+            if chunk.seq.get(..t0)? != previous.seq.get(..t0)? {
+                return None;
+            }
+            let row_start = previous.q.checked_sub(1)?.checked_mul(VOCAB)?;
+            previous.logits.get(row_start..row_start.checked_add(VOCAB)?)?
+        };
+        let predecessor_argmax = (0..VOCAB).max_by_key(|&v| predecessor_logits[v])?;
+        if *chunk.seq.get(t0)? != predecessor_argmax as u32 {
+            return None;
+        }
+
+        // The last row is deliberately excluded: it is checked as the
+        // predecessor of the next chunk, or has no sampled token in the
+        // response when this is the final chunk.
+        for row_index in 0..chunk.q - 1 {
+            let row_start = row_index.checked_mul(VOCAB)?;
+            let row = chunk.logits.get(row_start..row_start.checked_add(VOCAB)?)?;
+            let argmax = (0..VOCAB).max_by_key(|&v| row[v])?;
+            let next = t0.checked_add(row_index)?.checked_add(1)?;
+            if *chunk.seq.get(next)? != argmax as u32 {
+                return None;
+            }
+        }
+        t0 = t0.checked_add(chunk.q)?;
+    }
+    Some(())
+}
+
+fn preflight_verify_response_public(
+    model: &Gpt2Model,
+    t: usize,
+    logits: &[i64],
+    chunks: &[ChunkPub<'_>],
+    proof: &ModelProof,
+) -> Option<()> {
+    let global_shifts = [
+        model.p.lut.shift_ffn_up,
+        model.p.lut.shift_ln_norm,
+        model.p.lut.shift_av,
+        model.p.lut.shift_softmax_norm,
+        model.p.lut.shift_scores,
+        model.p.lut.shift_qkv,
+    ];
+    if t < 2
+        || t > NPOS
+        || t > model.p.tokens.len()
+        || model.layers.len() != L
+        || logits.len() != VOCAB
+        || chunks.len() > MAX_RESPONSE_CHUNKS
+        || proof.layers.len() != L
+        || proof.seams.len() != L - 1
+        || proof.chunks.len() != chunks.len()
+        || !(1..=16).contains(&model.p.shift_embed)
+        || global_shifts.into_iter().any(|shift| shift > 32)
+        || model.p.shift_attn_proj.into_iter().any(|shift| shift > 32)
+        || model.p.shift_ffn_down.into_iter().any(|shift| shift > 32)
+    {
+        return None;
+    }
+
+    if proof
+        .seams
+        .iter()
+        .zip(model.p.seam_shifts)
+        .any(|(seam, shift)| shift > 16 || seam.is_some() != (shift > 0))
+        || proof.embed.out_corr.len() != t.checked_mul(D)?
+        || proof.final_ln.out_corr.len() != 2usize.checked_mul(D)?
+        || proof.final_ln.row_corr.len() != 2usize.checked_mul(D)?
+        || proof.final_ln.ln_vec_corrs.iter().any(|corrections| corrections.len() != 2)
+    {
+        return None;
+    }
+    for layer_proof in &proof.layers {
+        preflight_layer_proof_shape(
+            BandShape::square(t),
+            layer_proof,
+            model.p.lut.softmax_row_shift,
+        )?;
+    }
+
+    let public_prompt = model.p.tokens.get(..t)?;
+    let mut t0 = t;
+    for (chunk, chunk_proof) in chunks.iter().zip(&proof.chunks) {
+        let logits_len = chunk.q.checked_mul(VOCAB)?;
+        let end = t0.checked_add(chunk.q)?;
+        let chunk_boundary_len = chunk.q.checked_mul(D)?;
+        let chunk_pad = chunk.q.checked_next_power_of_two()?;
+        if chunk.q < 2
+            || chunk.logits.len() != logits_len
+            || end > NPOS
+            || chunk.seq.len() < end
+            || chunk.seq.get(..t)? != public_prompt
+            || chunk_proof.layers.len() != L
+            || chunk_proof.seams.len() != L - 1
+            || chunk_proof
+                .seams
+                .iter()
+                .zip(model.p.seam_shifts)
+                .any(|(seam, shift)| seam.is_some() != (shift > 0))
+            || chunk_proof.embed.out_corr.len() != chunk_boundary_len
+            || chunk_proof.fin_out_corr.len() != chunk_boundary_len
+            || chunk_proof.fin_ln_vec_corrs.iter().any(|corrections| corrections.len() != chunk_pad)
+        {
+            return None;
+        }
+        for layer_proof in &chunk_proof.layers {
+            preflight_layer_proof_shape(
+                BandShape { t0, q: chunk.q },
+                layer_proof,
+                model.p.lut.softmax_row_shift,
+            )?;
+        }
+
+        t0 = end;
+    }
+    preflight_greedy_tokens(t, logits, chunks)?;
+
+    // `TableBankV::finalize` expands keys incrementally. Validate its entire
+    // public shape here so a later table mismatch cannot leave a half-used
+    // verifier context.
+    let expected_tables = model_content_keys(model);
+    if proof.tables.len() != expected_tables.len()
+        || proof.tables.iter().zip(expected_tables).any(|(table, key)| {
+            table.key != key || table.mult_corr.len() != crate::block_proof::table_len(key)
+        })
+    {
+        return None;
+    }
+    Some(())
+}
+
 /// Verify a full response (prefill + decode chunks — mirror of
 /// [`prove_response`], same order throughout). Also runs the PUBLIC greedy
 /// checks: every sampled token must be the argmax of the logits row at the
@@ -3356,45 +3676,7 @@ pub fn verify_response(
     vc: &mut VerifierCtx,
     tx: &mut Transcript,
 ) -> Option<(ModelOutV, ProdKeyTriples, Vec<VerifierKey>)> {
-    if proof.layers.len() != L || proof.seams.len() != L - 1 {
-        return None;
-    }
-    if proof.chunks.len() != chunks.len() {
-        return None;
-    }
-    // ---- PUBLIC greedy checks + chunk shape checks --------------------------
-    {
-        let mut t0 = t;
-        for (c, ch) in chunks.iter().enumerate() {
-            if ch.q < 2
-                || ch.logits.len() != ch.q * VOCAB
-                || ch.seq.len() < t0 + ch.q
-                || ch.seq[..t] != model.p.tokens[..t]
-            {
-                return None;
-            }
-            // Token at position t0 is sampled by the PREVIOUS position's
-            // logits: the prefill's last row for c = 0 (r = -1), the chunk's
-            // own rows after.
-            if c == 0 {
-                let am = (0..VOCAB).max_by_key(|&v| logits[v])?;
-                if ch.seq[t] != am as u32 {
-                    return None;
-                }
-            }
-            for r in 0..ch.q {
-                let nxt = t0 + r + 1;
-                if nxt < ch.seq.len() {
-                    let row = &ch.logits[r * VOCAB..(r + 1) * VOCAB];
-                    let am = (0..VOCAB).max_by_key(|&v| row[v])?;
-                    if ch.seq[nxt] != am as u32 {
-                        return None;
-                    }
-                }
-            }
-            t0 += ch.q;
-        }
-    }
+    preflight_verify_response_public(model, t, logits, chunks, proof)?;
     let d_cb = pad_bits(D);
     let rb_t = pad_bits(t);
     let n_vars_td = d_cb + rb_t;
@@ -3507,38 +3789,70 @@ pub fn verify_response(
                 fin_out_keys,
                 fin_lvk,
             });
-            t0 += q;
+            t0 = t0.checked_add(q)?;
         }
     }
 
+    // Validate every scheduled proof and domain range before table
+    // finalization expands multiplicity keys or draws shared alphas.
+    let prefill_gelu = preflight_gelu_plan(
+        t,
+        0,
+        0,
+        layer_v1s
+            .iter()
+            .enumerate()
+            .map(|(layer, v1)| (layer, v1.doms, model.p.shift_ffn_down[layer])),
+    )
+    .ok()?;
+    preflight_gelu_proofs(&proof.layers, &prefill_gelu).ok()?;
+    let mut gelu_manifest = Vec::with_capacity(1 + chunks.len());
+    gelu_manifest.push(prefill_gelu);
+    let mut decode_t0 = t;
+    for (chunk_index, ((chunk, chunk_proof), v1)) in
+        chunks.iter().zip(&proof.chunks).zip(&chunk_v1s).enumerate()
+    {
+        let (layer_base, ..) = chunk_ids(chunk_index);
+        let plan = preflight_gelu_plan(
+            chunk.q,
+            decode_t0,
+            layer_base,
+            v1.layer_v1s
+                .iter()
+                .enumerate()
+                .map(|(layer, v1)| (layer, v1.doms, model.p.shift_ffn_down[layer])),
+        )
+        .ok()?;
+        preflight_gelu_proofs(&chunk_proof.layers, &plan).ok()?;
+        gelu_manifest.push(plan);
+        decode_t0 = decode_t0.checked_add(chunk.q)?;
+    }
+
     // End of phase 1: expand the per-content multiplicity keys against the
-    // PUBLIC expected content set, draw the shared αs.
+    // PUBLIC expected content set, draw the shared αs, then register the
+    // already validated response manifest.
     let expected = model_content_keys(model);
     let mut table_doms = Doms::new(layer_dom_base(240));
     let mut bank = TableBankV::finalize(&expected, &proof.tables, vc, tx, &mut table_doms)?;
+    register_gelu_manifest_v(&mut bank, &gelu_manifest).ok()?;
 
     // ======================= PHASE 2 mirror =================================
     // ---- (a) 12 layers -----------------------------------------------------
-    for (l, v1) in layer_v1s.into_iter().enumerate() {
-        let luts_l = luts_for(l);
-        let w = &model.layers[l].0;
-        let b = &model.layers[l].1;
-        let mut cx = BlockCtxV::with_doms(vc, tx, v1.doms, &mut bank);
-        let out = verify_layer_phase2(
-            t,
-            &w.ln1_gain,
-            &w.ln1_bias,
-            &w.ln2_gain,
-            &w.ln2_bias,
-            &luts_l,
-            &proof.layers[l],
-            v1,
-            &mut cx,
-            Some(b),
-        )?;
-        let BlockCtxV { kprod: lkp, kzero: lkz, .. } = cx;
-        kprod.extend(lkp);
-        kzero.extend(lkz);
+    let prefill_prefixes: Vec<Vec<KvPrefixK<'_>>> = (0..L).map(|_| Vec::new()).collect();
+    let scheduled = verify_layers_scheduled(
+        model,
+        &proof.layers,
+        layer_v1s,
+        &prefill_prefixes,
+        &gelu_manifest[0],
+        vc,
+        tx,
+        &mut bank,
+    )?;
+    for layer in scheduled {
+        let out = layer.out;
+        kprod.extend(layer.prod);
+        kzero.extend(layer.zero);
         weight_keys.extend(out.weight_keys);
         boundary_keys.push((out.xin_keys, out.fbo_keys));
         boundary_kv_keys.push((out.k_keys, out.v_keys));
@@ -3708,36 +4022,32 @@ pub fn verify_response(
         {
             let q = ch.q;
             let qb = pad_bits(q);
-            let sh_c = BandShape { t0, q };
             let n_vars_qd = d_cb + qb;
             let (_lb, sb_id, _eb, _fb, gb, zb) = chunk_ids(c);
             let mut band_boundary_keys: Vec<(Vec<Fp2>, Vec<Fp2>)> = Vec::with_capacity(L);
             // ---- 12 band layers ------------------------------------------------
-            for (l, v1) in v1c.layer_v1s.into_iter().enumerate() {
-                let luts_l = luts_for(l);
-                let w = &model.layers[l].0;
-                let b = &model.layers[l].1;
-                let prefix: Vec<KvPrefixK> = kv_keys[l]
-                    .iter()
-                    .map(|(kk, vk)| KvPrefixK { rows: kk.len() / D, k_keys: kk, v_keys: vk })
-                    .collect();
-                let mut cx = BlockCtxV::with_doms(vc, tx, v1.doms, &mut bank);
-                let out = verify_layer_phase2_band(
-                    sh_c,
-                    &w.ln1_gain,
-                    &w.ln1_bias,
-                    &w.ln2_gain,
-                    &w.ln2_bias,
-                    &luts_l,
-                    &cp.layers[l],
-                    v1,
-                    &prefix,
-                    &mut cx,
-                    Some(b),
-                )?;
-                let BlockCtxV { kprod: lkp, kzero: lkz, .. } = cx;
-                kprod.extend(lkp);
-                kzero.extend(lkz);
+            let prefixes: Vec<Vec<KvPrefixK<'_>>> = (0..L)
+                .map(|l| {
+                    kv_keys[l]
+                        .iter()
+                        .map(|(kk, vk)| KvPrefixK { rows: kk.len() / D, k_keys: kk, v_keys: vk })
+                        .collect()
+                })
+                .collect();
+            let scheduled = verify_layers_scheduled(
+                model,
+                &cp.layers,
+                v1c.layer_v1s,
+                &prefixes,
+                &gelu_manifest[c + 1],
+                vc,
+                tx,
+                &mut bank,
+            )?;
+            for (l, layer) in scheduled.into_iter().enumerate() {
+                let out = layer.out;
+                kprod.extend(layer.prod);
+                kzero.extend(layer.zero);
                 weight_keys.extend(out.weight_keys);
                 band_boundary_keys.push((out.xin_keys, out.fbo_keys));
                 kv_keys[l].push((out.k_keys, out.v_keys));
@@ -3882,7 +4192,7 @@ pub fn verify_response(
             kprod.extend(lkp);
             kzero.extend(lkz);
 
-            t0 += q;
+            t0 = t0.checked_add(q)?;
         }
     }
 
@@ -3920,6 +4230,68 @@ mod tests {
         let cb = pad_bits(n);
         let b = fold_w(w, k, n, &eq_vec(&point[..cb]));
         eval_mle(&b, &point[cb..])
+    }
+
+    fn assert_response_preflight_rejects_without_mutation(
+        model: &Gpt2Model,
+        t: usize,
+        logits: &[i64],
+        chunks: &[ChunkPub<'_>],
+        proof: &ModelProof,
+        pcg_seed: [u8; 32],
+        delta: Fp2,
+        tx_seed: [u8; 32],
+    ) -> (VerifierCtx, Transcript) {
+        let mut vc = VerifierCtx::new(pcg_seed, delta);
+        let mut tx = Transcript::new(tx_seed);
+        let counters_before = vc.counters;
+        let allocation_before = vc.allocation_digest_hex();
+        let ledger_before = tx.ledger().clone();
+        let transcript_bytes_before = tx.total_bytes();
+
+        assert!(
+            verify_response(model, t, logits, chunks, proof, &mut vc, &mut tx).is_none(),
+            "malformed response must fail in the entry preflight"
+        );
+        assert_eq!(vc.counters, counters_before, "preflight rejection consumed correlations");
+        assert_eq!(
+            vc.allocation_digest_hex(),
+            allocation_before,
+            "preflight rejection changed the correlation allocation ledger"
+        );
+        assert_eq!(tx.ledger(), &ledger_before, "preflight rejection changed transcript ledger");
+        assert_eq!(
+            tx.total_bytes(),
+            transcript_bytes_before,
+            "preflight rejection charged transcript bytes"
+        );
+        (vc, tx)
+    }
+
+    #[test]
+    fn greedy_preflight_binds_the_first_token_of_each_later_chunk() {
+        let t = 2usize;
+        let mut prefill_logits = vec![0i64; VOCAB];
+        prefill_logits[7] = 1;
+        let mut first_logits = vec![0i64; 2 * VOCAB];
+        first_logits[8] = 1;
+        first_logits[VOCAB + 9] = 1;
+        let mut second_logits = vec![0i64; 2 * VOCAB];
+        second_logits[10] = 1;
+        let sequence = vec![101, 102, 7, 8, 9, 10];
+        let chunks = [
+            ChunkPub { q: 2, logits: &first_logits, seq: &sequence },
+            ChunkPub { q: 2, logits: &second_logits, seq: &sequence },
+        ];
+        assert_eq!(preflight_greedy_tokens(t, &prefill_logits, &chunks), Some(()));
+
+        let mut wrong_boundary = sequence.clone();
+        wrong_boundary[4] = 11;
+        let malformed = [
+            ChunkPub { q: 2, logits: &first_logits, seq: &sequence },
+            ChunkPub { q: 2, logits: &second_logits, seq: &wrong_boundary },
+        ];
+        assert_eq!(preflight_greedy_tokens(t, &prefill_logits, &malformed), None);
     }
 
     /// P6 response e2e: prefill (t=12) + ONE decode chunk (q=4) proven in one
@@ -3960,10 +4332,62 @@ mod tests {
         let mut txv = Transcript::new(tx_seed);
 
         let chunks_p = [ChunkRef { band: &band, seq: &seq }];
-        let (proof, out, prod, mut zero) =
+        let (mut proof, out, prod, mut zero) =
             prove_response(&model, &wit0, &chunks_p, &mut stream, &mut txp);
 
         let chunks_v = [ChunkPub { q: n_gen, logits: &band.logits, seq: &seq }];
+
+        // Structural failures are fail-closed at the public entry boundary:
+        // no transcript charge/challenge and no correlation key may be used.
+        assert_response_preflight_rejects_without_mutation(
+            &model,
+            t,
+            &wit0.logits[..VOCAB - 1],
+            &chunks_v,
+            &proof,
+            pcg_seed,
+            delta,
+            tx_seed,
+        );
+        let too_many_chunks: Vec<ChunkPub<'_>> = (0..=MAX_RESPONSE_CHUNKS)
+            .map(|_| ChunkPub { q: n_gen, logits: &band.logits, seq: &seq })
+            .collect();
+        assert_response_preflight_rejects_without_mutation(
+            &model,
+            t,
+            &wit0.logits,
+            &too_many_chunks,
+            &proof,
+            pcg_seed,
+            delta,
+            tx_seed,
+        );
+        let removed_layer = proof.chunks[0].layers.pop().expect("test proof has twelve layers");
+        let (mut recovery_vc, mut recovery_tx) = assert_response_preflight_rejects_without_mutation(
+            &model,
+            t,
+            &wit0.logits,
+            &chunks_v,
+            &proof,
+            pcg_seed,
+            delta,
+            tx_seed,
+        );
+        proof.chunks[0].layers.push(removed_layer);
+        assert!(
+            verify_response(
+                &model,
+                t,
+                &wit0.logits,
+                &chunks_v,
+                &proof,
+                &mut recovery_vc,
+                &mut recovery_tx,
+            )
+            .is_some(),
+            "a rejected malformed call must leave hidden challenge/correlation state reusable"
+        );
+
         let (outv, kprod, mut kzero) =
             verify_response(&model, t, &wit0.logits, &chunks_v, &proof, &mut vc, &mut txv)
                 .expect("response proof must verify");

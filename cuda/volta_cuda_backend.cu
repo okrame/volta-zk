@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -16,16 +17,20 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 21;
+constexpr uint32_t ABI_VERSION = 26;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
-constexpr int OP_COUNT = 5;
+constexpr int OP_COUNT = 7;
 constexpr int OP_GEMM = 0;
 constexpr int OP_LOGUP = 1;
 constexpr int OP_PCS_ROWS = 2;
 constexpr int OP_PCS_NTT = 3;
 constexpr int OP_PCS_MERKLE = 4;
+constexpr int OP_AUTH_MASKS = 5;
+constexpr int OP_MAILBOX = 6;
+constexpr uint64_t MOCK_CORRELATION_RESERVED_DOMAIN_BITS =
+    (uint64_t{1} << 63) | (uint64_t{1} << 62) | (uint64_t{1} << 61);
 constexpr int BUFFER_COUNT = 16;
 constexpr uint32_t TIMING_CUDA_EVENTS = 1;
 constexpr uint32_t TIMING_HOST_BARRIER_WALL = 2;
@@ -65,14 +70,23 @@ struct RawStats {
     uint64_t live_device_bytes;
     uint64_t peak_device_bytes;
     uint64_t timing_records;
+    /// Every cudaEventElapsedTime attempt, including success/no-write.
+    uint64_t timing_elapsed_query_attempts;
+    /// cudaSuccess responses that did not populate a finite duration.
+    uint64_t timing_elapsed_no_write;
     uint64_t timing_event_queries;
     uint64_t timing_pending_high_water;
     uint64_t timing_flush_count;
+    uint64_t coarse_timing_scopes;
+    /// Sum of CUDA-event intervals sealed by coarse timing scopes. Unlike a
+    /// per-kernel event, an interval may include device idle time while a
+    /// remote runtime waits for the host to submit the next launch.
+    uint64_t coarse_timing_ns;
     uint32_t timing_mode;
     uint32_t reserved;
 };
 
-static_assert(sizeof(RawStats) == 288, "RawStats ABI layout changed");
+static_assert(sizeof(RawStats) == 352, "RawStats ABI layout changed");
 
 enum class SyncReason {
     HostOutput,
@@ -100,6 +114,7 @@ struct ResidentBuffer {
 
 enum class TimingRecordKind {
     Operation,
+    CoarseOperation,
     TransferH2D,
     TransferD2H,
 };
@@ -111,6 +126,12 @@ struct TimingRecord {
     cudaEvent_t events[4]{};
     TimingRecordKind kind = TimingRecordKind::Operation;
     int operation = -1;
+    /// Internal ring invariants and failure diagnostics. These fields are not
+    /// part of the C ABI and add no CUDA calls on the success path.
+    uint64_t generation = 0;
+    uint8_t event_mask = 0;
+    uint8_t fresh_event_mask = 0;
+    bool committed = false;
     uint64_t h2d_bytes = 0;
     uint64_t d2h_bytes = 0;
     uint64_t d2d_bytes = 0;
@@ -135,6 +156,19 @@ struct Context {
     size_t timing_ring_begin = 0;
     size_t timing_ring_pending = 0;
     size_t active_timing_record = TIMING_RING_SIZE;
+    uint64_t timing_record_generation = 0;
+    uint64_t timing_event_count = 0;
+    uint32_t test_elapsed_no_write_remaining = 0;
+    bool coarse_timing_active = false;
+    bool coarse_inner_active = false;
+    /// At least one primitive has committed call/byte accounting into the
+    /// currently active coarse scope. Aborting such a scope loses its only
+    /// timing interval, so the measurement must become unreadable.
+    bool coarse_accounted_work = false;
+    /// Fail-closed latch for call/byte accounting whose enclosing timing
+    /// interval was discarded. This is internal state, not part of ABI 26.
+    bool measurement_poisoned = false;
+    int coarse_timing_operation = -1;
     std::chrono::steady_clock::time_point phase_started{};
     std::array<uint64_t, 3> phase_ns{};
     std::string error;
@@ -143,7 +177,18 @@ struct Context {
 int fail_message(Context* c, const char* message) noexcept;
 
 void abort_active_timing_record(Context* c) noexcept {
-    if (c) c->active_timing_record = TIMING_RING_SIZE;
+    if (!c) return;
+    if (c->coarse_accounted_work) c->measurement_poisoned = true;
+    if (c->active_timing_record != TIMING_RING_SIZE) {
+        TimingRecord& record = c->timing_ring[c->active_timing_record];
+        record.event_mask = 0;
+        record.committed = false;
+    }
+    c->active_timing_record = TIMING_RING_SIZE;
+    c->coarse_timing_active = false;
+    c->coarse_inner_active = false;
+    c->coarse_accounted_work = false;
+    c->coarse_timing_operation = -1;
 }
 
 uint64_t resident_id(size_t slot, uint32_t generation) {
@@ -214,6 +259,20 @@ int fail_message(Context* c, const char* message) noexcept {
             c->error = message;
         } catch (...) {
             // A diagnostic allocation failure must not escape the C ABI.
+        }
+    }
+    return -1;
+}
+
+/// Reject a control operation without aborting a valid surrounding coarse
+/// timing scope. This is used for nested-scope attempts and forbidden host
+/// boundaries that fail before any CUDA work is enqueued.
+int reject_message(Context* c, const char* message) noexcept {
+    if (c) {
+        try {
+            c->error = message;
+        } catch (...) {
+            // Reporting a rejected control operation must remain noexcept.
         }
     }
     return -1;
@@ -357,6 +416,13 @@ int ensure(Context* c, int slot, size_t bytes) {
     if (slot < 0 || slot >= BUFFER_COUNT) return fail_message(c, "invalid workspace slot");
     Buffer& b = c->buffers[slot];
     if (b.capacity >= bytes) return 0;
+    if (c->coarse_timing_active) {
+        const std::string message =
+            "workspace slot " + std::to_string(slot) + " growth from " +
+            std::to_string(b.capacity) + " to " + std::to_string(bytes) +
+            " bytes is forbidden inside a coarse timing scope";
+        return reject_message(c, message.c_str());
+    }
     if (b.ptr) {
         if (synchronize_for_reclamation(c)) return -1;
         CUDA_OR_RETURN(c, cudaFree(b.ptr));
@@ -378,22 +444,122 @@ T* buf(Context* c, int slot) {
     return reinterpret_cast<T*>(c->buffers[slot].ptr);
 }
 
-int event_ns(Context* c, cudaEvent_t a, cudaEvent_t b, uint64_t* out) {
+const char* timing_record_kind_name(TimingRecordKind kind) {
+    switch (kind) {
+        case TimingRecordKind::Operation: return "operation";
+        case TimingRecordKind::CoarseOperation: return "coarse";
+        case TimingRecordKind::TransferH2D: return "transfer-h2d";
+        case TimingRecordKind::TransferD2H: return "transfer-d2h";
+    }
+    return "unknown";
+}
+
+uint8_t expected_event_mask(TimingRecordKind kind) {
+    return kind == TimingRecordKind::Operation ? 0x0f : 0x03;
+}
+
+int query_event_ns_once(
+    Context* c, cudaEvent_t a, cudaEvent_t b, uint64_t* out, bool* resolved) {
+    ++c->stats.timing_elapsed_query_attempts;
+    if (c->test_elapsed_no_write_remaining) {
+        --c->test_elapsed_no_write_remaining;
+        ++c->stats.timing_elapsed_no_write;
+        *resolved = false;
+        return 0;
+    }
     float ms = -1.0f;
     const cudaError_t e = cudaEventElapsedTime(&ms, a, b);
     if (e != cudaSuccess) return fail(c, "cudaEventElapsedTime", e);
-    if (ms < 0.0f) {
-        return fail_message(c, "cudaEventElapsedTime returned success without a duration");
+    if (std::isfinite(ms) && ms >= 0.0f) {
+        *out = static_cast<uint64_t>(ms * 1'000'000.0f);
+        ++c->stats.timing_event_queries;
+        *resolved = true;
+    } else {
+        ++c->stats.timing_elapsed_no_write;
+        *resolved = false;
     }
-    *out = static_cast<uint64_t>(ms * 1'000'000.0f);
-    ++c->stats.timing_event_queries;
     return 0;
+}
+
+int event_ns(Context* c, cudaEvent_t a, cudaEvent_t b, uint64_t* out) {
+    // Legacy mode cannot interleave multiple records, but remains bounded and
+    // exact: an absent duration never becomes zero or a host-wall estimate.
+    constexpr int ELAPSED_QUERY_ATTEMPTS = 4;
+    for (int attempt = 0; attempt < ELAPSED_QUERY_ATTEMPTS; ++attempt) {
+        bool resolved = false;
+        if (query_event_ns_once(c, a, b, out, &resolved)) return -1;
+        if (resolved) return 0;
+    }
+    return fail_message(
+        c, "cudaEventElapsedTime returned success without a duration after bounded retries");
+}
+
+struct DeferredElapsedQuery {
+    TimingRecord* record = nullptr;
+    cudaEvent_t start = nullptr;
+    cudaEvent_t end = nullptr;
+    uint64_t* out = nullptr;
+    size_t slot = TIMING_RING_SIZE;
+    size_t offset = TIMING_RING_SIZE;
+    int start_event = -1;
+    int end_event = -1;
+};
+
+int fail_unresolved_elapsed(
+    Context* c, const DeferredElapsedQuery& query, size_t unresolved_count,
+    int retry_sweeps) {
+    const TimingRecord& record = *query.record;
+    const cudaError_t start_status = cudaEventQuery(query.start);
+    const cudaError_t end_status = cudaEventQuery(query.end);
+    char message[1024];
+    std::snprintf(
+        message, sizeof(message),
+        "deferred timing elapsed no-write: slot=%zu offset=%zu kind=%s op=%d "
+        "generation=%llu event_mask=0x%02x expected_mask=0x%02x fresh_mask=0x%02x "
+        "event_count=%llu query_attempts=%llu successful_queries=%llu no_write=%llu "
+        "h2d_bytes=%llu d2h_bytes=%llu pair=%d->%d unresolved=%zu retry_sweeps=%d "
+        "ring_begin=%zu pending=%zu active=%zu start_event=%p end_event=%p "
+        "start_query=%s(%d) end_query=%s(%d)",
+        query.slot, query.offset, timing_record_kind_name(record.kind), record.operation,
+        static_cast<unsigned long long>(record.generation), record.event_mask,
+        expected_event_mask(record.kind), record.fresh_event_mask,
+        static_cast<unsigned long long>(c->timing_event_count),
+        static_cast<unsigned long long>(c->stats.timing_elapsed_query_attempts),
+        static_cast<unsigned long long>(c->stats.timing_event_queries),
+        static_cast<unsigned long long>(c->stats.timing_elapsed_no_write),
+        static_cast<unsigned long long>(record.h2d_bytes),
+        static_cast<unsigned long long>(record.d2h_bytes), query.start_event,
+        query.end_event, unresolved_count, retry_sweeps,
+        c->timing_ring_begin, c->timing_ring_pending, c->active_timing_record,
+        static_cast<void*>(query.start), static_cast<void*>(query.end),
+        cudaGetErrorString(start_status), static_cast<int>(start_status),
+        cudaGetErrorString(end_status), static_cast<int>(end_status));
+    return fail_message(c, message);
+}
+
+int validate_deferred_record(
+    Context* c, const TimingRecord& record, size_t slot, size_t offset) {
+    const uint8_t expected = expected_event_mask(record.kind);
+    if (record.committed && record.event_mask == expected) return 0;
+    char message[512];
+    std::snprintf(
+        message, sizeof(message),
+        "invalid deferred timing record: slot=%zu offset=%zu kind=%s op=%d "
+        "generation=%llu committed=%d event_mask=0x%02x expected_mask=0x%02x "
+        "ring_begin=%zu pending=%zu active=%zu",
+        slot, offset, timing_record_kind_name(record.kind), record.operation,
+        static_cast<unsigned long long>(record.generation), record.committed ? 1 : 0,
+        record.event_mask, expected, c->timing_ring_begin, c->timing_ring_pending,
+        c->active_timing_record);
+    return fail_message(c, message);
 }
 
 int ensure_record_events(Context* c, TimingRecord& record, size_t count) {
     for (size_t i = 0; i < count; ++i) {
         if (record.events[i]) continue;
         CUDA_OR_RETURN(c, cudaEventCreate(&record.events[i]));
+        record.fresh_event_mask |= 1u << i;
+        ++c->timing_event_count;
     }
     return 0;
 }
@@ -403,26 +569,80 @@ int flush_deferred_timing(Context* c, SyncReason reason) {
     if (synchronize_stream(c, reason)) return -1;
     ++c->stats.timing_flush_count;
 
-    // Query every record first. Attribution is committed only after the
-    // entire batch succeeds, so a failed event query can be retried without
-    // double-counting any completed prefix.
+    // Query every required phase once before retrying any provider no-write.
+    // Thunder can return cudaSuccess without populating the duration; issuing
+    // other endpoint queries before a bounded retry breaks that provider
+    // cache/burst condition while preserving exact CUDA-event attribution.
+    // Attribution is committed only after every phase has resolved.
+    std::array<DeferredElapsedQuery, TIMING_RING_SIZE * 3> unresolved{};
+    size_t unresolved_count = 0;
+    const auto query_or_defer = [&c, &unresolved, &unresolved_count](
+        TimingRecord& record, size_t slot, size_t offset,
+        int start_event, int end_event, uint64_t* out) -> int {
+        bool resolved = false;
+        if (query_event_ns_once(
+                c, record.events[start_event], record.events[end_event], out,
+                &resolved)) return -1;
+        if (resolved) return 0;
+        if (unresolved_count == unresolved.size())
+            return fail_message(c, "deferred elapsed retry set exceeds fixed capacity");
+        unresolved[unresolved_count++] = DeferredElapsedQuery{
+            &record,
+            record.events[start_event],
+            record.events[end_event],
+            out,
+            slot,
+            offset,
+            start_event,
+            end_event,
+        };
+        return 0;
+    };
     for (size_t offset = 0; offset < c->timing_ring_pending; ++offset) {
-        TimingRecord& record =
-            c->timing_ring[(c->timing_ring_begin + offset) % TIMING_RING_SIZE];
+        const size_t slot = (c->timing_ring_begin + offset) % TIMING_RING_SIZE;
+        TimingRecord& record = c->timing_ring[slot];
+        if (validate_deferred_record(c, record, slot, offset)) return -1;
         if (record.kind == TimingRecordKind::Operation) {
             // Every elapsed-time query is itself a CUDA API call. On a
             // remote runtime, do not issue empty phase queries merely to
             // recover a zero already known from the byte counters.
             if ((record.h2d_bytes &&
-                 event_ns(c, record.events[0], record.events[1], &record.measured_ns[0])) ||
-                event_ns(c, record.events[1], record.events[2], &record.measured_ns[1]) ||
+                 query_or_defer(record, slot, offset, 0, 1, &record.measured_ns[0])) ||
+                query_or_defer(record, slot, offset, 1, 2, &record.measured_ns[1]) ||
                 (record.d2h_bytes &&
-                 event_ns(c, record.events[2], record.events[3], &record.measured_ns[2])))
+                 query_or_defer(record, slot, offset, 2, 3, &record.measured_ns[2])))
                 return -1;
+        } else if (record.kind == TimingRecordKind::CoarseOperation) {
+            if (query_or_defer(record, slot, offset, 0, 1, &record.measured_ns[1])) return -1;
         } else {
-            if (event_ns(c, record.events[0], record.events[1], &record.measured_ns[0])) return -1;
+            if (query_or_defer(record, slot, offset, 0, 1, &record.measured_ns[0])) return -1;
         }
     }
+
+    constexpr int ELAPSED_RETRY_SWEEPS = 3;
+    int retry_sweeps = 0;
+    for (; retry_sweeps < ELAPSED_RETRY_SWEEPS && unresolved_count; ++retry_sweeps) {
+        size_t still_unresolved = 0;
+        for (size_t i = 0; i < unresolved_count; ++i) {
+            DeferredElapsedQuery query = unresolved[i];
+            // Failure-path only: endpoint readiness calls interpose different
+            // provider messages and prove that both recorded events remain
+            // complete. No stream synchronization is added.
+            const cudaError_t start_status = cudaEventQuery(query.start);
+            if (start_status != cudaSuccess)
+                return fail(c, "cudaEventQuery(deferred start)", start_status);
+            const cudaError_t end_status = cudaEventQuery(query.end);
+            if (end_status != cudaSuccess)
+                return fail(c, "cudaEventQuery(deferred end)", end_status);
+            bool resolved = false;
+            if (query_event_ns_once(c, query.start, query.end, query.out, &resolved)) return -1;
+            if (!resolved) unresolved[still_unresolved++] = query;
+        }
+        unresolved_count = still_unresolved;
+    }
+    if (unresolved_count)
+        return fail_unresolved_elapsed(c, unresolved[0], unresolved_count, retry_sweeps);
+
     for (size_t offset = 0; offset < c->timing_ring_pending; ++offset) {
         TimingRecord& record =
             c->timing_ring[(c->timing_ring_begin + offset) % TIMING_RING_SIZE];
@@ -436,6 +656,15 @@ int flush_deferred_timing(Context* c, SyncReason reason) {
             if (record.h2d_bytes) c->stats.h2d_ns += record.measured_ns[0];
             c->stats.kernel_ns[record.operation] += record.measured_ns[1];
             if (record.d2h_bytes) c->stats.d2h_ns += record.measured_ns[2];
+        } else if (record.kind == TimingRecordKind::CoarseOperation) {
+            // Inner primitive calls and byte materialization were accounted at
+            // their ordinary finish boundary. The coarse record contributes
+            // only the aggregate device interval and must not invent a call.
+            // Keep its exact total separately: this interval is an upper bound
+            // on kernel execution because remote launch-submit gaps can be
+            // visible between the enclosing CUDA events.
+            c->stats.kernel_ns[record.operation] += record.measured_ns[1];
+            c->stats.coarse_timing_ns += record.measured_ns[1];
         } else {
             if (record.kind == TimingRecordKind::TransferH2D) {
                 c->stats.h2d_bytes += record.h2d_bytes;
@@ -445,6 +674,32 @@ int flush_deferred_timing(Context* c, SyncReason reason) {
                 c->stats.d2h_ns += record.measured_ns[0];
             }
         }
+        record.committed = false;
+        record.event_mask = 0;
+    }
+    c->timing_ring_begin =
+        (c->timing_ring_begin + c->timing_ring_pending) % TIMING_RING_SIZE;
+    c->timing_ring_pending = 0;
+    return 0;
+}
+
+/// Establish a measurement boundary for work that is explicitly outside the
+/// next stats window. The stream must complete before records can be reused;
+/// once that synchronization succeeds, elapsed attribution would be thrown
+/// away by reset and is therefore deliberately not queried. In-window flushes
+/// continue to use the exact fail-closed path above.
+int discard_deferred_timing(Context* c, SyncReason reason) {
+    if (c->timing_mode != TIMING_CUDA_EVENTS_DEFERRED || !c->timing_ring_pending) return 0;
+    if (synchronize_stream(c, reason)) return -1;
+    for (size_t offset = 0; offset < c->timing_ring_pending; ++offset) {
+        const size_t slot = (c->timing_ring_begin + offset) % TIMING_RING_SIZE;
+        if (validate_deferred_record(c, c->timing_ring[slot], slot, offset)) return -1;
+    }
+    for (size_t offset = 0; offset < c->timing_ring_pending; ++offset) {
+        const size_t slot = (c->timing_ring_begin + offset) % TIMING_RING_SIZE;
+        TimingRecord& record = c->timing_ring[slot];
+        record.committed = false;
+        record.event_mask = 0;
     }
     c->timing_ring_begin =
         (c->timing_ring_begin + c->timing_ring_pending) % TIMING_RING_SIZE;
@@ -461,9 +716,17 @@ int begin_deferred_record(Context* c, TimingRecordKind kind, size_t event_count)
     const size_t slot =
         (c->timing_ring_begin + c->timing_ring_pending) % TIMING_RING_SIZE;
     TimingRecord& record = c->timing_ring[slot];
+    if (record.committed)
+        return fail_message(c, "deferred timing ring would overwrite a committed record");
+    record.fresh_event_mask = 0;
     if (ensure_record_events(c, record, event_count)) return -1;
     record.kind = kind;
     record.operation = -1;
+    ++c->timing_record_generation;
+    if (!c->timing_record_generation) ++c->timing_record_generation;
+    record.generation = c->timing_record_generation;
+    record.event_mask = 0;
+    record.committed = false;
     record.h2d_bytes = 0;
     record.d2h_bytes = 0;
     record.d2d_bytes = 0;
@@ -471,6 +734,7 @@ int begin_deferred_record(Context* c, TimingRecordKind kind, size_t event_count)
     record.device_generated_bytes = 0;
     record.measured_ns[0] = record.measured_ns[1] = record.measured_ns[2] = 0;
     CUDA_OR_RETURN(c, cudaEventRecord(record.events[0], c->stream));
+    record.event_mask |= 1u << 0;
     c->active_timing_record = slot;
     return 0;
 }
@@ -478,6 +742,14 @@ int begin_deferred_record(Context* c, TimingRecordKind kind, size_t event_count)
 int commit_deferred_record(Context* c) {
     if (c->active_timing_record == TIMING_RING_SIZE)
         return fail_message(c, "no active deferred timing record");
+    const size_t expected_slot =
+        (c->timing_ring_begin + c->timing_ring_pending) % TIMING_RING_SIZE;
+    if (c->active_timing_record != expected_slot)
+        return fail_message(c, "deferred timing commit is not at the pending-ring tail");
+    TimingRecord& record = c->timing_ring[c->active_timing_record];
+    if (record.committed || record.event_mask != expected_event_mask(record.kind))
+        return fail_message(c, "deferred timing commit has incomplete event markers");
+    record.committed = true;
     c->active_timing_record = TIMING_RING_SIZE;
     ++c->timing_ring_pending;
     ++c->stats.timing_records;
@@ -488,6 +760,12 @@ int commit_deferred_record(Context* c) {
 
 int begin_timing(Context* c) {
     c->phase_ns.fill(0);
+    if (c->coarse_timing_active) {
+        if (c->coarse_inner_active)
+            return reject_message(c, "nested primitive timing inside a coarse timing scope");
+        c->coarse_inner_active = true;
+        return 0;
+    }
     if (c->timing_mode == TIMING_CUDA_EVENTS_DEFERRED)
         return begin_deferred_record(c, TimingRecordKind::Operation, 4);
     if (c->timing_mode == TIMING_CUDA_EVENTS) {
@@ -513,11 +791,17 @@ int finish_host_phase(Context* c, int phase) {
 
 int mark_timing(Context* c, int event) {
     if (event != 1 && event != 2) return fail_message(c, "invalid timing event");
+    if (c->coarse_timing_active) {
+        if (!c->coarse_inner_active)
+            return fail_message(c, "coarse timing marker without an active primitive");
+        return 0;
+    }
     if (c->timing_mode == TIMING_CUDA_EVENTS_DEFERRED) {
         if (c->active_timing_record == TIMING_RING_SIZE)
             return fail_message(c, "deferred timing marker without active record");
         CUDA_OR_RETURN(c, cudaEventRecord(
             c->timing_ring[c->active_timing_record].events[event], c->stream));
+        c->timing_ring[c->active_timing_record].event_mask |= 1u << event;
         return 0;
     }
     if (c->timing_mode == TIMING_CUDA_EVENTS) {
@@ -551,11 +835,35 @@ int finish_timing(
     uint64_t d2d = 0, uint64_t device_zeroed = 0,
     uint64_t device_generated = 0) {
     uint64_t h2d_ns = 0, kernel_ns = 0, d2h_ns = 0;
+    if (c->coarse_timing_active) {
+        if (!c->coarse_inner_active)
+            return fail_message(c, "coarse timing finish without an active primitive");
+        if (operation != c->coarse_timing_operation)
+            return fail_message(c, "coarse timing scope received a different operation kind");
+        if (h2d || d2h) {
+            // A legacy staged primitive discovered only at its finish boundary
+            // may already have enqueued a host transfer. Synchronize before
+            // returning the error so no caller-owned host pointer can expire
+            // while CUDA still references it. Resident upload/download reject
+            // earlier in begin_transfer_timing and do not take this path.
+            const SyncReason reason = d2h ? SyncReason::HostOutput : SyncReason::UploadLifetime;
+            if (synchronize_stream(c, reason)) return -1;
+            return fail_message(c, "host transfer is forbidden inside a coarse timing scope");
+        }
+        ++c->stats.calls[operation];
+        c->stats.d2d_bytes += d2d;
+        c->stats.device_zeroed_bytes += device_zeroed;
+        c->stats.device_generated_bytes += device_generated;
+        c->coarse_accounted_work = true;
+        c->coarse_inner_active = false;
+        return 0;
+    }
     if (c->timing_mode == TIMING_CUDA_EVENTS_DEFERRED) {
         if (c->active_timing_record == TIMING_RING_SIZE)
             return fail_message(c, "deferred finish without active record");
         TimingRecord& record = c->timing_ring[c->active_timing_record];
         CUDA_OR_RETURN(c, cudaEventRecord(record.events[3], c->stream));
+        record.event_mask |= 1u << 3;
         record.kind = TimingRecordKind::Operation;
         record.operation = operation;
         record.h2d_bytes = h2d;
@@ -598,6 +906,8 @@ int finish_timing(
 /// Resident uploads/downloads are protocol-visible boundaries and therefore
 /// remain fully counted even when they happen outside a staged primitive.
 int begin_transfer_timing(Context* c) {
+    if (c->coarse_timing_active)
+        return reject_message(c, "host transfer is forbidden inside a coarse timing scope");
     if (c->timing_mode == TIMING_CUDA_EVENTS_DEFERRED)
         return begin_deferred_record(c, TimingRecordKind::TransferH2D, 2);
     if (c->timing_mode == TIMING_CUDA_EVENTS) {
@@ -615,6 +925,7 @@ int finish_transfer_timing(Context* c, size_t bytes, bool h2d) {
             return fail_message(c, "deferred transfer finish without active record");
         TimingRecord& record = c->timing_ring[c->active_timing_record];
         CUDA_OR_RETURN(c, cudaEventRecord(record.events[1], c->stream));
+        record.event_mask |= 1u << 1;
         record.kind = h2d ? TimingRecordKind::TransferH2D : TimingRecordKind::TransferD2H;
         record.h2d_bytes = h2d ? bytes : 0;
         record.d2h_bytes = h2d ? 0 : bytes;
@@ -2139,6 +2450,10 @@ extern "C" int volta_cuda_create(void** out) {
 extern "C" void volta_cuda_destroy(void* raw) {
     Context* c = static_cast<Context*>(raw);
     if (!c) return;
+    // An RAII guard may be abandoned because its owner is itself being
+    // destroyed. Discard the uncommitted coarse record before flushing older
+    // records; the final stream synchronization below still protects storage.
+    if (c->coarse_timing_active) abort_active_timing_record(c);
     if (c->timing_mode == TIMING_CUDA_EVENTS_DEFERRED)
         (void)flush_deferred_timing(c, SyncReason::TimingFlush);
     // Also covers a CUDA failure after begin_timing: that record is aborted
@@ -2172,11 +2487,106 @@ extern "C" int volta_cuda_enable_deferred_profiling(void* raw) {
     return 0;
 }
 
-extern "C" int volta_cuda_flush_profiling(void* raw) {
+/// Deterministic fault injection for the exact deferred retry regression.
+/// This simulates one provider cudaSuccess/no-write response without changing
+/// event state; production callers never invoke this diagnostic ABI.
+extern "C" int volta_cuda_test_inject_elapsed_no_write_once(void* raw) {
     Context* c = static_cast<Context*>(raw);
     if (!c) return -1;
     if (c->active_timing_record != TIMING_RING_SIZE)
-        return fail_message(c, "cannot flush an active timing record");
+        return reject_message(c, "cannot inject elapsed no-write during an active record");
+    c->test_elapsed_no_write_remaining = 1;
+    return 0;
+}
+
+/// Begin one resident epoch-level timing interval. Inner device-only
+/// primitives retain their ordinary operation/byte accounting but suppress
+/// their per-call CUDA events until this scope is ended.
+extern "C" int volta_cuda_begin_coarse_timing(void* raw, int operation) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c) return -1;
+    if (c->timing_mode != TIMING_CUDA_EVENTS_DEFERRED)
+        return reject_message(c, "coarse timing requires deferred CUDA-event mode");
+    if (c->measurement_poisoned)
+        return reject_message(c, "measurement timing is poisoned; reset stats before continuing");
+    if (operation < 0 || operation >= OP_COUNT)
+        return reject_message(c, "invalid coarse timing operation");
+    if (c->coarse_timing_active || c->active_timing_record != TIMING_RING_SIZE)
+        return reject_message(c, "nested coarse timing scope");
+    if (begin_deferred_record(c, TimingRecordKind::CoarseOperation, 2)) return -1;
+    c->coarse_timing_operation = operation;
+    c->coarse_timing_active = true;
+    c->coarse_inner_active = false;
+    c->coarse_accounted_work = false;
+    c->timing_ring[c->active_timing_record].operation = operation;
+    return 0;
+}
+
+extern "C" int volta_cuda_end_coarse_timing(void* raw) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c) return -1;
+    if (c->timing_mode != TIMING_CUDA_EVENTS_DEFERRED)
+        return reject_message(c, "coarse timing requires deferred CUDA-event mode");
+    if (!c->coarse_timing_active || c->active_timing_record == TIMING_RING_SIZE)
+        return reject_message(c, "no active coarse timing scope");
+    if (c->coarse_inner_active)
+        return reject_message(c, "cannot end coarse timing during an active primitive");
+    TimingRecord& record = c->timing_ring[c->active_timing_record];
+    CUDA_OR_RETURN(c, cudaEventRecord(record.events[1], c->stream));
+    record.event_mask |= 1u << 1;
+    record.kind = TimingRecordKind::CoarseOperation;
+    record.operation = c->coarse_timing_operation;
+    c->coarse_timing_active = false;
+    c->coarse_timing_operation = -1;
+    if (commit_deferred_record(c)) return -1;
+    c->coarse_accounted_work = false;
+    ++c->stats.coarse_timing_scopes;
+    return 0;
+}
+
+/// Best-effort idempotent recovery for a dropped Rust guard or an inner CUDA
+/// error. The start event is discarded and the ring slot remains reusable.
+extern "C" int volta_cuda_abort_coarse_timing(void* raw) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c) return -1;
+    if (c->timing_mode != TIMING_CUDA_EVENTS_DEFERRED)
+        return reject_message(c, "coarse timing requires deferred CUDA-event mode");
+    if (c->coarse_timing_active) abort_active_timing_record(c);
+    return 0;
+}
+
+/// Preflight one sealed cohort against the fixed deferred-event ring. The
+/// equality boundary fits exactly; overflow performs one classified flush
+/// before the cohort starts, never in its middle.
+extern "C" int volta_cuda_ensure_timing_capacity(
+    void* raw, size_t bound, size_t* pending_before,
+    size_t* pending_after, int* flushed) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !pending_before || !pending_after || !flushed)
+        return reject_message(c, "invalid timing-capacity output");
+    if (c->timing_mode != TIMING_CUDA_EVENTS_DEFERRED)
+        return reject_message(c, "timing-capacity preflight requires deferred CUDA-event mode");
+    if (c->active_timing_record != TIMING_RING_SIZE)
+        return reject_message(c, "cannot preflight timing capacity during an active record");
+    if (bound > TIMING_RING_SIZE)
+        return reject_message(c, "deferred timing cohort bound exceeds ring capacity");
+    *pending_before = c->timing_ring_pending;
+    *flushed = 0;
+    if (c->timing_ring_pending > TIMING_RING_SIZE - bound) {
+        if (flush_deferred_timing(c, SyncReason::TimingFlush)) return -1;
+        *flushed = 1;
+    }
+    *pending_after = c->timing_ring_pending;
+    return 0;
+}
+
+extern "C" int volta_cuda_flush_profiling(void* raw) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c) return -1;
+    if (c->measurement_poisoned)
+        return reject_message(c, "measurement timing is poisoned; reset stats before reading it");
+    if (c->active_timing_record != TIMING_RING_SIZE)
+        return reject_message(c, "cannot flush an active timing record");
     return flush_deferred_timing(c, SyncReason::TimingFlush);
 }
 
@@ -2184,25 +2594,39 @@ extern "C" int volta_cuda_reset_stats(void* raw) {
     Context* c = static_cast<Context*>(raw);
     if (!c) return -1;
     if (c->active_timing_record != TIMING_RING_SIZE)
-        return fail_message(c, "cannot reset stats during an active timing record");
-    if (flush_deferred_timing(c, SyncReason::TimingFlush)) return -1;
+        return reject_message(c, "cannot reset stats during an active timing record");
+    const bool had_pending_timing =
+        c->timing_mode == TIMING_CUDA_EVENTS_DEFERRED && c->timing_ring_pending != 0;
+    if (discard_deferred_timing(c, SyncReason::TimingFlush)) return -1;
+    // An aborted coarse scope is not a committed ring record, but its kernels
+    // may still be in flight. If no pending record forced the barrier above,
+    // synchronize explicitly before making the poisoned counters reusable.
+    if (c->measurement_poisoned && !had_pending_timing &&
+        synchronize_stream(c, SyncReason::TimingFlush)) return -1;
     const uint64_t live = c->stats.live_device_bytes;
     const uint32_t timing_mode = c->timing_mode;
     c->stats = RawStats{};
     c->stats.live_device_bytes = live;
     c->stats.peak_device_bytes = live;
     c->stats.timing_mode = timing_mode;
+    c->measurement_poisoned = false;
+    c->coarse_accounted_work = false;
     return 0;
 }
 
 extern "C" int volta_cuda_get_stats(void* raw, RawStats* out) {
     Context* c = static_cast<Context*>(raw);
     if (!c || !out) return -1;
+    if (c->measurement_poisoned)
+        return reject_message(c, "measurement timing is poisoned; reset stats before reading it");
     if (c->active_timing_record != TIMING_RING_SIZE)
-        return fail_message(c, "cannot read stats during an active timing record");
+        return reject_message(c, "cannot read stats during an active timing record");
     if (flush_deferred_timing(c, SyncReason::TimingFlush)) return -1;
     if (synchronization_reason_total(c->stats) != c->stats.synchronizations)
         return fail_message(c, "synchronization reason accounting mismatch");
+    if (c->stats.timing_elapsed_query_attempts !=
+        c->stats.timing_event_queries + c->stats.timing_elapsed_no_write)
+        return fail_message(c, "elapsed timing query accounting mismatch");
     *out = c->stats;
     return 0;
 }
@@ -2243,6 +2667,8 @@ extern "C" int volta_cuda_trim_resident_cache(void* raw) {
     Context* c = static_cast<Context*>(raw);
     try {
         if (!c) return fail_message(c, "invalid resident-cache trim context");
+        if (c->coarse_timing_active)
+            return reject_message(c, "resident-cache trim is forbidden inside a coarse timing scope");
         return trim_inactive_resident(c);
     } catch (const std::exception&) {
         return fail_exception(c, "resident-cache trim threw a C++ exception");
@@ -2255,6 +2681,8 @@ extern "C" int volta_cuda_resident_alloc(void* raw, size_t bytes, uint64_t* out_
     Context* c = static_cast<Context*>(raw);
     try {
         if (!c || !bytes || !out_id) return fail_message(c, "invalid resident allocation");
+        if (c->coarse_timing_active)
+            return reject_message(c, "resident allocation is forbidden inside a coarse timing scope");
         ++c->stats.resident_alloc_requests;
 
         const size_t reused_slot = take_best_fit_resident(c, bytes);
@@ -2338,6 +2766,8 @@ extern "C" int volta_cuda_resident_free(void* raw, uint64_t id) {
     Context* c = static_cast<Context*>(raw);
     try {
         if (!c || !id) return fail_message(c, "invalid resident free");
+        if (c->coarse_timing_active)
+            return reject_message(c, "resident free is forbidden inside a coarse timing scope");
         ++c->stats.resident_free_requests;
         ResidentBuffer* b = find_resident(c, id);
         if (!b) return fail_message(c, "unknown or stale resident buffer id");
@@ -2391,15 +2821,14 @@ extern "C" int volta_cuda_resident_zero(
     return finish_timing(c, OP_PCS_ROWS, 0, 0, 0, bytes, 0);
 }
 
-/// Copy non-overlapping strided rows entirely within this CUDA context.
-/// Source and destination pitches, offsets, and row width are byte counts.
-extern "C" int volta_cuda_resident_copy_rows(
-    void* raw,
+int resident_copy_rows_impl(
+    Context* c,
     uint64_t src_id, size_t src_offset_bytes, size_t src_stride_bytes,
     uint64_t dst_id, size_t dst_offset_bytes, size_t dst_stride_bytes,
-    size_t rows, size_t row_bytes) {
-    Context* c = static_cast<Context*>(raw);
+    size_t rows, size_t row_bytes, int operation) {
     if (!c) return fail_message(c, "invalid resident D2D copy context");
+    if (operation != OP_PCS_ROWS && operation != OP_MAILBOX)
+        return fail_message(c, "invalid resident D2D copy operation");
     void* src = nullptr;
     void* dst = nullptr;
     size_t src_span = 0;
@@ -2428,28 +2857,54 @@ extern "C" int volta_cuda_resident_copy_rows(
         dst, dst_stride_bytes, src, src_stride_bytes, row_bytes, rows,
         cudaMemcpyDeviceToDevice, c->stream));
     if (mark_timing(c, 2)) return -1;
-    return finish_timing(c, OP_PCS_ROWS, 0, 0, total_bytes, 0, 0);
+    return finish_timing(c, operation, 0, 0, total_bytes, 0, 0);
 }
 
-/// Expand compact Fp rows from a prover-secret seed. The 32-byte seed and
-/// geometry are kernel launch arguments, not host-to-device payload bytes.
-extern "C" int volta_cuda_chacha8_prover_secret_fp_rows_device(
-    void* raw, uint64_t output_id, size_t output_offset_bytes,
-    const uint8_t* prover_secret_seed, uint64_t base_domain,
-    size_t rows, size_t count) {
-    Context* c = static_cast<Context*>(raw);
-    if (!c || !prover_secret_seed || !rows || !count)
-        return fail_message(c, "invalid prover-secret Fp row generation");
+/// Copy PCS-owned non-overlapping strided rows entirely within this CUDA
+/// context. Pitches, offsets, and row width are byte counts.
+extern "C" int volta_cuda_resident_copy_rows(
+    void* raw,
+    uint64_t src_id, size_t src_offset_bytes, size_t src_stride_bytes,
+    uint64_t dst_id, size_t dst_offset_bytes, size_t dst_stride_bytes,
+    size_t rows, size_t row_bytes) {
+    return resident_copy_rows_impl(
+        static_cast<Context*>(raw), src_id, src_offset_bytes, src_stride_bytes,
+        dst_id, dst_offset_bytes, dst_stride_bytes, rows, row_bytes, OP_PCS_ROWS);
+}
+
+/// The same D2D primitive explicitly classified as protocol-mailbox work.
+extern "C" int volta_cuda_resident_mailbox_copy_rows(
+    void* raw,
+    uint64_t src_id, size_t src_offset_bytes, size_t src_stride_bytes,
+    uint64_t dst_id, size_t dst_offset_bytes, size_t dst_stride_bytes,
+    size_t rows, size_t row_bytes) {
+    return resident_copy_rows_impl(
+        static_cast<Context*>(raw), src_id, src_offset_bytes, src_stride_bytes,
+        dst_id, dst_offset_bytes, dst_stride_bytes, rows, row_bytes, OP_MAILBOX);
+}
+
+int chacha8_fp_rows_device_impl(
+    Context* c, uint64_t output_id, size_t output_offset_bytes,
+    const uint8_t* seed, uint64_t base_domain, size_t rows, size_t count,
+    int operation) {
+    if (!c || !seed || !rows || !count)
+        return fail_message(c, "invalid ChaCha8 Fp row generation");
+    if (operation != OP_PCS_ROWS && operation != OP_AUTH_MASKS)
+        return fail_message(c, "invalid ChaCha8 Fp row operation");
     if (rows - 1 > std::numeric_limits<uint64_t>::max() - base_domain)
-        return fail_message(c, "prover-secret Fp row domain overflows u64");
+        return fail_message(c, "ChaCha8 Fp row domain overflows u64");
+    const uint64_t last_domain = base_domain + static_cast<uint64_t>(rows - 1);
+    if (operation == OP_AUTH_MASKS &&
+        ((base_domain | last_domain) & MOCK_CORRELATION_RESERVED_DOMAIN_BITS) != 0)
+        return fail_message(c, "mock correlation mask domain sets reserved correlation bits");
     size_t elements = 0;
     size_t bytes = 0;
     if (!checked_mul_size(rows, count, &elements) ||
         !checked_mul_size(elements, sizeof(uint64_t), &bytes))
-        return fail_message(c, "prover-secret Fp row geometry overflows size_t");
+        return fail_message(c, "ChaCha8 Fp row geometry overflows size_t");
     void* output = nullptr;
     if (resident_region(c, output_id, output_offset_bytes, bytes, &output)) return -1;
-    const volta::chacha8_fp::Key key = volta::chacha8_fp::key_from_seed(prover_secret_seed);
+    const volta::chacha8_fp::Key key = volta::chacha8_fp::key_from_seed(seed);
     const size_t blocks_needed = (rows - 1) / BLOCK + 1;
     const unsigned int blocks = static_cast<unsigned int>(std::min<size_t>(blocks_needed, 65535));
     if (begin_timing(c) || mark_timing(c, 1)) return -1;
@@ -2457,7 +2912,29 @@ extern "C" int volta_cuda_chacha8_prover_secret_fp_rows_device(
         key, base_domain, rows, count, static_cast<uint64_t*>(output));
     CUDA_OR_RETURN(c, cudaGetLastError());
     if (mark_timing(c, 2)) return -1;
-    return finish_timing(c, OP_PCS_ROWS, 0, 0, 0, 0, bytes);
+    return finish_timing(c, operation, 0, 0, 0, 0, bytes);
+}
+
+/// Expand compact Fp rows from a prover-secret PCS seed. The 32-byte seed and
+/// geometry are kernel launch arguments, not host-to-device payload bytes.
+extern "C" int volta_cuda_chacha8_prover_secret_fp_rows_device(
+    void* raw, uint64_t output_id, size_t output_offset_bytes,
+    const uint8_t* prover_secret_seed, uint64_t base_domain,
+    size_t rows, size_t count) {
+    return chacha8_fp_rows_device_impl(
+        static_cast<Context*>(raw), output_id, output_offset_bytes,
+        prover_secret_seed, base_domain, rows, count, OP_PCS_ROWS);
+}
+
+/// The same byte-exact expansion kernel, semantically classified as mock
+/// authentication/correlation work rather than PCS work.
+extern "C" int volta_cuda_mock_correlation_sub_masks_device(
+    void* raw, uint64_t output_id, size_t output_offset_bytes,
+    const uint8_t* mock_correlation_seed, uint64_t base_domain,
+    size_t rows, size_t cols) {
+    return chacha8_fp_rows_device_impl(
+        static_cast<Context*>(raw), output_id, output_offset_bytes,
+        mock_correlation_seed, base_domain, rows, cols, OP_AUTH_MASKS);
 }
 
 /// Expand Fp2 rows from a prover-secret seed and write canonical zeroes in
@@ -3058,23 +3535,63 @@ extern "C" int volta_cuda_fp2_dot_device(
     return finish_timing(c, OP_GEMM, 0, sizeof(Fp2));
 }
 
-extern "C" int volta_cuda_fp2_product_round_device(
-    void* raw, uint64_t a_id, size_t a_offset,
-    uint64_t b_id, size_t b_offset, size_t pairs, Fp2* output) {
+/// Allocate-only preflight for the two product-reduction scratch slots. It
+/// launches no kernel and creates no timing record; subsequent rounds up to
+/// `max_pairs` cannot grow workspace inside a coarse timing scope.
+extern "C" int volta_cuda_reserve_fp2_product_round_workspace(
+    void* raw, size_t max_pairs) {
     Context* c = static_cast<Context*>(raw);
-    if (!c || !pairs || !output)
-        return fail_message(c, "invalid resident product-round geometry");
-    void *a = nullptr, *b = nullptr;
-    if (resident_region(c, a_id, a_offset * sizeof(Fp2), 2 * pairs * sizeof(Fp2), &a) ||
-        resident_region(c, b_id, b_offset * sizeof(Fp2), 2 * pairs * sizeof(Fp2), &b) ||
-        ensure(c, 12, pairs * sizeof(ProductRoundAcc)) ||
-        ensure(c, 13, std::max(size_t{1}, (pairs + 1) / 2) * sizeof(ProductRoundAcc))) return -1;
+    if (!c || !max_pairs)
+        return reject_message(c, "invalid product-round workspace reservation");
+    if (c->coarse_timing_active || c->active_timing_record != TIMING_RING_SIZE)
+        return reject_message(c, "cannot reserve product-round workspace during active timing");
+    size_t workspace_bytes = 0;
+    size_t reduced_bytes = 0;
+    const size_t reduced_pairs = max_pairs / 2 + max_pairs % 2;
+    if (!checked_mul_size(max_pairs, sizeof(ProductRoundAcc), &workspace_bytes) ||
+        !checked_mul_size(reduced_pairs, sizeof(ProductRoundAcc), &reduced_bytes))
+        return reject_message(c, "product-round workspace reservation overflows size_t");
+    if (ensure(c, 12, workspace_bytes) || ensure(c, 13, reduced_bytes)) return -1;
+    return 0;
+}
+
+/// Allocate-only preflight for every private reduction slot used by resident
+/// LogUp general/aux rounds. It deliberately stays separate from the product
+/// reservation so blind-sumcheck cohorts do not pay for wider LogUp scratch.
+extern "C" int volta_cuda_reserve_logup_round_workspace(
+    void* raw, size_t max_pairs) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !max_pairs)
+        return reject_message(c, "invalid LogUp round workspace reservation");
+    if (c->coarse_timing_active || c->active_timing_record != TIMING_RING_SIZE)
+        return reject_message(c, "cannot reserve LogUp round workspace during active timing");
+    size_t general_bytes = 0;
+    size_t aux_bytes = 0;
+    if (!checked_mul_size(max_pairs, sizeof(RoundAcc), &general_bytes) ||
+        !checked_mul_size(max_pairs, sizeof(AuxRoundAcc), &aux_bytes))
+        return reject_message(c, "LogUp round workspace reservation overflows size_t");
+    if (ensure(c, 5, general_bytes) || ensure(c, 6, general_bytes) ||
+        ensure(c, 12, aux_bytes) || ensure(c, 13, aux_bytes) ||
+        ensure(c, 14, 3 * sizeof(Fp2))) return -1;
+    return 0;
+}
+
+int fp2_product_round_resident_impl(
+    Context* c, const Fp2* a, const Fp2* b, size_t pairs,
+    Fp2* output, bool output_is_device) {
+    size_t workspace_bytes = 0;
+    size_t reduced_bytes = 0;
+    if (!checked_mul_size(pairs, sizeof(ProductRoundAcc), &workspace_bytes) ||
+        !checked_mul_size(std::max(size_t{1}, (pairs + 1) / 2),
+                          sizeof(ProductRoundAcc), &reduced_bytes))
+        return fail_message(c, "resident product-round workspace overflows size_t");
+    if (ensure(c, 12, workspace_bytes) || ensure(c, 13, reduced_bytes)) return -1;
     if (begin_timing(c)) return -1;
     if (mark_timing(c, 1)) return -1;
     ProductRoundAcc* src = buf<ProductRoundAcc>(c, 12);
     ProductRoundAcc* dst = buf<ProductRoundAcc>(c, 13);
     fp2_product_round_terms<<<(pairs + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
-        static_cast<const Fp2*>(a), static_cast<const Fp2*>(b), src, pairs);
+        a, b, src, pairs);
     size_t len = pairs;
     while (len > 1) {
         const size_t next = (len + 1) / 2;
@@ -3083,33 +3600,77 @@ extern "C" int volta_cuda_fp2_product_round_device(
         len = next;
     }
     CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (output_is_device) {
+        CUDA_OR_RETURN(c, cudaMemcpyAsync(output, &src[0], sizeof(ProductRoundAcc),
+                                         cudaMemcpyDeviceToDevice, c->stream));
+        if (mark_timing(c, 2)) return -1;
+        return finish_timing(c, OP_GEMM, 0, 0);
+    }
     if (mark_timing(c, 2)) return -1;
     CUDA_OR_RETURN(c, cudaMemcpyAsync(output, &src[0], sizeof(ProductRoundAcc),
                                      cudaMemcpyDeviceToHost, c->stream));
     return finish_timing(c, OP_GEMM, 0, sizeof(ProductRoundAcc));
 }
 
-extern "C" int volta_cuda_fp2_triple_product_round_device(
+extern "C" int volta_cuda_fp2_product_round_device(
     void* raw, uint64_t a_id, size_t a_offset,
-    uint64_t b_id, size_t b_offset, uint64_t c_id, size_t c_offset,
-    size_t pairs, Fp2* output) {
-    Context* context = static_cast<Context*>(raw);
-    if (!context || !pairs || !output)
-        return fail_message(context, "invalid resident triple-product round geometry");
-    void *a = nullptr, *b = nullptr, *c = nullptr;
-    if (resident_region(context, a_id, a_offset * sizeof(Fp2), 2 * pairs * sizeof(Fp2), &a) ||
-        resident_region(context, b_id, b_offset * sizeof(Fp2), 2 * pairs * sizeof(Fp2), &b) ||
-        resident_region(context, c_id, c_offset * sizeof(Fp2), 2 * pairs * sizeof(Fp2), &c) ||
-        ensure(context, 12, pairs * sizeof(TripleRoundAcc)) ||
-        ensure(context, 13, std::max(size_t{1}, (pairs + 1) / 2) * sizeof(TripleRoundAcc)))
-        return -1;
+    uint64_t b_id, size_t b_offset, size_t pairs, Fp2* output) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !pairs || !output)
+        return fail_message(c, "invalid resident product-round geometry");
+    size_t a_offset_bytes = 0, b_offset_bytes = 0, input_bytes = 0;
+    if (!checked_mul_size(a_offset, sizeof(Fp2), &a_offset_bytes) ||
+        !checked_mul_size(b_offset, sizeof(Fp2), &b_offset_bytes) ||
+        !checked_mul_size(pairs, 2 * sizeof(Fp2), &input_bytes))
+        return fail_message(c, "resident product-round geometry overflows size_t");
+    void *a = nullptr, *b = nullptr;
+    if (resident_region(c, a_id, a_offset_bytes, input_bytes, &a) ||
+        resident_region(c, b_id, b_offset_bytes, input_bytes, &b)) return -1;
+    return fp2_product_round_resident_impl(
+        c, static_cast<const Fp2*>(a), static_cast<const Fp2*>(b),
+        pairs, output, false);
+}
+
+extern "C" int volta_cuda_fp2_product_round_into_device(
+    void* raw, uint64_t a_id, size_t a_offset,
+    uint64_t b_id, size_t b_offset, size_t pairs,
+    uint64_t output_id, size_t output_offset) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !pairs)
+        return fail_message(c, "invalid resident product-round mailbox geometry");
+    size_t a_offset_bytes = 0, b_offset_bytes = 0, input_bytes = 0;
+    size_t output_offset_bytes = 0;
+    if (!checked_mul_size(a_offset, sizeof(Fp2), &a_offset_bytes) ||
+        !checked_mul_size(b_offset, sizeof(Fp2), &b_offset_bytes) ||
+        !checked_mul_size(pairs, 2 * sizeof(Fp2), &input_bytes) ||
+        !checked_mul_size(output_offset, sizeof(Fp2), &output_offset_bytes))
+        return fail_message(c, "resident product-round mailbox geometry overflows size_t");
+    void *a = nullptr, *b = nullptr, *output = nullptr;
+    if (resident_region(c, a_id, a_offset_bytes, input_bytes, &a) ||
+        resident_region(c, b_id, b_offset_bytes, input_bytes, &b) ||
+        resident_region(c, output_id, output_offset_bytes,
+                        sizeof(ProductRoundAcc), &output)) return -1;
+    return fp2_product_round_resident_impl(
+        c, static_cast<const Fp2*>(a), static_cast<const Fp2*>(b), pairs,
+        static_cast<Fp2*>(output), true);
+}
+
+int fp2_triple_product_round_resident_impl(
+    Context* context, const Fp2* a, const Fp2* b, const Fp2* c,
+    size_t pairs, Fp2* output, bool output_is_device) {
+    size_t workspace_bytes = 0;
+    size_t reduced_bytes = 0;
+    if (!checked_mul_size(pairs, sizeof(TripleRoundAcc), &workspace_bytes) ||
+        !checked_mul_size(std::max(size_t{1}, (pairs + 1) / 2),
+                          sizeof(TripleRoundAcc), &reduced_bytes))
+        return fail_message(context, "resident triple-product workspace overflows size_t");
+    if (ensure(context, 12, workspace_bytes) || ensure(context, 13, reduced_bytes)) return -1;
     if (begin_timing(context)) return -1;
     if (mark_timing(context, 1)) return -1;
     TripleRoundAcc* src = buf<TripleRoundAcc>(context, 12);
     TripleRoundAcc* dst = buf<TripleRoundAcc>(context, 13);
     fp2_triple_product_round_terms<<<(pairs + BLOCK - 1) / BLOCK, BLOCK, 0, context->stream>>>(
-        static_cast<const Fp2*>(a), static_cast<const Fp2*>(b),
-        static_cast<const Fp2*>(c), src, pairs);
+        a, b, c, src, pairs);
     size_t len = pairs;
     while (len > 1) {
         const size_t next = (len + 1) / 2;
@@ -3119,10 +3680,65 @@ extern "C" int volta_cuda_fp2_triple_product_round_device(
         len = next;
     }
     CUDA_OR_RETURN(context, cudaPeekAtLastError());
+    if (output_is_device) {
+        CUDA_OR_RETURN(context, cudaMemcpyAsync(output, &src[0], sizeof(TripleRoundAcc),
+                                                cudaMemcpyDeviceToDevice, context->stream));
+        if (mark_timing(context, 2)) return -1;
+        return finish_timing(context, OP_GEMM, 0, 0);
+    }
     if (mark_timing(context, 2)) return -1;
     CUDA_OR_RETURN(context, cudaMemcpyAsync(output, &src[0], sizeof(TripleRoundAcc),
                                             cudaMemcpyDeviceToHost, context->stream));
     return finish_timing(context, OP_GEMM, 0, sizeof(TripleRoundAcc));
+}
+
+extern "C" int volta_cuda_fp2_triple_product_round_device(
+    void* raw, uint64_t a_id, size_t a_offset,
+    uint64_t b_id, size_t b_offset, uint64_t c_id, size_t c_offset,
+    size_t pairs, Fp2* output) {
+    Context* context = static_cast<Context*>(raw);
+    if (!context || !pairs || !output)
+        return fail_message(context, "invalid resident triple-product round geometry");
+    size_t a_offset_bytes = 0, b_offset_bytes = 0, c_offset_bytes = 0;
+    size_t input_bytes = 0;
+    if (!checked_mul_size(a_offset, sizeof(Fp2), &a_offset_bytes) ||
+        !checked_mul_size(b_offset, sizeof(Fp2), &b_offset_bytes) ||
+        !checked_mul_size(c_offset, sizeof(Fp2), &c_offset_bytes) ||
+        !checked_mul_size(pairs, 2 * sizeof(Fp2), &input_bytes))
+        return fail_message(context, "resident triple-product geometry overflows size_t");
+    void *a = nullptr, *b = nullptr, *c = nullptr;
+    if (resident_region(context, a_id, a_offset_bytes, input_bytes, &a) ||
+        resident_region(context, b_id, b_offset_bytes, input_bytes, &b) ||
+        resident_region(context, c_id, c_offset_bytes, input_bytes, &c)) return -1;
+    return fp2_triple_product_round_resident_impl(
+        context, static_cast<const Fp2*>(a), static_cast<const Fp2*>(b),
+        static_cast<const Fp2*>(c), pairs, output, false);
+}
+
+extern "C" int volta_cuda_fp2_triple_product_round_into_device(
+    void* raw, uint64_t a_id, size_t a_offset,
+    uint64_t b_id, size_t b_offset, uint64_t c_id, size_t c_offset,
+    size_t pairs, uint64_t output_id, size_t output_offset) {
+    Context* context = static_cast<Context*>(raw);
+    if (!context || !pairs)
+        return fail_message(context, "invalid resident triple-product mailbox geometry");
+    size_t a_offset_bytes = 0, b_offset_bytes = 0, c_offset_bytes = 0;
+    size_t input_bytes = 0, output_offset_bytes = 0;
+    if (!checked_mul_size(a_offset, sizeof(Fp2), &a_offset_bytes) ||
+        !checked_mul_size(b_offset, sizeof(Fp2), &b_offset_bytes) ||
+        !checked_mul_size(c_offset, sizeof(Fp2), &c_offset_bytes) ||
+        !checked_mul_size(pairs, 2 * sizeof(Fp2), &input_bytes) ||
+        !checked_mul_size(output_offset, sizeof(Fp2), &output_offset_bytes))
+        return fail_message(context, "resident triple-product mailbox geometry overflows size_t");
+    void *a = nullptr, *b = nullptr, *c = nullptr, *output = nullptr;
+    if (resident_region(context, a_id, a_offset_bytes, input_bytes, &a) ||
+        resident_region(context, b_id, b_offset_bytes, input_bytes, &b) ||
+        resident_region(context, c_id, c_offset_bytes, input_bytes, &c) ||
+        resident_region(context, output_id, output_offset_bytes,
+                        sizeof(TripleRoundAcc), &output)) return -1;
+    return fp2_triple_product_round_resident_impl(
+        context, static_cast<const Fp2*>(a), static_cast<const Fp2*>(b),
+        static_cast<const Fp2*>(c), pairs, static_cast<Fp2*>(output), true);
 }
 
 extern "C" int volta_cuda_ln_hadamard_factors_device(
@@ -3666,29 +4282,18 @@ extern "C" int volta_cuda_logup_general_round(void* raw,const Fp2* p0,const Fp2*
     return finish_timing(c,OP_LOGUP,4*vb+sb,sizeof(RoundAcc));
 }
 
-extern "C" int volta_cuda_logup_general_round_device(
-    void* raw, uint64_t p0_id, size_t p0_offset, uint64_t p1_id, size_t p1_offset,
-    uint64_t q0_id, size_t q0_offset, uint64_t q1_id, size_t q1_offset,
-    uint64_t suffix_id, size_t suffix_offset, size_t pairs, Fp2* output) {
-    Context* c = static_cast<Context*>(raw);
-    if (!c || !pairs || !output)
-        return fail_message(c, "invalid resident LogUp round geometry");
-    void *p0v = nullptr, *p1v = nullptr, *q0v = nullptr, *q1v = nullptr, *sv = nullptr;
-    const size_t vb = 2 * pairs * sizeof(Fp2), sb = pairs * sizeof(Fp2);
-    if (resident_region(c, p0_id, p0_offset * sizeof(Fp2), vb, &p0v) ||
-        resident_region(c, p1_id, p1_offset * sizeof(Fp2), vb, &p1v) ||
-        resident_region(c, q0_id, q0_offset * sizeof(Fp2), vb, &q0v) ||
-        resident_region(c, q1_id, q1_offset * sizeof(Fp2), vb, &q1v) ||
-        resident_region(c, suffix_id, suffix_offset * sizeof(Fp2), sb, &sv))
-        return -1;
-    const size_t ab = pairs * sizeof(RoundAcc);
-    if (ensure(c, 5, ab) || ensure(c, 6, ab)) return -1;
+int logup_general_round_resident_impl(
+    Context* c, const Fp2* p0, const Fp2* p1, const Fp2* q0,
+    const Fp2* q1, const Fp2* suffix, size_t pairs,
+    Fp2* output, bool output_is_device) {
+    size_t accumulator_bytes = 0;
+    if (!checked_mul_size(pairs, sizeof(RoundAcc), &accumulator_bytes))
+        return fail_message(c, "resident LogUp round workspace overflows size_t");
+    if (ensure(c, 5, accumulator_bytes) || ensure(c, 6, accumulator_bytes)) return -1;
     if (begin_timing(c)) return -1;
     if (mark_timing(c, 1)) return -1;
     logup_round_eval<<<(pairs + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
-        static_cast<const Fp2*>(p0v), static_cast<const Fp2*>(p1v),
-        static_cast<const Fp2*>(q0v), static_cast<const Fp2*>(q1v),
-        static_cast<const Fp2*>(sv), buf<RoundAcc>(c, 5), pairs);
+        p0, p1, q0, q1, suffix, buf<RoundAcc>(c, 5), pairs);
     size_t count = pairs;
     RoundAcc* in = buf<RoundAcc>(c, 5);
     RoundAcc* out = buf<RoundAcc>(c, 6);
@@ -3699,9 +4304,83 @@ extern "C" int volta_cuda_logup_general_round_device(
         std::swap(in, out);
     }
     CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (output_is_device) {
+        CUDA_OR_RETURN(c, cudaMemcpyAsync(output, in, sizeof(RoundAcc),
+                                         cudaMemcpyDeviceToDevice, c->stream));
+        if (mark_timing(c, 2)) return -1;
+        return finish_timing(c, OP_LOGUP, 0, 0);
+    }
     if (mark_timing(c, 2)) return -1;
-    CUDA_OR_RETURN(c, cudaMemcpyAsync(output, in, sizeof(RoundAcc), cudaMemcpyDeviceToHost, c->stream));
+    CUDA_OR_RETURN(c, cudaMemcpyAsync(output, in, sizeof(RoundAcc),
+                                     cudaMemcpyDeviceToHost, c->stream));
     return finish_timing(c, OP_LOGUP, 0, sizeof(RoundAcc));
+}
+
+int resolve_logup_general_round_inputs(
+    Context* c, uint64_t p0_id, size_t p0_offset, uint64_t p1_id, size_t p1_offset,
+    uint64_t q0_id, size_t q0_offset, uint64_t q1_id, size_t q1_offset,
+    uint64_t suffix_id, size_t suffix_offset, size_t pairs,
+    void** p0, void** p1, void** q0, void** q1, void** suffix) {
+    size_t vector_bytes = 0, suffix_bytes = 0;
+    size_t p0_offset_bytes = 0, p1_offset_bytes = 0;
+    size_t q0_offset_bytes = 0, q1_offset_bytes = 0, suffix_offset_bytes = 0;
+    if (!checked_mul_size(pairs, 2 * sizeof(Fp2), &vector_bytes) ||
+        !checked_mul_size(pairs, sizeof(Fp2), &suffix_bytes) ||
+        !checked_mul_size(p0_offset, sizeof(Fp2), &p0_offset_bytes) ||
+        !checked_mul_size(p1_offset, sizeof(Fp2), &p1_offset_bytes) ||
+        !checked_mul_size(q0_offset, sizeof(Fp2), &q0_offset_bytes) ||
+        !checked_mul_size(q1_offset, sizeof(Fp2), &q1_offset_bytes) ||
+        !checked_mul_size(suffix_offset, sizeof(Fp2), &suffix_offset_bytes))
+        return fail_message(c, "resident LogUp round geometry overflows size_t");
+    return resident_region(c, p0_id, p0_offset_bytes, vector_bytes, p0) ||
+           resident_region(c, p1_id, p1_offset_bytes, vector_bytes, p1) ||
+           resident_region(c, q0_id, q0_offset_bytes, vector_bytes, q0) ||
+           resident_region(c, q1_id, q1_offset_bytes, vector_bytes, q1) ||
+           resident_region(c, suffix_id, suffix_offset_bytes, suffix_bytes, suffix)
+        ? -1 : 0;
+}
+
+extern "C" int volta_cuda_logup_general_round_device(
+    void* raw, uint64_t p0_id, size_t p0_offset, uint64_t p1_id, size_t p1_offset,
+    uint64_t q0_id, size_t q0_offset, uint64_t q1_id, size_t q1_offset,
+    uint64_t suffix_id, size_t suffix_offset, size_t pairs, Fp2* output) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !pairs || !output)
+        return fail_message(c, "invalid resident LogUp round geometry");
+    void *p0 = nullptr, *p1 = nullptr, *q0 = nullptr, *q1 = nullptr, *suffix = nullptr;
+    if (resolve_logup_general_round_inputs(
+            c, p0_id, p0_offset, p1_id, p1_offset, q0_id, q0_offset,
+            q1_id, q1_offset, suffix_id, suffix_offset, pairs,
+            &p0, &p1, &q0, &q1, &suffix)) return -1;
+    return logup_general_round_resident_impl(
+        c, static_cast<const Fp2*>(p0), static_cast<const Fp2*>(p1),
+        static_cast<const Fp2*>(q0), static_cast<const Fp2*>(q1),
+        static_cast<const Fp2*>(suffix), pairs, output, false);
+}
+
+extern "C" int volta_cuda_logup_general_round_into_device(
+    void* raw, uint64_t p0_id, size_t p0_offset, uint64_t p1_id, size_t p1_offset,
+    uint64_t q0_id, size_t q0_offset, uint64_t q1_id, size_t q1_offset,
+    uint64_t suffix_id, size_t suffix_offset, size_t pairs,
+    uint64_t output_id, size_t output_offset) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !pairs)
+        return fail_message(c, "invalid resident LogUp round mailbox geometry");
+    void *p0 = nullptr, *p1 = nullptr, *q0 = nullptr, *q1 = nullptr;
+    void *suffix = nullptr, *output = nullptr;
+    size_t output_offset_bytes = 0;
+    if (!checked_mul_size(output_offset, sizeof(Fp2), &output_offset_bytes))
+        return fail_message(c, "resident LogUp round mailbox offset overflows size_t");
+    if (resolve_logup_general_round_inputs(
+            c, p0_id, p0_offset, p1_id, p1_offset, q0_id, q0_offset,
+            q1_id, q1_offset, suffix_id, suffix_offset, pairs,
+            &p0, &p1, &q0, &q1, &suffix) ||
+        resident_region(c, output_id, output_offset_bytes, sizeof(RoundAcc), &output))
+        return -1;
+    return logup_general_round_resident_impl(
+        c, static_cast<const Fp2*>(p0), static_cast<const Fp2*>(p1),
+        static_cast<const Fp2*>(q0), static_cast<const Fp2*>(q1),
+        static_cast<const Fp2*>(suffix), pairs, static_cast<Fp2*>(output), true);
 }
 
 extern "C" int volta_cuda_logup_fold4(void* raw,const Fp2* p0,const Fp2* p1,const Fp2* q0,const Fp2* q1,
@@ -3852,6 +4531,95 @@ extern "C" int volta_cuda_logup_eq_rows_device(
     return finish_timing(c, OP_LOGUP, 0, 0);
 }
 
+int logup_aux_round_resident_impl(
+    Context* c, const Fp2* q0, const Fp2* q1, const Fp2* suffix,
+    const Fp2* columns, const Fp2* eq, const uint32_t* claim_cols,
+    const Fp2* weights, size_t column_count, size_t claim_count,
+    size_t vector_len, Fp2 lambda, Fp2 cpref, Fp2 point,
+    Fp2* output, bool output_is_device) {
+    const size_t pairs = vector_len / 2;
+    size_t bytes = 0;
+    if (!checked_mul_size(pairs, sizeof(AuxRoundAcc), &bytes))
+        return fail_message(c, "resident aux-round workspace overflows size_t");
+    if (ensure(c, 12, bytes) || ensure(c, 13, bytes) ||
+        ensure(c, 14, 3 * sizeof(Fp2))) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    logup_aux_round_eval<<<(pairs + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        q0, q1, suffix, columns, eq, claim_cols, weights,
+        column_count, claim_count, vector_len, pairs, buf<AuxRoundAcc>(c, 12));
+    size_t count = pairs;
+    AuxRoundAcc* in = buf<AuxRoundAcc>(c, 12);
+    AuxRoundAcc* out = buf<AuxRoundAcc>(c, 13);
+    while (count > 1) {
+        const size_t blocks = (count + BLOCK - 1) / BLOCK;
+        reduce_aux_round<<<blocks, BLOCK, 0, c->stream>>>(in, out, count);
+        count = blocks;
+        std::swap(in, out);
+    }
+    assemble_aux_round<<<1, 1, 0, c->stream>>>(
+        in, buf<Fp2>(c, 14), lambda, cpref, point);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (output_is_device) {
+        CUDA_OR_RETURN(c, cudaMemcpyAsync(output, buf<Fp2>(c, 14), 3 * sizeof(Fp2),
+                                         cudaMemcpyDeviceToDevice, c->stream));
+        if (mark_timing(c, 2)) return -1;
+        return finish_timing(c, OP_LOGUP, 0, 0);
+    }
+    if (mark_timing(c, 2)) return -1;
+    CUDA_OR_RETURN(c, cudaMemcpyAsync(output, buf<Fp2>(c, 14), 3 * sizeof(Fp2),
+                                     cudaMemcpyDeviceToHost, c->stream));
+    return finish_timing(c, OP_LOGUP, 0, 3 * sizeof(Fp2));
+}
+
+int resolve_logup_aux_round_inputs(
+    Context* c, uint64_t q0_id, size_t q0_offset,
+    uint64_t q1_id, size_t q1_offset, uint64_t suffix_id, size_t suffix_offset,
+    uint64_t columns_id, size_t columns_offset, uint64_t eq_id, size_t eq_offset,
+    uint64_t claim_cols_id, size_t claim_cols_offset,
+    uint64_t weights_id, size_t weights_offset, size_t column_count,
+    size_t claim_count, size_t vector_len, void** q0, void** q1,
+    void** suffix, void** columns, void** eq, void** claim_cols, void** weights) {
+    const size_t pairs = vector_len / 2;
+    size_t q_bytes = 0, suffix_bytes = 0, columns_elements = 0, columns_bytes = 0;
+    size_t eq_elements = 0, eq_bytes = 0, claim_cols_bytes = 0, weights_bytes = 0;
+    size_t q0_offset_bytes = 0, q1_offset_bytes = 0, suffix_offset_bytes = 0;
+    size_t columns_offset_bytes = 0, eq_offset_bytes = 0;
+    size_t claim_cols_offset_bytes = 0, weights_offset_bytes = 0;
+    if (!checked_mul_size(vector_len, sizeof(Fp2), &q_bytes) ||
+        !checked_mul_size(pairs, sizeof(Fp2), &suffix_bytes) ||
+        !checked_mul_size(column_count, vector_len, &columns_elements) ||
+        !checked_mul_size(columns_elements, 2 * sizeof(Fp2), &columns_bytes) ||
+        !checked_mul_size(claim_count, vector_len, &eq_elements) ||
+        !checked_mul_size(eq_elements, sizeof(Fp2), &eq_bytes) ||
+        !checked_mul_size(claim_count, sizeof(uint32_t), &claim_cols_bytes) ||
+        !checked_mul_size(claim_count, 2 * sizeof(Fp2), &weights_bytes) ||
+        !checked_mul_size(q0_offset, sizeof(Fp2), &q0_offset_bytes) ||
+        !checked_mul_size(q1_offset, sizeof(Fp2), &q1_offset_bytes) ||
+        !checked_mul_size(suffix_offset, sizeof(Fp2), &suffix_offset_bytes) ||
+        !checked_mul_size(columns_offset, sizeof(Fp2), &columns_offset_bytes) ||
+        !checked_mul_size(eq_offset, sizeof(Fp2), &eq_offset_bytes) ||
+        !checked_mul_size(claim_cols_offset, sizeof(uint32_t), &claim_cols_offset_bytes) ||
+        !checked_mul_size(weights_offset, sizeof(Fp2), &weights_offset_bytes))
+        return fail_message(c, "resident aux-round geometry overflows size_t");
+    if (resident_region(c, q0_id, q0_offset_bytes, q_bytes, q0) ||
+        resident_region(c, q1_id, q1_offset_bytes, q_bytes, q1) ||
+        resident_region(c, suffix_id, suffix_offset_bytes, suffix_bytes, suffix) ||
+        resident_region(c, columns_id, columns_offset_bytes, columns_bytes, columns))
+        return -1;
+    if (!claim_count) {
+        *eq = nullptr;
+        *claim_cols = nullptr;
+        *weights = nullptr;
+        return 0;
+    }
+    return resident_region(c, eq_id, eq_offset_bytes, eq_bytes, eq) ||
+           resident_region(c, claim_cols_id, claim_cols_offset_bytes,
+                           claim_cols_bytes, claim_cols) ||
+           resident_region(c, weights_id, weights_offset_bytes, weights_bytes, weights)
+        ? -1 : 0;
+}
+
 extern "C" int volta_cuda_logup_aux_round_device(
     void* raw, uint64_t q0_id, size_t q0_offset, uint64_t q1_id, size_t q1_offset,
     uint64_t suffix_id, size_t suffix_offset, uint64_t columns_id, size_t columns_offset,
@@ -3861,38 +4629,51 @@ extern "C" int volta_cuda_logup_aux_round_device(
     Context* c = static_cast<Context*>(raw);
     if (!c || !output || !column_count || vector_len < 2 || (vector_len & 1))
         return fail_message(c, "invalid resident aux-round geometry");
-    const size_t pairs = vector_len / 2;
     void *q0 = nullptr, *q1 = nullptr, *suffix = nullptr, *columns = nullptr;
     void *eq = nullptr, *claim_cols = nullptr, *weights = nullptr;
-    if (resident_region(c,q0_id,q0_offset*sizeof(Fp2),vector_len*sizeof(Fp2),&q0) ||
-        resident_region(c,q1_id,q1_offset*sizeof(Fp2),vector_len*sizeof(Fp2),&q1) ||
-        resident_region(c,suffix_id,suffix_offset*sizeof(Fp2),pairs*sizeof(Fp2),&suffix) ||
-        resident_region(c,columns_id,columns_offset*sizeof(Fp2),
-                        2*column_count*vector_len*sizeof(Fp2),&columns) ||
-        (claim_count && resident_region(c,eq_id,eq_offset*sizeof(Fp2),
-                                       claim_count*vector_len*sizeof(Fp2),&eq)) ||
-        (claim_count && resident_region(c,claim_cols_id,claim_cols_offset*sizeof(uint32_t),
-                                       claim_count*sizeof(uint32_t),&claim_cols)) ||
-        (claim_count && resident_region(c,weights_id,weights_offset*sizeof(Fp2),
-                                       2*claim_count*sizeof(Fp2),&weights)))
+    if (resolve_logup_aux_round_inputs(
+            c, q0_id, q0_offset, q1_id, q1_offset, suffix_id, suffix_offset,
+            columns_id, columns_offset, eq_id, eq_offset, claim_cols_id,
+            claim_cols_offset, weights_id, weights_offset, column_count,
+            claim_count, vector_len, &q0, &q1, &suffix, &columns, &eq,
+            &claim_cols, &weights)) return -1;
+    return logup_aux_round_resident_impl(
+        c, static_cast<const Fp2*>(q0), static_cast<const Fp2*>(q1),
+        static_cast<const Fp2*>(suffix), static_cast<const Fp2*>(columns),
+        static_cast<const Fp2*>(eq), static_cast<const uint32_t*>(claim_cols),
+        static_cast<const Fp2*>(weights), column_count, claim_count, vector_len,
+        lambda, cpref, point, output, false);
+}
+
+extern "C" int volta_cuda_logup_aux_round_into_device(
+    void* raw, uint64_t q0_id, size_t q0_offset, uint64_t q1_id, size_t q1_offset,
+    uint64_t suffix_id, size_t suffix_offset, uint64_t columns_id, size_t columns_offset,
+    uint64_t eq_id, size_t eq_offset, uint64_t claim_cols_id, size_t claim_cols_offset,
+    uint64_t weights_id, size_t weights_offset, size_t column_count, size_t claim_count,
+    size_t vector_len, Fp2 lambda, Fp2 cpref, Fp2 point,
+    uint64_t output_id, size_t output_offset) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !column_count || vector_len < 2 || (vector_len & 1))
+        return fail_message(c, "invalid resident aux-round mailbox geometry");
+    void *q0 = nullptr, *q1 = nullptr, *suffix = nullptr, *columns = nullptr;
+    void *eq = nullptr, *claim_cols = nullptr, *weights = nullptr, *output = nullptr;
+    size_t output_offset_bytes = 0;
+    if (!checked_mul_size(output_offset, sizeof(Fp2), &output_offset_bytes))
+        return fail_message(c, "resident aux-round mailbox offset overflows size_t");
+    if (resolve_logup_aux_round_inputs(
+            c, q0_id, q0_offset, q1_id, q1_offset, suffix_id, suffix_offset,
+            columns_id, columns_offset, eq_id, eq_offset, claim_cols_id,
+            claim_cols_offset, weights_id, weights_offset, column_count,
+            claim_count, vector_len, &q0, &q1, &suffix, &columns, &eq,
+            &claim_cols, &weights) ||
+        resident_region(c, output_id, output_offset_bytes, 3 * sizeof(Fp2), &output))
         return -1;
-    const size_t bytes=pairs*sizeof(AuxRoundAcc);
-    if(ensure(c,12,bytes)||ensure(c,13,bytes)||ensure(c,14,3*sizeof(Fp2)))return -1;
-    if(begin_timing(c))return -1;if(mark_timing(c,1))return -1;
-    logup_aux_round_eval<<<(pairs+BLOCK-1)/BLOCK,BLOCK,0,c->stream>>>(
-        static_cast<const Fp2*>(q0),static_cast<const Fp2*>(q1),
-        static_cast<const Fp2*>(suffix),static_cast<const Fp2*>(columns),
-        static_cast<const Fp2*>(eq),static_cast<const uint32_t*>(claim_cols),
-        static_cast<const Fp2*>(weights),column_count,claim_count,vector_len,pairs,
-        buf<AuxRoundAcc>(c,12));
-    size_t count=pairs;AuxRoundAcc* in=buf<AuxRoundAcc>(c,12);AuxRoundAcc* out=buf<AuxRoundAcc>(c,13);
-    while(count>1){const size_t blocks=(count+BLOCK-1)/BLOCK;
-        reduce_aux_round<<<blocks,BLOCK,0,c->stream>>>(in,out,count);count=blocks;std::swap(in,out);}
-    assemble_aux_round<<<1,1,0,c->stream>>>(in,buf<Fp2>(c,14),lambda,cpref,point);
-    CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
-    CUDA_OR_RETURN(c,cudaMemcpyAsync(output,buf<Fp2>(c,14),3*sizeof(Fp2),
-                                     cudaMemcpyDeviceToHost,c->stream));
-    return finish_timing(c,OP_LOGUP,0,3*sizeof(Fp2));
+    return logup_aux_round_resident_impl(
+        c, static_cast<const Fp2*>(q0), static_cast<const Fp2*>(q1),
+        static_cast<const Fp2*>(suffix), static_cast<const Fp2*>(columns),
+        static_cast<const Fp2*>(eq), static_cast<const uint32_t*>(claim_cols),
+        static_cast<const Fp2*>(weights), column_count, claim_count, vector_len,
+        lambda, cpref, point, static_cast<Fp2*>(output), true);
 }
 
 extern "C" int volta_cuda_pcs_messages_device(

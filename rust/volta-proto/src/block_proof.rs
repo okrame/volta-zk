@@ -65,9 +65,10 @@
 //! authenticated denominators.
 
 use crate::gemm_proof::{
-    prove_gemm_act_chained, prove_gemm_act_chained_resident, prove_gemm_committed_chained,
-    prove_gemm_committed_chained_resident, verify_gemm_act_chained, verify_gemm_committed_chained,
-    ChainDoms, ChainedGemmProof, WeightClaimP, WireKey, WireOut,
+    finalize_gemm_act_chained, finalize_verify_gemm_act_chained, prepare_gemm_act_chained_batch,
+    prepare_gemm_act_chained_resident_batch, prove_gemm_committed_chained,
+    prove_gemm_committed_chained_resident, verify_gemm_committed_chained, ChainDoms,
+    ChainedGemmProof, GemmActRoundOutput, ProveTimings, WeightClaimP, WireKey, WireOut,
 };
 use crate::hadamard::{
     hadamard_prove, hadamard_prove_resident, hadamard_verify, HadamardDoms, HadamardProof,
@@ -79,9 +80,14 @@ use crate::logup::{
     InstanceOutV, LeafAuxClaim, TableKey, TableSideProof,
 };
 use crate::mle::{eq_vec, eval_mle};
-use crate::sumcheck_blind::{blind_prove, blind_prove_resident, blind_verify, BlindSumcheckProof};
+use crate::schedule::{RoundFamily, SchedulePlan, ScheduleSite, SiteId};
+use crate::sumcheck_blind::{
+    blind_prove, blind_prove_batch, blind_prove_resident, blind_prove_resident_batch, blind_verify,
+    blind_verify_batch, BlindSumcheckBatchVerifyJob, BlindSumcheckProof,
+    BlindSumcheckResidentBatchJob, BlindSumcheckResidentBatchOutput, ResidentBlindBatchError,
+};
 use crate::thaler::pad_bits;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use volta_accel::{
     AccelError, Backend, DeviceAttentionProofWires, DeviceBuffer, DeviceLookupColumns, DeviceSlice,
     ResidentBaseElement, ResidentMatrixElement,
@@ -92,12 +98,103 @@ use volta_gpt2::{
     LayerWitness, Luts, ModelWeightField, ResidentGpt2Model, ResidentLayerView, D, DFF, DH, H,
 };
 use volta_mac::{
-    auth_verifier, CorrIndex, CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey,
+    auth_verifier, CorrIndex, CorrelationStream, ProverAuthed, SubMaskRowsReservation, Transcript,
+    VerifierCtx, VerifierKey,
 };
 
 /// Padded head count (4 head bits).
 const H_PAD: usize = 16;
 const HEAD_BITS: usize = 4;
+
+#[derive(Clone, Copy)]
+#[repr(u32)]
+enum AttentionActRole {
+    WeightValue = 1,
+    QueryKey = 2,
+}
+
+/// Stable public identity for the two natural 12-head attention cohorts.
+/// `section=layer`; `lane=pos0 | role | head`.  No allocation cursor,
+/// completion order, or private geometry participates in the identity.
+fn attention_act_site_id(pos0: usize, layer: u16, role: AttentionActRole, head: usize) -> SiteId {
+    assert!(pos0 <= 0x00ff_ffff, "attention position does not fit scheduled SiteId");
+    assert!(head < 16, "attention head does not fit scheduled SiteId");
+    let lane = ((pos0 as u32) << 8) | ((role as u32) << 4) | head as u32;
+    SiteId::new(layer, RoundFamily::BlindProduct, lane)
+}
+
+fn attention_layer_from_doms(doms: &Doms) -> u16 {
+    // CorrIndex packs layer in bits 48..55 of every layer-scoped domain.
+    ((doms.cursor() >> 48) & 0xff) as u16
+}
+
+fn attention_act_schedule(
+    pos0: usize,
+    layer: u16,
+    role: AttentionActRole,
+    rounds: usize,
+    doms: &[ChainDoms],
+) -> SchedulePlan {
+    assert_eq!(doms.len(), H, "one chained domain allocation per public head");
+    SchedulePlan::new(
+        doms.iter()
+            .enumerate()
+            .map(|(head, chain)| ScheduleSite {
+                id: attention_act_site_id(pos0, layer, role, head),
+                rounds,
+                mask_dom_base: chain.round_masks,
+                mask_dom_span: rounds as u64,
+            })
+            .collect(),
+    )
+    .expect("public attention cohort schedule must be valid")
+}
+
+fn free_attention_resident_jobs(
+    backend: &mut Backend,
+    jobs: Vec<BlindSumcheckResidentBatchJob>,
+) -> Result<(), AccelError> {
+    let mut first = None;
+    for job in jobs {
+        if let Err(error) = backend.free_device(job.a) {
+            first.get_or_insert(error);
+        }
+        if let Err(error) = backend.free_device(job.b) {
+            first.get_or_insert(error);
+        }
+    }
+    first.map_or(Ok(()), Err)
+}
+
+fn prove_attention_resident_round_batch(
+    plan: &SchedulePlan,
+    jobs: Vec<BlindSumcheckResidentBatchJob>,
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+    backend: &mut Backend,
+) -> Result<Vec<BlindSumcheckResidentBatchOutput>, AccelError> {
+    // Every job above was allocated through this exact context. Establish
+    // that ownership invariant before transferring the vector; the lower
+    // level API retains its recoverable WrongBackend contract for callers
+    // that accept arbitrary handles.
+    assert!(
+        jobs.iter().all(|job| job.a.is_owned_by(backend) && job.b.is_owned_by(backend)),
+        "attention resident cohort assembled a foreign device buffer"
+    );
+    match blind_prove_resident_batch(plan, jobs, stream, tx, backend) {
+        Ok(outputs) => Ok(outputs),
+        Err(ResidentBlindBatchError::Accel(error)) => Err(error),
+        Err(ResidentBlindBatchError::Correlation(_)) => Err(AccelError::InvalidInput(
+            "resident attention cohort correlation reservation failed",
+        )),
+        Err(ResidentBlindBatchError::Schedule(_)) => Err(AccelError::InvalidInput(
+            "resident attention cohort does not match its sealed schedule",
+        )),
+        Err(ResidentBlindBatchError::WrongBackend { .. }) => {
+            unreachable!("ownership changed after the attention cohort preflight")
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Block contexts (shared by both chains and the layer orchestration)
@@ -133,9 +230,23 @@ pub struct TableBankP {
     resident_mult: BTreeMap<TableKey, DeviceBuffer<u32>>,
     alphas: BTreeMap<TableKey, Fp2>,
     roots: BTreeMap<TableKey, Vec<(ProverAuthed, ProverAuthed)>>,
+    scheduled_sites: BTreeMap<TableKey, BTreeSet<SiteId>>,
+    scheduled_roots: BTreeMap<(TableKey, SiteId), (ProverAuthed, ProverAuthed)>,
     auth: BTreeMap<TableKey, (u64, Vec<Fp>, Vec<u64>)>,
     resident_auth: BTreeMap<TableKey, (u64, Vec<u64>)>,
     finalized: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TableBankSiteError {
+    NotFinalized,
+    UnknownContent(TableKey),
+    EmptyRegistration(TableKey),
+    DuplicateRegistration(TableKey),
+    LegacyRootsPresent(TableKey),
+    UnregisteredSite { key: TableKey, site: SiteId },
+    DuplicateSite { key: TableKey, site: SiteId },
+    MissingSite { key: TableKey, site: SiteId },
 }
 
 /// The length of a content's table (= multiplicity-vector length).
@@ -285,7 +396,123 @@ impl TableBankP {
     }
 
     pub fn push_roots(&mut self, key: TableKey, roots: (ProverAuthed, ProverAuthed)) {
+        assert!(
+            !self.scheduled_sites.contains_key(&key),
+            "table content {key:?} is atomically scheduled; legacy root insertion is forbidden"
+        );
         self.roots.entry(key).or_default().push(roots);
+    }
+
+    /// Seal the exact public site membership for one table content. Scheduled
+    /// roots are keyed by `(TableKey, SiteId)` and later materialized only in
+    /// canonical `SiteId` order; completion order never enters the fraction
+    /// sum chain.
+    pub fn register_scheduled_sites(
+        &mut self,
+        key: TableKey,
+        sites: impl IntoIterator<Item = SiteId>,
+    ) -> Result<(), TableBankSiteError> {
+        if !self.finalized {
+            return Err(TableBankSiteError::NotFinalized);
+        }
+        if !self.alphas.contains_key(&key) {
+            return Err(TableBankSiteError::UnknownContent(key));
+        }
+        if self.scheduled_sites.contains_key(&key) {
+            return Err(TableBankSiteError::DuplicateRegistration(key));
+        }
+        if self.roots.get(&key).is_some_and(|roots| !roots.is_empty()) {
+            return Err(TableBankSiteError::LegacyRootsPresent(key));
+        }
+        let mut registered = BTreeSet::new();
+        for site in sites {
+            if !registered.insert(site) {
+                return Err(TableBankSiteError::DuplicateSite { key, site });
+            }
+        }
+        let sites = registered;
+        if sites.is_empty() {
+            return Err(TableBankSiteError::EmptyRegistration(key));
+        }
+        self.scheduled_sites.insert(key, sites);
+        Ok(())
+    }
+
+    /// Read-only admission check for one scheduled cohort. Once this passes,
+    /// its root insertions cannot fail unless code in the same thread mutates
+    /// the bank between the preflight and the inserts.
+    pub(crate) fn preflight_scheduled_roots(
+        &self,
+        key: TableKey,
+        sites: impl IntoIterator<Item = SiteId>,
+    ) -> Result<(), TableBankSiteError> {
+        if !self.finalized {
+            return Err(TableBankSiteError::NotFinalized);
+        }
+        if !self.alphas.contains_key(&key) {
+            return Err(TableBankSiteError::UnknownContent(key));
+        }
+        if self.roots.get(&key).is_some_and(|roots| !roots.is_empty()) {
+            return Err(TableBankSiteError::LegacyRootsPresent(key));
+        }
+        let mut cohort = BTreeSet::new();
+        for site in sites {
+            if !cohort.insert(site) || self.scheduled_roots.contains_key(&(key, site)) {
+                return Err(TableBankSiteError::DuplicateSite { key, site });
+            }
+            if !self.scheduled_sites.get(&key).is_some_and(|registered| registered.contains(&site))
+            {
+                return Err(TableBankSiteError::UnregisteredSite { key, site });
+            }
+        }
+        if cohort.is_empty() {
+            return Err(TableBankSiteError::EmptyRegistration(key));
+        }
+        Ok(())
+    }
+
+    pub fn push_scheduled_roots(
+        &mut self,
+        key: TableKey,
+        site: SiteId,
+        roots: (ProverAuthed, ProverAuthed),
+    ) -> Result<(), TableBankSiteError> {
+        if !self.scheduled_sites.get(&key).is_some_and(|sites| sites.contains(&site)) {
+            return Err(TableBankSiteError::UnregisteredSite { key, site });
+        }
+        if self.roots.get(&key).is_some_and(|roots| !roots.is_empty()) {
+            return Err(TableBankSiteError::LegacyRootsPresent(key));
+        }
+        if self.scheduled_roots.contains_key(&(key, site)) {
+            return Err(TableBankSiteError::DuplicateSite { key, site });
+        }
+        self.scheduled_roots.insert((key, site), roots);
+        Ok(())
+    }
+
+    fn validate_scheduled_roots(&self) -> Result<(), TableBankSiteError> {
+        for (&key, sites) in &self.scheduled_sites {
+            if self.roots.get(&key).is_some_and(|roots| !roots.is_empty()) {
+                return Err(TableBankSiteError::LegacyRootsPresent(key));
+            }
+            for &site in sites {
+                if !self.scheduled_roots.contains_key(&(key, site)) {
+                    return Err(TableBankSiteError::MissingSite { key, site });
+                }
+            }
+        }
+        for &(key, site) in self.scheduled_roots.keys() {
+            if !self.scheduled_sites.get(&key).is_some_and(|sites| sites.contains(&site)) {
+                return Err(TableBankSiteError::UnregisteredSite { key, site });
+            }
+        }
+        Ok(())
+    }
+
+    fn roots_canonical(&self, key: TableKey) -> Option<Vec<(ProverAuthed, ProverAuthed)>> {
+        self.scheduled_sites
+            .get(&key)
+            .map(|sites| sites.iter().map(|&site| self.scheduled_roots[&(key, site)]).collect())
     }
 
     /// Multiplicity correction bytes (8 B/entry over all contents).
@@ -348,15 +575,21 @@ impl TableBankP {
         mut backend: Option<&mut Backend>,
     ) -> Vec<TableCloseProof> {
         assert!(self.finalized);
+        self.validate_scheduled_roots()
+            .unwrap_or_else(|error| panic!("invalid scheduled table-bank roots: {error:?}"));
         assert!(
             self.resident_mult.is_empty(),
             "host table-bank close cannot consume resident multiplicities"
         );
         let mut out = Vec::with_capacity(self.mult.len());
         for (key, m) in &self.mult {
-            let sites = self.roots.get(key).unwrap_or_else(|| {
-                panic!("content {key:?} has a multiplicity vector but no sites")
-            });
+            let scheduled = self.roots_canonical(*key);
+            let sites = scheduled
+                .as_deref()
+                .or_else(|| self.roots.get(key).map(Vec::as_slice))
+                .unwrap_or_else(|| {
+                    panic!("content {key:?} has a multiplicity vector but no sites")
+                });
             let tv = table_vals(*key, luts);
             let alpha = self.alphas[key];
             let (side, mult_claim) = if let Some(backend) = backend.as_deref_mut() {
@@ -389,7 +622,11 @@ impl TableBankP {
         zero: &mut Vec<ProverAuthed>,
         backend: &mut Backend,
     ) -> Result<Vec<TableCloseProof>, AccelError> {
-        if !self.finalized || !self.mult.is_empty() || self.resident_mult.is_empty() {
+        if !self.finalized
+            || !self.mult.is_empty()
+            || self.resident_mult.is_empty()
+            || self.validate_scheduled_roots().is_err()
+        {
             self.free_resident_multiplicities(backend);
             return Err(AccelError::InvalidInput("invalid resident table-bank close state"));
         }
@@ -398,9 +635,13 @@ impl TableBankP {
         for key in keys {
             let mult = self.resident_mult.remove(&key).expect("resident key disappeared");
             let result = (|| {
-                let sites = self.roots.get(&key).ok_or(AccelError::InvalidInput(
-                    "resident table content has no lookup sites",
-                ))?;
+                let scheduled = self.roots_canonical(key);
+                let sites = scheduled
+                    .as_deref()
+                    .or_else(|| self.roots.get(&key).map(Vec::as_slice))
+                    .ok_or(AccelError::InvalidInput(
+                        "resident table content has no lookup sites",
+                    ))?;
                 let tv = table_vals(key, luts);
                 let alpha = self.alphas[&key];
                 let (side, mult_claim) = table_side_prove_resident(
@@ -443,13 +684,21 @@ impl TableBankP {
 pub struct TableBankV {
     alphas: BTreeMap<TableKey, Fp2>,
     kroots: BTreeMap<TableKey, Vec<(VerifierKey, VerifierKey)>>,
+    scheduled_sites: BTreeMap<TableKey, BTreeSet<SiteId>>,
+    scheduled_kroots: BTreeMap<(TableKey, SiteId), (VerifierKey, VerifierKey)>,
     keys: BTreeMap<TableKey, Vec<Fp2>>,
 }
 
 impl TableBankV {
     /// Placeholder bank for phase-1 contexts (no instance runs in phase 1).
     pub fn empty() -> Self {
-        TableBankV { alphas: BTreeMap::new(), kroots: BTreeMap::new(), keys: BTreeMap::new() }
+        TableBankV {
+            alphas: BTreeMap::new(),
+            kroots: BTreeMap::new(),
+            scheduled_sites: BTreeMap::new(),
+            scheduled_kroots: BTreeMap::new(),
+            keys: BTreeMap::new(),
+        }
     }
 
     /// Mirror of `finalize`: `expected` is the content set derived from the
@@ -477,7 +726,13 @@ impl TableBankV {
         for &key in expected {
             alphas.insert(key, tx.challenge_fp2());
         }
-        Some(TableBankV { alphas, kroots: BTreeMap::new(), keys })
+        Some(TableBankV {
+            alphas,
+            kroots: BTreeMap::new(),
+            scheduled_sites: BTreeMap::new(),
+            scheduled_kroots: BTreeMap::new(),
+            keys,
+        })
     }
 
     pub fn alpha(&self, key: TableKey) -> Option<Fp2> {
@@ -485,7 +740,109 @@ impl TableBankV {
     }
 
     pub fn push_kroots(&mut self, key: TableKey, kroots: (VerifierKey, VerifierKey)) {
+        assert!(
+            !self.scheduled_sites.contains_key(&key),
+            "table content {key:?} is atomically scheduled; legacy verifier root insertion is forbidden"
+        );
         self.kroots.entry(key).or_default().push(kroots);
+    }
+
+    pub fn register_scheduled_sites(
+        &mut self,
+        key: TableKey,
+        sites: impl IntoIterator<Item = SiteId>,
+    ) -> Result<(), TableBankSiteError> {
+        if !self.alphas.contains_key(&key) {
+            return Err(TableBankSiteError::UnknownContent(key));
+        }
+        if self.scheduled_sites.contains_key(&key) {
+            return Err(TableBankSiteError::DuplicateRegistration(key));
+        }
+        if self.kroots.get(&key).is_some_and(|roots| !roots.is_empty()) {
+            return Err(TableBankSiteError::LegacyRootsPresent(key));
+        }
+        let mut registered = BTreeSet::new();
+        for site in sites {
+            if !registered.insert(site) {
+                return Err(TableBankSiteError::DuplicateSite { key, site });
+            }
+        }
+        let sites = registered;
+        if sites.is_empty() {
+            return Err(TableBankSiteError::EmptyRegistration(key));
+        }
+        self.scheduled_sites.insert(key, sites);
+        Ok(())
+    }
+
+    /// Verifier mirror of [`TableBankP::preflight_scheduled_roots`].
+    pub(crate) fn preflight_scheduled_kroots(
+        &self,
+        key: TableKey,
+        sites: impl IntoIterator<Item = SiteId>,
+    ) -> Result<(), TableBankSiteError> {
+        if !self.alphas.contains_key(&key) {
+            return Err(TableBankSiteError::UnknownContent(key));
+        }
+        if self.kroots.get(&key).is_some_and(|roots| !roots.is_empty()) {
+            return Err(TableBankSiteError::LegacyRootsPresent(key));
+        }
+        let mut cohort = BTreeSet::new();
+        for site in sites {
+            if !cohort.insert(site) || self.scheduled_kroots.contains_key(&(key, site)) {
+                return Err(TableBankSiteError::DuplicateSite { key, site });
+            }
+            if !self.scheduled_sites.get(&key).is_some_and(|registered| registered.contains(&site))
+            {
+                return Err(TableBankSiteError::UnregisteredSite { key, site });
+            }
+        }
+        if cohort.is_empty() {
+            return Err(TableBankSiteError::EmptyRegistration(key));
+        }
+        Ok(())
+    }
+
+    pub fn push_scheduled_kroots(
+        &mut self,
+        key: TableKey,
+        site: SiteId,
+        roots: (VerifierKey, VerifierKey),
+    ) -> Result<(), TableBankSiteError> {
+        if !self.scheduled_sites.get(&key).is_some_and(|sites| sites.contains(&site)) {
+            return Err(TableBankSiteError::UnregisteredSite { key, site });
+        }
+        if self.kroots.get(&key).is_some_and(|roots| !roots.is_empty()) {
+            return Err(TableBankSiteError::LegacyRootsPresent(key));
+        }
+        if self.scheduled_kroots.contains_key(&(key, site)) {
+            return Err(TableBankSiteError::DuplicateSite { key, site });
+        }
+        self.scheduled_kroots.insert((key, site), roots);
+        Ok(())
+    }
+
+    fn validate_scheduled_roots(&self) -> Option<()> {
+        for (&key, sites) in &self.scheduled_sites {
+            if self.kroots.get(&key).is_some_and(|roots| !roots.is_empty()) {
+                return None;
+            }
+            for &site in sites {
+                self.scheduled_kroots.get(&(key, site))?;
+            }
+        }
+        for &(key, site) in self.scheduled_kroots.keys() {
+            if !self.scheduled_sites.get(&key).is_some_and(|sites| sites.contains(&site)) {
+                return None;
+            }
+        }
+        Some(())
+    }
+
+    fn roots_canonical(&self, key: TableKey) -> Option<Vec<(VerifierKey, VerifierKey)>> {
+        self.scheduled_sites
+            .get(&key)
+            .map(|sites| sites.iter().map(|&site| self.scheduled_kroots[&(key, site)]).collect())
     }
 
     /// Mirror of `close` (same canonical order).
@@ -500,8 +857,11 @@ impl TableBankV {
         kprod: &mut crate::logup::ProdKeyTriples,
         kzero: &mut Vec<VerifierKey>,
     ) -> Option<()> {
+        self.validate_scheduled_roots()?;
         for p in proofs {
-            let ksites = self.kroots.get(&p.key)?;
+            let scheduled = self.roots_canonical(p.key);
+            let ksites =
+                scheduled.as_deref().or_else(|| self.kroots.get(&p.key).map(Vec::as_slice))?;
             let tv = table_vals(p.key, luts);
             let alpha = self.alphas[&p.key];
             let mult_key =
@@ -510,6 +870,102 @@ impl TableBankV {
             kzero.push(mult_key.key.sub(opened));
         }
         Some(())
+    }
+}
+
+#[cfg(test)]
+mod table_bank_schedule_tests {
+    use super::*;
+
+    fn prover_root(value: u64) -> (ProverAuthed, ProverAuthed) {
+        let value = Fp2::from_base(Fp::new(value));
+        (
+            ProverAuthed { x: value, m: value + Fp2::ONE },
+            ProverAuthed { x: value + Fp2::ONE, m: value + value },
+        )
+    }
+
+    #[test]
+    fn table_bank_scheduled_roots_are_atomic_canonical_and_non_overwriting() {
+        let key = TableKey::Range(2);
+        let a = SiteId::new(2, RoundFamily::LogupAux, 1);
+        let b = SiteId::new(2, RoundFamily::LogupAux, 9);
+        let mut bank = TableBankP::new();
+        bank.finalized = true;
+        bank.alphas.insert(key, Fp2::ONE);
+        assert_eq!(
+            bank.register_scheduled_sites(key, [a, a]),
+            Err(TableBankSiteError::DuplicateSite { key, site: a })
+        );
+        assert!(!bank.scheduled_sites.contains_key(&key));
+        bank.register_scheduled_sites(key, [b, a]).unwrap();
+        assert_eq!(bank.preflight_scheduled_roots(key, [a, b]), Ok(()));
+        assert_eq!(
+            bank.preflight_scheduled_roots(key, [a, a]),
+            Err(TableBankSiteError::DuplicateSite { key, site: a })
+        );
+        let first = prover_root(10);
+        let second = prover_root(20);
+        bank.push_scheduled_roots(key, b, second).unwrap();
+        assert_eq!(
+            bank.preflight_scheduled_roots(key, [b]),
+            Err(TableBankSiteError::DuplicateSite { key, site: b })
+        );
+        assert_eq!(bank.preflight_scheduled_roots(key, [a]), Ok(()));
+        bank.push_scheduled_roots(key, a, first).unwrap();
+        assert_eq!(
+            bank.push_scheduled_roots(key, a, prover_root(99)),
+            Err(TableBankSiteError::DuplicateSite { key, site: a })
+        );
+        assert_eq!(bank.scheduled_roots[&(key, a)], first);
+        assert_eq!(bank.roots_canonical(key).unwrap(), vec![first, second]);
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            bank.push_roots(key, prover_root(30));
+        }))
+        .is_err());
+
+        let mut missing = TableBankP::new();
+        missing.finalized = true;
+        missing.alphas.insert(key, Fp2::ONE);
+        missing.register_scheduled_sites(key, [a, b]).unwrap();
+        missing.push_scheduled_roots(key, a, first).unwrap();
+        assert_eq!(
+            missing.validate_scheduled_roots(),
+            Err(TableBankSiteError::MissingSite { key, site: b })
+        );
+
+        let mut mixed = TableBankP::new();
+        mixed.finalized = true;
+        mixed.alphas.insert(key, Fp2::ONE);
+        mixed.push_roots(key, first);
+        assert_eq!(
+            mixed.register_scheduled_sites(key, [a]),
+            Err(TableBankSiteError::LegacyRootsPresent(key))
+        );
+    }
+
+    #[test]
+    fn verifier_table_bank_rejects_duplicate_and_missing_scheduled_sites() {
+        let key = TableKey::Range(2);
+        let a = SiteId::new(3, RoundFamily::LogupAux, 0);
+        let b = SiteId::new(3, RoundFamily::LogupAux, 1);
+        let zero = VerifierKey::from_public(Fp2::ZERO, Fp2::ONE);
+        let mut bank = TableBankV::empty();
+        bank.alphas.insert(key, Fp2::ONE);
+        bank.register_scheduled_sites(key, [a, b]).unwrap();
+        assert_eq!(bank.preflight_scheduled_kroots(key, [a, b]), Ok(()));
+        bank.push_scheduled_kroots(key, b, (zero, zero)).unwrap();
+        assert_eq!(
+            bank.preflight_scheduled_kroots(key, [b]),
+            Err(TableBankSiteError::DuplicateSite { key, site: b })
+        );
+        assert!(bank.validate_scheduled_roots().is_none());
+        bank.push_scheduled_kroots(key, a, (zero, zero)).unwrap();
+        assert!(bank.validate_scheduled_roots().is_some());
+        assert_eq!(
+            bank.push_scheduled_kroots(key, a, (zero, zero)),
+            Err(TableBankSiteError::DuplicateSite { key, site: a })
+        );
     }
 }
 
@@ -874,9 +1330,7 @@ fn auth_device_vector_p<T: ResidentBaseElement>(
     if vals.is_empty() {
         return Err(AccelError::InvalidInput("cannot authenticate an empty resident vector"));
     }
-    let masks = stream.draw_sub_masks(dom, vals.len());
-    let masks_raw: Vec<u64> = masks.iter().map(|mask| mask.value()).collect();
-    let device_masks = backend.upload_new_device(&masks_raw)?;
+    let device_masks = reserve_auth_masks_device(stream, dom, 1, vals.len(), backend)?;
     let corrections = match backend.subfield_corrections_device(
         vals,
         DeviceSlice::new(&device_masks, 0, device_masks.len()).expect("whole auth mask vector"),
@@ -901,6 +1355,36 @@ fn auth_device_vector_p<T: ResidentBaseElement>(
     Ok(corr)
 }
 
+/// Materialize one atomically reserved row-major authentication-mask range on
+/// the device. Only the explicitly mock-PCG backend may expand its shared
+/// ChaCha8 seed there; pooled/production-oriented VOLE material remains an
+/// opaque host allocation and follows the existing upload path.
+fn reserve_auth_masks_device(
+    stream: &mut CorrelationStream,
+    base_dom: u64,
+    rows: usize,
+    cols: usize,
+    backend: &mut Backend,
+) -> Result<DeviceBuffer<u64>, AccelError> {
+    match stream.reserve_sub_mask_rows(base_dom, rows, cols) {
+        SubMaskRowsReservation::ChaCha8 { seed, base_domain, rows, cols } => {
+            backend.mock_correlation_sub_masks_device(seed, base_domain, rows, cols)
+        }
+        SubMaskRowsReservation::Host { masks, rows, cols } => {
+            let expected = rows
+                .checked_mul(cols)
+                .ok_or(AccelError::InvalidInput("authentication mask geometry overflow"))?;
+            if masks.len() != expected {
+                return Err(AccelError::InvalidInput(
+                    "pooled authentication mask reservation length mismatch",
+                ));
+            }
+            let masks_raw: Vec<u64> = masks.into_iter().map(Fp::value).collect();
+            backend.upload_new_device(&masks_raw)
+        }
+    }
+}
+
 pub(crate) fn auth_matrix_rows_resident_p<T: ResidentBaseElement>(
     stream: &mut CorrelationStream,
     tx: &mut Transcript,
@@ -910,17 +1394,14 @@ pub(crate) fn auth_matrix_rows_resident_p<T: ResidentBaseElement>(
     cols: usize,
     backend: &mut Backend,
 ) -> Result<Vec<u64>, AccelError> {
-    if rows == 0 || cols == 0 || vals.len() < rows.saturating_mul(cols) {
+    let elements = rows
+        .checked_mul(cols)
+        .ok_or(AccelError::InvalidInput("resident matrix authentication geometry overflow"))?;
+    if rows == 0 || cols == 0 || vals.len() < elements {
         return Err(AccelError::InvalidInput("invalid resident matrix authentication geometry"));
     }
-    let mut masks_raw = Vec::with_capacity(rows * cols);
-    for row in 0..rows {
-        masks_raw.extend(
-            stream.draw_sub_masks(base_dom + row as u64, cols).into_iter().map(|mask| mask.value()),
-        );
-    }
-    let device_masks = backend.upload_new_device(&masks_raw)?;
-    let values = DeviceSlice::new(vals.buffer(), vals.offset(), rows * cols)
+    let device_masks = reserve_auth_masks_device(stream, base_dom, rows, cols, backend)?;
+    let values = DeviceSlice::new(vals.buffer(), vals.offset(), elements)
         .expect("validated resident matrix prefix");
     let corrections = match backend.subfield_corrections_device(
         values,
@@ -2411,18 +2892,18 @@ pub struct FfnBlockProof {
 /// FFN phase-1 state: LN2 vectors authenticated, all FFN-side multiplicities
 /// accumulated into the bank.
 pub struct FfnP1 {
-    lv: LnVecsP,
-    ln_vec_corrs: [Vec<u64>; 4],
+    pub(crate) lv: LnVecsP,
+    pub(crate) ln_vec_corrs: [Vec<u64>; 4],
 }
 
 pub(crate) struct ResidentFfnP1 {
-    lv: ResidentLnVecsP,
-    ln_vec_corrs: [Vec<u64>; 4],
-    down: DeviceLookupColumns,
-    gelu: DeviceLookupColumns,
-    up: DeviceLookupColumns,
-    ln: DeviceLookupColumns,
-    rsqrt: DeviceLookupColumns,
+    pub(crate) lv: ResidentLnVecsP,
+    pub(crate) ln_vec_corrs: [Vec<u64>; 4],
+    pub(crate) down: DeviceLookupColumns,
+    pub(crate) gelu: DeviceLookupColumns,
+    pub(crate) up: DeviceLookupColumns,
+    pub(crate) ln: DeviceLookupColumns,
+    pub(crate) rsqrt: DeviceLookupColumns,
 }
 
 impl ResidentFfnP1 {
@@ -2700,6 +3181,160 @@ pub(crate) fn bind_pair_site_resident<A: ResidentBaseElement, B: ResidentBaseEle
 /// `attn_block_out` / `ffn_block_out` boundaries at `dom_abo` / `dom_fbo`
 /// and run [`ffn_phase1`]. Returns the proof and the weight claims
 /// `[ffn_down, ffn_up]`.
+pub(crate) struct FfnAfterDownP {
+    lv: LnVecsP,
+    ln_vec_corrs: [Vec<u64>; 4],
+    inst_down: BlindInstance,
+    inst_down_stage1: Option<BlindInstance>,
+    gemm_down: ChainedGemmProof,
+    gelu_wire: WireOut,
+    w_down_corr: Fp2,
+    wclaim_down: WeightClaimP,
+}
+
+impl FfnAfterDownP {
+    pub(crate) fn gelu_aux_claim(&self) -> LeafAuxClaim {
+        LeafAuxClaim { col: 1, point: self.gelu_wire.point.clone(), value: self.gelu_wire.value }
+    }
+}
+
+/// Run one FFN through the committed down projection and stop at the GELU
+/// dependency.  The P7b scheduler keeps one state per layer and resumes it
+/// only after the canonical model-wide GELU cohort has completed.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prove_ffn_before_gelu(
+    wit: &LayerWitness,
+    weights: &LayerWeights,
+    luts: &Luts,
+    p1: FfnP1,
+    cx: &mut BlockCtxP,
+    dom_abo: u64,
+    dom_fbo: u64,
+    biases: Option<&GemmBiases>,
+) -> FfnAfterDownP {
+    let t = wit.t;
+    assert!(t >= 2, "block proof needs at least 2 rows");
+    let s_dn = luts.params.shift_ffn_down;
+    let d_cb = pad_bits(D);
+    let FfnP1 { lv, ln_vec_corrs } = p1;
+    let site_dn = prove_range_site(&wit.ffn_down_acc, &wit.ffn_down_q, t, D, s_dn, Vec::new(), cx);
+    let pt_out = site_dn.main.point.clone();
+    let f_open = open_matrix_p(cx.stream, dom_fbo, &wit.ffn_block_out, t, D, &pt_out);
+    let a_open = open_matrix_p(cx.stream, dom_abo, &wit.attn_block_out, t, D, &pt_out);
+    cx.zero.push(site_dn.main.col_claims[1].value.sub(f_open).add(a_open));
+
+    let pt = site_dn.acc_point().to_vec();
+    let mut acc_dn_claim = site_dn.acc_claim;
+    if let Some(b) = biases {
+        acc_dn_claim = sub_bias_p(acc_dn_claim, &b.ffn_down, d_cb, &pt, t, s_dn, &mut cx.ctr_other);
+    }
+    let (r_j_dn, r_i_dn) = pt.split_at(d_cb);
+    let cd_down = ChainDoms::alloc(&mut cx.doms, DFF);
+    let (gemm_down, gelu_wire, w_down_corr, wclaim_down, _, _) = prove_gemm_committed_chained(
+        &wit.gelu_out,
+        &weights.ffn_down,
+        t,
+        DFF,
+        D,
+        r_i_dn,
+        r_j_dn,
+        acc_dn_claim,
+        &cd_down,
+        cx.stream,
+        cx.tx,
+    );
+    FfnAfterDownP {
+        lv,
+        ln_vec_corrs,
+        inst_down: site_dn.main.proof,
+        inst_down_stage1: site_dn.stage1.map(|stage1| stage1.proof),
+        gemm_down,
+        gelu_wire,
+        w_down_corr,
+        wclaim_down,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prove_ffn_after_gelu(
+    wit: &LayerWitness,
+    weights: &LayerWeights,
+    luts: &Luts,
+    state: FfnAfterDownP,
+    inst_gelu: InstanceOutP,
+    cx: &mut BlockCtxP,
+    dom_abo: u64,
+    biases: Option<&GemmBiases>,
+) -> (FfnBlockProof, Vec<WeightClaimP>) {
+    let t = wit.t;
+    let s_up = luts.params.shift_ffn_up;
+    let s_ln = luts.params.shift_ln_norm;
+    let f_cb = pad_bits(DFF);
+    assert!(s_up <= 16, "chained ffn_up requant not wired here");
+    let (rem_up, out_up) = range_cols_padded(&wit.ffn_up_acc, &wit.ffn_up_q, t, DFF, s_up);
+    let inst_up = cx.inst(
+        TableKey::Range(s_up),
+        &[rem_up, out_up],
+        &[Some(0), None],
+        vec![LeafAuxClaim {
+            col: 1,
+            point: inst_gelu.point.clone(),
+            value: inst_gelu.col_claims[0].value,
+        }],
+    );
+    let mut acc_up_claim = transport_p(&inst_up, s_up);
+    let pt_u = inst_up.point.clone();
+    if let Some(b) = biases {
+        acc_up_claim = sub_bias_p(acc_up_claim, &b.ffn_up, f_cb, &pt_u, t, s_up, &mut cx.ctr_other);
+    }
+    let (r_j_up, r_i_up) = pt_u.split_at(f_cb);
+    let cd_up = ChainDoms::alloc(&mut cx.doms, D);
+    let (gemm_up, wire_ln2, w_up_corr, wclaim_up, _, _) = prove_gemm_committed_chained(
+        &wit.ln2_out,
+        &weights.ffn_up,
+        t,
+        D,
+        DFF,
+        r_i_up,
+        r_j_up,
+        acc_up_claim,
+        &cd_up,
+        cx.stream,
+        cx.tx,
+    );
+    let ln = prove_ln_chain(
+        t,
+        s_ln,
+        &wit.ln2_acc,
+        &wit.ln2_out,
+        &wit.attn_block_out,
+        dom_abo,
+        &wit.ln2_mean,
+        &weights.ln2_gain,
+        &weights.ln2_bias,
+        &state.lv,
+        &wire_ln2,
+        cx,
+    );
+    (
+        FfnBlockProof {
+            ln_vec_corrs: state.ln_vec_corrs,
+            inst_down: state.inst_down,
+            inst_down_stage1: state.inst_down_stage1,
+            gemm_down: state.gemm_down,
+            gelu_wire_corr: state.gelu_wire.corr,
+            w_down_corr: state.w_down_corr,
+            inst_gelu: inst_gelu.proof,
+            inst_up: inst_up.proof,
+            gemm_up,
+            ln2_wire_corr: wire_ln2.corr,
+            w_up_corr,
+            ln,
+        },
+        vec![state.wclaim_down, wclaim_up],
+    )
+}
+
 pub(crate) fn prove_ffn_block(
     wit: &LayerWitness,
     weights: &LayerWeights,
@@ -2833,7 +3468,255 @@ pub(crate) fn prove_ffn_block(
     (proof, vec![wclaim_down, wclaim_up])
 }
 
+pub(crate) struct ResidentFfnAfterDownP {
+    p1: ResidentFfnP1,
+    inst_down: BlindInstance,
+    inst_down_stage1: Option<BlindInstance>,
+    gemm_down: ChainedGemmProof,
+    gelu_wire: WireOut,
+    w_down_corr: Fp2,
+    wclaim_down: WeightClaimP,
+}
+
+impl ResidentFfnAfterDownP {
+    pub(crate) fn gelu_columns(&self) -> Result<DeviceSlice<'_, u64>, AccelError> {
+        self.p1.gelu.view(0, 2)
+    }
+
+    pub(crate) fn gelu_entries(&self) -> usize {
+        self.p1.gelu.entries()
+    }
+
+    pub(crate) fn gelu_aux_claim(&self) -> LeafAuxClaim {
+        LeafAuxClaim { col: 1, point: self.gelu_wire.point.clone(), value: self.gelu_wire.value }
+    }
+
+    pub(crate) fn cleanup(self, backend: &mut Backend) -> Result<(), AccelError> {
+        self.p1.free(backend)
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
+pub(crate) fn prove_ffn_before_gelu_resident<W: ResidentLayerView>(
+    wit: &W,
+    resident_model: &ResidentGpt2Model,
+    layer: usize,
+    _weights: &LayerWeights,
+    luts: &Luts,
+    p1: ResidentFfnP1,
+    cx: &mut BlockCtxP,
+    dom_abo: u64,
+    dom_fbo: u64,
+    biases: Option<&GemmBiases>,
+) -> Result<ResidentFfnAfterDownP, AccelError> {
+    let result = (|| {
+        let t = wit.rows();
+        if t < 2 {
+            return Err(AccelError::InvalidInput("resident FFN proof needs at least two rows"));
+        }
+        let params = luts.params;
+        let d_cb = pad_bits(D);
+        let down_site = prove_range_site_resident(&p1.down, params.shift_ffn_down, Vec::new(), cx)?;
+        let output_point = down_site.main.point.clone();
+        let backend = cx
+            .backend
+            .as_deref_mut()
+            .ok_or(AccelError::InvalidInput("resident FFN proof requires a backend"))?;
+        let ffn_boundary = open_matrix_resident_p(
+            cx.stream,
+            dom_fbo,
+            wit.i16(LayerI16Field::FfnBlockOut),
+            t,
+            D,
+            &output_point,
+            backend,
+        )?;
+        let attn_boundary = open_matrix_resident_p(
+            cx.stream,
+            dom_abo,
+            wit.i16(LayerI16Field::AttnBlockOut),
+            t,
+            D,
+            &output_point,
+            backend,
+        )?;
+        cx.zero.push(down_site.main.col_claims[1].value.sub(ffn_boundary).add(attn_boundary));
+        let down_point = down_site.acc_point().to_vec();
+        let mut down_claim = down_site.acc_claim;
+        if let Some(biases) = biases {
+            down_claim = sub_bias_p(
+                down_claim,
+                &biases.ffn_down,
+                d_cb,
+                &down_point,
+                t,
+                params.shift_ffn_down,
+                &mut cx.ctr_other,
+            );
+        }
+        let (r_j_down, r_i_down) = down_point.split_at(d_cb);
+        let down_doms = ChainDoms::alloc(&mut cx.doms, DFF);
+        let (gemm_down, gelu_wire, w_down_corr, wclaim_down, _, _) =
+            prove_gemm_committed_chained_resident(
+                wit.i16(LayerI16Field::GeluOut),
+                resident_model.layer_weight(layer, LayerWeightField::FfnDown)?,
+                t,
+                DFF,
+                D,
+                r_i_down,
+                r_j_down,
+                down_claim,
+                &down_doms,
+                cx.stream,
+                cx.tx,
+                cx.backend.as_deref_mut().expect("resident FFN backend"),
+            )?;
+        Ok((
+            down_site.main.proof,
+            down_site.stage1.map(|stage1| stage1.proof),
+            gemm_down,
+            gelu_wire,
+            w_down_corr,
+            wclaim_down,
+        ))
+    })();
+    match result {
+        Ok((inst_down, inst_down_stage1, gemm_down, gelu_wire, w_down_corr, wclaim_down)) => {
+            Ok(ResidentFfnAfterDownP {
+                p1,
+                inst_down,
+                inst_down_stage1,
+                gemm_down,
+                gelu_wire,
+                w_down_corr,
+                wclaim_down,
+            })
+        }
+        Err(error) => {
+            let cleanup = p1.free(
+                cx.backend
+                    .as_deref_mut()
+                    .ok_or(AccelError::InvalidInput("resident FFN cleanup requires a backend"))?,
+            );
+            match cleanup {
+                Ok(()) => Err(error),
+                Err(cleanup_error) => Err(cleanup_error),
+            }
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prove_ffn_after_gelu_resident<W: ResidentLayerView>(
+    wit: &W,
+    resident_model: &ResidentGpt2Model,
+    layer: usize,
+    weights: &LayerWeights,
+    luts: &Luts,
+    mut state: ResidentFfnAfterDownP,
+    gelu: InstanceOutP,
+    cx: &mut BlockCtxP,
+    dom_abo: u64,
+    biases: Option<&GemmBiases>,
+) -> Result<(FfnBlockProof, Vec<WeightClaimP>), AccelError> {
+    let result = (|| {
+        let t = wit.rows();
+        let params = luts.params;
+        let f_cb = pad_bits(DFF);
+        if params.shift_ffn_up > 16 {
+            return Err(AccelError::InvalidInput(
+                "resident FFN-up chained proof is not represented in FfnBlockProof",
+            ));
+        }
+        let up_site = prove_range_site_resident(
+            &state.p1.up,
+            params.shift_ffn_up,
+            vec![LeafAuxClaim {
+                col: 1,
+                point: gelu.point.clone(),
+                value: gelu.col_claims[0].value,
+            }],
+            cx,
+        )?;
+        debug_assert!(up_site.stage1.is_none());
+        let up_point = up_site.main.point.clone();
+        let mut up_claim = up_site.acc_claim;
+        if let Some(biases) = biases {
+            up_claim = sub_bias_p(
+                up_claim,
+                &biases.ffn_up,
+                f_cb,
+                &up_point,
+                t,
+                params.shift_ffn_up,
+                &mut cx.ctr_other,
+            );
+        }
+        let (r_j_up, r_i_up) = up_point.split_at(f_cb);
+        let up_doms = ChainDoms::alloc(&mut cx.doms, D);
+        let (gemm_up, wire_ln2, w_up_corr, wclaim_up, _, _) =
+            prove_gemm_committed_chained_resident(
+                wit.i16(LayerI16Field::Ln2Out),
+                resident_model.layer_weight(layer, LayerWeightField::FfnUp)?,
+                t,
+                D,
+                DFF,
+                r_i_up,
+                r_j_up,
+                up_claim,
+                &up_doms,
+                cx.stream,
+                cx.tx,
+                cx.backend.as_deref_mut().expect("resident FFN backend"),
+            )?;
+        let ln = prove_ln_chain_resident(
+            t,
+            params.shift_ln_norm,
+            &state.p1.ln,
+            &state.p1.rsqrt,
+            wit.i16(LayerI16Field::AttnBlockOut),
+            dom_abo,
+            resident_model.layer_weight(layer, LayerWeightField::Ln2Gain)?,
+            &weights.ln2_gain,
+            &weights.ln2_bias,
+            &state.p1.lv,
+            &wire_ln2,
+            cx,
+        )?;
+        let ln_vec_corrs = std::mem::take(&mut state.p1.ln_vec_corrs);
+        Ok((
+            FfnBlockProof {
+                ln_vec_corrs,
+                inst_down: state.inst_down,
+                inst_down_stage1: state.inst_down_stage1,
+                gemm_down: state.gemm_down,
+                gelu_wire_corr: state.gelu_wire.corr,
+                w_down_corr: state.w_down_corr,
+                inst_gelu: gelu.proof,
+                inst_up: up_site.main.proof,
+                gemm_up,
+                ln2_wire_corr: wire_ln2.corr,
+                w_up_corr,
+                ln,
+            },
+            vec![state.wclaim_down, wclaim_up],
+        ))
+    })();
+    let free_result = state.p1.free(
+        cx.backend
+            .as_deref_mut()
+            .ok_or(AccelError::InvalidInput("resident FFN cleanup requires a backend"))?,
+    );
+    match (result, free_result) {
+        (Ok(value), Ok(())) => Ok(value),
+        (Err(error), _) | (_, Err(error)) => Err(error),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+// Retained as the standalone resident-layer compatibility path exercised by
+// the CUDA differentials; response proving uses the scheduled split API.
+#[allow(dead_code)]
 pub(crate) fn prove_ffn_block_resident<W: ResidentLayerView>(
     wit: &W,
     resident_model: &ResidentGpt2Model,
@@ -3016,6 +3899,112 @@ pub(crate) fn prove_ffn_block_resident<W: ResidentLayerView>(
 /// (expanded by the caller). On success returns the `[ffn_down, ffn_up]`
 /// weight-claim (point, key) pairs; the caller must still close the
 /// accumulated `kprod`/`kzero` batches.
+pub(crate) struct FfnAfterDownV {
+    gelu_wire: WireKey,
+    w_pt_down: Vec<Fp2>,
+    w_key_down: VerifierKey,
+}
+
+impl FfnAfterDownV {
+    pub(crate) fn gelu_aux(&self) -> (usize, Vec<Fp2>, VerifierKey) {
+        (1, self.gelu_wire.point.clone(), self.gelu_wire.key)
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn verify_ffn_before_gelu(
+    t: usize,
+    luts: &Luts,
+    proof: &FfnBlockProof,
+    cx: &mut BlockCtxV,
+    abo_keys: &[Fp2],
+    fbo_keys: &[Fp2],
+    biases: Option<&GemmBiases>,
+) -> Option<FfnAfterDownV> {
+    let rb = pad_bits(t);
+    let d_cb = pad_bits(D);
+    let s_dn = luts.params.shift_ffn_down;
+    let n_d = d_cb + rb;
+    let site_dn =
+        verify_range_site(n_d, s_dn, &proof.inst_down, proof.inst_down_stage1.as_ref(), &[], cx)?;
+    let pt_out = site_dn.main.point.clone();
+    let f_k = open_matrix_k(fbo_keys, t, D, &pt_out);
+    let a_k = open_matrix_k(abo_keys, t, D, &pt_out);
+    cx.kzero.push(site_dn.main.col_keys[1].key.sub(f_k).add(a_k));
+    let pt = site_dn.acc_point().to_vec();
+    let mut k_acc_dn = site_dn.acc_key;
+    if let Some(b) = biases {
+        k_acc_dn = sub_bias_k(k_acc_dn, &b.ffn_down, d_cb, &pt, t, s_dn, cx.ctx.delta);
+    }
+    let (r_j_dn, r_i_dn) = pt.split_at(d_cb);
+    let cd_down = ChainDoms::alloc(&mut cx.doms, DFF);
+    let (gelu_wire, w_pt_down, w_key_down) = verify_gemm_committed_chained(
+        t,
+        DFF,
+        D,
+        r_i_dn,
+        r_j_dn,
+        k_acc_dn,
+        &proof.gemm_down,
+        proof.gelu_wire_corr,
+        proof.w_down_corr,
+        &cd_down,
+        cx.ctx,
+        cx.tx,
+    )?;
+    Some(FfnAfterDownV { gelu_wire, w_pt_down, w_key_down })
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn verify_ffn_after_gelu(
+    t: usize,
+    ln2_gain: &[i16],
+    ln2_bias: &[i16],
+    luts: &Luts,
+    proof: &FfnBlockProof,
+    lvk: &LnVecsK,
+    state: FfnAfterDownV,
+    gelu: InstanceOutV,
+    cx: &mut BlockCtxV,
+    abo_keys: &[Fp2],
+    biases: Option<&GemmBiases>,
+) -> Option<Vec<(Vec<Fp2>, VerifierKey)>> {
+    let s_up = luts.params.shift_ffn_up;
+    let s_ln = luts.params.shift_ln_norm;
+    if s_up > 16 || (s_ln > 16) != proof.ln.inst_ln_stage1.is_some() {
+        return None;
+    }
+    let rb = pad_bits(t);
+    let f_cb = pad_bits(DFF);
+    let n_ff = f_cb + rb;
+    let shifts_range = [Some(0u32), None];
+    let aux_up = [(1usize, gelu.point.clone(), gelu.col_keys[0].key)];
+    let vu = cx.inst(TableKey::Range(s_up), n_ff, &shifts_range, &proof.inst_up, &aux_up)?;
+    let mut k_acc_up = transport_k(&vu, s_up, cx.ctx.delta);
+    let pt_u = vu.point.clone();
+    if let Some(b) = biases {
+        k_acc_up = sub_bias_k(k_acc_up, &b.ffn_up, f_cb, &pt_u, t, s_up, cx.ctx.delta);
+    }
+    let (r_j_up, r_i_up) = pt_u.split_at(f_cb);
+    let cd_up = ChainDoms::alloc(&mut cx.doms, D);
+    let (wk_ln2, w_pt_up, k_w_up) = verify_gemm_committed_chained(
+        t,
+        D,
+        DFF,
+        r_i_up,
+        r_j_up,
+        k_acc_up,
+        &proof.gemm_up,
+        proof.ln2_wire_corr,
+        proof.w_up_corr,
+        &cd_up,
+        cx.ctx,
+        cx.tx,
+    )?;
+    verify_ln_chain(t, s_ln, ln2_gain, ln2_bias, abo_keys, lvk, &proof.ln, &wk_ln2, cx)?;
+    Some(vec![(state.w_pt_down, state.w_key_down), (w_pt_up, k_w_up)])
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn verify_ffn_block(
     t: usize,
@@ -3437,6 +4426,61 @@ pub struct AttnBlockProof {
     pub ln: LnChainProof,
 }
 
+/// Close the two authenticated row-table columns after attention step 11.
+/// The lookup itself may be the legacy singleton or an output returned by a
+/// sealed [`crate::attn_schedule`] cohort; the MAC-opening obligations are
+/// identical and remain owned by the block proof.
+pub(crate) fn close_softmax_recip_cpu(
+    instance: &InstanceOutP,
+    dom_rin: u64,
+    rin: &[Fp],
+    dom_recips: u64,
+    recips: &[Fp],
+    cx: &mut BlockCtxP,
+) {
+    let rin_open = open_fp_vec_p(cx.stream, dom_rin, rin, &instance.point);
+    cx.zero.push(instance.col_claims[0].value.sub(rin_open));
+    let recips_open = open_fp_vec_p(cx.stream, dom_recips, recips, &instance.point);
+    cx.zero.push(instance.col_claims[1].value.sub(recips_open));
+}
+
+pub(crate) fn close_softmax_recip_resident(
+    instance: &InstanceOutP,
+    dom_rin: u64,
+    rin: DeviceSlice<'_, u64>,
+    dom_recips: u64,
+    recips: DeviceSlice<'_, u64>,
+    cx: &mut BlockCtxP,
+) -> Result<(), AccelError> {
+    let backend = cx
+        .backend
+        .as_deref_mut()
+        .ok_or(AccelError::InvalidInput("resident reciprocal closure requires a backend"))?;
+    let rin_open = open_fp_vec_resident_p(cx.stream, dom_rin, rin, &instance.point, backend)?;
+    cx.zero.push(instance.col_claims[0].value.sub(rin_open));
+    let recips_open = open_fp_vec_resident_p(
+        cx.stream,
+        dom_recips,
+        recips,
+        &instance.point,
+        cx.backend.as_deref_mut().expect("resident reciprocal backend"),
+    )?;
+    cx.zero.push(instance.col_claims[1].value.sub(recips_open));
+    Ok(())
+}
+
+pub(crate) fn close_softmax_recip_verifier(
+    instance: &InstanceOutV,
+    rin_keys: &[Fp2],
+    recips_keys: &[Fp2],
+    cx: &mut BlockCtxV,
+) {
+    let rin_key = open_fp_vec_k(rin_keys, &instance.point);
+    cx.kzero.push(instance.col_keys[0].key.sub(rin_key));
+    let recips_key = open_fp_vec_k(recips_keys, &instance.point);
+    cx.kzero.push(instance.col_keys[1].key.sub(recips_key));
+}
+
 // ---------------------------------------------------------------------------
 // Attention block — prover
 // ---------------------------------------------------------------------------
@@ -3553,7 +4597,7 @@ pub(crate) struct ResidentAttnP1 {
 }
 
 impl ResidentAttnP1 {
-    fn free(self, backend: &mut Backend) -> Result<(), AccelError> {
+    pub(crate) fn free(self, backend: &mut Backend) -> Result<(), AccelError> {
         let mut first = backend.free_lookup_columns(self.rsqrt).err();
         if first.is_none() {
             first = backend.free_lookup_columns(self.ln).err();
@@ -4098,23 +5142,28 @@ pub(crate) fn prove_attn_block(
     let eq_within = eq_vec(&pt_av[..6]);
     let mut gemm_wv = Vec::with_capacity(H);
     let mut aux_sn: Vec<LeafAuxClaim> = Vec::with_capacity(H + 1);
+    // Seal membership and every correlation range before preparing/opening
+    // the first head. Domain allocation remains in the historical head
+    // order, while rounds below advance synchronously across all 12 heads.
+    let layer = attention_layer_from_doms(&cx.doms);
+    let wv_doms: Vec<ChainDoms> = (0..H).map(|_| ChainDoms::alloc(&mut cx.doms, s_pad)).collect();
+    let wv_plan = attention_act_schedule(
+        sh.t0,
+        layer,
+        AttentionActRole::WeightValue,
+        pad_bits(s_pad),
+        &wv_doms,
+    );
+    let mut wv_openings = Vec::with_capacity(H);
+    let mut wv_timings = Vec::with_capacity(H);
+    let mut wv_jobs = Vec::with_capacity(H);
     for h in 0..H {
         let (bvals, btags) = cache_fold_cols_p(cx.stream, v_segs, &eq_within, h * DH, DH);
         let mut b_folded = vec![Fp2::ZERO; s_pad];
         b_folded[..s_len].copy_from_slice(&bvals);
-        let open_b = move |ptl: &[Fp2]| {
-            let eq_l = eq_vec(ptl);
-            let mut v = Fp2::ZERO;
-            let mut m = Fp2::ZERO;
-            for row in 0..s_len {
-                v += eq_l[row] * bvals[row];
-                m += eq_l[row] * btags[row];
-            }
-            ProverAuthed { x: v, m }
-        };
         let x_slice = &wires.w_rect[h * sp2..h * sp2 + t * s_pad];
-        let cd = ChainDoms::alloc(&mut cx.doms, s_pad);
-        let (gp, wire, _r_l, _tm, _cc) = prove_gemm_act_chained(
+        let (job, timings) = prepare_gemm_act_chained_batch(
+            attention_act_site_id(sh.t0, layer, AttentionActRole::WeightValue, h),
             x_slice,
             b_folded,
             t,
@@ -4123,11 +5172,41 @@ pub(crate) fn prove_attn_block(
             &pt_av[d_cb..],
             &pt_av[..6],
             av_auth[h],
-            open_b,
-            &cd,
+            &wv_doms[h],
+        );
+        wv_openings.push((bvals, btags));
+        wv_timings.push(timings);
+        wv_jobs.push(job);
+    }
+    let wv_outputs = blind_prove_batch(&wv_plan, wv_jobs, cx.stream, cx.tx)
+        .expect("sealed W·V schedule and jobs must agree");
+    for (h, ((output, (bvals, btags)), mut timings)) in
+        wv_outputs.into_iter().zip(wv_openings).zip(wv_timings).enumerate()
+    {
+        let rounds: GemmActRoundOutput = output.into();
+        assert_eq!(
+            rounds.site_id,
+            Some(attention_act_site_id(sh.t0, layer, AttentionActRole::WeightValue, h))
+        );
+        let open_started = std::time::Instant::now();
+        let eq_l = eq_vec(&rounds.point);
+        let mut value = Fp2::ZERO;
+        let mut tag = Fp2::ZERO;
+        for row in 0..s_len {
+            value += eq_l[row] * bvals[row];
+            tag += eq_l[row] * btags[row];
+        }
+        timings.t_open_tags_s = open_started.elapsed().as_secs_f64();
+        let (gp, wire, _r_l, _tm, _cc) = finalize_gemm_act_chained(
+            rounds,
+            &pt_av[d_cb..],
+            ProverAuthed { x: value, m: tag },
+            &wv_doms[h],
             cx.stream,
             cx.tx,
-        );
+            timings,
+        )
+        .expect("CPU W·V boundary opening matches the scheduled fold");
         // Lift the softmax_w wire claim to the full rect domain: the head
         // bits are appended as fixed boolean coordinates (top vars).
         let mut ptx = wire.point.clone();
@@ -4298,10 +5377,7 @@ pub(crate) fn prove_attn_block(
         &[Some(0), Some(16)],
         Vec::new(),
     );
-    let rin_open = open_fp_vec_p(cx.stream, dom_rin_row, &rin_row_fp, &inst_recip.point);
-    cx.zero.push(inst_recip.col_claims[0].value.sub(rin_open));
-    let rec_open2 = open_fp_vec_p(cx.stream, dom_recips, &recips_fp, &inst_recip.point);
-    cx.zero.push(inst_recip.col_claims[1].value.sub(rec_open2));
+    close_softmax_recip_cpu(&inst_recip, dom_rin_row, &rin_row_fp, dom_recips, &recips_fp, cx);
 
     // ---- 12: scores range instance + pad-mask correction ---------------------
     let rem_sc_col: Vec<Fp> = rem_sc.iter().map(|&r| Fp::new(r as u64)).collect();
@@ -4398,27 +5474,23 @@ pub(crate) fn prove_attn_block(
     let eq_rj_sc = eq_vec(&pt_sc[..sb]);
     let mut gemm_qk = Vec::with_capacity(H);
     let mut aux_qkv: Vec<LeafAuxClaim> = Vec::with_capacity(H + 2);
+    let qk_doms: Vec<ChainDoms> = (0..H).map(|_| ChainDoms::alloc(&mut cx.doms, DH)).collect();
+    let qk_plan =
+        attention_act_schedule(sh.t0, layer, AttentionActRole::QueryKey, pad_bits(DH), &qk_doms);
+    let mut qk_openings = Vec::with_capacity(H);
+    let mut qk_timings = Vec::with_capacity(H);
+    let mut qk_jobs = Vec::with_capacity(H);
     for h in 0..H {
         let (kvals, ktags) = cache_fold_rows_p(cx.stream, k_segs, &eq_rj_sc, h * DH, DH);
         let b_folded = kvals.clone();
-        let open_b = move |ptl: &[Fp2]| {
-            let eq_l = eq_vec(ptl);
-            let mut v = Fp2::ZERO;
-            let mut m = Fp2::ZERO;
-            for l in 0..DH {
-                v += eq_l[l] * kvals[l];
-                m += eq_l[l] * ktags[l];
-            }
-            ProverAuthed { x: v, m }
-        };
         let mut qh = vec![0i16; t * DH];
         for i in 0..t {
             for l in 0..DH {
                 qh[i * DH + l] = wit.q[i * D + h * DH + l];
             }
         }
-        let cd = ChainDoms::alloc(&mut cx.doms, DH);
-        let (gp, wire, _r_l, _tm, _cc) = prove_gemm_act_chained(
+        let (job, timings) = prepare_gemm_act_chained_batch(
+            attention_act_site_id(sh.t0, layer, AttentionActRole::QueryKey, h),
             &qh,
             b_folded,
             t,
@@ -4427,11 +5499,41 @@ pub(crate) fn prove_attn_block(
             &pt_sc[sb..sb + qb],
             &pt_sc[..sb],
             sc_auth[h],
-            open_b,
-            &cd,
+            &qk_doms[h],
+        );
+        qk_openings.push((kvals, ktags));
+        qk_timings.push(timings);
+        qk_jobs.push(job);
+    }
+    let qk_outputs = blind_prove_batch(&qk_plan, qk_jobs, cx.stream, cx.tx)
+        .expect("sealed Q·Kᵀ schedule and jobs must agree");
+    for (h, ((output, (kvals, ktags)), mut timings)) in
+        qk_outputs.into_iter().zip(qk_openings).zip(qk_timings).enumerate()
+    {
+        let rounds: GemmActRoundOutput = output.into();
+        assert_eq!(
+            rounds.site_id,
+            Some(attention_act_site_id(sh.t0, layer, AttentionActRole::QueryKey, h))
+        );
+        let open_started = std::time::Instant::now();
+        let eq_l = eq_vec(&rounds.point);
+        let mut value = Fp2::ZERO;
+        let mut tag = Fp2::ZERO;
+        for l in 0..DH {
+            value += eq_l[l] * kvals[l];
+            tag += eq_l[l] * ktags[l];
+        }
+        timings.t_open_tags_s = open_started.elapsed().as_secs_f64();
+        let (gp, wire, _r_l, _tm, _cc) = finalize_gemm_act_chained(
+            rounds,
+            &pt_sc[sb..sb + qb],
+            ProverAuthed { x: value, m: tag },
+            &qk_doms[h],
             cx.stream,
             cx.tx,
-        );
+            timings,
+        )
+        .expect("CPU Q·Kᵀ boundary opening matches the scheduled fold");
         // Lift the Q wire claim onto the qkv out column's permuted domain:
         // (r_l ‖ head bits ‖ third=(0,0) ‖ rows).
         let mut ptx = wire.point[..6].to_vec();
@@ -4570,6 +5672,12 @@ pub(crate) fn prove_attn_block_resident<W: ResidentLayerView>(
         }
         let params = luts.params;
         let shape = BandShape { t0: wit.pos0(), q: t };
+        // `layer` is the model-weight index (always 0..L).  Scheduled SiteIds
+        // instead use the public proof section encoded in this block's
+        // correlation-domain base; decode bands deliberately live in a
+        // different section from prefill.  Derive it exactly as the CPU
+        // prover and verifier do so all three parties seal the same cohort.
+        let schedule_section = attention_layer_from_doms(&cx.doms);
         let (qb, sb) = (shape.qb(), shape.sb());
         let (q_pad, s_pad, sp2) = (shape.q_pad(), shape.s_pad(), shape.sp2());
         let nr = shape.nr();
@@ -4694,11 +5802,31 @@ pub(crate) fn prove_attn_block_resident<W: ResidentLayerView>(
         let eq_query_rows = eq_vec(&av_point[d_cb..]);
         let mut gemm_wv = Vec::with_capacity(H);
         let mut aux_sn = Vec::with_capacity(H + 1);
+        let wv_doms: Vec<ChainDoms> =
+            (0..H).map(|_| ChainDoms::alloc(&mut cx.doms, s_pad)).collect();
+        let wv_plan = attention_act_schedule(
+            shape.t0,
+            schedule_section,
+            AttentionActRole::WeightValue,
+            pad_bits(s_pad),
+            &wv_doms,
+        );
+        let w_column = p1.wires.rect_column(1)?;
+        let mut wv_tags = Vec::with_capacity(H);
+        let mut wv_jobs = Vec::with_capacity(H);
         for head in 0..H {
-            let w_column = p1.wires.rect_column(1)?;
             let head_weights =
-                DeviceSlice::new(w_column.buffer(), w_column.offset() + head * sp2, sp2)?;
-            let a_folded = public_window_fold_resident(
+                match DeviceSlice::new(w_column.buffer(), w_column.offset() + head * sp2, sp2) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        let _ = free_attention_resident_jobs(
+                            cx.backend.as_deref_mut().expect("resident attention backend"),
+                            wv_jobs,
+                        );
+                        return Err(error);
+                    }
+                };
+            let a_folded = match public_window_fold_resident(
                 head_weights,
                 t,
                 s_pad,
@@ -4707,7 +5835,16 @@ pub(crate) fn prove_attn_block_resident<W: ResidentLayerView>(
                 &eq_query_rows,
                 volta_accel::MatrixFoldAxis::Rows,
                 cx.backend.as_deref_mut().expect("resident attention backend"),
-            )?;
+            ) {
+                Ok(value) => value,
+                Err(error) => {
+                    let _ = free_attention_resident_jobs(
+                        cx.backend.as_deref_mut().expect("resident attention backend"),
+                        wv_jobs,
+                    );
+                    return Err(error);
+                }
+            };
             let b_folded = match cache_fold_cols_resident_p(
                 cx.stream,
                 v_segments,
@@ -4725,12 +5862,21 @@ pub(crate) fn prove_attn_block_resident<W: ResidentLayerView>(
                         .as_deref_mut()
                         .expect("resident attention backend")
                         .free_device(a_folded);
+                    let _ = free_attention_resident_jobs(
+                        cx.backend.as_deref_mut().expect("resident attention backend"),
+                        wv_jobs,
+                    );
                     return Err(error);
                 }
             };
             let (b_folded, b_tags) = b_folded;
-            let gemm_doms = ChainDoms::alloc(&mut cx.doms, s_pad);
-            let (proof, wire, _, _, _) = prove_gemm_act_chained_resident(
+            let job = match prepare_gemm_act_chained_resident_batch(
+                attention_act_site_id(
+                    shape.t0,
+                    schedule_section,
+                    AttentionActRole::WeightValue,
+                    head,
+                ),
                 a_folded,
                 b_folded,
                 t,
@@ -4739,16 +5885,53 @@ pub(crate) fn prove_attn_block_resident<W: ResidentLayerView>(
                 &av_point[d_cb..],
                 &av_point[..6],
                 av_auth[head],
-                move |point, value| {
-                    let eq = eq_vec(point);
-                    let tag =
-                        (0..shape.s()).fold(Fp2::ZERO, |sum, row| sum + eq[row] * b_tags[row]);
-                    Ok(ProverAuthed { x: value, m: tag })
-                },
-                &gemm_doms,
+                &wv_doms[head],
+                cx.backend.as_deref_mut().expect("resident attention backend"),
+            ) {
+                Ok(value) => value,
+                Err(error) => {
+                    let _ = free_attention_resident_jobs(
+                        cx.backend.as_deref_mut().expect("resident attention backend"),
+                        wv_jobs,
+                    );
+                    return Err(error);
+                }
+            };
+            wv_tags.push(b_tags);
+            wv_jobs.push(job);
+        }
+        let wv_outputs = prove_attention_resident_round_batch(
+            &wv_plan,
+            wv_jobs,
+            cx.stream,
+            cx.tx,
+            cx.backend.as_deref_mut().expect("resident attention backend"),
+        )?;
+        for (head, (output, b_tags)) in wv_outputs.into_iter().zip(wv_tags).enumerate() {
+            let rounds: GemmActRoundOutput = output.into();
+            let b_final = rounds.b_final;
+            if rounds.site_id
+                != Some(attention_act_site_id(
+                    shape.t0,
+                    schedule_section,
+                    AttentionActRole::WeightValue,
+                    head,
+                ))
+            {
+                return Err(AccelError::InvalidInput(
+                    "resident W·V cohort returned a noncanonical SiteId",
+                ));
+            }
+            let eq = eq_vec(&rounds.point);
+            let tag = (0..shape.s()).fold(Fp2::ZERO, |sum, row| sum + eq[row] * b_tags[row]);
+            let (proof, wire, _, _, _) = finalize_gemm_act_chained(
+                rounds,
+                &av_point[d_cb..],
+                ProverAuthed { x: b_final, m: tag },
+                &wv_doms[head],
                 cx.stream,
                 cx.tx,
-                cx.backend.as_deref_mut().expect("resident attention backend"),
+                ProveTimings::default(),
             )?;
             let mut lifted_point = wire.point.clone();
             lifted_point.extend(head_bit_coords(head));
@@ -5014,22 +6197,14 @@ pub(crate) fn prove_attn_block_resident<W: ResidentLayerView>(
             &[Some(0), Some(16)],
             Vec::new(),
         )?;
-        let rin_open = open_fp_vec_resident_p(
-            cx.stream,
+        close_softmax_recip_resident(
+            &recip_instance,
             p1.dom_rin_row,
             p1.wires.row_column(1)?,
-            &recip_instance.point,
-            cx.backend.as_deref_mut().expect("resident attention backend"),
-        )?;
-        cx.zero.push(recip_instance.col_claims[0].value.sub(rin_open));
-        let recips_open = open_fp_vec_resident_p(
-            cx.stream,
             p1.dom_recips,
             p1.wires.row_column(2)?,
-            &recip_instance.point,
-            cx.backend.as_deref_mut().expect("resident attention backend"),
+            cx,
         )?;
-        cx.zero.push(recip_instance.col_claims[1].value.sub(recips_open));
 
         let scores_instance = cx.inst_resident(
             TableKey::Range(s_sc),
@@ -5133,8 +6308,18 @@ pub(crate) fn prove_attn_block_resident<W: ResidentLayerView>(
         let eq_score_rows = eq_vec(&score_point[sb..sb + qb]);
         let mut gemm_qk = Vec::with_capacity(H);
         let mut aux_qkv = Vec::with_capacity(H + 2);
+        let qk_doms: Vec<ChainDoms> = (0..H).map(|_| ChainDoms::alloc(&mut cx.doms, DH)).collect();
+        let qk_plan = attention_act_schedule(
+            shape.t0,
+            schedule_section,
+            AttentionActRole::QueryKey,
+            pad_bits(DH),
+            &qk_doms,
+        );
+        let mut qk_tags = Vec::with_capacity(H);
+        let mut qk_jobs = Vec::with_capacity(H);
         for head in 0..H {
-            let a_folded = public_window_fold_resident(
+            let a_folded = match public_window_fold_resident(
                 wit.i16(LayerI16Field::Q),
                 t,
                 D,
@@ -5143,7 +6328,16 @@ pub(crate) fn prove_attn_block_resident<W: ResidentLayerView>(
                 &eq_score_rows,
                 volta_accel::MatrixFoldAxis::Rows,
                 cx.backend.as_deref_mut().expect("resident attention backend"),
-            )?;
+            ) {
+                Ok(value) => value,
+                Err(error) => {
+                    let _ = free_attention_resident_jobs(
+                        cx.backend.as_deref_mut().expect("resident attention backend"),
+                        qk_jobs,
+                    );
+                    return Err(error);
+                }
+            };
             let b_folded = match cache_fold_rows_resident_p(
                 cx.stream,
                 k_segments,
@@ -5161,12 +6355,16 @@ pub(crate) fn prove_attn_block_resident<W: ResidentLayerView>(
                         .as_deref_mut()
                         .expect("resident attention backend")
                         .free_device(a_folded);
+                    let _ = free_attention_resident_jobs(
+                        cx.backend.as_deref_mut().expect("resident attention backend"),
+                        qk_jobs,
+                    );
                     return Err(error);
                 }
             };
             let (b_folded, b_tags) = b_folded;
-            let gemm_doms = ChainDoms::alloc(&mut cx.doms, DH);
-            let (proof, wire, _, _, _) = prove_gemm_act_chained_resident(
+            let job = match prepare_gemm_act_chained_resident_batch(
+                attention_act_site_id(shape.t0, schedule_section, AttentionActRole::QueryKey, head),
                 a_folded,
                 b_folded,
                 t,
@@ -5175,15 +6373,53 @@ pub(crate) fn prove_attn_block_resident<W: ResidentLayerView>(
                 &score_point[sb..sb + qb],
                 &score_point[..sb],
                 score_auth[head],
-                move |point, value| {
-                    let eq = eq_vec(point);
-                    let tag = (0..DH).fold(Fp2::ZERO, |sum, index| sum + eq[index] * b_tags[index]);
-                    Ok(ProverAuthed { x: value, m: tag })
-                },
-                &gemm_doms,
+                &qk_doms[head],
+                cx.backend.as_deref_mut().expect("resident attention backend"),
+            ) {
+                Ok(value) => value,
+                Err(error) => {
+                    let _ = free_attention_resident_jobs(
+                        cx.backend.as_deref_mut().expect("resident attention backend"),
+                        qk_jobs,
+                    );
+                    return Err(error);
+                }
+            };
+            qk_tags.push(b_tags);
+            qk_jobs.push(job);
+        }
+        let qk_outputs = prove_attention_resident_round_batch(
+            &qk_plan,
+            qk_jobs,
+            cx.stream,
+            cx.tx,
+            cx.backend.as_deref_mut().expect("resident attention backend"),
+        )?;
+        for (head, (output, b_tags)) in qk_outputs.into_iter().zip(qk_tags).enumerate() {
+            let rounds: GemmActRoundOutput = output.into();
+            let b_final = rounds.b_final;
+            if rounds.site_id
+                != Some(attention_act_site_id(
+                    shape.t0,
+                    schedule_section,
+                    AttentionActRole::QueryKey,
+                    head,
+                ))
+            {
+                return Err(AccelError::InvalidInput(
+                    "resident Q·Kᵀ cohort returned a noncanonical SiteId",
+                ));
+            }
+            let eq = eq_vec(&rounds.point);
+            let tag = (0..DH).fold(Fp2::ZERO, |sum, index| sum + eq[index] * b_tags[index]);
+            let (proof, wire, _, _, _) = finalize_gemm_act_chained(
+                rounds,
+                &score_point[sb..sb + qb],
+                ProverAuthed { x: b_final, m: tag },
+                &qk_doms[head],
                 cx.stream,
                 cx.tx,
-                cx.backend.as_deref_mut().expect("resident attention backend"),
+                ProveTimings::default(),
             )?;
             let mut lifted_point = wire.point[..6].to_vec();
             lifted_point.extend(head_bit_coords(head));
@@ -5502,24 +6738,44 @@ pub(crate) fn verify_attn_block(
     // ---- 5: per-head w·V GEMMs --------------------------------------------------
     let eq_within = eq_vec(&pt_av[..6]);
     let mut aux_sn: Vec<(usize, Vec<Fp2>, VerifierKey)> = Vec::with_capacity(H + 1);
+    let layer = attention_layer_from_doms(&cx.doms);
+    let wv_doms: Vec<ChainDoms> = (0..H).map(|_| ChainDoms::alloc(&mut cx.doms, s_pad)).collect();
+    let wv_plan = attention_act_schedule(
+        sh.t0,
+        layer,
+        AttentionActRole::WeightValue,
+        pad_bits(s_pad),
+        &wv_doms,
+    );
+    let mut wv_bkeys = Vec::with_capacity(H);
+    let mut wv_jobs = Vec::with_capacity(H);
     for h in 0..H {
         let vkeys_row = cache_fold_cols_k(v_segs, &eq_within, h * DH, DH);
-        let open_b_key = move |ptl: &[Fp2]| {
-            let eq_l = eq_vec(ptl);
-            VerifierKey { k: (0..s_len).fold(Fp2::ZERO, |s, row| s + eq_l[row] * vkeys_row[row]) }
+        wv_bkeys.push(vkeys_row);
+        wv_jobs.push(BlindSumcheckBatchVerifyJob {
+            site_id: attention_act_site_id(sh.t0, layer, AttentionActRole::WeightValue, h),
+            n_vars: pad_bits(s_pad),
+            claim0: av_keys[h],
+            proof: &proof.gemm_wv[h].0.sumcheck,
+            mask_dom_base: wv_doms[h].round_masks,
+        });
+    }
+    let wv_outputs = blind_verify_batch(&wv_plan, wv_jobs, cx.ctx, cx.tx)?;
+    for (h, (output, vkeys_row)) in wv_outputs.into_iter().zip(wv_bkeys).enumerate() {
+        if output.site_id != attention_act_site_id(sh.t0, layer, AttentionActRole::WeightValue, h) {
+            return None;
+        }
+        let eq_l = eq_vec(&output.point);
+        let k_b = VerifierKey {
+            k: (0..s_len).fold(Fp2::ZERO, |sum, row| sum + eq_l[row] * vkeys_row[row]),
         };
-        let cd = ChainDoms::alloc(&mut cx.doms, s_pad);
-        let (wk, _r_l) = verify_gemm_act_chained(
-            t,
-            s_pad,
-            DH,
+        let (wk, _r_l) = finalize_verify_gemm_act_chained(
+            output,
             &pt_av[d_cb..],
-            &pt_av[..6],
-            av_keys[h],
             &proof.gemm_wv[h].0,
             proof.gemm_wv[h].1,
-            open_b_key,
-            &cd,
+            k_b,
+            &wv_doms[h],
             cx.ctx,
             cx.tx,
         )?;
@@ -5635,10 +6891,7 @@ pub(crate) fn verify_attn_block(
     // ---- 11: softmax_recip instance -----------------------------------------------
     let vrc =
         cx.inst(TableKey::SoftmaxRecip, rb + HEAD_BITS, &shifts_pair, &proof.inst_recip, &[])?;
-    let rin_k = open_fp_vec_k(&rin_row_keys, &vrc.point);
-    cx.kzero.push(vrc.col_keys[0].key.sub(rin_k));
-    let rec_k2 = open_fp_vec_k(&recips_keys, &vrc.point);
-    cx.kzero.push(vrc.col_keys[1].key.sub(rec_k2));
+    close_softmax_recip_verifier(&vrc, &rin_row_keys, &recips_keys, cx);
 
     // ---- 12: scores instance + pad-mask correction -----------------------------
     let aux_sc = [(1usize, vexp.point.clone(), vexp.col_keys[0].key)];
@@ -5698,24 +6951,36 @@ pub(crate) fn verify_attn_block(
     // ---- 14: per-head QKᵀ GEMMs ---------------------------------------------------
     let eq_rj_sc = eq_vec(&pt_sc[..sb]);
     let mut aux_qkv: Vec<(usize, Vec<Fp2>, VerifierKey)> = Vec::with_capacity(H + 2);
+    let qk_doms: Vec<ChainDoms> = (0..H).map(|_| ChainDoms::alloc(&mut cx.doms, DH)).collect();
+    let qk_plan =
+        attention_act_schedule(sh.t0, layer, AttentionActRole::QueryKey, pad_bits(DH), &qk_doms);
+    let mut qk_bkeys = Vec::with_capacity(H);
+    let mut qk_jobs = Vec::with_capacity(H);
     for h in 0..H {
         let kkeys_col = cache_fold_rows_k(k_segs, &eq_rj_sc, h * DH, DH);
-        let open_b_key = move |ptl: &[Fp2]| {
-            let eq_l = eq_vec(ptl);
-            VerifierKey { k: (0..DH).fold(Fp2::ZERO, |s, l| s + eq_l[l] * kkeys_col[l]) }
-        };
-        let cd = ChainDoms::alloc(&mut cx.doms, DH);
-        let (wk, _r_l) = verify_gemm_act_chained(
-            t,
-            DH,
-            s_len,
+        qk_bkeys.push(kkeys_col);
+        qk_jobs.push(BlindSumcheckBatchVerifyJob {
+            site_id: attention_act_site_id(sh.t0, layer, AttentionActRole::QueryKey, h),
+            n_vars: pad_bits(DH),
+            claim0: sc_keys[h],
+            proof: &proof.gemm_qk[h].0.sumcheck,
+            mask_dom_base: qk_doms[h].round_masks,
+        });
+    }
+    let qk_outputs = blind_verify_batch(&qk_plan, qk_jobs, cx.ctx, cx.tx)?;
+    for (h, (output, kkeys_col)) in qk_outputs.into_iter().zip(qk_bkeys).enumerate() {
+        if output.site_id != attention_act_site_id(sh.t0, layer, AttentionActRole::QueryKey, h) {
+            return None;
+        }
+        let eq_l = eq_vec(&output.point);
+        let k_b = VerifierKey { k: (0..DH).fold(Fp2::ZERO, |sum, l| sum + eq_l[l] * kkeys_col[l]) };
+        let (wk, _r_l) = finalize_verify_gemm_act_chained(
+            output,
             &pt_sc[sb..sb + qb],
-            &pt_sc[..sb],
-            sc_keys[h],
             &proof.gemm_qk[h].0,
             proof.gemm_qk[h].1,
-            open_b_key,
-            &cd,
+            k_b,
+            &qk_doms[h],
             cx.ctx,
             cx.tx,
         )?;
@@ -5852,7 +7117,7 @@ pub struct LayerOutV {
 }
 
 /// Per-instance measured lookups for the layer (domain sizes).
-fn layer_lookups(sh: BandShape) -> Vec<InstanceLookups> {
+pub(crate) fn layer_lookups(sh: BandShape) -> Vec<InstanceLookups> {
     let tp = sh.q_pad() as u64;
     let rect = sh.sp2() as u64 * H_PAD as u64;
     vec![
@@ -5881,37 +7146,38 @@ fn layer_lookups(sh: BandShape) -> Vec<InstanceLookups> {
 /// the saved domain cursor (phase 2 resumes it via `BlockCtxP::with_doms`).
 pub struct LayerP1 {
     pub doms: Doms,
-    dom_xin: u64,
-    dom_k: u64,
-    dom_v: u64,
-    dom_abo: u64,
-    dom_fbo: u64,
-    xin_corr: Vec<u64>,
-    k_corr: Vec<u64>,
-    v_corr: Vec<u64>,
-    abo_corr: Vec<u64>,
-    fbo_corr: Vec<u64>,
-    ffn: FfnP1,
-    attn: AttnP1,
+    pub(crate) dom_xin: u64,
+    pub(crate) dom_k: u64,
+    pub(crate) dom_v: u64,
+    pub(crate) dom_abo: u64,
+    pub(crate) dom_fbo: u64,
+    pub(crate) xin_corr: Vec<u64>,
+    pub(crate) k_corr: Vec<u64>,
+    pub(crate) v_corr: Vec<u64>,
+    pub(crate) abo_corr: Vec<u64>,
+    pub(crate) fbo_corr: Vec<u64>,
+    pub(crate) ffn: FfnP1,
+    pub(crate) attn: AttnP1,
     /// Full corrs consumed by phase 1 (byte accounting continuity).
-    fulls0: u64,
+    pub(crate) fulls0: u64,
 }
 
 pub(crate) struct ResidentLayerP1 {
     pub doms: Doms,
-    dom_xin: u64,
-    dom_k: u64,
-    dom_v: u64,
-    dom_abo: u64,
-    dom_fbo: u64,
-    xin_corr: Vec<u64>,
-    k_corr: Vec<u64>,
-    v_corr: Vec<u64>,
-    abo_corr: Vec<u64>,
-    fbo_corr: Vec<u64>,
-    ffn: ResidentFfnP1,
-    attn: ResidentAttnP1,
-    fulls0: u64,
+    pub(crate) dom_xin: u64,
+    pub(crate) dom_k: u64,
+    pub(crate) dom_v: u64,
+    pub(crate) dom_abo: u64,
+    pub(crate) dom_fbo: u64,
+    pub(crate) xin_corr: Vec<u64>,
+    pub(crate) k_corr: Vec<u64>,
+    pub(crate) v_corr: Vec<u64>,
+    pub(crate) abo_corr: Vec<u64>,
+    pub(crate) fbo_corr: Vec<u64>,
+    pub(crate) ffn: ResidentFfnP1,
+    pub(crate) attn: ResidentAttnP1,
+    #[allow(dead_code)]
+    pub(crate) fulls0: u64,
 }
 
 impl ResidentLayerP1 {
@@ -6184,6 +7450,8 @@ pub fn prove_layer_phase2_band(
 /// phase-1 table bank and correlation cursor; no alternate proof or verifier
 /// representation is introduced.
 #[allow(clippy::too_many_arguments)]
+// Standalone compatibility wrapper used by resident block differentials.
+#[allow(dead_code)]
 pub(crate) fn prove_layer_phase2_resident<W: ResidentLayerView>(
     wit: &W,
     resident_model: &ResidentGpt2Model,
@@ -6198,6 +7466,7 @@ pub(crate) fn prove_layer_phase2_resident<W: ResidentLayerView>(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 pub(crate) fn prove_layer_phase2_resident_band<W: ResidentLayerView>(
     wit: &W,
     resident_model: &ResidentGpt2Model,
@@ -6360,13 +7629,13 @@ pub fn layer_content_keys(luts: &Luts, keys: &mut std::collections::BTreeSet<Tab
 /// Layer verifier phase-1 state (mirror of [`LayerP1`]).
 pub struct LayerV1 {
     pub doms: Doms,
-    xin_keys: Vec<Fp2>,
-    k_keys: Vec<Fp2>,
-    v_keys: Vec<Fp2>,
-    abo_keys: Vec<Fp2>,
-    fbo_keys: Vec<Fp2>,
-    lvk2: LnVecsK,
-    attn: AttnV1,
+    pub(crate) xin_keys: Vec<Fp2>,
+    pub(crate) k_keys: Vec<Fp2>,
+    pub(crate) v_keys: Vec<Fp2>,
+    pub(crate) abo_keys: Vec<Fp2>,
+    pub(crate) fbo_keys: Vec<Fp2>,
+    pub(crate) lvk2: LnVecsK,
+    pub(crate) attn: AttnV1,
 }
 
 /// Layer phase 1 (verifier): expand + cache every element-wise key, in the
@@ -6552,6 +7821,103 @@ mod tests {
             let wit = forward_layer(&x, &w, &luts, T);
             (luts, w, wit)
         })
+    }
+
+    #[test]
+    fn decode_attention_schedule_uses_public_domain_section() {
+        let model_layer = 3u8;
+        let decode_section = 16 + model_layer;
+        let pos0 = 100usize;
+
+        let mut prover_doms = Doms::new(layer_dom_base(decode_section));
+        let prover_section = attention_layer_from_doms(&prover_doms);
+        let prover_chains: Vec<_> =
+            (0..H).map(|_| ChainDoms::alloc(&mut prover_doms, DH)).collect();
+        let prover_plan = attention_act_schedule(
+            pos0,
+            prover_section,
+            AttentionActRole::QueryKey,
+            pad_bits(DH),
+            &prover_chains,
+        );
+
+        let mut verifier_doms = Doms::new(layer_dom_base(decode_section));
+        let verifier_section = attention_layer_from_doms(&verifier_doms);
+        let verifier_chains: Vec<_> =
+            (0..H).map(|_| ChainDoms::alloc(&mut verifier_doms, DH)).collect();
+        let verifier_plan = attention_act_schedule(
+            pos0,
+            verifier_section,
+            AttentionActRole::QueryKey,
+            pad_bits(DH),
+            &verifier_chains,
+        );
+
+        assert_eq!(prover_section, u16::from(decode_section));
+        assert_ne!(prover_section, u16::from(model_layer));
+        assert_eq!(prover_plan.sites(), verifier_plan.sites());
+        for (head, site) in prover_plan.sites().iter().enumerate() {
+            assert_eq!(site.id.section(), u16::from(decode_section));
+            assert_eq!(
+                site.id,
+                attention_act_site_id(
+                    pos0,
+                    u16::from(decode_section),
+                    AttentionActRole::QueryKey,
+                    head,
+                )
+            );
+        }
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn cuda_mock_auth_masks_match_cpu_without_h2d() {
+        let mut gpu = match Backend::cuda_resident() {
+            Ok(gpu) => gpu,
+            Err(e) if std::env::var("VOLTA_REQUIRE_CUDA").as_deref() != Ok("1") => {
+                eprintln!("skipping CUDA mock-auth differential: {e}");
+                return;
+            }
+            Err(e) => panic!("CUDA required: {e}"),
+        };
+        let seed = [0xA7; 32];
+        let base_dom = layer_dom_base(17);
+        let (rows, cols) = (3usize, 7usize);
+        let values: Vec<i16> = (0..rows * cols).map(|i| i as i16 * 13 - 91).collect();
+
+        let mut cpu_stream = CorrelationStream::new(seed);
+        let mut cpu_tx = Transcript::new([0xD1; 32]);
+        let expected =
+            auth_matrix_rows_p(&mut cpu_stream, &mut cpu_tx, base_dom, &values, rows, cols);
+
+        let device_values = gpu.upload_new_device(&values).unwrap();
+        let mut gpu_stream = CorrelationStream::new(seed);
+        let mut gpu_tx = Transcript::new([0xD1; 32]);
+        gpu.begin_measurement().unwrap();
+        let got = auth_matrix_rows_resident_p(
+            &mut gpu_stream,
+            &mut gpu_tx,
+            base_dom,
+            DeviceSlice::new(&device_values, 0, values.len()).unwrap(),
+            rows,
+            cols,
+            &mut gpu,
+        )
+        .unwrap();
+        let stats = gpu.finish_measurement().unwrap();
+
+        assert_eq!(got, expected);
+        assert_eq!(gpu_stream.counters, cpu_stream.counters);
+        assert_eq!(gpu_tx.ledger(), cpu_tx.ledger());
+        assert_eq!(stats.h2d_bytes, 0, "mock authentication masks must stay device-side");
+        assert_eq!(stats.d2h_bytes, (values.len() * std::mem::size_of::<u64>()) as u64);
+        assert_eq!(stats.device_generated_bytes, stats.d2h_bytes);
+        assert_eq!(stats.operation(volta_accel::Operation::AuthMasks).calls, 1);
+        assert_eq!(stats.operation(volta_accel::Operation::PcsRows).calls, 0);
+        assert_eq!(stats.sync_host_output, 1);
+        assert_eq!(stats.synchronization_reason_total(), stats.synchronizations);
+        gpu.free_device(device_values).unwrap();
     }
 
     #[cfg(feature = "cuda")]

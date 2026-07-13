@@ -1,3 +1,4 @@
+import copy
 import importlib.util
 from pathlib import Path
 
@@ -335,3 +336,186 @@ def test_resident_profile_joins_only_same_host_native_anchor_and_keeps_full_acco
         "response_inference_plus_online_accounted": 2.0,
         "response_inference_plus_full_session_wall": 2.7,
     }
+
+
+def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
+    report = load_report_module()
+    historical = {
+        "_mtime": 1.0,
+        "_path": "benchmarks/results/p7-historical.json",
+        "report_schema_version": 3,
+        "milestone": "P7-integrated-resident",
+        "git_dirty": False,
+        "accepted": True,
+        "accelerator_backend": "cuda-resident",
+    }
+    sha = "a" * 40
+    repetitions = [
+        {
+            "repetition": 1,
+            "t_prove_prefill_only_s": 9.0,
+            "t_prove_decode_marginal_s": 3.0,
+            "accelerator_session": {"synchronizations": 4_000, "h2d_bytes": 90_000_000},
+        },
+        {
+            "repetition": 2,
+            "t_prove_prefill_only_s": 10.0,
+            "t_prove_decode_marginal_s": 4.0,
+            "accelerator_session": {"synchronizations": 5_000, "h2d_bytes": 100_000_000},
+        },
+        {
+            "repetition": 3,
+            "t_prove_prefill_only_s": 11.0,
+            "t_prove_decode_marginal_s": 5.0,
+            "accelerator_session": {"synchronizations": 4_500, "h2d_bytes": 95_000_000},
+        },
+    ]
+    p7b = {
+        "_mtime": 2.0,
+        "_path": "benchmarks/results/p7b-current.json",
+        "report_schema_version": 6,
+        "milestone": "P7b-integrated-resident",
+        "git_sha": sha,
+        "git_sha_before_benchmark": sha,
+        "git_sha_before_serialization": sha,
+        "git_dirty": False,
+        "git_dirty_before_benchmark": False,
+        "git_dirty_before_serialization": False,
+        "accepted": True,
+        "accelerator_backend": "cuda-resident",
+        "accelerator_cuda_abi_version": 26,
+        "cloud": {
+            "provider": "Thunder Compute",
+            "instance_id": "instance",
+            "region": "not exposed",
+            "image": "ubuntu",
+            "driver_version": "610",
+            "cuda_version": "13.2",
+            "gpu_sku": "NVIDIA A100-SXM4-80GB",
+            "cpu_model": "Xeon",
+            "ram_gib": "64",
+            "vcpus": "8",
+        },
+        "accelerator_live_device_bytes_after_cleanup": 30,
+        "accelerator_workspace_device_bytes_after_cleanup": 10,
+        "accelerator_resident_device_bytes_after_cleanup": 0,
+        "accelerator_cached_resident_device_bytes_after_cleanup": 20,
+        "accelerator_live_device_bytes_after_cache_trim": 10,
+        "accelerator_workspace_device_bytes_after_cache_trim": 10,
+        "accelerator_resident_device_bytes_after_cache_trim": 0,
+        "accelerator_cached_resident_device_bytes_after_cache_trim": 0,
+        "benchmark_warmup_repetitions": 1,
+        "benchmark_repetitions": 3,
+        "repetitions": repetitions,
+        "t_prefill": 100,
+        "n_decode": 50,
+        "pcs_n_queries": 200,
+        "golden_decode_checked": True,
+        "golden_decode_match": True,
+        "curve_last_over_first": 1.1,
+        "gate_flat_cost_per_token": True,
+        "prove_prefill_timing": {"samples_s": [9.0, 10.0, 11.0], "median_s": 10.0},
+        "prove_decode_marginal_timing": {
+            "samples_s": [3.0, 4.0, 5.0],
+            "median_s": 4.0,
+        },
+        "p7b_machine_eligible": True,
+        "p7b_gate_evaluated": True,
+        "p7b_timing_statistic": "upper median across measured repetitions",
+        "p7b_counter_statistic": "maximum across measured sessions",
+        "p7b_prefill_core_gate_s": 10.0,
+        "p7b_decode_marginal_gate_s": 4.0,
+        "p7b_sync_gate": 5_000,
+        "p7b_h2d_gate_bytes": 100_000_000,
+        "p7b_prefill_core_observed_s": 10.0,
+        "p7b_decode_marginal_observed_s": 4.0,
+        "p7b_sync_observed": 5_000,
+        "p7b_h2d_observed_bytes": 100_000_000,
+        "p7b_prefill_core_gate_pass": True,
+        "p7b_decode_marginal_gate_pass": True,
+        "p7b_sync_gate_pass": True,
+        "p7b_h2d_gate_pass": True,
+        "response_communication_envelope_bytes": 200_000_000,
+        "response_communication_observed_bytes": 144_820_930,
+        "response_communication_invariant_pass": True,
+        "p7b_transcript_reference_bytes": 137_413_808,
+        "p7b_pcs_opening_reference_bytes": 66_733_504,
+        "p7b_packed_logits_reference_bytes": 7_407_122,
+        "p7b_packed_response_reference_bytes": 144_820_930,
+        "p7b_response_communication_no_growth_pass": True,
+        "p7b_all_gates_pass": True,
+        "comm_response_bytes": 137_413_808,
+        "pcs_opening_bytes_total": 66_733_504,
+        "public_logits_packed_bytes": 7_407_122,
+        "total_response_download_packed_bytes": 144_820_930,
+        "pcg_backend": "mock",
+        "pcg_production_ready": False,
+    }
+
+    p7_rows = report.integrated_resident_profiles([historical, p7b])
+    assert [row["source"] for row in p7_rows] == [historical["_path"]]
+    assert report.resident_run_of_record_eligible(p7_rows[0]) is True
+
+    p7b_rows = report.integrated_p7b_resident_profiles([historical, p7b])
+    assert [row["source"] for row in p7b_rows] == [p7b["_path"]]
+    official = p7b_rows[0]
+    assert report.p7b_resident_run_of_record_eligible(official) is True
+
+    # A performance failure is still a valid measured verdict when its
+    # observations, statistics and booleans close exactly.
+    valid_failure = copy.deepcopy(official)
+    valid_failure["repetitions"][1]["accelerator_session"]["synchronizations"] = 5_001
+    valid_failure["p7b_sync_observed"] = 5_001
+    valid_failure["p7b_sync_gate_pass"] = False
+    valid_failure["p7b_all_gates_pass"] = False
+    assert report.p7b_resident_run_of_record_eligible(valid_failure) is True
+
+    # Every official field is fail-closed. This includes the clean A -> clean
+    # B revision-swap case, which dirty-bit-only provenance cannot detect.
+    mutations = [
+        {"report_schema_version": 7},
+        {"report_schema_version": 6.0},
+        {"accelerator_cuda_abi_version": 25},
+        {"accelerator_cuda_abi_version": 26.0},
+        {"git_sha_before_serialization": "b" * 40},
+        {"git_sha_before_benchmark": ""},
+        {"git_sha": "b" * 40},
+        {"p7b_gate_evaluated": False},
+        {"pcs_n_queries": 199},
+        {"pcs_n_queries": 200.0},
+        {"golden_decode_match": False},
+        {"flat_cost_gate": False},
+        {"p7b_timing_statistic": "median"},
+        {"p7b_counter_statistic": "median"},
+        {"benchmark_warmup_repetitions": 0},
+        {"benchmark_warmup_repetitions": None},
+        {"benchmark_repetitions": 2},
+        {"p7b_prefill_core_gate_s": 10.1},
+        {"response_communication_envelope_bytes": 200_000_001},
+        {"p7b_response_communication_no_growth_pass": False},
+        {"p7b_sync_gate_pass": False},
+        {"p7b_all_gates_pass": None},
+        {"accelerator_cleanup_memory_accounting_ok": False},
+    ]
+    for mutation in mutations:
+        candidate = dict(official)
+        candidate.update(mutation)
+        assert report.p7b_resident_run_of_record_eligible(candidate) is False, mutation
+
+    bad_samples = copy.deepcopy(official)
+    bad_samples["prove_prefill_timing"]["median_s"] = 9.0
+    assert report.p7b_resident_run_of_record_eligible(bad_samples) is False
+
+    bad_counter = copy.deepcopy(official)
+    bad_counter["repetitions"][0]["accelerator_session"]["h2d_bytes"] = 100_000_001
+    assert report.p7b_resident_run_of_record_eligible(bad_counter) is False
+
+    bad_communication = copy.deepcopy(official)
+    bad_communication["communication"]["response_bytes"] += 1
+    assert report.p7b_resident_run_of_record_eligible(bad_communication) is False
+
+    # Defense in depth: even a schema-6 P7b row with the old milestone cannot
+    # silently supersede the immutable schema-3 P7 result.
+    mislabeled = dict(p7b, milestone="P7-integrated-resident")
+    mislabeled_rows = report.integrated_resident_profiles([historical, mislabeled])
+    assert report.resident_run_of_record_eligible(mislabeled_rows[-1]) is False

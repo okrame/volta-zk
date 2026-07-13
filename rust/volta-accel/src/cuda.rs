@@ -24,6 +24,9 @@ struct RawStats {
     kernel_ns: [u64; OPERATION_COUNT],
     h2d_bytes: u64,
     d2h_bytes: u64,
+    d2d_bytes: u64,
+    device_zeroed_bytes: u64,
+    device_generated_bytes: u64,
     h2d_ns: u64,
     d2h_ns: u64,
     synchronizations: u64,
@@ -48,7 +51,7 @@ struct RawStats {
     reserved: u32,
 }
 
-const _: () = assert!(std::mem::size_of::<RawStats>() == 264);
+const _: () = assert!(std::mem::size_of::<RawStats>() == 288);
 
 type AbiVersion = unsafe extern "C" fn() -> u32;
 type Create = unsafe extern "C" fn(*mut *mut c_void) -> c_int;
@@ -64,6 +67,27 @@ type ResidentAlloc = unsafe extern "C" fn(*mut c_void, usize, *mut u64) -> c_int
 type ResidentFree = unsafe extern "C" fn(*mut c_void, u64) -> c_int;
 type ResidentUpload = unsafe extern "C" fn(*mut c_void, u64, usize, *const c_void, usize) -> c_int;
 type ResidentDownload = unsafe extern "C" fn(*mut c_void, u64, usize, *mut c_void, usize) -> c_int;
+type ResidentZero = unsafe extern "C" fn(*mut c_void, u64, usize, usize) -> c_int;
+type ResidentCopyRows =
+    unsafe extern "C" fn(*mut c_void, u64, usize, usize, u64, usize, usize, usize, usize) -> c_int;
+type Chacha8ProverSecretFpRowsDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, *const u8, u64, usize, usize) -> c_int;
+type Chacha8ProverSecretFp2RowsPaddedDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, *const u8, u64, usize, usize, usize) -> c_int;
+type Fp2RowDotsDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    usize,
+    u64,
+    usize,
+    usize,
+    u64,
+    usize,
+    usize,
+    usize,
+) -> c_int;
+type Fp2PowersDevice = unsafe extern "C" fn(*mut c_void, u64, u64, u64, usize, usize) -> c_int;
 type GemmI64 = unsafe extern "C" fn(
     *mut c_void,
     *const i16,
@@ -671,6 +695,12 @@ struct Api {
     resident_free: ResidentFree,
     resident_upload: ResidentUpload,
     resident_download: ResidentDownload,
+    resident_zero: ResidentZero,
+    resident_copy_rows: ResidentCopyRows,
+    chacha8_prover_secret_fp_rows_device: Chacha8ProverSecretFpRowsDevice,
+    chacha8_prover_secret_fp2_rows_padded_device: Chacha8ProverSecretFp2RowsPaddedDevice,
+    fp2_row_dots_device: Fp2RowDotsDevice,
+    fp2_powers_device: Fp2PowersDevice,
     gemm_i64: GemmI64,
     gemm_i64_device: GemmI64Device,
     gemm_requant_auth: GemmRequantAuth,
@@ -805,6 +835,18 @@ impl CudaContext {
             resident_free: unsafe { load_symbol(handle, b"volta_cuda_resident_free\0")? },
             resident_upload: unsafe { load_symbol(handle, b"volta_cuda_resident_upload\0")? },
             resident_download: unsafe { load_symbol(handle, b"volta_cuda_resident_download\0")? },
+            resident_zero: unsafe { load_symbol(handle, b"volta_cuda_resident_zero\0")? },
+            resident_copy_rows: unsafe { load_symbol(handle, b"volta_cuda_resident_copy_rows\0")? },
+            chacha8_prover_secret_fp_rows_device: unsafe {
+                load_symbol(handle, b"volta_cuda_chacha8_prover_secret_fp_rows_device\0")?
+            },
+            chacha8_prover_secret_fp2_rows_padded_device: unsafe {
+                load_symbol(handle, b"volta_cuda_chacha8_prover_secret_fp2_rows_padded_device\0")?
+            },
+            fp2_row_dots_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fp2_row_dots_device\0")?
+            },
+            fp2_powers_device: unsafe { load_symbol(handle, b"volta_cuda_fp2_powers_device\0")? },
             gemm_i64: unsafe { load_symbol(handle, b"volta_cuda_gemm_i64\0")? },
             gemm_i64_device: unsafe { load_symbol(handle, b"volta_cuda_gemm_i64_device\0")? },
             gemm_requant_auth: unsafe { load_symbol(handle, b"volta_cuda_gemm_requant_auth\0")? },
@@ -993,6 +1035,9 @@ impl CudaContext {
             },
             h2d_bytes: raw.h2d_bytes,
             d2h_bytes: raw.d2h_bytes,
+            explicit_d2d_copy_bytes: raw.d2d_bytes,
+            device_zeroed_bytes: raw.device_zeroed_bytes,
+            device_generated_bytes: raw.device_generated_bytes,
             h2d_ns: raw.h2d_ns,
             d2h_ns: raw.d2h_ns,
             synchronizations: raw.synchronizations,
@@ -1078,6 +1123,148 @@ impl CudaContext {
     ) -> Result<(), AccelError> {
         // SAFETY: safe caller allocated the typed output slice and the ABI synchronizes.
         self.check(unsafe { (self.api.resident_download)(self.raw, id, offset_bytes, dst, bytes) })
+    }
+
+    pub(super) fn resident_zero(
+        &mut self,
+        id: u64,
+        offset_bytes: usize,
+        bytes: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: the safe caller validated the typed destination region.
+        self.check(unsafe { (self.api.resident_zero)(self.raw, id, offset_bytes, bytes) })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn resident_copy_rows(
+        &mut self,
+        src_id: u64,
+        src_offset_bytes: usize,
+        src_stride_bytes: usize,
+        dst_id: u64,
+        dst_offset_bytes: usize,
+        dst_stride_bytes: usize,
+        rows: usize,
+        row_bytes: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: both typed strided envelopes and non-overlap were checked by
+        // the safe caller; the C boundary repeats bounds and overlap checks.
+        self.check(unsafe {
+            (self.api.resident_copy_rows)(
+                self.raw,
+                src_id,
+                src_offset_bytes,
+                src_stride_bytes,
+                dst_id,
+                dst_offset_bytes,
+                dst_stride_bytes,
+                rows,
+                row_bytes,
+            )
+        })
+    }
+
+    pub(super) fn chacha8_prover_secret_fp_rows_device(
+        &mut self,
+        output_id: u64,
+        output_offset_bytes: usize,
+        prover_secret_seed: &[u8; 32],
+        base_domain: u64,
+        rows: usize,
+        count: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: seed points to exactly 32 live bytes for this launch call;
+        // CUDA receives its copied key as kernel arguments, not retained H2D.
+        self.check(unsafe {
+            (self.api.chacha8_prover_secret_fp_rows_device)(
+                self.raw,
+                output_id,
+                output_offset_bytes,
+                prover_secret_seed.as_ptr(),
+                base_domain,
+                rows,
+                count,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn chacha8_prover_secret_fp2_rows_padded_device(
+        &mut self,
+        output_id: u64,
+        output_offset_bytes: usize,
+        prover_secret_seed: &[u8; 32],
+        base_domain: u64,
+        rows: usize,
+        count: usize,
+        padded_count: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: output and geometry are validated by the safe caller; the
+        // seed is copied into kernel arguments during this call.
+        self.check(unsafe {
+            (self.api.chacha8_prover_secret_fp2_rows_padded_device)(
+                self.raw,
+                output_id,
+                output_offset_bytes,
+                prover_secret_seed.as_ptr(),
+                base_domain,
+                rows,
+                count,
+                padded_count,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn fp2_row_dots_device(
+        &mut self,
+        a_id: u64,
+        a_offset: usize,
+        a_stride: usize,
+        b_id: u64,
+        b_offset: usize,
+        b_stride: usize,
+        output_id: u64,
+        output_offset: usize,
+        rows: usize,
+        len: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: safe caller checks context ownership and all strided regions.
+        self.check(unsafe {
+            (self.api.fp2_row_dots_device)(
+                self.raw,
+                a_id,
+                a_offset,
+                a_stride,
+                b_id,
+                b_offset,
+                b_stride,
+                output_id,
+                output_offset,
+                rows,
+                len,
+            )
+        })
+    }
+
+    pub(super) fn fp2_powers_device(
+        &mut self,
+        base: Fp2,
+        output_id: u64,
+        output_offset: usize,
+        count: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Fp/Fp2 expose canonical limbs and the output was validated.
+        self.check(unsafe {
+            (self.api.fp2_powers_device)(
+                self.raw,
+                base.c0.value(),
+                base.c1.value(),
+                output_id,
+                output_offset,
+                count,
+            )
+        })
     }
 
     pub(super) fn gemm_i64(

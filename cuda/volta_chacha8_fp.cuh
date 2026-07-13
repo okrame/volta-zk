@@ -3,9 +3,11 @@
 #include <cstdint>
 
 // Bit-exact device expansion for volta_field::FpStream, whose source of truth
-// is rand_chacha 0.3.1's ChaCha8Rng.  This is for shared mock-PCG mask and
-// correlation seeds only: it must never derive Fiat-Shamir challenges or any
-// verifier-only secret (in particular Delta).
+// is rand_chacha 0.3.1's ChaCha8Rng.  The resident PCS uses this only for
+// prover-secret row-pad and zero-knowledge-mask seeds.  Those seeds are not a
+// shared verifier seed.  This primitive must never derive transcript
+// challenges, Fiat-Shamir challenges, correlations, or any verifier-only
+// secret (in particular Delta).
 
 #if defined(__CUDACC__)
 #define VOLTA_CHACHA8_HD __host__ __device__

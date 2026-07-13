@@ -1,5 +1,7 @@
 #include <cuda_runtime.h>
 
+#include "volta_chacha8_fp.cuh"
+
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -14,7 +16,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 20;
+constexpr uint32_t ABI_VERSION = 21;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -40,6 +42,12 @@ struct RawStats {
     uint64_t kernel_ns[OP_COUNT];
     uint64_t h2d_bytes;
     uint64_t d2h_bytes;
+    /// Bytes copied entirely within this CUDA context. These are never H2D.
+    uint64_t d2d_bytes;
+    /// Bytes explicitly written as zero by resident device operations.
+    uint64_t device_zeroed_bytes;
+    /// Non-zero-tail output bytes materialized by device generators.
+    uint64_t device_generated_bytes;
     uint64_t h2d_ns;
     uint64_t d2h_ns;
     uint64_t synchronizations;
@@ -64,7 +72,7 @@ struct RawStats {
     uint32_t reserved;
 };
 
-static_assert(sizeof(RawStats) == 264, "RawStats ABI layout changed");
+static_assert(sizeof(RawStats) == 288, "RawStats ABI layout changed");
 
 enum class SyncReason {
     HostOutput,
@@ -105,6 +113,9 @@ struct TimingRecord {
     int operation = -1;
     uint64_t h2d_bytes = 0;
     uint64_t d2h_bytes = 0;
+    uint64_t d2d_bytes = 0;
+    uint64_t device_zeroed_bytes = 0;
+    uint64_t device_generated_bytes = 0;
     uint64_t measured_ns[3]{};
 };
 
@@ -158,6 +169,30 @@ int resident_region(
         return fail_message(c, "resident buffer region is out of bounds");
     *out = static_cast<unsigned char*>(b->ptr) + offset;
     return 0;
+}
+
+bool checked_mul_size(size_t a, size_t b, size_t* out) {
+    if (a != 0 && b > std::numeric_limits<size_t>::max() / a) return false;
+    *out = a * b;
+    return true;
+}
+
+bool checked_add_size(size_t a, size_t b, size_t* out) {
+    if (b > std::numeric_limits<size_t>::max() - a) return false;
+    *out = a + b;
+    return true;
+}
+
+int resident_strided_region(
+    Context* c, uint64_t id, size_t offset, size_t stride,
+    size_t row_bytes, size_t rows, void** out, size_t* span_bytes) {
+    if (!rows || !row_bytes || stride < row_bytes)
+        return fail_message(c, "invalid resident strided-row geometry");
+    size_t prefix = 0;
+    if (!checked_mul_size(rows - 1, stride, &prefix) ||
+        !checked_add_size(prefix, row_bytes, span_bytes))
+        return fail_message(c, "resident strided-row geometry overflows size_t");
+    return resident_region(c, id, offset, *span_bytes, out);
 }
 
 int fail(Context* c, const char* expr, cudaError_t e) noexcept {
@@ -395,6 +430,9 @@ int flush_deferred_timing(Context* c, SyncReason reason) {
             ++c->stats.calls[record.operation];
             c->stats.h2d_bytes += record.h2d_bytes;
             c->stats.d2h_bytes += record.d2h_bytes;
+            c->stats.d2d_bytes += record.d2d_bytes;
+            c->stats.device_zeroed_bytes += record.device_zeroed_bytes;
+            c->stats.device_generated_bytes += record.device_generated_bytes;
             if (record.h2d_bytes) c->stats.h2d_ns += record.measured_ns[0];
             c->stats.kernel_ns[record.operation] += record.measured_ns[1];
             if (record.d2h_bytes) c->stats.d2h_ns += record.measured_ns[2];
@@ -428,6 +466,9 @@ int begin_deferred_record(Context* c, TimingRecordKind kind, size_t event_count)
     record.operation = -1;
     record.h2d_bytes = 0;
     record.d2h_bytes = 0;
+    record.d2d_bytes = 0;
+    record.device_zeroed_bytes = 0;
+    record.device_generated_bytes = 0;
     record.measured_ns[0] = record.measured_ns[1] = record.measured_ns[2] = 0;
     CUDA_OR_RETURN(c, cudaEventRecord(record.events[0], c->stream));
     c->active_timing_record = slot;
@@ -505,7 +546,10 @@ int select_timing_mode(Context* c) {
     return 0;
 }
 
-int finish_timing(Context* c, int operation, uint64_t h2d, uint64_t d2h) {
+int finish_timing(
+    Context* c, int operation, uint64_t h2d, uint64_t d2h,
+    uint64_t d2d = 0, uint64_t device_zeroed = 0,
+    uint64_t device_generated = 0) {
     uint64_t h2d_ns = 0, kernel_ns = 0, d2h_ns = 0;
     if (c->timing_mode == TIMING_CUDA_EVENTS_DEFERRED) {
         if (c->active_timing_record == TIMING_RING_SIZE)
@@ -516,6 +560,9 @@ int finish_timing(Context* c, int operation, uint64_t h2d, uint64_t d2h) {
         record.operation = operation;
         record.h2d_bytes = h2d;
         record.d2h_bytes = d2h;
+        record.d2d_bytes = d2d;
+        record.device_zeroed_bytes = device_zeroed;
+        record.device_generated_bytes = device_generated;
         if (commit_deferred_record(c)) return -1;
         return d2h ? flush_deferred_timing(c, SyncReason::HostOutput) : 0;
     } else if (c->timing_mode == TIMING_CUDA_EVENTS) {
@@ -538,6 +585,9 @@ int finish_timing(Context* c, int operation, uint64_t h2d, uint64_t d2h) {
     ++c->stats.calls[operation];
     c->stats.h2d_bytes += h2d;
     c->stats.d2h_bytes += d2h;
+    c->stats.d2d_bytes += d2d;
+    c->stats.device_zeroed_bytes += device_zeroed;
+    c->stats.device_generated_bytes += device_generated;
     if (h2d) c->stats.h2d_ns += h2d_ns;
     c->stats.kernel_ns[operation] += kernel_ns;
     if (d2h) c->stats.d2h_ns += d2h_ns;
@@ -658,6 +708,68 @@ __host__ __device__ inline Fp2 fp2_mul(Fp2 a, Fp2 b) {
 
 __host__ __device__ inline Fp2 fp2_mul_base(Fp2 a, uint64_t b) {
     return Fp2{fp_mul(a.c0, b), fp_mul(a.c1, b)};
+}
+
+// -------------------------------------------------------------------------
+// Resident-only device materialization and device-to-device movement
+// -------------------------------------------------------------------------
+
+__global__ void chacha8_prover_secret_fp_rows_kernel(
+    volta::chacha8_fp::Key key, uint64_t base_domain,
+    size_t rows, size_t count, uint64_t* output) {
+    const size_t first = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    const size_t stride = static_cast<size_t>(gridDim.x) * blockDim.x;
+    for (size_t row = first; row < rows; row += stride) {
+        volta::chacha8_fp::Stream stream(key, base_domain + static_cast<uint64_t>(row));
+        uint64_t* out = output + row * count;
+        for (size_t column = 0; column < count; ++column) out[column] = stream.next_fp();
+    }
+}
+
+__global__ void chacha8_prover_secret_fp2_padded_rows_kernel(
+    volta::chacha8_fp::Key key, uint64_t base_domain,
+    size_t rows, size_t count, size_t padded_count, Fp2* output) {
+    const size_t first = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    const size_t stride = static_cast<size_t>(gridDim.x) * blockDim.x;
+    for (size_t row = first; row < rows; row += stride) {
+        volta::chacha8_fp::Stream stream(key, base_domain + static_cast<uint64_t>(row));
+        Fp2* out = output + row * padded_count;
+        for (size_t column = 0; column < count; ++column) {
+            const volta::chacha8_fp::Fp2 value = stream.next_fp2();
+            out[column] = Fp2{value.c0, value.c1};
+        }
+        for (size_t column = count; column < padded_count; ++column)
+            out[column] = Fp2{0, 0};
+    }
+}
+
+__global__ void fp2_row_dots_kernel(
+    const Fp2* a, size_t a_stride, const Fp2* b, size_t b_stride,
+    Fp2* output, size_t rows, size_t len) {
+    __shared__ Fp2 partial[BLOCK];
+    for (size_t row = blockIdx.x; row < rows; row += gridDim.x) {
+        Fp2 acc{0, 0};
+        for (size_t column = threadIdx.x; column < len; column += blockDim.x)
+            acc = fp2_add(acc, fp2_mul(a[row * a_stride + column], b[row * b_stride + column]));
+        partial[threadIdx.x] = acc;
+        __syncthreads();
+        for (unsigned int width = blockDim.x / 2; width != 0; width >>= 1) {
+            if (threadIdx.x < width)
+                partial[threadIdx.x] = fp2_add(partial[threadIdx.x], partial[threadIdx.x + width]);
+            __syncthreads();
+        }
+        if (threadIdx.x == 0) output[row] = partial[0];
+        __syncthreads();
+    }
+}
+
+__global__ void fp2_powers_kernel(Fp2 base, Fp2* output, size_t count) {
+    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+    Fp2 current = base;
+    for (size_t i = 0; i < count; ++i) {
+        output[i] = current;
+        current = fp2_mul(current, base);
+    }
 }
 
 // -------------------------------------------------------------------------
@@ -2265,6 +2377,204 @@ extern "C" int volta_cuda_resident_download(
     if (begin_transfer_timing(c)) return -1;
     CUDA_OR_RETURN(c, cudaMemcpyAsync(dst, src, bytes, cudaMemcpyDeviceToHost, c->stream));
     return finish_transfer_timing(c, bytes, false);
+}
+
+extern "C" int volta_cuda_resident_zero(
+    void* raw, uint64_t id, size_t offset_bytes, size_t bytes) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !bytes) return fail_message(c, "invalid resident zero");
+    void* dst = nullptr;
+    if (resident_region(c, id, offset_bytes, bytes, &dst)) return -1;
+    if (begin_timing(c) || mark_timing(c, 1)) return -1;
+    CUDA_OR_RETURN(c, cudaMemsetAsync(dst, 0, bytes, c->stream));
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_PCS_ROWS, 0, 0, 0, bytes, 0);
+}
+
+/// Copy non-overlapping strided rows entirely within this CUDA context.
+/// Source and destination pitches, offsets, and row width are byte counts.
+extern "C" int volta_cuda_resident_copy_rows(
+    void* raw,
+    uint64_t src_id, size_t src_offset_bytes, size_t src_stride_bytes,
+    uint64_t dst_id, size_t dst_offset_bytes, size_t dst_stride_bytes,
+    size_t rows, size_t row_bytes) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c) return fail_message(c, "invalid resident D2D copy context");
+    void* src = nullptr;
+    void* dst = nullptr;
+    size_t src_span = 0;
+    size_t dst_span = 0;
+    if (resident_strided_region(
+            c, src_id, src_offset_bytes, src_stride_bytes,
+            row_bytes, rows, &src, &src_span) ||
+        resident_strided_region(
+            c, dst_id, dst_offset_bytes, dst_stride_bytes,
+            row_bytes, rows, &dst, &dst_span))
+        return -1;
+    if (src_id == dst_id) {
+        size_t src_end = 0;
+        size_t dst_end = 0;
+        if (!checked_add_size(src_offset_bytes, src_span, &src_end) ||
+            !checked_add_size(dst_offset_bytes, dst_span, &dst_end))
+            return fail_message(c, "resident D2D copy envelope overflows size_t");
+        if (src_offset_bytes < dst_end && dst_offset_bytes < src_end)
+            return fail_message(c, "resident D2D copy source and destination overlap");
+    }
+    size_t total_bytes = 0;
+    if (!checked_mul_size(rows, row_bytes, &total_bytes))
+        return fail_message(c, "resident D2D byte count overflows size_t");
+    if (begin_timing(c) || mark_timing(c, 1)) return -1;
+    CUDA_OR_RETURN(c, cudaMemcpy2DAsync(
+        dst, dst_stride_bytes, src, src_stride_bytes, row_bytes, rows,
+        cudaMemcpyDeviceToDevice, c->stream));
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_PCS_ROWS, 0, 0, total_bytes, 0, 0);
+}
+
+/// Expand compact Fp rows from a prover-secret seed. The 32-byte seed and
+/// geometry are kernel launch arguments, not host-to-device payload bytes.
+extern "C" int volta_cuda_chacha8_prover_secret_fp_rows_device(
+    void* raw, uint64_t output_id, size_t output_offset_bytes,
+    const uint8_t* prover_secret_seed, uint64_t base_domain,
+    size_t rows, size_t count) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !prover_secret_seed || !rows || !count)
+        return fail_message(c, "invalid prover-secret Fp row generation");
+    if (rows - 1 > std::numeric_limits<uint64_t>::max() - base_domain)
+        return fail_message(c, "prover-secret Fp row domain overflows u64");
+    size_t elements = 0;
+    size_t bytes = 0;
+    if (!checked_mul_size(rows, count, &elements) ||
+        !checked_mul_size(elements, sizeof(uint64_t), &bytes))
+        return fail_message(c, "prover-secret Fp row geometry overflows size_t");
+    void* output = nullptr;
+    if (resident_region(c, output_id, output_offset_bytes, bytes, &output)) return -1;
+    const volta::chacha8_fp::Key key = volta::chacha8_fp::key_from_seed(prover_secret_seed);
+    const size_t blocks_needed = (rows - 1) / BLOCK + 1;
+    const unsigned int blocks = static_cast<unsigned int>(std::min<size_t>(blocks_needed, 65535));
+    if (begin_timing(c) || mark_timing(c, 1)) return -1;
+    chacha8_prover_secret_fp_rows_kernel<<<blocks, BLOCK, 0, c->stream>>>(
+        key, base_domain, rows, count, static_cast<uint64_t*>(output));
+    CUDA_OR_RETURN(c, cudaGetLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_PCS_ROWS, 0, 0, 0, 0, bytes);
+}
+
+/// Expand Fp2 rows from a prover-secret seed and write canonical zeroes in
+/// every tail slot [count, padded_count). Seed/control arguments are not H2D.
+extern "C" int volta_cuda_chacha8_prover_secret_fp2_rows_padded_device(
+    void* raw, uint64_t output_id, size_t output_offset_bytes,
+    const uint8_t* prover_secret_seed, uint64_t base_domain,
+    size_t rows, size_t count, size_t padded_count) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !prover_secret_seed || !rows || !count || count > padded_count)
+        return fail_message(c, "invalid prover-secret padded Fp2 row generation");
+    if (rows - 1 > std::numeric_limits<uint64_t>::max() - base_domain)
+        return fail_message(c, "prover-secret Fp2 row domain overflows u64");
+    size_t output_elements = 0;
+    size_t output_bytes = 0;
+    size_t generated_elements = 0;
+    size_t generated_bytes = 0;
+    size_t zeroed_elements = 0;
+    size_t zeroed_bytes = 0;
+    if (!checked_mul_size(rows, padded_count, &output_elements) ||
+        !checked_mul_size(output_elements, sizeof(Fp2), &output_bytes) ||
+        !checked_mul_size(rows, count, &generated_elements) ||
+        !checked_mul_size(generated_elements, sizeof(Fp2), &generated_bytes) ||
+        !checked_mul_size(rows, padded_count - count, &zeroed_elements) ||
+        !checked_mul_size(zeroed_elements, sizeof(Fp2), &zeroed_bytes))
+        return fail_message(c, "prover-secret Fp2 row geometry overflows size_t");
+    void* output = nullptr;
+    if (resident_region(c, output_id, output_offset_bytes, output_bytes, &output)) return -1;
+    const volta::chacha8_fp::Key key = volta::chacha8_fp::key_from_seed(prover_secret_seed);
+    const size_t blocks_needed = (rows - 1) / BLOCK + 1;
+    const unsigned int blocks = static_cast<unsigned int>(std::min<size_t>(blocks_needed, 65535));
+    if (begin_timing(c) || mark_timing(c, 1)) return -1;
+    chacha8_prover_secret_fp2_padded_rows_kernel<<<blocks, BLOCK, 0, c->stream>>>(
+        key, base_domain, rows, count, padded_count, static_cast<Fp2*>(output));
+    CUDA_OR_RETURN(c, cudaGetLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(
+        c, OP_PCS_ROWS, 0, 0, 0, zeroed_bytes, generated_bytes);
+}
+
+extern "C" int volta_cuda_fp2_row_dots_device(
+    void* raw,
+    uint64_t a_id, size_t a_offset, size_t a_stride,
+    uint64_t b_id, size_t b_offset, size_t b_stride,
+    uint64_t output_id, size_t output_offset,
+    size_t rows, size_t len) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !rows || !len || a_stride < len || b_stride < len)
+        return fail_message(c, "invalid Fp2 row-dot geometry");
+    size_t a_offset_bytes = 0;
+    size_t a_stride_bytes = 0;
+    size_t b_offset_bytes = 0;
+    size_t b_stride_bytes = 0;
+    size_t output_offset_bytes = 0;
+    size_t output_bytes = 0;
+    size_t row_bytes = 0;
+    if (!checked_mul_size(a_offset, sizeof(Fp2), &a_offset_bytes) ||
+        !checked_mul_size(a_stride, sizeof(Fp2), &a_stride_bytes) ||
+        !checked_mul_size(b_offset, sizeof(Fp2), &b_offset_bytes) ||
+        !checked_mul_size(b_stride, sizeof(Fp2), &b_stride_bytes) ||
+        !checked_mul_size(output_offset, sizeof(Fp2), &output_offset_bytes) ||
+        !checked_mul_size(len, sizeof(Fp2), &row_bytes) ||
+        !checked_mul_size(rows, sizeof(Fp2), &output_bytes))
+        return fail_message(c, "Fp2 row-dot geometry overflows size_t");
+    void* a = nullptr;
+    void* b = nullptr;
+    void* output = nullptr;
+    size_t a_span = 0;
+    size_t b_span = 0;
+    if (resident_strided_region(
+            c, a_id, a_offset_bytes, a_stride_bytes,
+            row_bytes, rows, &a, &a_span) ||
+        resident_strided_region(
+            c, b_id, b_offset_bytes, b_stride_bytes,
+            row_bytes, rows, &b, &b_span) ||
+        resident_region(c, output_id, output_offset_bytes, output_bytes, &output))
+        return -1;
+    size_t output_end = 0;
+    size_t a_end = 0;
+    size_t b_end = 0;
+    if (!checked_add_size(output_offset_bytes, output_bytes, &output_end) ||
+        !checked_add_size(a_offset_bytes, a_span, &a_end) ||
+        !checked_add_size(b_offset_bytes, b_span, &b_end))
+        return fail_message(c, "Fp2 row-dot envelope overflows size_t");
+    if ((output_id == a_id && output_offset_bytes < a_end && a_offset_bytes < output_end) ||
+        (output_id == b_id && output_offset_bytes < b_end && b_offset_bytes < output_end))
+        return fail_message(c, "Fp2 row-dot output overlaps an input");
+    const unsigned int blocks = static_cast<unsigned int>(std::min<size_t>(rows, 65535));
+    if (begin_timing(c) || mark_timing(c, 1)) return -1;
+    fp2_row_dots_kernel<<<blocks, BLOCK, 0, c->stream>>>(
+        static_cast<const Fp2*>(a), a_stride,
+        static_cast<const Fp2*>(b), b_stride,
+        static_cast<Fp2*>(output), rows, len);
+    CUDA_OR_RETURN(c, cudaGetLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_PCS_ROWS, 0, 0);
+}
+
+extern "C" int volta_cuda_fp2_powers_device(
+    void* raw, uint64_t base_c0, uint64_t base_c1,
+    uint64_t output_id, size_t output_offset, size_t count) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !count || base_c0 >= P || base_c1 >= P)
+        return fail_message(c, "invalid Fp2 powers input");
+    size_t output_offset_bytes = 0;
+    size_t output_bytes = 0;
+    if (!checked_mul_size(output_offset, sizeof(Fp2), &output_offset_bytes) ||
+        !checked_mul_size(count, sizeof(Fp2), &output_bytes))
+        return fail_message(c, "Fp2 powers geometry overflows size_t");
+    void* output = nullptr;
+    if (resident_region(c, output_id, output_offset_bytes, output_bytes, &output)) return -1;
+    if (begin_timing(c) || mark_timing(c, 1)) return -1;
+    fp2_powers_kernel<<<1, 1, 0, c->stream>>>(
+        Fp2{base_c0, base_c1}, static_cast<Fp2*>(output), count);
+    CUDA_OR_RETURN(c, cudaGetLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_PCS_ROWS, 0, 0, 0, 0, output_bytes);
 }
 
 extern "C" int volta_cuda_gemm_i64(

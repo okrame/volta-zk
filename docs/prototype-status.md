@@ -191,6 +191,31 @@ constant factors hold. That constant factor is what P3/P4 measure.
   explicit union bound. No verifier seed or future challenge schedule may be
   exposed to the prover/GPU as a shortcut.
 
+  **Post-attribution scheduler decision (2026-07-13; preregistered before
+  implementation)**: exact full-run structure contains 58,205 interactive
+  round readbacks (51,122 LogUp + 5,400 blind product + 1,683 Hadamard), plus
+  433 LogUp roots and 6,639 layer/split boundaries. Local root/split batching
+  cannot reach 5,000 while instances remain sequential. The first scheduling
+  lever is therefore protocol-neutral round-synchronous co-scheduling, not
+  RLC: every instance retains its own message, independent challenge, fold,
+  proof bytes, and verifier path; one contiguous mailbox D2H serves all jobs
+  ready in the same public epoch. Cohorts and initial claims are sealed before
+  enqueue, challenges are drawn only after the complete epoch returns, no job
+  may join after sealing, public depth/path controls membership, and canonical
+  `SiteId` order (never completion order) binds all roots/splits.
+
+  Prefill and deferred-decode phase-2 jobs may share a cohort only after both
+  phase-1/auth/shared-alpha/KV domain states are already fixed; decode phase 2
+  has no value dependency on prefill phase 2. A public `SchedulePlan` must
+  prove an exact upper bound before the full run. Current shape projection is
+  about 2,450 LogUp critical-path epochs and 3,100--4,200 total explicit
+  barriers including non-LogUp/global/table/PCS work. This is a projection,
+  not a gate result. Scheduled epochs must also replace or reserve beyond the
+  512-record timing ring: co-scheduling roughly 24 layer jobs can otherwise
+  inject a timing flush inside a sealed cohort. The scalar-RLC theorem remains
+  the second lever only if exact co-scheduling fails the gate; CUDA graphs are
+  subsequent device-only replay work and may not cross challenge barriers.
+
   **P7b architecture-hygiene checkpoint (2026-07-13; no timing claim)**:
   before changing the round schedule, the resident allocation registry was
   replaced by an opaque generational `(generation, slot)` arena. Active-ID
@@ -280,6 +305,47 @@ constant factors hold. That constant factor is what P3/P4 measure.
   Both raw stdout and parsed structures match. This checkpoint validates the
   generator and ownership boundary only; H2D savings are not claimed until
   it is integrated into the PCS kernels and measured in the full session.
+
+  **Device-source PCS integration checkpoint (ABI 21; 2026-07-13)**:
+  resident commitments no longer flatten or re-upload layer/embedding
+  weights. Checked, aligned tensor placements copy the already-resident
+  `CAttnProof`, projection, FFN and embedding views into a zeroed packed
+  target via explicit D2D row copies. Row pads and padded Fp2 opening masks
+  use the byte-identical device ChaCha8 expansion; `c` powers, block-row
+  coefficients and all `s_g` row dots are also materialized on device. The
+  pad seed remains a prover-secret of the static weight registration (not a
+  response nonce); the ephemeral mask seed is response-fresh and separated
+  by role/instance. Neither path receives a transcript challenge, a shared
+  mock-PCG/correlation seed, or `Delta`. The public report calls the new
+  counter `explicit_d2d_copy_bytes`: it covers these explicit row-copy APIs,
+  not every internal kernel/workspace movement. H2D remains the complete
+  backend payload counter used by the gate.
+
+  On the designated Thunder A100, ABI-21 passes **21/21** accelerator tests
+  (including a real Goldilocks rejection-sampling vector) and **5/5** resident
+  PCS tests. The latter check CPU/GPU-identical commitment roots, full proof
+  objects, transcript ledgers and correlation counts, two-placement padded
+  geometry, wrong-context/overlap/failure cleanup, and response-fresh mask
+  proofs with unchanged size and successful verification. Resident report
+  schema 5 serializes the P7b observations explicitly: timing gates use the
+  upper median across measured repetitions, count/traffic gates use the
+  maximum measured session, and quick runs set `p7b_gate_evaluated:false`.
+
+  Dirty-tree quick diagnostic only (never a gate claim):
+  `p7-integrated-resident-quick-2026-07-13-8b5d177-1.json`, SHA-256
+  `d9d06071355e4428cc3878eb952ada87bc8e30c36f4b7d029d31869f878866d0`,
+  is accepted with all 13 Q=200 PCS openings and flat-cost 1.0003. Session
+  H2D falls from the preceding quick checkpoint's 873,917,300 B to
+  **24,909,172 B** (-849,008,128 B, -97.15%); D2H is 81,518,420 B. Explicit
+  D2D copies are 313,339,392 B, device zeroing 702,652,416 B and device
+  generation 115,302,400 B. Synchronizations are **61,688**, all
+  `host_output`: the 13 new batched `s_g` scalar reads add exactly 13 to the
+  prior 61,675, so this checkpoint closes the H2D mechanism but deliberately
+  does not claim the <=5,000 scheduler gate. PCS commit/open/verify are
+  0.181/0.592/0.296 s; total kernels are 4.458 s. Core wall (31.262 s prefill,
+  26.756 s decode marginal) regressed under remote variance despite the lower
+  kernel total and is not compared as a performance result. A clean immutable
+  checkpoint is required before promoting the traffic observation.
 
 - **2026-07-13 (P7 publication artifact closed)**: clean aggregate
   `benchmarks/results/p7-2026-07-13-2c836b3.json` (SHA-256

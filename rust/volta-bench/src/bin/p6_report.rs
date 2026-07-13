@@ -31,14 +31,16 @@ use volta_gpt2::{
     band_model_witness, band_model_witness_resident, decode_step, forward_model,
     forward_model_tokens, forward_model_tokens_resident, forward_model_tokens_with_backend,
     forward_model_with_backend, load_model, upload_resident_model, BandModelWitness, Gpt2Model,
-    KvCache, ResidentBandModelWitness, ResidentGpt2Model, ResidentModelWitness, L, VOCAB,
+    KvCache, LayerWeightField, ModelWeightField, ResidentBandModelWitness, ResidentGpt2Model,
+    ResidentModelWitness, L, VOCAB,
 };
 use volta_mac::{zero_batch_exchange, CorrelationStream, Transcript, VerifierCtx};
 use volta_pcg::{expand_phase_a, PhaseATimings, ProverPcgPool, VerifierPcgPool};
 use volta_pcs::{
-    commit, commit_resident, commit_with_backend, free_resident_matrix, layout_gpt2_embed,
-    layout_gpt2_layer, open_multi_zk, open_multi_zk_resident, open_multi_zk_with_backend,
-    verify_multi_open, LigeroParams, ProverMatrix, ResidentProverMatrix, GPT2_FULL, P4_LAYER,
+    commit, commit_resident_from_device, commit_with_backend, free_resident_matrix,
+    layout_gpt2_embed, layout_gpt2_layer, open_multi_zk, open_multi_zk_resident,
+    open_multi_zk_with_backend, verify_multi_open, LigeroParams, ProverMatrix,
+    ResidentProverMatrix, ResidentWeightPlacement, GPT2_FULL, P4_LAYER,
 };
 use volta_proto::block_proof::layer_dom_base;
 use volta_proto::logup::Doms;
@@ -49,6 +51,12 @@ use volta_proto::model_proof::{
 use volta_proto::{
     cattn_permuted, prod_batch_prover, prod_batch_verify, prove_model, prove_model_with_backend,
 };
+
+const P7B_PREFILL_CORE_GATE_S: f64 = 10.0;
+const P7B_DECODE_MARGINAL_GATE_S: f64 = 4.0;
+const P7B_SYNC_GATE: u64 = 5_000;
+// Decimal MB, matching the preregistered ledger threshold.
+const P7B_H2D_GATE_BYTES: u64 = 100_000_000;
 
 #[derive(Serialize)]
 struct ChunkCurveRow {
@@ -92,6 +100,10 @@ struct AcceleratorStatsRow {
     unattributed_cpu_residual_s: f64,
     h2d_bytes: u64,
     d2h_bytes: u64,
+    /// Explicit resident row-placement/copy traffic, not all kernel-internal D2D.
+    explicit_d2d_copy_bytes: u64,
+    device_zeroed_bytes: u64,
+    device_generated_bytes: u64,
     h2d_s: f64,
     d2h_s: f64,
     synchronizations: u64,
@@ -200,6 +212,9 @@ impl AcceleratorStatsRow {
             unattributed_cpu_residual_s: stats.unattributed_cpu_residual_ns as f64 / 1e9,
             h2d_bytes: stats.h2d_bytes,
             d2h_bytes: stats.d2h_bytes,
+            explicit_d2d_copy_bytes: stats.explicit_d2d_copy_bytes,
+            device_zeroed_bytes: stats.device_zeroed_bytes,
+            device_generated_bytes: stats.device_generated_bytes,
             h2d_s: stats.h2d_ns as f64 / 1e9,
             d2h_s: stats.d2h_ns as f64 / 1e9,
             synchronizations: stats.synchronizations,
@@ -273,6 +288,40 @@ struct Report {
     golden_decode_checked: bool,
     golden_decode_match: Option<bool>,
     generated_tokens: Vec<u32>,
+    // P7b gates are emitted only by the resident schema. Quick runs retain
+    // observations but deliberately do not emit pass/fail verdicts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_gate_evaluated: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_timing_statistic: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_counter_statistic: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_prefill_core_gate_s: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_decode_marginal_gate_s: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_sync_gate: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_h2d_gate_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_prefill_core_observed_s: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_decode_marginal_observed_s: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_sync_observed: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_h2d_observed_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_prefill_core_gate_pass: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_decode_marginal_gate_pass: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_sync_gate_pass: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_h2d_gate_pass: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_all_gates_pass: Option<bool>,
     // --- native baselines -------------------------------------------------------
     t_native_prefill_s: f64,
     /// KV-cached incremental decode, 50 steps (witness-free native anchor).
@@ -686,6 +735,16 @@ fn session_delta() -> Fp2 {
     Fp2::new(Fp::new(0xD31C_5A17), Fp::new(0x0BAD_CAFE))
 }
 
+/// Response-fresh, role-separated PCS masking randomness. This is prover-side
+/// input; it is deliberately independent of transcript challenges and Delta.
+fn pcs_mask_seed(session_seed: u8, role: u8, instance: u8) -> [u8; 32] {
+    let mut mask_seed = [role; 32];
+    mask_seed[29] = session_seed;
+    mask_seed[30] = role;
+    mask_seed[31] = instance;
+    mask_seed
+}
+
 fn real_session_backend(
     seed: u8,
     sub_corrs: u64,
@@ -822,6 +881,7 @@ fn run_session_impl<'source>(
     };
     let mut txp = Transcript::new([seed ^ 0x5A; 32]);
     let mut txv = Transcript::new([seed ^ 0x5A; 32]);
+    let resident_model_for_pcs = resident.as_ref().map(|input| input.model);
 
     let tp0 = Instant::now();
     let (proof, out, prod, zero) = if let Some(resident) = resident {
@@ -898,26 +958,65 @@ fn run_session_impl<'source>(
         assert_eq!(out.weight_claims.len(), 4 * L * phases);
         let layout = layout_gpt2_layer();
         for l in 0..L {
-            let w = &model.layers[l].0;
-            let w_perm = cattn_permuted(&w.c_attn);
-            let w_flat = layout.place([&w_perm, &w.attn_proj, &w.ffn_up, &w.ffn_down]);
+            // CPU/hybrid retain the historical host flattening. The resident
+            // path places the already-resident proof views D2D, including the
+            // mandatory CAttnProof permutation prepared at model setup.
+            let w_flat = if resident_model_for_pcs.is_none() {
+                let w = &model.layers[l].0;
+                let w_perm = cattn_permuted(&w.c_attn);
+                Some(layout.place([&w_perm, &w.attn_proj, &w.ffn_up, &w.ffn_down]))
+            } else {
+                None
+            };
             let mut pad_seed = [0x51u8; 32];
             pad_seed[31] = l as u8;
             let tc0 = Instant::now();
             let (com, pm) = if let Some(accel) = accelerator.as_deref_mut() {
                 if accel.kind() == BackendKind::CudaResident {
+                    let resident_model = resident_model_for_pcs
+                        .expect("resident PCS commitment requires resident model weights");
+                    let fields = [
+                        LayerWeightField::CAttnProof,
+                        LayerWeightField::AttnProj,
+                        LayerWeightField::FfnUp,
+                        LayerWeightField::FfnDown,
+                    ];
+                    let placements: Vec<_> = fields
+                        .into_iter()
+                        .zip(&layout.tensors)
+                        .map(|(field, slot)| {
+                            let source = resident_model.layer_weight(l, field)?;
+                            ResidentWeightPlacement::new(
+                                source,
+                                slot.k,
+                                slot.n,
+                                slot.offset,
+                                slot.n_pad,
+                                layout.total_len,
+                            )
+                        })
+                        .collect::<Result<_, volta_accel::AccelError>>()
+                        .expect("valid resident layer PCS placements");
                     let (commitment, matrix) =
-                        commit_resident(&w_flat, layer_params, pad_seed, accel)
+                        commit_resident_from_device(&placements, layer_params, pad_seed, accel)
                             .expect("resident CUDA layer commitment");
                     (commitment, SessionProverMatrix::Resident(matrix))
                 } else {
-                    let (commitment, matrix) =
-                        commit_with_backend(&w_flat, layer_params, pad_seed, accel)
-                            .expect("hybrid CUDA layer commitment");
+                    let (commitment, matrix) = commit_with_backend(
+                        w_flat.as_ref().expect("hybrid PCS needs host layer weights"),
+                        layer_params,
+                        pad_seed,
+                        accel,
+                    )
+                    .expect("hybrid CUDA layer commitment");
                     (commitment, SessionProverMatrix::Host(matrix))
                 }
             } else {
-                let (commitment, matrix) = commit(&w_flat, layer_params, pad_seed);
+                let (commitment, matrix) = commit(
+                    w_flat.as_ref().expect("CPU PCS needs host layer weights"),
+                    layer_params,
+                    pad_seed,
+                );
                 (commitment, SessionProverMatrix::Host(matrix))
             };
             let commit_s = tc0.elapsed().as_secs_f64();
@@ -937,8 +1036,7 @@ fn run_session_impl<'source>(
             let dom_s0 = doms_p.take(1);
             let dom_s1 = doms_p.take(1);
             debug_assert_eq!((dom_s0, dom_s1), (doms_v.take(1), doms_v.take(1)));
-            let mut mask_seed = [0x44u8; 32];
-            mask_seed[31] = l as u8;
+            let mask_seed = pcs_mask_seed(seed, 0x44, l as u8);
             let to0 = Instant::now();
             let (mproof, _mt) = match &pm {
                 SessionProverMatrix::Resident(matrix) => open_multi_zk_resident(
@@ -953,9 +1051,11 @@ fn run_session_impl<'source>(
                 )
                 .expect("resident CUDA layer opening"),
                 SessionProverMatrix::Host(matrix) => {
+                    let host_weights =
+                        w_flat.as_ref().expect("host PCS opening needs flattened layer weights");
                     if let Some(accel) = accelerator.as_deref_mut() {
                         open_multi_zk_with_backend(
-                            &w_flat,
+                            host_weights,
                             matrix,
                             &claims_p,
                             &mut stream,
@@ -968,7 +1068,7 @@ fn run_session_impl<'source>(
                         .expect("hybrid CUDA layer opening")
                     } else {
                         open_multi_zk(
-                            &w_flat,
+                            host_weights,
                             matrix,
                             &claims_p,
                             &mut stream,
@@ -1032,22 +1132,53 @@ fn run_session_impl<'source>(
         // Embedding commitment: 3 claims per phase, tensor idx [0, 0, 1].
         assert_eq!(out.embed_claims.len(), 3 * phases);
         let layout_e = layout_gpt2_embed();
-        let e_flat = layout_e.place(&[&model.wte, &model.wpe]);
+        let e_flat = if resident_model_for_pcs.is_none() {
+            Some(layout_e.place(&[&model.wte, &model.wpe]))
+        } else {
+            None
+        };
         let tc0 = Instant::now();
         let (com_e, pm_e) = if let Some(accel) = accelerator.as_deref_mut() {
             if accel.kind() == BackendKind::CudaResident {
+                let resident_model = resident_model_for_pcs
+                    .expect("resident embedding commitment requires resident model weights");
+                let fields =
+                    [ModelWeightField::TokenEmbedding, ModelWeightField::PositionEmbedding];
+                let placements: Vec<_> = fields
+                    .into_iter()
+                    .zip(&layout_e.tensors)
+                    .map(|(field, slot)| {
+                        ResidentWeightPlacement::new(
+                            resident_model.model_weight(field),
+                            slot.k,
+                            slot.n,
+                            slot.offset,
+                            slot.n_pad,
+                            layout_e.total_len,
+                        )
+                    })
+                    .collect::<Result<_, volta_accel::AccelError>>()
+                    .expect("valid resident embedding PCS placements");
                 let (commitment, matrix) =
-                    commit_resident(&e_flat, embed_params, [0x52u8; 32], accel)
+                    commit_resident_from_device(&placements, embed_params, [0x52u8; 32], accel)
                         .expect("resident CUDA embed commitment");
                 (commitment, SessionProverMatrix::Resident(matrix))
             } else {
-                let (commitment, matrix) =
-                    commit_with_backend(&e_flat, embed_params, [0x52u8; 32], accel)
-                        .expect("hybrid CUDA embed commitment");
+                let (commitment, matrix) = commit_with_backend(
+                    e_flat.as_ref().expect("hybrid PCS needs host embedding weights"),
+                    embed_params,
+                    [0x52u8; 32],
+                    accel,
+                )
+                .expect("hybrid CUDA embed commitment");
                 (commitment, SessionProverMatrix::Host(matrix))
             }
         } else {
-            let (commitment, matrix) = commit(&e_flat, embed_params, [0x52u8; 32]);
+            let (commitment, matrix) = commit(
+                e_flat.as_ref().expect("CPU PCS needs host embedding weights"),
+                embed_params,
+                [0x52u8; 32],
+            );
             (commitment, SessionProverMatrix::Host(matrix))
         };
         let commit_s = tc0.elapsed().as_secs_f64();
@@ -1065,6 +1196,7 @@ fn run_session_impl<'source>(
         let dom_s0 = doms_p.take(1);
         let dom_s1 = doms_p.take(1);
         debug_assert_eq!((dom_s0, dom_s1), (doms_v.take(1), doms_v.take(1)));
+        let embed_mask_seed = pcs_mask_seed(seed, 0x45, 0);
         let to0 = Instant::now();
         let (mproof_e, _mt) = match &pm_e {
             SessionProverMatrix::Resident(matrix) => open_multi_zk_resident(
@@ -1073,34 +1205,36 @@ fn run_session_impl<'source>(
                 &mut stream,
                 dom_s0,
                 dom_s1,
-                [0x45u8; 32],
+                embed_mask_seed,
                 &mut txp,
                 accelerator.as_deref_mut().expect("resident PCS backend"),
             )
             .expect("resident CUDA embed opening"),
             SessionProverMatrix::Host(matrix) => {
+                let host_weights =
+                    e_flat.as_ref().expect("host PCS opening needs flattened embedding weights");
                 if let Some(accel) = accelerator.as_deref_mut() {
                     open_multi_zk_with_backend(
-                        &e_flat,
+                        host_weights,
                         matrix,
                         &claims_p,
                         &mut stream,
                         dom_s0,
                         dom_s1,
-                        [0x45u8; 32],
+                        embed_mask_seed,
                         &mut txp,
                         accel,
                     )
                     .expect("hybrid CUDA embed opening")
                 } else {
                     open_multi_zk(
-                        &e_flat,
+                        host_weights,
                         matrix,
                         &claims_p,
                         &mut stream,
                         dom_s0,
                         dom_s1,
-                        [0x45u8; 32],
+                        embed_mask_seed,
                         &mut txp,
                     )
                 }
@@ -1645,6 +1779,60 @@ fn main() {
     let pcs_verify_timing = TimingDistribution::new(pcs_verify_samples);
     let representative_index = median_index(&response_samples);
     let representative_repetition = representative_index + 1;
+    let is_resident = args.accelerator == AcceleratorArg::CudaResident;
+    let p7b_gate_evaluated =
+        is_resident.then_some(!quick && layer_params.n_queries == P4_LAYER.n_queries);
+    // Timing gates use the distributions' preregistered upper medians. For
+    // count/traffic gates use the maximum measured session: selecting the
+    // response-median repetition could otherwise hide cold-arena barriers.
+    let p7b_prefill_core_observed_s = is_resident.then_some(prove_prefill_timing.median_s);
+    let p7b_decode_marginal_observed_s =
+        is_resident.then_some(prove_decode_marginal_timing.median_s);
+    let p7b_sync_observed = is_resident.then(|| {
+        session_results
+            .iter()
+            .map(|session| {
+                session
+                    .accelerator_stats
+                    .as_ref()
+                    .expect("resident measured session needs accelerator stats")
+                    .synchronizations
+            })
+            .max()
+            .expect("resident run needs a measured session")
+    });
+    let p7b_h2d_observed_bytes = is_resident.then(|| {
+        session_results
+            .iter()
+            .map(|session| {
+                session
+                    .accelerator_stats
+                    .as_ref()
+                    .expect("resident measured session needs accelerator stats")
+                    .h2d_bytes
+            })
+            .max()
+            .expect("resident run needs a measured session")
+    });
+    let gate_is_official = p7b_gate_evaluated == Some(true);
+    let p7b_prefill_core_gate_pass = gate_is_official.then(|| {
+        p7b_prefill_core_observed_s.expect("resident prefill observation")
+            <= P7B_PREFILL_CORE_GATE_S
+    });
+    let p7b_decode_marginal_gate_pass = gate_is_official.then(|| {
+        p7b_decode_marginal_observed_s.expect("resident decode observation")
+            <= P7B_DECODE_MARGINAL_GATE_S
+    });
+    let p7b_sync_gate_pass = gate_is_official
+        .then(|| p7b_sync_observed.expect("resident sync observation") <= P7B_SYNC_GATE);
+    let p7b_h2d_gate_pass = gate_is_official
+        .then(|| p7b_h2d_observed_bytes.expect("resident H2D observation") <= P7B_H2D_GATE_BYTES);
+    let p7b_all_gates_pass = gate_is_official.then(|| {
+        p7b_prefill_core_gate_pass.expect("prefill P7b verdict")
+            && p7b_decode_marginal_gate_pass.expect("decode P7b verdict")
+            && p7b_sync_gate_pass.expect("sync P7b verdict")
+            && p7b_h2d_gate_pass.expect("H2D P7b verdict")
+    });
     let repetitions_rows: Vec<BenchmarkRepetitionRow> = prefill_results
         .iter()
         .zip(&session_results)
@@ -1955,7 +2143,7 @@ fn main() {
     let pcs_open_total_s = pcs_open_timing.median_s;
     let pcs_verify_total_s = pcs_verify_timing.median_s;
     let report = Report {
-        report_schema_version: if args.accelerator == AcceleratorArg::CudaResident { 4 } else { 2 },
+        report_schema_version: if args.accelerator == AcceleratorArg::CudaResident { 5 } else { 2 },
         milestone: match (args.accelerator, quick) {
             (AcceleratorArg::CudaHybrid, true) => "P7-integrated-hybrid-quick".into(),
             (AcceleratorArg::CudaHybrid, false) => "P7-integrated-hybrid".into(),
@@ -1998,6 +2186,23 @@ fn main() {
         golden_decode_checked: golden_checked,
         golden_decode_match: golden_match,
         generated_tokens: gen.clone(),
+        p7b_gate_evaluated,
+        p7b_timing_statistic: is_resident
+            .then_some("upper median across measured repetitions".into()),
+        p7b_counter_statistic: is_resident.then_some("maximum across measured sessions".into()),
+        p7b_prefill_core_gate_s: is_resident.then_some(P7B_PREFILL_CORE_GATE_S),
+        p7b_decode_marginal_gate_s: is_resident.then_some(P7B_DECODE_MARGINAL_GATE_S),
+        p7b_sync_gate: is_resident.then_some(P7B_SYNC_GATE),
+        p7b_h2d_gate_bytes: is_resident.then_some(P7B_H2D_GATE_BYTES),
+        p7b_prefill_core_observed_s,
+        p7b_decode_marginal_observed_s,
+        p7b_sync_observed,
+        p7b_h2d_observed_bytes,
+        p7b_prefill_core_gate_pass,
+        p7b_decode_marginal_gate_pass,
+        p7b_sync_gate_pass,
+        p7b_h2d_gate_pass,
+        p7b_all_gates_pass,
         t_native_prefill_s,
         t_native_decode_s,
         native_timing_method: "ABBA paired median".into(),

@@ -17,7 +17,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 20;
+pub const CUDA_ABI_VERSION: u32 = 21;
 pub const OPERATION_COUNT: usize = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -119,6 +119,13 @@ pub struct BackendStats {
     pub unattributed_cpu_residual_ns: u64,
     pub h2d_bytes: u64,
     pub d2h_bytes: u64,
+    /// Bytes moved by explicit resident row-copy operations. This is not a
+    /// claim about all internal kernel/workspace D2D traffic and is never H2D.
+    pub explicit_d2d_copy_bytes: u64,
+    /// Bytes explicitly materialized as canonical zeroes by device work.
+    pub device_zeroed_bytes: u64,
+    /// Non-zero-tail output bytes materialized by explicit device generators.
+    pub device_generated_bytes: u64,
     pub h2d_ns: u64,
     pub d2h_ns: u64,
     pub synchronizations: u64,
@@ -778,6 +785,252 @@ impl Backend {
         }
         #[cfg(not(feature = "cuda"))]
         Err(AccelError::FeatureDisabled)
+    }
+
+    /// Fill a typed resident region with canonical all-zero bytes. This is a
+    /// device operation attributed to [`Operation::PcsRows`], not an upload.
+    pub fn zero_device<T: DeviceElement>(
+        &mut self,
+        buffer: &DeviceBuffer<T>,
+        offset: usize,
+        len: usize,
+    ) -> Result<(), AccelError> {
+        self.validate_buffer(buffer)?;
+        validate_region(buffer.len, offset, len)?;
+        if len == 0 {
+            return Ok(());
+        }
+        #[cfg(feature = "cuda")]
+        {
+            let offset_bytes = offset
+                .checked_mul(size_of::<T>())
+                .ok_or(AccelError::InvalidInput("device byte offset overflow"))?;
+            let bytes = len
+                .checked_mul(size_of::<T>())
+                .ok_or(AccelError::InvalidInput("device byte count overflow"))?;
+            return self.cuda.as_mut().expect("CUDA kind without context").resident_zero(
+                buffer.id,
+                offset_bytes,
+                bytes,
+            );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Copy `rows` non-overlapping device rows. Strides and `cols` are in
+    /// typed elements; both strided envelopes are checked before the CUDA ABI.
+    #[allow(clippy::too_many_arguments)]
+    pub fn copy_device_rows<T: DeviceElement>(
+        &mut self,
+        src: DeviceSlice<'_, T>,
+        src_stride: usize,
+        dst: &DeviceBuffer<T>,
+        dst_offset: usize,
+        dst_stride: usize,
+        rows: usize,
+        cols: usize,
+    ) -> Result<(), AccelError> {
+        self.validate_buffer(src.buffer())?;
+        self.validate_buffer(dst)?;
+        let src_span = checked_strided_span(rows, src_stride, cols)?;
+        let dst_span = checked_strided_span(rows, dst_stride, cols)?;
+        validate_region(src.len(), 0, src_span)?;
+        validate_region(dst.len, dst_offset, dst_span)?;
+        if src.buffer().id == dst.id {
+            let src_end = src
+                .offset()
+                .checked_add(src_span)
+                .ok_or(AccelError::InvalidInput("device row-copy envelope overflow"))?;
+            let dst_end = dst_offset
+                .checked_add(dst_span)
+                .ok_or(AccelError::InvalidInput("device row-copy envelope overflow"))?;
+            if src.offset() < dst_end && dst_offset < src_end {
+                return Err(AccelError::InvalidInput(
+                    "device row-copy source and destination overlap",
+                ));
+            }
+        }
+        #[cfg(feature = "cuda")]
+        {
+            let element_bytes = size_of::<T>();
+            let src_offset_bytes = src
+                .offset()
+                .checked_mul(element_bytes)
+                .ok_or(AccelError::InvalidInput("device row-copy byte offset overflow"))?;
+            let src_stride_bytes = src_stride
+                .checked_mul(element_bytes)
+                .ok_or(AccelError::InvalidInput("device row-copy byte stride overflow"))?;
+            let dst_offset_bytes = dst_offset
+                .checked_mul(element_bytes)
+                .ok_or(AccelError::InvalidInput("device row-copy byte offset overflow"))?;
+            let dst_stride_bytes = dst_stride
+                .checked_mul(element_bytes)
+                .ok_or(AccelError::InvalidInput("device row-copy byte stride overflow"))?;
+            let row_bytes = cols
+                .checked_mul(element_bytes)
+                .ok_or(AccelError::InvalidInput("device row-copy byte width overflow"))?;
+            return self.cuda.as_mut().expect("CUDA kind without context").resident_copy_rows(
+                src.buffer().id,
+                src_offset_bytes,
+                src_stride_bytes,
+                dst.id,
+                dst_offset_bytes,
+                dst_stride_bytes,
+                rows,
+                row_bytes,
+            );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Generate compact per-row `FpStream` values from a prover-secret PCS
+    /// seed. The seed is a copied kernel argument and is never a verifier seed,
+    /// transcript challenge, Fiat-Shamir challenge, correlation seed, or Delta.
+    pub fn chacha8_prover_secret_fp_rows_device(
+        &mut self,
+        prover_secret_seed: [u8; 32],
+        base_domain: u64,
+        rows: usize,
+        count: usize,
+    ) -> Result<DeviceBuffer<u64>, AccelError> {
+        validate_chacha8_rows(base_domain, rows, count)?;
+        let output = self.alloc_device(checked_product(rows, count)?)?;
+        #[cfg(feature = "cuda")]
+        let result = self
+            .cuda
+            .as_mut()
+            .expect("CUDA kind without context")
+            .chacha8_prover_secret_fp_rows_device(
+                output.id,
+                0,
+                &prover_secret_seed,
+                base_domain,
+                rows,
+                count,
+            );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = {
+            let _ = prover_secret_seed;
+            Err(AccelError::FeatureDisabled)
+        };
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
+    }
+
+    /// Generate padded per-row `Fp2Stream` values from a prover-secret PCS
+    /// seed. Every tail element `[count, padded_count)` is written as zero.
+    pub fn chacha8_prover_secret_fp2_rows_padded_device(
+        &mut self,
+        prover_secret_seed: [u8; 32],
+        base_domain: u64,
+        rows: usize,
+        count: usize,
+        padded_count: usize,
+    ) -> Result<DeviceBuffer<Fp2Repr>, AccelError> {
+        validate_chacha8_rows(base_domain, rows, count)?;
+        if padded_count < count {
+            return Err(AccelError::InvalidInput(
+                "padded Fp2 row width is smaller than generated width",
+            ));
+        }
+        let output = self.alloc_device(checked_product(rows, padded_count)?)?;
+        #[cfg(feature = "cuda")]
+        let result = self
+            .cuda
+            .as_mut()
+            .expect("CUDA kind without context")
+            .chacha8_prover_secret_fp2_rows_padded_device(
+                output.id,
+                0,
+                &prover_secret_seed,
+                base_domain,
+                rows,
+                count,
+                padded_count,
+            );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = {
+            let _ = prover_secret_seed;
+            Err(AccelError::FeatureDisabled)
+        };
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
+    }
+
+    /// Compute one independent Fp2 dot product per strided row. Inputs remain
+    /// device-resident and the `rows` outputs are not downloaded implicitly.
+    pub fn fp2_row_dots_device(
+        &mut self,
+        a: DeviceSlice<'_, Fp2Repr>,
+        a_stride: usize,
+        b: DeviceSlice<'_, Fp2Repr>,
+        b_stride: usize,
+        rows: usize,
+        len: usize,
+    ) -> Result<DeviceBuffer<Fp2Repr>, AccelError> {
+        self.validate_buffer(a.buffer())?;
+        self.validate_buffer(b.buffer())?;
+        let a_span = checked_strided_span(rows, a_stride, len)?;
+        let b_span = checked_strided_span(rows, b_stride, len)?;
+        validate_region(a.len(), 0, a_span)?;
+        validate_region(b.len(), 0, b_span)?;
+        let output = self.alloc_device(rows)?;
+        #[cfg(feature = "cuda")]
+        let result = self.cuda.as_mut().expect("CUDA kind without context").fp2_row_dots_device(
+            a.buffer().id,
+            a.offset(),
+            a_stride,
+            b.buffer().id,
+            b.offset(),
+            b_stride,
+            output.id,
+            0,
+            rows,
+            len,
+        );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
+    }
+
+    /// Materialize `[base^1, ..., base^count]` on-device.
+    pub fn fp2_powers_device(
+        &mut self,
+        base: Fp2,
+        count: usize,
+    ) -> Result<DeviceBuffer<Fp2Repr>, AccelError> {
+        if count == 0 {
+            return Err(AccelError::InvalidInput("Fp2 powers require a non-zero count"));
+        }
+        let output = self.alloc_device(count)?;
+        #[cfg(feature = "cuda")]
+        let result = self
+            .cuda
+            .as_mut()
+            .expect("CUDA kind without context")
+            .fp2_powers_device(base, output.id, 0, count);
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = {
+            let _ = base;
+            Err(AccelError::FeatureDisabled)
+        };
+        if let Err(error) = result {
+            let _ = self.free_device(output);
+            return Err(error);
+        }
+        Ok(output)
     }
 
     pub fn upload_new_device<T: DeviceElement>(
@@ -3783,6 +4036,31 @@ fn checked_product(a: usize, b: usize) -> Result<usize, AccelError> {
     a.checked_mul(b).ok_or(AccelError::InvalidInput("shape overflow"))
 }
 
+fn checked_strided_span(rows: usize, stride: usize, width: usize) -> Result<usize, AccelError> {
+    if rows == 0 || width == 0 || stride < width {
+        return Err(AccelError::InvalidInput("invalid strided-row geometry"));
+    }
+    (rows - 1)
+        .checked_mul(stride)
+        .and_then(|prefix| prefix.checked_add(width))
+        .ok_or(AccelError::InvalidInput("strided-row geometry overflow"))
+}
+
+fn validate_chacha8_rows(base_domain: u64, rows: usize, count: usize) -> Result<(), AccelError> {
+    if rows == 0 || count == 0 {
+        return Err(AccelError::InvalidInput(
+            "prover-secret ChaCha8 rows require non-zero geometry",
+        ));
+    }
+    let last_row = u64::try_from(rows - 1)
+        .map_err(|_| AccelError::InvalidInput("prover-secret ChaCha8 row count exceeds u64"))?;
+    base_domain
+        .checked_add(last_row)
+        .ok_or(AccelError::InvalidInput("prover-secret ChaCha8 row domain overflows u64"))?;
+    checked_product(rows, count)?;
+    Ok(())
+}
+
 fn validate_region(total: usize, offset: usize, len: usize) -> Result<(), AccelError> {
     if offset > total || len > total - offset {
         return Err(AccelError::InvalidInput("device buffer region is out of bounds"));
@@ -3835,6 +4113,7 @@ mod tests {
 #[cfg(all(test, feature = "cuda"))]
 mod cuda_tests {
     use super::*;
+    use volta_field::FpStream;
 
     fn cuda(kind: BackendKind) -> Option<Backend> {
         let loaded = match kind {
@@ -3959,6 +4238,296 @@ mod cuda_tests {
             levels.push(leaves.clone());
         }
         levels
+    }
+
+    #[test]
+    fn resident_device_materialization_copy_dots_and_powers_are_exactly_attributed() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else {
+            return;
+        };
+        let seed = std::array::from_fn(|i| (i as u8).wrapping_mul(17).wrapping_add(3));
+        let base_domain = 0x0123_4567_89ab_cdef;
+        let (fp_rows, fp_count) = (3usize, 19usize); // Three ChaCha blocks per row.
+        let (fp2_rows, fp2_count, fp2_padded) = (4usize, 17usize, 32usize);
+        let scratch_prefix = 5usize;
+        let scratch_stride = fp2_count + 2;
+        let scratch_len = scratch_prefix + fp2_rows * scratch_stride + 7;
+        let scratch = gpu.alloc_device::<Fp2Repr>(scratch_len).unwrap();
+
+        let expected_fp: Vec<u64> = (0..fp_rows)
+            .flat_map(|row| {
+                let mut stream = FpStream::domain_separated(seed, base_domain + row as u64);
+                (0..fp_count).map(move |_| stream.next_fp().value())
+            })
+            .collect();
+        let expected_fp2: Vec<Vec<Fp2>> = (0..fp2_rows)
+            .map(|row| {
+                let mut stream = FpStream::domain_separated(seed, base_domain + 0x100 + row as u64);
+                (0..fp2_count).map(|_| stream.next_fp2()).collect()
+            })
+            .collect();
+
+        gpu.begin_measurement().unwrap();
+        let generated_fp =
+            gpu.chacha8_prover_secret_fp_rows_device(seed, base_domain, fp_rows, fp_count).unwrap();
+        assert_eq!(gpu.download_device(&generated_fp, 0, generated_fp.len()).unwrap(), expected_fp);
+
+        // The sixth raw u64 for this seed/domain is 0xffffffffb1461b28 >= P.
+        // Thus output[5] exercises the device rejection loop before consuming
+        // its accepted candidate; this is not merely a ChaCha block vector.
+        let rejection_domain = 0x0000_0000_1966_4bca;
+        let rejection_count = 10usize;
+        let mut rejection_stream = FpStream::domain_separated(seed, rejection_domain);
+        let expected_rejection: Vec<u64> =
+            (0..rejection_count).map(|_| rejection_stream.next_fp().value()).collect();
+        assert_ne!(expected_rejection[5], 0xffff_ffff_b146_1b28);
+        let rejection_fp = gpu
+            .chacha8_prover_secret_fp_rows_device(seed, rejection_domain, 1, rejection_count)
+            .unwrap();
+        assert_eq!(
+            gpu.download_device(&rejection_fp, 0, rejection_count).unwrap(),
+            expected_rejection
+        );
+
+        let generated_fp2 = gpu
+            .chacha8_prover_secret_fp2_rows_padded_device(
+                seed,
+                base_domain + 0x100,
+                fp2_rows,
+                fp2_count,
+                fp2_padded,
+            )
+            .unwrap();
+        let got_fp2 = gpu.download_device(&generated_fp2, 0, generated_fp2.len()).unwrap();
+        for row in 0..fp2_rows {
+            let row_got = &got_fp2[row * fp2_padded..(row + 1) * fp2_padded];
+            let expected: Vec<Fp2Repr> =
+                expected_fp2[row].iter().copied().map(Into::into).collect();
+            assert_eq!(&row_got[..fp2_count], expected);
+            assert!(row_got[fp2_count..].iter().all(|&value| value == Fp2Repr::default()));
+        }
+
+        gpu.zero_device(&scratch, 0, scratch_len).unwrap();
+        gpu.copy_device_rows(
+            DeviceSlice::new(&generated_fp2, 0, generated_fp2.len()).unwrap(),
+            fp2_padded,
+            &scratch,
+            scratch_prefix,
+            scratch_stride,
+            fp2_rows,
+            fp2_count,
+        )
+        .unwrap();
+        let copied = gpu.download_device(&scratch, 0, scratch_len).unwrap();
+        assert!(copied[..scratch_prefix].iter().all(|&value| value == Fp2Repr::default()));
+        for row in 0..fp2_rows {
+            let start = scratch_prefix + row * scratch_stride;
+            let expected: Vec<Fp2Repr> =
+                expected_fp2[row].iter().copied().map(Into::into).collect();
+            assert_eq!(&copied[start..start + fp2_count], expected);
+            assert_eq!(copied[start + fp2_count], Fp2Repr::default());
+            assert_eq!(copied[start + fp2_count + 1], Fp2Repr::default());
+        }
+
+        let dots = gpu
+            .fp2_row_dots_device(
+                DeviceSlice::new(&generated_fp2, 0, generated_fp2.len()).unwrap(),
+                fp2_padded,
+                DeviceSlice::new(&generated_fp2, 0, generated_fp2.len()).unwrap(),
+                fp2_padded,
+                fp2_rows,
+                fp2_count,
+            )
+            .unwrap();
+        let got_dots: Vec<Fp2> =
+            gpu.download_device(&dots, 0, fp2_rows).unwrap().into_iter().map(Into::into).collect();
+        let expected_dots: Vec<Fp2> = expected_fp2
+            .iter()
+            .map(|row| row.iter().fold(Fp2::ZERO, |sum, &value| sum + value * value))
+            .collect();
+        assert_eq!(got_dots, expected_dots);
+
+        let power_base = Fp2::new(Fp::new(0x1234_5678), Fp::new(0x9abc_def0));
+        let power_count = 9usize;
+        let powers = gpu.fp2_powers_device(power_base, power_count).unwrap();
+        let got_powers: Vec<Fp2> = gpu
+            .download_device(&powers, 0, power_count)
+            .unwrap()
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        let mut expected_power = power_base;
+        for got in got_powers {
+            assert_eq!(got, expected_power);
+            expected_power = expected_power * power_base;
+        }
+
+        let scratch_slot = scratch.id as u32;
+        gpu.free_device(scratch).unwrap();
+        let reused = gpu.alloc_device::<Fp2Repr>(scratch_len).unwrap();
+        assert_eq!(reused.id as u32, scratch_slot, "same-size arena storage must be reused");
+        gpu.zero_device(&reused, 0, scratch_len).unwrap();
+        assert!(gpu
+            .download_device(&reused, 0, scratch_len)
+            .unwrap()
+            .iter()
+            .all(|&value| value == Fp2Repr::default()));
+
+        let stats = gpu.finish_measurement().unwrap();
+        let expected_generated = fp_rows * fp_count * size_of::<u64>()
+            + rejection_count * size_of::<u64>()
+            + fp2_rows * fp2_count * size_of::<Fp2Repr>()
+            + power_count * size_of::<Fp2Repr>();
+        let expected_zeroed = fp2_rows * (fp2_padded - fp2_count) * size_of::<Fp2Repr>()
+            + 2 * scratch_len * size_of::<Fp2Repr>();
+        let expected_d2d = fp2_rows * fp2_count * size_of::<Fp2Repr>();
+        assert_eq!(stats.h2d_bytes, 0, "seed/control kernel arguments are not H2D payloads");
+        assert_eq!(stats.device_generated_bytes, expected_generated as u64);
+        assert_eq!(stats.device_zeroed_bytes, expected_zeroed as u64);
+        assert_eq!(stats.explicit_d2d_copy_bytes, expected_d2d as u64);
+        assert_eq!(stats.operation(Operation::PcsRows).calls, 8);
+        assert_eq!(stats.resident_reuse_hits, 1);
+        assert_eq!(stats.synchronization_reason_total(), stats.synchronizations);
+
+        gpu.free_device(reused).unwrap();
+        gpu.free_device(powers).unwrap();
+        gpu.free_device(dots).unwrap();
+        gpu.free_device(generated_fp2).unwrap();
+        gpu.free_device(rejection_fp).unwrap();
+        gpu.free_device(generated_fp).unwrap();
+    }
+
+    #[test]
+    fn resident_device_materialization_rejects_context_bounds_overlap_and_domain_errors() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else {
+            return;
+        };
+        let Some(mut other) = cuda(BackendKind::CudaResident) else {
+            return;
+        };
+        let local = gpu.alloc_device::<Fp2Repr>(64).unwrap();
+        let foreign = other.alloc_device::<Fp2Repr>(64).unwrap();
+        let before = gpu.stats().unwrap();
+
+        assert!(matches!(
+            gpu.zero_device(&foreign, 0, 1),
+            Err(AccelError::InvalidInput(message)) if message.contains("different CUDA context")
+        ));
+        assert!(matches!(
+            gpu.zero_device(&local, 64, 1),
+            Err(AccelError::InvalidInput(message)) if message.contains("out of bounds")
+        ));
+        assert!(matches!(
+            gpu.copy_device_rows(
+                DeviceSlice::new(&local, 0, 64).unwrap(),
+                8,
+                &local,
+                1,
+                8,
+                2,
+                4,
+            ),
+            Err(AccelError::InvalidInput(message)) if message.contains("overlap")
+        ));
+        assert!(matches!(
+            gpu.copy_device_rows(
+                DeviceSlice::new(&local, 0, 7).unwrap(),
+                4,
+                &local,
+                32,
+                4,
+                2,
+                4,
+            ),
+            Err(AccelError::InvalidInput(message)) if message.contains("out of bounds")
+        ));
+        assert!(matches!(
+            gpu.copy_device_rows(
+                DeviceSlice::new(&foreign, 0, 64).unwrap(),
+                4,
+                &local,
+                32,
+                4,
+                2,
+                4,
+            ),
+            Err(AccelError::InvalidInput(message)) if message.contains("different CUDA context")
+        ));
+        assert!(matches!(
+            gpu.chacha8_prover_secret_fp_rows_device([7; 32], u64::MAX, 2, 1),
+            Err(AccelError::InvalidInput(message)) if message.contains("overflows u64")
+        ));
+        assert!(matches!(
+            gpu.chacha8_prover_secret_fp2_rows_padded_device([7; 32], 0, 1, 8, 7),
+            Err(AccelError::InvalidInput(message)) if message.contains("smaller")
+        ));
+        assert!(matches!(
+            gpu.fp2_row_dots_device(
+                DeviceSlice::new(&foreign, 0, 64).unwrap(),
+                8,
+                DeviceSlice::new(&local, 0, 64).unwrap(),
+                8,
+                2,
+                8,
+            ),
+            Err(AccelError::InvalidInput(message)) if message.contains("different CUDA context")
+        ));
+        assert!(matches!(
+            gpu.fp2_powers_device(Fp2::ONE, 0),
+            Err(AccelError::InvalidInput("Fp2 powers require a non-zero count"))
+        ));
+
+        let after = gpu.stats().unwrap();
+        assert_eq!(after.resident_alloc_requests, before.resident_alloc_requests);
+        assert_eq!(
+            after.operation(Operation::PcsRows).calls,
+            before.operation(Operation::PcsRows).calls
+        );
+        assert_eq!(after.explicit_d2d_copy_bytes, before.explicit_d2d_copy_bytes);
+        assert_eq!(after.device_zeroed_bytes, before.device_zeroed_bytes);
+        assert_eq!(after.device_generated_bytes, before.device_generated_bytes);
+
+        // A stale input reaches the C boundary only after the row-dot output
+        // allocation. Its failure path must logically free that output, even
+        // when the arena reused the stale input's former physical slot.
+        let stale = duplicate_device_buffer_for_test(&local);
+        gpu.free_device(local).unwrap();
+        let before_failed_output = gpu.stats().unwrap();
+        assert!(matches!(
+            gpu.fp2_row_dots_device(
+                DeviceSlice::new(&stale, 0, 64).unwrap(),
+                8,
+                DeviceSlice::new(&stale, 0, 64).unwrap(),
+                8,
+                2,
+                8,
+            ),
+            Err(AccelError::Cuda(message)) if message.contains("unknown resident buffer id")
+        ));
+        let after_failed_output = gpu.stats().unwrap();
+        assert_eq!(
+            after_failed_output.resident_alloc_requests,
+            before_failed_output.resident_alloc_requests + 1
+        );
+        assert_eq!(
+            after_failed_output.resident_reuse_hits,
+            before_failed_output.resident_reuse_hits + 1
+        );
+        assert_eq!(
+            after_failed_output.resident_free_requests,
+            before_failed_output.resident_free_requests + 1
+        );
+        assert_eq!(
+            after_failed_output.operation(Operation::PcsRows).calls,
+            before_failed_output.operation(Operation::PcsRows).calls
+        );
+        let cached_after_failure = gpu.device_memory_breakdown().unwrap();
+        assert_eq!(cached_after_failure.resident_bytes, 0);
+        assert!(cached_after_failure.cached_resident_bytes > 0);
+        gpu.trim_device_cache().unwrap();
+        assert_eq!(gpu.device_memory_breakdown().unwrap().cached_resident_bytes, 0);
+
+        other.free_device(foreign).unwrap();
     }
 
     #[test]

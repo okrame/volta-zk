@@ -34,8 +34,8 @@ use crate::ntt::NttPlan;
 use rayon::prelude::*;
 use std::time::Instant;
 use volta_accel::{
-    AccelError, Backend, BackendKind, DeviceBuffer, DeviceElement, DeviceMerkleTree, Fp2Repr,
-    Operation,
+    AccelError, Backend, BackendKind, DeviceBuffer, DeviceElement, DeviceMerkleTree, DeviceSlice,
+    Fp2Repr, Operation,
 };
 use volta_field::{Fp, Fp2, FpStream};
 use volta_mac::{
@@ -92,6 +92,76 @@ pub struct ProverMatrix {
     /// rows × code_len encoded matrix, row-major.
     encoded: Vec<Fp>,
     tree: MerkleTree,
+}
+
+/// Checked placement of one compact row-major i16 tensor into the packed
+/// coefficient matrix used by a resident commitment. The destination stride
+/// supplies per-row zero padding; all remaining target cells stay zero.
+///
+/// The source is borrowed and never adopted by the PCS. The commitment owns
+/// a separate packed target so model weights may outlive it independently.
+#[derive(Clone, Copy, Debug)]
+pub struct ResidentWeightPlacement<'a> {
+    source: volta_accel::DeviceSlice<'a, i16>,
+    rows: usize,
+    cols: usize,
+    destination_offset: usize,
+    destination_stride: usize,
+    packed_len: usize,
+    destination_end: usize,
+}
+
+impl<'a> ResidentWeightPlacement<'a> {
+    pub fn new(
+        source: volta_accel::DeviceSlice<'a, i16>,
+        rows: usize,
+        cols: usize,
+        destination_offset: usize,
+        destination_stride: usize,
+        packed_len: usize,
+    ) -> Result<Self, AccelError> {
+        if rows == 0
+            || cols == 0
+            || destination_stride < cols
+            || !destination_stride.is_power_of_two()
+        {
+            return Err(AccelError::InvalidInput("invalid resident weight placement geometry"));
+        }
+        let source_len = rows
+            .checked_mul(cols)
+            .ok_or(AccelError::InvalidInput("resident weight placement overflow"))?;
+        if source.len() != source_len {
+            return Err(AccelError::InvalidInput(
+                "resident weight placement source must be exact and compact",
+            ));
+        }
+        let padded_rows = rows
+            .checked_next_power_of_two()
+            .ok_or(AccelError::InvalidInput("resident weight placement overflow"))?;
+        let destination_span = padded_rows
+            .checked_mul(destination_stride)
+            .ok_or(AccelError::InvalidInput("resident weight placement overflow"))?;
+        if destination_offset % destination_span != 0 {
+            return Err(AccelError::InvalidInput("resident weight placement block is not aligned"));
+        }
+        let destination_end = destination_offset
+            .checked_add(destination_span)
+            .ok_or(AccelError::InvalidInput("resident weight placement overflow"))?;
+        if destination_end > packed_len {
+            return Err(AccelError::InvalidInput(
+                "resident weight placement exceeds packed target",
+            ));
+        }
+        Ok(Self {
+            source,
+            rows,
+            cols,
+            destination_offset,
+            destination_stride,
+            packed_len,
+            destination_end,
+        })
+    }
 }
 
 /// Device-owned commitment state. It is intentionally distinct from
@@ -208,7 +278,11 @@ struct ResidentOpenGuard<'a> {
     c_device: Option<DeviceBuffer<Fp2Repr>>,
     u_c_device: Option<DeviceBuffer<Fp2Repr>>,
     coeff_device: Option<DeviceBuffer<Fp2Repr>>,
+    coeff_row: Option<DeviceBuffer<Fp2Repr>>,
     u_g_device: Option<DeviceBuffer<Fp2Repr>>,
+    mask_points: Option<DeviceBuffer<Fp2Repr>>,
+    mask_eq_rows: Option<DeviceBuffer<Fp2Repr>>,
+    mask_dots: Option<DeviceBuffer<Fp2Repr>>,
     indices: Option<DeviceBuffer<u32>>,
     data_columns: Option<DeviceBuffer<u64>>,
     mask_columns: Option<DeviceBuffer<Fp2Repr>>,
@@ -227,7 +301,11 @@ impl<'a> ResidentOpenGuard<'a> {
             c_device: None,
             u_c_device: None,
             coeff_device: None,
+            coeff_row: None,
             u_g_device: None,
+            mask_points: None,
+            mask_eq_rows: None,
+            mask_dots: None,
             indices: None,
             data_columns: None,
             mask_columns: None,
@@ -243,7 +321,11 @@ impl<'a> ResidentOpenGuard<'a> {
         cleanup_device_slot(self.backend, &mut self.mask_columns, &mut first_error);
         cleanup_device_slot(self.backend, &mut self.data_columns, &mut first_error);
         cleanup_device_slot(self.backend, &mut self.indices, &mut first_error);
+        cleanup_device_slot(self.backend, &mut self.mask_dots, &mut first_error);
+        cleanup_device_slot(self.backend, &mut self.mask_eq_rows, &mut first_error);
+        cleanup_device_slot(self.backend, &mut self.mask_points, &mut first_error);
         cleanup_device_slot(self.backend, &mut self.u_g_device, &mut first_error);
+        cleanup_device_slot(self.backend, &mut self.coeff_row, &mut first_error);
         cleanup_device_slot(self.backend, &mut self.coeff_device, &mut first_error);
         cleanup_device_slot(self.backend, &mut self.u_c_device, &mut first_error);
         cleanup_device_slot(self.backend, &mut self.c_device, &mut first_error);
@@ -289,9 +371,9 @@ pub fn commit_with_backend(
     commit_impl(w, params, pad_seed, Some(backend))
 }
 
-/// Host-fed resident commitment checkpoint. Weights and deterministic pad
-/// rows are uploaded once; message construction, batched NTT, column hashes
-/// and every Merkle parent remain device-side. Only the public root returns.
+/// Host-fed resident commitment checkpoint. This compatibility path uploads
+/// the already-packed weight vector, but row pads are generated directly on
+/// the device from the prover-secret seed fixed for this registration.
 pub fn commit_resident(
     w: &[i16],
     params: &LigeroParams,
@@ -304,21 +386,88 @@ pub fn commit_resident(
         ));
     }
     params.validate();
-    let (rows, cols, pad, code_len) = (params.rows(), params.cols(), params.pad, params.code_len());
+    let (rows, cols) = (params.rows(), params.cols());
     if w.len() != rows * cols {
         return Err(AccelError::InvalidInput("resident PCS weight geometry mismatch"));
     }
-    let pads_host: Vec<Fp> = (0..rows)
-        .into_par_iter()
-        .flat_map_iter(|row| {
-            let mut stream = FpStream::domain_separated(pad_seed, row as u64);
-            (0..pad).map(move |_| stream.next_fp()).collect::<Vec<_>>()
-        })
-        .collect();
-    let pads_raw: Vec<u64> = pads_host.iter().map(|x| x.value()).collect();
     let mut resident = ResidentCommitGuard::new(backend);
     resident.weights = Some(resident.backend.upload_new_device(w)?);
-    resident.pads = Some(resident.backend.upload_new_device(&pads_raw)?);
+    finish_resident_commit(resident, params, pad_seed)
+}
+
+/// Build a resident commitment from existing context-owned tensor slices.
+/// The PCS allocates and zeroes its own packed target, then performs exact
+/// row-strided D2D placements; no flattened host weight vector is created or
+/// uploaded. `pad_seed` is prover-secret randomness fixed for this weight
+/// registration (it need not be response-fresh) and must not be a transcript
+/// challenge, shared mock-PCG seed, or verifier secret.
+pub fn commit_resident_from_device(
+    placements: &[ResidentWeightPlacement<'_>],
+    params: &LigeroParams,
+    pad_seed: [u8; 32],
+    backend: &mut Backend,
+) -> Result<(Commitment, ResidentProverMatrix), AccelError> {
+    if backend.kind() != BackendKind::CudaResident {
+        return Err(AccelError::InvalidInput(
+            "resident PCS commitment requires the cuda-resident backend",
+        ));
+    }
+    params.validate();
+    let packed_len = params
+        .rows()
+        .checked_mul(params.cols())
+        .ok_or(AccelError::InvalidInput("resident PCS weight geometry overflow"))?;
+    if placements.is_empty() {
+        return Err(AccelError::InvalidInput("resident PCS needs a weight placement"));
+    }
+    let mut ranges = Vec::with_capacity(placements.len());
+    for placement in placements {
+        if placement.packed_len != packed_len {
+            return Err(AccelError::InvalidInput(
+                "resident weight placement targets the wrong PCS geometry",
+            ));
+        }
+        if !placement.source.buffer().is_owned_by(backend) {
+            return Err(AccelError::InvalidInput(
+                "resident weight placement belongs to a different CUDA context",
+            ));
+        }
+        ranges.push((placement.destination_offset, placement.destination_end));
+    }
+    ranges.sort_unstable();
+    if ranges.windows(2).any(|pair| pair[0].1 > pair[1].0) {
+        return Err(AccelError::InvalidInput("resident weight placements overlap"));
+    }
+
+    let mut resident = ResidentCommitGuard::new(backend);
+    resident.weights = Some(resident.backend.alloc_device(packed_len)?);
+    resident.backend.zero_device(
+        resident.weights.as_ref().expect("resident packed weights registered"),
+        0,
+        packed_len,
+    )?;
+    for placement in placements {
+        resident.backend.copy_device_rows(
+            placement.source,
+            placement.cols,
+            resident.weights.as_ref().expect("resident packed weights registered"),
+            placement.destination_offset,
+            placement.destination_stride,
+            placement.rows,
+            placement.cols,
+        )?;
+    }
+    finish_resident_commit(resident, params, pad_seed)
+}
+
+fn finish_resident_commit(
+    mut resident: ResidentCommitGuard<'_>,
+    params: &LigeroParams,
+    pad_seed: [u8; 32],
+) -> Result<(Commitment, ResidentProverMatrix), AccelError> {
+    let (rows, cols, pad, code_len) = (params.rows(), params.cols(), params.pad, params.code_len());
+    resident.pads =
+        Some(resident.backend.chacha8_prover_secret_fp_rows_device(pad_seed, 0, rows, pad)?);
     resident.messages = Some(resident.backend.pcs_messages_device(
         resident.weights.as_ref().expect("resident weights registered"),
         0,
@@ -779,6 +928,27 @@ fn claim_geom(params: &LigeroParams, c: &BlockClaim) -> ClaimGeom {
     ClaimGeom { row0: c.offset >> cb, q_row: eq_vec(&c.point[cb..]), q_col: eq_vec(&c.point[..cb]) }
 }
 
+fn resident_claim_row0(params: &LigeroParams, claim: &BlockClaim) -> Result<usize, AccelError> {
+    let col_bits = params.col_bits as usize;
+    if claim.point.len() < col_bits {
+        return Err(AccelError::InvalidInput("resident PCS block is smaller than a matrix row"));
+    }
+    let block_len = 1usize
+        .checked_shl(claim.point.len() as u32)
+        .ok_or(AccelError::InvalidInput("resident PCS claim geometry overflow"))?;
+    if claim.offset % block_len != 0 {
+        return Err(AccelError::InvalidInput("resident PCS block offset is not aligned"));
+    }
+    let row_count = 1usize
+        .checked_shl((claim.point.len() - col_bits) as u32)
+        .ok_or(AccelError::InvalidInput("resident PCS claim geometry overflow"))?;
+    let row0 = claim.offset >> col_bits;
+    if row0.checked_add(row_count).is_none_or(|end| end > params.rows()) {
+        return Err(AccelError::InvalidInput("resident PCS claim rows exceed matrix"));
+    }
+    Ok(row0)
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct MultiColumnOpening {
     pub j: u32,
@@ -980,31 +1150,35 @@ pub fn open_multi_zk_resident(
     if n_claims == 0 {
         return Err(AccelError::InvalidInput("resident PCS opening needs a claim"));
     }
-    let geoms: Vec<ClaimGeom> = claims.iter().map(|(claim, _)| claim_geom(params, claim)).collect();
+    let claim_rows: Vec<usize> = claims
+        .iter()
+        .map(|(claim, _)| resident_claim_row0(params, claim))
+        .collect::<Result<_, _>>()?;
     let mut tm = MultiOpenTimings::default();
     let mut resident = ResidentOpenGuard::new(backend);
 
-    // 1. Fresh mask rows. Generation remains deterministic host setup in this
-    // checkpoint; padded rows, NTT and the complete mask Merkle tree are
-    // resident. The compact copy feeds row-combination masking directly.
+    // 1. Fresh prover-secret mask rows are generated directly into padded
+    // device storage. A compact D2D copy feeds row additions and s_g dots;
+    // neither mask representation ever crosses H2D or D2H.
     let t0 = Instant::now();
-    let masks: Vec<Vec<Fp2>> = (0..=n_claims)
-        .into_par_iter()
-        .map(|g| {
-            let mut generator = FpStream::domain_separated(mask_seed, g as u64);
-            (0..msg_len).map(|_| generator.next_fp2()).collect()
-        })
-        .collect();
     let mask_rows = n_claims + 1;
-    let mut mask_padded = vec![Fp2Repr::default(); mask_rows * code_len];
-    let mut mask_compact = Vec::with_capacity(mask_rows * msg_len);
-    for (row, mask) in masks.iter().enumerate() {
-        let raw: Vec<Fp2Repr> = mask.iter().copied().map(Fp2Repr::from).collect();
-        mask_padded[row * code_len..row * code_len + msg_len].copy_from_slice(&raw);
-        mask_compact.extend_from_slice(&raw);
-    }
-    resident.mask_messages = Some(resident.backend.upload_new_device(&mask_padded)?);
-    resident.mask_compact = Some(resident.backend.upload_new_device(&mask_compact)?);
+    resident.mask_messages = Some(resident.backend.chacha8_prover_secret_fp2_rows_padded_device(
+        mask_seed, 0, mask_rows, msg_len, code_len,
+    )?);
+    resident.mask_compact = Some(resident.backend.alloc_device(mask_rows * msg_len)?);
+    resident.backend.copy_device_rows(
+        DeviceSlice::new(
+            resident.mask_messages.as_ref().expect("resident mask messages registered"),
+            0,
+            mask_rows * code_len,
+        )?,
+        code_len,
+        resident.mask_compact.as_ref().expect("resident compact masks registered"),
+        0,
+        msg_len,
+        mask_rows,
+        msg_len,
+    )?;
     resident.mask_encoded = Some(resident.backend.ntt_fp2_batch_device(
         resident.mask_messages.as_ref().expect("resident mask messages registered"),
         0,
@@ -1027,15 +1201,8 @@ pub fn open_multi_zk_resident(
 
     // 2. Proximity challenge and one resident global row pass.
     let c = tx.challenge_fp2();
-    let mut c_pows = Vec::with_capacity(rows);
-    let mut acc = Fp2::ONE;
-    for _ in 0..rows {
-        acc = acc * c;
-        c_pows.push(acc);
-    }
     let t1 = Instant::now();
-    let c_raw: Vec<Fp2Repr> = c_pows.iter().copied().map(Fp2Repr::from).collect();
-    resident.c_device = Some(resident.backend.upload_new_device(&c_raw)?);
+    resident.c_device = Some(resident.backend.fp2_powers_device(c, rows)?);
     resident.u_c_device = Some(resident.backend.pcs_combine_rows_device(
         &pm.weights,
         0,
@@ -1073,13 +1240,38 @@ pub fn open_multi_zk_resident(
 
     // 3. All block-local claim combinations in one resident pass.
     let t2 = Instant::now();
-    let mut coeffs = vec![Fp2::ZERO; n_claims * rows];
-    for (g, geo) in geoms.iter().enumerate() {
-        coeffs[g * rows + geo.row0..g * rows + geo.row0 + geo.q_row.len()]
-            .copy_from_slice(&geo.q_row);
+    resident.coeff_device = Some(resident.backend.alloc_device(n_claims * rows)?);
+    resident.backend.zero_device(
+        resident.coeff_device.as_ref().expect("resident coefficients registered"),
+        0,
+        n_claims * rows,
+    )?;
+    let col_bits = params.col_bits as usize;
+    for (g, ((claim, _), &row0)) in claims.iter().zip(&claim_rows).enumerate() {
+        resident.coeff_row =
+            Some(resident.backend.equality_weights_device(&claim.point[col_bits..])?);
+        let coeff_len =
+            resident.coeff_row.as_ref().expect("resident coefficient row registered").len();
+        if row0.checked_add(coeff_len).is_none_or(|end| end > rows) {
+            return Err(AccelError::InvalidInput("resident PCS claim rows exceed matrix"));
+        }
+        resident.backend.copy_device_rows(
+            DeviceSlice::new(
+                resident.coeff_row.as_ref().expect("resident coefficient row registered"),
+                0,
+                coeff_len,
+            )?,
+            coeff_len,
+            resident.coeff_device.as_ref().expect("resident coefficients registered"),
+            g * rows + row0,
+            coeff_len,
+            1,
+            coeff_len,
+        )?;
+        resident
+            .backend
+            .free_device(resident.coeff_row.take().expect("resident coefficient row registered"))?;
     }
-    let coeff_raw: Vec<Fp2Repr> = coeffs.into_iter().map(Fp2Repr::from).collect();
-    resident.coeff_device = Some(resident.backend.upload_new_device(&coeff_raw)?);
     resident.u_g_device = Some(resident.backend.pcs_combine_rows_device(
         &pm.weights,
         0,
@@ -1114,22 +1306,71 @@ pub fn open_multi_zk_resident(
     resident
         .backend
         .free_device(resident.coeff_device.take().expect("resident coefficients registered"))?;
-    resident
-        .backend
-        .free_device(resident.mask_compact.take().expect("resident compact masks registered"))?;
     tx.append("pcs_u_vectors", 16 * (msg_len * (n_claims + 1)) as u64);
     tm.t_block_passes_s = t2.elapsed().as_secs_f64();
 
-    // 4. Authenticated s_g and the unchanged zero-batch closure.
+    // 4. Compute every s_g on device. Only compact claim points cross H2D;
+    // equality rows, row dots, and mask material stay resident. All scalar
+    // results return in one protocol-visible D2H batch per commitment.
     let t3 = Instant::now();
+    let mask_points_raw: Vec<Fp2Repr> = claims
+        .iter()
+        .flat_map(|(claim, _)| claim.point[..col_bits].iter().copied().map(Fp2Repr::from))
+        .collect();
+    resident.mask_points = Some(resident.backend.upload_new_device(&mask_points_raw)?);
+    resident.mask_eq_rows = Some(resident.backend.logup_eq_rows_device(
+        resident.mask_points.as_ref(),
+        n_claims,
+        col_bits,
+    )?);
+    resident.mask_dots = Some(resident.backend.fp2_row_dots_device(
+        DeviceSlice::new(
+            resident.mask_compact.as_ref().expect("resident compact masks registered"),
+            msg_len,
+            n_claims * msg_len,
+        )?,
+        msg_len,
+        DeviceSlice::new(
+            resident.mask_eq_rows.as_ref().expect("resident mask equality rows registered"),
+            0,
+            n_claims * cols,
+        )?,
+        cols,
+        n_claims,
+        cols,
+    )?);
+    let s_values: Vec<Fp2> = resident
+        .backend
+        .download_device(
+            resident.mask_dots.as_ref().expect("resident mask dots registered"),
+            0,
+            n_claims,
+        )?
+        .into_iter()
+        .map(Into::into)
+        .collect();
+    resident
+        .backend
+        .free_device(resident.mask_dots.take().expect("resident mask dots registered"))?;
+    resident.backend.free_device(
+        resident.mask_eq_rows.take().expect("resident mask equality rows registered"),
+    )?;
+    resident
+        .backend
+        .free_device(resident.mask_points.take().expect("resident mask points registered"))?;
+    resident
+        .backend
+        .free_device(resident.mask_compact.take().expect("resident compact masks registered"))?;
+
     let fcs = stream.draw_fulls(dom_s, n_claims);
     let mut corr_ss = Vec::with_capacity(n_claims);
     let mut zs = Vec::with_capacity(n_claims);
-    for (g, geo) in geoms.iter().enumerate() {
-        let s_val = (0..cols).fold(Fp2::ZERO, |sum, j| sum + masks[1 + g][j] * geo.q_col[j]);
+    for g in 0..n_claims {
+        let q_col = eq_vec(&claims[g].0.point[..col_bits]);
+        let s_val = s_values[g];
         corr_ss.push(s_val - fcs[g].x);
         let s_auth = ProverAuthed { x: s_val, m: fcs[g].m };
-        let ip = (0..cols).fold(Fp2::ZERO, |sum, j| sum + u_gs[g][j] * geo.q_col[j]);
+        let ip = (0..cols).fold(Fp2::ZERO, |sum, j| sum + u_gs[g][j] * q_col[j]);
         zs.push(claims[g].1.add(s_auth).sub(ProverAuthed::from_public(ip)));
     }
     tx.append("pcs_s_corrections", 16 * n_claims as u64);

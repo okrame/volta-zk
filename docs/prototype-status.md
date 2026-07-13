@@ -56,6 +56,64 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-13 (P7b target re-registration — resident GPU gate redefined;
+  user decision)**: the preregistered rho_proof targets (<=10 prefill /
+  <=2 decode) against the same-host native-GPU denominator are **retired for
+  GPT-2-small batch-1**: the denominator (17.342 ms prefill) is
+  launch-latency-bound (<1% A100 utilization), so rho<=10 implies a 173 ms
+  full proof — below the 5.998 s of measured pure kernel time. This is a
+  property of the degenerate denominator at 124M/T=100, not of the provider
+  or implementation. The <=10/<=2 aspiration moves to a compute-bound
+  denominator (phase-X scale, or batched-session throughput rho), per the
+  scaling-note thesis. **P7b resident gates, pre-registered now**: prefill
+  core **<=10 s** and decode marginal **<=4 s** (respectively 2.04x and
+  3.59x faster than the same-host CPU prover: 20.421 s / 14.344 s from the
+  `p6-2026-07-11-f72e4dd` baseline),
+  blocking synchronizations **<=5,000/session**, session H2D **<=100 MB**.
+  Stretch ("ottimo"): prefill <=6 s / decode marginal <=2.5 s. The measured
+  kernel floors are 3.138 s prefill and 2.860 s decode marginal (5.998 s for
+  the whole response-session scope), so decode stretch also requires
+  kernel-level gains (Goldilocks mul limbing / occupancy).
+
+  **Attribution audit before implementation**: Thunder Compute is
+  GPU-over-TCP, but 343 us is only the aggregate 72.652 s / 211,709 and must
+  not be treated as a uniform synchronization RTT. Of the 211,709 barriers,
+  170,367 correspond to CUDA primitive calls whose profiling path executes a
+  `cudaStreamSynchronize` after every operation; the other 41,342 are explicit
+  uploads/downloads. The current transcript is an interactive DV mock with
+  verifier-side, message-independent ChaCha8 challenges — explicitly not
+  Fiat--Shamir — so device-side BLAKE3 transcript hashing is **rejected** as
+  incompatible with unchanged proof/verifier/formal assumptions. RLC round
+  batching likewise remains a separately preregistered protocol change, not a
+  byte-identical optimization. The first protocol-neutral levers are deferred
+  session timing, stable buffer reuse, persistent/D2D PCS commitments,
+  coalesced proof-message reads, and device-side generation of mock-PCG/PCS
+  masks without exposing the verifier challenge seed. The 945,442,180 B H2D
+  is not mostly PCG masks: about 755 MB is static PCS weights plus pads rebuilt
+  inside each measured response. For accounting hygiene, report both cold
+  setup and warm-response H2D; the <=100 MB gate remains attached to the
+  existing full response-session scope (including PCS work), so moving bytes
+  outside the measurement alone cannot satisfy it. Provider stays Thunder
+  (user decision, 2026-07-13); a 30-min launch/sync/D2H/graph microbench on
+  the instance is the mandatory first step before any refactor.
+
+  **Microbench preregistration**:
+  use the same A100 instance and a clean tree; measure host wall for (a) one
+  empty-kernel launch plus one device synchronization, (b) N direct launches
+  followed by one synchronization, separating enqueue and final-barrier time,
+  for N in {1, 8, 64, 512, 4096}, (c) a blocking 8-byte D2H copy, and (d)
+  construction, instantiation and replay-plus-sync of a linear CUDA graph with
+  the same N empty kernels. A fifth diagnostic measures 8-byte cudaMalloc and
+  cudaFree separately because the run reports 271,567 allocation calls and
+  allocator churn can serialize independently of explicit transcript reads.
+  The full harness targets 1,800 s across the timed cases and reports
+  count/median/MAD/p95/min/max plus per-launch amortization; quick mode is
+  smoke-only. Operationally, direct launches count as
+  "pipelined" only if both max-N enqueue and total time amortize to <=10% of
+  the one-launch-plus-sync median. A max-N graph replay is a material lever at
+  >=1.2x lower total wall than the direct burst. These classifications choose
+  implementation order only; they are not prover performance claims.
+
 - **2026-07-13 (P7 publication artifact closed)**: clean aggregate
   `benchmarks/results/p7-2026-07-13-2c836b3.json` (SHA-256
   `6aa5d6927e8f511b4d9ca7881ac4e6c50ffd32b8fb48fbb9badc764dcc9aa78a`)

@@ -1511,7 +1511,10 @@ mod tests {
         assert_eq!(legacy_per_head_sync, 96);
         assert_eq!(stats.sync_host_output, 8);
         assert_eq!(legacy_per_head_sync as u64 - stats.sync_host_output, 88);
-        assert_eq!(stats.coarse_timing_scopes, 2 * plan.round_epoch_upper_bound() as u64);
+        // Product and fold each own one scope per active round epoch. The
+        // final segmented A/B scalar download adds one Mailbox scope while
+        // retaining the single host-output synchronization asserted above.
+        assert_eq!(stats.coarse_timing_scopes, 2 * plan.round_epoch_upper_bound() as u64 + 1);
         assert_eq!(gpu.device_memory_breakdown().unwrap().resident_bytes, 0);
     }
 

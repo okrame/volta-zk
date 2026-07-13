@@ -889,6 +889,38 @@ def integrated_resident_profiles(results: list[dict[str, Any]]) -> list[dict[str
     )
 
 
+def shape_memory_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for result in results:
+        if result.get("milestone") != "P7-shape-memory-sweep":
+            continue
+        validation = result.get("validation") or {}
+        if not validation or not all(validation.values()):
+            continue
+        rows.append(
+            {
+                "_mtime": result["_mtime"],
+                "source": result["_path"],
+                "git_dirty": result.get("git_dirty"),
+                "source_resident_result": result.get("source_resident_result"),
+                "source_resident_peak_device_bytes": result.get(
+                    "source_resident_peak_device_bytes"
+                ),
+                "source_resident_workspace_after_cleanup_bytes": result.get(
+                    "source_resident_workspace_after_cleanup_bytes"
+                ),
+                "sequence_lengths": result.get("sequence_lengths"),
+                "profiles": result.get("profiles"),
+                "validation": validation,
+                "scope": result.get("scope"),
+            }
+        )
+    rows.sort(key=lambda row: (row["_mtime"], row["source"]))
+    for row in rows:
+        row.pop("_mtime", None)
+    return rows
+
+
 def same_host_native(
     native_profiles: list[dict[str, Any]], integrated: dict[str, Any] | None
 ) -> dict[str, Any] | None:
@@ -1066,6 +1098,9 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
         if r["milestone"] == "P7-integrated-resident" and not r.get("git_dirty", True)
     ]
     gpu_resident_record = full_gpu_resident[-1] if full_gpu_resident else None
+    shape_memory = shape_memory_profiles(results)
+    clean_shape_memory = [row for row in shape_memory if not row.get("git_dirty", True)]
+    shape_memory_record = clean_shape_memory[-1] if clean_shape_memory else None
     gpu_native = gpu_native_inference_profiles(results)
     full_gpu_native = [
         r
@@ -1261,6 +1296,16 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
                 "The protocol-core rho remains the preregistered gate; PCS/opening, closures, "
                 "verifier, offline commitment and mock-PCG limitations are reported separately "
                 "and retained in the measured session wall."
+            ),
+        },
+        "shape_memory_sweep": {
+            "status": "analytic_validation_pass" if shape_memory_record else "not_measured",
+            "run_of_record": shape_memory_record,
+            "profiles": shape_memory,
+            "note": (
+                "Synthetic formula validation only: GPT-2 is the measured anchor; "
+                "Llama-class and gpt-oss rows are not e2e results and project neither "
+                "proof time nor proof peak memory."
             ),
         },
         "gpu_native_inference": {
@@ -1559,6 +1604,19 @@ def print_summary(report: dict[str, Any]) -> None:
                 f"open online={pcs['open_online_s']:.3f}s; verify={pcs['verify_s']:.3f}s; "
                 f"PCG={resident_rho['pcg']['backend']} (production_grade=false)"
             )
+        print()
+    shape_sweep = report.get("shape_memory_sweep", {}).get("run_of_record")
+    if shape_sweep:
+        print("Synthetic shape/memory sweep (not non-GPT e2e)")
+        for profile in shape_sweep["profiles"]:
+            print(
+                f"  {profile['name']:<30} total_i16="
+                f"{profile['committed_weight_bytes_i16'] / 1e9:6.2f} GB "
+                f"active_i16={profile['active_weight_bytes_i16'] / 1e9:6.2f} GB "
+                f"GQA_KV={profile['gqa_kv_fraction_vs_mha']:.3f} "
+                f"status={profile['status']}"
+            )
+        print(f"  {shape_sweep['source']}")
         print()
     decode_profiles = report.get("decode_marginal_profiles") or []
     if decode_profiles:

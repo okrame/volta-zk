@@ -1,0 +1,4 @@
+model,status,total_parameters,active_parameters,committed_i16_bytes,active_i16_bytes,gqa_kv_fraction
+gpt2-small,measured-e2e-shape,124701952,124701952,249403904,249403904,1.0
+llama-class-8b-dense-gqa,analytic-projection-only,8030261248,8030261248,16060522496,16060522496,0.25
+gpt-oss-20b-moe-active,analytic-projection-only,20900000000,3600000000,41800000000,7200000000,0.125

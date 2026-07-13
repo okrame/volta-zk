@@ -1,14 +1,14 @@
 # P7 cloud runbook
 
-Status: cloud screening and exact native GPU inference are complete; detailed
-run history stays in the ledger and append-only JSONs. On replacement A100
-instance `6mprfo7p`, baseline `p6-2026-07-11-f72e4dd.json` and golden-exact
-anchor `p7-gpu-native-inference-2026-07-11-c06f323.json` imply, for
-ρ≤10/≤2: **176.631 ms** proof-only prefill budget, **2.05125× /
-4.14684×** required relative prover/native speedup, and **115.616× /
-11.3141×** required integrated prover GPU/CPU speedup. Next: integrated GPU
-prover measurement. Microkernel gates remain independent preregistered
-screening and must not be relabeled as e2e ρ.
+Status: cloud screening, resident integration, the full e2e measurement and
+the exact same-host native anchor are complete. The final A100 record is
+`p7-integrated-resident-2026-07-13-1fd5195.json` paired with
+`p7-gpu-native-inference-2026-07-13-1fd5195.json`: correctness,
+communication and flat-cost gates pass, while ρ=3707.595/95.597 fails the
+10/2 targets. Detailed history stays in the ledger and append-only JSONs.
+Microkernel and hybrid gates remain historical attribution/screening and
+must not be relabeled as the resident e2e result. Exact reproduction commands
+and the hardware manifest are in `docs/p7-artifact.md`.
 
 ## Provider / instance
 

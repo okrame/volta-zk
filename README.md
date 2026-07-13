@@ -73,21 +73,27 @@ the witness generator and the NumPy golden checks are load-bearing gates.
 
 ## CUDA validation
 
-On the pinned A100 environment, build the version-checked shared backend and
+The P7 resident A100 run is complete. Correctness, verifier, flat-cost and
+communication gates pass, while the preregistered performance targets fail:
+rho is 3707.595 prefill and 95.597 decode versus targets 10/2. This negative
+result is part of the artifact and must not be replaced by microkernel or
+hybrid numbers.
+
+On the pinned A100 environment, build the ABI-versioned shared backend and
 run CUDA tests explicitly:
 
 ```bash
-NVCC=/usr/local/cuda/bin/nvcc CUDA_ARCH=sm_80 scripts/build_cuda_backend.sh
+NVCC=/usr/local/cuda/bin/nvcc VOLTA_CUDA_ARCH=sm_80 scripts/build_cuda_backend.sh
 cd rust
 export VOLTA_CUDA_LIBRARY="$PWD/../target/cuda/libvolta_cuda_backend.so"
 export VOLTA_REQUIRE_CUDA=1
 cargo test --features cuda --workspace
 ```
 
-The exact quick/full resident benchmark commands and pinned hardware manifest
-are maintained in the P7 artifact section once the resident run of record is
-closed. Until then, microkernel and hybrid JSONs must not be presented as a
-resident end-to-end result.
+The exact quick/full commands, cloud metadata contract, expected gates and
+Lean audit are in [the P7 artifact guide](docs/p7-artifact.md). The pinned
+hardware/software fingerprint and raw-result checksums are in
+[`artifact/p7/hardware-a100.json`](artifact/p7/hardware-a100.json).
 
 ## Reports and provenance
 
@@ -96,12 +102,18 @@ Regenerate the aggregate report without mutating protocol parameters:
 ```bash
 python3 scripts/report.py
 python3 scripts/report.py --write-json
+python3 scripts/p7_artifact_outputs.py
+python3 scripts/p7_artifact_outputs.py --check
 ```
 
 Every run records the commit, dirty state, workload, timings and byte
 breakdown. A quoted run of record must have `git_dirty: false`; generated
 JSONs are append-only. Machine-specific timings are not portable because the
 Rust benchmark build pins `target-cpu=native`.
+
+Generated paper tables, rho/attribution SVGs and synthetic shape CSV live
+under `artifact/p7/generated/`. Llama-class and gpt-oss rows validate only
+analytic shape/memory scaling; GPT-2 remains the sole end-to-end model.
 
 ## Security boundary
 

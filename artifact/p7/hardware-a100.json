@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "measurement_date": "2026-07-13",
+  "provider": "Thunder Compute",
+  "provider_instance_id": "not exposed to the guest",
+  "instance_fingerprint": "machine-id-sha256-prefix:42069fd5fa86",
+  "region": "not exposed by provider API",
+  "image": "base / Ubuntu 22.04.5 LTS",
+  "cpu": {
+    "model": "Intel Xeon Platinum 8470",
+    "visible_vcpus": 8,
+    "cgroup_quota_cores": 7.92,
+    "ram_gib": 64
+  },
+  "gpu": {
+    "model": "NVIDIA A100-SXM4-80GB",
+    "memory_mib": 81920,
+    "compute_capability": "8.0",
+    "compile_arch": "sm_80"
+  },
+  "software": {
+    "nvidia_driver": "610.43.02",
+    "cuda_toolkit": "13.2",
+    "nvcc_build": "cuda_13.2.r13.2/compiler.37668154_0",
+    "rustc": "1.97.0 (2d8144b78 2026-07-07)",
+    "cuda_backend_abi": 17,
+    "rust_target_cpu": "native"
+  },
+  "workload": {
+    "model": "GPT-2 small fixed-point",
+    "prompt_tokens": 100,
+    "decode_tokens": 50,
+    "pcs_queries": 200,
+    "warmup_repetitions": 1,
+    "measured_repetitions": 3
+  },
+  "measured_commit": "1fd5195402782b47f7e0fe4f4f7a788080fcf6d6",
+  "results": {
+    "resident_full": {
+      "path": "benchmarks/results/p7-integrated-resident-2026-07-13-1fd5195.json",
+      "sha256": "02538a48511354f7ce92ba0602240edab9eede344aa30e351b7c03d338679c6b"
+    },
+    "native_gpu": {
+      "path": "benchmarks/results/p7-gpu-native-inference-2026-07-13-1fd5195.json",
+      "sha256": "73ce54cf8759b7b91b5a032098a1d5eb77bd8c804256ce9c5c8eba2820556c9f"
+    },
+    "resident_quick": {
+      "path": "benchmarks/results/p7-integrated-resident-quick-2026-07-13-1fd5195.json",
+      "sha256": "630629287213978f8dd6aa5e46703e962d5fe2226ca843e5050bd5f048f7ddc1"
+    },
+    "shape_memory_sweep": {
+      "path": "benchmarks/results/p7-shape-memory-sweep-2026-07-13-797f499.json",
+      "sha256": "59df28891f7a5c024a98e66f1bb1d470cf8d7909d334dbcd92190076b5fec42a"
+    }
+  },
+  "notes": [
+    "Connection addresses and credentials are intentionally excluded.",
+    "The provider instance identifier was unavailable; the guest machine-id is represented only by a SHA-256 prefix for same-host joining.",
+    "Mock-PCG is the measured proving baseline and is not a production-grade two-party PCG."
+  ]
+}

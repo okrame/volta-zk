@@ -153,6 +153,17 @@ def test_p7_report_selects_record_and_packed_sources():
         "response_inference_plus_full_session_wall": 124.175154845,
     }
     assert data["integrated_resident"]["status"] == "measured_same_host_targets_fail"
+    shape_sweep = data["shape_memory_sweep"]["run_of_record"]
+    assert shape_sweep["source"].endswith(
+        "p7-shape-memory-sweep-2026-07-13-797f499.json"
+    )
+    assert all(shape_sweep["validation"].values())
+    assert shape_sweep["scope"]["non_gpt2_end_to_end"] is False
+    assert [row["name"] for row in shape_sweep["profiles"]] == [
+        "gpt2-small",
+        "llama-class-8b-dense-gqa",
+        "gpt-oss-20b-moe-active",
+    ]
     assert data["go_no_go"]["local_recommendation"] == (
         "resident-gates-fail-report-result-without-production-claim"
     )

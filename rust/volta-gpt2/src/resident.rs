@@ -1413,6 +1413,18 @@ mod tests {
         }
     }
 
+    fn active_resident_bytes(backend: &Backend) -> u64 {
+        let live = backend.stats().unwrap().live_device_bytes;
+        let memory = backend.device_memory_breakdown().unwrap();
+        let accounted = memory
+            .workspace_bytes
+            .checked_add(memory.resident_bytes)
+            .and_then(|bytes| bytes.checked_add(memory.cached_resident_bytes))
+            .expect("resident CUDA memory accounting overflow");
+        assert_eq!(live, accounted, "resident CUDA memory categories must sum to live bytes");
+        memory.resident_bytes
+    }
+
     fn download16(backend: &mut Backend, slice: DeviceSlice<'_, i16>) -> Vec<i16> {
         backend.download_device(slice.buffer(), slice.offset(), slice.len()).unwrap()
     }
@@ -1539,7 +1551,8 @@ mod tests {
         let tokens = host.p.tokens[..3].to_vec();
         let expected = forward_model_tokens(&host, &tokens);
         let mut resident_model = upload_resident_model(&host, &mut gpu).unwrap();
-        let setup_live = gpu.stats().unwrap().live_device_bytes;
+        let setup_resident = active_resident_bytes(&gpu);
+        let mut live_after_first_cleanup = None;
 
         for _ in 0..2 {
             gpu.begin_measurement().unwrap();
@@ -1552,10 +1565,16 @@ mod tests {
             compare_witness(&mut gpu, &got, &expected);
             got.free(&mut gpu).unwrap();
             assert_eq!(
-                gpu.stats().unwrap().live_device_bytes,
-                setup_live,
-                "resident forward leaked across context reuse"
+                active_resident_bytes(&gpu),
+                setup_resident,
+                "resident forward retained an active allocation after cleanup"
             );
+            let live = gpu.stats().unwrap().live_device_bytes;
+            if let Some(first) = live_after_first_cleanup {
+                assert_eq!(live, first, "resident forward grew its arena high-water on reuse");
+            } else {
+                live_after_first_cleanup = Some(live);
+            }
         }
         let original_embed_shift = resident_model.params.shift_embed;
         resident_model.params.shift_embed = -30;
@@ -1564,16 +1583,17 @@ mod tests {
             Err(AccelError::Cuda(_))
         ));
         assert_eq!(
-            gpu.stats().unwrap().live_device_bytes,
-            setup_live,
+            active_resident_bytes(&gpu),
+            setup_resident,
             "failed resident forward did not roll back every allocation"
         );
         resident_model.params.shift_embed = original_embed_shift;
         let recovered = forward_model_tokens_resident(&resident_model, &tokens, &mut gpu).unwrap();
         compare_witness(&mut gpu, &recovered, &expected);
         recovered.free(&mut gpu).unwrap();
-        assert_eq!(gpu.stats().unwrap().live_device_bytes, setup_live);
+        assert_eq!(active_resident_bytes(&gpu), setup_resident);
         resident_model.free(&mut gpu).unwrap();
+        assert_eq!(active_resident_bytes(&gpu), 0);
     }
 
     #[test]
@@ -1591,7 +1611,8 @@ mod tests {
         assert_eq!(expected.q, 3);
         let resident_model = upload_resident_model(&host, &mut gpu).unwrap();
         let source = forward_model_tokens_resident(&resident_model, &tokens, &mut gpu).unwrap();
-        let source_live = gpu.stats().unwrap().live_device_bytes;
+        let source_resident = active_resident_bytes(&gpu);
+        let mut live_after_first_cleanup = None;
 
         for _ in 0..2 {
             gpu.begin_measurement().unwrap();
@@ -1604,12 +1625,19 @@ mod tests {
             compare_band(&mut gpu, &band, &expected);
             band.free(&mut gpu).unwrap();
             assert_eq!(
-                gpu.stats().unwrap().live_device_bytes,
-                source_live,
-                "resident band extraction leaked across context reuse"
+                active_resident_bytes(&gpu),
+                source_resident,
+                "resident band extraction retained an active allocation after cleanup"
             );
+            let live = gpu.stats().unwrap().live_device_bytes;
+            if let Some(first) = live_after_first_cleanup {
+                assert_eq!(live, first, "resident band grew its arena high-water on reuse");
+            } else {
+                live_after_first_cleanup = Some(live);
+            }
         }
         source.free(&mut gpu).unwrap();
         resident_model.free(&mut gpu).unwrap();
+        assert_eq!(active_resident_bytes(&gpu), 0);
     }
 }

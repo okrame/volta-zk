@@ -176,4 +176,64 @@ theorem prodBatch_sound {T : ℕ} (z : Fin T → ProdClaim F) {j₀ : Fin T}
         rw [← pow_succ', Nat.sub_add_cancel hT]
         ring
 
+/-- **Scalar-power batched product soundness (implementation theorem).**
+For the Rust weighting `χ^(j+1)`, a false list of length `T` accepts on at
+most `(T+2)·|F|` of the `|F|²` verifier tapes `(Δ, χ)`: the falsity
+polynomial collapses for at most `T` challenges, while a live quadratic has
+at most two roots in the MAC key. -/
+theorem prodBatch_sound_scalar {T : ℕ} (z : Fin T → ProdClaim F) {j₀ : Fin T}
+    (hz : (z j₀).c.1 ≠ (z j₀).a.1 * (z j₀).b.1) (r : F × F)
+    (msg : F → F × F) :
+    (univ.filter fun Δχ : F × F =>
+        (msg Δχ.2).1 + (msg Δχ.2).2 * Δχ.1
+          = ∑ j, Δχ.2 ^ (j.val + 1) * prodKey Δχ.1 (z j) + keyOf Δχ.1 r).card
+      ≤ (T + 2) * Fintype.card F := by
+  have hq0 : prodQ (z j₀) ≠ 0 := sub_ne_zero.mpr (Ne.symm hz)
+  have hsub : (univ.filter fun Δχ : F × F =>
+        (msg Δχ.2).1 + (msg Δχ.2).2 * Δχ.1
+          = ∑ j, Δχ.2 ^ (j.val + 1) * prodKey Δχ.1 (z j) + keyOf Δχ.1 r)
+      ⊆ (univ.filter fun Δχ : F × F =>
+            ∑ j, Δχ.2 ^ (j.val + 1) * prodQ (z j) = 0)
+        ∪ (univ.filter fun Δχ : F × F =>
+            (∑ j, Δχ.2 ^ (j.val + 1) * prodQ (z j) ≠ 0)
+              ∧ (msg Δχ.2).1 + (msg Δχ.2).2 * Δχ.1
+                  = ∑ j, Δχ.2 ^ (j.val + 1) * prodKey Δχ.1 (z j) + keyOf Δχ.1 r) := by
+    intro Δχ h
+    simp only [mem_filter, mem_univ, true_and, mem_union] at h ⊢
+    by_cases hxz : ∑ j, Δχ.2 ^ (j.val + 1) * prodQ (z j) = 0
+    · exact Or.inl hxz
+    · exact Or.inr ⟨hxz, h⟩
+  refine le_trans (Finset.card_le_card hsub) (le_trans (Finset.card_union_le _ _) ?_)
+  have h1 : (univ.filter fun Δχ : F × F =>
+        ∑ j, Δχ.2 ^ (j.val + 1) * prodQ (z j) = 0).card
+      ≤ Fintype.card F * T :=
+    card_filter_prod_le_right
+      (fun Δχ : F × F => ∑ j, Δχ.2 ^ (j.val + 1) * prodQ (z j) = 0)
+      fun _ => card_scalarRlc_zero_le (fun j => prodQ (z j)) hq0
+  have h2 : (univ.filter fun Δχ : F × F =>
+        (∑ j, Δχ.2 ^ (j.val + 1) * prodQ (z j) ≠ 0)
+          ∧ (msg Δχ.2).1 + (msg Δχ.2).2 * Δχ.1
+              = ∑ j, Δχ.2 ^ (j.val + 1) * prodKey Δχ.1 (z j) + keyOf Δχ.1 r).card
+      ≤ 2 * Fintype.card F := by
+    refine card_filter_prod_le_left
+      (fun Δχ : F × F =>
+        (∑ j, Δχ.2 ^ (j.val + 1) * prodQ (z j) ≠ 0)
+          ∧ (msg Δχ.2).1 + (msg Δχ.2).2 * Δχ.1
+              = ∑ j, Δχ.2 ^ (j.val + 1) * prodKey Δχ.1 (z j) + keyOf Δχ.1 r) fun χ => ?_
+    by_cases hxz : ∑ j, χ ^ (j.val + 1) * prodQ (z j) = 0
+    · refine le_trans (le_of_eq (Finset.card_eq_zero.mpr ?_)) (Nat.zero_le 2)
+      exact Finset.filter_eq_empty_iff.mpr fun Δ _ h => h.1 hxz
+    · refine le_trans (Finset.card_le_card fun Δ hΔ => ?_)
+        (card_quadratic_solution_le_two
+          ((∑ j, χ ^ (j.val + 1) * prodA0 (z j)) + r.2 - (msg χ).1)
+          ((∑ j, χ ^ (j.val + 1) * prodA1 (z j)) + r.1 - (msg χ).2)
+          (∑ j, χ ^ (j.val + 1) * prodQ (z j)) hxz)
+      simp only [mem_filter, mem_univ, true_and] at hΔ ⊢
+      have hacc := hΔ.2
+      rw [prodKey_rlc_expand z r Δ (fun j => χ ^ (j.val + 1))] at hacc
+      linear_combination -hacc
+  calc
+    _ ≤ Fintype.card F * T + 2 * Fintype.card F := Nat.add_le_add h1 h2
+    _ = (T + 2) * Fintype.card F := by ring
+
 end VoltaZk

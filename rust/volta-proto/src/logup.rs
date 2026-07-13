@@ -3119,6 +3119,19 @@ mod tests {
     use super::*;
     use rand::{Rng, SeedableRng};
 
+    #[cfg(feature = "cuda")]
+    fn active_resident_bytes(backend: &Backend) -> u64 {
+        let live = backend.stats().unwrap().live_device_bytes;
+        let memory = backend.device_memory_breakdown().unwrap();
+        let accounted = memory
+            .workspace_bytes
+            .checked_add(memory.resident_bytes)
+            .and_then(|bytes| bytes.checked_add(memory.cached_resident_bytes))
+            .expect("resident CUDA memory accounting overflow");
+        assert_eq!(live, accounted, "resident CUDA memory categories must sum to live bytes");
+        memory.resident_bytes
+    }
+
     fn chal_pair(seed_byte: u8) -> (FpStream, FpStream) {
         let s = [seed_byte; 32];
         (FpStream::domain_separated(s, 0x1004), FpStream::domain_separated(s, 0x1004))
@@ -3843,7 +3856,7 @@ mod tests {
 
         let raw_columns: Vec<u64> =
             columns.iter().flat_map(|column| column.iter().map(|value| value.value())).collect();
-        let live_before_source = resident.stats().unwrap().live_device_bytes;
+        let resident_before_source = active_resident_bytes(&resident);
         let device_columns = resident.upload_new_device(&raw_columns).unwrap();
         resident.begin_measurement().unwrap();
         let run_resident = |backend: &mut Backend| {
@@ -3887,15 +3900,10 @@ mod tests {
         assert!(stats.operation(Operation::Logup).calls > 0);
         assert_eq!(stats.operation(Operation::Logup).cpu_residual_ns, 0);
         resident.free_device(device_columns).unwrap();
-        let live_after_source_free = resident.stats().unwrap().live_device_bytes;
         assert_eq!(
-            live_after_source_free + (raw_columns.len() * std::mem::size_of::<u64>()) as u64,
-            live_after_first,
-            "resident lookup source allocation was not released exactly once"
-        );
-        assert!(
-            live_after_source_free >= live_before_source,
-            "persistent CUDA workspace accounting moved backwards"
+            active_resident_bytes(&resident),
+            resident_before_source,
+            "resident lookup source allocation remained active after free"
         );
     }
 

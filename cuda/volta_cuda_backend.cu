@@ -2,18 +2,19 @@
 
 #include <algorithm>
 #include <array>
-#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <exception>
+#include <limits>
 #include <new>
 #include <string>
 #include <vector>
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 17;
+constexpr uint32_t ABI_VERSION = 19;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -41,37 +42,57 @@ struct RawStats {
     uint64_t d2h_ns;
     uint64_t synchronizations;
     uint64_t synchronization_ns;
+    uint64_t sync_host_output;
+    uint64_t sync_upload_lifetime;
+    uint64_t sync_timing_flush;
+    uint64_t sync_profiling_legacy;
+    uint64_t sync_allocator_flush;
     uint64_t allocation_calls;
+    uint64_t resident_alloc_requests;
+    uint64_t resident_reuse_hits;
+    uint64_t resident_free_requests;
+    uint64_t physical_free_calls;
     uint64_t live_device_bytes;
     uint64_t peak_device_bytes;
     uint32_t timing_mode;
     uint32_t reserved;
 };
 
-static_assert(sizeof(RawStats) == 160, "RawStats ABI layout changed");
+static_assert(sizeof(RawStats) == 232, "RawStats ABI layout changed");
+
+enum class SyncReason {
+    HostOutput,
+    UploadLifetime,
+    TimingFlush,
+    ProfilingLegacy,
+    AllocatorFlush,
+};
 
 struct Buffer {
     void* ptr = nullptr;
     size_t capacity = 0;
 };
 
-/// Allocation owned by a CUDA context and addressed through an opaque id.
-/// The Rust side never observes a device pointer.  Workspace slots above are
-/// still free to grow/reuse independently, so resident values cannot be
-/// invalidated by a later staged primitive.
+/// Physical allocation owned by a CUDA context and addressed through a
+/// generational opaque id while active. Inactive slots retain their physical
+/// storage for best-fit reuse. Active pointers never move.
 struct ResidentBuffer {
-    uint64_t id = 0;
     void* ptr = nullptr;
-    size_t bytes = 0;
+    size_t capacity = 0;
+    size_t logical_bytes = 0;
+    uint32_t generation = 0;
+    bool active = false;
 };
 
-std::atomic<uint64_t> next_resident_id{1};
+constexpr uint64_t RESIDENT_SLOT_MASK = std::numeric_limits<uint32_t>::max();
+constexpr uint32_t RESIDENT_GENERATION_MAX = std::numeric_limits<uint32_t>::max();
 
 struct Context {
     cudaStream_t stream = nullptr;
     cudaEvent_t events[4]{};
     Buffer buffers[BUFFER_COUNT];
     std::vector<ResidentBuffer> resident;
+    std::vector<size_t> inactive_resident;
     RawStats stats{};
     size_t twiddle_size = 0;
     uint32_t timing_mode = TIMING_CUDA_EVENTS;
@@ -80,32 +101,175 @@ struct Context {
     std::string error;
 };
 
-int fail_message(Context* c, const char* message);
+int fail_message(Context* c, const char* message) noexcept;
+
+uint64_t resident_id(size_t slot, uint32_t generation) {
+    return (static_cast<uint64_t>(generation) << 32) | (slot + 1);
+}
 
 ResidentBuffer* find_resident(Context* c, uint64_t id) {
     if (!c || id == 0) return nullptr;
-    for (auto& b : c->resident) if (b.id == id) return &b;
-    return nullptr;
+    const uint64_t encoded_slot = id & RESIDENT_SLOT_MASK;
+    const uint32_t generation = static_cast<uint32_t>(id >> 32);
+    if (encoded_slot == 0 || generation == 0) return nullptr;
+    const size_t slot = static_cast<size_t>(encoded_slot - 1);
+    if (slot >= c->resident.size()) return nullptr;
+    ResidentBuffer& b = c->resident[slot];
+    return b.active && b.generation == generation ? &b : nullptr;
 }
 
 int resident_region(
     Context* c, uint64_t id, size_t offset, size_t bytes, void** out) {
     ResidentBuffer* b = find_resident(c, id);
     if (!b) return fail_message(c, "unknown resident buffer id");
-    if (offset > b->bytes || bytes > b->bytes - offset)
+    if (offset > b->logical_bytes || bytes > b->logical_bytes - offset)
         return fail_message(c, "resident buffer region is out of bounds");
     *out = static_cast<unsigned char*>(b->ptr) + offset;
     return 0;
 }
 
-int fail(Context* c, const char* expr, cudaError_t e) {
-    if (c) c->error = std::string(expr) + ": " + cudaGetErrorString(e);
+int fail(Context* c, const char* expr, cudaError_t e) noexcept {
+    if (c) {
+        try {
+            c->error = std::string(expr) + ": " + cudaGetErrorString(e);
+        } catch (...) {
+            // A diagnostic allocation failure must not escape the C ABI.
+        }
+    }
     return e == cudaSuccess ? -1 : static_cast<int>(e);
 }
 
-int fail_message(Context* c, const char* message) {
-    if (c) c->error = message;
+int fail_message(Context* c, const char* message) noexcept {
+    if (c) {
+        try {
+            c->error = message;
+        } catch (...) {
+            // A diagnostic allocation failure must not escape the C ABI.
+        }
+    }
     return -1;
+}
+
+int fail_exception(Context* c, const char* message) noexcept {
+    if (c) {
+        try {
+            c->error = message;
+        } catch (...) {
+            // Reporting an allocation failure must itself remain noexcept.
+        }
+    }
+    return -1;
+}
+
+uint64_t& sync_reason_counter(RawStats& stats, SyncReason reason) {
+    switch (reason) {
+        case SyncReason::HostOutput: return stats.sync_host_output;
+        case SyncReason::UploadLifetime: return stats.sync_upload_lifetime;
+        case SyncReason::TimingFlush: return stats.sync_timing_flush;
+        case SyncReason::ProfilingLegacy: return stats.sync_profiling_legacy;
+        case SyncReason::AllocatorFlush: return stats.sync_allocator_flush;
+    }
+    return stats.sync_profiling_legacy;
+}
+
+uint64_t synchronization_reason_total(const RawStats& stats) {
+    return stats.sync_host_output + stats.sync_upload_lifetime +
+           stats.sync_timing_flush + stats.sync_profiling_legacy +
+           stats.sync_allocator_flush;
+}
+
+int synchronize_stream_unclassified(Context* c) {
+    const auto started = std::chrono::steady_clock::now();
+    const cudaError_t e = cudaStreamSynchronize(c->stream);
+    const auto finished = std::chrono::steady_clock::now();
+    if (e != cudaSuccess) return fail(c, "cudaStreamSynchronize(c->stream)", e);
+    ++c->stats.synchronizations;
+    c->stats.synchronization_ns +=
+        std::chrono::duration_cast<std::chrono::nanoseconds>(finished - started).count();
+    return 0;
+}
+
+int synchronize_stream(Context* c, SyncReason reason) {
+    if (synchronize_stream_unclassified(c)) return -1;
+    ++sync_reason_counter(c->stats, reason);
+    return 0;
+}
+
+int ensure_resident_slot_capacity(Context* c) {
+    if (c->resident.size() < c->resident.capacity() &&
+        c->resident.size() < c->inactive_resident.capacity())
+        return 0;
+    const size_t current = c->resident.capacity();
+    const size_t next = current == 0 ? 16 : current * 2;
+    if (next <= current || next > RESIDENT_SLOT_MASK)
+        return fail_message(c, "resident slot id space exhausted");
+    c->resident.reserve(next);
+    c->inactive_resident.reserve(next);
+    return 0;
+}
+
+size_t take_best_fit_resident(Context* c, size_t bytes) {
+    size_t best_position = std::numeric_limits<size_t>::max();
+    size_t best_capacity = std::numeric_limits<size_t>::max();
+    size_t best_slot = std::numeric_limits<size_t>::max();
+    for (size_t position = 0; position < c->inactive_resident.size(); ++position) {
+        const size_t slot = c->inactive_resident[position];
+        const ResidentBuffer& b = c->resident[slot];
+        if (b.active || !b.ptr || b.generation == RESIDENT_GENERATION_MAX ||
+            b.capacity < bytes)
+            continue;
+        if (b.capacity < best_capacity ||
+            (b.capacity == best_capacity && slot < best_slot)) {
+            best_position = position;
+            best_capacity = b.capacity;
+            best_slot = slot;
+        }
+    }
+    if (best_position == std::numeric_limits<size_t>::max()) return best_position;
+    c->inactive_resident[best_position] = c->inactive_resident.back();
+    c->inactive_resident.pop_back();
+    return best_slot;
+}
+
+size_t take_empty_resident_slot(Context* c) {
+    for (size_t position = 0; position < c->inactive_resident.size(); ++position) {
+        const size_t slot = c->inactive_resident[position];
+        const ResidentBuffer& b = c->resident[slot];
+        if (b.active || b.ptr || b.generation == RESIDENT_GENERATION_MAX) continue;
+        c->inactive_resident[position] = c->inactive_resident.back();
+        c->inactive_resident.pop_back();
+        return slot;
+    }
+    return std::numeric_limits<size_t>::max();
+}
+
+int trim_inactive_resident(Context* c) {
+    bool has_cached_allocation = false;
+    for (const size_t slot : c->inactive_resident) {
+        const ResidentBuffer& b = c->resident[slot];
+        if (!b.active && b.ptr) {
+            has_cached_allocation = true;
+            break;
+        }
+    }
+    if (!has_cached_allocation) return 0;
+
+    // Today every timed call is already a barrier, but keep allocator
+    // reclamation explicitly ordered so a later deferred timing mode cannot
+    // free storage still referenced by work on this context's stream.
+    if (synchronize_stream(c, SyncReason::AllocatorFlush)) return -1;
+    for (const size_t slot : c->inactive_resident) {
+        ResidentBuffer& b = c->resident[slot];
+        if (b.active || !b.ptr) continue;
+        const cudaError_t e = cudaFree(b.ptr);
+        if (e != cudaSuccess) return fail(c, "cudaFree(cached resident buffer)", e);
+        ++c->stats.physical_free_calls;
+        c->stats.live_device_bytes -= b.capacity;
+        b.ptr = nullptr;
+        b.capacity = 0;
+        b.logical_bytes = 0;
+    }
+    return 0;
 }
 
 #define CUDA_OR_RETURN(c, call)                                                           \
@@ -119,7 +283,9 @@ int ensure(Context* c, int slot, size_t bytes) {
     Buffer& b = c->buffers[slot];
     if (b.capacity >= bytes) return 0;
     if (b.ptr) {
+        if (synchronize_stream(c, SyncReason::AllocatorFlush)) return -1;
         CUDA_OR_RETURN(c, cudaFree(b.ptr));
+        ++c->stats.physical_free_calls;
         c->stats.live_device_bytes -= b.capacity;
         b = Buffer{};
     }
@@ -149,14 +315,13 @@ int begin_timing(Context* c) {
 
 int finish_host_phase(Context* c, int phase) {
     if (phase < 0 || phase >= 3) return fail_message(c, "invalid timing phase");
-    const auto sync_started = std::chrono::steady_clock::now();
-    CUDA_OR_RETURN(c, cudaStreamSynchronize(c->stream));
+    // The host-barrier fallback has three distinct barriers. Their causes are
+    // classified together in finish_timing once the operation's H2D/D2H
+    // shape is known, rather than mislabelling every phase as profiling.
+    if (synchronize_stream_unclassified(c)) return -1;
     const auto finished = std::chrono::steady_clock::now();
     c->phase_ns[phase] =
         std::chrono::duration_cast<std::chrono::nanoseconds>(finished - c->phase_started).count();
-    ++c->stats.synchronizations;
-    c->stats.synchronization_ns +=
-        std::chrono::duration_cast<std::chrono::nanoseconds>(finished - sync_started).count();
     c->phase_started = finished;
     return 0;
 }
@@ -204,17 +369,17 @@ int finish_timing(Context* c, int operation, uint64_t h2d, uint64_t d2h) {
     uint64_t h2d_ns = 0, kernel_ns = 0, d2h_ns = 0;
     if (c->timing_mode == TIMING_CUDA_EVENTS) {
         CUDA_OR_RETURN(c, cudaEventRecord(c->events[3], c->stream));
-        const auto s0 = std::chrono::steady_clock::now();
-        CUDA_OR_RETURN(c, cudaStreamSynchronize(c->stream));
-        const auto s1 = std::chrono::steady_clock::now();
-        ++c->stats.synchronizations;
-        c->stats.synchronization_ns +=
-            std::chrono::duration_cast<std::chrono::nanoseconds>(s1 - s0).count();
+        const SyncReason reason = d2h ? SyncReason::HostOutput
+            : (h2d ? SyncReason::UploadLifetime : SyncReason::ProfilingLegacy);
+        if (synchronize_stream(c, reason)) return -1;
         if (event_ns(c, c->events[0], c->events[1], &h2d_ns) ||
             event_ns(c, c->events[1], c->events[2], &kernel_ns) ||
             event_ns(c, c->events[2], c->events[3], &d2h_ns)) return -1;
     } else {
         if (finish_host_phase(c, 2)) return -1;
+        if (h2d) ++c->stats.sync_upload_lifetime;
+        if (d2h) ++c->stats.sync_host_output;
+        c->stats.sync_profiling_legacy += 3 - (h2d ? 1 : 0) - (d2h ? 1 : 0);
         h2d_ns = c->phase_ns[0];
         kernel_ns = c->phase_ns[1];
         d2h_ns = c->phase_ns[2];
@@ -244,22 +409,15 @@ int finish_transfer_timing(Context* c, size_t bytes, bool h2d) {
     uint64_t elapsed_ns = 0;
     if (c->timing_mode == TIMING_CUDA_EVENTS) {
         CUDA_OR_RETURN(c, cudaEventRecord(c->events[1], c->stream));
-        const auto s0 = std::chrono::steady_clock::now();
-        CUDA_OR_RETURN(c, cudaStreamSynchronize(c->stream));
-        const auto s1 = std::chrono::steady_clock::now();
-        ++c->stats.synchronizations;
-        c->stats.synchronization_ns +=
-            std::chrono::duration_cast<std::chrono::nanoseconds>(s1 - s0).count();
+        if (synchronize_stream(
+                c, h2d ? SyncReason::UploadLifetime : SyncReason::HostOutput)) return -1;
         if (event_ns(c, c->events[0], c->events[1], &elapsed_ns)) return -1;
     } else {
-        const auto s0 = std::chrono::steady_clock::now();
-        CUDA_OR_RETURN(c, cudaStreamSynchronize(c->stream));
+        if (synchronize_stream(
+                c, h2d ? SyncReason::UploadLifetime : SyncReason::HostOutput)) return -1;
         const auto s1 = std::chrono::steady_clock::now();
         elapsed_ns =
             std::chrono::duration_cast<std::chrono::nanoseconds>(s1 - c->phase_started).count();
-        ++c->stats.synchronizations;
-        c->stats.synchronization_ns +=
-            std::chrono::duration_cast<std::chrono::nanoseconds>(s1 - s0).count();
     }
     if (h2d) {
         c->stats.h2d_bytes += bytes;
@@ -1678,20 +1836,29 @@ extern "C" uint32_t volta_cuda_abi_version() { return ABI_VERSION; }
 
 extern "C" int volta_cuda_create(void** out) {
     if (!out) return -1;
-    Context* c = new (std::nothrow) Context;
-    if (!c) return -1;
-    *out = c;
-    int count = 0;
-    cudaError_t e = cudaGetDeviceCount(&count);
-    if (e != cudaSuccess) return fail(c, "cudaGetDeviceCount", e);
-    if (count < 1) return fail_message(c, "no CUDA device is available");
-    if ((e = cudaStreamCreateWithFlags(&c->stream, cudaStreamNonBlocking)) != cudaSuccess)
-        return fail(c, "cudaStreamCreateWithFlags", e);
-    for (auto& event : c->events) {
-        if ((e = cudaEventCreate(&event)) != cudaSuccess) return fail(c, "cudaEventCreate", e);
+    *out = nullptr;
+    Context* c = nullptr;
+    try {
+        c = new (std::nothrow) Context;
+        if (!c) return -1;
+        *out = c;
+        int count = 0;
+        cudaError_t e = cudaGetDeviceCount(&count);
+        if (e != cudaSuccess) return fail(c, "cudaGetDeviceCount", e);
+        if (count < 1) return fail_message(c, "no CUDA device is available");
+        if ((e = cudaStreamCreateWithFlags(&c->stream, cudaStreamNonBlocking)) != cudaSuccess)
+            return fail(c, "cudaStreamCreateWithFlags", e);
+        for (auto& event : c->events) {
+            if ((e = cudaEventCreate(&event)) != cudaSuccess)
+                return fail(c, "cudaEventCreate", e);
+        }
+        if (select_timing_mode(c)) return -1;
+        return 0;
+    } catch (const std::exception&) {
+        return fail_exception(c, "CUDA context construction threw a C++ exception");
+    } catch (...) {
+        return fail_exception(c, "CUDA context construction threw an unknown exception");
     }
-    if (select_timing_mode(c)) return -1;
-    return 0;
 }
 
 extern "C" void volta_cuda_destroy(void* raw) {
@@ -1724,54 +1891,160 @@ extern "C" int volta_cuda_reset_stats(void* raw) {
 extern "C" int volta_cuda_get_stats(void* raw, RawStats* out) {
     Context* c = static_cast<Context*>(raw);
     if (!c || !out) return -1;
+    if (synchronization_reason_total(c->stats) != c->stats.synchronizations)
+        return fail_message(c, "synchronization reason accounting mismatch");
     *out = c->stats;
     return 0;
 }
 
 extern "C" int volta_cuda_memory_breakdown(
-    void* raw, uint64_t* workspace_bytes, uint64_t* resident_bytes) {
+    void* raw, uint64_t* workspace_bytes, uint64_t* resident_bytes,
+    uint64_t* cached_resident_bytes) {
     Context* c = static_cast<Context*>(raw);
-    if (!c || !workspace_bytes || !resident_bytes)
-        return fail_message(c, "invalid memory-breakdown output");
-    uint64_t workspace = 0;
-    uint64_t resident = 0;
-    for (const auto& b : c->buffers) workspace += b.capacity;
-    for (const auto& b : c->resident) resident += b.bytes;
-    if (workspace + resident != c->stats.live_device_bytes)
-        return fail_message(c, "device-memory accounting mismatch");
-    *workspace_bytes = workspace;
-    *resident_bytes = resident;
-    return 0;
+    try {
+        if (!c || !workspace_bytes || !resident_bytes || !cached_resident_bytes)
+            return fail_message(c, "invalid memory-breakdown output");
+        uint64_t workspace = 0;
+        uint64_t resident = 0;
+        uint64_t cached = 0;
+        for (const auto& b : c->buffers) workspace += b.capacity;
+        for (const auto& b : c->resident) {
+            if (!b.ptr) continue;
+            if (b.active) resident += b.capacity;
+            else cached += b.capacity;
+        }
+        if (workspace + resident + cached != c->stats.live_device_bytes)
+            return fail_message(c, "device-memory accounting mismatch");
+        *workspace_bytes = workspace;
+        *resident_bytes = resident;
+        *cached_resident_bytes = cached;
+        return 0;
+    } catch (const std::exception&) {
+        return fail_exception(c, "device-memory accounting threw a C++ exception");
+    } catch (...) {
+        return fail_exception(c, "device-memory accounting threw an unknown exception");
+    }
+}
+
+/// Release inactive arena storage while retaining active resident handles and
+/// primitive workspaces. This is a teardown/pressure operation, never an
+/// implicit part of logical `resident_free`.
+extern "C" int volta_cuda_trim_resident_cache(void* raw) {
+    Context* c = static_cast<Context*>(raw);
+    try {
+        if (!c) return fail_message(c, "invalid resident-cache trim context");
+        return trim_inactive_resident(c);
+    } catch (const std::exception&) {
+        return fail_exception(c, "resident-cache trim threw a C++ exception");
+    } catch (...) {
+        return fail_exception(c, "resident-cache trim threw an unknown exception");
+    }
 }
 
 extern "C" int volta_cuda_resident_alloc(void* raw, size_t bytes, uint64_t* out_id) {
     Context* c = static_cast<Context*>(raw);
-    if (!c || !bytes || !out_id) return fail_message(c, "invalid resident allocation");
-    ResidentBuffer b;
-    b.id = next_resident_id.fetch_add(1, std::memory_order_relaxed);
-    if (b.id == 0) return fail_message(c, "resident buffer id space exhausted");
-    CUDA_OR_RETURN(c, cudaMalloc(&b.ptr, bytes));
-    b.bytes = bytes;
-    c->resident.push_back(b);
-    ++c->stats.allocation_calls;
-    c->stats.live_device_bytes += bytes;
-    c->stats.peak_device_bytes =
-        std::max(c->stats.peak_device_bytes, c->stats.live_device_bytes);
-    *out_id = b.id;
-    return 0;
+    try {
+        if (!c || !bytes || !out_id) return fail_message(c, "invalid resident allocation");
+        ++c->stats.resident_alloc_requests;
+
+        const size_t reused_slot = take_best_fit_resident(c, bytes);
+        if (reused_slot != std::numeric_limits<size_t>::max()) {
+            ResidentBuffer& b = c->resident[reused_slot];
+            ++b.generation;
+            b.logical_bytes = bytes;
+            b.active = true;
+            ++c->stats.resident_reuse_hits;
+            *out_id = resident_id(reused_slot, b.generation);
+            return 0;
+        }
+
+        bool has_empty_slot = false;
+        for (const size_t slot : c->inactive_resident) {
+            const ResidentBuffer& b = c->resident[slot];
+            if (!b.active && !b.ptr && b.generation != RESIDENT_GENERATION_MAX) {
+                has_empty_slot = true;
+                break;
+            }
+        }
+        if (!has_empty_slot && ensure_resident_slot_capacity(c)) return -1;
+
+        void* ptr = nullptr;
+        cudaError_t e = cudaMalloc(&ptr, bytes);
+        if (e == cudaErrorMemoryAllocation) {
+            // cudaMalloc/cudaFree are used only on arena misses or pressure.
+            // Reuse itself is host metadata and relies on this context's
+            // single-stream ordering. It does not pin storage for CUDA graphs.
+            cudaGetLastError();
+            if (trim_inactive_resident(c)) return -1;
+            e = cudaMalloc(&ptr, bytes);
+        }
+        if (e != cudaSuccess) return fail(c, "cudaMalloc(&resident, bytes)", e);
+        // Account the physical allocation at the CUDA success boundary. If
+        // the following metadata insertion were to throw, its catch records
+        // the compensating physical free and rolls live bytes back without
+        // erasing this allocation event.
+        ++c->stats.allocation_calls;
+        c->stats.live_device_bytes += bytes;
+        c->stats.peak_device_bytes =
+            std::max(c->stats.peak_device_bytes, c->stats.live_device_bytes);
+
+        size_t slot = take_empty_resident_slot(c);
+        if (slot == std::numeric_limits<size_t>::max()) {
+            ResidentBuffer b;
+            b.ptr = ptr;
+            b.capacity = bytes;
+            b.logical_bytes = bytes;
+            b.generation = 1;
+            b.active = true;
+            try {
+                c->resident.push_back(b);
+            } catch (...) {
+                const cudaError_t free_error = cudaFree(ptr);
+                if (free_error == cudaSuccess) {
+                    ++c->stats.physical_free_calls;
+                    c->stats.live_device_bytes -= bytes;
+                }
+                throw;
+            }
+            slot = c->resident.size() - 1;
+        } else {
+            ResidentBuffer& b = c->resident[slot];
+            ++b.generation;
+            b.ptr = ptr;
+            b.capacity = bytes;
+            b.logical_bytes = bytes;
+            b.active = true;
+        }
+        *out_id = resident_id(slot, c->resident[slot].generation);
+        return 0;
+    } catch (const std::exception&) {
+        return fail_exception(c, "resident allocation threw a C++ exception");
+    } catch (...) {
+        return fail_exception(c, "resident allocation threw an unknown exception");
+    }
 }
 
 extern "C" int volta_cuda_resident_free(void* raw, uint64_t id) {
     Context* c = static_cast<Context*>(raw);
-    if (!c || !id) return fail_message(c, "invalid resident free");
-    for (size_t i = 0; i < c->resident.size(); ++i) {
-        if (c->resident[i].id != id) continue;
-        CUDA_OR_RETURN(c, cudaFree(c->resident[i].ptr));
-        c->stats.live_device_bytes -= c->resident[i].bytes;
-        c->resident.erase(c->resident.begin() + i);
+    try {
+        if (!c || !id) return fail_message(c, "invalid resident free");
+        ++c->stats.resident_free_requests;
+        ResidentBuffer* b = find_resident(c, id);
+        if (!b) return fail_message(c, "unknown or stale resident buffer id");
+        const uint64_t encoded_slot = id & RESIDENT_SLOT_MASK;
+        const size_t slot = static_cast<size_t>(encoded_slot - 1);
+        // All context work is enqueued on one stream. A later user of this
+        // cached pointer is therefore ordered after its previous user. A
+        // future graph must retain its DeviceBuffers instead of freeing them.
+        c->inactive_resident.push_back(slot);
+        b->logical_bytes = 0;
+        b->active = false;
         return 0;
+    } catch (const std::exception&) {
+        return fail_exception(c, "resident free threw a C++ exception");
+    } catch (...) {
+        return fail_exception(c, "resident free threw an unknown exception");
     }
-    return fail_message(c, "unknown resident buffer id");
 }
 
 extern "C" int volta_cuda_resident_upload(

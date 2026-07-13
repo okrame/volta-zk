@@ -1,6 +1,6 @@
 #![cfg(feature = "cuda")]
 
-use volta_accel::{Backend, Operation};
+use volta_accel::{AccelError, Backend, Operation};
 use volta_field::{Fp, Fp2, FpStream};
 use volta_mac::{CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey};
 use volta_pcs::{
@@ -128,6 +128,7 @@ fn cuda_commit_and_multi_open_match_cpu_and_fault_rejects() {
 #[test]
 fn cuda_resident_commit_and_open_match_cpu_without_state_leak() {
     let Some(mut gpu) = cuda_resident() else { return };
+    let resident_bytes_before = gpu.device_memory_breakdown().unwrap().resident_bytes;
     let w: Vec<i16> =
         (0..1 << PARAMS.n_vars()).map(|i| ((i * 37 + 11) % 4001) as i16 - 2000).collect();
     let pad_seed = [0x71; 32];
@@ -161,6 +162,39 @@ fn cuda_resident_commit_and_open_match_cpu_without_state_leak() {
     gpu.begin_measurement().unwrap();
     let (commitment, pm) = commit_resident(&w, &PARAMS, pad_seed, &mut gpu).unwrap();
     assert_eq!(commitment.root, cpu_commitment.root);
+
+    // Inject a practical mid-opening failure: the transient mask commitment
+    // is built in `foreign`, then the first PCS row pass rejects `pm` because
+    // its persistent buffers belong to `gpu`. Every transient foreign handle
+    // must be reclaimed by the opening guard.
+    let mut foreign = Backend::cuda_resident()
+        .expect("a second resident context must be available for injection");
+    let foreign_bytes_before = foreign.device_memory_breakdown().unwrap().resident_bytes;
+    let mut failed_stream = CorrelationStream::new(pcg_seed);
+    let mut failed_tx = Transcript::new(tx_seed);
+    let error = match open_multi_zk_resident(
+        &pm,
+        &claims,
+        &mut failed_stream,
+        0x7500,
+        0x7501,
+        mask_seed,
+        &mut failed_tx,
+        &mut foreign,
+    ) {
+        Ok(_) => panic!("cross-context resident opening unexpectedly succeeded"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        error,
+        AccelError::InvalidInput("device buffer belongs to a different CUDA context")
+    ));
+    assert_eq!(
+        foreign.device_memory_breakdown().unwrap().resident_bytes,
+        foreign_bytes_before,
+        "failed resident opening leaked transient buffers"
+    );
+
     let run = |gpu: &mut Backend| {
         let mut stream = CorrelationStream::new(pcg_seed);
         let mut tx = Transcript::new(tx_seed);
@@ -222,10 +256,48 @@ fn cuda_resident_commit_and_open_match_cpu_without_state_leak() {
         &mut bad_tx,
     ));
 
+    let wrong_owner_error = free_resident_matrix(pm, &mut foreign).unwrap_err();
+    assert!(matches!(
+        &wrong_owner_error,
+        volta_pcs::ResidentMatrixFreeError::WrongBackend {
+            error: AccelError::InvalidInput(
+                "resident prover matrix belongs to a different CUDA context"
+            ),
+            ..
+        }
+    ));
+    let pm = wrong_owner_error
+        .into_matrix()
+        .expect("wrong-context preflight must preserve matrix ownership");
     free_resident_matrix(pm, &mut gpu).unwrap();
+    assert_eq!(
+        gpu.device_memory_breakdown().unwrap().resident_bytes,
+        resident_bytes_before,
+        "resident commitment teardown did not return to its baseline"
+    );
     let stats = gpu.finish_measurement().unwrap();
     assert!(stats.operation(Operation::PcsNtt).calls > 0);
     assert!(stats.operation(Operation::PcsRows).calls > 0);
     assert!(stats.operation(Operation::PcsMerkle).calls > 0);
     assert_eq!(stats.operation_cpu_residual_ns(), 0);
+}
+
+#[test]
+fn cuda_resident_commit_error_reclaims_partial_state() {
+    let Some(mut gpu) = cuda_resident() else { return };
+    let resident_bytes_before = gpu.device_memory_breakdown().unwrap().resident_bytes;
+    // `pad=0` passes the public parameter checks, then the empty pad upload
+    // fails after the weight buffer has already been allocated and uploaded.
+    let params = LigeroParams { row_bits: 1, col_bits: 1, pad: 0, code_bits: 1, n_queries: 0 };
+    let weights = vec![1i16, -2, 3, -4];
+    let error = match commit_resident(&weights, &params, [0x76; 32], &mut gpu) {
+        Ok(_) => panic!("zero-pad resident commitment unexpectedly succeeded"),
+        Err(error) => error,
+    };
+    assert!(matches!(error, AccelError::InvalidInput("zero or overflowing device allocation")));
+    assert_eq!(
+        gpu.device_memory_breakdown().unwrap().resident_bytes,
+        resident_bytes_before,
+        "failed resident commitment leaked its uploaded weights"
+    );
 }

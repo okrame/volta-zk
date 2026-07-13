@@ -9,6 +9,7 @@ import VoltaZk.Counting
 import VoltaZk.ZeroBatchSound
 import VoltaZk.SumcheckSound
 import VoltaZk.BlindSumcheckSound
+import VoltaZk.BatchSumcheckSound
 import VoltaZk.SumcheckMv
 import VoltaZk.KvCache
 import VoltaZk.Subfield

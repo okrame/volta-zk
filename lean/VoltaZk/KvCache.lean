@@ -35,6 +35,9 @@ unforgeability lemmas:
   `Π_ZeroBatch`; if any read claim differs from the unique logged write at its
   index, the batched opening verifies on at most `2·|F|^T` of the `|F|^(T+1)`
   verifier tapes `(Δ, χ)` — soundness error `≤ 2/|F|`, via `zeroBatch_sound`.
+* `kv_cache_sound_scalar` — the implementation-facing scalar-power format:
+  one `χ`, weights `χ^(j+1)`, and at most `(T+1)·|F|` accepting tapes
+  out of `|F|²` (soundness error upper bound `(T+1)/|F|`).
 
 Multi-session note: the session identifier is part of the index tuple, so
 cross-session replay *under one `Δ`* is covered by domain separation; sessions
@@ -185,6 +188,28 @@ theorem kv_cache_sound {I : Type*} (L : WriteLog I F) {T : ℕ}
   simp only [← keyOf_sub]
   exact zeroBatch_sound (fun j => claim j - stored j) hz msg
 
+/-- **M4 in Rust's scalar-power wire format.** This is the cache analogue of
+`kv_cache_sound`, with one verifier challenge `χ` and list weight
+`χ^(j+1)`. If one read differs from its unique logged write, at most
+`(T+1)·|F|` of the `|F|²` verifier tapes `(Δ, χ)` accept. Thus the
+soundness error is upper-bounded by `(T+1)/|F|`; the statement does not claim
+that every adversary attains this bound. -/
+theorem kv_cache_sound_scalar {I : Type*} (L : WriteLog I F) {T : ℕ}
+    (idx : Fin T → I) (stored : Fin T → F × F)
+    (hstored : ∀ j, (idx j, stored j) ∈ L.entries)
+    (claim : Fin T → F × F) {j₀ : Fin T} {w₀ : F × F}
+    (hw : (idx j₀, w₀) ∈ L.entries) (hforge : (claim j₀).1 ≠ w₀.1)
+    (msg : F → F) :
+    (univ.filter fun Δχ : F × F =>
+        msg Δχ.2 = ∑ j, Δχ.2 ^ (j.val + 1) *
+          (keyOf Δχ.1 (claim j) - keyOf Δχ.1 (stored j))).card
+      ≤ (T + 1) * Fintype.card F := by
+  have hz : (claim j₀ - stored j₀).1 ≠ 0 := by
+    rw [Prod.fst_sub, L.read_eq_of_mem (hstored j₀) hw]
+    exact sub_ne_zero.mpr hforge
+  simp only [← keyOf_sub]
+  exact zeroBatch_sound_scalar (fun j => claim j - stored j) hz msg
+
 /-- **M4 at the concrete index type** — the statement deferred as
 `Ideal.AuthenticatedCacheSound`: replay or mix-and-match across
 `(session, query, layer, head, position)` indices of the authenticated
@@ -201,5 +226,20 @@ theorem authenticated_cache_sound (L : WriteLog CacheIndex F) {T : ℕ}
           (keyOf Δχ.1 (claim j) - keyOf Δχ.1 (stored j))).card
       ≤ 2 * Fintype.card F ^ T :=
   kv_cache_sound L idx stored hstored claim hw hforge msg
+
+/-- **M4 scalar-power implementation theorem at the concrete cache index.**
+Replay or mix-and-match is checked with Rust's single-`χ` closure and has
+soundness error upper bound `(T+1)/|F|`. -/
+theorem authenticated_cache_sound_scalar (L : WriteLog CacheIndex F) {T : ℕ}
+    (idx : Fin T → CacheIndex) (stored : Fin T → F × F)
+    (hstored : ∀ j, (idx j, stored j) ∈ L.entries)
+    (claim : Fin T → F × F) {j₀ : Fin T} {w₀ : F × F}
+    (hw : (idx j₀, w₀) ∈ L.entries) (hforge : (claim j₀).1 ≠ w₀.1)
+    (msg : F → F) :
+    (univ.filter fun Δχ : F × F =>
+        msg Δχ.2 = ∑ j, Δχ.2 ^ (j.val + 1) *
+          (keyOf Δχ.1 (claim j) - keyOf Δχ.1 (stored j))).card
+      ≤ (T + 1) * Fintype.card F :=
+  kv_cache_sound_scalar L idx stored hstored claim hw hforge msg
 
 end VoltaZk

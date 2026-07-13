@@ -151,6 +151,69 @@ theorem card_linearForm_zero_le {T : ℕ} (z : Fin T → F) {j₀ : Fin T} (hz :
     · exact sub_eq_zero.mp h
     · exact absurd h hz
 
+omit [Fintype F] [DecidableEq F] in
+/-- Polynomial whose evaluation is the scalar-power RLC used by the Rust
+implementation: coefficient `z j` has weight `χ^(j+1)`. -/
+noncomputable def scalarRlcPoly {T : ℕ} (z : Fin T → F) : Polynomial F :=
+  ∑ j, Polynomial.monomial (j.val + 1) (z j)
+
+omit [Fintype F] [DecidableEq F] in
+theorem scalarRlcPoly_eval {T : ℕ} (z : Fin T → F) (χ : F) :
+    (scalarRlcPoly z).eval χ = ∑ j, χ ^ (j.val + 1) * z j := by
+  unfold scalarRlcPoly
+  rw [Polynomial.eval_finsetSum]
+  apply Finset.sum_congr rfl
+  intro j _
+  rw [Polynomial.eval_monomial]
+  exact mul_comm _ _
+
+omit [Fintype F] [DecidableEq F] in
+theorem scalarRlcPoly_ne_zero {T : ℕ} (z : Fin T → F) {j₀ : Fin T}
+    (hz : z j₀ ≠ 0) : scalarRlcPoly z ≠ 0 := by
+  intro hzero
+  have hc := congrArg (fun p : Polynomial F => p.coeff (j₀.val + 1)) hzero
+  have hc' : (∑ j : Fin T, Polynomial.monomial (j.val + 1) (z j)).coeff (j₀.val + 1) = 0 := by
+    simpa [scalarRlcPoly] using hc
+  rw [Polynomial.finsetSum_coeff] at hc'
+  simp only [Polynomial.coeff_monomial] at hc'
+  have hsum : (∑ x : Fin T, if x.val + 1 = j₀.val + 1 then z x else 0) = z j₀ := by
+    classical
+    calc
+      _ = (if j₀.val + 1 = j₀.val + 1 then z j₀ else 0) :=
+        Finset.sum_eq_single j₀ (by
+          intro b _ hne
+          simp only [ite_eq_right_iff]
+          intro heq
+          exact (hne (Fin.ext (Nat.add_right_cancel heq))).elim) (by simp)
+      _ = z j₀ := by simp
+  rw [hsum] at hc'
+  exact hz hc'
+
+omit [Fintype F] [DecidableEq F] in
+theorem scalarRlcPoly_natDegree_le {T : ℕ} (z : Fin T → F) :
+    (scalarRlcPoly z).natDegree ≤ T := by
+  unfold scalarRlcPoly
+  let f : Fin T → Polynomial F := fun j => Polynomial.monomial (j.val + 1) (z j)
+  have hsum := Polynomial.natDegree_sum_le Finset.univ f
+  refine hsum.trans ?_
+  apply Finset.sup_le
+  intro j _
+  exact (Polynomial.natDegree_monomial_le (z j)).trans (Nat.succ_le_iff.mpr j.isLt)
+
+/-- **Scalar-power RLC soundness count.** If one coefficient is nonzero,
+the one-scalar combination used in the implementation collapses on at most
+`T` challenges. This is the univariate, list-length-dependent counterpart of
+`card_linearForm_zero_le`. -/
+theorem card_scalarRlc_zero_le {T : ℕ} (z : Fin T → F) {j₀ : Fin T} (hz : z j₀ ≠ 0) :
+    (univ.filter fun χ : F => ∑ j, χ ^ (j.val + 1) * z j = 0).card ≤ T := by
+  have hne := scalarRlcPoly_ne_zero z hz
+  refine le_trans (Finset.card_le_card ?_)
+    ((card_eval_zero_le hne).trans (scalarRlcPoly_natDegree_le z))
+  intro χ hχ
+  simp only [mem_filter, mem_univ, true_and] at hχ ⊢
+  rw [scalarRlcPoly_eval]
+  exact hχ
+
 /-- **Per-round sumcheck count.** If `q r` is a polynomial family of degree
 `≤ d` that does not depend on coordinate `i` of `r`, then the event
 "`q r ≠ 0` and coordinate `i` of `r` is a root of `q r`" has at most

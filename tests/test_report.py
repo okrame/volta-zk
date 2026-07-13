@@ -37,7 +37,7 @@ def test_p7_report_selects_record_and_packed_sources():
     assert data["pcs_formula_check"]["matches_p6_measured_bytes"] is True
     assert data["baseline"]["source"].endswith("p6-2026-07-11-f72e4dd.json")
     assert data["baseline"]["cloud"]["provider"] == "Thunder Compute"
-    assert data["report_schema_version"] == 3
+    assert data["report_schema_version"] == 4
     assert data["cloud"]["instance_id"] == "tc-machineid-sha256-42069fd5fa86"
     assert data["cloud"] != data["baseline"]["cloud"]
     assert data["communication"]["packed_logits_source"].endswith("p6-2026-07-11-f72e4dd.json")
@@ -142,6 +142,11 @@ def test_p7_report_selects_record_and_packed_sources():
     assert resident["packed_response_bytes"] == 144_820_930
     assert resident["accelerator_resident_device_bytes_after_cleanup"] == 0
     assert resident["accelerator_workspace_device_bytes_after_cleanup"] == 104_988_720
+    # Schema-3 historical records predate resident-arena cache accounting.
+    assert resident["accelerator_cached_resident_device_bytes_after_cleanup"] is None
+    assert resident["accelerator_cleanup_memory_accounting_ok"] is None
+    assert resident["accelerator_cached_resident_device_bytes_after_cache_trim"] is None
+    assert resident["accelerator_cache_trim_memory_accounting_ok"] is None
     resident_same_host = data["integrated_resident"]["same_host_result"]
     assert abs(resident_same_host["proof_rho"]["prefill"] - 3707.595455551441) < 1e-9
     assert abs(resident_same_host["proof_rho"]["decode"] - 95.59733125585956) < 1e-9
@@ -212,6 +217,7 @@ def test_resident_profile_joins_only_same_host_native_anchor_and_keeps_full_acco
     raw = {
         "_mtime": 1.0,
         "_path": "benchmarks/results/resident.json",
+        "report_schema_version": 4,
         "milestone": "P7-integrated-resident",
         "git_dirty": False,
         "accepted": True,
@@ -230,18 +236,71 @@ def test_resident_profile_joins_only_same_host_native_anchor_and_keeps_full_acco
         "pcs_commit_timing": {"median_s": 0.5},
         "pcs_open_timing": {"median_s": 0.18},
         "pcs_verify_timing": {"median_s": 0.01},
+        "closure_prod_claims": 17,
+        "closure_zero_claims": 23,
+        "closure_prod_scalar_soundness_bits": 123.0,
+        "closure_zero_scalar_soundness_bits": 122.5,
+        "closure_union_scalar_soundness_bits": 121.75,
         "accelerator_witness": {"measurement_wall_s": 0.03},
         "accelerator_response_witness": {"measurement_wall_s": 0.7},
-        "accelerator_live_device_bytes_after_cleanup": 0,
-        "accelerator_workspace_device_bytes_after_cleanup": 0,
+        "accelerator_proving": {
+            "allocation_calls": 7,
+            "resident_alloc_requests": 101,
+            "resident_reuse_hits": 89,
+            "resident_free_requests": 101,
+            "physical_free_calls": 2,
+        },
+        "accelerator_live_device_bytes_after_cleanup": 30,
+        "accelerator_workspace_device_bytes_after_cleanup": 10,
         "accelerator_resident_device_bytes_after_cleanup": 0,
+        "accelerator_cached_resident_device_bytes_after_cleanup": 20,
+        "accelerator_live_device_bytes_after_cache_trim": 10,
+        "accelerator_workspace_device_bytes_after_cache_trim": 10,
+        "accelerator_resident_device_bytes_after_cache_trim": 0,
+        "accelerator_cached_resident_device_bytes_after_cache_trim": 0,
         "pcg_backend": "mock",
         "pcg_setup_comm_bytes": 0,
     }
     resident = report.integrated_resident_profiles([raw])[0]
-    assert resident["accelerator_live_device_bytes_after_cleanup"] == 0
-    assert resident["accelerator_workspace_device_bytes_after_cleanup"] == 0
+    assert resident["report_schema_version"] == 4
+    assert resident["accelerator_live_device_bytes_after_cleanup"] == 30
+    assert resident["accelerator_workspace_device_bytes_after_cleanup"] == 10
     assert resident["accelerator_resident_device_bytes_after_cleanup"] == 0
+    assert resident["accelerator_cached_resident_device_bytes_after_cleanup"] == 20
+    assert resident["accelerator_cleanup_memory_accounting_ok"] is True
+    assert resident["accelerator_live_device_bytes_after_cache_trim"] == 10
+    assert resident["accelerator_workspace_device_bytes_after_cache_trim"] == 10
+    assert resident["accelerator_resident_device_bytes_after_cache_trim"] == 0
+    assert resident["accelerator_cached_resident_device_bytes_after_cache_trim"] == 0
+    assert resident["accelerator_cache_trim_memory_accounting_ok"] is True
+    assert resident["accelerator_session"] == {
+        "allocation_calls": 7,
+        "resident_alloc_requests": 101,
+        "resident_reuse_hits": 89,
+        "resident_free_requests": 101,
+        "physical_free_calls": 2,
+    }
+    assert resident["scalar_closure_soundness"] == {
+        "prod_claims": 17,
+        "zero_claims": 23,
+        "prod_bits": 123.0,
+        "zero_bits": 122.5,
+        "union_bits": 121.75,
+    }
+
+    assert report.resident_run_of_record_eligible(resident) is True
+    invalid_schema4 = dict(resident, accelerator_cache_trim_memory_accounting_ok=False)
+    assert report.resident_run_of_record_eligible(invalid_schema4) is False
+    missing_schema4 = dict(resident)
+    missing_schema4.pop("accelerator_cleanup_memory_accounting_ok")
+    assert report.resident_run_of_record_eligible(missing_schema4) is False
+    historical_schema3 = dict(
+        resident,
+        report_schema_version=3,
+        accelerator_cleanup_memory_accounting_ok=None,
+        accelerator_cache_trim_memory_accounting_ok=None,
+    )
+    assert report.resident_run_of_record_eligible(historical_schema3) is True
 
     wrong_host = {
         "source": "wrong.json",

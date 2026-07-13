@@ -34,7 +34,8 @@ use crate::ntt::NttPlan;
 use rayon::prelude::*;
 use std::time::Instant;
 use volta_accel::{
-    AccelError, Backend, BackendKind, DeviceBuffer, DeviceMerkleTree, Fp2Repr, Operation,
+    AccelError, Backend, BackendKind, DeviceBuffer, DeviceElement, DeviceMerkleTree, Fp2Repr,
+    Operation,
 };
 use volta_field::{Fp, Fp2, FpStream};
 use volta_mac::{
@@ -96,12 +97,168 @@ pub struct ProverMatrix {
 /// Device-owned commitment state. It is intentionally distinct from
 /// [`ProverMatrix`]: no host encoded matrix or host Merkle tree exists, and
 /// callers must explicitly return it to the creating backend for cleanup.
+#[derive(Debug)]
 pub struct ResidentProverMatrix {
     pub params: LigeroParams,
     weights: DeviceBuffer<i16>,
     pads: DeviceBuffer<u64>,
     encoded: DeviceBuffer<u64>,
     tree: DeviceMerkleTree,
+}
+
+/// A wrong-backend teardown is rejected before any handle is consumed, so
+/// the caller can recover the complete matrix and retry with its owner.
+/// `Cleanup` is reserved for an unexpected backend failure after that
+/// ownership preflight; in that case cleanup remains exhaustive but may have
+/// partially released the matrix.
+#[derive(Debug)]
+pub enum ResidentMatrixFreeError {
+    WrongBackend { error: AccelError, matrix: ResidentProverMatrix },
+    Cleanup(AccelError),
+}
+
+impl ResidentMatrixFreeError {
+    pub fn into_matrix(self) -> Option<ResidentProverMatrix> {
+        match self {
+            Self::WrongBackend { matrix, .. } => Some(matrix),
+            Self::Cleanup(_) => None,
+        }
+    }
+}
+
+/// Run one cleanup action even if an earlier action already failed, retaining
+/// the first error for the caller.  Resident handles are deliberately
+/// non-Clone, so a failed free consumes that handle; the owning `Backend`
+/// remains the final fallback for a CUDA teardown failure.
+fn cleanup_step(
+    first_error: &mut Option<AccelError>,
+    cleanup: impl FnOnce() -> Result<(), AccelError>,
+) {
+    if let Err(error) = cleanup() {
+        if first_error.is_none() {
+            *first_error = Some(error);
+        }
+    }
+}
+
+fn cleanup_device_slot<T: DeviceElement>(
+    backend: &mut Backend,
+    slot: &mut Option<DeviceBuffer<T>>,
+    first_error: &mut Option<AccelError>,
+) {
+    if let Some(buffer) = slot.take() {
+        cleanup_step(first_error, || backend.free_device(buffer));
+    }
+}
+
+fn cleanup_tree_slot(
+    backend: &mut Backend,
+    slot: &mut Option<DeviceMerkleTree>,
+    first_error: &mut Option<AccelError>,
+) {
+    if let Some(tree) = slot.take() {
+        cleanup_step(first_error, || backend.free_device_merkle_tree(tree));
+    }
+}
+
+/// Transactional owner for the resident allocations made while committing.
+/// On the success path the four persistent handles are taken into
+/// `ResidentProverMatrix`; every remaining handle is otherwise released by
+/// `Drop`, including during early `?` returns.
+struct ResidentCommitGuard<'a> {
+    backend: &'a mut Backend,
+    weights: Option<DeviceBuffer<i16>>,
+    pads: Option<DeviceBuffer<u64>>,
+    messages: Option<DeviceBuffer<u64>>,
+    encoded: Option<DeviceBuffer<u64>>,
+    tree: Option<DeviceMerkleTree>,
+}
+
+impl<'a> ResidentCommitGuard<'a> {
+    fn new(backend: &'a mut Backend) -> Self {
+        Self { backend, weights: None, pads: None, messages: None, encoded: None, tree: None }
+    }
+
+    fn cleanup(&mut self) -> Result<(), AccelError> {
+        let mut first_error = None;
+        cleanup_tree_slot(self.backend, &mut self.tree, &mut first_error);
+        cleanup_device_slot(self.backend, &mut self.encoded, &mut first_error);
+        cleanup_device_slot(self.backend, &mut self.messages, &mut first_error);
+        cleanup_device_slot(self.backend, &mut self.pads, &mut first_error);
+        cleanup_device_slot(self.backend, &mut self.weights, &mut first_error);
+        first_error.map_or(Ok(()), Err)
+    }
+}
+
+impl Drop for ResidentCommitGuard<'_> {
+    fn drop(&mut self) {
+        let _ = self.cleanup();
+    }
+}
+
+/// Transactional owner for every transient allocation in one resident PCS
+/// opening. Handles are cleared as the normal path frees them; an early
+/// return releases all handles that are still registered.
+struct ResidentOpenGuard<'a> {
+    backend: &'a mut Backend,
+    mask_messages: Option<DeviceBuffer<Fp2Repr>>,
+    mask_compact: Option<DeviceBuffer<Fp2Repr>>,
+    mask_encoded: Option<DeviceBuffer<Fp2Repr>>,
+    mask_tree: Option<DeviceMerkleTree>,
+    c_device: Option<DeviceBuffer<Fp2Repr>>,
+    u_c_device: Option<DeviceBuffer<Fp2Repr>>,
+    coeff_device: Option<DeviceBuffer<Fp2Repr>>,
+    u_g_device: Option<DeviceBuffer<Fp2Repr>>,
+    indices: Option<DeviceBuffer<u32>>,
+    data_columns: Option<DeviceBuffer<u64>>,
+    mask_columns: Option<DeviceBuffer<Fp2Repr>>,
+    data_paths: Option<DeviceBuffer<u8>>,
+    mask_paths: Option<DeviceBuffer<u8>>,
+}
+
+impl<'a> ResidentOpenGuard<'a> {
+    fn new(backend: &'a mut Backend) -> Self {
+        Self {
+            backend,
+            mask_messages: None,
+            mask_compact: None,
+            mask_encoded: None,
+            mask_tree: None,
+            c_device: None,
+            u_c_device: None,
+            coeff_device: None,
+            u_g_device: None,
+            indices: None,
+            data_columns: None,
+            mask_columns: None,
+            data_paths: None,
+            mask_paths: None,
+        }
+    }
+
+    fn cleanup(&mut self) -> Result<(), AccelError> {
+        let mut first_error = None;
+        cleanup_device_slot(self.backend, &mut self.mask_paths, &mut first_error);
+        cleanup_device_slot(self.backend, &mut self.data_paths, &mut first_error);
+        cleanup_device_slot(self.backend, &mut self.mask_columns, &mut first_error);
+        cleanup_device_slot(self.backend, &mut self.data_columns, &mut first_error);
+        cleanup_device_slot(self.backend, &mut self.indices, &mut first_error);
+        cleanup_device_slot(self.backend, &mut self.u_g_device, &mut first_error);
+        cleanup_device_slot(self.backend, &mut self.coeff_device, &mut first_error);
+        cleanup_device_slot(self.backend, &mut self.u_c_device, &mut first_error);
+        cleanup_device_slot(self.backend, &mut self.c_device, &mut first_error);
+        cleanup_tree_slot(self.backend, &mut self.mask_tree, &mut first_error);
+        cleanup_device_slot(self.backend, &mut self.mask_encoded, &mut first_error);
+        cleanup_device_slot(self.backend, &mut self.mask_compact, &mut first_error);
+        cleanup_device_slot(self.backend, &mut self.mask_messages, &mut first_error);
+        first_error.map_or(Ok(()), Err)
+    }
+}
+
+impl Drop for ResidentOpenGuard<'_> {
+    fn drop(&mut self) {
+        let _ = self.cleanup();
+    }
 }
 
 fn col_bytes(col: &[Fp]) -> Vec<u8> {
@@ -159,57 +316,74 @@ pub fn commit_resident(
         })
         .collect();
     let pads_raw: Vec<u64> = pads_host.iter().map(|x| x.value()).collect();
-    let weights = backend.upload_new_device(w)?;
-    let pads = match backend.upload_new_device(&pads_raw) {
-        Ok(pads) => pads,
-        Err(error) => {
-            let _ = backend.free_device(weights);
-            return Err(error);
-        }
-    };
-    let messages =
-        match backend.pcs_messages_device(&weights, 0, &pads, 0, rows, cols, pad, code_len) {
-            Ok(messages) => messages,
-            Err(error) => {
-                let _ = backend.free_device(pads);
-                let _ = backend.free_device(weights);
-                return Err(error);
-            }
-        };
-    let encoded = match backend.ntt_fp_batch_device(&messages, 0, rows, code_len) {
-        Ok(encoded) => encoded,
-        Err(error) => {
-            let _ = backend.free_device(messages);
-            let _ = backend.free_device(pads);
-            let _ = backend.free_device(weights);
-            return Err(error);
-        }
-    };
-    backend.free_device(messages)?;
-    let tree = match backend.hash_fp_tree_device(&encoded, rows, code_len) {
-        Ok(tree) => tree,
-        Err(error) => {
-            let _ = backend.free_device(encoded);
-            let _ = backend.free_device(pads);
-            let _ = backend.free_device(weights);
-            return Err(error);
-        }
-    };
-    let root = backend.merkle_root_device(&tree)?;
+    let mut resident = ResidentCommitGuard::new(backend);
+    resident.weights = Some(resident.backend.upload_new_device(w)?);
+    resident.pads = Some(resident.backend.upload_new_device(&pads_raw)?);
+    resident.messages = Some(resident.backend.pcs_messages_device(
+        resident.weights.as_ref().expect("resident weights registered"),
+        0,
+        resident.pads.as_ref().expect("resident pads registered"),
+        0,
+        rows,
+        cols,
+        pad,
+        code_len,
+    )?);
+    resident.encoded = Some(resident.backend.ntt_fp_batch_device(
+        resident.messages.as_ref().expect("resident messages registered"),
+        0,
+        rows,
+        code_len,
+    )?);
+    resident
+        .backend
+        .free_device(resident.messages.take().expect("resident messages registered"))?;
+    resident.tree = Some(resident.backend.hash_fp_tree_device(
+        resident.encoded.as_ref().expect("resident encoding registered"),
+        rows,
+        code_len,
+    )?);
+    let root = resident
+        .backend
+        .merkle_root_device(resident.tree.as_ref().expect("resident tree registered"))?;
+    let weights = resident.weights.take().expect("resident weights registered");
+    let pads = resident.pads.take().expect("resident pads registered");
+    let encoded = resident.encoded.take().expect("resident encoding registered");
+    let tree = resident.tree.take().expect("resident tree registered");
     Ok((
         Commitment { root },
         ResidentProverMatrix { params: *params, weights, pads, encoded, tree },
     ))
 }
 
+/// Release every allocation owned by a resident commitment. All components
+/// are attempted even after a failure; the first cleanup error is returned.
 pub fn free_resident_matrix(
     pm: ResidentProverMatrix,
     backend: &mut Backend,
-) -> Result<(), AccelError> {
-    backend.free_device_merkle_tree(pm.tree)?;
-    backend.free_device(pm.encoded)?;
-    backend.free_device(pm.pads)?;
-    backend.free_device(pm.weights)
+) -> Result<(), ResidentMatrixFreeError> {
+    let owned = pm.weights.is_owned_by(backend)
+        && pm.pads.is_owned_by(backend)
+        && pm.encoded.is_owned_by(backend)
+        && pm.tree.is_owned_by(backend);
+    if !owned {
+        return Err(ResidentMatrixFreeError::WrongBackend {
+            error: AccelError::InvalidInput(
+                "resident prover matrix belongs to a different CUDA context",
+            ),
+            matrix: pm,
+        });
+    }
+    let ResidentProverMatrix { params: _, weights, pads, encoded, tree } = pm;
+    let mut resident = ResidentCommitGuard {
+        backend,
+        weights: Some(weights),
+        pads: Some(pads),
+        messages: None,
+        encoded: Some(encoded),
+        tree: Some(tree),
+    };
+    resident.cleanup().map_err(ResidentMatrixFreeError::Cleanup)
 }
 
 fn commit_impl(
@@ -808,6 +982,7 @@ pub fn open_multi_zk_resident(
     }
     let geoms: Vec<ClaimGeom> = claims.iter().map(|(claim, _)| claim_geom(params, claim)).collect();
     let mut tm = MultiOpenTimings::default();
+    let mut resident = ResidentOpenGuard::new(backend);
 
     // 1. Fresh mask rows. Generation remains deterministic host setup in this
     // checkpoint; padded rows, NTT and the complete mask Merkle tree are
@@ -828,12 +1003,25 @@ pub fn open_multi_zk_resident(
         mask_padded[row * code_len..row * code_len + msg_len].copy_from_slice(&raw);
         mask_compact.extend_from_slice(&raw);
     }
-    let mask_messages = backend.upload_new_device(&mask_padded)?;
-    let mask_compact_device = backend.upload_new_device(&mask_compact)?;
-    let mask_encoded = backend.ntt_fp2_batch_device(&mask_messages, 0, mask_rows, code_len)?;
-    backend.free_device(mask_messages)?;
-    let mask_tree = backend.hash_fp2_tree_device(&mask_encoded, mask_rows, code_len)?;
-    let mask_root = backend.merkle_root_device(&mask_tree)?;
+    resident.mask_messages = Some(resident.backend.upload_new_device(&mask_padded)?);
+    resident.mask_compact = Some(resident.backend.upload_new_device(&mask_compact)?);
+    resident.mask_encoded = Some(resident.backend.ntt_fp2_batch_device(
+        resident.mask_messages.as_ref().expect("resident mask messages registered"),
+        0,
+        mask_rows,
+        code_len,
+    )?);
+    resident
+        .backend
+        .free_device(resident.mask_messages.take().expect("resident mask messages registered"))?;
+    resident.mask_tree = Some(resident.backend.hash_fp2_tree_device(
+        resident.mask_encoded.as_ref().expect("resident mask encoding registered"),
+        mask_rows,
+        code_len,
+    )?);
+    let mask_root = resident
+        .backend
+        .merkle_root_device(resident.mask_tree.as_ref().expect("resident mask tree registered"))?;
     tx.append("pcs_mask_root", 32);
     tm.t_masks_s = t0.elapsed().as_secs_f64();
 
@@ -847,24 +1035,40 @@ pub fn open_multi_zk_resident(
     }
     let t1 = Instant::now();
     let c_raw: Vec<Fp2Repr> = c_pows.iter().copied().map(Fp2Repr::from).collect();
-    let c_device = backend.upload_new_device(&c_raw)?;
-    let u_c_device = backend.pcs_combine_rows_device(
+    resident.c_device = Some(resident.backend.upload_new_device(&c_raw)?);
+    resident.u_c_device = Some(resident.backend.pcs_combine_rows_device(
         &pm.weights,
         0,
         &pm.pads,
         0,
-        &c_device,
+        resident.c_device.as_ref().expect("resident c powers registered"),
         0,
         rows,
         cols,
         params.pad,
         1,
+    )?);
+    resident.backend.fp2_add_inplace_device(
+        resident.u_c_device.as_ref().expect("resident u_c registered"),
+        0,
+        resident.mask_compact.as_ref().expect("resident compact masks registered"),
+        0,
+        msg_len,
     )?;
-    backend.fp2_add_inplace_device(&u_c_device, 0, &mask_compact_device, 0, msg_len)?;
-    let u_c: Vec<Fp2> =
-        backend.download_device(&u_c_device, 0, msg_len)?.into_iter().map(Into::into).collect();
-    backend.free_device(u_c_device)?;
-    backend.free_device(c_device)?;
+    let u_c: Vec<Fp2> = resident
+        .backend
+        .download_device(
+            resident.u_c_device.as_ref().expect("resident u_c registered"),
+            0,
+            msg_len,
+        )?
+        .into_iter()
+        .map(Into::into)
+        .collect();
+    resident.backend.free_device(resident.u_c_device.take().expect("resident u_c registered"))?;
+    resident
+        .backend
+        .free_device(resident.c_device.take().expect("resident c powers registered"))?;
     tm.t_global_pass_s = t1.elapsed().as_secs_f64();
 
     // 3. All block-local claim combinations in one resident pass.
@@ -875,35 +1079,44 @@ pub fn open_multi_zk_resident(
             .copy_from_slice(&geo.q_row);
     }
     let coeff_raw: Vec<Fp2Repr> = coeffs.into_iter().map(Fp2Repr::from).collect();
-    let coeff_device = backend.upload_new_device(&coeff_raw)?;
-    let u_g_device = backend.pcs_combine_rows_device(
+    resident.coeff_device = Some(resident.backend.upload_new_device(&coeff_raw)?);
+    resident.u_g_device = Some(resident.backend.pcs_combine_rows_device(
         &pm.weights,
         0,
         &pm.pads,
         0,
-        &coeff_device,
+        resident.coeff_device.as_ref().expect("resident coefficients registered"),
         0,
         rows,
         cols,
         params.pad,
         n_claims,
-    )?;
-    backend.fp2_add_inplace_device(
-        &u_g_device,
+    )?);
+    resident.backend.fp2_add_inplace_device(
+        resident.u_g_device.as_ref().expect("resident u_g registered"),
         0,
-        &mask_compact_device,
+        resident.mask_compact.as_ref().expect("resident compact masks registered"),
         msg_len,
         n_claims * msg_len,
     )?;
-    let u_g_flat: Vec<Fp2> = backend
-        .download_device(&u_g_device, 0, n_claims * msg_len)?
+    let u_g_flat: Vec<Fp2> = resident
+        .backend
+        .download_device(
+            resident.u_g_device.as_ref().expect("resident u_g registered"),
+            0,
+            n_claims * msg_len,
+        )?
         .into_iter()
         .map(Into::into)
         .collect();
     let u_gs: Vec<Vec<Fp2>> = u_g_flat.chunks_exact(msg_len).map(|row| row.to_vec()).collect();
-    backend.free_device(u_g_device)?;
-    backend.free_device(coeff_device)?;
-    backend.free_device(mask_compact_device)?;
+    resident.backend.free_device(resident.u_g_device.take().expect("resident u_g registered"))?;
+    resident
+        .backend
+        .free_device(resident.coeff_device.take().expect("resident coefficients registered"))?;
+    resident
+        .backend
+        .free_device(resident.mask_compact.take().expect("resident compact masks registered"))?;
     tx.append("pcs_u_vectors", 16 * (msg_len * (n_claims + 1)) as u64);
     tm.t_block_passes_s = t2.elapsed().as_secs_f64();
 
@@ -933,28 +1146,62 @@ pub fn open_multi_zk_resident(
     let js: Vec<usize> =
         (0..params.n_queries).map(|_| tx.challenge_fp2().c0.value() as usize % code_len).collect();
     let indices_raw: Vec<u32> = js.iter().map(|&j| j as u32).collect();
-    let indices = backend.upload_new_device(&indices_raw)?;
-    let data_columns_device =
-        backend.pcs_gather_fp_device(&pm.encoded, rows, code_len, &indices, js.len())?;
-    let mask_columns_device =
-        backend.pcs_gather_fp2_device(&mask_encoded, mask_rows, code_len, &indices, js.len())?;
-    let data_paths_device = backend.merkle_paths_device(&pm.tree, &indices, js.len())?;
-    let mask_paths_device = backend.merkle_paths_device(&mask_tree, &indices, js.len())?;
-    let data_columns: Vec<Fp> = backend
-        .download_device(&data_columns_device, 0, js.len() * rows)?
+    resident.indices = Some(resident.backend.upload_new_device(&indices_raw)?);
+    resident.data_columns = Some(resident.backend.pcs_gather_fp_device(
+        &pm.encoded,
+        rows,
+        code_len,
+        resident.indices.as_ref().expect("resident query indices registered"),
+        js.len(),
+    )?);
+    resident.mask_columns = Some(resident.backend.pcs_gather_fp2_device(
+        resident.mask_encoded.as_ref().expect("resident mask encoding registered"),
+        mask_rows,
+        code_len,
+        resident.indices.as_ref().expect("resident query indices registered"),
+        js.len(),
+    )?);
+    resident.data_paths = Some(resident.backend.merkle_paths_device(
+        &pm.tree,
+        resident.indices.as_ref().expect("resident query indices registered"),
+        js.len(),
+    )?);
+    resident.mask_paths = Some(resident.backend.merkle_paths_device(
+        resident.mask_tree.as_ref().expect("resident mask tree registered"),
+        resident.indices.as_ref().expect("resident query indices registered"),
+        js.len(),
+    )?);
+    let data_columns: Vec<Fp> = resident
+        .backend
+        .download_device(
+            resident.data_columns.as_ref().expect("resident data columns registered"),
+            0,
+            js.len() * rows,
+        )?
         .into_iter()
         .map(Fp::new)
         .collect();
-    let mask_columns: Vec<Fp2> = backend
-        .download_device(&mask_columns_device, 0, js.len() * mask_rows)?
+    let mask_columns: Vec<Fp2> = resident
+        .backend
+        .download_device(
+            resident.mask_columns.as_ref().expect("resident mask columns registered"),
+            0,
+            js.len() * mask_rows,
+        )?
         .into_iter()
         .map(Into::into)
         .collect();
     let path_len = params.code_bits as usize;
-    let data_path_bytes =
-        backend.download_device(&data_paths_device, 0, js.len() * path_len * 32)?;
-    let mask_path_bytes =
-        backend.download_device(&mask_paths_device, 0, js.len() * path_len * 32)?;
+    let data_path_bytes = resident.backend.download_device(
+        resident.data_paths.as_ref().expect("resident data paths registered"),
+        0,
+        js.len() * path_len * 32,
+    )?;
+    let mask_path_bytes = resident.backend.download_device(
+        resident.mask_paths.as_ref().expect("resident mask paths registered"),
+        0,
+        js.len() * path_len * 32,
+    )?;
     let decode_path = |bytes: &[u8], query: usize| -> Vec<Hash> {
         (0..path_len)
             .map(|level| {
@@ -974,13 +1221,27 @@ pub fn open_multi_zk_resident(
             mask_path: decode_path(&mask_path_bytes, q),
         })
         .collect();
-    backend.free_device(mask_paths_device)?;
-    backend.free_device(data_paths_device)?;
-    backend.free_device(mask_columns_device)?;
-    backend.free_device(data_columns_device)?;
-    backend.free_device(indices)?;
-    backend.free_device_merkle_tree(mask_tree)?;
-    backend.free_device(mask_encoded)?;
+    resident
+        .backend
+        .free_device(resident.mask_paths.take().expect("resident mask paths registered"))?;
+    resident
+        .backend
+        .free_device(resident.data_paths.take().expect("resident data paths registered"))?;
+    resident
+        .backend
+        .free_device(resident.mask_columns.take().expect("resident mask columns registered"))?;
+    resident
+        .backend
+        .free_device(resident.data_columns.take().expect("resident data columns registered"))?;
+    resident
+        .backend
+        .free_device(resident.indices.take().expect("resident query indices registered"))?;
+    resident.backend.free_device_merkle_tree(
+        resident.mask_tree.take().expect("resident mask tree registered"),
+    )?;
+    resident
+        .backend
+        .free_device(resident.mask_encoded.take().expect("resident mask encoding registered"))?;
     let col_b: u64 = columns
         .iter()
         .map(|column| {
@@ -1274,4 +1535,35 @@ pub fn verify_multi_open(
         true
     });
     ok
+}
+
+#[cfg(test)]
+mod cleanup_tests {
+    use super::*;
+
+    #[test]
+    fn cleanup_step_runs_every_action_and_retains_first_error() {
+        let mut first_error = None;
+        let mut ran = Vec::new();
+        cleanup_step(&mut first_error, || {
+            ran.push(1);
+            Err(AccelError::InvalidInput("first cleanup failure"))
+        });
+        cleanup_step(&mut first_error, || {
+            ran.push(2);
+            Ok(())
+        });
+        cleanup_step(&mut first_error, || {
+            ran.push(3);
+            Err(AccelError::InvalidInput("later cleanup failure"))
+        });
+
+        assert_eq!(ran, vec![1, 2, 3]);
+        match first_error {
+            Some(AccelError::InvalidInput(message)) => {
+                assert_eq!(message, "first cleanup failure")
+            }
+            _ => panic!("cleanup must retain its first error"),
+        }
+    }
 }

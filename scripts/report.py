@@ -785,6 +785,27 @@ def integrated_accelerator_profiles(
             continue
         if not r.get("accepted") or r.get("accelerator_backend") != backend:
             continue
+        cleanup_live = r.get("accelerator_live_device_bytes_after_cleanup")
+        cleanup_workspace = r.get("accelerator_workspace_device_bytes_after_cleanup")
+        cleanup_resident = r.get("accelerator_resident_device_bytes_after_cleanup")
+        cleanup_cached = r.get("accelerator_cached_resident_device_bytes_after_cleanup")
+        cleanup_values = (cleanup_live, cleanup_workspace, cleanup_resident, cleanup_cached)
+        cleanup_accounting_ok = (
+            None
+            if any(value is None for value in cleanup_values)
+            else cleanup_resident == 0
+            and cleanup_live == cleanup_workspace + cleanup_cached
+        )
+        trimmed_live = r.get("accelerator_live_device_bytes_after_cache_trim")
+        trimmed_workspace = r.get("accelerator_workspace_device_bytes_after_cache_trim")
+        trimmed_resident = r.get("accelerator_resident_device_bytes_after_cache_trim")
+        trimmed_cached = r.get("accelerator_cached_resident_device_bytes_after_cache_trim")
+        trimmed_values = (trimmed_live, trimmed_workspace, trimmed_resident, trimmed_cached)
+        cache_trim_accounting_ok = (
+            None
+            if any(value is None for value in trimmed_values)
+            else trimmed_resident == 0 and trimmed_cached == 0 and trimmed_live == trimmed_workspace
+        )
         rows.append(
             {
                 "_mtime": r["_mtime"],
@@ -846,6 +867,13 @@ def integrated_accelerator_profiles(
                 "pcs_open_timing": r.get("pcs_open_timing"),
                 "pcs_verify_timing": r.get("pcs_verify_timing"),
                 "verify_response_timing": r.get("verify_response_timing"),
+                "scalar_closure_soundness": {
+                    "prod_claims": r.get("closure_prod_claims"),
+                    "zero_claims": r.get("closure_zero_claims"),
+                    "prod_bits": r.get("closure_prod_scalar_soundness_bits"),
+                    "zero_bits": r.get("closure_zero_scalar_soundness_bits"),
+                    "union_bits": r.get("closure_union_scalar_soundness_bits"),
+                },
                 "accelerator_witness": r.get("accelerator_witness"),
                 "accelerator_response_witness": r.get("accelerator_response_witness"),
                 "accelerator_prefill": r.get("accelerator_prefill_proving"),
@@ -859,6 +887,15 @@ def integrated_accelerator_profiles(
                 "accelerator_resident_device_bytes_after_cleanup": r.get(
                     "accelerator_resident_device_bytes_after_cleanup"
                 ),
+                "accelerator_cached_resident_device_bytes_after_cleanup": r.get(
+                    "accelerator_cached_resident_device_bytes_after_cleanup"
+                ),
+                "accelerator_cleanup_memory_accounting_ok": cleanup_accounting_ok,
+                "accelerator_live_device_bytes_after_cache_trim": trimmed_live,
+                "accelerator_workspace_device_bytes_after_cache_trim": trimmed_workspace,
+                "accelerator_resident_device_bytes_after_cache_trim": trimmed_resident,
+                "accelerator_cached_resident_device_bytes_after_cache_trim": trimmed_cached,
+                "accelerator_cache_trim_memory_accounting_ok": cache_trim_accounting_ok,
                 "peak_rss_gb": r.get("peak_rss_gb"),
                 "corr_sub_corrs": r.get("corr_sub_corrs"),
                 "corr_full_corrs": r.get("corr_full_corrs"),
@@ -886,6 +923,18 @@ def integrated_resident_profiles(results: list[dict[str, Any]]) -> list[dict[str
         results,
         {"P7-integrated-resident", "P7-integrated-resident-quick"},
         "cuda-resident",
+    )
+
+
+def resident_run_of_record_eligible(row: dict[str, Any]) -> bool:
+    """Require schema-4 arena invariants while retaining historical schema-3 records."""
+    if row.get("milestone") != "P7-integrated-resident" or row.get("git_dirty", True):
+        return False
+    if (row.get("report_schema_version") or 0) < 4:
+        return True
+    return (
+        row.get("accelerator_cleanup_memory_accounting_ok") is True
+        and row.get("accelerator_cache_trim_memory_accounting_ok") is True
     )
 
 
@@ -1095,7 +1144,7 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
     full_gpu_resident = [
         r
         for r in gpu_resident
-        if r["milestone"] == "P7-integrated-resident" and not r.get("git_dirty", True)
+        if resident_run_of_record_eligible(r)
     ]
     gpu_resident_record = full_gpu_resident[-1] if full_gpu_resident else None
     shape_memory = shape_memory_profiles(results)
@@ -1173,7 +1222,7 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
     }
 
     report = {
-        "report_schema_version": 3 if gpu_resident_record else 2,
+        "report_schema_version": 4 if gpu_resident_record else 2,
         "milestone": "P7",
         "date": _dt.date.today().isoformat(),
         "git_sha": git(["rev-parse", "--short", "HEAD"]),
@@ -1574,6 +1623,10 @@ def print_summary(report: dict[str, Any]) -> None:
     resident = report.get("integrated_resident", {}).get("run_of_record")
     resident_rho = report.get("integrated_resident", {}).get("same_host_result")
     if resident:
+        cached_resident = resident.get("accelerator_cached_resident_device_bytes_after_cleanup")
+        cached_resident_text = "n/a (schema<4)" if cached_resident is None else f"{cached_resident} B"
+        trimmed_cached = resident.get("accelerator_cached_resident_device_bytes_after_cache_trim")
+        trimmed_cached_text = "n/a (schema<4)" if trimmed_cached is None else f"{trimmed_cached} B"
         print("Integrated CUDA-resident prover")
         print(
             f"  proof core prefill={resident['prove_prefill_s']:.3f}s; "
@@ -1586,10 +1639,21 @@ def print_summary(report: dict[str, Any]) -> None:
             f"packed={mb(resident['packed_response_bytes']):.2f} MB; "
             f"workspace after cleanup="
             f"{resident['accelerator_workspace_device_bytes_after_cleanup']} B; "
+            f"cached resident after cleanup={cached_resident_text}; "
             f"explicit resident after cleanup="
-            f"{resident['accelerator_resident_device_bytes_after_cleanup']} B "
+            f"{resident['accelerator_resident_device_bytes_after_cleanup']} B; "
+            f"cached resident after trim={trimmed_cached_text} "
             f"{resident['source']}"
         )
+        accelerator_session = resident.get("accelerator_session") or {}
+        if "resident_alloc_requests" in accelerator_session:
+            print(
+                f"  allocator: physical malloc={accelerator_session['allocation_calls']}; "
+                f"logical alloc={accelerator_session['resident_alloc_requests']}; "
+                f"reuse hits={accelerator_session['resident_reuse_hits']}; "
+                f"logical free={accelerator_session['resident_free_requests']}; "
+                f"physical free={accelerator_session['physical_free_calls']}"
+            )
         if resident_rho:
             measured = resident_rho["proof_rho"]
             print(

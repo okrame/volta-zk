@@ -272,6 +272,19 @@ instance accepts.instDecidable [DecidableEq F] (hn : 0 < n) (A : MaliciousProver
     Decidable (accepts hn A L Δ r χ) := by
   unfold accepts; infer_instance
 
+/-- Implementation acceptance predicate: one scalar `χ` expands to the
+power weights `χ^(j+1)` used by Rust's `zero_batch_*`. -/
+def acceptsScalar (hn : 0 < n) (A : MaliciousProver F n d ι)
+    (L : (Fin n → F) → ι → F) (Δ : F) (r : Fin n → F) (χ : F) : Prop :=
+  A.final r (fun j => χ ^ (j.val + 1))
+    = ∑ j : Fin (n + 1), χ ^ (j.val + 1) * (claimAt hn A L Δ r (j : ℕ)).k
+
+instance acceptsScalar.instDecidable [DecidableEq F] (hn : 0 < n)
+    (A : MaliciousProver F n d ι) (L : (Fin n → F) → ι → F)
+    (Δ : F) (r : Fin n → F) (χ : F) : Decidable (acceptsScalar hn A L Δ r χ) := by
+  unfold acceptsScalar
+  infer_instance
+
 /-- Rotation of a triple product, used to slice the sample space along the
 middle (challenge-vector) component. -/
 def prodRotate (α β γ : Type*) : α × β × γ ≃ β × α × γ where
@@ -376,5 +389,100 @@ theorem blind_sumcheck_sound [Fintype F] [DecidableEq F] (hn : 0 < n)
     rw [pow_add]
     ring
   rw [hpow1, hpow2, add_mul]
+
+/-- **Scalar-power blind-sumcheck soundness (Rust implementation).** The
+one-scalar batching format trades the vector-RLC constant for the explicit
+list-length term: the bad-tape count is
+`(Σ dᵢ + n + 2)·|F|^(n+1)` out of `|F|^(n+2)`, hence error
+`≤ (Σ dᵢ + n + 2)/|F|`. -/
+theorem blind_sumcheck_sound_scalar [Fintype F] [DecidableEq F] (hn : 0 < n)
+    (A : MaliciousProver F n d ι) (L : (Fin n → F) → ι → F) (TR : TrueRounds F n d)
+    (hfin : TR.finalEval = openEval A L) (hσ : A.σ₀ ≠ TR.total) :
+    (univ.filter fun Ω : F × (Fin n → F) × F =>
+        acceptsScalar hn A L Ω.1 Ω.2.1 Ω.2.2).card
+      ≤ (Finset.sum (Finset.range n) d + (n + 2)) * Fintype.card F ^ (n + 1) := by
+  have hsub : (univ.filter fun Ω : F × (Fin n → F) × F =>
+        acceptsScalar hn A L Ω.1 Ω.2.1 Ω.2.2)
+      ⊆ (univ.filter fun Ω : F × (Fin n → F) × F =>
+          ∀ j : Fin (n + 1), (claimAt hn A L 0 Ω.2.1 (j : ℕ)).x = 0)
+        ∪ (univ.filter fun Ω : F × (Fin n → F) × F =>
+            (∃ j : Fin (n + 1), (claimAt hn A L 0 Ω.2.1 (j : ℕ)).x ≠ 0)
+              ∧ acceptsScalar hn A L Ω.1 Ω.2.1 Ω.2.2) := by
+    intro Ω hΩ
+    simp only [mem_filter, mem_univ, true_and, mem_union] at hΩ ⊢
+    by_cases hall : ∀ j : Fin (n + 1), (claimAt hn A L 0 Ω.2.1 (j : ℕ)).x = 0
+    · exact Or.inl hall
+    · push Not at hall
+      exact Or.inr ⟨hall, hΩ⟩
+  refine le_trans (Finset.card_le_card hsub) (le_trans (Finset.card_union_le _ _) ?_)
+  have hE2 : (univ.filter fun Ω : F × (Fin n → F) × F =>
+        ∀ j : Fin (n + 1), (claimAt hn A L 0 Ω.2.1 (j : ℕ)).x = 0).card
+      ≤ Fintype.card F *
+          ((∑ i ∈ Finset.range n, d i) * Fintype.card F ^ (n - 1) * Fintype.card F) := by
+    refine card_filter_prod_le_right
+      (fun Ω : F × (Fin n → F) × F =>
+        ∀ j : Fin (n + 1), (claimAt hn A L 0 Ω.2.1 (j : ℕ)).x = 0) fun Δ => ?_
+    refine card_filter_prod_le_left
+      (fun rχ : (Fin n → F) × F =>
+        ∀ j : Fin (n + 1), (claimAt hn A L 0 rχ.1 (j : ℕ)).x = 0) fun χ => ?_
+    refine le_trans (Finset.card_le_card fun r hr => ?_)
+      (card_deviation_le (roundPoly A) TR.g
+        (fun i pre => natDegree_roundPoly_le A i pre) (fun i pre => TR.deg_le i pre))
+    simp only [mem_filter, mem_univ, true_and] at hr ⊢
+    have hacc : clearAccepts hn (roundPoly A) A.σ₀ TR.finalEval r := by
+      rw [hfin]
+      exact clear_of_claims_zero hn A L r hr
+    exact exists_deviation hn (roundPoly A) TR hacc hσ
+  have hE1 : (univ.filter fun Ω : F × (Fin n → F) × F =>
+        (∃ j : Fin (n + 1), (claimAt hn A L 0 Ω.2.1 (j : ℕ)).x ≠ 0)
+          ∧ acceptsScalar hn A L Ω.1 Ω.2.1 Ω.2.2).card
+      ≤ Fintype.card (Fin n → F) * ((n + 2) * Fintype.card F) := by
+    rw [← card_filter_equiv (prodRotate F (Fin n → F) F)
+      (fun Ω : F × (Fin n → F) × F =>
+        (∃ j : Fin (n + 1), (claimAt hn A L 0 Ω.2.1 (j : ℕ)).x ≠ 0)
+          ∧ acceptsScalar hn A L Ω.1 Ω.2.1 Ω.2.2)]
+    refine card_filter_prod_le_right
+      (fun w : (Fin n → F) × F × F =>
+        (∃ j : Fin (n + 1),
+          (claimAt hn A L 0 ((prodRotate F (Fin n → F) F).symm w).2.1 (j : ℕ)).x ≠ 0)
+          ∧ acceptsScalar hn A L ((prodRotate F (Fin n → F) F).symm w).1
+              ((prodRotate F (Fin n → F) F).symm w).2.1
+              ((prodRotate F (Fin n → F) F).symm w).2.2) fun r => ?_
+    by_cases hex : ∃ j : Fin (n + 1), (claimAt hn A L 0 r (j : ℕ)).x ≠ 0
+    · obtain ⟨j₀, hj₀⟩ := hex
+      refine le_trans (Finset.card_le_card
+        (t := univ.filter fun Δχ : F × F =>
+          A.final r (fun j => Δχ.2 ^ (j.val + 1))
+            = ∑ j : Fin (n + 1), Δχ.2 ^ (j.val + 1) *
+                keyOf Δχ.1
+                  ((claimAt hn A L 0 r (j : ℕ)).x, (claimAt hn A L 0 r (j : ℕ)).m))
+        fun Δχ hΔχ => ?_) ?_
+      · simp only [mem_filter, mem_univ, true_and, prodRotate_symm_apply] at hΔχ ⊢
+        have hacc := hΔχ.2
+        unfold acceptsScalar at hacc
+        rw [hacc]
+        exact Finset.sum_congr rfl fun j _ => by rw [claimAt_k_eq_keyOf]
+      · simpa [Nat.add_assoc] using
+          (zeroBatch_sound_scalar
+            (fun j : Fin (n + 1) =>
+              ((claimAt hn A L 0 r (j : ℕ)).x, (claimAt hn A L 0 r (j : ℕ)).m))
+            (j₀ := j₀) hj₀ (fun χ => A.final r (fun j => χ ^ (j.val + 1))))
+    · refine le_trans (le_of_eq (Finset.card_eq_zero.mpr ?_)) (Nat.zero_le _)
+      refine Finset.filter_eq_empty_iff.mpr fun Δχ _ h => ?_
+      simp only [prodRotate_symm_apply] at h
+      exact hex h.1
+  refine le_trans (Nat.add_le_add hE2 hE1) ?_
+  rw [Fintype.card_fun, Fintype.card_fin]
+  have hpow1 : Fintype.card F *
+      ((∑ i ∈ Finset.range n, d i) * Fintype.card F ^ (n - 1) * Fintype.card F)
+      = (∑ i ∈ Finset.range n, d i) * Fintype.card F ^ (n + 1) := by
+    rw [show n + 1 = 1 + ((n - 1) + 1) from by omega, pow_add, pow_add, pow_one]
+    ring
+  have hpow2 : Fintype.card F ^ n * ((n + 2) * Fintype.card F)
+      = (n + 2) * Fintype.card F ^ (n + 1) := by
+    rw [pow_succ]
+    ring
+  rw [hpow1, hpow2]
+  conv_rhs => rw [add_mul]
 
 end VoltaZk

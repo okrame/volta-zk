@@ -23,5 +23,5 @@ pub use ligero::{
     commit, commit_resident, commit_with_backend, free_resident_matrix, open_multi_zk,
     open_multi_zk_resident, open_multi_zk_with_backend, open_zk, verify_multi_open, verify_open,
     Commitment, LigeroParams, MultiOpenProof, MultiOpenTimings, OpenTimings, OpeningProof,
-    ProverMatrix, ResidentProverMatrix, GPT2_FULL,
+    ProverMatrix, ResidentMatrixFreeError, ResidentProverMatrix, GPT2_FULL,
 };

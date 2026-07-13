@@ -143,20 +143,93 @@ constant factors hold. That constant factor is what P3/P4 measure.
   true host outputs second, then retained graphs for fixed device-only
   segments. Eliminating D2H alone is not the selected branch.
 
-  **Formal audit gate before round-RLC batching**: the proposed batching is a
-  real M3 extension, not a byte-identical refactor, and the audit found a
-  pre-existing code/theorem mismatch that must be closed in the same formal
-  checkpoint. Rust `zero_batch_{prover,verify}` and `prod_batch_*` weight a
-  closed list by powers `chi^(j+1)` of one scalar challenge; the current Lean
-  `zeroBatch_sound` / `prodBatch_sound` quantify an independently uniform
-  coefficient vector `Fin T -> F` and hence prove the stated 2/|F| and 3/|F|
-  bounds. The implementation is complete, but those theorems do not justify
-  its scalar-power collapse probability. P7b will retain the one-scalar wire
-  format and add the missing nonzero-polynomial root lemma, yielding explicit
-  list-length-dependent bounds (at most `(T+1)/|E|` for ZeroBatch and
-  `(T+2)/|E|` for Prod), then separately prove soundness of shared-round
-  aggregation before enabling it. No verifier challenge seed or future
-  challenge schedule may be exposed to the prover/GPU as a shortcut.
+  **Formal audit gate before round-RLC batching — scalar implementation gap
+  and abstract shared-round theorem closed (2026-07-13); concrete scheduler
+  still gated**: the proposed
+  batching is a real M3 extension, not a byte-identical refactor. The audit
+  found that Rust `zero_batch_{prover,verify}` and `prod_batch_*` weight a
+  closed list by powers `chi^(j+1)` of one scalar challenge, whereas the
+  generic Lean `zeroBatch_sound` / `prodBatch_sound` theorems quantify an
+  independently uniform coefficient vector `Fin T -> F`. The concrete Rust
+  format is now covered directly: `card_scalarRlc_zero_le` proves at most `T`
+  roots for a nonzero scalar-RLC list of length `T`;
+  `zeroBatch_sound_scalar` gives `(T+1)/|E|`;
+  `prodBatch_sound_scalar` gives `(T+2)/|E|`; and
+  `blind_sumcheck_sound_scalar` gives
+  `(Σ d_i + n + 2)/|E|` for its `n+1` closing claims. The M4 map is now
+  explicit rather than documentary: `kv_cache_sound_scalar` and
+  `authenticated_cache_sound_scalar` cover Rust's one-`χ` cache closure
+  with upper bound `(T+1)/|E|`. Full `lake build` passes (2,572 jobs), and
+  the expanded named audit checks 16 generic and
+  implementation-mapped theorems, each depending only on `propext`,
+  `Classical.choice`, and `Quot.sound`; no `VoltaZk.Ideal` assumption enters
+  the boundary. This closes the pre-existing scalar code/theorem mismatch.
+
+  The separate aggregate prerequisite is now
+  `VoltaZk/BatchSumcheckSound.lean`:
+  `outer_scalar_batch_blind_sumcheck_sound` fixes `K` claimed/true totals
+  before a fresh outer `β`, uses weights `β^(k+1)`, and proves bad-tape
+  count `(K + Σ d_i + n + 2)|E|^(n+2)` out of `|E|^(n+3)` — the
+  `K/|E|` collapse plus scalar M3. Importantly, after `β` the aggregate
+  round strategy is fully malicious; the proof does not assume honest
+  execution of the linear combiner. `scalar_batch_blind_sumcheck_sound`
+  instantiates that boundary for `FixedSumcheckBatch`, while
+  `HasCommonPoint` names the scheduler invariant.
+
+  **Pre-registered implementation boundary (not silently discharged by the
+  theorem)**: cohort membership and all `K` initial claims are closed before
+  `β`; a cohort is homogeneous in round count and public degree vector; all
+  members consume the identical `r`/prefix history; `β` is fresh and
+  domain-separated from `Δ`, `r`, and the inner scalar `χ` (no challenge
+  reuse); the aggregate final opening remains public-linear and
+  VOLE-authenticated. The interactive transcript must account for the extra
+  field challenge, so this is not a byte-identical protocol refactor even if
+  total communication decreases. Rust enablement still requires a CPU
+  reference differential for the new transcript, an explicit interleaving
+  state-machine/common-point assertion, LogUp layer-end alignment, and exact
+  domain/correlation-counter tests. Cross-cohort/session soundness is an
+  explicit union bound. No verifier seed or future challenge schedule may be
+  exposed to the prover/GPU as a shortcut.
+
+  **P7b architecture-hygiene checkpoint (2026-07-13; no timing claim)**:
+  before changing the round schedule, the resident allocation registry was
+  replaced by an opaque generational `(generation, slot)` arena. Active-ID
+  lookup and stale rejection are O(1); inactive physical allocations use
+  best-fit reuse; logical free issues no CUDA call; explicit trim releases
+  only inactive capacity after a classified allocator barrier. ABI 19 reports
+  physical `cudaMalloc`/`cudaFree` separately from logical alloc/reuse/free,
+  partitions every explicit stream synchronization into host-output,
+  upload-lifetime, timing-flush, legacy-profiling, or allocator-flush, and
+  enforces that the reason sum equals the total. Device memory is partitioned
+  exactly into primitive workspace, active resident capacity, and cached
+  resident capacity. The report records both pre-trim high water and
+  post-trim teardown and accepts a schema-4 run of record only when both
+  accounting invariants hold. Clean-tree detection now includes untracked
+  files and treats a failed `git status` as dirty.
+
+  PCS commit/open temporaries now have exhaustive RAII cleanup on every early
+  return. Compound matrix teardown preflights all context ownership before it
+  consumes a handle; a wrong-context error returns the complete matrix so the
+  caller can retry with its owner. On Thunder A100, the rebuilt monolithic
+  backend passes all **16/16** `volta-accel --features cuda` tests, including
+  best-fit/no-alias, stale and double-free rejection, logical bounds, trim and
+  reason accounting; all **3/3** resident PCS CUDA differentials pass,
+  including injected partial-commit and cross-context opening failures.
+  The legacy host-barrier timing fallback was also corrected to attribute its
+  three barriers to H2D/kernel/D2H causes rather than labelling all of them as
+  profiling.
+
+  A standalone CUDA implementation of the exact `rand_chacha 0.3.1`
+  ChaCha8 stream layout plus Goldilocks rejection sampling is now available
+  for device-side prover-owned pads/masks. It explicitly excludes verifier
+  challenges and `Delta`. CUDA 13.2 / sm_80 results are byte-identical to the
+  Rust `FpStream` oracle for an Fp multi-block case (SHA-256
+  `1570f825215b0e38da4857fc32b40a97b8bf0efed7f90f6c44431e801b7c2634`)
+  and an Fp2/high-64-bit-domain multi-block case (SHA-256
+  `90abbd2a0773f9c455313a3eab8172a1647a2c7cea152fa71324ef996c220051`).
+  This checkpoint only validates the generator and ownership boundary; H2D
+  savings are not claimed until it is integrated into the PCS kernels and a
+  clean immutable differential/result is recorded.
 
 - **2026-07-13 (P7 publication artifact closed)**: clean aggregate
   `benchmarks/results/p7-2026-07-13-2c836b3.json` (SHA-256

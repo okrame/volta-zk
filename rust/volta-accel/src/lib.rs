@@ -17,7 +17,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 17;
+pub const CUDA_ABI_VERSION: u32 = 19;
 pub const OPERATION_COUNT: usize = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -118,17 +118,43 @@ pub struct BackendStats {
     pub d2h_ns: u64,
     pub synchronizations: u64,
     pub synchronization_ns: u64,
+    /// Barriers required before protocol-visible device-to-host output.
+    pub sync_host_output: u64,
+    /// Legacy barriers retaining pageable host upload lifetime. P7b removes
+    /// these only after the CUDA staging contract is differentially tested.
+    pub sync_upload_lifetime: u64,
+    /// Coarse flushes of deferred timing records (zero in legacy mode).
+    pub sync_timing_flush: u64,
+    /// Barriers whose only purpose is per-call profiling.
+    pub sync_profiling_legacy: u64,
+    /// Barriers before workspace/cache physical reclamation.
+    pub sync_allocator_flush: u64,
+    /// Successful physical `cudaMalloc` calls observed in this measurement
+    /// window (workspace plus resident arena misses), not logical resident
+    /// allocation requests.
     pub allocation_calls: u64,
+    pub resident_alloc_requests: u64,
+    pub resident_reuse_hits: u64,
+    pub resident_free_requests: u64,
+    /// Successful physical `cudaFree` calls observed in this measurement
+    /// window. This need not balance [`Self::allocation_calls`]: a persistent
+    /// context may free workspace or cached arena storage allocated before the
+    /// most recent stats reset.
+    pub physical_free_calls: u64,
     pub live_device_bytes: u64,
     pub peak_device_bytes: u64,
 }
 
-/// Live allocations owned by a CUDA context, split between reusable
-/// primitive workspaces and explicit opaque buffers returned to Rust.
+/// Physical allocations owned by a CUDA context. Active resident storage is
+/// reported by capacity rather than logical length so these three categories
+/// sum exactly to [`BackendStats::live_device_bytes`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DeviceMemoryBreakdown {
     pub workspace_bytes: u64,
+    /// Physical capacity backing live opaque buffers returned to Rust.
     pub resident_bytes: u64,
+    /// Physical capacity retained by the resident best-fit arena for reuse.
+    pub cached_resident_bytes: u64,
 }
 
 impl BackendStats {
@@ -146,6 +172,14 @@ impl BackendStats {
 
     pub fn cpu_residual_ns(&self) -> u64 {
         self.operation_cpu_residual_ns() + self.unattributed_cpu_residual_ns
+    }
+
+    pub fn synchronization_reason_total(&self) -> u64 {
+        self.sync_host_output
+            + self.sync_upload_lifetime
+            + self.sync_timing_flush
+            + self.sync_profiling_legacy
+            + self.sync_allocator_flush
     }
 }
 
@@ -439,6 +473,10 @@ impl DeviceMerkleTree {
     pub fn leaves(&self) -> usize {
         self.leaves
     }
+
+    pub fn is_owned_by(&self, backend: &Backend) -> bool {
+        self.storage.is_owned_by(backend)
+    }
 }
 
 impl<T: DeviceElement> DeviceBuffer<T> {
@@ -448,6 +486,12 @@ impl<T: DeviceElement> DeviceBuffer<T> {
 
     pub fn is_empty(&self) -> bool {
         self.len == 0
+    }
+
+    /// Pure ownership preflight. This performs no CUDA call and lets compound
+    /// owners reject a wrong context before consuming any of their handles.
+    pub fn is_owned_by(&self, backend: &Backend) -> bool {
+        backend.kind == BackendKind::CudaResident && self.context_id == backend.context_id
     }
 }
 
@@ -579,6 +623,19 @@ impl Backend {
         if let Some(cuda) = &self.cuda {
             return cuda.memory_breakdown();
         }
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Physically release inactive resident-arena storage. Active buffers and
+    /// primitive workspaces remain valid; normal `free_device` stays a cheap
+    /// logical free so hot sessions retain reuse.
+    pub fn trim_device_cache(&mut self) -> Result<(), AccelError> {
+        self.require_resident()?;
+        #[cfg(feature = "cuda")]
+        {
+            return self.cuda.as_mut().expect("CUDA kind without context").trim_resident_cache();
+        }
+        #[cfg(not(feature = "cuda"))]
         Err(AccelError::FeatureDisabled)
     }
 
@@ -3781,6 +3838,19 @@ mod cuda_tests {
         out
     }
 
+    /// Deliberately violates the public move-only ownership rule so negative
+    /// tests can present a stale opaque id to the C ABI.
+    fn duplicate_device_buffer_for_test<T: DeviceElement>(
+        buffer: &DeviceBuffer<T>,
+    ) -> DeviceBuffer<T> {
+        DeviceBuffer {
+            id: buffer.id,
+            len: buffer.len,
+            context_id: buffer.context_id,
+            _element: PhantomData,
+        }
+    }
+
     fn cpu_ntt(mut v: Vec<Fp>) -> Vec<Fp> {
         let n = v.len();
         let bits = n.trailing_zeros();
@@ -3896,14 +3966,22 @@ mod cuda_tests {
             stats.measurement_wall_ns,
             stats.h2d_ns + stats.d2h_ns + stats.kernel_ns() + stats.cpu_residual_ns()
         );
-        assert_eq!(
-            stats.synchronizations,
-            match stats.timing_mode {
-                DeviceTimingMode::CudaEvents => 6,
-                DeviceTimingMode::HostBarrierWall => 18,
-                DeviceTimingMode::None => panic!("CUDA stats have no timing mode"),
+        assert_eq!(stats.synchronization_reason_total(), stats.synchronizations);
+        assert_eq!(stats.sync_allocator_flush, 1, "one workspace growth must reclaim storage");
+        match stats.timing_mode {
+            DeviceTimingMode::CudaEvents => {
+                assert_eq!(stats.sync_host_output, 6);
+                assert_eq!(stats.sync_profiling_legacy, 0);
+                assert_eq!(stats.synchronizations, 7);
             }
-        );
+            DeviceTimingMode::HostBarrierWall => {
+                assert_eq!(stats.sync_host_output, 6);
+                assert_eq!(stats.sync_upload_lifetime, 6);
+                assert_eq!(stats.sync_profiling_legacy, 6);
+                assert_eq!(stats.synchronizations, 19);
+            }
+            DeviceTimingMode::None => panic!("CUDA stats have no timing mode"),
+        }
     }
 
     #[test]
@@ -4380,6 +4458,114 @@ mod cuda_tests {
     }
 
     #[test]
+    fn resident_arena_reuses_best_fit_without_aliasing_and_rejects_stale_ids() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
+        gpu.begin_measurement().unwrap();
+
+        let large = gpu.alloc_device::<u8>(128).unwrap();
+        let small = gpu.alloc_device::<u8>(64).unwrap();
+        let large_id = large.id;
+        let small_id = small.id;
+        let stale_small_read = duplicate_device_buffer_for_test(&small);
+        let stale_small_free = duplicate_device_buffer_for_test(&small);
+        let cold = gpu.stats().unwrap();
+        assert_eq!(cold.allocation_calls, 2);
+        assert_eq!(cold.resident_alloc_requests, 2);
+        assert_eq!(cold.resident_reuse_hits, 0);
+
+        gpu.free_device(large).unwrap();
+        gpu.free_device(small).unwrap();
+        let cached = gpu.device_memory_breakdown().unwrap();
+        assert_eq!(cached.workspace_bytes, 0);
+        assert_eq!(cached.resident_bytes, 0);
+        assert_eq!(cached.cached_resident_bytes, 192);
+        assert_eq!(gpu.stats().unwrap().live_device_bytes, 192);
+
+        // 48 bytes fit both cached allocations; best-fit must choose the
+        // former 64-byte slot and issue a new generation, not a cudaMalloc.
+        let reused = gpu.alloc_device::<u8>(48).unwrap();
+        assert_ne!(reused.id, small_id);
+        assert_eq!(reused.id as u32, small_id as u32);
+        let oversized_view = DeviceBuffer {
+            id: reused.id,
+            len: 64,
+            context_id: reused.context_id,
+            _element: PhantomData::<u8>,
+        };
+        assert!(matches!(
+            gpu.download_device(&oversized_view, 48, 1),
+            Err(AccelError::Cuda(message)) if message.contains("out of bounds")
+        ));
+
+        // The only remaining cached allocation is the former 128-byte slot.
+        // Keeping both leases live must never alias their physical storage.
+        let second = gpu.alloc_device::<u8>(48).unwrap();
+        assert_ne!(second.id as u32, reused.id as u32);
+        assert_eq!(second.id as u32, large_id as u32);
+        gpu.upload_device(&reused, 0, &[0x11; 48]).unwrap();
+        gpu.upload_device(&second, 0, &[0x22; 48]).unwrap();
+        assert_eq!(gpu.download_device(&reused, 0, 48).unwrap(), vec![0x11; 48]);
+        assert_eq!(gpu.download_device(&second, 0, 48).unwrap(), vec![0x22; 48]);
+
+        let warm = gpu.stats().unwrap();
+        assert_eq!(warm.allocation_calls, 2);
+        assert_eq!(warm.resident_alloc_requests, 4);
+        assert_eq!(warm.resident_reuse_hits, 2);
+        assert_eq!(warm.resident_free_requests, 2);
+        assert_eq!(warm.physical_free_calls, 0);
+        let active = gpu.device_memory_breakdown().unwrap();
+        assert_eq!(active.workspace_bytes, 0);
+        assert_eq!(active.resident_bytes, 192);
+        assert_eq!(active.cached_resident_bytes, 0);
+        assert_eq!(
+            active.workspace_bytes + active.resident_bytes + active.cached_resident_bytes,
+            warm.live_device_bytes
+        );
+
+        assert!(matches!(
+            gpu.download_device(&stale_small_read, 0, 1),
+            Err(AccelError::Cuda(message)) if message.contains("unknown resident buffer id")
+        ));
+        assert!(matches!(
+            gpu.free_device(stale_small_free),
+            Err(AccelError::Cuda(message)) if message.contains("stale resident buffer id")
+        ));
+
+        let double_free = duplicate_device_buffer_for_test(&second);
+        gpu.free_device(second).unwrap();
+        assert!(matches!(
+            gpu.free_device(double_free),
+            Err(AccelError::Cuda(message)) if message.contains("stale resident buffer id")
+        ));
+        gpu.free_device(reused).unwrap();
+        let final_stats = gpu.finish_measurement().unwrap();
+        assert_eq!(final_stats.synchronization_reason_total(), final_stats.synchronizations);
+        assert_eq!(final_stats.resident_alloc_requests, 4);
+        assert_eq!(final_stats.resident_reuse_hits, 2);
+        assert_eq!(final_stats.resident_free_requests, 6);
+        assert_eq!(final_stats.physical_free_calls, 0);
+        let final_memory = gpu.device_memory_breakdown().unwrap();
+        assert_eq!(final_memory.resident_bytes, 0);
+        assert_eq!(final_memory.cached_resident_bytes, 192);
+        assert_eq!(
+            final_memory.workspace_bytes
+                + final_memory.resident_bytes
+                + final_memory.cached_resident_bytes,
+            final_stats.live_device_bytes
+        );
+
+        gpu.trim_device_cache().unwrap();
+        let trimmed = gpu.device_memory_breakdown().unwrap();
+        assert_eq!(trimmed.resident_bytes, 0);
+        assert_eq!(trimmed.cached_resident_bytes, 0);
+        let trimmed_stats = gpu.stats().unwrap();
+        assert_eq!(trimmed_stats.live_device_bytes, trimmed.workspace_bytes);
+        assert_eq!(trimmed_stats.physical_free_calls, 2);
+        assert_eq!(trimmed_stats.sync_allocator_flush, 1);
+        assert_eq!(trimmed_stats.synchronization_reason_total(), trimmed_stats.synchronizations);
+    }
+
+    #[test]
     fn resident_buffers_and_device_gemm_are_bit_exact_and_attributed() {
         let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
         let (m, k, n) = (3usize, 5usize, 7usize);
@@ -4434,7 +4620,12 @@ mod cuda_tests {
         gpu.free_device(dm).unwrap();
         gpu.free_device(db).unwrap();
         gpu.free_device(da).unwrap();
-        assert_eq!(gpu.stats().unwrap().live_device_bytes, 0);
+        let memory = gpu.device_memory_breakdown().unwrap();
+        assert_eq!(memory.resident_bytes, 0);
+        assert_eq!(
+            memory.workspace_bytes + memory.cached_resident_bytes,
+            gpu.stats().unwrap().live_device_bytes
+        );
     }
 
     #[test]

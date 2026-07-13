@@ -28,14 +28,23 @@ struct RawStats {
     d2h_ns: u64,
     synchronizations: u64,
     synchronization_ns: u64,
+    sync_host_output: u64,
+    sync_upload_lifetime: u64,
+    sync_timing_flush: u64,
+    sync_profiling_legacy: u64,
+    sync_allocator_flush: u64,
     allocation_calls: u64,
+    resident_alloc_requests: u64,
+    resident_reuse_hits: u64,
+    resident_free_requests: u64,
+    physical_free_calls: u64,
     live_device_bytes: u64,
     peak_device_bytes: u64,
     timing_mode: u32,
     reserved: u32,
 }
 
-const _: () = assert!(std::mem::size_of::<RawStats>() == 160);
+const _: () = assert!(std::mem::size_of::<RawStats>() == 232);
 
 type AbiVersion = unsafe extern "C" fn() -> u32;
 type Create = unsafe extern "C" fn(*mut *mut c_void) -> c_int;
@@ -43,7 +52,8 @@ type Destroy = unsafe extern "C" fn(*mut c_void);
 type LastError = unsafe extern "C" fn(*mut c_void) -> *const c_char;
 type ResetStats = unsafe extern "C" fn(*mut c_void) -> c_int;
 type GetStats = unsafe extern "C" fn(*mut c_void, *mut RawStats) -> c_int;
-type MemoryBreakdown = unsafe extern "C" fn(*mut c_void, *mut u64, *mut u64) -> c_int;
+type MemoryBreakdown = unsafe extern "C" fn(*mut c_void, *mut u64, *mut u64, *mut u64) -> c_int;
+type TrimResidentCache = unsafe extern "C" fn(*mut c_void) -> c_int;
 type ResidentAlloc = unsafe extern "C" fn(*mut c_void, usize, *mut u64) -> c_int;
 type ResidentFree = unsafe extern "C" fn(*mut c_void, u64) -> c_int;
 type ResidentUpload = unsafe extern "C" fn(*mut c_void, u64, usize, *const c_void, usize) -> c_int;
@@ -648,6 +658,7 @@ struct Api {
     reset_stats: ResetStats,
     get_stats: GetStats,
     memory_breakdown: MemoryBreakdown,
+    trim_resident_cache: TrimResidentCache,
     resident_alloc: ResidentAlloc,
     resident_free: ResidentFree,
     resident_upload: ResidentUpload,
@@ -775,6 +786,9 @@ impl CudaContext {
             reset_stats: unsafe { load_symbol(handle, b"volta_cuda_reset_stats\0")? },
             get_stats: unsafe { load_symbol(handle, b"volta_cuda_get_stats\0")? },
             memory_breakdown: unsafe { load_symbol(handle, b"volta_cuda_memory_breakdown\0")? },
+            trim_resident_cache: unsafe {
+                load_symbol(handle, b"volta_cuda_trim_resident_cache\0")?
+            },
             resident_alloc: unsafe { load_symbol(handle, b"volta_cuda_resident_alloc\0")? },
             resident_free: unsafe { load_symbol(handle, b"volta_cuda_resident_free\0")? },
             resident_upload: unsafe { load_symbol(handle, b"volta_cuda_resident_upload\0")? },
@@ -960,7 +974,16 @@ impl CudaContext {
             d2h_ns: raw.d2h_ns,
             synchronizations: raw.synchronizations,
             synchronization_ns: raw.synchronization_ns,
+            sync_host_output: raw.sync_host_output,
+            sync_upload_lifetime: raw.sync_upload_lifetime,
+            sync_timing_flush: raw.sync_timing_flush,
+            sync_profiling_legacy: raw.sync_profiling_legacy,
+            sync_allocator_flush: raw.sync_allocator_flush,
             allocation_calls: raw.allocation_calls,
+            resident_alloc_requests: raw.resident_alloc_requests,
+            resident_reuse_hits: raw.resident_reuse_hits,
+            resident_free_requests: raw.resident_free_requests,
+            physical_free_calls: raw.physical_free_calls,
             live_device_bytes: raw.live_device_bytes,
             peak_device_bytes: raw.peak_device_bytes,
             ..Default::default()
@@ -978,11 +1001,22 @@ impl CudaContext {
     pub(super) fn memory_breakdown(&self) -> Result<DeviceMemoryBreakdown, AccelError> {
         let mut workspace_bytes = 0;
         let mut resident_bytes = 0;
-        // SAFETY: both outputs point to one u64 and the context is live.
+        let mut cached_resident_bytes = 0;
+        // SAFETY: all outputs point to one u64 and the context is live.
         self.check(unsafe {
-            (self.api.memory_breakdown)(self.raw, &mut workspace_bytes, &mut resident_bytes)
+            (self.api.memory_breakdown)(
+                self.raw,
+                &mut workspace_bytes,
+                &mut resident_bytes,
+                &mut cached_resident_bytes,
+            )
         })?;
-        Ok(DeviceMemoryBreakdown { workspace_bytes, resident_bytes })
+        Ok(DeviceMemoryBreakdown { workspace_bytes, resident_bytes, cached_resident_bytes })
+    }
+
+    pub(super) fn trim_resident_cache(&mut self) -> Result<(), AccelError> {
+        // SAFETY: the context is live and exclusively borrowed.
+        self.check(unsafe { (self.api.trim_resident_cache)(self.raw) })
     }
 
     pub(super) fn resident_alloc(&mut self, bytes: usize) -> Result<u64, AccelError> {

@@ -26,7 +26,7 @@ use std::collections::BTreeMap;
 use std::time::Instant;
 use volta_accel::{Backend, BackendKind, BackendStats, DeviceBuffer, DeviceSlice, Operation};
 use volta_bench::{cloud_metadata_from_env, logits_pack, time_paired_samples, CloudMetadata};
-use volta_field::{Fp, Fp2};
+use volta_field::{Fp, Fp2, P};
 use volta_gpt2::{
     band_model_witness, band_model_witness_resident, decode_step, forward_model,
     forward_model_tokens, forward_model_tokens_resident, forward_model_tokens_with_backend,
@@ -96,7 +96,17 @@ struct AcceleratorStatsRow {
     d2h_s: f64,
     synchronizations: u64,
     synchronization_s: f64,
+    sync_host_output: u64,
+    sync_upload_lifetime: u64,
+    sync_timing_flush: u64,
+    sync_profiling_legacy: u64,
+    sync_allocator_flush: u64,
+    /// Successful physical CUDA allocations, not logical arena requests.
     allocation_calls: u64,
+    resident_alloc_requests: u64,
+    resident_reuse_hits: u64,
+    resident_free_requests: u64,
+    physical_free_calls: u64,
     live_device_bytes: u64,
     peak_device_bytes: u64,
     kernel_s: f64,
@@ -190,7 +200,16 @@ impl AcceleratorStatsRow {
             d2h_s: stats.d2h_ns as f64 / 1e9,
             synchronizations: stats.synchronizations,
             synchronization_s: stats.synchronization_ns as f64 / 1e9,
+            sync_host_output: stats.sync_host_output,
+            sync_upload_lifetime: stats.sync_upload_lifetime,
+            sync_timing_flush: stats.sync_timing_flush,
+            sync_profiling_legacy: stats.sync_profiling_legacy,
+            sync_allocator_flush: stats.sync_allocator_flush,
             allocation_calls: stats.allocation_calls,
+            resident_alloc_requests: stats.resident_alloc_requests,
+            resident_reuse_hits: stats.resident_reuse_hits,
+            resident_free_requests: stats.resident_free_requests,
+            physical_free_calls: stats.physical_free_calls,
             live_device_bytes: stats.live_device_bytes,
             peak_device_bytes: stats.peak_device_bytes,
             kernel_s: stats.kernel_ns() as f64 / 1e9,
@@ -225,6 +244,16 @@ struct Report {
     accelerator_workspace_device_bytes_after_cleanup: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     accelerator_resident_device_bytes_after_cleanup: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    accelerator_cached_resident_device_bytes_after_cleanup: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    accelerator_live_device_bytes_after_cache_trim: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    accelerator_workspace_device_bytes_after_cache_trim: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    accelerator_resident_device_bytes_after_cache_trim: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    accelerator_cached_resident_device_bytes_after_cache_trim: Option<u64>,
     benchmark_warmup_repetitions: usize,
     benchmark_repetitions: usize,
     representative_repetition: usize,
@@ -322,6 +351,11 @@ struct Report {
     pcs_verify_timing: TimingDistribution,
     n_weight_claims: usize,
     n_embed_claims: usize,
+    closure_prod_claims: usize,
+    closure_zero_claims: usize,
+    closure_prod_scalar_soundness_bits: f64,
+    closure_zero_scalar_soundness_bits: f64,
+    closure_union_scalar_soundness_bits: f64,
     // --- counters -------------------------------------------------------------------
     emult_instances_total: f64,
     corr_sub_corrs: u64,
@@ -535,6 +569,8 @@ struct SessionResult {
     pcs_cached_query_marginal_bytes: u64,
     n_weight_claims: usize,
     n_embed_claims: usize,
+    closure_prod_claims: usize,
+    closure_zero_claims: usize,
     emult_instances: f64,
     sub_corrs: u64,
     full_corrs: u64,
@@ -545,6 +581,13 @@ struct SessionResult {
     public_logits_packed_bytes: u64,
     pcg_allocation_hash_match: Option<bool>,
     accelerator_stats: Option<BackendStats>,
+}
+
+/// `E = F_p^2`.  The scalar-power implementation theorems bound a batch of
+/// `T` claims by `(T+offset)/|E|`; report the corresponding conservative
+/// `-log2(error)` rather than quoting the stronger vector-RLC constant.
+fn scalar_batch_soundness_bits(claims: usize, offset: usize) -> f64 {
+    2.0 * (P as f64).log2() - ((claims + offset) as f64).log2()
 }
 
 enum SessionProverMatrix {
@@ -1111,6 +1154,10 @@ fn run_session_impl<'source>(
 
     // --- closures ------------------------------------------------------------
     let closure_started = Instant::now();
+    let closure_prod_claims = prod.len();
+    let closure_zero_claims = zero.len();
+    assert_eq!(closure_prod_claims, kprod.len(), "prover/verifier Prod batch length mismatch");
+    assert_eq!(closure_zero_claims, kzero.len(), "prover/verifier ZeroBatch length mismatch");
     let chi = txp.challenge_fp2();
     assert_eq!(chi, txv.challenge_fp2());
     let mut domsp = Doms::new(layer_dom_base(255));
@@ -1153,6 +1200,8 @@ fn run_session_impl<'source>(
         pcs_cached_query_marginal_bytes,
         n_weight_claims: out.weight_claims.len(),
         n_embed_claims: out.embed_claims.len(),
+        closure_prod_claims,
+        closure_zero_claims,
         emult_instances: out.ctr_instances.emult_equiv(),
         sub_corrs: out.corr_counters.sub_corrs,
         full_corrs: out.corr_counters.full_corrs,
@@ -1785,12 +1834,18 @@ fn main() {
 
     // The resident objects have explicit ownership because their buffers must
     // be returned to the same CUDA context.  Release dependants before their
-    // sources, then require that only the deliberately persistent primitive
-    // workspaces remain.  Explicit opaque allocations must reach zero.
+    // sources, then require that explicit opaque allocations reach zero. The
+    // CUDA context may retain both primitive workspaces and inactive resident
+    // arena capacity for reuse; both remain physical live device memory.
     let (
         accelerator_live_device_bytes_after_cleanup,
         accelerator_workspace_device_bytes_after_cleanup,
         accelerator_resident_device_bytes_after_cleanup,
+        accelerator_cached_resident_device_bytes_after_cleanup,
+        accelerator_live_device_bytes_after_cache_trim,
+        accelerator_workspace_device_bytes_after_cache_trim,
+        accelerator_resident_device_bytes_after_cache_trim,
+        accelerator_cached_resident_device_bytes_after_cache_trim,
     ) = if args.accelerator == AcceleratorArg::CudaResident {
         let backend = accelerator.as_mut().expect("resident CUDA backend");
         resident_band50
@@ -1817,13 +1872,48 @@ fn main() {
             .device_memory_breakdown()
             .expect("resident CUDA memory breakdown after cleanup");
         assert_eq!(memory.resident_bytes, 0, "resident report leaked explicit device buffers");
+        let retained = memory
+            .workspace_bytes
+            .checked_add(memory.cached_resident_bytes)
+            .expect("cleanup retained-memory accounting overflow");
         assert_eq!(
-            live, memory.workspace_bytes,
-            "cleanup total must contain reusable CUDA workspaces only"
+            live, retained,
+            "cleanup live total must equal reusable workspaces plus cached resident arena"
         );
-        (Some(live), Some(memory.workspace_bytes), Some(memory.resident_bytes))
+
+        // Cache trimming is teardown accounting, deliberately outside every
+        // timed measurement. Preserve the pre-trim high-water above, then
+        // prove that physical arena storage is actually releasable.
+        backend.trim_device_cache().expect("trim resident CUDA device cache");
+        let trimmed_live =
+            backend.stats().expect("resident CUDA cache-trim stats").live_device_bytes;
+        let trimmed_memory = backend
+            .device_memory_breakdown()
+            .expect("resident CUDA memory breakdown after cache trim");
+        assert_eq!(
+            trimmed_memory.resident_bytes, 0,
+            "cache trim found an active resident allocation"
+        );
+        assert_eq!(
+            trimmed_memory.cached_resident_bytes, 0,
+            "cache trim retained inactive resident arena capacity"
+        );
+        assert_eq!(
+            trimmed_live, trimmed_memory.workspace_bytes,
+            "post-trim live total must contain reusable CUDA workspaces only"
+        );
+        (
+            Some(live),
+            Some(memory.workspace_bytes),
+            Some(memory.resident_bytes),
+            Some(memory.cached_resident_bytes),
+            Some(trimmed_live),
+            Some(trimmed_memory.workspace_bytes),
+            Some(trimmed_memory.resident_bytes),
+            Some(trimmed_memory.cached_resident_bytes),
+        )
     } else {
-        (None, None, None)
+        (None, None, None, None, None, None, None, None)
     };
 
     // --- report --------------------------------------------------------------------
@@ -1845,9 +1935,9 @@ fn main() {
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .unwrap_or_default();
     let git_dirty = std::process::Command::new("git")
-        .args(["status", "--porcelain", "--untracked-files=no"])
+        .args(["status", "--porcelain"])
         .output()
-        .map(|o| !o.stdout.is_empty())
+        .map(|o| !o.status.success() || !o.stdout.is_empty())
         .unwrap_or(true);
 
     let accepted = rec.accepted && chk.accepted;
@@ -1857,7 +1947,7 @@ fn main() {
     let pcs_open_total_s = pcs_open_timing.median_s;
     let pcs_verify_total_s = pcs_verify_timing.median_s;
     let report = Report {
-        report_schema_version: if args.accelerator == AcceleratorArg::CudaResident { 3 } else { 2 },
+        report_schema_version: if args.accelerator == AcceleratorArg::CudaResident { 4 } else { 2 },
         milestone: match (args.accelerator, quick) {
             (AcceleratorArg::CudaHybrid, true) => "P7-integrated-hybrid-quick".into(),
             (AcceleratorArg::CudaHybrid, false) => "P7-integrated-hybrid".into(),
@@ -1885,6 +1975,11 @@ fn main() {
         accelerator_live_device_bytes_after_cleanup,
         accelerator_workspace_device_bytes_after_cleanup,
         accelerator_resident_device_bytes_after_cleanup,
+        accelerator_cached_resident_device_bytes_after_cleanup,
+        accelerator_live_device_bytes_after_cache_trim,
+        accelerator_workspace_device_bytes_after_cache_trim,
+        accelerator_resident_device_bytes_after_cache_trim,
+        accelerator_cached_resident_device_bytes_after_cache_trim,
         benchmark_warmup_repetitions: warmup_repetitions,
         benchmark_repetitions: repetitions,
         representative_repetition,
@@ -1968,6 +2063,14 @@ fn main() {
         pcs_verify_timing,
         n_weight_claims: rec.n_weight_claims,
         n_embed_claims: rec.n_embed_claims,
+        closure_prod_claims: rec.closure_prod_claims,
+        closure_zero_claims: rec.closure_zero_claims,
+        closure_prod_scalar_soundness_bits: scalar_batch_soundness_bits(rec.closure_prod_claims, 2),
+        closure_zero_scalar_soundness_bits: scalar_batch_soundness_bits(rec.closure_zero_claims, 1),
+        closure_union_scalar_soundness_bits: scalar_batch_soundness_bits(
+            rec.closure_prod_claims + rec.closure_zero_claims,
+            3,
+        ),
         emult_instances_total: rec.emult_instances,
         corr_sub_corrs: rec.sub_corrs,
         corr_full_corrs: rec.full_corrs,

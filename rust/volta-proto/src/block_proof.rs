@@ -6529,6 +6529,19 @@ mod tests {
 
     const T: usize = 4;
 
+    #[cfg(feature = "cuda")]
+    fn active_resident_bytes(backend: &Backend) -> u64 {
+        let live = backend.stats().unwrap().live_device_bytes;
+        let memory = backend.device_memory_breakdown().unwrap();
+        let accounted = memory
+            .workspace_bytes
+            .checked_add(memory.resident_bytes)
+            .and_then(|bytes| bytes.checked_add(memory.cached_resident_bytes))
+            .expect("resident CUDA memory accounting overflow");
+        assert_eq!(live, accounted, "resident CUDA memory categories must sum to live bytes");
+        memory.resident_bytes
+    }
+
     /// One real forward pass at T = 4 (≈19 M MACs), shared by all tests.
     fn fixture() -> &'static (Luts, LayerWeights, LayerWitness) {
         static FIX: OnceLock<(Luts, LayerWeights, LayerWitness)> = OnceLock::new();
@@ -7601,7 +7614,7 @@ mod tests {
         let mut cpu_table_doms = Doms::new(layer_dom_base(240));
         cpu_bank.finalize(&mut cpu_stream, &mut cpu_tx, &mut cpu_table_doms);
 
-        let live_before_phase1 = gpu.stats().unwrap().live_device_bytes;
+        let resident_before_phase1 = active_resident_bytes(&gpu);
         let mut resident_stream = CorrelationStream::new([91; 32]);
         let mut resident_tx = Transcript::new([92; 32]);
         let mut resident_bank = TableBankP::new();
@@ -7647,33 +7660,17 @@ mod tests {
         assert_eq!(resident_tx.ledger(), cpu_tx.ledger());
         assert_eq!(gpu.download_device(&proof_error, 0, 1).unwrap(), vec![0]);
 
-        let lookup_bytes = [
-            &resident_p1.down,
-            &resident_p1.gelu,
-            &resident_p1.up,
-            &resident_p1.ln,
-            &resident_p1.rsqrt,
-        ]
-        .iter()
-        .map(|columns| columns.columns() * columns.entries() * std::mem::size_of::<u64>())
-        .sum::<usize>();
-        let ln_bytes =
-            (resident_p1.lv.mean.len() + resident_p1.lv.rin.len() + resident_p1.lv.rout.len())
-                * std::mem::size_of::<u64>();
-        let mult_bytes = resident_bank
-            .resident_mult
-            .values()
-            .map(|mult| mult.len() * std::mem::size_of::<u32>())
-            .sum::<usize>();
-        let live_with_owned = gpu.stats().unwrap().live_device_bytes;
+        assert!(
+            active_resident_bytes(&gpu) > resident_before_phase1,
+            "resident FFN phase 1 did not retain its owned proof buffers"
+        );
         resident_p1.free(&mut gpu).unwrap();
         resident_bank.free_resident_multiplicities(&mut gpu);
         assert_eq!(
-            gpu.stats().unwrap().live_device_bytes + (lookup_bytes + ln_bytes + mult_bytes) as u64,
-            live_with_owned,
-            "resident FFN phase 1 did not release every owned proof buffer"
+            active_resident_bytes(&gpu),
+            resident_before_phase1,
+            "resident FFN phase 1 retained an active owned proof buffer after cleanup"
         );
-        assert!(gpu.stats().unwrap().live_device_bytes >= live_before_phase1);
         gpu.free_device(proof_error).unwrap();
         resident_witness.free(&mut gpu).unwrap();
         resident_model.free(&mut gpu).unwrap();
@@ -8014,7 +8011,7 @@ mod tests {
 
         let raw0: Vec<u64> = site0.iter().map(|value| value.value()).collect();
         let raw1: Vec<u64> = site1.iter().map(|value| value.value()).collect();
-        let live_before_sources = resident.stats().unwrap().live_device_bytes;
+        let resident_before_sources = active_resident_bytes(&resident);
         let device0 = resident.upload_new_device(&raw0).unwrap();
         let device1 = resident.upload_new_device(&raw1).unwrap();
         resident.begin_measurement().unwrap();
@@ -8101,12 +8098,10 @@ mod tests {
         resident.free_device(device1).unwrap();
         resident.free_device(device0).unwrap();
         assert_eq!(
-            resident.stats().unwrap().live_device_bytes
-                + ((raw0.len() + raw1.len()) * std::mem::size_of::<u64>()) as u64,
-            live_after_first,
-            "resident table-bank source buffers were not released exactly once"
+            active_resident_bytes(&resident),
+            resident_before_sources,
+            "resident table-bank source buffers remained active after free"
         );
-        assert!(resident.stats().unwrap().live_device_bytes >= live_before_sources);
     }
 
     /// True W̃ evaluation for a k×n weight tensor at a claim point

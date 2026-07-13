@@ -124,4 +124,56 @@ theorem zeroBatch_sound {T : ℕ} (z : Fin T → F × F) {j₀ : Fin T} (hz : (z
     _ = 2 * Fintype.card F ^ T := by
         rw [one_mul, ← pow_succ', Nat.sub_add_cancel hT, two_mul]
 
+/-- **Scalar-power `Π_ZeroBatch` soundness (implementation theorem).**
+The Rust wire format derives all list weights as `χ^(j+1)` from one field
+challenge. If a closed list of length `T` contains a nonzero plaintext, at
+most `(T+1)·|F|` of the `|F|²` verifier tapes `(Δ, χ)` accept: at most
+`T·|F|` tapes collapse the nonzero RLC polynomial and at most `|F|` tapes
+forge the surviving MAC opening. -/
+theorem zeroBatch_sound_scalar {T : ℕ} (z : Fin T → F × F) {j₀ : Fin T}
+    (hz : (z j₀).1 ≠ 0) (msg : F → F) :
+    (univ.filter fun Δχ : F × F =>
+        msg Δχ.2 = ∑ j, Δχ.2 ^ (j.val + 1) * keyOf Δχ.1 (z j)).card
+      ≤ (T + 1) * Fintype.card F := by
+  have hsub : (univ.filter fun Δχ : F × F =>
+        msg Δχ.2 = ∑ j, Δχ.2 ^ (j.val + 1) * keyOf Δχ.1 (z j))
+      ⊆ (univ.filter fun Δχ : F × F =>
+            ∑ j, Δχ.2 ^ (j.val + 1) * (z j).1 = 0)
+        ∪ (univ.filter fun Δχ : F × F =>
+            (∑ j, Δχ.2 ^ (j.val + 1) * (z j).1 ≠ 0)
+              ∧ msg Δχ.2 = ∑ j, Δχ.2 ^ (j.val + 1) * keyOf Δχ.1 (z j)) := by
+    intro Δχ h
+    simp only [mem_filter, mem_univ, true_and, mem_union] at h ⊢
+    by_cases hxz : ∑ j, Δχ.2 ^ (j.val + 1) * (z j).1 = 0
+    · exact Or.inl hxz
+    · exact Or.inr ⟨hxz, h⟩
+  refine le_trans (Finset.card_le_card hsub) (le_trans (Finset.card_union_le _ _) ?_)
+  have h1 : (univ.filter fun Δχ : F × F =>
+        ∑ j, Δχ.2 ^ (j.val + 1) * (z j).1 = 0).card
+      ≤ Fintype.card F * T :=
+    card_filter_prod_le_right
+      (fun Δχ : F × F => ∑ j, Δχ.2 ^ (j.val + 1) * (z j).1 = 0)
+      fun _ => card_scalarRlc_zero_le (fun j => (z j).1) hz
+  have h2 : (univ.filter fun Δχ : F × F =>
+        (∑ j, Δχ.2 ^ (j.val + 1) * (z j).1 ≠ 0)
+          ∧ msg Δχ.2 = ∑ j, Δχ.2 ^ (j.val + 1) * keyOf Δχ.1 (z j)).card
+      ≤ 1 * Fintype.card F := by
+    refine card_filter_prod_le_left
+      (fun Δχ : F × F =>
+        (∑ j, Δχ.2 ^ (j.val + 1) * (z j).1 ≠ 0)
+          ∧ msg Δχ.2 = ∑ j, Δχ.2 ^ (j.val + 1) * keyOf Δχ.1 (z j)) fun χ => ?_
+    by_cases hxz : ∑ j, χ ^ (j.val + 1) * (z j).1 = 0
+    · refine le_trans (le_of_eq (Finset.card_eq_zero.mpr ?_)) (Nat.zero_le 1)
+      exact Finset.filter_eq_empty_iff.mpr fun Δ _ h => h.1 hxz
+    · refine le_trans (Finset.card_le_card fun Δ hΔ => ?_)
+        (card_linear_solution_le_one
+          (∑ j, χ ^ (j.val + 1) * (z j).2) (msg χ)
+          (∑ j, χ ^ (j.val + 1) * (z j).1) hxz)
+      simp only [mem_filter, mem_univ, true_and] at hΔ ⊢
+      rw [← keyOf_rlc_expand z Δ (fun j => χ ^ (j.val + 1))]
+      exact hΔ.2
+  calc
+    _ ≤ Fintype.card F * T + 1 * Fintype.card F := Nat.add_le_add h1 h2
+    _ = (T + 1) * Fintype.card F := by ring
+
 end VoltaZk

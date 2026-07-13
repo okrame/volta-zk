@@ -1,6 +1,6 @@
 use super::{
-    AccelError, BackendStats, DeviceTimingMode, Fp2Repr, OperationStats, CUDA_ABI_VERSION,
-    OPERATION_COUNT,
+    AccelError, BackendStats, DeviceMemoryBreakdown, DeviceTimingMode, Fp2Repr, OperationStats,
+    CUDA_ABI_VERSION, OPERATION_COUNT,
 };
 use std::ffi::{c_char, c_int, c_void, CStr, CString};
 use std::ptr;
@@ -43,6 +43,7 @@ type Destroy = unsafe extern "C" fn(*mut c_void);
 type LastError = unsafe extern "C" fn(*mut c_void) -> *const c_char;
 type ResetStats = unsafe extern "C" fn(*mut c_void) -> c_int;
 type GetStats = unsafe extern "C" fn(*mut c_void, *mut RawStats) -> c_int;
+type MemoryBreakdown = unsafe extern "C" fn(*mut c_void, *mut u64, *mut u64) -> c_int;
 type ResidentAlloc = unsafe extern "C" fn(*mut c_void, usize, *mut u64) -> c_int;
 type ResidentFree = unsafe extern "C" fn(*mut c_void, u64) -> c_int;
 type ResidentUpload = unsafe extern "C" fn(*mut c_void, u64, usize, *const c_void, usize) -> c_int;
@@ -646,6 +647,7 @@ struct Api {
     last_error: LastError,
     reset_stats: ResetStats,
     get_stats: GetStats,
+    memory_breakdown: MemoryBreakdown,
     resident_alloc: ResidentAlloc,
     resident_free: ResidentFree,
     resident_upload: ResidentUpload,
@@ -772,6 +774,7 @@ impl CudaContext {
             last_error: unsafe { load_symbol(handle, b"volta_cuda_last_error\0")? },
             reset_stats: unsafe { load_symbol(handle, b"volta_cuda_reset_stats\0")? },
             get_stats: unsafe { load_symbol(handle, b"volta_cuda_get_stats\0")? },
+            memory_breakdown: unsafe { load_symbol(handle, b"volta_cuda_memory_breakdown\0")? },
             resident_alloc: unsafe { load_symbol(handle, b"volta_cuda_resident_alloc\0")? },
             resident_free: unsafe { load_symbol(handle, b"volta_cuda_resident_free\0")? },
             resident_upload: unsafe { load_symbol(handle, b"volta_cuda_resident_upload\0")? },
@@ -970,6 +973,16 @@ impl CudaContext {
             };
         }
         Ok(out)
+    }
+
+    pub(super) fn memory_breakdown(&self) -> Result<DeviceMemoryBreakdown, AccelError> {
+        let mut workspace_bytes = 0;
+        let mut resident_bytes = 0;
+        // SAFETY: both outputs point to one u64 and the context is live.
+        self.check(unsafe {
+            (self.api.memory_breakdown)(self.raw, &mut workspace_bytes, &mut resident_bytes)
+        })?;
+        Ok(DeviceMemoryBreakdown { workspace_bytes, resident_bytes })
     }
 
     pub(super) fn resident_alloc(&mut self, bytes: usize) -> Result<u64, AccelError> {

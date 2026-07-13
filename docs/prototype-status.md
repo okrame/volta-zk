@@ -56,6 +56,27 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-13 (`P7-integrated-resident-quick` cleanup-accounting gate caught
+  a workspace/ownership ambiguity; no JSON emitted)**: the first clean quick
+  attempt from `634c59c` completed the resident proof, all 13 PCS openings,
+  verification and the flat-cost curve, then deliberately aborted before
+  serialization because total live CUDA memory was 14,286,896 bytes rather
+  than zero. Audit shows these bytes are the 16 context-owned primitive
+  workspace slots, which `ensure()` grows and intentionally retains for
+  reuse; every explicit `DeviceBuffer` is tracked separately in the same
+  total. Treating reusable workspace capacity as a witness leak would violate
+  the preregistered persistent-workspace design.
+
+  ABI v17 therefore adds a read-only memory breakdown computed from the CUDA
+  context's workspace slots and opaque resident-allocation registry, with an
+  internal invariant that their sum equals total live bytes. Report cleanup
+  now requires **zero explicit resident bytes** and total live bytes equal to
+  reusable workspace bytes; both values are serialized. No allocation is
+  hidden or released merely to improve the number, and context destruction
+  still frees both classes. The failed attempt produced no raw result and its
+  observed quick timings are not a benchmark claim. The clean quick must be
+  rerun from the ABI-v17 checkpoint before the full gate starts.
+
 - **2026-07-13 (`P7-integrated-resident` e2e report harness landed; clean
   measurement still pending)**: the existing `p6_report` now selects the
   internal resident backend explicitly and consumes one persistent uploaded
@@ -64,7 +85,8 @@ constant factors hold. That constant factor is what P3/P4 measure.
   the existing `verify_response`; the same 13 PCS commitments/openings are
   executed through resident matrices. Repetitions reuse the same context and
   buffers, while all owned allocations are released in dependency order and
-  a zero-live-device-bytes assertion closes the run. CPU remains the default;
+  a zero-explicit-resident-bytes assertion closes the run (persistent CUDA
+  workspace capacity is reported separately). CPU remains the default;
   asking for resident CUDA still fails explicitly if the feature/library is
   unavailable.
 

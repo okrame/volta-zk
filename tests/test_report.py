@@ -201,11 +201,15 @@ def test_resident_profile_joins_only_same_host_native_anchor_and_keeps_full_acco
         "accelerator_witness": {"measurement_wall_s": 0.03},
         "accelerator_response_witness": {"measurement_wall_s": 0.7},
         "accelerator_live_device_bytes_after_cleanup": 0,
+        "accelerator_workspace_device_bytes_after_cleanup": 0,
+        "accelerator_resident_device_bytes_after_cleanup": 0,
         "pcg_backend": "mock",
         "pcg_setup_comm_bytes": 0,
     }
     resident = report.integrated_resident_profiles([raw])[0]
     assert resident["accelerator_live_device_bytes_after_cleanup"] == 0
+    assert resident["accelerator_workspace_device_bytes_after_cleanup"] == 0
+    assert resident["accelerator_resident_device_bytes_after_cleanup"] == 0
 
     wrong_host = {
         "source": "wrong.json",

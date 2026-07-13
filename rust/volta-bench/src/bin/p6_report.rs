@@ -221,6 +221,10 @@ struct Report {
     accelerator_proving: Option<AcceleratorStatsRow>,
     #[serde(skip_serializing_if = "Option::is_none")]
     accelerator_live_device_bytes_after_cleanup: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    accelerator_workspace_device_bytes_after_cleanup: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    accelerator_resident_device_bytes_after_cleanup: Option<u64>,
     benchmark_warmup_repetitions: usize,
     benchmark_repetitions: usize,
     representative_repetition: usize,
@@ -1781,11 +1785,13 @@ fn main() {
 
     // The resident objects have explicit ownership because their buffers must
     // be returned to the same CUDA context.  Release dependants before their
-    // sources, then make the zero-live-bytes condition part of the report
-    // gate instead of relying on process teardown.
-    let accelerator_live_device_bytes_after_cleanup = if args.accelerator
-        == AcceleratorArg::CudaResident
-    {
+    // sources, then require that only the deliberately persistent primitive
+    // workspaces remain.  Explicit opaque allocations must reach zero.
+    let (
+        accelerator_live_device_bytes_after_cleanup,
+        accelerator_workspace_device_bytes_after_cleanup,
+        accelerator_resident_device_bytes_after_cleanup,
+    ) = if args.accelerator == AcceleratorArg::CudaResident {
         let backend = accelerator.as_mut().expect("resident CUDA backend");
         resident_band50
             .take()
@@ -1807,10 +1813,17 @@ fn main() {
             .expect("free resident proof error word");
         resident_model.take().expect("resident model").free(backend).expect("free resident model");
         let live = backend.stats().expect("resident CUDA cleanup stats").live_device_bytes;
-        assert_eq!(live, 0, "resident report leaked device allocations");
-        Some(live)
+        let memory = backend
+            .device_memory_breakdown()
+            .expect("resident CUDA memory breakdown after cleanup");
+        assert_eq!(memory.resident_bytes, 0, "resident report leaked explicit device buffers");
+        assert_eq!(
+            live, memory.workspace_bytes,
+            "cleanup total must contain reusable CUDA workspaces only"
+        );
+        (Some(live), Some(memory.workspace_bytes), Some(memory.resident_bytes))
     } else {
-        None
+        (None, None, None)
     };
 
     // --- report --------------------------------------------------------------------
@@ -1870,6 +1883,8 @@ fn main() {
             AcceleratorStatsRow::from_stats(stats, "response-session-including-pcs-and-verifier")
         }),
         accelerator_live_device_bytes_after_cleanup,
+        accelerator_workspace_device_bytes_after_cleanup,
+        accelerator_resident_device_bytes_after_cleanup,
         benchmark_warmup_repetitions: warmup_repetitions,
         benchmark_repetitions: repetitions,
         representative_repetition,

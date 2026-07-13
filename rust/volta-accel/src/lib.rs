@@ -17,7 +17,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 16;
+pub const CUDA_ABI_VERSION: u32 = 17;
 pub const OPERATION_COUNT: usize = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -121,6 +121,14 @@ pub struct BackendStats {
     pub allocation_calls: u64,
     pub live_device_bytes: u64,
     pub peak_device_bytes: u64,
+}
+
+/// Live allocations owned by a CUDA context, split between reusable
+/// primitive workspaces and explicit opaque buffers returned to Rust.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DeviceMemoryBreakdown {
+    pub workspace_bytes: u64,
+    pub resident_bytes: u64,
 }
 
 impl BackendStats {
@@ -564,6 +572,14 @@ impl Backend {
             dst.cpu_residual_ns = ns;
         }
         Ok(out)
+    }
+
+    pub fn device_memory_breakdown(&self) -> Result<DeviceMemoryBreakdown, AccelError> {
+        #[cfg(feature = "cuda")]
+        if let Some(cuda) = &self.cuda {
+            return cuda.memory_breakdown();
+        }
+        Err(AccelError::FeatureDisabled)
     }
 
     fn require_resident(&self) -> Result<(), AccelError> {

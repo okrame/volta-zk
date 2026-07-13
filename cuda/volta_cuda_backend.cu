@@ -13,7 +13,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 16;
+constexpr uint32_t ABI_VERSION = 17;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -1725,6 +1725,22 @@ extern "C" int volta_cuda_get_stats(void* raw, RawStats* out) {
     Context* c = static_cast<Context*>(raw);
     if (!c || !out) return -1;
     *out = c->stats;
+    return 0;
+}
+
+extern "C" int volta_cuda_memory_breakdown(
+    void* raw, uint64_t* workspace_bytes, uint64_t* resident_bytes) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !workspace_bytes || !resident_bytes)
+        return fail_message(c, "invalid memory-breakdown output");
+    uint64_t workspace = 0;
+    uint64_t resident = 0;
+    for (const auto& b : c->buffers) workspace += b.capacity;
+    for (const auto& b : c->resident) resident += b.bytes;
+    if (workspace + resident != c->stats.live_device_bytes)
+        return fail_message(c, "device-memory accounting mismatch");
+    *workspace_bytes = workspace;
+    *resident_bytes = resident;
     return 0;
 }
 

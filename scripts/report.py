@@ -853,6 +853,12 @@ def integrated_accelerator_profiles(
                 "accelerator_live_device_bytes_after_cleanup": r.get(
                     "accelerator_live_device_bytes_after_cleanup"
                 ),
+                "accelerator_workspace_device_bytes_after_cleanup": r.get(
+                    "accelerator_workspace_device_bytes_after_cleanup"
+                ),
+                "accelerator_resident_device_bytes_after_cleanup": r.get(
+                    "accelerator_resident_device_bytes_after_cleanup"
+                ),
                 "peak_rss_gb": r.get("peak_rss_gb"),
                 "corr_sub_corrs": r.get("corr_sub_corrs"),
                 "corr_full_corrs": r.get("corr_full_corrs"),
@@ -1533,8 +1539,10 @@ def print_summary(report: dict[str, Any]) -> None:
         print(
             f"  flat={resident['flat_cost_last_over_first']:.3f}; "
             f"packed={mb(resident['packed_response_bytes']):.2f} MB; "
-            f"device bytes after cleanup="
-            f"{resident['accelerator_live_device_bytes_after_cleanup']} "
+            f"workspace after cleanup="
+            f"{resident['accelerator_workspace_device_bytes_after_cleanup']} B; "
+            f"explicit resident after cleanup="
+            f"{resident['accelerator_resident_device_bytes_after_cleanup']} B "
             f"{resident['source']}"
         )
         if resident_rho:

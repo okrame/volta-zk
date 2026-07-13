@@ -308,6 +308,8 @@ def summarize_rhos(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         "rho",
         "rho_prefill",
         "rho_decode",
+        "rho_cpu_prefill",
+        "rho_cpu_decode",
     ]
     rows = []
     for r in results:
@@ -332,7 +334,14 @@ def measured_pcs_profiles(results: list[dict[str, Any]], baseline: dict[str, Any
         for r in results
         if r.get("accepted") is True
         and r.get("milestone")
-        in {"P6", "P6-quick", "P7-integrated-hybrid", "P7-integrated-hybrid-quick"}
+        in {
+            "P6",
+            "P6-quick",
+            "P7-integrated-hybrid",
+            "P7-integrated-hybrid-quick",
+            "P7-integrated-resident",
+            "P7-integrated-resident-quick",
+        }
         and "pcs_opening_bytes_total" in r
     ]
     for r in candidates:
@@ -767,15 +776,14 @@ def gpu_native_inference_profiles(results: list[dict[str, Any]]) -> list[dict[st
     return rows
 
 
-def integrated_hybrid_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def integrated_accelerator_profiles(
+    results: list[dict[str, Any]], milestones: set[str], backend: str
+) -> list[dict[str, Any]]:
     rows = []
     for r in results:
-        if r.get("milestone") not in {
-            "P7-integrated-hybrid",
-            "P7-integrated-hybrid-quick",
-        }:
+        if r.get("milestone") not in milestones:
             continue
-        if not r.get("accepted") or r.get("accelerator_backend") != "cuda-hybrid":
+        if not r.get("accepted") or r.get("accelerator_backend") != backend:
             continue
         rows.append(
             {
@@ -792,33 +800,176 @@ def integrated_hybrid_profiles(results: list[dict[str, Any]]) -> list[dict[str, 
                 "prove_prefill_s": r.get("t_prove_prefill_only_s"),
                 "prove_response_s": r.get("t_prove_response_s"),
                 "prove_decode_marginal_s": r.get("t_prove_decode_marginal_s"),
+                "prover_online_accounted_response_s": r.get(
+                    "t_prover_online_accounted_response_s"
+                ),
+                "prover_online_accounted_decode_marginal_s": r.get(
+                    "t_prover_online_accounted_decode_marginal_s"
+                ),
+                "response_session_wall_s": r.get("t_response_session_wall_s"),
+                "protocol_closure_exchange_s": r.get("t_protocol_closure_exchange_s"),
+                "verifier_accounted_s": r.get("t_verifier_accounted_s"),
                 "prove_prefill_timing": r.get("prove_prefill_timing"),
                 "prove_response_timing": r.get("prove_response_timing"),
                 "prove_decode_marginal_timing": r.get("prove_decode_marginal_timing"),
+                "prover_online_accounted_response_timing": r.get(
+                    "prover_online_accounted_response_timing"
+                ),
+                "prover_online_accounted_decode_marginal_timing": r.get(
+                    "prover_online_accounted_decode_marginal_timing"
+                ),
+                "response_session_wall_timing": r.get("response_session_wall_timing"),
+                "protocol_closure_exchange_timing": r.get(
+                    "protocol_closure_exchange_timing"
+                ),
+                "verifier_accounted_timing": r.get("verifier_accounted_timing"),
                 "cpu_relative_rho": {
-                    "prefill": r.get("rho_prefill"),
-                    "decode": r.get("rho_decode"),
+                    "prefill": r.get("rho_cpu_prefill", r.get("rho_prefill")),
+                    "decode": r.get("rho_cpu_decode", r.get("rho_decode")),
                 },
+                "rho_denominator": r.get("rho_denominator"),
                 "golden_decode_checked": r.get("golden_decode_checked"),
                 "golden_decode_match": r.get("golden_decode_match"),
                 "flat_cost_last_over_first": r.get("curve_last_over_first"),
                 "flat_cost_gate": r.get("gate_flat_cost_per_token"),
                 "packed_response_bytes": r.get("total_response_download_packed_bytes"),
+                "communication": {
+                    "prefill_bytes": r.get("comm_prefill_bytes"),
+                    "response_bytes": r.get("comm_response_bytes"),
+                    "decode_marginal_bytes": r.get("comm_decode_marginal_bytes"),
+                    "pcs_opening_bytes": r.get("pcs_opening_bytes_total"),
+                    "public_logits_packed_bytes": r.get("public_logits_packed_bytes"),
+                    "response_by_label": r.get("comm_response_by_label"),
+                    "pcs_by_label": r.get("comm_pcs_by_label"),
+                },
                 "pcs_commit_timing": r.get("pcs_commit_timing"),
                 "pcs_open_timing": r.get("pcs_open_timing"),
                 "pcs_verify_timing": r.get("pcs_verify_timing"),
                 "verify_response_timing": r.get("verify_response_timing"),
+                "accelerator_witness": r.get("accelerator_witness"),
+                "accelerator_response_witness": r.get("accelerator_response_witness"),
                 "accelerator_prefill": r.get("accelerator_prefill_proving"),
                 "accelerator_session": r.get("accelerator_proving"),
+                "accelerator_live_device_bytes_after_cleanup": r.get(
+                    "accelerator_live_device_bytes_after_cleanup"
+                ),
                 "peak_rss_gb": r.get("peak_rss_gb"),
                 "corr_sub_corrs": r.get("corr_sub_corrs"),
                 "corr_full_corrs": r.get("corr_full_corrs"),
+                "pcg_backend": r.get("pcg_backend"),
+                "pcg_setup_comm_bytes": r.get("pcg_setup_comm_bytes"),
+                "pcg_real_phase_a_total_s": r.get("pcg_real_phase_a_total_s"),
             }
         )
     rows.sort(key=lambda x: (x["milestone"], x["_mtime"], x["source"]))
     for row in rows:
         row.pop("_mtime", None)
     return rows
+
+
+def integrated_hybrid_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return integrated_accelerator_profiles(
+        results,
+        {"P7-integrated-hybrid", "P7-integrated-hybrid-quick"},
+        "cuda-hybrid",
+    )
+
+
+def integrated_resident_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return integrated_accelerator_profiles(
+        results,
+        {"P7-integrated-resident", "P7-integrated-resident-quick"},
+        "cuda-resident",
+    )
+
+
+def same_host_native(
+    native_profiles: list[dict[str, Any]], integrated: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    if not integrated:
+        return None
+    instance_id = (integrated.get("cloud") or {}).get("instance_id")
+    if not instance_id:
+        return None
+    matches = [
+        row
+        for row in native_profiles
+        if row.get("milestone") == "P7-gpu-native-inference"
+        and not row.get("git_dirty", True)
+        and (row.get("cloud") or {}).get("instance_id") == instance_id
+    ]
+    return matches[-1] if matches else None
+
+
+def integrated_same_host_result(
+    proof: dict[str, Any] | None, native: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    if not proof or not native:
+        return None
+    proof_rho = {
+        "prefill": proof["prove_prefill_s"] / native["prefill_s"],
+        "decode": proof["prove_decode_marginal_s"] / native["decode_50_s"],
+    }
+    result: dict[str, Any] = {
+        "same_instance": True,
+        "native_source": native["source"],
+        "proof_source": proof["source"],
+        "rho_definition": "protocol-core prover wall / same-host exact native-GPU inference wall",
+        "proof_rho": proof_rho,
+        "targets": P7_RHO_TARGETS,
+        "target_met": {
+            phase: proof_rho[phase] <= P7_RHO_TARGETS[phase]
+            for phase in ("prefill", "decode")
+        },
+        "required_speedup_to_target": {
+            phase: proof_rho[phase] / P7_RHO_TARGETS[phase]
+            for phase in ("prefill", "decode")
+        },
+        "native_anchor_plus_protocol_core_s": {
+            "prefill": native["prefill_s"] + proof["prove_prefill_s"],
+            "decode_50": native["decode_50_s"] + proof["prove_decode_marginal_s"],
+        },
+        "pcs": {
+            "commit_offline_s": (proof.get("pcs_commit_timing") or {}).get("median_s"),
+            "open_online_s": (proof.get("pcs_open_timing") or {}).get("median_s"),
+            "verify_s": (proof.get("pcs_verify_timing") or {}).get("median_s"),
+        },
+        "pcg": {
+            "backend": proof.get("pcg_backend"),
+            "setup_offline_s": proof.get("pcg_real_phase_a_total_s"),
+            "setup_comm_bytes": proof.get("pcg_setup_comm_bytes"),
+            "production_grade": False,
+        },
+        "verifier_accounted_s": proof.get("verifier_accounted_s"),
+        "response_session_wall_s": proof.get("response_session_wall_s"),
+    }
+    online_response = proof.get("prover_online_accounted_response_s")
+    online_decode = proof.get("prover_online_accounted_decode_marginal_s")
+    if online_response is not None and online_decode is not None:
+        result["online_accounted"] = {
+            "definition": "protocol core + PCS opening + final closure exchange; closure contains both local roles",
+            "response_s": online_response,
+            "decode_marginal_s": online_decode,
+            "decode_rho": online_decode / native["decode_50_s"],
+        }
+    witness_prefill = (proof.get("accelerator_witness") or {}).get("measurement_wall_s")
+    witness_response = (proof.get("accelerator_response_witness") or {}).get(
+        "measurement_wall_s"
+    )
+    if witness_prefill is not None and witness_response is not None:
+        result["measured_resident_pipeline_s"] = {
+            "prefill_inference_plus_protocol_core": witness_prefill
+            + proof["prove_prefill_s"],
+            "response_inference_plus_online_accounted": (
+                witness_response + online_response if online_response is not None else None
+            ),
+            "response_inference_plus_full_session_wall": (
+                witness_response + proof["response_session_wall_s"]
+                if proof.get("response_session_wall_s") is not None
+                else None
+            ),
+        }
+    return result
 
 
 def decode_marginal_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -902,18 +1053,26 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
         if r["milestone"] == "P7-integrated-hybrid" and not r.get("git_dirty", True)
     ]
     gpu_hybrid_record = full_gpu_hybrid[-1] if full_gpu_hybrid else None
+    gpu_resident = integrated_resident_profiles(results)
+    full_gpu_resident = [
+        r
+        for r in gpu_resident
+        if r["milestone"] == "P7-integrated-resident" and not r.get("git_dirty", True)
+    ]
+    gpu_resident_record = full_gpu_resident[-1] if full_gpu_resident else None
     gpu_native = gpu_native_inference_profiles(results)
-    full_gpu_native = [r for r in gpu_native if r["milestone"] == "P7-gpu-native-inference"]
-    if gpu_hybrid_record:
-        hybrid_instance = (gpu_hybrid_record.get("cloud") or {}).get("instance_id")
-        matching_native = [
-            r
-            for r in full_gpu_native
-            if (r.get("cloud") or {}).get("instance_id") == hybrid_instance
-        ]
-        gpu_native_record = matching_native[-1] if matching_native else None
-    else:
-        gpu_native_record = full_gpu_native[-1] if full_gpu_native else None
+    full_gpu_native = [
+        r
+        for r in gpu_native
+        if r["milestone"] == "P7-gpu-native-inference" and not r.get("git_dirty", True)
+    ]
+    resident_native_record = same_host_native(gpu_native, gpu_resident_record)
+    hybrid_native_record = same_host_native(gpu_native, gpu_hybrid_record)
+    gpu_native_record = (
+        resident_native_record
+        or hybrid_native_record
+        or (full_gpu_native[-1] if full_gpu_native else None)
+    )
     gpu_budget = rho_model(baseline)
     required_prover_gpu_speedup = None
     if gpu_native_record:
@@ -929,34 +1088,20 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
             }
     else:
         proof_only_budget = None
-    integrated_hybrid_rho = None
-    if gpu_hybrid_record and gpu_native_record:
-        measured = {
-            "prefill": gpu_hybrid_record["prove_prefill_s"] / gpu_native_record["prefill_s"],
-            "decode": gpu_hybrid_record["prove_decode_marginal_s"]
-            / gpu_native_record["decode_50_s"],
-        }
-        integrated_hybrid_rho = {
-            "same_instance": True,
-            "native_source": gpu_native_record["source"],
-            "proof_source": gpu_hybrid_record["source"],
-            "proof_rho": measured,
-            "targets": P7_RHO_TARGETS,
-            "target_met": {
-                phase: measured[phase] <= P7_RHO_TARGETS[phase]
-                for phase in ("prefill", "decode")
-            },
-            "required_speedup_from_hybrid_to_target": {
-                phase: measured[phase] / P7_RHO_TARGETS[phase]
-                for phase in ("prefill", "decode")
-            },
-            "inference_plus_proving_s": {
-                "prefill": gpu_native_record["prefill_s"]
-                + gpu_hybrid_record["prove_prefill_s"],
-                "decode_50": gpu_native_record["decode_50_s"]
-                + gpu_hybrid_record["prove_decode_marginal_s"],
-            },
-        }
+    integrated_hybrid_rho = integrated_same_host_result(
+        gpu_hybrid_record, hybrid_native_record
+    )
+    integrated_resident_rho = integrated_same_host_result(
+        gpu_resident_record, resident_native_record
+    )
+    if integrated_hybrid_rho:
+        # Preserve the schema consumed by the historical hybrid artifact.
+        integrated_hybrid_rho["required_speedup_from_hybrid_to_target"] = (
+            integrated_hybrid_rho["required_speedup_to_target"]
+        )
+        integrated_hybrid_rho["inference_plus_proving_s"] = integrated_hybrid_rho[
+            "native_anchor_plus_protocol_core_s"
+        ]
     pcg_status = (
         "phase_b_measured_not_production"
         if real_pcg_b
@@ -987,13 +1132,19 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
     }
 
     report = {
-        "report_schema_version": 2,
+        "report_schema_version": 3 if gpu_resident_record else 2,
         "milestone": "P7",
         "date": _dt.date.today().isoformat(),
         "git_sha": git(["rev-parse", "--short", "HEAD"]),
         "git_dirty": git_dirty(),
         "machine": f"{platform.system().lower()} {platform.machine()}",
-        "cloud": gpu_hybrid_record.get("cloud") if gpu_hybrid_record else baseline.get("cloud"),
+        "cloud": (
+            gpu_resident_record.get("cloud")
+            if gpu_resident_record
+            else gpu_hybrid_record.get("cloud")
+            if gpu_hybrid_record
+            else baseline.get("cloud")
+        ),
         "baseline": {
             "source": baseline["_path"],
             "git_dirty": baseline.get("git_dirty"),
@@ -1085,6 +1236,27 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
                 "but H2D/D2H plus CPU residual dominate. This is the attribution gate, not the resident paper result."
             ),
         },
+        "integrated_resident": {
+            "status": (
+                "measured_same_host_targets_pass"
+                if integrated_resident_rho
+                and all(integrated_resident_rho["target_met"].values())
+                else "measured_same_host_targets_fail"
+                if integrated_resident_rho
+                else "measured_without_same_host_native_anchor"
+                if gpu_resident_record
+                else "not_measured"
+            ),
+            "run_of_record": gpu_resident_record,
+            "profiles": gpu_resident,
+            "same_host_result": integrated_resident_rho,
+            "note": (
+                "Resident forward, witness and proving share persistent device buffers. "
+                "The protocol-core rho remains the preregistered gate; PCS/opening, closures, "
+                "verifier, offline commitment and mock-PCG limitations are reported separately "
+                "and retained in the measured session wall."
+            ),
+        },
         "gpu_native_inference": {
             "status": "measured_exact_golden_pass" if gpu_native_record else "not_measured",
             "run_of_record": gpu_native_record,
@@ -1104,7 +1276,14 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
         },
         "go_no_go": {
             "local_recommendation": (
-                "proceed-to-device-resident-prover-integration"
+                "resident-gates-pass-build-publication-artifact"
+                if integrated_resident_rho
+                and all(integrated_resident_rho["target_met"].values())
+                else "resident-gates-fail-report-result-without-production-claim"
+                if integrated_resident_rho
+                else "measure-same-host-native-gpu-anchor-for-resident-run"
+                if gpu_resident_record
+                else "proceed-to-device-resident-prover-integration"
                 if integrated_hybrid_rho
                 else "measure-same-host-native-gpu-anchor"
                 if gpu_hybrid_record
@@ -1127,14 +1306,20 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
                 else "conditional-go-to-cloud-spikes-only"
             ),
             "summary": (
-                "Communication, golden decode, verifier and flat-cost gates pass in the full CUDA-hybrid path. "
+                "The clean full resident path has a same-host exact native-GPU denominator; "
+                "the report retains protocol-core rho, resident inference+proving, full session wall, "
+                "PCS/PCG, verifier, communication and memory as separate measured quantities."
+                if integrated_resident_rho
+                else "Communication, golden decode, verifier and flat-cost gates pass in the full CUDA-hybrid path. "
                 "Same-host attribution shows staged transfers and CPU residual dominate by orders of magnitude; "
                 "the preregistered resident witness/proving path is required before the final rho go/no-go."
                 if integrated_hybrid_rho
                 else "Communication is inside the 150-200 MB envelope, but a final rho decision still requires same-host integrated proving and native GPU measurements."
             ),
             "remaining_before_final_go_no_go": (
-                [
+                []
+                if integrated_resident_rho
+                else [
                     "device-resident witness consumed directly by the prover without full host materialization",
                     "resident forward/proving share persistent buffers and transfer only protocol messages",
                     "resident 1-warmup/3-repetition full gate passes rho<=10/<=2 with the existing correctness and communication gates",
@@ -1333,6 +1518,38 @@ def print_summary(report: dict[str, Any]) -> None:
                 f"  same-host proof rho: prefill {measured['prefill']:.2f}, "
                 f"decode {measured['decode']:.2f}; resident gap to target "
                 f"{gap['prefill']:.2f}x/{gap['decode']:.2f}x"
+            )
+        print()
+    resident = report.get("integrated_resident", {}).get("run_of_record")
+    resident_rho = report.get("integrated_resident", {}).get("same_host_result")
+    if resident:
+        print("Integrated CUDA-resident prover")
+        print(
+            f"  proof core prefill={resident['prove_prefill_s']:.3f}s; "
+            f"decode marginal={resident['prove_decode_marginal_s']:.3f}s; "
+            f"online response={resident['prover_online_accounted_response_s']:.3f}s; "
+            f"session wall={resident['response_session_wall_s']:.3f}s"
+        )
+        print(
+            f"  flat={resident['flat_cost_last_over_first']:.3f}; "
+            f"packed={mb(resident['packed_response_bytes']):.2f} MB; "
+            f"device bytes after cleanup="
+            f"{resident['accelerator_live_device_bytes_after_cleanup']} "
+            f"{resident['source']}"
+        )
+        if resident_rho:
+            measured = resident_rho["proof_rho"]
+            print(
+                f"  same-host proof rho: prefill {measured['prefill']:.3f} "
+                f"({'PASS' if resident_rho['target_met']['prefill'] else 'FAIL'}); "
+                f"decode {measured['decode']:.3f} "
+                f"({'PASS' if resident_rho['target_met']['decode'] else 'FAIL'})"
+            )
+            pcs = resident_rho["pcs"]
+            print(
+                f"  PCS commit offline={pcs['commit_offline_s']:.3f}s; "
+                f"open online={pcs['open_online_s']:.3f}s; verify={pcs['verify_s']:.3f}s; "
+                f"PCG={resident_rho['pcg']['backend']} (production_grade=false)"
             )
         print()
     decode_profiles = report.get("decode_marginal_profiles") or []

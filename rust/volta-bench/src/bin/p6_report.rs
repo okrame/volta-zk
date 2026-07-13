@@ -24,24 +24,27 @@
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::time::Instant;
-use volta_accel::{Backend, BackendStats, Operation};
+use volta_accel::{Backend, BackendKind, BackendStats, DeviceBuffer, DeviceSlice, Operation};
 use volta_bench::{cloud_metadata_from_env, logits_pack, time_paired_samples, CloudMetadata};
 use volta_field::{Fp, Fp2};
 use volta_gpt2::{
-    band_model_witness, decode_step, forward_model, forward_model_tokens,
-    forward_model_tokens_with_backend, forward_model_with_backend, load_model, BandModelWitness,
-    Gpt2Model, KvCache, L, VOCAB,
+    band_model_witness, band_model_witness_resident, decode_step, forward_model,
+    forward_model_tokens, forward_model_tokens_resident, forward_model_tokens_with_backend,
+    forward_model_with_backend, load_model, upload_resident_model, BandModelWitness, Gpt2Model,
+    KvCache, ResidentBandModelWitness, ResidentGpt2Model, ResidentModelWitness, L, VOCAB,
 };
 use volta_mac::{zero_batch_exchange, CorrelationStream, Transcript, VerifierCtx};
 use volta_pcg::{expand_phase_a, PhaseATimings, ProverPcgPool, VerifierPcgPool};
 use volta_pcs::{
-    commit, commit_with_backend, layout_gpt2_embed, layout_gpt2_layer, open_multi_zk,
-    open_multi_zk_with_backend, verify_multi_open, LigeroParams, GPT2_FULL, P4_LAYER,
+    commit, commit_resident, commit_with_backend, free_resident_matrix, layout_gpt2_embed,
+    layout_gpt2_layer, open_multi_zk, open_multi_zk_resident, open_multi_zk_with_backend,
+    verify_multi_open, LigeroParams, ProverMatrix, ResidentProverMatrix, GPT2_FULL, P4_LAYER,
 };
 use volta_proto::block_proof::layer_dom_base;
 use volta_proto::logup::Doms;
 use volta_proto::model_proof::{
-    prove_response, prove_response_with_backend, verify_response, ChunkPub, ChunkRef,
+    prove_model_resident, prove_response, prove_response_resident, prove_response_with_backend,
+    verify_response, ChunkPub, ChunkRef, ResidentChunkRef,
 };
 use volta_proto::{
     cattn_permuted, prod_batch_prover, prod_batch_verify, prove_model, prove_model_with_backend,
@@ -143,7 +146,12 @@ struct BenchmarkRepetitionRow {
     t_prove_prefill_only_s: f64,
     t_prove_response_s: f64,
     t_prove_decode_marginal_s: f64,
+    t_prover_online_accounted_response_s: f64,
+    t_prover_online_accounted_decode_marginal_s: f64,
+    t_response_session_wall_s: f64,
+    t_protocol_closure_exchange_s: f64,
     t_verify_response_s: f64,
+    t_verifier_accounted_s: f64,
     pcs_commit_total_s: f64,
     pcs_open_total_s: f64,
     pcs_verify_total_s: f64,
@@ -206,9 +214,13 @@ struct Report {
     #[serde(skip_serializing_if = "Option::is_none")]
     accelerator_witness: Option<AcceleratorStatsRow>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    accelerator_response_witness: Option<AcceleratorStatsRow>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     accelerator_prefill_proving: Option<AcceleratorStatsRow>,
     #[serde(skip_serializing_if = "Option::is_none")]
     accelerator_proving: Option<AcceleratorStatsRow>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    accelerator_live_device_bytes_after_cleanup: Option<u64>,
     benchmark_warmup_repetitions: usize,
     benchmark_repetitions: usize,
     representative_repetition: usize,
@@ -233,16 +245,36 @@ struct Report {
     t_prove_prefill_only_s: f64,
     t_prove_response_s: f64,
     t_prove_decode_marginal_s: f64,
-    rho_prefill: f64,
+    /// Online prover components available in this single-process harness:
+    /// protocol core + PCS opening + final product/zero closure exchange.
+    /// The closure exchange contains both roles and is also broken out.
+    t_prover_online_accounted_response_s: f64,
+    t_prover_online_accounted_decode_marginal_s: f64,
+    /// Actual wall around the whole response session: protocol core, public
+    /// output codec, verifier, PCS commitment/open/verify and closures.
+    t_response_session_wall_s: f64,
+    t_protocol_closure_exchange_s: f64,
+    t_verifier_accounted_s: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rho_prefill: Option<f64>,
     /// (prove_response − prove_prefill) / native decode wall — the decode
     /// marginal ratio (CPU; the ≤2 target is GPU, P7).
-    rho_decode: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rho_decode: Option<f64>,
+    rho_cpu_prefill: f64,
+    rho_cpu_decode: f64,
+    rho_denominator: String,
     verified_tokens_per_s: f64,
     t_verify_response_s: f64,
     prove_prefill_timing: TimingDistribution,
     prove_response_timing: TimingDistribution,
     prove_decode_marginal_timing: TimingDistribution,
+    prover_online_accounted_response_timing: TimingDistribution,
+    prover_online_accounted_decode_marginal_timing: TimingDistribution,
+    response_session_wall_timing: TimingDistribution,
+    protocol_closure_exchange_timing: TimingDistribution,
     verify_response_timing: TimingDistribution,
+    verifier_accounted_timing: TimingDistribution,
     // --- flat-cost gate (5 chunks × 10 tokens, cache 100→150) ------------------
     chunk_curve: Vec<ChunkCurveRow>,
     curve_last_over_first: f64,
@@ -489,6 +521,8 @@ struct SessionResult {
     accepted: bool,
     prove_s: f64,
     verify_s: f64,
+    session_wall_s: f64,
+    closure_exchange_s: f64,
     comm_bytes: u64,
     transcript_by_label: BTreeMap<String, u64>,
     pcs_by_label: BTreeMap<String, u64>,
@@ -507,6 +541,11 @@ struct SessionResult {
     public_logits_packed_bytes: u64,
     pcg_allocation_hash_match: Option<bool>,
     accelerator_stats: Option<BackendStats>,
+}
+
+enum SessionProverMatrix {
+    Host(ProverMatrix),
+    Resident(ResidentProverMatrix),
 }
 
 struct PrefillResult {
@@ -538,6 +577,40 @@ fn run_prefill(
         comm_bytes: tx.total_bytes(),
         transcript_by_label: ledger_to_owned(&tx),
         accelerator_stats,
+    }
+}
+
+fn run_prefill_resident(
+    model: &Gpt2Model,
+    resident_model: &ResidentGpt2Model,
+    witness: &ResidentModelWitness,
+    public_logits: &[i64],
+    error: DeviceSlice<'_, u32>,
+    seed: u8,
+    backend: &mut Backend,
+) -> PrefillResult {
+    assert_eq!(backend.kind(), BackendKind::CudaResident);
+    let started = Instant::now();
+    let mut stream = CorrelationStream::new([seed; 32]);
+    let mut tx = Transcript::new([seed ^ 0x5A; 32]);
+    backend.begin_measurement().expect("begin resident prefill measurement");
+    let _ = prove_model_resident(
+        model,
+        resident_model,
+        witness,
+        public_logits,
+        error,
+        &mut stream,
+        &mut tx,
+        backend,
+    )
+    .expect("resident prefill proof");
+    let stats = backend.finish_measurement().expect("finish resident prefill measurement");
+    PrefillResult {
+        prove_s: started.elapsed().as_secs_f64(),
+        comm_bytes: tx.total_bytes(),
+        transcript_by_label: ledger_to_owned(&tx),
+        accelerator_stats: Some(stats),
     }
 }
 
@@ -592,6 +665,14 @@ fn add_timings(dst: &mut Option<PhaseATimings>, src: PhaseATimings) {
     }
 }
 
+struct ResidentSessionInput<'a, 'source> {
+    model: &'a ResidentGpt2Model,
+    witness: &'a ResidentModelWitness,
+    bands: &'a [&'a ResidentBandModelWitness<'source>],
+    error: &'a DeviceBuffer<u32>,
+}
+
+#[allow(clippy::too_many_arguments)]
 fn run_session(
     model: &Gpt2Model,
     wit: &volta_gpt2::ModelWitness,
@@ -602,8 +683,75 @@ fn run_session(
     with_pcs: bool,
     seed: u8,
     pcg_backend: SessionPcgBackend,
+    accelerator: Option<&mut Backend>,
+) -> SessionResult {
+    run_session_impl(
+        model,
+        wit,
+        bands,
+        seq,
+        layer_params,
+        embed_params,
+        with_pcs,
+        seed,
+        pcg_backend,
+        None,
+        accelerator,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_session_resident<'source>(
+    model: &Gpt2Model,
+    wit: &volta_gpt2::ModelWitness,
+    bands: &[&BandModelWitness],
+    seq: &[u32],
+    resident_model: &ResidentGpt2Model,
+    resident_witness: &ResidentModelWitness,
+    resident_bands: &[&ResidentBandModelWitness<'source>],
+    error: &DeviceBuffer<u32>,
+    layer_params: &LigeroParams,
+    embed_params: &LigeroParams,
+    with_pcs: bool,
+    seed: u8,
+    pcg_backend: SessionPcgBackend,
+    backend: &mut Backend,
+) -> SessionResult {
+    run_session_impl(
+        model,
+        wit,
+        bands,
+        seq,
+        layer_params,
+        embed_params,
+        with_pcs,
+        seed,
+        pcg_backend,
+        Some(ResidentSessionInput {
+            model: resident_model,
+            witness: resident_witness,
+            bands: resident_bands,
+            error,
+        }),
+        Some(backend),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_session_impl<'source>(
+    model: &Gpt2Model,
+    wit: &volta_gpt2::ModelWitness,
+    bands: &[&BandModelWitness],
+    seq: &[u32],
+    layer_params: &LigeroParams,
+    embed_params: &LigeroParams,
+    with_pcs: bool,
+    seed: u8,
+    pcg_backend: SessionPcgBackend,
+    resident: Option<ResidentSessionInput<'_, 'source>>,
     mut accelerator: Option<&mut Backend>,
 ) -> SessionResult {
+    let session_started = Instant::now();
     if let Some(accel) = accelerator.as_deref_mut() {
         accel.begin_measurement().expect("begin accelerator measurement");
     }
@@ -620,11 +768,33 @@ fn run_session(
     let mut txp = Transcript::new([seed ^ 0x5A; 32]);
     let mut txv = Transcript::new([seed ^ 0x5A; 32]);
 
-    let chunks_p: Vec<ChunkRef> = bands.iter().map(|b| ChunkRef { band: b, seq }).collect();
     let tp0 = Instant::now();
-    let (proof, out, prod, zero) = if let Some(accel) = accelerator.as_deref_mut() {
+    let (proof, out, prod, zero) = if let Some(resident) = resident {
+        assert_eq!(resident.bands.len(), bands.len());
+        let resident_chunks: Vec<ResidentChunkRef> = resident
+            .bands
+            .iter()
+            .zip(bands)
+            .map(|(device, public)| ResidentChunkRef { band: device, logits: &public.logits, seq })
+            .collect();
+        let accel = accelerator.as_deref_mut().expect("resident session requires CUDA backend");
+        prove_response_resident(
+            model,
+            resident.model,
+            resident.witness,
+            &wit.logits,
+            &resident_chunks,
+            DeviceSlice::new(resident.error, 0, 1).expect("resident proof error word"),
+            &mut stream,
+            &mut txp,
+            accel,
+        )
+        .expect("resident response proof")
+    } else if let Some(accel) = accelerator.as_deref_mut() {
+        let chunks_p: Vec<ChunkRef> = bands.iter().map(|b| ChunkRef { band: b, seq }).collect();
         prove_response_with_backend(model, wit, &chunks_p, &mut stream, &mut txp, accel)
     } else {
+        let chunks_p: Vec<ChunkRef> = bands.iter().map(|b| ChunkRef { band: b, seq }).collect();
         prove_response(model, wit, &chunks_p, &mut stream, &mut txp)
     };
     let prove_s = tp0.elapsed().as_secs_f64();
@@ -680,10 +850,20 @@ fn run_session(
             pad_seed[31] = l as u8;
             let tc0 = Instant::now();
             let (com, pm) = if let Some(accel) = accelerator.as_deref_mut() {
-                commit_with_backend(&w_flat, layer_params, pad_seed, accel)
-                    .expect("CUDA layer commitment")
+                if accel.kind() == BackendKind::CudaResident {
+                    let (commitment, matrix) =
+                        commit_resident(&w_flat, layer_params, pad_seed, accel)
+                            .expect("resident CUDA layer commitment");
+                    (commitment, SessionProverMatrix::Resident(matrix))
+                } else {
+                    let (commitment, matrix) =
+                        commit_with_backend(&w_flat, layer_params, pad_seed, accel)
+                            .expect("hybrid CUDA layer commitment");
+                    (commitment, SessionProverMatrix::Host(matrix))
+                }
             } else {
-                commit(&w_flat, layer_params, pad_seed)
+                let (commitment, matrix) = commit(&w_flat, layer_params, pad_seed);
+                (commitment, SessionProverMatrix::Host(matrix))
             };
             let commit_s = tc0.elapsed().as_secs_f64();
 
@@ -705,30 +885,45 @@ fn run_session(
             let mut mask_seed = [0x44u8; 32];
             mask_seed[31] = l as u8;
             let to0 = Instant::now();
-            let (mproof, _mt) = if let Some(accel) = accelerator.as_deref_mut() {
-                open_multi_zk_with_backend(
-                    &w_flat,
-                    &pm,
+            let (mproof, _mt) = match &pm {
+                SessionProverMatrix::Resident(matrix) => open_multi_zk_resident(
+                    matrix,
                     &claims_p,
                     &mut stream,
                     dom_s0,
                     dom_s1,
                     mask_seed,
                     &mut txp,
-                    accel,
+                    accelerator.as_deref_mut().expect("resident PCS backend"),
                 )
-                .expect("CUDA layer opening")
-            } else {
-                open_multi_zk(
-                    &w_flat,
-                    &pm,
-                    &claims_p,
-                    &mut stream,
-                    dom_s0,
-                    dom_s1,
-                    mask_seed,
-                    &mut txp,
-                )
+                .expect("resident CUDA layer opening"),
+                SessionProverMatrix::Host(matrix) => {
+                    if let Some(accel) = accelerator.as_deref_mut() {
+                        open_multi_zk_with_backend(
+                            &w_flat,
+                            matrix,
+                            &claims_p,
+                            &mut stream,
+                            dom_s0,
+                            dom_s1,
+                            mask_seed,
+                            &mut txp,
+                            accel,
+                        )
+                        .expect("hybrid CUDA layer opening")
+                    } else {
+                        open_multi_zk(
+                            &w_flat,
+                            matrix,
+                            &claims_p,
+                            &mut stream,
+                            dom_s0,
+                            dom_s1,
+                            mask_seed,
+                            &mut txp,
+                        )
+                    }
+                }
             };
             let open_s = to0.elapsed().as_secs_f64();
             let ob = mproof.bytes();
@@ -766,7 +961,14 @@ fn run_session(
                 opening_cached_query_marginal_bytes: mbd.cached_query_marginal_bytes,
                 verified: ok,
             });
-            drop((w_flat, pm, com));
+            if let SessionProverMatrix::Resident(matrix) = pm {
+                free_resident_matrix(
+                    matrix,
+                    accelerator.as_deref_mut().expect("resident PCS cleanup backend"),
+                )
+                .expect("free resident layer commitment");
+            }
+            drop((w_flat, com));
             eprintln!(
                 "  layer {l}: {} claims, commit {commit_s:.2}s open {open_s:.3}s ok={ok}",
                 idxs.len()
@@ -778,10 +980,20 @@ fn run_session(
         let e_flat = layout_e.place(&[&model.wte, &model.wpe]);
         let tc0 = Instant::now();
         let (com_e, pm_e) = if let Some(accel) = accelerator.as_deref_mut() {
-            commit_with_backend(&e_flat, embed_params, [0x52u8; 32], accel)
-                .expect("CUDA embed commitment")
+            if accel.kind() == BackendKind::CudaResident {
+                let (commitment, matrix) =
+                    commit_resident(&e_flat, embed_params, [0x52u8; 32], accel)
+                        .expect("resident CUDA embed commitment");
+                (commitment, SessionProverMatrix::Resident(matrix))
+            } else {
+                let (commitment, matrix) =
+                    commit_with_backend(&e_flat, embed_params, [0x52u8; 32], accel)
+                        .expect("hybrid CUDA embed commitment");
+                (commitment, SessionProverMatrix::Host(matrix))
+            }
         } else {
-            commit(&e_flat, embed_params, [0x52u8; 32])
+            let (commitment, matrix) = commit(&e_flat, embed_params, [0x52u8; 32]);
+            (commitment, SessionProverMatrix::Host(matrix))
         };
         let commit_s = tc0.elapsed().as_secs_f64();
         let claims_p: Vec<_> = out
@@ -799,30 +1011,45 @@ fn run_session(
         let dom_s1 = doms_p.take(1);
         debug_assert_eq!((dom_s0, dom_s1), (doms_v.take(1), doms_v.take(1)));
         let to0 = Instant::now();
-        let (mproof_e, _mt) = if let Some(accel) = accelerator.as_deref_mut() {
-            open_multi_zk_with_backend(
-                &e_flat,
-                &pm_e,
+        let (mproof_e, _mt) = match &pm_e {
+            SessionProverMatrix::Resident(matrix) => open_multi_zk_resident(
+                matrix,
                 &claims_p,
                 &mut stream,
                 dom_s0,
                 dom_s1,
                 [0x45u8; 32],
                 &mut txp,
-                accel,
+                accelerator.as_deref_mut().expect("resident PCS backend"),
             )
-            .expect("CUDA embed opening")
-        } else {
-            open_multi_zk(
-                &e_flat,
-                &pm_e,
-                &claims_p,
-                &mut stream,
-                dom_s0,
-                dom_s1,
-                [0x45u8; 32],
-                &mut txp,
-            )
+            .expect("resident CUDA embed opening"),
+            SessionProverMatrix::Host(matrix) => {
+                if let Some(accel) = accelerator.as_deref_mut() {
+                    open_multi_zk_with_backend(
+                        &e_flat,
+                        matrix,
+                        &claims_p,
+                        &mut stream,
+                        dom_s0,
+                        dom_s1,
+                        [0x45u8; 32],
+                        &mut txp,
+                        accel,
+                    )
+                    .expect("hybrid CUDA embed opening")
+                } else {
+                    open_multi_zk(
+                        &e_flat,
+                        matrix,
+                        &claims_p,
+                        &mut stream,
+                        dom_s0,
+                        dom_s1,
+                        [0x45u8; 32],
+                        &mut txp,
+                    )
+                }
+            }
         };
         let open_s = to0.elapsed().as_secs_f64();
         let ob = mproof_e.bytes();
@@ -862,7 +1089,14 @@ fn run_session(
             opening_cached_query_marginal_bytes: mbd.cached_query_marginal_bytes,
             verified: ok,
         });
-        drop((e_flat, pm_e, com_e));
+        if let SessionProverMatrix::Resident(matrix) = pm_e {
+            free_resident_matrix(
+                matrix,
+                accelerator.as_deref_mut().expect("resident PCS cleanup backend"),
+            )
+            .expect("free resident embed commitment");
+        }
+        drop((e_flat, com_e));
         eprintln!(
             "  embed: {} claims, commit {commit_s:.2}s open {open_s:.3}s ok={ok}",
             3 * phases
@@ -872,6 +1106,7 @@ fn run_session(
     let pcs_by_label = ledger_delta(&tx_after_pcs, &[&tx_before_pcs]);
 
     // --- closures ------------------------------------------------------------
+    let closure_started = Instant::now();
     let chi = txp.challenge_fp2();
     assert_eq!(chi, txv.challenge_fp2());
     let mut domsp = Doms::new(layer_dom_base(255));
@@ -887,6 +1122,7 @@ fn run_session(
     // Without PCS the weight claims stay unresolved — the zero batch is then
     // run over the accumulated rows only (curve session: architecture-only).
     let ok_zero = zero_batch_exchange(&zero, &kzero, &mut stream, &mut vc, mz, &mut txp);
+    let closure_exchange_s = closure_started.elapsed().as_secs_f64();
     let accepted = ok_prod && ok_zero && (!with_pcs || pcs_all_ok);
     let pcg_allocation_hash_match =
         match (stream.allocation_digest_hex(), vc.allocation_digest_hex()) {
@@ -897,11 +1133,14 @@ fn run_session(
     let pcg_pool_full_corrs = stream.counters.full_corrs;
     let accelerator_stats = accelerator
         .map(|accel| accel.finish_measurement().expect("finish accelerator measurement"));
+    let session_wall_s = session_started.elapsed().as_secs_f64();
 
     SessionResult {
         accepted,
         prove_s,
         verify_s,
+        session_wall_s,
+        closure_exchange_s,
         comm_bytes: txp.total_bytes(),
         transcript_by_label: ledger_to_owned(&txp),
         pcs_by_label,
@@ -940,19 +1179,16 @@ fn main() {
         eprintln!("p6_report: real-PCG and CUDA integration gates must be measured separately");
         std::process::exit(2);
     }
-    if args.accelerator == AcceleratorArg::CudaResident {
-        eprintln!(
-            "p6_report: cuda-resident requires the device-witness entry point; use cuda-hybrid"
-        );
-        std::process::exit(2);
-    }
     let mut accelerator = match args.accelerator {
         AcceleratorArg::Cpu => None,
         AcceleratorArg::CudaHybrid => Some(Backend::cuda_hybrid().unwrap_or_else(|e| {
             eprintln!("p6_report: CUDA requested but unavailable: {e}");
             std::process::exit(2);
         })),
-        AcceleratorArg::CudaResident => unreachable!(),
+        AcceleratorArg::CudaResident => Some(Backend::cuda_resident().unwrap_or_else(|e| {
+            eprintln!("p6_report: resident CUDA requested but unavailable: {e}");
+            std::process::exit(2);
+        })),
     };
     if args.pcg_backend == PcgBackendArg::Real && !quick {
         eprintln!(
@@ -987,14 +1223,40 @@ fn main() {
     eprintln!("loading artifact + prefill witness at t0={t0} ...");
     let model = load_model(&dir).expect("load_model");
     let cpu_wit0 = forward_model(&model, t0);
-    let (wit0, accelerator_witness_stats) = if let Some(accel) = accelerator.as_mut() {
-        accel.begin_measurement().expect("begin CUDA witness measurement");
-        let gpu_wit = forward_model_with_backend(&model, t0, accel).expect("CUDA hybrid witness");
-        let stats = accel.finish_measurement().expect("finish CUDA witness measurement");
-        assert_eq!(gpu_wit, cpu_wit0, "CPU/CUDA ModelWitness must be bit-exact");
-        (gpu_wit, Some(stats))
-    } else {
-        (cpu_wit0, None)
+    let mut resident_model: Option<ResidentGpt2Model> = None;
+    let mut resident_prefill: Option<ResidentModelWitness> = None;
+    let mut resident_source: Option<ResidentModelWitness> = None;
+    let mut resident_band50: Option<ResidentBandModelWitness<'_>> = None;
+    let mut resident_proof_error: Option<DeviceBuffer<u32>> = None;
+    let (wit0, accelerator_witness_stats) = match args.accelerator {
+        AcceleratorArg::Cpu => (cpu_wit0, None),
+        AcceleratorArg::CudaHybrid => {
+            let accel = accelerator.as_mut().expect("hybrid CUDA backend");
+            accel.begin_measurement().expect("begin CUDA witness measurement");
+            let gpu_wit =
+                forward_model_with_backend(&model, t0, accel).expect("CUDA hybrid witness");
+            let stats = accel.finish_measurement().expect("finish CUDA witness measurement");
+            assert_eq!(gpu_wit, cpu_wit0, "CPU/CUDA ModelWitness must be bit-exact");
+            (gpu_wit, Some(stats))
+        }
+        AcceleratorArg::CudaResident => {
+            let accel = accelerator.as_mut().expect("resident CUDA backend");
+            let uploaded = upload_resident_model(&model, accel).expect("upload resident model");
+            accel.begin_measurement().expect("begin resident prefill witness measurement");
+            let witness = forward_model_tokens_resident(&uploaded, &model.p.tokens[..t0], accel)
+                .expect("resident prefill witness");
+            let logits = accel
+                .download_device(witness.logits().buffer(), witness.logits().offset(), VOCAB)
+                .expect("download public prefill logits");
+            let stats =
+                accel.finish_measurement().expect("finish resident prefill witness measurement");
+            assert_eq!(logits, cpu_wit0.logits, "resident prefill logits must be bit-exact");
+            resident_proof_error =
+                Some(accel.upload_new_device(&[0u32]).expect("proof error word"));
+            resident_model = Some(uploaded);
+            resident_prefill = Some(witness);
+            (cpu_wit0, Some(stats))
+        }
     };
 
     // --- native baselines (ABBA paired, new-machine load-bearing rule) -------
@@ -1052,15 +1314,45 @@ fn main() {
     seq.extend_from_slice(&gen);
     eprintln!("full-response witness (T={}) + band extraction ...", seq.len());
     let cpu_full = forward_model_tokens(&model, &seq);
-    let full = if let Some(accel) = accelerator.as_mut() {
-        accel.begin_measurement().expect("begin CUDA response witness");
-        let gpu_full =
-            forward_model_tokens_with_backend(&model, &seq, accel).expect("CUDA response witness");
-        let _ = accel.finish_measurement().expect("finish CUDA response witness");
-        assert_eq!(gpu_full, cpu_full, "CPU/CUDA response witness must be bit-exact");
-        gpu_full
-    } else {
-        cpu_full
+    let mut accelerator_response_witness_stats = None;
+    let full = match args.accelerator {
+        AcceleratorArg::Cpu => cpu_full,
+        AcceleratorArg::CudaHybrid => {
+            let accel = accelerator.as_mut().expect("hybrid CUDA backend");
+            accel.begin_measurement().expect("begin CUDA response witness");
+            let gpu_full = forward_model_tokens_with_backend(&model, &seq, accel)
+                .expect("CUDA response witness");
+            accelerator_response_witness_stats =
+                Some(accel.finish_measurement().expect("finish CUDA response witness"));
+            assert_eq!(gpu_full, cpu_full, "CPU/CUDA response witness must be bit-exact");
+            gpu_full
+        }
+        AcceleratorArg::CudaResident => {
+            let accel = accelerator.as_mut().expect("resident CUDA backend");
+            let uploaded = resident_model.as_ref().expect("resident model");
+            accel.begin_measurement().expect("begin resident response witness measurement");
+            let source =
+                forward_model_tokens_resident(uploaded, &seq, accel).expect("resident response");
+            resident_source = Some(source);
+            let band = band_model_witness_resident(
+                uploaded,
+                resident_source.as_ref().expect("resident response source"),
+                t0,
+                n_gen,
+                accel,
+            )
+            .expect("resident response band");
+            let logits = accel
+                .download_device(band.logits().buffer(), band.logits().offset(), n_gen * VOCAB)
+                .expect("download public band logits");
+            accelerator_response_witness_stats = Some(
+                accel.finish_measurement().expect("finish resident response witness measurement"),
+            );
+            let expected = band_model_witness(&model, &cpu_full, t0);
+            assert_eq!(logits, expected.logits, "resident band logits must be bit-exact");
+            resident_band50 = Some(band);
+            cpu_full
+        }
     };
     let band50 = band_model_witness(&model, &full, t0);
     assert_eq!(band50.q, n_gen);
@@ -1116,37 +1408,102 @@ fn main() {
     } else {
         for warmup in 0..warmup_repetitions {
             let i = warmup as u8;
-            let _ = run_prefill(&model, &wit0, 0xC0 + i, accelerator.as_mut());
-            let warm = run_session(
-                &model,
-                &wit0,
-                &[&band50],
-                &seq,
-                &layer_params,
-                &embed_params,
-                true,
-                0xA0 + i,
-                SessionPcgBackend::Mock,
-                accelerator.as_mut(),
-            );
+            let warm = if args.accelerator == AcceleratorArg::CudaResident {
+                let backend = accelerator.as_mut().expect("resident CUDA backend");
+                let error = resident_proof_error.as_ref().expect("resident proof error word");
+                let _ = run_prefill_resident(
+                    &model,
+                    resident_model.as_ref().expect("resident model"),
+                    resident_prefill.as_ref().expect("resident prefill"),
+                    &wit0.logits,
+                    DeviceSlice::new(error, 0, 1).unwrap(),
+                    0xC0 + i,
+                    backend,
+                );
+                let resident_bands = [resident_band50.as_ref().expect("resident response band")];
+                run_session_resident(
+                    &model,
+                    &wit0,
+                    &[&band50],
+                    &seq,
+                    resident_model.as_ref().expect("resident model"),
+                    resident_prefill.as_ref().expect("resident prefill"),
+                    &resident_bands,
+                    error,
+                    &layer_params,
+                    &embed_params,
+                    true,
+                    0xA0 + i,
+                    SessionPcgBackend::Mock,
+                    backend,
+                )
+            } else {
+                let _ = run_prefill(&model, &wit0, 0xC0 + i, accelerator.as_mut());
+                run_session(
+                    &model,
+                    &wit0,
+                    &[&band50],
+                    &seq,
+                    &layer_params,
+                    &embed_params,
+                    true,
+                    0xA0 + i,
+                    SessionPcgBackend::Mock,
+                    accelerator.as_mut(),
+                )
+            };
             assert!(warm.accepted, "warmup response must verify");
             eprintln!("  warmup {} accepted", warmup + 1);
         }
         for repetition in 0..repetitions {
             let i = repetition as u8;
-            let prefill = run_prefill(&model, &wit0, 0x60 + i, accelerator.as_mut());
-            let response = run_session(
-                &model,
-                &wit0,
-                &[&band50],
-                &seq,
-                &layer_params,
-                &embed_params,
-                true,
-                0x40 + i,
-                SessionPcgBackend::Mock,
-                accelerator.as_mut(),
-            );
+            let (prefill, response) = if args.accelerator == AcceleratorArg::CudaResident {
+                let backend = accelerator.as_mut().expect("resident CUDA backend");
+                let error = resident_proof_error.as_ref().expect("resident proof error word");
+                let prefill = run_prefill_resident(
+                    &model,
+                    resident_model.as_ref().expect("resident model"),
+                    resident_prefill.as_ref().expect("resident prefill"),
+                    &wit0.logits,
+                    DeviceSlice::new(error, 0, 1).unwrap(),
+                    0x60 + i,
+                    backend,
+                );
+                let resident_bands = [resident_band50.as_ref().expect("resident response band")];
+                let response = run_session_resident(
+                    &model,
+                    &wit0,
+                    &[&band50],
+                    &seq,
+                    resident_model.as_ref().expect("resident model"),
+                    resident_prefill.as_ref().expect("resident prefill"),
+                    &resident_bands,
+                    error,
+                    &layer_params,
+                    &embed_params,
+                    true,
+                    0x40 + i,
+                    SessionPcgBackend::Mock,
+                    backend,
+                );
+                (prefill, response)
+            } else {
+                (
+                    run_prefill(&model, &wit0, 0x60 + i, accelerator.as_mut()),
+                    run_session(
+                        &model,
+                        &wit0,
+                        &[&band50],
+                        &seq,
+                        &layer_params,
+                        &embed_params,
+                        true,
+                        0x40 + i,
+                        SessionPcgBackend::Mock,
+                        accelerator.as_mut(),
+                    ),
+                )
+            };
             eprintln!(
                 "  repetition {}: prefill {:.2}s response {:.2}s verify {:.2}s accepted={}",
                 repetition + 1,
@@ -1192,10 +1549,36 @@ fn main() {
         session_results.iter().map(|x| x.pcs_rows.iter().map(|r| r.open_s).sum()).collect();
     let pcs_verify_samples: Vec<f64> =
         session_results.iter().map(|x| x.pcs_rows.iter().map(|r| r.verify_s).sum()).collect();
+    let online_response_samples: Vec<f64> = session_results
+        .iter()
+        .map(|x| {
+            x.prove_s + x.pcs_rows.iter().map(|r| r.open_s).sum::<f64>() + x.closure_exchange_s
+        })
+        .collect();
+    let online_decode_samples: Vec<f64> = online_response_samples
+        .iter()
+        .zip(&prefill_samples)
+        .map(|(response, prefill)| response - prefill)
+        .collect();
+    assert!(online_decode_samples.iter().all(|x| *x >= 0.0));
+    let response_session_wall_samples: Vec<f64> =
+        session_results.iter().map(|x| x.session_wall_s).collect();
+    let closure_exchange_samples: Vec<f64> =
+        session_results.iter().map(|x| x.closure_exchange_s).collect();
+    let verifier_accounted_samples: Vec<f64> = session_results
+        .iter()
+        .map(|x| x.verify_s + x.pcs_rows.iter().map(|r| r.verify_s).sum::<f64>())
+        .collect();
     let prove_prefill_timing = TimingDistribution::new(prefill_samples);
     let prove_response_timing = TimingDistribution::new(response_samples.clone());
     let prove_decode_marginal_timing = TimingDistribution::new(decode_samples);
+    let prover_online_accounted_response_timing = TimingDistribution::new(online_response_samples);
+    let prover_online_accounted_decode_marginal_timing =
+        TimingDistribution::new(online_decode_samples);
+    let response_session_wall_timing = TimingDistribution::new(response_session_wall_samples);
+    let protocol_closure_exchange_timing = TimingDistribution::new(closure_exchange_samples);
     let verify_response_timing = TimingDistribution::new(verify_samples);
+    let verifier_accounted_timing = TimingDistribution::new(verifier_accounted_samples);
     let pcs_commit_timing = TimingDistribution::new(pcs_commit_samples);
     let pcs_open_timing = TimingDistribution::new(pcs_open_samples);
     let pcs_verify_timing = TimingDistribution::new(pcs_verify_samples);
@@ -1211,7 +1594,18 @@ fn main() {
             t_prove_prefill_only_s: prefill.prove_s,
             t_prove_response_s: response.prove_s,
             t_prove_decode_marginal_s: response.prove_s - prefill.prove_s,
+            t_prover_online_accounted_response_s: response.prove_s
+                + response.pcs_rows.iter().map(|r| r.open_s).sum::<f64>()
+                + response.closure_exchange_s,
+            t_prover_online_accounted_decode_marginal_s: response.prove_s
+                + response.pcs_rows.iter().map(|r| r.open_s).sum::<f64>()
+                + response.closure_exchange_s
+                - prefill.prove_s,
+            t_response_session_wall_s: response.session_wall_s,
+            t_protocol_closure_exchange_s: response.closure_exchange_s,
             t_verify_response_s: response.verify_s,
+            t_verifier_accounted_s: response.verify_s
+                + response.pcs_rows.iter().map(|r| r.verify_s).sum::<f64>(),
             pcs_commit_total_s: response.pcs_rows.iter().map(|r| r.commit_s).sum(),
             pcs_open_total_s: response.pcs_rows.iter().map(|r| r.open_s).sum(),
             pcs_verify_total_s: response.pcs_rows.iter().map(|r| r.verify_s).sum(),
@@ -1252,6 +1646,24 @@ fn main() {
         })
         .collect();
     let band_refs: Vec<&BandModelWitness> = bands.iter().collect();
+    let mut resident_curve_bands = Vec::new();
+    if args.accelerator == AcceleratorArg::CudaResident {
+        let backend = accelerator.as_mut().expect("resident CUDA backend");
+        for chunk in 0..n_chunks {
+            resident_curve_bands.push(
+                band_model_witness_resident(
+                    resident_model.as_ref().expect("resident model"),
+                    resident_source.as_ref().expect("resident response source"),
+                    t0 + chunk * curve_chunk,
+                    curve_chunk,
+                    backend,
+                )
+                .expect("resident flat-cost band"),
+            );
+        }
+    }
+    let resident_curve_refs: Vec<&ResidentBandModelWitness<'_>> =
+        resident_curve_bands.iter().collect();
     let chk = if args.pcg_backend == PcgBackendArg::Real {
         eprintln!("  real PCG gate: mock prepass for chunk-curve counts ...");
         let pre = run_session(
@@ -1295,18 +1707,37 @@ fn main() {
         assert!(counters_match, "real-PCG chunk-curve counters must match mock prepass");
         real
     } else {
-        run_session(
-            &model,
-            &wit0,
-            &band_refs,
-            &seq,
-            &layer_params,
-            &embed_params,
-            false,
-            0x22,
-            SessionPcgBackend::Mock,
-            accelerator.as_mut(),
-        )
+        if args.accelerator == AcceleratorArg::CudaResident {
+            run_session_resident(
+                &model,
+                &wit0,
+                &band_refs,
+                &seq,
+                resident_model.as_ref().expect("resident model"),
+                resident_prefill.as_ref().expect("resident prefill"),
+                &resident_curve_refs,
+                resident_proof_error.as_ref().expect("resident proof error word"),
+                &layer_params,
+                &embed_params,
+                false,
+                0x22,
+                SessionPcgBackend::Mock,
+                accelerator.as_mut().expect("resident CUDA backend"),
+            )
+        } else {
+            run_session(
+                &model,
+                &wit0,
+                &band_refs,
+                &seq,
+                &layer_params,
+                &embed_params,
+                false,
+                0x22,
+                SessionPcgBackend::Mock,
+                accelerator.as_mut(),
+            )
+        }
     };
     let mut chunk_curve = Vec::with_capacity(n_chunks);
     for c in 0..n_chunks {
@@ -1340,6 +1771,47 @@ fn main() {
         if gate_flat { "PASS" } else { "FAIL" },
         chk.accepted
     );
+    drop(resident_curve_refs);
+    if args.accelerator == AcceleratorArg::CudaResident {
+        let backend = accelerator.as_mut().expect("resident CUDA backend");
+        for band in resident_curve_bands {
+            band.free(backend).expect("free resident flat-cost band");
+        }
+    }
+
+    // The resident objects have explicit ownership because their buffers must
+    // be returned to the same CUDA context.  Release dependants before their
+    // sources, then make the zero-live-bytes condition part of the report
+    // gate instead of relying on process teardown.
+    let accelerator_live_device_bytes_after_cleanup = if args.accelerator
+        == AcceleratorArg::CudaResident
+    {
+        let backend = accelerator.as_mut().expect("resident CUDA backend");
+        resident_band50
+            .take()
+            .expect("resident response band")
+            .free(backend)
+            .expect("free resident response band");
+        resident_source
+            .take()
+            .expect("resident response source")
+            .free(backend)
+            .expect("free resident response source");
+        resident_prefill
+            .take()
+            .expect("resident prefill")
+            .free(backend)
+            .expect("free resident prefill");
+        backend
+            .free_device(resident_proof_error.take().expect("resident proof error word"))
+            .expect("free resident proof error word");
+        resident_model.take().expect("resident model").free(backend).expect("free resident model");
+        let live = backend.stats().expect("resident CUDA cleanup stats").live_device_bytes;
+        assert_eq!(live, 0, "resident report leaked device allocations");
+        Some(live)
+    } else {
+        None
+    };
 
     // --- report --------------------------------------------------------------------
     let public_logits_bytes = ((n_gen * VOCAB + VOCAB) * 8) as u64;
@@ -1372,17 +1844,14 @@ fn main() {
     let pcs_open_total_s = pcs_open_timing.median_s;
     let pcs_verify_total_s = pcs_verify_timing.median_s;
     let report = Report {
-        report_schema_version: 2,
-        milestone: if args.accelerator == AcceleratorArg::CudaHybrid {
-            if quick {
-                "P7-integrated-hybrid-quick".into()
-            } else {
-                "P7-integrated-hybrid".into()
-            }
-        } else if quick {
-            "P6-quick".into()
-        } else {
-            "P6".into()
+        report_schema_version: if args.accelerator == AcceleratorArg::CudaResident { 3 } else { 2 },
+        milestone: match (args.accelerator, quick) {
+            (AcceleratorArg::CudaHybrid, true) => "P7-integrated-hybrid-quick".into(),
+            (AcceleratorArg::CudaHybrid, false) => "P7-integrated-hybrid".into(),
+            (AcceleratorArg::CudaResident, true) => "P7-integrated-resident-quick".into(),
+            (AcceleratorArg::CudaResident, false) => "P7-integrated-resident".into(),
+            (AcceleratorArg::Cpu, true) => "P6-quick".into(),
+            (AcceleratorArg::Cpu, false) => "P6".into(),
         },
         date: date.clone(),
         git_sha: sha.clone(),
@@ -1393,11 +1862,14 @@ fn main() {
         accelerator_backend: args.accelerator.as_str().into(),
         accelerator_witness: accelerator_witness_stats
             .map(|stats| AcceleratorStatsRow::from_stats(stats, "witness-forward")),
+        accelerator_response_witness: accelerator_response_witness_stats
+            .map(|stats| AcceleratorStatsRow::from_stats(stats, "response-witness-forward")),
         accelerator_prefill_proving: accelerator_prefill_proving_stats
             .map(|stats| AcceleratorStatsRow::from_stats(stats, "prefill-proof")),
         accelerator_proving: rec.accelerator_stats.map(|stats| {
             AcceleratorStatsRow::from_stats(stats, "response-session-including-pcs-and-verifier")
         }),
+        accelerator_live_device_bytes_after_cleanup,
         benchmark_warmup_repetitions: warmup_repetitions,
         benchmark_repetitions: repetitions,
         representative_repetition,
@@ -1418,14 +1890,34 @@ fn main() {
         t_prove_prefill_only_s,
         t_prove_response_s,
         t_prove_decode_marginal_s,
-        rho_prefill: t_prove_prefill_only_s / t_native_prefill_s,
-        rho_decode: t_prove_decode_marginal_s / t_native_decode_s,
+        t_prover_online_accounted_response_s: prover_online_accounted_response_timing.median_s,
+        t_prover_online_accounted_decode_marginal_s: prover_online_accounted_decode_marginal_timing
+            .median_s,
+        t_response_session_wall_s: response_session_wall_timing.median_s,
+        t_protocol_closure_exchange_s: protocol_closure_exchange_timing.median_s,
+        t_verifier_accounted_s: verifier_accounted_timing.median_s,
+        rho_prefill: (args.accelerator != AcceleratorArg::CudaResident)
+            .then_some(t_prove_prefill_only_s / t_native_prefill_s),
+        rho_decode: (args.accelerator != AcceleratorArg::CudaResident)
+            .then_some(t_prove_decode_marginal_s / t_native_decode_s),
+        rho_cpu_prefill: t_prove_prefill_only_s / t_native_prefill_s,
+        rho_cpu_decode: t_prove_decode_marginal_s / t_native_decode_s,
+        rho_denominator: if args.accelerator == AcceleratorArg::CudaResident {
+            "same-host native GPU anchor joined by scripts/report.py".into()
+        } else {
+            "same-process CPU ABBA native baseline".into()
+        },
         verified_tokens_per_s: n_gen as f64 / t_prove_response_s,
         t_verify_response_s,
         prove_prefill_timing,
         prove_response_timing,
         prove_decode_marginal_timing,
+        prover_online_accounted_response_timing,
+        prover_online_accounted_decode_marginal_timing,
+        response_session_wall_timing,
+        protocol_closure_exchange_timing,
         verify_response_timing,
+        verifier_accounted_timing,
         chunk_curve,
         curve_last_over_first,
         gate_flat_cost_per_token: gate_flat,
@@ -1483,16 +1975,13 @@ fn main() {
 
     assert!(accepted, "P6 sanity: honest response (both sessions) must verify");
     assert!(gate_flat, "P6 gate: per-token cost must stay ~flat as the cache grows");
-    let mut label = if args.accelerator == AcceleratorArg::CudaHybrid {
-        if quick {
-            "p7-integrated-hybrid-quick".to_string()
-        } else {
-            "p7-integrated-hybrid".to_string()
-        }
-    } else if quick {
-        "p6-quick".to_string()
-    } else {
-        "p6".to_string()
+    let mut label = match (args.accelerator, quick) {
+        (AcceleratorArg::CudaHybrid, true) => "p7-integrated-hybrid-quick".to_string(),
+        (AcceleratorArg::CudaHybrid, false) => "p7-integrated-hybrid".to_string(),
+        (AcceleratorArg::CudaResident, true) => "p7-integrated-resident-quick".to_string(),
+        (AcceleratorArg::CudaResident, false) => "p7-integrated-resident".to_string(),
+        (AcceleratorArg::Cpu, true) => "p6-quick".to_string(),
+        (AcceleratorArg::Cpu, false) => "p6".to_string(),
     };
     if layer_params.n_queries != P4_LAYER.n_queries {
         label.push_str(&format!("-q{}", layer_params.n_queries));

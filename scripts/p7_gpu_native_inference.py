@@ -42,7 +42,7 @@ def cloud() -> dict[str, str]:
 
 
 def baseline(instance_id: str, explicit: str | None) -> tuple[Path, dict]:
-    allowed = {"P6", "P7-integrated-hybrid"}
+    allowed = {"P6", "P7-integrated-hybrid", "P7-integrated-resident"}
 
     def accepted(_path: Path, data: dict) -> bool:
         return (
@@ -67,13 +67,16 @@ def baseline(instance_id: str, explicit: str | None) -> tuple[Path, dict]:
             raise SystemExit(f"invalid explicit native baseline {path}: {exc}") from exc
         if not accepted(path, data):
             raise SystemExit(
-                f"baseline {path} must be clean, accepted, same-instance P6/P7-integrated-hybrid"
+                f"baseline {path} must be clean, accepted and same-instance; "
+                "allowed milestones are P6, P7-integrated-hybrid and P7-integrated-resident"
             )
         return path, data
 
     rows: list[tuple[float, Path, dict]] = []
-    candidates = list(RESULTS.glob("p6-*.json")) + list(
-        RESULTS.glob("p7-integrated-hybrid-*.json")
+    candidates = (
+        list(RESULTS.glob("p6-*.json"))
+        + list(RESULTS.glob("p7-integrated-hybrid-*.json"))
+        + list(RESULTS.glob("p7-integrated-resident-*.json"))
     )
     for path in candidates:
         try:
@@ -84,7 +87,7 @@ def baseline(instance_id: str, explicit: str | None) -> tuple[Path, dict]:
             rows.append((path.stat().st_mtime, path, data))
     if not rows:
         raise SystemExit(
-            f"no clean accepted P6/P7-integrated-hybrid baseline for cloud instance {instance_id}"
+            f"no clean accepted full P6/integrated baseline for cloud instance {instance_id}"
         )
     _, path, data = max(rows)
     return path, data
@@ -108,7 +111,7 @@ def main() -> int:
     ap.add_argument("--quick", action="store_true")
     ap.add_argument(
         "--baseline",
-        help="explicit clean same-instance P6 or P7-integrated-hybrid JSON",
+        help="explicit clean same-instance full P6 or integrated CUDA JSON",
     )
     args = ap.parse_args()
     meta = cloud()

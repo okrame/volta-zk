@@ -173,3 +173,70 @@ def test_p7_report_selects_record_and_packed_sources():
     assert len(decode) == 1
     assert decode[0]["label_sum_bytes"] == decode[0]["comm_decode_marginal_bytes"]
     assert decode[0]["top_labels"][0] == {"label": "auth_corrections", "bytes": 20_902_016}
+
+
+def test_resident_profile_joins_only_same_host_native_anchor_and_keeps_full_accounting():
+    report = load_report_module()
+    raw = {
+        "_mtime": 1.0,
+        "_path": "benchmarks/results/resident.json",
+        "milestone": "P7-integrated-resident",
+        "git_dirty": False,
+        "accepted": True,
+        "accelerator_backend": "cuda-resident",
+        "cloud": {"instance_id": "a100-record"},
+        "t_prefill": 100,
+        "n_decode": 50,
+        "t_prove_prefill_only_s": 0.1,
+        "t_prove_response_s": 1.1,
+        "t_prove_decode_marginal_s": 1.0,
+        "t_prover_online_accounted_response_s": 1.3,
+        "t_prover_online_accounted_decode_marginal_s": 1.2,
+        "t_response_session_wall_s": 2.0,
+        "t_protocol_closure_exchange_s": 0.02,
+        "t_verifier_accounted_s": 0.04,
+        "pcs_commit_timing": {"median_s": 0.5},
+        "pcs_open_timing": {"median_s": 0.18},
+        "pcs_verify_timing": {"median_s": 0.01},
+        "accelerator_witness": {"measurement_wall_s": 0.03},
+        "accelerator_response_witness": {"measurement_wall_s": 0.7},
+        "accelerator_live_device_bytes_after_cleanup": 0,
+        "pcg_backend": "mock",
+        "pcg_setup_comm_bytes": 0,
+    }
+    resident = report.integrated_resident_profiles([raw])[0]
+    assert resident["accelerator_live_device_bytes_after_cleanup"] == 0
+
+    wrong_host = {
+        "source": "wrong.json",
+        "milestone": "P7-gpu-native-inference",
+        "git_dirty": False,
+        "cloud": {"instance_id": "other"},
+        "prefill_s": 0.02,
+        "decode_50_s": 0.6,
+    }
+    native = {
+        "source": "native.json",
+        "milestone": "P7-gpu-native-inference",
+        "git_dirty": False,
+        "cloud": {"instance_id": "a100-record"},
+        "prefill_s": 0.02,
+        "decode_50_s": 0.6,
+    }
+    assert report.same_host_native([wrong_host], resident) is None
+    assert report.same_host_native([wrong_host, native], resident) is native
+
+    joined = report.integrated_same_host_result(resident, native)
+    assert joined["proof_rho"] == {"prefill": 5.0, "decode": 1.0 / 0.6}
+    assert joined["target_met"] == {"prefill": True, "decode": True}
+    assert joined["online_accounted"]["response_s"] == 1.3
+    assert joined["pcs"] == {
+        "commit_offline_s": 0.5,
+        "open_online_s": 0.18,
+        "verify_s": 0.01,
+    }
+    assert joined["measured_resident_pipeline_s"] == {
+        "prefill_inference_plus_protocol_core": 0.13,
+        "response_inference_plus_online_accounted": 2.0,
+        "response_inference_plus_full_session_wall": 2.7,
+    }

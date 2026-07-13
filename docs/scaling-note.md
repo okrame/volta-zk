@@ -1,8 +1,11 @@
 # Scaling note — VOLTA beyond GPT-2: dense and MoE
 
 **Status**: design note + mini-spec, NOT pre-registered (2026-07-07, P7
-handoff companion to `docs/p7-handoff-spec.md`). The phase sketched in §5
-starts only after P7's GPU go/no-go. Planning targets: **gpt-oss-20b**
+handoff companion to `docs/p7-handoff-spec.md`). A post-e2e synthetic
+shape/memory sweep was recorded on 2026-07-13; it validates only the linear
+state, GQA and active/total-weight formulas and does **not** start Phase X,
+add a frontend or constitute a non-GPT-2 e2e result. The phase sketched in §5
+still requires a separate decision. Planning targets: **gpt-oss-20b**
 (24 layers, d = 2880, 32 experts top-4, 3.6B active / 20.9B total, GQA
 64/8, alternating full / 128-token sliding-window attention, RMSNorm,
 SwiGLU+clamp, attention sinks, RoPE, MoE weights MXFP4 — arXiv:2508.10925)
@@ -42,6 +45,12 @@ corrections/token in the single-digit MB; pre-register the depth/soundness
 analysis before implementing.
 
 ## 2. Projections across scales (analytic; re-derive in `budget_moe.py`)
+
+The executable P7-only companion is `scripts/p7_shape_memory_sweep.py`.
+Its append-only JSON pins the frozen GPT-2 manifest and resident peak as the
+measured anchor, then emits sequence-length rows for a representative
+Llama-class dense/GQA shape and the planning gpt-oss/MoE-active shape. It
+deliberately does not project proof time or proof peak memory.
 
 Constants from the P6 run of record; corrections @2 B assume lever B;
 "opening marginal" assumes lever A + per-layer block commitments + RLC.

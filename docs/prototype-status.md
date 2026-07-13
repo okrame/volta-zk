@@ -56,6 +56,23 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-13 (post-e2e synthetic shape/memory sweep complete; no new
+  frontend or e2e claim)**: clean append-only result
+  `benchmarks/results/p7-shape-memory-sweep-2026-07-13-797f499.json`
+  (SHA-256 `59df28891f7a5c024a98e66f1bb1d470cf8d7909d334dbcd92190076b5fec42a`)
+  evaluates sequence lengths 150/512/2048/8192 for exactly three declared
+  profiles: the measured GPT-2-small shape, a representative Llama-class 8B
+  dense/GQA shape and the documented gpt-oss-20b/MoE-active planning shape.
+  The frozen GPT-2 manifest closes exactly at 124,701,952 i16 elements /
+  249,403,904 B; the analytic Llama shape is 8,030,261,248 parameters with
+  GQA KV fraction 1/4; gpt-oss uses 20.9B total / 3.6B active parameters,
+  hence 41.8/7.2 GB i16 total/active weight bytes. Linear state rows are
+  monotone, GQA reduces KV as expected and active MoE weights remain below
+  committed total weights. The JSON links the measured 5,405,147,708 B
+  GPT-2 proof peak but explicitly projects neither non-GPT proof time nor
+  proof peak memory. `ModelConfig`, Llama/gpt-oss frontends and non-GPT e2e
+  remain out of scope.
+
 - **2026-07-13 (`P7-integrated-resident` full run and same-host native anchor
   complete; performance gates failed)**: clean immutable full run
   `benchmarks/results/p7-integrated-resident-2026-07-13-1fd5195.json`

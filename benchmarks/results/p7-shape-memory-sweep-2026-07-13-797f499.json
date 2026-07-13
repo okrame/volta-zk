@@ -1,0 +1,199 @@
+{
+  "date": "2026-07-13",
+  "git_dirty": false,
+  "git_sha": "797f499",
+  "milestone": "P7-shape-memory-sweep",
+  "profiles": [
+    {
+      "active_parameter_fraction": 1.0,
+      "active_parameters": 124701952,
+      "active_weight_bytes_i16": 249403904,
+      "architecture": "dense-mha",
+      "committed_weight_bytes_i16": 249403904,
+      "correction_driver_layers_times_d": 9216,
+      "d_ff": 3072,
+      "d_model": 768,
+      "experts": 1,
+      "gqa_kv_fraction_vs_mha": 1.0,
+      "head_dim": 64,
+      "layers": 12,
+      "n_heads": 12,
+      "n_kv_heads": 12,
+      "name": "gpt2-small",
+      "native_weight_bytes_nominal": 249403904,
+      "parameter_source": "frozen gpt2s-q.json total_elems",
+      "projected_lookup_count_t150": 16944000,
+      "relative_correction_driver_vs_gpt2": 1.0,
+      "sequence_sweep": [
+        {
+          "fits_a100_80gib_before_protocol_workspace": true,
+          "kv_cache_bytes_i16": 5529600,
+          "residual_seam_bytes_i16": 2764800,
+          "sequence_length": 150,
+          "static_weights_plus_linear_state_bytes_i16": 257698304
+        },
+        {
+          "fits_a100_80gib_before_protocol_workspace": true,
+          "kv_cache_bytes_i16": 18874368,
+          "residual_seam_bytes_i16": 9437184,
+          "sequence_length": 512,
+          "static_weights_plus_linear_state_bytes_i16": 277715456
+        },
+        {
+          "fits_a100_80gib_before_protocol_workspace": true,
+          "kv_cache_bytes_i16": 75497472,
+          "residual_seam_bytes_i16": 37748736,
+          "sequence_length": 2048,
+          "static_weights_plus_linear_state_bytes_i16": 362650112
+        },
+        {
+          "fits_a100_80gib_before_protocol_workspace": true,
+          "kv_cache_bytes_i16": 301989888,
+          "residual_seam_bytes_i16": 150994944,
+          "sequence_length": 8192,
+          "static_weights_plus_linear_state_bytes_i16": 702388736
+        }
+      ],
+      "status": "measured-e2e-shape",
+      "top_k": 1,
+      "total_parameters": 124701952,
+      "vocab": 50257
+    },
+    {
+      "active_parameter_fraction": 1.0,
+      "active_parameters": 8030261248,
+      "active_weight_bytes_i16": 16060522496,
+      "architecture": "synthetic-dense-gqa",
+      "committed_weight_bytes_i16": 16060522496,
+      "correction_driver_layers_times_d": 131072,
+      "d_ff": 14336,
+      "d_model": 4096,
+      "experts": 1,
+      "gqa_kv_fraction_vs_mha": 0.25,
+      "head_dim": 128,
+      "layers": 32,
+      "n_heads": 32,
+      "n_kv_heads": 8,
+      "name": "llama-class-8b-dense-gqa",
+      "native_weight_bytes_nominal": 16060522496,
+      "parameter_source": "closed-form representative Llama-class shape",
+      "projected_lookup_count_t150": 240981333,
+      "relative_correction_driver_vs_gpt2": 14.222222222222221,
+      "sequence_sweep": [
+        {
+          "fits_a100_80gib_before_protocol_workspace": true,
+          "kv_cache_bytes_i16": 19660800,
+          "residual_seam_bytes_i16": 39321600,
+          "sequence_length": 150,
+          "static_weights_plus_linear_state_bytes_i16": 16119504896
+        },
+        {
+          "fits_a100_80gib_before_protocol_workspace": true,
+          "kv_cache_bytes_i16": 67108864,
+          "residual_seam_bytes_i16": 134217728,
+          "sequence_length": 512,
+          "static_weights_plus_linear_state_bytes_i16": 16261849088
+        },
+        {
+          "fits_a100_80gib_before_protocol_workspace": true,
+          "kv_cache_bytes_i16": 268435456,
+          "residual_seam_bytes_i16": 536870912,
+          "sequence_length": 2048,
+          "static_weights_plus_linear_state_bytes_i16": 16865828864
+        },
+        {
+          "fits_a100_80gib_before_protocol_workspace": true,
+          "kv_cache_bytes_i16": 1073741824,
+          "residual_seam_bytes_i16": 2147483648,
+          "sequence_length": 8192,
+          "static_weights_plus_linear_state_bytes_i16": 19281747968
+        }
+      ],
+      "status": "analytic-projection-only",
+      "top_k": 1,
+      "total_parameters": 8030261248,
+      "vocab": 128256
+    },
+    {
+      "active_parameter_fraction": 0.1722488038277512,
+      "active_parameters": 3600000000,
+      "active_weight_bytes_i16": 7200000000,
+      "architecture": "synthetic-moe-gqa",
+      "committed_weight_bytes_i16": 41800000000,
+      "correction_driver_layers_times_d": 69120,
+      "d_model": 2880,
+      "experts": 32,
+      "gqa_kv_fraction_vs_mha": 0.125,
+      "head_dim": 64,
+      "layers": 24,
+      "n_heads": 64,
+      "n_kv_heads": 8,
+      "name": "gpt-oss-20b-moe-active",
+      "native_weight_bits": 4,
+      "native_weight_bytes_nominal": 10450000000,
+      "parameter_source": "docs/scaling-note.md planning profile",
+      "projected_lookup_count_t150": 127080000,
+      "relative_correction_driver_vs_gpt2": 7.5,
+      "sequence_sweep": [
+        {
+          "fits_a100_80gib_before_protocol_workspace": true,
+          "kv_cache_bytes_i16": 7372800,
+          "residual_seam_bytes_i16": 20736000,
+          "sequence_length": 150,
+          "static_weights_plus_linear_state_bytes_i16": 41828108800
+        },
+        {
+          "fits_a100_80gib_before_protocol_workspace": true,
+          "kv_cache_bytes_i16": 25165824,
+          "residual_seam_bytes_i16": 70778880,
+          "sequence_length": 512,
+          "static_weights_plus_linear_state_bytes_i16": 41895944704
+        },
+        {
+          "fits_a100_80gib_before_protocol_workspace": true,
+          "kv_cache_bytes_i16": 100663296,
+          "residual_seam_bytes_i16": 283115520,
+          "sequence_length": 2048,
+          "static_weights_plus_linear_state_bytes_i16": 42183778816
+        },
+        {
+          "fits_a100_80gib_before_protocol_workspace": true,
+          "kv_cache_bytes_i16": 402653184,
+          "residual_seam_bytes_i16": 1132462080,
+          "sequence_length": 8192,
+          "static_weights_plus_linear_state_bytes_i16": 43335115264
+        }
+      ],
+      "status": "analytic-projection-only",
+      "top_k": 4,
+      "total_parameters": 20900000000,
+      "vocab": 201088
+    }
+  ],
+  "report_schema_version": 1,
+  "scope": {
+    "model_config_api_introduced": false,
+    "non_gpt2_end_to_end": false,
+    "non_gpt2_frontends_implemented": false,
+    "proof_peak_memory_projected": false,
+    "proof_time_projected": false,
+    "purpose": "validate linear state and active/total-weight scaling formulas only",
+    "synthetic_shape_memory_only": true
+  },
+  "sequence_lengths": [
+    150,
+    512,
+    2048,
+    8192
+  ],
+  "source_resident_peak_device_bytes": 5405147708,
+  "source_resident_result": "benchmarks/results/p7-integrated-resident-2026-07-13-1fd5195.json",
+  "source_resident_workspace_after_cleanup_bytes": 104988720,
+  "validation": {
+    "all_linear_state_rows_monotone": true,
+    "gpt2_manifest_elements_match_binary_bytes": true,
+    "gpt2_profile_matches_manifest_shape": true,
+    "gqa_reduces_kv_vs_mha": true,
+    "moe_active_weights_less_than_total": true
+  }
+}

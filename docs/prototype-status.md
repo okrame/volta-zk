@@ -347,6 +347,22 @@ constant factors hold. That constant factor is what P3/P4 measure.
   kernel total and is not compared as a performance result. A clean immutable
   checkpoint is required before promoting the traffic observation.
 
+  The immutable rerun now satisfies that hygiene gate:
+  `p7-integrated-resident-quick-2026-07-13-bf66c8f.json` (source `bf66c8f`,
+  `git_dirty:false`, SHA-256
+  `1b405aa54237aab45425eedb3648c6a855ad89b9e0d4f85e9e10d929d63b59da`).
+  It is accepted, all 13 Q=200 PCS openings verify, flat cost is 0.9882, and
+  the traffic/count observations reproduce exactly: **24,909,172 B H2D**,
+  81,518,420 B D2H, 313,339,392 B explicit D2D copies, 702,652,416 B device
+  zeroing, 115,302,400 B device generation, and **61,688 host-output
+  synchronizations**. PCS commit/open/verify are 0.174/0.566/0.349 s; kernel
+  total is 4.839 s. Core prefill is 27.868 s and decode marginal 23.425 s.
+  Because this is T=16+8 quick geometry, schema 5 correctly records
+  `p7b_gate_evaluated:false`; it validates the implementation and H2D
+  mechanism, not any of the T=100+50 official verdicts. The full-geometry H2D
+  projection remains about 96.43 MB and must be confirmed, not inferred, by
+  the later clean gate run.
+
 - **2026-07-13 (P7 publication artifact closed)**: clean aggregate
   `benchmarks/results/p7-2026-07-13-2c836b3.json` (SHA-256
   `6aa5d6927e8f511b4d9ca7881ac4e6c50ffd32b8fb48fbb9badc764dcc9aa78a`)

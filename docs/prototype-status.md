@@ -25,7 +25,7 @@ historical. The active P7b gates and measurement hygiene are the preregistered
 | P5 GPT-2 e2e prefill 100 tok | **done** (2026-07-06) | one-command run ✓ (`scripts/run_prefill.sh`), golden check ✓ (full logits bit-exact vs numpy at T=100, argmax 835 ' way'), counts vs budget: witness lookups = budget **exactly** (16,944,000) ✓ | **accepted e2e with real weights + 13 real Ligero commitments**: native (witness) 0.459 s, prove 11.0–11.2 s, **ρ ≈ 24** (matches P4's ×12 projection); verify 0.65 s + 0.07 s PCS; PCS open **0.73 s** / 52.8 MB (vs 0.237 s projection — 13× fixed costs, see deviations), commit one-off 7.6 s; **comm 159.6 MB/prefill** (mult vectors 59.4 + PCS 52.8 + boundary 36.9 + rest), projected response 212 MB; E-mult all-in 100.6/budget lookup; peak RSS 2.86 GB. `benchmarks/results/p5-2026-07-06-e52ce79.json` (clean tree) |
 | P6 decode + authenticated KV cache | **done** (2026-07-07) | flat cost/token ✓ **PASSED** (curve last/first 1.12 ≤ 1.5, 5×10 chunks, cache 100→150); anti-replay smoke ✓ (prefill-row replay + position swap rejected); golden decode ✓ (50 tokens bit-exact vs numpy) | **accepted e2e, prompt 100 + 50 decode, one two-phase session, real 13-commitment PCS with STACKED claims (96 weight + 6 embed)**: native decode 30.9 tok/s (KV-cached baseline); prove_response 18.7 s = prefill 10.5 s + **decode marginal 8.2 s (0.164 s/token, ρ_decode 5.07 CPU)**; verified 2.67 tok/s; verify 0.57 s + 0.10 s PCS. Comm: transcript 137.4 MB (prefill 48.4 + PCS opening 66.7 + decode marginal 22.3 = **445 KB/token**) + public band logits 20.5 MB → **total response download 157.9 MB** (inside the 150–200 MB product envelope; the PCS opening is now the dominant lever, P7). Shared-α restructure landed with P6: mult corr 59.4 → 2.85 MB. PCS commit one-off 9.5 s; peak RSS 3.47 GB. `benchmarks/results/p6-2026-07-07-515bb1c.json` (clean tree) |
 | P7 report + GPU budget model | **complete: resident full e2e + publication artifact; correctness/communication/flat PASS, rho FAIL** (2026-07-13) | T=100+50/Q=200, clean 1+3: golden ✓, proof/verifier ✓, flat 0.950 ✓, packed 144.821 MB ✓, explicit resident cleanup 0 B ✓; same-host exact native anchor ✓; **rho prefill 3707.60 >10 FAIL, decode 95.60 >2 FAIL**; tables/figures, hardware/checksum manifest, synthetic shape sweep and Lean audit ✓ | A100 resident core median: prefill **64.296±0.329 s MAD**, response **121.156±0.373 s**, decode marginal **57.296±0.809 s**. Native GPU: prefill **17.342±0.062 ms**, decode50 **599.346±0.990 ms**. Online-accounted response 121.774 s; full response-session wall 123.928 s; representative session 5.998 s kernels + 89.055 s host residual, 945.442 MB H2D + 138.488 MB D2H, 211,709 sync, 5.405 GB peak GPU. Raw sources `p7-integrated-resident-2026-07-13-1fd5195.json` / `p7-gpu-native-inference-2026-07-13-1fd5195.json`; aggregate `p7-2026-07-13-2c836b3.json`. Mock-PCG remains non-production. |
-| P7b iteration 2 resident-A100 orchestration | **in progress** (2026-07-13 checkpoint; no gate verdict) | Official clean T=100+50/Q=200, Thunder A100, >=1 warmup and >=3 measured repetitions still pending; no clean full or quick result exists for this checkpoint | ABI 26/schema 6 exact profiling and coarse scopes; exact correlation reservations/device mock masks; local scalar, product, generic LogUp and all-site GELU scheduling landed. The GELU response geometry projects 3,993 fewer blocking synchronizations, but neither this projection nor development differentials satisfy or evaluate a gate. Mock-PCG remains non-production. |
+| P7b iteration 2 resident-A100 orchestration | **in progress** (clean quick diagnostic; no gate verdict) | Official clean T=100+50/Q=200, Thunder A100, >=1 warmup and >=3 measured repetitions remains pending; the T=16+8/0+1 quick run is explicitly ineligible | Clean schema-6 quick at `61aafe8`: **39,201 sync** (-36.45% vs `bf66c8f`), **12,656,708 B H2D** (-49.19%), prefill 27.154 s, decode marginal 23.628 s. `p7b_gate_evaluated:false`; the smaller-geometry sync count is still 7.84x the numeric gate, so the implementation is not ready for an official run. Mock-PCG remains non-production. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -490,15 +490,47 @@ constant factors hold. That constant factor is what P3/P4 measure.
   the operational error. In particular, a timing-capacity failure on LogUp's
   second preparation chunk can no longer strand the first 56 device owners.
 
-  The actual checkpoint evidence is deliberately separated from the pending
-  benchmark: CPU full-response e2e at T=12 plus one q=4 decode band is green;
-  the full local workspace (including 80 protocol tests after the cleanup
-  regressions), the five report tests, the five Python selector tests and the
-  CUDA-feature `--no-run` build are green; the A100 ABI-26 accelerator suite is
-  32/32 and the substrate/auth/product/LogUp differentials above are green. No
-  clean full or quick JSON has yet been produced for ABI 26 plus the call-site
-  scheduler, so **none of the <=10 s / <=4 s / <=5,000 sync / <=100 MB gates
-  is evaluated or claimed here**.
+  The implementation evidence remains separate from the performance verdict:
+  CPU full-response e2e at T=12 plus one q=4 decode band is green; the full
+  local workspace (including 80 protocol tests after the cleanup regressions),
+  the five report tests, the five Python selector tests and the CUDA-feature
+  `--no-run` build are green. The A100 ABI-26 accelerator suite is 32/32; on
+  the clean `61aafe8` checkpoint the device-auth, product-sumcheck,
+  heterogeneous-LogUp, attention, band-layer and full-response differentials
+  are green; the scheduled proof remains byte-identical to its CPU path, the
+  verifier accepts it and replay rejection remains green.
+
+  The first clean call-site-scheduler measurement is the append-only quick
+  diagnostic
+  `benchmarks/results/p7b-integrated-resident-quick-2026-07-13-61aafe8.json`
+  (full source SHA `61aafe8f8d8a1db6dded82266ad10a040715e8f7`, SHA-256
+  `fe12b8efc77137587e08a11c6a41a2157520ab90cef182e14c8c6ad53e9a6a25`).
+  It was run from an isolated clean clone of a checksum-matched bundle;
+  before-benchmark and before-serialization trees are clean at the same full
+  SHA, and the Thunder/A100 metadata is complete. The response is accepted,
+  all 13 Q=200 PCS openings verify, chunked verification passes, flat cost is
+  0.9872 and the packed 82,281,642 B response remains inside the communication
+  envelope. Explicit resident bytes are zero after cleanup; cache trim leaves
+  only the 14,286,896 B workspace. Mock-PCG is explicitly non-production.
+
+  At T=16+8, response-session H2D is **12,656,708 B**, D2H is 81,518,420 B
+  and blocking host-output synchronizations are **39,201**. Relative to the
+  clean `bf66c8f` quick baseline this removes 12,252,464 B H2D (-49.19%) and
+  22,487 synchronizations (-36.45%); D2H is unchanged. The single-sample core
+  times are 27.154 s prefill, 50.782 s response and 23.628 s decode marginal,
+  with 52.146 s response-session wall. ABI-26 coarse intervals include device
+  idle gaps while the host submits remote work, so their 12.393 s aggregate is
+  not comparable to the old per-call 4.839 s kernel total.
+
+  Because this diagnostic has T=16+8, zero warmups, one measured repetition
+  and no golden check, schema 6 correctly records
+  `p7b_gate_evaluated:false`: **none of the <=10 s / <=4 s / <=5,000 sync /
+  <=100 MB official gates is evaluated or claimed**. The 39,201 sync count is
+  already 7.84x the numeric gate at smaller geometry, so an expensive official
+  full run is deliberately withheld until another blocking-output batching
+  step; this is a readiness decision, not an official failure verdict. The
+  next protocol-neutral lever is further coalescing of dependent host-output
+  boundaries, especially non-GELU LogUp and blind sumchecks.
 
 - **2026-07-13 (P7 publication artifact closed)**: clean aggregate
   `benchmarks/results/p7-2026-07-13-2c836b3.json` (SHA-256

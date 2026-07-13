@@ -28,9 +28,12 @@ the plan of record.
 > canonical round-synchronous mailboxes with exact public schedules, and only
 > then separately preregistered algebraic/proof-size changes. Raw
 > measurements and the live implementation checkpoint remain in the ledger.
-> P7b is still **in progress**: implementation tests and analytic scheduler
-> projections are not a gate verdict, and no clean full or quick result for
-> the current checkpoint has been registered yet.
+> P7b is still **in progress**. A clean schema-6 T=16+8/Q=200 quick
+> diagnostic at `61aafe8` is registered: response-session H2D is 12,656,708 B
+> and blocking synchronizations are 39,201. With zero warmups, one measured
+> repetition and no golden check it correctly records
+> `p7b_gate_evaluated:false`; it selects the next scheduler lever but is not a
+> gate verdict. No clean official full result exists for this checkpoint.
 
 ---
 

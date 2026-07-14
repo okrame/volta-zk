@@ -356,8 +356,13 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
             "t_prove_prefill_only_s": 9.0,
             "t_prove_decode_marginal_s": 3.0,
             "accelerator_session": {
-                "timing_method": "cuda-events-deferred",
-                "phase_attribution_available": True,
+                "timing_method": "wall-only-counters",
+                "phase_attribution_available": False,
+                "timing_records": 0,
+                "timing_elapsed_query_attempts": 0,
+                "timing_elapsed_no_write": 0,
+                "timing_event_queries": 0,
+                "timing_event_api_calls": 0,
                 "synchronizations": 4_000,
                 "h2d_bytes": 90_000_000,
             },
@@ -367,8 +372,13 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
             "t_prove_prefill_only_s": 10.0,
             "t_prove_decode_marginal_s": 4.0,
             "accelerator_session": {
-                "timing_method": "cuda-events-deferred",
-                "phase_attribution_available": True,
+                "timing_method": "wall-only-counters",
+                "phase_attribution_available": False,
+                "timing_records": 0,
+                "timing_elapsed_query_attempts": 0,
+                "timing_elapsed_no_write": 0,
+                "timing_event_queries": 0,
+                "timing_event_api_calls": 0,
                 "synchronizations": 5_000,
                 "h2d_bytes": 100_000_000,
             },
@@ -378,8 +388,13 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
             "t_prove_prefill_only_s": 11.0,
             "t_prove_decode_marginal_s": 5.0,
             "accelerator_session": {
-                "timing_method": "cuda-events-deferred",
-                "phase_attribution_available": True,
+                "timing_method": "wall-only-counters",
+                "phase_attribution_available": False,
+                "timing_records": 0,
+                "timing_elapsed_query_attempts": 0,
+                "timing_elapsed_no_write": 0,
+                "timing_event_queries": 0,
+                "timing_event_api_calls": 0,
                 "synchronizations": 4_500,
                 "h2d_bytes": 95_000_000,
             },
@@ -399,7 +414,7 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
         "accepted": True,
         "accelerator_backend": "cuda-resident",
         "accelerator_cuda_abi_version": 27,
-        "resident_timing_policy": "deferred-events",
+        "resident_timing_policy": "wall-only-counters",
         "cloud": {
             "provider": "Thunder Compute",
             "instance_id": "instance",
@@ -493,7 +508,7 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
         {"report_schema_version": 6.0},
         {"accelerator_cuda_abi_version": 25},
         {"accelerator_cuda_abi_version": 27.0},
-        {"resident_timing_policy": "wall-only-counters"},
+        {"resident_timing_policy": "deferred-events"},
         {"git_sha_before_serialization": "b" * 40},
         {"git_sha_before_benchmark": ""},
         {"git_sha": "b" * 40},
@@ -526,6 +541,16 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
     bad_counter = copy.deepcopy(official)
     bad_counter["repetitions"][0]["accelerator_session"]["h2d_bytes"] = 100_000_001
     assert report.p7b_resident_run_of_record_eligible(bad_counter) is False
+
+    bad_timing_phase = copy.deepcopy(official)
+    bad_timing_phase["repetitions"][0]["accelerator_session"][
+        "phase_attribution_available"
+    ] = True
+    assert report.p7b_resident_run_of_record_eligible(bad_timing_phase) is False
+
+    bad_timing_call = copy.deepcopy(official)
+    bad_timing_call["repetitions"][0]["accelerator_session"]["timing_event_api_calls"] = 1
+    assert report.p7b_resident_run_of_record_eligible(bad_timing_call) is False
 
     bad_communication = copy.deepcopy(official)
     bad_communication["communication"]["response_bytes"] += 1

@@ -73,7 +73,7 @@ const P7B_PACKED_RESPONSE_REFERENCE_BYTES: u64 = 144_820_930;
 // Phase 0a may change this only after its >=10% instrumentation-tax decision
 // is appended to the ledger. Until then, counter-only full runs are
 // diagnostic and cannot become an official verdict.
-const P7B_OFFICIAL_RESIDENT_TIMING: ResidentTimingArg = ResidentTimingArg::DeferredEvents;
+const P7B_OFFICIAL_RESIDENT_TIMING: ResidentTimingArg = ResidentTimingArg::WallOnlyCounters;
 
 #[derive(Serialize)]
 struct ChunkCurveRow {

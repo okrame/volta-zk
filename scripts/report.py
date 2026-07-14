@@ -24,8 +24,8 @@ DEFAULT_RESULTS = REPO / "benchmarks" / "results"
 P7_RHO_TARGETS = {"prefill": 10.0, "decode": 2.0}
 P7B_REPORT_SCHEMA_VERSION = 6
 P7B_CUDA_ABI_VERSION = 27
-P7B_OFFICIAL_RESIDENT_TIMING_POLICY = "deferred-events"
-P7B_OFFICIAL_SESSION_TIMING_METHOD = "cuda-events-deferred"
+P7B_OFFICIAL_RESIDENT_TIMING_POLICY = "wall-only-counters"
+P7B_OFFICIAL_SESSION_TIMING_METHOD = "wall-only-counters"
 P7B_PREFILL_CORE_GATE_S = 10.0
 P7B_DECODE_MARGINAL_GATE_S = 4.0
 P7B_SYNC_GATE = 5_000
@@ -1094,7 +1094,18 @@ def p7b_resident_run_of_record_eligible(row: dict[str, Any]) -> bool:
         and isinstance(repetition.get("accelerator_session"), dict)
         and repetition["accelerator_session"].get("timing_method")
         == P7B_OFFICIAL_SESSION_TIMING_METHOD
-        and repetition["accelerator_session"].get("phase_attribution_available") is True
+        and repetition["accelerator_session"].get("phase_attribution_available") is False
+        and type(repetition["accelerator_session"].get("timing_records")) is int
+        and repetition["accelerator_session"]["timing_records"] == 0
+        and type(repetition["accelerator_session"].get("timing_elapsed_query_attempts"))
+        is int
+        and repetition["accelerator_session"]["timing_elapsed_query_attempts"] == 0
+        and type(repetition["accelerator_session"].get("timing_elapsed_no_write")) is int
+        and repetition["accelerator_session"]["timing_elapsed_no_write"] == 0
+        and type(repetition["accelerator_session"].get("timing_event_queries")) is int
+        and repetition["accelerator_session"]["timing_event_queries"] == 0
+        and type(repetition["accelerator_session"].get("timing_event_api_calls")) is int
+        and repetition["accelerator_session"]["timing_event_api_calls"] == 0
         for repetition in repetitions
     )
     return (

@@ -26,6 +26,7 @@ historical. The active P7b gates and measurement hygiene are the preregistered
 | P6 decode + authenticated KV cache | **done** (2026-07-07) | flat cost/token ✓ **PASSED** (curve last/first 1.12 ≤ 1.5, 5×10 chunks, cache 100→150); anti-replay smoke ✓ (prefill-row replay + position swap rejected); golden decode ✓ (50 tokens bit-exact vs numpy) | **accepted e2e, prompt 100 + 50 decode, one two-phase session, real 13-commitment PCS with STACKED claims (96 weight + 6 embed)**: native decode 30.9 tok/s (KV-cached baseline); prove_response 18.7 s = prefill 10.5 s + **decode marginal 8.2 s (0.164 s/token, ρ_decode 5.07 CPU)**; verified 2.67 tok/s; verify 0.57 s + 0.10 s PCS. Comm: transcript 137.4 MB (prefill 48.4 + PCS opening 66.7 + decode marginal 22.3 = **445 KB/token**) + public band logits 20.5 MB → **total response download 157.9 MB** (inside the 150–200 MB product envelope; the PCS opening is now the dominant lever, P7). Shared-α restructure landed with P6: mult corr 59.4 → 2.85 MB. PCS commit one-off 9.5 s; peak RSS 3.47 GB. `benchmarks/results/p6-2026-07-07-515bb1c.json` (clean tree) |
 | P7 report + GPU budget model | **complete: resident full e2e + publication artifact; correctness/communication/flat PASS, rho FAIL** (2026-07-13) | T=100+50/Q=200, clean 1+3: golden ✓, proof/verifier ✓, flat 0.950 ✓, packed 144.821 MB ✓, explicit resident cleanup 0 B ✓; same-host exact native anchor ✓; **rho prefill 3707.60 >10 FAIL, decode 95.60 >2 FAIL**; tables/figures, hardware/checksum manifest, synthetic shape sweep and Lean audit ✓ | A100 resident core median: prefill **64.296±0.329 s MAD**, response **121.156±0.373 s**, decode marginal **57.296±0.809 s**. Native GPU: prefill **17.342±0.062 ms**, decode50 **599.346±0.990 ms**. Online-accounted response 121.774 s; full response-session wall 123.928 s; representative session 5.998 s kernels + 89.055 s host residual, 945.442 MB H2D + 138.488 MB D2H, 211,709 sync, 5.405 GB peak GPU. Raw sources `p7-integrated-resident-2026-07-13-1fd5195.json` / `p7-gpu-native-inference-2026-07-13-1fd5195.json`; aggregate `p7-2026-07-13-2c836b3.json`. Mock-PCG remains non-production. |
 | P7b iteration 2 resident-A100 orchestration | **in progress** (clean quick diagnostic; no gate verdict) | Official clean T=100+50/Q=200, Thunder A100, >=1 warmup and >=3 measured repetitions remains pending; the T=16+8/0+1 quick run is explicitly ineligible | Clean schema-6 quick at `61aafe8`: **39,201 sync** (-36.45% vs `bf66c8f`), **12,656,708 B H2D** (-49.19%), prefill 27.154 s, decode marginal 23.628 s. `p7b_gate_evaluated:false`; the smaller-geometry sync count is still 7.84x the numeric gate, so the implementation is not ready for an official run. Mock-PCG remains non-production. |
+| P7b iteration 3 diagnosis | **Phase 0a/0b measured; Phase 1 not started** (no gate verdict) | Report this diagnosis and prepare the non-gating 0c control before any scheduler work; an official T=100+50 run remains forbidden | Clean same-SHA `098b2f1` quick A/B: deferred-events median session wall **54.507 s** versus wall-only+counters **32.575 s**, an event-instrumentation tax of **21.932 s / 40.24%**. Official P7b timing policy is therefore re-registered as wall-only+counters. All six proofs accepted with identical work/traffic/sync counters; mock-PCG remains non-production. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -218,6 +219,107 @@ constant factors hold. That constant factor is what P3/P4 measure.
   discarded nor used to choose timing policy.  Before restarting, final
   names are made injective in `(policy, repetition)` and the entire six-run
   counterbalanced sequence restarts from sample 1 on one new clean SHA.
+
+  **Phase 0a result and timing-policy decision (2026-07-14; clean quick,
+  not a gate verdict)**: the complete counterbalanced cohort ran on Thunder
+  A100 `instance-8mxkk5r7-main` at one clean full SHA
+  `098b2f128b7152cf7a4c701cba6dd0d8a876e578`, in the registered order.
+  Deferred-events response-session walls were **55.324175101,
+  54.507356839, 53.568020169 s** (median **54.507356839 s**, MAD
+  **0.816818262 s**); wall-only+counters walls were **33.605737162,
+  32.575313301, 32.303299563 s** (median **32.575313301 s**, MAD
+  **0.272013738 s**).  The registered tax is therefore
+  **21.932043538 s = 40.236850%** of the event-on median, well above 10%.
+  Prefill medians change **27.768384686 -> 16.779376102 s** and decode
+  marginal medians **25.853503525 -> 14.597984860 s**.  All six proofs are
+  accepted and clean, and their operation calls, 39,201 host-output syncs,
+  12,656,708 B H2D, 81,518,420 B D2H, D2D/device-generated/device-zeroed
+  bytes, allocator and arena counters are identical.  Each counter-only
+  session has zero timing records, elapsed queries and aggregate event API
+  calls; each event session has 126,438 timing records, 158,305 elapsed
+  queries and 617,381 aggregate CUDA-event API calls.
+
+  Per the pre-registered threshold, **wall-only+counters is now the sole
+  official P7b gate-run observation policy**.  Full CUDA-event attribution is
+  confined to separately labelled diagnostic runs and cannot be selected by
+  the official-result validator.  Counter-only event-derived H2D, D2H,
+  kernel, coarse and residual fields remain `null`, while wall, bytes,
+  calls, synchronization host wall and reasons remain fail-closed.  This is
+  an observation-policy selection at the existing backend seam; it does not
+  fork protocol execution, proof bytes, challenges, communication or the
+  verifier and therefore does not introduce a permanent proving variant.
+
+  Immutable raw files (SHA-256 in event r1/r2/r3 then counters r1/r2/r3
+  order) are:
+  `9e47e573d3dca0751181b66e428d622e28246f7ba22db1d0a70aacec8132c43e`,
+  `c36966f0b08d242161b5239c6c16c69eb238ff8f310adbc9e85c371dcf4b424e`,
+  `d5cfd3385d671dc84547f1082ff78810459fa836aebb59729240429aa9670478`,
+  `114e0e9d2b2094d07be93d6a548ab49815fdecc488a790252635c380dbd90b8c`,
+  `cae49bdcb2b48f6fbd56b75386a8b557a3c011bb0a2437f6c893c98734af574d`,
+  and
+  `ac20849f387f43820dfe9c32a396c8d22145ca438329d714ff1c768857f7eae2`.
+
+  **Phase 0b flat-wall closure and corrected cost model (2026-07-14)**:
+  the old `bf66c8f -> 61aafe8` wall delta closes exactly without inventing a
+  missing seven seconds.  In the non-overlapping event attribution identity,
+  H2D changes **-0.014745801 s**, D2H **-4.938606840 s**, non-coarse device
+  interval **-0.657179939 s**, the newly introduced coarse interval
+  **+8.211153792 s**, and host residual **-3.029339138 s**; their sum is the
+  observed wall **-0.428717926 s**.  Thus a new coarse event interval --
+  explicitly documented as including remote launch-submit gaps -- relabelled
+  8.211 s and numerically masked the 8.640 s reduction in the other identity
+  terms.  It is not evidence of 8.211 s of new compute.
+
+  Explicit `synchronization_s` is an overlapping diagnostic, not another
+  addend in that wall identity.  Its measured change is **-3.492065594 s**.
+  Multiplying 22,487 removed calls by the later 312.777645 us/call gives the
+  invalid **7.033430911 s** projection; the remaining **3.541365317 s** is
+  exactly the non-stationarity error from applying the later per-call value
+  to all 61,688 baseline calls (255.369960 us/call at baseline).  The A/B
+  proves why neither event-on value is a structural RTT: at identical work,
+  median event-on synchronization wall is 12.689342499 s
+  (**323.699459 us/boundary**), but timing-off synchronization wall is only
+  0.441633804 s (**11.265881 us/boundary**).
+
+  The 31,529 fewer elapsed queries also cannot be priced as independent wall
+  savings from this A/B: the policy removes 459,076 event-record calls as
+  well as 158,305 elapsed queries.  Dividing the aggregate 21.932 s tax by
+  queries gives 138.543 us/query only as a blended normalization (and would
+  predict 4.368 s for the query-count delta), while division by all 617,381
+  event API calls gives 35.524 us/call; neither quotient identifies an
+  elapsed-query RTT.  The event-arm median residual, 20.267596203 s, being
+  close to the 21.932043538 s aggregate tax supports the instrumentation-tax
+  diagnosis but does not make residual and sync/coarse event intervals
+  additive.  Finally, the historical wall delta of 0.429 s is smaller than
+  the new event-arm MAD of 0.817 s, so it carries no improvement claim beyond
+  remote-run dispersion.
+
+  The corrected timing-off host-output model is
+  `C_boundary = C_memcpyAsync_D2H_host + C_required_sync_host`, plus payload
+  dependence, with optional event instrumentation excluded entirely.
+  `C_required_sync_host` is measured here as **11.265881 us/boundary**.  The
+  event-derived D2H interval (**541.215569 us/boundary** at the new median)
+  is a device-timeline interval and is **not** `C_memcpyAsync_D2H_host`; the
+  current schema does not time that host API call in counter-only mode.
+  Therefore no Phase-1 prediction may reuse 514.8 us as a D2H RTT or 312.8 us
+  as a sync RTT.  The D2H host-call term must be measured without extra CUDA
+  calls (or retained as an explicit unknown), and Phase 1 remains unstarted
+  at this reporting checkpoint rather than iterating coalescing against a
+  contaminated cost model.
+
+  **Phase 0c preparation checkpoint (2026-07-14; explicit stop)**: no
+  non-Thunder host has been provisioned, enrolled or accessed.  The one-off
+  control is pinned to the exact 0a commit `098b2f1`; its prepared Git bundle
+  is `/tmp/volta-zk-098b2f1.bundle`, SHA-256
+  `64076288e251ea45194dd6b442e8f09f0862c3c64692734c2d6770b0f3a6ba77`.
+  `docs/p7b-colocated-control-runbook.md` records the checksum-matched source
+  and weight inputs, CUDA `sm_80` build/test commands, isolated quick and
+  full wall-only+counters invocations, clean-tree staging and the complete
+  expected-output checklist.  It requires a non-Thunder result to serialize
+  `p7b_machine_eligible:false` and `p7b_gate_evaluated:false`; the artifact
+  can inform attribution only and can never replace a Thunder verdict.  Work
+  stops here pending user-supplied access to an already-provisioned
+  co-located A100.  Phase 1 has not started.
 
 - **2026-07-13 (P7b target re-registration — resident GPU gate redefined;
   user decision)**: the preregistered rho_proof targets (<=10 prefill /

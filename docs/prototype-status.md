@@ -199,6 +199,13 @@ constant factors hold. That constant factor is what P3/P4 measure.
   CUDA-event API calls.  This is implementation evidence only and carries no
   latency or P7b gate claim.
 
+  `scripts/run_p7b_instrumentation_ab.sh` is the fail-closed 0a runner.  It
+  executes the preregistered events/counters/counters/events/events/counters
+  order as six isolated one-repetition quick reports, requires one unchanged
+  clean full SHA, stages each result outside the repository between samples,
+  and restores all six append-only JSONs only after the final clean-tree
+  check.  This prevents an earlier result artifact from dirtying a later arm.
+
 - **2026-07-13 (P7b target re-registration — resident GPU gate redefined;
   user decision)**: the preregistered rho_proof targets (<=10 prefill /
   <=2 decode) against the same-host native-GPU denominator are **retired for

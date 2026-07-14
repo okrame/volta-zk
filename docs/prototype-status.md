@@ -10,7 +10,8 @@ prefill T=100 + 50 deferred decode tokens, causal, PCS Q=200**, on the
 designated RunPod A100 profile. P7 is closed; its CPU and rho numbers below
 are historical. The active P7b gates and measurement hygiene are the
 preregistered 2026-07-14 RunPod-provider deviation below, and P7b currently
-has no gate verdict.
+has one valid official verdict: decode FAIL, with all other current gates
+passing.
 
 ## Milestones
 
@@ -28,7 +29,7 @@ has no gate verdict.
 | P7 report + GPU budget model | **complete: resident full e2e + publication artifact; correctness/communication/flat PASS, rho FAIL** (2026-07-13) | T=100+50/Q=200, clean 1+3: golden ✓, proof/verifier ✓, flat 0.950 ✓, packed 144.821 MB ✓, explicit resident cleanup 0 B ✓; same-host exact native anchor ✓; **rho prefill 3707.60 >10 FAIL, decode 95.60 >2 FAIL**; tables/figures, hardware/checksum manifest, synthetic shape sweep and Lean audit ✓ | A100 resident core median: prefill **64.296±0.329 s MAD**, response **121.156±0.373 s**, decode marginal **57.296±0.809 s**. Native GPU: prefill **17.342±0.062 ms**, decode50 **599.346±0.990 ms**. Online-accounted response 121.774 s; full response-session wall 123.928 s; representative session 5.998 s kernels + 89.055 s host residual, 945.442 MB H2D + 138.488 MB D2H, 211,709 sync, 5.405 GB peak GPU. Raw sources `p7-integrated-resident-2026-07-13-1fd5195.json` / `p7-gpu-native-inference-2026-07-13-1fd5195.json`; aggregate `p7-2026-07-13-2c836b3.json`. Mock-PCG remains non-production. |
 | P7b iteration 2 resident-A100 orchestration | **closed as superseded diagnosis** (clean quick; no gate verdict) | Historical Thunder count gate retired by the 2026-07-14 provider deviation | Clean schema-6 quick at `61aafe8`: **39,201 sync** (-36.45% vs `bf66c8f`), **12,656,708 B H2D** (-49.19%), prefill 27.154 s, decode marginal 23.628 s. The run remains an immutable, ineligible Thunder diagnostic. Mock-PCG remains non-production. |
 | P7b iteration 3 diagnosis | **Phase 0a/0b/0c complete; scheduler phase cancelled as provider-specific debt** (no gate verdict) | Host-call diagnosis closed; no further Thunder coalescing is on the critical path | Clean same-SHA `098b2f1` quick A/B: deferred-events median session wall **54.507 s** versus Thunder wall-only+counters **32.575 s**, event tax **21.932 s / 40.24%**. The RunPod A100 control is **3.768 s** at identical quick geometry and **15.651 s** full session wall; it selected the new provider but is not retroactively a gate claim. |
-| P7b RunPod official rebaseline | **official valid FAIL: decode only; diagnosis in progress** (2026-07-14) | Clean schema-6/ABI-28 T=100+50/Q=200 on exact `runpod-a100-v1`, counters-only, Rayon=8, 1+3, golden and communication invariants; prefill <=10 s, decode <=4 s, max per-repetition sync-wall/session-wall <=2%, H2D <=100 MB | `33e5fb4`: prefill **7.801 s PASS**, decode **6.794 s FAIL**, session **15.995 s**; sync-wall max **0.768% PASS** with 59,868 sync diagnostic; H2D **28.595 MB PASS**; packed response **144.821 MB PASS**; golden/accepted/flat 1.412 PASS. ABI-28 host-call counters expose **10.39–10.43 s D2H call wall/session**, so the failure is not yet attributable solely to kernels. |
+| P7b RunPod official rebaseline | **official valid FAIL: decode only; diagnosis complete** (2026-07-14) | Clean schema-6/ABI-28 T=100+50/Q=200 on exact `runpod-a100-v1`, counters-only, Rayon=8, 1+3, golden and communication invariants; prefill <=10 s, decode <=4 s, max per-repetition sync-wall/session-wall <=2%, H2D <=100 MB | `33e5fb4`: prefill **7.801 s PASS**, decode **6.794 s FAIL**, session **15.995 s**; sync-wall max **0.768% PASS** with 59,868 sync diagnostic; H2D **28.595 MB PASS**; packed response **144.821 MB PASS**; golden/accepted/flat 1.412 PASS. Separate non-gating `70f64d4` event attribution measures a **6.275 s decode-marginal kernel floor**: GEMM 4.820 s, LogUp 1.098 s, other 0.358 s. Provider-neutral kernel work is required; D2H host-call wall includes queued-kernel waits and is not an additive transfer cost. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -60,6 +61,59 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-14 (P7b RunPod decode diagnostic closed; non-gating result)**:
+  the preregistered full deferred-event diagnostic ran on the exact
+  `runpod-a100-v1` hardware/software profile with eight Rayon workers,
+  T=100+50, Q=200, one warmup and one measured repetition.  Its clean source
+  checkpoint is `70f64d4b2c01f672b74684525b42e638a7398793`; that checkpoint
+  differs from official source `33e5fb4` only by documentation and the two
+  already-recorded raw official JSONs, not executable code.  The append-only
+  diagnostic is
+  `p7b-integrated-resident-2026-07-14-70f64d4.json` (SHA-256
+  `dc6b75a766db56d12e7b56543b5286df4c9ca4d8614b3a8202877eecabe3e8ed`),
+  with schema 6, CUDA ABI 28, `git_dirty:false`, acceptance and golden decode
+  true, and `p7b_gate_evaluated:false`.  It is attribution evidence only and
+  does not replace or amend the official counters-only verdict.
+
+  Deferred events raise observed prefill from the official upper median
+  7.801156381 s to **9.673567059 s** (+1.872411 s, +24.00%), decode marginal
+  from 6.793572543 s to **8.478508650 s** (+1.684936 s, +24.80%), and session
+  wall from 15.994870539 s to **19.493344560 s** (+3.498474 s, +21.87%).
+  These are indicative instrumentation-tax comparisons rather than a
+  same-SHA repetition, but the executable is unchanged and the magnitude
+  reconfirms that official runs must remain counters-only.  The diagnostic
+  itself issued 229,554 elapsed-event queries and 887,698 timing-event API
+  calls over the response session.
+
+  Event attribution measures **13.166116504 s** response-session kernel time
+  minus **6.890863665 s** prefill kernel time = **6.275252839 s** of
+  decode-marginal kernel work.  Its exact operation split is GEMM
+  **4.819555111 s (76.80%)**, LogUp **1.097967857 s (17.50%)**, PCS
+  **0.255029525 s (4.06%)**, authentication **0.055084417 s (0.88%)**, and
+  mailbox **0.047615929 s (0.76%)**.  Thus kernel time alone exceeds the 4 s
+  decode gate by **2.275252839 s**: even under the impossible assumption of
+  zero non-kernel overhead it needs at least a **36.26%** reduction, and the
+  broad GEMM category alone is 0.819555111 s above the complete gate budget.
+
+  **Corrected host-call model**: response-minus-prefill blocking D2H host-call
+  wall is 10.589072882 - 5.530127451 = **5.058945431 s**, but the corresponding
+  CUDA-event transfer duration is only 1.003848378 - 0.527549949 =
+  **0.476298429 s**.  A blocking D2H copy is also the completion barrier for
+  previously queued kernels, so its host wall contains their wait and cannot
+  be added to the event-attributed kernel total.  The official ABI-28 host-call
+  counter exposed where the host waits, not an independent 5 s transfer
+  bottleneck.  Explicit synchronization remains immaterial on RunPod.
+
+  **Decision boundary**: diagnosis is closed and provider-neutral kernel
+  optimization is mandatory.  No epoch-scheduler expansion, boundary-count
+  target, transcript change, algebraic batching or proof-size trade is
+  authorized by this result.  Before changing CUDA, identify the exact
+  kernels hidden by the broad `gemm` attribution using a separately
+  preregistered non-gating profiler census on this same profile.  Then
+  preregister one narrow implementation boundary, preserve ABI/proof bytes
+  and CUDA byte-identical differentials, and require a quick measured
+  cost-model confirmation before another official 1+3 run.
 
 - **2026-07-14 (P7b first `runpod-a100-v1` official verdict; measured valid
   failure)**: the exact clean source is

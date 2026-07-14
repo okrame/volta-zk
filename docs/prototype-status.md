@@ -58,6 +58,127 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-14 (P7b iteration 3 diagnosis-first plan; preregistered before
+  implementation or new measurement)**: iteration 2's first clean scheduler
+  diagnostic is internally correct but does not support another blind
+  coalescing step.  In the immutable `61aafe8` quick session, the
+  **52.146336769 s** response-session wall contains **20.179340213 s D2H**
+  (81,518,420 B across 39,201 host-output boundaries),
+  **12.261196475 s explicit synchronization**, **0.203084724 s H2D**, and
+  **19.371403444 s unattributed host residual**.  At this checkpoint that is
+  about **514.76 us/D2H** plus **312.78 us/explicit sync** at each host-output
+  boundary.  The residual is also 122.37 us for each of the 158,305 deferred
+  CUDA elapsed-time queries if attributed entirely to that remote-call
+  surface.  Yet versus the clean `bf66c8f` quick baseline, prefill changes
+  only 27.868 -> 27.154 s and decode marginal regresses 23.425 -> 23.628 s
+  despite 22,487 fewer synchronizations and 49.19% less H2D.  The explicit
+  synchronization term alone predicts about **7.035 s** saved at the new
+  per-sync cost.  This unexplained flat-wall anomaly blocks any further
+  scheduler/coalescing measurement until Phase 0 closes.
+
+  This plan is accepted as an architectural diagnosis/refactor, not a new
+  permanent proving variant, under the following hygiene boundary.  Event
+  attribution is one measurement policy selected at the resident backend
+  boundary; it must not duplicate or condition the protocol/proving path.
+  The counter-only policy bypasses CUDA event creation, recording and elapsed
+  queries, so its operation/sync/traffic counters are host-side increments
+  and it adds **zero remote timing calls**.  Host wall around required H2D,
+  D2H and synchronization calls remains measured.  Event-derived kernel and
+  coarse-interval attribution is explicitly unavailable under this policy
+  (identified by the serialized timing method), never presented as a
+  measured zero.  The existing reason-sum, byte, ownership, cleanup and
+  poisoning invariants remain common to both policies.  This keeps the mode
+  a removable observation concern rather than architectural debt.
+
+  **Phase 0a -- instrumentation-tax A/B (mandatory first measurement)**:
+  implement the policy seam and exact tests that counter-only mode performs
+  no CUDA event calls/queries while preserving operation, byte, explicit
+  synchronization, reason, allocation and cleanup counters.  On the
+  designated Thunder A100, use quick T=16+8/Q=200 only, one clean pinned SHA,
+  identical seeds/inputs, and three measured repetitions per policy.  Runs
+  are counterbalanced in order (`events, counters, counters, events, events,
+  counters`) and emitted as immutable append-only JSONs; no sample may be
+  discarded.  Record response-session wall plus prefill/decode walls and all
+  available host-call categories for every repetition.  Define event
+  instrumentation tax as
+  `(median(events wall) - median(counters wall)) / median(events wall)`.
+  If it is >=10%, append a ledger decision before an official run making
+  `wall-only + counters` the gate-run policy; full event attribution is then
+  confined to separately labelled diagnostics.  Otherwise event timing
+  remains the official policy.  A mode with any nonzero event-call/query
+  counter is invalid as the counter-only arm.
+
+  **Phase 0b -- flat-wall anomaly closure (blocks Phase 1)**: using only the
+  immutable clean `bf66c8f` and `61aafe8` JSONs plus the Phase-0a JSONs,
+  reconcile the wall delta by an explicit category-delta table for D2H host
+  wall, explicit synchronization host wall, H2D host wall, unattributed host
+  residual, event-query count/tax and residual remote variance.  Do not add
+  overlapping coarse CUDA intervals to host-wall categories.  Correct the
+  per-boundary model to distinguish (1) an explicit stream-sync round trip,
+  (2) the blocking D2H round trip and payload, and (3) optional event
+  instrumentation calls.  Append the quantitative explanation and corrected
+  model here before any Phase-1 code begins.  If the observed deltas cannot
+  close within the Phase-0a run dispersion, iteration 3 stops as unresolved
+  remote variance rather than treating coalescing as validated.
+
+  **Phase 0c -- co-located attribution control preparation, then explicit
+  stop**: after 0a/0b, prepare but do not execute a checksum-matched source
+  bundle for the same pinned checkpoint, exact CUDA/build commands, quick and
+  full timing-off invocations, and an expected-output/cleanliness checklist
+  for a co-located A100.  No provider is to be provisioned, enrolled or
+  accessed without user-supplied instance access.  A Lambda/RunPod or other
+  co-located result is an **attribution artifact only**, never a gate claim:
+  Thunder remains the target and sole official-verdict provider.  Stop at
+  this checkpoint and request access.
+
+  **Phase 1 -- Thunder epoch scheduler (only after written 0a+0b closure;
+  co-located access is not a dependency)**: extend the existing sealed
+  role-antichain/heterogeneous mailbox scheduler to non-GELU LogUp sites,
+  blind-sumcheck product rounds and Hadamard rounds.  The audited target is
+  about 2,446 LogUp epochs and 3,100--4,200 total response barriers.  Fold
+  each mailbox read into its barrier: one blocking D2H memcpy is counted as
+  the synchronization and there is no preceding explicit stream sync.  This
+  changes backend execution/accounting only; the sealed `SiteId`, public
+  `SchedulePlan`, preflighted membership/depth/family, exact disjoint
+  correlation reservation, active-set shrink-only rule and canonical order
+  remain unchanged.  CPU-scheduled and resident-scheduled proofs must remain
+  byte-identical, with unchanged proof structs, labels, counts, verifier
+  behavior and communication.  Before a measured run, publish the exact
+  quick-geometry barrier bound derived from `SchedulePlan` and its
+  T=100+50 projection.  The first quick run is accepted as model-confirming
+  only if its median wall reduction is compatible with `removed round trips
+  x the Phase-0b measured round-trip cost`, allowing the larger of 20% of the
+  projection or twice the Phase-0a median absolute dispersion.  Otherwise
+  stop and return to diagnosis; do not iterate coalescing blindly.
+
+  **Phase 2 -- kernel work plus official gate run (only if Phase 1 confirms
+  the model and projects <=5,000 barriers at T=100+50)**: before the official
+  run, treat Goldilocks kernel work as required scope, with multiplication
+  limbing and occupancy changes isolated below the protocol boundary and
+  guarded by CPU/CUDA field and full scheduled-proof differentials.  The
+  decode <=4 s gate has only 1.14 s above the existing 2.860 s kernel floor,
+  so this is not a stretch item.  Publish feasibility arithmetic as
+  `prefill = 3.138 s kernel floor + epochs * measured RTT + true host
+  residual`, using the corrected 0a/0c attribution rather than coarse event
+  intervals.  Then run T=100+50/Q=200 on Thunder with at least one warmup,
+  at least three measured repetitions, golden decode, clean identical full
+  SHA before benchmark and serialization, the Phase-0a-selected timing
+  policy, and all schema-6 provider, acceptance, flat-cost, communication,
+  cleanup, mock-PCG and four-gate invariants.
+
+  **Phase 3 -- conditional only on a measured Phase-2 gate failure**: first
+  implement the already-proved and preregistered scalar-RLC round batching at
+  its existing formal boundary, including the extra fresh domain-separated
+  challenge and CPU reference differential; then consider retained CUDA
+  graphs only for fixed device-only segments and never across a challenge
+  barrier.  No Phase-3 work begins after a Phase-2 pass.
+
+  Standing exclusions remain binding in every phase: no device transcript
+  hashing; no verifier challenge seed, future challenge, or `Delta` on the
+  prover/GPU; mock-PCG remains labelled non-production; no per-token proof or
+  PCS opening; append-only results and clean-tree discipline; and no prover
+  speed bought with proof size or communication.
+
 - **2026-07-13 (P7b target re-registration — resident GPU gate redefined;
   user decision)**: the preregistered rho_proof targets (<=10 prefill /
   <=2 decode) against the same-host native-GPU denominator are **retired for

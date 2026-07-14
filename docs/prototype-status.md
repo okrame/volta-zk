@@ -62,6 +62,29 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-14 (P7b CUPTI census fail-closed correction; preregistered before
+  the first CUPTI run)**: pre-run source audit found that NVIDIA's unmodified
+  helper never calls `cuptiActivityGetNumDroppedRecords`; it therefore cannot
+  satisfy the dropped-record gate preregistered immediately below.  No CUPTI
+  run occurred under that incomplete boundary.  Supersede it with a minimal
+  scratch-only patch, never copied into this repository or the CUDA backend:
+  (1) select only `CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL`, removing unrelated
+  API/memory/NVTX activities; (2) after every completed buffer, query and print
+  `cuptiActivityGetNumDroppedRecords(context, stream)` fail-closed.  The
+  patched injection source and helper SHA-256 values are
+  `2966efecd3d767e9fb3fb62f7683971b5ee0ef10cd6e72f0db274196ddafb34b`
+  and `8590bba68b4ec975d4243c422c4ce5313afa4bb496903c417f4c334202e894ec`;
+  the original Makefile remains
+  `d6e6b3a0fdc3f757d66e48b47b106dae369deebea865ee0c3e44377235b10717`.
+
+  All other geometry, source/profile, output and interpretation constraints
+  below remain unchanged.  Sum every emitted dropped-record count and require
+  exactly zero.  The trace must contain all twelve filtered names that have a
+  source-level launch in this workload, or explicitly record zero invocations
+  only when the report's path cannot call that family; any unexplained absence
+  fails the census.  This correction is diagnostic hygiene only, not new
+  maintained instrumentation.
+
 - **2026-07-14 (P7b kernel-census profiler fallback; preregistered after the
   Nsight refusal and before the fallback run)**: the exact preregistered
   Nsight Compute 2025.1.1 invocation attached to clean `8adbead`, but RunPod

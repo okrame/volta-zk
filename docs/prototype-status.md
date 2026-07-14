@@ -28,7 +28,7 @@ has no gate verdict.
 | P7 report + GPU budget model | **complete: resident full e2e + publication artifact; correctness/communication/flat PASS, rho FAIL** (2026-07-13) | T=100+50/Q=200, clean 1+3: golden ✓, proof/verifier ✓, flat 0.950 ✓, packed 144.821 MB ✓, explicit resident cleanup 0 B ✓; same-host exact native anchor ✓; **rho prefill 3707.60 >10 FAIL, decode 95.60 >2 FAIL**; tables/figures, hardware/checksum manifest, synthetic shape sweep and Lean audit ✓ | A100 resident core median: prefill **64.296±0.329 s MAD**, response **121.156±0.373 s**, decode marginal **57.296±0.809 s**. Native GPU: prefill **17.342±0.062 ms**, decode50 **599.346±0.990 ms**. Online-accounted response 121.774 s; full response-session wall 123.928 s; representative session 5.998 s kernels + 89.055 s host residual, 945.442 MB H2D + 138.488 MB D2H, 211,709 sync, 5.405 GB peak GPU. Raw sources `p7-integrated-resident-2026-07-13-1fd5195.json` / `p7-gpu-native-inference-2026-07-13-1fd5195.json`; aggregate `p7-2026-07-13-2c836b3.json`. Mock-PCG remains non-production. |
 | P7b iteration 2 resident-A100 orchestration | **closed as superseded diagnosis** (clean quick; no gate verdict) | Historical Thunder count gate retired by the 2026-07-14 provider deviation | Clean schema-6 quick at `61aafe8`: **39,201 sync** (-36.45% vs `bf66c8f`), **12,656,708 B H2D** (-49.19%), prefill 27.154 s, decode marginal 23.628 s. The run remains an immutable, ineligible Thunder diagnostic. Mock-PCG remains non-production. |
 | P7b iteration 3 diagnosis | **Phase 0a/0b/0c complete; scheduler phase cancelled as provider-specific debt** (no gate verdict) | Host-call diagnosis closed; no further Thunder coalescing is on the critical path | Clean same-SHA `098b2f1` quick A/B: deferred-events median session wall **54.507 s** versus Thunder wall-only+counters **32.575 s**, event tax **21.932 s / 40.24%**. The RunPod A100 control is **3.768 s** at identical quick geometry and **15.651 s** full session wall; it selected the new provider but is not retroactively a gate claim. |
-| P7b RunPod official rebaseline | **implementation + local regression complete; awaiting active RunPod SSH** (no gate verdict) | Clean schema-6/current-ABI T=100+50/Q=200 on exact `runpod-a100-v1`, counters-only, Rayon=8, >=1 warmup + >=3 measured, golden and communication invariants; prefill <=10 s, decode <=4 s, max per-repetition sync-wall/session-wall <=2%, H2D <=100 MB | Writer/selector `c9c2871`, reproducible runner `95def12`, dead-API cleanup `b424e36`; CPU/all-feature workspace, Python and Lean audits pass. The prior ABI-27/27-thread control remains attribution-only. The supplied RunPod endpoint refused SSH on 2026-07-14, so quick/full remain unmeasured. Thunder is no longer required and may be terminated. |
+| P7b RunPod official rebaseline | **official valid FAIL: decode only; diagnosis in progress** (2026-07-14) | Clean schema-6/ABI-28 T=100+50/Q=200 on exact `runpod-a100-v1`, counters-only, Rayon=8, 1+3, golden and communication invariants; prefill <=10 s, decode <=4 s, max per-repetition sync-wall/session-wall <=2%, H2D <=100 MB | `33e5fb4`: prefill **7.801 s PASS**, decode **6.794 s FAIL**, session **15.995 s**; sync-wall max **0.768% PASS** with 59,868 sync diagnostic; H2D **28.595 MB PASS**; packed response **144.821 MB PASS**; golden/accepted/flat 1.412 PASS. ABI-28 host-call counters expose **10.39–10.43 s D2H call wall/session**, so the failure is not yet attributable solely to kernels. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -60,6 +60,62 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-14 (P7b first `runpod-a100-v1` official verdict; measured valid
+  failure)**: the exact clean source is
+  `33e5fb4d0baf9726eb09b3876adcc08d97b4f5c8`, CUDA ABI 28, eight Rayon
+  workers and the fully matched RunPod manifest.  Real remote CUDA
+  differentials passed with `VOLTA_REQUIRE_CUDA=1` (including all 33 backend
+  tests) before measurement.  The current SSH mapping retained the pinned
+  control checkout and exact hardware/software manifest, so the existing pod
+  identity `mkhzglt1crcain` / `eur-is-1` remains the serialized attribution.
+
+  The append-only quick diagnostic is
+  `p7b-integrated-resident-quick-wall-only-counters-2026-07-14-33e5fb4.json`
+  (SHA-256
+  `82c489ff6d52fd6528d3bcf19691edaaf58ee2a18df137b5eaf8605d2849d9bc`):
+  prefill **1.958648334 s**, decode **1.168009144 s**, response-session wall
+  **3.766704220 s**, 39,201 sync, sync-wall fraction **1.817183%**, H2D
+  12,656,708 B, accepted and flat-cost 1.051.  As preregistered, 0+1 quick
+  geometry has `p7b_gate_evaluated:false` and is not a verdict.
+
+  The official raw result is
+  `p7b-integrated-resident-wall-only-counters-2026-07-14-33e5fb4.json`
+  (SHA-256
+  `1d228a66df9f332adcffde189efb64a5fb09423a308edd710abf760f4020f7df`),
+  T=100+50, Q=200, one accepted warmup and three accepted measured
+  repetitions.  Prefill samples are **7.801156381, 7.772146461,
+  7.817114100 s** (upper median **7.801156381 s**, MAD 0.015957719): PASS
+  <=10 s.  Decode-marginal samples are **6.789678313, 6.893654885,
+  6.793572543 s** (upper median **6.793572543 s**, MAD 0.003894230): **FAIL
+  >4 s**.  Response-session wall upper median is **15.994870539 s**.  Golden
+  decode, acceptance, flat-cost 1.411550, communication/no-growth at exactly
+  144,820,930 packed bytes, H2D max 28,594,644 B, cleanup/accounting and
+  mock-PCG non-production labeling all pass.
+
+  The retired raw sync count is 59,868 in every repetition.  Explicit sync
+  wall is only 0.105950, 0.122980 and 0.112825 s; the maximum session fraction
+  is **0.768161%**, so the new <=2% gate passes with margin and confirms that
+  a <=5,000 count gate would be provider-driven debt.  However, the new
+  ABI-28 host-call counters expose a different bottleneck: response-session
+  D2H call wall is **10.388801, 10.426275, 10.402024 s** across 8,901 calls
+  and 138,490,068 B.  Prefill alone is 5.430663–5.454171 s across 4,574 calls
+  and 49,012,724 B; the response-minus-prefill deltas are therefore
+  **4.934630–4.995612 s**, 4,327 calls and 89,477,344 B.  H2D host-call wall
+  remains only 0.031–0.033 s/session.
+
+  **Verdict and next gate**: this is a complete official P7b FAIL solely on
+  decode latency, but counters-only data contradict the assumption that the
+  remaining gap is purely Goldilocks kernel time.  No kernel floor is claimed
+  from a mode where event attribution is intentionally unavailable.  Before
+  changing kernels or batching, run the already-permitted separate,
+  non-gating full diagnostic on the same eight-thread profile with deferred
+  event attribution (one warmup + one measured repetition), and use it only
+  to split operation kernel time from D2H/host wall.  If D2H remains the
+  binding term, instrument or restructure only provider-neutral materialized
+  output boundaries; do not revive a global <=5,000 scheduler target or
+  extend epoch machinery blindly.  Any transcript-scheduling or algebraic
+  batching change still requires its own preregistered boundary.
 
 - **2026-07-14 (P7b RunPod implementation-readiness checkpoint; no gate
   verdict)**: the profile migration, fail-closed schema-6 writer/selector,

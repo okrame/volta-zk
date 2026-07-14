@@ -76,6 +76,8 @@ constant factors hold. That constant factor is what P3/P4 measure.
   and `8590bba68b4ec975d4243c422c4ce5313afa4bb496903c417f4c334202e894ec`;
   the original Makefile remains
   `d6e6b3a0fdc3f757d66e48b47b106dae369deebea865ee0c3e44377235b10717`.
+  Its unchanged companion `helper_cupti.h` is also a build input, SHA-256
+  `aedb286fe6bc0af1893e4d42cff5b3f0b9c1ef120bb5d2f051c1cdb6ad4440bf`.
 
   All other geometry, source/profile, output and interpretation constraints
   below remain unchanged.  Sum every emitted dropped-record count and require

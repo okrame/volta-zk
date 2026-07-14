@@ -17,7 +17,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 26;
+pub const CUDA_ABI_VERSION: u32 = 27;
 pub const OPERATION_COUNT: usize = 7;
 pub const DEFERRED_TIMING_CAPACITY: usize = 512;
 
@@ -88,6 +88,21 @@ pub enum DeviceTimingMode {
     /// These are phase wall times (including launch overhead), and the three
     /// barriers per operation are counted explicitly.
     HostBarrierWall,
+    /// Resident diagnostic policy with no CUDA event creation, recording or
+    /// elapsed-time queries in the measured path. Required transfer/barrier
+    /// wall and all operation/traffic/reason counters remain available, but
+    /// device-phase attribution is intentionally unavailable.
+    WallOnlyCounters,
+}
+
+/// Observation policy for a resident CUDA context. This is selected once at
+/// context construction and never branches the protocol/proving path.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(i32)]
+pub enum ResidentTimingPolicy {
+    #[default]
+    DeferredEvents = 0,
+    WallOnlyCounters = 1,
 }
 
 /// Result of a resident deferred-timing ring preflight. Callers can audit the
@@ -110,7 +125,17 @@ impl DeviceTimingMode {
             DeviceTimingMode::CudaEvents => "cuda-events",
             DeviceTimingMode::CudaEventsDeferred => "cuda-events-deferred",
             DeviceTimingMode::HostBarrierWall => "host-barrier-wall",
+            DeviceTimingMode::WallOnlyCounters => "wall-only-counters",
         }
+    }
+
+    pub const fn phase_attribution_available(self) -> bool {
+        matches!(
+            self,
+            DeviceTimingMode::CudaEvents
+                | DeviceTimingMode::CudaEventsDeferred
+                | DeviceTimingMode::HostBarrierWall
+        )
     }
 }
 
@@ -189,6 +214,10 @@ pub struct BackendStats {
     pub timing_elapsed_no_write: u64,
     /// Successful `cudaEventElapsedTime` calls used for timing attribution.
     pub timing_event_queries: u64,
+    /// All CUDA event API calls issued in the measurement window (create,
+    /// record, elapsed and failure-path readiness queries). Counter-only mode
+    /// must keep this exactly zero.
+    pub timing_event_api_calls: u64,
     /// Maximum number of unflushed records in the fixed ring.
     pub timing_pending_high_water: u64,
     /// Non-empty coarse ring flushes, regardless of synchronization reason.
@@ -656,18 +685,29 @@ impl Backend {
     }
 
     pub fn cuda_hybrid() -> Result<Backend, AccelError> {
-        Self::load_cuda(BackendKind::CudaHybrid)
+        Self::load_cuda(BackendKind::CudaHybrid, None)
     }
 
     pub fn cuda_resident() -> Result<Backend, AccelError> {
-        Self::load_cuda(BackendKind::CudaResident)
+        Self::cuda_resident_with_timing(ResidentTimingPolicy::DeferredEvents)
+    }
+
+    pub fn cuda_resident_with_timing(
+        timing_policy: ResidentTimingPolicy,
+    ) -> Result<Backend, AccelError> {
+        Self::load_cuda(BackendKind::CudaResident, Some(timing_policy))
     }
 
     #[cfg(feature = "cuda")]
-    fn load_cuda(kind: BackendKind) -> Result<Backend, AccelError> {
+    fn load_cuda(
+        kind: BackendKind,
+        resident_timing_policy: Option<ResidentTimingPolicy>,
+    ) -> Result<Backend, AccelError> {
         let mut cuda = cuda::CudaContext::load()?;
         if kind == BackendKind::CudaResident {
-            cuda.enable_deferred_profiling()?;
+            cuda.set_resident_timing_policy(
+                resident_timing_policy.expect("resident CUDA timing policy"),
+            )?;
         }
         Ok(Backend {
             kind,
@@ -680,7 +720,10 @@ impl Backend {
     }
 
     #[cfg(not(feature = "cuda"))]
-    fn load_cuda(_kind: BackendKind) -> Result<Backend, AccelError> {
+    fn load_cuda(
+        _kind: BackendKind,
+        _resident_timing_policy: Option<ResidentTimingPolicy>,
+    ) -> Result<Backend, AccelError> {
         Err(AccelError::FeatureDisabled)
     }
 
@@ -789,7 +832,11 @@ impl Backend {
             .elapsed()
             .as_nanos() as u64;
         let mut stats = self.stats()?;
-        let phase_ns = stats.h2d_ns + stats.d2h_ns + stats.kernel_ns();
+        let phase_ns = if stats.timing_mode.phase_attribution_available() {
+            stats.h2d_ns + stats.d2h_ns + stats.kernel_ns()
+        } else {
+            0
+        };
         let operation_cpu_ns = stats.operation_cpu_residual_ns();
         let attributed_ns = phase_ns
             .checked_add(operation_cpu_ns)
@@ -4881,6 +4928,10 @@ mod tests {
     fn cuda_request_never_falls_back_without_feature() {
         assert!(matches!(Backend::cuda_hybrid(), Err(AccelError::FeatureDisabled)));
         assert!(matches!(Backend::cuda_resident(), Err(AccelError::FeatureDisabled)));
+        assert!(matches!(
+            Backend::cuda_resident_with_timing(ResidentTimingPolicy::WallOnlyCounters),
+            Err(AccelError::FeatureDisabled)
+        ));
     }
 }
 
@@ -4902,6 +4953,17 @@ mod cuda_tests {
                 None
             }
             Err(e) => panic!("CUDA is required for this test run: {e}"),
+        }
+    }
+
+    fn resident_with_timing(policy: ResidentTimingPolicy) -> Option<Backend> {
+        match Backend::cuda_resident_with_timing(policy) {
+            Ok(backend) => Some(backend),
+            Err(error) if std::env::var("VOLTA_REQUIRE_CUDA").as_deref() != Ok("1") => {
+                eprintln!("skipping CUDA timing-policy differential: {error}");
+                None
+            }
+            Err(error) => panic!("CUDA is required for this test run: {error}"),
         }
     }
 
@@ -5634,6 +5696,9 @@ mod cuda_tests {
             DeviceTimingMode::CudaEventsDeferred => {
                 panic!("cuda-hybrid must not enable deferred profiling")
             }
+            DeviceTimingMode::WallOnlyCounters => {
+                panic!("cuda-hybrid must not enable resident counter-only timing")
+            }
             DeviceTimingMode::None => panic!("CUDA stats have no timing mode"),
         }
     }
@@ -6299,6 +6364,84 @@ mod cuda_tests {
             assert_eq!(stats.sync_profiling_legacy, 0);
         }
         gpu.free_device(buffer).unwrap();
+    }
+
+    #[test]
+    fn resident_wall_only_counters_uses_identical_work_without_event_calls() {
+        fn run_probe(policy: ResidentTimingPolicy) -> Option<(Vec<Fp2Repr>, BackendStats)> {
+            let mut gpu = resident_with_timing(policy)?;
+            let n = 8usize;
+            let left_values = vec![Fp2Repr { c0: 3, c1: 5 }; n];
+            let right_values = vec![Fp2Repr { c0: 7, c1: 11 }; n];
+            let left = gpu.alloc_device::<Fp2Repr>(n).unwrap();
+            let right = gpu.alloc_device::<Fp2Repr>(n).unwrap();
+
+            gpu.begin_measurement().unwrap();
+            gpu.upload_device(&left, 0, &left_values).unwrap();
+            gpu.upload_device(&right, 0, &right_values).unwrap();
+            let segments =
+                [DeviceSlice::new(&left, 0, n).unwrap(), DeviceSlice::new(&right, 0, n).unwrap()];
+            let output = gpu.download_device_segments(&segments).unwrap();
+            let stats = gpu.finish_measurement().unwrap();
+
+            gpu.free_device(right).unwrap();
+            gpu.free_device(left).unwrap();
+            Some((output, stats))
+        }
+
+        let Some((counter_output, counters)) = run_probe(ResidentTimingPolicy::WallOnlyCounters)
+        else {
+            return;
+        };
+        assert_eq!(counters.timing_mode, DeviceTimingMode::WallOnlyCounters);
+        assert!(!counters.timing_mode.phase_attribution_available());
+        assert_eq!(counters.operation(Operation::Mailbox).calls, 2);
+        assert_eq!(counters.coarse_timing_scopes, 1);
+        assert_eq!(counters.synchronizations, 1);
+        assert_eq!(counters.sync_host_output, 1);
+        assert_eq!(counters.synchronization_reason_total(), counters.synchronizations);
+        assert_eq!(counters.timing_records, 0);
+        assert_eq!(counters.timing_elapsed_query_attempts, 0);
+        assert_eq!(counters.timing_elapsed_no_write, 0);
+        assert_eq!(counters.timing_event_queries, 0);
+        assert_eq!(counters.timing_event_api_calls, 0);
+        assert_eq!(counters.timing_pending_high_water, 0);
+        assert_eq!(counters.timing_flush_count, 0);
+        assert_eq!(counters.h2d_ns, 0);
+        assert_eq!(counters.d2h_ns, 0);
+        assert_eq!(counters.kernel_ns(), 0);
+        assert_eq!(counters.coarse_timing_ns, 0);
+
+        let Some((event_output, events)) = run_probe(ResidentTimingPolicy::DeferredEvents) else {
+            return;
+        };
+        assert_eq!(counter_output, event_output);
+        if events.timing_mode != DeviceTimingMode::CudaEventsDeferred {
+            return;
+        }
+        assert!(events.timing_event_api_calls > 0);
+        assert_eq!(events.timing_records, 4);
+        assert_eq!(events.timing_event_queries, 4);
+        for operation in Operation::ALL {
+            assert_eq!(
+                events.operation(operation).calls,
+                counters.operation(operation).calls,
+                "operation-call counters differ for {}",
+                operation.name()
+            );
+        }
+        assert_eq!(events.h2d_bytes, counters.h2d_bytes);
+        assert_eq!(events.d2h_bytes, counters.d2h_bytes);
+        assert_eq!(events.explicit_d2d_copy_bytes, counters.explicit_d2d_copy_bytes);
+        assert_eq!(events.device_zeroed_bytes, counters.device_zeroed_bytes);
+        assert_eq!(events.device_generated_bytes, counters.device_generated_bytes);
+        assert_eq!(events.synchronizations, counters.synchronizations);
+        assert_eq!(events.sync_host_output, counters.sync_host_output);
+        assert_eq!(events.sync_upload_lifetime, counters.sync_upload_lifetime);
+        assert_eq!(events.sync_timing_flush, counters.sync_timing_flush);
+        assert_eq!(events.sync_profiling_legacy, counters.sync_profiling_legacy);
+        assert_eq!(events.sync_allocator_flush, counters.sync_allocator_flush);
+        assert_eq!(events.coarse_timing_scopes, counters.coarse_timing_scopes);
     }
 
     #[test]

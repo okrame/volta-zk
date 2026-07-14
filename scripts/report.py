@@ -23,7 +23,9 @@ REPO = Path(__file__).resolve().parents[1]
 DEFAULT_RESULTS = REPO / "benchmarks" / "results"
 P7_RHO_TARGETS = {"prefill": 10.0, "decode": 2.0}
 P7B_REPORT_SCHEMA_VERSION = 6
-P7B_CUDA_ABI_VERSION = 26
+P7B_CUDA_ABI_VERSION = 27
+P7B_OFFICIAL_RESIDENT_TIMING_POLICY = "deferred-events"
+P7B_OFFICIAL_SESSION_TIMING_METHOD = "cuda-events-deferred"
 P7B_PREFILL_CORE_GATE_S = 10.0
 P7B_DECODE_MARGINAL_GATE_S = 4.0
 P7B_SYNC_GATE = 5_000
@@ -938,6 +940,7 @@ def integrated_accelerator_profiles(
                     "accelerator_cuda_abi_version": r.get(
                         "accelerator_cuda_abi_version"
                     ),
+                    "resident_timing_policy": r.get("resident_timing_policy"),
                     "p7b_gate_evaluated": r.get("p7b_gate_evaluated"),
                     "p7b_machine_eligible": r.get("p7b_machine_eligible"),
                     "p7b_timing_statistic": r.get("p7b_timing_statistic"),
@@ -1056,6 +1059,7 @@ def p7b_resident_run_of_record_eligible(row: dict[str, Any]) -> bool:
         and row.get("accelerator_backend") == "cuda-resident"
         and type(row.get("accelerator_cuda_abi_version")) is int
         and row.get("accelerator_cuda_abi_version") == P7B_CUDA_ABI_VERSION
+        and row.get("resident_timing_policy") == P7B_OFFICIAL_RESIDENT_TIMING_POLICY
         and row.get("accepted") is True
         and row.get("git_dirty") is False
         and row.get("git_dirty_before_benchmark") is False
@@ -1084,8 +1088,18 @@ def p7b_resident_run_of_record_eligible(row: dict[str, Any]) -> bool:
         and row.get("accelerator_cleanup_memory_accounting_ok") is True
         and row.get("accelerator_cache_trim_memory_accounting_ok") is True
     )
+    repetitions = row.get("repetitions")
+    timing_policy_valid = isinstance(repetitions, list) and all(
+        isinstance(repetition, dict)
+        and isinstance(repetition.get("accelerator_session"), dict)
+        and repetition["accelerator_session"].get("timing_method")
+        == P7B_OFFICIAL_SESSION_TIMING_METHOD
+        and repetition["accelerator_session"].get("phase_attribution_available") is True
+        for repetition in repetitions
+    )
     return (
         fixed_invariants
+        and timing_policy_valid
         and _p7b_sampling_statistics_valid(row)
         and _p7b_communication_valid(row)
         and _p7b_performance_verdict_valid(row)

@@ -355,19 +355,34 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
             "repetition": 1,
             "t_prove_prefill_only_s": 9.0,
             "t_prove_decode_marginal_s": 3.0,
-            "accelerator_session": {"synchronizations": 4_000, "h2d_bytes": 90_000_000},
+            "accelerator_session": {
+                "timing_method": "cuda-events-deferred",
+                "phase_attribution_available": True,
+                "synchronizations": 4_000,
+                "h2d_bytes": 90_000_000,
+            },
         },
         {
             "repetition": 2,
             "t_prove_prefill_only_s": 10.0,
             "t_prove_decode_marginal_s": 4.0,
-            "accelerator_session": {"synchronizations": 5_000, "h2d_bytes": 100_000_000},
+            "accelerator_session": {
+                "timing_method": "cuda-events-deferred",
+                "phase_attribution_available": True,
+                "synchronizations": 5_000,
+                "h2d_bytes": 100_000_000,
+            },
         },
         {
             "repetition": 3,
             "t_prove_prefill_only_s": 11.0,
             "t_prove_decode_marginal_s": 5.0,
-            "accelerator_session": {"synchronizations": 4_500, "h2d_bytes": 95_000_000},
+            "accelerator_session": {
+                "timing_method": "cuda-events-deferred",
+                "phase_attribution_available": True,
+                "synchronizations": 4_500,
+                "h2d_bytes": 95_000_000,
+            },
         },
     ]
     p7b = {
@@ -383,7 +398,8 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
         "git_dirty_before_serialization": False,
         "accepted": True,
         "accelerator_backend": "cuda-resident",
-        "accelerator_cuda_abi_version": 26,
+        "accelerator_cuda_abi_version": 27,
+        "resident_timing_policy": "deferred-events",
         "cloud": {
             "provider": "Thunder Compute",
             "instance_id": "instance",
@@ -476,7 +492,8 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
         {"report_schema_version": 7},
         {"report_schema_version": 6.0},
         {"accelerator_cuda_abi_version": 25},
-        {"accelerator_cuda_abi_version": 26.0},
+        {"accelerator_cuda_abi_version": 27.0},
+        {"resident_timing_policy": "wall-only-counters"},
         {"git_sha_before_serialization": "b" * 40},
         {"git_sha_before_benchmark": ""},
         {"git_sha": "b" * 40},

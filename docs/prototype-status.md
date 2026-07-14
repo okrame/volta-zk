@@ -179,6 +179,16 @@ constant factors hold. That constant factor is what P3/P4 measure.
   PCS opening; append-only results and clean-tree discipline; and no prover
   speed bought with proof size or communication.
 
+  **Phase-0a access preflight (2026-07-14; no benchmark run)**: the
+  user-supplied replacement Thunder endpoint identifies itself as
+  `instance-rk6i1r0o-main`, but `nvidia-smi` reports **NVIDIA RTX A6000**
+  (driver 610.43.02), not an A100.  It also has no existing
+  `/home/ubuntu/volta-zk` checkout.  The endpoint may be used only to compile
+  and smoke-test ABI 27; it is ineligible for the preregistered 0a A/B and for
+  every P7b gate.  No timing sample was taken or discarded.  Phase 0a remains
+  blocked pending a Thunder A100 endpoint, so 0b and later phases have not
+  started.
+
 - **2026-07-13 (P7b target re-registration — resident GPU gate redefined;
   user decision)**: the preregistered rho_proof targets (<=10 prefill /
   <=2 decode) against the same-host native-GPU denominator are **retired for

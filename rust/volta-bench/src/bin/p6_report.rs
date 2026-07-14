@@ -25,7 +25,8 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 use std::time::Instant;
 use volta_accel::{
-    Backend, BackendKind, BackendStats, DeviceBuffer, DeviceSlice, Operation, CUDA_ABI_VERSION,
+    Backend, BackendKind, BackendStats, DeviceBuffer, DeviceSlice, DeviceTimingMode, Operation,
+    ResidentTimingPolicy, CUDA_ABI_VERSION,
 };
 use volta_bench::{cloud_metadata_from_env, logits_pack, time_paired_samples, CloudMetadata};
 use volta_field::{Fp, Fp2, P};
@@ -69,6 +70,10 @@ const P7B_TRANSCRIPT_REFERENCE_BYTES: u64 = 137_413_808;
 const P7B_PCS_OPENING_REFERENCE_BYTES: u64 = 66_733_504;
 const P7B_PACKED_LOGITS_REFERENCE_BYTES: u64 = 7_407_122;
 const P7B_PACKED_RESPONSE_REFERENCE_BYTES: u64 = 144_820_930;
+// Phase 0a may change this only after its >=10% instrumentation-tax decision
+// is appended to the ledger. Until then, counter-only full runs are
+// diagnostic and cannot become an official verdict.
+const P7B_OFFICIAL_RESIDENT_TIMING: ResidentTimingArg = ResidentTimingArg::DeferredEvents;
 
 #[derive(Serialize)]
 struct ChunkCurveRow {
@@ -98,7 +103,7 @@ struct PcsCommitmentRow {
 #[derive(Clone, Serialize)]
 struct AcceleratorOperationRow {
     calls: u64,
-    kernel_s: f64,
+    kernel_s: Option<f64>,
     cpu_residual_s: f64,
 }
 
@@ -107,17 +112,18 @@ struct AcceleratorStatsRow {
     scope: String,
     operations: BTreeMap<String, AcceleratorOperationRow>,
     timing_method: String,
+    phase_attribution_available: bool,
     measurement_wall_s: f64,
     operation_cpu_residual_s: f64,
-    unattributed_cpu_residual_s: f64,
+    unattributed_cpu_residual_s: Option<f64>,
     h2d_bytes: u64,
     d2h_bytes: u64,
     /// Explicit resident row-placement/copy traffic, not all kernel-internal D2D.
     explicit_d2d_copy_bytes: u64,
     device_zeroed_bytes: u64,
     device_generated_bytes: u64,
-    h2d_s: f64,
-    d2h_s: f64,
+    h2d_s: Option<f64>,
+    d2h_s: Option<f64>,
     synchronizations: u64,
     synchronization_s: f64,
     sync_host_output: u64,
@@ -137,14 +143,15 @@ struct AcceleratorStatsRow {
     timing_elapsed_query_attempts: u64,
     timing_elapsed_no_write: u64,
     timing_event_queries: u64,
+    timing_event_api_calls: u64,
     timing_pending_high_water: u64,
     timing_flush_count: u64,
     coarse_timing_scopes: u64,
     /// CUDA-event time spanned by coarse epochs. This can include device idle
     /// gaps while a remote runtime awaits subsequent launch submissions.
-    coarse_timing_s: f64,
-    kernel_s: f64,
-    cpu_residual_s: f64,
+    coarse_timing_s: Option<f64>,
+    kernel_s: Option<f64>,
+    cpu_residual_s: Option<f64>,
 }
 
 #[derive(Clone, Serialize)]
@@ -317,6 +324,21 @@ impl AcceleratorStatsRow {
             stats.timing_event_queries + stats.timing_elapsed_no_write,
             "elapsed CUDA timing query accounting must close"
         );
+        if stats.timing_mode == DeviceTimingMode::WallOnlyCounters {
+            assert_eq!(stats.timing_records, 0, "counter-only mode cannot enqueue event records");
+            assert_eq!(
+                stats.timing_event_api_calls, 0,
+                "counter-only mode cannot issue CUDA event API calls"
+            );
+            assert_eq!(stats.timing_elapsed_query_attempts, 0);
+            assert_eq!(stats.timing_event_queries, 0);
+            assert_eq!(stats.timing_elapsed_no_write, 0);
+            assert_eq!(stats.h2d_ns, 0);
+            assert_eq!(stats.d2h_ns, 0);
+            assert_eq!(stats.kernel_ns(), 0);
+            assert_eq!(stats.coarse_timing_ns, 0);
+        }
+        let phase_attribution_available = stats.timing_mode.phase_attribution_available();
         let operations = Operation::ALL
             .into_iter()
             .map(|op| {
@@ -325,7 +347,7 @@ impl AcceleratorStatsRow {
                     op.name().to_string(),
                     AcceleratorOperationRow {
                         calls: row.calls,
-                        kernel_s: row.kernel_ns as f64 / 1e9,
+                        kernel_s: phase_attribution_available.then_some(row.kernel_ns as f64 / 1e9),
                         cpu_residual_s: row.cpu_residual_ns as f64 / 1e9,
                     },
                 )
@@ -335,16 +357,18 @@ impl AcceleratorStatsRow {
             scope: scope.to_string(),
             operations,
             timing_method: stats.timing_mode.name().to_string(),
+            phase_attribution_available,
             measurement_wall_s: stats.measurement_wall_ns as f64 / 1e9,
             operation_cpu_residual_s: stats.operation_cpu_residual_ns() as f64 / 1e9,
-            unattributed_cpu_residual_s: stats.unattributed_cpu_residual_ns as f64 / 1e9,
+            unattributed_cpu_residual_s: phase_attribution_available
+                .then_some(stats.unattributed_cpu_residual_ns as f64 / 1e9),
             h2d_bytes: stats.h2d_bytes,
             d2h_bytes: stats.d2h_bytes,
             explicit_d2d_copy_bytes: stats.explicit_d2d_copy_bytes,
             device_zeroed_bytes: stats.device_zeroed_bytes,
             device_generated_bytes: stats.device_generated_bytes,
-            h2d_s: stats.h2d_ns as f64 / 1e9,
-            d2h_s: stats.d2h_ns as f64 / 1e9,
+            h2d_s: phase_attribution_available.then_some(stats.h2d_ns as f64 / 1e9),
+            d2h_s: phase_attribution_available.then_some(stats.d2h_ns as f64 / 1e9),
             synchronizations: stats.synchronizations,
             synchronization_s: stats.synchronization_ns as f64 / 1e9,
             sync_host_output: stats.sync_host_output,
@@ -363,12 +387,15 @@ impl AcceleratorStatsRow {
             timing_elapsed_query_attempts: stats.timing_elapsed_query_attempts,
             timing_elapsed_no_write: stats.timing_elapsed_no_write,
             timing_event_queries: stats.timing_event_queries,
+            timing_event_api_calls: stats.timing_event_api_calls,
             timing_pending_high_water: stats.timing_pending_high_water,
             timing_flush_count: stats.timing_flush_count,
             coarse_timing_scopes: stats.coarse_timing_scopes,
-            coarse_timing_s: stats.coarse_timing_ns as f64 / 1e9,
-            kernel_s: stats.kernel_ns() as f64 / 1e9,
-            cpu_residual_s: stats.cpu_residual_ns() as f64 / 1e9,
+            coarse_timing_s: phase_attribution_available
+                .then_some(stats.coarse_timing_ns as f64 / 1e9),
+            kernel_s: phase_attribution_available.then_some(stats.kernel_ns() as f64 / 1e9),
+            cpu_residual_s: phase_attribution_available
+                .then_some(stats.cpu_residual_ns() as f64 / 1e9),
         }
     }
 }
@@ -387,6 +414,8 @@ struct Report {
     accelerator_backend: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     accelerator_cuda_abi_version: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    resident_timing_policy: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     accelerator_witness: Option<AcceleratorStatsRow>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -633,6 +662,7 @@ struct Args {
     pcs_q: Option<usize>,
     pcg_backend: PcgBackendArg,
     accelerator: AcceleratorArg,
+    resident_timing: ResidentTimingArg,
     repetitions: Option<usize>,
     warmup_repetitions: Option<usize>,
 }
@@ -648,6 +678,28 @@ enum AcceleratorArg {
     Cpu,
     CudaHybrid,
     CudaResident,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ResidentTimingArg {
+    DeferredEvents,
+    WallOnlyCounters,
+}
+
+impl ResidentTimingArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            ResidentTimingArg::DeferredEvents => "deferred-events",
+            ResidentTimingArg::WallOnlyCounters => "wall-only-counters",
+        }
+    }
+
+    fn policy(self) -> ResidentTimingPolicy {
+        match self {
+            ResidentTimingArg::DeferredEvents => ResidentTimingPolicy::DeferredEvents,
+            ResidentTimingArg::WallOnlyCounters => ResidentTimingPolicy::WallOnlyCounters,
+        }
+    }
 }
 
 impl AcceleratorArg {
@@ -673,7 +725,8 @@ fn usage() -> ! {
     eprintln!(
         "usage: p6_report [--quick] [--pcs-q Q] [--pcg-backend mock|real] \
          [--accelerator cpu|cuda-hybrid|cuda-resident] [--repetitions N] \
-         [--warmup-repetitions N]"
+         [--warmup-repetitions N] \
+         [--resident-timing deferred-events|wall-only-counters]"
     );
     std::process::exit(2);
 }
@@ -684,6 +737,7 @@ fn parse_args() -> Args {
         pcs_q: None,
         pcg_backend: PcgBackendArg::Mock,
         accelerator: AcceleratorArg::Cpu,
+        resident_timing: ResidentTimingArg::DeferredEvents,
         repetitions: None,
         warmup_repetitions: None,
     };
@@ -706,6 +760,11 @@ fn parse_args() -> Args {
             out.accelerator = parse_accelerator(&b);
         } else if let Some(b) = a.strip_prefix("--accelerator=") {
             out.accelerator = parse_accelerator(b);
+        } else if a == "--resident-timing" {
+            let Some(mode) = args.next() else { usage() };
+            out.resident_timing = parse_resident_timing(&mode);
+        } else if let Some(mode) = a.strip_prefix("--resident-timing=") {
+            out.resident_timing = parse_resident_timing(mode);
         } else if a == "--repetitions" {
             let Some(n) = args.next() else { usage() };
             out.repetitions = Some(n.parse().unwrap_or_else(|_| usage()));
@@ -728,6 +787,14 @@ fn parse_accelerator(s: &str) -> AcceleratorArg {
         "cpu" => AcceleratorArg::Cpu,
         "cuda-hybrid" => AcceleratorArg::CudaHybrid,
         "cuda-resident" => AcceleratorArg::CudaResident,
+        _ => usage(),
+    }
+}
+
+fn parse_resident_timing(s: &str) -> ResidentTimingArg {
+    match s {
+        "deferred-events" => ResidentTimingArg::DeferredEvents,
+        "wall-only-counters" => ResidentTimingArg::WallOnlyCounters,
         _ => usage(),
     }
 }
@@ -1543,6 +1610,12 @@ fn main() {
         eprintln!("p6_report: at most 32 measured + warmup repetitions are supported");
         std::process::exit(2);
     }
+    if args.resident_timing != ResidentTimingArg::DeferredEvents
+        && args.accelerator != AcceleratorArg::CudaResident
+    {
+        eprintln!("p6_report: --resident-timing is valid only with --accelerator cuda-resident");
+        std::process::exit(2);
+    }
     if args.pcg_backend == PcgBackendArg::Real && args.accelerator != AcceleratorArg::Cpu {
         eprintln!("p6_report: real-PCG and CUDA integration gates must be measured separately");
         std::process::exit(2);
@@ -1553,10 +1626,12 @@ fn main() {
             eprintln!("p6_report: CUDA requested but unavailable: {e}");
             std::process::exit(2);
         })),
-        AcceleratorArg::CudaResident => Some(Backend::cuda_resident().unwrap_or_else(|e| {
-            eprintln!("p6_report: resident CUDA requested but unavailable: {e}");
-            std::process::exit(2);
-        })),
+        AcceleratorArg::CudaResident => Some(
+            Backend::cuda_resident_with_timing(args.resident_timing.policy()).unwrap_or_else(|e| {
+                eprintln!("p6_report: resident CUDA requested but unavailable: {e}");
+                std::process::exit(2);
+            }),
+        ),
     };
     if args.pcg_backend == PcgBackendArg::Real && !quick {
         eprintln!(
@@ -2288,20 +2363,22 @@ fn main() {
     }
     let git_dirty = git_dirty_before_benchmark || git_dirty_before_serialization;
     let accepted = rec.accepted && chk.accepted;
-    let p7b_gate_evaluated = is_resident.then_some(p7b_gate_eligible(
-        &git_sha_before_benchmark,
-        &git_sha_before_serialization,
-        git_dirty_before_benchmark,
-        git_dirty_before_serialization,
-        p7b_machine_is_eligible,
-        quick,
-        t0,
-        n_gen,
-        layer_params.n_queries,
-        P4_LAYER.n_queries,
-        warmup_repetitions,
-        repetitions,
-    ));
+    let p7b_gate_evaluated = is_resident.then_some(
+        p7b_gate_eligible(
+            &git_sha_before_benchmark,
+            &git_sha_before_serialization,
+            git_dirty_before_benchmark,
+            git_dirty_before_serialization,
+            p7b_machine_is_eligible,
+            quick,
+            t0,
+            n_gen,
+            layer_params.n_queries,
+            P4_LAYER.n_queries,
+            warmup_repetitions,
+            repetitions,
+        ) && args.resident_timing == P7B_OFFICIAL_RESIDENT_TIMING,
+    );
     let gate_is_official = p7b_gate_evaluated == Some(true);
     let p7b_prefill_core_gate_pass = gate_is_official.then(|| {
         p7b_prefill_core_observed_s.expect("resident prefill observation")
@@ -2375,6 +2452,7 @@ fn main() {
         accelerator_backend: args.accelerator.as_str().into(),
         accelerator_cuda_abi_version: (args.accelerator != AcceleratorArg::Cpu)
             .then_some(CUDA_ABI_VERSION),
+        resident_timing_policy: is_resident.then(|| args.resident_timing.as_str().to_string()),
         accelerator_witness: accelerator_witness_stats
             .map(|stats| AcceleratorStatsRow::from_stats(stats, "witness-forward")),
         accelerator_response_witness: accelerator_response_witness_stats
@@ -2548,6 +2626,9 @@ fn main() {
     if args.pcg_backend == PcgBackendArg::Real {
         label.push_str("-realpcg");
     }
+    if args.resident_timing == ResidentTimingArg::WallOnlyCounters {
+        label.push_str("-wall-only-counters");
+    }
     let json = serde_json::to_string_pretty(&report).unwrap();
     let filename_sha = short_git_sha(&git_sha_before_benchmark);
     let (path, mut file) = create_unique_result_file(&label, &date, &filename_sha);
@@ -2567,6 +2648,29 @@ mod report_tests {
         assert_eq!(distribution.mad_s, 4.0);
         assert_eq!((distribution.min_s, distribution.max_s), (1.0, 9.0));
         assert_eq!(median_index(&[9.0, 1.0, 5.0, 3.0]), 2);
+    }
+
+    #[test]
+    fn wall_only_counter_rows_do_not_serialize_fake_phase_zeros() {
+        let stats = BackendStats {
+            timing_mode: DeviceTimingMode::WallOnlyCounters,
+            measurement_wall_ns: 123,
+            synchronizations: 1,
+            synchronization_ns: 45,
+            sync_host_output: 1,
+            ..BackendStats::default()
+        };
+        let row = AcceleratorStatsRow::from_stats(stats, "counter-only-test");
+        let value = serde_json::to_value(row).unwrap();
+        assert_eq!(value["timing_method"], "wall-only-counters");
+        assert_eq!(value["phase_attribution_available"], false);
+        assert!(value["h2d_s"].is_null());
+        assert!(value["d2h_s"].is_null());
+        assert!(value["kernel_s"].is_null());
+        assert!(value["coarse_timing_s"].is_null());
+        assert!(value["unattributed_cpu_residual_s"].is_null());
+        assert!(value["operations"]["gemm"]["kernel_s"].is_null());
+        assert_eq!(value["timing_event_api_calls"], 0);
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use super::{
     AccelError, BackendStats, DeviceMemoryBreakdown, DeviceTimingMode, Fp2Repr, Operation,
-    OperationStats, TimingCapacityPreflight, CUDA_ABI_VERSION, DEFERRED_TIMING_CAPACITY,
-    OPERATION_COUNT,
+    OperationStats, ResidentTimingPolicy, TimingCapacityPreflight, CUDA_ABI_VERSION,
+    DEFERRED_TIMING_CAPACITY, OPERATION_COUNT,
 };
 use std::ffi::{c_char, c_int, c_void, CStr, CString};
 use std::ptr;
@@ -48,6 +48,7 @@ struct RawStats {
     timing_elapsed_query_attempts: u64,
     timing_elapsed_no_write: u64,
     timing_event_queries: u64,
+    timing_event_api_calls: u64,
     timing_pending_high_water: u64,
     timing_flush_count: u64,
     coarse_timing_scopes: u64,
@@ -56,13 +57,13 @@ struct RawStats {
     reserved: u32,
 }
 
-const _: () = assert!(std::mem::size_of::<RawStats>() == 352);
+const _: () = assert!(std::mem::size_of::<RawStats>() == 360);
 
 type AbiVersion = unsafe extern "C" fn() -> u32;
 type Create = unsafe extern "C" fn(*mut *mut c_void) -> c_int;
 type Destroy = unsafe extern "C" fn(*mut c_void);
 type LastError = unsafe extern "C" fn(*mut c_void) -> *const c_char;
-type EnableDeferredProfiling = unsafe extern "C" fn(*mut c_void) -> c_int;
+type SetResidentTimingPolicy = unsafe extern "C" fn(*mut c_void, c_int) -> c_int;
 #[cfg(test)]
 type TestInjectElapsedNoWriteOnce = unsafe extern "C" fn(*mut c_void) -> c_int;
 type BeginCoarseTiming = unsafe extern "C" fn(*mut c_void, c_int) -> c_int;
@@ -756,7 +757,7 @@ struct Api {
     create: Create,
     destroy: Destroy,
     last_error: LastError,
-    enable_deferred_profiling: EnableDeferredProfiling,
+    set_resident_timing_policy: SetResidentTimingPolicy,
     #[cfg(test)]
     test_inject_elapsed_no_write_once: TestInjectElapsedNoWriteOnce,
     begin_coarse_timing: BeginCoarseTiming,
@@ -906,8 +907,8 @@ impl CudaContext {
             create: unsafe { load_symbol(handle, b"volta_cuda_create\0")? },
             destroy: unsafe { load_symbol(handle, b"volta_cuda_destroy\0")? },
             last_error: unsafe { load_symbol(handle, b"volta_cuda_last_error\0")? },
-            enable_deferred_profiling: unsafe {
-                load_symbol(handle, b"volta_cuda_enable_deferred_profiling\0")?
+            set_resident_timing_policy: unsafe {
+                load_symbol(handle, b"volta_cuda_set_resident_timing_policy\0")?
             },
             #[cfg(test)]
             test_inject_elapsed_no_write_once: unsafe {
@@ -1126,9 +1127,13 @@ impl CudaContext {
         }
     }
 
-    pub(super) fn enable_deferred_profiling(&mut self) -> Result<(), AccelError> {
-        // SAFETY: context is live and the ABI mutates only its timing mode.
-        self.check(unsafe { (self.api.enable_deferred_profiling)(self.raw) })
+    pub(super) fn set_resident_timing_policy(
+        &mut self,
+        policy: ResidentTimingPolicy,
+    ) -> Result<(), AccelError> {
+        // SAFETY: context is live, exclusively borrowed, and the policy has
+        // the same stable discriminants as the versioned CUDA ABI.
+        self.check(unsafe { (self.api.set_resident_timing_policy)(self.raw, policy as c_int) })
     }
 
     #[cfg(test)]
@@ -1200,6 +1205,7 @@ impl CudaContext {
                 1 => DeviceTimingMode::CudaEvents,
                 2 => DeviceTimingMode::HostBarrierWall,
                 3 => DeviceTimingMode::CudaEventsDeferred,
+                4 => DeviceTimingMode::WallOnlyCounters,
                 value => {
                     return Err(AccelError::Cuda(format!(
                         "CUDA backend returned unknown timing mode {value}"
@@ -1231,6 +1237,7 @@ impl CudaContext {
             timing_elapsed_query_attempts: raw.timing_elapsed_query_attempts,
             timing_elapsed_no_write: raw.timing_elapsed_no_write,
             timing_event_queries: raw.timing_event_queries,
+            timing_event_api_calls: raw.timing_event_api_calls,
             timing_pending_high_water: raw.timing_pending_high_water,
             timing_flush_count: raw.timing_flush_count,
             coarse_timing_scopes: raw.coarse_timing_scopes,

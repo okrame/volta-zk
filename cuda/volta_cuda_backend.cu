@@ -17,7 +17,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 26;
+constexpr uint32_t ABI_VERSION = 27;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -35,6 +35,7 @@ constexpr int BUFFER_COUNT = 16;
 constexpr uint32_t TIMING_CUDA_EVENTS = 1;
 constexpr uint32_t TIMING_HOST_BARRIER_WALL = 2;
 constexpr uint32_t TIMING_CUDA_EVENTS_DEFERRED = 3;
+constexpr uint32_t TIMING_WALL_ONLY_COUNTERS = 4;
 constexpr size_t TIMING_RING_SIZE = 512;
 
 struct alignas(16) Fp2 {
@@ -75,6 +76,9 @@ struct RawStats {
     /// cudaSuccess responses that did not populate a finite duration.
     uint64_t timing_elapsed_no_write;
     uint64_t timing_event_queries;
+    /// Every CUDA event API call issued inside the measurement window.
+    /// Wall-only counter mode must keep this exactly zero.
+    uint64_t timing_event_api_calls;
     uint64_t timing_pending_high_water;
     uint64_t timing_flush_count;
     uint64_t coarse_timing_scopes;
@@ -86,7 +90,7 @@ struct RawStats {
     uint32_t reserved;
 };
 
-static_assert(sizeof(RawStats) == 352, "RawStats ABI layout changed");
+static_assert(sizeof(RawStats) == 360, "RawStats ABI layout changed");
 
 enum class SyncReason {
     HostOutput,
@@ -161,12 +165,16 @@ struct Context {
     uint32_t test_elapsed_no_write_remaining = 0;
     bool coarse_timing_active = false;
     bool coarse_inner_active = false;
+    bool counter_timing_active = false;
+    /// Counter-only mode has enqueued stream work not yet covered by a
+    /// required synchronization boundary.
+    bool counter_stream_pending = false;
     /// At least one primitive has committed call/byte accounting into the
     /// currently active coarse scope. Aborting such a scope loses its only
     /// timing interval, so the measurement must become unreadable.
     bool coarse_accounted_work = false;
     /// Fail-closed latch for call/byte accounting whose enclosing timing
-    /// interval was discarded. This is internal state, not part of ABI 26.
+    /// interval was discarded. This is internal state, not part of ABI 27.
     bool measurement_poisoned = false;
     int coarse_timing_operation = -1;
     std::chrono::steady_clock::time_point phase_started{};
@@ -187,6 +195,7 @@ void abort_active_timing_record(Context* c) noexcept {
     c->active_timing_record = TIMING_RING_SIZE;
     c->coarse_timing_active = false;
     c->coarse_inner_active = false;
+    c->counter_timing_active = false;
     c->coarse_accounted_work = false;
     c->coarse_timing_operation = -1;
 }
@@ -312,6 +321,7 @@ int synchronize_stream_unclassified(Context* c) {
     const cudaError_t e = cudaStreamSynchronize(c->stream);
     const auto finished = std::chrono::steady_clock::now();
     if (e != cudaSuccess) return fail(c, "cudaStreamSynchronize(c->stream)", e);
+    c->counter_stream_pending = false;
     ++c->stats.synchronizations;
     c->stats.synchronization_ns +=
         std::chrono::duration_cast<std::chrono::nanoseconds>(finished - started).count();
@@ -412,6 +422,27 @@ int trim_inactive_resident(Context* c) {
         if (volta_e_ != cudaSuccess) return fail((c), #call, volta_e_);                   \
     } while (0)
 
+cudaError_t timing_event_create(Context* c, cudaEvent_t* event) {
+    ++c->stats.timing_event_api_calls;
+    return cudaEventCreate(event);
+}
+
+cudaError_t timing_event_record(Context* c, cudaEvent_t event) {
+    ++c->stats.timing_event_api_calls;
+    return cudaEventRecord(event, c->stream);
+}
+
+cudaError_t timing_event_elapsed(
+    Context* c, float* ms, cudaEvent_t start, cudaEvent_t end) {
+    ++c->stats.timing_event_api_calls;
+    return cudaEventElapsedTime(ms, start, end);
+}
+
+cudaError_t timing_event_query(Context* c, cudaEvent_t event) {
+    ++c->stats.timing_event_api_calls;
+    return cudaEventQuery(event);
+}
+
 int ensure(Context* c, int slot, size_t bytes) {
     if (slot < 0 || slot >= BUFFER_COUNT) return fail_message(c, "invalid workspace slot");
     Buffer& b = c->buffers[slot];
@@ -468,7 +499,7 @@ int query_event_ns_once(
         return 0;
     }
     float ms = -1.0f;
-    const cudaError_t e = cudaEventElapsedTime(&ms, a, b);
+    const cudaError_t e = timing_event_elapsed(c, &ms, a, b);
     if (e != cudaSuccess) return fail(c, "cudaEventElapsedTime", e);
     if (std::isfinite(ms) && ms >= 0.0f) {
         *out = static_cast<uint64_t>(ms * 1'000'000.0f);
@@ -509,8 +540,8 @@ int fail_unresolved_elapsed(
     Context* c, const DeferredElapsedQuery& query, size_t unresolved_count,
     int retry_sweeps) {
     const TimingRecord& record = *query.record;
-    const cudaError_t start_status = cudaEventQuery(query.start);
-    const cudaError_t end_status = cudaEventQuery(query.end);
+    const cudaError_t start_status = timing_event_query(c, query.start);
+    const cudaError_t end_status = timing_event_query(c, query.end);
     char message[1024];
     std::snprintf(
         message, sizeof(message),
@@ -557,7 +588,7 @@ int validate_deferred_record(
 int ensure_record_events(Context* c, TimingRecord& record, size_t count) {
     for (size_t i = 0; i < count; ++i) {
         if (record.events[i]) continue;
-        CUDA_OR_RETURN(c, cudaEventCreate(&record.events[i]));
+        CUDA_OR_RETURN(c, timing_event_create(c, &record.events[i]));
         record.fresh_event_mask |= 1u << i;
         ++c->timing_event_count;
     }
@@ -628,10 +659,10 @@ int flush_deferred_timing(Context* c, SyncReason reason) {
             // Failure-path only: endpoint readiness calls interpose different
             // provider messages and prove that both recorded events remain
             // complete. No stream synchronization is added.
-            const cudaError_t start_status = cudaEventQuery(query.start);
+            const cudaError_t start_status = timing_event_query(c, query.start);
             if (start_status != cudaSuccess)
                 return fail(c, "cudaEventQuery(deferred start)", start_status);
-            const cudaError_t end_status = cudaEventQuery(query.end);
+            const cudaError_t end_status = timing_event_query(c, query.end);
             if (end_status != cudaSuccess)
                 return fail(c, "cudaEventQuery(deferred end)", end_status);
             bool resolved = false;
@@ -733,7 +764,7 @@ int begin_deferred_record(Context* c, TimingRecordKind kind, size_t event_count)
     record.device_zeroed_bytes = 0;
     record.device_generated_bytes = 0;
     record.measured_ns[0] = record.measured_ns[1] = record.measured_ns[2] = 0;
-    CUDA_OR_RETURN(c, cudaEventRecord(record.events[0], c->stream));
+    CUDA_OR_RETURN(c, timing_event_record(c, record.events[0]));
     record.event_mask |= 1u << 0;
     c->active_timing_record = slot;
     return 0;
@@ -766,10 +797,16 @@ int begin_timing(Context* c) {
         c->coarse_inner_active = true;
         return 0;
     }
+    if (c->timing_mode == TIMING_WALL_ONLY_COUNTERS) {
+        if (c->counter_timing_active)
+            return reject_message(c, "nested counter-only timing record");
+        c->counter_timing_active = true;
+        return 0;
+    }
     if (c->timing_mode == TIMING_CUDA_EVENTS_DEFERRED)
         return begin_deferred_record(c, TimingRecordKind::Operation, 4);
     if (c->timing_mode == TIMING_CUDA_EVENTS) {
-        CUDA_OR_RETURN(c, cudaEventRecord(c->events[0], c->stream));
+        CUDA_OR_RETURN(c, timing_event_record(c, c->events[0]));
     } else {
         c->phase_started = std::chrono::steady_clock::now();
     }
@@ -796,27 +833,32 @@ int mark_timing(Context* c, int event) {
             return fail_message(c, "coarse timing marker without an active primitive");
         return 0;
     }
+    if (c->timing_mode == TIMING_WALL_ONLY_COUNTERS) {
+        if (!c->counter_timing_active)
+            return fail_message(c, "counter-only timing marker without active operation");
+        return 0;
+    }
     if (c->timing_mode == TIMING_CUDA_EVENTS_DEFERRED) {
         if (c->active_timing_record == TIMING_RING_SIZE)
             return fail_message(c, "deferred timing marker without active record");
-        CUDA_OR_RETURN(c, cudaEventRecord(
-            c->timing_ring[c->active_timing_record].events[event], c->stream));
+        CUDA_OR_RETURN(c, timing_event_record(
+            c, c->timing_ring[c->active_timing_record].events[event]));
         c->timing_ring[c->active_timing_record].event_mask |= 1u << event;
         return 0;
     }
     if (c->timing_mode == TIMING_CUDA_EVENTS) {
-        CUDA_OR_RETURN(c, cudaEventRecord(c->events[event], c->stream));
+        CUDA_OR_RETURN(c, timing_event_record(c, c->events[event]));
         return 0;
     }
     return finish_host_phase(c, event - 1);
 }
 
 int select_timing_mode(Context* c) {
-    CUDA_OR_RETURN(c, cudaEventRecord(c->events[0], c->stream));
-    CUDA_OR_RETURN(c, cudaEventRecord(c->events[1], c->stream));
+    CUDA_OR_RETURN(c, timing_event_record(c, c->events[0]));
+    CUDA_OR_RETURN(c, timing_event_record(c, c->events[1]));
     CUDA_OR_RETURN(c, cudaStreamSynchronize(c->stream));
     float ms = -1.0f;
-    const cudaError_t e = cudaEventElapsedTime(&ms, c->events[0], c->events[1]);
+    const cudaError_t e = timing_event_elapsed(c, &ms, c->events[0], c->events[1]);
     if (e == cudaSuccess && ms >= 0.0f) {
         c->timing_mode = TIMING_CUDA_EVENTS;
     } else {
@@ -855,14 +897,29 @@ int finish_timing(
         c->stats.device_zeroed_bytes += device_zeroed;
         c->stats.device_generated_bytes += device_generated;
         c->coarse_accounted_work = true;
+        if (c->timing_mode == TIMING_WALL_ONLY_COUNTERS)
+            c->counter_stream_pending = true;
         c->coarse_inner_active = false;
         return 0;
     }
-    if (c->timing_mode == TIMING_CUDA_EVENTS_DEFERRED) {
+    if (c->timing_mode == TIMING_WALL_ONLY_COUNTERS) {
+        if (!c->counter_timing_active)
+            return fail_message(c, "counter-only finish without active operation");
+        c->counter_timing_active = false;
+        c->counter_stream_pending = true;
+        if (d2h && synchronize_stream(c, SyncReason::HostOutput)) return -1;
+        ++c->stats.calls[operation];
+        c->stats.h2d_bytes += h2d;
+        c->stats.d2h_bytes += d2h;
+        c->stats.d2d_bytes += d2d;
+        c->stats.device_zeroed_bytes += device_zeroed;
+        c->stats.device_generated_bytes += device_generated;
+        return 0;
+    } else if (c->timing_mode == TIMING_CUDA_EVENTS_DEFERRED) {
         if (c->active_timing_record == TIMING_RING_SIZE)
             return fail_message(c, "deferred finish without active record");
         TimingRecord& record = c->timing_ring[c->active_timing_record];
-        CUDA_OR_RETURN(c, cudaEventRecord(record.events[3], c->stream));
+        CUDA_OR_RETURN(c, timing_event_record(c, record.events[3]));
         record.event_mask |= 1u << 3;
         record.kind = TimingRecordKind::Operation;
         record.operation = operation;
@@ -874,7 +931,7 @@ int finish_timing(
         if (commit_deferred_record(c)) return -1;
         return d2h ? flush_deferred_timing(c, SyncReason::HostOutput) : 0;
     } else if (c->timing_mode == TIMING_CUDA_EVENTS) {
-        CUDA_OR_RETURN(c, cudaEventRecord(c->events[3], c->stream));
+        CUDA_OR_RETURN(c, timing_event_record(c, c->events[3]));
         const SyncReason reason = d2h ? SyncReason::HostOutput
             : (h2d ? SyncReason::UploadLifetime : SyncReason::ProfilingLegacy);
         if (synchronize_stream(c, reason)) return -1;
@@ -908,10 +965,16 @@ int finish_timing(
 int begin_transfer_timing(Context* c) {
     if (c->coarse_timing_active)
         return reject_message(c, "host transfer is forbidden inside a coarse timing scope");
+    if (c->timing_mode == TIMING_WALL_ONLY_COUNTERS) {
+        if (c->counter_timing_active)
+            return reject_message(c, "nested counter-only timing record");
+        c->counter_timing_active = true;
+        return 0;
+    }
     if (c->timing_mode == TIMING_CUDA_EVENTS_DEFERRED)
         return begin_deferred_record(c, TimingRecordKind::TransferH2D, 2);
     if (c->timing_mode == TIMING_CUDA_EVENTS) {
-        CUDA_OR_RETURN(c, cudaEventRecord(c->events[0], c->stream));
+        CUDA_OR_RETURN(c, timing_event_record(c, c->events[0]));
     } else {
         c->phase_started = std::chrono::steady_clock::now();
     }
@@ -920,11 +983,20 @@ int begin_transfer_timing(Context* c) {
 
 int finish_transfer_timing(Context* c, size_t bytes, bool h2d) {
     uint64_t elapsed_ns = 0;
-    if (c->timing_mode == TIMING_CUDA_EVENTS_DEFERRED) {
+    if (c->timing_mode == TIMING_WALL_ONLY_COUNTERS) {
+        if (!c->counter_timing_active)
+            return fail_message(c, "counter-only transfer finish without active transfer");
+        c->counter_timing_active = false;
+        c->counter_stream_pending = true;
+        if (!h2d && synchronize_stream(c, SyncReason::HostOutput)) return -1;
+        if (h2d) c->stats.h2d_bytes += bytes;
+        else c->stats.d2h_bytes += bytes;
+        return 0;
+    } else if (c->timing_mode == TIMING_CUDA_EVENTS_DEFERRED) {
         if (c->active_timing_record == TIMING_RING_SIZE)
             return fail_message(c, "deferred transfer finish without active record");
         TimingRecord& record = c->timing_ring[c->active_timing_record];
-        CUDA_OR_RETURN(c, cudaEventRecord(record.events[1], c->stream));
+        CUDA_OR_RETURN(c, timing_event_record(c, record.events[1]));
         record.event_mask |= 1u << 1;
         record.kind = h2d ? TimingRecordKind::TransferH2D : TimingRecordKind::TransferD2H;
         record.h2d_bytes = h2d ? bytes : 0;
@@ -932,7 +1004,7 @@ int finish_transfer_timing(Context* c, size_t bytes, bool h2d) {
         if (commit_deferred_record(c)) return -1;
         return h2d ? 0 : flush_deferred_timing(c, SyncReason::HostOutput);
     } else if (c->timing_mode == TIMING_CUDA_EVENTS) {
-        CUDA_OR_RETURN(c, cudaEventRecord(c->events[1], c->stream));
+        CUDA_OR_RETURN(c, timing_event_record(c, c->events[1]));
         if (synchronize_stream(
                 c, h2d ? SyncReason::UploadLifetime : SyncReason::HostOutput)) return -1;
         if (event_ns(c, c->events[0], c->events[1], &elapsed_ns)) return -1;
@@ -2435,7 +2507,7 @@ extern "C" int volta_cuda_create(void** out) {
         if ((e = cudaStreamCreateWithFlags(&c->stream, cudaStreamNonBlocking)) != cudaSuccess)
             return fail(c, "cudaStreamCreateWithFlags", e);
         for (auto& event : c->events) {
-            if ((e = cudaEventCreate(&event)) != cudaSuccess)
+            if ((e = timing_event_create(c, &event)) != cudaSuccess)
                 return fail(c, "cudaEventCreate", e);
         }
         if (select_timing_mode(c)) return -1;
@@ -2474,15 +2546,32 @@ extern "C" const char* volta_cuda_last_error(void* raw) {
     return c ? c->error.c_str() : "null CUDA context";
 }
 
-/// Enable deferred event collection. Rust calls this explicit ABI only for
-/// `BackendKind::CudaResident`; hybrid contexts retain legacy per-call
-/// barriers. Runtimes without usable elapsed CUDA events retain the correct
-/// host-barrier fallback instead of pretending to defer it.
-extern "C" int volta_cuda_enable_deferred_profiling(void* raw) {
+/// Select the resident observation policy exactly once after context
+/// construction. Policy 0 enables deferred CUDA events when the runtime
+/// supports them (otherwise retaining the host-barrier fallback); policy 1
+/// keeps wall/counters while issuing no CUDA event calls in measured work.
+/// Hybrid contexts never call this entry point.
+extern "C" int volta_cuda_set_resident_timing_policy(void* raw, int policy) {
     Context* c = static_cast<Context*>(raw);
     if (!c) return -1;
-    if (c->timing_mode == TIMING_CUDA_EVENTS)
-        c->timing_mode = TIMING_CUDA_EVENTS_DEFERRED;
+    if (c->active_timing_record != TIMING_RING_SIZE || c->coarse_timing_active ||
+        c->counter_timing_active || c->timing_ring_pending || c->counter_stream_pending)
+        return reject_message(c, "cannot change resident timing policy after work has started");
+    if (policy == 0) {
+        if (c->timing_mode == TIMING_CUDA_EVENTS)
+            c->timing_mode = TIMING_CUDA_EVENTS_DEFERRED;
+    } else if (policy == 1) {
+        c->timing_mode = TIMING_WALL_ONLY_COUNTERS;
+    } else {
+        return reject_message(c, "unknown resident timing policy");
+    }
+    // Context construction probes event support before the resident policy is
+    // known. Those calls are outside every measurement window and must not be
+    // attributed to either arm of the A/B.
+    c->stats.timing_elapsed_query_attempts = 0;
+    c->stats.timing_elapsed_no_write = 0;
+    c->stats.timing_event_queries = 0;
+    c->stats.timing_event_api_calls = 0;
     c->stats.timing_mode = c->timing_mode;
     return 0;
 }
@@ -2505,40 +2594,49 @@ extern "C" int volta_cuda_test_inject_elapsed_no_write_once(void* raw) {
 extern "C" int volta_cuda_begin_coarse_timing(void* raw, int operation) {
     Context* c = static_cast<Context*>(raw);
     if (!c) return -1;
-    if (c->timing_mode != TIMING_CUDA_EVENTS_DEFERRED)
-        return reject_message(c, "coarse timing requires deferred CUDA-event mode");
+    if (c->timing_mode != TIMING_CUDA_EVENTS_DEFERRED &&
+        c->timing_mode != TIMING_WALL_ONLY_COUNTERS)
+        return reject_message(c, "coarse timing requires a resident observation mode");
     if (c->measurement_poisoned)
         return reject_message(c, "measurement timing is poisoned; reset stats before continuing");
     if (operation < 0 || operation >= OP_COUNT)
         return reject_message(c, "invalid coarse timing operation");
-    if (c->coarse_timing_active || c->active_timing_record != TIMING_RING_SIZE)
+    if (c->coarse_timing_active || c->active_timing_record != TIMING_RING_SIZE ||
+        c->counter_timing_active)
         return reject_message(c, "nested coarse timing scope");
-    if (begin_deferred_record(c, TimingRecordKind::CoarseOperation, 2)) return -1;
+    if (c->timing_mode == TIMING_CUDA_EVENTS_DEFERRED &&
+        begin_deferred_record(c, TimingRecordKind::CoarseOperation, 2)) return -1;
     c->coarse_timing_operation = operation;
     c->coarse_timing_active = true;
     c->coarse_inner_active = false;
     c->coarse_accounted_work = false;
-    c->timing_ring[c->active_timing_record].operation = operation;
+    if (c->timing_mode == TIMING_CUDA_EVENTS_DEFERRED)
+        c->timing_ring[c->active_timing_record].operation = operation;
     return 0;
 }
 
 extern "C" int volta_cuda_end_coarse_timing(void* raw) {
     Context* c = static_cast<Context*>(raw);
     if (!c) return -1;
-    if (c->timing_mode != TIMING_CUDA_EVENTS_DEFERRED)
-        return reject_message(c, "coarse timing requires deferred CUDA-event mode");
-    if (!c->coarse_timing_active || c->active_timing_record == TIMING_RING_SIZE)
+    if (c->timing_mode != TIMING_CUDA_EVENTS_DEFERRED &&
+        c->timing_mode != TIMING_WALL_ONLY_COUNTERS)
+        return reject_message(c, "coarse timing requires a resident observation mode");
+    if (!c->coarse_timing_active ||
+        (c->timing_mode == TIMING_CUDA_EVENTS_DEFERRED &&
+         c->active_timing_record == TIMING_RING_SIZE))
         return reject_message(c, "no active coarse timing scope");
     if (c->coarse_inner_active)
         return reject_message(c, "cannot end coarse timing during an active primitive");
-    TimingRecord& record = c->timing_ring[c->active_timing_record];
-    CUDA_OR_RETURN(c, cudaEventRecord(record.events[1], c->stream));
-    record.event_mask |= 1u << 1;
-    record.kind = TimingRecordKind::CoarseOperation;
-    record.operation = c->coarse_timing_operation;
+    if (c->timing_mode == TIMING_CUDA_EVENTS_DEFERRED) {
+        TimingRecord& record = c->timing_ring[c->active_timing_record];
+        CUDA_OR_RETURN(c, timing_event_record(c, record.events[1]));
+        record.event_mask |= 1u << 1;
+        record.kind = TimingRecordKind::CoarseOperation;
+        record.operation = c->coarse_timing_operation;
+    }
     c->coarse_timing_active = false;
     c->coarse_timing_operation = -1;
-    if (commit_deferred_record(c)) return -1;
+    if (c->timing_mode == TIMING_CUDA_EVENTS_DEFERRED && commit_deferred_record(c)) return -1;
     c->coarse_accounted_work = false;
     ++c->stats.coarse_timing_scopes;
     return 0;
@@ -2549,8 +2647,9 @@ extern "C" int volta_cuda_end_coarse_timing(void* raw) {
 extern "C" int volta_cuda_abort_coarse_timing(void* raw) {
     Context* c = static_cast<Context*>(raw);
     if (!c) return -1;
-    if (c->timing_mode != TIMING_CUDA_EVENTS_DEFERRED)
-        return reject_message(c, "coarse timing requires deferred CUDA-event mode");
+    if (c->timing_mode != TIMING_CUDA_EVENTS_DEFERRED &&
+        c->timing_mode != TIMING_WALL_ONLY_COUNTERS)
+        return reject_message(c, "coarse timing requires a resident observation mode");
     if (c->coarse_timing_active) abort_active_timing_record(c);
     return 0;
 }
@@ -2564,14 +2663,20 @@ extern "C" int volta_cuda_ensure_timing_capacity(
     Context* c = static_cast<Context*>(raw);
     if (!c || !pending_before || !pending_after || !flushed)
         return reject_message(c, "invalid timing-capacity output");
-    if (c->timing_mode != TIMING_CUDA_EVENTS_DEFERRED)
-        return reject_message(c, "timing-capacity preflight requires deferred CUDA-event mode");
-    if (c->active_timing_record != TIMING_RING_SIZE)
+    if (c->timing_mode != TIMING_CUDA_EVENTS_DEFERRED &&
+        c->timing_mode != TIMING_WALL_ONLY_COUNTERS)
+        return reject_message(c, "timing-capacity preflight requires a resident observation mode");
+    if (c->active_timing_record != TIMING_RING_SIZE || c->counter_timing_active)
         return reject_message(c, "cannot preflight timing capacity during an active record");
     if (bound > TIMING_RING_SIZE)
         return reject_message(c, "deferred timing cohort bound exceeds ring capacity");
-    *pending_before = c->timing_ring_pending;
+    *pending_before = c->timing_mode == TIMING_CUDA_EVENTS_DEFERRED
+        ? c->timing_ring_pending : 0;
     *flushed = 0;
+    if (c->timing_mode == TIMING_WALL_ONLY_COUNTERS) {
+        *pending_after = 0;
+        return 0;
+    }
     if (c->timing_ring_pending > TIMING_RING_SIZE - bound) {
         if (flush_deferred_timing(c, SyncReason::TimingFlush)) return -1;
         *flushed = 1;
@@ -2585,19 +2690,24 @@ extern "C" int volta_cuda_flush_profiling(void* raw) {
     if (!c) return -1;
     if (c->measurement_poisoned)
         return reject_message(c, "measurement timing is poisoned; reset stats before reading it");
-    if (c->active_timing_record != TIMING_RING_SIZE)
+    if (c->active_timing_record != TIMING_RING_SIZE || c->counter_timing_active)
         return reject_message(c, "cannot flush an active timing record");
+    if (c->timing_mode == TIMING_WALL_ONLY_COUNTERS && c->counter_stream_pending)
+        return synchronize_stream(c, SyncReason::TimingFlush);
     return flush_deferred_timing(c, SyncReason::TimingFlush);
 }
 
 extern "C" int volta_cuda_reset_stats(void* raw) {
     Context* c = static_cast<Context*>(raw);
     if (!c) return -1;
-    if (c->active_timing_record != TIMING_RING_SIZE)
+    if (c->active_timing_record != TIMING_RING_SIZE || c->counter_timing_active)
         return reject_message(c, "cannot reset stats during an active timing record");
     const bool had_pending_timing =
-        c->timing_mode == TIMING_CUDA_EVENTS_DEFERRED && c->timing_ring_pending != 0;
+        (c->timing_mode == TIMING_CUDA_EVENTS_DEFERRED && c->timing_ring_pending != 0) ||
+        (c->timing_mode == TIMING_WALL_ONLY_COUNTERS && c->counter_stream_pending);
     if (discard_deferred_timing(c, SyncReason::TimingFlush)) return -1;
+    if (c->timing_mode == TIMING_WALL_ONLY_COUNTERS && c->counter_stream_pending &&
+        synchronize_stream(c, SyncReason::TimingFlush)) return -1;
     // An aborted coarse scope is not a committed ring record, but its kernels
     // may still be in flight. If no pending record forced the barrier above,
     // synchronize explicitly before making the poisoned counters reusable.
@@ -2611,6 +2721,8 @@ extern "C" int volta_cuda_reset_stats(void* raw) {
     c->stats.timing_mode = timing_mode;
     c->measurement_poisoned = false;
     c->coarse_accounted_work = false;
+    c->counter_timing_active = false;
+    c->counter_stream_pending = false;
     return 0;
 }
 
@@ -2619,14 +2731,24 @@ extern "C" int volta_cuda_get_stats(void* raw, RawStats* out) {
     if (!c || !out) return -1;
     if (c->measurement_poisoned)
         return reject_message(c, "measurement timing is poisoned; reset stats before reading it");
-    if (c->active_timing_record != TIMING_RING_SIZE)
+    if (c->active_timing_record != TIMING_RING_SIZE || c->counter_timing_active)
         return reject_message(c, "cannot read stats during an active timing record");
-    if (flush_deferred_timing(c, SyncReason::TimingFlush)) return -1;
+    if (volta_cuda_flush_profiling(raw)) return -1;
     if (synchronization_reason_total(c->stats) != c->stats.synchronizations)
         return fail_message(c, "synchronization reason accounting mismatch");
     if (c->stats.timing_elapsed_query_attempts !=
         c->stats.timing_event_queries + c->stats.timing_elapsed_no_write)
         return fail_message(c, "elapsed timing query accounting mismatch");
+    if (c->timing_mode == TIMING_WALL_ONLY_COUNTERS) {
+        uint64_t kernel_ns = 0;
+        for (const auto value : c->stats.kernel_ns) kernel_ns += value;
+        if (c->stats.timing_records || c->stats.timing_elapsed_query_attempts ||
+            c->stats.timing_elapsed_no_write || c->stats.timing_event_queries ||
+            c->stats.timing_event_api_calls || c->stats.timing_pending_high_water ||
+            c->stats.timing_flush_count || c->stats.h2d_ns || c->stats.d2h_ns ||
+            c->stats.coarse_timing_ns || kernel_ns)
+            return fail_message(c, "wall-only counter mode emitted CUDA-event attribution");
+    }
     *out = c->stats;
     return 0;
 }

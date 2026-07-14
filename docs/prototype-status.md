@@ -28,7 +28,7 @@ has no gate verdict.
 | P7 report + GPU budget model | **complete: resident full e2e + publication artifact; correctness/communication/flat PASS, rho FAIL** (2026-07-13) | T=100+50/Q=200, clean 1+3: golden ✓, proof/verifier ✓, flat 0.950 ✓, packed 144.821 MB ✓, explicit resident cleanup 0 B ✓; same-host exact native anchor ✓; **rho prefill 3707.60 >10 FAIL, decode 95.60 >2 FAIL**; tables/figures, hardware/checksum manifest, synthetic shape sweep and Lean audit ✓ | A100 resident core median: prefill **64.296±0.329 s MAD**, response **121.156±0.373 s**, decode marginal **57.296±0.809 s**. Native GPU: prefill **17.342±0.062 ms**, decode50 **599.346±0.990 ms**. Online-accounted response 121.774 s; full response-session wall 123.928 s; representative session 5.998 s kernels + 89.055 s host residual, 945.442 MB H2D + 138.488 MB D2H, 211,709 sync, 5.405 GB peak GPU. Raw sources `p7-integrated-resident-2026-07-13-1fd5195.json` / `p7-gpu-native-inference-2026-07-13-1fd5195.json`; aggregate `p7-2026-07-13-2c836b3.json`. Mock-PCG remains non-production. |
 | P7b iteration 2 resident-A100 orchestration | **closed as superseded diagnosis** (clean quick; no gate verdict) | Historical Thunder count gate retired by the 2026-07-14 provider deviation | Clean schema-6 quick at `61aafe8`: **39,201 sync** (-36.45% vs `bf66c8f`), **12,656,708 B H2D** (-49.19%), prefill 27.154 s, decode marginal 23.628 s. The run remains an immutable, ineligible Thunder diagnostic. Mock-PCG remains non-production. |
 | P7b iteration 3 diagnosis | **Phase 0a/0b/0c complete; scheduler phase cancelled as provider-specific debt** (no gate verdict) | Host-call diagnosis closed; no further Thunder coalescing is on the critical path | Clean same-SHA `098b2f1` quick A/B: deferred-events median session wall **54.507 s** versus Thunder wall-only+counters **32.575 s**, event tax **21.932 s / 40.24%**. The RunPod A100 control is **3.768 s** at identical quick geometry and **15.651 s** full session wall; it selected the new provider but is not retroactively a gate claim. |
-| P7b RunPod official rebaseline | **preregistered; implementation in progress** (no gate verdict) | Clean schema-6/current-ABI T=100+50/Q=200 on exact `runpod-a100-v1`, counters-only, Rayon=8, >=1 warmup + >=3 measured, golden and communication invariants; prefill <=10 s, decode <=4 s, max per-repetition sync-wall/session-wall <=2%, H2D <=100 MB | The clean ABI-27 control used Rayon=27 and is attribution only: full prefill 7.673 s, decode 6.698 s, session wall 15.651 s. Its 59,868 sync count is no longer a gate; per-repetition synchronization-wall fractions are 0.607%, 0.617%, 0.747%. Thunder is comparative history and no longer required. |
+| P7b RunPod official rebaseline | **implementation + local regression complete; awaiting active RunPod SSH** (no gate verdict) | Clean schema-6/current-ABI T=100+50/Q=200 on exact `runpod-a100-v1`, counters-only, Rayon=8, >=1 warmup + >=3 measured, golden and communication invariants; prefill <=10 s, decode <=4 s, max per-repetition sync-wall/session-wall <=2%, H2D <=100 MB | Writer/selector `c9c2871`, reproducible runner `95def12`, dead-API cleanup `b424e36`; CPU/all-feature workspace, Python and Lean audits pass. The prior ABI-27/27-thread control remains attribution-only. The supplied RunPod endpoint refused SSH on 2026-07-14, so quick/full remain unmeasured. Thunder is no longer required and may be terminated. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -60,6 +60,26 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-14 (P7b RunPod implementation-readiness checkpoint; no gate
+  verdict)**: the profile migration, fail-closed schema-6 writer/selector,
+  exact quick+official runner and targeted dead-API cleanup are committed
+  through `b424e36`.  The clean local checkpoint passes `cargo test
+  --workspace`, `cargo test --workspace --all-features`, all 17 Python tests,
+  syntax checks for every repository shell script and the frozen Lean audit.
+  The working tree remained clean.  A complete source bundle and the existing
+  weight/golden artifacts are available for checksum-matched transfer; their
+  canonical artifact checksums remain unchanged.
+
+  No remote measurement is claimed.  SSH to the user-supplied RunPod endpoint
+  returned `connection refused`, and the local `RUNPOD_API_KEY` is unset, so
+  no active endpoint can be discovered without user input.  No provider
+  mutation, resume or provisioning was attempted, and Thunder was not
+  contacted.  Resume only after an already-running exact
+  `runpod-a100-v1` pod and its current SSH mapping are supplied; then require
+  real CUDA differentials before quick 0+1 and official 1+3.  Until those
+  append-only JSONs exist, `p7b_gate_evaluated` has no new observation and
+  P7b has no official verdict.
 
 - **2026-07-14 (P7b targeted AI-slop/dead-code audit checkpoint)**: the
   preregistered repository-only cleanup boundary is complete.  An exact

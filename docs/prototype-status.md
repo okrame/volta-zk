@@ -62,6 +62,42 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-14 (P7b RunPod proof-algebra kernel census; preregistered before
+  profiling or CUDA changes)**: run one non-gating Nsight Compute 2025.1.1
+  census on the exact `runpod-a100-v1` profile with eight Rayon workers and
+  the clean commit containing this entry.  Geometry is full T=100+50/Q=200,
+  counters-only, zero warmups and one measured repetition.  Acceptance and
+  golden decode remain mandatory, but `p7b_gate_evaluated:false`; profiler
+  wall time and the report JSON are not performance or gate observations.
+
+  Invoke the already-built `p6_report` binary directly under `ncu`, with
+  `--target-processes application-only`, kernel replay, cache and clock
+  control both `none`, rules disabled, and only
+  `gpu__time_duration.sum`.  The exact function-name filter is the complete
+  proof-algebra subset currently charged to `Operation::Gemm`:
+  `subfield_corrections_kernel`, `pad_base_vector_kernel`,
+  `matrix_fold_kernel`, `fp2_dot_terms`, `reduce_dot`,
+  `fp2_product_round_terms`, `reduce_product_round`,
+  `fp2_triple_product_round_terms`, `reduce_triple_product_round`,
+  `ln_hadamard_factors_kernel`, `base_broadcast_fp2_kernel`, and
+  `attention_above_mask_kernel`.  Fixed-point witness kernels and LogUp/PCS
+  kernels are deliberately excluded: the former run before timed proving,
+  while the latter already have separate event categories.  Preserve the
+  raw profiler CSV outside the source checkout, record its SHA-256, and land
+  an append-only JSON summary containing provenance, per-kernel invocation
+  count and summed duration.  The CSV is diagnostic input, not a repository
+  run of record.
+
+  Nsight perturbs launch order and duration, so only the within-census rank
+  and occupancy/launch evidence may select work; absolute profiler wall and
+  cross-mode latency are inadmissible.  Do not edit CUDA until the census is
+  written into this ledger and reconciled with the deferred-event broad-GEMM
+  total.  Then preregister at most one provider-neutral implementation
+  boundary against the dominant exact kernel family.  The boundary may
+  change reduction/limb implementation below the ABI only; it may not change
+  transcript order, proof bytes, challenge visibility, correlation use,
+  scheduling, communication or public API.
+
 - **2026-07-14 (P7b RunPod decode diagnostic closed; non-gating result)**:
   the preregistered full deferred-event diagnostic ran on the exact
   `runpod-a100-v1` hardware/software profile with eight Rayon workers,

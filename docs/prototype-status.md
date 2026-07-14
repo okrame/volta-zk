@@ -1,4 +1,4 @@
-# Prototype Status Ledger (P7b iteration 2 — Thunder resident A100)
+# Prototype Status Ledger (P7b — RunPod resident A100)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -7,9 +7,10 @@ land in `benchmarks/results/*.json`. The repo-local plan of record is
 
 Workload of record: **GPT-2 small (124M, L=12, d=768, h=12, d_ff=3072),
 prefill T=100 + 50 deferred decode tokens, causal, PCS Q=200**, on the
-designated Thunder A100. P7 is closed; its CPU and rho numbers below are
-historical. The active P7b gates and measurement hygiene are the preregistered
-2026-07-13 deviation below, and P7b currently has no gate verdict.
+designated RunPod A100 profile. P7 is closed; its CPU and rho numbers below
+are historical. The active P7b gates and measurement hygiene are the
+preregistered 2026-07-14 RunPod-provider deviation below, and P7b currently
+has no gate verdict.
 
 ## Milestones
 
@@ -27,6 +28,7 @@ historical. The active P7b gates and measurement hygiene are the preregistered
 | P7 report + GPU budget model | **complete: resident full e2e + publication artifact; correctness/communication/flat PASS, rho FAIL** (2026-07-13) | T=100+50/Q=200, clean 1+3: golden ✓, proof/verifier ✓, flat 0.950 ✓, packed 144.821 MB ✓, explicit resident cleanup 0 B ✓; same-host exact native anchor ✓; **rho prefill 3707.60 >10 FAIL, decode 95.60 >2 FAIL**; tables/figures, hardware/checksum manifest, synthetic shape sweep and Lean audit ✓ | A100 resident core median: prefill **64.296±0.329 s MAD**, response **121.156±0.373 s**, decode marginal **57.296±0.809 s**. Native GPU: prefill **17.342±0.062 ms**, decode50 **599.346±0.990 ms**. Online-accounted response 121.774 s; full response-session wall 123.928 s; representative session 5.998 s kernels + 89.055 s host residual, 945.442 MB H2D + 138.488 MB D2H, 211,709 sync, 5.405 GB peak GPU. Raw sources `p7-integrated-resident-2026-07-13-1fd5195.json` / `p7-gpu-native-inference-2026-07-13-1fd5195.json`; aggregate `p7-2026-07-13-2c836b3.json`. Mock-PCG remains non-production. |
 | P7b iteration 2 resident-A100 orchestration | **in progress** (clean quick diagnostic; no gate verdict) | Official clean T=100+50/Q=200, Thunder A100, >=1 warmup and >=3 measured repetitions remains pending; the T=16+8/0+1 quick run is explicitly ineligible | Clean schema-6 quick at `61aafe8`: **39,201 sync** (-36.45% vs `bf66c8f`), **12,656,708 B H2D** (-49.19%), prefill 27.154 s, decode marginal 23.628 s. `p7b_gate_evaluated:false`; the smaller-geometry sync count is still 7.84x the numeric gate, so the implementation is not ready for an official run. Mock-PCG remains non-production. |
 | P7b iteration 3 diagnosis | **Phase 0a/0b/0c measured; Phase 1 not started** (no gate verdict) | Measure the pre-registered host-call term below before scheduler work; an official T=100+50 Thunder run remains forbidden | Clean same-SHA `098b2f1` quick A/B: deferred-events median session wall **54.507 s** versus Thunder wall-only+counters **32.575 s**, event tax **21.932 s / 40.24%**. The non-gating RunPod A100 control is **3.768 s** at identical quick geometry and **15.651 s** full session wall; this isolates a large provider/host-call surface but is never a gate claim. |
+| P7b RunPod official rebaseline | **preregistered; implementation in progress** (no gate verdict) | Clean schema-6/current-ABI T=100+50/Q=200 on exact `runpod-a100-v1`, counters-only, Rayon=8, >=1 warmup + >=3 measured, golden and communication invariants; prefill <=10 s, decode <=4 s, max per-repetition sync-wall/session-wall <=2%, H2D <=100 MB | The clean ABI-27 control used Rayon=27 and is attribution only: full prefill 7.673 s, decode 6.698 s, session wall 15.651 s. Its 59,868 sync count is no longer a gate; per-repetition synchronization-wall fractions are 0.607%, 0.617%, 0.747%. Thunder is comparative history and no longer required. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -58,6 +60,80 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-14 (P7b RunPod official-provider and gate-profile migration;
+  preregistered before implementation or new measurement)**: the clean
+  same-commit control demonstrates that the `<=5,000` synchronization-count
+  gate encoded Thunder's CUDA-over-TCP cost rather than a protocol
+  requirement.  At `098b2f1`, identical quick work and exactly 39,201
+  host-output synchronizations take **32.575313301 s** median session wall on
+  Thunder but **3.767662096 s** on co-located RunPod.  The RunPod full control
+  has 59,868 synchronizations whose representative host wall is only
+  **0.095070132 s** in a **15.650884654 s** session.  Across its three
+  measured sessions, synchronization-wall/session-wall is **0.607443%,
+  0.616840%, 0.746639%**.  A provider-specific count target would therefore
+  force scheduler complexity without a material co-located cost.
+
+  **Provider decision**: RunPod becomes the sole official P7b verdict
+  provider under a new explicit schema-6 gate profile
+  `runpod-a100-v1`.  Thunder results and microbenchmarks remain immutable
+  comparative artifacts but are no longer gate inputs or dependencies; the
+  Thunder instance may be terminated.  No existing RunPod ABI-27 control is
+  promoted retroactively.  A new official result must use the current CUDA
+  ABI, a clean unchanged source SHA and the exact profile below.
+
+  **Gate contract**: retain prefill core **<=10 s**, decode marginal
+  **<=4 s**, session H2D **<=100,000,000 B**, the packed-response
+  communication/no-growth invariants, acceptance, golden decode, flat cost
+  and mock-PCG non-production label.  Retire the numerical synchronization
+  count gate and retain the raw count only as a diagnostic.  Its replacement
+  is the **maximum over all measured repetitions** of
+  `accelerator_session.synchronization_s /
+  t_response_session_wall_s <= 0.02`.  A missing, non-finite, negative or
+  zero-denominator sample fails closed.  Schema remains version 6, but every
+  new official row must carry `p7b_gate_profile: "runpod-a100-v1"`, explicit
+  retirement of the count gate, the per-run ratios, their maximum, the 0.02
+  threshold and the corresponding verdict.  Historical schema-6 rows without
+  that profile cannot become official under the new selector.
+
+  **Reproducible machine profile**: provider `RunPod`, region `eur-is-1`,
+  image `Ubuntu 24.04.3 LTS`, driver `580.159.04`, CUDA `12.8`, GPU exactly
+  `NVIDIA A100-SXM4-80GB`, CPU `AMD EPYC 7713 64-Core Processor`, RAM metadata
+  `1008` GiB and provider vCPU metadata `255`.  The proving process must set
+  `RAYON_NUM_THREADS=8`, and the serialized `threads` field must equal 8;
+  provider vCPU inventory is not a substitute for actual worker count.  The
+  earlier control serialized 27 Rayon threads versus 7 on Thunder, so its
+  latency is evidence for provider selection but not the official
+  standardized denominator.  Any unavailable exact profile field makes the
+  run ineligible; an instance id is recorded but is not pinned.
+
+  **Implementation and cleanup boundary**: first update the Rust writer and
+  Python run-of-record validator together, preserving schema-6 historical
+  readability and making every new field fail closed.  Freeze further epoch
+  scheduler/coalescing expansion: the existing `SiteId`, `SchedulePlan` and
+  scheduled proof paths remain because they are used correctness machinery,
+  but they are no longer a prerequisite for an official run.  Audit AI slop
+  and dead code only inside this repository.  Remove a path only when
+  all-target/all-feature builds, call-site inspection and differentials show
+  it is unused or unjustifiably duplicated.  Intentional compatibility
+  wrappers, formal seams, CUDA differentials, ABI-28 host-call diagnostics,
+  append-only JSONs and historical Thunder reproduction tools are not dead
+  merely because they are off the critical path.  Cleanup lands in isolated
+  commits and may not change proof bytes, challenge order, communication,
+  golden output or resource accounting.
+
+  **Measurement order**: after local workspace/no-CUDA tests, report tests,
+  CUDA all-feature differentials and cleanup checks pass, run one clean
+  standardized RunPod quick smoke.  Only then run T=100+50/Q=200 with at
+  least one warmup and three measured repetitions, counters-only timing,
+  golden decode and full schema-6/current-ABI discipline.  The official
+  result is valid whether performance passes or fails.  If decode remains
+  above 4 s, perform separate non-gating profiling on the same eight-thread
+  profile and prioritize provider-neutral Goldilocks multiplication limbing,
+  occupancy and kernel fusion.  Use formally bounded batching only after a
+  measured diagnosis and its own preregistered boundary.  No optimization is
+  bought with proof size/communication, and no retained CUDA graph may cross
+  a verifier-challenge barrier.
 
 - **2026-07-14 (P7b iteration 3 diagnosis-first plan; preregistered before
   implementation or new measurement)**: iteration 2's first clean scheduler

@@ -61,6 +61,32 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-14 (P7b targeted AI-slop/dead-code audit checkpoint)**: the
+  preregistered repository-only cleanup boundary is complete.  An exact
+  symbol-occurrence audit over every Rust `pub fn` / `pub(crate) fn` and every
+  Python script function found six Rust API surfaces with no call site, test,
+  documentation reference or published consumer: the verifier's two unused
+  single-range reservation wrappers, three unused LogUp backend/aux wrappers
+  that only forwarded to the already-canonical internal implementation, and
+  `SchedulePlan::site_correlations`.  They are removed (**86 lines**) without
+  changing a protocol implementation, transcript operation, proof type,
+  schedule, counter or backend ABI.  Re-running the public-function inventory
+  leaves no definition-only Rust function.
+
+  The four explicit Rust `dead_code` suppressions were inspected rather than
+  deleted: three protect standalone resident proof entry points exercised by
+  CUDA byte-identical differentials, while `ResidentLayerP1::fulls0` feeds the
+  same compatibility accounting path.  CUDA-only buffer/context members,
+  ABI-28 host-call diagnostics, `SiteId`/`SchedulePlan`, historical Thunder
+  tools and append-only results are likewise retained intentionally.  The
+  targeted `volta-mac` + `volta-proto` all-feature suites pass (19 MAC
+  unit/integration tests and 100 protocol tests).  Workspace-wide Clippy was
+  attempted; the repository has a pre-existing lint baseline dominated by
+  cfg-branch `needless_return`, protocol API argument counts and the explicit
+  field-method/operator dual API, so those stylistic warnings were not
+  converted into a broad mechanical refactor.  Full regression and remote
+  CUDA execution remain mandatory before measurement.
+
 - **2026-07-14 (P7b RunPod official-provider and gate-profile migration;
   preregistered before implementation or new measurement)**: the clean
   same-commit control demonstrates that the `<=5,000` synchronization-count

@@ -606,25 +606,6 @@ impl VerifierCtx {
         }
     }
 
-    pub fn reserve_full_key_rows(
-        &mut self,
-        base_domain: u64,
-        rows: usize,
-        count_per_domain: usize,
-    ) -> FullKeyBatchReservation<'_> {
-        self.try_reserve_full_key_rows(base_domain, rows, count_per_domain)
-            .unwrap_or_else(|error| panic!("{error}"))
-    }
-
-    pub fn try_reserve_full_key_rows(
-        &mut self,
-        base_domain: u64,
-        rows: usize,
-        count_per_domain: usize,
-    ) -> Result<FullKeyBatchReservation<'_>, CorrReservationError> {
-        self.try_reserve_full_key_ranges(&[FullCorrRange { base_domain, rows, count_per_domain }])
-    }
-
     /// Verifier-side atomic mirror of
     /// [`CorrelationStream::reserve_full_corr_ranges`].
     pub fn reserve_full_key_ranges(

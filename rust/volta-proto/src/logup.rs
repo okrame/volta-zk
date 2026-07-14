@@ -1990,21 +1990,6 @@ pub fn blind_prove_frac_tree(
 }
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
-pub fn blind_prove_frac_tree_with_backend(
-    leaf_p: &LeafP,
-    leaf_q: &LeafQ,
-    stream: &mut CorrelationStream,
-    doms: &mut Doms,
-    tx: &mut Transcript,
-    ctr: &mut Counters,
-    prod: &mut ProdTriples,
-    zero: &mut Vec<ProverAuthed>,
-    backend: &mut Backend,
-) -> (BlindFracProof, Vec<Fp2>, ProverAuthed, ProverAuthed, (ProverAuthed, ProverAuthed)) {
-    blind_prove_frac_tree_impl(leaf_p, leaf_q, stream, doms, tx, ctr, prod, zero, Some(backend))
-}
-
-#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn blind_prove_frac_tree_impl(
     leaf_p: &LeafP,
     leaf_q: &LeafQ,
@@ -2080,51 +2065,6 @@ fn new_blind_sink<'a>(
         col_corrs: Vec::new(),
         aux_col_claims: Vec::new(),
     }
-}
-
-/// Blind prover for the lookup tree WITH aux-claim folding. Additionally
-/// returns the per-col consolidated claims ṽ_c(point).
-#[allow(clippy::too_many_arguments, clippy::type_complexity)]
-pub fn blind_prove_frac_tree_aux(
-    leaf_q: &LeafQ,
-    ax: &mut LeafAux,
-    stream: &mut CorrelationStream,
-    doms: &mut Doms,
-    tx: &mut Transcript,
-    ctr: &mut Counters,
-    prod: &mut ProdTriples,
-    zero: &mut Vec<ProverAuthed>,
-) -> (
-    BlindFracProof,
-    Vec<Fp2>,
-    ProverAuthed,
-    ProverAuthed,
-    (ProverAuthed, ProverAuthed),
-    Vec<ProverAuthed>,
-) {
-    blind_prove_frac_tree_aux_impl(leaf_q, ax, stream, doms, tx, ctr, prod, zero, None)
-}
-
-#[allow(clippy::too_many_arguments, clippy::type_complexity)]
-pub fn blind_prove_frac_tree_aux_with_backend(
-    leaf_q: &LeafQ,
-    ax: &mut LeafAux,
-    stream: &mut CorrelationStream,
-    doms: &mut Doms,
-    tx: &mut Transcript,
-    ctr: &mut Counters,
-    prod: &mut ProdTriples,
-    zero: &mut Vec<ProverAuthed>,
-    backend: &mut Backend,
-) -> (
-    BlindFracProof,
-    Vec<Fp2>,
-    ProverAuthed,
-    ProverAuthed,
-    (ProverAuthed, ProverAuthed),
-    Vec<ProverAuthed>,
-) {
-    blind_prove_frac_tree_aux_impl(leaf_q, ax, stream, doms, tx, ctr, prod, zero, Some(backend))
 }
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]

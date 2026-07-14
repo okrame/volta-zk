@@ -575,13 +575,6 @@ impl SchedulePlan {
         &self.correlations
     }
 
-    pub fn site_correlations(&self, site: SiteId) -> Option<&SiteCorrPlan> {
-        self.correlations
-            .binary_search_by_key(&site, |corr| corr.site)
-            .ok()
-            .map(|index| &self.correlations[index])
-    }
-
     pub fn epochs(&self) -> &[EpochLayout] {
         &self.epochs
     }

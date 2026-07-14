@@ -62,6 +62,42 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-14 (P7b matrix-fold quick stop gate passed; official full
+  authorized)**: implementation checkpoint `ab3a03f` stays inside the
+  preregistered ABI-neutral boundary.  The legacy output-parallel launch is
+  retained for `terms < 256` or more than 1,024 real outputs; narrow folds
+  use the deterministic 256-thread term-parallel reduction with the bounded
+  slot-15 workspace.  The exported ABI, Rust API, operation accounting and
+  proof protocol are unchanged.  Local workspace and all-feature tests,
+  17 Python tests, the frozen Lean audit and shell syntax checks passed.  On
+  the designated RunPod A100, the targeted base/Fp2 row/window/padding
+  differential and the complete `VOLTA_REQUIRE_CUDA=1` all-feature workspace
+  passed, including all 34 backend tests and all 100 protocol tests.
+
+  The clean counters-only quick 1+3 result is
+  `p7b-integrated-resident-quick-wall-only-counters-2026-07-14-ab3a03f.json`
+  (SHA-256
+  `23504e1f6d8bcefcea5a8c83282f6171d3f8233f3f47b76ee0033131152e1bdf`).
+  Its response-session upper median is **3.089308298 s**, a **17.9838%**
+  reduction from the 3.766704220 s `33e5fb4` reference and below the
+  preregistered **3.390033798 s** stop bound.  Prove-only upper medians are
+  1.395620036 s prefill, 2.454372967 s response and 1.058752931 s decode
+  marginal.  All three repetitions accept; the chunked proof accepts and
+  flat cost is 1.069873.  The 39,201 host-output synchronizations, operation
+  calls, proof/correlation counts and every communication byte field are
+  exact against the reference.  H2D decreases by 131,072 B to 12,525,636 B:
+  unlike the 0+1 reference this preregistered run has a warmup, and every
+  measured repetition has the same counters with 96 additional allocator
+  reuse hits.  No measured repetition makes a CUDA-event timing API call.
+
+  This quick has `p7b_gate_evaluated:false`; it is the optimization stop gate,
+  not an official verdict.  Its shorter denominator puts the diagnostic
+  max synchronization/session fraction at 2.380086% even though absolute
+  synchronization is only 0.067767--0.074373 s.  Do not waive or reinterpret
+  the official 2% gate: the newly authorized full T=100+50/Q=200 1+3 run must
+  enforce the unchanged max-per-repetition bound through the schema-6
+  validator.  No second optimization may be stacked before that verdict.
+
 - **2026-07-14 (P7b CUPTI census landed and matrix-fold occupancy fix
   preregistered before implementation)**: the clean `1a319db` CUPTI activity
   run completed the full T=100+50/Q=200 counters-only 0+1 report and its

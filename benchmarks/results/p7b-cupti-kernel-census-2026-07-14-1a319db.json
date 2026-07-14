@@ -1,0 +1,191 @@
+{
+  "report_schema_version": 1,
+  "milestone": "P7b-cupti-kernel-census",
+  "date": "2026-07-14",
+  "git_sha": "1a319dbc685beb1ee8bfe98daa3b9feca1a674c7",
+  "git_dirty": false,
+  "gate_eligible": false,
+  "p7b_gate_evaluated": false,
+  "purpose": "decode-emphasized within-trace ranking of proof-algebra kernels charged to Operation::Gemm",
+  "provider_profile": "runpod-a100-v1",
+  "threads": 8,
+  "geometry": {
+    "t_prefill": 100,
+    "n_decode": 50,
+    "pcs_q": 200,
+    "warmup_repetitions": 0,
+    "measured_repetitions": 1,
+    "includes_standard_flat_cost_curve": true
+  },
+  "profiler": {
+    "name": "CUDA 12.8 CUPTI activity injection",
+    "activity_kind": "CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL",
+    "absolute_durations_gate_eligible": false,
+    "trace_sha256": "c4a6fa32aa5af578fc898086c08954253327ab4a59e312b4922d654f9c69b843",
+    "application_stderr_sha256": "bb0966cd1f63d55e97535075cd9f2d2474e3acd8c37c2390edb4275be0c5df06",
+    "application_report_sha256": "0fe8ae168036734ef29eea7dc0d9dbabf88e8d5b38e83fcaa8ebcc2f625a38bc",
+    "injection_library_sha256": "3841a73bc5c3b3546b33c1f96b6f3bed3d87a05ec7e0fa6593aedf55f24363b9",
+    "patched_injection_source_sha256": "2966efecd3d767e9fb3fb62f7683971b5ee0ef10cd6e72f0db274196ddafb34b",
+    "patched_activity_helper_sha256": "8590bba68b4ec975d4243c422c4ce5313afa4bb496903c417f4c334202e894ec",
+    "dropped_records": 0,
+    "total_kernel_invocations": 1398147,
+    "matched_kernel_invocations": 203049,
+    "unmatched_kernel_invocations": 1195098,
+    "matched_duration_ns": 25959938654
+  },
+  "application_correctness": {
+    "accepted": true,
+    "golden_decode_checked": true,
+    "golden_decode_match": true,
+    "flat_cost_gate_pass": true
+  },
+  "kernel_families": [
+    {
+      "name": "matrix_fold_kernel",
+      "invocations": 11877,
+      "duration_ns": 25509374475,
+      "mean_duration_ns": 2147796.116,
+      "min_duration_ns": 2336,
+      "max_duration_ns": 142648825,
+      "matched_duration_fraction": 0.98264387
+    },
+    {
+      "name": "reduce_product_round",
+      "invocations": 88470,
+      "duration_ns": 181924611,
+      "mean_duration_ns": 2056.342,
+      "min_duration_ns": 1983,
+      "max_duration_ns": 4447,
+      "matched_duration_fraction": 0.00700790
+    },
+    {
+      "name": "reduce_triple_product_round",
+      "invocations": 52700,
+      "duration_ns": 122422326,
+      "mean_duration_ns": 2323.004,
+      "min_duration_ns": 2015,
+      "max_duration_ns": 8064,
+      "matched_duration_fraction": 0.00471582
+    },
+    {
+      "name": "fp2_product_round_terms",
+      "invocations": 24084,
+      "duration_ns": 65362313,
+      "mean_duration_ns": 2713.931,
+      "min_duration_ns": 2463,
+      "max_duration_ns": 10272,
+      "matched_duration_fraction": 0.00251781
+    },
+    {
+      "name": "fp2_triple_product_round_terms",
+      "invocations": 7007,
+      "duration_ns": 40266512,
+      "mean_duration_ns": 5746.612,
+      "min_duration_ns": 4128,
+      "max_duration_ns": 21312,
+      "matched_duration_fraction": 0.00155110
+    },
+    {
+      "name": "reduce_dot",
+      "invocations": 12566,
+      "duration_ns": 24600508,
+      "mean_duration_ns": 1957.704,
+      "min_duration_ns": 1919,
+      "max_duration_ns": 2048,
+      "matched_duration_fraction": 0.00094763
+    },
+    {
+      "name": "fp2_dot_terms",
+      "invocations": 2418,
+      "duration_ns": 5446834,
+      "mean_duration_ns": 2252.620,
+      "min_duration_ns": 2080,
+      "max_duration_ns": 2368,
+      "matched_duration_fraction": 0.00020982
+    },
+    {
+      "name": "subfield_corrections_kernel",
+      "invocations": 2046,
+      "duration_ns": 4873732,
+      "mean_duration_ns": 2382.078,
+      "min_duration_ns": 1888,
+      "max_duration_ns": 4352,
+      "matched_duration_fraction": 0.00018774
+    },
+    {
+      "name": "pad_base_vector_kernel",
+      "invocations": 900,
+      "duration_ns": 2127219,
+      "mean_duration_ns": 2363.577,
+      "min_duration_ns": 1920,
+      "max_duration_ns": 3584,
+      "matched_duration_fraction": 0.00008194
+    },
+    {
+      "name": "base_broadcast_fp2_kernel",
+      "invocations": 540,
+      "duration_ns": 2055771,
+      "mean_duration_ns": 3806.983,
+      "min_duration_ns": 2368,
+      "max_duration_ns": 6016,
+      "matched_duration_fraction": 0.00007919
+    },
+    {
+      "name": "ln_hadamard_factors_kernel",
+      "invocations": 225,
+      "duration_ns": 817282,
+      "mean_duration_ns": 3632.364,
+      "min_duration_ns": 3008,
+      "max_duration_ns": 4864,
+      "matched_duration_fraction": 0.00003148
+    },
+    {
+      "name": "attention_above_mask_kernel",
+      "invocations": 216,
+      "duration_ns": 667071,
+      "mean_duration_ns": 3088.292,
+      "min_duration_ns": 2400,
+      "max_duration_ns": 3936,
+      "matched_duration_fraction": 0.00002570
+    }
+  ],
+  "matrix_fold_grid_breakdown": [
+    {
+      "grid_x": 1,
+      "invocations": 10977,
+      "duration_ns": 24577730140,
+      "mean_duration_ns": 2239020.692,
+      "min_duration_ns": 2336,
+      "max_duration_ns": 142648825
+    },
+    {
+      "grid_x": 4,
+      "invocations": 675,
+      "duration_ns": 871362703,
+      "mean_duration_ns": 1290907.708,
+      "min_duration_ns": 3232,
+      "max_duration_ns": 46480717
+    },
+    {
+      "grid_x": 16,
+      "invocations": 216,
+      "duration_ns": 54542252,
+      "mean_duration_ns": 252510.426,
+      "min_duration_ns": 11104,
+      "max_duration_ns": 464608
+    },
+    {
+      "grid_x": 256,
+      "invocations": 9,
+      "duration_ns": 5739380,
+      "mean_duration_ns": 637708.889,
+      "min_duration_ns": 636639,
+      "max_duration_ns": 639262
+    }
+  ],
+  "selection": {
+    "dominant_family": "matrix_fold_kernel",
+    "reason": "98.264387% of duration across the preregistered proof-algebra subset; 10977 of 11877 launches expose only one 256-thread block",
+    "next_action": "preregister a protocol-neutral term-parallel matrix-fold kernel below the unchanged ABI"
+  }
+}

@@ -62,6 +62,68 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-14 (P7b CUPTI census landed and matrix-fold occupancy fix
+  preregistered before implementation)**: the clean `1a319db` CUPTI activity
+  run completed the full T=100+50/Q=200 counters-only 0+1 report and its
+  standard flat-cost curve on `runpod-a100-v1`, eight Rayon workers.  It had
+  1,398,147 kernel records, **zero dropped records**, acceptance, golden
+  decode and flat-cost PASS.  Absolute CUPTI wall/durations are profiler-
+  perturbed and remain ineligible.  The append-only application result is
+  `p7b-integrated-resident-wall-only-counters-cupti-2026-07-14-1a319db.json`
+  (SHA-256
+  `0fe8ae168036734ef29eea7dc0d9dbabf88e8d5b38e83fcaa8ebcc2f625a38bc`);
+  the parsed census is
+  `p7b-cupti-kernel-census-2026-07-14-1a319db.json` (SHA-256
+  `97b895d63ff667190d485e009fac6dfc89bcdf7493cdc4790181ac55ab1742a3`).
+  Raw trace/application-log SHA-256 values are
+  `c4a6fa32aa5af578fc898086c08954253327ab4a59e312b4922d654f9c69b843`
+  and `bb0966cd1f63d55e97535075cd9f2d2474e3acd8c37c2390edb4275be0c5df06`;
+  the 550 MB trace stays outside the source checkout and is not a benchmark
+  artifact.
+
+  Across the twelve preregistered proof-algebra families, 203,049 launches
+  account for 25.959938654 traced seconds.  `matrix_fold_kernel` alone is
+  **11,877 launches / 25.509374475 s / 98.264387%**.  Of those, 10,977 use
+  grid-x=1 (one 256-thread block) and account for 24.577730140 s; the worst
+  single launch is 142.648825 ms.  The next family is only 0.700790%.
+  This census spans prefill, response and the decode-emphasized flat curve,
+  so its seconds cannot be subtracted from the 6.275 s event-attributed
+  decode kernel floor.  Its ranking is nevertheless decisive and directly
+  explains the occupancy defect: the current kernel assigns one thread to
+  each output and serially scans every folded term, collapsing scalar MLEs
+  over large vectors to one block.  This is a provider-neutral kernel mapping
+  defect below the protocol/ABI, not justification for scheduler complexity,
+  algebraic batching or a new proof variant.
+
+  **Single authorized implementation boundary**: keep the exported
+  `volta_cuda_matrix_fold_device`, Rust API, scalar kinds, row-major/window
+  semantics and `Operation::Gemm` call accounting unchanged.  For
+  `terms >= 256` and at most 1,024 real outputs, replace only the internal
+  launch with a deterministic term-parallel two-stage reduction.  Use 256
+  threads/block and
+  `parts = min(ceil(terms/256), ceil(1024/real_outputs))`; each first-stage
+  block scans its strided term subset, performs an Fp2 shared-memory
+  reduction and writes one partial.  With one part it writes the final output
+  directly (including canonical zero padding); otherwise one final block per
+  output reduces the partials and writes padding.  Reuse previously unused
+  workspace slot 15, bounded here by 2,046 Fp2 values / 32,736 bytes.  Retain
+  the existing output-parallel kernel for smaller terms or more outputs.
+  Every per-term multiplication is unchanged; regrouping additions is exact
+  in F_p2 and cannot change the canonical result.  No atomic, transcript,
+  challenge, correlation, proof, communication, scheduling, public API or
+  ABI change is permitted.
+
+  Add CUDA differentials that force the parallel path for base and Fp2
+  inputs, both axes, a strided column window and padded outputs.  Require
+  local workspace/all-feature/Python/Lean checks and all real-CUDA tests.
+  Before another full run, execute a clean counters-only quick 1+3 on the
+  exact new SHA.  It must preserve acceptance, proof/counter/communication
+  invariants and reduce upper-median response-session wall by at least 10%
+  versus the stable 3.766704220 s `33e5fb4` quick reference, i.e. to
+  **<=3.390033798 s**.  Failure stops this implementation line; do not stack
+  another optimization.  On a pass, run one new official full 1+3 under the
+  unchanged `runpod-a100-v1` contract; its valid verdict may pass or fail.
+
 - **2026-07-14 (P7b CUPTI census fail-closed correction; preregistered before
   the first CUPTI run)**: pre-run source audit found that NVIDIA's unmodified
   helper never calls `cuptiActivityGetNumDroppedRecords`; it therefore cannot

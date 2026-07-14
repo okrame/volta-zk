@@ -189,6 +189,16 @@ constant factors hold. That constant factor is what P3/P4 measure.
   blocked pending a Thunder A100 endpoint, so 0b and later phases have not
   started.
 
+  The ABI-27 implementation checkpoint is clean source `c4a8ced` (bundle
+  SHA-256 `ba11353f72b7f429353b65f5c796db4761beeab99907d2d1a5f4840247a58f90`).
+  On the ineligible A6000 it compiles with CUDA 13.0/sm_86 and the complete
+  `volta-accel --features cuda` suite is **33/33** green, including the
+  event-on/counter-only differential.  That differential confirms identical
+  output, operation calls, traffic and synchronization reasons while the
+  counter-only arm has zero timing records, elapsed queries and aggregate
+  CUDA-event API calls.  This is implementation evidence only and carries no
+  latency or P7b gate claim.
+
 - **2026-07-13 (P7b target re-registration — resident GPU gate redefined;
   user decision)**: the preregistered rho_proof targets (<=10 prefill /
   <=2 decode) against the same-host native-GPU denominator are **retired for

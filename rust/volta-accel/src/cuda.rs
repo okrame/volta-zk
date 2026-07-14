@@ -30,6 +30,10 @@ struct RawStats {
     device_generated_bytes: u64,
     h2d_ns: u64,
     d2h_ns: u64,
+    resident_h2d_host_calls: u64,
+    resident_d2h_host_calls: u64,
+    resident_h2d_host_call_ns: u64,
+    resident_d2h_host_call_ns: u64,
     synchronizations: u64,
     synchronization_ns: u64,
     sync_host_output: u64,
@@ -57,7 +61,7 @@ struct RawStats {
     reserved: u32,
 }
 
-const _: () = assert!(std::mem::size_of::<RawStats>() == 360);
+const _: () = assert!(std::mem::size_of::<RawStats>() == 392);
 
 type AbiVersion = unsafe extern "C" fn() -> u32;
 type Create = unsafe extern "C" fn(*mut *mut c_void) -> c_int;
@@ -1219,6 +1223,10 @@ impl CudaContext {
             device_generated_bytes: raw.device_generated_bytes,
             h2d_ns: raw.h2d_ns,
             d2h_ns: raw.d2h_ns,
+            resident_h2d_host_calls: raw.resident_h2d_host_calls,
+            resident_d2h_host_calls: raw.resident_d2h_host_calls,
+            resident_h2d_host_call_ns: raw.resident_h2d_host_call_ns,
+            resident_d2h_host_call_ns: raw.resident_d2h_host_call_ns,
             synchronizations: raw.synchronizations,
             synchronization_ns: raw.synchronization_ns,
             sync_host_output: raw.sync_host_output,

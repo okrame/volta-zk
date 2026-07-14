@@ -124,6 +124,10 @@ struct AcceleratorStatsRow {
     device_generated_bytes: u64,
     h2d_s: Option<f64>,
     d2h_s: Option<f64>,
+    resident_h2d_host_calls: u64,
+    resident_d2h_host_calls: u64,
+    resident_h2d_host_call_s: f64,
+    resident_d2h_host_call_s: f64,
     synchronizations: u64,
     synchronization_s: f64,
     sync_host_output: u64,
@@ -369,6 +373,10 @@ impl AcceleratorStatsRow {
             device_generated_bytes: stats.device_generated_bytes,
             h2d_s: phase_attribution_available.then_some(stats.h2d_ns as f64 / 1e9),
             d2h_s: phase_attribution_available.then_some(stats.d2h_ns as f64 / 1e9),
+            resident_h2d_host_calls: stats.resident_h2d_host_calls,
+            resident_d2h_host_calls: stats.resident_d2h_host_calls,
+            resident_h2d_host_call_s: stats.resident_h2d_host_call_ns as f64 / 1e9,
+            resident_d2h_host_call_s: stats.resident_d2h_host_call_ns as f64 / 1e9,
             synchronizations: stats.synchronizations,
             synchronization_s: stats.synchronization_ns as f64 / 1e9,
             sync_host_output: stats.sync_host_output,
@@ -2658,6 +2666,10 @@ mod report_tests {
             synchronizations: 1,
             synchronization_ns: 45,
             sync_host_output: 1,
+            resident_h2d_host_calls: 2,
+            resident_d2h_host_calls: 1,
+            resident_h2d_host_call_ns: 67,
+            resident_d2h_host_call_ns: 89,
             ..BackendStats::default()
         };
         let row = AcceleratorStatsRow::from_stats(stats, "counter-only-test");
@@ -2671,6 +2683,10 @@ mod report_tests {
         assert!(value["unattributed_cpu_residual_s"].is_null());
         assert!(value["operations"]["gemm"]["kernel_s"].is_null());
         assert_eq!(value["timing_event_api_calls"], 0);
+        assert_eq!(value["resident_h2d_host_calls"], 2);
+        assert_eq!(value["resident_d2h_host_calls"], 1);
+        assert_eq!(value["resident_h2d_host_call_s"], 67e-9);
+        assert_eq!(value["resident_d2h_host_call_s"], 89e-9);
     }
 
     #[test]

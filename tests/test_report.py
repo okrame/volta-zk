@@ -363,6 +363,10 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
                 "timing_elapsed_no_write": 0,
                 "timing_event_queries": 0,
                 "timing_event_api_calls": 0,
+                "resident_h2d_host_calls": 100,
+                "resident_d2h_host_calls": 4_000,
+                "resident_h2d_host_call_s": 0.01,
+                "resident_d2h_host_call_s": 0.02,
                 "synchronizations": 4_000,
                 "h2d_bytes": 90_000_000,
             },
@@ -379,6 +383,10 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
                 "timing_elapsed_no_write": 0,
                 "timing_event_queries": 0,
                 "timing_event_api_calls": 0,
+                "resident_h2d_host_calls": 100,
+                "resident_d2h_host_calls": 5_000,
+                "resident_h2d_host_call_s": 0.01,
+                "resident_d2h_host_call_s": 0.02,
                 "synchronizations": 5_000,
                 "h2d_bytes": 100_000_000,
             },
@@ -395,6 +403,10 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
                 "timing_elapsed_no_write": 0,
                 "timing_event_queries": 0,
                 "timing_event_api_calls": 0,
+                "resident_h2d_host_calls": 100,
+                "resident_d2h_host_calls": 4_500,
+                "resident_h2d_host_call_s": 0.01,
+                "resident_d2h_host_call_s": 0.02,
                 "synchronizations": 4_500,
                 "h2d_bytes": 95_000_000,
             },
@@ -413,7 +425,7 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
         "git_dirty_before_serialization": False,
         "accepted": True,
         "accelerator_backend": "cuda-resident",
-        "accelerator_cuda_abi_version": 27,
+        "accelerator_cuda_abi_version": 28,
         "resident_timing_policy": "wall-only-counters",
         "cloud": {
             "provider": "Thunder Compute",
@@ -507,7 +519,7 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
         {"report_schema_version": 7},
         {"report_schema_version": 6.0},
         {"accelerator_cuda_abi_version": 25},
-        {"accelerator_cuda_abi_version": 27.0},
+        {"accelerator_cuda_abi_version": 28.0},
         {"resident_timing_policy": "deferred-events"},
         {"git_sha_before_serialization": "b" * 40},
         {"git_sha_before_benchmark": ""},
@@ -551,6 +563,12 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
     bad_timing_call = copy.deepcopy(official)
     bad_timing_call["repetitions"][0]["accelerator_session"]["timing_event_api_calls"] = 1
     assert report.p7b_resident_run_of_record_eligible(bad_timing_call) is False
+
+    missing_host_call_timing = copy.deepcopy(official)
+    del missing_host_call_timing["repetitions"][0]["accelerator_session"][
+        "resident_d2h_host_call_s"
+    ]
+    assert report.p7b_resident_run_of_record_eligible(missing_host_call_timing) is False
 
     bad_communication = copy.deepcopy(official)
     bad_communication["communication"]["response_bytes"] += 1

@@ -17,7 +17,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 27;
+pub const CUDA_ABI_VERSION: u32 = 28;
 pub const OPERATION_COUNT: usize = 7;
 pub const DEFERRED_TIMING_CAPACITY: usize = 512;
 
@@ -177,6 +177,12 @@ pub struct BackendStats {
     pub device_generated_bytes: u64,
     pub h2d_ns: u64,
     pub d2h_ns: u64,
+    /// Successful resident cudaMemcpyAsync calls, timed only with the host
+    /// steady clock and therefore available without CUDA events.
+    pub resident_h2d_host_calls: u64,
+    pub resident_d2h_host_calls: u64,
+    pub resident_h2d_host_call_ns: u64,
+    pub resident_d2h_host_call_ns: u64,
     pub synchronizations: u64,
     pub synchronization_ns: u64,
     /// Barriers required before protocol-visible device-to-host output.
@@ -6399,6 +6405,8 @@ mod cuda_tests {
         assert_eq!(counters.coarse_timing_scopes, 1);
         assert_eq!(counters.synchronizations, 1);
         assert_eq!(counters.sync_host_output, 1);
+        assert_eq!(counters.resident_h2d_host_calls, 2);
+        assert_eq!(counters.resident_d2h_host_calls, 1);
         assert_eq!(counters.synchronization_reason_total(), counters.synchronizations);
         assert_eq!(counters.timing_records, 0);
         assert_eq!(counters.timing_elapsed_query_attempts, 0);
@@ -6432,6 +6440,8 @@ mod cuda_tests {
         }
         assert_eq!(events.h2d_bytes, counters.h2d_bytes);
         assert_eq!(events.d2h_bytes, counters.d2h_bytes);
+        assert_eq!(events.resident_h2d_host_calls, counters.resident_h2d_host_calls);
+        assert_eq!(events.resident_d2h_host_calls, counters.resident_d2h_host_calls);
         assert_eq!(events.explicit_d2d_copy_bytes, counters.explicit_d2d_copy_bytes);
         assert_eq!(events.device_zeroed_bytes, counters.device_zeroed_bytes);
         assert_eq!(events.device_generated_bytes, counters.device_generated_bytes);

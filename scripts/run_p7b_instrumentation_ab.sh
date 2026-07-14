@@ -35,7 +35,7 @@ else
 fi
 
 if [[ -z "${VOLTA_CUDA_LIBRARY:-}" || ! -f "$VOLTA_CUDA_LIBRARY" ]]; then
-  echo "VOLTA_CUDA_LIBRARY must name the built ABI-27 backend" >&2
+  echo "VOLTA_CUDA_LIBRARY must name the built ABI-28 backend" >&2
   exit 2
 fi
 if [[ -n "$(git -C "$ROOT" status --porcelain --untracked-files=all)" ]]; then

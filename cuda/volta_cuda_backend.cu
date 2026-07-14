@@ -17,7 +17,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 27;
+constexpr uint32_t ABI_VERSION = 28;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -56,6 +56,12 @@ struct RawStats {
     uint64_t device_generated_bytes;
     uint64_t h2d_ns;
     uint64_t d2h_ns;
+    /// Host wall around successful resident cudaMemcpyAsync API calls. These
+    /// clocks add no CUDA work and are distinct from CUDA-event attribution.
+    uint64_t resident_h2d_host_calls;
+    uint64_t resident_d2h_host_calls;
+    uint64_t resident_h2d_host_call_ns;
+    uint64_t resident_d2h_host_call_ns;
     uint64_t synchronizations;
     uint64_t synchronization_ns;
     uint64_t sync_host_output;
@@ -90,7 +96,7 @@ struct RawStats {
     uint32_t reserved;
 };
 
-static_assert(sizeof(RawStats) == 360, "RawStats ABI layout changed");
+static_assert(sizeof(RawStats) == 392, "RawStats ABI layout changed");
 
 enum class SyncReason {
     HostOutput,
@@ -2916,7 +2922,16 @@ extern "C" int volta_cuda_resident_upload(
     void* dst = nullptr;
     if (resident_region(c, id, offset_bytes, bytes, &dst)) return -1;
     if (begin_transfer_timing(c)) return -1;
-    CUDA_OR_RETURN(c, cudaMemcpyAsync(dst, src, bytes, cudaMemcpyHostToDevice, c->stream));
+    const auto host_call_started = std::chrono::steady_clock::now();
+    const cudaError_t copy_status =
+        cudaMemcpyAsync(dst, src, bytes, cudaMemcpyHostToDevice, c->stream);
+    const auto host_call_finished = std::chrono::steady_clock::now();
+    if (copy_status != cudaSuccess)
+        return fail(c, "cudaMemcpyAsync(resident H2D)", copy_status);
+    ++c->stats.resident_h2d_host_calls;
+    c->stats.resident_h2d_host_call_ns +=
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            host_call_finished - host_call_started).count();
     return finish_transfer_timing(c, bytes, true);
 }
 
@@ -2927,7 +2942,16 @@ extern "C" int volta_cuda_resident_download(
     void* src = nullptr;
     if (resident_region(c, id, offset_bytes, bytes, &src)) return -1;
     if (begin_transfer_timing(c)) return -1;
-    CUDA_OR_RETURN(c, cudaMemcpyAsync(dst, src, bytes, cudaMemcpyDeviceToHost, c->stream));
+    const auto host_call_started = std::chrono::steady_clock::now();
+    const cudaError_t copy_status =
+        cudaMemcpyAsync(dst, src, bytes, cudaMemcpyDeviceToHost, c->stream);
+    const auto host_call_finished = std::chrono::steady_clock::now();
+    if (copy_status != cudaSuccess)
+        return fail(c, "cudaMemcpyAsync(resident D2H)", copy_status);
+    ++c->stats.resident_d2h_host_calls;
+    c->stats.resident_d2h_host_call_ns +=
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            host_call_finished - host_call_started).count();
     return finish_transfer_timing(c, bytes, false);
 }
 

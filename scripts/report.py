@@ -23,7 +23,7 @@ REPO = Path(__file__).resolve().parents[1]
 DEFAULT_RESULTS = REPO / "benchmarks" / "results"
 P7_RHO_TARGETS = {"prefill": 10.0, "decode": 2.0}
 P7B_REPORT_SCHEMA_VERSION = 6
-P7B_CUDA_ABI_VERSION = 27
+P7B_CUDA_ABI_VERSION = 28
 P7B_OFFICIAL_RESIDENT_TIMING_POLICY = "wall-only-counters"
 P7B_OFFICIAL_SESSION_TIMING_METHOD = "wall-only-counters"
 P7B_PREFILL_CORE_GATE_S = 10.0
@@ -1106,6 +1106,18 @@ def p7b_resident_run_of_record_eligible(row: dict[str, Any]) -> bool:
         and repetition["accelerator_session"]["timing_event_queries"] == 0
         and type(repetition["accelerator_session"].get("timing_event_api_calls")) is int
         and repetition["accelerator_session"]["timing_event_api_calls"] == 0
+        and _nonnegative_int(
+            repetition["accelerator_session"].get("resident_h2d_host_calls")
+        )
+        and _nonnegative_int(
+            repetition["accelerator_session"].get("resident_d2h_host_calls")
+        )
+        and _finite_nonnegative(
+            repetition["accelerator_session"].get("resident_h2d_host_call_s")
+        )
+        and _finite_nonnegative(
+            repetition["accelerator_session"].get("resident_d2h_host_call_s")
+        )
         for repetition in repetitions
     )
     return (

@@ -1144,6 +1144,23 @@ def p7b_resident_run_of_record_eligible(row: dict[str, Any]) -> bool:
     )
 
 
+def validate_p7b_official_result(path: Path) -> bool:
+    """Validate one raw JSON through the same projection and fail-closed selector."""
+    try:
+        raw = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(raw, dict):
+        return False
+    raw["_path"] = str(path)
+    try:
+        raw["_mtime"] = path.stat().st_mtime
+    except OSError:
+        return False
+    rows = integrated_p7b_resident_profiles([raw])
+    return len(rows) == 1 and p7b_resident_run_of_record_eligible(rows[0])
+
+
 def _finite_nonnegative(value: Any) -> bool:
     return type(value) in (int, float) and math.isfinite(value) and value >= 0
 
@@ -2131,7 +2148,20 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS)
     ap.add_argument("--write-json", action="store_true", help="write benchmarks/results/p7-*.json")
+    ap.add_argument(
+        "--validate-p7b-official",
+        type=Path,
+        help="fail closed unless one raw JSON is a complete official P7b verdict",
+    )
     args = ap.parse_args()
+
+    if args.validate_p7b_official is not None:
+        if args.write_json:
+            raise SystemExit("--write-json and --validate-p7b-official are mutually exclusive")
+        if not validate_p7b_official_result(args.validate_p7b_official):
+            raise SystemExit("invalid or ineligible official P7b result")
+        print(f"valid official P7b result: {args.validate_p7b_official}")
+        return
 
     report = p7_report(args.results_dir)
     if not report["pcs_formula_check"]["matches_p6_measured_bytes"]:

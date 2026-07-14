@@ -1,5 +1,6 @@
 import copy
 import importlib.util
+import json
 from pathlib import Path
 
 
@@ -338,7 +339,7 @@ def test_resident_profile_joins_only_same_host_native_anchor_and_keeps_full_acco
     }
 
 
-def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
+def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7(tmp_path):
     report = load_report_module()
     historical = {
         "_mtime": 1.0,
@@ -516,6 +517,9 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
     assert [row["source"] for row in p7b_rows] == [p7b["_path"]]
     official = p7b_rows[0]
     assert report.p7b_resident_run_of_record_eligible(official) is True
+    raw_path = tmp_path / "p7b-official.json"
+    raw_path.write_text(json.dumps(p7b))
+    assert report.validate_p7b_official_result(raw_path) is True
 
     # A performance failure is still a valid measured verdict when its
     # observations, statistics and booleans close exactly.

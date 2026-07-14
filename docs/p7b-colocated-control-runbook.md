@@ -1,9 +1,16 @@
 # P7b iteration 3 co-located A100 attribution control
 
-Status: **prepared, not executed**. This is the Phase-0c one-off attribution
-control. A result from Lambda, RunPod, or any provider other than Thunder is
-never a P7b gate claim. Thunder remains the designated target and the sole
-official-verdict provider.
+Status: **executed and closed** at pinned commit `098b2f1` with CUDA ABI 27.
+The immutable RunPod outputs are
+`p7b-integrated-resident-quick-wall-only-counters-2026-07-14-098b2f1.json`
+and
+`p7b-integrated-resident-wall-only-counters-2026-07-14-098b2f1.json`.
+They established the provider effect and remain attribution-only because they
+used 27 Rayon workers and predate the current ABI/profile contract. The later
+2026-07-14 ledger deviation makes RunPod official only for new, clean
+`runpod-a100-v1`, ABI-28, eight-worker measurements. Nothing in this document
+promotes the old control retroactively; use
+`docs/p7b-runpod-official-runbook.md` for current gate runs.
 
 ## Pinned inputs
 
@@ -166,10 +173,10 @@ append-only attribution artifacts:
   12,656,708 B H2D and 81,518,420 B D2H.
 - The full run has T=100+50, Q=200, at least one warmup and three measured
   repetitions, and both golden-decode fields are true.
-- Because this is a different provider,
+- Under the gate contract in force when this control was executed,
   `p7b_machine_eligible == false` and `p7b_gate_evaluated == false` in both
-  outputs. Any timing is attribution-only even if it is numerically below a
-  Thunder gate.
+  outputs. They remain attribution-only even though RunPod is the provider
+  selected by the later, non-retroactive `runpod-a100-v1` contract.
 
 Stop after copying the two JSONs and their SHA-256 values back to the local
 append-only results directory. Do not run scheduler or protocol variants on

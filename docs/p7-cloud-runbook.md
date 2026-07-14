@@ -1,21 +1,28 @@
 # P7 cloud runbook
 
-Status: cloud screening, resident integration, the full e2e measurement and
-the exact same-host native anchor are complete. The final A100 record is
+Status: P7 cloud screening, resident integration, the full e2e measurement
+and the exact same-host native anchor are complete. The final P7 A100 record is
 `p7-integrated-resident-2026-07-13-1fd5195.json` paired with
 `p7-gpu-native-inference-2026-07-13-1fd5195.json`: correctness,
 communication and flat-cost gates pass, while ρ=3707.595/95.597 fails the
 10/2 targets. Detailed history stays in the ledger and append-only JSONs.
 Microkernel and hybrid gates remain historical attribution/screening and
 must not be relabeled as the resident e2e result. Exact reproduction commands
-and the hardware manifest are in `docs/p7-artifact.md`.
+and the hardware manifest are in `docs/p7-artifact.md`. P7b now uses the
+separately preregistered `runpod-a100-v1` official profile; see
+`docs/p7b-runpod-official-runbook.md`. No historical P7 or P7b result is
+promoted retroactively.
 
 ## Provider / instance
 
-First option: Thunder Compute, H100 PCIe 80GB for roofline measurements. Use
-A100 80GB when cost-constrained comparison is needed. Fallback: RunPod. Record
-provider, region, image, driver, CUDA version, GPU SKU, CPU model, RAM, and
-availability in `docs/prototype-status.md` and in every cloud JSON.
+The sole P7b official-verdict provider is RunPod on the exact
+`runpod-a100-v1` A100-SXM4-80GB profile with eight Rayon workers. Profile
+fields are exact gate inputs, not descriptive labels; the Rust writer and
+Python selector fail closed on a mismatch. Thunder Compute remains only a
+historical comparison and its instance is not needed. Vast.ai and any other
+provider may be used for explicitly non-gating diagnostics only. Record
+provider, instance, region, image, driver, CUDA version, GPU SKU, CPU model,
+RAM, vCPU inventory and actual Rayon worker count in every cloud JSON.
 
 ## Result Hygiene
 

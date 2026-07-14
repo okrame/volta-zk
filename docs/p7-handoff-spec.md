@@ -1,4 +1,4 @@
-# P7b iteration 2 handoff spec — for the incoming coding agent
+# P7b handoff spec — for the incoming coding agent
 
 **Audience**: an autonomous coding agent (Codex) working on the active P7b
 resident-A100 iteration. You can and should explore the repo yourself; this
@@ -10,30 +10,31 @@ The former plan of record lived outside the repo (`~/.claude/plans/`); its P7
 content is folded into §4 below. From now on, this file plus the ledger ARE
 the plan of record.
 
-> **P7b override — 2026-07-13.** P7 itself is closed with a measured negative
-> performance verdict. Sections 3–4 below retain the P6/P7 historical design
-> and must not be read as the current performance gate. The authoritative
-> current plan is the `P7b target re-registration` deviation in
-> `docs/prototype-status.md`: Thunder remains the designated A100 host;
-> prefill core must be <=10 s, decode marginal <=4 s, response-session
-> blocking synchronizations <=5,000 and H2D <=100,000,000 bytes (stretch:
-> 6 s / 2.5 s). An official verdict requires T=100+50, Q=200, a clean tree,
-> one or more warmups and at least three measured repetitions. The old
+> **P7b override — 2026-07-14 (supersedes the 2026-07-13 Thunder target).**
+> P7 itself is closed with a measured negative performance verdict. Sections
+> 3–4 below retain the P6/P7 historical design and must not be read as the
+> current performance gate. The authoritative current plan is the `P7b
+> RunPod official-provider and gate-profile migration` deviation in
+> `docs/prototype-status.md`: the sole official provider is the exact
+> `runpod-a100-v1` profile with `RAYON_NUM_THREADS=8`; prefill core must be
+> <=10 s, decode marginal <=4 s, the maximum per-repetition synchronization
+> wall / response-session wall must be <=2%, and H2D must be <=100,000,000
+> bytes. The raw synchronization count remains diagnostic and has no numeric
+> gate. An official verdict requires T=100+50, Q=200, a clean unchanged SHA,
+> counters-only timing, one or more warmups and at least three measured
+> repetitions. The old
 > rho<=10/<=2 batch-1 gates are retired because the native denominator is
 > launch-latency-bound below the measured prover kernel floor. The transcript
 > remains interactive designated-verifier ChaCha, not Fiat–Shamir: future
 > verifier challenges may not be exposed to the prover/GPU. The implementation
-> order is therefore deferred/coarse profiling, resident traffic, then the
-> explicitly logged proof-format-neutral (but transcript-scheduling-changing)
-> canonical round-synchronous mailboxes with exact public schedules, and only
-> then separately preregistered algebraic/proof-size changes. Raw
-> measurements and the live implementation checkpoint remain in the ledger.
-> P7b is still **in progress**. A clean schema-6 T=16+8/Q=200 quick
-> diagnostic at `61aafe8` is registered: response-session H2D is 12,656,708 B
-> and blocking synchronizations are 39,201. With zero warmups, one measured
-> repetition and no golden check it correctly records
-> `p7b_gate_evaluated:false`; it selects the next scheduler lever but is not a
-> gate verdict. No clean official full result exists for this checkpoint.
+> order is diagnosis, provider-neutral kernel work when measured, and only
+> then separately preregistered scheduling or algebraic changes. The epoch
+> scheduler is frozen off the critical path: its existing correctness
+> machinery stays, but a <=5,000-boundary target must not drive new
+> complexity. Thunder and the ABI-27 RunPod control are immutable comparative
+> artifacts, not gate claims. P7b is still **in progress** and has no official
+> verdict under `runpod-a100-v1`; the exact runner and reproduction contract
+> are in `docs/p7b-runpod-official-runbook.md`.
 
 ---
 

@@ -10,8 +10,8 @@ prefill T=100 + 50 deferred decode tokens, causal, PCS Q=200**, on the
 designated RunPod A100 profile. P7 is closed; its CPU and rho numbers below
 are historical. The active P7b gates and measurement hygiene are the
 preregistered 2026-07-14 RunPod-provider deviation below, and P7b currently
-has one valid official verdict: decode FAIL, with all other current gates
-passing.
+has a valid official PASS at `ab3a03f`.  The earlier `33e5fb4` decode-only
+FAIL remains an immutable rebaseline result.
 
 ## Milestones
 
@@ -30,6 +30,7 @@ passing.
 | P7b iteration 2 resident-A100 orchestration | **closed as superseded diagnosis** (clean quick; no gate verdict) | Historical Thunder count gate retired by the 2026-07-14 provider deviation | Clean schema-6 quick at `61aafe8`: **39,201 sync** (-36.45% vs `bf66c8f`), **12,656,708 B H2D** (-49.19%), prefill 27.154 s, decode marginal 23.628 s. The run remains an immutable, ineligible Thunder diagnostic. Mock-PCG remains non-production. |
 | P7b iteration 3 diagnosis | **Phase 0a/0b/0c complete; scheduler phase cancelled as provider-specific debt** (no gate verdict) | Host-call diagnosis closed; no further Thunder coalescing is on the critical path | Clean same-SHA `098b2f1` quick A/B: deferred-events median session wall **54.507 s** versus Thunder wall-only+counters **32.575 s**, event tax **21.932 s / 40.24%**. The RunPod A100 control is **3.768 s** at identical quick geometry and **15.651 s** full session wall; it selected the new provider but is not retroactively a gate claim. |
 | P7b RunPod official rebaseline | **official valid FAIL: decode only; diagnosis complete** (2026-07-14) | Clean schema-6/ABI-28 T=100+50/Q=200 on exact `runpod-a100-v1`, counters-only, Rayon=8, 1+3, golden and communication invariants; prefill <=10 s, decode <=4 s, max per-repetition sync-wall/session-wall <=2%, H2D <=100 MB | `33e5fb4`: prefill **7.801 s PASS**, decode **6.794 s FAIL**, session **15.995 s**; sync-wall max **0.768% PASS** with 59,868 sync diagnostic; H2D **28.595 MB PASS**; packed response **144.821 MB PASS**; golden/accepted/flat 1.412 PASS. Separate non-gating `70f64d4` event attribution measures a **6.275 s decode-marginal kernel floor**: GEMM 4.820 s, LogUp 1.098 s, other 0.358 s. Provider-neutral kernel work is required; D2H host-call wall includes queued-kernel waits and is not an additive transfer cost. |
+| P7b RunPod matrix-fold iteration | **official valid PASS; complete** (2026-07-14) | Unchanged `runpod-a100-v1` full gate contract after the preregistered ABI-neutral kernel fix | `ab3a03f`: prefill **2.631 s PASS**, decode **2.089 s PASS**, session **5.917 s**; sync-wall max **1.821% PASS** with the unchanged 59,868 sync; H2D **28.595 MB PASS**; packed response **144.821 MB PASS**; golden/accepted/flat 1.281 PASS. Proof, operation, correlation and communication counts are exact against `33e5fb4`; no scheduler, batching or protocol change was needed. Mock-PCG remains non-production. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -61,6 +62,39 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-14 (P7b RunPod official gate PASS; matrix-fold iteration
+  closed)**: after the preregistered quick stop gate passed, the unchanged
+  `ab3a03f` executable completed a clean schema-6/ABI-28 T=100+50/Q=200
+  counters-only official run on `runpod-a100-v1`, exactly one warmup plus
+  three measured repetitions and eight Rayon workers.  The raw append-only
+  result is
+  `p7b-integrated-resident-wall-only-counters-2026-07-14-ab3a03f.json`
+  (SHA-256
+  `081007df74b70396b9c7ed20838d3d8209a23d6968bf17f106e66818756a3414`).
+  Both the remote and local fail-closed official validators accept it.
+
+  The new official verdict is **PASS**: prefill upper median
+  **2.630975566 s <= 10 s**, decode-marginal upper median
+  **2.089288042 s <= 4 s**, and response-session upper median
+  **5.917004617 s**.  Against the immutable `33e5fb4` rebaseline these are
+  reductions of 66.2745%, 69.2461% and 63.0069%, respectively.  Every
+  repetition accepts; frozen 50-token golden decode matches; the chunked
+  proof accepts with flat-cost ratio **1.281195 <= 1.5**.  The maximum
+  per-repetition synchronization/session fraction is **1.821491% <= 2%**;
+  the three absolute synchronization values are 0.109869589 s,
+  0.102956132 s and 0.104161412 s.  H2D is **28,594,644 B <= 100 MB** and
+  the packed response is **144,820,930 B**, inside the product envelope.
+  CUDA-event timing API calls remain zero in every measured repetition.
+
+  The 59,868 synchronization count, H2D bytes, every operation-call count,
+  proof/correlation counts and every communication field are byte/count
+  exact against `33e5fb4`.  The gate therefore closes through a
+  provider-neutral occupancy correction wholly below the existing ABI and
+  protocol, not by moving work, increasing communication or adding a
+  Thunder-shaped scheduler.  Scalar-RLC batching, retained graphs and the
+  epoch scheduler are not on the critical path and are not authorized by
+  this PASS.  The mock-PCG label and non-production status are unchanged.
 
 - **2026-07-14 (P7b matrix-fold quick stop gate passed; official full
   authorized)**: implementation checkpoint `ab3a03f` stays inside the

@@ -18,18 +18,17 @@ promoted retroactively.
 The sole P7b official-verdict provider is RunPod on the exact
 `runpod-a100-v1` A100-SXM4-80GB profile with eight Rayon workers. Profile
 fields are exact gate inputs, not descriptive labels; the Rust writer and
-Python selector fail closed on a mismatch. Thunder Compute remains only a
-historical comparison and its instance is not needed. Vast.ai and any other
-provider may be used for explicitly non-gating diagnostics only. Record
-provider, instance, region, image, driver, CUDA version, GPU SKU, CPU model,
-RAM, vCPU inventory and actual Rayon worker count in every cloud JSON.
+Python selector fail closed on a mismatch. Other providers are permitted only
+for explicitly non-gating diagnostics. Record provider, instance, region,
+image, driver, CUDA version, GPU SKU, CPU model, RAM, vCPU inventory and actual
+Rayon worker count in every cloud JSON. Historical provider records remain
+append-only comparison artifacts and are not operational configuration.
 
 ## Result Hygiene
 
-Bench outputs are append-only. The cloud box must not overwrite local
-numbers or reuse a local rho. Treat Thunder/RunPod disks as ephemeral:
-after every baseline or GPU spike, pull the JSONs back to this local checkout
-before stopping the instance.
+Bench outputs are append-only. The RunPod box must not overwrite local numbers
+or reuse a local rho. Treat its disk as ephemeral: after every baseline or GPU
+spike, pull the JSONs back to this local checkout before stopping the pod.
 
 - Keep cloud work on a clean checkout/commit (`git status --short` empty
   before run-of-record commands). Commit cloud JSONs separately from local

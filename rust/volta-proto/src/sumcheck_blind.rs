@@ -712,8 +712,8 @@ pub fn blind_prove_resident_batch(
             .collect();
 
         // All product-message kernels in this public epoch share one timing
-        // interval. Thunder therefore sees one event-resolution barrier, not
-        // one remote cudaEventElapsedTime query per active head.
+        // interval. The backend therefore sees one event-resolution barrier,
+        // not one remote cudaEventElapsedTime query per active head.
         let (product_phase, product_cleanup_error) =
             match backend.coarse_timing_scope(Operation::Gemm) {
                 Ok(mut scope) => {

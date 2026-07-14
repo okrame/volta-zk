@@ -501,9 +501,9 @@ def gpu_roofline_profiles(results: list[dict[str, Any]]) -> list[dict[str, Any]]
         if r.get("milestone") not in {"P7-gpu-roofline", "P7-gpu-roofline-quick"}:
             continue
         kernel = r.get("kernel") or {}
-        # Early Thunder diagnostics had correct outputs but non-blocking event
-        # timings (0 s / impossible bandwidth). Keep the raw JSON append-only,
-        # but never promote it into the aggregate roofline profiles.
+        # Early remote-provider diagnostics had correct outputs but non-blocking
+        # event timings (0 s / impossible bandwidth). Keep the raw JSON
+        # append-only, but never promote it into the aggregate roofline profiles.
         if not kernel.get("correctness") or not kernel.get("timing_sane"):
             continue
         stream = kernel.get("stream") or {}

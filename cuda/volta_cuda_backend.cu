@@ -610,9 +610,9 @@ int flush_deferred_timing(Context* c, SyncReason reason) {
     ++c->stats.timing_flush_count;
 
     // Query every required phase once before retrying any provider no-write.
-    // Thunder can return cudaSuccess without populating the duration; issuing
-    // other endpoint queries before a bounded retry breaks that provider
-    // cache/burst condition while preserving exact CUDA-event attribution.
+    // A remote CUDA runtime can return cudaSuccess without populating the
+    // duration; issuing other endpoint queries before a bounded retry breaks
+    // the cache/burst condition while preserving exact CUDA-event attribution.
     // Attribution is committed only after every phase has resolved.
     std::array<DeferredElapsedQuery, TIMING_RING_SIZE * 3> unresolved{};
     size_t unresolved_count = 0;

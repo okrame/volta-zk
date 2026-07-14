@@ -106,7 +106,7 @@ double cpu_median(int reps, F&& f) {
 template <typename F, typename S>
 double gpu_median(int reps, F&& launch, S&& force_completion) {
     launch();
-    force_completion();  // pre-registered warmup; D2H is the Thunder-visible barrier
+    force_completion();  // pre-registered warmup; D2H is the completion barrier
     std::vector<double> samples;
     samples.reserve(reps);
     for (int rep = 0; rep < reps; ++rep) {

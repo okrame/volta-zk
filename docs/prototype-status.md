@@ -62,6 +62,49 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-14 (P7b kernel-census profiler fallback; preregistered after the
+  Nsight refusal and before the fallback run)**: the exact preregistered
+  Nsight Compute 2025.1.1 invocation attached to clean `8adbead`, but RunPod
+  denied GPU performance-counter access with `ERR_NVGPUCTRPERM`, including
+  for root.  It collected no kernel metric and produced no `.ncu-rep`.
+  The error CSV SHA-256 is
+  `542a25cbac0fd849f50d625680f8ace0c2a3657d2f134d20b7676100d8883481`.
+  The application nevertheless completed acceptance, golden decode and the
+  flat-cost check, producing the explicitly ineligible append-only
+  `p7b-integrated-resident-wall-only-counters-ncu-denied-2026-07-14-8adbead.json`
+  (SHA-256
+  `4127171cbc96552fd54c3bb7918163edca37d23752c15e773b5df580ce004c8b`).
+  Its NCU-perturbed wall values are discarded, not a gate observation or a
+  profiler result.  Do not mutate/reload the provider's NVIDIA kernel module
+  to obtain privileged counters.
+
+  The one permitted fallback is NVIDIA's unmodified CUDA-12.8
+  `cupti_trace_injection` sample already installed on the same image.  Source,
+  Makefile, shared helper and `libcupti.so.2025.1.1` SHA-256 values are,
+  respectively,
+  `2fcc5cc819cc903f1715fb6615a406389c2f98e9c3b62d95bda54b2a4f0bf141`,
+  `d6e6b3a0fdc3f757d66e48b47b106dae369deebea865ee0c3e44377235b10717`,
+  `7a364cc51e21daff55f72523c1955f5ff964f94d6ab4f8b3f7dd96af3618f606`,
+  and `fccdc5fcc7c32f8cf4b3ed9b17f7f187a185a6fa0a5bcc06e3434cbd1687c808`.
+  Build a copy outside the source
+  checkout, inject it only via `CUDA_INJECTION64_PATH`, and rerun the same
+  clean full T=100+50/Q=200 counters-only 0+1 report with eight Rayon workers.
+  CUPTI activity timestamps require no privileged performance counters and
+  do not alter the repository/backend ABI.  Keep trace stdout, application
+  stderr and generated report outside the checkout and record all checksums.
+
+  The unmodified sample also reports CUDA API/memory activity and the report
+  executes its standard flat-cost curve after the measured session.  The
+  summary must therefore filter only the same twelve proof-algebra kernel
+  names preregistered above and aggregate the entire application as a
+  **decode-emphasized ranking census**, not claim a decode-marginal duration
+  or compare its absolute time with CUDA events.  Land one append-only JSON
+  with each matching kernel's invocation count and summed activity duration,
+  plus matched/total kernel counts, dropped-record count, provenance and raw
+  trace checksums.  If CUPTI reports dropped activity records, an unmatched
+  proof-algebra family, or an application correctness failure, stop without
+  selecting an optimization.
+
 - **2026-07-14 (P7b RunPod proof-algebra kernel census; preregistered before
   profiling or CUDA changes)**: run one non-gating Nsight Compute 2025.1.1
   census on the exact `runpod-a100-v1` profile with eight Rayon workers and

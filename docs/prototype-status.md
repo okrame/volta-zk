@@ -382,6 +382,37 @@ constant factors hold. That constant factor is what P3/P4 measure.
   as separate projected savings.  This instrumentation is removable
   observation state at the backend ABI, not protocol or scheduler debt.
 
+  **Phase-0b host-call diagnostic result and mandatory stop (2026-07-14)**:
+  ABI 28 landed at clean `c5265b5`; host clocks wrap only the already-issued
+  resident `cudaMemcpyAsync` calls, add no CUDA call or protocol branch, and
+  the Thunder CUDA suite is **33/33** green.  The clean Thunder quick
+  counter-only 0+3 JSON is accepted and non-gating, with zero event API calls
+  and response-session walls **31.981356794, 30.601558430,
+  31.252483604 s** (median **31.252483604 s**, MAD **0.650925174 s**).
+  Its SHA-256 is
+  `a0e71cb2734a7e5e44af3726bd5b6086ca5902934c941d16c2d48b91692af322`.
+
+  The measured host-call terms are stable for the calls they cover: 9,529
+  resident H2D calls in every repetition at median **12.935167 us/call**
+  (MAD 0.140461 us), 7,335 resident D2H calls at median
+  **484.398616 us/call** (MAD 13.304263 us), and 39,201 synchronizations at
+  median **11.153362 us/call** (MAD 0.134363 us).  However, the
+  pre-registered coverage gate fails: resident D2H call count is **7,335**,
+  not the required **39,201** host-output boundaries.  Only **18.71%** of
+  boundaries use the explicit resident-transfer entry point; **31,866**
+  host-output syncs are paired with D2H issued inside other CUDA primitive
+  paths and are not covered by this counter.
+
+  Therefore `484.399 + 11.153 us` is valid only for the covered resident D2H
+  subset and must not price all removed Phase-1 boundaries.  The diagnostic
+  stop condition is triggered exactly as registered: Phase 1 remains
+  unstarted, no SchedulePlan performance projection is published, and no
+  further coalescing is attempted.  Covering the remaining D2H sites would
+  require a new, broader single-wrapper host-call instrumentation decision;
+  it is not silently folded into ABI 28.  The incomplete coverage exposes the
+  pre-existing mixed resident/legacy host-output surface that Phase 1 was
+  intended to remove; it is not debt introduced by the observation seam.
+
 - **2026-07-13 (P7b target re-registration — resident GPU gate redefined;
   user decision)**: the preregistered rho_proof targets (<=10 prefill /
   <=2 decode) against the same-host native-GPU denominator are **retired for

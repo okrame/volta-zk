@@ -32,6 +32,9 @@ constexpr int OP_MAILBOX = 6;
 constexpr uint64_t MOCK_CORRELATION_RESERVED_DOMAIN_BITS =
     (uint64_t{1} << 63) | (uint64_t{1} << 62) | (uint64_t{1} << 61);
 constexpr int BUFFER_COUNT = 16;
+constexpr size_t MATRIX_FOLD_TARGET_BLOCKS = 1024;
+constexpr size_t MATRIX_FOLD_MAX_PARALLEL_OUTPUTS = 1024;
+constexpr size_t MATRIX_FOLD_MAX_PARTIALS = 2 * MATRIX_FOLD_TARGET_BLOCKS - 2;
 constexpr uint32_t TIMING_CUDA_EVENTS = 1;
 constexpr uint32_t TIMING_HOST_BARRIER_WALL = 2;
 constexpr uint32_t TIMING_CUDA_EVENTS_DEFERRED = 3;
@@ -1531,6 +1534,79 @@ __global__ void matrix_fold_kernel(
         }
     }
     output[out_index] = acc;
+}
+
+/// Term-parallel matrix fold for small output vectors. The legacy kernel
+/// above maps one thread to one output, which is efficient only when the
+/// untouched axis exposes enough outputs. Scalar MLEs otherwise serialize a
+/// full model-sized vector in one thread. Here each output receives one or
+/// more blocks; every block reduces a disjoint strided subset of terms.
+__global__ void matrix_fold_parts_kernel(
+    const void* input, const Fp2* weights, Fp2* destination,
+    size_t rows, size_t stride, size_t column_offset, size_t cols,
+    size_t real_outputs, size_t out_pad, size_t parts, int kind, int axis) {
+    const size_t output_index = static_cast<size_t>(blockIdx.x) / parts;
+    const size_t part = static_cast<size_t>(blockIdx.x) % parts;
+    if (output_index >= real_outputs) {
+        if (parts == 1 && output_index < out_pad && threadIdx.x == 0)
+            destination[output_index] = Fp2{0, 0};
+        return;
+    }
+
+    const size_t terms = axis == 0 ? rows : cols;
+    Fp2 acc{0, 0};
+    for (size_t term = part * BLOCK + threadIdx.x;
+         term < terms;
+         term += parts * BLOCK) {
+        const size_t index = axis == 0
+            ? term * stride + column_offset + output_index
+            : output_index * stride + column_offset + term;
+        if (kind == SCALAR_FP2) {
+            acc = fp2_add(acc, fp2_mul(weights[term], static_cast<const Fp2*>(input)[index]));
+        } else {
+            const uint64_t value = load_base_scalar(input, index, kind);
+            if (value != 0) acc = fp2_add(acc, fp2_mul_base(weights[term], value));
+        }
+    }
+
+    __shared__ Fp2 shared[BLOCK];
+    shared[threadIdx.x] = acc;
+    __syncthreads();
+    for (int width = BLOCK / 2; width > 0; width >>= 1) {
+        if (threadIdx.x < width)
+            shared[threadIdx.x] = fp2_add(shared[threadIdx.x], shared[threadIdx.x + width]);
+        __syncthreads();
+    }
+    if (threadIdx.x == 0) {
+        if (parts == 1)
+            destination[output_index] = shared[0];
+        else
+            destination[output_index * parts + part] = shared[0];
+    }
+}
+
+__global__ void matrix_fold_finish_kernel(
+    const Fp2* partials, Fp2* output,
+    size_t real_outputs, size_t out_pad, size_t parts) {
+    const size_t output_index = blockIdx.x;
+    if (output_index >= out_pad) return;
+    if (output_index >= real_outputs) {
+        if (threadIdx.x == 0) output[output_index] = Fp2{0, 0};
+        return;
+    }
+
+    Fp2 acc{0, 0};
+    for (size_t part = threadIdx.x; part < parts; part += BLOCK)
+        acc = fp2_add(acc, partials[output_index * parts + part]);
+    __shared__ Fp2 shared[BLOCK];
+    shared[threadIdx.x] = acc;
+    __syncthreads();
+    for (int width = BLOCK / 2; width > 0; width >>= 1) {
+        if (threadIdx.x < width)
+            shared[threadIdx.x] = fp2_add(shared[threadIdx.x], shared[threadIdx.x + width]);
+        __syncthreads();
+    }
+    if (threadIdx.x == 0) output[output_index] = shared[0];
 }
 
 struct DotAcc {
@@ -3641,11 +3717,44 @@ extern "C" int volta_cuda_matrix_fold_device(
     if (resident_region(c, input_id, input_offset * elem, rows * stride * elem, &input) ||
         resident_region(c, weights_id, weights_offset * sizeof(Fp2), terms * sizeof(Fp2), &weights) ||
         resident_region(c, output_id, output_offset * sizeof(Fp2), out_pad * sizeof(Fp2), &output)) return -1;
+
+    const bool term_parallel =
+        terms >= BLOCK && real_outputs <= MATRIX_FOLD_MAX_PARALLEL_OUTPUTS;
+    size_t parts = 1;
+    Fp2* partials = nullptr;
+    if (term_parallel) {
+        const size_t term_blocks = terms / BLOCK + (terms % BLOCK != 0);
+        const size_t target_parts =
+            MATRIX_FOLD_TARGET_BLOCKS / real_outputs +
+            (MATRIX_FOLD_TARGET_BLOCKS % real_outputs != 0);
+        parts = std::min(term_blocks, target_parts);
+        if (parts > 1) {
+            size_t partial_count = 0;
+            if (!checked_mul_size(real_outputs, parts, &partial_count) ||
+                partial_count > MATRIX_FOLD_MAX_PARTIALS)
+                return fail_message(c, "parallel matrix-fold partial bound exceeded");
+            if (ensure(c, 15, MATRIX_FOLD_MAX_PARTIALS * sizeof(Fp2))) return -1;
+            partials = buf<Fp2>(c, 15);
+        }
+    }
     if (begin_timing(c)) return -1;
     if (mark_timing(c, 1)) return -1;
-    matrix_fold_kernel<<<(out_pad + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
-        input, static_cast<const Fp2*>(weights), static_cast<Fp2*>(output),
-        rows, stride, column_offset, cols, out_pad, kind, axis);
+    if (!term_parallel) {
+        matrix_fold_kernel<<<(out_pad + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+            input, static_cast<const Fp2*>(weights), static_cast<Fp2*>(output),
+            rows, stride, column_offset, cols, out_pad, kind, axis);
+    } else {
+        const size_t first_blocks = parts == 1 ? out_pad : real_outputs * parts;
+        matrix_fold_parts_kernel<<<first_blocks, BLOCK, 0, c->stream>>>(
+            input, static_cast<const Fp2*>(weights),
+            parts == 1 ? static_cast<Fp2*>(output) : partials,
+            rows, stride, column_offset, cols, real_outputs, out_pad,
+            parts, kind, axis);
+        if (parts > 1) {
+            matrix_fold_finish_kernel<<<out_pad, BLOCK, 0, c->stream>>>(
+                partials, static_cast<Fp2*>(output), real_outputs, out_pad, parts);
+        }
+    }
     CUDA_OR_RETURN(c, cudaPeekAtLastError());
     if (mark_timing(c, 2)) return -1;
     return finish_timing(c, OP_GEMM, 0, 0);

@@ -7337,6 +7337,175 @@ mod cuda_tests {
     }
 
     #[test]
+    fn resident_term_parallel_matrix_folds_are_bit_exact() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
+        const TERMS: usize = 1024;
+        const OUTPUTS: usize = 3;
+
+        let row_weights: Vec<Fp2> = (0..TERMS)
+            .map(|i| Fp2::new(Fp::new(5 + i as u64 * 17), Fp::new(7 + i as u64 * 29)))
+            .collect();
+        let row_weights_raw: Vec<Fp2Repr> = row_weights.iter().copied().map(Into::into).collect();
+        let drow_weights = gpu.upload_new_device(&row_weights_raw).unwrap();
+
+        let base_rows: Vec<i16> =
+            (0..TERMS * OUTPUTS).map(|i| ((i * 43 + 11) % 509) as i16 - 254).collect();
+        let dbase_rows = gpu.upload_new_device(&base_rows).unwrap();
+        let folded_base_rows = gpu
+            .matrix_fold_device(
+                DeviceSlice::new(&dbase_rows, 0, base_rows.len()).unwrap(),
+                DeviceSlice::new(&drow_weights, 0, row_weights.len()).unwrap(),
+                TERMS,
+                OUTPUTS,
+                MatrixFoldAxis::Rows,
+            )
+            .unwrap();
+        let got_base_rows: Vec<Fp2> = gpu
+            .download_device(&folded_base_rows, 0, OUTPUTS.next_power_of_two())
+            .unwrap()
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        for output in 0..OUTPUTS.next_power_of_two() {
+            let expected = if output < OUTPUTS {
+                (0..TERMS).fold(Fp2::ZERO, |sum, term| {
+                    sum + row_weights[term]
+                        .mul_base(Fp::from_i64(base_rows[term * OUTPUTS + output] as i64))
+                })
+            } else {
+                Fp2::ZERO
+            };
+            assert_eq!(got_base_rows[output], expected, "parallel base row fold {output}");
+        }
+
+        let extension_rows: Vec<Fp2> = (0..TERMS * OUTPUTS)
+            .map(|i| Fp2::new(Fp::new(13 + i as u64 * 31), Fp::new(19 + i as u64 * 47)))
+            .collect();
+        let extension_rows_raw: Vec<Fp2Repr> =
+            extension_rows.iter().copied().map(Into::into).collect();
+        let dextension_rows = gpu.upload_new_device(&extension_rows_raw).unwrap();
+        let folded_extension_rows = gpu
+            .matrix_fold_device(
+                DeviceSlice::new(&dextension_rows, 0, extension_rows.len()).unwrap(),
+                DeviceSlice::new(&drow_weights, 0, row_weights.len()).unwrap(),
+                TERMS,
+                OUTPUTS,
+                MatrixFoldAxis::Rows,
+            )
+            .unwrap();
+        let got_extension_rows: Vec<Fp2> = gpu
+            .download_device(&folded_extension_rows, 0, OUTPUTS.next_power_of_two())
+            .unwrap()
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        for output in 0..OUTPUTS.next_power_of_two() {
+            let expected = if output < OUTPUTS {
+                (0..TERMS).fold(Fp2::ZERO, |sum, term| {
+                    sum + row_weights[term] * extension_rows[term * OUTPUTS + output]
+                })
+            } else {
+                Fp2::ZERO
+            };
+            assert_eq!(
+                got_extension_rows[output], expected,
+                "parallel extension row fold {output}"
+            );
+        }
+
+        const WINDOW_OFFSET: usize = 3;
+        const STRIDE: usize = TERMS + 7;
+        let column_weights: Vec<Fp2> = (0..TERMS)
+            .map(|i| Fp2::new(Fp::new(23 + i as u64 * 37), Fp::new(29 + i as u64 * 53)))
+            .collect();
+        let column_weights_raw: Vec<Fp2Repr> =
+            column_weights.iter().copied().map(Into::into).collect();
+        let dcolumn_weights = gpu.upload_new_device(&column_weights_raw).unwrap();
+
+        let base_window: Vec<i16> =
+            (0..OUTPUTS * STRIDE).map(|i| ((i * 59 + 17) % 601) as i16 - 300).collect();
+        let dbase_window = gpu.upload_new_device(&base_window).unwrap();
+        let folded_base_window = gpu
+            .matrix_window_fold_device(
+                DeviceSlice::new(&dbase_window, 0, base_window.len()).unwrap(),
+                DeviceSlice::new(&dcolumn_weights, 0, column_weights.len()).unwrap(),
+                OUTPUTS,
+                STRIDE,
+                WINDOW_OFFSET,
+                TERMS,
+                MatrixFoldAxis::Columns,
+            )
+            .unwrap();
+        let got_base_window: Vec<Fp2> = gpu
+            .download_device(&folded_base_window, 0, OUTPUTS.next_power_of_two())
+            .unwrap()
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        for output in 0..OUTPUTS.next_power_of_two() {
+            let expected = if output < OUTPUTS {
+                (0..TERMS).fold(Fp2::ZERO, |sum, term| {
+                    sum + column_weights[term].mul_base(Fp::from_i64(
+                        base_window[output * STRIDE + WINDOW_OFFSET + term] as i64,
+                    ))
+                })
+            } else {
+                Fp2::ZERO
+            };
+            assert_eq!(got_base_window[output], expected, "parallel base window fold {output}");
+        }
+
+        let extension_window: Vec<Fp2> = (0..OUTPUTS * STRIDE)
+            .map(|i| Fp2::new(Fp::new(31 + i as u64 * 61), Fp::new(37 + i as u64 * 71)))
+            .collect();
+        let extension_window_raw: Vec<Fp2Repr> =
+            extension_window.iter().copied().map(Into::into).collect();
+        let dextension_window = gpu.upload_new_device(&extension_window_raw).unwrap();
+        let folded_extension_window = gpu
+            .matrix_window_fold_device(
+                DeviceSlice::new(&dextension_window, 0, extension_window.len()).unwrap(),
+                DeviceSlice::new(&dcolumn_weights, 0, column_weights.len()).unwrap(),
+                OUTPUTS,
+                STRIDE,
+                WINDOW_OFFSET,
+                TERMS,
+                MatrixFoldAxis::Columns,
+            )
+            .unwrap();
+        let got_extension_window: Vec<Fp2> = gpu
+            .download_device(&folded_extension_window, 0, OUTPUTS.next_power_of_two())
+            .unwrap()
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        for output in 0..OUTPUTS.next_power_of_two() {
+            let expected = if output < OUTPUTS {
+                (0..TERMS).fold(Fp2::ZERO, |sum, term| {
+                    sum + column_weights[term]
+                        * extension_window[output * STRIDE + WINDOW_OFFSET + term]
+                })
+            } else {
+                Fp2::ZERO
+            };
+            assert_eq!(
+                got_extension_window[output], expected,
+                "parallel extension window fold {output}"
+            );
+        }
+
+        gpu.free_device(folded_extension_window).unwrap();
+        gpu.free_device(dextension_window).unwrap();
+        gpu.free_device(folded_base_window).unwrap();
+        gpu.free_device(dbase_window).unwrap();
+        gpu.free_device(dcolumn_weights).unwrap();
+        gpu.free_device(folded_extension_rows).unwrap();
+        gpu.free_device(dextension_rows).unwrap();
+        gpu.free_device(folded_base_rows).unwrap();
+        gpu.free_device(dbase_rows).unwrap();
+        gpu.free_device(drow_weights).unwrap();
+    }
+
+    #[test]
     fn resident_lookup_columns_histograms_and_packing_are_bit_exact() {
         let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
         let (rows, cols) = (3usize, 5usize);

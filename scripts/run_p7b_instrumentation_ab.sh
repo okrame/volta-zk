@@ -100,11 +100,12 @@ for sequence in "${!order[@]}"; do
   relative="${new_results[0]}"
   original_name="$(basename "$relative")"
   stem="${original_name%.json}"
-  if (( arm_rep == 0 )); then
-    final_name="$original_name"
+  if [[ "$arm" == events ]]; then
+    arm_label=timing-events
   else
-    final_name="$stem-$arm_rep.json"
+    arm_label=wall-only-counters
   fi
+  final_name="$stem-$arm_label-r$((arm_rep + 1)).json"
   final_path="$RESULTS/$final_name"
   if [[ -e "$final_path" ]]; then
     echo "append-only result destination already exists: $final_path" >&2

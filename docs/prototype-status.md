@@ -206,6 +206,19 @@ constant factors hold. That constant factor is what P3/P4 measure.
   and restores all six append-only JSONs only after the final clean-tree
   check.  This prevents an earlier result artifact from dirtying a later arm.
 
+  **Phase-0a execution correction (2026-07-14; cohort not yet started)**:
+  the first runner attempt at clean `40aa1a9` failed before proving because
+  the report build omitted the Cargo `cuda` feature and emitted no JSON.  At
+  clean `7077636` the first event arm completed with an accepted **49.79 s**
+  response, but the runner then failed closed while staging it: its initial
+  destination collided with the report's temporary basename and the two
+  arms would not have had distinct final basenames.  That singleton is
+  quarantined outside the repository and is excluded from 0a because the
+  six-sample same-SHA cohort did not complete; it is neither silently
+  discarded nor used to choose timing policy.  Before restarting, final
+  names are made injective in `(policy, repetition)` and the entire six-run
+  counterbalanced sequence restarts from sample 1 on one new clean SHA.
+
 - **2026-07-13 (P7b target re-registration — resident GPU gate redefined;
   user decision)**: the preregistered rho_proof targets (<=10 prefill /
   <=2 decode) against the same-host native-GPU denominator are **retired for

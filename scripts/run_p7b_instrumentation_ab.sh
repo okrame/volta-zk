@@ -78,7 +78,7 @@ for sequence in "${!order[@]}"; do
 
   echo "Phase 0a sample $((sequence + 1))/6: $arm repetition $((arm_rep + 1))/3" >&2
   cargo run --release --manifest-path "$ROOT/rust/Cargo.toml" \
-    -p volta-bench --bin p6_report -- \
+    -p volta-bench --features cuda --bin p6_report -- \
     --quick \
     --accelerator cuda-resident \
     --resident-timing "$policy" \

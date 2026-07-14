@@ -355,6 +355,8 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
             "repetition": 1,
             "t_prove_prefill_only_s": 9.0,
             "t_prove_decode_marginal_s": 3.0,
+            "t_response_session_wall_s": 10.0,
+            "p7b_sync_wall_fraction": 0.01,
             "accelerator_session": {
                 "timing_method": "wall-only-counters",
                 "phase_attribution_available": False,
@@ -367,7 +369,8 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
                 "resident_d2h_host_calls": 4_000,
                 "resident_h2d_host_call_s": 0.01,
                 "resident_d2h_host_call_s": 0.02,
-                "synchronizations": 4_000,
+                "synchronizations": 59_868,
+                "synchronization_s": 0.1,
                 "h2d_bytes": 90_000_000,
             },
         },
@@ -375,6 +378,8 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
             "repetition": 2,
             "t_prove_prefill_only_s": 10.0,
             "t_prove_decode_marginal_s": 4.0,
+            "t_response_session_wall_s": 10.0,
+            "p7b_sync_wall_fraction": 0.02,
             "accelerator_session": {
                 "timing_method": "wall-only-counters",
                 "phase_attribution_available": False,
@@ -387,7 +392,8 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
                 "resident_d2h_host_calls": 5_000,
                 "resident_h2d_host_call_s": 0.01,
                 "resident_d2h_host_call_s": 0.02,
-                "synchronizations": 5_000,
+                "synchronizations": 59_868,
+                "synchronization_s": 0.2,
                 "h2d_bytes": 100_000_000,
             },
         },
@@ -395,6 +401,8 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
             "repetition": 3,
             "t_prove_prefill_only_s": 11.0,
             "t_prove_decode_marginal_s": 5.0,
+            "t_response_session_wall_s": 10.0,
+            "p7b_sync_wall_fraction": 0.015,
             "accelerator_session": {
                 "timing_method": "wall-only-counters",
                 "phase_attribution_available": False,
@@ -407,7 +415,8 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
                 "resident_d2h_host_calls": 4_500,
                 "resident_h2d_host_call_s": 0.01,
                 "resident_d2h_host_call_s": 0.02,
-                "synchronizations": 4_500,
+                "synchronizations": 59_868,
+                "synchronization_s": 0.15,
                 "h2d_bytes": 95_000_000,
             },
         },
@@ -427,17 +436,19 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
         "accelerator_backend": "cuda-resident",
         "accelerator_cuda_abi_version": 28,
         "resident_timing_policy": "wall-only-counters",
+        "p7b_gate_profile": "runpod-a100-v1",
+        "threads": 8,
         "cloud": {
-            "provider": "Thunder Compute",
+            "provider": "RunPod",
             "instance_id": "instance",
-            "region": "not exposed",
-            "image": "ubuntu",
-            "driver_version": "610",
-            "cuda_version": "13.2",
+            "region": "eur-is-1",
+            "image": "Ubuntu 24.04.3 LTS",
+            "driver_version": "580.159.04",
+            "cuda_version": "12.8",
             "gpu_sku": "NVIDIA A100-SXM4-80GB",
-            "cpu_model": "Xeon",
-            "ram_gib": "64",
-            "vcpus": "8",
+            "cpu_model": "AMD EPYC 7713 64-Core Processor",
+            "ram_gib": "1008",
+            "vcpus": "255",
         },
         "accelerator_live_device_bytes_after_cleanup": 30,
         "accelerator_workspace_device_bytes_after_cleanup": 10,
@@ -468,15 +479,17 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
         "p7b_counter_statistic": "maximum across measured sessions",
         "p7b_prefill_core_gate_s": 10.0,
         "p7b_decode_marginal_gate_s": 4.0,
-        "p7b_sync_gate": 5_000,
+        "p7b_sync_count_gate_retired": True,
+        "p7b_sync_wall_fraction_gate": 0.02,
         "p7b_h2d_gate_bytes": 100_000_000,
         "p7b_prefill_core_observed_s": 10.0,
         "p7b_decode_marginal_observed_s": 4.0,
-        "p7b_sync_observed": 5_000,
+        "p7b_sync_observed": 59_868,
+        "p7b_sync_wall_fraction_observed": 0.02,
         "p7b_h2d_observed_bytes": 100_000_000,
         "p7b_prefill_core_gate_pass": True,
         "p7b_decode_marginal_gate_pass": True,
-        "p7b_sync_gate_pass": True,
+        "p7b_sync_wall_fraction_gate_pass": True,
         "p7b_h2d_gate_pass": True,
         "response_communication_envelope_bytes": 200_000_000,
         "response_communication_observed_bytes": 144_820_930,
@@ -507,9 +520,10 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
     # A performance failure is still a valid measured verdict when its
     # observations, statistics and booleans close exactly.
     valid_failure = copy.deepcopy(official)
-    valid_failure["repetitions"][1]["accelerator_session"]["synchronizations"] = 5_001
-    valid_failure["p7b_sync_observed"] = 5_001
-    valid_failure["p7b_sync_gate_pass"] = False
+    valid_failure["repetitions"][1]["accelerator_session"]["synchronization_s"] = 0.21
+    valid_failure["repetitions"][1]["p7b_sync_wall_fraction"] = 0.021
+    valid_failure["p7b_sync_wall_fraction_observed"] = 0.021
+    valid_failure["p7b_sync_wall_fraction_gate_pass"] = False
     valid_failure["p7b_all_gates_pass"] = False
     assert report.p7b_resident_run_of_record_eligible(valid_failure) is True
 
@@ -521,6 +535,8 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
         {"accelerator_cuda_abi_version": 25},
         {"accelerator_cuda_abi_version": 28.0},
         {"resident_timing_policy": "deferred-events"},
+        {"p7b_gate_profile": "thunder-v0"},
+        {"threads": 27},
         {"git_sha_before_serialization": "b" * 40},
         {"git_sha_before_benchmark": ""},
         {"git_sha": "b" * 40},
@@ -535,9 +551,11 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
         {"benchmark_warmup_repetitions": None},
         {"benchmark_repetitions": 2},
         {"p7b_prefill_core_gate_s": 10.1},
+        {"p7b_sync_count_gate_retired": False},
+        {"p7b_sync_wall_fraction_gate": 0.03},
         {"response_communication_envelope_bytes": 200_000_001},
         {"p7b_response_communication_no_growth_pass": False},
-        {"p7b_sync_gate_pass": False},
+        {"p7b_sync_wall_fraction_gate_pass": False},
         {"p7b_all_gates_pass": None},
         {"accelerator_cleanup_memory_accounting_ok": False},
     ]
@@ -553,6 +571,10 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7():
     bad_counter = copy.deepcopy(official)
     bad_counter["repetitions"][0]["accelerator_session"]["h2d_bytes"] = 100_000_001
     assert report.p7b_resident_run_of_record_eligible(bad_counter) is False
+
+    bad_sync_fraction = copy.deepcopy(official)
+    bad_sync_fraction["repetitions"][0]["p7b_sync_wall_fraction"] = 0.011
+    assert report.p7b_resident_run_of_record_eligible(bad_sync_fraction) is False
 
     bad_timing_phase = copy.deepcopy(official)
     bad_timing_phase["repetitions"][0]["accelerator_session"][

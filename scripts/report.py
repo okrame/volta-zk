@@ -26,9 +26,11 @@ P7B_REPORT_SCHEMA_VERSION = 6
 P7B_CUDA_ABI_VERSION = 28
 P7B_OFFICIAL_RESIDENT_TIMING_POLICY = "wall-only-counters"
 P7B_OFFICIAL_SESSION_TIMING_METHOD = "wall-only-counters"
+P7B_GATE_PROFILE = "runpod-a100-v1"
+P7B_OFFICIAL_RAYON_THREADS = 8
 P7B_PREFILL_CORE_GATE_S = 10.0
 P7B_DECODE_MARGINAL_GATE_S = 4.0
-P7B_SYNC_GATE = 5_000
+P7B_SYNC_WALL_FRACTION_GATE = 0.02
 P7B_H2D_GATE_BYTES = 100_000_000
 P7B_RESPONSE_COMMUNICATION_ENVELOPE_BYTES = 200_000_000
 P7B_TRANSCRIPT_REFERENCE_BYTES = 137_413_808
@@ -832,6 +834,7 @@ def integrated_accelerator_profiles(
                 "milestone": r.get("milestone"),
                 "git_dirty": r.get("git_dirty"),
                 "cloud": r.get("cloud"),
+                "threads": r.get("threads"),
                 "report_schema_version": r.get("report_schema_version"),
                 "t_prefill": r.get("t_prefill"),
                 "n_decode": r.get("n_decode"),
@@ -942,6 +945,7 @@ def integrated_accelerator_profiles(
                     ),
                     "resident_timing_policy": r.get("resident_timing_policy"),
                     "p7b_gate_evaluated": r.get("p7b_gate_evaluated"),
+                    "p7b_gate_profile": r.get("p7b_gate_profile"),
                     "p7b_machine_eligible": r.get("p7b_machine_eligible"),
                     "p7b_timing_statistic": r.get("p7b_timing_statistic"),
                     "p7b_counter_statistic": r.get("p7b_counter_statistic"),
@@ -949,7 +953,12 @@ def integrated_accelerator_profiles(
                     "p7b_decode_marginal_gate_s": r.get(
                         "p7b_decode_marginal_gate_s"
                     ),
-                    "p7b_sync_gate": r.get("p7b_sync_gate"),
+                    "p7b_sync_count_gate_retired": r.get(
+                        "p7b_sync_count_gate_retired"
+                    ),
+                    "p7b_sync_wall_fraction_gate": r.get(
+                        "p7b_sync_wall_fraction_gate"
+                    ),
                     "p7b_h2d_gate_bytes": r.get("p7b_h2d_gate_bytes"),
                     "p7b_prefill_core_observed_s": r.get(
                         "p7b_prefill_core_observed_s"
@@ -958,6 +967,9 @@ def integrated_accelerator_profiles(
                         "p7b_decode_marginal_observed_s"
                     ),
                     "p7b_sync_observed": r.get("p7b_sync_observed"),
+                    "p7b_sync_wall_fraction_observed": r.get(
+                        "p7b_sync_wall_fraction_observed"
+                    ),
                     "p7b_h2d_observed_bytes": r.get("p7b_h2d_observed_bytes"),
                     "p7b_prefill_core_gate_pass": r.get(
                         "p7b_prefill_core_gate_pass"
@@ -965,7 +977,9 @@ def integrated_accelerator_profiles(
                     "p7b_decode_marginal_gate_pass": r.get(
                         "p7b_decode_marginal_gate_pass"
                     ),
-                    "p7b_sync_gate_pass": r.get("p7b_sync_gate_pass"),
+                    "p7b_sync_wall_fraction_gate_pass": r.get(
+                        "p7b_sync_wall_fraction_gate_pass"
+                    ),
                     "p7b_h2d_gate_pass": r.get("p7b_h2d_gate_pass"),
                     "response_communication_envelope_bytes": r.get(
                         "response_communication_envelope_bytes"
@@ -1060,6 +1074,7 @@ def p7b_resident_run_of_record_eligible(row: dict[str, Any]) -> bool:
         and type(row.get("accelerator_cuda_abi_version")) is int
         and row.get("accelerator_cuda_abi_version") == P7B_CUDA_ABI_VERSION
         and row.get("resident_timing_policy") == P7B_OFFICIAL_RESIDENT_TIMING_POLICY
+        and row.get("p7b_gate_profile") == P7B_GATE_PROFILE
         and row.get("accepted") is True
         and row.get("git_dirty") is False
         and row.get("git_dirty_before_benchmark") is False
@@ -1175,7 +1190,22 @@ def _p7b_machine_metadata_valid(row: dict[str, Any]) -> bool:
     )
     if not all(isinstance(cloud.get(field), str) and cloud[field].strip() for field in fields):
         return False
-    return "thunder" in cloud["provider"].lower() and "A100" in cloud["gpu_sku"].upper()
+    expected = {
+        "provider": "RunPod",
+        "region": "eur-is-1",
+        "image": "Ubuntu 24.04.3 LTS",
+        "driver_version": "580.159.04",
+        "cuda_version": "12.8",
+        "gpu_sku": "NVIDIA A100-SXM4-80GB",
+        "cpu_model": "AMD EPYC 7713 64-Core Processor",
+        "ram_gib": "1008",
+        "vcpus": "255",
+    }
+    return (
+        type(row.get("threads")) is int
+        and row["threads"] == P7B_OFFICIAL_RAYON_THREADS
+        and all(cloud.get(field) == value for field, value in expected.items())
+    )
 
 
 def _timing_distribution_valid(timing: Any, samples: list[float]) -> bool:
@@ -1213,8 +1243,27 @@ def _p7b_sampling_statistics_valid(row: dict[str, Any]) -> bool:
     if any(not isinstance(session, dict) for session in sessions):
         return False
     syncs = [session.get("synchronizations") for session in sessions]
+    sync_wall_s = [session.get("synchronization_s") for session in sessions]
+    session_wall_s = [rep.get("t_response_session_wall_s") for rep in repetitions]
+    sync_wall_fractions = [rep.get("p7b_sync_wall_fraction") for rep in repetitions]
     h2d = [session.get("h2d_bytes") for session in sessions]
-    if not all(_nonnegative_int(value) for value in syncs + h2d):
+    if (
+        not all(_nonnegative_int(value) for value in syncs + h2d)
+        or not all(_finite_nonnegative(value) for value in sync_wall_s)
+        or not all(_finite_nonnegative(value) and value > 0 for value in session_wall_s)
+        or not all(_finite_nonnegative(value) for value in sync_wall_fractions)
+    ):
+        return False
+    expected_sync_wall_fractions = [
+        sync_wall / session_wall
+        for sync_wall, session_wall in zip(sync_wall_s, session_wall_s, strict=True)
+    ]
+    if not all(
+        _same_number(observed, expected)
+        for observed, expected in zip(
+            sync_wall_fractions, expected_sync_wall_fractions, strict=True
+        )
+    ):
         return False
     return (
         _same_number(
@@ -1226,6 +1275,10 @@ def _p7b_sampling_statistics_valid(row: dict[str, Any]) -> bool:
             row["prove_decode_marginal_timing"]["median_s"],
         )
         and row.get("p7b_sync_observed") == max(syncs)
+        and _same_number(
+            row.get("p7b_sync_wall_fraction_observed"),
+            max(expected_sync_wall_fractions),
+        )
         and row.get("p7b_h2d_observed_bytes") == max(h2d)
     )
 
@@ -1264,26 +1317,27 @@ def _p7b_performance_verdict_valid(row: dict[str, Any]) -> bool:
     thresholds = (
         row.get("p7b_prefill_core_gate_s") == P7B_PREFILL_CORE_GATE_S
         and row.get("p7b_decode_marginal_gate_s") == P7B_DECODE_MARGINAL_GATE_S
-        and row.get("p7b_sync_gate") == P7B_SYNC_GATE
+        and row.get("p7b_sync_count_gate_retired") is True
+        and row.get("p7b_sync_wall_fraction_gate") == P7B_SYNC_WALL_FRACTION_GATE
         and row.get("p7b_h2d_gate_bytes") == P7B_H2D_GATE_BYTES
     )
     observations = (
         row.get("p7b_prefill_core_observed_s"),
         row.get("p7b_decode_marginal_observed_s"),
-        row.get("p7b_sync_observed"),
+        row.get("p7b_sync_wall_fraction_observed"),
         row.get("p7b_h2d_observed_bytes"),
     )
     passes = (
         row.get("p7b_prefill_core_gate_pass"),
         row.get("p7b_decode_marginal_gate_pass"),
-        row.get("p7b_sync_gate_pass"),
+        row.get("p7b_sync_wall_fraction_gate_pass"),
         row.get("p7b_h2d_gate_pass"),
     )
     if (
         not thresholds
         or not _finite_nonnegative(observations[0])
         or not _finite_nonnegative(observations[1])
-        or not _nonnegative_int(observations[2])
+        or not _finite_nonnegative(observations[2])
         or not _nonnegative_int(observations[3])
         or any(type(value) is not bool for value in passes)
         or type(row.get("p7b_all_gates_pass")) is not bool
@@ -1292,7 +1346,7 @@ def _p7b_performance_verdict_valid(row: dict[str, Any]) -> bool:
     expected = (
         observations[0] <= P7B_PREFILL_CORE_GATE_S,
         observations[1] <= P7B_DECODE_MARGINAL_GATE_S,
-        observations[2] <= P7B_SYNC_GATE,
+        observations[2] <= P7B_SYNC_WALL_FRACTION_GATE,
         observations[3] <= P7B_H2D_GATE_BYTES,
     )
     return passes == expected and row.get("p7b_all_gates_pass") is all(expected)

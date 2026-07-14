@@ -57,7 +57,9 @@ use volta_proto::{
 
 const P7B_PREFILL_CORE_GATE_S: f64 = 10.0;
 const P7B_DECODE_MARGINAL_GATE_S: f64 = 4.0;
-const P7B_SYNC_GATE: u64 = 5_000;
+const P7B_GATE_PROFILE: &str = "runpod-a100-v1";
+const P7B_SYNC_WALL_FRACTION_GATE: f64 = 0.02;
+const P7B_OFFICIAL_RAYON_THREADS: usize = 8;
 // Decimal MB, matching the preregistered ledger threshold.
 const P7B_H2D_GATE_BYTES: u64 = 100_000_000;
 // This is an unchanged product invariant, not a fifth P7b performance gate.
@@ -222,7 +224,7 @@ fn short_git_sha(full_sha: &str) -> String {
     full_sha.chars().take(7).collect()
 }
 
-fn p7b_machine_eligible(cloud: Option<&CloudMetadata>) -> bool {
+fn p7b_machine_eligible(cloud: Option<&CloudMetadata>, rayon_threads: usize) -> bool {
     let Some(cloud) = cloud else {
         return false;
     };
@@ -241,8 +243,23 @@ fn p7b_machine_eligible(cloud: Option<&CloudMetadata>) -> bool {
     .into_iter()
     .all(|value| !value.trim().is_empty());
     metadata_present
-        && cloud.provider.to_ascii_lowercase().contains("thunder")
-        && cloud.gpu_sku.to_ascii_uppercase().contains("A100")
+        && rayon_threads == P7B_OFFICIAL_RAYON_THREADS
+        && cloud.provider == "RunPod"
+        && cloud.region == "eur-is-1"
+        && cloud.image == "Ubuntu 24.04.3 LTS"
+        && cloud.driver_version == "580.159.04"
+        && cloud.cuda_version == "12.8"
+        && cloud.gpu_sku == "NVIDIA A100-SXM4-80GB"
+        && cloud.cpu_model == "AMD EPYC 7713 64-Core Processor"
+        && cloud.ram_gib == "1008"
+        && cloud.vcpus == "255"
+}
+
+fn synchronization_wall_fraction(stats: &BackendStats, session_wall_s: f64) -> f64 {
+    assert!(session_wall_s.is_finite() && session_wall_s > 0.0);
+    let fraction = stats.synchronization_ns as f64 / 1e9 / session_wall_s;
+    assert!(fraction.is_finite() && fraction >= 0.0);
+    fraction
 }
 
 fn p7b_communication_no_growth(
@@ -315,6 +332,8 @@ struct BenchmarkRepetitionRow {
     pcs_commit_total_s: f64,
     pcs_open_total_s: f64,
     pcs_verify_total_s: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_sync_wall_fraction: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     accelerator_prefill: Option<AcceleratorStatsRow>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -464,6 +483,8 @@ struct Report {
     #[serde(skip_serializing_if = "Option::is_none")]
     p7b_gate_evaluated: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_gate_profile: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     p7b_machine_eligible: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     p7b_timing_statistic: Option<String>,
@@ -474,7 +495,9 @@ struct Report {
     #[serde(skip_serializing_if = "Option::is_none")]
     p7b_decode_marginal_gate_s: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    p7b_sync_gate: Option<u64>,
+    p7b_sync_count_gate_retired: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_sync_wall_fraction_gate: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     p7b_h2d_gate_bytes: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -484,13 +507,15 @@ struct Report {
     #[serde(skip_serializing_if = "Option::is_none")]
     p7b_sync_observed: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_sync_wall_fraction_observed: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     p7b_h2d_observed_bytes: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     p7b_prefill_core_gate_pass: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     p7b_decode_marginal_gate_pass: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    p7b_sync_gate_pass: Option<bool>,
+    p7b_sync_wall_fraction_gate_pass: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     p7b_h2d_gate_pass: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1603,7 +1628,8 @@ fn main() {
         std::process::exit(2);
     }
     let cloud = cloud_metadata_from_env();
-    let p7b_machine_is_eligible = p7b_machine_eligible(cloud.as_ref());
+    let rayon_threads = rayon::current_num_threads();
+    let p7b_machine_is_eligible = p7b_machine_eligible(cloud.as_ref(), rayon_threads);
     // A run of record must stay clean for the complete benchmark window, not
     // merely happen to be clean when the JSON verdict is assembled.
     let git_dirty_before_benchmark = git_worktree_dirty();
@@ -2055,6 +2081,21 @@ fn main() {
             .max()
             .expect("resident run needs a measured session")
     });
+    let p7b_sync_wall_fraction_observed = is_resident.then(|| {
+        session_results
+            .iter()
+            .map(|session| {
+                synchronization_wall_fraction(
+                    session
+                        .accelerator_stats
+                        .as_ref()
+                        .expect("resident measured session needs accelerator stats"),
+                    session.session_wall_s,
+                )
+            })
+            .max_by(f64::total_cmp)
+            .expect("resident run needs a measured session")
+    });
     let p7b_h2d_observed_bytes = is_resident.then(|| {
         session_results
             .iter()
@@ -2093,6 +2134,10 @@ fn main() {
             pcs_commit_total_s: response.pcs_rows.iter().map(|r| r.commit_s).sum(),
             pcs_open_total_s: response.pcs_rows.iter().map(|r| r.open_s).sum(),
             pcs_verify_total_s: response.pcs_rows.iter().map(|r| r.verify_s).sum(),
+            p7b_sync_wall_fraction: response
+                .accelerator_stats
+                .as_ref()
+                .map(|stats| synchronization_wall_fraction(stats, response.session_wall_s)),
             accelerator_prefill: prefill
                 .accelerator_stats
                 .map(|stats| AcceleratorStatsRow::from_stats(stats, "prefill-proof")),
@@ -2396,8 +2441,10 @@ fn main() {
         p7b_decode_marginal_observed_s.expect("resident decode observation")
             <= P7B_DECODE_MARGINAL_GATE_S
     });
-    let p7b_sync_gate_pass = gate_is_official
-        .then(|| p7b_sync_observed.expect("resident sync observation") <= P7B_SYNC_GATE);
+    let p7b_sync_wall_fraction_gate_pass = gate_is_official.then(|| {
+        p7b_sync_wall_fraction_observed.expect("resident sync-wall observation")
+            <= P7B_SYNC_WALL_FRACTION_GATE
+    });
     let p7b_h2d_gate_pass = gate_is_official
         .then(|| p7b_h2d_observed_bytes.expect("resident H2D observation") <= P7B_H2D_GATE_BYTES);
     let response_communication_observed_bytes = is_resident.then(|| {
@@ -2423,7 +2470,7 @@ fn main() {
             && p7b_response_communication_no_growth_pass == Some(true)
             && p7b_prefill_core_gate_pass.expect("prefill P7b verdict")
             && p7b_decode_marginal_gate_pass.expect("decode P7b verdict")
-            && p7b_sync_gate_pass.expect("sync P7b verdict")
+            && p7b_sync_wall_fraction_gate_pass.expect("sync-wall P7b verdict")
             && p7b_h2d_gate_pass.expect("H2D P7b verdict")
     });
     let t_prove_response_s = prove_response_timing.median_s;
@@ -2456,7 +2503,7 @@ fn main() {
         },
         machine: format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
         cloud,
-        threads: rayon::current_num_threads(),
+        threads: rayon_threads,
         accelerator_backend: args.accelerator.as_str().into(),
         accelerator_cuda_abi_version: (args.accelerator != AcceleratorArg::Cpu)
             .then_some(CUDA_ABI_VERSION),
@@ -2489,21 +2536,24 @@ fn main() {
         golden_decode_match: golden_match,
         generated_tokens: gen.clone(),
         p7b_gate_evaluated,
+        p7b_gate_profile: is_resident.then_some(P7B_GATE_PROFILE.into()),
         p7b_machine_eligible: is_resident.then_some(p7b_machine_is_eligible),
         p7b_timing_statistic: is_resident
             .then_some("upper median across measured repetitions".into()),
         p7b_counter_statistic: is_resident.then_some("maximum across measured sessions".into()),
         p7b_prefill_core_gate_s: is_resident.then_some(P7B_PREFILL_CORE_GATE_S),
         p7b_decode_marginal_gate_s: is_resident.then_some(P7B_DECODE_MARGINAL_GATE_S),
-        p7b_sync_gate: is_resident.then_some(P7B_SYNC_GATE),
+        p7b_sync_count_gate_retired: is_resident.then_some(true),
+        p7b_sync_wall_fraction_gate: is_resident.then_some(P7B_SYNC_WALL_FRACTION_GATE),
         p7b_h2d_gate_bytes: is_resident.then_some(P7B_H2D_GATE_BYTES),
         p7b_prefill_core_observed_s,
         p7b_decode_marginal_observed_s,
         p7b_sync_observed,
+        p7b_sync_wall_fraction_observed,
         p7b_h2d_observed_bytes,
         p7b_prefill_core_gate_pass,
         p7b_decode_marginal_gate_pass,
-        p7b_sync_gate_pass,
+        p7b_sync_wall_fraction_gate_pass,
         p7b_h2d_gate_pass,
         response_communication_envelope_bytes: is_resident
             .then_some(RESPONSE_COMMUNICATION_ENVELOPE_BYTES),
@@ -2728,33 +2778,40 @@ mod report_tests {
     }
 
     #[test]
-    fn p7b_machine_requires_complete_thunder_a100_metadata() {
+    fn p7b_machine_requires_exact_runpod_profile_and_eight_threads() {
         let cloud = CloudMetadata {
-            provider: "Thunder Compute".into(),
+            provider: "RunPod".into(),
             instance_id: "instance".into(),
-            region: "not exposed".into(),
-            image: "ubuntu".into(),
-            driver_version: "610".into(),
-            cuda_version: "13.2".into(),
+            region: "eur-is-1".into(),
+            image: "Ubuntu 24.04.3 LTS".into(),
+            driver_version: "580.159.04".into(),
+            cuda_version: "12.8".into(),
             gpu_sku: "NVIDIA A100-SXM4-80GB".into(),
-            cpu_model: "Xeon".into(),
-            ram_gib: "64".into(),
-            vcpus: "8".into(),
+            cpu_model: "AMD EPYC 7713 64-Core Processor".into(),
+            ram_gib: "1008".into(),
+            vcpus: "255".into(),
         };
-        assert!(p7b_machine_eligible(Some(&cloud)));
-        assert!(!p7b_machine_eligible(None));
-        assert!(!p7b_machine_eligible(Some(&CloudMetadata {
-            provider: "another provider".into(),
-            ..cloud.clone()
-        })));
-        assert!(!p7b_machine_eligible(Some(&CloudMetadata {
-            gpu_sku: "NVIDIA H100".into(),
-            ..cloud.clone()
-        })));
-        assert!(!p7b_machine_eligible(Some(&CloudMetadata {
-            instance_id: String::new(),
-            ..cloud
-        })));
+        assert!(p7b_machine_eligible(Some(&cloud), 8));
+        assert!(!p7b_machine_eligible(Some(&cloud), 7));
+        assert!(!p7b_machine_eligible(None, 8));
+        assert!(!p7b_machine_eligible(
+            Some(&CloudMetadata { provider: "another provider".into(), ..cloud.clone() }),
+            8
+        ));
+        assert!(!p7b_machine_eligible(
+            Some(&CloudMetadata { gpu_sku: "NVIDIA H100".into(), ..cloud.clone() }),
+            8
+        ));
+        assert!(!p7b_machine_eligible(
+            Some(&CloudMetadata { instance_id: String::new(), ..cloud }),
+            8
+        ));
+    }
+
+    #[test]
+    fn synchronization_wall_fraction_uses_session_wall() {
+        let stats = BackendStats { synchronization_ns: 20_000_000, ..BackendStats::default() };
+        assert_eq!(synchronization_wall_fraction(&stats, 2.0), 0.01);
     }
 
     #[test]

@@ -31,6 +31,7 @@ FAIL remains an immutable rebaseline result.
 | P7b iteration 3 diagnosis | **Phase 0a/0b/0c complete; scheduler phase cancelled as provider-specific debt** (no gate verdict) | Host-call diagnosis closed; no further Thunder coalescing is on the critical path | Clean same-SHA `098b2f1` quick A/B: deferred-events median session wall **54.507 s** versus Thunder wall-only+counters **32.575 s**, event tax **21.932 s / 40.24%**. The RunPod A100 control is **3.768 s** at identical quick geometry and **15.651 s** full session wall; it selected the new provider but is not retroactively a gate claim. |
 | P7b RunPod official rebaseline | **official valid FAIL: decode only; diagnosis complete** (2026-07-14) | Clean schema-6/ABI-28 T=100+50/Q=200 on exact `runpod-a100-v1`, counters-only, Rayon=8, 1+3, golden and communication invariants; prefill <=10 s, decode <=4 s, max per-repetition sync-wall/session-wall <=2%, H2D <=100 MB | `33e5fb4`: prefill **7.801 s PASS**, decode **6.794 s FAIL**, session **15.995 s**; sync-wall max **0.768% PASS** with 59,868 sync diagnostic; H2D **28.595 MB PASS**; packed response **144.821 MB PASS**; golden/accepted/flat 1.412 PASS. Separate non-gating `70f64d4` event attribution measures a **6.275 s decode-marginal kernel floor**: GEMM 4.820 s, LogUp 1.098 s, other 0.358 s. Provider-neutral kernel work is required; D2H host-call wall includes queued-kernel waits and is not an additive transfer cost. |
 | P7b RunPod matrix-fold iteration | **official valid PASS; complete** (2026-07-14) | Unchanged `runpod-a100-v1` full gate contract after the preregistered ABI-neutral kernel fix | `ab3a03f`: prefill **2.631 s PASS**, decode **2.089 s PASS**, session **5.917 s**; sync-wall max **1.821% PASS** with the unchanged 59,868 sync; H2D **28.595 MB PASS**; packed response **144.821 MB PASS**; golden/accepted/flat 1.281 PASS. Proof, operation, correlation and communication counts are exact against `33e5fb4`; no scheduler, batching or protocol change was needed. Mock-PCG remains non-production. |
+| Real-sVOLE fase-B hardening | **parity candidate; default remains mock** (2026-07-15) | Clean P6 quick real accepts; exact counter/allocation/channel digests; mandatory malicious/channel tests reject/hold | `1d63923`: genuine two-party Ristretto OT→COPEe/IKNP→WYKW GGM/regular-LPN setup, hardened cited parameters. Per instance **22.483 s**, **31.261 MB** setup traffic (P→V 28.814 MB, V→P 2.447 MB); setup excluded from rho and response. Run `p6-quick-realpcg-2026-07-15-1d63923.json`. Default-flip criteria are proposed, not enacted. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -62,6 +63,62 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-15 (real-sVOLE fase-B hardening closed: parity candidate,
+  default unchanged)**: checkpoint `1d63923` replaces the shared-seed setup
+  cost model with independent `ProverSetup` and `VerifierSetup` machines and
+  an explicit canonical wire format (`kind:u8 || length:u64_le || payload`).
+  The channel is secret-agnostic; each role derives challenges from its own
+  copy of the complete framed transcript.  Ristretto base OT feeds checked
+  IKNP and COPEe, the verifier alone samples `Delta`, and neither `Delta`, its
+  bit decomposition nor either role seed is a message field.  The direct
+  base-sVOLE sacrifice and the transcript-bound **WYKW batched
+  single-point-sVOLE consistency check** (Wolverine §5.1, Figure 7 steps
+  4--6, optimization 3) both fail closed.  No proof-path, proof-transcript,
+  challenge-order, response-byte, correlation allocation/digest/counter,
+  CUDA, provider or default-backend change landed.
+
+  Mandatory adversarial and channel tests pass: a tampered non-punctured GGM
+  leaf, corrupted GGM correction and cheating equality response are each
+  rejected; the captured channel reparses to the exact directional counters
+  and contains neither the verifier seed nor serialized `Delta`.  Full
+  `cargo test --workspace` passes (including 9 `volta-pcg` tests).  The clean
+  honest record is
+  `benchmarks/results/p6-quick-realpcg-2026-07-15-1d63923.json`, SHA-256
+  `f048949b3f813009ec990550528d65ee90f2a674100c87535e5ab0c1acb67371`:
+  `accepted:true`, `chunked_accepted:true`, flat ratio `1.001764`, mock
+  prepass counters identical, allocation digests equal and channel
+  transcripts equal.  It records `git_dirty:false` both before the benchmark
+  and before serialization.
+
+  The quick report performs two independent setup instances (the measured
+  response and the no-PCS flat-cost curve), so its append-only totals are
+  **44.966353 s** and **62,522,868 B**.  Per setup instance this is
+  **22.483177 s**: base OT 0.025174 s, OT extension 0.964754 s, GGM
+  16.125939 s, LPN 0.387947 s and malicious checks 4.978960 s.  Serialized
+  setup traffic per instance is **31,261,434 B**: prover→verifier
+  28,814,084 B and verifier→prover 2,447,350 B; by category, base OT
+  16,411 B, OT extension 31,150,315 B, GGM corrections 91,884 B and checks
+  2,824 B.  The earlier 4.408 s CPU cost-model number is reported only as the
+  requested informative reference; genuine execution is slower and this is
+  not a gate.  Setup wall remains a separate report line and is absent from
+  rho; setup traffic remains `pcg_setup_comm_bytes` and is absent from the
+  84,574,504 B response download.  `pcg_production_ready:false` remains set.
+
+  **PROPOSED mock→real default-flip criteria (not enacted)**, for a separate
+  user decision: (1) an independent cryptographic review reproduces the
+  base-OT/IKNP/COPEe and WYKW equations, transcript schedule, message parser
+  and the pinned 140.646864/149.477334-bit LPN estimates; (2) production
+  entropy/transport plumbing supplies fresh independent role seeds, preserves
+  verifier-only `Delta`, authenticates session/channel identity and proves
+  correlation non-reuse across reconnect/retry; (3) a clean full
+  T=100+50/Q=200 real-backend run passes golden output, proof verification,
+  exact counter/allocation/channel digests and the same malicious suite; (4)
+  the product owner explicitly accepts the measured per-verifier setup wall,
+  31.26 MB setup traffic and lifecycle/storage policy; and (5) a new ledger
+  decision and checkpoint flips the default while retaining mock as an
+  explicit test backend.  Until all five are recorded, real remains opt-in
+  and this closure authorizes no default flip.
 
 - **2026-07-15 (real-sVOLE fase-B LPN preregistration amended before the
   production run)**: the implementation boundary, transcript/check design,

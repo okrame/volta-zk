@@ -21,8 +21,10 @@
 //! default to one warmup plus three measured repetitions; override with
 //! `--warmup-repetitions N --repetitions N`.
 
+use rand::{rngs::OsRng, RngCore};
 use serde::Serialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
 use std::time::Instant;
 use volta_accel::{
     Backend, BackendKind, BackendStats, DeviceBuffer, DeviceSlice, DeviceTimingMode, Operation,
@@ -39,7 +41,8 @@ use volta_gpt2::{
 };
 use volta_mac::{zero_batch_exchange, CorrelationStream, Transcript, VerifierCtx};
 use volta_pcg::{
-    expand_phase_b, PhaseBTimings, ProverPcgPool, SetupCommBreakdown, VerifierPcgPool,
+    expand_phase_b_production, PhaseBTimings, ProductionSetupAudit, ProverPcgPool,
+    ResponseAuthorizationStore, SessionBinding, SetupCommBreakdown, VerifierPcgPool,
 };
 use volta_pcs::{
     commit, commit_resident_from_device, commit_with_backend, free_resident_matrix,
@@ -87,6 +90,9 @@ const C1_TRANSCRIPT_BYTES: u64 = C1_BASELINE_TRANSCRIPT_BYTES - C1_SAVED_BYTES;
 const C1_AUTH_CORRECTION_BYTES: u64 = C1_BASELINE_AUTH_CORRECTION_BYTES - C1_SAVED_BYTES;
 const C1_PACKED_RESPONSE_BYTES: u64 = C1_BASELINE_PACKED_RESPONSE_BYTES - C1_SAVED_BYTES;
 const C1_SUB_CORRS: u64 = C1_BASELINE_SUB_CORRS - C1_IDENTITY_SEAM_ALIASES;
+const PHASE_B_SETUP_BYTES: u64 = 31_261_434;
+const PHASE_B_SETUP_PROVER_TO_VERIFIER_BYTES: u64 = 28_814_084;
+const PHASE_B_SETUP_VERIFIER_TO_PROVER_BYTES: u64 = 2_447_350;
 // Phase 0a may change this only after its >=10% instrumentation-tax decision
 // is appended to the ledger. Until then, counter-only full runs are
 // diagnostic and cannot become an official verdict.
@@ -495,6 +501,16 @@ struct Report {
     generated_tokens: Vec<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     c1_identity_seam_reuse: Option<C1IdentitySeamReuse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    flip_readiness_criterion_2_runtime_pass: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    flip_readiness_criterion_3_pass: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    flip_readiness_external_review_pending: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    flip_readiness_cost_acceptance_pending: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    flip_readiness_default_flip_pending: Option<bool>,
     // P7b gates are emitted only by the resident schema. Quick runs retain
     // observations but deliberately do not emit pass/fail verdicts.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -654,6 +670,48 @@ struct Report {
     pcg_production_ready: bool,
     pcg_setup_comm_bytes: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_setup_instances: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_setup_comm_bytes_per_instance: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_setup_comm_prover_to_verifier_bytes_per_instance: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_setup_comm_verifier_to_prover_bytes_per_instance: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_real_phase_b_total_s_per_instance: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_real_phase_b_base_ot_s_per_instance: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_real_phase_b_ot_extension_s_per_instance: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_real_phase_b_ggm_pprf_s_per_instance: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_real_phase_b_lpn_expand_s_per_instance: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_real_phase_b_consistency_check_s_per_instance: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_production_entropy_source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_independent_role_entropy_samples: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_session_channel_identity_bound: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_response_authorization_burned_before_setup: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_burn_on_success_or_abort: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_reconnect_retry_resume_allowed: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_session_binding_digests_unique: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_role_seed_commitments_distinct: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_setup_wire_count_invariant_pass: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_mock_prepass_channel_ledger_digest_match: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_mock_prepass_allocation_digest_match: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pcg_base_vole: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pcg_real_phase_a_total_s: Option<f64>,
@@ -764,12 +822,14 @@ fn ledger_delta(
     out
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct Args {
     quick: bool,
     c1_record: bool,
+    flip_readiness_record: bool,
     pcs_q: Option<usize>,
     pcg_backend: PcgBackendArg,
+    pcg_authorization_store: Option<PathBuf>,
     accelerator: AcceleratorArg,
     resident_timing: ResidentTimingArg,
     repetitions: Option<usize>,
@@ -832,7 +892,8 @@ impl PcgBackendArg {
 
 fn usage() -> ! {
     eprintln!(
-        "usage: p6_report [--quick|--c1-record] [--pcs-q Q] [--pcg-backend mock|real] \
+        "usage: p6_report [--quick|--c1-record|--flip-readiness-record] [--pcs-q Q] \
+         [--pcg-backend mock|real] [--pcg-authorization-store PATH] \
          [--accelerator cpu|cuda-hybrid|cuda-resident] [--repetitions N] \
          [--warmup-repetitions N] \
          [--resident-timing deferred-events|wall-only-counters]"
@@ -844,8 +905,10 @@ fn parse_args() -> Args {
     let mut out = Args {
         quick: false,
         c1_record: false,
+        flip_readiness_record: false,
         pcs_q: None,
         pcg_backend: PcgBackendArg::Mock,
+        pcg_authorization_store: None,
         accelerator: AcceleratorArg::Cpu,
         resident_timing: ResidentTimingArg::DeferredEvents,
         repetitions: None,
@@ -857,6 +920,8 @@ fn parse_args() -> Args {
             out.quick = true;
         } else if a == "--c1-record" {
             out.c1_record = true;
+        } else if a == "--flip-readiness-record" {
+            out.flip_readiness_record = true;
         } else if a == "--pcs-q" {
             let Some(q) = args.next() else { usage() };
             out.pcs_q = Some(q.parse().unwrap_or_else(|_| usage()));
@@ -867,6 +932,11 @@ fn parse_args() -> Args {
             out.pcg_backend = parse_pcg_backend(&b);
         } else if let Some(b) = a.strip_prefix("--pcg-backend=") {
             out.pcg_backend = parse_pcg_backend(b);
+        } else if a == "--pcg-authorization-store" {
+            let Some(path) = args.next() else { usage() };
+            out.pcg_authorization_store = Some(PathBuf::from(path));
+        } else if let Some(path) = a.strip_prefix("--pcg-authorization-store=") {
+            out.pcg_authorization_store = Some(PathBuf::from(path));
         } else if a == "--accelerator" {
             let Some(b) = args.next() else { usage() };
             out.accelerator = parse_accelerator(&b);
@@ -990,6 +1060,29 @@ struct SessionResult {
     accelerator_stats: Option<BackendStats>,
 }
 
+fn digest_u64_map(domain: &[u8], values: &BTreeMap<String, u64>) -> String {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(domain);
+    for (label, value) in values {
+        hasher.update(&(label.len() as u64).to_le_bytes());
+        hasher.update(label.as_bytes());
+        hasher.update(&value.to_le_bytes());
+    }
+    hasher.finalize().to_hex().to_string()
+}
+
+fn logical_allocation_digest(session: &SessionResult) -> String {
+    let mut values = BTreeMap::new();
+    values.insert("protocol/sub".into(), session.sub_corrs);
+    values.insert("protocol/full".into(), session.full_corrs);
+    values.insert("verifier/sub".into(), session.verifier_protocol_sub_corrs);
+    values.insert("verifier/full".into(), session.verifier_protocol_full_corrs);
+    values.insert("pool/sub".into(), session.pcg_pool_sub_corrs);
+    values.insert("pool/full".into(), session.pcg_pool_full_corrs);
+    values.insert("identity-seam-aliases".into(), session.identity_seam_alias_values);
+    digest_u64_map(b"volta-pcg/logical-allocation-schedule/v1", &values)
+}
+
 /// `E = F_p^2`.  The scalar-power implementation theorems bound a batch of
 /// `T` claims by `(T+offset)/|E|`; report the corresponding conservative
 /// `-log2(error)` rather than quoting the stronger vector-RLC constant.
@@ -1086,6 +1179,22 @@ struct PcgGateStats {
     channel_transcripts_match: Option<bool>,
     mock_prepass_counters_match: Option<bool>,
     allocation_hash_match: Option<bool>,
+    setup_instances: usize,
+    per_setup_comm: Option<SetupCommBreakdown>,
+    per_setup_timings: Option<PhaseBTimings>,
+    production_entropy_source: Option<String>,
+    independent_role_entropy_samples: bool,
+    session_channel_identity_bound: bool,
+    response_authorization_burned_before_setup: bool,
+    burn_on_success_or_abort: bool,
+    reconnect_retry_resume_allowed: bool,
+    session_binding_digests: BTreeSet<String>,
+    prover_role_seed_commitments: BTreeSet<String>,
+    verifier_role_seed_commitments: BTreeSet<String>,
+    role_seed_commitments_distinct: bool,
+    setup_wire_count_invariant_pass: bool,
+    mock_prepass_channel_ledger_digest_match: Option<bool>,
+    mock_prepass_allocation_digest_match: Option<bool>,
 }
 
 fn session_delta() -> Fp2 {
@@ -1102,20 +1211,37 @@ fn pcs_mask_seed(session_seed: u8, role: u8, instance: u8) -> [u8; 32] {
     mask_seed
 }
 
+fn os_random_identity(label: &str) -> [u8; 32] {
+    let mut value = [0u8; 32];
+    OsRng
+        .try_fill_bytes(&mut value)
+        .unwrap_or_else(|error| panic!("OS entropy unavailable for {label}: {error}"));
+    value
+}
+
 fn real_session_backend(
-    seed: u8,
+    authorization_store: &ResponseAuthorizationStore,
     sub_corrs: u64,
     full_corrs: u64,
-) -> (SessionPcgBackend, PhaseBTimings, SetupCommBreakdown) {
+) -> (SessionPcgBackend, PhaseBTimings, SetupCommBreakdown, ProductionSetupAudit, bool) {
     let params = volta_pcg::PhaseAParams::for_counts(sub_corrs as usize, full_corrs as usize);
-    let expansion = expand_phase_b(
-        [seed; 32],
-        [seed ^ 0xA5; 32],
+    let binding = SessionBinding::new(
+        os_random_identity("PCG session identity"),
+        os_random_identity("authenticated PCG channel identity"),
+        os_random_identity("response-authorization nonce"),
+    )
+    .expect("nonzero OS-generated phase-B identities");
+    let production = expand_phase_b_production(
+        authorization_store,
+        binding,
         sub_corrs as usize,
         full_corrs as usize,
         params,
     )
-    .expect("real two-party phase-B PCG setup");
+    .expect("production-provisioned real two-party phase-B PCG setup");
+    let channel_transcripts_match = production.expansion.setup.setup_binding_digest
+        == production.expansion.setup.channel.transcript_digest;
+    let expansion = production.expansion;
     let setup_comm = expansion.setup.comm.clone();
     (
         SessionPcgBackend::Real {
@@ -1125,6 +1251,8 @@ fn real_session_backend(
         },
         expansion.timings,
         setup_comm,
+        production.production,
+        channel_transcripts_match,
     )
 }
 
@@ -1144,6 +1272,24 @@ fn add_timings(dst: &mut Option<PhaseBTimings>, src: PhaseBTimings) {
 }
 
 fn add_setup_comm(dst: &mut PcgGateStats, src: &SetupCommBreakdown) {
+    dst.setup_instances += 1;
+    if let Some(reference) = &dst.per_setup_comm {
+        assert_eq!(src.total_bytes, reference.total_bytes);
+        assert_eq!(src.prover_to_verifier_bytes, reference.prover_to_verifier_bytes);
+        assert_eq!(src.verifier_to_prover_bytes, reference.verifier_to_prover_bytes);
+        assert_eq!(src.base_ot_bytes, reference.base_ot_bytes);
+        assert_eq!(src.ot_extension_bytes, reference.ot_extension_bytes);
+        assert_eq!(src.ggm_bytes, reference.ggm_bytes);
+        assert_eq!(src.consistency_bytes, reference.consistency_bytes);
+    } else {
+        dst.per_setup_comm = Some(src.clone());
+    }
+    let wire_count_invariant = src.total_bytes == PHASE_B_SETUP_BYTES
+        && src.prover_to_verifier_bytes == PHASE_B_SETUP_PROVER_TO_VERIFIER_BYTES
+        && src.verifier_to_prover_bytes == PHASE_B_SETUP_VERIFIER_TO_PROVER_BYTES;
+    dst.setup_wire_count_invariant_pass =
+        (dst.setup_instances == 1 || dst.setup_wire_count_invariant_pass) && wire_count_invariant;
+    assert!(wire_count_invariant, "phase-B serialized channel byte count changed");
     dst.setup_comm_bytes += src.total_bytes;
     dst.setup_comm_prover_to_verifier_bytes += src.prover_to_verifier_bytes;
     dst.setup_comm_verifier_to_prover_bytes += src.verifier_to_prover_bytes;
@@ -1151,7 +1297,45 @@ fn add_setup_comm(dst: &mut PcgGateStats, src: &SetupCommBreakdown) {
     dst.setup_comm_ot_extension_bytes += src.ot_extension_bytes;
     dst.setup_comm_ggm_bytes += src.ggm_bytes;
     dst.setup_comm_consistency_bytes += src.consistency_bytes;
-    dst.channel_transcripts_match = Some(true);
+}
+
+fn add_production_setup(
+    dst: &mut PcgGateStats,
+    timing: PhaseBTimings,
+    audit: ProductionSetupAudit,
+    channel_transcripts_match: bool,
+) {
+    if dst.per_setup_timings.is_none() {
+        dst.per_setup_timings = Some(timing);
+    }
+    add_timings(&mut dst.timings, timing);
+    if let Some(source) = &dst.production_entropy_source {
+        assert_eq!(source, &audit.entropy_source);
+    } else {
+        dst.production_entropy_source = Some(audit.entropy_source.clone());
+    }
+    dst.independent_role_entropy_samples = (dst.setup_instances == 1
+        || dst.independent_role_entropy_samples)
+        && audit.independent_role_entropy_samples;
+    dst.session_channel_identity_bound = (dst.setup_instances == 1
+        || dst.session_channel_identity_bound)
+        && audit.session_channel_identity_bound;
+    dst.response_authorization_burned_before_setup = (dst.setup_instances == 1
+        || dst.response_authorization_burned_before_setup)
+        && audit.response_authorization_burned_before_setup;
+    dst.burn_on_success_or_abort = (dst.setup_instances == 1 || dst.burn_on_success_or_abort)
+        && audit.burn_on_success_or_abort;
+    dst.reconnect_retry_resume_allowed = (dst.setup_instances != 1
+        && dst.reconnect_retry_resume_allowed)
+        || audit.reconnect_retry_resume_allowed;
+    dst.role_seed_commitments_distinct = (dst.setup_instances == 1
+        || dst.role_seed_commitments_distinct)
+        && audit.role_seed_commitments_distinct;
+    dst.session_binding_digests.insert(audit.session_binding_digest);
+    dst.prover_role_seed_commitments.insert(audit.prover_role_seed_commitment);
+    dst.verifier_role_seed_commitments.insert(audit.verifier_role_seed_commitment);
+    dst.channel_transcripts_match =
+        Some(dst.channel_transcripts_match.unwrap_or(true) && channel_transcripts_match);
 }
 
 struct ResidentSessionInput<'a, 'source> {
@@ -1770,6 +1954,10 @@ fn main() {
     // merely happen to be clean when the JSON verdict is assembled.
     let git_dirty_before_benchmark = git_worktree_dirty();
     let quick = args.quick;
+    if args.c1_record && args.flip_readiness_record {
+        eprintln!("p6_report: --c1-record and --flip-readiness-record are mutually exclusive");
+        std::process::exit(2);
+    }
     if args.c1_record
         && (quick
             || args.accelerator != AcceleratorArg::Cpu
@@ -1782,8 +1970,24 @@ fn main() {
         eprintln!("p6_report: --c1-record requires a clean tree before benchmark setup");
         std::process::exit(2);
     }
-    let repetitions = args.repetitions.unwrap_or(if quick { 1 } else { 3 });
-    let warmup_repetitions = args.warmup_repetitions.unwrap_or(if quick { 0 } else { 1 });
+    if args.flip_readiness_record
+        && (quick
+            || args.accelerator != AcceleratorArg::Cpu
+            || args.pcg_backend != PcgBackendArg::Real)
+    {
+        eprintln!(
+            "p6_report: --flip-readiness-record requires full CPU geometry and --pcg-backend real"
+        );
+        std::process::exit(2);
+    }
+    if args.flip_readiness_record && git_dirty_before_benchmark {
+        eprintln!("p6_report: --flip-readiness-record requires a clean tree before setup");
+        std::process::exit(2);
+    }
+    let repetitions =
+        args.repetitions.unwrap_or(if quick || args.flip_readiness_record { 1 } else { 3 });
+    let warmup_repetitions =
+        args.warmup_repetitions.unwrap_or(if quick || args.flip_readiness_record { 0 } else { 1 });
     if repetitions == 0 {
         eprintln!("p6_report: --repetitions must be at least 1");
         std::process::exit(2);
@@ -1802,6 +2006,24 @@ fn main() {
         eprintln!("p6_report: real-PCG and CUDA integration gates must be measured separately");
         std::process::exit(2);
     }
+    let authorization_store_path = args
+        .pcg_authorization_store
+        .clone()
+        .or_else(|| std::env::var_os("VOLTA_PCG_AUTHORIZATION_STORE").map(PathBuf::from));
+    let pcg_authorization_store = if args.pcg_backend == PcgBackendArg::Real {
+        let Some(path) = authorization_store_path else {
+            eprintln!(
+                "p6_report: real PCG requires --pcg-authorization-store PATH or VOLTA_PCG_AUTHORIZATION_STORE"
+            );
+            std::process::exit(2);
+        };
+        Some(ResponseAuthorizationStore::new(path).unwrap_or_else(|error| {
+            eprintln!("p6_report: response-authorization capability preflight failed: {error}");
+            std::process::exit(2);
+        }))
+    } else {
+        None
+    };
     let mut accelerator = match args.accelerator {
         AcceleratorArg::Cpu => None,
         AcceleratorArg::CudaHybrid => Some(Backend::cuda_hybrid().unwrap_or_else(|e| {
@@ -1815,7 +2037,7 @@ fn main() {
             }),
         ),
     };
-    if args.pcg_backend == PcgBackendArg::Real && !quick {
+    if args.pcg_backend == PcgBackendArg::Real && !quick && !args.flip_readiness_record {
         eprintln!(
             "p6_report: --pcg-backend real is a P7 correctness gate and is currently quick-only"
         );
@@ -1839,8 +2061,10 @@ fn main() {
             P4_LAYER.n_queries
         );
     }
-    if args.c1_record && layer_params.n_queries != P4_LAYER.n_queries {
-        eprintln!("p6_report: --c1-record freezes PCS Q=200");
+    if (args.c1_record || args.flip_readiness_record)
+        && layer_params.n_queries != P4_LAYER.n_queries
+    {
+        eprintln!("p6_report: record modes freeze PCS Q=200");
         std::process::exit(2);
     }
 
@@ -2006,10 +2230,14 @@ fn main() {
             SessionPcgBackend::Mock,
             accelerator.as_mut(),
         );
-        let (backend, timings, setup_comm) =
-            real_session_backend(0x21, pre.pcg_pool_sub_corrs, pre.pcg_pool_full_corrs);
+        let (backend, timings, setup_comm, production, channel_transcripts_match) =
+            real_session_backend(
+                pcg_authorization_store.as_ref().expect("real-PCG authorization store"),
+                pre.pcg_pool_sub_corrs,
+                pre.pcg_pool_full_corrs,
+            );
         add_setup_comm(&mut pcg_gate, &setup_comm);
-        add_timings(&mut pcg_gate.timings, timings);
+        add_production_setup(&mut pcg_gate, timings, production, channel_transcripts_match);
         let real = run_session(
             &model,
             &wit0,
@@ -2026,13 +2254,31 @@ fn main() {
             && pre.full_corrs == real.full_corrs
             && pre.pcg_pool_sub_corrs == real.pcg_pool_sub_corrs
             && pre.pcg_pool_full_corrs == real.pcg_pool_full_corrs;
+        let channel_ledger_digest_match =
+            digest_u64_map(b"volta-pcg/mock-real-channel-ledger/v1", &pre.transcript_by_label)
+                == digest_u64_map(
+                    b"volta-pcg/mock-real-channel-ledger/v1",
+                    &real.transcript_by_label,
+                );
+        let allocation_digest_match =
+            logical_allocation_digest(&pre) == logical_allocation_digest(&real);
         pcg_gate.mock_prepass_counters_match =
             Some(pcg_gate.mock_prepass_counters_match.unwrap_or(true) && counters_match);
+        pcg_gate.mock_prepass_channel_ledger_digest_match = Some(
+            pcg_gate.mock_prepass_channel_ledger_digest_match.unwrap_or(true)
+                && channel_ledger_digest_match,
+        );
+        pcg_gate.mock_prepass_allocation_digest_match = Some(
+            pcg_gate.mock_prepass_allocation_digest_match.unwrap_or(true)
+                && allocation_digest_match,
+        );
         pcg_gate.allocation_hash_match = Some(
             pcg_gate.allocation_hash_match.unwrap_or(true)
                 && real.pcg_allocation_hash_match.unwrap_or(false),
         );
         assert!(counters_match, "real-PCG full-response counters must match mock prepass");
+        assert!(channel_ledger_digest_match, "real-PCG channel ledger must match mock prepass");
+        assert!(allocation_digest_match, "real-PCG allocation digest must match mock prepass");
         session_results.push(real);
     } else {
         for warmup in 0..warmup_repetitions {
@@ -2359,10 +2605,14 @@ fn main() {
             SessionPcgBackend::Mock,
             accelerator.as_mut(),
         );
-        let (backend, timings, setup_comm) =
-            real_session_backend(0x22, pre.pcg_pool_sub_corrs, pre.pcg_pool_full_corrs);
+        let (backend, timings, setup_comm, production, channel_transcripts_match) =
+            real_session_backend(
+                pcg_authorization_store.as_ref().expect("real-PCG authorization store"),
+                pre.pcg_pool_sub_corrs,
+                pre.pcg_pool_full_corrs,
+            );
         add_setup_comm(&mut pcg_gate, &setup_comm);
-        add_timings(&mut pcg_gate.timings, timings);
+        add_production_setup(&mut pcg_gate, timings, production, channel_transcripts_match);
         let real = run_session(
             &model,
             &wit0,
@@ -2379,13 +2629,37 @@ fn main() {
             && pre.full_corrs == real.full_corrs
             && pre.pcg_pool_sub_corrs == real.pcg_pool_sub_corrs
             && pre.pcg_pool_full_corrs == real.pcg_pool_full_corrs;
+        let channel_ledger_digest_match =
+            digest_u64_map(b"volta-pcg/mock-real-channel-ledger/v1", &pre.transcript_by_label)
+                == digest_u64_map(
+                    b"volta-pcg/mock-real-channel-ledger/v1",
+                    &real.transcript_by_label,
+                );
+        let allocation_digest_match =
+            logical_allocation_digest(&pre) == logical_allocation_digest(&real);
         pcg_gate.mock_prepass_counters_match =
             Some(pcg_gate.mock_prepass_counters_match.unwrap_or(true) && counters_match);
+        pcg_gate.mock_prepass_channel_ledger_digest_match = Some(
+            pcg_gate.mock_prepass_channel_ledger_digest_match.unwrap_or(true)
+                && channel_ledger_digest_match,
+        );
+        pcg_gate.mock_prepass_allocation_digest_match = Some(
+            pcg_gate.mock_prepass_allocation_digest_match.unwrap_or(true)
+                && allocation_digest_match,
+        );
         pcg_gate.allocation_hash_match = Some(
             pcg_gate.allocation_hash_match.unwrap_or(true)
                 && real.pcg_allocation_hash_match.unwrap_or(false),
         );
         assert!(counters_match, "real-PCG chunk-curve counters must match mock prepass");
+        assert!(
+            channel_ledger_digest_match,
+            "real-PCG chunk channel ledger must match mock prepass"
+        );
+        assert!(
+            allocation_digest_match,
+            "real-PCG chunk allocation digest must match mock prepass"
+        );
         real
     } else {
         if args.accelerator == AcceleratorArg::CudaResident {
@@ -2686,15 +2960,64 @@ fn main() {
             second_phase_b_shard_required: false,
         }
     });
+    let packed_response_bytes = rec
+        .comm_bytes
+        .checked_add(rec.public_logits_packed_bytes)
+        .expect("packed response accounting overflow");
+    let flip_readiness_criterion_2_runtime_pass = args.flip_readiness_record.then(|| {
+        pcg_gate.setup_instances == 2
+            && pcg_gate.independent_role_entropy_samples
+            && pcg_gate.session_channel_identity_bound
+            && pcg_gate.response_authorization_burned_before_setup
+            && pcg_gate.burn_on_success_or_abort
+            && !pcg_gate.reconnect_retry_resume_allowed
+            && pcg_gate.session_binding_digests.len() == pcg_gate.setup_instances
+            && pcg_gate.prover_role_seed_commitments.len() == pcg_gate.setup_instances
+            && pcg_gate.verifier_role_seed_commitments.len() == pcg_gate.setup_instances
+            && pcg_gate.role_seed_commitments_distinct
+            && pcg_gate.channel_transcripts_match == Some(true)
+    });
+    let flip_readiness_criterion_3_pass = args.flip_readiness_record.then(|| {
+        !git_dirty
+            && t0 == 100
+            && n_gen == 50
+            && layer_params.n_queries == 200
+            && golden_checked
+            && golden_match == Some(true)
+            && accepted
+            && chk.accepted
+            && rec.pcs_rows.len() == 13
+            && rec.pcs_rows.iter().all(|row| row.verified)
+            && rec.n_weight_claims == 96
+            && rec.n_embed_claims == 6
+            && rec.sub_corrs == C1_SUB_CORRS
+            && rec.verifier_protocol_sub_corrs == C1_SUB_CORRS
+            && rec.full_corrs == 176_880
+            && rec.verifier_protocol_full_corrs == 176_880
+            && rec.pcg_allocation_hash_match == Some(true)
+            && pcg_gate.mock_prepass_counters_match == Some(true)
+            && pcg_gate.mock_prepass_channel_ledger_digest_match == Some(true)
+            && pcg_gate.mock_prepass_allocation_digest_match == Some(true)
+            && pcg_gate.setup_wire_count_invariant_pass
+            && packed_response_bytes == C1_PACKED_RESPONSE_BYTES
+    });
+    if args.flip_readiness_record {
+        assert_eq!(flip_readiness_criterion_2_runtime_pass, Some(true));
+        assert_eq!(flip_readiness_criterion_3_pass, Some(true));
+    }
     let report = Report {
-        report_schema_version: if args.c1_record {
+        report_schema_version: if args.flip_readiness_record {
+            4
+        } else if args.c1_record {
             3
         } else if args.accelerator == AcceleratorArg::Cpu {
             2
         } else {
             6
         },
-        milestone: if args.c1_record {
+        milestone: if args.flip_readiness_record {
+            "FLIP-READINESS".into()
+        } else if args.c1_record {
             "C1".into()
         } else {
             match (args.accelerator, quick) {
@@ -2754,6 +3077,11 @@ fn main() {
         golden_decode_match: golden_match,
         generated_tokens: gen.clone(),
         c1_identity_seam_reuse,
+        flip_readiness_criterion_2_runtime_pass,
+        flip_readiness_criterion_3_pass,
+        flip_readiness_external_review_pending: args.flip_readiness_record.then_some(true),
+        flip_readiness_cost_acceptance_pending: args.flip_readiness_record.then_some(true),
+        flip_readiness_default_flip_pending: args.flip_readiness_record.then_some(true),
         p7b_gate_evaluated,
         p7b_gate_profile: is_resident.then_some(P7B_GATE_PROFILE.into()),
         p7b_machine_eligible: is_resident.then_some(p7b_machine_is_eligible),
@@ -2873,6 +3201,61 @@ fn main() {
         pcg_backend: args.pcg_backend.as_str().into(),
         pcg_production_ready: false,
         pcg_setup_comm_bytes: pcg_gate.setup_comm_bytes,
+        pcg_setup_instances: (args.pcg_backend == PcgBackendArg::Real)
+            .then_some(pcg_gate.setup_instances),
+        pcg_setup_comm_bytes_per_instance: pcg_gate
+            .per_setup_comm
+            .as_ref()
+            .map(|comm| comm.total_bytes),
+        pcg_setup_comm_prover_to_verifier_bytes_per_instance: pcg_gate
+            .per_setup_comm
+            .as_ref()
+            .map(|comm| comm.prover_to_verifier_bytes),
+        pcg_setup_comm_verifier_to_prover_bytes_per_instance: pcg_gate
+            .per_setup_comm
+            .as_ref()
+            .map(|comm| comm.verifier_to_prover_bytes),
+        pcg_real_phase_b_total_s_per_instance: pcg_gate
+            .per_setup_timings
+            .map(|timing| timing.t_total_setup_and_expansion_s),
+        pcg_real_phase_b_base_ot_s_per_instance: pcg_gate
+            .per_setup_timings
+            .map(|timing| timing.t_base_ot_s),
+        pcg_real_phase_b_ot_extension_s_per_instance: pcg_gate
+            .per_setup_timings
+            .map(|timing| timing.t_ot_extension_s),
+        pcg_real_phase_b_ggm_pprf_s_per_instance: pcg_gate
+            .per_setup_timings
+            .map(|timing| timing.t_ggm_pprf_s),
+        pcg_real_phase_b_lpn_expand_s_per_instance: pcg_gate
+            .per_setup_timings
+            .map(|timing| timing.t_lpn_expand_s),
+        pcg_real_phase_b_consistency_check_s_per_instance: pcg_gate
+            .per_setup_timings
+            .map(|timing| timing.t_consistency_check_s),
+        pcg_production_entropy_source: pcg_gate.production_entropy_source.clone(),
+        pcg_independent_role_entropy_samples: (args.pcg_backend == PcgBackendArg::Real)
+            .then_some(pcg_gate.independent_role_entropy_samples),
+        pcg_session_channel_identity_bound: (args.pcg_backend == PcgBackendArg::Real)
+            .then_some(pcg_gate.session_channel_identity_bound),
+        pcg_response_authorization_burned_before_setup: (args.pcg_backend == PcgBackendArg::Real)
+            .then_some(pcg_gate.response_authorization_burned_before_setup),
+        pcg_burn_on_success_or_abort: (args.pcg_backend == PcgBackendArg::Real)
+            .then_some(pcg_gate.burn_on_success_or_abort),
+        pcg_reconnect_retry_resume_allowed: (args.pcg_backend == PcgBackendArg::Real)
+            .then_some(pcg_gate.reconnect_retry_resume_allowed),
+        pcg_session_binding_digests_unique: (args.pcg_backend == PcgBackendArg::Real)
+            .then_some(pcg_gate.session_binding_digests.len() == pcg_gate.setup_instances),
+        pcg_role_seed_commitments_distinct: (args.pcg_backend == PcgBackendArg::Real).then_some(
+            pcg_gate.role_seed_commitments_distinct
+                && pcg_gate.prover_role_seed_commitments.len() == pcg_gate.setup_instances
+                && pcg_gate.verifier_role_seed_commitments.len() == pcg_gate.setup_instances,
+        ),
+        pcg_setup_wire_count_invariant_pass: (args.pcg_backend == PcgBackendArg::Real)
+            .then_some(pcg_gate.setup_wire_count_invariant_pass),
+        pcg_mock_prepass_channel_ledger_digest_match: pcg_gate
+            .mock_prepass_channel_ledger_digest_match,
+        pcg_mock_prepass_allocation_digest_match: pcg_gate.mock_prepass_allocation_digest_match,
         pcg_base_vole: if args.pcg_backend == PcgBackendArg::Real {
             Some(
                 "COPEe from Ristretto base OT; WYKW Figure-5 sacrifice checked; no dealer/shared seed"
@@ -2911,7 +3294,9 @@ fn main() {
 
     assert!(accepted, "P6 sanity: honest response (both sessions) must verify");
     assert!(gate_flat, "P6 gate: per-token cost must stay ~flat as the cache grows");
-    let mut label = if args.c1_record {
+    let mut label = if args.flip_readiness_record {
+        "flip-readiness".to_string()
+    } else if args.c1_record {
         "c1".to_string()
     } else {
         match (args.accelerator, quick) {
@@ -2926,7 +3311,7 @@ fn main() {
     if layer_params.n_queries != P4_LAYER.n_queries {
         label.push_str(&format!("-q{}", layer_params.n_queries));
     }
-    if args.pcg_backend == PcgBackendArg::Real {
+    if args.pcg_backend == PcgBackendArg::Real && !args.flip_readiness_record {
         label.push_str("-realpcg");
     }
     if args.resident_timing == ResidentTimingArg::WallOnlyCounters {

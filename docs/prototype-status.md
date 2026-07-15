@@ -1,4 +1,4 @@
-# Prototype Status Ledger (C1 — identity-seam reuse complete)
+# Prototype Status Ledger (FLIP-READINESS in progress; default remains mock)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -9,10 +9,11 @@ Workload of record: **GPT-2 small (124M, L=12, d=768, h=12, d_ff=3072),
 prefill T=100 + 50 deferred decode tokens, causal, PCS Q=200**, on the
 designated RunPod A100 profile. P7 is closed; its CPU and rho numbers below
 are historical. P7b has a valid official PASS at `ab3a03f`, and GPU
-optimization is closed by the 2026-07-15 Stop branch. The active milestone is
-**C1 Phase 2 is complete, descoped to identity-seam `x_in` reuse only**.
-Candidate A (Packed16/fase-C) is rejected on product cost; no successor
-communication milestone is scheduled by this closure. The earlier `33e5fb4`
+optimization is closed by the 2026-07-15 Stop branch. The active package is
+**FLIP-READINESS** for the fase-B real-PCG candidate; it may satisfy proposed
+default-flip criteria (2) and (3) and prepare the cost decision for (4), but
+it does not enact criterion (5) or change the mock default. Candidate A
+(Packed16/fase-C) is rejected on product cost. The earlier `33e5fb4`
 decode-only FAIL remains an immutable rebaseline result.
 
 ## Milestones
@@ -34,6 +35,7 @@ decode-only FAIL remains an immutable rebaseline result.
 | P7b RunPod official rebaseline | **official valid FAIL: decode only; diagnosis complete** (2026-07-14) | Clean schema-6/ABI-28 T=100+50/Q=200 on exact `runpod-a100-v1`, counters-only, Rayon=8, 1+3, golden and communication invariants; prefill <=10 s, decode <=4 s, max per-repetition sync-wall/session-wall <=2%, H2D <=100 MB | `33e5fb4`: prefill **7.801 s PASS**, decode **6.794 s FAIL**, session **15.995 s**; sync-wall max **0.768% PASS** with 59,868 sync diagnostic; H2D **28.595 MB PASS**; packed response **144.821 MB PASS**; golden/accepted/flat 1.412 PASS. Separate non-gating `70f64d4` event attribution measures a **6.275 s decode-marginal kernel floor**: GEMM 4.820 s, LogUp 1.098 s, other 0.358 s. Provider-neutral kernel work is required; D2H host-call wall includes queued-kernel waits and is not an additive transfer cost. |
 | P7b RunPod matrix-fold iteration | **official valid PASS; complete** (2026-07-14) | Unchanged `runpod-a100-v1` full gate contract after the preregistered ABI-neutral kernel fix | `ab3a03f`: prefill **2.631 s PASS**, decode **2.089 s PASS**, session **5.917 s**; sync-wall max **1.821% PASS** with the unchanged 59,868 sync; H2D **28.595 MB PASS**; packed response **144.821 MB PASS**; golden/accepted/flat 1.281 PASS. Proof, operation, correlation and communication counts are exact against `33e5fb4`; no scheduler, batching or protocol change was needed. Mock-PCG remains non-production. |
 | Real-sVOLE fase-B hardening | **full parity candidate for the F_p lanes; default remains mock** (2026-07-15) | Clean P6 quick real accepts; exact counter/allocation/channel digests; mandatory malicious/channel tests reject/hold | `1d63923`: genuine two-party Ristretto OT→COPEe/IKNP→WYKW GGM/regular-LPN setup, hardened cited parameters. Per instance **22.483 s**, **31.261 MB** setup traffic (P→V 28.814 MB, V→P 2.447 MB); setup excluded from rho and response. Run `p6-quick-realpcg-2026-07-15-1d63923.json`. Default-flip criteria are proposed, not enacted. |
+| Fase-B FLIP-READINESS | **in progress; preregistered; default remains mock** (2026-07-15) | Host-only setup speed pass; production lifecycle/transport plumbing; one clean full T=100+50/Q=200 real-PCG parity record | Criteria (2) and (3) are implementation gates for this package. Criterion (4) receives decision material only. External review (1) and the user-authorized flip (5) remain open. Wire schedule/count fixed at 31,261,434 B/setup; C1 response fixed at 136,526,530 B. |
 | C1 response-communication reduction | **complete: identity-seam `x_in` reuse only** (2026-07-15) | Clean full T=100+50/Q=200 CPU record; golden, normal/chunked acceptance, PCS/closure, exact bytes/counters and replay/preflight gates | `2a3d731`: **1,036,800** canonical aliases save **8,294,400 B**; transcript **129,119,408 B**, packed response **136,526,530 B**, auth corrections **59,545,008 B**. Prover/verifier sub correlations both **7,443,126**, full both **176,880**; PCS **66,733,504 B**, 96+6 claims, Q=200 unchanged. Median prove **18.653 s** (−0.086 s vs same-machine P6 record), verify **0.522 s** (−0.045 s); flat curve **1.219 PASS**. Record `benchmarks/results/c1-2026-07-15-2a3d731.json`, full SHA `2a3d7314bba35e18229af31c99f226c93ef12416`, `git_dirty:false`. |
 | C2 Packed16 typed-lane real-PCG | **Candidate A rejected; Packed16 shelved** (2026-07-15) | Permanent costing record; implementation is not authorized | `docs/c2-packed-lane-pcg-design.md` remains the permanent record: the only sound realization costs about **1.55 GB** recurring setup traffic and **31--46 s** setup wall per session to save 32,486,400 B of response, about **47×** more bytes moved than saved. Revisit only with a cited construction on the order of tens of MB/session, or an explicit product decision that the envelope demands it. |
 
@@ -67,6 +69,62 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-15 (fase-B FLIP-READINESS preregistered before coding; no
+  default flip)**: this package is authorized to complete everything locally
+  available for the five proposed mock→real criteria: implement and test
+  criterion (2), land one clean full real-backend record for criterion (3),
+  and write the measured operational-cost material for the product-owner
+  decision in criterion (4). Criterion (1), independent cryptographic
+  review, is external and remains open. Criterion (5), the ledger decision
+  and checkpoint that actually change the default, remains an explicit user
+  decision and is out of scope. The default remains mock throughout;
+  `pcg_production_ready:false`, the explicit mock test backend, and every
+  historical verdict/reference remain unchanged.
+
+  The performance pass is host-side real-PCG setup only. Parallelize the
+  genuine GGM tree expansion and batched malicious checks with Rayon on both
+  roles. The baseline per setup is **22.483177 s**, split as base OT
+  0.025174 s, OT extension 0.964754 s, GGM 16.125939 s, regular LPN
+  0.387947 s and malicious checks 4.978960 s. No protocol equation, message
+  field, frame, ordering, transcript schedule, response/proof path, allocation
+  or challenge order may change. Serialized setup communication is frozen at
+  exactly **31,261,434 B** per setup (**28,814,084 B prover→verifier,
+  2,447,350 B verifier→prover**) and must be asserted before accepting a new
+  timing. The new phase split is informative, not a gate, and must report the
+  honest result from this 4-core aarch64 VM. BLAKE3 stays the GGM PRG unless
+  profiling specifically establishes the PRG as the dominant residual. A
+  fixed-key-AES substitution would require a separate, prior ledger amendment
+  registering a cited correlation-robust fixed-key (GKWY-style) modeling
+  assumption; this entry does not authorize such a substitution.
+
+  Criterion (2) requires fresh, independent prover and verifier role seeds
+  from the documented OS CSPRNG; explicit session and channel identities
+  bound into setup derivations/transcripts/frames; and one single-use response
+  authorization nonce consumed terminally on success **or every abort**. A
+  response request cannot reconnect, retry, resume, or start a replacement PCG
+  session. A killed session and any restarted process must not be able to
+  reuse correlations for that authorization. Capability preflight fails
+  closed if the lifecycle store cannot durably reserve/burn the nonce. Tests
+  must reject reconnect/retry and nonce reuse, prove correlation non-reuse
+  across kill/restart, and keep the existing channel-secrecy assertion green:
+  neither `Delta` nor a role seed occurs in serialized channel bytes.
+
+  Criterion (3) requires one append-only, clean-tree, full CPU record at
+  T=100+50 and PCS Q=200 with `--pcg-backend real`: frozen 50-token golden
+  decode, normal and chunked acceptance, all 13 PCS verifications, protocol
+  closure, malicious tests, and exact mock/real equality of logical counters,
+  allocation digests and channel digests. Packed response bytes must be
+  exactly the C1 reference **136,526,530 B**. The JSON name is
+  `benchmarks/results/flip-readiness-<date>-<gitsha>.json`; it must include
+  the setup wall split, exact directional setup bytes, and retain
+  `pcg_production_ready:false`. Setup wall/traffic stay separate from rho and
+  response download. Closure records evidence for criteria (2)/(3), the
+  post-parallelization numbers, and a plain-language criterion-(4) cost note
+  covering per-session setup latency, 31.26 MB setup traffic,
+  preprocessing/overlap and lifecycle/storage implications. C3/PCS levers,
+  proof/message-format changes, Packed16, GPU/provider work and Lean remain
+  out of scope.
 
 - **2026-07-15 (C1 descoped Phase 2 closed; communication reference
   re-baselined)**: the clean full CPU record is

@@ -20,10 +20,10 @@ rayon = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 blake3 = { workspace = true }
+rand = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
-rand = { workspace = true }
 
 [[bench]]
 name = "p1_mac_epilogue"

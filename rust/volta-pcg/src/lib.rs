@@ -9,10 +9,16 @@
 //! only through serialized frames and instantiate the malicious WYKW setup.
 
 mod phase_b;
+mod production;
 
 pub use phase_b::{
     expand_phase_b, ChannelAudit, PhaseBError, PhaseBExpansion, PhaseBSetupParams,
-    PhaseBSetupReport, PhaseBTimings, ProverSetup, SetupCommBreakdown, VerifierSetup,
+    PhaseBSetupReport, PhaseBTimings, ProverSetup, SessionBinding, SetupCommBreakdown,
+    VerifierSetup,
+};
+pub use production::{
+    expand_phase_b_production, AuthorizationBurn, ProductionPhaseBExpansion, ProductionSetupAudit,
+    ResponseAuthorizationStore,
 };
 
 use serde::{Deserialize, Serialize};

@@ -8,4 +8,6 @@ license.workspace = true
 volta-field = { workspace = true }
 blake3 = { workspace = true }
 curve25519-dalek = { workspace = true }
+rand = { workspace = true }
+rayon = { workspace = true }
 serde = { workspace = true }

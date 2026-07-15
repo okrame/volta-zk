@@ -24,6 +24,7 @@ use curve25519_dalek::{
     ristretto::{CompressedRistretto, RistrettoPoint},
     scalar::Scalar,
 };
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::fmt;
@@ -39,7 +40,7 @@ const IKNP_CHECK_REPS: usize = 128;
 pub struct PhaseBError(String);
 
 impl PhaseBError {
-    fn new(message: impl Into<String>) -> Self {
+    pub(crate) fn new(message: impl Into<String>) -> Self {
         Self(message.into())
     }
 }
@@ -65,6 +66,53 @@ pub struct PhaseBSetupParams {
     pub lpn_parameter_source: String,
     pub parity_candidate: bool,
     pub production_ready: bool,
+}
+
+/// Public identity material bound into every phase-B KDF and both role
+/// transcripts without becoming a setup message field. `channel_id` is the
+/// caller's authenticated transport identity (for example, a channel-exporter
+/// digest), not a peer-selected display name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SessionBinding {
+    pub session_id: [u8; 32],
+    pub channel_id: [u8; 32],
+    pub response_authorization_nonce: [u8; 32],
+}
+
+impl SessionBinding {
+    pub fn new(
+        session_id: [u8; 32],
+        channel_id: [u8; 32],
+        response_authorization_nonce: [u8; 32],
+    ) -> Result<Self, PhaseBError> {
+        if session_id == [0; 32] || channel_id == [0; 32] || response_authorization_nonce == [0; 32]
+        {
+            return Err(PhaseBError::new(
+                "session, channel, and response-authorization identities must be nonzero",
+            ));
+        }
+        Ok(Self { session_id, channel_id, response_authorization_nonce })
+    }
+
+    fn deterministic(prover_seed: [u8; 32], verifier_seed: [u8; 32]) -> Self {
+        fn component(prover_seed: [u8; 32], verifier_seed: [u8; 32], label: &[u8]) -> [u8; 32] {
+            let mut h = blake3::Hasher::new();
+            h.update(b"volta-pcg/phase-b/deterministic-binding/v1");
+            h.update(label);
+            h.update(&prover_seed);
+            h.update(&verifier_seed);
+            *h.finalize().as_bytes()
+        }
+        Self {
+            session_id: component(prover_seed, verifier_seed, b"session"),
+            channel_id: component(prover_seed, verifier_seed, b"channel"),
+            response_authorization_nonce: component(prover_seed, verifier_seed, b"authorization"),
+        }
+    }
+
+    pub fn digest_hex(&self) -> String {
+        hex32(binding_digest(self))
+    }
 }
 
 impl PhaseBSetupParams {
@@ -184,10 +232,8 @@ struct RoleTranscript {
 }
 
 impl RoleTranscript {
-    fn new() -> Self {
-        let mut hasher = blake3::Hasher::new();
-        hasher.update(b"volta-pcg/phase-b/channel/v1");
-        Self { hasher }
+    fn new(binding: &SessionBinding) -> Self {
+        Self { hasher: bound_channel_hasher(binding) }
     }
 
     fn observe(&mut self, direction: Direction, frame: &[u8]) {
@@ -255,9 +301,8 @@ struct SerializedChannel {
 }
 
 impl SerializedChannel {
-    fn new(capture: bool) -> Self {
-        let mut audit_hasher = blake3::Hasher::new();
-        audit_hasher.update(b"volta-pcg/phase-b/channel/v1");
+    fn new(capture: bool, binding: &SessionBinding) -> Self {
+        let audit_hasher = bound_channel_hasher(binding);
         Self {
             prover_to_verifier: VecDeque::new(),
             verifier_to_prover: VecDeque::new(),
@@ -380,8 +425,8 @@ pub struct ProverSetup {
 }
 
 impl ProverSetup {
-    pub fn new(private_seed: [u8; 32]) -> Self {
-        Self { private_seed, transcript: RoleTranscript::new(), base_ot_pairs: Vec::new() }
+    pub fn new(private_seed: [u8; 32], binding: &SessionBinding) -> Self {
+        Self { private_seed, transcript: RoleTranscript::new(binding), base_ot_pairs: Vec::new() }
     }
 }
 
@@ -396,7 +441,7 @@ pub struct VerifierSetup {
 }
 
 impl VerifierSetup {
-    pub fn new(private_seed: [u8; 32]) -> Self {
+    pub fn new(private_seed: [u8; 32], binding: &SessionBinding) -> Self {
         let mut stream = FpStream::from_seed(derive_seed(private_seed, b"verifier-delta", 0));
         let mut delta = stream.next_fp2();
         if delta == Fp2::ZERO {
@@ -409,7 +454,7 @@ impl VerifierSetup {
             private_seed,
             delta,
             delta_bits,
-            transcript: RoleTranscript::new(),
+            transcript: RoleTranscript::new(binding),
             base_ot_selected: Vec::new(),
         }
     }
@@ -582,6 +627,36 @@ fn fp2_bits(value: Fp2) -> [bool; BASE_OT_COUNT] {
 
 fn contains_subslice(haystack: &[u8], needle: &[u8]) -> bool {
     !needle.is_empty() && haystack.windows(needle.len()).any(|window| window == needle)
+}
+
+fn binding_digest(binding: &SessionBinding) -> [u8; 32] {
+    let mut h = blake3::Hasher::new();
+    h.update(b"volta-pcg/phase-b/session-binding/v1");
+    h.update(&binding.session_id);
+    h.update(&binding.channel_id);
+    h.update(&binding.response_authorization_nonce);
+    *h.finalize().as_bytes()
+}
+
+fn bound_channel_hasher(binding: &SessionBinding) -> blake3::Hasher {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"volta-pcg/phase-b/channel/v2");
+    hasher.update(&binding_digest(binding));
+    hasher
+}
+
+pub(crate) fn bind_role_entropy(
+    raw_entropy: [u8; 32],
+    binding: &SessionBinding,
+    role: &[u8],
+) -> [u8; 32] {
+    let mut h = blake3::Hasher::new();
+    h.update(b"volta-pcg/phase-b/role-entropy/v1");
+    h.update(&binding_digest(binding));
+    h.update(&(role.len() as u64).to_le_bytes());
+    h.update(role);
+    h.update(&raw_entropy);
+    *h.finalize().as_bytes()
 }
 
 fn derive_seed(seed: [u8; 32], label: &[u8], ctr: u64) -> [u8; 32] {
@@ -1374,15 +1449,25 @@ fn prepare_ggm_sender(
     depth: u32,
 ) -> (Vec<SeedPair>, VerifierNoise, u64) {
     let block_size = 1usize << depth;
+    // Blocks are independent PPRF instances. `IndexedParallelIterator::collect`
+    // preserves block order, after which the historical sequential checksum is
+    // replayed exactly. Thus only wall time moves: OT message order, leaf order,
+    // payload bytes, and channel schedule remain byte-for-byte canonical.
+    let prepared: Vec<(Vec<SeedPair>, Vec<Fp2>)> = (0..blocks)
+        .into_par_iter()
+        .map(|block| {
+            let root = derive_seed(verifier_seed, label, block as u64);
+            let (block_messages, leaves) = ggm_sender_tree(root, depth);
+            let keys = leaves.into_iter().map(|leaf| seed_fp2(leaf, b"ggm/leaf-field")).collect();
+            (block_messages, keys)
+        })
+        .collect();
     let mut messages = Vec::with_capacity(blocks * depth as usize);
     let mut keys = Vec::with_capacity(blocks * block_size);
     let mut checksum = 0xD6E8_FD50_4A5B_7C11u64;
-    for block in 0..blocks {
-        let root = derive_seed(verifier_seed, label, block as u64);
-        let (block_messages, leaves) = ggm_sender_tree(root, depth);
+    for (block, (block_messages, block_keys)) in prepared.into_iter().enumerate() {
         messages.extend(block_messages);
-        for leaf in leaves {
-            let key = seed_fp2(leaf, b"ggm/leaf-field");
+        for key in block_keys {
             checksum ^= key.c0.value().rotate_left((block & 63) as u32);
             checksum = checksum.wrapping_mul(0x9E37_79B9_7F4A_7C15);
             checksum ^= key.c1.value();
@@ -1507,32 +1592,43 @@ fn finish_ggm_phase(
         return Err(PhaseBError::new("GGM phase dimensions mismatch"));
     }
     let choices = ggm_choice_bits(secrets, depth);
-    let mut prover_tags = Vec::with_capacity(blocks * block_size);
-    for block in 0..blocks {
-        let start = block * depth as usize;
-        let leaves = reconstruct_punctured_tree(
-            &selected_aggregates[start..start + depth as usize],
-            &choices[start..start + depth as usize],
-            depth,
-        )?;
-        let missing = leaves.iter().position(Option::is_none).unwrap();
-        if missing != secrets.alpha[block] {
-            return Err(PhaseBError::new("GGM puncture/alpha mismatch"));
-        }
-        for leaf in leaves {
-            prover_tags
-                .push(leaf.map(|seed| seed_fp2(seed, b"ggm/leaf-field")).unwrap_or(Fp2::ZERO));
-        }
-    }
+    let block_tags: Result<Vec<Vec<Fp2>>, PhaseBError> = (0..blocks)
+        .into_par_iter()
+        .map(|block| {
+            let start = block * depth as usize;
+            let leaves = reconstruct_punctured_tree(
+                &selected_aggregates[start..start + depth as usize],
+                &choices[start..start + depth as usize],
+                depth,
+            )?;
+            let missing = leaves.iter().position(Option::is_none).unwrap();
+            if missing != secrets.alpha[block] {
+                return Err(PhaseBError::new("GGM puncture/alpha mismatch"));
+            }
+            Ok(leaves
+                .into_iter()
+                .map(|leaf| leaf.map(|seed| seed_fp2(seed, b"ggm/leaf-field")).unwrap_or(Fp2::ZERO))
+                .collect())
+        })
+        .collect();
+    let mut prover_tags: Vec<Fp2> =
+        block_tags?.into_iter().flat_map(|block| block.into_iter()).collect();
 
     let mut corrections = Vec::with_capacity(blocks * 16);
-    for block in 0..blocks {
-        let range = block * block_size..(block + 1) * block_size;
-        let sum = verifier_noise.keys[range].iter().fold(Fp2::ZERO, |acc, key| acc + *key);
-        let mut correction = beta_verifier.k[block] - sum;
-        if corrupt_correction && block == 0 {
-            correction += Fp2::ONE;
-        }
+    let block_corrections: Vec<Fp2> = verifier_noise
+        .keys
+        .par_chunks(block_size)
+        .enumerate()
+        .map(|(block, keys)| {
+            let sum = keys.iter().fold(Fp2::ZERO, |acc, key| acc + *key);
+            let mut correction = beta_verifier.k[block] - sum;
+            if corrupt_correction && block == 0 {
+                correction += Fp2::ONE;
+            }
+            correction
+        })
+        .collect();
+    for correction in block_corrections {
         put_fp2(&mut corrections, correction);
     }
     channel.send(
@@ -1545,15 +1641,15 @@ fn finish_ggm_phase(
     let corrections =
         channel.receive(Direction::VerifierToProver, correction_kind, &mut prover.transcript)?;
     let mut reader = Reader::new(&corrections);
-    for block in 0..blocks {
-        let correction = reader.fp2()?;
-        let start = block * block_size;
-        let alpha = start + secrets.alpha[block];
-        let sum_off =
-            prover_tags[start..start + block_size].iter().fold(Fp2::ZERO, |acc, tag| acc + *tag);
-        prover_tags[alpha] = beta_prover.m[block] - correction - sum_off;
+    let mut decoded_corrections = Vec::with_capacity(blocks);
+    for _ in 0..blocks {
+        decoded_corrections.push(reader.fp2()?);
     }
     reader.finish()?;
+    prover_tags.par_chunks_mut(block_size).enumerate().for_each(|(block, tags)| {
+        let sum_off = tags.iter().fold(Fp2::ZERO, |acc, tag| acc + *tag);
+        tags[secrets.alpha[block]] = beta_prover.m[block] - decoded_corrections[block] - sum_off;
+    });
     Ok((ProverNoise { tags: prover_tags }, verifier_noise))
 }
 
@@ -1636,15 +1732,25 @@ fn wykw_consistency_check(
     let prover_challenge_seed =
         bind_seed(prover_pre_challenge_binding, prover_nonce, b"wykw-spsvole-check");
 
-    let mut x_stars = Vec::with_capacity(CHECK_LIMBS);
-    for rep in 0..CHECK_LIMBS {
-        let mut weighted_beta = Fp::ZERO;
-        for block in 0..secrets.alpha.len() {
+    let blocks = secrets.alpha.len();
+    let weighted_betas: Vec<Fp> = (0..CHECK_LIMBS * blocks)
+        .into_par_iter()
+        .map(|item| {
+            let rep = item / blocks;
+            let block = item % blocks;
             let chi = wykw_chi(prover_challenge_seed, rep, block, secrets.block_size);
-            weighted_beta += secrets.beta[block] * chi[secrets.alpha[block]];
-        }
-        x_stars.push(check_prover.r[rep] - weighted_beta);
-    }
+            secrets.beta[block] * chi[secrets.alpha[block]]
+        })
+        .collect();
+    let x_stars: Vec<Fp> = weighted_betas
+        .chunks(blocks)
+        .enumerate()
+        .map(|(rep, contributions)| {
+            let weighted_beta =
+                contributions.iter().copied().fold(Fp::ZERO, |acc, value| acc + value);
+            check_prover.r[rep] - weighted_beta
+        })
+        .collect();
     let mut mask_payload = Vec::with_capacity(CHECK_LIMBS * 8);
     for x in &x_stars {
         put_fp(&mut mask_payload, *x);
@@ -1665,21 +1771,27 @@ fn wykw_consistency_check(
     }
     mask_reader.finish()?;
 
-    let mut verifier_values = Vec::with_capacity(CHECK_LIMBS);
-    for rep in 0..CHECK_LIMBS {
-        let mut acc = Fp2::ZERO;
-        for block in 0..secrets.alpha.len() {
+    let verifier_block_values: Vec<Fp2> = (0..CHECK_LIMBS * blocks)
+        .into_par_iter()
+        .map(|item| {
+            let rep = item / blocks;
+            let block = item % blocks;
             let chi = wykw_chi(verifier_challenge_seed, rep, block, secrets.block_size);
             let start = block * secrets.block_size;
-            for (coefficient, key) in
-                chi.iter().zip(&verifier_noise.keys[start..start + secrets.block_size])
-            {
-                acc += key.mul_base(*coefficient);
-            }
-        }
-        let y_star = check_verifier.k[rep] - verifier.delta.mul_base(received_x[rep]);
-        verifier_values.push(acc - y_star);
-    }
+            chi.iter()
+                .zip(&verifier_noise.keys[start..start + secrets.block_size])
+                .fold(Fp2::ZERO, |acc, (coefficient, key)| acc + key.mul_base(*coefficient))
+        })
+        .collect();
+    let verifier_values: Vec<Fp2> = verifier_block_values
+        .chunks(blocks)
+        .enumerate()
+        .map(|(rep, contributions)| {
+            let acc = contributions.iter().copied().fold(Fp2::ZERO, |acc, value| acc + value);
+            let y_star = check_verifier.k[rep] - verifier.delta.mul_base(received_x[rep]);
+            acc - y_star
+        })
+        .collect();
     let verifier_equality_binding = verifier.transcript.digest();
     let prover_equality_binding = prover.transcript.digest();
     let blind =
@@ -1698,24 +1810,30 @@ fn wykw_consistency_check(
         return Err(PhaseBError::new("invalid WYKW equality commitment"));
     }
 
-    let mut prover_values = Vec::with_capacity(CHECK_LIMBS);
-    for rep in 0..CHECK_LIMBS {
-        let mut acc = Fp2::ZERO;
-        for block in 0..secrets.alpha.len() {
+    let prover_block_values: Vec<Fp2> = (0..CHECK_LIMBS * blocks)
+        .into_par_iter()
+        .map(|item| {
+            let rep = item / blocks;
+            let block = item % blocks;
             let chi = wykw_chi(prover_challenge_seed, rep, block, secrets.block_size);
             let start = block * secrets.block_size;
-            for (coefficient, tag) in
-                chi.iter().zip(&prover_noise.tags[start..start + secrets.block_size])
-            {
-                acc += tag.mul_base(*coefficient);
+            chi.iter()
+                .zip(&prover_noise.tags[start..start + secrets.block_size])
+                .fold(Fp2::ZERO, |acc, (coefficient, tag)| acc + tag.mul_base(*coefficient))
+        })
+        .collect();
+    let prover_values: Vec<Fp2> = prover_block_values
+        .chunks(blocks)
+        .enumerate()
+        .map(|(rep, contributions)| {
+            let acc = contributions.iter().copied().fold(Fp2::ZERO, |acc, value| acc + value);
+            let mut value = acc - check_prover.m[rep];
+            if faults.cheat_consistency_response && rep == 0 {
+                value += Fp2::ONE;
             }
-        }
-        let mut value = acc - check_prover.m[rep];
-        if faults.cheat_consistency_response && rep == 0 {
-            value += Fp2::ONE;
-        }
-        prover_values.push(value);
-    }
+            value
+        })
+        .collect();
     let mut response_payload = Vec::with_capacity(CHECK_LIMBS * 16);
     for value in &prover_values {
         put_fp2(&mut response_payload, *value);
@@ -1937,6 +2055,8 @@ fn phase_message_kinds(setup: bool) -> [MessageKind; 5] {
 fn expand_phase_b_internal(
     prover_seed: [u8; 32],
     verifier_seed: [u8; 32],
+    prover_binding: SessionBinding,
+    verifier_binding: SessionBinding,
     sub_corrs: usize,
     full_corrs: usize,
     params: PhaseAParams,
@@ -1947,13 +2067,23 @@ fn expand_phase_b_internal(
     if prover_seed == verifier_seed {
         return Err(PhaseBError::new("phase-B role seeds must be independently provisioned"));
     }
+    if prover_binding.session_id != verifier_binding.session_id {
+        return Err(PhaseBError::new("authenticated session identity mismatch"));
+    }
+    if prover_binding.channel_id != verifier_binding.channel_id {
+        return Err(PhaseBError::new("authenticated channel identity mismatch"));
+    }
+    if prover_binding.response_authorization_nonce != verifier_binding.response_authorization_nonce
+    {
+        return Err(PhaseBError::new("response-authorization nonce mismatch"));
+    }
     let setup_params = PhaseBSetupParams::for_phase_a(&params);
     let total_start = Instant::now();
     let mut timings = TimingAccumulator::default();
-    let mut prover = ProverSetup::new(prover_seed);
-    let mut verifier = VerifierSetup::new(verifier_seed);
+    let mut prover = ProverSetup::new(prover_seed, &prover_binding);
+    let mut verifier = VerifierSetup::new(verifier_seed, &verifier_binding);
     let delta = verifier.delta();
-    let mut channel = SerializedChannel::new(capture_channel);
+    let mut channel = SerializedChannel::new(capture_channel, &prover_binding);
 
     let base_ot_start = Instant::now();
     let base_ot_digest = run_base_ot(&mut prover, &mut verifier, &mut channel)?;
@@ -2211,9 +2341,26 @@ pub fn expand_phase_b(
     full_corrs: usize,
     params: PhaseAParams,
 ) -> Result<PhaseBExpansion, PhaseBError> {
+    if prover_seed == verifier_seed {
+        return Err(PhaseBError::new("phase-B role seeds must be independently provisioned"));
+    }
+    let binding = SessionBinding::deterministic(prover_seed, verifier_seed);
+    expand_phase_b_bound(prover_seed, verifier_seed, binding, sub_corrs, full_corrs, params)
+}
+
+pub(crate) fn expand_phase_b_bound(
+    prover_seed: [u8; 32],
+    verifier_seed: [u8; 32],
+    binding: SessionBinding,
+    sub_corrs: usize,
+    full_corrs: usize,
+    params: PhaseAParams,
+) -> Result<PhaseBExpansion, PhaseBError> {
     expand_phase_b_internal(
         prover_seed,
         verifier_seed,
+        binding,
+        binding,
         sub_corrs,
         full_corrs,
         params,
@@ -2234,7 +2381,18 @@ mod tests {
     }
 
     fn run_with(faults: Faults, capture: bool) -> Result<PhaseBExpansion, PhaseBError> {
-        expand_phase_b_internal(PROVER_SEED, VERIFIER_SEED, 48, 5, params(), capture, faults)
+        let binding = SessionBinding::deterministic(PROVER_SEED, VERIFIER_SEED);
+        expand_phase_b_internal(
+            PROVER_SEED,
+            VERIFIER_SEED,
+            binding,
+            binding,
+            48,
+            5,
+            params(),
+            capture,
+            faults,
+        )
     }
 
     #[test]
@@ -2268,6 +2426,7 @@ mod tests {
         let bytes = &out.setup.channel.serialized_bytes;
         assert!(!bytes.is_empty());
         assert!(!contains_subslice(bytes, &fp2_bytes(out.verifier_delta)));
+        assert!(!contains_subslice(bytes, &PROVER_SEED));
         assert!(!contains_subslice(bytes, &VERIFIER_SEED));
         assert!(!out.setup.channel.serialized_delta_found);
 
@@ -2326,5 +2485,41 @@ mod tests {
     fn shared_role_seed_is_rejected() {
         let error = expand_phase_b(PROVER_SEED, PROVER_SEED, 48, 5, params()).unwrap_err();
         assert!(error.to_string().contains("independently provisioned"));
+    }
+
+    #[test]
+    fn mismatched_session_or_channel_identity_is_rejected_before_setup() {
+        let binding = SessionBinding::deterministic(PROVER_SEED, VERIFIER_SEED);
+        let mut other = binding;
+        other.channel_id[0] ^= 1;
+        let error = expand_phase_b_internal(
+            PROVER_SEED,
+            VERIFIER_SEED,
+            binding,
+            other,
+            48,
+            5,
+            params(),
+            false,
+            Faults::default(),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("channel identity mismatch"));
+
+        other = binding;
+        other.session_id[0] ^= 1;
+        let error = expand_phase_b_internal(
+            PROVER_SEED,
+            VERIFIER_SEED,
+            binding,
+            other,
+            48,
+            5,
+            params(),
+            false,
+            Faults::default(),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("session identity mismatch"));
     }
 }

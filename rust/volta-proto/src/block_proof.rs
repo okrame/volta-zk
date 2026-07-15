@@ -7296,6 +7296,19 @@ pub fn prove_layer_phase1(
     prove_layer_phase1_with_wires_aliased(wit, weights, luts, wires, cx, None)
 }
 
+/// Model-level C1 entry point: reuse exactly the immediately preceding
+/// identity seam's `ffn_block_out` authentication for this layer's `x_in`.
+pub(crate) fn prove_layer_phase1_reusing_xin(
+    wit: &LayerWitness,
+    weights: &LayerWeights,
+    luts: &Luts,
+    producer: &LayerP1,
+    cx: &mut BlockCtxP,
+) -> LayerP1 {
+    let wires = build_attn_wires(wit, luts);
+    prove_layer_phase1_with_wires_aliased(wit, weights, luts, wires, cx, Some(producer.dom_fbo))
+}
+
 /// Band phase 1: the witness is a band-packed LayerWitness (t = q rows at
 /// positions t0..t0+q); `prefix` supplies the earlier phases' K data for the
 /// Q·Kᵀ recompute in the wires build.
@@ -7311,6 +7324,22 @@ pub fn prove_layer_phase1_band(
     let refs = BandAttnRefs::banded(wit, sh, prefix_k);
     let wires = build_attn_wires_band(&refs, luts);
     prove_layer_phase1_with_wires_aliased(wit, weights, luts, wires, cx, None)
+}
+
+/// Band/decode counterpart of [`prove_layer_phase1_reusing_xin`].
+pub(crate) fn prove_layer_phase1_band_reusing_xin(
+    wit: &LayerWitness,
+    weights: &LayerWeights,
+    luts: &Luts,
+    prefix_k: &[&[i16]],
+    producer: &LayerP1,
+    cx: &mut BlockCtxP,
+) -> LayerP1 {
+    let t0: usize = prefix_k.iter().map(|k| k.len() / D).sum();
+    let sh = BandShape { t0, q: wit.t };
+    let refs = BandAttnRefs::banded(wit, sh, prefix_k);
+    let wires = build_attn_wires_band(&refs, luts);
+    prove_layer_phase1_with_wires_aliased(wit, weights, luts, wires, cx, Some(producer.dom_fbo))
 }
 
 /// [`prove_layer_phase1`] with caller-supplied attention wires (the
@@ -7329,7 +7358,7 @@ pub fn prove_layer_phase1_with_wires(
 /// producer's `ffn_block_out` authentication.  We still consume the public
 /// `x_in` domain slot, preserving all later domain numbering; the empty
 /// correction vector is the unambiguous on-wire alias marker.
-pub fn prove_layer_phase1_with_wires_aliased(
+fn prove_layer_phase1_with_wires_aliased(
     wit: &LayerWitness,
     weights: &LayerWeights,
     luts: &Luts,
@@ -7344,10 +7373,9 @@ pub fn prove_layer_phase1_with_wires_aliased(
     let xin_tombstone = cx.doms.take(t as u64);
     let (dom_xin, xin_corr) = match xin_alias_dom {
         Some(source_dom) => (source_dom, Vec::new()),
-        None => (
-            xin_tombstone,
-            auth_matrix_rows_p(cx.stream, cx.tx, xin_tombstone, &wit.x_in, t, D),
-        ),
+        None => {
+            (xin_tombstone, auth_matrix_rows_p(cx.stream, cx.tx, xin_tombstone, &wit.x_in, t, D))
+        }
     };
     let dom_k = cx.doms.take(t as u64);
     let k_corr = auth_matrix_rows_p(cx.stream, cx.tx, dom_k, &wit.k, t, D);
@@ -7679,6 +7707,24 @@ pub fn verify_layer_phase1(
     verify_layer_phase1_band_aliased(BandShape::square(t), luts, proof, cx, None)
 }
 
+/// Model-level C1 verifier entry point.  The source keys are supplied by the
+/// canonical immediately preceding layer, never by the proof.
+pub(crate) fn verify_layer_phase1_reusing_xin(
+    t: usize,
+    luts: &Luts,
+    proof: &LayerProof,
+    producer: &LayerV1,
+    cx: &mut BlockCtxV,
+) -> Option<LayerV1> {
+    verify_layer_phase1_band_aliased(
+        BandShape::square(t),
+        luts,
+        proof,
+        cx,
+        Some(&producer.fbo_keys),
+    )
+}
+
 /// Band phase 1 (verifier).
 pub fn verify_layer_phase1_band(
     sh: BandShape,
@@ -7689,10 +7735,21 @@ pub fn verify_layer_phase1_band(
     verify_layer_phase1_band_aliased(sh, luts, proof, cx, None)
 }
 
+/// Band/decode counterpart of [`verify_layer_phase1_reusing_xin`].
+pub(crate) fn verify_layer_phase1_band_reusing_xin(
+    sh: BandShape,
+    luts: &Luts,
+    proof: &LayerProof,
+    producer: &LayerV1,
+    cx: &mut BlockCtxV,
+) -> Option<LayerV1> {
+    verify_layer_phase1_band_aliased(sh, luts, proof, cx, Some(&producer.fbo_keys))
+}
+
 /// Verifier mirror of the identity-seam alias.  The tombstone is consumed in
 /// both cases, while the consumer receives an exact clone of the producer's
 /// cached per-element keys rather than expanding fresh correlations.
-pub fn verify_layer_phase1_band_aliased(
+fn verify_layer_phase1_band_aliased(
     sh: BandShape,
     luts: &Luts,
     proof: &LayerProof,

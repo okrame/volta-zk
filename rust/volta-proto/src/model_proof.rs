@@ -47,12 +47,15 @@ use crate::block_proof::{
     add_range_mult, auth_ln_vecs_p, auth_ln_vecs_resident_p, auth_matrix_rows_p,
     auth_matrix_rows_resident_p, auth_matrix_rows_v, bind_range_site_resident, expand_ln_vecs_k,
     layer_content_keys, layer_dom_base, ln_acc_recompute, open_matrix_k, open_matrix_p,
-    open_matrix_resident_p, prove_layer_phase1_with_wires_aliased,
-    prove_layer_phase1_resident, prove_ln_chain, prove_ln_chain_resident, prove_range_site,
-    prove_range_site_resident, public_window_fold_resident, range_keys,
-    verify_layer_phase1_band_aliased, verify_ln_chain, verify_range_site, BandShape, BlockCtxP, BlockCtxV,
-    InstanceLookups, KvPrefixK, KvPrefixP, LayerBytes, LayerP1, LayerProof, LayerV1, LnChainProof,
-    ResidentKvPrefixP, ResidentLayerP1, ResidentLnVecsP, TableBankP, TableBankV, TableCloseProof,
+    open_matrix_resident_p, prove_layer_phase1, prove_layer_phase1_band,
+    prove_layer_phase1_band_reusing_xin, prove_layer_phase1_resident,
+    prove_layer_phase1_reusing_xin, prove_ln_chain, prove_ln_chain_resident, prove_range_site,
+    prove_range_site_resident, public_window_fold_resident, range_keys, verify_layer_phase1,
+    verify_layer_phase1_band, verify_layer_phase1_band_reusing_xin,
+    verify_layer_phase1_reusing_xin, verify_ln_chain, verify_range_site, BandShape, BlockCtxP,
+    BlockCtxV, InstanceLookups, KvPrefixK, KvPrefixP, LayerBytes, LayerP1, LayerProof, LayerV1,
+    LnChainProof, ResidentKvPrefixP, ResidentLayerP1, ResidentLnVecsP, TableBankP, TableBankV,
+    TableCloseProof,
 };
 use crate::ffn_schedule::{
     preflight_cpu_gelu_sources, preflight_gelu_plan, preflight_gelu_proofs,
@@ -737,7 +740,12 @@ fn build_resident_chunk_phase1(
             let alias = (layer > 0 && model.p.seam_shifts[layer - 1] == 0)
                 .then(|| layer_p1s[layer - 1].dom_fbo);
             prove_layer_phase1_resident(
-                &band.layers[layer], resident_model, &luts, error, &mut cx, alias,
+                &band.layers[layer],
+                resident_model,
+                &luts,
+                error,
+                &mut cx,
+                alias,
             )
         };
         match result {
@@ -1260,7 +1268,12 @@ pub fn prove_response_resident<'chunk, 'source>(
             let alias = (layer > 0 && model.p.seam_shifts[layer - 1] == 0)
                 .then(|| layer_p1s[layer - 1].dom_fbo);
             prove_layer_phase1_resident(
-                &wit.layers[layer], resident_model, &luts, error, &mut cx, alias,
+                &wit.layers[layer],
+                resident_model,
+                &luts,
+                error,
+                &mut cx,
+                alias,
             )
         };
         match result {
@@ -2567,12 +2580,17 @@ fn prove_response_impl(
     for l in 0..L {
         let luts_l = luts_for(l);
         let mut cx = new_block_ctx!(l as u8);
-        let wires = crate::block_proof::build_attn_wires(&wit.layers[l], &luts_l);
-        let alias = (l > 0 && model.p.seam_shifts[l - 1] == 0)
-            .then(|| layer_p1s[l - 1].dom_fbo);
-        let p1 = prove_layer_phase1_with_wires_aliased(
-            &wit.layers[l], &model.layers[l].0, &luts_l, wires, &mut cx, alias,
-        );
+        let p1 = if l > 0 && model.p.seam_shifts[l - 1] == 0 {
+            prove_layer_phase1_reusing_xin(
+                &wit.layers[l],
+                &model.layers[l].0,
+                &luts_l,
+                &layer_p1s[l - 1],
+                &mut cx,
+            )
+        } else {
+            prove_layer_phase1(&wit.layers[l], &model.layers[l].0, &luts_l, &mut cx)
+        };
         layer_p1s.push(p1);
     }
     // Seams: multiplicity contributions only (auth-free phase 1).
@@ -2668,15 +2686,24 @@ fn prove_response_impl(
                     prefix_k.push(&cc.band.layers[l].k);
                 }
                 let mut cx = new_block_ctx!(lb + l as u8);
-                let t0: usize = prefix_k.iter().map(|k| k.len() / D).sum();
-                let sh = BandShape { t0, q: bw.q };
-                let refs = crate::block_proof::BandAttnRefs::banded(&bw.layers[l], sh, &prefix_k);
-                let wires = crate::block_proof::build_attn_wires_band(&refs, &luts_l);
-                let alias = (l > 0 && model.p.seam_shifts[l - 1] == 0)
-                    .then(|| layer_p1s[l - 1].dom_fbo);
-                let p1 = prove_layer_phase1_with_wires_aliased(
-                    &bw.layers[l], &model.layers[l].0, &luts_l, wires, &mut cx, alias,
-                );
+                let p1 = if l > 0 && model.p.seam_shifts[l - 1] == 0 {
+                    prove_layer_phase1_band_reusing_xin(
+                        &bw.layers[l],
+                        &model.layers[l].0,
+                        &luts_l,
+                        &prefix_k,
+                        &layer_p1s[l - 1],
+                        &mut cx,
+                    )
+                } else {
+                    prove_layer_phase1_band(
+                        &bw.layers[l],
+                        &model.layers[l].0,
+                        &luts_l,
+                        &prefix_k,
+                        &mut cx,
+                    )
+                };
                 layer_p1s.push(p1);
             }
             // Band seams: multiplicity contributions only.
@@ -3492,13 +3519,16 @@ fn preflight_layer_proof_shape(
     shape: BandShape,
     proof: &LayerProof,
     softmax_row_shift: bool,
+    reuse_xin: bool,
 ) -> Option<()> {
     let rows = shape.q;
     let boundary_len = rows.checked_mul(D)?;
     let row_pad = rows.checked_next_power_of_two()?;
-    if [&proof.xin_corr, &proof.k_corr, &proof.v_corr, &proof.abo_corr, &proof.fbo_corr]
-        .into_iter()
-        .any(|corrections| corrections.len() != boundary_len)
+    let xin_len_valid = preflight_xin_correction_len(boundary_len, proof.xin_corr.len(), reuse_xin);
+    if !xin_len_valid
+        || [&proof.k_corr, &proof.v_corr, &proof.abo_corr, &proof.fbo_corr]
+            .into_iter()
+            .any(|corrections| corrections.len() != boundary_len)
         || proof.ffn.ln_vec_corrs.iter().any(|corrections| corrections.len() != row_pad)
         || proof.attn.ln_vec_corrs.iter().any(|corrections| corrections.len() != row_pad)
     {
@@ -3527,6 +3557,17 @@ fn preflight_layer_proof_shape(
         return None;
     }
     Some(())
+}
+
+fn preflight_xin_correction_len(
+    boundary_len: usize,
+    correction_len: usize,
+    reuse_xin: bool,
+) -> bool {
+    match reuse_xin {
+        true => correction_len == 0,
+        false => correction_len == boundary_len,
+    }
 }
 
 /// Public greedy-decoding relation across chunk boundaries.  Row `r` of a
@@ -3619,11 +3660,12 @@ fn preflight_verify_response_public(
     {
         return None;
     }
-    for layer_proof in &proof.layers {
+    for (layer, layer_proof) in proof.layers.iter().enumerate() {
         preflight_layer_proof_shape(
             BandShape::square(t),
             layer_proof,
             model.p.lut.softmax_row_shift,
+            layer > 0 && model.p.seam_shifts[layer - 1] == 0,
         )?;
     }
 
@@ -3652,11 +3694,12 @@ fn preflight_verify_response_public(
         {
             return None;
         }
-        for layer_proof in &chunk_proof.layers {
+        for (layer, layer_proof) in chunk_proof.layers.iter().enumerate() {
             preflight_layer_proof_shape(
                 BandShape { t0, q: chunk.q },
                 layer_proof,
                 model.p.lut.softmax_row_shift,
+                layer > 0 && model.p.seam_shifts[layer - 1] == 0,
             )?;
         }
 
@@ -3717,11 +3760,17 @@ pub fn verify_response(
     for l in 0..L {
         let luts_l = luts_for(l);
         let mut cx = BlockCtxV::new(vc, tx, l as u8, &mut pre_bank);
-        let alias = (l > 0 && model.p.seam_shifts[l - 1] == 0)
-            .then(|| layer_v1s[l - 1].fbo_keys.as_slice());
-        let v1 = verify_layer_phase1_band_aliased(
-            BandShape::square(t), &luts_l, &proof.layers[l], &mut cx, alias,
-        )?;
+        let v1 = if l > 0 && model.p.seam_shifts[l - 1] == 0 {
+            verify_layer_phase1_reusing_xin(
+                t,
+                &luts_l,
+                &proof.layers[l],
+                &layer_v1s[l - 1],
+                &mut cx,
+            )?
+        } else {
+            verify_layer_phase1(t, &luts_l, &proof.layers[l], &mut cx)?
+        };
         layer_v1s.push(v1);
     }
     let s_emb = model.p.shift_embed;
@@ -3776,11 +3825,17 @@ pub fn verify_response(
             for l in 0..L {
                 let luts_l = luts_for(l);
                 let mut cx = BlockCtxV::new(vc, tx, lb + l as u8, &mut pre_bank);
-                let alias = (l > 0 && model.p.seam_shifts[l - 1] == 0)
-                    .then(|| layer_v1s[l - 1].fbo_keys.as_slice());
-                let v1 = verify_layer_phase1_band_aliased(
-                    sh_c, &luts_l, &cp.layers[l], &mut cx, alias,
-                )?;
+                let v1 = if l > 0 && model.p.seam_shifts[l - 1] == 0 {
+                    verify_layer_phase1_band_reusing_xin(
+                        sh_c,
+                        &luts_l,
+                        &cp.layers[l],
+                        &layer_v1s[l - 1],
+                        &mut cx,
+                    )?
+                } else {
+                    verify_layer_phase1_band(sh_c, &luts_l, &cp.layers[l], &mut cx)?
+                };
                 layer_v1s.push(v1);
             }
             let (embed_doms, out_keys) = {
@@ -4315,6 +4370,19 @@ mod tests {
             ChunkPub { q: 2, logits: &second_logits, seq: &wrong_boundary },
         ];
         assert_eq!(preflight_greedy_tokens(t, &prefill_logits, &malformed), None);
+    }
+
+    #[test]
+    fn identity_alias_preflight_is_canonical_and_fail_closed() {
+        let boundary_len = 4 * D;
+        assert!(preflight_xin_correction_len(boundary_len, boundary_len, false));
+        assert!(!preflight_xin_correction_len(boundary_len, 0, false));
+        assert!(preflight_xin_correction_len(boundary_len, 0, true));
+        assert!(!preflight_xin_correction_len(boundary_len, boundary_len, true));
+        assert!(!preflight_xin_correction_len(boundary_len, boundary_len - 1, true));
+        // The proof carries no source identity: once the public seam selects
+        // reuse, the verifier derives the only legal source (same session,
+        // phase/chunk and rows, immediately preceding layer) itself.
     }
 
     /// P6 response e2e: prefill (t=12) + ONE decode chunk (q=4) proven in one

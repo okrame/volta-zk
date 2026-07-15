@@ -1,9 +1,14 @@
 # C1 response-communication reduction — Phase 1 design
 
-**Status (2026-07-15): preregistered design only; hard stop before Phase 2.**
-This note authorizes no Rust, CUDA, PCG, proof-format, benchmark, or Lean
-implementation.  Phase 2 starts only after user review.  The only formal
-surface C1 may open is the named M5 extension in §3.5.
+**Status (2026-07-15): Packed16 rejected; identity-seam reuse authorized.**
+The 2026-07-15 C2 review in `docs/prototype-status.md` supersedes the original
+two-lever Phase-1 proposal below.  Sections 1.1--3.5 and the Packed16 rows in
+§5--6 remain historical design/costing only: they authorize no implementation,
+new correlation lane, or Lean work.  The surviving C1 scope is exactly §4.
+Its full-response projection is 136,526,530 B, its post-reuse sub-correlation
+demand is 7,443,126, and the adapted acceptance contract is the ledger entry.
+This note is retained so the rejected packing path is not rediscovered or
+silently reintroduced.
 
 ## 1. Frozen baseline and scope
 

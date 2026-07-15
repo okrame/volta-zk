@@ -35,7 +35,7 @@ use volta_gpt2::{
     forward_model_tokens, forward_model_tokens_resident, forward_model_tokens_with_backend,
     forward_model_with_backend, load_model, upload_resident_model, BandModelWitness, Gpt2Model,
     KvCache, LayerWeightField, ModelWeightField, ResidentBandModelWitness, ResidentGpt2Model,
-    ResidentModelWitness, L, VOCAB,
+    ResidentModelWitness, D, L, VOCAB,
 };
 use volta_mac::{zero_batch_exchange, CorrelationStream, Transcript, VerifierCtx};
 use volta_pcg::{
@@ -74,6 +74,19 @@ const P7B_TRANSCRIPT_REFERENCE_BYTES: u64 = 137_413_808;
 const P7B_PCS_OPENING_REFERENCE_BYTES: u64 = 66_733_504;
 const P7B_PACKED_LOGITS_REFERENCE_BYTES: u64 = 7_407_122;
 const P7B_PACKED_RESPONSE_REFERENCE_BYTES: u64 = 144_820_930;
+const C1_BASELINE_ARTIFACT: &str = "p6-2026-07-07-515bb1c.json";
+const C1_BASELINE_PROVE_RESPONSE_S: f64 = 18.738_631_475;
+const C1_BASELINE_VERIFY_RESPONSE_S: f64 = 0.567_143_475;
+const C1_BASELINE_TRANSCRIPT_BYTES: u64 = 137_413_808;
+const C1_BASELINE_AUTH_CORRECTION_BYTES: u64 = 67_839_408;
+const C1_BASELINE_PACKED_RESPONSE_BYTES: u64 = 144_820_930;
+const C1_BASELINE_SUB_CORRS: u64 = 8_479_926;
+const C1_IDENTITY_SEAM_ALIASES: u64 = 1_036_800;
+const C1_SAVED_BYTES: u64 = 8 * C1_IDENTITY_SEAM_ALIASES;
+const C1_TRANSCRIPT_BYTES: u64 = C1_BASELINE_TRANSCRIPT_BYTES - C1_SAVED_BYTES;
+const C1_AUTH_CORRECTION_BYTES: u64 = C1_BASELINE_AUTH_CORRECTION_BYTES - C1_SAVED_BYTES;
+const C1_PACKED_RESPONSE_BYTES: u64 = C1_BASELINE_PACKED_RESPONSE_BYTES - C1_SAVED_BYTES;
+const C1_SUB_CORRS: u64 = C1_BASELINE_SUB_CORRS - C1_IDENTITY_SEAM_ALIASES;
 // Phase 0a may change this only after its >=10% instrumentation-tax decision
 // is appended to the ledger. Until then, counter-only full runs are
 // diagnostic and cannot become an official verdict.
@@ -480,6 +493,8 @@ struct Report {
     golden_decode_checked: bool,
     golden_decode_match: Option<bool>,
     generated_tokens: Vec<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c1_identity_seam_reuse: Option<C1IdentitySeamReuse>,
     // P7b gates are emitted only by the resident schema. Quick runs retain
     // observations but deliberately do not emit pass/fail verdicts.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -682,6 +697,38 @@ struct Report {
     pcg_allocation_hash_match: Option<bool>,
 }
 
+#[derive(Serialize)]
+struct C1IdentitySeamReuse {
+    scope: &'static str,
+    baseline_artifact: &'static str,
+    baseline_transcript_bytes: u64,
+    baseline_auth_correction_bytes: u64,
+    baseline_packed_response_bytes: u64,
+    identity_seam_alias_values: u64,
+    saved_response_bytes: u64,
+    measured_transcript_bytes: u64,
+    measured_auth_correction_bytes: u64,
+    measured_packed_response_bytes: u64,
+    baseline_sub_corrs: u64,
+    measured_prover_sub_corrs: u64,
+    measured_verifier_sub_corrs: u64,
+    measured_prover_full_corrs: u64,
+    measured_verifier_full_corrs: u64,
+    full_corrs_unchanged: bool,
+    pcs_parameters_unchanged: bool,
+    claims_unchanged: bool,
+    byte_formulas_reconcile: bool,
+    counters_reconcile: bool,
+    baseline_prove_response_s: f64,
+    measured_prove_response_s: f64,
+    prove_response_delta_s: f64,
+    baseline_verify_response_s: f64,
+    measured_verify_response_s: f64,
+    verify_response_delta_s: f64,
+    typed_correlation_lanes: u64,
+    second_phase_b_shard_required: bool,
+}
+
 fn peak_rss_gb() -> f64 {
     let s = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
     s.lines()
@@ -720,6 +767,7 @@ fn ledger_delta(
 #[derive(Clone, Copy)]
 struct Args {
     quick: bool,
+    c1_record: bool,
     pcs_q: Option<usize>,
     pcg_backend: PcgBackendArg,
     accelerator: AcceleratorArg,
@@ -784,7 +832,7 @@ impl PcgBackendArg {
 
 fn usage() -> ! {
     eprintln!(
-        "usage: p6_report [--quick] [--pcs-q Q] [--pcg-backend mock|real] \
+        "usage: p6_report [--quick|--c1-record] [--pcs-q Q] [--pcg-backend mock|real] \
          [--accelerator cpu|cuda-hybrid|cuda-resident] [--repetitions N] \
          [--warmup-repetitions N] \
          [--resident-timing deferred-events|wall-only-counters]"
@@ -795,6 +843,7 @@ fn usage() -> ! {
 fn parse_args() -> Args {
     let mut out = Args {
         quick: false,
+        c1_record: false,
         pcs_q: None,
         pcg_backend: PcgBackendArg::Mock,
         accelerator: AcceleratorArg::Cpu,
@@ -806,6 +855,8 @@ fn parse_args() -> Args {
     while let Some(a) = args.next() {
         if a == "--quick" {
             out.quick = true;
+        } else if a == "--c1-record" {
+            out.c1_record = true;
         } else if a == "--pcs-q" {
             let Some(q) = args.next() else { usage() };
             out.pcs_q = Some(q.parse().unwrap_or_else(|_| usage()));
@@ -874,6 +925,14 @@ fn pcs_query_error_bits(params: &LigeroParams) -> f64 {
     -(params.n_queries as f64) * (1.0 - delta / 2.0).log2()
 }
 
+fn same_ligero_params(a: &LigeroParams, b: &LigeroParams) -> bool {
+    a.row_bits == b.row_bits
+        && a.col_bits == b.col_bits
+        && a.pad == b.pad
+        && a.code_bits == b.code_bits
+        && a.n_queries == b.n_queries
+}
+
 fn create_unique_result_file(
     label: &str,
     date: &str,
@@ -919,6 +978,9 @@ struct SessionResult {
     emult_instances: f64,
     sub_corrs: u64,
     full_corrs: u64,
+    verifier_protocol_sub_corrs: u64,
+    verifier_protocol_full_corrs: u64,
+    identity_seam_alias_values: u64,
     pcg_pool_sub_corrs: u64,
     pcg_pool_full_corrs: u64,
     chunk_p1_s: Vec<f64>,
@@ -1263,6 +1325,7 @@ fn run_session_impl<'source>(
         verify_response(model, t, &dec_prefill, &chunks_v, &proof, &mut vc, &mut txv)
             .expect("honest response must verify");
     let verify_s = tv0.elapsed().as_secs_f64();
+    let verifier_protocol_counters = vc.counters;
 
     // --- PCS: 13 commitments, claims stacked per layer across phases -------
     let phases = 1 + bands.len();
@@ -1634,6 +1697,7 @@ fn run_session_impl<'source>(
     let ok_zero = zero_batch_exchange(&zero, &kzero, &mut stream, &mut vc, mz, &mut txp);
     let closure_exchange_s = closure_started.elapsed().as_secs_f64();
     let accepted = ok_prod && ok_zero && (!with_pcs || pcs_all_ok);
+    assert_eq!(stream.counters, vc.counters, "prover/verifier correlation counters diverged");
     let pcg_allocation_hash_match =
         match (stream.allocation_digest_hex(), vc.allocation_digest_hex()) {
             (Some(p), Some(v)) => Some(p == v),
@@ -1641,6 +1705,18 @@ fn run_session_impl<'source>(
         };
     let pcg_pool_sub_corrs = stream.counters.sub_corrs;
     let pcg_pool_full_corrs = stream.counters.full_corrs;
+    let identity_seam_alias_values = proof
+        .layers
+        .iter()
+        .chain(proof.chunks.iter().flat_map(|chunk| chunk.layers.iter()))
+        .filter(|layer| layer.xin_corr.is_empty())
+        .map(|layer| {
+            if layer.k_corr.len() % D != 0 {
+                panic!("C1 alias layer has a non-canonical boundary shape");
+            }
+            layer.k_corr.len() as u64
+        })
+        .sum();
     let accelerator_stats = accelerator
         .map(|accel| accel.finish_measurement().expect("finish accelerator measurement"));
     let session_wall_s = session_started.elapsed().as_secs_f64();
@@ -1664,6 +1740,9 @@ fn run_session_impl<'source>(
         emult_instances: out.ctr_instances.emult_equiv(),
         sub_corrs: out.corr_counters.sub_corrs,
         full_corrs: out.corr_counters.full_corrs,
+        verifier_protocol_sub_corrs: verifier_protocol_counters.sub_corrs,
+        verifier_protocol_full_corrs: verifier_protocol_counters.full_corrs,
+        identity_seam_alias_values,
         pcg_pool_sub_corrs,
         pcg_pool_full_corrs,
         chunk_p1_s: out.chunk_p1_s,
@@ -1691,6 +1770,18 @@ fn main() {
     // merely happen to be clean when the JSON verdict is assembled.
     let git_dirty_before_benchmark = git_worktree_dirty();
     let quick = args.quick;
+    if args.c1_record
+        && (quick
+            || args.accelerator != AcceleratorArg::Cpu
+            || args.pcg_backend != PcgBackendArg::Mock)
+    {
+        eprintln!("p6_report: --c1-record requires the full CPU mock-backend geometry");
+        std::process::exit(2);
+    }
+    if args.c1_record && git_dirty_before_benchmark {
+        eprintln!("p6_report: --c1-record requires a clean tree before benchmark setup");
+        std::process::exit(2);
+    }
     let repetitions = args.repetitions.unwrap_or(if quick { 1 } else { 3 });
     let warmup_repetitions = args.warmup_repetitions.unwrap_or(if quick { 0 } else { 1 });
     if repetitions == 0 {
@@ -1747,6 +1838,10 @@ fn main() {
             pcs_query_error_bits(&layer_params),
             P4_LAYER.n_queries
         );
+    }
+    if args.c1_record && layer_params.n_queries != P4_LAYER.n_queries {
+        eprintln!("p6_report: --c1-record freezes PCS Q=200");
+        std::process::exit(2);
     }
 
     let dir = weights_dir();
@@ -2535,17 +2630,83 @@ fn main() {
     let pcs_commit_total_s = pcs_commit_timing.median_s;
     let pcs_open_total_s = pcs_open_timing.median_s;
     let pcs_verify_total_s = pcs_verify_timing.median_s;
+    let c1_identity_seam_reuse = args.c1_record.then(|| {
+        let measured_auth_correction_bytes = rec
+            .transcript_by_label
+            .get("auth_corrections")
+            .copied()
+            .expect("C1 record requires the auth_corrections byte label");
+        let measured_packed_response_bytes = rec
+            .comm_bytes
+            .checked_add(rec.public_logits_packed_bytes)
+            .expect("C1 packed response accounting overflow");
+        let byte_formulas_reconcile = rec.identity_seam_alias_values == C1_IDENTITY_SEAM_ALIASES
+            && rec.comm_bytes == C1_TRANSCRIPT_BYTES
+            && measured_auth_correction_bytes == C1_AUTH_CORRECTION_BYTES
+            && measured_packed_response_bytes == C1_PACKED_RESPONSE_BYTES;
+        let counters_reconcile = rec.sub_corrs == C1_SUB_CORRS
+            && rec.verifier_protocol_sub_corrs == C1_SUB_CORRS
+            && rec.full_corrs == 176_880
+            && rec.verifier_protocol_full_corrs == 176_880;
+        assert!(byte_formulas_reconcile, "C1 byte/reuse formulas do not reconcile");
+        assert!(counters_reconcile, "C1 prover/verifier correlation counters do not reconcile");
+        assert_eq!(rec.pcs_opening_bytes, P7B_PCS_OPENING_REFERENCE_BYTES);
+        assert_eq!((rec.n_weight_claims, rec.n_embed_claims), (96, 6));
+        assert_eq!(layer_params.n_queries, 200);
+        assert!(accepted && chk.accepted && golden_match == Some(true));
+        C1IdentitySeamReuse {
+            scope: "identity-seam x_in reuse only; Packed16/Lean/second shard absent",
+            baseline_artifact: C1_BASELINE_ARTIFACT,
+            baseline_transcript_bytes: C1_BASELINE_TRANSCRIPT_BYTES,
+            baseline_auth_correction_bytes: C1_BASELINE_AUTH_CORRECTION_BYTES,
+            baseline_packed_response_bytes: C1_BASELINE_PACKED_RESPONSE_BYTES,
+            identity_seam_alias_values: rec.identity_seam_alias_values,
+            saved_response_bytes: C1_SAVED_BYTES,
+            measured_transcript_bytes: rec.comm_bytes,
+            measured_auth_correction_bytes,
+            measured_packed_response_bytes,
+            baseline_sub_corrs: C1_BASELINE_SUB_CORRS,
+            measured_prover_sub_corrs: rec.sub_corrs,
+            measured_verifier_sub_corrs: rec.verifier_protocol_sub_corrs,
+            measured_prover_full_corrs: rec.full_corrs,
+            measured_verifier_full_corrs: rec.verifier_protocol_full_corrs,
+            full_corrs_unchanged: rec.full_corrs == 176_880,
+            pcs_parameters_unchanged: same_ligero_params(&layer_params, &P4_LAYER)
+                && same_ligero_params(&embed_params, &GPT2_FULL),
+            claims_unchanged: rec.n_weight_claims == 96 && rec.n_embed_claims == 6,
+            byte_formulas_reconcile,
+            counters_reconcile,
+            baseline_prove_response_s: C1_BASELINE_PROVE_RESPONSE_S,
+            measured_prove_response_s: t_prove_response_s,
+            prove_response_delta_s: t_prove_response_s - C1_BASELINE_PROVE_RESPONSE_S,
+            baseline_verify_response_s: C1_BASELINE_VERIFY_RESPONSE_S,
+            measured_verify_response_s: t_verify_response_s,
+            verify_response_delta_s: t_verify_response_s - C1_BASELINE_VERIFY_RESPONSE_S,
+            typed_correlation_lanes: 0,
+            second_phase_b_shard_required: false,
+        }
+    });
     let report = Report {
-        report_schema_version: if args.accelerator == AcceleratorArg::Cpu { 2 } else { 6 },
-        milestone: match (args.accelerator, quick) {
-            // Every CUDA schema-6 result belongs to the active P7b code line.
-            // P7 is closed and its schema-2/4 selectors stay immutable.
-            (AcceleratorArg::CudaHybrid, true) => "P7b-integrated-hybrid-quick".into(),
-            (AcceleratorArg::CudaHybrid, false) => "P7b-integrated-hybrid".into(),
-            (AcceleratorArg::CudaResident, true) => "P7b-integrated-resident-quick".into(),
-            (AcceleratorArg::CudaResident, false) => "P7b-integrated-resident".into(),
-            (AcceleratorArg::Cpu, true) => "P6-quick".into(),
-            (AcceleratorArg::Cpu, false) => "P6".into(),
+        report_schema_version: if args.c1_record {
+            3
+        } else if args.accelerator == AcceleratorArg::Cpu {
+            2
+        } else {
+            6
+        },
+        milestone: if args.c1_record {
+            "C1".into()
+        } else {
+            match (args.accelerator, quick) {
+                // Every CUDA schema-6 result belongs to the active P7b code line.
+                // P7 is closed and its schema-2/4 selectors stay immutable.
+                (AcceleratorArg::CudaHybrid, true) => "P7b-integrated-hybrid-quick".into(),
+                (AcceleratorArg::CudaHybrid, false) => "P7b-integrated-hybrid".into(),
+                (AcceleratorArg::CudaResident, true) => "P7b-integrated-resident-quick".into(),
+                (AcceleratorArg::CudaResident, false) => "P7b-integrated-resident".into(),
+                (AcceleratorArg::Cpu, true) => "P6-quick".into(),
+                (AcceleratorArg::Cpu, false) => "P6".into(),
+            }
         },
         date: date.clone(),
         git: GitProvenance {
@@ -2592,6 +2753,7 @@ fn main() {
         golden_decode_checked: golden_checked,
         golden_decode_match: golden_match,
         generated_tokens: gen.clone(),
+        c1_identity_seam_reuse,
         p7b_gate_evaluated,
         p7b_gate_profile: is_resident.then_some(P7B_GATE_PROFILE.into()),
         p7b_machine_eligible: is_resident.then_some(p7b_machine_is_eligible),
@@ -2749,13 +2911,17 @@ fn main() {
 
     assert!(accepted, "P6 sanity: honest response (both sessions) must verify");
     assert!(gate_flat, "P6 gate: per-token cost must stay ~flat as the cache grows");
-    let mut label = match (args.accelerator, quick) {
-        (AcceleratorArg::CudaHybrid, true) => "p7b-integrated-hybrid-quick".to_string(),
-        (AcceleratorArg::CudaHybrid, false) => "p7b-integrated-hybrid".to_string(),
-        (AcceleratorArg::CudaResident, true) => "p7b-integrated-resident-quick".to_string(),
-        (AcceleratorArg::CudaResident, false) => "p7b-integrated-resident".to_string(),
-        (AcceleratorArg::Cpu, true) => "p6-quick".to_string(),
-        (AcceleratorArg::Cpu, false) => "p6".to_string(),
+    let mut label = if args.c1_record {
+        "c1".to_string()
+    } else {
+        match (args.accelerator, quick) {
+            (AcceleratorArg::CudaHybrid, true) => "p7b-integrated-hybrid-quick".to_string(),
+            (AcceleratorArg::CudaHybrid, false) => "p7b-integrated-hybrid".to_string(),
+            (AcceleratorArg::CudaResident, true) => "p7b-integrated-resident-quick".to_string(),
+            (AcceleratorArg::CudaResident, false) => "p7b-integrated-resident".to_string(),
+            (AcceleratorArg::Cpu, true) => "p6-quick".to_string(),
+            (AcceleratorArg::Cpu, false) => "p6".to_string(),
+        }
     };
     if layer_params.n_queries != P4_LAYER.n_queries {
         label.push_str(&format!("-q{}", layer_params.n_queries));

@@ -1,4 +1,4 @@
-# Prototype Status Ledger (FLIP-READINESS in progress; default remains mock)
+# Prototype Status Ledger (FLIP-READINESS complete; default remains mock)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -9,12 +9,14 @@ Workload of record: **GPT-2 small (124M, L=12, d=768, h=12, d_ff=3072),
 prefill T=100 + 50 deferred decode tokens, causal, PCS Q=200**, on the
 designated RunPod A100 profile. P7 is closed; its CPU and rho numbers below
 are historical. P7b has a valid official PASS at `ab3a03f`, and GPU
-optimization is closed by the 2026-07-15 Stop branch. The active package is
-**FLIP-READINESS** for the fase-B real-PCG candidate; it may satisfy proposed
-default-flip criteria (2) and (3) and prepare the cost decision for (4), but
-it does not enact criterion (5) or change the mock default. Candidate A
-(Packed16/fase-C) is rejected on product cost. The earlier `33e5fb4`
-decode-only FAIL remains an immutable rebaseline result.
+optimization is closed by the 2026-07-15 Stop branch. **FLIP-READINESS is
+complete** for the fase-B real-PCG candidate: proposed default-flip criteria
+(2) and (3) are satisfied, and the measured cost material for (4) is recorded
+below. Criteria (1), (4) and (5) remain open; the mock default is unchanged.
+Candidate A (Packed16/fase-C) is rejected on product cost. The earlier
+`33e5fb4` decode-only FAIL remains an immutable rebaseline result. The
+remaining queue is C3/PCS when further byte refinement is wanted, then fase X
+as the next substantive phase.
 
 ## Milestones
 
@@ -35,7 +37,7 @@ decode-only FAIL remains an immutable rebaseline result.
 | P7b RunPod official rebaseline | **official valid FAIL: decode only; diagnosis complete** (2026-07-14) | Clean schema-6/ABI-28 T=100+50/Q=200 on exact `runpod-a100-v1`, counters-only, Rayon=8, 1+3, golden and communication invariants; prefill <=10 s, decode <=4 s, max per-repetition sync-wall/session-wall <=2%, H2D <=100 MB | `33e5fb4`: prefill **7.801 s PASS**, decode **6.794 s FAIL**, session **15.995 s**; sync-wall max **0.768% PASS** with 59,868 sync diagnostic; H2D **28.595 MB PASS**; packed response **144.821 MB PASS**; golden/accepted/flat 1.412 PASS. Separate non-gating `70f64d4` event attribution measures a **6.275 s decode-marginal kernel floor**: GEMM 4.820 s, LogUp 1.098 s, other 0.358 s. Provider-neutral kernel work is required; D2H host-call wall includes queued-kernel waits and is not an additive transfer cost. |
 | P7b RunPod matrix-fold iteration | **official valid PASS; complete** (2026-07-14) | Unchanged `runpod-a100-v1` full gate contract after the preregistered ABI-neutral kernel fix | `ab3a03f`: prefill **2.631 s PASS**, decode **2.089 s PASS**, session **5.917 s**; sync-wall max **1.821% PASS** with the unchanged 59,868 sync; H2D **28.595 MB PASS**; packed response **144.821 MB PASS**; golden/accepted/flat 1.281 PASS. Proof, operation, correlation and communication counts are exact against `33e5fb4`; no scheduler, batching or protocol change was needed. Mock-PCG remains non-production. |
 | Real-sVOLE fase-B hardening | **full parity candidate for the F_p lanes; default remains mock** (2026-07-15) | Clean P6 quick real accepts; exact counter/allocation/channel digests; mandatory malicious/channel tests reject/hold | `1d63923`: genuine two-party Ristretto OT→COPEe/IKNP→WYKW GGM/regular-LPN setup, hardened cited parameters. Per instance **22.483 s**, **31.261 MB** setup traffic (P→V 28.814 MB, V→P 2.447 MB); setup excluded from rho and response. Run `p6-quick-realpcg-2026-07-15-1d63923.json`. Default-flip criteria are proposed, not enacted. |
-| Fase-B FLIP-READINESS | **in progress; preregistered; default remains mock** (2026-07-15) | Host-only setup speed pass; production lifecycle/transport plumbing; one clean full T=100+50/Q=200 real-PCG parity record | Criteria (2) and (3) are implementation gates for this package. Criterion (4) receives decision material only. External review (1) and the user-authorized flip (5) remain open. Wire schedule/count fixed at 31,261,434 B/setup; C1 response fixed at 136,526,530 B. |
+| Fase-B FLIP-READINESS | **complete for criteria (2)/(3); default remains mock** (2026-07-15) | Host-only setup speed pass ✓; production lifecycle/transport plumbing ✓; clean full T=100+50/Q=200 real-PCG parity record ✓ | `117df7d`: normal-session setup **8.451 s** (GGM 4.632, checks 1.334, OT-ext 0.963, LPN 1.496, base OT 0.025); chunked-session setup 8.609 s. Exactly **31,261,434 B/setup** unchanged. Full golden/normal/chunked/13-PCS/closure/malicious parity passes; packed response exactly **136,526,530 B**. Record `flip-readiness-2026-07-15-117df7d.json`. External review (1), cost acceptance (4), and flip (5) remain open. |
 | C1 response-communication reduction | **complete: identity-seam `x_in` reuse only** (2026-07-15) | Clean full T=100+50/Q=200 CPU record; golden, normal/chunked acceptance, PCS/closure, exact bytes/counters and replay/preflight gates | `2a3d731`: **1,036,800** canonical aliases save **8,294,400 B**; transcript **129,119,408 B**, packed response **136,526,530 B**, auth corrections **59,545,008 B**. Prover/verifier sub correlations both **7,443,126**, full both **176,880**; PCS **66,733,504 B**, 96+6 claims, Q=200 unchanged. Median prove **18.653 s** (−0.086 s vs same-machine P6 record), verify **0.522 s** (−0.045 s); flat curve **1.219 PASS**. Record `benchmarks/results/c1-2026-07-15-2a3d731.json`, full SHA `2a3d7314bba35e18229af31c99f226c93ef12416`, `git_dirty:false`. |
 | C2 Packed16 typed-lane real-PCG | **Candidate A rejected; Packed16 shelved** (2026-07-15) | Permanent costing record; implementation is not authorized | `docs/c2-packed-lane-pcg-design.md` remains the permanent record: the only sound realization costs about **1.55 GB** recurring setup traffic and **31--46 s** setup wall per session to save 32,486,400 B of response, about **47×** more bytes moved than saved. Revisit only with a cited construction on the order of tens of MB/session, or an explicit product decision that the envelope demands it. |
 
@@ -69,6 +71,100 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-15 (fase-B FLIP-READINESS closed for criteria (2) and (3);
+  mock default unchanged)**: checkpoint
+  `117df7d5d30befefe280a995d6aee3d905d98f9e` implements the preregistered
+  host-only setup pass and production provisioning/lifecycle boundary. The
+  clean append-only record is
+  `benchmarks/results/flip-readiness-2026-07-15-117df7d.json`, SHA-256
+  `f9105c1060581a28c3f0ef496b74dd7db20132f33e5ca23605d8c45bfdd717cd`;
+  it records the unchanged full geometry T=100+50/Q=200 and
+  `git_dirty:false` before setup and before serialization.
+
+  **Setup performance.** Rayon now expands the independent GGM trees,
+  reconstructs punctured trees and evaluates the batched WYKW block products
+  in parallel, while collecting blocks in canonical order. The normal full
+  response setup measured **8.451112 s**: base OT **0.025049 s**, OT extension
+  **0.963487 s**, GGM **4.632134 s**, regular LPN/output expansion
+  **1.495709 s**, and malicious checks **1.334213 s**. The separately
+  authorized chunked session measured **8.608849 s**; the JSON also records
+  their two-instance aggregate **17.059961 s**. Against the fase-B setup
+  record, the directly comparable fixed work moved GGM **16.125939 →
+  4.632134 s** (−71.3%) and checks **4.978960 → 1.334213 s** (−73.2%) on this
+  4-core aarch64 VM. Full-output LPN is larger than the old quick workload and
+  is therefore reported, not presented as an apples-to-apples speedup. BLAKE3
+  remains the PRG/KDF; no fixed-key-AES assumption or implementation entered.
+
+  Only wall time moved. Each setup still serializes exactly **31,261,434 B**:
+  **28,814,084 B prover→verifier** and **2,447,350 B verifier→prover**;
+  categories remain base OT 16,411 B, OT extension 31,150,315 B, GGM 91,884 B
+  and checks 2,824 B. The harness asserts these per-instance values before
+  accepting a timing. Frame kinds, payload lengths, order, message schedule,
+  transcript/proof paths, response bytes and allocation/challenge order are
+  unchanged.
+
+  **Criterion (2) — SATISFIED.** Production role seeds are independent
+  256-bit reads from Rust `rand` 0.8 `OsRng`, whose standard build is backed by
+  `getrandom`; on Linux this reaches the OS CSPRNG and blocks until its pool is
+  initialized ([rand 0.8.5 feature documentation](https://docs.rs/crate/rand/0.8.5),
+  [Linux `getrandom(2)`](https://man7.org/linux/man-pages/man2/getrandom.2.html)).
+  The role seeds are separately domain-bound to the caller-supplied session
+  identity, authenticated-channel identity and response authorization nonce.
+  Both role transcripts and the channel digest start from the same binding;
+  an identity mismatch is rejected before setup. No identity field was added
+  to the wire.
+
+  `ResponseAuthorizationStore` performs an atomic `create_new` of a
+  nonce-keyed append-only marker, writes it and syncs both file and directory
+  **before** entropy sampling or correlation generation. Markers are never
+  removed on success or abort. The same nonce is therefore rejected after a
+  reconnect, retry, claimed identity change, process kill or store reopen; an
+  unavailable/non-durable store fails capability preflight. Tests cover
+  reconnect/retry rejection, nonce reuse under changed identities,
+  burn-on-error, kill/restart, and distinct seed commitments/correlations in a
+  fresh restarted session. The channel-secrecy test reparses all frames and
+  still finds neither role seed nor verifier `Delta`; mismatched
+  session/channel identities fail closed. `cargo test --workspace` passes,
+  including all 12 `volta-pcg` tests and the three existing malicious GGM/WYKW
+  rejection cases.
+
+  **Criterion (3) — SATISFIED.** The clean full real-backend record has frozen
+  50-token golden decode, normal acceptance, 5×10 chunked acceptance (flat
+  ratio **1.197141**, PASS), all **13/13 PCS verifications**, 96 weight + 6
+  embed claims at Q=200, and product/zero protocol closure. Prover and verifier
+  counters are exactly **7,443,126 sub + 176,880 full**. Real versus mock
+  counter, logical allocation-digest and channel-ledger-digest comparisons are
+  all true; the two real roles' allocation and channel digests also agree.
+  Transcript **129,119,408 B**, PCS **66,733,504 B**, packed logits
+  **7,407,122 B**, and packed response exactly **136,526,530 B** match C1.
+  The JSON explicitly retains `pcg_production_ready:false`.
+
+  **Criterion (4) — decision material only; still OPEN.** On this machine a
+  response consumes one session-bound setup taking **8.45--8.61 s** and moves
+  **31.26 MB** of setup traffic in addition to, and before/alongside, the
+  136.53 MB packed response. At 1 Gbit/s the raw setup bytes alone are about
+  0.25 s, so compute dominates this measured VM cost. If setup is synchronous,
+  it is direct request latency. Once the authenticated channel and single-use
+  response nonce exist, it can start before proving and overlap model loading,
+  witness work or network admission; on this 4-core host the Rayon setup uses
+  all cores, so useful overlap needs spare/dedicated cores or a setup worker.
+  It cannot be safely reused across requests or restarted after abort: all
+  generated/unused correlations and `Delta` are session-bound and burned.
+  The durable authorization marker is only tens of bytes plus filesystem
+  metadata per request, but it is append-only operational state and must share
+  the authorization service's durability/retention policy. Correlation pools
+  should remain protected in memory (or receive an explicit encrypted-at-rest
+  policy) and be destroyed at the terminal session state. The product owner
+  has not yet accepted these latency, traffic and lifecycle/storage costs.
+
+  **Still open.** Criterion (1), independent cryptographic review of the
+  construction/equations/parser/parameters, remains external and incomplete.
+  Criterion (5), a new user-authorized ledger decision/checkpoint changing the
+  default, remains incomplete. Mock is still the default and real is still
+  explicit opt-in; every historical reference and verdict is unchanged. No
+  C3/PCS lever, proof/message-format change, Packed16, GPU/provider work or
+  Lean change entered this package.
 
 - **2026-07-15 (fase-B FLIP-READINESS preregistered before coding; no
   default flip)**: this package is authorized to complete everything locally

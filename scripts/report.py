@@ -39,6 +39,15 @@ P7B_PACKED_LOGITS_REFERENCE_BYTES = 7_407_122
 P7B_PACKED_RESPONSE_REFERENCE_BYTES = 144_820_930
 P7B_TIMING_STATISTIC = "upper median across measured repetitions"
 P7B_COUNTER_STATISTIC = "maximum across measured sessions"
+C1_REPORT_SCHEMA_VERSION = 3
+C1_TRANSCRIPT_REFERENCE_BYTES = 129_119_408
+C1_AUTH_CORRECTION_REFERENCE_BYTES = 59_545_008
+C1_PCS_OPENING_REFERENCE_BYTES = 66_733_504
+C1_PACKED_LOGITS_REFERENCE_BYTES = 7_407_122
+C1_PACKED_RESPONSE_REFERENCE_BYTES = 136_526_530
+C1_IDENTITY_SEAM_ALIAS_VALUES = 1_036_800
+C1_SUB_CORR_REFERENCE = 7_443_126
+C1_FULL_CORR_REFERENCE = 176_880
 
 LAYER_PARAMS = {
     "rows": 1 << 10,
@@ -105,6 +114,69 @@ def select_p6_record(results: list[dict[str, Any]]) -> dict[str, Any]:
     if dirty:
         return max(dirty, key=lambda r: r["_mtime"])
     raise SystemExit("no accepted P6 result for prompt 100 + decode 50")
+
+
+def _c1_record_valid(row: dict[str, Any]) -> bool:
+    reuse = row.get("c1_identity_seam_reuse")
+    labels = row.get("comm_response_by_label")
+    return (
+        row.get("report_schema_version") == C1_REPORT_SCHEMA_VERSION
+        and row.get("milestone") == "C1"
+        and row.get("git_dirty") is False
+        and isinstance(row.get("git_sha"), str)
+        and len(row["git_sha"]) == 40
+        and row.get("t_prefill") == 100
+        and row.get("n_decode") == 50
+        and row.get("accepted") is True
+        and row.get("golden_decode_checked") is True
+        and row.get("golden_decode_match") is True
+        and row.get("chunked_accepted") is True
+        and row.get("gate_flat_cost_per_token") is True
+        and row.get("comm_response_bytes") == C1_TRANSCRIPT_REFERENCE_BYTES
+        and isinstance(labels, dict)
+        and labels.get("auth_corrections") == C1_AUTH_CORRECTION_REFERENCE_BYTES
+        and row.get("pcs_opening_bytes_total") == C1_PCS_OPENING_REFERENCE_BYTES
+        and row.get("public_logits_packed_bytes") == C1_PACKED_LOGITS_REFERENCE_BYTES
+        and row.get("total_response_download_packed_bytes")
+        == C1_PACKED_RESPONSE_REFERENCE_BYTES
+        and row.get("pcs_n_queries") == 200
+        and row.get("n_weight_claims") == 96
+        and row.get("n_embed_claims") == 6
+        and row.get("corr_sub_corrs") == C1_SUB_CORR_REFERENCE
+        and row.get("corr_full_corrs") == C1_FULL_CORR_REFERENCE
+        and row.get("pcg_backend") == "mock"
+        and row.get("pcg_production_ready") is False
+        and row.get("pcg_setup_comm_bytes") == 0
+        and isinstance(reuse, dict)
+        and reuse.get("identity_seam_alias_values") == C1_IDENTITY_SEAM_ALIAS_VALUES
+        and reuse.get("saved_response_bytes")
+        == P7B_PACKED_RESPONSE_REFERENCE_BYTES - C1_PACKED_RESPONSE_REFERENCE_BYTES
+        and reuse.get("measured_transcript_bytes") == C1_TRANSCRIPT_REFERENCE_BYTES
+        and reuse.get("measured_auth_correction_bytes")
+        == C1_AUTH_CORRECTION_REFERENCE_BYTES
+        and reuse.get("measured_packed_response_bytes") == C1_PACKED_RESPONSE_REFERENCE_BYTES
+        and reuse.get("measured_prover_sub_corrs") == C1_SUB_CORR_REFERENCE
+        and reuse.get("measured_verifier_sub_corrs") == C1_SUB_CORR_REFERENCE
+        and reuse.get("measured_prover_full_corrs") == C1_FULL_CORR_REFERENCE
+        and reuse.get("measured_verifier_full_corrs") == C1_FULL_CORR_REFERENCE
+        and reuse.get("full_corrs_unchanged") is True
+        and reuse.get("pcs_parameters_unchanged") is True
+        and reuse.get("claims_unchanged") is True
+        and reuse.get("byte_formulas_reconcile") is True
+        and reuse.get("counters_reconcile") is True
+        and reuse.get("typed_correlation_lanes") == 0
+        and reuse.get("second_phase_b_shard_required") is False
+    )
+
+
+def select_c1_record(results: list[dict[str, Any]]) -> dict[str, Any] | None:
+    rows = [row for row in results if row.get("milestone") == "C1"]
+    if not rows:
+        return None
+    valid = [row for row in rows if _c1_record_valid(row)]
+    if not valid:
+        raise SystemExit("C1 result exists but does not satisfy the registered reference")
+    return max(valid, key=lambda row: row["_mtime"])
 
 
 def select_packed_source(results: list[dict[str, Any]], baseline: dict[str, Any]) -> dict[str, Any] | None:
@@ -1517,6 +1589,7 @@ def decode_marginal_profiles(results: list[dict[str, Any]]) -> list[dict[str, An
 def p7_report(results_dir: Path) -> dict[str, Any]:
     results = load_results(results_dir)
     baseline = select_p6_record(results)
+    c1_record = select_c1_record(results)
     packed = select_packed_source(results, baseline)
 
     public_logits_packed = (
@@ -1684,6 +1757,24 @@ def p7_report(results_dir: Path) -> dict[str, Any]:
         },
         "rho_history": summarize_rhos(results),
         "communication": p6_comm,
+        "c1_communication_reference": (
+            {
+                "source": c1_record["_path"],
+                "git_sha": c1_record["git_sha"],
+                "response_transcript_bytes": c1_record["comm_response_bytes"],
+                "pcs_opening_bytes": c1_record["pcs_opening_bytes_total"],
+                "public_logits_packed_bytes": c1_record["public_logits_packed_bytes"],
+                "packed_response_bytes": c1_record["total_response_download_packed_bytes"],
+                "identity_seam_alias_values": c1_record["c1_identity_seam_reuse"][
+                    "identity_seam_alias_values"
+                ],
+                "historical_runpod_a100_v1_packed_response_bytes": (
+                    P7B_PACKED_RESPONSE_REFERENCE_BYTES
+                ),
+            }
+            if c1_record
+            else None
+        ),
         "measured_pcs_profiles": measured_pcs_profiles(results, baseline),
         "decode_marginal_profiles": decode_marginal_profiles(results),
         "pcs_formula_check": {

@@ -2944,6 +2944,17 @@ mod report_tests {
     use super::*;
 
     #[test]
+    fn c1_reference_is_exact_and_does_not_mutate_historical_p7b() {
+        assert_eq!(C1_IDENTITY_SEAM_ALIASES, 9 * 150 * 768);
+        assert_eq!(C1_SAVED_BYTES, 8_294_400);
+        assert_eq!(C1_TRANSCRIPT_BYTES, 129_119_408);
+        assert_eq!(C1_AUTH_CORRECTION_BYTES, 59_545_008);
+        assert_eq!(C1_PACKED_RESPONSE_BYTES, 136_526_530);
+        assert_eq!(C1_SUB_CORRS, 7_443_126);
+        assert_eq!(P7B_PACKED_RESPONSE_REFERENCE_BYTES, 144_820_930);
+    }
+
+    #[test]
     fn timing_distribution_keeps_samples_and_reports_upper_median_mad() {
         let distribution = TimingDistribution::new(vec![9.0, 1.0, 5.0, 3.0]);
         assert_eq!(distribution.samples_s, vec![9.0, 1.0, 5.0, 3.0]);

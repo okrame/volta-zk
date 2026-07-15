@@ -1,4 +1,4 @@
-# Prototype Status Ledger (C1 — identity-seam reuse implementation)
+# Prototype Status Ledger (C1 — identity-seam reuse complete)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,8 +10,9 @@ prefill T=100 + 50 deferred decode tokens, causal, PCS Q=200**, on the
 designated RunPod A100 profile. P7 is closed; its CPU and rho numbers below
 are historical. P7b has a valid official PASS at `ab3a03f`, and GPU
 optimization is closed by the 2026-07-15 Stop branch. The active milestone is
-**C1 Phase 2, descoped to identity-seam `x_in` reuse only**. Candidate A
-(Packed16/fase-C) is rejected on product cost. The earlier `33e5fb4`
+**C1 Phase 2 is complete, descoped to identity-seam `x_in` reuse only**.
+Candidate A (Packed16/fase-C) is rejected on product cost; no successor
+communication milestone is scheduled by this closure. The earlier `33e5fb4`
 decode-only FAIL remains an immutable rebaseline result.
 
 ## Milestones
@@ -33,7 +34,7 @@ decode-only FAIL remains an immutable rebaseline result.
 | P7b RunPod official rebaseline | **official valid FAIL: decode only; diagnosis complete** (2026-07-14) | Clean schema-6/ABI-28 T=100+50/Q=200 on exact `runpod-a100-v1`, counters-only, Rayon=8, 1+3, golden and communication invariants; prefill <=10 s, decode <=4 s, max per-repetition sync-wall/session-wall <=2%, H2D <=100 MB | `33e5fb4`: prefill **7.801 s PASS**, decode **6.794 s FAIL**, session **15.995 s**; sync-wall max **0.768% PASS** with 59,868 sync diagnostic; H2D **28.595 MB PASS**; packed response **144.821 MB PASS**; golden/accepted/flat 1.412 PASS. Separate non-gating `70f64d4` event attribution measures a **6.275 s decode-marginal kernel floor**: GEMM 4.820 s, LogUp 1.098 s, other 0.358 s. Provider-neutral kernel work is required; D2H host-call wall includes queued-kernel waits and is not an additive transfer cost. |
 | P7b RunPod matrix-fold iteration | **official valid PASS; complete** (2026-07-14) | Unchanged `runpod-a100-v1` full gate contract after the preregistered ABI-neutral kernel fix | `ab3a03f`: prefill **2.631 s PASS**, decode **2.089 s PASS**, session **5.917 s**; sync-wall max **1.821% PASS** with the unchanged 59,868 sync; H2D **28.595 MB PASS**; packed response **144.821 MB PASS**; golden/accepted/flat 1.281 PASS. Proof, operation, correlation and communication counts are exact against `33e5fb4`; no scheduler, batching or protocol change was needed. Mock-PCG remains non-production. |
 | Real-sVOLE fase-B hardening | **full parity candidate for the F_p lanes; default remains mock** (2026-07-15) | Clean P6 quick real accepts; exact counter/allocation/channel digests; mandatory malicious/channel tests reject/hold | `1d63923`: genuine two-party Ristretto OT→COPEe/IKNP→WYKW GGM/regular-LPN setup, hardened cited parameters. Per instance **22.483 s**, **31.261 MB** setup traffic (P→V 28.814 MB, V→P 2.447 MB); setup excluded from rho and response. Run `p6-quick-realpcg-2026-07-15-1d63923.json`. Default-flip criteria are proposed, not enacted. |
-| C1 response-communication reduction | **Phase 2 in progress, descoped to identity-seam `x_in` reuse** (2026-07-15) | No Lean or new correlation types; frozen golden/protocol/PCS closure and alias anti-replay gates; clean full CPU record required | Packed16 is shelved. Nine sound identity-seam aliases save **8,294,400 B** from the frozen 144,820,930 B response, projecting **136,526,530 B**. Post-reuse demand is **7,443,126** sub correlations, within one fase-B shard's **10,214,167** usable capacity. Q=200/rate/claims and all out-of-scope levers remain frozen. |
+| C1 response-communication reduction | **complete: identity-seam `x_in` reuse only** (2026-07-15) | Clean full T=100+50/Q=200 CPU record; golden, normal/chunked acceptance, PCS/closure, exact bytes/counters and replay/preflight gates | `2a3d731`: **1,036,800** canonical aliases save **8,294,400 B**; transcript **129,119,408 B**, packed response **136,526,530 B**, auth corrections **59,545,008 B**. Prover/verifier sub correlations both **7,443,126**, full both **176,880**; PCS **66,733,504 B**, 96+6 claims, Q=200 unchanged. Median prove **18.653 s** (−0.086 s vs same-machine P6 record), verify **0.522 s** (−0.045 s); flat curve **1.219 PASS**. Record `benchmarks/results/c1-2026-07-15-2a3d731.json`, full SHA `2a3d7314bba35e18229af31c99f226c93ef12416`, `git_dirty:false`. |
 | C2 Packed16 typed-lane real-PCG | **Candidate A rejected; Packed16 shelved** (2026-07-15) | Permanent costing record; implementation is not authorized | `docs/c2-packed-lane-pcg-design.md` remains the permanent record: the only sound realization costs about **1.55 GB** recurring setup traffic and **31--46 s** setup wall per session to save 32,486,400 B of response, about **47×** more bytes moved than saved. Revisit only with a cited construction on the order of tens of MB/session, or an explicit product decision that the envelope demands it. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
@@ -66,6 +67,56 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-15 (C1 descoped Phase 2 closed; communication reference
+  re-baselined)**: the clean full CPU record is
+  `benchmarks/results/c1-2026-07-15-2a3d731.json`, produced from unchanged
+  full SHA `2a3d7314bba35e18229af31c99f226c93ef12416` with `git_dirty:false`,
+  T=100+50, Q=200, one warmup and three measured repetitions on the same
+  4-core aarch64 machine class as the frozen P6 timing baseline.  Golden
+  50-token decode, normal acceptance, chunked acceptance, all 13 PCS
+  verifications, protocol closure and the flat-cost gate pass; the measured
+  last/first chunk ratio is **1.218943** (<=1.5).
+
+  Exactly nine public `shift==0` seams per phase use the canonical preceding
+  layer's `ffn_block_out` authentication.  The proof contains no selectable
+  alias source: the verifier derives the same-session, same-phase/chunk,
+  adjacent-layer and exact-row source before consuming transcript or
+  correlations.  The old `x_in` domain slot remains a tombstone, so unrelated
+  K/V and layer numbering is unchanged.  Preflight rejects an empty `x_in`
+  correction vector at layer 0 or either nonzero seam, and rejects any fresh
+  correction vector or malformed length at an identity seam.  The existing
+  position/chunk replay suite remains green; CPU and resident paths emit the
+  same proof representation and the resident differential continues to bind
+  proof, transcript ledger, counters and verifier result with no fallback.
+
+  The exact measured accounting is:
+
+  ```text
+  identity aliases                    9 * 150 * 768 = 1,036,800 values
+  response saving                     8 * 1,036,800 = 8,294,400 B
+  transcript                          137,413,808 - 8,294,400 = 129,119,408 B
+  auth_corrections                     67,839,408 - 8,294,400 =  59,545,008 B
+  packed response                     144,820,930 - 8,294,400 = 136,526,530 B
+  prover/verifier sub correlations      8,479,926 - 1,036,800 =   7,443,126
+  prover/verifier full correlations                                      176,880
+  ```
+
+  PCS opening **66,733,504 B**, Q=200/rate, 96 weight + 6 embed claims,
+  challenge order, one-time correlation semantics and packed logits
+  **7,407,122 B** are unchanged.  There are zero typed lanes, no Lean change
+  and no second fase-B shard; 7,443,126 remains below one shard's 10,214,167
+  usable capacity.  Median prove response is **18.652767 s**, delta
+  **−0.085864 s (−0.46%)** against the same-machine P6 record; median verify is
+  **0.521739 s**, delta **−0.045404 s (−8.01%)**.  These timing deltas are
+  informative, not new gates.
+
+  Rust and Python validators now carry **136,526,530 B** as the C1
+  communication reference.  Historical `runpod-a100-v1` rows and validators
+  remain bound to exactly **144,820,930 B**; no old result/profile is mutated.
+  Any later official GPU run still requires a separately preregistered gate
+  profile.  Packed16, PCS Q/rate changes, argmax, GPU kernels, the sVOLE
+  default flip and provider profiles did not enter C1.
 
 - **2026-07-15 (C2 review complete: Candidate A rejected; C1 descoped and
   authorized)**: `docs/c2-packed-lane-pcg-design.md` is accepted as a valid,

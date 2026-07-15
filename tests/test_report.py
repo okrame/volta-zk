@@ -43,6 +43,12 @@ def test_p7_report_selects_record_and_packed_sources():
     assert data["cloud"]["instance_id"] == "tc-machineid-sha256-42069fd5fa86"
     assert data["cloud"] != data["baseline"]["cloud"]
     assert data["communication"]["packed_logits_source"].endswith("p6-2026-07-11-f72e4dd.json")
+    c1 = data["c1_communication_reference"]
+    assert c1["source"].endswith("c1-2026-07-15-2a3d731.json")
+    assert c1["response_transcript_bytes"] == 129_119_408
+    assert c1["packed_response_bytes"] == 136_526_530
+    assert c1["identity_seam_alias_values"] == 1_036_800
+    assert c1["historical_runpod_a100_v1_packed_response_bytes"] == 144_820_930
     required = data["gpu_budget_model"]["required_relative_prover_vs_native_speedup"]
     assert 2.051 < required["prefill"] < 2.052
     assert 4.146 < required["decode"] < 4.147
@@ -200,7 +206,11 @@ def test_p7_report_selects_record_and_packed_sources():
         assert row["is_real_pcg"] is True
         # "real" is the label of the two 2026-07-07 pre-fix JSONs; the honest
         # label after the GGM-accounting fix is "setup-cost-model".
-        assert row["base_vole"] in {"real", "setup-cost-model"}
+        assert row["base_vole"] in {
+            "real",
+            "setup-cost-model",
+            "real-COPEe-WYKW-checked",
+        }
         assert row["setup_comm_bytes"] > 0
         assert row["production_ready"] is False
         assert row["consistency"]["ok"] is True
@@ -212,6 +222,16 @@ def test_p7_report_selects_record_and_packed_sources():
     assert len(decode) == 1
     assert decode[0]["label_sum_bytes"] == decode[0]["comm_decode_marginal_bytes"]
     assert decode[0]["top_labels"][0] == {"label": "auth_corrections", "bytes": 20_902_016}
+
+
+def test_c1_record_closes_exact_reference_without_mutating_p7b():
+    report = load_report_module()
+    path = report.DEFAULT_RESULTS / "c1-2026-07-15-2a3d731.json"
+    row = report.load_json(path)
+
+    assert report._c1_record_valid(row) is True
+    assert report.C1_PACKED_RESPONSE_REFERENCE_BYTES == 136_526_530
+    assert report.P7B_PACKED_RESPONSE_REFERENCE_BYTES == 144_820_930
 
 
 def test_resident_profile_joins_only_same_host_native_anchor_and_keeps_full_accounting():

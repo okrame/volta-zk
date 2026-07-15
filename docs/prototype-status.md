@@ -1,4 +1,4 @@
-# Prototype Status Ledger (C1 — response communication, design phase)
+# Prototype Status Ledger (C1 — identity-seam reuse implementation)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -10,9 +10,9 @@ prefill T=100 + 50 deferred decode tokens, causal, PCS Q=200**, on the
 designated RunPod A100 profile. P7 is closed; its CPU and rho numbers below
 are historical. P7b has a valid official PASS at `ab3a03f`, and GPU
 optimization is closed by the 2026-07-15 Stop branch. The active milestone is
-**C1 Phase 1**, design and preregistration only; no implementation is
-authorized before user review. The earlier `33e5fb4` decode-only FAIL remains
-an immutable rebaseline result.
+**C1 Phase 2, descoped to identity-seam `x_in` reuse only**. Candidate A
+(Packed16/fase-C) is rejected on product cost. The earlier `33e5fb4`
+decode-only FAIL remains an immutable rebaseline result.
 
 ## Milestones
 
@@ -32,8 +32,9 @@ an immutable rebaseline result.
 | P7b iteration 3 diagnosis | **Phase 0a/0b/0c complete; scheduler phase cancelled as provider-specific debt** (no gate verdict) | Host-call diagnosis closed; no further Thunder coalescing is on the critical path | Clean same-SHA `098b2f1` quick A/B: deferred-events median session wall **54.507 s** versus Thunder wall-only+counters **32.575 s**, event tax **21.932 s / 40.24%**. The RunPod A100 control is **3.768 s** at identical quick geometry and **15.651 s** full session wall; it selected the new provider but is not retroactively a gate claim. |
 | P7b RunPod official rebaseline | **official valid FAIL: decode only; diagnosis complete** (2026-07-14) | Clean schema-6/ABI-28 T=100+50/Q=200 on exact `runpod-a100-v1`, counters-only, Rayon=8, 1+3, golden and communication invariants; prefill <=10 s, decode <=4 s, max per-repetition sync-wall/session-wall <=2%, H2D <=100 MB | `33e5fb4`: prefill **7.801 s PASS**, decode **6.794 s FAIL**, session **15.995 s**; sync-wall max **0.768% PASS** with 59,868 sync diagnostic; H2D **28.595 MB PASS**; packed response **144.821 MB PASS**; golden/accepted/flat 1.412 PASS. Separate non-gating `70f64d4` event attribution measures a **6.275 s decode-marginal kernel floor**: GEMM 4.820 s, LogUp 1.098 s, other 0.358 s. Provider-neutral kernel work is required; D2H host-call wall includes queued-kernel waits and is not an additive transfer cost. |
 | P7b RunPod matrix-fold iteration | **official valid PASS; complete** (2026-07-14) | Unchanged `runpod-a100-v1` full gate contract after the preregistered ABI-neutral kernel fix | `ab3a03f`: prefill **2.631 s PASS**, decode **2.089 s PASS**, session **5.917 s**; sync-wall max **1.821% PASS** with the unchanged 59,868 sync; H2D **28.595 MB PASS**; packed response **144.821 MB PASS**; golden/accepted/flat 1.281 PASS. Proof, operation, correlation and communication counts are exact against `33e5fb4`; no scheduler, batching or protocol change was needed. Mock-PCG remains non-production. |
-| Real-sVOLE fase-B hardening | **parity candidate; default remains mock** (2026-07-15) | Clean P6 quick real accepts; exact counter/allocation/channel digests; mandatory malicious/channel tests reject/hold | `1d63923`: genuine two-party Ristretto OT→COPEe/IKNP→WYKW GGM/regular-LPN setup, hardened cited parameters. Per instance **22.483 s**, **31.261 MB** setup traffic (P→V 28.814 MB, V→P 2.447 MB); setup excluded from rho and response. Run `p6-quick-realpcg-2026-07-15-1d63923.json`. Default-flip criteria are proposed, not enacted. |
-| C1 response-communication reduction | **Phase 1 preregistered; HARD STOP before implementation** (2026-07-15) | User review of §4.6.B/M5 design and §4.3 identity-seam reuse is mandatory before Phase 2 | Design: `docs/c1-response-communication-design.md`. Exact projection from the frozen 144,820,930 B response: four-boundary Packed16 saves 32,486,400 B; nine sound identity-seam aliases save 8,294,400 B; projected response **104,040,130 B**. Projection only, no verdict/reference change. §4.6.A and linear RLC merging remain excluded. |
+| Real-sVOLE fase-B hardening | **full parity candidate for the F_p lanes; default remains mock** (2026-07-15) | Clean P6 quick real accepts; exact counter/allocation/channel digests; mandatory malicious/channel tests reject/hold | `1d63923`: genuine two-party Ristretto OT→COPEe/IKNP→WYKW GGM/regular-LPN setup, hardened cited parameters. Per instance **22.483 s**, **31.261 MB** setup traffic (P→V 28.814 MB, V→P 2.447 MB); setup excluded from rho and response. Run `p6-quick-realpcg-2026-07-15-1d63923.json`. Default-flip criteria are proposed, not enacted. |
+| C1 response-communication reduction | **Phase 2 in progress, descoped to identity-seam `x_in` reuse** (2026-07-15) | No Lean or new correlation types; frozen golden/protocol/PCS closure and alias anti-replay gates; clean full CPU record required | Packed16 is shelved. Nine sound identity-seam aliases save **8,294,400 B** from the frozen 144,820,930 B response, projecting **136,526,530 B**. Post-reuse demand is **7,443,126** sub correlations, within one fase-B shard's **10,214,167** usable capacity. Q=200/rate/claims and all out-of-scope levers remain frozen. |
+| C2 Packed16 typed-lane real-PCG | **Candidate A rejected; Packed16 shelved** (2026-07-15) | Permanent costing record; implementation is not authorized | `docs/c2-packed-lane-pcg-design.md` remains the permanent record: the only sound realization costs about **1.55 GB** recurring setup traffic and **31--46 s** setup wall per session to save 32,486,400 B of response, about **47×** more bytes moved than saved. Revisit only with a cited construction on the order of tens of MB/session, or an explicit product decision that the envelope demands it. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -65,6 +66,139 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-15 (C2 review complete: Candidate A rejected; C1 descoped and
+  authorized)**: `docs/c2-packed-lane-pcg-design.md` is accepted as a valid,
+  honest costing, and remains the permanent record of the decision.  Its only
+  sound realization would add about **1.55 GB** setup traffic and **31--46 s**
+  setup wall per session to save **32,486,400 B** of response: roughly **47×**
+  more recurring bytes moved than saved.  Candidate A is rejected at this
+  scale.  The `Packed16` typed lane and C1 correction packing are shelved:
+  landing a proof format only the mock backend can serve, with a known
+  impractical real realization, is mock-forever debt.  The typed-lane
+  authorization is withdrawn.  Revisit requires a cited construction with
+  setup on the order of tens of MB/session, or an explicit product decision
+  that the envelope demands it.
+
+  Fase-B returns to **full parity-candidate** status for its existing `F_p`
+  lanes, without a Packed16 asterisk.  The proposed mock→real default-flip
+  criterion (6), which existed only for the typed lane, is removed; criteria
+  (1)--(5) are unchanged.  Mock remains the default and
+  `pcg_production_ready:false` remains unchanged.
+
+  C1 Phase 2 is authorized **only** for C1 design §4 identity-seam `x_in`
+  reuse.  It adds no correlation type and opens no Lean scope.  For T=100+50,
+  nine `shift==0` seams alias the producer authentication and retain their
+  tombstone domain slots, saving `8 * 9 * 150 * 768 = 8,294,400 B`; projected
+  packed response is `144,820,930 - 8,294,400 = 136,526,530 B`.  The one-shard
+  phase-B demand is `8,479,926 - 1,036,800 = 7,443,126` sub correlations,
+  below its `10,214,167` usable capacity: no second shard is needed.  PCS
+  Q=200/rate/claims, challenge order, one-time correlation semantics, GPU
+  kernels, provider profiles, argmax and the sVOLE default flip remain out of
+  scope.  This entry supersedes the C1/C2 preregistration entries below where
+  they describe C1 as blocked or Packed16 as authorized.
+
+- **2026-07-15 (C1 §3.4 interpretation approved with a fase-C
+  precondition; C1 Phase 2 remains BLOCKED)**: “frozen correlation
+  semantics” means the MAC equation, verifier-only `Delta`, one-time use,
+  domain separation and exact counting.  The plaintext-distribution
+  catalogue is **not** frozen: the typed `(uniform u16, uniform bit)`
+  `Packed16Corr` lane is authorized as an extension of the ideal correlation
+  interface.  This decision does not claim that the real backend realizes
+  the lane and does not authorize C1 implementation.  C1 Phase 2 remains
+  **BLOCKED** until a complete fase-C design for the lane's real-PCG
+  realization is separately preregistered and user-reviewed.
+
+  The fase-B status is amended to **“parity candidate for the F_p lanes;
+  Packed16 lane unrealized”**.  Its proposed mock→real default-flip criteria
+  remain unfulfilled and gain item (6): **a separately preregistered and
+  implemented fase-C realizes the typed lane before any flip**.  Items
+  (1)--(5) in the fase-B closure entry remain unchanged.  The immediate next
+  task is fase-C **design only**, with a hard stop for user review and no
+  Rust, CUDA, Lean, PCG, proof-path or C1 Phase-2 implementation.
+
+- **2026-07-15 (C2 fase-C Packed16 real-PCG design preregistered; mandatory
+  user-review hard stop)**: the complete design is
+  `docs/c2-packed-lane-pcg-design.md`.  This entry records a design proposal,
+  not approval or implementation.  C1 Phase 2 remains **BLOCKED**, fase-B
+  remains a parity candidate only for the `F_p` lanes, mock remains the
+  default, and `pcg_production_ready:false` remains unchanged.
+
+  **Selected proposal.**  Add an auxiliary malicious Ferret-Uni COT lane,
+  then lift each binary COT into the existing arithmetic MAC under the same
+  verifier-only session `Delta` with one canonical `F_p^2` correction and
+  linearly compose sixteen authenticated bits into each uniform u16.  The
+  2026-07-07 “not Ferret” decision applied to the main `F_p` sVOLE; using
+  Ferret for this auxiliary bit lane is an explicit new decision proposed for
+  review, not a reinterpretation of that decision.  Per COT batch, a
+  transcript-bound 256-bit commit/open coin toss masks even adversarial COT
+  receiver choices.  The typed plaintexts are uniform before an abort
+  decision if either role is honest; a corrupt party cannot set them without
+  aborting.  Because two-party fairness cannot prevent selective-abort bias,
+  the design requires a single-use response-authorization nonce that is
+  consumed on success or abort.  The same response cannot retry or resume;
+  the entire session and all its allocations are burned.
+
+  Exact demand is `16 * 5,529,600 + 5,529,600 = 94,003,200` authenticated
+  source bits.  Ten 10,000,000-output Ferret-Uni batches reserve 100,000,000,
+  leaving 5,996,800 COTs (6.379% over demand) as counted, burned headroom.
+  The already-recorded `F_p` capacity defect is closed literally rather than
+  erased by reclassification: two independently seeded fase-B main shards,
+  under the same private session `Delta`, provide `2 * 10,214,167 =
+  20,428,334` usable sub-equivalent slots.  Against C1's 13,326,486 demand
+  plus six typed-lane check masks, headroom is 7,101,842 slots; the old
+  3,112,319 shortfall is closed.
+
+  The Ferret-Uni tuples are setup `(k,n,t)=(37,248,616,092,1,254)` and main
+  `(588,160,10,616,092,1,324)`, exact/uniform binary noise.  The public Code
+  Estimators suite at commit
+  `969ef60c30cb84c25502d6b7c968f43a362bb438` reports minima 142.658999 bits
+  (setup) and 153.876937 bits (main); ten-main union accounting gives
+  150.555009 bits, and setup plus all ten mains gives 142.652955 bits, a
+  14.652955-bit margin over 128.  Ferret-Reg is not substituted: its paper
+  setup tuple estimates at only 126.591702 bits.  The two unchanged fase-B
+  shards conservatively union to 139.643698 bits overall, an 11.643698-bit
+  margin.  These are pinned known-attack estimates and external assumptions,
+  not reductions or gate verdicts.
+
+  Malicious security retains Ferret's complete checks and fase-B's explicit
+  `kind:u8 || length:u64_le || payload` channel.  After every arithmetic-lift
+  correction is transcript-bound, three independent masked random-linear MAC
+  checks per typed lane give algebraic error at most `1/p^3` per lane.  Every
+  malformed frame, commitment/open, check, allocation digest, counter, EOF or
+  seal fails closed and burns the session.  The C1 §5 ordinary/u16/carry/full,
+  row, alias and allocation-digest labels remain exact; added internal
+  counters record 94,003,200 consumed, 100,000,000 generated, 5,996,800
+  burned, two `F_p` shards and six check masks.
+
+  Cost is registered honestly on top of the measured one-shard
+  22.483177 s / 31,261,434 B baseline.  A second complete fase-B shard adds
+  the same measured amount; the literature Ferret-Uni projection adds about
+  3.786 s / 10,635,000 B; the arithmetic lift sends exactly
+  `94,003,200 * 16 = 1,504,051,200 B` verifier→prover.  Including typed-row
+  frame headers and 1 MiB control headroom gives a sequential component-time
+  subtotal of 53.752354--68.752354 s and a setup-communication envelope of
+  about 1,578,387,244 B, deltas of 31.269177--46.269177 s and about
+  1,547,125,810 B over baseline.  All of this remains
+  `pcg_setup_comm_bytes`, never response download or proof bytes.  At 1 Gbps,
+  raw serialization alone is at least 12.627 s for the full envelope; the
+  conservative non-overlapped 1-Gbps setup-wall projection is
+  66.294--81.294 s, or +43.811--58.811 s over baseline.
+
+  Alternatives were rejected explicitly.  `F_p` sVOLE plus authenticated
+  bit-decomposition/truncation is circular under the current product
+  discipline: 94,003,200 bitness relations would optimistically consume
+  188,006,400 sub-equivalent limbs before candidate authentication and range
+  bookkeeping.  Half-Tree-style subfield VOLE cannot take `F_2` as a subfield
+  of the odd-characteristic `F_p^2`; a cross-characteristic conversion returns
+  to the selected OT lift or the circular range machinery.
+
+  Fase-C changes no proving path, proof/response/PCS bytes, C1 wire format,
+  proof challenge order, Lean theorem, mock default, GPU kernel, orchestration,
+  provider profile, gate or historical verdict.  The frozen 144,820,930 B
+  response remains the reference and C1's 104,040,130 B remains a projection.
+  This task stops here for review: it authorizes no Rust, CUDA, Lean, PCG, C1
+  Phase-2, benchmark, artifact or default-backend work.
 
 - **2026-07-15 (C1 Phase 1 response-communication design preregistered;
   mandatory stop before code)**: the complete design and Phase-2 contract are
@@ -182,8 +316,9 @@ constant factors hold. That constant factor is what P3/P4 measure.
   profile carrying that measured communication reference; no old verdict is
   mutated or retroactively reinterpreted.
 
-- **2026-07-15 (real-sVOLE fase-B hardening closed: parity candidate,
-  default unchanged)**: checkpoint `1d63923` replaces the shared-seed setup
+- **2026-07-15 (real-sVOLE fase-B hardening closed: parity candidate for the
+  `F_p` lanes; Packed16 lane unrealized; default unchanged)**: checkpoint
+  `1d63923` replaces the shared-seed setup
   cost model with independent `ProverSetup` and `VerifierSetup` machines and
   an explicit canonical wire format (`kind:u8 || length:u64_le || payload`).
   The channel is secret-agnostic; each role derives challenges from its own
@@ -233,10 +368,14 @@ constant factors hold. That constant factor is what P3/P4 measure.
   T=100+50/Q=200 real-backend run passes golden output, proof verification,
   exact counter/allocation/channel digests and the same malicious suite; (4)
   the product owner explicitly accepts the measured per-verifier setup wall,
-  31.26 MB setup traffic and lifecycle/storage policy; and (5) a new ledger
+  31.26 MB setup traffic and lifecycle/storage policy; (5) a new ledger
   decision and checkpoint flips the default while retaining mock as an
-  explicit test backend.  Until all five are recorded, real remains opt-in
-  and this closure authorizes no default flip.
+  explicit test backend; and (6) a separately preregistered, user-reviewed
+  and implemented fase-C realizes the typed `(uniform u16, uniform bit)`
+  Packed16 lane, with its malicious, uniformity, exact-counter,
+  allocation-digest and non-reuse requirements, before any flip.  Until all
+  six are recorded, real remains opt-in and this closure authorizes no default
+  flip.
 
 - **2026-07-15 (real-sVOLE fase-B LPN preregistration amended before the
   production run)**: the implementation boundary, transcript/check design,

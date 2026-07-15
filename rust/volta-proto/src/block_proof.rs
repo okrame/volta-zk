@@ -7194,21 +7194,28 @@ pub(crate) fn prove_layer_phase1_resident<W: ResidentLayerView>(
     luts: &Luts,
     error: DeviceSlice<'_, u32>,
     cx: &mut BlockCtxP,
+    xin_alias_dom: Option<u64>,
 ) -> Result<ResidentLayerP1, AccelError> {
     let t = wit.rows();
     let fulls0 = cx.stream.counters.full_corrs;
-    let dom_xin = cx.doms.take(t as u64);
-    let xin_corr = auth_matrix_rows_resident_p(
-        cx.stream,
-        cx.tx,
-        dom_xin,
-        wit.i16(LayerI16Field::XIn),
-        t,
-        D,
-        cx.backend
-            .as_deref_mut()
-            .ok_or(AccelError::InvalidInput("resident layer phase 1 requires a backend"))?,
-    )?;
+    let xin_tombstone = cx.doms.take(t as u64);
+    let (dom_xin, xin_corr) = match xin_alias_dom {
+        Some(source_dom) => (source_dom, Vec::new()),
+        None => (
+            xin_tombstone,
+            auth_matrix_rows_resident_p(
+                cx.stream,
+                cx.tx,
+                xin_tombstone,
+                wit.i16(LayerI16Field::XIn),
+                t,
+                D,
+                cx.backend
+                    .as_deref_mut()
+                    .ok_or(AccelError::InvalidInput("resident layer phase 1 requires a backend"))?,
+            )?,
+        ),
+    };
     let dom_k = cx.doms.take(t as u64);
     let k_corr = auth_matrix_rows_resident_p(
         cx.stream,
@@ -7286,7 +7293,7 @@ pub fn prove_layer_phase1(
     cx: &mut BlockCtxP,
 ) -> LayerP1 {
     let wires = build_attn_wires(wit, luts);
-    prove_layer_phase1_with_wires(wit, weights, luts, wires, cx)
+    prove_layer_phase1_with_wires_aliased(wit, weights, luts, wires, cx, None)
 }
 
 /// Band phase 1: the witness is a band-packed LayerWitness (t = q rows at
@@ -7303,7 +7310,7 @@ pub fn prove_layer_phase1_band(
     let sh = BandShape { t0, q: wit.t };
     let refs = BandAttnRefs::banded(wit, sh, prefix_k);
     let wires = build_attn_wires_band(&refs, luts);
-    prove_layer_phase1_with_wires(wit, weights, luts, wires, cx)
+    prove_layer_phase1_with_wires_aliased(wit, weights, luts, wires, cx, None)
 }
 
 /// [`prove_layer_phase1`] with caller-supplied attention wires (the
@@ -7315,12 +7322,33 @@ pub fn prove_layer_phase1_with_wires(
     wires: AttnWires,
     cx: &mut BlockCtxP,
 ) -> LayerP1 {
+    prove_layer_phase1_with_wires_aliased(wit, weights, luts, wires, cx, None)
+}
+
+/// As [`prove_layer_phase1_with_wires`], but an identity seam can reuse the
+/// producer's `ffn_block_out` authentication.  We still consume the public
+/// `x_in` domain slot, preserving all later domain numbering; the empty
+/// correction vector is the unambiguous on-wire alias marker.
+pub fn prove_layer_phase1_with_wires_aliased(
+    wit: &LayerWitness,
+    weights: &LayerWeights,
+    luts: &Luts,
+    wires: AttnWires,
+    cx: &mut BlockCtxP,
+    xin_alias_dom: Option<u64>,
+) -> LayerP1 {
     let t = wit.t;
     let fulls0 = cx.stream.counters.full_corrs;
 
     // ---- boundary auth, once per layer -------------------------------------
-    let dom_xin = cx.doms.take(t as u64);
-    let xin_corr = auth_matrix_rows_p(cx.stream, cx.tx, dom_xin, &wit.x_in, t, D);
+    let xin_tombstone = cx.doms.take(t as u64);
+    let (dom_xin, xin_corr) = match xin_alias_dom {
+        Some(source_dom) => (source_dom, Vec::new()),
+        None => (
+            xin_tombstone,
+            auth_matrix_rows_p(cx.stream, cx.tx, xin_tombstone, &wit.x_in, t, D),
+        ),
+    };
     let dom_k = cx.doms.take(t as u64);
     let k_corr = auth_matrix_rows_p(cx.stream, cx.tx, dom_k, &wit.k, t, D);
     let dom_v = cx.doms.take(t as u64);
@@ -7424,7 +7452,9 @@ pub fn prove_layer_phase2_band(
     // one vector per table content, see `TableBankP::mult_bytes`) -------------
     let n_above = (H * sh.n_above_head()) as u64;
     let bytes = LayerBytes {
-        boundary: 8 * 5 * (t * D) as u64,
+        // An identity-seam alias has no `x_in` correction payload; its public
+        // domain tombstone was nevertheless consumed in phase 1.
+        boundary: 8 * (4 * t * D + xin_corr.len()) as u64,
         mult: 0,
         ln_vectors: 8 * 8 * t_pad,
         attn_vectors: 8 * ((3 + p.softmax_row_shift as u64) * H_PAD as u64 * t_pad + n_above),
@@ -7578,7 +7608,7 @@ pub(crate) fn prove_layer_phase2_resident_band<W: ResidentLayerView>(
     let shape = BandShape { t0: wit.pos0(), q: t };
     let n_above = (H * shape.n_above_head()) as u64;
     let bytes = LayerBytes {
-        boundary: 8 * 5 * (t * D) as u64,
+        boundary: 8 * (4 * t * D + xin_corr.len()) as u64,
         mult: 0,
         ln_vectors: 8 * 8 * t_pad,
         attn_vectors: 8 * ((3 + params.softmax_row_shift as u64) * H_PAD as u64 * t_pad + n_above),
@@ -7646,7 +7676,7 @@ pub fn verify_layer_phase1(
     proof: &LayerProof,
     cx: &mut BlockCtxV,
 ) -> Option<LayerV1> {
-    verify_layer_phase1_band(BandShape::square(t), luts, proof, cx)
+    verify_layer_phase1_band_aliased(BandShape::square(t), luts, proof, cx, None)
 }
 
 /// Band phase 1 (verifier).
@@ -7656,8 +7686,27 @@ pub fn verify_layer_phase1_band(
     proof: &LayerProof,
     cx: &mut BlockCtxV,
 ) -> Option<LayerV1> {
+    verify_layer_phase1_band_aliased(sh, luts, proof, cx, None)
+}
+
+/// Verifier mirror of the identity-seam alias.  The tombstone is consumed in
+/// both cases, while the consumer receives an exact clone of the producer's
+/// cached per-element keys rather than expanding fresh correlations.
+pub fn verify_layer_phase1_band_aliased(
+    sh: BandShape,
+    luts: &Luts,
+    proof: &LayerProof,
+    cx: &mut BlockCtxV,
+    xin_alias_keys: Option<&[Fp2]>,
+) -> Option<LayerV1> {
     let t = sh.q;
-    for c in [&proof.xin_corr, &proof.k_corr, &proof.v_corr, &proof.abo_corr, &proof.fbo_corr] {
+    if match xin_alias_keys {
+        Some(keys) => !proof.xin_corr.is_empty() || keys.len() != t * D,
+        None => proof.xin_corr.len() != t * D,
+    } {
+        return None;
+    }
+    for c in [&proof.k_corr, &proof.v_corr, &proof.abo_corr, &proof.fbo_corr] {
         if c.len() != t * D {
             return None;
         }
@@ -7669,7 +7718,10 @@ pub fn verify_layer_phase1_band(
         }
     }
     let dom_xin = cx.doms.take(t as u64);
-    let xin_keys = auth_matrix_rows_v(cx.ctx, dom_xin, &proof.xin_corr, t, D);
+    let xin_keys = match xin_alias_keys {
+        Some(keys) => keys.to_vec(),
+        None => auth_matrix_rows_v(cx.ctx, dom_xin, &proof.xin_corr, t, D),
+    };
     let dom_k = cx.doms.take(t as u64);
     let k_keys = auth_matrix_rows_v(cx.ctx, dom_k, &proof.k_corr, t, D);
     let dom_v = cx.doms.take(t as u64);
@@ -7982,6 +8034,7 @@ mod tests {
                 &luts,
                 DeviceSlice::new(&proof_error, 0, 1).unwrap(),
                 &mut cx,
+                None,
             )
             .unwrap()
         };
@@ -8265,6 +8318,7 @@ mod tests {
                 &luts,
                 DeviceSlice::new(&proof_error, 0, 1).unwrap(),
                 &mut cx,
+                None,
             )
             .unwrap();
             (p1, cx.doms, dom_xin, dom_k, dom_v, dom_abo, xin_corr, k_corr, v_corr, abo_corr)

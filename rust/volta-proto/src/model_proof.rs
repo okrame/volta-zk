@@ -47,10 +47,10 @@ use crate::block_proof::{
     add_range_mult, auth_ln_vecs_p, auth_ln_vecs_resident_p, auth_matrix_rows_p,
     auth_matrix_rows_resident_p, auth_matrix_rows_v, bind_range_site_resident, expand_ln_vecs_k,
     layer_content_keys, layer_dom_base, ln_acc_recompute, open_matrix_k, open_matrix_p,
-    open_matrix_resident_p, prove_layer_phase1, prove_layer_phase1_band,
+    open_matrix_resident_p, prove_layer_phase1_with_wires_aliased,
     prove_layer_phase1_resident, prove_ln_chain, prove_ln_chain_resident, prove_range_site,
-    prove_range_site_resident, public_window_fold_resident, range_keys, verify_layer_phase1,
-    verify_layer_phase1_band, verify_ln_chain, verify_range_site, BandShape, BlockCtxP, BlockCtxV,
+    prove_range_site_resident, public_window_fold_resident, range_keys,
+    verify_layer_phase1_band_aliased, verify_ln_chain, verify_range_site, BandShape, BlockCtxP, BlockCtxV,
     InstanceLookups, KvPrefixK, KvPrefixP, LayerBytes, LayerP1, LayerProof, LayerV1, LnChainProof,
     ResidentKvPrefixP, ResidentLayerP1, ResidentLnVecsP, TableBankP, TableBankV, TableCloseProof,
 };
@@ -726,7 +726,7 @@ fn build_resident_chunk_phase1(
     let q = band.q;
     let (layer_base, _seam_base, embed_section, final_section, _logits_section, _selection_section) =
         chunk_ids(chunk_index);
-    let mut layer_p1s = Vec::with_capacity(L);
+    let mut layer_p1s: Vec<ResidentLayerP1> = Vec::with_capacity(L);
     for layer in 0..L {
         let mut luts = model.luts.clone();
         luts.params.shift_attn_proj = model.p.shift_attn_proj[layer];
@@ -734,7 +734,11 @@ fn build_resident_chunk_phase1(
         let result = {
             let mut cx =
                 BlockCtxP::with_backend(stream, tx, layer_base + layer as u8, bank, backend);
-            prove_layer_phase1_resident(&band.layers[layer], resident_model, &luts, error, &mut cx)
+            let alias = (layer > 0 && model.p.seam_shifts[layer - 1] == 0)
+                .then(|| layer_p1s[layer - 1].dom_fbo);
+            prove_layer_phase1_resident(
+                &band.layers[layer], resident_model, &luts, error, &mut cx, alias,
+            )
         };
         match result {
             Ok(value) => layer_p1s.push(value),
@@ -1248,12 +1252,16 @@ pub fn prove_response_resident<'chunk, 'source>(
     };
 
     let mut bank = TableBankP::new();
-    let mut layer_p1s = Vec::with_capacity(L);
+    let mut layer_p1s: Vec<ResidentLayerP1> = Vec::with_capacity(L);
     for layer in 0..L {
         let luts = luts_for(layer);
         let result = {
             let mut cx = BlockCtxP::with_backend(stream, tx, layer as u8, &mut bank, backend);
-            prove_layer_phase1_resident(&wit.layers[layer], resident_model, &luts, error, &mut cx)
+            let alias = (layer > 0 && model.p.seam_shifts[layer - 1] == 0)
+                .then(|| layer_p1s[layer - 1].dom_fbo);
+            prove_layer_phase1_resident(
+                &wit.layers[layer], resident_model, &luts, error, &mut cx, alias,
+            )
         };
         match result {
             Ok(p1) => layer_p1s.push(p1),
@@ -2559,7 +2567,12 @@ fn prove_response_impl(
     for l in 0..L {
         let luts_l = luts_for(l);
         let mut cx = new_block_ctx!(l as u8);
-        let p1 = prove_layer_phase1(&wit.layers[l], &model.layers[l].0, &luts_l, &mut cx);
+        let wires = crate::block_proof::build_attn_wires(&wit.layers[l], &luts_l);
+        let alias = (l > 0 && model.p.seam_shifts[l - 1] == 0)
+            .then(|| layer_p1s[l - 1].dom_fbo);
+        let p1 = prove_layer_phase1_with_wires_aliased(
+            &wit.layers[l], &model.layers[l].0, &luts_l, wires, &mut cx, alias,
+        );
         layer_p1s.push(p1);
     }
     // Seams: multiplicity contributions only (auth-free phase 1).
@@ -2645,7 +2658,7 @@ fn prove_response_impl(
             assert!(bw.q >= 2, "chunk needs at least 2 rows");
             t0_expect += bw.q;
             let (lb, _sb_id, eb, fb, _gb, _zb) = chunk_ids(c);
-            let mut layer_p1s = Vec::with_capacity(L);
+            let mut layer_p1s: Vec<LayerP1> = Vec::with_capacity(L);
             for l in 0..L {
                 let luts_l = luts_for(l);
                 // K prefix DATA for the Q·Kᵀ wires recompute: prefill rows +
@@ -2655,12 +2668,14 @@ fn prove_response_impl(
                     prefix_k.push(&cc.band.layers[l].k);
                 }
                 let mut cx = new_block_ctx!(lb + l as u8);
-                let p1 = prove_layer_phase1_band(
-                    &bw.layers[l],
-                    &model.layers[l].0,
-                    &luts_l,
-                    &prefix_k,
-                    &mut cx,
+                let t0: usize = prefix_k.iter().map(|k| k.len() / D).sum();
+                let sh = BandShape { t0, q: bw.q };
+                let refs = crate::block_proof::BandAttnRefs::banded(&bw.layers[l], sh, &prefix_k);
+                let wires = crate::block_proof::build_attn_wires_band(&refs, &luts_l);
+                let alias = (l > 0 && model.p.seam_shifts[l - 1] == 0)
+                    .then(|| layer_p1s[l - 1].dom_fbo);
+                let p1 = prove_layer_phase1_with_wires_aliased(
+                    &bw.layers[l], &model.layers[l].0, &luts_l, wires, &mut cx, alias,
                 );
                 layer_p1s.push(p1);
             }
@@ -3702,7 +3717,11 @@ pub fn verify_response(
     for l in 0..L {
         let luts_l = luts_for(l);
         let mut cx = BlockCtxV::new(vc, tx, l as u8, &mut pre_bank);
-        let v1 = verify_layer_phase1(t, &luts_l, &proof.layers[l], &mut cx)?;
+        let alias = (l > 0 && model.p.seam_shifts[l - 1] == 0)
+            .then(|| layer_v1s[l - 1].fbo_keys.as_slice());
+        let v1 = verify_layer_phase1_band_aliased(
+            BandShape::square(t), &luts_l, &proof.layers[l], &mut cx, alias,
+        )?;
         layer_v1s.push(v1);
     }
     let s_emb = model.p.shift_embed;
@@ -3753,11 +3772,15 @@ pub fn verify_response(
             let sh_c = BandShape { t0, q };
             let q_pad = 1usize << pad_bits(q);
             let (lb, _sb_id, eb, fb, _gb, _zb) = chunk_ids(c);
-            let mut layer_v1s = Vec::with_capacity(L);
+            let mut layer_v1s: Vec<LayerV1> = Vec::with_capacity(L);
             for l in 0..L {
                 let luts_l = luts_for(l);
                 let mut cx = BlockCtxV::new(vc, tx, lb + l as u8, &mut pre_bank);
-                let v1 = verify_layer_phase1_band(sh_c, &luts_l, &cp.layers[l], &mut cx)?;
+                let alias = (l > 0 && model.p.seam_shifts[l - 1] == 0)
+                    .then(|| layer_v1s[l - 1].fbo_keys.as_slice());
+                let v1 = verify_layer_phase1_band_aliased(
+                    sh_c, &luts_l, &cp.layers[l], &mut cx, alias,
+                )?;
                 layer_v1s.push(v1);
             }
             let (embed_doms, out_keys) = {

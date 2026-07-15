@@ -1,4 +1,4 @@
-# Prototype Status Ledger (P7b — RunPod resident A100)
+# Prototype Status Ledger (C1 — response communication, design phase)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -8,10 +8,11 @@ land in `benchmarks/results/*.json`. The repo-local plan of record is
 Workload of record: **GPT-2 small (124M, L=12, d=768, h=12, d_ff=3072),
 prefill T=100 + 50 deferred decode tokens, causal, PCS Q=200**, on the
 designated RunPod A100 profile. P7 is closed; its CPU and rho numbers below
-are historical. The active P7b gates and measurement hygiene are the
-preregistered 2026-07-14 RunPod-provider deviation below, and P7b currently
-has a valid official PASS at `ab3a03f`.  The earlier `33e5fb4` decode-only
-FAIL remains an immutable rebaseline result.
+are historical. P7b has a valid official PASS at `ab3a03f`, and GPU
+optimization is closed by the 2026-07-15 Stop branch. The active milestone is
+**C1 Phase 1**, design and preregistration only; no implementation is
+authorized before user review. The earlier `33e5fb4` decode-only FAIL remains
+an immutable rebaseline result.
 
 ## Milestones
 
@@ -32,6 +33,7 @@ FAIL remains an immutable rebaseline result.
 | P7b RunPod official rebaseline | **official valid FAIL: decode only; diagnosis complete** (2026-07-14) | Clean schema-6/ABI-28 T=100+50/Q=200 on exact `runpod-a100-v1`, counters-only, Rayon=8, 1+3, golden and communication invariants; prefill <=10 s, decode <=4 s, max per-repetition sync-wall/session-wall <=2%, H2D <=100 MB | `33e5fb4`: prefill **7.801 s PASS**, decode **6.794 s FAIL**, session **15.995 s**; sync-wall max **0.768% PASS** with 59,868 sync diagnostic; H2D **28.595 MB PASS**; packed response **144.821 MB PASS**; golden/accepted/flat 1.412 PASS. Separate non-gating `70f64d4` event attribution measures a **6.275 s decode-marginal kernel floor**: GEMM 4.820 s, LogUp 1.098 s, other 0.358 s. Provider-neutral kernel work is required; D2H host-call wall includes queued-kernel waits and is not an additive transfer cost. |
 | P7b RunPod matrix-fold iteration | **official valid PASS; complete** (2026-07-14) | Unchanged `runpod-a100-v1` full gate contract after the preregistered ABI-neutral kernel fix | `ab3a03f`: prefill **2.631 s PASS**, decode **2.089 s PASS**, session **5.917 s**; sync-wall max **1.821% PASS** with the unchanged 59,868 sync; H2D **28.595 MB PASS**; packed response **144.821 MB PASS**; golden/accepted/flat 1.281 PASS. Proof, operation, correlation and communication counts are exact against `33e5fb4`; no scheduler, batching or protocol change was needed. Mock-PCG remains non-production. |
 | Real-sVOLE fase-B hardening | **parity candidate; default remains mock** (2026-07-15) | Clean P6 quick real accepts; exact counter/allocation/channel digests; mandatory malicious/channel tests reject/hold | `1d63923`: genuine two-party Ristretto OT→COPEe/IKNP→WYKW GGM/regular-LPN setup, hardened cited parameters. Per instance **22.483 s**, **31.261 MB** setup traffic (P→V 28.814 MB, V→P 2.447 MB); setup excluded from rho and response. Run `p6-quick-realpcg-2026-07-15-1d63923.json`. Default-flip criteria are proposed, not enacted. |
+| C1 response-communication reduction | **Phase 1 preregistered; HARD STOP before implementation** (2026-07-15) | User review of §4.6.B/M5 design and §4.3 identity-seam reuse is mandatory before Phase 2 | Design: `docs/c1-response-communication-design.md`. Exact projection from the frozen 144,820,930 B response: four-boundary Packed16 saves 32,486,400 B; nine sound identity-seam aliases save 8,294,400 B; projected response **104,040,130 B**. Projection only, no verdict/reference change. §4.6.A and linear RLC merging remain excluded. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -63,6 +65,122 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-15 (C1 Phase 1 response-communication design preregistered;
+  mandatory stop before code)**: the complete design and Phase-2 contract are
+  in `docs/c1-response-communication-design.md`.  This entry authorizes only
+  that note and this ledger update.  No Rust, CUDA, PCG, benchmark, proof
+  format or Lean implementation is authorized until the user reviews the
+  design.  Scope is exactly handoff §4.6.B plus the sound subset of §4.3.
+  Cached columns (§4.6.A), linear per-tensor RLC merging (§4.1.4), PCS Q/rate
+  or shape changes, §4.2 argmax, GPU kernels, provider profiles, the real-PCG
+  default flip and Lean beyond the named M5 extension remain excluded.
+
+  **Packed16 boundary**: C1 packs only the four P0 i16 boundary matrices K,
+  V, `attn_block_out` and `ffn_block_out` in all 12 layers over prefill 100
+  plus deferred decode 50.  That is 5,529,600 values / 44,236,800 current
+  bytes.  Each response batch sends a canonical little-endian u16 delta plus
+  one LSB-first masked-carry bit, `2N + ceil(N/8)` bytes; public proof shape
+  supplies N and unused bitmap bits must be zero.  At this geometry the new
+  payload is 11,750,400 B, a **32,486,400 B** reduction.  `x_in`,
+  embedding/final-LN special auths, every arbitrary-F_p vector and every
+  F_p²/LogUp/PCS correction stay on the current format.
+
+  For `B=2^16`, `H=2^15`, signed x is biased to `z=x+H`.  A typed packed
+  correlation supplies independently authenticated `a` uniform in `[0,B)`
+  and a uniform bit `b`, under the unchanged F_p² MAC/Delta.  P sends
+  `d=(z-a) mod B` and `e=c xor b`, where `c=1` iff `a+d>=B`; both parties
+  derive `[c]=e+(1-2e)[b]` and `[x]=[a]+d-B[c]-H`.  The bounded integer
+  identity `z=a+d-Bc` removes the mod-2^16/mod-p ambiguity, and substitution
+  in the MAC equations gives the same F_p-authenticated value consumed by
+  M3/M4/M7/M8.  Uniform a makes d uniform, and independent uniform b makes e
+  uniform even conditioned on d, so the two-part wire is perfectly hiding.
+  Truncating the current uniform-F_p mask, accepting an unchecked prover bit,
+  or reusing either lane is explicitly forbidden.
+
+  For arbitrary canonical a,d and a bit c, the decoded integer lies in
+  `[-98304,98302]`; it is in the signed-i16 interval iff c is the unique true
+  carry.  A noncanonical carry therefore binds the prover to x plus or minus
+  2^16 and cannot alias a second i16 value; Goldilocks embeds this whole
+  interval injectively.  As in existing Pi_Auth, the correction authenticates
+  the value it selects rather than independently proving witness membership.
+  The existing requant/residual closures must reject the out-of-range value,
+  and Phase 2 includes both a wire-flip test and a maliciously recomputed
+  wrong-carry test.  No run may be promoted if composition introduces a new
+  unproved range assumption.
+
+  `Packed16Corr` is a typed extension of the ideal correlation interface: the
+  MAC equation, verifier-only Delta, domain separation, one-time consumption
+  and allocation digest are unchanged, but the restricted plaintext
+  distributions and their counters are explicit.  The mock backend may test
+  the functional path and remains non-production.  The closed real phase-B
+  candidate does not realize this lane and C1 neither reopens nor resizes it;
+  real packed mode must fail closed.  Logical accounting becomes 1,913,526
+  ordinary subfield correlations + 5,529,600 u16 masks + 5,529,600 carry pads
+  = **12,972,726**, with 176,880 full correlations unchanged.  Conservatively
+  charging bit pads as subfield correlations gives 13,326,486 sub-equivalent
+  limbs including full-correlation limbs, 3,112,319 above phase B's current
+  capacity.  No parity/production claim follows from C1.
+
+  This is an explicit user-review point, not a silent interpretation of the
+  Phase-2 freeze: if “no change to correlation semantics” freezes the current
+  uniform-F_p `SubCorr.r` distribution, Packed16 is impossible because its
+  correction is uniform over F_p and cannot be losslessly represented in 16
+  bits.  The preregistered design preserves the MAC/Delta/freshness/domain/
+  counting semantics while adding the typed distribution required by the M5
+  extension.  Phase 2 needs user approval of that boundary; otherwise §4.6.B
+  stops and only identity-seam reuse remains eligible.
+
+  **M5 plan**: Phase 2 must first add only
+  `lean/VoltaZk/PackedCorrection.lean`.  Its named implementation theorem is
+  `packed16_correct_valid`: valid typed u16-mask and bit-pad correlations plus
+  the canonical `(d,e)` update yield a valid `SubAuthed Fp E` for the signed
+  i16 plaintext.  Companion theorems `packed16_reconstruct`,
+  `packed16_carry_iff_signedRange`,
+  `packed16_wire_uniform` and `packed16_zeroOpen_sound` cover integer/field
+  reconstruction and range, exact transcript distribution and transfer of the
+  existing `1/|E|` opening bound.  Field-facing statements carry an explicit
+  characteristic lower bound; they must enter the named audit with no new
+  axiom and only the standard Lean axioms.  No other formal topic opens.
+
+  **`x_in` correction to the roadmap estimate**: the frozen real artifact has
+  seam shifts `[3,2,0,0,0,0,0,0,0,0,0]`, so direct auth reuse is sound only
+  at nine identity seams.  Each consumer references the producer's existing
+  `ffn_block_out` auth under its full session/phase/chunk/layer/row identity;
+  it draws no second correlation.  Public domain slots remain tombstones so
+  unrelated indices do not shift.  The two requant seams stay fresh; fusing
+  them would be another protocol/formal change.  Across 100+50 rows this
+  removes 1,036,800 values / **8,294,400 B** (**5,529,600 B** prefill and
+  **2,764,800 B** decode), rather than silently repeating the old pre-decode `-6.9 MB`
+  estimate.  Alias preflight forbids cross-session, prefill/decode, chunk,
+  layer or position substitution; this is a canonical second read of one
+  authenticated write, not correlation reuse, and preserves the M4 mirror.
+
+  The two non-overlapping formulas project transcript **96,633,008 B** and,
+  with unchanged packed logits 7,407,122 B, packed response
+  **104,040,130 B**.  PCS stays exactly 66,733,504 B.  The measured mock-PCG
+  and P3 tag-expansion rates project a bounded **+0.2--0.6 s** prover delta
+  (about 1--3% of the 18.7 s CPU response); all timing remains informative,
+  and a measured increase above 10% forces ledger review rather than a byte
+  or soundness regression.
+
+  **Phase-2 acceptance, preregistered now**: after explicit user approval,
+  the named Lean extension and audit pass; frozen prefill/decode golden output
+  is unchanged; normal/chunked acceptance, PCS, closure, anti-replay and
+  tamper/overflow soundness smokes pass; ordinary/packed/carry/reuse counters,
+  domains, allocation digests and byte formulas reconcile on both parties;
+  CPU and CUDA use one byte-identical packed proof and land together; challenge
+  order, PCS Q=200/rate/claims and all non-C1 correlation semantics remain
+  unchanged.  Then and only then run one clean full T=100+50/Q=200 CPU record
+  into append-only `benchmarks/results/c1-<date>-<gitsha>.json`, including
+  measured byte and prover/verifier deltas and `git_dirty:false`.
+
+  C1 **re-baselines** communication: the historical `runpod-a100-v1` profile
+  and all its JSONs remain frozen at exactly **144,820,930 B**.  Rust and
+  Python validators may be updated together only after the clean C1 number
+  lands.  Any later official GPU run requires a newly preregistered gate
+  profile carrying that measured communication reference; no old verdict is
+  mutated or retroactively reinterpreted.
 
 - **2026-07-15 (real-sVOLE fase-B hardening closed: parity candidate,
   default unchanged)**: checkpoint `1d63923` replaces the shared-seed setup

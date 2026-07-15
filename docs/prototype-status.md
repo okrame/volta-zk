@@ -210,6 +210,54 @@ constant factors hold. That constant factor is what P3/P4 measure.
   informative only, not a gate. This entry authorizes no mock-to-real default
   flip; closure must record separately proposed flip criteria for user review.
 
+- **2026-07-15 (§4.6.A verifier-cached-columns: soundness defect identified
+  before any implementation; comm-lever projections retracted)**: review of
+  handoff-spec suggestion §4.6.A (the designated verifier caches the Q Ligero
+  data columns after the first opening; later responses send only fresh
+  u-vectors) found its soundness note incorrect. Query unpredictability at
+  commit time protects **proximity** — a static property of the committed
+  matrix, and that part is indeed reusable — but each opening's
+  **consistency check** (`Enc(u)[j] = r^T·col_j` at `j ∈ Q` against cached
+  columns) is a fresh statement about a fresh prover message, and its
+  soundness rests on the prover not knowing the checked positions when it
+  chooses `u`. The first response reveals Q. From then on, for any later
+  challenge, a malicious prover can solve the |Q| = 200 linear agreement
+  constraints inside the msg_len = 2^14-dimensional u-space (2^14 − 200
+  degrees of freedom), sending a forged u that matches the cached columns
+  exactly at every checked position while encoding an arbitrary false
+  evaluation. Every response after the first is forgeable; fresh ZK mask
+  commitments do not help (the prover crafts them knowing Q), and the M9
+  composition inherits the break because PCS binding is its explicit
+  hypothesis. Consequence: per-response consistency queries cannot be
+  amortized by caching, only the proximity role can; the
+  **144.8 → 110.8 MB marginal-response projection is retracted** and §4.6.A
+  may not be preregistered without a repaired mechanism. Its leakage
+  observation (cumulative column exposure stops growing) is correct but
+  moot until a sound mechanism exists.
+
+  Related correction to §4.1.4 (per-tensor RLC claim merging): claims on
+  the same tensor at *different* evaluation points do not merge through a
+  linear RLC pre-pass — with u* = (b₁+ρb₂)^T·M the products ⟨u*, a₁⟩ and
+  ⟨u*, a₂⟩ mix cross terms and verify neither original claim. The sound
+  version is a multi-point-to-single-point reduction (eq-combined sumcheck
+  per tensor), i.e. a protocol change with real prover cost and its own
+  formal seam — a permitted trade direction (prover time for bytes), but
+  not the "small RLC pre-pass in batch.rs" the spec sketches. The
+  **96.9 MB figure is likewise retracted** pending a designed mechanism.
+
+  Sound communication levers, unaffected and available to a future
+  preregistered comm milestone: §4.6.B 2-byte packed corrections with an
+  authenticated carry bit (−25 to −35 MB, formal-touching M5 extension —
+  the honest largest lever), §4.3 x_in re-auth reuse (−6.9 MB), §4.2
+  is_max argmax replacing the public band logits (−20.5 MB for ~2.5 M
+  extra lookups). Together they reach a similar envelope to the retracted
+  projections without touching PCS query policy. The Mystique-style
+  one-time per-verifier weight MAC (documented deployment knob) remains
+  the only known sound "pay once, then cheap" DV mechanism; its O(|W|)
+  per-verifier setup (~1 GB at GPT-2 scale) and the 20B-scale rejection
+  stand. No implementation is authorized by this entry; the next work item
+  remains real-sVOLE fase-B hardening per the Stop-branch entry below.
+
 - **2026-07-15 (P7b post-fix CUPTI census landed; non-gating
   measurement)**: the preregistered clean `25dfc3c` run completed the exact
   `runpod-a100-v1` full T=100+50/Q=200 counters-only 0+1 geometry with eight

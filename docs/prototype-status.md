@@ -63,6 +63,60 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-15 (P7b post-fix CUPTI census landed; non-gating
+  measurement)**: the preregistered clean `25dfc3c` run completed the exact
+  `runpod-a100-v1` full T=100+50/Q=200 counters-only 0+1 geometry with eight
+  Rayon workers and the standard flat-cost curve.  Acceptance, frozen golden
+  decode, communication and flat cost **1.221415 <= 1.5** pass;
+  `p7b_gate_evaluated:false`.  CUPTI emitted 1,401,747 concurrent-kernel
+  records and 35 fail-closed dropped-record queries summing to **zero**.
+  The twelve preregistered proof-algebra families match 206,649 physical
+  launches; the matrix-fold family includes the ABI-internal
+  `matrix_fold_parts_kernel` and `matrix_fold_finish_kernel` symbols created
+  by `ab3a03f`, with physical-symbol rows retained separately.  The append-
+  only census is `p7b-cupti-kernel-census-2026-07-15-25dfc3c.json`
+  (SHA-256
+  `00f7e0eeee36bd56bd20a1d75947bd166ff8e508b4fd4a924b1a440b850183c1`).
+  Raw trace, application log and application report remain outside the
+  checkout, with SHA-256 values
+  `8e091aa6ab9dceea531f6449c7887dc75a928e62f26836332a786d72cf8b0650`,
+  `92184bce0b657f4f307b4ca835d7b6cef397bceaf56c25ad2735f3cf3354b6e6`
+  and `3563fa17d4f72af4f2c14cc25255bfd430cd08a3170a0e65e981b397aca4b00d`;
+  every remaining build/parser checksum is recorded in the census JSON.
+
+  The post-fix ranking is matrix fold **54.392625%**, then
+  `reduce_product_round` **17.620830%**,
+  `reduce_triple_product_round` **12.465584%**,
+  `fp2_product_round_terms` **6.799738%**,
+  `fp2_triple_product_round_terms` **4.681506%** and `reduce_dot`
+  **2.326605%**; all other families are below 0.54%.  This is no longer the
+  old 98.26% single-defect profile.  Within the leading family, the remaining
+  legacy `matrix_fold_kernel` grid-x=1 slice is 7,410 launches / 39.966503%
+  of matched time, but every such launch is on the intentional `terms < 256`
+  path and its maximum is 140,062 ns; the new parts path reaches grid-x=1,536.
+  The trace therefore shows many bounded launches and time spread across
+  reduction families, not another large-vector grid-x=1 occupancy collapse.
+  CUPTI absolute durations remain ineligible; this conclusion uses only the
+  within-census rank, dispatch condition and launch/grid evidence.
+
+  The preregistered headroom warning is now concrete against that ranking:
+  max official synchronization wall 0.109869589 s and the v1 2% ratio bind at
+  a 5.493479450 s session, only **7.157763%** below the current official
+  5.917004617 s.  That small certifiable compute headroom does not turn the
+  distributed small reductions or bounded matrix-fold launches into a
+  qualifying internal defect; a larger pure compute win would instead trip
+  the v1 denominator artifact.
+
+- **2026-07-15 (post-fix census decision rule evaluated; Stop branch)**:
+  the concentration predicate is true (matrix fold 54.392625% >= 50%), but
+  the required kernel-internal mapping/occupancy-defect predicate is false.
+  The preregistered **Stop branch** therefore applies: GPU optimization stops
+  with **zero CUDA/Rust/protocol code change**, no `runpod-a100-v2` profile is
+  preregistered, and no graph, scheduler, batching or synchronization work is
+  opened.  The next work item is real Goldilocks sVOLE fase-B hardening:
+  real two-party base OTs, the WYKW malicious consistency check and cited LPN
+  parameters.  The `ab3a03f` PASS and all earlier verdicts remain unchanged.
+
 - **2026-07-15 (P7b post-fix kernel census preregistered; diagnosis only,
   with an explicit stop rule)**: purpose — the `1a319db` census is obsolete.
   It ranked `matrix_fold_kernel` at 98.264387% of traced proof-algebra time

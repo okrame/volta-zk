@@ -1,0 +1,523 @@
+{
+  "report_schema_version": 1,
+  "milestone": "P7b-cupti-kernel-census",
+  "date": "2026-07-15",
+  "git_sha": "25dfc3cae0bd0a21bb503657997b2ec2efdd2537",
+  "git_dirty": false,
+  "gate_eligible": false,
+  "p7b_gate_evaluated": false,
+  "purpose": "post-matrix-fold decode-emphasized within-trace ranking of the preregistered proof-algebra kernel families",
+  "provider_profile": "runpod-a100-v1",
+  "threads": 8,
+  "geometry": {
+    "t_prefill": 100,
+    "n_decode": 50,
+    "pcs_q": 200,
+    "warmup_repetitions": 0,
+    "measured_repetitions": 1,
+    "includes_standard_flat_cost_curve": true,
+    "timing_policy": "wall-only-counters"
+  },
+  "profiler": {
+    "name": "CUDA 12.8 CUPTI activity injection",
+    "activity_kind": "CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL",
+    "absolute_durations_gate_eligible": false,
+    "trace_sha256": "8e091aa6ab9dceea531f6449c7887dc75a928e62f26836332a786d72cf8b0650",
+    "application_stderr_sha256": "92184bce0b657f4f307b4ca835d7b6cef397bceaf56c25ad2735f3cf3354b6e6",
+    "application_report_sha256": "3563fa17d4f72af4f2c14cc25255bfd430cd08a3170a0e65e981b397aca4b00d",
+    "scratch_aggregate_sha256": "6075c94a3d7e2dd68db80ada4c121dbbadc86d381a78eab948c960df184653b2",
+    "scratch_parser_sha256": "eea9c4567ac941478ef2a0c2f3e70501e7ed28f4c8d6210473ed533afe58b538",
+    "p6_report_binary_sha256": "c917063ac5402d0b6f1385061b8808200b3b9dfec2e0c56b9a8ace97c049c102",
+    "cuda_backend_sha256": "8aae8de17decf867e852130baae0cd479e97b42f68e129c7909ab2127dfb2b08",
+    "injection_library_sha256": "3841a73bc5c3b3546b33c1f96b6f3bed3d87a05ec7e0fa6593aedf55f24363b9",
+    "patched_injection_source_sha256": "2966efecd3d767e9fb3fb62f7683971b5ee0ef10cd6e72f0db274196ddafb34b",
+    "patched_activity_helper_sha256": "8590bba68b4ec975d4243c422c4ce5313afa4bb496903c417f4c334202e894ec",
+    "companion_helper_sha256": "aedb286fe6bc0af1893e4d42cff5b3f0b9c1ef120bb5d2f051c1cdb6ad4440bf",
+    "makefile_sha256": "d6e6b3a0fdc3f757d66e48b47b106dae369deebea865ee0c3e44377235b10717",
+    "libcupti_sha256": "fccdc5fcc7c32f8cf4b3ed9b17f7f187a185a6fa0a5bcc06e3434cbd1687c808",
+    "dropped_record_queries": 35,
+    "dropped_records": 0,
+    "total_kernel_invocations": 1401747,
+    "matched_kernel_invocations": 206649,
+    "unmatched_kernel_invocations": 1195098,
+    "matched_duration_ns": 822890109,
+    "matched_records_missing_grid": 0
+  },
+  "application_correctness": {
+    "accepted": true,
+    "golden_decode_checked": true,
+    "golden_decode_match": true,
+    "flat_cost_gate_pass": true,
+    "flat_cost_last_over_first": 1.221414960271971,
+    "chunked_accepted": true,
+    "response_communication_invariant_pass": true,
+    "response_communication_bytes": 144820930,
+    "timing_event_api_calls": 0,
+    "cuda_backend_tests_passed": 34
+  },
+  "filter": {
+    "preregistered_family_names": [
+      "subfield_corrections_kernel",
+      "pad_base_vector_kernel",
+      "matrix_fold_kernel",
+      "fp2_dot_terms",
+      "reduce_dot",
+      "fp2_product_round_terms",
+      "reduce_product_round",
+      "fp2_triple_product_round_terms",
+      "reduce_triple_product_round",
+      "ln_hadamard_factors_kernel",
+      "base_broadcast_fp2_kernel",
+      "attention_above_mask_kernel"
+    ],
+    "matrix_fold_family_symbols": [
+      "matrix_fold_kernel",
+      "matrix_fold_parts_kernel",
+      "matrix_fold_finish_kernel"
+    ],
+    "matrix_fold_family_note": "The same preregistered matrix_fold_kernel family includes the ABI-internal parts and finish symbols introduced by ab3a03f; physical-symbol rows are retained separately.",
+    "literal_original_name_crosscheck": {
+      "matched_kernel_invocations": 199140,
+      "matched_duration_ns": 779150936,
+      "matrix_fold_kernel_duration_fraction": 0.5183236473709376
+    }
+  },
+  "kernel_families": [
+    {
+      "name": "matrix_fold_kernel",
+      "invocations": 15477,
+      "duration_ns": 447591528,
+      "mean_duration_ns": 28919.786,
+      "min_duration_ns": 2304,
+      "max_duration_ns": 727770,
+      "matched_duration_percent": 54.392625
+    },
+    {
+      "name": "reduce_product_round",
+      "invocations": 88470,
+      "duration_ns": 145000065,
+      "mean_duration_ns": 1638.974,
+      "min_duration_ns": 1535,
+      "max_duration_ns": 4352,
+      "matched_duration_percent": 17.620830
+    },
+    {
+      "name": "reduce_triple_product_round",
+      "invocations": 52700,
+      "duration_ns": 102578056,
+      "mean_duration_ns": 1946.453,
+      "min_duration_ns": 1568,
+      "max_duration_ns": 7776,
+      "matched_duration_percent": 12.465584
+    },
+    {
+      "name": "fp2_product_round_terms",
+      "invocations": 24084,
+      "duration_ns": 55954370,
+      "mean_duration_ns": 2323.301,
+      "min_duration_ns": 2111,
+      "max_duration_ns": 10048,
+      "matched_duration_percent": 6.799738
+    },
+    {
+      "name": "fp2_triple_product_round_terms",
+      "invocations": 7007,
+      "duration_ns": 38523649,
+      "mean_duration_ns": 5497.881,
+      "min_duration_ns": 3743,
+      "max_duration_ns": 21215,
+      "matched_duration_percent": 4.681506
+    },
+    {
+      "name": "reduce_dot",
+      "invocations": 12566,
+      "duration_ns": 19145406,
+      "mean_duration_ns": 1523.588,
+      "min_duration_ns": 1471,
+      "max_duration_ns": 1792,
+      "matched_duration_percent": 2.326605
+    },
+    {
+      "name": "subfield_corrections_kernel",
+      "invocations": 2046,
+      "duration_ns": 4421568,
+      "mean_duration_ns": 2161.079,
+      "min_duration_ns": 1440,
+      "max_duration_ns": 4064,
+      "matched_duration_percent": 0.537322
+    },
+    {
+      "name": "fp2_dot_terms",
+      "invocations": 2418,
+      "duration_ns": 4395642,
+      "mean_duration_ns": 1817.883,
+      "min_duration_ns": 1727,
+      "max_duration_ns": 2176,
+      "matched_duration_percent": 0.534171
+    },
+    {
+      "name": "base_broadcast_fp2_kernel",
+      "invocations": 540,
+      "duration_ns": 2059343,
+      "mean_duration_ns": 3813.598,
+      "min_duration_ns": 2336,
+      "max_duration_ns": 5440,
+      "matched_duration_percent": 0.250257
+    },
+    {
+      "name": "pad_base_vector_kernel",
+      "invocations": 900,
+      "duration_ns": 1729712,
+      "mean_duration_ns": 1921.902,
+      "min_duration_ns": 1472,
+      "max_duration_ns": 3008,
+      "matched_duration_percent": 0.210200
+    },
+    {
+      "name": "ln_hadamard_factors_kernel",
+      "invocations": 225,
+      "duration_ns": 820155,
+      "mean_duration_ns": 3645.133,
+      "min_duration_ns": 2944,
+      "max_duration_ns": 4832,
+      "matched_duration_percent": 0.099668
+    },
+    {
+      "name": "attention_above_mask_kernel",
+      "invocations": 216,
+      "duration_ns": 670615,
+      "mean_duration_ns": 3104.699,
+      "min_duration_ns": 2368,
+      "max_duration_ns": 4064,
+      "matched_duration_percent": 0.081495
+    }
+  ],
+  "kernel_symbols": [
+    {
+      "family": "matrix_fold_kernel",
+      "name": "matrix_fold_kernel",
+      "invocations": 7968,
+      "duration_ns": 403852355,
+      "matched_duration_percent": 49.077313
+    },
+    {
+      "family": "reduce_product_round",
+      "name": "reduce_product_round",
+      "invocations": 88470,
+      "duration_ns": 145000065,
+      "matched_duration_percent": 17.620830
+    },
+    {
+      "family": "reduce_triple_product_round",
+      "name": "reduce_triple_product_round",
+      "invocations": 52700,
+      "duration_ns": 102578056,
+      "matched_duration_percent": 12.465584
+    },
+    {
+      "family": "fp2_product_round_terms",
+      "name": "fp2_product_round_terms",
+      "invocations": 24084,
+      "duration_ns": 55954370,
+      "matched_duration_percent": 6.799738
+    },
+    {
+      "family": "fp2_triple_product_round_terms",
+      "name": "fp2_triple_product_round_terms",
+      "invocations": 7007,
+      "duration_ns": 38523649,
+      "matched_duration_percent": 4.681506
+    },
+    {
+      "family": "matrix_fold_kernel",
+      "name": "matrix_fold_parts_kernel",
+      "invocations": 3909,
+      "duration_ns": 32575427,
+      "matched_duration_percent": 3.958661
+    },
+    {
+      "family": "reduce_dot",
+      "name": "reduce_dot",
+      "invocations": 12566,
+      "duration_ns": 19145406,
+      "matched_duration_percent": 2.326605
+    },
+    {
+      "family": "matrix_fold_kernel",
+      "name": "matrix_fold_finish_kernel",
+      "invocations": 3600,
+      "duration_ns": 11163746,
+      "matched_duration_percent": 1.356651
+    },
+    {
+      "family": "subfield_corrections_kernel",
+      "name": "subfield_corrections_kernel",
+      "invocations": 2046,
+      "duration_ns": 4421568,
+      "matched_duration_percent": 0.537322
+    },
+    {
+      "family": "fp2_dot_terms",
+      "name": "fp2_dot_terms",
+      "invocations": 2418,
+      "duration_ns": 4395642,
+      "matched_duration_percent": 0.534171
+    },
+    {
+      "family": "base_broadcast_fp2_kernel",
+      "name": "base_broadcast_fp2_kernel",
+      "invocations": 540,
+      "duration_ns": 2059343,
+      "matched_duration_percent": 0.250257
+    },
+    {
+      "family": "pad_base_vector_kernel",
+      "name": "pad_base_vector_kernel",
+      "invocations": 900,
+      "duration_ns": 1729712,
+      "matched_duration_percent": 0.210200
+    },
+    {
+      "family": "ln_hadamard_factors_kernel",
+      "name": "ln_hadamard_factors_kernel",
+      "invocations": 225,
+      "duration_ns": 820155,
+      "matched_duration_percent": 0.099668
+    },
+    {
+      "family": "attention_above_mask_kernel",
+      "name": "attention_above_mask_kernel",
+      "invocations": 216,
+      "duration_ns": 670615,
+      "matched_duration_percent": 0.081495
+    }
+  ],
+  "top_family_grid_distribution": [
+    {
+      "grid": [1, 1, 1],
+      "block": [256, 1, 1],
+      "symbols": ["matrix_fold_finish_kernel", "matrix_fold_kernel", "matrix_fold_parts_kernel"],
+      "invocations": 9855,
+      "duration_ns": 335861622,
+      "mean_duration_ns": 34080.327,
+      "min_duration_ns": 2304,
+      "max_duration_ns": 140062,
+      "matched_duration_percent": 40.814881
+    },
+    {
+      "grid": [16, 1, 1],
+      "block": [256, 1, 1],
+      "symbols": ["matrix_fold_finish_kernel", "matrix_fold_kernel", "matrix_fold_parts_kernel"],
+      "invocations": 1268,
+      "duration_ns": 58849450,
+      "mean_duration_ns": 46411.238,
+      "min_duration_ns": 3008,
+      "max_duration_ns": 512540,
+      "matched_duration_percent": 7.151556
+    },
+    {
+      "grid": [1536, 1, 1],
+      "block": [256, 1, 1],
+      "symbols": ["matrix_fold_parts_kernel"],
+      "invocations": 333,
+      "duration_ns": 15892653,
+      "mean_duration_ns": 47725.685,
+      "min_duration_ns": 16512,
+      "max_duration_ns": 655770,
+      "matched_duration_percent": 1.931321
+    },
+    {
+      "grid": [4, 1, 1],
+      "block": [256, 1, 1],
+      "symbols": ["matrix_fold_kernel", "matrix_fold_parts_kernel"],
+      "invocations": 408,
+      "duration_ns": 14312423,
+      "mean_duration_ns": 35079.468,
+      "min_duration_ns": 3456,
+      "max_duration_ns": 95199,
+      "matched_duration_percent": 1.739287
+    },
+    {
+      "grid": [256, 1, 1],
+      "block": [256, 1, 1],
+      "symbols": ["matrix_fold_kernel", "matrix_fold_parts_kernel"],
+      "invocations": 183,
+      "duration_ns": 6737192,
+      "mean_duration_ns": 36815.257,
+      "min_duration_ns": 4064,
+      "max_duration_ns": 727770,
+      "matched_duration_percent": 0.818723
+    },
+    {
+      "grid": [1024, 1, 1],
+      "block": [256, 1, 1],
+      "symbols": ["matrix_fold_finish_kernel", "matrix_fold_parts_kernel"],
+      "invocations": 534,
+      "duration_ns": 3502273,
+      "mean_duration_ns": 6558.564,
+      "min_duration_ns": 4256,
+      "max_duration_ns": 20224,
+      "matched_duration_percent": 0.425606
+    },
+    {
+      "grid": [64, 1, 1],
+      "block": [256, 1, 1],
+      "symbols": ["matrix_fold_finish_kernel", "matrix_fold_parts_kernel"],
+      "invocations": 706,
+      "duration_ns": 2851691,
+      "mean_duration_ns": 4039.222,
+      "min_duration_ns": 3232,
+      "max_duration_ns": 4672,
+      "matched_duration_percent": 0.346546
+    },
+    {
+      "grid": [30, 1, 1],
+      "block": [256, 1, 1],
+      "symbols": ["matrix_fold_parts_kernel"],
+      "invocations": 620,
+      "duration_ns": 2573619,
+      "mean_duration_ns": 4150.998,
+      "min_duration_ns": 3840,
+      "max_duration_ns": 4960,
+      "matched_duration_percent": 0.312754
+    },
+    {
+      "grid": [300, 1, 1],
+      "block": [256, 1, 1],
+      "symbols": ["matrix_fold_parts_kernel"],
+      "invocations": 366,
+      "duration_ns": 2152516,
+      "mean_duration_ns": 5881.191,
+      "min_duration_ns": 5280,
+      "max_duration_ns": 6496,
+      "matched_duration_percent": 0.261580
+    },
+    {
+      "grid": [8, 1, 1],
+      "block": [256, 1, 1],
+      "symbols": ["matrix_fold_parts_kernel"],
+      "invocations": 474,
+      "duration_ns": 1900104,
+      "mean_duration_ns": 4008.658,
+      "min_duration_ns": 3680,
+      "max_duration_ns": 4512,
+      "matched_duration_percent": 0.230906
+    },
+    {
+      "grid": [128, 1, 1],
+      "block": [256, 1, 1],
+      "symbols": ["matrix_fold_finish_kernel", "matrix_fold_parts_kernel"],
+      "invocations": 462,
+      "duration_ns": 1694286,
+      "mean_duration_ns": 3667.286,
+      "min_duration_ns": 3327,
+      "max_duration_ns": 5120,
+      "matched_duration_percent": 0.205895
+    },
+    {
+      "grid": [150, 1, 1],
+      "block": [256, 1, 1],
+      "symbols": ["matrix_fold_parts_kernel"],
+      "invocations": 124,
+      "duration_ns": 610523,
+      "mean_duration_ns": 4923.573,
+      "min_duration_ns": 4671,
+      "max_duration_ns": 5248,
+      "matched_duration_percent": 0.074193
+    },
+    {
+      "grid": [3, 1, 1],
+      "block": [256, 1, 1],
+      "symbols": ["matrix_fold_parts_kernel"],
+      "invocations": 60,
+      "duration_ns": 254688,
+      "mean_duration_ns": 4244.800,
+      "min_duration_ns": 4064,
+      "max_duration_ns": 4736,
+      "matched_duration_percent": 0.030950
+    },
+    {
+      "grid": [233, 1, 1],
+      "block": [256, 1, 1],
+      "symbols": ["matrix_fold_parts_kernel"],
+      "invocations": 36,
+      "duration_ns": 208028,
+      "mean_duration_ns": 5778.556,
+      "min_duration_ns": 5440,
+      "max_duration_ns": 6496,
+      "matched_duration_percent": 0.025280
+    },
+    {
+      "grid": [2, 1, 1],
+      "block": [256, 1, 1],
+      "symbols": ["matrix_fold_finish_kernel", "matrix_fold_parts_kernel"],
+      "invocations": 18,
+      "duration_ns": 63391,
+      "mean_duration_ns": 3521.722,
+      "min_duration_ns": 3168,
+      "max_duration_ns": 4512,
+      "matched_duration_percent": 0.007703
+    },
+    {
+      "grid": [58, 1, 1],
+      "block": [256, 1, 1],
+      "symbols": ["matrix_fold_parts_kernel"],
+      "invocations": 12,
+      "duration_ns": 53950,
+      "mean_duration_ns": 4495.833,
+      "min_duration_ns": 4352,
+      "max_duration_ns": 4672,
+      "matched_duration_percent": 0.006556
+    },
+    {
+      "grid": [6, 1, 1],
+      "block": [256, 1, 1],
+      "symbols": ["matrix_fold_parts_kernel"],
+      "invocations": 12,
+      "duration_ns": 48479,
+      "mean_duration_ns": 4039.917,
+      "min_duration_ns": 3968,
+      "max_duration_ns": 4128,
+      "matched_duration_percent": 0.005891
+    },
+    {
+      "grid": [32, 1, 1],
+      "block": [256, 1, 1],
+      "symbols": ["matrix_fold_parts_kernel"],
+      "invocations": 6,
+      "duration_ns": 24640,
+      "mean_duration_ns": 4106.667,
+      "min_duration_ns": 3744,
+      "max_duration_ns": 4512,
+      "matched_duration_percent": 0.002994
+    }
+  ],
+  "top_family_evidence": {
+    "name": "matrix_fold_kernel",
+    "matched_duration_percent": 54.392625,
+    "legacy_grid_x_1_invocations": 7410,
+    "legacy_grid_x_1_duration_ns": 328880396,
+    "legacy_grid_x_1_mean_duration_ns": 44383.319,
+    "legacy_grid_x_1_max_duration_ns": 140062,
+    "dispatch_fact": "Every remaining legacy matrix_fold_kernel launch in this census has grid_x <= 256; under ab3a03f this path is selected here only for terms < 256, so grid_x=1 no longer implies a long serial fold over a large vector.",
+    "kernel_internal_mapping_or_occupancy_defect": false,
+    "classification": "family-leading but launch-distributed, with no matrix-fold-style internal occupancy defect"
+  },
+  "gate_headroom": {
+    "official_sync_wall_range_s": [0.102956132, 0.109869589],
+    "v1_sync_ratio_bound": 0.02,
+    "binding_session_wall_s_from_max_sync": 5.49347945,
+    "current_official_session_wall_s": 5.917004617,
+    "compute_only_headroom_fraction": 0.07157762996891714,
+    "compute_only_headroom_percent": 7.157763,
+    "interpretation": "A compute-only improvement beyond about 7.2% is predicted to fail runpod-a100-v1 through the shrinking sync/session denominator, not through increased synchronization."
+  },
+  "decision": {
+    "one_family_at_least_50_percent": true,
+    "clear_kernel_internal_defect": false,
+    "selected_branch": "stop",
+    "gpu_optimization_stops": true,
+    "code_change": false,
+    "next_work_item": "real Goldilocks sVOLE phase-B hardening: two-party base OTs, WYKW malicious consistency check, and cited LPN parameters"
+  }
+}

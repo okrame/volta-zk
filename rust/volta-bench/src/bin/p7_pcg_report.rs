@@ -1,10 +1,11 @@
-//! P7 local PCG spike: measure mock and phase-A real-PCG expansion cost for
-//! the counted one-response correlation volume.
+//! P7 local PCG report: measure mock, historical phase-A, or two-party
+//! malicious phase-B expansion for the counted one-response volume.
 //!
 //! `--backend mock` is the historical ChaCha lower bound. `--backend real`
 //! runs the P7 phase-A in-repo Goldilocks PCG expansion: trusted-dealer base
 //! VOLE stub, GGM single-point noise, regular-noise local-linear LPN, and
-//! consistency-check arithmetic.
+//! consistency-check arithmetic. `--backend phase-b` runs independent roles,
+//! an explicit serialized channel, COPE/GGM/LPN, and the WYKW malicious check.
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -441,13 +442,14 @@ fn run_phase_b(
     source: &SourceRun,
     source_path: &Path,
     seed: [u8; 32],
-    delta: Fp2,
+    _delta: Fp2,
     checksum: &mut u64,
 ) -> Report {
     let n_sub = source.corr_sub_corrs as usize;
     let n_full = source.corr_full_corrs as usize;
     let params = PhaseAParams::for_counts(n_sub, n_full);
-    let expansion = expand_phase_b(seed, delta, n_sub, n_full, params);
+    let expansion = expand_phase_b(seed, [0x6Du8; 32], n_sub, n_full, params)
+        .expect("two-party phase-B expansion");
 
     for s in &expansion.prover.subs {
         mix_fp(checksum, s.r);
@@ -476,7 +478,7 @@ fn run_phase_b(
         source_path,
         *checksum,
         true,
-        "Phase-B setup COST measurement (single-process, shared-seed simulation with real curve25519/Ristretto group operations and measured OT-extension bytes; GGM PPRF expansion charged as in phase A). Not a two-party execution; production-ready remains false until WYKW malicious checks and table-derived LPN parameters are closed.".into(),
+        "Phase-B genuine two-party host setup: independent role RNGs, framed serialized channel, verifier-only Delta, Ristretto base OT + checked IKNP/COPEe, WYKW GGM single-point sVOLE and transcript-bound malicious consistency check. Parity candidate; default remains mock pending a separate decision.".into(),
     );
     report.t_total_real_expansion_s = Some(total);
     report.sub_corrs_per_s_prover = source.corr_sub_corrs as f64 / total;
@@ -487,10 +489,7 @@ fn run_phase_b(
     report.expanded_prover_bytes = expansion.prover.expanded_bytes();
     report.expanded_verifier_bytes = expansion.verifier.expanded_bytes();
     report.setup_comm_bytes = setup_comm;
-    // Honest label: the base-OT/OT-extension COST is real and measured, but
-    // both parties still run in one process from a shared seed — this is a
-    // setup cost model, not a two-party execution.
-    report.base_vole = "setup-cost-model".into();
+    report.base_vole = "real-COPEe-WYKW-checked".into();
     report.lpn_parameters = Some(expansion.params);
     report.phase_b_timings = Some(expansion.timings);
     report.phase_b_setup = Some(expansion.setup);

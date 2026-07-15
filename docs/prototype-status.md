@@ -63,6 +63,96 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-15 (real-sVOLE fase-B LPN preregistration amended before the
+  production run)**: the implementation boundary, transcript/check design,
+  acceptance tests and frozen out-of-scope surfaces in the entry below are
+  unchanged.  Its one-time Wolverine Table-2 tuple is superseded before any
+  clean measurement: Briaud--Øygarden, *A New Algebraic Approach to the
+  Regular Syndrome Decoding Problem and Implications for PCG Constructions*
+  (ePrint `2023/176`, §5), estimate only **126.44 bits** for
+  `(n0,k0,t0)=(642,048,19,870,2,508)` over the 61-bit field.  Their published
+  Magma estimator at commit `c021b90140bf30b2a435e07d0039d5f22630ac7b`
+  reproduces `126.443932`; the earlier >=128-bit claim therefore cannot be
+  retained.
+
+  Replacement assumption (external, with the same preregistered status as PCS
+  binding in M9): keep the cited regular-noise structure, `n0=642,048`,
+  `t0=2,508`, 256-entry blocks and 10-local public code, but raise
+  **`k0=25,000`**.  The current public Code Estimators suite
+  (`https://github.com/1234wangtr/Code_estimators`, commit
+  `969ef60c30cb84c25502d6b7c968f43a362bb438`) run as regular LPN with
+  `log2(q)=64` reports a minimum **140.646864 bits** (hybrid attack; the same
+  sweep reports algebraic 143.69, ISD 181.864603, regular-ISD 201.466850 and
+  AGB2 143.69), for a **12.646864-bit margin** over 128.  The recursive setup
+  capacity is `n0-k0-t0-2=614,538` versus the main-stage need
+  `k+t+2=591,081`, leaving 23,457 correlations.
+
+  The main tuple remains Wolverine's published
+  `(k,n,t)=(589,760,10,805,248,1,319)`, regular 8,192-entry blocks and
+  fanout 10.  The same pinned estimator's hybrid attack reports
+  **149.477334 bits**; Esser--Bellini, *Not Just Regular Decoding* (ePrint
+  `2023/1568`, Table 7) independently reports 157 bits for regular ISD on
+  this exact tuple.  The conservative registered estimate is therefore
+  **149.477334 bits**, a **21.477334-bit margin**.  These are concrete
+  known-attack estimates, not reductions or gate verdicts.  Any lower attack
+  estimate or change to `(k,n,t)`, block structure, field-size model or
+  fanout reopens this assumption before coding; no citation is to be stretched
+  to cover a different tuple.
+
+- **2026-07-15 (real-sVOLE fase-B hardening, preregistered before coding)**:
+  scope is host-side setup only. Replace the `setup-cost-model` path with two
+  independent `ProverSetup` / `VerifierSetup` state machines whose only shared
+  state is an explicit length-delimited serialized channel. Each role has
+  independent private randomness; the verifier samples the Goldilocks
+  `Delta` locally, and neither `Delta` nor a verifier RNG seed is a channel
+  field. Count serialized bytes in each direction and by setup phase. The
+  prover path, proof transcript and bytes, challenge order, correlation
+  allocation/digest/counter semantics, CUDA backend, and mock default are
+  frozen. Handoff §4.6.A cached columns, §4.1.4 claim merging, all other
+  communication levers, Lean, kernels, orchestration and provider profiles
+  remain out of scope.
+
+  Construction boundary: instantiate the OT-based COPEe/base-sVOLE bootstrap
+  of Weng--Yang--Katz--Wang, *Wolverine* (IEEE S&P 2021, DOI
+  `10.1109/SP40001.2021.00056`, ePrint `2020/925`), §5 Figure 5 and Appendix
+  B.1 Figure 15, then its single-point sVOLE and regular-LPN extension (§5.1
+  Figure 7 and §5.2 Figure 8). Base OTs use the already-locked Ristretto
+  dependency and feed the real COPE/OT extension; no shared-seed or
+  trusted-dealer base correlation is permitted. The malicious GGM check is
+  the **batched single-point-sVOLE consistency check** from §5.1, Figure 7
+  steps 4--6 with optimization 3: derive its random-oracle coefficients from
+  the complete serialized setup transcript plus a fresh verifier challenge,
+  then run the commit/open equality check fail-closed. The direct base-sVOLE
+  correlation check from Figure 5 steps 3--4 is also mandatory.
+
+  Parameter assumption (external, like PCS binding in M9): pin the public
+  10-local linear code and regular-noise distribution to Wolverine §5.2
+  Definition 1 and §6.1 Table 2. The one-time recursive setup is
+  `(k0,n0,t0)=(19,870,642,048,2,508)` with 256-entry blocks; the response
+  extension is `(k,n,t)=(589,760,10,805,248,1,319)` with 8,192-entry blocks.
+  Each of the `t` disjoint blocks contains exactly one uniformly located,
+  uniform nonzero `F_p` error. WYKW report that these parameters make all
+  known LPN attacks cost at least `2^128`; applying the same tuple over the
+  larger Goldilocks base field is preregistered as a conservative >=128-bit
+  assumption, with **zero additional claimed bit margin**. Reserving two
+  base correlations for the `F_p^2` check leaves `n-k-t-2=10,214,167`
+  usable correlations versus the P6 requirement `8,833,686`, a capacity
+  margin of `1,380,481` (15.63%). Any future parameter change requires a new
+  citation or estimator run before coding.
+
+  Mandatory acceptance before calling the result a parity candidate: honest
+  `p6_report --quick --pcg-backend real` accepts with mock-prepass counters
+  identical and allocation digests equal; unit/integration tests reject a
+  tampered GGM leaf, a corrupted GGM correction and a cheating consistency
+  response; a channel-transcript test verifies independent role seeds,
+  direction-exact byte accounting and absence of serialized `Delta`. Land one
+  append-only clean JSON with setup wall split into base OT, OT extension,
+  GGM, LPN and malicious checks and with setup communication per direction.
+  Setup bytes remain outside response download and setup wall remains outside
+  rho. The corrected 2026-07-07 4.408 s single-thread CPU cost-model result is
+  informative only, not a gate. This entry authorizes no mock-to-real default
+  flip; closure must record separately proposed flip criteria for user review.
+
 - **2026-07-15 (P7b post-fix CUPTI census landed; non-gating
   measurement)**: the preregistered clean `25dfc3c` run completed the exact
   `runpod-a100-v1` full T=100+50/Q=200 counters-only 0+1 geometry with eight

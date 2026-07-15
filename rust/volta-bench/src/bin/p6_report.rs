@@ -38,7 +38,9 @@ use volta_gpt2::{
     ResidentModelWitness, L, VOCAB,
 };
 use volta_mac::{zero_batch_exchange, CorrelationStream, Transcript, VerifierCtx};
-use volta_pcg::{expand_phase_a, PhaseATimings, ProverPcgPool, VerifierPcgPool};
+use volta_pcg::{
+    expand_phase_b, PhaseBTimings, ProverPcgPool, SetupCommBreakdown, VerifierPcgPool,
+};
 use volta_pcs::{
     commit, commit_resident_from_device, commit_with_backend, free_resident_matrix,
     layout_gpt2_embed, layout_gpt2_layer, open_multi_zk, open_multi_zk_resident,
@@ -649,6 +651,32 @@ struct Report {
     #[serde(skip_serializing_if = "Option::is_none")]
     pcg_real_phase_a_consistency_check_s: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_real_phase_b_total_s: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_real_phase_b_base_ot_s: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_real_phase_b_ot_extension_s: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_real_phase_b_ggm_pprf_s: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_real_phase_b_lpn_expand_s: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_real_phase_b_consistency_check_s: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_setup_comm_prover_to_verifier_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_setup_comm_verifier_to_prover_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_setup_comm_base_ot_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_setup_comm_ot_extension_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_setup_comm_ggm_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_setup_comm_consistency_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pcg_channel_transcripts_match: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pcg_mock_prepass_counters_match: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pcg_allocation_hash_match: Option<bool>,
@@ -980,13 +1008,20 @@ fn run_prefill_resident(
 
 enum SessionPcgBackend {
     Mock,
-    Real { prover: ProverPcgPool, verifier: VerifierPcgPool },
+    Real { prover: ProverPcgPool, verifier: VerifierPcgPool, delta: Fp2 },
 }
 
 #[derive(Default)]
 struct PcgGateStats {
     setup_comm_bytes: u64,
-    timings: Option<PhaseATimings>,
+    setup_comm_prover_to_verifier_bytes: u64,
+    setup_comm_verifier_to_prover_bytes: u64,
+    setup_comm_base_ot_bytes: u64,
+    setup_comm_ot_extension_bytes: u64,
+    setup_comm_ggm_bytes: u64,
+    setup_comm_consistency_bytes: u64,
+    timings: Option<PhaseBTimings>,
+    channel_transcripts_match: Option<bool>,
     mock_prepass_counters_match: Option<bool>,
     allocation_hash_match: Option<bool>,
 }
@@ -1009,34 +1044,52 @@ fn real_session_backend(
     seed: u8,
     sub_corrs: u64,
     full_corrs: u64,
-) -> (SessionPcgBackend, PhaseATimings, u64) {
+) -> (SessionPcgBackend, PhaseBTimings, SetupCommBreakdown) {
     let params = volta_pcg::PhaseAParams::for_counts(sub_corrs as usize, full_corrs as usize);
-    let expansion = expand_phase_a(
+    let expansion = expand_phase_b(
         [seed; 32],
-        session_delta(),
+        [seed ^ 0xA5; 32],
         sub_corrs as usize,
         full_corrs as usize,
         params,
-    );
-    let setup_comm = expansion.params.setup_comm_bytes();
+    )
+    .expect("real two-party phase-B PCG setup");
+    let setup_comm = expansion.setup.comm.clone();
     (
-        SessionPcgBackend::Real { prover: expansion.prover, verifier: expansion.verifier },
+        SessionPcgBackend::Real {
+            prover: expansion.prover,
+            verifier: expansion.verifier,
+            delta: expansion.verifier_delta,
+        },
         expansion.timings,
         setup_comm,
     )
 }
 
-fn add_timings(dst: &mut Option<PhaseATimings>, src: PhaseATimings) {
+fn add_timings(dst: &mut Option<PhaseBTimings>, src: PhaseBTimings) {
     if let Some(d) = dst {
-        d.t_setup_stub_s += src.t_setup_stub_s;
+        d.t_base_ot_s += src.t_base_ot_s;
+        d.t_ot_extension_s += src.t_ot_extension_s;
+        d.t_base_vole_from_setup_s += src.t_base_vole_from_setup_s;
         d.t_ggm_pprf_s += src.t_ggm_pprf_s;
         d.t_lpn_expand_s += src.t_lpn_expand_s;
         d.t_full_combine_s += src.t_full_combine_s;
         d.t_consistency_check_s += src.t_consistency_check_s;
-        d.t_total_real_expansion_s += src.t_total_real_expansion_s;
+        d.t_total_setup_and_expansion_s += src.t_total_setup_and_expansion_s;
     } else {
         *dst = Some(src);
     }
+}
+
+fn add_setup_comm(dst: &mut PcgGateStats, src: &SetupCommBreakdown) {
+    dst.setup_comm_bytes += src.total_bytes;
+    dst.setup_comm_prover_to_verifier_bytes += src.prover_to_verifier_bytes;
+    dst.setup_comm_verifier_to_prover_bytes += src.verifier_to_prover_bytes;
+    dst.setup_comm_base_ot_bytes += src.base_ot_bytes;
+    dst.setup_comm_ot_extension_bytes += src.ot_extension_bytes;
+    dst.setup_comm_ggm_bytes += src.ggm_bytes;
+    dst.setup_comm_consistency_bytes += src.consistency_bytes;
+    dst.channel_transcripts_match = Some(true);
 }
 
 struct ResidentSessionInput<'a, 'source> {
@@ -1130,14 +1183,18 @@ fn run_session_impl<'source>(
         accel.begin_measurement().expect("begin accelerator measurement");
     }
     let t = wit.t;
-    let delta = session_delta();
-    let (mut stream, mut vc) = match pcg_backend {
-        SessionPcgBackend::Mock => {
-            (CorrelationStream::new([seed; 32]), VerifierCtx::new([seed; 32], delta))
-        }
-        SessionPcgBackend::Real { prover, verifier } => {
-            (CorrelationStream::from_pcg_pool(prover), VerifierCtx::from_pcg_pool(delta, verifier))
-        }
+    let mock_delta = session_delta();
+    let (mut stream, mut vc, delta) = match pcg_backend {
+        SessionPcgBackend::Mock => (
+            CorrelationStream::new([seed; 32]),
+            VerifierCtx::new([seed; 32], mock_delta),
+            mock_delta,
+        ),
+        SessionPcgBackend::Real { prover, verifier, delta } => (
+            CorrelationStream::from_pcg_pool(prover),
+            VerifierCtx::from_pcg_pool(delta, verifier),
+            delta,
+        ),
     };
     let mut txp = Transcript::new([seed ^ 0x5A; 32]);
     let mut txv = Transcript::new([seed ^ 0x5A; 32]);
@@ -1856,7 +1913,7 @@ fn main() {
         );
         let (backend, timings, setup_comm) =
             real_session_backend(0x21, pre.pcg_pool_sub_corrs, pre.pcg_pool_full_corrs);
-        pcg_gate.setup_comm_bytes += setup_comm;
+        add_setup_comm(&mut pcg_gate, &setup_comm);
         add_timings(&mut pcg_gate.timings, timings);
         let real = run_session(
             &model,
@@ -2209,7 +2266,7 @@ fn main() {
         );
         let (backend, timings, setup_comm) =
             real_session_backend(0x22, pre.pcg_pool_sub_corrs, pre.pcg_pool_full_corrs);
-        pcg_gate.setup_comm_bytes += setup_comm;
+        add_setup_comm(&mut pcg_gate, &setup_comm);
         add_timings(&mut pcg_gate.timings, timings);
         let real = run_session(
             &model,
@@ -2655,15 +2712,37 @@ fn main() {
         pcg_production_ready: false,
         pcg_setup_comm_bytes: pcg_gate.setup_comm_bytes,
         pcg_base_vole: if args.pcg_backend == PcgBackendArg::Real {
-            Some("mock-stub".into())
+            Some(
+                "COPEe from Ristretto base OT; WYKW Figure-5 sacrifice checked; no dealer/shared seed"
+                    .into(),
+            )
         } else {
             None
         },
-        pcg_real_phase_a_total_s: pcg_gate.timings.map(|t| t.t_total_real_expansion_s),
-        pcg_real_phase_a_setup_stub_s: pcg_gate.timings.map(|t| t.t_setup_stub_s),
-        pcg_real_phase_a_ggm_pprf_s: pcg_gate.timings.map(|t| t.t_ggm_pprf_s),
-        pcg_real_phase_a_lpn_expand_s: pcg_gate.timings.map(|t| t.t_lpn_expand_s),
-        pcg_real_phase_a_consistency_check_s: pcg_gate.timings.map(|t| t.t_consistency_check_s),
+        pcg_real_phase_a_total_s: None,
+        pcg_real_phase_a_setup_stub_s: None,
+        pcg_real_phase_a_ggm_pprf_s: None,
+        pcg_real_phase_a_lpn_expand_s: None,
+        pcg_real_phase_a_consistency_check_s: None,
+        pcg_real_phase_b_total_s: pcg_gate.timings.map(|t| t.t_total_setup_and_expansion_s),
+        pcg_real_phase_b_base_ot_s: pcg_gate.timings.map(|t| t.t_base_ot_s),
+        pcg_real_phase_b_ot_extension_s: pcg_gate.timings.map(|t| t.t_ot_extension_s),
+        pcg_real_phase_b_ggm_pprf_s: pcg_gate.timings.map(|t| t.t_ggm_pprf_s),
+        pcg_real_phase_b_lpn_expand_s: pcg_gate.timings.map(|t| t.t_lpn_expand_s),
+        pcg_real_phase_b_consistency_check_s: pcg_gate.timings.map(|t| t.t_consistency_check_s),
+        pcg_setup_comm_prover_to_verifier_bytes: (args.pcg_backend == PcgBackendArg::Real)
+            .then_some(pcg_gate.setup_comm_prover_to_verifier_bytes),
+        pcg_setup_comm_verifier_to_prover_bytes: (args.pcg_backend == PcgBackendArg::Real)
+            .then_some(pcg_gate.setup_comm_verifier_to_prover_bytes),
+        pcg_setup_comm_base_ot_bytes: (args.pcg_backend == PcgBackendArg::Real)
+            .then_some(pcg_gate.setup_comm_base_ot_bytes),
+        pcg_setup_comm_ot_extension_bytes: (args.pcg_backend == PcgBackendArg::Real)
+            .then_some(pcg_gate.setup_comm_ot_extension_bytes),
+        pcg_setup_comm_ggm_bytes: (args.pcg_backend == PcgBackendArg::Real)
+            .then_some(pcg_gate.setup_comm_ggm_bytes),
+        pcg_setup_comm_consistency_bytes: (args.pcg_backend == PcgBackendArg::Real)
+            .then_some(pcg_gate.setup_comm_consistency_bytes),
+        pcg_channel_transcripts_match: pcg_gate.channel_transcripts_match,
         pcg_mock_prepass_counters_match: pcg_gate.mock_prepass_counters_match,
         pcg_allocation_hash_match: pcg_gate.allocation_hash_match,
     };

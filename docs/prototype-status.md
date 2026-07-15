@@ -63,6 +63,122 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-15 (P7b post-fix kernel census preregistered; diagnosis only,
+  with an explicit stop rule)**: purpose — the `1a319db` census is obsolete.
+  It ranked `matrix_fold_kernel` at 98.264387% of traced proof-algebra time
+  with the second family at only 0.700790%, and that kernel has since been
+  rewritten (`ab3a03f`). Whether even one more kernel optimization is worth
+  doing before phase A depends entirely on the post-fix ranking, which is
+  currently unknown. This census answers only that question; it changes no
+  code and selects no optimization by itself.
+
+  Method — identical to the 2026-07-14 CUPTI fallback census. Nsight Compute
+  remains denied on RunPod (`ERR_NVGPUCTRPERM`), so use the
+  already-checksummed patched `cupti_trace_injection` build outside the
+  checkout, injected via `CUDA_INJECTION64_PATH`, with
+  `CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL` only and fail-closed dropped-record
+  queries that must sum to exactly zero. Geometry: full T=100+50/Q=200,
+  counters-only, zero warmups plus one measured repetition,
+  `RAYON_NUM_THREADS=8`, exact `runpod-a100-v1` machine profile, clean tree
+  at the commit containing this entry. Acceptance, golden decode and the
+  flat-cost curve remain mandatory; `p7b_gate_evaluated:false`. Filter the
+  same twelve proof-algebra kernel names. Keep the raw trace and logs outside
+  the checkout, record every SHA-256, and land one append-only parsed census
+  JSON in `benchmarks/results/` (per-kernel launches, summed durations,
+  percentage shares, grid-dimension distribution of the top family,
+  matched/total kernel counts, dropped=0, provenance). Interpretation limits
+  are unchanged: absolute profiler walls are ineligible; only within-census
+  ranking and launch/grid evidence may select work; the run is a
+  decode-emphasized whole-application aggregate, not a decode-marginal
+  duration.
+
+  Gate-headroom arithmetic this census must be read against: absolute
+  synchronization wall in the official PASS is 0.102956132–0.109869589 s per
+  repetition, and kernel-internal fixes do not change it (it was count-exact
+  across the matrix-fold fix). The `runpod-a100-v1` ratio gate
+  (sync/session <= 2%) therefore binds at a session wall of ~5.49 s
+  (0.1099/0.02); from the current 5.917 s that is only ~7.2% headroom. A
+  compute-only improvement larger than ~7% is thus predicted to produce a
+  valid official FAIL on the ratio gate — not because synchronization got
+  worse, but because the denominator shrank. The ratio gate was adopted to
+  show that sync-count targets were provider debt; failing a pure compute
+  speedup is a denominator artifact, not its intent.
+
+  Preregistered decision rule, evaluated on the landed census before any
+  code change:
+  - **Fix branch** — if one kernel family holds >= 50% of traced
+    proof-algebra seconds AND its launch/grid evidence shows a
+    kernel-internal mapping/occupancy defect (as grid-x=1 did for
+    `matrix_fold_kernel`): preregister exactly one ABI-neutral
+    kernel-internal boundary against that family, together with a
+    `runpod-a100-v2` gate profile that keeps every other gate and invariant
+    identical but replaces the sync ratio with an absolute bound — maximum
+    per-repetition synchronization wall <= 0.150 s, fail-closed. The
+    absolute bound is stricter in intent (sync may no longer grow
+    proportionally with session wall) and removes the denominator artifact.
+    Quick stop gate: >= 10% upper-median response-session reduction versus
+    the 3.089308298 s `ab3a03f` quick reference, i.e. <= 2.780377468 s, with
+    unchanged proof/counter/communication invariants; failure stops the
+    line. The 50% bar is deliberate: with ~7% certifiable headroom under v1
+    and the cost of a v2 preregistration, only a concentrated defect
+    justifies one more iteration before phase A.
+  - **Stop branch** — otherwise (flat profile, or the dominant signal is
+    launch/sync/host residual rather than kernel-internal work): GPU
+    optimization stops with zero code change, and phase A (real Goldilocks
+    sVOLE) is the next work item per the same-date direction entry below.
+    Orchestration mechanisms (CUDA graphs, scheduler expansion, sync
+    coalescing, scalar-RLC batching) remain unauthorized and may be
+    reconsidered only after phase A under their own preregistered boundary.
+
+  At most one fix may result from this census; no stacking. The `ab3a03f`
+  PASS and every earlier verdict are unaffected.
+
+- **2026-07-15 (post-P7b direction: rho targets re-scoped and work ordered
+  around phase A; decision, no measurement)**: against the P7 native GPU
+  anchors (prefill 17.342 ms, decode50 599.346 ms — measured 2026-07-13
+  under the P7 profile; same A100-SXM4-80GB GPU model as RunPod, so
+  indicative here, and any future rho-gated milestone must re-anchor native
+  time on its own profile), the `ab3a03f` PASS corresponds to
+  **rho_prefill ~151.7** and **rho_decode ~3.49** versus the concept-note
+  GPU targets of <= 5 and <= 2. The two gaps mean different things.
+
+  rho_decode ~3.49 is a real gap in provable decode work: the target needs
+  decode marginal <= 1.198692 s from the current 2.089288042 s, a ~42.6%
+  reduction. It stays the operative performance target at this scale, but
+  any milestone chasing it must bring its own preregistered gate contract
+  (see the census entry above for why the v1 ratio gate cannot certify it).
+
+  rho_prefill ~152 mostly measures model/hardware mismatch, not protocol
+  overhead: native prefill executes 8.63 G MACs in 17.342 ms (~0.5 GMAC/ms,
+  well under 1% of an A100's integer tensor throughput) because a
+  124M-parameter model at T=100 is latency-bound and leaves the device
+  idle, while the prover kernels are throughput-bound and actually use it.
+  On a deployment-scale model or batched workload the native denominator
+  grows far less in time than in work, so the ratio compresses by itself.
+  **Decision**: rho_prefill <= 5 is re-scoped as a deployment-scale
+  extrapolation target; it is not a GPT-2-small/A100 pass/fail number and
+  must not drive kernel work at this scale. No historical verdict is
+  reinterpreted.
+
+  Work-ordering decision (robust versus fragile under phase A): the
+  proof-algebra kernels consume correlations and are indifferent to how
+  they were generated, so kernel-internal efficiency work (occupancy,
+  Goldilocks limbing, memory layout) survives the switch from mock-PCG to
+  real sVOLE and transfers across model shapes. Orchestration work (CUDA
+  graphs, epoch scheduling, sync coalescing, gate-margin tuning) is tuned
+  to the current session composition, which phase A will change: really
+  expanding ~3.77 M WYKW correlations adds measurable host work and shifts
+  traffic/blocking patterns. Order of work is therefore: (1) the census
+  above; (2) at most one robust kernel-internal fix if its rule selects
+  one; (3) **phase A — real Goldilocks sVOLE (WYKW) as production backend,
+  removing the mock-PCG non-production label** (fase A GGM+LPN expansion is
+  already landed and measured at 3.7 s CPU, `fe4857b`; what remains is the
+  fase-B hardening: real two-party base OTs, WYKW malicious consistency
+  check, cited LPN parameters); (4) only after phase A, reconsider
+  orchestration under a new preregistered boundary. Standing exclusions
+  remain binding throughout, including no prover speed bought with proof
+  size or communication.
+
 - **2026-07-14 (P7b RunPod official gate PASS; matrix-fold iteration
   closed)**: after the preregistered quick stop gate passed, the unchanged
   `ab3a03f` executable completed a clean schema-6/ABI-28 T=100+50/Q=200

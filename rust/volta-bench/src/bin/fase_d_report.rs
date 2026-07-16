@@ -240,8 +240,8 @@ fn serve_response(
         assert_eq!(batch.prover.len(), 1);
         assert_eq!(batch.verifier_keys.len(), 1);
         assert_eq!(
-            batch.prover[0].m,
-            batch.verifier_keys[0] + batch.verifier_delta.mul_base(batch.prover[0].r)
+            batch.verifier_keys[0],
+            batch.prover[0].m + batch.verifier_delta.mul_base(batch.prover[0].r)
         );
         batch.allocation.connection_allocation_digest.clone()
     };

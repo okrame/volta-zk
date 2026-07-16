@@ -41,8 +41,8 @@ use volta_gpt2::{
 };
 use volta_mac::{zero_batch_exchange, CorrelationStream, Transcript, VerifierCtx};
 use volta_pcg::{
-    expand_phase_b_production, PhaseBTimings, ProductionSetupAudit, ProverPcgPool,
-    ResponseAuthorizationStore, SessionBinding, SetupCommBreakdown, VerifierPcgPool,
+    expand_phase_b_production_with_ggm_prg, GgmPrg, PhaseBTimings, ProductionSetupAudit,
+    ProverPcgPool, ResponseAuthorizationStore, SessionBinding, SetupCommBreakdown, VerifierPcgPool,
 };
 use volta_pcs::{
     commit, commit_resident_from_device, commit_with_backend, free_resident_matrix,
@@ -63,6 +63,7 @@ use volta_proto::{
 const P7B_PREFILL_CORE_GATE_S: f64 = 10.0;
 const P7B_DECODE_MARGINAL_GATE_S: f64 = 4.0;
 const P7B_GATE_PROFILE: &str = "runpod-a100-v1";
+const FASE_D_POD_GATE_PROFILE: &str = "runpod-a100-realpcg-v1";
 const P7B_SYNC_WALL_FRACTION_GATE: f64 = 0.02;
 const P7B_OFFICIAL_RAYON_THREADS: usize = 8;
 // Decimal MB, matching the preregistered ledger threshold.
@@ -90,9 +91,6 @@ const C1_TRANSCRIPT_BYTES: u64 = C1_BASELINE_TRANSCRIPT_BYTES - C1_SAVED_BYTES;
 const C1_AUTH_CORRECTION_BYTES: u64 = C1_BASELINE_AUTH_CORRECTION_BYTES - C1_SAVED_BYTES;
 const C1_PACKED_RESPONSE_BYTES: u64 = C1_BASELINE_PACKED_RESPONSE_BYTES - C1_SAVED_BYTES;
 const C1_SUB_CORRS: u64 = C1_BASELINE_SUB_CORRS - C1_IDENTITY_SEAM_ALIASES;
-const PHASE_B_SETUP_BYTES: u64 = 31_261_434;
-const PHASE_B_SETUP_PROVER_TO_VERIFIER_BYTES: u64 = 28_814_084;
-const PHASE_B_SETUP_VERIFIER_TO_PROVER_BYTES: u64 = 2_447_350;
 // Phase 0a may change this only after its >=10% instrumentation-tax decision
 // is appended to the ledger. Until then, counter-only full runs are
 // diagnostic and cannot become an official verdict.
@@ -245,7 +243,42 @@ fn short_git_sha(full_sha: &str) -> String {
     full_sha.chars().take(7).collect()
 }
 
-fn p7b_machine_eligible(cloud: Option<&CloudMetadata>, rayon_threads: usize) -> bool {
+fn detected_logical_cpu_cores() -> usize {
+    std::thread::available_parallelism().map_or(1, usize::from)
+}
+
+fn detected_physical_cpu_cores(logical_fallback: usize) -> usize {
+    let mut cores = BTreeSet::new();
+    if let Ok(entries) = std::fs::read_dir("/sys/devices/system/cpu") {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            let Some(index) = name.strip_prefix("cpu") else {
+                continue;
+            };
+            if index.is_empty() || !index.bytes().all(|byte| byte.is_ascii_digit()) {
+                continue;
+            }
+            let topology = entry.path().join("topology");
+            let package = std::fs::read_to_string(topology.join("physical_package_id"));
+            let core = std::fs::read_to_string(topology.join("core_id"));
+            if let (Ok(package), Ok(core)) = (package, core) {
+                cores.insert((package.trim().to_owned(), core.trim().to_owned()));
+            }
+        }
+    }
+    if cores.is_empty() {
+        logical_fallback
+    } else {
+        cores.len()
+    }
+}
+
+fn p7b_machine_eligible(
+    cloud: Option<&CloudMetadata>,
+    rayon_threads: usize,
+    fase_d_realpcg_profile: bool,
+) -> bool {
     let Some(cloud) = cloud else {
         return false;
     };
@@ -263,17 +296,25 @@ fn p7b_machine_eligible(cloud: Option<&CloudMetadata>, rayon_threads: usize) -> 
     ]
     .into_iter()
     .all(|value| !value.trim().is_empty());
-    metadata_present
+    let common = metadata_present
         && rayon_threads == P7B_OFFICIAL_RAYON_THREADS
         && cloud.provider == "RunPod"
-        && cloud.region == "eur-is-1"
-        && cloud.image == "Ubuntu 24.04.3 LTS"
-        && cloud.driver_version == "580.159.04"
-        && cloud.cuda_version == "12.8"
-        && cloud.gpu_sku == "NVIDIA A100-SXM4-80GB"
-        && cloud.cpu_model == "AMD EPYC 7713 64-Core Processor"
-        && cloud.ram_gib == "1008"
-        && cloud.vcpus == "255"
+        && cloud.gpu_sku == "NVIDIA A100-SXM4-80GB";
+    if fase_d_realpcg_profile {
+        // The new host class is intentionally first-measurement: preserve
+        // complete metadata without inheriting the old pod's CPU, region,
+        // RAM, image, driver, or CUDA-version identity as an eligibility gate.
+        common
+    } else {
+        common
+            && cloud.region == "eur-is-1"
+            && cloud.image == "Ubuntu 24.04.3 LTS"
+            && cloud.driver_version == "580.159.04"
+            && cloud.cuda_version == "12.8"
+            && cloud.cpu_model == "AMD EPYC 7713 64-Core Processor"
+            && cloud.ram_gib == "1008"
+            && cloud.vcpus == "255"
+    }
 }
 
 fn synchronization_wall_fraction(stats: &BackendStats, session_wall_s: f64) -> f64 {
@@ -283,11 +324,20 @@ fn synchronization_wall_fraction(stats: &BackendStats, session_wall_s: f64) -> f
     fraction
 }
 
-fn p7b_communication_no_growth(
+fn p7b_communication_gate(
     transcript_bytes: u64,
     pcs_opening_bytes: u64,
     packed_logits_bytes: u64,
+    fase_d_realpcg_profile: bool,
 ) -> bool {
+    if fase_d_realpcg_profile {
+        return transcript_bytes == C1_TRANSCRIPT_BYTES
+            && pcs_opening_bytes == P7B_PCS_OPENING_REFERENCE_BYTES
+            && packed_logits_bytes == P7B_PACKED_LOGITS_REFERENCE_BYTES
+            && transcript_bytes
+                .checked_add(packed_logits_bytes)
+                .is_some_and(|total| total == C1_PACKED_RESPONSE_BYTES);
+    }
     transcript_bytes <= P7B_TRANSCRIPT_REFERENCE_BYTES
         && pcs_opening_bytes <= P7B_PCS_OPENING_REFERENCE_BYTES
         && packed_logits_bytes <= P7B_PACKED_LOGITS_REFERENCE_BYTES
@@ -667,6 +717,11 @@ struct Report {
     peak_rss_gb: f64,
     // --- PCG backend gate ---------------------------------------------------------
     pcg_backend: String,
+    ggm_prg: String,
+    ggm_aes_feature: String,
+    detected_physical_cpu_cores: usize,
+    detected_logical_cpu_cores: usize,
+    pcg_setup_rayon_threads: usize,
     pcg_production_ready: bool,
     pcg_setup_comm_bytes: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -797,6 +852,18 @@ fn peak_rss_gb() -> f64 {
         .unwrap_or(0.0)
 }
 
+fn detected_aes_feature() -> &'static str {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    if std::arch::is_x86_feature_detected!("aes") {
+        return "aes-ni";
+    }
+    #[cfg(target_arch = "aarch64")]
+    if std::arch::is_aarch64_feature_detected!("aes") {
+        return "armv8-ce";
+    }
+    "portable"
+}
+
 fn weights_dir() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../benchmarks/weights")
 }
@@ -829,6 +896,8 @@ struct Args {
     flip_readiness_record: bool,
     pcs_q: Option<usize>,
     pcg_backend: PcgBackendArg,
+    ggm_prg: GgmPrg,
+    diagnostic: bool,
     pcg_authorization_store: Option<PathBuf>,
     accelerator: AcceleratorArg,
     resident_timing: ResidentTimingArg,
@@ -894,6 +963,7 @@ fn usage() -> ! {
     eprintln!(
         "usage: p6_report [--quick|--c1-record|--flip-readiness-record] [--pcs-q Q] \
          [--pcg-backend mock|real] [--pcg-authorization-store PATH] \
+         [--ggm-prg aes128-mmo|blake3] [--diagnostic] \
          [--accelerator cpu|cuda-hybrid|cuda-resident] [--repetitions N] \
          [--warmup-repetitions N] \
          [--resident-timing deferred-events|wall-only-counters]"
@@ -907,7 +977,9 @@ fn parse_args() -> Args {
         c1_record: false,
         flip_readiness_record: false,
         pcs_q: None,
-        pcg_backend: PcgBackendArg::Mock,
+        pcg_backend: PcgBackendArg::Real,
+        ggm_prg: GgmPrg::Aes128Mmo,
+        diagnostic: false,
         pcg_authorization_store: None,
         accelerator: AcceleratorArg::Cpu,
         resident_timing: ResidentTimingArg::DeferredEvents,
@@ -932,6 +1004,13 @@ fn parse_args() -> Args {
             out.pcg_backend = parse_pcg_backend(&b);
         } else if let Some(b) = a.strip_prefix("--pcg-backend=") {
             out.pcg_backend = parse_pcg_backend(b);
+        } else if a == "--ggm-prg" {
+            let Some(prg) = args.next() else { usage() };
+            out.ggm_prg = prg.parse().unwrap_or_else(|_| usage());
+        } else if let Some(prg) = a.strip_prefix("--ggm-prg=") {
+            out.ggm_prg = prg.parse().unwrap_or_else(|_| usage());
+        } else if a == "--diagnostic" {
+            out.diagnostic = true;
         } else if a == "--pcg-authorization-store" {
             let Some(path) = args.next() else { usage() };
             out.pcg_authorization_store = Some(PathBuf::from(path));
@@ -1083,6 +1162,38 @@ fn logical_allocation_digest(session: &SessionResult) -> String {
     digest_u64_map(b"volta-pcg/logical-allocation-schedule/v1", &values)
 }
 
+fn assert_mock_real_parity(
+    gate: &mut PcgGateStats,
+    mock: &SessionResult,
+    real: &SessionResult,
+    label: &str,
+) {
+    let counters_match = mock.sub_corrs == real.sub_corrs
+        && mock.full_corrs == real.full_corrs
+        && mock.pcg_pool_sub_corrs == real.pcg_pool_sub_corrs
+        && mock.pcg_pool_full_corrs == real.pcg_pool_full_corrs;
+    let channel_ledger_digest_match =
+        digest_u64_map(b"volta-pcg/mock-real-channel-ledger/v1", &mock.transcript_by_label)
+            == digest_u64_map(b"volta-pcg/mock-real-channel-ledger/v1", &real.transcript_by_label);
+    let allocation_digest_match =
+        logical_allocation_digest(mock) == logical_allocation_digest(real);
+    gate.mock_prepass_counters_match =
+        Some(gate.mock_prepass_counters_match.unwrap_or(true) && counters_match);
+    gate.mock_prepass_channel_ledger_digest_match = Some(
+        gate.mock_prepass_channel_ledger_digest_match.unwrap_or(true)
+            && channel_ledger_digest_match,
+    );
+    gate.mock_prepass_allocation_digest_match =
+        Some(gate.mock_prepass_allocation_digest_match.unwrap_or(true) && allocation_digest_match);
+    gate.allocation_hash_match = Some(
+        gate.allocation_hash_match.unwrap_or(true)
+            && real.pcg_allocation_hash_match.unwrap_or(false),
+    );
+    assert!(counters_match, "real-PCG {label} counters must match mock prepass");
+    assert!(channel_ledger_digest_match, "real-PCG {label} channel ledger must match mock prepass");
+    assert!(allocation_digest_match, "real-PCG {label} allocation digest must match mock prepass");
+}
+
 /// `E = F_p^2`.  The scalar-power implementation theorems bound a batch of
 /// `T` claims by `(T+offset)/|E|`; report the corresponding conservative
 /// `-log2(error)` rather than quoting the stronger vector-RLC constant.
@@ -1223,6 +1334,7 @@ fn real_session_backend(
     authorization_store: &ResponseAuthorizationStore,
     sub_corrs: u64,
     full_corrs: u64,
+    ggm_prg: GgmPrg,
 ) -> (SessionPcgBackend, PhaseBTimings, SetupCommBreakdown, ProductionSetupAudit, bool) {
     let params = volta_pcg::PhaseAParams::for_counts(sub_corrs as usize, full_corrs as usize);
     let binding = SessionBinding::new(
@@ -1231,12 +1343,13 @@ fn real_session_backend(
         os_random_identity("response-authorization nonce"),
     )
     .expect("nonzero OS-generated phase-B identities");
-    let production = expand_phase_b_production(
+    let production = expand_phase_b_production_with_ggm_prg(
         authorization_store,
         binding,
         sub_corrs as usize,
         full_corrs as usize,
         params,
+        ggm_prg,
     )
     .expect("production-provisioned real two-party phase-B PCG setup");
     let channel_transcripts_match = production.expansion.setup.setup_binding_digest
@@ -1284,9 +1397,13 @@ fn add_setup_comm(dst: &mut PcgGateStats, src: &SetupCommBreakdown) {
     } else {
         dst.per_setup_comm = Some(src.clone());
     }
-    let wire_count_invariant = src.total_bytes == PHASE_B_SETUP_BYTES
-        && src.prover_to_verifier_bytes == PHASE_B_SETUP_PROVER_TO_VERIFIER_BYTES
-        && src.verifier_to_prover_bytes == PHASE_B_SETUP_VERIFIER_TO_PROVER_BYTES;
+    // Fase-D changes GGM seed width and therefore establishes new exact byte
+    // assertions only from Part-B measurements.  The frozen 31,261,434-byte
+    // fase-B value is intentionally not inherited here.
+    let wire_count_invariant = src.total_bytes
+        == src.prover_to_verifier_bytes + src.verifier_to_prover_bytes
+        && src.total_bytes
+            == src.base_ot_bytes + src.ot_extension_bytes + src.ggm_bytes + src.consistency_bytes;
     dst.setup_wire_count_invariant_pass =
         (dst.setup_instances == 1 || dst.setup_wire_count_invariant_pass) && wire_count_invariant;
     assert!(wire_count_invariant, "phase-B serialized channel byte count changed");
@@ -1949,11 +2066,31 @@ fn main() {
     }
     let cloud = cloud_metadata_from_env();
     let rayon_threads = rayon::current_num_threads();
-    let p7b_machine_is_eligible = p7b_machine_eligible(cloud.as_ref(), rayon_threads);
+    let fase_d_realpcg_profile = args.pcg_backend == PcgBackendArg::Real;
+    let p7b_machine_is_eligible =
+        p7b_machine_eligible(cloud.as_ref(), rayon_threads, fase_d_realpcg_profile);
+    let logical_cpu_cores = detected_logical_cpu_cores();
+    let physical_cpu_cores = detected_physical_cpu_cores(logical_cpu_cores);
     // A run of record must stay clean for the complete benchmark window, not
     // merely happen to be clean when the JSON verdict is assembled.
     let git_dirty_before_benchmark = git_worktree_dirty();
     let quick = args.quick;
+    if args.pcg_backend == PcgBackendArg::Mock && !args.diagnostic {
+        eprintln!(
+            "p6_report: mock PCG is diagnostic-only after the fase-D default flip; add --diagnostic (no result artifact)"
+        );
+        std::process::exit(2);
+    }
+    if args.ggm_prg == GgmPrg::Blake3 && !args.diagnostic {
+        eprintln!(
+            "p6_report: BLAKE3 GGM is diagnostic-only; record-producing mode requires aes128-mmo"
+        );
+        std::process::exit(2);
+    }
+    if args.diagnostic && (args.c1_record || args.flip_readiness_record) {
+        eprintln!("p6_report: diagnostic mode cannot be combined with a record mode");
+        std::process::exit(2);
+    }
     if args.c1_record && args.flip_readiness_record {
         eprintln!("p6_report: --c1-record and --flip-readiness-record are mutually exclusive");
         std::process::exit(2);
@@ -2002,10 +2139,6 @@ fn main() {
         eprintln!("p6_report: --resident-timing is valid only with --accelerator cuda-resident");
         std::process::exit(2);
     }
-    if args.pcg_backend == PcgBackendArg::Real && args.accelerator != AcceleratorArg::Cpu {
-        eprintln!("p6_report: real-PCG and CUDA integration gates must be measured separately");
-        std::process::exit(2);
-    }
     let authorization_store_path = args
         .pcg_authorization_store
         .clone()
@@ -2037,16 +2170,6 @@ fn main() {
             }),
         ),
     };
-    if args.pcg_backend == PcgBackendArg::Real && !quick && !args.flip_readiness_record {
-        eprintln!(
-            "p6_report: --pcg-backend real is a P7 correctness gate and is currently quick-only"
-        );
-        std::process::exit(2);
-    }
-    if args.pcg_backend == PcgBackendArg::Real && (repetitions != 1 || warmup_repetitions != 0) {
-        eprintln!("p6_report: real-PCG gate currently requires one repetition and no warmup");
-        std::process::exit(2);
-    }
     let (t0, n_gen, curve_chunk) = if quick { (16usize, 8usize, 4usize) } else { (100, 50, 10) };
     let mut layer_params = P4_LAYER;
     let mut embed_params = GPT2_FULL;
@@ -2209,6 +2332,67 @@ fn main() {
     };
     let band50 = band_model_witness(&model, &full, t0);
     assert_eq!(band50.q, n_gen);
+    let resident_band50_refs: Vec<&ResidentBandModelWitness<'_>> =
+        resident_band50.as_ref().into_iter().collect();
+
+    macro_rules! run_active_session {
+        ($public_bands:expr, $resident_bands:expr, $with_pcs:expr, $seed:expr, $pcg:expr) => {{
+            if args.accelerator == AcceleratorArg::CudaResident {
+                run_session_resident(
+                    &model,
+                    &wit0,
+                    $public_bands,
+                    &seq,
+                    resident_model.as_ref().expect("resident model"),
+                    resident_prefill.as_ref().expect("resident prefill"),
+                    $resident_bands,
+                    resident_proof_error.as_ref().expect("resident proof error word"),
+                    &layer_params,
+                    &embed_params,
+                    $with_pcs,
+                    $seed,
+                    $pcg,
+                    accelerator.as_mut().expect("resident CUDA backend"),
+                )
+            } else {
+                run_session(
+                    &model,
+                    &wit0,
+                    $public_bands,
+                    &seq,
+                    &layer_params,
+                    &embed_params,
+                    $with_pcs,
+                    $seed,
+                    $pcg,
+                    accelerator.as_mut(),
+                )
+            }
+        }};
+    }
+
+    macro_rules! run_active_prefill {
+        ($seed:expr) => {{
+            if args.accelerator == AcceleratorArg::CudaResident {
+                run_prefill_resident(
+                    &model,
+                    resident_model.as_ref().expect("resident model"),
+                    resident_prefill.as_ref().expect("resident prefill"),
+                    &wit0.logits,
+                    DeviceSlice::new(
+                        resident_proof_error.as_ref().expect("resident proof error word"),
+                        0,
+                        1,
+                    )
+                    .unwrap(),
+                    $seed,
+                    accelerator.as_mut().expect("resident CUDA backend"),
+                )
+            } else {
+                run_prefill(&model, &wit0, $seed, accelerator.as_mut())
+            }
+        }};
+    }
 
     // --- repeated prefill + full-response proving -------------------------------
     eprintln!("timed proving: {warmup_repetitions} warmup + {repetitions} measured repetitions");
@@ -2216,70 +2400,54 @@ fn main() {
     let mut prefill_results = Vec::with_capacity(repetitions);
     let mut session_results = Vec::with_capacity(repetitions);
     if args.pcg_backend == PcgBackendArg::Real {
-        prefill_results.push(run_prefill(&model, &wit0, 0x60, accelerator.as_mut()));
         eprintln!("  real PCG gate: mock prepass for exact full-response counts ...");
-        let pre = run_session(
-            &model,
-            &wit0,
+        let pre = run_active_session!(
             &[&band50],
-            &seq,
-            &layer_params,
-            &embed_params,
+            &resident_band50_refs,
             true,
             0x21,
-            SessionPcgBackend::Mock,
-            accelerator.as_mut(),
+            SessionPcgBackend::Mock
         );
-        let (backend, timings, setup_comm, production, channel_transcripts_match) =
-            real_session_backend(
-                pcg_authorization_store.as_ref().expect("real-PCG authorization store"),
-                pre.pcg_pool_sub_corrs,
-                pre.pcg_pool_full_corrs,
-            );
-        add_setup_comm(&mut pcg_gate, &setup_comm);
-        add_production_setup(&mut pcg_gate, timings, production, channel_transcripts_match);
-        let real = run_session(
-            &model,
-            &wit0,
-            &[&band50],
-            &seq,
-            &layer_params,
-            &embed_params,
-            true,
-            0x21,
-            backend,
-            accelerator.as_mut(),
-        );
-        let counters_match = pre.sub_corrs == real.sub_corrs
-            && pre.full_corrs == real.full_corrs
-            && pre.pcg_pool_sub_corrs == real.pcg_pool_sub_corrs
-            && pre.pcg_pool_full_corrs == real.pcg_pool_full_corrs;
-        let channel_ledger_digest_match =
-            digest_u64_map(b"volta-pcg/mock-real-channel-ledger/v1", &pre.transcript_by_label)
-                == digest_u64_map(
-                    b"volta-pcg/mock-real-channel-ledger/v1",
-                    &real.transcript_by_label,
+
+        for warmup in 0..warmup_repetitions {
+            let i = warmup as u8;
+            let _ = run_active_prefill!(0xC0 + i);
+            let (backend, timings, setup_comm, production, channel_transcripts_match) =
+                real_session_backend(
+                    pcg_authorization_store.as_ref().expect("real-PCG authorization store"),
+                    pre.pcg_pool_sub_corrs,
+                    pre.pcg_pool_full_corrs,
+                    args.ggm_prg,
                 );
-        let allocation_digest_match =
-            logical_allocation_digest(&pre) == logical_allocation_digest(&real);
-        pcg_gate.mock_prepass_counters_match =
-            Some(pcg_gate.mock_prepass_counters_match.unwrap_or(true) && counters_match);
-        pcg_gate.mock_prepass_channel_ledger_digest_match = Some(
-            pcg_gate.mock_prepass_channel_ledger_digest_match.unwrap_or(true)
-                && channel_ledger_digest_match,
-        );
-        pcg_gate.mock_prepass_allocation_digest_match = Some(
-            pcg_gate.mock_prepass_allocation_digest_match.unwrap_or(true)
-                && allocation_digest_match,
-        );
-        pcg_gate.allocation_hash_match = Some(
-            pcg_gate.allocation_hash_match.unwrap_or(true)
-                && real.pcg_allocation_hash_match.unwrap_or(false),
-        );
-        assert!(counters_match, "real-PCG full-response counters must match mock prepass");
-        assert!(channel_ledger_digest_match, "real-PCG channel ledger must match mock prepass");
-        assert!(allocation_digest_match, "real-PCG allocation digest must match mock prepass");
-        session_results.push(real);
+            add_setup_comm(&mut pcg_gate, &setup_comm);
+            add_production_setup(&mut pcg_gate, timings, production, channel_transcripts_match);
+            let warm =
+                run_active_session!(&[&band50], &resident_band50_refs, true, 0xA0 + i, backend);
+            assert_mock_real_parity(&mut pcg_gate, &pre, &warm, "warmup response");
+            assert!(warm.accepted, "warmup response must verify");
+            eprintln!("  warmup {} accepted", warmup + 1);
+        }
+
+        for repetition in 0..repetitions {
+            let i = repetition as u8;
+            let prefill = run_active_prefill!(0x60 + i);
+            let (backend, timings, setup_comm, production, channel_transcripts_match) =
+                real_session_backend(
+                    pcg_authorization_store.as_ref().expect("real-PCG authorization store"),
+                    pre.pcg_pool_sub_corrs,
+                    pre.pcg_pool_full_corrs,
+                    args.ggm_prg,
+                );
+            add_setup_comm(&mut pcg_gate, &setup_comm);
+            add_production_setup(&mut pcg_gate, timings, production, channel_transcripts_match);
+            let real =
+                run_active_session!(&[&band50], &resident_band50_refs, true, 0x21 + i, backend);
+            assert_mock_real_parity(&mut pcg_gate, &pre, &real, "full response");
+            assert!(real.accepted, "measured response must verify");
+            prefill_results.push(prefill);
+            session_results.push(real);
+            eprintln!("  repetition {} accepted", repetition + 1);
+        }
     } else {
         for warmup in 0..warmup_repetitions {
             let i = warmup as u8;
@@ -2513,7 +2681,11 @@ fn main() {
         .enumerate()
         .map(|(i, (prefill, response))| BenchmarkRepetitionRow {
             repetition: i + 1,
-            seed: if args.pcg_backend == PcgBackendArg::Real { 0x21 } else { 0x40 + i as u8 },
+            seed: if args.pcg_backend == PcgBackendArg::Real {
+                0x21 + i as u8
+            } else {
+                0x40 + i as u8
+            },
             t_prove_prefill_only_s: prefill.prove_s,
             t_prove_response_s: response.prove_s,
             t_prove_decode_marginal_s: response.prove_s - prefill.prove_s,
@@ -2593,73 +2765,24 @@ fn main() {
         resident_curve_bands.iter().collect();
     let chk = if args.pcg_backend == PcgBackendArg::Real {
         eprintln!("  real PCG gate: mock prepass for chunk-curve counts ...");
-        let pre = run_session(
-            &model,
-            &wit0,
+        let pre = run_active_session!(
             &band_refs,
-            &seq,
-            &layer_params,
-            &embed_params,
+            &resident_curve_refs,
             false,
             0x22,
-            SessionPcgBackend::Mock,
-            accelerator.as_mut(),
+            SessionPcgBackend::Mock
         );
         let (backend, timings, setup_comm, production, channel_transcripts_match) =
             real_session_backend(
                 pcg_authorization_store.as_ref().expect("real-PCG authorization store"),
                 pre.pcg_pool_sub_corrs,
                 pre.pcg_pool_full_corrs,
+                args.ggm_prg,
             );
         add_setup_comm(&mut pcg_gate, &setup_comm);
         add_production_setup(&mut pcg_gate, timings, production, channel_transcripts_match);
-        let real = run_session(
-            &model,
-            &wit0,
-            &band_refs,
-            &seq,
-            &layer_params,
-            &embed_params,
-            false,
-            0x22,
-            backend,
-            accelerator.as_mut(),
-        );
-        let counters_match = pre.sub_corrs == real.sub_corrs
-            && pre.full_corrs == real.full_corrs
-            && pre.pcg_pool_sub_corrs == real.pcg_pool_sub_corrs
-            && pre.pcg_pool_full_corrs == real.pcg_pool_full_corrs;
-        let channel_ledger_digest_match =
-            digest_u64_map(b"volta-pcg/mock-real-channel-ledger/v1", &pre.transcript_by_label)
-                == digest_u64_map(
-                    b"volta-pcg/mock-real-channel-ledger/v1",
-                    &real.transcript_by_label,
-                );
-        let allocation_digest_match =
-            logical_allocation_digest(&pre) == logical_allocation_digest(&real);
-        pcg_gate.mock_prepass_counters_match =
-            Some(pcg_gate.mock_prepass_counters_match.unwrap_or(true) && counters_match);
-        pcg_gate.mock_prepass_channel_ledger_digest_match = Some(
-            pcg_gate.mock_prepass_channel_ledger_digest_match.unwrap_or(true)
-                && channel_ledger_digest_match,
-        );
-        pcg_gate.mock_prepass_allocation_digest_match = Some(
-            pcg_gate.mock_prepass_allocation_digest_match.unwrap_or(true)
-                && allocation_digest_match,
-        );
-        pcg_gate.allocation_hash_match = Some(
-            pcg_gate.allocation_hash_match.unwrap_or(true)
-                && real.pcg_allocation_hash_match.unwrap_or(false),
-        );
-        assert!(counters_match, "real-PCG chunk-curve counters must match mock prepass");
-        assert!(
-            channel_ledger_digest_match,
-            "real-PCG chunk channel ledger must match mock prepass"
-        );
-        assert!(
-            allocation_digest_match,
-            "real-PCG chunk allocation digest must match mock prepass"
-        );
+        let real = run_active_session!(&band_refs, &resident_curve_refs, false, 0x22, backend);
+        assert_mock_real_parity(&mut pcg_gate, &pre, &real, "chunk curve");
         real
     } else {
         if args.accelerator == AcceleratorArg::CudaResident {
@@ -2881,10 +3004,11 @@ fn main() {
     let response_communication_invariant_pass = response_communication_observed_bytes
         .map(|bytes| bytes <= RESPONSE_COMMUNICATION_ENVELOPE_BYTES);
     let p7b_response_communication_no_growth_pass = gate_is_official.then(|| {
-        p7b_communication_no_growth(
+        p7b_communication_gate(
             rec.comm_bytes,
             rec.pcs_opening_bytes,
             rec.public_logits_packed_bytes,
+            fase_d_realpcg_profile,
         )
     });
     let p7b_all_gates_pass = gate_is_official.then(|| {
@@ -2898,6 +3022,11 @@ fn main() {
             && p7b_decode_marginal_gate_pass.expect("decode P7b verdict")
             && p7b_sync_wall_fraction_gate_pass.expect("sync-wall P7b verdict")
             && p7b_h2d_gate_pass.expect("H2D P7b verdict")
+            && args.pcg_backend == PcgBackendArg::Real
+            && args.ggm_prg == GgmPrg::Aes128Mmo
+            && pcg_gate.mock_prepass_counters_match == Some(true)
+            && pcg_gate.mock_prepass_channel_ledger_digest_match == Some(true)
+            && pcg_gate.mock_prepass_allocation_digest_match == Some(true)
     });
     let t_prove_response_s = prove_response_timing.median_s;
     let t_verify_response_s = verify_response_timing.median_s;
@@ -3083,7 +3212,9 @@ fn main() {
         flip_readiness_cost_acceptance_pending: args.flip_readiness_record.then_some(true),
         flip_readiness_default_flip_pending: args.flip_readiness_record.then_some(true),
         p7b_gate_evaluated,
-        p7b_gate_profile: is_resident.then_some(P7B_GATE_PROFILE.into()),
+        p7b_gate_profile: is_resident.then_some(
+            if fase_d_realpcg_profile { FASE_D_POD_GATE_PROFILE } else { P7B_GATE_PROFILE }.into(),
+        ),
         p7b_machine_eligible: is_resident.then_some(p7b_machine_is_eligible),
         p7b_timing_statistic: is_resident
             .then_some("upper median across measured repetitions".into()),
@@ -3109,8 +3240,11 @@ fn main() {
         p7b_transcript_reference_bytes: is_resident.then_some(P7B_TRANSCRIPT_REFERENCE_BYTES),
         p7b_pcs_opening_reference_bytes: is_resident.then_some(P7B_PCS_OPENING_REFERENCE_BYTES),
         p7b_packed_logits_reference_bytes: is_resident.then_some(P7B_PACKED_LOGITS_REFERENCE_BYTES),
-        p7b_packed_response_reference_bytes: is_resident
-            .then_some(P7B_PACKED_RESPONSE_REFERENCE_BYTES),
+        p7b_packed_response_reference_bytes: is_resident.then_some(if fase_d_realpcg_profile {
+            C1_PACKED_RESPONSE_BYTES
+        } else {
+            P7B_PACKED_RESPONSE_REFERENCE_BYTES
+        }),
         p7b_response_communication_no_growth_pass,
         p7b_all_gates_pass,
         t_native_prefill_s,
@@ -3199,6 +3333,11 @@ fn main() {
         corr_full_corrs: rec.full_corrs,
         peak_rss_gb: peak_rss_gb(),
         pcg_backend: args.pcg_backend.as_str().into(),
+        ggm_prg: args.ggm_prg.as_str().into(),
+        ggm_aes_feature: detected_aes_feature().into(),
+        detected_physical_cpu_cores: physical_cpu_cores,
+        detected_logical_cpu_cores: logical_cpu_cores,
+        pcg_setup_rayon_threads: rayon_threads,
         pcg_production_ready: false,
         pcg_setup_comm_bytes: pcg_gate.setup_comm_bytes,
         pcg_setup_instances: (args.pcg_backend == PcgBackendArg::Real)
@@ -3318,6 +3457,11 @@ fn main() {
         label.push_str("-wall-only-counters");
     }
     let json = serde_json::to_string_pretty(&report).unwrap();
+    if args.diagnostic {
+        println!("{json}");
+        eprintln!("diagnostic only; no result artifact written");
+        return;
+    }
     let filename_sha = short_git_sha(&git_sha_before_benchmark);
     let (path, mut file) = create_unique_result_file(&label, &date, &filename_sha);
     std::io::Write::write_all(&mut file, json.as_bytes()).unwrap();
@@ -3419,7 +3563,7 @@ mod report_tests {
     }
 
     #[test]
-    fn p7b_machine_requires_exact_runpod_profile_and_eight_threads() {
+    fn pod_profiles_require_runpod_a100_metadata_and_eight_prover_threads() {
         let cloud = CloudMetadata {
             provider: "RunPod".into(),
             instance_id: "instance".into(),
@@ -3432,20 +3576,34 @@ mod report_tests {
             ram_gib: "1008".into(),
             vcpus: "255".into(),
         };
-        assert!(p7b_machine_eligible(Some(&cloud), 8));
-        assert!(!p7b_machine_eligible(Some(&cloud), 7));
-        assert!(!p7b_machine_eligible(None, 8));
+        assert!(p7b_machine_eligible(Some(&cloud), 8, false));
+        assert!(p7b_machine_eligible(Some(&cloud), 8, true));
+        assert!(!p7b_machine_eligible(Some(&cloud), 7, true));
+        assert!(!p7b_machine_eligible(None, 8, true));
         assert!(!p7b_machine_eligible(
             Some(&CloudMetadata { provider: "another provider".into(), ..cloud.clone() }),
-            8
+            8,
+            true,
         ));
         assert!(!p7b_machine_eligible(
             Some(&CloudMetadata { gpu_sku: "NVIDIA H100".into(), ..cloud.clone() }),
-            8
+            8,
+            true,
+        ));
+        assert!(!p7b_machine_eligible(
+            Some(&CloudMetadata { region: "new-region".into(), ..cloud.clone() }),
+            8,
+            false,
+        ));
+        assert!(p7b_machine_eligible(
+            Some(&CloudMetadata { region: "new-region".into(), ..cloud.clone() }),
+            8,
+            true,
         ));
         assert!(!p7b_machine_eligible(
             Some(&CloudMetadata { instance_id: String::new(), ..cloud }),
-            8
+            8,
+            true,
         ));
     }
 
@@ -3456,31 +3614,42 @@ mod report_tests {
     }
 
     #[test]
-    fn p7b_communication_may_shrink_but_no_component_may_grow() {
-        assert!(p7b_communication_no_growth(
+    fn old_p7b_may_shrink_but_fase_d_requires_exact_c1_bytes() {
+        assert!(p7b_communication_gate(
             P7B_TRANSCRIPT_REFERENCE_BYTES,
             P7B_PCS_OPENING_REFERENCE_BYTES,
             P7B_PACKED_LOGITS_REFERENCE_BYTES,
+            false,
         ));
-        assert!(p7b_communication_no_growth(
+        assert!(p7b_communication_gate(
             P7B_TRANSCRIPT_REFERENCE_BYTES - 1,
             P7B_PCS_OPENING_REFERENCE_BYTES - 1,
             P7B_PACKED_LOGITS_REFERENCE_BYTES - 1,
+            false,
         ));
-        assert!(!p7b_communication_no_growth(
+        assert!(!p7b_communication_gate(
             P7B_TRANSCRIPT_REFERENCE_BYTES + 1,
             P7B_PCS_OPENING_REFERENCE_BYTES,
             P7B_PACKED_LOGITS_REFERENCE_BYTES,
+            false,
         ));
-        assert!(!p7b_communication_no_growth(
-            P7B_TRANSCRIPT_REFERENCE_BYTES,
+        assert!(p7b_communication_gate(
+            C1_TRANSCRIPT_BYTES,
+            P7B_PCS_OPENING_REFERENCE_BYTES,
+            P7B_PACKED_LOGITS_REFERENCE_BYTES,
+            true,
+        ));
+        assert!(!p7b_communication_gate(
+            C1_TRANSCRIPT_BYTES + 1,
             P7B_PCS_OPENING_REFERENCE_BYTES + 1,
             P7B_PACKED_LOGITS_REFERENCE_BYTES,
+            true,
         ));
-        assert!(!p7b_communication_no_growth(
-            P7B_TRANSCRIPT_REFERENCE_BYTES,
+        assert!(!p7b_communication_gate(
+            C1_TRANSCRIPT_BYTES,
             P7B_PCS_OPENING_REFERENCE_BYTES,
             P7B_PACKED_LOGITS_REFERENCE_BYTES + 1,
+            true,
         ));
     }
 }

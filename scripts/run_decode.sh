@@ -18,4 +18,9 @@ fi
 
 source "$HOME/.cargo/env"
 cd "$repo_root/rust"
-cargo run --release -p volta-bench --bin p6_report
+authorization_store="${VOLTA_PCG_AUTHORIZATION_STORE:-${XDG_STATE_HOME:-$HOME/.local/state}/volta-zk/response-authorizations}"
+mkdir -p "$authorization_store"
+cargo run --release -p volta-bench --bin p6_report -- \
+    --pcg-backend real \
+    --ggm-prg aes128-mmo \
+    --pcg-authorization-store "$authorization_store"

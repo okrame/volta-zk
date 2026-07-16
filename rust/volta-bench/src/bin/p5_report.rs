@@ -17,12 +17,18 @@
 //! Run: cargo run --release -p volta-bench --bin p5_report [-- --quick]
 //! (`--quick` = T=32, golden-logits comparison skipped — golden is T=100).
 
+use rand::{rngs::OsRng, RngCore};
 use serde::Serialize;
+use std::path::PathBuf;
 use std::time::Instant;
 use volta_bench::time_paired;
 use volta_field::{Fp, Fp2};
 use volta_gpt2::{forward_model, load_model, Gpt2Model, ModelWitness, D, DFF, H, L, VOCAB};
 use volta_mac::{zero_batch_exchange, CorrelationStream, Transcript, VerifierCtx};
+use volta_pcg::{
+    expand_phase_b_production_with_ggm_prg, GgmPrg, PhaseBTimings, ResponseAuthorizationStore,
+    SessionBinding, SetupCommBreakdown,
+};
 use volta_pcs::{
     commit, layout_gpt2_embed, layout_gpt2_layer, open_multi_zk, pcs_cost_projection,
     verify_multi_open, GPT2_FULL, P4_LAYER,
@@ -32,6 +38,12 @@ use volta_proto::logup::Doms;
 use volta_proto::{
     cattn_permuted, prod_batch_prover, prod_batch_verify, prove_model, verify_model,
 };
+
+// Covers both historical T=32 and T=100 P5 geometries while remaining below
+// the preregistered main-stage usable capacity:
+// 9,500,000 + 2*350,000 = 10,200,000 <= 10,214,167.
+const P5_PROVISIONED_SUBS: usize = 9_500_000;
+const P5_PROVISIONED_FULLS: usize = 350_000;
 
 /// P0 per-layer lookup budget (scripts/budget_p0.py `lk_layer`), T-generic —
 /// copied verbatim from `p4_report.rs` (model-level budget = 12× this, per
@@ -121,6 +133,15 @@ struct Report {
     git_dirty: bool,
     machine: String,
     threads: usize,
+    pcg_backend: String,
+    ggm_prg: String,
+    ggm_aes_feature: String,
+    pcg_setup_rayon_threads: usize,
+    pcg_production_ready: bool,
+    pcg_abba_timing_backend: String,
+    pcg_setup_timings: Option<PhaseBTimings>,
+    pcg_setup_comm: Option<SetupCommBreakdown>,
+    pcg_allocation_digest_match: Option<bool>,
     t_tokens: usize,
     // --- e2e verdict -------------------------------------------------------
     accepted: bool,
@@ -160,6 +181,92 @@ struct Report {
     /// here, so this is a lower bound on the true per-response total.
     total_comm_response_projected_2x_pcs_bytes: u64,
     peak_rss_gb: f64,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PcgBackendArg {
+    Real,
+    Mock,
+}
+
+struct Args {
+    quick: bool,
+    backend: PcgBackendArg,
+    ggm_prg: GgmPrg,
+    authorization_store: Option<PathBuf>,
+    diagnostic: bool,
+}
+
+fn usage() -> ! {
+    eprintln!(
+        "usage: p5_report [--quick] [--pcg-backend real|mock] \
+         [--ggm-prg aes128-mmo|blake3] [--pcg-authorization-store PATH] [--diagnostic]"
+    );
+    std::process::exit(2);
+}
+
+fn parse_args() -> Args {
+    let mut out = Args {
+        quick: false,
+        backend: PcgBackendArg::Real,
+        ggm_prg: GgmPrg::Aes128Mmo,
+        authorization_store: None,
+        diagnostic: false,
+    };
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        if arg == "--quick" {
+            out.quick = true;
+        } else if arg == "--pcg-backend" {
+            let Some(value) = args.next() else { usage() };
+            out.backend = match value.as_str() {
+                "real" => PcgBackendArg::Real,
+                "mock" => PcgBackendArg::Mock,
+                _ => usage(),
+            };
+        } else if let Some(value) = arg.strip_prefix("--pcg-backend=") {
+            out.backend = match value {
+                "real" => PcgBackendArg::Real,
+                "mock" => PcgBackendArg::Mock,
+                _ => usage(),
+            };
+        } else if arg == "--ggm-prg" {
+            let Some(value) = args.next() else { usage() };
+            out.ggm_prg = value.parse().unwrap_or_else(|_| usage());
+        } else if let Some(value) = arg.strip_prefix("--ggm-prg=") {
+            out.ggm_prg = value.parse().unwrap_or_else(|_| usage());
+        } else if arg == "--pcg-authorization-store" {
+            let Some(value) = args.next() else { usage() };
+            out.authorization_store = Some(PathBuf::from(value));
+        } else if let Some(value) = arg.strip_prefix("--pcg-authorization-store=") {
+            out.authorization_store = Some(PathBuf::from(value));
+        } else if arg == "--diagnostic" {
+            out.diagnostic = true;
+        } else {
+            usage();
+        }
+    }
+    out
+}
+
+fn os_identity(label: &str) -> [u8; 32] {
+    let mut value = [0u8; 32];
+    OsRng
+        .try_fill_bytes(&mut value)
+        .unwrap_or_else(|error| panic!("OS entropy unavailable for {label}: {error}"));
+    value
+}
+
+fn detected_aes_feature() -> &'static str {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    if std::arch::is_x86_feature_detected!("aes") {
+        return "aes-ni";
+    }
+    #[cfg(target_arch = "aarch64")]
+    if std::arch::is_aarch64_feature_detected!("aes") {
+        return "armv8-ce";
+    }
+    "portable"
 }
 
 fn peak_rss_gb() -> f64 {
@@ -202,7 +309,18 @@ fn argmax_i64(v: &[i64]) -> u32 {
 }
 
 fn main() {
-    let quick = std::env::args().any(|a| a == "--quick");
+    let args = parse_args();
+    if args.backend == PcgBackendArg::Mock && !args.diagnostic {
+        eprintln!(
+            "p5_report: mock PCG is diagnostic-only after the fase-D default flip; add --diagnostic"
+        );
+        std::process::exit(2);
+    }
+    if args.ggm_prg == GgmPrg::Blake3 && !args.diagnostic {
+        eprintln!("p5_report: BLAKE3 GGM is diagnostic-only; records require aes128-mmo");
+        std::process::exit(2);
+    }
+    let quick = args.quick;
     let t = if quick { 32 } else { 100 };
 
     let dir = weights_dir();
@@ -277,11 +395,56 @@ fn main() {
 
     // --- run of record: fresh stream/vc/transcripts (p4_report seed pattern) -
     eprintln!("run of record: prove_model + verify_model ...");
-    let delta = Fp2::new(Fp::new(0xD31C_5A17), Fp::new(0x0BAD_CAFE));
     let pcg_seed = [0x21u8; 32];
     let tx_seed = [0x77u8; 32];
-    let mut stream = CorrelationStream::new(pcg_seed);
-    let mut vc = VerifierCtx::new(pcg_seed, delta);
+    let (mut stream, mut vc, delta, pcg_setup_timings, pcg_setup_comm) = match args.backend {
+        PcgBackendArg::Real => {
+            let store_path = args
+                .authorization_store
+                .clone()
+                .or_else(|| std::env::var_os("VOLTA_PCG_AUTHORIZATION_STORE").map(PathBuf::from))
+                .unwrap_or_else(|| {
+                    eprintln!(
+                        "p5_report: real PCG requires --pcg-authorization-store PATH or VOLTA_PCG_AUTHORIZATION_STORE"
+                    );
+                    std::process::exit(2);
+                });
+            let store = ResponseAuthorizationStore::new(store_path)
+                .expect("response-authorization capability preflight");
+            let binding = SessionBinding::new(
+                os_identity("P5 PCG session identity"),
+                os_identity("P5 authenticated channel identity"),
+                os_identity("P5 response authorization nonce"),
+            )
+            .expect("nonzero P5 PCG identities");
+            let params =
+                volta_pcg::PhaseAParams::for_counts(P5_PROVISIONED_SUBS, P5_PROVISIONED_FULLS);
+            let production = expand_phase_b_production_with_ggm_prg(
+                &store,
+                binding,
+                P5_PROVISIONED_SUBS,
+                P5_PROVISIONED_FULLS,
+                params,
+                args.ggm_prg,
+            )
+            .expect("production-provisioned P5 real PCG");
+            assert!(!production.expansion.setup.params.production_ready);
+            let expansion = production.expansion;
+            let timings = expansion.timings;
+            let comm = expansion.setup.comm.clone();
+            (
+                CorrelationStream::from_pcg_pool(expansion.prover),
+                VerifierCtx::from_pcg_pool(expansion.verifier_delta, expansion.verifier),
+                expansion.verifier_delta,
+                Some(timings),
+                Some(comm),
+            )
+        }
+        PcgBackendArg::Mock => {
+            let delta = Fp2::new(Fp::new(0xD31C_5A17), Fp::new(0x0BAD_CAFE));
+            (CorrelationStream::new(pcg_seed), VerifierCtx::new(pcg_seed, delta), delta, None, None)
+        }
+    };
     let mut txp = Transcript::new(tx_seed);
     let mut txv = Transcript::new(tx_seed);
 
@@ -553,6 +716,15 @@ fn main() {
     let transcript_bytes_total = txp.total_bytes();
     let total_comm_response_bytes = transcript_bytes_total;
     let total_comm_response_projected_2x_pcs_bytes = transcript_bytes_total + opening_bytes_total;
+    let pcg_allocation_digest_match =
+        match (stream.allocation_digest_hex(), vc.allocation_digest_hex()) {
+            (Some(prover), Some(verifier)) => Some(prover == verifier),
+            (None, None) => None,
+            _ => Some(false),
+        };
+    if args.backend == PcgBackendArg::Real {
+        assert_eq!(pcg_allocation_digest_match, Some(true));
+    }
 
     let report = Report {
         milestone: if quick { "P5-quick".into() } else { "P5".into() },
@@ -561,6 +733,19 @@ fn main() {
         git_dirty,
         machine: format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
         threads: rayon::current_num_threads(),
+        pcg_backend: match args.backend {
+            PcgBackendArg::Real => "real",
+            PcgBackendArg::Mock => "mock",
+        }
+        .into(),
+        ggm_prg: args.ggm_prg.as_str().into(),
+        ggm_aes_feature: detected_aes_feature().into(),
+        pcg_setup_rayon_threads: rayon::current_num_threads(),
+        pcg_production_ready: false,
+        pcg_abba_timing_backend: "explicit-mock-counting-timing-only".into(),
+        pcg_setup_timings,
+        pcg_setup_comm,
+        pcg_allocation_digest_match,
         t_tokens: t,
         accepted,
         golden: golden_report,
@@ -620,11 +805,32 @@ fn main() {
     };
 
     assert!(accepted, "P5 sanity: honest full model + 13 PCS openings must verify");
+    let json = serde_json::to_string_pretty(&report).unwrap();
+    if args.diagnostic {
+        println!("{json}");
+        eprintln!("diagnostic only; no result artifact written");
+        return;
+    }
     let label = if quick { "p5-quick" } else { "p5" };
-    let path = format!(
-        "{}/../../benchmarks/results/{label}-{date}-{sha}.json",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    std::fs::write(&path, serde_json::to_string_pretty(&report).unwrap()).unwrap();
-    eprintln!("wrote {path}");
+    let results = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../benchmarks/results");
+    for suffix in 0..1000 {
+        let name = if suffix == 0 {
+            format!("{label}-{date}-{sha}.json")
+        } else {
+            format!("{label}-{date}-{sha}-{suffix}.json")
+        };
+        let path = results.join(name);
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        match options.open(&path) {
+            Ok(mut file) => {
+                std::io::Write::write_all(&mut file, json.as_bytes()).unwrap();
+                eprintln!("wrote {}", path.display());
+                return;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => panic!("cannot create P5 result artifact: {error}"),
+        }
+    }
+    panic!("could not allocate a unique P5 result filename");
 }

@@ -1,20 +1,22 @@
-//! P7 local PCG report: measure mock, historical phase-A, or two-party
-//! malicious phase-B expansion for the counted one-response volume.
+//! P7 local PCG report: measure the two-party malicious phase-B expansion for
+//! the counted one-response volume, or explicitly select a diagnostic legacy
+//! backend.
 //!
-//! `--backend mock` is the historical ChaCha lower bound. `--backend real`
-//! runs the P7 phase-A in-repo Goldilocks PCG expansion: trusted-dealer base
-//! VOLE stub, GGM single-point noise, regular-noise local-linear LPN, and
-//! consistency-check arithmetic. `--backend phase-b` runs independent roles,
-//! an explicit serialized channel, COPE/GGM/LPN, and the WYKW malicious check.
+//! The default and `--backend real` are phase B. `--backend mock` is the
+//! historical ChaCha lower bound and `--backend phase-a` is the trusted-dealer
+//! cost model; both require `--diagnostic` and never write a result artifact.
 
+use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 use volta_mac::{CorrelationStream, VerifierCtx};
 use volta_pcg::{
-    expand_phase_a, expand_phase_b, ConsistencyReport, PhaseAParams, PhaseATimings,
-    PhaseBSetupReport, PhaseBTimings,
+    expand_phase_a, expand_phase_b_production_with_ggm_prg, ConsistencyReport, GgmPrg,
+    PhaseAParams, PhaseATimings, PhaseBSetupReport, PhaseBTimings, ProductionSetupAudit,
+    ResponseAuthorizationStore, SessionBinding,
 };
 
 #[derive(Deserialize)]
@@ -34,6 +36,13 @@ struct Report {
     git_sha: String,
     git_dirty: bool,
     machine: String,
+    ggm_prg: String,
+    ggm_prg_active: bool,
+    ggm_aes_feature: String,
+    detected_physical_cpu_cores: usize,
+    detected_logical_cpu_cores: usize,
+    pcg_setup_rayon_threads: usize,
+    pcg_production_ready: bool,
     source: String,
     source_milestone: String,
     source_git_sha: String,
@@ -71,6 +80,8 @@ struct Report {
     #[serde(skip_serializing_if = "Option::is_none")]
     phase_b_setup: Option<PhaseBSetupReport>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    production_setup_audit: Option<ProductionSetupAudit>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     production_ready: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     consistency: Option<ConsistencyReport>,
@@ -98,6 +109,36 @@ enum Backend {
     PhaseB,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GgmPrgArg {
+    Aes128Mmo,
+    Blake3,
+}
+
+impl GgmPrgArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Aes128Mmo => "aes128-mmo",
+            Self::Blake3 => "blake3",
+        }
+    }
+
+    fn into_pcg(self) -> GgmPrg {
+        match self {
+            Self::Aes128Mmo => GgmPrg::Aes128Mmo,
+            Self::Blake3 => GgmPrg::Blake3,
+        }
+    }
+}
+
+struct Args {
+    source: PathBuf,
+    backend: Backend,
+    ggm_prg: GgmPrgArg,
+    diagnostic: bool,
+    authorization_store: Option<PathBuf>,
+}
+
 impl Backend {
     fn as_str(self) -> &'static str {
         match self {
@@ -110,38 +151,73 @@ impl Backend {
 
 fn usage() -> ! {
     eprintln!(
-        "usage: p7_pcg_report [--backend mock|real|phase-a|phase-b] [--source benchmarks/results/p6-....json]"
+        "usage: p7_pcg_report [--backend real|phase-b|phase-a|mock] \
+         [--ggm-prg aes128-mmo|blake3] [--diagnostic] \
+         [--pcg-authorization-store PATH] \
+         [--source benchmarks/results/p6-....json]"
     );
     std::process::exit(2);
 }
 
-fn parse_args() -> (PathBuf, Backend) {
-    let mut source = default_source();
-    let mut backend = Backend::Mock;
+fn parse_args() -> Args {
+    let mut out = Args {
+        source: default_source(),
+        backend: Backend::PhaseB,
+        ggm_prg: GgmPrgArg::Aes128Mmo,
+        diagnostic: false,
+        authorization_store: None,
+    };
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         if a == "--source" {
             let Some(p) = args.next() else { usage() };
-            source = PathBuf::from(p);
+            out.source = PathBuf::from(p);
         } else if let Some(p) = a.strip_prefix("--source=") {
-            source = PathBuf::from(p);
+            out.source = PathBuf::from(p);
         } else if a == "--backend" {
             let Some(b) = args.next() else { usage() };
-            backend = parse_backend(&b);
+            out.backend = parse_backend(&b);
         } else if let Some(b) = a.strip_prefix("--backend=") {
-            backend = parse_backend(b);
+            out.backend = parse_backend(b);
+        } else if a == "--ggm-prg" {
+            let Some(prg) = args.next() else { usage() };
+            out.ggm_prg = parse_ggm_prg(&prg);
+        } else if let Some(prg) = a.strip_prefix("--ggm-prg=") {
+            out.ggm_prg = parse_ggm_prg(prg);
+        } else if a == "--diagnostic" {
+            out.diagnostic = true;
+        } else if a == "--pcg-authorization-store" {
+            out.authorization_store = Some(PathBuf::from(args.next().unwrap_or_else(|| usage())));
+        } else if let Some(path) = a.strip_prefix("--pcg-authorization-store=") {
+            out.authorization_store = Some(PathBuf::from(path));
         } else {
             usage();
         }
     }
-    (source, backend)
+    out
+}
+
+fn os_identity(label: &str) -> [u8; 32] {
+    let mut value = [0u8; 32];
+    OsRng
+        .try_fill_bytes(&mut value)
+        .unwrap_or_else(|error| panic!("OS entropy unavailable for {label}: {error}"));
+    value
 }
 
 fn parse_backend(s: &str) -> Backend {
     match s {
         "mock" => Backend::Mock,
-        "real" | "phase-a" => Backend::PhaseA,
-        "phase-b" => Backend::PhaseB,
+        "phase-a" => Backend::PhaseA,
+        "real" | "phase-b" => Backend::PhaseB,
+        _ => usage(),
+    }
+}
+
+fn parse_ggm_prg(s: &str) -> GgmPrgArg {
+    match s {
+        "aes128-mmo" => GgmPrgArg::Aes128Mmo,
+        "blake3" => GgmPrgArg::Blake3,
         _ => usage(),
     }
 }
@@ -181,6 +257,47 @@ fn peak_rss_gb() -> f64 {
         .unwrap_or(0.0)
 }
 
+fn detected_logical_cpu_cores() -> usize {
+    std::thread::available_parallelism().map_or(1, usize::from)
+}
+
+fn detected_physical_cpu_cores(logical_fallback: usize) -> usize {
+    let mut cores = BTreeSet::new();
+    if let Ok(entries) = std::fs::read_dir("/sys/devices/system/cpu") {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            let Some(index) = name.strip_prefix("cpu") else { continue };
+            if index.is_empty() || !index.bytes().all(|byte| byte.is_ascii_digit()) {
+                continue;
+            }
+            let topology = entry.path().join("topology");
+            let package = std::fs::read_to_string(topology.join("physical_package_id"));
+            let core = std::fs::read_to_string(topology.join("core_id"));
+            if let (Ok(package), Ok(core)) = (package, core) {
+                cores.insert((package.trim().to_owned(), core.trim().to_owned()));
+            }
+        }
+    }
+    if cores.is_empty() {
+        logical_fallback
+    } else {
+        cores.len()
+    }
+}
+
+fn detected_aes_feature() -> &'static str {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    if std::arch::is_x86_feature_detected!("aes") {
+        return "aes-ni";
+    }
+    #[cfg(target_arch = "aarch64")]
+    if std::arch::is_aarch64_feature_detected!("aes") {
+        return "armv8-ce";
+    }
+    "portable"
+}
+
 fn unique_result_path(label: &str, date: &str, sha: &str) -> PathBuf {
     let first = results_dir().join(format!("{label}-{date}-{sha}.json"));
     if !first.exists() {
@@ -206,7 +323,41 @@ fn mix_fp2(acc: &mut u64, x: Fp2) {
 }
 
 fn main() {
-    let (source_path, backend) = parse_args();
+    let args = parse_args();
+    let source_path = args.source.clone();
+    let backend = args.backend;
+    if matches!(backend, Backend::Mock | Backend::PhaseA) && !args.diagnostic {
+        eprintln!(
+            "p7_pcg_report: mock and phase-a are diagnostic-only; add --diagnostic or use the default real phase-B backend"
+        );
+        std::process::exit(2);
+    }
+    if backend == Backend::PhaseA && args.ggm_prg != GgmPrgArg::Blake3 {
+        eprintln!(
+            "p7_pcg_report: historical phase-a uses BLAKE3 GGM; select --ggm-prg blake3 explicitly"
+        );
+        std::process::exit(2);
+    }
+    if !args.diagnostic && args.ggm_prg != GgmPrgArg::Aes128Mmo {
+        eprintln!(
+            "p7_pcg_report: record-producing mode requires the default --ggm-prg aes128-mmo; BLAKE3 is diagnostic-only"
+        );
+        std::process::exit(2);
+    }
+    let production_store = (backend == Backend::PhaseB).then(|| {
+        let path = args
+            .authorization_store
+            .clone()
+            .or_else(|| std::env::var_os("VOLTA_PCG_AUTHORIZATION_STORE").map(PathBuf::from))
+            .unwrap_or_else(|| {
+                eprintln!(
+                    "p7_pcg_report: real PCG requires --pcg-authorization-store PATH or VOLTA_PCG_AUTHORIZATION_STORE"
+                );
+                std::process::exit(2);
+            });
+        ResponseAuthorizationStore::new(path)
+            .unwrap_or_else(|error| panic!("authorization-store preflight failed: {error}"))
+    });
     let source_text = std::fs::read_to_string(&source_path).expect("read source JSON");
     let source: SourceRun = serde_json::from_str(&source_text).expect("parse source JSON");
     let n_sub = source.corr_sub_corrs as usize;
@@ -218,16 +369,18 @@ fn main() {
     eprintln!("{} PCG expansion for {n_sub} sub + {n_full} full correlations", backend.as_str());
 
     let report = match backend {
-        Backend::Mock => run_mock(&source, &source_path, seed, delta, &mut checksum),
+        Backend::Mock => run_mock(&source, &source_path, seed, delta, args.ggm_prg, &mut checksum),
         Backend::PhaseA => run_phase_a(&source, &source_path, seed, delta, &mut checksum),
-        Backend::PhaseB => run_phase_b(&source, &source_path, seed, delta, &mut checksum),
+        Backend::PhaseB => run_phase_b(
+            &source,
+            &source_path,
+            production_store.as_ref().expect("real store"),
+            args.ggm_prg,
+            &mut checksum,
+        ),
     };
 
-    let date = report.date.clone();
-    let sha = report.git_sha.clone();
-    let label = if backend == Backend::Mock { "p7-mock-pcg" } else { "p7-real-pcg" };
-    let path = unique_result_path(label, &date, &sha);
-    std::fs::write(&path, serde_json::to_string_pretty(&report).unwrap()).unwrap();
+    let json = serde_json::to_string_pretty(&report).unwrap();
     if backend == Backend::Mock {
         eprintln!(
             "mock expansion total {:.3}s",
@@ -242,7 +395,19 @@ fn main() {
             report.setup_comm_bytes
         );
     }
-    eprintln!("wrote {}", path.display());
+    if args.diagnostic {
+        println!("{json}");
+        eprintln!("diagnostic only; no result artifact written");
+    } else {
+        let date = report.date.clone();
+        let sha = report.git_sha.clone();
+        let path = unique_result_path("p7-real-pcg", &date, &sha);
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        let mut file = options.open(&path).expect("create append-only result JSON");
+        std::io::Write::write_all(&mut file, json.as_bytes()).expect("write result JSON");
+        eprintln!("wrote {}", path.display());
+    }
 }
 
 fn source_rel(source_path: &Path) -> String {
@@ -260,8 +425,11 @@ fn common_report(
     source_path: &Path,
     checksum: u64,
     is_real_pcg: bool,
+    ggm_prg: GgmPrgArg,
+    ggm_prg_active: bool,
     note: String,
 ) -> Report {
+    let logical_cores = detected_logical_cpu_cores();
     Report {
         milestone: milestone.into(),
         backend: backend.as_str().into(),
@@ -269,6 +437,13 @@ fn common_report(
         git_sha: git(&["rev-parse", "--short", "HEAD"]),
         git_dirty: git_dirty(),
         machine: format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
+        ggm_prg: ggm_prg.as_str().into(),
+        ggm_prg_active,
+        ggm_aes_feature: detected_aes_feature().into(),
+        detected_physical_cpu_cores: detected_physical_cpu_cores(logical_cores),
+        detected_logical_cpu_cores: logical_cores,
+        pcg_setup_rayon_threads: rayon::current_num_threads(),
+        pcg_production_ready: false,
         source: source_rel(source_path),
         source_milestone: source.milestone.clone(),
         source_git_sha: source.git_sha.clone(),
@@ -294,6 +469,7 @@ fn common_report(
         phase_a_timings: None,
         phase_b_timings: None,
         phase_b_setup: None,
+        production_setup_audit: None,
         production_ready: None,
         consistency: None,
         ggm_checksum: None,
@@ -309,6 +485,7 @@ fn run_mock(
     source_path: &Path,
     seed: [u8; 32],
     delta: Fp2,
+    ggm_prg: GgmPrgArg,
     checksum: &mut u64,
 ) -> Report {
     let n_sub = source.corr_sub_corrs as usize;
@@ -360,6 +537,8 @@ fn run_mock(
         source,
         source_path,
         *checksum,
+        false,
+        ggm_prg,
         false,
         "Mock ChaCha expansion lower bound only; this is not a WYKW/silent-VOLE real-PCG setup+expansion measurement.".into(),
     );
@@ -418,6 +597,8 @@ fn run_phase_a(
         source_path,
         *checksum,
         true,
+        GgmPrgArg::Blake3,
+        true,
         "Phase-A Goldilocks WYKW/Wolverine-style expansion: GGM PPRF + regular-noise local-linear LPN + consistency-check arithmetic; base sVOLE is a mock trusted-dealer stub, not phase-B real setup.".into(),
     );
     report.t_total_real_expansion_s = Some(total);
@@ -441,15 +622,40 @@ fn run_phase_a(
 fn run_phase_b(
     source: &SourceRun,
     source_path: &Path,
-    seed: [u8; 32],
-    _delta: Fp2,
+    store: &ResponseAuthorizationStore,
+    ggm_prg: GgmPrgArg,
     checksum: &mut u64,
 ) -> Report {
     let n_sub = source.corr_sub_corrs as usize;
     let n_full = source.corr_full_corrs as usize;
     let params = PhaseAParams::for_counts(n_sub, n_full);
-    let expansion = expand_phase_b(seed, [0x6Du8; 32], n_sub, n_full, params)
-        .expect("two-party phase-B expansion");
+    let binding = SessionBinding::new(
+        os_identity("P7 PCG session identity"),
+        os_identity("P7 authenticated channel identity"),
+        os_identity("P7 response authorization nonce"),
+    )
+    .expect("nonzero P7 PCG identities");
+    let production = expand_phase_b_production_with_ggm_prg(
+        store,
+        binding,
+        n_sub,
+        n_full,
+        params,
+        ggm_prg.into_pcg(),
+    )
+    .expect("production-provisioned two-party phase-B expansion");
+    let production_audit = production.production;
+    let expansion = production.expansion;
+    assert_eq!(
+        expansion.setup.params.ggm_prg.as_str(),
+        ggm_prg.as_str(),
+        "report GGM selection must match phase-B setup"
+    );
+    assert_eq!(
+        expansion.setup.params.ggm_aes_backend.as_str(),
+        detected_aes_feature(),
+        "report AES feature must match phase-B runtime selection"
+    );
 
     for s in &expansion.prover.subs {
         mix_fp(checksum, s.r);
@@ -470,6 +676,7 @@ fn run_phase_b(
     let total = expansion.timings.t_total_setup_and_expansion_s;
     let sub_equiv = source.corr_sub_corrs + 2 * source.corr_full_corrs;
     let production_ready = expansion.setup.params.production_ready;
+    assert!(!production_ready, "Part A must not emit a production-ready PCG artifact");
     let setup_comm = expansion.setup.comm.total_bytes;
     let mut report = common_report(
         "P7-real-pcg-phase-b",
@@ -478,7 +685,9 @@ fn run_phase_b(
         source_path,
         *checksum,
         true,
-        "Phase-B genuine two-party host setup: independent role RNGs, framed serialized channel, verifier-only Delta, Ristretto base OT + checked IKNP/COPEe, WYKW GGM single-point sVOLE and transcript-bound malicious consistency check. Parity candidate; default remains mock pending a separate decision.".into(),
+        ggm_prg,
+        true,
+        "Phase-B genuine two-party host setup: independent roles, framed serialized channel, verifier-only Delta, Ristretto base OT + checked IKNP/COPEe, WYKW GGM single-point sVOLE and transcript-bound malicious consistency check. Real phase-B is the binary default; pcg_production_ready remains false until Part-B closure.".into(),
     );
     report.t_total_real_expansion_s = Some(total);
     report.sub_corrs_per_s_prover = source.corr_sub_corrs as f64 / total;
@@ -493,6 +702,7 @@ fn run_phase_b(
     report.lpn_parameters = Some(expansion.params);
     report.phase_b_timings = Some(expansion.timings);
     report.phase_b_setup = Some(expansion.setup);
+    report.production_setup_audit = Some(production_audit);
     report.production_ready = Some(production_ready);
     report.consistency = Some(expansion.consistency);
     report.peak_rss_gb = peak_rss_gb();

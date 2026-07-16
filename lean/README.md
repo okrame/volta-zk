@@ -1,9 +1,10 @@
 # VOLTA-ZK Lean formalization
 
-This Lake project contains the frozen M1–M9 formal layer for VOLTA's
+This Lake project contains the M1–M10 formal layer for VOLTA's
 designated-verifier protocol: authenticated values, blind sumcheck,
 ZeroBatch, sequential composition, authenticated KV-cache anti-replay,
-subfield corrections, product checks and the PCS opening-into-MAC interface.
+subfield corrections, product checks, the PCS opening-into-MAC interface, and
+connection-scoped shared-Delta composition.
 
 ## Build
 
@@ -21,7 +22,7 @@ the four named future assumptions in `VoltaZk/Ideal.lean`:
 - `LogUpGKRSound`
 - `UCComposition`
 
-The proved M1–M9 lemmas do not use those placeholders. Their ordinary Lean
+The proved M1–M10 lemmas do not use those placeholders. Their ordinary Lean
 axiom footprint is limited to `propext`, `Classical.choice` and `Quot.sound`;
 M9 takes PCS binding as an explicit `BindsIntoMac` hypothesis. The audited
 output is reproduced by `Audit.lean`; the boundary and theorem-to-file index are maintained in
@@ -37,6 +38,8 @@ output is reproduced by `Audit.lean`; the boundary and theorem-to-file index are
   and sequential composition.
 - `Prod`, `ProdSound`: masked degree-2 product checks.
 - `OpeningMac`: M9 PCS opening-into-MAC composition.
+- `Connection`: M10 multi-response domain separation, union bound and hiding
+  under one connection-scoped `Delta`.
 - `Ideal`: the four explicitly deferred system assumptions above.
 
 Protocol changes require a ledger deviation before this frozen formal layer

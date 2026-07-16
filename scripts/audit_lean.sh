@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Reproduce the frozen M1-M9 named-assumption audit used by the artifact.
+# Reproduce the M1-M10 named-assumption audit used by the artifact.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -29,11 +29,30 @@ audited_theorems=(
     VoltaZk.authenticated_cache_sound_scalar
     VoltaZk.outer_scalar_batch_blind_sumcheck_sound
     VoltaZk.scalar_batch_blind_sumcheck_sound
+    VoltaZk.connection_response_sound_scalar
+    VoltaZk.response_bad_card_le
+    VoltaZk.connection_soundness_union_bound
+    VoltaZk.connection_m4_soundness_union_bound
+    VoltaZk.connection_m4_tape_card
+    VoltaZk.connection_corrections_uniform
+    VoltaZk.connection_responses_perfect_zk
+)
+
+axiom_free_theorems=(
+    VoltaZk.response_domains_noncolliding
 )
 
 for theorem in "${audited_theorems[@]}"; do
     if ! rg -Fq "$theorem" <<<"$output"; then
         echo "audit_lean: missing named theorem in audit output: $theorem" >&2
+        exit 1
+    fi
+done
+
+for theorem in "${axiom_free_theorems[@]}"; do
+    expected_line="'$theorem' does not depend on any axioms"
+    if ! rg -Fq "$expected_line" <<<"$output"; then
+        echo "audit_lean: expected axiom-free theorem: $theorem" >&2
         exit 1
     fi
 done
@@ -45,8 +64,8 @@ if [[ "$count" != "$expected_count" ]]; then
     echo "audit_lean: expected $expected_count audited theorems with only the standard Lean axioms; got $count" >&2
     exit 1
 fi
-if rg -q 'VoltaZk\.Ideal|FerretRealizesSVOLE|WeightPCSBinding|LogUpGKRSound|UCComposition' <<<"$output"; then
-    echo "audit_lean: a deferred named assumption entered the proved M1-M9 boundary" >&2
+if rg -q 'sorryAx|VoltaZk\.Ideal|FerretRealizesSVOLE|WeightPCSBinding|LogUpGKRSound|UCComposition' <<<"$output"; then
+    echo "audit_lean: a deferred named assumption entered the proved M1-M10 boundary" >&2
     exit 1
 fi
 

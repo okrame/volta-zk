@@ -1,7 +1,7 @@
 import VoltaZk
 
 /-!
-Machine-readable named-assumption audit for the frozen M1–M9 boundary.
+Machine-readable named-assumption audit for the M1–M10 boundary.
 
 Run with `lake env lean Audit.lean`. None of the four declarations in
 `VoltaZk.Ideal` should appear below; M9 carries `BindsIntoMac` as an explicit
@@ -33,3 +33,13 @@ vector-RLC bounds from being mistaken for implementation bounds.
 -- P7 shared-round outer scalar batch: K fixed claims, one common r.
 #print axioms VoltaZk.outer_scalar_batch_blind_sumcheck_sound
 #print axioms VoltaZk.scalar_batch_blind_sumcheck_sound
+
+-- Fase-D M10: one Delta across domain-separated responses.
+#print axioms VoltaZk.response_domains_noncolliding
+#print axioms VoltaZk.connection_response_sound_scalar
+#print axioms VoltaZk.response_bad_card_le
+#print axioms VoltaZk.connection_soundness_union_bound
+#print axioms VoltaZk.connection_m4_soundness_union_bound
+#print axioms VoltaZk.connection_m4_tape_card
+#print axioms VoltaZk.connection_corrections_uniform
+#print axioms VoltaZk.connection_responses_perfect_zk

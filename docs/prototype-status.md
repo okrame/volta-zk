@@ -16,7 +16,8 @@ review obligation, accepted criterion (4) at the measured 8.451--8.609 s /
 31,261,434 B cost, and confirmed criteria (2)/(3) satisfied. Fase-D Part A is
 preregistered below to implement the default mechanics, recursive scaling,
 AES-MMO and connection lifecycle while every artifact remains
-`pcg_production_ready:false`. Criterion (5), the ledger closure/checkpoint
+`pcg_production_ready:false`. Lean M10 is now proved and audited, satisfying
+the Lean-first hard stop before Rust. Criterion (5), the ledger closure/checkpoint
 enacting the production flip, is reserved for Part B after clean records.
 Candidate A (Packed16/fase-C) is rejected on product cost. The earlier
 `33e5fb4` decode-only FAIL remains an immutable rebaseline result. The
@@ -46,12 +47,23 @@ is the next substantive model phase.
 | Fase-B FLIP-READINESS | **complete for criteria (2)/(3); superseded by the 2026-07-16 fase-D decision** (2026-07-15) | Host-only setup speed pass ✓; production lifecycle/transport plumbing ✓; clean full T=100+50/Q=200 real-PCG parity record ✓ | `117df7d`: normal-session setup **8.451 s** (GGM 4.632, checks 1.334, OT-ext 0.963, LPN 1.496, base OT 0.025); chunked-session setup 8.609 s. Exactly **31,261,434 B/setup** unchanged. Full golden/normal/chunked/13-PCS/closure/malicious parity passes; packed response exactly **136,526,530 B**. Record `flip-readiness-2026-07-15-117df7d.json`. On 2026-07-16 criterion (1) was removed with no replacement, (4) was accepted, and (5) was reserved for Part B. |
 | C1 response-communication reduction | **complete: identity-seam `x_in` reuse only** (2026-07-15) | Clean full T=100+50/Q=200 CPU record; golden, normal/chunked acceptance, PCS/closure, exact bytes/counters and replay/preflight gates | `2a3d731`: **1,036,800** canonical aliases save **8,294,400 B**; transcript **129,119,408 B**, packed response **136,526,530 B**, auth corrections **59,545,008 B**. Prover/verifier sub correlations both **7,443,126**, full both **176,880**; PCS **66,733,504 B**, 96+6 claims, Q=200 unchanged. Median prove **18.653 s** (−0.086 s vs same-machine P6 record), verify **0.522 s** (−0.045 s); flat curve **1.219 PASS**. Record `benchmarks/results/c1-2026-07-15-2a3d731.json`, full SHA `2a3d7314bba35e18229af31c99f226c93ef12416`, `git_dirty:false`. |
 | C2 Packed16 typed-lane real-PCG | **Candidate A rejected; Packed16 shelved** (2026-07-15) | Permanent costing record; implementation is not authorized | `docs/c2-packed-lane-pcg-design.md` remains the permanent record: the only sound realization costs about **1.55 GB** recurring setup traffic and **31--46 s** setup wall per session to save 32,486,400 B of response, about **47×** more bytes moved than saved. Revisit only with a cited construction on the order of tens of MB/session, or an explicit product decision that the envelope demands it. |
-| Fase-D real-PCG default + scaling, Part A | **preregistered before Lean/code; implementation not yet a gate verdict** (2026-07-16) | M10 first; then stage-3/AES-MMO/connection lifecycle; no official runs or production-ready flip in Part A | Tuple `(k3,n3,t3)=(6,520,000,117,440,512,1,792)`, `U3=110,918,718`; pinned estimator minimum **199.599804 bits**, six-instance **197.014842**, full-connection floor **140.643699**. Six path-OT slices share one base phase; AES-16 planning traffic is 38.371 MB for one activated stage and 38.588 MB for six, both projections rather than measurements. Complete contract: `docs/fase-d-realpcg-default-design.md`. |
+| Fase-D real-PCG default + scaling, Part A | **preregistered; Lean M10 green; Rust implementation pending, no gate verdict** (2026-07-16) | M10 proved before Rust; then stage-3/AES-MMO/connection lifecycle; no official runs or production-ready flip in Part A | Tuple `(k3,n3,t3)=(6,520,000,117,440,512,1,792)`, `U3=110,918,718`; pinned estimator minimum **199.599804 bits**, six-instance **197.014842**, full-connection floor **140.643699**. M10 build 2574 jobs, zero `sorry`/`admit`, named-axiom audit clean. Six path-OT slices share one base phase; AES-16 planning traffic is 38.371 MB for one activated stage and 38.588 MB for six, both projections rather than measurements. Complete contract: `docs/fase-d-realpcg-default-design.md`. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
 composes with M3 via `hfin`; PCS binding as explicit hypothesis, axioms clean).
 See the M9 row in `protocol-sketch.md`.
+
+Formal side note: **M10 (connection-scoped shared-Delta composition) proved
+2026-07-16** — `VoltaZk/Connection.lean` proves cross-response domain
+non-collision under injective authorization nonces, transfers scalar M4 to
+the enlarged domain, applies an `R`-linear union bound on one shared-Delta
+tape after an explicit fixed-rest local-to-global lift, and composes fresh
+all-coordinate correction hiding/M6 with a monotone one-time correlation
+offset. `lake build` completes 2574 jobs; the audit finds zero
+`sorry`/`admit`, no named ideal assumption, and only the standard Lean axioms
+where required. See the M10 row and modeling boundary in
+`docs/protocol-sketch.md`.
 
 ## Analytic budget (P0 pre-registration)
 
@@ -98,6 +110,20 @@ constant factors hold. That constant factor is what P3/P4 measure.
   benches and e2e, makes mock explicit and refuses it in record modes, but
   every Part-A artifact remains `pcg_production_ready:false`. This entry is a
   preregistration, not criterion (5) and not a production verdict.
+
+  **Lean-first hard stop satisfied before Rust.** M10 is proved in
+  `lean/VoltaZk/Connection.lean`: injective response nonces separate the full
+  connection domains; scalar M4 transfers unchanged per response; a finite
+  tape equivalence lifts the local scalar-M4 bound for every fixed assignment
+  of the other response coins, after which the union bound loses only factor
+  `R` on the common shared-Delta tape without assuming independence; fresh
+  masks make all finite response/correction coordinates jointly uniform; and
+  M6 gives perfect multi-response simulation with one monotonically increasing,
+  one-time correlation offset. `lake build` completes 2574 jobs and
+  `scripts/audit_lean.sh` reports zero `sorry`/`admit`, no named ideal axiom,
+  and only `propext`, `Classical.choice`, `Quot.sound` where required. This
+  authorizes Task 2 implementation; it is not a PCG realization proof, gate
+  verdict, criterion-(5) closure, or production-ready flip.
 
   **Third stage and estimator.** Pin regular Goldilocks
   `(k3,n3,t3)=(6,520,000,117,440,512,1,792)`, 1,792 disjoint 65,536-entry

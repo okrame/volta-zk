@@ -118,6 +118,7 @@ stated as equality of `PMF` transcript distributions.
 | Generic vector-RLC **`Π_Prod` batched soundness (M8)**, `T` claims + fresh mask, error `≤ 3/|F|` | `VoltaZk/ProdSound.lean` (`prodBatch_sound`) | **proved** |
 | **Rust scalar-power `Π_Prod` soundness**, weights `χ^(j+1)`, error `≤ (T+2)/|F|` | `VoltaZk/ProdSound.lean` (`prodBatch_sound_scalar`) | **proved** |
 | **PCS opening-into-MAC interface (M9)**: accepted opening + difference zero-open ⇒ authenticated plaintext = committed evaluation, error `≤ εΩ/|Ω| + 1/|F|`; composes with M3 by discharging `hfin` for the weight leg; binding taken as explicit hypothesis (`BindsIntoMac`), not an axiom | `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, `transfers_eval`) | **proved** |
+| **Connection-scoped shared-`Δ` composition (M10)**: injective response nonces make `(connection, response, layer, head, position, tensor)` domains disjoint; an explicit tape equivalence lifts scalar M4 from each fixed-other-response slice, giving numerator `R·(T+1)·|F|^R` over the common `|F|^(R+1)` tape and hence at most `R` times the per-response error without independence; fresh masks make every finite response/correction vector jointly uniform, and M6 gives perfect multi-response simulation with one monotonically increasing correlation offset | `VoltaZk/Connection.lean` (`response_domains_noncolliding`, `connection_response_sound_scalar`, `response_bad_card_le`, `connection_m4_soundness_union_bound`, `connection_corrections_uniform`, `connection_responses_perfect_zk`) | **proved** |
 | PCG/Ferret realization, PCS, LogUp, UC | `VoltaZk/Ideal.lean` | assumed (named axioms) |
 
 Axiom audit: every audited lemma — including the main ZK theorem, the generic
@@ -235,6 +236,24 @@ the window list where openings collapse to public functions of the prefix
 The zero-claims hypothesis is quantified over all prefixes/offsets, not just
 reachable ones — stronger than needed, faithful for an honest prover.
 
+Modeling notes for M10 (connection-scoped `Δ`): response non-collision is
+conditional on injectivity of the authorization nonces; the durable store is
+the implementation mechanism establishing that hypothesis. For `R=n+1`,
+`responseTapeEquiv` splits the common tape `F × (Fin R → F)` into the local
+`(Δ,χ_r)` tape and the other `n` response coins. `response_bad_card_le`
+formally lifts the scalar-M4 bound after each fixed assignment of those other
+coins, including strategies that depend adaptively on them. The exact
+numerator is `R·(T+1)·|F|^R` and `connection_m4_tape_card` gives denominator
+`|F|^(R+1)`, hence error `≤ R·(T+1)/|F|`; no independence assumption is used.
+For hiding, `connection_corrections_uniform` is the vector OTP over an
+arbitrary finite index (instantiated by every response/local correction
+coordinate) in M5's correction field, while
+`connection_responses_perfect_zk` flattens all response windows and invokes
+M6 with one global offset, so correlations are never re-used. This formal
+boundary is the ideal-sVOLE protocol: it does not prove the concrete
+AES-128-MMO/GKWY assumption or PCG realization, nonce-store durability,
+terminal abort/restart burn, or the Rust connection state machine.
+
 Modeling notes for M7 (`Π_Prod` ZK): for a true product claim `c = a·b` the
 degree-2 key identity `k_a·k_b − Δ·k_c = A₀ + A₁·Δ` holds (the `Δ²` terms
 cancel); the prover's message `(A₀ + m_r, A₁ + r)` masked by a fresh
@@ -293,10 +312,19 @@ multiplicative claims alongside the `Π_ZeroBatch` opening `m_Z`
    for the fixed-member linear construction. Enabling either result in Rust
    remains conditional on the homogeneous-cohort, fresh-`β`, common-point,
    transcript, and counter obligations stated above.
+8. ~~**Connection-scoped shared-`Δ` composition (M10)**~~ — **done**:
+   `response_domains_noncolliding` separates distinct response nonces,
+   `connection_response_sound_scalar` transfers M4 to the full fase-D domain,
+   `response_bad_card_le` performs the fixed-rest local-to-common-tape lift,
+   `connection_m4_soundness_union_bound` loses exactly the union-bound factor
+   `R` relative to M4 without assuming independent response events, and
+   `connection_responses_perfect_zk` composes fresh response windows under one
+   `Δ`; the concrete lifecycle obligations remain outside Lean as stated
+   above.
 
 **The formal exit gate to the implementation phase is closed**: every
 security claim of the paper draft, including the scalar-power batching used
-by Rust, is either a Lean theorem (M1–M8) or a
+by Rust, is either a Lean theorem (M1–M10) or a
 named, isolated assumption in `VoltaZk/Ideal.lean` (PCG/Ferret realization,
 weight-PCS binding, LogUp-GKR soundness, full UC composition — all
 established-literature or modular/swappable components, none in the

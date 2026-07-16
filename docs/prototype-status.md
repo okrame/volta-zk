@@ -1,4 +1,4 @@
-# Prototype Status Ledger (fase-D Part A preregistered; criterion (5) pending)
+# Prototype Status Ledger (fase-D Part A implemented; criterion (5) pending)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -16,9 +16,11 @@ review obligation, accepted criterion (4) at the measured 8.451--8.609 s /
 31,261,434 B cost, and confirmed criteria (2)/(3) satisfied. Fase-D Part A is
 preregistered below to implement the default mechanics, recursive scaling,
 AES-MMO and connection lifecycle while every artifact remains
-`pcg_production_ready:false`. Lean M10 is now proved and audited, satisfying
-the Lean-first hard stop before Rust. Criterion (5), the ledger closure/checkpoint
-enacting the production flip, is reserved for Part B after clean records.
+`pcg_production_ready:false`. Lean M10 is proved and audited, satisfying the
+Lean-first hard stop before Rust; the fase-D Rust implementation and Part-B
+record harness are now complete and locally tested. Criterion (5), the ledger
+closure/checkpoint enacting the production flip, is reserved for Part B after
+clean records.
 Candidate A (Packed16/fase-C) is rejected on product cost. The earlier
 `33e5fb4` decode-only FAIL remains an immutable rebaseline result. The
 active queue is fase-D Part A followed by its separately prompted Part B;
@@ -47,7 +49,7 @@ is the next substantive model phase.
 | Fase-B FLIP-READINESS | **complete for criteria (2)/(3); superseded by the 2026-07-16 fase-D decision** (2026-07-15) | Host-only setup speed pass ✓; production lifecycle/transport plumbing ✓; clean full T=100+50/Q=200 real-PCG parity record ✓ | `117df7d`: normal-session setup **8.451 s** (GGM 4.632, checks 1.334, OT-ext 0.963, LPN 1.496, base OT 0.025); chunked-session setup 8.609 s. Exactly **31,261,434 B/setup** unchanged. Full golden/normal/chunked/13-PCS/closure/malicious parity passes; packed response exactly **136,526,530 B**. Record `flip-readiness-2026-07-15-117df7d.json`. On 2026-07-16 criterion (1) was removed with no replacement, (4) was accepted, and (5) was reserved for Part B. |
 | C1 response-communication reduction | **complete: identity-seam `x_in` reuse only** (2026-07-15) | Clean full T=100+50/Q=200 CPU record; golden, normal/chunked acceptance, PCS/closure, exact bytes/counters and replay/preflight gates | `2a3d731`: **1,036,800** canonical aliases save **8,294,400 B**; transcript **129,119,408 B**, packed response **136,526,530 B**, auth corrections **59,545,008 B**. Prover/verifier sub correlations both **7,443,126**, full both **176,880**; PCS **66,733,504 B**, 96+6 claims, Q=200 unchanged. Median prove **18.653 s** (−0.086 s vs same-machine P6 record), verify **0.522 s** (−0.045 s); flat curve **1.219 PASS**. Record `benchmarks/results/c1-2026-07-15-2a3d731.json`, full SHA `2a3d7314bba35e18229af31c99f226c93ef12416`, `git_dirty:false`. |
 | C2 Packed16 typed-lane real-PCG | **Candidate A rejected; Packed16 shelved** (2026-07-15) | Permanent costing record; implementation is not authorized | `docs/c2-packed-lane-pcg-design.md` remains the permanent record: the only sound realization costs about **1.55 GB** recurring setup traffic and **31--46 s** setup wall per session to save 32,486,400 B of response, about **47×** more bytes moved than saved. Revisit only with a cited construction on the order of tens of MB/session, or an explicit product decision that the envelope demands it. |
-| Fase-D real-PCG default + scaling, Part A | **preregistered; Lean M10 green; Rust implementation pending, no gate verdict** (2026-07-16) | M10 proved before Rust; then stage-3/AES-MMO/connection lifecycle; no official runs or production-ready flip in Part A | Tuple `(k3,n3,t3)=(6,520,000,117,440,512,1,792)`, `U3=110,918,718`; pinned estimator minimum **199.599804 bits**, six-instance **197.014842**, full-connection floor **140.643699**. M10 build 2574 jobs, zero `sorry`/`admit`, named-axiom audit clean. Six path-OT slices share one base phase; AES-16 planning traffic is 38.371 MB for one activated stage and 38.588 MB for six, both projections rather than measurements. Complete contract: `docs/fase-d-realpcg-default-design.md`. |
+| Fase-D real-PCG default + scaling, Part A | **implemented and locally tested; official gates/criterion (5) pending Part B** (2026-07-16) | M10 proved before Rust ✓; exact stage-3/AES-MMO/connection lifecycle/default harness ✓; no official run or production-ready flip in Part A | Tuple `(k3,n3,t3)=(6,520,000,117,440,512,1,792)`, `U3=110,918,718`; estimator minimum **199.599804 bits**, six-instance **197.014842**, full-connection floor **140.643699**. M10 build 2574 jobs, zero `sorry`/`admit`, named-axiom audit clean. Production preflight accepts only the registered tuples; six path-OT slices share one base phase; terminal-one retains **114,611,091** response-allocatable raw correlations including main residual, while chain-six generates **665,512,308** stage-3 outputs and releases them under the 4 GB cap. Toy non-record sanity: AES/BLAKE terminal **0.290/0.294 s**, 60,097 B; chain-six **0.312 s**, 62,252 B. Complete contract: `docs/fase-d-realpcg-default-design.md`. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -90,6 +92,79 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-16 (fase-D Part A implementation checkpoint; explicitly not the
+  clean-run closure or criterion (5))**: the preregistered design is now
+  implemented after the green M10 checkpoint. No official record was run, no
+  pod was accessed or provisioned, and every report path still emits
+  `pcg_production_ready:false`.
+
+  `volta-pcg` accepts only the exact production setup/main/stage-3 tuples and
+  rejects every `TEST_ONLY_INSECURE_*` tuple before cryptography. One
+  connection performs one base OT + COPEe/IKNP phase containing all six
+  stage-3 path slices, keeps one verifier-only `Delta`, and activates one or
+  six ordinal-domain refill stages. Each stage performs fresh beta/GGM
+  corrections and a full WYKW malicious consistency check. Stage 3 streams
+  two 896-block batches, fills terminal output directly in canonical order,
+  or hashes/counts/releases chain-six output after reserving the next
+  `B3=6,521,794` tail. Actual Vec capacities, batch tags, predecessor/child
+  bases and per-worker tree/check scratch are included in a fail-closed
+  4,000,000,000 B account; the effective Rayon worker count is reduced on a
+  high-core host rather than exceeding the cap. The Part-B
+  `fase_d_report` harness records physical/logical cores, effective setup
+  workers, exact directions/categories, prelude and per-stage wall splits,
+  high-water, capacity, counter/digest closure and G2/G2b/G3 fields.
+
+  GGM node expansion now defaults to the registered fixed public AES-128 key
+  with `sigma(x)=AES_K(x) XOR x` and exact `tau_0/tau_1` children. Runtime
+  dispatch uses AES-NI or ARMv8-CE where detected and a function-identical
+  portable AES implementation otherwise; it never silently selects BLAKE3.
+  The explicit `ggm_prg:"blake3"` diagnostic path remains tested. Only GGM
+  seeds/nodes changed to 16 B: BLAKE3 remains in transcript, KDF/root,
+  commitment, coin/pad, hash-to-field and LPN-matrix roles. Fase-B's frozen
+  31,261,434 B record remains historical; fase-D code asserts only byte
+  reconciliation until Part B supplies its new exact measured categories.
+
+  `ConnectionStore` uses immutable connection identities and append-only,
+  file/directory-fsynced journals. OPEN precedes independent OsRng role
+  sampling; active setup can occur once. Each response still burns its
+  authorization nonce before allocation and binds the complete
+  `(connection_id,response_nonce,layer,head,position,tensor_tag)` domain.
+  Response and connection allocation/channel digests advance separately.
+  Generated/consumed/reserved-as-base/burned/available classes reconcile per
+  stage; chain-six release-sink output is explicitly moved to `burned`, not
+  merely hidden by the high-level API. Success keeps the connection active.
+  Malicious failure, malformed frame, EOF, explicit abort, TTL, close, Drop,
+  or crash-detected reopen terminally burns every residual pool and refuses
+  resume. A response can obtain owned sub/full PCG pools from one canonical
+  raw allocation without changing logical order.
+
+  Real/AES is the default in P5, P6 and the PCG report; mock and BLAKE3 require
+  explicit diagnostic mode, which cannot write a result artifact. Production
+  paths require durable authorization state and use fresh OS identities; the
+  P6 resident path now runs its real backend for the full preregistered 1+3
+  repetitions rather than silently falling through the non-resident helper.
+  The new `runpod-a100-realpcg-v1` report profile carries the wall-only,
+  decode, H2D and sync-wall gates, requires the exact C1 packed response
+  136,526,530 B plus mock/real counter/allocation/channel parity, and records
+  the new host's CPU inventory without inheriting the old pod's CPU/region/RAM
+  identity or its 144,820,930 B binding. Setup wall remains informative.
+
+  Local tests cover production-tuple rejection, exact capacity and canonical
+  batches, buffer fail-closed behavior, AES portable/hardware equivalence and
+  FIPS vector, both PRGs, terminal-one and chain-six, every malicious
+  GGM/correction/WYKW fault at every one of six stages, one-time response
+  domains, mock/real logical counter and allocation-digest parity,
+  reserved-as-base exclusion, explicit release-sink burns, three successful
+  responses, response-2 whole-connection abort, kill/restart rejection,
+  nonce restart rejection, TTL/close/malformed/EOF burns and channel secrecy.
+  The workspace suite and the unchanged frozen model e2e tests are green.
+  Non-record toy sanity on this host measured AES/BLAKE terminal-one at
+  **0.289576/0.294365 s**, each **60,097 B** (45,399 B P→V, 14,698 B V→P,
+  19,744 B high-water), and chain-six at **0.311647 s**, **62,252 B**,
+  1,284 gross toy stage outputs, 210 reserved and 12,256 B high-water. These
+  toy values are functional smoke only, not security, G2/G3, cost or gate
+  evidence.
 
 - **2026-07-16 (fase-D Part A preregistered before Lean and Rust; no clean
   record or criterion-(5) closure in this package)**: the complete design and

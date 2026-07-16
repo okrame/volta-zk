@@ -36,6 +36,32 @@ pub struct CorrIndex {
     pub row: u32,
 }
 
+/// Connection/response scope layered above the historical packed tensor
+/// domain.  It is part of the logical allocation digest for both mock and real
+/// pools, and mock seeds are re-derived from it so the same tensor domain in a
+/// later response cannot reproduce correlations.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ConnectionCorrelationScope {
+    pub connection_id: [u8; 32],
+    pub response_nonce: [u8; 32],
+}
+
+impl ConnectionCorrelationScope {
+    pub fn new(connection_id: [u8; 32], response_nonce: [u8; 32]) -> Self {
+        assert!(connection_id != [0; 32], "connection identity must be nonzero");
+        assert!(response_nonce != [0; 32], "response nonce must be nonzero");
+        Self { connection_id, response_nonce }
+    }
+
+    fn derive_mock_seed(self, seed: [u8; 32]) -> [u8; 32] {
+        let mut hasher = blake3::Hasher::new_derive_key("volta/mac/mock-connection-scope/v1");
+        hasher.update(&self.connection_id);
+        hasher.update(&self.response_nonce);
+        hasher.update(&seed);
+        *hasher.finalize().as_bytes()
+    }
+}
+
 impl CorrIndex {
     #[inline]
     pub fn tensor_tag(&self) -> u32 {
@@ -412,7 +438,21 @@ pub struct CorrelationStream {
 impl CorrelationStream {
     pub fn new(seed: [u8; 32]) -> CorrelationStream {
         CorrelationStream {
-            backend: ProverBackend::Mock { seed },
+            backend: ProverBackend::Mock { seed, allocation: LogicalAllocation::new(None) },
+            ledger: DomainLedger::default(),
+            counters: CorrCounters::default(),
+        }
+    }
+
+    pub fn new_connection_mock(
+        seed: [u8; 32],
+        scope: ConnectionCorrelationScope,
+    ) -> CorrelationStream {
+        CorrelationStream {
+            backend: ProverBackend::Mock {
+                seed: scope.derive_mock_seed(seed),
+                allocation: LogicalAllocation::new(Some(scope)),
+            },
             ledger: DomainLedger::default(),
             counters: CorrCounters::default(),
         }
@@ -420,7 +460,18 @@ impl CorrelationStream {
 
     pub fn from_pcg_pool(pool: ProverPcgPool) -> CorrelationStream {
         CorrelationStream {
-            backend: ProverBackend::Pooled(PooledProver::new(pool)),
+            backend: ProverBackend::Pooled(PooledProver::new(pool, None)),
+            ledger: DomainLedger::default(),
+            counters: CorrCounters::default(),
+        }
+    }
+
+    pub fn from_pcg_pool_connection(
+        pool: ProverPcgPool,
+        scope: ConnectionCorrelationScope,
+    ) -> CorrelationStream {
+        CorrelationStream {
+            backend: ProverBackend::Pooled(PooledProver::new(pool, Some(scope))),
             ledger: DomainLedger::default(),
             counters: CorrCounters::default(),
         }
@@ -428,7 +479,7 @@ impl CorrelationStream {
 
     pub fn allocation_digest_hex(&self) -> Option<String> {
         match &self.backend {
-            ProverBackend::Mock { .. } => None,
+            ProverBackend::Mock { allocation, .. } => Some(allocation.digest_hex()),
             ProverBackend::Pooled(p) => Some(p.allocation_digest_hex()),
         }
     }
@@ -512,7 +563,10 @@ impl CorrelationStream {
             .checked_add(u64::try_from(rows).expect("validated sub-mask rows exceed u64"))
             .expect("correlation domain counter overflow");
         match &mut self.backend {
-            ProverBackend::Mock { seed } => {
+            ProverBackend::Mock { seed, allocation } => {
+                for row in 0..rows {
+                    allocation.take_sub(base_domain + row as u64, cols);
+                }
                 SubMaskRowsReservation::ChaCha8 { seed: *seed, base_domain, rows, cols }
             }
             ProverBackend::Pooled(pooled) => SubMaskRowsReservation::Host {
@@ -542,7 +596,7 @@ impl CorrelationStream {
         let drawn = self.ledger.consumed.get(&dom).copied();
         assert_eq!(drawn, Some(n as u64), "tag expansion must match the mask draw at {dom:#x}");
         match &mut self.backend {
-            ProverBackend::Mock { seed } => {
+            ProverBackend::Mock { seed, .. } => {
                 let mut ms = FpStream::domain_separated(*seed, dom | TAG_BIT);
                 (0..n).map(|_| ms.next_fp2()).collect()
             }
@@ -557,7 +611,8 @@ impl CorrelationStream {
         self.counters.full_corrs += n as u64;
         self.counters.domains += 1;
         match &mut self.backend {
-            ProverBackend::Mock { seed } => {
+            ProverBackend::Mock { seed, allocation } => {
+                allocation.take_full(dom, n);
                 let mut xs = FpStream::domain_separated(*seed, dom | FULL_BIT);
                 let mut ms = FpStream::domain_separated(*seed, dom | FULL_BIT | TAG_BIT);
                 (0..n).map(|_| FullCorr { x: xs.next_fp2(), m: ms.next_fp2() }).collect()
@@ -584,7 +639,23 @@ impl VerifierCtx {
     pub fn new(seed: [u8; 32], delta: Fp2) -> VerifierCtx {
         VerifierCtx {
             delta,
-            backend: VerifierBackend::Mock { seed },
+            backend: VerifierBackend::Mock { seed, allocation: LogicalAllocation::new(None) },
+            ledger: DomainLedger::default(),
+            counters: CorrCounters::default(),
+        }
+    }
+
+    pub fn new_connection_mock(
+        seed: [u8; 32],
+        delta: Fp2,
+        scope: ConnectionCorrelationScope,
+    ) -> VerifierCtx {
+        VerifierCtx {
+            delta,
+            backend: VerifierBackend::Mock {
+                seed: scope.derive_mock_seed(seed),
+                allocation: LogicalAllocation::new(Some(scope)),
+            },
             ledger: DomainLedger::default(),
             counters: CorrCounters::default(),
         }
@@ -593,7 +664,20 @@ impl VerifierCtx {
     pub fn from_pcg_pool(delta: Fp2, pool: VerifierPcgPool) -> VerifierCtx {
         VerifierCtx {
             delta,
-            backend: VerifierBackend::Pooled(PooledVerifier::new(pool)),
+            backend: VerifierBackend::Pooled(PooledVerifier::new(pool, None)),
+            ledger: DomainLedger::default(),
+            counters: CorrCounters::default(),
+        }
+    }
+
+    pub fn from_pcg_pool_connection(
+        delta: Fp2,
+        pool: VerifierPcgPool,
+        scope: ConnectionCorrelationScope,
+    ) -> VerifierCtx {
+        VerifierCtx {
+            delta,
+            backend: VerifierBackend::Pooled(PooledVerifier::new(pool, Some(scope))),
             ledger: DomainLedger::default(),
             counters: CorrCounters::default(),
         }
@@ -601,7 +685,7 @@ impl VerifierCtx {
 
     pub fn allocation_digest_hex(&self) -> Option<String> {
         match &self.backend {
-            VerifierBackend::Mock { .. } => None,
+            VerifierBackend::Mock { allocation, .. } => Some(allocation.digest_hex()),
             VerifierBackend::Pooled(v) => Some(v.allocation_digest_hex()),
         }
     }
@@ -639,7 +723,8 @@ impl VerifierCtx {
         self.counters.sub_corrs += n as u64;
         self.counters.domains += 1;
         match &mut self.backend {
-            VerifierBackend::Mock { seed } => {
+            VerifierBackend::Mock { seed, allocation } => {
+                allocation.take_sub(dom, n);
                 let mut rs = FpStream::domain_separated(*seed, dom);
                 let mut ms = FpStream::domain_separated(*seed, dom | TAG_BIT);
                 (0..n).map(|_| ms.next_fp2() + self.delta.mul_base(rs.next_fp())).collect()
@@ -655,7 +740,8 @@ impl VerifierCtx {
         self.counters.full_corrs += n as u64;
         self.counters.domains += 1;
         match &mut self.backend {
-            VerifierBackend::Mock { seed } => {
+            VerifierBackend::Mock { seed, allocation } => {
+                allocation.take_full(dom, n);
                 let mut xs = FpStream::domain_separated(*seed, dom | FULL_BIT);
                 let mut ms = FpStream::domain_separated(*seed, dom | FULL_BIT | TAG_BIT);
                 (0..n).map(|_| ms.next_fp2() + self.delta * xs.next_fp2()).collect()
@@ -746,13 +832,45 @@ impl Drop for FullKeyBatchReservation<'_> {
 }
 
 enum ProverBackend {
-    Mock { seed: [u8; 32] },
+    Mock { seed: [u8; 32], allocation: LogicalAllocation },
     Pooled(PooledProver),
 }
 
 enum VerifierBackend {
-    Mock { seed: [u8; 32] },
+    Mock { seed: [u8; 32], allocation: LogicalAllocation },
     Pooled(PooledVerifier),
+}
+
+struct LogicalAllocation {
+    next_sub: usize,
+    next_full: usize,
+    hasher: blake3::Hasher,
+}
+
+impl LogicalAllocation {
+    fn new(scope: Option<ConnectionCorrelationScope>) -> Self {
+        let mut hasher = blake3::Hasher::new();
+        if let Some(scope) = scope {
+            hasher.update(b"connection-scope");
+            hasher.update(&scope.connection_id);
+            hasher.update(&scope.response_nonce);
+        }
+        Self { next_sub: 0, next_full: 0, hasher }
+    }
+
+    fn take_sub(&mut self, dom: u64, n: usize) {
+        record_alloc(&mut self.hasher, b"sub", dom, self.next_sub, n);
+        self.next_sub = self.next_sub.checked_add(n).expect("logical sub allocation overflow");
+    }
+
+    fn take_full(&mut self, dom: u64, n: usize) {
+        record_alloc(&mut self.hasher, b"full", dom, self.next_full, n);
+        self.next_full = self.next_full.checked_add(n).expect("logical full allocation overflow");
+    }
+
+    fn digest_hex(&self) -> String {
+        self.hasher.clone().finalize().to_hex().to_string()
+    }
 }
 
 struct PooledProver {
@@ -765,14 +883,15 @@ struct PooledProver {
 }
 
 impl PooledProver {
-    fn new(pool: ProverPcgPool) -> PooledProver {
+    fn new(pool: ProverPcgPool, scope: Option<ConnectionCorrelationScope>) -> PooledProver {
+        let hasher = LogicalAllocation::new(scope).hasher;
         PooledProver {
             subs: pool.subs,
             fulls: pool.fulls,
             next_sub: 0,
             next_full: 0,
             sub_domains: HashMap::new(),
-            hasher: blake3::Hasher::new(),
+            hasher,
         }
     }
 
@@ -843,13 +962,14 @@ struct PooledVerifier {
 }
 
 impl PooledVerifier {
-    fn new(pool: VerifierPcgPool) -> PooledVerifier {
+    fn new(pool: VerifierPcgPool, scope: Option<ConnectionCorrelationScope>) -> PooledVerifier {
+        let hasher = LogicalAllocation::new(scope).hasher;
         PooledVerifier {
             sub_keys: pool.sub_keys,
             full_keys: pool.full_keys,
             next_sub: 0,
             next_full: 0,
-            hasher: blake3::Hasher::new(),
+            hasher,
         }
     }
 
@@ -918,6 +1038,48 @@ mod tests {
         assert_eq!(p.counters, v.counters);
         assert_eq!(p.counters.sub_corrs, 32);
         assert_eq!(p.counters.full_corrs, 8);
+    }
+
+    #[test]
+    fn connection_scoped_mock_and_real_logical_allocations_match() {
+        let seed = [0xC1; 32];
+        let delta = Fp2::new(Fp::new(0x1234), Fp::new(0x5678));
+        let scope = ConnectionCorrelationScope::new([0xC2; 32], [0xC3; 32]);
+        let params = volta_pcg::PhaseAParams::tiny_for_test(9 + 2 * 3);
+        let pool = volta_pcg::expand_phase_a(seed, delta, 9, 3, params);
+        let mut mock_p = CorrelationStream::new_connection_mock(seed, scope);
+        let mut mock_v = VerifierCtx::new_connection_mock(seed, delta, scope);
+        let mut real_p = CorrelationStream::from_pcg_pool_connection(pool.prover, scope);
+        let mut real_v = VerifierCtx::from_pcg_pool_connection(delta, pool.verifier, scope);
+
+        for (domain, count) in [(0x10, 5), (0x11, 4)] {
+            let _ = mock_p.draw_subs(domain, count);
+            let _ = mock_v.expand_sub_keys(domain, count);
+            let _ = real_p.draw_subs(domain, count);
+            let _ = real_v.expand_sub_keys(domain, count);
+        }
+        for (domain, count) in [(0x20, 2), (0x21, 1)] {
+            let _ = mock_p.draw_fulls(domain, count);
+            let _ = mock_v.expand_full_keys(domain, count);
+            let _ = real_p.draw_fulls(domain, count);
+            let _ = real_v.expand_full_keys(domain, count);
+        }
+        assert_eq!(mock_p.counters, real_p.counters);
+        assert_eq!(mock_v.counters, real_v.counters);
+        assert_eq!(mock_p.allocation_digest_hex(), mock_v.allocation_digest_hex());
+        assert_eq!(real_p.allocation_digest_hex(), real_v.allocation_digest_hex());
+        assert_eq!(mock_p.allocation_digest_hex(), real_p.allocation_digest_hex());
+    }
+
+    #[test]
+    fn connection_response_nonce_changes_mock_correlations_and_digest() {
+        let seed = [0xD1; 32];
+        let scope_one = ConnectionCorrelationScope::new([0xD2; 32], [0xD3; 32]);
+        let scope_two = ConnectionCorrelationScope::new([0xD2; 32], [0xD4; 32]);
+        let mut first = CorrelationStream::new_connection_mock(seed, scope_one);
+        let mut second = CorrelationStream::new_connection_mock(seed, scope_two);
+        assert_ne!(first.draw_subs(0x55, 4)[0].r, second.draw_subs(0x55, 4)[0].r);
+        assert_ne!(first.allocation_digest_hex(), second.allocation_digest_hex());
     }
 
     #[test]

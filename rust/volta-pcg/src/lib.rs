@@ -8,17 +8,34 @@
 //! is implemented in [`phase_b`]: two independent state machines communicate
 //! only through serialized frames and instantiate the malicious WYKW setup.
 
+mod fase_d;
 mod phase_b;
 mod production;
 
+pub use fase_d::{
+    BatchLiftReport, CanonicalBatchLift, FaseDCapacityReport, FaseDError, FaseDParams,
+    FaseDStagePlan, ProverBufferAccount, RefillLedger, RegularNoiseTuple, Stage3Batch,
+    StageCounters, StageId, FASE_D_PROFILE, GGM_NODE_BYTES_AES128, MAIN_BASE_CONSUMPTION,
+    MAIN_USABLE_OUTPUT, MAX_STAGE3_INSTANCES, PROVER_BUFFER_CAP_BYTES, RAW_SUB_CORRELATION_BYTES,
+    STAGE3_BASE_CONSUMPTION, STAGE3_BATCH_BLOCKS, STAGE3_BATCH_COUNT, STAGE3_BLOCK_SIZE,
+    STAGE3_DEPTH, STAGE3_K, STAGE3_N, STAGE3_T, STAGE3_USABLE_OUTPUT, TEST_ONLY_INSECURE_PREFIX,
+};
+
 pub use phase_b::{
-    expand_phase_b, ChannelAudit, PhaseBError, PhaseBExpansion, PhaseBSetupParams,
+    expand_fase_d_connection, expand_phase_b, expand_phase_b_with_ggm_prg, AesBackend,
+    ChannelAudit, FaseDConnectionBinding, FaseDConnectionExpansion, FaseDPreludeTimings,
+    FaseDStageExpansionReport, GgmPrg, PhaseBError, PhaseBExpansion, PhaseBSetupParams,
     PhaseBSetupReport, PhaseBTimings, ProverSetup, SessionBinding, SetupCommBreakdown,
     VerifierSetup,
 };
 pub use production::{
-    expand_phase_b_production, AuthorizationBurn, ProductionPhaseBExpansion, ProductionSetupAudit,
-    ResponseAuthorizationStore,
+    expand_phase_b_production, expand_phase_b_production_with_ggm_prg, open_fase_d_connection,
+    open_fase_d_connection_with_ggm_prg, AllocatedPcgPools, AllocatedSubCorrelationBatch,
+    AuthorizationBurn, BaseCorrelationReservation, ConnectionAbortReason, ConnectionBinding,
+    ConnectionChannelDirection, ConnectionHandle, ConnectionResponseAudit, ConnectionStagePlan,
+    ConnectionState, ConnectionStore, CorrelationAllocation, CorrelationDomain,
+    ProductionConnectionSetupAudit, ProductionFaseDConnection, ProductionPhaseBExpansion,
+    ProductionSetupAudit, ResponseAuthorizationStore, StageCorrelationCounters,
 };
 
 use serde::{Deserialize, Serialize};

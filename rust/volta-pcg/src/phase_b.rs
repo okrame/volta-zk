@@ -16,8 +16,16 @@
 //! setup tuple; its serialized metadata records the exact estimator commits
 //! and margins.
 
+#[path = "ggm.rs"]
+mod ggm;
+
+pub use ggm::{AesBackend, GgmPrg};
+use ggm::{GgmEngine, GgmSeed};
+
 use super::{
-    ConsistencyReport, FullVole, PhaseAParams, ProverPcgPool, SubVole, VerifierPcgPool, GAMMA,
+    CanonicalBatchLift, ConsistencyReport, FaseDCapacityReport, FaseDParams, FaseDStagePlan,
+    FullVole, PhaseAParams, ProverPcgPool, RegularNoiseTuple, SubVole, VerifierPcgPool, GAMMA,
+    RAW_SUB_CORRELATION_BYTES,
 };
 use curve25519_dalek::{
     constants::RISTRETTO_BASEPOINT_POINT,
@@ -64,6 +72,9 @@ pub struct PhaseBSetupParams {
     pub malicious_check: String,
     pub malicious_check_paper_section: String,
     pub lpn_parameter_source: String,
+    pub ggm_prg: GgmPrg,
+    pub ggm_aes_backend: AesBackend,
+    pub logical_cpu_count: usize,
     pub parity_candidate: bool,
     pub production_ready: bool,
 }
@@ -77,6 +88,43 @@ pub struct SessionBinding {
     pub session_id: [u8; 32],
     pub channel_id: [u8; 32],
     pub response_authorization_nonce: [u8; 32],
+}
+
+/// Fase-D connection identity.  The base phase is bound only to the
+/// connection and authenticated transport; per-response nonces are introduced
+/// later by the durable allocation lifecycle and therefore cannot cause a
+/// second base phase.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FaseDConnectionBinding {
+    pub connection_id: [u8; 32],
+    pub authenticated_channel_id: [u8; 32],
+}
+
+impl FaseDConnectionBinding {
+    pub fn new(
+        connection_id: [u8; 32],
+        authenticated_channel_id: [u8; 32],
+    ) -> Result<Self, PhaseBError> {
+        if connection_id == [0; 32] || authenticated_channel_id == [0; 32] {
+            return Err(PhaseBError::new(
+                "connection and authenticated-channel identities must be nonzero",
+            ));
+        }
+        Ok(Self { connection_id, authenticated_channel_id })
+    }
+
+    fn session_binding(self) -> SessionBinding {
+        let mut h = blake3::Hasher::new();
+        h.update(b"volta-pcg/fase-d/connection-base-phase/v1");
+        h.update(&self.connection_id);
+        h.update(&self.authenticated_channel_id);
+        let response_authorization_nonce = *h.finalize().as_bytes();
+        SessionBinding {
+            session_id: self.connection_id,
+            channel_id: self.authenticated_channel_id,
+            response_authorization_nonce,
+        }
+    }
 }
 
 impl SessionBinding {
@@ -116,7 +164,7 @@ impl SessionBinding {
 }
 
 impl PhaseBSetupParams {
-    fn for_phase_a(params: &PhaseAParams) -> Self {
+    fn for_phase_a(params: &PhaseAParams, ggm: GgmEngine) -> Self {
         Self {
             profile: "p7-phase-b-wykw-two-party-v2".into(),
             base_ot_count: BASE_OT_COUNT,
@@ -129,6 +177,9 @@ impl PhaseBSetupParams {
             malicious_check_paper_section:
                 "Wolverine ePrint 2020/925 Section 5.1, Figure 7 steps 4-6, optimization 3".into(),
             lpn_parameter_source: params.parameter_source.clone(),
+            ggm_prg: ggm.prg(),
+            ggm_aes_backend: ggm.aes_backend(),
+            logical_cpu_count: std::thread::available_parallelism().map_or(1, usize::from),
             parity_candidate: true,
             // The cryptographic hardening can be a parity candidate without
             // making the separate product decision to flip the default.
@@ -226,6 +277,71 @@ pub struct PhaseBExpansion {
     pub ggm_checksum: u64,
 }
 
+/// Per-recursion-stage report for the connection-scoped fase-D expansion.
+#[derive(Clone, Debug, Serialize)]
+pub struct FaseDStageExpansionReport {
+    pub ordinal: usize,
+    pub input_stage: String,
+    pub tuple: RegularNoiseTuple,
+    pub generated: u64,
+    pub reserved_as_base: u64,
+    pub released: u64,
+    pub retained: u64,
+    pub consistency: ConsistencyReport,
+    pub allocation_digest: String,
+    pub value_checksum: u64,
+    pub prover_buffer_high_water_bytes: u64,
+    pub rayon_threads: usize,
+    pub t_ggm_s: f64,
+    pub t_check_s: f64,
+    pub t_lpn_s: f64,
+}
+
+/// Host-specific wall split before stage 3.  The total also includes small
+/// serialization, allocation and beta-correction residuals that are not
+/// hidden inside one of the named cryptographic phases.
+#[derive(Clone, Copy, Debug, Default, Serialize)]
+pub struct FaseDPreludeTimings {
+    pub t_base_ot_s: f64,
+    pub t_ot_extension_s: f64,
+    pub t_path_preprovision_s: f64,
+    pub t_recursive_setup_ggm_s: f64,
+    pub t_recursive_setup_check_s: f64,
+    pub t_recursive_setup_lpn_s: f64,
+    pub t_main_ggm_s: f64,
+    pub t_main_check_s: f64,
+    pub t_main_lpn_s: f64,
+    pub t_prelude_total_s: f64,
+}
+
+/// Result of one connection-scoped setup.  Base OT, COPEe, and IKNP are run
+/// exactly once.  The returned raw sub-correlation pool is retained only for
+/// `terminal-one`; the six-stage informative plan hashes/counts and releases
+/// completed stage storage after extracting the next child base.
+#[derive(Clone, Debug)]
+pub struct FaseDConnectionExpansion {
+    pub params: FaseDParams,
+    pub prover: ProverPcgPool,
+    pub verifier: VerifierPcgPool,
+    pub verifier_delta: Fp2,
+    pub comm: SetupCommBreakdown,
+    pub channel: ChannelAudit,
+    pub base_ot_transcript_digest: String,
+    pub ot_extension_digest: String,
+    pub connection_binding_digest: String,
+    pub ggm_prg: GgmPrg,
+    pub ggm_aes_backend: AesBackend,
+    pub logical_cpu_count: usize,
+    pub rayon_threads: usize,
+    pub one_base_phase: bool,
+    pub pcg_production_ready: bool,
+    pub capacity: FaseDCapacityReport,
+    pub prelude_timings: FaseDPreludeTimings,
+    pub stages: Vec<FaseDStageExpansionReport>,
+    pub allocation_digest: String,
+    pub t_total_s: f64,
+}
+
 #[derive(Clone)]
 struct RoleTranscript {
     hasher: blake3::Hasher,
@@ -290,6 +406,13 @@ enum MessageKind {
     MainEqCommit = 24,
     MainEqResponse = 25,
     MainEqOpen = 26,
+    Stage3BetaCorrections = 27,
+    Stage3GgmCorrections = 28,
+    Stage3WykwChallenge = 29,
+    Stage3WykwMask = 30,
+    Stage3EqCommit = 31,
+    Stage3EqResponse = 32,
+    Stage3EqOpen = 33,
 }
 
 struct SerializedChannel {
@@ -415,6 +538,12 @@ impl SerializedChannel {
 struct SeedPair {
     zero: [u8; 32],
     one: [u8; 32],
+}
+
+#[derive(Clone, Copy)]
+struct GgmSeedPair {
+    zero: GgmSeed,
+    one: GgmSeed,
 }
 
 /// Prover-side phase-B state. There is intentionally no `Delta` field.
@@ -710,8 +839,16 @@ fn xor32(a: [u8; 32], b: [u8; 32]) -> [u8; 32] {
     out
 }
 
-fn xor32_in_place(out: &mut [u8; 32], rhs: &[u8; 32]) {
-    for i in 0..32 {
+fn xor16(a: GgmSeed, b: GgmSeed) -> GgmSeed {
+    let mut out = [0u8; 16];
+    for i in 0..16 {
+        out[i] = a[i] ^ b[i];
+    }
+    out
+}
+
+fn xor16_in_place(out: &mut GgmSeed, rhs: &GgmSeed) {
+    for i in 0..16 {
         out[i] ^= rhs[i];
     }
 }
@@ -821,8 +958,11 @@ fn field_xof(seed: [u8; 32], label: &[u8], n: usize) -> Vec<Fp> {
     out
 }
 
-fn seed_fp2(seed: [u8; 32], label: &[u8]) -> Fp2 {
-    let mut stream = FpStream::from_seed(derive_seed(seed, label, 0));
+fn ggm_leaf_fp2(seed: GgmSeed) -> Fp2 {
+    let mut h = blake3::Hasher::new();
+    h.update(b"volta-pcg/phase-b/ggm/leaf-field/v2");
+    h.update(&seed);
+    let mut stream = FpStream::from_seed(*h.finalize().as_bytes());
     stream.next_fp2()
 }
 
@@ -1415,28 +1555,24 @@ fn apply_beta_corrections(
     reader.finish()
 }
 
-fn ggm_children(seed: [u8; 32], level: usize) -> ([u8; 32], [u8; 32]) {
-    (derive_seed(seed, b"ggm/left", level as u64), derive_seed(seed, b"ggm/right", level as u64))
-}
-
 /// Generate one WYKW GGM tree and the two XOR aggregates at every level.
 /// The final leaves remain verifier-side; only encrypted aggregates cross the
 /// channel through the IKNP OTs.
-fn ggm_sender_tree(root: [u8; 32], depth: u32) -> (Vec<SeedPair>, Vec<[u8; 32]>) {
+fn ggm_sender_tree(root: GgmSeed, depth: u32, ggm: GgmEngine) -> (Vec<GgmSeedPair>, Vec<GgmSeed>) {
     let mut level = vec![root];
     let mut messages = Vec::with_capacity(depth as usize);
-    for d in 0..depth as usize {
+    for _ in 0..depth as usize {
         let mut next = Vec::with_capacity(level.len() * 2);
-        let mut zero = [0u8; 32];
-        let mut one = [0u8; 32];
+        let mut zero = [0u8; 16];
+        let mut one = [0u8; 16];
         for node in level {
-            let (left, right) = ggm_children(node, d);
-            xor32_in_place(&mut zero, &left);
-            xor32_in_place(&mut one, &right);
+            let (left, right) = ggm.children(node);
+            xor16_in_place(&mut zero, &left);
+            xor16_in_place(&mut one, &right);
             next.push(left);
             next.push(right);
         }
-        messages.push(SeedPair { zero, one });
+        messages.push(GgmSeedPair { zero, one });
         level = next;
     }
     (messages, level)
@@ -1447,18 +1583,21 @@ fn prepare_ggm_sender(
     label: &[u8],
     blocks: usize,
     depth: u32,
-) -> (Vec<SeedPair>, VerifierNoise, u64) {
+    ggm: GgmEngine,
+) -> (Vec<GgmSeedPair>, VerifierNoise, u64) {
     let block_size = 1usize << depth;
     // Blocks are independent PPRF instances. `IndexedParallelIterator::collect`
     // preserves block order, after which the historical sequential checksum is
     // replayed exactly. Thus only wall time moves: OT message order, leaf order,
     // payload bytes, and channel schedule remain byte-for-byte canonical.
-    let prepared: Vec<(Vec<SeedPair>, Vec<Fp2>)> = (0..blocks)
+    let prepared: Vec<(Vec<GgmSeedPair>, Vec<Fp2>)> = (0..blocks)
         .into_par_iter()
         .map(|block| {
-            let root = derive_seed(verifier_seed, label, block as u64);
-            let (block_messages, leaves) = ggm_sender_tree(root, depth);
-            let keys = leaves.into_iter().map(|leaf| seed_fp2(leaf, b"ggm/leaf-field")).collect();
+            let root_seed = derive_seed(verifier_seed, label, block as u64);
+            let mut root = [0u8; 16];
+            root.copy_from_slice(&root_seed[..16]);
+            let (block_messages, leaves) = ggm_sender_tree(root, depth, ggm);
+            let keys = leaves.into_iter().map(ggm_leaf_fp2).collect();
             (block_messages, keys)
         })
         .collect();
@@ -1477,25 +1616,36 @@ fn prepare_ggm_sender(
     (messages, VerifierNoise { keys }, checksum)
 }
 
+fn ggm_ot_pad(key: [u8; 32], index: usize, branch: bool) -> GgmSeed {
+    let mut h = blake3::Hasher::new();
+    h.update(b"volta-pcg/phase-b/ggm-ot-pad/v2");
+    h.update(&(index as u64).to_le_bytes());
+    h.update(&[branch as u8]);
+    h.update(&key);
+    let mut out = [0u8; 16];
+    out.copy_from_slice(&h.finalize().as_bytes()[..16]);
+    out
+}
+
 fn deliver_ggm_ots(
     prover: &mut ProverSetup,
     verifier: &mut VerifierSetup,
     channel: &mut SerializedChannel,
     receiver: &IknpReceiverOutput,
     sender: &IknpSenderOutput,
-    messages: &[SeedPair],
-) -> Result<Vec<[u8; 32]>, PhaseBError> {
+    messages: &[GgmSeedPair],
+) -> Result<Vec<GgmSeed>, PhaseBError> {
     if messages.len() != receiver.keys.len()
         || messages.len() != sender.keys.len()
         || messages.len() != receiver.choices.len()
     {
         return Err(PhaseBError::new("GGM OT/message count mismatch"));
     }
-    let mut payload = Vec::with_capacity(8 + messages.len() * 64);
+    let mut payload = Vec::with_capacity(8 + messages.len() * 32);
     put_usize(&mut payload, messages.len())?;
-    for (message, keys) in messages.iter().zip(&sender.keys) {
-        payload.extend_from_slice(&xor32(message.zero, keys.zero));
-        payload.extend_from_slice(&xor32(message.one, keys.one));
+    for (index, (message, keys)) in messages.iter().zip(&sender.keys).enumerate() {
+        payload.extend_from_slice(&xor16(message.zero, ggm_ot_pad(keys.zero, index, false)));
+        payload.extend_from_slice(&xor16(message.one, ggm_ot_pad(keys.one, index, true)));
     }
     channel.send(
         Direction::VerifierToProver,
@@ -1517,29 +1667,30 @@ fn deliver_ggm_ots(
     }
     let mut selected = Vec::with_capacity(count);
     for i in 0..count {
-        let zero: [u8; 32] = reader.take(32)?.try_into().unwrap();
-        let one: [u8; 32] = reader.take(32)?.try_into().unwrap();
+        let zero: GgmSeed = reader.take(16)?.try_into().unwrap();
+        let one: GgmSeed = reader.take(16)?.try_into().unwrap();
         let ciphertext = if receiver.choices[i] == 0 { zero } else { one };
-        selected.push(xor32(ciphertext, receiver.keys[i]));
+        selected.push(xor16(ciphertext, ggm_ot_pad(receiver.keys[i], i, receiver.choices[i] != 0)));
     }
     reader.finish()?;
     Ok(selected)
 }
 
 fn reconstruct_punctured_tree(
-    aggregates: &[[u8; 32]],
+    aggregates: &[GgmSeed],
     choice_bits: &[u8],
     depth: u32,
-) -> Result<Vec<Option<[u8; 32]>>, PhaseBError> {
+    ggm: GgmEngine,
+) -> Result<Vec<Option<GgmSeed>>, PhaseBError> {
     if aggregates.len() != depth as usize || choice_bits.len() != depth as usize {
         return Err(PhaseBError::new("punctured GGM path length mismatch"));
     }
-    let mut level: Vec<Option<[u8; 32]>> = vec![None];
+    let mut level: Vec<Option<GgmSeed>> = vec![None];
     for d in 0..depth as usize {
         let mut next = Vec::with_capacity(level.len() * 2);
         for node in level {
             if let Some(seed) = node {
-                let (left, right) = ggm_children(seed, d);
+                let (left, right) = ggm.children(seed);
                 next.push(Some(left));
                 next.push(Some(right));
             } else {
@@ -1556,7 +1707,7 @@ fn reconstruct_punctured_tree(
         let mut recovered = aggregates[d];
         for index in (parity..next.len()).step_by(2) {
             if let Some(seed) = next[index] {
-                xor32_in_place(&mut recovered, &seed);
+                xor16_in_place(&mut recovered, &seed);
             }
         }
         next[missing[0]] = Some(recovered);
@@ -1574,12 +1725,13 @@ fn finish_ggm_phase(
     channel: &mut SerializedChannel,
     secrets: &SparseSecrets,
     depth: u32,
-    selected_aggregates: &[[u8; 32]],
+    selected_aggregates: &[GgmSeed],
     beta_prover: &ProverBase,
     beta_verifier: &VerifierBase,
     verifier_noise: VerifierNoise,
     correction_kind: MessageKind,
     corrupt_correction: bool,
+    ggm: GgmEngine,
 ) -> Result<(ProverNoise, VerifierNoise), PhaseBError> {
     let blocks = secrets.alpha.len();
     let block_size = 1usize << depth;
@@ -1600,15 +1752,13 @@ fn finish_ggm_phase(
                 &selected_aggregates[start..start + depth as usize],
                 &choices[start..start + depth as usize],
                 depth,
+                ggm,
             )?;
             let missing = leaves.iter().position(Option::is_none).unwrap();
             if missing != secrets.alpha[block] {
                 return Err(PhaseBError::new("GGM puncture/alpha mismatch"));
             }
-            Ok(leaves
-                .into_iter()
-                .map(|leaf| leaf.map(|seed| seed_fp2(seed, b"ggm/leaf-field")).unwrap_or(Fp2::ZERO))
-                .collect())
+            Ok(leaves.into_iter().map(|leaf| leaf.map(ggm_leaf_fp2).unwrap_or(Fp2::ZERO)).collect())
         })
         .collect();
     let mut prover_tags: Vec<Fp2> =
@@ -1651,6 +1801,242 @@ fn finish_ggm_phase(
         tags[secrets.alpha[block]] = beta_prover.m[block] - decoded_corrections[block] - sum_off;
     });
     Ok((ProverNoise { tags: prover_tags }, verifier_noise))
+}
+
+fn fase_d_stage_label(binding: [u8; 32], ordinal: usize, purpose: &[u8]) -> Vec<u8> {
+    let mut label = Vec::with_capacity(32 + 8 + 8 + purpose.len());
+    label.extend_from_slice(b"fase-d/");
+    label.extend_from_slice(&binding);
+    label.extend_from_slice(&(ordinal as u64).to_le_bytes());
+    label.extend_from_slice(&(purpose.len() as u64).to_le_bytes());
+    label.extend_from_slice(purpose);
+    label
+}
+
+/// Prepare only the encrypted path aggregates that must be covered by the
+/// connection's single IKNP extension.  Leaves are deliberately discarded and
+/// deterministically regenerated in bounded batches when a stage is activated.
+fn prepare_ggm_messages_only(
+    verifier_seed: [u8; 32],
+    label: &[u8],
+    blocks: usize,
+    depth: u32,
+    ggm: GgmEngine,
+) -> (Vec<GgmSeedPair>, u64) {
+    let prepared: Vec<(Vec<GgmSeedPair>, u64)> = (0..blocks)
+        .into_par_iter()
+        .map(|block| {
+            let root_seed = derive_seed(verifier_seed, label, block as u64);
+            let mut root = [0u8; 16];
+            root.copy_from_slice(&root_seed[..16]);
+            let (messages, leaves) = ggm_sender_tree(root, depth, ggm);
+            let checksum = leaves.into_iter().fold(0u64, |acc, leaf| {
+                acc.rotate_left(7) ^ u64::from_le_bytes(leaf[..8].try_into().unwrap())
+            });
+            (messages, checksum)
+        })
+        .collect();
+    let mut messages = Vec::with_capacity(blocks * depth as usize);
+    let mut checksum = 0x4641_5345_4433_4747u64;
+    for (block_messages, block_checksum) in prepared {
+        messages.extend(block_messages);
+        checksum = checksum.rotate_left(11) ^ block_checksum;
+    }
+    (messages, checksum)
+}
+
+fn stage_block_verifier_keys(
+    verifier_seed: [u8; 32],
+    label: &[u8],
+    block: usize,
+    depth: u32,
+    ggm: GgmEngine,
+) -> Vec<Fp2> {
+    let root_seed = derive_seed(verifier_seed, label, block as u64);
+    let mut root = [0u8; 16];
+    root.copy_from_slice(&root_seed[..16]);
+    let (_, leaves) = ggm_sender_tree(root, depth, ggm);
+    leaves.into_iter().map(ggm_leaf_fp2).collect()
+}
+
+fn stage_ggm_corrections(
+    prover: &mut ProverSetup,
+    verifier: &mut VerifierSetup,
+    channel: &mut SerializedChannel,
+    label: &[u8],
+    secrets: &SparseSecrets,
+    beta_verifier: &VerifierBase,
+    ggm: GgmEngine,
+    corrupt_first: bool,
+) -> Result<Vec<Fp2>, PhaseBError> {
+    if beta_verifier.k.len() != secrets.alpha.len() {
+        return Err(PhaseBError::new("stage-3 GGM correction dimensions mismatch"));
+    }
+    let corrections: Vec<Fp2> = (0..secrets.alpha.len())
+        .into_par_iter()
+        .map(|block| {
+            let keys = stage_block_verifier_keys(
+                verifier.private_seed,
+                label,
+                block,
+                secrets.block_size.trailing_zeros(),
+                ggm,
+            );
+            let sum = keys.into_iter().fold(Fp2::ZERO, |acc, key| acc + key);
+            let mut correction = beta_verifier.k[block] - sum;
+            if corrupt_first && block == 0 {
+                correction += Fp2::ONE;
+            }
+            correction
+        })
+        .collect();
+    let mut payload = Vec::with_capacity(corrections.len() * 16);
+    for correction in &corrections {
+        put_fp2(&mut payload, *correction);
+    }
+    channel.send(
+        Direction::VerifierToProver,
+        CommPhase::Ggm,
+        MessageKind::Stage3GgmCorrections,
+        payload,
+        &mut verifier.transcript,
+    )?;
+    let payload = channel.receive(
+        Direction::VerifierToProver,
+        MessageKind::Stage3GgmCorrections,
+        &mut prover.transcript,
+    )?;
+    let mut reader = Reader::new(&payload);
+    let mut decoded = Vec::with_capacity(corrections.len());
+    for _ in 0..corrections.len() {
+        decoded.push(reader.fp2()?);
+    }
+    reader.finish()?;
+    Ok(decoded)
+}
+
+fn build_stage_noise_batch(
+    verifier_seed: [u8; 32],
+    label: &[u8],
+    secrets: &SparseSecrets,
+    selected_aggregates: &[GgmSeed],
+    beta_prover: &ProverBase,
+    corrections: &[Fp2],
+    block_start: usize,
+    block_count: usize,
+    depth: u32,
+    ggm: GgmEngine,
+) -> Result<(ProverNoise, VerifierNoise), PhaseBError> {
+    let block_size = secrets.block_size;
+    if selected_aggregates.len() != secrets.alpha.len() * depth as usize
+        || beta_prover.m.len() != secrets.alpha.len()
+        || corrections.len() != secrets.alpha.len()
+        || block_start + block_count > secrets.alpha.len()
+    {
+        return Err(PhaseBError::new("stage-3 batch dimensions mismatch"));
+    }
+    let rows = block_count
+        .checked_mul(block_size)
+        .ok_or_else(|| PhaseBError::new("stage-3 batch row count overflow"))?;
+    let mut tags = vec![Fp2::ZERO; rows];
+    let mut keys = vec![Fp2::ZERO; rows];
+    tags.par_chunks_mut(block_size).zip(keys.par_chunks_mut(block_size)).enumerate().try_for_each(
+        |(local_block, (tag_chunk, key_chunk))| -> Result<(), PhaseBError> {
+            let block = block_start + local_block;
+            let verifier_keys = stage_block_verifier_keys(verifier_seed, label, block, depth, ggm);
+            key_chunk.copy_from_slice(&verifier_keys);
+
+            let selected_start = block * depth as usize;
+            let choices = ggm_choice_bits(
+                &SparseSecrets {
+                    alpha: vec![secrets.alpha[block]],
+                    beta: vec![secrets.beta[block]],
+                    block_size,
+                },
+                depth,
+            );
+            let leaves = reconstruct_punctured_tree(
+                &selected_aggregates[selected_start..selected_start + depth as usize],
+                &choices,
+                depth,
+                ggm,
+            )?;
+            let missing = leaves.iter().position(Option::is_none).unwrap();
+            if missing != secrets.alpha[block] {
+                return Err(PhaseBError::new("stage-3 GGM puncture/alpha mismatch"));
+            }
+            for (out, leaf) in tag_chunk.iter_mut().zip(leaves) {
+                *out = leaf.map(ggm_leaf_fp2).unwrap_or(Fp2::ZERO);
+            }
+            let sum_off = tag_chunk.iter().copied().fold(Fp2::ZERO, |acc, tag| acc + tag);
+            tag_chunk[missing] = beta_prover.m[block] - corrections[block] - sum_off;
+            Ok(())
+        },
+    )?;
+    Ok((ProverNoise { tags }, VerifierNoise { keys }))
+}
+
+fn fase_d_lpn_seed(
+    params: &FaseDParams,
+    tuple: RegularNoiseTuple,
+    ordinal: usize,
+    binding: [u8; 32],
+) -> [u8; 32] {
+    let mut h = blake3::Hasher::new();
+    h.update(b"volta-pcg/fase-d/public-lpn-code/v1");
+    h.update(params.profile.as_bytes());
+    h.update(&binding);
+    h.update(&(ordinal as u64).to_le_bytes());
+    h.update(&(tuple.k as u64).to_le_bytes());
+    h.update(&(tuple.n as u64).to_le_bytes());
+    h.update(&(tuple.t as u64).to_le_bytes());
+    *h.finalize().as_bytes()
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct FaseDStageFaults {
+    tamper_ggm_leaf: bool,
+    corrupt_ggm_correction: bool,
+    cheat_consistency_response: bool,
+}
+
+struct Stage3Material {
+    next_prover: Option<ProverBase>,
+    next_verifier: Option<VerifierBase>,
+    report: FaseDStageExpansionReport,
+}
+
+fn stage3_lpn_row(
+    row: usize,
+    batch_row_start: usize,
+    code_seed: [u8; 32],
+    fanout: usize,
+    lpn_prover: &ProverBase,
+    lpn_verifier: &VerifierBase,
+    prover_noise: &ProverNoise,
+    verifier_noise: &VerifierNoise,
+    secrets: &SparseSecrets,
+) -> (Fp, Fp2, Fp2, u64) {
+    let local = row - batch_row_start;
+    let mut r = Fp::ZERO;
+    let mut m = prover_noise.tags[local];
+    let mut k = verifier_noise.keys[local];
+    for index in lpn_row_indices(code_seed, row, lpn_prover.r.len(), fanout) {
+        r += lpn_prover.r[index];
+        m += lpn_prover.m[index];
+        k += lpn_verifier.k[index];
+    }
+    let block = row / secrets.block_size;
+    if row % secrets.block_size == secrets.alpha[block] {
+        r += secrets.beta[block];
+    }
+    let checksum = r.value()
+        ^ m.c0.value().rotate_left(7)
+        ^ m.c1.value().rotate_left(19)
+        ^ k.c0.value().rotate_left(31)
+        ^ k.c1.value().rotate_left(43)
+        ^ (row as u64).rotate_left(3);
+    (r, m, k, checksum)
 }
 
 fn wykw_chi(seed: [u8; 32], rep: usize, block: usize, block_size: usize) -> Vec<Fp> {
@@ -1892,6 +2278,477 @@ fn wykw_consistency_check(
     Ok(ConsistencyReport { ok: true, checksum })
 }
 
+#[allow(clippy::too_many_arguments)]
+fn expand_stage3_batched(
+    prover: &mut ProverSetup,
+    verifier: &mut VerifierSetup,
+    channel: &mut SerializedChannel,
+    params: &FaseDParams,
+    binding: [u8; 32],
+    ordinal: usize,
+    secrets: &SparseSecrets,
+    selected_aggregates: &[GgmSeed],
+    input_prover: ProverBase,
+    input_verifier: VerifierBase,
+    mut retained_destination: Option<(&mut [SubVole], &mut [Fp2])>,
+    connection_retained_prover_bytes: u64,
+    reserve_child: bool,
+    ggm: GgmEngine,
+    faults: FaseDStageFaults,
+) -> Result<Stage3Material, PhaseBError> {
+    let tuple = params.stage3;
+    if secrets.alpha.len() != tuple.t
+        || secrets.block_size != tuple.block_size
+        || selected_aggregates.len() != tuple.t * tuple.depth as usize
+    {
+        return Err(PhaseBError::new("stage-3 activation dimensions mismatch"));
+    }
+    let (
+        lpn_prover,
+        lpn_verifier,
+        mut beta_prover,
+        mut beta_verifier,
+        check_prover,
+        check_verifier,
+    ) = split_base(input_prover, input_verifier, tuple.k, tuple.t)?;
+
+    let ggm_start = Instant::now();
+    apply_beta_corrections(
+        prover,
+        verifier,
+        channel,
+        &mut beta_prover,
+        &mut beta_verifier,
+        secrets,
+        MessageKind::Stage3BetaCorrections,
+    )?;
+    let ggm_label = fase_d_stage_label(binding, ordinal, b"ggm-root");
+    let corrections = stage_ggm_corrections(
+        prover,
+        verifier,
+        channel,
+        &ggm_label,
+        secrets,
+        &beta_verifier,
+        ggm,
+        faults.corrupt_ggm_correction,
+    )?;
+    let mut t_ggm = ggm_start.elapsed();
+
+    let check_start = Instant::now();
+    let verifier_pre_challenge_binding = verifier.transcript.digest();
+    let prover_pre_challenge_binding = prover.transcript.digest();
+    let challenge_label = fase_d_stage_label(binding, ordinal, b"wykw/challenge-nonce");
+    let nonce = derive_seed(verifier.private_seed, &challenge_label, tuple.n as u64);
+    channel.send(
+        Direction::VerifierToProver,
+        CommPhase::Check,
+        MessageKind::Stage3WykwChallenge,
+        nonce.to_vec(),
+        &mut verifier.transcript,
+    )?;
+    let nonce_msg = channel.receive(
+        Direction::VerifierToProver,
+        MessageKind::Stage3WykwChallenge,
+        &mut prover.transcript,
+    )?;
+    let prover_nonce: [u8; 32] = nonce_msg
+        .try_into()
+        .map_err(|_| PhaseBError::new("invalid stage-3 WYKW challenge nonce"))?;
+    let verifier_challenge_seed =
+        bind_seed(verifier_pre_challenge_binding, nonce, b"fase-d-stage3-wykw-spsvole-check");
+    let prover_challenge_seed =
+        bind_seed(prover_pre_challenge_binding, prover_nonce, b"fase-d-stage3-wykw-spsvole-check");
+
+    let weighted_betas: Vec<Fp> = (0..CHECK_LIMBS * tuple.t)
+        .into_par_iter()
+        .map(|item| {
+            let rep = item / tuple.t;
+            let block = item % tuple.t;
+            let chi = wykw_chi(prover_challenge_seed, rep, block, tuple.block_size);
+            secrets.beta[block] * chi[secrets.alpha[block]]
+        })
+        .collect();
+    let x_stars: Vec<Fp> = weighted_betas
+        .chunks(tuple.t)
+        .enumerate()
+        .map(|(rep, contributions)| {
+            let weighted = contributions.iter().copied().fold(Fp::ZERO, |acc, value| acc + value);
+            check_prover.r[rep] - weighted
+        })
+        .collect();
+    let mut mask_payload = Vec::with_capacity(CHECK_LIMBS * 8);
+    for value in &x_stars {
+        put_fp(&mut mask_payload, *value);
+    }
+    channel.send(
+        Direction::ProverToVerifier,
+        CommPhase::Check,
+        MessageKind::Stage3WykwMask,
+        mask_payload,
+        &mut prover.transcript,
+    )?;
+    let mask_payload = channel.receive(
+        Direction::ProverToVerifier,
+        MessageKind::Stage3WykwMask,
+        &mut verifier.transcript,
+    )?;
+    let mut mask_reader = Reader::new(&mask_payload);
+    let mut received_x = Vec::with_capacity(CHECK_LIMBS);
+    for _ in 0..CHECK_LIMBS {
+        received_x.push(mask_reader.fp()?);
+    }
+    mask_reader.finish()?;
+    let challenge_elapsed = check_start.elapsed();
+
+    let output_len = tuple.usable_output();
+    let retain_output = retained_destination.is_some();
+    if let Some((prover_out, verifier_out)) = retained_destination.as_ref() {
+        if prover_out.len() != output_len || verifier_out.len() != output_len {
+            return Err(PhaseBError::new("stage-3 retained destination length mismatch"));
+        }
+    }
+    let child_len = if reserve_child { tuple.base_consumption() } else { 0 };
+    let mut next_prover = reserve_child
+        .then(|| ProverBase { r: vec![Fp::ZERO; child_len], m: vec![Fp2::ZERO; child_len] });
+    let mut next_verifier = reserve_child.then(|| VerifierBase { k: vec![Fp2::ZERO; child_len] });
+    let child_start = output_len.saturating_sub(child_len);
+    let code_seed = fase_d_lpn_seed(params, tuple, ordinal, binding);
+    let fanout = if params.profile.starts_with(super::TEST_ONLY_INSECURE_PREFIX) { 4 } else { 10 };
+    let batches = params.batches().map_err(|error| PhaseBError::new(error.to_string()))?;
+    let persistent_bytes = tuple.base_consumption() as u64 * RAW_SUB_CORRELATION_BYTES
+        + connection_retained_prover_bytes
+        + child_len as u64 * RAW_SUB_CORRELATION_BYTES;
+    let largest_batch_rows = batches.iter().map(|batch| batch.row_count).max().unwrap_or(0);
+    let tag_bytes = largest_batch_rows as u64 * std::mem::size_of::<Fp2>() as u64;
+    // Per worker: sender-tree frontier plus punctured reconstruction and one
+    // challenge-vector window.  The local pool is capped from the remaining
+    // bytes, so high core-count hosts cannot violate the 4 GB invariant.
+    let per_worker_scratch = tuple.block_size as u64 * 64;
+    let fixed = persistent_bytes
+        .checked_add(tag_bytes)
+        .ok_or_else(|| PhaseBError::new("stage-3 buffer accounting overflow"))?;
+    let room = params
+        .prover_buffer_cap_bytes
+        .checked_sub(fixed)
+        .ok_or_else(|| PhaseBError::new("stage-3 persistent buffers exceed prover cap"))?;
+    let max_workers = usize::try_from(room / per_worker_scratch).unwrap_or(usize::MAX).max(1);
+    let setup_threads = rayon::current_num_threads().min(max_workers);
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(setup_threads)
+        .thread_name(move |index| format!("volta-stage3-{ordinal}-{index}"))
+        .build()
+        .map_err(|error| PhaseBError::new(format!("cannot build stage-3 Rayon pool: {error}")))?;
+    let worker_bytes = setup_threads as u64 * per_worker_scratch;
+    let mut lift = CanonicalBatchLift::new(ordinal, params.prover_buffer_cap_bytes);
+    lift.acquire_persistent(persistent_bytes)
+        .map_err(|error| PhaseBError::new(error.to_string()))?;
+    let mut prover_acc = [Fp2::ZERO; CHECK_LIMBS];
+    let mut verifier_acc = [Fp2::ZERO; CHECK_LIMBS];
+    let mut released = 0usize;
+    let mut lpn_checksum = 0x4433_4C50_4E52_4F57u64;
+    let mut batch_ggm = Duration::ZERO;
+    let mut batch_check = Duration::ZERO;
+    let mut batch_lpn = Duration::ZERO;
+
+    for batch in &batches {
+        lift.begin_batch(*batch, batch.row_count as u64 * 16 + worker_bytes)
+            .map_err(|error| PhaseBError::new(error.to_string()))?;
+        let batch_ggm_start = Instant::now();
+        let (mut prover_noise, verifier_noise) = pool.install(|| {
+            build_stage_noise_batch(
+                verifier.private_seed,
+                &ggm_label,
+                secrets,
+                selected_aggregates,
+                &beta_prover,
+                &corrections,
+                batch.block_start,
+                batch.block_count,
+                tuple.depth,
+                ggm,
+            )
+        })?;
+        if faults.tamper_ggm_leaf && batch.index == 0 {
+            let tamper = usize::from(secrets.alpha[0] == 0);
+            prover_noise.tags[tamper] += Fp2::ONE;
+        }
+        batch_ggm += batch_ggm_start.elapsed();
+
+        let batch_check_start = Instant::now();
+        let block_sums: Vec<([Fp2; CHECK_LIMBS], [Fp2; CHECK_LIMBS])> = pool.install(|| {
+            (0..batch.block_count)
+                .into_par_iter()
+                .map(|local_block| {
+                    let block = batch.block_start + local_block;
+                    let row = local_block * tuple.block_size;
+                    let mut p = [Fp2::ZERO; CHECK_LIMBS];
+                    let mut v = [Fp2::ZERO; CHECK_LIMBS];
+                    for rep in 0..CHECK_LIMBS {
+                        let p_chi = wykw_chi(prover_challenge_seed, rep, block, tuple.block_size);
+                        let v_chi = wykw_chi(verifier_challenge_seed, rep, block, tuple.block_size);
+                        p[rep] = p_chi
+                            .iter()
+                            .zip(&prover_noise.tags[row..row + tuple.block_size])
+                            .fold(Fp2::ZERO, |acc, (coefficient, tag)| {
+                                acc + tag.mul_base(*coefficient)
+                            });
+                        v[rep] = v_chi
+                            .iter()
+                            .zip(&verifier_noise.keys[row..row + tuple.block_size])
+                            .fold(Fp2::ZERO, |acc, (coefficient, key)| {
+                                acc + key.mul_base(*coefficient)
+                            });
+                    }
+                    (p, v)
+                })
+                .collect()
+        });
+        for (p, v) in block_sums {
+            for rep in 0..CHECK_LIMBS {
+                prover_acc[rep] += p[rep];
+                verifier_acc[rep] += v[rep];
+            }
+        }
+        batch_check += batch_check_start.elapsed();
+
+        let batch_lpn_start = Instant::now();
+        let row_end = (batch.row_start + batch.row_count).min(output_len);
+        if batch.row_start < row_end {
+            if retain_output {
+                let (prover_destination, verifier_destination) =
+                    retained_destination.as_mut().expect("retained destination exists");
+                let prover_out = &mut prover_destination[batch.row_start..row_end];
+                let k_out = &mut verifier_destination[batch.row_start..row_end];
+                pool.install(|| {
+                    prover_out.par_iter_mut().zip(k_out.par_iter_mut()).enumerate().for_each(
+                        |(offset, (prover_out, k_out))| {
+                            let row = batch.row_start + offset;
+                            let (r, m, k, _) = stage3_lpn_row(
+                                row,
+                                batch.row_start,
+                                code_seed,
+                                fanout,
+                                &lpn_prover,
+                                &lpn_verifier,
+                                &prover_noise,
+                                &verifier_noise,
+                                secrets,
+                            );
+                            *prover_out = SubVole { r, m };
+                            *k_out = k;
+                        },
+                    );
+                });
+                let checksum = pool.install(|| {
+                    (batch.row_start..row_end)
+                        .into_par_iter()
+                        .map(|row| {
+                            let value = prover_destination[row];
+                            let k = verifier_destination[row];
+                            value.r.value()
+                                ^ value.m.c0.value().rotate_left(7)
+                                ^ value.m.c1.value().rotate_left(19)
+                                ^ k.c0.value().rotate_left(31)
+                                ^ k.c1.value().rotate_left(43)
+                                ^ (row as u64).rotate_left(3)
+                        })
+                        .reduce(|| 0, |left, right| left ^ right)
+                });
+                lpn_checksum = lpn_checksum.rotate_left(5) ^ checksum;
+            } else {
+                let release_end = row_end.min(child_start);
+                if batch.row_start < release_end {
+                    let checksum = pool.install(|| {
+                        (batch.row_start..release_end)
+                            .into_par_iter()
+                            .map(|row| {
+                                stage3_lpn_row(
+                                    row,
+                                    batch.row_start,
+                                    code_seed,
+                                    fanout,
+                                    &lpn_prover,
+                                    &lpn_verifier,
+                                    &prover_noise,
+                                    &verifier_noise,
+                                    secrets,
+                                )
+                                .3
+                            })
+                            .reduce(|| 0, |left, right| left ^ right)
+                    });
+                    lpn_checksum = lpn_checksum.rotate_left(5) ^ checksum;
+                    released += release_end - batch.row_start;
+                }
+                let reserve_start = batch.row_start.max(child_start);
+                if reserve_child && reserve_start < row_end {
+                    let child_offset = reserve_start - child_start;
+                    let child_end = row_end - child_start;
+                    let next_p = next_prover.as_mut().expect("child reservation exists");
+                    let next_v = next_verifier.as_mut().expect("child reservation exists");
+                    let r_out = &mut next_p.r[child_offset..child_end];
+                    let m_out = &mut next_p.m[child_offset..child_end];
+                    let k_out = &mut next_v.k[child_offset..child_end];
+                    pool.install(|| {
+                        r_out
+                            .par_iter_mut()
+                            .zip(m_out.par_iter_mut())
+                            .zip(k_out.par_iter_mut())
+                            .enumerate()
+                            .for_each(|(offset, ((r_out, m_out), k_out))| {
+                                let row = reserve_start + offset;
+                                let (r, m, k, _) = stage3_lpn_row(
+                                    row,
+                                    batch.row_start,
+                                    code_seed,
+                                    fanout,
+                                    &lpn_prover,
+                                    &lpn_verifier,
+                                    &prover_noise,
+                                    &verifier_noise,
+                                    secrets,
+                                );
+                                *r_out = r;
+                                *m_out = m;
+                                *k_out = k;
+                            });
+                    });
+                }
+            }
+        }
+        batch_lpn += batch_lpn_start.elapsed();
+        lift.lift_checked_batch(*batch).map_err(|error| PhaseBError::new(error.to_string()))?;
+        drop(prover_noise);
+        drop(verifier_noise);
+        lift.release_batch().map_err(|error| PhaseBError::new(error.to_string()))?;
+    }
+    t_ggm += batch_ggm;
+
+    let check_tail_start = Instant::now();
+    let verifier_values: Vec<Fp2> = (0..CHECK_LIMBS)
+        .map(|rep| {
+            let y_star = check_verifier.k[rep] - verifier.delta.mul_base(received_x[rep]);
+            verifier_acc[rep] - y_star
+        })
+        .collect();
+    let mut prover_values: Vec<Fp2> =
+        (0..CHECK_LIMBS).map(|rep| prover_acc[rep] - check_prover.m[rep]).collect();
+    if faults.cheat_consistency_response {
+        prover_values[0] += Fp2::ONE;
+    }
+    let verifier_equality_binding = verifier.transcript.digest();
+    let prover_equality_binding = prover.transcript.digest();
+    let blind_label = fase_d_stage_label(binding, ordinal, b"wykw/feq-blind");
+    let blind = derive_seed(verifier.private_seed, &blind_label, tuple.n as u64);
+    let commitment = wykw_commit(verifier_equality_binding, &verifier_values, blind);
+    channel.send(
+        Direction::VerifierToProver,
+        CommPhase::Check,
+        MessageKind::Stage3EqCommit,
+        commitment.to_vec(),
+        &mut verifier.transcript,
+    )?;
+    let commitment_msg = channel.receive(
+        Direction::VerifierToProver,
+        MessageKind::Stage3EqCommit,
+        &mut prover.transcript,
+    )?;
+    let mut response = Vec::with_capacity(CHECK_LIMBS * 16);
+    for value in &prover_values {
+        put_fp2(&mut response, *value);
+    }
+    channel.send(
+        Direction::ProverToVerifier,
+        CommPhase::Check,
+        MessageKind::Stage3EqResponse,
+        response,
+        &mut prover.transcript,
+    )?;
+    let response = channel.receive(
+        Direction::ProverToVerifier,
+        MessageKind::Stage3EqResponse,
+        &mut verifier.transcript,
+    )?;
+    let mut response_reader = Reader::new(&response);
+    let mut received_values = Vec::with_capacity(CHECK_LIMBS);
+    for _ in 0..CHECK_LIMBS {
+        received_values.push(response_reader.fp2()?);
+    }
+    response_reader.finish()?;
+    if received_values != verifier_values {
+        return Err(PhaseBError::new(
+            "stage-3 WYKW batched single-point consistency check rejected",
+        ));
+    }
+    let mut open = Vec::with_capacity(CHECK_LIMBS * 16 + 32);
+    for value in &verifier_values {
+        put_fp2(&mut open, *value);
+    }
+    open.extend_from_slice(&blind);
+    channel.send(
+        Direction::VerifierToProver,
+        CommPhase::Check,
+        MessageKind::Stage3EqOpen,
+        open,
+        &mut verifier.transcript,
+    )?;
+    let open = channel.receive(
+        Direction::VerifierToProver,
+        MessageKind::Stage3EqOpen,
+        &mut prover.transcript,
+    )?;
+    let mut open_reader = Reader::new(&open);
+    let mut opened_values = Vec::with_capacity(CHECK_LIMBS);
+    for _ in 0..CHECK_LIMBS {
+        opened_values.push(open_reader.fp2()?);
+    }
+    let opened_blind = open_reader.array32()?;
+    open_reader.finish()?;
+    if commitment_msg.as_slice()
+        != wykw_commit(prover_equality_binding, &opened_values, opened_blind)
+        || opened_values != prover_values
+    {
+        return Err(PhaseBError::new("stage-3 WYKW equality opening rejected"));
+    }
+    let consistency = ConsistencyReport {
+        ok: true,
+        checksum: prover_values.iter().fold(0x4433_5759_4B57_4348u64, |acc, value| {
+            acc.rotate_left(13) ^ value.c0.value() ^ value.c1.value().rotate_left(29)
+        }),
+    };
+    let t_check = challenge_elapsed + batch_check + check_tail_start.elapsed();
+    let batch_report =
+        lift.finish(batches.len(), tuple.n).map_err(|error| PhaseBError::new(error.to_string()))?;
+    let reserved = if reserve_child { child_len } else { 0 };
+    let retained = if retain_output { output_len } else { 0 };
+    let classified = released
+        .checked_add(reserved)
+        .and_then(|value| value.checked_add(retained))
+        .ok_or_else(|| PhaseBError::new("stage-3 output classification overflow"))?;
+    if classified != output_len {
+        return Err(PhaseBError::new("stage-3 output classification mismatch"));
+    }
+    let report = FaseDStageExpansionReport {
+        ordinal,
+        input_stage: if ordinal == 1 { "main".into() } else { format!("stage3-{}", ordinal - 1) },
+        tuple,
+        generated: output_len as u64,
+        reserved_as_base: reserved as u64,
+        released: released as u64,
+        retained: retained as u64,
+        consistency,
+        allocation_digest: batch_report.allocation_order_digest,
+        value_checksum: lpn_checksum,
+        prover_buffer_high_water_bytes: batch_report.prover_buffer_high_water_bytes,
+        rayon_threads: setup_threads,
+        t_ggm_s: t_ggm.as_secs_f64(),
+        t_check_s: t_check.as_secs_f64(),
+        t_lpn_s: batch_lpn.as_secs_f64(),
+    };
+    Ok(Stage3Material { next_prover, next_verifier, report })
+}
+
 fn split_base(
     mut prover: ProverBase,
     mut verifier: VerifierBase,
@@ -1922,6 +2779,54 @@ fn split_base(
         ProverBase { r: check_r, m: check_m },
         VerifierBase { k: check_k },
     ))
+}
+
+fn split_tail_base(
+    mut prover: ProverBase,
+    mut verifier: VerifierBase,
+    tail: usize,
+) -> Result<(ProverBase, VerifierBase, ProverBase, VerifierBase), PhaseBError> {
+    if prover.r.len() != prover.m.len()
+        || prover.r.len() != verifier.k.len()
+        || tail > prover.r.len()
+    {
+        return Err(PhaseBError::new("tail base split dimensions mismatch"));
+    }
+    let at = prover.r.len() - tail;
+    let tail_r = prover.r.split_off(at);
+    let tail_m = prover.m.split_off(at);
+    let tail_k = verifier.k.split_off(at);
+    Ok((prover, verifier, ProverBase { r: tail_r, m: tail_m }, VerifierBase { k: tail_k }))
+}
+
+fn phase_a_for_fase_d(params: &FaseDParams) -> Result<PhaseAParams, PhaseBError> {
+    params.setup.validate().map_err(|error| PhaseBError::new(error.to_string()))?;
+    params.main.validate().map_err(|error| PhaseBError::new(error.to_string()))?;
+    params.stage3.validate().map_err(|error| PhaseBError::new(error.to_string()))?;
+    if params.stage3.base_consumption() > params.main.usable_output() {
+        return Err(PhaseBError::new("fase-D stage-3 base exceeds main output"));
+    }
+    let mut phase = if params.profile.starts_with(super::TEST_ONLY_INSECURE_PREFIX) {
+        PhaseAParams::tiny_for_test(params.main.usable_output())
+    } else {
+        let mut phase = PhaseAParams::for_counts(0, 0);
+        phase.output_sub_equiv = params.main.usable_output();
+        phase
+    };
+    phase.profile = params.profile.clone();
+    phase.lpn_k = params.main.k;
+    phase.lpn_n = params.main.n;
+    phase.lpn_noise_weight = params.main.t;
+    phase.base_vole_len = params.main.base_consumption();
+    phase.ggm_block_size = params.main.block_size;
+    phase.ggm_depth = params.main.depth;
+    phase.setup_lpn_k = params.setup.k;
+    phase.setup_lpn_n = params.setup.n;
+    phase.setup_lpn_noise_weight = params.setup.t;
+    phase.setup_ggm_block_size = params.setup.block_size;
+    phase.setup_ggm_depth = params.setup.depth;
+    phase.output_sub_equiv = params.main.usable_output();
+    Ok(phase)
 }
 
 fn public_lpn_seed(params: &PhaseAParams, label: &[u8]) -> [u8; 32] {
@@ -2060,6 +2965,7 @@ fn expand_phase_b_internal(
     sub_corrs: usize,
     full_corrs: usize,
     params: PhaseAParams,
+    ggm_prg: GgmPrg,
     capture_channel: bool,
     faults: Faults,
 ) -> Result<PhaseBExpansion, PhaseBError> {
@@ -2077,7 +2983,8 @@ fn expand_phase_b_internal(
     {
         return Err(PhaseBError::new("response-authorization nonce mismatch"));
     }
-    let setup_params = PhaseBSetupParams::for_phase_a(&params);
+    let ggm = GgmEngine::new(ggm_prg);
+    let setup_params = PhaseBSetupParams::for_phase_a(&params, ggm);
     let total_start = Instant::now();
     let mut timings = TimingAccumulator::default();
     let mut prover = ProverSetup::new(prover_seed, &prover_binding);
@@ -2139,12 +3046,14 @@ fn expand_phase_b_internal(
         b"setup/ggm-root",
         params.setup_lpn_noise_weight,
         params.setup_ggm_depth,
+        ggm,
     );
     let (main_messages, main_verifier_noise, main_checksum) = prepare_ggm_sender(
         verifier.private_seed,
         b"main/ggm-root",
         params.lpn_noise_weight,
         params.ggm_depth,
+        ggm,
     );
     timings.ggm += ggm_prepare_start.elapsed();
     let setup_message_count = setup_messages.len();
@@ -2175,6 +3084,7 @@ fn expand_phase_b_internal(
         setup_verifier_noise,
         MessageKind::SetupGgmCorrections,
         faults.corrupt_ggm_correction,
+        ggm,
     )?;
     timings.ggm += setup_ggm_start.elapsed();
     let setup_check_start = Instant::now();
@@ -2241,6 +3151,7 @@ fn expand_phase_b_internal(
         main_verifier_noise,
         MessageKind::MainGgmCorrections,
         false,
+        ggm,
     )?;
     timings.ggm += main_ggm_start.elapsed();
     let main_check_start = Instant::now();
@@ -2331,6 +3242,460 @@ fn expand_phase_b_internal(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
+fn expand_fase_d_connection_internal(
+    prover_seed: [u8; 32],
+    verifier_seed: [u8; 32],
+    binding: FaseDConnectionBinding,
+    params: FaseDParams,
+    ggm_prg: GgmPrg,
+    capture_channel: bool,
+    stage_fault: Option<(usize, FaseDStageFaults)>,
+) -> Result<FaseDConnectionExpansion, PhaseBError> {
+    if prover_seed == verifier_seed {
+        return Err(PhaseBError::new("fase-D role seeds must be independently provisioned"));
+    }
+    let phase = phase_a_for_fase_d(&params)?;
+    let capacity = FaseDCapacityReport::for_params(&params)
+        .map_err(|error| PhaseBError::new(error.to_string()))?;
+    let session = binding.session_binding();
+    let connection_digest = binding_digest(&session);
+    let ggm = GgmEngine::new(ggm_prg);
+    let total_start = Instant::now();
+    let prelude_start = Instant::now();
+    let mut timings = TimingAccumulator::default();
+    let mut prover = ProverSetup::new(prover_seed, &session);
+    let mut verifier = VerifierSetup::new(verifier_seed, &session);
+    let delta = verifier.delta();
+    let mut channel = SerializedChannel::new(capture_channel, &session);
+
+    let base_ot_start = Instant::now();
+    let base_ot_digest = run_base_ot(&mut prover, &mut verifier, &mut channel)?;
+    timings.base_ot += base_ot_start.elapsed();
+    let direct_len = phase.setup_lpn_k + phase.setup_lpn_noise_weight + CHECK_LIMBS;
+    let (direct_prover, direct_verifier) =
+        run_cope_base_svole(&mut prover, &mut verifier, &mut channel, direct_len, &mut timings)?;
+    let (
+        setup_lpn_prover,
+        setup_lpn_verifier,
+        mut setup_beta_prover,
+        mut setup_beta_verifier,
+        setup_check_prover,
+        setup_check_verifier,
+    ) = split_base(
+        direct_prover,
+        direct_verifier,
+        phase.setup_lpn_k,
+        phase.setup_lpn_noise_weight,
+    )?;
+
+    let setup_sparse_label = fase_d_stage_label(connection_digest, 0, b"setup/sparse");
+    let main_sparse_label = fase_d_stage_label(connection_digest, 0, b"main/sparse");
+    let setup_secrets = sample_sparse(
+        prover.private_seed,
+        &setup_sparse_label,
+        phase.setup_lpn_noise_weight,
+        phase.setup_ggm_block_size,
+    );
+    let main_secrets = sample_sparse(
+        prover.private_seed,
+        &main_sparse_label,
+        phase.lpn_noise_weight,
+        phase.ggm_block_size,
+    );
+    let stage_secrets: Vec<SparseSecrets> = (1..=params.preprovisioned_stage3_instances)
+        .map(|ordinal| {
+            let label = fase_d_stage_label(connection_digest, ordinal, b"sparse");
+            sample_sparse(prover.private_seed, &label, params.stage3.t, params.stage3.block_size)
+        })
+        .collect();
+    let mut all_choices = ggm_choice_bits(&setup_secrets, phase.setup_ggm_depth);
+    all_choices.extend(ggm_choice_bits(&main_secrets, phase.ggm_depth));
+    for secrets in &stage_secrets {
+        all_choices.extend(ggm_choice_bits(secrets, params.stage3.depth));
+    }
+    let (iknp_receiver, iknp_sender, ot_extension_digest) =
+        run_iknp_extension(&mut prover, &mut verifier, &mut channel, all_choices, &mut timings)?;
+
+    apply_beta_corrections(
+        &mut prover,
+        &mut verifier,
+        &mut channel,
+        &mut setup_beta_prover,
+        &mut setup_beta_verifier,
+        &setup_secrets,
+        MessageKind::SetupBetaCorrections,
+    )?;
+    let ggm_prepare_start = Instant::now();
+    let setup_ggm_label = fase_d_stage_label(connection_digest, 0, b"setup/ggm-root");
+    let main_ggm_label = fase_d_stage_label(connection_digest, 0, b"main/ggm-root");
+    let (setup_messages, setup_verifier_noise, _) = prepare_ggm_sender(
+        verifier.private_seed,
+        &setup_ggm_label,
+        phase.setup_lpn_noise_weight,
+        phase.setup_ggm_depth,
+        ggm,
+    );
+    let (main_messages, main_verifier_noise, _) = prepare_ggm_sender(
+        verifier.private_seed,
+        &main_ggm_label,
+        phase.lpn_noise_weight,
+        phase.ggm_depth,
+        ggm,
+    );
+    let setup_message_count = setup_messages.len();
+    let main_message_count = main_messages.len();
+    let mut all_messages = setup_messages;
+    all_messages.extend(main_messages);
+    let mut stage_message_counts = Vec::with_capacity(stage_secrets.len());
+    for ordinal in 1..=stage_secrets.len() {
+        let label = fase_d_stage_label(connection_digest, ordinal, b"ggm-root");
+        let (messages, _) = prepare_ggm_messages_only(
+            verifier.private_seed,
+            &label,
+            params.stage3.t,
+            params.stage3.depth,
+            ggm,
+        );
+        stage_message_counts.push(messages.len());
+        all_messages.extend(messages);
+    }
+    let path_preprovision_elapsed = ggm_prepare_start.elapsed();
+    timings.ggm += path_preprovision_elapsed;
+    let delivery_start = Instant::now();
+    let selected = deliver_ggm_ots(
+        &mut prover,
+        &mut verifier,
+        &mut channel,
+        &iknp_receiver,
+        &iknp_sender,
+        &all_messages,
+    )?;
+    timings.ot_extension += delivery_start.elapsed();
+    let mut cursor = 0;
+    let setup_selected = selected[cursor..cursor + setup_message_count].to_vec();
+    cursor += setup_message_count;
+    let main_selected = selected[cursor..cursor + main_message_count].to_vec();
+    cursor += main_message_count;
+    let mut stage_selected = Vec::with_capacity(stage_message_counts.len());
+    for count in stage_message_counts {
+        stage_selected.push(selected[cursor..cursor + count].to_vec());
+        cursor += count;
+    }
+    if cursor != selected.len() {
+        return Err(PhaseBError::new("fase-D GGM path-slice partition mismatch"));
+    }
+    drop(selected);
+    drop(all_messages);
+
+    let setup_ggm_start = Instant::now();
+    let (mut setup_prover_noise, setup_verifier_noise) = finish_ggm_phase(
+        &mut prover,
+        &mut verifier,
+        &mut channel,
+        &setup_secrets,
+        phase.setup_ggm_depth,
+        &setup_selected,
+        &setup_beta_prover,
+        &setup_beta_verifier,
+        setup_verifier_noise,
+        MessageKind::SetupGgmCorrections,
+        false,
+        ggm,
+    )?;
+    let setup_ggm_elapsed = setup_ggm_start.elapsed();
+    timings.ggm += setup_ggm_elapsed;
+    let setup_check_start = Instant::now();
+    let setup_consistency = wykw_consistency_check(
+        &mut prover,
+        &mut verifier,
+        &mut channel,
+        &setup_secrets,
+        &mut setup_prover_noise,
+        &setup_verifier_noise,
+        &setup_check_prover,
+        &setup_check_verifier,
+        phase_message_kinds(true),
+        Faults::default(),
+    )?;
+    let setup_check_elapsed = setup_check_start.elapsed();
+    timings.check += setup_check_elapsed;
+    let setup_lpn_start = Instant::now();
+    let setup_code_label = fase_d_stage_label(connection_digest, 0, b"setup-to-main");
+    let setup_code_seed = public_lpn_seed(&phase, &setup_code_label);
+    let main_base_prover = lpn_expand_prover(
+        setup_code_seed,
+        &setup_lpn_prover,
+        &setup_prover_noise,
+        &setup_secrets,
+        phase.base_vole_len,
+        phase.code_fanout,
+    )?;
+    let main_base_verifier = lpn_expand_verifier(
+        setup_code_seed,
+        &setup_lpn_verifier,
+        &setup_verifier_noise,
+        phase.base_vole_len,
+        phase.code_fanout,
+    )?;
+    let setup_lpn_elapsed = setup_lpn_start.elapsed();
+    timings.lpn += setup_lpn_elapsed;
+
+    let (
+        main_lpn_prover,
+        main_lpn_verifier,
+        mut main_beta_prover,
+        mut main_beta_verifier,
+        main_check_prover,
+        main_check_verifier,
+    ) = split_base(main_base_prover, main_base_verifier, phase.lpn_k, phase.lpn_noise_weight)?;
+    apply_beta_corrections(
+        &mut prover,
+        &mut verifier,
+        &mut channel,
+        &mut main_beta_prover,
+        &mut main_beta_verifier,
+        &main_secrets,
+        MessageKind::MainBetaCorrections,
+    )?;
+    let main_ggm_start = Instant::now();
+    let (mut main_prover_noise, main_verifier_noise) = finish_ggm_phase(
+        &mut prover,
+        &mut verifier,
+        &mut channel,
+        &main_secrets,
+        phase.ggm_depth,
+        &main_selected,
+        &main_beta_prover,
+        &main_beta_verifier,
+        main_verifier_noise,
+        MessageKind::MainGgmCorrections,
+        false,
+        ggm,
+    )?;
+    let main_ggm_elapsed = main_ggm_start.elapsed();
+    timings.ggm += main_ggm_elapsed;
+    let main_check_start = Instant::now();
+    let main_consistency = wykw_consistency_check(
+        &mut prover,
+        &mut verifier,
+        &mut channel,
+        &main_secrets,
+        &mut main_prover_noise,
+        &main_verifier_noise,
+        &main_check_prover,
+        &main_check_verifier,
+        phase_message_kinds(false),
+        Faults::default(),
+    )?;
+    let main_check_elapsed = main_check_start.elapsed();
+    timings.check += main_check_elapsed;
+    let main_lpn_start = Instant::now();
+    let main_code_label = fase_d_stage_label(connection_digest, 0, b"main-to-stage3");
+    let main_code_seed = public_lpn_seed(&phase, &main_code_label);
+    let main_output_prover = lpn_expand_prover(
+        main_code_seed,
+        &main_lpn_prover,
+        &main_prover_noise,
+        &main_secrets,
+        params.main.usable_output(),
+        phase.code_fanout,
+    )?;
+    let main_output_verifier = lpn_expand_verifier(
+        main_code_seed,
+        &main_lpn_verifier,
+        &main_verifier_noise,
+        params.main.usable_output(),
+        phase.code_fanout,
+    )?;
+    let main_lpn_elapsed = main_lpn_start.elapsed();
+    timings.lpn += main_lpn_elapsed;
+    let (main_residual_prover, main_residual_verifier, mut child_prover, mut child_verifier) =
+        split_tail_base(
+            main_output_prover,
+            main_output_verifier,
+            params.stage3.base_consumption(),
+        )?;
+    let prelude_timings = FaseDPreludeTimings {
+        t_base_ot_s: timings.base_ot.as_secs_f64(),
+        t_ot_extension_s: timings.ot_extension.as_secs_f64(),
+        t_path_preprovision_s: path_preprovision_elapsed.as_secs_f64(),
+        t_recursive_setup_ggm_s: setup_ggm_elapsed.as_secs_f64(),
+        t_recursive_setup_check_s: setup_check_elapsed.as_secs_f64(),
+        t_recursive_setup_lpn_s: setup_lpn_elapsed.as_secs_f64(),
+        t_main_ggm_s: main_ggm_elapsed.as_secs_f64(),
+        t_main_check_s: main_check_elapsed.as_secs_f64(),
+        t_main_lpn_s: main_lpn_elapsed.as_secs_f64(),
+        t_prelude_total_s: prelude_start.elapsed().as_secs_f64(),
+    };
+
+    let terminal = params.plan == FaseDStagePlan::TerminalOne;
+    let retained_capacity = if terminal { capacity.total_allocatable } else { 0 };
+    let mut prover_pool = ProverPcgPool {
+        subs: vec![SubVole { r: Fp::ZERO, m: Fp2::ZERO }; retained_capacity],
+        fulls: Vec::new(),
+    };
+    let mut verifier_pool =
+        VerifierPcgPool { sub_keys: vec![Fp2::ZERO; retained_capacity], full_keys: Vec::new() };
+    if params.plan == FaseDStagePlan::TerminalOne {
+        if main_residual_prover.r.len() != capacity.main_residual
+            || main_residual_prover.m.len() != capacity.main_residual
+            || main_residual_verifier.k.len() != capacity.main_residual
+        {
+            return Err(PhaseBError::new("fase-D main residual dimensions mismatch"));
+        }
+        for (index, ((r, m), k)) in main_residual_prover
+            .r
+            .into_iter()
+            .zip(main_residual_prover.m)
+            .zip(main_residual_verifier.k)
+            .enumerate()
+        {
+            prover_pool.subs[index] = SubVole { r, m };
+            verifier_pool.sub_keys[index] = k;
+        }
+    } else {
+        drop(main_residual_prover);
+        drop(main_residual_verifier);
+    }
+
+    let active = params.plan.activated_stage3_instances();
+    let mut stages = Vec::with_capacity(active);
+    for ordinal in 1..=active {
+        let reserve_child = ordinal < active;
+        let faults = stage_fault
+            .filter(|(fault_ordinal, _)| *fault_ordinal == ordinal)
+            .map(|(_, faults)| faults)
+            .unwrap_or_default();
+        let connection_retained_prover_bytes =
+            prover_pool.subs.capacity() as u64 * std::mem::size_of::<SubVole>() as u64;
+        let retained_destination = terminal.then(|| {
+            (
+                &mut prover_pool.subs[capacity.main_residual..],
+                &mut verifier_pool.sub_keys[capacity.main_residual..],
+            )
+        });
+        let material = expand_stage3_batched(
+            &mut prover,
+            &mut verifier,
+            &mut channel,
+            &params,
+            connection_digest,
+            ordinal,
+            &stage_secrets[ordinal - 1],
+            &stage_selected[ordinal - 1],
+            child_prover,
+            child_verifier,
+            retained_destination,
+            connection_retained_prover_bytes,
+            reserve_child,
+            ggm,
+            faults,
+        )?;
+        let Stage3Material { next_prover, next_verifier, report } = material;
+        if reserve_child {
+            child_prover = next_prover
+                .ok_or_else(|| PhaseBError::new("missing prover child-base reservation"))?;
+            child_verifier = next_verifier
+                .ok_or_else(|| PhaseBError::new("missing verifier child-base reservation"))?;
+        } else {
+            drop(next_prover);
+            drop(next_verifier);
+            child_prover = ProverBase { r: Vec::new(), m: Vec::new() };
+            child_verifier = VerifierBase { k: Vec::new() };
+        }
+        stages.push(report);
+    }
+    drop(child_prover);
+    drop(child_verifier);
+
+    if prover.transcript.digest() != verifier.transcript.digest() {
+        return Err(PhaseBError::new("final fase-D connection transcript divergence"));
+    }
+    let final_binding_digest = prover.transcript.digest();
+    let mut audit = channel.finish()?;
+    if capture_channel {
+        let forbidden = [fp2_bytes(delta).to_vec(), prover_seed.to_vec(), verifier_seed.to_vec()];
+        audit.serialized_delta_found =
+            forbidden.iter().any(|secret| contains_subslice(&audit.serialized_bytes, secret));
+    }
+    if audit.serialized_delta_found {
+        return Err(PhaseBError::new(
+            "Delta, role seed, or seed-equivalent appeared in fase-D channel bytes",
+        ));
+    }
+    let comm = audit.comm();
+    let mut allocation_hasher =
+        blake3::Hasher::new_derive_key("volta/fase-d/connection-allocation/v1");
+    allocation_hasher.update(&connection_digest);
+    allocation_hasher.update(&(capacity.main_residual as u64).to_le_bytes());
+    for stage in &stages {
+        allocation_hasher.update(&(stage.ordinal as u64).to_le_bytes());
+        allocation_hasher.update(&(stage.generated).to_le_bytes());
+        allocation_hasher.update(&(stage.reserved_as_base).to_le_bytes());
+        allocation_hasher.update(&(stage.released).to_le_bytes());
+        allocation_hasher.update(&(stage.retained).to_le_bytes());
+        allocation_hasher.update(stage.allocation_digest.as_bytes());
+    }
+    let expected_retained =
+        if params.plan == FaseDStagePlan::TerminalOne { capacity.total_allocatable } else { 0 };
+    if prover_pool.subs.len() != expected_retained
+        || verifier_pool.sub_keys.len() != expected_retained
+    {
+        return Err(PhaseBError::new("fase-D retained-pool capacity mismatch"));
+    }
+    if !setup_consistency.ok
+        || !main_consistency.ok
+        || stages.iter().any(|stage| !stage.consistency.ok)
+    {
+        return Err(PhaseBError::new("fase-D stage consistency closure failed"));
+    }
+    Ok(FaseDConnectionExpansion {
+        params,
+        prover: prover_pool,
+        verifier: verifier_pool,
+        verifier_delta: delta,
+        comm,
+        channel: audit,
+        base_ot_transcript_digest: hex32(base_ot_digest),
+        ot_extension_digest: hex32(ot_extension_digest),
+        connection_binding_digest: hex32(final_binding_digest),
+        ggm_prg,
+        ggm_aes_backend: ggm.aes_backend(),
+        logical_cpu_count: std::thread::available_parallelism().map_or(1, usize::from),
+        rayon_threads: rayon::current_num_threads(),
+        one_base_phase: true,
+        pcg_production_ready: false,
+        capacity,
+        prelude_timings,
+        stages,
+        allocation_digest: allocation_hasher.finalize().to_hex().to_string(),
+        t_total_s: total_start.elapsed().as_secs_f64(),
+    })
+}
+
+/// Run the preregistered fase-D connection setup.  Production capability
+/// preflight accepts only the exact estimator-registered tuple and always
+/// preprovisions six stage-3 path slices inside one base OT/COPEe/IKNP phase.
+pub fn expand_fase_d_connection(
+    prover_seed: [u8; 32],
+    verifier_seed: [u8; 32],
+    binding: FaseDConnectionBinding,
+    params: FaseDParams,
+    ggm_prg: GgmPrg,
+) -> Result<FaseDConnectionExpansion, PhaseBError> {
+    params.production_preflight().map_err(|error| PhaseBError::new(error.to_string()))?;
+    expand_fase_d_connection_internal(
+        prover_seed,
+        verifier_seed,
+        binding,
+        params,
+        ggm_prg,
+        false,
+        None,
+    )
+}
+
 /// Run the real two-party phase-B setup. `prover_seed` and `verifier_seed`
 /// provision independent local RNGs; neither seed is sent or shared, and the
 /// verifier samples `Delta` internally.
@@ -2341,20 +3706,50 @@ pub fn expand_phase_b(
     full_corrs: usize,
     params: PhaseAParams,
 ) -> Result<PhaseBExpansion, PhaseBError> {
+    expand_phase_b_with_ggm_prg(
+        prover_seed,
+        verifier_seed,
+        sub_corrs,
+        full_corrs,
+        params,
+        GgmPrg::default(),
+    )
+}
+
+/// Run phase B with an explicit GGM-only PRG selection. Production callers
+/// use [`GgmPrg::Aes128Mmo`]; [`GgmPrg::Blake3`] is retained for diagnostics
+/// and compatibility tests and is never selected implicitly.
+pub fn expand_phase_b_with_ggm_prg(
+    prover_seed: [u8; 32],
+    verifier_seed: [u8; 32],
+    sub_corrs: usize,
+    full_corrs: usize,
+    params: PhaseAParams,
+    ggm_prg: GgmPrg,
+) -> Result<PhaseBExpansion, PhaseBError> {
     if prover_seed == verifier_seed {
         return Err(PhaseBError::new("phase-B role seeds must be independently provisioned"));
     }
     let binding = SessionBinding::deterministic(prover_seed, verifier_seed);
-    expand_phase_b_bound(prover_seed, verifier_seed, binding, sub_corrs, full_corrs, params)
+    expand_phase_b_bound_with_ggm_prg(
+        prover_seed,
+        verifier_seed,
+        binding,
+        sub_corrs,
+        full_corrs,
+        params,
+        ggm_prg,
+    )
 }
 
-pub(crate) fn expand_phase_b_bound(
+pub(crate) fn expand_phase_b_bound_with_ggm_prg(
     prover_seed: [u8; 32],
     verifier_seed: [u8; 32],
     binding: SessionBinding,
     sub_corrs: usize,
     full_corrs: usize,
     params: PhaseAParams,
+    ggm_prg: GgmPrg,
 ) -> Result<PhaseBExpansion, PhaseBError> {
     expand_phase_b_internal(
         prover_seed,
@@ -2364,6 +3759,7 @@ pub(crate) fn expand_phase_b_bound(
         sub_corrs,
         full_corrs,
         params,
+        ggm_prg,
         false,
         Faults::default(),
     )
@@ -2381,6 +3777,14 @@ mod tests {
     }
 
     fn run_with(faults: Faults, capture: bool) -> Result<PhaseBExpansion, PhaseBError> {
+        run_with_prg(faults, capture, GgmPrg::default())
+    }
+
+    fn run_with_prg(
+        faults: Faults,
+        capture: bool,
+        ggm_prg: GgmPrg,
+    ) -> Result<PhaseBExpansion, PhaseBError> {
         let binding = SessionBinding::deterministic(PROVER_SEED, VERIFIER_SEED);
         expand_phase_b_internal(
             PROVER_SEED,
@@ -2390,6 +3794,7 @@ mod tests {
             48,
             5,
             params(),
+            ggm_prg,
             capture,
             faults,
         )
@@ -2398,6 +3803,8 @@ mod tests {
     #[test]
     fn honest_two_party_channel_has_matching_counts_and_mac_relations() {
         let out = run_with(Faults::default(), false).unwrap();
+        assert_eq!(out.setup.params.ggm_prg, GgmPrg::Aes128Mmo);
+        assert_eq!(out.setup.params.ggm_aes_backend, ggm::detect_aes_backend());
         assert!(out.consistency.ok);
         assert_eq!(out.prover.subs.len(), 48);
         assert_eq!(out.prover.fulls.len(), 5);
@@ -2418,6 +3825,47 @@ mod tests {
         assert_eq!(out.setup.setup_binding_digest, audit.transcript_digest);
         assert!(!out.setup.role_seeds_shared);
         assert!(!out.setup.delta_serialized);
+    }
+
+    #[test]
+    fn both_explicit_ggm_prgs_preserve_mac_relations() {
+        for prg in [GgmPrg::Aes128Mmo, GgmPrg::Blake3] {
+            let out = run_with_prg(Faults::default(), false, prg).unwrap();
+            assert_eq!(out.setup.params.ggm_prg, prg);
+            assert!(out.consistency.ok);
+            for (value, key) in out.prover.subs.iter().zip(&out.verifier.sub_keys) {
+                assert_eq!(*key, value.m + out.verifier_delta.mul_base(value.r));
+            }
+        }
+    }
+
+    #[test]
+    fn both_ggm_prgs_reconstruct_the_same_canonical_puncture() {
+        let root = [0x42; 16];
+        let depth = 4;
+        let alpha = 11usize;
+        let secrets =
+            SparseSecrets { alpha: vec![alpha], beta: vec![Fp::ONE], block_size: 1 << depth };
+        let choices = ggm_choice_bits(&secrets, depth);
+        for prg in [GgmPrg::Aes128Mmo, GgmPrg::Blake3] {
+            let engine = GgmEngine::new(prg);
+            let (messages, leaves) = ggm_sender_tree(root, depth, engine);
+            let aggregates: Vec<GgmSeed> = messages
+                .iter()
+                .zip(&choices)
+                .map(|(message, choice)| if *choice == 0 { message.zero } else { message.one })
+                .collect();
+            let reconstructed =
+                reconstruct_punctured_tree(&aggregates, &choices, depth, engine).unwrap();
+            assert_eq!(reconstructed.len(), leaves.len());
+            for (index, (actual, expected)) in reconstructed.iter().zip(&leaves).enumerate() {
+                if index == alpha {
+                    assert!(actual.is_none());
+                } else {
+                    assert_eq!(actual.as_ref(), Some(expected));
+                }
+            }
+        }
     }
 
     #[test]
@@ -2474,6 +3922,19 @@ mod tests {
     }
 
     #[test]
+    fn malicious_ggm_faults_are_rejected_on_both_prgs() {
+        for prg in [GgmPrg::Aes128Mmo, GgmPrg::Blake3] {
+            for faults in [
+                Faults { tamper_ggm_leaf: true, ..Faults::default() },
+                Faults { corrupt_ggm_correction: true, ..Faults::default() },
+            ] {
+                let error = run_with_prg(faults, false, prg).unwrap_err();
+                assert!(error.to_string().contains("single-point consistency check rejected"));
+            }
+        }
+    }
+
+    #[test]
     fn cheating_consistency_response_is_rejected() {
         let error =
             run_with(Faults { cheat_consistency_response: true, ..Faults::default() }, false)
@@ -2500,6 +3961,7 @@ mod tests {
             48,
             5,
             params(),
+            GgmPrg::default(),
             false,
             Faults::default(),
         )
@@ -2516,10 +3978,152 @@ mod tests {
             48,
             5,
             params(),
+            GgmPrg::default(),
             false,
             Faults::default(),
         )
         .unwrap_err();
         assert!(error.to_string().contains("session identity mismatch"));
+    }
+
+    fn fase_d_binding() -> FaseDConnectionBinding {
+        FaseDConnectionBinding::new([0xD1; 32], [0xD2; 32]).unwrap()
+    }
+
+    fn run_fase_d_toy(
+        plan: FaseDStagePlan,
+        prg: GgmPrg,
+        capture: bool,
+        fault: Option<(usize, FaseDStageFaults)>,
+    ) -> Result<FaseDConnectionExpansion, PhaseBError> {
+        expand_fase_d_connection_internal(
+            PROVER_SEED,
+            VERIFIER_SEED,
+            fase_d_binding(),
+            FaseDParams::test_only_insecure(plan),
+            prg,
+            capture,
+            fault,
+        )
+    }
+
+    #[test]
+    fn fase_d_toy_terminal_runs_one_base_phase_and_preserves_mac_relation() {
+        let mut digests = Vec::new();
+        let mut base_ot_bytes = None;
+        for prg in [GgmPrg::Aes128Mmo, GgmPrg::Blake3] {
+            let out = run_fase_d_toy(FaseDStagePlan::TerminalOne, prg, true, None).unwrap();
+            assert!(out.one_base_phase);
+            assert!(!out.pcg_production_ready);
+            assert_eq!(out.stages.len(), 1);
+            assert_eq!(out.prover.subs.len(), 354);
+            assert_eq!(out.prover.subs.len(), out.capacity.total_allocatable);
+            assert_eq!(
+                out.comm.base_ot_bytes,
+                out.channel.base_ot_prover_to_verifier_bytes
+                    + out.channel.base_ot_verifier_to_prover_bytes
+            );
+            assert!(!out.channel.serialized_delta_found);
+            for (value, key) in out.prover.subs.iter().zip(&out.verifier.sub_keys) {
+                assert_eq!(*key, value.m + out.verifier_delta.mul_base(value.r));
+            }
+            if let Some(expected) = base_ot_bytes {
+                assert_eq!(out.comm.base_ot_bytes, expected);
+            } else {
+                base_ot_bytes = Some(out.comm.base_ot_bytes);
+            }
+            eprintln!(
+                "fase-D toy terminal prg={} total_s={:.6} traffic={}B p_to_v={}B v_to_p={}B high_water={}B",
+                prg,
+                out.t_total_s,
+                out.comm.total_bytes,
+                out.comm.prover_to_verifier_bytes,
+                out.comm.verifier_to_prover_bytes,
+                out.stages[0].prover_buffer_high_water_bytes,
+            );
+            digests.push(out.allocation_digest);
+        }
+        assert_eq!(digests[0], digests[1], "logical allocation must be PRG-independent");
+    }
+
+    #[test]
+    fn fase_d_toy_chain_reserves_children_and_releases_flat_pools() {
+        let out = run_fase_d_toy(FaseDStagePlan::ChainSix, GgmPrg::Aes128Mmo, false, None).unwrap();
+        assert_eq!(out.stages.len(), 6);
+        assert!(out.prover.subs.is_empty());
+        assert!(out.verifier.sub_keys.is_empty());
+        for stage in out.stages.iter().take(5) {
+            assert_eq!(stage.reserved_as_base, 42);
+            assert_eq!(stage.retained, 0);
+            assert_eq!(stage.generated, stage.reserved_as_base + stage.released);
+        }
+        let last = out.stages.last().unwrap();
+        assert_eq!(last.reserved_as_base, 0);
+        assert_eq!(last.released, last.generated);
+        assert!(out.stages.iter().all(|stage| stage.prover_buffer_high_water_bytes <= 1 << 20));
+        eprintln!(
+            "fase-D toy chain-six total_s={:.6} traffic={}B gross={} reserved={} high_water={}B",
+            out.t_total_s,
+            out.comm.total_bytes,
+            out.capacity.gross_stage3,
+            out.capacity.reserved_stage3_as_base,
+            out.stages.iter().map(|stage| stage.prover_buffer_high_water_bytes).max().unwrap_or(0),
+        );
+    }
+
+    #[test]
+    fn fase_d_multi_response_channel_transcript_excludes_connection_secrets() {
+        let out =
+            run_fase_d_toy(FaseDStagePlan::TerminalOne, GgmPrg::Aes128Mmo, true, None).unwrap();
+        let mut transcript = out.channel.serialized_bytes.clone();
+        for response in 1u8..=3 {
+            let payload =
+                derive_seed([response; 32], b"public-response-frame", u64::from(response));
+            transcript.push(Direction::ProverToVerifier as u8);
+            transcript.push(0x40 + response);
+            transcript.extend_from_slice(&(payload.len() as u64).to_le_bytes());
+            transcript.extend_from_slice(&payload);
+        }
+        for forbidden in
+            [fp2_bytes(out.verifier_delta).to_vec(), PROVER_SEED.to_vec(), VERIFIER_SEED.to_vec()]
+        {
+            assert!(!contains_subslice(&transcript, &forbidden));
+        }
+    }
+
+    #[test]
+    fn fase_d_malicious_ggm_and_wykw_faults_reject_every_stage() {
+        for ordinal in 1..=6 {
+            for faults in [
+                FaseDStageFaults { tamper_ggm_leaf: true, ..FaseDStageFaults::default() },
+                FaseDStageFaults { corrupt_ggm_correction: true, ..FaseDStageFaults::default() },
+                FaseDStageFaults {
+                    cheat_consistency_response: true,
+                    ..FaseDStageFaults::default()
+                },
+            ] {
+                let error = run_fase_d_toy(
+                    FaseDStagePlan::ChainSix,
+                    GgmPrg::Aes128Mmo,
+                    false,
+                    Some((ordinal, faults)),
+                )
+                .unwrap_err();
+                assert!(error.to_string().contains("stage-3 WYKW"));
+            }
+        }
+    }
+
+    #[test]
+    fn fase_d_production_entry_rejects_test_only_tuple_before_crypto() {
+        let error = expand_fase_d_connection(
+            PROVER_SEED,
+            VERIFIER_SEED,
+            fase_d_binding(),
+            FaseDParams::test_only_insecure(FaseDStagePlan::TerminalOne),
+            GgmPrg::Aes128Mmo,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("production preflight rejected"));
     }
 }

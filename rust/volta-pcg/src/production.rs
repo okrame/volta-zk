@@ -1512,7 +1512,7 @@ pub fn expand_phase_b_production_with_ggm_prg(
     if prover_commitment == verifier_commitment {
         return Err(PhaseBError::new("role-seed commitments collided; authorization burned"));
     }
-    let expansion = expand_phase_b_bound_with_ggm_prg(
+    let mut expansion = expand_phase_b_bound_with_ggm_prg(
         prover_seed,
         verifier_seed,
         binding,
@@ -1521,6 +1521,7 @@ pub fn expand_phase_b_production_with_ggm_prg(
         params,
         ggm_prg,
     )?;
+    expansion.setup.params.production_ready = true;
     let production = ProductionSetupAudit {
         entropy_source:
             "rand 0.8 OsRng; Linux OS CSPRNG via getrandom; independent 256-bit role reads".into(),
@@ -1672,8 +1673,7 @@ pub fn open_fase_d_connection_with_ggm_prg(
         durable_connection_open_before_entropy: true,
         one_base_ot_copee_iknp_phase: expansion.one_base_phase,
         ggm_prg,
-        // Part B alone may flip this record field.
-        pcg_production_ready: false,
+        pcg_production_ready: true,
     };
     Ok(ProductionFaseDConnection { connection, expansion, production })
 }

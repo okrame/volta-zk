@@ -1,29 +1,29 @@
-# P7b RunPod official runbook
+# Fase-D RunPod official runbook
 
-This is the exact reproduction contract for the `runpod-a100-v1` profile.
-The ledger entry `P7b RunPod official-provider and gate-profile migration` is
-authoritative. Historical Thunder measurements and the RunPod ABI-27 control
-are comparison artifacts, not substitutes for this run.
+This is the exact reproduction contract for the fase-D
+`runpod-a100-realpcg-v1` profile. The fase-D preregistration and ledger are
+authoritative. The historical `runpod-a100-v1` profile remains immutable and
+is not a substitute for this run.
 
 ## Fixed profile
 
-The report is official-eligible only when all values match exactly:
+The first real-PCG measurement establishes a new pod-CPU host class. Complete
+machine metadata is mandatory, but the old pod's region, image, driver, CPU,
+RAM and vCPU identity are not inherited as gates:
 
 | Field | Required value |
 | --- | --- |
-| Provider / region | `RunPod` / `eur-is-1` |
-| Image | `Ubuntu 24.04.3 LTS` |
-| Driver / CUDA | `580.159.04` / `12.8` |
+| Provider | `RunPod` |
+| Region / image / driver / CUDA | recorded exactly from this pod |
 | GPU | `NVIDIA A100-SXM4-80GB` |
-| CPU | `AMD EPYC 7713 64-Core Processor` |
-| RAM / provider vCPUs | `1008` GiB / `255` |
+| CPU / RAM / provider vCPUs | recorded exactly from this pod |
 | Prover CPU budget | `RAYON_NUM_THREADS=8` |
 | Backend / ABI | `cuda-resident` / current ABI 28 |
 | Timing | `wall-only-counters` |
 
-The instance id must be present but is intentionally not pinned. A different
-image, driver, region or hardware revision is a new profile and needs a ledger
-deviation before measurement.
+The instance id must be present. Setup wall, stage splits and traffic are an
+informative first-run baseline; there is no setup-wall gate on this unmeasured
+host class.
 
 ## Clean build and differential
 
@@ -47,23 +47,25 @@ from the provider's vCPU inventory:
 ```sh
 export VOLTA_CLOUD_PROVIDER='RunPod'
 export VOLTA_CLOUD_INSTANCE_ID='REPLACE_WITH_CURRENT_POD_ID'
-export VOLTA_CLOUD_REGION='eur-is-1'
-export VOLTA_CLOUD_IMAGE='Ubuntu 24.04.3 LTS'
-export VOLTA_CLOUD_DRIVER_VERSION='580.159.04'
-export VOLTA_CLOUD_CUDA_VERSION='12.8'
+export VOLTA_CLOUD_REGION='REPLACE_WITH_CURRENT_REGION'
+export VOLTA_CLOUD_IMAGE='REPLACE_WITH_CURRENT_IMAGE'
+export VOLTA_CLOUD_DRIVER_VERSION='REPLACE_WITH_NVIDIA_DRIVER_VERSION'
+export VOLTA_CLOUD_CUDA_VERSION='REPLACE_WITH_CUDA_VERSION'
 export VOLTA_CLOUD_GPU_SKU='NVIDIA A100-SXM4-80GB'
-export VOLTA_CLOUD_CPU_MODEL='AMD EPYC 7713 64-Core Processor'
-export VOLTA_CLOUD_RAM_GIB='1008'
-export VOLTA_CLOUD_VCPUS='255'
+export VOLTA_CLOUD_CPU_MODEL='REPLACE_WITH_CURRENT_CPU_MODEL'
+export VOLTA_CLOUD_RAM_GIB='REPLACE_WITH_CURRENT_RAM_GIB'
+export VOLTA_CLOUD_VCPUS='REPLACE_WITH_CURRENT_VCPUS'
 export RAYON_NUM_THREADS=8
 ```
 
 ## Quick then official
 
 The runner enforces the exact profile, a clean unchanged SHA, Q=200,
-counters-only timing and external staging. It first runs T=16+8 with 0+1,
-then T=100+50 with 1+3 and validates the latter through the same fail-closed
-selector used by `scripts/report.py`. A valid performance failure exits zero;
+counters-only timing, real-PCG/AES, one connection-scoped base phase and
+external staging. It first runs T=16+8 with 0+1, then T=100+50 with 1+3 and
+validates the latter through the fase-D fail-closed selector. The full report
+also executes the G2 capacity/byte gate on the pod CPU and records the setup
+wall split as informative. A valid measured performance failure is retained;
 an incomplete or ineligible report exits non-zero. Completed raw JSONs are
 restored append-only even if a later step fails.
 
@@ -72,7 +74,7 @@ cd "$HOME/volta-zk"
 STAGING="$HOME/p7b-runpod-official-$(git rev-parse --short=12 HEAD)"
 test ! -e "$STAGING"
 scripts/run_p7b_runpod_official.sh "$STAGING"
-sha256sum benchmarks/results/p7b-integrated-resident-*-wall-only-counters-*.json
+sha256sum benchmarks/results/runpod-a100-realpcg-v1-*.json
 ```
 
 Before terminating the pod, copy the two new JSONs and their SHA-256 values to
@@ -80,11 +82,11 @@ the canonical local checkout. Confirm the official full JSON again with:
 
 ```sh
 python3 scripts/report.py \
-  --validate-p7b-official benchmarks/results/REPLACE_WITH_FULL_RESULT.json
+  --validate-fase-d-pod-official benchmarks/results/REPLACE_WITH_FULL_RESULT.json
 ```
 
-Record quick/full measurements, checksums and the valid pass/fail verdict in
-`docs/prototype-status.md`. Raw synchronization count remains diagnostic. The
-sync gate is the maximum per-repetition
-`synchronization_s / t_response_session_wall_s <= 0.02`; no <=5,000 count
-criterion exists under this profile. Mock-PCG remains non-production.
+Record quick/full measurements, checksums, real-PCG setup/G2 observations and
+the pass/fail verdict in `docs/prototype-status.md`. Raw synchronization count
+remains diagnostic. The sync gate is the maximum per-repetition
+`synchronization_s / t_response_session_wall_s <= 0.02`; no count criterion
+exists. Mock-PCG is an explicit test backend and cannot produce this record.

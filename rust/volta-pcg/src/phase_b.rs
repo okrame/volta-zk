@@ -3685,7 +3685,7 @@ pub fn expand_fase_d_connection(
     ggm_prg: GgmPrg,
 ) -> Result<FaseDConnectionExpansion, PhaseBError> {
     params.production_preflight().map_err(|error| PhaseBError::new(error.to_string()))?;
-    expand_fase_d_connection_internal(
+    let mut expansion = expand_fase_d_connection_internal(
         prover_seed,
         verifier_seed,
         binding,
@@ -3693,7 +3693,9 @@ pub fn expand_fase_d_connection(
         ggm_prg,
         false,
         None,
-    )
+    )?;
+    expansion.pcg_production_ready = true;
+    Ok(expansion)
 }
 
 /// Run the real two-party phase-B setup. `prover_seed` and `verifier_seed`

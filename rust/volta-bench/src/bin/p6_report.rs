@@ -41,8 +41,11 @@ use volta_gpt2::{
 };
 use volta_mac::{zero_batch_exchange, CorrelationStream, Transcript, VerifierCtx};
 use volta_pcg::{
-    expand_phase_b_production_with_ggm_prg, GgmPrg, PhaseBTimings, ProductionSetupAudit,
-    ProverPcgPool, ResponseAuthorizationStore, SessionBinding, SetupCommBreakdown, VerifierPcgPool,
+    expand_phase_b_production_with_ggm_prg, open_fase_d_connection_with_ggm_prg, ConnectionBinding,
+    ConnectionState, ConnectionStore, CorrelationDomain, FaseDCapacityReport, FaseDParams,
+    FaseDPreludeTimings, FaseDStageExpansionReport, FaseDStagePlan, GgmPrg, PhaseBTimings,
+    ProductionFaseDConnection, ProductionSetupAudit, ProverPcgPool, ResponseAuthorizationStore,
+    SessionBinding, SetupCommBreakdown, StageCorrelationCounters, VerifierPcgPool,
 };
 use volta_pcs::{
     commit, commit_resident_from_device, commit_with_backend, free_resident_matrix,
@@ -498,6 +501,39 @@ impl AcceleratorStatsRow {
     }
 }
 
+#[derive(Clone, Debug, Serialize)]
+struct FaseDSetupRecord {
+    params: FaseDParams,
+    capacity: FaseDCapacityReport,
+    comm: SetupCommBreakdown,
+    prelude_timings: FaseDPreludeTimings,
+    stages: Vec<FaseDStageExpansionReport>,
+    ggm_prg: GgmPrg,
+    ggm_aes_feature: String,
+    detected_logical_cpu_cores: usize,
+    pcg_setup_rayon_threads: usize,
+    one_connection_base_phase: bool,
+    pcg_production_ready: bool,
+    total_setup_wall_s: f64,
+    setup_allocation_digest: String,
+    maximum_prover_buffer_high_water_bytes: u64,
+    g2_capacity_gate_pass: bool,
+    g2_traffic_gate_pass: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct FaseDLifecycleRecord {
+    completed_responses: u64,
+    response_base_ot_bytes: Vec<u64>,
+    response_ot_extension_bytes: Vec<u64>,
+    responses_after_first_repeat_base_ot_bytes: u64,
+    responses_after_first_repeat_ot_extension_bytes: u64,
+    allocation_digest: String,
+    channel_ledger_digest: String,
+    stage_counters: BTreeMap<u32, StageCorrelationCounters>,
+    terminal_state: ConnectionState,
+}
+
 #[derive(Serialize)]
 struct Report {
     report_schema_version: u32,
@@ -561,6 +597,8 @@ struct Report {
     flip_readiness_cost_acceptance_pending: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     flip_readiness_default_flip_pending: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fase_d_g1_pass: Option<bool>,
     // P7b gates are emitted only by the resident schema. Quick runs retain
     // observations but deliberately do not emit pass/fail verdicts.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -723,6 +761,10 @@ struct Report {
     detected_logical_cpu_cores: usize,
     pcg_setup_rayon_threads: usize,
     pcg_production_ready: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fase_d_setup: Option<FaseDSetupRecord>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fase_d_lifecycle: Option<FaseDLifecycleRecord>,
     pcg_setup_comm_bytes: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pcg_setup_instances: Option<usize>,
@@ -894,11 +936,13 @@ struct Args {
     quick: bool,
     c1_record: bool,
     flip_readiness_record: bool,
+    fase_d_record: bool,
     pcs_q: Option<usize>,
     pcg_backend: PcgBackendArg,
     ggm_prg: GgmPrg,
     diagnostic: bool,
     pcg_authorization_store: Option<PathBuf>,
+    pcg_connection_store: Option<PathBuf>,
     accelerator: AcceleratorArg,
     resident_timing: ResidentTimingArg,
     repetitions: Option<usize>,
@@ -961,8 +1005,9 @@ impl PcgBackendArg {
 
 fn usage() -> ! {
     eprintln!(
-        "usage: p6_report [--quick|--c1-record|--flip-readiness-record] [--pcs-q Q] \
+        "usage: p6_report [--quick|--c1-record|--flip-readiness-record|--fase-d-record] [--pcs-q Q] \
          [--pcg-backend mock|real] [--pcg-authorization-store PATH] \
+         [--pcg-connection-store PATH] \
          [--ggm-prg aes128-mmo|blake3] [--diagnostic] \
          [--accelerator cpu|cuda-hybrid|cuda-resident] [--repetitions N] \
          [--warmup-repetitions N] \
@@ -976,11 +1021,13 @@ fn parse_args() -> Args {
         quick: false,
         c1_record: false,
         flip_readiness_record: false,
+        fase_d_record: false,
         pcs_q: None,
         pcg_backend: PcgBackendArg::Real,
         ggm_prg: GgmPrg::Aes128Mmo,
         diagnostic: false,
         pcg_authorization_store: None,
+        pcg_connection_store: None,
         accelerator: AcceleratorArg::Cpu,
         resident_timing: ResidentTimingArg::DeferredEvents,
         repetitions: None,
@@ -994,6 +1041,8 @@ fn parse_args() -> Args {
             out.c1_record = true;
         } else if a == "--flip-readiness-record" {
             out.flip_readiness_record = true;
+        } else if a == "--fase-d-record" {
+            out.fase_d_record = true;
         } else if a == "--pcs-q" {
             let Some(q) = args.next() else { usage() };
             out.pcs_q = Some(q.parse().unwrap_or_else(|_| usage()));
@@ -1016,6 +1065,11 @@ fn parse_args() -> Args {
             out.pcg_authorization_store = Some(PathBuf::from(path));
         } else if let Some(path) = a.strip_prefix("--pcg-authorization-store=") {
             out.pcg_authorization_store = Some(PathBuf::from(path));
+        } else if a == "--pcg-connection-store" {
+            let Some(path) = args.next() else { usage() };
+            out.pcg_connection_store = Some(PathBuf::from(path));
+        } else if let Some(path) = a.strip_prefix("--pcg-connection-store=") {
+            out.pcg_connection_store = Some(PathBuf::from(path));
         } else if a == "--accelerator" {
             let Some(b) = args.next() else { usage() };
             out.accelerator = parse_accelerator(&b);
@@ -1367,6 +1421,60 @@ fn real_session_backend(
         production.production,
         channel_transcripts_match,
     )
+}
+
+fn fase_d_session_backend(
+    connection: &mut ProductionFaseDConnection,
+    authorization_store: &ResponseAuthorizationStore,
+    binding: ConnectionBinding,
+    sub_corrs: u64,
+    full_corrs: u64,
+    ordinal: u64,
+) -> SessionPcgBackend {
+    let response_nonce = os_random_identity("fase-D response-authorization nonce");
+    let response_binding = binding
+        .response_binding(response_nonce)
+        .expect("nonzero OS-generated fase-D response identity");
+    connection
+        .connection
+        .begin_response(authorization_store, response_binding)
+        .expect("durably burn fase-D response authorization before allocation");
+    let mut tensor_hasher = blake3::Hasher::new();
+    tensor_hasher.update(b"volta-zk/fase-d/p6-response-domain/v1");
+    tensor_hasher.update(&ordinal.to_le_bytes());
+    let tensor_tag = *tensor_hasher.finalize().as_bytes();
+    let layer = u32::try_from(ordinal).expect("fase-D response ordinal exceeds u32");
+    let domain = CorrelationDomain::new(
+        binding.connection_id,
+        response_nonce,
+        layer,
+        0,
+        ordinal,
+        tensor_tag,
+    )
+    .expect("canonical fase-D response allocation domain");
+    let pools = connection
+        .allocate_pcg_pools(1, sub_corrs as usize, full_corrs as usize, domain)
+        .expect("allocate one-time fase-D correlations for response");
+    SessionPcgBackend::Real {
+        prover: pools.prover,
+        verifier: pools.verifier,
+        delta: pools.verifier_delta,
+    }
+}
+
+fn finish_fase_d_response(connection: &mut ProductionFaseDConnection, accepted: bool) {
+    if accepted {
+        connection
+            .connection
+            .finish_response_success()
+            .expect("durably finish successful fase-D response");
+    } else {
+        connection
+            .connection
+            .malicious_check_failed()
+            .expect("terminally burn failed fase-D connection");
+    }
 }
 
 fn add_timings(dst: &mut Option<PhaseBTimings>, src: PhaseBTimings) {
@@ -2066,7 +2174,7 @@ fn main() {
     }
     let cloud = cloud_metadata_from_env();
     let rayon_threads = rayon::current_num_threads();
-    let fase_d_realpcg_profile = args.pcg_backend == PcgBackendArg::Real;
+    let fase_d_realpcg_profile = args.fase_d_record;
     let p7b_machine_is_eligible =
         p7b_machine_eligible(cloud.as_ref(), rayon_threads, fase_d_realpcg_profile);
     let logical_cpu_cores = detected_logical_cpu_cores();
@@ -2087,12 +2195,16 @@ fn main() {
         );
         std::process::exit(2);
     }
-    if args.diagnostic && (args.c1_record || args.flip_readiness_record) {
+    if args.diagnostic && (args.c1_record || args.flip_readiness_record || args.fase_d_record) {
         eprintln!("p6_report: diagnostic mode cannot be combined with a record mode");
         std::process::exit(2);
     }
-    if args.c1_record && args.flip_readiness_record {
-        eprintln!("p6_report: --c1-record and --flip-readiness-record are mutually exclusive");
+    if usize::from(args.c1_record)
+        + usize::from(args.flip_readiness_record)
+        + usize::from(args.fase_d_record)
+        > 1
+    {
+        eprintln!("p6_report: record selectors are mutually exclusive");
         std::process::exit(2);
     }
     if args.c1_record
@@ -2119,6 +2231,18 @@ fn main() {
     }
     if args.flip_readiness_record && git_dirty_before_benchmark {
         eprintln!("p6_report: --flip-readiness-record requires a clean tree before setup");
+        std::process::exit(2);
+    }
+    if args.fase_d_record
+        && (args.pcg_backend != PcgBackendArg::Real || args.ggm_prg != GgmPrg::Aes128Mmo)
+    {
+        eprintln!(
+            "p6_report: --fase-d-record requires the default real backend and aes128-mmo GGM"
+        );
+        std::process::exit(2);
+    }
+    if args.fase_d_record && git_dirty_before_benchmark {
+        eprintln!("p6_report: --fase-d-record requires a clean tree before setup");
         std::process::exit(2);
     }
     let repetitions =
@@ -2152,6 +2276,24 @@ fn main() {
         };
         Some(ResponseAuthorizationStore::new(path).unwrap_or_else(|error| {
             eprintln!("p6_report: response-authorization capability preflight failed: {error}");
+            std::process::exit(2);
+        }))
+    } else {
+        None
+    };
+    let connection_store_path = args
+        .pcg_connection_store
+        .clone()
+        .or_else(|| std::env::var_os("VOLTA_PCG_CONNECTION_STORE").map(PathBuf::from));
+    let pcg_connection_store = if args.fase_d_record {
+        let Some(path) = connection_store_path else {
+            eprintln!(
+                "p6_report: --fase-d-record requires --pcg-connection-store PATH or VOLTA_PCG_CONNECTION_STORE"
+            );
+            std::process::exit(2);
+        };
+        Some(ConnectionStore::new(path).unwrap_or_else(|error| {
+            eprintln!("p6_report: connection-store capability preflight failed: {error}");
             std::process::exit(2);
         }))
     } else {
@@ -2397,6 +2539,12 @@ fn main() {
     // --- repeated prefill + full-response proving -------------------------------
     eprintln!("timed proving: {warmup_repetitions} warmup + {repetitions} measured repetitions");
     let mut pcg_gate = PcgGateStats::default();
+    let mut fase_d_connection: Option<ProductionFaseDConnection> = None;
+    let mut fase_d_binding: Option<ConnectionBinding> = None;
+    let mut fase_d_setup: Option<FaseDSetupRecord> = None;
+    let mut fase_d_response_ordinal = 0u64;
+    let mut fase_d_response_base_ot_bytes = Vec::new();
+    let mut fase_d_response_ot_extension_bytes = Vec::new();
     let mut prefill_results = Vec::with_capacity(repetitions);
     let mut session_results = Vec::with_capacity(repetitions);
     if args.pcg_backend == PcgBackendArg::Real {
@@ -2409,20 +2557,126 @@ fn main() {
             SessionPcgBackend::Mock
         );
 
+        if args.fase_d_record {
+            let binding = ConnectionBinding::new(
+                os_random_identity("fase-D connection identity"),
+                os_random_identity("fase-D authenticated-channel identity"),
+                FaseDStagePlan::TerminalOne,
+            )
+            .expect("nonzero OS-generated fase-D connection identities");
+            let connection = open_fase_d_connection_with_ggm_prg(
+                pcg_connection_store.as_ref().expect("fase-D connection store"),
+                binding,
+                None,
+                FaseDParams::production(FaseDStagePlan::TerminalOne),
+                args.ggm_prg,
+            )
+            .expect("production fase-D terminal-one connection setup");
+            assert!(connection.expansion.pcg_production_ready);
+            assert!(connection.production.pcg_production_ready);
+            assert!(connection.expansion.one_base_phase);
+            assert!(connection.production.one_base_ot_copee_iknp_phase);
+            assert!(!connection.expansion.channel.serialized_delta_found);
+            assert_eq!(
+                connection.expansion.comm.total_bytes,
+                connection.expansion.channel.total_bytes
+            );
+            let maximum_prover_buffer_high_water_bytes = connection
+                .expansion
+                .stages
+                .iter()
+                .map(|stage| stage.prover_buffer_high_water_bytes)
+                .max()
+                .unwrap_or(0);
+            let g2_capacity_gate_pass =
+                connection.expansion.capacity.allocatable_stage3 >= 110_000_000;
+            let g2_traffic_gate_pass = connection.expansion.comm.total_bytes <= 40_000_000;
+            assert!(g2_capacity_gate_pass, "fase-D G2 capacity prerequisite failed in G1");
+            assert!(g2_traffic_gate_pass, "fase-D G2 traffic prerequisite failed in G1");
+            add_setup_comm(&mut pcg_gate, &connection.expansion.comm);
+            pcg_gate.production_entropy_source = Some(connection.production.entropy_source.clone());
+            pcg_gate.independent_role_entropy_samples =
+                connection.production.independent_role_entropy_samples;
+            pcg_gate.session_channel_identity_bound =
+                connection.production.authenticated_channel_identity_bound;
+            pcg_gate.response_authorization_burned_before_setup = true;
+            pcg_gate.burn_on_success_or_abort = true;
+            pcg_gate.reconnect_retry_resume_allowed = false;
+            pcg_gate.role_seed_commitments_distinct =
+                connection.production.role_seed_commitments_distinct;
+            pcg_gate.session_binding_digests.insert(binding.digest_hex());
+            pcg_gate
+                .prover_role_seed_commitments
+                .insert(connection.production.prover_role_seed_commitment.clone());
+            pcg_gate
+                .verifier_role_seed_commitments
+                .insert(connection.production.verifier_role_seed_commitment.clone());
+            pcg_gate.channel_transcripts_match = Some(true);
+            fase_d_setup = Some(FaseDSetupRecord {
+                params: connection.expansion.params.clone(),
+                capacity: connection.expansion.capacity,
+                comm: connection.expansion.comm.clone(),
+                prelude_timings: connection.expansion.prelude_timings,
+                stages: connection.expansion.stages.clone(),
+                ggm_prg: connection.expansion.ggm_prg,
+                ggm_aes_feature: detected_aes_feature().into(),
+                detected_logical_cpu_cores: connection.expansion.logical_cpu_count,
+                pcg_setup_rayon_threads: connection.expansion.rayon_threads,
+                one_connection_base_phase: connection.expansion.one_base_phase,
+                pcg_production_ready: connection.expansion.pcg_production_ready,
+                total_setup_wall_s: connection.expansion.t_total_s,
+                setup_allocation_digest: connection.expansion.allocation_digest.clone(),
+                maximum_prover_buffer_high_water_bytes,
+                g2_capacity_gate_pass,
+                g2_traffic_gate_pass,
+            });
+            fase_d_binding = Some(binding);
+            fase_d_connection = Some(connection);
+        }
+
         for warmup in 0..warmup_repetitions {
             let i = warmup as u8;
             let _ = run_active_prefill!(0xC0 + i);
-            let (backend, timings, setup_comm, production, channel_transcripts_match) =
-                real_session_backend(
+            let backend = if args.fase_d_record {
+                let setup = fase_d_setup.as_ref().expect("fase-D setup record");
+                fase_d_response_base_ot_bytes.push(
+                    (fase_d_response_ordinal == 0).then_some(setup.comm.base_ot_bytes).unwrap_or(0),
+                );
+                fase_d_response_ot_extension_bytes.push(
+                    (fase_d_response_ordinal == 0)
+                        .then_some(setup.comm.ot_extension_bytes)
+                        .unwrap_or(0),
+                );
+                let backend = fase_d_session_backend(
+                    fase_d_connection.as_mut().expect("fase-D connection"),
                     pcg_authorization_store.as_ref().expect("real-PCG authorization store"),
+                    fase_d_binding.expect("fase-D binding"),
                     pre.pcg_pool_sub_corrs,
                     pre.pcg_pool_full_corrs,
-                    args.ggm_prg,
+                    fase_d_response_ordinal,
                 );
-            add_setup_comm(&mut pcg_gate, &setup_comm);
-            add_production_setup(&mut pcg_gate, timings, production, channel_transcripts_match);
+                fase_d_response_ordinal += 1;
+                backend
+            } else {
+                let (backend, timings, setup_comm, production, channel_transcripts_match) =
+                    real_session_backend(
+                        pcg_authorization_store.as_ref().expect("real-PCG authorization store"),
+                        pre.pcg_pool_sub_corrs,
+                        pre.pcg_pool_full_corrs,
+                        args.ggm_prg,
+                    );
+                add_setup_comm(&mut pcg_gate, &setup_comm);
+                add_production_setup(&mut pcg_gate, timings, production, channel_transcripts_match);
+                backend
+            };
             let warm =
                 run_active_session!(&[&band50], &resident_band50_refs, true, 0xA0 + i, backend);
+            if args.fase_d_record {
+                finish_fase_d_response(
+                    fase_d_connection.as_mut().expect("fase-D connection"),
+                    warm.accepted,
+                );
+            }
             assert_mock_real_parity(&mut pcg_gate, &pre, &warm, "warmup response");
             assert!(warm.accepted, "warmup response must verify");
             eprintln!("  warmup {} accepted", warmup + 1);
@@ -2431,17 +2685,46 @@ fn main() {
         for repetition in 0..repetitions {
             let i = repetition as u8;
             let prefill = run_active_prefill!(0x60 + i);
-            let (backend, timings, setup_comm, production, channel_transcripts_match) =
-                real_session_backend(
+            let backend = if args.fase_d_record {
+                let setup = fase_d_setup.as_ref().expect("fase-D setup record");
+                fase_d_response_base_ot_bytes.push(
+                    (fase_d_response_ordinal == 0).then_some(setup.comm.base_ot_bytes).unwrap_or(0),
+                );
+                fase_d_response_ot_extension_bytes.push(
+                    (fase_d_response_ordinal == 0)
+                        .then_some(setup.comm.ot_extension_bytes)
+                        .unwrap_or(0),
+                );
+                let backend = fase_d_session_backend(
+                    fase_d_connection.as_mut().expect("fase-D connection"),
                     pcg_authorization_store.as_ref().expect("real-PCG authorization store"),
+                    fase_d_binding.expect("fase-D binding"),
                     pre.pcg_pool_sub_corrs,
                     pre.pcg_pool_full_corrs,
-                    args.ggm_prg,
+                    fase_d_response_ordinal,
                 );
-            add_setup_comm(&mut pcg_gate, &setup_comm);
-            add_production_setup(&mut pcg_gate, timings, production, channel_transcripts_match);
+                fase_d_response_ordinal += 1;
+                backend
+            } else {
+                let (backend, timings, setup_comm, production, channel_transcripts_match) =
+                    real_session_backend(
+                        pcg_authorization_store.as_ref().expect("real-PCG authorization store"),
+                        pre.pcg_pool_sub_corrs,
+                        pre.pcg_pool_full_corrs,
+                        args.ggm_prg,
+                    );
+                add_setup_comm(&mut pcg_gate, &setup_comm);
+                add_production_setup(&mut pcg_gate, timings, production, channel_transcripts_match);
+                backend
+            };
             let real =
                 run_active_session!(&[&band50], &resident_band50_refs, true, 0x21 + i, backend);
+            if args.fase_d_record {
+                finish_fase_d_response(
+                    fase_d_connection.as_mut().expect("fase-D connection"),
+                    real.accepted,
+                );
+            }
             assert_mock_real_parity(&mut pcg_gate, &pre, &real, "full response");
             assert!(real.accepted, "measured response must verify");
             prefill_results.push(prefill);
@@ -2772,16 +3055,45 @@ fn main() {
             0x22,
             SessionPcgBackend::Mock
         );
-        let (backend, timings, setup_comm, production, channel_transcripts_match) =
-            real_session_backend(
+        let backend = if args.fase_d_record {
+            let setup = fase_d_setup.as_ref().expect("fase-D setup record");
+            fase_d_response_base_ot_bytes.push(
+                (fase_d_response_ordinal == 0).then_some(setup.comm.base_ot_bytes).unwrap_or(0),
+            );
+            fase_d_response_ot_extension_bytes.push(
+                (fase_d_response_ordinal == 0)
+                    .then_some(setup.comm.ot_extension_bytes)
+                    .unwrap_or(0),
+            );
+            let backend = fase_d_session_backend(
+                fase_d_connection.as_mut().expect("fase-D connection"),
                 pcg_authorization_store.as_ref().expect("real-PCG authorization store"),
+                fase_d_binding.expect("fase-D binding"),
                 pre.pcg_pool_sub_corrs,
                 pre.pcg_pool_full_corrs,
-                args.ggm_prg,
+                fase_d_response_ordinal,
             );
-        add_setup_comm(&mut pcg_gate, &setup_comm);
-        add_production_setup(&mut pcg_gate, timings, production, channel_transcripts_match);
+            fase_d_response_ordinal += 1;
+            backend
+        } else {
+            let (backend, timings, setup_comm, production, channel_transcripts_match) =
+                real_session_backend(
+                    pcg_authorization_store.as_ref().expect("real-PCG authorization store"),
+                    pre.pcg_pool_sub_corrs,
+                    pre.pcg_pool_full_corrs,
+                    args.ggm_prg,
+                );
+            add_setup_comm(&mut pcg_gate, &setup_comm);
+            add_production_setup(&mut pcg_gate, timings, production, channel_transcripts_match);
+            backend
+        };
         let real = run_active_session!(&band_refs, &resident_curve_refs, false, 0x22, backend);
+        if args.fase_d_record {
+            finish_fase_d_response(
+                fase_d_connection.as_mut().expect("fase-D connection"),
+                real.accepted,
+            );
+        }
         assert_mock_real_parity(&mut pcg_gate, &pre, &real, "chunk curve");
         real
     } else {
@@ -2849,6 +3161,29 @@ fn main() {
         if gate_flat { "PASS" } else { "FAIL" },
         chk.accepted
     );
+    let fase_d_lifecycle = if args.fase_d_record {
+        let repeat_base_ot_bytes: u64 = fase_d_response_base_ot_bytes.iter().skip(1).sum();
+        let repeat_ot_extension_bytes: u64 =
+            fase_d_response_ot_extension_bytes.iter().skip(1).sum();
+        assert_eq!(repeat_base_ot_bytes, 0, "fase-D repeated base-OT bytes");
+        assert_eq!(repeat_ot_extension_bytes, 0, "fase-D repeated OT-extension bytes");
+        let connection = fase_d_connection.as_mut().expect("fase-D connection");
+        assert_eq!(connection.connection.completed_responses(), fase_d_response_ordinal);
+        connection.connection.close().expect("durable explicit fase-D close");
+        Some(FaseDLifecycleRecord {
+            completed_responses: connection.connection.completed_responses(),
+            response_base_ot_bytes: fase_d_response_base_ot_bytes,
+            response_ot_extension_bytes: fase_d_response_ot_extension_bytes,
+            responses_after_first_repeat_base_ot_bytes: repeat_base_ot_bytes,
+            responses_after_first_repeat_ot_extension_bytes: repeat_ot_extension_bytes,
+            allocation_digest: connection.connection.allocation_digest_hex(),
+            channel_ledger_digest: connection.connection.channel_ledger_digest_hex(),
+            stage_counters: connection.connection.stage_counters().clone(),
+            terminal_state: connection.connection.state(),
+        })
+    } else {
+        None
+    };
     drop(resident_curve_refs);
     if args.accelerator == AcceleratorArg::CudaResident {
         let backend = accelerator.as_mut().expect("resident CUDA backend");
@@ -3134,8 +3469,51 @@ fn main() {
         assert_eq!(flip_readiness_criterion_2_runtime_pass, Some(true));
         assert_eq!(flip_readiness_criterion_3_pass, Some(true));
     }
+    let fase_d_g1_pass = args.fase_d_record.then(|| {
+        !git_dirty
+            && !quick
+            && t0 == 100
+            && n_gen == 50
+            && layer_params.n_queries == 200
+            && golden_checked
+            && golden_match == Some(true)
+            && accepted
+            && chk.accepted
+            && gate_flat
+            && rec.pcs_rows.len() == 13
+            && rec.pcs_rows.iter().all(|row| row.verified)
+            && rec.n_weight_claims == 96
+            && rec.n_embed_claims == 6
+            && rec.sub_corrs == C1_SUB_CORRS
+            && rec.verifier_protocol_sub_corrs == C1_SUB_CORRS
+            && rec.full_corrs == 176_880
+            && rec.verifier_protocol_full_corrs == 176_880
+            && rec.pcg_allocation_hash_match == Some(true)
+            && pcg_gate.mock_prepass_counters_match == Some(true)
+            && pcg_gate.mock_prepass_channel_ledger_digest_match == Some(true)
+            && pcg_gate.mock_prepass_allocation_digest_match == Some(true)
+            && pcg_gate.setup_instances == 1
+            && pcg_gate.setup_wire_count_invariant_pass
+            && packed_response_bytes == C1_PACKED_RESPONSE_BYTES
+            && fase_d_setup.as_ref().is_some_and(|setup| {
+                setup.g2_capacity_gate_pass
+                    && setup.g2_traffic_gate_pass
+                    && setup.one_connection_base_phase
+                    && setup.pcg_production_ready
+            })
+            && fase_d_lifecycle.as_ref().is_some_and(|lifecycle| {
+                lifecycle.completed_responses == fase_d_response_ordinal
+                    && lifecycle.responses_after_first_repeat_base_ot_bytes == 0
+                    && lifecycle.responses_after_first_repeat_ot_extension_bytes == 0
+            })
+    });
+    if args.fase_d_record && !quick {
+        assert_eq!(fase_d_g1_pass, Some(true), "fase-D G1 functional gate failed");
+    }
     let report = Report {
-        report_schema_version: if args.flip_readiness_record {
+        report_schema_version: if args.fase_d_record {
+            7
+        } else if args.flip_readiness_record {
             4
         } else if args.c1_record {
             3
@@ -3144,7 +3522,15 @@ fn main() {
         } else {
             6
         },
-        milestone: if args.flip_readiness_record {
+        milestone: if args.fase_d_record {
+            if args.accelerator == AcceleratorArg::Cpu {
+                if quick { "fase-D-G1-quick" } else { "fase-D-G1" }.into()
+            } else if quick {
+                "fase-D-G4-quick".into()
+            } else {
+                "fase-D-G4".into()
+            }
+        } else if args.flip_readiness_record {
             "FLIP-READINESS".into()
         } else if args.c1_record {
             "C1".into()
@@ -3211,6 +3597,7 @@ fn main() {
         flip_readiness_external_review_pending: args.flip_readiness_record.then_some(true),
         flip_readiness_cost_acceptance_pending: args.flip_readiness_record.then_some(true),
         flip_readiness_default_flip_pending: args.flip_readiness_record.then_some(true),
+        fase_d_g1_pass,
         p7b_gate_evaluated,
         p7b_gate_profile: is_resident.then_some(
             if fase_d_realpcg_profile { FASE_D_POD_GATE_PROFILE } else { P7B_GATE_PROFILE }.into(),
@@ -3237,7 +3624,11 @@ fn main() {
             .then_some(RESPONSE_COMMUNICATION_ENVELOPE_BYTES),
         response_communication_observed_bytes,
         response_communication_invariant_pass,
-        p7b_transcript_reference_bytes: is_resident.then_some(P7B_TRANSCRIPT_REFERENCE_BYTES),
+        p7b_transcript_reference_bytes: is_resident.then_some(if fase_d_realpcg_profile {
+            C1_TRANSCRIPT_BYTES
+        } else {
+            P7B_TRANSCRIPT_REFERENCE_BYTES
+        }),
         p7b_pcs_opening_reference_bytes: is_resident.then_some(P7B_PCS_OPENING_REFERENCE_BYTES),
         p7b_packed_logits_reference_bytes: is_resident.then_some(P7B_PACKED_LOGITS_REFERENCE_BYTES),
         p7b_packed_response_reference_bytes: is_resident.then_some(if fase_d_realpcg_profile {
@@ -3338,7 +3729,9 @@ fn main() {
         detected_physical_cpu_cores: physical_cpu_cores,
         detected_logical_cpu_cores: logical_cpu_cores,
         pcg_setup_rayon_threads: rayon_threads,
-        pcg_production_ready: false,
+        pcg_production_ready: !args.diagnostic,
+        fase_d_setup,
+        fase_d_lifecycle,
         pcg_setup_comm_bytes: pcg_gate.setup_comm_bytes,
         pcg_setup_instances: (args.pcg_backend == PcgBackendArg::Real)
             .then_some(pcg_gate.setup_instances),
@@ -3433,7 +3826,14 @@ fn main() {
 
     assert!(accepted, "P6 sanity: honest response (both sessions) must verify");
     assert!(gate_flat, "P6 gate: per-token cost must stay ~flat as the cache grows");
-    let mut label = if args.flip_readiness_record {
+    let mut label = if args.fase_d_record {
+        match (args.accelerator, quick) {
+            (AcceleratorArg::Cpu, false) => "fase-d".to_string(),
+            (AcceleratorArg::Cpu, true) => "fase-d-quick".to_string(),
+            (_, false) => FASE_D_POD_GATE_PROFILE.to_string(),
+            (_, true) => format!("{FASE_D_POD_GATE_PROFILE}-quick"),
+        }
+    } else if args.flip_readiness_record {
         "flip-readiness".to_string()
     } else if args.c1_record {
         "c1".to_string()
@@ -3450,10 +3850,11 @@ fn main() {
     if layer_params.n_queries != P4_LAYER.n_queries {
         label.push_str(&format!("-q{}", layer_params.n_queries));
     }
-    if args.pcg_backend == PcgBackendArg::Real && !args.flip_readiness_record {
+    if args.pcg_backend == PcgBackendArg::Real && !args.flip_readiness_record && !args.fase_d_record
+    {
         label.push_str("-realpcg");
     }
-    if args.resident_timing == ResidentTimingArg::WallOnlyCounters {
+    if args.resident_timing == ResidentTimingArg::WallOnlyCounters && !args.fase_d_record {
         label.push_str("-wall-only-counters");
     }
     let json = serde_json::to_string_pretty(&report).unwrap();

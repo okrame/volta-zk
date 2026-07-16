@@ -676,7 +676,7 @@ fn run_phase_b(
     let total = expansion.timings.t_total_setup_and_expansion_s;
     let sub_equiv = source.corr_sub_corrs + 2 * source.corr_full_corrs;
     let production_ready = expansion.setup.params.production_ready;
-    assert!(!production_ready, "Part A must not emit a production-ready PCG artifact");
+    assert!(production_ready, "production phase-B preflight must enact the default flip");
     let setup_comm = expansion.setup.comm.total_bytes;
     let mut report = common_report(
         "P7-real-pcg-phase-b",
@@ -687,7 +687,7 @@ fn run_phase_b(
         true,
         ggm_prg,
         true,
-        "Phase-B genuine two-party host setup: independent roles, framed serialized channel, verifier-only Delta, Ristretto base OT + checked IKNP/COPEe, WYKW GGM single-point sVOLE and transcript-bound malicious consistency check. Real phase-B is the binary default; pcg_production_ready remains false until Part-B closure.".into(),
+        "Phase-B genuine two-party host setup: independent roles, framed serialized channel, verifier-only Delta, Ristretto base OT + checked IKNP/COPEe, WYKW GGM single-point sVOLE and transcript-bound malicious consistency check. Real phase-B is the production-ready binary default; mock remains explicit and diagnostic-only.".into(),
     );
     report.t_total_real_expansion_s = Some(total);
     report.sub_corrs_per_s_prover = source.corr_sub_corrs as f64 / total;
@@ -703,6 +703,7 @@ fn run_phase_b(
     report.phase_b_timings = Some(expansion.timings);
     report.phase_b_setup = Some(expansion.setup);
     report.production_setup_audit = Some(production_audit);
+    report.pcg_production_ready = production_ready;
     report.production_ready = Some(production_ready);
     report.consistency = Some(expansion.consistency);
     report.peak_rss_gb = peak_rss_gb();

@@ -541,6 +541,52 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7(tmp_path)
     raw_path.write_text(json.dumps(p7b))
     assert report.validate_p7b_official_result(raw_path) is True
 
+    fase_d = copy.deepcopy(p7b)
+    fase_d.update(
+        {
+            "report_schema_version": 7,
+            "milestone": "fase-D-G4",
+            "p7b_gate_profile": "runpod-a100-realpcg-v1",
+            "chunked_accepted": True,
+            "comm_response_bytes": 129_119_408,
+            "response_communication_observed_bytes": 136_526_530,
+            "p7b_transcript_reference_bytes": 129_119_408,
+            "p7b_packed_response_reference_bytes": 136_526_530,
+            "total_response_download_packed_bytes": 136_526_530,
+            "pcg_backend": "real",
+            "ggm_prg": "aes128-mmo",
+            "pcg_production_ready": True,
+            "fase_d_g1_pass": True,
+            "pcg_mock_prepass_counters_match": True,
+            "pcg_mock_prepass_channel_ledger_digest_match": True,
+            "pcg_mock_prepass_allocation_digest_match": True,
+            "pcg_allocation_hash_match": True,
+            "n_weight_claims": 96,
+            "n_embed_claims": 6,
+            "pcs_commitments": [{"verified": True} for _ in range(13)],
+            "fase_d_setup": {
+                "ggm_prg": "aes128-mmo",
+                "pcg_production_ready": True,
+                "one_connection_base_phase": True,
+                "g2_capacity_gate_pass": True,
+                "g2_traffic_gate_pass": True,
+                "comm": {"total_bytes": 38_000_000},
+                "capacity": {"allocatable_stage3": 110_918_718},
+            },
+            "fase_d_lifecycle": {
+                "completed_responses": 5,
+                "responses_after_first_repeat_base_ot_bytes": 0,
+                "responses_after_first_repeat_ot_extension_bytes": 0,
+            },
+        }
+    )
+    fase_d_path = tmp_path / "fase-d-pod-official.json"
+    fase_d_path.write_text(json.dumps(fase_d))
+    assert report.validate_fase_d_pod_official_result(fase_d_path) is True
+    fase_d["fase_d_setup"]["comm"]["total_bytes"] = 40_000_001
+    fase_d_path.write_text(json.dumps(fase_d))
+    assert report.validate_fase_d_pod_official_result(fase_d_path) is False
+
     # A performance failure is still a valid measured verdict when its
     # observations, statistics and booleans close exactly.
     valid_failure = copy.deepcopy(official)

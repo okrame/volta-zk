@@ -428,7 +428,7 @@ fn main() {
                 args.ggm_prg,
             )
             .expect("production-provisioned P5 real PCG");
-            assert!(!production.expansion.setup.params.production_ready);
+            assert!(production.expansion.setup.params.production_ready);
             let expansion = production.expansion;
             let timings = expansion.timings;
             let comm = expansion.setup.comm.clone();
@@ -741,7 +741,7 @@ fn main() {
         ggm_prg: args.ggm_prg.as_str().into(),
         ggm_aes_feature: detected_aes_feature().into(),
         pcg_setup_rayon_threads: rayon::current_num_threads(),
-        pcg_production_ready: false,
+        pcg_production_ready: !args.diagnostic,
         pcg_abba_timing_backend: "explicit-mock-counting-timing-only".into(),
         pcg_setup_timings,
         pcg_setup_comm,

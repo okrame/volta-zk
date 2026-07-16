@@ -37,6 +37,8 @@ P7B_TRANSCRIPT_REFERENCE_BYTES = 137_413_808
 P7B_PCS_OPENING_REFERENCE_BYTES = 66_733_504
 P7B_PACKED_LOGITS_REFERENCE_BYTES = 7_407_122
 P7B_PACKED_RESPONSE_REFERENCE_BYTES = 144_820_930
+FASE_D_POD_REPORT_SCHEMA_VERSION = 7
+FASE_D_POD_GATE_PROFILE = "runpod-a100-realpcg-v1"
 P7B_TIMING_STATISTIC = "upper median across measured repetitions"
 P7B_COUNTER_STATISTIC = "maximum across measured sessions"
 C1_REPORT_SCHEMA_VERSION = 3
@@ -1233,6 +1235,137 @@ def validate_p7b_official_result(path: Path) -> bool:
     return len(rows) == 1 and p7b_resident_run_of_record_eligible(rows[0])
 
 
+def validate_fase_d_pod_official_result(path: Path) -> bool:
+    """Fail closed on the preregistered fase-D G4 raw artifact."""
+    try:
+        raw = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(raw, dict):
+        return False
+    raw["_path"] = str(path)
+    try:
+        raw["_mtime"] = path.stat().st_mtime
+    except OSError:
+        return False
+    rows = integrated_accelerator_profiles(
+        [raw], {"fase-D-G4"}, "cuda-resident", include_p7b_fields=True
+    )
+    if len(rows) != 1:
+        return False
+    row = rows[0]
+    cloud = raw.get("cloud")
+    cloud_fields = (
+        "provider",
+        "instance_id",
+        "region",
+        "image",
+        "driver_version",
+        "cuda_version",
+        "gpu_sku",
+        "cpu_model",
+        "ram_gib",
+        "vcpus",
+    )
+    setup = raw.get("fase_d_setup")
+    lifecycle = raw.get("fase_d_lifecycle")
+    setup_comm = setup.get("comm") if isinstance(setup, dict) else None
+    capacity = setup.get("capacity") if isinstance(setup, dict) else None
+    pcs_rows = raw.get("pcs_commitments")
+    repetitions = raw.get("repetitions")
+    timing_policy_valid = isinstance(repetitions, list) and all(
+        isinstance(repetition, dict)
+        and isinstance(repetition.get("accelerator_session"), dict)
+        and repetition["accelerator_session"].get("timing_method")
+        == P7B_OFFICIAL_SESSION_TIMING_METHOD
+        and repetition["accelerator_session"].get("phase_attribution_available") is False
+        and repetition["accelerator_session"].get("timing_records") == 0
+        and repetition["accelerator_session"].get("timing_elapsed_query_attempts") == 0
+        and repetition["accelerator_session"].get("timing_elapsed_no_write") == 0
+        and repetition["accelerator_session"].get("timing_event_queries") == 0
+        and repetition["accelerator_session"].get("timing_event_api_calls") == 0
+        for repetition in repetitions
+    )
+    fixed = (
+        raw.get("report_schema_version") == FASE_D_POD_REPORT_SCHEMA_VERSION
+        and raw.get("milestone") == "fase-D-G4"
+        and raw.get("accelerator_backend") == "cuda-resident"
+        and raw.get("accelerator_cuda_abi_version") == P7B_CUDA_ABI_VERSION
+        and raw.get("resident_timing_policy") == P7B_OFFICIAL_RESIDENT_TIMING_POLICY
+        and raw.get("p7b_gate_profile") == FASE_D_POD_GATE_PROFILE
+        and raw.get("accepted") is True
+        and raw.get("chunked_accepted") is True
+        and raw.get("git_dirty") is False
+        and raw.get("git_dirty_before_benchmark") is False
+        and raw.get("git_dirty_before_serialization") is False
+        and _p7b_git_provenance_valid(raw)
+        and isinstance(cloud, dict)
+        and all(isinstance(cloud.get(field), str) and cloud[field].strip() for field in cloud_fields)
+        and cloud.get("provider") == "RunPod"
+        and cloud.get("gpu_sku") == "NVIDIA A100-SXM4-80GB"
+        and raw.get("threads") == P7B_OFFICIAL_RAYON_THREADS
+        and raw.get("p7b_machine_eligible") is True
+        and raw.get("p7b_gate_evaluated") is True
+        and raw.get("benchmark_warmup_repetitions", 0) >= 1
+        and raw.get("benchmark_repetitions", 0) >= 3
+        and raw.get("t_prefill") == 100
+        and raw.get("n_decode") == 50
+        and raw.get("pcs_n_queries") == 200
+        and raw.get("golden_decode_checked") is True
+        and raw.get("golden_decode_match") is True
+        and raw.get("gate_flat_cost_per_token") is True
+        and _finite_nonnegative(raw.get("curve_last_over_first"))
+        and raw.get("curve_last_over_first") <= 1.5
+        and isinstance(pcs_rows, list)
+        and len(pcs_rows) == 13
+        and all(isinstance(pcs, dict) and pcs.get("verified") is True for pcs in pcs_rows)
+        and raw.get("n_weight_claims") == 96
+        and raw.get("n_embed_claims") == 6
+        and raw.get("pcg_backend") == "real"
+        and raw.get("ggm_prg") == "aes128-mmo"
+        and raw.get("pcg_production_ready") is True
+        and raw.get("fase_d_g1_pass") is True
+        and raw.get("pcg_mock_prepass_counters_match") is True
+        and raw.get("pcg_mock_prepass_channel_ledger_digest_match") is True
+        and raw.get("pcg_mock_prepass_allocation_digest_match") is True
+        and raw.get("pcg_allocation_hash_match") is True
+        and raw.get("comm_response_bytes") == C1_TRANSCRIPT_REFERENCE_BYTES
+        and raw.get("pcs_opening_bytes_total") == C1_PCS_OPENING_REFERENCE_BYTES
+        and raw.get("public_logits_packed_bytes") == C1_PACKED_LOGITS_REFERENCE_BYTES
+        and raw.get("total_response_download_packed_bytes") == C1_PACKED_RESPONSE_REFERENCE_BYTES
+        and raw.get("response_communication_observed_bytes") == C1_PACKED_RESPONSE_REFERENCE_BYTES
+        and raw.get("p7b_transcript_reference_bytes") == C1_TRANSCRIPT_REFERENCE_BYTES
+        and raw.get("p7b_pcs_opening_reference_bytes") == C1_PCS_OPENING_REFERENCE_BYTES
+        and raw.get("p7b_packed_logits_reference_bytes") == C1_PACKED_LOGITS_REFERENCE_BYTES
+        and raw.get("p7b_packed_response_reference_bytes") == C1_PACKED_RESPONSE_REFERENCE_BYTES
+        and raw.get("response_communication_invariant_pass") is True
+        and raw.get("p7b_response_communication_no_growth_pass") is True
+        and isinstance(setup, dict)
+        and setup.get("ggm_prg") == "aes128-mmo"
+        and setup.get("pcg_production_ready") is True
+        and setup.get("one_connection_base_phase") is True
+        and setup.get("g2_capacity_gate_pass") is True
+        and setup.get("g2_traffic_gate_pass") is True
+        and isinstance(setup_comm, dict)
+        and _nonnegative_int(setup_comm.get("total_bytes"))
+        and setup_comm["total_bytes"] <= 40_000_000
+        and isinstance(capacity, dict)
+        and capacity.get("allocatable_stage3", 0) >= 110_000_000
+        and isinstance(lifecycle, dict)
+        and lifecycle.get("completed_responses", 0) >= 5
+        and lifecycle.get("responses_after_first_repeat_base_ot_bytes") == 0
+        and lifecycle.get("responses_after_first_repeat_ot_extension_bytes") == 0
+        and row.get("accelerator_cleanup_memory_accounting_ok") is True
+        and row.get("accelerator_cache_trim_memory_accounting_ok") is True
+    )
+    return (
+        fixed
+        and timing_policy_valid
+        and _p7b_sampling_statistics_valid(row)
+        and _p7b_performance_verdict_valid(row)
+    )
+
+
 def _finite_nonnegative(value: Any) -> bool:
     return type(value) in (int, float) and math.isfinite(value) and value >= 0
 
@@ -2244,14 +2377,30 @@ def main() -> None:
         type=Path,
         help="fail closed unless one raw JSON is a complete official P7b verdict",
     )
+    ap.add_argument(
+        "--validate-fase-d-pod-official",
+        type=Path,
+        help="fail closed unless one raw JSON is a complete fase-D G4 verdict",
+    )
     args = ap.parse_args()
 
+    if args.validate_p7b_official is not None and args.validate_fase_d_pod_official is not None:
+        raise SystemExit("official validators are mutually exclusive")
     if args.validate_p7b_official is not None:
         if args.write_json:
             raise SystemExit("--write-json and --validate-p7b-official are mutually exclusive")
         if not validate_p7b_official_result(args.validate_p7b_official):
             raise SystemExit("invalid or ineligible official P7b result")
         print(f"valid official P7b result: {args.validate_p7b_official}")
+        return
+    if args.validate_fase_d_pod_official is not None:
+        if args.write_json:
+            raise SystemExit(
+                "--write-json and --validate-fase-d-pod-official are mutually exclusive"
+            )
+        if not validate_fase_d_pod_official_result(args.validate_fase_d_pod_official):
+            raise SystemExit("invalid or ineligible official fase-D pod result")
+        print(f"valid official fase-D pod result: {args.validate_fase_d_pod_official}")
         return
 
     report = p7_report(args.results_dir)

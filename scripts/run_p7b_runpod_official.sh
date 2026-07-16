@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Clean same-SHA RunPod quick preflight followed by the official P7b run.
+# Clean same-SHA fase-D RunPod quick preflight followed by official G4.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -60,14 +60,7 @@ expect_env() {
 }
 
 expect_env VOLTA_CLOUD_PROVIDER "RunPod"
-expect_env VOLTA_CLOUD_REGION "eur-is-1"
-expect_env VOLTA_CLOUD_IMAGE "Ubuntu 24.04.3 LTS"
-expect_env VOLTA_CLOUD_DRIVER_VERSION "580.159.04"
-expect_env VOLTA_CLOUD_CUDA_VERSION "12.8"
 expect_env VOLTA_CLOUD_GPU_SKU "NVIDIA A100-SXM4-80GB"
-expect_env VOLTA_CLOUD_CPU_MODEL "AMD EPYC 7713 64-Core Processor"
-expect_env VOLTA_CLOUD_RAM_GIB "1008"
-expect_env VOLTA_CLOUD_VCPUS "255"
 expect_env RAYON_NUM_THREADS "8"
 
 if [[ -n "$(git -C "$ROOT" status --porcelain --untracked-files=all)" ]]; then
@@ -111,6 +104,9 @@ run_report() {
     --accelerator cuda-resident \
     --resident-timing wall-only-counters \
     --pcs-q 200 \
+    --fase-d-record \
+    --pcg-authorization-store "$STAGING/$label-authorizations" \
+    --pcg-connection-store "$STAGING/$label-connections" \
     "$@"
 
   mapfile -t new_results < <(
@@ -146,4 +142,4 @@ if [[ -n "$(git -C "$ROOT" status --porcelain --untracked-files=all)" ]]; then
   exit 2
 fi
 
-python3 "$ROOT/scripts/report.py" --validate-p7b-official "${staged[1]}"
+python3 "$ROOT/scripts/report.py" --validate-fase-d-pod-official "${staged[1]}"

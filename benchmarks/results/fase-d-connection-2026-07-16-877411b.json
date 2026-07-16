@@ -1,0 +1,384 @@
+{
+  "date": "2026-07-16",
+  "detected_logical_cpu_cores": 4,
+  "detected_physical_cpu_cores": 4,
+  "gate_profile": "fase-d-connection",
+  "ggm_prg": "aes128-mmo",
+  "git_dirty": false,
+  "git_sha": "877411b2432afd1ede80d0082d0403a75f9f4614",
+  "milestone": "fase-D",
+  "pcg_production_ready": true,
+  "pcg_setup_rayon_threads": 4,
+  "plan": "terminal-one",
+  "report_schema_version": 2,
+  "result": {
+    "aborted_connection": {
+      "durable_reopen_rejected": true,
+      "injected_abort_on_response": 2,
+      "lifecycle": {
+        "completed_responses": 1,
+        "connection_allocation_digest": "c256f5017c4eb03f34a9aef095c2b0941e6a89d1de515eefdcc3dada8079a4dc",
+        "connection_channel_ledger_digest": "2de8f5287407f42e1794e09d1acc8b1132cbe47d256ee00e1bbd71cc1361273a",
+        "connection_state": {
+          "reason": "malicious-check-failure",
+          "state": "terminal"
+        },
+        "stage_counters": {
+          "0": {
+            "available": 0,
+            "base_inputs_consumed": 0,
+            "burned": 3692373,
+            "consumed": 0,
+            "generated": 10214167,
+            "reserved_as_base": 6521794
+          },
+          "1": {
+            "available": 0,
+            "base_inputs_consumed": 6521794,
+            "burned": 110918716,
+            "consumed": 2,
+            "generated": 110918718,
+            "reserved_as_base": 0
+          }
+        }
+      },
+      "reopen_error": "connection identity is terminally burned; resume rejected",
+      "responses": [
+        {
+          "accepted": true,
+          "allocation_digest": "bd8bc8a54c80333e8dccd8577f447542b3d5ee47898e70bf7128a84d8f9ee56c",
+          "authorization_burn_digest": "18fd870883d455d75fc6c649798ee165143677fe15bf3f9db8647f8d2bb0a078",
+          "base_ot_bytes": 16411,
+          "channel_ledger_digest": "5904ba832a0efcd8e599d7db6930c4ae725674dc2dda8238074991a68ee1ce17",
+          "correlations_consumed": 1,
+          "ordinal": 1,
+          "ot_extension_bytes": 38217099
+        },
+        {
+          "accepted": false,
+          "allocation_digest": "283c2d0ff24c3075e9ddd45b9ba456154624964bad449a0ac2b875f395654c98",
+          "authorization_burn_digest": "10633f5b5fc742bf6c8f67def47f131354c4e6fc8014b9e92736553b153356b9",
+          "base_ot_bytes": 0,
+          "channel_ledger_digest": "2de8f5287407f42e1794e09d1acc8b1132cbe47d256ee00e1bbd71cc1361273a",
+          "correlations_consumed": 1,
+          "ordinal": 2,
+          "ot_extension_bytes": 0
+        }
+      ],
+      "setup": {
+        "capacity": {
+          "allocatable_stage3": 110918718,
+          "gross_stage3": 110918718,
+          "main_residual": 3692373,
+          "reserved_stage3_as_base": 0,
+          "total_allocatable": 114611091
+        },
+        "channel_audit": {
+          "base_ot_prover_to_verifier_bytes": 12306,
+          "base_ot_verifier_to_prover_bytes": 4105,
+          "check_prover_to_verifier_bytes": 2416,
+          "check_verifier_to_prover_bytes": 629,
+          "ggm_prover_to_verifier_bytes": 44979,
+          "ggm_verifier_to_prover_bytes": 89931,
+          "ot_extension_prover_to_verifier_bytes": 31521306,
+          "ot_extension_verifier_to_prover_bytes": 6695793,
+          "prover_to_verifier_bytes": 31581007,
+          "serialized_delta_found": false,
+          "total_bytes": 38371465,
+          "transcript_digest": "62bed20752f5d8e92fb016f3b87f4006cd5cd0378feb537cee1c63326a338f50",
+          "verifier_to_prover_bytes": 6790458
+        },
+        "ggm_aes_feature": "armv8-ce",
+        "ggm_prg": "aes128-mmo",
+        "maximum_observed_prover_buffer_high_water_bytes": 3863490552,
+        "one_connection_base_phase": true,
+        "params": {
+          "batch_blocks": 896,
+          "main": {
+            "block_size": 8192,
+            "depth": 13,
+            "k": 589760,
+            "n": 10805248,
+            "t": 1319
+          },
+          "plan": "terminal-one",
+          "preprovisioned_stage3_instances": 6,
+          "profile": "fase-d-realpcg-v1",
+          "prover_buffer_cap_bytes": 4000000000,
+          "setup": {
+            "block_size": 256,
+            "depth": 8,
+            "k": 25000,
+            "n": 642048,
+            "t": 2508
+          },
+          "stage3": {
+            "block_size": 65536,
+            "depth": 16,
+            "k": 6520000,
+            "n": 117440512,
+            "t": 1792
+          }
+        },
+        "pcg_production_ready": true,
+        "prelude_wall_split": {
+          "t_base_ot_s": 0.025744093,
+          "t_main_check_s": 1.2318696,
+          "t_main_ggm_s": 1.047626777,
+          "t_main_lpn_s": 1.648280047,
+          "t_ot_extension_s": 1.309561545,
+          "t_path_preprovision_s": 3.360679845,
+          "t_prelude_total_s": 8.909536054,
+          "t_recursive_setup_check_s": 0.075618732,
+          "t_recursive_setup_ggm_s": 0.061151496,
+          "t_recursive_setup_lpn_s": 0.082401038
+        },
+        "production_setup_audit": {
+          "authenticated_channel_identity_bound": true,
+          "connection_identity_bound": true,
+          "durable_connection_open_before_entropy": true,
+          "entropy_source": "rand 0.8 OsRng; Linux OS CSPRNG via getrandom; independent 256-bit connection-role reads",
+          "ggm_prg": "aes128-mmo",
+          "independent_role_entropy_samples": true,
+          "one_base_ot_copee_iknp_phase": true,
+          "pcg_production_ready": true,
+          "prover_role_seed_commitment": "45c93f4e4f00eaaf4a75b8c168cf3e7f9f0439b39e69fa04a32366c890342fd1",
+          "role_seed_commitments_distinct": true,
+          "verifier_role_seed_commitment": "d0405eb0c2f34264b14d9b6f0f30cc67be56402e6194a57c7dccf8b33446f666"
+        },
+        "profile": "fase-d-realpcg-v1",
+        "prover_buffer_cap_bytes": 4000000000,
+        "setup_comm": {
+          "base_ot_bytes": 16411,
+          "consistency_bytes": 3045,
+          "ggm_bytes": 134910,
+          "ot_extension_bytes": 38217099,
+          "prover_to_verifier_bytes": 31581007,
+          "total_bytes": 38371465,
+          "verifier_to_prover_bytes": 6790458
+        },
+        "stage_wall_splits": [
+          {
+            "allocation_digest": "8af19ba8054ecd33f8e220100567890068c1a4b92bdeb6e171d3c3adb105fc40",
+            "consistency": {
+              "checksum": 12815335571621290053,
+              "ok": true
+            },
+            "generated": 110918718,
+            "input_stage": "main",
+            "ordinal": 1,
+            "prover_buffer_high_water_bytes": 3863490552,
+            "rayon_threads": 4,
+            "released": 0,
+            "reserved_as_base": 0,
+            "retained": 110918718,
+            "t_check_s": 15.273287001,
+            "t_ggm_s": 36.503682181,
+            "t_lpn_s": 12.150676251,
+            "tuple": {
+              "block_size": 65536,
+              "depth": 16,
+              "k": 6520000,
+              "n": 117440512,
+              "t": 1792
+            },
+            "value_checksum": 16040144468455905900
+          }
+        ],
+        "total_setup_wall_s": 73.035203504
+      }
+    },
+    "g2b_abort_response_two_pass": true,
+    "g2b_three_response_pass": true,
+    "gate": "G2b",
+    "responses_after_first_repeat_base_ot_bytes": 0,
+    "responses_after_first_repeat_ot_extension_bytes": 0,
+    "success_connection": {
+      "lifecycle_after_close": {
+        "completed_responses": 3,
+        "connection_allocation_digest": "9053841ec1a71909fcdc2639c67d57dbaddf88ade00a88f69882f088d116ea74",
+        "connection_channel_ledger_digest": "61fd7e66758c746cc56e3514f14a5f7d6ff3e423400970a461bb260f68942159",
+        "connection_state": {
+          "reason": "explicit-close",
+          "state": "terminal"
+        },
+        "stage_counters": {
+          "0": {
+            "available": 0,
+            "base_inputs_consumed": 0,
+            "burned": 3692373,
+            "consumed": 0,
+            "generated": 10214167,
+            "reserved_as_base": 6521794
+          },
+          "1": {
+            "available": 0,
+            "base_inputs_consumed": 6521794,
+            "burned": 110918715,
+            "consumed": 3,
+            "generated": 110918718,
+            "reserved_as_base": 0
+          }
+        }
+      },
+      "responses": [
+        {
+          "accepted": true,
+          "allocation_digest": "0a7c608b2c32e9db3121551751c088d4b4264ffd6161232461930fddb2e41350",
+          "authorization_burn_digest": "c6504391723c989aa5414ad1716682975bed17ab6d3f8a70512e6a2f974d9956",
+          "base_ot_bytes": 16411,
+          "channel_ledger_digest": "c26ae52a2ec8603f07c68b252968f2275799586ed66d046251fdda0d1e182eef",
+          "correlations_consumed": 1,
+          "ordinal": 1,
+          "ot_extension_bytes": 38217099
+        },
+        {
+          "accepted": true,
+          "allocation_digest": "167974a1b2f002b80d4b0012aa991f2328780a5a253a64dd70f6b829fa5efd13",
+          "authorization_burn_digest": "ead3737ae724f731f37e8e5a0ece893c479ac80110116142740378b7b20ac959",
+          "base_ot_bytes": 0,
+          "channel_ledger_digest": "8d0ac028dc65d020bcb5f47ef5469eb03bcbdab6bcf14e6d66a189ea567bc96a",
+          "correlations_consumed": 1,
+          "ordinal": 2,
+          "ot_extension_bytes": 0
+        },
+        {
+          "accepted": true,
+          "allocation_digest": "5843f6dff19568fc5db0b2f41f14df7a7ed1e5a79417ad4edfeadc1bc8c726a6",
+          "authorization_burn_digest": "a8915be17173c55bed0c447b8b844b3b1d5f173689c5047bc444be085e034d7c",
+          "base_ot_bytes": 0,
+          "channel_ledger_digest": "3b1e428a2cd9d3c320cfeae0f8fd6197bf98ef9ac277581716f0e160963f6b9b",
+          "correlations_consumed": 1,
+          "ordinal": 3,
+          "ot_extension_bytes": 0
+        }
+      ],
+      "setup": {
+        "capacity": {
+          "allocatable_stage3": 110918718,
+          "gross_stage3": 110918718,
+          "main_residual": 3692373,
+          "reserved_stage3_as_base": 0,
+          "total_allocatable": 114611091
+        },
+        "channel_audit": {
+          "base_ot_prover_to_verifier_bytes": 12306,
+          "base_ot_verifier_to_prover_bytes": 4105,
+          "check_prover_to_verifier_bytes": 2416,
+          "check_verifier_to_prover_bytes": 629,
+          "ggm_prover_to_verifier_bytes": 44979,
+          "ggm_verifier_to_prover_bytes": 89931,
+          "ot_extension_prover_to_verifier_bytes": 31521306,
+          "ot_extension_verifier_to_prover_bytes": 6695793,
+          "prover_to_verifier_bytes": 31581007,
+          "serialized_delta_found": false,
+          "total_bytes": 38371465,
+          "transcript_digest": "7044fe2ef953bb8842c395e8a118d69d47544af823c0f79e0f21dd2d7f258861",
+          "verifier_to_prover_bytes": 6790458
+        },
+        "ggm_aes_feature": "armv8-ce",
+        "ggm_prg": "aes128-mmo",
+        "maximum_observed_prover_buffer_high_water_bytes": 3863490552,
+        "one_connection_base_phase": true,
+        "params": {
+          "batch_blocks": 896,
+          "main": {
+            "block_size": 8192,
+            "depth": 13,
+            "k": 589760,
+            "n": 10805248,
+            "t": 1319
+          },
+          "plan": "terminal-one",
+          "preprovisioned_stage3_instances": 6,
+          "profile": "fase-d-realpcg-v1",
+          "prover_buffer_cap_bytes": 4000000000,
+          "setup": {
+            "block_size": 256,
+            "depth": 8,
+            "k": 25000,
+            "n": 642048,
+            "t": 2508
+          },
+          "stage3": {
+            "block_size": 65536,
+            "depth": 16,
+            "k": 6520000,
+            "n": 117440512,
+            "t": 1792
+          }
+        },
+        "pcg_production_ready": true,
+        "prelude_wall_split": {
+          "t_base_ot_s": 0.025655842,
+          "t_main_check_s": 1.237159776,
+          "t_main_ggm_s": 1.016747341,
+          "t_main_lpn_s": 1.677617729,
+          "t_ot_extension_s": 1.314016011,
+          "t_path_preprovision_s": 2.887876035,
+          "t_prelude_total_s": 8.468372095,
+          "t_recursive_setup_check_s": 0.07523544,
+          "t_recursive_setup_ggm_s": 0.05624857,
+          "t_recursive_setup_lpn_s": 0.083809916
+        },
+        "production_setup_audit": {
+          "authenticated_channel_identity_bound": true,
+          "connection_identity_bound": true,
+          "durable_connection_open_before_entropy": true,
+          "entropy_source": "rand 0.8 OsRng; Linux OS CSPRNG via getrandom; independent 256-bit connection-role reads",
+          "ggm_prg": "aes128-mmo",
+          "independent_role_entropy_samples": true,
+          "one_base_ot_copee_iknp_phase": true,
+          "pcg_production_ready": true,
+          "prover_role_seed_commitment": "53f827aad82803bdcdbe34a0c5b73de046a270182ed65b86ddfb0425ed337360",
+          "role_seed_commitments_distinct": true,
+          "verifier_role_seed_commitment": "0d45e8c363e99879f167894220cb2c2ab2e24ec78f758b509672ae8c099c264f"
+        },
+        "profile": "fase-d-realpcg-v1",
+        "prover_buffer_cap_bytes": 4000000000,
+        "setup_comm": {
+          "base_ot_bytes": 16411,
+          "consistency_bytes": 3045,
+          "ggm_bytes": 134910,
+          "ot_extension_bytes": 38217099,
+          "prover_to_verifier_bytes": 31581007,
+          "total_bytes": 38371465,
+          "verifier_to_prover_bytes": 6790458
+        },
+        "stage_wall_splits": [
+          {
+            "allocation_digest": "8af19ba8054ecd33f8e220100567890068c1a4b92bdeb6e171d3c3adb105fc40",
+            "consistency": {
+              "checksum": 9613375052354675695,
+              "ok": true
+            },
+            "generated": 110918718,
+            "input_stage": "main",
+            "ordinal": 1,
+            "prover_buffer_high_water_bytes": 3863490552,
+            "rayon_threads": 4,
+            "released": 0,
+            "reserved_as_base": 0,
+            "retained": 110918718,
+            "t_check_s": 13.464704838,
+            "t_ggm_s": 30.568396233,
+            "t_lpn_s": 11.61007551,
+            "tuple": {
+              "block_size": 65536,
+              "depth": 16,
+              "k": 6520000,
+              "n": 117440512,
+              "t": 1792
+            },
+            "value_checksum": 12921118614781936428
+          }
+        ],
+        "total_setup_wall_s": 64.550696543
+      },
+      "state_after_three_successes": {
+        "state": "active"
+      }
+    },
+    "verdict": "PASS"
+  }
+}

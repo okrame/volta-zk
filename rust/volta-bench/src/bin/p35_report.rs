@@ -102,7 +102,7 @@ fn peak_rss_gb() -> f64 {
 /// volta-pcs/tests/p35.rs): two weight sets, identical transcript structure,
 /// masked messages uniform by a generous χ² on the top 4 bits.
 fn leakage_smoke() -> bool {
-    let params = LigeroParams { row_bits: 6, col_bits: 6, pad: 40, code_bits: 7, n_queries: 32 };
+    let params = LigeroParams { rows: 1 << 6, col_bits: 6, pad: 40, code_bits: 7, n_queries: 32 };
     let chi2_top4 = |vals: &[Fp]| -> f64 {
         let mut b = [0f64; 16];
         for v in vals {
@@ -158,7 +158,7 @@ fn main() {
 
     // Parameters: full 2^27 (or 2^24 with --quick, for iteration only).
     let params = if quick {
-        LigeroParams { row_bits: 12, col_bits: 12, pad: 512, code_bits: 13, n_queries: 200 }
+        LigeroParams { rows: 1 << 12, col_bits: 12, pad: 512, code_bits: 13, n_queries: 200 }
     } else {
         GPT2_FULL
     };

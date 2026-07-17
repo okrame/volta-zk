@@ -20,9 +20,18 @@ use volta_field::Fp2;
 
 /// Layer-scale Ligero parameters: 2^24-coefficient message (rows 2^10 ×
 /// cols 2^14), same rate ((2^14+512)/2^15 ≈ 0.516), pad and query count as
-/// `GPT2_FULL` — only `row_bits` shrinks (13 → 10) for the one-layer vector.
+/// `GPT2_FULL` — only the explicit row count shrinks (2^13 → 2^10) for the
+/// one-layer vector.
 pub const P4_LAYER: LigeroParams =
-    LigeroParams { row_bits: 10, col_bits: 14, pad: 512, code_bits: 15, n_queries: 200 };
+    LigeroParams { rows: 1 << 10, col_bits: 14, pad: 512, code_bits: 15, n_queries: 200 };
+
+/// C3 Phase-2 consolidated tree for all twelve transformer blocks.
+pub const C3_WEIGHTS: LigeroParams =
+    LigeroParams { rows: 24_576, col_bits: 13, pad: 512, code_bits: 15, n_queries: 120 };
+
+/// C3 Phase-2 exact-block embedding tree (wte || wpe, no outer 2^27 pad).
+pub const C3_EMBED: LigeroParams =
+    LigeroParams { rows: 2_080, col_bits: 15, pad: 512, code_bits: 17, n_queries: 120 };
 
 /// Placement of one weight tensor inside the flat commitment vector.
 #[derive(Clone, Copy, Debug)]
@@ -122,6 +131,42 @@ pub fn layout_gpt2_layer() -> LayerWeightLayout {
     layout
 }
 
+/// Twelve independently addressable GPT-2 layer blocks packed into the C3
+/// consolidated tree. Every existing tensor offset stays unchanged inside
+/// its aligned 2^24 layer block.
+pub struct ModelWeightLayout {
+    pub layer: LayerWeightLayout,
+    pub layer_stride: usize,
+    pub layers: usize,
+    pub total_len: usize,
+}
+
+impl ModelWeightLayout {
+    pub fn place_layer(&self, dst: &mut [i16], layer: usize, tensors: [&[i16]; 4]) {
+        assert!(layer < self.layers, "layer index out of range");
+        assert_eq!(dst.len(), self.total_len, "wrong consolidated target length");
+        let placed = self.layer.place(tensors);
+        let offset = layer * self.layer_stride;
+        dst[offset..offset + self.layer_stride].copy_from_slice(&placed);
+    }
+
+    pub fn block_claim(&self, layer: usize, tensor: usize, point: &[Fp2]) -> BlockClaim {
+        assert!(layer < self.layers, "layer index out of range");
+        let mut claim = self.layer.block_claim(tensor, point);
+        claim.offset += layer * self.layer_stride;
+        claim
+    }
+}
+
+pub fn layout_gpt2_weights_c3() -> ModelWeightLayout {
+    let layer = layout_gpt2_layer();
+    let layer_stride = 1 << 24;
+    let layers = 12;
+    let total_len = layers * layer_stride;
+    debug_assert_eq!(total_len, C3_WEIGHTS.rows() * C3_WEIGHTS.cols());
+    ModelWeightLayout { layer, layer_stride, layers, total_len }
+}
+
 /// P5 embedding commitment layout: wte (tied embedding/logits weight) and
 /// wpe in one `GPT2_FULL` (2^27) commitment.
 ///
@@ -148,6 +193,15 @@ pub fn layout_gpt2_embed() -> LayerWeightLayout2 {
     layout
 }
 
+/// C3 exact-block layout. Tensor padding and offsets are identical to the
+/// historical layout; only the unused outer tail to 2^27 is omitted.
+pub fn layout_gpt2_embed_c3() -> LayerWeightLayout2 {
+    let layout = LayerWeightLayout2::for_shapes_exact(vec![(50257, 768), (1024, 768)]);
+    debug_assert_eq!(layout.total_len, (1 << 26) + (1 << 20));
+    debug_assert_eq!(layout.total_len, C3_EMBED.rows() * C3_EMBED.cols());
+    layout
+}
+
 /// N-tensor generalization of [`LayerWeightLayout`] (same invariants:
 /// largest-first placement, offsets aligned to own block size, zero pads).
 pub struct LayerWeightLayout2 {
@@ -157,6 +211,17 @@ pub struct LayerWeightLayout2 {
 
 impl LayerWeightLayout2 {
     pub fn for_shapes(shapes: Vec<(usize, usize)>) -> LayerWeightLayout2 {
+        Self::for_shapes_with_outer_padding(shapes, true)
+    }
+
+    pub fn for_shapes_exact(shapes: Vec<(usize, usize)>) -> LayerWeightLayout2 {
+        Self::for_shapes_with_outer_padding(shapes, false)
+    }
+
+    fn for_shapes_with_outer_padding(
+        shapes: Vec<(usize, usize)>,
+        pad_outer_to_power_of_two: bool,
+    ) -> LayerWeightLayout2 {
         let mut tensors: Vec<TensorSlot> = shapes
             .into_iter()
             .map(|(k, n)| {
@@ -171,7 +236,7 @@ impl LayerWeightLayout2 {
             tensors[i].offset = cursor;
             cursor += tensors[i].block_len;
         }
-        let total_len = cursor.next_power_of_two();
+        let total_len = if pad_outer_to_power_of_two { cursor.next_power_of_two() } else { cursor };
         for t in &tensors {
             assert!(t.offset % t.block_len == 0, "block offset not aligned");
         }
@@ -312,6 +377,48 @@ mod tests {
         assert_eq!(w[t0.offset], 1);
         assert_eq!(w[t0.offset + t0.n_pad], 3); // row 1 starts at n_pad
         assert_eq!(w[t0.offset + 3 * t0.n_pad], 0); // pad row
+    }
+
+    #[test]
+    fn c3_production_geometries_are_exact_and_block_preserving() {
+        C3_WEIGHTS.validate();
+        C3_EMBED.validate();
+        assert_eq!(
+            (C3_WEIGHTS.rows(), C3_WEIGHTS.cols(), C3_WEIGHTS.msg_len(), C3_WEIGHTS.code_len()),
+            (24_576, 8_192, 8_704, 32_768)
+        );
+        assert_eq!(
+            (C3_EMBED.rows(), C3_EMBED.cols(), C3_EMBED.msg_len(), C3_EMBED.code_len()),
+            (2_080, 32_768, 33_280, 131_072)
+        );
+
+        let weights = layout_gpt2_weights_c3();
+        assert_eq!(weights.total_len, 12 * (1 << 24));
+        for layer in 0..12 {
+            for tensor in 0..4 {
+                let slot = &weights.layer.tensors[tensor];
+                let point = vec![Fp2::ZERO; slot.point_len()];
+                let claim = weights.block_claim(layer, tensor, &point);
+                assert_eq!(claim.offset, layer * (1 << 24) + slot.offset);
+                assert_eq!(claim.offset % slot.block_len, 0);
+            }
+        }
+
+        let embed = layout_gpt2_embed_c3();
+        assert_eq!(embed.total_len, (1 << 26) + (1 << 20));
+        assert_eq!(embed.tensors[0].offset, 0);
+        assert_eq!(embed.tensors[1].offset, 1 << 26);
+    }
+
+    #[test]
+    fn c3_projected_opening_bytes_match_preregistration() {
+        let weights = crate::ligero::projected_multi_open_bytes(&C3_WEIGHTS, 96);
+        let embed = crate::ligero::projected_multi_open_bytes(&C3_EMBED, 6);
+        assert_eq!(weights.total, 37_405_088);
+        assert_eq!(embed.total, 5_868_800);
+        assert_eq!(weights.total + embed.total, 43_273_888);
+        assert_eq!((weights.data_columns, embed.data_columns), (23_592_960, 1_996_800));
+        assert_eq!((weights.u_vectors, embed.u_vectors), (13_508_608, 3_727_360));
     }
 
     #[test]

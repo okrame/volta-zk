@@ -3,8 +3,8 @@
 //! docs/private-weights-pcs.md; formal interface: M9 `opening_mac_sound`).
 //!
 //! Layout: the flat MLE coefficient vector (LSB-first index, low `col_bits`
-//! bits = matrix column, high `row_bits` bits = matrix row) is arranged as a
-//! rows × cols i16 matrix; each row gets `pad` prover-secret random field
+//! bits = matrix column, the remaining bits = matrix row) is arranged as an
+//! explicit rows × cols i16 matrix; each row gets `pad` prover-secret random field
 //! elements appended (column-opening ZK: any ≤ pad opened codeword positions
 //! are uniform), then is RS-encoded to `2^code_bits` via NTT. One blake3
 //! Merkle tree over the encoded columns is the public commitment `C_W`.
@@ -46,7 +46,9 @@ use volta_proto::mle::eq_vec;
 
 #[derive(Clone, Copy, Debug)]
 pub struct LigeroParams {
-    pub row_bits: u32,
+    /// Physical matrix rows. This is explicit because production C3 shapes
+    /// are not powers of two; the MLE row-variable count is `ceil(log2(rows))`.
+    pub rows: usize,
     pub col_bits: u32,
     /// Random field elements appended to each row before encoding.
     pub pad: usize,
@@ -56,11 +58,14 @@ pub struct LigeroParams {
 
 /// Full-scale parameters for the 2^27-coefficient GPT-2 small weight vector.
 pub const GPT2_FULL: LigeroParams =
-    LigeroParams { row_bits: 13, col_bits: 14, pad: 512, code_bits: 15, n_queries: 200 };
+    LigeroParams { rows: 1 << 13, col_bits: 14, pad: 512, code_bits: 15, n_queries: 200 };
 
 impl LigeroParams {
     pub fn rows(&self) -> usize {
-        1 << self.row_bits
+        self.rows
+    }
+    pub fn row_bits(&self) -> u32 {
+        self.rows.next_power_of_two().trailing_zeros()
     }
     pub fn cols(&self) -> usize {
         1 << self.col_bits
@@ -72,9 +77,10 @@ impl LigeroParams {
         1 << self.code_bits
     }
     pub fn n_vars(&self) -> usize {
-        (self.row_bits + self.col_bits) as usize
+        (self.row_bits() + self.col_bits) as usize
     }
     pub fn validate(&self) {
+        assert!(self.rows > 0, "PCS needs at least one matrix row");
         assert!(self.msg_len() <= self.code_len(), "rate > 1");
         assert!(self.n_queries <= self.pad, "column hiding needs n_queries <= pad");
     }
@@ -920,12 +926,22 @@ struct ClaimGeom {
     q_col: Vec<Fp2>,
 }
 
-fn claim_geom(params: &LigeroParams, c: &BlockClaim) -> ClaimGeom {
+fn claim_geom(params: &LigeroParams, c: &BlockClaim) -> Option<ClaimGeom> {
     let cb = params.col_bits as usize;
     let bv = c.point.len();
-    assert!(bv >= cb, "block smaller than a matrix row");
-    assert!(c.offset % (1 << bv) == 0, "block offset not aligned");
-    ClaimGeom { row0: c.offset >> cb, q_row: eq_vec(&c.point[cb..]), q_col: eq_vec(&c.point[..cb]) }
+    if bv < cb || bv > params.n_vars() {
+        return None;
+    }
+    let block_len = 1usize.checked_shl(bv as u32)?;
+    if c.offset % block_len != 0 {
+        return None;
+    }
+    let row_count = 1usize.checked_shl((bv - cb) as u32)?;
+    let row0 = c.offset >> cb;
+    if row0.checked_add(row_count).is_none_or(|end| end > params.rows()) {
+        return None;
+    }
+    Some(ClaimGeom { row0, q_row: eq_vec(&c.point[cb..]), q_col: eq_vec(&c.point[..cb]) })
 }
 
 fn resident_claim_row0(params: &LigeroParams, claim: &BlockClaim) -> Result<usize, AccelError> {
@@ -992,6 +1008,40 @@ pub struct MultiOpenByteBreakdown {
     /// queried data columns and their commitment Merkle paths cached.
     pub cached_query_cut_bytes: u64,
     pub cached_query_marginal_bytes: u64,
+}
+
+/// Exact wire-size projection for the existing unpruned two-Merkle-path
+/// multi-opening format. This is also valid before materializing a proof and
+/// is therefore used to pin C3 production geometries without allocating the
+/// multi-gigabyte encoded matrices.
+pub fn projected_multi_open_bytes(
+    params: &LigeroParams,
+    n_claims: usize,
+) -> MultiOpenByteBreakdown {
+    params.validate();
+    assert!(n_claims > 0, "multi-opening needs at least one claim");
+    let queries = params.n_queries as u64;
+    let mut b = MultiOpenByteBreakdown {
+        mask_root: 32,
+        u_vectors: 16 * params.msg_len() as u64 * (n_claims as u64 + 1),
+        corr_ss: 16 * n_claims as u64,
+        zero_batch: 32,
+        column_indices: 4 * queries,
+        data_columns: 8 * params.rows() as u64 * queries,
+        mask_columns: 16 * (n_claims as u64 + 1) * queries,
+        commitment_merkle_paths: 32 * params.code_bits as u64 * queries,
+        mask_merkle_paths: 32 * params.code_bits as u64 * queries,
+        ..Default::default()
+    };
+    b.columns_total = b.column_indices
+        + b.data_columns
+        + b.mask_columns
+        + b.commitment_merkle_paths
+        + b.mask_merkle_paths;
+    b.total = b.mask_root + b.u_vectors + b.corr_ss + b.zero_batch + b.columns_total;
+    b.cached_query_cut_bytes = b.data_columns + b.commitment_merkle_paths;
+    b.cached_query_marginal_bytes = b.total - b.cached_query_cut_bytes;
+    b
 }
 
 impl MultiOpenProof {
@@ -1514,9 +1564,18 @@ fn open_multi_zk_impl(
         (params.rows(), params.cols(), params.msg_len(), params.code_len());
     let n_claims = claims.len();
     assert!(n_claims > 0);
+    if w.len() != rows.saturating_mul(cols) {
+        return Err(AccelError::InvalidInput("PCS opening weight geometry mismatch"));
+    }
     let plan = NttPlan::new(code_len);
     let mut tm = MultiOpenTimings::default();
-    let geoms: Vec<ClaimGeom> = claims.iter().map(|(c, _)| claim_geom(params, c)).collect();
+    let geoms: Vec<ClaimGeom> = claims
+        .iter()
+        .map(|(claim, _)| {
+            claim_geom(params, claim)
+                .ok_or(AccelError::InvalidInput("PCS claim exceeds explicit matrix rows"))
+        })
+        .collect::<Result<_, _>>()?;
 
     // 1. Fresh mask rows: R_c (proximity) + one per claim, committed first.
     let t0 = Instant::now();
@@ -1716,7 +1775,11 @@ pub fn verify_multi_open(
         return false;
     }
     let plan = NttPlan::new(code_len);
-    let geoms: Vec<ClaimGeom> = claims.iter().map(|(c, _)| claim_geom(params, c)).collect();
+    let Some(geoms) =
+        claims.iter().map(|(claim, _)| claim_geom(params, claim)).collect::<Option<Vec<_>>>()
+    else {
+        return false;
+    };
 
     // Same challenge order as the prover: c, χ, then the column queries.
     let c = tx.challenge_fp2();

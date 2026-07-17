@@ -197,7 +197,7 @@ fn run_layer(
 /// 2^14 in a 2^16 commitment (offsets 0, 3·2^14, 2^14, 2^15 — same
 /// largest-first placement rule as the full layer).
 const SMALL_P4: LigeroParams =
-    LigeroParams { row_bits: 6, col_bits: 10, pad: 64, code_bits: 11, n_queries: 32 };
+    LigeroParams { rows: 1 << 6, col_bits: 10, pad: 64, code_bits: 11, n_queries: 32 };
 
 #[test]
 fn p4_layer_small_e2e() {

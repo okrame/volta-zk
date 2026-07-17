@@ -47,7 +47,8 @@ use crate::block_proof::{
     add_range_mult, auth_ln_vecs_p, auth_ln_vecs_resident_p, auth_matrix_rows_p,
     auth_matrix_rows_resident_p, auth_matrix_rows_v, bind_range_site_resident, expand_ln_vecs_k,
     layer_content_keys, layer_dom_base, ln_acc_recompute, open_matrix_k, open_matrix_p,
-    open_matrix_resident_p, prove_layer_phase1, prove_layer_phase1_band,
+    open_matrix_resident_p, open_matrix_weighted_rows_k, open_matrix_weighted_rows_p,
+    open_matrix_weighted_rows_resident_p, prove_layer_phase1, prove_layer_phase1_band,
     prove_layer_phase1_band_reusing_xin, prove_layer_phase1_resident,
     prove_layer_phase1_reusing_xin, prove_ln_chain, prove_ln_chain_resident, prove_range_site,
     prove_range_site_resident, public_window_fold_resident, range_keys, verify_layer_phase1,
@@ -66,6 +67,11 @@ use crate::gemm_proof::{WeightClaimP, WireKey, WireOut};
 use crate::logup::{eval_mle_counted, Counters, ProdKeyTriples, ProdTriples};
 use crate::logup::{Doms, TableKey};
 use crate::mle::eq_vec;
+use crate::private_argmax::{
+    build_private_argmax_witness, phase_layout_from_lengths, prepare_private_argmax_prover,
+    prepare_private_argmax_verifier, prove_private_argmax, verify_private_argmax, ArgmaxPhaseInput,
+    PrivateArgmaxPhaseP, PrivateArgmaxPreparedP, PrivateArgmaxProof,
+};
 use crate::sumcheck_blind::{blind_prove, blind_prove_resident, blind_verify, BlindSumcheckProof};
 use crate::thaler::{fold_w, pad_bits};
 use rayon::prelude::*;
@@ -207,6 +213,13 @@ pub struct ChunkPub<'a> {
     pub seq: &'a [u32],
 }
 
+/// C3 verifier-side decode chunk: only public response tokens remain; logits
+/// are bound privately by [`PrivateArgmaxProof`].
+pub struct PrivateChunkPub<'a> {
+    pub q: usize,
+    pub seq: &'a [u32],
+}
+
 /// One decode chunk's witness + the full public token sequence.
 pub struct ChunkRef<'a> {
     pub band: &'a BandModelWitness,
@@ -266,6 +279,8 @@ pub struct ModelProof {
     /// Per-content table closures (ONE multiset argument per table content
     /// per model — P6 shared-α restructure), canonical `TableKey` order.
     pub tables: Vec<TableCloseProof>,
+    /// C3 private-logit greedy decoding. Historical proof modes keep `None`.
+    pub private_argmax: Option<PrivateArgmaxProof>,
 }
 
 pub struct ModelOut {
@@ -881,6 +896,7 @@ fn prove_resident_band_logits(
     tx: &mut Transcript,
     bank: &mut TableBankP,
     backend: &mut Backend,
+    private_phase: Option<&PrivateArgmaxPhaseP>,
 ) -> Result<
     (LogitsClaimProof, WeightClaimP, ProdTriples, Vec<ProverAuthed>, Counters, Counters),
     AccelError,
@@ -889,20 +905,39 @@ fn prove_resident_band_logits(
     let qb = pad_bits(q);
     let d_cb = pad_bits(D);
     let mut cx = BlockCtxP::with_backend(stream, tx, section, bank, backend);
-    let rho_v: Vec<Fp2> = (0..16).map(|_| cx.tx.challenge_fp2()).collect();
-    let rho_q: Vec<Fp2> = (0..qb).map(|_| cx.tx.challenge_fp2()).collect();
+    let rho_v: Vec<Fp2> = private_phase.map_or_else(
+        || (0..16).map(|_| cx.tx.challenge_fp2()).collect(),
+        |phase| phase.tau[..16].to_vec(),
+    );
+    let rho_q: Vec<Fp2> = private_phase
+        .map_or_else(|| (0..qb).map(|_| cx.tx.challenge_fp2()).collect(), |_| Vec::new());
     let eq_v = eq_vec(&rho_v);
-    let eq_q = eq_vec(&rho_q);
+    let row_weights = private_phase
+        .map_or_else(|| eq_vec(&rho_q)[..q].to_vec(), |phase| phase.row_weights.clone());
     cx.ctr_other.fp2_mults += (1 << 16) + (1u64 << qb);
-    let mut logits_eval = Fp2::ZERO;
-    for row in 0..q {
-        let mut row_eval = Fp2::ZERO;
-        for (vocab, &value) in public_logits[row * VOCAB..(row + 1) * VOCAB].iter().enumerate() {
-            row_eval += eq_v[vocab].mul_base(Fp::from_i64(value));
-        }
-        logits_eval += eq_q[row] * row_eval;
+    let logits_claim = private_phase.map_or_else(
+        || {
+            let mut logits_eval = Fp2::ZERO;
+            for row in 0..q {
+                let mut row_eval = Fp2::ZERO;
+                for (vocab, &value) in
+                    public_logits[row * VOCAB..(row + 1) * VOCAB].iter().enumerate()
+                {
+                    row_eval += eq_v[vocab].mul_base(Fp::from_i64(value));
+                }
+                logits_eval += row_weights[row] * row_eval;
+            }
+            cx.ctr_other.base_mults += (q * VOCAB) as u64;
+            ProverAuthed::from_public(logits_eval)
+        },
+        |phase| phase.claim,
+    );
+    let selected_rows = row_weights.len();
+    if selected_rows > q {
+        return Err(AccelError::InvalidInput("private argmax row count exceeds resident band"));
     }
-    cx.ctr_other.base_mults += (q * VOCAB) as u64;
+    let mut padded_row_weights = vec![Fp2::ZERO; q];
+    padded_row_weights[..selected_rows].copy_from_slice(&row_weights);
     let weights = public_window_fold_resident(
         resident_model.model_weight(ModelWeightField::TokenEmbedding),
         VOCAB,
@@ -920,7 +955,7 @@ fn prove_resident_band_logits(
         D,
         0,
         D,
-        &eq_q,
+        &padded_row_weights,
         MatrixFoldAxis::Rows,
         cx.backend.as_deref_mut().unwrap(),
     ) {
@@ -930,28 +965,41 @@ fn prove_resident_band_logits(
             return Err(error);
         }
     };
-    cx.ctr_other.base_mults += (q * D) as u64;
+    cx.ctr_other.base_mults += (selected_rows * D) as u64;
     let domain = cx.doms.take(d_cb as u64);
     let (sumcheck, point, claim, wte_value, _) = blind_prove_resident(
         weights,
         final_rows,
-        ProverAuthed::from_public(logits_eval),
+        logits_claim,
         cx.stream,
         domain,
         cx.tx,
         cx.backend.as_deref_mut().unwrap(),
     )?;
-    let mut final_point = point.clone();
-    final_point.extend(rho_q);
-    let final_open = open_matrix_resident_p(
-        cx.stream,
-        dom_out,
-        band.final_out(),
-        q,
-        D,
-        &final_point,
-        cx.backend.as_deref_mut().unwrap(),
-    )?;
+    let final_open = if private_phase.is_some() {
+        open_matrix_weighted_rows_resident_p(
+            cx.stream,
+            dom_out,
+            band.final_out(),
+            q,
+            D,
+            &point,
+            &padded_row_weights,
+            cx.backend.as_deref_mut().unwrap(),
+        )?
+    } else {
+        let mut final_point = point.clone();
+        final_point.extend(rho_q);
+        open_matrix_resident_p(
+            cx.stream,
+            dom_out,
+            band.final_out(),
+            q,
+            D,
+            &final_point,
+            cx.backend.as_deref_mut().unwrap(),
+        )?
+    };
     cx.ctr_other.fp2_mults += ((1usize << d_cb) - 1) as u64;
     let claim_domain = cx.doms.take(1);
     let mask = cx.stream.draw_fulls(claim_domain, 1)[0];
@@ -1216,6 +1264,60 @@ pub fn prove_response_resident<'chunk, 'source>(
     tx: &mut Transcript,
     backend: &mut Backend,
 ) -> Result<(ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>), AccelError> {
+    prove_response_resident_impl(
+        model,
+        resident_model,
+        wit,
+        public_logits,
+        chunks,
+        error,
+        stream,
+        tx,
+        backend,
+        false,
+    )
+}
+
+#[doc(hidden)]
+#[allow(clippy::too_many_arguments)]
+pub fn prove_response_resident_private_logits<'chunk, 'source>(
+    model: &Gpt2Model,
+    resident_model: &ResidentGpt2Model,
+    wit: &ResidentModelWitness,
+    private_logits: &[i64],
+    chunks: &[ResidentChunkRef<'chunk, 'source>],
+    error: DeviceSlice<'_, u32>,
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+    backend: &mut Backend,
+) -> Result<(ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>), AccelError> {
+    prove_response_resident_impl(
+        model,
+        resident_model,
+        wit,
+        private_logits,
+        chunks,
+        error,
+        stream,
+        tx,
+        backend,
+        true,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_response_resident_impl<'chunk, 'source>(
+    model: &Gpt2Model,
+    resident_model: &ResidentGpt2Model,
+    wit: &ResidentModelWitness,
+    public_logits: &[i64],
+    chunks: &[ResidentChunkRef<'chunk, 'source>],
+    error: DeviceSlice<'_, u32>,
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+    backend: &mut Backend,
+    private_logits: bool,
+) -> Result<(ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>), AccelError> {
     if backend.kind() != BackendKind::CudaResident {
         return Err(AccelError::InvalidInput(
             "resident model proving requires the cuda-resident backend",
@@ -1229,6 +1331,9 @@ pub fn prove_response_resident<'chunk, 'source>(
         || chunks.len() > MAX_RESPONSE_CHUNKS
     {
         return Err(AccelError::InvalidInput("resident model witness geometry mismatch"));
+    }
+    if private_logits && chunks.is_empty() {
+        return Err(AccelError::InvalidInput("C3 private logits require a response chunk"));
     }
     let mut expected_t0 = t;
     for chunk in chunks {
@@ -1249,6 +1354,27 @@ pub fn prove_response_resident<'chunk, 'source>(
         }
         expected_t0 = end;
     }
+    let private_argmax_witness = private_logits.then(|| {
+        let mut token_groups = Vec::with_capacity(1 + chunks.len());
+        token_groups.push(vec![chunks[0].seq[t]]);
+        for (index, chunk) in chunks.iter().enumerate() {
+            let selected = if index + 1 == chunks.len() { chunk.band.q - 1 } else { chunk.band.q };
+            token_groups.push(
+                (0..selected).map(|row| chunk.seq[chunk.band.t0 + row + 1]).collect::<Vec<_>>(),
+            );
+        }
+        let mut inputs = Vec::with_capacity(1 + chunks.len());
+        inputs.push(ArgmaxPhaseInput { logits: public_logits, tokens: &token_groups[0] });
+        for (index, chunk) in chunks.iter().enumerate() {
+            let rows = token_groups[index + 1].len();
+            inputs.push(ArgmaxPhaseInput {
+                logits: &chunk.logits[..rows * VOCAB],
+                tokens: &token_groups[index + 1],
+            });
+        }
+        build_private_argmax_witness(&inputs)
+            .expect("C3 private-logit witness violates the 64-row/range contract")
+    });
     let d_cb = pad_bits(D);
     let rb_t = pad_bits(t);
     let n_vars_td = d_cb + rb_t;
@@ -1433,7 +1559,31 @@ pub fn prove_response_resident<'chunk, 'source>(
         }
     }
 
-    if bank.content_keys() != model_content_keys(model).into_iter().collect::<Vec<_>>() {
+    let argmax_prepared: Option<PrivateArgmaxPreparedP> =
+        if let Some(witness) = private_argmax_witness {
+            match prepare_private_argmax_prover(witness, &mut bank, stream, tx, Some(backend)) {
+                Ok(prepared) => Some(prepared),
+                Err(error_value) => {
+                    free_resident_chunk_phase1s(chunk_p1s, backend);
+                    free_resident_model_phase1(
+                        layer_p1s,
+                        seam_columns,
+                        Some(embed_p1),
+                        Some(final_p1),
+                        &mut bank,
+                        backend,
+                    );
+                    return Err(error_value);
+                }
+            }
+        } else {
+            None
+        };
+    let mut expected_content = model_content_keys(model);
+    if private_logits {
+        expected_content.insert(TableKey::Range(16));
+    }
+    if bank.content_keys() != expected_content.into_iter().collect::<Vec<_>>() {
         free_resident_chunk_phase1s(chunk_p1s, backend);
         free_resident_model_phase1(
             layer_p1s,
@@ -1533,6 +1683,17 @@ pub fn prove_response_resident<'chunk, 'source>(
     let mut layer_proofs = Vec::with_capacity(L);
     let mut boundary_doms = Vec::with_capacity(L);
     let mut layer_kv_doms = Vec::with_capacity(L);
+
+    let (private_argmax, private_phases) = if let Some(prepared) = argmax_prepared {
+        let argmax = prove_private_argmax(prepared, &mut bank, stream, tx, Some(backend));
+        prod.extend(argmax.prod);
+        zero.extend(argmax.zero);
+        add_counters(&mut ctr_instances, &argmax.ctr_instances);
+        add_counters(&mut ctr_other, &argmax.ctr_other);
+        (Some(argmax.proof), Some(argmax.phases))
+    } else {
+        (None, None)
+    };
 
     let prefill_prefixes: Vec<Vec<ResidentKvPrefixP>> = (0..L).map(|_| Vec::new()).collect();
     let scheduled = match prove_layers_resident_scheduled(
@@ -1822,14 +1983,24 @@ pub fn prove_response_resident<'chunk, 'source>(
     let logits_result = {
         let mut cx = BlockCtxP::with_backend(stream, tx, 230, &mut bank, backend);
         (|| {
-            let rho_v: Vec<Fp2> = (0..16).map(|_| cx.tx.challenge_fp2()).collect();
+            let private_phase = private_phases.as_ref().map(|phases| &phases[0]);
+            let rho_v: Vec<Fp2> = private_phase.map_or_else(
+                || (0..16).map(|_| cx.tx.challenge_fp2()).collect(),
+                |phase| phase.tau[..16].to_vec(),
+            );
             let eq_v = eq_vec(&rho_v);
             cx.ctr_other.fp2_mults += 1 << 16;
-            let mut logits_eval = Fp2::ZERO;
-            for (index, &value) in public_logits.iter().enumerate() {
-                logits_eval += eq_v[index].mul_base(Fp::from_i64(value));
-            }
-            cx.ctr_other.base_mults += VOCAB as u64;
+            let logits_claim = private_phase.map_or_else(
+                || {
+                    let mut logits_eval = Fp2::ZERO;
+                    for (index, &value) in public_logits.iter().enumerate() {
+                        logits_eval += eq_v[index].mul_base(Fp::from_i64(value));
+                    }
+                    cx.ctr_other.base_mults += VOCAB as u64;
+                    ProverAuthed::from_public(logits_eval)
+                },
+                |phase| phase.claim,
+            );
             let a_tab = public_window_fold_resident(
                 resident_model.model_weight(ModelWeightField::TokenEmbedding),
                 VOCAB,
@@ -1841,13 +2012,14 @@ pub fn prove_response_resident<'chunk, 'source>(
                 cx.backend.as_deref_mut().unwrap(),
             )?;
             cx.ctr_other.base_mults += (VOCAB * D) as u64;
+            let prefill_row_weight = private_phase.map_or(Fp2::ONE, |phase| phase.row_weights[0]);
             let fin_tab = match public_window_fold_resident(
                 wit.final_out(),
                 1,
                 D,
                 0,
                 D,
-                &[Fp2::ONE],
+                &[prefill_row_weight],
                 MatrixFoldAxis::Rows,
                 cx.backend.as_deref_mut().unwrap(),
             ) {
@@ -1861,23 +2033,36 @@ pub fn prove_response_resident<'chunk, 'source>(
             let (sumcheck, point, claim, wte_value, _) = blind_prove_resident(
                 a_tab,
                 fin_tab,
-                ProverAuthed::from_public(logits_eval),
+                logits_claim,
                 cx.stream,
                 dom_logits,
                 cx.tx,
                 cx.backend.as_deref_mut().unwrap(),
             )?;
-            let mut final_point = point.clone();
-            final_point.extend(bit_coords(0, 1));
-            let final_open = open_matrix_resident_p(
-                cx.stream,
-                dom_out_final,
-                DeviceSlice::new(&out2, 0, 2 * D)?,
-                2,
-                D,
-                &final_point,
-                cx.backend.as_deref_mut().unwrap(),
-            )?;
+            let final_open = if private_phase.is_some() {
+                open_matrix_weighted_rows_resident_p(
+                    cx.stream,
+                    dom_out_final,
+                    DeviceSlice::new(&out2, 0, 2 * D)?,
+                    2,
+                    D,
+                    &point,
+                    &[prefill_row_weight, Fp2::ZERO],
+                    cx.backend.as_deref_mut().unwrap(),
+                )?
+            } else {
+                let mut final_point = point.clone();
+                final_point.extend(bit_coords(0, 1));
+                open_matrix_resident_p(
+                    cx.stream,
+                    dom_out_final,
+                    DeviceSlice::new(&out2, 0, 2 * D)?,
+                    2,
+                    D,
+                    &final_point,
+                    cx.backend.as_deref_mut().unwrap(),
+                )?
+            };
             cx.ctr_other.fp2_mults += ((1usize << d_cb) - 1) as u64;
             let domain = cx.doms.take(1);
             let mask = cx.stream.draw_fulls(domain, 1)[0];
@@ -2399,6 +2584,7 @@ pub fn prove_response_resident<'chunk, 'source>(
                 tx,
                 &mut bank,
                 backend,
+                private_phases.as_ref().map(|phases| &phases[chunk_index + 1]),
             ) {
                 Ok(value) => value,
                 Err(error_value) => {
@@ -2482,6 +2668,7 @@ pub fn prove_response_resident<'chunk, 'source>(
             selection,
             chunks: chunk_proofs,
             tables,
+            private_argmax,
         },
         ModelOut {
             weight_claims,
@@ -2509,7 +2696,19 @@ pub fn prove_response(
     stream: &mut CorrelationStream,
     tx: &mut Transcript,
 ) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
-    prove_response_impl(model, wit, chunks, stream, tx, None)
+    prove_response_impl(model, wit, chunks, stream, tx, None, false)
+}
+
+/// C3 response prover. Logits remain prover-private and are replaced on the
+/// wire by the range/last-tie greedy-argmax argument.
+pub fn prove_response_private_logits(
+    model: &Gpt2Model,
+    wit: &ModelWitness,
+    chunks: &[ChunkRef],
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
+    prove_response_impl(model, wit, chunks, stream, tx, None, true)
 }
 
 pub fn prove_response_with_backend(
@@ -2525,7 +2724,19 @@ pub fn prove_response_with_backend(
         BackendKind::CudaHybrid,
         "host ModelWitness proving is the hybrid gate; resident proving requires a device witness"
     );
-    prove_response_impl(model, wit, chunks, stream, tx, Some(backend))
+    prove_response_impl(model, wit, chunks, stream, tx, Some(backend), false)
+}
+
+pub fn prove_response_private_logits_with_backend(
+    model: &Gpt2Model,
+    wit: &ModelWitness,
+    chunks: &[ChunkRef],
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+    backend: &mut Backend,
+) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
+    assert_eq!(backend.kind(), BackendKind::CudaHybrid);
+    prove_response_impl(model, wit, chunks, stream, tx, Some(backend), true)
 }
 
 fn prove_response_impl(
@@ -2535,12 +2746,35 @@ fn prove_response_impl(
     stream: &mut CorrelationStream,
     tx: &mut Transcript,
     mut backend: Option<&mut Backend>,
+    private_logits: bool,
 ) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
     let t = wit.t;
     assert!(
         chunks.len() <= MAX_RESPONSE_CHUNKS,
         "at most {MAX_RESPONSE_CHUNKS} decode chunks per response (id space)"
     );
+    assert!(!private_logits || !chunks.is_empty(), "C3 private logits require a response chunk");
+    let private_argmax_witness = private_logits.then(|| {
+        let mut token_groups = Vec::with_capacity(1 + chunks.len());
+        token_groups.push(vec![chunks[0].seq[t]]);
+        for (index, chunk) in chunks.iter().enumerate() {
+            let selected = if index + 1 == chunks.len() { chunk.band.q - 1 } else { chunk.band.q };
+            token_groups.push(
+                (0..selected).map(|row| chunk.seq[chunk.band.t0 + row + 1]).collect::<Vec<_>>(),
+            );
+        }
+        let mut inputs = Vec::with_capacity(1 + chunks.len());
+        inputs.push(ArgmaxPhaseInput { logits: &wit.logits, tokens: &token_groups[0] });
+        for (index, chunk) in chunks.iter().enumerate() {
+            let rows = token_groups[index + 1].len();
+            inputs.push(ArgmaxPhaseInput {
+                logits: &chunk.band.logits[..rows * VOCAB],
+                tokens: &token_groups[index + 1],
+            });
+        }
+        build_private_argmax_witness(&inputs)
+            .expect("C3 private-logit witness violates the 64-row/range contract")
+    });
     let d_cb = pad_bits(D);
     let rb_t = pad_bits(t);
     let n_vars_td = d_cb + rb_t;
@@ -2811,11 +3045,20 @@ fn prove_response_impl(
     gelu_manifest.push(prefill_gelu);
     gelu_manifest.extend(chunk_gelu);
 
+    let argmax_prepared: Option<PrivateArgmaxPreparedP> = private_argmax_witness.map(|witness| {
+        prepare_private_argmax_prover(witness, &mut bank, stream, tx, None)
+            .expect("host C3 argmax registration is infallible")
+    });
+
     // End of phase 1: authenticate every content vector, draw the αs, then
     // register the already validated manifest in the finalized bank.
+    let mut expected_content = model_content_keys(model);
+    if private_logits {
+        expected_content.insert(TableKey::Range(16));
+    }
     debug_assert_eq!(
         bank.content_keys(),
-        model_content_keys(model).into_iter().collect::<Vec<_>>(),
+        expected_content.into_iter().collect::<Vec<_>>(),
         "prover bank contents diverge from the public content set"
     );
     let mut table_doms = Doms::new(layer_dom_base(240));
@@ -2823,6 +3066,17 @@ fn prove_response_impl(
     bytes.mult += bank.mult_bytes();
     register_gelu_manifest_p(&mut bank, &gelu_manifest)
         .unwrap_or_else(|error| panic!("invalid response GELU manifest: {error}"));
+
+    let (private_argmax, private_phases) = if let Some(prepared) = argmax_prepared {
+        let argmax = prove_private_argmax(prepared, &mut bank, stream, tx, backend.as_deref_mut());
+        prod.extend(argmax.prod);
+        zero.extend(argmax.zero);
+        add_counters(&mut ctr_instances, &argmax.ctr_instances);
+        add_counters(&mut ctr_other, &argmax.ctr_other);
+        (Some(argmax.proof), Some(argmax.phases))
+    } else {
+        (None, None)
+    };
 
     // ======================= PHASE 2 (chains + instances) ==================
     // ---- (a) 12 layers -----------------------------------------------------
@@ -2963,19 +3217,30 @@ fn prove_response_impl(
     add_counters(&mut ctr_other, &lco);
 
     // ---- (f) logits claim ---------------------------------------------------
-    // L is PUBLIC (the model output). L̃(ρ_v) = Σ_l w̃te(ρ_v, l)·f̃in(l):
+    // Legacy mode starts from the public L̃(ρ_v). C3 starts from the
+    // authenticated phase-masked claim produced by the private argmax proof.
     // blind matvec sumcheck over the d vars; resolution = one wte PCS claim
     // (authenticated) × the MAC opening of the final-LN row (Π_Prod row).
     let mut embed_claims: Vec<WeightClaimP> = Vec::with_capacity(3);
     let mut cx = new_block_ctx!(230);
-    let rho_v: Vec<Fp2> = (0..16).map(|_| cx.tx.challenge_fp2()).collect();
+    let private_phase = private_phases.as_ref().map(|phases| &phases[0]);
+    let rho_v: Vec<Fp2> = private_phase.map_or_else(
+        || (0..16).map(|_| cx.tx.challenge_fp2()).collect(),
+        |phase| phase.tau[..16].to_vec(),
+    );
     let eq_v = eq_vec(&rho_v);
     cx.ctr_other.fp2_mults += 1 << 16;
-    let mut l_eval = Fp2::ZERO;
-    for (v, &lv) in wit.logits.iter().enumerate() {
-        l_eval += eq_v[v].mul_base(Fp::from_i64(lv));
-    }
-    cx.ctr_other.base_mults += VOCAB as u64;
+    let logits_claim = private_phase.map_or_else(
+        || {
+            let mut l_eval = Fp2::ZERO;
+            for (v, &lv) in wit.logits.iter().enumerate() {
+                l_eval += eq_v[v].mul_base(Fp::from_i64(lv));
+            }
+            cx.ctr_other.base_mults += VOCAB as u64;
+            ProverAuthed::from_public(l_eval)
+        },
+        |phase| phase.claim,
+    );
     // A(l) = w̃te(ρ_v, l): row fold of wte by eq_v — the O(V·d) pass.
     let a_tab: Vec<Fp2> = {
         let wte = &model.wte;
@@ -3006,22 +3271,29 @@ fn prove_response_impl(
     };
     cx.ctr_other.base_mults += (VOCAB * D) as u64;
     let mut fin_lift = vec![Fp2::ZERO; 1 << d_cb];
+    let prefill_row_weight = private_phase.map_or(Fp2::ONE, |phase| phase.row_weights[0]);
     for (j, &x) in wit.final_ln.out.iter().enumerate() {
-        fin_lift[j] = Fp2::from_base(Fp::from_i64(x as i64));
+        fin_lift[j] = prefill_row_weight.mul_base(Fp::from_i64(x as i64));
     }
     let dom_lg = cx.doms.take(d_cb as u64);
-    let (lg_sc, r_l, lg_claim_n) = blind_prove(
-        a_tab.clone(),
-        fin_lift,
-        ProverAuthed::from_public(l_eval),
-        cx.stream,
-        dom_lg,
-        cx.tx,
-    );
+    let (lg_sc, r_l, lg_claim_n) =
+        blind_prove(a_tab.clone(), fin_lift, logits_claim, cx.stream, dom_lg, cx.tx);
     // f̃in(r_l): row-0 opening of the (duplicated) final-LN-out boundary.
-    let mut pt_fin = r_l.clone();
-    pt_fin.extend(bit_coords(0, rb_ln));
-    let fin_open = open_matrix_p(cx.stream, dom_out_f, &out2, t_ln, D, &pt_fin);
+    let fin_open = if private_phase.is_some() {
+        open_matrix_weighted_rows_p(
+            cx.stream,
+            dom_out_f,
+            &out2,
+            t_ln,
+            D,
+            &r_l,
+            &[prefill_row_weight, Fp2::ZERO],
+        )
+    } else {
+        let mut pt_fin = r_l.clone();
+        pt_fin.extend(bit_coords(0, rb_ln));
+        open_matrix_p(cx.stream, dom_out_f, &out2, t_ln, D, &pt_fin)
+    };
     // Authenticated w̃te(ρ_v, r_l) → PCS claim on the embed commitment.
     let wv = eval_mle_counted(&a_tab, &r_l, &mut cx.ctr_other);
     let dom_wv = cx.doms.take(1);
@@ -3277,22 +3549,39 @@ fn prove_response_impl(
         add_counters(&mut ctr_instances, &lci);
         add_counters(&mut ctr_other, &lco);
         let _ = gb;
-        // ---- band logits claim (q×VOCAB public output) --------------------------
+        // ---- band logits claim --------------------------------------------------
         let mut cx = new_block_ctx!(gb);
-        let rho_v: Vec<Fp2> = (0..16).map(|_| cx.tx.challenge_fp2()).collect();
-        let rho_q: Vec<Fp2> = (0..qb).map(|_| cx.tx.challenge_fp2()).collect();
+        let private_phase = private_phases.as_ref().map(|phases| &phases[c + 1]);
+        let rho_v: Vec<Fp2> = private_phase.map_or_else(
+            || (0..16).map(|_| cx.tx.challenge_fp2()).collect(),
+            |phase| phase.tau[..16].to_vec(),
+        );
+        let rho_q: Vec<Fp2> = private_phase
+            .map_or_else(|| (0..qb).map(|_| cx.tx.challenge_fp2()).collect(), |_| Vec::new());
         let eq_v = eq_vec(&rho_v);
-        let eq_q = eq_vec(&rho_q);
+        let row_weights = private_phase
+            .map_or_else(|| eq_vec(&rho_q)[..q].to_vec(), |phase| phase.row_weights.clone());
         cx.ctr_other.fp2_mults += (1 << 16) + (1u64 << qb);
-        let mut l_eval = Fp2::ZERO;
-        for r in 0..q {
-            let mut row_e = Fp2::ZERO;
-            for (v, &lv) in bw.logits[r * VOCAB..(r + 1) * VOCAB].iter().enumerate() {
-                row_e += eq_v[v].mul_base(Fp::from_i64(lv));
-            }
-            l_eval += eq_q[r] * row_e;
+        let logits_claim = private_phase.map_or_else(
+            || {
+                let mut l_eval = Fp2::ZERO;
+                for r in 0..q {
+                    let mut row_e = Fp2::ZERO;
+                    for (v, &lv) in bw.logits[r * VOCAB..(r + 1) * VOCAB].iter().enumerate() {
+                        row_e += eq_v[v].mul_base(Fp::from_i64(lv));
+                    }
+                    l_eval += row_weights[r] * row_e;
+                }
+                cx.ctr_other.base_mults += (q * VOCAB) as u64;
+                ProverAuthed::from_public(l_eval)
+            },
+            |phase| phase.claim,
+        );
+        let selected_rows = row_weights.len();
+        debug_assert!(selected_rows <= q);
+        if private_phase.is_some() {
+            debug_assert_eq!(selected_rows, if c + 1 == chunks.len() { q - 1 } else { q });
         }
-        cx.ctr_other.base_mults += (q * VOCAB) as u64;
         let a_tab: Vec<Fp2> = {
             let wte = &model.wte;
             (0..VOCAB)
@@ -3323,24 +3612,32 @@ fn prove_response_impl(
         cx.ctr_other.base_mults += (VOCAB * D) as u64;
         // B(j) = Σ_r eq_q[r]·fin[r,j] — the row fold of the band final-LN out.
         let mut b_tab = vec![Fp2::ZERO; 1 << d_cb];
-        for r in 0..q {
+        for r in 0..selected_rows {
             for j in 0..D {
-                b_tab[j] += eq_q[r].mul_base(Fp::from_i64(bw.fin_out[r * D + j] as i64));
+                b_tab[j] += row_weights[r].mul_base(Fp::from_i64(bw.fin_out[r * D + j] as i64));
             }
         }
-        cx.ctr_other.base_mults += (q * D) as u64;
+        cx.ctr_other.base_mults += (selected_rows * D) as u64;
         let dom_lg = cx.doms.take(d_cb as u64);
-        let (lg_sc, r_l, lg_claim_n) = blind_prove(
-            a_tab.clone(),
-            b_tab,
-            ProverAuthed::from_public(l_eval),
-            cx.stream,
-            dom_lg,
-            cx.tx,
-        );
-        let mut pt_fin = r_l.clone();
-        pt_fin.extend(rho_q.iter().copied());
-        let fin_open = open_matrix_p(cx.stream, p1c.dom_out_f, &bw.fin_out, q, D, &pt_fin);
+        let (lg_sc, r_l, lg_claim_n) =
+            blind_prove(a_tab.clone(), b_tab, logits_claim, cx.stream, dom_lg, cx.tx);
+        let fin_open = if private_phase.is_some() {
+            let mut padded_weights = vec![Fp2::ZERO; q];
+            padded_weights[..selected_rows].copy_from_slice(&row_weights);
+            open_matrix_weighted_rows_p(
+                cx.stream,
+                p1c.dom_out_f,
+                &bw.fin_out,
+                q,
+                D,
+                &r_l,
+                &padded_weights,
+            )
+        } else {
+            let mut pt_fin = r_l.clone();
+            pt_fin.extend(rho_q.iter().copied());
+            open_matrix_p(cx.stream, p1c.dom_out_f, &bw.fin_out, q, D, &pt_fin)
+        };
         let wv = eval_mle_counted(&a_tab, &r_l, &mut cx.ctr_other);
         let dom_wv = cx.doms.take(1);
         let mk = cx.stream.draw_fulls(dom_wv, 1)[0];
@@ -3480,6 +3777,7 @@ fn prove_response_impl(
         selection,
         chunks: chunk_proofs,
         tables,
+        private_argmax,
     };
     let out = ModelOut {
         weight_claims,
@@ -3616,12 +3914,42 @@ fn preflight_greedy_tokens(
     Some(())
 }
 
+fn private_argmax_public_layout(
+    t: usize,
+    chunks: &[ChunkPub<'_>],
+) -> Option<(Vec<Vec<usize>>, Vec<(usize, usize)>)> {
+    let first = chunks.first()?;
+    let mut lengths = Vec::with_capacity(1 + chunks.len());
+    lengths.push(1usize);
+    for (index, chunk) in chunks.iter().enumerate() {
+        lengths.push(if index + 1 == chunks.len() { chunk.q.checked_sub(1)? } else { chunk.q });
+    }
+    let (phases, _) = phase_layout_from_lengths(&lengths)?;
+    let mut public_tokens = Vec::with_capacity(lengths.iter().sum());
+    public_tokens.push((phases[0][0], *first.seq.get(t)? as usize));
+    let mut t0 = t;
+    for (index, chunk) in chunks.iter().enumerate() {
+        if index > 0 && chunk.seq.get(..t0)? != chunks[index - 1].seq.get(..t0)? {
+            return None;
+        }
+        for row in 0..lengths[index + 1] {
+            public_tokens.push((phases[index + 1][row], *chunk.seq.get(t0 + row + 1)? as usize));
+        }
+        t0 = t0.checked_add(chunk.q)?;
+    }
+    if public_tokens.iter().any(|&(_, token)| token >= VOCAB) {
+        return None;
+    }
+    Some((phases, public_tokens))
+}
+
 fn preflight_verify_response_public(
     model: &Gpt2Model,
     t: usize,
     logits: &[i64],
     chunks: &[ChunkPub<'_>],
     proof: &ModelProof,
+    private_logits: bool,
 ) -> Option<()> {
     let global_shifts = [
         model.p.lut.shift_ffn_up,
@@ -3635,11 +3963,13 @@ fn preflight_verify_response_public(
         || t > NPOS
         || t > model.p.tokens.len()
         || model.layers.len() != L
-        || logits.len() != VOCAB
+        || (!private_logits && logits.len() != VOCAB)
+        || (private_logits && (!logits.is_empty() || chunks.is_empty()))
         || chunks.len() > MAX_RESPONSE_CHUNKS
         || proof.layers.len() != L
         || proof.seams.len() != L - 1
         || proof.chunks.len() != chunks.len()
+        || proof.private_argmax.is_some() != private_logits
         || !(1..=16).contains(&model.p.shift_embed)
         || global_shifts.into_iter().any(|shift| shift > 32)
         || model.p.shift_attn_proj.into_iter().any(|shift| shift > 32)
@@ -3677,7 +4007,8 @@ fn preflight_verify_response_public(
         let chunk_boundary_len = chunk.q.checked_mul(D)?;
         let chunk_pad = chunk.q.checked_next_power_of_two()?;
         if chunk.q < 2
-            || chunk.logits.len() != logits_len
+            || (!private_logits && chunk.logits.len() != logits_len)
+            || (private_logits && !chunk.logits.is_empty())
             || end > NPOS
             || chunk.seq.len() < end
             || chunk.seq.get(..t)? != public_prompt
@@ -3705,12 +4036,19 @@ fn preflight_verify_response_public(
 
         t0 = end;
     }
-    preflight_greedy_tokens(t, logits, chunks)?;
+    if !private_logits {
+        preflight_greedy_tokens(t, logits, chunks)?;
+    } else {
+        private_argmax_public_layout(t, chunks)?;
+    }
 
     // `TableBankV::finalize` expands keys incrementally. Validate its entire
     // public shape here so a later table mismatch cannot leave a half-used
     // verifier context.
-    let expected_tables = model_content_keys(model);
+    let mut expected_tables = model_content_keys(model);
+    if private_logits {
+        expected_tables.insert(TableKey::Range(16));
+    }
     if proof.tables.len() != expected_tables.len()
         || proof.tables.iter().zip(expected_tables).any(|(table, key)| {
             table.key != key || table.mult_corr.len() != crate::block_proof::table_len(key)
@@ -3734,7 +4072,34 @@ pub fn verify_response(
     vc: &mut VerifierCtx,
     tx: &mut Transcript,
 ) -> Option<(ModelOutV, ProdKeyTriples, Vec<VerifierKey>)> {
-    preflight_verify_response_public(model, t, logits, chunks, proof)?;
+    verify_response_impl(model, t, logits, chunks, proof, vc, tx, false)
+}
+
+pub fn verify_response_private_logits(
+    model: &Gpt2Model,
+    t: usize,
+    chunks: &[PrivateChunkPub<'_>],
+    proof: &ModelProof,
+    vc: &mut VerifierCtx,
+    tx: &mut Transcript,
+) -> Option<(ModelOutV, ProdKeyTriples, Vec<VerifierKey>)> {
+    let views: Vec<ChunkPub<'_>> =
+        chunks.iter().map(|chunk| ChunkPub { q: chunk.q, logits: &[], seq: chunk.seq }).collect();
+    verify_response_impl(model, t, &[], &views, proof, vc, tx, true)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_response_impl(
+    model: &Gpt2Model,
+    t: usize,
+    logits: &[i64],
+    chunks: &[ChunkPub],
+    proof: &ModelProof,
+    vc: &mut VerifierCtx,
+    tx: &mut Transcript,
+    private_logits: bool,
+) -> Option<(ModelOutV, ProdKeyTriples, Vec<VerifierKey>)> {
+    preflight_verify_response_public(model, t, logits, chunks, proof, private_logits)?;
     let d_cb = pad_bits(D);
     let rb_t = pad_bits(t);
     let n_vars_td = d_cb + rb_t;
@@ -3906,13 +4271,43 @@ pub fn verify_response(
         decode_t0 = decode_t0.checked_add(chunk.q)?;
     }
 
+    let private_layout = private_logits
+        .then(|| private_argmax_public_layout(t, chunks).expect("private preflight fixed layout"));
+    let argmax_prepared = if let Some((phases, _)) = &private_layout {
+        Some(prepare_private_argmax_verifier(proof.private_argmax.as_ref()?, phases.len(), vc)?)
+    } else {
+        None
+    };
+
     // End of phase 1: expand the per-content multiplicity keys against the
     // PUBLIC expected content set, draw the shared αs, then register the
     // already validated response manifest.
-    let expected = model_content_keys(model);
+    let mut expected = model_content_keys(model);
+    if private_logits {
+        expected.insert(TableKey::Range(16));
+    }
     let mut table_doms = Doms::new(layer_dom_base(240));
     let mut bank = TableBankV::finalize(&expected, &proof.tables, vc, tx, &mut table_doms)?;
     register_gelu_manifest_v(&mut bank, &gelu_manifest).ok()?;
+
+    let private_phases = if let (Some(prepared), Some((phase_rows, public_tokens))) =
+        (argmax_prepared, private_layout.as_ref())
+    {
+        let argmax = verify_private_argmax(
+            prepared,
+            phase_rows,
+            public_tokens,
+            proof.private_argmax.as_ref()?,
+            &mut bank,
+            vc,
+            tx,
+        )?;
+        kprod.extend(argmax.prod);
+        kzero.extend(argmax.zero);
+        Some(argmax.phases)
+    } else {
+        None
+    };
 
     // ======================= PHASE 2 mirror =================================
     // ---- (a) 12 layers -----------------------------------------------------
@@ -4015,27 +4410,31 @@ pub fn verify_response(
     // ---- (f) logits claim (mirror) -----------------------------------------
     let mut embed_keys: Vec<(Vec<Fp2>, VerifierKey)> = Vec::with_capacity(3);
     let mut cx = BlockCtxV::new(vc, tx, 230, &mut bank);
-    let rho_v: Vec<Fp2> = (0..16).map(|_| cx.tx.challenge_fp2()).collect();
+    let private_phase = private_phases.as_ref().map(|phases| &phases[0]);
+    let rho_v: Vec<Fp2> = private_phase.map_or_else(
+        || (0..16).map(|_| cx.tx.challenge_fp2()).collect(),
+        |phase| phase.tau[..16].to_vec(),
+    );
     let eq_v = eq_vec(&rho_v);
-    let mut l_eval = Fp2::ZERO;
-    for (v, &lv) in logits.iter().enumerate() {
-        if v >= VOCAB {
-            return None;
-        }
-        l_eval += eq_v[v].mul_base(Fp::from_i64(lv));
-    }
+    let logits_key = private_phase.map_or_else(
+        || {
+            let mut l_eval = Fp2::ZERO;
+            for (v, &lv) in logits.iter().enumerate() {
+                l_eval += eq_v[v].mul_base(Fp::from_i64(lv));
+            }
+            VerifierKey::from_public(l_eval, cx.ctx.delta)
+        },
+        |phase| phase.claim,
+    );
     let dom_lg = cx.doms.take(d_cb as u64);
-    let (r_l, k_claim_n) = blind_verify(
-        d_cb,
-        VerifierKey::from_public(l_eval, cx.ctx.delta),
-        &proof.logits.sc,
-        cx.ctx,
-        dom_lg,
-        cx.tx,
-    )?;
-    let mut pt_fin = r_l.clone();
-    pt_fin.extend(bit_coords(0, rb_ln));
-    let k_fin = open_matrix_k(&out_keys_f, t_ln, D, &pt_fin);
+    let (r_l, k_claim_n) = blind_verify(d_cb, logits_key, &proof.logits.sc, cx.ctx, dom_lg, cx.tx)?;
+    let k_fin = if let Some(phase) = private_phase {
+        open_matrix_weighted_rows_k(&out_keys_f, t_ln, D, &r_l, &[phase.row_weights[0], Fp2::ZERO])
+    } else {
+        let mut pt_fin = r_l.clone();
+        pt_fin.extend(bit_coords(0, rb_ln));
+        open_matrix_k(&out_keys_f, t_ln, D, &pt_fin)
+    };
     let dom_wv = cx.doms.take(1);
     let k_wte = VerifierKey {
         k: cx.ctx.expand_full_keys(dom_wv, 1)[0] + cx.ctx.delta * proof.logits.wte_corr,
@@ -4196,30 +4595,42 @@ pub fn verify_response(
             kzero.extend(lkz);
             // ---- band logits claim ----------------------------------------------
             let mut cx = BlockCtxV::new(vc, tx, gb, &mut bank);
-            let rho_v: Vec<Fp2> = (0..16).map(|_| cx.tx.challenge_fp2()).collect();
-            let rho_q: Vec<Fp2> = (0..qb).map(|_| cx.tx.challenge_fp2()).collect();
+            let private_phase = private_phases.as_ref().map(|phases| &phases[c + 1]);
+            let rho_v: Vec<Fp2> = private_phase.map_or_else(
+                || (0..16).map(|_| cx.tx.challenge_fp2()).collect(),
+                |phase| phase.tau[..16].to_vec(),
+            );
+            let rho_q: Vec<Fp2> = private_phase
+                .map_or_else(|| (0..qb).map(|_| cx.tx.challenge_fp2()).collect(), |_| Vec::new());
             let eq_v = eq_vec(&rho_v);
-            let eq_q = eq_vec(&rho_q);
-            let mut l_eval = Fp2::ZERO;
-            for r in 0..q {
-                let mut row_e = Fp2::ZERO;
-                for (v, &lv) in ch.logits[r * VOCAB..(r + 1) * VOCAB].iter().enumerate() {
-                    row_e += eq_v[v].mul_base(Fp::from_i64(lv));
-                }
-                l_eval += eq_q[r] * row_e;
-            }
+            let row_weights = private_phase
+                .map_or_else(|| eq_vec(&rho_q)[..q].to_vec(), |phase| phase.row_weights.clone());
+            let logits_key = private_phase.map_or_else(
+                || {
+                    let mut l_eval = Fp2::ZERO;
+                    for r in 0..q {
+                        let mut row_e = Fp2::ZERO;
+                        for (v, &lv) in ch.logits[r * VOCAB..(r + 1) * VOCAB].iter().enumerate() {
+                            row_e += eq_v[v].mul_base(Fp::from_i64(lv));
+                        }
+                        l_eval += row_weights[r] * row_e;
+                    }
+                    VerifierKey::from_public(l_eval, cx.ctx.delta)
+                },
+                |phase| phase.claim,
+            );
             let dom_lg = cx.doms.take(d_cb as u64);
-            let (r_l, k_claim_n) = blind_verify(
-                d_cb,
-                VerifierKey::from_public(l_eval, cx.ctx.delta),
-                &cp.logits.sc,
-                cx.ctx,
-                dom_lg,
-                cx.tx,
-            )?;
-            let mut pt_fin = r_l.clone();
-            pt_fin.extend(rho_q.iter().copied());
-            let k_fin = open_matrix_k(&v1c.fin_out_keys, q, D, &pt_fin);
+            let (r_l, k_claim_n) =
+                blind_verify(d_cb, logits_key, &cp.logits.sc, cx.ctx, dom_lg, cx.tx)?;
+            let k_fin = if private_phase.is_some() {
+                let mut padded_weights = vec![Fp2::ZERO; q];
+                padded_weights[..row_weights.len()].copy_from_slice(&row_weights);
+                open_matrix_weighted_rows_k(&v1c.fin_out_keys, q, D, &r_l, &padded_weights)
+            } else {
+                let mut pt_fin = r_l.clone();
+                pt_fin.extend(rho_q.iter().copied());
+                open_matrix_k(&v1c.fin_out_keys, q, D, &pt_fin)
+            };
             let dom_wv = cx.doms.take(1);
             let k_wte = VerifierKey {
                 k: cx.ctx.expand_full_keys(dom_wv, 1)[0] + cx.ctx.delta * cp.logits.wte_corr,
@@ -4532,6 +4943,105 @@ mod tests {
         let ok_zero = zero_batch_exchange(&zero, &kzero, &mut stream, &mut vc, mz, &mut txp);
         assert!(ok_prod && ok_zero, "response e2e must verify");
         eprintln!("response_e2e: t={t} q={n_gen} tokens {gen:?} accepted");
+    }
+
+    /// Production-size C3 L4 smoke. The 64x65,536 rectangle is deliberately
+    /// not shrunk in tests; run this alongside the C3 gate suite.
+    #[test]
+    #[ignore = "production-size C3 private-argmax rectangle"]
+    fn private_logits_response_e2e_and_wrong_token_rejects() {
+        let dir = weights_dir();
+        if !dir.join("gpt2s-q.bin").exists() {
+            eprintln!("skipping private logits response e2e: artifact not present");
+            return;
+        }
+        let model = load_model(&dir).unwrap();
+        let (t, q) = (2usize, 2usize);
+        let prefill = forward_model(&model, t);
+        let kv: Vec<(&[i16], &[i16])> =
+            prefill.layers.iter().map(|layer| (layer.k.as_slice(), layer.v.as_slice())).collect();
+        let mut cache = volta_gpt2::KvCache::from_prefill(&kv, t);
+        let (generated, _) = volta_gpt2::generate(&model, &mut cache, &prefill.logits, t, q);
+        let mut sequence = model.p.tokens[..t].to_vec();
+        sequence.extend_from_slice(&generated);
+        let full = volta_gpt2::forward_model_tokens(&model, &sequence);
+        let band = volta_gpt2::band_model_witness(&model, &full, t);
+
+        let pcg_seed = [0xC3; 32];
+        let tx_seed = [0x3C; 32];
+        let delta = Fp2::new(Fp::new(0xC301), Fp::new(0x4A11));
+        let mut stream = CorrelationStream::new(pcg_seed);
+        let mut prover_tx = Transcript::new(tx_seed);
+        let chunks = [ChunkRef { band: &band, seq: &sequence }];
+        let (proof, out, prod, zero) =
+            prove_response_private_logits(&model, &prefill, &chunks, &mut stream, &mut prover_tx);
+        let private_core_bytes = prover_tx.total_bytes();
+        assert!(proof.private_argmax.is_some());
+        assert!(zero.iter().all(|claim| claim.x == Fp2::ZERO));
+        assert!(prod.iter().all(|(a, b, c)| a.x * b.x == c.x));
+
+        let mut verifier = VerifierCtx::new(pcg_seed, delta);
+        let mut verifier_tx = Transcript::new(tx_seed);
+        let public = [PrivateChunkPub { q, seq: &sequence }];
+        let (verified, key_prod, key_zero) = verify_response_private_logits(
+            &model,
+            t,
+            &public,
+            &proof,
+            &mut verifier,
+            &mut verifier_tx,
+        )
+        .expect("honest private-logit response verifies structurally");
+        assert_eq!(out.weight_claims.len(), verified.weight_keys.len());
+        assert_eq!(out.embed_claims.len(), verified.embed_keys.len());
+
+        let mut wrong_sequence = sequence.clone();
+        wrong_sequence[t] = (wrong_sequence[t] + 1) % VOCAB as u32;
+        let mut wrong_verifier = VerifierCtx::new(pcg_seed, delta);
+        let mut wrong_tx = Transcript::new(tx_seed);
+        let wrong_public = [PrivateChunkPub { q, seq: &wrong_sequence }];
+        let (_, _, wrong_zero) = verify_response_private_logits(
+            &model,
+            t,
+            &wrong_public,
+            &proof,
+            &mut wrong_verifier,
+            &mut wrong_tx,
+        )
+        .expect("wrong public token remains a cryptographic, not structural, rejection");
+        assert_ne!(wrong_zero, key_zero, "public token must affect the zero constraints");
+
+        let mut legacy_stream = CorrelationStream::new(pcg_seed);
+        let mut legacy_tx = Transcript::new(tx_seed);
+        let (_, legacy_out, _, _) =
+            prove_response(&model, &prefill, &chunks, &mut legacy_stream, &mut legacy_tx);
+        let l4_bytes = private_core_bytes - legacy_tx.total_bytes();
+        assert_eq!(l4_bytes, 66_016, "L4 transcript accounting changed");
+        let l4_emults = out.ctr_instances.emult_equiv() - legacy_out.ctr_instances.emult_equiv();
+        eprintln!(
+            "C3 L4 addition: {l4_bytes} transcript bytes, {l4_emults:.1} instance-counter E-mult equivalents"
+        );
+
+        let mut prover_doms = Doms::new(layer_dom_base(255));
+        let mut verifier_doms = Doms::new(layer_dom_base(255));
+        let challenge = prover_tx.challenge_fp2();
+        assert_eq!(challenge, verifier_tx.challenge_fp2());
+        let product_domain = prover_doms.take(1);
+        assert_eq!(product_domain, verifier_doms.take(1));
+        let product_mask = stream.draw_fulls(product_domain, 1)[0];
+        let product_key = verifier.expand_full_keys(product_domain, 1)[0];
+        let product_proof = prod_batch_prover(&prod, challenge, product_mask, &mut prover_tx);
+        assert!(prod_batch_verify(&key_prod, product_key, delta, challenge, &product_proof));
+        let zero_domain = prover_doms.take(1);
+        assert_eq!(zero_domain, verifier_doms.take(1));
+        assert!(zero_batch_exchange(
+            &zero,
+            &key_zero,
+            &mut stream,
+            &mut verifier,
+            zero_domain,
+            &mut prover_tx,
+        ));
     }
 
     /// P6 anti-replay smoke: reusing another position's cache-row corrections

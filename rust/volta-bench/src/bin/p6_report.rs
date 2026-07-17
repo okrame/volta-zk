@@ -20,6 +20,10 @@
 //! (`--quick`: prompt 16 + 8 decode, 2×4 curve, golden skipped.) Full runs
 //! default to one warmup plus three measured repetitions; override with
 //! `--warmup-repetitions N --repetitions N`.
+//!
+//! C3 uses `--c3` for diagnostics or `--c3-record` for the clean CPU gate:
+//! Q=120, one consolidated weights tree, one exact-block embed tree and the
+//! private-logit last-maximum proof (zero public-logit payload).
 
 use rand::{rngs::OsRng, RngCore};
 use serde::Serialize;
@@ -49,15 +53,18 @@ use volta_pcg::{
 };
 use volta_pcs::{
     commit, commit_resident_from_device, commit_with_backend, free_resident_matrix,
-    layout_gpt2_embed, layout_gpt2_layer, open_multi_zk, open_multi_zk_resident,
-    open_multi_zk_with_backend, verify_multi_open, LigeroParams, ProverMatrix,
-    ResidentProverMatrix, ResidentWeightPlacement, GPT2_FULL, P4_LAYER,
+    layout_gpt2_embed, layout_gpt2_embed_c3, layout_gpt2_layer, layout_gpt2_weights_c3,
+    open_multi_zk, open_multi_zk_resident, open_multi_zk_with_backend, verify_multi_open,
+    LigeroParams, ProverMatrix, ResidentProverMatrix, ResidentWeightPlacement, C3_EMBED,
+    C3_WEIGHTS, GPT2_FULL, P4_LAYER,
 };
 use volta_proto::block_proof::layer_dom_base;
 use volta_proto::logup::Doms;
 use volta_proto::model_proof::{
-    prove_model_resident, prove_response, prove_response_resident, prove_response_with_backend,
-    verify_response, ChunkPub, ChunkRef, ResidentChunkRef,
+    prove_model_resident, prove_response, prove_response_private_logits,
+    prove_response_private_logits_with_backend, prove_response_resident,
+    prove_response_resident_private_logits, prove_response_with_backend, verify_response,
+    verify_response_private_logits, ChunkPub, ChunkRef, PrivateChunkPub, ResidentChunkRef,
 };
 use volta_proto::{
     cattn_permuted, prod_batch_prover, prod_batch_verify, prove_model, prove_model_with_backend,
@@ -96,6 +103,10 @@ const C1_TRANSCRIPT_BYTES: u64 = C1_BASELINE_TRANSCRIPT_BYTES - C1_SAVED_BYTES;
 const C1_AUTH_CORRECTION_BYTES: u64 = C1_BASELINE_AUTH_CORRECTION_BYTES - C1_SAVED_BYTES;
 const C1_PACKED_RESPONSE_BYTES: u64 = C1_BASELINE_PACKED_RESPONSE_BYTES - C1_SAVED_BYTES;
 const C1_SUB_CORRS: u64 = C1_BASELINE_SUB_CORRS - C1_IDENTITY_SEAM_ALIASES;
+const C3_PCS_OPENING_BYTES: u64 = 43_273_888;
+const C3_L4_TRANSCRIPT_BYTES: u64 = 66_016;
+const C3_PROJECTED_PACKED_RESPONSE_BYTES: u64 = 105_725_808;
+const C3_PACKED_RESPONSE_GATE_BYTES: u64 = 115_000_000;
 // Phase 0a may change this only after its >=10% instrumentation-tax decision
 // is appended to the ledger. Until then, counter-only full runs are
 // diagnostic and cannot become an official verdict.
@@ -615,6 +626,14 @@ struct Report {
     flip_readiness_default_flip_pending: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     fase_d_g1_pass: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c3_g1_pass: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c3_packed_response_gate_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c3_l4_transcript_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c3_projected_packed_response_bytes: Option<u64>,
     // P7b gates are emitted only by the resident schema. Quick runs retain
     // observations but deliberately do not emit pass/fail verdicts.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -756,6 +775,7 @@ struct Report {
     pcs_rate: f64,
     pcs_relative_distance: f64,
     pcs_query_error_bits: f64,
+    pcs_response_statistical_soundness_bits: f64,
     pcs_commitments: Vec<PcsCommitmentRow>,
     pcs_commit_total_s: f64,
     pcs_open_total_s: f64,
@@ -956,6 +976,8 @@ fn ledger_delta(
 #[derive(Clone)]
 struct Args {
     quick: bool,
+    c3: bool,
+    c3_record: bool,
     c1_record: bool,
     flip_readiness_record: bool,
     fase_d_record: bool,
@@ -1043,7 +1065,7 @@ impl PcgBackendArg {
 
 fn usage() -> ! {
     eprintln!(
-        "usage: p6_report [--quick|--c1-record|--flip-readiness-record|--fase-d-record] [--pcs-q Q] \
+        "usage: p6_report [--quick] [--c3|--c3-record|--c1-record|--flip-readiness-record|--fase-d-record] [--pcs-q Q] \
          [--fase-d-pod-profile v1|v2] \
          [--pcg-backend mock|real] [--pcg-authorization-store PATH] \
          [--pcg-connection-store PATH] \
@@ -1058,6 +1080,8 @@ fn usage() -> ! {
 fn parse_args() -> Args {
     let mut out = Args {
         quick: false,
+        c3: false,
+        c3_record: false,
         c1_record: false,
         flip_readiness_record: false,
         fase_d_record: false,
@@ -1077,6 +1101,10 @@ fn parse_args() -> Args {
     while let Some(a) = args.next() {
         if a == "--quick" {
             out.quick = true;
+        } else if a == "--c3" {
+            out.c3 = true;
+        } else if a == "--c3-record" {
+            out.c3_record = true;
         } else if a == "--c1-record" {
             out.c1_record = true;
         } else if a == "--flip-readiness-record" {
@@ -1181,8 +1209,19 @@ fn pcs_query_error_bits(params: &LigeroParams) -> f64 {
     -(params.n_queries as f64) * (1.0 - delta / 2.0).log2()
 }
 
+fn pcs_response_soundness_bits(trees: &[(&LigeroParams, usize, usize)]) -> f64 {
+    let field_size = (P as f64) * (P as f64);
+    let epsilon = trees.iter().fold(0.0, |sum, (params, copies, claims)| {
+        let rate = params.msg_len() as f64 / params.code_len() as f64;
+        let query = (1.0 - (1.0 - rate) / 2.0).powi(params.n_queries as i32);
+        let field = (params.rows + claims + 1) as f64 / field_size;
+        sum + *copies as f64 * (query + field)
+    });
+    -epsilon.log2()
+}
+
 fn same_ligero_params(a: &LigeroParams, b: &LigeroParams) -> bool {
-    a.row_bits == b.row_bits
+    a.rows == b.rows
         && a.col_bits == b.col_bits
         && a.pad == b.pad
         && a.code_bits == b.code_bits
@@ -1703,6 +1742,12 @@ fn run_session_impl<'source>(
     mut accelerator: Option<&mut Backend>,
 ) -> SessionResult {
     let session_started = Instant::now();
+    let c3 = layer_params.rows == C3_WEIGHTS.rows && embed_params.rows == C3_EMBED.rows;
+    assert_eq!(
+        layer_params.rows == C3_WEIGHTS.rows,
+        embed_params.rows == C3_EMBED.rows,
+        "C3 PCS geometries must be selected together"
+    );
     if let Some(accel) = accelerator.as_deref_mut() {
         accel.begin_measurement().expect("begin accelerator measurement");
     }
@@ -1734,24 +1779,55 @@ fn run_session_impl<'source>(
             .map(|(device, public)| ResidentChunkRef { band: device, logits: &public.logits, seq })
             .collect();
         let accel = accelerator.as_deref_mut().expect("resident session requires CUDA backend");
-        prove_response_resident(
-            model,
-            resident.model,
-            resident.witness,
-            &wit.logits,
-            &resident_chunks,
-            DeviceSlice::new(resident.error, 0, 1).expect("resident proof error word"),
-            &mut stream,
-            &mut txp,
-            accel,
-        )
-        .expect("resident response proof")
+        let error = DeviceSlice::new(resident.error, 0, 1).expect("resident proof error word");
+        if c3 {
+            prove_response_resident_private_logits(
+                model,
+                resident.model,
+                resident.witness,
+                &wit.logits,
+                &resident_chunks,
+                error,
+                &mut stream,
+                &mut txp,
+                accel,
+            )
+            .expect("resident C3 response proof")
+        } else {
+            prove_response_resident(
+                model,
+                resident.model,
+                resident.witness,
+                &wit.logits,
+                &resident_chunks,
+                error,
+                &mut stream,
+                &mut txp,
+                accel,
+            )
+            .expect("resident response proof")
+        }
     } else if let Some(accel) = accelerator.as_deref_mut() {
         let chunks_p: Vec<ChunkRef> = bands.iter().map(|b| ChunkRef { band: b, seq }).collect();
-        prove_response_with_backend(model, wit, &chunks_p, &mut stream, &mut txp, accel)
+        if c3 {
+            prove_response_private_logits_with_backend(
+                model,
+                wit,
+                &chunks_p,
+                &mut stream,
+                &mut txp,
+                accel,
+            )
+        } else {
+            prove_response_with_backend(model, wit, &chunks_p, &mut stream, &mut txp, accel)
+        }
     } else {
         let chunks_p: Vec<ChunkRef> = bands.iter().map(|b| ChunkRef { band: b, seq }).collect();
-        prove_response(model, wit, &chunks_p, &mut stream, &mut txp)
+        if c3 {
+            prove_response_private_logits(model, wit, &chunks_p, &mut stream, &mut txp)
+        } else {
+            prove_response(model, wit, &chunks_p, &mut stream, &mut txp)
+        }
     };
     let prove_s = tp0.elapsed().as_secs_f64();
 
@@ -1760,32 +1836,48 @@ fn run_session_impl<'source>(
     // packed size is the real download and the codec is on the e2e path.
     // Transport-only — nothing enters the transcript.
     let mut public_logits_packed_bytes = 0u64;
-    let dec_prefill = {
+    let dec_prefill = (!c3).then(|| {
         let buf = logits_pack::pack_logits(1, wit.logits.len(), &wit.logits);
         public_logits_packed_bytes += buf.len() as u64;
         let (_, _, dec) = logits_pack::unpack_logits(&buf).expect("prefill logits decode");
         assert_eq!(dec, wit.logits, "logits codec must be bit-exact");
         dec
-    };
+    });
     let dec_bands: Vec<Vec<i64>> = bands
         .iter()
-        .map(|b| {
-            let buf = logits_pack::pack_logits(b.q, b.logits.len() / b.q, &b.logits);
-            public_logits_packed_bytes += buf.len() as u64;
-            let (_, _, dec) = logits_pack::unpack_logits(&buf).expect("band logits decode");
-            assert_eq!(dec, b.logits, "logits codec must be bit-exact");
-            dec
+        .filter_map(|b| {
+            (!c3).then(|| {
+                let buf = logits_pack::pack_logits(b.q, b.logits.len() / b.q, &b.logits);
+                public_logits_packed_bytes += buf.len() as u64;
+                let (_, _, dec) = logits_pack::unpack_logits(&buf).expect("band logits decode");
+                assert_eq!(dec, b.logits, "logits codec must be bit-exact");
+                dec
+            })
         })
         .collect();
-    let chunks_v: Vec<ChunkPub> = bands
-        .iter()
-        .zip(&dec_bands)
-        .map(|(b, dec)| ChunkPub { q: b.q, logits: dec, seq })
-        .collect();
     let tv0 = Instant::now();
-    let (outv, kprod, kzero) =
-        verify_response(model, t, &dec_prefill, &chunks_v, &proof, &mut vc, &mut txv)
-            .expect("honest response must verify");
+    let (outv, kprod, kzero) = if c3 {
+        let chunks_v: Vec<PrivateChunkPub> =
+            bands.iter().map(|band| PrivateChunkPub { q: band.q, seq }).collect();
+        verify_response_private_logits(model, t, &chunks_v, &proof, &mut vc, &mut txv)
+            .expect("honest C3 response must verify")
+    } else {
+        let chunks_v: Vec<ChunkPub> = bands
+            .iter()
+            .zip(&dec_bands)
+            .map(|(b, dec)| ChunkPub { q: b.q, logits: dec, seq })
+            .collect();
+        verify_response(
+            model,
+            t,
+            dec_prefill.as_ref().expect("legacy decoded prefill logits"),
+            &chunks_v,
+            &proof,
+            &mut vc,
+            &mut txv,
+        )
+        .expect("honest response must verify")
+    };
     let verify_s = tv0.elapsed().as_secs_f64();
     let verifier_protocol_counters = vc.counters;
 
@@ -1798,148 +1890,153 @@ fn run_session_impl<'source>(
     let tx_before_pcs = ledger_to_owned(&txp);
     if with_pcs {
         assert_eq!(out.weight_claims.len(), 4 * L * phases);
-        let layout = layout_gpt2_layer();
-        for l in 0..L {
-            // CPU/hybrid retain the historical host flattening. The resident
-            // path places the already-resident proof views D2D, including the
-            // mandatory CAttnProof permutation prepared at model setup.
+        if c3 {
+            let layout = layout_gpt2_weights_c3();
             let w_flat = if resident_model_for_pcs.is_none() {
-                let w = &model.layers[l].0;
-                let w_perm = cattn_permuted(&w.c_attn);
-                Some(layout.place([&w_perm, &w.attn_proj, &w.ffn_up, &w.ffn_down]))
+                let mut flat = vec![0i16; layout.total_len];
+                for layer in 0..L {
+                    let weights = &model.layers[layer].0;
+                    let c_attn = cattn_permuted(&weights.c_attn);
+                    layout.place_layer(
+                        &mut flat,
+                        layer,
+                        [&c_attn, &weights.attn_proj, &weights.ffn_up, &weights.ffn_down],
+                    );
+                }
+                Some(flat)
             } else {
                 None
             };
-            let mut pad_seed = [0x51u8; 32];
-            pad_seed[31] = l as u8;
             let tc0 = Instant::now();
-            let (com, pm) = if let Some(accel) = accelerator.as_deref_mut() {
+            let (commitment, matrix) = if let Some(accel) = accelerator.as_deref_mut() {
                 if accel.kind() == BackendKind::CudaResident {
                     let resident_model = resident_model_for_pcs
-                        .expect("resident PCS commitment requires resident model weights");
+                        .expect("resident C3 commitment requires resident model weights");
                     let fields = [
                         LayerWeightField::CAttnProof,
                         LayerWeightField::AttnProj,
                         LayerWeightField::FfnUp,
                         LayerWeightField::FfnDown,
                     ];
-                    let placements: Vec<_> = fields
-                        .into_iter()
-                        .zip(&layout.tensors)
-                        .map(|(field, slot)| {
-                            let source = resident_model.layer_weight(l, field)?;
-                            ResidentWeightPlacement::new(
-                                source,
-                                slot.k,
-                                slot.n,
-                                slot.offset,
-                                slot.n_pad,
-                                layout.total_len,
-                            )
-                        })
-                        .collect::<Result<_, volta_accel::AccelError>>()
-                        .expect("valid resident layer PCS placements");
+                    let mut placements = Vec::with_capacity(4 * L);
+                    for layer in 0..L {
+                        for (field, slot) in fields.into_iter().zip(&layout.layer.tensors) {
+                            placements.push(
+                                ResidentWeightPlacement::new(
+                                    resident_model
+                                        .layer_weight(layer, field)
+                                        .expect("resident C3 weight field"),
+                                    slot.k,
+                                    slot.n,
+                                    layer * layout.layer_stride + slot.offset,
+                                    slot.n_pad,
+                                    layout.total_len,
+                                )
+                                .expect("valid resident C3 weight placement"),
+                            );
+                        }
+                    }
                     let (commitment, matrix) =
-                        commit_resident_from_device(&placements, layer_params, pad_seed, accel)
-                            .expect("resident CUDA layer commitment");
+                        commit_resident_from_device(&placements, layer_params, [0x51u8; 32], accel)
+                            .expect("resident CUDA C3 weight commitment");
                     (commitment, SessionProverMatrix::Resident(matrix))
                 } else {
                     let (commitment, matrix) = commit_with_backend(
-                        w_flat.as_ref().expect("hybrid PCS needs host layer weights"),
+                        w_flat.as_ref().expect("hybrid C3 PCS needs host weights"),
                         layer_params,
-                        pad_seed,
+                        [0x51u8; 32],
                         accel,
                     )
-                    .expect("hybrid CUDA layer commitment");
+                    .expect("hybrid CUDA C3 weight commitment");
                     (commitment, SessionProverMatrix::Host(matrix))
                 }
             } else {
                 let (commitment, matrix) = commit(
-                    w_flat.as_ref().expect("CPU PCS needs host layer weights"),
+                    w_flat.as_ref().expect("CPU C3 PCS needs host weights"),
                     layer_params,
-                    pad_seed,
+                    [0x51u8; 32],
                 );
                 (commitment, SessionProverMatrix::Host(matrix))
             };
             let commit_s = tc0.elapsed().as_secs_f64();
-
-            // Stacked claims: every phase's 4 claims for this layer.
-            let idxs: Vec<usize> =
-                (0..phases).flat_map(|ph| (0..4).map(move |k| 4 * (ph * L + l) + k)).collect();
-            let claims_p: Vec<_> = idxs
+            let claims_p: Vec<_> = out
+                .weight_claims
                 .iter()
-                .map(|&i| {
-                    let wc = &out.weight_claims[i];
-                    (layout.block_claim(i % 4, &wc.point), wc.value)
+                .enumerate()
+                .map(|(index, claim)| {
+                    let phase_slot = index % (4 * L);
+                    let layer = phase_slot / 4;
+                    let tensor = phase_slot % 4;
+                    (layout.block_claim(layer, tensor, &claim.point), claim.value)
                 })
                 .collect();
-            let mut doms_p = Doms::new(layer_dom_base(242) + 8 * l as u64);
-            let mut doms_v = Doms::new(layer_dom_base(242) + 8 * l as u64);
+            let mut doms_p = Doms::new(layer_dom_base(242));
+            let mut doms_v = Doms::new(layer_dom_base(242));
             let dom_s0 = doms_p.take(1);
             let dom_s1 = doms_p.take(1);
             debug_assert_eq!((dom_s0, dom_s1), (doms_v.take(1), doms_v.take(1)));
-            let mask_seed = pcs_mask_seed(seed, 0x44, l as u8);
             let to0 = Instant::now();
-            let (mproof, _mt) = match &pm {
+            let (opening, _timings) = match &matrix {
                 SessionProverMatrix::Resident(matrix) => open_multi_zk_resident(
                     matrix,
                     &claims_p,
                     &mut stream,
                     dom_s0,
                     dom_s1,
-                    mask_seed,
+                    pcs_mask_seed(seed, 0x44, 0),
                     &mut txp,
-                    accelerator.as_deref_mut().expect("resident PCS backend"),
+                    accelerator.as_deref_mut().expect("resident C3 PCS backend"),
                 )
-                .expect("resident CUDA layer opening"),
+                .expect("resident CUDA C3 weight opening"),
                 SessionProverMatrix::Host(matrix) => {
-                    let host_weights =
-                        w_flat.as_ref().expect("host PCS opening needs flattened layer weights");
+                    let weights = w_flat.as_ref().expect("host C3 opening needs weights");
                     if let Some(accel) = accelerator.as_deref_mut() {
                         open_multi_zk_with_backend(
-                            host_weights,
+                            weights,
                             matrix,
                             &claims_p,
                             &mut stream,
                             dom_s0,
                             dom_s1,
-                            mask_seed,
+                            pcs_mask_seed(seed, 0x44, 0),
                             &mut txp,
                             accel,
                         )
-                        .expect("hybrid CUDA layer opening")
+                        .expect("hybrid CUDA C3 weight opening")
                     } else {
                         open_multi_zk(
-                            host_weights,
+                            weights,
                             matrix,
                             &claims_p,
                             &mut stream,
                             dom_s0,
                             dom_s1,
-                            mask_seed,
+                            pcs_mask_seed(seed, 0x44, 0),
                             &mut txp,
                         )
                     }
                 }
             };
             let open_s = to0.elapsed().as_secs_f64();
-            let ob = mproof.bytes();
-            let mbd = mproof.byte_breakdown();
-            pcs_opening_bytes += ob;
-            pcs_cached_query_marginal_bytes += mbd.cached_query_marginal_bytes;
-            let claims_v: Vec<_> = idxs
+            let breakdown = opening.byte_breakdown();
+            let opening_bytes = opening.bytes();
+            pcs_opening_bytes += opening_bytes;
+            pcs_cached_query_marginal_bytes += breakdown.cached_query_marginal_bytes;
+            let claims_v: Vec<_> = outv
+                .weight_keys
                 .iter()
-                .map(|&i| {
-                    let (point, key) = &outv.weight_keys[i];
-                    (layout.block_claim(i % 4, point), *key)
+                .enumerate()
+                .map(|(index, (point, key))| {
+                    let phase_slot = index % (4 * L);
+                    (layout.block_claim(phase_slot / 4, phase_slot % 4, point), *key)
                 })
                 .collect();
             let tv1 = Instant::now();
             let ok = verify_multi_open(
-                &com.root,
+                &commitment.root,
                 layer_params,
                 &claims_v,
-                &mproof,
+                &opening,
                 &mut vc,
                 dom_s0,
                 dom_s1,
@@ -1948,32 +2045,207 @@ fn run_session_impl<'source>(
             let verify_s = tv1.elapsed().as_secs_f64();
             pcs_all_ok &= ok;
             pcs_rows.push(PcsCommitmentRow {
-                name: format!("layer_{l}"),
-                n_claims: idxs.len(),
+                name: "weights".into(),
+                n_claims: claims_p.len(),
                 commit_s,
                 open_s,
                 verify_s,
-                opening_bytes: ob,
-                opening_cached_query_cut_bytes: mbd.cached_query_cut_bytes,
-                opening_cached_query_marginal_bytes: mbd.cached_query_marginal_bytes,
+                opening_bytes,
+                opening_cached_query_cut_bytes: breakdown.cached_query_cut_bytes,
+                opening_cached_query_marginal_bytes: breakdown.cached_query_marginal_bytes,
                 verified: ok,
             });
-            if let SessionProverMatrix::Resident(matrix) = pm {
+            if let SessionProverMatrix::Resident(matrix) = matrix {
                 free_resident_matrix(
                     matrix,
-                    accelerator.as_deref_mut().expect("resident PCS cleanup backend"),
+                    accelerator.as_deref_mut().expect("resident C3 PCS cleanup backend"),
                 )
-                .expect("free resident layer commitment");
+                .expect("free resident C3 weight commitment");
             }
-            drop((w_flat, com));
+            drop((w_flat, commitment));
             eprintln!(
-                "  layer {l}: {} claims, commit {commit_s:.2}s open {open_s:.3}s ok={ok}",
-                idxs.len()
+                "  C3 weights: {} claims, commit {commit_s:.2}s open {open_s:.3}s ok={ok}",
+                claims_p.len()
             );
+        } else {
+            let layout = layout_gpt2_layer();
+            for l in 0..L {
+                // CPU/hybrid retain the historical host flattening. The resident
+                // path places the already-resident proof views D2D, including the
+                // mandatory CAttnProof permutation prepared at model setup.
+                let w_flat = if resident_model_for_pcs.is_none() {
+                    let w = &model.layers[l].0;
+                    let w_perm = cattn_permuted(&w.c_attn);
+                    Some(layout.place([&w_perm, &w.attn_proj, &w.ffn_up, &w.ffn_down]))
+                } else {
+                    None
+                };
+                let mut pad_seed = [0x51u8; 32];
+                pad_seed[31] = l as u8;
+                let tc0 = Instant::now();
+                let (com, pm) = if let Some(accel) = accelerator.as_deref_mut() {
+                    if accel.kind() == BackendKind::CudaResident {
+                        let resident_model = resident_model_for_pcs
+                            .expect("resident PCS commitment requires resident model weights");
+                        let fields = [
+                            LayerWeightField::CAttnProof,
+                            LayerWeightField::AttnProj,
+                            LayerWeightField::FfnUp,
+                            LayerWeightField::FfnDown,
+                        ];
+                        let placements: Vec<_> = fields
+                            .into_iter()
+                            .zip(&layout.tensors)
+                            .map(|(field, slot)| {
+                                let source = resident_model.layer_weight(l, field)?;
+                                ResidentWeightPlacement::new(
+                                    source,
+                                    slot.k,
+                                    slot.n,
+                                    slot.offset,
+                                    slot.n_pad,
+                                    layout.total_len,
+                                )
+                            })
+                            .collect::<Result<_, volta_accel::AccelError>>()
+                            .expect("valid resident layer PCS placements");
+                        let (commitment, matrix) =
+                            commit_resident_from_device(&placements, layer_params, pad_seed, accel)
+                                .expect("resident CUDA layer commitment");
+                        (commitment, SessionProverMatrix::Resident(matrix))
+                    } else {
+                        let (commitment, matrix) = commit_with_backend(
+                            w_flat.as_ref().expect("hybrid PCS needs host layer weights"),
+                            layer_params,
+                            pad_seed,
+                            accel,
+                        )
+                        .expect("hybrid CUDA layer commitment");
+                        (commitment, SessionProverMatrix::Host(matrix))
+                    }
+                } else {
+                    let (commitment, matrix) = commit(
+                        w_flat.as_ref().expect("CPU PCS needs host layer weights"),
+                        layer_params,
+                        pad_seed,
+                    );
+                    (commitment, SessionProverMatrix::Host(matrix))
+                };
+                let commit_s = tc0.elapsed().as_secs_f64();
+
+                // Stacked claims: every phase's 4 claims for this layer.
+                let idxs: Vec<usize> =
+                    (0..phases).flat_map(|ph| (0..4).map(move |k| 4 * (ph * L + l) + k)).collect();
+                let claims_p: Vec<_> = idxs
+                    .iter()
+                    .map(|&i| {
+                        let wc = &out.weight_claims[i];
+                        (layout.block_claim(i % 4, &wc.point), wc.value)
+                    })
+                    .collect();
+                let mut doms_p = Doms::new(layer_dom_base(242) + 8 * l as u64);
+                let mut doms_v = Doms::new(layer_dom_base(242) + 8 * l as u64);
+                let dom_s0 = doms_p.take(1);
+                let dom_s1 = doms_p.take(1);
+                debug_assert_eq!((dom_s0, dom_s1), (doms_v.take(1), doms_v.take(1)));
+                let mask_seed = pcs_mask_seed(seed, 0x44, l as u8);
+                let to0 = Instant::now();
+                let (mproof, _mt) = match &pm {
+                    SessionProverMatrix::Resident(matrix) => open_multi_zk_resident(
+                        matrix,
+                        &claims_p,
+                        &mut stream,
+                        dom_s0,
+                        dom_s1,
+                        mask_seed,
+                        &mut txp,
+                        accelerator.as_deref_mut().expect("resident PCS backend"),
+                    )
+                    .expect("resident CUDA layer opening"),
+                    SessionProverMatrix::Host(matrix) => {
+                        let host_weights = w_flat
+                            .as_ref()
+                            .expect("host PCS opening needs flattened layer weights");
+                        if let Some(accel) = accelerator.as_deref_mut() {
+                            open_multi_zk_with_backend(
+                                host_weights,
+                                matrix,
+                                &claims_p,
+                                &mut stream,
+                                dom_s0,
+                                dom_s1,
+                                mask_seed,
+                                &mut txp,
+                                accel,
+                            )
+                            .expect("hybrid CUDA layer opening")
+                        } else {
+                            open_multi_zk(
+                                host_weights,
+                                matrix,
+                                &claims_p,
+                                &mut stream,
+                                dom_s0,
+                                dom_s1,
+                                mask_seed,
+                                &mut txp,
+                            )
+                        }
+                    }
+                };
+                let open_s = to0.elapsed().as_secs_f64();
+                let ob = mproof.bytes();
+                let mbd = mproof.byte_breakdown();
+                pcs_opening_bytes += ob;
+                pcs_cached_query_marginal_bytes += mbd.cached_query_marginal_bytes;
+                let claims_v: Vec<_> = idxs
+                    .iter()
+                    .map(|&i| {
+                        let (point, key) = &outv.weight_keys[i];
+                        (layout.block_claim(i % 4, point), *key)
+                    })
+                    .collect();
+                let tv1 = Instant::now();
+                let ok = verify_multi_open(
+                    &com.root,
+                    layer_params,
+                    &claims_v,
+                    &mproof,
+                    &mut vc,
+                    dom_s0,
+                    dom_s1,
+                    &mut txv,
+                );
+                let verify_s = tv1.elapsed().as_secs_f64();
+                pcs_all_ok &= ok;
+                pcs_rows.push(PcsCommitmentRow {
+                    name: format!("layer_{l}"),
+                    n_claims: idxs.len(),
+                    commit_s,
+                    open_s,
+                    verify_s,
+                    opening_bytes: ob,
+                    opening_cached_query_cut_bytes: mbd.cached_query_cut_bytes,
+                    opening_cached_query_marginal_bytes: mbd.cached_query_marginal_bytes,
+                    verified: ok,
+                });
+                if let SessionProverMatrix::Resident(matrix) = pm {
+                    free_resident_matrix(
+                        matrix,
+                        accelerator.as_deref_mut().expect("resident PCS cleanup backend"),
+                    )
+                    .expect("free resident layer commitment");
+                }
+                drop((w_flat, com));
+                eprintln!(
+                    "  layer {l}: {} claims, commit {commit_s:.2}s open {open_s:.3}s ok={ok}",
+                    idxs.len()
+                );
+            }
         }
         // Embedding commitment: 3 claims per phase, tensor idx [0, 0, 1].
         assert_eq!(out.embed_claims.len(), 3 * phases);
-        let layout_e = layout_gpt2_embed();
+        let layout_e = if c3 { layout_gpt2_embed_c3() } else { layout_gpt2_embed() };
         let e_flat = if resident_model_for_pcs.is_none() {
             Some(layout_e.place(&[&model.wte, &model.wpe]))
         } else {
@@ -2132,6 +2404,13 @@ fn run_session_impl<'source>(
             "  embed: {} claims, commit {commit_s:.2}s open {open_s:.3}s ok={ok}",
             3 * phases
         );
+        if c3 {
+            assert_eq!(pcs_rows.len(), 2, "C3 must open exactly two commitment trees");
+            assert_eq!(
+                pcs_opening_bytes, C3_PCS_OPENING_BYTES,
+                "C3 PCS byte formula diverged from the preregistered exact value"
+            );
+        }
     }
     let tx_after_pcs = ledger_to_owned(&txp);
     let pcs_by_label = ledger_delta(&tx_after_pcs, &[&tx_before_pcs]);
@@ -2236,6 +2515,8 @@ fn main() {
     // merely happen to be clean when the JSON verdict is assembled.
     let git_dirty_before_benchmark = git_worktree_dirty();
     let quick = args.quick;
+    let c3_mode = args.c3 || args.c3_record;
+    let shared_connection_record = args.fase_d_record || args.c3_record;
     if args.pcg_backend == PcgBackendArg::Mock && !args.diagnostic {
         eprintln!(
             "p6_report: mock PCG is diagnostic-only after the fase-D default flip; add --diagnostic (no result artifact)"
@@ -2248,16 +2529,44 @@ fn main() {
         );
         std::process::exit(2);
     }
-    if args.diagnostic && (args.c1_record || args.flip_readiness_record || args.fase_d_record) {
+    if args.diagnostic
+        && (args.c3_record || args.c1_record || args.flip_readiness_record || args.fase_d_record)
+    {
         eprintln!("p6_report: diagnostic mode cannot be combined with a record mode");
         std::process::exit(2);
     }
-    if usize::from(args.c1_record)
+    if args.c3 && args.c3_record {
+        eprintln!("p6_report: choose either --c3 diagnostic mode or --c3-record");
+        std::process::exit(2);
+    }
+    if args.c3 && !args.diagnostic {
+        eprintln!("p6_report: --c3 is diagnostic-only; use --c3-record for the clean CPU gate");
+        std::process::exit(2);
+    }
+    if usize::from(args.c3_record)
+        + usize::from(args.c1_record)
         + usize::from(args.flip_readiness_record)
         + usize::from(args.fase_d_record)
         > 1
     {
         eprintln!("p6_report: record selectors are mutually exclusive");
+        std::process::exit(2);
+    }
+    if args.c3 && (args.c1_record || args.flip_readiness_record || args.fase_d_record) {
+        eprintln!("p6_report: --c3 cannot modify a historical record mode");
+        std::process::exit(2);
+    }
+    if args.c3_record
+        && (quick
+            || args.accelerator != AcceleratorArg::Cpu
+            || args.pcg_backend != PcgBackendArg::Real
+            || args.ggm_prg != GgmPrg::Aes128Mmo)
+    {
+        eprintln!("p6_report: --c3-record requires full CPU real/AES geometry");
+        std::process::exit(2);
+    }
+    if args.c3_record && git_dirty_before_benchmark {
+        eprintln!("p6_report: --c3-record requires a clean tree before benchmark setup");
         std::process::exit(2);
     }
     if args.c1_record
@@ -2314,6 +2623,10 @@ fn main() {
         eprintln!("p6_report: --repetitions must be at least 1");
         std::process::exit(2);
     }
+    if args.c3_record && (repetitions < 3 || warmup_repetitions < 1) {
+        eprintln!("p6_report: --c3-record requires at least one warmup and three repetitions");
+        std::process::exit(2);
+    }
     if repetitions + warmup_repetitions > 32 {
         eprintln!("p6_report: at most 32 measured + warmup repetitions are supported");
         std::process::exit(2);
@@ -2346,10 +2659,10 @@ fn main() {
         .pcg_connection_store
         .clone()
         .or_else(|| std::env::var_os("VOLTA_PCG_CONNECTION_STORE").map(PathBuf::from));
-    let pcg_connection_store = if args.fase_d_record {
+    let pcg_connection_store = if shared_connection_record {
         let Some(path) = connection_store_path else {
             eprintln!(
-                "p6_report: --fase-d-record requires --pcg-connection-store PATH or VOLTA_PCG_CONNECTION_STORE"
+                "p6_report: this record mode requires --pcg-connection-store PATH or VOLTA_PCG_CONNECTION_STORE"
             );
             std::process::exit(2);
         };
@@ -2374,8 +2687,8 @@ fn main() {
         ),
     };
     let (t0, n_gen, curve_chunk) = if quick { (16usize, 8usize, 4usize) } else { (100, 50, 10) };
-    let mut layer_params = P4_LAYER;
-    let mut embed_params = GPT2_FULL;
+    let mut layer_params = if c3_mode { C3_WEIGHTS } else { P4_LAYER };
+    let mut embed_params = if c3_mode { C3_EMBED } else { GPT2_FULL };
     if let Some(q) = args.pcs_q {
         layer_params.n_queries = q;
         embed_params.n_queries = q;
@@ -2384,13 +2697,17 @@ fn main() {
         eprintln!(
             "P7 exploratory PCS query profile: Q={q}, error_bits≈{:.1} (default Q={})",
             pcs_query_error_bits(&layer_params),
-            P4_LAYER.n_queries
+            if c3_mode { C3_WEIGHTS.n_queries } else { P4_LAYER.n_queries }
         );
     }
     if (args.c1_record || args.flip_readiness_record)
         && layer_params.n_queries != P4_LAYER.n_queries
     {
         eprintln!("p6_report: record modes freeze PCS Q=200");
+        std::process::exit(2);
+    }
+    if args.c3_record && layer_params.n_queries != C3_WEIGHTS.n_queries {
+        eprintln!("p6_report: --c3-record freezes PCS Q=120");
         std::process::exit(2);
     }
 
@@ -2618,7 +2935,7 @@ fn main() {
             SessionPcgBackend::Mock
         );
 
-        if args.fase_d_record {
+        if shared_connection_record {
             let binding = ConnectionBinding::new(
                 os_random_identity("fase-D connection identity"),
                 os_random_identity("fase-D authenticated-channel identity"),
@@ -2698,7 +3015,7 @@ fn main() {
         for warmup in 0..warmup_repetitions {
             let i = warmup as u8;
             let _ = run_active_prefill!(0xC0 + i);
-            let backend = if args.fase_d_record {
+            let backend = if shared_connection_record {
                 let setup = fase_d_setup.as_ref().expect("fase-D setup record");
                 fase_d_response_base_ot_bytes.push(
                     (fase_d_response_ordinal == 0).then_some(setup.comm.base_ot_bytes).unwrap_or(0),
@@ -2732,7 +3049,7 @@ fn main() {
             };
             let warm =
                 run_active_session!(&[&band50], &resident_band50_refs, true, 0xA0 + i, backend);
-            if args.fase_d_record {
+            if shared_connection_record {
                 finish_fase_d_response(
                     fase_d_connection.as_mut().expect("fase-D connection"),
                     warm.accepted,
@@ -2746,7 +3063,7 @@ fn main() {
         for repetition in 0..repetitions {
             let i = repetition as u8;
             let prefill = run_active_prefill!(0x60 + i);
-            let backend = if args.fase_d_record {
+            let backend = if shared_connection_record {
                 let setup = fase_d_setup.as_ref().expect("fase-D setup record");
                 fase_d_response_base_ot_bytes.push(
                     (fase_d_response_ordinal == 0).then_some(setup.comm.base_ot_bytes).unwrap_or(0),
@@ -2780,7 +3097,7 @@ fn main() {
             };
             let real =
                 run_active_session!(&[&band50], &resident_band50_refs, true, 0x21 + i, backend);
-            if args.fase_d_record {
+            if shared_connection_record {
                 finish_fase_d_response(
                     fase_d_connection.as_mut().expect("fase-D connection"),
                     real.accepted,
@@ -3134,7 +3451,7 @@ fn main() {
             0x22,
             SessionPcgBackend::Mock
         );
-        let backend = if args.fase_d_record {
+        let backend = if shared_connection_record {
             let setup = fase_d_setup.as_ref().expect("fase-D setup record");
             fase_d_response_base_ot_bytes.push(
                 (fase_d_response_ordinal == 0).then_some(setup.comm.base_ot_bytes).unwrap_or(0),
@@ -3167,7 +3484,7 @@ fn main() {
             backend
         };
         let real = run_active_session!(&band_refs, &resident_curve_refs, false, 0x22, backend);
-        if args.fase_d_record {
+        if shared_connection_record {
             finish_fase_d_response(
                 fase_d_connection.as_mut().expect("fase-D connection"),
                 real.accepted,
@@ -3240,7 +3557,7 @@ fn main() {
         if gate_flat { "PASS" } else { "FAIL" },
         chk.accepted
     );
-    let fase_d_lifecycle = if args.fase_d_record {
+    let fase_d_lifecycle = if shared_connection_record {
         let repeat_base_ot_bytes: u64 = fase_d_response_base_ot_bytes.iter().skip(1).sum();
         let repeat_ot_extension_bytes: u64 =
             fase_d_response_ot_extension_bytes.iter().skip(1).sum();
@@ -3356,7 +3673,7 @@ fn main() {
     };
 
     // --- report --------------------------------------------------------------------
-    let public_logits_bytes = ((n_gen * VOCAB + VOCAB) * 8) as u64;
+    let public_logits_bytes = if c3_mode { 0 } else { ((n_gen * VOCAB + VOCAB) * 8) as u64 };
     // Transcript-only marginal: the run-of-record ledger minus its PCS
     // opening bytes (the prefill-only measurement has no PCS), minus the
     // prefill transcript.
@@ -3604,8 +3921,47 @@ fn main() {
     if args.fase_d_record && !quick {
         assert_eq!(fase_d_g1_pass, Some(true), "fase-D G1 functional gate failed");
     }
+    let c3_g1_pass = args.c3_record.then(|| {
+        !git_dirty
+            && !quick
+            && t0 == 100
+            && n_gen == 50
+            && warmup_repetitions >= 1
+            && repetitions >= 3
+            && layer_params.n_queries == C3_WEIGHTS.n_queries
+            && embed_params.n_queries == C3_EMBED.n_queries
+            && golden_checked
+            && golden_match == Some(true)
+            && accepted
+            && chk.accepted
+            && gate_flat
+            && rec.pcs_rows.len() == 2
+            && rec.pcs_rows.iter().all(|row| row.verified)
+            && rec.pcs_opening_bytes == C3_PCS_OPENING_BYTES
+            && rec.public_logits_packed_bytes == 0
+            && rec.n_weight_claims == 96
+            && rec.n_embed_claims == 6
+            && rec.pcg_allocation_hash_match == Some(true)
+            && packed_response_bytes <= C3_PACKED_RESPONSE_GATE_BYTES
+            && fase_d_setup.as_ref().is_some_and(|setup| {
+                setup.g2_capacity_gate_pass
+                    && setup.g2_traffic_gate_pass
+                    && setup.one_connection_base_phase
+                    && setup.pcg_production_ready
+            })
+            && fase_d_lifecycle.as_ref().is_some_and(|lifecycle| {
+                lifecycle.completed_responses == fase_d_response_ordinal
+                    && lifecycle.responses_after_first_repeat_base_ot_bytes == 0
+                    && lifecycle.responses_after_first_repeat_ot_extension_bytes == 0
+            })
+    });
+    if args.c3_record {
+        assert_eq!(c3_g1_pass, Some(true), "C3 G1 functional/communication gate failed");
+    }
     let report = Report {
-        report_schema_version: if args.fase_d_record {
+        report_schema_version: if args.c3_record {
+            8
+        } else if args.fase_d_record {
             7
         } else if args.flip_readiness_record {
             4
@@ -3616,7 +3972,9 @@ fn main() {
         } else {
             6
         },
-        milestone: if args.fase_d_record {
+        milestone: if c3_mode {
+            if quick { "C3-quick" } else { "C3" }.into()
+        } else if args.fase_d_record {
             if args.accelerator == AcceleratorArg::Cpu {
                 if quick { "fase-D-G1-quick" } else { "fase-D-G1" }.into()
             } else if quick {
@@ -3692,6 +4050,10 @@ fn main() {
         flip_readiness_cost_acceptance_pending: args.flip_readiness_record.then_some(true),
         flip_readiness_default_flip_pending: args.flip_readiness_record.then_some(true),
         fase_d_g1_pass,
+        c3_g1_pass,
+        c3_packed_response_gate_bytes: c3_mode.then_some(C3_PACKED_RESPONSE_GATE_BYTES),
+        c3_l4_transcript_bytes: c3_mode.then_some(C3_L4_TRANSCRIPT_BYTES),
+        c3_projected_packed_response_bytes: c3_mode.then_some(C3_PROJECTED_PACKED_RESPONSE_BYTES),
         p7b_gate_evaluated,
         p7b_gate_profile: is_resident.then_some(
             if fase_d_realpcg_profile {
@@ -3806,6 +4168,11 @@ fn main() {
         pcs_rate: layer_params.msg_len() as f64 / layer_params.code_len() as f64,
         pcs_relative_distance: 1.0 - layer_params.msg_len() as f64 / layer_params.code_len() as f64,
         pcs_query_error_bits: pcs_query_error_bits(&layer_params),
+        pcs_response_statistical_soundness_bits: if c3_mode {
+            pcs_response_soundness_bits(&[(&layer_params, 1, 96), (&embed_params, 1, 6)])
+        } else {
+            pcs_response_soundness_bits(&[(&layer_params, 12, 8), (&embed_params, 1, 6)])
+        },
         pcs_commitments: rec.pcs_rows,
         pcs_commit_total_s,
         pcs_open_total_s,
@@ -3930,7 +4297,9 @@ fn main() {
 
     assert!(accepted, "P6 sanity: honest response (both sessions) must verify");
     assert!(gate_flat, "P6 gate: per-token cost must stay ~flat as the cache grows");
-    let mut label = if args.fase_d_record {
+    let mut label = if args.c3_record {
+        "c3".to_string()
+    } else if args.fase_d_record {
         match (args.accelerator, quick) {
             (AcceleratorArg::Cpu, false) => "fase-d".to_string(),
             (AcceleratorArg::Cpu, true) => "fase-d-quick".to_string(),
@@ -3951,10 +4320,14 @@ fn main() {
             (AcceleratorArg::Cpu, false) => "p6".to_string(),
         }
     };
-    if layer_params.n_queries != P4_LAYER.n_queries {
+    let default_queries = if c3_mode { C3_WEIGHTS.n_queries } else { P4_LAYER.n_queries };
+    if layer_params.n_queries != default_queries {
         label.push_str(&format!("-q{}", layer_params.n_queries));
     }
-    if args.pcg_backend == PcgBackendArg::Real && !args.flip_readiness_record && !args.fase_d_record
+    if args.pcg_backend == PcgBackendArg::Real
+        && !args.c3_record
+        && !args.flip_readiness_record
+        && !args.fase_d_record
     {
         label.push_str("-realpcg");
     }
@@ -3986,6 +4359,15 @@ mod report_tests {
         assert_eq!(C1_PACKED_RESPONSE_BYTES, 136_526_530);
         assert_eq!(C1_SUB_CORRS, 7_443_126);
         assert_eq!(P7B_PACKED_RESPONSE_REFERENCE_BYTES, 144_820_930);
+    }
+
+    #[test]
+    fn c3_response_soundness_and_communication_constants_match_design() {
+        let bits = pcs_response_soundness_bits(&[(&C3_WEIGHTS, 1, 96), (&C3_EMBED, 1, 6)]);
+        assert!((bits - 78.809_294_874).abs() < 1e-9, "{bits}");
+        assert_eq!(C3_PCS_OPENING_BYTES, 37_405_088 + 5_868_800);
+        assert_eq!(C3_PROJECTED_PACKED_RESPONSE_BYTES, 105_659_792 + C3_L4_TRANSCRIPT_BYTES);
+        assert_eq!(C3_PACKED_RESPONSE_GATE_BYTES, 115_000_000);
     }
 
     #[test]

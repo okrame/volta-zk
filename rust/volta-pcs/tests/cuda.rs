@@ -11,7 +11,7 @@ use volta_pcs::{
 use volta_proto::mle::eval_mle;
 
 const PARAMS: LigeroParams =
-    LigeroParams { row_bits: 5, col_bits: 5, pad: 8, code_bits: 6, n_queries: 8 };
+    LigeroParams { rows: 1 << 5, col_bits: 5, pad: 8, code_bits: 6, n_queries: 8 };
 
 fn cuda() -> Option<Backend> {
     match Backend::cuda_hybrid() {
@@ -381,7 +381,7 @@ fn cuda_resident_commit_and_open_match_cpu_without_state_leak() {
 #[test]
 fn cuda_resident_device_placements_pack_exact_rows_and_reject_overlap() {
     let Some(mut gpu) = cuda_resident() else { return };
-    let params = LigeroParams { row_bits: 3, col_bits: 3, pad: 2, code_bits: 4, n_queries: 2 };
+    let params = LigeroParams { rows: 1 << 3, col_bits: 3, pad: 2, code_bits: 4, n_queries: 2 };
     let resident_bytes_before = gpu.device_memory_breakdown().unwrap().resident_bytes;
     let a: Vec<i16> = (1..=9).collect();
     let b: Vec<i16> = (101..=104).collect();
@@ -502,7 +502,7 @@ fn cuda_resident_commit_error_reclaims_partial_state() {
     let resident_bytes_before = gpu.device_memory_breakdown().unwrap().resident_bytes;
     // `pad=0` passes the public parameter checks, then device-side prover
     // secret generation rejects after the packed target has been allocated.
-    let params = LigeroParams { row_bits: 1, col_bits: 1, pad: 0, code_bits: 1, n_queries: 0 };
+    let params = LigeroParams { rows: 1 << 1, col_bits: 1, pad: 0, code_bits: 1, n_queries: 0 };
     let weights = vec![1i16, -2, 3, -4];
     let error = match commit_resident(&weights, &params, [0x76; 32], &mut gpu) {
         Ok(_) => panic!("zero-pad resident commitment unexpectedly succeeded"),

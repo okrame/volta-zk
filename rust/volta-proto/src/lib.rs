@@ -10,6 +10,7 @@ pub mod hadamard;
 pub mod logup;
 pub mod mle;
 pub mod model_proof;
+pub(crate) mod private_argmax;
 pub mod prod_check;
 pub mod schedule;
 pub mod sumcheck_blind;
@@ -35,8 +36,11 @@ pub use gemm_proof::{
 };
 pub use hadamard::{hadamard_prove, hadamard_verify, HadamardDoms, HadamardProof};
 pub use model_proof::{
-    prove_model, prove_model_with_backend, verify_model, EmbedProof, FinalLnProof, ModelOut,
-    ModelOutV, ModelProof, SeamProof,
+    prove_model, prove_model_with_backend, prove_response, prove_response_private_logits,
+    prove_response_private_logits_with_backend, prove_response_resident,
+    prove_response_resident_private_logits, prove_response_with_backend, verify_model,
+    verify_response, verify_response_private_logits, ChunkPub, ChunkRef, EmbedProof, FinalLnProof,
+    ModelOut, ModelOutV, ModelProof, PrivateChunkPub, ResidentChunkRef, SeamProof,
 };
 pub use prod_check::{prod_batch_prover, prod_batch_verify, ProdProof};
 pub use schedule::{

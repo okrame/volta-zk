@@ -7,7 +7,7 @@ use volta_field::{Fp, Fp2, FpStream};
 use volta_mac::{CorrIndex, CorrelationStream, ProverAuthed, Transcript, VerifierCtx};
 use volta_pcs::{
     batch_reduce_prover, batch_reduce_verifier, commit, open_multi_zk, open_zk, verify_multi_open,
-    verify_open, BlockClaim, LigeroParams, MultiOpenProof,
+    verify_open, BlockClaim, LigeroParams, MultiOpenProof, C3_EMBED, C3_WEIGHTS,
 };
 use volta_proto::mle::eval_mle;
 use volta_proto::{auth_phase, prove_gemm_blind_committed, verify_gemm_blind_committed};
@@ -88,7 +88,7 @@ fn run_pcs_once(
 }
 
 const SMALL: LigeroParams =
-    LigeroParams { row_bits: 5, col_bits: 5, pad: 8, code_bits: 6, n_queries: 8 };
+    LigeroParams { rows: 1 << 5, col_bits: 5, pad: 8, code_bits: 6, n_queries: 8 };
 
 #[test]
 fn ligero_completeness_small() {
@@ -348,7 +348,7 @@ fn run_multi_once(
 }
 
 const MULTI: LigeroParams =
-    LigeroParams { row_bits: 6, col_bits: 5, pad: 8, code_bits: 6, n_queries: 8 };
+    LigeroParams { rows: 1 << 6, col_bits: 5, pad: 8, code_bits: 6, n_queries: 8 };
 
 #[test]
 fn multi_open_completeness_across_blocks() {
@@ -362,6 +362,84 @@ fn multi_open_rejects_tampered_tag_column_and_correction() {
     assert!(!run_multi_once(&MULTI, 7, 9, 32, |p| p.columns[2].col[5] += Fp::ONE));
     assert!(!run_multi_once(&MULTI, 7, 9, 33, |p| p.corr_ss[3] = p.corr_ss[3] + Fp2::ONE));
     assert!(!run_multi_once(&MULTI, 7, 9, 34, |p| p.u_gs[1][0] = p.u_gs[1][0] + Fp2::ONE));
+}
+
+#[test]
+fn multi_open_supports_non_power_of_two_rows_and_rejects_tail_claims() {
+    let params = LigeroParams { rows: 6, col_bits: 3, pad: 4, code_bits: 4, n_queries: 4 };
+    let w = rand_w(35, params.rows() * params.cols());
+    let mut padded = vec![0i16; 1 << params.n_vars()];
+    padded[..w.len()].copy_from_slice(&w);
+    let padded_fp = embed(&padded);
+    let seed = [35u8; 32];
+    let tx_seed = [0xC3u8; 32];
+    let delta = Fp2::new(Fp::new(0xC301), Fp::new(81));
+    let (commitment, matrix) = commit(&w, &params, [0x73u8; 32]);
+
+    let mut prover = CorrelationStream::new(seed);
+    let mut txp = Transcript::new(tx_seed);
+    let claims = [
+        BlockClaim { offset: 0, point: vec![Fp2::new(Fp::new(2), Fp::new(3)); 4] },
+        BlockClaim { offset: 40, point: vec![Fp2::new(Fp::new(5), Fp::new(7)); 3] },
+    ];
+    let mut corrections = Vec::new();
+    let claims_p: Vec<_> = claims
+        .iter()
+        .enumerate()
+        .map(|(index, claim)| {
+            let value = eval_mle(&padded_fp, &claim.global_point(params.n_vars()));
+            let corr = prover.draw_fulls(dom(DOM_W_CLAIM, index as u32), 1)[0];
+            corrections.push(value - corr.x);
+            txp.append("w_claim_correction", 16);
+            (claim.clone(), ProverAuthed { x: value, m: corr.m })
+        })
+        .collect();
+    let (proof, _) = open_multi_zk(
+        &w,
+        &matrix,
+        &claims_p,
+        &mut prover,
+        dom(DOM_S, 0),
+        dom(DOM_S, 1),
+        [0x74u8; 32],
+        &mut txp,
+    );
+
+    let mut verifier = VerifierCtx::new(seed, delta);
+    let mut txv = Transcript::new(tx_seed);
+    let claims_v: Vec<_> = claims
+        .iter()
+        .enumerate()
+        .map(|(index, claim)| {
+            let key = verifier.expand_full_keys(dom(DOM_W_CLAIM, index as u32), 1)[0];
+            (claim.clone(), volta_mac::VerifierKey { k: key + delta * corrections[index] })
+        })
+        .collect();
+    assert!(verify_multi_open(
+        &commitment.root,
+        &params,
+        &claims_v,
+        &proof,
+        &mut verifier,
+        dom(DOM_S, 0),
+        dom(DOM_S, 1),
+        &mut txv,
+    ));
+
+    let mut bad_claims = claims_v;
+    bad_claims[1].0.offset = 48;
+    let mut verifier_bad = VerifierCtx::new(seed, delta);
+    let mut tx_bad = Transcript::new(tx_seed);
+    assert!(!verify_multi_open(
+        &commitment.root,
+        &params,
+        &bad_claims,
+        &proof,
+        &mut verifier_bad,
+        dom(DOM_S, 0),
+        dom(DOM_S, 1),
+        &mut tx_bad,
+    ));
 }
 
 /// The M9 seam through the multi-eval opening: GEMM committed-W claim bound
@@ -446,7 +524,7 @@ fn gemm_committed_w_e2e_multi_open() {
 /// structure, (c) opened C_W columns uniform (row pads randomize symbols).
 #[test]
 fn leakage_smoke_two_weight_sets() {
-    let params = LigeroParams { row_bits: 6, col_bits: 6, pad: 40, code_bits: 7, n_queries: 32 };
+    let params = LigeroParams { rows: 1 << 6, col_bits: 6, pad: 40, code_bits: 7, n_queries: 32 };
     let n_vars = params.n_vars();
 
     let chi2_top4 = |vals: &[Fp]| -> f64 {
@@ -498,4 +576,56 @@ fn leakage_smoke_two_weight_sets() {
     }
     // (a) identical transcript structure and byte counts for W₁ vs W₂.
     assert_eq!(ledgers[0], ledgers[1]);
+}
+
+fn leakage_smoke_geometry(params: LigeroParams) {
+    let n_vars = params.n_vars();
+    let mut ledgers = Vec::new();
+    for (tag, wseed) in [(0xC3u8, 0xC3u64), (0xC4u8, 0xC4u64)] {
+        let weights = rand_w(wseed, params.rows() * params.cols());
+        let (_, matrix) = commit(&weights, &params, [0x71 ^ tag; 32]);
+        let mut point_source = FpStream::domain_separated([0x73; 32], tag as u64);
+        let point: Vec<Fp2> = (0..n_vars).map(|_| point_source.next_fp2()).collect();
+        let value = eval_mle(&embed(&weights), &point);
+        let mut stream = CorrelationStream::new([tag; 32]);
+        let mut transcript = Transcript::new([0x75; 32]);
+        let claim_mask = stream.draw_fulls(dom(DOM_W_CLAIM, 0), 1)[0];
+        transcript.append("w_claim_correction", 16);
+        let claim = ProverAuthed { x: value, m: claim_mask.m };
+        let claims = [(BlockClaim { offset: 0, point }, claim)];
+        let (_, reduced_point, reduced_value, _) = batch_reduce_prover(
+            &weights,
+            n_vars,
+            &claims,
+            &mut stream,
+            dom(DOM_BATCH_MASKS, 0),
+            &mut transcript,
+        );
+        let (opening, _) = open_zk(
+            &weights,
+            &matrix,
+            &reduced_point,
+            reduced_value,
+            &mut stream,
+            dom(DOM_S, 0),
+            [0x77 ^ tag; 32],
+            &mut transcript,
+        );
+        assert_eq!(opening.columns.len(), params.n_queries);
+        assert!(opening.u_q.iter().chain(&opening.u_c).any(|value| *value != Fp2::ZERO));
+        ledgers.push(transcript.ledger().clone());
+    }
+    assert_eq!(ledgers[0], ledgers[1]);
+}
+
+#[test]
+#[ignore = "C3 production-size 6.4 GB encoded weight geometry"]
+fn c3_weights_two_weight_set_leakage_smoke() {
+    leakage_smoke_geometry(C3_WEIGHTS);
+}
+
+#[test]
+#[ignore = "C3 production-size 2.2 GB encoded embed geometry"]
+fn c3_embed_two_weight_set_leakage_smoke() {
+    leakage_smoke_geometry(C3_EMBED);
 }

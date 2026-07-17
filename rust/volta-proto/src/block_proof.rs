@@ -1238,6 +1238,39 @@ pub(crate) fn open_matrix_p(
     ProverAuthed { x: val, m: tag }
 }
 
+/// Opening with an explicit public linear form over matrix rows.
+pub(crate) fn open_matrix_weighted_rows_p(
+    stream: &mut CorrelationStream,
+    base_dom: u64,
+    x: &[i16],
+    rows: usize,
+    cols: usize,
+    col_point: &[Fp2],
+    row_weights: &[Fp2],
+) -> ProverAuthed {
+    assert_eq!(x.len(), rows * cols);
+    assert_eq!(col_point.len(), pad_bits(cols));
+    assert_eq!(row_weights.len(), rows);
+    let eq_c = eq_vec(col_point);
+    let mut value = Fp2::ZERO;
+    let mut tag = Fp2::ZERO;
+    for row in 0..rows {
+        let tags = stream.draw_sub_tags(base_dom + row as u64, cols);
+        let mut row_value = Fp2::ZERO;
+        let mut row_tag = Fp2::ZERO;
+        for col in 0..cols {
+            let element = x[row * cols + col];
+            if element != 0 {
+                row_value += eq_c[col].mul_base(Fp::from_i64(element as i64));
+            }
+            row_tag += eq_c[col] * tags[col];
+        }
+        value += row_weights[row] * row_value;
+        tag += row_weights[row] * row_tag;
+    }
+    ProverAuthed { x: value, m: tag }
+}
+
 pub(crate) fn open_matrix_resident_p<T: ResidentMatrixElement>(
     stream: &mut CorrelationStream,
     base_dom: u64,
@@ -1268,6 +1301,54 @@ pub(crate) fn open_matrix_resident_p<T: ResidentMatrixElement>(
         cols,
         point,
     )?;
+    Ok(ProverAuthed { x: value, m: tag })
+}
+
+pub(crate) fn open_matrix_weighted_rows_resident_p<T: ResidentMatrixElement>(
+    stream: &mut CorrelationStream,
+    base_dom: u64,
+    x: DeviceSlice<'_, T>,
+    rows: usize,
+    cols: usize,
+    col_point: &[Fp2],
+    row_weights: &[Fp2],
+    backend: &mut Backend,
+) -> Result<ProverAuthed, AccelError> {
+    if x.len() < rows.saturating_mul(cols)
+        || col_point.len() != pad_bits(cols)
+        || row_weights.len() != rows
+    {
+        return Err(AccelError::InvalidInput("resident weighted matrix opening mismatch"));
+    }
+    let folded = public_window_fold_resident(
+        x,
+        rows,
+        cols,
+        0,
+        cols,
+        row_weights,
+        volta_accel::MatrixFoldAxis::Rows,
+        backend,
+    )?;
+    let value = backend.mle_eval_device(
+        DeviceSlice::new(&folded, 0, folded.len()).expect("whole folded row vector"),
+        col_point,
+    );
+    let free_result = backend.free_device(folded);
+    let value = match (value, free_result) {
+        (Ok(value), Ok(())) => value,
+        (Err(error), _) | (_, Err(error)) => return Err(error),
+    };
+    let eq_c = eq_vec(col_point);
+    let mut tag = Fp2::ZERO;
+    for row in 0..rows {
+        let tags = stream.draw_sub_tags(base_dom + row as u64, cols);
+        let row_tag = tags
+            .into_iter()
+            .zip(&eq_c)
+            .fold(Fp2::ZERO, |sum, (entry, &weight)| sum + weight * entry);
+        tag += row_weights[row] * row_tag;
+    }
     Ok(ProverAuthed { x: value, m: tag })
 }
 
@@ -1304,6 +1385,26 @@ pub(crate) fn open_matrix_k(keys: &[Fp2], rows: usize, cols: usize, point: &[Fp2
         k += eq_r[row] * acc;
     }
     VerifierKey { k }
+}
+
+pub(crate) fn open_matrix_weighted_rows_k(
+    keys: &[Fp2],
+    rows: usize,
+    cols: usize,
+    col_point: &[Fp2],
+    row_weights: &[Fp2],
+) -> VerifierKey {
+    assert_eq!(keys.len(), rows * cols);
+    assert_eq!(col_point.len(), pad_bits(cols));
+    assert_eq!(row_weights.len(), rows);
+    let eq_c = eq_vec(col_point);
+    let mut key = Fp2::ZERO;
+    for row in 0..rows {
+        let row_key =
+            (0..cols).fold(Fp2::ZERO, |sum, col| sum + eq_c[col] * keys[row * cols + col]);
+        key += row_weights[row] * row_key;
+    }
+    VerifierKey { k: key }
 }
 
 /// Π_Auth for an `F_p` vector at one domain (LN small vectors, row tables,

@@ -66,8 +66,10 @@ use volta_proto::{
 const P7B_PREFILL_CORE_GATE_S: f64 = 10.0;
 const P7B_DECODE_MARGINAL_GATE_S: f64 = 4.0;
 const P7B_GATE_PROFILE: &str = "runpod-a100-v1";
-const FASE_D_POD_GATE_PROFILE: &str = "runpod-a100-realpcg-v1";
+const FASE_D_POD_GATE_PROFILE_V1: &str = "runpod-a100-realpcg-v1";
+const FASE_D_POD_GATE_PROFILE_V2: &str = "runpod-a100-realpcg-v2";
 const P7B_SYNC_WALL_FRACTION_GATE: f64 = 0.02;
+const FASE_D_POD_SYNC_WALL_ABSOLUTE_GATE_S: f64 = 0.150;
 const P7B_OFFICIAL_RAYON_THREADS: usize = 8;
 // Decimal MB, matching the preregistered ledger threshold.
 const P7B_H2D_GATE_BYTES: u64 = 100_000_000;
@@ -327,6 +329,18 @@ fn synchronization_wall_fraction(stats: &BackendStats, session_wall_s: f64) -> f
     fraction
 }
 
+fn synchronization_wall_gate_pass(
+    fase_d_pod_v2: bool,
+    fraction_observed: f64,
+    absolute_observed_s: f64,
+) -> bool {
+    if fase_d_pod_v2 {
+        absolute_observed_s <= FASE_D_POD_SYNC_WALL_ABSOLUTE_GATE_S
+    } else {
+        fraction_observed <= P7B_SYNC_WALL_FRACTION_GATE
+    }
+}
+
 fn p7b_communication_gate(
     transcript_bytes: u64,
     pcs_opening_bytes: u64,
@@ -408,6 +422,8 @@ struct BenchmarkRepetitionRow {
     pcs_verify_total_s: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     p7b_sync_wall_fraction: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_sync_wall_s: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     accelerator_prefill: Option<AcceleratorStatsRow>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -620,6 +636,8 @@ struct Report {
     #[serde(skip_serializing_if = "Option::is_none")]
     p7b_sync_wall_fraction_gate: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_sync_wall_absolute_gate_s: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     p7b_h2d_gate_bytes: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     p7b_prefill_core_observed_s: Option<f64>,
@@ -630,6 +648,8 @@ struct Report {
     #[serde(skip_serializing_if = "Option::is_none")]
     p7b_sync_wall_fraction_observed: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_sync_wall_absolute_observed_s: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     p7b_h2d_observed_bytes: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     p7b_prefill_core_gate_pass: Option<bool>,
@@ -637,6 +657,8 @@ struct Report {
     p7b_decode_marginal_gate_pass: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     p7b_sync_wall_fraction_gate_pass: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    p7b_sync_wall_absolute_gate_pass: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     p7b_h2d_gate_pass: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -937,6 +959,7 @@ struct Args {
     c1_record: bool,
     flip_readiness_record: bool,
     fase_d_record: bool,
+    fase_d_pod_profile: FaseDPodProfileArg,
     pcs_q: Option<usize>,
     pcg_backend: PcgBackendArg,
     ggm_prg: GgmPrg,
@@ -953,6 +976,21 @@ struct Args {
 enum PcgBackendArg {
     Mock,
     Real,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FaseDPodProfileArg {
+    V1,
+    V2,
+}
+
+impl FaseDPodProfileArg {
+    fn gate_profile(self) -> &'static str {
+        match self {
+            Self::V1 => FASE_D_POD_GATE_PROFILE_V1,
+            Self::V2 => FASE_D_POD_GATE_PROFILE_V2,
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1006,6 +1044,7 @@ impl PcgBackendArg {
 fn usage() -> ! {
     eprintln!(
         "usage: p6_report [--quick|--c1-record|--flip-readiness-record|--fase-d-record] [--pcs-q Q] \
+         [--fase-d-pod-profile v1|v2] \
          [--pcg-backend mock|real] [--pcg-authorization-store PATH] \
          [--pcg-connection-store PATH] \
          [--ggm-prg aes128-mmo|blake3] [--diagnostic] \
@@ -1022,6 +1061,7 @@ fn parse_args() -> Args {
         c1_record: false,
         flip_readiness_record: false,
         fase_d_record: false,
+        fase_d_pod_profile: FaseDPodProfileArg::V1,
         pcs_q: None,
         pcg_backend: PcgBackendArg::Real,
         ggm_prg: GgmPrg::Aes128Mmo,
@@ -1043,6 +1083,11 @@ fn parse_args() -> Args {
             out.flip_readiness_record = true;
         } else if a == "--fase-d-record" {
             out.fase_d_record = true;
+        } else if a == "--fase-d-pod-profile" {
+            let Some(profile) = args.next() else { usage() };
+            out.fase_d_pod_profile = parse_fase_d_pod_profile(&profile);
+        } else if let Some(profile) = a.strip_prefix("--fase-d-pod-profile=") {
+            out.fase_d_pod_profile = parse_fase_d_pod_profile(profile);
         } else if a == "--pcs-q" {
             let Some(q) = args.next() else { usage() };
             out.pcs_q = Some(q.parse().unwrap_or_else(|_| usage()));
@@ -1102,6 +1147,14 @@ fn parse_accelerator(s: &str) -> AcceleratorArg {
         "cpu" => AcceleratorArg::Cpu,
         "cuda-hybrid" => AcceleratorArg::CudaHybrid,
         "cuda-resident" => AcceleratorArg::CudaResident,
+        _ => usage(),
+    }
+}
+
+fn parse_fase_d_pod_profile(s: &str) -> FaseDPodProfileArg {
+    match s {
+        "v1" => FaseDPodProfileArg::V1,
+        "v2" => FaseDPodProfileArg::V2,
         _ => usage(),
     }
 }
@@ -2245,6 +2298,14 @@ fn main() {
         eprintln!("p6_report: --fase-d-record requires a clean tree before setup");
         std::process::exit(2);
     }
+    if args.fase_d_pod_profile == FaseDPodProfileArg::V2
+        && (!args.fase_d_record || args.accelerator != AcceleratorArg::CudaResident)
+    {
+        eprintln!(
+            "p6_report: --fase-d-pod-profile v2 requires --fase-d-record and --accelerator cuda-resident"
+        );
+        std::process::exit(2);
+    }
     let repetitions =
         args.repetitions.unwrap_or(if quick || args.flip_readiness_record { 1 } else { 3 });
     let warmup_repetitions =
@@ -2945,6 +3006,20 @@ fn main() {
             .max_by(f64::total_cmp)
             .expect("resident run needs a measured session")
     });
+    let p7b_sync_wall_absolute_observed_s = is_resident.then(|| {
+        session_results
+            .iter()
+            .map(|session| {
+                session
+                    .accelerator_stats
+                    .as_ref()
+                    .expect("resident measured session needs accelerator stats")
+                    .synchronization_ns as f64
+                    / 1e9
+            })
+            .max_by(f64::total_cmp)
+            .expect("resident run needs a measured session")
+    });
     let p7b_h2d_observed_bytes = is_resident.then(|| {
         session_results
             .iter()
@@ -2991,6 +3066,10 @@ fn main() {
                 .accelerator_stats
                 .as_ref()
                 .map(|stats| synchronization_wall_fraction(stats, response.session_wall_s)),
+            p7b_sync_wall_s: response
+                .accelerator_stats
+                .as_ref()
+                .map(|stats| stats.synchronization_ns as f64 / 1e9),
             accelerator_prefill: prefill
                 .accelerator_stats
                 .map(|stats| AcceleratorStatsRow::from_stats(stats, "prefill-proof")),
@@ -3317,6 +3396,7 @@ fn main() {
         ) && args.resident_timing == P7B_OFFICIAL_RESIDENT_TIMING,
     );
     let gate_is_official = p7b_gate_evaluated == Some(true);
+    let fase_d_pod_v2 = fase_d_realpcg_profile && args.fase_d_pod_profile == FaseDPodProfileArg::V2;
     let p7b_prefill_core_gate_pass = gate_is_official.then(|| {
         p7b_prefill_core_observed_s.expect("resident prefill observation")
             <= P7B_PREFILL_CORE_GATE_S
@@ -3325,9 +3405,19 @@ fn main() {
         p7b_decode_marginal_observed_s.expect("resident decode observation")
             <= P7B_DECODE_MARGINAL_GATE_S
     });
-    let p7b_sync_wall_fraction_gate_pass = gate_is_official.then(|| {
-        p7b_sync_wall_fraction_observed.expect("resident sync-wall observation")
-            <= P7B_SYNC_WALL_FRACTION_GATE
+    let p7b_sync_wall_fraction_gate_pass = (gate_is_official && !fase_d_pod_v2).then(|| {
+        synchronization_wall_gate_pass(
+            false,
+            p7b_sync_wall_fraction_observed.expect("resident sync-wall fraction observation"),
+            p7b_sync_wall_absolute_observed_s.expect("resident absolute sync-wall observation"),
+        )
+    });
+    let p7b_sync_wall_absolute_gate_pass = (gate_is_official && fase_d_pod_v2).then(|| {
+        synchronization_wall_gate_pass(
+            true,
+            p7b_sync_wall_fraction_observed.expect("resident sync-wall fraction observation"),
+            p7b_sync_wall_absolute_observed_s.expect("resident absolute sync-wall observation"),
+        )
     });
     let p7b_h2d_gate_pass = gate_is_official
         .then(|| p7b_h2d_observed_bytes.expect("resident H2D observation") <= P7B_H2D_GATE_BYTES);
@@ -3355,7 +3445,11 @@ fn main() {
             && p7b_response_communication_no_growth_pass == Some(true)
             && p7b_prefill_core_gate_pass.expect("prefill P7b verdict")
             && p7b_decode_marginal_gate_pass.expect("decode P7b verdict")
-            && p7b_sync_wall_fraction_gate_pass.expect("sync-wall P7b verdict")
+            && if fase_d_pod_v2 {
+                p7b_sync_wall_absolute_gate_pass.expect("absolute sync-wall G4-v2 verdict")
+            } else {
+                p7b_sync_wall_fraction_gate_pass.expect("fractional sync-wall P7b verdict")
+            }
             && p7b_h2d_gate_pass.expect("H2D P7b verdict")
             && args.pcg_backend == PcgBackendArg::Real
             && args.ggm_prg == GgmPrg::Aes128Mmo
@@ -3600,7 +3694,12 @@ fn main() {
         fase_d_g1_pass,
         p7b_gate_evaluated,
         p7b_gate_profile: is_resident.then_some(
-            if fase_d_realpcg_profile { FASE_D_POD_GATE_PROFILE } else { P7B_GATE_PROFILE }.into(),
+            if fase_d_realpcg_profile {
+                args.fase_d_pod_profile.gate_profile()
+            } else {
+                P7B_GATE_PROFILE
+            }
+            .into(),
         ),
         p7b_machine_eligible: is_resident.then_some(p7b_machine_is_eligible),
         p7b_timing_statistic: is_resident
@@ -3609,16 +3708,21 @@ fn main() {
         p7b_prefill_core_gate_s: is_resident.then_some(P7B_PREFILL_CORE_GATE_S),
         p7b_decode_marginal_gate_s: is_resident.then_some(P7B_DECODE_MARGINAL_GATE_S),
         p7b_sync_count_gate_retired: is_resident.then_some(true),
-        p7b_sync_wall_fraction_gate: is_resident.then_some(P7B_SYNC_WALL_FRACTION_GATE),
+        p7b_sync_wall_fraction_gate: (is_resident && !fase_d_pod_v2)
+            .then_some(P7B_SYNC_WALL_FRACTION_GATE),
+        p7b_sync_wall_absolute_gate_s: (is_resident && fase_d_pod_v2)
+            .then_some(FASE_D_POD_SYNC_WALL_ABSOLUTE_GATE_S),
         p7b_h2d_gate_bytes: is_resident.then_some(P7B_H2D_GATE_BYTES),
         p7b_prefill_core_observed_s,
         p7b_decode_marginal_observed_s,
         p7b_sync_observed,
         p7b_sync_wall_fraction_observed,
+        p7b_sync_wall_absolute_observed_s,
         p7b_h2d_observed_bytes,
         p7b_prefill_core_gate_pass,
         p7b_decode_marginal_gate_pass,
         p7b_sync_wall_fraction_gate_pass,
+        p7b_sync_wall_absolute_gate_pass,
         p7b_h2d_gate_pass,
         response_communication_envelope_bytes: is_resident
             .then_some(RESPONSE_COMMUNICATION_ENVELOPE_BYTES),
@@ -3830,8 +3934,8 @@ fn main() {
         match (args.accelerator, quick) {
             (AcceleratorArg::Cpu, false) => "fase-d".to_string(),
             (AcceleratorArg::Cpu, true) => "fase-d-quick".to_string(),
-            (_, false) => FASE_D_POD_GATE_PROFILE.to_string(),
-            (_, true) => format!("{FASE_D_POD_GATE_PROFILE}-quick"),
+            (_, false) => args.fase_d_pod_profile.gate_profile().to_string(),
+            (_, true) => format!("{}-quick", args.fase_d_pod_profile.gate_profile()),
         }
     } else if args.flip_readiness_record {
         "flip-readiness".to_string()
@@ -4012,6 +4116,16 @@ mod report_tests {
     fn synchronization_wall_fraction_uses_session_wall() {
         let stats = BackendStats { synchronization_ns: 20_000_000, ..BackendStats::default() };
         assert_eq!(synchronization_wall_fraction(&stats, 2.0), 0.01);
+    }
+
+    #[test]
+    fn fase_d_v2_sync_gate_is_absolute_and_v1_remains_fractional() {
+        assert!(synchronization_wall_gate_pass(false, 0.02, 0.151));
+        assert!(!synchronization_wall_gate_pass(false, 0.020_000_001, 0.100));
+        assert!(synchronization_wall_gate_pass(true, 0.03, 0.150));
+        assert!(!synchronization_wall_gate_pass(true, 0.01, 0.150_000_001));
+        assert_eq!(FaseDPodProfileArg::V1.gate_profile(), "runpod-a100-realpcg-v1");
+        assert_eq!(FaseDPodProfileArg::V2.gate_profile(), "runpod-a100-realpcg-v2");
     }
 
     #[test]

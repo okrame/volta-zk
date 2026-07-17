@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
-# Clean same-SHA fase-D RunPod quick preflight followed by official G4.
+# Clean same-SHA fase-D RunPod quick preflight followed by official G4 v1/v2.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RESULTS="$ROOT/benchmarks/results"
 STAGING="${1:-}"
+PROFILE="${2:-v1}"
 
 if [[ -z "$STAGING" || "$STAGING" != /* ]]; then
-  echo "usage: $0 ABSOLUTE_EMPTY_STAGING_DIRECTORY" >&2
+  echo "usage: $0 ABSOLUTE_EMPTY_STAGING_DIRECTORY [v1|v2]" >&2
+  exit 2
+fi
+if [[ "$PROFILE" != "v1" && "$PROFILE" != "v2" ]]; then
+  echo "fase-D pod profile must be v1 or v2" >&2
   exit 2
 fi
 case "$STAGING/" in
@@ -105,6 +110,7 @@ run_report() {
     --resident-timing wall-only-counters \
     --pcs-q 200 \
     --fase-d-record \
+    --fase-d-pod-profile "$PROFILE" \
     --pcg-authorization-store "$STAGING/$label-authorizations" \
     --pcg-connection-store "$STAGING/$label-connections" \
     "$@"

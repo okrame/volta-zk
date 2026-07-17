@@ -1,9 +1,12 @@
-# Fase-D RunPod official runbook
+# Fase-D RunPod official runbook (G4 v1/v2)
 
-This is the exact reproduction contract for the fase-D
-`runpod-a100-realpcg-v1` profile. The fase-D preregistration and ledger are
-authoritative. The historical `runpod-a100-v1` profile remains immutable and
-is not a substitute for this run.
+This is the exact reproduction contract for the fase-D RunPod profiles. The
+historical `runpod-a100-realpcg-v1` profile retains its 2% synchronization
+fraction gate and both immutable FAIL records. The current prospective profile
+is `runpod-a100-realpcg-v2`, whose only gate change is the preregistered maximum
+absolute synchronization wall <=0.150 s. The authoritative amendment is
+`docs/fase-d-g4-sync-gate-amendment.md`. The historical `runpod-a100-v1`
+profile also remains immutable and is not a substitute for either fase-D run.
 
 ## Fixed profile
 
@@ -60,10 +63,12 @@ export RAYON_NUM_THREADS=8
 
 ## Quick then official
 
-The runner enforces the exact profile, a clean unchanged SHA, Q=200,
+The runner enforces the selected exact profile, a clean unchanged SHA, Q=200,
 counters-only timing, real-PCG/AES, one connection-scoped base phase and
 external staging. It first runs T=16+8 with 0+1, then T=100+50 with 1+3 and
-validates the latter through the fase-D fail-closed selector. The full report
+validates the latter through the fase-D fail-closed selector. Pass `v2` as the
+second runner argument for the current absolute-sync profile; omitting it
+reproduces historical v1. The full report
 also executes the G2 capacity/byte gate on the pod CPU and records the setup
 wall split as informative. A valid measured performance failure is retained;
 an incomplete or ineligible report exits non-zero. Completed raw JSONs are
@@ -73,8 +78,8 @@ restored append-only even if a later step fails.
 cd "$HOME/volta-zk"
 STAGING="$HOME/p7b-runpod-official-$(git rev-parse --short=12 HEAD)"
 test ! -e "$STAGING"
-scripts/run_p7b_runpod_official.sh "$STAGING"
-sha256sum benchmarks/results/runpod-a100-realpcg-v1-*.json
+scripts/run_p7b_runpod_official.sh "$STAGING" v2
+sha256sum benchmarks/results/runpod-a100-realpcg-v2-*.json
 ```
 
 Before terminating the pod, copy the two new JSONs and their SHA-256 values to
@@ -87,6 +92,8 @@ python3 scripts/report.py \
 
 Record quick/full measurements, checksums, real-PCG setup/G2 observations and
 the pass/fail verdict in `docs/prototype-status.md`. Raw synchronization count
-remains diagnostic. The sync gate is the maximum per-repetition
-`synchronization_s / t_response_session_wall_s <= 0.02`; no count criterion
-exists. Mock-PCG is an explicit test backend and cannot produce this record.
+remains diagnostic. V1 uses maximum per-repetition
+`synchronization_s / t_response_session_wall_s <= 0.02`; v2 reports the same
+fraction informatively but binds maximum per-repetition
+`synchronization_s <= 0.150 s`. No count criterion exists. Mock-PCG is an
+explicit test backend and cannot produce this record.

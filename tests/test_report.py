@@ -583,6 +583,29 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7(tmp_path)
     fase_d_path = tmp_path / "fase-d-pod-official.json"
     fase_d_path.write_text(json.dumps(fase_d))
     assert report.validate_fase_d_pod_official_result(fase_d_path) is True
+
+    fase_d_v2 = copy.deepcopy(fase_d)
+    fase_d_v2["p7b_gate_profile"] = "runpod-a100-realpcg-v2"
+    fase_d_v2.pop("p7b_sync_wall_fraction_gate", None)
+    fase_d_v2.pop("p7b_sync_wall_fraction_gate_pass", None)
+    fase_d_v2["repetitions"][1]["accelerator_session"]["synchronization_s"] = 0.15
+    fase_d_v2["repetitions"][1]["p7b_sync_wall_fraction"] = 0.015
+    fase_d_v2["p7b_sync_wall_fraction_observed"] = 0.015
+    sync_walls = [
+        repetition["accelerator_session"]["synchronization_s"]
+        for repetition in fase_d_v2["repetitions"]
+    ]
+    fase_d_v2["p7b_sync_wall_absolute_gate_s"] = 0.150
+    fase_d_v2["p7b_sync_wall_absolute_observed_s"] = max(sync_walls)
+    fase_d_v2["p7b_sync_wall_absolute_gate_pass"] = True
+    fase_d_v2["p7b_all_gates_pass"] = True
+    fase_d_v2_path = tmp_path / "fase-d-pod-v2-official.json"
+    fase_d_v2_path.write_text(json.dumps(fase_d_v2))
+    assert report.validate_fase_d_pod_official_result(fase_d_v2_path) is True
+    fase_d_v2["p7b_sync_wall_absolute_gate_s"] = 0.151
+    fase_d_v2_path.write_text(json.dumps(fase_d_v2))
+    assert report.validate_fase_d_pod_official_result(fase_d_v2_path) is False
+
     fase_d["fase_d_setup"]["comm"]["total_bytes"] = 40_000_001
     fase_d_path.write_text(json.dumps(fase_d))
     assert report.validate_fase_d_pod_official_result(fase_d_path) is False

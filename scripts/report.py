@@ -38,7 +38,9 @@ P7B_PCS_OPENING_REFERENCE_BYTES = 66_733_504
 P7B_PACKED_LOGITS_REFERENCE_BYTES = 7_407_122
 P7B_PACKED_RESPONSE_REFERENCE_BYTES = 144_820_930
 FASE_D_POD_REPORT_SCHEMA_VERSION = 7
-FASE_D_POD_GATE_PROFILE = "runpod-a100-realpcg-v1"
+FASE_D_POD_GATE_PROFILE_V1 = "runpod-a100-realpcg-v1"
+FASE_D_POD_GATE_PROFILE_V2 = "runpod-a100-realpcg-v2"
+FASE_D_POD_SYNC_WALL_ABSOLUTE_GATE_S = 0.150
 P7B_TIMING_STATISTIC = "upper median across measured repetitions"
 P7B_COUNTER_STATISTIC = "maximum across measured sessions"
 C1_REPORT_SCHEMA_VERSION = 3
@@ -1033,6 +1035,9 @@ def integrated_accelerator_profiles(
                     "p7b_sync_wall_fraction_gate": r.get(
                         "p7b_sync_wall_fraction_gate"
                     ),
+                    "p7b_sync_wall_absolute_gate_s": r.get(
+                        "p7b_sync_wall_absolute_gate_s"
+                    ),
                     "p7b_h2d_gate_bytes": r.get("p7b_h2d_gate_bytes"),
                     "p7b_prefill_core_observed_s": r.get(
                         "p7b_prefill_core_observed_s"
@@ -1044,6 +1049,9 @@ def integrated_accelerator_profiles(
                     "p7b_sync_wall_fraction_observed": r.get(
                         "p7b_sync_wall_fraction_observed"
                     ),
+                    "p7b_sync_wall_absolute_observed_s": r.get(
+                        "p7b_sync_wall_absolute_observed_s"
+                    ),
                     "p7b_h2d_observed_bytes": r.get("p7b_h2d_observed_bytes"),
                     "p7b_prefill_core_gate_pass": r.get(
                         "p7b_prefill_core_gate_pass"
@@ -1053,6 +1061,9 @@ def integrated_accelerator_profiles(
                     ),
                     "p7b_sync_wall_fraction_gate_pass": r.get(
                         "p7b_sync_wall_fraction_gate_pass"
+                    ),
+                    "p7b_sync_wall_absolute_gate_pass": r.get(
+                        "p7b_sync_wall_absolute_gate_pass"
                     ),
                     "p7b_h2d_gate_pass": r.get("p7b_h2d_gate_pass"),
                     "response_communication_envelope_bytes": r.get(
@@ -1292,7 +1303,8 @@ def validate_fase_d_pod_official_result(path: Path) -> bool:
         and raw.get("accelerator_backend") == "cuda-resident"
         and raw.get("accelerator_cuda_abi_version") == P7B_CUDA_ABI_VERSION
         and raw.get("resident_timing_policy") == P7B_OFFICIAL_RESIDENT_TIMING_POLICY
-        and raw.get("p7b_gate_profile") == FASE_D_POD_GATE_PROFILE
+        and raw.get("p7b_gate_profile")
+        in (FASE_D_POD_GATE_PROFILE_V1, FASE_D_POD_GATE_PROFILE_V2)
         and raw.get("accepted") is True
         and raw.get("chunked_accepted") is True
         and raw.get("git_dirty") is False
@@ -1468,6 +1480,7 @@ def _p7b_sampling_statistics_valid(row: dict[str, Any]) -> bool:
     sync_wall_s = [session.get("synchronization_s") for session in sessions]
     session_wall_s = [rep.get("t_response_session_wall_s") for rep in repetitions]
     sync_wall_fractions = [rep.get("p7b_sync_wall_fraction") for rep in repetitions]
+    reported_sync_wall_s = [rep.get("p7b_sync_wall_s") for rep in repetitions]
     h2d = [session.get("h2d_bytes") for session in sessions]
     if (
         not all(_nonnegative_int(value) for value in syncs + h2d)
@@ -1486,6 +1499,14 @@ def _p7b_sampling_statistics_valid(row: dict[str, Any]) -> bool:
             sync_wall_fractions, expected_sync_wall_fractions, strict=True
         )
     ):
+        return False
+    if any(value is not None for value in reported_sync_wall_s) and not all(
+        _same_number(observed, expected)
+        for observed, expected in zip(reported_sync_wall_s, sync_wall_s, strict=True)
+    ):
+        return False
+    absolute_observed = row.get("p7b_sync_wall_absolute_observed_s")
+    if absolute_observed is not None and not _same_number(absolute_observed, max(sync_wall_s)):
         return False
     return (
         _same_number(
@@ -1536,24 +1557,52 @@ def _p7b_communication_valid(row: dict[str, Any]) -> bool:
 
 
 def _p7b_performance_verdict_valid(row: dict[str, Any]) -> bool:
+    absolute_profile = row.get("p7b_gate_profile") == FASE_D_POD_GATE_PROFILE_V2
     thresholds = (
         row.get("p7b_prefill_core_gate_s") == P7B_PREFILL_CORE_GATE_S
         and row.get("p7b_decode_marginal_gate_s") == P7B_DECODE_MARGINAL_GATE_S
         and row.get("p7b_sync_count_gate_retired") is True
-        and row.get("p7b_sync_wall_fraction_gate") == P7B_SYNC_WALL_FRACTION_GATE
         and row.get("p7b_h2d_gate_bytes") == P7B_H2D_GATE_BYTES
+        and (
+            (
+                absolute_profile
+                and row.get("p7b_sync_wall_fraction_gate") is None
+                and row.get("p7b_sync_wall_absolute_gate_s")
+                == FASE_D_POD_SYNC_WALL_ABSOLUTE_GATE_S
+            )
+            or (
+                not absolute_profile
+                and row.get("p7b_sync_wall_fraction_gate")
+                == P7B_SYNC_WALL_FRACTION_GATE
+                and row.get("p7b_sync_wall_absolute_gate_s") is None
+            )
+        )
+    )
+    sync_observation = row.get(
+        "p7b_sync_wall_absolute_observed_s"
+        if absolute_profile
+        else "p7b_sync_wall_fraction_observed"
     )
     observations = (
         row.get("p7b_prefill_core_observed_s"),
         row.get("p7b_decode_marginal_observed_s"),
-        row.get("p7b_sync_wall_fraction_observed"),
+        sync_observation,
         row.get("p7b_h2d_observed_bytes"),
     )
     passes = (
         row.get("p7b_prefill_core_gate_pass"),
         row.get("p7b_decode_marginal_gate_pass"),
-        row.get("p7b_sync_wall_fraction_gate_pass"),
+        row.get(
+            "p7b_sync_wall_absolute_gate_pass"
+            if absolute_profile
+            else "p7b_sync_wall_fraction_gate_pass"
+        ),
         row.get("p7b_h2d_gate_pass"),
+    )
+    opposite_sync_pass = row.get(
+        "p7b_sync_wall_fraction_gate_pass"
+        if absolute_profile
+        else "p7b_sync_wall_absolute_gate_pass"
     )
     if (
         not thresholds
@@ -1562,13 +1611,19 @@ def _p7b_performance_verdict_valid(row: dict[str, Any]) -> bool:
         or not _finite_nonnegative(observations[2])
         or not _nonnegative_int(observations[3])
         or any(type(value) is not bool for value in passes)
+        or opposite_sync_pass is not None
         or type(row.get("p7b_all_gates_pass")) is not bool
     ):
         return False
     expected = (
         observations[0] <= P7B_PREFILL_CORE_GATE_S,
         observations[1] <= P7B_DECODE_MARGINAL_GATE_S,
-        observations[2] <= P7B_SYNC_WALL_FRACTION_GATE,
+        observations[2]
+        <= (
+            FASE_D_POD_SYNC_WALL_ABSOLUTE_GATE_S
+            if absolute_profile
+            else P7B_SYNC_WALL_FRACTION_GATE
+        ),
         observations[3] <= P7B_H2D_GATE_BYTES,
     )
     return passes == expected and row.get("p7b_all_gates_pass") is all(expected)

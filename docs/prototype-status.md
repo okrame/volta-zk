@@ -159,10 +159,14 @@ constant factors hold. That constant factor is what P3/P4 measure.
   `connection_response_sound_scalar`, `response_bad_card_le`,
   `connection_m4_soundness_union_bound`, `connection_corrections_uniform`
   and `connection_responses_perfect_zk`; this closure does not change its
-  modeling boundary. Backlog: boundary thinning and pool prewarming only if later
-  product measurements justify them; Packed16 remains blocked. G3 passed, so
-  no 600M binding-gate promotion is opened. The pod container was stopped
-  after result copy/checksum verification; direct SSH returned `Connection
+  modeling boundary. Backlog: boundary thinning and pool prewarming only if
+  later product measurements justify them; Packed16 remains blocked. G3 passed, so
+  no 600M binding-gate promotion is opened. After result copy/checksum
+  verification, terminating PID 1 was observed to restart the container and
+  is explicitly not counted as a billing stop. From the authenticated SSH
+  session, the pod-scoped credential then submitted the official GraphQL
+  `podStop` mutation for `qg71cf7i8bsn66`; the RunPod control plane returned
+  `desiredStatus:"EXITED"`, after which direct SSH returned `Connection
   refused`. Raw SHA-256: quick
   `a6be1e5a81e85a17b5e38b0b720ff8c763b397cf4dcbc90508206504ee2f6609`;
   full `8b2b3cdc1a4ac50f81f8e641d3e580f2d6c9449f26ac876c80b12bbbd2184f42`.

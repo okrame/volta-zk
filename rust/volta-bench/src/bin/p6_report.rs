@@ -936,6 +936,26 @@ fn peak_rss_gb() -> f64 {
         .unwrap_or(0.0)
 }
 
+/// Return large, already-dropped PCS scratch allocations to the OS before
+/// materializing the resident real-PCG connection.  The C3 codewords are much
+/// larger than the historical geometry; glibc may otherwise retain their
+/// pages after the mock accounting prepass and make the two non-overlapping
+/// phases look live at the same time on the 11 GiB CPU record host.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+fn trim_released_heap_pages() -> bool {
+    unsafe extern "C" {
+        fn malloc_trim(pad: usize) -> i32;
+    }
+    // SAFETY: malloc_trim(0) is a process-local allocator maintenance call;
+    // all PCS owners were dropped before this boundary.
+    unsafe { malloc_trim(0) != 0 }
+}
+
+#[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+fn trim_released_heap_pages() -> bool {
+    false
+}
+
 fn detected_aes_feature() -> &'static str {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     if std::arch::is_x86_feature_detected!("aes") {
@@ -2934,6 +2954,13 @@ fn main() {
             0x21,
             SessionPcgBackend::Mock
         );
+
+        if shared_connection_record {
+            eprintln!(
+                "  heap trim after mock prepass: released_pages={}",
+                trim_released_heap_pages()
+            );
+        }
 
         if shared_connection_record {
             let binding = ConnectionBinding::new(

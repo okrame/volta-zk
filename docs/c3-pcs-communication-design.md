@@ -1,11 +1,10 @@
 # C3 PCS/logits communication package
 
-**Status (2026-07-17): L1--L4 implemented locally; clean G1/G2 and pod G4
-remain pending, so this is not a gate verdict.** The selected PCS design and
-the exact implemented L4 transcript addition project the
-C1/fase-D packed response from 136,526,530 B to
-**105,725,808 B**, leaving 4,274,192 B below the 110 MB design target and
-9,274,192 B below the binding 115 MB gate.
+**Status (2026-07-17): L1--L4 implemented and the clean CPU/A100 E2E table
+refresh is measured; formal G1--G4 remain pending, so this is not a gate
+verdict.** The selected PCS design reduces the measured C1/fase-D packed
+response from 136,526,530 B to **105,725,808 B**, leaving 4,274,192 B below
+the 110 MB design target and 9,274,192 B below the binding 115 MB gate.
 
 ## 1. Frozen baseline and scope
 
@@ -103,13 +102,15 @@ saves only another 4,977,848 response bytes while doubling the selected
 codeword storage and taking mask encoding from 1.119x to 2.384x current.
 Nominal 1/4, Q=120 is therefore selected.
 
-The selected codewords add 3,254,779,904 B to the current resident codeword
-inventory. Adding that full delta to the measured fase-D device peak
-8,026,038,516 B gives a conservative **11,280,818,420 B** projected peak,
-before credit for removed padding or fewer Merkle trees. The A100-SXM4-80GB
-therefore retains more than 68 GB decimal headroom. CPU G1 is still required;
-the same projection plus the bounded L4 working set remains below the current
-11 GB CPU-host gate, but that is not a measured claim.
+The selected codewords add 3,254,779,904 B to the old codeword inventory. The
+clean table refresh supersedes the simple 11,280,818,420 B projection: the
+A100 run reports 17,303,319,076 B peak inside the measured response session
+and 19,362,496,372 B live including the reusable cache before trim, falling to
+638,091,280 B after trim. The 80 GB A100 still has more than 60 GB decimal
+headroom. The real-PCG online CPU run peaks at 8.616 GiB, but the formal
+connection-scoped G1 harness still OOMs on the 11 GiB VM when the 110M
+connection allocation co-resides with C3 PCS scratch; table timings therefore
+use real per-response pools with setup excluded, while G1 remains pending.
 
 ## 3. L2/L3 commitment geometries
 
@@ -259,23 +260,58 @@ draws 102 full correlations for `s_g` plus two for the per-tree ZeroBatch,
 domain-separated and allocation-digest counted; the fase-D generator,
 connection lifecycle, setup tuple and pool sizes do not change.
 
-## 6. Projected response and performance
+## 6. Measured response and performance
 
-| Packed response category | Projected bytes |
+| Packed response category | Measured bytes |
 | --- | ---: |
 | unchanged `auth_corrections` | 59,545,008 |
 | selected PCS opening | 43,273,888 |
 | unchanged remaining transcript | 2,840,896 |
 | exact L4 transcript addition | 66,016 |
 | published packed logits | 0 |
-| **projected packed response** | **105,725,808** |
+| **packed response** | **105,725,808** |
 
-Commit is one-off and excluded from response wall. Consolidation removes 11
-per-tree fixed openings and ZeroBatch masks; the selected mask-encoding
-projection adds only about 0.010 s CPU against the current mask estimate.
-The preregistered +9.656% E-mult estimate is superseded by the exact L4
-diagnostic in section 4. Same-host measurement decides G2. Verifier wall may
-rise and is reported, never traded for response bytes or capability.
+The following is the canonical table refresh. Values are upper medians of one
+warmup plus three measured repetitions on clean `5a2edbe`, with real/AES PCG
+pools, golden/chunked acceptance and flat-cost checks. Setup is excluded from
+the online walls. The setup rows retain the unchanged connection-scoped
+fase-D measurements: the A100 run uses the exact same EPYC 7742/128-vCPU/2-TiB
+host as `e95b839`, and C3 does not alter the generator, tuple or setup traffic.
+
+| Voce -- prompt 100 + risposta 50 | Nota | CPU 4 thread | A100 RunPod + 8 worker Rayon |
+| --- | --- | ---: | ---: |
+| Prova prefill | Prova dei 100 token iniziali | 9.87 s | 2.67 s |
+| Prova decode marginale | Prova dei 50 token generati | 11.01 s | 6.43 s |
+| Prova risposta totale | Prefill + decode, esclusa l'apertura PCS | 20.88 s | 9.10 s |
+| Sessione online completa | Prova, PCS, chiusura e verifica; setup escluso | 36.12 s | 10.36 s |
+| Verifica pura | Controllo della prova, esclusa la verifica PCS | 0.363 s | 0.681 s |
+| Verifica contabilizzata | Verifica della prova inclusa la verifica PCS | 0.474 s | 0.760 s |
+| Token di decode provati/s | 50 token divisi per il tempo della prova totale | 2.39 | 5.49 |
+| Setup real-PCG | Preparazione crittografica della connessione | 69.33 s | 48.84 s |
+| Traffico preprocessing/setup | Traffico bidirezionale per preparare la connessione | 38.37 MB | 38.37 MB |
+| -- prover -> verifier | Parte inviata dal server che prova | 31.58 MB | 31.58 MB |
+| -- verifier -> prover | Parte inviata da chi verifica | 6.79 MB | 6.79 MB |
+| Transcript della prova | Dati del protocollo, senza logit pubblici | 105.73 MB | 105.73 MB |
+| Risposta packed totale | Transcript + logit pubblici packed | **105.73 MB** | **105.73 MB** |
+| PCS opening | Quota del transcript che dimostra i pesi privati | 43.27 MB | 43.27 MB |
+| Logit pubblici packed | Output necessario per verificare l'argmax | 0 MB | 0 MB |
+| Primo scambio totale | Setup bidirezionale + prima risposta packed | 144.10 MB | 144.10 MB |
+
+The 43.27 MB PCS opening is already included in the 105.73 MB transcript. The
+real table artifacts are
+`c3-table-cpu-real-2026-07-17-5a2edbe.json` (SHA-256
+`399934ff895f0129430fa86cd9cc15ef53b9b714241e592fd3c9a391d741195c`)
+and `c3-table-a100-real-2026-07-17-5a2edbe.json` (SHA-256
+`c2520b2f1310f67352ef82574e1988fb58e320bc4bc6d77da012a74aef08a6ec`).
+The paired mock diagnostics are retained append-only as controls.
+
+Against the preceding table, prove-response wall rises by 25.17% on CPU and
+112.17% on A100 while packed response falls by 30,800,722 B (22.56%). This
+confirms the performance risk from section 4 but is not the binding paired G2
+verdict. The A100 diagnostic also measures 693,055,968 B maximum H2D and
+0.150158884 s maximum synchronization wall, both relevant to a future G4.
+Verifier wall is reported and is never traded for response bytes or
+capability.
 
 ## 7. Binding Phase-2 gates
 
@@ -285,8 +321,8 @@ three measured repetitions from one clean unchanged SHA. Frozen 50-token
 golden decode, proof/verifier acceptance and exact label/category
 reconstruction are mandatory. The append-only result is
 `benchmarks/results/c3-<date>-<gitsha>.json`; packed response must be
-**<=115,000,000 B**. The 105,725,808 B figure is a projection, not the exact
-validator reference until G1 lands.
+**<=115,000,000 B**. The 105,725,808 B figure is now exact in the clean table
+diagnostics, but it does not become the validator reference until G1 lands.
 
 **G2 — same-host wall.** On the CPU VM use `time_paired` ABBA against the
 unchanged fase-D proving binary/configuration on the same host. Candidate

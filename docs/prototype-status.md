@@ -24,9 +24,9 @@ synchronization wall gate at **0.123482 s <=0.150 s**, so fase-D is **closed**
 and criterion (5) is enacted by the 2026-07-17 ledger entry plus checkpoint.
 Candidate A (Packed16/fase-C) is rejected on product cost. The earlier
 `33e5fb4` decode-only FAIL remains an immutable rebaseline result. C3 L1--L4
-are implemented locally; clean G1/G2 and pod G4 remain pending, so no C3 gate
-verdict has landed. Boundary thinning and pool prewarming remain backlog, and
-fase X follows C3.
+and the clean CPU/A100 E2E table refresh are complete; formal G1--G4 remain
+pending, so no C3 gate verdict has landed. Boundary thinning and pool
+prewarming remain backlog, and fase X follows C3.
 
 ## Milestones
 
@@ -51,7 +51,7 @@ fase X follows C3.
 | C1 response-communication reduction | **complete: identity-seam `x_in` reuse only** (2026-07-15) | Clean full T=100+50/Q=200 CPU record; golden, normal/chunked acceptance, PCS/closure, exact bytes/counters and replay/preflight gates | `2a3d731`: **1,036,800** canonical aliases save **8,294,400 B**; transcript **129,119,408 B**, packed response **136,526,530 B**, auth corrections **59,545,008 B**. Prover/verifier sub correlations both **7,443,126**, full both **176,880**; PCS **66,733,504 B**, 96+6 claims, Q=200 unchanged. Median prove **18.653 s** (−0.086 s vs same-machine P6 record), verify **0.522 s** (−0.045 s); flat curve **1.219 PASS**. Record `benchmarks/results/c1-2026-07-15-2a3d731.json`, full SHA `2a3d7314bba35e18229af31c99f226c93ef12416`, `git_dirty:false`. |
 | C2 Packed16 typed-lane real-PCG | **Candidate A rejected; Packed16 shelved** (2026-07-15) | Permanent costing record; implementation is not authorized | `docs/c2-packed-lane-pcg-design.md` remains the permanent record: the only sound realization costs about **1.55 GB** recurring setup traffic and **31--46 s** setup wall per session to save 32,486,400 B of response, about **47×** more bytes moved than saved. Revisit only with a cited construction on the order of tens of MB/session, or an explicit product decision that the envelope demands it. |
 | Fase-D real-PCG default + scaling | **CLOSED; criterion (5) ENACTED, real default production-ready** (2026-07-17) | M10/AES/connection/default ✓; G1 ✓ G2 ✓ G2b ✓ G3 informative ✓; **G4-v2 PASS** | Tuple `(k3,n3,t3)=(6,520,000,117,440,512,1,792)`, `U3=110,918,718`; estimator min **199.599804 bits**, six-instance **197.014842**, connection floor **140.643699**. CPU G2 **38,371,465 B PASS**, G2b PASS, G3 **665,512,308** gross / **440.856 s** / **1,269,347,424 B** high-water PASS. Pod v2 `e95b839`: prefill **2.728 s PASS**, decode **1.582 s PASS**, H2D **88,139,652 B PASS**, packed **136,526,530 B PASS**, flat **1.219 PASS**, max absolute sync **0.123482 s <=0.150 PASS**; informative max ratio **2.238539%**. Pod G2 **110,918,718 / 38,371,465 B PASS**, setup **48.841 s**. Real/AES is default; mock is explicit test-only. |
-| C3 PCS/logits communication | **L1--L4 implemented locally; gates pending** (2026-07-17) | G1 response <=115,000,000 B; G2 same-host prover delta <=+15%; G3 full capability/adversarial parity; G4 fresh pod profile | Explicit non-power-of-two rows, nominal **1/4**, **Q=120**, two block-preserving trees and private last-max proof are wired into host/resident response paths and `p6_report --c3[-record]`. PCS soundness **78.809294874 bits**, PCS **43,273,888 B**, exact L4 transcript **66,016 B**, projected packed response **105,725,808 B**. The L4 e2e adds **712,224,541.2** E-mult equivalents in the instance counter alone, superseding the +9.656% estimate; G2 is unresolved. Contract: `docs/c3-pcs-communication-design.md`. |
+| C3 PCS/logits communication | **L1--L4 + E2E table measured; formal gates pending** (2026-07-17) | G1 response <=115,000,000 B; G2 same-host prover delta <=+15%; G3 full capability/adversarial parity; G4 fresh pod profile | Clean `5a2edbe` real-PCG table runs measure packed response **105,725,808 B**, PCS **43,273,888 B**, public logits **0 B**. CPU 4-thread: prefill/decode/response/session **9.874/11.007/20.880/36.120 s**; A100+Rayon8: **2.667/6.433/9.101/10.362 s**. Versus fase-D response proving this is **+25.17% CPU / +112.17% A100**, confirming G2 risk without deciding the paired gate. A100 max H2D **693,055,968 B**, sync wall **0.150158884 s**, flat **1.241 PASS**. PCS soundness **78.809294874 bits**; contract: `docs/c3-pcs-communication-design.md`. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -95,19 +95,33 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
-- **2026-07-17 (C3 L1--L4 local implementation)**: Phase 2 wired the selected
+- **2026-07-17 (C3 L1--L4 implementation and E2E table refresh)**: Phase 2 wired the selected
   PCS geometries and private last-maximum proof into both host and resident
   response paths. The report has explicit `--c3`/`--c3-record` modes, emits
   zero public-logit bytes and leaves immutable historical profiles unchanged.
 
-  Local exact accounting finds **66,016 B** of L4 transcript, 480 B above the
-  preregistered allowance, so the packed projection is **105,725,808 B**.
+  Exact accounting finds **66,016 B** of L4 transcript, 480 B above the
+  preregistered allowance; clean CPU/A100 real-PCG table runs now measure the
+  packed response at **105,725,808 B**, with **43,273,888 B** PCS and no public
+  logits. CPU response/session medians are **20.880/36.120 s**; A100 medians
+  are **9.101/10.362 s**. Setup remains the unchanged connection record:
+  **69.328 s CPU / 48.841 s pod** and **38,371,465 B**.
+
   The full 64x65,536 six-limb range argument adds **712,224,541.2** measured
   E-mult equivalents in `ctr_instances` alone, superseding the +9.656%
-  estimate and leaving G2 at material risk. This is not a gate verdict: no
-  clean G1/G2 JSON, validator rebaseline or pod run has landed; the local
-  implementation checkpoint does not decide any gate.
-  The authoritative details and remaining G1--G4 contract are in
+  estimate. Response proving rises **25.17% CPU / 112.17% A100** against the
+  preceding table; A100 maximum H2D is **693,055,968 B** and maximum sync wall
+  is **0.150158884 s**. These diagnose material G2/G4 risks but are not a
+  formal gate verdict: the table runs use real per-response pools to isolate
+  online wall, because the connection-scoped C3 harness OOMs when its 110M
+  setup allocation co-resides with PCS scratch on the 11 GiB CPU VM. No G1
+  validator rebaseline or paired G2 record has landed.
+
+  Raw real records are `c3-table-cpu-real-2026-07-17-5a2edbe.json`
+  (SHA-256 `399934ff895f0129430fa86cd9cc15ef53b9b714241e592fd3c9a391d741195c`)
+  and `c3-table-a100-real-2026-07-17-5a2edbe.json`
+  (`c2520b2f1310f67352ef82574e1988fb58e320bc4bc6d77da012a74aef08a6ec`).
+  The authoritative table and remaining G1--G4 contract are in
   `docs/c3-pcs-communication-design.md`.
   Local `cargo test --workspace` is green; the production-size private-logit
   e2e also passes explicitly. The two production-size leakage smokes are

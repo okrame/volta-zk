@@ -1,4 +1,4 @@
-# Prototype Status Ledger (fase-D Part B measured; G4 sync-wall FAIL, criterion (5) pending)
+# Prototype Status Ledger (fase-D G4 v2 absolute-sync gate preregistered; criterion (5) pending)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -19,14 +19,16 @@ AES-MMO and connection lifecycle. Lean M10 is proved and audited, satisfying
 the Lean-first hard stop before Rust. Part B produced clean G1/G2/G2b/G3 and
 pod G4 records with the real default and `pcg_production_ready:true`;
 historical records remain untouched. G1, G2, G2b and informative G3 pass. The
-valid G4 record fails only the binding sync-wall fraction (**2.116773% >
-2%**), so the preregistered package is **not closed** and criterion (5) is not
-enacted. No gate is reinterpreted.
+two valid G4-v1 records fail only the binding sync-wall fraction (**2.116773%
+and 2.187096% > 2%**), so the preregistered package is **not closed** and
+criterion (5) is not enacted. No v1 gate is reinterpreted. The 2026-07-17
+amendment preregisters `runpod-a100-realpcg-v2`, replacing only the ratio with
+the previously motivated absolute maximum synchronization wall <=0.150 s;
+its clean run is pending.
 Candidate A (Packed16/fase-C) is rejected on product cost. The earlier
 `33e5fb4` decode-only FAIL remains an immutable rebaseline result. The
-active queue is a provider-neutral fix for the G4 synchronization-wall
-regression followed by an unchanged-profile clean rerun; boundary thinning
-and pool prewarming remain explicitly out of scope. C3/PCS remains available
+active queue is the clean v2 implementation and run; boundary thinning and
+pool prewarming remain explicitly out of scope. C3/PCS remains available
 when further byte refinement is wanted, then fase X is the next substantive
 model phase.
 
@@ -52,7 +54,7 @@ model phase.
 | Fase-B FLIP-READINESS | **complete for criteria (2)/(3); superseded by the 2026-07-16 fase-D decision** (2026-07-15) | Host-only setup speed pass ✓; production lifecycle/transport plumbing ✓; clean full T=100+50/Q=200 real-PCG parity record ✓ | `117df7d`: normal-session setup **8.451 s** (GGM 4.632, checks 1.334, OT-ext 0.963, LPN 1.496, base OT 0.025); chunked-session setup 8.609 s. Exactly **31,261,434 B/setup** unchanged. Full golden/normal/chunked/13-PCS/closure/malicious parity passes; packed response exactly **136,526,530 B**. Record `flip-readiness-2026-07-15-117df7d.json`. On 2026-07-16 criterion (1) was removed with no replacement, (4) was accepted, and (5) was reserved for Part B. |
 | C1 response-communication reduction | **complete: identity-seam `x_in` reuse only** (2026-07-15) | Clean full T=100+50/Q=200 CPU record; golden, normal/chunked acceptance, PCS/closure, exact bytes/counters and replay/preflight gates | `2a3d731`: **1,036,800** canonical aliases save **8,294,400 B**; transcript **129,119,408 B**, packed response **136,526,530 B**, auth corrections **59,545,008 B**. Prover/verifier sub correlations both **7,443,126**, full both **176,880**; PCS **66,733,504 B**, 96+6 claims, Q=200 unchanged. Median prove **18.653 s** (−0.086 s vs same-machine P6 record), verify **0.522 s** (−0.045 s); flat curve **1.219 PASS**. Record `benchmarks/results/c1-2026-07-15-2a3d731.json`, full SHA `2a3d7314bba35e18229af31c99f226c93ef12416`, `git_dirty:false`. |
 | C2 Packed16 typed-lane real-PCG | **Candidate A rejected; Packed16 shelved** (2026-07-15) | Permanent costing record; implementation is not authorized | `docs/c2-packed-lane-pcg-design.md` remains the permanent record: the only sound realization costs about **1.55 GB** recurring setup traffic and **31--46 s** setup wall per session to save 32,486,400 B of response, about **47×** more bytes moved than saved. Revisit only with a cited construction on the order of tens of MB/session, or an explicit product decision that the envelope demands it. |
-| Fase-D real-PCG default + scaling | **Part-B records complete; binding G4 FAIL, closure/criterion (5) OPEN** (2026-07-16) | M10/AES/connection/default implementation ✓; G1 ✓ G2 ✓ G2b ✓ G3 informative ✓; **G4 sync-wall FAIL** | Tuple `(k3,n3,t3)=(6,520,000,117,440,512,1,792)`, `U3=110,918,718`; estimator min **199.599804 bits**, six-instance **197.014842**, connection floor **140.643699**. CPU G2: **110,918,718** stage-3 usable, **38,371,465 B PASS**, setup **67.798 s**. G2b: 3 responses, zero repeated base bytes, response-2 abort/reopen rejection PASS. G3: **665,512,308** gross, **440.856 s**, high-water **1,269,347,424 B PASS**. Pod G4: prefill **2.654 s PASS**, decode **1.520 s PASS**, H2D **88,139,652 B PASS**, packed **136,526,530 B PASS**, flat **1.243 PASS**, but max sync-wall **2.116773% FAIL**. |
+| Fase-D real-PCG default + scaling | **G4-v1 repeat FAIL; v2 absolute-sync gate preregistered, closure/criterion (5) OPEN** (2026-07-17) | M10/AES/connection/default implementation ✓; G1 ✓ G2 ✓ G2b ✓ G3 informative ✓; G4-v1 **FAIL ×2**; v2 pending | Tuple `(k3,n3,t3)=(6,520,000,117,440,512,1,792)`, `U3=110,918,718`; estimator min **199.599804 bits**, six-instance **197.014842**, connection floor **140.643699**. CPU G2: **110,918,718** stage-3 usable, **38,371,465 B PASS**, setup **67.798 s**. G2b: 3 responses, zero repeated base bytes, response-2 abort/reopen rejection PASS. G3: **665,512,308** gross, **440.856 s**, high-water **1,269,347,424 B PASS**. G4-v1 runs: **2.116773% FAIL** and unchanged-profile repeat **2.187096% FAIL**, both with exactly 59,850 host-output boundaries; repeat absolute sync **0.121576--0.122066 s**. V2 prospectively replaces only the ratio with max absolute sync **<=0.150 s**. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -95,6 +97,53 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-17 (G4 unchanged-profile repeat FAIL; absolute-sync v2 amendment
+  preregistered before implementation/run)**: the clean checkpoint `f096095`
+  was reproduced on fresh RunPod container `62978076bd93`, A100-SXM4-80GB,
+  driver 580.126.16/CUDA toolkit 12.8, EPYC 7742, 128 provider vCPUs and eight
+  Rayon workers. CUDA ABI-28 preflight passed 34/34 and frozen artifact
+  checksums matched. The append-only quick diagnostic
+  `runpod-a100-realpcg-v1-quick-2026-07-17-f096095.json` reports prefill/
+  response/decode **1.490988 / 2.477319 / 0.986331 s**, response-session
+  **3.068115 s**, sync **0.080668 s** / **2.629227%** (non-gating), H2D
+  **23,450,996 B** and flat **1.002299**.
+
+  The full `runpod-a100-realpcg-v1-2026-07-17-f096095.json` is a valid
+  official v1 record and **FAIL**. All correctness/communication gates pass:
+  prefill **2.754161 s**, decode marginal **1.605110 s**, H2D **88,139,652
+  B**, exact packed response **136,526,530 B**, flat **1.229304**, golden,
+  normal/chunked, 13/13 PCS, replay and mock/real parity. Its three response
+  session walls are **5.565990 / 5.591036 / 5.581198 s**; absolute
+  synchronization is **0.121576 / 0.122016 / 0.122066 s** and the fractions
+  are **2.184275% / 2.182353% / 2.187096%**. The maximum
+  **0.02187096033832154 > 0.02 FAIL** leaves `p7b_all_gates_pass:false` and
+  criterion (5) open. Sync count is exactly **59,850**, all host-output, as in
+  the prior v1 run: this is host/API variance plus a faster denominator, not
+  added work. Pod G2 again passes at **110,918,718** usable and exactly
+  **38,371,465 B**. Setup is **49.375989 s**, prelude **10.705327 s**, stage-3
+  GGM/check/LPN **11.477225 / 6.290772 / 18.667260 s**, high-water
+  **3,880,267,768 B**.
+
+  A non-record microbenchmark compared current `cudaStreamSynchronize` with
+  stream-query and disable-timing event fast paths. Isolated ready-stream
+  calls remained about **1.70--1.74 us**; 8-byte D2H+barrier variants were
+  about **12.39--12.79 us**, and kernel+barrier variants about **9.64--10.39
+  us**. The variants do not provide a stable reduction large enough for G4;
+  they are not implemented. The remaining boundaries carry interactive host
+  outputs, so challenge-order coalescing is outside this amendment.
+
+  Product owner allowed a 2.5% fallback. For publication integrity the new
+  prospective profile instead uses the absolute cap already documented in
+  the 2026-07-15 post-fix census decision rule: **`runpod-a100-realpcg-v2`**
+  replaces only the v1 ratio with binding maximum absolute synchronization
+  wall **<=0.150000000 s**. The fraction remains mandatory informative data.
+  All other v1 gates, exact bytes, timing policy, geometry, lifecycle and G2
+  requirements remain byte-for-byte unchanged. Neither v1 FAIL is
+  reclassified; v2 needs a new clean SHA and 1+3 run. Full contract:
+  `docs/fase-d-g4-sync-gate-amendment.md`. Raw SHA-256: quick
+  `a744b20e441cf0db24c7d9f9522a3e3dd8804ae20cbe3ec4f41ec148ac6fa40c`;
+  full `c42c238a5502a36c6787605743b686fa51bf1983f1d8cb427112c14231f08b93`.
 
 - **2026-07-16 (fase-D Part B clean records; binding G4 FAIL; closure and
   criterion (5) withheld)**: all preregistered records were executed without

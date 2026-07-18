@@ -34,8 +34,9 @@ pub use production::{
     AuthorizationBurn, BaseCorrelationReservation, ConnectionAbortReason, ConnectionBinding,
     ConnectionChannelDirection, ConnectionHandle, ConnectionResponseAudit, ConnectionStagePlan,
     ConnectionState, ConnectionStore, CorrelationAllocation, CorrelationDomain,
-    ProductionConnectionSetupAudit, ProductionFaseDConnection, ProductionPhaseBExpansion,
-    ProductionSetupAudit, ResponseAuthorizationStore, StageCorrelationCounters,
+    CorrelationSpoolAudit, ProductionConnectionSetupAudit, ProductionFaseDConnection,
+    ProductionPhaseBExpansion, ProductionSetupAudit, ResponseAuthorizationStore,
+    StageCorrelationCounters,
 };
 
 use serde::{Deserialize, Serialize};

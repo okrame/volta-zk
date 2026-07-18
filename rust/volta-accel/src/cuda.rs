@@ -325,6 +325,59 @@ type FixedLogitsDevice = unsafe extern "C" fn(
     usize,
     usize,
 ) -> c_int;
+type PrivateArgmaxWitnessDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize, // input
+    u64,
+    usize, // selected indices
+    u64,
+    usize, // selected rows
+    u64,
+    usize, // rectangular logits
+    u64,
+    usize, // rectangular strict values
+    u64,
+    usize, // is-max marker
+    u64,
+    usize, // packed strict values
+    u64,
+    usize, // packed limbs
+    u64,
+    usize, // error word
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+) -> c_int;
+type PrivateArgmaxPhaseFactorsDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+) -> c_int;
+type PrivateArgmaxSelectorDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    usize,
+    usize,
+    Fp2Repr,
+) -> c_int;
 type SubfieldCorrectionsDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, u64, usize, usize, c_int) -> c_int;
 type PadBaseVectorDevice =
@@ -799,6 +852,9 @@ struct Api {
     fixed_lookup_device: FixedLookupDevice,
     fixed_requant_i16_device: FixedRequantI16Device,
     fixed_logits_device: FixedLogitsDevice,
+    private_argmax_witness_device: PrivateArgmaxWitnessDevice,
+    private_argmax_phase_factors_device: PrivateArgmaxPhaseFactorsDevice,
+    private_argmax_selector_device: PrivateArgmaxSelectorDevice,
     subfield_corrections_device: SubfieldCorrectionsDevice,
     pad_base_vector_device: PadBaseVectorDevice,
     matrix_fold_device: MatrixFoldDevice,
@@ -986,6 +1042,15 @@ impl CudaContext {
             },
             fixed_logits_device: unsafe {
                 load_symbol(handle, b"volta_cuda_fixed_logits_device\0")?
+            },
+            private_argmax_witness_device: unsafe {
+                load_symbol(handle, b"volta_cuda_private_argmax_witness_device\0")?
+            },
+            private_argmax_phase_factors_device: unsafe {
+                load_symbol(handle, b"volta_cuda_private_argmax_phase_factors_device\0")?
+            },
+            private_argmax_selector_device: unsafe {
+                load_symbol(handle, b"volta_cuda_private_argmax_selector_device\0")?
             },
             subfield_corrections_device: unsafe {
                 load_symbol(handle, b"volta_cuda_subfield_corrections_device\0")?
@@ -2072,6 +2137,130 @@ impl CudaContext {
                 rows,
                 d,
                 vocab,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn private_argmax_witness_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        selected_indices: u64,
+        selected_indices_offset: usize,
+        selected_rows: u64,
+        selected_rows_offset: usize,
+        logits: u64,
+        logits_offset: usize,
+        strict: u64,
+        strict_offset: usize,
+        is_max: u64,
+        is_max_offset: usize,
+        packed_strict: u64,
+        packed_strict_offset: usize,
+        limbs: u64,
+        limbs_offset: usize,
+        error: u64,
+        error_offset: usize,
+        rows: usize,
+        vocab: usize,
+        rect_entries: usize,
+        lookup_entries: usize,
+        first_job_entries: usize,
+        selected_row_entries: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates every opaque id and typed region.
+        self.check(unsafe {
+            (self.api.private_argmax_witness_device)(
+                self.raw,
+                input,
+                input_offset,
+                selected_indices,
+                selected_indices_offset,
+                selected_rows,
+                selected_rows_offset,
+                logits,
+                logits_offset,
+                strict,
+                strict_offset,
+                is_max,
+                is_max_offset,
+                packed_strict,
+                packed_strict_offset,
+                limbs,
+                limbs_offset,
+                error,
+                error_offset,
+                rows,
+                vocab,
+                rect_entries,
+                lookup_entries,
+                first_job_entries,
+                selected_row_entries,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn private_argmax_phase_factors_device(
+        &mut self,
+        logits: u64,
+        logits_offset: usize,
+        mask: u64,
+        mask_offset: usize,
+        masked: u64,
+        masked_offset: usize,
+        entries: usize,
+        row_start: usize,
+        row_count: usize,
+        vocab: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates every opaque id and typed region.
+        self.check(unsafe {
+            (self.api.private_argmax_phase_factors_device)(
+                self.raw,
+                logits,
+                logits_offset,
+                mask,
+                mask_offset,
+                masked,
+                masked_offset,
+                entries,
+                row_start,
+                row_count,
+                vocab,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn private_argmax_selector_device(
+        &mut self,
+        eq_vocab: u64,
+        eq_vocab_offset: usize,
+        eq_rows: u64,
+        eq_rows_offset: usize,
+        output: u64,
+        output_offset: usize,
+        entries: usize,
+        job: usize,
+        vocab: usize,
+        coefficient: Fp2Repr,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates every opaque id and typed region.
+        self.check(unsafe {
+            (self.api.private_argmax_selector_device)(
+                self.raw,
+                eq_vocab,
+                eq_vocab_offset,
+                eq_rows,
+                eq_rows_offset,
+                output,
+                output_offset,
+                entries,
+                job,
+                vocab,
+                coefficient,
             )
         })
     }

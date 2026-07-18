@@ -31,12 +31,18 @@ use rand::{rngs::OsRng, RngCore};
 use serde::Serialize;
 use std::collections::{BTreeMap, HashSet};
 use std::fs::{File, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Instant;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use volta_field::{Fp, Fp2};
 
 const BURN_RECORD_MAGIC: &[u8] = b"VOLTA-PCG-AUTH-BURN-v1\n";
 const CONNECTION_RECORD_MAGIC: &[u8] = b"VOLTA-PCG-CONNECTION-v1\n";
+const CORRELATION_SPOOL_ENTRY_BYTES: usize = 5 * std::mem::size_of::<u64>();
+const CORRELATION_SPOOL_CHUNK_ENTRIES: usize = 1 << 16;
+static CORRELATION_SPOOL_NONCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Debug)]
 pub struct ResponseAuthorizationStore {
@@ -367,6 +373,52 @@ pub struct ProductionFaseDConnection {
     pub connection: ConnectionHandle,
     pub expansion: FaseDConnectionExpansion,
     pub production: ProductionConnectionSetupAudit,
+    correlation_spool: Option<ConnectionCorrelationSpool>,
+    pub correlation_spool_audit: Option<CorrelationSpoolAudit>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct CorrelationSpoolAudit {
+    pub storage: String,
+    pub entries: u64,
+    pub bytes: u64,
+    pub chunk_entries: usize,
+    pub resident_raw_entries_after_spool: u64,
+    pub write_wall_s: f64,
+    pub digest: String,
+}
+
+#[derive(Debug)]
+struct ConnectionCorrelationSpool {
+    file: File,
+    entries: usize,
+}
+
+#[cfg(target_os = "linux")]
+fn discard_spool_page_cache(file: &File, offset: u64, len: u64) -> Result<(), PhaseBError> {
+    use std::os::fd::AsRawFd;
+
+    unsafe extern "C" {
+        fn posix_fadvise(fd: i32, offset: i64, len: i64, advice: i32) -> i32;
+    }
+    const POSIX_FADV_DONTNEED: i32 = 4;
+    let offset = i64::try_from(offset)
+        .map_err(|_| PhaseBError::new("PCG spool cache-discard offset exceeds i64"))?;
+    let len = i64::try_from(len)
+        .map_err(|_| PhaseBError::new("PCG spool cache-discard length exceeds i64"))?;
+    // SAFETY: the descriptor remains owned by `file`; this call only provides
+    // a reclaim hint for the specified valid byte range and does not alter it.
+    let status = unsafe { posix_fadvise(file.as_raw_fd(), offset, len, POSIX_FADV_DONTNEED) };
+    if status == 0 {
+        Ok(())
+    } else {
+        Err(PhaseBError::new(format!("cannot discard PCG spool page cache: OS error {status}")))
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn discard_spool_page_cache(_file: &File, _offset: u64, _len: u64) -> Result<(), PhaseBError> {
+    Ok(())
 }
 
 pub struct AllocatedSubCorrelationBatch<'a> {
@@ -384,7 +436,225 @@ pub struct AllocatedPcgPools {
     pub verifier_delta: volta_field::Fp2,
 }
 
+impl ConnectionCorrelationSpool {
+    fn create(
+        prover: &[SubVole],
+        verifier_keys: &[Fp2],
+    ) -> Result<(Self, CorrelationSpoolAudit), PhaseBError> {
+        if prover.len() != verifier_keys.len() || prover.is_empty() {
+            return Err(PhaseBError::new("invalid connection correlation spool geometry"));
+        }
+        let started = Instant::now();
+        let directory = std::env::var_os("VOLTA_PCG_SPOOL_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        std::fs::create_dir_all(&directory).map_err(|error| {
+            PhaseBError::new(format!(
+                "cannot create PCG spool directory {}: {error}",
+                directory.display()
+            ))
+        })?;
+        let nonce = CORRELATION_SPOOL_NONCE.fetch_add(1, Ordering::Relaxed);
+        let path = directory.join(format!(".volta-pcg-{}-{nonce}.spool", std::process::id()));
+        let mut options = OpenOptions::new();
+        options.read(true).write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options.open(&path).map_err(|error| {
+            PhaseBError::new(format!("cannot create anonymous PCG spool: {error}"))
+        })?;
+        if let Err(error) = std::fs::remove_file(&path) {
+            drop(file);
+            let _ = std::fs::remove_file(&path);
+            return Err(PhaseBError::new(format!(
+                "cannot unlink anonymous PCG spool {}: {error}",
+                path.display()
+            )));
+        }
+        let bytes = prover
+            .len()
+            .checked_mul(CORRELATION_SPOOL_ENTRY_BYTES)
+            .ok_or_else(|| PhaseBError::new("PCG spool size overflow"))?;
+        file.set_len(
+            u64::try_from(bytes).map_err(|_| PhaseBError::new("PCG spool size exceeds u64"))?,
+        )
+        .map_err(|error| PhaseBError::new(format!("cannot size PCG spool: {error}")))?;
+        let mut digest = blake3::Hasher::new_derive_key("volta/pcg/connection-spool/v1");
+        let mut encoded =
+            Vec::with_capacity(CORRELATION_SPOOL_CHUNK_ENTRIES * CORRELATION_SPOOL_ENTRY_BYTES);
+        for start in (0..prover.len()).step_by(CORRELATION_SPOOL_CHUNK_ENTRIES) {
+            let end = (start + CORRELATION_SPOOL_CHUNK_ENTRIES).min(prover.len());
+            encoded.clear();
+            for (value, key) in prover[start..end].iter().zip(&verifier_keys[start..end]) {
+                for limb in [
+                    value.r.value(),
+                    value.m.c0.value(),
+                    value.m.c1.value(),
+                    key.c0.value(),
+                    key.c1.value(),
+                ] {
+                    encoded.extend_from_slice(&limb.to_le_bytes());
+                }
+            }
+            digest.update(&encoded);
+            file.write_all(&encoded)
+                .map_err(|error| PhaseBError::new(format!("cannot write PCG spool: {error}")))?;
+        }
+        file.sync_data()
+            .map_err(|error| PhaseBError::new(format!("cannot sync PCG spool: {error}")))?;
+        let bytes_u64 =
+            u64::try_from(bytes).map_err(|_| PhaseBError::new("PCG spool size exceeds u64"))?;
+        discard_spool_page_cache(&file, 0, bytes_u64)?;
+        file.seek(SeekFrom::Start(0))
+            .map_err(|error| PhaseBError::new(format!("cannot rewind PCG spool: {error}")))?;
+        let audit = CorrelationSpoolAudit {
+            storage: "unlinked-0600-file; connection-scoped; range-read only; page-cache discarded"
+                .into(),
+            entries: u64::try_from(prover.len())
+                .map_err(|_| PhaseBError::new("PCG spool entries exceed u64"))?,
+            bytes: bytes_u64,
+            chunk_entries: CORRELATION_SPOOL_CHUNK_ENTRIES,
+            resident_raw_entries_after_spool: 0,
+            write_wall_s: started.elapsed().as_secs_f64(),
+            digest: digest.finalize().to_hex().to_string(),
+        };
+        Ok((Self { file, entries: prover.len() }, audit))
+    }
+
+    fn allocate(
+        &mut self,
+        start: usize,
+        sub_corrs: usize,
+        full_corrs: usize,
+    ) -> Result<(ProverPcgPool, VerifierPcgPool), PhaseBError> {
+        let raw_count = sub_corrs
+            .checked_add(
+                full_corrs
+                    .checked_mul(2)
+                    .ok_or_else(|| PhaseBError::new("full-correlation raw count overflow"))?,
+            )
+            .ok_or_else(|| PhaseBError::new("response raw-correlation count overflow"))?;
+        let end = start
+            .checked_add(raw_count)
+            .ok_or_else(|| PhaseBError::new("PCG spool range overflow"))?;
+        if end > self.entries {
+            return Err(PhaseBError::new("PCG spool allocation exceeds retained capacity"));
+        }
+        let byte_start = start
+            .checked_mul(CORRELATION_SPOOL_ENTRY_BYTES)
+            .ok_or_else(|| PhaseBError::new("PCG spool byte offset overflow"))?;
+        self.file
+            .seek(SeekFrom::Start(
+                u64::try_from(byte_start)
+                    .map_err(|_| PhaseBError::new("PCG spool byte offset exceeds u64"))?,
+            ))
+            .map_err(|error| PhaseBError::new(format!("cannot seek PCG spool: {error}")))?;
+
+        let mut prover = ProverPcgPool {
+            subs: Vec::with_capacity(sub_corrs),
+            fulls: Vec::with_capacity(full_corrs),
+        };
+        let mut verifier = VerifierPcgPool {
+            sub_keys: Vec::with_capacity(sub_corrs),
+            full_keys: Vec::with_capacity(full_corrs),
+        };
+        let mut pending_full: Option<(SubVole, Fp2)> = None;
+        let mut consumed = 0usize;
+        let mut encoded = Vec::new();
+        while consumed < raw_count {
+            let entries = (raw_count - consumed).min(CORRELATION_SPOOL_CHUNK_ENTRIES);
+            encoded.resize(entries * CORRELATION_SPOOL_ENTRY_BYTES, 0);
+            self.file
+                .read_exact(&mut encoded)
+                .map_err(|error| PhaseBError::new(format!("cannot read PCG spool: {error}")))?;
+            for record in encoded.chunks_exact(CORRELATION_SPOOL_ENTRY_BYTES) {
+                let word = |index: usize| {
+                    let offset = index * 8;
+                    u64::from_le_bytes(record[offset..offset + 8].try_into().unwrap())
+                };
+                let raw = SubVole {
+                    r: Fp::new(word(0)),
+                    m: Fp2::new(Fp::new(word(1)), Fp::new(word(2))),
+                };
+                let key = Fp2::new(Fp::new(word(3)), Fp::new(word(4)));
+                let index = consumed;
+                consumed += 1;
+                if index < sub_corrs {
+                    prover.subs.push(raw);
+                    verifier.sub_keys.push(key);
+                } else if let Some((lo, key_lo)) = pending_full.take() {
+                    prover.fulls.push(FullVole {
+                        x: Fp2::from_base(lo.r) + GAMMA.mul_base(raw.r),
+                        m: lo.m + GAMMA * raw.m,
+                    });
+                    verifier.full_keys.push(key_lo + GAMMA * key);
+                } else {
+                    pending_full = Some((raw, key));
+                }
+            }
+        }
+        if pending_full.is_some()
+            || prover.subs.len() != sub_corrs
+            || prover.fulls.len() != full_corrs
+            || verifier.sub_keys.len() != sub_corrs
+            || verifier.full_keys.len() != full_corrs
+        {
+            return Err(PhaseBError::new("PCG spool allocation shape mismatch"));
+        }
+        let range_bytes = raw_count
+            .checked_mul(CORRELATION_SPOOL_ENTRY_BYTES)
+            .and_then(|value| u64::try_from(value).ok())
+            .ok_or_else(|| PhaseBError::new("PCG spool range byte length overflow"))?;
+        discard_spool_page_cache(
+            &self.file,
+            u64::try_from(byte_start)
+                .map_err(|_| PhaseBError::new("PCG spool byte offset exceeds u64"))?,
+            range_bytes,
+        )?;
+        Ok((prover, verifier))
+    }
+}
+
 impl ProductionFaseDConnection {
+    /// Move the terminal-one raw pool out of heap memory before PCS scratch
+    /// exists. The backing file is mode 0600 and unlinked immediately, so it
+    /// is connection-scoped and cannot be reopened by name. Logical stage
+    /// allocation, domains, Delta and lifecycle accounting are unchanged.
+    pub fn spool_terminal_one_correlations(
+        &mut self,
+    ) -> Result<CorrelationSpoolAudit, PhaseBError> {
+        if let Some(audit) = &self.correlation_spool_audit {
+            return Ok(audit.clone());
+        }
+        if self.expansion.params.plan != crate::FaseDStagePlan::TerminalOne
+            || !self.expansion.prover.fulls.is_empty()
+            || !self.expansion.verifier.full_keys.is_empty()
+            || self.expansion.prover.subs.len() != self.expansion.capacity.total_allocatable
+            || self.expansion.verifier.sub_keys.len() != self.expansion.capacity.total_allocatable
+        {
+            self.connection.abort(ConnectionAbortReason::ProtocolError)?;
+            return Err(PhaseBError::new("only a complete terminal-one raw pool can be spooled"));
+        }
+        let prover = std::mem::take(&mut self.expansion.prover.subs);
+        let verifier = std::mem::take(&mut self.expansion.verifier.sub_keys);
+        let created = ConnectionCorrelationSpool::create(&prover, &verifier);
+        drop(prover);
+        drop(verifier);
+        let (spool, audit) = match created {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = self.connection.abort(ConnectionAbortReason::DurableStoreFailure);
+                return Err(error);
+            }
+        };
+        self.correlation_spool = Some(spool);
+        self.correlation_spool_audit = Some(audit.clone());
+        Ok(audit)
+    }
+
     /// Allocate canonical raw stage output and convert the requested tail
     /// pairs into full `F_p²` correlations without changing logical order.
     pub fn allocate_pcg_pools(
@@ -403,6 +673,42 @@ impl ProductionFaseDConnection {
             .ok_or_else(|| PhaseBError::new("response raw-correlation count overflow"))?;
         let raw_count_u64 = u64::try_from(raw_count)
             .map_err(|_| PhaseBError::new("response raw-correlation count exceeds u64"))?;
+        if self.correlation_spool.is_some() {
+            let allocation = self.connection.allocate(stage, raw_count_u64, domain)?;
+            let stage_offset = match stage {
+                0 => 0usize,
+                1 => self.expansion.capacity.main_residual,
+                _ => {
+                    self.connection.abort(ConnectionAbortReason::ProtocolError)?;
+                    return Err(PhaseBError::new(
+                        "terminal-one connection has only main and stage-1 pools",
+                    ));
+                }
+            };
+            let local = usize::try_from(allocation.start)
+                .map_err(|_| PhaseBError::new("allocation start exceeds usize"))?;
+            let start = stage_offset
+                .checked_add(local)
+                .ok_or_else(|| PhaseBError::new("connection spool offset overflow"))?;
+            let loaded = self
+                .correlation_spool
+                .as_mut()
+                .expect("spool presence checked")
+                .allocate(start, sub_corrs, full_corrs);
+            let (prover, verifier) = match loaded {
+                Ok(value) => value,
+                Err(error) => {
+                    let _ = self.connection.abort(ConnectionAbortReason::ProtocolError);
+                    return Err(error);
+                }
+            };
+            return Ok(AllocatedPcgPools {
+                allocation,
+                prover,
+                verifier,
+                verifier_delta: self.expansion.verifier_delta,
+            });
+        }
         let batch = self.allocate_sub_correlations(stage, raw_count_u64, domain)?;
         let mut prover = ProverPcgPool {
             subs: batch.prover[..sub_corrs].to_vec(),
@@ -1675,7 +1981,13 @@ pub fn open_fase_d_connection_with_ggm_prg(
         ggm_prg,
         pcg_production_ready: true,
     };
-    Ok(ProductionFaseDConnection { connection, expansion, production })
+    Ok(ProductionFaseDConnection {
+        connection,
+        expansion,
+        production,
+        correlation_spool: None,
+        correlation_spool_audit: None,
+    })
 }
 
 fn seed_commitment(seed: [u8; 32], role: &[u8]) -> [u8; 32] {
@@ -1745,6 +2057,39 @@ mod tests {
             [tag.wrapping_add(2); 32],
         )
         .unwrap()
+    }
+
+    #[test]
+    fn anonymous_connection_spool_range_loads_exact_pools() {
+        let delta = Fp2::new(Fp::new(17), Fp::new(29));
+        let prover: Vec<_> = (0..12u64)
+            .map(|index| SubVole {
+                r: Fp::new(index + 1),
+                m: Fp2::new(Fp::new(100 + index), Fp::new(200 + index)),
+            })
+            .collect();
+        let keys: Vec<_> = prover.iter().map(|value| value.m + delta.mul_base(value.r)).collect();
+        let (mut spool, audit) = ConnectionCorrelationSpool::create(&prover, &keys).unwrap();
+        assert_eq!(audit.entries, 12);
+        assert_eq!(audit.bytes, 12 * CORRELATION_SPOOL_ENTRY_BYTES as u64);
+        assert_eq!(audit.resident_raw_entries_after_spool, 0);
+
+        let (loaded_p, loaded_v) = spool.allocate(2, 3, 2).unwrap();
+        for (actual, expected) in loaded_p.subs.iter().zip(&prover[2..5]) {
+            assert_eq!(actual.r, expected.r);
+            assert_eq!(actual.m, expected.m);
+        }
+        assert_eq!(loaded_v.sub_keys, keys[2..5]);
+        for full in 0..2 {
+            let lo = 5 + 2 * full;
+            let hi = lo + 1;
+            assert_eq!(
+                loaded_p.fulls[full].x,
+                Fp2::from_base(prover[lo].r) + GAMMA.mul_base(prover[hi].r)
+            );
+            assert_eq!(loaded_p.fulls[full].m, prover[lo].m + GAMMA * prover[hi].m);
+            assert_eq!(loaded_v.full_keys[full], keys[lo] + GAMMA * keys[hi]);
+        }
     }
 
     #[test]

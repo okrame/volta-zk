@@ -602,6 +602,156 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7(tmp_path)
     fase_d_v2_path = tmp_path / "fase-d-pod-v2-official.json"
     fase_d_v2_path.write_text(json.dumps(fase_d_v2))
     assert report.validate_fase_d_pod_official_result(fase_d_v2_path) is True
+
+    c3b_pod = copy.deepcopy(fase_d_v2)
+    c3b_baseline_samples = [4.896_894_977, 4.911_634, 4.935_140_317]
+    c3b_candidate_samples = [4.8, 4.9, 5.0]
+    c3b_baseline = 4.911_634
+    c3b_candidate = 4.9
+    c3b_delta = c3b_candidate - c3b_baseline
+    c3b_pod.update(
+        {
+            "report_schema_version": 9,
+            "milestone": "C3b",
+            "p7b_gate_profile": "runpod-a100-realpcg-v3",
+            "pcs_n_queries": 120,
+            "pcs_commitments": [{"verified": True}, {"verified": True}],
+            "comm_response_bytes": 105_717_632,
+            "comm_response_by_label": {"protocol": 62_443_744, "pcs": 43_273_888},
+            "comm_pcs_by_label": {"weights": 37_405_088, "embed": 5_868_800},
+            "pcs_opening_bytes_total": 43_273_888,
+            "public_logits_bytes": 0,
+            "public_logits_packed_bytes": 0,
+            "total_response_download_bytes": 105_717_632,
+            "total_response_download_packed_bytes": 105_717_632,
+            "response_communication_observed_bytes": 105_717_632,
+            "p7b_transcript_reference_bytes": 105_717_632,
+            "p7b_pcs_opening_reference_bytes": 43_273_888,
+            "p7b_packed_logits_reference_bytes": 0,
+            "p7b_packed_response_reference_bytes": 105_717_632,
+            "c3_packed_response_gate_bytes": 115_000_000,
+            "c3b_l4_transcript_bytes": 57_840,
+            "c3b_transcript_reference_bytes": 105_717_632,
+            "c3b_limb_count": 3,
+            "c3b_range_instances": 6,
+            "c3b_real_comparisons": 2_512_850,
+            "c3b_packed_entries_per_limb": 2_621_440,
+            "c3b_packed_entries_total": 7_864_320,
+            "c3b_padding_ratio": 2_621_440 / 2_512_850,
+            "c3b_l4_emult_instances": 157_705_530.0,
+            "c3b_l4_emult_ceiling": 260_000_000.0,
+            "c3b_l4_emult_gate_pass": True,
+            "emult_instances_total": 2_775_723_398.8,
+            "c3b_exact_instance_counter_pass": True,
+            "c3b_transcript_category_sum_pass": True,
+            "c3b_pcs_category_sum_pass": True,
+            "c3b_public_logits_disabled": True,
+            "c3b_g1_pass": None,
+            "c3b_g4_pass": True,
+            "c3b_g2": {
+                "timing_policy": (
+                    "wall-only+counters; upper median candidate; pinned same-host control"
+                ),
+                "baseline_source": (
+                    "c3b-l4-ablation-diagnostic-2026-07-18-5a2edbe.json; "
+                    "pinned rounded median"
+                ),
+                "baseline_prove_response": {
+                    "samples_s": c3b_baseline_samples,
+                    "median_s": c3b_baseline,
+                },
+                "candidate_prove_response": {
+                    "samples_s": c3b_candidate_samples,
+                    "median_s": c3b_candidate,
+                },
+                "baseline_s": c3b_baseline,
+                "candidate_s": c3b_candidate,
+                "delta_s": c3b_delta,
+                "delta_percent": c3b_delta / c3b_baseline * 100.0,
+                "gate_percent": 15.0,
+                "ceiling_s": 5.648_379_1,
+                "pass": True,
+            },
+            "pcg_setup_comm_bytes": 38_000_000,
+            "pcg_setup_instances": 1,
+            "pcg_setup_wire_count_invariant_pass": True,
+            "pcg_response_authorization_burned_before_setup": True,
+            "pcg_burn_on_success_or_abort": True,
+            "pcg_reconnect_retry_resume_allowed": False,
+        }
+    )
+    c3b_pod["fase_d_setup"].update(
+        {
+            "correlation_storage": (
+                "unlinked-0600-file; connection-scoped; range-read only; "
+                "page-cache discarded"
+            ),
+            "correlation_spool_entries": 110_000_000,
+            "correlation_spool_bytes": 4_400_000_000,
+            "correlation_spool_chunk_entries": 1 << 16,
+            "correlation_spool_resident_raw_entries": 0,
+            "correlation_spool_write_wall_s": 1.0,
+            "correlation_spool_digest": "a" * 64,
+        }
+    )
+    c3b_pod["fase_d_lifecycle"].update(
+        {
+            "response_base_ot_bytes": [1024, 0, 0, 0, 0],
+            "response_ot_extension_bytes": [2048, 0, 0, 0, 0],
+        }
+    )
+    c3b_pod_path = tmp_path / "c3b-pod-official.json"
+    c3b_pod_path.write_text(json.dumps(c3b_pod))
+    assert report.validate_c3b_official_result(c3b_pod_path) is True
+
+    bad_c3b_denominator = copy.deepcopy(c3b_pod)
+    bad_c3b_denominator["c3b_g2"]["baseline_s"] += 0.000_001
+    bad_c3b_denominator_path = tmp_path / "c3b-bad-denominator.json"
+    bad_c3b_denominator_path.write_text(json.dumps(bad_c3b_denominator))
+    assert report.validate_c3b_official_result(bad_c3b_denominator_path) is False
+
+    c3b_cpu = copy.deepcopy(c3b_pod)
+    cpu_baseline_samples = [10.0, 10.1, 10.2, 10.3, 10.4, 10.5]
+    cpu_candidate_samples = [11.0, 11.1, 11.2, 11.3, 11.4, 11.5]
+    cpu_baseline = 10.3
+    cpu_candidate = 11.3
+    cpu_delta = cpu_candidate - cpu_baseline
+    c3b_cpu.update(
+        {
+            "accelerator_backend": "cpu",
+            "threads": 4,
+            "c3b_g1_pass": True,
+            "c3b_g4_pass": None,
+            "c3b_g2": {
+                "timing_policy": (
+                    "same-process ABBA; one paired warmup + three rounds; "
+                    "protocol-core prove wall"
+                ),
+                "baseline_source": (
+                    "unchanged fase-D Q=200 public-logit response arm in this record"
+                ),
+                "baseline_prove_response": {
+                    "samples_s": cpu_baseline_samples,
+                    "median_s": cpu_baseline,
+                },
+                "candidate_prove_response": {
+                    "samples_s": cpu_candidate_samples,
+                    "median_s": cpu_candidate,
+                },
+                "baseline_s": cpu_baseline,
+                "candidate_s": cpu_candidate,
+                "delta_s": cpu_delta,
+                "delta_percent": cpu_delta / cpu_baseline * 100.0,
+                "gate_percent": 15.0,
+                "ceiling_s": cpu_baseline * 1.15,
+                "pass": True,
+            },
+        }
+    )
+    c3b_cpu_path = tmp_path / "c3b-cpu-official.json"
+    c3b_cpu_path.write_text(json.dumps(c3b_cpu))
+    assert report.validate_c3b_official_result(c3b_cpu_path) is True
+
     fase_d_v2["p7b_sync_wall_absolute_gate_s"] = 0.151
     fase_d_v2_path.write_text(json.dumps(fase_d_v2))
     assert report.validate_fase_d_pod_official_result(fase_d_v2_path) is False

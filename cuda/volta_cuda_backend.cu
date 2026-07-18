@@ -1492,6 +1492,160 @@ __device__ inline uint64_t load_base_scalar(const void* input, size_t index, int
     return static_cast<const uint64_t*>(input)[index];
 }
 
+constexpr size_t ARGMAX_RECT_COLS = size_t{1} << 16;
+constexpr size_t ARGMAX_SEGMENT_ENTRIES = size_t{1} << 18;
+constexpr size_t ARGMAX_ROWS_PER_SEGMENT = 5;
+constexpr int64_t ARGMAX_MAX_LOGIT_ABS = int64_t{768} * 32768 * 32768;
+
+struct ArgmaxCandidate {
+    int64_t value;
+    uint32_t index;
+};
+
+__device__ inline ArgmaxCandidate argmax_better(
+    ArgmaxCandidate left, ArgmaxCandidate right) {
+    return right.value > left.value ||
+            (right.value == left.value && right.index > left.index)
+        ? right
+        : left;
+}
+
+__global__ void private_argmax_selected_kernel(
+    const int64_t* input, uint32_t* selected_indices, uint64_t* selected_rows,
+    uint32_t* error, size_t rows, size_t vocab, size_t selected_entries) {
+    const size_t row = blockIdx.x;
+    if (row >= selected_entries) return;
+    if (row >= rows) {
+        if (threadIdx.x == 0) {
+            selected_indices[row] = 0;
+            selected_rows[row] = 0;
+        }
+        return;
+    }
+    ArgmaxCandidate candidate{-9223372036854775807LL - 1, 0};
+    for (size_t word = threadIdx.x; word < vocab; word += blockDim.x) {
+        const int64_t value = input[row * vocab + word];
+        const uint64_t magnitude = value < 0
+            ? static_cast<uint64_t>(-(value + 1)) + 1
+            : static_cast<uint64_t>(value);
+        if (magnitude > static_cast<uint64_t>(ARGMAX_MAX_LOGIT_ABS)) atomicOr(error, 1u);
+        candidate = argmax_better(candidate, ArgmaxCandidate{value, static_cast<uint32_t>(word)});
+    }
+    __shared__ ArgmaxCandidate shared[BLOCK];
+    shared[threadIdx.x] = candidate;
+    __syncthreads();
+    for (int width = BLOCK / 2; width > 0; width >>= 1) {
+        if (threadIdx.x < width)
+            shared[threadIdx.x] = argmax_better(shared[threadIdx.x], shared[threadIdx.x + width]);
+        __syncthreads();
+    }
+    if (threadIdx.x == 0) {
+        selected_indices[row] = shared[0].index;
+        selected_rows[row] = fp_from_i64_device(shared[0].value);
+    }
+}
+
+__global__ void private_argmax_rect_kernel(
+    const int64_t* input, const uint32_t* selected_indices,
+    Fp2* logits, Fp2* strict, Fp2* is_max, uint32_t* error,
+    size_t rows, size_t vocab, size_t entries) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z >= entries) return;
+    const size_t row = z / ARGMAX_RECT_COLS;
+    const size_t word = z % ARGMAX_RECT_COLS;
+    if (row >= rows || word >= vocab) {
+        logits[z] = Fp2{0, 0};
+        strict[z] = Fp2{0, 0};
+        is_max[z] = Fp2{0, 0};
+        return;
+    }
+    const uint32_t selected_index = selected_indices[row];
+    const int64_t selected = input[row * vocab + selected_index];
+    const int64_t value = input[row * vocab + word];
+    const int64_t difference = selected - value;
+    const int64_t strict_value = difference - static_cast<int64_t>(word > selected_index);
+    if (difference < 0 || difference > 2 * ARGMAX_MAX_LOGIT_ABS || strict_value < 0)
+        atomicOr(error, 1u);
+    logits[z] = Fp2{fp_from_i64_device(value), 0};
+    strict[z] = Fp2{strict_value < 0 ? 0 : static_cast<uint64_t>(strict_value), 0};
+    is_max[z] = Fp2{static_cast<uint64_t>(word == selected_index), 0};
+}
+
+__device__ inline bool private_argmax_packed_coordinate(
+    size_t z, size_t first_job_entries, size_t vocab,
+    size_t* row, size_t* word) {
+    const size_t local = z < first_job_entries ? z : z - first_job_entries;
+    const size_t segment = z < first_job_entries
+        ? local / ARGMAX_SEGMENT_ENTRIES
+        : 8 + local / ARGMAX_SEGMENT_ENTRIES;
+    const size_t within = local % ARGMAX_SEGMENT_ENTRIES;
+    if (within >= ARGMAX_ROWS_PER_SEGMENT * vocab) return false;
+    *row = segment * ARGMAX_ROWS_PER_SEGMENT + within / vocab;
+    *word = within % vocab;
+    return true;
+}
+
+__global__ void private_argmax_limbs_kernel(
+    const int64_t* input, const uint32_t* selected_indices,
+    Fp2* packed_strict, uint64_t* limbs,
+    uint32_t* error, size_t rows, size_t vocab, size_t entries,
+    size_t first_job_entries) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z >= entries) return;
+    size_t row = 0, word = 0;
+    if (!private_argmax_packed_coordinate(z, first_job_entries, vocab, &row, &word) || row >= rows) {
+        packed_strict[z] = Fp2{0, 0};
+        limbs[z] = 0;
+        limbs[entries + z] = 0;
+        limbs[2 * entries + z] = 0;
+        return;
+    }
+    const uint32_t selected_index = selected_indices[row];
+    const int64_t selected = input[row * vocab + selected_index];
+    const int64_t value = input[row * vocab + word];
+    const int64_t strict_value = selected - value - static_cast<int64_t>(word > selected_index);
+    if (strict_value < 0 || strict_value >= (int64_t{1} << 48)) {
+        atomicOr(error, 1u);
+        packed_strict[z] = Fp2{0, 0};
+        limbs[z] = 0;
+        limbs[entries + z] = 0;
+        limbs[2 * entries + z] = 0;
+        return;
+    }
+    const uint64_t value_u64 = static_cast<uint64_t>(strict_value);
+    packed_strict[z] = Fp2{value_u64, 0};
+    limbs[z] = value_u64 & 0xffff;
+    limbs[entries + z] = (value_u64 >> 16) & 0xffff;
+    limbs[2 * entries + z] = (value_u64 >> 32) & 0xffff;
+}
+
+__global__ void private_argmax_phase_factors_kernel(
+    const Fp2* logits, Fp2* mask, Fp2* masked, size_t entries,
+    size_t row_start, size_t row_count, size_t vocab) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z >= entries) return;
+    const size_t row = z / ARGMAX_RECT_COLS;
+    const size_t word = z % ARGMAX_RECT_COLS;
+    const bool active = row >= row_start && row < row_start + row_count && word < vocab;
+    mask[z] = Fp2{static_cast<uint64_t>(active), 0};
+    masked[z] = active ? logits[z] : Fp2{0, 0};
+}
+
+__global__ void private_argmax_selector_kernel(
+    const Fp2* eq_vocab, const Fp2* eq_rows, Fp2* output,
+    size_t entries, size_t job, size_t vocab, Fp2 coefficient) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z >= entries) return;
+    const size_t first_job_entries = size_t{1} << 21;
+    const size_t global = job == 0 ? z : first_job_entries + z;
+    size_t row = 0, word = 0;
+    if (!private_argmax_packed_coordinate(global, first_job_entries, vocab, &row, &word) || row >= 64) {
+        output[z] = Fp2{0, 0};
+        return;
+    }
+    output[z] = fp2_mul(fp2_mul(eq_rows[row], eq_vocab[word]), coefficient);
+}
+
 __global__ void subfield_corrections_kernel(
     const void* input, const uint64_t* masks, uint64_t* output,
     size_t n, int kind) {
@@ -3647,6 +3801,109 @@ extern "C" int volta_cuda_fixed_logits_device(
     CUDA_OR_RETURN(c, cudaPeekAtLastError());
     if (mark_timing(c, 2)) return -1;
     return finish_timing(c, OP_GEMM, 0, 0);
+}
+
+extern "C" int volta_cuda_private_argmax_witness_device(
+    void* raw, uint64_t input_id, size_t input_offset,
+    uint64_t selected_indices_id, size_t selected_indices_offset,
+    uint64_t selected_rows_id, size_t selected_rows_offset,
+    uint64_t logits_id, size_t logits_offset,
+    uint64_t strict_id, size_t strict_offset,
+    uint64_t is_max_id, size_t is_max_offset,
+    uint64_t packed_strict_id, size_t packed_strict_offset,
+    uint64_t limbs_id, size_t limbs_offset,
+    uint64_t error_id, size_t error_offset,
+    size_t rows, size_t vocab, size_t rect_entries, size_t lookup_entries,
+    size_t first_job_entries, size_t selected_row_entries) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !rows || rows > 50 || vocab != 50257 ||
+        rect_entries != (size_t{1} << 22) ||
+        first_job_entries != (size_t{1} << 21) ||
+        lookup_entries != (size_t{1} << 21) + (size_t{1} << 19) ||
+        selected_row_entries != 64)
+        return fail_message(c, "invalid resident private-argmax geometry");
+    void *input = nullptr, *selected_indices = nullptr, *selected_rows = nullptr;
+    void *logits = nullptr, *strict = nullptr, *is_max = nullptr;
+    void *packed_strict = nullptr, *limbs = nullptr, *error = nullptr;
+    if (resident_region(c, input_id, input_offset * sizeof(int64_t), rows * vocab * sizeof(int64_t), &input) ||
+        resident_region(c, selected_indices_id, selected_indices_offset * sizeof(uint32_t), selected_row_entries * sizeof(uint32_t), &selected_indices) ||
+        resident_region(c, selected_rows_id, selected_rows_offset * sizeof(uint64_t), selected_row_entries * sizeof(uint64_t), &selected_rows) ||
+        resident_region(c, logits_id, logits_offset * sizeof(Fp2), rect_entries * sizeof(Fp2), &logits) ||
+        resident_region(c, strict_id, strict_offset * sizeof(Fp2), rect_entries * sizeof(Fp2), &strict) ||
+        resident_region(c, is_max_id, is_max_offset * sizeof(Fp2), rect_entries * sizeof(Fp2), &is_max) ||
+        resident_region(c, packed_strict_id, packed_strict_offset * sizeof(Fp2), lookup_entries * sizeof(Fp2), &packed_strict) ||
+        resident_region(c, limbs_id, limbs_offset * sizeof(uint64_t), 3 * lookup_entries * sizeof(uint64_t), &limbs) ||
+        resident_region(c, error_id, error_offset * sizeof(uint32_t), sizeof(uint32_t), &error)) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    private_argmax_selected_kernel<<<selected_row_entries, BLOCK, 0, c->stream>>>(
+        static_cast<const int64_t*>(input), static_cast<uint32_t*>(selected_indices),
+        static_cast<uint64_t*>(selected_rows), static_cast<uint32_t*>(error),
+        rows, vocab, selected_row_entries);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    private_argmax_rect_kernel<<<(rect_entries + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const int64_t*>(input), static_cast<const uint32_t*>(selected_indices),
+        static_cast<Fp2*>(logits), static_cast<Fp2*>(strict), static_cast<Fp2*>(is_max),
+        static_cast<uint32_t*>(error), rows, vocab, rect_entries);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    private_argmax_limbs_kernel<<<(lookup_entries + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const int64_t*>(input), static_cast<const uint32_t*>(selected_indices),
+        static_cast<Fp2*>(packed_strict), static_cast<uint64_t*>(limbs),
+        static_cast<uint32_t*>(error),
+        rows, vocab, lookup_entries, first_job_entries);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    const uint64_t generated =
+        3 * rect_entries * sizeof(Fp2) + lookup_entries * sizeof(Fp2) +
+        3 * lookup_entries * sizeof(uint64_t) +
+        selected_row_entries * (sizeof(uint32_t) + sizeof(uint64_t));
+    return finish_timing(c, OP_LOGUP, 0, 0, 0, 0, generated);
+}
+
+extern "C" int volta_cuda_private_argmax_phase_factors_device(
+    void* raw, uint64_t logits_id, size_t logits_offset,
+    uint64_t mask_id, size_t mask_offset,
+    uint64_t masked_id, size_t masked_offset,
+    size_t entries, size_t row_start, size_t row_count, size_t vocab) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || entries != (size_t{1} << 22) || !row_count ||
+        row_start + row_count > 64 || vocab != 50257)
+        return fail_message(c, "invalid resident private-argmax phase geometry");
+    void *logits = nullptr, *mask = nullptr, *masked = nullptr;
+    if (resident_region(c, logits_id, logits_offset * sizeof(Fp2), entries * sizeof(Fp2), &logits) ||
+        resident_region(c, mask_id, mask_offset * sizeof(Fp2), entries * sizeof(Fp2), &mask) ||
+        resident_region(c, masked_id, masked_offset * sizeof(Fp2), entries * sizeof(Fp2), &masked)) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    private_argmax_phase_factors_kernel<<<(entries + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const Fp2*>(logits), static_cast<Fp2*>(mask), static_cast<Fp2*>(masked),
+        entries, row_start, row_count, vocab);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_LOGUP, 0, 0, 0, 0, 2 * entries * sizeof(Fp2));
+}
+
+extern "C" int volta_cuda_private_argmax_selector_device(
+    void* raw, uint64_t eq_vocab_id, size_t eq_vocab_offset,
+    uint64_t eq_rows_id, size_t eq_rows_offset,
+    uint64_t output_id, size_t output_offset,
+    size_t entries, size_t job, size_t vocab, Fp2 coefficient) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || job >= 2 || vocab != 50257 ||
+        entries != (job == 0 ? (size_t{1} << 21) : (size_t{1} << 19)))
+        return fail_message(c, "invalid resident private-argmax selector geometry");
+    void *eq_vocab = nullptr, *eq_rows = nullptr, *output = nullptr;
+    if (resident_region(c, eq_vocab_id, eq_vocab_offset * sizeof(Fp2), (size_t{1} << 16) * sizeof(Fp2), &eq_vocab) ||
+        resident_region(c, eq_rows_id, eq_rows_offset * sizeof(Fp2), 64 * sizeof(Fp2), &eq_rows) ||
+        resident_region(c, output_id, output_offset * sizeof(Fp2), entries * sizeof(Fp2), &output)) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    private_argmax_selector_kernel<<<(entries + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const Fp2*>(eq_vocab), static_cast<const Fp2*>(eq_rows),
+        static_cast<Fp2*>(output), entries, job, vocab, coefficient);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_LOGUP, 0, 0, 0, 0, entries * sizeof(Fp2));
 }
 
 size_t resident_scalar_size(int kind) {

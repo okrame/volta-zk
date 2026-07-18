@@ -21,9 +21,10 @@
 //! default to one warmup plus three measured repetitions; override with
 //! `--warmup-repetitions N --repetitions N`.
 //!
-//! C3 uses `--c3` for diagnostics or `--c3-record` for the clean CPU gate:
-//! Q=120, one consolidated weights tree, one exact-block embed tree and the
-//! private-logit last-maximum proof (zero public-logit payload).
+//! C3b uses `--c3` for diagnostics or `--c3-record` for clean CPU/A100
+//! records: Q=120, one consolidated weights tree, one exact-block embed tree
+//! and the mandatory private-logit last-maximum proof. There is no L4-off
+//! selector and no C3b path serializes a public-logit payload.
 
 use rand::{rngs::OsRng, RngCore};
 use serde::Serialize;
@@ -75,6 +76,7 @@ const P7B_DECODE_MARGINAL_GATE_S: f64 = 4.0;
 const P7B_GATE_PROFILE: &str = "runpod-a100-v1";
 const FASE_D_POD_GATE_PROFILE_V1: &str = "runpod-a100-realpcg-v1";
 const FASE_D_POD_GATE_PROFILE_V2: &str = "runpod-a100-realpcg-v2";
+const C3B_POD_GATE_PROFILE: &str = "runpod-a100-realpcg-v3";
 const P7B_SYNC_WALL_FRACTION_GATE: f64 = 0.02;
 const FASE_D_POD_SYNC_WALL_ABSOLUTE_GATE_S: f64 = 0.150;
 const P7B_OFFICIAL_RAYON_THREADS: usize = 8;
@@ -104,9 +106,20 @@ const C1_AUTH_CORRECTION_BYTES: u64 = C1_BASELINE_AUTH_CORRECTION_BYTES - C1_SAV
 const C1_PACKED_RESPONSE_BYTES: u64 = C1_BASELINE_PACKED_RESPONSE_BYTES - C1_SAVED_BYTES;
 const C1_SUB_CORRS: u64 = C1_BASELINE_SUB_CORRS - C1_IDENTITY_SEAM_ALIASES;
 const C3_PCS_OPENING_BYTES: u64 = 43_273_888;
-const C3_L4_TRANSCRIPT_BYTES: u64 = 66_016;
-const C3_PROJECTED_PACKED_RESPONSE_BYTES: u64 = 105_725_808;
+const C3B_L4_TRANSCRIPT_BYTES: u64 = 57_840;
+const C3B_TRANSCRIPT_REFERENCE_BYTES: u64 = 105_717_632;
 const C3_PACKED_RESPONSE_GATE_BYTES: u64 = 115_000_000;
+const C3B_LIMBS: usize = 3;
+const C3B_RANGE_INSTANCES: usize = 6;
+const C3B_REAL_COMPARISONS: u64 = 2_512_850;
+const C3B_PACKED_ENTRIES_PER_LIMB: u64 = (1 << 21) + (1 << 19);
+const C3B_PACKED_ENTRIES_TOTAL: u64 = C3B_LIMBS as u64 * C3B_PACKED_ENTRIES_PER_LIMB;
+const C3B_L4_EMULT_INSTANCES: f64 = 157_705_530.0;
+const C3B_L4_EMULT_CEILING: f64 = 260_000_000.0;
+const C1_EMULT_INSTANCES: f64 = 2_618_017_868.8;
+const C3B_EMULT_INSTANCES_TOTAL: f64 = C1_EMULT_INSTANCES + C3B_L4_EMULT_INSTANCES;
+const C3B_G2_POD_BASELINE_S: f64 = 4.911_634;
+const C3B_G2_POD_CEILING_S: f64 = 5.648_379_1;
 // Phase 0a may change this only after its >=10% instrumentation-tax decision
 // is appended to the ledger. Until then, counter-only full runs are
 // diagnostic and cannot become an official verdict.
@@ -195,7 +208,7 @@ struct AcceleratorStatsRow {
     cpu_residual_s: Option<f64>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 struct TimingDistribution {
     samples_s: Vec<f64>,
     median_s: f64,
@@ -357,7 +370,13 @@ fn p7b_communication_gate(
     pcs_opening_bytes: u64,
     packed_logits_bytes: u64,
     fase_d_realpcg_profile: bool,
+    c3b_profile: bool,
 ) -> bool {
+    if c3b_profile {
+        return transcript_bytes == C3B_TRANSCRIPT_REFERENCE_BYTES
+            && pcs_opening_bytes == C3_PCS_OPENING_BYTES
+            && packed_logits_bytes == 0;
+    }
     if fase_d_realpcg_profile {
         return transcript_bytes == C1_TRANSCRIPT_BYTES
             && pcs_opening_bytes == P7B_PCS_OPENING_REFERENCE_BYTES
@@ -546,6 +565,14 @@ struct FaseDSetupRecord {
     maximum_prover_buffer_high_water_bytes: u64,
     g2_capacity_gate_pass: bool,
     g2_traffic_gate_pass: bool,
+    correlation_storage: String,
+    correlation_spool_entries: u64,
+    correlation_spool_bytes: u64,
+    correlation_spool_chunk_entries: usize,
+    correlation_spool_resident_raw_entries: u64,
+    correlation_spool_write_wall_s: f64,
+    correlation_spool_digest: String,
+    correlation_spool_heap_trim_released_pages: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -559,6 +586,21 @@ struct FaseDLifecycleRecord {
     channel_ledger_digest: String,
     stage_counters: BTreeMap<u32, StageCorrelationCounters>,
     terminal_state: ConnectionState,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct C3bG2Record {
+    timing_policy: String,
+    baseline_source: String,
+    baseline_prove_response: TimingDistribution,
+    candidate_prove_response: TimingDistribution,
+    baseline_s: f64,
+    candidate_s: f64,
+    delta_s: f64,
+    delta_percent: f64,
+    gate_percent: f64,
+    ceiling_s: f64,
+    pass: bool,
 }
 
 #[derive(Serialize)]
@@ -627,13 +669,43 @@ struct Report {
     #[serde(skip_serializing_if = "Option::is_none")]
     fase_d_g1_pass: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    c3_g1_pass: Option<bool>,
+    c3b_g1_pass: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c3b_g2: Option<C3bG2Record>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c3b_g4_pass: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     c3_packed_response_gate_bytes: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    c3_l4_transcript_bytes: Option<u64>,
+    c3b_l4_transcript_bytes: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    c3_projected_packed_response_bytes: Option<u64>,
+    c3b_transcript_reference_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c3b_limb_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c3b_range_instances: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c3b_real_comparisons: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c3b_packed_entries_per_limb: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c3b_packed_entries_total: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c3b_padding_ratio: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c3b_l4_emult_instances: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c3b_l4_emult_ceiling: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c3b_l4_emult_gate_pass: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c3b_exact_instance_counter_pass: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c3b_transcript_category_sum_pass: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c3b_pcs_category_sum_pass: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    c3b_public_logits_disabled: Option<bool>,
     // P7b gates are emitted only by the resident schema. Quick runs retain
     // observations but deliberately do not emit pass/fail verdicts.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1796,7 +1868,11 @@ fn run_session_impl<'source>(
             .bands
             .iter()
             .zip(bands)
-            .map(|(device, public)| ResidentChunkRef { band: device, logits: &public.logits, seq })
+            .map(|(device, public)| ResidentChunkRef {
+                band: device,
+                logits: if c3 { &[] } else { &public.logits },
+                seq,
+            })
             .collect();
         let accel = accelerator.as_deref_mut().expect("resident session requires CUDA backend");
         let error = DeviceSlice::new(resident.error, 0, 1).expect("resident proof error word");
@@ -1805,7 +1881,6 @@ fn run_session_impl<'source>(
                 model,
                 resident.model,
                 resident.witness,
-                &wit.logits,
                 &resident_chunks,
                 error,
                 &mut stream,
@@ -2527,8 +2602,10 @@ fn main() {
     let cloud = cloud_metadata_from_env();
     let rayon_threads = rayon::current_num_threads();
     let fase_d_realpcg_profile = args.fase_d_record;
+    let c3b_pod_profile = args.c3_record && args.accelerator == AcceleratorArg::CudaResident;
+    let connection_realpcg_profile = fase_d_realpcg_profile || args.c3_record;
     let p7b_machine_is_eligible =
-        p7b_machine_eligible(cloud.as_ref(), rayon_threads, fase_d_realpcg_profile);
+        p7b_machine_eligible(cloud.as_ref(), rayon_threads, connection_realpcg_profile);
     let logical_cpu_cores = detected_logical_cpu_cores();
     let physical_cpu_cores = detected_physical_cpu_cores(logical_cpu_cores);
     // A run of record must stay clean for the complete benchmark window, not
@@ -2560,7 +2637,7 @@ fn main() {
         std::process::exit(2);
     }
     if args.c3 && !args.diagnostic {
-        eprintln!("p6_report: --c3 is diagnostic-only; use --c3-record for the clean CPU gate");
+        eprintln!("p6_report: --c3 is diagnostic-only; use --c3-record for a clean C3b gate");
         std::process::exit(2);
     }
     if usize::from(args.c3_record)
@@ -2578,11 +2655,15 @@ fn main() {
     }
     if args.c3_record
         && (quick
-            || args.accelerator != AcceleratorArg::Cpu
+            || args.accelerator == AcceleratorArg::CudaHybrid
             || args.pcg_backend != PcgBackendArg::Real
             || args.ggm_prg != GgmPrg::Aes128Mmo)
     {
-        eprintln!("p6_report: --c3-record requires full CPU real/AES geometry");
+        eprintln!("p6_report: --c3-record requires full CPU or cuda-resident real/AES geometry");
+        std::process::exit(2);
+    }
+    if c3b_pod_profile && args.resident_timing != ResidentTimingArg::WallOnlyCounters {
+        eprintln!("p6_report: the C3b pod record requires wall-only-counters timing");
         std::process::exit(2);
     }
     if args.c3_record && git_dirty_before_benchmark {
@@ -2934,6 +3015,68 @@ fn main() {
         }};
     }
 
+    // C3b CPU G2 is a same-process ABBA pair over the unchanged fase-D
+    // response geometry and the candidate geometry. `prove_s` brackets only
+    // the protocol core in both arms; PCS is deliberately omitted from both
+    // calls and therefore cannot bias the paired response-proving statistic.
+    let c3b_cpu_g2 = if args.c3_record && args.accelerator == AcceleratorArg::Cpu {
+        let run_g2_arm = |candidate: bool, seed: u8| {
+            let (candidate_layer, candidate_embed) =
+                if candidate { (&C3_WEIGHTS, &C3_EMBED) } else { (&P4_LAYER, &GPT2_FULL) };
+            run_session(
+                &model,
+                &wit0,
+                &[&band50],
+                &seq,
+                candidate_layer,
+                candidate_embed,
+                false,
+                seed,
+                SessionPcgBackend::Mock,
+                None,
+            )
+            .prove_s
+        };
+        eprintln!("C3b G2 CPU: one paired warmup + three ABBA rounds ...");
+        let _ = run_g2_arm(false, 0x70);
+        let _ = run_g2_arm(true, 0x71);
+        let mut baseline_samples = Vec::with_capacity(6);
+        let mut candidate_samples = Vec::with_capacity(6);
+        for round in 0..3u8 {
+            baseline_samples.push(run_g2_arm(false, 0x72 + 4 * round));
+            candidate_samples.push(run_g2_arm(true, 0x73 + 4 * round));
+            candidate_samples.push(run_g2_arm(true, 0x74 + 4 * round));
+            baseline_samples.push(run_g2_arm(false, 0x75 + 4 * round));
+        }
+        let baseline = TimingDistribution::new(baseline_samples);
+        let candidate = TimingDistribution::new(candidate_samples);
+        let ceiling_s = baseline.median_s * 1.15;
+        let delta_s = candidate.median_s - baseline.median_s;
+        let delta_percent = delta_s / baseline.median_s * 100.0;
+        eprintln!(
+            "  fase-D {:.6}s; C3b {:.6}s; delta {delta_percent:+.3}% (ceiling {ceiling_s:.6}s)",
+            baseline.median_s, candidate.median_s
+        );
+        Some(C3bG2Record {
+            timing_policy:
+                "same-process ABBA; one paired warmup + three rounds; protocol-core prove wall"
+                    .into(),
+            baseline_source: "unchanged fase-D Q=200 public-logit response arm in this record"
+                .into(),
+            baseline_prove_response: baseline.clone(),
+            candidate_prove_response: candidate.clone(),
+            baseline_s: baseline.median_s,
+            candidate_s: candidate.median_s,
+            delta_s,
+            delta_percent,
+            gate_percent: 15.0,
+            ceiling_s,
+            pass: candidate.median_s <= ceiling_s,
+        })
+    } else {
+        None
+    };
+
     // --- repeated prefill + full-response proving -------------------------------
     eprintln!("timed proving: {warmup_repetitions} warmup + {repetitions} measured repetitions");
     let mut pcg_gate = PcgGateStats::default();
@@ -2969,7 +3112,7 @@ fn main() {
                 FaseDStagePlan::TerminalOne,
             )
             .expect("nonzero OS-generated fase-D connection identities");
-            let connection = open_fase_d_connection_with_ggm_prg(
+            let mut connection = open_fase_d_connection_with_ggm_prg(
                 pcg_connection_store.as_ref().expect("fase-D connection store"),
                 binding,
                 None,
@@ -3017,6 +3160,18 @@ fn main() {
                 .verifier_role_seed_commitments
                 .insert(connection.production.verifier_role_seed_commitment.clone());
             pcg_gate.channel_transcripts_match = Some(true);
+            let spool = connection
+                .spool_terminal_one_correlations()
+                .expect("spool fase-D connection correlations before PCS scratch");
+            let spool_heap_trim_released_pages = trim_released_heap_pages();
+            eprintln!(
+                "  fase-D spool: {} entries, {} bytes, {:.3}s, resident_raw={} trim={}",
+                spool.entries,
+                spool.bytes,
+                spool.write_wall_s,
+                spool.resident_raw_entries_after_spool,
+                spool_heap_trim_released_pages
+            );
             fase_d_setup = Some(FaseDSetupRecord {
                 params: connection.expansion.params.clone(),
                 capacity: connection.expansion.capacity,
@@ -3034,6 +3189,14 @@ fn main() {
                 maximum_prover_buffer_high_water_bytes,
                 g2_capacity_gate_pass,
                 g2_traffic_gate_pass,
+                correlation_storage: spool.storage,
+                correlation_spool_entries: spool.entries,
+                correlation_spool_bytes: spool.bytes,
+                correlation_spool_chunk_entries: spool.chunk_entries,
+                correlation_spool_resident_raw_entries: spool.resident_raw_entries_after_spool,
+                correlation_spool_write_wall_s: spool.write_wall_s,
+                correlation_spool_digest: spool.digest,
+                correlation_spool_heap_trim_released_pages: spool_heap_trim_released_pages,
             });
             fase_d_binding = Some(binding);
             fase_d_connection = Some(connection);
@@ -3734,13 +3897,14 @@ fn main() {
             t0,
             n_gen,
             layer_params.n_queries,
-            P4_LAYER.n_queries,
+            if c3_mode { C3_WEIGHTS.n_queries } else { P4_LAYER.n_queries },
             warmup_repetitions,
             repetitions,
         ) && args.resident_timing == P7B_OFFICIAL_RESIDENT_TIMING,
     );
     let gate_is_official = p7b_gate_evaluated == Some(true);
-    let fase_d_pod_v2 = fase_d_realpcg_profile && args.fase_d_pod_profile == FaseDPodProfileArg::V2;
+    let absolute_sync_profile = c3b_pod_profile
+        || (fase_d_realpcg_profile && args.fase_d_pod_profile == FaseDPodProfileArg::V2);
     let p7b_prefill_core_gate_pass = gate_is_official.then(|| {
         p7b_prefill_core_observed_s.expect("resident prefill observation")
             <= P7B_PREFILL_CORE_GATE_S
@@ -3749,14 +3913,15 @@ fn main() {
         p7b_decode_marginal_observed_s.expect("resident decode observation")
             <= P7B_DECODE_MARGINAL_GATE_S
     });
-    let p7b_sync_wall_fraction_gate_pass = (gate_is_official && !fase_d_pod_v2).then(|| {
-        synchronization_wall_gate_pass(
-            false,
-            p7b_sync_wall_fraction_observed.expect("resident sync-wall fraction observation"),
-            p7b_sync_wall_absolute_observed_s.expect("resident absolute sync-wall observation"),
-        )
-    });
-    let p7b_sync_wall_absolute_gate_pass = (gate_is_official && fase_d_pod_v2).then(|| {
+    let p7b_sync_wall_fraction_gate_pass =
+        (gate_is_official && !absolute_sync_profile).then(|| {
+            synchronization_wall_gate_pass(
+                false,
+                p7b_sync_wall_fraction_observed.expect("resident sync-wall fraction observation"),
+                p7b_sync_wall_absolute_observed_s.expect("resident absolute sync-wall observation"),
+            )
+        });
+    let p7b_sync_wall_absolute_gate_pass = (gate_is_official && absolute_sync_profile).then(|| {
         synchronization_wall_gate_pass(
             true,
             p7b_sync_wall_fraction_observed.expect("resident sync-wall fraction observation"),
@@ -3778,6 +3943,7 @@ fn main() {
             rec.pcs_opening_bytes,
             rec.public_logits_packed_bytes,
             fase_d_realpcg_profile,
+            c3b_pod_profile,
         )
     });
     let p7b_all_gates_pass = gate_is_official.then(|| {
@@ -3789,7 +3955,7 @@ fn main() {
             && p7b_response_communication_no_growth_pass == Some(true)
             && p7b_prefill_core_gate_pass.expect("prefill P7b verdict")
             && p7b_decode_marginal_gate_pass.expect("decode P7b verdict")
-            && if fase_d_pod_v2 {
+            && if absolute_sync_profile {
                 p7b_sync_wall_absolute_gate_pass.expect("absolute sync-wall G4-v2 verdict")
             } else {
                 p7b_sync_wall_fraction_gate_pass.expect("fractional sync-wall P7b verdict")
@@ -3806,6 +3972,28 @@ fn main() {
     let pcs_commit_total_s = pcs_commit_timing.median_s;
     let pcs_open_total_s = pcs_open_timing.median_s;
     let pcs_verify_total_s = pcs_verify_timing.median_s;
+    let c3b_g2 = if c3b_pod_profile {
+        let baseline = TimingDistribution::new(vec![4.896_894_977, 4.911_634, 4.935_140_317]);
+        let candidate = prove_response_timing.clone();
+        let delta_s = candidate.median_s - C3B_G2_POD_BASELINE_S;
+        Some(C3bG2Record {
+            timing_policy: "wall-only+counters; upper median candidate; pinned same-host control"
+                .into(),
+            baseline_source:
+                "c3b-l4-ablation-diagnostic-2026-07-18-5a2edbe.json; pinned rounded median".into(),
+            baseline_prove_response: baseline,
+            candidate_prove_response: candidate.clone(),
+            baseline_s: C3B_G2_POD_BASELINE_S,
+            candidate_s: candidate.median_s,
+            delta_s,
+            delta_percent: delta_s / C3B_G2_POD_BASELINE_S * 100.0,
+            gate_percent: 15.0,
+            ceiling_s: C3B_G2_POD_CEILING_S,
+            pass: candidate.median_s <= C3B_G2_POD_CEILING_S,
+        })
+    } else {
+        c3b_cpu_g2
+    };
     let c1_identity_seam_reuse = args.c1_record.then(|| {
         let measured_auth_correction_bytes = rec
             .transcript_by_label
@@ -3866,6 +4054,22 @@ fn main() {
         .comm_bytes
         .checked_add(rec.public_logits_packed_bytes)
         .expect("packed response accounting overflow");
+    let transcript_category_sum =
+        rec.transcript_by_label.values().try_fold(0u64, |sum, &value| sum.checked_add(value));
+    let pcs_category_sum =
+        rec.pcs_by_label.values().try_fold(0u64, |sum, &value| sum.checked_add(value));
+    let c3b_transcript_category_sum_pass =
+        c3_mode.then(|| transcript_category_sum == Some(rec.comm_bytes));
+    let c3b_pcs_category_sum_pass =
+        c3_mode.then(|| pcs_category_sum == Some(rec.pcs_opening_bytes));
+    let c3b_exact_instance_counter_pass =
+        c3_mode.then(|| rec.emult_instances == C3B_EMULT_INSTANCES_TOTAL);
+    if args.c3_record {
+        assert_eq!(
+            rec.public_logits_packed_bytes, 0,
+            "C3b record paths may never serialize public logits"
+        );
+    }
     let flip_readiness_criterion_2_runtime_pass = args.flip_readiness_record.then(|| {
         pcg_gate.setup_instances == 2
             && pcg_gate.independent_role_entropy_samples
@@ -3948,7 +4152,7 @@ fn main() {
     if args.fase_d_record && !quick {
         assert_eq!(fase_d_g1_pass, Some(true), "fase-D G1 functional gate failed");
     }
-    let c3_g1_pass = args.c3_record.then(|| {
+    let c3b_g1_pass = (args.c3_record && args.accelerator == AcceleratorArg::Cpu).then(|| {
         !git_dirty
             && !quick
             && t0 == 100
@@ -3969,12 +4173,24 @@ fn main() {
             && rec.n_weight_claims == 96
             && rec.n_embed_claims == 6
             && rec.pcg_allocation_hash_match == Some(true)
+            && pcg_gate.mock_prepass_counters_match == Some(true)
+            && pcg_gate.mock_prepass_channel_ledger_digest_match == Some(true)
+            && pcg_gate.mock_prepass_allocation_digest_match == Some(true)
+            && pcg_gate.setup_instances == 1
+            && pcg_gate.setup_wire_count_invariant_pass
+            && c3b_transcript_category_sum_pass == Some(true)
+            && c3b_pcs_category_sum_pass == Some(true)
+            && c3b_exact_instance_counter_pass == Some(true)
             && packed_response_bytes <= C3_PACKED_RESPONSE_GATE_BYTES
             && fase_d_setup.as_ref().is_some_and(|setup| {
                 setup.g2_capacity_gate_pass
                     && setup.g2_traffic_gate_pass
                     && setup.one_connection_base_phase
                     && setup.pcg_production_ready
+                    && setup.correlation_spool_resident_raw_entries == 0
+                    && setup.correlation_spool_entries >= 110_000_000
+                    && setup.correlation_spool_bytes
+                        == setup.correlation_spool_entries.checked_mul(40).unwrap_or(u64::MAX)
             })
             && fase_d_lifecycle.as_ref().is_some_and(|lifecycle| {
                 lifecycle.completed_responses == fase_d_response_ordinal
@@ -3982,12 +4198,32 @@ fn main() {
                     && lifecycle.responses_after_first_repeat_ot_extension_bytes == 0
             })
     });
-    if args.c3_record {
-        assert_eq!(c3_g1_pass, Some(true), "C3 G1 functional/communication gate failed");
-    }
+    let c3b_g4_pass = c3b_pod_profile.then(|| {
+        p7b_all_gates_pass == Some(true)
+            && c3b_g2.as_ref().is_some_and(|record| record.pass)
+            && rec.public_logits_packed_bytes == 0
+            && rec.comm_bytes == C3B_TRANSCRIPT_REFERENCE_BYTES
+            && rec.pcs_opening_bytes == C3_PCS_OPENING_BYTES
+            && c3b_transcript_category_sum_pass == Some(true)
+            && c3b_pcs_category_sum_pass == Some(true)
+            && c3b_exact_instance_counter_pass == Some(true)
+            && fase_d_setup.as_ref().is_some_and(|setup| {
+                setup.g2_capacity_gate_pass
+                    && setup.g2_traffic_gate_pass
+                    && setup.one_connection_base_phase
+                    && setup.pcg_production_ready
+                    && setup.correlation_spool_resident_raw_entries == 0
+                    && setup.correlation_spool_entries >= 110_000_000
+            })
+            && fase_d_lifecycle.as_ref().is_some_and(|lifecycle| {
+                lifecycle.completed_responses == fase_d_response_ordinal
+                    && lifecycle.responses_after_first_repeat_base_ot_bytes == 0
+                    && lifecycle.responses_after_first_repeat_ot_extension_bytes == 0
+            })
+    });
     let report = Report {
         report_schema_version: if args.c3_record {
-            8
+            9
         } else if args.fase_d_record {
             7
         } else if args.flip_readiness_record {
@@ -4000,7 +4236,7 @@ fn main() {
             6
         },
         milestone: if c3_mode {
-            if quick { "C3-quick" } else { "C3" }.into()
+            if quick { "C3b-quick" } else { "C3b" }.into()
         } else if args.fase_d_record {
             if args.accelerator == AcceleratorArg::Cpu {
                 if quick { "fase-D-G1-quick" } else { "fase-D-G1" }.into()
@@ -4077,13 +4313,31 @@ fn main() {
         flip_readiness_cost_acceptance_pending: args.flip_readiness_record.then_some(true),
         flip_readiness_default_flip_pending: args.flip_readiness_record.then_some(true),
         fase_d_g1_pass,
-        c3_g1_pass,
+        c3b_g1_pass,
+        c3b_g2,
+        c3b_g4_pass,
         c3_packed_response_gate_bytes: c3_mode.then_some(C3_PACKED_RESPONSE_GATE_BYTES),
-        c3_l4_transcript_bytes: c3_mode.then_some(C3_L4_TRANSCRIPT_BYTES),
-        c3_projected_packed_response_bytes: c3_mode.then_some(C3_PROJECTED_PACKED_RESPONSE_BYTES),
+        c3b_l4_transcript_bytes: c3_mode.then_some(C3B_L4_TRANSCRIPT_BYTES),
+        c3b_transcript_reference_bytes: c3_mode.then_some(C3B_TRANSCRIPT_REFERENCE_BYTES),
+        c3b_limb_count: c3_mode.then_some(C3B_LIMBS),
+        c3b_range_instances: c3_mode.then_some(C3B_RANGE_INSTANCES),
+        c3b_real_comparisons: c3_mode.then_some(C3B_REAL_COMPARISONS),
+        c3b_packed_entries_per_limb: c3_mode.then_some(C3B_PACKED_ENTRIES_PER_LIMB),
+        c3b_packed_entries_total: c3_mode.then_some(C3B_PACKED_ENTRIES_TOTAL),
+        c3b_padding_ratio: c3_mode
+            .then_some(C3B_PACKED_ENTRIES_PER_LIMB as f64 / C3B_REAL_COMPARISONS as f64),
+        c3b_l4_emult_instances: c3_mode.then_some(C3B_L4_EMULT_INSTANCES),
+        c3b_l4_emult_ceiling: c3_mode.then_some(C3B_L4_EMULT_CEILING),
+        c3b_l4_emult_gate_pass: c3_mode.then_some(C3B_L4_EMULT_INSTANCES <= C3B_L4_EMULT_CEILING),
+        c3b_exact_instance_counter_pass,
+        c3b_transcript_category_sum_pass,
+        c3b_pcs_category_sum_pass,
+        c3b_public_logits_disabled: c3_mode.then_some(rec.public_logits_packed_bytes == 0),
         p7b_gate_evaluated,
         p7b_gate_profile: is_resident.then_some(
-            if fase_d_realpcg_profile {
+            if c3b_pod_profile {
+                C3B_POD_GATE_PROFILE
+            } else if fase_d_realpcg_profile {
                 args.fase_d_pod_profile.gate_profile()
             } else {
                 P7B_GATE_PROFILE
@@ -4097,9 +4351,9 @@ fn main() {
         p7b_prefill_core_gate_s: is_resident.then_some(P7B_PREFILL_CORE_GATE_S),
         p7b_decode_marginal_gate_s: is_resident.then_some(P7B_DECODE_MARGINAL_GATE_S),
         p7b_sync_count_gate_retired: is_resident.then_some(true),
-        p7b_sync_wall_fraction_gate: (is_resident && !fase_d_pod_v2)
+        p7b_sync_wall_fraction_gate: (is_resident && !absolute_sync_profile)
             .then_some(P7B_SYNC_WALL_FRACTION_GATE),
-        p7b_sync_wall_absolute_gate_s: (is_resident && fase_d_pod_v2)
+        p7b_sync_wall_absolute_gate_s: (is_resident && absolute_sync_profile)
             .then_some(FASE_D_POD_SYNC_WALL_ABSOLUTE_GATE_S),
         p7b_h2d_gate_bytes: is_resident.then_some(P7B_H2D_GATE_BYTES),
         p7b_prefill_core_observed_s,
@@ -4117,14 +4371,26 @@ fn main() {
             .then_some(RESPONSE_COMMUNICATION_ENVELOPE_BYTES),
         response_communication_observed_bytes,
         response_communication_invariant_pass,
-        p7b_transcript_reference_bytes: is_resident.then_some(if fase_d_realpcg_profile {
+        p7b_transcript_reference_bytes: is_resident.then_some(if c3b_pod_profile {
+            C3B_TRANSCRIPT_REFERENCE_BYTES
+        } else if fase_d_realpcg_profile {
             C1_TRANSCRIPT_BYTES
         } else {
             P7B_TRANSCRIPT_REFERENCE_BYTES
         }),
-        p7b_pcs_opening_reference_bytes: is_resident.then_some(P7B_PCS_OPENING_REFERENCE_BYTES),
-        p7b_packed_logits_reference_bytes: is_resident.then_some(P7B_PACKED_LOGITS_REFERENCE_BYTES),
-        p7b_packed_response_reference_bytes: is_resident.then_some(if fase_d_realpcg_profile {
+        p7b_pcs_opening_reference_bytes: is_resident.then_some(if c3b_pod_profile {
+            C3_PCS_OPENING_BYTES
+        } else {
+            P7B_PCS_OPENING_REFERENCE_BYTES
+        }),
+        p7b_packed_logits_reference_bytes: is_resident.then_some(if c3b_pod_profile {
+            0
+        } else {
+            P7B_PACKED_LOGITS_REFERENCE_BYTES
+        }),
+        p7b_packed_response_reference_bytes: is_resident.then_some(if c3b_pod_profile {
+            C3B_TRANSCRIPT_REFERENCE_BYTES
+        } else if fase_d_realpcg_profile {
             C1_PACKED_RESPONSE_BYTES
         } else {
             P7B_PACKED_RESPONSE_REFERENCE_BYTES
@@ -4325,7 +4591,11 @@ fn main() {
     assert!(accepted, "P6 sanity: honest response (both sessions) must verify");
     assert!(gate_flat, "P6 gate: per-token cost must stay ~flat as the cache grows");
     let mut label = if args.c3_record {
-        "c3".to_string()
+        match args.accelerator {
+            AcceleratorArg::Cpu => "c3b-cpu-real".to_string(),
+            AcceleratorArg::CudaResident => "c3b-a100-realpcg-v3".to_string(),
+            AcceleratorArg::CudaHybrid => unreachable!("C3b record rejects hybrid CUDA"),
+        }
     } else if args.fase_d_record {
         match (args.accelerator, quick) {
             (AcceleratorArg::Cpu, false) => "fase-d".to_string(),
@@ -4358,7 +4628,10 @@ fn main() {
     {
         label.push_str("-realpcg");
     }
-    if args.resident_timing == ResidentTimingArg::WallOnlyCounters && !args.fase_d_record {
+    if args.resident_timing == ResidentTimingArg::WallOnlyCounters
+        && !args.fase_d_record
+        && !args.c3_record
+    {
         label.push_str("-wall-only-counters");
     }
     let json = serde_json::to_string_pretty(&report).unwrap();
@@ -4389,12 +4662,27 @@ mod report_tests {
     }
 
     #[test]
-    fn c3_response_soundness_and_communication_constants_match_design() {
+    fn c3b_response_soundness_geometry_and_communication_match_design() {
         let bits = pcs_response_soundness_bits(&[(&C3_WEIGHTS, 1, 96), (&C3_EMBED, 1, 6)]);
         assert!((bits - 78.809_294_874).abs() < 1e-9, "{bits}");
         assert_eq!(C3_PCS_OPENING_BYTES, 37_405_088 + 5_868_800);
-        assert_eq!(C3_PROJECTED_PACKED_RESPONSE_BYTES, 105_659_792 + C3_L4_TRANSCRIPT_BYTES);
+        assert_eq!(C3B_TRANSCRIPT_REFERENCE_BYTES, 105_659_792 + C3B_L4_TRANSCRIPT_BYTES);
         assert_eq!(C3_PACKED_RESPONSE_GATE_BYTES, 115_000_000);
+        assert_eq!(C3B_LIMBS, 3);
+        assert_eq!(C3B_RANGE_INSTANCES, 6);
+        assert_eq!(C3B_PACKED_ENTRIES_PER_LIMB, (1 << 21) + (1 << 19));
+        assert_eq!(C3B_PACKED_ENTRIES_TOTAL, 7_864_320);
+        assert!(C3B_PACKED_ENTRIES_PER_LIMB as f64 / C3B_REAL_COMPARISONS as f64 <= 1.15);
+        assert_eq!(C3B_EMULT_INSTANCES_TOTAL, 2_775_723_398.8);
+        assert!(C3B_L4_EMULT_INSTANCES <= C3B_L4_EMULT_CEILING);
+    }
+
+    #[test]
+    fn c3b_pod_g2_uses_only_the_pinned_ablation_denominator() {
+        assert_eq!(C3B_G2_POD_BASELINE_S, 4.911_634);
+        assert_eq!(C3B_G2_POD_CEILING_S, 5.648_379_1);
+        assert_eq!(C3B_G2_POD_BASELINE_S * 1.15, C3B_G2_POD_CEILING_S);
+        assert_eq!(C3B_POD_GATE_PROFILE, "runpod-a100-realpcg-v3");
     }
 
     #[test]
@@ -4544,11 +4832,13 @@ mod report_tests {
             P7B_PCS_OPENING_REFERENCE_BYTES,
             P7B_PACKED_LOGITS_REFERENCE_BYTES,
             false,
+            false,
         ));
         assert!(p7b_communication_gate(
             P7B_TRANSCRIPT_REFERENCE_BYTES - 1,
             P7B_PCS_OPENING_REFERENCE_BYTES - 1,
             P7B_PACKED_LOGITS_REFERENCE_BYTES - 1,
+            false,
             false,
         ));
         assert!(!p7b_communication_gate(
@@ -4556,23 +4846,41 @@ mod report_tests {
             P7B_PCS_OPENING_REFERENCE_BYTES,
             P7B_PACKED_LOGITS_REFERENCE_BYTES,
             false,
+            false,
         ));
         assert!(p7b_communication_gate(
             C1_TRANSCRIPT_BYTES,
             P7B_PCS_OPENING_REFERENCE_BYTES,
             P7B_PACKED_LOGITS_REFERENCE_BYTES,
             true,
+            false,
         ));
         assert!(!p7b_communication_gate(
             C1_TRANSCRIPT_BYTES + 1,
             P7B_PCS_OPENING_REFERENCE_BYTES + 1,
             P7B_PACKED_LOGITS_REFERENCE_BYTES,
             true,
+            false,
         ));
         assert!(!p7b_communication_gate(
             C1_TRANSCRIPT_BYTES,
             P7B_PCS_OPENING_REFERENCE_BYTES,
             P7B_PACKED_LOGITS_REFERENCE_BYTES + 1,
+            true,
+            false,
+        ));
+        assert!(p7b_communication_gate(
+            C3B_TRANSCRIPT_REFERENCE_BYTES,
+            C3_PCS_OPENING_BYTES,
+            0,
+            false,
+            true,
+        ));
+        assert!(!p7b_communication_gate(
+            C3B_TRANSCRIPT_REFERENCE_BYTES,
+            C3_PCS_OPENING_BYTES,
+            1,
+            false,
             true,
         ));
     }

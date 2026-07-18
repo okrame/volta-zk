@@ -1421,7 +1421,7 @@ pub(crate) fn auth_fp_vec_p(
     corr
 }
 
-fn auth_device_vector_p<T: ResidentBaseElement>(
+pub(crate) fn auth_device_vector_p<T: ResidentBaseElement>(
     stream: &mut CorrelationStream,
     tx: &mut Transcript,
     dom: u64,
@@ -1553,7 +1553,7 @@ pub(crate) fn open_fp_vec_p(
 /// Streamed opening of a resident u32/Fp multiplicity vector. Mock-PCG tags
 /// are folded by the protocol host, while the plaintext MLE is evaluated on
 /// device and only its scalar claim crosses D2H.
-fn open_fp_vec_resident_p<T: ResidentMatrixElement>(
+pub(crate) fn open_fp_vec_resident_p<T: ResidentMatrixElement>(
     stream: &mut CorrelationStream,
     dom: u64,
     vals: DeviceSlice<'_, T>,

@@ -1,10 +1,13 @@
 # C3 PCS/logits communication package
 
-**Status (2026-07-17): L1--L4 implemented and the clean CPU/A100 E2E table
-refresh is measured; formal G1--G4 remain pending, so this is not a gate
-verdict.** The selected PCS design reduces the measured C1/fase-D packed
-response from 136,526,530 B to **105,725,808 B**, leaving 4,274,192 B below
-the 110 MB design target and 9,274,192 B below the binding 115 MB gate.
+**Status (2026-07-18): C3b Phase 2 is implemented and locally verified;
+clean CPU/pod records and the post-implementation CUPTI audit remain pending,
+so this is not yet a G1--G4 verdict.** The Phase-1 diagnosis and
+preregistration amendment were reviewed before implementation, including the
+pinned pod G2 denominator and removal of the L4-off mode. The immutable C3 table still
+measures 105,725,808 B packed response. C3b keeps the selected PCS design and
+communication win while replacing the inefficient private-argmax geometry
+and host-streamed resident path described below.
 
 ## 1. Frozen baseline and scope
 
@@ -231,6 +234,235 @@ Transcript additions remain logarithmic. Exact label accounting is
 change either response-byte threshold, but it is recorded as a deviation in
 the ledger rather than silently retaining the old projection.
 
+### 4.1 C3b Phase-1 H2D and kernel diagnosis
+
+The resident C3 implementation constructs the six padded limb columns and
+the shared Range(16) multiplicity histogram on the host. Each call to
+`BlockCtxP::inst` enters the incremental
+`prove_engine_resident_from_host_leaves` bridge, which uploads both the
+packed base-field leaf and its base-lifted F_p2 aux column. At one full
+response repetition, the direct C3 L4 uploads are:
+
+| Host source / upload | Bytes per upload | Uploads | Total bytes |
+| --- | ---: | ---: | ---: |
+| Range(16) `Vec<u32>` multiplicities | 262,144 | 1 | 262,144 |
+| packed lookup leaf `Vec<u64>[2^22]` | 33,554,432 | 6 | 201,326,592 |
+| base-lifted aux column `Fp2Repr[2^22]` | 67,108,864 | 6 | 402,653,184 |
+| upper-round challenge points (lengths 1--20) | variable | 120 | 20,160 |
+| leaf challenge point (21 F_p2) | 336 | 6 | 2,016 |
+| aux external-claim points | variable | 6 | 5,040 |
+| aux column ids | variable | 6 | 60 |
+| aux fold weights | variable | 6 | 480 |
+| **direct L4 subtotal** |  |  | **604,269,676** |
+
+The private-logit integration also replaces ordinary matrix-point openings
+with weighted-row openings. For the prefill row this moves 192 B instead of
+176 B; for the 50-row decode band it moves 960 B instead of 256 B. The net is
+another **720 B**, for an exact L4 on-minus-off H2D delta of **604,270,396 B**.
+Every witness-sized row above is uploaded once per response repetition; none
+is retained across repetitions.
+
+This reconciles the measured counters byte-for-byte. On the 2026-07-18
+same-host mock controls, H2D is 633,510,960 B with L4 and 29,240,564 B with
+L4 disabled. The same pod's fase-D geometry control is 28,594,644 B, so the
+full C3 delta is 604,916,316 B: L4 explains **99.8932%** and the remaining
+645,920 B is the L1/L3/PCS-geometry residue. The direct buffers alone explain
+99.99988% of the isolated L4 delta. This confirms D2 rather than merely
+inferring it from the old aggregate counter.
+
+The fail-closed CUPTI activity census contains 1,414,565 concurrent-kernel
+records, 64 demangled families and zero dropped records. One kernel record
+whose text was interrupted by the application's stdout JSON was reconstructed
+before parsing; the raw trace and every parser/instrumentation hash are bound
+in `c3b-cupti-kernel-census-2026-07-18-5a2edbe.json`. The largest within-trace
+families are `logup_round_eval` (15.385%), `reduce_round` (11.028%),
+`chacha8_prover_secret_fp_rows_kernel` (10.799%), `logup_fold` (8.892%),
+`logup_aux_round_eval` (7.781%), `fp2_fold_rows` (7.703%) and the already
+optimized `matrix_fold_kernel` family (5.909%). LogUp round/reduce/fold grids
+span x=1--2,048, aux rounds x=1--4,096, F_p2 row folds x=1--32,768 and matrix
+folds the recorded set x={1,2,3,4,6,8,16,30,32,58,64,128,150,233,256,300,
+1,024,1,536}, all with the recorded blocks in the raw artifact.
+
+The C3 source diff adds no CUDA or `volta-accel` kernel family. Grid-x=1 is
+present in the existing reduction tails, scalar helpers and the legacy
+small-term matrix-fold path; there is no new C3 family with the old P7b
+large-term grid-x=1 pathology. C3b must rerun this census after batching and
+fail the implementation check if a new family has a degenerate grid outside
+that legacy terms<256/terminal path. CUPTI absolute walls are deliberately
+ineligible for G2/G4.
+
+The same-host wall-only+counters ablation used one warmup plus three measured
+repetitions and the mock PCG backend so setup could not contaminate the
+online delta:
+
+| Configuration | Prove-response median | Samples | H2D |
+| --- | ---: | --- | ---: |
+| fase-D geometry control, Q=200 | 4.911634 s | 4.896895 / 4.911634 / 4.935140 | 28,594,644 B |
+| C3 geometry Q=120, L4 off, logits published | 4.801484 s | 4.801484 / 4.814567 / 4.780371 | 29,240,564 B |
+| C3 geometry Q=120, L4 on | 9.776394 s | 9.760156 / 9.776394 / 9.890984 | 633,510,960 B |
+
+L4 therefore costs **4.974910 s** in this experiment, 50.887% of the current
+L4-on prover wall. C3 geometry without L4 is 0.110150 s / **2.243% faster**
+than the same-host fase-D geometry control; prefill and decode marginal are
+2.743% and 1.466% faster. Phase 1 therefore finds no hidden L1/L3 GPU
+regression. The L4-off binary is dirty, publishes 7,407,122 B of logits and is
+recorded only as a diagnostic; it cannot satisfy or be promoted into any C3
+gate. The aggregate is
+`c3b-l4-ablation-diagnostic-2026-07-18-5a2edbe.json`.
+
+### 4.2 Minimal-limb statement and last-tie semantics
+
+The frozen quantization spec makes every tied-wte logit a 768-term product of
+two i16 values with no requantization. Consequently
+
+```text
+|L_j| <= 768 * 32768^2 = 824,633,720,832 < 2^40.
+```
+
+C3b retains the conservative pinned operand envelope `|L_j| < 2^B` with
+**B=41**; it does not calibrate to the golden prompt. For
+`d_j = L_tau - L_j` and `a_j = [j>tau]`, both `d_j` and
+`s_j = d_j-a_j` have absolute value below 2^42 before the max constraint is
+applied. If an L-limb unsigned range proof accepts a negative integer through
+its canonical field residue, that residue would have to lie below 2^(16L).
+This is impossible whenever
+
+```text
+2^(16L) + 2^(B+1) < p,  p = 2^64 - 2^32 + 1.
+```
+
+For L=3, `2^48 + 2^42 < p`; all honest nonnegative values fit below 2^48,
+and every bounded negative residue lies above that range. L=2 is incomplete:
+2^32 cannot cover valid positive logit differences approaching 2^41. Thus
+**three u16 limbs are minimal** for the pinned statement. No requantization,
+truncation or lossy pre-comparison is allowed; the proof remains bit-exact on
+the full i64 golden-decode logits, including near ties.
+
+Current C3 separately decomposes `d` into three limbs and `s` into three
+limbs. The first triple proves non-strict maximality and the second proves the
+strict half of the tie rule. C3b keeps only the three limbs of `s` and binds
+
+```text
+d_j = s_j + a_j
+L_tau - L_j = d_j.
+```
+
+For `j<=tau`, a_j=0 and `s_j>=0` proves `L_tau>=L_j`. For `j>tau`, a_j=1
+and `s_j>=0` proves `L_tau>L_j`. At `j=tau`, a_j=0 and s_j=0, so the existing
+is-max Hadamard zero can use `s` instead of a separately ranged `d`. This is
+the same statement as the six-column proof, with the duplicate range
+representation removed.
+
+Rust's `(0..len).max_by_key(...)` returns the **last** equal maximum. C3b
+therefore preregisters two explicit tests: a crafted row with equal maxima at
+indices `a<b` must make native decode choose `b` and the proof for `b` accept;
+forging public token `a` against that same witness must reject at closure.
+The existing wrong-token test remains, and a forged-limb test must show that
+changing any reconstructed `s` limb rejects.
+
+### 4.3 Packed range geometry and cost amendment
+
+Five positions fit in one 2^18 segment:
+
+```text
+5 * 50,257 = 251,285 <= 262,144       (4.321% segment padding)
+```
+
+The 50 positions form ten such public segments. Per limb, C3b schedules eight
+segments as one 2^21 job and two as one 2^19 job. Hence
+
+```text
+real comparisons / limb       2,512,850
+padded entries / limb         2,621,440 = 2^21 + 2^19
+padded / real                  1.043213881 <= 1.15
+three-limb padded total        7,864,320
+old six-limb padded total     25,165,824
+new / old                          0.3125
+```
+
+This is one logical flat batch per limb containing exactly two power-of-two
+LogUp jobs, six jobs total across all three limbs. It is never 50
+per-position instances. Segment starts, real-vocab masks and position ids are
+public constants/selectors of the same class as the causal mask. All six jobs
+enter one existing batched LogUp schedule and consume the one shared
+Range(16) content through `TableBankP/V`; the aggregate multiplicity is bound
+in protocol phase 1 before the existing shared alpha. There is no second table or
+second alpha.
+
+Linear scaling of the measured instance counter gives the central projection
+
+```text
+712,224,541.2 * 0.3125 = 222,570,169.125 E-mult equivalents.
+```
+
+The amended preregistration ceiling is **260,000,000 L4
+`ctr_instances` E-mult equivalents**, 9.931% of the 2,618,017,868.8 C1
+reference; the central projection is 8.501%. This is a projection to compare
+against the Phase-2 measurement, not a substitute for G2.
+
+The old 65,536 B L4 allowance is honestly amended to the measured **66,016 B**.
+C3b does not spend engineering effort to recover 480 B. Three limbs and
+shallower 21/19-round jobs should make the transcript slightly smaller; the
+conservative projection is no larger than the immutable C3 packed
+**105,725,808 B**, while the binding G1 gate remains **<=115,000,000 B**.
+No response bytes may be traded back for wall time.
+
+### 4.4 C3b implementation contract and pre-record result
+
+Phase 2 was explicitly authorized by the user on 2026-07-18. Its binding
+requirements are:
+
+1. After the resident lm_head matvec, logits remain on device. Diffs,
+   selectors, three-limb decomposition, is-max columns and Range(16)
+   multiplicity histograms are produced from those resident logits on device.
+   In steady state no witness-derived L4 buffer crosses host-to-device and no
+   repetition re-uploads one. Only challenges/seeds and the roughly 66 KB L4
+   transcript may cross the bus. Full real-session H2D is asserted
+   **<=100,000,000 B**.
+2. Every L4 allocation joins the existing resident-workspace accounting and
+   explicit resident cleanup remains exactly 0 B at session end.
+3. The six power-of-two jobs run in one flat batch. The post-implementation
+   CUPTI census must show no new degenerate family outside the legacy
+   terms<256/terminal path.
+4. The shared two-phase TableBank alpha ordering above is unchanged: all
+   multiplicities bind before alpha, with no separate Range(16) instance.
+5. The CPU path uses Rayon over position blocks and limbs. Its orientation
+   estimate is about +1.5 s on four cores; only paired G2 decides the gate.
+6. The connection-scoped CPU harness retains fase-D's canonical expansion but
+   serializes the terminal 110M correlation pool into an anonymous unlinked
+   0600 file in 2^16-entry chunks. Responses range-read directly into their
+   final pools and discard read page-cache ranges, so raw connection vectors
+   do not co-reside with PCS scratch. Allocation/channel digests, one-time
+   domain order, the connection Delta, setup traffic and burn/lifecycle
+   semantics remain unchanged. There is no per-response-pool fallback.
+7. Required new coverage is crafted-tie accept, forged-tie reject,
+   wrong-token reject, forged-limb reject, exact limb/domain counters and the
+   two already registered production-size leakage smokes. The full workspace
+   and existing adversarial suite remain green.
+8. The Phase-1 L4-off/public-logit ablation switch is diagnostic scaffolding
+   only and must be removed before closure. No record-capable binary or mode
+   may disable L4 or republish logits; this is checked before G1--G4 records.
+
+L1 stays pinned at nominal rate 1/4, Q=120, 78.809294874 response-wide bits
+and 43,273,888 B. C3b changes no PCS parameter, correction stream, Lean
+theorem, setup/PCG tuple, lifecycle rule or public capability.
+
+The implementation produces the comparison witness directly from resident
+logits, with device-side strict differences, three-limb decomposition,
+selectors and Range(16) histogram. Three logical limb batches contain the six
+2^21/2^19 jobs and reuse the existing shared Range(16) TableBank alpha. Exact
+production-geometry tests measure **157,705,530 L4 E-mult equivalents**, below
+the 260M ceiling, and **57,840 B** of L4 transcript. The resulting exact full
+transcript reference is **105,717,632 B**, including the unchanged
+43,273,888 B PCS opening and zero public logits.
+
+A pre-record full mock pod diagnostic (one warmup plus three repetitions)
+measures prove-response **4.924231 s**, maximum H2D **29,267,044 B**, maximum
+absolute synchronization wall **0.120330433 s**, flat ratio **1.246401384**
+and explicit resident cleanup **0 B**. These observations demonstrate the
+intended recovery but remain ineligible for G2/G4 because they are dirty/mock
+diagnostics. The clean real/AES records remain the only gate evidence.
+
 ## 5. Blinding, masks and leakage budget
 
 The selected commitment-pad inventory is:
@@ -313,55 +545,60 @@ verdict. The A100 diagnostic also measures 693,055,968 B maximum H2D and
 Verifier wall is reported and is never traded for response bytes or
 capability.
 
-## 7. Binding Phase-2 gates
+## 7. Binding C3b closure gates
+
+All append-only Phase-2 artifacts use `c3b-*.json`. The immutable C3
+`5a2edbe` table remains a measurement and is never rewritten.
 
 **G1 — clean CPU communication record.** Run full T=100+50, nominal rate
-1/4, Q=120, two PCS trees, real/AES default, one or more warmups and at least
+1/4, Q=120, two PCS trees, the real/AES default and the true connection-scoped
+streaming configuration on the 11 GiB VM. Use one or more warmups and at least
 three measured repetitions from one clean unchanged SHA. Frozen 50-token
-golden decode, proof/verifier acceptance and exact label/category
-reconstruction are mandatory. The append-only result is
-`benchmarks/results/c3-<date>-<gitsha>.json`; packed response must be
-**<=115,000,000 B**. The 105,725,808 B figure is now exact in the clean table
-diagnostics, but it does not become the validator reference until G1 lands.
+golden decode, proof/verifier acceptance, zero public-logit bytes and exact
+label/category reconstruction are mandatory. Packed response must be
+**<=115,000,000 B**. Current validators are then rebaselined together to the
+new exact measured reference; historical validators and JSONs remain bound
+to their old references.
 
-**G2 — same-host wall.** On the CPU VM use `time_paired` ABBA against the
-unchanged fase-D proving binary/configuration on the same host. Candidate
-median prove-response wall may increase by at most **15%**. The historical
-fase-D 16.681091 s median implies 19.183255 s only as an orientation value;
-the paired same-host denominator is binding. Report verifier delta as
-informative. On the pod, use wall-only+counters and run the unchanged
-fase-D control and C3 candidate on the same provisioned host; the same +15%
-bound applies and CUDA-event timing remains forbidden.
+**G2 — paired same-host wall on both hosts.** On the CPU VM use `time_paired`
+ABBA against the unchanged fase-D binary/configuration; its paired denominator
+is measured by that record. For the pod only, the user has pinned the
+2026-07-18 same-host fase-D control from the Phase-1 ablation as the sole G2
+denominator: **4.911634 s**. The binding pod ceiling is therefore exactly
+`4.911634 * 1.15 = 5.6483791 s`, reported to six decimals as
+**5.648379 s**. No later control, historical 4.310 s value or alternative
+denominator may replace it. Pod measurement remains wall-only+counters and
+CUDA-event timing is forbidden. Report verifier deltas as informative. The
+L4-off arm remains diagnostic and cannot decide or enter a gate record.
 
 **G3 — capability and adversarial parity.** `cargo test --workspace` plus
 all existing golden, normal/chunked, flat-cost, malicious, closure,
-allocation-digest, anti-replay and real-backend suites stay green. Add
-non-power-of-two PCS row/T completeness and rejection tests, consolidated
-layer/tensor `BlockClaim` tests, wrong-token and last-tie argmax tests, and
-the leakage smoke for both selected trees. There is no reduced-capability
-mode and no fallback to published logits.
+allocation-digest, anti-replay and real-backend suites stay green. The
+crafted last-tie golden, forged-tie rejection, wrong-token rejection,
+forged-limb rejection and exact three-limb/2^21+2^19 domain counters are
+mandatory. Both registered production-size leakage smokes must actually run;
+this is what claims G3. There is no reduced-capability mode and no fallback
+to published logits.
 
-**G4 — new RunPod profile.** The requested name
-`runpod-a100-realpcg-v2` cannot be new: it is already the immutable fase-D
-absolute-sync profile bound to 136,526,530 B and record `e95b839`. Reusing it
-would violate the required re-baseline ritual. C3 therefore preregisters the
-fresh name **`runpod-a100-realpcg-v3`**, subject to user review here. It
-carries the v2 A100-SXM4-80GB/Rayon=8/ABI-28/wall-only/real-AES contract,
-prefill <=10 s, decode <=4 s, absolute synchronization <=0.150 s, H2D
-<=100,000,000 B, flat <=1.5, G2 setup/capacity, golden, chunked, malicious,
-anti-replay and digest gates. It changes geometry to Q=120/two trees and
-binds response bytes to the exact clean G1 reference, which must itself be
-<=115,000,000 B. The append-only result is
-`runpod-a100-realpcg-v3-<date>-<gitsha>.json`. Pod provisioning costs money
-and requires a separate user confirmation immediately before provisioning.
+**G4 — fresh RunPod profile.** `runpod-a100-realpcg-v2` remains the immutable
+fase-D profile bound to 136,526,530 B and `e95b839`. C3b therefore uses the
+fresh profile **`runpod-a100-realpcg-v3`** with the v2
+A100-SXM4-80GB/Rayon=8/ABI-28/wall-only/real-AES contract. Binding gates are
+prefill <=10 s, decode marginal <=4 s, full-session H2D <=100,000,000 B,
+maximum absolute synchronization wall <=0.150 s, flat <=1.5, frozen golden,
+normal/chunked acceptance, exact counter/allocation/channel digests, G2
+setup/capacity and response bytes equal to the new exact G1 reference (itself
+<=115,000,000 B). A post-implementation CUPTI census is attached as
+non-gating diagnosis and must satisfy the grid audit in section 4.4.
 
-Any failed binding gate is recorded verbatim. No checkpoint, projection or
-partial run is a verdict.
+If any gate fails, record the exact FAIL and attach the kernel census, then
+stop. Do not relax a threshold, trade response bytes back, or disable L4 to
+pass. No checkpoint, projection, diagnostic or partial run is a verdict.
 
 ## 8. Re-baseline ritual and backlog
 
 After G1 measures the clean exact byte reference, Rust and Python **current
-C3** validators are updated together to that value and the v3 profile binds
+C3b validators** are updated together to that value and the v3 profile binds
 it. Historical JSONs, milestone rows, selectors and profiles remain bound to
 their recorded values: `runpod-a100-v1` stays at 144,820,930 B and fase-D
 `runpod-a100-realpcg-v1/v2` plus C1 stay at 136,526,530 B. No old artifact is

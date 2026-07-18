@@ -68,9 +68,10 @@ use crate::logup::{eval_mle_counted, Counters, ProdKeyTriples, ProdTriples};
 use crate::logup::{Doms, TableKey};
 use crate::mle::eq_vec;
 use crate::private_argmax::{
-    build_private_argmax_witness, phase_layout_from_lengths, prepare_private_argmax_prover,
+    build_private_argmax_resident_witness, build_private_argmax_witness,
+    free_private_argmax_prepared, phase_layout_from_lengths, prepare_private_argmax_prover,
     prepare_private_argmax_verifier, prove_private_argmax, verify_private_argmax, ArgmaxPhaseInput,
-    PrivateArgmaxPhaseP, PrivateArgmaxPreparedP, PrivateArgmaxProof,
+    PrivateArgmaxPhaseP, PrivateArgmaxPreparedP, PrivateArgmaxProof, ResidentArgmaxPhaseInput,
 };
 use crate::sumcheck_blind::{blind_prove, blind_prove_resident, blind_verify, BlindSumcheckProof};
 use crate::thaler::{fold_w, pad_bits};
@@ -229,7 +230,8 @@ pub struct ChunkRef<'a> {
 
 /// Device-resident decode chunk plus the public messages that the protocol
 /// already requires on the host. The witness itself remains borrowed from
-/// opaque CUDA allocations; only logits and tokens cross this boundary.
+/// opaque CUDA allocations. `logits` is the public-L2 compatibility input;
+/// private-L4 callers must pass an empty slice and use the resident logits.
 #[doc(hidden)]
 pub struct ResidentChunkRef<'a, 'source> {
     pub band: &'a ResidentBandModelWitness<'source>,
@@ -483,6 +485,15 @@ fn free_resident_model_phase1(
         let _ = final_ln.free(backend);
     }
     bank.free_resident_multiplicities(backend);
+}
+
+fn free_resident_argmax_prepared(
+    prepared: &mut Option<PrivateArgmaxPreparedP>,
+    backend: &mut Backend,
+) {
+    if let Some(prepared) = prepared.take() {
+        let _ = free_private_argmax_prepared(prepared, Some(backend));
+    }
 }
 
 fn build_resident_final_phase1(
@@ -1284,7 +1295,6 @@ pub fn prove_response_resident_private_logits<'chunk, 'source>(
     model: &Gpt2Model,
     resident_model: &ResidentGpt2Model,
     wit: &ResidentModelWitness,
-    private_logits: &[i64],
     chunks: &[ResidentChunkRef<'chunk, 'source>],
     error: DeviceSlice<'_, u32>,
     stream: &mut CorrelationStream,
@@ -1295,7 +1305,7 @@ pub fn prove_response_resident_private_logits<'chunk, 'source>(
         model,
         resident_model,
         wit,
-        private_logits,
+        &[],
         chunks,
         error,
         stream,
@@ -1327,7 +1337,8 @@ fn prove_response_resident_impl<'chunk, 'source>(
     if t < 2
         || t > NPOS
         || wit.layers.len() != L
-        || public_logits.len() != VOCAB
+        || (!private_logits && public_logits.len() != VOCAB)
+        || (private_logits && !public_logits.is_empty())
         || chunks.len() > MAX_RESPONSE_CHUNKS
     {
         return Err(AccelError::InvalidInput("resident model witness geometry mismatch"));
@@ -1346,7 +1357,8 @@ fn prove_response_resident_impl<'chunk, 'source>(
         if chunk.band.t0 != expected_t0
             || chunk.band.q < 2
             || chunk.band.layers.len() != L
-            || chunk.logits.len() != logits_len
+            || (!private_logits && chunk.logits.len() != logits_len)
+            || (private_logits && !chunk.logits.is_empty())
             || end > NPOS
             || chunk.seq.len() < end
         {
@@ -1354,7 +1366,7 @@ fn prove_response_resident_impl<'chunk, 'source>(
         }
         expected_t0 = end;
     }
-    let private_argmax_witness = private_logits.then(|| {
+    let private_argmax_witness = if private_logits {
         let mut token_groups = Vec::with_capacity(1 + chunks.len());
         token_groups.push(vec![chunks[0].seq[t]]);
         for (index, chunk) in chunks.iter().enumerate() {
@@ -1364,17 +1376,20 @@ fn prove_response_resident_impl<'chunk, 'source>(
             );
         }
         let mut inputs = Vec::with_capacity(1 + chunks.len());
-        inputs.push(ArgmaxPhaseInput { logits: public_logits, tokens: &token_groups[0] });
+        inputs.push(ResidentArgmaxPhaseInput { logits: wit.logits(), tokens: &token_groups[0] });
         for (index, chunk) in chunks.iter().enumerate() {
             let rows = token_groups[index + 1].len();
-            inputs.push(ArgmaxPhaseInput {
-                logits: &chunk.logits[..rows * VOCAB],
+            let logits = chunk.band.logits();
+            inputs.push(ResidentArgmaxPhaseInput {
+                logits: DeviceSlice::new(logits.buffer(), logits.offset(), rows * VOCAB)
+                    .expect("valid resident private-logit phase"),
                 tokens: &token_groups[index + 1],
             });
         }
-        build_private_argmax_witness(&inputs)
-            .expect("C3 private-logit witness violates the 64-row/range contract")
-    });
+        Some(build_private_argmax_resident_witness(&inputs, error, backend)?)
+    } else {
+        None
+    };
     let d_cb = pad_bits(D);
     let rb_t = pad_bits(t);
     let n_vars_td = d_cb + rb_t;
@@ -1559,7 +1574,7 @@ fn prove_response_resident_impl<'chunk, 'source>(
         }
     }
 
-    let argmax_prepared: Option<PrivateArgmaxPreparedP> =
+    let mut argmax_prepared: Option<PrivateArgmaxPreparedP> =
         if let Some(witness) = private_argmax_witness {
             match prepare_private_argmax_prover(witness, &mut bank, stream, tx, Some(backend)) {
                 Ok(prepared) => Some(prepared),
@@ -1584,6 +1599,7 @@ fn prove_response_resident_impl<'chunk, 'source>(
         expected_content.insert(TableKey::Range(16));
     }
     if bank.content_keys() != expected_content.into_iter().collect::<Vec<_>>() {
+        free_resident_argmax_prepared(&mut argmax_prepared, backend);
         free_resident_chunk_phase1s(chunk_p1s, backend);
         free_resident_model_phase1(
             layer_p1s,
@@ -1630,6 +1646,7 @@ fn prove_response_resident_impl<'chunk, 'source>(
     let gelu_manifest = match gelu_manifest_result {
         Ok(plans) => plans,
         Err(error_value) => {
+            free_resident_argmax_prepared(&mut argmax_prepared, backend);
             free_resident_chunk_phase1s(chunk_p1s, backend);
             free_resident_model_phase1(
                 layer_p1s,
@@ -1648,6 +1665,7 @@ fn prove_response_resident_impl<'chunk, 'source>(
 
     let mut table_doms = Doms::new(layer_dom_base(240));
     if let Err(error_value) = bank.finalize_resident(stream, tx, &mut table_doms, backend) {
+        free_resident_argmax_prepared(&mut argmax_prepared, backend);
         free_resident_chunk_phase1s(chunk_p1s, backend);
         free_resident_model_phase1(
             layer_p1s,
@@ -1660,6 +1678,7 @@ fn prove_response_resident_impl<'chunk, 'source>(
         return Err(error_value);
     }
     if register_gelu_manifest_p(&mut bank, &gelu_manifest).is_err() {
+        free_resident_argmax_prepared(&mut argmax_prepared, backend);
         free_resident_chunk_phase1s(chunk_p1s, backend);
         free_resident_model_phase1(
             layer_p1s,
@@ -1685,7 +1704,21 @@ fn prove_response_resident_impl<'chunk, 'source>(
     let mut layer_kv_doms = Vec::with_capacity(L);
 
     let (private_argmax, private_phases) = if let Some(prepared) = argmax_prepared {
-        let argmax = prove_private_argmax(prepared, &mut bank, stream, tx, Some(backend));
+        let argmax = match prove_private_argmax(prepared, &mut bank, stream, tx, Some(backend)) {
+            Ok(value) => value,
+            Err(error_value) => {
+                free_resident_chunk_phase1s(chunk_p1s, backend);
+                free_resident_model_phase1(
+                    layer_p1s,
+                    seam_columns,
+                    Some(embed_p1),
+                    Some(final_p1),
+                    &mut bank,
+                    backend,
+                );
+                return Err(error_value);
+            }
+        };
         prod.extend(argmax.prod);
         zero.extend(argmax.zero);
         add_counters(&mut ctr_instances, &argmax.ctr_instances);
@@ -3068,7 +3101,8 @@ fn prove_response_impl(
         .unwrap_or_else(|error| panic!("invalid response GELU manifest: {error}"));
 
     let (private_argmax, private_phases) = if let Some(prepared) = argmax_prepared {
-        let argmax = prove_private_argmax(prepared, &mut bank, stream, tx, backend.as_deref_mut());
+        let argmax = prove_private_argmax(prepared, &mut bank, stream, tx, backend.as_deref_mut())
+            .expect("host private-argmax proving is infallible");
         prod.extend(argmax.prod);
         zero.extend(argmax.zero);
         add_counters(&mut ctr_instances, &argmax.ctr_instances);
@@ -4970,11 +5004,20 @@ mod tests {
         let pcg_seed = [0xC3; 32];
         let tx_seed = [0x3C; 32];
         let delta = Fp2::new(Fp::new(0xC301), Fp::new(0x4A11));
-        let mut stream = CorrelationStream::new(pcg_seed);
-        let mut prover_tx = Transcript::new(tx_seed);
         let chunks = [ChunkRef { band: &band, seq: &sequence }];
-        let (proof, out, prod, zero) =
-            prove_response_private_logits(&model, &prefill, &chunks, &mut stream, &mut prover_tx);
+        let prove_once = || {
+            let mut stream = CorrelationStream::new(pcg_seed);
+            let mut prover_tx = Transcript::new(tx_seed);
+            let (proof, out, prod, zero) = prove_response_private_logits(
+                &model,
+                &prefill,
+                &chunks,
+                &mut stream,
+                &mut prover_tx,
+            );
+            (proof, out, prod, zero, stream, prover_tx)
+        };
+        let (proof, out, prod, zero, mut stream, mut prover_tx) = prove_once();
         let private_core_bytes = prover_tx.total_bytes();
         assert!(proof.private_argmax.is_some());
         assert!(zero.iter().all(|claim| claim.x == Fp2::ZERO));
@@ -4997,27 +5040,121 @@ mod tests {
 
         let mut wrong_sequence = sequence.clone();
         wrong_sequence[t] = (wrong_sequence[t] + 1) % VOCAB as u32;
+        let (wrong_proof, _, wrong_prod_claims, wrong_zero_claims, mut wrong_stream, mut wrong_txp) =
+            prove_once();
         let mut wrong_verifier = VerifierCtx::new(pcg_seed, delta);
         let mut wrong_tx = Transcript::new(tx_seed);
         let wrong_public = [PrivateChunkPub { q, seq: &wrong_sequence }];
-        let (_, _, wrong_zero) = verify_response_private_logits(
+        let (_, wrong_key_prod, wrong_key_zero) = verify_response_private_logits(
             &model,
             t,
             &wrong_public,
-            &proof,
+            &wrong_proof,
             &mut wrong_verifier,
             &mut wrong_tx,
         )
         .expect("wrong public token remains a cryptographic, not structural, rejection");
-        assert_ne!(wrong_zero, key_zero, "public token must affect the zero constraints");
+        assert_ne!(wrong_key_zero, key_zero, "public token must affect the zero constraints");
+        let mut wrong_prover_doms = Doms::new(layer_dom_base(255));
+        let mut wrong_verifier_doms = Doms::new(layer_dom_base(255));
+        let wrong_challenge = wrong_txp.challenge_fp2();
+        assert_eq!(wrong_challenge, wrong_tx.challenge_fp2());
+        let wrong_product_domain = wrong_prover_doms.take(1);
+        assert_eq!(wrong_product_domain, wrong_verifier_doms.take(1));
+        let wrong_product_mask = wrong_stream.draw_fulls(wrong_product_domain, 1)[0];
+        let wrong_product_key = wrong_verifier.expand_full_keys(wrong_product_domain, 1)[0];
+        let wrong_product_proof = prod_batch_prover(
+            &wrong_prod_claims,
+            wrong_challenge,
+            wrong_product_mask,
+            &mut wrong_txp,
+        );
+        let wrong_product_ok = prod_batch_verify(
+            &wrong_key_prod,
+            wrong_product_key,
+            delta,
+            wrong_challenge,
+            &wrong_product_proof,
+        );
+        let wrong_zero_domain = wrong_prover_doms.take(1);
+        assert_eq!(wrong_zero_domain, wrong_verifier_doms.take(1));
+        let wrong_zero_ok = zero_batch_exchange(
+            &wrong_zero_claims,
+            &wrong_key_zero,
+            &mut wrong_stream,
+            &mut wrong_verifier,
+            wrong_zero_domain,
+            &mut wrong_txp,
+        );
+        assert!(!(wrong_product_ok && wrong_zero_ok), "wrong token must be rejected at closure");
+
+        let (
+            mut forged_proof,
+            _,
+            forged_prod_claims,
+            forged_zero_claims,
+            mut forged_stream,
+            mut forged_txp,
+        ) = prove_once();
+        forged_proof
+            .private_argmax
+            .as_mut()
+            .expect("private argmax proof")
+            .packed_bridge
+            .limb_final_corrs[0] += Fp2::ONE;
+        let mut forged_limb_verifier = VerifierCtx::new(pcg_seed, delta);
+        let mut forged_limb_tx = Transcript::new(tx_seed);
+        let (_, forged_key_prod, forged_key_zero) = verify_response_private_logits(
+            &model,
+            t,
+            &public,
+            &forged_proof,
+            &mut forged_limb_verifier,
+            &mut forged_limb_tx,
+        )
+        .expect("forged limb remains a cryptographic, not structural, rejection");
+        assert_ne!(forged_key_zero, key_zero, "forged limb must alter the zero constraints");
+        let mut forged_prover_doms = Doms::new(layer_dom_base(255));
+        let mut forged_verifier_doms = Doms::new(layer_dom_base(255));
+        let forged_challenge = forged_txp.challenge_fp2();
+        assert_eq!(forged_challenge, forged_limb_tx.challenge_fp2());
+        let forged_product_domain = forged_prover_doms.take(1);
+        assert_eq!(forged_product_domain, forged_verifier_doms.take(1));
+        let forged_product_mask = forged_stream.draw_fulls(forged_product_domain, 1)[0];
+        let forged_product_key = forged_limb_verifier.expand_full_keys(forged_product_domain, 1)[0];
+        let forged_product_proof = prod_batch_prover(
+            &forged_prod_claims,
+            forged_challenge,
+            forged_product_mask,
+            &mut forged_txp,
+        );
+        let forged_product_ok = prod_batch_verify(
+            &forged_key_prod,
+            forged_product_key,
+            delta,
+            forged_challenge,
+            &forged_product_proof,
+        );
+        let forged_zero_domain = forged_prover_doms.take(1);
+        assert_eq!(forged_zero_domain, forged_verifier_doms.take(1));
+        let forged_zero_ok = zero_batch_exchange(
+            &forged_zero_claims,
+            &forged_key_zero,
+            &mut forged_stream,
+            &mut forged_limb_verifier,
+            forged_zero_domain,
+            &mut forged_txp,
+        );
+        assert!(!(forged_product_ok && forged_zero_ok), "forged limb must be rejected at closure");
 
         let mut legacy_stream = CorrelationStream::new(pcg_seed);
         let mut legacy_tx = Transcript::new(tx_seed);
         let (_, legacy_out, _, _) =
             prove_response(&model, &prefill, &chunks, &mut legacy_stream, &mut legacy_tx);
         let l4_bytes = private_core_bytes - legacy_tx.total_bytes();
-        assert_eq!(l4_bytes, 66_016, "L4 transcript accounting changed");
+        assert_eq!(l4_bytes, 57_840, "C3b test-geometry L4 transcript accounting changed");
         let l4_emults = out.ctr_instances.emult_equiv() - legacy_out.ctr_instances.emult_equiv();
+        assert_eq!(l4_emults, 157_705_530.0, "C3b packed Range16 counter reference changed");
         eprintln!(
             "C3 L4 addition: {l4_bytes} transcript bytes, {l4_emults:.1} instance-counter E-mult equivalents"
         );

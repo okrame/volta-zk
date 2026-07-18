@@ -3,13 +3,14 @@
 //! pre-registered leakage smoke (transcripts for two different weight sets
 //! structurally identical, masked messages uniform).
 
+use rayon::prelude::*;
 use volta_field::{Fp, Fp2, FpStream};
 use volta_mac::{CorrIndex, CorrelationStream, ProverAuthed, Transcript, VerifierCtx};
 use volta_pcs::{
     batch_reduce_prover, batch_reduce_verifier, commit, open_multi_zk, open_zk, verify_multi_open,
     verify_open, BlockClaim, LigeroParams, MultiOpenProof, C3_EMBED, C3_WEIGHTS,
 };
-use volta_proto::mle::eval_mle;
+use volta_proto::mle::{eq_vec, eval_mle};
 use volta_proto::{auth_phase, prove_gemm_blind_committed, verify_gemm_blind_committed};
 
 fn dom(tensor: u8, row: u32) -> u64 {
@@ -31,6 +32,36 @@ fn rand_w(seed: u64, len: usize) -> Vec<i16> {
 
 fn embed(w: &[i16]) -> Vec<Fp2> {
     w.iter().map(|&v| Fp2::from_base(Fp::from_i64(v as i64))).collect()
+}
+
+/// Evaluate an i16 coefficient vector without materialising a production-size
+/// `Vec<Fp2>`.  The equality polynomial factors across the low/high split, so
+/// this is exactly `eval_mle(&embed(values), point)` with implicit zero padding.
+fn eval_i16_mle_streaming(values: &[i16], point: &[Fp2]) -> Fp2 {
+    assert!(values.len() <= 1usize << point.len());
+    let low_vars = point.len().min(16);
+    let low_eq = eq_vec(&point[..low_vars]);
+    let high_eq = eq_vec(&point[low_vars..]);
+    let low_size = 1usize << low_vars;
+
+    values
+        .par_chunks(low_size)
+        .enumerate()
+        .map(|(high, chunk)| {
+            let inner = chunk.iter().zip(&low_eq).fold(Fp2::ZERO, |acc, (&value, &eq)| {
+                acc + eq * Fp2::from_base(Fp::from_i64(value as i64))
+            });
+            inner * high_eq[high]
+        })
+        .reduce(|| Fp2::ZERO, |left, right| left + right)
+}
+
+#[test]
+fn streaming_i16_mle_matches_reference_with_zero_padding() {
+    let values = rand_w(0x51, 37);
+    let mut source = FpStream::domain_separated([0x52; 32], 0x53);
+    let point: Vec<Fp2> = (0..6).map(|_| source.next_fp2()).collect();
+    assert_eq!(eval_i16_mle_streaming(&values, &point), eval_mle(&embed(&values), &point));
 }
 
 /// Small standalone opening: one claim, batch → open → verify.
@@ -582,17 +613,21 @@ fn leakage_smoke_geometry(params: LigeroParams) {
     let n_vars = params.n_vars();
     let mut ledgers = Vec::new();
     for (tag, wseed) in [(0xC3u8, 0xC3u64), (0xC4u8, 0xC4u64)] {
-        let weights = rand_w(wseed, params.rows() * params.cols());
-        let (_, matrix) = commit(&weights, &params, [0x71 ^ tag; 32]);
+        let physical_len = params.rows() * params.cols();
+        let mut weights = rand_w(wseed, physical_len);
         let mut point_source = FpStream::domain_separated([0x73; 32], tag as u64);
         let point: Vec<Fp2> = (0..n_vars).map(|_| point_source.next_fp2()).collect();
-        let value = eval_mle(&embed(&weights), &point);
+        let value = eval_i16_mle_streaming(&weights, &point);
         let mut stream = CorrelationStream::new([tag; 32]);
         let mut transcript = Transcript::new([0x75; 32]);
         let claim_mask = stream.draw_fulls(dom(DOM_W_CLAIM, 0), 1)[0];
         transcript.append("w_claim_correction", 16);
         let claim = ProverAuthed { x: value, m: claim_mask.m };
         let claims = [(BlockClaim { offset: 0, point }, claim)];
+        // The batch API consumes the full power-of-two MLE domain; C3's PCS
+        // stores only its non-power-of-two physical rows.  The absent rows are
+        // the same implicit zeros used by the evaluation above.
+        weights.resize(1usize << n_vars, 0);
         let (_, reduced_point, reduced_value, _) = batch_reduce_prover(
             &weights,
             n_vars,
@@ -601,6 +636,13 @@ fn leakage_smoke_geometry(params: LigeroParams) {
             dom(DOM_BATCH_MASKS, 0),
             &mut transcript,
         );
+        weights.truncate(physical_len);
+
+        // Materialise the encoded PCS matrix only after the batch-reduction
+        // scratch has been dropped.  `commit` is deterministic and appends no
+        // transcript message, so this changes allocation lifetime only, not
+        // protocol ordering, challenges, or the statement being opened.
+        let (_, matrix) = commit(&weights, &params, [0x71 ^ tag; 32]);
         let (opening, _) = open_zk(
             &weights,
             &matrix,

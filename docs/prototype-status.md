@@ -24,9 +24,12 @@ synchronization wall gate at **0.123482 s <=0.150 s**, so fase-D is **closed**
 and criterion (5) is enacted by the 2026-07-17 ledger entry plus checkpoint.
 Candidate A (Packed16/fase-C) is rejected on product cost. The earlier
 `33e5fb4` decode-only FAIL remains an immutable rebaseline result. C3 L1--L4
-and the clean CPU/A100 E2E table refresh are complete; formal G1--G4 remain
-pending, so no C3 gate verdict has landed. Boundary thinning and pool
-prewarming remain backlog, and fase X follows C3.
+and the clean CPU/A100 E2E table refresh are complete. C3b Phase 1 closed the
+H2D/kernel diagnosis and preregistered the minimal-limb/packed iteration.
+Phase 2 was explicitly authorized on 2026-07-18, is implemented and has a
+green local suite; clean CPU/pod records and the post-implementation CUPTI
+census remain pending. Formal G1--G4 therefore have no verdict yet. Boundary
+thinning and pool prewarming remain backlog, and fase X follows C3.
 
 ## Milestones
 
@@ -51,7 +54,7 @@ prewarming remain backlog, and fase X follows C3.
 | C1 response-communication reduction | **complete: identity-seam `x_in` reuse only** (2026-07-15) | Clean full T=100+50/Q=200 CPU record; golden, normal/chunked acceptance, PCS/closure, exact bytes/counters and replay/preflight gates | `2a3d731`: **1,036,800** canonical aliases save **8,294,400 B**; transcript **129,119,408 B**, packed response **136,526,530 B**, auth corrections **59,545,008 B**. Prover/verifier sub correlations both **7,443,126**, full both **176,880**; PCS **66,733,504 B**, 96+6 claims, Q=200 unchanged. Median prove **18.653 s** (−0.086 s vs same-machine P6 record), verify **0.522 s** (−0.045 s); flat curve **1.219 PASS**. Record `benchmarks/results/c1-2026-07-15-2a3d731.json`, full SHA `2a3d7314bba35e18229af31c99f226c93ef12416`, `git_dirty:false`. |
 | C2 Packed16 typed-lane real-PCG | **Candidate A rejected; Packed16 shelved** (2026-07-15) | Permanent costing record; implementation is not authorized | `docs/c2-packed-lane-pcg-design.md` remains the permanent record: the only sound realization costs about **1.55 GB** recurring setup traffic and **31--46 s** setup wall per session to save 32,486,400 B of response, about **47×** more bytes moved than saved. Revisit only with a cited construction on the order of tens of MB/session, or an explicit product decision that the envelope demands it. |
 | Fase-D real-PCG default + scaling | **CLOSED; criterion (5) ENACTED, real default production-ready** (2026-07-17) | M10/AES/connection/default ✓; G1 ✓ G2 ✓ G2b ✓ G3 informative ✓; **G4-v2 PASS** | Tuple `(k3,n3,t3)=(6,520,000,117,440,512,1,792)`, `U3=110,918,718`; estimator min **199.599804 bits**, six-instance **197.014842**, connection floor **140.643699**. CPU G2 **38,371,465 B PASS**, G2b PASS, G3 **665,512,308** gross / **440.856 s** / **1,269,347,424 B** high-water PASS. Pod v2 `e95b839`: prefill **2.728 s PASS**, decode **1.582 s PASS**, H2D **88,139,652 B PASS**, packed **136,526,530 B PASS**, flat **1.219 PASS**, max absolute sync **0.123482 s <=0.150 PASS**; informative max ratio **2.238539%**. Pod G2 **110,918,718 / 38,371,465 B PASS**, setup **48.841 s**. Real/AES is default; mock is explicit test-only. |
-| C3 PCS/logits communication | **L1--L4 + E2E table measured; formal gates pending** (2026-07-17) | G1 response <=115,000,000 B; G2 same-host prover delta <=+15%; G3 full capability/adversarial parity; G4 fresh pod profile | Clean `5a2edbe` real-PCG table runs measure packed response **105,725,808 B**, PCS **43,273,888 B**, public logits **0 B**. CPU 4-thread: prefill/decode/response/session **9.874/11.007/20.880/36.120 s**; A100+Rayon8: **2.667/6.433/9.101/10.362 s**. Versus fase-D response proving this is **+25.17% CPU / +112.17% A100**, confirming G2 risk without deciding the paired gate. A100 max H2D **693,055,968 B**, sync wall **0.150158884 s**, flat **1.241 PASS**. PCS soundness **78.809294874 bits**; contract: `docs/c3-pcs-communication-design.md`. |
+| C3 PCS/logits communication | **C3b implemented/local suite green; formal records pending** (2026-07-18) | G1 response <=115,000,000 B; G2 CPU ABBA <=+15% and pod <=5.648379 s against pinned 4.911634 s; G3 full capability/adversarial parity including both leakage smokes; G4 fresh pod profile | Immutable C3 `5a2edbe` remains **105,725,808 B** packed / **43,273,888 B** PCS / **0 B** public logits. C3b implements three limbs and **2^21+2^19 per limb** (1.043214x padding), measuring **157,705,530** L4 E-mult and **57,840 B** L4 transcript; exact total is **105,717,632 B**. Device-resident mock diagnosis recovers prove-response to **4.924231 s**, H2D to **29,267,044 B** and max sync to **0.120330433 s**, but is not gate evidence. Connection correlations use an anonymous bounded spool; both production-size leakage smokes pass on the 11 GiB VM. The diagnostic L4-off/public-logit mode is absent. Clean real records and post-fix CUPTI remain pending; no gate verdict. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -94,6 +97,137 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-18 (C3b Phase 1 diagnosis + preregistration amendment; Phase 2
+  subsequently authorized)**: the product owner authorized the paid pod
+  diagnosis. Phase 1 completed at its hard stop; after reviewing this entry
+  and `docs/c3-pcs-communication-design.md`, the user explicitly authorized
+  Phase 2 in the same session.
+
+  **H2D audit.** Current L4 builds the Range(16) histogram and all six
+  2^22-entry limb columns on the host. Per response it uploads one 262,144 B
+  `u32` histogram, six 33,554,432 B packed-u64 leaves, six 67,108,864 B
+  F_p2 aux columns, and 27,756 B of challenge/aux point/id/weight vectors:
+  **604,269,676 B** direct. Private weighted-row logit openings add a net
+  **720 B**, reconciling the same-host L4 on/off H2D delta exactly at
+  **604,270,396 B**. Against the same-host fase-D geometry, total C3 H2D
+  delta is 604,916,316 B; L4 explains **99.8932%**. This confirms D2.
+
+  **Pod diagnosis.** The fail-closed CUPTI trace at clean source
+  `5a2edbed63c7a32bfc11edf826ce05f6e711c36b` records **1,414,565** kernels,
+  64 families and **0 dropped records**. One stdout-JSON interleaving was
+  losslessly reconstructed before parsing. C3 adds no CUDA/`volta-accel`
+  family; grid-x=1 records remain existing reduction tails, scalar helpers
+  and the legacy small-term matrix-fold path, not a new P7b-style family.
+  Exact families and grids are append-only in
+  `c3b-cupti-kernel-census-2026-07-18-5a2edbe.json` (SHA-256
+  `3621119b04733d34988edf36cc4f86b9559d816eda7b701519b3b5e40175a098`).
+  CUPTI absolute walls are non-gating.
+
+  The same-host wall-only+counters mock experiment uses one warmup + three
+  measured repetitions. Fase-D geometry proves in **4.911634 s**; C3 geometry
+  with L4 disabled (dirty diagnostic, logits explicitly published) proves in
+  **4.801484 s**; C3 L4-on proves in **9.776394 s**. Thus isolated L4 is
+  **+4.974910 s**, while C3 L1/L3 geometry without L4 is **-2.243%** versus
+  fase-D (prefill -2.743%, decode marginal -1.466%). No hidden L1/L3 GPU
+  regression is found. The diagnostic artifact is
+  `c3b-l4-ablation-diagnostic-2026-07-18-5a2edbe.json` (SHA-256
+  `d073e6e14cedb361105b6855c2ba90ad2a117302b6bd1b6a97c24040ee5939e9`);
+  it is never a gate record.
+
+  **Soundness/ties.** The frozen tied-wte operands obey
+  `|L_j| <= 768*32768^2 < 2^40`; C3b conservatively pins B=41. For bounded
+  comparison value x, a 16L-bit unsigned range excludes a negative field
+  residue when `2^(16L)+2^(B+1)<p`. L=3 satisfies
+  `2^48+2^42<p`; L=2 cannot cover valid positive differences up to the
+  pinned bound. Three limbs are therefore minimal. C3b ranges only
+  `s_j=L_tau-L_j-[j>tau]` and reconstructs `d_j=s_j+[j>tau]`, replacing the
+  current duplicate three-limb d + three-limb s representation without
+  weakening the last-maximum statement. It never truncates or requantizes
+  logits. A crafted equal-max row must accept only Rust's last tied index; a
+  forged earlier tie, wrong token or forged limb must reject.
+
+  **Packing/cost.** Five positions occupy 251,285 real entries in a 2^18
+  public segment. Ten segments are scheduled per limb as 2^21 + 2^19, so
+  padded/real is **2,621,440 / 2,512,850 = 1.043213881**. Three limbs total
+  **7,864,320** entries, exactly 0.3125 of C3's 25,165,824. This is one
+  logical flat batch per limb with two power-of-two jobs, six jobs total and
+  never per-position instances. All use the existing shared Range(16)
+  TableBank multiplicity and alpha, bound in protocol phase 1. The central projection
+  is **222,570,169.125** L4 `ctr_instances` E-mult; the amended projection
+  ceiling is **260,000,000** (9.931% of the 2,618,017,868.8 C1 reference).
+
+  The old L4 allowance is amended from 65,536 B to the honest measured
+  **66,016 B**; no work is authorized merely to recover 480 B. Three limbs
+  and shallower jobs project packed response no larger than the immutable C3
+  **105,725,808 B**, with binding ceiling **115,000,000 B**. L1 remains
+  PINNED: nominal 1/4, Q=120, 78.809294874 bits, 43,273,888 B. No PCS
+  parameter, correction stream, Lean theorem, setup/PCG tuple, lifecycle or
+  capability changes.
+
+  **Phase-2 resident/D4 requirements.** Resident logits feed device kernels
+  for diffs, selectors, three limbs, is-max and multiplicity histograms; no
+  witness-derived steady-state H2D or repetition re-upload is allowed. L4
+  buffers join workspace accounting and cleanup remains 0 B. Full real
+  response H2D is asserted <=100,000,000 B. The post-fix CUPTI census must
+  show no new degenerate family outside the legacy terms<256/terminal path.
+  CPU uses Rayon over blocks/limbs. The connection harness reuses fase-D's
+  `CanonicalBatchLift`/two-batch stage-3 machinery under the 4 GB cap and
+  exposes canonical bounded correlation chunks so the full 110M pool never
+  co-resides with PCS scratch. Allocation/channel digests, one-time domains,
+  Delta, setup traffic and burn semantics stay exact. The true connection
+  run must fit the 11 GiB VM; no silent per-response-pool fallback.
+
+  **Binding Phase-2 amendments made before implementation.** For the pod G2,
+  the sole denominator is pinned to the 2026-07-18 same-host fase-D ablation
+  control, **4.911634 s**. The <=+15% gate is computed only against it, giving
+  the exact ceiling **5.6483791 s** (reported **5.648379 s**); no later or
+  historical denominator may replace it. Before closure the diagnostic
+  L4-off/public-logit switch must be removed: no record-capable mode may
+  disable L4 or republish logits.
+
+  **Phase-2 implementation, before clean records.** Resident logits now feed
+  device-side strict differences, public selectors, three-limb decomposition
+  and the shared Range(16) histogram; the six 2^21/2^19 jobs enter one
+  round-synchronous batch and the existing TableBank alpha. The exact
+  production geometry measures **157,705,530** L4 E-mult equivalents (PASS
+  versus 260M), **57,840 B** L4 transcript and **105,717,632 B** total
+  transcript with 43,273,888 B PCS and zero public logits. The L4-off mode is
+  absent from the source and record CLI. All error paths free the new device
+  owners and explicit resident cleanup remains 0 B.
+
+  The true connection path serializes the terminal 110M correlation pool to
+  an anonymous unlinked 0600 file in 2^16-entry chunks, drops the raw heap
+  vectors, and range-reads only each response allocation into its final pool;
+  page-cache ranges are discarded after write/read. The full workspace is
+  green. The ignored production-size private-argmax test was run explicitly
+  and accepts the honest proof while rejecting wrong-token and forged-limb
+  variants. Both registered production leakage smokes were also run
+  explicitly on the 11 GiB VM: weights PASS in 33.90 s and embed PASS in
+  8.92 s, after fixing their previously unexercised power-of-two padding and
+  PCS-scratch co-residency.
+
+  A full dirty/mock pod diagnosis (1+3) measures prove-response **4.924231 s**,
+  maximum H2D **29,267,044 B**, maximum absolute sync **0.120330433 s**, flat
+  **1.246401384** and explicit resident cleanup **0 B**. These values confirm
+  the intended direction but are not G2/G4 evidence. Clean real/AES CPU/pod
+  records and the post-implementation CUPTI census remain mandatory.
+
+  **Binding closure gates, reconfirmed verbatim.** G1: clean full T=100+50
+  real-default connection-mode CPU run, packed response <=115,000,000 B,
+  exact categories, zero public logits, then current validators rebaselined
+  to the new exact reference while historical references remain untouched.
+  G2: paired same-host prove-response delta <=+15% on CPU (ABBA), and pod
+  prove-response <=5.648379 s under wall-only+counters against the pinned
+  4.911634 s denominator. G3: full capability/adversarial parity including
+  crafted/forged ties, wrong token, forged limb, exact counters and both
+  production-size leakage smokes actually run. G4: fresh
+  `runpod-a100-realpcg-v3`, prefill <=10 s, decode <=4 s, H2D
+  <=100,000,000 B, max absolute sync <=0.150 s, flat <=1.5,
+  golden/acceptance/counter/digest parity and response bytes equal to the new
+  exact G1 reference. Append-only artifacts are `c3b-*.json`. Any failure is
+  recorded honestly with its census and stops the iteration; no gate is
+  relaxed, response bytes are not traded back and L4 is not disabled to pass.
 
 - **2026-07-17 (C3 L1--L4 implementation and E2E table refresh)**: Phase 2 wired the selected
   PCS geometries and private last-maximum proof into both host and resident

@@ -459,6 +459,80 @@ pub struct DeviceLookupColumns {
     entries: usize,
 }
 
+/// C3b private-argmax materialization owned entirely by one resident CUDA
+/// context.  The rectangular Fp2 factors keep the existing logits/argmax MLE
+/// coordinates, while `limbs` stores the three tightly packed Range(16)
+/// columns.  No witness-sized member has a host representation.
+#[derive(Debug)]
+pub struct DevicePrivateArgmaxWitness {
+    logits: DeviceBuffer<Fp2Repr>,
+    strict: DeviceBuffer<Fp2Repr>,
+    is_max: DeviceBuffer<Fp2Repr>,
+    packed_strict: DeviceBuffer<Fp2Repr>,
+    limbs: DeviceBuffer<u64>,
+    selected_rows: DeviceBuffer<u64>,
+    rect_entries: usize,
+    lookup_entries: usize,
+    first_job_entries: usize,
+}
+
+impl DevicePrivateArgmaxWitness {
+    pub fn logits(&self) -> DeviceSlice<'_, Fp2Repr> {
+        DeviceSlice::new(&self.logits, 0, self.rect_entries)
+            .expect("valid private-argmax logits layout")
+    }
+
+    pub fn strict(&self) -> DeviceSlice<'_, Fp2Repr> {
+        DeviceSlice::new(&self.strict, 0, self.rect_entries)
+            .expect("valid private-argmax strict layout")
+    }
+
+    pub fn is_max(&self) -> DeviceSlice<'_, Fp2Repr> {
+        DeviceSlice::new(&self.is_max, 0, self.rect_entries)
+            .expect("valid private-argmax marker layout")
+    }
+
+    pub fn selected_rows(&self) -> DeviceSlice<'_, u64> {
+        DeviceSlice::new(&self.selected_rows, 0, self.selected_rows.len())
+            .expect("valid private-argmax selected-row layout")
+    }
+
+    pub fn packed_strict_job(&self, job: usize) -> Result<DeviceSlice<'_, Fp2Repr>, AccelError> {
+        if job >= 2 {
+            return Err(AccelError::InvalidInput(
+                "private-argmax packed-strict slice out of bounds",
+            ));
+        }
+        let (offset, entries) = if job == 0 {
+            (0, self.first_job_entries)
+        } else {
+            (self.first_job_entries, self.lookup_entries - self.first_job_entries)
+        };
+        DeviceSlice::new(&self.packed_strict, offset, entries)
+    }
+
+    pub fn lookup_entries(&self) -> usize {
+        self.lookup_entries
+    }
+
+    pub fn lookup_job(&self, limb: usize, job: usize) -> Result<DeviceSlice<'_, u64>, AccelError> {
+        if limb >= 3 || job >= 2 {
+            return Err(AccelError::InvalidInput("private-argmax lookup slice out of bounds"));
+        }
+        let (job_offset, entries) = if job == 0 {
+            (0, self.first_job_entries)
+        } else {
+            (self.first_job_entries, self.lookup_entries - self.first_job_entries)
+        };
+        DeviceSlice::new(&self.limbs, limb * self.lookup_entries + job_offset, entries)
+    }
+
+    pub fn all_lookup_limbs(&self) -> DeviceSlice<'_, u64> {
+        DeviceSlice::new(&self.limbs, 0, self.limbs.len())
+            .expect("valid private-argmax limb layout")
+    }
+}
+
 /// Shape-parametric proof-only attention materialization. The four
 /// allocations are column-major base-field vectors; they deliberately carry
 /// no model configuration or raw pointer. Layout access is through checked
@@ -2087,6 +2161,296 @@ impl Backend {
         }
         #[cfg(not(feature = "cuda"))]
         Err(AccelError::FeatureDisabled)
+    }
+
+    /// Materialize C3b's private greedy-argmax witness from resident logits.
+    /// The input is the canonical contiguous real-row matrix.  Rectangular
+    /// proof factors and the three packed u16-limb columns are generated D2D;
+    /// only later protocol-sized scalar openings may leave the device.
+    pub fn private_argmax_witness_device(
+        &mut self,
+        input: DeviceSlice<'_, i64>,
+        error: DeviceSlice<'_, u32>,
+        rows: usize,
+        vocab: usize,
+        rect_entries: usize,
+        lookup_entries: usize,
+        first_job_entries: usize,
+        selected_row_entries: usize,
+    ) -> Result<DevicePrivateArgmaxWitness, AccelError> {
+        let expected_input = checked_product(rows, vocab)?;
+        if rows == 0
+            || rows > selected_row_entries
+            || vocab == 0
+            || rect_entries == 0
+            || !rect_entries.is_power_of_two()
+            || first_job_entries == 0
+            || !first_job_entries.is_power_of_two()
+            || lookup_entries <= first_job_entries
+            || !(lookup_entries - first_job_entries).is_power_of_two()
+        {
+            return Err(AccelError::InvalidInput("invalid private-argmax witness geometry"));
+        }
+        self.validate_device_slice(input, expected_input)?;
+        self.validate_device_slice(error, 1)?;
+
+        let mut logits = Some(self.alloc_device::<Fp2Repr>(rect_entries)?);
+        let mut strict = match self.alloc_device::<Fp2Repr>(rect_entries) {
+            Ok(value) => Some(value),
+            Err(error_value) => {
+                let _ = self.free_device(logits.take().expect("private-argmax logits allocation"));
+                return Err(error_value);
+            }
+        };
+        let mut is_max = match self.alloc_device::<Fp2Repr>(rect_entries) {
+            Ok(value) => Some(value),
+            Err(error_value) => {
+                let _ = self.free_device(strict.take().expect("private-argmax strict allocation"));
+                let _ = self.free_device(logits.take().expect("private-argmax logits allocation"));
+                return Err(error_value);
+            }
+        };
+        let limb_len = checked_product(3, lookup_entries)?;
+        let mut packed_strict = match self.alloc_device::<Fp2Repr>(lookup_entries) {
+            Ok(value) => Some(value),
+            Err(error_value) => {
+                let _ = self.free_device(is_max.take().expect("private-argmax marker allocation"));
+                let _ = self.free_device(strict.take().expect("private-argmax strict allocation"));
+                let _ = self.free_device(logits.take().expect("private-argmax logits allocation"));
+                return Err(error_value);
+            }
+        };
+        let mut limbs = match self.alloc_device::<u64>(limb_len) {
+            Ok(value) => Some(value),
+            Err(error_value) => {
+                let _ = self.free_device(
+                    packed_strict.take().expect("private-argmax packed-strict allocation"),
+                );
+                let _ = self.free_device(is_max.take().expect("private-argmax marker allocation"));
+                let _ = self.free_device(strict.take().expect("private-argmax strict allocation"));
+                let _ = self.free_device(logits.take().expect("private-argmax logits allocation"));
+                return Err(error_value);
+            }
+        };
+        let mut selected_rows = match self.alloc_device::<u64>(selected_row_entries) {
+            Ok(value) => Some(value),
+            Err(error_value) => {
+                let _ = self.free_device(limbs.take().expect("private-argmax limb allocation"));
+                let _ = self.free_device(
+                    packed_strict.take().expect("private-argmax packed-strict allocation"),
+                );
+                let _ = self.free_device(is_max.take().expect("private-argmax marker allocation"));
+                let _ = self.free_device(strict.take().expect("private-argmax strict allocation"));
+                let _ = self.free_device(logits.take().expect("private-argmax logits allocation"));
+                return Err(error_value);
+            }
+        };
+        let mut selected_indices = match self.alloc_device::<u32>(selected_row_entries) {
+            Ok(value) => Some(value),
+            Err(error_value) => {
+                let _ = self.free_device(
+                    selected_rows.take().expect("private-argmax selected-row allocation"),
+                );
+                let _ = self.free_device(limbs.take().expect("private-argmax limb allocation"));
+                let _ = self.free_device(
+                    packed_strict.take().expect("private-argmax packed-strict allocation"),
+                );
+                let _ = self.free_device(is_max.take().expect("private-argmax marker allocation"));
+                let _ = self.free_device(strict.take().expect("private-argmax strict allocation"));
+                let _ = self.free_device(logits.take().expect("private-argmax logits allocation"));
+                return Err(error_value);
+            }
+        };
+
+        #[cfg(feature = "cuda")]
+        let result =
+            self.cuda.as_mut().expect("CUDA kind without context").private_argmax_witness_device(
+                input.buffer.id,
+                input.offset,
+                selected_indices.as_ref().expect("selected-index allocation").id,
+                0,
+                selected_rows.as_ref().expect("selected-row allocation").id,
+                0,
+                logits.as_ref().expect("logits allocation").id,
+                0,
+                strict.as_ref().expect("strict allocation").id,
+                0,
+                is_max.as_ref().expect("marker allocation").id,
+                0,
+                packed_strict.as_ref().expect("packed-strict allocation").id,
+                0,
+                limbs.as_ref().expect("limb allocation").id,
+                0,
+                error.buffer.id,
+                error.offset,
+                rows,
+                vocab,
+                rect_entries,
+                lookup_entries,
+                first_job_entries,
+                selected_row_entries,
+            );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+
+        let index_cleanup = self.free_device(selected_indices.take().expect("selected indices"));
+        if let Err(error_value) = result.or(index_cleanup) {
+            let _ = self
+                .free_device(selected_rows.take().expect("private-argmax selected-row allocation"));
+            let _ = self.free_device(limbs.take().expect("private-argmax limb allocation"));
+            let _ = self.free_device(
+                packed_strict.take().expect("private-argmax packed-strict allocation"),
+            );
+            let _ = self.free_device(is_max.take().expect("private-argmax marker allocation"));
+            let _ = self.free_device(strict.take().expect("private-argmax strict allocation"));
+            let _ = self.free_device(logits.take().expect("private-argmax logits allocation"));
+            return Err(error_value);
+        }
+
+        Ok(DevicePrivateArgmaxWitness {
+            logits: logits.take().expect("private-argmax logits output"),
+            strict: strict.take().expect("private-argmax strict output"),
+            is_max: is_max.take().expect("private-argmax marker output"),
+            packed_strict: packed_strict.take().expect("private-argmax packed-strict output"),
+            limbs: limbs.take().expect("private-argmax limb output"),
+            selected_rows: selected_rows.take().expect("private-argmax selected-row output"),
+            rect_entries,
+            lookup_entries,
+            first_job_entries,
+        })
+    }
+
+    /// Device-generate the public phase mask and its product with the
+    /// resident rectangular logits.  The product is used only to obtain the
+    /// initial masked-logit claim and remains resident until explicitly freed.
+    pub fn private_argmax_phase_factors_device(
+        &mut self,
+        logits: DeviceSlice<'_, Fp2Repr>,
+        _row_start: usize,
+        row_count: usize,
+        vocab: usize,
+    ) -> Result<(DeviceBuffer<Fp2Repr>, DeviceBuffer<Fp2Repr>), AccelError> {
+        if logits.is_empty() || !logits.len().is_power_of_two() || row_count == 0 || vocab == 0 {
+            return Err(AccelError::InvalidInput("invalid private-argmax phase geometry"));
+        }
+        self.validate_device_slice(logits, logits.len())?;
+        let mask = self.alloc_device::<Fp2Repr>(logits.len())?;
+        let masked = match self.alloc_device::<Fp2Repr>(logits.len()) {
+            Ok(value) => value,
+            Err(error_value) => {
+                let _ = self.free_device(mask);
+                return Err(error_value);
+            }
+        };
+        #[cfg(feature = "cuda")]
+        let result = self
+            .cuda
+            .as_mut()
+            .expect("CUDA kind without context")
+            .private_argmax_phase_factors_device(
+                logits.buffer.id,
+                logits.offset,
+                mask.id,
+                0,
+                masked.id,
+                0,
+                logits.len(),
+                _row_start,
+                row_count,
+                vocab,
+            );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error_value) = result {
+            let _ = self.free_device(mask);
+            let _ = self.free_device(masked);
+            return Err(error_value);
+        }
+        Ok((mask, masked))
+    }
+
+    /// Generate the public reindexing selector used to bind one packed limb
+    /// job to a point in the canonical rectangular argmax domain.
+    pub fn private_argmax_selector_device(
+        &mut self,
+        eq_vocab: DeviceSlice<'_, Fp2Repr>,
+        eq_rows: DeviceSlice<'_, Fp2Repr>,
+        entries: usize,
+        job: usize,
+        vocab: usize,
+        _coefficient: Fp2,
+    ) -> Result<DeviceBuffer<Fp2Repr>, AccelError> {
+        if eq_vocab.is_empty()
+            || eq_rows.is_empty()
+            || entries == 0
+            || !entries.is_power_of_two()
+            || job >= 2
+            || vocab == 0
+        {
+            return Err(AccelError::InvalidInput("invalid private-argmax selector geometry"));
+        }
+        self.validate_device_slice(eq_vocab, eq_vocab.len())?;
+        self.validate_device_slice(eq_rows, eq_rows.len())?;
+        let output = self.alloc_device::<Fp2Repr>(entries)?;
+        #[cfg(feature = "cuda")]
+        let result =
+            self.cuda.as_mut().expect("CUDA kind without context").private_argmax_selector_device(
+                eq_vocab.buffer.id,
+                eq_vocab.offset,
+                eq_rows.buffer.id,
+                eq_rows.offset,
+                output.id,
+                0,
+                entries,
+                job,
+                vocab,
+                _coefficient.into(),
+            );
+        #[cfg(not(feature = "cuda"))]
+        let result: Result<(), AccelError> = Err(AccelError::FeatureDisabled);
+        if let Err(error_value) = result {
+            let _ = self.free_device(output);
+            return Err(error_value);
+        }
+        Ok(output)
+    }
+
+    pub fn clone_fp2_device(
+        &mut self,
+        source: DeviceSlice<'_, Fp2Repr>,
+    ) -> Result<DeviceBuffer<Fp2Repr>, AccelError> {
+        if source.is_empty() {
+            return Err(AccelError::InvalidInput("cannot clone an empty resident vector"));
+        }
+        self.validate_device_slice(source, source.len())?;
+        let output = self.alloc_device::<Fp2Repr>(source.len())?;
+        if let Err(error_value) =
+            self.copy_device_rows(source, source.len(), &output, 0, source.len(), 1, source.len())
+        {
+            let _ = self.free_device(output);
+            return Err(error_value);
+        }
+        Ok(output)
+    }
+
+    pub fn free_private_argmax_witness(
+        &mut self,
+        witness: DevicePrivateArgmaxWitness,
+    ) -> Result<(), AccelError> {
+        let mut first = None;
+        for result in [
+            self.free_device(witness.logits),
+            self.free_device(witness.strict),
+            self.free_device(witness.is_max),
+            self.free_device(witness.packed_strict),
+            self.free_device(witness.limbs),
+            self.free_device(witness.selected_rows),
+        ] {
+            if first.is_none() {
+                first = result.err();
+            }
+        }
+        first.map_or(Ok(()), Err)
     }
 
     /// Compute subfield Π_Auth corrections from a resident base-field source

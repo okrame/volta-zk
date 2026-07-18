@@ -1,7 +1,7 @@
 # P7b handoff spec — for the incoming coding agent
 
-**Audience**: an autonomous coding agent (Codex) working on the active P7b
-resident-A100 iteration. You can and should explore the repo yourself; this
+**Audience**: an autonomous coding agent needing the historical P7/P7b
+resident-A100 contract. You can and should explore the repo yourself; this
 document exists to give you (a) the operating contract with the harness, (b) the state and
 numbers of record, (c) the P7 work items with their levers already quantified,
 and (d) the invariants and known traps that are NOT derivable from the code.
@@ -32,9 +32,15 @@ the plan of record.
 > scheduler is frozen off the critical path: its existing correctness
 > machinery stays, but a <=5,000-boundary target must not drive new
 > complexity. Thunder and the ABI-27 RunPod control are immutable comparative
-> artifacts, not gate claims. P7b is still **in progress** and has no official
-> verdict under `runpod-a100-v1`; the exact runner and reproduction contract
-> are in `docs/p7b-runpod-official-runbook.md`.
+> artifacts, not gate claims. This was the preregistered P7b contract; its
+> exact runner and reproduction details remain in
+> `docs/p7b-runpod-official-runbook.md`.
+
+> **Current-state override — 2026-07-18.** The paragraph above is retained as
+> the historical P7b preregistration, not current status. P7b later closed
+> PASS, fase-D made real/AES PCG the production default, and C3b closed
+> G1/G2/G3/G4 PASS at `161fc59` with private logits and Q=120. The ledger and
+> `docs/c3-pcs-communication-design.md` are authoritative; fase X follows C3b.
 
 ---
 
@@ -45,8 +51,8 @@ inference**: VOLE-MAC authenticated values + blind GKR/sumcheck + LogUp
 lookups + a Ligero-style PCS for private weights, over Goldilocks
 (p = 2^64 − 2^32 + 1, extension E = F_p²). The formal phase (M1–M9, Lean
 theorems in `lean/`, see `docs/protocol-sketch.md`) is CLOSED and frozen.
-The prototype phase P runs GPT-2 small (124M) fixed-point; P0–P7 are done and
-P7b is the active resident-A100 optimization iteration. Historically the
+The prototype phase P runs GPT-2 small (124M) fixed-point; P0–P7b, fase-D and
+C3b are closed, and fase X is next. Historically the
 project used **ρ = prover_wall / native_inference_wall** and P7 tested
 ρ <=2 (decode) / <=10 (prefill). Those values remain useful at compute-bound
 scale, but the P7b override above replaces them for GPT-2-small batch-1.
@@ -77,12 +83,11 @@ scale, but the P7b override above replaces them for GPT-2-small batch-1.
    (`scripts/gpt2_fixed.py`) bit-for-bit. Quantization semantics are frozen
    in `docs/quantization-spec.md`. The golden checks (`golden-p5.bin`,
    `golden-p6.bin`) are load-bearing gates.
-6. **Correlations are mock-PCG** (shared ChaCha seed, Δ verifier-only),
-   one-time use, domain-separated indices (session, layer, head, position,
-   tensor_tag); every consumption is counted. A real Goldilocks silent-VOLE
-   backend exists as a measured cost model (§4.4, `volta-pcg`); the mock
-   stays the default and the test baseline until a ledger decision flips
-   it after the §4.4 hardening items close.
+6. **Correlations are real/AES PCG in production records**, connection-scoped,
+   one-time use and domain-separated; every consumption is counted. Mock PCG
+   is explicit diagnostic/test-only. Section 4.4 below describes the earlier
+   cost-model stage and is retained as history; fase-D and M10 contain the
+   current lifecycle/default decision.
 7. Measured counts are compared against the analytic budget
    (`scripts/budget_p0.py`, table in the ledger); deviations > 20% must be
    explained in the ledger.
@@ -120,8 +125,9 @@ Architecture facts you should not re-derive:
 - **KV cache is authenticated across phases** with position-separated
   domains (mirror of Lean M4); anti-replay is smoke-tested (prefill-row
   replay and position swap are rejected).
-- **Band logits are public output** (20.5 MB), checked by public argmax in
-  `verify_response`; they are download, not transcript.
+- **Historical P6 band logits were public output** (20.5 MB). C3/C3b replaced
+  that path with the private last-maximum argument; current records expose
+  only the 50 selected tokens and serialize zero logit bytes.
 
 Repo map (verified 2026-07-07):
 - `rust/volta-field` → `volta-mac` (Authed, Π_Auth/ZeroOpen/ZeroBatch,
@@ -215,12 +221,12 @@ VOLE-authenticated value — never a cleartext W̃(r); one batched opening per
 response, never per token; field-native transparent hash-based PCS only
 (no curves, no trusted setup).
 
-### 4.2 Public logits 20.5 MB (optional, only if the envelope tightens)
+### 4.2 Public logits 20.5 MB (historical lever; implemented by C3/C3b)
 
-Replace the public band-logits download with an is_max argmax argument
-(reuse P5's row-max machinery per vocab row): ~2.5 M extra lookups instead
-of 20.5 MB. Logged in the ledger (P6 closing #4) as a lever, not scheduled.
-The sampled tokens stay public output either way.
+The proposed is_max argument was implemented and then optimized by C3b: three
+u16 limbs, 2,512,850 real comparisons, 1.043214x packing, device-resident
+witness construction and zero public-logit bytes. The 50 sampled tokens remain
+public output. See the C3 design document for the binding statement and gates.
 
 ### 4.3 Smaller known levers
 
@@ -231,7 +237,7 @@ The sampled tokens stay public output either way.
   formal-touching 2-byte correction packing (§4.6.B), not a transcript
   tweak. LogUp round/split/prod corrections are ~1.2 MB combined.
 
-### 4.4 Real-PCG over Goldilocks — DONE as cost model; hardening open
+### 4.4 Real-PCG over Goldilocks — historical cost-model stage
 
 Decided 2026-07-07 (supersedes the "cost spike only" scope) and
 implemented: crate `volta-pcg` (WYKW/Wolverine-style sVOLE, m = k + r·Δ
@@ -250,24 +256,19 @@ single-thread, load-sensitive VM):
 - e2e gate: `p6_report --quick --pcg-backend real` accepted, counters
   identical to mock, allocation digests match.
 
-Standing rules (do not relax): mock stays the default and regression
-baseline until a ledger decision flips it; `setup_comm_bytes` is its own
+Historical standing rules at that stage kept mock as the default and regression
+baseline until a ledger decision flipped it. Fase-D made that flip; production
+now uses real/AES and mock is diagnostic/test-only. `setup_comm_bytes` is its own
 counted category, never folded into response download; PCG time is a
 separate report line, never folded into ρ; no proving-path/transcript
 change through the backend seam; PCG security = LPN/PPRF assumption, same
 status as PCS binding (M9) — Lean stays frozen.
 
-**Remaining hardening (NOT on the go/no-go critical path)**:
-1. Two-party execution: today both parties run in one process from a
-   shared seed with real group ops (`base_vole:"setup-cost-model"`); the
-   base VOLE is still dealer-derived.
-2. WYKW paper-level malicious consistency checks (the current check is a
-   transcript-bound diagnostic).
-3. LPN/code parameters cited from the WYKW/Ferret tables (currently
-   asserted at 128-bit, `parameter_source: citation pending`).
-4. Trap for the next measurement: the GGM PPRF leaf expansion is real
-   per-party work and must always be charged — dropping it made an early
-   phase-B run look faster than phase A (impossible; corrected in ledger).
+That cost-model backend and its former hardening list are superseded. Fase-D
+landed the two-party real/AES path, malicious checks, cited parameter
+derivation and connection lifecycle, after the M10 Lean gate. The production
+contract and exact setup tuple live in the ledger; the historical warning
+still applies that all PPRF expansion work must be charged.
 
 ### 4.5 Report + GPU budget model + cloud CUDA (the go/no-go)
 
@@ -276,11 +277,10 @@ epilogue, LogUp tree/general/blind screening, PCS NTT/combine/hash screening,
 and exact native GPU inference. Their parameters, failures and accepted runs
 are retained in the ledger/JSONs instead of repeated here.
 
-**Open**: integrate the proving path (including aux-leaf and mask-row work),
-then measure e2e against the centralized ρ targets. Preserve flat-cost,
-golden-decode, anti-replay, transcript and communication gates. Regenerate the
-aggregate with `python3 scripts/report.py --write-json` after every measured
-result; use `docs/p7-cloud-runbook.md` for machine/result hygiene.
+The proving path, aux-leaf/mask work and resident A100 execution were
+integrated and measured through P7b, fase-D and C3b. Their clean records and
+current gates are in the ledger; the original centralized P7 rho targets and
+this handoff's integration checklist are historical rather than active work.
 
 ### 4.6 Further compression ideas (design suggestions — NOT pre-registered)
 

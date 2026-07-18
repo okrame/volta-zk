@@ -704,6 +704,20 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7(tmp_path)
     c3b_pod_path.write_text(json.dumps(c3b_pod))
     assert report.validate_c3b_official_result(c3b_pod_path) is True
 
+    c3b_fresh_host = copy.deepcopy(c3b_pod)
+    c3b_fresh_host["cloud"].update(
+        {
+            "region": "provider-recorded-new-region",
+            "driver_version": "580.126.16",
+            "cpu_model": "AMD EPYC 7742 64-Core Processor",
+            "ram_gib": "2004",
+            "vcpus": "128",
+        }
+    )
+    c3b_fresh_host_path = tmp_path / "c3b-fresh-host-official.json"
+    c3b_fresh_host_path.write_text(json.dumps(c3b_fresh_host))
+    assert report.validate_c3b_official_result(c3b_fresh_host_path) is True
+
     bad_c3b_denominator = copy.deepcopy(c3b_pod)
     bad_c3b_denominator["c3b_g2"]["baseline_s"] += 0.000_001
     bad_c3b_denominator_path = tmp_path / "c3b-bad-denominator.json"

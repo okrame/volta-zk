@@ -1,4 +1,4 @@
-# Prototype Status Ledger (fase-D CLOSED; real-PCG default enacted)
+# Prototype Status Ledger (C3b CLOSED; real-PCG default enacted)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -6,9 +6,9 @@ land in `benchmarks/results/*.json`. The repo-local plan of record is
 `docs/p7-handoff-spec.md` plus this ledger; no external plan is authoritative.
 
 Workload of record: **GPT-2 small (124M, L=12, d=768, h=12, d_ff=3072),
-prefill T=100 + 50 deferred decode tokens, causal, PCS Q=200**, on the
-designated RunPod A100 profile. P7 is closed; its CPU and rho numbers below
-are historical. P7b has a valid official PASS at `ab3a03f`, and GPU
+prefill T=100 + 50 deferred decode tokens, causal, C3b PCS Q=120**, on the
+designated RunPod A100 profile. Earlier Q=200 rows are explicitly historical.
+P7 is closed; its CPU and rho numbers below are historical. P7b has a valid official PASS at `ab3a03f`, and GPU
 optimization is closed by the 2026-07-15 Stop branch. **FLIP-READINESS is
 complete** for the fase-B real-PCG candidate. On 2026-07-16 the product owner
 approved the mock→real default flip, removed criterion (1) with no replacement
@@ -24,11 +24,11 @@ synchronization wall gate at **0.123482 s <=0.150 s**, so fase-D is **closed**
 and criterion (5) is enacted by the 2026-07-17 ledger entry plus checkpoint.
 Candidate A (Packed16/fase-C) is rejected on product cost. The earlier
 `33e5fb4` decode-only FAIL remains an immutable rebaseline result. C3 L1--L4
-and the clean CPU/A100 E2E table refresh are complete. C3b Phase 1 closed the
-H2D/kernel diagnosis and preregistered the minimal-limb/packed iteration.
-Phase 2 was explicitly authorized on 2026-07-18, is implemented and has a
-green local suite; clean CPU/pod records and the post-implementation CUPTI
-census remain pending. Formal G1--G4 therefore have no verdict yet. Boundary
+and the clean CPU/A100 E2E table refresh are complete. C3b closed on clean
+`161fc59`: G1/G2/G3/G4 all PASS, including the 11 GiB connection-scoped CPU
+record, production leakage smokes and fresh `runpod-a100-realpcg-v3` record.
+The post-implementation CUPTI census has zero drops and no new grid-x=1
+private-argmax family. Boundary
 thinning and pool prewarming remain backlog, and fase X follows C3.
 
 ## Milestones
@@ -54,7 +54,7 @@ thinning and pool prewarming remain backlog, and fase X follows C3.
 | C1 response-communication reduction | **complete: identity-seam `x_in` reuse only** (2026-07-15) | Clean full T=100+50/Q=200 CPU record; golden, normal/chunked acceptance, PCS/closure, exact bytes/counters and replay/preflight gates | `2a3d731`: **1,036,800** canonical aliases save **8,294,400 B**; transcript **129,119,408 B**, packed response **136,526,530 B**, auth corrections **59,545,008 B**. Prover/verifier sub correlations both **7,443,126**, full both **176,880**; PCS **66,733,504 B**, 96+6 claims, Q=200 unchanged. Median prove **18.653 s** (−0.086 s vs same-machine P6 record), verify **0.522 s** (−0.045 s); flat curve **1.219 PASS**. Record `benchmarks/results/c1-2026-07-15-2a3d731.json`, full SHA `2a3d7314bba35e18229af31c99f226c93ef12416`, `git_dirty:false`. |
 | C2 Packed16 typed-lane real-PCG | **Candidate A rejected; Packed16 shelved** (2026-07-15) | Permanent costing record; implementation is not authorized | `docs/c2-packed-lane-pcg-design.md` remains the permanent record: the only sound realization costs about **1.55 GB** recurring setup traffic and **31--46 s** setup wall per session to save 32,486,400 B of response, about **47×** more bytes moved than saved. Revisit only with a cited construction on the order of tens of MB/session, or an explicit product decision that the envelope demands it. |
 | Fase-D real-PCG default + scaling | **CLOSED; criterion (5) ENACTED, real default production-ready** (2026-07-17) | M10/AES/connection/default ✓; G1 ✓ G2 ✓ G2b ✓ G3 informative ✓; **G4-v2 PASS** | Tuple `(k3,n3,t3)=(6,520,000,117,440,512,1,792)`, `U3=110,918,718`; estimator min **199.599804 bits**, six-instance **197.014842**, connection floor **140.643699**. CPU G2 **38,371,465 B PASS**, G2b PASS, G3 **665,512,308** gross / **440.856 s** / **1,269,347,424 B** high-water PASS. Pod v2 `e95b839`: prefill **2.728 s PASS**, decode **1.582 s PASS**, H2D **88,139,652 B PASS**, packed **136,526,530 B PASS**, flat **1.219 PASS**, max absolute sync **0.123482 s <=0.150 PASS**; informative max ratio **2.238539%**. Pod G2 **110,918,718 / 38,371,465 B PASS**, setup **48.841 s**. Real/AES is default; mock is explicit test-only. |
-| C3 PCS/logits communication | **C3b implemented/local suite green; formal records pending** (2026-07-18) | G1 response <=115,000,000 B; G2 CPU ABBA <=+15% and pod <=5.648379 s against pinned 4.911634 s; G3 full capability/adversarial parity including both leakage smokes; G4 fresh pod profile | Immutable C3 `5a2edbe` remains **105,725,808 B** packed / **43,273,888 B** PCS / **0 B** public logits. C3b implements three limbs and **2^21+2^19 per limb** (1.043214x padding), measuring **157,705,530** L4 E-mult and **57,840 B** L4 transcript; exact total is **105,717,632 B**. Device-resident mock diagnosis recovers prove-response to **4.924231 s**, H2D to **29,267,044 B** and max sync to **0.120330433 s**, but is not gate evidence. Connection correlations use an anonymous bounded spool; both production-size leakage smokes pass on the 11 GiB VM. The diagnostic L4-off/public-logit mode is absent. Clean real records and post-fix CUPTI remain pending; no gate verdict. |
+| C3 PCS/logits communication | **C3b CLOSED; G1/G2/G3/G4 PASS** (2026-07-18) | G1 response <=115,000,000 B; G2 CPU ABBA <=+15% and pod <=5.6483791 s against pinned 4.911634 s; G3 full capability/adversarial parity; G4 fresh pod profile | `161fc59`: exact response **105,717,632 B**, PCS **43,273,888 B**, public logits **0 B**, L4 **57,840 B / 157,705,530 E-mult**. G1 CPU PASS, peak **8.629 GiB**, spool raw resident 0. G2 CPU **+14.5365% PASS**; pod **4.183011 s vs 5.6483791 s PASS**. G3 workspace/adversarial + both production leakage smokes PASS. G4 v3: prefill **2.536909**, decode **1.652746**, H2D **88,812,564 B**, max sync **0.114894647 s**, flat **1.228451**, all PASS. Post-fix CUPTI: **1,423,901** launches, 69 families, 0 drops; five new `private_argmax_*` families, none grid-x=1. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -97,6 +97,58 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-18 (C3b CLOSED; G1/G2/G3/G4 PASS)**: clean implementation SHA
+  `161fc59acf6fff2f221a0c5bd2cf2148bde0d09f` closes the efficiency
+  iteration without changing L1, PCS soundness, correction streams, Lean,
+  setup tuple or lifecycle semantics.
+
+  **G1 PASS.** The full 11 GiB CPU VM record uses real/AES connection mode,
+  one warmup plus three measurements and Q=120. Golden, normal/chunked,
+  verifier, PCS and digest checks accept. Transcript and packed response are
+  exactly **105,717,632 B <=115,000,000 B**, including **43,273,888 B** PCS,
+  with **0 B** public logits and exact label/category sums. Peak RSS is
+  **8.628704 GiB**. The 114,611,091-entry connection pool is held in a
+  4,584,443,640 B anonymous spool with zero resident raw entries after
+  spooling; D4 is resolved without per-response-pool fallback. Record:
+  `c3b-cpu-real-2026-07-18-161fc59.json` (SHA-256
+  `e0921daf7de81a9cdb5bdc08a84b195c6afa4f9880840dadb162bc5fa23caab1`).
+
+  **G2 PASS on both hosts.** CPU same-process ABBA measures fase-D
+  **17.288045940 s** and C3b **19.801130069 s**, delta **+14.536542% <=+15%**
+  and ceiling 19.881252831 s. The pod uses only the pinned **4.911634 s**
+  denominator: C3b is **4.183010942 s**, delta **-14.834637%**, below the
+  exact **5.6483791 s** ceiling. No alternative denominator is used.
+
+  **G3 PASS.** `cargo test --workspace` is green. The production private
+  argmax test accepts honestly and rejects wrong-token/forged-limb proofs;
+  crafted-last-tie accepts and an earlier tied token rejects. Exact geometry
+  is three limbs, six Range(16) jobs, 2,512,850 real and 2,621,440 padded
+  entries/limb. The registered production leakage smokes were run
+  sequentially on the 11 GiB VM: weights PASS in 32.58 s and embed PASS in
+  9.58 s. Evidence: `c3b-g3-2026-07-18-161fc59.json` (SHA-256
+  `c7efe6bfa12de26e1081930e4b2e0d2794cad1bc96e126501c5a74f5cf307c4a`).
+
+  **G4 PASS.** Fresh `runpod-a100-realpcg-v3`, A100-SXM4-80GB, Rayon=8,
+  ABI-28, wall-only+counters and real/AES records prefill
+  **2.536908629 s <=10**, decode **1.652745976 s <=4**, maximum H2D
+  **88,812,564 B <=100,000,000**, maximum absolute sync
+  **0.114894647 s <=0.150**, flat **1.228450597 <=1.5**, exact
+  105,717,632 B response, zero public logits, golden/acceptance/counter/
+  allocation/channel parity and explicit resident cleanup 0 B. Record:
+  `c3b-a100-realpcg-v3-2026-07-18-161fc59.json` (SHA-256
+  `fe016a033cc076c3c1e7a063e528d6b79129992414ddd3309bfc3bbbd2f03c58`).
+
+  The exact L4 measurement is **157,705,530 E-mult equivalents**, versus the
+  amended 222,570,169.125 central projection and 260M ceiling; its transcript
+  is **57,840 B**. The post-implementation CUPTI census records **1,423,901**
+  launches, 69 families and zero drops. Five `private_argmax_*` families are
+  new; their grid-x values are 64--16,384 and none is degenerate. Artifact:
+  `c3b-postimpl-cupti-kernel-census-2026-07-18-161fc59.json` (SHA-256
+  `cf92e16736d5b3d6e527fe58f04a07adea5e422f0908cb4baf8a750a2b5aeb0c`).
+  The diagnostic L4-off/public-logit flag is absent from the source and CLI;
+  no record mode can republish logits. Historical C3 `5a2edbe` measurements
+  and fase-D/P7b references remain immutable.
 
 - **2026-07-18 (C3b Phase 1 diagnosis + preregistration amendment; Phase 2
   subsequently authorized)**: the product owner authorized the paid pod
@@ -165,26 +217,28 @@ constant factors hold. That constant factor is what P3/P4 measure.
   parameter, correction stream, Lean theorem, setup/PCG tuple, lifecycle or
   capability changes.
 
-  **Phase-2 resident/D4 requirements.** Resident logits feed device kernels
+  **Phase-2 resident/D4 contract and result.** Resident logits feed device kernels
   for diffs, selectors, three limbs, is-max and multiplicity histograms; no
   witness-derived steady-state H2D or repetition re-upload is allowed. L4
-  buffers join workspace accounting and cleanup remains 0 B. Full real
-  response H2D is asserted <=100,000,000 B. The post-fix CUPTI census must
-  show no new degenerate family outside the legacy terms<256/terminal path.
+  buffers join workspace accounting and cleanup is 0 B. Full real response
+  H2D measures 88,812,564 B, below 100,000,000 B. The post-fix CUPTI census
+  has zero drops and no new degenerate family outside the legacy
+  terms<256/terminal path.
   CPU uses Rayon over blocks/limbs. The connection harness reuses fase-D's
   `CanonicalBatchLift`/two-batch stage-3 machinery under the 4 GB cap and
   exposes canonical bounded correlation chunks so the full 110M pool never
   co-resides with PCS scratch. Allocation/channel digests, one-time domains,
   Delta, setup traffic and burn semantics stay exact. The true connection
-  run must fit the 11 GiB VM; no silent per-response-pool fallback.
+  run fits the 11 GiB VM at 8.628704 GiB; no per-response-pool fallback is
+  present.
 
   **Binding Phase-2 amendments made before implementation.** For the pod G2,
   the sole denominator is pinned to the 2026-07-18 same-host fase-D ablation
   control, **4.911634 s**. The <=+15% gate is computed only against it, giving
   the exact ceiling **5.6483791 s** (reported **5.648379 s**); no later or
-  historical denominator may replace it. Before closure the diagnostic
-  L4-off/public-logit switch must be removed: no record-capable mode may
-  disable L4 or republish logits.
+  historical denominator may replace it. The diagnostic L4-off/public-logit
+  switch was removed before closure; no record-capable mode can disable L4 or
+  republish logits.
 
   **Phase-2 implementation, before clean records.** Resident logits now feed
   device-side strict differences, public selectors, three-limb decomposition

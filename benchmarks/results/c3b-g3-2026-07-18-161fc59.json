@@ -1,0 +1,89 @@
+{
+  "report_schema_version": 1,
+  "milestone": "C3b-G3",
+  "date": "2026-07-18",
+  "git_sha": "161fc59acf6fff2f221a0c5bd2cf2148bde0d09f",
+  "git_dirty": false,
+  "gate": "full capability/adversarial parity including production-size leakage smokes",
+  "pass": true,
+  "workspace": {
+    "command": "cargo test --workspace",
+    "passed": true,
+    "failures": 0,
+    "volta_proto": {
+      "passed": 87,
+      "ignored": 1
+    },
+    "volta_pcs_p35": {
+      "passed": 13,
+      "ignored": 2
+    },
+    "note": "The three production-size ignored tests were run explicitly below; all ordinary workspace, golden, malicious, replay, lifecycle, allocation-digest and CUDA-independent tests passed."
+  },
+  "private_argmax_production": {
+    "command": "cargo test --release -p volta-proto private_logits_response_e2e_and_wrong_token_rejects --lib -- --ignored --nocapture",
+    "passed": true,
+    "wall_s": 13.01,
+    "honest_accept": true,
+    "wrong_token_reject": true,
+    "forged_limb_reject": true,
+    "l4_transcript_bytes": 57840,
+    "l4_emult_instances": 157705530.0
+  },
+  "tie_and_geometry_tests": {
+    "crafted_last_tie_golden_accept": true,
+    "forged_earlier_tie_reject": true,
+    "three_limb_full_bound_roundtrip": true,
+    "packed_domain_exact": true,
+    "limbs": 3,
+    "range_instances": 6,
+    "real_comparisons": 2512850,
+    "padded_entries_per_limb": 2621440,
+    "padded_entries_total": 7864320
+  },
+  "production_leakage_smokes": [
+    {
+      "name": "c3_weights_two_weight_set_leakage_smoke",
+      "command": "cargo test --release -p volta-pcs --test p35 c3_weights_two_weight_set_leakage_smoke -- --ignored --nocapture",
+      "passed": true,
+      "wall_s": 32.58,
+      "encoded_geometry_bytes": 6442450944
+    },
+    {
+      "name": "c3_embed_two_weight_set_leakage_smoke",
+      "command": "cargo test --release -p volta-pcs --test p35 c3_embed_two_weight_set_leakage_smoke -- --ignored --nocapture",
+      "passed": true,
+      "wall_s": 9.58,
+      "encoded_geometry_bytes": 2181038080
+    }
+  ],
+  "execution_policy": {
+    "production_leakage_smokes_run_sequentially": true,
+    "reason": "Each smoke is a production-memory capability test; running both concurrently is outside the registered 11 GiB VM configuration.",
+    "discarded_parallel_attempt": "A cargo name filter launched both ignored smokes concurrently and the OS killed the aggregate process with SIGKILL. Neither test reported a protocol failure; both subsequent exact-name sequential runs passed."
+  },
+  "record_parity": {
+    "cpu_g1_accepted": true,
+    "pod_g4_accepted": true,
+    "golden_decode_match": true,
+    "chunked_accepted": true,
+    "zero_public_logits": true,
+    "allocation_digest_match": true,
+    "channel_ledger_digest_match": true,
+    "pcg_mock_prepass_counters_match": true
+  },
+  "sources": [
+    {
+      "path": "benchmarks/results/c3b-cpu-real-2026-07-18-161fc59.json",
+      "sha256": "e0921daf7de81a9cdb5bdc08a84b195c6afa4f9880840dadb162bc5fa23caab1"
+    },
+    {
+      "path": "benchmarks/results/c3b-a100-realpcg-v3-2026-07-18-161fc59.json",
+      "sha256": "fe016a033cc076c3c1e7a063e528d6b79129992414ddd3309bfc3bbbd2f03c58"
+    },
+    {
+      "path": "benchmarks/results/c3b-postimpl-cupti-kernel-census-2026-07-18-161fc59.json",
+      "sha256": "cf92e16736d5b3d6e527fe58f04a07adea5e422f0908cb4baf8a750a2b5aeb0c"
+    }
+  ]
+}

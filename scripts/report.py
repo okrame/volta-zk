@@ -1584,6 +1584,29 @@ def _c3b_resident_cleanup_valid(row: dict[str, Any]) -> bool:
     )
 
 
+def _realpcg_pod_metadata_valid(row: dict[str, Any]) -> bool:
+    cloud = row.get("cloud")
+    fields = (
+        "provider",
+        "instance_id",
+        "region",
+        "image",
+        "driver_version",
+        "cuda_version",
+        "gpu_sku",
+        "cpu_model",
+        "ram_gib",
+        "vcpus",
+    )
+    return (
+        isinstance(cloud, dict)
+        and all(isinstance(cloud.get(field), str) and cloud[field].strip() for field in fields)
+        and cloud.get("provider") == "RunPod"
+        and cloud.get("gpu_sku") == "NVIDIA A100-SXM4-80GB"
+        and row.get("threads") == P7B_OFFICIAL_RAYON_THREADS
+    )
+
+
 def _c3b_pod_record_valid(row: dict[str, Any]) -> bool:
     g2 = row.get("c3b_g2")
     communication = (
@@ -1606,7 +1629,7 @@ def _c3b_pod_record_valid(row: dict[str, Any]) -> bool:
         and row.get("p7b_gate_evaluated") is True
         and row.get("p7b_machine_eligible") is True
         and _p7b_git_provenance_valid(row)
-        and _p7b_machine_metadata_valid(row)
+        and _realpcg_pod_metadata_valid(row)
         and _c3b_g2_valid(g2, pod=True)
         and communication
         and _c3b_resident_cleanup_valid(row)

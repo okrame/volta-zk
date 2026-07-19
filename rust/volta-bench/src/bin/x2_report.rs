@@ -790,22 +790,24 @@ fn main() {
     eprintln!("X2: honest k=1 proof + 3-commitment PCS session ...");
     let honest_k1 = run_protocol(1, Tamper::None, true, 0);
     eprintln!(
-        "  accepted={} prove={:.3}s verify={:.3}s PCS={:.3}s bytes={}",
+        "  accepted={} prove={:.3}s verify={:.3}s PCS={:.3}s transcript={} PCS-proof-subset={}",
         honest_k1.accepted,
         honest_k1.prove_s,
         honest_k1.verify_s,
         honest_k1.pcs.open_s,
-        honest_k1.transcript_bytes + honest_k1.pcs.proof_bytes
+        honest_k1.transcript_bytes,
+        honest_k1.pcs.proof_bytes
     );
     eprintln!("X2: honest k=2 proof + 3-commitment PCS session ...");
     let honest_k2 = run_protocol(2, Tamper::None, true, 1);
     eprintln!(
-        "  accepted={} prove={:.3}s verify={:.3}s PCS={:.3}s bytes={}",
+        "  accepted={} prove={:.3}s verify={:.3}s PCS={:.3}s transcript={} PCS-proof-subset={}",
         honest_k2.accepted,
         honest_k2.prove_s,
         honest_k2.verify_s,
         honest_k2.pcs.open_s,
-        honest_k2.transcript_bytes + honest_k2.pcs.proof_bytes
+        honest_k2.transcript_bytes,
+        honest_k2.pcs.proof_bytes
     );
     eprintln!("X2: permanent routing/T1 cheating smokes ...");
     let wrong = run_protocol(1, Tamper::WrongExpertSet, false, 2);

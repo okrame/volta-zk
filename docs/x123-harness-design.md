@@ -1,12 +1,14 @@
 # X1--X3 model-agnostic harness and synthetic MoE design
 
 **Status (2026-07-19): Phase 1 approved; Phase 2 explicitly authorized;
-runtime `ModelConfig` foundation PASS; X1 routing PASS; X2 next.**  The
+runtime `ModelConfig` foundation PASS; X1 routing PASS; X2 FAIL; package
+stopped before X3.**  The
 preregistered design remains binding; implementation evidence and verdicts
 land in the ledger and append-only records.  The foundation passed its binding
 GPT-2 T1 non-regression gate on clean `9a4c688`; X1 passed on clean `6be165f`.
-No X2 or X3 milestone gate claim exists yet, and work remains in the required
-order.
+X2's clean `87ce25b` record passed all functional/session predicates but
+failed the binding symmetric full-correlation band.  Section 7.3 therefore
+stops the package; X3 was not started and has no verdict.
 
 The package is CPU-only.  No pod may be provisioned or contacted, no gpt-oss
 checkpoint may be downloaded or exported, and X4 folding PCS and X5 gpt-oss
@@ -466,6 +468,19 @@ The full-field proxy is gate-eligible only for this pinned synthetic schedule;
 closure replaces it with the measured exact allocation count.  E-mult buckets,
 proof bytes, wall, RSS and verifier wall are reported diagnostics, not hidden
 and not substituted for a predicted counter.
+
+**Measured outcome (clean `87ce25b`): FAIL.**  Both k=1 and k=2 honest
+proofs, the shared TableBank session, three unchanged-P4 commitments, 40
+claims, product/zero closures, golden, allocation/channel parity and every
+cheating smoke pass.  MACs are exactly 316,464.  Logical/padded/site counts
+are 12,523 / 19,346 / 82, ratios 1.0022408963585434 /
+1.001708693626055 / 1.025.  Sub correlations are 350,304 at k=1 and 349,793
+at k=2, ratios 1.058896076416178 / 1.0584264291160843.  Full correlations
+are 12,462 and 12,482 against the frozen 17,040 proxy, ratios
+0.731338028169014 / 0.7325117370892019: both are below 0.80 and therefore
+FAIL.  No band or prediction is changed.  The append-only evidence is
+`benchmarks/results/x2-moe-2026-07-19-87ce25b.json`; per section 7.3, this
+verdict stops the package and X3 was not started.
 
 ## 6. X3 operations pack on the band path
 

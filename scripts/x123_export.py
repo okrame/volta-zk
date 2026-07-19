@@ -47,10 +47,23 @@ X1_EXPERTS: Final = 32
 X1_TOP_K: Final = 4
 X1_ROUTER_REQUANT: Final = 8
 X1_ROUTER_NORM: Final = 12
+X2_T: Final = 7
+X2_LAYERS: Final = 2
+X2_D: Final = 48
+X2_DFF: Final = 80
+X2_Q_HEADS: Final = 6
+X2_KV_HEADS: Final = 2
+X2_HEAD_DIM: Final = 8
+X2_QKV: Final = 80
+X2_EXPERTS: Final = 8
+X2_TOP_K: Final = 2
+X2_VOCAB: Final = 97
+X2_SHIFT: Final = 8
 EXP_IN_LOG2: Final = 10
 EXP_OUT_LOG2: Final = 12
 RECIP_DEN_SHIFT: Final = 6
 RECIP_LOG2: Final = 26
+X2_RECIP_LOG2: Final = 22
 
 
 def sha256(blob: bytes) -> str:
@@ -313,6 +326,438 @@ def x1_golden_bytes() -> bytes:
     return bytes(out)
 
 
+def _requant(values: np.ndarray, shift: int, label: str) -> np.ndarray:
+    values = np.asarray(values, dtype=np.int64)
+    rounded = (values + (1 << (shift - 1))) >> shift
+    if np.any(rounded < I16_MIN) or np.any(rounded > I16_MAX):
+        raise AssertionError(f"X2 {label} requant overflow")
+    return rounded.astype(np.int16)
+
+
+def _x2_luts() -> dict[str, np.ndarray]:
+    signed = np.arange(1 << 16, dtype=np.uint16).view(np.int16).astype(np.float64)
+    exp = round_half_away((1 << EXP_OUT_LOG2) * np.exp2(signed / float(1 << EXP_IN_LOG2)))
+    exp = np.minimum(exp, I16_MAX).astype(np.int16)
+    xr = signed / float(1 << 10)
+    gelu = round_half_away(
+        0.5
+        * xr
+        * (1.0 + np.tanh(0.797_884_560_802_865_4 * (xr + 0.044715 * xr * xr * xr)))
+        * (1 << 10)
+    )
+    gelu = np.clip(gelu, I16_MIN, I16_MAX).astype(np.int16)
+    ln_rsqrt = np.empty(1 << 16, dtype=np.int16)
+    recip = np.empty(1 << 16, dtype=np.int16)
+    for index in range(1 << 16):
+        root = math.isqrt((index + 1) << 7)
+        ln_rsqrt[index] = min(((1 << 18) + root // 2) // root, I16_MAX)
+        den = (index << RECIP_DEN_SHIFT) + (1 << (RECIP_DEN_SHIFT - 1))
+        recip[index] = min(((1 << X2_RECIP_LOG2) + den // 2) // den, I16_MAX)
+    return {"exp": exp, "gelu": gelu, "ln_rsqrt": ln_rsqrt, "recip": recip}
+
+
+def _x2_routes(layer: int) -> np.ndarray:
+    base = np.asarray([[0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [1, 4], [3, 5]], dtype=np.uint8)
+    return ((base.astype(np.uint16) + layer) % X2_EXPERTS).astype(np.uint8)
+
+
+def _x2_embedding() -> np.ndarray:
+    out = np.zeros((X2_VOCAB, X2_D), dtype=np.int16)
+    for token in range(X2_VOCAB):
+        out[token, -1] = (token * 3 + 1) % 7 - 3
+    for token in range(X2_T):
+        out[token, token] = 1024
+    # Canonical pad row for the seven-token low subcube used by the single
+    # synthetic embedding PCS claim; it must not alias a live token-7 row.
+    out[X2_T, :] = 0
+    return out
+
+
+def _x2_pattern(shape: tuple[int, ...], salt: int, modulus: int = 5) -> np.ndarray:
+    size = math.prod(shape)
+    if modulus == 5:
+        values = [((index * (salt * 2 + 3) + 5 * salt + 1) % 5) - 2 for index in range(size)]
+    else:
+        values = [((index * (salt + 1) + 3 * salt + 1) % 3) - 1 for index in range(size)]
+    return np.asarray(values, dtype=np.int16).reshape(shape)
+
+
+def _x2_dense_weights(layer: int) -> dict[str, np.ndarray]:
+    return {
+        "qkv": _x2_pattern((X2_D, X2_QKV), 3 + layer),
+        "attention": _x2_pattern((X2_D, X2_D), 7 + layer),
+    }
+
+
+def _x2_router_weights(layer: int) -> np.ndarray:
+    out = np.full((X2_D, X2_EXPERTS), -1, dtype=np.int16)
+    for token, route in enumerate(_x2_routes(layer)):
+        out[token, :] = -64
+        out[token, int(route[0])] = 160
+        out[token, int(route[1])] = 192
+    return out
+
+
+def _x2_expert_weights(layer: int, expert: int) -> tuple[np.ndarray, np.ndarray]:
+    return (
+        _x2_pattern((X2_D, X2_DFF), 1 + 2 * layer + expert, 3),
+        _x2_pattern((X2_DFF, X2_D), 5 + 3 * layer + expert, 3),
+    )
+
+
+def _x2_layer_norm(values: np.ndarray, luts: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+    values = np.asarray(values, dtype=np.int16)
+    means = np.empty(X2_T, dtype=np.int64)
+    variances = np.empty(X2_T, dtype=np.int64)
+    rin = np.empty(X2_T, dtype=np.int64)
+    rout = np.empty(X2_T, dtype=np.int16)
+    acc = np.empty((X2_T, X2_D), dtype=np.int64)
+    for row in range(X2_T):
+        source = values[row].astype(np.int64)
+        mean = (int(source.sum()) + X2_D // 2) // X2_D
+        variance = (int(np.square(source - mean, dtype=np.int64).sum()) + X2_D // 2) // X2_D
+        table_in = variance >> 7
+        means[row] = mean
+        variances[row] = variance
+        rin[row] = table_in
+        rout[row] = luts["ln_rsqrt"][table_in]
+        acc[row] = (source - mean) * int(rout[row])
+    return {
+        "mean": means,
+        "var": variances,
+        "rin": rin,
+        "rout": rout,
+        "acc": acc,
+        "out": _requant(acc, X2_SHIFT, "layer norm"),
+    }
+
+
+def _x2_dense_attention(
+    source: np.ndarray,
+    weights: dict[str, np.ndarray],
+    luts: dict[str, np.ndarray],
+) -> dict[str, np.ndarray]:
+    ln1 = _x2_layer_norm(source, luts)
+    qkv_acc = ln1["out"].astype(np.int64) @ weights["qkv"].astype(np.int64)
+    qkv = _requant(qkv_acc, X2_SHIFT, "qkv")
+    q = np.ascontiguousarray(qkv[:, :X2_D])
+    k = np.ascontiguousarray(qkv[:, X2_D : X2_D + X2_KV_HEADS * X2_HEAD_DIM])
+    v = np.ascontiguousarray(qkv[:, X2_D + X2_KV_HEADS * X2_HEAD_DIM :])
+    score_acc: list[int] = []
+    score_q: list[int] = []
+    exp_out: list[int] = []
+    denoms: list[int] = []
+    recips: list[int] = []
+    softmax: list[int] = []
+    av_acc = np.zeros((X2_T, X2_D), dtype=np.int64)
+    av_q = np.zeros((X2_T, X2_D), dtype=np.int16)
+    for head in range(X2_Q_HEADS):
+        kv_head = head // (X2_Q_HEADS // X2_KV_HEADS)
+        qh = q[:, head * X2_HEAD_DIM : (head + 1) * X2_HEAD_DIM]
+        kh = k[:, kv_head * X2_HEAD_DIM : (kv_head + 1) * X2_HEAD_DIM]
+        full_scores = qh.astype(np.int64) @ kh.astype(np.int64).T
+        w = np.zeros((X2_T, X2_T), dtype=np.int16)
+        for row in range(X2_T):
+            row_scores = _requant(full_scores[row, : row + 1], X2_SHIFT, "scores")
+            score_acc.extend(int(value) for value in full_scores[row, : row + 1])
+            score_q.extend(int(value) for value in row_scores)
+            row_exp = luts["exp"][row_scores.astype(np.uint16)]
+            exp_out.extend(int(value) for value in row_exp)
+            denom = int(row_exp.astype(np.int64).sum())
+            reciprocal = int(luts["recip"][denom >> RECIP_DEN_SHIFT])
+            denoms.append(denom)
+            recips.append(reciprocal)
+            row_w = _requant(row_exp.astype(np.int64) * reciprocal, X2_SHIFT, "softmax norm")
+            softmax.extend(int(value) for value in row_w)
+            w[row, : row + 1] = row_w
+        vh = v[:, kv_head * X2_HEAD_DIM : (kv_head + 1) * X2_HEAD_DIM]
+        head_acc = w.astype(np.int64) @ vh.astype(np.int64)
+        av_acc[:, head * X2_HEAD_DIM : (head + 1) * X2_HEAD_DIM] = head_acc
+        av_q[:, head * X2_HEAD_DIM : (head + 1) * X2_HEAD_DIM] = _requant(
+            head_acc, X2_SHIFT, "av"
+        )
+    projection_acc = av_q.astype(np.int64) @ weights["attention"].astype(np.int64)
+    projection = _requant(projection_acc, X2_SHIFT, "attention projection")
+    residual = source.astype(np.int32) + projection.astype(np.int32)
+    if np.any(residual < I16_MIN) or np.any(residual > I16_MAX):
+        raise AssertionError("X2 attention residual overflow")
+    attention_out = residual.astype(np.int16)
+    ln2 = _x2_layer_norm(attention_out, luts)
+    return {
+        "x": np.ascontiguousarray(source),
+        "ln1": ln1,
+        "qkv_acc": qkv_acc,
+        "q": q,
+        "k": k,
+        "v": v,
+        "score_acc": np.asarray(score_acc, dtype=np.int64),
+        "score_q": np.asarray(score_q, dtype=np.int16),
+        "exp": np.asarray(exp_out, dtype=np.int16),
+        "denoms": np.asarray(denoms, dtype=np.int64),
+        "recips": np.asarray(recips, dtype=np.int16),
+        "softmax": np.asarray(softmax, dtype=np.int16),
+        "av_acc": av_acc,
+        "av_q": av_q,
+        "projection_acc": projection_acc,
+        "projection": projection,
+        "attention_out": attention_out,
+        "ln2": ln2,
+    }
+
+
+def _x2_router(
+    source: np.ndarray,
+    weights: np.ndarray,
+    expected: np.ndarray,
+    luts: dict[str, np.ndarray],
+) -> dict[str, np.ndarray]:
+    acc = source.astype(np.int64) @ weights.astype(np.int64)
+    scores = _requant(acc, X2_SHIFT, "router")
+    exp = luts["exp"][scores.astype(np.uint16)]
+    denoms = exp.astype(np.int64).sum(axis=1)
+    rin = (denoms >> RECIP_DEN_SHIFT).astype(np.int16)
+    recips = luts["recip"][rin.astype(np.uint16)]
+    routes = np.empty((X2_T, X2_TOP_K), dtype=np.uint8)
+    theta = np.empty(X2_T, dtype=np.int16)
+    comparisons = np.empty((X2_T, X2_EXPERTS), dtype=np.uint16)
+    route_weights = np.empty((X2_T, X2_TOP_K), dtype=np.int16)
+    for row in range(X2_T):
+        ranked = sorted(
+            range(X2_EXPERTS), key=lambda expert: (int(scores[row, expert]), expert), reverse=True
+        )
+        route = [ranked[1], ranked[0]]
+        routes[row] = route
+        cutoff = route[0]
+        threshold = int(scores[row, cutoff])
+        theta[row] = threshold
+        for expert in range(X2_EXPERTS):
+            if expert in route:
+                value = int(scores[row, expert]) - threshold - int(expert < cutoff)
+            else:
+                value = threshold - int(scores[row, expert]) - int(expert > cutoff)
+            if not 0 <= value < 1 << 16:
+                raise AssertionError("X2 top-k comparison escaped u16")
+            comparisons[row, expert] = value
+        for slot, expert in enumerate(route):
+            route_weights[row, slot] = _requant(
+                np.asarray(int(exp[row, expert]) * int(recips[row]), dtype=np.int64),
+                X2_SHIFT,
+                "router weight",
+            )
+    if not np.array_equal(routes, expected):
+        raise AssertionError("numpy router missed the pinned X2 route fixture")
+    return {
+        "acc": acc,
+        "scores": scores,
+        "exp": exp,
+        "denoms": denoms,
+        "rin": rin,
+        "recips": recips,
+        "routes": routes,
+        "theta": theta,
+        "comparisons": comparisons,
+        "route_weights": route_weights,
+    }
+
+
+def _x2_experts(
+    source: np.ndarray,
+    routes: np.ndarray,
+    layer: int,
+    luts: dict[str, np.ndarray],
+) -> tuple[list[dict[str, np.ndarray]], np.ndarray]:
+    jobs: list[list[tuple[int, int]]] = [[] for _ in range(X2_EXPERTS)]
+    for token in range(X2_T):
+        for slot in range(X2_TOP_K):
+            jobs[int(routes[token, slot])].append((token, slot))
+    route_values = np.empty((X2_T, X2_TOP_K, X2_D), dtype=np.int16)
+    experts: list[dict[str, np.ndarray]] = []
+    for expert, rows in enumerate(jobs):
+        up_weight, down_weight = _x2_expert_weights(layer, expert)
+        gathered = np.ascontiguousarray(np.stack([source[token] for token, _ in rows]))
+        up_acc = gathered.astype(np.int64) @ up_weight.astype(np.int64)
+        up_q = _requant(up_acc, X2_SHIFT, "expert up")
+        gelu = luts["gelu"][up_q.astype(np.uint16)]
+        down_acc = gelu.astype(np.int64) @ down_weight.astype(np.int64)
+        down_q = _requant(down_acc, X2_SHIFT, "expert down")
+        for job_row, (token, slot) in enumerate(rows):
+            route_values[token, slot] = down_q[job_row]
+        experts.append(
+            {
+                "rows": np.asarray(rows, dtype=np.uint8),
+                "up_weight": up_weight,
+                "down_weight": down_weight,
+                "gathered": gathered,
+                "up_acc": up_acc,
+                "up_q": up_q,
+                "gelu": gelu,
+                "down_acc": down_acc,
+                "down_q": down_q,
+            }
+        )
+    return experts, route_values
+
+
+def x2_moe_arrays() -> dict[str, object]:
+    luts = _x2_luts()
+    tokens = np.arange(X2_T, dtype=np.uint16)
+    embedding = _x2_embedding()
+    embedding_acc = embedding[tokens].astype(np.int64) << X2_SHIFT
+    current = _requant(embedding_acc, X2_SHIFT, "embedding")
+    layers: list[dict[str, object]] = []
+    seam_acc = np.empty(0, dtype=np.int64)
+    seam_out = np.empty(0, dtype=np.int16)
+    for layer in range(X2_LAYERS):
+        dense_weight = _x2_dense_weights(layer)
+        dense = _x2_dense_attention(current, dense_weight, luts)
+        router_weight = _x2_router_weights(layer)
+        router = _x2_router(current, router_weight, _x2_routes(layer), luts)
+        experts, route_values = _x2_experts(dense["ln2"]["out"], router["routes"], layer, luts)
+        combine_acc = (dense["projection"].astype(np.int64) << X2_SHIFT).copy()
+        for slot in range(X2_TOP_K):
+            combine_acc += (
+                router["route_weights"][:, slot].astype(np.int64)[:, None]
+                * route_values[:, slot].astype(np.int64)
+            )
+        combine_q = _requant(combine_acc, X2_SHIFT, "MoE combine")
+        output_wide = current.astype(np.int32) + combine_q.astype(np.int32)
+        if np.any(output_wide < I16_MIN) or np.any(output_wide > I16_MAX):
+            raise AssertionError("X2 layer residual overflow")
+        output = output_wide.astype(np.int16)
+        layers.append(
+            {
+                "dense_weight": dense_weight,
+                "router_weight": router_weight,
+                "dense": dense,
+                "router": router,
+                "experts": experts,
+                "route_values": route_values,
+                "combine_acc": combine_acc,
+                "combine_q": combine_q,
+                "output": output,
+            }
+        )
+        if layer + 1 < X2_LAYERS:
+            seam_acc = output.astype(np.int64) << X2_SHIFT
+            seam_out = _requant(seam_acc, X2_SHIFT, "residual seam")
+            current = seam_out
+        else:
+            current = output
+    output_weight = np.asarray(
+        [((index * 7 + 3) % 5) - 2 for index in range(X2_D * X2_VOCAB)], dtype=np.int16
+    ).reshape(X2_D, X2_VOCAB)
+    final_input = current[-1].copy()
+    final_ln = _x2_layer_norm(np.repeat(final_input[None, :], X2_T, axis=0), luts)
+    # Rust's final norm computes only one row; take the identical first row.
+    final = {
+        "input": final_input,
+        "mean": int(final_ln["mean"][0]),
+        "var": int(final_ln["var"][0]),
+        "rin": int(final_ln["rin"][0]),
+        "rout": int(final_ln["rout"][0]),
+        "acc": final_ln["acc"][0],
+        "out": final_ln["out"][0],
+    }
+    final["logits"] = final["out"].astype(np.int64) @ output_weight.astype(np.int64)
+    return {
+        "tokens": tokens,
+        "embedding": embedding,
+        "embedding_acc": embedding_acc,
+        "embedding_out": _requant(embedding_acc, X2_SHIFT, "embedding"),
+        "layers": layers,
+        "seam_acc": seam_acc,
+        "seam_out": seam_out,
+        "output_weight": output_weight,
+        "final": final,
+    }
+
+
+def _append_array(out: bytearray, values: np.ndarray, dtype: str) -> None:
+    out += np.ascontiguousarray(values, dtype=dtype).tobytes(order="C")
+
+
+def x2_golden_bytes() -> bytes:
+    fixture = x2_moe_arrays()
+    out = bytearray(b"VOLTA-X2-GOLD-V1")
+    out += struct.pack(
+        "<11I",
+        X2_T,
+        X2_LAYERS,
+        X2_D,
+        X2_DFF,
+        X2_Q_HEADS,
+        X2_KV_HEADS,
+        X2_HEAD_DIM,
+        X2_EXPERTS,
+        X2_TOP_K,
+        X2_VOCAB,
+        X2_SHIFT,
+    )
+    _append_array(out, fixture["tokens"], "<u2")
+    _append_array(out, fixture["embedding"], "<i2")
+    _append_array(out, fixture["embedding_acc"], "<i8")
+    _append_array(out, fixture["embedding_out"], "<i2")
+    for layer in fixture["layers"]:
+        dense = layer["dense"]
+        router = layer["router"]
+        _append_array(out, layer["dense_weight"]["qkv"], "<i2")
+        _append_array(out, layer["dense_weight"]["attention"], "<i2")
+        _append_array(out, layer["router_weight"], "<i2")
+        _append_array(out, dense["x"], "<i2")
+        for name, dtype in (
+            ("mean", "<i8"), ("var", "<i8"), ("rin", "<i8"), ("rout", "<i2"),
+            ("acc", "<i8"), ("out", "<i2")
+        ):
+            _append_array(out, dense["ln1"][name], dtype)
+        for name, dtype in (
+            ("qkv_acc", "<i8"), ("q", "<i2"), ("k", "<i2"), ("v", "<i2"),
+            ("score_acc", "<i8"), ("score_q", "<i2"), ("exp", "<i2"),
+            ("denoms", "<i8"), ("recips", "<i2"), ("softmax", "<i2"),
+            ("av_acc", "<i8"), ("av_q", "<i2"), ("projection_acc", "<i8"),
+            ("projection", "<i2"), ("attention_out", "<i2"),
+        ):
+            _append_array(out, dense[name], dtype)
+        for name, dtype in (
+            ("mean", "<i8"), ("var", "<i8"), ("rin", "<i8"), ("rout", "<i2"),
+            ("acc", "<i8"), ("out", "<i2")
+        ):
+            _append_array(out, dense["ln2"][name], dtype)
+        for name, dtype in (
+            ("acc", "<i8"), ("scores", "<i2"), ("exp", "<i2"),
+            ("denoms", "<i8"), ("rin", "<i2"), ("recips", "<i2"),
+            ("routes", "u1"), ("theta", "<i2"), ("comparisons", "<u2"),
+            ("route_weights", "<i2"),
+        ):
+            _append_array(out, router[name], dtype)
+        for expert in layer["experts"]:
+            out += struct.pack("<I", expert["rows"].shape[0])
+            _append_array(out, expert["rows"], "u1")
+            for name, dtype in (
+                ("up_weight", "<i2"), ("down_weight", "<i2"), ("gathered", "<i2"),
+                ("up_acc", "<i8"), ("up_q", "<i2"), ("gelu", "<i2"),
+                ("down_acc", "<i8"), ("down_q", "<i2"),
+            ):
+                _append_array(out, expert[name], dtype)
+        for name, dtype in (
+            ("route_values", "<i2"), ("combine_acc", "<i8"),
+            ("combine_q", "<i2"), ("output", "<i2"),
+        ):
+            _append_array(out, layer[name], dtype)
+    _append_array(out, fixture["seam_acc"], "<i8")
+    _append_array(out, fixture["seam_out"], "<i2")
+    _append_array(out, fixture["output_weight"], "<i2")
+    final = fixture["final"]
+    _append_array(out, final["input"], "<i2")
+    out += struct.pack("<qq", final["mean"], final["var"])
+    out += struct.pack("<hh", final["rin"], final["rout"])
+    _append_array(out, final["acc"], "<i8")
+    _append_array(out, final["out"], "<i2")
+    _append_array(out, final["logits"], "<i8")
+    _append_array(out, fixture["layers"][-1]["output"], "<i2")
+    _append_array(out, fixture["layers"][-1]["output"], "<i2")
+    return bytes(out)
+
+
 class ToyMoeExporter(ArchitectureExporter):
     architecture = "volta-x123-toy-moe-v1"
 
@@ -376,7 +821,10 @@ class ToyMoeExporter(ArchitectureExporter):
         }
 
     def goldens(self) -> dict[str, bytes]:
-        return {"x1-router-v1.golden.bin": x1_golden_bytes()}
+        return {
+            "x1-router-v1.golden.bin": x1_golden_bytes(),
+            "x2-moe-v1.golden.bin": x2_golden_bytes(),
+        }
 
 
 def artifact_bytes(tensors: list[CalibratedTensor]) -> tuple[bytes, list[dict[str, object]]]:
@@ -492,6 +940,11 @@ def self_test() -> None:
     assert tied["routes"][0].tolist() == expected.tolist()
     assert np.all(tied["comparisons"] == 0)
     assert int(normal["comparisons"].max()) <= 65535
+    x2 = x2_moe_arrays()
+    assert np.array_equal(x2["layers"][0]["router"]["routes"], _x2_routes(0))
+    assert np.array_equal(x2["layers"][1]["router"]["routes"], _x2_routes(1))
+    final_layer = np.ascontiguousarray(x2["layers"][-1]["output"], dtype="<i2").tobytes()
+    assert x2_golden_bytes().endswith(final_layer + final_layer)
     print("x123 exporter self-test OK")
 
 

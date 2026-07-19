@@ -53,3 +53,9 @@ def test_x1_golden_header_and_crafted_tie_are_external_binary_data() -> None:
     # by its 32 little-endian u16 comparison limbs.
     assert blob[-68:-64] == bytes([28, 29, 30, 31])
     assert blob[-64:] == bytes(64)
+
+
+def test_x2_golden_header_pins_non_power_of_two_moe_shape() -> None:
+    blob = (FIXTURES / "x2-moe-v1.golden.bin").read_bytes()
+    assert blob[:16] == b"VOLTA-X2-GOLD-V1"
+    assert struct.unpack_from("<11I", blob, 16) == (7, 2, 48, 80, 6, 2, 8, 8, 2, 97, 8)

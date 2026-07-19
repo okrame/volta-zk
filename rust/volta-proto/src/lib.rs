@@ -19,6 +19,8 @@ pub mod sumcheck_clear;
 pub mod thaler;
 pub mod wires;
 pub mod x1_routing;
+pub mod x2_moe;
+pub mod x2_proof;
 
 pub use block_proof::{
     build_attn_wires, cattn_permuted, layer_content_keys, layer_dom_base, prove_layer_phase1,
@@ -56,4 +58,14 @@ pub use x1_routing::{
     verify_x1_routing, x1_content_keys, x1_model_config, X1LayerWitness, X1RoutingFixture,
     X1RoutingProof, X1RoutingProverOut, X1RoutingVerifierOut, X1_D, X1_EXPERTS, X1_LAYERS, X1_T,
     X1_TOP_K,
+};
+pub use x2_moe::{
+    build_x2_moe_fixture, encode_x2_golden, eval_i16_matrix, x2_lookup_counts, x2_model_config,
+    x2_native_operation_counts, x2_native_top2_d1, x2_public_routes, X2ExpertWeights,
+    X2ExpertWitness, X2LayerWeights, X2LayerWitness, X2MoeFixture, X2RouterWitness, X2_D, X2_DFF,
+    X2_EXPERTS, X2_HEAD_DIM, X2_KV_HEADS, X2_LAYERS, X2_LOGICAL_LOOKUPS, X2_LOOKUP_SITES,
+    X2_NATIVE_MACS, X2_PADDED_LOOKUPS, X2_QKV, X2_Q_HEADS, X2_SHIFT, X2_T, X2_TOP_K, X2_VOCAB,
+};
+pub use x2_proof::{
+    prove_x2_moe, verify_x2_moe, x2_content_keys, X2MoeProof, X2MoeProverOut, X2MoeVerifierOut,
 };

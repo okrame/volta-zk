@@ -1,9 +1,10 @@
 # X1--X3 model-agnostic harness and synthetic MoE design
 
-**Status (2026-07-19): Phase 1 approved; Phase 2 explicitly authorized.**
-This document is design-only except for the analytic synthetic profile added
-to `scripts/budget_moe.py`.  It makes no X1, X2 or X3 gate claim.  Phase 2
-starts with the runtime `ModelConfig` foundation and its binding GPT-2 T1
+**Status (2026-07-19): Phase 1 approved; Phase 2 explicitly authorized and
+the runtime foundation is in progress.**  The preregistered design remains
+binding; implementation evidence and verdicts land in the ledger and
+append-only records.  No X1, X2 or X3 gate claim exists yet.  Phase 2 starts
+with the runtime `ModelConfig` foundation and its binding GPT-2 T1
 non-regression gate; no MoE code may precede that PASS.
 
 The package is CPU-only.  No pod may be provisioned or contacted, no gpt-oss
@@ -40,8 +41,9 @@ The following are hard stops:
   public-linear folds, existing range/requant limbs, LogUp/TableBank,
   Hadamard/`Pi_Prod`, `Pi_ZeroBatch`, C3b-style private comparison, existing
   band/cache authentication, PCS `BlockClaim`, or the proved T1 eq reducer;
-- the GPT-2 compatibility run differs by one byte, counter, allocation
-  digest, channel digest or golden value;
+- the GPT-2 compatibility run differs by one byte, counter, deterministic
+  allocation-schedule digest, required within-run allocation/channel parity
+  verdict or golden value;
 - a milestone gate returns FAIL;
 - implementation would alter Lean, the PCG tuple/default/lifecycle, PCS
   parameters, one-opening-per-response policy, 8-byte corrections, private
@@ -150,9 +152,16 @@ post-refactor run must satisfy all of the following simultaneously:
 - sub/full correlations are `4,793,590 / 181,933`, product/zero closures are
   `21,667 / 8,170`, and E-mult buckets are
   `2,800,595,736.8 / 114,852,961.2`;
-- every operation counter, label allocation, correlation allocation digest,
-  prover/verifier channel digest, PCS claim/block map and proof-section length
+- every operation counter, label allocation, deterministic per-stage
+  correlation-allocation digest, PCS claim/block map and proof-section length
   equals the clean T1 reference;
+- every existing mock/real-prepass and prover/verifier allocation/channel
+  digest parity check remains present and true.  The literal lifecycle/setup
+  digest hex strings are deliberately fresh because they start from the
+  connection/response binding, and the correlation-spool digest is derived
+  from fresh entropy; those session-bound values must not equal a prior run
+  byte-for-byte.  AES-NI, ARMv8-CE and portable AES dispatch labels likewise
+  identify function-equivalent hardware paths rather than transcript fields;
 - the 50-token greedy decode and all golden tensors remain bit-exact;
 - normal/chunked acceptance, malicious/replay/non-power-of-two tests,
   mock/real parity, both production leakage smokes, `cargo test --workspace`

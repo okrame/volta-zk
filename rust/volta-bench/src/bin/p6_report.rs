@@ -1425,10 +1425,13 @@ fn select_json_fields(source: &serde_json::Value, fields: &[&str]) -> serde_json
 }
 
 /// Exact, timing-free T1 compatibility surface.  It contains every public
-/// output, proof-section/label length, logical counter, setup/allocation
-/// schedule digest and prover/verifier channel-ledger digest emitted by the
-/// clean reference.  Entropy-derived correlation contents and wall timings
-/// are deliberately outside a byte-level schedule comparison.
+/// output, proof-section/label length, logical counter, deterministic stage
+/// allocation digest and the existing mock/real plus prover/verifier digest
+/// parity verdicts emitted by the clean reference. Cross-run lifecycle and
+/// setup digests start from a fresh connection binding by contract and must
+/// not be compared as literal hex strings. Entropy-derived correlation
+/// contents, hardware AES dispatch labels and wall timings are likewise
+/// outside a byte-level schedule comparison.
 fn x123_foundation_projection(source: &serde_json::Value) -> serde_json::Value {
     let fields = [
         "report_schema_version",
@@ -1488,7 +1491,6 @@ fn x123_foundation_projection(source: &serde_json::Value) -> serde_json::Value {
         "corr_full_corrs",
         "pcg_backend",
         "ggm_prg",
-        "ggm_aes_feature",
         "pcg_setup_rayon_threads",
         "pcg_production_ready",
         "pcg_setup_comm_bytes",
@@ -1517,7 +1519,6 @@ fn x123_foundation_projection(source: &serde_json::Value) -> serde_json::Value {
         "pcg_channel_transcripts_match",
         "pcg_mock_prepass_counters_match",
         "pcg_allocation_hash_match",
-        "fase_d_lifecycle",
     ];
     let mut selected = select_json_fields(source, &fields);
     let selected = selected.as_object_mut().unwrap();
@@ -1530,11 +1531,9 @@ fn x123_foundation_projection(source: &serde_json::Value) -> serde_json::Value {
             "capacity",
             "comm",
             "ggm_prg",
-            "ggm_aes_feature",
             "pcg_setup_rayon_threads",
             "one_connection_base_phase",
             "pcg_production_ready",
-            "setup_allocation_digest",
             "maximum_prover_buffer_high_water_bytes",
             "g2_capacity_gate_pass",
             "g2_traffic_gate_pass",
@@ -1574,6 +1573,24 @@ fn x123_foundation_projection(source: &serde_json::Value) -> serde_json::Value {
         .insert("stages".to_owned(), serde_json::Value::Array(stages));
     selected.insert("fase_d_setup".to_owned(), setup_selected);
 
+    let lifecycle =
+        source.get("fase_d_lifecycle").expect("foundation reference missing fase_d_lifecycle");
+    selected.insert(
+        "fase_d_lifecycle".to_owned(),
+        select_json_fields(
+            lifecycle,
+            &[
+                "completed_responses",
+                "response_base_ot_bytes",
+                "response_ot_extension_bytes",
+                "responses_after_first_repeat_base_ot_bytes",
+                "responses_after_first_repeat_ot_extension_bytes",
+                "stage_counters",
+                "terminal_state",
+            ],
+        ),
+    );
+
     let commitments = source
         .get("pcs_commitments")
         .and_then(serde_json::Value::as_array)
@@ -1601,6 +1618,11 @@ fn json_digest(value: &serde_json::Value) -> String {
     blake3::hash(&serde_json::to_vec(value).expect("serialize compatibility projection"))
         .to_hex()
         .to_string()
+}
+
+fn json_bytes_equal(left: &serde_json::Value, right: &serde_json::Value) -> bool {
+    serde_json::to_vec(left).expect("serialize left compatibility section")
+        == serde_json::to_vec(right).expect("serialize right compatibility section")
 }
 
 /// One full response session: prove + verify + PCS + closures. Returns
@@ -5075,8 +5097,9 @@ fn main() {
             .as_object()
             .unwrap()
             .iter()
-            .filter_map(|(section, observed)| {
-                (reference_projection.get(section) != Some(observed)).then(|| section.clone())
+            .filter_map(|(section, observed)| match reference_projection.get(section) {
+                Some(reference) if json_bytes_equal(reference, observed) => None,
+                _ => Some(section.clone()),
             })
             .collect::<Vec<_>>();
         let exact_match = mismatch_sections.is_empty();
@@ -5168,7 +5191,45 @@ mod report_tests {
         let reference: serde_json::Value =
             serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         let digest = json_digest(&x123_foundation_projection(&reference));
-        assert_eq!(digest, "146186efaee01c4af6502e3e77a64b68099099c84b34f46634dc3b28b5c552fc");
+        assert_eq!(digest, "e02838130d35cead251d5dddbafbe20389a098d0107cdb30d7cc3cc897d0648c");
+
+        let diagnostic_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../benchmarks/results")
+            .join("x1-foundation-2026-07-19-370023b.json");
+        let diagnostic: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(diagnostic_path).unwrap()).unwrap();
+        assert!(
+            json_bytes_equal(
+                &x123_foundation_projection(&reference),
+                &x123_foundation_projection(&diagnostic)
+            ),
+            "the retained first-run diagnostic differs only outside the provider-contract projection"
+        );
+
+        let mut fresh_session = reference.clone();
+        fresh_session["ggm_aes_feature"] = serde_json::json!("armv8-ce");
+        fresh_session["fase_d_setup"]["ggm_aes_feature"] = serde_json::json!("armv8-ce");
+        fresh_session["fase_d_setup"]["setup_allocation_digest"] =
+            serde_json::json!("fresh-session-bound-setup-digest");
+        fresh_session["fase_d_setup"]["correlation_spool_digest"] =
+            serde_json::json!("fresh-entropy-derived-spool-digest");
+        fresh_session["fase_d_lifecycle"]["allocation_digest"] =
+            serde_json::json!("fresh-session-bound-allocation-digest");
+        fresh_session["fase_d_lifecycle"]["channel_ledger_digest"] =
+            serde_json::json!("fresh-session-bound-channel-digest");
+        assert_eq!(
+            x123_foundation_projection(&reference),
+            x123_foundation_projection(&fresh_session),
+            "fresh connection/entropy and function-identical AES dispatch are not cross-run bytes"
+        );
+
+        fresh_session["fase_d_setup"]["stages"][0]["allocation_digest"] =
+            serde_json::json!("wrong-deterministic-stage-schedule");
+        assert_ne!(
+            x123_foundation_projection(&reference),
+            x123_foundation_projection(&fresh_session),
+            "the deterministic stage allocation schedule remains binding"
+        );
     }
 
     #[test]

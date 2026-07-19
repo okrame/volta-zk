@@ -115,6 +115,46 @@ constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
 
+- **2026-07-19 (X1 foundation storage incident and provider-contract
+  comparator correction; verdict still pending)**: the first production-size
+  foundation attempt placed the **4,584,443,640-B / 114,611,091-entry** fase-D
+  correlation spool below `/tmp`.  On this VM `/tmp` is a 5.9-GiB tmpfs, so
+  the spool consumed RAM and the process ended after its authorization had
+  been durably burned.  It emitted no JSON, the connection/authorization is
+  not reused, and no protocol state was recovered.  All subsequent
+  production-size CPU records use a fresh durable store and disk-backed
+  `TMPDIR` below `/var/tmp`; this is a storage-only correction and the
+  four-worker protocol schedule is unchanged.
+
+  The next clean `370023b` execution completed and is retained append-only as
+  `x1-foundation-2026-07-19-370023b.json`.  Its existing T1 gates are green:
+  accepted/golden/chunked, exact **84,544,352 B** response,
+  **38,348,720 B** authentication corrections, **4,793,590 / 181,933**
+  sub/full correlations and G1/G2/G3 exact-counter predicates all pass.  The
+  newly added X1 cross-run comparator nevertheless reported false.  Before
+  assigning a foundation verdict, inspection found three harness errors: it
+  compared lifecycle/setup digest hex strings that the frozen provider
+  contract deliberately seeds from a fresh connection/response binding; it
+  compared the hardware dispatch label `aes-ni` against function-identical
+  `armv8-ce`; and direct `serde_json::Number` equality distinguished parsed
+  and in-memory representations of equal floating-point values.  The
+  deterministic per-stage allocation-schedule digest is unchanged at
+  `8af19ba8054ecd33f8e220100567890068c1a4b92bdeb6e171d3c3adb105fc40`,
+  and all existing mock/real-prepass plus prover/verifier allocation/channel
+  parity predicates are true.
+
+  The X1 compatibility projection is therefore corrected to the already
+  binding provider semantics: exact output bytes, labels, counters, PCS map,
+  proof sections and deterministic stage schedule; exact true parity
+  predicates within the fresh session; no literal cross-run equality for
+  session/entropy-derived digests or hardware dispatch names.  Section-level
+  comparison uses canonical serialized JSON bytes.  The retained diagnostic
+  projects identically to the T1 reference under that contract, and a
+  permanent regression test pins the projection digest.  This restores the
+  preregistered provider contract rather than rebaselining or relaxing any
+  byte/counter gate.  A new clean run from a fresh store is required before a
+  foundation PASS or any X1 routing code.
+
 - **2026-07-19 (X1--X3 Phase 2 explicitly approved; foundation starts;
   review clarifications pinned)**: the user approved Phase 2 under the existing
   CPU-only/no-pod and no-new-argument-class boundaries.  The router's native
@@ -146,8 +186,11 @@ constant factors hold. That constant factor is what P3/P4 measure.
   invariants.  Before any X1 code, the GPT-2 T1 path must reproduce the clean
   reference byte-for-byte at **84,544,352 B**, including the exact
   28,778,208 / 12,492,256 / 43,273,888-B phase/PCS split, all counters,
-  allocation/channel digests, 50-token golden and full workspace.  The gate
-  has zero tolerance and cannot be rebaselined inside X1.
+  deterministic allocation-schedule digest, all existing within-session
+  allocation/channel parity predicates, 50-token golden and full workspace.
+  Fresh connection/response and entropy-derived digest hex strings are
+  required to be fresh rather than cross-run-equal, per the frozen provider
+  contract.  The gate has zero tolerance and cannot be rebaselined inside X1.
 
   **Exporter contract.**  Per-architecture adapters share one calibration,
   canonical-artifact and golden framework.  A deterministic toy adapter will

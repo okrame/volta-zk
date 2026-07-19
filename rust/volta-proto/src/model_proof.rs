@@ -84,7 +84,7 @@ use volta_accel::{
 };
 use volta_field::{Fp, Fp2};
 use volta_gpt2::{
-    BandModelWitness, Gpt2Model, LayerI16Field, ModelWeightField, ModelWitness,
+    BandModelWitness, ConfigBinding, Gpt2Model, LayerI16Field, ModelWeightField, ModelWitness,
     ResidentBandModelWitness, ResidentGpt2Model, ResidentLayerView, ResidentModelWitness, D, H, L,
     NPOS, VOCAB,
 };
@@ -2639,6 +2639,12 @@ fn prove_response_impl(
     private_logits: bool,
     boundary_thinning: bool,
 ) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
+    assert!(
+        model.config.binding == ConfigBinding::LegacyImplicit
+            && model.config.is_legacy_gpt2_geometry()
+            && model.validate_layout().is_ok(),
+        "the frozen proof schedule accepts only the validated legacy GPT-2 profile"
+    );
     let t = wit.t;
     assert!(
         chunks.len() <= MAX_RESPONSE_CHUNKS,
@@ -3975,6 +3981,9 @@ fn preflight_verify_response_public(
     if t < 2
         || t > NPOS
         || t > model.p.tokens.len()
+        || model.config.binding != ConfigBinding::LegacyImplicit
+        || !model.config.is_legacy_gpt2_geometry()
+        || model.validate_layout().is_err()
         || model.layers.len() != L
         || (!private_logits && logits.len() != VOCAB)
         || (private_logits && (!logits.is_empty() || chunks.is_empty()))
@@ -3985,8 +3994,8 @@ fn preflight_verify_response_public(
         || proof.private_argmax.is_some() != private_logits
         || !(1..=16).contains(&model.p.shift_embed)
         || global_shifts.into_iter().any(|shift| shift > 32)
-        || model.p.shift_attn_proj.into_iter().any(|shift| shift > 32)
-        || model.p.shift_ffn_down.into_iter().any(|shift| shift > 32)
+        || model.p.shift_attn_proj.iter().copied().any(|shift| shift > 32)
+        || model.p.shift_ffn_down.iter().copied().any(|shift| shift > 32)
     {
         return None;
     }
@@ -3994,7 +4003,7 @@ fn preflight_verify_response_public(
     if proof
         .seams
         .iter()
-        .zip(model.p.seam_shifts)
+        .zip(model.p.seam_shifts.iter().copied())
         .any(|(seam, shift)| shift > 16 || seam.is_some() != (shift > 0))
         || proof.embed.out_corr.len() != t.checked_mul(D)?
         || proof.final_ln.out_corr.len() != 2usize.checked_mul(D)?
@@ -4030,7 +4039,7 @@ fn preflight_verify_response_public(
             || chunk_proof
                 .seams
                 .iter()
-                .zip(model.p.seam_shifts)
+                .zip(model.p.seam_shifts.iter().copied())
                 .any(|(seam, shift)| seam.is_some() != (shift > 0))
             || chunk_proof.embed.out_corr.len() != chunk_boundary_len
             || chunk_proof.fin_out_corr.len() != chunk_boundary_len

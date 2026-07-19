@@ -9,6 +9,7 @@ default = []
 cuda = ["volta-accel/cuda"]
 
 [dependencies]
+blake3 = { workspace = true }
 volta-accel = { workspace = true }
 volta-field = { workspace = true }
 rayon = { workspace = true }

@@ -689,6 +689,7 @@ dependencies = [
 name = "volta-gpt2"
 version = "0.0.0"
 dependencies = [
+ "blake3",
  "rayon",
  "volta-accel",
  "volta-field",

@@ -11,6 +11,9 @@
 //! in debug AND release — that the pre-clamp value already fits i16. The
 //! synthetic weights/scales below are sized so this holds at T = 100.
 
+use crate::config::{
+    ActivationKind, AttentionMode, LayerShiftSchedule, ModelConfig, NonlinearTableConfig, NormKind,
+};
 use crate::gemm::gemm_i64_with_backend;
 use crate::luts::{LutParams, Luts};
 use std::time::Instant;
@@ -241,31 +244,47 @@ fn splitmix64(state: &mut u64) -> u64 {
 /// biases in [-128, 127]. With activations ~±2^10 this keeps every GEMM
 /// accumulator ≳4 bits below the requant-shifted i16 limit at T = 100.
 pub fn synthetic_weights(seed: u64) -> LayerWeights {
+    synthetic_weights_for_config(seed, &ModelConfig::gpt2_small())
+}
+
+/// Deterministic synthetic weights for a validated dense GELU configuration.
+pub fn synthetic_weights_for_config(seed: u64, config: &ModelConfig) -> LayerWeights {
+    config.validate().expect("synthetic ModelConfig must validate");
+    assert_eq!(config.activation, ActivationKind::Gelu);
+    assert_eq!(config.n_experts, 0);
+    let d = config.d_model;
+    let dff = config.d_ff;
+    let qkv = config.qkv_dim();
     let mut st = seed;
     let mut mat = |len: usize| -> Vec<i16> {
         (0..len).map(|_| (splitmix64(&mut st) % 127) as i16 - 63).collect()
     };
-    let c_attn = mat(D * 3 * D);
-    let attn_proj = mat(D * D);
-    let ffn_up = mat(D * DFF);
-    let ffn_down = mat(DFF * D);
+    let c_attn = mat(d * qkv);
+    let attn_proj = mat(config.q_dim() * d);
+    let ffn_up = mat(d * dff);
+    let ffn_down = mat(dff * d);
     let mut gains = |len: usize| -> Vec<i16> {
         (0..len).map(|_| 48 + (splitmix64(&mut st) % 33) as i16).collect()
     };
-    let ln1_gain = gains(D);
-    let ln2_gain = gains(D);
+    let ln1_gain = gains(d);
+    let ln2_gain = gains(d);
     let mut biases = |len: usize| -> Vec<i16> {
         (0..len).map(|_| (splitmix64(&mut st) % 256) as i16 - 128).collect()
     };
-    let ln1_bias = biases(D);
-    let ln2_bias = biases(D);
+    let ln1_bias = biases(d);
+    let ln2_bias = biases(d);
     LayerWeights { c_attn, attn_proj, ffn_up, ffn_down, ln1_gain, ln1_bias, ln2_gain, ln2_bias }
 }
 
 /// Deterministic synthetic layer input (T × d, uniform in [-1024, 1023]).
 pub fn synthetic_input(seed: u64, t: usize) -> Vec<i16> {
+    synthetic_input_for_config(seed, t, &ModelConfig::gpt2_small())
+}
+
+pub fn synthetic_input_for_config(seed: u64, t: usize, config: &ModelConfig) -> Vec<i16> {
+    config.validate().expect("synthetic ModelConfig must validate");
     let mut st = seed ^ 0xA5A5_A5A5_A5A5_A5A5;
-    (0..t * D).map(|_| (splitmix64(&mut st) % 2048) as i16 - 1024).collect()
+    (0..t * config.d_model).map(|_| (splitmix64(&mut st) % 2048) as i16 - 1024).collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -362,21 +381,25 @@ pub(crate) fn layer_norm(
     gain: &[i16],
     bias: &[i16],
     luts: &Luts,
+    params: LutParams,
     t: usize,
     rsqrt_trace: &mut LookupTrace,
     norm_trace: &mut LookupTrace,
 ) -> LnOut {
-    let p = &luts.params;
-    let d = D as i64;
+    let p = &params;
+    assert_eq!(gain.len(), bias.len(), "LayerNorm gain/bias width mismatch");
+    let width = gain.len();
+    assert!(width > 0 && x.len() == t * width, "LayerNorm input shape mismatch");
+    let d = width as i64;
     let mut mean = Vec::with_capacity(t);
     let mut var = Vec::with_capacity(t);
     let mut rsqrt_in = Vec::with_capacity(t);
     let mut rsqrt_out = Vec::with_capacity(t);
-    let mut acc_out = vec![0i64; t * D];
-    let mut out = vec![0i16; t * D];
+    let mut acc_out = vec![0i64; t * width];
+    let mut out = vec![0i16; t * width];
 
     for i in 0..t {
-        let row = &x[i * D..(i + 1) * D];
+        let row = &x[i * width..(i + 1) * width];
         let sum: i64 = row.iter().map(|&v| v as i64).sum();
         // Round-half-up division by d (same convention as requant's
         // (acc + half) >> shift, i.e. floor((x + d/2)/d)).
@@ -389,11 +412,11 @@ pub(crate) fn layer_norm(
         let r = luts.ln_rsqrt[vin as usize];
         rsqrt_trace.push(vin, r, vin as usize);
 
-        for j in 0..D {
+        for j in 0..width {
             let dev = row[j] as i64 - m;
             let acc = dev * r as i64 * gain[j] as i64 + ((bias[j] as i64) << p.shift_ln_norm);
-            acc_out[i * D + j] = acc;
-            out[i * D + j] =
+            acc_out[i * width + j] = acc;
+            out[i * width + j] =
                 requant_into(norm_trace, TableId::LnNormRequant.name(), acc, p.shift_ln_norm);
         }
         mean.push(m);
@@ -464,14 +487,132 @@ pub fn forward_layer_with_backend(
     t: usize,
     backend: &mut Backend,
 ) -> Result<LayerWitness, AccelError> {
+    let mut config = ModelConfig::gpt2_small();
+    config.nonlinear_tables = nonlinear_table_config(params);
+    for schedule in &mut config.layer_shifts {
+        *schedule = dense_layer_schedule(params);
+    }
+    forward_layer_with_config_backend(&config, 0, x_in, w, biases, luts, params, t, backend)
+}
+
+fn nonlinear_table_config(params: LutParams) -> NonlinearTableConfig {
+    NonlinearTableConfig {
+        ln_var_shift: params.ln_var_shift,
+        ln_rsqrt_log2: params.ln_rsqrt_log2,
+        exp_in_log2: params.exp_in_log2,
+        exp_out_log2: params.exp_out_log2,
+        recip_den_shift: params.recip_den_shift,
+        recip_log2: params.recip_log2,
+        gelu_scale_log2: params.gelu_scale_log2,
+        softmax_row_shift: params.softmax_row_shift,
+    }
+}
+
+fn dense_layer_schedule(params: LutParams) -> LayerShiftSchedule {
+    LayerShiftSchedule {
+        layer_norm: params.shift_ln_norm,
+        qkv: params.shift_qkv,
+        scores: params.shift_scores,
+        softmax_norm: params.shift_softmax_norm,
+        av: params.shift_av,
+        attention_out: params.shift_attn_proj,
+        ffn_up: params.shift_ffn_up,
+        ffn_down: params.shift_ffn_down,
+        ..LayerShiftSchedule::default()
+    }
+}
+
+pub fn forward_layer_with_config(
+    config: &ModelConfig,
+    layer: usize,
+    x_in: &[i16],
+    w: &LayerWeights,
+    biases: Option<&GemmBiases>,
+    luts: &Luts,
+    params: LutParams,
+    t: usize,
+) -> LayerWitness {
+    let mut backend = Backend::cpu();
+    forward_layer_with_config_backend(config, layer, x_in, w, biases, luts, params, t, &mut backend)
+        .expect("CPU backend is infallible")
+}
+
+/// Runtime-shape dense GELU layer forward.  The generic harness adds other
+/// operator bodies in later X milestones; unsupported bodies fail before any
+/// backend allocation or transcript activity.
+pub fn forward_layer_with_config_backend(
+    config: &ModelConfig,
+    layer: usize,
+    x_in: &[i16],
+    w: &LayerWeights,
+    biases: Option<&GemmBiases>,
+    luts: &Luts,
+    params: LutParams,
+    t: usize,
+    backend: &mut Backend,
+) -> Result<LayerWitness, AccelError> {
+    config.validate().expect("ModelConfig preflight failed");
+    assert!(layer < config.n_layers, "layer index exceeds ModelConfig");
+    assert_eq!(config.norm, NormKind::LayerNorm, "RMSNorm belongs to X3");
+    assert_eq!(config.activation, ActivationKind::Gelu, "SwiGLU belongs to X3");
+    assert_eq!(config.n_experts, 0, "MoE body belongs to X2");
+    assert_eq!(
+        config.attention[layer],
+        AttentionMode::FullCausal,
+        "sliding lower edge belongs to X3"
+    );
+    assert_eq!(config.attention_sinks_per_q_head, 0, "attention sinks belong to X3");
+    assert!(config.rope.is_none(), "RoPE belongs to X3");
+    assert_eq!(
+        nonlinear_table_config(luts.params),
+        nonlinear_table_config(params),
+        "layer nonlinear parameters disagree with table contents"
+    );
+    assert_eq!(
+        config.nonlinear_tables,
+        nonlinear_table_config(params),
+        "ModelConfig nonlinear table parameters disagree with layer tables"
+    );
+    let configured_shifts = &config.layer_shifts[layer];
+    let supplied_shifts = dense_layer_schedule(params);
+    assert_eq!(configured_shifts.layer_norm, supplied_shifts.layer_norm);
+    assert_eq!(configured_shifts.qkv, supplied_shifts.qkv);
+    assert_eq!(configured_shifts.scores, supplied_shifts.scores);
+    assert_eq!(configured_shifts.softmax_norm, supplied_shifts.softmax_norm);
+    assert_eq!(configured_shifts.av, supplied_shifts.av);
+    assert_eq!(configured_shifts.attention_out, supplied_shifts.attention_out);
+    assert_eq!(configured_shifts.ffn_up, supplied_shifts.ffn_up);
+    assert_eq!(configured_shifts.ffn_down, supplied_shifts.ffn_down);
     if backend.kind() == BackendKind::CudaResident {
         return Err(AccelError::InvalidInput(
             "cuda-resident cannot materialize a staged LayerWitness",
         ));
     }
+    let d = config.d_model;
+    let dff = config.d_ff;
+    let heads = config.n_q_heads;
+    let kv_heads = config.n_kv_heads;
+    let head_dim = config.head_dim;
+    let q_dim = config.q_dim();
+    let kv_dim = config.kv_dim();
+    let qkv_dim = config.qkv_dim();
+    let gqa_group = config.gqa_group_size();
     let stats_before = backend.stats()?;
     let wall_start = Instant::now();
-    assert_eq!(x_in.len(), t * D);
+    assert_eq!(x_in.len(), t * d);
+    assert_eq!(w.c_attn.len(), d * qkv_dim);
+    assert_eq!(w.attn_proj.len(), q_dim * d);
+    assert_eq!(w.ffn_up.len(), d * dff);
+    assert_eq!(w.ffn_down.len(), dff * d);
+    for values in [&w.ln1_gain, &w.ln1_bias, &w.ln2_gain, &w.ln2_bias] {
+        assert_eq!(values.len(), d);
+    }
+    if let Some(biases) = biases {
+        assert_eq!(biases.c_attn.len(), qkv_dim);
+        assert_eq!(biases.attn_proj.len(), d);
+        assert_eq!(biases.ffn_up.len(), dff);
+        assert_eq!(biases.ffn_down.len(), d);
+    }
     let p = params;
     let caus = t * (t + 1) / 2;
 
@@ -495,63 +636,67 @@ pub fn forward_layer_with_backend(
     // ---- LN1 ----
     let ln1 = {
         let (t0, rest) = traces.split_at_mut(1);
-        layer_norm(x_in, &w.ln1_gain, &w.ln1_bias, luts, t, &mut t0[0], &mut rest[0])
+        layer_norm(x_in, &w.ln1_gain, &w.ln1_bias, luts, p, t, &mut t0[0], &mut rest[0])
     };
 
     // ---- fused QKV projection ----
-    let mut qkv_acc = gemm_i64_with_backend(&ln1.out, &w.c_attn, t, D, 3 * D, backend)?;
+    let mut qkv_acc = gemm_i64_with_backend(&ln1.out, &w.c_attn, t, d, qkv_dim, backend)?;
     if let Some(b) = biases {
         // Bias folded at the requant output scale (spec §P5 biases); witness
         // accumulators are post-bias (what the requant lookup consumes).
         for i in 0..t {
-            for j in 0..3 * D {
-                qkv_acc[i * 3 * D + j] += (b.c_attn[j] as i64) << p.shift_qkv;
+            for j in 0..qkv_dim {
+                qkv_acc[i * qkv_dim + j] += (b.c_attn[j] as i64) << p.shift_qkv;
             }
         }
     }
-    let mut q = vec![0i16; t * D];
-    let mut k = vec![0i16; t * D];
-    let mut v = vec![0i16; t * D];
+    let mut q = vec![0i16; t * q_dim];
+    let mut k = vec![0i16; t * kv_dim];
+    let mut v = vec![0i16; t * kv_dim];
     for i in 0..t {
-        for j in 0..3 * D {
+        for j in 0..qkv_dim {
             let y = requant_traced(
                 &mut traces,
                 TableId::RequantQkv,
-                qkv_acc[i * 3 * D + j],
+                qkv_acc[i * qkv_dim + j],
                 p.shift_qkv,
             );
-            match j / D {
-                0 => q[i * D + j] = y,
-                1 => k[i * D + (j - D)] = y,
-                _ => v[i * D + (j - 2 * D)] = y,
+            if j < q_dim {
+                q[i * q_dim + j] = y;
+            } else if j < q_dim + kv_dim {
+                k[i * kv_dim + (j - q_dim)] = y;
+            } else {
+                v[i * kv_dim + (j - q_dim - kv_dim)] = y;
             }
         }
     }
 
     // ---- per-head causal attention ----
-    let mut scores_acc = Vec::with_capacity(H * caus);
-    let mut scores_q = Vec::with_capacity(H * caus);
-    let mut row_shift = Vec::with_capacity(H * t);
-    let mut exp_out = Vec::with_capacity(H * caus);
-    let mut denoms = Vec::with_capacity(H * t);
-    let mut recips = Vec::with_capacity(H * t);
-    let mut softmax_w = Vec::with_capacity(H * caus);
-    let mut av_acc = vec![0i64; t * D];
-    let mut av_q = vec![0i16; t * D];
+    let mut scores_acc = Vec::with_capacity(heads * caus);
+    let mut scores_q = Vec::with_capacity(heads * caus);
+    let mut row_shift = Vec::with_capacity(heads * t);
+    let mut exp_out = Vec::with_capacity(heads * caus);
+    let mut denoms = Vec::with_capacity(heads * t);
+    let mut recips = Vec::with_capacity(heads * t);
+    let mut softmax_w = Vec::with_capacity(heads * caus);
+    let mut av_acc = vec![0i64; t * q_dim];
+    let mut av_q = vec![0i16; t * q_dim];
 
-    for head in 0..H {
+    for head in 0..heads {
+        let kv_head = head / gqa_group;
+        debug_assert!(kv_head < kv_heads);
         // Contiguous per-head views: Q_h (t×64) and K_h^T (64×t).
-        let mut qh = vec![0i16; t * DH];
-        let mut kht = vec![0i16; DH * t];
+        let mut qh = vec![0i16; t * head_dim];
+        let mut kht = vec![0i16; head_dim * t];
         for i in 0..t {
-            for l in 0..DH {
-                qh[i * DH + l] = q[i * D + head * DH + l];
-                kht[l * t + i] = k[i * D + head * DH + l];
+            for column in 0..head_dim {
+                qh[i * head_dim + column] = q[i * q_dim + head * head_dim + column];
+                kht[column * t + i] = k[i * kv_dim + kv_head * head_dim + column];
             }
         }
         // Rectangular t×t GEMM; the upper triangle (j > i) is computed but
         // discarded — witness fields and lookup streams are causal-only.
-        let s_full = gemm_i64_with_backend(&qh, &kht, t, DH, t, backend)?;
+        let s_full = gemm_i64_with_backend(&qh, &kht, t, head_dim, t, backend)?;
 
         // Causal-packed weight matrix, re-expanded to padded t×t for the
         // w·V GEMM (zeros above the diagonal contribute nothing).
@@ -606,28 +751,29 @@ pub fn forward_layer_with_backend(
         }
 
         // w·V for this head: (t×t)·(t×64), then requant into cols head·64…
-        let mut vh = vec![0i16; t * DH];
+        let mut vh = vec![0i16; t * head_dim];
         for i in 0..t {
-            vh[i * DH..(i + 1) * DH]
-                .copy_from_slice(&v[i * D + head * DH..i * D + (head + 1) * DH]);
+            vh[i * head_dim..(i + 1) * head_dim].copy_from_slice(
+                &v[i * kv_dim + kv_head * head_dim..i * kv_dim + (kv_head + 1) * head_dim],
+            );
         }
-        let avh = gemm_i64_with_backend(&w_pad, &vh, t, t, DH, backend)?;
+        let avh = gemm_i64_with_backend(&w_pad, &vh, t, t, head_dim, backend)?;
         for i in 0..t {
-            for l in 0..DH {
-                let acc = avh[i * DH + l];
-                av_acc[i * D + head * DH + l] = acc;
-                av_q[i * D + head * DH + l] =
+            for column in 0..head_dim {
+                let acc = avh[i * head_dim + column];
+                av_acc[i * q_dim + head * head_dim + column] = acc;
+                av_q[i * q_dim + head * head_dim + column] =
                     requant_traced(&mut traces, TableId::RequantAv, acc, p.shift_av);
             }
         }
     }
 
     // ---- attention output projection + residual ----
-    let mut proj_acc = gemm_i64_with_backend(&av_q, &w.attn_proj, t, D, D, backend)?;
+    let mut proj_acc = gemm_i64_with_backend(&av_q, &w.attn_proj, t, q_dim, d, backend)?;
     if let Some(b) = biases {
         for i in 0..t {
-            for j in 0..D {
-                proj_acc[i * D + j] += (b.attn_proj[j] as i64) << p.shift_attn_proj;
+            for j in 0..d {
+                proj_acc[i * d + j] += (b.attn_proj[j] as i64) << p.shift_attn_proj;
             }
         }
     }
@@ -640,15 +786,15 @@ pub fn forward_layer_with_backend(
     // ---- LN2 ----
     let ln2 = {
         let (t0, rest) = traces.split_at_mut(1);
-        layer_norm(&attn_block_out, &w.ln2_gain, &w.ln2_bias, luts, t, &mut t0[0], &mut rest[0])
+        layer_norm(&attn_block_out, &w.ln2_gain, &w.ln2_bias, luts, p, t, &mut t0[0], &mut rest[0])
     };
 
     // ---- FFN ----
-    let mut ffn_up_acc = gemm_i64_with_backend(&ln2.out, &w.ffn_up, t, D, DFF, backend)?;
+    let mut ffn_up_acc = gemm_i64_with_backend(&ln2.out, &w.ffn_up, t, d, dff, backend)?;
     if let Some(b) = biases {
         for i in 0..t {
-            for j in 0..DFF {
-                ffn_up_acc[i * DFF + j] += (b.ffn_up[j] as i64) << p.shift_ffn_up;
+            for j in 0..dff {
+                ffn_up_acc[i * dff + j] += (b.ffn_up[j] as i64) << p.shift_ffn_up;
             }
         }
     }
@@ -664,11 +810,11 @@ pub fn forward_layer_with_backend(
             g
         })
         .collect();
-    let mut ffn_down_acc = gemm_i64_with_backend(&gelu_out, &w.ffn_down, t, DFF, D, backend)?;
+    let mut ffn_down_acc = gemm_i64_with_backend(&gelu_out, &w.ffn_down, t, dff, d, backend)?;
     if let Some(b) = biases {
         for i in 0..t {
-            for j in 0..D {
-                ffn_down_acc[i * D + j] += (b.ffn_down[j] as i64) << p.shift_ffn_down;
+            for j in 0..d {
+                ffn_down_acc[i * d + j] += (b.ffn_down[j] as i64) << p.shift_ffn_down;
             }
         }
     }
@@ -728,6 +874,7 @@ pub fn forward_layer_with_backend(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::ConfigBinding;
     use crate::luts::{build_luts, LutParams};
 
     fn run(seed: u64, t: usize) -> LayerWitness {
@@ -846,6 +993,41 @@ mod tests {
                 idx += i + 1;
             }
         }
+    }
+
+    #[test]
+    fn runtime_non_power_of_two_gqa_shape() {
+        let mut config = ModelConfig::gpt2_small();
+        config.model_id = "x123-foundation".to_owned();
+        config.binding = ConfigBinding::DigestV1;
+        config.vocab_size = 97;
+        config.max_positions = 8;
+        config.n_layers = 1;
+        config.d_model = 48;
+        config.d_ff = 80;
+        config.n_q_heads = 6;
+        config.n_kv_heads = 2;
+        config.head_dim = 8;
+        config.attention = vec![AttentionMode::FullCausal];
+        let params = LutParams::default();
+        config.nonlinear_tables = nonlinear_table_config(params);
+        config.layer_shifts = vec![dense_layer_schedule(params)];
+        config.thin_k = 1;
+        config.validate().unwrap();
+
+        let t = 3;
+        let luts = build_luts(params);
+        let weights = synthetic_weights_for_config(101, &config);
+        let input = synthetic_input_for_config(102, t, &config);
+        let witness =
+            forward_layer_with_config(&config, 0, &input, &weights, None, &luts, luts.params, t);
+        assert_eq!(witness.q.len(), t * 48);
+        assert_eq!(witness.k.len(), t * 16);
+        assert_eq!(witness.v.len(), t * 16);
+        assert_eq!(witness.qkv_acc.len(), t * 80);
+        assert_eq!(witness.scores_q.len(), 6 * (t * (t + 1) / 2));
+        assert_eq!(witness.ffn_up_q.len(), t * 80);
+        check_trace_invariants(&witness);
     }
 
     #[cfg(feature = "cuda")]

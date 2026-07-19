@@ -1528,7 +1528,7 @@ pub(crate) fn prove_layers_resident_scheduled<W: ResidentLayerView>(
         || model.p.seam_shifts[7] != 0
         || seam_columns
             .iter()
-            .zip(model.p.seam_shifts)
+            .zip(model.p.seam_shifts.iter().copied())
             .any(|(columns, shift)| shift > 16 || columns.is_some() != (shift > 0))
         || prefixes.len() != L
         || prefixes.iter().any(|prefix| {

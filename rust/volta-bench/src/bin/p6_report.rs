@@ -750,6 +750,18 @@ struct Report {
     t1_exact_counter_pass: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     t1_emult_other_total: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    x123_foundation_reference_file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    x123_foundation_reference_digest: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    x123_foundation_observed_digest: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    x123_foundation_mismatch_sections: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    x123_foundation_exact_match: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    x123_foundation_t1_gate_pass: Option<bool>,
     // P7b gates are emitted only by the resident schema. Quick runs retain
     // observations but deliberately do not emit pass/fail verdicts.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1115,6 +1127,7 @@ struct Args {
     c3: bool,
     c3_record: bool,
     t1_record: bool,
+    x123_foundation_record: bool,
     c1_record: bool,
     flip_readiness_record: bool,
     fase_d_record: bool,
@@ -1202,7 +1215,7 @@ impl PcgBackendArg {
 
 fn usage() -> ! {
     eprintln!(
-        "usage: p6_report [--quick] [--c3|--c3-record|--t1-record|--c1-record|--flip-readiness-record|--fase-d-record] [--pcs-q Q] \
+        "usage: p6_report [--quick] [--c3|--c3-record|--t1-record|--x123-foundation-record|--c1-record|--flip-readiness-record|--fase-d-record] [--pcs-q Q] \
          [--fase-d-pod-profile v1|v2] \
          [--pcg-backend mock|real] [--pcg-authorization-store PATH] \
          [--pcg-connection-store PATH] \
@@ -1220,6 +1233,7 @@ fn parse_args() -> Args {
         c3: false,
         c3_record: false,
         t1_record: false,
+        x123_foundation_record: false,
         c1_record: false,
         flip_readiness_record: false,
         fase_d_record: false,
@@ -1245,6 +1259,9 @@ fn parse_args() -> Args {
             out.c3_record = true;
         } else if a == "--t1-record" {
             out.t1_record = true;
+        } else if a == "--x123-foundation-record" {
+            out.t1_record = true;
+            out.x123_foundation_record = true;
         } else if a == "--c1-record" {
             out.c1_record = true;
         } else if a == "--flip-readiness-record" {
@@ -1388,6 +1405,202 @@ fn create_unique_result_file(
         }
     }
     panic!("could not find unused append-only result path for {label}-{date}-{sha}");
+}
+
+const X123_FOUNDATION_REFERENCE_FILE: &str = "t1-cpu-real-2026-07-19-b14577e.json";
+
+fn select_json_fields(source: &serde_json::Value, fields: &[&str]) -> serde_json::Value {
+    let source = source.as_object().expect("foundation comparison source must be an object");
+    let mut selected = serde_json::Map::new();
+    for &field in fields {
+        selected.insert(
+            field.to_owned(),
+            source
+                .get(field)
+                .unwrap_or_else(|| panic!("foundation reference missing {field}"))
+                .clone(),
+        );
+    }
+    serde_json::Value::Object(selected)
+}
+
+/// Exact, timing-free T1 compatibility surface.  It contains every public
+/// output, proof-section/label length, logical counter, setup/allocation
+/// schedule digest and prover/verifier channel-ledger digest emitted by the
+/// clean reference.  Entropy-derived correlation contents and wall timings
+/// are deliberately outside a byte-level schedule comparison.
+fn x123_foundation_projection(source: &serde_json::Value) -> serde_json::Value {
+    let fields = [
+        "report_schema_version",
+        "milestone",
+        "threads",
+        "accelerator_backend",
+        "benchmark_warmup_repetitions",
+        "benchmark_repetitions",
+        "t_prefill",
+        "n_decode",
+        "accepted",
+        "golden_decode_checked",
+        "golden_decode_match",
+        "generated_tokens",
+        "c3b_transcript_category_sum_pass",
+        "c3b_pcs_category_sum_pass",
+        "c3b_public_logits_disabled",
+        "t1_g3_pass",
+        "t1_response_gate_bytes",
+        "t1_response_reference_bytes",
+        "t1_auth_correction_gate_bytes",
+        "t1_auth_correction_reference_bytes",
+        "t1_eq_reducer_transcript_bytes",
+        "t1_q_bridge_correction_bytes",
+        "t1_exact_counter_pass",
+        "t1_emult_other_total",
+        "gate_flat_cost_per_token",
+        "chunked_accepted",
+        "comm_prefill_bytes",
+        "comm_response_bytes",
+        "comm_decode_marginal_bytes",
+        "comm_decode_bytes_per_token",
+        "comm_prefill_by_label",
+        "comm_response_by_label",
+        "comm_pcs_by_label",
+        "comm_decode_marginal_by_label",
+        "pcs_opening_bytes_total",
+        "pcs_cached_query_marginal_bytes_total",
+        "public_logits_bytes",
+        "public_logits_packed_bytes",
+        "total_response_download_bytes",
+        "total_response_download_packed_bytes",
+        "pcs_n_queries",
+        "pcs_rate",
+        "pcs_relative_distance",
+        "pcs_query_error_bits",
+        "pcs_response_statistical_soundness_bits",
+        "n_weight_claims",
+        "n_embed_claims",
+        "closure_prod_claims",
+        "closure_zero_claims",
+        "closure_prod_scalar_soundness_bits",
+        "closure_zero_scalar_soundness_bits",
+        "closure_union_scalar_soundness_bits",
+        "emult_instances_total",
+        "corr_sub_corrs",
+        "corr_full_corrs",
+        "pcg_backend",
+        "ggm_prg",
+        "ggm_aes_feature",
+        "pcg_setup_rayon_threads",
+        "pcg_production_ready",
+        "pcg_setup_comm_bytes",
+        "pcg_setup_instances",
+        "pcg_setup_comm_bytes_per_instance",
+        "pcg_setup_comm_prover_to_verifier_bytes_per_instance",
+        "pcg_setup_comm_verifier_to_prover_bytes_per_instance",
+        "pcg_production_entropy_source",
+        "pcg_independent_role_entropy_samples",
+        "pcg_session_channel_identity_bound",
+        "pcg_response_authorization_burned_before_setup",
+        "pcg_burn_on_success_or_abort",
+        "pcg_reconnect_retry_resume_allowed",
+        "pcg_session_binding_digests_unique",
+        "pcg_role_seed_commitments_distinct",
+        "pcg_setup_wire_count_invariant_pass",
+        "pcg_mock_prepass_channel_ledger_digest_match",
+        "pcg_mock_prepass_allocation_digest_match",
+        "pcg_base_vole",
+        "pcg_setup_comm_prover_to_verifier_bytes",
+        "pcg_setup_comm_verifier_to_prover_bytes",
+        "pcg_setup_comm_base_ot_bytes",
+        "pcg_setup_comm_ot_extension_bytes",
+        "pcg_setup_comm_ggm_bytes",
+        "pcg_setup_comm_consistency_bytes",
+        "pcg_channel_transcripts_match",
+        "pcg_mock_prepass_counters_match",
+        "pcg_allocation_hash_match",
+        "fase_d_lifecycle",
+    ];
+    let mut selected = select_json_fields(source, &fields);
+    let selected = selected.as_object_mut().unwrap();
+
+    let setup = source.get("fase_d_setup").expect("foundation reference missing fase_d_setup");
+    let mut setup_selected = select_json_fields(
+        setup,
+        &[
+            "params",
+            "capacity",
+            "comm",
+            "ggm_prg",
+            "ggm_aes_feature",
+            "pcg_setup_rayon_threads",
+            "one_connection_base_phase",
+            "pcg_production_ready",
+            "setup_allocation_digest",
+            "maximum_prover_buffer_high_water_bytes",
+            "g2_capacity_gate_pass",
+            "g2_traffic_gate_pass",
+            "correlation_storage",
+            "correlation_spool_entries",
+            "correlation_spool_bytes",
+            "correlation_spool_chunk_entries",
+            "correlation_spool_resident_raw_entries",
+        ],
+    );
+    let stages = setup
+        .get("stages")
+        .and_then(serde_json::Value::as_array)
+        .expect("foundation reference setup stages must be an array")
+        .iter()
+        .map(|stage| {
+            select_json_fields(
+                stage,
+                &[
+                    "ordinal",
+                    "input_stage",
+                    "tuple",
+                    "generated",
+                    "reserved_as_base",
+                    "released",
+                    "retained",
+                    "allocation_digest",
+                    "prover_buffer_high_water_bytes",
+                    "rayon_threads",
+                ],
+            )
+        })
+        .collect();
+    setup_selected
+        .as_object_mut()
+        .unwrap()
+        .insert("stages".to_owned(), serde_json::Value::Array(stages));
+    selected.insert("fase_d_setup".to_owned(), setup_selected);
+
+    let commitments = source
+        .get("pcs_commitments")
+        .and_then(serde_json::Value::as_array)
+        .expect("foundation PCS commitments must be an array")
+        .iter()
+        .map(|commitment| {
+            select_json_fields(
+                commitment,
+                &[
+                    "name",
+                    "n_claims",
+                    "opening_bytes",
+                    "opening_cached_query_cut_bytes",
+                    "opening_cached_query_marginal_bytes",
+                    "verified",
+                ],
+            )
+        })
+        .collect();
+    selected.insert("pcs_commitments".to_owned(), serde_json::Value::Array(commitments));
+    serde_json::Value::Object(selected.clone())
+}
+
+fn json_digest(value: &serde_json::Value) -> String {
+    blake3::hash(&serde_json::to_vec(value).expect("serialize compatibility projection"))
+        .to_hex()
+        .to_string()
 }
 
 /// One full response session: prove + verify + PCS + closures. Returns
@@ -2721,6 +2934,10 @@ fn main() {
         eprintln!(
             "p6_report: --c3-record/--t1-record requires full CPU or cuda-resident real/AES geometry"
         );
+        std::process::exit(2);
+    }
+    if args.x123_foundation_record && args.accelerator != AcceleratorArg::Cpu {
+        eprintln!("p6_report: --x123-foundation-record is CPU-only");
         std::process::exit(2);
     }
     if c3b_pod_profile && args.resident_timing != ResidentTimingArg::WallOnlyCounters {
@@ -4446,7 +4663,7 @@ fn main() {
             && p7b_sync_wall_absolute_gate_pass == Some(true)
             && p7b_h2d_gate_pass == Some(true)
     });
-    let report = Report {
+    let mut report = Report {
         report_schema_version: if args.t1_record {
             10
         } else if args.c3_record {
@@ -4575,6 +4792,12 @@ fn main() {
         t1_q_bridge_correction_bytes,
         t1_exact_counter_pass,
         t1_emult_other_total: args.t1_record.then_some(rec.emult_other),
+        x123_foundation_reference_file: None,
+        x123_foundation_reference_digest: None,
+        x123_foundation_observed_digest: None,
+        x123_foundation_mismatch_sections: None,
+        x123_foundation_exact_match: None,
+        x123_foundation_t1_gate_pass: None,
         p7b_gate_evaluated,
         p7b_gate_profile: is_resident.then_some(
             if t1_pod_profile {
@@ -4836,9 +5059,40 @@ fn main() {
         pcg_allocation_hash_match: pcg_gate.allocation_hash_match,
     };
 
+    if args.x123_foundation_record {
+        let current = serde_json::to_value(&report).expect("serialize foundation report");
+        let reference_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../benchmarks/results")
+            .join(X123_FOUNDATION_REFERENCE_FILE);
+        let reference: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&reference_path).unwrap_or_else(|error| {
+                panic!("read foundation reference {}: {error}", reference_path.display())
+            }))
+            .expect("parse foundation reference");
+        let observed_projection = x123_foundation_projection(&current);
+        let reference_projection = x123_foundation_projection(&reference);
+        let mismatch_sections = observed_projection
+            .as_object()
+            .unwrap()
+            .iter()
+            .filter_map(|(section, observed)| {
+                (reference_projection.get(section) != Some(observed)).then(|| section.clone())
+            })
+            .collect::<Vec<_>>();
+        let exact_match = mismatch_sections.is_empty();
+        report.x123_foundation_reference_file = Some(X123_FOUNDATION_REFERENCE_FILE.to_owned());
+        report.x123_foundation_reference_digest = Some(json_digest(&reference_projection));
+        report.x123_foundation_observed_digest = Some(json_digest(&observed_projection));
+        report.x123_foundation_mismatch_sections = Some(mismatch_sections);
+        report.x123_foundation_exact_match = Some(exact_match);
+        report.x123_foundation_t1_gate_pass = Some(exact_match && report.t1_g1_pass == Some(true));
+    }
+
     assert!(accepted, "P6 sanity: honest response (both sessions) must verify");
     assert!(gate_flat, "P6 gate: per-token cost must stay ~flat as the cache grows");
-    let mut label = if args.t1_record {
+    let mut label = if args.x123_foundation_record {
+        "x1-foundation".to_string()
+    } else if args.t1_record {
         match args.accelerator {
             AcceleratorArg::Cpu => "t1-cpu-real".to_string(),
             AcceleratorArg::CudaResident => "t1-a100-realpcg-v4".to_string(),
@@ -4905,6 +5159,17 @@ fn main() {
 #[cfg(test)]
 mod report_tests {
     use super::*;
+
+    #[test]
+    fn x123_foundation_reference_projection_is_pinned() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../benchmarks/results")
+            .join(X123_FOUNDATION_REFERENCE_FILE);
+        let reference: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let digest = json_digest(&x123_foundation_projection(&reference));
+        assert_eq!(digest, "146186efaee01c4af6502e3e77a64b68099099c84b34f46634dc3b28b5c552fc");
+    }
 
     #[test]
     #[ignore = "production-size T1/C3b counter reconciliation"]

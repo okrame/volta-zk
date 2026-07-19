@@ -8,6 +8,7 @@
 
 use volta_accel::{AccelError, Backend, BackendKind, DeviceBuffer, DeviceSlice};
 
+use crate::config::ConfigBinding;
 use crate::layer::{D, DFF, DH, H};
 use crate::model::{Gpt2Model, P5Params, L, NPOS, VOCAB};
 
@@ -692,6 +693,14 @@ pub fn upload_resident_model(
     if backend.kind() != BackendKind::CudaResident {
         return Err(AccelError::InvalidInput(
             "resident model upload requires the cuda-resident backend",
+        ));
+    }
+    if model.validate_layout().is_err()
+        || model.config.binding != ConfigBinding::LegacyImplicit
+        || !model.config.is_legacy_gpt2_geometry()
+    {
+        return Err(AccelError::InvalidInput(
+            "resident model upload accepts only the validated frozen GPT-2 profile",
         ));
     }
     if model.layers.len() != L {

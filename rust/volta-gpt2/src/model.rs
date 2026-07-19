@@ -14,11 +14,15 @@ use std::path::Path;
 use rayon::prelude::*;
 use volta_accel::{AccelError, Backend, BackendKind, Operation};
 
-use crate::layer::{
-    forward_layer_with_backend, layer_norm, requant_into, GemmBiases, LayerWeights, LayerWitness,
-    LookupTrace, D, DFF,
+use crate::config::{
+    ActivationKind, AttentionMode, ConfigBinding, LayerShiftSchedule, ModelConfig,
+    NonlinearTableConfig, NormKind,
 };
-use crate::luts::{LutParams, Luts};
+use crate::layer::{
+    forward_layer_with_config_backend, layer_norm, requant_into, synthetic_weights_for_config,
+    GemmBiases, LayerWeights, LayerWitness, LookupTrace, D, DFF,
+};
+use crate::luts::{build_luts, LutParams, Luts};
 
 pub const L: usize = 12;
 pub const VOCAB: usize = 50257;
@@ -34,13 +38,13 @@ pub const NPOS: usize = 1024;
 #[derive(Clone, Debug)]
 pub struct P5Params {
     pub lut: LutParams,
-    pub shift_attn_proj: [u32; L],
-    pub shift_ffn_down: [u32; L],
-    pub seam_shifts: [u32; L - 1],
+    pub shift_attn_proj: Vec<u32>,
+    pub shift_ffn_down: Vec<u32>,
+    pub seam_shifts: Vec<u32>,
     /// May be ≤ 0: a non-positive value is a LEFT shift by −s (exact,
     /// linear, no lookup).
     pub shift_embed: i32,
-    pub f_res: [u32; L],
+    pub f_res: Vec<u32>,
     pub tokens: Vec<u32>,
 }
 
@@ -82,10 +86,10 @@ fn parse_params(bytes: &[u8]) -> P5Params {
         r.i32(); // f_ln..f_ln_gain (8) + fw_* (4) — in the JSON, unused here
     }
     // Arrays, exactly export_gpt2.py::ARRAYS_ORDER.
-    let mut f_res = [0u32; L];
-    let mut shift_attn_proj = [0u32; L];
-    let mut shift_ffn_down = [0u32; L];
-    let mut seam_shifts = [0u32; L - 1];
+    let mut f_res = vec![0u32; L];
+    let mut shift_attn_proj = vec![0u32; L];
+    let mut shift_ffn_down = vec![0u32; L];
+    let mut seam_shifts = vec![0u32; L - 1];
     for v in f_res.iter_mut() {
         *v = r.u32();
     }
@@ -128,19 +132,121 @@ fn parse_params(bytes: &[u8]) -> P5Params {
 // ---------------------------------------------------------------------------
 
 pub struct Gpt2Model {
+    pub config: ModelConfig,
     pub p: P5Params,
     pub luts: Luts,
     pub layers: Vec<(LayerWeights, GemmBiases)>,
-    pub wte: Vec<i16>, // VOCAB × d (tied: embedding + logits weight)
-    pub wpe: Vec<i16>, // NPOS × d
+    pub wte: Vec<i16>,             // VOCAB × d token embedding
+    pub lm_head: Option<Vec<i16>>, // None exactly when output is tied to wte
+    pub wpe: Vec<i16>,             // NPOS × d
     pub lnf_gain: Vec<i16>,
     pub lnf_bias: Vec<i16>,
+}
+
+impl Gpt2Model {
+    /// Shape-only preflight.  This runs before witness/backend allocation and
+    /// prevents a prover-supplied ragged artifact from selecting geometry.
+    pub fn validate_layout(&self) -> Result<(), String> {
+        self.config.validate().map_err(|error| error.to_string())?;
+        let c = &self.config;
+        if self.layers.len() != c.n_layers
+            || self.p.shift_attn_proj.len() != c.n_layers
+            || self.p.shift_ffn_down.len() != c.n_layers
+            || self.p.f_res.len() != c.n_layers
+            || self.p.seam_shifts.len() != c.n_layers - 1
+            || self.p.tokens.len() > c.max_positions
+            || self.wte.len() != c.vocab_size * c.d_model
+            || self.wpe.len() != c.max_positions * c.d_model
+            || self.lnf_gain.len() != c.d_model
+            || self.lnf_bias.len() != c.d_model
+        {
+            return Err("model-level artifact shape mismatch".to_owned());
+        }
+        match (c.tied_output, self.lm_head.as_ref()) {
+            (true, None) => {}
+            (false, Some(weights)) if weights.len() == c.vocab_size * c.d_model => {}
+            _ => return Err("output-head artifact does not match tied_output policy".to_owned()),
+        }
+        if nonlinear_table_config(self.luts.params) != c.nonlinear_tables
+            || [
+                self.luts.exp.len(),
+                self.luts.gelu.len(),
+                self.luts.ln_rsqrt.len(),
+                self.luts.softmax_recip.len(),
+            ]
+            .into_iter()
+            .any(|len| len != 1 << 16)
+        {
+            return Err("global LUT schedule or table shape mismatch".to_owned());
+        }
+        for layer in 0..c.n_layers {
+            let shifts = &c.layer_shifts[layer];
+            if c.n_experts == 0
+                && (shifts.router_requant != 0
+                    || shifts.router_norm != 0
+                    || !shifts.expert_blocks.is_empty())
+            {
+                return Err(format!("dense layer {layer} carries MoE shifts"));
+            }
+            if c.binding == ConfigBinding::LegacyImplicit {
+                let expected = LayerShiftSchedule {
+                    residual_fraction_bits: self.p.f_res[layer],
+                    layer_norm: self.p.lut.shift_ln_norm,
+                    qkv: self.p.lut.shift_qkv,
+                    scores: self.p.lut.shift_scores,
+                    softmax_norm: self.p.lut.shift_softmax_norm,
+                    av: self.p.lut.shift_av,
+                    attention_out: self.p.shift_attn_proj[layer],
+                    ffn_up: self.p.lut.shift_ffn_up,
+                    ffn_down: self.p.shift_ffn_down[layer],
+                    residual_seam: self.p.seam_shifts.get(layer).copied().unwrap_or(0),
+                    router_requant: 0,
+                    router_norm: 0,
+                    expert_blocks: Vec::new(),
+                };
+                if *shifts != expected
+                    || c.embedding_shift != self.p.shift_embed
+                    || c.final_norm_shift != self.p.lut.shift_ln_norm
+                    || self.luts.params != self.p.lut
+                {
+                    return Err(format!("legacy layer {layer} shift schedule mismatch"));
+                }
+            }
+        }
+        for (layer, (weights, biases)) in self.layers.iter().enumerate() {
+            let valid = weights.c_attn.len() == c.d_model * c.qkv_dim()
+                && weights.attn_proj.len() == c.q_dim() * c.d_model
+                && weights.ffn_up.len() == c.d_model * c.d_ff
+                && weights.ffn_down.len() == c.d_ff * c.d_model
+                && [
+                    weights.ln1_gain.len(),
+                    weights.ln1_bias.len(),
+                    weights.ln2_gain.len(),
+                    weights.ln2_bias.len(),
+                    biases.attn_proj.len(),
+                    biases.ffn_down.len(),
+                ]
+                .into_iter()
+                .all(|len| len == c.d_model)
+                && biases.c_attn.len() == c.qkv_dim()
+                && biases.ffn_up.len() == c.d_ff;
+            if !valid {
+                return Err(format!("layer {layer} artifact shape mismatch"));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn output_weights(&self) -> &[i16] {
+        self.lm_head.as_deref().unwrap_or(&self.wte)
+    }
 }
 
 /// Loads `gpt2s-q.{bin,params}` from `dir` (see module docs for the frozen
 /// layout — any layout change must bump the magic in export_gpt2.py).
 pub fn load_model(dir: &Path) -> std::io::Result<Gpt2Model> {
     let p = parse_params(&std::fs::read(dir.join("gpt2s-q.params"))?);
+    let config = legacy_model_config(&p);
     let blob = std::fs::read(dir.join("gpt2s-q.bin"))?;
     assert_eq!(blob.len() % 2, 0);
 
@@ -199,7 +305,149 @@ pub fn load_model(dir: &Path) -> std::io::Result<Gpt2Model> {
     assert_eq!(pos, blob.len(), "trailing bytes in gpt2s-q.bin");
 
     let luts = Luts { params: p.lut, exp, gelu, ln_rsqrt, softmax_recip };
-    Ok(Gpt2Model { p, luts, layers, wte, wpe, lnf_gain, lnf_bias })
+    Ok(Gpt2Model { config, p, luts, layers, wte, lm_head: None, wpe, lnf_gain, lnf_bias })
+}
+
+fn nonlinear_table_config(params: LutParams) -> NonlinearTableConfig {
+    NonlinearTableConfig {
+        ln_var_shift: params.ln_var_shift,
+        ln_rsqrt_log2: params.ln_rsqrt_log2,
+        exp_in_log2: params.exp_in_log2,
+        exp_out_log2: params.exp_out_log2,
+        recip_den_shift: params.recip_den_shift,
+        recip_log2: params.recip_log2,
+        gelu_scale_log2: params.gelu_scale_log2,
+        softmax_row_shift: params.softmax_row_shift,
+    }
+}
+
+fn legacy_model_config(p: &P5Params) -> ModelConfig {
+    let mut config = ModelConfig::gpt2_small();
+    config.nonlinear_tables = nonlinear_table_config(p.lut);
+    config.embedding_shift = p.shift_embed;
+    config.final_norm_shift = p.lut.shift_ln_norm;
+    for layer in 0..L {
+        config.layer_shifts[layer] = LayerShiftSchedule {
+            residual_fraction_bits: p.f_res[layer],
+            layer_norm: p.lut.shift_ln_norm,
+            qkv: p.lut.shift_qkv,
+            scores: p.lut.shift_scores,
+            softmax_norm: p.lut.shift_softmax_norm,
+            av: p.lut.shift_av,
+            attention_out: p.shift_attn_proj[layer],
+            ffn_up: p.lut.shift_ffn_up,
+            ffn_down: p.shift_ffn_down[layer],
+            residual_seam: p.seam_shifts.get(layer).copied().unwrap_or(0),
+            ..LayerShiftSchedule::default()
+        };
+    }
+    config.validate().expect("frozen GPT-2 ModelConfig must validate");
+    config
+}
+
+/// Deterministic in-memory dense model used by the runtime-shape harness.
+/// It exercises the same fixed-point/LUT path without reading or downloading
+/// an architecture artifact.
+pub fn synthetic_model(
+    mut config: ModelConfig,
+    tokens: Vec<u32>,
+    seed: u64,
+) -> Result<Gpt2Model, String> {
+    config.validate().map_err(|error| error.to_string())?;
+    if config.n_experts != 0
+        || config.norm != NormKind::LayerNorm
+        || config.activation != ActivationKind::Gelu
+        || config.attention.iter().any(|mode| *mode != AttentionMode::FullCausal)
+        || config.attention_sinks_per_q_head != 0
+        || config.rope.is_some()
+    {
+        return Err("synthetic dense foundation model received an X2/X3 operator".to_owned());
+    }
+    if tokens.is_empty()
+        || tokens.len() > config.max_positions
+        || tokens.iter().any(|&token| (token as usize) >= config.vocab_size)
+    {
+        return Err("synthetic token sequence is outside ModelConfig".to_owned());
+    }
+
+    let lut = LutParams::default();
+    let shift_attn_proj = vec![lut.shift_attn_proj; config.n_layers];
+    let shift_ffn_down = vec![lut.shift_ffn_down; config.n_layers];
+    let seam_shifts = vec![0; config.n_layers - 1];
+    config.nonlinear_tables = nonlinear_table_config(lut);
+    config.embedding_shift = 0;
+    config.final_norm_shift = lut.shift_ln_norm;
+    for layer in 0..config.n_layers {
+        config.layer_shifts[layer] = LayerShiftSchedule {
+            residual_fraction_bits: 0,
+            layer_norm: lut.shift_ln_norm,
+            qkv: lut.shift_qkv,
+            scores: lut.shift_scores,
+            softmax_norm: lut.shift_softmax_norm,
+            av: lut.shift_av,
+            attention_out: lut.shift_attn_proj,
+            ffn_up: lut.shift_ffn_up,
+            ffn_down: lut.shift_ffn_down,
+            residual_seam: 0,
+            ..LayerShiftSchedule::default()
+        };
+    }
+    let p = P5Params {
+        lut,
+        shift_attn_proj,
+        shift_ffn_down,
+        seam_shifts,
+        shift_embed: 0,
+        f_res: vec![0; config.n_layers],
+        tokens,
+    };
+    let luts = build_luts(lut);
+    let layers = (0..config.n_layers)
+        .map(|layer| {
+            let weights = synthetic_weights_for_config(
+                seed.wrapping_add((layer as u64).wrapping_mul(0x9E37_79B9)),
+                &config,
+            );
+            let biases = GemmBiases {
+                c_attn: vec![0; config.qkv_dim()],
+                attn_proj: vec![0; config.d_model],
+                ffn_up: vec![0; config.d_ff],
+                ffn_down: vec![0; config.d_model],
+            };
+            (weights, biases)
+        })
+        .collect();
+    let mut state = seed ^ 0xD1B5_4A32_D192_ED03;
+    let mut values = |len: usize, radius: i16| {
+        (0..len)
+            .map(|_| {
+                state = state
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1_442_695_040_888_963_407);
+                (state % (2 * radius as u64 + 1)) as i16 - radius
+            })
+            .collect::<Vec<_>>()
+    };
+    let wte = values(config.vocab_size * config.d_model, 15);
+    let lm_head = (!config.tied_output).then(|| values(config.vocab_size * config.d_model, 15));
+    let wpe = values(config.max_positions * config.d_model, 7);
+    let lnf_gain = vec![64; config.d_model];
+    let lnf_bias = vec![0; config.d_model];
+    let model = Gpt2Model { config, p, luts, layers, wte, lm_head, wpe, lnf_gain, lnf_bias };
+    model.validate_layout()?;
+    Ok(model)
+}
+
+pub(crate) fn layer_lut_params(mut params: LutParams, shifts: &LayerShiftSchedule) -> LutParams {
+    params.shift_ln_norm = shifts.layer_norm;
+    params.shift_qkv = shifts.qkv;
+    params.shift_scores = shifts.scores;
+    params.shift_softmax_norm = shifts.softmax_norm;
+    params.shift_av = shifts.av;
+    params.shift_attn_proj = shifts.attention_out;
+    params.shift_ffn_up = shifts.ffn_up;
+    params.shift_ffn_down = shifts.ffn_down;
+    params
 }
 
 // ---------------------------------------------------------------------------
@@ -277,20 +525,26 @@ pub fn forward_model_tokens_with_backend(
             "cuda-resident requires the device-witness API; staged ModelWitness materialization is forbidden",
         ));
     }
+    m.validate_layout().expect("model/config preflight failed");
+    let config = &m.config;
+    let d = config.d_model;
+    let layers_count = config.n_layers;
+    let vocab = config.vocab_size;
     let t = tokens.len();
-    assert!(t <= NPOS);
+    assert!(t > 0 && t <= config.max_positions);
+    assert!(tokens.iter().all(|&token| (token as usize) < vocab));
 
     // ---- embedding ----
     let embed = backend.cpu_residual(Operation::Gemm, || {
-        let mut acc = vec![0i64; t * D];
+        let mut acc = vec![0i64; t * d];
         for (i, &tok) in tokens.iter().enumerate() {
-            let wt = &m.wte[tok as usize * D..(tok as usize + 1) * D];
-            let wp = &m.wpe[i * D..(i + 1) * D];
-            for j in 0..D {
-                acc[i * D + j] = wt[j] as i64 + wp[j] as i64;
+            let wt = &m.wte[tok as usize * d..(tok as usize + 1) * d];
+            let wp = &m.wpe[i * d..(i + 1) * d];
+            for j in 0..d {
+                acc[i * d + j] = wt[j] as i64 + wp[j] as i64;
             }
         }
-        let s_emb = m.p.shift_embed;
+        let s_emb = config.embedding_shift;
         let (out, trace) = if s_emb > 0 {
             let mut tr = LookupTrace::new_requant(s_emb as u32);
             let out = acc
@@ -316,19 +570,27 @@ pub fn forward_model_tokens_with_backend(
     })?;
 
     // ---- layers + seams ----
-    let mut layers = Vec::with_capacity(L);
-    let mut seams: Vec<Option<LookupTrace>> = Vec::with_capacity(L - 1);
+    let mut layers = Vec::with_capacity(layers_count);
+    let mut seams: Vec<Option<LookupTrace>> = Vec::with_capacity(layers_count - 1);
     let mut x = embed.out.clone();
-    for l in 0..L {
-        let mut params = m.p.lut;
-        params.shift_attn_proj = m.p.shift_attn_proj[l];
-        params.shift_ffn_down = m.p.shift_ffn_down[l];
+    for l in 0..layers_count {
+        let params = layer_lut_params(m.luts.params, &config.layer_shifts[l]);
         let (w, b) = &m.layers[l];
-        let wit = forward_layer_with_backend(&x, w, Some(b), &m.luts, params, t, backend)?;
+        let wit = forward_layer_with_config_backend(
+            config,
+            l,
+            &x,
+            w,
+            Some(b),
+            &m.luts,
+            params,
+            t,
+            backend,
+        )?;
         x = wit.ffn_block_out.clone();
         layers.push(wit);
-        if l < L - 1 {
-            let s = m.p.seam_shifts[l];
+        if l < layers_count - 1 {
+            let s = config.layer_shifts[l].residual_seam;
             if s > 0 {
                 let (next, tr) = backend.cpu_residual(Operation::Gemm, || {
                     let mut tr = LookupTrace::new_requant(s);
@@ -348,14 +610,17 @@ pub fn forward_model_tokens_with_backend(
 
     // ---- final LN (last row) ----
     let final_ln = backend.cpu_residual(Operation::Gemm, || {
-        let last = &x[(t - 1) * D..t * D];
+        let last = &x[(t - 1) * d..t * d];
         let mut rsqrt_trace = LookupTrace::new(1 << 16);
-        let mut norm_trace = LookupTrace::new_requant(m.p.lut.shift_ln_norm);
+        let mut norm_trace = LookupTrace::new_requant(config.final_norm_shift);
+        let mut final_params = m.luts.params;
+        final_params.shift_ln_norm = config.final_norm_shift;
         let ln = layer_norm(
             last,
             &m.lnf_gain,
             &m.lnf_bias,
             &m.luts,
+            final_params,
             1,
             &mut rsqrt_trace,
             &mut norm_trace,
@@ -375,12 +640,12 @@ pub fn forward_model_tokens_with_backend(
     // ---- logits (tied wte, i64 accumulators, no requant) ----
     let logits = backend.cpu_residual(Operation::Gemm, || {
         let fin = &final_ln.out;
-        (0..VOCAB)
+        (0..vocab)
             .into_par_iter()
             .map(|v| {
-                let row = &m.wte[v * D..(v + 1) * D];
+                let row = &m.output_weights()[v * d..(v + 1) * d];
                 let mut s = 0i64;
-                for j in 0..D {
+                for j in 0..d {
                     s += fin[j] as i64 * row[j] as i64;
                 }
                 s
@@ -398,6 +663,9 @@ pub fn forward_model_tokens_with_backend(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::band::band_model_witness;
+    use crate::config::{ConfigBinding, LayerShiftSchedule};
+    use crate::decode::{decode_step, KvCache};
 
     fn weights_dir() -> std::path::PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../benchmarks/weights")
@@ -443,5 +711,81 @@ mod tests {
             assert_eq!(sum_i16(&wit.layers[l].ffn_block_out), ffn_sums[l], "ffn_block_out l={l}");
             assert_eq!(sum_i16(&wit.layers[l].row_shift), row_shift_sums[l], "row_shift l={l}");
         }
+    }
+
+    #[test]
+    fn runtime_model_non_power_of_two_gqa_and_band() {
+        let mut config = ModelConfig::gpt2_small();
+        config.model_id = "x123-foundation-model".to_owned();
+        config.binding = ConfigBinding::DigestV1;
+        config.vocab_size = 97;
+        config.max_positions = 8;
+        config.n_layers = 2;
+        config.d_model = 48;
+        config.d_ff = 80;
+        config.n_q_heads = 6;
+        config.n_kv_heads = 2;
+        config.head_dim = 8;
+        config.attention = vec![AttentionMode::FullCausal; 2];
+        config.layer_shifts = vec![LayerShiftSchedule::default(); 2];
+        config.thin_k = 2;
+        config.validate().unwrap();
+
+        let tokens = vec![3, 5, 8, 13, 21, 34, 55];
+        let model = synthetic_model(config, tokens.clone(), 0x1234).unwrap();
+        assert!(model.config.session_digest().unwrap().is_some());
+        let witness = forward_model_tokens(&model, &tokens);
+        assert_eq!(witness.layers.len(), 2);
+        assert_eq!(witness.layers[0].k.len(), 7 * 16);
+        assert_eq!(witness.layers[0].q.len(), 7 * 48);
+        assert_eq!(witness.logits.len(), 97);
+
+        let band = band_model_witness(&model, &witness, 3);
+        assert_eq!(band.q, 4);
+        assert_eq!(band.layers[0].k.len(), 4 * 16);
+        assert_eq!(band.logits.len(), 4 * 97);
+        assert_eq!(&band.logits[3 * 97..], witness.logits.as_slice());
+
+        let prefix = forward_model_tokens(&model, &tokens[..3]);
+        let kv: Vec<(&[i16], &[i16])> =
+            prefix.layers.iter().map(|layer| (layer.k.as_slice(), layer.v.as_slice())).collect();
+        let mut cache = KvCache::from_prefill_with_config(&model.config, &kv, 3);
+        let decoded = decode_step(&model, &mut cache, tokens[3], 3);
+        let full4 = forward_model_tokens(&model, &tokens[..4]);
+        assert_eq!(decoded, full4.logits);
+    }
+
+    #[test]
+    fn runtime_untied_output_and_shift_preflight() {
+        let mut config = ModelConfig::gpt2_small();
+        config.model_id = "x123-foundation-untied".to_owned();
+        config.binding = ConfigBinding::DigestV1;
+        config.vocab_size = 17;
+        config.max_positions = 4;
+        config.n_layers = 1;
+        config.d_model = 8;
+        config.d_ff = 12;
+        config.n_q_heads = 2;
+        config.n_kv_heads = 1;
+        config.head_dim = 4;
+        config.tied_output = false;
+        config.attention = vec![AttentionMode::FullCausal];
+        config.layer_shifts = vec![LayerShiftSchedule::default()];
+        config.thin_k = 1;
+        let mut model = synthetic_model(config, vec![1, 2, 3], 77).unwrap();
+        assert!(model.lm_head.is_some());
+        assert_ne!(model.output_weights(), model.wte.as_slice());
+        let baseline = forward_model(&model, 3).logits;
+        assert_eq!(baseline.len(), 17);
+
+        model.config.layer_shifts[0].qkv += 1;
+        model.validate_layout().unwrap();
+        assert_ne!(forward_model(&model, 3).logits, baseline);
+
+        model.config.nonlinear_tables.exp_out_log2 += 1;
+        assert_eq!(
+            model.validate_layout().unwrap_err(),
+            "global LUT schedule or table shape mismatch"
+        );
     }
 }

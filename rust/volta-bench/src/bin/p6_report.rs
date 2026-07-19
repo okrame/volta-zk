@@ -5200,20 +5200,22 @@ mod report_tests {
         let digest = json_digest(&x123_foundation_projection(&reference));
         assert_eq!(digest, "e02838130d35cead251d5dddbafbe20389a098d0107cdb30d7cc3cc897d0648c");
 
-        for diagnostic_file in
-            ["x1-foundation-2026-07-19-370023b.json", "x1-foundation-2026-07-19-e71f6da.json"]
-        {
-            let diagnostic_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        for retained_file in [
+            "x1-foundation-2026-07-19-370023b.json",
+            "x1-foundation-2026-07-19-e71f6da.json",
+            "x1-foundation-2026-07-19-9a4c688.json",
+        ] {
+            let retained_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../benchmarks/results")
-                .join(diagnostic_file);
-            let diagnostic: serde_json::Value =
-                serde_json::from_slice(&std::fs::read(diagnostic_path).unwrap()).unwrap();
+                .join(retained_file);
+            let retained: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(retained_path).unwrap()).unwrap();
             assert!(
                 json_bytes_equal(
                     &x123_foundation_projection(&reference),
-                    &x123_foundation_projection(&diagnostic)
+                    &x123_foundation_projection(&retained)
                 ),
-                "retained diagnostic {diagnostic_file} differs inside the provider-contract projection"
+                "retained foundation record {retained_file} differs inside the provider-contract projection"
             );
         }
 

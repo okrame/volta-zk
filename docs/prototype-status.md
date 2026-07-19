@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1--X3 Phase 2 approved, ModelConfig foundation in progress; X4 later)
+# Prototype Status Ledger (T1 CLOSED; X1--X3 Phase 2, ModelConfig foundation PASS, X1 routing in progress; X4 later)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -36,9 +36,10 @@ was approved on 2026-07-18.  M11a--c and the concrete full-vector leaf
 instantiation are now proved and audited, so the Lean-first stop is cleared.
 T1 closed on clean `b14577e` with G1/G2/G3/G4 PASS and the exact schema-10 CPU
 and A100 records below.  The user approved the X1--X3 Phase-1 preregistration
-and explicitly authorized Phase 2 on 2026-07-19.  Work starts with the runtime
-`ModelConfig` foundation; no MoE code is eligible before its exact T1
-non-regression PASS.  No X1/X2/X3 gate verdict exists yet.  X4 remains a later
+and explicitly authorized Phase 2 on 2026-07-19.  The runtime `ModelConfig`
+foundation now has its exact clean T1 non-regression PASS on `9a4c688`, so X1
+routing implementation is in progress.  No X1/X2/X3 milestone verdict exists
+yet.  X4 remains a later
 package and pool prewarming remains backlog.  By product-owner decision on 2026-07-19,
 R1 is outside this package's operational plan and is deferred to Kimi3; no
 cryptographic-review assurance is claimed by the T1 closure.
@@ -69,7 +70,7 @@ cryptographic-review assurance is claimed by the T1 closure.
 | C3 PCS/logits communication | **C3b CLOSED; G1/G2/G3/G4 PASS** (2026-07-18) | G1 response <=115,000,000 B; G2 CPU ABBA <=+15% and pod <=5.6483791 s against pinned 4.911634 s; G3 full capability/adversarial parity; G4 fresh pod profile | `161fc59`: exact response **105,717,632 B**, PCS **43,273,888 B**, public logits **0 B**, L4 **57,840 B / 157,705,530 E-mult**. G1 CPU PASS, peak **8.629 GiB**, spool raw resident 0. G2 CPU **+14.5365% PASS**; pod **4.183011 s vs 5.6483791 s PASS**. G3 workspace/adversarial + both production leakage smokes PASS. G4 v3: prefill **2.536909**, decode **1.652746**, H2D **88,812,564 B**, max sync **0.114894647 s**, flat **1.228451**, all PASS. Post-fix CUPTI: **1,423,901** launches, 69 families, 0 drops; five new `private_argmax_*` families, none grid-x=1. |
 | X0 MoE analytic design | **design complete; no MoE implementation authorized** (2026-07-18) | parameterized budget + D1--D4 + private-weight table + prerequisite/long-output/provider contracts preregistered | gpt-oss-20b analytic 100+50 point: **485.360G MACs**, **41.800 GB i16 committed**, **371.881 MB** current-boundary corrections / **147.241 MB** k=4 shape, **417.268M / 687.568M** logical/padded lookups, **3,316** stacked PCS-claim upper bound. Dense 8B point: **1.076T MACs**, **617.081 / 189.459 MB** corrections, **452** claims. `scripts/budget_moe.py`; `docs/x0-moe-design.md`. |
 | T1 boundary thinning | **CLOSED; M11 GREEN; G1/G2/G3/G4 PASS** (2026-07-19) | response <=85,000,000 B; corrections <=38,348,720 B; CPU ABBA <=1.05; pod 10 s / 4 s / 100 MB / 0.150 s / 1.5 | Clean `b14577e`: exact response **84,544,352 B**, corrections **38,348,720 B**, reducer/q bridge **22,848 / 672 B**. CPU ABBA **1.005222 PASS**. A100 v4 prefill **2.412064 s**, decode **1.618844 s**, H2D **67,618,556 B**, max sync **0.117210172 s**, flat **1.231125**, all PASS. Sub/full **4,793,590 / 181,933**, closures **21,667 / 8,170**, E-mult buckets **2,800,595,736.8 / 114,852,961.2**, exact. Both production leakage smokes PASS. R1 is deferred to Kimi3 and no review assurance is claimed. |
-| X1 runtime foundation + routing soundness | **Phase 2 in progress: ModelConfig foundation first** (2026-07-19) | first reproduce GPT-2 T1 byte-for-byte at **84,544,352 B** with identical counters/digests/golden/workspace; then all route cheats reject and isolated E-mult/token-layer ratio lies in **[0.80,1.20]** | Top-4-of-32 fixture: T=31, L=4, d=48; **3,968 logical / 4,096 padded** one-limb comparisons; prediction **662.4056199596774 E-mult/token-layer**, accepted interval **529.924495967742..794.8867439516129**. No verdict. `docs/x123-harness-design.md`. |
+| X1 runtime foundation + routing soundness | **foundation PASS; X1 routing in progress** (2026-07-19) | GPT-2 T1 byte-for-byte at **84,544,352 B** with exact counters/deterministic schedule digest/golden/workspace ✓; next all route cheats reject and isolated E-mult/token-layer ratio lies in **[0.80,1.20]** | Clean `9a4c688` foundation: projection digests identical, G2 **+0.352% PASS**, flat **1.204 PASS**, peak RSS **8.343 GiB**; record `x1-foundation-2026-07-19-9a4c688.json`. Routing fixture remains T=31, L=4, d=48, **3,968 logical / 4,096 padded**, prediction **662.4056199596774** and interval **529.924495967742..794.8867439516129 E-mult/token-layer**. No X1 routing verdict yet. |
 | X2 synthetic MoE e2e | **Phase 2 authorized; queued behind X1** (2026-07-19) | one TableBank session; k=1 and k=2 accept with identical outputs; prover/verifier counter vector within **20%** of `budget_moe.py`, exact 3 commitments/40 claims | T=7, L=2, d=48, d_ff=80, 6/2 GQA, 8 experts top-2: **316,464 MACs**, **12,495 logical / 19,313 padded lookup rows (same for k=1 and k=2)**, sub correlations **330,820 / 330,484** at k=1/k=2, full proxy **17,040**. No verdict. |
 | X3 non-GPT ops pack | **Phase 2 authorized; queued behind X2** (2026-07-19) | op-by-op and integrated Rust/numpy full-array bit-exact goldens at non-pow2 T and hidden dim; pad-poison regression and relation tamper rejects | X2 shape with T=7, d=48/d_ff=80, RMSNorm, clamped SwiGLU, RoPE, GQA 6/2, two sinks/head and `[full, sliding(4)]`; existing argument classes only. No verdict. |
 
@@ -114,6 +115,51 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-19 (runtime `ModelConfig` foundation closed on clean `9a4c688`;
+  gate verdict: PASS; X1 routing unlocked)**: the append-only run of record is
+  `benchmarks/results/x1-foundation-2026-07-19-9a4c688.json`, schema 10,
+  `threads:4`, with `git_dirty`, `git_dirty_before_benchmark` and
+  `git_dirty_before_serialization` all false.  The official T1 validator and
+  the X1 compatibility gate both PASS.  Reference/observed projection digests
+  are identically
+  `e02838130d35cead251d5dddbafbe20389a098d0107cdb30d7cc3cc897d0648c`,
+  the mismatch vector is empty, normal/chunked proofs accept, and the full
+  50-token greedy decode is bit-exact.
+
+  **Binding byte/counter reproduction.**  Response is exactly
+  **84,544,352 B**, split **28,778,208 / 12,492,256 / 43,273,888 B** across
+  prefill/decode-marginal/PCS.  Authentication/reducer/q-bridge bytes are
+  exactly **38,348,720 / 22,848 / 672 B**.  Sub/full correlations are exactly
+  **4,793,590 / 181,933**; product/zero closures are exactly
+  **21,667 / 8,170**; E-mult buckets are exactly
+  **2,800,595,736.8 / 114,852,961.2**.  The deterministic stage allocation
+  digest remains
+  `8af19ba8054ecd33f8e220100567890068c1a4b92bdeb6e171d3c3adb105fc40`,
+  and every mock/real-prepass and prover/verifier allocation/channel parity
+  predicate is true.
+
+  **Measured CPU diagnostics.**  Same-process warmup plus three-round ABBA G2
+  gives C3b **19.056046518 s**, T1 **19.123072303 s**, delta
+  **+0.35172975116685745%**, below the **20.0088488439-s / +5%** ceiling:
+  PASS.  Three measured proof-response samples are
+  **18.366054831 / 18.129569691 / 18.303896849 s**; reported medians are
+  prefill **9.917698995 s**, response **18.303896849 s**, decode marginal
+  **8.339792816 s**.  The five 10-token chunk times are
+  **1.866452928 / 1.851418687 / 2.222941866 / 2.257193954 /
+  2.246878238 s** and last/first is **1.203822611485651 <= 1.5**: PASS.
+  Peak RSS is **8.343120574951172 GiB**.  The disk-backed fase-D spool is
+  exactly **114,611,091 entries / 4,584,443,640 B**, written in
+  **7.489389043 s**, with `resident_raw=0` and heap trim true.
+
+  `cargo test --workspace -q` exits zero (`volta-gpt2` **17/17**;
+  `volta-proto` **88 passed / 1 preregistered production-size ignore**),
+  `pytest -q` is **18/18**, `budget_moe.py --model all --json` reports
+  `self_checks.all_pass:true`, and `git diff --check` is clean.  The runtime
+  refactor is therefore the required foundation checkpoint; X1 routing may
+  begin, but this entry makes no X1 routing, X2 or X3 verdict.  No pod,
+  cryptographic/Lean/PCS/PCG change, real gpt-oss artifact or review-assurance
+  claim is involved.
 
 - **2026-07-19 (X1 foundation storage incident and provider-contract
   comparator correction; verdict still pending)**: the first production-size

@@ -1,11 +1,12 @@
 # X1--X3 model-agnostic harness and synthetic MoE design
 
-**Status (2026-07-19): Phase 1 approved; Phase 2 explicitly authorized and
-the runtime foundation is in progress.**  The preregistered design remains
-binding; implementation evidence and verdicts land in the ledger and
-append-only records.  No X1, X2 or X3 gate claim exists yet.  Phase 2 starts
-with the runtime `ModelConfig` foundation and its binding GPT-2 T1
-non-regression gate; no MoE code may precede that PASS.
+**Status (2026-07-19): Phase 1 approved; Phase 2 explicitly authorized;
+runtime `ModelConfig` foundation PASS; X1 routing in progress.**  The
+preregistered design remains binding; implementation evidence and verdicts
+land in the ledger and append-only records.  No X1, X2 or X3 milestone gate
+claim exists yet.  The foundation passed its binding GPT-2 T1 non-regression
+gate on clean `9a4c688`, so MoE work is unlocked in the required X1-first
+order.
 
 The package is CPU-only.  No pod may be provisioned or contacted, no gpt-oss
 checkpoint may be downloaded or exported, and X4 folding PCS and X5 gpt-oss

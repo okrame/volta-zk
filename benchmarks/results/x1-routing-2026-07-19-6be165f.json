@@ -1,0 +1,165 @@
+{
+  "schema": 1,
+  "milestone": "X1-routing",
+  "date": "2026-07-19",
+  "git_sha": "6be165f1b79e663c38666d7909bed8c0c9be9973",
+  "git_short_sha": "6be165f",
+  "git_dirty": false,
+  "cpu_only": true,
+  "rayon_workers": 4,
+  "detected_logical_cpus": 4,
+  "cpu_model": "unknown",
+  "model_config_blake3": "15d9750255823cc6eee80f66cc7e9e97e575d05ccdbb961d8804416a8f512551",
+  "router_tie_rule": "descending (score, expert_id); higher expert id wins ties",
+  "d1_public_metadata_encoding": "[cutoff, remaining three selected ids ascending]",
+  "d1_public_metadata_bytes": 496,
+  "cryptographic_review_assurance": false,
+  "shape": {
+    "tokens": 31,
+    "layers": 4,
+    "d_model": 48,
+    "experts": 32,
+    "top_k": 4,
+    "token_layers": 124,
+    "logical_comparisons": 3968,
+    "padded_comparisons": 4096,
+    "comparison_limb_bits": 16,
+    "comparison_limbs": 1,
+    "score_bound": "signed i16 [-32768,32767]",
+    "affine_bound_b": 16
+  },
+  "artifacts": {
+    "config_file": "tests/fixtures/x123/toy-moe-v1.config.json",
+    "config_sha256": "3738b64667d90bc7853495af838b4767246f9c7bad9200c4ca133733581d6e05",
+    "artifact_file": "tests/fixtures/x123/toy-moe-v1.artifact.bin",
+    "artifact_sha256": "01853c761b625d5f28d210a6e8e81a2b3e1cfecdf1941cf8d296810b0f34f402",
+    "golden_file": "tests/fixtures/x123/x1-router-v1.golden.bin",
+    "golden_sha256": "a1335d57e611285685dfa3bc50db35dff0e24c3d878e4f479ddb1f35e07e0431",
+    "exporter_sha256": "ac23447a487b1127ec48dc2cd68ebba8143da7ff77a79d1a3236bab387a57a05",
+    "rust_numpy_golden_bit_exact": true,
+    "real_gpt_oss_export_executed": false
+  },
+  "comparison_counters": {
+    "fp2_mults": 77056,
+    "base_mults": 53232,
+    "emult_equiv": 87702.4
+  },
+  "router_instance_counters": {
+    "fp2_mults": 251804,
+    "base_mults": 115968,
+    "emult_equiv": 274997.6
+  },
+  "total_instance_counters": {
+    "fp2_mults": 3253015,
+    "base_mults": 2078320,
+    "emult_equiv": 3668679.0
+  },
+  "prover_correlation_counters": {
+    "sub_corrs": 205568,
+    "full_corrs": 4714,
+    "domains": 1896
+  },
+  "verifier_correlation_counters": {
+    "sub_corrs": 205568,
+    "full_corrs": 4714,
+    "domains": 1896
+  },
+  "allocation_digest_prover": "4e6cd0b309c73be6ba9a75b6cb29a8cb2babc0eca89db6fb73e3f0563e2800da",
+  "allocation_digest_verifier": "4e6cd0b309c73be6ba9a75b6cb29a8cb2babc0eca89db6fb73e3f0563e2800da",
+  "channel_probe_digest_prover": "5a79a85085866667c5e6d772e023a7ccbd7ac9bf1b4b6be215fb1ded9cb291fa",
+  "channel_probe_digest_verifier": "5a79a85085866667c5e6d772e023a7ccbd7ac9bf1b4b6be215fb1ded9cb291fa",
+  "transcript_bytes": 4918992,
+  "transcript_by_label": {
+    "auth_corrections": 1644544,
+    "blind_round_corrections": 768,
+    "hadamard_claim_corrections": 192,
+    "hadamard_round_corrections": 1920,
+    "logup_aggregate_corrections": 720,
+    "logup_aux_round_corrections": 7680,
+    "logup_col_corrections": 1152,
+    "logup_cross_corrections": 320,
+    "logup_prod_corrections": 11904,
+    "logup_root_corrections": 800,
+    "logup_round_corrections": 33728,
+    "logup_split_corrections": 15872,
+    "mask_correction": 32,
+    "pcs_columns": 1847200,
+    "pcs_mask_root": 32,
+    "pcs_s_corrections": 64,
+    "pcs_u_vectors": 1351680,
+    "prod_check_m0_m1": 160,
+    "w_claim_correction": 64,
+    "x1_rowsum_correction": 64,
+    "x_claim_correction": 64,
+    "zero_batch_tag": 32
+  },
+  "pcs": {
+    "parameter_profile": "P4_LAYER (unchanged)",
+    "parameters_unchanged": true,
+    "rows": 1024,
+    "col_bits": 14,
+    "pad": 512,
+    "code_bits": 15,
+    "queries": 200,
+    "commitments": 1,
+    "batched_openings": 1,
+    "claims": 4,
+    "claim_point_vars_before_outer_padding": 11,
+    "claim_point_vars_at_pcs": 14,
+    "root_hex": "2fd0741e57dd10df5ca98ccf588664a9e2055cea50c34ad86ae18b99cf906650",
+    "proof_bytes": 3199008,
+    "commit_s": 0.303313581,
+    "open_s": 0.025567098,
+    "verify_s": 0.005477533,
+    "accepted": true
+  },
+  "smokes": {
+    "honest_accepts": true,
+    "wrong_expert_set_rejects": true,
+    "score_swap_rejects": true,
+    "forged_limb_rejects": true,
+    "crafted_tie_accepts_28_29_30_31": true,
+    "tied_expert_27_substitution_rejects": true,
+    "worse_tied_cutoff_rejects": true,
+    "duplicate_id_preflight_rejects": true,
+    "out_of_range_id_preflight_rejects": true
+  },
+  "timings": {
+    "prove_s": 0.02821949,
+    "verify_s": 0.010159865,
+    "closure_s": 0.335487867,
+    "peak_rss_gib": 0.27573394775390625
+  },
+  "deviations": [
+    "Reuses the existing P4 recip-in deviation: recip_in = denom >> recip_den_shift is prover-asserted while both vectors, the LUT membership, and denominator row sum are authenticated/proved.",
+    "The synthetic 2^11 router BlockClaim is embedded in the first sub-block of an unchanged P4_LAYER row by three public zero high coordinates; no PCS parameter changed."
+  ],
+  "gate": {
+    "verdict": "PASS",
+    "comparison_prediction_total_emult": 82138.296875,
+    "comparison_measured_total_emult": 87702.4,
+    "comparison_prediction_per_token_layer_emult": 662.4056199596774,
+    "comparison_measured_per_token_layer_emult": 707.2774193548387,
+    "measured_over_prediction": 1.0677406683202548,
+    "inclusive_acceptance_ratio": [
+      0.8,
+      1.2
+    ],
+    "inclusive_acceptance_per_token_layer_emult": [
+      529.924495967742,
+      794.8867439516129
+    ],
+    "comparison_band_pass": true,
+    "exact_geometry_pass": true,
+    "correlation_counter_equality_pass": true,
+    "allocation_digest_equality_pass": true,
+    "channel_probe_digest_equality_pass": true,
+    "golden_pass": true,
+    "pcs_pass": true,
+    "product_batch_pass": true,
+    "zero_batch_pass": true,
+    "smokes_pass": true,
+    "cpu_four_workers_pass": true,
+    "all_pass": true
+  }
+}

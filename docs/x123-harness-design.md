@@ -1,11 +1,11 @@
 # X1--X3 model-agnostic harness and synthetic MoE design
 
 **Status (2026-07-19): Phase 1 approved; Phase 2 explicitly authorized;
-runtime `ModelConfig` foundation PASS; X1 routing in progress.**  The
+runtime `ModelConfig` foundation PASS; X1 routing PASS; X2 next.**  The
 preregistered design remains binding; implementation evidence and verdicts
-land in the ledger and append-only records.  No X1, X2 or X3 milestone gate
-claim exists yet.  The foundation passed its binding GPT-2 T1 non-regression
-gate on clean `9a4c688`, so MoE work is unlocked in the required X1-first
+land in the ledger and append-only records.  The foundation passed its binding
+GPT-2 T1 non-regression gate on clean `9a4c688`; X1 passed on clean `6be165f`.
+No X2 or X3 milestone gate claim exists yet, and work remains in the required
 order.
 
 The package is CPU-only.  No pod may be provisioned or contacted, no gpt-oss
@@ -361,6 +361,15 @@ are inclusive.  Honest acceptance, every rejection above, exact
 3,968/4,096 geometry, prover/verifier counter equality and allocation/channel
 digest equality are also binding.  Any FAIL closes X1 FAIL; the band is not
 relaxed after measurement.
+
+**Measured outcome (clean `6be165f`): PASS.**  The isolated bridge measured
+`87,702.4` E-mult total, `707.2774193548387` per token-layer, and a
+measured/predicted ratio of `1.0677406683202548`.  Every preregistered
+cheating/preflight smoke rejected, the crafted tie accepted the exact D1
+vector `[28,29,30,31]`, and the unchanged PCS/closure/digest gates passed.
+The append-only evidence is
+`benchmarks/results/x1-routing-2026-07-19-6be165f.json`; exact counters and
+the two explicit reused/layout deviations are recorded in the ledger.
 
 ## 5. X2 two-layer MoE e2e
 

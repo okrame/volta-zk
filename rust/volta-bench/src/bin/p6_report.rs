@@ -5082,7 +5082,14 @@ fn main() {
     };
 
     if args.x123_foundation_record {
-        let current = serde_json::to_value(&report).expect("serialize foundation report");
+        // Compare the exact JSON representation that will be written below.
+        // `serde_json::to_value` can retain a different internal Number form
+        // for an in-memory f64 than `from_slice` retains for the reference,
+        // even when both final JSON spellings are byte-identical.
+        let current_bytes =
+            serde_json::to_vec(&report).expect("serialize foundation report for comparison");
+        let current: serde_json::Value = serde_json::from_slice(&current_bytes)
+            .expect("parse serialized foundation report for comparison");
         let reference_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../benchmarks/results")
             .join(X123_FOUNDATION_REFERENCE_FILE);
@@ -5193,18 +5200,22 @@ mod report_tests {
         let digest = json_digest(&x123_foundation_projection(&reference));
         assert_eq!(digest, "e02838130d35cead251d5dddbafbe20389a098d0107cdb30d7cc3cc897d0648c");
 
-        let diagnostic_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../benchmarks/results")
-            .join("x1-foundation-2026-07-19-370023b.json");
-        let diagnostic: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(diagnostic_path).unwrap()).unwrap();
-        assert!(
-            json_bytes_equal(
-                &x123_foundation_projection(&reference),
-                &x123_foundation_projection(&diagnostic)
-            ),
-            "the retained first-run diagnostic differs only outside the provider-contract projection"
-        );
+        for diagnostic_file in
+            ["x1-foundation-2026-07-19-370023b.json", "x1-foundation-2026-07-19-e71f6da.json"]
+        {
+            let diagnostic_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../benchmarks/results")
+                .join(diagnostic_file);
+            let diagnostic: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(diagnostic_path).unwrap()).unwrap();
+            assert!(
+                json_bytes_equal(
+                    &x123_foundation_projection(&reference),
+                    &x123_foundation_projection(&diagnostic)
+                ),
+                "retained diagnostic {diagnostic_file} differs inside the provider-contract projection"
+            );
+        }
 
         let mut fresh_session = reference.clone();
         fresh_session["ggm_aes_feature"] = serde_json::json!("armv8-ce");

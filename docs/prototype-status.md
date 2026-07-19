@@ -152,8 +152,22 @@ constant factors hold. That constant factor is what P3/P4 measure.
   projects identically to the T1 reference under that contract, and a
   permanent regression test pins the projection digest.  This restores the
   preregistered provider contract rather than rebaselining or relaxing any
-  byte/counter gate.  A new clean run from a fresh store is required before a
-  foundation PASS or any X1 routing code.
+  byte/counter gate.
+
+  The fresh-store rerun at `e71f6da` is likewise retained append-only as
+  `x1-foundation-2026-07-19-e71f6da.json`.  Disk-backed spooling completed in
+  **8.364 s** with `resident_raw=0`; the official T1 validator passes, G2 is
+  **+0.386%** and the flat ratio is **1.23**, with every byte/counter/golden
+  invariant exact.  Its custom flag still named the two scalar-soundness
+  floats as mismatches even though the emitted decimal strings are identical.
+  The remaining harness cause is that `serde_json::to_value` preserves a
+  different intermediate `Number` representation for an in-memory `f64`
+  than parsing the reference bytes; both final files parse to identical
+  provider projections.  The comparator now normalizes the current report by
+  serializing and reparsing the exact JSON representation that will be
+  written.  This is again report-only: neither soundness computation nor any
+  gate operand changed.  A third clean run from a fresh store is required
+  before a foundation PASS or any X1 routing code.
 
 - **2026-07-19 (X1--X3 Phase 2 explicitly approved; foundation starts;
   review clarifications pinned)**: the user approved Phase 2 under the existing

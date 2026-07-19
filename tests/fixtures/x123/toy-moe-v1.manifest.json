@@ -1,0 +1,120 @@
+{
+  "architecture": "volta-x123-toy-moe-v1",
+  "exporter_sha256": "ac23447a487b1127ec48dc2cd68ebba8143da7ff77a79d1a3236bab387a57a05",
+  "files": {
+    "toy-moe-v1.artifact.bin": {
+      "bytes": 17508,
+      "sha256": "01853c761b625d5f28d210a6e8e81a2b3e1cfecdf1941cf8d296810b0f34f402"
+    },
+    "toy-moe-v1.config.json": {
+      "bytes": 784,
+      "sha256": "3738b64667d90bc7853495af838b4767246f9c7bad9200c4ca133733581d6e05"
+    },
+    "x1-router-v1.golden.bin": {
+      "bytes": 121776,
+      "sha256": "a1335d57e611285685dfa3bc50db35dff0e24c3d878e4f479ddb1f35e07e0431"
+    }
+  },
+  "framework": "per-architecture adapter + shared D2/D4 calibration/golden machinery",
+  "real_gpt_oss_export": false,
+  "schema": 1,
+  "tensors": [
+    {
+      "block_elems": 1536,
+      "i16_shifts": [
+        0
+      ],
+      "name": "x1.router.0.weight",
+      "payload_bytes": 3072,
+      "payload_offset_bytes": 74,
+      "payload_sha256": "a0df48a09a0c97bc016ccb2e11d2bcd3844221c8c406e6ac7d1b12cce113bea1",
+      "shape": [
+        48,
+        32
+      ],
+      "source_kind": "bf16"
+    },
+    {
+      "block_elems": 1536,
+      "i16_shifts": [
+        0
+      ],
+      "name": "x1.router.1.weight",
+      "payload_bytes": 3072,
+      "payload_offset_bytes": 3196,
+      "payload_sha256": "b7fd90190484ecb14dee77508f771f77f18a959ab84a134cd608123f94a0542a",
+      "shape": [
+        48,
+        32
+      ],
+      "source_kind": "bf16"
+    },
+    {
+      "block_elems": 1536,
+      "i16_shifts": [
+        0
+      ],
+      "name": "x1.router.2.weight",
+      "payload_bytes": 3072,
+      "payload_offset_bytes": 6318,
+      "payload_sha256": "87c9aa01beddfa8d48829e2b3edbf7feb3788a1ee195d80d54bf2f513d44d4fe",
+      "shape": [
+        48,
+        32
+      ],
+      "source_kind": "bf16"
+    },
+    {
+      "block_elems": 1536,
+      "i16_shifts": [
+        0
+      ],
+      "name": "x1.router.3.weight",
+      "payload_bytes": 3072,
+      "payload_offset_bytes": 9440,
+      "payload_sha256": "74afe68e370f5fbdf4e93188fb5c3aeb356e97dfd616cc2ccb47a7125d0bc175",
+      "shape": [
+        48,
+        32
+      ],
+      "source_kind": "bf16"
+    },
+    {
+      "block_elems": 2304,
+      "i16_shifts": [
+        0
+      ],
+      "name": "x2.attention.0.weight",
+      "payload_bytes": 4608,
+      "payload_offset_bytes": 12565,
+      "payload_sha256": "c690fc4df140455997970d92d9076fd64b13820ecc5c10c5b227c8c9df4835e1",
+      "shape": [
+        48,
+        48
+      ],
+      "source_kind": "bf16"
+    },
+    {
+      "block_elems": 16,
+      "i16_shifts": [
+        8,
+        7,
+        6,
+        5,
+        8,
+        7,
+        6,
+        5
+      ],
+      "name": "x2.expert.0.gelu_up",
+      "payload_bytes": 256,
+      "payload_offset_bytes": 17252,
+      "payload_sha256": "f83ced6722525dda560f7c2f18a7549bfaa72f4b1c50836d4997486df75413b0",
+      "shape": [
+        8,
+        16
+      ],
+      "source_kind": "mxfp4"
+    }
+  ]
+}

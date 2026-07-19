@@ -1,0 +1,36 @@
+{
+  "architecture": "volta-x123-toy-moe-v1",
+  "contract": {
+    "bf16": "D4 symmetric zero-point-0 BF16-to-i16 with explicit power-of-two shift",
+    "mxfp4": "D2 per-block dequantize then symmetric i16; no 4-bit proof credit",
+    "real_gpt_oss_export": false
+  },
+  "schema": 1,
+  "x1": {
+    "d1_encoding": "[cutoff,remaining-selected-ascending]",
+    "d_model": 48,
+    "experts": 32,
+    "layers": 4,
+    "router_norm": 12,
+    "router_requant": 8,
+    "t": 31,
+    "tie_rule": "descending(score,expert_id); higher expert id wins",
+    "top_k": 4
+  },
+  "x2": {
+    "d_ff": 80,
+    "d_model": 48,
+    "experts": 8,
+    "head_dim": 8,
+    "kv_heads": 2,
+    "layers": 2,
+    "q_heads": 6,
+    "t": 7,
+    "thin_k": [
+      1,
+      2
+    ],
+    "top_k": 2,
+    "vocab": 97
+  }
+}

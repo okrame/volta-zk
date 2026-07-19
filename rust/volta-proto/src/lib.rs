@@ -18,6 +18,7 @@ pub mod sumcheck_blind;
 pub mod sumcheck_clear;
 pub mod thaler;
 pub mod wires;
+pub mod x1_routing;
 
 pub use block_proof::{
     build_attn_wires, cattn_permuted, layer_content_keys, layer_dom_base, prove_layer_phase1,
@@ -50,3 +51,9 @@ pub use schedule::{
 };
 pub use sumcheck_blind::{blind_prove, blind_prove_with_finals, blind_verify, BlindSumcheckProof};
 pub use sumcheck_clear::{prove_clear, verify_clear, ClearProof};
+pub use x1_routing::{
+    build_x1_routing_fixture, encode_x1_golden, native_top_k_d1, prove_x1_routing,
+    verify_x1_routing, x1_content_keys, x1_model_config, X1LayerWitness, X1RoutingFixture,
+    X1RoutingProof, X1RoutingProverOut, X1RoutingVerifierOut, X1_D, X1_EXPERTS, X1_LAYERS, X1_T,
+    X1_TOP_K,
+};

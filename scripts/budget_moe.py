@@ -11,6 +11,7 @@ The default workload is the repository workload of record (100 prompt rows and
 
     python3 scripts/budget_moe.py
     python3 scripts/budget_moe.py --model gpt-oss-20b --json
+    python3 scripts/budget_moe.py --model x123-synthetic --prompt-tokens 7 --decode-tokens 0 --thin-k 2
     python3 scripts/budget_moe.py --prompt-tokens 512 --decode-tokens 128
 
 Only the Python standard library is used.  All byte units printed as MB are
@@ -34,6 +35,13 @@ ARGMAX_TRANSCRIPT_BYTES_PER_TOKEN_REFERENCE = 57_840 / 50
 PRODUCTION_CONNECTION_SUB_CAPACITY = 110_918_718
 CHUNK_DOMAIN_CAP = 5
 FLAT_COST_VALIDATED_CONTEXT = 150
+X1_ROUTING_TOKENS = 31
+X1_ROUTING_LAYERS = 4
+X1_ROUTING_EXPERTS = 32
+X1_ROUTING_TOP_K = 4
+C3B_L4_EMULT_INSTANCES = 157_705_530.0
+C3B_L4_PADDED_RANGE_ENTRIES = 7_864_320
+X1_EMULT_ACCEPTANCE = (0.80, 1.20)
 
 
 def ceil_pow2(value: int) -> int:
@@ -97,8 +105,9 @@ class ModelConfig:
     every inter-layer residual seam is a distinct requantized tensor.
 
     PCS claim counts are per proof phase.  A MoE expert has two independently
-    evaluated blocks (fused gate/up and down); counting one claim for both
-    would require a separately justified multi-point reduction.
+    evaluated blocks (X2 GELU-up or gpt-oss fused gate/up, then down); counting
+    one claim for both would require a separately justified multi-point
+    reduction.
     """
 
     name: str
@@ -245,6 +254,45 @@ def gpt_oss_20b() -> ModelConfig:
     )
 
 
+def x123_synthetic() -> ModelConfig:
+    """CPU-only X2 harness shape; X3 applies its op-specific overrides.
+
+    The deliberately non-power-of-two residual/expert/vocabulary dimensions
+    exercise the padded-layout rules.  X2 keeps the already implemented GELU
+    activation; SwiGLU is introduced by X3, so the milestone order does not
+    silently pull an X3 operator into X2.
+    """
+
+    return ModelConfig(
+        name="x123-synthetic",
+        layers=2,
+        d_model=48,
+        d_ff=80,
+        n_heads=6,
+        n_kv_heads=2,
+        head_dim=8,
+        vocab=97,
+        # X2 stays on the already implemented full-causal band.  X3 changes
+        # layer 1 to window 4 when it introduces the lower-edge selector.
+        layer_windows=(None, None),
+        ffn_kind="gelu",
+        n_experts=8,
+        top_k=2,
+        residual_requant_seams=1,
+        # X2 contents: ln_rsqrt, exp, reciprocal, GELU, shared Range(8)
+        # requant and Range(16) routing comparisons.  X3 adds SiLU and the
+        # saturation content; they are intentionally not charged here.
+        lookup_table_auth_values=4 * (1 << 16) + (1 << 8) + (1 << 16),
+        private_argmax=False,
+        pcs_attention_claims_per_layer=2,
+        pcs_dense_ffn_claims_per_layer=0,
+        pcs_router_claims_per_layer=1,
+        pcs_claims_per_expert=2,
+        pcs_global_claims_per_phase=2,
+        pcs_global_commitments=1,
+    )
+
+
 def gpt2_c1_anchor(private_argmax: bool = False) -> ModelConfig:
     """Measured C1 shape used only to audit the accounting equations."""
 
@@ -329,8 +377,9 @@ def native_mac_budget(config: ModelConfig, workload: Workload) -> dict[str, Any]
         macs["attention_qk"] += one_leg
         macs["attention_av"] += one_leg
     if config.ffn_kind == "gelu":
-        macs["ffn_up"] = config.layers * rows * d * config.d_ff
-        macs["ffn_down"] = config.layers * rows * config.d_ff * d
+        routes = config.active_routes
+        macs["ffn_up"] = config.layers * rows * routes * d * config.d_ff
+        macs["ffn_down"] = config.layers * rows * routes * config.d_ff * d
     else:
         routes = config.active_routes
         macs["ffn_gate_up"] = config.layers * rows * routes * d * (2 * config.d_ff)
@@ -394,6 +443,48 @@ def balanced_bucket_sizes(total: int, buckets: int) -> tuple[int, ...]:
     return tuple(base + int(index < extra) for index in range(buckets))
 
 
+def x1_routing_spike_budget() -> dict[str, Any]:
+    """Pinned top-4-of-32 comparison budget for the X1 CPU spike.
+
+    X0 contributes one logical Range(16) comparison per expert/token/layer.
+    The E-mult conversion is anchored to the already measured C3b one-limb
+    private-argmax machinery, including its selector bridge and padded LogUp
+    work.  X1 measures the isolated routing-comparison counter delta.
+    """
+
+    token_layers = X1_ROUTING_TOKENS * X1_ROUTING_LAYERS
+    logical = token_layers * X1_ROUTING_EXPERTS
+    padded_per_layer = ceil_pow2(X1_ROUTING_TOKENS * X1_ROUTING_EXPERTS)
+    padded = X1_ROUTING_LAYERS * padded_per_layer
+    emult_per_padded_entry = C3B_L4_EMULT_INSTANCES / C3B_L4_PADDED_RANGE_ENTRIES
+    predicted_total = padded * emult_per_padded_entry
+    predicted_per_token_layer = predicted_total / token_layers
+    low, high = X1_EMULT_ACCEPTANCE
+    return {
+        "tokens": X1_ROUTING_TOKENS,
+        "layers": X1_ROUTING_LAYERS,
+        "n_experts": X1_ROUTING_EXPERTS,
+        "top_k": X1_ROUTING_TOP_K,
+        "token_layers": token_layers,
+        "logical_range_comparisons": logical,
+        "logical_comparisons_per_token_layer": X1_ROUTING_EXPERTS,
+        "padded_range_entries": padded,
+        "padded_entries_per_layer": padded_per_layer,
+        "c3b_emult_per_padded_range_entry": emult_per_padded_entry,
+        "predicted_emult_instances_total": predicted_total,
+        "predicted_emult_per_token_layer": predicted_per_token_layer,
+        "acceptance_ratio": {"min": low, "max": high},
+        "acceptance_emult_per_token_layer": {
+            "min": low * predicted_per_token_layer,
+            "max": high * predicted_per_token_layer,
+        },
+        "measurement_scope": (
+            "isolated ctr_instances delta for the top-k comparison/selector bridge; "
+            "router GEMM and exp/reciprocal score construction are reported separately"
+        ),
+    }
+
+
 def lookup_budget(config: ModelConfig, workload: Workload) -> dict[str, Any]:
     layer_acc = LookupAccumulator()
     global_acc = LookupAccumulator()
@@ -422,10 +513,17 @@ def lookup_budget(config: ModelConfig, workload: Workload) -> dict[str, Any]:
                 layer_acc.add("router_topk_range", q * config.n_experts)
 
             routes = config.active_routes
-            if config.ffn_kind == "gelu":
+            if config.ffn_kind == "gelu" and not config.is_moe:
                 layer_acc.add("requant_ffn_up", q * config.d_ff)
                 layer_acc.add("gelu", q * config.d_ff)
                 layer_acc.add("requant_ffn_down", q * d)
+            elif config.ffn_kind == "gelu":
+                for expert_rows in balanced_bucket_sizes(
+                    q * config.active_routes, config.n_experts
+                ):
+                    layer_acc.add("requant_ffn_up", expert_rows * config.d_ff)
+                    layer_acc.add("gelu", expert_rows * config.d_ff)
+                    layer_acc.add("requant_ffn_down", expert_rows * d)
             elif not config.is_moe:
                 layer_acc.add("requant_ffn_gate_up", q * routes * 2 * config.d_ff)
                 layer_acc.add("silu", q * routes * config.d_ff)
@@ -641,7 +739,7 @@ def pcs_budget(config: ModelConfig, workload: Workload) -> dict[str, Any]:
         "one_batched_opening_per_response": True,
         "claim_assumption": (
             "one claim per independently evaluated tensor block per prefill/decode "
-            "phase; two claims per MoE expert (fused gate/up and down)"
+            "phase; two claims per MoE expert (up or fused gate/up, then down)"
         ),
     }
 
@@ -662,6 +760,7 @@ def correlation_budget(
     pcs_proxy = 2 * math.ceil(pcs["claims_per_response_stacked_upper"])
     chain_proxy = 32 * config.layers * workload.proof_phases
     full_proxy = logup_proxy + pcs_proxy + chain_proxy
+    synthetic_gate = config.name == "x123-synthetic"
     return {
         "subfield_current_exact": auth["current"]["total"],
         f"subfield_thin_k{thin_k}_exact": auth[f"thin_k{thin_k}"]["total"],
@@ -671,9 +770,12 @@ def correlation_budget(
             "pcs_claim_masks": pcs_proxy,
             "chain_and_closure_masks": chain_proxy,
         },
-        "full_field_proxy_is_gate_eligible": False,
+        "full_field_proxy_is_gate_eligible": synthetic_gate,
         "note": (
-            "full-field use must be replaced by exact allocation-digest counters "
+            "the X2 synthetic schedule compares this proxy within its preregistered "
+            "20% band and replaces it with exact allocation-digest counters at closure"
+            if synthetic_gate
+            else "full-field use must be replaced by exact allocation-digest counters "
             "when the non-GPT proof schedule exists"
         ),
     }
@@ -793,6 +895,13 @@ def run_self_checks(thin_k: int = DEFAULT_THIN_K) -> dict[str, Any]:
         replace(anchor, private_argmax=True), c1, thin_k
     )
     full_pairs = phase_attention_pairs(0, 100, None) + phase_attention_pairs(100, 50, None)
+    synthetic = x123_synthetic()
+    synthetic_workload = Workload(7, 0)
+    synthetic_lookups = lookup_budget(synthetic, synthetic_workload)
+    synthetic_k1 = authenticated_value_budget(synthetic, synthetic_workload, 1)
+    synthetic_k2 = authenticated_value_budget(synthetic, synthetic_workload, 2)
+    synthetic_pcs = pcs_budget(synthetic, synthetic_workload)
+    x1 = x1_routing_spike_budget()
 
     checks = {
         "p0_native_macs_8_625_144_576": p0_macs == 8_625_144_576,
@@ -807,6 +916,25 @@ def run_self_checks(thin_k: int = DEFAULT_THIN_K) -> dict[str, Any]:
         ),
         "c3b_selected_rows_add_512_bytes": (
             c3b_auth["current"]["correction_bytes"] == 59_545_520
+        ),
+        "x1_router_logical_comparisons_3_968": (
+            x1["logical_range_comparisons"] == 3_968
+        ),
+        "x1_router_padded_entries_4_096": x1["padded_range_entries"] == 4_096,
+        "x2_synthetic_native_macs_316_464": (
+            native_mac_budget(synthetic, synthetic_workload)["total"] == 316_464
+        ),
+        "x2_synthetic_lookups_12_495_19_313": (
+            synthetic_lookups["logical_total"] == 12_495
+            and synthetic_lookups["padded_total"] == 19_313
+        ),
+        "x2_synthetic_subcorrs_k1_k2": (
+            synthetic_k1["thin_k1"]["total"] == 330_820
+            and synthetic_k2["thin_k2"]["total"] == 330_484
+        ),
+        "x2_synthetic_pcs_3_commitments_40_claims": (
+            synthetic_pcs["commitments"] == 3
+            and synthetic_pcs["claims_per_response_stacked_upper"] == 40
         ),
     }
     if thin_k == 4:
@@ -860,9 +988,9 @@ ASSUMPTIONS = [
     "GQA authenticates only n_kv_heads*head_dim K/V values, while attention QK/AV work uses all query heads.",
     "Sliding attention uses a public lower-edge BandShape; old positions outside the window are not authenticated mask cells.",
     "MoE routes are balanced for padded lookup sizing; expert-touch expectations use independent uniform top-k routing only as a cost model.",
-    "MoE PCS uses two claims per touched expert per phase (fused gate/up and down); no unsound cross-point RLC saving is assumed.",
+    "MoE PCS uses two claims per touched expert per phase (X2 GELU-up or gpt-oss fused gate/up, then down); no unsound cross-point RLC saving is assumed.",
     "Lookup padding is one power-of-two instance per (layer, phase, op), split per expert for MoE, with five-position C3b-style packing for private argmax.",
-    "Full-field correlation use is a labeled planning proxy until an exact X1-X3 allocation schedule and digest exist.",
+    "Large-model full-field correlation use remains a labeled planning proxy; the pinned X2 synthetic schedule alone gates it within 20% and replaces it with an exact allocation digest at closure.",
     "No total response byte is projected: the per-response PCS opening remains the X4 folding-PCS deliverable.",
 ]
 
@@ -874,6 +1002,7 @@ def build_report(
         "schema_version": 1,
         "workload": asdict(workload),
         "thin_k": thin_k,
+        "x1_routing_spike": x1_routing_spike_budget(),
         "models": {
             config.name: model_report(config, workload, thin_k) for config in configs
         },
@@ -902,6 +1031,14 @@ def print_report(report: dict[str, Any]) -> None:
         f"prompt={workload['prompt_tokens']}, decode={workload['decode_tokens']}, k={thin_k}"
     )
     print("Scope: analytic only; no non-GPT e2e or total-response measurement.\n")
+    x1 = report["x1_routing_spike"]
+    print(
+        "X1 routing spike: "
+        f"{x1['logical_range_comparisons']:,} logical / "
+        f"{x1['padded_range_entries']:,} padded comparisons; "
+        f"predicted {x1['predicted_emult_per_token_layer']:.6f} "
+        "E-mult/token-layer, acceptance ratio [0.80, 1.20].\n"
+    )
     for name, model in report["models"].items():
         cfg = model["config"]
         print(f"== {name} ==")
@@ -962,11 +1099,17 @@ def print_report(report: dict[str, Any]) -> None:
             f"expected={pcs['claims_per_response_expected']:,.2f}"
         )
         correlations = model["correlations"]
+        proxy_status = (
+            "gating"
+            if correlations["full_field_proxy_is_gate_eligible"]
+            else "non-gating"
+        )
         print(
             "correlations: "
             f"sub current={correlations['subfield_current_exact']:,}, "
             f"sub k={thin_k}={correlations[f'subfield_thin_k{thin_k}_exact']:,}, "
-            f"full-field proxy={correlations['full_field_planning_proxy']:,} (non-gating)"
+            f"full-field proxy={correlations['full_field_planning_proxy']:,} "
+            f"({proxy_status})"
         )
         long = model["long_output"]
         print(
@@ -1005,7 +1148,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--model",
-        choices=("all", "gpt-oss-20b", "llama-8b", "gpt2-c1-anchor"),
+        choices=(
+            "all",
+            "gpt-oss-20b",
+            "llama-8b",
+            "gpt2-c1-anchor",
+            "x123-synthetic",
+        ),
         default="all",
     )
     parser.add_argument("--prompt-tokens", type=int, default=DEFAULT_PROMPT_TOKENS)
@@ -1022,6 +1171,7 @@ def main() -> int:
         "gpt-oss-20b": gpt_oss_20b(),
         "llama-8b": llama_8b(),
         "gpt2-c1-anchor": gpt2_c1_anchor(),
+        "x123-synthetic": x123_synthetic(),
     }
     configs = (
         [choices["gpt-oss-20b"], choices["llama-8b"]]

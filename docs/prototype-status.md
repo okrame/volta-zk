@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1--X4 later packages)
+# Prototype Status Ledger (T1 CLOSED; X1--X3 Phase 2 approved, ModelConfig foundation in progress; X4 later)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -35,8 +35,11 @@ the eq-sumcheck late-scalar chain and non-empty LogUp aux transport.  Phase 1
 was approved on 2026-07-18.  M11a--c and the concrete full-vector leaf
 instantiation are now proved and audited, so the Lean-first stop is cleared.
 T1 closed on clean `b14577e` with G1/G2/G3/G4 PASS and the exact schema-10 CPU
-and A100 records below.  X1--X4 remain later packages;
-pool prewarming remains backlog.  By product-owner decision on 2026-07-19,
+and A100 records below.  The user approved the X1--X3 Phase-1 preregistration
+and explicitly authorized Phase 2 on 2026-07-19.  Work starts with the runtime
+`ModelConfig` foundation; no MoE code is eligible before its exact T1
+non-regression PASS.  No X1/X2/X3 gate verdict exists yet.  X4 remains a later
+package and pool prewarming remains backlog.  By product-owner decision on 2026-07-19,
 R1 is outside this package's operational plan and is deferred to Kimi3; no
 cryptographic-review assurance is claimed by the T1 closure.
 
@@ -66,6 +69,9 @@ cryptographic-review assurance is claimed by the T1 closure.
 | C3 PCS/logits communication | **C3b CLOSED; G1/G2/G3/G4 PASS** (2026-07-18) | G1 response <=115,000,000 B; G2 CPU ABBA <=+15% and pod <=5.6483791 s against pinned 4.911634 s; G3 full capability/adversarial parity; G4 fresh pod profile | `161fc59`: exact response **105,717,632 B**, PCS **43,273,888 B**, public logits **0 B**, L4 **57,840 B / 157,705,530 E-mult**. G1 CPU PASS, peak **8.629 GiB**, spool raw resident 0. G2 CPU **+14.5365% PASS**; pod **4.183011 s vs 5.6483791 s PASS**. G3 workspace/adversarial + both production leakage smokes PASS. G4 v3: prefill **2.536909**, decode **1.652746**, H2D **88,812,564 B**, max sync **0.114894647 s**, flat **1.228451**, all PASS. Post-fix CUPTI: **1,423,901** launches, 69 families, 0 drops; five new `private_argmax_*` families, none grid-x=1. |
 | X0 MoE analytic design | **design complete; no MoE implementation authorized** (2026-07-18) | parameterized budget + D1--D4 + private-weight table + prerequisite/long-output/provider contracts preregistered | gpt-oss-20b analytic 100+50 point: **485.360G MACs**, **41.800 GB i16 committed**, **371.881 MB** current-boundary corrections / **147.241 MB** k=4 shape, **417.268M / 687.568M** logical/padded lookups, **3,316** stacked PCS-claim upper bound. Dense 8B point: **1.076T MACs**, **617.081 / 189.459 MB** corrections, **452** claims. `scripts/budget_moe.py`; `docs/x0-moe-design.md`. |
 | T1 boundary thinning | **CLOSED; M11 GREEN; G1/G2/G3/G4 PASS** (2026-07-19) | response <=85,000,000 B; corrections <=38,348,720 B; CPU ABBA <=1.05; pod 10 s / 4 s / 100 MB / 0.150 s / 1.5 | Clean `b14577e`: exact response **84,544,352 B**, corrections **38,348,720 B**, reducer/q bridge **22,848 / 672 B**. CPU ABBA **1.005222 PASS**. A100 v4 prefill **2.412064 s**, decode **1.618844 s**, H2D **67,618,556 B**, max sync **0.117210172 s**, flat **1.231125**, all PASS. Sub/full **4,793,590 / 181,933**, closures **21,667 / 8,170**, E-mult buckets **2,800,595,736.8 / 114,852,961.2**, exact. Both production leakage smokes PASS. R1 is deferred to Kimi3 and no review assurance is claimed. |
+| X1 runtime foundation + routing soundness | **Phase 2 in progress: ModelConfig foundation first** (2026-07-19) | first reproduce GPT-2 T1 byte-for-byte at **84,544,352 B** with identical counters/digests/golden/workspace; then all route cheats reject and isolated E-mult/token-layer ratio lies in **[0.80,1.20]** | Top-4-of-32 fixture: T=31, L=4, d=48; **3,968 logical / 4,096 padded** one-limb comparisons; prediction **662.4056199596774 E-mult/token-layer**, accepted interval **529.924495967742..794.8867439516129**. No verdict. `docs/x123-harness-design.md`. |
+| X2 synthetic MoE e2e | **Phase 2 authorized; queued behind X1** (2026-07-19) | one TableBank session; k=1 and k=2 accept with identical outputs; prover/verifier counter vector within **20%** of `budget_moe.py`, exact 3 commitments/40 claims | T=7, L=2, d=48, d_ff=80, 6/2 GQA, 8 experts top-2: **316,464 MACs**, **12,495 logical / 19,313 padded lookup rows (same for k=1 and k=2)**, sub correlations **330,820 / 330,484** at k=1/k=2, full proxy **17,040**. No verdict. |
+| X3 non-GPT ops pack | **Phase 2 authorized; queued behind X2** (2026-07-19) | op-by-op and integrated Rust/numpy full-array bit-exact goldens at non-pow2 T and hidden dim; pad-poison regression and relation tamper rejects | X2 shape with T=7, d=48/d_ff=80, RMSNorm, clamped SwiGLU, RoPE, GQA 6/2, two sinks/head and `[full, sliding(4)]`; existing argument classes only. No verdict. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -108,6 +114,114 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-19 (X1--X3 Phase 2 explicitly approved; foundation starts;
+  review clarifications pinned)**: the user approved Phase 2 under the existing
+  CPU-only/no-pod and no-new-argument-class boundaries.  The router's native
+  cutoff tie rule is descending `(score, expert_id)`: at equal score the
+  larger expert id wins, matching C3b last-maximum.  The permanent all-equal
+  crafted tie therefore selects `{28,29,30,31}`, encodes the D1 vector as
+  `[28,29,30,31]` with cutoff 28, and rejects a substituted expert 27.  X2's
+  `12,495 / 19,313` labels mean **logical / padded lookup rows**, respectively,
+  and both counts are identical for k=1 and k=2; only the pinned sub-correlation
+  totals differ.  Implementation begins with `ModelConfig` and cannot enter X1
+  routing code until the exact GPT-2 T1 compatibility gate PASSes.
+
+- **2026-07-19 (X1--X3 Phase-1 preregistration complete; HARD STOP for user
+  review; no Phase-2 authorization or verdict)**: authorization was limited
+  to `docs/x123-harness-design.md`, this ledger preregistration, and the
+  analytic synthetic profile/counter anchors in `scripts/budget_moe.py`.  No
+  Rust/prover implementation, clean milestone record, pod action, gpt-oss
+  download/export, X4/X5 work, Lean/PCS/PCG change or cryptographic review was
+  performed.
+
+  **Runtime foundation and binding compatibility gate.**  The selected design
+  generalizes `volta-gpt2` in place around a validated runtime `ModelConfig`;
+  `volta-proto` remains one model-agnostic crate and is not forked.  Config
+  fields cover runtime/non-power-of-two dimensions, layers, experts/top-k,
+  explicit GQA mapping, attention window schedule, norm/activation, sinks,
+  RoPE, all per-layer/operator/block shifts and T1 `thin_k`.  Matrix MLEs are
+  zero-padded row-major with column variables LSB-first and points
+  `r_col || r_row`; aligned PCS blocks retain the existing `BlockClaim`
+  invariants.  Before any X1 code, the GPT-2 T1 path must reproduce the clean
+  reference byte-for-byte at **84,544,352 B**, including the exact
+  28,778,208 / 12,492,256 / 43,273,888-B phase/PCS split, all counters,
+  allocation/channel digests, 50-token golden and full workspace.  The gate
+  has zero tolerance and cannot be rebaselined inside X1.
+
+  **Exporter contract.**  Per-architecture adapters share one calibration,
+  canonical-artifact and golden framework.  A deterministic toy adapter will
+  exercise synthetic MXFP4-block and BF16 source interfaces only.  D2 remains
+  canonical offline MXFP4 dequantization to private i16 plus explicit
+  per-block power-of-two shifts, with no 4-bit credit.  D4 remains P5-style
+  BF16-to-i16 calibration and bit-exact golden validation.  No real gpt-oss
+  decoder, artifact or onboarding time is claimed or authorized.
+
+  **D1 leakage and X1 statement.**  Public response metadata contains exactly
+  four distinct selected expert ids in canonical `[cutoff, remaining three in
+  ascending-id order]` form.  The cutoff is therefore a designated slot in
+  D1's public four-id vector, not an extra field.  The accepted leakage is the
+  complete expert-choice trace, a function of private router weights and known
+  tokens; router scores, threshold and unselected weights remain private.  The
+  native tie rule ranks descending `(score, expert_id)`, so the larger id wins
+  a tie.  Scores are produced through the existing
+  router GEMM/requant/exp/reciprocal path and
+  conservatively pinned to the signed-i16 envelope `[-32768,32767]`.  For
+  cutoff `tau`, threshold `theta`, and public
+  selected bit `m_j`, X1 range-checks exactly one value per expert:
+
+  ```text
+  score_j - theta - [j < tau]   if selected
+  theta - score_j - [j > tau]   otherwise.
+  ```
+
+  The affine comparison lies in `[-65536,65535]`, giving **B=16**.  One u16
+  limb is derived as minimal: honest nonnegative values fit below `2^16`,
+  while a bounded negative residue cannot enter the limb range because
+  `2^16 + 2^17 < p`.  Every relation maps to existing committed GEMM,
+  public-selector/private-argmax, range limb, LogUp/TableBank,
+  Hadamard/`Pi_Prod` or `Pi_ZeroBatch` machinery.  A required new argument
+  class is a hard stop.
+
+  The X1 fixture is T=31, L=4, d=48, 32 experts/top-4: **3,968 logical** and
+  **4,096 padded** comparisons.  Scaling the measured C3b comparison class
+  gives **82,138.296875 E-mult** total and
+  **662.4056199596774 E-mult/token-layer**.  The binding inclusive acceptance
+  ratio is **[0.80,1.20]**, or
+  **529.924495967742..794.8867439516129 E-mult/token-layer**, measured as the
+  isolated comparison/selector `ctr_instances` delta.  Wrong expert set,
+  score swap, forged limb and last-index tie forgery are permanent rejects;
+  the honest all-equal row selects `[28,29,30,31]` with cutoff 28.
+
+  **X2 shape and 20% counter gate.**  The added analytic profile is T=7,
+  L=2, d=48, d_ff=80, 6 query/2 KV heads of width 8, 8 experts/top-2,
+  vocabulary 97 and full-causal attention.  X2 uses the existing GELU expert
+  body so SwiGLU remains ordered in X3.  Its fixed routes touch every expert
+  with a balanced `[2,2,2,2,2,2,1,1]` row histogram.  Script anchors are
+  **316,464 MACs**, **12,495 logical / 19,313 padded lookups**, **80 sites**,
+  sub correlations **330,820 / 330,484** for k=1/k=2, full-correlation proxy
+  **17,040**, and **3 commitments / 40 stacked claims**.  Prover and verifier
+  must agree exactly; each predicted counter ratio must be inside inclusive
+  **[0.80,1.20]**.  Three commitments, 40 claims, one batched PCS opening and
+  one TableBank phase-1 finalization are exact invariants.  Both k paths must
+  have identical native outputs and retain the X1 and T1 cheating smokes.
+
+  **X3 op/golden gate.**  X3 overlays RMSNorm, clamped SwiGLU, public-linear
+  zero-new-lookup RoPE, GQA 6/2, two authenticated sinks/query-head and layer
+  windows `[full, sliding(4)]` on T=7, d=48/d_ff=80.  Each piece is mapped in
+  the design to existing LN/Hadamard, LogUp/range/saturation, public
+  sumcheck, CacheSeg/BandShape and closure classes.  Rust and numpy must match
+  full arrays op-by-op and e2e.  The permanent pad-poison test targets row 7,
+  hidden columns 48--63, FFN padding and vocabulary padding; canonical pads
+  are ignored/zeroed and admitting one sentinel rejects.  Any op requiring a
+  new proof relation hard-stops X3.
+
+  **Records and closure discipline.**  Append-only clean CPU records are
+  `x1-foundation-*`, `x1-routing-*`, `x2-moe-*` and `x3-ops-*`.  Each milestone
+  requires its gate, JSON, verbatim PASS/FAIL ledger row and commit checkpoint
+  before the next starts.  Timed ratios use same-process ABBA only.  X4, X5
+  and real gpt-oss export remain out of scope.  R1 is still pending externally
+  with Kimi3, so this preregistration claims no cryptographic-review assurance.
 
 - **2026-07-19 (T1 CLOSED on clean `b14577e`; G1/G2/G3/G4 PASS)**:
   the exact post-thinning correction split is residual seams **3,686,400 B**

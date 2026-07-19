@@ -63,9 +63,10 @@ use volta_proto::block_proof::layer_dom_base;
 use volta_proto::logup::Doms;
 use volta_proto::model_proof::{
     prove_model_resident, prove_response, prove_response_private_logits,
-    prove_response_private_logits_with_backend, prove_response_resident,
-    prove_response_resident_private_logits, prove_response_with_backend, verify_response,
-    verify_response_private_logits, ChunkPub, ChunkRef, PrivateChunkPub, ResidentChunkRef,
+    prove_response_private_logits_c3b_baseline, prove_response_private_logits_with_backend,
+    prove_response_resident, prove_response_resident_private_logits, prove_response_with_backend,
+    verify_response, verify_response_private_logits, ChunkPub, ChunkRef, PrivateChunkPub,
+    ResidentChunkRef,
 };
 use volta_proto::{
     cattn_permuted, prod_batch_prover, prod_batch_verify, prove_model, prove_model_with_backend,
@@ -77,6 +78,7 @@ const P7B_GATE_PROFILE: &str = "runpod-a100-v1";
 const FASE_D_POD_GATE_PROFILE_V1: &str = "runpod-a100-realpcg-v1";
 const FASE_D_POD_GATE_PROFILE_V2: &str = "runpod-a100-realpcg-v2";
 const C3B_POD_GATE_PROFILE: &str = "runpod-a100-realpcg-v3";
+const T1_POD_GATE_PROFILE: &str = "runpod-a100-realpcg-v4";
 const P7B_SYNC_WALL_FRACTION_GATE: f64 = 0.02;
 const FASE_D_POD_SYNC_WALL_ABSOLUTE_GATE_S: f64 = 0.150;
 const P7B_OFFICIAL_RAYON_THREADS: usize = 8;
@@ -120,6 +122,18 @@ const C1_EMULT_INSTANCES: f64 = 2_618_017_868.8;
 const C3B_EMULT_INSTANCES_TOTAL: f64 = C1_EMULT_INSTANCES + C3B_L4_EMULT_INSTANCES;
 const C3B_G2_POD_BASELINE_S: f64 = 4.911_634;
 const C3B_G2_POD_CEILING_S: f64 = 5.648_379_1;
+const T1_RESPONSE_GATE_BYTES: u64 = 85_000_000;
+const T1_RESPONSE_REFERENCE_BYTES: u64 = 84_544_352;
+const T1_AUTH_CORRECTION_GATE_BYTES: u64 = 38_348_720;
+const T1_AUTH_CORRECTION_REFERENCE_BYTES: u64 = 38_348_720;
+const T1_EQ_REDUCER_TRANSCRIPT_BYTES: u64 = 22_848;
+const T1_Q_BRIDGE_CORRECTION_BYTES: u64 = 672;
+const T1_SUB_CORRS: u64 = 4_793_590;
+const T1_FULL_CORRS: u64 = 181_933;
+const T1_ZERO_CLAIMS: usize = 8_170;
+const T1_PROD_CLAIMS: usize = 21_667;
+const T1_EMULT_INSTANCES_TOTAL: f64 = 2_800_595_736.8;
+const T1_EMULT_OTHER_TOTAL: f64 = 114_852_961.2;
 // Phase 0a may change this only after its >=10% instrumentation-tax decision
 // is appended to the ledger. Until then, counter-only full runs are
 // diagnostic and cannot become an official verdict.
@@ -371,7 +385,13 @@ fn p7b_communication_gate(
     packed_logits_bytes: u64,
     fase_d_realpcg_profile: bool,
     c3b_profile: bool,
+    t1_profile: bool,
 ) -> bool {
+    if t1_profile {
+        return transcript_bytes == T1_RESPONSE_REFERENCE_BYTES
+            && pcs_opening_bytes == C3_PCS_OPENING_BYTES
+            && packed_logits_bytes == 0;
+    }
     if c3b_profile {
         return transcript_bytes == C3B_TRANSCRIPT_REFERENCE_BYTES
             && pcs_opening_bytes == C3_PCS_OPENING_BYTES
@@ -706,6 +726,30 @@ struct Report {
     c3b_pcs_category_sum_pass: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     c3b_public_logits_disabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    t1_g1_pass: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    t1_g2: Option<C3bG2Record>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    t1_g3_pass: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    t1_g4_pass: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    t1_response_gate_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    t1_response_reference_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    t1_auth_correction_gate_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    t1_auth_correction_reference_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    t1_eq_reducer_transcript_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    t1_q_bridge_correction_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    t1_exact_counter_pass: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    t1_emult_other_total: Option<f64>,
     // P7b gates are emitted only by the resident schema. Quick runs retain
     // observations but deliberately do not emit pass/fail verdicts.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1070,6 +1114,7 @@ struct Args {
     quick: bool,
     c3: bool,
     c3_record: bool,
+    t1_record: bool,
     c1_record: bool,
     flip_readiness_record: bool,
     fase_d_record: bool,
@@ -1157,7 +1202,7 @@ impl PcgBackendArg {
 
 fn usage() -> ! {
     eprintln!(
-        "usage: p6_report [--quick] [--c3|--c3-record|--c1-record|--flip-readiness-record|--fase-d-record] [--pcs-q Q] \
+        "usage: p6_report [--quick] [--c3|--c3-record|--t1-record|--c1-record|--flip-readiness-record|--fase-d-record] [--pcs-q Q] \
          [--fase-d-pod-profile v1|v2] \
          [--pcg-backend mock|real] [--pcg-authorization-store PATH] \
          [--pcg-connection-store PATH] \
@@ -1174,6 +1219,7 @@ fn parse_args() -> Args {
         quick: false,
         c3: false,
         c3_record: false,
+        t1_record: false,
         c1_record: false,
         flip_readiness_record: false,
         fase_d_record: false,
@@ -1197,6 +1243,8 @@ fn parse_args() -> Args {
             out.c3 = true;
         } else if a == "--c3-record" {
             out.c3_record = true;
+        } else if a == "--t1-record" {
+            out.t1_record = true;
         } else if a == "--c1-record" {
             out.c1_record = true;
         } else if a == "--flip-readiness-record" {
@@ -1363,6 +1411,7 @@ struct SessionResult {
     closure_prod_claims: usize,
     closure_zero_claims: usize,
     emult_instances: f64,
+    emult_other: f64,
     sub_corrs: u64,
     full_corrs: u64,
     verifier_protocol_sub_corrs: u64,
@@ -2574,6 +2623,7 @@ fn run_session_impl<'source>(
         closure_prod_claims,
         closure_zero_claims,
         emult_instances: out.ctr_instances.emult_equiv(),
+        emult_other: out.ctr_other.emult_equiv(),
         sub_corrs: out.corr_counters.sub_corrs,
         full_corrs: out.corr_counters.full_corrs,
         verifier_protocol_sub_corrs: verifier_protocol_counters.sub_corrs,
@@ -2603,7 +2653,8 @@ fn main() {
     let rayon_threads = rayon::current_num_threads();
     let fase_d_realpcg_profile = args.fase_d_record;
     let c3b_pod_profile = args.c3_record && args.accelerator == AcceleratorArg::CudaResident;
-    let connection_realpcg_profile = fase_d_realpcg_profile || args.c3_record;
+    let t1_pod_profile = args.t1_record && args.accelerator == AcceleratorArg::CudaResident;
+    let connection_realpcg_profile = fase_d_realpcg_profile || args.c3_record || args.t1_record;
     let p7b_machine_is_eligible =
         p7b_machine_eligible(cloud.as_ref(), rayon_threads, connection_realpcg_profile);
     let logical_cpu_cores = detected_logical_cpu_cores();
@@ -2612,8 +2663,9 @@ fn main() {
     // merely happen to be clean when the JSON verdict is assembled.
     let git_dirty_before_benchmark = git_worktree_dirty();
     let quick = args.quick;
-    let c3_mode = args.c3 || args.c3_record;
-    let shared_connection_record = args.fase_d_record || args.c3_record;
+    let c3_mode = args.c3 || args.c3_record || args.t1_record;
+    let c3b_reporting = args.c3 || args.c3_record;
+    let shared_connection_record = args.fase_d_record || args.c3_record || args.t1_record;
     if args.pcg_backend == PcgBackendArg::Mock && !args.diagnostic {
         eprintln!(
             "p6_report: mock PCG is diagnostic-only after the fase-D default flip; add --diagnostic (no result artifact)"
@@ -2627,13 +2679,17 @@ fn main() {
         std::process::exit(2);
     }
     if args.diagnostic
-        && (args.c3_record || args.c1_record || args.flip_readiness_record || args.fase_d_record)
+        && (args.c3_record
+            || args.t1_record
+            || args.c1_record
+            || args.flip_readiness_record
+            || args.fase_d_record)
     {
         eprintln!("p6_report: diagnostic mode cannot be combined with a record mode");
         std::process::exit(2);
     }
-    if args.c3 && args.c3_record {
-        eprintln!("p6_report: choose either --c3 diagnostic mode or --c3-record");
+    if args.c3 && (args.c3_record || args.t1_record) {
+        eprintln!("p6_report: choose either --c3 diagnostic mode or a private-logit record mode");
         std::process::exit(2);
     }
     if args.c3 && !args.diagnostic {
@@ -2641,6 +2697,7 @@ fn main() {
         std::process::exit(2);
     }
     if usize::from(args.c3_record)
+        + usize::from(args.t1_record)
         + usize::from(args.c1_record)
         + usize::from(args.flip_readiness_record)
         + usize::from(args.fase_d_record)
@@ -2649,25 +2706,35 @@ fn main() {
         eprintln!("p6_report: record selectors are mutually exclusive");
         std::process::exit(2);
     }
-    if args.c3 && (args.c1_record || args.flip_readiness_record || args.fase_d_record) {
+    if args.c3
+        && (args.t1_record || args.c1_record || args.flip_readiness_record || args.fase_d_record)
+    {
         eprintln!("p6_report: --c3 cannot modify a historical record mode");
         std::process::exit(2);
     }
-    if args.c3_record
+    if (args.c3_record || args.t1_record)
         && (quick
             || args.accelerator == AcceleratorArg::CudaHybrid
             || args.pcg_backend != PcgBackendArg::Real
             || args.ggm_prg != GgmPrg::Aes128Mmo)
     {
-        eprintln!("p6_report: --c3-record requires full CPU or cuda-resident real/AES geometry");
+        eprintln!(
+            "p6_report: --c3-record/--t1-record requires full CPU or cuda-resident real/AES geometry"
+        );
         std::process::exit(2);
     }
     if c3b_pod_profile && args.resident_timing != ResidentTimingArg::WallOnlyCounters {
         eprintln!("p6_report: the C3b pod record requires wall-only-counters timing");
         std::process::exit(2);
     }
-    if args.c3_record && git_dirty_before_benchmark {
-        eprintln!("p6_report: --c3-record requires a clean tree before benchmark setup");
+    if t1_pod_profile && args.resident_timing != ResidentTimingArg::WallOnlyCounters {
+        eprintln!("p6_report: the T1 pod record requires wall-only-counters timing");
+        std::process::exit(2);
+    }
+    if (args.c3_record || args.t1_record) && git_dirty_before_benchmark {
+        eprintln!(
+            "p6_report: --c3-record/--t1-record requires a clean tree before benchmark setup"
+        );
         std::process::exit(2);
     }
     if args.c1_record
@@ -2724,8 +2791,10 @@ fn main() {
         eprintln!("p6_report: --repetitions must be at least 1");
         std::process::exit(2);
     }
-    if args.c3_record && (repetitions < 3 || warmup_repetitions < 1) {
-        eprintln!("p6_report: --c3-record requires at least one warmup and three repetitions");
+    if (args.c3_record || args.t1_record) && (repetitions < 3 || warmup_repetitions < 1) {
+        eprintln!(
+            "p6_report: --c3-record/--t1-record requires at least one warmup and three repetitions"
+        );
         std::process::exit(2);
     }
     if repetitions + warmup_repetitions > 32 {
@@ -2807,8 +2876,8 @@ fn main() {
         eprintln!("p6_report: record modes freeze PCS Q=200");
         std::process::exit(2);
     }
-    if args.c3_record && layer_params.n_queries != C3_WEIGHTS.n_queries {
-        eprintln!("p6_report: --c3-record freezes PCS Q=120");
+    if (args.c3_record || args.t1_record) && layer_params.n_queries != C3_WEIGHTS.n_queries {
+        eprintln!("p6_report: --c3-record/--t1-record freezes PCS Q=120");
         std::process::exit(2);
     }
 
@@ -3070,6 +3139,69 @@ fn main() {
             delta_s,
             delta_percent,
             gate_percent: 15.0,
+            ceiling_s,
+            pass: candidate.median_s <= ceiling_s,
+        })
+    } else {
+        None
+    };
+
+    // T1 G2 compares the candidate and the frozen C3b control path over the
+    // identical private-logit response witness. Both arms bracket only the
+    // protocol-core prover; PCS and verification are outside the timer.
+    let t1_cpu_g2 = if args.t1_record && args.accelerator == AcceleratorArg::Cpu {
+        let run_g2_arm = |candidate: bool, seed: u8| {
+            let chunks = [ChunkRef { band: &band50, seq: &seq }];
+            let mut stream = CorrelationStream::new([seed; 32]);
+            let mut tx = Transcript::new([seed ^ 0x5A; 32]);
+            let started = Instant::now();
+            let result = if candidate {
+                prove_response_private_logits(&model, &wit0, &chunks, &mut stream, &mut tx)
+            } else {
+                prove_response_private_logits_c3b_baseline(
+                    &model,
+                    &wit0,
+                    &chunks,
+                    &mut stream,
+                    &mut tx,
+                )
+            };
+            let elapsed = started.elapsed().as_secs_f64();
+            std::hint::black_box(result);
+            elapsed
+        };
+        eprintln!("T1 G2 CPU: one paired warmup + three ABBA rounds ...");
+        let _ = run_g2_arm(false, 0x90);
+        let _ = run_g2_arm(true, 0x91);
+        let mut baseline_samples = Vec::with_capacity(6);
+        let mut candidate_samples = Vec::with_capacity(6);
+        for round in 0..3u8 {
+            baseline_samples.push(run_g2_arm(false, 0x92 + 4 * round));
+            candidate_samples.push(run_g2_arm(true, 0x93 + 4 * round));
+            candidate_samples.push(run_g2_arm(true, 0x94 + 4 * round));
+            baseline_samples.push(run_g2_arm(false, 0x95 + 4 * round));
+        }
+        let baseline = TimingDistribution::new(baseline_samples);
+        let candidate = TimingDistribution::new(candidate_samples);
+        let ceiling_s = baseline.median_s * 1.05;
+        let delta_s = candidate.median_s - baseline.median_s;
+        let delta_percent = delta_s / baseline.median_s * 100.0;
+        eprintln!(
+            "  C3b {:.6}s; T1 {:.6}s; delta {delta_percent:+.3}% (ceiling {ceiling_s:.6}s)",
+            baseline.median_s, candidate.median_s
+        );
+        Some(C3bG2Record {
+            timing_policy:
+                "same-process ABBA; one paired warmup + three rounds; protocol-core prove wall"
+                    .into(),
+            baseline_source: "frozen C3b boundary-authentication control arm in this binary".into(),
+            baseline_prove_response: baseline.clone(),
+            candidate_prove_response: candidate.clone(),
+            baseline_s: baseline.median_s,
+            candidate_s: candidate.median_s,
+            delta_s,
+            delta_percent,
+            gate_percent: 5.0,
             ceiling_s,
             pass: candidate.median_s <= ceiling_s,
         })
@@ -3904,6 +4036,7 @@ fn main() {
     );
     let gate_is_official = p7b_gate_evaluated == Some(true);
     let absolute_sync_profile = c3b_pod_profile
+        || t1_pod_profile
         || (fase_d_realpcg_profile && args.fase_d_pod_profile == FaseDPodProfileArg::V2);
     let p7b_prefill_core_gate_pass = gate_is_official.then(|| {
         p7b_prefill_core_observed_s.expect("resident prefill observation")
@@ -3944,6 +4077,7 @@ fn main() {
             rec.public_logits_packed_bytes,
             fase_d_realpcg_profile,
             c3b_pod_profile,
+            t1_pod_profile,
         )
     });
     let p7b_all_gates_pass = gate_is_official.then(|| {
@@ -3994,6 +4128,7 @@ fn main() {
     } else {
         c3b_cpu_g2
     };
+    let t1_g2 = t1_cpu_g2;
     let c1_identity_seam_reuse = args.c1_record.then(|| {
         let measured_auth_correction_bytes = rec
             .transcript_by_label
@@ -4063,13 +4198,42 @@ fn main() {
     let c3b_pcs_category_sum_pass =
         c3_mode.then(|| pcs_category_sum == Some(rec.pcs_opening_bytes));
     let c3b_exact_instance_counter_pass =
-        c3_mode.then(|| rec.emult_instances == C3B_EMULT_INSTANCES_TOTAL);
-    if args.c3_record {
+        (args.c3 || args.c3_record).then(|| rec.emult_instances == C3B_EMULT_INSTANCES_TOTAL);
+    if args.c3_record || args.t1_record {
         assert_eq!(
             rec.public_logits_packed_bytes, 0,
-            "C3b record paths may never serialize public logits"
+            "private-logit record paths may never serialize public logits"
         );
     }
+    let t1_auth_correction_bytes = args.t1_record.then(|| {
+        rec.transcript_by_label
+            .get("auth_corrections")
+            .copied()
+            .expect("T1 record requires the auth_corrections byte label")
+    });
+    let t1_eq_reducer_transcript_bytes = args.t1_record.then(|| {
+        rec.transcript_by_label
+            .get("t1_eq_round_corrections")
+            .copied()
+            .unwrap_or(0)
+            .checked_add(
+                rec.transcript_by_label.get("t1_eq_terminal_correction").copied().unwrap_or(0),
+            )
+            .expect("T1 reducer transcript accounting overflow")
+    });
+    let t1_q_bridge_correction_bytes = args
+        .t1_record
+        .then(|| rec.transcript_by_label.get("t1_q_bridge_correction").copied().unwrap_or(0));
+    let t1_exact_counter_pass = args.t1_record.then(|| {
+        rec.emult_instances == T1_EMULT_INSTANCES_TOTAL
+            && rec.emult_other == T1_EMULT_OTHER_TOTAL
+            && rec.sub_corrs == T1_SUB_CORRS
+            && rec.verifier_protocol_sub_corrs == T1_SUB_CORRS
+            && rec.full_corrs == T1_FULL_CORRS
+            && rec.verifier_protocol_full_corrs == T1_FULL_CORRS
+            && rec.closure_zero_claims == T1_ZERO_CLAIMS
+            && rec.closure_prod_claims == T1_PROD_CLAIMS
+    });
     let flip_readiness_criterion_2_runtime_pass = args.flip_readiness_record.then(|| {
         pcg_gate.setup_instances == 2
             && pcg_gate.independent_role_entropy_samples
@@ -4221,8 +4385,71 @@ fn main() {
                     && lifecycle.responses_after_first_repeat_ot_extension_bytes == 0
             })
     });
+    let t1_g3_pass = args.t1_record.then(|| {
+        golden_checked
+            && golden_match == Some(true)
+            && accepted
+            && chk.accepted
+            && gate_flat
+            && rec.pcs_rows.len() == 2
+            && rec.pcs_rows.iter().all(|row| row.verified)
+            && rec.public_logits_packed_bytes == 0
+            && rec.n_weight_claims == 96
+            && rec.n_embed_claims == 6
+            && t1_exact_counter_pass == Some(true)
+            && c3b_transcript_category_sum_pass == Some(true)
+            && c3b_pcs_category_sum_pass == Some(true)
+            && rec.pcg_allocation_hash_match == Some(true)
+            && pcg_gate.mock_prepass_counters_match == Some(true)
+            && pcg_gate.mock_prepass_channel_ledger_digest_match == Some(true)
+            && pcg_gate.mock_prepass_allocation_digest_match == Some(true)
+    });
+    let t1_common_gate = || {
+        !git_dirty
+            && !quick
+            && t0 == 100
+            && n_gen == 50
+            && warmup_repetitions >= 1
+            && repetitions >= 3
+            && layer_params.n_queries == C3_WEIGHTS.n_queries
+            && embed_params.n_queries == C3_EMBED.n_queries
+            && rec.comm_bytes == T1_RESPONSE_REFERENCE_BYTES
+            && rec.comm_bytes <= T1_RESPONSE_GATE_BYTES
+            && t1_auth_correction_bytes == Some(T1_AUTH_CORRECTION_REFERENCE_BYTES)
+            && t1_auth_correction_bytes.is_some_and(|bytes| bytes <= T1_AUTH_CORRECTION_GATE_BYTES)
+            && t1_eq_reducer_transcript_bytes == Some(T1_EQ_REDUCER_TRANSCRIPT_BYTES)
+            && t1_q_bridge_correction_bytes == Some(T1_Q_BRIDGE_CORRECTION_BYTES)
+            && rec.pcs_opening_bytes == C3_PCS_OPENING_BYTES
+            && t1_g3_pass == Some(true)
+            && pcg_gate.setup_instances == 1
+            && pcg_gate.setup_wire_count_invariant_pass
+            && fase_d_setup.as_ref().is_some_and(|setup| {
+                setup.g2_capacity_gate_pass
+                    && setup.g2_traffic_gate_pass
+                    && setup.one_connection_base_phase
+                    && setup.pcg_production_ready
+                    && setup.correlation_spool_resident_raw_entries == 0
+            })
+            && fase_d_lifecycle.as_ref().is_some_and(|lifecycle| {
+                lifecycle.completed_responses == fase_d_response_ordinal
+                    && lifecycle.responses_after_first_repeat_base_ot_bytes == 0
+                    && lifecycle.responses_after_first_repeat_ot_extension_bytes == 0
+            })
+    };
+    let t1_g1_pass = (args.t1_record && args.accelerator == AcceleratorArg::Cpu)
+        .then(|| t1_common_gate() && t1_g2.as_ref().is_some_and(|record| record.pass));
+    let t1_g4_pass = t1_pod_profile.then(|| {
+        t1_common_gate()
+            && p7b_all_gates_pass == Some(true)
+            && p7b_prefill_core_gate_pass == Some(true)
+            && p7b_decode_marginal_gate_pass == Some(true)
+            && p7b_sync_wall_absolute_gate_pass == Some(true)
+            && p7b_h2d_gate_pass == Some(true)
+    });
     let report = Report {
-        report_schema_version: if args.c3_record {
+        report_schema_version: if args.t1_record {
+            10
+        } else if args.c3_record {
             9
         } else if args.fase_d_record {
             7
@@ -4235,7 +4462,9 @@ fn main() {
         } else {
             6
         },
-        milestone: if c3_mode {
+        milestone: if args.t1_record {
+            if args.accelerator == AcceleratorArg::Cpu { "T1-G1" } else { "T1-G4" }.into()
+        } else if c3_mode {
             if quick { "C3b-quick" } else { "C3b" }.into()
         } else if args.fase_d_record {
             if args.accelerator == AcceleratorArg::Cpu {
@@ -4316,26 +4545,41 @@ fn main() {
         c3b_g1_pass,
         c3b_g2,
         c3b_g4_pass,
-        c3_packed_response_gate_bytes: c3_mode.then_some(C3_PACKED_RESPONSE_GATE_BYTES),
-        c3b_l4_transcript_bytes: c3_mode.then_some(C3B_L4_TRANSCRIPT_BYTES),
-        c3b_transcript_reference_bytes: c3_mode.then_some(C3B_TRANSCRIPT_REFERENCE_BYTES),
-        c3b_limb_count: c3_mode.then_some(C3B_LIMBS),
-        c3b_range_instances: c3_mode.then_some(C3B_RANGE_INSTANCES),
-        c3b_real_comparisons: c3_mode.then_some(C3B_REAL_COMPARISONS),
-        c3b_packed_entries_per_limb: c3_mode.then_some(C3B_PACKED_ENTRIES_PER_LIMB),
-        c3b_packed_entries_total: c3_mode.then_some(C3B_PACKED_ENTRIES_TOTAL),
-        c3b_padding_ratio: c3_mode
+        c3_packed_response_gate_bytes: c3b_reporting.then_some(C3_PACKED_RESPONSE_GATE_BYTES),
+        c3b_l4_transcript_bytes: c3b_reporting.then_some(C3B_L4_TRANSCRIPT_BYTES),
+        c3b_transcript_reference_bytes: c3b_reporting.then_some(C3B_TRANSCRIPT_REFERENCE_BYTES),
+        c3b_limb_count: c3b_reporting.then_some(C3B_LIMBS),
+        c3b_range_instances: c3b_reporting.then_some(C3B_RANGE_INSTANCES),
+        c3b_real_comparisons: c3b_reporting.then_some(C3B_REAL_COMPARISONS),
+        c3b_packed_entries_per_limb: c3b_reporting.then_some(C3B_PACKED_ENTRIES_PER_LIMB),
+        c3b_packed_entries_total: c3b_reporting.then_some(C3B_PACKED_ENTRIES_TOTAL),
+        c3b_padding_ratio: c3b_reporting
             .then_some(C3B_PACKED_ENTRIES_PER_LIMB as f64 / C3B_REAL_COMPARISONS as f64),
-        c3b_l4_emult_instances: c3_mode.then_some(C3B_L4_EMULT_INSTANCES),
-        c3b_l4_emult_ceiling: c3_mode.then_some(C3B_L4_EMULT_CEILING),
-        c3b_l4_emult_gate_pass: c3_mode.then_some(C3B_L4_EMULT_INSTANCES <= C3B_L4_EMULT_CEILING),
+        c3b_l4_emult_instances: c3b_reporting.then_some(C3B_L4_EMULT_INSTANCES),
+        c3b_l4_emult_ceiling: c3b_reporting.then_some(C3B_L4_EMULT_CEILING),
+        c3b_l4_emult_gate_pass: c3b_reporting
+            .then_some(C3B_L4_EMULT_INSTANCES <= C3B_L4_EMULT_CEILING),
         c3b_exact_instance_counter_pass,
         c3b_transcript_category_sum_pass,
         c3b_pcs_category_sum_pass,
         c3b_public_logits_disabled: c3_mode.then_some(rec.public_logits_packed_bytes == 0),
+        t1_g1_pass,
+        t1_g2,
+        t1_g3_pass,
+        t1_g4_pass,
+        t1_response_gate_bytes: args.t1_record.then_some(T1_RESPONSE_GATE_BYTES),
+        t1_response_reference_bytes: args.t1_record.then_some(T1_RESPONSE_REFERENCE_BYTES),
+        t1_auth_correction_gate_bytes: args.t1_record.then_some(T1_AUTH_CORRECTION_GATE_BYTES),
+        t1_auth_correction_reference_bytes: t1_auth_correction_bytes,
+        t1_eq_reducer_transcript_bytes,
+        t1_q_bridge_correction_bytes,
+        t1_exact_counter_pass,
+        t1_emult_other_total: args.t1_record.then_some(rec.emult_other),
         p7b_gate_evaluated,
         p7b_gate_profile: is_resident.then_some(
-            if c3b_pod_profile {
+            if t1_pod_profile {
+                T1_POD_GATE_PROFILE
+            } else if c3b_pod_profile {
                 C3B_POD_GATE_PROFILE
             } else if fase_d_realpcg_profile {
                 args.fase_d_pod_profile.gate_profile()
@@ -4371,24 +4615,28 @@ fn main() {
             .then_some(RESPONSE_COMMUNICATION_ENVELOPE_BYTES),
         response_communication_observed_bytes,
         response_communication_invariant_pass,
-        p7b_transcript_reference_bytes: is_resident.then_some(if c3b_pod_profile {
+        p7b_transcript_reference_bytes: is_resident.then_some(if t1_pod_profile {
+            T1_RESPONSE_REFERENCE_BYTES
+        } else if c3b_pod_profile {
             C3B_TRANSCRIPT_REFERENCE_BYTES
         } else if fase_d_realpcg_profile {
             C1_TRANSCRIPT_BYTES
         } else {
             P7B_TRANSCRIPT_REFERENCE_BYTES
         }),
-        p7b_pcs_opening_reference_bytes: is_resident.then_some(if c3b_pod_profile {
-            C3_PCS_OPENING_BYTES
-        } else {
-            P7B_PCS_OPENING_REFERENCE_BYTES
-        }),
-        p7b_packed_logits_reference_bytes: is_resident.then_some(if c3b_pod_profile {
-            0
-        } else {
-            P7B_PACKED_LOGITS_REFERENCE_BYTES
-        }),
-        p7b_packed_response_reference_bytes: is_resident.then_some(if c3b_pod_profile {
+        p7b_pcs_opening_reference_bytes: is_resident.then_some(
+            if c3b_pod_profile || t1_pod_profile {
+                C3_PCS_OPENING_BYTES
+            } else {
+                P7B_PCS_OPENING_REFERENCE_BYTES
+            },
+        ),
+        p7b_packed_logits_reference_bytes: is_resident.then_some(
+            if c3b_pod_profile || t1_pod_profile { 0 } else { P7B_PACKED_LOGITS_REFERENCE_BYTES },
+        ),
+        p7b_packed_response_reference_bytes: is_resident.then_some(if t1_pod_profile {
+            T1_RESPONSE_REFERENCE_BYTES
+        } else if c3b_pod_profile {
             C3B_TRANSCRIPT_REFERENCE_BYTES
         } else if fase_d_realpcg_profile {
             C1_PACKED_RESPONSE_BYTES
@@ -4590,7 +4838,13 @@ fn main() {
 
     assert!(accepted, "P6 sanity: honest response (both sessions) must verify");
     assert!(gate_flat, "P6 gate: per-token cost must stay ~flat as the cache grows");
-    let mut label = if args.c3_record {
+    let mut label = if args.t1_record {
+        match args.accelerator {
+            AcceleratorArg::Cpu => "t1-cpu-real".to_string(),
+            AcceleratorArg::CudaResident => "t1-a100-realpcg-v4".to_string(),
+            AcceleratorArg::CudaHybrid => unreachable!("T1 record rejects hybrid CUDA"),
+        }
+    } else if args.c3_record {
         match args.accelerator {
             AcceleratorArg::Cpu => "c3b-cpu-real".to_string(),
             AcceleratorArg::CudaResident => "c3b-a100-realpcg-v3".to_string(),
@@ -4623,6 +4877,7 @@ fn main() {
     }
     if args.pcg_backend == PcgBackendArg::Real
         && !args.c3_record
+        && !args.t1_record
         && !args.flip_readiness_record
         && !args.fase_d_record
     {
@@ -4631,6 +4886,7 @@ fn main() {
     if args.resident_timing == ResidentTimingArg::WallOnlyCounters
         && !args.fase_d_record
         && !args.c3_record
+        && !args.t1_record
     {
         label.push_str("-wall-only-counters");
     }
@@ -4649,6 +4905,84 @@ fn main() {
 #[cfg(test)]
 mod report_tests {
     use super::*;
+
+    #[test]
+    #[ignore = "production-size T1/C3b counter reconciliation"]
+    fn t1_full_counter_reconciliation_matches_the_record_geometry() {
+        let dir = weights_dir();
+        if !dir.join("gpt2s-q.bin").exists() {
+            eprintln!("skipping T1 full counter reconciliation: artifact not present");
+            return;
+        }
+        let model = load_model(&dir).expect("load frozen GPT-2 artifact");
+        let t = 100usize;
+        let q = 50usize;
+        let prefill = forward_model(&model, t);
+        let kv: Vec<(&[i16], &[i16])> =
+            prefill.layers.iter().map(|layer| (layer.k.as_slice(), layer.v.as_slice())).collect();
+        let mut cache = KvCache::from_prefill(&kv, t);
+        let (generated, _) = volta_gpt2::generate(&model, &mut cache, &prefill.logits, t, q);
+        let mut sequence = model.p.tokens[..t].to_vec();
+        sequence.extend_from_slice(&generated);
+        let full = forward_model_tokens(&model, &sequence);
+        let band = band_model_witness(&model, &full, t);
+        let chunks = [ChunkRef { band: &band, seq: &sequence }];
+
+        let run = |t1: bool, seed: u8| {
+            let mut stream = CorrelationStream::new([seed; 32]);
+            let mut tx = Transcript::new([seed ^ 0x5A; 32]);
+            let (proof, out, prod, zero) = if t1 {
+                prove_response_private_logits(&model, &prefill, &chunks, &mut stream, &mut tx)
+            } else {
+                prove_response_private_logits_c3b_baseline(
+                    &model,
+                    &prefill,
+                    &chunks,
+                    &mut stream,
+                    &mut tx,
+                )
+            };
+            std::hint::black_box(proof);
+            (out, prod.len(), zero.len(), stream.counters, ledger_to_owned(&tx), tx.total_bytes())
+        };
+        let (baseline, baseline_prod, baseline_zero, _, _, baseline_bytes) = run(false, 0xA0);
+        let (candidate, prod, zero, counters, ledger, candidate_bytes) = run(true, 0xA1);
+
+        eprintln!(
+            "T1 counters: baseline instances {:.1}, candidate {:.1}, delta {:.1}; other baseline {:.1}, candidate {:.1}; core sub/full {}/{}; core bytes baseline/candidate {}/{}",
+            baseline.ctr_instances.emult_equiv(),
+            candidate.ctr_instances.emult_equiv(),
+            candidate.ctr_instances.emult_equiv() - baseline.ctr_instances.emult_equiv(),
+            baseline.ctr_other.emult_equiv(),
+            candidate.ctr_other.emult_equiv(),
+            counters.sub_corrs,
+            counters.full_corrs,
+            baseline_bytes,
+            candidate_bytes,
+        );
+
+        assert_eq!(baseline_prod, T1_PROD_CLAIMS);
+        assert_eq!(baseline_zero, 8_238);
+        assert_eq!(prod, T1_PROD_CLAIMS);
+        assert_eq!(zero, T1_ZERO_CLAIMS);
+        // The direct prover arm omits the response-wide 64-byte
+        // Prod/ZeroBatch closure emitted by `run_session_impl`.
+        assert_eq!(baseline_bytes + C3_PCS_OPENING_BYTES + 64, C3B_TRANSCRIPT_REFERENCE_BYTES);
+        assert_eq!(candidate_bytes + C3_PCS_OPENING_BYTES + 64, T1_RESPONSE_REFERENCE_BYTES);
+        assert_eq!(ledger.get("auth_corrections"), Some(&T1_AUTH_CORRECTION_REFERENCE_BYTES));
+        assert_eq!(
+            ledger.get("t1_eq_round_corrections").copied().unwrap_or(0)
+                + ledger.get("t1_eq_terminal_correction").copied().unwrap_or(0),
+            T1_EQ_REDUCER_TRANSCRIPT_BYTES
+        );
+        assert_eq!(ledger.get("t1_q_bridge_correction"), Some(&T1_Q_BRIDGE_CORRECTION_BYTES));
+        assert_eq!(baseline.ctr_instances.emult_equiv(), C3B_EMULT_INSTANCES_TOTAL);
+        assert_eq!(candidate.ctr_instances.emult_equiv(), 2_800_595_736.8);
+        assert_eq!(
+            candidate.ctr_instances.emult_equiv() - baseline.ctr_instances.emult_equiv(),
+            24_872_338.0
+        );
+    }
 
     #[test]
     fn c1_reference_is_exact_and_does_not_mutate_historical_p7b() {
@@ -4833,11 +5167,13 @@ mod report_tests {
             P7B_PACKED_LOGITS_REFERENCE_BYTES,
             false,
             false,
+            false,
         ));
         assert!(p7b_communication_gate(
             P7B_TRANSCRIPT_REFERENCE_BYTES - 1,
             P7B_PCS_OPENING_REFERENCE_BYTES - 1,
             P7B_PACKED_LOGITS_REFERENCE_BYTES - 1,
+            false,
             false,
             false,
         ));
@@ -4847,12 +5183,14 @@ mod report_tests {
             P7B_PACKED_LOGITS_REFERENCE_BYTES,
             false,
             false,
+            false,
         ));
         assert!(p7b_communication_gate(
             C1_TRANSCRIPT_BYTES,
             P7B_PCS_OPENING_REFERENCE_BYTES,
             P7B_PACKED_LOGITS_REFERENCE_BYTES,
             true,
+            false,
             false,
         ));
         assert!(!p7b_communication_gate(
@@ -4861,12 +5199,14 @@ mod report_tests {
             P7B_PACKED_LOGITS_REFERENCE_BYTES,
             true,
             false,
+            false,
         ));
         assert!(!p7b_communication_gate(
             C1_TRANSCRIPT_BYTES,
             P7B_PCS_OPENING_REFERENCE_BYTES,
             P7B_PACKED_LOGITS_REFERENCE_BYTES + 1,
             true,
+            false,
             false,
         ));
         assert!(p7b_communication_gate(
@@ -4875,11 +5215,29 @@ mod report_tests {
             0,
             false,
             true,
+            false,
         ));
         assert!(!p7b_communication_gate(
             C3B_TRANSCRIPT_REFERENCE_BYTES,
             C3_PCS_OPENING_BYTES,
             1,
+            false,
+            true,
+            false,
+        ));
+        assert!(p7b_communication_gate(
+            T1_RESPONSE_REFERENCE_BYTES,
+            C3_PCS_OPENING_BYTES,
+            0,
+            false,
+            false,
+            true,
+        ));
+        assert!(!p7b_communication_gate(
+            T1_RESPONSE_REFERENCE_BYTES + 1,
+            C3_PCS_OPENING_BYTES,
+            0,
+            false,
             false,
             true,
         ));

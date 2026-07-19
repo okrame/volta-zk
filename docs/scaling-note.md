@@ -1,16 +1,14 @@
 # Scaling note — VOLTA beyond GPT-2: dense and MoE
 
-**Status**: design note + mini-spec, NOT pre-registered (2026-07-07, P7
-handoff companion to `docs/p7-handoff-spec.md`). A post-e2e synthetic
-shape/memory sweep was recorded on 2026-07-13; it validates only the linear
-state, GQA and active/total-weight formulas and does **not** start Phase X,
-add a frontend or constitute a non-GPT-2 e2e result. The phase sketched in §5
-still requires a separate decision. Planning targets: **gpt-oss-20b**
-(24 layers, d = 2880, 32 experts top-4, 3.6B active / 20.9B total, GQA
-64/8, alternating full / 128-token sliding-window attention, RMSNorm,
-SwiGLU+clamp, attention sinks, RoPE, MoE weights MXFP4 — arXiv:2508.10925)
-and Llama-class dense models (a strict subset: §4's ops pack, no MoE
-machinery).
+**Status**: X0 analytic design and decisions are preregistered (2026-07-18);
+no MoE implementation is authorized.  The 2026-07-13 synthetic shape/memory
+sweep remains a formula-only historical artifact.  The executable X0 budget
+is `scripts/budget_moe.py`, and `docs/x0-moe-design.md` is the detailed design
+record.  Planning targets are **gpt-oss-20b** (24 layers, d=2880, 32 experts
+top-4, 3.6B active / 20.9B total, GQA 64/8, alternating full / 128-token
+sliding-window attention, RMSNorm, clamped SwiGLU, attention sinks, RoPE and
+MXFP4 source expert weights) and a representative Llama-class dense/GQA
+point.  X1--X3 and X4 remain later packages.
 
 ## 1. The scaling thesis: ρ is ~scale-invariant; communication is not
 
@@ -28,49 +26,50 @@ big models are won or lost, and each term needs its own lever:
 
 | Term | Scales with | Lever that fixes it |
 | --- | --- | --- |
-| corrections (boundary auth) | **active** dims: L·d per token | B (2-byte packing, ÷4); **boundary thinning** (new, below) |
-| PCS opening, fixed part (proximity + columns) | **TOTAL committed \|W\|** — the anti-scaling term | A (verifier-cached columns → one-time); longer term Basefold-style folding (polylog) |
-| PCS opening, per-claim part (u-vectors) | #tensors (L, experts) | per-tensor RLC; per-layer block commitments |
+| corrections (boundary auth) | **active** dims: L·d per token | **T1 boundary thinning**, after M11 |
+| PCS opening, fixed part (proximity + columns) | **TOTAL committed \|W\|** — the anti-scaling term | **X4 folding PCS** |
+| PCS opening, per-claim part (u-vectors) | independently evaluated blocks | per-layer commitments with canonical per-expert blocks; only proved same-point batching/reductions |
 | public logits | T · vocab | packed codec (done); is_max argument |
 
-**Boundary thinning — the lever this framing exposes.** Corrections scale
-with the number of authenticated cut points, not with compute: the fused
-blocks already prove attention and FFN with NO internal auth. Fusing
-ACROSS layers (authenticate every k-th residual seam instead of every
-layer boundary) divides the dominant correction stream by ~k at the cost
-of deeper GKR chains — i.e. it buys communication with prover time,
-exactly the allowed trade direction (ledger convention 2026-07-06), and
-GPU headroom is what pays for it. At 70B-dense scale this is what keeps
-corrections/token in the single-digit MB; pre-register the depth/soundness
-analysis before implementing.
+**Boundary thinning — amended T1.** Corrections scale with authenticated cut
+points, not compute, but the removable stream is not the whole correction
+stream: K/V remains authenticated across positions/chunks.  Moreover, an
+unauthenticated residual tensor is consumed at independently sampled points
+by the residual and normalization relations.  T1 therefore authenticates
+every fourth group exit and first performs one affine eq-sumcheck
+multi-point-to-single-point reduction for each fan-out pair.  The exact GPT-2
+split, 42-reducer cost, challenge order and M11 formal gap are preregistered in
+`docs/t1-boundary-thinning-design.md`.  No blind `/k` response projection and
+no cross-point linear RLC are valid substitutes.
 
 ## 2. Projections across scales (analytic; re-derive in `budget_moe.py`)
 
-The executable P7-only companion is `scripts/p7_shape_memory_sweep.py`.
-Its append-only JSON pins the frozen GPT-2 manifest and resident peak as the
-measured anchor, then emits sequence-length rows for a representative
-Llama-class dense/GQA shape and the planning gpt-oss/MoE-active shape. It
-deliberately does not project proof time or proof peak memory.
+`scripts/budget_moe.py` is parameterized by immutable `ModelConfig` and
+`Workload` values and reproduces the P0/C1/C3b GPT-2 anchors in self-checks.
+The default is prompt 100 plus 50 deferred decode tokens.  It is an analytic
+shape/count budget, not a frontend, timing measurement or proof-memory claim.
 
-Constants from the P6 run of record; corrections @2 B assume lever B;
-"opening marginal" assumes lever A + per-layer block commitments + RLC.
+| Quantity, 100+50 | gpt-oss-20b MoE | Llama-class 8B dense |
+| --- | ---: | ---: |
+| native integer MACs | 485,359,730,688 | 1,076,133,888,000 |
+| committed i16 parameters | 41.800 GB | 16.060522 GB |
+| authenticated values, current boundaries | 46,485,064 | 77,135,176 |
+| corrections, current boundaries (8 B/value) | 371.881 MB | 617.081 MB |
+| authenticated values, analytic k=4 shape | 18,405,064 | 23,682,376 |
+| corrections, analytic k=4 shape | 147.241 MB | 189.459 MB |
+| logical / padded lookup rows | 417,267,938 / 687,568,448 | 408,291,250 / 586,362,944 |
+| exact subfield correlations, current / k=4 | 46,485,064 / 18,405,064 | 77,135,176 / 23,682,376 |
+| full-field correlation proxy | 2,874,728, non-gating | 370,680, non-gating |
+| per-layer + global commitments | 25 | 33 |
+| stacked PCS claims, upper / expected | 3,316 / 3,314.06 | 452 / 452 |
 
-| | GPT-2 124M (measured) | Llama-8B dense | gpt-oss-20b (3.6B act) | ~70B dense |
-| --- | --- | --- | --- | --- |
-| L·d (corr driver) | 9.2k | 131k | 69k | 655k |
-| corrections/token @2 B | 0.11 MB | ~1.6 MB | ~0.9 MB | ~8 MB |
-| — with thinning k=4 | — | ~0.4 MB | ~0.25 MB | ~2 MB |
-| lookups / 150-tok response | 17 M | ~250 M | ~130 M | ~1.2 G |
-| committed weights (i16) | 0.25 GB | 16 GB | ~42 GB | 140 GB |
-| PCS claims / response | 102 | ~500 | ~2,400 | ~1,300 |
-| ρ (architecture) | 23 CPU | ~same | ~same | ~same |
-
-Readings: (a) ρ is flat by construction — the row that matters is
-corrections/token, which crosses ~1 MB/token around 10B active unless
-thinning lands; (b) the committed-|W| row is why lever A / folding is
-structural: a per-response O(|W_total|) pass at 140 GB is dead on arrival;
-(c) MoE claim counts exceed dense (every expert is touched at T = 150:
-P[idle] = (7/8)^150 ≈ 2·10⁻⁹) — granularity below.
+All 20.9B gpt-oss parameters are committed because weights are treated as
+private; only top-4 expert compute is active.  Balanced public routes are used
+only for padded-domain planning.  The T1-shaped column is a residual-boundary
+shape projection, not a claim that the GPT-2 T1 proof transfers unchanged to
+MoE.  The full-field count is deliberately non-gating until X1--X3 produce an
+exact schedule and allocation digest.  No PCS-opening byte projection is
+made: the fixed pass over total committed weights is why X4 is a prerequisite.
 
 ## 3. MoE-specific design (gpt-oss)
 
@@ -82,18 +81,22 @@ blueprint. Three insights:
    the user and already knows all tokens; publishing per-token expert
    indices makes gather/scatter a PUBLIC permutation, folded into the
    existing sumchecks as public selector terms (same class as the causal
-   mask, P4 dev. #10). Leak = expert choices (a function of private
-   weights on known inputs) — same category as P4's public biases; log it.
+   mask, P4 dev. #10). Leak = the expert-choice trace, a function of private
+   weights and known tokens; this leakage is explicitly accepted.  Scores
+   and unselected expert weights remain private, and X1 must bind top-4
+   correctness and the native tie rule before consuming the public route.
 2. **Routing correctness = the row-max machinery generalized.** Top-4-of-32
    reduces to selected ≥ threshold ≥ unselected (is_max pattern of P5
    dev. #9 + range lookups): ~32·24·150 ≈ 115k lookups/response, < 0.1%
    of budget. MoE itself is nearly free for VOLTA.
 3. **Granularity (decision D3): per-LAYER commitments with per-expert
-   blocks** — row-local multi-eval (P3.5 path B) already supports
-   block-aligned claims, so touched experts pay block passes only; with
-   lever A the marginal is active-proportional. Never per-expert
-   commitments (768× fixed costs), never a monolith (kills sparse
-   openability).
+   blocks** — each layer commitment has a canonical map for attention,
+   router, and aligned expert gate/up and down blocks.  The 24-layer point
+   has 25 commitments including global embedding/unembedding material.
+   Never use per-expert commitments (multiplying fixed costs) or a model
+   monolith (destroying sparse block addressability).  One batched opening is
+   retained per response; independently evaluated blocks remain distinct
+   claims absent a proved reduction.
 
 Maps for ~free: sliding-window = `BandShape` with a lower edge; GQA
 shrinks KV auth; RMSNorm ⊂ LN machinery; SwiGLU+clamp = silu LUT +
@@ -102,11 +105,13 @@ hadamard + the saturation side-table pattern; RoPE = public linear fold
 authenticated vector in the softmax denominator; router softmax reuses
 exp/recip tables.
 
-Remaining decisions to pre-register: **D2** MXFP4→fixed-point semantics
-(offline dequant to i16 with per-block shifts first; committing 4-bit
-codes + authenticated block scales via Π_Prod is a commitment-size lever
-to measure second); **D4** BF16 attention/embed weights → P5-style i16
-calibration, expect per-layer residual scales again.
+**D2 is fixed:** canonically dequantize MXFP4 blocks offline into private i16
+weights with explicit per-block power-of-two shift metadata, i64 accumulation,
+and the frozen requant/round/clamp semantics.  No 4-bit commitment saving is
+credited.  **D4 is fixed:** BF16 attention/router/embed tensors use P5-style
+symmetric i16 calibration and the same bit-exact exporter/golden discipline,
+including explicit per-layer residual scales.  The committed proof object is
+the calibrated i16 block in both cases.
 
 ## 4. Harness adaptation
 
@@ -121,12 +126,23 @@ calibration, expect per-layer residual scales again.
 - `budget_p0.py` → `budget_moe.py` parameterized by ModelConfig; the
   ledger gets a phase-X table under the same conventions.
 
-## 5. Phase X milestones (after P7; levers A and B are prerequisites)
+## 5. Phase X milestones and amended prerequisites
 
-Each: pre-registered gate, JSON run, ledger row, commit.
+The former prerequisite text is retracted.  **Lever A** (verifier-cached PCS
+consistency columns) is unsound by the 2026-07-15 ledger §4.6.A attack; its
+projections stay retracted.  **Lever B** (Packed16) is shelved: the only sound
+costed realization moves about 1.55 GB/session to save about 32.5 MB/response.
+They are not Phase-X prerequisites.
 
-- **X0** analytic budget (`budget_moe.py`, gpt-oss-20b + one dense point)
-  + D1–D4 + boundary-thinning analysis logged. Gate: pre-registration.
+The prerequisites for an end-to-end scale claim are now **T1 boundary
+thinning** for corrections/correlations and **X4 folding PCS** for openings.
+T1 itself is stopped on the M11 proof and user review.  Each implementation
+milestone still requires a preregistered gate, append-only JSON, ledger row and
+checkpoint.
+
+- **X0** analytic budget (`budget_moe.py`, gpt-oss-20b + one dense point),
+  D1--D4, private-weight policy, long-output requirement and provider envelope:
+  **design complete; no MoE code**.
 - **X1** routing-soundness spike (synthetic): top-k argument + cheating
   smoke (wrong expert set / score swap ⇒ reject). Gate: rejects green,
   E-mult/token-layer vs X0.
@@ -135,15 +151,17 @@ Each: pre-registered gate, JSON run, ledger row, commit.
   session. Gate: counts within 20% of X0.
 - **X3** ops pack on the band path (RMSNorm/SwiGLU/RoPE/GQA/sinks/band
   schedule) + extended numpy reference. Gate: bit-exact golden, non-pow2 T.
-- **X4** PCS at expert-block granularity on top of lever A (+ boundary
-  thinning if pre-registered). Gate: marginal opening bytes ∝ touched
-  blocks, measured by activating subsets.
+- **X4** folding PCS over the per-layer/expert-block commitment map.  Gate:
+  per-response opening no longer contains a fixed pass linear in all
+  committed weights; exact soundness, hiding and block-subset measurements
+  are preregistered in that later package.
 - **X5** gpt-oss-20b e2e on the GPU box: MXFP4 export, golden decode,
   run of record with full comm breakdown + P6-style flat-cost and
-  anti-replay gates. Gate: accepted e2e inside a pre-registered envelope.
+  anti-replay gates. Gate: accepted e2e inside a pre-registered envelope,
+  only after both T1 and X4 close.
 
 ## References
 
+- gpt-oss-20b pinned configuration: https://huggingface.co/openai/gpt-oss-20b/blob/2e8f8052ee2aeee907f76e08c08b9fdde8677ca8/config.json
 - gpt-oss model card: https://arxiv.org/abs/2508.10925
 - ZK verifiable inference of MoE models: https://arxiv.org/abs/2511.19902
-- GPT-2 → gpt-oss architecture evolution: https://modal.com/blog/gpt-oss-arch

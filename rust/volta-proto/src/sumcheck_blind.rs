@@ -20,7 +20,7 @@ use volta_mac::{
     VerifierKey,
 };
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BlindSumcheckProof {
     /// Per round: corrections (16 B each) transferring g(0), g(2) onto masks.
     pub round_corrs: Vec<[Fp2; 2]>,
@@ -905,6 +905,30 @@ pub fn blind_prove_resident_batch(
 /// orchestration; each round returns only `[g(0), g(2)]`, then folds both
 /// witness vectors D2D. The input buffers are consumed on every path.
 pub fn blind_prove_resident(
+    a: DeviceBuffer<Fp2Repr>,
+    b: DeviceBuffer<Fp2Repr>,
+    claim0: ProverAuthed,
+    stream: &mut CorrelationStream,
+    mask_dom_base: u64,
+    tx: &mut Transcript,
+    backend: &mut Backend,
+) -> Result<(BlindSumcheckProof, Vec<Fp2>, ProverAuthed, Fp2, Fp2), AccelError> {
+    blind_prove_resident_labeled(
+        a,
+        b,
+        claim0,
+        stream,
+        mask_dom_base,
+        tx,
+        backend,
+        "blind_round_corrections",
+    )
+}
+
+/// Label-selecting resident twin used when a protocol extension needs its
+/// transcript bytes separately auditable without changing the sumcheck.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn blind_prove_resident_labeled(
     mut a: DeviceBuffer<Fp2Repr>,
     mut b: DeviceBuffer<Fp2Repr>,
     claim0: ProverAuthed,
@@ -912,6 +936,7 @@ pub fn blind_prove_resident(
     mask_dom_base: u64,
     tx: &mut Transcript,
     backend: &mut Backend,
+    round_label: &'static str,
 ) -> Result<(BlindSumcheckProof, Vec<Fp2>, ProverAuthed, Fp2, Fp2), AccelError> {
     if a.len() != b.len() || a.len() < 2 || !a.len().is_power_of_two() {
         return Err(resident_accel_failure(
@@ -939,7 +964,7 @@ pub fn blind_prove_resident(
         let [g0, g2] = round_values;
         let masks = stream.draw_fulls(mask_dom_base + round as u64, 2);
         round_corrs.push([g0 - masks[0].x, g2 - masks[1].x]);
-        tx.append("blind_round_corrections", 32);
+        tx.append(round_label, 32);
         let g0_a = ProverAuthed { x: g0, m: masks[0].m };
         let g2_a = ProverAuthed { x: g2, m: masks[1].m };
         let g1_a = claim.sub(g0_a);
@@ -990,14 +1015,53 @@ pub fn blind_prove_resident(
 /// Returns the proof, the bound point, and the authenticated final claim.
 /// Mask domains are `mask_dom_base + round`.
 pub fn blind_prove(
+    a: Vec<Fp2>,
+    b: Vec<Fp2>,
+    claim0: ProverAuthed,
+    stream: &mut CorrelationStream,
+    mask_dom_base: u64,
+    tx: &mut Transcript,
+) -> (BlindSumcheckProof, Vec<Fp2>, ProverAuthed) {
+    let (proof, point, claim, _, _) =
+        blind_prove_with_finals(a, b, claim0, stream, mask_dom_base, tx);
+    (proof, point, claim)
+}
+
+/// Exact twin of [`blind_prove`] that also returns the two folded terminal
+/// factors.  Higher-level claim reducers need the first terminal value to
+/// authenticate the single upstream tensor claim; exposing it here avoids a
+/// second `O(2^n)` MLE evaluation and does not add a proof message.
+pub fn blind_prove_with_finals(
+    a: Vec<Fp2>,
+    b: Vec<Fp2>,
+    claim0: ProverAuthed,
+    stream: &mut CorrelationStream,
+    mask_dom_base: u64,
+    tx: &mut Transcript,
+) -> (BlindSumcheckProof, Vec<Fp2>, ProverAuthed, Fp2, Fp2) {
+    blind_prove_with_finals_labeled(
+        a,
+        b,
+        claim0,
+        stream,
+        mask_dom_base,
+        tx,
+        "blind_round_corrections",
+    )
+}
+
+/// Label-selecting CPU twin of [`blind_prove_with_finals`].
+pub(crate) fn blind_prove_with_finals_labeled(
     mut a: Vec<Fp2>,
     mut b: Vec<Fp2>,
     claim0: ProverAuthed,
     stream: &mut CorrelationStream,
     mask_dom_base: u64,
     tx: &mut Transcript,
-) -> (BlindSumcheckProof, Vec<Fp2>, ProverAuthed) {
+    round_label: &'static str,
+) -> (BlindSumcheckProof, Vec<Fp2>, ProverAuthed, Fp2, Fp2) {
     assert_eq!(a.len(), b.len());
+    assert!(a.len() >= 2 && a.len().is_power_of_two());
     let n_vars = a.len().trailing_zeros() as usize;
     let mut round_corrs = Vec::with_capacity(n_vars);
     let mut point = Vec::with_capacity(n_vars);
@@ -1016,7 +1080,7 @@ pub fn blind_prove(
         // Fresh full-field masks for the two coefficients of this round.
         let masks = stream.draw_fulls(mask_dom_base + round as u64, 2);
         let corrs = [g0 - masks[0].x, g2 - masks[1].x];
-        tx.append("blind_round_corrections", 32);
+        tx.append(round_label, 32);
         round_corrs.push(corrs);
         let g0_a = ProverAuthed { x: g0, m: masks[0].m };
         let g2_a = ProverAuthed { x: g2, m: masks[1].m };
@@ -1029,7 +1093,9 @@ pub fn blind_prove(
         fold_low(&mut b, r);
         point.push(r);
     }
-    (BlindSumcheckProof { round_corrs }, point, claim)
+    debug_assert_eq!(a.len(), 1);
+    debug_assert_eq!(b.len(), 1);
+    (BlindSumcheckProof { round_corrs }, point, claim, a[0], b[0])
 }
 
 /// Verifier: mirrors the recursion on the key side. Returns the bound point

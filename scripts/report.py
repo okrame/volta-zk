@@ -57,6 +57,19 @@ C3B_L4_EMULT_CEILING = 260_000_000.0
 C3B_EMULT_INSTANCES_TOTAL = 2_775_723_398.8
 C3B_G2_POD_BASELINE_S = 4.911_634
 C3B_G2_POD_CEILING_S = 5.648_379_1
+T1_REPORT_SCHEMA_VERSION = 10
+T1_POD_GATE_PROFILE = "runpod-a100-realpcg-v4"
+T1_RESPONSE_GATE_BYTES = 85_000_000
+T1_RESPONSE_REFERENCE_BYTES = 84_544_352
+T1_AUTH_CORRECTION_REFERENCE_BYTES = 38_348_720
+T1_EQ_REDUCER_TRANSCRIPT_BYTES = 22_848
+T1_Q_BRIDGE_CORRECTION_BYTES = 672
+T1_SUB_CORRS = 4_793_590
+T1_FULL_CORRS = 181_933
+T1_PROD_CLAIMS = 21_667
+T1_ZERO_CLAIMS = 8_170
+T1_EMULT_INSTANCES_TOTAL = 2_800_595_736.8
+T1_EMULT_OTHER_TOTAL = 114_852_961.2
 P7B_TIMING_STATISTIC = "upper median across measured repetitions"
 P7B_COUNTER_STATISTIC = "maximum across measured sessions"
 C1_REPORT_SCHEMA_VERSION = 3
@@ -1666,6 +1679,180 @@ def validate_c3b_official_result(path: Path) -> bool:
     return False
 
 
+def _t1_g2_valid(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    baseline = value.get("baseline_prove_response")
+    candidate = value.get("candidate_prove_response")
+    if not (
+        _c3b_timing_distribution_valid(baseline)
+        and _c3b_timing_distribution_valid(candidate)
+        and len(baseline["samples_s"]) == 6
+        and len(candidate["samples_s"]) == 6
+        and _finite_positive(value.get("baseline_s"))
+        and _finite_nonnegative(value.get("candidate_s"))
+        and _finite_number(value.get("delta_s"))
+        and _finite_number(value.get("delta_percent"))
+        and value.get("gate_percent") == 5.0
+        and _finite_positive(value.get("ceiling_s"))
+        and type(value.get("pass")) is bool
+        and value.get("timing_policy")
+        == "same-process ABBA; one paired warmup + three rounds; protocol-core prove wall"
+        and value.get("baseline_source")
+        == "frozen C3b boundary-authentication control arm in this binary"
+        and _same_number(value["baseline_s"], baseline["median_s"])
+        and _same_number(value["candidate_s"], candidate["median_s"])
+        and _same_finite_number(value["delta_s"], value["candidate_s"] - value["baseline_s"])
+        and _same_finite_number(
+            value["delta_percent"], value["delta_s"] / value["baseline_s"] * 100.0
+        )
+        and _same_number(value["ceiling_s"], value["baseline_s"] * 1.05)
+    ):
+        return False
+    return value["pass"] is (value["candidate_s"] <= value["ceiling_s"])
+
+
+def _t1_common_record_valid(row: dict[str, Any]) -> bool:
+    transcript_labels = row.get("comm_response_by_label")
+    pcs_labels = row.get("comm_pcs_by_label")
+    pcs_rows = row.get("pcs_commitments")
+    reducer_bytes = None
+    if isinstance(transcript_labels, dict):
+        reducer_bytes = transcript_labels.get("t1_eq_round_corrections", 0) + transcript_labels.get(
+            "t1_eq_terminal_correction", 0
+        )
+    common = (
+        row.get("report_schema_version") == T1_REPORT_SCHEMA_VERSION
+        and row.get("milestone") in ("T1-G1", "T1-G4")
+        and row.get("git_dirty") is False
+        and _full_git_sha(row.get("git_sha"))
+        and row.get("benchmark_warmup_repetitions", 0) >= 1
+        and row.get("benchmark_repetitions", 0) >= 3
+        and row.get("t_prefill") == 100
+        and row.get("n_decode") == 50
+        and row.get("accepted") is True
+        and row.get("chunked_accepted") is True
+        and row.get("golden_decode_checked") is True
+        and row.get("golden_decode_match") is True
+        and row.get("gate_flat_cost_per_token") is True
+        and _finite_nonnegative(row.get("curve_last_over_first"))
+        and row["curve_last_over_first"] <= 1.5
+        and row.get("t1_response_gate_bytes") == T1_RESPONSE_GATE_BYTES
+        and row.get("t1_response_reference_bytes") == T1_RESPONSE_REFERENCE_BYTES
+        and row.get("comm_response_bytes") == T1_RESPONSE_REFERENCE_BYTES
+        and row.get("total_response_download_bytes") == T1_RESPONSE_REFERENCE_BYTES
+        and row.get("total_response_download_packed_bytes") == T1_RESPONSE_REFERENCE_BYTES
+        and row.get("t1_auth_correction_gate_bytes") == T1_AUTH_CORRECTION_REFERENCE_BYTES
+        and row.get("t1_auth_correction_reference_bytes")
+        == T1_AUTH_CORRECTION_REFERENCE_BYTES
+        and isinstance(transcript_labels, dict)
+        and all(_nonnegative_int(value) for value in transcript_labels.values())
+        and sum(transcript_labels.values()) == T1_RESPONSE_REFERENCE_BYTES
+        and transcript_labels.get("auth_corrections") == T1_AUTH_CORRECTION_REFERENCE_BYTES
+        and reducer_bytes == T1_EQ_REDUCER_TRANSCRIPT_BYTES
+        and transcript_labels.get("t1_q_bridge_correction")
+        == T1_Q_BRIDGE_CORRECTION_BYTES
+        and row.get("t1_eq_reducer_transcript_bytes") == T1_EQ_REDUCER_TRANSCRIPT_BYTES
+        and row.get("t1_q_bridge_correction_bytes") == T1_Q_BRIDGE_CORRECTION_BYTES
+        and row.get("pcs_opening_bytes_total") == C3B_PCS_OPENING_REFERENCE_BYTES
+        and isinstance(pcs_labels, dict)
+        and all(_nonnegative_int(value) for value in pcs_labels.values())
+        and sum(pcs_labels.values()) == C3B_PCS_OPENING_REFERENCE_BYTES
+        and row.get("pcs_n_queries") == 120
+        and isinstance(pcs_rows, list)
+        and len(pcs_rows) == 2
+        and all(isinstance(item, dict) and item.get("verified") is True for item in pcs_rows)
+        and row.get("public_logits_bytes") == 0
+        and row.get("public_logits_packed_bytes") == 0
+        and row.get("n_weight_claims") == 96
+        and row.get("n_embed_claims") == 6
+        and row.get("closure_prod_claims") == T1_PROD_CLAIMS
+        and row.get("closure_zero_claims") == T1_ZERO_CLAIMS
+        and row.get("corr_sub_corrs") == T1_SUB_CORRS
+        and row.get("corr_full_corrs") == T1_FULL_CORRS
+        and row.get("emult_instances_total") == T1_EMULT_INSTANCES_TOTAL
+        and row.get("t1_emult_other_total") == T1_EMULT_OTHER_TOTAL
+        and row.get("t1_exact_counter_pass") is True
+        and row.get("t1_g3_pass") is True
+        and row.get("c3b_transcript_category_sum_pass") is True
+        and row.get("c3b_pcs_category_sum_pass") is True
+        and row.get("c3b_public_logits_disabled") is True
+        and row.get("pcg_backend") == "real"
+        and row.get("ggm_prg") == "aes128-mmo"
+        and row.get("pcg_production_ready") is True
+        and row.get("pcg_setup_instances") == 1
+        and row.get("pcg_setup_wire_count_invariant_pass") is True
+        and row.get("pcg_mock_prepass_counters_match") is True
+        and row.get("pcg_mock_prepass_channel_ledger_digest_match") is True
+        and row.get("pcg_mock_prepass_allocation_digest_match") is True
+        and row.get("pcg_allocation_hash_match") is True
+        and row.get("pcg_response_authorization_burned_before_setup") is True
+        and row.get("pcg_burn_on_success_or_abort") is True
+        and row.get("pcg_reconnect_retry_resume_allowed") is False
+    )
+    return common and _c3b_spool_and_lifecycle_valid(row)
+
+
+def _t1_cpu_record_valid(row: dict[str, Any]) -> bool:
+    g2 = row.get("t1_g2")
+    return (
+        row.get("milestone") == "T1-G1"
+        and row.get("accelerator_backend") == "cpu"
+        and row.get("threads") == 4
+        and _t1_g2_valid(g2)
+        and row.get("t1_g1_pass") is g2["pass"]
+        and row.get("t1_g4_pass") is None
+    )
+
+
+def _t1_pod_record_valid(row: dict[str, Any]) -> bool:
+    communication = (
+        row.get("response_communication_envelope_bytes") == 200_000_000
+        and row.get("response_communication_observed_bytes") == T1_RESPONSE_REFERENCE_BYTES
+        and row.get("response_communication_invariant_pass") is True
+        and row.get("p7b_transcript_reference_bytes") == T1_RESPONSE_REFERENCE_BYTES
+        and row.get("p7b_pcs_opening_reference_bytes") == C3B_PCS_OPENING_REFERENCE_BYTES
+        and row.get("p7b_packed_logits_reference_bytes") == 0
+        and row.get("p7b_packed_response_reference_bytes") == T1_RESPONSE_REFERENCE_BYTES
+        and row.get("p7b_response_communication_no_growth_pass") is True
+    )
+    fixed = (
+        row.get("milestone") == "T1-G4"
+        and row.get("accelerator_backend") == "cuda-resident"
+        and row.get("accelerator_cuda_abi_version") == P7B_CUDA_ABI_VERSION
+        and row.get("resident_timing_policy") == P7B_OFFICIAL_RESIDENT_TIMING_POLICY
+        and row.get("p7b_gate_profile") == T1_POD_GATE_PROFILE
+        and row.get("p7b_gate_evaluated") is True
+        and row.get("p7b_machine_eligible") is True
+        and _p7b_git_provenance_valid(row)
+        and _realpcg_pod_metadata_valid(row)
+        and row.get("t1_g1_pass") is None
+        and row.get("t1_g2") is None
+        and communication
+        and _c3b_resident_cleanup_valid(row)
+    )
+    if not fixed:
+        return False
+    performance = _p7b_sampling_statistics_valid(row) and _p7b_performance_verdict_valid(row)
+    expected_g4 = performance and row.get("p7b_all_gates_pass") is True
+    return performance and row.get("t1_g4_pass") is expected_g4
+
+
+def validate_t1_official_result(path: Path) -> bool:
+    """Fail closed on either half of the paired schema-10 T1 verdict."""
+    try:
+        raw = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(raw, dict) or not _t1_common_record_valid(raw):
+        return False
+    if raw.get("accelerator_backend") == "cpu":
+        return _t1_cpu_record_valid(raw)
+    if raw.get("accelerator_backend") == "cuda-resident":
+        return _t1_pod_record_valid(raw)
+    return False
+
+
 def _finite_nonnegative(value: Any) -> bool:
     return type(value) in (int, float) and math.isfinite(value) and value >= 0
 
@@ -1870,6 +2057,7 @@ def _p7b_performance_verdict_valid(row: dict[str, Any]) -> bool:
     absolute_profile = row.get("p7b_gate_profile") in (
         FASE_D_POD_GATE_PROFILE_V2,
         C3B_POD_GATE_PROFILE,
+        T1_POD_GATE_PROFILE,
     )
     thresholds = (
         row.get("p7b_prefill_core_gate_s") == P7B_PREFILL_CORE_GATE_S
@@ -2755,6 +2943,11 @@ def main() -> None:
         type=Path,
         help="fail closed unless one raw JSON is a complete CPU or pod C3b verdict",
     )
+    ap.add_argument(
+        "--validate-t1-official",
+        type=Path,
+        help="fail closed unless one raw JSON is a complete CPU or pod T1 verdict",
+    )
     args = ap.parse_args()
 
     selected_validators = sum(
@@ -2763,6 +2956,7 @@ def main() -> None:
             args.validate_p7b_official,
             args.validate_fase_d_pod_official,
             args.validate_c3b_official,
+            args.validate_t1_official,
         )
     )
     if selected_validators > 1:
@@ -2789,6 +2983,13 @@ def main() -> None:
         if not validate_c3b_official_result(args.validate_c3b_official):
             raise SystemExit("invalid or ineligible official C3b result")
         print(f"valid official C3b result: {args.validate_c3b_official}")
+        return
+    if args.validate_t1_official is not None:
+        if args.write_json:
+            raise SystemExit("--write-json and --validate-t1-official are mutually exclusive")
+        if not validate_t1_official_result(args.validate_t1_official):
+            raise SystemExit("invalid or ineligible official T1 result")
+        print(f"valid official T1 result: {args.validate_t1_official}")
         return
 
     report = p7_report(args.results_dir)

@@ -49,19 +49,20 @@ use crate::block_proof::{
     layer_content_keys, layer_dom_base, ln_acc_recompute, open_matrix_k, open_matrix_p,
     open_matrix_resident_p, open_matrix_weighted_rows_k, open_matrix_weighted_rows_p,
     open_matrix_weighted_rows_resident_p, prove_layer_phase1, prove_layer_phase1_band,
-    prove_layer_phase1_band_reusing_xin, prove_layer_phase1_resident,
-    prove_layer_phase1_reusing_xin, prove_ln_chain, prove_ln_chain_resident, prove_range_site,
-    prove_range_site_resident, public_window_fold_resident, range_keys, verify_layer_phase1,
-    verify_layer_phase1_band, verify_layer_phase1_band_reusing_xin,
-    verify_layer_phase1_reusing_xin, verify_ln_chain, verify_range_site, BandShape, BlockCtxP,
+    prove_layer_phase1_band_reusing_xin, prove_layer_phase1_band_thinned,
+    prove_layer_phase1_resident_thinned, prove_layer_phase1_reusing_xin,
+    prove_layer_phase1_thinned, prove_ln_chain, prove_ln_chain_resident, prove_range_site,
+    prove_range_site_resident, public_window_fold_resident, range_keys,
+    verify_layer_phase1_band_thinned, verify_ln_chain, verify_range_site, BandShape, BlockCtxP,
     BlockCtxV, InstanceLookups, KvPrefixK, KvPrefixP, LayerBytes, LayerP1, LayerProof, LayerV1,
     LnChainProof, ResidentKvPrefixP, ResidentLayerP1, ResidentLnVecsP, TableBankP, TableBankV,
     TableCloseProof,
 };
 use crate::ffn_schedule::{
-    preflight_cpu_gelu_sources, preflight_gelu_plan, preflight_gelu_proofs,
-    preflight_resident_gelu_sources, prove_layers_resident_scheduled, prove_layers_scheduled,
-    register_gelu_manifest_p, register_gelu_manifest_v, verify_layers_scheduled,
+    preflight_cpu_gelu_sources, preflight_gelu_plan, preflight_gelu_plan_thinned,
+    preflight_gelu_proofs, preflight_resident_gelu_sources, prove_layers_resident_scheduled,
+    prove_layers_scheduled, prove_layers_thinned_scheduled, register_gelu_manifest_p,
+    register_gelu_manifest_v, verify_layers_thinned_scheduled,
 };
 use crate::gemm_proof::{WeightClaimP, WireKey, WireOut};
 use crate::logup::{eval_mle_counted, Counters, ProdKeyTriples, ProdTriples};
@@ -763,9 +764,9 @@ fn build_resident_chunk_phase1(
         let result = {
             let mut cx =
                 BlockCtxP::with_backend(stream, tx, layer_base + layer as u8, bank, backend);
-            let alias = (layer > 0 && model.p.seam_shifts[layer - 1] == 0)
-                .then(|| layer_p1s[layer - 1].dom_fbo);
-            prove_layer_phase1_resident(
+            let alias = (matches!(layer, 4 | 8)).then(|| layer_p1s[layer - 1].dom_fbo);
+            prove_layer_phase1_resident_thinned(
+                layer,
                 &band.layers[layer],
                 resident_model,
                 &luts,
@@ -1406,9 +1407,9 @@ fn prove_response_resident_impl<'chunk, 'source>(
         let luts = luts_for(layer);
         let result = {
             let mut cx = BlockCtxP::with_backend(stream, tx, layer as u8, &mut bank, backend);
-            let alias = (layer > 0 && model.p.seam_shifts[layer - 1] == 0)
-                .then(|| layer_p1s[layer - 1].dom_fbo);
-            prove_layer_phase1_resident(
+            let alias = (matches!(layer, 4 | 8)).then(|| layer_p1s[layer - 1].dom_fbo);
+            prove_layer_phase1_resident_thinned(
+                layer,
                 &wit.layers[layer],
                 resident_model,
                 &luts,
@@ -1615,7 +1616,7 @@ fn prove_response_resident_impl<'chunk, 'source>(
     // bank is still in phase 1.  Finalization authenticates multiplicities and
     // draws shared alphas, so no malformed schedule may be discovered after it.
     let gelu_manifest_result = (|| {
-        let prefill = preflight_gelu_plan(
+        let prefill = preflight_gelu_plan_thinned(
             t,
             0,
             0,
@@ -1629,7 +1630,7 @@ fn prove_response_resident_impl<'chunk, 'source>(
         plans.push(prefill);
         for (chunk_index, (chunk, p1)) in chunks.iter().zip(&chunk_p1s).enumerate() {
             let (layer_base, ..) = chunk_ids(chunk_index);
-            let plan = preflight_gelu_plan(
+            let plan = preflight_gelu_plan_thinned(
                 chunk.band.q,
                 chunk.band.t0,
                 layer_base,
@@ -1736,6 +1737,8 @@ fn prove_response_resident_impl<'chunk, 'source>(
         layer_p1s,
         &prefill_prefixes,
         &gelu_manifest[0],
+        seam_columns,
+        200,
         stream,
         tx,
         &mut bank,
@@ -1746,7 +1749,7 @@ fn prove_response_resident_impl<'chunk, 'source>(
             free_resident_chunk_phase1s(chunk_p1s, backend);
             free_resident_model_phase1(
                 Vec::new(),
-                seam_columns,
+                Vec::new(),
                 Some(embed_p1),
                 Some(final_p1),
                 &mut bank,
@@ -1758,7 +1761,12 @@ fn prove_response_resident_impl<'chunk, 'source>(
             });
         }
     };
-    for layer in scheduled {
+    let seams: Vec<Option<SeamProof>> = scheduled
+        .seam_instances
+        .into_iter()
+        .map(|proof| proof.map(|inst| SeamProof { inst }))
+        .collect();
+    for layer in scheduled.layers {
         let out = layer.out;
         prod.extend(layer.prod);
         zero.extend(layer.zero);
@@ -1770,90 +1778,6 @@ fn prove_response_resident_impl<'chunk, 'source>(
         lookups.extend(out.lookups);
         weight_claims.extend(out.weight_claims);
         layer_proofs.push(layer.proof);
-    }
-
-    let mut seams = Vec::with_capacity(L - 1);
-    let mut seam_iter = seam_columns.into_iter().enumerate();
-    while let Some((layer, columns)) = seam_iter.next() {
-        let shift = model.p.seam_shifts[layer];
-        let mut cx = BlockCtxP::with_backend(stream, tx, (200 + layer) as u8, &mut bank, backend);
-        let (dom_xin_next, _) = boundary_doms[layer + 1];
-        let (_, dom_fbo) = boundary_doms[layer];
-        let proof_result = if let Some(columns) = columns {
-            let proof = (|| {
-                let site = prove_range_site_resident(&columns, shift, Vec::new(), &mut cx)?;
-                let out_open = open_matrix_resident_p(
-                    cx.stream,
-                    dom_xin_next,
-                    wit.layers[layer + 1].i16(LayerI16Field::XIn),
-                    t,
-                    D,
-                    &site.main.point,
-                    cx.backend.as_deref_mut().unwrap(),
-                )?;
-                cx.zero.push(site.main.col_claims[1].value.sub(out_open));
-                let acc_open = open_matrix_resident_p(
-                    cx.stream,
-                    dom_fbo,
-                    wit.layers[layer].i16(LayerI16Field::FfnBlockOut),
-                    t,
-                    D,
-                    site.acc_point(),
-                    cx.backend.as_deref_mut().unwrap(),
-                )?;
-                cx.zero.push(site.acc_claim.sub(acc_open));
-                Ok(Some(SeamProof { inst: site.main.proof }))
-            })();
-            let free_result = cx.backend.as_deref_mut().unwrap().free_lookup_columns(columns);
-            match (proof, free_result) {
-                (Ok(value), Ok(())) => Ok(value),
-                (Err(error), _) | (_, Err(error)) => Err(error),
-            }
-        } else {
-            let rho: Vec<Fp2> = (0..n_vars_td).map(|_| cx.tx.challenge_fp2()).collect();
-            (|| {
-                let a = open_matrix_resident_p(
-                    cx.stream,
-                    dom_fbo,
-                    wit.layers[layer].i16(LayerI16Field::FfnBlockOut),
-                    t,
-                    D,
-                    &rho,
-                    cx.backend.as_deref_mut().unwrap(),
-                )?;
-                let b = open_matrix_resident_p(
-                    cx.stream,
-                    dom_xin_next,
-                    wit.layers[layer + 1].i16(LayerI16Field::XIn),
-                    t,
-                    D,
-                    &rho,
-                    cx.backend.as_deref_mut().unwrap(),
-                )?;
-                cx.zero.push(a.sub(b));
-                Ok(None)
-            })()
-        };
-        let proof = match proof_result {
-            Ok(value) => value,
-            Err(error_value) => {
-                for (_, pending) in seam_iter {
-                    if let Some(columns) = pending {
-                        let _ = backend.free_lookup_columns(columns);
-                    }
-                }
-                let _ = embed_p1.free(backend);
-                let _ = final_p1.free(backend);
-                free_resident_chunk_phase1s(chunk_p1s, backend);
-                bank.free_resident_multiplicities(backend);
-                return Err(error_value);
-            }
-        };
-        seams.push(proof);
-        prod.extend(cx.prod);
-        zero.extend(cx.zero);
-        add_counters(&mut ctr_instances, &cx.ctr_instances);
-        add_counters(&mut ctr_other, &cx.ctr_other);
     }
 
     let ResidentEmbedP1 { doms: embed_doms, dom_out, out_corr, columns: embed_columns } = embed_p1;
@@ -2346,6 +2270,8 @@ fn prove_response_resident_impl<'chunk, 'source>(
             layer_p1s,
             &prefixes,
             &gelu_manifest[chunk_index + 1],
+            seam_columns,
+            seam_base,
             stream,
             tx,
             &mut bank,
@@ -2353,9 +2279,6 @@ fn prove_response_resident_impl<'chunk, 'source>(
         ) {
             Ok(value) => value,
             Err(error_value) => {
-                for columns in seam_columns.into_iter().flatten() {
-                    let _ = backend.free_lookup_columns(columns);
-                }
                 let _ = embed.free(backend);
                 let _ = band_final_p1.free(backend);
                 free_resident_chunk_phase1s(pending_chunks.into_iter().collect(), backend);
@@ -2366,7 +2289,12 @@ fn prove_response_resident_impl<'chunk, 'source>(
                 });
             }
         };
-        for (layer, scheduled_layer) in scheduled.into_iter().enumerate() {
+        let band_seams: Vec<Option<SeamProof>> = scheduled
+            .seam_instances
+            .into_iter()
+            .map(|proof| proof.map(|inst| SeamProof { inst }))
+            .collect();
+        for (layer, scheduled_layer) in scheduled.layers.into_iter().enumerate() {
             let out = scheduled_layer.out;
             prod.extend(scheduled_layer.prod);
             zero.extend(scheduled_layer.zero);
@@ -2380,91 +2308,6 @@ fn prove_response_resident_impl<'chunk, 'source>(
             band_layer_proofs.push(scheduled_layer.proof);
         }
         let _ = layer_base;
-
-        let mut band_seams = Vec::with_capacity(L - 1);
-        let mut seam_iter = seam_columns.into_iter().enumerate();
-        while let Some((layer, columns)) = seam_iter.next() {
-            let shift = model.p.seam_shifts[layer];
-            let mut cx =
-                BlockCtxP::with_backend(stream, tx, seam_base + layer as u8, &mut bank, backend);
-            let (dom_xin_next, _) = band_boundary_doms[layer + 1];
-            let (_, dom_fbo) = band_boundary_doms[layer];
-            let proof_result = if let Some(columns) = columns {
-                let value = (|| {
-                    let site = prove_range_site_resident(&columns, shift, Vec::new(), &mut cx)?;
-                    let out_open = open_matrix_resident_p(
-                        cx.stream,
-                        dom_xin_next,
-                        band.layers[layer + 1].i16(LayerI16Field::XIn),
-                        q,
-                        D,
-                        &site.main.point,
-                        cx.backend.as_deref_mut().unwrap(),
-                    )?;
-                    cx.zero.push(site.main.col_claims[1].value.sub(out_open));
-                    let acc_open = open_matrix_resident_p(
-                        cx.stream,
-                        dom_fbo,
-                        band.layers[layer].i16(LayerI16Field::FfnBlockOut),
-                        q,
-                        D,
-                        site.acc_point(),
-                        cx.backend.as_deref_mut().unwrap(),
-                    )?;
-                    cx.zero.push(site.acc_claim.sub(acc_open));
-                    Ok(Some(SeamProof { inst: site.main.proof }))
-                })();
-                let cleanup = cx.backend.as_deref_mut().unwrap().free_lookup_columns(columns);
-                match (value, cleanup) {
-                    (Ok(value), Ok(())) => Ok(value),
-                    (Err(error), _) | (_, Err(error)) => Err(error),
-                }
-            } else {
-                let rho: Vec<Fp2> = (0..n_vars_qd).map(|_| cx.tx.challenge_fp2()).collect();
-                (|| {
-                    let left = open_matrix_resident_p(
-                        cx.stream,
-                        dom_fbo,
-                        band.layers[layer].i16(LayerI16Field::FfnBlockOut),
-                        q,
-                        D,
-                        &rho,
-                        cx.backend.as_deref_mut().unwrap(),
-                    )?;
-                    let right = open_matrix_resident_p(
-                        cx.stream,
-                        dom_xin_next,
-                        band.layers[layer + 1].i16(LayerI16Field::XIn),
-                        q,
-                        D,
-                        &rho,
-                        cx.backend.as_deref_mut().unwrap(),
-                    )?;
-                    cx.zero.push(left.sub(right));
-                    Ok(None)
-                })()
-            };
-            let proof = match proof_result {
-                Ok(value) => value,
-                Err(error_value) => {
-                    for (_, pending) in seam_iter {
-                        if let Some(columns) = pending {
-                            let _ = backend.free_lookup_columns(columns);
-                        }
-                    }
-                    let _ = embed.free(backend);
-                    let _ = band_final_p1.free(backend);
-                    free_resident_chunk_phase1s(pending_chunks.into_iter().collect(), backend);
-                    bank.free_resident_multiplicities(backend);
-                    return Err(error_value);
-                }
-            };
-            band_seams.push(proof);
-            prod.extend(cx.prod);
-            zero.extend(cx.zero);
-            add_counters(&mut ctr_instances, &cx.ctr_instances);
-            add_counters(&mut ctr_other, &cx.ctr_other);
-        }
 
         let ResidentEmbedP1 {
             doms: embed_doms,
@@ -2729,7 +2572,7 @@ pub fn prove_response(
     stream: &mut CorrelationStream,
     tx: &mut Transcript,
 ) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
-    prove_response_impl(model, wit, chunks, stream, tx, None, false)
+    prove_response_impl(model, wit, chunks, stream, tx, None, false, true)
 }
 
 /// C3 response prover. Logits remain prover-private and are replaced on the
@@ -2741,7 +2584,21 @@ pub fn prove_response_private_logits(
     stream: &mut CorrelationStream,
     tx: &mut Transcript,
 ) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
-    prove_response_impl(model, wit, chunks, stream, tx, None, true)
+    prove_response_impl(model, wit, chunks, stream, tx, None, true, true)
+}
+
+/// Historical C3b control arm retained solely for the preregistered T1/C3b
+/// same-process CPU ABBA measurement. It is not a selectable production
+/// protocol and deliberately has no resident/backend entry point.
+#[doc(hidden)]
+pub fn prove_response_private_logits_c3b_baseline(
+    model: &Gpt2Model,
+    wit: &ModelWitness,
+    chunks: &[ChunkRef],
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
+    prove_response_impl(model, wit, chunks, stream, tx, None, true, false)
 }
 
 pub fn prove_response_with_backend(
@@ -2757,7 +2614,7 @@ pub fn prove_response_with_backend(
         BackendKind::CudaHybrid,
         "host ModelWitness proving is the hybrid gate; resident proving requires a device witness"
     );
-    prove_response_impl(model, wit, chunks, stream, tx, Some(backend), false)
+    prove_response_impl(model, wit, chunks, stream, tx, Some(backend), false, true)
 }
 
 pub fn prove_response_private_logits_with_backend(
@@ -2769,7 +2626,7 @@ pub fn prove_response_private_logits_with_backend(
     backend: &mut Backend,
 ) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
     assert_eq!(backend.kind(), BackendKind::CudaHybrid);
-    prove_response_impl(model, wit, chunks, stream, tx, Some(backend), true)
+    prove_response_impl(model, wit, chunks, stream, tx, Some(backend), true, true)
 }
 
 fn prove_response_impl(
@@ -2780,6 +2637,7 @@ fn prove_response_impl(
     tx: &mut Transcript,
     mut backend: Option<&mut Backend>,
     private_logits: bool,
+    boundary_thinning: bool,
 ) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
     let t = wit.t;
     assert!(
@@ -2847,7 +2705,17 @@ fn prove_response_impl(
     for l in 0..L {
         let luts_l = luts_for(l);
         let mut cx = new_block_ctx!(l as u8);
-        let p1 = if l > 0 && model.p.seam_shifts[l - 1] == 0 {
+        let p1 = if boundary_thinning {
+            let entry_alias = (matches!(l, 4 | 8)).then(|| layer_p1s[l - 1].dom_fbo);
+            prove_layer_phase1_thinned(
+                l,
+                &wit.layers[l],
+                &model.layers[l].0,
+                &luts_l,
+                entry_alias,
+                &mut cx,
+            )
+        } else if l > 0 && model.p.seam_shifts[l - 1] == 0 {
             prove_layer_phase1_reusing_xin(
                 &wit.layers[l],
                 &model.layers[l].0,
@@ -2953,7 +2821,18 @@ fn prove_response_impl(
                     prefix_k.push(&cc.band.layers[l].k);
                 }
                 let mut cx = new_block_ctx!(lb + l as u8);
-                let p1 = if l > 0 && model.p.seam_shifts[l - 1] == 0 {
+                let p1 = if boundary_thinning {
+                    let entry_alias = (matches!(l, 4 | 8)).then(|| layer_p1s[l - 1].dom_fbo);
+                    prove_layer_phase1_band_thinned(
+                        l,
+                        &bw.layers[l],
+                        &model.layers[l].0,
+                        &luts_l,
+                        &prefix_k,
+                        entry_alias,
+                        &mut cx,
+                    )
+                } else if l > 0 && model.p.seam_shifts[l - 1] == 0 {
                     prove_layer_phase1_band_reusing_xin(
                         &bw.layers[l],
                         &model.layers[l].0,
@@ -3045,30 +2924,54 @@ fn prove_response_impl(
     // Validate the complete response-wide GELU site set while the table bank
     // is still in phase 1. Finalization authenticates multiplicities and draws
     // shared alphas, so no malformed schedule may be discovered afterwards.
-    let prefill_gelu = preflight_gelu_plan(
-        t,
-        0,
-        0,
-        layer_p1s
-            .iter()
-            .enumerate()
-            .map(|(layer, p1)| (layer, p1.doms, model.p.shift_ffn_down[layer])),
-    )
+    let prefill_gelu = if boundary_thinning {
+        preflight_gelu_plan_thinned(
+            t,
+            0,
+            0,
+            layer_p1s
+                .iter()
+                .enumerate()
+                .map(|(layer, p1)| (layer, p1.doms, model.p.shift_ffn_down[layer])),
+        )
+    } else {
+        preflight_gelu_plan(
+            t,
+            0,
+            0,
+            layer_p1s
+                .iter()
+                .enumerate()
+                .map(|(layer, p1)| (layer, p1.doms, model.p.shift_ffn_down[layer])),
+        )
+    }
     .unwrap_or_else(|error| panic!("invalid public prefill GELU plan: {error}"));
     preflight_cpu_gelu_sources(&wit.layers, &prefill_gelu)
         .unwrap_or_else(|error| panic!("invalid prefill GELU sources: {error}"));
     let mut chunk_gelu = Vec::with_capacity(chunks.len());
     for (chunk_index, (chunk, p1)) in chunks.iter().zip(&chunk_p1s).enumerate() {
         let (layer_base, ..) = chunk_ids(chunk_index);
-        let plan = preflight_gelu_plan(
-            chunk.band.q,
-            chunk.band.t0,
-            layer_base,
-            p1.layer_p1s
-                .iter()
-                .enumerate()
-                .map(|(layer, p1)| (layer, p1.doms, model.p.shift_ffn_down[layer])),
-        )
+        let plan = if boundary_thinning {
+            preflight_gelu_plan_thinned(
+                chunk.band.q,
+                chunk.band.t0,
+                layer_base,
+                p1.layer_p1s
+                    .iter()
+                    .enumerate()
+                    .map(|(layer, p1)| (layer, p1.doms, model.p.shift_ffn_down[layer])),
+            )
+        } else {
+            preflight_gelu_plan(
+                chunk.band.q,
+                chunk.band.t0,
+                layer_base,
+                p1.layer_p1s
+                    .iter()
+                    .enumerate()
+                    .map(|(layer, p1)| (layer, p1.doms, model.p.shift_ffn_down[layer])),
+            )
+        }
         .unwrap_or_else(|error| panic!("invalid public decode GELU plan: {error}"));
         preflight_cpu_gelu_sources(&chunk.band.layers, &plan)
             .unwrap_or_else(|error| panic!("invalid decode GELU sources: {error}"));
@@ -3119,19 +3022,42 @@ fn prove_response_impl(
     // then resume in canonical layer order. The response manifest already
     // includes every later decode cohort under the same TableKey::Gelu.
     let prefill_prefixes: Vec<Vec<KvPrefixP<'_>>> = (0..L).map(|_| Vec::new()).collect();
-    let scheduled = prove_layers_scheduled(
-        model,
-        &wit.layers,
-        layer_p1s,
-        &prefill_prefixes,
-        &gelu_manifest[0],
-        stream,
-        tx,
-        &mut bank,
-        backend.as_deref_mut(),
-    )
-    .unwrap_or_else(|error| panic!("invalid public prefill FFN schedule: {error}"));
-    for layer in scheduled {
+    let (scheduled_layers, mut seams): (Vec<_>, Vec<Option<SeamProof>>) = if boundary_thinning {
+        let scheduled = prove_layers_thinned_scheduled(
+            model,
+            &wit.layers,
+            layer_p1s,
+            &prefill_prefixes,
+            &gelu_manifest[0],
+            200,
+            stream,
+            tx,
+            &mut bank,
+            backend.as_deref_mut(),
+        )
+        .unwrap_or_else(|error| panic!("invalid public prefill FFN schedule: {error}"));
+        let seams = scheduled
+            .seam_instances
+            .into_iter()
+            .map(|proof| proof.map(|inst| SeamProof { inst }))
+            .collect();
+        (scheduled.layers, seams)
+    } else {
+        let scheduled = prove_layers_scheduled(
+            model,
+            &wit.layers,
+            layer_p1s,
+            &prefill_prefixes,
+            &gelu_manifest[0],
+            stream,
+            tx,
+            &mut bank,
+            backend.as_deref_mut(),
+        )
+        .unwrap_or_else(|error| panic!("invalid public prefill FFN schedule: {error}"));
+        (scheduled, Vec::with_capacity(L - 1))
+    };
+    for layer in scheduled_layers {
         let out = layer.out;
         prod.extend(layer.prod);
         zero.extend(layer.zero);
@@ -3145,41 +3071,46 @@ fn prove_response_impl(
         layer_proofs.push(layer.proof);
     }
 
-    // ---- (c) seams -----------------------------------------------------------
-    let mut seams: Vec<Option<SeamProof>> = Vec::with_capacity(L - 1);
-    for l in 0..L - 1 {
-        let shift = model.p.seam_shifts[l];
-        let mut cx = new_block_ctx!(200 + l as u8);
-        let (dom_xin_next, _) = boundary_doms[l + 1];
-        let (_, dom_fbo_l) = boundary_doms[l];
-        if shift > 0 {
-            let acc: Vec<i64> = wit.layers[l].ffn_block_out.iter().map(|&v| v as i64).collect();
-            let out16 = &wit.layers[l + 1].x_in;
-            let site = prove_range_site(&acc, out16, t, D, shift, Vec::new(), &mut cx);
-            let out_open = open_matrix_p(cx.stream, dom_xin_next, out16, t, D, &site.main.point);
-            cx.zero.push(site.main.col_claims[1].value.sub(out_open));
-            let acc_open = open_matrix_p(
-                cx.stream,
-                dom_fbo_l,
-                &wit.layers[l].ffn_block_out,
-                t,
-                D,
-                site.acc_point(),
-            );
-            cx.zero.push(site.acc_claim.sub(acc_open));
-            seams.push(Some(SeamProof { inst: site.main.proof }));
-        } else {
-            let rho: Vec<Fp2> = (0..n_vars_td).map(|_| cx.tx.challenge_fp2()).collect();
-            let a = open_matrix_p(cx.stream, dom_fbo_l, &wit.layers[l].ffn_block_out, t, D, &rho);
-            let b = open_matrix_p(cx.stream, dom_xin_next, &wit.layers[l + 1].x_in, t, D, &rho);
-            cx.zero.push(a.sub(b));
-            seams.push(None);
+    // Historical C3b control arm for the preregistered same-process ABBA
+    // timing only. Production T1 resolves these claims inside the reverse
+    // four-wave chains above and never reaches this branch.
+    if !boundary_thinning {
+        for l in 0..L - 1 {
+            let shift = model.p.seam_shifts[l];
+            let mut cx = new_block_ctx!(200 + l as u8);
+            let (dom_xin_next, _) = boundary_doms[l + 1];
+            let (_, dom_fbo_l) = boundary_doms[l];
+            if shift > 0 {
+                let acc: Vec<i64> = wit.layers[l].ffn_block_out.iter().map(|&v| v as i64).collect();
+                let out16 = &wit.layers[l + 1].x_in;
+                let site = prove_range_site(&acc, out16, t, D, shift, Vec::new(), &mut cx);
+                let out_open =
+                    open_matrix_p(cx.stream, dom_xin_next, out16, t, D, &site.main.point);
+                cx.zero.push(site.main.col_claims[1].value.sub(out_open));
+                let acc_open = open_matrix_p(
+                    cx.stream,
+                    dom_fbo_l,
+                    &wit.layers[l].ffn_block_out,
+                    t,
+                    D,
+                    site.acc_point(),
+                );
+                cx.zero.push(site.acc_claim.sub(acc_open));
+                seams.push(Some(SeamProof { inst: site.main.proof }));
+            } else {
+                let rho: Vec<Fp2> = (0..n_vars_td).map(|_| cx.tx.challenge_fp2()).collect();
+                let a =
+                    open_matrix_p(cx.stream, dom_fbo_l, &wit.layers[l].ffn_block_out, t, D, &rho);
+                let b = open_matrix_p(cx.stream, dom_xin_next, &wit.layers[l + 1].x_in, t, D, &rho);
+                cx.zero.push(a.sub(b));
+                seams.push(None);
+            }
+            let BlockCtxP { prod: lp, zero: lz, ctr_instances: lci, ctr_other: lco, .. } = cx;
+            prod.extend(lp);
+            zero.extend(lz);
+            add_counters(&mut ctr_instances, &lci);
+            add_counters(&mut ctr_other, &lco);
         }
-        let BlockCtxP { prod: lp, zero: lz, ctr_instances: lci, ctr_other: lco, .. } = cx;
-        prod.extend(lp);
-        zero.extend(lz);
-        add_counters(&mut ctr_instances, &lci);
-        add_counters(&mut ctr_other, &lco);
     }
 
     // ---- (d) embedding ---------------------------------------------------
@@ -3473,19 +3404,43 @@ fn prove_response_impl(
                 v
             })
             .collect();
-        let scheduled = prove_layers_scheduled(
-            model,
-            &bw.layers,
-            p1c.layer_p1s,
-            &prefixes,
-            &gelu_manifest[c + 1],
-            stream,
-            tx,
-            &mut bank,
-            backend.as_deref_mut(),
-        )
-        .unwrap_or_else(|error| panic!("invalid public decode FFN schedule: {error}"));
-        for (l, layer) in scheduled.into_iter().enumerate() {
+        let (scheduled_layers, mut seams_c): (Vec<_>, Vec<Option<SeamProof>>) = if boundary_thinning
+        {
+            let scheduled = prove_layers_thinned_scheduled(
+                model,
+                &bw.layers,
+                p1c.layer_p1s,
+                &prefixes,
+                &gelu_manifest[c + 1],
+                sb_id,
+                stream,
+                tx,
+                &mut bank,
+                backend.as_deref_mut(),
+            )
+            .unwrap_or_else(|error| panic!("invalid public decode FFN schedule: {error}"));
+            let seams = scheduled
+                .seam_instances
+                .into_iter()
+                .map(|proof| proof.map(|inst| SeamProof { inst }))
+                .collect();
+            (scheduled.layers, seams)
+        } else {
+            let scheduled = prove_layers_scheduled(
+                model,
+                &bw.layers,
+                p1c.layer_p1s,
+                &prefixes,
+                &gelu_manifest[c + 1],
+                stream,
+                tx,
+                &mut bank,
+                backend.as_deref_mut(),
+            )
+            .unwrap_or_else(|error| panic!("invalid public decode FFN schedule: {error}"));
+            (scheduled, Vec::with_capacity(L - 1))
+        };
+        for (l, layer) in scheduled_layers.into_iter().enumerate() {
             let out = layer.out;
             prod.extend(layer.prod);
             zero.extend(layer.zero);
@@ -3498,45 +3453,53 @@ fn prove_response_impl(
             weight_claims.extend(out.weight_claims);
             layer_proofs_c.push(layer.proof);
         }
-        let _ = lb;
-        // ---- band seams ------------------------------------------------------
-        let mut seams_c: Vec<Option<SeamProof>> = Vec::with_capacity(L - 1);
-        for l in 0..L - 1 {
-            let shift = model.p.seam_shifts[l];
-            let mut cx = new_block_ctx!(sb_id + l as u8);
-            let (dom_xin_next, _) = band_boundary_doms[l + 1];
-            let (_, dom_fbo_l) = band_boundary_doms[l];
-            if shift > 0 {
-                let acc: Vec<i64> = bw.layers[l].ffn_block_out.iter().map(|&v| v as i64).collect();
-                let out16 = &bw.layers[l + 1].x_in;
-                let site = prove_range_site(&acc, out16, q, D, shift, Vec::new(), &mut cx);
-                let out_open =
-                    open_matrix_p(cx.stream, dom_xin_next, out16, q, D, &site.main.point);
-                cx.zero.push(site.main.col_claims[1].value.sub(out_open));
-                let acc_open = open_matrix_p(
-                    cx.stream,
-                    dom_fbo_l,
-                    &bw.layers[l].ffn_block_out,
-                    q,
-                    D,
-                    site.acc_point(),
-                );
-                cx.zero.push(site.acc_claim.sub(acc_open));
-                seams_c.push(Some(SeamProof { inst: site.main.proof }));
-            } else {
-                let rho: Vec<Fp2> = (0..n_vars_qd).map(|_| cx.tx.challenge_fp2()).collect();
-                let a =
-                    open_matrix_p(cx.stream, dom_fbo_l, &bw.layers[l].ffn_block_out, q, D, &rho);
-                let b = open_matrix_p(cx.stream, dom_xin_next, &bw.layers[l + 1].x_in, q, D, &rho);
-                cx.zero.push(a.sub(b));
-                seams_c.push(None);
+        if !boundary_thinning {
+            for l in 0..L - 1 {
+                let shift = model.p.seam_shifts[l];
+                let mut cx = new_block_ctx!(sb_id + l as u8);
+                let (dom_xin_next, _) = band_boundary_doms[l + 1];
+                let (_, dom_fbo_l) = band_boundary_doms[l];
+                if shift > 0 {
+                    let acc: Vec<i64> =
+                        bw.layers[l].ffn_block_out.iter().map(|&v| v as i64).collect();
+                    let out16 = &bw.layers[l + 1].x_in;
+                    let site = prove_range_site(&acc, out16, q, D, shift, Vec::new(), &mut cx);
+                    let out_open =
+                        open_matrix_p(cx.stream, dom_xin_next, out16, q, D, &site.main.point);
+                    cx.zero.push(site.main.col_claims[1].value.sub(out_open));
+                    let acc_open = open_matrix_p(
+                        cx.stream,
+                        dom_fbo_l,
+                        &bw.layers[l].ffn_block_out,
+                        q,
+                        D,
+                        site.acc_point(),
+                    );
+                    cx.zero.push(site.acc_claim.sub(acc_open));
+                    seams_c.push(Some(SeamProof { inst: site.main.proof }));
+                } else {
+                    let rho: Vec<Fp2> = (0..n_vars_qd).map(|_| cx.tx.challenge_fp2()).collect();
+                    let a = open_matrix_p(
+                        cx.stream,
+                        dom_fbo_l,
+                        &bw.layers[l].ffn_block_out,
+                        q,
+                        D,
+                        &rho,
+                    );
+                    let b =
+                        open_matrix_p(cx.stream, dom_xin_next, &bw.layers[l + 1].x_in, q, D, &rho);
+                    cx.zero.push(a.sub(b));
+                    seams_c.push(None);
+                }
+                let BlockCtxP { prod: lp, zero: lz, ctr_instances: lci, ctr_other: lco, .. } = cx;
+                prod.extend(lp);
+                zero.extend(lz);
+                add_counters(&mut ctr_instances, &lci);
+                add_counters(&mut ctr_other, &lco);
             }
-            let BlockCtxP { prod: lp, zero: lz, ctr_instances: lci, ctr_other: lco, .. } = cx;
-            prod.extend(lp);
-            zero.extend(lz);
-            add_counters(&mut ctr_instances, &lci);
-            add_counters(&mut ctr_other, &lco);
         }
+        let _ = (lb, sb_id);
         let _ = eb;
         // ---- band embedding ---------------------------------------------------
         let mut cx = BlockCtxP::with_doms(stream, tx, p1c.embed_doms, &mut bank);
@@ -3851,16 +3814,31 @@ fn preflight_layer_proof_shape(
     shape: BandShape,
     proof: &LayerProof,
     softmax_row_shift: bool,
-    reuse_xin: bool,
+    layer: usize,
 ) -> Option<()> {
+    if layer >= L {
+        return None;
+    }
     let rows = shape.q;
     let boundary_len = rows.checked_mul(D)?;
     let row_pad = rows.checked_next_power_of_two()?;
-    let xin_len_valid = preflight_xin_correction_len(boundary_len, proof.xin_corr.len(), reuse_xin);
-    if !xin_len_valid
-        || [&proof.k_corr, &proof.v_corr, &proof.abo_corr, &proof.fbo_corr]
-            .into_iter()
-            .any(|corrections| corrections.len() != boundary_len)
+    let group_pos = layer % 4;
+    let n_vars = pad_bits(rows) + pad_bits(D);
+    let reducer_shape = |proof: &crate::boundary_thinning::EqReductionProof| {
+        proof.sumcheck.round_corrs.len() == n_vars
+    };
+    if (layer == 0) != (proof.xin_corr.len() == boundary_len)
+        || (layer != 0 && !proof.xin_corr.is_empty())
+        || proof.k_corr.len() != boundary_len
+        || proof.v_corr.len() != boundary_len
+        || !proof.abo_corr.is_empty()
+        || (group_pos == 3) != (proof.fbo_corr.len() == boundary_len)
+        || (group_pos != 3 && !proof.fbo_corr.is_empty())
+        || (group_pos != 3) != proof.ffn.t1_q_corr.is_some()
+        || !proof.ffn.t1_abo_reduce.as_ref().is_some_and(reducer_shape)
+        || proof.attn.t1_q_corr.is_none()
+        || (group_pos != 0) != proof.attn.t1_x_reduce.is_some()
+        || proof.attn.t1_x_reduce.as_ref().is_some_and(|reducer| !reducer_shape(reducer))
         || proof.ffn.ln_vec_corrs.iter().any(|corrections| corrections.len() != row_pad)
         || proof.attn.ln_vec_corrs.iter().any(|corrections| corrections.len() != row_pad)
     {
@@ -3891,6 +3869,7 @@ fn preflight_layer_proof_shape(
     Some(())
 }
 
+#[cfg(test)]
 fn preflight_xin_correction_len(
     boundary_len: usize,
     correction_len: usize,
@@ -4029,7 +4008,7 @@ fn preflight_verify_response_public(
             BandShape::square(t),
             layer_proof,
             model.p.lut.softmax_row_shift,
-            layer > 0 && model.p.seam_shifts[layer - 1] == 0,
+            layer,
         )?;
     }
 
@@ -4064,7 +4043,7 @@ fn preflight_verify_response_public(
                 BandShape { t0, q: chunk.q },
                 layer_proof,
                 model.p.lut.softmax_row_shift,
-                layer > 0 && model.p.seam_shifts[layer - 1] == 0,
+                layer,
             )?;
         }
 
@@ -4159,17 +4138,15 @@ fn verify_response_impl(
     for l in 0..L {
         let luts_l = luts_for(l);
         let mut cx = BlockCtxV::new(vc, tx, l as u8, &mut pre_bank);
-        let v1 = if l > 0 && model.p.seam_shifts[l - 1] == 0 {
-            verify_layer_phase1_reusing_xin(
-                t,
-                &luts_l,
-                &proof.layers[l],
-                &layer_v1s[l - 1],
-                &mut cx,
-            )?
-        } else {
-            verify_layer_phase1(t, &luts_l, &proof.layers[l], &mut cx)?
-        };
+        let entry_alias = (matches!(l, 4 | 8)).then(|| layer_v1s[l - 1].fbo_keys.as_slice());
+        let v1 = verify_layer_phase1_band_thinned(
+            l,
+            BandShape::square(t),
+            &luts_l,
+            &proof.layers[l],
+            entry_alias,
+            &mut cx,
+        )?;
         layer_v1s.push(v1);
     }
     let s_emb = model.p.shift_embed;
@@ -4224,17 +4201,16 @@ fn verify_response_impl(
             for l in 0..L {
                 let luts_l = luts_for(l);
                 let mut cx = BlockCtxV::new(vc, tx, lb + l as u8, &mut pre_bank);
-                let v1 = if l > 0 && model.p.seam_shifts[l - 1] == 0 {
-                    verify_layer_phase1_band_reusing_xin(
-                        sh_c,
-                        &luts_l,
-                        &cp.layers[l],
-                        &layer_v1s[l - 1],
-                        &mut cx,
-                    )?
-                } else {
-                    verify_layer_phase1_band(sh_c, &luts_l, &cp.layers[l], &mut cx)?
-                };
+                let entry_alias =
+                    (matches!(l, 4 | 8)).then(|| layer_v1s[l - 1].fbo_keys.as_slice());
+                let v1 = verify_layer_phase1_band_thinned(
+                    l,
+                    sh_c,
+                    &luts_l,
+                    &cp.layers[l],
+                    entry_alias,
+                    &mut cx,
+                )?;
                 layer_v1s.push(v1);
             }
             let (embed_doms, out_keys) = {
@@ -4272,7 +4248,7 @@ fn verify_response_impl(
 
     // Validate every scheduled proof and domain range before table
     // finalization expands multiplicity keys or draws shared alphas.
-    let prefill_gelu = preflight_gelu_plan(
+    let prefill_gelu = preflight_gelu_plan_thinned(
         t,
         0,
         0,
@@ -4290,7 +4266,7 @@ fn verify_response_impl(
         chunks.iter().zip(&proof.chunks).zip(&chunk_v1s).enumerate()
     {
         let (layer_base, ..) = chunk_ids(chunk_index);
-        let plan = preflight_gelu_plan(
+        let plan = preflight_gelu_plan_thinned(
             chunk.q,
             decode_t0,
             layer_base,
@@ -4346,51 +4322,27 @@ fn verify_response_impl(
     // ======================= PHASE 2 mirror =================================
     // ---- (a) 12 layers -----------------------------------------------------
     let prefill_prefixes: Vec<Vec<KvPrefixK<'_>>> = (0..L).map(|_| Vec::new()).collect();
-    let scheduled = verify_layers_scheduled(
+    let seam_instances: Vec<_> =
+        proof.seams.iter().map(|seam| seam.as_ref().map(|seam| &seam.inst)).collect();
+    let scheduled = verify_layers_thinned_scheduled(
         model,
         &proof.layers,
+        &seam_instances,
         layer_v1s,
         &prefill_prefixes,
         &gelu_manifest[0],
+        200,
         vc,
         tx,
         &mut bank,
     )?;
-    for layer in scheduled {
+    for layer in scheduled.layers {
         let out = layer.out;
         kprod.extend(layer.prod);
         kzero.extend(layer.zero);
         weight_keys.extend(out.weight_keys);
         boundary_keys.push((out.xin_keys, out.fbo_keys));
         boundary_kv_keys.push((out.k_keys, out.v_keys));
-    }
-
-    // ---- (c) seams -----------------------------------------------------------
-    for l in 0..L - 1 {
-        let shift = model.p.seam_shifts[l];
-        if shift > 16 {
-            return None;
-        }
-        let mut cx = BlockCtxV::new(vc, tx, 200 + l as u8, &mut bank);
-        match (&proof.seams[l], shift > 0) {
-            (Some(sp), true) => {
-                let site = verify_range_site(n_vars_td, shift, &sp.inst, None, &[], &mut cx)?;
-                let out_k = open_matrix_k(&boundary_keys[l + 1].0, t, D, &site.main.point);
-                cx.kzero.push(site.main.col_keys[1].key.sub(out_k));
-                let acc_open_k = open_matrix_k(&boundary_keys[l].1, t, D, site.acc_point());
-                cx.kzero.push(site.acc_key.sub(acc_open_k));
-            }
-            (None, false) => {
-                let rho: Vec<Fp2> = (0..n_vars_td).map(|_| cx.tx.challenge_fp2()).collect();
-                let a = open_matrix_k(&boundary_keys[l].1, t, D, &rho);
-                let b = open_matrix_k(&boundary_keys[l + 1].0, t, D, &rho);
-                cx.kzero.push(a.sub(b));
-            }
-            _ => return None,
-        }
-        let BlockCtxV { kprod: lkp, kzero: lkz, .. } = cx;
-        kprod.extend(lkp);
-        kzero.extend(lkz);
     }
 
     // ---- (d) embedding ---------------------------------------------------
@@ -4545,53 +4497,27 @@ fn verify_response_impl(
                         .collect()
                 })
                 .collect();
-            let scheduled = verify_layers_scheduled(
+            let seam_instances: Vec<_> =
+                cp.seams.iter().map(|seam| seam.as_ref().map(|seam| &seam.inst)).collect();
+            let scheduled = verify_layers_thinned_scheduled(
                 model,
                 &cp.layers,
+                &seam_instances,
                 v1c.layer_v1s,
                 &prefixes,
                 &gelu_manifest[c + 1],
+                sb_id,
                 vc,
                 tx,
                 &mut bank,
             )?;
-            for (l, layer) in scheduled.into_iter().enumerate() {
+            for (l, layer) in scheduled.layers.into_iter().enumerate() {
                 let out = layer.out;
                 kprod.extend(layer.prod);
                 kzero.extend(layer.zero);
                 weight_keys.extend(out.weight_keys);
                 band_boundary_keys.push((out.xin_keys, out.fbo_keys));
                 kv_keys[l].push((out.k_keys, out.v_keys));
-            }
-            // ---- band seams -----------------------------------------------------
-            for l in 0..L - 1 {
-                let shift = model.p.seam_shifts[l];
-                if shift > 16 {
-                    return None;
-                }
-                let mut cx = BlockCtxV::new(vc, tx, sb_id + l as u8, &mut bank);
-                match (&cp.seams[l], shift > 0) {
-                    (Some(sp), true) => {
-                        let site =
-                            verify_range_site(n_vars_qd, shift, &sp.inst, None, &[], &mut cx)?;
-                        let out_k =
-                            open_matrix_k(&band_boundary_keys[l + 1].0, q, D, &site.main.point);
-                        cx.kzero.push(site.main.col_keys[1].key.sub(out_k));
-                        let acc_open_k =
-                            open_matrix_k(&band_boundary_keys[l].1, q, D, site.acc_point());
-                        cx.kzero.push(site.acc_key.sub(acc_open_k));
-                    }
-                    (None, false) => {
-                        let rho: Vec<Fp2> = (0..n_vars_qd).map(|_| cx.tx.challenge_fp2()).collect();
-                        let a = open_matrix_k(&band_boundary_keys[l].1, q, D, &rho);
-                        let b = open_matrix_k(&band_boundary_keys[l + 1].0, q, D, &rho);
-                        cx.kzero.push(a.sub(b));
-                    }
-                    _ => return None,
-                }
-                let BlockCtxV { kprod: lkp, kzero: lkz, .. } = cx;
-                kprod.extend(lkp);
-                kzero.extend(lkz);
             }
             // ---- band embedding -------------------------------------------------
             let mut cx = BlockCtxV::with_doms(vc, tx, v1c.embed_doms, &mut bank);

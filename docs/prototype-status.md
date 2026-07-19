@@ -1,4 +1,4 @@
-# Prototype Status Ledger (C3b CLOSED; real-PCG default enacted)
+# Prototype Status Ledger (C3b CLOSED; T1 Phase 2 in progress)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -28,8 +28,16 @@ and the clean CPU/A100 E2E table refresh are complete. C3b closed on clean
 `161fc59`: G1/G2/G3/G4 all PASS, including the 11 GiB connection-scoped CPU
 record, production leakage smokes and fresh `runpod-a100-realpcg-v3` record.
 The post-implementation CUPTI census has zero drops and no new grid-x=1
-private-argmax family. Boundary
-thinning and pool prewarming remain backlog, and fase X follows C3.
+private-argmax family.  On 2026-07-18 X0 completed its design-only analytic
+package.  T1 measured the correction split and preregistered an amended k=4
+construction, but exhaustive fan-out analysis required a new M11 package for
+the eq-sumcheck late-scalar chain and non-empty LogUp aux transport.  Phase 1
+was approved on 2026-07-18.  M11a--c and the concrete full-vector leaf
+instantiation are now proved and audited, so the Lean-first stop is cleared
+and the authorized T1 Phase 2 is in progress.  X1--X4 remain later packages;
+pool prewarming remains backlog.  By product-owner decision on 2026-07-19,
+R1 is outside this package's operational plan and is deferred to Kimi3; no
+cryptographic-review assurance is claimed by the T1 closure.
 
 ## Milestones
 
@@ -55,6 +63,8 @@ thinning and pool prewarming remain backlog, and fase X follows C3.
 | C2 Packed16 typed-lane real-PCG | **Candidate A rejected; Packed16 shelved** (2026-07-15) | Permanent costing record; implementation is not authorized | `docs/c2-packed-lane-pcg-design.md` remains the permanent record: the only sound realization costs about **1.55 GB** recurring setup traffic and **31--46 s** setup wall per session to save 32,486,400 B of response, about **47×** more bytes moved than saved. Revisit only with a cited construction on the order of tens of MB/session, or an explicit product decision that the envelope demands it. |
 | Fase-D real-PCG default + scaling | **CLOSED; criterion (5) ENACTED, real default production-ready** (2026-07-17) | M10/AES/connection/default ✓; G1 ✓ G2 ✓ G2b ✓ G3 informative ✓; **G4-v2 PASS** | Tuple `(k3,n3,t3)=(6,520,000,117,440,512,1,792)`, `U3=110,918,718`; estimator min **199.599804 bits**, six-instance **197.014842**, connection floor **140.643699**. CPU G2 **38,371,465 B PASS**, G2b PASS, G3 **665,512,308** gross / **440.856 s** / **1,269,347,424 B** high-water PASS. Pod v2 `e95b839`: prefill **2.728 s PASS**, decode **1.582 s PASS**, H2D **88,139,652 B PASS**, packed **136,526,530 B PASS**, flat **1.219 PASS**, max absolute sync **0.123482 s <=0.150 PASS**; informative max ratio **2.238539%**. Pod G2 **110,918,718 / 38,371,465 B PASS**, setup **48.841 s**. Real/AES is default; mock is explicit test-only. |
 | C3 PCS/logits communication | **C3b CLOSED; G1/G2/G3/G4 PASS** (2026-07-18) | G1 response <=115,000,000 B; G2 CPU ABBA <=+15% and pod <=5.6483791 s against pinned 4.911634 s; G3 full capability/adversarial parity; G4 fresh pod profile | `161fc59`: exact response **105,717,632 B**, PCS **43,273,888 B**, public logits **0 B**, L4 **57,840 B / 157,705,530 E-mult**. G1 CPU PASS, peak **8.629 GiB**, spool raw resident 0. G2 CPU **+14.5365% PASS**; pod **4.183011 s vs 5.6483791 s PASS**. G3 workspace/adversarial + both production leakage smokes PASS. G4 v3: prefill **2.536909**, decode **1.652746**, H2D **88,812,564 B**, max sync **0.114894647 s**, flat **1.228451**, all PASS. Post-fix CUPTI: **1,423,901** launches, 69 families, 0 drops; five new `private_argmax_*` families, none grid-x=1. |
+| X0 MoE analytic design | **design complete; no MoE implementation authorized** (2026-07-18) | parameterized budget + D1--D4 + private-weight table + prerequisite/long-output/provider contracts preregistered | gpt-oss-20b analytic 100+50 point: **485.360G MACs**, **41.800 GB i16 committed**, **371.881 MB** current-boundary corrections / **147.241 MB** k=4 shape, **417.268M / 687.568M** logical/padded lookups, **3,316** stacked PCS-claim upper bound. Dense 8B point: **1.076T MACs**, **617.081 / 189.459 MB** corrections, **452** claims. `scripts/budget_moe.py`; `docs/x0-moe-design.md`. |
+| T1 boundary thinning | **Phase 2 in progress; M11 GREEN** (2026-07-18) | response <=85,000,000 B, corrections <=38,348,720 B, CPU ABBA <=1.05 and unchanged pod contract | Current **59,545,520 B** corrections split exactly residual **24,883,200**, K/V **22,118,400** non-thinnable, other **12,543,920**. Full-size development instrumentation measures corrections **38,348,720 B**, eq transcript **22,848 B**, scalar transport **672 B**, response **84,544,352 B**, sub/full **4,793,590 / 181,933**, closures **21,667 / 8,170**. The corrected two-bucket E-mult delta is **49,644,736** (`ctr_instances +24,872,338`, `ctr_other +24,772,398`); clean CPU/pod records remain pending. M11a--c plus the concrete full-vector leaf theorem build and audit clean. `docs/t1-boundary-thinning-design.md`. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -97,6 +107,237 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-19 (R1 removed from the current operational package; deferred to
+  Kimi3)**: the product owner removed the implementing assistant's R1
+  cryptographic review because it does not have the required trusted-access
+  posture.  X0/T1 implementation, records and closure continue under the
+  approved gates, but this package makes **no independent or adversarial
+  cryptographic-review assurance**.  Kimi3 will perform the original R1 scope
+  a posteriori, explicitly including M11a--c statement-vs-implementation
+  fidelity and the Rust eq-reducer mirror.  The concise handoff is
+  `docs/r1-kimi3-handoff.md`.  This entry supersedes only the operational R1
+  assignment in the 2026-07-18 authorization; it does not alter any T1 gate,
+  theorem statement, test, counter or historical record.
+
+- **2026-07-18 (T1 Phase-2 development instrumentation; counter-model
+  reconciliation, not a gate record)**: one full T=100+50/Q=120 mock-backed
+  development run measures the binding communication geometry exactly:
+  response **84,544,352 B**, authentication corrections **38,348,720 B**,
+  reducer transcript **22,848 B**, q-bridge corrections **672 B**, protocol
+  sub/full correlations **4,793,590 / 181,933**, and product/zero closure
+  lengths **21,667 / 8,170**.  These match the approved Phase-1 package to the
+  byte and claim.  The run is intentionally not a clean CPU/pod record and
+  carries no gate verdict.
+
+  The run also exposes one non-binding cost-model arithmetic deviation.  The
+  preregistered auxiliary-root formula `11*N/2 + 2*(n-1) - 6` subtracted six
+  operations that had already been accounted, once per each of 46 claims.
+  The implemented counter mirror therefore measures **24,872,338**, exactly
+  **276** above the preregistered **24,872,062**.  Keeping the historical
+  report buckets distinct, `ctr_instances` changes
+  **2,775,723,398.8 -> 2,800,595,736.8** (+24,872,338) and `ctr_other`
+  changes **90,080,563.2 -> 114,852,961.2** (+24,772,398 for reducers and
+  q-evaluations).  The combined measured delta is **49,644,736**, versus the
+  preregistered **49,644,460**.  This 276-operation reconciliation changes no
+  transcript, correlation allocation, soundness bound, witness semantics, or
+  binding gate; clean CPU/pod records still must pin the gate measurements.
+
+- **2026-07-18 (M11 Lean package GREEN; T1 Phase 2 unlocked)**: the
+  Lean-first stop is cleared.  `VoltaZk/BoundaryThinningSound.lean` proves
+  M11a (`lateClaimAt_valid`, the pointwise verifier-key mirror, and
+  `clear_of_late_claims_zero`), M11b
+  (`affine_late_atoms_then_chain_sound`), M11c
+  (`shared_pair_collapse_then_chain_sound`), and the concrete
+  `C=2+n_cols` full-vector `layer_leaf_ones_aux` instantiation, including its
+  exact terminal, child-fold, degree-three compressed-wire, and affine-chain
+  obligations.  `lake build` completes **3,246 jobs**; `Audit.lean` runs a
+  `#print axioms` audit on every new theorem, with only Lean's standard
+  logical axioms where needed.  The source contains zero `sorry`/`admit`, no
+  new `axiom`, and no `Ideal.LogUpGKRSound`.  The four M11 rows in
+  `docs/protocol-sketch.md` are marked proved.  This satisfies the product
+  owner's prerequisite exactly and starts the already authorized Rust phase;
+  it is not a T1 gate verdict.
+
+- **2026-07-18 (T1 Phase 1 approved; M11 Lean authorized before Rust)**:
+  the product owner accepts the honest **84,544,352 B** projection in place of
+  the former ~75-MB aspiration.  Binding Phase-2 gates are response
+  **<=85,000,000 B**, corrections **<=38,348,720 B**, same-process CPU ABBA
+  T1/C3b **<=1.05**, and the unchanged pod absolute contract.  Closure must
+  pin the exact measured response reference rather than silently retaining the
+  projection.
+
+  M11a--c, `lateClaimAt_valid`, the pointwise verifier-key mirror, and the
+  concrete `C=2+n_cols` full-vector LogUp leaf instantiation are authorized;
+  no Rust may begin until `lake build`, zero-sorry and `#print axioms` audits
+  are green without `Ideal.LogUpGKRSound` or a new axiom.  A green M11 directly
+  authorizes T1 Phase 2 and then R1.  An M11 failure is a hard stop whose report
+  must also analyze whether the discarded common-point restructure avoids the
+  specific failed obligation; only the user may revive that design.
+
+  The correction categories reconcile exactly:
+  `24,883,200 + 22,118,400 + 12,543,408 = 59,545,008 B` at C1 and
+  `24,883,200 + 22,118,400 + 12,543,920 = 59,545,520 B` at C3b.  The full
+  **512-B** delta is selected-row authentication in `other`.  Context, not an
+  excuse: GPT-2 MHA pays the full **22,118,400-B** K/V stream; same-query-width
+  GQA 64/8 reduces that architecture-specific stream by about 8x for the
+  phase-X gpt-oss target.
+
+- **2026-07-18 (T1 boundary thinning, amended Phase-1 preregistration;
+  HARD STOP on M11 and user review)**: authorization was limited to the X0/T1
+  design package.  No Lean proof, Rust/protocol change, validator rebaseline,
+  benchmark record, pod action, or R1 review was performed.
+
+  **Measured split first.**  The requested C1/core stream is **59,545,008 B**;
+  the immutable current C3b stream is **59,545,520 B**, with the exact 512-B
+  difference from selected-row authentication.  Current C3b divides into
+  residual/block seams **24,883,200 B**, K/V **22,118,400 B** and other
+  **12,543,920 B**.  K/V is not thinnable: every layer's cache feeds later
+  positions and later chunks through M4/CacheSeg.  The k=4 schedule keeps X0
+  plus F3/F7/F11 per phase, with X4/X8 as canonical aliases; it removes 23
+  residual matrices per phase and projects **38,348,720 B** corrections.
+  The reconciliation is exact:
+  `24,883,200 + 22,118,400 + 12,543,408 = 59,545,008 B` at C1 and
+  `24,883,200 + 22,118,400 + 12,543,920 = 59,545,520 B` at C3b.  The entire
+  **512 B** delta is the 64 selected-row Fp corrections in `other`; there is no
+  residual discrepancy.  Context only: GPT-2 MHA pays full-width K/V auth,
+  while same-query-width GQA 64/8 reduces that architecture-specific stream by
+  about 8x on the phase-X gpt-oss target.  This does not relax the GPT-2 T1
+  corrections gate.
+
+  **All blockers and amended construction.**  Every ABO has independent FFN-
+  residual and LN2 consumers; every internal X at layers
+  `{1,2,3,5,6,7,9,10,11}` has independent attention-residual and LN1
+  consumers; every removed internal FBO also needs downstream-to-upstream
+  claim transport.  Nonzero seams, zero-shift canonical wires, proof order,
+  padding, public scheduling/domains, group/chunk endpoints and K/V fan-out
+  are enumerated with file:line evidence in
+  `docs/t1-boundary-thinning-design.md`.  T1 selects the 2026-07-15 §4.1.4
+  sound alternative: after both consumer claims are sealed, sample a fresh
+  affine challenge and run one degree-two eq sumcheck to yield a single
+  post-rho claim for upstream chaining.  Forcing heterogeneous residual and
+  LN/LogUp relations into one common-point instance would require a larger
+  selector/scheduler rewrite and is not covered by P7 homogeneous batching.
+
+  **Formal coverage and hard stop.**  M1 covers the public affine algebra; M2
+  covers the exact response-wide zero list; M3 supplies the degree-sum method
+  but its present final opening is fixed before rho; M6 covers fresh-window
+  ZK; M10 supplies the generic fixed-rest connection union bound.  M4 remains
+  load-bearing for K/V; M5 and M7--M9 keep their existing roles.  None proves
+  the recursive late scalar, its compressed blind-to-clear bridge, or the
+  concrete non-empty LogUp auxiliary transport through the full vector of
+  base/column split pairs and the shared child-bit challenge.  The document
+  therefore records the minimal M11a--c package: an exact authenticated
+  late-row bridge, a generic affine vector-terminal sumcheck theorem, one
+  shared-pair-vector collapse theorem, and the full Rust LogUp instantiation
+  obligation.  These cover the degree-two eq and degree-three aux cases.  M11
+  is statement-only and unproved; its proof, build and
+  `#print axioms` audit must precede any Rust.  `Ideal.LogUpGKRSound` may not be
+  imported.
+
+  **Exact soundness/counter map.**  Per phase the claim-driven rewrite retires
+  `12+12+9+9+4+9=55` legacy rows (FFN residual, LN2/ABO, internal
+  attention/X, internal LN1/X, nonzero seam endpoints, identity seams) and
+  adds 21 reducer terminal rows.  For one prefill plus one decode chunk,
+  `closure_zero_claims` is therefore **8,238 -> 8,170**; the product list stays
+  **21,667**.  The explicit reducers contribute `21*35+21*33 = 1,428`, and
+  the 46 newly non-empty aux lists add 46 affine-collapse roots; the
+  incremental M11 numerator is therefore **1,474**.  The tracked closure-plus-
+  T1 subtotal is **21,669 + 8,171 + 1,474 = 31,314**, a net
+  **+1,406/|E|** over the corresponding C3b subtotal and 113.065480 bits for
+  that subtotal alone.  This is not an absolute protocol bound: existing
+  degree-three, shared-child and downstream base terms remain in the pinned
+  C3b bound.  M10 lifts the exact increment R-linearly without an independence
+  assumption; PCS remains the separately pinned 78.809-bit term.
+
+  **Cost and gates.**  The 42 reducers add **22,848 B**, **1,428** full
+  correlations and **20,643,672** charged E-mults.  Retargeting 23 relation
+  outputs per phase into existing aux paths adds no round messages or
+  correlations but was preregistered at **24,872,062** E-mults.  The 42 required q-column
+  evaluations add **672 B**, **42** full correlations and **4,128,726**
+  E-mults.  The preregistered total charged delta is therefore
+  **49,644,460** (1.788523%) and fold-inclusive vector work is
+  **57,901,912** (2.086012%).  The later Phase-2 instrumentation entry above
+  preserves and explicitly reconciles the 276-operation deviation rather
+  than rewriting this preregistration.  The exact
+  response projection is prefill **28,778,208 B**, decode50 **12,492,256 B**,
+  PCS **43,273,888 B**, total **84,544,352 B**.  It plainly
+  **does not clear ~75 MB** because K/V and PCS remain.  The 2026-07-18 product
+  decision accepts this projection and binds G1 at **response <=85,000,000 B**,
+  with the exact measured reference to be pinned at closure; corrections stay
+  bound at **38,348,720 B**.
+  G2 proposes fresh same-process CPU ABBA T1/C3b `<=1.05` and keeps pod
+  prefill/decode/H2D/max-sync/flat at `10 s / 4 s / 100 MB / 0.150 s / 1.5`;
+  G3 requires bit-exact golden, malicious/replay/leakage/non-pow2/parity tests
+  and exact counters; G4 requires append-only CPU/pod records and a new profile
+  only after M11, explicit Phase-2 authorization, and separate paid-pod
+  confirmation.
+
+- **2026-07-18 (X0 MoE design complete; no MoE implementation authorized)**:
+  `scripts/budget_moe.py` adds the ModelConfig/Workload analytic budget in P0
+  style, with standard-library text/JSON output and self-checks against P0,
+  C1, C3b and the T1 correction split.  For prompt 100 + deferred decode 50,
+  gpt-oss-20b projects **485,359,730,688 MACs**, **46,485,064** current /
+  **18,405,064** k=4 authenticated values, **371.881 / 147.241 MB**
+  corrections, **417,267,938 / 687,568,448** logical/padded lookup rows,
+  **25** commitments and **3,316** stacked PCS claims upper bound.  The dense
+  8B/GQA point projects **1,076,133,888,000 MACs**, **617.081 / 189.459 MB**
+  corrections, **408,291,250 / 586,362,944** lookup rows, **33** commitments
+  and **452** claims.  The full-correlation columns are explicitly non-gating
+  planning proxies; no PCS byte/timing or gpt-oss onboarding measurement is
+  fabricated.
+
+  **D1--D4 are closed for design.**  D1 publishes the expert-choice trace as
+  response metadata, accepting that leakage while requiring X1 to bind
+  top-4/ties.  D2 canonically dequantizes MXFP4 to private i16 plus explicit
+  per-block power-of-two shifts under frozen requant semantics, with no 4-bit
+  credit.  D3 uses one commitment per layer with canonical per-expert blocks,
+  plus global embedding/unembedding, and one batched response opening.  D4
+  exports BF16 attention/router/embed material through P5-style symmetric i16
+  calibration and bit-exact golden validation.
+
+  **Private-weight decision (authoritative):** gpt-oss-20b is treated as if
+  proprietary and current PCS hiding is the target.  The closed table is:
+
+  | Backend | Use case | Comm/response | Assumption |
+  | --- | --- | ---: | --- |
+  | PCS hiding (current) | proprietary weights | 105.7 MB | binding |
+  | Direct evaluation | open weights, client can store | ~62.4 MB | none (info-theoretic) |
+  | Non-hiding PCS, public root | open weights too large | ~105 MB | binding |
+
+  **Prerequisite amendment.**  Scaling-note lever A, verifier-cached PCS
+  consistency columns, is UNSOUND under the 2026-07-15 §4.6.A attack; lever B,
+  Packed16, is shelved on its ~1.55-GB/session cost.  They are not Phase-X
+  prerequisites.  The prerequisites are now **T1 boundary thinning** for
+  corrections/correlations and **X4 folding PCS** for openings.  X1--X3 and X4
+  are later packages.
+
+  **Long-output product requirement.**  Responses are arbitrarily long;
+  download is linear in `T_dec`, and full-attention prover work per token is
+  linear in context (window-bounded on sliding layers), matching native shape.
+  The per-token budget of record is:
+
+  | Per generated token | Budget / exact reconciliation | Required shape |
+  | --- | ---: | --- |
+  | corrections/proof | **~445 KB/token** product budget; C3b exact **390,928.64 B/token**; T1 projected **249,845.12 B/token** | download linear in `T_dec` |
+  | private argmax | **~1.2 KB/token**; exact **1,156.8 B/token** | download linear in `T_dec` |
+  | variable download | **~446.2 KB/token** standing product budget | download linear in `T_dec` |
+  | prover | full attention linear per token in context; sliding layers window-bounded | same asymptotic shape as native |
+
+  The caps to clear later are the five-chunk domain scheme
+  (`layer_dom_base=16+32*c`), flat-cost validation only through context 150,
+  and one 110M connection at about 2.2k current token-equivalents.  None may be
+  hidden by correlation reuse or per-token proof/PCS instances.
+
+  **Provider envelope (four integration quantities).**  Setup is
+  **48.838774638 s + 38.371465 MB/connection**; current response is
+  **105.717632 MB + 0.39092864 MB/token marginal**, with T1 preregistered at
+  **84.544352 MB + 0.24984512 MB/token**; current rho is
+  **3.486621672 prefill / 0.842661976 decode**; onboarding is
+  **t_export + t_calibration + t_commit** with exporter/golden/calibration/
+  block-map/root binding.  Only the GPT-2 one-off commit component,
+  0.202467381 s, is measured; the gpt-oss total is honestly unmeasured.
+  `docs/x0-moe-design.md` is the one-page contract and detailed rationale.
 
 - **2026-07-18 (C3b CLOSED; G1/G2/G3/G4 PASS)**: clean implementation SHA
   `161fc59acf6fff2f221a0c5bd2cf2148bde0d09f` closes the efficiency

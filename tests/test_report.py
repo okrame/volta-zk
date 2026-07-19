@@ -766,6 +766,102 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7(tmp_path)
     c3b_cpu_path.write_text(json.dumps(c3b_cpu))
     assert report.validate_c3b_official_result(c3b_cpu_path) is True
 
+    t1_pod = copy.deepcopy(c3b_pod)
+    t1_pod.update(
+        {
+            "report_schema_version": 10,
+            "milestone": "T1-G4",
+            "p7b_gate_profile": "runpod-a100-realpcg-v4",
+            "comm_response_bytes": 84_544_352,
+            "comm_response_by_label": {
+                "auth_corrections": 38_348_720,
+                "t1_eq_round_corrections": 22_176,
+                "t1_eq_terminal_correction": 672,
+                "t1_q_bridge_correction": 672,
+                "pcs": 43_273_888,
+                "other": 2_898_224,
+            },
+            "comm_pcs_by_label": {"weights": 37_405_088, "embed": 5_868_800},
+            "pcs_opening_bytes_total": 43_273_888,
+            "total_response_download_bytes": 84_544_352,
+            "total_response_download_packed_bytes": 84_544_352,
+            "response_communication_observed_bytes": 84_544_352,
+            "p7b_transcript_reference_bytes": 84_544_352,
+            "p7b_pcs_opening_reference_bytes": 43_273_888,
+            "p7b_packed_logits_reference_bytes": 0,
+            "p7b_packed_response_reference_bytes": 84_544_352,
+            "t1_response_gate_bytes": 85_000_000,
+            "t1_response_reference_bytes": 84_544_352,
+            "t1_auth_correction_gate_bytes": 38_348_720,
+            "t1_auth_correction_reference_bytes": 38_348_720,
+            "t1_eq_reducer_transcript_bytes": 22_848,
+            "t1_q_bridge_correction_bytes": 672,
+            "closure_prod_claims": 21_667,
+            "closure_zero_claims": 8_170,
+            "corr_sub_corrs": 4_793_590,
+            "corr_full_corrs": 181_933,
+            "emult_instances_total": 2_800_595_736.8,
+            "t1_emult_other_total": 114_852_961.2,
+            "t1_exact_counter_pass": True,
+            "t1_g1_pass": None,
+            "t1_g2": None,
+            "t1_g3_pass": True,
+            "t1_g4_pass": True,
+        }
+    )
+    t1_pod_path = tmp_path / "t1-pod-official.json"
+    t1_pod_path.write_text(json.dumps(t1_pod))
+    assert report.validate_t1_official_result(t1_pod_path) is True
+
+    t1_cpu = copy.deepcopy(t1_pod)
+    t1_baseline_samples = [10.0, 10.1, 10.2, 10.3, 10.4, 10.5]
+    t1_candidate_samples = [10.3, 10.4, 10.5, 10.6, 10.7, 10.8]
+    t1_baseline = 10.3
+    t1_candidate = 10.6
+    t1_delta = t1_candidate - t1_baseline
+    t1_cpu.update(
+        {
+            "milestone": "T1-G1",
+            "accelerator_backend": "cpu",
+            "threads": 4,
+            "t1_g1_pass": True,
+            "t1_g4_pass": None,
+            "t1_g2": {
+                "timing_policy": (
+                    "same-process ABBA; one paired warmup + three rounds; "
+                    "protocol-core prove wall"
+                ),
+                "baseline_source": (
+                    "frozen C3b boundary-authentication control arm in this binary"
+                ),
+                "baseline_prove_response": {
+                    "samples_s": t1_baseline_samples,
+                    "median_s": t1_baseline,
+                },
+                "candidate_prove_response": {
+                    "samples_s": t1_candidate_samples,
+                    "median_s": t1_candidate,
+                },
+                "baseline_s": t1_baseline,
+                "candidate_s": t1_candidate,
+                "delta_s": t1_delta,
+                "delta_percent": t1_delta / t1_baseline * 100.0,
+                "gate_percent": 5.0,
+                "ceiling_s": t1_baseline * 1.05,
+                "pass": True,
+            },
+        }
+    )
+    t1_cpu_path = tmp_path / "t1-cpu-official.json"
+    t1_cpu_path.write_text(json.dumps(t1_cpu))
+    assert report.validate_t1_official_result(t1_cpu_path) is True
+
+    bad_t1_auth = copy.deepcopy(t1_cpu)
+    bad_t1_auth["t1_auth_correction_reference_bytes"] += 8
+    bad_t1_auth_path = tmp_path / "t1-bad-auth.json"
+    bad_t1_auth_path.write_text(json.dumps(bad_t1_auth))
+    assert report.validate_t1_official_result(bad_t1_auth_path) is False
+
     fase_d_v2["p7b_sync_wall_absolute_gate_s"] = 0.151
     fase_d_v2_path.write_text(json.dumps(fase_d_v2))
     assert report.validate_fase_d_pod_official_result(fase_d_v2_path) is False

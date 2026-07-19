@@ -4,6 +4,7 @@
 //! P4 adds `logup` (Gruen fraction-GKR, superseding the volta-bench spike).
 
 pub mod block_proof;
+pub(crate) mod boundary_thinning;
 pub(crate) mod ffn_schedule;
 pub mod gemm_proof;
 pub mod hadamard;
@@ -47,5 +48,5 @@ pub use schedule::{
     CorrelationScope, CorrelationSegment, RoundFamily, SchedulePlan, ScheduleSite, SiteCorrPlan,
     SiteId, StagedEpoch, StagedEpochSite,
 };
-pub use sumcheck_blind::{blind_prove, blind_verify, BlindSumcheckProof};
+pub use sumcheck_blind::{blind_prove, blind_prove_with_finals, blind_verify, BlindSumcheckProof};
 pub use sumcheck_clear::{prove_clear, verify_clear, ClearProof};

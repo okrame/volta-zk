@@ -64,6 +64,10 @@
 //! positive) and independently pinned by the row-sum identity against the
 //! authenticated denominators.
 
+use crate::boundary_thinning::{
+    prove_matrix_eval_claim_i16, verify_matrix_eval_claim, BoundaryClaimK, BoundaryClaimP,
+    EqReductionProof,
+};
 use crate::gemm_proof::{
     finalize_gemm_act_chained, finalize_verify_gemm_act_chained, prepare_gemm_act_chained_batch,
     prepare_gemm_act_chained_resident_batch, prove_gemm_committed_chained,
@@ -95,7 +99,7 @@ use volta_accel::{
 use volta_field::{Fp, Fp2};
 use volta_gpt2::{
     gemm_i64, GemmBiases, LayerI16Field, LayerI64Field, LayerWeightField, LayerWeights,
-    LayerWitness, Luts, ModelWeightField, ResidentGpt2Model, ResidentLayerView, D, DFF, DH, H,
+    LayerWitness, Luts, ModelWeightField, ResidentGpt2Model, ResidentLayerView, D, DFF, DH, H, L,
 };
 use volta_mac::{
     auth_verifier, CorrIndex, CorrelationStream, ProverAuthed, SubMaskRowsReservation, Transcript,
@@ -2720,6 +2724,43 @@ pub(crate) fn prove_ln_chain(
     wire: &WireOut,
     cx: &mut BlockCtxP,
 ) -> LnChainProof {
+    prove_ln_chain_impl(t, s_ln, acc_ln, out_ln, x, Some(dom_x), mean, gain, bias, lv, wire, cx).0
+}
+
+/// T1 variant: return the Hadamard-derived claim on the pre-LN tensor
+/// instead of closing it against an element-wise authenticated boundary.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prove_ln_chain_deferred(
+    t: usize,
+    s_ln: u32,
+    acc_ln: &[i64],
+    out_ln: &[i16],
+    x: &[i16],
+    mean: &[i64],
+    gain: &[i16],
+    bias: &[i16],
+    lv: &LnVecsP,
+    wire: &WireOut,
+    cx: &mut BlockCtxP,
+) -> (LnChainProof, BoundaryClaimP) {
+    prove_ln_chain_impl(t, s_ln, acc_ln, out_ln, x, None, mean, gain, bias, lv, wire, cx)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_ln_chain_impl(
+    t: usize,
+    s_ln: u32,
+    acc_ln: &[i64],
+    out_ln: &[i16],
+    x: &[i16],
+    dom_x: Option<u64>,
+    mean: &[i64],
+    gain: &[i16],
+    bias: &[i16],
+    lv: &LnVecsP,
+    wire: &WireOut,
+    cx: &mut BlockCtxP,
+) -> (LnChainProof, BoundaryClaimP) {
     let rb = pad_bits(t);
     let t_pad = 1usize << rb;
     let d_cb = pad_bits(D);
@@ -2773,9 +2814,12 @@ pub(crate) fn prove_ln_chain(
         &mut cx.zero,
     );
     // ẽ(r) = x̃(r) − meañ(r_rows): streamed boundary + vector openings.
-    let x_open_r = open_matrix_p(cx.stream, dom_x, x, t, D, &r_h);
     let mean_open = open_fp_vec_p(cx.stream, lv.dom_mean, &lv.mean_fp, &r_h[d_cb..]);
-    cx.zero.push(e_claim.sub(x_open_r.sub(mean_open)));
+    let x_claim = e_claim.add(mean_open);
+    if let Some(dom_x) = dom_x {
+        let x_open_r = open_matrix_p(cx.stream, dom_x, x, t, D, &r_h);
+        cx.zero.push(x_claim.sub(x_open_r));
+    }
     // R̃(r) = rsqrt̃(r_rows)·g̃ain(r_cols): gain public, rsqrt authenticated.
     let gain_lift = lift_padded_i16(gain, d_cb);
     let gain_eval = eval_mle_counted(&gain_lift, &r_h[..d_cb], &mut cx.ctr_other);
@@ -2794,12 +2838,15 @@ pub(crate) fn prove_ln_chain(
     let rsq_out_open = open_fp_vec_p(cx.stream, lv.dom_rout, &lv.rout_fp, &inst_rsqrt.point);
     cx.zero.push(inst_rsqrt.col_claims[1].value.sub(rsq_out_open));
 
-    LnChainProof {
-        inst_ln: site_ln.main.proof,
-        inst_ln_stage1: site_ln.stage1.map(|s1| s1.proof),
-        hadamard: had_proof,
-        inst_rsqrt: inst_rsqrt.proof,
-    }
+    (
+        LnChainProof {
+            inst_ln: site_ln.main.proof,
+            inst_ln_stage1: site_ln.stage1.map(|s1| s1.proof),
+            hadamard: had_proof,
+            inst_rsqrt: inst_rsqrt.proof,
+        },
+        BoundaryClaimP { point: r_h, value: x_claim },
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2817,6 +2864,68 @@ pub(crate) fn prove_ln_chain_resident(
     wire: &WireOut,
     cx: &mut BlockCtxP,
 ) -> Result<LnChainProof, AccelError> {
+    prove_ln_chain_resident_impl(
+        t,
+        s_ln,
+        ln_columns,
+        rsqrt_columns,
+        x,
+        Some(dom_x),
+        gain_device,
+        gain,
+        bias,
+        lv,
+        wire,
+        cx,
+    )
+    .map(|(proof, _)| proof)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prove_ln_chain_resident_deferred(
+    t: usize,
+    s_ln: u32,
+    ln_columns: &DeviceLookupColumns,
+    rsqrt_columns: &DeviceLookupColumns,
+    x: DeviceSlice<'_, i16>,
+    gain_device: DeviceSlice<'_, i16>,
+    gain: &[i16],
+    bias: &[i16],
+    lv: &ResidentLnVecsP,
+    wire: &WireOut,
+    cx: &mut BlockCtxP,
+) -> Result<(LnChainProof, BoundaryClaimP), AccelError> {
+    prove_ln_chain_resident_impl(
+        t,
+        s_ln,
+        ln_columns,
+        rsqrt_columns,
+        x,
+        None,
+        gain_device,
+        gain,
+        bias,
+        lv,
+        wire,
+        cx,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_ln_chain_resident_impl(
+    t: usize,
+    s_ln: u32,
+    ln_columns: &DeviceLookupColumns,
+    rsqrt_columns: &DeviceLookupColumns,
+    x: DeviceSlice<'_, i16>,
+    dom_x: Option<u64>,
+    gain_device: DeviceSlice<'_, i16>,
+    gain: &[i16],
+    bias: &[i16],
+    lv: &ResidentLnVecsP,
+    wire: &WireOut,
+    cx: &mut BlockCtxP,
+) -> Result<(LnChainProof, BoundaryClaimP), AccelError> {
     let d_cb = pad_bits(D);
     let site_ln = prove_range_site_resident(
         ln_columns,
@@ -2855,7 +2964,6 @@ pub(crate) fn prove_ln_chain_resident(
         &mut cx.zero,
         backend,
     )?;
-    let x_open = open_matrix_resident_p(cx.stream, dom_x, x, t, D, &bound_point, backend)?;
     let mean_open = open_fp_vec_resident_p(
         cx.stream,
         lv.dom_mean,
@@ -2863,7 +2971,11 @@ pub(crate) fn prove_ln_chain_resident(
         &bound_point[d_cb..],
         backend,
     )?;
-    cx.zero.push(centered_claim.sub(x_open.sub(mean_open)));
+    let x_claim = centered_claim.add(mean_open);
+    if let Some(dom_x) = dom_x {
+        let x_open = open_matrix_resident_p(cx.stream, dom_x, x, t, D, &bound_point, backend)?;
+        cx.zero.push(x_claim.sub(x_open));
+    }
     let gain_eval =
         eval_mle_counted(&lift_padded_i16(gain, d_cb), &bound_point[..d_cb], &mut cx.ctr_other);
     let rsqrt_open = open_fp_vec_resident_p(
@@ -2900,12 +3012,15 @@ pub(crate) fn prove_ln_chain_resident(
     )?;
     cx.zero.push(rsqrt_instance.col_claims[1].value.sub(rout_open));
 
-    Ok(LnChainProof {
-        inst_ln: site_ln.main.proof,
-        inst_ln_stage1: site_ln.stage1.map(|stage1| stage1.proof),
-        hadamard,
-        inst_rsqrt: rsqrt_instance.proof,
-    })
+    Ok((
+        LnChainProof {
+            inst_ln: site_ln.main.proof,
+            inst_ln_stage1: site_ln.stage1.map(|stage1| stage1.proof),
+            hadamard,
+            inst_rsqrt: rsqrt_instance.proof,
+        },
+        BoundaryClaimP { point: bound_point, value: x_claim },
+    ))
 }
 
 /// LN chain verifier (mirror of [`prove_ln_chain`]).
@@ -2921,6 +3036,35 @@ pub(crate) fn verify_ln_chain(
     wire: &WireKey,
     cx: &mut BlockCtxV,
 ) -> Option<()> {
+    verify_ln_chain_impl(t, s_ln, gain, bias, Some(x_keys), lvk, proof, wire, cx).map(|_| ())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn verify_ln_chain_deferred(
+    t: usize,
+    s_ln: u32,
+    gain: &[i16],
+    bias: &[i16],
+    lvk: &LnVecsK,
+    proof: &LnChainProof,
+    wire: &WireKey,
+    cx: &mut BlockCtxV,
+) -> Option<BoundaryClaimK> {
+    verify_ln_chain_impl(t, s_ln, gain, bias, None, lvk, proof, wire, cx)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_ln_chain_impl(
+    t: usize,
+    s_ln: u32,
+    gain: &[i16],
+    bias: &[i16],
+    x_keys: Option<&[Fp2]>,
+    lvk: &LnVecsK,
+    proof: &LnChainProof,
+    wire: &WireKey,
+    cx: &mut BlockCtxV,
+) -> Option<BoundaryClaimK> {
     let rb = pad_bits(t);
     let d_cb = pad_bits(D);
     let n_d = d_cb + rb;
@@ -2951,9 +3095,12 @@ pub(crate) fn verify_ln_chain(
         &mut cx.kprod,
         &mut cx.kzero,
     )?;
-    let x_k_r = open_matrix_k(x_keys, t, D, &r_h);
     let mean_k = open_fp_vec_k(&lvk.mean_keys, &r_h[d_cb..]);
-    cx.kzero.push(k_e.sub(x_k_r.sub(mean_k)));
+    let x_key = k_e.add(mean_k);
+    if let Some(x_keys) = x_keys {
+        let x_k_r = open_matrix_k(x_keys, t, D, &r_h);
+        cx.kzero.push(x_key.sub(x_k_r));
+    }
     let gain_lift = lift_padded_i16(gain, d_cb);
     let gain_eval = eval_mle(&gain_lift, &r_h[..d_cb]);
     let rsq_k_h = open_fp_vec_k(&lvk.rout_keys, &r_h[d_cb..]);
@@ -2964,7 +3111,7 @@ pub(crate) fn verify_ln_chain(
     cx.kzero.push(vr.col_keys[0].key.sub(rin_k));
     let rout_k = open_fp_vec_k(&lvk.rout_keys, &vr.point);
     cx.kzero.push(vr.col_keys[1].key.sub(rout_k));
-    Some(())
+    Some(BoundaryClaimK { point: r_h, key: x_key })
 }
 
 // ---------------------------------------------------------------------------
@@ -2988,6 +3135,10 @@ pub struct FfnBlockProof {
     pub ln2_wire_corr: Fp2,
     pub w_up_corr: Fp2,
     pub ln: LnChainProof,
+    /// T1-only authentication of `ffn_down_q` at a downstream F claim.
+    pub(crate) t1_q_corr: Option<Fp2>,
+    /// T1-only reduction of the residual and LN2 claims on ABO.
+    pub(crate) t1_abo_reduce: Option<EqReductionProof>,
 }
 
 /// FFN phase-1 state: LN2 vectors authenticated, all FFN-side multiplicities
@@ -3291,6 +3442,8 @@ pub(crate) struct FfnAfterDownP {
     gelu_wire: WireOut,
     w_down_corr: Fp2,
     wclaim_down: WeightClaimP,
+    t1_q_corr: Option<Fp2>,
+    abo_residual_claim: Option<BoundaryClaimP>,
 }
 
 impl FfnAfterDownP {
@@ -3313,16 +3466,83 @@ pub(crate) fn prove_ffn_before_gelu(
     dom_fbo: u64,
     biases: Option<&GemmBiases>,
 ) -> FfnAfterDownP {
+    prove_ffn_before_gelu_impl(
+        wit,
+        weights,
+        luts,
+        p1,
+        cx,
+        Some((dom_abo, dom_fbo)),
+        None,
+        None,
+        biases,
+    )
+}
+
+/// T1 claim-driven FFN prefix. Internal F boundaries arrive as a downstream
+/// claim; a group-exit F remains element-wise authenticated.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prove_ffn_before_gelu_thinned(
+    wit: &LayerWitness,
+    weights: &LayerWeights,
+    luts: &Luts,
+    p1: FfnP1,
+    cx: &mut BlockCtxP,
+    downstream_f: Option<&BoundaryClaimP>,
+    exit_dom_fbo: Option<u64>,
+    biases: Option<&GemmBiases>,
+) -> FfnAfterDownP {
+    assert!(downstream_f.is_some() ^ exit_dom_fbo.is_some());
+    prove_ffn_before_gelu_impl(wit, weights, luts, p1, cx, None, downstream_f, exit_dom_fbo, biases)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_ffn_before_gelu_impl(
+    wit: &LayerWitness,
+    weights: &LayerWeights,
+    luts: &Luts,
+    p1: FfnP1,
+    cx: &mut BlockCtxP,
+    legacy_doms: Option<(u64, u64)>,
+    downstream_f: Option<&BoundaryClaimP>,
+    exit_dom_fbo: Option<u64>,
+    biases: Option<&GemmBiases>,
+) -> FfnAfterDownP {
     let t = wit.t;
     assert!(t >= 2, "block proof needs at least 2 rows");
     let s_dn = luts.params.shift_ffn_down;
     let d_cb = pad_bits(D);
     let FfnP1 { lv, ln_vec_corrs } = p1;
-    let site_dn = prove_range_site(&wit.ffn_down_acc, &wit.ffn_down_q, t, D, s_dn, Vec::new(), cx);
-    let pt_out = site_dn.main.point.clone();
-    let f_open = open_matrix_p(cx.stream, dom_fbo, &wit.ffn_block_out, t, D, &pt_out);
-    let a_open = open_matrix_p(cx.stream, dom_abo, &wit.attn_block_out, t, D, &pt_out);
-    cx.zero.push(site_dn.main.col_claims[1].value.sub(f_open).add(a_open));
+    let (q_corr, q_external) = if let Some(downstream) = downstream_f {
+        let (corr, claim) =
+            prove_matrix_eval_claim_i16(&wit.ffn_down_q, t, D, &downstream.point, cx);
+        (Some(corr), Some(claim))
+    } else {
+        (None, None)
+    };
+    let aux = q_external
+        .as_ref()
+        .map(|claim| LeafAuxClaim { col: 1, point: claim.point.clone(), value: claim.value })
+        .into_iter()
+        .collect();
+    let site_dn = prove_range_site(&wit.ffn_down_acc, &wit.ffn_down_q, t, D, s_dn, aux, cx);
+    let abo_residual_claim = if let Some((dom_abo, dom_fbo)) = legacy_doms {
+        let pt_out = site_dn.main.point.clone();
+        let f_open = open_matrix_p(cx.stream, dom_fbo, &wit.ffn_block_out, t, D, &pt_out);
+        let a_open = open_matrix_p(cx.stream, dom_abo, &wit.attn_block_out, t, D, &pt_out);
+        cx.zero.push(site_dn.main.col_claims[1].value.sub(f_open).add(a_open));
+        None
+    } else if let (Some(downstream), Some(q_claim)) = (downstream_f, q_external.as_ref()) {
+        Some(BoundaryClaimP {
+            point: downstream.point.clone(),
+            value: downstream.value.sub(q_claim.value),
+        })
+    } else {
+        let dom_fbo = exit_dom_fbo.expect("T1 FFN exit must retain F authentication");
+        let point = site_dn.main.point.clone();
+        let f_open = open_matrix_p(cx.stream, dom_fbo, &wit.ffn_block_out, t, D, &point);
+        Some(BoundaryClaimP { point, value: f_open.sub(site_dn.main.col_claims[1].value) })
+    };
 
     let pt = site_dn.acc_point().to_vec();
     let mut acc_dn_claim = site_dn.acc_claim;
@@ -3353,6 +3573,8 @@ pub(crate) fn prove_ffn_before_gelu(
         gelu_wire,
         w_down_corr,
         wclaim_down,
+        t1_q_corr: q_corr,
+        abo_residual_claim,
     }
 }
 
@@ -3367,6 +3589,38 @@ pub(crate) fn prove_ffn_after_gelu(
     dom_abo: u64,
     biases: Option<&GemmBiases>,
 ) -> (FfnBlockProof, Vec<WeightClaimP>) {
+    let (proof, claims, deferred) =
+        prove_ffn_after_gelu_impl(wit, weights, luts, state, inst_gelu, cx, Some(dom_abo), biases);
+    debug_assert!(deferred.is_none());
+    (proof, claims)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prove_ffn_after_gelu_thinned(
+    wit: &LayerWitness,
+    weights: &LayerWeights,
+    luts: &Luts,
+    state: FfnAfterDownP,
+    inst_gelu: InstanceOutP,
+    cx: &mut BlockCtxP,
+    biases: Option<&GemmBiases>,
+) -> (FfnBlockProof, Vec<WeightClaimP>, (BoundaryClaimP, BoundaryClaimP)) {
+    let (proof, claims, deferred) =
+        prove_ffn_after_gelu_impl(wit, weights, luts, state, inst_gelu, cx, None, biases);
+    (proof, claims, deferred.expect("T1 FFN must return both ABO claims"))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_ffn_after_gelu_impl(
+    wit: &LayerWitness,
+    weights: &LayerWeights,
+    luts: &Luts,
+    state: FfnAfterDownP,
+    inst_gelu: InstanceOutP,
+    cx: &mut BlockCtxP,
+    dom_abo: Option<u64>,
+    biases: Option<&GemmBiases>,
+) -> (FfnBlockProof, Vec<WeightClaimP>, Option<(BoundaryClaimP, BoundaryClaimP)>) {
     let t = wit.t;
     let s_up = luts.params.shift_ffn_up;
     let s_ln = luts.params.shift_ln_norm;
@@ -3403,20 +3657,42 @@ pub(crate) fn prove_ffn_after_gelu(
         cx.stream,
         cx.tx,
     );
-    let ln = prove_ln_chain(
-        t,
-        s_ln,
-        &wit.ln2_acc,
-        &wit.ln2_out,
-        &wit.attn_block_out,
-        dom_abo,
-        &wit.ln2_mean,
-        &weights.ln2_gain,
-        &weights.ln2_bias,
-        &state.lv,
-        &wire_ln2,
-        cx,
-    );
+    let (ln, deferred) = if let Some(dom_abo) = dom_abo {
+        (
+            prove_ln_chain(
+                t,
+                s_ln,
+                &wit.ln2_acc,
+                &wit.ln2_out,
+                &wit.attn_block_out,
+                dom_abo,
+                &wit.ln2_mean,
+                &weights.ln2_gain,
+                &weights.ln2_bias,
+                &state.lv,
+                &wire_ln2,
+                cx,
+            ),
+            None,
+        )
+    } else {
+        let (proof, ln_claim) = prove_ln_chain_deferred(
+            t,
+            s_ln,
+            &wit.ln2_acc,
+            &wit.ln2_out,
+            &wit.attn_block_out,
+            &wit.ln2_mean,
+            &weights.ln2_gain,
+            &weights.ln2_bias,
+            &state.lv,
+            &wire_ln2,
+            cx,
+        );
+        let residual =
+            state.abo_residual_claim.expect("T1 FFN prefix must provide its residual ABO claim");
+        (proof, Some((residual, ln_claim)))
+    };
     (
         FfnBlockProof {
             ln_vec_corrs: state.ln_vec_corrs,
@@ -3431,8 +3707,11 @@ pub(crate) fn prove_ffn_after_gelu(
             ln2_wire_corr: wire_ln2.corr,
             w_up_corr,
             ln,
+            t1_q_corr: state.t1_q_corr,
+            t1_abo_reduce: None,
         },
         vec![state.wclaim_down, wclaim_up],
+        deferred,
     )
 }
 
@@ -3565,6 +3844,8 @@ pub(crate) fn prove_ffn_block(
         ln2_wire_corr: wire_ln2.corr,
         w_up_corr,
         ln,
+        t1_q_corr: None,
+        t1_abo_reduce: None,
     };
     (proof, vec![wclaim_down, wclaim_up])
 }
@@ -3577,6 +3858,8 @@ pub(crate) struct ResidentFfnAfterDownP {
     gelu_wire: WireOut,
     w_down_corr: Fp2,
     wclaim_down: WeightClaimP,
+    t1_q_corr: Option<Fp2>,
+    abo_residual_claim: Option<BoundaryClaimP>,
 }
 
 impl ResidentFfnAfterDownP {
@@ -3598,6 +3881,7 @@ impl ResidentFfnAfterDownP {
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)] // retained only as the resident analogue of the frozen C3b control path
 pub(crate) fn prove_ffn_before_gelu_resident<W: ResidentLayerView>(
     wit: &W,
     resident_model: &ResidentGpt2Model,
@@ -3610,6 +3894,62 @@ pub(crate) fn prove_ffn_before_gelu_resident<W: ResidentLayerView>(
     dom_fbo: u64,
     biases: Option<&GemmBiases>,
 ) -> Result<ResidentFfnAfterDownP, AccelError> {
+    prove_ffn_before_gelu_resident_impl(
+        wit,
+        resident_model,
+        layer,
+        luts,
+        p1,
+        cx,
+        Some((dom_abo, dom_fbo)),
+        None,
+        None,
+        biases,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prove_ffn_before_gelu_resident_thinned<W: ResidentLayerView>(
+    wit: &W,
+    resident_model: &ResidentGpt2Model,
+    layer: usize,
+    luts: &Luts,
+    p1: ResidentFfnP1,
+    cx: &mut BlockCtxP,
+    downstream_f: Option<&BoundaryClaimP>,
+    exit_dom_fbo: Option<u64>,
+    biases: Option<&GemmBiases>,
+) -> Result<ResidentFfnAfterDownP, AccelError> {
+    if downstream_f.is_some() == exit_dom_fbo.is_some() {
+        return Err(AccelError::InvalidInput("T1 resident FFN boundary source mismatch"));
+    }
+    prove_ffn_before_gelu_resident_impl(
+        wit,
+        resident_model,
+        layer,
+        luts,
+        p1,
+        cx,
+        None,
+        downstream_f,
+        exit_dom_fbo,
+        biases,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_ffn_before_gelu_resident_impl<W: ResidentLayerView>(
+    wit: &W,
+    resident_model: &ResidentGpt2Model,
+    layer: usize,
+    luts: &Luts,
+    p1: ResidentFfnP1,
+    cx: &mut BlockCtxP,
+    legacy_doms: Option<(u64, u64)>,
+    downstream_f: Option<&BoundaryClaimP>,
+    exit_dom_fbo: Option<u64>,
+    biases: Option<&GemmBiases>,
+) -> Result<ResidentFfnAfterDownP, AccelError> {
     let result = (|| {
         let t = wit.rows();
         if t < 2 {
@@ -3617,31 +3957,72 @@ pub(crate) fn prove_ffn_before_gelu_resident<W: ResidentLayerView>(
         }
         let params = luts.params;
         let d_cb = pad_bits(D);
-        let down_site = prove_range_site_resident(&p1.down, params.shift_ffn_down, Vec::new(), cx)?;
+        let (t1_q_corr, q_external) = if let Some(downstream) = downstream_f {
+            let (correction, claim) = crate::boundary_thinning::prove_matrix_eval_claim_resident(
+                wit.i16(LayerI16Field::FfnDownQ),
+                t,
+                D,
+                &downstream.point,
+                cx,
+            )?;
+            (Some(correction), Some(claim))
+        } else {
+            (None, None)
+        };
+        let aux = q_external
+            .as_ref()
+            .map(|claim| LeafAuxClaim { col: 1, point: claim.point.clone(), value: claim.value })
+            .into_iter()
+            .collect();
+        let down_site = prove_range_site_resident(&p1.down, params.shift_ffn_down, aux, cx)?;
         let output_point = down_site.main.point.clone();
-        let backend = cx
-            .backend
-            .as_deref_mut()
-            .ok_or(AccelError::InvalidInput("resident FFN proof requires a backend"))?;
-        let ffn_boundary = open_matrix_resident_p(
-            cx.stream,
-            dom_fbo,
-            wit.i16(LayerI16Field::FfnBlockOut),
-            t,
-            D,
-            &output_point,
-            backend,
-        )?;
-        let attn_boundary = open_matrix_resident_p(
-            cx.stream,
-            dom_abo,
-            wit.i16(LayerI16Field::AttnBlockOut),
-            t,
-            D,
-            &output_point,
-            backend,
-        )?;
-        cx.zero.push(down_site.main.col_claims[1].value.sub(ffn_boundary).add(attn_boundary));
+        let abo_residual_claim = if let Some((dom_abo, dom_fbo)) = legacy_doms {
+            let backend = cx
+                .backend
+                .as_deref_mut()
+                .ok_or(AccelError::InvalidInput("resident FFN proof requires a backend"))?;
+            let ffn_boundary = open_matrix_resident_p(
+                cx.stream,
+                dom_fbo,
+                wit.i16(LayerI16Field::FfnBlockOut),
+                t,
+                D,
+                &output_point,
+                backend,
+            )?;
+            let attn_boundary = open_matrix_resident_p(
+                cx.stream,
+                dom_abo,
+                wit.i16(LayerI16Field::AttnBlockOut),
+                t,
+                D,
+                &output_point,
+                backend,
+            )?;
+            cx.zero.push(down_site.main.col_claims[1].value.sub(ffn_boundary).add(attn_boundary));
+            None
+        } else if let (Some(downstream), Some(q_claim)) = (downstream_f, q_external.as_ref()) {
+            Some(BoundaryClaimP {
+                point: downstream.point.clone(),
+                value: downstream.value.sub(q_claim.value),
+            })
+        } else {
+            let dom_fbo = exit_dom_fbo
+                .ok_or(AccelError::InvalidInput("T1 resident FFN exit authentication missing"))?;
+            let f_open = open_matrix_resident_p(
+                cx.stream,
+                dom_fbo,
+                wit.i16(LayerI16Field::FfnBlockOut),
+                t,
+                D,
+                &output_point,
+                cx.backend.as_deref_mut().expect("resident FFN backend"),
+            )?;
+            Some(BoundaryClaimP {
+                point: output_point.clone(),
+                value: f_open.sub(down_site.main.col_claims[1].value),
+            })
+        };
         let down_point = down_site.acc_point().to_vec();
         let mut down_claim = down_site.acc_claim;
         if let Some(biases) = biases {
@@ -3679,20 +4060,31 @@ pub(crate) fn prove_ffn_before_gelu_resident<W: ResidentLayerView>(
             gelu_wire,
             w_down_corr,
             wclaim_down,
+            t1_q_corr,
+            abo_residual_claim,
         ))
     })();
     match result {
-        Ok((inst_down, inst_down_stage1, gemm_down, gelu_wire, w_down_corr, wclaim_down)) => {
-            Ok(ResidentFfnAfterDownP {
-                p1,
-                inst_down,
-                inst_down_stage1,
-                gemm_down,
-                gelu_wire,
-                w_down_corr,
-                wclaim_down,
-            })
-        }
+        Ok((
+            inst_down,
+            inst_down_stage1,
+            gemm_down,
+            gelu_wire,
+            w_down_corr,
+            wclaim_down,
+            t1_q_corr,
+            abo_residual_claim,
+        )) => Ok(ResidentFfnAfterDownP {
+            p1,
+            inst_down,
+            inst_down_stage1,
+            gemm_down,
+            gelu_wire,
+            w_down_corr,
+            wclaim_down,
+            t1_q_corr,
+            abo_residual_claim,
+        }),
         Err(error) => {
             let cleanup = p1.free(
                 cx.backend
@@ -3708,7 +4100,64 @@ pub(crate) fn prove_ffn_before_gelu_resident<W: ResidentLayerView>(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)] // retained only as the resident analogue of the frozen C3b control path
 pub(crate) fn prove_ffn_after_gelu_resident<W: ResidentLayerView>(
+    wit: &W,
+    resident_model: &ResidentGpt2Model,
+    layer: usize,
+    weights: &LayerWeights,
+    luts: &Luts,
+    state: ResidentFfnAfterDownP,
+    gelu: InstanceOutP,
+    cx: &mut BlockCtxP,
+    dom_abo: u64,
+    biases: Option<&GemmBiases>,
+) -> Result<(FfnBlockProof, Vec<WeightClaimP>), AccelError> {
+    let (proof, claims, deferred) = prove_ffn_after_gelu_resident_impl(
+        wit,
+        resident_model,
+        layer,
+        weights,
+        luts,
+        state,
+        gelu,
+        cx,
+        Some(dom_abo),
+        biases,
+    )?;
+    debug_assert!(deferred.is_none());
+    Ok((proof, claims))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prove_ffn_after_gelu_resident_thinned<W: ResidentLayerView>(
+    wit: &W,
+    resident_model: &ResidentGpt2Model,
+    layer: usize,
+    weights: &LayerWeights,
+    luts: &Luts,
+    state: ResidentFfnAfterDownP,
+    gelu: InstanceOutP,
+    cx: &mut BlockCtxP,
+    biases: Option<&GemmBiases>,
+) -> Result<(FfnBlockProof, Vec<WeightClaimP>, (BoundaryClaimP, BoundaryClaimP)), AccelError> {
+    let (proof, claims, deferred) = prove_ffn_after_gelu_resident_impl(
+        wit,
+        resident_model,
+        layer,
+        weights,
+        luts,
+        state,
+        gelu,
+        cx,
+        None,
+        biases,
+    )?;
+    Ok((proof, claims, deferred.ok_or(AccelError::InvalidInput("T1 resident FFN claims missing"))?))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_ffn_after_gelu_resident_impl<W: ResidentLayerView>(
     wit: &W,
     resident_model: &ResidentGpt2Model,
     layer: usize,
@@ -3717,9 +4166,10 @@ pub(crate) fn prove_ffn_after_gelu_resident<W: ResidentLayerView>(
     mut state: ResidentFfnAfterDownP,
     gelu: InstanceOutP,
     cx: &mut BlockCtxP,
-    dom_abo: u64,
+    dom_abo: Option<u64>,
     biases: Option<&GemmBiases>,
-) -> Result<(FfnBlockProof, Vec<WeightClaimP>), AccelError> {
+) -> Result<(FfnBlockProof, Vec<WeightClaimP>, Option<(BoundaryClaimP, BoundaryClaimP)>), AccelError>
+{
     let result = (|| {
         let t = wit.rows();
         let params = luts.params;
@@ -3770,20 +4220,44 @@ pub(crate) fn prove_ffn_after_gelu_resident<W: ResidentLayerView>(
                 cx.tx,
                 cx.backend.as_deref_mut().expect("resident FFN backend"),
             )?;
-        let ln = prove_ln_chain_resident(
-            t,
-            params.shift_ln_norm,
-            &state.p1.ln,
-            &state.p1.rsqrt,
-            wit.i16(LayerI16Field::AttnBlockOut),
-            dom_abo,
-            resident_model.layer_weight(layer, LayerWeightField::Ln2Gain)?,
-            &weights.ln2_gain,
-            &weights.ln2_bias,
-            &state.p1.lv,
-            &wire_ln2,
-            cx,
-        )?;
+        let (ln, deferred) = if let Some(dom_abo) = dom_abo {
+            (
+                prove_ln_chain_resident(
+                    t,
+                    params.shift_ln_norm,
+                    &state.p1.ln,
+                    &state.p1.rsqrt,
+                    wit.i16(LayerI16Field::AttnBlockOut),
+                    dom_abo,
+                    resident_model.layer_weight(layer, LayerWeightField::Ln2Gain)?,
+                    &weights.ln2_gain,
+                    &weights.ln2_bias,
+                    &state.p1.lv,
+                    &wire_ln2,
+                    cx,
+                )?,
+                None,
+            )
+        } else {
+            let (proof, ln_claim) = prove_ln_chain_resident_deferred(
+                t,
+                params.shift_ln_norm,
+                &state.p1.ln,
+                &state.p1.rsqrt,
+                wit.i16(LayerI16Field::AttnBlockOut),
+                resident_model.layer_weight(layer, LayerWeightField::Ln2Gain)?,
+                &weights.ln2_gain,
+                &weights.ln2_bias,
+                &state.p1.lv,
+                &wire_ln2,
+                cx,
+            )?;
+            let residual = state
+                .abo_residual_claim
+                .take()
+                .ok_or(AccelError::InvalidInput("T1 resident FFN residual claim missing"))?;
+            (proof, Some((residual, ln_claim)))
+        };
         let ln_vec_corrs = std::mem::take(&mut state.p1.ln_vec_corrs);
         Ok((
             FfnBlockProof {
@@ -3799,8 +4273,11 @@ pub(crate) fn prove_ffn_after_gelu_resident<W: ResidentLayerView>(
                 ln2_wire_corr: wire_ln2.corr,
                 w_up_corr,
                 ln,
+                t1_q_corr: state.t1_q_corr,
+                t1_abo_reduce: None,
             },
             vec![state.wclaim_down, wclaim_up],
+            deferred,
         ))
     })();
     let free_result = state.p1.free(
@@ -3981,6 +4458,8 @@ pub(crate) fn prove_ffn_block_resident<W: ResidentLayerView>(
                 ln2_wire_corr: wire_ln2.corr,
                 w_up_corr,
                 ln,
+                t1_q_corr: None,
+                t1_abo_reduce: None,
             },
             vec![wclaim_down, wclaim_up],
         ))
@@ -4004,6 +4483,7 @@ pub(crate) struct FfnAfterDownV {
     gelu_wire: WireKey,
     w_pt_down: Vec<Fp2>,
     w_key_down: VerifierKey,
+    abo_residual_claim: Option<BoundaryClaimK>,
 }
 
 impl FfnAfterDownV {
@@ -4013,6 +4493,7 @@ impl FfnAfterDownV {
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)] // frozen C3b verifier component; T1 production uses the thinned mirror
 pub(crate) fn verify_ffn_before_gelu(
     t: usize,
     luts: &Luts,
@@ -4022,16 +4503,74 @@ pub(crate) fn verify_ffn_before_gelu(
     fbo_keys: &[Fp2],
     biases: Option<&GemmBiases>,
 ) -> Option<FfnAfterDownV> {
+    if proof.t1_q_corr.is_some() || proof.t1_abo_reduce.is_some() {
+        return None;
+    }
+    verify_ffn_before_gelu_impl(t, luts, proof, cx, Some((abo_keys, fbo_keys)), None, None, biases)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn verify_ffn_before_gelu_thinned(
+    t: usize,
+    luts: &Luts,
+    proof: &FfnBlockProof,
+    cx: &mut BlockCtxV,
+    downstream_f: Option<&BoundaryClaimK>,
+    exit_fbo_keys: Option<&[Fp2]>,
+    biases: Option<&GemmBiases>,
+) -> Option<FfnAfterDownV> {
+    if proof.t1_abo_reduce.is_none() || (downstream_f.is_some() == exit_fbo_keys.is_some()) {
+        return None;
+    }
+    verify_ffn_before_gelu_impl(t, luts, proof, cx, None, downstream_f, exit_fbo_keys, biases)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_ffn_before_gelu_impl(
+    t: usize,
+    luts: &Luts,
+    proof: &FfnBlockProof,
+    cx: &mut BlockCtxV,
+    legacy_keys: Option<(&[Fp2], &[Fp2])>,
+    downstream_f: Option<&BoundaryClaimK>,
+    exit_fbo_keys: Option<&[Fp2]>,
+    biases: Option<&GemmBiases>,
+) -> Option<FfnAfterDownV> {
     let rb = pad_bits(t);
     let d_cb = pad_bits(D);
     let s_dn = luts.params.shift_ffn_down;
     let n_d = d_cb + rb;
+    let q_external = match (downstream_f, proof.t1_q_corr) {
+        (Some(downstream), Some(correction)) => {
+            Some(verify_matrix_eval_claim(&downstream.point, correction, cx))
+        }
+        (None, None) => None,
+        _ => return None,
+    };
+    let aux_storage = q_external.as_ref().map(|claim| (1usize, claim.point.clone(), claim.key));
+    let aux: Vec<_> = aux_storage.into_iter().collect();
     let site_dn =
-        verify_range_site(n_d, s_dn, &proof.inst_down, proof.inst_down_stage1.as_ref(), &[], cx)?;
-    let pt_out = site_dn.main.point.clone();
-    let f_k = open_matrix_k(fbo_keys, t, D, &pt_out);
-    let a_k = open_matrix_k(abo_keys, t, D, &pt_out);
-    cx.kzero.push(site_dn.main.col_keys[1].key.sub(f_k).add(a_k));
+        verify_range_site(n_d, s_dn, &proof.inst_down, proof.inst_down_stage1.as_ref(), &aux, cx)?;
+    let abo_residual_claim = if let Some((abo_keys, fbo_keys)) = legacy_keys {
+        let pt_out = site_dn.main.point.clone();
+        let f_k = open_matrix_k(fbo_keys, t, D, &pt_out);
+        let a_k = open_matrix_k(abo_keys, t, D, &pt_out);
+        cx.kzero.push(site_dn.main.col_keys[1].key.sub(f_k).add(a_k));
+        None
+    } else if let (Some(downstream), Some(q_claim)) = (downstream_f, q_external.as_ref()) {
+        Some(BoundaryClaimK {
+            point: downstream.point.clone(),
+            key: downstream.key.sub(q_claim.key),
+        })
+    } else {
+        let fbo_keys = exit_fbo_keys?;
+        if fbo_keys.len() != t * D {
+            return None;
+        }
+        let point = site_dn.main.point.clone();
+        let f_key = open_matrix_k(fbo_keys, t, D, &point);
+        Some(BoundaryClaimK { point, key: f_key.sub(site_dn.main.col_keys[1].key) })
+    };
     let pt = site_dn.acc_point().to_vec();
     let mut k_acc_dn = site_dn.acc_key;
     if let Some(b) = biases {
@@ -4053,10 +4592,11 @@ pub(crate) fn verify_ffn_before_gelu(
         cx.ctx,
         cx.tx,
     )?;
-    Some(FfnAfterDownV { gelu_wire, w_pt_down, w_key_down })
+    Some(FfnAfterDownV { gelu_wire, w_pt_down, w_key_down, abo_residual_claim })
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)] // frozen C3b verifier component; T1 production uses the thinned mirror
 pub(crate) fn verify_ffn_after_gelu(
     t: usize,
     ln2_gain: &[i16],
@@ -4070,6 +4610,58 @@ pub(crate) fn verify_ffn_after_gelu(
     abo_keys: &[Fp2],
     biases: Option<&GemmBiases>,
 ) -> Option<Vec<(Vec<Fp2>, VerifierKey)>> {
+    let (keys, deferred) = verify_ffn_after_gelu_impl(
+        t,
+        ln2_gain,
+        ln2_bias,
+        luts,
+        proof,
+        lvk,
+        state,
+        gelu,
+        cx,
+        Some(abo_keys),
+        biases,
+    )?;
+    if deferred.is_some() {
+        return None;
+    }
+    Some(keys)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn verify_ffn_after_gelu_thinned(
+    t: usize,
+    ln2_gain: &[i16],
+    ln2_bias: &[i16],
+    luts: &Luts,
+    proof: &FfnBlockProof,
+    lvk: &LnVecsK,
+    state: FfnAfterDownV,
+    gelu: InstanceOutV,
+    cx: &mut BlockCtxV,
+    biases: Option<&GemmBiases>,
+) -> Option<(Vec<(Vec<Fp2>, VerifierKey)>, (BoundaryClaimK, BoundaryClaimK))> {
+    let (keys, deferred) = verify_ffn_after_gelu_impl(
+        t, ln2_gain, ln2_bias, luts, proof, lvk, state, gelu, cx, None, biases,
+    )?;
+    Some((keys, deferred?))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_ffn_after_gelu_impl(
+    t: usize,
+    ln2_gain: &[i16],
+    ln2_bias: &[i16],
+    luts: &Luts,
+    proof: &FfnBlockProof,
+    lvk: &LnVecsK,
+    state: FfnAfterDownV,
+    gelu: InstanceOutV,
+    cx: &mut BlockCtxV,
+    abo_keys: Option<&[Fp2]>,
+    biases: Option<&GemmBiases>,
+) -> Option<(Vec<(Vec<Fp2>, VerifierKey)>, Option<(BoundaryClaimK, BoundaryClaimK)>)> {
     let s_up = luts.params.shift_ffn_up;
     let s_ln = luts.params.shift_ln_norm;
     if s_up > 16 || (s_ln > 16) != proof.ln.inst_ln_stage1.is_some() {
@@ -4102,8 +4694,15 @@ pub(crate) fn verify_ffn_after_gelu(
         cx.ctx,
         cx.tx,
     )?;
-    verify_ln_chain(t, s_ln, ln2_gain, ln2_bias, abo_keys, lvk, &proof.ln, &wk_ln2, cx)?;
-    Some(vec![(state.w_pt_down, state.w_key_down), (w_pt_up, k_w_up)])
+    let deferred = if let Some(abo_keys) = abo_keys {
+        verify_ln_chain(t, s_ln, ln2_gain, ln2_bias, abo_keys, lvk, &proof.ln, &wk_ln2, cx)?;
+        None
+    } else {
+        let ln_claim =
+            verify_ln_chain_deferred(t, s_ln, ln2_gain, ln2_bias, lvk, &proof.ln, &wk_ln2, cx)?;
+        Some((state.abo_residual_claim?, ln_claim))
+    };
+    Some((vec![(state.w_pt_down, state.w_key_down), (w_pt_up, k_w_up)], deferred))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -4525,6 +5124,10 @@ pub struct AttnBlockProof {
     pub ln1_wire_corr: Fp2,
     pub w_cattn_corr: Fp2,
     pub ln: LnChainProof,
+    /// T1-only authentication of `attn_proj_q` at the reduced ABO point.
+    pub(crate) t1_q_corr: Option<Fp2>,
+    /// T1-only reduction of the residual and LN1 claims on X.
+    pub(crate) t1_x_reduce: Option<EqReductionProof>,
 }
 
 /// Close the two authenticated row-table columns after attention step 11.
@@ -5101,6 +5704,68 @@ pub(crate) fn prove_attn_block(
     dom_abo: u64,
     biases: Option<&GemmBiases>,
 ) -> (AttnBlockProof, Vec<WeightClaimP>) {
+    let (proof, claims, deferred) = prove_attn_block_impl(
+        wit,
+        weights,
+        luts,
+        p1,
+        cx,
+        Some(dom_xin),
+        k_segs,
+        v_segs,
+        Some(dom_abo),
+        None,
+        biases,
+    );
+    debug_assert!(deferred.is_none());
+    (proof, claims)
+}
+
+/// T1 attention chain: consume one reduced ABO claim, bind the projection-q
+/// evaluation through the existing range leaf, and return the two X claims
+/// (residual plus LN1) for either reduction or authenticated entry closure.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prove_attn_block_thinned(
+    wit: &LayerWitness,
+    weights: &LayerWeights,
+    luts: &Luts,
+    p1: AttnP1,
+    cx: &mut BlockCtxP,
+    k_segs: &[CacheSegP],
+    v_segs: &[CacheSegP],
+    abo_claim: &BoundaryClaimP,
+    biases: Option<&GemmBiases>,
+) -> (AttnBlockProof, Vec<WeightClaimP>, (BoundaryClaimP, BoundaryClaimP)) {
+    let (proof, claims, deferred) = prove_attn_block_impl(
+        wit,
+        weights,
+        luts,
+        p1,
+        cx,
+        None,
+        k_segs,
+        v_segs,
+        None,
+        Some(abo_claim),
+        biases,
+    );
+    (proof, claims, deferred.expect("T1 attention must return both X claims"))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_attn_block_impl(
+    wit: &LayerWitness,
+    weights: &LayerWeights,
+    luts: &Luts,
+    p1: AttnP1,
+    cx: &mut BlockCtxP,
+    dom_xin: Option<u64>,
+    k_segs: &[CacheSegP],
+    v_segs: &[CacheSegP],
+    dom_abo: Option<u64>,
+    external_abo: Option<&BoundaryClaimP>,
+    biases: Option<&GemmBiases>,
+) -> (AttnBlockProof, Vec<WeightClaimP>, Option<(BoundaryClaimP, BoundaryClaimP)>) {
     let t = wit.t;
     assert!(t >= 2, "block proof needs at least 2 rows");
     let p = luts.params;
@@ -5160,13 +5825,34 @@ pub(crate) fn prove_attn_block(
 
     // ---- 1: attn_proj range instance, closed against the residual ----------
     // (chained two-stage for s_ap > 16 — P5 per-layer residual scales).
-    let site_proj = prove_range_site(&wit.proj_acc, &wit.attn_proj_q, t, D, s_ap, Vec::new(), cx);
+    let (t1_q_corr, q_external) = if let Some(abo_claim) = external_abo {
+        let (corr, claim) =
+            prove_matrix_eval_claim_i16(&wit.attn_proj_q, t, D, &abo_claim.point, cx);
+        (Some(corr), Some(claim))
+    } else {
+        (None, None)
+    };
+    let proj_aux = q_external
+        .as_ref()
+        .map(|claim| LeafAuxClaim { col: 1, point: claim.point.clone(), value: claim.value })
+        .into_iter()
+        .collect();
+    let site_proj = prove_range_site(&wit.proj_acc, &wit.attn_proj_q, t, D, s_ap, proj_aux, cx);
     let inst_proj = &site_proj.main;
-    let pt_ap = inst_proj.point.clone();
-    // Residual: attn_block_out = x_in + attn_proj_q ⇒ zero row at pt_ap.
-    let abo_open = open_matrix_p(cx.stream, dom_abo, &wit.attn_block_out, t, D, &pt_ap);
-    let xin_open = open_matrix_p(cx.stream, dom_xin, &wit.x_in, t, D, &pt_ap);
-    cx.zero.push(inst_proj.col_claims[1].value.sub(abo_open).add(xin_open));
+    let x_residual_claim = if let (Some(dom_xin), Some(dom_abo)) = (dom_xin, dom_abo) {
+        let pt_ap = inst_proj.point.clone();
+        let abo_open = open_matrix_p(cx.stream, dom_abo, &wit.attn_block_out, t, D, &pt_ap);
+        let xin_open = open_matrix_p(cx.stream, dom_xin, &wit.x_in, t, D, &pt_ap);
+        cx.zero.push(inst_proj.col_claims[1].value.sub(abo_open).add(xin_open));
+        None
+    } else {
+        let abo_claim = external_abo.expect("T1 attention needs a reduced ABO claim");
+        let q_claim = q_external.as_ref().expect("T1 attention needs its q bridge");
+        Some(BoundaryClaimP {
+            point: abo_claim.point.clone(),
+            value: abo_claim.value.sub(q_claim.value),
+        })
+    };
 
     // ---- 2: transport → out-proj committed chained GEMM (768×768) ----------
     let pt_acc_ap = site_proj.acc_point().to_vec();
@@ -5696,20 +6382,40 @@ pub(crate) fn prove_attn_block(
         );
 
     // ---- 17: LN1 chain ----------------------------------------------------------
-    let ln = prove_ln_chain(
-        t,
-        s_ln,
-        acc_ln1,
-        &wit.ln1_out,
-        &wit.x_in,
-        dom_xin,
-        &wit.ln1_mean,
-        &weights.ln1_gain,
-        &weights.ln1_bias,
-        &lv1,
-        &wire_ln1,
-        cx,
-    );
+    let (ln, deferred) = if let Some(dom_xin) = dom_xin {
+        (
+            prove_ln_chain(
+                t,
+                s_ln,
+                acc_ln1,
+                &wit.ln1_out,
+                &wit.x_in,
+                dom_xin,
+                &wit.ln1_mean,
+                &weights.ln1_gain,
+                &weights.ln1_bias,
+                &lv1,
+                &wire_ln1,
+                cx,
+            ),
+            None,
+        )
+    } else {
+        let (proof, ln_claim) = prove_ln_chain_deferred(
+            t,
+            s_ln,
+            acc_ln1,
+            &wit.ln1_out,
+            &wit.x_in,
+            &wit.ln1_mean,
+            &weights.ln1_gain,
+            &weights.ln1_bias,
+            &lv1,
+            &wire_ln1,
+            cx,
+        );
+        (proof, Some((x_residual_claim.expect("T1 attention residual claim"), ln_claim)))
+    };
 
     let proof = AttnBlockProof {
         ln_vec_corrs,
@@ -5743,8 +6449,10 @@ pub(crate) fn prove_attn_block(
         ln1_wire_corr: wire_ln1.corr,
         w_cattn_corr,
         ln,
+        t1_q_corr,
+        t1_x_reduce: None,
     };
-    (proof, vec![wclaim_proj, wclaim_cattn])
+    (proof, vec![wclaim_proj, wclaim_cattn], deferred)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -5754,7 +6462,7 @@ pub(crate) fn prove_attn_block_resident<W: ResidentLayerView>(
     layer: usize,
     weights: &LayerWeights,
     luts: &Luts,
-    mut p1: ResidentAttnP1,
+    p1: ResidentAttnP1,
     cx: &mut BlockCtxP,
     k_segments: &[ResidentCacheSegP],
     v_segments: &[ResidentCacheSegP],
@@ -5764,6 +6472,86 @@ pub(crate) fn prove_attn_block_resident<W: ResidentLayerView>(
     dom_abo: u64,
     biases: Option<&GemmBiases>,
 ) -> Result<(AttnBlockProof, Vec<WeightClaimP>), AccelError> {
+    let (proof, claims, deferred) = prove_attn_block_resident_impl(
+        wit,
+        resident_model,
+        layer,
+        weights,
+        luts,
+        p1,
+        cx,
+        k_segments,
+        v_segments,
+        Some(dom_xin),
+        dom_k,
+        dom_v,
+        Some(dom_abo),
+        None,
+        biases,
+    )?;
+    debug_assert!(deferred.is_none());
+    Ok((proof, claims))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prove_attn_block_resident_thinned<W: ResidentLayerView>(
+    wit: &W,
+    resident_model: &ResidentGpt2Model,
+    layer: usize,
+    weights: &LayerWeights,
+    luts: &Luts,
+    p1: ResidentAttnP1,
+    cx: &mut BlockCtxP,
+    k_segments: &[ResidentCacheSegP],
+    v_segments: &[ResidentCacheSegP],
+    dom_k: u64,
+    dom_v: u64,
+    abo_claim: &BoundaryClaimP,
+    biases: Option<&GemmBiases>,
+) -> Result<(AttnBlockProof, Vec<WeightClaimP>, (BoundaryClaimP, BoundaryClaimP)), AccelError> {
+    let (proof, claims, deferred) = prove_attn_block_resident_impl(
+        wit,
+        resident_model,
+        layer,
+        weights,
+        luts,
+        p1,
+        cx,
+        k_segments,
+        v_segments,
+        None,
+        dom_k,
+        dom_v,
+        None,
+        Some(abo_claim),
+        biases,
+    )?;
+    Ok((
+        proof,
+        claims,
+        deferred.ok_or(AccelError::InvalidInput("T1 resident attention claims missing"))?,
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_attn_block_resident_impl<W: ResidentLayerView>(
+    wit: &W,
+    resident_model: &ResidentGpt2Model,
+    layer: usize,
+    weights: &LayerWeights,
+    luts: &Luts,
+    mut p1: ResidentAttnP1,
+    cx: &mut BlockCtxP,
+    k_segments: &[ResidentCacheSegP],
+    v_segments: &[ResidentCacheSegP],
+    dom_xin: Option<u64>,
+    dom_k: u64,
+    dom_v: u64,
+    dom_abo: Option<u64>,
+    external_abo: Option<&BoundaryClaimP>,
+    biases: Option<&GemmBiases>,
+) -> Result<(AttnBlockProof, Vec<WeightClaimP>, Option<(BoundaryClaimP, BoundaryClaimP)>), AccelError>
+{
     let result = (|| {
         let t = wit.rows();
         if t < 2 {
@@ -5792,31 +6580,61 @@ pub(crate) fn prove_attn_block_resident<W: ResidentLayerView>(
         let s_ln = params.shift_ln_norm;
 
         // 1–2: projection range/residual and committed out projection.
-        let proj_site = prove_range_site_resident(&p1.proj, s_ap, Vec::new(), cx)?;
+        let (t1_q_corr, q_external) = if let Some(abo_claim) = external_abo {
+            let (correction, claim) = crate::boundary_thinning::prove_matrix_eval_claim_resident(
+                wit.i16(LayerI16Field::AttnProjQ),
+                t,
+                D,
+                &abo_claim.point,
+                cx,
+            )?;
+            (Some(correction), Some(claim))
+        } else {
+            (None, None)
+        };
+        let proj_aux = q_external
+            .as_ref()
+            .map(|claim| LeafAuxClaim { col: 1, point: claim.point.clone(), value: claim.value })
+            .into_iter()
+            .collect();
+        let proj_site = prove_range_site_resident(&p1.proj, s_ap, proj_aux, cx)?;
         let projection_point = proj_site.main.point.clone();
-        let backend = cx
-            .backend
-            .as_deref_mut()
-            .ok_or(AccelError::InvalidInput("resident attention proof requires a backend"))?;
-        let abo_open = open_matrix_resident_p(
-            cx.stream,
-            dom_abo,
-            wit.i16(LayerI16Field::AttnBlockOut),
-            t,
-            D,
-            &projection_point,
-            backend,
-        )?;
-        let xin_open = open_matrix_resident_p(
-            cx.stream,
-            dom_xin,
-            wit.i16(LayerI16Field::XIn),
-            t,
-            D,
-            &projection_point,
-            backend,
-        )?;
-        cx.zero.push(proj_site.main.col_claims[1].value.sub(abo_open).add(xin_open));
+        let x_residual_claim = if let (Some(dom_xin), Some(dom_abo)) = (dom_xin, dom_abo) {
+            let backend = cx
+                .backend
+                .as_deref_mut()
+                .ok_or(AccelError::InvalidInput("resident attention proof requires a backend"))?;
+            let abo_open = open_matrix_resident_p(
+                cx.stream,
+                dom_abo,
+                wit.i16(LayerI16Field::AttnBlockOut),
+                t,
+                D,
+                &projection_point,
+                backend,
+            )?;
+            let xin_open = open_matrix_resident_p(
+                cx.stream,
+                dom_xin,
+                wit.i16(LayerI16Field::XIn),
+                t,
+                D,
+                &projection_point,
+                backend,
+            )?;
+            cx.zero.push(proj_site.main.col_claims[1].value.sub(abo_open).add(xin_open));
+            None
+        } else {
+            let abo_claim = external_abo
+                .ok_or(AccelError::InvalidInput("T1 resident attention ABO claim missing"))?;
+            let q_claim = q_external
+                .as_ref()
+                .ok_or(AccelError::InvalidInput("T1 resident attention q bridge missing"))?;
+            Some(BoundaryClaimP {
+                point: abo_claim.point.clone(),
+                value: abo_claim.value.sub(q_claim.value),
+            })
+        };
         let projection_acc_point = proj_site.acc_point().to_vec();
         let mut projection_claim = proj_site.acc_claim;
         if let Some(biases) = biases {
@@ -6600,20 +7418,42 @@ pub(crate) fn prove_attn_block_resident<W: ResidentLayerView>(
                 cx.tx,
                 cx.backend.as_deref_mut().expect("resident attention backend"),
             )?;
-        let ln = prove_ln_chain_resident(
-            t,
-            s_ln,
-            &p1.ln,
-            &p1.rsqrt,
-            wit.i16(LayerI16Field::XIn),
-            dom_xin,
-            resident_model.layer_weight(layer, LayerWeightField::Ln1Gain)?,
-            &weights.ln1_gain,
-            &weights.ln1_bias,
-            &p1.lv1,
-            &wire_ln1,
-            cx,
-        )?;
+        let (ln, deferred) = if let Some(dom_xin) = dom_xin {
+            (
+                prove_ln_chain_resident(
+                    t,
+                    s_ln,
+                    &p1.ln,
+                    &p1.rsqrt,
+                    wit.i16(LayerI16Field::XIn),
+                    dom_xin,
+                    resident_model.layer_weight(layer, LayerWeightField::Ln1Gain)?,
+                    &weights.ln1_gain,
+                    &weights.ln1_bias,
+                    &p1.lv1,
+                    &wire_ln1,
+                    cx,
+                )?,
+                None,
+            )
+        } else {
+            let (proof, ln_claim) = prove_ln_chain_resident_deferred(
+                t,
+                s_ln,
+                &p1.ln,
+                &p1.rsqrt,
+                wit.i16(LayerI16Field::XIn),
+                resident_model.layer_weight(layer, LayerWeightField::Ln1Gain)?,
+                &weights.ln1_gain,
+                &weights.ln1_bias,
+                &p1.lv1,
+                &wire_ln1,
+                cx,
+            )?;
+            let residual = x_residual_claim
+                .ok_or(AccelError::InvalidInput("T1 resident attention residual claim missing"))?;
+            (proof, Some((residual, ln_claim)))
+        };
 
         Ok((
             AttnBlockProof {
@@ -6648,8 +7488,11 @@ pub(crate) fn prove_attn_block_resident<W: ResidentLayerView>(
                 ln1_wire_corr: wire_ln1.corr,
                 w_cattn_corr,
                 ln,
+                t1_q_corr,
+                t1_x_reduce: None,
             },
             vec![wclaim_proj, wclaim_cattn],
+            deferred,
         ))
     })();
     let free_result = p1.free(
@@ -6750,6 +7593,81 @@ pub(crate) fn verify_attn_block(
     abo_keys: &[Fp2],
     biases: Option<&GemmBiases>,
 ) -> Option<Vec<(Vec<Fp2>, VerifierKey)>> {
+    if proof.t1_q_corr.is_some() || proof.t1_x_reduce.is_some() {
+        return None;
+    }
+    let (keys, deferred) = verify_attn_block_impl(
+        sh,
+        ln1_gain,
+        ln1_bias,
+        luts,
+        proof,
+        v1,
+        cx,
+        Some(xin_keys),
+        k_segs,
+        v_segs,
+        Some(abo_keys),
+        None,
+        biases,
+    )?;
+    if deferred.is_some() {
+        return None;
+    }
+    Some(keys)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn verify_attn_block_thinned(
+    sh: BandShape,
+    ln1_gain: &[i16],
+    ln1_bias: &[i16],
+    luts: &Luts,
+    proof: &AttnBlockProof,
+    v1: AttnV1,
+    cx: &mut BlockCtxV,
+    k_segs: &[CacheSegK],
+    v_segs: &[CacheSegK],
+    abo_claim: &BoundaryClaimK,
+    biases: Option<&GemmBiases>,
+) -> Option<(Vec<(Vec<Fp2>, VerifierKey)>, (BoundaryClaimK, BoundaryClaimK))> {
+    if proof.t1_q_corr.is_none() {
+        return None;
+    }
+    let (keys, deferred) = verify_attn_block_impl(
+        sh,
+        ln1_gain,
+        ln1_bias,
+        luts,
+        proof,
+        v1,
+        cx,
+        None,
+        k_segs,
+        v_segs,
+        None,
+        Some(abo_claim),
+        biases,
+    )?;
+    Some((keys, deferred?))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_attn_block_impl(
+    sh: BandShape,
+    ln1_gain: &[i16],
+    ln1_bias: &[i16],
+    luts: &Luts,
+    proof: &AttnBlockProof,
+    v1: AttnV1,
+    cx: &mut BlockCtxV,
+    xin_keys: Option<&[Fp2]>,
+    k_segs: &[CacheSegK],
+    v_segs: &[CacheSegK],
+    abo_keys: Option<&[Fp2]>,
+    external_abo: Option<&BoundaryClaimK>,
+    biases: Option<&GemmBiases>,
+) -> Option<(Vec<(Vec<Fp2>, VerifierKey)>, Option<(BoundaryClaimK, BoundaryClaimK)>)> {
     let p = luts.params;
     let t = sh.q;
     if k_segs.iter().map(|g| g.rows).sum::<usize>() != sh.s()
@@ -6788,13 +7706,36 @@ pub(crate) fn verify_attn_block(
     let n_d = d_cb + rb;
     let shifts_range = [Some(0u32), None];
     let shifts_pair = [Some(0u32), Some(16u32)];
-    let site_proj =
-        verify_range_site(n_d, s_ap, &proof.inst_proj, proof.inst_proj_stage1.as_ref(), &[], cx)?;
+    let q_external = match (external_abo, proof.t1_q_corr) {
+        (Some(abo_claim), Some(correction)) => {
+            Some(verify_matrix_eval_claim(&abo_claim.point, correction, cx))
+        }
+        (None, None) => None,
+        _ => return None,
+    };
+    let proj_aux_storage =
+        q_external.as_ref().map(|claim| (1usize, claim.point.clone(), claim.key));
+    let proj_aux: Vec<_> = proj_aux_storage.into_iter().collect();
+    let site_proj = verify_range_site(
+        n_d,
+        s_ap,
+        &proof.inst_proj,
+        proof.inst_proj_stage1.as_ref(),
+        &proj_aux,
+        cx,
+    )?;
     let vp = &site_proj.main;
-    let pt_ap = vp.point.clone();
-    let abo_k = open_matrix_k(abo_keys, t, D, &pt_ap);
-    let xin_k = open_matrix_k(xin_keys, t, D, &pt_ap);
-    cx.kzero.push(vp.col_keys[1].key.sub(abo_k).add(xin_k));
+    let x_residual_claim = if let (Some(xin_keys), Some(abo_keys)) = (xin_keys, abo_keys) {
+        let pt_ap = vp.point.clone();
+        let abo_k = open_matrix_k(abo_keys, t, D, &pt_ap);
+        let xin_k = open_matrix_k(xin_keys, t, D, &pt_ap);
+        cx.kzero.push(vp.col_keys[1].key.sub(abo_k).add(xin_k));
+        None
+    } else {
+        let abo_claim = external_abo?;
+        let q_claim = q_external.as_ref()?;
+        Some(BoundaryClaimK { point: abo_claim.point.clone(), key: abo_claim.key.sub(q_claim.key) })
+    };
     let pt_acc_ap = site_proj.acc_point().to_vec();
     let mut k_acc_ap = site_proj.acc_key;
     if let Some(b) = biases {
@@ -7136,9 +8077,16 @@ pub(crate) fn verify_attn_block(
     )?;
 
     // ---- 17: LN1 chain -----------------------------------------------------------
-    verify_ln_chain(t, s_ln, ln1_gain, ln1_bias, xin_keys, &lvk1, &proof.ln, &wk_ln1, cx)?;
+    let deferred = if let Some(xin_keys) = xin_keys {
+        verify_ln_chain(t, s_ln, ln1_gain, ln1_bias, xin_keys, &lvk1, &proof.ln, &wk_ln1, cx)?;
+        None
+    } else {
+        let ln_claim =
+            verify_ln_chain_deferred(t, s_ln, ln1_gain, ln1_bias, &lvk1, &proof.ln, &wk_ln1, cx)?;
+        Some((x_residual_claim?, ln_claim))
+    };
 
-    Some(vec![(w_pt_proj, k_w_proj), (w_pt_cattn, k_w_cattn)])
+    Some((vec![(w_pt_proj, k_w_proj), (w_pt_cattn, k_w_cattn)], deferred))
 }
 
 // ---------------------------------------------------------------------------
@@ -7289,6 +8237,7 @@ impl ResidentLayerP1 {
     }
 }
 
+#[allow(dead_code)] // frozen resident C3b control component
 pub(crate) fn prove_layer_phase1_resident<W: ResidentLayerView>(
     wit: &W,
     resident_model: &ResidentGpt2Model,
@@ -7297,12 +8246,67 @@ pub(crate) fn prove_layer_phase1_resident<W: ResidentLayerView>(
     cx: &mut BlockCtxP,
     xin_alias_dom: Option<u64>,
 ) -> Result<ResidentLayerP1, AccelError> {
+    prove_layer_phase1_resident_impl(wit, resident_model, luts, error, cx, xin_alias_dom, None)
+}
+
+pub(crate) fn prove_layer_phase1_resident_thinned<W: ResidentLayerView>(
+    layer: usize,
+    wit: &W,
+    resident_model: &ResidentGpt2Model,
+    luts: &Luts,
+    error: DeviceSlice<'_, u32>,
+    cx: &mut BlockCtxP,
+    entry_alias_dom: Option<u64>,
+) -> Result<ResidentLayerP1, AccelError> {
+    if layer >= L {
+        return Err(AccelError::InvalidInput("T1 resident layer index out of range"));
+    }
+    prove_layer_phase1_resident_impl(
+        wit,
+        resident_model,
+        luts,
+        error,
+        cx,
+        entry_alias_dom,
+        Some(layer),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_layer_phase1_resident_impl<W: ResidentLayerView>(
+    wit: &W,
+    resident_model: &ResidentGpt2Model,
+    luts: &Luts,
+    error: DeviceSlice<'_, u32>,
+    cx: &mut BlockCtxP,
+    xin_alias_dom: Option<u64>,
+    t1_layer: Option<usize>,
+) -> Result<ResidentLayerP1, AccelError> {
     let t = wit.rows();
     let fulls0 = cx.stream.counters.full_corrs;
     let xin_tombstone = cx.doms.take(t as u64);
-    let (dom_xin, xin_corr) = match xin_alias_dom {
-        Some(source_dom) => (source_dom, Vec::new()),
-        None => (
+    let (dom_xin, xin_corr) = match (t1_layer, xin_alias_dom) {
+        (Some(layer), Some(source_dom)) if matches!(layer, 4 | 8) => (source_dom, Vec::new()),
+        (Some(0), None) => (
+            xin_tombstone,
+            auth_matrix_rows_resident_p(
+                cx.stream,
+                cx.tx,
+                xin_tombstone,
+                wit.i16(LayerI16Field::XIn),
+                t,
+                D,
+                cx.backend
+                    .as_deref_mut()
+                    .ok_or(AccelError::InvalidInput("resident layer phase 1 requires a backend"))?,
+            )?,
+        ),
+        (Some(layer), None) if layer % 4 != 0 => (xin_tombstone, Vec::new()),
+        (Some(_), _) => {
+            return Err(AccelError::InvalidInput("T1 resident X boundary schedule mismatch"));
+        }
+        (None, Some(source_dom)) => (source_dom, Vec::new()),
+        (None, None) => (
             xin_tombstone,
             auth_matrix_rows_resident_p(
                 cx.stream,
@@ -7338,25 +8342,33 @@ pub(crate) fn prove_layer_phase1_resident<W: ResidentLayerView>(
         cx.backend.as_deref_mut().expect("resident layer backend"),
     )?;
     let dom_abo = cx.doms.take(t as u64);
-    let abo_corr = auth_matrix_rows_resident_p(
-        cx.stream,
-        cx.tx,
-        dom_abo,
-        wit.i16(LayerI16Field::AttnBlockOut),
-        t,
-        D,
-        cx.backend.as_deref_mut().expect("resident layer backend"),
-    )?;
+    let abo_corr = if t1_layer.is_some() {
+        Vec::new()
+    } else {
+        auth_matrix_rows_resident_p(
+            cx.stream,
+            cx.tx,
+            dom_abo,
+            wit.i16(LayerI16Field::AttnBlockOut),
+            t,
+            D,
+            cx.backend.as_deref_mut().expect("resident layer backend"),
+        )?
+    };
     let dom_fbo = cx.doms.take(t as u64);
-    let fbo_corr = auth_matrix_rows_resident_p(
-        cx.stream,
-        cx.tx,
-        dom_fbo,
-        wit.i16(LayerI16Field::FfnBlockOut),
-        t,
-        D,
-        cx.backend.as_deref_mut().expect("resident layer backend"),
-    )?;
+    let fbo_corr = if t1_layer.is_none_or(|layer| layer % 4 == 3) {
+        auth_matrix_rows_resident_p(
+            cx.stream,
+            cx.tx,
+            dom_fbo,
+            wit.i16(LayerI16Field::FfnBlockOut),
+            t,
+            D,
+            cx.backend.as_deref_mut().expect("resident layer backend"),
+        )?
+    } else {
+        Vec::new()
+    };
 
     let ffn = ffn_phase1_resident(wit, luts, error, cx)?;
     let attn = match attn_phase1_resident(wit, resident_model, luts, error, cx) {
@@ -7441,6 +8453,94 @@ pub(crate) fn prove_layer_phase1_band_reusing_xin(
     let refs = BandAttnRefs::banded(wit, sh, prefix_k);
     let wires = build_attn_wires_band(&refs, luts);
     prove_layer_phase1_with_wires_aliased(wit, weights, luts, wires, cx, Some(producer.dom_fbo))
+}
+
+/// T1 phase-1 boundary schedule. Only model/chunk entry X0 and group-exit
+/// F3/F7/F11 are authenticated; X4/X8 reuse the preceding retained F domain.
+pub(crate) fn prove_layer_phase1_thinned(
+    layer: usize,
+    wit: &LayerWitness,
+    weights: &LayerWeights,
+    luts: &Luts,
+    entry_alias_dom: Option<u64>,
+    cx: &mut BlockCtxP,
+) -> LayerP1 {
+    let wires = build_attn_wires(wit, luts);
+    prove_layer_phase1_with_wires_thinned(layer, wit, weights, luts, wires, entry_alias_dom, cx)
+}
+
+pub(crate) fn prove_layer_phase1_band_thinned(
+    layer: usize,
+    wit: &LayerWitness,
+    weights: &LayerWeights,
+    luts: &Luts,
+    prefix_k: &[&[i16]],
+    entry_alias_dom: Option<u64>,
+    cx: &mut BlockCtxP,
+) -> LayerP1 {
+    let t0: usize = prefix_k.iter().map(|k| k.len() / D).sum();
+    let sh = BandShape { t0, q: wit.t };
+    let refs = BandAttnRefs::banded(wit, sh, prefix_k);
+    let wires = build_attn_wires_band(&refs, luts);
+    prove_layer_phase1_with_wires_thinned(layer, wit, weights, luts, wires, entry_alias_dom, cx)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_layer_phase1_with_wires_thinned(
+    layer: usize,
+    wit: &LayerWitness,
+    weights: &LayerWeights,
+    luts: &Luts,
+    wires: AttnWires,
+    entry_alias_dom: Option<u64>,
+    cx: &mut BlockCtxP,
+) -> LayerP1 {
+    assert!(layer < L);
+    let t = wit.t;
+    let fulls0 = cx.stream.counters.full_corrs;
+    let group_pos = layer % 4;
+
+    let xin_tombstone = cx.doms.take(t as u64);
+    let (dom_xin, xin_corr) = match (group_pos, entry_alias_dom) {
+        (0, Some(source_dom)) if layer > 0 => (source_dom, Vec::new()),
+        (0, None) if layer == 0 => {
+            (xin_tombstone, auth_matrix_rows_p(cx.stream, cx.tx, xin_tombstone, &wit.x_in, t, D))
+        }
+        (0, _) => panic!("T1 group entry alias schedule mismatch"),
+        (_, None) => (xin_tombstone, Vec::new()),
+        (_, Some(_)) => panic!("T1 internal X cannot carry an alias domain"),
+    };
+    let dom_k = cx.doms.take(t as u64);
+    let k_corr = auth_matrix_rows_p(cx.stream, cx.tx, dom_k, &wit.k, t, D);
+    let dom_v = cx.doms.take(t as u64);
+    let v_corr = auth_matrix_rows_p(cx.stream, cx.tx, dom_v, &wit.v, t, D);
+    let dom_abo = cx.doms.take(t as u64); // public tombstone, never authenticated in T1
+    let abo_corr = Vec::new();
+    let dom_fbo = cx.doms.take(t as u64);
+    let fbo_corr = if group_pos == 3 {
+        auth_matrix_rows_p(cx.stream, cx.tx, dom_fbo, &wit.ffn_block_out, t, D)
+    } else {
+        Vec::new()
+    };
+
+    let ffn = ffn_phase1(wit, weights, luts, cx);
+    let attn = attn_phase1_with_wires(wit, weights, luts, wires, cx);
+    LayerP1 {
+        doms: cx.doms,
+        dom_xin,
+        dom_k,
+        dom_v,
+        dom_abo,
+        dom_fbo,
+        xin_corr,
+        k_corr,
+        v_corr,
+        abo_corr,
+        fbo_corr,
+        ffn,
+        attn,
+        fulls0,
+    }
 }
 
 /// [`prove_layer_phase1`] with caller-supplied attention wires (the
@@ -7810,6 +8910,7 @@ pub fn verify_layer_phase1(
 
 /// Model-level C1 verifier entry point.  The source keys are supplied by the
 /// canonical immediately preceding layer, never by the proof.
+#[allow(dead_code)] // frozen C3b verifier component
 pub(crate) fn verify_layer_phase1_reusing_xin(
     t: usize,
     luts: &Luts,
@@ -7837,6 +8938,7 @@ pub fn verify_layer_phase1_band(
 }
 
 /// Band/decode counterpart of [`verify_layer_phase1_reusing_xin`].
+#[allow(dead_code)] // frozen C3b verifier component
 pub(crate) fn verify_layer_phase1_band_reusing_xin(
     sh: BandShape,
     luts: &Luts,
@@ -7845,6 +8947,72 @@ pub(crate) fn verify_layer_phase1_band_reusing_xin(
     cx: &mut BlockCtxV,
 ) -> Option<LayerV1> {
     verify_layer_phase1_band_aliased(sh, luts, proof, cx, Some(&producer.fbo_keys))
+}
+
+/// Verifier mirror of the public T1 4-layer boundary schedule.
+pub(crate) fn verify_layer_phase1_band_thinned(
+    layer: usize,
+    sh: BandShape,
+    luts: &Luts,
+    proof: &LayerProof,
+    entry_alias_keys: Option<&[Fp2]>,
+    cx: &mut BlockCtxV,
+) -> Option<LayerV1> {
+    if layer >= L {
+        return None;
+    }
+    let t = sh.q;
+    let group_pos = layer % 4;
+    let valid_x = match (group_pos, entry_alias_keys) {
+        (0, Some(keys)) if layer > 0 => proof.xin_corr.is_empty() && keys.len() == t * D,
+        (0, None) if layer == 0 => proof.xin_corr.len() == t * D,
+        (0, _) => false,
+        (_, None) => proof.xin_corr.is_empty(),
+        (_, Some(_)) => false,
+    };
+    if !valid_x
+        || proof.k_corr.len() != t * D
+        || proof.v_corr.len() != t * D
+        || !proof.abo_corr.is_empty()
+        || (group_pos == 3) != (proof.fbo_corr.len() == t * D)
+        || (group_pos != 3 && !proof.fbo_corr.is_empty())
+    {
+        return None;
+    }
+    let t_pad = 1usize << pad_bits(t);
+    if proof.ffn.ln_vec_corrs.iter().any(|corr| corr.len() != t_pad) {
+        return None;
+    }
+
+    let dom_xin = cx.doms.take(t as u64);
+    let xin_keys = match entry_alias_keys {
+        Some(keys) => keys.to_vec(),
+        None if layer == 0 => auth_matrix_rows_v(cx.ctx, dom_xin, &proof.xin_corr, t, D),
+        None => Vec::new(),
+    };
+    let dom_k = cx.doms.take(t as u64);
+    let k_keys = auth_matrix_rows_v(cx.ctx, dom_k, &proof.k_corr, t, D);
+    let dom_v = cx.doms.take(t as u64);
+    let v_keys = auth_matrix_rows_v(cx.ctx, dom_v, &proof.v_corr, t, D);
+    let _dom_abo = cx.doms.take(t as u64);
+    let dom_fbo = cx.doms.take(t as u64);
+    let fbo_keys = if group_pos == 3 {
+        auth_matrix_rows_v(cx.ctx, dom_fbo, &proof.fbo_corr, t, D)
+    } else {
+        Vec::new()
+    };
+    let lvk2 = expand_ln_vecs_k(cx, &proof.ffn.ln_vec_corrs);
+    let attn = verify_attn_phase1(sh, luts, &proof.attn, cx)?;
+    Some(LayerV1 {
+        doms: cx.doms,
+        xin_keys,
+        k_keys,
+        v_keys,
+        abo_keys: Vec::new(),
+        fbo_keys,
+        lvk2,
+        attn,
+    })
 }
 
 /// Verifier mirror of the identity-seam alias.  The tombstone is consumed in
@@ -8192,7 +9360,6 @@ mod tests {
                 &luts,
                 DeviceSlice::new(&proof_error, 0, 1).unwrap(),
                 &mut cx,
-                None,
             )
             .unwrap()
         };
@@ -8476,7 +9643,6 @@ mod tests {
                 &luts,
                 DeviceSlice::new(&proof_error, 0, 1).unwrap(),
                 &mut cx,
-                None,
             )
             .unwrap();
             (p1, cx.doms, dom_xin, dom_k, dom_v, dom_abo, xin_corr, k_corr, v_corr, abo_corr)
@@ -8734,6 +9900,7 @@ mod tests {
                 &luts,
                 DeviceSlice::new(&proof_error, 0, 1).unwrap(),
                 &mut cx,
+                None,
             )
             .unwrap()
         };
@@ -9058,6 +10225,7 @@ mod tests {
                 &luts,
                 DeviceSlice::new(&proof_error, 0, 1).unwrap(),
                 &mut cx,
+                None,
             )
             .unwrap();
             (p1, prefix_dom_k, prefix_dom_v, prefix_k_corr, prefix_v_corr)

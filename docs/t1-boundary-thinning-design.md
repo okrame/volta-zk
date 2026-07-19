@@ -1,10 +1,11 @@
 # T1 boundary thinning — amended Phase-1 design
 
-**Status (2026-07-18): PHASE 1 APPROVED; M11 GREEN; PHASE 2 IN PROGRESS.**
-The M11 package required by §6 is proved and audited: full `lake build`, zero
+**Status (2026-07-19): T1 CLOSED; G1/G2/G3/G4 PASS; M11 GREEN.**  The M11
+package required by §6 is proved and audited: full `lake build`, zero
 `sorry`/new axioms, and `#print axioms` coverage for every new theorem.  The
-Lean-first stop is cleared and the already authorized Rust implementation is
-in progress.  This status is not a T1 gate verdict.
+Rust implementation and both clean schema-10 records are closed at the exact
+reference in §10.  R1 is not part of this closure and remains deferred to
+Kimi3 by the product-owner decision recorded in the ledger.
 
 The target remains GPT-2 small, prompt `T=100`, one deferred decode chunk
 `Q=50`, `L=12`, `d=768`, PCS `Q_pcs=120`, and the immutable C3b response
@@ -695,3 +696,34 @@ removed R1 from this package's operational plan because the implementing
 assistant does not have the required trusted-access posture; the review is
 deferred to Kimi3 and confers no assurance on the T1 closure.  The handoff is
 recorded in `docs/r1-kimi3-handoff.md` and the ledger.
+
+## 10. Phase-2 closure (2026-07-19)
+
+The exact measured reference is the preregistered value, now pinned by both
+clean records at `b14577e12f35276c31482cf24dba41b6478905f9`:
+
+- response `84,544,352 B <= 85,000,000 B`; authentication corrections
+  `38,348,720 B <= 38,348,720 B`; reducer transcript `22,848 B`; q-scalar
+  transport `672 B`; PCS `43,273,888 B`;
+- the post-thinning correction split is exactly residual seams `3,686,400 B`
+  + non-thinnable K/V `22,118,400 B` + other `12,543,920 B` =
+  `38,348,720 B`;
+- CPU same-process ABBA is `38.317683641 / 38.118634535 = 1.005221832`,
+  PASS against `1.05`;
+- A100 v4 is prefill `2.4120642 s`, decode marginal `1.618844210 s`, H2D
+  `67,618,556 B`, maximum absolute synchronization `0.117210172 s`, and flat
+  `1.231125469`; every absolute gate passes;
+- exact counters are sub/full `4,793,590 / 181,933`, product/zero closures
+  `21,667 / 8,170`, `ctr_instances=2,800,595,736.8`, and
+  `ctr_other=114,852,961.2`.
+
+The append-only records are
+`benchmarks/results/t1-cpu-real-2026-07-19-b14577e.json` (SHA-256
+`7fe5eeaec1601ab3af9951129a7684de6bdf81b8ec8ac4afe94fc8369fe6febb`)
+and `benchmarks/results/t1-a100-realpcg-v4-2026-07-19-b14577e.json`
+(SHA-256
+`1a659df70a5996e2ac0a188f49d190ebc50e3224733536cb9e03c642a6b2f8dc`).
+Both pass `scripts/report.py --validate-t1-official`.  The workspace,
+malicious/replay/non-power-of-two tests and both explicit production-size
+two-weight-set leakage smokes are green.  No historical record or validator
+reference was rewritten.

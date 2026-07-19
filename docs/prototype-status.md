@@ -1,4 +1,4 @@
-# Prototype Status Ledger (C3b CLOSED; T1 Phase 2 in progress)
+# Prototype Status Ledger (T1 CLOSED; X1--X4 later packages)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -33,8 +33,9 @@ package.  T1 measured the correction split and preregistered an amended k=4
 construction, but exhaustive fan-out analysis required a new M11 package for
 the eq-sumcheck late-scalar chain and non-empty LogUp aux transport.  Phase 1
 was approved on 2026-07-18.  M11a--c and the concrete full-vector leaf
-instantiation are now proved and audited, so the Lean-first stop is cleared
-and the authorized T1 Phase 2 is in progress.  X1--X4 remain later packages;
+instantiation are now proved and audited, so the Lean-first stop is cleared.
+T1 closed on clean `b14577e` with G1/G2/G3/G4 PASS and the exact schema-10 CPU
+and A100 records below.  X1--X4 remain later packages;
 pool prewarming remains backlog.  By product-owner decision on 2026-07-19,
 R1 is outside this package's operational plan and is deferred to Kimi3; no
 cryptographic-review assurance is claimed by the T1 closure.
@@ -64,7 +65,7 @@ cryptographic-review assurance is claimed by the T1 closure.
 | Fase-D real-PCG default + scaling | **CLOSED; criterion (5) ENACTED, real default production-ready** (2026-07-17) | M10/AES/connection/default ✓; G1 ✓ G2 ✓ G2b ✓ G3 informative ✓; **G4-v2 PASS** | Tuple `(k3,n3,t3)=(6,520,000,117,440,512,1,792)`, `U3=110,918,718`; estimator min **199.599804 bits**, six-instance **197.014842**, connection floor **140.643699**. CPU G2 **38,371,465 B PASS**, G2b PASS, G3 **665,512,308** gross / **440.856 s** / **1,269,347,424 B** high-water PASS. Pod v2 `e95b839`: prefill **2.728 s PASS**, decode **1.582 s PASS**, H2D **88,139,652 B PASS**, packed **136,526,530 B PASS**, flat **1.219 PASS**, max absolute sync **0.123482 s <=0.150 PASS**; informative max ratio **2.238539%**. Pod G2 **110,918,718 / 38,371,465 B PASS**, setup **48.841 s**. Real/AES is default; mock is explicit test-only. |
 | C3 PCS/logits communication | **C3b CLOSED; G1/G2/G3/G4 PASS** (2026-07-18) | G1 response <=115,000,000 B; G2 CPU ABBA <=+15% and pod <=5.6483791 s against pinned 4.911634 s; G3 full capability/adversarial parity; G4 fresh pod profile | `161fc59`: exact response **105,717,632 B**, PCS **43,273,888 B**, public logits **0 B**, L4 **57,840 B / 157,705,530 E-mult**. G1 CPU PASS, peak **8.629 GiB**, spool raw resident 0. G2 CPU **+14.5365% PASS**; pod **4.183011 s vs 5.6483791 s PASS**. G3 workspace/adversarial + both production leakage smokes PASS. G4 v3: prefill **2.536909**, decode **1.652746**, H2D **88,812,564 B**, max sync **0.114894647 s**, flat **1.228451**, all PASS. Post-fix CUPTI: **1,423,901** launches, 69 families, 0 drops; five new `private_argmax_*` families, none grid-x=1. |
 | X0 MoE analytic design | **design complete; no MoE implementation authorized** (2026-07-18) | parameterized budget + D1--D4 + private-weight table + prerequisite/long-output/provider contracts preregistered | gpt-oss-20b analytic 100+50 point: **485.360G MACs**, **41.800 GB i16 committed**, **371.881 MB** current-boundary corrections / **147.241 MB** k=4 shape, **417.268M / 687.568M** logical/padded lookups, **3,316** stacked PCS-claim upper bound. Dense 8B point: **1.076T MACs**, **617.081 / 189.459 MB** corrections, **452** claims. `scripts/budget_moe.py`; `docs/x0-moe-design.md`. |
-| T1 boundary thinning | **Phase 2 in progress; M11 GREEN** (2026-07-18) | response <=85,000,000 B, corrections <=38,348,720 B, CPU ABBA <=1.05 and unchanged pod contract | Current **59,545,520 B** corrections split exactly residual **24,883,200**, K/V **22,118,400** non-thinnable, other **12,543,920**. Full-size development instrumentation measures corrections **38,348,720 B**, eq transcript **22,848 B**, scalar transport **672 B**, response **84,544,352 B**, sub/full **4,793,590 / 181,933**, closures **21,667 / 8,170**. The corrected two-bucket E-mult delta is **49,644,736** (`ctr_instances +24,872,338`, `ctr_other +24,772,398`); clean CPU/pod records remain pending. M11a--c plus the concrete full-vector leaf theorem build and audit clean. `docs/t1-boundary-thinning-design.md`. |
+| T1 boundary thinning | **CLOSED; M11 GREEN; G1/G2/G3/G4 PASS** (2026-07-19) | response <=85,000,000 B; corrections <=38,348,720 B; CPU ABBA <=1.05; pod 10 s / 4 s / 100 MB / 0.150 s / 1.5 | Clean `b14577e`: exact response **84,544,352 B**, corrections **38,348,720 B**, reducer/q bridge **22,848 / 672 B**. CPU ABBA **1.005222 PASS**. A100 v4 prefill **2.412064 s**, decode **1.618844 s**, H2D **67,618,556 B**, max sync **0.117210172 s**, flat **1.231125**, all PASS. Sub/full **4,793,590 / 181,933**, closures **21,667 / 8,170**, E-mult buckets **2,800,595,736.8 / 114,852,961.2**, exact. Both production leakage smokes PASS. R1 is deferred to Kimi3 and no review assurance is claimed. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -107,6 +108,83 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-19 (T1 CLOSED on clean `b14577e`; G1/G2/G3/G4 PASS)**:
+  the exact post-thinning correction split is residual seams **3,686,400 B**
+  + architecture-specific, non-thinnable GPT-2 MHA K/V **22,118,400 B** +
+  other **12,543,920 B** = **38,348,720 B**.  Against C3b, all
+  **21,196,800 B** saved bytes come from residual seams; K/V and other are
+  unchanged.  GQA 64/8 remains phase-X context only and does not enter this
+  GPT-2 verdict.
+
+  **G1 PASS verbatim.**  Response **84,544,352 B <= 85,000,000 B**;
+  authentication corrections **38,348,720 B <= 38,348,720 B**; reducer
+  transcript **22,848 B**; q bridge **672 B**; PCS **43,273,888 B**.  The
+  measured response is identical to the approved projection and is now the
+  exact pinned reference.  Counters are exact: sub/full
+  **4,793,590 / 181,933**, product/zero **21,667 / 8,170**,
+  `ctr_instances=2,800,595,736.8`, `ctr_other=114,852,961.2`.
+
+  **G2 PASS verbatim.**  Four-worker same-process CPU ABBA measures frozen
+  C3b **38.118634535 s** and T1 **38.317683641 s**, ratio
+  **1.005221832 <= 1.05** (+0.522183%).  The A100 wall-only+counters record
+  measures prefill **2.4120642 s <= 10 s**, decode marginal
+  **1.618844210 s <= 4 s**, H2D **67,618,556 B <= 100,000,000 B**, maximum
+  absolute synchronization **0.117210172 s <= 0.150 s**, and flat
+  **1.231125469 <= 1.5**.  Its response-session prove wall is
+  **4.031071209 s**.  Every pod absolute gate passes.
+
+  **G3 PASS verbatim.**  Golden 50-token decode is bit-exact; normal and
+  chunked responses accept; mock/real counters, channel ledger and allocation
+  digests match; permanent forged-reducer/seam, chunk-entry, malicious,
+  replay/position and non-power-of-two tests are green.  `cargo test
+  --workspace` and `pytest -q tests/test_report.py` are green, as are the two
+  explicit production-size `c3_weights_two_weight_set_leakage_smoke` and
+  `c3_embed_two_weight_set_leakage_smoke` runs (**2/2 PASS**).  The record's
+  `t1_exact_counter_pass` and `t1_g3_pass` are true.
+
+  **G4 PASS verbatim.**  Both schema-10 files have full SHA `b14577e12f35276c31482cf24dba41b6478905f9`,
+  `git_dirty:false`, real-PCG/AES, Q=120, one connection setup and five
+  completed response ordinals with zero repeat base-OT/extension bytes.  Both
+  pass the new fail-closed validator; historical validators and records are
+  unchanged:
+
+  - `benchmarks/results/t1-cpu-real-2026-07-19-b14577e.json`, SHA-256
+    `7fe5eeaec1601ab3af9951129a7684de6bdf81b8ec8ac4afe94fc8369fe6febb`;
+  - `benchmarks/results/t1-a100-realpcg-v4-2026-07-19-b14577e.json`, SHA-256
+    `1a659df70a5996e2ac0a188f49d190ebc50e3224733536cb9e03c642a6b2f8dc`.
+
+  The RunPod record identifies `us-md-1`, A100-SXM4-80GB, driver
+  `580.126.16`, CUDA `12.8`, Ubuntu `24.04.3 LTS`, EPYC 7742, 2,004 GiB RAM
+  and 128 vCPUs.  Setup traffic is **38,371,465 B** in both records; CPU/GPU
+  setup walls are **65.470727 / 38.845157 s**, and their unlinked persistent-
+  volume spools are **4,584,443,640 B**, `resident_raw=0`.
+
+  **Recorded operational deviations, no gate credit.**  The first local-VM
+  CPU attempt was killed with exit 137 after spooling because that host had
+  insufficient memory; it wrote no JSON and its one-time stores were never
+  reused.  Per the product-owner steering, both official records were rerun
+  on the authorized pod.  The pod's network FUSE volume handled checkout,
+  stores, spool, staging and sequential Cargo artifacts, but repeatedly left
+  small-file Cargo test/build finalizers waiting after their compiler child
+  exited.  No such wrapper produced a test verdict or consumed a record
+  store.  The native production runner was therefore built in a temporary
+  Cargo target on the same pod; its **139-MB archive** was written to the
+  persistent volume (archive SHA-256
+  `a4ce55ed33b68a37a879c1a5e4778c2e6c34f3b1d2986003d78a23c7fcf65614`),
+  copied there as a standalone binary (SHA-256
+  `cb4f3fe4a4829a21b34689894d2d37d14b41cda7baa88fa056db503814e3b10f`),
+  and the temporary target was removed before the run.  The CUDA ABI-28
+  library SHA-256 is
+  `3006acee18830bdad2fe2a4f73bea28c190bebfcfe072d4a3b768b9eb391893f`.
+  The full resident record itself provides the production CUDA end-to-end
+  verdict; local workspace and CUDA compile checks were already green at the
+  checkpoint.  This storage workaround changes no source, protocol, timing
+  policy, counter, record byte, or gate.
+
+  R1 remains explicitly outside this closure and deferred to Kimi3 under the
+  immediately following product-owner decision.  T1 therefore closes with no
+  independent/adversarial cryptographic-review assurance.
 
 - **2026-07-19 (R1 removed from the current operational package; deferred to
   Kimi3)**: the product owner removed the implementing assistant's R1

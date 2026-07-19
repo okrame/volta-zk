@@ -8,3 +8,7 @@ to **Kimi3**, which is expected to start from the original R1 mandate,
 including M11a--c statement/implementation fidelity and the Rust eq-reducer
 mirror.  Until that separate review closes, the repository must not describe
 T1 as independently or adversarially cryptographically reviewed.
+
+T1 itself closed with G1--G4 PASS on clean implementation checkpoint
+`b14577e12f35276c31482cf24dba41b6478905f9`; the two schema-10 records and
+their checksums are pinned in `docs/prototype-status.md`.

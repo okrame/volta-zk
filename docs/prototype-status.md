@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL; X3 stopped; X4 later)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b preregistered/HARD STOP; X3 blocked; X4 later)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -75,7 +75,8 @@ cryptographic-review assurance is claimed by the T1 closure.
 | T1 boundary thinning | **CLOSED; M11 GREEN; G1/G2/G3/G4 PASS** (2026-07-19) | response <=85,000,000 B; corrections <=38,348,720 B; CPU ABBA <=1.05; pod 10 s / 4 s / 100 MB / 0.150 s / 1.5 | Clean `b14577e`: exact response **84,544,352 B**, corrections **38,348,720 B**, reducer/q bridge **22,848 / 672 B**. CPU ABBA **1.005222 PASS**. A100 v4 prefill **2.412064 s**, decode **1.618844 s**, H2D **67,618,556 B**, max sync **0.117210172 s**, flat **1.231125**, all PASS. Sub/full **4,793,590 / 181,933**, closures **21,667 / 8,170**, E-mult buckets **2,800,595,736.8 / 114,852,961.2**, exact. Both production leakage smokes PASS. R1 is deferred to Kimi3 and no review assurance is claimed. |
 | X1 runtime foundation + routing soundness | **PASS; complete** (2026-07-19) | GPT-2 T1 byte-for-byte at **84,544,352 B** with exact counters/deterministic schedule digest/golden/workspace ✓; all route cheats reject; isolated E-mult/token-layer ratio in **[0.80,1.20]** ✓ | Foundation clean `9a4c688`. Routing clean `6be165f`: T=31, L=4, d=48, **3,968 logical / 4,096 padded**; measured **707.2774193548387** versus predicted **662.4056199596774 E-mult/token-layer**, ratio **1.0677406683202548 PASS**. One unchanged-P4 commitment/opening, 4 claims; exact sub/full **205,568 / 4,714**; all nine honest/cheating/preflight predicates green; record `x1-routing-2026-07-19-6be165f.json`. |
 | X2 synthetic MoE e2e | **official valid FAIL; package stopped** (2026-07-19) | Honest k=1/k=2, identical bit-exact output, one TableBank, 3 commitments/40 claims, PCS/closures/digests/smokes all PASS; binding full-correlation ratios must be in **[0.80,1.20]** and are **0.731338 / 0.732512 FAIL** | Clean `87ce25b`: **316,464 MACs** exact; measured **12,523 logical / 19,346 padded lookup rows** and **82 sites** (same k=1/k=2); sub **350,304 / 349,793 PASS**; full **12,462 / 12,482** vs 17,040 FAIL. Record `x2-moe-2026-07-19-87ce25b.json`. |
-| X3 non-GPT ops pack | **not started; stopped by X2 FAIL** (2026-07-19) | Preregistered gate remains unchanged; no X3 execution or verdict | Planned X2 shape with T=7, d=48/d_ff=80, RMSNorm, clamped SwiGLU, RoPE, GQA 6/2, two sinks/head and `[full, sliding(4)]`; resumption requires a new preregistration explicitly authorized by the user. |
+| X2b corrected-proxy repeat | **PREREGISTERED; HARD STOP pending explicit user approval** (2026-07-20) | Same CPU fixture/code/smokes/exact invariants and same inclusive **[0.80,1.20]** band; X2 remains FAIL under its original 17,040 proxy | `existing-class-session-v2` postdicts X2 **12,462 / 12,482**, X1 **4,714**, GPT-2/C1 **176,880**, and closed T1 **181,933** exactly. Future clean schema-2 record: `x2b-moe-<date>-<gitsha>.json`; no X2b run or verdict exists yet. |
+| X3 non-GPT ops pack | **not started; blocked until an approved X2b run PASSes** (2026-07-20) | Preregistered gate remains unchanged; no X3 execution or verdict | Planned X2 shape with T=7, d=48/d_ff=80, RMSNorm, clamped SwiGLU, RoPE, GQA 6/2, two sinks/head and `[full, sliding(4)]`; X2b preregistration does not itself unlock X3. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -118,6 +119,72 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-20 (X2 FAIL diagnosis complete; corrected proxy propagated; X2b
+  preregistered; HARD STOP before execution)**: the user confirmed that the
+  clean `87ce25b` X2 record and its FAIL verdict are immutable and that the
+  inclusive **[0.80,1.20]** band is not relaxed.  The labels **12,495 /
+  19,313** mean analytic **logical / padded lookup rows**, respectively, and
+  are common to k=1/k=2.  No X2b proof run or verdict exists in this entry;
+  X3 remains blocked until an explicitly approved X2b run returns PASS.
+
+  **Tie rule scope.**  X1/X2b retain descending `(score, expert_id)`, so the
+  higher expert id wins a tie and every crafted-tie accept/reject test remains
+  permanent.  This is now explicitly a **synthetic-phase convention**.  X5
+  must re-derive and repin the rule from the real gpt-oss router: its
+  `torch.topk` path favors the **lower** expert index.  No synthetic tie rule
+  may be silently transferred to X5.
+
+  **Term-by-term cause of the -27% gap.**  The retired 17,040 proxy was 16,896
+  coarse LogUp + 80 two-per-claim PCS + 64 opaque chain/closure masks.  The
+  canonical existing-class k=1 schedule is instead **11,336 TableBank/LogUp +
+  644 blind-sumcheck + 243 Hadamard + 131 fresh scalar-claim + 64 local/shared
+  product + 44 PCS/component/global-zero = 12,462 full**.  k=2 adds exactly
+  **20** T1 reducer/terminal/q-bridge masks, giving **12,482**.  For LogUp,
+  lookup trees cost `d^2+7d+1+2c`, table trees cost `d^2+6d+2` once per
+  content, fraction aggregation costs `3*(sites-contents)` once per TableBank,
+  and cross checks cost `4*contents` once per TableBank.  Its exact 11,336
+  subtotal is analytic lookup trees 8,950 + rectangular band correction 144
+  + two route-weight Range(8) trees/aggregation 104 + final-rsqrt two-leaf
+  correction 8 + one shared table side 1,884 + base aggregation 222 + crosses
+  24.  PCS uses one full per claim plus one zero mask per component; the main
+  `Pi_Prod` and `Pi_ZeroBatch` closures are shared per session.  The old model
+  therefore overcharged LogUp/PCS by **5,596** while omitting **1,018**
+  algebraic masks: net **-4,578 (-26.86619718309859%)** at k=1 and **-4,558
+  (-26.748826291079814%)** at k=2.
+
+  **Required independent postdictions.**  `scripts/budget_moe.py` now labels
+  this formula `existing-class-session-v2` and permanent tests reproduce clean
+  X1 at **4,714 / 4,714 full**, the requested frozen GPT-2/C1 base schedule at
+  **176,880 / 176,880**, the closed T1 response at **181,933 / 181,933** (the
+  base plus its exact 5,053 delta), and X2 k=1/k=2 at **12,462 / 12,482**, all
+  with zero delta.  This is a schedule/class postdiction, not a new
+  cryptographic claim or a reinterpretation of X2.
+
+  **X2b gate.**  X2b repeats the identical CPU-only witness/proof code, all
+  permanent smokes, 3 commitments, 40 claims, one response opening session,
+  one TableBank finalization and both k paths.  Only the full predictions
+  change to **12,462 / 12,482**.  MAC, logical/padded/site and sub predictions
+  remain **316,464**, **12,495 / 19,313 / 80**, and **330,820 / 330,484**;
+  every counter retains inclusive **[0.80,1.20]**, and all exact digest/golden/
+  session predicates remain unchanged.  The future append-only schema-2 run
+  is `x2b-moe-<date>-<gitsha>.json`; the harness cannot overwrite `x2-moe-*`.
+
+  **X0 propagation; every changed number.**  At the default 100+50, k=4
+  point, gpt-oss changes from **2,874,728** to **2,858,312 full**: old coarse
+  LogUp/PCS/chain **2,866,560 / 6,632 / 1,536** become TableBank **2,578,270**,
+  blind **158,616**, Hadamard **86,529**, scalar **18,917**, product **9,362**,
+  PCS/zero **3,342**, and T1 reducer **3,276**; total delta **-16,416
+  (-0.5710453302016747%)**.  Dense changes from **370,680** to **462,339**:
+  old **367,728 / 904 / 2,048** become TableBank **366,389**, blind **65,816**,
+  Hadamard **11,961**, scalar **8,965**, product **4,354**, PCS/zero **486**,
+  and T1 reducer **4,368**; total delta **+91,659 (+24.727258012301714%)**.
+  All X0 MAC, auth/correction, lookup-row, commitment and PCS-claim values are
+  unchanged; both new totals remain non-gating projections.
+
+  R1 remains external and pending with no cryptographic-review assurance.
+  Kimi3 is reviewing detached worktree `f05d727`; main remains append-only:
+  no rebase, no force-push, and that worktree is untouched.
 
 - **2026-07-19 (X2 synthetic MoE e2e closed on clean `87ce25b`; gate
   verdict: FAIL; package stopped before X3)**: the append-only CPU-only run of

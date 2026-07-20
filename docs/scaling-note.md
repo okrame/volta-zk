@@ -1,14 +1,15 @@
 # Scaling note — VOLTA beyond GPT-2: dense and MoE
 
-**Status**: X0 analytic design and decisions are preregistered (2026-07-18);
-no MoE implementation is authorized.  The 2026-07-13 synthetic shape/memory
+**Status**: X0 analytic design and decisions are preregistered; X1 is PASS,
+X2 is an immutable FAIL, and X2b's corrected proxy is preregistered under a
+hard stop for user approval (2026-07-20).  The 2026-07-13 synthetic shape/memory
 sweep remains a formula-only historical artifact.  The executable X0 budget
 is `scripts/budget_moe.py`, and `docs/x0-moe-design.md` is the detailed design
 record.  Planning targets are **gpt-oss-20b** (24 layers, d=2880, 32 experts
 top-4, 3.6B active / 20.9B total, GQA 64/8, alternating full / 128-token
 sliding-window attention, RMSNorm, clamped SwiGLU, attention sinks, RoPE and
 MXFP4 source expert weights) and a representative Llama-class dense/GQA
-point.  X1--X3 and X4 remain later packages.
+point.  X3 remains blocked on X2b; X4 and X5 remain later packages.
 
 ## 1. The scaling thesis: ρ is ~scale-invariant; communication is not
 
@@ -59,7 +60,7 @@ shape/count budget, not a frontend, timing measurement or proof-memory claim.
 | corrections, analytic k=4 shape | 147.241 MB | 189.459 MB |
 | logical / padded lookup rows | 417,267,938 / 687,568,448 | 408,291,250 / 586,362,944 |
 | exact subfield correlations, current / k=4 | 46,485,064 / 18,405,064 | 77,135,176 / 23,682,376 |
-| full-field correlation proxy | 2,874,728, non-gating | 370,680, non-gating |
+| full-field correlation proxy v2 | 2,858,312, non-gating | 462,339, non-gating |
 | per-layer + global commitments | 25 | 33 |
 | stacked PCS claims, upper / expected | 3,316 / 3,314.06 | 452 / 452 |
 
@@ -67,8 +68,12 @@ All 20.9B gpt-oss parameters are committed because weights are treated as
 private; only top-4 expert compute is active.  Balanced public routes are used
 only for padded-domain planning.  The T1-shaped column is a residual-boundary
 shape projection, not a claim that the GPT-2 T1 proof transfers unchanged to
-MoE.  The full-field count is deliberately non-gating until X1--X3 produce an
-exact schedule and allocation digest.  No PCS-opening byte projection is
+MoE.  The v2 full-field count uses exact existing-class/session formulas
+validated against X1, GPT-2/C1, GPT-2/T1 and X2, but remains deliberately
+non-gating until each non-GPT architecture produces an exact schedule and
+allocation digest.  Relative to X0 v1, gpt-oss changes by **-16,416
+(-0.5710453302016747%)** and dense by **+91,659 (+24.727258012301714%)**;
+all other table entries are unchanged.  No PCS-opening byte projection is
 made: the fixed pass over total committed weights is why X4 is a prerequisite.
 
 ## 3. MoE-specific design (gpt-oss)

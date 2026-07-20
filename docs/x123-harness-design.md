@@ -1,14 +1,16 @@
 # X1--X3 model-agnostic harness and synthetic MoE design
 
-**Status (2026-07-19): Phase 1 approved; Phase 2 explicitly authorized;
-runtime `ModelConfig` foundation PASS; X1 routing PASS; X2 FAIL; package
-stopped before X3.**  The
+**Status (2026-07-20): Phase 1 approved; Phase 2 explicitly authorized;
+runtime `ModelConfig` foundation PASS; X1 routing PASS; X2 FAIL remains
+immutable; X2b is preregistered and HARD STOPPED for user approval; X3 remains
+blocked.**  The
 preregistered design remains binding; implementation evidence and verdicts
 land in the ledger and append-only records.  The foundation passed its binding
 GPT-2 T1 non-regression gate on clean `9a4c688`; X1 passed on clean `6be165f`.
 X2's clean `87ce25b` record passed all functional/session predicates but
-failed the binding symmetric full-correlation band.  Section 7.3 therefore
-stops the package; X3 was not started and has no verdict.
+failed the binding symmetric full-correlation band.  Section 5.4 diagnoses
+that failure and preregisters, but does not execute, X2b.  X3 was not started
+and has no verdict; it remains blocked until an approved X2b run passes.
 
 The package is CPU-only.  No pod may be provisioned or contacted, no gpt-oss
 checkpoint may be downloaded or exported, and X4 folding PCS and X5 gpt-oss
@@ -270,8 +272,12 @@ or an additional leak; gather/combine order is canonical and publicly
 checkable.
 
 The native rank is descending `(score, expert_id)`: a larger expert id wins a
-tie, matching the existing last-maximum convention.  `tau` is the worst of
-the four selected ranks and `theta = score_tau`.
+tie, matching the existing last-maximum convention.  This is explicitly a
+**synthetic X1--X2b convention**, and the crafted-tie accept/reject tests remain
+permanent.  X5 must re-derive and repin the rule from the real gpt-oss router;
+its `torch.topk` path favors the **lower** expert index, so the synthetic rule
+must not be carried into X5 by assumption.  `tau` is the worst of the four
+selected ranks and `theta = score_tau`.
 
 ### 4.2 One comparison per expert and the limb derivation
 
@@ -482,6 +488,90 @@ FAIL.  No band or prediction is changed.  The append-only evidence is
 `benchmarks/results/x2-moe-2026-07-19-87ce25b.json`; per section 7.3, this
 verdict stops the package and X3 was not started.
 
+### 5.4 X2 full-correlation diagnosis and X2b preregistration
+
+The X2 record and verdict above are immutable.  In particular, `17,040`,
+`0.731338028169014`, `0.7325117370892019`, and both FAIL verdicts are not
+recomputed under the corrected model.  The labels `12,495 / 19,313` remain
+unambiguously **logical / padded lookup rows**, identical for k=1 and k=2.
+
+The old planning proxy was
+
+```text
+3 * (8 * lookup_log_rounds + 12 * lookup_sites) = 16,896
+2 * PCS claims                                     =     80
+32 * layers * proof_phases                         =     64
+total                                              = 17,040
+```
+
+That proxy did not instantiate the existing argument classes term by term.
+It charged a coarse per-site LogUp expression and two masks per PCS claim,
+while the implementation closes one response-wide TableBank, uses one table
+tree per content, and uses one PCS zero mask per component.  Conversely, its
+opaque 64-mask chain term omitted most blind-sumcheck, Hadamard and fresh
+scalar masks.  The corrected `existing-class-session-v2` model is:
+
+```text
+lookup-side LogUp tree (depth d, c columns) = d^2 + 7d + 1 + 2c
+standard table-side tree (depth d)          = d^2 + 6d + 2
+fraction-sum aggregation, one TableBank     = 3 * (sites - contents)
+content cross-checks, one TableBank         = 4 * contents
+PCS masks                                   = claims + component zero masks
+product masks                               = one per local terminal + one shared Pi_Prod
+global zero closure                         = one shared Pi_ZeroBatch mask
+```
+
+For the canonical X2 schedule, the TableBank subtotal postdicts exactly:
+
+| Existing LogUp term | Full correlations |
+| --- | ---: |
+| analytic lookup-side trees | 8,950 |
+| rectangular band-domain correction | 144 |
+| two route-weight `Range(8)` trees plus aggregation | 104 |
+| final-rsqrt minimum two-leaf correction | 8 |
+| one shared table side: `Range(8)` plus five depth-16 contents | 1,884 |
+| analytic 80-site fraction-sum aggregation (the extra 6 is included above) | 222 |
+| six content cross-checks | 24 |
+| **TableBank / LogUp total** | **11,336** |
+
+The complete record reconciliation is then:
+
+| Existing argument class | k=1 | k=2 | Evidence/formula |
+| --- | ---: | ---: | --- |
+| one response-wide TableBank / LogUp | 11,336 | 11,336 | exact tree schedule above and transcript labels |
+| blind sumcheck round masks | 644 | 644 | two masks per contraction round |
+| Hadamard rounds and terminal claims | 243 | 243 | `3n+3` per existing instance |
+| committed/input/head-split/rowsum scalar claims | 131 | 131 | 40 + 63 + 24 + 4 |
+| local product terminals plus shared `Pi_Prod` | 64 | 64 | 63 + 1 |
+| 40 PCS claim masks, three component zero masks, global `Pi_ZeroBatch` | 44 | 44 | 40 + 3 + 1 |
+| T1 eq reducer rounds, terminal and q bridge | 0 | 20 | `2*9 + 1 + 1` |
+| **corrected total** | **12,462** | **12,482** | exact postdiction of clean `87ce25b` |
+
+Thus the k=1 correction to the old proxy is `-5,560 - 36 + 1,018 =
+-4,578` (`-26.86619718309859%`).  k=2 adds exactly 20 reducer masks, giving
+`-4,558` (`-26.748826291079814%`).  This verifies the session-amortization
+hypothesis while also exposing the algebraic masks the old proxy omitted.
+
+The model is not accepted merely because it reproduces X2.  Permanent
+self-checks independently postdict clean X1 at **4,714 full**, the requested
+frozen GPT-2/C1 schedule at **176,880 full**, and the closed T1 response at
+**181,933 full** (the latter is the C1 base plus its exact 5,053 private-
+argmax/reducer/schedule delta).  All four deltas are zero.
+
+**X2b preregistration; no run or verdict yet.**  X2b repeats the identical
+CPU-only fixture, proof code, permanent cheating smokes, three commitments,
+40 claims, one response opening session, one TableBank finalization and k=1/
+k=2 composition.  It changes only the full-correlation predictions to
+**12,462 / 12,482**.  MAC, logical/padded/site and sub-correlation predictions
+remain **316,464**, **12,495 / 19,313 / 80**, and **330,820 / 330,484**.  Every
+ratio retains the same inclusive **[0.80,1.20]** band; exact session,
+prover/verifier, allocation/channel, golden and smoke predicates are unchanged.
+The future clean schema-2 record is append-only
+`benchmarks/results/x2b-moe-<date>-<gitsha>.json`.  The report harness is
+pinned to that name and cannot overwrite the X2 record.  Execution requires
+explicit user approval after this hard stop.  X3 remains blocked until X2b
+returns verbatim PASS.
+
 ## 6. X3 operations pack on the band path
 
 X3 reuses the X2 toy artifact and `T=7`, `d=48`, `d_ff=80`, but changes the
@@ -553,6 +643,7 @@ Clean CPU records are append-only and never overwrite an earlier run:
 benchmarks/results/x1-foundation-<date>-<gitsha>.json
 benchmarks/results/x1-routing-<date>-<gitsha>.json
 benchmarks/results/x2-moe-<date>-<gitsha>.json
+benchmarks/results/x2b-moe-<date>-<gitsha>.json
 benchmarks/results/x3-ops-<date>-<gitsha>.json
 ```
 
@@ -574,8 +665,10 @@ Each boundary follows the scaling-note section-5 contract:
 4. commit that milestone checkpoint before starting the next one.
 
 The ModelConfig foundation is its own checkpoint before `x1-routing`.  X1,
-X2 and X3 each close separately.  A FAIL is recorded verbatim and stops the
-package.  No checkpoint, projection or development run is itself a verdict.
+X2, X2b and X3 each close separately.  X2 remains FAIL regardless of any
+later X2b result.  A FAIL is recorded verbatim and stops the package.  No
+checkpoint, projection, preregistration or development run is itself a
+verdict.
 
 ## 8. Phase-1 disposition
 

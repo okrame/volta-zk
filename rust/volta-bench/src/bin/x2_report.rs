@@ -1,4 +1,4 @@
-//! X2 CPU-only two-layer MoE end-to-end gate.
+//! X2b CPU-only repeat gate after the immutable X2 full-correlation FAIL.
 //!
 //! Runs the same native witness at T1 k=1 and k=2, composes only existing
 //! VOLTA argument classes, and resolves 40 committed-weight claims through
@@ -31,7 +31,8 @@ const PREDICTED_PADDED: u64 = 19_313;
 const PREDICTED_SITES: u64 = 80;
 const PREDICTED_SUB_K1: u64 = 330_820;
 const PREDICTED_SUB_K2: u64 = 330_484;
-const PREDICTED_FULL: u64 = 17_040;
+const PREDICTED_FULL_K1: u64 = 12_462;
+const PREDICTED_FULL_K2: u64 = 12_482;
 const ACCEPT_LOW: f64 = 0.80;
 const ACCEPT_HIGH: f64 = 1.20;
 const PCS_SECTION_BASE: u8 = 244;
@@ -238,7 +239,11 @@ struct Report {
     model_config_blake3_k1: String,
     model_config_blake3_k2: String,
     router_tie_rule: String,
+    router_tie_scope: String,
     d1_public_metadata_encoding: String,
+    prior_x2_record_immutable: String,
+    full_correlation_proxy_version: String,
+    x2b_full_correlation_band: [f64; 2],
     shape: BTreeMap<String, usize>,
     lookup_counter_labels: String,
     artifacts: ArtifactRecord,
@@ -843,8 +848,8 @@ fn main() {
     let sites_ratio = ratio(PREDICTED_SITES, honest_k1.table_sites);
     let sub_k1 = ratio(PREDICTED_SUB_K1, honest_k1.prover_corr.sub_corrs);
     let sub_k2 = ratio(PREDICTED_SUB_K2, honest_k2.prover_corr.sub_corrs);
-    let full_k1 = ratio(PREDICTED_FULL, honest_k1.prover_corr.full_corrs);
-    let full_k2 = ratio(PREDICTED_FULL, honest_k2.prover_corr.full_corrs);
+    let full_k1 = ratio(PREDICTED_FULL_K1, honest_k1.prover_corr.full_corrs);
+    let full_k2 = ratio(PREDICTED_FULL_K2, honest_k2.prover_corr.full_corrs);
     let exact_three_commitments = honest_k1.pcs.commitments == 3 && honest_k2.pcs.commitments == 3;
     let exact_forty_claims = honest_k1.pcs.claims == 40 && honest_k2.pcs.claims == 40;
     let exact_one_response_opening_session =
@@ -928,8 +933,8 @@ fn main() {
     let date = command_output(&["date", "+%Y-%m-%d"]);
     let dirty = git_dirty();
     let report_value = Report {
-        schema: 1,
-        milestone: "X2-synthetic-MoE-e2e".to_owned(),
+        schema: 2,
+        milestone: "X2b-synthetic-MoE-e2e".to_owned(),
         date: date.clone(),
         git_sha,
         git_short_sha: git_short_sha.clone(),
@@ -942,7 +947,12 @@ fn main() {
         model_config_blake3_k1: hex(&fixture_k1.config.digest().unwrap()),
         model_config_blake3_k2: hex(&fixture_k2.config.digest().unwrap()),
         router_tie_rule: "descending (score, expert_id); higher expert id wins ties".to_owned(),
+        router_tie_scope: "synthetic X1/X2b convention; X5 must re-derive the real gpt-oss router rule, whose torch.topk path favors the lower expert index".to_owned(),
         d1_public_metadata_encoding: "[cutoff, strictly-better expert] per token/layer".to_owned(),
+        prior_x2_record_immutable:
+            "benchmarks/results/x2-moe-2026-07-19-87ce25b.json: FAIL".to_owned(),
+        full_correlation_proxy_version: "existing-class-session-v2".to_owned(),
+        x2b_full_correlation_band: [ACCEPT_LOW, ACCEPT_HIGH],
         shape,
         lookup_counter_labels:
             "12,495/19,313 are analytic logical/padded rows; measured labels remain logical/padded and are identical for k=1/k=2"
@@ -966,7 +976,7 @@ fn main() {
     let json = serde_json::to_string_pretty(&report_value).unwrap() + "\n";
     println!("{json}");
     eprintln!(
-        "X2 gate: {} | lookup ratios logical={:.6} padded={:.6} sites={:.6} | corr ratios sub(k1/k2)={:.6}/{:.6} full={:.6}/{:.6}",
+        "X2b gate: {} | lookup ratios logical={:.6} padded={:.6} sites={:.6} | corr ratios sub(k1/k2)={:.6}/{:.6} full={:.6}/{:.6}",
         report_value.gate.verdict,
         report_value.gate.logical_lookup_rows.measured_over_predicted,
         report_value.gate.padded_lookup_rows.measured_over_predicted,
@@ -978,17 +988,17 @@ fn main() {
     );
     if record {
         if dirty {
-            eprintln!("x2_report: refusing a run-of-record from a tracked-dirty tree");
+            eprintln!("x2_report: refusing an X2b run-of-record from a tracked-dirty tree");
             std::process::exit(2);
         }
         let path: PathBuf = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../benchmarks/results")
-            .join(format!("x2-moe-{date}-{git_short_sha}.json"));
+            .join(format!("x2b-moe-{date}-{git_short_sha}.json"));
         if path.exists() {
             eprintln!("x2_report: append-only record already exists: {}", path.display());
             std::process::exit(2);
         }
-        std::fs::write(&path, json).expect("write append-only X2 record");
+        std::fs::write(&path, json).expect("write append-only X2b record");
         eprintln!("wrote {}", path.display());
     }
     if !all_pass {

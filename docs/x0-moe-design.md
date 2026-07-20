@@ -1,6 +1,8 @@
 # X0 MoE analytic design package
 
-**Status (2026-07-18): design complete; no MoE implementation authorized.**
+**Status (2026-07-20): design complete; X1 closed PASS, X2 closed FAIL, and
+the X2b corrected full-correlation proxy is preregistered but not authorized
+to run.**
 X0 fixes the analytic `ModelConfig` budget, decisions D1--D4, the private-
 weights deployment target, the Phase-X prerequisite amendment, the long-output
 requirement, and the provider-facing envelope.  X1--X3 and X4 are later
@@ -56,7 +58,7 @@ Default output of `python3 scripts/budget_moe.py`:
 | padded lookup rows | 687,568,448 | 586,362,944 |
 | lookup padding ratio | 1.6478 | 1.4361 |
 | exact subfield correlations, current / k=4 | 46,485,064 / 18,405,064 | 77,135,176 / 23,682,376 |
-| full-field correlation planning proxy | 2,874,728, **non-gating** | 370,680, **non-gating** |
+| full-field correlation planning proxy v2 | 2,858,312, **non-gating** | 462,339, **non-gating** |
 | per-layer + global commitments | 25 | 33 |
 | stacked PCS claims, upper bound | 3,316 | 452 |
 | expected stacked claims | 3,314.06 | 452 |
@@ -73,8 +75,9 @@ Interpretation:
   20.9B parameters under the private-weight deployment target;
 - T1 helps the residual stream, not K/V or `other`; it therefore does not make
   large-model correction communication small by itself;
-- the full-field counts are intentionally a transparent proxy until X1--X3
-  create an exact scheduler/allocation digest;
+- the full-field counts use the X2b `existing-class-session-v2` formulas but
+  remain non-gating until the corresponding architecture creates an exact
+  scheduler/allocation digest;
 - no total PCS-opening bytes are projected.  The fixed pass over tens of GB of
   committed i16 weights is precisely the X4 folding-PCS prerequisite, so X0
   does not disguise it behind the retracted cached-column or cross-point-RLC
@@ -85,6 +88,37 @@ The script's GPT-2 anchor reports `38,348,720 B` corrections and
 honest `22,848 B` eq-reduction transcript and `672 B` of scalar transport
 corrections, yielding the binding Phase-2 reference `84,544,352 B`; see the
 T1 document for its formal prerequisite and gate.
+
+### X2b full-correlation correction propagated to X0
+
+The immutable X2 FAIL exposed that the old full-field proxy charged coarse
+LogUp and PCS masks per instance instead of closing one response-wide
+TableBank and one zero/product session.  The corrected model also adds the
+blind-sumcheck, Hadamard, scalar-claim and local-product masks that the old
+opaque chain term omitted.  It exactly postdicts X1 at 4,714 full, the frozen
+GPT-2/C1 schedule at 176,880, the closed T1 response at 181,933, and X2 at
+12,462/12,482; see `docs/x123-harness-design.md` section 5.4.
+
+Every changed X0 full-field number is listed here; all MAC, authenticated-
+value, correction, lookup-row and PCS-claim numbers in the table above are
+unchanged.
+
+| Term, 100+50 and k=4 | gpt-oss old | gpt-oss v2 | dense old | dense v2 |
+| --- | ---: | ---: | ---: | ---: |
+| coarse LogUp / exact session TableBank | 2,866,560 | 2,578,270 | 367,728 | 366,389 |
+| two-per-claim PCS / claims + component/global zero masks | 6,632 | 3,342 | 904 | 486 |
+| opaque chain/closure term (retired) | 1,536 | — | 2,048 | — |
+| blind sumcheck round masks | — | 158,616 | — | 65,816 |
+| Hadamard round + terminal masks | — | 86,529 | — | 11,961 |
+| fresh scalar claim masks | — | 18,917 | — | 8,965 |
+| local terminals + one shared `Pi_Prod` mask | — | 9,362 | — | 4,354 |
+| T1 reducer + q-bridge masks | — | 3,276 | — | 4,368 |
+| **full-field proxy total** | **2,874,728** | **2,858,312** | **370,680** | **462,339** |
+| **absolute / relative total change** |  | **-16,416 / -0.5710453302016747%** |  | **+91,659 / +24.727258012301714%** |
+
+These are schedule projections, not gpt-oss or Llama measurements and not gate
+verdicts.  No response-byte, X4 folding-PCS or real-export claim follows from
+the correction.
 
 ## 3. Authoritative MoE decisions D1--D4
 

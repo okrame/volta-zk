@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1 DISPOSITION CLOSED; X4 PHASE-1 DESIGN + FLOOR ADDENDUM FROZEN)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 R1B AMENDMENT 1 + SOUNDNESS/LEAN STATEMENTS FROZEN)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -52,17 +52,18 @@ package is closed.  Kimi3's R1 AI adversarial review of detached baseline
 `f05d727` returned zero CRITICAL, zero MAJOR, one MINOR and four NOTEs; the
 2026-07-20 product-owner dispositions are implemented and closed below.  This
 unblocks X4 **design only**.  The X1--X3 additions postdate the review baseline
-and have a frozen read-only delta-review handoff; that review has not been
-performed.  The AI review confers no independent human-review assurance, and
-criterion (1) remains external. X4 Phase 1 is now frozen at
-`docs/x4-folding-pcs-design.md`: the design selects the conservative
-unique-decoding zkDeepFold/BaseFold profile and preregisters its M9,
-block-openability, domain-separation, cost and migration gates. The package
-now includes the requested first-oracle mitigation addendum: parameter,
-cohort-streaming and two-level-sharding screens are conditional, the fixed
-profile's 10.7008-TB logical floor is preserved honestly, and the 35-MB gate
-is unchanged. It remains at a **HARD STOP pending product-owner review** and
-authorizes no Lean, Rust, reference, benchmark or X5 work.
+and were reviewed read-only at detached `9b1ef2d`.  The imported R1b report
+finds zero CRITICAL, zero MAJOR, three MINOR and six NOTEs.  Its dispositions
+are closed below with the honest label: **AI adversarial review only, no
+independent human-review assurance; criterion (1) remains external**.
+R1b MINOR-3 is adopted in `docs/x4-folding-pcs-design.md` as
+`x4-zkdeepfold-ud-e29-v2`: the two `2^30` global blocks split into four
+`2^29` blocks, the PCS moves from `F_p^4` to `E=F_p^2`, the unpadded gpt-oss
+first-oracle floor falls to **5.3504 TB**, and the specialized conservative
+response bound is **83.30226403378921 bits**.  Final pre-code theorem
+statements and the v2 frame grammar are frozen.  The package remains at a
+**HARD STOP pending product-owner review** and authorizes no Lean proofs, X4
+Rust, reference, benchmark or X5 work.
 
 ## Milestones
 
@@ -95,8 +96,9 @@ authorizes no Lean, Rust, reference, benchmark or X5 work.
 | X2b corrected-proxy repeat | **PASS; complete** (2026-07-20) | Frozen `existing-class-session-v2`, same CPU fixture/code/smokes/exact invariants and same inclusive **[0.80,1.20]** band; X2 remains FAIL under its original 17,040 proxy | Clean `053d3fc`: full **12,462 / 12,482** predicted and measured, ratios **1.0 / 1.0 PASS**. MAC **316,464** exact; lookup logical/padded/sites **12,523 / 19,346 / 82**, sub **350,304 / 349,793**, all within band. Record `x2b-moe-2026-07-20-053d3fc.json`. |
 | X3 non-GPT ops pack | **PASS; complete; X1--X3 package CLOSED** (2026-07-20) | Zero-tolerance Rust/numpy full-array bit-exact gate at non-power-of-two **T=7** and hidden **d=48**; honest proof accepts, nine permanent tamper/pad smokes reject, exact counter/digest/session predicates | Clean `7544f36`: **656,034 B**, zero differing golden bytes; **21,969 / 35,824** logical/padded lookup rows, 91 sites/9 contents/1 finalization, RoPE delta 0; sub/full/domains **1,065,887 / 15,802 / 6,573**, transcript **8,781,000 B**, E-equivalent **7,109,448.2**. Pad poison actively rejects with a detected nonzero zero-claim. Record `x3-ops-2026-07-20-7544f36.json`. |
 | R1 adversarial cryptographic review | **DISPOSITION CLOSED; X4 design unblocked** (2026-07-20) | Report fixed to detached `f05d727`; zero CRITICAL/MAJOR, M1 fixed, N1--N4 disposed, N5 consolidated; report immutable and SHA-pinned | AI adversarial review only: **no independent human-review assurance; criterion (1) remains external**. Report SHA-256 `b4f05cdd19609975c736ca0f4955894f87b7a44150addb520fe4f5a8d7a93eb4`. X1--X3 delta review remains external and unperformed. |
-| R1b X1--X3 delta review | **HANDOFF FROZEN; review external and unperformed** (2026-07-20) | Read-only range `f05d7279249fdbe16025ee2d005ef58a18224fbb..4b349b59f13516ac878446f593d1621fba92bcfc`; findings to a report only | `docs/r1b-delta-handoff.md` enumerates all 15 commits / 47 paths and claims under test. SHA-256 `21495b7d2d508b8e7ae65997f81b7a4b2a103831e9b4ea192727efd38f660436`. No R1b verdict or assurance exists. |
-| X4 folding PCS Phase 1 | **DESIGN + FLOOR ADDENDUM FROZEN; HARD STOP pending product-owner review** (2026-07-20) | No conjectural list-decoding credit; proof-before-code M9/security checkpoint, G1--G6, inherited pod gates and first-oracle mitigation screens preregistered; no Lean/Rust/bench authorized | Frozen candidate remains `x4-zkdeepfold-v1`: `K`, rate `1/8`, `s=128`, **10.7008-TB** logical floor. Conditional `K/E` rate rows span **5.3504--1.3376 TB**; streaming changes peak but not floor; `H25` adds 62 transport slots. GPT-2 PCS `<=4,000,000 B` and gpt-oss analytic `<=35,000,000 B` are unchanged. Addended design SHA-256 `3588d9f360960d46ad219309ba67645bd992a56d89ed1ae627f69f6d7ca9bb44`; original pre-addendum SHA remains `bb693bb4b1a06244d4f30f4b23cb47a64563dcaa21b5502b74adb044e6284464`. No gate verdict. |
+| R1b X1--X3 delta + Ideal/X4 addenda review | **AI REVIEW DISPOSITION CLOSED; no independent assurance** (2026-07-20) | Detached `9b1ef2d`; zero CRITICAL/MAJOR, three MINOR, six NOTE; every finding explicitly disposed; criterion (1) remains external | Byte-identical report `docs/r1b-kimi3-report.md`, SHA-256 `a6d25a55c1220934666bf22f218740be1a9084243370fd031274dea2a222aa9f`. MINOR-1/2 docstrings corrected; MINOR-3 adopted; NOTE-1/3/5/6 actions pinned. The review is automated Kimi adversarial analysis, not human assurance. |
+| X4 folding PCS Phase 1 (historical) | **SUPERSEDED BY R1B AMENDMENT 1; immutable design history** (2026-07-20) | Original no-list-decoding/G1--G6 preregistration retained for provenance | Historical `x4-zkdeepfold-v1`: `K`, rate `1/8`, `s=128`, **10.7008-TB** logical floor. Addended SHA-256 `3588d9f360960d46ad219309ba67645bd992a56d89ed1ae627f69f6d7ca9bb44`; original SHA `bb693bb4b1a06244d4f30f4b23cb47a64563dcaa21b5502b74adb044e6284464`. No gate verdict. |
+| X4 R1b Amendment 1 + Phase-2 statement freeze | **AMENDED DESIGN/SOUNDNESS/LEAN STATEMENTS FROZEN; HARD STOP pending product-owner review** (2026-07-20) | Exact conservative response bound must prove before X4 Rust; all original G1--G6 and byte/wall gates remain conjunctive; no list-decoding credit | `x4-zkdeepfold-ud-e29-v2`: `E`, rate `1/8`, `s=128`, `mu_max=29`; **1,660 blocks / 3,320 claims**; gpt-oss floor **5.3504 TB**; GPT-2 unpadded first oracle **31,923,699,712 B**; direct M9 `B_touch+1`; `epsilon=8.3853234432654371e-26`, **83.30226403378921 bits, meeting the 78.809294874 target**. Normative v2 frames and separate binding/ZK/batch theorem statements frozen. Design SHA-256 `2f511ac162ed6fdfa88dcb7e43fb749ae7063acf4a4585e2693349c9f023f207`. No Lean proof or X4 gate verdict. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -164,6 +166,88 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-20 (R1b AI-review disposition: CLOSED; honest assurance label
+  retained)**: the Kimi R1b report produced against detached checkpoint
+  `9b1ef2d` is imported byte-identically as `docs/r1b-kimi3-report.md` and
+  pinned by SHA-256
+  `a6d25a55c1220934666bf22f218740be1a9084243370fd031274dea2a222aa9f`.
+  `cmp` against the review-worktree source is exact.  The R1 and R1b review
+  worktrees remain untouched.  The verdict is **zero CRITICAL, zero MAJOR,
+  three MINOR and six NOTE findings**.  This is an automated AI adversarial
+  review, **not independent human-review assurance**; review criterion (1)
+  therefore remains external.
+
+  **Finding dispositions.**  MINOR-1 and MINOR-2 are closed by docstring-only
+  edits in `lean/VoltaZk/Ideal.lean`: the implemented current family is named
+  Ligero, binding/ZK/batch are explicitly unbundled, and the missing UC PCS-
+  realization premise is explicit.  The declarations and proof states did
+  not change: the complete derived-audit stdout SHA-256 was identically
+  `9b501c8793c0bdb978a72af303d03a82359566ec971b300a42fc4a741dfbf5bf`
+  before and after the edit and rebuild; `lake build` and the two audit
+  regressions are green.  Discharge time requires three separately named
+  current-Ligero theorems and separately owned citations for binding,
+  VOLTA-specific blinded ZK and common-point batch soundness; conditional UC
+  composition has explicit `F_sVOLE` and `F_PCS` realization premises.
+  MINOR-3 is adopted by X4 Amendment 1 below.  NOTE-1 is removed cheaply now:
+  X3 sections are remapped from `220..223` to the reserved `212..215` range,
+  disjoint from X2 `216..219` and prefill `220/221`; all 13 focused X3 tests
+  pass.  NOTE-2 remains the already disclosed synthetic-fixture boundary and
+  receives no production-witness credit.  NOTE-3 is pinned as an explicit
+  `lookupCount < p` premise under `[CharP F p]` and `[Fact (Nat.Prime p)]` in
+  every discharged LogUp--GKR theorem.  NOTE-4 requires no change: the
+  existing Ferret docstring remains faithful at its declared granularity.
+  NOTE-5/N4's residual is closed at design level by the normative v2 frame
+  grammar, exact canonical decoder and separate leaf/node/type hash domains
+  below.  NOTE-6 schedules the previously unverified production-size
+  `c3_weights` leakage smoke as a mandatory preflight in the next pod session,
+  recording command, peak RSS/VRAM, status and verdict before any X4 record.
+
+- **2026-07-20 (X4 R1b Amendment 1 and Phase-2 statement freeze; HARD STOP
+  pending product-owner review)**: the amended plan of record is
+  `docs/x4-folding-pcs-design.md`, SHA-256
+  `2f511ac162ed6fdfa88dcb7e43fb749ae7063acf4a4585e2693349c9f023f207`.
+  The profile `x4-zkdeepfold-ud-e29-v2` splits each global `2^30` embedding
+  block on its high Boolean variable into two ordered `2^29` blocks and
+  adopts the split reconstruction identity as a pre-code theorem.  Thus
+  `mu_max=29`, the largest rate-`1/8` code domain is `2^33`, and
+  `v2(|E|-1)=33` lets the PCS use the existing 16-byte field `E=F_p^2` with
+  no `F_p^4` tower.  The inventory is **1,660 physical blocks / 3,320 maximum
+  claims**; the unpadded first-oracle floor is **5.3504 TB** at the 41.8-GB
+  gpt-oss point and **31,923,699,712 B** for measured GPT-2 weights.  The
+  global cohort has four ordered split slots, split claims are affinely
+  reconstructed before challenges, and the direct `E` masked seam removes
+  the tower trick and costs exactly `B_touch+1` full correlations.  The
+  optional `mu_shard<=25` hierarchy is updated to 1,720 slots, `+60` or
+  `+3.614457831%`, and remains conditional with no gate credit.
+
+  **Specialized soundness.**  The amendment retains strict unique decoding,
+  rate `1/8`, `s=128`, `ell<=17`, forbids conjectural list-decoding credit and
+  replaces the paper's unnamed finite-field polynomial by a conservative
+  explicit reduction that must be proved before code.  With `q=p^2`,
+  `P=3,320`, `n_W=2^33`, `n_g=2^20`, `B=1,660`:
+  `epsilon_prox=P*(9/16)^128`, `C_fold=28,522,064,111,120`,
+  `C_claim=151,060`, `C_mpoint=3,412`, `C_M9=1,661`, and
+  `C_total=28,522,064,267,253`.  Therefore
+  `epsilon_X4=epsilon_prox+C_total/q =
+  8.3853234432654370979010519467789577e-26`, or
+  **83.30226403378921 bits**, a **4.49296915978921-bit** margin over the
+  required 78.809294874 bits; the exact frozen Lean stop rule is
+  `epsilon_X4 < 2^-83`.  Rate and query count therefore remain unchanged.
+
+  **Statement and authority boundary.**  The document freezes separate named
+  pre-code statements for the `E` cardinality/domain and strict RS-UD facts;
+  split geometry; masked-sum equal-fiber hiding, one-opening epoch enforcement
+  and simulator-based ZK; canonical frames and cohort binding; scalar claim
+  reduction; different-point batching; strict-UD cohort folding; separate PCS
+  binding/ZK/batch obligations; direct masked M9 transfer; full response event
+  cover, composition and exact inequalities; current-Ligero discharge;
+  conditional UC composition; and characteristic-bounded LogUp--GKR.  G1--G6
+  and every existing byte/wall gate remain verbatim and conjunctive.  This is
+  a preregistered expression and theorem-statement freeze, **not a Lean proof,
+  security verdict, implementation, benchmark or gate verdict**.  No X4 Lean
+  proof, X4 Rust, reference mutation, pod run or X5 work is authorized before
+  explicit product-owner approval.
 
 - **2026-07-20 (X4 first-oracle mitigation addendum frozen; original hard
   stop preserved)**: at the pre-approval hard stop, the product owner

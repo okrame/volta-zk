@@ -36,10 +36,12 @@ use volta_mac::{
     VerifierKey,
 };
 
-const X3_TRACE_SECTION: u8 = 220;
-const X3_OP_SECTION: u8 = 221;
-const X3_TABLE_SECTION: u8 = 222;
-const X3_GEMM_SECTION: u8 = 223;
+// Reserved X3 range.  Keep it below X2's 216..219 range and disjoint from
+// the response proof's prefill embedding/final-LN sections 220/221.
+const X3_TRACE_SECTION: u8 = 212;
+const X3_OP_SECTION: u8 = 213;
+const X3_TABLE_SECTION: u8 = 214;
+const X3_GEMM_SECTION: u8 = 215;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct X3RangeProof {

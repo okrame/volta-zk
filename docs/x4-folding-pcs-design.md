@@ -1,25 +1,645 @@
-# X4 Phase-1 folding-PCS preregistration
+# X4 folding-PCS amended preregistration and Phase-2 statement freeze
 
-**Status (2026-07-20): DESIGN FROZEN WITH FIRST-ORACLE MITIGATION
-ADDENDUM; implementation not authorized.**
+**Status (2026-07-20): R1B AMENDMENT 1 FROZEN; SOUNDNESS EXPRESSION AND
+PRE-CODE LEAN STATEMENTS FROZEN; HARD STOP FOR PRODUCT-OWNER REVIEW;
+implementation not authorized.**
 
 This document is the Phase-1 preregistration for X4. It replaces the original
 X4 premise in `docs/scaling-note.md`: lever A (cache/reuse fixed query rows)
 is recorded UNSOUND and receives no credit. The replacement is a folding-PCS
 package, co-designed with D3 per-layer commitments and canonical per-expert
-blocks. This package contains design only. It changes no Lean theorem, Rust
-code, proof, benchmark reference or gate verdict.
+blocks. This X4 package contains design only. It changes no Lean declaration
+or proof, X4 Rust code, benchmark reference or gate verdict.
 
-The candidate profile is named **`x4-zkdeepfold-v1`**. All parameters, byte
-thresholds, measurements and failure rules below are preregistered before
-implementation. A later change to a security parameter, block map, byte
-codec or gate requires an append-only deviation before the affected run; a
-failed result may not be tuned into a pass.
+The amended candidate profile is named **`x4-zkdeepfold-ud-e29-v2`**. It
+supersedes `x4-zkdeepfold-v1`, which remains below as immutable Phase-1
+history. All parameters, byte thresholds, measurements and failure rules are
+preregistered before implementation. A later change to a security parameter,
+block map, byte codec or gate requires an append-only deviation before the
+affected run; a failed result may not be tuned into a pass.
 
-Section 5.1 is the product-owner-requested mitigation addendum for the
+Historical Section 5.1 is the product-owner-requested mitigation addendum for the
 10.7008-TB first-oracle screen. It adds conditional paper-only alternatives
-and an honest irreducibility boundary. It does not select a replacement for
-`x4-zkdeepfold-v1`, authorize Phase 2, or relax any gate.
+and an honest irreducibility boundary. R1b Amendment 1 below selects the
+previously unexamined `2^29` block split and therefore supersedes conflicting
+field, geometry, seam, storage and hierarchy text in Sections 1.1, 2.1, 3,
+3.1, 4, 5, 5.1, 5.3--5.4, 6 and 8. Every gate or invariant not explicitly
+amended remains in force.
+
+## 0. R1b Amendment 1 (normative override)
+
+This section is the amended plan of record. The old `K=F_p^4`, `mu_max=30`,
+1,658-block, 3,316-claim and `2*B_touch+1`-transfer profile is historical.
+This amendment adopts R1b MINOR-3 before any X4 code or proof.
+
+### 0.1 Disposition and amended parameters
+
+Each independently padded `2^30` embedding or unembedding tensor is split on
+its highest Boolean variable into two ordered `2^29` physical blocks. If
+`z = z_lo || z_hi`, coefficient order is `W_0 || W_1` and the normative
+reconstruction identity is
+
+```text
+W_tilde(z_lo || z_hi)
+  = (1-z_hi) * W_0_tilde(z_lo) + z_hi * W_1_tilde(z_lo).
+```
+
+The prefix bit, half ordinal and parent tensor id are statement data. A half
+cannot be dropped, duplicated, reordered or substituted. No other gpt-oss
+block changes shape.
+
+The canonical padded orientation of both global matrices is vocabulary-major
+`262,144 x 4,096`.  The split therefore produces two
+`131,072 x 4,096 = 2^29` blocks per parent.  At the pinned logical vocabulary
+201,088, half 0 has 131,072 source rows and half 1 has 70,016 source rows;
+both have 131,072 padded rows.  Those logical/padded dimensions and the
+parent ordinal are descriptor fields, so zero padding cannot be relabeled as
+source data.
+
+| Parameter | Amended `x4-zkdeepfold-ud-e29-v2` value |
+| --- | ---: |
+| PCS, evaluation and VOLE-MAC field | `E = F_p[phi]/(phi^2-7)` (`Fp2`) |
+| symbol width | 16 bytes, two canonical little-endian Goldilocks limbs |
+| code-field tower | none; `K` and `psi` are removed |
+| original physical-block variables | `14 <= mu_b <= 29` |
+| maximum extended weight domain | `2^(29+1)/(1/8) = 2^33` |
+| `v2(|E|-1)` | `33`, exactly sufficient |
+| Reed--Solomon rate `rho` | `1/8` |
+| strict unique-decoding relation | distance `< (1-rho)/2 = 7/16`; equality is the far/reject branch |
+| independent queries `s` | `128`, uniform with replacement from exact fresh bits |
+| auxiliary variables | `ell_b = ceil(log2(s*mu_b^2+1)) <= 17` |
+| algebraic ZK check | `2^17 = 131,072 > 128*29^2 = 107,648` |
+| statistical target | at least `78.809294874` response-wide bits |
+| hash assumption | BLAKE3 collision resistance/non-invertibility, separate from the statistical bound |
+
+The maximum initial weight-codeword length is exactly `2^33`, so no
+`F_p^4` tower is needed. The GKR claims, PCS arithmetic, mask, MAC transfer
+and ZeroBatch all now live in the same field `E`. Limb decoding rejects
+either base-field limb `>=p`; host, Montgomery and non-canonical encodings are
+not transcript values.
+
+The gpt-oss inventory becomes:
+
+```text
+per-layer physical blocks              = 69
+layer physical blocks                  = 24*69 = 1,656
+global physical blocks                 = 4  (two halves each for embed/unembed)
+B_max                                  = 1,660
+stacked phase claims, G_max            = 2*B_max = 3,320
+expected analytic claims               = 3,314.06 + 4 = 3,318.06
+```
+
+The two extra physical blocks and four extra stacked claims are mandatory in
+the communication formula. GPT-2 has no block above `2^26`, so its physical
+block and 102-claim geometry is unchanged; it uses the amended field and
+format without exercising the split.
+
+For unpadded i16 source bytes `S`, the materialized first-oracle identity is
+
+```text
+F0(S) = S * 16/(1/8) = 128*S.
+```
+
+Thus the gpt-oss floor is **5.3504 TB** for `S=41.8 GB`, exactly half the
+historical 10.7008-TB screen. For the measured GPT-2 source
+`S=249,403,904 B`, it is **31,923,699,712 B** (31.924 GB, 29.731 GiB) before
+block padding, auxiliary/fold oracles and Merkle nodes. The explicit random
+extension alone is 334.4 GB at gpt-oss sizing; source plus random coefficients
+is 376.2 GB before padding. Streaming changes peak memory, not these logical
+volumes.
+
+The optional `mu_shard<=25` transport hierarchy now splits each of the four
+`mu=29` global halves into 16 shards. It still has 1,720 transport slots, but
+the delta is now `+60` over 1,660 (`+3.614457831%`), not historical `+62` over
+1,658. At amended `E`, rate `1/8`, a `mu=25` shard has an 8-GiB raw first
+oracle. This hierarchy remains conditional and gives no soundness, byte or
+storage credit until its separate shared-mask theorem is proved.
+
+### 0.2 Cohorts, split claims and direct masked seam
+
+Layer cohorts are unchanged. The global initial-weight cohort now has four
+ordered `mu=29` slots: embedding half 0, embedding half 1, unembedding half
+0, unembedding half 1. The same four-slot order is used for the auxiliary
+cohort. At a queried outer coordinate the inner multiproof authenticates only
+touched slots; the outer path authenticates the inner root. All four global
+halves are normally touched, so splitting doubles slot count while halving
+symbol width; the initial symbol payload is unchanged and the outer path is
+one level shorter. Roots, descriptors and the two extra auxiliary polynomials
+remain explicit overhead.
+
+Each original global-tensor claim is deterministically expanded into two
+half-claims, scaled by `(1-z_hi)` and `z_hi`, before the per-block blind claim
+reduction challenge. For every physical block, at most two already-fixed
+phase claims are reduced to one canonical point using the existing scalar
+blind-sumcheck theorem. Claim order, split parent, point and scaling
+coefficient are transcript-bound before the challenge.
+
+For each touched physical block `b`, the commitment still contains `Wext_b`
+and a one-use auxiliary polynomial `g_b`, now both over `E`. Define the same
+canonical `u_b` and
+
+```text
+v_b = W_b_tilde(z_b)
+s_b = g_b_tilde(u_b)
+h_b = v_b + s_b in E.
+```
+
+Only `h_b` is public. The prover authenticates `s_b` with one ordinary full
+`E` correlation. One response ZeroBatch checks
+`v_b + s_b - h_b = 0` for every touched block. There is no tower
+decomposition, no upper-component equation and no `psi`-free embedding trick:
+the entire tower seam disappears. The exact PCS allocation is therefore
+
+```text
+B_touch mask transfers + 1 response ZeroBatch mask = B_touch + 1 full correlations.
+```
+
+At the all-touched gpt-oss point this is 1,661, versus 3,317 in the
+superseded profile. The PCG generator, tuple, setup, spool, pool, reuse and
+connection lifecycle remain untouched. The one-response-per-commitment-epoch
+rule remains mandatory because `g_b` is a one-time evaluation pad.
+
+### 0.3 Specialized unique-decoding soundness expression
+
+DeepFold Theorem 2 states its finite-field term only as
+`poly(|L0|)/|F|`; that asymptotic placeholder is not used as a number here.
+The amended profile instead preregisters the following conservative explicit
+VOLTA bound for proof in Lean. It specializes to the strict unique-decoding
+relation, assigns no list-decoding credit, and deliberately unions over every
+active weight/auxiliary polynomial even though the response uses a shared
+envelope.
+
+Let
+
+```text
+p       = 2^64 - 2^32 + 1 = 18,446,744,069,414,584,321
+q       = |E| = p^2
+        = 340,282,366,762,482,138,490,186,164,457,219,031,041
+B       = 1,660                         maximum touched physical blocks
+G       = 3,320                         maximum fixed GKR claims
+P       = 2*B = 3,320                   Wext and g polynomials
+mu      = 29
+d       = mu+1 = 30                     maximum extended weight variables
+ell     = 17
+n_W     = 2^d/rho = 2^33                maximum weight first oracle
+n_g     = 2^ell/rho = 2^20              maximum auxiliary first oracle
+Delta   = 7/16                          strict-UD far-branch distance
+s       = 128.
+```
+
+The named terms are
+
+```text
+epsilon_prox  = P * (1-Delta)^s
+              = 3,320 * (9/16)^128
+
+C_fold        = P * ((n_W-1) + (n_g-1))
+              = 28,522,064,111,120
+
+C_claim       = B * (G_per_block + 3*mu + 2),  G_per_block=2
+              = 151,060
+
+C_mpoint      = P + 3*d + 2
+              = 3,412
+
+C_M9          = B + 1
+              = 1,661
+
+C_total       = C_fold + C_claim + C_mpoint + C_M9
+              = 28,522,064,267,253
+
+epsilon_X4    = epsilon_prox + C_total/q.
+```
+
+`C_fold` is intentionally conservative: it charges a scalar-root event for
+every active committed polynomial at every point in both complete geometric
+fold chains. Hence it covers the cohort same-size combination and the
+unique-decoding distance-preservation events without relying on the paper's
+unspecified `poly`. `C_claim` is the existing scalar blind-sumcheck bound
+`K + (sum d_i + n + 2)` with `K=2`, `sum d_i=2*mu` and `n=mu` for every
+block. `C_mpoint` applies the same theorem once to the `P` fixed masked
+weight/auxiliary evaluations at a common `d`-round point. `C_M9` is the
+existing scalar ZeroBatch bound for `B` equations. Split reconstruction is
+an exact linear identity and contributes no probabilistic term. Merkle/hash
+binding is computational and is not disguised as a statistical summand.
+
+Exact high-precision evaluation gives
+
+```text
+epsilon_prox  = 3.4420843757872683744986440971558333e-29
+C_total/q     = 8.3818813588896498295265533026818019e-26
+epsilon_X4    = 8.3853234432654370979010519467789577e-26
+-log2(epsilon_X4)
+              = 83.30226403378921 bits.
+```
+
+The exact rational inequality frozen for Lean is
+`epsilon_X4 < 1/2^83`. It is stronger than the required
+`78.809294874` bits by **4.49296915978921 bits** (the evaluated error is
+22.5174 times below the target epsilon). Therefore `rho=1/8` and `s=128`
+are retained; no further parameter amendment is needed. Failure to prove any
+term with these coefficients triggers the preregistered hard stop. It may not
+be replaced by the conjectural list-decoding radius or an unnamed
+`poly(|L0|)` term.
+
+The algebraic masked-sum hiding error is zero: at the fixed nonzero evaluation
+functional, every `s in E` has exactly `q^(2^ell-1)` auxiliary coefficient
+preimages, and translation by `v` preserves that count. Full transcript ZK
+still requires the selected zkDeepFold simulator and the separate hash
+assumption; neither is folded into `epsilon_X4`.
+
+### 0.4 Normative frame grammar (N4(ii) and R1b NOTE-5)
+
+The v2 grammar below is normative before implementation. No serializer may
+add native padding, a map with unspecified iteration order, an untagged hash
+input or an alternate integer representation.
+
+Every frame is
+
+```text
+header = magic[8] || schema:u16 || kind:u8 || flags:u8 || body_len:u32
+magic  = ASCII "VOLTAX42"
+schema = 2
+flags  = 0
+frame  = header || body[body_len]
+```
+
+Integers are unsigned little-endian. A boolean is one byte (`0` or `1`). An
+`E` symbol is exactly `c0:u64 || c1:u64`, with both limbs `<p`. A digest is
+32 bytes. A vector is `count:u32` followed by exactly `count` canonical
+items. Decoders reject unknown enum values, nonzero reserved/flag bits,
+overflow, duplicate or unsorted set entries, a length mismatch and trailing
+bytes. Text strings never occur on wire; static names are represented by
+pinned numeric ids or 32-byte digests. `profile_digest` is exactly the
+ordinary 32-byte BLAKE3 digest of the ASCII bytes
+`x4-zkdeepfold-ud-e29-v2` (no NUL or length prefix). A nested `*_frame` is a
+complete canonical frame including its 16-byte header, and the enclosing
+`body_len` includes every nested byte.
+
+| `kind` | value | body (in exact order) |
+| --- | ---: | --- |
+| descriptor | `0x01` | `profile_digest, model_config_digest, weights_digest, namespace_kind:u8, namespace_index:u8, tensor_id:u16, block_kind:u8, block_ordinal:u16, split_prefix:u8, mu:u8, ell:u8, rate_log2:u8, source_rows:u32, source_cols:u32, padded_rows:u32, padded_cols:u32, logical_coeffs:u64, padded_coeffs:u64, cohort_id:u32, slot:u16, slot_count:u16, n_W:u64, n_g:u64, transfer_template_digest` |
+| PCS leaf | `0x02` | common prefix `cohort_id:u32, tree_role:u8, oracle_kind:u8, fold_round:u8, outer_index:u64`; if `tree_role=inner`: `descriptor_digest, slot:u16, present:u8, symbol_count:u16, symbols`; if `tree_role=outer`: `inner_root_digest` |
+| PCS node | `0x03` | `cohort_id:u32, tree_role:u8, oracle_kind:u8, fold_round:u8, outer_index:u64, level:u8, node_index:u64, left_digest, right_digest` |
+| manifest leaf | `0x04` | `descriptor_digest, root_count:u16, ordered_roots` |
+| manifest node | `0x05` | `manifest_id_digest, level:u8, node_index:u64, left_digest, right_digest` |
+| cohort multiproof | `0x06` | `cohort_id:u32, oracle_kind:u8, fold_round:u8, query_count:u16, sorted_outer_indices, touched_slot_count:u16, sorted_touched_slots, opened_leaf_count:u32, ordered_opened_leaf_frames, aux_node_count:u32, sorted(tree_role,outer_index,level,index,digest)` |
+| response envelope | `0x07` | `profile_digest, model_root, epoch:u64, descriptor_count:u16, ordered_descriptor_digests, manifest_frame_count:u32, ordered_manifest_frames, claim_count:u32, ordered_claim_frames, masked_count:u16, ordered_h_symbols, fold_frame_count:u32, ordered_fold_frames, query_frame_count:u32, ordered_query_frames, m9_frame_count:u16, ordered_m9_frames, zero_batch_frame` |
+| reduced claim | `0x08` | `descriptor_digest, parent_claim_digest, phase:u8, phase_ordinal:u16, point_len:u8, point_symbols, affine_scale, auth_domain:u64` |
+| fold commitment | `0x09` | `cohort_id:u32, oracle_kind:u8, fold_round:u8, input_log2:u8, output_log2:u8, root_digest, message_symbol_count:u16, ordered_message_symbols` |
+| M9 transfer | `0x0a` | `descriptor_digest, mask_correction_symbol` |
+| response ZeroBatch | `0x0b` | `claim_count:u16, mask_correction_symbol, opened_tag_symbol` |
+
+`namespace_kind` is `0=global, 1=layer`; `namespace_index` is `255` for the
+global namespace and `0..23` for a layer namespace. `block_kind` is
+`0=fixed, 1=attn_q, 2=attn_k, 3=attn_v, 4=attn_o, 5=router,
+6=expert_gate_up, 7=expert_down, 8=embedding_half,
+9=unembedding_half`. `split_prefix` is `0/1` for a split half and `255` for
+unsplit. `tree_role` is `0=inner, 1=outer`.
+`oracle_kind` is `0=Wext, 1=aux`; `fold_round=0` denotes the first oracle.
+`phase` is `0=prefill, 1=decode`.  Inner absent slots have `present=0`,
+`symbol_count=0` and no symbol bytes; present inner PCS leaves require the
+descriptor-pinned symbol count. Outer PCS leaves carry exactly one inner-root
+digest and no descriptor/slot/symbol branch. For an inner node,
+`outer_index` identifies that inner tree; for an outer node it is exactly
+`u64::MAX`. A reduced claim contains metadata only: `auth_domain` identifies
+the already-authenticated GKR claim, and no cleartext weight evaluation or
+digest of one is serialized. Its `point_len` is descriptor `mu`, and split
+sibling claims have the same parent/phase/ordinal with the two pinned affine
+scales. Multiproof outer indices and slots are strictly increasing. Opened
+leaf frames are strictly ordered by `(outer_index, outer-before-inner, slot)`;
+auxiliary nodes are strictly ordered by their complete tuple. The query
+indices and all expected leaf/fold symbol counts are derived from the profile
+and descriptors; a merely self-consistent alternate count is rejected.
+
+Every admitted descriptor has `rate_log2=3`, `14<=mu<=29`,
+`padded_coeffs=2^mu`, `logical_coeffs<=padded_coeffs`,
+`ell=ceil(log2(128*mu^2+1))`, `n_W=2^(mu+4)` and `n_g=2^(ell+3)`.
+Its source/padded axis products must equal the corresponding coefficient
+counts.  These equalities are checked with overflow-safe integer arithmetic;
+they are not trusted fields.
+
+Within a response envelope, manifest frames are only kinds `0x04/0x05`,
+claim frames are only `0x08`, fold frames only `0x09`, query frames only
+`0x06`, M9 frames only `0x0a`, and the final frame is exactly one `0x0b`.
+The ordered M9 transfers and earlier `h` vector have identical descriptor
+order and count; an `h` symbol is serialized only in that earlier vector.
+`claim_count<=3320`, `masked_count=m9_frame_count<=1660`, and the
+ZeroBatch `claim_count` equals that same masked count. Every other count must
+equal the descriptor/profile-derived schedule, not merely fit its integer
+width.
+
+Typed hashing uses BLAKE3 derive-key mode with the v2 contexts
+
+```text
+volta-zk/x4/descriptor/v2
+volta-zk/x4/pcs-leaf/v2
+volta-zk/x4/pcs-node/v2
+volta-zk/x4/manifest-leaf/v2
+volta-zk/x4/manifest-node/v2
+volta-zk/x4/manifest-id/v2
+volta-zk/x4/transfer-template/v2
+```
+
+Descriptor, PCS-leaf/node and manifest-leaf/node hashes take the complete
+canonical frame as input. `descriptor_digest` is therefore the descriptor-
+context hash of the complete descriptor frame. `manifest_id_digest` is the
+manifest-id-context hash of
+`profile_digest || model_config_digest || weights_digest || epoch:u64`.
+`transfer_template_digest` is the transfer-template-context hash of
+`count:u16 || ordered_domain_ids:u64`; these ids are strictly increasing and
+the implementation must reproduce that exact list before consuming a
+correlation. All other named digests are either the corresponding canonical
+Merkle-frame hashes above or statement inputs already defined by the model
+profile; no generic untyped hash is accepted in their place.
+
+The transcript fixes model root, epoch, descriptors, ordered claims and every
+public `h_b` before any claim-reduction, cohort-combination, fold or query
+challenge. Fold commitments precede exact-bit query sampling; answers and
+canonical multiproofs precede M9 corrections and the single response
+ZeroBatch. EOF/truncation remains a deployment-channel boundary, but any
+malformed in-process frame is a verifier rejection. The grammar itself is a
+G2 test oracle; all N4 leaf/node/type/depth/index substitutions remain
+mandatory permanent rejects.
+
+The live designated-verifier protocol emits and consumes the child frames at
+those challenge boundaries. The response envelope is the canonical packed
+record assembled from that already ordered interaction; it neither sends
+future prover messages before verifier challenges nor applies Fiat--Shamir.
+Its decoder replays and checks the same child-frame order and transcript
+digest before accepting the packed artifact.
+
+### 0.5 Final pre-code Lean statement freeze
+
+The following are proposition shapes, not proofs or new axioms. Definitional
+scaffolding may add namespaces and implicit arguments, but theorem names,
+quantifier order, hypotheses, conclusions and numeric coefficients may not be
+weakened without a new ledger amendment. Every theorem enters
+`lean/Audit.lean` before Rust.
+
+```lean
+-- Concrete amended field and domain facts; no tower field is admitted.
+theorem goldilocks_fp2_card :
+    Fintype.card E =
+      340282366762482138490186164457219031041
+
+theorem goldilocks_fp2_two_adicity :
+    2^33 ∣ (Fintype.card E - 1) ∧
+      ¬ 2^34 ∣ (Fintype.card E - 1)
+
+theorem goldilocks_fp2_domain_root
+    (hlog : logN <= 33) :
+    ∃ omega : E, orderOf omega = 2^logN
+
+-- The strict radius, not a list-decoding conjecture, gives uniqueness.
+theorem rs_rate_eighth_unique_decode
+    (hc0 : RSCodeword E (1/8) c0)
+    (hc1 : RSCodeword E (1/8) c1)
+    (h0 : relativeDistance received c0 < 7/16)
+    (h1 : relativeDistance received c1 < 7/16) :
+    c0 = c1
+
+-- Split geometry; the highest Boolean variable selects the canonical half.
+theorem split_block_eval
+    (W0 W1 : (Fin (2^mu) -> E)) (z : Fin mu -> E) (hi : E) :
+    mle (W0 ++ W1) (snoc z hi) =
+      (1 - hi) * mle W0 z + hi * mle W1 z
+
+-- Direct-field masked relation (no E -> K embedding and no tower component).
+theorem masked_aux_eval
+    (hWext : Wext (snoc z 0) = W z)
+    (hs : s = mle g (auxPoint z ell))
+    (hh : h = W z + s) :
+    h = Wext (snoc z 0) + mle g (auxPoint z ell)
+
+-- Equal-size fibers for the published masked value.
+theorem masked_aux_hiding_count
+    [Fintype E] [Field E] (hell : 0 < ell)
+    (z : Fin ell -> E) (hfunc : EvalFunctionalNonzero z) (v h : E) :
+    Fintype.card {g : (Fin (2^ell) -> E) // h = v + mle g (auxPoint z ell)} =
+      Fintype.card E ^ (2^ell - 1)
+
+theorem one_opening_per_epoch
+    (hfirst : acceptOpening st epoch transcript1 = some st1)
+    (hsecond : acceptOpening st1 epoch transcript2 = some st2) :
+    False
+
+theorem masked_aux_perfect_zk
+    (hone : OneOpeningPerEpoch epoch transcript)
+    (hpaper : ZkDeepFoldSimulator E params)
+    (hframes : NoIndividualEvalFields transcript) :
+    RealMaskedTranscript E params epoch =
+      SimMaskedTranscript E params epoch publicH
+
+-- Canonical v2 grammar and N4-separated Merkle/cohort binding.
+theorem x4_frame_decode_encode (f : X4FrameV2) :
+    decodeX4FrameV2 (encodeX4FrameV2 f) = some f
+
+theorem x4_frame_decode_canonical
+    (h : decodeX4FrameV2 bytes = some f) :
+    encodeX4FrameV2 f = bytes
+
+theorem x4_frame_kind_encoding_disjoint
+    (a b : X4FrameV2) (hkind : a.kind ≠ b.kind) :
+    encodeX4FrameV2 a ≠ encodeX4FrameV2 b
+
+theorem cohort_opening_binding
+    (hhash : CollisionFreeOn X4V2Hash committedFrames)
+    (ha : VerifyCohortOpening root descriptor point slot openA)
+    (hb : VerifyCohortOpening root descriptor point slot openB) :
+    openA.symbols = openB.symbols
+
+-- At most two fixed phase claims per physical block, common-point scalar M3.
+theorem blind_claim_reduce_sound
+    (hfixed : ClaimsFixedBeforeChallenge claims)
+    (hcount : claims.length <= 2) (hmu : mu <= 29) :
+    badTapeCard (BlindClaimReduce claims) <=
+      (claims.length + 3*mu + 2) * fieldTapeCard E
+
+-- Different-point Wext/aux claims; no cross-point naive RLC.
+theorem folding_different_point_batch_sound
+    (hfixed : MaskedClaimsFixed claims) (hP : claims.length <= 3320)
+    (hcommon : HasCommonPoint schedule) (hd : rounds <= 30) :
+    badTapeCard (DifferentPointBatch claims schedule) <=
+      (claims.length + 3*rounds + 2) * fieldTapeCard E
+
+-- Strict unique decoding plus conservative cohort/fold accounting.
+theorem ud_cohort_folding_sound
+    (hUD : RSEighthStrictUniqueDecode E)
+    (hsample : ExactUniformQueriesWithReplacement params 128)
+    (hbranch : WrongCandidateIsAtDistanceAtLeast params (7/16))
+    (hP : activePolys <= 3320)
+    (hnW : weightOracleLength <= 2^33)
+    (hng : auxOracleLength <= 2^20) :
+    statisticalError (UDFoldingCohorts params) <=
+      activePolys * (9/16)^128 +
+      activePolys * ((2^33 - 1) + (2^20 - 1)) / Fintype.card E
+
+-- Concrete PCS binding is separate from ZK and batching.
+theorem x4_ud_pcs_binding
+    (hframe : CanonicalCohortLayoutV2 statement)
+    (hmerkle : CollisionFreeOn X4V2Hash committedFrames)
+    (hud : UDFoldingAccepts statement proof) :
+    BoundToUniqueCommittedBlocks statement proof
+
+theorem x4_masked_zk
+    (hcount : MaskedAuxEqualFiberCounts statement)
+    (hone : OneOpeningPerEpoch epoch transcript)
+    (hpaper : ZkDeepFoldSimulator E params)
+    (hframes : NoIndividualEvalFields transcript) :
+    X4WeightOpeningZK statement transcript
+
+theorem x4_batch_sound
+    (hfixed : MaskedClaimsFixed claims)
+    (horder : CanonicalClaimOrder claims)
+    (hcommon : HasCommonPoint schedule)
+    (hreduce : FoldingDifferentPointBatchBound claims schedule) :
+    X4WeightBatchSound claims schedule
+
+-- One E-valued mask transfer and one response scalar ZeroBatch.
+theorem direct_mask_transfer
+    (hs : Valid (authS : Authed E))
+    (hz : Valid (authV + authS - authPublic h)) :
+    authV.x = h - authS.x
+
+def MaskedBatchBindsIntoMac [Fintype Omega]
+    (P : MaskedBatchOpening E Omega)
+    (epsPCS : Nat) : Prop :=
+  Fintype.card {omega : Omega //
+    P.accepts omega ∧ P.committedEvalWrong omega} <= epsPCS
+
+theorem masked_batch_opening_mac_sound
+    (hbind : MaskedBatchBindsIntoMac P epsPCS)
+    (hB : touchedBlocks <= 1660) :
+    statisticalError (P.acceptsAndTransfersWrong touchedBlocks) <=
+      epsPCS / Fintype.card Omega +
+      (touchedBlocks + 1) / Fintype.card E
+
+theorem masked_batch_transfers_evals
+    (hgood : P.accepts omega)
+    (hnotbad : ¬ P.committedEvalWrong omega)
+    (hzero : ResponseZeroBatchAccepts P omega) :
+    ∀ b : TouchedBlock P,
+      ValidCommittedAuthEval P b omega
+
+-- Full response theorem and exact rational stop rule.
+def x4ResponseError : Rat :=
+  (3320 : Rat) * ((9 : Rat) / 16)^128 +
+  (28522064267253 : Rat) /
+    (340282366762482138490186164457219031041 : Rat)
+
+theorem x4_wrong_response_event_cover
+    (hframes : CanonicalFramesAndOrderV2 statement proof)
+    (hhash : CollisionFreeOn X4V2Hash committedFrames)
+    (hcohort : CohortOpeningsBind statement proof)
+    (hpcs : BoundToUniqueCommittedBlocks statement proof)
+    (htransfer : MaskedM9TransfersAllTouchedEvals statement proof) :
+    X4WrongResponseCoveredByNamedEvents statement proof
+
+theorem x4_response_soundness
+    (hcover : X4WrongResponseCoveredByNamedEvents statement proof)
+    (hfold : statisticalError (X4FoldBad statement proof) <=
+      (3320 : Rat) * ((9 : Rat) / 16)^128 +
+      (28522064111120 : Rat) /
+        (340282366762482138490186164457219031041 : Rat))
+    (hclaim : statisticalError (X4ClaimReduceBad statement proof) <=
+      (151060 : Rat) /
+        (340282366762482138490186164457219031041 : Rat))
+    (hbatch : statisticalError (X4DifferentPointBatchBad statement proof) <=
+      (3412 : Rat) /
+        (340282366762482138490186164457219031041 : Rat))
+    (hm9 : statisticalError (X4M9Bad statement proof) <=
+      (1661 : Rat) /
+        (340282366762482138490186164457219031041 : Rat)) :
+    statisticalError (X4AcceptsWrongResponse statement proof) <=
+      x4ResponseError
+
+theorem x4_response_error_lt_two_pow_neg_83 :
+    x4ResponseError < (1 : Rat) / 2^83
+
+theorem x4_response_error_meets_registered_target :
+    ((x4ResponseError : Rat) : Real) <
+      Real.rpow 2 (-((78809294874 : Real) / 1000000000))
+```
+
+MINOR-1 and MINOR-2 are **DISCHARGE-TIME constraints**, not permission to
+keep a bundled PCS theorem or assume an unrealized UC functionality.  The
+current Ligero boundary and the new X4 boundary each require three separately
+audited results; UC composition separately requires both ideal-functionality
+realizations:
+
+```lean
+theorem ligero_binding_discharge
+    (h : LigeroCommitmentBinding implementedLigeroParams) :
+    CurrentWeightCommitmentBinding
+
+theorem ligero_blinded_zk_discharge
+    (hmask : VoltaLigeroMaskSimulator implementedLigeroParams) :
+    CurrentWeightOpeningZK
+
+theorem ligero_multi_point_batch_discharge
+    (hfixed : ClaimsFixedBeforeChallenge claims)
+    (hcommon : HasCommonPoint schedule) :
+    CurrentWeightBatchSound claims schedule
+
+theorem uc_composition_of_realizations
+    (hsvole : UCRealizes PiSVOLE FSVOLE)
+    (hpcs : UCRealizes PiPCS FPCS)
+    (hhybrid : UCHybridRealizes PiVOLTA FVDec FSVOLE FPCS) :
+    UCRealizes (compose PiVOLTA PiSVOLE PiPCS) FVDec
+
+theorem logup_gkr_sound_of_char_gt
+    [Field F] {p lookupCount : Nat} [Fact (Nat.Prime p)] [CharP F p]
+    (hchar : lookupCount < p)
+    (hlogup : LogUpSoundAtCount F lookupCount)
+    (hgkr : FractionalGKRCompositionSound F lookupCount)
+    (hmac : AuthenticatedTranscriptSound F) :
+    LogUpGKRSoundAtCount F lookupCount
+```
+
+Citation ownership is also frozen and may not be bundled:
+
+| Obligation | Required source/reduction |
+| --- | --- |
+| current Ligero binding/proximity | Ligero, CCS 2017 / extended IACR ePrint 2022/1608, specialized to the implemented code and Merkle layout |
+| current VOLTA-Ligero blinded ZK | the system-specific mask-row simulator and exposure count; Ligero is background, not a substitute for this theorem |
+| current multi-point batch | the repository's scalar blind-sumcheck/common-point reduction; no citation licenses naive cross-point RLC |
+| X4 unique-decoding binding | BaseFold, IACR ePrint 2023/1705, plus the explicit cohort-layout reduction above |
+| X4 different-size/different-point batch | DeepFold Section 5.1 and Appendix D, IACR ePrint 2024/1595, plus the fixed-order VOLTA reduction |
+| X4 ZK | DeepFold Section 5.2, Theorem 3 and Appendix E, plus `masked_aux_hiding_count` and the one-opening epoch theorem |
+| LogUp | Haboeck, ePrint 2022/1530; Papini--Haboeck, ePrint 2023/1284, is an informal GKR note; the VOLE-MAC composition is repository-specific and must retain `lookupCount < char(F)` |
+| UC | Canetti composition only after explicit `F_sVOLE` and `F_PCS` realizations; Ligero/BaseFold/DeepFold do not by citation alone provide the latter |
+
+### 0.6 Gates, migration and scheduled preflight delta
+
+G1--G6, the `<=4,000,000 B` GPT-2 PCS gate, the absolute
+`<=45,270,464 B` response gate, the `<=35,000,000 B` gpt-oss analytic gate,
+all CPU/A100 wall ceilings and all inherited pod gates remain verbatim. Their
+closed formulas must use `B_max=1,660`, `G_max=3,320`, 16-byte `E` symbols,
+the four global blocks, `B_touch+1` M9 transfers and v2 frame bytes. Storage
+does not net against communication.
+
+The next pod session's preflight must run the production-size
+`c3_weights` leakage smoke that R1b could not execute on the 11-GB review
+host. Its command, peak RSS/VRAM, exit status and leakage verdict are recorded
+before any X4 GPT-2 commit/opening run. It is a mandatory provenance smoke,
+not retrospective independent review assurance.
+
+The amended phase order is:
+
+```text
+Amendment 1 + expression + final Lean statements (this section) -> HARD STOP
+after explicit approval: Lean proofs/audit -> checkpoint -> HARD STOP if any statement fails
+after later authority: normative-v2 implementation and CPU synthetic records
+then stop for A100 pod provisioning before GPT-2 records
+```
+
+No Lean proof, Rust X4 implementation, benchmark/reference mutation or X5
+work is authorized by this amendment.
+
+---
+
+## Historical Phase-1 baseline (superseded where Section 0 conflicts)
 
 ## 1. Decision and primary sources
 

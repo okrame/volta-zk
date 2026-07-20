@@ -31,17 +31,23 @@ Here `F_sVOLE` appears only through its corrupted-verifier branch
 (`VoltaZk.freshCorr`). -/
 axiom FerretRealizesSVOLE : Prop
 
-/-- (Deferred) Binding and (blinded) ZK of the public multilinear PCS
-(Basefold/WHIR) for the weight commitment `C_W`, and soundness of the
-windowed multi-point batch opening. -/
+/-- (Deferred) Three separate obligations for the implemented Ligero-style
+weight PCS: (i) commitment/evaluation binding, (ii) the VOLTA-specific
+blinded-ZK composition, and (iii) windowed multi-point batch soundness.
+They require separate statements and appropriate citations at discharge;
+no single PCS-family citation proves their conjunction. -/
 axiom WeightPCSBinding : Prop
 
 /-- (Deferred) Soundness of LogUp-GKR (fractional sumcheck) for the fused
 non-linearity lookups, composed with the authenticated transcript. -/
 axiom LogUpGKRSound : Prop
 
-/-- (Deferred) Full UC composition: `Π_VOLTA` realizes the stateful verifiable
-decoding functionality `F_VDec` in the `(F_sVOLE, F_PCS)`-hybrid model. -/
+/-- (Deferred) Conditional UC composition: `Π_VOLTA` realizes the stateful
+verifiable-decoding functionality `F_VDec` in the `(F_sVOLE, F_PCS)`-hybrid
+model only after separate realizations of both ideal functionalities are
+supplied. The cited Ligero/BaseFold-family PCS results do not themselves
+establish a UC realization of `F_PCS`, and ROM extractability may not be
+silently substituted for that premise. -/
 axiom UCComposition : Prop
 
 end VoltaZk.Ideal

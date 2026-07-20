@@ -2,8 +2,7 @@ diff --git a/hybrid/hybrid_quick.py b/hybrid/hybrid_quick.py
 index c888328..40d02a3 100644
 --- a/hybrid/hybrid_quick.py
 +++ b/hybrid/hybrid_quick.py
-@@ -398,7 +398,9 @@ def sub_bigq_quick_u_q(n,k,h,u,q):
-                 log_G3 = 1000
+@@ -399,5 +399,7 @@ def sub_bigq_quick_u_q(n,k,h,u,q):
                  G2 = 2 ** 1000
                  G3 = 2 ** 1000
 -            tot = -log_pr + log2(G1 + G2 + G3 * (2 ** try_comp))

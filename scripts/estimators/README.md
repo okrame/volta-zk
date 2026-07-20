@@ -9,6 +9,7 @@ formula, candidate set, field model, or minimization rule.
 From a clean checkout of that exact commit:
 
 ```bash
+git apply --check /path/to/volta-zk/scripts/estimators/fase_d_hybrid_logsumexp.patch
 git apply /path/to/volta-zk/scripts/estimators/fase_d_hybrid_logsumexp.patch
 
 PYTHONPATH=. UV_CACHE_DIR=/tmp/volta-estimator-uv-cache \

@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; X4 gated on R1/later)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1 DISPOSITION CLOSED; X4 DESIGN UNBLOCKED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -11,9 +11,10 @@ designated RunPod A100 profile. Earlier Q=200 rows are explicitly historical.
 P7 is closed; its CPU and rho numbers below are historical. P7b has a valid official PASS at `ab3a03f`, and GPU
 optimization is closed by the 2026-07-15 Stop branch. **FLIP-READINESS is
 complete** for the fase-B real-PCG candidate. On 2026-07-16 the product owner
-approved the mock→real default flip, removed criterion (1) with no replacement
-review obligation, accepted criterion (4) at the measured 8.451--8.609 s /
-31,261,434 B cost, and confirmed criteria (2)/(3) satisfied. Fase-D Part A is
+approved the mock→real default flip, waived its then-operational criterion
+(1) with no replacement obligation for that flip, accepted criterion (4) at
+the measured 8.451--8.609 s / 31,261,434 B cost, and confirmed criteria
+(2)/(3) satisfied. Fase-D Part A is
 preregistered below to implement the default mechanics, recursive scaling,
 AES-MMO and connection lifecycle. Lean M10 is proved and audited, satisfying
 the Lean-first hard stop before Rust. Part B produced clean G1/G2/G2b/G3 and
@@ -47,11 +48,13 @@ correlation ratios 1.0 at k=1 and k=2.  X2 remains an immutable FAIL.  After
 explicit approval, X3 closed **PASS** on clean `7544f36`: the zero-tolerance
 T=7/d=48 golden, honest proof, nine permanent rejection tests, active
 pad-poison rejection and exact session invariants all passed.  The X1--X3
-package is closed.  X4 remains a separate later package, is gated on the
-pending Kimi3 R1 verdict and is not authorized; pool prewarming remains
-backlog.  X1--X3 additions postdate Kimi3's detached `f05d727` review
-baseline and require a future delta review.  No cryptographic-review
-assurance is claimed.
+package is closed.  Kimi3's R1 AI adversarial review of detached baseline
+`f05d727` returned zero CRITICAL, zero MAJOR, one MINOR and four NOTEs; the
+2026-07-20 product-owner dispositions are implemented and closed below.  This
+unblocks X4 **design only**.  The X1--X3 additions postdate the review baseline
+and have a frozen read-only delta-review handoff; that review has not been
+performed.  The AI review confers no independent human-review assurance, and
+criterion (1) remains external.
 
 ## Milestones
 
@@ -72,7 +75,7 @@ assurance is claimed.
 | P7b RunPod official rebaseline | **official valid FAIL: decode only; diagnosis complete** (2026-07-14) | Clean schema-6/ABI-28 T=100+50/Q=200 on exact `runpod-a100-v1`, counters-only, Rayon=8, 1+3, golden and communication invariants; prefill <=10 s, decode <=4 s, max per-repetition sync-wall/session-wall <=2%, H2D <=100 MB | `33e5fb4`: prefill **7.801 s PASS**, decode **6.794 s FAIL**, session **15.995 s**; sync-wall max **0.768% PASS** with 59,868 sync diagnostic; H2D **28.595 MB PASS**; packed response **144.821 MB PASS**; golden/accepted/flat 1.412 PASS. Separate non-gating `70f64d4` event attribution measures a **6.275 s decode-marginal kernel floor**: GEMM 4.820 s, LogUp 1.098 s, other 0.358 s. Provider-neutral kernel work is required; D2H host-call wall includes queued-kernel waits and is not an additive transfer cost. |
 | P7b RunPod matrix-fold iteration | **official valid PASS; complete** (2026-07-14) | Unchanged `runpod-a100-v1` full gate contract after the preregistered ABI-neutral kernel fix | `ab3a03f`: prefill **2.631 s PASS**, decode **2.089 s PASS**, session **5.917 s**; sync-wall max **1.821% PASS** with the unchanged 59,868 sync; H2D **28.595 MB PASS**; packed response **144.821 MB PASS**; golden/accepted/flat 1.281 PASS. Proof, operation, correlation and communication counts are exact against `33e5fb4`; no scheduler, batching or protocol change was needed. Mock-PCG remains non-production. |
 | Real-sVOLE fase-B hardening | **full parity candidate for the F_p lanes; default remains mock** (2026-07-15) | Clean P6 quick real accepts; exact counter/allocation/channel digests; mandatory malicious/channel tests reject/hold | `1d63923`: genuine two-party Ristretto OT→COPEe/IKNP→WYKW GGM/regular-LPN setup, hardened cited parameters. Per instance **22.483 s**, **31.261 MB** setup traffic (P→V 28.814 MB, V→P 2.447 MB); setup excluded from rho and response. Run `p6-quick-realpcg-2026-07-15-1d63923.json`. Default-flip criteria are proposed, not enacted. |
-| Fase-B FLIP-READINESS | **complete for criteria (2)/(3); superseded by the 2026-07-16 fase-D decision** (2026-07-15) | Host-only setup speed pass ✓; production lifecycle/transport plumbing ✓; clean full T=100+50/Q=200 real-PCG parity record ✓ | `117df7d`: normal-session setup **8.451 s** (GGM 4.632, checks 1.334, OT-ext 0.963, LPN 1.496, base OT 0.025); chunked-session setup 8.609 s. Exactly **31,261,434 B/setup** unchanged. Full golden/normal/chunked/13-PCS/closure/malicious parity passes; packed response exactly **136,526,530 B**. Record `flip-readiness-2026-07-15-117df7d.json`. On 2026-07-16 criterion (1) was removed with no replacement, (4) was accepted, and (5) was reserved for Part B. |
+| Fase-B FLIP-READINESS | **complete for criteria (2)/(3); superseded by the 2026-07-16 fase-D decision** (2026-07-15) | Host-only setup speed pass ✓; production lifecycle/transport plumbing ✓; clean full T=100+50/Q=200 real-PCG parity record ✓ | `117df7d`: normal-session setup **8.451 s** (GGM 4.632, checks 1.334, OT-ext 0.963, LPN 1.496, base OT 0.025); chunked-session setup 8.609 s. Exactly **31,261,434 B/setup** unchanged. Full golden/normal/chunked/13-PCS/closure/malicious parity passes; packed response exactly **136,526,530 B**. Record `flip-readiness-2026-07-15-117df7d.json`. On 2026-07-16 the operational flip criterion (1) was waived with no replacement for that decision, (4) was accepted, and (5) was reserved for Part B; no independent-human-review assurance was thereby conferred. |
 | C1 response-communication reduction | **complete: identity-seam `x_in` reuse only** (2026-07-15) | Clean full T=100+50/Q=200 CPU record; golden, normal/chunked acceptance, PCS/closure, exact bytes/counters and replay/preflight gates | `2a3d731`: **1,036,800** canonical aliases save **8,294,400 B**; transcript **129,119,408 B**, packed response **136,526,530 B**, auth corrections **59,545,008 B**. Prover/verifier sub correlations both **7,443,126**, full both **176,880**; PCS **66,733,504 B**, 96+6 claims, Q=200 unchanged. Median prove **18.653 s** (−0.086 s vs same-machine P6 record), verify **0.522 s** (−0.045 s); flat curve **1.219 PASS**. Record `benchmarks/results/c1-2026-07-15-2a3d731.json`, full SHA `2a3d7314bba35e18229af31c99f226c93ef12416`, `git_dirty:false`. |
 | C2 Packed16 typed-lane real-PCG | **Candidate A rejected; Packed16 shelved** (2026-07-15) | Permanent costing record; implementation is not authorized | `docs/c2-packed-lane-pcg-design.md` remains the permanent record: the only sound realization costs about **1.55 GB** recurring setup traffic and **31--46 s** setup wall per session to save 32,486,400 B of response, about **47×** more bytes moved than saved. Revisit only with a cited construction on the order of tens of MB/session, or an explicit product decision that the envelope demands it. |
 | Fase-D real-PCG default + scaling | **CLOSED; criterion (5) ENACTED, real default production-ready** (2026-07-17) | M10/AES/connection/default ✓; G1 ✓ G2 ✓ G2b ✓ G3 informative ✓; **G4-v2 PASS** | Tuple `(k3,n3,t3)=(6,520,000,117,440,512,1,792)`, `U3=110,918,718`; estimator min **199.599804 bits**, six-instance **197.014842**, connection floor **140.643699**. CPU G2 **38,371,465 B PASS**, G2b PASS, G3 **665,512,308** gross / **440.856 s** / **1,269,347,424 B** high-water PASS. Pod v2 `e95b839`: prefill **2.728 s PASS**, decode **1.582 s PASS**, H2D **88,139,652 B PASS**, packed **136,526,530 B PASS**, flat **1.219 PASS**, max absolute sync **0.123482 s <=0.150 PASS**; informative max ratio **2.238539%**. Pod G2 **110,918,718 / 38,371,465 B PASS**, setup **48.841 s**. Real/AES is default; mock is explicit test-only. |
@@ -83,6 +86,7 @@ assurance is claimed.
 | X2 synthetic MoE e2e | **official valid FAIL; package stopped** (2026-07-19) | Honest k=1/k=2, identical bit-exact output, one TableBank, 3 commitments/40 claims, PCS/closures/digests/smokes all PASS; binding full-correlation ratios must be in **[0.80,1.20]** and are **0.731338 / 0.732512 FAIL** | Clean `87ce25b`: **316,464 MACs** exact; measured **12,523 logical / 19,346 padded lookup rows** and **82 sites** (same k=1/k=2); sub **350,304 / 349,793 PASS**; full **12,462 / 12,482** vs 17,040 FAIL. Record `x2-moe-2026-07-19-87ce25b.json`. |
 | X2b corrected-proxy repeat | **PASS; complete** (2026-07-20) | Frozen `existing-class-session-v2`, same CPU fixture/code/smokes/exact invariants and same inclusive **[0.80,1.20]** band; X2 remains FAIL under its original 17,040 proxy | Clean `053d3fc`: full **12,462 / 12,482** predicted and measured, ratios **1.0 / 1.0 PASS**. MAC **316,464** exact; lookup logical/padded/sites **12,523 / 19,346 / 82**, sub **350,304 / 349,793**, all within band. Record `x2b-moe-2026-07-20-053d3fc.json`. |
 | X3 non-GPT ops pack | **PASS; complete; X1--X3 package CLOSED** (2026-07-20) | Zero-tolerance Rust/numpy full-array bit-exact gate at non-power-of-two **T=7** and hidden **d=48**; honest proof accepts, nine permanent tamper/pad smokes reject, exact counter/digest/session predicates | Clean `7544f36`: **656,034 B**, zero differing golden bytes; **21,969 / 35,824** logical/padded lookup rows, 91 sites/9 contents/1 finalization, RoPE delta 0; sub/full/domains **1,065,887 / 15,802 / 6,573**, transcript **8,781,000 B**, E-equivalent **7,109,448.2**. Pad poison actively rejects with a detected nonzero zero-claim. Record `x3-ops-2026-07-20-7544f36.json`. |
+| R1 adversarial cryptographic review | **DISPOSITION CLOSED; X4 design unblocked** (2026-07-20) | Report fixed to detached `f05d727`; zero CRITICAL/MAJOR, M1 fixed, N1--N4 disposed, N5 consolidated; report immutable and SHA-pinned | AI adversarial review only: **no independent human-review assurance; criterion (1) remains external**. Report SHA-256 `b4f05cdd19609975c736ca0f4955894f87b7a44150addb520fe4f5a8d7a93eb4`. X1--X3 delta review remains external and unperformed. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -124,7 +128,88 @@ hence P1); prover-side protocol cost is dominated by LogUp over 17M lookups
 and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
+## Consolidated modeling boundaries (R1, 2026-07-20)
+
+This is the single current inventory of R1's declared modeling boundaries;
+historical entries remain append-only evidence, not competing definitions.
+
+- **Single-process harness.** Prover and verifier roles share one process and
+  address space in every prototype test and record. Deployment separation is
+  modeled, not enacted.
+- **Interactive designated verifier.** Challenges are verifier-side stream
+  draws. The protocol is not Fiat--Shamir, and this package licenses no
+  non-interactive transform.
+- **In-process channel model.** The serialized channel accounts and parses
+  frames already delimited by its in-process sender. Network truncation, EOF,
+  bit flips and transport hardening are deployment concerns outside this
+  harness.
+- **GKWY assumption.** The fixed-key AES-128 MMO GGM PRG relies on the
+  registered GKWY correlation-robustness assumption; that assumption is not a
+  theorem proved by this repository.
+- **Query-index modulo bias.** Ligero maps a uniform `F_p` draw with
+  `value() % code_len`. Because `p = 1 (mod 2^15)` and
+  `p = 1 (mod 2^17)`, residue zero is overweighted by approximately
+  `1 + 2^-49` per query; over 120 queries the relative bias is approximately
+  `2^-42`, negligible relative to but not included in the pinned
+  78.809294874-bit response-wide proximity figure.
+
 ## Deviations / decisions log
+
+- **2026-07-20 (R1 product-owner disposition: CLOSED; X4 design
+  UNBLOCKED)**: `docs/r1-kimi3-report.md` is accepted as the immutable report
+  of an AI adversarial review of detached baseline `f05d727`; its SHA-256 is
+  `b4f05cdd19609975c736ca0f4955894f87b7a44150addb520fe4f5a8d7a93eb4`.
+  It found **zero CRITICAL, zero MAJOR, one MINOR (M1), four NOTES (N1--N4)**
+  and the declared modeling boundaries N5. This label is deliberately honest:
+  the report **confers no independent human-review assurance** and criterion
+  (1) remains external. The post-baseline X1--X3 delta has not been reviewed.
+
+  **M1 fixed at the drift class.** `scripts/audit_lean.sh` now derives its
+  complete theorem inventory from every `#print axioms` directive in
+  `lean/Audit.lean`, rejects a duplicate or empty inventory, requires exactly
+  one result per derived theorem, permits only `propext`,
+  `Classical.choice`, and `Quot.sound`, rejects `sorry`/`admit` and every
+  deferred named assumption, and independently pins exactly the four declared
+  `Ideal.lean` axioms. A synthetic-name regression test proves that new or
+  renamed audit targets are derived rather than hardcoded. The gate and test
+  are green on the current tree.
+
+  **N1 reproduced.** The estimator patch was regenerated against Code
+  Estimators commit
+  `969ef60c30cb84c25502d6b7c968f43a362bb438`; patch SHA-256 is
+  `26b59a7d21bcf02938ebfb3565649a16e46bc6c97b653b26b294e83667ba033d`.
+  From a fresh detached checkout, `git apply --check` and `git apply` pass and
+  the documented offline path emits digit-exact AGB **213.85**, AGB2
+  **213.85**, ISD **208.85010924741465**, HYB **199.59980442282708**, and
+  regular-ISD **227.92519270931604**; their minimum is digit-exact
+  **199.59980442282708**.
+
+  **N2 accepted with a named hardening backlog.** Plaintext spool at rest is
+  **ACCEPTED** for the prototype's declared designated-verifier model; a host
+  adversary is out of scope. No code changes now. Future hardening backlog:
+  **"spool encryption under an in-memory session key"**.
+
+  **N3 corrected.** The Ligero module header now states the pinned C3
+  effective rates **0.265625 / 0.25390625**, **Q=120**, and
+  **78.809294874 bits response-wide**. Compiled parameters did not change.
+
+  **N4 split.** Part (i) is closed now as verifier strictness only: all four
+  `verify_path` call sites pin `params.code_bits`, the verifier rejects short,
+  long and out-of-range paths, and a legacy-root fixture plus the exact
+  **43,273,888 B** projection regression is green. Hash construction,
+  commitment serialization and proof serialization are untouched. No
+  benchmark/reference file changed: representative immutable SHA-256 values
+  remain C3b CPU
+  `e0921daf7de81a9cdb5bdc08a84b195c6afa4f9880840dadb162bc5fa23caab1`
+  and T1 CPU
+  `7fe5eeaec1601ab3af9951129a7684de6bdf81b8ec8ac4afe94fc8369fe6febb`.
+  Part (ii), leaf/internal-node domain separation, necessarily changes roots
+  and is **DEFERRED to X4's new commitment format**.
+
+  **N5 consolidated.** The five modeling boundaries now live in the single
+  ledger section immediately above this log. With all findings disposed, R1
+  is closed under its preregistered rule and X4 is unblocked for a design-only
+  Phase-1 package; this entry grants no X4 Lean or Rust work.
 
 - **2026-07-20 (X3 approved clean execution: PASS; X1--X3 package
   CLOSED)**: the explicitly approved X3 gate ran once from clean source

@@ -136,7 +136,7 @@ The checked-in reproduction commands pin NumPy 2.5.1 and SciPy 1.18.0.
 Their versioned artifacts and SHA-256 values are:
 
 - `scripts/estimators/fase_d_hybrid_logsumexp.patch`:
-  `98d2c4039c80c13823727d9a72d9ce11d6dd0b58f8f3025c11d1529e5b1cbdc3`;
+  `26b59a7d21bcf02938ebfb3565649a16e46bc6c97b653b26b294e83667ba033d`;
 - `scripts/estimators/fase_d_agb_vectorized.py`:
   `5daf8bf296c168e385367029083c0252b3ebee9c3a670db4f67ec34890a4bdeb`;
 - `scripts/estimators/fase_d_agb2_sparse.py`:

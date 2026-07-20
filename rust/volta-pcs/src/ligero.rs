@@ -20,11 +20,10 @@
 //! the relation v* + s − ip = 0 is closed by Π_ZeroOpen on the authenticated
 //! values — the verifier ends holding a MAC key on W̃(r*) bound to C_W.
 //!
-//! Pre-registered soundness parameters (prototype): rate = msg_len/code_len
-//! ≈ 0.516 at full scale, relative distance δ ≈ 0.48; query error bounded by
-//! (1 − δ/2)^Q ≈ 2^-81 for Q = 200 under the up-to-d/2 proximity analyses
-//! (the conservative d/3 Ligero bound would need Q ≈ 312 — pad = 512 keeps
-//! hiding headroom for that). Known limitation, logged in the ledger:
+//! Pinned C3 configuration: the weight and embedding trees have effective
+//! rates 0.265625 and 0.25390625 respectively, with Q = 120 shared queries.
+//! The union bound over all response openings is 78.809294874 bits. Known
+//! limitation, logged in the ledger:
 //! repeated openings reveal cumulative columns; pad covers one response's
 //! queries (production: larger pad or periodic re-commit — P7 line item).
 
@@ -879,7 +878,13 @@ pub fn verify_open(
         if j != js[q] {
             return false;
         }
-        if !verify_path(root, j, hash_leaf(&col_bytes(&co.col)), &co.path) {
+        if !verify_path(
+            root,
+            j,
+            hash_leaf(&col_bytes(&co.col)),
+            &co.path,
+            params.code_bits as usize,
+        ) {
             return false;
         }
         if !verify_path(
@@ -887,6 +892,7 @@ pub fn verify_open(
             j,
             mask_leaf(co.mask_col[0], co.mask_col[1]),
             &co.mask_path,
+            params.code_bits as usize,
         ) {
             return false;
         }
@@ -1815,8 +1821,20 @@ pub fn verify_multi_open(
     let ok = proof.columns.par_iter().enumerate().all(|(q, co)| {
         let j = co.j as usize;
         if j != js[q]
-            || !verify_path(root, j, hash_leaf(&col_bytes(&co.col)), &co.path)
-            || !verify_path(&proof.mask_root, j, multi_mask_leaf(&co.mask_col), &co.mask_path)
+            || !verify_path(
+                root,
+                j,
+                hash_leaf(&col_bytes(&co.col)),
+                &co.path,
+                params.code_bits as usize,
+            )
+            || !verify_path(
+                &proof.mask_root,
+                j,
+                multi_mask_leaf(&co.mask_col),
+                &co.mask_path,
+                params.code_bits as usize,
+            )
         {
             return false;
         }

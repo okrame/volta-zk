@@ -12,8 +12,12 @@ sliding-window attention, RMSNorm, clamped SwiGLU, attention sinks, RoPE and
 MXFP4 source expert weights) and a representative Llama-class dense/GQA
 point.  X3's zero-tolerance, non-power-of-two T=7/d=48 gate closed with a
 656,034-byte bit-exact golden, zero differing bytes, all nine permanent
-rejects and active pad-poison detection.  X4 and X5 remain later packages;
-X4 is gated on the pending Kimi3 R1 verdict and neither is authorized here.
+rejects and active pad-poison detection. X4 implementation and X5 remain
+later packages. R1 disposition is closed and X4 Phase 1 is now frozen as the
+design-only
+`x4-zkdeepfold-v1` preregistration in
+`docs/x4-folding-pcs-design.md`; its proof-before-code hard stop remains in
+force. X5 remains a later package and is not authorized here.
 
 ## 1. The scaling thesis: ρ is ~scale-invariant; communication is not
 
@@ -167,11 +171,12 @@ checkpoint.
   1,065,887/15,802 sub/full correlations, 8,781,000 transcript bytes, zero
   new RoPE lookup rows, all nine rejects green and the poisoned run detects
   its nonzero zero-claim before rejection.
-- **X4** folding PCS over the per-layer/expert-block commitment map.  Gate:
-  per-response opening no longer contains a fixed pass linear in all
-  committed weights; exact soundness, hiding and block-subset measurements
-  are preregistered in that later package.  X4 is gated on Kimi3 R1 and is
-  not authorized by the X3 closure.
+- **X4** folding PCS over the per-layer/expert-block commitment map.
+  **Phase-1 design frozen; HARD STOP.** `docs/x4-folding-pcs-design.md`
+  selects the conservative unique-decoding zkDeepFold/BaseFold profile,
+  pins the M9 authenticated-opening seam, N4 domain separation, exact
+  block-subset/cost gates and append-only migration ritual. No Lean, Rust or
+  benchmark implementation is authorized pending product-owner review.
 - **X5** gpt-oss-20b e2e on the GPU box: MXFP4 export, golden decode,
   run of record with full comm breakdown + P6-style flat-cost and
   anti-replay gates. Gate: accepted e2e inside a pre-registered envelope,

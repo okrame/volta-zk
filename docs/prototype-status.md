@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1 DISPOSITION CLOSED; X4 DESIGN UNBLOCKED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1 DISPOSITION CLOSED; X4 PHASE-1 DESIGN FROZEN)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -54,7 +54,12 @@ package is closed.  Kimi3's R1 AI adversarial review of detached baseline
 unblocks X4 **design only**.  The X1--X3 additions postdate the review baseline
 and have a frozen read-only delta-review handoff; that review has not been
 performed.  The AI review confers no independent human-review assurance, and
-criterion (1) remains external.
+criterion (1) remains external. X4 Phase 1 is now frozen at
+`docs/x4-folding-pcs-design.md`: the design selects the conservative
+unique-decoding zkDeepFold/BaseFold profile and preregisters its M9,
+block-openability, domain-separation, cost and migration gates. The package
+is at a **HARD STOP pending product-owner review**; it authorizes no Lean,
+Rust, reference, benchmark or X5 work.
 
 ## Milestones
 
@@ -88,6 +93,7 @@ criterion (1) remains external.
 | X3 non-GPT ops pack | **PASS; complete; X1--X3 package CLOSED** (2026-07-20) | Zero-tolerance Rust/numpy full-array bit-exact gate at non-power-of-two **T=7** and hidden **d=48**; honest proof accepts, nine permanent tamper/pad smokes reject, exact counter/digest/session predicates | Clean `7544f36`: **656,034 B**, zero differing golden bytes; **21,969 / 35,824** logical/padded lookup rows, 91 sites/9 contents/1 finalization, RoPE delta 0; sub/full/domains **1,065,887 / 15,802 / 6,573**, transcript **8,781,000 B**, E-equivalent **7,109,448.2**. Pad poison actively rejects with a detected nonzero zero-claim. Record `x3-ops-2026-07-20-7544f36.json`. |
 | R1 adversarial cryptographic review | **DISPOSITION CLOSED; X4 design unblocked** (2026-07-20) | Report fixed to detached `f05d727`; zero CRITICAL/MAJOR, M1 fixed, N1--N4 disposed, N5 consolidated; report immutable and SHA-pinned | AI adversarial review only: **no independent human-review assurance; criterion (1) remains external**. Report SHA-256 `b4f05cdd19609975c736ca0f4955894f87b7a44150addb520fe4f5a8d7a93eb4`. X1--X3 delta review remains external and unperformed. |
 | R1b X1--X3 delta review | **HANDOFF FROZEN; review external and unperformed** (2026-07-20) | Read-only range `f05d7279249fdbe16025ee2d005ef58a18224fbb..4b349b59f13516ac878446f593d1621fba92bcfc`; findings to a report only | `docs/r1b-delta-handoff.md` enumerates all 15 commits / 47 paths and claims under test. SHA-256 `21495b7d2d508b8e7ae65997f81b7a4b2a103831e9b4ea192727efd38f660436`. No R1b verdict or assurance exists. |
+| X4 folding PCS Phase 1 | **DESIGN FROZEN; HARD STOP pending product-owner review** (2026-07-20) | No conjectural list-decoding credit; proof-before-code M9/security checkpoint, G1--G6 and inherited pod gates preregistered; no Lean/Rust/bench authorized | `x4-zkdeepfold-v1`: `E=Fp2`, PCS `K=Fp4`, rate `1/8`, `s=128`, 106.2496-bit query term; GPT-2 PCS `<=4,000,000 B` vs current **43,273,888 B**; gpt-oss analytic `<=35,000,000 B`, but honest first-oracle source floor **10.7008 TB**. Design SHA-256 `bb693bb4b1a06244d4f30f4b23cb47a64563dcaa21b5502b74adb044e6284464`. No gate verdict. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -155,6 +161,63 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-20 (X4 Phase-1 folding-PCS design frozen; HARD STOP pending
+  product-owner review)**: `docs/x4-folding-pcs-design.md` replaces the
+  original X4 lever-A premise, which remains UNSOUND, with the
+  `x4-zkdeepfold-v1` candidate. Design SHA-256 is
+  `bb693bb4b1a06244d4f30f4b23cb47a64563dcaa21b5502b74adb044e6284464`.
+  This is a preregistration, not a security proof, implementation, benchmark
+  or gate verdict.
+
+  **Candidate and security screen.** X4 selects the published zkDeepFold
+  construction and different-size/different-point batching in the BaseFold
+  family, specialized to the proved unique-decoding radius; it takes no
+  credit for DeepFold's conjectural list-decoding 34-query/304-KB point.
+  Authenticated evaluations stay in
+  `E=F_p[phi]/(phi^2-7)` while PCS code/folding uses the exact tower
+  `K=E[psi]/(psi^2-phi)`. The profile pins RS rate `1/8`, `s=128`, distance
+  `7/16`, query term `(9/16)^128 = 1.0367724023455627e-32`
+  (**106.24959981538402 bits**), `14 <= mu_b <=30`, and
+  `ell_b=ceil(log2(128*mu_b^2+1)) <=17`. The complete unique-decoding,
+  cohort-layout, masked-relation ZK and `E`/`K` response-wide arithmetic must
+  prove at least **78.809294874 bits** before Rust. A failure stops for a new
+  preregistration; no post-benchmark parameter tuning is allowed.
+
+  **D3 openability and M9 seam.** The 24-layer/32-expert/41.8-GB sizing map
+  has 69 blocks/layer plus two global blocks, **1,658** physical blocks and
+  **3,316** stacked claims. Per-layer cohort trees use inner block-slot
+  multiproofs and outer codeword paths, so serialized marginal cost is
+  proportional to touched blocks and exact path depth, with one response
+  envelope and no `N_total`/`N_touch` byte term. The auxiliary zkDeepFold
+  polynomial is also the one-time evaluation pad: the public `K` value is
+  `h=embed(W_tilde(z))+g(u)`. Its two `E` tower components consume exactly
+  `2*B_touch` existing full correlations, and one response ZeroBatch checks
+  both components; `W_tilde(z)` is never public. This changes only the PCS/M9
+  transfer count/formula, not the PCG generator, tuple, setup, spool, pool,
+  reuse or lifecycle. M9 reopens proof-before-code for the masked auxiliary
+  identity/hiding count, `E`-into-`K` evaluation, tower transfer, ordered
+  batch reduction, binding-into-MAC, transfer and response-composition
+  lemmas. The derived audit must remain green with no new ideal axiom.
+
+  **N4(ii), costs and gates.** The new commitment format pins distinct BLAKE3
+  derive-key contexts for PCS leaves/nodes and manifest leaves/nodes, exact
+  inner/outer depth and canonical multiproofs. New roots are required;
+  historical C3/C3b/T1 roots and rows remain untouched. GPT-2 compares to
+  immutable Ligero **43,273,888 B**, CPU commit/open/verify
+  **10.785629/0.767759/0.080496 s** and A100
+  **0.202467/0.294423/0.079365 s**. X4 gates PCS bytes at **4,000,000 B** and
+  full response at **45,270,464 B**, with CPU
+  **180/15/0.50 s** and A100 **15/1.50/0.25 s** commit/open/verify ceilings,
+  plus inherited pod gates. The gpt-oss analytic PCS screen is
+  **<=35,000,000 B**, but the honest `Fp4` ZK/rate screen exposes a
+  **10.7008-TB source-equivalent first-oracle floor** before padding and
+  later oracles; no gpt-oss measurement is claimed. G1--G6 also require
+  adversarial strictness, touched-block proportionality, exact storage/I/O
+  accounting and append-only clean rebaselining. X5/export, PCG/lifecycle,
+  non-PCS proof changes and multi-response claims remain out of scope. No
+  Lean, Rust, reference, benchmark or X5 work is authorized until explicit
+  review and a later phase authorization.
 
 - **2026-07-20 (R1b X1--X3 delta-review handoff frozen; no review
   performed)**: `docs/r1b-delta-handoff.md` pins the immutable read-only range

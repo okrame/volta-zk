@@ -87,6 +87,7 @@ criterion (1) remains external.
 | X2b corrected-proxy repeat | **PASS; complete** (2026-07-20) | Frozen `existing-class-session-v2`, same CPU fixture/code/smokes/exact invariants and same inclusive **[0.80,1.20]** band; X2 remains FAIL under its original 17,040 proxy | Clean `053d3fc`: full **12,462 / 12,482** predicted and measured, ratios **1.0 / 1.0 PASS**. MAC **316,464** exact; lookup logical/padded/sites **12,523 / 19,346 / 82**, sub **350,304 / 349,793**, all within band. Record `x2b-moe-2026-07-20-053d3fc.json`. |
 | X3 non-GPT ops pack | **PASS; complete; X1--X3 package CLOSED** (2026-07-20) | Zero-tolerance Rust/numpy full-array bit-exact gate at non-power-of-two **T=7** and hidden **d=48**; honest proof accepts, nine permanent tamper/pad smokes reject, exact counter/digest/session predicates | Clean `7544f36`: **656,034 B**, zero differing golden bytes; **21,969 / 35,824** logical/padded lookup rows, 91 sites/9 contents/1 finalization, RoPE delta 0; sub/full/domains **1,065,887 / 15,802 / 6,573**, transcript **8,781,000 B**, E-equivalent **7,109,448.2**. Pad poison actively rejects with a detected nonzero zero-claim. Record `x3-ops-2026-07-20-7544f36.json`. |
 | R1 adversarial cryptographic review | **DISPOSITION CLOSED; X4 design unblocked** (2026-07-20) | Report fixed to detached `f05d727`; zero CRITICAL/MAJOR, M1 fixed, N1--N4 disposed, N5 consolidated; report immutable and SHA-pinned | AI adversarial review only: **no independent human-review assurance; criterion (1) remains external**. Report SHA-256 `b4f05cdd19609975c736ca0f4955894f87b7a44150addb520fe4f5a8d7a93eb4`. X1--X3 delta review remains external and unperformed. |
+| R1b X1--X3 delta review | **HANDOFF FROZEN; review external and unperformed** (2026-07-20) | Read-only range `f05d7279249fdbe16025ee2d005ef58a18224fbb..4b349b59f13516ac878446f593d1621fba92bcfc`; findings to a report only | `docs/r1b-delta-handoff.md` enumerates all 15 commits / 47 paths and claims under test. SHA-256 `21495b7d2d508b8e7ae65997f81b7a4b2a103831e9b4ea192727efd38f660436`. No R1b verdict or assurance exists. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -154,6 +155,20 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-20 (R1b X1--X3 delta-review handoff frozen; no review
+  performed)**: `docs/r1b-delta-handoff.md` pins the immutable read-only range
+  `f05d7279249fdbe16025ee2d005ef58a18224fbb..4b349b59f13516ac878446f593d1621fba92bcfc`,
+  the X1--X3 closure HEAD that existed before the R1 disposition work. It
+  enumerates all 15 commits and all 47 changed paths, the `ModelConfig` and
+  GPT-2 non-regression claims, X1 routing/limb argument, immutable X2 FAIL,
+  preregistered X2b corrected-proxy postdictions, and X3 operations/non-power-
+  of-two golden claims. Handoff SHA-256 is
+  `21495b7d2d508b8e7ae65997f81b7a4b2a103831e9b4ea192727efd38f660436`.
+  Kimi3 is assigned by the product owner; the current package does not perform
+  that review. Findings belong in a separate report only. Later R1 disposition
+  commit `bc44099` is outside the frozen delta. No R1b verdict, independent
+  human-review assurance, X4 implementation authority or gate credit follows.
 
 - **2026-07-20 (R1 product-owner disposition: CLOSED; X4 design
   UNBLOCKED)**: `docs/r1-kimi3-report.md` is accepted as the immutable report

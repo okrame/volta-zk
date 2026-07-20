@@ -1,15 +1,16 @@
 # Scaling note — VOLTA beyond GPT-2: dense and MoE
 
 **Status**: X0 analytic design and decisions are preregistered; X1 is PASS,
-X2 is an immutable FAIL, and X2b's corrected proxy is preregistered under a
-hard stop for user approval (2026-07-20).  The 2026-07-13 synthetic shape/memory
+X2 is an immutable FAIL, and the approved X2b corrected-proxy repeat is PASS
+on clean `053d3fc` (2026-07-20).  The 2026-07-13 synthetic shape/memory
 sweep remains a formula-only historical artifact.  The executable X0 budget
 is `scripts/budget_moe.py`, and `docs/x0-moe-design.md` is the detailed design
 record.  Planning targets are **gpt-oss-20b** (24 layers, d=2880, 32 experts
 top-4, 3.6B active / 20.9B total, GQA 64/8, alternating full / 128-token
 sliding-window attention, RMSNorm, clamped SwiGLU, attention sinks, RoPE and
 MXFP4 source expert weights) and a representative Llama-class dense/GQA
-point.  X3 remains blocked on X2b; X4 and X5 remain later packages.
+point.  X3 has not started and requires its own approved preregistration; X4
+and X5 remain later packages.
 
 ## 1. The scaling thesis: ρ is ~scale-invariant; communication is not
 

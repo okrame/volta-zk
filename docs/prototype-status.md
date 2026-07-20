@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b preregistered/HARD STOP; X3 blocked; X4 later)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 not started; X4 later)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -41,8 +41,10 @@ foundation now has its exact clean T1 non-regression PASS on `9a4c688`, and X1
 routing closed PASS on clean `6be165f`.  X2 closed **FAIL** on clean
 `87ce25b`: every correctness, golden, PCS, smoke and exact-session invariant
 passed, but the binding full-correlation ratios were below the symmetric 20%
-band.  Per the preregistered stop rule, X3 was not started and has no verdict.
-X4 remains a later
+band.  The user approved the frozen corrected-proxy repeat, and X2b closed
+**PASS** on clean `053d3fc` with the same inclusive band and exact full-
+correlation ratios 1.0 at k=1 and k=2.  X2 remains an immutable FAIL; X3 has
+not started and has no verdict.  X4 remains a later
 package and pool prewarming remains backlog.  By product-owner decision on 2026-07-19,
 R1 is outside this package's operational plan and is deferred to Kimi3; no
 cryptographic-review assurance is claimed by the T1 closure.
@@ -75,8 +77,8 @@ cryptographic-review assurance is claimed by the T1 closure.
 | T1 boundary thinning | **CLOSED; M11 GREEN; G1/G2/G3/G4 PASS** (2026-07-19) | response <=85,000,000 B; corrections <=38,348,720 B; CPU ABBA <=1.05; pod 10 s / 4 s / 100 MB / 0.150 s / 1.5 | Clean `b14577e`: exact response **84,544,352 B**, corrections **38,348,720 B**, reducer/q bridge **22,848 / 672 B**. CPU ABBA **1.005222 PASS**. A100 v4 prefill **2.412064 s**, decode **1.618844 s**, H2D **67,618,556 B**, max sync **0.117210172 s**, flat **1.231125**, all PASS. Sub/full **4,793,590 / 181,933**, closures **21,667 / 8,170**, E-mult buckets **2,800,595,736.8 / 114,852,961.2**, exact. Both production leakage smokes PASS. R1 is deferred to Kimi3 and no review assurance is claimed. |
 | X1 runtime foundation + routing soundness | **PASS; complete** (2026-07-19) | GPT-2 T1 byte-for-byte at **84,544,352 B** with exact counters/deterministic schedule digest/golden/workspace ✓; all route cheats reject; isolated E-mult/token-layer ratio in **[0.80,1.20]** ✓ | Foundation clean `9a4c688`. Routing clean `6be165f`: T=31, L=4, d=48, **3,968 logical / 4,096 padded**; measured **707.2774193548387** versus predicted **662.4056199596774 E-mult/token-layer**, ratio **1.0677406683202548 PASS**. One unchanged-P4 commitment/opening, 4 claims; exact sub/full **205,568 / 4,714**; all nine honest/cheating/preflight predicates green; record `x1-routing-2026-07-19-6be165f.json`. |
 | X2 synthetic MoE e2e | **official valid FAIL; package stopped** (2026-07-19) | Honest k=1/k=2, identical bit-exact output, one TableBank, 3 commitments/40 claims, PCS/closures/digests/smokes all PASS; binding full-correlation ratios must be in **[0.80,1.20]** and are **0.731338 / 0.732512 FAIL** | Clean `87ce25b`: **316,464 MACs** exact; measured **12,523 logical / 19,346 padded lookup rows** and **82 sites** (same k=1/k=2); sub **350,304 / 349,793 PASS**; full **12,462 / 12,482** vs 17,040 FAIL. Record `x2-moe-2026-07-19-87ce25b.json`. |
-| X2b corrected-proxy repeat | **PREREGISTERED; HARD STOP pending explicit user approval** (2026-07-20) | Same CPU fixture/code/smokes/exact invariants and same inclusive **[0.80,1.20]** band; X2 remains FAIL under its original 17,040 proxy | `existing-class-session-v2` postdicts X2 **12,462 / 12,482**, X1 **4,714**, GPT-2/C1 **176,880**, and closed T1 **181,933** exactly. No-execution record `x2b-prereg-2026-07-20-0ae5111.json`; future proof record `x2b-moe-<date>-<gitsha>.json`; no X2b run or verdict exists yet. |
-| X3 non-GPT ops pack | **not started; blocked until an approved X2b run PASSes** (2026-07-20) | Preregistered gate remains unchanged; no X3 execution or verdict | Planned X2 shape with T=7, d=48/d_ff=80, RMSNorm, clamped SwiGLU, RoPE, GQA 6/2, two sinks/head and `[full, sliding(4)]`; X2b preregistration does not itself unlock X3. |
+| X2b corrected-proxy repeat | **PASS; complete** (2026-07-20) | Frozen `existing-class-session-v2`, same CPU fixture/code/smokes/exact invariants and same inclusive **[0.80,1.20]** band; X2 remains FAIL under its original 17,040 proxy | Clean `053d3fc`: full **12,462 / 12,482** predicted and measured, ratios **1.0 / 1.0 PASS**. MAC **316,464** exact; lookup logical/padded/sites **12,523 / 19,346 / 82**, sub **350,304 / 349,793**, all within band. Record `x2b-moe-2026-07-20-053d3fc.json`. |
+| X3 non-GPT ops pack | **not started; eligible for separate preregistration** (2026-07-20) | No X3 execution or verdict; implementation still requires its own explicit user-approved preregistration | Planned X2 shape with T=7, d=48/d_ff=80, RMSNorm, clamped SwiGLU, RoPE, GQA 6/2, two sinks/head and `[full, sliding(4)]`; X2b PASS removes only the prior dependency block. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -119,6 +121,62 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-20 (X2b approved clean execution: PASS; X2 FAIL remains
+  immutable; X3 not started)**: the user explicitly approved execution of
+  the frozen X2b preregistration.  The harness ran once from clean source
+  `053d3fcdcc34bf403454618ce3b2239f76d3a872` on the four-core CPU VM with
+  `RAYON_NUM_THREADS=4`; there was no proxy, preregistration, code, band or
+  fixture change between approval and execution.  **Gate verdict: PASS.**
+  The inclusive band remained exactly **[0.80,1.20]**.
+
+  | Binding operand | Predicted | Recorded measurement | Measured / predicted | Verdict |
+  | --- | ---: | ---: | ---: | --- |
+  | native MACs | 316,464 | 316,464 | 1.0 | PASS |
+  | logical lookup rows | 12,495 | 12,523 | 1.0022408963585434 | PASS |
+  | padded lookup rows | 19,313 | 19,346 | 1.001708693626055 | PASS |
+  | TableBank sites | 80 | 82 | 1.025 | PASS |
+  | sub correlations, k=1 | 330,820 | 350,304 | 1.058896076416178 | PASS |
+  | sub correlations, k=2 | 330,484 | 349,793 | 1.0584264291160843 | PASS |
+  | full correlations, k=1 | 12,462 | 12,462 | 1.0 | PASS |
+  | full correlations, k=2 | 12,482 | 12,482 | 1.0 | PASS |
+
+  The labels **12,495 / 19,313** remain analytic **logical / padded** rows,
+  common to k=1/k=2.  Both honest proofs accepted; native k=1/k=2 outputs
+  were identical and golden-bit-exact.  Each path used exactly one TableBank
+  finalization, three commitments, one response opening session, three
+  sequential component MultiOpen proofs and 40 claims.  PCS proof bytes were
+  **17,256,480** for each path; transcript bytes were **20,258,656** at k=1
+  and **20,254,888** at k=2.  Prover/verifier correlation counters and all
+  allocation/channel digests matched.  All seven permanent smokes passed:
+  wrong expert set, score swap, forged limb, crafted all-equal higher-id tie,
+  lower-ranked substitution, k=2 internal-state substitution and chunk-
+  boundary substitution.  Peak RSS was **0.3272056579589844 GiB**.  Absolute
+  diagnostic prove/verify/closure times were **0.051844588 / 0.019464955 /
+  1.13719776 s** at k=1 and **0.046366566 / 0.01985129 / 1.080787317 s** at
+  k=2; no timing ratio is a gate operand, so no unpaired timing ratio is
+  claimed.
+
+  **Required postdiction table (verbatim in the run record as well):**
+
+  | Anchor | Postdicted full correlations | Recorded measurement | Delta | Source record |
+  | --- | ---: | ---: | ---: | --- |
+  | X1 | 4,714 | 4,714 | 0 | `benchmarks/results/x1-routing-2026-07-19-6be165f.json` |
+  | GPT-2/C1 | 176,880 | 176,880 | 0 | `benchmarks/results/c1-2026-07-15-2a3d731.json` |
+  | closed T1 | 181,933 | 181,933 | 0 | `benchmarks/results/t1-cpu-real-2026-07-19-b14577e.json` |
+  | X2 k=1 | 12,462 | 12,462 | 0 | `benchmarks/results/x2-moe-2026-07-19-87ce25b.json` |
+  | X2 k=2 | 12,482 | 12,482 | 0 | `benchmarks/results/x2-moe-2026-07-19-87ce25b.json` |
+
+  The append-only schema-2 evidence is
+  `benchmarks/results/x2b-moe-2026-07-20-053d3fc.json`, **13,610 B**, SHA-256
+  `ac04c297aa069cb91b7ed2a27a8236daa8c638ef90398cdbdc9b6eba2ffcf6d8`.
+  The required table was copied from those immutable sources after the
+  frozen execution and before the newly created record was sealed; no
+  measured value, prediction, band, gate operand or verdict changed.  The
+  prior X2 record and FAIL verdict remain untouched.  This closure starts no
+  X3 implementation.  R1 is still external and pending, so no cryptographic-
+  review assurance is claimed; Kimi3's detached worktree at `f05d727` was
+  not accessed, and main remains append-only with no rebase or force-push.
 
 - **2026-07-20 (X2 FAIL diagnosis complete; corrected proxy propagated; X2b
   preregistered; HARD STOP before execution)**: the user confirmed that the

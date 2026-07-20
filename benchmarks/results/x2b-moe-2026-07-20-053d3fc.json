@@ -1,0 +1,379 @@
+{
+  "schema": 2,
+  "milestone": "X2b-synthetic-MoE-e2e",
+  "date": "2026-07-20",
+  "git_sha": "053d3fcdcc34bf403454618ce3b2239f76d3a872",
+  "git_short_sha": "053d3fc",
+  "git_dirty": false,
+  "cpu_only": true,
+  "rayon_workers": 4,
+  "detected_logical_cpus": 4,
+  "cpu_model": "unknown",
+  "cryptographic_review_assurance": false,
+  "model_config_blake3_k1": "bfb34bbdf8e9ba03fec4bdccb55a6f374bfa5d81458ba57c2581348f00d854ea",
+  "model_config_blake3_k2": "90d7d2945e8e44f7ea7fd2bfba7a51854ca0bebec9d2a79165499c114e81d674",
+  "router_tie_rule": "descending (score, expert_id); higher expert id wins ties",
+  "router_tie_scope": "synthetic X1/X2b convention; X5 must re-derive the real gpt-oss router rule, whose torch.topk path favors the lower expert index",
+  "d1_public_metadata_encoding": "[cutoff, strictly-better expert] per token/layer",
+  "prior_x2_record_immutable": "benchmarks/results/x2-moe-2026-07-19-87ce25b.json: FAIL",
+  "full_correlation_proxy_version": "existing-class-session-v2",
+  "x2b_full_correlation_band": [
+    0.8,
+    1.2
+  ],
+  "shape": {
+    "d_ff": 80,
+    "d_model": 48,
+    "experts": 8,
+    "head_dim": 8,
+    "kv_heads": 2,
+    "layers": 2,
+    "q_heads": 6,
+    "tokens": 7,
+    "top_k": 2,
+    "vocab": 97
+  },
+  "lookup_counter_labels": "12,495/19,313 are analytic logical/padded rows; measured labels remain logical/padded and are identical for k=1/k=2",
+  "postdiction_table": [
+    {
+      "anchor": "X1",
+      "postdicted_full_correlations": 4714,
+      "recorded_measurement_full_correlations": 4714,
+      "delta": 0,
+      "source_record": "benchmarks/results/x1-routing-2026-07-19-6be165f.json"
+    },
+    {
+      "anchor": "GPT-2/C1",
+      "postdicted_full_correlations": 176880,
+      "recorded_measurement_full_correlations": 176880,
+      "delta": 0,
+      "source_record": "benchmarks/results/c1-2026-07-15-2a3d731.json"
+    },
+    {
+      "anchor": "closed T1",
+      "postdicted_full_correlations": 181933,
+      "recorded_measurement_full_correlations": 181933,
+      "delta": 0,
+      "source_record": "benchmarks/results/t1-cpu-real-2026-07-19-b14577e.json"
+    },
+    {
+      "anchor": "X2 k=1",
+      "postdicted_full_correlations": 12462,
+      "recorded_measurement_full_correlations": 12462,
+      "delta": 0,
+      "source_record": "benchmarks/results/x2-moe-2026-07-19-87ce25b.json"
+    },
+    {
+      "anchor": "X2 k=2",
+      "postdicted_full_correlations": 12482,
+      "recorded_measurement_full_correlations": 12482,
+      "delta": 0,
+      "source_record": "benchmarks/results/x2-moe-2026-07-19-87ce25b.json"
+    }
+  ],
+  "post_run_metadata_append": "The required postdiction table was copied from the named immutable source records after the frozen X2b execution and before this new record was sealed; no measurement, prediction, band, gate operand, or verdict was changed.",
+  "artifacts": {
+    "config_sha256": "3738b64667d90bc7853495af838b4767246f9c7bad9200c4ca133733581d6e05",
+    "artifact_sha256": "01853c761b625d5f28d210a6e8e81a2b3e1cfecdf1941cf8d296810b0f34f402",
+    "golden_sha256": "aa58281a9f54313c6dbdf61e495c112477b06893eaeb68b9c7d8186492fdf713",
+    "exporter_sha256": "ad603b44cb61659855765505080585542bec42b1e02c9b897bc3559884ac2a18",
+    "rust_numpy_golden_bit_exact": true,
+    "real_gpt_oss_export_executed": false
+  },
+  "k1": {
+    "thin_k": 1,
+    "accepted": true,
+    "proof_verified": true,
+    "product_batch_accepted": true,
+    "zero_batch_accepted": true,
+    "native_macs": 316464,
+    "logical_lookup_rows": 12523,
+    "padded_lookup_rows": 19346,
+    "table_sites": 82,
+    "table_contents": 6,
+    "table_finalizations": 1,
+    "instance_counters": {
+      "fp2_mults": 5203276,
+      "base_mults": 3308230,
+      "emult_equiv": 5864922.0
+    },
+    "other_counters": {
+      "fp2_mults": 0,
+      "base_mults": 0,
+      "emult_equiv": 0.0
+    },
+    "prover_correlation_counters": {
+      "sub_corrs": 350304,
+      "full_corrs": 12462,
+      "domains": 4922
+    },
+    "verifier_correlation_counters": {
+      "sub_corrs": 350304,
+      "full_corrs": 12462,
+      "domains": 4922
+    },
+    "allocation_digest_prover": "9e4eb327beac508f04e6808c09d32f658ce8ed9a8ae1379214067e0a91afabdd",
+    "allocation_digest_verifier": "9e4eb327beac508f04e6808c09d32f658ce8ed9a8ae1379214067e0a91afabdd",
+    "allocation_digest_match": true,
+    "channel_digest_prover": "46128782db19ec4e0d221d85572cb7f54c28a6f2d257ed430fcb1dc5d84ff158",
+    "channel_digest_verifier": "46128782db19ec4e0d221d85572cb7f54c28a6f2d257ed430fcb1dc5d84ff158",
+    "channel_digest_match": true,
+    "transcript_bytes": 20258656,
+    "transcript_by_label": {
+      "auth_corrections": 2802432,
+      "blind_round_corrections": 10304,
+      "hadamard_claim_corrections": 432,
+      "hadamard_round_corrections": 3456,
+      "logup_aggregate_corrections": 3648,
+      "logup_aux_round_corrections": 24816,
+      "logup_col_corrections": 5184,
+      "logup_cross_corrections": 384,
+      "logup_prod_corrections": 32976,
+      "logup_root_corrections": 2816,
+      "logup_round_corrections": 67584,
+      "logup_split_corrections": 43968,
+      "mask_correction": 64,
+      "pcs_columns": 5631200,
+      "pcs_mask_root": 96,
+      "pcs_s_corrections": 640,
+      "pcs_u_vectors": 11624448,
+      "prod_check_m0_m1": 2048,
+      "w_claim_correction": 624,
+      "x2_attention_rowsum_correction": 32,
+      "x2_av_head_split_corrections": 192,
+      "x2_embedding_weight_correction": 16,
+      "x2_router_rowsum_correction": 32,
+      "x2_score_head_split_corrections": 192,
+      "x_claim_correction": 1008,
+      "zero_batch_tag": 64
+    },
+    "pcs": {
+      "parameter_profile": "P4_LAYER (unchanged), sequential memory-bounded components",
+      "parameters_unchanged": true,
+      "commitments": 3,
+      "response_opening_sessions": 1,
+      "component_multi_open_proofs": 3,
+      "claims": 40,
+      "proof_bytes": 17256480,
+      "roots": [
+        "7a663329785be10046841eaa75f61714e33da9b43507b13000bd7fc9416d4b63",
+        "64a9ebac29714ead93c12ace2f29c07106ac0227f2b4f7726768e452318a368a",
+        "a4dd7402f92750014ace69fe369ed1bc63fd9b7da8d78678e48bceae2742bfb7"
+      ],
+      "commit_s": 0.9808782010000001,
+      "open_s": 0.10601814400000001,
+      "verify_s": 0.033163261,
+      "accepted": true
+    },
+    "prove_s": 0.051844588,
+    "verify_s": 0.019464955,
+    "closure_s": 1.13719776
+  },
+  "k2": {
+    "thin_k": 2,
+    "accepted": true,
+    "proof_verified": true,
+    "product_batch_accepted": true,
+    "zero_batch_accepted": true,
+    "native_macs": 316464,
+    "logical_lookup_rows": 12523,
+    "padded_lookup_rows": 19346,
+    "table_sites": 82,
+    "table_contents": 6,
+    "table_finalizations": 1,
+    "instance_counters": {
+      "fp2_mults": 5203276,
+      "base_mults": 3308230,
+      "emult_equiv": 5864922.0
+    },
+    "other_counters": {
+      "fp2_mults": 3067,
+      "base_mults": 0,
+      "emult_equiv": 3067.0
+    },
+    "prover_correlation_counters": {
+      "sub_corrs": 349793,
+      "full_corrs": 12482,
+      "domains": 4933
+    },
+    "verifier_correlation_counters": {
+      "sub_corrs": 349793,
+      "full_corrs": 12482,
+      "domains": 4933
+    },
+    "allocation_digest_prover": "a88fc593af0d3067a289d5d42dd208a6275d388f3934f0b7118217321b308c13",
+    "allocation_digest_verifier": "a88fc593af0d3067a289d5d42dd208a6275d388f3934f0b7118217321b308c13",
+    "allocation_digest_match": true,
+    "channel_digest_prover": "78f8b4a06e6faa35a0b3c7a041d4c11c573dad1360c7d8b0934c006993cb49bb",
+    "channel_digest_verifier": "78f8b4a06e6faa35a0b3c7a041d4c11c573dad1360c7d8b0934c006993cb49bb",
+    "channel_digest_match": true,
+    "transcript_bytes": 20254888,
+    "transcript_by_label": {
+      "auth_corrections": 2798344,
+      "blind_round_corrections": 10304,
+      "hadamard_claim_corrections": 432,
+      "hadamard_round_corrections": 3456,
+      "logup_aggregate_corrections": 3648,
+      "logup_aux_round_corrections": 24816,
+      "logup_col_corrections": 5184,
+      "logup_cross_corrections": 384,
+      "logup_prod_corrections": 32976,
+      "logup_root_corrections": 2816,
+      "logup_round_corrections": 67584,
+      "logup_split_corrections": 43968,
+      "mask_correction": 64,
+      "pcs_columns": 5631200,
+      "pcs_mask_root": 96,
+      "pcs_s_corrections": 640,
+      "pcs_u_vectors": 11624448,
+      "prod_check_m0_m1": 2048,
+      "t1_eq_claim_pair": 0,
+      "t1_eq_round_corrections": 288,
+      "t1_eq_terminal_correction": 16,
+      "t1_q_bridge_correction": 16,
+      "w_claim_correction": 624,
+      "x2_attention_rowsum_correction": 32,
+      "x2_av_head_split_corrections": 192,
+      "x2_embedding_weight_correction": 16,
+      "x2_router_rowsum_correction": 32,
+      "x2_score_head_split_corrections": 192,
+      "x_claim_correction": 1008,
+      "zero_batch_tag": 64
+    },
+    "pcs": {
+      "parameter_profile": "P4_LAYER (unchanged), sequential memory-bounded components",
+      "parameters_unchanged": true,
+      "commitments": 3,
+      "response_opening_sessions": 1,
+      "component_multi_open_proofs": 3,
+      "claims": 40,
+      "proof_bytes": 17256480,
+      "roots": [
+        "7a663329785be10046841eaa75f61714e33da9b43507b13000bd7fc9416d4b63",
+        "64a9ebac29714ead93c12ace2f29c07106ac0227f2b4f7726768e452318a368a",
+        "a4dd7402f92750014ace69fe369ed1bc63fd9b7da8d78678e48bceae2742bfb7"
+      ],
+      "commit_s": 0.9355025530000001,
+      "open_s": 0.099319242,
+      "verify_s": 0.030947460000000003,
+      "accepted": true
+    },
+    "prove_s": 0.046366566,
+    "verify_s": 0.01985129,
+    "closure_s": 1.080787317
+  },
+  "smokes": {
+    "wrong_expert_set_rejects": true,
+    "score_swap_rejects": true,
+    "forged_limb_rejects": true,
+    "crafted_all_equal_tie_selects_6_7": true,
+    "lower_ranked_expert_5_substitution_rejects": true,
+    "k2_internal_state_substitution_rejects": true,
+    "chunk_boundary_substitution_rejects": true
+  },
+  "peak_rss_gib": 0.3272056579589844,
+  "deviations": [
+    "The existing LogUp engine requires at least two leaves; final_norm_rsqrt therefore pads 1 logical row to 2 (not the analytic 1), using the public LnRsqrt(0) pad pair.",
+    "Router route-weight requant is an explicit existing Range(8) site (+28 logical/+32 padded rows and +2 sites); the analytic row named router_topk_range covered the comparison limbs but not this proved product requant.",
+    "Router exp denominators add 8 authenticated values/layer so the exp rowsum is connected rather than isolated.",
+    "Non-power-of-two Q/K/V slices use explicit public-weight openings; they are not treated as contiguous MLE halves. The synthetic seven-token embedding commitment pins vocabulary row 7 to zero as its canonical low-subcube pad row.",
+    "Every synthetic weight block fits inside one P4_LAYER explicit row and is embedded in a distinct row; its source MLE point is extended to 14 variables with public-zero high coordinates, matching the closed X1 outer-padding construction without changing PCS parameters or semantics.",
+    "One response-level PCS opening session contains three sequential existing MultiOpen proofs, one per D3 commitment, to keep peak CPU-VM memory bounded; this is reported explicitly rather than counted as one component proof.",
+    "Reuses the existing P4 reciprocal-input floor deviation: recip_in = denom >> recip_den_shift is native-asserted while denominator rowsums, both vectors, and reciprocal LUT membership are authenticated/proved."
+  ],
+  "gate": {
+    "verdict": "PASS",
+    "native_macs": {
+      "predicted": 316464,
+      "measured": 316464,
+      "measured_over_predicted": 1.0,
+      "inclusive_band": [
+        0.8,
+        1.2
+      ],
+      "pass": true
+    },
+    "logical_lookup_rows": {
+      "predicted": 12495,
+      "measured": 12523,
+      "measured_over_predicted": 1.0022408963585434,
+      "inclusive_band": [
+        0.8,
+        1.2
+      ],
+      "pass": true
+    },
+    "padded_lookup_rows": {
+      "predicted": 19313,
+      "measured": 19346,
+      "measured_over_predicted": 1.001708693626055,
+      "inclusive_band": [
+        0.8,
+        1.2
+      ],
+      "pass": true
+    },
+    "table_sites": {
+      "predicted": 80,
+      "measured": 82,
+      "measured_over_predicted": 1.025,
+      "inclusive_band": [
+        0.8,
+        1.2
+      ],
+      "pass": true
+    },
+    "sub_correlations_k1": {
+      "predicted": 330820,
+      "measured": 350304,
+      "measured_over_predicted": 1.058896076416178,
+      "inclusive_band": [
+        0.8,
+        1.2
+      ],
+      "pass": true
+    },
+    "sub_correlations_k2": {
+      "predicted": 330484,
+      "measured": 349793,
+      "measured_over_predicted": 1.0584264291160843,
+      "inclusive_band": [
+        0.8,
+        1.2
+      ],
+      "pass": true
+    },
+    "full_correlations_k1": {
+      "predicted": 12462,
+      "measured": 12462,
+      "measured_over_predicted": 1.0,
+      "inclusive_band": [
+        0.8,
+        1.2
+      ],
+      "pass": true
+    },
+    "full_correlations_k2": {
+      "predicted": 12482,
+      "measured": 12482,
+      "measured_over_predicted": 1.0,
+      "inclusive_band": [
+        0.8,
+        1.2
+      ],
+      "pass": true
+    },
+    "exact_three_commitments": true,
+    "exact_forty_claims": true,
+    "exact_one_response_opening_session": true,
+    "exact_one_tablebank_finalization": true,
+    "prover_verifier_counter_match": true,
+    "allocation_digest_match": true,
+    "channel_digest_match": true,
+    "identical_k1_k2_native_outputs": true,
+    "golden_bit_exact": true,
+    "smokes_pass": true,
+    "cpu_four_workers_pass": true,
+    "all_pass": true
+  }
+}

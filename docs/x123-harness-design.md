@@ -2,15 +2,14 @@
 
 **Status (2026-07-20): Phase 1 approved; Phase 2 explicitly authorized;
 runtime `ModelConfig` foundation PASS; X1 routing PASS; X2 FAIL remains
-immutable; X2b is preregistered and HARD STOPPED for user approval; X3 remains
-blocked.**  The
+immutable; the approved X2b repeat is PASS; X3 has not started.**  The
 preregistered design remains binding; implementation evidence and verdicts
 land in the ledger and append-only records.  The foundation passed its binding
 GPT-2 T1 non-regression gate on clean `9a4c688`; X1 passed on clean `6be165f`.
 X2's clean `87ce25b` record passed all functional/session predicates but
 failed the binding symmetric full-correlation band.  Section 5.4 diagnoses
-that failure and preregisters, but does not execute, X2b.  X3 was not started
-and has no verdict; it remains blocked until an approved X2b run passes.
+that failure, preserves the preregistration, and records the approved clean
+X2b PASS at `053d3fc`.  X3 was not started and has no verdict.
 
 The package is CPU-only.  No pod may be provisioned or contacted, no gpt-oss
 checkpoint may be downloaded or exported, and X4 folding PCS and X5 gpt-oss
@@ -558,7 +557,7 @@ frozen GPT-2/C1 schedule at **176,880 full**, and the closed T1 response at
 **181,933 full** (the latter is the C1 base plus its exact 5,053 private-
 argmax/reducer/schedule delta).  All four deltas are zero.
 
-**X2b preregistration; no run or verdict yet.**  X2b repeats the identical
+**Frozen X2b preregistration (state before approval and execution).**  X2b repeats the identical
 CPU-only fixture, proof code, permanent cheating smokes, three commitments,
 40 claims, one response opening session, one TableBank finalization and k=1/
 k=2 composition.  It changes only the full-correlation predictions to
@@ -570,9 +569,23 @@ The machine-readable no-execution preregistration is append-only
 `benchmarks/results/x2b-prereg-2026-07-20-0ae5111.json`.  The future clean
 schema-2 proof record is append-only
 `benchmarks/results/x2b-moe-<date>-<gitsha>.json`.  The report harness is
-pinned to that name and cannot overwrite the X2 record.  Execution requires
-explicit user approval after this hard stop.  X3 remains blocked until X2b
-returns verbatim PASS.
+pinned to that name and cannot overwrite the X2 record.  At this boundary,
+execution required explicit user approval and X3 remained blocked until X2b
+returned verbatim PASS.
+
+**Approved X2b outcome.**  With no intervening change to the proxy,
+preregistration, code, fixture or inclusive **[0.80,1.20]** band, the single
+clean four-core run at `053d3fc` returned **PASS**.  Full correlations were
+**12,462 / 12,482** predicted and measured (ratios **1.0 / 1.0**); MACs were
+**316,464** exact; logical/padded/sites were **12,523 / 19,346 / 82**; and sub
+correlations were **350,304 / 349,793**, with every ratio in band.  All exact
+PCS/session/digest/golden/smoke predicates passed.  The sealed evidence is
+`benchmarks/results/x2b-moe-2026-07-20-053d3fc.json` (13,610 B, SHA-256
+`ac04c297aa069cb91b7ed2a27a8236daa8c638ef90398cdbdc9b6eba2ffcf6d8`).
+It includes the required zero-delta postdictions against the named X1,
+GPT-2/C1, closed-T1 and X2 source records.  X2 remains FAIL under its original
+proxy; X2b PASS merely clears the dependency for a separately approved X3
+preregistration and does not start X3.
 
 ## 6. X3 operations pack on the band path
 

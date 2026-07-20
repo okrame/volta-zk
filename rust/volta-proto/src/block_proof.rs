@@ -268,9 +268,30 @@ pub fn table_vals(key: TableKey, luts: &Luts) -> Vec<Fp> {
         TableKey::Range(s) => range_table(s),
         TableKey::Exp => pair_table(&luts.exp, true),
         TableKey::Gelu => pair_table(&luts.gelu, true),
+        TableKey::Silu => pair_table(&x3_silu_table(), true),
+        TableKey::Clamp1024 => pair_table(&x3_clamp_table(), true),
         TableKey::LnRsqrt => pair_table(&luts.ln_rsqrt, false),
         TableKey::SoftmaxRecip => pair_table(&luts.softmax_recip, false),
     }
+}
+
+/// X3's fixed Q10 SiLU content.  It deliberately lives next to the other
+/// table-content constructors so TableBank owns one canonical definition.
+/// Rust `f64::round` is ties-away-from-zero, matching the frozen exporter
+/// contract.
+pub(crate) fn x3_silu_table() -> Vec<i16> {
+    (0..=u16::MAX)
+        .map(|bits| {
+            let input = bits as i16;
+            let x = f64::from(input) / 1024.0;
+            let value = (x / (1.0 + (-x).exp()) * 1024.0).round();
+            value.clamp(f64::from(i16::MIN), f64::from(i16::MAX)) as i16
+        })
+        .collect()
+}
+
+pub(crate) fn x3_clamp_table() -> Vec<i16> {
+    (0..=u16::MAX).map(|bits| (bits as i16).clamp(-1024, 1024)).collect()
 }
 
 /// The content key(s) of a requant range site: single table for s ≤ 16,

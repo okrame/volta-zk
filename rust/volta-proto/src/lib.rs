@@ -21,6 +21,8 @@ pub mod wires;
 pub mod x1_routing;
 pub mod x2_moe;
 pub mod x2_proof;
+pub mod x3_ops;
+pub mod x3_proof;
 
 pub use block_proof::{
     build_attn_wires, cattn_permuted, layer_content_keys, layer_dom_base, prove_layer_phase1,
@@ -68,4 +70,17 @@ pub use x2_moe::{
 };
 pub use x2_proof::{
     prove_x2_moe, verify_x2_moe, x2_content_keys, X2MoeProof, X2MoeProverOut, X2MoeVerifierOut,
+};
+pub use x3_ops::{
+    build_x3_ops_fixture, encode_x3_golden, x3_model_config, x3_native_operation_counts,
+    x3_public_routes, x3_rope_coefficients, X3AttentionWitness, X3ClampProbe, X3ExpertWeights,
+    X3ExpertWitness, X3FinalWitness, X3LayerWeights, X3LayerWitness, X3OpsFixture, X3PadMode,
+    X3RmsWitness, X3_CLAMP_MAX, X3_CLAMP_MIN, X3_D, X3_DFF, X3_DFF_PAD, X3_D_PAD, X3_EXPERTS,
+    X3_GQA_GROUP, X3_HEAD_DIM, X3_KV_HEADS, X3_LAYERS, X3_QKV, X3_Q_HEADS, X3_ROPE_FRAC,
+    X3_SCORE_SHIFT, X3_SHIFT, X3_SILU_SHIFT, X3_SINKS, X3_T, X3_TOP_K, X3_T_PAD, X3_VOCAB,
+    X3_VOCAB_PAD,
+};
+pub use x3_proof::{
+    prove_x3_ops, verify_x3_ops, x3_content_keys, X3GemmProof, X3HadamardProof, X3OpsProof,
+    X3OpsProverOut, X3OpsVerifierOut, X3PairProof, X3RangeProof,
 };

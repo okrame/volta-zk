@@ -32,5 +32,41 @@
     ],
     "top_k": 2,
     "vocab": 97
+  },
+  "x3": {
+    "activation": "swiglu",
+    "attention": [
+      "full_causal",
+      {
+        "sliding": 4
+      }
+    ],
+    "attention_sinks_per_q_head": 2,
+    "clamp": [
+      -1024,
+      1024
+    ],
+    "d_ff": 80,
+    "d_ff_pad": 128,
+    "d_model": 48,
+    "d_model_pad": 64,
+    "experts": 8,
+    "gqa_group": 3,
+    "head_dim": 8,
+    "kv_heads": 2,
+    "layers": 2,
+    "norm": "rmsnorm",
+    "q_heads": 6,
+    "rope": {
+      "base": 10000,
+      "fraction_bits": 14
+    },
+    "score_shift": 22,
+    "t": 7,
+    "t_pad": 8,
+    "thin_k": 2,
+    "top_k": 2,
+    "vocab": 97,
+    "vocab_pad": 128
   }
 }

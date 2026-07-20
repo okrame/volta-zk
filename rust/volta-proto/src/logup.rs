@@ -2458,6 +2458,14 @@ pub enum TableKey {
     Range(u32),
     Exp,
     Gelu,
+    /// X3 content: signed-i16 SiLU at Q10, encoded as the same two-column
+    /// content-keyed LogUp relation as GELU.  This is a new table content,
+    /// not a new argument class.
+    Silu,
+    /// X3 content: clamp both SwiGLU lanes to [-1024, 1024].  The full
+    /// signed-i16 input/output map instantiates the existing saturation
+    /// side-table pattern.
+    Clamp1024,
     LnRsqrt,
     SoftmaxRecip,
 }

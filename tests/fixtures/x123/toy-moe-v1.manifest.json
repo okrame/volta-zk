@@ -1,14 +1,14 @@
 {
   "architecture": "volta-x123-toy-moe-v1",
-  "exporter_sha256": "ad603b44cb61659855765505080585542bec42b1e02c9b897bc3559884ac2a18",
+  "exporter_sha256": "db2f8b430c9d717af17b02aaedef9b9ab50d513faff592d11873cb03ed2d6182",
   "files": {
     "toy-moe-v1.artifact.bin": {
       "bytes": 17508,
       "sha256": "01853c761b625d5f28d210a6e8e81a2b3e1cfecdf1941cf8d296810b0f34f402"
     },
     "toy-moe-v1.config.json": {
-      "bytes": 784,
-      "sha256": "3738b64667d90bc7853495af838b4767246f9c7bad9200c4ca133733581d6e05"
+      "bytes": 1397,
+      "sha256": "92b1bcad58b466529d45a76391159404e2d47a7ae71679d2c3fdd1ba3f5f59a2"
     },
     "x1-router-v1.golden.bin": {
       "bytes": 121776,
@@ -17,6 +17,10 @@
     "x2-moe-v1.golden.bin": {
       "bytes": 402774,
       "sha256": "aa58281a9f54313c6dbdf61e495c112477b06893eaeb68b9c7d8186492fdf713"
+    },
+    "x3-ops-v1.golden.bin": {
+      "bytes": 656034,
+      "sha256": "31b5471f197a1fdb27641f123555fa6f098e30552d35f9e62b0806a37b70fa0c"
     }
   },
   "framework": "per-architecture adapter + shared D2/D4 calibration/golden machinery",

@@ -64,6 +64,29 @@ EXP_OUT_LOG2: Final = 12
 RECIP_DEN_SHIFT: Final = 6
 RECIP_LOG2: Final = 26
 X2_RECIP_LOG2: Final = 22
+X3_T: Final = 7
+X3_T_PAD: Final = 8
+X3_LAYERS: Final = 2
+X3_D: Final = 48
+X3_D_PAD: Final = 64
+X3_DFF: Final = 80
+X3_DFF_PAD: Final = 128
+X3_Q_HEADS: Final = 6
+X3_KV_HEADS: Final = 2
+X3_GQA_GROUP: Final = 3
+X3_HEAD_DIM: Final = 8
+X3_QKV: Final = 80
+X3_EXPERTS: Final = 8
+X3_TOP_K: Final = 2
+X3_VOCAB: Final = 97
+X3_VOCAB_PAD: Final = 128
+X3_SHIFT: Final = 8
+X3_SILU_SHIFT: Final = 10
+X3_ROPE_FRAC: Final = 14
+X3_SCORE_SHIFT: Final = 22
+X3_CLAMP_MIN: Final = -1024
+X3_CLAMP_MAX: Final = 1024
+X3_SINKS: Final = 2
 
 
 def sha256(blob: bytes) -> str:
@@ -328,7 +351,12 @@ def x1_golden_bytes() -> bytes:
 
 def _requant(values: np.ndarray, shift: int, label: str) -> np.ndarray:
     values = np.asarray(values, dtype=np.int64)
-    rounded = (values + (1 << (shift - 1))) >> shift
+    if shift > 16:
+        stage1_shift = shift - 16
+        stage1 = (values + (1 << (stage1_shift - 1))) >> stage1_shift
+        rounded = (stage1 + (1 << 15)) >> 16
+    else:
+        rounded = (values + (1 << (shift - 1))) >> shift
     if np.any(rounded < I16_MIN) or np.any(rounded > I16_MAX):
         raise AssertionError(f"X2 {label} requant overflow")
     return rounded.astype(np.int16)
@@ -758,6 +786,554 @@ def x2_golden_bytes() -> bytes:
     return bytes(out)
 
 
+def _x3_luts() -> dict[str, np.ndarray]:
+    """Independent table contents for the X3 op pack."""
+
+    out = _x2_luts()
+    silu = np.empty(1 << 16, dtype=np.int16)
+    clamp = np.empty(1 << 16, dtype=np.int16)
+    for bits in range(1 << 16):
+        value = int(np.asarray(bits, dtype=np.uint16).view(np.int16))
+        x = value / float(1 << X3_SILU_SHIFT)
+        rounded = math.floor(x / (1.0 + math.exp(-x)) * (1 << X3_SILU_SHIFT) + 0.5)
+        if x < 0:
+            raw = x / (1.0 + math.exp(-x)) * (1 << X3_SILU_SHIFT)
+            rounded = math.ceil(raw - 0.5)
+        silu[bits] = min(max(rounded, I16_MIN), I16_MAX)
+        clamp[bits] = min(max(value, X3_CLAMP_MIN), X3_CLAMP_MAX)
+    out["silu"] = silu
+    out["clamp"] = clamp
+    return out
+
+
+def _x3_routes(layer: int) -> np.ndarray:
+    base = np.asarray([[0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [1, 4], [3, 5]], dtype=np.uint8)
+    return ((base.astype(np.uint16) + layer) % X3_EXPERTS).astype(np.uint8)
+
+
+def _x3_sparse_projection(rows: int, cols: int, salt: int, magnitude: int) -> np.ndarray:
+    out = np.zeros((rows, cols), dtype=np.int16)
+    for col in range(cols):
+        row = (col * (salt * 2 + 1) + salt) % rows
+        sign = 1 if (col + salt) % 2 == 0 else -1
+        out[row, col] = sign * magnitude
+        row2 = (row + 7 + salt) % rows
+        out[row2, col] = -sign
+    return out
+
+
+def _x3_layer_weights(layer: int) -> dict[str, object]:
+    experts: list[dict[str, np.ndarray]] = []
+    for expert in range(X3_EXPERTS):
+        salt = 1 + 3 * layer + expert
+        experts.append(
+            {
+                "gate": _x3_sparse_projection(X3_D, X3_DFF, salt, 96),
+                "up": _x3_sparse_projection(X3_D, X3_DFF, salt + 5, 112),
+                "down": _x3_sparse_projection(X3_DFF, X3_D, salt + 11, 2),
+            }
+        )
+    return {
+        "qkv": _x3_sparse_projection(X3_D, X3_QKV, 3 + layer, 2),
+        "attention": _x3_sparse_projection(X3_D, X3_D, 7 + layer, 2),
+        "experts": experts,
+    }
+
+
+def _x3_embedding_weights() -> tuple[np.ndarray, np.ndarray]:
+    wte = np.zeros((X3_VOCAB, X3_D), dtype=np.int16)
+    for token in range(X3_VOCAB):
+        wte[token, -1] = (token * 3 + 1) % 7 - 3
+    for token in range(X3_T):
+        wte[token, token] = 1024
+    wpe = np.asarray(
+        [((index * 5 + 3) % 9) - 4 for index in range(X3_T * X3_D)], dtype=np.int16
+    ).reshape(X3_T, X3_D)
+    return wte, wpe
+
+
+def _x3_source_padding() -> np.ndarray:
+    count = (
+        X3_D_PAD
+        + X3_D_PAD
+        + X3_T_PAD * (X3_D_PAD - X3_D)
+        + X3_T_PAD * (X3_DFF_PAD - X3_DFF)
+        + (X3_VOCAB_PAD - X3_VOCAB) * X3_D_PAD
+    )
+    return np.arange(1001, 1001 + count, dtype=np.int16)
+
+
+def _x3_rmsnorm(values: np.ndarray, luts: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+    source = np.ascontiguousarray(values, dtype=np.int16).reshape(-1, X3_D)
+    rows = source.shape[0]
+    sums = np.empty(rows, dtype=np.int64)
+    means = np.empty(rows, dtype=np.int64)
+    rin = np.empty(rows, dtype=np.int16)
+    rout = np.empty(rows, dtype=np.int16)
+    acc = np.empty_like(source, dtype=np.int64)
+    for row in range(rows):
+        wide = source[row].astype(np.int64)
+        total = int(np.square(wide, dtype=np.int64).sum())
+        mean = (total + X3_D // 2) // X3_D
+        table_in = mean >> 7
+        if not 0 <= table_in < 1 << 16:
+            raise AssertionError("X3 RMS rsqrt input overflow")
+        sums[row] = total
+        means[row] = mean
+        rin[row] = table_in
+        rout[row] = luts["ln_rsqrt"][table_in]
+        acc[row] = wide * int(rout[row])
+    return {
+        "input": source,
+        "sum_squares": sums,
+        "mean_square": means,
+        "rsqrt_in": rin,
+        "rsqrt_out": rout,
+        "acc": acc,
+        "output": _requant(acc, X3_SHIFT, "RMSNorm"),
+    }
+
+
+def _x3_rope_coefficients() -> np.ndarray:
+    values: list[int] = []
+    for delta in range(-6, 7):
+        for pair in range(X3_HEAD_DIM // 2):
+            frequency = 10000.0 ** (-(2 * pair) / X3_HEAD_DIM)
+            angle = delta * frequency
+            for coefficient in (math.cos(angle), math.sin(angle)):
+                scaled = coefficient * (1 << X3_ROPE_FRAC)
+                rounded = math.floor(scaled + 0.5) if scaled >= 0 else math.ceil(scaled - 0.5)
+                values.append(rounded)
+    return np.asarray(values, dtype=np.int16)
+
+
+def _x3_rope_coeff(coefficients: np.ndarray, delta: int, pair: int) -> tuple[int, int]:
+    index = ((delta + 6) * (X3_HEAD_DIM // 2) + pair) * 2
+    return int(coefficients[index]), int(coefficients[index + 1])
+
+
+def _x3_attention(
+    source: np.ndarray,
+    layer: int,
+    weights: dict[str, object],
+    luts: dict[str, np.ndarray],
+    rope_coefficients: np.ndarray,
+) -> dict[str, object]:
+    rms1 = _x3_rmsnorm(source, luts)
+    qkv_acc = rms1["output"].astype(np.int64) @ weights["qkv"].astype(np.int64)
+    qkv = _requant(qkv_acc, X3_SHIFT, "QKV")
+    q = np.ascontiguousarray(qkv[:, :X3_D])
+    k = np.ascontiguousarray(qkv[:, X3_D : X3_D + X3_KV_HEADS * X3_HEAD_DIM])
+    v = np.ascontiguousarray(qkv[:, X3_D + X3_KV_HEADS * X3_HEAD_DIM :])
+    lo = np.asarray(
+        [0 if layer == 0 else max(0, row + 1 - 4) for row in range(X3_T)], dtype=np.uint32
+    )
+    hi = np.arange(1, X3_T + 1, dtype=np.uint32)
+    rect_shape = (X3_Q_HEADS, X3_T_PAD, X3_T_PAD)
+    real_mask = np.zeros(rect_shape, dtype=np.uint8)
+    score_acc_rect = np.zeros(rect_shape, dtype=np.int64)
+    zero_indices = np.flatnonzero(luts["exp"] == 0)
+    if zero_indices.size == 0:
+        raise AssertionError("X3 Exp table lacks a zero padding input")
+    pad_score = int(np.asarray(int(zero_indices[0]), dtype=np.uint16).view(np.int16))
+    score_q_rect = np.full(rect_shape, pad_score, dtype=np.int16)
+    exp_rect = np.zeros(rect_shape, dtype=np.int16)
+    grouped_k_reads: list[int] = []
+    grouped_v_reads: list[int] = []
+    rope_folded_k: list[int] = []
+    rope_pair_terms: list[int] = []
+    score_acc_real: list[int] = []
+    score_q_real: list[int] = []
+    for head in range(X3_Q_HEADS):
+        kv_head = head // X3_GQA_GROUP
+        for row in range(X3_T):
+            for key_row in range(int(lo[row]), int(hi[row])):
+                real_mask[head, row, key_row] = 1
+                delta = key_row - row
+                score = 0
+                for pair in range(X3_HEAD_DIM // 2):
+                    cos, sin = _x3_rope_coeff(rope_coefficients, delta, pair)
+                    q_base = head * X3_HEAD_DIM + 2 * pair
+                    kv_base = kv_head * X3_HEAD_DIM + 2 * pair
+                    qe, qo = int(q[row, q_base]), int(q[row, q_base + 1])
+                    ke, ko = int(k[key_row, kv_base]), int(k[key_row, kv_base + 1])
+                    kfe = ke * cos - ko * sin
+                    kfo = ke * sin + ko * cos
+                    te, to = qe * kfe, qo * kfo
+                    grouped_k_reads.extend((ke, ko))
+                    grouped_v_reads.extend((int(v[key_row, kv_base]), int(v[key_row, kv_base + 1])))
+                    rope_folded_k.extend((kfe, kfo))
+                    rope_pair_terms.extend((te, to))
+                    score += te + to
+                quantized = int(_requant(np.asarray([score]), X3_SCORE_SHIFT, "RoPE score")[0])
+                score_acc_rect[head, row, key_row] = score
+                score_q_rect[head, row, key_row] = quantized
+                exp_rect[head, row, key_row] = luts["exp"][quantized & 0xFFFF]
+                score_acc_real.append(score)
+                score_q_real.append(quantized)
+    sink_scores: list[int] = []
+    sink_exp: list[int] = []
+    denoms = np.zeros((X3_Q_HEADS, X3_T), dtype=np.int64)
+    recip_in = np.zeros((X3_Q_HEADS, X3_T), dtype=np.int16)
+    recips = np.zeros((X3_Q_HEADS, X3_T), dtype=np.int16)
+    for head in range(X3_Q_HEADS):
+        for row in range(X3_T):
+            denom = int(exp_rect[head, row, int(lo[row]) : int(hi[row])].astype(np.int64).sum())
+            for sink in range(X3_SINKS):
+                score = (3 * layer + 2 * head + sink - 6) * 16
+                exponent = int(luts["exp"][score & 0xFFFF])
+                sink_scores.append(score)
+                sink_exp.append(exponent)
+                denom += exponent
+            denoms[head, row] = denom
+            table_in = denom >> RECIP_DEN_SHIFT
+            recip_in[head, row] = table_in
+            recips[head, row] = luts["recip"][table_in]
+    norm_acc_rect = np.zeros(rect_shape, dtype=np.int64)
+    weights_rect = np.zeros(rect_shape, dtype=np.int16)
+    for head in range(X3_Q_HEADS):
+        for row in range(X3_T):
+            reciprocal = int(recips[head, row])
+            for key_row in range(int(lo[row]), int(hi[row])):
+                acc = int(exp_rect[head, row, key_row]) * reciprocal
+                norm_acc_rect[head, row, key_row] = acc
+                weights_rect[head, row, key_row] = _requant(
+                    np.asarray([acc]), X3_SHIFT, "softmax weight"
+                )[0]
+    av_acc = np.zeros((X3_T, X3_D), dtype=np.int64)
+    av_q = np.zeros((X3_T, X3_D), dtype=np.int16)
+    for head in range(X3_Q_HEADS):
+        kv_head = head // X3_GQA_GROUP
+        for row in range(X3_T):
+            for dim in range(X3_HEAD_DIM):
+                acc = 0
+                for key_row in range(int(lo[row]), int(hi[row])):
+                    acc += int(weights_rect[head, row, key_row]) * int(
+                        v[key_row, kv_head * X3_HEAD_DIM + dim]
+                    )
+                index = head * X3_HEAD_DIM + dim
+                av_acc[row, index] = acc
+                av_q[row, index] = _requant(np.asarray([acc]), X3_SHIFT, "AV")[0]
+    projection_acc = av_q.astype(np.int64) @ weights["attention"].astype(np.int64)
+    projection_q = _requant(projection_acc, X3_SHIFT, "attention projection")
+    output_wide = np.asarray(source, dtype=np.int32) + projection_q.astype(np.int32)
+    if np.any(output_wide < I16_MIN) or np.any(output_wide > I16_MAX):
+        raise AssertionError("X3 attention residual overflow")
+    return {
+        "rms1": rms1,
+        "qkv_acc": qkv_acc,
+        "qkv": qkv,
+        "q": q,
+        "k": k,
+        "v": v,
+        "lo": lo,
+        "hi": hi,
+        "real_mask": real_mask,
+        "grouped_k_reads": np.asarray(grouped_k_reads, dtype=np.int16),
+        "grouped_v_reads": np.asarray(grouped_v_reads, dtype=np.int16),
+        "rope_folded_k": np.asarray(rope_folded_k, dtype=np.int64),
+        "rope_pair_terms": np.asarray(rope_pair_terms, dtype=np.int64),
+        "score_acc_rect": score_acc_rect,
+        "score_acc_real": np.asarray(score_acc_real, dtype=np.int64),
+        "score_q_rect": score_q_rect,
+        "score_q_real": np.asarray(score_q_real, dtype=np.int16),
+        "exp_rect": exp_rect,
+        "sink_scores": np.asarray(sink_scores, dtype=np.int16),
+        "sink_exp": np.asarray(sink_exp, dtype=np.int16),
+        "denoms": denoms,
+        "recip_in": recip_in,
+        "recips": recips,
+        "norm_acc_rect": norm_acc_rect,
+        "weights_rect": weights_rect,
+        "av_acc": av_acc,
+        "av_q": av_q,
+        "projection_acc": projection_acc,
+        "projection_q": projection_q,
+        "output": output_wide.astype(np.int16),
+    }
+
+
+def _x3_experts(
+    source: np.ndarray,
+    routes: np.ndarray,
+    weights: list[dict[str, np.ndarray]],
+    luts: dict[str, np.ndarray],
+) -> tuple[list[dict[str, np.ndarray]], np.ndarray]:
+    jobs: list[list[tuple[int, int]]] = [[] for _ in range(X3_EXPERTS)]
+    for token in range(X3_T):
+        for slot in range(X3_TOP_K):
+            jobs[int(routes[token, slot])].append((token, slot))
+    route_values = np.zeros((X3_T, X3_TOP_K, X3_D), dtype=np.int16)
+    witnesses: list[dict[str, np.ndarray]] = []
+    for expert, rows in enumerate(jobs):
+        if not rows:
+            raise AssertionError("X3 synthetic routes must exercise every expert")
+        gathered = np.ascontiguousarray(np.stack([source[token] for token, _ in rows]))
+        gate_acc = gathered.astype(np.int64) @ weights[expert]["gate"].astype(np.int64)
+        gate_q = _requant(gate_acc, X3_SHIFT, "expert gate")
+        up_acc = gathered.astype(np.int64) @ weights[expert]["up"].astype(np.int64)
+        up_q = _requant(up_acc, X3_SHIFT, "expert up")
+        gate_clamped = luts["clamp"][gate_q.astype(np.uint16)]
+        up_clamped = luts["clamp"][up_q.astype(np.uint16)]
+        silu = luts["silu"][gate_clamped.astype(np.uint16)]
+        product_acc = silu.astype(np.int64) * up_clamped.astype(np.int64)
+        product_q = _requant(product_acc, X3_SILU_SHIFT, "SwiGLU product")
+        down_acc = product_q.astype(np.int64) @ weights[expert]["down"].astype(np.int64)
+        down_q = _requant(down_acc, X3_SHIFT, "expert down")
+        for job_row, (token, slot) in enumerate(rows):
+            route_values[token, slot] = down_q[job_row]
+        witnesses.append(
+            {
+                "rows": np.asarray(rows, dtype=np.uint8),
+                "gathered": gathered,
+                "gate_acc": gate_acc,
+                "gate_q": gate_q,
+                "gate_clamped": gate_clamped,
+                "up_acc": up_acc,
+                "up_q": up_q,
+                "up_clamped": up_clamped,
+                "silu": silu,
+                "product_acc": product_acc,
+                "product_q": product_q,
+                "down_acc": down_acc,
+                "down_q": down_q,
+            }
+        )
+    return witnesses, route_values
+
+
+def _x3_clamp_probe(luts: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+    gate_in = np.asarray([-2048, -1025, -1024, -17, 0, 23, 1024, 1025, 2048], dtype=np.int16)
+    up_in = np.asarray([2048, 1025, 1024, 23, 0, -17, -1024, -1025, -2048], dtype=np.int16)
+    gate_clamped = luts["clamp"][gate_in.astype(np.uint16)]
+    up_clamped = luts["clamp"][up_in.astype(np.uint16)]
+    silu = luts["silu"][gate_clamped.astype(np.uint16)]
+    product_acc = silu.astype(np.int64) * up_clamped.astype(np.int64)
+    return {
+        "gate_in": gate_in,
+        "up_in": up_in,
+        "gate_clamped": gate_clamped,
+        "up_clamped": up_clamped,
+        "silu": silu,
+        "product_acc": product_acc,
+        "product_q": _requant(product_acc, X3_SILU_SHIFT, "clamp probe product"),
+    }
+
+
+def x3_ops_arrays(*, admit_poison: bool = False) -> dict[str, object]:
+    luts = _x3_luts()
+    rope_coefficients = _x3_rope_coefficients()
+    tokens = np.arange(X3_T, dtype=np.uint16)
+    wte, wpe = _x3_embedding_weights()
+    source_padding = _x3_source_padding()
+    canonical_padding = source_padding.copy() if admit_poison else np.zeros_like(source_padding)
+    embedding_acc = (wte[tokens].astype(np.int64) + wpe.astype(np.int64)) << X3_SHIFT
+    embedding_out = _requant(embedding_acc, X3_SHIFT, "embedding")
+    weights = [_x3_layer_weights(layer) for layer in range(X3_LAYERS)]
+    layers: list[dict[str, object]] = []
+    current = embedding_out
+    seam_acc = np.empty(0, dtype=np.int64)
+    seam_out = np.empty(0, dtype=np.int16)
+    for layer in range(X3_LAYERS):
+        attention = _x3_attention(current, layer, weights[layer], luts, rope_coefficients)
+        rms2 = _x3_rmsnorm(attention["output"], luts)
+        routes = _x3_routes(layer)
+        route_weights = np.full((X3_T, X3_TOP_K), 128, dtype=np.int16)
+        experts, route_values = _x3_experts(
+            rms2["output"], routes, weights[layer]["experts"], luts
+        )
+        combine_acc = attention["projection_q"].astype(np.int64) << X3_SHIFT
+        for slot in range(X3_TOP_K):
+            combine_acc += route_weights[:, slot].astype(np.int64)[:, None] * route_values[:, slot].astype(
+                np.int64
+            )
+        combine_q = _requant(combine_acc, X3_SHIFT, "MoE combine")
+        output_wide = current.astype(np.int32) + combine_q.astype(np.int32)
+        if np.any(output_wide < I16_MIN) or np.any(output_wide > I16_MAX):
+            raise AssertionError("X3 layer residual overflow")
+        output = output_wide.astype(np.int16)
+        layers.append(
+            {
+                "input": current.copy(),
+                "attention": attention,
+                "rms2": rms2,
+                "routes": routes,
+                "route_weights": route_weights,
+                "experts": experts,
+                "route_values": route_values,
+                "combine_acc": combine_acc,
+                "combine_q": combine_q,
+                "output": output,
+            }
+        )
+        if layer + 1 < X3_LAYERS:
+            seam_acc = output.astype(np.int64) << X3_SHIFT
+            seam_out = _requant(seam_acc, X3_SHIFT, "residual seam")
+            current = seam_out
+        else:
+            current = output
+    output_weight = _x3_sparse_projection(X3_D, X3_VOCAB, 19, 2)
+    final_rms = _x3_rmsnorm(current[-1:], luts)
+    final_witness = {
+        "rms": final_rms,
+        "logits": final_rms["output"].astype(np.int64) @ output_weight.astype(np.int64),
+    }
+    return {
+        "rope_coefficients": rope_coefficients,
+        "tokens": tokens,
+        "wte": wte,
+        "wpe": wpe,
+        "source_padding": source_padding,
+        "canonical_padding": canonical_padding,
+        "embedding_acc": embedding_acc,
+        "embedding_out": embedding_out,
+        "weights": weights,
+        "layers": layers,
+        "seam_acc": seam_acc,
+        "seam_out": seam_out,
+        "output_weight": output_weight,
+        "final_witness": final_witness,
+        "clamp_probe": _x3_clamp_probe(luts),
+    }
+
+
+def _append_x3_rms(out: bytearray, rms: dict[str, np.ndarray]) -> None:
+    for name, dtype in (
+        ("input", "<i2"),
+        ("sum_squares", "<i8"),
+        ("mean_square", "<i8"),
+        ("rsqrt_in", "<i2"),
+        ("rsqrt_out", "<i2"),
+        ("acc", "<i8"),
+        ("output", "<i2"),
+    ):
+        _append_array(out, rms[name], dtype)
+
+
+def x3_golden_bytes(*, admit_poison: bool = False) -> bytes:
+    fixture = x3_ops_arrays(admit_poison=admit_poison)
+    out = bytearray(b"VOLTA-X3-GOLD-V1")
+    out += struct.pack(
+        "<19I",
+        X3_T,
+        X3_T_PAD,
+        X3_LAYERS,
+        X3_D,
+        X3_D_PAD,
+        X3_DFF,
+        X3_DFF_PAD,
+        X3_Q_HEADS,
+        X3_KV_HEADS,
+        X3_HEAD_DIM,
+        X3_EXPERTS,
+        X3_TOP_K,
+        X3_VOCAB,
+        X3_VOCAB_PAD,
+        X3_SHIFT,
+        X3_SILU_SHIFT,
+        X3_ROPE_FRAC,
+        X3_SCORE_SHIFT,
+        X3_SINKS,
+    )
+    _append_array(out, fixture["rope_coefficients"], "<i2")
+    out += struct.pack("<I", fixture["source_padding"].size)
+    for name, dtype in (
+        ("source_padding", "<i2"),
+        ("canonical_padding", "<i2"),
+        ("tokens", "<u2"),
+        ("wte", "<i2"),
+        ("wpe", "<i2"),
+        ("embedding_acc", "<i8"),
+        ("embedding_out", "<i2"),
+    ):
+        _append_array(out, fixture[name], dtype)
+    for weights, layer in zip(fixture["weights"], fixture["layers"], strict=True):
+        _append_array(out, weights["qkv"], "<i2")
+        _append_array(out, weights["attention"], "<i2")
+        for expert_weights in weights["experts"]:
+            for name in ("gate", "up", "down"):
+                _append_array(out, expert_weights[name], "<i2")
+        _append_array(out, layer["input"], "<i2")
+        attention = layer["attention"]
+        _append_x3_rms(out, attention["rms1"])
+        for name, dtype in (
+            ("qkv_acc", "<i8"),
+            ("qkv", "<i2"),
+            ("q", "<i2"),
+            ("k", "<i2"),
+            ("v", "<i2"),
+            ("lo", "<u4"),
+            ("hi", "<u4"),
+            ("real_mask", "u1"),
+            ("grouped_k_reads", "<i2"),
+            ("grouped_v_reads", "<i2"),
+            ("rope_folded_k", "<i8"),
+            ("rope_pair_terms", "<i8"),
+            ("score_acc_rect", "<i8"),
+            ("score_acc_real", "<i8"),
+            ("score_q_rect", "<i2"),
+            ("score_q_real", "<i2"),
+            ("exp_rect", "<i2"),
+            ("sink_scores", "<i2"),
+            ("sink_exp", "<i2"),
+            ("denoms", "<i8"),
+            ("recip_in", "<i2"),
+            ("recips", "<i2"),
+            ("norm_acc_rect", "<i8"),
+            ("weights_rect", "<i2"),
+            ("av_acc", "<i8"),
+            ("av_q", "<i2"),
+            ("projection_acc", "<i8"),
+            ("projection_q", "<i2"),
+            ("output", "<i2"),
+        ):
+            _append_array(out, attention[name], dtype)
+        _append_x3_rms(out, layer["rms2"])
+        _append_array(out, layer["routes"], "u1")
+        _append_array(out, layer["route_weights"], "<i2")
+        for expert in layer["experts"]:
+            out += struct.pack("<I", expert["rows"].shape[0])
+            for name, dtype in (
+                ("rows", "u1"),
+                ("gathered", "<i2"),
+                ("gate_acc", "<i8"),
+                ("gate_q", "<i2"),
+                ("gate_clamped", "<i2"),
+                ("up_acc", "<i8"),
+                ("up_q", "<i2"),
+                ("up_clamped", "<i2"),
+                ("silu", "<i2"),
+                ("product_acc", "<i8"),
+                ("product_q", "<i2"),
+                ("down_acc", "<i8"),
+                ("down_q", "<i2"),
+            ):
+                _append_array(out, expert[name], dtype)
+        for name, dtype in (
+            ("route_values", "<i2"),
+            ("combine_acc", "<i8"),
+            ("combine_q", "<i2"),
+            ("output", "<i2"),
+        ):
+            _append_array(out, layer[name], dtype)
+    _append_array(out, fixture["seam_acc"], "<i8")
+    _append_array(out, fixture["seam_out"], "<i2")
+    _append_array(out, fixture["output_weight"], "<i2")
+    _append_x3_rms(out, fixture["final_witness"]["rms"])
+    _append_array(out, fixture["final_witness"]["logits"], "<i8")
+    for name, dtype in (
+        ("gate_in", "<i2"),
+        ("up_in", "<i2"),
+        ("gate_clamped", "<i2"),
+        ("up_clamped", "<i2"),
+        ("silu", "<i2"),
+        ("product_acc", "<i8"),
+        ("product_q", "<i2"),
+    ):
+        _append_array(out, fixture["clamp_probe"][name], dtype)
+    return bytes(out)
+
+
 class ToyMoeExporter(ArchitectureExporter):
     architecture = "volta-x123-toy-moe-v1"
 
@@ -818,12 +1394,38 @@ class ToyMoeExporter(ArchitectureExporter):
                 "vocab": 97,
                 "thin_k": [1, 2],
             },
+            "x3": {
+                "t": X3_T,
+                "t_pad": X3_T_PAD,
+                "layers": X3_LAYERS,
+                "d_model": X3_D,
+                "d_model_pad": X3_D_PAD,
+                "d_ff": X3_DFF,
+                "d_ff_pad": X3_DFF_PAD,
+                "q_heads": X3_Q_HEADS,
+                "kv_heads": X3_KV_HEADS,
+                "head_dim": X3_HEAD_DIM,
+                "gqa_group": X3_GQA_GROUP,
+                "experts": X3_EXPERTS,
+                "top_k": X3_TOP_K,
+                "vocab": X3_VOCAB,
+                "vocab_pad": X3_VOCAB_PAD,
+                "norm": "rmsnorm",
+                "activation": "swiglu",
+                "clamp": [X3_CLAMP_MIN, X3_CLAMP_MAX],
+                "attention": ["full_causal", {"sliding": 4}],
+                "attention_sinks_per_q_head": X3_SINKS,
+                "rope": {"base": 10000, "fraction_bits": X3_ROPE_FRAC},
+                "score_shift": X3_SCORE_SHIFT,
+                "thin_k": 2,
+            },
         }
 
     def goldens(self) -> dict[str, bytes]:
         return {
             "x1-router-v1.golden.bin": x1_golden_bytes(),
             "x2-moe-v1.golden.bin": x2_golden_bytes(),
+            "x3-ops-v1.golden.bin": x3_golden_bytes(),
         }
 
 
@@ -945,6 +1547,17 @@ def self_test() -> None:
     assert np.array_equal(x2["layers"][1]["router"]["routes"], _x2_routes(1))
     final_layer = np.ascontiguousarray(x2["layers"][-1]["output"], dtype="<i2").tobytes()
     assert x2_golden_bytes().endswith(final_layer + final_layer)
+    x3 = x3_ops_arrays()
+    poisoned = x3_ops_arrays(admit_poison=True)
+    assert np.all(x3["source_padding"] != 0)
+    assert np.all(x3["canonical_padding"] == 0)
+    assert np.array_equal(poisoned["canonical_padding"], poisoned["source_padding"])
+    assert np.array_equal(x3["layers"][-1]["output"], poisoned["layers"][-1]["output"])
+    assert x3["layers"][0]["attention"]["lo"].tolist() == [0, 0, 0, 0, 0, 0, 0]
+    assert x3["layers"][1]["attention"]["lo"].tolist() == [0, 0, 0, 0, 1, 2, 3]
+    probe = x3["clamp_probe"]
+    assert probe["gate_clamped"].tolist() == [-1024, -1024, -1024, -17, 0, 23, 1024, 1024, 1024]
+    assert x3_golden_bytes() != x3_golden_bytes(admit_poison=True)
     print("x123 exporter self-test OK")
 
 

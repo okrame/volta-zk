@@ -1,0 +1,380 @@
+{
+  "schema": 1,
+  "milestone": "X3-non-GPT-ops-pack",
+  "date": "2026-07-20",
+  "git_sha": "7544f36b2392e4ea091f2e71803baa6598aeec91",
+  "git_short_sha": "7544f36",
+  "git_dirty": false,
+  "cpu_only": true,
+  "rayon_workers": 4,
+  "detected_logical_cpus": 4,
+  "cpu_model": "unknown",
+  "peak_rss_gib": 0.06461715698242188,
+  "cryptographic_review_assurance": false,
+  "kimi3_review_baseline": "f05d727 (X1-X3 additions postdate this detached baseline)",
+  "kimi3_delta_review_required": true,
+  "preregistration_record": "benchmarks/results/x3-prereg-2026-07-20-6c53619.json",
+  "preregistration_sha256": "c996bd4d2d887d8df113a17df496cf1b2e74a3b149867fb3dfe1f51e74c198e2",
+  "model_config_blake3": "fcfe6244248d5d160166eef3c15b4ab5f757afe994d21c4dcce0a554f9f72426",
+  "shape": {
+    "d_ff": 80,
+    "d_ff_pad": 128,
+    "d_model": 48,
+    "experts": 8,
+    "gqa_group_size": 3,
+    "head_dim": 8,
+    "hidden_pad": 64,
+    "kv_heads": 2,
+    "layers": 2,
+    "q_heads": 6,
+    "score_shift": 22,
+    "thin_k": 2,
+    "token_pad": 8,
+    "tokens": 7,
+    "top_k": 2,
+    "vocab": 97,
+    "vocab_pad": 128
+  },
+  "attention_schedule": [
+    "full_causal",
+    "sliding_window_4"
+  ],
+  "gqa_q_to_kv_head": [
+    0,
+    0,
+    0,
+    1,
+    1,
+    1
+  ],
+  "native_operation_counts": {
+    "attention_out": 32256,
+    "expert_down": 107520,
+    "expert_gate_up": 215040,
+    "gqa_av": 2400,
+    "logits": 4656,
+    "qkv": 53760,
+    "rope_qk": 2400
+  },
+  "artifacts": {
+    "config_sha256": "92b1bcad58b466529d45a76391159404e2d47a7ae71679d2c3fdd1ba3f5f59a2",
+    "artifact_sha256": "01853c761b625d5f28d210a6e8e81a2b3e1cfecdf1941cf8d296810b0f34f402",
+    "golden_sha256": "31b5471f197a1fdb27641f123555fa6f098e30552d35f9e62b0806a37b70fa0c",
+    "exporter_sha256": "db2f8b430c9d717af17b02aaedef9b9ab50d513faff592d11873cb03ed2d6182",
+    "golden_bytes": 656034,
+    "rust_numpy_golden_bit_exact": true,
+    "differing_bytes": 0,
+    "real_gpt_oss_export_executed": false
+  },
+  "padding_poison": {
+    "source_padding_cells": 2624,
+    "all_source_sentinels_nonzero": true,
+    "all_source_sentinels_distinct": true,
+    "canonical_padding_all_zero": true,
+    "logical_layers_poison_invariant": true,
+    "final_output_poison_invariant": true,
+    "poisoned_run_rejected": true,
+    "poisoned_run_prover_nonzero_zero_claim_detected": true,
+    "targets": [
+      "time row 7 of physical row-pad 8",
+      "wpe row 7 (P5 embedding-selection bug class)",
+      "hidden columns 48..63",
+      "FFN columns 80..127",
+      "vocabulary rows 97..127"
+    ]
+  },
+  "honest": {
+    "accepted": true,
+    "proof_verified": true,
+    "product_batch_accepted": true,
+    "zero_batch_accepted": true,
+    "logical_lookup_rows": 21969,
+    "padded_lookup_rows": 35824,
+    "table_sites": 91,
+    "table_contents": 9,
+    "table_finalizations": 1,
+    "rope_new_lookup_rows": 0,
+    "instance_counters": {
+      "fp2_mults": 6292709,
+      "base_mults": 4083696,
+      "emult_equiv": 7109448.2
+    },
+    "other_counters": {
+      "fp2_mults": 0,
+      "base_mults": 0,
+      "emult_equiv": 0.0
+    },
+    "prover_correlation_counters": {
+      "sub_corrs": 1065887,
+      "full_corrs": 15802,
+      "domains": 6573
+    },
+    "verifier_correlation_counters": {
+      "sub_corrs": 1065887,
+      "full_corrs": 15802,
+      "domains": 6573
+    },
+    "allocation_digest_prover": "617548ab5502f979476a3b1ad41c8fd3d571a5153f5cca364349175ee20ab9f6",
+    "allocation_digest_verifier": "617548ab5502f979476a3b1ad41c8fd3d571a5153f5cca364349175ee20ab9f6",
+    "allocation_digest_match": true,
+    "channel_digest_prover": "a1a87c61676d5aaa832b1baa6237e571d44197b005901f1b56946ca909490e36",
+    "channel_digest_verifier": "a1a87c61676d5aaa832b1baa6237e571d44197b005901f1b56946ca909490e36",
+    "channel_digest_match": true,
+    "transcript_bytes": 8781000,
+    "transcript_by_label": {
+      "auth_corrections": 8527096,
+      "blind_round_corrections": 11840,
+      "hadamard_claim_corrections": 1680,
+      "hadamard_round_corrections": 14112,
+      "logup_aggregate_corrections": 3936,
+      "logup_aux_round_corrections": 29904,
+      "logup_col_corrections": 5824,
+      "logup_cross_corrections": 576,
+      "logup_prod_corrections": 40032,
+      "logup_root_corrections": 3200,
+      "logup_round_corrections": 86240,
+      "logup_split_corrections": 53376,
+      "mask_correction": 16,
+      "prod_check_m0_m1": 2112,
+      "w_claim_correction": 1040,
+      "zero_batch_tag": 16
+    },
+    "prove_s": 0.097576751,
+    "verify_s": 0.060557003,
+    "closure_s": 0.000209834
+  },
+  "smoke_runs": {
+    "attention_sink_score_or_denominator_tamper_rejects": {
+      "rejected": true,
+      "proof_verified": true,
+      "product_batch_accepted": true,
+      "zero_batch_accepted": false,
+      "prover_nonzero_zero_claim_detected": false,
+      "target_trace_byte_index": 266274,
+      "prover_correlation_counters": {
+        "sub_corrs": 1065887,
+        "full_corrs": 15802,
+        "domains": 6573
+      },
+      "verifier_correlation_counters": {
+        "sub_corrs": 1065887,
+        "full_corrs": 15802,
+        "domains": 6573
+      },
+      "transcript_bytes": 8781000,
+      "prove_s": 0.09011821,
+      "verify_s": 0.059803249,
+      "closure_s": 0.000199501
+    },
+    "gqa_wrong_kv_head_substitution_rejects": {
+      "rejected": true,
+      "proof_verified": true,
+      "product_batch_accepted": true,
+      "zero_batch_accepted": false,
+      "prover_nonzero_zero_claim_detected": false,
+      "target_trace_byte_index": 232770,
+      "prover_correlation_counters": {
+        "sub_corrs": 1065887,
+        "full_corrs": 15802,
+        "domains": 6573
+      },
+      "verifier_correlation_counters": {
+        "sub_corrs": 1065887,
+        "full_corrs": 15802,
+        "domains": 6573
+      },
+      "transcript_bytes": 8781000,
+      "prove_s": 0.089504581,
+      "verify_s": 0.060021667,
+      "closure_s": 0.000190085
+    },
+    "pad_poison_sentinel_admission_rejects": {
+      "rejected": true,
+      "proof_verified": true,
+      "product_batch_accepted": true,
+      "zero_batch_accepted": false,
+      "prover_nonzero_zero_claim_detected": true,
+      "target_trace_byte_index": 5552,
+      "prover_correlation_counters": {
+        "sub_corrs": 1065887,
+        "full_corrs": 15801,
+        "domains": 6572
+      },
+      "verifier_correlation_counters": {
+        "sub_corrs": 1065887,
+        "full_corrs": 15801,
+        "domains": 6572
+      },
+      "transcript_bytes": 8780968,
+      "prove_s": 0.090076667,
+      "verify_s": 0.059492331,
+      "closure_s": 0.000160084
+    },
+    "rmsnorm_mean_square_or_rsqrt_input_one_cell_tamper_rejects": {
+      "rejected": true,
+      "proof_verified": true,
+      "product_batch_accepted": true,
+      "zero_batch_accepted": false,
+      "prover_nonzero_zero_claim_detected": false,
+      "target_trace_byte_index": 222166,
+      "prover_correlation_counters": {
+        "sub_corrs": 1065887,
+        "full_corrs": 15802,
+        "domains": 6573
+      },
+      "verifier_correlation_counters": {
+        "sub_corrs": 1065887,
+        "full_corrs": 15802,
+        "domains": 6573
+      },
+      "transcript_bytes": 8781000,
+      "prove_s": 0.089486373,
+      "verify_s": 0.059759666,
+      "closure_s": 0.000189085
+    },
+    "rmsnorm_output_one_cell_tamper_rejects": {
+      "rejected": true,
+      "proof_verified": true,
+      "product_batch_accepted": true,
+      "zero_batch_accepted": false,
+      "prover_nonzero_zero_claim_detected": false,
+      "target_trace_byte_index": 224938,
+      "prover_correlation_counters": {
+        "sub_corrs": 1065887,
+        "full_corrs": 15802,
+        "domains": 6573
+      },
+      "verifier_correlation_counters": {
+        "sub_corrs": 1065887,
+        "full_corrs": 15802,
+        "domains": 6573
+      },
+      "transcript_bytes": 8781000,
+      "prove_s": 0.088051157,
+      "verify_s": 0.058611576,
+      "closure_s": 0.000188877
+    },
+    "rope_public_coefficient_or_folded_qk_term_tamper_rejects": {
+      "rejected": true,
+      "proof_verified": true,
+      "product_batch_accepted": true,
+      "zero_batch_accepted": false,
+      "prover_nonzero_zero_claim_detected": false,
+      "target_trace_byte_index": 238146,
+      "prover_correlation_counters": {
+        "sub_corrs": 1065887,
+        "full_corrs": 15802,
+        "domains": 6573
+      },
+      "verifier_correlation_counters": {
+        "sub_corrs": 1065887,
+        "full_corrs": 15802,
+        "domains": 6573
+      },
+      "transcript_bytes": 8781000,
+      "prove_s": 0.091662135,
+      "verify_s": 0.060112376,
+      "closure_s": 0.000188376
+    },
+    "sliding_lower_edge_or_out_of_window_cell_admission_rejects": {
+      "rejected": true,
+      "proof_verified": true,
+      "product_batch_accepted": true,
+      "zero_batch_accepted": false,
+      "prover_nonzero_zero_claim_detected": false,
+      "target_trace_byte_index": 544232,
+      "prover_correlation_counters": {
+        "sub_corrs": 1065887,
+        "full_corrs": 15802,
+        "domains": 6573
+      },
+      "verifier_correlation_counters": {
+        "sub_corrs": 1065887,
+        "full_corrs": 15802,
+        "domains": 6573
+      },
+      "transcript_bytes": 8781000,
+      "prove_s": 0.090307502,
+      "verify_s": 0.059973792,
+      "closure_s": 0.000190127
+    },
+    "swiglu_clamp_side_row_tamper_rejects": {
+      "rejected": true,
+      "proof_verified": true,
+      "product_batch_accepted": true,
+      "zero_batch_accepted": false,
+      "prover_nonzero_zero_claim_detected": false,
+      "target_trace_byte_index": 284024,
+      "prover_correlation_counters": {
+        "sub_corrs": 1065887,
+        "full_corrs": 15802,
+        "domains": 6573
+      },
+      "verifier_correlation_counters": {
+        "sub_corrs": 1065887,
+        "full_corrs": 15802,
+        "domains": 6573
+      },
+      "transcript_bytes": 8781000,
+      "prove_s": 0.090024668,
+      "verify_s": 0.059729833,
+      "closure_s": 0.000189085
+    },
+    "swiglu_silu_or_hadamard_product_one_cell_tamper_rejects": {
+      "rejected": true,
+      "proof_verified": true,
+      "product_batch_accepted": true,
+      "zero_batch_accepted": false,
+      "prover_nonzero_zero_claim_detected": false,
+      "target_trace_byte_index": 286584,
+      "prover_correlation_counters": {
+        "sub_corrs": 1065887,
+        "full_corrs": 15802,
+        "domains": 6573
+      },
+      "verifier_correlation_counters": {
+        "sub_corrs": 1065887,
+        "full_corrs": 15802,
+        "domains": 6573
+      },
+      "transcript_bytes": 8781000,
+      "prove_s": 0.090266293,
+      "verify_s": 0.059176912,
+      "closure_s": 0.000189626
+    }
+  },
+  "existing_argument_classes": [
+    "Pi_Auth",
+    "content-keyed LogUp/TableBank",
+    "requant range limbs including P5 chained (6,16) shift-22",
+    "blind Hadamard/Pi_Prod",
+    "committed-W blind GEMM",
+    "band AV GEMM with public lower-edge mask",
+    "Pi_ZeroBatch"
+  ],
+  "deviations": [
+    "The fixed X3 synthetic statement adds a redundant full-trace Pi_Auth/Pi_ZeroBatch conformance binding to make every zero-tolerance named array and pad sentinel independently tamperable; it is an existing argument class and is not projected as a production cost.",
+    "Committed-GEMM evaluation claims close against deterministic toy fixture weights in the synthetic spike; no PCS parameter, opening, setup, lifecycle or proof-path machinery changes, and no production PCS credit is claimed.",
+    "Clamp1024 and Q10 SiLU are new TableBank contents only. They use the existing two-column content-keyed LogUp argument and introduce no argument class.",
+    "The total score shift 22 uses the existing P5 double-round schedule (6 then 16), so its two range sites are counted exactly; RoPE itself adds zero lookup rows.",
+    "RMS mean-square division, public RoPE fold, GQA selector, sink denominator and lower-edge mask are fixed public-linear relations closed inside the synthetic trace ZeroBatch; their nonlinear/product components separately instantiate the existing lookup/Hadamard/band machinery."
+  ],
+  "gate": {
+    "verdict": "PASS",
+    "bit_exact_tolerance": 0,
+    "shape_t7_d48_exact": true,
+    "honest_native_and_proof_accept": true,
+    "all_named_rust_numpy_arrays_bit_exact": true,
+    "integrated_two_layer_output_bit_exact": true,
+    "all_nine_permanent_tamper_tests_reject": true,
+    "all_padding_poison_predicates_pass": true,
+    "rope_new_lookup_rows_exact_zero": true,
+    "prover_verifier_exact_counter_match": true,
+    "allocation_digest_match": true,
+    "channel_digest_match": true,
+    "single_two_phase_tablebank_session": true,
+    "no_new_argument_class": true,
+    "cpu_four_workers_pass": true,
+    "all_pass": true
+  }
+}

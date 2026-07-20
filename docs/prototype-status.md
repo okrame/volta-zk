@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 preregistered/HARD STOP; X4 later)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; X4 gated on R1/later)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -43,12 +43,15 @@ routing closed PASS on clean `6be165f`.  X2 closed **FAIL** on clean
 passed, but the binding full-correlation ratios were below the symmetric 20%
 band.  The user approved the frozen corrected-proxy repeat, and X2b closed
 **PASS** on clean `053d3fc` with the same inclusive band and exact full-
-correlation ratios 1.0 at k=1 and k=2.  X2 remains an immutable FAIL.  X3 is
-now preregistered under a new hard stop for explicit user approval; no X3
-implementation, golden generation, proof run or verdict exists.  X4 remains a later
-package and pool prewarming remains backlog.  By product-owner decision on 2026-07-19,
-R1 is outside this package's operational plan and is deferred to Kimi3; no
-cryptographic-review assurance is claimed by the T1 closure.
+correlation ratios 1.0 at k=1 and k=2.  X2 remains an immutable FAIL.  After
+explicit approval, X3 closed **PASS** on clean `7544f36`: the zero-tolerance
+T=7/d=48 golden, honest proof, nine permanent rejection tests, active
+pad-poison rejection and exact session invariants all passed.  The X1--X3
+package is closed.  X4 remains a separate later package, is gated on the
+pending Kimi3 R1 verdict and is not authorized; pool prewarming remains
+backlog.  X1--X3 additions postdate Kimi3's detached `f05d727` review
+baseline and require a future delta review.  No cryptographic-review
+assurance is claimed.
 
 ## Milestones
 
@@ -79,7 +82,7 @@ cryptographic-review assurance is claimed by the T1 closure.
 | X1 runtime foundation + routing soundness | **PASS; complete** (2026-07-19) | GPT-2 T1 byte-for-byte at **84,544,352 B** with exact counters/deterministic schedule digest/golden/workspace ✓; all route cheats reject; isolated E-mult/token-layer ratio in **[0.80,1.20]** ✓ | Foundation clean `9a4c688`. Routing clean `6be165f`: T=31, L=4, d=48, **3,968 logical / 4,096 padded**; measured **707.2774193548387** versus predicted **662.4056199596774 E-mult/token-layer**, ratio **1.0677406683202548 PASS**. One unchanged-P4 commitment/opening, 4 claims; exact sub/full **205,568 / 4,714**; all nine honest/cheating/preflight predicates green; record `x1-routing-2026-07-19-6be165f.json`. |
 | X2 synthetic MoE e2e | **official valid FAIL; package stopped** (2026-07-19) | Honest k=1/k=2, identical bit-exact output, one TableBank, 3 commitments/40 claims, PCS/closures/digests/smokes all PASS; binding full-correlation ratios must be in **[0.80,1.20]** and are **0.731338 / 0.732512 FAIL** | Clean `87ce25b`: **316,464 MACs** exact; measured **12,523 logical / 19,346 padded lookup rows** and **82 sites** (same k=1/k=2); sub **350,304 / 349,793 PASS**; full **12,462 / 12,482** vs 17,040 FAIL. Record `x2-moe-2026-07-19-87ce25b.json`. |
 | X2b corrected-proxy repeat | **PASS; complete** (2026-07-20) | Frozen `existing-class-session-v2`, same CPU fixture/code/smokes/exact invariants and same inclusive **[0.80,1.20]** band; X2 remains FAIL under its original 17,040 proxy | Clean `053d3fc`: full **12,462 / 12,482** predicted and measured, ratios **1.0 / 1.0 PASS**. MAC **316,464** exact; lookup logical/padded/sites **12,523 / 19,346 / 82**, sub **350,304 / 349,793**, all within band. Record `x2b-moe-2026-07-20-053d3fc.json`. |
-| X3 non-GPT ops pack | **PREREGISTERED; HARD STOP pending explicit user approval** (2026-07-20) | Zero-tolerance Rust/numpy full-array bit-exact gate at non-power-of-two **T=7** and hidden **d=48**; honest proof accepts, nine permanent tamper/pad smokes reject, exact counter/digest/session predicates | Frozen d_ff=80, GQA 6/2, RMSNorm, clamped SwiGLU, Q14 RoPE, two sinks/head and `[full, sliding(4)]`; row/hidden/FFN/vocab pads 8/64/128/128. No implementation or verdict. Prereg record `x3-prereg-2026-07-20-6c53619.json`. |
+| X3 non-GPT ops pack | **PASS; complete; X1--X3 package CLOSED** (2026-07-20) | Zero-tolerance Rust/numpy full-array bit-exact gate at non-power-of-two **T=7** and hidden **d=48**; honest proof accepts, nine permanent tamper/pad smokes reject, exact counter/digest/session predicates | Clean `7544f36`: **656,034 B**, zero differing golden bytes; **21,969 / 35,824** logical/padded lookup rows, 91 sites/9 contents/1 finalization, RoPE delta 0; sub/full/domains **1,065,887 / 15,802 / 6,573**, transcript **8,781,000 B**, E-equivalent **7,109,448.2**. Pad poison actively rejects with a detected nonzero zero-claim. Record `x3-ops-2026-07-20-7544f36.json`. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -122,6 +125,85 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-20 (X3 approved clean execution: PASS; X1--X3 package
+  CLOSED)**: the explicitly approved X3 gate ran once from clean source
+  `7544f36b2392e4ea091f2e71803baa6598aeec91` on the four-core CPU VM with
+  `RAYON_NUM_THREADS=4`; no pod was provisioned or contacted.  The frozen
+  tolerance remained exactly zero and no preregistration, threshold or proof
+  model changed between approval and execution.  **Gate verdict: PASS.**
+  The append-only record is
+  `benchmarks/results/x3-ops-2026-07-20-7544f36.json`, **12,719 B**, SHA-256
+  `6514f00bdbc7a82941d8ac638196d998edbf6b101aa6fcba552b03884310d932`;
+  it has `git_dirty:false` and cites preregistration SHA-256
+  `c996bd4d2d887d8df113a17df496cf1b2e74a3b149867fb3dfe1f51e74c198e2`.
+
+  **Frozen shape and bit-exact evidence.**  The run used T/pad **7/8**,
+  layers 2, d/pad **48/64**, d_ff/pad **80/128**, vocabulary/pad **97/128**,
+  eight experts/top-2, Q/KV heads **6/2** with group size 3 and head width 8,
+  score shift 22, `thin_k=2`, and `[full_causal, sliding_window_4]`.  Model
+  config BLAKE3 is
+  `fcfe6244248d5d160166eef3c15b4ab5f757afe994d21c4dcce0a554f9f72426`.
+  The independent numpy golden is **656,034 B**, SHA-256
+  `31b5471f197a1fdb27641f123555fa6f098e30552d35f9e62b0806a37b70fa0c`,
+  with **0 differing bytes**.  Config/artifact/exporter SHA-256 values are
+  respectively
+  `92b1bcad58b466529d45a76391159404e2d47a7ae71679d2c3fdd1ba3f5f59a2`,
+  `01853c761b625d5f28d210a6e8e81a2b3e1cfecdf1941cf8d296810b0f34f402`
+  and `db2f8b430c9d717af17b02aaedef9b9ab50d513faff592d11873cb03ed2d6182`.
+  Exact native operation counts are QKV **53,760**, RoPE QK **2,400**, GQA
+  AV **2,400**, attention output **32,256**, expert gate/up **215,040**,
+  expert down **107,520** and logits **4,656**.
+
+  **Honest proof/session evidence.**  Native, proof, product batch and zero
+  batch all accepted in one two-phase TableBank session.  Logical/padded
+  lookup rows are **21,969 / 35,824**, with **91** sites, **9** contents and
+  **1** finalization; RoPE adds exactly **0** rows.  Instance work is
+  **6,292,709 F_p2 mults + 4,083,696 base mults = 7,109,448.2 E-mult
+  equivalent**; other counters are exactly zero.  Prover and verifier each
+  consume sub/full/domain correlations **1,065,887 / 15,802 / 6,573**.
+  Their allocation digest is
+  `617548ab5502f979476a3b1ad41c8fd3d571a5153f5cca364349175ee20ab9f6`
+  and channel digest is
+  `a1a87c61676d5aaa832b1baa6237e571d44197b005901f1b56946ca909490e36`,
+  with exact parity.  Transcript size is **8,781,000 B**: auth 8,527,096;
+  blind-round 11,840; Hadamard-claim 1,680; Hadamard-round 14,112; LogUp
+  aggregate/aux/column/cross/product/root/round/split
+  **3,936 / 29,904 / 5,824 / 576 / 40,032 / 3,200 / 86,240 / 53,376**;
+  mask 16; product-check 2,112; W-claim 1,040; zero-batch tag 16.  Diagnostic
+  prove/verify/closure walls are **0.097576751 / 0.060557003 / 0.000209834
+  s** and peak RSS is **0.06461715698242188 GiB**.  X3 has no timed ratio,
+  so no ABBA ratio operand exists.
+
+  **Permanent rejection evidence.**  All nine named tests reject:
+  RMS mean-square/rsqrt-input, RMS output, SwiGLU clamp side row,
+  SiLU/Hadamard product, RoPE coefficient/fold, wrong GQA KV head, attention
+  sink/denominator, sliding lower edge/out-of-window and pad-sentinel
+  admission.  The clean and poisoned logical layer/final outputs are equal;
+  all **2,624** distinct source-pad sentinels are nonzero, canonical pads are
+  zero, and the poisoned proof is actively rejected after detecting a
+  nonzero canonical-padding zero-claim.  Thus the pad gate is detection, not
+  merely clean-path acceptance.
+
+  **Logged deviations and assurance boundary.**  The synthetic statement
+  redundantly binds the full named trace with existing `Pi_Auth` /
+  `Pi_ZeroBatch` so every golden field and sentinel is independently
+  tamperable; this is not projected as production cost.  Deterministic toy
+  weight evaluation claims close publicly in this spike; no PCS parameter,
+  opening, lifecycle or proof-path machinery changed and no production PCS
+  credit is claimed.  `Clamp1024` and Q10 SiLU are only new TableBank
+  contents using existing LogUp.  Shift 22 uses the existing P5 chained
+  schedule `(6,16)`, while RoPE adds zero lookup rows.  Fixed RMS division,
+  RoPE fold, GQA selection, sink denominator and lower-edge relations close
+  through the existing trace ZeroBatch, with nonlinear components using the
+  existing lookup/Hadamard/band machinery.  No new argument class, Lean,
+  PCG or cryptographic change landed.
+
+  This closes X1--X3 while preserving the original X2 FAIL and later X2b
+  PASS.  The additions postdate Kimi3's detached `f05d727` review baseline
+  and require a later delta review; no cryptographic-review assurance is
+  claimed.  X4 and any real gpt-oss export remain separate, unauthorized
+  future packages, and X4 is gated on the pending R1 verdict.
 
 - **2026-07-20 (X3 execution preregistered after X2b PASS; HARD STOP before
   implementation)**: X2b's clean `053d3fc` proof record and `6c53619`

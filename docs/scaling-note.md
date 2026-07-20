@@ -1,17 +1,19 @@
 # Scaling note — VOLTA beyond GPT-2: dense and MoE
 
 **Status**: X0 analytic design and decisions are preregistered; X1 is PASS,
-X2 is an immutable FAIL, and the approved X2b corrected-proxy repeat is PASS
-on clean `053d3fc` (2026-07-20).  The 2026-07-13 synthetic shape/memory
+X2 is an immutable FAIL, the approved X2b corrected-proxy repeat is PASS on
+clean `053d3fc`, and X3 is PASS on clean `7544f36` (2026-07-20).  The X1--X3
+synthetic package is closed.  The 2026-07-13 synthetic shape/memory
 sweep remains a formula-only historical artifact.  The executable X0 budget
 is `scripts/budget_moe.py`, and `docs/x0-moe-design.md` is the detailed design
 record.  Planning targets are **gpt-oss-20b** (24 layers, d=2880, 32 experts
 top-4, 3.6B active / 20.9B total, GQA 64/8, alternating full / 128-token
 sliding-window attention, RMSNorm, clamped SwiGLU, attention sinks, RoPE and
 MXFP4 source expert weights) and a representative Llama-class dense/GQA
-point.  X3 now has a separate zero-tolerance, non-power-of-two execution
-preregistration and is hard-stopped for explicit approval; no implementation
-or verdict exists.  X4 and X5 remain later packages.
+point.  X3's zero-tolerance, non-power-of-two T=7/d=48 gate closed with a
+656,034-byte bit-exact golden, zero differing bytes, all nine permanent
+rejects and active pad-poison detection.  X4 and X5 remain later packages;
+X4 is gated on the pending Kimi3 R1 verdict and neither is authorized here.
 
 ## 1. The scaling thesis: ρ is ~scale-invariant; communication is not
 
@@ -160,11 +162,16 @@ checkpoint.
   schedule) + extended numpy reference. Gate: zero-tolerance full-array
   bit-exact goldens at non-power-of-two T=7 and hidden d=48, honest proof
   acceptance, permanent op-boundary/pad rejects and exact counter/digest
-  parity.  **Preregistered after X2b PASS; HARD STOP before implementation.**
+  parity.  **PASS; complete on clean `7544f36`.**  Exact record:
+  `x3-ops-2026-07-20-7544f36.json`; 21,969/35,824 logical/padded lookup rows,
+  1,065,887/15,802 sub/full correlations, 8,781,000 transcript bytes, zero
+  new RoPE lookup rows, all nine rejects green and the poisoned run detects
+  its nonzero zero-claim before rejection.
 - **X4** folding PCS over the per-layer/expert-block commitment map.  Gate:
   per-response opening no longer contains a fixed pass linear in all
   committed weights; exact soundness, hiding and block-subset measurements
-  are preregistered in that later package.
+  are preregistered in that later package.  X4 is gated on Kimi3 R1 and is
+  not authorized by the X3 closure.
 - **X5** gpt-oss-20b e2e on the GPU box: MXFP4 export, golden decode,
   run of record with full comm breakdown + P6-style flat-cost and
   anti-replay gates. Gate: accepted e2e inside a pre-registered envelope,

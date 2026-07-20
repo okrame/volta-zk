@@ -1,29 +1,31 @@
 # X1--X3 model-agnostic harness and synthetic MoE design
 
-**Status (2026-07-20): Phase 1 approved; Phase 2 explicitly authorized;
-runtime `ModelConfig` foundation PASS; X1 routing PASS; X2 FAIL remains
-immutable; the approved X2b repeat is PASS; X3 is preregistered and HARD
-STOPPED for explicit user approval.**  The
-preregistered design remains binding; implementation evidence and verdicts
-land in the ledger and append-only records.  The foundation passed its binding
-GPT-2 T1 non-regression gate on clean `9a4c688`; X1 passed on clean `6be165f`.
-X2's clean `87ce25b` record passed all functional/session predicates but
-failed the binding symmetric full-correlation band.  Section 5.4 diagnoses
-that failure, preserves the preregistration, and records the approved clean
-X2b PASS at `053d3fc`.  X3 has no implementation or verdict; section 6.1 is
-its post-X2b execution preregistration.
+**Status (2026-07-20): X1--X3 package CLOSED.  Runtime `ModelConfig`
+foundation PASS; X1 routing PASS; X2 FAIL remains immutable; the approved
+X2b repeat is PASS; X3 PASS.**  The preregistered design remains binding and
+the evidence/verdicts live in the ledger and append-only records.  The
+foundation passed its binding GPT-2 T1 non-regression gate on clean
+`9a4c688`; X1 passed on clean `6be165f`.  X2's clean `87ce25b` record passed
+all functional/session predicates but failed the binding symmetric full-
+correlation band.  Section 5.4 diagnoses that failure, preserves the
+preregistration, and records the approved clean X2b PASS at `053d3fc`.
+After separate explicit approval, X3 passed its unchanged zero-tolerance
+gate on clean `7544f36`; section 6.2 records closure.
 
-The package is CPU-only.  No pod may be provisioned or contacted, no gpt-oss
-checkpoint may be downloaded or exported, and X4 folding PCS and X5 gpt-oss
-execution remain later packages.  PCG/setup/lifecycle, PCS parameters and
-opening semantics, Lean, soundness machinery, proof publication policy and
-correction types are frozen.  X1--X3 may instantiate only existing argument
-classes.  Discovery of a required new class is an immediate hard stop and
-ledger entry, exactly as under the T1 discipline.
+The package is CPU-only.  No pod was provisioned or contacted, no gpt-oss
+checkpoint was downloaded or exported, and X4 folding PCS and X5 gpt-oss
+execution remain later packages.  X4 is gated on the pending Kimi3 R1
+verdict and is not authorized by the X3 approval.  PCG/setup/lifecycle, PCS
+parameters and opening semantics, Lean, soundness machinery, proof
+publication policy and correction types are frozen.  X1--X3 may instantiate
+only existing argument classes.  Discovery of a required new class is an
+immediate hard stop and ledger entry, exactly as under the T1 discipline.
 
 T1 is closed at the exact `84,544,352 B` response reference.  R1 remains an
-external Kimi3 review and is pending; this package continues to claim **no
-independent or adversarial cryptographic-review assurance**.
+external Kimi3 review and is pending.  The X1--X3 additions postdate Kimi3's
+detached `f05d727` review baseline and require a later delta review; this
+package continues to claim **no independent or adversarial cryptographic-
+review assurance**.
 
 ## 1. Package order, authority and stop conditions
 
@@ -675,6 +677,54 @@ immediate stop; no threshold relaxation or same-package retuning is allowed.
 On a later approved run, closure follows section 7.3 exactly and writes only
 `x3-ops-<date>-<gitsha>.json` before its ledger row and checkpoint.
 
+### 6.2 X3 execution and X1--X3 package closure
+
+The user explicitly approved the frozen section-6.1 gate.  It ran CPU-only
+from clean implementation checkpoint
+`7544f36b2392e4ea091f2e71803baa6598aeec91`, without changing the
+preregistration or tolerance and without contacting a pod.  The append-only
+record is `benchmarks/results/x3-ops-2026-07-20-7544f36.json` (12,719 B,
+SHA-256
+`6514f00bdbc7a82941d8ac638196d998edbf6b101aa6fcba552b03884310d932`).
+**Gate verdict: PASS.**
+
+All full numpy/Rust arrays at T=7/d=48 are bit-exact: the 656,034-byte golden
+has SHA-256
+`31b5471f197a1fdb27641f123555fa6f098e30552d35f9e62b0806a37b70fa0c`
+and zero differing bytes.  The honest native/proof, product and zero batches
+accept in one TableBank finalization.  Exact logical/padded lookup counts are
+21,969/35,824 across 91 sites and nine contents; the RoPE-specific delta is
+zero.  Prover and verifier both consume 1,065,887 sub correlations, 15,802
+full correlations and 6,573 domains, with allocation digest
+`617548ab5502f979476a3b1ad41c8fd3d571a5153f5cca364349175ee20ab9f6`
+and channel digest
+`a1a87c61676d5aaa832b1baa6237e571d44197b005901f1b56946ca909490e36`.
+The transcript is 8,781,000 bytes; the measured instance work is 6,292,709
+F_p2 plus 4,083,696 base multiplications, or 7,109,448.2 E-mult equivalent.
+
+All nine preregistered rejects are permanent tests and reject.  In particular,
+the pad-poison variant admits an actual nonzero sentinel, detects a nonzero
+canonical-padding ZeroBatch claim and rejects; the clean and poisoned logical
+outputs remain equal, all 2,624 source sentinels are nonzero/distinct and all
+canonical pads are zero.  This is active detection, not a clean-only check.
+
+The following deviations are part of the synthetic record and receive no
+production cost or PCS credit: a redundant full-trace `Pi_Auth` /
+`Pi_ZeroBatch` conformance binding; public closure of deterministic toy-weight
+GEMM evaluation claims; two new TableBank contents (`Clamp1024` and Q10
+SiLU), not new arguments; the existing P5 `(6,16)` chained schedule for
+shift 22; and fixed public-linear RMS/RoPE/GQA/sink/lower-edge relations
+closed in the trace ZeroBatch while their nonlinear pieces use existing
+lookup/Hadamard/band machinery.  No Lean, PCG, PCS parameter, setup,
+lifecycle, proof-path or cryptographic argument-class change was made.
+
+This PASS closes the X1--X3 synthetic package while preserving X2's immutable
+FAIL and X2b's separate corrected-proxy PASS.  The additions postdate
+Kimi3's detached `f05d727` review baseline and require a future delta review;
+no cryptographic-review assurance is claimed.  X4 and real gpt-oss export are
+separate future packages.  X4 is gated on the pending R1 verdict and was not
+authorized or started.
+
 ## 7. Golden files, records and milestone closure
 
 ### 7.1 Synthetic fixtures
@@ -732,10 +782,12 @@ later X2b result.  A FAIL is recorded verbatim and stops the package.  No
 checkpoint, projection, preregistration or development run is itself a
 verdict.
 
-## 8. Phase-1 disposition
+## 8. Package disposition
 
 Phase 1 pins the architecture/refactor choice, layouts, exporter contract,
 router statement and limb proof, synthetic shapes, analytic bands, op
 coverage, goldens, record names and closure discipline.  Phase 1 itself
 authorized no implementation; the subsequent explicit Phase-2 approval is
-recorded in the ledger and does not alter any pin or threshold above.
+recorded in the ledger and did not alter any pin or threshold above.  With
+the separately approved X3 PASS in section 6.2, X1--X3 is closed.  No later
+package is implied by this closure.

@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 not started; X4 later)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 preregistered/HARD STOP; X4 later)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -43,8 +43,9 @@ routing closed PASS on clean `6be165f`.  X2 closed **FAIL** on clean
 passed, but the binding full-correlation ratios were below the symmetric 20%
 band.  The user approved the frozen corrected-proxy repeat, and X2b closed
 **PASS** on clean `053d3fc` with the same inclusive band and exact full-
-correlation ratios 1.0 at k=1 and k=2.  X2 remains an immutable FAIL; X3 has
-not started and has no verdict.  X4 remains a later
+correlation ratios 1.0 at k=1 and k=2.  X2 remains an immutable FAIL.  X3 is
+now preregistered under a new hard stop for explicit user approval; no X3
+implementation, golden generation, proof run or verdict exists.  X4 remains a later
 package and pool prewarming remains backlog.  By product-owner decision on 2026-07-19,
 R1 is outside this package's operational plan and is deferred to Kimi3; no
 cryptographic-review assurance is claimed by the T1 closure.
@@ -78,7 +79,7 @@ cryptographic-review assurance is claimed by the T1 closure.
 | X1 runtime foundation + routing soundness | **PASS; complete** (2026-07-19) | GPT-2 T1 byte-for-byte at **84,544,352 B** with exact counters/deterministic schedule digest/golden/workspace ✓; all route cheats reject; isolated E-mult/token-layer ratio in **[0.80,1.20]** ✓ | Foundation clean `9a4c688`. Routing clean `6be165f`: T=31, L=4, d=48, **3,968 logical / 4,096 padded**; measured **707.2774193548387** versus predicted **662.4056199596774 E-mult/token-layer**, ratio **1.0677406683202548 PASS**. One unchanged-P4 commitment/opening, 4 claims; exact sub/full **205,568 / 4,714**; all nine honest/cheating/preflight predicates green; record `x1-routing-2026-07-19-6be165f.json`. |
 | X2 synthetic MoE e2e | **official valid FAIL; package stopped** (2026-07-19) | Honest k=1/k=2, identical bit-exact output, one TableBank, 3 commitments/40 claims, PCS/closures/digests/smokes all PASS; binding full-correlation ratios must be in **[0.80,1.20]** and are **0.731338 / 0.732512 FAIL** | Clean `87ce25b`: **316,464 MACs** exact; measured **12,523 logical / 19,346 padded lookup rows** and **82 sites** (same k=1/k=2); sub **350,304 / 349,793 PASS**; full **12,462 / 12,482** vs 17,040 FAIL. Record `x2-moe-2026-07-19-87ce25b.json`. |
 | X2b corrected-proxy repeat | **PASS; complete** (2026-07-20) | Frozen `existing-class-session-v2`, same CPU fixture/code/smokes/exact invariants and same inclusive **[0.80,1.20]** band; X2 remains FAIL under its original 17,040 proxy | Clean `053d3fc`: full **12,462 / 12,482** predicted and measured, ratios **1.0 / 1.0 PASS**. MAC **316,464** exact; lookup logical/padded/sites **12,523 / 19,346 / 82**, sub **350,304 / 349,793**, all within band. Record `x2b-moe-2026-07-20-053d3fc.json`. |
-| X3 non-GPT ops pack | **not started; eligible for separate preregistration** (2026-07-20) | No X3 execution or verdict; implementation still requires its own explicit user-approved preregistration | Planned X2 shape with T=7, d=48/d_ff=80, RMSNorm, clamped SwiGLU, RoPE, GQA 6/2, two sinks/head and `[full, sliding(4)]`; X2b PASS removes only the prior dependency block. |
+| X3 non-GPT ops pack | **PREREGISTERED; HARD STOP pending explicit user approval** (2026-07-20) | Zero-tolerance Rust/numpy full-array bit-exact gate at non-power-of-two **T=7** and hidden **d=48**; honest proof accepts, nine permanent tamper/pad smokes reject, exact counter/digest/session predicates | Frozen d_ff=80, GQA 6/2, RMSNorm, clamped SwiGLU, Q14 RoPE, two sinks/head and `[full, sliding(4)]`; row/hidden/FFN/vocab pads 8/64/128/128. No implementation or verdict. Prereg record `x3-prereg-2026-07-20-6c53619.json`. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -121,6 +122,78 @@ and by the per-GEMM sumcheck passes, both O(few %) of native MACs if the
 constant factors hold. That constant factor is what P3/P4 measure.
 
 ## Deviations / decisions log
+
+- **2026-07-20 (X3 execution preregistered after X2b PASS; HARD STOP before
+  implementation)**: X2b's clean `053d3fc` proof record and `6c53619`
+  closure checkpoint satisfy the dependency, while the original X2 FAIL
+  remains immutable.  This entry and the append-only machine-readable record
+  preregister X3 only: **no X3 implementation was started, no X3 fixture or
+  golden was generated, no proof was executed, and no gate verdict exists**.
+  Explicit user approval is required before any of those actions.
+
+  **Frozen synthetic configuration.**  The integrated two-layer MoE fixture
+  uses non-power-of-two **T=7**, **d_model=48**, and **d_ff=80**, with physical
+  pads 8, 64 and 128; vocabulary 97 is padded to 128.  It retains eight
+  experts/top-2, GQA 6 query / 2 KV heads of width 8 and `thin_k=2`.  Layer 0
+  is full causal; layer 1 is sliding-window 4, with exact real lengths
+  `[1,2,3,4,4,4,4]`.  Norm is RMSNorm.  Activation is SwiGLU with both gate
+  and up clamped to **[-1024,1024]**, Q10 SiLU and Q10 product requant; the
+  fixture must contain below/inside/above-clamp lanes.  RoPE covers all eight
+  head coordinates with base 10000, frequency scale 1 and Q14 public
+  coefficients; its relative-position public fold makes the existing score
+  requant's total shift 22 and adds exactly **zero lookup rows**.  K/V remain
+  authenticated in their canonical pre-RoPE, two-head representation.  The
+  public GQA map is `[0,0,0,1,1,1]`.  Each layer has an authenticated `6 x 2`
+  sink-score vector; sink exponentials enter every denominator and no sink
+  contributes a V row.
+
+  **Existing-class coverage and stop.**  RMSNorm instantiates the existing
+  LayerNorm square/Hadamard subset, scalar stats, rsqrt/requant LogUp and
+  product/zero closures.  SwiGLU instantiates committed GEMMs, a content-keyed
+  SiLU table, the existing saturation/range side-table pattern, Hadamard,
+  `Pi_Prod` and `Pi_ZeroBatch`.  RoPE is a public-coefficient fold inside the
+  existing blind QK sumcheck plus its existing score requant.  GQA uses
+  `CacheSeg`, a public selector and existing band QK/AV arguments.  Sinks use
+  existing authentication, exp LogUp, row-sum zero and Hadamard/product
+  machinery.  Sliding attention is `BandShape` with its existing lower-edge
+  selector and cache/band arguments.  Discovery that any exact contract needs
+  a new argument class is an immediate FAIL/STOP report; no new class may be
+  added in X3.
+
+  **Binding X3 gate.**  `scripts/x123_export.py` is extended as the independent
+  numpy reference, and `x3-ops-v1.golden.bin` carries full arrays rather than
+  only hashes.  Rust must equal numpy bit-for-bit with tolerance **zero** for
+  every RMS statistic/output, clamp/saturation/SiLU/Hadamard/down tensor,
+  RoPE relative-pair term and QK score, grouped K/V read, sink exp/denominator/
+  weight, lower-edge mask/QK/AV tensor, and integrated layer/seam/final-
+  RMSNorm/logit tensor.  The honest native/proof path must accept.  Prover and
+  verifier counters must match exactly, as must allocation and channel
+  digests; the run uses one two-phase TableBank session.  RoPE's new lookup-row
+  delta must be exactly zero.
+
+  Padding is deliberately poisoned with distinct nonzero sentinels at time
+  row 7, **wpe row 7** (the P5 failure class), hidden columns 48--63, FFN
+  columns 80--127 and vocabulary rows 97--127.  Canonical construction must
+  ignore/overwrite them with zero, logical Rust/numpy arrays must be unchanged,
+  and admitting any one sentinel into a mask or claim must reject.  A power-
+  of-two companion test cannot satisfy the gate.  Nine permanent tamper tests
+  cover RMS stats/output, SwiGLU clamp and SiLU/product, RoPE coefficient/QK
+  fold, wrong GQA KV head, sink/denominator, sliding lower edge/out-of-window
+  admission and pad-sentinel admission.  **PASS** requires every exact
+  predicate; otherwise X3 records immutable **FAIL** and stops without gate
+  relaxation or same-package retuning.
+
+  The future clean evidence is append-only
+  `benchmarks/results/x3-ops-<date>-<gitsha>.json`; it must include all exact
+  counters, artifact/config/exporter/golden hashes, every deviation and the
+  verbatim verdict.  Closure requires the scaling-note section-5 sequence:
+  gate, JSON, ledger row/entry, checkpoint.  Any timed ratio is eligible only
+  if same-process ABBA/`time_paired`.  The append-only no-execution prereg is
+  `benchmarks/results/x3-prereg-2026-07-20-6c53619.json`, **9,676 B**, SHA-256
+  `c996bd4d2d887d8df113a17df496cf1b2e74a3b149867fb3dfe1f51e74c198e2`.
+  CPU-only/no-pod, X4/X5/export, frozen PCG/PCS/Lean/soundness and no-review-
+  assurance boundaries remain unchanged.  Kimi3's detached `f05d727`
+  worktree was not accessed; main was neither rebased nor force-pushed.
 
 - **2026-07-20 (X2b approved clean execution: PASS; X2 FAIL remains
   immutable; X3 not started)**: the user explicitly approved execution of

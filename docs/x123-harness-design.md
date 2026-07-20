@@ -2,14 +2,16 @@
 
 **Status (2026-07-20): Phase 1 approved; Phase 2 explicitly authorized;
 runtime `ModelConfig` foundation PASS; X1 routing PASS; X2 FAIL remains
-immutable; the approved X2b repeat is PASS; X3 has not started.**  The
+immutable; the approved X2b repeat is PASS; X3 is preregistered and HARD
+STOPPED for explicit user approval.**  The
 preregistered design remains binding; implementation evidence and verdicts
 land in the ledger and append-only records.  The foundation passed its binding
 GPT-2 T1 non-regression gate on clean `9a4c688`; X1 passed on clean `6be165f`.
 X2's clean `87ce25b` record passed all functional/session predicates but
 failed the binding symmetric full-correlation band.  Section 5.4 diagnoses
 that failure, preserves the preregistration, and records the approved clean
-X2b PASS at `053d3fc`.  X3 was not started and has no verdict.
+X2b PASS at `053d3fc`.  X3 has no implementation or verdict; section 6.1 is
+its post-X2b execution preregistration.
 
 The package is CPU-only.  No pod may be provisioned or contacted, no gpt-oss
 checkpoint may be downloaded or exported, and X4 folding PCS and X5 gpt-oss
@@ -627,6 +629,51 @@ including wpe row 7 and hidden columns 48--63.  Canonical witness/commitment
 construction must ignore and overwrite them, numpy/Rust logical outputs must
 remain identical, and a verifier mask or claim that includes one sentinel
 must reject.  Passing only a power-of-two companion case is insufficient.
+
+### 6.1 X3 execution preregistration after X2b PASS
+
+X2b's clean PASS removes the dependency block but does not authorize X3.
+The machine-readable preregistration is append-only
+`benchmarks/results/x3-prereg-2026-07-20-6c53619.json` (9,676 B, SHA-256
+`c996bd4d2d887d8df113a17df496cf1b2e74a3b149867fb3dfe1f51e74c198e2`).
+It records `proof_execution_performed:false`, `x3_implementation_started:false`
+and `gate_verdict:null`.  Explicit user approval is required before code,
+fixture generation or an X3 run.
+
+The exact config is `T=7`, `L=2`, `d_model=48`, `d_ff=80`, GQA 6/2 with
+head width 8, eight experts/top-2, vocabulary 97 and `thin_k=2`.  Pads are
+time 8, hidden 64, FFN 128 and vocabulary 128.  Attention is
+`[full_causal, sliding(4)]`; RMSNorm omits mean subtraction and reuses the
+existing rsqrt/requant contract.  SwiGLU clamps both gate and up to
+`[-1024,1024]`, applies Q10 SiLU to the gate, then uses a Q10 Hadamard product.
+The fixture contains values below, inside and above both clamp edges.  RoPE
+uses rotary dimension 8, base 10000, frequency scale 1 and Q14 coefficients;
+the public relative-position fold is absorbed into the existing score
+requant with total shift 22 and must add exactly zero lookup rows.  GQA maps
+query heads to KV heads as `[0,0,0,1,1,1]`; K/V stay authenticated pre-RoPE.
+Two authenticated sink scores per query head enter each denominator but
+contribute no V row.
+
+The binding gate has tolerance zero.  The independent numpy reference in
+`scripts/x123_export.py` emits full `x3-ops-v1.golden.bin` arrays for every
+RMS statistic/output, SwiGLU clamp/side-table/SiLU/product/down tensor, RoPE
+pair-fold/QK tensor, grouped K/V read, sink exp/denominator/real weight,
+BandShape lower edge/QK/AV tensor and the integrated two-layer output/final
+RMSNorm/logits.  Rust must match every array bit-for-bit at the required
+non-power-of-two `T=7` **and** non-power-of-two hidden dimension `d=48`.
+The honest proof accepts; prover/verifier counters, allocation digest and
+channel digest match exactly; the proof uses one two-phase TableBank session.
+
+Distinct nonzero pad poison covers time and wpe row 7, hidden columns 48--63,
+FFN columns 80--127 and vocabulary rows 97--127.  Canonical pads must be zero,
+logical outputs must be poison-invariant and admitting one sentinel rejects.
+Permanent one-cell rejects cover RMS stats/output, clamp side rows,
+SiLU/Hadamard, RoPE coefficient/fold, wrong GQA KV head, sink denominator,
+sliding lower edge/out-of-window cells and pad admission.  Requiring a new
+argument class or missing any exact predicate produces immutable FAIL and an
+immediate stop; no threshold relaxation or same-package retuning is allowed.
+On a later approved run, closure follows section 7.3 exactly and writes only
+`x3-ops-<date>-<gitsha>.json` before its ledger row and checkpoint.
 
 ## 7. Golden files, records and milestone closure
 

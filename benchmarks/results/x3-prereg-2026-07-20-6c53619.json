@@ -1,0 +1,230 @@
+{
+  "schema": 1,
+  "record_kind": "x3-preregistration",
+  "milestone": "X3-non-GPT-ops-pack",
+  "date": "2026-07-20",
+  "git_sha": "6c53619f4b780c7dc101a2d8a6aad5dd83c6dcb4",
+  "git_short_sha": "6c53619",
+  "git_dirty_before_record_creation": false,
+  "cpu_only": true,
+  "proof_execution_performed": false,
+  "x3_implementation_started": false,
+  "x3_golden_generated": false,
+  "gate_verdict": null,
+  "explicit_user_approval_required_before_implementation": true,
+  "cryptographic_review_assurance": false,
+  "dependency": {
+    "x2_original_record": "benchmarks/results/x2-moe-2026-07-19-87ce25b.json",
+    "x2_original_verdict_remains": "FAIL",
+    "x2b_closure_commit": "6c53619f4b780c7dc101a2d8a6aad5dd83c6dcb4",
+    "x2b_record": "benchmarks/results/x2b-moe-2026-07-20-053d3fc.json",
+    "x2b_record_sha256": "ac04c297aa069cb91b7ed2a27a8236daa8c638ef90398cdbdc9b6eba2ffcf6d8",
+    "x2b_verdict": "PASS"
+  },
+  "source_digests_at_x2b_closure": {
+    "x123_design_sha256": "eceaf9e6862d47ee1f1dcd74ec8ef95cd6d969a86d7efffe0b6d21f840eb809f",
+    "scaling_note_sha256": "442b6aaa71e0e06b9de082dd9e3de7883f8745a23d60224a2a3dd74ad3385b57",
+    "toy_exporter_sha256": "ad603b44cb61659855765505080585542bec42b1e02c9b897bc3559884ac2a18"
+  },
+  "hard_boundaries": {
+    "cpu_workers": 4,
+    "pod_provision_or_contact_authorized": false,
+    "real_gpt_oss_download_or_export_authorized": false,
+    "x4_or_x5_work_authorized": false,
+    "pcg_setup_lifecycle_changes_authorized": false,
+    "pcs_parameter_or_opening_changes_authorized": false,
+    "lean_or_soundness_machinery_changes_authorized": false,
+    "volta_proto_fork_authorized": false,
+    "new_argument_class_authorized": false
+  },
+  "shape": {
+    "tokens": 7,
+    "token_pad": 8,
+    "layers": 2,
+    "d_model": 48,
+    "hidden_pad": 64,
+    "d_ff": 80,
+    "d_ff_pad": 128,
+    "q_heads": 6,
+    "kv_heads": 2,
+    "gqa_group_size": 3,
+    "head_dim": 8,
+    "experts": 8,
+    "top_k": 2,
+    "vocab": 97,
+    "vocab_pad": 128,
+    "thin_k": 2,
+    "non_power_of_two_tokens_required": true,
+    "non_power_of_two_hidden_dim_required": true
+  },
+  "model_config_contract": {
+    "model_id": "volta-x3-moe-ops-v1",
+    "binding": "DigestV1",
+    "norm": "RMSNorm",
+    "activation": {
+      "kind": "SwiGLU",
+      "clamp_min_i16": -1024,
+      "clamp_max_i16": 1024,
+      "clamp_order": "clamp gate and up requant outputs, apply SiLU to clamped gate, then Hadamard with clamped up",
+      "silu_fraction_bits": 10,
+      "silu_rounding": "round-half-away-from-zero to i16; saturation is represented by the existing side-table pattern",
+      "product_requant_shift": 10,
+      "crafted_fixture_requires_below_inside_above_clamp_lanes": true
+    },
+    "attention_schedule": [
+      "full_causal",
+      "sliding_window_4"
+    ],
+    "real_window_lengths_by_layer": [
+      [1, 2, 3, 4, 5, 6, 7],
+      [1, 2, 3, 4, 4, 4, 4]
+    ],
+    "rmsnorm": {
+      "mean_subtraction": false,
+      "mean_square": "floor((sum(x_j^2)+d_model/2)/d_model)",
+      "rsqrt_input": "mean_square >> 7",
+      "rsqrt_table_log2": 18,
+      "gain": "the existing deterministic all-one public gain vector",
+      "bias": "absent",
+      "output_requant_shift": 8
+    },
+    "rope": {
+      "rotary_dim": 8,
+      "base_num": 10000,
+      "base_den": 1,
+      "frequency_scale_num": 1,
+      "frequency_scale_den": 1,
+      "coefficient_fraction_bits": 14,
+      "coefficient_rounding": "round-half-away-from-zero",
+      "pair_convention": "even/odd pairs with standard positive-position rotation",
+      "qk_fold": "use one Q14 public relative-position coefficient fold per pair and the existing score requant with total shift 22",
+      "new_lookup_rows": 0,
+      "kv_authentication": "canonical grouped K/V before RoPE"
+    },
+    "gqa_q_to_kv_head": [0, 0, 0, 1, 1, 1],
+    "attention_sinks": {
+      "per_query_head": 2,
+      "authenticated_shape_per_layer": [6, 2],
+      "fixture_score_formula": "i16((3*layer + 2*q_head + sink - 6)*16)",
+      "semantics": "sink exp values enter each softmax denominator but contribute no V row"
+    },
+    "shared_shift_schedule": {
+      "embedding": 8,
+      "layer_norm": 8,
+      "qkv": 8,
+      "scores_without_rope_coefficient_bits": 8,
+      "softmax_norm": 8,
+      "av": 8,
+      "attention_out": 8,
+      "expert_gate_up": 8,
+      "expert_down": 8,
+      "residual_seam": 8,
+      "router_requant": 8,
+      "router_norm": 8,
+      "final_norm": 8
+    }
+  },
+  "existing_argument_class_coverage": [
+    {
+      "operation": "RMSNorm",
+      "classes": ["LayerNorm square/Hadamard subset", "authenticated scalar stats", "LnRsqrt LogUp", "requant/range LogUp", "Pi_Prod", "Pi_ZeroBatch"]
+    },
+    {
+      "operation": "clamped SwiGLU",
+      "classes": ["committed GEMM", "SiLU content-keyed LogUp", "existing saturation side-table", "requant/range LogUp", "Hadamard", "Pi_Prod", "Pi_ZeroBatch"]
+    },
+    {
+      "operation": "RoPE",
+      "classes": ["public-coefficient linear fold in existing blind QK sumcheck", "existing score requant", "Pi_ZeroBatch"]
+    },
+    {
+      "operation": "GQA",
+      "classes": ["existing CacheSeg", "public selector fold", "existing band QK/AV arguments"]
+    },
+    {
+      "operation": "attention sinks",
+      "classes": ["existing authentication", "Exp LogUp", "softmax row-sum zero relation", "Hadamard", "Pi_Prod"]
+    },
+    {
+      "operation": "sliding-window lower edge",
+      "classes": ["BandShape public real-cell/lower-edge selector", "existing CacheSeg", "existing band QK/AV arguments"]
+    }
+  ],
+  "numpy_and_golden_contract": {
+    "independent_reference": "extend scripts/x123_export.py; expected values must not be regenerated in-process by the Rust code under test",
+    "golden_file": "tests/fixtures/x123/x3-ops-v1.golden.bin",
+    "golden_magic": "VOLTA-X3-GOLD-V1",
+    "full_arrays_required": true,
+    "op_by_op_arrays": {
+      "rmsnorm": ["input", "sum_squares", "mean_square", "rsqrt_input", "rsqrt_output", "scaled_accumulator", "output"],
+      "swiglu": ["gathered_input", "gate_accumulator", "up_accumulator", "gate_requant", "up_requant", "gate_clamped", "up_clamped", "saturation_rows", "silu_output", "product_accumulator", "product_requant", "down_accumulator", "down_output"],
+      "rope": ["public_coefficients", "relative_pair_fold_terms", "qk_accumulator", "score_requant"],
+      "gqa": ["q_to_kv_head", "grouped_k_reads", "grouped_v_reads"],
+      "attention_sinks": ["authenticated_sink_scores", "sink_exp", "real_exp", "denominators", "normalized_real_weights"],
+      "band": ["lo", "hi", "real_cell_mask", "qk_scores", "av_outputs"],
+      "integrated": ["layer_outputs", "seam_output", "final_rmsnorm", "final_logits"]
+    },
+    "rust_numpy_equality": "bit-exact full-array equality for every named array and the integrated two-layer output",
+    "hashes_required_in_run_record": ["config_sha256", "artifact_sha256", "golden_sha256", "exporter_sha256"]
+  },
+  "padding_poison_contract": {
+    "initialize_all_source_padding_with_distinct_nonzero_sentinels": true,
+    "targets": [
+      "time row 7 of the physical 8-row domain",
+      "wpe row 7, including the P5 embedding-selection failure class",
+      "hidden columns 48 through 63",
+      "FFN columns 80 through 127",
+      "vocabulary rows 97 through 127"
+    ],
+    "canonical_construction_must_overwrite_or_ignore_and_zero_every_pad": true,
+    "rust_and_numpy_logical_outputs_unchanged_by_poison": true,
+    "claim_or_mask_admitting_one_sentinel_must_reject": true,
+    "power_of_two_companion_case_cannot_satisfy_the_gate": true
+  },
+  "permanent_tamper_tests": [
+    "rmsnorm_mean_square_or_rsqrt_input_one_cell_tamper_rejects",
+    "rmsnorm_output_one_cell_tamper_rejects",
+    "swiglu_clamp_side_row_tamper_rejects",
+    "swiglu_silu_or_hadamard_product_one_cell_tamper_rejects",
+    "rope_public_coefficient_or_folded_qk_term_tamper_rejects",
+    "gqa_wrong_kv_head_substitution_rejects",
+    "attention_sink_score_or_denominator_tamper_rejects",
+    "sliding_lower_edge_or_out_of_window_cell_admission_rejects",
+    "pad_poison_sentinel_admission_rejects"
+  ],
+  "x3_gate_preregistration": {
+    "bit_exact_tolerance": 0,
+    "required_non_power_of_two_shape": "T=7 and d_model=48",
+    "honest_native_and_proof_accept": true,
+    "all_named_rust_numpy_arrays_bit_exact": true,
+    "integrated_two_layer_output_bit_exact": true,
+    "all_permanent_tamper_tests_reject": true,
+    "all_padding_poison_predicates_pass": true,
+    "rope_new_lookup_rows_exact": 0,
+    "prover_verifier_exact_counter_match": true,
+    "allocation_digest_match": true,
+    "channel_digest_match": true,
+    "single_two_phase_tablebank_session": true,
+    "no_new_argument_class": true,
+    "verdict_rule": "PASS iff every exact predicate is true; otherwise record FAIL verbatim and stop without retuning",
+    "future_run_record": "benchmarks/results/x3-ops-<date>-<gitsha>.json",
+    "future_run_schema": 1
+  },
+  "milestone_closure_contract": {
+    "run_from_clean_tree": true,
+    "append_only_json": true,
+    "ledger_row_and_verbatim_entry_required": true,
+    "all_exact_measured_counters_and_deviations_required": true,
+    "timing_ratio_if_any_requires_same_process_abba_time_paired": true,
+    "checkpoint_commit_required": true
+  },
+  "hard_stop": {
+    "waiting_for_explicit_x3_implementation_approval": true,
+    "new_argument_class_discovery_requires_stop_and_report": true,
+    "failed_gate_requires_immutable_record_and_stop": true,
+    "same_package_gate_relaxation_or_retuning_authorized": false,
+    "kimi3_detached_review_commit": "f05d727",
+    "kimi3_worktree_touched": false,
+    "main_history_rewritten": false
+  }
+}

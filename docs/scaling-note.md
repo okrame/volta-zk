@@ -9,8 +9,9 @@ record.  Planning targets are **gpt-oss-20b** (24 layers, d=2880, 32 experts
 top-4, 3.6B active / 20.9B total, GQA 64/8, alternating full / 128-token
 sliding-window attention, RMSNorm, clamped SwiGLU, attention sinks, RoPE and
 MXFP4 source expert weights) and a representative Llama-class dense/GQA
-point.  X3 has not started and requires its own approved preregistration; X4
-and X5 remain later packages.
+point.  X3 now has a separate zero-tolerance, non-power-of-two execution
+preregistration and is hard-stopped for explicit approval; no implementation
+or verdict exists.  X4 and X5 remain later packages.
 
 ## 1. The scaling thesis: ρ is ~scale-invariant; communication is not
 
@@ -156,7 +157,10 @@ checkpoint.
   public-gather batched per-expert GEMMs + combine through the TableBank
   session. Gate: counts within 20% of X0.
 - **X3** ops pack on the band path (RMSNorm/SwiGLU/RoPE/GQA/sinks/band
-  schedule) + extended numpy reference. Gate: bit-exact golden, non-pow2 T.
+  schedule) + extended numpy reference. Gate: zero-tolerance full-array
+  bit-exact goldens at non-power-of-two T=7 and hidden d=48, honest proof
+  acceptance, permanent op-boundary/pad rejects and exact counter/digest
+  parity.  **Preregistered after X2b PASS; HARD STOP before implementation.**
 - **X4** folding PCS over the per-layer/expert-block commitment map.  Gate:
   per-response opening no longer contains a fixed pass linear in all
   committed weights; exact soundness, hiding and block-subset measurements

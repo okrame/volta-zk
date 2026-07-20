@@ -566,7 +566,9 @@ k=2 composition.  It changes only the full-correlation predictions to
 remain **316,464**, **12,495 / 19,313 / 80**, and **330,820 / 330,484**.  Every
 ratio retains the same inclusive **[0.80,1.20]** band; exact session,
 prover/verifier, allocation/channel, golden and smoke predicates are unchanged.
-The future clean schema-2 record is append-only
+The machine-readable no-execution preregistration is append-only
+`benchmarks/results/x2b-prereg-2026-07-20-0ae5111.json`.  The future clean
+schema-2 proof record is append-only
 `benchmarks/results/x2b-moe-<date>-<gitsha>.json`.  The report harness is
 pinned to that name and cannot overwrite the X2 record.  Execution requires
 explicit user approval after this hard stop.  X3 remains blocked until X2b

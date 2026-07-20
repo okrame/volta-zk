@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1 DISPOSITION CLOSED; X4 PHASE-1 DESIGN FROZEN)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1 DISPOSITION CLOSED; X4 PHASE-1 DESIGN + FLOOR ADDENDUM FROZEN)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -58,8 +58,11 @@ criterion (1) remains external. X4 Phase 1 is now frozen at
 `docs/x4-folding-pcs-design.md`: the design selects the conservative
 unique-decoding zkDeepFold/BaseFold profile and preregisters its M9,
 block-openability, domain-separation, cost and migration gates. The package
-is at a **HARD STOP pending product-owner review**; it authorizes no Lean,
-Rust, reference, benchmark or X5 work.
+now includes the requested first-oracle mitigation addendum: parameter,
+cohort-streaming and two-level-sharding screens are conditional, the fixed
+profile's 10.7008-TB logical floor is preserved honestly, and the 35-MB gate
+is unchanged. It remains at a **HARD STOP pending product-owner review** and
+authorizes no Lean, Rust, reference, benchmark or X5 work.
 
 ## Milestones
 
@@ -93,7 +96,7 @@ Rust, reference, benchmark or X5 work.
 | X3 non-GPT ops pack | **PASS; complete; X1--X3 package CLOSED** (2026-07-20) | Zero-tolerance Rust/numpy full-array bit-exact gate at non-power-of-two **T=7** and hidden **d=48**; honest proof accepts, nine permanent tamper/pad smokes reject, exact counter/digest/session predicates | Clean `7544f36`: **656,034 B**, zero differing golden bytes; **21,969 / 35,824** logical/padded lookup rows, 91 sites/9 contents/1 finalization, RoPE delta 0; sub/full/domains **1,065,887 / 15,802 / 6,573**, transcript **8,781,000 B**, E-equivalent **7,109,448.2**. Pad poison actively rejects with a detected nonzero zero-claim. Record `x3-ops-2026-07-20-7544f36.json`. |
 | R1 adversarial cryptographic review | **DISPOSITION CLOSED; X4 design unblocked** (2026-07-20) | Report fixed to detached `f05d727`; zero CRITICAL/MAJOR, M1 fixed, N1--N4 disposed, N5 consolidated; report immutable and SHA-pinned | AI adversarial review only: **no independent human-review assurance; criterion (1) remains external**. Report SHA-256 `b4f05cdd19609975c736ca0f4955894f87b7a44150addb520fe4f5a8d7a93eb4`. X1--X3 delta review remains external and unperformed. |
 | R1b X1--X3 delta review | **HANDOFF FROZEN; review external and unperformed** (2026-07-20) | Read-only range `f05d7279249fdbe16025ee2d005ef58a18224fbb..4b349b59f13516ac878446f593d1621fba92bcfc`; findings to a report only | `docs/r1b-delta-handoff.md` enumerates all 15 commits / 47 paths and claims under test. SHA-256 `21495b7d2d508b8e7ae65997f81b7a4b2a103831e9b4ea192727efd38f660436`. No R1b verdict or assurance exists. |
-| X4 folding PCS Phase 1 | **DESIGN FROZEN; HARD STOP pending product-owner review** (2026-07-20) | No conjectural list-decoding credit; proof-before-code M9/security checkpoint, G1--G6 and inherited pod gates preregistered; no Lean/Rust/bench authorized | `x4-zkdeepfold-v1`: `E=Fp2`, PCS `K=Fp4`, rate `1/8`, `s=128`, 106.2496-bit query term; GPT-2 PCS `<=4,000,000 B` vs current **43,273,888 B**; gpt-oss analytic `<=35,000,000 B`, but honest first-oracle source floor **10.7008 TB**. Design SHA-256 `bb693bb4b1a06244d4f30f4b23cb47a64563dcaa21b5502b74adb044e6284464`. No gate verdict. |
+| X4 folding PCS Phase 1 | **DESIGN + FLOOR ADDENDUM FROZEN; HARD STOP pending product-owner review** (2026-07-20) | No conjectural list-decoding credit; proof-before-code M9/security checkpoint, G1--G6, inherited pod gates and first-oracle mitigation screens preregistered; no Lean/Rust/bench authorized | Frozen candidate remains `x4-zkdeepfold-v1`: `K`, rate `1/8`, `s=128`, **10.7008-TB** logical floor. Conditional `K/E` rate rows span **5.3504--1.3376 TB**; streaming changes peak but not floor; `H25` adds 62 transport slots. GPT-2 PCS `<=4,000,000 B` and gpt-oss analytic `<=35,000,000 B` are unchanged. Addended design SHA-256 `3588d9f360960d46ad219309ba67645bd992a56d89ed1ae627f69f6d7ca9bb44`; original pre-addendum SHA remains `bb693bb4b1a06244d4f30f4b23cb47a64563dcaa21b5502b74adb044e6284464`. No gate verdict. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -161,6 +164,63 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-20 (X4 first-oracle mitigation addendum frozen; original hard
+  stop preserved)**: at the pre-approval hard stop, the product owner
+  requested a design-only disposition of the **10.7008-TB** raw first-oracle
+  screen. Section 5.1 of `docs/x4-folding-pcs-design.md` is the resulting
+  addendum. Addended design SHA-256 is
+  `3588d9f360960d46ad219309ba67645bd992a56d89ed1ae627f69f6d7ca9bb44`;
+  the original pre-addendum document hash
+  `bb693bb4b1a06244d4f30f4b23cb47a64563dcaa21b5502b74adb044e6284464`
+  remains historical.
+
+  **Floor boundary and parameter screens.** For an unpadded i16 source of
+  `S=2*N` bytes, zkDeepFold's equal-size random extension and an RS code over
+  `b`-byte symbols at rate `rho` give the logical first-oracle identity
+  `F0=S*b/rho`. The frozen `K`, 32-B, rate-`1/8` profile is therefore
+  irreducibly `256*S=10.7008 TB` when materialized. This is not a universal
+  persistent-storage lower bound: coefficient caching moves the cost to
+  regeneration and Merkle-path reconstruction. The addendum pins
+  same-query-margin alternatives: `K-1/4` **5.3504 TB, s=157**;
+  `K-1/2` **2.6752 TB, s=256**; `E-1/8` **5.3504 TB, s=128**;
+  `E-1/4` **2.6752 TB, s=157**; and `E-1/2` **1.3376 TB, s=256**.
+  Every `E` row remains conditional on exact 128-bit-field response-wide
+  security and a revised one-component M9 seam. None is selected.
+
+  **Streaming and hierarchy costs.** Canonical `2^18`-coordinate cohort
+  strips cap raw full-layer 69-slot symbol buffers at **552 MiB** for `K` or
+  **276 MiB** for `E` without changing roots or opening bytes, but persistent
+  frozen artifacts still write at least 10.7008 TB. Meeting the current 15-s
+  comparison ceiling would require **713.386667 GB/s** before
+  encoding/hashing. This uses the GPT-2 ceiling only as a scale comparison,
+  not a gpt-oss wall gate. The alternative
+  source/random cache is already **710.6 GB before block padding**; adding the
+  deliberately loose all-max auxiliary screen gives **717.554156032 GB**,
+  while the exact padded cache can be larger. Worst-case near-all-touched
+  reconstruction within 1.50 s would require **7.133867 TB/s** of generated
+  first-oracle bytes before encoding/hashing; this too is a comparison, not a
+  gpt-oss verdict. X5 would require a separately preregistered wall envelope.
+  A two-level logical-block/transport-shard screen at `mu_shard<=25` changes
+  1,658 logical blocks into **1,720 transport slots (+62, +3.739445% in
+  shard-linear terms)** and caps a raw shard at **16 GiB** for frozen
+  `K-1/8` or **4 GiB** for `E-1/4`; `mu_shard<=24` would use 2,552 slots
+  (**+53.920386%**) and is contingency-only. Sharding does not reduce `F0`.
+  Sharing one logical zkDeepFold auxiliary across shards is a new pre-code
+  proof obligation; without it, `H25` adds 124 full `K` mask transfers and
+  their auxiliary proof material.
+
+  **Gate and authority disposition.** The gpt-oss analytic PCS gate remains
+  exactly **<=35,000,000 B**. Rate/field query and path effects, all transport
+  slots, masks, roots and descriptors must enter its closed formula; storage
+  cannot net against response bytes. The first conditional paper screen, if
+  separately authorized, is `E-1/4 + H25`; this ordering is not candidate
+  approval. If no row passes security, bytes, wall and G6 honesty together,
+  the cited BaseFold/zkDeepFold family is recorded unsuitable rather than
+  relabeling a peak reduction as removal of the floor. The frozen candidate
+  remains `x4-zkdeepfold-v1`. No security-arithmetic phase, Lean, Rust,
+  reference, benchmark or X5 work is authorized; the product-owner-review
+  hard stop remains active.
 
 - **2026-07-20 (X4 Phase-1 folding-PCS design frozen; HARD STOP pending
   product-owner review)**: `docs/x4-folding-pcs-design.md` replaces the

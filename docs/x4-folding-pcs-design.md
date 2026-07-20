@@ -1,6 +1,7 @@
 # X4 Phase-1 folding-PCS preregistration
 
-**Status (2026-07-20): DESIGN FROZEN; implementation not authorized.**
+**Status (2026-07-20): DESIGN FROZEN WITH FIRST-ORACLE MITIGATION
+ADDENDUM; implementation not authorized.**
 
 This document is the Phase-1 preregistration for X4. It replaces the original
 X4 premise in `docs/scaling-note.md`: lever A (cache/reuse fixed query rows)
@@ -14,6 +15,11 @@ thresholds, measurements and failure rules below are preregistered before
 implementation. A later change to a security parameter, block map, byte
 codec or gate requires an append-only deviation before the affected run; a
 failed result may not be tuned into a pass.
+
+Section 5.1 is the product-owner-requested mitigation addendum for the
+10.7008-TB first-oracle screen. It adds conditional paper-only alternatives
+and an honest irreducibility boundary. It does not select a replacement for
+`x4-zkdeepfold-v1`, authorize Phase 2, or relax any gate.
 
 ## 1. Decision and primary sources
 
@@ -427,7 +433,186 @@ measure persisted bytes, bytes read per opening, recomputation wall, peak RSS
 and peak VRAM. It may not claim a resident-A100 win by omitting host or disk
 traffic.
 
-### 5.1 Current measured comparison point
+### 5.1 First-oracle floor mitigation addendum
+
+This addendum is design only. It distinguishes logical encoded-oracle volume,
+persisted storage, bytes moved and peak memory; reducing one does not confer
+credit for another.
+
+#### 5.1.1 Fixed-profile floor and the only parameter levers
+
+Let `S=2*N` be the unpadded i16 source bytes for `N` coefficients, `b` the
+canonical byte width of one PCS-field symbol and `rho` the RS code rate.
+zkDeepFold appends `N` uniform field coefficients, and BaseFold/DeepFold
+commits to the RS encoding. Therefore the logical first oracle is
+
+```text
+F0(S; b, rho) = (2*N/rho)*b = S*b/rho.
+```
+
+For the frozen `K`, 32-byte, rate-`1/8` profile this is `256*S`, hence
+`10.7008 TB` for the unpadded 41.8-GB sizing source. This number is
+**irreducible for a materialized first oracle at those fixed parameters**.
+It is not an information-theoretic persistent-storage lower bound: storing
+coefficients and regenerating the codeword uses less space, at the cost of
+re-encoding and rebuilding Merkle authentication. Neither cohort streaming
+nor a tree hierarchy changes `F0`; only changing `b` or `rho`, or changing
+the cited PCS/ZK construction, changes the multiplier. No generic compression
+ratio is credited, and representing the uniform extension by a short PRG
+seed would replace the selected statistical-ZK statement with a computational
+one and is outside this profile.
+
+The following parameter alternatives preserve at least the frozen
+`106.24959981538402`-bit *query term* so that a storage reduction is not
+obtained by silently spending that margin. Here `Delta=(1-rho)/2`,
+`ell_max=ceil(log2(s*30^2+1))`, `field` is the initial field-payload multiplier
+`s*b/(128*32)`, and `query/hash` is the query-count multiplier `s/128` before
+accounting for the shorter exact paths at higher rates.
+
+| Paper screen | PCS field / bytes | `rho`, `Delta` | `s`, `ell_max` | query-term bits | `F0/S`; 41.8-GB `F0` | initial cost vs frozen (`field`; `query/hash`) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| frozen `K-1/8` | `K` / 32 | `1/8`, `7/16` | 128, 17 | 106.249600 | `256x`; 10.7008 TB | `1.000000`; `1.000000` |
+| `K-1/4` | `K` / 32 | `1/4`, `3/8` | 157, 18 | 106.457289 | `128x`; 5.3504 TB | `1.2265625`; `1.2265625` |
+| `K-1/2` | `K` / 32 | `1/2`, `1/4` | 256, 18 | 106.249600 | `64x`; 2.6752 TB | `2.000000`; `2.000000` |
+| `E-1/8` | `E` / 16 | `1/8`, `7/16` | 128, 17 | 106.249600 | `128x`; 5.3504 TB | `0.500000`; `1.000000` |
+| `E-1/4` | `E` / 16 | `1/4`, `3/8` | 157, 18 | 106.457289 | `64x`; 2.6752 TB | `0.61328125`; `1.2265625` |
+| `E-1/2` | `E` / 16 | `1/2`, `1/4` | 256, 18 | 106.249600 | `32x`; 1.3376 TB | `1.000000`; `2.000000` |
+
+The maximum raw auxiliary first oracle is respectively 33,554,432 B for
+`K-1/8` and `K-1/4`, 16,777,216 B for `K-1/2`, `E-1/8` and `E-1/4`, and
+8,388,608 B for `E-1/2`. These are per-block maxima before Merkle nodes, not
+opening bytes.
+
+These rows are not interchangeable implementation parameters. `E` has
+`v2(|E|-1)=33`: `E-1/4` and `E-1/2` fit the maximum extended domain exactly
+or with one bit to spare, while `E-1/8` requires `mu_shard<=29`. More
+importantly, all `E` rows must re-run the complete algebraic, batch and union
+error expression in the 128-bit-cardinality field; retaining the query-term
+bits alone does not prove the response-wide `78.809294874`-bit target. They
+also replace the two-component `K` mask at M9 with a one-component `E` seam.
+No security or correlation/byte saving from that change is credited until
+new lemma statements prove it. A failure rejects the row.
+
+The **35,000,000-B gate is unchanged for every row**. Before a row can replace
+the frozen profile, its closed byte formula must separately count field
+symbols, BLAKE3 digests, exact shorter path/fold depths, descriptors, masked
+evaluations and M9 closure and prove `<=35,000,000 B` at 3,316 claims. The
+table's multipliers are screens, not a proof-size postdiction. `K-1/4` raises
+both query-count-driven terms by 22.65625%; `E-1/4` lowers field payload but
+raises hash/query multiplicity by the same 22.65625%; `E-1/2` doubles that
+multiplicity and is therefore the highest-risk byte screen despite its
+smallest floor.
+
+If a paper-only comparison is authorized, the first balance point to screen
+is `E-1/4` with the `mu_shard=25` hierarchy below. `E-1/8` is the fallback if
+the extra hash queries break the byte gate; the `K` rows preserve the larger
+security field if the exact `E` arithmetic fails. This is evaluation order,
+not candidate selection. Rate above `1/2` is not a further knob in this
+power-of-two RS profile: the next inverse-power-of-two rate is 1, which has
+zero distance. A non-power-of-two rate is a new folding construction and
+receives no credit here.
+
+#### 5.1.2 Per-cohort streaming: peak mitigation, not floor mitigation
+
+The commitment can be generated namespace/cohort at a time and, within a
+cohort, in canonical outer-coordinate strips. A concrete strip cap of `2^18`
+outer coordinates holds at most
+`69 slots * 32 B * 2^18 = 578,813,952 B` (552 MiB) of raw `K` symbols for
+the full frozen/`H25` per-layer inventory, or 276 MiB with `E`. The formula
+is `M_c*b*2^18`; the `H24` contingency's 101-slot layer would use 808 MiB or
+404 MiB respectively. Inner-tree nodes
+and encoder/FFT scratch are streamed separately and remain exact G6 counters;
+the strip cap is not a claimed total-RSS bound. The incremental Merkle
+frontier produces the identical cohort root, so this schedule adds no
+transcript field and changes serialized opening bytes by exactly zero.
+
+There are two honest storage modes:
+
+- **Persist encoded artifacts.** Peak working memory is bounded by the strip
+  schedule, but the first-oracle byte volume remains at least 10.7008 TB in
+  the frozen profile, before padding, later oracles and Merkle nodes. Merely
+  writing that floor inside the current A100 `15 s` comparison ceiling would
+  require 713.386667 GB/s; the CPU `180 s` ceiling would require
+  59.448889 GB/s, before code or hash work.
+- **Persist coefficients and recompute.** For the unpadded frozen sizing
+  source, the explicit random extension alone is 668.8 GB, so source plus
+  extension is already 710.6 GB before block padding. Adding the deliberately
+  loose all-1,658-block `ell=17` auxiliary-coefficient screen gives
+  `41.8 + 668.8 + 6.954156032 = 717.554156032 GB`; the exact padded cache can
+  be larger and must be derived from the block inventory. With only
+  coefficients and roots, the
+  cited Merkle construction supplies no stateless sublinear path-generation
+  algorithm for post-commit unpredictable queries; an opening must budget a
+  rebuild of the queried cohort codeword/tree. At the near-all-touched sizing
+  point, rebuilding the frozen first-oracle floor inside the current `1.50 s`
+  A100 comparison ceiling would require 7.133867 TB/s of generated oracle
+  bytes before RS, fold or hash work.
+
+These throughput figures compare scale volume to the current GPT-2 X4
+ceilings; Section 5.4 deliberately has no gpt-oss wall gate, and they are not
+gpt-oss FAIL verdicts. X5 would need a separately preregistered wall envelope.
+Both modes leave the 35-MB serialization formula unchanged. The first can
+fail G4/G6 on write volume and storage in the GPT-2 migration; the second can
+fail them on recomputation and reads. A mixed cache must report the exact
+split and gets no assumed locality credit because the expected workload
+touches 3,314.06 of 3,316 claims. The one-opening commitment epoch also
+forbids amortizing these costs over undeclared later responses.
+
+#### 5.1.3 Two-level logical-block/transport-shard hierarchy
+
+To cap the largest independently processed oracle, a conditional format may
+place deterministic transport shards below each unchanged D3 logical block.
+Level 1 remains the logical layer/global block named by GKR and M9. Level 2
+commits ordered high-prefix shards, each with its own cohort position and
+exact path depth. `logical_block_id`, `shard_prefix`, `mu_shard` and shard
+count are included in the existing N4-separated manifest/PCS frames. All
+shards are reassembled inside one PCS reduction before the one logical M9
+masked evaluation; there is still one response envelope and no per-shard GKR
+or per-token proof instance.
+
+| Hierarchy screen | Deterministic split | transport slots | shard-linear slot factor | max raw shard first oracle, frozen `K-1/8` / `E-1/4` | 35-MB impact |
+| --- | --- | ---: | ---: | ---: | --- |
+| `H25`, `mu_shard<=25` | each of two `mu=30` global blocks -> 32 shards | 1,720 (`+62`) | `1.037394451` | 16 GiB / 4 GiB | shard-linear symbol/path terms include `+3.739445%`; global fold depth drops by five; exact net formula must pass |
+| `H24`, `mu_shard<=24` | 768 `mu=25` gate/up blocks -> 2 shards and each global block -> 64 | 2,552 (`+894`) | `1.539203860` | 8 GiB / 2 GiB | shard-linear terms include `+53.920386%`; contingency only, with no pass projection |
+
+Sharding preserves the sum of extended weight-codeword symbols at fixed
+`b,rho`; it reduces the largest work unit, not `F0`, and padding/manifests can
+only add bytes. `H25` is the only initial hierarchy screen. The closed byte
+model must use 1,720 touched transport slots at the all-touched point rather
+than hiding the 62 extra paths behind the 1,658 logical-block count.
+
+The cited zkDeepFold theorem gives an auxiliary polynomial per committed
+polynomial; it does not by itself prove that transport shards may share one
+logical `g_b`. Admission of `H25` therefore requires a pre-code shard-batch ZK
+lemma that preserves one logical mask and the frozen `2*B_touch+1` M9 count.
+If that lemma is unavailable, the pessimistic `K` accounting adds two mask
+transfers per extra shard: `+124` full correlations for `H25` or `+1,788` for
+`H24`, plus the corresponding auxiliary roots/proofs. Those costs enter the
+35-MB formula; they may not be called implementation metadata.
+
+#### 5.1.4 Floor disposition and stop rule
+
+Within the cited materialized BaseFold/zkDeepFold construction, the frozen
+10.7008-TB logical first oracle is honest and irreducible at `K`, 32 B and
+rate `1/8`. Streaming and `H25` can make the peak finite but cannot lower that
+volume. The most aggressive conditional power-of-two row above still has a
+1.3376-TB unpadded logical first oracle and doubles query multiplicity. Thus:
+
+1. no storage mitigation is allowed to relax or net against the
+   `<=35,000,000 B` response-opening gate;
+2. no row advances unless exact security, byte, wall, storage and traffic
+   gates all pass conjunctively on paper before Lean or Rust;
+3. if none does, X4 records this BaseFold/zkDeepFold family as unsuitable for
+   the product envelope instead of describing a peak-memory optimization as
+   removal of the floor; and
+4. selecting a PCS family with a genuinely smaller committed-oracle profile
+   requires a new cited Phase-1 preregistration.
+
+`x4-zkdeepfold-v1` remains the frozen candidate pending product-owner review.
+This addendum authorizes no arithmetic checkpoint, Lean, Rust, benchmark,
+reference regeneration or X5 work.
+
+### 5.2 Current measured comparison point
 
 These are immutable current Ligero measurements, not X4 projections:
 
@@ -442,7 +627,7 @@ The current T1 response is `84,544,352 B`; subtracting the PCS component
 leaves `41,270,464 B` of unchanged non-PCS response material. X4 cannot claim
 that baseline until the same semantic GPT-2 response is reproduced.
 
-### 5.2 Preregistered gates
+### 5.3 Preregistered gates
 
 Gates are conjunctive. A byte pass cannot override a security, correctness,
 proportionality, storage or end-to-end failure.
@@ -495,8 +680,12 @@ bytes, host bytes read/written, H2D/D2H, peak RSS and peak device memory.
 Artifact totals reconcile exactly. Block streaming must fit the official
 A100 and cannot materialize a hidden whole-model GPU oracle. A storage or
 traffic omission is a gate failure, not “instrumentation unavailable.”
+For any later-approved Section 5.1 alternative, the record also pins
+`field,b,rho,s,ell_max,mu_shard`, logical first-oracle bytes, transport-slot
+count and the selected persist/recompute split. A 35-MB byte pass cannot waive
+these requirements.
 
-### 5.3 gpt-oss analytic screen (not a verdict)
+### 5.4 gpt-oss analytic screen (not a verdict)
 
 The sizing case is 24 layers, 32 experts and 41.8 GB of committed i16
 weights, with 1,658 physical blocks and at most 3,316 stacked claims. Before a
@@ -508,7 +697,7 @@ real export, X4's analytic projection must show:
   the exact cohort/manifest multiproof depths; and
 - the raw-oracle/storage screen above, including the 10.7008-TB
   source-equivalent first-oracle floor, with an explicit
-  streaming/recompute plan.
+  Section 5.1 parameter, hierarchy and streaming/recompute disposition.
 
 This screen is deliberately weaker than a measured gate. The expected
 3,314.06 claims provide essentially no sparsity discount, and there is no

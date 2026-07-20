@@ -17,7 +17,11 @@ later packages. R1 disposition is closed and X4 Phase 1 is now frozen as the
 design-only
 `x4-zkdeepfold-v1` preregistration in
 `docs/x4-folding-pcs-design.md`; its proof-before-code hard stop remains in
-force. X5 remains a later package and is not authorized here.
+force. Its Section 5.1 mitigation addendum distinguishes the fixed
+10.7008-TB logical first-oracle volume from peak/persisted storage, screens
+rate/field and two-level-sharding alternatives, and leaves the analytic
+`<=35,000,000 B` opening gate unchanged. None of those alternatives is
+selected. X5 remains a later package and is not authorized here.
 
 ## 1. The scaling thesis: ρ is ~scale-invariant; communication is not
 
@@ -175,7 +179,10 @@ checkpoint.
   **Phase-1 design frozen; HARD STOP.** `docs/x4-folding-pcs-design.md`
   selects the conservative unique-decoding zkDeepFold/BaseFold profile,
   pins the M9 authenticated-opening seam, N4 domain separation, exact
-  block-subset/cost gates and append-only migration ritual. No Lean, Rust or
+  block-subset/cost gates and append-only migration ritual. The first-oracle
+  addendum records conditional `K`/`E` rate screens, cohort-strip streaming,
+  `mu_shard=25/24` hierarchy costs and the irreducible fixed-profile floor;
+  the 35-MB analytic gate is not relaxed. No alternative, Lean, Rust or
   benchmark implementation is authorized pending product-owner review.
 - **X5** gpt-oss-20b e2e on the GPU box: MXFP4 export, golden decode,
   run of record with full comm breakdown + P6-style flat-cost and

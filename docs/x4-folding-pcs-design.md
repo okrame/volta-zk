@@ -1,8 +1,8 @@
 # X4 folding-PCS amended preregistration and Phase-2 statement freeze
 
-**Status (2026-07-20): R1B AMENDMENT 1 FROZEN; SOUNDNESS EXPRESSION AND
-PRE-CODE LEAN STATEMENTS FROZEN; HARD STOP FOR PRODUCT-OWNER REVIEW;
-implementation not authorized.**
+**Status (2026-07-21): R1B AMENDMENTS 1--2 FROZEN; AMENDMENT 2 CORRECTS THE
+DIRECT-MASK GOOD-TAPE PREMISE; PRODUCT OWNER AUTHORIZED LEAN-FIRST PHASE 2
+AND THE SUBSEQUENT PLAN SUBJECT TO THE EXISTING HARD STOPS.**
 
 This document is the Phase-1 preregistration for X4. It replaces the original
 X4 premise in `docs/scaling-note.md`: lever A (cache/reuse fixed query rows)
@@ -636,6 +636,59 @@ then stop for A100 pod provisioning before GPT-2 records
 
 No Lean proof, Rust X4 implementation, benchmark/reference mutation or X5
 work is authorized by this amendment.
+
+### 0.7 Amendment 2: direct-mask good-tape premise (normative override)
+
+On 2026-07-21, before any repository Lean proof or X4 Rust code, the product
+owner approved this explicit theorem-statement correction.  The Amendment 1
+shape used `Authed.Valid` alone for the purported response ZeroBatch premise:
+
+```lean
+(hz : Valid (authV + authS - authPublic h))
+```
+
+That proposition is false as a sufficient premise for the stated transfer.
+In the existing formal model, `Authed.Valid Delta a` means only
+`a.k = a.m + Delta*a.x`; it does not say `a.x=0`.  The generic-field
+counterexample is `authS=0`, `authV=authPublic 1`, `h=0`: both MAC-validity
+premises hold, while the conclusion would be `1=0`.  A scratch Lean proof of
+this counterexample was checked before this amendment, and no repository file
+was changed during the hard stop.
+
+The normative predicate and replacement theorem are therefore:
+
+```lean
+def ResponseZeroBatchValid (Delta : E) (a : Authed E) : Prop :=
+  a.Valid Delta /\ a.x = 0
+
+theorem direct_mask_transfer
+    (hs : authS.Valid Delta)
+    (hz : ResponseZeroBatchValid Delta
+      (authV + authS - Authed.ofPublic Delta h)) :
+    authV.x = h - authS.x
+```
+
+`ResponseZeroBatchValid` is the deterministic good-tape condition used by
+the transfer/completeness lemma.  It must not be confused with bare verifier
+acceptance on an adversarial tape.  `masked_batch_opening_mac_sound` separately
+bounds accepted bad tapes with the existing scalar ZeroBatch theorem, while
+`masked_batch_transfers_evals` may invoke `direct_mask_transfer` only after its
+good-tape hypotheses establish this predicate.  Thus the correction adds the
+missing zero-plaintext fact; it does not weaken the conclusion, assume away a
+soundness event or introduce an ideal axiom.
+
+No field, rate, query count, block/claim geometry, frame byte, correlation
+allocation or soundness coefficient changes.  In particular `C_M9=B+1=1661`,
+`C_total=28,522,064,267,253`, `x4ResponseError`, the exact `<2^-83` stop rule
+and the evaluated **83.30226403378921-bit** bound remain unchanged.
+
+The product owner's 2026-07-20 Phase-2 approval and 2026-07-21 Amendment-2
+approval authorize the following existing order: prove and audit every named
+Lean theorem, checkpoint, then implement the normative v2 grammar and X4
+protocol, then produce CPU synthetic records.  Any other unprovable frozen
+statement still triggers an immediate hard stop without weakening or axiom
+smuggling.  After the CPU records, work stops for provisioning of the pinned
+A100 pod before the production-size `c3_weights` preflight and GPT-2 records.
 
 ---
 

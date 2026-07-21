@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 R1B AMENDMENT 1 + SOUNDNESS/LEAN STATEMENTS FROZEN)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 AMENDMENTS 1--2 FROZEN; LEAN-FIRST PHASE AUTHORIZED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -61,9 +61,12 @@ R1b MINOR-3 is adopted in `docs/x4-folding-pcs-design.md` as
 `2^29` blocks, the PCS moves from `F_p^4` to `E=F_p^2`, the unpadded gpt-oss
 first-oracle floor falls to **5.3504 TB**, and the specialized conservative
 response bound is **83.30226403378921 bits**.  Final pre-code theorem
-statements and the v2 frame grammar are frozen.  The package remains at a
-**HARD STOP pending product-owner review** and authorizes no Lean proofs, X4
-Rust, reference, benchmark or X5 work.
+statements and the v2 frame grammar are frozen.  On 2026-07-21 the product
+owner approved Amendment 2, which repairs the false bare-`Authed.Valid`
+premise of `direct_mask_transfer` by requiring MAC validity *and* zero
+plaintext on the good tape.  The Lean-first phase and the subsequent ordered
+plan are authorized subject to every existing hard stop; no X4 gate verdict
+has yet landed.
 
 ## Milestones
 
@@ -99,6 +102,7 @@ Rust, reference, benchmark or X5 work.
 | R1b X1--X3 delta + Ideal/X4 addenda review | **AI REVIEW DISPOSITION CLOSED; no independent assurance** (2026-07-20) | Detached `9b1ef2d`; zero CRITICAL/MAJOR, three MINOR, six NOTE; every finding explicitly disposed; criterion (1) remains external | Byte-identical report `docs/r1b-kimi3-report.md`, SHA-256 `a6d25a55c1220934666bf22f218740be1a9084243370fd031274dea2a222aa9f`. MINOR-1/2 docstrings corrected; MINOR-3 adopted; NOTE-1/3/5/6 actions pinned. The review is automated Kimi adversarial analysis, not human assurance. |
 | X4 folding PCS Phase 1 (historical) | **SUPERSEDED BY R1B AMENDMENT 1; immutable design history** (2026-07-20) | Original no-list-decoding/G1--G6 preregistration retained for provenance | Historical `x4-zkdeepfold-v1`: `K`, rate `1/8`, `s=128`, **10.7008-TB** logical floor. Addended SHA-256 `3588d9f360960d46ad219309ba67645bd992a56d89ed1ae627f69f6d7ca9bb44`; original SHA `bb693bb4b1a06244d4f30f4b23cb47a64563dcaa21b5502b74adb044e6284464`. No gate verdict. |
 | X4 R1b Amendment 1 + Phase-2 statement freeze | **AMENDED DESIGN/SOUNDNESS/LEAN STATEMENTS FROZEN; HARD STOP pending product-owner review** (2026-07-20) | Exact conservative response bound must prove before X4 Rust; all original G1--G6 and byte/wall gates remain conjunctive; no list-decoding credit | `x4-zkdeepfold-ud-e29-v2`: `E`, rate `1/8`, `s=128`, `mu_max=29`; **1,660 blocks / 3,320 claims**; gpt-oss floor **5.3504 TB**; GPT-2 unpadded first oracle **31,923,699,712 B**; direct M9 `B_touch+1`; `epsilon=8.3853234432654371e-26`, **83.30226403378921 bits, meeting the 78.809294874 target**. Normative v2 frames and separate binding/ZK/batch theorem statements frozen. Design SHA-256 `2f511ac162ed6fdfa88dcb7e43fb749ae7063acf4a4585e2693349c9f023f207`. No Lean proof or X4 gate verdict. |
+| X4 Amendment 2 direct-mask premise | **APPROVED; LEAN-FIRST EXECUTION AUTHORIZED** (2026-07-21) | Replace the false bare-MAC-validity transfer premise before proofs; no parameter, coefficient or gate change | `ResponseZeroBatchValid Delta a := a.Valid Delta /\ a.x=0` is now the deterministic good-tape premise of `direct_mask_transfer`; accepted bad tapes remain owned by the separate scalar ZeroBatch soundness theorem. `C_M9=1661`, `C_total`, `x4ResponseError` and **83.30226403378921 bits** are unchanged. Amended design SHA-256 `31828e41d0da09a8e331603a693c8d11e4d3582ec45a38d7adba2cb53c12022b`. No Lean or Rust result yet. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -166,6 +170,30 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-21 (X4 Amendment 2 approved before Lean/Rust; direct-mask
+  good-tape premise corrected)**: the product owner approved the normative
+  Section 0.7 amendment in `docs/x4-folding-pcs-design.md`, SHA-256
+  `31828e41d0da09a8e331603a693c8d11e4d3582ec45a38d7adba2cb53c12022b`.
+  The frozen Amendment-1 `direct_mask_transfer` used existing
+  `Authed.Valid` as though it asserted a zero plaintext.  A checked generic-
+  field Lean counterexample takes `authS=0`, `authV=authPublic 1`, `h=0`:
+  both MAC invariants hold but the conclusion is `1=0`.  The required hard
+  stop occurred with the repository still clean at `fc05f10`.
+
+  Amendment 2 defines `ResponseZeroBatchValid Delta a` as the conjunction of
+  the existing MAC invariant and `a.x=0`, and uses that predicate in the
+  deterministic transfer theorem.  Mere adversarial verifier acceptance is
+  not identified with this good-tape fact: accepted bad tapes remain bounded
+  by `masked_batch_opening_mac_sound` and the existing scalar ZeroBatch
+  theorem.  This is a strengthened semantic premise and no theorem conclusion
+  is weakened.  There is no new axiom and no change to `E`, rate, `s`, block
+  geometry, frame grammar, `B_touch+1` allocation, `C_M9=1,661`,
+  `C_total=28,522,064,267,253`, the exact `<2^-83` stop rule or any G1--G6
+  gate.  The owner authorizes Lean-first execution, then the already ordered
+  implementation and CPU synthetic records if the audit is green; any other
+  unprovable frozen statement still hard-stops.  Pod work remains deferred
+  until the mandatory post-CPU provisioning stop.
 
 - **2026-07-20 (R1b AI-review disposition: CLOSED; honest assurance label
   retained)**: the Kimi R1b report produced against detached checkpoint

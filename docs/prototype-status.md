@@ -247,6 +247,8 @@ historical entries remain append-only evidence, not competing definitions.
   reference, gate or pod state changed.  The permanent v2 delta-shift theorem
   and R1c scope remain untouched.  Baseline audit remains 133/40; Rust and all
   later phases stay gated.
+  Obstruction checkpoint:
+  `304a768ac18e5f0d2f8f3c4717587ff246e6167f`.
 
 - **2026-07-21 (X4 Amendment-3 freeze approved; exact Lean-first discharge
   authorized)**: the product owner confirms that all six design constraints

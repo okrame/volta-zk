@@ -17,9 +17,8 @@ use volta_proto::mle::{eq_points, eq_vec, fold_low, lagrange3};
 
 use super::folding_v4::{
     global_fold_descriptor_digest_v4, opened_global_value_from_lines_v4,
-    verify_global_folding_interactive_v4, CommittedModelGlobalCohortV4, FoldingErrorV4,
-    GlobalChainDraftV4, GlobalFoldingProofV4, GlobalOpenMetricsV4, GlobalProverGroupV4,
-    GlobalVerifierGroupV4,
+    verify_global_folding_interactive_v4, FoldingErrorV4, GlobalChainDraftV4, GlobalFoldingProofV4,
+    GlobalOpenMetricsV4, GlobalProverGroupV4, GlobalVerifierGroupV4, ModelGlobalOpeningSourceV4,
 };
 use super::frame::{
     AuthenticatedOutputLinkFrame, Digest, FrameError, M9TransferFrame, ReducedClaimFrame,
@@ -157,7 +156,7 @@ pub struct LinkCohortKeyV4 {
 }
 
 impl LinkCohortKeyV4 {
-    pub fn from_cohort(cohort: &CommittedModelGlobalCohortV4) -> Self {
+    pub fn from_cohort(cohort: &dyn ModelGlobalOpeningSourceV4) -> Self {
         let commitment = cohort.commitment();
         Self {
             domain_log2: commitment.config.outer_depth(),
@@ -186,7 +185,7 @@ impl Ord for LinkCohortKeyV4 {
 }
 
 pub struct LinkPolynomialProverV4<'a> {
-    pub cohort: &'a CommittedModelGlobalCohortV4,
+    pub cohort: &'a dyn ModelGlobalOpeningSourceV4,
     pub slot: u16,
     /// Boolean-hypercube evaluations; never serialized.
     pub evaluations: &'a [Fp2],
@@ -295,6 +294,9 @@ pub struct AuthenticatedOutputLinkMetricsV4 {
     pub encoded_symbols_read: u64,
     pub folded_symbols_written: u64,
     pub aggregate_merkle_symbols_written: u64,
+    pub recomputed_source_bytes_read: u64,
+    pub recomputed_oracle_bytes: u64,
+    pub recomputed_merkle_bytes: u64,
 }
 
 pub fn x4_v4_seam_full_correlations(
@@ -623,7 +625,7 @@ fn terminal_weight_v4(base: Fp2, target: &[Fp2], common: &[Fp2]) -> Fp2 {
 }
 
 struct ProverGroupV4<'a> {
-    cohort: &'a CommittedModelGlobalCohortV4,
+    cohort: &'a dyn ModelGlobalOpeningSourceV4,
     dimension: usize,
     weights: BTreeMap<u16, Fp2>,
 }
@@ -725,6 +727,9 @@ fn accumulate_global_metrics_v4(
     metrics.encoded_symbols_read = opened.initial_encoded_symbols_read;
     metrics.folded_symbols_written = opened.folded_symbols_written;
     metrics.aggregate_merkle_symbols_written = opened.aggregate_merkle_symbols_written;
+    metrics.recomputed_source_bytes_read = opened.recomputed_source_bytes_read;
+    metrics.recomputed_oracle_bytes = opened.recomputed_oracle_bytes;
+    metrics.recomputed_merkle_bytes = opened.recomputed_merkle_bytes;
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1168,6 +1173,7 @@ pub fn beta_collision_is_link_bad_v4(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::x4::folding_v4::CommittedModelGlobalCohortV4;
     use crate::x4::merkle_v4::{CohortIdentityV4, CohortVerifierConfigV4};
     use crate::x4::ntt::{evaluate_multilinear_table, multilinear_coefficients};
     use volta_field::Fp;

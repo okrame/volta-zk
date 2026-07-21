@@ -6,6 +6,7 @@
 
 pub mod accounting;
 pub mod artifacts;
+pub mod artifacts_v4;
 pub mod authenticated_output;
 pub mod authenticated_output_v4;
 pub mod folding;
@@ -21,6 +22,7 @@ pub mod security_v4;
 
 pub use accounting::*;
 pub use artifacts::*;
+pub use artifacts_v4::*;
 pub use authenticated_output::*;
 pub use authenticated_output_v4::*;
 pub use folding::*;

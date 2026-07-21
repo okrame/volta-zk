@@ -104,7 +104,7 @@ impl CommittedModelGlobalCohortV4 {
         &self.commitment
     }
 
-    fn combine(
+    pub(crate) fn combine(
         &self,
         touched_slots: &[u16],
         weights: &[Fp2],
@@ -136,15 +136,72 @@ impl CommittedModelGlobalCohortV4 {
 }
 
 #[derive(Clone, Debug)]
-struct CombinedInitialV4 {
-    coefficients: Vec<Fp2>,
-    codeword: Vec<Fp2>,
-    claimed_value: Fp2,
+pub struct CombinedInitialV4 {
+    pub(crate) coefficients: Vec<Fp2>,
+    pub(crate) codeword: Vec<Fp2>,
+    pub(crate) claimed_value: Fp2,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SourceRecomputeTrafficV4 {
+    pub source_bytes_read: u64,
+    pub oracle_bytes_recomputed: u64,
+    pub merkle_bytes_recomputed: u64,
+}
+
+/// Source abstraction used by the global chain.  A retained cohort answers
+/// directly; the G6 recompute implementation rebuilds and root-checks one
+/// cohort per call, then discards it.
+pub trait ModelGlobalOpeningSourceV4: std::fmt::Debug {
+    fn commitment(&self) -> &ModelGlobalCohortCommitmentV4;
+
+    fn combine_source(
+        &self,
+        touched_slots: &[u16],
+        weights: &[Fp2],
+        target_point: &[Fp2],
+    ) -> Result<(CombinedInitialV4, SourceRecomputeTrafficV4), FoldingErrorV4>;
+
+    fn open_initial_source(
+        &self,
+        query_draws: &[u64],
+        touched_slots: &[u16],
+    ) -> Result<(super::frame_v4::InitialOpeningGroupV4, SourceRecomputeTrafficV4), FoldingErrorV4>;
+}
+
+impl ModelGlobalOpeningSourceV4 for CommittedModelGlobalCohortV4 {
+    fn commitment(&self) -> &ModelGlobalCohortCommitmentV4 {
+        self.commitment()
+    }
+
+    fn combine_source(
+        &self,
+        touched_slots: &[u16],
+        weights: &[Fp2],
+        target_point: &[Fp2],
+    ) -> Result<(CombinedInitialV4, SourceRecomputeTrafficV4), FoldingErrorV4> {
+        Ok((
+            self.combine(touched_slots, weights, target_point)?,
+            SourceRecomputeTrafficV4::default(),
+        ))
+    }
+
+    fn open_initial_source(
+        &self,
+        query_draws: &[u64],
+        touched_slots: &[u16],
+    ) -> Result<(super::frame_v4::InitialOpeningGroupV4, SourceRecomputeTrafficV4), FoldingErrorV4>
+    {
+        Ok((
+            self.tree.open_initial(query_draws, touched_slots)?,
+            SourceRecomputeTrafficV4::default(),
+        ))
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct GlobalProverGroupV4<'a> {
-    pub cohort: &'a CommittedModelGlobalCohortV4,
+    pub cohort: &'a dyn ModelGlobalOpeningSourceV4,
     pub touched_slots: Vec<u16>,
     /// Verifier-derived same-domain reduction weights in canonical slot order.
     pub weights: Vec<Fp2>,
@@ -177,6 +234,9 @@ pub struct GlobalOpenMetricsV4 {
     pub aggregate_merkle_symbols_written: u64,
     pub serialized_fold_bytes: u64,
     pub serialized_packed_opening_bytes: u64,
+    pub recomputed_source_bytes_read: u64,
+    pub recomputed_oracle_bytes: u64,
+    pub recomputed_merkle_bytes: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -385,18 +445,22 @@ impl<'a> GlobalChainDraftV4<'a> {
         self,
         source: &mut impl FoldChallengeSourceV4,
     ) -> Result<SealedGlobalChainV4<'a>, FoldingErrorV4> {
-        let max_domain_log2 = self.groups[0].cohort.commitment.config.outer_depth();
+        let max_domain_log2 = self.groups[0].cohort.commitment().config.outer_depth();
         if usize::from(max_domain_log2 - 3) != self.common_point.len() {
             return Err(FoldingErrorV4::InvalidGeometry("v4 maximum domain/common point"));
         }
-        let max_outer_len = self.groups[0].cohort.commitment.config.outer_len;
+        let max_outer_len = self.groups[0].cohort.commitment().config.outer_len;
         let max_coefficient_len = max_outer_len / 8;
         let mut combined = Vec::with_capacity(self.groups.len());
         let mut verifier_groups = Vec::with_capacity(self.groups.len());
         let mut metrics = GlobalOpenMetricsV4::default();
         for group in &self.groups {
-            let value =
-                group.cohort.combine(&group.touched_slots, &group.weights, &group.target_point)?;
+            let (value, recompute) = group.cohort.combine_source(
+                &group.touched_slots,
+                &group.weights,
+                &group.target_point,
+            )?;
+            accumulate_recompute_traffic(&mut metrics, recompute)?;
             let touched =
                 u64::try_from(group.touched_slots.len()).map_err(|_| FoldingErrorV4::Overflow)?;
             metrics.source_coefficients_read = metrics
@@ -422,7 +486,7 @@ impl<'a> GlobalChainDraftV4<'a> {
                 )
                 .ok_or(FoldingErrorV4::Overflow)?;
             verifier_groups.push(GlobalVerifierGroupV4 {
-                commitment: group.cohort.commitment.clone(),
+                commitment: group.cohort.commitment().clone(),
                 touched_slots: group.touched_slots.clone(),
                 weights: group.weights.clone(),
                 target_point: group.target_point.clone(),
@@ -445,7 +509,7 @@ impl<'a> GlobalChainDraftV4<'a> {
         let mut activated = self
             .groups
             .iter()
-            .filter(|group| group.cohort.commitment.config.outer_len == max_outer_len)
+            .filter(|group| group.cohort.commitment().config.outer_len == max_outer_len)
             .count();
         if activated == 0 {
             return Err(FoldingErrorV4::InvalidGeometry("v4 initial activation"));
@@ -481,7 +545,7 @@ impl<'a> GlobalChainDraftV4<'a> {
             activated += self
                 .groups
                 .iter()
-                .filter(|group| group.cohort.commitment.config.outer_len == output_len)
+                .filter(|group| group.cohort.commitment().config.outer_len == output_len)
                 .count();
             metrics.folded_symbols_written = metrics
                 .folded_symbols_written
@@ -586,11 +650,13 @@ impl SealedGlobalChainV4<'_> {
         (GlobalFoldingProofV4, Vec<GlobalVerifierGroupV4>, GlobalOpenMetricsV4),
         FoldingErrorV4,
     > {
-        validate_query_draws(&query_draws, self.groups[0].cohort.commitment.config.outer_len)?;
+        validate_query_draws(&query_draws, self.groups[0].cohort.commitment().config.outer_len)?;
         let mut initial_groups = Vec::with_capacity(self.groups.len());
         for group in &self.groups {
-            initial_groups
-                .push(group.cohort.tree.open_initial(&query_draws, &group.touched_slots)?);
+            let (opening, recompute) =
+                group.cohort.open_initial_source(&query_draws, &group.touched_slots)?;
+            accumulate_recompute_traffic(&mut self.metrics, recompute)?;
+            initial_groups.push(opening);
         }
         let mut fold_rounds = Vec::with_capacity(self.round_trees.len());
         for tree in &self.round_trees {
@@ -630,7 +696,7 @@ impl SealedGlobalChainV4<'_> {
         (GlobalFoldingProofV4, Vec<GlobalVerifierGroupV4>, GlobalOpenMetricsV4, Vec<u64>),
         FoldingErrorV4,
     > {
-        let draw_width = self.groups[0].cohort.commitment.config.outer_depth();
+        let draw_width = self.groups[0].cohort.commitment().config.outer_depth();
         let draws = (0..PRODUCTION_QUERY_COUNT_V4)
             .map(|_| tx.challenge_bits(draw_width))
             .collect::<Vec<_>>();
@@ -873,7 +939,7 @@ fn validate_prover_groups(
     let verifier = groups
         .iter()
         .map(|group| GlobalVerifierGroupV4 {
-            commitment: group.cohort.commitment.clone(),
+            commitment: group.cohort.commitment().clone(),
             touched_slots: group.touched_slots.clone(),
             weights: group.weights.clone(),
             target_point: group.target_point.clone(),
@@ -960,6 +1026,25 @@ fn validate_query_draws(draws: &[u64], max_outer_len: usize) -> Result<(), Foldi
     Ok(())
 }
 
+fn accumulate_recompute_traffic(
+    metrics: &mut GlobalOpenMetricsV4,
+    traffic: SourceRecomputeTrafficV4,
+) -> Result<(), FoldingErrorV4> {
+    metrics.recomputed_source_bytes_read = metrics
+        .recomputed_source_bytes_read
+        .checked_add(traffic.source_bytes_read)
+        .ok_or(FoldingErrorV4::Overflow)?;
+    metrics.recomputed_oracle_bytes = metrics
+        .recomputed_oracle_bytes
+        .checked_add(traffic.oracle_bytes_recomputed)
+        .ok_or(FoldingErrorV4::Overflow)?;
+    metrics.recomputed_merkle_bytes = metrics
+        .recomputed_merkle_bytes
+        .checked_add(traffic.merkle_bytes_recomputed)
+        .ok_or(FoldingErrorV4::Overflow)?;
+    Ok(())
+}
+
 fn activate_groups(
     output_len: usize,
     groups: &[GlobalProverGroupV4<'_>],
@@ -969,7 +1054,7 @@ fn activate_groups(
     current_claim: &mut Fp2,
 ) -> Result<(), FoldingErrorV4> {
     for (group, initial) in groups.iter().zip(combined) {
-        if group.cohort.commitment.config.outer_len != output_len {
+        if group.cohort.commitment().config.outer_len != output_len {
             continue;
         }
         if current_coefficients.len() != initial.coefficients.len()
@@ -1126,7 +1211,10 @@ fn global_descriptor_from_prover_groups(groups: &[GlobalProverGroupV4<'_>]) -> D
         &groups
             .iter()
             .map(|group| {
-                (group.cohort.commitment.config.identity.cohort_id, group.cohort.commitment.root)
+                (
+                    group.cohort.commitment().config.identity.cohort_id,
+                    group.cohort.commitment().root,
+                )
             })
             .collect::<Vec<_>>(),
     )

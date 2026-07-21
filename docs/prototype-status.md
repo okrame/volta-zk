@@ -250,6 +250,22 @@ historical entries remain append-only evidence, not competing definitions.
   G3 is recorded FAIL and work stops before provisioning a pod; the threshold
   will not be tuned or reinterpreted.
 
+  The decisive preflight challenge schedule is preregistered before its
+  implementation: read 128 consecutive little-endian `u32` words from the
+  BLAKE3 derive-key XOF with context
+  `volta-zk/x4/gpt2-g3-preflight/v1` and input
+  `x4-zkdeepfold-ud-e29-v3|gpt2-small|102-claims|2026-07-21`, then retain the
+  low 30 bits of each word.  Lower domains use the corresponding low exact
+  bits, preserving uniform-with-replacement semantics.  This is a fixed,
+  reproducible admissible query witness for the absolute “at most” gate, not
+  a replacement for fresh production verifier randomness.  The first screen
+  deliberately gives the protocol every advantage: one shared maximum-depth
+  post-initial fold chain and **zero bytes for every auxiliary Merkle node**.
+  It counts only canonical frame structure and opened leaf payloads.  If even
+  that strict lower bound exceeds 4,000,000 B, no v3 implementation can pass
+  G3 without a protocol/grammar/parameter amendment, so the late-query Rust
+  refactor and all later migration/pod work stop.
+
   The clean synthetic record remains valid for its stated scope: its honest
   roots were fixed before its measured answers, its byte/G6 formulas and
   ABBA observation do not depend on adversarial query unpredictability, and

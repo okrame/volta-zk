@@ -1,27 +1,29 @@
 # X4 folding-PCS amended preregistration and statement freeze
 
-**Status (2026-07-21): R1B AMENDMENTS 1--4 FROZEN. AMENDMENT 4 CHANGES ONLY
-THE TWO DETERMINISTIC BOUND-OUTPUT CONCLUSIONS TO `EQUALITY OR LINKBAD` AND
-FLOWS THAT DISJUNCTION THROUGH THE EXISTING NAMED-EVENT COVER. LEAN-FIRST IS
-AUTHORIZED; V3/M9 RUST REMAINS GATED ON A GREEN BUILD AND AUDIT.**
+**Status (2026-07-21): R1B AMENDMENTS 1--4 ARE IMMUTABLE HISTORY. AMENDMENT 5
+FREEZES `x4-zkdeepfold-ud-e29-v4`, RATE `1/8`, `s=111`, MODEL-GLOBAL
+SAME-DOMAIN COHORTS, ONE DIFFERENT-SIZE FOLD CHAIN AND THE CANONICAL PACKED
+OPENING. THE V3 CANDIDATE REMAINS G3-INFEASIBLE. HARD STOP BEFORE V4
+LEAN-FIRST PENDING PRODUCT-OWNER REVIEW.**
 
 This document is the Phase-1 preregistration for X4. It replaces the original
 X4 premise in `docs/scaling-note.md`: lever A (cache/reuse fixed query rows)
 is recorded UNSOUND and receives no credit. The replacement is a folding-PCS
-package, co-designed with D3 per-layer commitments and canonical per-expert
-blocks. This Amendment-4 package contains design only: it changes no Lean
-declaration or proof, X4 Rust code, benchmark reference or gate verdict.  The
-prior v2 diagnostic Rust and permanent negative artifacts remain unchanged.
+package with canonical independently openable blocks. Sections 0--0.11 retain
+the Amendment-1--4 record.  Section 0.12 is the current design-only override:
+it replaces D3's physical per-layer cohort roots with model-global same-domain
+roots while preserving logical namespace and block openability.  It changes
+no Lean declaration/proof or production X4 Rust before approval; the
+design-only byte reference and every prior diagnostic/negative artifact
+remain explicit evidence.
 
-The Amendment-4 candidate profile remains named
-**`x4-zkdeepfold-ud-e29-v3`**. It supersedes
-`x4-zkdeepfold-ud-e29-v2` only at the opening-to-MAC seam, transcript order
-and frame schema; the v2 design and its diagnostic partial Rust remain
-immutable evidence. All parameters, byte thresholds, measurements and
-failure rules are preregistered before the amended implementation. A later
-change to a security parameter, block map, byte codec or gate requires an
-append-only deviation before the affected run; a failed result may not be
-tuned into a pass.
+The current candidate is **`x4-zkdeepfold-ud-e29-v4`**.  V3 remains immutable
+G3-failure evidence; v2 remains immutable seam-diagnostic history.  All
+parameters, byte thresholds, measurements and failure rules are
+preregistered before the amended implementation. A later change to a
+security parameter, block map, byte codec or gate requires an append-only
+deviation before the affected run; a failed result may not be tuned into a
+pass.
 
 Historical Section 5.1 is the product-owner-requested mitigation addendum for the
 10.7008-TB first-oracle screen. It adds conditional paper-only alternatives
@@ -1453,6 +1455,724 @@ by its document SHA recorded in the ledger.  Its approval clears the
 statement-shape hard stop and authorizes immediate Lean-first discharge; v3
 Rust remains forbidden until the exact amended theorem set, full build and
 derived audit are green.
+
+## 0.12 Amendment 5: canonical global opening and `s=111` (normative override)
+
+The product owner authorized Amendment 5 on 2026-07-21 after the production-
+geometry GPT-2 preflight proved that the frozen v3 candidate cannot satisfy
+G3.  This section supersedes v3 only for the cohort/fold layout, query count,
+query-opening grammar and the soundness exponent that depends on that count.
+It preserves the Amendment-3 authenticated-output seam and every Amendment-4
+`authenticated equality OR LinkBad` conclusion.  It changes no gate, total-
+response ceiling, field, MAC, PCG lifecycle, one-opening epoch or accepted
+leakage.
+
+The new profile is **`x4-zkdeepfold-ud-e29-v4`**.  This section and its final
+Lean statements are design only.  The design-only reference encoder used for
+the pre-freeze screen is not a production prover/verifier and confers no Rust
+implementation credit.
+
+### 0.12.1 V3 disposition and term-by-term diagnosis
+
+The immutable clean v3 record is
+`benchmarks/results/x4-gpt2-g3-preflight-2026-07-21-3aa5952.json`, SHA-256
+`a5d2f4ba189c27a7b39e8e0f0c66475057a6f15041483fbe2035bcc69afc4cb9`.
+It proves the following exact decomposition at `s=128`:
+
+| V3 term | Bytes or count |
+| --- | ---: |
+| initial opened `E` symbols | 417,792 B |
+| repeated initial leaf/frame metadata | 2,722,740 B |
+| initial query frames before sibling entries | 3,140,532 B |
+| one ideal global chain's opened `E` symbols | 90,848 B |
+| repeated chain leaf/frame metadata | 790,214 B |
+| one ideal chain before sibling entries | 881,062 B |
+| query-only zero-sibling lower bound | **4,021,594 B** |
+| mandatory non-query material | 67,822 B |
+| complete zero-sibling lower bound | **4,089,416 B** |
+| initial sibling entries | 179,982 entries / 8,999,100 B |
+| ideal-chain sibling entries | 54,524 entries / 2,726,200 B |
+| optimistic canonical one-chain shape | **15,814,716 B** |
+
+Thus the failure is not a 2.24% engineering miss.  The 4,089,416-B number
+deletes all 234,506 real sibling entries, while the actual v3 entry is 50
+bytes because it repeats an 18-byte `(role,outer,level,index)` position next
+to every 32-byte digest.  V3 also repeats 68 bytes of reconstructible inner-
+leaf metadata and 71 bytes of reconstructible outer-leaf metadata at every
+opened coordinate.  The 128 independent draws multiply both the values and
+the paths.  V3 is therefore **INFEASIBLE / SUPERSEDED CANDIDATE**, never a
+near pass.
+
+No 5% or 10% exception is taken.  A 10% PCS-only cap would still be far below
+the 15.815-MB canonical shape, and the absolute 45,270,464-B response ceiling
+was never authorized to move.
+
+The three permitted levers have the following disposition:
+
+1. **Late query is mandatory.**  Every initial root, activation challenge,
+   fold message and fold root is sealed before any query draw.  This repairs
+   the suspended production API defect; it is a soundness condition, not a
+   byte credit.
+2. **Canonical global sharing is adopted.**  Same-domain polynomials use one
+   model-global descriptor-ordered cohort.  DeepFold Section 5.1 activates a
+   shorter cohort when the current aggregate reaches its domain, producing
+   one response-wide fold chain.  Sibling positions and leaf metadata are
+   verifier-derived, so the opening transmits each value once and each actual
+   sibling digest once.  No digest is shared across independent Merkle roots.
+3. **`(rate,s)` is re-resolved.**  The complete bound determines the minimum
+   integer `s` at each screened inverse-power-of-two rate.  The next integer
+   is also screened as the preregistered margin row.
+
+The clean design screen is
+`benchmarks/results/x4-amendment5-gpt2-preflight-2026-07-21-93749b3.json`,
+SHA-256
+`ba87722362c8825e13e02a6c563a436797ea852e09e1cebcf4a9265c6ce56499`.
+Its source is clean commit
+`93749b3878ea517602eee06a8d46a201b7cb3346`.  Every row materializes an exact
+candidate byte vector and independently matches the closed formula.
+
+| row | rate; `mu_max`; blocks / polynomials | `s`; bits | GPT-2 PCS | G3 headroom | gpt-oss first-oracle floor |
+| --- | --- | ---: | ---: | ---: | ---: |
+| minimum | `1/8`; 29; 1,660 / 3,320 | 110; 79.503732039 | 2,642,372 B | 1,357,628 B | 5.3504 TB |
+| margin **selected** | `1/8`; 29; 1,660 / 3,320 | **111; 80.255370164** | **2,683,236 B** | **1,316,764 B** | **5.3504 TB** |
+| minimum | `1/16`; 28; 1,664 / 3,328 | 100; 79.449563251 | 2,601,700 B | 1,398,300 B | 10.7008 TB |
+| margin | `1/16`; 28; 1,664 / 3,328 | 101; 80.276397632 | 2,625,636 B | 1,374,364 B | 10.7008 TB |
+| minimum | `1/32`; 27; 1,672 / 3,344 | 95; 78.999623305 | 2,565,167 B | 1,434,833 B | 21.4016 TB |
+| margin | `1/32`; 27; 1,672 / 3,344 | 96; 79.887667799 | 2,587,727 B | 1,412,273 B | 21.4016 TB |
+
+The selected `1/8,s=111` row spends 40,864 B over the mathematical minimum
+row and gains a clean `<2^-80` theorem.  Against the selected row, `1/16`
+saves only 57,600 B while doubling the first-oracle floor; `1/32` saves only
+95,509 B while quadrupling it.  Those rates are rejected.  Trading more
+oracle work for communication was allowed, but these ratios do not justify
+5.3504 or 16.0512 additional TB at the gpt-oss sizing point.
+
+The screen XOF is deterministic measurement provenance, not Fiat--Shamir and
+not the live challenge generator.  Its derive-key context is
+`volta-zk/x4/amendment5-gpt2-preflight/v1`; the selected ordered-draw digest
+is `3654af24af8a3e903e15db2bf25e0ec587d1bd774aaab433d1fb6e1064b3d299`.
+The designated verifier still samples 111 independent exact bits-with-
+replacement indices after the commitments are sealed.
+
+### 0.12.2 Frozen v4 parameters, cohorts and global fold chain
+
+| Parameter | Frozen v4 value |
+| --- | ---: |
+| field | `E=F_p2`, `p=2^64-2^32+1`, 16-byte symbols |
+| rate | `rho=1/8` |
+| strict-UD distance | `<7/16`; equality is the far/reject branch |
+| query repetitions | `s=111`, exact uniform with replacement |
+| physical-block range | `14 <= mu_b <= 29` |
+| maximum extended variables | `d=mu_max+1=30` |
+| maximum first domain | `2^(29+1)/(1/8)=2^33` |
+| field two-adicity | `v2(|E|-1)=33`, exactly sufficient |
+| auxiliary variables | `ell_b=ceil(log2(111*mu_b^2+1)) <=17` |
+| maximum mask exposure budget | `111*29^2=93,351 < 2^17-1=131,071` |
+| maximum blocks / active polynomials | `B=1,660`, `P=2B=3,320` |
+| response target | at least 78.809294874 statistical bits |
+
+The Amendment-1 split, `E` field, 5.3504-TB gpt-oss and
+31,923,699,712-B GPT-2 first-oracle floors remain unchanged.  The selected
+row changes no block, claim, correlation or root-of-unity geometry.  At
+GPT-2, `ell_22=ell_20=16` and `ell_26=17`, so lowering `s` changes no initial
+auxiliary-oracle length.
+
+A static v4 cohort is keyed only by `(profile,model,oracle_kind,domain_log2)`.
+Its slots contain every matching physical block across namespaces in the
+canonical total descriptor order, padded to the next power of two with the
+existing distinct absent leaf.  Descriptor digest, namespace, block id and
+slot remain in the leaf hash.  A shared root therefore saves authentication
+paths but does not permit a layer, expert, role or auxiliary/weight
+substitution.  The existing hierarchical descriptor/manifest commitment is
+retained; its leaves may repeat the same model-global cohort root and its
+GPT-2 serialized width remains in the 67,822-B non-query term.
+
+This is an explicit Amendment-5 override of D3's **physical per-layer cohort
+root** choice.  Logical layer namespaces, independently addressable expert
+blocks, claim identities and touched-block proportionality remain unchanged;
+the authoritative static coordinate-authentication roots are now model-
+global by `(oracle_kind,domain_log2)`.  It is not a monolithic polynomial:
+unopened slots are neither read by the source-opening path nor serialized,
+and their distinct descriptor leaves remain committed.  The override is
+material and is mandatory R1c scope; it is not being smuggled in as a codec
+optimization.
+
+The selected all-touched GPT-2 initial roots are exactly:
+
+| cohort | domain log2 | touched / slots | selected-tape opened symbols | inner / outer siblings |
+| --- | ---: | ---: | ---: | ---: |
+| Wext `mu=26`, tied roles | 30 | 2 / 2 | 444 | 0 / 4,778 |
+| Wext `mu=22`, all layers | 26 | 36 / 64 | 7,992 | 666 / 3,872 |
+| Wext `mu=20`, layers + position | 24 | 13 / 16 | 2,886 | 444 / 3,410 |
+| auxiliary `ell=17` | 20 | 2 / 2 | 444 | 0 / 2,548 |
+| auxiliary `ell=16` | 19 | 49 / 64 | 10,878 | 888 / 2,346 |
+
+After same-domain combination, the global chain starts at the largest
+domain.  At each depth, every cohort whose domain now matches is activated
+in descriptor/cohort order with a fresh transcript challenge.  Abstractly,
+
+```text
+A_i = Fold(A_(i-1), r_i) + sum_(c activated at i) gamma_(i,c) * C_c.
+```
+
+The activation roots and claims are already fixed.  At query time the
+verifier reconstructs the left/right predecessor values and each activation
+value from the committed initial cohorts, then checks the displayed relation
+against the next aggregate root.  GPT-2 has 27 committed output rounds with
+domain logs 29 down to 3; gpt-oss has at most 30, logs 32 down to 3.  The
+final rate-`1/8` constant oracle remains committed and queried.  This is the
+DeepFold Section-5.1 different-size activation idea specialized to VOLTA's
+strict-UD/BaseFold line check; the fixed-order, model-global cohort reduction
+is a repository theorem obligation, not a claim copied from the paper.
+
+The interaction typestate is normative:
+
+```text
+RootsClaimsAndHFixed
+  -> M9CorrectionsFixed
+  -> AuthenticatedLinkRoundsClosed
+  -> GlobalInitialAndFoldCommitmentsSealed
+  -> ExactQueryDrawsIssued
+  -> PackedOpeningVerified
+  -> ResponseZeroBatchClosed.
+```
+
+There is no API that obtains draws from an unsealed chain or adds/replaces a
+root after the first draw.  The response envelope is only a canonical replay
+of that interaction; it does not move a future commitment before its live
+challenge.
+
+### 0.12.3 Normative schema-4 packed-opening grammar
+
+All v4 frames use the unchanged 16-byte envelope
+
+```text
+magic="VOLTAX44" || schema=4:u16 || kind:u8 || flags=0:u8 || body_len:u32.
+```
+
+Kinds `0x01`--`0x0c` retain their v3 body widths and order, under v4 profile
+and hash domains.  `oracle_kind=2` names the response-global fold aggregate
+in a fold-commitment frame; it changes no field width.  The production query
+section contains exactly one new `packed batch opening` frame, kind `0x0d`,
+and contains no v3 `0x06` multiproof frame.  Its body is:
+
+```text
+opening_schedule_digest[32]
+initial_group_count:u16
+repeat initial_group_count times:
+  cohort_id:u32
+  domain_log2:u8
+  slot_count:u16
+  touched_slot_count:u16
+  sorted_touched_slots[touched_slot_count]:u16
+  opened_symbol_count:u32
+  ordered_opened_symbols[opened_symbol_count]:E
+  inner_sibling_count:u32
+  ordered_inner_sibling_digests[inner_sibling_count]:digest
+  outer_sibling_count:u32
+  ordered_outer_sibling_digests[outer_sibling_count]:digest
+fold_round_count:u8
+repeat fold_round_count times:
+  fold_round:u8
+  domain_log2:u8
+  opened_symbol_count:u32
+  ordered_opened_symbols[opened_symbol_count]:E
+  outer_sibling_count:u32
+  ordered_outer_sibling_digests[outer_sibling_count]:digest
+```
+
+Initial groups are strictly ordered by descending `domain_log2`, then
+ascending `cohort_id`.  Fold rounds are exactly `1..d`.  Touched slots are
+strictly increasing.  For each group or round, the verifier derives from the
+retained ordered 111-draw multiset the strictly increasing deduplicated
+`+/-` outer-coordinate set.  Symbols are ordered outer-coordinate-major,
+then touched-slot-major.  Multiplicity remains in every line check and in the
+soundness exponent; deduplication is wire authentication only.
+
+Sibling positions are not prover fields.  At each Merkle level, the decoder
+walks the current sorted index set, appends the absent sibling position for
+each unpaired node in ascending index order, and replaces the current set by
+its sorted deduplicated parents.  Inner lists repeat that deterministic walk
+in outer-coordinate order.  Counts must equal the resulting exact list.
+Missing, extra, reordered or trailing digests reject.
+
+The verifier reconstructs every omitted v4 PCS-leaf preimage from
+`(profile, cohort, oracle kind, round, outer index, descriptor digest, slot,
+presence, symbol count, symbols)` and every omitted node preimage from its
+derived tree role/depth/index and two child digests.  It hashes those complete
+preimages with the v4 N4-separated contexts.  Compact transmission therefore
+removes redundant wire metadata, not a hash input or authentication node.
+There is no cross-root digest deduplication and no zero-byte path credit.
+
+`opening_schedule_digest` uses BLAKE3 derive-key context
+`volta-zk/x4/opening-schedule/v4` over the canonical
+`profile_digest || model_root || epoch:u64 || ordered initial cohort ids and
+roots || ordered complete fold-commitment frames || draw_count:u16 ||
+draw_width:u8 || ordered exact-bit draws`.  The verifier reconstructs this
+preimage.  It is not a prover-selected assertion and does not replace any
+root, path or line check.
+
+Descriptor admission changes only `s`: `rate_log2=3`,
+`ell=ceil(log2(111*mu^2+1))`, `n_W=2^(mu+4)` and `n_g=2^(ell+3)`.
+All integer canonicality, field-limb, N4 domain-separation, manifest,
+challenge-order and EOF rules from v3 remain normative.
+
+The selected GPT-2 materialized wire image has:
+
+| Packed-opening term | Exact selected-tape count |
+| --- | ---: |
+| opened symbols | 27,564 / 441,024 B |
+| initial inner siblings | 1,998 |
+| initial outer siblings | 16,954 |
+| fold-chain outer siblings | 48,978 |
+| all sibling digests | 67,930 / 2,173,760 B |
+| framing and reconstructible schedule metadata | 630 B |
+| packed opening `0x0d` | **2,615,414 B** |
+| unchanged mandatory non-query material | 67,822 B |
+| complete PCS | **2,683,236 B** |
+| projected full response | **43,953,700 B** |
+| G3 and absolute-response headroom | **1,316,764 B** |
+
+Paths remain the driver: sibling digests are 83.113419% of the packed frame,
+symbols 16.862493% and framing 0.024088%.  The observed average is
+23,562.288 B per independent draw after canonical deduplication; it is not a
+constant per-query promise because collisions and path sharing are tape-
+dependent.
+
+For the 1,660-block all-touched gpt-oss maximum, an intentionally conservative
+codec upper bound uses all 3,320 initial polynomials, 222 distinct positions
+per root, all 16 possible Wext `mu` groups, all three possible auxiliary
+`ell` groups, no outer-path sharing within a root, at most 11 prefix-
+multiproof inner siblings per group/coordinate, 30 fold rounds, two claims
+per block and `mu=29` for every claim frame.  It gives:
+
+```text
+symbol bytes                              = 11,899,200
+sibling digest bytes                     =  9,668,544
+packed metadata                          =      7,390
+packed-opening upper bound               = 21,575,134
+non-query upper bound                    =  2,278,105
+complete PCS upper bound                 = 23,853,239 < 35,000,000.
+```
+
+This is a conservative analytic screen, not a measured gpt-oss verdict.  The
+future exporter must replace it with exact descriptor geometry and codec
+counts.  It already proves that the new global format does not buy GPT-2 G3
+by silently breaking the inherited 35-MB large-model analytic ceiling.
+
+### 0.12.4 Hiding, seam and correlation re-accounting
+
+The packed format reveals the same field symbols and Merkle sibling digests
+as the explicit opening and fewer public encodings of already-known metadata.
+It adds no evaluation field.  In particular it contains neither
+`g_b(u_b)`, `v_b`, `authS_b.x` nor an individual target evaluation.  The
+public value remains only `h_b=v_b+g_b(u_b)`.
+
+For fixed nonzero evaluation functional, each `h` still has exactly
+`|E|^(2^ell-1)` auxiliary coefficient preimages.  Conditioning on the
+Amendment-3 correction/link views consumes no second equation because the
+correction-view map remains bijective.  The maximum exposure budget improves
+from 107,648 to 93,351 while the fiber exponent remains 131,071.  Global
+same-domain combination occurs only after roots, claims and every `h_b` are
+fixed; its challenges are simulator inputs already covered by the separate
+zkDeepFold and VOLTA correction-view hypotheses.  One opening per commitment
+epoch remains mandatory.
+
+The blind authenticated-output link is unchanged:
+
+```text
+PendingAuxEval
+  -- dual relations + committed global fold/query closure -->
+BoundAuxEval.
+```
+
+No prover-supplied `s` is accepted unless the v4 cohort roots, global
+activation transitions and all 111 query checks bind the terminal to the
+committed `g`.  `VerifyAuthenticatedOutputLinkV4` is forbidden from being
+defined as already containing equality or `not LinkBad`.
+
+Correlation counts are re-derived rather than scaled by `111/128`:
+
+```text
+GPT-2 claim reductions = 2*sum(mu_b) = 2*1104 = 2,208
+GPT-2 seam             = 51 + 2*27 + 1       =   106
+GPT-2 X4 full total                              2,314
+
+maximum claim reductions = 2*1660*29 = 96,280
+maximum seam             = 1660+2*30+1 = 1,721
+maximum X4 full total                     98,001.
+```
+
+The PCG tuple, domains, setup, spool, pool, reuse and connection lifecycle
+are unchanged.  The 1,029-B maximum link frame, 107,319-B maximum seam frame,
+and selected GPT-2 4,247-B seam remain unchanged.  Query count does not
+consume VOLE correlations.
+
+Both permanent negative artifacts remain in `lean/Audit.lean` and in Rust
+tamper tests: the whole delta-shift class and the beta-collision witness.  A
+compact-frame metadata omission or global-chain activation is not allowed to
+turn either `LinkBad` branch into deterministic equality.
+
+### 0.12.5 Specialized response-wide soundness
+
+All maximum-geometry coefficients are unchanged because field, rate, block
+map, oracle lengths and link remain unchanged.  Only the independent-query
+exponent changes:
+
+```text
+q             = |E|
+              = 340282366762482138490186164457219031041
+B             = 1660
+P             = 3320
+rho           = 1/8
+Delta         = 7/16
+1-Delta       = 9/16
+s             = 111
+d             = 30
+ell           = 17
+n_W           = 2^33
+n_g           = 2^20
+
+epsilon_prox  = 3320*(9/16)^111
+
+C_fold        = 3320*((2^33-1)+(2^20-1)) = 28,522,064,111,120
+C_claim       = 1660*(2+3*29+2)           =            151,060
+C_authlink    = 3320+3*30+2               =              3,412
+C_zero        = 1660+1                    =              1,661
+C_total_v4                                      28,522,064,267,253
+
+epsilon_X4_v4 = 3320*(9/16)^111
+               + 28,522,064,267,253 / q.
+```
+
+Exact high-precision evaluation is:
+
+```text
+epsilon_prox       = 6.0917006917571939902279506122015155e-25
+C_total_v4/q       = 8.3818813588896498295265533026818019e-26
+epsilon_X4_v4      = 6.9298888276461589731806059424696957e-25
+-log2(epsilon_X4_v4)
+                   = 80.255370163990410893382823542456484 bits.
+```
+
+The frozen exact-rational Lean target is
+`epsilon_X4_v4 < 1/2^80`.  It implies the registered
+78.809294874-bit target with **1.446075289990411 bits** of evaluated margin.
+For comparison, `s=109` gives only 78.719727017 bits and fails; `s=110` is
+the minimum passing integer at 79.503732039 bits; the selected next-integer
+row gives the clean 80-bit theorem.  No conjectural list-decoding radius or
+paper `poly(|L0|)` term is used.
+
+### 0.12.6 Final Amendment-5 Lean statement freeze
+
+All generic v3 algebraic declarations not named below remain available and
+unchanged, including `corr_correction_view_bijective`,
+`corr_correction_views_unique_preimage`, `pending_aux_cannot_escape`,
+`authenticated_output_batch_beta_collision_counterexample`, the definition
+of `DeltaShiftAttempt`, the Ligero/UC discharge declarations and
+`logup_gkr_sound_of_char_gt`.  No v4 response theorem may depend on the old
+v3 frame, `s=128` proximity theorem or per-cohort fold-chain conclusion.
+
+The exact new and superseding statements are:
+
+```lean
+def x4V4QueryCount : Nat := 111
+
+theorem x4_v4_field_domain_capacity : 29 + 1 + 3 = 33
+
+theorem x4_aux_mask_entropy_budget_max_v4 :
+    111 * 29^2 < 2^17 - 1
+
+-- The generic equal-fiber theorem is instantiated after all v4 correction
+-- views and the compact opening transcript have been fixed.
+theorem masked_aux_authenticated_link_hiding_count_v4
+    (hell : 0 < ell) (hfunc : EvalFunctionalNonzero u)
+    (h : E) (v : E) (fixedView : AuthenticatedLinkCorrView E n)
+    (hpacked : PackedOpeningRevealsNoTargetEvaluationV4 transcript) :
+    Fintype.card {g : (Fin (2^ell) -> E) //
+      h = v + mle g u /\ HasAuthenticatedLinkView Delta g fixedView} =
+      Fintype.card E ^ (2^ell - 1)
+
+theorem blind_authenticated_output_link_perfect_zk_v4
+    (hfresh : FreshDisjointFullCorrDomains linkSchedule)
+    (hcorr : CorrCorrectionViewsAreBijective linkSchedule)
+    (hterminal : TerminalValuesCoveredByZkDeepFoldSimulatorV4 statement)
+    (hpacked : PackedOpeningLeaksOnlyExplicitSymbolsV4 statement transcript) :
+    RealAuthenticatedLinkViewV4 statement =
+      SimAuthenticatedLinkViewV4 statement publicH
+
+-- Schema 4 and the one packed query frame.
+theorem x4_v4_frame_decode_encode (f : X4FrameV4) :
+    decodeX4FrameV4 (encodeX4FrameV4 f) = some f
+
+theorem x4_v4_frame_decode_canonical
+    (h : decodeX4FrameV4 bytes = some f) :
+    encodeX4FrameV4 f = bytes
+
+theorem x4_v4_frame_kind_encoding_disjoint
+    (a b : X4FrameV4) (hkind : a.kind ≠ b.kind) :
+    encodeX4FrameV4 a ≠ encodeX4FrameV4 b
+
+theorem x4_v4_packed_schedule_is_derived
+    (hdecode : DecodePackedOpeningV4 statement bytes = some opening) :
+    opening.outerIndices =
+        derivedSortedQuerySets statement.queryDraws statement.domains /\
+      opening.siblingPositions =
+        derivedCanonicalFrontiers statement opening.outerIndices
+
+theorem x4_v4_reconstructed_leaf_hash_eq_explicit
+    (hcanonical : CanonicalPackedOpeningV4 statement opening) :
+    reconstructedLeafHashesV4 statement opening =
+      explicitLeafHashesV4 statement opening
+
+theorem x4_v4_packed_verify_iff_explicit_verify
+    (hcanonical : CanonicalPackedOpeningV4 statement opening) :
+    VerifyPackedOpeningV4 statement opening <->
+      VerifyExplicitCohortAndChainOpeningsV4 statement
+        (expandPackedOpeningV4 statement opening)
+
+theorem x4_v4_all_commitments_fixed_before_queries
+    (haccept : VerifyPackedOpeningV4 statement opening) :
+    AllInitialAndFoldCommitmentsFixedBeforeQueryDrawsV4 statement
+
+theorem x4_v4_no_early_query_transition
+    (p : UnsealedGlobalFoldChainV4 E) :
+    ¬ CanIssueQueryDrawsV4 p
+
+-- Model-global cohort binding is separate from ZK and batch soundness.
+theorem cohort_opening_binding_v4
+    (hhash : CollisionFreeOn X4V4Hash committedFrames)
+    (ha : VerifyModelGlobalCohortOpeningV4 root descriptor point slot openA)
+    (hb : VerifyModelGlobalCohortOpeningV4 root descriptor point slot openB) :
+    openA.symbols = openB.symbols
+
+theorem model_global_slot_identity_binding_v4
+    (hcanonical : CanonicalModelGlobalCohortV4 cohort)
+    (hhash : CollisionFreeOn X4V4Hash committedFrames)
+    (hopen : VerifyModelGlobalCohortOpeningV4
+      cohort.root descriptor point slot opening) :
+    opening.descriptor = cohort.descriptorAt slot /\
+      opening.namespace = (cohort.descriptorAt slot).namespace /\
+      opening.oracleKind = cohort.oracleKind
+
+-- Same-domain reduction and different-size activation are separately named.
+theorem model_global_same_domain_reduce_sound_v4
+    (hfixed : ModelGlobalClaimsFixedBeforeChallenge claims)
+    (horder : CanonicalDescriptorSlotOrderV4 claims)
+    (hopen : AllTouchedInitialSymbolsBoundV4 statement opening) :
+    SameDomainAggregatesBoundToTouchedSlotsV4 statement opening
+
+theorem deepfold_different_size_global_chain_sound_v4
+    (hfixed : ActivationClaimsFixedBeforeChallengeV4 statement)
+    (horder : CanonicalActivationOrderV4 statement)
+    (htransitions : VerifyEveryGlobalFoldTransitionV4 statement opening)
+    (hinitial : AllTouchedInitialSymbolsBoundV4 statement opening) :
+    GlobalChainBoundToActivatedCohortsV4 statement opening
+
+theorem ud_model_global_folding_sound_v4
+    (hUD : RSEighthStrictUniqueDecode E)
+    (hsample : ExactUniformQueriesWithReplacement params 111)
+    (hbranch : WrongCandidateIsAtDistanceAtLeast params (7/16))
+    (hglobal : GlobalChainBoundToActivatedCohortsV4 statement opening)
+    (hP : activePolys <= 3320)
+    (hnW : weightOracleLength <= 2^33)
+    (hng : auxOracleLength <= 2^20) :
+    statisticalError (UDModelGlobalFoldingV4 params) <=
+      activePolys * (9/16)^111 +
+      activePolys * ((2^33 - 1) + (2^20 - 1)) / Fintype.card E
+
+theorem x4_ud_pcs_binding_v4
+    (hframe : CanonicalModelGlobalLayoutV4 statement)
+    (hcompact : PackedOpeningEquivalentToExplicitV4 statement proof)
+    (hmerkle : CollisionFreeOn X4V4Hash committedFrames)
+    (hud : UDFoldingAcceptsV4 statement proof) :
+    BoundToUniqueCommittedBlocksV4 statement proof
+
+-- Separate ZK theorem: neither binding nor batching is hidden in this premise.
+theorem x4_masked_zk_v4
+    (hcount : MaskedAuxAuthenticatedLinkEqualFiberCountsV4 statement)
+    (hcorr : BlindAuthenticatedOutputLinkPerfectZKV4 statement)
+    (hone : OneOpeningPerEpoch epoch transcript)
+    (hpaper : ZkDeepFoldSimulator E params)
+    (hframes : PackedOpeningRevealsNoTargetEvaluationV4 transcript) :
+    X4WeightOpeningZKV4 statement transcript
+
+-- Separate batch theorem: no naive different-point RLC premise is admitted.
+theorem x4_batch_sound_v4
+    (hfixed : MaskedClaimsFixed claims)
+    (horder : CanonicalClaimAndActivationOrderV4 claims schedule)
+    (hcommon : HasCommonPoint schedule)
+    (hsame : SameDomainAggregatesBoundV4 claims schedule)
+    (hdifferent : DeepFoldDifferentSizeActivationBoundV4 claims schedule) :
+    X4WeightBatchSoundV4 claims schedule
+
+-- Amendment-4 disjunctions flow unchanged through the v4 terminal.
+theorem authenticated_output_link_produces_bound_aux_v4
+    (hfixed : AuthenticatedOutputClaimsFixedBeforeChallenge P)
+    (haccept : VerifyAuthenticatedOutputLinkV4 statement proof)
+    (hterminal : LinkTerminalClosedByUDFoldQueriesV4 statement proof) :
+    forall b : TouchedBlock P,
+      exists out : BoundAuxEval E,
+        out.auth = P.authS b /\
+        (out.auth.x = P.committedAuxEval b \/
+          LinkBadV4 statement proof)
+
+theorem bound_aux_has_verified_origin_v4
+    (hout : verifierBoundAuxOutputV4 statement proof b = some out) :
+    VerifyAuthenticatedOutputLinkV4 statement proof /\
+      LinkTerminalClosedByUDFoldQueriesV4 statement proof /\
+      out.auth = statement.authS b /\
+      (out.auth.x = statement.committedAuxEval b \/
+        LinkBadV4 statement proof)
+
+theorem authenticated_output_batch_link_sound_v4
+    (hfixed : AuthenticatedOutputClaimsFixedBeforeChallenge P)
+    (hBpos : 0 < touchedBlocks)
+    (hrelations : relationCount = 2*touchedBlocks)
+    (hcount : relationCount <= 3320)
+    (hroundsPos : 0 < rounds)
+    (hrounds : rounds <= 30)
+    (hterminal : LinkTerminalBoundByUniqueCommittedOraclesV4 P) :
+    badTapeCard (AuthenticatedOutputBatchLinkV4 P) <=
+      (relationCount + 3*rounds + 2) * fieldTapeCard E
+
+theorem authenticated_output_link_excludes_delta_shift_v4
+    (hlink : AuthenticatedOutputLinkGoodV4 P omega)
+    (hzero : ResponseZeroBatchAcceptsV4 P omega) :
+    ¬ DeltaShiftAttempt P omega
+
+theorem accepted_delta_shift_event_cover_v4
+    (hframes : CanonicalFramesAndOrderV4 P omega)
+    (hhash : CollisionFreeOn X4V4Hash (committedFrames P))
+    (hdelta : DeltaShiftAttempt P omega)
+    (haccept : X4ResponseAcceptsV4 P omega) :
+    omega ∈ X4AuthenticatedOutputLinkBadV4 P ∪
+      X4FoldQueryBadV4 P ∪ X4ResponseZeroBatchBad P
+
+theorem masked_batch_transfers_evals_v4
+    (hlink : AuthenticatedOutputLinkGoodV4 P omega)
+    (hzero : ResponseZeroBatchAcceptsV4 P omega) :
+    forall b : TouchedBlock P,
+      ValidCommittedAuthEvalV4 P b omega
+
+-- Closed codec arithmetic.  No BLAKE3 computation is postulated in Lean.
+def x4V4PackedOpeningBytes
+    (symbols innerAux initialOuterAux foldOuterAux metadata : Nat) : Nat :=
+  16*symbols + 32*(innerAux+initialOuterAux+foldOuterAux) + metadata
+
+theorem x4_v4_gpt2_packed_opening_bytes :
+    x4V4PackedOpeningBytes 27564 1998 16954 48978 630 = 2615414
+
+theorem x4_v4_gpt2_complete_pcs_bytes :
+    2615414 + 67822 = 2683236
+
+theorem x4_v4_gpt2_g3_and_response_caps :
+    2683236 <= 4000000 /\
+      41270464 + 2683236 = 43953700 /\
+      43953700 <= 45270464
+
+theorem x4_v4_gptoss_codec_upper_bound :
+    21575134 + 2278105 = 23853239 /\
+      23853239 <= 35000000
+
+def x4V4SeamFullCorrs (B d : Nat) : Nat := B + 2*d + 1
+def x4V4FullCorrs (B sumMu d : Nat) : Nat := 2*sumMu + B + 2*d + 1
+
+theorem x4_v4_gpt2_full_corrs : x4V4FullCorrs 51 1104 27 = 2314
+theorem x4_v4_max_seam_full_corrs : x4V4SeamFullCorrs 1660 30 = 1721
+theorem x4_v4_max_full_corrs : x4V4FullCorrs 1660 (1660*29) 30 = 98001
+
+def x4ResponseErrorV4 : Rat :=
+  (3320 : Rat) * ((9 : Rat) / 16)^111 +
+  (28522064267253 : Rat) /
+    (340282366762482138490186164457219031041 : Rat)
+
+theorem x4_wrong_response_event_cover_v4
+    (hframes : CanonicalFramesAndOrderV4 statement proof)
+    (hhash : CollisionFreeOn X4V4Hash committedFrames)
+    (hcohort : CohortOpeningsBindV4 statement proof)
+    (hpcs : BoundToUniqueCommittedBlocksV4 statement proof)
+    (hlink :
+      AuthenticatedOutputLinkTransfersAllTouchedEvalsOrBadV4 statement proof) :
+    X4WrongResponseCoveredByNamedEventsV4 statement proof
+
+theorem x4_response_soundness_v4
+    (hcover : X4WrongResponseCoveredByNamedEventsV4 statement proof)
+    (hfold : statisticalError (X4FoldBadV4 statement proof) <=
+      (3320 : Rat) * ((9 : Rat) / 16)^111 +
+      (28522064111120 : Rat) /
+        (340282366762482138490186164457219031041 : Rat))
+    (hclaim : statisticalError (X4ClaimReduceBadV4 statement proof) <=
+      (151060 : Rat) /
+        (340282366762482138490186164457219031041 : Rat))
+    (hlink : statisticalError (X4AuthenticatedOutputLinkBadV4 statement proof) <=
+      (3412 : Rat) /
+        (340282366762482138490186164457219031041 : Rat))
+    (hzero : statisticalError (X4ResponseZeroBatchBad statement proof) <=
+      (1661 : Rat) /
+        (340282366762482138490186164457219031041 : Rat)) :
+    statisticalError (X4AcceptsWrongResponseV4 statement proof) <=
+      x4ResponseErrorV4
+
+theorem x4_response_error_v4_lt_two_pow_neg_80 :
+    x4ResponseErrorV4 < (1 : Rat) / 2^80
+
+theorem x4_response_error_v4_meets_registered_target :
+    ((x4ResponseErrorV4 : Rat) : Real) <
+      Real.rpow 2 (-((78809294874 : Real) / 1000000000))
+```
+
+The set-membership/union notation in the proposition sketch may be rendered
+with the repository's existing `Finset` notation, but it may not change the
+three named bad events or introduce a deterministic equality premise.
+Definitional scaffolding may add implicit arguments and concrete carrier
+types.  It may not weaken a hypothesis/conclusion, move equality inside
+`VerifyAuthenticatedOutputLinkV4`, add an ideal axiom, postulate a BLAKE3
+result, or replace the displayed coefficients.
+
+MINOR-1/2 and NOTE-3 remain discharge-time constraints.  The already-audited
+Ligero binding, VOLTA-specific blinded-ZK and multi-point batch theorems stay
+separate.  V4 likewise has three separately owned theorems and citations:
+
+| v4 obligation | required source and repository reduction |
+| --- | --- |
+| binding / proximity | BaseFold, IACR ePrint 2023/1705, plus `x4_v4_packed_verify_iff_explicit_verify`, model-global slot binding and strict-UD global-chain reduction |
+| zero knowledge | DeepFold Section 5.2 / Theorem 3 / Appendix E, plus the authenticated-link fiber count, compact-transcript leakage theorem and one-opening epoch |
+| different-point / different-size batch | DeepFold Section 5.1 and Appendix D, plus the fixed-order blind scalar reduction and v4 activation theorem |
+
+No one citation or theorem may bundle those three obligations.  The existing
+`logup_gkr_sound_of_char_gt` statement retains `[CharP F p]` and the explicit
+`hchar : lookupCount < p` premise in every v4 response composition.  The UC
+caveat is unchanged: citations do not instantiate either required ideal-
+functionality realization.
+
+### 0.12.7 R1c scope, implementation order and hard stop
+
+R1c mandatory scope now explicitly includes:
+
+1. the v3 pending-to-bound seam, dual relations, Amendment-4 disjunction,
+   delta-shift class and beta-collision episode;
+2. model-global cross-namespace slot binding and absent-slot handling;
+3. equivalence of compact symbols/digest-only frontiers to the complete
+   typed leaf/node preimages, including every N4 substitution;
+4. the Section-5.1 global activation chain, different-point reduction and
+   commit-before-query typestate;
+5. the `s=111` strict-UD expression and refusal of list-decoding credit;
+6. the exact codec/preflight record, 2,683,236-B G3 count, correlations,
+   storage decision and rejected rate rows; and
+7. separate binding, ZK and batch assurance, with the existing AI-review/no-
+   independent-human-assurance label.
+
+After approval, the order is exact v4 Lean statements and proofs, full build,
+zero-sorry/admit audit and checkpoint; then normative schema-4/global-chain
+Rust, permanent tamper families and CPU records; then GPT-2 migration and
+records.  Only after all of those pass may the user be asked for the A100 pod.
+The NOTE-6 production `c3_weights` smoke remains first in that pod preflight.
+
+**HARD STOP:** Amendment 5 ends here.  No v4 Lean proof, production schema-4
+codec, global-chain/M9 Rust, CPU/GPT-2 migration or pod work is authorized
+until the product owner reviews and explicitly approves this frozen design
+and theorem set.
 
 ---
 

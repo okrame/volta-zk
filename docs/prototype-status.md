@@ -152,6 +152,7 @@ gate verdict has landed yet; CPU, GPT-2 and pod ordering remain unchanged.
 | X4 Amendment 3 Lean-first discharge | **HARD STOP / UNPROVABLE AS FROZEN** (2026-07-21) | No weakening or hypothesis smuggling; a statement change requires Amendment 4 | The deterministic `authenticated_output_link_produces_bound_aux` conclusion omits exclusion of the explicitly counted `LinkBad` event; `bound_aux_has_verified_origin` inherits the same issue. Fixed residuals `R0=1,R1=-1` cancel at `beta=1`, so the combined link and truthful terminal can accept while `authS.x!=committedAuxEval`. A temporary exact-rational Lean theorem kernel-checks this countermodel. No repository Lean/Rust source changed; baseline audit remains **133/40** and the permanent delta-shift theorem remains. No record, gate verdict or pod work. |
 | X4 Amendment 4 statement conditioning | **LEAN GREEN; V3/M9 RUST AUTHORIZED** (2026-07-21) | Exact frozen statements prove; full build, zero-sorry/admit and enlarged derived audit green; no new axiom or hidden equality premise | Design SHA-256 `f80da5b943b986aa1d849f53b83780aa067d77e7cb9dcfd538dd7931f6ae1a98`. Build **3251 jobs**; audit **163 total / 70 X4** (the historical **133/40** plus 30 v3 targets), stdout SHA-256 `4706e705abc1a8df3eeb96df41388c357f2006671cf90116c9c200f29d36d267`; only `propext`, `Classical.choice`, `Quot.sound`. V3 source SHA-256 `5a3367af7750158ed14c3e469ed58b9c8d918ee272dcf48fe89a1832bdc85dde`. Both permanent negative theorems are audited. Frame bytes **1,029/107,319**, correlations **1,721/98,001**, total coefficient **28,522,064,267,253** and **83.30226403378921 bits** remain unchanged. No Rust/record/gate/pod result yet. |
 | X4 v3/M9 Rust + CPU synthetic / GPT-2 preflight | **G3 FAIL; HARD STOP BEFORE PRODUCTION REFACTOR, GPT-2 MIGRATION AND POD** (2026-07-21) | Gates are conjunctive and verbatim; no query/order, grammar, parameter, correlation, soundness or threshold change is permitted without a new amendment | G5/G6 synthetic evidence remains immutable. Clean G3 source `3aa5952`; record `x4-gpt2-g3-preflight-2026-07-21-3aa5952.json`, SHA-256 `a5d2f4ba189c27a7b39e8e0f0c66475057a6f15041483fbe2035bcc69afc4cb9`. With all auxiliary Merkle nodes assigned **zero bytes** and all post-initial polynomials granted one ideal shared chain, query frames alone are **4,021,594 B**; mandatory non-query fields make the strict lower bound **4,089,416 B > 4,000,000 B FAIL**. Projected response **45,359,880 B > 45,270,464 B**. Restoring canonical auxiliary nodes gives an optimistic one-chain shape of **15,814,716 B**. Soundness is unchanged at **83.30226403378921 bits**. G2/G4 and overall production security remain unevaluated; no pod is requested. |
+| X4 Amendment 5 global packed opening | **DESIGN/SOUNDNESS/LEAN STATEMENTS FROZEN; HARD STOP BEFORE V4 LEAN-FIRST** (2026-07-21) | No threshold exception; pre-freeze materialized codec screen must pass; v3 seam and Amendment-4 disjunction remain mandatory | `x4-zkdeepfold-ud-e29-v4`: rate `1/8`, `s=111`, model-global same-domain cohorts, one different-size chain and digest-only derived frontiers. Exact error `3320*(9/16)^111 + 28,522,064,267,253/|E|`, **80.25537016399041 bits**, `<2^-80`. Clean screen source `93749b3`; record `x4-amendment5-gpt2-preflight-2026-07-21-93749b3.json`, SHA-256 `ba87722362c8825e13e02a6c563a436797ea852e09e1cebcf4a9265c6ce56499`: packed opening **2,615,414 B**, complete PCS **2,683,236 B**, response **43,953,700 B**, headroom **1,316,764 B**. This is pre-freeze eligibility, not a production G3 verdict. Storage/correlations remain **5.3504 TB / 31,923,699,712 B** and **1,721 / 98,001** maxima. Design SHA-256 `1383fa5d0a2eb9155f1ca76fe814238c04eaaa7aab965e10374b5f07d220bfb7`. No v4 Lean/production Rust/migration/pod work. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -276,6 +277,43 @@ historical entries remain append-only evidence, not competing definitions.
   list-decoding or compression credit.  Exact byte vectors, a closed-form
   cross-check, per-term counts and ordered-draw digests are required in the
   append-only preflight record before a row can be frozen.
+
+  **Freeze result.**  Amendment 5 selects the next-integer margin row
+  `x4-zkdeepfold-ud-e29-v4`, `rho=1/8`, `s=111`; the mathematical minimum is
+  `s=110`, while `s=109` fails the response-wide floor.  The selected exact
+  expression is
+  `3320*(9/16)^111 + 28,522,064,267,253/|E|`, evaluates to
+  **80.25537016399041 bits** and proves the clean `<2^-80` target.  Lower
+  rates are rejected: `1/16,s=101` saves only 57,600 B while doubling the
+  first-oracle floor, and `1/32,s=96` saves only 95,509 B while quadrupling
+  it.
+
+  V4 explicitly overrides D3's physical per-layer cohort-root choice with
+  model-global same-domain roots; logical namespaces, descriptor identities,
+  expert-block openability and touched-block proportionality remain.  One
+  DeepFold different-size activation chain is sealed before queries.  The
+  schema-4 packed opening serializes all 27,564 selected-tape symbols and all
+  67,930 required sibling digests, while deriving their coordinates and
+  typed leaf/node metadata.  It gives **2,615,414 B** plus the unchanged
+  **67,822 B** non-query material: **2,683,236 B PCS** and
+  **43,953,700 B response**, both with **1,316,764 B** headroom.  There is no
+  cross-root deduplication or zero-byte path credit.
+
+  The clean source is
+  `93749b3878ea517602eee06a8d46a201b7cb3346`; append-only record
+  `benchmarks/results/x4-amendment5-gpt2-preflight-2026-07-21-93749b3.json`
+  has SHA-256
+  `ba87722362c8825e13e02a6c563a436797ea852e09e1cebcf4a9265c6ce56499`.
+  The reference encoder is design-only, so this is mandatory pre-freeze
+  eligibility rather than a production G3 verdict.  The frozen design and
+  exact v4 Lean statements have SHA-256
+  `1383fa5d0a2eb9155f1ca76fe814238c04eaaa7aab965e10374b5f07d220bfb7`.
+  Maximum mask budget is **93,351 < 131,071**; correlations, first-oracle
+  floors, blind `PendingAuxEval -> BoundAuxEval` semantics and Amendment-4
+  `equality OR LinkBad` flow are unchanged.  R1c now explicitly includes the
+  physical-layout override, compact-to-explicit hash equivalence, global
+  activation/late-query episode and this parameter screen.  Work hard-stops
+  before v4 Lean-first.  The pod order and NOTE-6 smoke remain unchanged.
 
 - **2026-07-21 (X4 GPT-2 G3 FAIL; frozen profile hard stop before production
   refactor/migration/pod)**: clean source

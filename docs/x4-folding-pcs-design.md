@@ -1,18 +1,19 @@
 # X4 folding-PCS amended preregistration and statement freeze
 
-**Status (2026-07-21): R1B AMENDMENTS 1--3 FROZEN. AMENDMENT 3 REPLACES THE
-UNREALIZABLE AUXILIARY-TO-MAC SEAM WITH AN AUTHENTICATED-OUTPUT BATCH LINK.
-HARD STOP BEFORE ITS LEAN PROOFS AND BEFORE ANY M9 RUST.**
+**Status (2026-07-21): R1B AMENDMENTS 1--4 FROZEN. AMENDMENT 4 CHANGES ONLY
+THE TWO DETERMINISTIC BOUND-OUTPUT CONCLUSIONS TO `EQUALITY OR LINKBAD` AND
+FLOWS THAT DISJUNCTION THROUGH THE EXISTING NAMED-EVENT COVER. LEAN-FIRST IS
+AUTHORIZED; V3/M9 RUST REMAINS GATED ON A GREEN BUILD AND AUDIT.**
 
 This document is the Phase-1 preregistration for X4. It replaces the original
 X4 premise in `docs/scaling-note.md`: lever A (cache/reuse fixed query rows)
 is recorded UNSOUND and receives no credit. The replacement is a folding-PCS
 package, co-designed with D3 per-layer commitments and canonical per-expert
-blocks. This Amendment-3 package contains design only: it changes no Lean
+blocks. This Amendment-4 package contains design only: it changes no Lean
 declaration or proof, X4 Rust code, benchmark reference or gate verdict.  The
-prior v2 diagnostic Rust and permanent Lean counterexample remain unchanged.
+prior v2 diagnostic Rust and permanent negative artifacts remain unchanged.
 
-The Amendment-3 candidate profile is named
+The Amendment-4 candidate profile remains named
 **`x4-zkdeepfold-ud-e29-v3`**. It supersedes
 `x4-zkdeepfold-ud-e29-v2` only at the opening-to-MAC seam, transcript order
 and frame schema; the v2 design and its diagnostic partial Rust remain
@@ -1189,7 +1190,8 @@ theorem authenticated_output_link_produces_bound_aux
     forall b : TouchedBlock P,
       exists out : BoundAuxEval E,
         out.auth = P.authS b /\
-        out.auth.x = P.committedAuxEval b
+        (out.auth.x = P.committedAuxEval b \/
+          LinkBad statement proof)
 
 -- Every value returned by the verifier as Bound has this verified origin;
 -- there is no correction-only constructor or prover assertion path.
@@ -1198,7 +1200,8 @@ theorem bound_aux_has_verified_origin
     VerifyAuthenticatedOutputLink statement proof /\
       LinkTerminalClosedByUDFoldQueries statement proof /\
       out.auth = statement.authS b /\
-      out.auth.x = statement.committedAuxEval b
+      (out.auth.x = statement.committedAuxEval b \/
+        LinkBad statement proof)
 
 -- One blind batch owns exactly the 2*B masked and auxiliary-output atoms.
 theorem authenticated_output_batch_link_sound
@@ -1211,6 +1214,22 @@ theorem authenticated_output_batch_link_sound
     (hterminal : LinkTerminalBoundByUniqueCommittedOracles P) :
     badTapeCard (AuthenticatedOutputBatchLink P) <=
       (relationCount + 3*rounds + 2) * fieldTapeCard E
+
+-- Permanent negative artifact: a fixed pair of false relation residuals can
+-- cancel at one legitimate scalar batching challenge.  This is LinkBad, not
+-- a new uncounted attack and not permission to fold equality into Verify.
+theorem authenticated_output_batch_beta_collision_counterexample :
+    let committedW : Rat := 3
+    let committedG : Rat := 5
+    let publicH : Rat := 7
+    let authenticatedS : Rat := 6
+    let beta : Rat := 1
+    let maskedResidual := committedW + committedG - publicH
+    let outputResidual := committedG - authenticatedS
+    maskedResidual != 0 /\
+      outputResidual != 0 /\
+      maskedResidual + beta * outputResidual = 0 /\
+      authenticatedS != committedG
 
 def DeltaShiftAttempt (P : AuthenticatedOutputBatch E) (omega : Omega) : Prop :=
   exists (b : TouchedBlock P) (delta : E), delta != 0 /\
@@ -1297,7 +1316,8 @@ theorem x4_wrong_response_event_cover_v3
     (hhash : CollisionFreeOn X4V3Hash committedFrames)
     (hcohort : CohortOpeningsBind statement proof)
     (hpcs : BoundToUniqueCommittedBlocks statement proof)
-    (hlink : AuthenticatedOutputLinkTransfersAllTouchedEvals statement proof) :
+    (hlink :
+      AuthenticatedOutputLinkTransfersAllTouchedEvalsOrBad statement proof) :
     X4WrongResponseCoveredByNamedEventsV3 statement proof
 
 theorem x4_response_soundness_v3
@@ -1352,7 +1372,11 @@ Any future R1c review must include, as mandatory scope:
 5. exact correlation domains/counts, 1,029-byte maximum frame delta and
    response soundness coefficients; and
 6. separate binding, ZK and batch citations/discharges, with no bundled
-   assurance claim.
+   assurance claim; and
+7. the Amendment-4 beta-collision episode: raw RLC acceptance cannot be
+   defined to include committed equality, both Bound-output theorems must
+   retain `equality OR LinkBad`, and the permanent negative theorem must stay
+   audited.
 
 **HARD STOP:** Amendment 3 ends here.  No new Lean declaration or proof, no
 v3 codec or M9 Rust, no CPU/GPT-2 record and no pod work is authorized until
@@ -1361,6 +1385,74 @@ statement freeze.  After a later approval the order is Lean proofs/audit,
 then v3 implementation/M9 and CPU synthetic records, then GPT-2 migration and
 records, and only then the provisioning stop for the A100 pod and NOTE-6
 `c3_weights` smoke.
+
+## 0.11 Amendment 4: Bound-output event conditioning (normative override)
+
+The product owner authorized Amendment 4 on 2026-07-21 after Lean-first
+discharge found that two deterministic Amendment-3 conclusions omitted the
+already counted `LinkBad` event.  This amendment changes statement shape
+only.  It does not change the protocol, transcript order, frame grammar,
+bytes, correlation domains or counts, field, rate, query count, block
+geometry, soundness coefficients, gates or implementation plan.
+
+For fixed residuals `R0=1`, `R1=-1`, the legitimate scalar batch challenge
+`beta=1` gives `R0+beta*R1=0` although both relations are false.  A truthful
+terminal opening can therefore coexist with raw batch acceptance while
+`authS.x != g(u)`.  This is exactly `LinkBad`; it is not a fifth statistical
+event.  The concrete rational witness becomes the permanent theorem
+`authenticated_output_batch_beta_collision_counterexample` in
+`lean/Audit.lean`, alongside
+`masked_sum_zeroBatch_link_counterexample`.
+
+The following two conclusions in Section 0.10.6 are amended, and only these
+conclusions:
+
+```text
+authenticated_output_link_produces_bound_aux:
+  out.auth = authS AND
+  (out.auth.x = committedAuxEval OR LinkBad)
+
+bound_aux_has_verified_origin:
+  Verify AND TerminalClosed AND out.auth = authS AND
+  (out.auth.x = committedAuxEval OR LinkBad).
+```
+
+`VerifyAuthenticatedOutputLink` continues to mean execution of the actual
+checks.  It is forbidden to define it as already containing committed
+equality or `not LinkBad`; doing so would hide the missing hypothesis rather
+than prove soundness.  `AuthenticatedOutputLinkGood` excludes `LinkBad`, so
+`authenticated_output_link_excludes_delta_shift` and
+`masked_batch_transfers_evals_v3` keep their existing good-tape conclusions.
+
+The response reduction consumes the amended disjunction through
+`AuthenticatedOutputLinkTransfersAllTouchedEvalsOrBad`: the equality branch
+continues to the response ZeroBatch transfer, while the other branch enters
+the already named `X4AuthenticatedOutputLinkBad` event.  Consequently
+`x4_wrong_response_event_cover_v3` changes only the name/shape of this
+premise.  `x4_response_soundness_v3` already includes
+
+```text
+C_authlink = 3320 + 3*30 + 2 = 3,412
+```
+
+and therefore needs no new term.  The exact definition `x4ResponseErrorV3`,
+`x4_response_error_v3_lt_two_pow_neg_83` and
+`x4_response_error_v3_meets_registered_target` are unchanged.  In
+particular,
+
+```text
+epsilon_X4_v3 = 3320*(9/16)^128
+               + 28,522,064,267,253 / |E|
+               = 8.3853234432654370979010519467789577e-26
+-log2(epsilon_X4_v3) = 83.30226403378921 bits.
+```
+
+No parameter is reselected and the 78.809294874-bit stop rule remains
+satisfied with the same 4.49296915978921-bit margin.  Amendment 4 is frozen
+by its document SHA recorded in the ledger.  Its approval clears the
+statement-shape hard stop and authorizes immediate Lean-first discharge; v3
+Rust remains forbidden until the exact amended theorem set, full build and
+derived audit are green.
 
 ---
 

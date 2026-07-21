@@ -81,6 +81,38 @@ C1_PACKED_RESPONSE_REFERENCE_BYTES = 136_526_530
 C1_IDENTITY_SEAM_ALIAS_VALUES = 1_036_800
 C1_SUB_CORR_REFERENCE = 7_443_126
 C1_FULL_CORR_REFERENCE = 176_880
+X4_V4_PROFILE = "x4-zkdeepfold-ud-e29-v4"
+X4_V4_DESIGN_SHA256 = (
+    "c963831373783504e855c6c9b54a4d1bf425206ccb68992c242c94290e1cf544"
+)
+X4_V4_SOUNDNESS_EXPRESSION = (
+    "3320*(9/16)^111 + "
+    "28522064267253/340282366762482138490186164457219031041"
+)
+X4_V4_SOUNDNESS_BITS = 80.25537016399041
+X4_V4_SOUNDNESS_FLOOR_BITS = 78.809294874
+X4_V4_PACKED_OPENING_BYTES = 2_615_414
+X4_V4_PCS_BYTES = 2_683_236
+X4_V4_RESPONSE_BYTES = 43_953_700
+X4_V4_COUNTER_FAMILIES = [
+    "frame_reject",
+    "packed_schedule_reject",
+    "packed_reconstruction_reject",
+    "cohort_binding_reject",
+    "slot_identity_reject",
+    "early_query_reject",
+    "accepted_unsealed_chain",
+    "fold_query_bad",
+    "claim_reduce_bad",
+    "auth_link_bad",
+    "response_zero_batch_bad",
+    "pending_escape_reject",
+    "target_eval_leak_reject",
+    "correlation_view_reject",
+    "epoch_reuse_reject",
+    "delta_shift_attempt",
+    "beta_collision_witness",
+]
 
 LAYER_PARAMS = {
     "rows": 1 << 10,
@@ -128,6 +160,121 @@ def load_json(path: Path) -> dict[str, Any]:
 
 def load_results(results_dir: Path) -> list[dict[str, Any]]:
     return [load_json(p) for p in sorted(results_dir.glob("*.json"))]
+
+
+def _x4_v4_cpu_result_valid(row: dict[str, Any]) -> bool:
+    gate = row.get("gate")
+    abba = row.get("abba")
+    recompute = row.get("recompute_case")
+    touched = row.get("touched_family")
+    return (
+        row.get("schema") == 2
+        and row.get("milestone") == "X4-v4-CPU-synthetic"
+        and row.get("git_dirty") is False
+        and isinstance(row.get("git_sha"), str)
+        and len(row["git_sha"]) == 40
+        and row.get("profile") == X4_V4_PROFILE
+        and row.get("design_sha256") == X4_V4_DESIGN_SHA256
+        and row.get("query_count") == 111
+        and row.get("soundness_expression") == X4_V4_SOUNDNESS_EXPRESSION
+        and row.get("soundness_bits") == X4_V4_SOUNDNESS_BITS
+        and row.get("required_soundness_bits") == X4_V4_SOUNDNESS_FLOOR_BITS
+        and row.get("soundness_resummed_new_terms") == 0
+        and row.get("security_counter_inventory") == X4_V4_COUNTER_FAMILIES
+        and isinstance(touched, list)
+        and [case.get("touched_blocks") for case in touched] == [1, 2, 4, 8, 16]
+        and all(case.get("accepted") is True for case in touched)
+        and all(
+            case.get("bytes", {}).get("closed_formula_total")
+            == case.get("bytes", {}).get("serialized_total")
+            for case in touched
+        )
+        and isinstance(recompute, dict)
+        and recompute.get("policy") == "RecomputeOracleAndMerkle"
+        and recompute.get("traffic", {}).get("recomputed_source_bytes_read", 0) > 0
+        and recompute.get("traffic", {}).get("recomputed_oracle_bytes", 0) > 0
+        and recompute.get("traffic", {}).get("recomputed_merkle_bytes", 0) > 0
+        and row.get("recompute_matches_persisted_response") is True
+        and isinstance(abba, dict)
+        and abba.get("order") == "A/B/B/A"
+        and abba.get("ceiling") == 1.05
+        and abba.get("pass") is True
+        and isinstance(gate, dict)
+        and gate.get("g5_verdict") == "PASS"
+        and gate.get("g6_verdict") == "PASS"
+        and gate.get("overall_x4_verdict")
+        == "NOT_EVALUATED_UNTIL_GPT2_MIGRATION_AND_A100_RECORDS"
+    )
+
+
+def validate_x4_v4_cpu_result(path: Path) -> bool:
+    try:
+        return _x4_v4_cpu_result_valid(load_json(path))
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return False
+
+
+def _x4_v4_migration_result_valid(row: dict[str, Any]) -> bool:
+    codec = row.get("codec")
+    golden = row.get("golden_decode")
+    historical = row.get("historical_records")
+    gate = row.get("gate")
+    return (
+        row.get("schema") == 1
+        and row.get("milestone") == "X4-v4-GPT2-migration"
+        and row.get("git_dirty") is False
+        and isinstance(row.get("git_sha"), str)
+        and len(row["git_sha"]) == 40
+        and row.get("profile") == X4_V4_PROFILE
+        and row.get("design_sha256") == X4_V4_DESIGN_SHA256
+        and row.get("query_count") == 111
+        and row.get("rate") == "1/8"
+        and row.get("maximum_claim_union") == 3_320
+        and row.get("soundness_expression") == X4_V4_SOUNDNESS_EXPRESSION
+        and row.get("soundness_bits") == X4_V4_SOUNDNESS_BITS
+        and row.get("soundness_floor_bits") == X4_V4_SOUNDNESS_FLOOR_BITS
+        and row.get("soundness_resummed_new_terms") == 0
+        and isinstance(codec, dict)
+        and codec.get("opened_symbols") == 27_564
+        and codec.get("all_real_sibling_digests") == 67_930
+        and codec.get("packed_opening_frame") == X4_V4_PACKED_OPENING_BYTES
+        and codec.get("summed_bytes") == X4_V4_PCS_BYTES
+        and codec.get("serialized_bytes") == X4_V4_PCS_BYTES
+        and isinstance(codec.get("encoded_sha256"), str)
+        and len(codec["encoded_sha256"]) == 64
+        and row.get("complete_pcs_bytes") == X4_V4_PCS_BYTES
+        and row.get("g3_limit_bytes") == 4_000_000
+        and row.get("g3_headroom_bytes") == 1_316_764
+        and row.get("non_pcs_response_bytes") == 41_270_464
+        and row.get("measured_response_bytes") == X4_V4_RESPONSE_BYTES
+        and row.get("response_limit_bytes") == 45_270_464
+        and row.get("response_headroom_bytes") == 1_316_764
+        and row.get("correlations_gpt2_claim_reduction") == 2_208
+        and row.get("correlations_gpt2_seam") == 106
+        and row.get("correlations_gpt2_total") == 2_314
+        and row.get("logical_first_oracle_floor_bytes") == 31_923_699_712
+        and row.get("production_codec") is True
+        and row.get("cryptographic_oracle_materialized") is False
+        and isinstance(golden, dict)
+        and golden.get("prompt_tokens") == 100
+        and golden.get("decode_tokens") == 50
+        and golden.get("checked") is True
+        and golden.get("exact_match") is True
+        and isinstance(historical, list)
+        and len(historical) == 3
+        and all(pin.get("unchanged") is True for pin in historical)
+        and row.get("historical_rows_mutated") is False
+        and isinstance(gate, dict)
+        and gate.get("g3_communication", "").startswith("PASS")
+        and gate.get("overall_x4") == "NOT EVALUATED UNTIL A100 RECORDS"
+    )
+
+
+def validate_x4_v4_migration_result(path: Path) -> bool:
+    try:
+        return _x4_v4_migration_result_valid(load_json(path))
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return False
 
 
 def p6_shape(data: dict[str, Any]) -> bool:
@@ -2948,6 +3095,16 @@ def main() -> None:
         type=Path,
         help="fail closed unless one raw JSON is a complete CPU or pod T1 verdict",
     )
+    ap.add_argument(
+        "--validate-x4-v4-cpu",
+        type=Path,
+        help="fail closed unless one JSON is the exact clean X4 v4 CPU synthetic record",
+    )
+    ap.add_argument(
+        "--validate-x4-v4-migration",
+        type=Path,
+        help="fail closed unless one JSON is the exact clean X4 v4 GPT-2 migration reference",
+    )
     args = ap.parse_args()
 
     selected_validators = sum(
@@ -2957,6 +3114,8 @@ def main() -> None:
             args.validate_fase_d_pod_official,
             args.validate_c3b_official,
             args.validate_t1_official,
+            args.validate_x4_v4_cpu,
+            args.validate_x4_v4_migration,
         )
     )
     if selected_validators > 1:
@@ -2990,6 +3149,22 @@ def main() -> None:
         if not validate_t1_official_result(args.validate_t1_official):
             raise SystemExit("invalid or ineligible official T1 result")
         print(f"valid official T1 result: {args.validate_t1_official}")
+        return
+    if args.validate_x4_v4_cpu is not None:
+        if args.write_json:
+            raise SystemExit("--write-json and --validate-x4-v4-cpu are mutually exclusive")
+        if not validate_x4_v4_cpu_result(args.validate_x4_v4_cpu):
+            raise SystemExit("invalid or ineligible X4 v4 CPU synthetic result")
+        print(f"valid X4 v4 CPU synthetic result: {args.validate_x4_v4_cpu}")
+        return
+    if args.validate_x4_v4_migration is not None:
+        if args.write_json:
+            raise SystemExit(
+                "--write-json and --validate-x4-v4-migration are mutually exclusive"
+            )
+        if not validate_x4_v4_migration_result(args.validate_x4_v4_migration):
+            raise SystemExit("invalid or ineligible X4 v4 GPT-2 migration result")
+        print(f"valid X4 v4 GPT-2 migration result: {args.validate_x4_v4_migration}")
         return
 
     report = p7_report(args.results_dir)

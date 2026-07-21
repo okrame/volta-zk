@@ -1343,6 +1343,76 @@ pub struct PackedOpeningByteComponentsV4 {
     pub serialized_bytes: u64,
 }
 
+/// Materialized GPT-2 schema-4 byte-reference fixture frozen by Amendment 5.
+///
+/// The zero payloads are deliberately non-cryptographic: this helper exists
+/// only so migration/report code measures the production codec itself.  It
+/// contains all 27,564 symbols and all 67,930 real sibling-digest slots; no
+/// digest deduplication or compression is represented.
+pub fn gpt2_codec_reference_packed_opening_v4() -> PackedBatchOpeningFrameV4 {
+    let group_rows = [
+        (0xA500_0001, 30, 2, 2, 444, 0, 4778),
+        (0xA500_0002, 26, 64, 36, 7992, 666, 3872),
+        (0xA500_0003, 24, 16, 13, 2886, 444, 3410),
+        (0xA500_0100, 20, 2, 2, 444, 0, 2548),
+        (0xA500_0101, 19, 64, 49, 10878, 888, 2346),
+    ];
+    let initial_groups = group_rows
+        .into_iter()
+        .map(|(cohort_id, domain_log2, slot_count, touched, symbols, inner, outer)| {
+            InitialOpeningGroupV4 {
+                cohort_id,
+                domain_log2,
+                slot_count,
+                touched_slots: (0..touched).collect(),
+                opened_symbols: vec![Fp2::ZERO; symbols],
+                inner_sibling_digests: vec![[0; 32]; inner],
+                outer_sibling_digests: vec![[0; 32]; outer],
+            }
+        })
+        .collect();
+    let round_rows = [
+        (222, 4570),
+        (222, 4334),
+        (222, 4094),
+        (222, 3872),
+        (222, 3648),
+        (222, 3410),
+        (222, 3202),
+        (222, 2998),
+        (222, 2778),
+        (222, 2548),
+        (222, 2346),
+        (222, 2112),
+        (222, 1858),
+        (222, 1654),
+        (222, 1428),
+        (220, 1178),
+        (218, 978),
+        (214, 746),
+        (214, 552),
+        (194, 366),
+        (166, 200),
+        (146, 80),
+        (100, 24),
+        (62, 2),
+        (32, 0),
+        (16, 0),
+        (8, 0),
+    ];
+    let fold_rounds = round_rows
+        .into_iter()
+        .enumerate()
+        .map(|(index, (symbols, siblings))| FoldRoundOpeningV4 {
+            fold_round: (index + 1) as u8,
+            domain_log2: 29 - index as u8,
+            opened_symbols: vec![Fp2::ZERO; symbols],
+            outer_sibling_digests: vec![[0; 32]; siblings],
+        })
+        .collect();
+    PackedBatchOpeningFrameV4 { opening_schedule_digest: [0; 32], initial_groups, fold_rounds }
+}
+
 impl PackedOpeningScheduleV4 {
     pub fn validate(&self) -> Result<(), FrameError> {
         if self.profile_digest != profile_digest_v4()
@@ -1918,71 +1988,7 @@ mod tests {
 
     #[test]
     fn gpt2_packed_codec_matches_every_frozen_count_and_byte() {
-        let group_rows = [
-            (0xA500_0001, 30, 2, 2, 444, 0, 4778),
-            (0xA500_0002, 26, 64, 36, 7992, 666, 3872),
-            (0xA500_0003, 24, 16, 13, 2886, 444, 3410),
-            (0xA500_0100, 20, 2, 2, 444, 0, 2548),
-            (0xA500_0101, 19, 64, 49, 10878, 888, 2346),
-        ];
-        let initial_groups = group_rows
-            .into_iter()
-            .map(|(cohort_id, domain_log2, slot_count, touched, symbols, inner, outer)| {
-                InitialOpeningGroupV4 {
-                    cohort_id,
-                    domain_log2,
-                    slot_count,
-                    touched_slots: (0..touched).collect(),
-                    opened_symbols: vec![Fp2::ZERO; symbols],
-                    inner_sibling_digests: vec![[0; 32]; inner],
-                    outer_sibling_digests: vec![[0; 32]; outer],
-                }
-            })
-            .collect();
-        let round_rows = [
-            (222, 4570),
-            (222, 4334),
-            (222, 4094),
-            (222, 3872),
-            (222, 3648),
-            (222, 3410),
-            (222, 3202),
-            (222, 2998),
-            (222, 2778),
-            (222, 2548),
-            (222, 2346),
-            (222, 2112),
-            (222, 1858),
-            (222, 1654),
-            (222, 1428),
-            (220, 1178),
-            (218, 978),
-            (214, 746),
-            (214, 552),
-            (194, 366),
-            (166, 200),
-            (146, 80),
-            (100, 24),
-            (62, 2),
-            (32, 0),
-            (16, 0),
-            (8, 0),
-        ];
-        let fold_rounds = round_rows
-            .into_iter()
-            .enumerate()
-            .map(|(index, (symbols, siblings))| FoldRoundOpeningV4 {
-                fold_round: (index + 1) as u8,
-                domain_log2: 29 - index as u8,
-                opened_symbols: vec![Fp2::ZERO; symbols],
-                outer_sibling_digests: vec![[0; 32]; siblings],
-            })
-            .collect();
-        let opening = PackedBatchOpeningFrameV4 {
-            opening_schedule_digest: [0; 32],
-            initial_groups,
-            fold_rounds,
-        };
+        let opening = gpt2_codec_reference_packed_opening_v4();
         let components = opening.byte_components().unwrap();
         assert_eq!(components.opened_symbols, 27_564);
         assert_eq!(components.initial_inner_siblings, 1_998);

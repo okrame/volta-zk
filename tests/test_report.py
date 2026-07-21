@@ -234,6 +234,104 @@ def test_c1_record_closes_exact_reference_without_mutating_p7b():
     assert report.P7B_PACKED_RESPONSE_REFERENCE_BYTES == 144_820_930
 
 
+def test_x4_v4_validators_pin_profile_bytes_events_and_incomplete_pod_scope():
+    report = load_report_module()
+    cpu = {
+        "schema": 2,
+        "milestone": "X4-v4-CPU-synthetic",
+        "git_dirty": False,
+        "git_sha": "a" * 40,
+        "profile": report.X4_V4_PROFILE,
+        "design_sha256": report.X4_V4_DESIGN_SHA256,
+        "query_count": 111,
+        "soundness_expression": report.X4_V4_SOUNDNESS_EXPRESSION,
+        "soundness_bits": report.X4_V4_SOUNDNESS_BITS,
+        "required_soundness_bits": report.X4_V4_SOUNDNESS_FLOOR_BITS,
+        "soundness_resummed_new_terms": 0,
+        "security_counter_inventory": report.X4_V4_COUNTER_FAMILIES,
+        "touched_family": [
+            {
+                "touched_blocks": touched,
+                "accepted": True,
+                "bytes": {"closed_formula_total": 10 + touched, "serialized_total": 10 + touched},
+            }
+            for touched in (1, 2, 4, 8, 16)
+        ],
+        "recompute_case": {
+            "policy": "RecomputeOracleAndMerkle",
+            "traffic": {
+                "recomputed_source_bytes_read": 1,
+                "recomputed_oracle_bytes": 1,
+                "recomputed_merkle_bytes": 1,
+            },
+        },
+        "recompute_matches_persisted_response": True,
+        "abba": {"order": "A/B/B/A", "ceiling": 1.05, "pass": True},
+        "gate": {
+            "g5_verdict": "PASS",
+            "g6_verdict": "PASS",
+            "overall_x4_verdict": "NOT_EVALUATED_UNTIL_GPT2_MIGRATION_AND_A100_RECORDS",
+        },
+    }
+    assert report._x4_v4_cpu_result_valid(cpu) is True
+    bad_cpu = copy.deepcopy(cpu)
+    bad_cpu["security_counter_inventory"].remove("beta_collision_witness")
+    assert report._x4_v4_cpu_result_valid(bad_cpu) is False
+
+    migration = {
+        "schema": 1,
+        "milestone": "X4-v4-GPT2-migration",
+        "git_dirty": False,
+        "git_sha": "b" * 40,
+        "profile": report.X4_V4_PROFILE,
+        "design_sha256": report.X4_V4_DESIGN_SHA256,
+        "query_count": 111,
+        "rate": "1/8",
+        "maximum_claim_union": 3320,
+        "soundness_expression": report.X4_V4_SOUNDNESS_EXPRESSION,
+        "soundness_bits": report.X4_V4_SOUNDNESS_BITS,
+        "soundness_floor_bits": report.X4_V4_SOUNDNESS_FLOOR_BITS,
+        "soundness_resummed_new_terms": 0,
+        "codec": {
+            "opened_symbols": 27_564,
+            "all_real_sibling_digests": 67_930,
+            "packed_opening_frame": 2_615_414,
+            "summed_bytes": 2_683_236,
+            "serialized_bytes": 2_683_236,
+            "encoded_sha256": "c" * 64,
+        },
+        "complete_pcs_bytes": 2_683_236,
+        "g3_limit_bytes": 4_000_000,
+        "g3_headroom_bytes": 1_316_764,
+        "non_pcs_response_bytes": 41_270_464,
+        "measured_response_bytes": 43_953_700,
+        "response_limit_bytes": 45_270_464,
+        "response_headroom_bytes": 1_316_764,
+        "correlations_gpt2_claim_reduction": 2_208,
+        "correlations_gpt2_seam": 106,
+        "correlations_gpt2_total": 2_314,
+        "logical_first_oracle_floor_bytes": 31_923_699_712,
+        "production_codec": True,
+        "cryptographic_oracle_materialized": False,
+        "golden_decode": {
+            "prompt_tokens": 100,
+            "decode_tokens": 50,
+            "checked": True,
+            "exact_match": True,
+        },
+        "historical_records": [{"unchanged": True}] * 3,
+        "historical_rows_mutated": False,
+        "gate": {
+            "g3_communication": "PASS — exact",
+            "overall_x4": "NOT EVALUATED UNTIL A100 RECORDS",
+        },
+    }
+    assert report._x4_v4_migration_result_valid(migration) is True
+    bad_migration = copy.deepcopy(migration)
+    bad_migration["codec"]["all_real_sibling_digests"] -= 1
+    assert report._x4_v4_migration_result_valid(bad_migration) is False
+
+
 def test_resident_profile_joins_only_same_host_native_anchor_and_keeps_full_accounting():
     report = load_report_module()
     raw = {

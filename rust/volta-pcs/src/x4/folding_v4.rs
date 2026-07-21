@@ -230,8 +230,13 @@ pub struct GlobalFoldChallengesV4 {
 pub struct GlobalOpenMetricsV4 {
     pub source_coefficients_read: u64,
     pub initial_encoded_symbols_read: u64,
+    /// Per-cohort same-domain aggregates retained while the global chain is
+    /// sealed.  These are prover artifacts, not serialized proof symbols.
+    pub combined_coefficient_symbols: u64,
+    pub combined_codeword_symbols: u64,
     pub folded_symbols_written: u64,
     pub aggregate_merkle_symbols_written: u64,
+    pub aggregate_merkle_digests_written: u64,
     pub serialized_fold_bytes: u64,
     pub serialized_packed_opening_bytes: u64,
     pub recomputed_source_bytes_read: u64,
@@ -485,6 +490,19 @@ impl<'a> GlobalChainDraftV4<'a> {
                         .ok_or(FoldingErrorV4::Overflow)?,
                 )
                 .ok_or(FoldingErrorV4::Overflow)?;
+            metrics.combined_coefficient_symbols = metrics
+                .combined_coefficient_symbols
+                .checked_add(
+                    u64::try_from(value.coefficients.len())
+                        .map_err(|_| FoldingErrorV4::Overflow)?,
+                )
+                .ok_or(FoldingErrorV4::Overflow)?;
+            metrics.combined_codeword_symbols = metrics
+                .combined_codeword_symbols
+                .checked_add(
+                    u64::try_from(value.codeword.len()).map_err(|_| FoldingErrorV4::Overflow)?,
+                )
+                .ok_or(FoldingErrorV4::Overflow)?;
             verifier_groups.push(GlobalVerifierGroupV4 {
                 commitment: group.cohort.commitment().clone(),
                 touched_slots: group.touched_slots.clone(),
@@ -550,6 +568,17 @@ impl<'a> GlobalChainDraftV4<'a> {
             metrics.folded_symbols_written = metrics
                 .folded_symbols_written
                 .checked_add(u64::try_from(output_len).map_err(|_| FoldingErrorV4::Overflow)?)
+                .ok_or(FoldingErrorV4::Overflow)?;
+            // A one-slot fold cohort retains one inner leaf digest per outer
+            // coordinate plus a complete outer tree (2*n-1 digests).
+            let output_len_u64 = u64::try_from(output_len).map_err(|_| FoldingErrorV4::Overflow)?;
+            let round_digests = output_len_u64
+                .checked_mul(3)
+                .and_then(|value| value.checked_sub(1))
+                .ok_or(FoldingErrorV4::Overflow)?;
+            metrics.aggregate_merkle_digests_written = metrics
+                .aggregate_merkle_digests_written
+                .checked_add(round_digests)
                 .ok_or(FoldingErrorV4::Overflow)?;
 
             let fold_round = u8::try_from(round_index + 1).map_err(|_| FoldingErrorV4::Overflow)?;

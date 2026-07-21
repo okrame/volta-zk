@@ -292,8 +292,11 @@ pub struct AuthenticatedOutputLinkMetricsV4 {
     pub sumcheck_source_symbols_read: u64,
     pub source_coefficients_read: u64,
     pub encoded_symbols_read: u64,
+    pub combined_coefficient_symbols: u64,
+    pub combined_codeword_symbols: u64,
     pub folded_symbols_written: u64,
     pub aggregate_merkle_symbols_written: u64,
+    pub aggregate_merkle_digests_written: u64,
     pub recomputed_source_bytes_read: u64,
     pub recomputed_oracle_bytes: u64,
     pub recomputed_merkle_bytes: u64,
@@ -725,8 +728,11 @@ fn accumulate_global_metrics_v4(
     metrics.packed_opening_bytes = opened.serialized_packed_opening_bytes;
     metrics.source_coefficients_read = opened.source_coefficients_read;
     metrics.encoded_symbols_read = opened.initial_encoded_symbols_read;
+    metrics.combined_coefficient_symbols = opened.combined_coefficient_symbols;
+    metrics.combined_codeword_symbols = opened.combined_codeword_symbols;
     metrics.folded_symbols_written = opened.folded_symbols_written;
     metrics.aggregate_merkle_symbols_written = opened.aggregate_merkle_symbols_written;
+    metrics.aggregate_merkle_digests_written = opened.aggregate_merkle_digests_written;
     metrics.recomputed_source_bytes_read = opened.recomputed_source_bytes_read;
     metrics.recomputed_oracle_bytes = opened.recomputed_oracle_bytes;
     metrics.recomputed_merkle_bytes = opened.recomputed_merkle_bytes;

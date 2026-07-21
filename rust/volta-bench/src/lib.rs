@@ -10,6 +10,14 @@ pub mod logup;
 
 use volta_field::{Fp, Fp2, FpStream};
 
+pub const X4_V4_RECORD_PROFILE: &str = "x4-zkdeepfold-ud-e29-v4";
+
+/// Run-of-record binaries may verify historical Ligero/v3 artifacts, but may
+/// only produce new X4 records for the frozen schema-4 profile.
+pub fn x4_v4_record_profile_allowed(profile: &str) -> bool {
+    profile == X4_V4_RECORD_PROFILE
+}
+
 /// Cloud-instance fingerprint carried by every cloud run of record.
 ///
 /// The harness intentionally reads these values from explicit environment
@@ -206,6 +214,13 @@ pub fn time_paired<T, U>(
 mod tests {
     use super::*;
     use rand::{Rng, SeedableRng};
+
+    #[test]
+    fn x4_v4_records_refuse_historical_ligero_and_v3_profiles() {
+        assert!(x4_v4_record_profile_allowed(X4_V4_RECORD_PROFILE));
+        assert!(!x4_v4_record_profile_allowed("ligero"));
+        assert!(!x4_v4_record_profile_allowed("x4-zkdeepfold-ud-e29-v3"));
+    }
 
     #[test]
     fn paired_timing_medians_do_not_destroy_raw_order() {

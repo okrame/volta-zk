@@ -156,3 +156,37 @@ vector-RLC bounds from being mistaken for implementation bounds.
 #print axioms VoltaZk.ligero_multi_point_batch_discharge
 #print axioms VoltaZk.uc_composition_of_realizations
 #print axioms VoltaZk.logup_gkr_sound_of_char_gt
+
+-- X4 authenticated-output folding PCS (Amendments 3--4).
+-- The historical 133/40 audit above remains present verbatim; these are the
+-- 30 additional kernel targets required by the v3 statement freeze.
+#print axioms VoltaZk.corr_correction_view_bijective
+#print axioms VoltaZk.corr_correction_views_unique_preimage
+#print axioms VoltaZk.masked_aux_authenticated_link_hiding_count
+#print axioms VoltaZk.x4_aux_mask_entropy_budget_max_v3
+#print axioms VoltaZk.blind_authenticated_output_link_perfect_zk
+#print axioms VoltaZk.pending_aux_cannot_escape
+#print axioms VoltaZk.authenticated_output_link_produces_bound_aux
+#print axioms VoltaZk.bound_aux_has_verified_origin
+#print axioms VoltaZk.x4_v3_m9_fixed_before_link_challenge
+#print axioms VoltaZk.authenticated_output_batch_link_sound
+#print axioms VoltaZk.authenticated_output_batch_beta_collision_counterexample
+#print axioms VoltaZk.X4FrameKindV3.ofCode_code
+#print axioms VoltaZk.x4FrameHeaderV3_length
+#print axioms VoltaZk.X4FrameV3.ext
+#print axioms VoltaZk.x4_v3_frame_decode_encode
+#print axioms VoltaZk.x4_v3_frame_decode_canonical
+#print axioms VoltaZk.x4_v3_frame_kind_encoding_disjoint
+#print axioms VoltaZk.cohort_opening_binding_v3
+#print axioms VoltaZk.x4_ud_pcs_binding_v3
+#print axioms VoltaZk.authenticated_output_link_excludes_delta_shift
+#print axioms VoltaZk.accepted_delta_shift_event_cover_v3
+#print axioms VoltaZk.masked_batch_transfers_evals_v3
+#print axioms VoltaZk.x4_authenticated_output_zk
+#print axioms VoltaZk.x4_v3_max_link_frame_bytes
+#print axioms VoltaZk.x4_v3_max_seam_frame_bytes
+#print axioms VoltaZk.x4_v3_max_seam_full_corrs
+#print axioms VoltaZk.x4_wrong_response_event_cover_v3
+#print axioms VoltaZk.x4_response_soundness_v3
+#print axioms VoltaZk.x4_response_error_v3_lt_two_pow_neg_83
+#print axioms VoltaZk.x4_response_error_v3_meets_registered_target

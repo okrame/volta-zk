@@ -107,7 +107,10 @@ No protocol, byte, correlation, parameter, coefficient or gate changes; the
 exact **83.30226403378921-bit** expression is unchanged because `LinkBad` was
 already charged.  The beta-collision witness is now a required permanent
 negative audit theorem.  This approval clears only the statement-shape stop
-and authorizes direct Lean-first discharge; Rust remains gated.
+and authorizes direct Lean-first discharge.  That discharge is now green:
+all frozen v3/Amendment-4 statements prove, the full build and enlarged audit
+are clean, and v3/M9 Rust is authorized.  No implementation record or X4
+gate verdict has landed yet; CPU, GPT-2 and pod ordering remain unchanged.
 
 ## Milestones
 
@@ -147,7 +150,7 @@ and authorizes direct Lean-first discharge; Rust remains gated.
 | X4 Phase-2 concrete PCS discharge | **HARD STOP / FAIL TO DISCHARGE** (2026-07-21) | No weakening or axiom smuggling; `MaskedBatchBindsIntoMac` must be realized before M9 Rust | Deterministic one-block counterexample: `w=3,g=5,h=8,v=4,s=4`; PCS `h=w+g` and Amendment-2 ZeroBatch both accept while `h-s=4!=w`. The scalar MAC transfer authenticates a prover-chosen value but does not bind it to committed `g(u)`. Partial codec/N4/NTT/public-UD code has **22 diagnostic X4 tests** green; the package run executes **51 passed / 0 failed / 2 existing production-size C3 smokes ignored**. Re-audit: **3250 build jobs**, **133 total targets / 40 in the X4 block**, standard axioms only, stdout SHA-256 `de90480a5c17d970b041a6ada881e67a03ace04e24672cb9772485492b9617d2`. Diagnostic PCS source SHA-256 `da1d6b1aa6bd6357deec04bb4be2343ad344eb7b283f818a72370c78753b783a`; amended design SHA-256 `61eba70a23a619c6ab1d209dfa39bbe46c3e4d32387456418dd8654a896a8fa7`. No CPU/GPT-2/pod record and no gate verdict. |
 | X4 Amendment 3 authenticated-output seam | **DESIGN/SOUNDNESS/LEAN STATEMENTS FROZEN; HARD STOP BEFORE PROOFS AND V3/M9 RUST** (2026-07-21) | Blind binding must be realized inside the opening; no clear target evaluation, promise, transcript assertion, new ideal axiom or uncounted resource | `x4-zkdeepfold-ud-e29-v3`: correction gives only `PendingAuxEval`; one blind `d<=30` batch proves `2*B_touch` atoms `Wext(z||0)+g(u)-h=0` and `g(u)-authS.x=0`, then the same committed fold/query opening alone yields `BoundAuxEval`. Seam correlations `B_touch+2d+1`, max **1,721**; link frame **1,029 B**, complete seam **107,319 B**; all-maximum X4 screen **98,001** full correlations. Remaining auxiliary fiber `|E|^(2^ell-1)` and max budget `131071>107648`. Exact error remains `3320*(9/16)^128 + 28,522,064,267,253/|E| = 8.3853234432654371e-26`, **83.30226403378921 bits**, margin **4.49296915978921 bits**. Design SHA-256 `07eb1f832367d84b70095e20addc29c136233a6940e32f56d58ac7251e9ca868`. No Lean/Rust/record/gate/pod work in this amendment. |
 | X4 Amendment 3 Lean-first discharge | **HARD STOP / UNPROVABLE AS FROZEN** (2026-07-21) | No weakening or hypothesis smuggling; a statement change requires Amendment 4 | The deterministic `authenticated_output_link_produces_bound_aux` conclusion omits exclusion of the explicitly counted `LinkBad` event; `bound_aux_has_verified_origin` inherits the same issue. Fixed residuals `R0=1,R1=-1` cancel at `beta=1`, so the combined link and truthful terminal can accept while `authS.x!=committedAuxEval`. A temporary exact-rational Lean theorem kernel-checks this countermodel. No repository Lean/Rust source changed; baseline audit remains **133/40** and the permanent delta-shift theorem remains. No record, gate verdict or pod work. |
-| X4 Amendment 4 statement conditioning | **FROZEN; LEAN-FIRST IN PROGRESS; RUST HARD-GATED** (2026-07-21) | Exactly `equality OR LinkBad`; event flows into the existing link-bad count; beta collision permanent; no other movement | Design SHA-256 `f80da5b943b986aa1d849f53b83780aa067d77e7cb9dcfd538dd7931f6ae1a98`. Protocol/profile v3, frame bytes **1,029/107,319**, correlations **1,721/98,001**, `C_authlink=3,412`, total coefficient **28,522,064,267,253**, error **8.3853234432654371e-26** and **83.30226403378921 bits** are unchanged. R1c now explicitly includes the beta-collision episode and the prohibition on folding equality into verifier acceptance. No Lean/Rust result or gate credit yet. |
+| X4 Amendment 4 statement conditioning | **LEAN GREEN; V3/M9 RUST AUTHORIZED** (2026-07-21) | Exact frozen statements prove; full build, zero-sorry/admit and enlarged derived audit green; no new axiom or hidden equality premise | Design SHA-256 `f80da5b943b986aa1d849f53b83780aa067d77e7cb9dcfd538dd7931f6ae1a98`. Build **3251 jobs**; audit **163 total / 70 X4** (the historical **133/40** plus 30 v3 targets), stdout SHA-256 `4706e705abc1a8df3eeb96df41388c357f2006671cf90116c9c200f29d36d267`; only `propext`, `Classical.choice`, `Quot.sound`. V3 source SHA-256 `5a3367af7750158ed14c3e469ed58b9c8d918ee272dcf48fe89a1832bdc85dde`. Both permanent negative theorems are audited. Frame bytes **1,029/107,319**, correlations **1,721/98,001**, total coefficient **28,522,064,267,253** and **83.30226403378921 bits** remain unchanged. No Rust/record/gate/pod result yet. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -215,6 +218,52 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-21 (X4 Amendments 3--4 exact Lean-first checkpoint GREEN; v3/M9
+  Rust gate opens)**: the new module `lean/VoltaZk/X4FoldingPCSV3.lean`
+  proves the frozen correction-view bijection and unique preimage, conditioned
+  auxiliary-fiber count, entropy budget, blind link ZK composition,
+  Pending-to-Bound origin, Amendment-4 `equality OR LinkBad` conclusions,
+  one-batch soundness, schema-3 codec, cohort/strict-UD binding, whole-class
+  delta-shift exclusion and named-event cover, MAC transfer, separate full ZK
+  composition, exact byte/correlation arithmetic, four-event response cover
+  and the response-wide soundness target.  Raw
+  `VerifyAuthenticatedOutputLink` still checks only actual acceptance/order;
+  neither equality nor `not LinkBad` was folded into it.
+
+  Both negative artifacts are permanent audit targets:
+  `masked_sum_zeroBatch_link_counterexample` documents the original missing
+  auxiliary link, and
+  `authenticated_output_batch_beta_collision_counterexample` documents why
+  deterministic equality is false for an RLC-batched verifier.  The good-tape
+  theorem excludes the entire nonzero delta-shift class, while accepted shifts
+  flow into link, fold/query or response-ZeroBatch bad events.  Binding, ZK
+  and batching remain separate theorem carriers; no new declaration was added
+  to `Ideal.lean` and the LogUp characteristic-bearing theorem is unchanged.
+
+  `lake build` is green at **3251 jobs**.  Repository Lean sources contain
+  zero `sorry`/`admit` outside the four already declared `Ideal.lean` axioms.
+  The derived audit is green at **163 total targets / 70 X4 targets**: it
+  retains the complete historical **133/40** set and adds exactly 30 v3
+  targets.  Its complete stdout SHA-256 is
+  `4706e705abc1a8df3eeb96df41388c357f2006671cf90116c9c200f29d36d267`;
+  dependencies are limited to `propext`, `Classical.choice` and `Quot.sound`.
+  Source SHA-256 values are
+  `5a3367af7750158ed14c3e469ed58b9c8d918ee272dcf48fe89a1832bdc85dde`
+  for `X4FoldingPCSV3.lean`,
+  `03dcd13338d206866893bd1e9d134b6ccef8e2794cd83b77bd4569e42b467203`
+  for `Audit.lean`, and
+  `e4934964f6b0985a3bbb82f72e14f9c31f02fdaa51fea71301b324d73a75a443`
+  for the aggregate import.
+
+  Amendment 4 changed statement conditioning only.  The kernel proves the
+  unchanged exact target `x4ResponseErrorV3 < 2^-83`; the registered
+  expression remains `8.3853234432654370979010519467789577e-26`, or
+  **83.30226403378921 bits**, with `C_authlink=3,412` already charging
+  `LinkBad`.  No protocol, frame, byte, correlation, parameter, coefficient,
+  benchmark, gate or pod value moved.  This checkpoint clears v3/M9 Rust;
+  CPU records, GPT-2 migration and the later pod/NOTE-6 stop remain in their
+  frozen order.
 
 - **2026-07-21 (X4 Amendment 4 authorized and frozen; statement conditioning
   only; direct Lean-first resume)**: the product owner selects repair form

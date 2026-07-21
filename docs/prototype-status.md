@@ -245,7 +245,10 @@ historical entries remain append-only evidence, not competing definitions.
   `de90480a5c17d970b041a6ada881e67a03ace04e24672cb9772485492b9617d2`,
   confirming zero proof-state change.
   Work is hard-stopped before Amendment-3 Lean proofs and v3/M9 Rust; the pod
-  remains later than M9 plus CPU and GPT-2 records.
+  remains later than M9 plus CPU and GPT-2 records.  The frozen design and
+  ledger decision are checkpointed at
+  `b542edb07975f2de19366ed30a229b86a6877839`; this checkpoint itself carries
+  no proof, implementation, record or gate credit.
 
 - **2026-07-21 (X4 Phase-2 HARD STOP; concrete auxiliary-to-MAC binding
   cannot be discharged)**: implementation reached the M9 boundary after the

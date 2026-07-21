@@ -151,7 +151,7 @@ gate verdict has landed yet; CPU, GPT-2 and pod ordering remain unchanged.
 | X4 Amendment 3 authenticated-output seam | **DESIGN/SOUNDNESS/LEAN STATEMENTS FROZEN; HARD STOP BEFORE PROOFS AND V3/M9 RUST** (2026-07-21) | Blind binding must be realized inside the opening; no clear target evaluation, promise, transcript assertion, new ideal axiom or uncounted resource | `x4-zkdeepfold-ud-e29-v3`: correction gives only `PendingAuxEval`; one blind `d<=30` batch proves `2*B_touch` atoms `Wext(z||0)+g(u)-h=0` and `g(u)-authS.x=0`, then the same committed fold/query opening alone yields `BoundAuxEval`. Seam correlations `B_touch+2d+1`, max **1,721**; link frame **1,029 B**, complete seam **107,319 B**; all-maximum X4 screen **98,001** full correlations. Remaining auxiliary fiber `|E|^(2^ell-1)` and max budget `131071>107648`. Exact error remains `3320*(9/16)^128 + 28,522,064,267,253/|E| = 8.3853234432654371e-26`, **83.30226403378921 bits**, margin **4.49296915978921 bits**. Design SHA-256 `07eb1f832367d84b70095e20addc29c136233a6940e32f56d58ac7251e9ca868`. No Lean/Rust/record/gate/pod work in this amendment. |
 | X4 Amendment 3 Lean-first discharge | **HARD STOP / UNPROVABLE AS FROZEN** (2026-07-21) | No weakening or hypothesis smuggling; a statement change requires Amendment 4 | The deterministic `authenticated_output_link_produces_bound_aux` conclusion omits exclusion of the explicitly counted `LinkBad` event; `bound_aux_has_verified_origin` inherits the same issue. Fixed residuals `R0=1,R1=-1` cancel at `beta=1`, so the combined link and truthful terminal can accept while `authS.x!=committedAuxEval`. A temporary exact-rational Lean theorem kernel-checks this countermodel. No repository Lean/Rust source changed; baseline audit remains **133/40** and the permanent delta-shift theorem remains. No record, gate verdict or pod work. |
 | X4 Amendment 4 statement conditioning | **LEAN GREEN; V3/M9 RUST AUTHORIZED** (2026-07-21) | Exact frozen statements prove; full build, zero-sorry/admit and enlarged derived audit green; no new axiom or hidden equality premise | Design SHA-256 `f80da5b943b986aa1d849f53b83780aa067d77e7cb9dcfd538dd7931f6ae1a98`. Build **3251 jobs**; audit **163 total / 70 X4** (the historical **133/40** plus 30 v3 targets), stdout SHA-256 `4706e705abc1a8df3eeb96df41388c357f2006671cf90116c9c200f29d36d267`; only `propext`, `Classical.choice`, `Quot.sound`. V3 source SHA-256 `5a3367af7750158ed14c3e469ed58b9c8d918ee272dcf48fe89a1832bdc85dde`. Both permanent negative theorems are audited. Frame bytes **1,029/107,319**, correlations **1,721/98,001**, total coefficient **28,522,064,267,253** and **83.30226403378921 bits** remain unchanged. No Rust/record/gate/pod result yet. |
-| X4 v3/M9 Rust + CPU synthetic | **G5 PASS; G6 PASS; GPT-2 MIGRATION NEXT** (2026-07-21) | Frozen schema-3 grammar and blind Pending-to-Bound seam; permanent named-event tamper suite; clean append-only synthetic family; PCG/lifecycle and historical paths unchanged | Source `c56acd7`; clean record SHA `12bfbe2`, `x4-cpu-synthetic-2026-07-21-12bfbe2.json`, record SHA-256 `da2a09a69224df5b17c05bfc5d085604ab8345a9da5f7492090eecc78f0a8bfa`. **32/32 X4 tests** and workspace green. G5 exact bytes for 1/2/4/8/16 touched blocks: **996,187 / 1,014,489 / 1,076,814 / 1,227,185 / 1,553,648 B**; doubling only unopened blocks at `B_touch=8` adds exactly **25,721 B** of manifest/cohort-depth material, ABBA **1.010474 PASS**. G6 logical artifacts reconcile and peak RSS is **0.101109 GiB**. The overall X4 verdict remains NOT EVALUATED; GPT-2 G2/G3/G4 and pod gates are pending. |
+| X4 v3/M9 Rust + CPU synthetic | **G5/G6 STRUCTURAL RECORD PASS; PRODUCTION OPENING REOPENED** (2026-07-21) | The clean synthetic record remains immutable; G1/G2 implementation credit is withheld until late-query typestate and cross-cohort batching are corrected | Source `c56acd7`; clean record SHA `12bfbe2`, `x4-cpu-synthetic-2026-07-21-12bfbe2.json`, record SHA-256 `da2a09a69224df5b17c05bfc5d085604ab8345a9da5f7492090eecc78f0a8bfa`. G5 exact bytes **996,187 / 1,014,489 / 1,076,814 / 1,227,185 / 1,553,648 B**, unopened-block ABBA **1.010474 PASS**; G6 synthetic accounting reconciles. GPT-2 preflight found that the production API accepted query draws before constructing fold roots and that per-cohort fold chains project far above G3. The frozen protocol already requires fold commitments before verifier queries and batched cohorts, so Rust is being corrected without a protocol/parameter amendment. No GPT-2 or overall X4 verdict is claimed. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -219,6 +219,42 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-21 (X4 implementation audit I3; production opening reopened before
+  GPT-2 migration)**: read-only migration preflight found that
+  `prove_authenticated_output_link_production` received complete
+  `UdChallenges`, including all query draws, before it constructed the fold
+  roots.  Although the honest function happened to compute roots before
+  reading those fields, the API could not realize the frozen interactive
+  order `fold commitments < exact verifier query draws`; an adaptive prover
+  was structurally given the query set too early.  The schema-3 design already
+  requires late queries, so the authorized repair is an implementation
+  typestate split: first fix every link/fold commitment, then release exact
+  fresh verifier bits, then produce query answers.  No frame, byte field,
+  correlation, parameter, soundness coefficient or Lean statement may move.
+  The source checkpoint `c56acd7` is therefore superseded as a
+  security-complete implementation checkpoint, while its tests and the clean
+  CPU record remain immutable evidence.
+
+  The same preflight instantiated the frozen GPT-2 constraints before any
+  migration code: 102 fixed claims and `claimCount<=2` imply **51 logical
+  blocks** (48 layer blocks plus token embedding, positional embedding and a
+  separate tied-unembedding role), with **26** namespace/size cohort ids and
+  **52** weight/auxiliary roots when oracle kind is counted.  The current
+  one-fold-chain-per-root layout projects about **42.8 MB** before the small
+  envelope categories, far above G3's 4,000,000-B ceiling and not the frozen
+  cross-cohort batch.  This number is a diagnostic obstruction, not a gate
+  verdict or a new reference.  The implementation must share the permitted
+  fold/query machinery across cohorts and then serialize the exact canonical
+  preflight.  If the conforming closed formula still exceeds 4,000,000 B,
+  G3 is recorded FAIL and work stops before provisioning a pod; the threshold
+  will not be tuned or reinterpreted.
+
+  The clean synthetic record remains valid for its stated scope: its honest
+  roots were fixed before its measured answers, its byte/G6 formulas and
+  ABBA observation do not depend on adversarial query unpredictability, and
+  it claimed neither G1/G2 production security nor GPT-2 G3/G4.  No
+  historical JSON, root or profile is mutated.
 
 - **2026-07-21 (X4 clean CPU synthetic record; G5/G6 PASS)**: clean SHA
   `12bfbe2d150f8e4c3cf32f619b49671f47024045` produced append-only record

@@ -299,6 +299,26 @@ theorem direct_mask_transfer {F : Type*} [Field F]
     Authed.ofPublic_x] at hplain
   linear_combination hplain
 
+/-- Concrete discharge-time counterexample found before the X4 M9 Rust
+implementation.  The public masked-sum relation and a valid zero residual do
+not by themselves identify the transferred `authS.x` with the committed
+auxiliary evaluation.  Therefore a concrete PCS must prove that missing link
+before it can supply `MaskedBatchBindsIntoMac`; witness naming alone is not a
+soundness argument. -/
+theorem masked_sum_zeroBatch_link_counterexample :
+    let Delta : ℚ := 2
+    let committedW : ℚ := 3
+    let committedG : ℚ := 5
+    let h : ℚ := 8
+    let wrongV : Authed ℚ := ⟨4, 0, 8⟩
+    let chosenS : Authed ℚ := ⟨4, 0, 8⟩
+    h = committedW + committedG ∧
+      chosenS.Valid Delta ∧
+      ResponseZeroBatchValid Delta
+        (wrongV + chosenS - Authed.ofPublic Delta h) ∧
+      h - chosenS.x ≠ committedW := by
+  norm_num [Authed.Valid, ResponseZeroBatchValid, Authed.ofPublic]
+
 /-! ## Canonical v2 outer frame and typed cohort binding -/
 
 /-- The eleven normative v2 child-frame kinds. -/

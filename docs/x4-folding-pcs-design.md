@@ -690,6 +690,92 @@ statement still triggers an immediate hard stop without weakening or axiom
 smuggling.  After the CPU records, work stops for provisioning of the pinned
 A100 pod before the production-size `c3_weights` preflight and GPT-2 records.
 
+### 0.8 Implementation clarification I1: aggregate-fold and query-set semantics
+
+This clarification was registered on 2026-07-21 after the Lean checkpoint and
+before the affected Rust folding code.  It fills two schedule details already
+represented by the frozen v2 fields; it changes no frame byte, field, rate,
+query count, block/claim geometry, soundness coefficient, allocation or gate.
+
+`fold_round=0` is the static first oracle with the descriptor-pinned cohort
+slots.  Once the transcript-bound same-size challenge combines the touched
+slots, each `fold_round>=1` oracle is the one shared aggregate for that cohort.
+Its inner tree has exactly one structural slot, numbered zero and carrying the
+cohort's canonical slot-zero descriptor digest; that digest is an identity
+anchor, not a claim that the aggregate is slot zero's polynomial.  The
+verifier first recomputes the aggregate at every queried round-zero coordinate
+from all touched leaf symbols and only then accepts the transition to this
+singleton oracle.  Changing the touched descriptor order, challenge, cohort,
+oracle kind or round therefore changes the checked relation or root.
+
+For a transition from round `i-1` to `i`, the `fold commitment` has
+`fold_round=i`, commits the output oracle root, and its ordered message symbols
+are the two values of the parallel multilinear claim-reduction line.  The last
+transition additionally appends the final scalar.  The rate-`1/8` final
+constant codeword has length eight and remains committed and queried; all its
+opened symbols must equal that final scalar.  This deliberately explicit last
+root costs bytes but avoids an untyped sentinel root.
+
+The verifier still samples exactly `s=128` indices independently with
+replacement from exact fresh bits.  Transcript replay retains that ordered
+128-element multiset.  Each round's canonical `cohort multiproof` serializes
+only the strictly increasing deduplicated set of all `+beta`/`-beta` positions
+derived from it (and the correspondingly squared positions in later rounds).
+The decoder recomputes that set from the retained multiset; `query_count` is
+therefore the number of distinct opened outer indices, not a replacement for
+the fixed 128-draw schedule.  Multiplicity still counts in every folding-line
+check and in the registered soundness expression; deduplication is only Merkle
+authentication compression.
+
+### 0.9 Phase-2 implementation hard stop: auxiliary-to-MAC link is missing
+
+**Status: OPEN SOUNDNESS OBSTRUCTION; no M9 implementation, CPU gate record,
+GPT-2 migration or pod run is authorized until an explicit product-owner
+amendment supplies and proves a concrete link.**
+
+During the concrete discharge of `MaskedBatchBindsIntoMac`, before writing the
+X4 M9 Rust path, the following one-block counterexample was found and checked
+by Lean's kernel over `Rat`:
+
+```text
+committed W evaluation w = 3
+committed auxiliary evaluation g = 5
+public masked value       h = w + g = 8
+wrong downstream claim    v = 4
+prover-chosen MAC value    s = h - v = 4
+```
+
+For any MAC key the ordinary full correlation can authenticate the
+prover-chosen `s`.  Here the PCS masked-sum relation `h=w+g` holds and the
+Amendment-2 residual `v+s-h` is both MAC-valid and zero, yet
+`h-s=4 != w=3` and `s=4 != g=5`.  Thus a malicious prover can compensate an
+arbitrary wrong downstream weight claim by changing the plaintext carried by
+the one scalar mask transfer.  The attack is deterministic; it is not covered
+by the registered `1/|E|` ZeroBatch term.
+
+The frozen Lean theorems are not inconsistent.  They deliberately take
+`MaskedBatchBindsIntoMac` / `not committedEvalWrong` as explicit premises.
+The counterexample proves that the currently specified public relation plus
+one ordinary scalar correlation cannot discharge those premises.  In
+particular, naming the MAC plaintext `s_b` does not prove that it equals the
+committed `g_b(u_b)`.  The R1b report's design-level sentence that the two are
+bound is therefore overturned by concrete discharge evidence; its honest
+AI/no-independent-assurance label remains material.
+
+Any repair must add a concrete zero-knowledge binding argument from the
+committed auxiliary evaluation to the MAC-authenticated plaintext.  Revealing
+`s` is forbidden because it reveals `v=h-s`; asserting witness equality,
+adding an ideal axiom, reusing the same masked-sum equation, or silently
+charging extra correlations is not a repair.  A candidate authenticated-output
+PCS, vector-authenticated auxiliary commitment, or other construction changes
+the seam and potentially the frame bytes, correlation allocation,
+communication and soundness expression.  It therefore requires a new
+append-only amendment and Lean-first theorem set before implementation resumes.
+
+The already implemented canonical v2 codec, N4 cohort Merkle tree, `E` NTT and
+public strict-UD folding core remain diagnostic partial work only.  They confer
+no X4 gate verdict and are not wired into the production response path.
+
 ---
 
 ## Historical Phase-1 baseline (superseded where Section 0 conflicts)

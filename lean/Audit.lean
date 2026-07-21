@@ -128,6 +128,7 @@ vector-RLC bounds from being mistaken for implementation bounds.
 #print axioms VoltaZk.one_opening_per_epoch
 #print axioms VoltaZk.ResponseZeroBatchValid
 #print axioms VoltaZk.direct_mask_transfer
+#print axioms VoltaZk.masked_sum_zeroBatch_link_counterexample
 #print axioms VoltaZk.X4FrameKind.ofCode_code
 #print axioms VoltaZk.x4FrameHeader_length
 #print axioms VoltaZk.X4FrameV2.ext

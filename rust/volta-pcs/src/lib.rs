@@ -13,6 +13,7 @@ pub mod layer_layout;
 pub mod ligero;
 pub mod merkle;
 pub mod ntt;
+pub mod x4;
 
 pub use batch::{batch_reduce_prover, batch_reduce_verifier, BatchTimings, BlockClaim};
 pub use layer_layout::{

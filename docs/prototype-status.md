@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 AMENDMENTS 1--2 FROZEN; X4 LEAN GREEN; RUST PHASE AUTHORIZED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 AMENDMENTS 1--2 FROZEN; X4 LEAN GREEN; RUST HARD STOP — MISSING AUX-TO-MAC LINK)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -66,8 +66,11 @@ owner approved Amendment 2, which repairs the false bare-`Authed.Valid`
 premise of `direct_mask_transfer` by requiring MAC validity *and* zero
 plaintext on the good tape.  The complete X4 Lean-first package is now proved,
 built and audited with no new ideal axiom, so the ordered Rust phase is
-authorized subject to every existing hard stop.  No X4 implementation or gate
-verdict has yet landed.
+authorized subject to every existing hard stop.  The normative v2 codec,
+N4-separated cohort Merkle tree, `E` NTT and public strict-UD folding core were
+implemented, but concrete M9 discharge exposed a deterministic missing
+auxiliary-evaluation-to-MAC link.  X4 is hard-stopped before M9, CPU records,
+GPT-2 migration and pod work; no X4 gate verdict has landed.
 
 ## Milestones
 
@@ -103,7 +106,8 @@ verdict has yet landed.
 | R1b X1--X3 delta + Ideal/X4 addenda review | **AI REVIEW DISPOSITION CLOSED; no independent assurance** (2026-07-20) | Detached `9b1ef2d`; zero CRITICAL/MAJOR, three MINOR, six NOTE; every finding explicitly disposed; criterion (1) remains external | Byte-identical report `docs/r1b-kimi3-report.md`, SHA-256 `a6d25a55c1220934666bf22f218740be1a9084243370fd031274dea2a222aa9f`. MINOR-1/2 docstrings corrected; MINOR-3 adopted; NOTE-1/3/5/6 actions pinned. The review is automated Kimi adversarial analysis, not human assurance. |
 | X4 folding PCS Phase 1 (historical) | **SUPERSEDED BY R1B AMENDMENT 1; immutable design history** (2026-07-20) | Original no-list-decoding/G1--G6 preregistration retained for provenance | Historical `x4-zkdeepfold-v1`: `K`, rate `1/8`, `s=128`, **10.7008-TB** logical floor. Addended SHA-256 `3588d9f360960d46ad219309ba67645bd992a56d89ed1ae627f69f6d7ca9bb44`; original SHA `bb693bb4b1a06244d4f30f4b23cb47a64563dcaa21b5502b74adb044e6284464`. No gate verdict. |
 | X4 R1b Amendment 1 + Phase-2 statement freeze | **AMENDED DESIGN/SOUNDNESS/LEAN STATEMENTS FROZEN; HARD STOP pending product-owner review** (2026-07-20) | Exact conservative response bound must prove before X4 Rust; all original G1--G6 and byte/wall gates remain conjunctive; no list-decoding credit | `x4-zkdeepfold-ud-e29-v2`: `E`, rate `1/8`, `s=128`, `mu_max=29`; **1,660 blocks / 3,320 claims**; gpt-oss floor **5.3504 TB**; GPT-2 unpadded first oracle **31,923,699,712 B**; direct M9 `B_touch+1`; `epsilon=8.3853234432654371e-26`, **83.30226403378921 bits, meeting the 78.809294874 target**. Normative v2 frames and separate binding/ZK/batch theorem statements frozen. Design SHA-256 `2f511ac162ed6fdfa88dcb7e43fb749ae7063acf4a4585e2693349c9f023f207`. No Lean proof or X4 gate verdict. |
-| X4 Amendment 2 + Lean-first package | **LEAN GREEN; RUST PHASE AUTHORIZED** (2026-07-21) | Frozen statements prove; `lake build`; zero `sorry`/`admit`; derived audit green; no new axiom or `Ideal` dependency | `ResponseZeroBatchValid Delta a := a.Valid Delta /\ a.x=0`; strict rate-1/8 UD, split MLE, exact masked fiber count, one-opening state, canonical frames/cohort binding, scalar reductions, strict-UD folding, separate binding/ZK/batch seams, M9, event cover and LogUp characteristic premise all proved. Exact `x4ResponseError < 2^-83` and the **78.809294874-bit** target theorem are green. Full build **3250 jobs**; audit **132 targets** (41 X4), stdout SHA-256 `4c1c11d09f6da82f732de2455b8fa4ec622934c97103e7c072644ee689f5b83f`; only `propext`, `Classical.choice`, `Quot.sound`. Source SHAs: field `b57cb0acb469b9053ae9dbc65898a3c1437679b09b250fdff65f5d3594a47805`, PCS `d21d4dac4d351636c63b9481349f0fbafeb85e3bacf884c9f76fd362f22be846`. No Rust result or X4 gate verdict yet. |
+| X4 Amendment 2 + Lean-first package | **LEAN GREEN; RUST PHASE AUTHORIZED** (2026-07-21) | Frozen statements prove; `lake build`; zero `sorry`/`admit`; derived audit green; no new axiom or `Ideal` dependency | `ResponseZeroBatchValid Delta a := a.Valid Delta /\ a.x=0`; strict rate-1/8 UD, split MLE, exact masked fiber count, one-opening state, canonical frames/cohort binding, scalar reductions, strict-UD folding, separate binding/ZK/batch seams, M9, event cover and LogUp characteristic premise all proved. Exact `x4ResponseError < 2^-83` and the **78.809294874-bit** target theorem are green. Full build **3250 jobs**; audit **132 targets** (39 in the X4 audit block), stdout SHA-256 `4c1c11d09f6da82f732de2455b8fa4ec622934c97103e7c072644ee689f5b83f`; only `propext`, `Classical.choice`, `Quot.sound`. Source SHAs: field `b57cb0acb469b9053ae9dbc65898a3c1437679b09b250fdff65f5d3594a47805`, PCS `d21d4dac4d351636c63b9481349f0fbafeb85e3bacf884c9f76fd362f22be846`. No Rust result or X4 gate verdict yet. |
+| X4 Phase-2 concrete PCS discharge | **HARD STOP / FAIL TO DISCHARGE** (2026-07-21) | No weakening or axiom smuggling; `MaskedBatchBindsIntoMac` must be realized before M9 Rust | Deterministic one-block counterexample: `w=3,g=5,h=8,v=4,s=4`; PCS `h=w+g` and Amendment-2 ZeroBatch both accept while `h-s=4!=w`. The scalar MAC transfer authenticates a prover-chosen value but does not bind it to committed `g(u)`. Partial codec/N4/NTT/public-UD code has **22 diagnostic X4 tests** green; the package run executes **51 passed / 0 failed / 2 existing production-size C3 smokes ignored**. Re-audit: **3250 build jobs**, **133 total targets / 40 in the X4 block**, standard axioms only, stdout SHA-256 `de90480a5c17d970b041a6ada881e67a03ace04e24672cb9772485492b9617d2`. Diagnostic PCS source SHA-256 `da1d6b1aa6bd6357deec04bb4be2343ad344eb7b283f818a72370c78753b783a`; amended design SHA-256 `61eba70a23a619c6ab1d209dfa39bbe46c3e4d32387456418dd8654a896a8fa7`. No CPU/GPT-2/pod record and no gate verdict. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -171,6 +175,72 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-21 (X4 Phase-2 HARD STOP; concrete auxiliary-to-MAC binding
+  cannot be discharged)**: implementation reached the M9 boundary after the
+  canonical v2 codec, N4-separated two-dimensional cohort tree, amended-field
+  NTT and public strict-UD folding core.  The required concrete premise
+  `MaskedBatchBindsIntoMac` is false for the frozen masked-sum/MAC composition:
+  choose committed evaluations `w=3`, `g=5`, public `h=8`, wrong GKR claim
+  `v=4`, and authenticate prover-chosen `s=h-v=4`.  Both `h=w+g` and the
+  corrected zero residual `v+s-h=0` hold, while the recovered evaluation is
+  `h-s=4`, not committed `w=3`.  An ordinary full correlation authenticates
+  any chosen `s`; it supplies no proof that `s=g(u)`.
+
+  This exact witness now appears as
+  `masked_sum_zeroBatch_link_counterexample` and kernel-checks without a new
+  axiom.  It does not contradict the prior abstract Lean package: that package
+  explicitly assumes the unavailable binding premise and its good-tape
+  negation.  It does overturn R1b's design-level assertion that the chain was
+  closed.  The statistical arithmetic remains a correct conditional bound,
+  but cannot be claimed for the concrete protocol.  Section 0.9 of the design
+  records the obstruction.  X4 stops before M9 Rust, CPU synthetic records,
+  GPT-2 migration, references and all pod work.  Repair requires an explicit
+  owner-approved amendment plus new Lean-first statements; revealing `s`,
+  assuming equality, adding an ideal axiom, or silently increasing correlation
+  use is forbidden.  No X4 gate receives PASS or FAIL from this partial work.
+
+  The post-diagnosis `lake build` remains green at **3250 jobs**.  The derived
+  audit now checks **133 total declarations**, of which **40** are in its X4
+  block, with zero `sorry`/`admit`, no `Ideal` dependency and only `propext`,
+  `Classical.choice` and `Quot.sound`; complete stdout SHA-256 is
+  `de90480a5c17d970b041a6ada881e67a03ace04e24672cb9772485492b9617d2`.
+  The prior Lean-checkpoint prose said 41 X4 targets; direct counting shows
+  that its pinned 132-target audit contained 39 in that block.  This
+  bookkeeping correction changes neither the prior stdout nor any theorem or
+  gate.  Adding the counterexample makes the current counts 133 and 40.
+  Current source SHA-256 is
+  `da1d6b1aa6bd6357deec04bb4be2343ad344eb7b283f818a72370c78753b783a`
+  for `X4FoldingPCS.lean`; the Section-0.9 design SHA-256 is
+  `61eba70a23a619c6ab1d209dfa39bbe46c3e4d32387456418dd8654a896a8fa7`.
+
+  Before the obstruction, the allowed public pieces accumulated 22 synthetic
+  X4 tests: canonical v2 frames, N4-separated cohort Merkle proofs, amended-
+  field NTT/encoding and public strict-UD folding.  `cargo test -p volta-pcs`
+  executes **51 passed / 0 failed** package tests; the only two ignored tests
+  are pre-existing production-size C3 leakage smokes.  These are diagnostic
+  checks, not CPU records and not an X4 gate verdict.  The broader
+  `cargo test --workspace` non-regression run also completes with **271
+  passed / 0 failed / 4 existing production-size tests ignored**.
+
+- **2026-07-21 (X4 implementation clarification I1 registered before folding
+  code; no format or parameter amendment)**: Section 0.8 of
+  `docs/x4-folding-pcs-design.md` makes the frozen `fold_round`, message and
+  multiproof fields operationally unambiguous.  Round zero retains the full
+  descriptor-pinned cohort.  Each later, shared aggregate-fold oracle uses a
+  singleton structural slot anchored by the canonical slot-zero descriptor;
+  the verifier first recomputes the transcript-bound aggregate from every
+  touched round-zero symbol.  Each fold frame commits its output root and
+  carries the two parallel claim-line values; the final frame also carries the
+  scalar, and the rate-1/8 length-eight constant oracle is committed and
+  queried rather than represented by a sentinel.  The exact 128-query ordered
+  multiset remains transcript-derived, while each canonical multiproof carries
+  only its strictly increasing deduplicated `+beta/-beta` set.  This completes
+  previously unspecified schedule semantics using existing bytes.  It changes
+  no v2 grammar, `E`, `rho=1/8`, `s=128`, block/claim count, `B_touch+1`
+  correlation allocation, soundness term or G1--G6 threshold.
+  Clarified-design SHA-256 is
+  `457ee75fb6693de95b4a44d28908ed9fea2b4c889b91163da5e62411793866f1`.
 
 - **2026-07-21 (X4 Lean-first hard stop cleared; Rust phase authorized)**:
   `lean/VoltaZk/X4Field.lean` and `lean/VoltaZk/X4FoldingPCS.lean`

@@ -263,7 +263,8 @@ historical entries remain append-only evidence, not competing definitions.
   `LinkBad`.  No protocol, frame, byte, correlation, parameter, coefficient,
   benchmark, gate or pod value moved.  This checkpoint clears v3/M9 Rust;
   CPU records, GPT-2 migration and the later pod/NOTE-6 stop remain in their
-  frozen order.
+  frozen order.  The Lean-first source/audit checkpoint is
+  `3ca2a05ce2ba9afaaecddd323bbefbbb52a408bd`.
 
 - **2026-07-21 (X4 Amendment 4 authorized and frozen; statement conditioning
   only; direct Lean-first resume)**: the product owner selects repair form

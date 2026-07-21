@@ -151,7 +151,7 @@ gate verdict has landed yet; CPU, GPT-2 and pod ordering remain unchanged.
 | X4 Amendment 3 authenticated-output seam | **DESIGN/SOUNDNESS/LEAN STATEMENTS FROZEN; HARD STOP BEFORE PROOFS AND V3/M9 RUST** (2026-07-21) | Blind binding must be realized inside the opening; no clear target evaluation, promise, transcript assertion, new ideal axiom or uncounted resource | `x4-zkdeepfold-ud-e29-v3`: correction gives only `PendingAuxEval`; one blind `d<=30` batch proves `2*B_touch` atoms `Wext(z||0)+g(u)-h=0` and `g(u)-authS.x=0`, then the same committed fold/query opening alone yields `BoundAuxEval`. Seam correlations `B_touch+2d+1`, max **1,721**; link frame **1,029 B**, complete seam **107,319 B**; all-maximum X4 screen **98,001** full correlations. Remaining auxiliary fiber `|E|^(2^ell-1)` and max budget `131071>107648`. Exact error remains `3320*(9/16)^128 + 28,522,064,267,253/|E| = 8.3853234432654371e-26`, **83.30226403378921 bits**, margin **4.49296915978921 bits**. Design SHA-256 `07eb1f832367d84b70095e20addc29c136233a6940e32f56d58ac7251e9ca868`. No Lean/Rust/record/gate/pod work in this amendment. |
 | X4 Amendment 3 Lean-first discharge | **HARD STOP / UNPROVABLE AS FROZEN** (2026-07-21) | No weakening or hypothesis smuggling; a statement change requires Amendment 4 | The deterministic `authenticated_output_link_produces_bound_aux` conclusion omits exclusion of the explicitly counted `LinkBad` event; `bound_aux_has_verified_origin` inherits the same issue. Fixed residuals `R0=1,R1=-1` cancel at `beta=1`, so the combined link and truthful terminal can accept while `authS.x!=committedAuxEval`. A temporary exact-rational Lean theorem kernel-checks this countermodel. No repository Lean/Rust source changed; baseline audit remains **133/40** and the permanent delta-shift theorem remains. No record, gate verdict or pod work. |
 | X4 Amendment 4 statement conditioning | **LEAN GREEN; V3/M9 RUST AUTHORIZED** (2026-07-21) | Exact frozen statements prove; full build, zero-sorry/admit and enlarged derived audit green; no new axiom or hidden equality premise | Design SHA-256 `f80da5b943b986aa1d849f53b83780aa067d77e7cb9dcfd538dd7931f6ae1a98`. Build **3251 jobs**; audit **163 total / 70 X4** (the historical **133/40** plus 30 v3 targets), stdout SHA-256 `4706e705abc1a8df3eeb96df41388c357f2006671cf90116c9c200f29d36d267`; only `propext`, `Classical.choice`, `Quot.sound`. V3 source SHA-256 `5a3367af7750158ed14c3e469ed58b9c8d918ee272dcf48fe89a1832bdc85dde`. Both permanent negative theorems are audited. Frame bytes **1,029/107,319**, correlations **1,721/98,001**, total coefficient **28,522,064,267,253** and **83.30226403378921 bits** remain unchanged. No Rust/record/gate/pod result yet. |
-| X4 v3/M9 Rust implementation | **IMPLEMENTATION GREEN; CLEAN CPU RECORD NEXT** (2026-07-21) | Frozen schema-3 grammar and blind Pending-to-Bound seam; permanent named-event tamper suite; PCG/lifecycle and historical paths unchanged | Source checkpoint `c56acd7`. The commitment's weighted fold/query verification alone closes the blind dual-relation sumcheck; no prover-supplied evaluation enters `BoundAuxEval`. Exact seam counters are `B_touch+2*d+1`; max frame/correlation values and **83.30226403378921-bit** expression are unchanged. **32/32 X4 tests** and `cargo test --workspace` are green; delta-shift and beta-collision remain permanent artifacts. A tracked-dirty quick diagnostic gave G5/G6 PASS and ABBA **0.990891 <=1.05**, but is explicitly not a record or gate verdict. CPU run of record, GPT-2 migration and pod work remain pending. |
+| X4 v3/M9 Rust + CPU synthetic | **G5 PASS; G6 PASS; GPT-2 MIGRATION NEXT** (2026-07-21) | Frozen schema-3 grammar and blind Pending-to-Bound seam; permanent named-event tamper suite; clean append-only synthetic family; PCG/lifecycle and historical paths unchanged | Source `c56acd7`; clean record SHA `12bfbe2`, `x4-cpu-synthetic-2026-07-21-12bfbe2.json`, record SHA-256 `da2a09a69224df5b17c05bfc5d085604ab8345a9da5f7492090eecc78f0a8bfa`. **32/32 X4 tests** and workspace green. G5 exact bytes for 1/2/4/8/16 touched blocks: **996,187 / 1,014,489 / 1,076,814 / 1,227,185 / 1,553,648 B**; doubling only unopened blocks at `B_touch=8` adds exactly **25,721 B** of manifest/cohort-depth material, ABBA **1.010474 PASS**. G6 logical artifacts reconcile and peak RSS is **0.101109 GiB**. The overall X4 verdict remains NOT EVALUATED; GPT-2 G2/G3/G4 and pod gates are pending. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -219,6 +219,40 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-21 (X4 clean CPU synthetic record; G5/G6 PASS)**: clean SHA
+  `12bfbe2d150f8e4c3cf32f619b49671f47024045` produced append-only record
+  `benchmarks/results/x4-cpu-synthetic-2026-07-21-12bfbe2.json`, SHA-256
+  `da2a09a69224df5b17c05bfc5d085604ab8345a9da5f7492090eecc78f0a8bfa`
+  (`git_dirty:false`, four Rayon workers, Apple Virtualization Generic
+  Platform, strict rate 1/8, `s=128`).  The record preserves design SHA
+  `f80da5b943b986aa1d849f53b83780aa067d77e7cb9dcfd538dd7931f6ae1a98`,
+  the exact response-wide expression and **83.30226403378921 bits**.
+
+  **G5 PASS.**  The canonical one-envelope lengths for `1,2,4,8,16`
+  touched blocks are respectively **996,187 / 1,014,489 / 1,076,814 /
+  1,227,185 / 1,553,648 B**.  Every component sum equals the serialized
+  length.  Source reads are exactly the canonical touched coefficients;
+  extension, ZK auxiliary, encoded and folded traffic are separate fields.
+  At eight touched blocks, doubling only total blocks from 16 to 32 changes
+  serialized length by exactly **25,721 B**: 121 manifest bytes plus 25,600
+  cohort-query path bytes, with every other component unchanged.  One warmup
+  per side and three same-process A/B/B/A cycles give upper medians
+  **0.0424917535 / 0.042936816 s**, ratio
+  **1.0104740911668897 <= 1.05 PASS**.
+
+  **G6 PASS for the recorded synthetic scope.**  The 16/32-block logical
+  first-oracle totals are **4,194,304 / 8,388,608 B**, Merkle digests
+  **17,301,440 / 34,078,656 B**, retained logical payload
+  **26,214,400 / 51,904,512 B**, and largest-cohort working sets
+  **13,369,312 / 26,476,512 B**; exact formulas reconcile.  Persisted,
+  recomputed, host-transfer and device-transfer fields are explicitly zero
+  because this fixture retains both in-memory CPU cohorts; the permanent
+  recompute test proves root and proof byte identity.  Measured peak RSS is
+  **0.101108551 GiB**.  This record grants no GPT-2 G2/G3/G4, production
+  wall, full-model storage or overall X4 verdict.  The next authorized step
+  is the append-only GPT-2 migration on the same frozen semantics; pod and
+  `c3_weights` preflight remain later.
 
 - **2026-07-21 (X4 v3/M9 Rust checkpoint GREEN; manifest inclusion
   clarification I2)**: checkpoint `c56acd7` implements the frozen schema-3

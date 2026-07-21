@@ -220,6 +220,42 @@ historical entries remain append-only evidence, not competing definitions.
 
 ## Deviations / decisions log
 
+- **2026-07-21 (Amendment 5 authorized; v3 is a superseded infeasible
+  candidate, not a near pass)**: the v3 G3 verdict and evidence remain
+  unchanged: clean record
+  `benchmarks/results/x4-gpt2-g3-preflight-2026-07-21-3aa5952.json`, SHA-256
+  `a5d2f4ba189c27a7b39e8e0f0c66475057a6f15041483fbe2035bcc69afc4cb9`,
+  proves a **4,089,416-B strict lower bound > 4,000,000 B** before any real
+  auxiliary Merkle-node bytes.  Its permanent negative test and the
+  production late-query defect remain audit artifacts.  The frozen
+  `x4-zkdeepfold-ud-e29-v3` candidate is therefore **SUPERSEDED FOR DESIGN
+  EVALUATION** and receives no “near pass” or implementation credit.
+
+  No 5% or 10% communication exception is taken.  The lower bound deletes
+  the dominant authentication paths, the optimistic canonical one-chain
+  shape is **15,814,716 B**, and the absolute **45,270,464-B** response
+  ceiling remains untouched; relaxing only the 4-MB component cap would not
+  make the real candidate viable.  Amendment 5 instead authorizes a new
+  candidate configuration inside the cited strict-unique-decoding
+  BaseFold/DeepFold family.  The design evaluation must itemize leaf payload,
+  path/aux-node bytes and the `s=128` multiplier; screen the suspended
+  commit-before-query typestate, globally shared canonical cohort/fold
+  machinery and a `(rate,s)` re-resolution in the allowed direction of more
+  oracle/prover work for less communication; and run the closed byte model
+  against the normative codec before selecting a candidate.
+
+  Every screen recomputes response-wide soundness from scratch at no less
+  than **78.809294874 bits**, uses only strict unique decoding, and re-derives
+  all block, root, frame, correlation, storage and traffic counts.  The v3
+  `PendingAuxEval -> BoundAuxEval` binding semantics and Amendment-4
+  `authenticated equality OR LinkBad` conclusions remain mandatory or must
+  be separately re-proved.  No Lean proof, production Rust, benchmark
+  reference, historical record, PCG/lifecycle change or pod work is
+  authorized during the amendment.  After the Amendment-5 design and
+  pre-freeze byte check are recorded, work hard-stops for review before
+  Lean-first.  Any future pod remains after green Lean, amended M9, CPU
+  records and GPT-2 migration, with NOTE-6 `c3_weights` first in preflight.
+
 - **2026-07-21 (X4 GPT-2 G3 FAIL; frozen profile hard stop before production
   refactor/migration/pod)**: clean source
   `3aa5952ae0c07f2e933f2f1d5d8a8d9006ed4815` produced append-only record

@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 AMENDMENT 5 EVENT CROSS-CHECK + V4 LEAN GREEN; V4 RUST IN PROGRESS)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 AMENDMENT 5 V4 LEAN/RUST + CPU/GPT-2 MIGRATION GREEN; A100 POD PENDING)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -123,8 +123,17 @@ new hybrid term, so the explicit re-sum remains
 V4 Lean-first is now green at checkpoint `d5227f2`: every frozen statement
 proves, the 3,252-job build and 209/116 derived audit are green, and no new
 axiom or error term appeared.  This clears the ordered schema-4/v4 Rust phase;
-CPU, GPT-2 and pod ordering remain unchanged and no production X4 verdict has
-landed yet.
+that Rust phase and the ordered CPU/GPT-2 migration are now complete at clean
+source checkpoint `31fc866`.  The clean production-codec migration measures
+exactly **2,683,236 B PCS** and **43,953,700 B response**, so G3 is **PASS**;
+golden decode remains bit-exact and historical rows remain immutable.  The
+synthetic v4 record makes G5 **PASS** and G6 **PASS in synthetic scope**.
+The approximately 32-GB GPT-2 cryptographic oracle was deliberately not
+materialized on the CPU VM: full-production G2, G4, physical G6 and the overall
+X4 verdict remain **NOT EVALUATED** until the preregistered A100 run.  No new
+failure event or soundness term surfaced, so **80.25537016399041 bits** remains
+unchanged.  Pod provisioning, including the R1b NOTE-6 `c3_weights` smoke, is
+now the next authorized boundary.
 
 ## Milestones
 
@@ -169,6 +178,8 @@ landed yet.
 | X4 Amendment 5 global packed opening | **DESIGN/SOUNDNESS/LEAN STATEMENTS FROZEN; HARD STOP BEFORE V4 LEAN-FIRST** (2026-07-21) | No threshold exception; pre-freeze materialized codec screen must pass; v3 seam and Amendment-4 disjunction remain mandatory | `x4-zkdeepfold-ud-e29-v4`: rate `1/8`, `s=111`, model-global same-domain cohorts, one different-size chain and digest-only derived frontiers. Exact error `3320*(9/16)^111 + 28,522,064,267,253/|E|`, **80.25537016399041 bits**, `<2^-80`. Clean screen source `93749b3`; record `x4-amendment5-gpt2-preflight-2026-07-21-93749b3.json`, SHA-256 `ba87722362c8825e13e02a6c563a436797ea852e09e1cebcf4a9265c6ce56499`: packed opening **2,615,414 B**, complete PCS **2,683,236 B**, response **43,953,700 B**, headroom **1,316,764 B**. This is pre-freeze eligibility, not a production G3 verdict. Storage/correlations remain **5.3504 TB / 31,923,699,712 B** and **1,721 / 98,001** maxima. Design SHA-256 `1383fa5d0a2eb9155f1ca76fe814238c04eaaa7aab965e10374b5f07d220bfb7`. No v4 Lean/production Rust/migration/pod work. |
 | X4 Amendment 5 product-owner discharge | **AUTHORIZED; PART 0 RULINGS + BIDIRECTIONAL EVENT CROSS-CHECK RECORDED; V4 LEAN-FIRST AUTHORIZED** (2026-07-21) | Gates verbatim; frozen profile invariants exact; every new failure/error term is re-summed before proof | The proposed 5--10% communication exception is **REFUSED**. V3's honest true-opening estimate remains **15,814,716 B** and raising only the 4-MB PCS cap would not have repaired it. V4 load-bearing invariants are rate `1/8`, `s=111`, response-wide claim union `<=3,320`, and exactly one schema-4 packed opening with **27,564 symbols plus all 67,930 real sibling digests**, with no digest deduplication or compression. The Rust/Lean cross-check has no orphan counter or event disjunct: the only accepting statistical owners remain Fold, ClaimReduce, LinkBad and ZeroBatch; delta-shift/beta-collision are diagnostic subclasses, while leakage/epoch/query-order breaches are named deterministic or ZK failures. The exact re-sum remains **80.25537016399041 bits** versus the **78.809294874-bit** floor; its approximately **1.44607528999041-bit** slack and one-query margin are not a reserve. Cross-check-annotated design SHA-256 `c963831373783504e855c6c9b54a4d1bf425206ccb68992c242c94290e1cf544`; the frozen theorem/profile baseline remains `1383fa5d0a2eb9155f1ca76fe814238c04eaaa7aab965e10374b5f07d220bfb7`. No production G3 verdict is claimed by this ruling. |
 | X4 Amendment 5 Lean-first discharge | **LEAN GREEN; SCHEMA-4/V4 RUST AUTHORIZED** (2026-07-21) | Exact frozen statements; full build; zero `sorry`/`admit`; derived audit; no new ideal axiom or surfaced error term | Checkpoint `d5227f2`: model-global slot/cohort binding, packed-to-explicit equivalence, seal-before-query typestate, one different-size chain, strict-UD `s=111`, separate binding/ZK/batch obligations, blind Pending-to-Bound seam, Amendment-4 `equality OR LinkBad`, permanent delta-shift/beta-collision artifacts, exact bytes/correlations and four-event response soundness all prove. Build **3,252 jobs**; audit **209 total / 116 X4** (46 new v4), standard axioms only. Exact `<2^-80` theorem and **78.809294874-bit** registered target pass with the unchanged **80.25537016399041-bit** expression. No Rust/record/G3/pod verdict yet. |
+| X4 Amendment 5 v4 Rust + CPU synthetic | **RUST GREEN; G5 PASS; G6 PASS IN SYNTHETIC SCOPE; A100 PRODUCTION SURFACE PENDING** (2026-07-21) | Normative schema 4; N4 domains; seal-before-query; model-global cohorts; one different-size chain; blind M9; permanent tamper inventory; exact G6 accounting | Clean source `31fc866`. Full workspace tests are green (`volta-pcs` 69; `volta-proto` 109 passed / one historical production-size private-argmax test ignored; `p35` 13 passed / two production-size C3 smokes ignored); all 55 scoped X4 tests and seven report-validator tests pass. NOTE-6 `c3_weights` is not waived and remains first in pod preflight. Clean record `x4-v4-cpu-synthetic-2026-07-21-31fc866.json`, SHA-256 `e7d59d071bcf3f4e4e21458ed6a2dffb749e39e9cd7482c76a849e8e75c49f78`: touched family `1/2/4/8/16`, ABBA unopened-block ratio **1.0038429423095299 <= 1.05**, persisted/recompute responses byte-identical, exact logical traffic, peak RSS **78,823,424 B**, device/file traffic zero as declared. Ligero/v3 remains read-only and is refused by record-producing modes. No GPT-2 G4 or physical-production G6 verdict. |
+| X4 Amendment 5 GPT-2 migration | **MIGRATION GREEN; G3 PASS; FULL G2/G4/G6 AND OVERALL X4 PENDING A100** (2026-07-21) | Golden 100+50 unchanged; production codec complete; validators re-baselined; historical rows immutable; exact byte gates | Clean record `x4-v4-gpt2-migration-2026-07-21-31fc866.json`, SHA-256 `d7c73d7f74cbc226c768330582cebcaed02939eb7940111715da2fc3d87d2d5e`: one schema-4 opening emits exactly **27,564 symbols and all 67,930 real sibling digests**, encoded SHA-256 `7326f1e47d87bf6858b7811a152a45530359b869bcd9abb30e34bcc4c9dd2a9b`; complete PCS **2,683,236 B <= 4,000,000 B PASS**, response **43,953,700 B <= 45,270,464 B PASS**, common headroom **1,316,764 B**. Golden output is bit-exact and every pinned historical artifact hash is unchanged. The **31,923,699,712-B** logical first-oracle floor is pinned but not materialized on CPU; the fresh A100 record must evaluate isolated wall and all physical traffic/RSS/VRAM before an overall verdict. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -236,6 +247,99 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-21 (X4 Amendment-5 v4 Rust, CPU records and GPT-2 migration
+  complete; A100 boundary reached)**: clean implementation source checkpoint
+  `31fc866631f008c339981e4de9b40862f7979302` implements the normative
+  schema-4 grammar before record generation, N4-separated leaf/internal
+  hashing, descriptor-ordered model-global same-domain cohorts, one
+  different-size chain, and a sealed-chain typestate that makes the exact-bit
+  query tape unavailable until every commitment is fixed.  The blind M9 path
+  carries `PendingAuxEval` into `BoundAuxEval` through the commitment's own
+  fold/query checks and Amendment-4's `equality OR LinkBad`; no clear target
+  evaluation, prover promise, second opening or transcript assertion was
+  added.  Streaming supports both retained and twice-recomputed
+  oracle/Merkle paths with exact G6 counters.  Ligero and v3 remain available
+  only for historical read verification and every v4 record-producing mode
+  rejects them.
+
+  The permanent Rust inventory covers all 17 bidirectionally registered
+  families, including query-before-seal, PendingAuxEval escape/leakage,
+  delta-shift and beta-collision.  The full workspace is green: `volta-pcs`
+  runs **69 passed**, `volta-proto` runs **109 passed / one ignored**, all
+  **55** scoped X4 tests pass, and `pytest -q tests/test_report.py` runs
+  **7 passed**.  The `p35` integration target runs **13 passed / two ignored**
+  production-size C3 smokes (`c3_embed` and `c3_weights`); the latter carries
+  the still-pending NOTE-6 requirement, is not waived and remains first in
+  the pod preflight.  PCG allocation and connection lifecycle are unchanged.
+
+  The append-only clean CPU record is
+  `benchmarks/results/x4-v4-cpu-synthetic-2026-07-21-31fc866.json`, SHA-256
+  `e7d59d071bcf3f4e4e21458ed6a2dffb749e39e9cd7482c76a849e8e75c49f78`.
+  Its `1/2/4/8/16` touched-block family has exact serialized/accounting
+  equality, its same-process `A/B/B/A` unopened-block ratio is
+  **1.0038429423095299 <= 1.05 PASS**, and retained versus recomputed proof
+  responses are byte-identical.  Peak CPU RSS is **78,823,424 B**; every
+  logical source/oracle/Merkle read/write is reported, while file traffic and
+  device traffic are explicitly zero for this in-memory synthetic run.
+  Therefore G5 is **PASS** and G6 is **PASS in the synthetic scope** only.
+
+  The append-only clean migration record is
+  `benchmarks/results/x4-v4-gpt2-migration-2026-07-21-31fc866.json`, SHA-256
+  `d7c73d7f74cbc226c768330582cebcaed02939eb7940111715da2fc3d87d2d5e`.
+  The production encoder/decoder materializes one complete schema-4 response
+  envelope with **27,564 symbols**, all **67,930 real sibling digests**, and
+  encoded SHA-256
+  `7326f1e47d87bf6858b7811a152a45530359b869bcd9abb30e34bcc4c9dd2a9b`.
+  The byte counter and serialized length both equal **2,683,236 B**, so the
+  **4,000,000-B PCS gate is G3 PASS** with **1,316,764 B** headroom.  Adding
+  the frozen **41,270,464-B** non-PCS component gives the measured exact
+  **43,953,700-B response <=45,270,464 B PASS**, with the same headroom.
+  Golden decode remains bit-exact for prompt 100 plus 50 generated tokens;
+  every pinned v3/preflight/Amendment-5 historical SHA is unchanged and no
+  historical row or profile was mutated.  Both new report validators accept
+  the records from repo-root or absolute paths.
+
+  This work surfaces no fifth accepting event, union member or new hybrid.
+  The required re-sum therefore has zero new terms and remains exactly
+  `3320*(9/16)^111 + 28,522,064,267,253/|E|`,
+  **80.25537016399041 bits**, above the **78.809294874-bit** floor.  G1 is
+  **PASS** from the frozen Lean discharge.  Migration/golden and synthetic
+  G2 checks pass, but the full-size authenticated GPT-2 opening was not
+  falsely simulated on the CPU VM: full-production G2 is pending.  G4 is
+  **NOT EVALUATED**; production physical G6 is **PARTIAL/PENDING** because
+  the **31,923,699,712-B** first oracle has not yet been materialized; overall
+  X4 is **NOT EVALUATED UNTIL THE A100 RECORDS**.
+
+  Before any pod measurement, the fresh profile is preregistered as
+  `runpod-a100-x4-v1`.  It inherits the official `runpod-a100-v1` A100-SXM4
+  80GB hardware/software envelope and uses `RAYON_NUM_THREADS=8`, a clean
+  tree, wall-only+counters with no CUDA-event timing, one warmup plus three
+  recorded candidates, and the unchanged Section-5.3 ceilings: isolated
+  commit/open/verify **15 s / 1.50 s / 0.25 s**, resident prefill/decode
+  **10 s / 4 s**, H2D **100 MB**, maximum synchronization **0.150 s**, and
+  flatness **1.5**.  It is bound to profile
+  `x4-zkdeepfold-ud-e29-v4`, design SHAs
+  `1383fa5d0a2eb9155f1ca76fe814238c04eaaa7aab965e10374b5f07d220bfb7` /
+  `c963831373783504e855c6c9b54a4d1bf425206ccb68992c242c94290e1cf544`,
+  implementation baseline `31fc866`, the two record hashes above, exact response
+  **43,953,700 B**, PCS **2,683,236 B**, `rate=1/8`, `s=111`, and the
+  complete `27,564/67,930` opening.  The artifact policy is to persist
+  coefficients and roots, rebuild and root-check queried model-global
+  cohorts, and report every physical artifact/host/H2D/D2H/RSS/VRAM byte and
+  wall; no hidden whole-model GPU oracle is allowed.  NOTE-6 runs first.
+  Any later pod-harness-only descendant must be clean and SHA-pinned in the
+  ledger before its first measurement; a protocol/codec/reference change
+  reopens preregistration.
+  Provisioning requires the A100 profile and at least **100 GB** of persistent
+  volume for weights, the approximately 32-GB oracle and scratch artifacts.
+
+  Named backlog, mandatory after X4: **R1c -- Kimi3-style adversarial review
+  of the new PCS code, against a frozen baseline and with a hostile mandate**.
+  Its scope includes the entire v3/v4 seam and Amendment-4 episode already
+  pinned above.  It remains honestly labeled AI adversarial review with no
+  independent-human assurance; after X4 this PCS is the only cryptographic
+  surface not yet inspected by hostile eyes.
 
 - **2026-07-21 (X4 Amendment-5 exact Lean-first checkpoint GREEN; schema-4
   v4 Rust gate opens)**: `lean/VoltaZk/X4FoldingPCSV4.lean` proves the exact

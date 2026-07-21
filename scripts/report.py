@@ -209,6 +209,8 @@ def _x4_v4_cpu_result_valid(row: dict[str, Any]) -> bool:
 
 def validate_x4_v4_cpu_result(path: Path) -> bool:
     try:
+        if not path.is_absolute():
+            path = REPO / path
         return _x4_v4_cpu_result_valid(load_json(path))
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
         return False
@@ -272,6 +274,8 @@ def _x4_v4_migration_result_valid(row: dict[str, Any]) -> bool:
 
 def validate_x4_v4_migration_result(path: Path) -> bool:
     try:
+        if not path.is_absolute():
+            path = REPO / path
         return _x4_v4_migration_result_valid(load_json(path))
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
         return False

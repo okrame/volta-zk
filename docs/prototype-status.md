@@ -151,6 +151,7 @@ gate verdict has landed yet; CPU, GPT-2 and pod ordering remain unchanged.
 | X4 Amendment 3 authenticated-output seam | **DESIGN/SOUNDNESS/LEAN STATEMENTS FROZEN; HARD STOP BEFORE PROOFS AND V3/M9 RUST** (2026-07-21) | Blind binding must be realized inside the opening; no clear target evaluation, promise, transcript assertion, new ideal axiom or uncounted resource | `x4-zkdeepfold-ud-e29-v3`: correction gives only `PendingAuxEval`; one blind `d<=30` batch proves `2*B_touch` atoms `Wext(z||0)+g(u)-h=0` and `g(u)-authS.x=0`, then the same committed fold/query opening alone yields `BoundAuxEval`. Seam correlations `B_touch+2d+1`, max **1,721**; link frame **1,029 B**, complete seam **107,319 B**; all-maximum X4 screen **98,001** full correlations. Remaining auxiliary fiber `|E|^(2^ell-1)` and max budget `131071>107648`. Exact error remains `3320*(9/16)^128 + 28,522,064,267,253/|E| = 8.3853234432654371e-26`, **83.30226403378921 bits**, margin **4.49296915978921 bits**. Design SHA-256 `07eb1f832367d84b70095e20addc29c136233a6940e32f56d58ac7251e9ca868`. No Lean/Rust/record/gate/pod work in this amendment. |
 | X4 Amendment 3 Lean-first discharge | **HARD STOP / UNPROVABLE AS FROZEN** (2026-07-21) | No weakening or hypothesis smuggling; a statement change requires Amendment 4 | The deterministic `authenticated_output_link_produces_bound_aux` conclusion omits exclusion of the explicitly counted `LinkBad` event; `bound_aux_has_verified_origin` inherits the same issue. Fixed residuals `R0=1,R1=-1` cancel at `beta=1`, so the combined link and truthful terminal can accept while `authS.x!=committedAuxEval`. A temporary exact-rational Lean theorem kernel-checks this countermodel. No repository Lean/Rust source changed; baseline audit remains **133/40** and the permanent delta-shift theorem remains. No record, gate verdict or pod work. |
 | X4 Amendment 4 statement conditioning | **LEAN GREEN; V3/M9 RUST AUTHORIZED** (2026-07-21) | Exact frozen statements prove; full build, zero-sorry/admit and enlarged derived audit green; no new axiom or hidden equality premise | Design SHA-256 `f80da5b943b986aa1d849f53b83780aa067d77e7cb9dcfd538dd7931f6ae1a98`. Build **3251 jobs**; audit **163 total / 70 X4** (the historical **133/40** plus 30 v3 targets), stdout SHA-256 `4706e705abc1a8df3eeb96df41388c357f2006671cf90116c9c200f29d36d267`; only `propext`, `Classical.choice`, `Quot.sound`. V3 source SHA-256 `5a3367af7750158ed14c3e469ed58b9c8d918ee272dcf48fe89a1832bdc85dde`. Both permanent negative theorems are audited. Frame bytes **1,029/107,319**, correlations **1,721/98,001**, total coefficient **28,522,064,267,253** and **83.30226403378921 bits** remain unchanged. No Rust/record/gate/pod result yet. |
+| X4 v3/M9 Rust implementation | **IMPLEMENTATION GREEN; CLEAN CPU RECORD NEXT** (2026-07-21) | Frozen schema-3 grammar and blind Pending-to-Bound seam; permanent named-event tamper suite; PCG/lifecycle and historical paths unchanged | Source checkpoint `c56acd7`. The commitment's weighted fold/query verification alone closes the blind dual-relation sumcheck; no prover-supplied evaluation enters `BoundAuxEval`. Exact seam counters are `B_touch+2*d+1`; max frame/correlation values and **83.30226403378921-bit** expression are unchanged. **32/32 X4 tests** and `cargo test --workspace` are green; delta-shift and beta-collision remain permanent artifacts. A tracked-dirty quick diagnostic gave G5/G6 PASS and ABBA **0.990891 <=1.05**, but is explicitly not a record or gate verdict. CPU run of record, GPT-2 migration and pod work remain pending. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -218,6 +219,57 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-21 (X4 v3/M9 Rust checkpoint GREEN; manifest inclusion
+  clarification I2)**: checkpoint `c56acd7` implements the frozen schema-3
+  frame grammar, strict rate-1/8 weighted UD fold/query opening, the blind
+  authenticated-output link, opaque `PendingAuxEval`/`BoundAuxEval`
+  typestate, one-opening `(model_root,epoch)` permit, response ZeroBatch,
+  G6 persist/recompute accounting and a CPU synthetic record harness.  The
+  commitment's own weighted query verification returns only the aggregated
+  terminal value; no individual `W`, `g`, `v` or prover-supplied `s` is a
+  proof field or a Bound constructor input.  The M9 link consumes exactly
+  `B_touch+2*d+1` full correlations including response ZeroBatch and keeps
+  the frozen 1,029/107,319-byte maxima and 83.30226403378921-bit expression.
+
+  The normative `0x04`/`0x05` grammar contains descriptor leaves and Merkle
+  nodes but no separate wire kind for a layer-root carrier.  The concrete
+  fail-closed interpretation is therefore one canonical ordered model
+  manifest over the verifier-known complete descriptor list; each leaf binds
+  its complete descriptor digest and ordered cohort roots, while namespace,
+  layer and cohort identity remain inside the descriptor and cohort trees.
+  `model_root` is that manifest root.  The prose's layer manifests are logical
+  namespace groupings, not an additional unencoded tree level.  Verification
+  now reconstructs depth/index from the complete ordered statement, requires
+  every touched descriptor leaf and a deduplicated exact ancestor set, and
+  rejects leaf/node/type/depth/index/root substitutions.  This closes an
+  inclusion-check gap in the earlier diagnostic code; it adds no frame,
+  field, transcript message, parameter, correlation, soundness term or byte
+  category and does not change the frozen design SHA.  R1c seam scope includes
+  this concrete model-root interpretation.
+
+  `cargo test -p volta-pcs x4::` is green at **32/32**, including public-h,
+  descriptor, M9 correction, round-domain/correction, terminal tag,
+  fold/query, auxiliary root, response ZeroBatch, whole-class sampled
+  delta-shift and beta-collision artifacts.  `cargo test --workspace` is
+  green, including the existing GPT-2 T=100/decode goldens and unchanged
+  PCG/lifecycle suites.  Clippy reports no new X4 warning; twelve warnings in
+  historical Ligero code remain outside this checkpoint.  Source SHA-256
+  values are `4e669c41eaa76f045f59a18febb23ef4d339b9211d7c9d21d6c243d522dbb219`
+  for `frame.rs`,
+  `018ab6813d67c196912809ad6d015d27e280a101bd401f58a1c7893cf5af0951`
+  for `folding.rs`,
+  `31fa133d626f47e4439e542d317da596c0000454de864e10eabd8e7002352559`
+  for `authenticated_output.rs`,
+  `5276e8e8ba25666e24ae2053d6a5b2ff50d46c62bf04efb5ed393a9e3d7c3d73`
+  for `artifacts.rs`, and
+  `c1bc895976d03fb855a3c15f72af2b90cc3c6a04c6db16f2a87133f193e2e395`
+  for `manifest.rs`.  A pre-checkpoint tracked-dirty quick run reported exact
+  formulas, synthetic G5/G6 PASS and same-process ABBA
+  `0.9908910332983634 <= 1.05`; it is diagnostic only.  The next step is a
+  clean append-only CPU synthetic record, followed by the frozen GPT-2
+  migration.  No X4 gate or pod verdict is claimed, and the production-size
+  `c3_weights` smoke remains deferred to the later pod preflight.
 
 - **2026-07-21 (X4 Amendments 3--4 exact Lean-first checkpoint GREEN; v3/M9
   Rust gate opens)**: the new module `lean/VoltaZk/X4FoldingPCSV3.lean`

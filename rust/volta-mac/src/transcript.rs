@@ -38,6 +38,11 @@ impl Transcript {
         self.challenges.next_fp2()
     }
 
+    /// Fresh exact-bit verifier challenge for a power-of-two query domain.
+    pub fn challenge_bits(&mut self, width: u8) -> u64 {
+        self.challenges.next_bits(width)
+    }
+
     pub fn bytes_for(&self, label: &str) -> u64 {
         self.bytes.get(label).copied().unwrap_or(0)
     }

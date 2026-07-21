@@ -1347,7 +1347,7 @@ impl PackedOpeningScheduleV4 {
     pub fn validate(&self) -> Result<(), FrameError> {
         if self.profile_digest != profile_digest_v4()
             || self.query_draws.len() != PRODUCTION_QUERY_COUNT_V4
-            || !(1..=32).contains(&self.draw_width)
+            || !(1..=33).contains(&self.draw_width)
             || self.initial_groups.is_empty()
             || self.fold_frames.is_empty()
             || self.fold_frames.len() > 30
@@ -1355,7 +1355,7 @@ impl PackedOpeningScheduleV4 {
             return Err(FrameError::Invalid("opening schedule geometry"));
         }
         let bound = 1u64.checked_shl(u32::from(self.draw_width)).ok_or(FrameError::Overflow)?;
-        if self.query_draws.iter().any(|draw| *draw >= bound || *draw > u64::from(u32::MAX)) {
+        if self.query_draws.iter().any(|draw| *draw >= bound) {
             return Err(FrameError::Invalid("opening schedule draw"));
         }
         if !self.initial_groups.windows(2).all(|pair| {

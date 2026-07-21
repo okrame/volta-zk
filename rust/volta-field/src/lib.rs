@@ -256,12 +256,29 @@ impl FpStream {
     pub fn next_fp2(&mut self) -> Fp2 {
         Fp2::new(self.next_fp(), self.next_fp())
     }
+
+    /// Uniform integer from exactly `width` fresh random bits.  Unlike field
+    /// reduction, this is suitable for power-of-two query domains.
+    #[inline]
+    pub fn next_bits(&mut self, width: u8) -> u64 {
+        assert!((1..=63).contains(&width), "exact-bit width must be in 1..=63");
+        let raw: u64 = self.rng.gen();
+        raw & ((1u64 << width) - 1)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use rand::rngs::StdRng;
+
+    #[test]
+    fn exact_bit_draws_stay_in_the_power_of_two_domain() {
+        let mut stream = FpStream::from_seed([0xA5; 32]);
+        let draws = (0..512).map(|_| stream.next_bits(33)).collect::<Vec<_>>();
+        assert!(draws.iter().all(|draw| *draw < (1u64 << 33)));
+        assert!(draws.iter().any(|draw| *draw >= (1u64 << 32)));
+    }
 
     fn ref_mul(a: u64, b: u64) -> u64 {
         ((a as u128 * b as u128) % (P as u128)) as u64

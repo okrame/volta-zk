@@ -8,6 +8,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use volta_field::{Fp, Fp2};
+use volta_mac::Transcript;
 
 use super::accounting::projected_query_indices;
 use super::frame::{Digest, FrameError};
@@ -160,7 +161,6 @@ pub struct GlobalVerifierGroupV4 {
     pub weights: Vec<Fp2>,
     pub target_point: Vec<Fp2>,
     pub activation_challenge: Fp2,
-    pub claimed_value: Fp2,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -206,7 +206,75 @@ pub struct GlobalChainDraftV4<'a> {
     global_descriptor_digest: Digest,
     common_point: Vec<Fp2>,
     groups: Vec<GlobalProverGroupV4<'a>>,
+    fixed_challenges: Option<GlobalFoldChallengesV4>,
+}
+
+trait FoldChallengeSourceV4 {
+    fn next_challenge(
+        &mut self,
+        round_index: usize,
+        line_zero: Fp2,
+        line_one: Fp2,
+    ) -> Result<Fp2, FoldingErrorV4>;
+
+    fn frame_sealed(&mut self, frame: &FoldCommitmentFrameV4) -> Result<(), FoldingErrorV4>;
+}
+
+struct FixedFoldChallengeSourceV4 {
     challenges: GlobalFoldChallengesV4,
+    cursor: usize,
+}
+
+impl FoldChallengeSourceV4 for FixedFoldChallengeSourceV4 {
+    fn next_challenge(
+        &mut self,
+        round_index: usize,
+        _line_zero: Fp2,
+        _line_one: Fp2,
+    ) -> Result<Fp2, FoldingErrorV4> {
+        if self.cursor != round_index {
+            return Err(FoldingErrorV4::InvalidGeometry("v4 fixed challenge order"));
+        }
+        let challenge = *self
+            .challenges
+            .folds
+            .get(self.cursor)
+            .ok_or(FoldingErrorV4::InvalidGeometry("v4 fixed challenge count"))?;
+        self.cursor += 1;
+        Ok(challenge)
+    }
+
+    fn frame_sealed(&mut self, _frame: &FoldCommitmentFrameV4) -> Result<(), FoldingErrorV4> {
+        Ok(())
+    }
+}
+
+struct InteractiveFoldChallengeSourceV4<'a> {
+    tx: &'a mut Transcript,
+}
+
+impl FoldChallengeSourceV4 for InteractiveFoldChallengeSourceV4<'_> {
+    fn next_challenge(
+        &mut self,
+        _round_index: usize,
+        _line_zero: Fp2,
+        _line_one: Fp2,
+    ) -> Result<Fp2, FoldingErrorV4> {
+        self.tx.append("x4_v4_global_fold_line", 32);
+        Ok(self.tx.challenge_fp2())
+    }
+
+    fn frame_sealed(&mut self, frame: &FoldCommitmentFrameV4) -> Result<(), FoldingErrorV4> {
+        let frame_bytes = super::frame_v4::FrameV4::FoldCommitment(frame.clone()).encode()?.len();
+        let remainder = frame_bytes
+            .checked_sub(32)
+            .ok_or(FoldingErrorV4::InvalidGeometry("v4 fold frame line width"))?;
+        self.tx.append(
+            "x4_v4_global_fold_post_challenge",
+            u64::try_from(remainder).map_err(|_| FoldingErrorV4::Overflow)?,
+        );
+        Ok(())
+    }
 }
 
 impl<'a> GlobalChainDraftV4<'a> {
@@ -219,17 +287,58 @@ impl<'a> GlobalChainDraftV4<'a> {
         groups: Vec<GlobalProverGroupV4<'a>>,
         challenges: GlobalFoldChallengesV4,
     ) -> Result<Self, FoldingErrorV4> {
+        if common_point.len() != challenges.folds.len() {
+            return Err(FoldingErrorV4::InvalidGeometry("v4 fixed fold challenges"));
+        }
+        let mut draft = Self::new_common(
+            model_root,
+            epoch,
+            global_cohort_id,
+            global_descriptor_digest,
+            common_point,
+            groups,
+        )?;
+        draft.fixed_challenges = Some(challenges);
+        Ok(draft)
+    }
+
+    /// Production constructor: fold challenges are unavailable until each
+    /// line message has been fixed in [`Self::seal_interactive`].
+    pub fn new_interactive(
+        model_root: Digest,
+        epoch: u64,
+        global_cohort_id: u32,
+        global_descriptor_digest: Digest,
+        common_point: Vec<Fp2>,
+        groups: Vec<GlobalProverGroupV4<'a>>,
+    ) -> Result<Self, FoldingErrorV4> {
+        Self::new_common(
+            model_root,
+            epoch,
+            global_cohort_id,
+            global_descriptor_digest,
+            common_point,
+            groups,
+        )
+    }
+
+    fn new_common(
+        model_root: Digest,
+        epoch: u64,
+        global_cohort_id: u32,
+        global_descriptor_digest: Digest,
+        common_point: Vec<Fp2>,
+        groups: Vec<GlobalProverGroupV4<'a>>,
+    ) -> Result<Self, FoldingErrorV4> {
         if global_descriptor_digest == [0; 32]
             || groups.is_empty()
             || common_point.is_empty()
-            || common_point.len() != challenges.folds.len()
-            || common_point.len() > 29
+            || common_point.len() > 30
         {
             return Err(FoldingErrorV4::InvalidGeometry("v4 global chain"));
         }
         validate_prover_groups(&groups, &common_point)?;
-        let expected_descriptor = global_descriptor_from_prover_groups(&groups);
-        if global_descriptor_digest != expected_descriptor {
+        if global_descriptor_digest != global_descriptor_from_prover_groups(&groups) {
             return Err(FoldingErrorV4::InvalidGeometry("v4 global descriptor binding"));
         }
         Ok(Self {
@@ -239,7 +348,7 @@ impl<'a> GlobalChainDraftV4<'a> {
             global_descriptor_digest,
             common_point,
             groups,
-            challenges,
+            fixed_challenges: None,
         })
     }
 
@@ -250,6 +359,32 @@ impl<'a> GlobalChainDraftV4<'a> {
     }
 
     pub fn seal(self) -> Result<SealedGlobalChainV4<'a>, FoldingErrorV4> {
+        let challenges = self
+            .fixed_challenges
+            .clone()
+            .ok_or(FoldingErrorV4::InvalidGeometry("v4 interactive seal required"))?;
+        let mut source = FixedFoldChallengeSourceV4 { challenges, cursor: 0 };
+        self.seal_with_source(&mut source)
+    }
+
+    /// Fix each line message, receive its fresh verifier challenge, and only
+    /// then build and fix the resulting fold root.  The complete chain is
+    /// sealed before this method returns.
+    pub fn seal_interactive(
+        self,
+        tx: &mut Transcript,
+    ) -> Result<SealedGlobalChainV4<'a>, FoldingErrorV4> {
+        if self.fixed_challenges.is_some() {
+            return Err(FoldingErrorV4::InvalidGeometry("v4 fixed seal is not interactive"));
+        }
+        let mut source = InteractiveFoldChallengeSourceV4 { tx };
+        self.seal_with_source(&mut source)
+    }
+
+    fn seal_with_source(
+        self,
+        source: &mut impl FoldChallengeSourceV4,
+    ) -> Result<SealedGlobalChainV4<'a>, FoldingErrorV4> {
         let max_domain_log2 = self.groups[0].cohort.commitment.config.outer_depth();
         if usize::from(max_domain_log2 - 3) != self.common_point.len() {
             return Err(FoldingErrorV4::InvalidGeometry("v4 maximum domain/common point"));
@@ -292,7 +427,6 @@ impl<'a> GlobalChainDraftV4<'a> {
                 weights: group.weights.clone(),
                 target_point: group.target_point.clone(),
                 activation_challenge: group.activation_challenge,
-                claimed_value: value.claimed_value,
             });
             combined.push(value);
         }
@@ -319,6 +453,7 @@ impl<'a> GlobalChainDraftV4<'a> {
 
         let mut fold_frames = Vec::with_capacity(self.common_point.len());
         let mut round_trees = Vec::with_capacity(self.common_point.len());
+        let mut fold_challenges = Vec::with_capacity(self.common_point.len());
         let mut input_len = max_outer_len;
         for round_index in 0..self.common_point.len() {
             let (line_zero, line_one) =
@@ -327,11 +462,12 @@ impl<'a> GlobalChainDraftV4<'a> {
             {
                 return Err(FoldingErrorV4::InvalidGeometry("v4 claim-line input"));
             }
-            current_claim = interpolate_v4(line_zero, line_one, self.challenges.folds[round_index]);
-            current_coefficients =
-                fold_coefficients(&current_coefficients, self.challenges.folds[round_index])
-                    .map_err(|_| FoldingErrorV4::InvalidGeometry("v4 coefficient fold"))?;
-            current_codeword = fold_codeword(&current_codeword, self.challenges.folds[round_index])
+            let fold_challenge = source.next_challenge(round_index, line_zero, line_one)?;
+            fold_challenges.push(fold_challenge);
+            current_claim = interpolate_v4(line_zero, line_one, fold_challenge);
+            current_coefficients = fold_coefficients(&current_coefficients, fold_challenge)
+                .map_err(|_| FoldingErrorV4::InvalidGeometry("v4 coefficient fold"))?;
+            current_codeword = fold_codeword(&current_codeword, fold_challenge)
                 .map_err(|_| FoldingErrorV4::InvalidGeometry("v4 codeword fold"))?;
             let output_len = input_len / 2;
             activate_groups(
@@ -371,7 +507,7 @@ impl<'a> GlobalChainDraftV4<'a> {
                 }
                 messages.push(current_claim);
             }
-            fold_frames.push(FoldCommitmentFrameV4 {
+            let frame = FoldCommitmentFrameV4 {
                 cohort_id: self.global_cohort_id,
                 oracle_kind: OracleKindV4::GlobalFoldAggregate,
                 fold_round,
@@ -379,7 +515,9 @@ impl<'a> GlobalChainDraftV4<'a> {
                 output_log2: output_len.ilog2() as u8,
                 root_digest: tree.root(),
                 ordered_message_symbols: messages,
-            });
+            };
+            source.frame_sealed(&frame)?;
+            fold_frames.push(frame);
             round_trees.push(tree);
             input_len = output_len;
         }
@@ -402,7 +540,7 @@ impl<'a> GlobalChainDraftV4<'a> {
             common_point: self.common_point,
             groups: self.groups,
             verifier_groups,
-            challenges: self.challenges,
+            challenges: GlobalFoldChallengesV4 { folds: fold_challenges },
             fold_frames,
             round_trees,
             metrics,
@@ -482,6 +620,86 @@ impl SealedGlobalChainV4<'_> {
             self.metrics,
         ))
     }
+
+    /// Production query transition.  Exact-bit draws are unavailable until
+    /// the complete fold chain has been sealed and charged above.
+    pub fn issue_queries_interactive(
+        self,
+        tx: &mut Transcript,
+    ) -> Result<
+        (GlobalFoldingProofV4, Vec<GlobalVerifierGroupV4>, GlobalOpenMetricsV4, Vec<u64>),
+        FoldingErrorV4,
+    > {
+        let draw_width = self.groups[0].cohort.commitment.config.outer_depth();
+        let draws = (0..PRODUCTION_QUERY_COUNT_V4)
+            .map(|_| tx.challenge_bits(draw_width))
+            .collect::<Vec<_>>();
+        let (proof, groups, metrics) = self.issue_queries(draws.clone())?;
+        tx.append(
+            "x4_v4_packed_opening",
+            u64::try_from(
+                super::frame_v4::FrameV4::PackedBatchOpening(proof.packed_opening.clone())
+                    .encode()?
+                    .len(),
+            )
+            .map_err(|_| FoldingErrorV4::Overflow)?,
+        );
+        Ok((proof, groups, metrics, draws))
+    }
+}
+
+/// Verifier-side replay of the production interaction.  Line messages are
+/// fixed before fold challenges; every fold root is fixed before exact-bit
+/// queries; the packed answer is charged only after those draws.
+pub fn verify_global_folding_interactive_v4(
+    model_root: Digest,
+    epoch: u64,
+    common_point: &[Fp2],
+    groups: &[GlobalVerifierGroupV4],
+    proof: &GlobalFoldingProofV4,
+    tx: &mut Transcript,
+) -> Result<Fp2, FoldingErrorV4> {
+    if proof.fold_frames.is_empty() {
+        return Err(FoldingErrorV4::InvalidProof("v4 empty interactive fold chain"));
+    }
+    let mut folds = Vec::with_capacity(proof.fold_frames.len());
+    for frame in &proof.fold_frames {
+        frame.validate()?;
+        tx.append("x4_v4_global_fold_line", 32);
+        folds.push(tx.challenge_fp2());
+        let frame_bytes = super::frame_v4::FrameV4::FoldCommitment(frame.clone()).encode()?.len();
+        tx.append(
+            "x4_v4_global_fold_post_challenge",
+            u64::try_from(
+                frame_bytes
+                    .checked_sub(32)
+                    .ok_or(FoldingErrorV4::InvalidProof("v4 fold frame line width"))?,
+            )
+            .map_err(|_| FoldingErrorV4::Overflow)?,
+        );
+    }
+    let draw_width = proof.fold_frames[0].input_log2;
+    let draws =
+        (0..PRODUCTION_QUERY_COUNT_V4).map(|_| tx.challenge_bits(draw_width)).collect::<Vec<_>>();
+    let accepted = verify_global_folding_v4(
+        model_root,
+        epoch,
+        common_point,
+        groups,
+        &GlobalFoldChallengesV4 { folds },
+        &draws,
+        proof,
+    )?;
+    tx.append(
+        "x4_v4_packed_opening",
+        u64::try_from(
+            super::frame_v4::FrameV4::PackedBatchOpening(proof.packed_opening.clone())
+                .encode()?
+                .len(),
+        )
+        .map_err(|_| FoldingErrorV4::Overflow)?,
+    );
+    Ok(accepted)
 }
 
 pub fn verify_global_folding_v4(
@@ -492,7 +710,7 @@ pub fn verify_global_folding_v4(
     challenges: &GlobalFoldChallengesV4,
     query_draws: &[u64],
     proof: &GlobalFoldingProofV4,
-) -> Result<Vec<Fp2>, FoldingErrorV4> {
+) -> Result<Fp2, FoldingErrorV4> {
     validate_verifier_groups(groups, common_point)?;
     if challenges.folds.len() != common_point.len()
         || proof.fold_frames.len() != common_point.len()
@@ -553,7 +771,6 @@ pub fn verify_global_folding_v4(
         verify_fold_round_packed_opening_v4(frame.root_digest, &config, query_draws, opening)?;
     }
 
-    verify_claim_chain(groups, common_point, challenges, &proof.fold_frames)?;
     verify_query_chain(groups, challenges, query_draws, proof)?;
     let final_scalar = proof
         .fold_frames
@@ -572,7 +789,50 @@ pub fn verify_global_folding_v4(
     {
         return Err(FoldingErrorV4::InvalidProof("v4 final constant codeword"));
     }
-    Ok(groups.iter().map(|group| group.claimed_value).collect())
+    opened_global_value_from_lines_v4(common_point, challenges, &proof.fold_frames)
+}
+
+/// Recover the response-global value claimed at the sumcheck point.  Each
+/// difference between a post-challenge line value and the next pre-fold line
+/// is exactly the claim activated at that smaller domain.  The fold/query
+/// proof, rather than a prover-supplied group value, binds this sum.
+pub fn opened_global_value_from_lines_v4(
+    common_point: &[Fp2],
+    challenges: &GlobalFoldChallengesV4,
+    frames: &[FoldCommitmentFrameV4],
+) -> Result<Fp2, FoldingErrorV4> {
+    if frames.is_empty()
+        || frames.len() != common_point.len()
+        || frames.len() != challenges.folds.len()
+    {
+        return Err(FoldingErrorV4::InvalidProof("v4 global opened-value schedule"));
+    }
+    let mut opened = interpolate_v4(
+        frames[0].ordered_message_symbols[0],
+        frames[0].ordered_message_symbols[1],
+        common_point[0],
+    );
+    for (round_index, frame) in frames.iter().enumerate() {
+        let folded = interpolate_v4(
+            frame.ordered_message_symbols[0],
+            frame.ordered_message_symbols[1],
+            challenges.folds[round_index],
+        );
+        let after_activation = if round_index + 1 < frames.len() {
+            interpolate_v4(
+                frames[round_index + 1].ordered_message_symbols[0],
+                frames[round_index + 1].ordered_message_symbols[1],
+                common_point[round_index + 1],
+            )
+        } else {
+            *frame
+                .ordered_message_symbols
+                .get(2)
+                .ok_or(FoldingErrorV4::InvalidProof("v4 final opened-value scalar"))?
+        };
+        opened += after_activation - folded;
+    }
+    Ok(opened)
 }
 
 fn packed_schedule_from_verifier(
@@ -618,7 +878,6 @@ fn validate_prover_groups(
             weights: group.weights.clone(),
             target_point: group.target_point.clone(),
             activation_challenge: group.activation_challenge,
-            claimed_value: Fp2::ZERO,
         })
         .collect::<Vec<_>>();
     validate_verifier_groups(&verifier, common_point)
@@ -725,37 +984,6 @@ fn activate_groups(
             *output += group.activation_challenge * *value;
         }
         *current_claim += group.activation_challenge * initial.claimed_value;
-    }
-    Ok(())
-}
-
-fn verify_claim_chain(
-    groups: &[GlobalVerifierGroupV4],
-    common_point: &[Fp2],
-    challenges: &GlobalFoldChallengesV4,
-    frames: &[FoldCommitmentFrameV4],
-) -> Result<(), FoldingErrorV4> {
-    let max_len = groups[0].commitment.config.outer_len;
-    let mut current_claim = groups
-        .iter()
-        .filter(|group| group.commitment.config.outer_len == max_len)
-        .fold(Fp2::ZERO, |sum, group| sum + group.activation_challenge * group.claimed_value);
-    for (round_index, frame) in frames.iter().enumerate() {
-        let line_zero = frame.ordered_message_symbols[0];
-        let line_one = frame.ordered_message_symbols[1];
-        if interpolate_v4(line_zero, line_one, common_point[round_index]) != current_claim {
-            return Err(FoldingErrorV4::InvalidProof("v4 claim-line relation"));
-        }
-        current_claim = interpolate_v4(line_zero, line_one, challenges.folds[round_index]);
-        let output_len = 1usize << frame.output_log2;
-        for group in groups {
-            if group.commitment.config.outer_len == output_len {
-                current_claim += group.activation_challenge * group.claimed_value;
-            }
-        }
-    }
-    if frames.last().unwrap().ordered_message_symbols[2] != current_claim {
-        return Err(FoldingErrorV4::InvalidProof("v4 final claim scalar"));
     }
     Ok(())
 }
@@ -885,19 +1113,33 @@ fn fold_opened_symbol_at(
 }
 
 fn global_descriptor_from_groups(groups: &[GlobalVerifierGroupV4]) -> Digest {
-    let mut hasher = blake3::Hasher::new_derive_key("volta-zk/x4/global-fold-descriptor/v4");
-    for group in groups {
-        hasher.update(&group.commitment.config.identity.cohort_id.to_le_bytes());
-        hasher.update(&group.commitment.root);
-    }
-    *hasher.finalize().as_bytes()
+    global_fold_descriptor_digest_v4(
+        &groups
+            .iter()
+            .map(|group| (group.commitment.config.identity.cohort_id, group.commitment.root))
+            .collect::<Vec<_>>(),
+    )
 }
 
 fn global_descriptor_from_prover_groups(groups: &[GlobalProverGroupV4<'_>]) -> Digest {
+    global_fold_descriptor_digest_v4(
+        &groups
+            .iter()
+            .map(|group| {
+                (group.cohort.commitment.config.identity.cohort_id, group.cohort.commitment.root)
+            })
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// Hash the already-canonical ordered `(cohort_id, root)` list that defines
+/// the response-global aggregate slot.  Ordering is validated by the chain
+/// constructors; the digest never accepts prover metadata from the opening.
+pub fn global_fold_descriptor_digest_v4(ordered_commitments: &[(u32, Digest)]) -> Digest {
     let mut hasher = blake3::Hasher::new_derive_key("volta-zk/x4/global-fold-descriptor/v4");
-    for group in groups {
-        hasher.update(&group.cohort.commitment.config.identity.cohort_id.to_le_bytes());
-        hasher.update(&group.cohort.commitment.root);
+    for (cohort_id, root) in ordered_commitments {
+        hasher.update(&cohort_id.to_le_bytes());
+        hasher.update(root);
     }
     *hasher.finalize().as_bytes()
 }
@@ -1061,7 +1303,7 @@ mod tests {
     fn verify(
         groups: &[GlobalVerifierGroupV4],
         proof: &GlobalFoldingProofV4,
-    ) -> Result<Vec<Fp2>, FoldingErrorV4> {
+    ) -> Result<Fp2, FoldingErrorV4> {
         verify_global_folding_v4(
             [9; 32],
             77,
@@ -1078,10 +1320,11 @@ mod tests {
         let large = committed(10, OracleKindV4::WeightExtension, 128, 4, Some(1));
         let small = committed(20, OracleKindV4::Auxiliary, 32, 2, None);
         let (proof, verifier_groups, metrics) = prove(&large, &small);
-        let claims = verify(&verifier_groups, &proof).unwrap();
+        let opened = verify(&verifier_groups, &proof).unwrap();
         assert_eq!(
-            claims,
-            verifier_groups.iter().map(|group| group.claimed_value).collect::<Vec<_>>()
+            opened,
+            opened_global_value_from_lines_v4(&common_point(), &challenges(), &proof.fold_frames)
+                .unwrap()
         );
         assert_eq!(proof.fold_frames.len(), 4);
         assert_eq!(proof.packed_opening.initial_groups.len(), 2);

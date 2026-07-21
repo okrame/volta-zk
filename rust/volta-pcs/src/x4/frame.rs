@@ -1,4 +1,4 @@
-//! Canonical wire grammar for `x4-zkdeepfold-ud-e29-v2`.
+//! Canonical wire grammar for `x4-zkdeepfold-ud-e29-v3`.
 //!
 //! The byte layout in this file is normative.  It deliberately avoids serde:
 //! every width, order, tag and rejection rule is explicit and stable.
@@ -9,18 +9,19 @@ use volta_field::{Fp, Fp2, P};
 
 pub type Digest = [u8; 32];
 
-pub const MAGIC: [u8; 8] = *b"VOLTAX42";
-pub const SCHEMA: u16 = 2;
+pub const MAGIC: [u8; 8] = *b"VOLTAX43";
+pub const SCHEMA: u16 = 3;
 pub const HEADER_LEN: usize = 16;
-pub const PROFILE_NAME: &[u8] = b"x4-zkdeepfold-ud-e29-v2";
+pub const PROFILE_NAME: &[u8] = b"x4-zkdeepfold-ud-e29-v3";
 
-pub const DESCRIPTOR_HASH_CONTEXT: &str = "volta-zk/x4/descriptor/v2";
-pub const PCS_LEAF_HASH_CONTEXT: &str = "volta-zk/x4/pcs-leaf/v2";
-pub const PCS_NODE_HASH_CONTEXT: &str = "volta-zk/x4/pcs-node/v2";
-pub const MANIFEST_LEAF_HASH_CONTEXT: &str = "volta-zk/x4/manifest-leaf/v2";
-pub const MANIFEST_NODE_HASH_CONTEXT: &str = "volta-zk/x4/manifest-node/v2";
-pub const MANIFEST_ID_HASH_CONTEXT: &str = "volta-zk/x4/manifest-id/v2";
-pub const TRANSFER_TEMPLATE_HASH_CONTEXT: &str = "volta-zk/x4/transfer-template/v2";
+pub const DESCRIPTOR_HASH_CONTEXT: &str = "volta-zk/x4/descriptor/v3";
+pub const PCS_LEAF_HASH_CONTEXT: &str = "volta-zk/x4/pcs-leaf/v3";
+pub const PCS_NODE_HASH_CONTEXT: &str = "volta-zk/x4/pcs-node/v3";
+pub const MANIFEST_LEAF_HASH_CONTEXT: &str = "volta-zk/x4/manifest-leaf/v3";
+pub const MANIFEST_NODE_HASH_CONTEXT: &str = "volta-zk/x4/manifest-node/v3";
+pub const MANIFEST_ID_HASH_CONTEXT: &str = "volta-zk/x4/manifest-id/v3";
+pub const TRANSFER_TEMPLATE_HASH_CONTEXT: &str = "volta-zk/x4/transfer-template/v3";
+pub const AUTH_OUTPUT_LINK_SCHEDULE_HASH_CONTEXT: &str = "volta-zk/x4/auth-output-link-schedule/v3";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FrameError {
@@ -53,6 +54,7 @@ pub enum FrameKind {
     FoldCommitment = 0x09,
     M9Transfer = 0x0a,
     ResponseZeroBatch = 0x0b,
+    AuthenticatedOutputLink = 0x0c,
 }
 
 impl FrameKind {
@@ -69,6 +71,7 @@ impl FrameKind {
             0x09 => Ok(Self::FoldCommitment),
             0x0a => Ok(Self::M9Transfer),
             0x0b => Ok(Self::ResponseZeroBatch),
+            0x0c => Ok(Self::AuthenticatedOutputLink),
             other => Err(FrameError::UnknownKind(other)),
         }
     }
@@ -238,6 +241,15 @@ pub struct ResponseZeroBatchFrame {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AuthenticatedOutputLinkFrame {
+    pub relation_count: u16,
+    pub round_count: u8,
+    pub link_schedule_digest: Digest,
+    pub ordered_round_correction_symbols: Vec<Fp2>,
+    pub terminal_opened_tag_symbol: Fp2,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ManifestFrame {
     Leaf(ManifestLeafFrame),
     Node(ManifestNodeFrame),
@@ -252,9 +264,10 @@ pub struct ResponseEnvelopeFrame {
     pub manifest_frames: Vec<ManifestFrame>,
     pub claim_frames: Vec<ReducedClaimFrame>,
     pub ordered_h_symbols: Vec<Fp2>,
+    pub m9_frames: Vec<M9TransferFrame>,
+    pub authenticated_output_link_frame: AuthenticatedOutputLinkFrame,
     pub fold_frames: Vec<FoldCommitmentFrame>,
     pub query_frames: Vec<CohortMultiproofFrame>,
-    pub m9_frames: Vec<M9TransferFrame>,
     pub zero_batch_frame: ResponseZeroBatchFrame,
 }
 
@@ -271,6 +284,7 @@ pub enum Frame {
     FoldCommitment(FoldCommitmentFrame),
     M9Transfer(M9TransferFrame),
     ResponseZeroBatch(ResponseZeroBatchFrame),
+    AuthenticatedOutputLink(AuthenticatedOutputLinkFrame),
 }
 
 impl Frame {
@@ -287,6 +301,7 @@ impl Frame {
             Self::FoldCommitment(_) => FrameKind::FoldCommitment,
             Self::M9Transfer(_) => FrameKind::M9Transfer,
             Self::ResponseZeroBatch(_) => FrameKind::ResponseZeroBatch,
+            Self::AuthenticatedOutputLink(_) => FrameKind::AuthenticatedOutputLink,
         }
     }
 
@@ -310,6 +325,7 @@ impl Frame {
             Self::FoldCommitment(frame) => frame.validate(),
             Self::M9Transfer(frame) => frame.validate(),
             Self::ResponseZeroBatch(frame) => frame.validate(),
+            Self::AuthenticatedOutputLink(frame) => frame.validate(),
         }
     }
 
@@ -326,6 +342,7 @@ impl Frame {
             Self::FoldCommitment(frame) => frame.encode_body(out),
             Self::M9Transfer(frame) => frame.encode_body(out),
             Self::ResponseZeroBatch(frame) => frame.encode_body(out),
+            Self::AuthenticatedOutputLink(frame) => frame.encode_body(out),
         }
     }
 }
@@ -384,6 +401,58 @@ pub fn transfer_template_digest(domain_ids: &[u64]) -> Result<Digest, FrameError
     Ok(typed_hash(TRANSFER_TEMPLATE_HASH_CONTEXT, &input))
 }
 
+/// Digest the exact v3 prefix fixed before the authenticated-output batching
+/// challenge. Correlation domain ids are reconstructed by both roles and are
+/// deliberately not serialized as prover-selected metadata.
+pub fn authenticated_output_link_schedule_digest(
+    epoch: u64,
+    claim_frames: &[ReducedClaimFrame],
+    descriptor_digests: &[Digest],
+    ordered_h_symbols: &[Fp2],
+    m9_frames: &[M9TransferFrame],
+    round_count: u8,
+    round_correlation_domain_ids: &[u64],
+) -> Result<Digest, FrameError> {
+    if descriptor_digests.len() != ordered_h_symbols.len()
+        || descriptor_digests.len() != m9_frames.len()
+        || descriptor_digests.len() > usize::from(u16::MAX)
+        || claim_frames.len() > u32::MAX as usize
+        || round_count > 30
+        || round_correlation_domain_ids.len() != 2 * usize::from(round_count)
+    {
+        return Err(FrameError::Invalid("link schedule geometry"));
+    }
+    require_strictly_increasing(round_correlation_domain_ids, "link round correlation domain ids")?;
+    for (descriptor, m9) in descriptor_digests.iter().zip(m9_frames) {
+        if descriptor != &m9.descriptor_digest {
+            return Err(FrameError::Invalid("link schedule M9 descriptor order"));
+        }
+    }
+
+    let mut input = Writer::default();
+    input.u64(epoch);
+    input.u32(u32::try_from(claim_frames.len()).map_err(|_| FrameError::Overflow)?);
+    for claim in claim_frames {
+        input.nested(Frame::ReducedClaim(claim.clone()))?;
+    }
+    input.u16(u16::try_from(descriptor_digests.len()).map_err(|_| FrameError::Overflow)?);
+    for descriptor in descriptor_digests {
+        input.digest(descriptor);
+    }
+    input.u16(u16::try_from(ordered_h_symbols.len()).map_err(|_| FrameError::Overflow)?);
+    for symbol in ordered_h_symbols {
+        input.symbol(*symbol);
+    }
+    for m9 in m9_frames {
+        input.nested(Frame::M9Transfer(m9.clone()))?;
+    }
+    input.u8(round_count);
+    for domain in round_correlation_domain_ids {
+        input.u64(*domain);
+    }
+    Ok(typed_hash(AUTH_OUTPUT_LINK_SCHEDULE_HASH_CONTEXT, &input.finish()))
+}
+
 pub fn decode(bytes: &[u8]) -> Result<Frame, FrameError> {
     if bytes.len() < HEADER_LEN {
         return Err(FrameError::UnexpectedEof);
@@ -432,6 +501,9 @@ fn decode_body(kind: FrameKind, input: &mut Reader<'_>) -> Result<Frame, FrameEr
         FrameKind::M9Transfer => Frame::M9Transfer(M9TransferFrame::decode_body(input)?),
         FrameKind::ResponseZeroBatch => {
             Frame::ResponseZeroBatch(ResponseZeroBatchFrame::decode_body(input)?)
+        }
+        FrameKind::AuthenticatedOutputLink => {
+            Frame::AuthenticatedOutputLink(AuthenticatedOutputLinkFrame::decode_body(input)?)
         }
     })
 }
@@ -1186,6 +1258,60 @@ impl M9TransferFrame {
     }
 }
 
+impl AuthenticatedOutputLinkFrame {
+    pub fn validate(&self) -> Result<(), FrameError> {
+        if self.relation_count == 0
+            || self.relation_count > 3320
+            || !self.relation_count.is_multiple_of(2)
+        {
+            return Err(FrameError::Invalid("authenticated-output relation count"));
+        }
+        if self.round_count == 0 || self.round_count > 30 {
+            return Err(FrameError::Invalid("authenticated-output round count"));
+        }
+        if self.ordered_round_correction_symbols.len() != 2 * usize::from(self.round_count) {
+            return Err(FrameError::Invalid("authenticated-output correction count"));
+        }
+        u16::try_from(self.ordered_round_correction_symbols.len())
+            .map_err(|_| FrameError::Overflow)?;
+        Ok(())
+    }
+
+    fn encode_body(&self, out: &mut Writer) -> Result<(), FrameError> {
+        out.u16(self.relation_count);
+        out.u8(self.round_count);
+        out.digest(&self.link_schedule_digest);
+        out.u16(
+            u16::try_from(self.ordered_round_correction_symbols.len())
+                .map_err(|_| FrameError::Overflow)?,
+        );
+        for correction in &self.ordered_round_correction_symbols {
+            out.symbol(*correction);
+        }
+        out.symbol(self.terminal_opened_tag_symbol);
+        Ok(())
+    }
+
+    fn decode_body(input: &mut Reader<'_>) -> Result<Self, FrameError> {
+        let relation_count = input.u16()?;
+        let round_count = input.u8()?;
+        let link_schedule_digest = input.digest()?;
+        let correction_count = usize::from(input.u16()?);
+        input.count_fits(correction_count, 16)?;
+        let mut ordered_round_correction_symbols = Vec::with_capacity(correction_count);
+        for _ in 0..correction_count {
+            ordered_round_correction_symbols.push(input.symbol()?);
+        }
+        Ok(Self {
+            relation_count,
+            round_count,
+            link_schedule_digest,
+            ordered_round_correction_symbols,
+            terminal_opened_tag_symbol: input.symbol()?,
+        })
+    }
+}
+
 impl ResponseZeroBatchFrame {
     pub fn validate(&self) -> Result<(), FrameError> {
         if self.claim_count > 1660 {
@@ -1249,6 +1375,8 @@ impl ResponseEnvelopeFrame {
             || self.ordered_h_symbols.len() != self.m9_frames.len()
             || self.descriptor_digests.len() != self.m9_frames.len()
             || usize::from(self.zero_batch_frame.claim_count) != self.m9_frames.len()
+            || usize::from(self.authenticated_output_link_frame.relation_count)
+                != 2 * self.m9_frames.len()
         {
             return Err(FrameError::Invalid("response masked schedule"));
         }
@@ -1275,7 +1403,50 @@ impl ResponseEnvelopeFrame {
         for frame in &self.m9_frames {
             frame.validate()?;
         }
+        self.authenticated_output_link_frame.validate()?;
         self.zero_batch_frame.validate()?;
+        Ok(())
+    }
+
+    pub fn validate_link_schedule(
+        &self,
+        round_correlation_domain_ids: &[u64],
+    ) -> Result<(), FrameError> {
+        self.validate()?;
+        let expected = authenticated_output_link_schedule_digest(
+            self.epoch,
+            &self.claim_frames,
+            &self.descriptor_digests,
+            &self.ordered_h_symbols,
+            &self.m9_frames,
+            self.authenticated_output_link_frame.round_count,
+            round_correlation_domain_ids,
+        )?;
+        if expected != self.authenticated_output_link_frame.link_schedule_digest {
+            return Err(FrameError::Invalid("authenticated-output link schedule digest"));
+        }
+        Ok(())
+    }
+
+    /// Validate the packed replay against the verifier-reconstructed public
+    /// statement before replaying any interactive challenge.  In particular,
+    /// reduced claims are not prover-selected envelope metadata.
+    pub fn validate_statement(
+        &self,
+        expected_model_root: Digest,
+        expected_epoch: u64,
+        expected_descriptor_digests: &[Digest],
+        expected_claim_frames: &[ReducedClaimFrame],
+        round_correlation_domain_ids: &[u64],
+    ) -> Result<(), FrameError> {
+        self.validate_link_schedule(round_correlation_domain_ids)?;
+        if self.model_root != expected_model_root
+            || self.epoch != expected_epoch
+            || self.descriptor_digests != expected_descriptor_digests
+            || self.claim_frames != expected_claim_frames
+        {
+            return Err(FrameError::Invalid("response public statement"));
+        }
         Ok(())
     }
 
@@ -1299,6 +1470,11 @@ impl ResponseEnvelopeFrame {
         for symbol in &self.ordered_h_symbols {
             out.symbol(*symbol);
         }
+        out.u16(u16::try_from(self.m9_frames.len()).map_err(|_| FrameError::Overflow)?);
+        for frame in &self.m9_frames {
+            out.nested(Frame::M9Transfer(frame.clone()))?;
+        }
+        out.nested(Frame::AuthenticatedOutputLink(self.authenticated_output_link_frame.clone()))?;
         out.u32(u32::try_from(self.fold_frames.len()).map_err(|_| FrameError::Overflow)?);
         for frame in &self.fold_frames {
             out.nested(Frame::FoldCommitment(frame.clone()))?;
@@ -1306,10 +1482,6 @@ impl ResponseEnvelopeFrame {
         out.u32(u32::try_from(self.query_frames.len()).map_err(|_| FrameError::Overflow)?);
         for frame in &self.query_frames {
             out.nested(Frame::CohortMultiproof(frame.clone()))?;
-        }
-        out.u16(u16::try_from(self.m9_frames.len()).map_err(|_| FrameError::Overflow)?);
-        for frame in &self.m9_frames {
-            out.nested(Frame::M9Transfer(frame.clone()))?;
         }
         out.nested(Frame::ResponseZeroBatch(self.zero_batch_frame.clone()))?;
         Ok(())
@@ -1364,6 +1536,30 @@ impl ResponseEnvelopeFrame {
             ordered_h_symbols.push(input.symbol()?);
         }
 
+        let m9_count = usize::from(input.u16()?);
+        input.count_fits(m9_count, HEADER_LEN)?;
+        let mut m9_frames = Vec::with_capacity(m9_count);
+        for _ in 0..m9_count {
+            match input.nested()? {
+                Frame::M9Transfer(frame) => m9_frames.push(frame),
+                other => {
+                    return Err(FrameError::WrongNestedKind {
+                        field: "M9 frame",
+                        kind: other.kind() as u8,
+                    });
+                }
+            }
+        }
+        let authenticated_output_link_frame = match input.nested()? {
+            Frame::AuthenticatedOutputLink(frame) => frame,
+            other => {
+                return Err(FrameError::WrongNestedKind {
+                    field: "authenticated-output link frame",
+                    kind: other.kind() as u8,
+                });
+            }
+        };
+
         let fold_count = usize::try_from(input.u32()?).map_err(|_| FrameError::Overflow)?;
         input.count_fits(fold_count, HEADER_LEN)?;
         let mut fold_frames = Vec::with_capacity(fold_count);
@@ -1394,20 +1590,6 @@ impl ResponseEnvelopeFrame {
             }
         }
 
-        let m9_count = usize::from(input.u16()?);
-        input.count_fits(m9_count, HEADER_LEN)?;
-        let mut m9_frames = Vec::with_capacity(m9_count);
-        for _ in 0..m9_count {
-            match input.nested()? {
-                Frame::M9Transfer(frame) => m9_frames.push(frame),
-                other => {
-                    return Err(FrameError::WrongNestedKind {
-                        field: "M9 frame",
-                        kind: other.kind() as u8,
-                    });
-                }
-            }
-        }
         let zero_batch_frame = match input.nested()? {
             Frame::ResponseZeroBatch(frame) => frame,
             other => {
@@ -1426,9 +1608,10 @@ impl ResponseEnvelopeFrame {
             manifest_frames,
             claim_frames,
             ordered_h_symbols,
+            m9_frames,
+            authenticated_output_link_frame,
             fold_frames,
             query_frames,
-            m9_frames,
             zero_batch_frame,
         })
     }
@@ -1534,25 +1717,53 @@ mod tests {
 
     fn response(descriptor_frame: &DescriptorFrame) -> ResponseEnvelopeFrame {
         let descriptor_digest = hash_descriptor(descriptor_frame).unwrap();
+        let epoch = 23;
+        let descriptor_digests = vec![descriptor_digest];
+        let claim_frames = vec![ReducedClaimFrame {
+            descriptor_digest,
+            parent_claim_digest: [0x66; 32],
+            phase: Phase::Prefill,
+            phase_ordinal: 0,
+            point: (0..14).map(|value| symbol(value + 1)).collect(),
+            affine_scale: Fp2::ONE,
+            auth_domain: 97,
+        }];
+        let ordered_h_symbols = vec![symbol(200)];
+        let m9_frames =
+            vec![M9TransferFrame { descriptor_digest, mask_correction_symbol: symbol(202) }];
+        let round_count = 15;
+        let link_domains = (0..2 * u64::from(round_count)).map(|i| 10_000 + i).collect::<Vec<_>>();
+        let link_schedule_digest = authenticated_output_link_schedule_digest(
+            epoch,
+            &claim_frames,
+            &descriptor_digests,
+            &ordered_h_symbols,
+            &m9_frames,
+            round_count,
+            &link_domains,
+        )
+        .unwrap();
         ResponseEnvelopeFrame {
             profile_digest: profile_digest(),
             model_root: [0x44; 32],
-            epoch: 23,
-            descriptor_digests: vec![descriptor_digest],
+            epoch,
+            descriptor_digests,
             manifest_frames: vec![ManifestFrame::Leaf(ManifestLeafFrame {
                 descriptor_digest,
                 ordered_roots: vec![[0x55; 32], [0x56; 32]],
             })],
-            claim_frames: vec![ReducedClaimFrame {
-                descriptor_digest,
-                parent_claim_digest: [0x66; 32],
-                phase: Phase::Prefill,
-                phase_ordinal: 0,
-                point: (0..14).map(|value| symbol(value + 1)).collect(),
-                affine_scale: Fp2::ONE,
-                auth_domain: 97,
-            }],
-            ordered_h_symbols: vec![symbol(200)],
+            claim_frames,
+            ordered_h_symbols,
+            m9_frames,
+            authenticated_output_link_frame: AuthenticatedOutputLinkFrame {
+                relation_count: 2,
+                round_count,
+                link_schedule_digest,
+                ordered_round_correction_symbols: (0..2 * u64::from(round_count))
+                    .map(|i| symbol(300 + i))
+                    .collect(),
+                terminal_opened_tag_symbol: symbol(400),
+            },
             fold_frames: vec![FoldCommitmentFrame {
                 cohort_id: 9,
                 oracle_kind: OracleKind::WeightExtension,
@@ -1570,10 +1781,6 @@ mod tests {
                 touched_slots: vec![0],
                 opened_leaves: vec![outer_leaf(3), inner_leaf(descriptor_digest, 3, 0)],
                 aux_nodes: vec![],
-            }],
-            m9_frames: vec![M9TransferFrame {
-                descriptor_digest,
-                mask_correction_symbol: symbol(202),
             }],
             zero_batch_frame: ResponseZeroBatchFrame {
                 claim_count: 1,
@@ -1641,6 +1848,7 @@ mod tests {
             mask_correction_symbol: symbol(11),
             opened_tag_symbol: symbol(12),
         };
+        let link = response(&descriptor0).authenticated_output_link_frame;
 
         for frame in [
             Frame::Descriptor(descriptor0.clone()),
@@ -1653,6 +1861,7 @@ mod tests {
             Frame::ReducedClaim(claim),
             Frame::FoldCommitment(fold),
             Frame::M9Transfer(m9),
+            Frame::AuthenticatedOutputLink(link),
             Frame::ResponseZeroBatch(zero),
             Frame::ResponseEnvelope(response(&descriptor0)),
         ] {
@@ -1673,8 +1882,8 @@ mod tests {
         assert_eq!(decode(&bad), Err(FrameError::BadMagic));
 
         let mut bad = bytes.clone();
-        bad[8..10].copy_from_slice(&3u16.to_le_bytes());
-        assert_eq!(decode(&bad), Err(FrameError::BadSchema(3)));
+        bad[8..10].copy_from_slice(&2u16.to_le_bytes());
+        assert_eq!(decode(&bad), Err(FrameError::BadSchema(2)));
 
         let mut bad = bytes.clone();
         bad[10] = 0xff;
@@ -1763,13 +1972,13 @@ mod tests {
     }
 
     #[test]
-    fn v2_hash_domains_are_separated_and_inputs_are_pinned() {
+    fn v3_hash_domains_and_link_schedule_are_separated_and_pinned() {
         let descriptor = descriptor(0, 1);
         let descriptor_hash = hash_descriptor(&descriptor).unwrap();
         let leaf = inner_leaf(descriptor_hash, 3, 0);
         let leaf_hash = hash_pcs_leaf(&leaf).unwrap();
         assert_ne!(descriptor_hash, leaf_hash);
-        assert_eq!(profile_digest(), *blake3::hash(b"x4-zkdeepfold-ud-e29-v2").as_bytes());
+        assert_eq!(profile_digest(), *blake3::hash(b"x4-zkdeepfold-ud-e29-v3").as_bytes());
 
         let ids = [7, 11, 19];
         assert_eq!(transfer_template_digest(&ids), transfer_template_digest(&ids));
@@ -1780,6 +1989,91 @@ mod tests {
         assert_ne!(
             manifest_id_digest([1; 32], [2; 32], 3),
             manifest_id_digest([1; 32], [2; 32], 4)
+        );
+
+        let envelope = response(&descriptor);
+        let domains = (0..2 * u64::from(envelope.authenticated_output_link_frame.round_count))
+            .map(|i| 10_000 + i)
+            .collect::<Vec<_>>();
+        envelope.validate_link_schedule(&domains).unwrap();
+        envelope
+            .validate_statement(
+                envelope.model_root,
+                envelope.epoch,
+                &envelope.descriptor_digests,
+                &envelope.claim_frames,
+                &domains,
+            )
+            .unwrap();
+        let mut wrong_domains = domains.clone();
+        wrong_domains[0] += 1;
+        assert!(envelope.validate_link_schedule(&wrong_domains).is_err());
+
+        // Even if an attacker recomputes the schedule digest after changing a
+        // claim point, the verifier-reconstructed statement rejects it.
+        let mut changed_claim = envelope.clone();
+        changed_claim.claim_frames[0].point[0] += Fp2::ONE;
+        changed_claim.authenticated_output_link_frame.link_schedule_digest =
+            authenticated_output_link_schedule_digest(
+                changed_claim.epoch,
+                &changed_claim.claim_frames,
+                &changed_claim.descriptor_digests,
+                &changed_claim.ordered_h_symbols,
+                &changed_claim.m9_frames,
+                changed_claim.authenticated_output_link_frame.round_count,
+                &domains,
+            )
+            .unwrap();
+        assert_eq!(
+            changed_claim.validate_statement(
+                envelope.model_root,
+                envelope.epoch,
+                &envelope.descriptor_digests,
+                &envelope.claim_frames,
+                &domains,
+            ),
+            Err(FrameError::Invalid("response public statement"))
+        );
+
+        let mut expected_claims = envelope.claim_frames.clone();
+        let mut second = expected_claims[0].clone();
+        second.phase = Phase::Decode;
+        second.phase_ordinal = 1;
+        expected_claims.push(second);
+        let mut reordered = envelope.clone();
+        reordered.claim_frames = expected_claims.iter().cloned().rev().collect();
+        reordered.authenticated_output_link_frame.link_schedule_digest =
+            authenticated_output_link_schedule_digest(
+                reordered.epoch,
+                &reordered.claim_frames,
+                &reordered.descriptor_digests,
+                &reordered.ordered_h_symbols,
+                &reordered.m9_frames,
+                reordered.authenticated_output_link_frame.round_count,
+                &domains,
+            )
+            .unwrap();
+        assert!(reordered
+            .validate_statement(
+                envelope.model_root,
+                envelope.epoch,
+                &envelope.descriptor_digests,
+                &expected_claims,
+                &domains,
+            )
+            .is_err());
+        assert_eq!(
+            Frame::AuthenticatedOutputLink(AuthenticatedOutputLinkFrame {
+                relation_count: 3320,
+                round_count: 30,
+                link_schedule_digest: [0; 32],
+                ordered_round_correction_symbols: vec![Fp2::ZERO; 60],
+                terminal_opened_tag_symbol: Fp2::ZERO,
+            })
+            .encode()
+            .unwrap()
+            .len(),
+            1029
         );
     }
 }

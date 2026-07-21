@@ -101,6 +101,22 @@ pub struct UdCommittedCohort {
     tree: CohortTree,
 }
 
+/// Object-safe source for the exact weighted opening used by the v3 M9 link.
+/// Implementations may retain an oracle or recompute it from canonical
+/// coefficients; the verifier-facing proof and commitment are identical.
+pub trait UdWeightedOpeningSource {
+    fn commitment(&self) -> &UdCohortCommitment;
+
+    fn open_weighted_source(
+        &self,
+        touched_slots: &[u16],
+        common_point: &[Fp2],
+        weights: &[Fp2],
+        challenges: &UdChallenges,
+        expected_query_count: usize,
+    ) -> Result<(UdFoldingProof, UdOpenMetrics), FoldingError>;
+}
+
 impl UdCommittedCohort {
     /// Commit already-canonical multilinear monomial coefficients.  Source
     /// Boolean evaluation tables must first pass through
@@ -159,12 +175,43 @@ impl UdCommittedCohort {
             challenges,
             expected_query_count,
         )?;
+        let weights = geometric_weights(touched_slots.len(), challenges.combine);
+        for (slot, claimed) in touched_slots.iter().zip(claimed_values) {
+            let coefficients = self.coefficients[usize::from(*slot)]
+                .as_ref()
+                .ok_or(FoldingError::InvalidGeometry("touched coefficient slot"))?;
+            if evaluate_multilinear_coefficients(coefficients, common_point)? != *claimed {
+                return Err(FoldingError::InvalidGeometry("false claimed evaluation"));
+            }
+        }
+        self.open_weighted(touched_slots, common_point, &weights, challenges, expected_query_count)
+    }
+
+    /// Open an exact verifier-supplied linear combination of same-size slots.
+    ///
+    /// Unlike [`Self::open`], this path accepts no prover-supplied individual
+    /// evaluations.  The verified return value is derived from the committed
+    /// fold/query machinery and is the only scalar exposed to the caller.
+    pub fn open_weighted(
+        &self,
+        touched_slots: &[u16],
+        common_point: &[Fp2],
+        weights: &[Fp2],
+        challenges: &UdChallenges,
+        expected_query_count: usize,
+    ) -> Result<(UdFoldingProof, UdOpenMetrics), FoldingError> {
+        validate_weighted_opening_inputs(
+            &self.commitment,
+            touched_slots,
+            common_point,
+            weights,
+            challenges,
+            expected_query_count,
+        )?;
         let coefficient_len = self.commitment.config.outer_len / 8;
         let mut combined_coefficients = vec![Fp2::ZERO; coefficient_len];
         let mut combined_codeword = vec![Fp2::ZERO; self.commitment.config.outer_len];
-        let mut combined_claim = Fp2::ZERO;
-        let mut power = Fp2::ONE;
-        for (slot, claimed) in touched_slots.iter().zip(claimed_values) {
+        for (slot, weight) in touched_slots.iter().zip(weights) {
             let index = usize::from(*slot);
             let coefficients = self.coefficients[index]
                 .as_ref()
@@ -172,18 +219,15 @@ impl UdCommittedCohort {
             let codeword = self.codewords[index]
                 .as_ref()
                 .ok_or(FoldingError::InvalidGeometry("touched codeword slot"))?;
-            if evaluate_multilinear_coefficients(coefficients, common_point)? != *claimed {
-                return Err(FoldingError::InvalidGeometry("false claimed evaluation"));
-            }
             for (output, value) in combined_coefficients.iter_mut().zip(coefficients) {
-                *output += power * *value;
+                *output += *weight * *value;
             }
             for (output, value) in combined_codeword.iter_mut().zip(codeword) {
-                *output += power * *value;
+                *output += *weight * *value;
             }
-            combined_claim += power * *claimed;
-            power = power * challenges.combine;
         }
+        let combined_claim =
+            evaluate_multilinear_coefficients(&combined_coefficients, common_point)?;
 
         let anchor = self.commitment.config.slot_descriptors[0]
             .ok_or(FoldingError::InvalidGeometry("aggregate slot-zero anchor"))?;
@@ -289,6 +333,16 @@ impl UdCommittedCohort {
         Ok((proof, metrics))
     }
 
+    pub fn open_weighted_production(
+        &self,
+        touched_slots: &[u16],
+        common_point: &[Fp2],
+        weights: &[Fp2],
+        challenges: &UdChallenges,
+    ) -> Result<(UdFoldingProof, UdOpenMetrics), FoldingError> {
+        self.open_weighted(touched_slots, common_point, weights, challenges, PRODUCTION_QUERY_COUNT)
+    }
+
     pub fn open_production(
         &self,
         touched_slots: &[u16],
@@ -297,6 +351,23 @@ impl UdCommittedCohort {
         challenges: &UdChallenges,
     ) -> Result<(UdFoldingProof, UdOpenMetrics), FoldingError> {
         self.open(touched_slots, common_point, claimed_values, challenges, PRODUCTION_QUERY_COUNT)
+    }
+}
+
+impl UdWeightedOpeningSource for UdCommittedCohort {
+    fn commitment(&self) -> &UdCohortCommitment {
+        self.commitment()
+    }
+
+    fn open_weighted_source(
+        &self,
+        touched_slots: &[u16],
+        common_point: &[Fp2],
+        weights: &[Fp2],
+        challenges: &UdChallenges,
+        expected_query_count: usize,
+    ) -> Result<(UdFoldingProof, UdOpenMetrics), FoldingError> {
+        self.open_weighted(touched_slots, common_point, weights, challenges, expected_query_count)
     }
 }
 
@@ -314,6 +385,45 @@ pub fn verify_ud_folding(
         touched_slots,
         common_point,
         claimed_values,
+        challenges,
+        expected_query_count,
+    )?;
+    let weights = geometric_weights(touched_slots.len(), challenges.combine);
+    let opened_value = verify_ud_folding_weighted(
+        commitment,
+        touched_slots,
+        common_point,
+        &weights,
+        challenges,
+        expected_query_count,
+        proof,
+    )?;
+    let expected_value = claimed_values
+        .iter()
+        .zip(&weights)
+        .fold(Fp2::ZERO, |sum, (claimed, weight)| sum + *weight * *claimed);
+    if opened_value != expected_value {
+        return Err(FoldingError::InvalidProof("claimed evaluation aggregate"));
+    }
+    Ok(())
+}
+
+/// Verify an exact weighted opening and return only the aggregate value bound
+/// by the commitment's own fold/query checks.
+pub fn verify_ud_folding_weighted(
+    commitment: &UdCohortCommitment,
+    touched_slots: &[u16],
+    common_point: &[Fp2],
+    weights: &[Fp2],
+    challenges: &UdChallenges,
+    expected_query_count: usize,
+    proof: &UdFoldingProof,
+) -> Result<Fp2, FoldingError> {
+    validate_weighted_opening_inputs(
+        commitment,
+        touched_slots,
+        common_point,
+        weights,
         challenges,
         expected_query_count,
     )?;
@@ -370,12 +480,12 @@ pub fn verify_ud_folding(
         return Err(FoldingError::InvalidProof("final rate-eighth oracle"));
     }
 
-    let mut combined_claim = Fp2::ZERO;
-    let mut power = Fp2::ONE;
-    for claimed in claimed_values {
-        combined_claim += power * *claimed;
-        power = power * challenges.combine;
-    }
+    let opened_value = interpolate(
+        proof.fold_frames[0].ordered_message_symbols[0],
+        proof.fold_frames[0].ordered_message_symbols[1],
+        common_point[0],
+    );
+    let mut combined_claim = opened_value;
     for (round_index, frame) in proof.fold_frames.iter().enumerate() {
         let line_zero = frame.ordered_message_symbols[0];
         let line_one = frame.ordered_message_symbols[1];
@@ -394,12 +504,7 @@ pub fn verify_ud_folding(
         for round_index in 0..rounds {
             let base = (*draw % current_len as u64) % (current_len as u64 / 2);
             let positive = if round_index == 0 {
-                aggregate_opened_symbol(
-                    &proof.query_frames[0],
-                    base,
-                    touched_slots,
-                    challenges.combine,
-                )?
+                aggregate_opened_symbol(&proof.query_frames[0], base, touched_slots, weights)?
             } else {
                 opened_symbol(&proof.query_frames[round_index], base, 0)?
             };
@@ -409,7 +514,7 @@ pub fn verify_ud_folding(
                     &proof.query_frames[0],
                     negative_index,
                     touched_slots,
-                    challenges.combine,
+                    weights,
                 )?
             } else {
                 opened_symbol(&proof.query_frames[round_index], negative_index, 0)?
@@ -430,7 +535,7 @@ pub fn verify_ud_folding(
             }
         }
     }
-    Ok(())
+    Ok(opened_value)
 }
 
 pub fn verify_ud_folding_production(
@@ -460,11 +565,33 @@ fn validate_opening_inputs(
     challenges: &UdChallenges,
     expected_query_count: usize,
 ) -> Result<(), FoldingError> {
+    if touched_slots.len() != claimed_values.len() {
+        return Err(FoldingError::InvalidGeometry("opening schedule"));
+    }
+    let weights = geometric_weights(touched_slots.len(), challenges.combine);
+    validate_weighted_opening_inputs(
+        commitment,
+        touched_slots,
+        common_point,
+        &weights,
+        challenges,
+        expected_query_count,
+    )
+}
+
+fn validate_weighted_opening_inputs(
+    commitment: &UdCohortCommitment,
+    touched_slots: &[u16],
+    common_point: &[Fp2],
+    weights: &[Fp2],
+    challenges: &UdChallenges,
+    expected_query_count: usize,
+) -> Result<(), FoldingError> {
     commitment.config.validate()?;
     if commitment.config.identity.fold_round != 0
         || commitment.config.expected_symbol_count != 1
         || touched_slots.is_empty()
-        || touched_slots.len() != claimed_values.len()
+        || touched_slots.len() != weights.len()
         || challenges.query_draws.len() != expected_query_count
     {
         return Err(FoldingError::InvalidGeometry("opening schedule"));
@@ -486,6 +613,16 @@ fn validate_opening_inputs(
         return Err(FoldingError::InvalidGeometry("fold challenge geometry"));
     }
     Ok(())
+}
+
+fn geometric_weights(count: usize, challenge: Fp2) -> Vec<Fp2> {
+    let mut weights = Vec::with_capacity(count);
+    let mut power = Fp2::ONE;
+    for _ in 0..count {
+        weights.push(power);
+        power = power * challenge;
+    }
+    weights
 }
 
 fn claim_line(coefficients: &[Fp2], remaining_point: &[Fp2]) -> Result<(Fp2, Fp2), FoldingError> {
@@ -548,13 +685,14 @@ fn aggregate_opened_symbol(
     proof: &CohortMultiproofFrame,
     outer_index: u64,
     touched_slots: &[u16],
-    challenge: Fp2,
+    weights: &[Fp2],
 ) -> Result<Fp2, FoldingError> {
+    if touched_slots.len() != weights.len() {
+        return Err(FoldingError::InvalidGeometry("aggregate opening weights"));
+    }
     let mut aggregate = Fp2::ZERO;
-    let mut power = Fp2::ONE;
-    for slot in touched_slots {
-        aggregate += power * opened_symbol(proof, outer_index, *slot)?;
-        power = power * challenge;
+    for (slot, weight) in touched_slots.iter().zip(weights) {
+        aggregate += *weight * opened_symbol(proof, outer_index, *slot)?;
     }
     Ok(aggregate)
 }
@@ -806,5 +944,54 @@ mod tests {
             &proof,
         )
         .unwrap();
+    }
+
+    #[test]
+    fn weighted_opening_returns_only_the_commitment_bound_aggregate() {
+        let (committed, touched, point, claimed, challenges, _) = fixture();
+        let weights = vec![symbol(53), symbol(59), symbol(61)];
+        let expected = claimed
+            .iter()
+            .zip(&weights)
+            .fold(Fp2::ZERO, |sum, (value, weight)| sum + *weight * *value);
+        let (proof, _) =
+            committed.open_weighted(&touched, &point, &weights, &challenges, QUERIES).unwrap();
+        let opened = verify_ud_folding_weighted(
+            committed.commitment(),
+            &touched,
+            &point,
+            &weights,
+            &challenges,
+            QUERIES,
+            &proof,
+        )
+        .unwrap();
+        assert_eq!(opened, expected);
+
+        let mut wrong_weights = weights.clone();
+        wrong_weights[1] += Fp2::ONE;
+        assert!(verify_ud_folding_weighted(
+            committed.commitment(),
+            &touched,
+            &point,
+            &wrong_weights,
+            &challenges,
+            QUERIES,
+            &proof,
+        )
+        .is_err());
+
+        let mut wrong_order = touched.clone();
+        wrong_order.swap(0, 1);
+        assert!(verify_ud_folding_weighted(
+            committed.commitment(),
+            &wrong_order,
+            &point,
+            &weights,
+            &challenges,
+            QUERIES,
+            &proof,
+        )
+        .is_err());
     }
 }

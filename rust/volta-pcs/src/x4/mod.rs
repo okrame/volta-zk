@@ -4,6 +4,7 @@
 //! and Merkle tree.  X4 hashes complete, canonical, domain-separated v3
 //! frames; changing the legacy tree would change already-pinned roots.
 
+pub mod accounting;
 pub mod artifacts;
 pub mod authenticated_output;
 pub mod folding;
@@ -12,6 +13,7 @@ pub mod manifest;
 pub mod merkle;
 pub mod ntt;
 
+pub use accounting::*;
 pub use artifacts::*;
 pub use authenticated_output::*;
 pub use folding::*;

@@ -256,6 +256,27 @@ historical entries remain append-only evidence, not competing definitions.
   Lean-first.  Any future pod remains after green Lean, amended M9, CPU
   records and GPT-2 migration, with NOTE-6 `c3_weights` first in preflight.
 
+  The comparative pre-freeze screen is preregistered before execution.  It
+  evaluates inverse-power-of-two rates `1/8`, `1/16` and `1/32`; for each row
+  it first derives the smallest integer `s` meeting the complete response-wide
+  bound, then also reports the next integer as a margin row.  The corresponding
+  maximum physical-block variables are `29`, `28` and `27`, so that
+  `mu+1+rate_log2=33` and no unavailable root of unity is assumed.  Query
+  tapes use BLAKE3 XOF derive-key context
+  `volta-zk/x4/amendment5-gpt2-preflight/v1` and input
+  `candidate-id|gpt2-small|102-claims|2026-07-21`, with one exact
+  `max_domain_log2`-bit little-endian draw per repetition.  A candidate uses
+  model-global, descriptor-ordered same-domain cohorts and the Section-5.1
+  different-size activation rule to obtain one fold chain.  The compact
+  opening encoding may elide only indices, leaf metadata and auxiliary-node
+  positions deterministically reconstructed from the committed manifest,
+  transcript query multiset and round schedule.  It must serialize every
+  opened `E` symbol at 16 bytes and every required Merkle sibling digest at 32
+  bytes; it receives no cross-tree digest deduplication, zero-byte path,
+  list-decoding or compression credit.  Exact byte vectors, a closed-form
+  cross-check, per-term counts and ordered-draw digests are required in the
+  append-only preflight record before a row can be frozen.
+
 - **2026-07-21 (X4 GPT-2 G3 FAIL; frozen profile hard stop before production
   refactor/migration/pod)**: clean source
   `3aa5952ae0c07f2e933f2f1d5d8a8d9006ed4815` produced append-only record

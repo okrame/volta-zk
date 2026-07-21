@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 AMENDMENTS 1--3 FROZEN; AMENDMENT-3 DESIGN HARD STOP BEFORE LEAN/RUST)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 AMENDMENTS 1--3 FROZEN; AMENDMENT-3 LEAN-FIRST IN PROGRESS; RUST GATED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -81,6 +81,12 @@ proofs and before any v3/M9 Rust.  R1b M3's “sound as specified” sentence is
 superseded only on this seam, without blame; the report remains an immutable
 AI review with no independent-human assurance, and the amended seam is
 mandatory scope for a future R1c review.
+On 2026-07-21 the product owner approved the complete v3 freeze at design
+SHA-256 `07eb1f832367d84b70095e20addc29c136233a6940e32f56d58ac7251e9ca868`,
+affirmed all six Amendment-3 constraints at design level and authorized the
+exact frozen Lean statements.  The Lean-first gate is therefore active;
+v3/M9 Rust remains forbidden until every statement proves without weakening,
+new axioms or hypothesis smuggling and the full build/audit is green.
 
 ## Milestones
 
@@ -119,6 +125,7 @@ mandatory scope for a future R1c review.
 | X4 Amendment 2 + Lean-first package | **LEAN GREEN; RUST PHASE AUTHORIZED** (2026-07-21) | Frozen statements prove; `lake build`; zero `sorry`/`admit`; derived audit green; no new axiom or `Ideal` dependency | `ResponseZeroBatchValid Delta a := a.Valid Delta /\ a.x=0`; strict rate-1/8 UD, split MLE, exact masked fiber count, one-opening state, canonical frames/cohort binding, scalar reductions, strict-UD folding, separate binding/ZK/batch seams, M9, event cover and LogUp characteristic premise all proved. Exact `x4ResponseError < 2^-83` and the **78.809294874-bit** target theorem are green. Full build **3250 jobs**; audit **132 targets** (39 in the X4 audit block), stdout SHA-256 `4c1c11d09f6da82f732de2455b8fa4ec622934c97103e7c072644ee689f5b83f`; only `propext`, `Classical.choice`, `Quot.sound`. Source SHAs: field `b57cb0acb469b9053ae9dbc65898a3c1437679b09b250fdff65f5d3594a47805`, PCS `d21d4dac4d351636c63b9481349f0fbafeb85e3bacf884c9f76fd362f22be846`. No Rust result or X4 gate verdict yet. |
 | X4 Phase-2 concrete PCS discharge | **HARD STOP / FAIL TO DISCHARGE** (2026-07-21) | No weakening or axiom smuggling; `MaskedBatchBindsIntoMac` must be realized before M9 Rust | Deterministic one-block counterexample: `w=3,g=5,h=8,v=4,s=4`; PCS `h=w+g` and Amendment-2 ZeroBatch both accept while `h-s=4!=w`. The scalar MAC transfer authenticates a prover-chosen value but does not bind it to committed `g(u)`. Partial codec/N4/NTT/public-UD code has **22 diagnostic X4 tests** green; the package run executes **51 passed / 0 failed / 2 existing production-size C3 smokes ignored**. Re-audit: **3250 build jobs**, **133 total targets / 40 in the X4 block**, standard axioms only, stdout SHA-256 `de90480a5c17d970b041a6ada881e67a03ace04e24672cb9772485492b9617d2`. Diagnostic PCS source SHA-256 `da1d6b1aa6bd6357deec04bb4be2343ad344eb7b283f818a72370c78753b783a`; amended design SHA-256 `61eba70a23a619c6ab1d209dfa39bbe46c3e4d32387456418dd8654a896a8fa7`. No CPU/GPT-2/pod record and no gate verdict. |
 | X4 Amendment 3 authenticated-output seam | **DESIGN/SOUNDNESS/LEAN STATEMENTS FROZEN; HARD STOP BEFORE PROOFS AND V3/M9 RUST** (2026-07-21) | Blind binding must be realized inside the opening; no clear target evaluation, promise, transcript assertion, new ideal axiom or uncounted resource | `x4-zkdeepfold-ud-e29-v3`: correction gives only `PendingAuxEval`; one blind `d<=30` batch proves `2*B_touch` atoms `Wext(z||0)+g(u)-h=0` and `g(u)-authS.x=0`, then the same committed fold/query opening alone yields `BoundAuxEval`. Seam correlations `B_touch+2d+1`, max **1,721**; link frame **1,029 B**, complete seam **107,319 B**; all-maximum X4 screen **98,001** full correlations. Remaining auxiliary fiber `|E|^(2^ell-1)` and max budget `131071>107648`. Exact error remains `3320*(9/16)^128 + 28,522,064,267,253/|E| = 8.3853234432654371e-26`, **83.30226403378921 bits**, margin **4.49296915978921 bits**. Design SHA-256 `07eb1f832367d84b70095e20addc29c136233a6940e32f56d58ac7251e9ca868`. No Lean/Rust/record/gate/pod work in this amendment. |
+| X4 Amendment 3 Lean-first discharge | **IN PROGRESS; RUST HARD-GATED** (2026-07-21) | Prove exactly the frozen v3 statement set; zero `sorry`/`admit`; derived audit green; no new axiom beyond the declared Ideal set; stop on any obstruction | Product-owner approval pins design SHA-256 `07eb1f832367d84b70095e20addc29c136233a6940e32f56d58ac7251e9ca868`. The permanent counterexample remains audited. No statement change, Rust work, record or gate credit has occurred at this boundary. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -186,6 +193,25 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-21 (X4 Amendment-3 freeze approved; exact Lean-first discharge
+  authorized)**: the product owner confirms that all six design constraints
+  are satisfied and approves the v3 freeze at SHA-256
+  `07eb1f832367d84b70095e20addc29c136233a6940e32f56d58ac7251e9ca868`.
+  Authorization is limited first to proving exactly the Section-0.10.6
+  statements.  Names, hypotheses, conclusions and coefficients may not be
+  weakened; no new axiom beyond the declared Ideal set or hidden premise is
+  permitted.  `masked_sum_zeroBatch_link_counterexample` remains a permanent
+  negative audit target.  Any unprovable obligation triggers an immediate
+  hard stop and requires a separately approved amendment entry.
+
+  Only a green `lake build`, zero `sorry`/`admit` and green derived full audit
+  clears v3/M9 Rust.  After that gate, the frozen order is normative grammar
+  and authenticated-output implementation, permanent tests for every named
+  event class including the delta-shift mirror, CPU records, then the frozen
+  GPT-2 migration ritual.  All gates remain verbatim.  R1c mandatory v3-seam
+  scope remains pinned.  The A100 pod and NOTE-6 `c3_weights` smoke remain
+  deferred until Lean, v3/M9, CPU records and GPT-2 migration are complete.
 
 - **2026-07-21 (X4 Amendment 3 authorized and frozen; second design hard
   stop)**: the product owner authorized a repair only if binding is realized

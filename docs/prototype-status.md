@@ -151,7 +151,7 @@ gate verdict has landed yet; CPU, GPT-2 and pod ordering remain unchanged.
 | X4 Amendment 3 authenticated-output seam | **DESIGN/SOUNDNESS/LEAN STATEMENTS FROZEN; HARD STOP BEFORE PROOFS AND V3/M9 RUST** (2026-07-21) | Blind binding must be realized inside the opening; no clear target evaluation, promise, transcript assertion, new ideal axiom or uncounted resource | `x4-zkdeepfold-ud-e29-v3`: correction gives only `PendingAuxEval`; one blind `d<=30` batch proves `2*B_touch` atoms `Wext(z||0)+g(u)-h=0` and `g(u)-authS.x=0`, then the same committed fold/query opening alone yields `BoundAuxEval`. Seam correlations `B_touch+2d+1`, max **1,721**; link frame **1,029 B**, complete seam **107,319 B**; all-maximum X4 screen **98,001** full correlations. Remaining auxiliary fiber `|E|^(2^ell-1)` and max budget `131071>107648`. Exact error remains `3320*(9/16)^128 + 28,522,064,267,253/|E| = 8.3853234432654371e-26`, **83.30226403378921 bits**, margin **4.49296915978921 bits**. Design SHA-256 `07eb1f832367d84b70095e20addc29c136233a6940e32f56d58ac7251e9ca868`. No Lean/Rust/record/gate/pod work in this amendment. |
 | X4 Amendment 3 Lean-first discharge | **HARD STOP / UNPROVABLE AS FROZEN** (2026-07-21) | No weakening or hypothesis smuggling; a statement change requires Amendment 4 | The deterministic `authenticated_output_link_produces_bound_aux` conclusion omits exclusion of the explicitly counted `LinkBad` event; `bound_aux_has_verified_origin` inherits the same issue. Fixed residuals `R0=1,R1=-1` cancel at `beta=1`, so the combined link and truthful terminal can accept while `authS.x!=committedAuxEval`. A temporary exact-rational Lean theorem kernel-checks this countermodel. No repository Lean/Rust source changed; baseline audit remains **133/40** and the permanent delta-shift theorem remains. No record, gate verdict or pod work. |
 | X4 Amendment 4 statement conditioning | **LEAN GREEN; V3/M9 RUST AUTHORIZED** (2026-07-21) | Exact frozen statements prove; full build, zero-sorry/admit and enlarged derived audit green; no new axiom or hidden equality premise | Design SHA-256 `f80da5b943b986aa1d849f53b83780aa067d77e7cb9dcfd538dd7931f6ae1a98`. Build **3251 jobs**; audit **163 total / 70 X4** (the historical **133/40** plus 30 v3 targets), stdout SHA-256 `4706e705abc1a8df3eeb96df41388c357f2006671cf90116c9c200f29d36d267`; only `propext`, `Classical.choice`, `Quot.sound`. V3 source SHA-256 `5a3367af7750158ed14c3e469ed58b9c8d918ee272dcf48fe89a1832bdc85dde`. Both permanent negative theorems are audited. Frame bytes **1,029/107,319**, correlations **1,721/98,001**, total coefficient **28,522,064,267,253** and **83.30226403378921 bits** remain unchanged. No Rust/record/gate/pod result yet. |
-| X4 v3/M9 Rust + CPU synthetic | **G5/G6 STRUCTURAL RECORD PASS; PRODUCTION OPENING REOPENED** (2026-07-21) | The clean synthetic record remains immutable; G1/G2 implementation credit is withheld until late-query typestate and cross-cohort batching are corrected | Source `c56acd7`; clean record SHA `12bfbe2`, `x4-cpu-synthetic-2026-07-21-12bfbe2.json`, record SHA-256 `da2a09a69224df5b17c05bfc5d085604ab8345a9da5f7492090eecc78f0a8bfa`. G5 exact bytes **996,187 / 1,014,489 / 1,076,814 / 1,227,185 / 1,553,648 B**, unopened-block ABBA **1.010474 PASS**; G6 synthetic accounting reconciles. GPT-2 preflight found that the production API accepted query draws before constructing fold roots and that per-cohort fold chains project far above G3. The frozen protocol already requires fold commitments before verifier queries and batched cohorts, so Rust is being corrected without a protocol/parameter amendment. No GPT-2 or overall X4 verdict is claimed. |
+| X4 v3/M9 Rust + CPU synthetic / GPT-2 preflight | **G3 FAIL; HARD STOP BEFORE PRODUCTION REFACTOR, GPT-2 MIGRATION AND POD** (2026-07-21) | Gates are conjunctive and verbatim; no query/order, grammar, parameter, correlation, soundness or threshold change is permitted without a new amendment | G5/G6 synthetic evidence remains immutable. Clean G3 source `3aa5952`; record `x4-gpt2-g3-preflight-2026-07-21-3aa5952.json`, SHA-256 `a5d2f4ba189c27a7b39e8e0f0c66475057a6f15041483fbe2035bcc69afc4cb9`. With all auxiliary Merkle nodes assigned **zero bytes** and all post-initial polynomials granted one ideal shared chain, query frames alone are **4,021,594 B**; mandatory non-query fields make the strict lower bound **4,089,416 B > 4,000,000 B FAIL**. Projected response **45,359,880 B > 45,270,464 B**. Restoring canonical auxiliary nodes gives an optimistic one-chain shape of **15,814,716 B**. Soundness is unchanged at **83.30226403378921 bits**. G2/G4 and overall production security remain unevaluated; no pod is requested. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -219,6 +219,54 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-21 (X4 GPT-2 G3 FAIL; frozen profile hard stop before production
+  refactor/migration/pod)**: clean source
+  `3aa5952ae0c07f2e933f2f1d5d8a8d9006ed4815` produced append-only record
+  `benchmarks/results/x4-gpt2-g3-preflight-2026-07-21-3aa5952.json`, SHA-256
+  `a5d2f4ba189c27a7b39e8e0f0c66475057a6f15041483fbe2035bcc69afc4cb9`
+  (`git_dirty:false`).  The preregistered 128-draw XOF schedule has ordered
+  draw-vector BLAKE3 digest
+  `26414df2b8fc443cc3171e762eca23788e0bfc7c48016cc250be42a115d0d02b`.
+  The production geometry is **51 physical blocks / 102 fixed claims / 26
+  cohort ids / 52 initial weight-or-auxiliary roots**; the two tied-WTE roles
+  remain separate descriptor slots so no block exceeds two phase claims.
+
+  The screen grants more compression than any implemented proof: all 52
+  mandatory initial roots remain, but every post-initial polynomial receives
+  one shared maximum-depth fold chain and every 50-byte auxiliary Merkle-node
+  entry is deleted.  The resulting initial query frames are **3,140,532 B**
+  and the one ideal shared chain's query frames are **881,062 B**.  Thus the
+  query frames alone have strict lower bound
+  `3,140,532 + 881,062 = 4,021,594 B`, already **21,594 B** above G3.  The
+  mandatory envelope/descriptors/manifest/claims/`h`/M9/link/fold/ZeroBatch
+  fields add **67,822 B**, giving
+  **4,089,416 B > 4,000,000 B FAIL** by **89,416 B** and an absolute response
+  lower bound **45,359,880 B > 45,270,464 B FAIL** by the same amount.
+  Restoring the exact canonical auxiliary-node counts gives an optimistic
+  one-chain shape projection of **15,814,716 B**; it is not mislabeled as a
+  serialized honest production proof and is not needed for the verdict.
+
+  `cohort_multiproof_byte_count` is checked byte-for-byte against the
+  normative v3 codec and an actual small N4 cohort opening.  A permanent
+  preflight test pins the query digest and all three lower-bound totals.
+  `cargo test --workspace` is green, including **48/48** `volta-pcs` tests,
+  the delta-shift and beta-collision negative artifacts, the new accounting
+  tests and both GPT-2 golden checks; the two production-size C3 leakage
+  smokes remain deliberately ignored on this host.  Targeted clippy adds no
+  warning in the new X4 files; repository-historical warnings prevent a
+  workspace `-D warnings` claim.
+
+  This is a gate verdict, not a parameter amendment.  `rho=1/8`, `s=128`,
+  field `E`, all frame widths, correlations, PCG/lifecycle and the exact
+  response-wide expression remain unchanged; the record reproduces
+  **83.30226403378921 bits**.  Because gates are conjunctive, the frozen v3
+  candidate cannot proceed.  The late-query typestate defect therefore
+  remains recorded but is not refactored into a product path that already
+  fails G3.  GPT-2 roots/references and historical rows remain untouched;
+  G2/G4 and overall production security are not evaluated.  No pod is
+  requested, and NOTE-6's `c3_weights` smoke remains first in preflight only
+  if a future authorized amendment produces a viable candidate.
 
 - **2026-07-21 (X4 implementation audit I3; production opening reopened before
   GPT-2 migration)**: read-only migration preflight found that

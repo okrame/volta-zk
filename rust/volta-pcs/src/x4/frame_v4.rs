@@ -1019,7 +1019,7 @@ impl FoldCommitmentFrameV4 {
 }
 
 impl InitialOpeningGroupV4 {
-    fn validate(&self) -> Result<(), FrameError> {
+    pub(crate) fn validate(&self) -> Result<(), FrameError> {
         if !(3..=32).contains(&self.domain_log2)
             || self.slot_count == 0
             || !self.slot_count.is_power_of_two()
@@ -1038,7 +1038,7 @@ impl InitialOpeningGroupV4 {
 }
 
 impl FoldRoundOpeningV4 {
-    fn validate(&self) -> Result<(), FrameError> {
+    pub(crate) fn validate(&self) -> Result<(), FrameError> {
         if self.fold_round == 0
             || self.fold_round > 30
             || !(3..=32).contains(&self.domain_log2)

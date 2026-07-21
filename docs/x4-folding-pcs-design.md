@@ -2174,6 +2174,92 @@ codec, global-chain/M9 Rust, CPU/GPT-2 migration or pod work is authorized
 until the product owner reviews and explicitly approves this frozen design
 and theorem set.
 
+### 0.12.8 Discharge authorization and mechanical event cross-check
+
+The product owner approved the frozen Amendment-5 design on 2026-07-21 and
+authorized Lean-first discharge subject to a pre-proof LinkBad audit.  Before
+any v4 Lean declaration or proof was written, the existing v3 Rust error
+enums, security metrics and permanent tests were mechanically inventoried
+from `x4/frame.rs`, `x4/merkle.rs`, `x4/folding.rs` and
+`x4/authenticated_output.rs`.  Schema 4 adds the packed schedule, reconstructed
+frontier, model-global slot and seal-before-query classes below.  These stable
+counter-family names are normative for the v4 Rust counter inventory; a test
+subcase may increment its family counter, but may not create an unnamed
+accepting-failure bucket.
+
+The table separates three things that must not be conflated:
+
+* an **accepting statistical event**, which owns exactly one response-wide
+  rational term;
+* a **pre-acceptance deterministic rejection or privacy invariant**, which
+  has a named Lean owner but contributes no statistical summand; and
+* a **diagnostic attack/witness counter**, which must be classified into the
+  existing event cover and is never an additional union member.
+
+| Rust v4 inventory family | Required counter/test subclasses | Unique Lean semantic owner | Unique response-wide owner and charge |
+| --- | --- | --- | --- |
+| `frame_reject` | magic/schema/kind/flags/length/EOF, non-canonical limbs, enum/bool, count/order/duplicate, nested-kind, descriptor/split geometry | `x4_v4_frame_decode_canonical` (with round-trip and kind-disjoint companions) | pre-acceptance reject; zero statistical charge |
+| `packed_schedule_reject` | wrong draw-derived index set, count, sibling position/order, missing/extra/trailing digest, altered opening-schedule digest | `x4_v4_packed_schedule_is_derived` | pre-acceptance reject; zero statistical charge |
+| `packed_reconstruction_reject` | reconstructed leaf/type/domain/round/index differs from the complete explicit preimage | `x4_v4_packed_verify_iff_explicit_verify` (using `x4_v4_reconstructed_leaf_hash_eq_explicit`) | pre-acceptance reject unless a hash collision; computational `CollisionFreeOn`, not a rational term |
+| `cohort_binding_reject` | leaf symbol/root/path, inner/outer N4 role, level/index, absent node, duplicate node | `cohort_opening_binding_v4` | accepted collision is excluded by `CollisionFreeOn`; otherwise the accepting fold/query failure is `X4FoldBadV4` below |
+| `slot_identity_reject` | descriptor, namespace/layer/expert, slot/order, absent-slot presence, oracle-kind or domain substitution | `model_global_slot_identity_binding_v4` | accepted collision is excluded by `CollisionFreeOn`; otherwise `X4FoldBadV4` |
+| `early_query_reject` | draw requested from `UnsealedGlobalFoldChainV4` | `x4_v4_no_early_query_transition` | pre-acceptance typestate reject; zero statistical charge |
+| `accepted_unsealed_chain` | accepted proof whose initial/fold roots were not all fixed before the first draw | `x4_v4_all_commitments_fixed_before_queries` | impossible under the theorem; no hidden statistical event |
+| `fold_query_bad` | same-domain slot combination, activation order/root, fold message/line/final constant, query symbol/path, 111-draw proximity escape | `x4_wrong_response_event_cover_v4` disjunct `X4FoldBadV4` | exactly `3320*(9/16)^111 + 28,522,064,111,120/q` in `x4_response_soundness_v4`; supporting reductions are `model_global_same_domain_reduce_sound_v4`, `deepfold_different_size_global_chain_sound_v4` and `ud_model_global_folding_sound_v4` |
+| `claim_reduce_bad` | claim add/drop/reorder, point/scale/domain substitution, scalar blind-reduction collision | `x4_wrong_response_event_cover_v4` disjunct `X4ClaimReduceBadV4` | exactly `151,060/q` in `x4_response_soundness_v4` |
+| `auth_link_bad` | false masked/output atom accepted, wrong pending `authS`, link-round correction/tag/domain/schedule collision, including the beta-collision tape | both Bound-output statements carry `equality OR LinkBadV4`; response ownership is the `X4AuthenticatedOutputLinkBadV4` disjunct of `x4_wrong_response_event_cover_v4` | exactly `3,412/q` in `x4_response_soundness_v4`, proved by `authenticated_output_batch_link_sound_v4` |
+| `response_zero_batch_bad` | false response residual or altered mask correction/opened tag accepted | `x4_wrong_response_event_cover_v4` disjunct `X4ResponseZeroBatchBad` | exactly `1,661/q` in `x4_response_soundness_v4` |
+| `pending_escape_reject` | correction-created `PendingAuxEval` reaches ZeroBatch/GKR/API or a correction-only path constructs `BoundAuxEval` | `pending_aux_cannot_escape`; returned values additionally map to `bound_aux_has_verified_origin_v4` | deterministic typestate rejection; the only accepted semantic exception in the origin theorem is the already counted `LinkBadV4` branch |
+| `target_eval_leak_reject` | packed/link frame exposes `g(u)`, `v`, `authS.x`, a correlation plaintext or an individual target evaluation | `x4_masked_zk_v4` via `PackedOpeningRevealsNoTargetEvaluationV4`; conditioned fiber owner `masked_aux_authenticated_link_hiding_count_v4` | privacy invariant; zero soundness summand and no entropy-budget debit |
+| `correlation_view_reject` | repeated/reordered/foreign M9 or link-round domains, non-fresh correction view | `blind_authenticated_output_link_perfect_zk_v4` | privacy/freshness invariant; zero soundness summand |
+| `epoch_reuse_reject` | second response opening for the same `(model_root,epoch)` | `one_opening_per_epoch`, consumed by `x4_masked_zk_v4` | deterministic lifecycle reject; zero soundness summand |
+| `delta_shift_attempt` | every nonzero compensating shift, including but not limited to the historical `(3,5,8,4,4)` witness | `accepted_delta_shift_event_cover_v4` | diagnostic only: an accepted attempt is covered by `auth_link_bad OR fold_query_bad OR response_zero_batch_bad`; no fifth term |
+| `beta_collision_witness` | fixed `R0=1,R1=-1,beta=1` accepting RLC tape | permanent theorem `authenticated_output_batch_beta_collision_counterexample` | diagnostic witness classified as `auth_link_bad`; no fifth term |
+
+The two Amendment-4 target statements are checked separately against the same
+inventory family:
+
+| Lean statement event disjunct | Rust family that witnesses it |
+| --- | --- |
+| `authenticated_output_link_produces_bound_aux_v4`: `LinkBadV4` | `auth_link_bad` |
+| `bound_aux_has_verified_origin_v4`: `LinkBadV4` | `auth_link_bad` |
+| `accepted_delta_shift_event_cover_v4`: `X4AuthenticatedOutputLinkBadV4` | `auth_link_bad` |
+| `accepted_delta_shift_event_cover_v4`: `X4FoldQueryBadV4` | `fold_query_bad` |
+| `accepted_delta_shift_event_cover_v4`: `X4ResponseZeroBatchBad` | `response_zero_batch_bad` |
+| `x4_wrong_response_event_cover_v4`: `X4FoldBadV4` | `fold_query_bad` |
+| `x4_wrong_response_event_cover_v4`: `X4ClaimReduceBadV4` | `claim_reduce_bad` |
+| `x4_wrong_response_event_cover_v4`: `X4AuthenticatedOutputLinkBadV4` | `auth_link_bad` |
+| `x4_wrong_response_event_cover_v4`: `X4ResponseZeroBatchBad` | `response_zero_batch_bad` |
+
+This reverse pass has no orphan Lean disjunct and no accepting Rust failure
+counter outside the four response-wide owners.  In particular, neither
+`VerifyAuthenticatedOutputLinkV4` nor a `BoundAuxEval` constructor contains
+committed equality or `not LinkBad`; both output theorems visibly retain the
+same `auth_link_bad` branch.  Delta-shift and beta-collision are permanent
+negative artifacts and test families, but are not double-counted as
+independent events.
+
+Applying the soundness-slack rule after this inventory surfaces no new event,
+union member or hybrid term.  The required re-sum is therefore, explicitly,
+
+```text
+epsilon_v4
+  = [3320*(9/16)^111 + 28,522,064,111,120/q]   fold_query_bad
+  + [151,060/q]                                claim_reduce_bad
+  + [3,412/q]                                  auth_link_bad
+  + [1,661/q]                                  response_zero_batch_bad
+  = 3320*(9/16)^111 + 28,522,064,267,253/q
+  = 6.9298888276461589731806059424696957e-25
+-log2(epsilon_v4) = 80.255370163990410893382823542456484 bits.
+```
+
+It remains above the 78.809294874-bit floor by
+1.446075289990410893382823542456484 bits.  This cross-check changes no
+protocol, statement shape, parameter, coefficient, byte, correlation, codec
+or gate.  If the Lean or Rust discharge later needs another accepting event
+or hybrid, this section must be amended and the complete expression re-summed
+before work continues.
+
 ---
 
 ## Historical Phase-1 baseline (superseded where Section 0 conflicts)

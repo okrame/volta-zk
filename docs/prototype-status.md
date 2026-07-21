@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 AMENDMENT 5 DISCHARGE AUTHORIZED; V4 LEAN-FIRST GATED ON EVENT CROSS-CHECK)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 AMENDMENT 5 DISCHARGE AUTHORIZED; EVENT CROSS-CHECK GREEN; V4 LEAN-FIRST IN PROGRESS)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -111,6 +111,17 @@ and authorizes direct Lean-first discharge.  That discharge is now green:
 all frozen v3/Amendment-4 statements prove, the full build and enlarged audit
 are clean, and v3/M9 Rust is authorized.  No implementation record or X4
 gate verdict has landed yet; CPU, GPT-2 and pod ordering remain unchanged.
+The v3 production preflight subsequently proved G3 infeasible, and Amendment
+5 froze `x4-zkdeepfold-ud-e29-v4` at rate `1/8`, `s=111`, model-global
+same-domain cohorts and one schema-4 packed opening.  The product owner has
+now refused any 5--10% gate exception and authorized exact v4 discharge.  Its
+required Rust/Lean event cross-check is complete: the four response-wide
+owners remain Fold, ClaimReduce, LinkBad and ZeroBatch, with no fifth event or
+new hybrid term, so the explicit re-sum remains
+**80.25537016399041 bits**.  The cross-check-annotated design is SHA-256
+`c963831373783504e855c6c9b54a4d1bf425206ccb68992c242c94290e1cf544`;
+v4 Lean-first is active and production Rust remains gated on its green build
+and audit.
 
 ## Milestones
 
@@ -153,7 +164,7 @@ gate verdict has landed yet; CPU, GPT-2 and pod ordering remain unchanged.
 | X4 Amendment 4 statement conditioning | **LEAN GREEN; V3/M9 RUST AUTHORIZED** (2026-07-21) | Exact frozen statements prove; full build, zero-sorry/admit and enlarged derived audit green; no new axiom or hidden equality premise | Design SHA-256 `f80da5b943b986aa1d849f53b83780aa067d77e7cb9dcfd538dd7931f6ae1a98`. Build **3251 jobs**; audit **163 total / 70 X4** (the historical **133/40** plus 30 v3 targets), stdout SHA-256 `4706e705abc1a8df3eeb96df41388c357f2006671cf90116c9c200f29d36d267`; only `propext`, `Classical.choice`, `Quot.sound`. V3 source SHA-256 `5a3367af7750158ed14c3e469ed58b9c8d918ee272dcf48fe89a1832bdc85dde`. Both permanent negative theorems are audited. Frame bytes **1,029/107,319**, correlations **1,721/98,001**, total coefficient **28,522,064,267,253** and **83.30226403378921 bits** remain unchanged. No Rust/record/gate/pod result yet. |
 | X4 v3/M9 Rust + CPU synthetic / GPT-2 preflight | **G3 FAIL; HARD STOP BEFORE PRODUCTION REFACTOR, GPT-2 MIGRATION AND POD** (2026-07-21) | Gates are conjunctive and verbatim; no query/order, grammar, parameter, correlation, soundness or threshold change is permitted without a new amendment | G5/G6 synthetic evidence remains immutable. Clean G3 source `3aa5952`; record `x4-gpt2-g3-preflight-2026-07-21-3aa5952.json`, SHA-256 `a5d2f4ba189c27a7b39e8e0f0c66475057a6f15041483fbe2035bcc69afc4cb9`. With all auxiliary Merkle nodes assigned **zero bytes** and all post-initial polynomials granted one ideal shared chain, query frames alone are **4,021,594 B**; mandatory non-query fields make the strict lower bound **4,089,416 B > 4,000,000 B FAIL**. Projected response **45,359,880 B > 45,270,464 B**. Restoring canonical auxiliary nodes gives an optimistic one-chain shape of **15,814,716 B**. Soundness is unchanged at **83.30226403378921 bits**. G2/G4 and overall production security remain unevaluated; no pod is requested. |
 | X4 Amendment 5 global packed opening | **DESIGN/SOUNDNESS/LEAN STATEMENTS FROZEN; HARD STOP BEFORE V4 LEAN-FIRST** (2026-07-21) | No threshold exception; pre-freeze materialized codec screen must pass; v3 seam and Amendment-4 disjunction remain mandatory | `x4-zkdeepfold-ud-e29-v4`: rate `1/8`, `s=111`, model-global same-domain cohorts, one different-size chain and digest-only derived frontiers. Exact error `3320*(9/16)^111 + 28,522,064,267,253/|E|`, **80.25537016399041 bits**, `<2^-80`. Clean screen source `93749b3`; record `x4-amendment5-gpt2-preflight-2026-07-21-93749b3.json`, SHA-256 `ba87722362c8825e13e02a6c563a436797ea852e09e1cebcf4a9265c6ce56499`: packed opening **2,615,414 B**, complete PCS **2,683,236 B**, response **43,953,700 B**, headroom **1,316,764 B**. This is pre-freeze eligibility, not a production G3 verdict. Storage/correlations remain **5.3504 TB / 31,923,699,712 B** and **1,721 / 98,001** maxima. Design SHA-256 `1383fa5d0a2eb9155f1ca76fe814238c04eaaa7aab965e10374b5f07d220bfb7`. No v4 Lean/production Rust/migration/pod work. |
-| X4 Amendment 5 product-owner discharge | **AUTHORIZED; PART 0 RULINGS RECORDED; EVENT CROSS-CHECK REQUIRED BEFORE LEAN** (2026-07-21) | Gates verbatim; frozen profile invariants exact; every new failure/error term is re-summed before proof | The proposed 5--10% communication exception is **REFUSED**. V3's honest true-opening estimate remains **15,814,716 B** and raising only the 4-MB PCS cap would not have repaired it. V4 load-bearing invariants are rate `1/8`, `s=111`, response-wide claim union `<=3,320`, and exactly one schema-4 packed opening with **27,564 symbols plus all 67,930 real sibling digests**, with no digest deduplication or compression. The pinned expression is **80.25537016399041 bits** versus the **78.809294874-bit** floor; its approximately **1.44607528999041-bit** slack and one-query margin are not a reserve. Any newly surfaced event, union member or hybrid step must be added and the complete expression re-summed in the design before it can enter a proof; a result below the floor is an immediate hard stop. No production G3 verdict is claimed by this ruling. |
+| X4 Amendment 5 product-owner discharge | **AUTHORIZED; PART 0 RULINGS + BIDIRECTIONAL EVENT CROSS-CHECK RECORDED; V4 LEAN-FIRST AUTHORIZED** (2026-07-21) | Gates verbatim; frozen profile invariants exact; every new failure/error term is re-summed before proof | The proposed 5--10% communication exception is **REFUSED**. V3's honest true-opening estimate remains **15,814,716 B** and raising only the 4-MB PCS cap would not have repaired it. V4 load-bearing invariants are rate `1/8`, `s=111`, response-wide claim union `<=3,320`, and exactly one schema-4 packed opening with **27,564 symbols plus all 67,930 real sibling digests**, with no digest deduplication or compression. The Rust/Lean cross-check has no orphan counter or event disjunct: the only accepting statistical owners remain Fold, ClaimReduce, LinkBad and ZeroBatch; delta-shift/beta-collision are diagnostic subclasses, while leakage/epoch/query-order breaches are named deterministic or ZK failures. The exact re-sum remains **80.25537016399041 bits** versus the **78.809294874-bit** floor; its approximately **1.44607528999041-bit** slack and one-query margin are not a reserve. Cross-check-annotated design SHA-256 `c963831373783504e855c6c9b54a4d1bf425206ccb68992c242c94290e1cf544`; the frozen theorem/profile baseline remains `1383fa5d0a2eb9155f1ca76fe814238c04eaaa7aab965e10374b5f07d220bfb7`. No production G3 verdict is claimed by this ruling. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -248,10 +259,45 @@ historical entries remain append-only evidence, not competing definitions.
   budget.  Every additional failure event, union-bound member or hybrid step
   surfaced during Lean discharge must first be named and re-summed in the
   design document against the same floor.  A re-sum below the floor is a
-  hard stop, never a rounding disposition.  Before proof effort, the Rust
-  counter/tamper inventory and Lean event disjuncts must also receive a
-  mechanical two-way mapping in both the design and this ledger entry; that
-  table is the next authorized read-only inventory step.
+  hard stop, never a rounding disposition.
+
+  **Mechanical two-way event table (completed before proof effort).**  The
+  source inventory is the existing v3 `FrameError`, `FoldingError`,
+  `AuthenticatedOutputError`, security metrics and permanent tamper tests,
+  extended by the frozen schema-4 packed/global-chain classes.  The complete
+  per-subclass table and reverse pass are in Section 0.12.8 of the design;
+  the ledger-level bijection is:
+
+  | Rust accepting-event counter | Lean response disjunct | Exact charge |
+  | --- | --- | ---: |
+  | `fold_query_bad` | `X4FoldBadV4` (and `X4FoldQueryBadV4` in the delta cover) | `3320*(9/16)^111 + 28,522,064,111,120/q` |
+  | `claim_reduce_bad` | `X4ClaimReduceBadV4` | `151,060/q` |
+  | `auth_link_bad` | `LinkBadV4` / `X4AuthenticatedOutputLinkBadV4` | `3,412/q` |
+  | `response_zero_batch_bad` | `X4ResponseZeroBatchBad` | `1,661/q` |
+
+  Reverse checking finds every event disjunct in both Bound-output theorems,
+  `accepted_delta_shift_event_cover_v4`,
+  `x4_wrong_response_event_cover_v4` and `x4_response_soundness_v4` in this
+  table.  `delta_shift_attempt` maps to the already counted
+  link/fold/ZeroBatch disjunction; `beta_collision_witness` maps to
+  `auth_link_bad`.  `pending_escape_reject`, `target_eval_leak_reject`,
+  `correlation_view_reject`, `epoch_reuse_reject`, frame/packed/N4 rejects
+  and query-before-seal rejects are pre-acceptance typestate, canonicality or
+  ZK invariants and add no rational term.  There is no fifth accepting event
+  and no newly surfaced hybrid.  The mandatory re-sum is therefore unchanged:
+
+  `3320*(9/16)^111 + (28,522,064,111,120 + 151,060 + 3,412 + 1,661)/q`
+  `= 3320*(9/16)^111 + 28,522,064,267,253/q`, or
+  **80.25537016399041 bits**, still **1.44607528999041 bits** above the floor.
+  The cross-check changes no statement shape, protocol, parameter, byte,
+  correlation or gate.  The annotated design SHA-256 is
+  `c963831373783504e855c6c9b54a4d1bf425206ccb68992c242c94290e1cf544`;
+  the frozen Amendment-5 theorem/profile baseline remains SHA-256
+  `1383fa5d0a2eb9155f1ca76fe814238c04eaaa7aab965e10374b5f07d220bfb7`.
+  Section 0.12.6 itself is byte-identical before/after the annotation, with
+  subsection SHA-256
+  `c9f1246b32e5f20459ba00652cf1d1554face1da2cdc3b01c487671a39860aaa`.
+  V4 Lean-first is now authorized under the standing exact-statement rule.
 
 - **2026-07-21 (Amendment 5 authorized; v3 is a superseded infeasible
   candidate, not a near pass)**: the v3 G3 verdict and evidence remain

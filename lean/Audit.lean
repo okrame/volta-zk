@@ -190,3 +190,54 @@ vector-RLC bounds from being mistaken for implementation bounds.
 #print axioms VoltaZk.x4_response_soundness_v3
 #print axioms VoltaZk.x4_response_error_v3_lt_two_pow_neg_83
 #print axioms VoltaZk.x4_response_error_v3_meets_registered_target
+
+-- X4 Amendment 5: model-global schema-4 packed opening, s=111.
+-- Binding, ZK and different-size batching remain separate targets.  The
+-- historical delta-shift and beta-collision negative artifacts above stay in
+-- the audit and are not replaced by these declarations.
+#print axioms VoltaZk.x4V4QueryCount
+#print axioms VoltaZk.x4_v4_field_domain_capacity
+#print axioms VoltaZk.x4_aux_mask_entropy_budget_max_v4
+#print axioms VoltaZk.masked_aux_authenticated_link_hiding_count_v4
+#print axioms VoltaZk.AuthenticatedLinkViewV4.ext
+#print axioms VoltaZk.blind_authenticated_output_link_perfect_zk_v4
+#print axioms VoltaZk.X4FrameKindV4.ofCode_code
+#print axioms VoltaZk.x4FrameHeaderV4_length
+#print axioms VoltaZk.X4FrameV4.ext
+#print axioms VoltaZk.x4_v4_frame_decode_encode
+#print axioms VoltaZk.x4_v4_frame_decode_canonical
+#print axioms VoltaZk.x4_v4_frame_kind_encoding_disjoint
+#print axioms VoltaZk.x4_v4_packed_schedule_is_derived
+#print axioms VoltaZk.x4_v4_reconstructed_leaf_hash_eq_explicit
+#print axioms VoltaZk.x4_v4_packed_verify_iff_explicit_verify
+#print axioms VoltaZk.x4_v4_all_commitments_fixed_before_queries
+#print axioms VoltaZk.x4_v4_no_early_query_transition
+#print axioms VoltaZk.cohort_opening_binding_v4
+#print axioms VoltaZk.model_global_slot_identity_binding_v4
+#print axioms VoltaZk.model_global_same_domain_reduce_sound_v4
+#print axioms VoltaZk.deepfold_different_size_global_chain_sound_v4
+#print axioms VoltaZk.ud_model_global_folding_sound_v4
+#print axioms VoltaZk.x4_ud_pcs_binding_v4
+#print axioms VoltaZk.x4_masked_zk_v4
+#print axioms VoltaZk.x4_batch_sound_v4
+#print axioms VoltaZk.authenticated_output_link_produces_bound_aux_v4
+#print axioms VoltaZk.bound_aux_has_verified_origin_v4
+#print axioms VoltaZk.authenticated_output_batch_link_sound_v4
+#print axioms VoltaZk.authenticated_output_link_excludes_delta_shift_v4
+#print axioms VoltaZk.accepted_delta_shift_event_cover_v4
+#print axioms VoltaZk.masked_batch_transfers_evals_v4
+#print axioms VoltaZk.x4V4PackedOpeningBytes
+#print axioms VoltaZk.x4_v4_gpt2_packed_opening_bytes
+#print axioms VoltaZk.x4_v4_gpt2_complete_pcs_bytes
+#print axioms VoltaZk.x4_v4_gpt2_g3_and_response_caps
+#print axioms VoltaZk.x4_v4_gptoss_codec_upper_bound
+#print axioms VoltaZk.x4V4SeamFullCorrs
+#print axioms VoltaZk.x4V4FullCorrs
+#print axioms VoltaZk.x4_v4_gpt2_full_corrs
+#print axioms VoltaZk.x4_v4_max_seam_full_corrs
+#print axioms VoltaZk.x4_v4_max_full_corrs
+#print axioms VoltaZk.x4ResponseErrorV4
+#print axioms VoltaZk.x4_wrong_response_event_cover_v4
+#print axioms VoltaZk.x4_response_soundness_v4
+#print axioms VoltaZk.x4_response_error_v4_lt_two_pow_neg_80
+#print axioms VoltaZk.x4_response_error_v4_meets_registered_target

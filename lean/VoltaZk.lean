@@ -21,3 +21,4 @@ import VoltaZk.Ideal
 import VoltaZk.OpeningMac
 import VoltaZk.X4FoldingPCS
 import VoltaZk.X4FoldingPCSV3
+import VoltaZk.X4FoldingPCSV4

@@ -11,7 +11,32 @@ if rg -n '\b(sorry|admit)\b' "$repo_root/lean" --glob '*.lean'; then
     exit 1
 fi
 
-output="$(cd "$repo_root/lean" && lake env lean Audit.lean 2>&1)"
+# Lean may wrap a long `#print axioms` result across physical lines (the
+# permanent beta-collision theorem is long enough to trigger this).  Join only
+# continuation lines inside an open axiom list; all later validation still
+# checks one result per requested theorem and every dependency by exact name.
+raw_output="$(cd "$repo_root/lean" && lake env lean Audit.lean 2>&1)"
+output="$(awk '
+    pending != "" {
+        pending = pending " " $0
+        if ($0 ~ /]$/) {
+            print pending
+            pending = ""
+        }
+        next
+    }
+    /^\047[^\047]+\047 depends on axioms: \[[^]]*$/ && $0 !~ /]$/ {
+        pending = $0
+        next
+    }
+    { print }
+    END {
+        if (pending != "") {
+            print pending
+            exit 2
+        }
+    }
+' <<<"$raw_output")"
 printf '%s\n' "$output"
 
 mapfile -t audited_theorems < <(

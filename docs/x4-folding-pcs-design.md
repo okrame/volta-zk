@@ -1,22 +1,26 @@
-# X4 folding-PCS amended preregistration and Phase-2 statement freeze
+# X4 folding-PCS amended preregistration and statement freeze
 
-**Status (2026-07-21): R1B AMENDMENTS 1--2 FROZEN; AMENDMENT 2 CORRECTS THE
-DIRECT-MASK GOOD-TAPE PREMISE; PRODUCT OWNER AUTHORIZED LEAN-FIRST PHASE 2
-AND THE SUBSEQUENT PLAN SUBJECT TO THE EXISTING HARD STOPS.**
+**Status (2026-07-21): R1B AMENDMENTS 1--3 FROZEN. AMENDMENT 3 REPLACES THE
+UNREALIZABLE AUXILIARY-TO-MAC SEAM WITH AN AUTHENTICATED-OUTPUT BATCH LINK.
+HARD STOP BEFORE ITS LEAN PROOFS AND BEFORE ANY M9 RUST.**
 
 This document is the Phase-1 preregistration for X4. It replaces the original
 X4 premise in `docs/scaling-note.md`: lever A (cache/reuse fixed query rows)
 is recorded UNSOUND and receives no credit. The replacement is a folding-PCS
 package, co-designed with D3 per-layer commitments and canonical per-expert
-blocks. This X4 package contains design only. It changes no Lean declaration
-or proof, X4 Rust code, benchmark reference or gate verdict.
+blocks. This Amendment-3 package contains design only: it changes no Lean
+declaration or proof, X4 Rust code, benchmark reference or gate verdict.  The
+prior v2 diagnostic Rust and permanent Lean counterexample remain unchanged.
 
-The amended candidate profile is named **`x4-zkdeepfold-ud-e29-v2`**. It
-supersedes `x4-zkdeepfold-v1`, which remains below as immutable Phase-1
-history. All parameters, byte thresholds, measurements and failure rules are
-preregistered before implementation. A later change to a security parameter,
-block map, byte codec or gate requires an append-only deviation before the
-affected run; a failed result may not be tuned into a pass.
+The Amendment-3 candidate profile is named
+**`x4-zkdeepfold-ud-e29-v3`**. It supersedes
+`x4-zkdeepfold-ud-e29-v2` only at the opening-to-MAC seam, transcript order
+and frame schema; the v2 design and its diagnostic partial Rust remain
+immutable evidence. All parameters, byte thresholds, measurements and
+failure rules are preregistered before the amended implementation. A later
+change to a security parameter, block map, byte codec or gate requires an
+append-only deviation before the affected run; a failed result may not be
+tuned into a pass.
 
 Historical Section 5.1 is the product-owner-requested mitigation addendum for the
 10.7008-TB first-oracle screen. It adds conditional paper-only alternatives
@@ -729,9 +733,10 @@ authentication compression.
 
 ### 0.9 Phase-2 implementation hard stop: auxiliary-to-MAC link is missing
 
-**Status: OPEN SOUNDNESS OBSTRUCTION; no M9 implementation, CPU gate record,
-GPT-2 migration or pod run is authorized until an explicit product-owner
-amendment supplies and proves a concrete link.**
+**Status: PERMANENT NEGATIVE ARTIFACT. Amendment 3 below supplies the amended
+design, but no proof, M9 implementation, CPU gate record, GPT-2 migration or
+pod run is authorized until its new Lean-first hard stop is separately
+cleared.**
 
 During the concrete discharge of `MaskedBatchBindsIntoMac`, before writing the
 X4 M9 Rust path, the following one-block counterexample was found and checked
@@ -775,6 +780,587 @@ append-only amendment and Lean-first theorem set before implementation resumes.
 The already implemented canonical v2 codec, N4 cohort Merkle tree, `E` NTT and
 public strict-UD folding core remain diagnostic partial work only.  They confer
 no X4 gate verdict and are not wired into the production response path.
+
+## 0.10 Amendment 3: blind authenticated-output opening (normative override)
+
+The product owner authorized this amendment on 2026-07-21 under an explicit
+second design-only hard stop.  It supersedes Amendment 2's unrealizable
+`MaskedBatchBindsIntoMac` discharge, the v2 challenge order, the v2 frame
+schema and every sentence that treats a correction-authenticated
+prover-chosen `s_b` as though it were already bound to `g_b(u_b)`.  The
+counterexample in Section 0.9 and
+`masked_sum_zeroBatch_link_counterexample` remain permanent negative
+artifacts.  Field, block geometry, rate, query count and all G1--G6 thresholds
+remain unchanged.
+
+The construction uses two existing ingredients, but their composition is a
+VOLTA result and receives no citation shortcut.  DeepFold's different-point
+batching first applies a batch sumcheck and then closes the reduced values
+through the committed fold/query oracles; its published result has public
+evaluation claims.  VOLTA applies the already formalized blind scalar M3
+compiler to that batch sumcheck so its initial claims and round values remain
+MAC-authenticated.  The terminal values are exactly the values subsequently
+bound by the same cohort/fold/query opening.  DeepFold is the source for the
+batch/fold and ZK constructions; the authenticated-output composition,
+challenge order, correction hiding and delta-shift theorem below are new
+repository obligations, not claims made by the paper.
+
+Primary references remain
+[DeepFold Sections 5.1--5.2 and Appendices D--E](https://www.usenix.org/system/files/usenixsecurity25-guo-yanpei.pdf)
+and [BaseFold Section 5](https://eprint.iacr.org/2023/1705.pdf).  No
+list-decoding radius is imported from either source.
+
+### 0.10.1 Bound relation and no-escape state machine
+
+For every touched block `b`, roots, descriptor, `z_b`, canonical auxiliary
+point `u_b`, the already-authenticated downstream claim `authV_b`, and public
+masked value `h_b` are fixed first.  The prover computes
+`s_b=g_b(u_b)`, consumes one fresh full `E` correlation
+`(a_b,m_b,k_b=m_b+Delta*a_b)`, and sends only the ordinary correction
+
+```text
+c_b = s_b - a_b.
+```
+
+The prover obtains `(s_b,m_b)` and the verifier obtains
+`k_b+Delta*c_b`; neither party sends `s_b`.  Processing this correction
+creates a `PendingAuxEval`, not an accepted authenticated evaluation.  A
+pending value cannot enter response ZeroBatch, downstream GKR, a public API
+return or an accepted response.  Only successful completion of the link
+below produces `BoundAuxEval`.
+
+After every `c_b` is fixed, the verifier samples one fresh scalar batching
+challenge for the following canonical `2*B_touch` relation atoms:
+
+```text
+R_(2b)   = Wext_b(z_b || 0) + g_b(u_b) - h_b
+R_(2b+1) = g_b(u_b) - authS_b.plaintext.
+```
+
+The ordered random linear combination is proved by one `d`-round blind
+degree-two batch sumcheck, where
+
+```text
+d = max_b(mu_b+1, ell_b) <= 30.
+```
+
+Shorter polynomials use DeepFold's different-size schedule; they are not
+materially padded.  Each round transfers only the two compressed values at
+`0` and `2` using two fresh full correlations, fixes both corrections, and
+then receives the round challenge.  At the terminal common point, the
+authenticated sumcheck claim zero-opens against the terminal `Wext/g`
+values carried by the zkDeepFold batch.  Those values are accepted only if
+the subsequent committed fold transitions, exact 128-query schedule and
+canonical cohort multiproofs verify.  Thus no prover-supplied `s_b` is
+accepted on the strength of its correction or a transcript assertion.
+
+The ordinary zkDeepFold terminal evaluations at its fresh random common
+point remain in the published PCS transcript exactly where the cited
+simulator expects them; they are not the target evaluations `W_b(z_b)` or
+`g_b(u_b)`.  Their public linear combination is what closes the blind
+sumcheck claim.  This is not a recursive invocation of opening-into-MAC:
+the terminal values are simulator-covered PCS messages whose consistency is
+checked by the commitment's own fold/query machinery.  No clear target
+evaluation is substituted for them.
+
+On a good link tape the two atoms give, separately,
+
+```text
+authS_b.plaintext = g_b(u_b)
+h_b = Wext_b(z_b || 0) + g_b(u_b).
+```
+
+The final response ZeroBatch then checks
+`authV_b+authS_b-authPublic(h_b)=0`, yielding
+`authV_b.plaintext=Wext_b(z_b||0)=W_b(z_b)`.  The verifier implementation
+must encode this order as a consuming typestate transition
+
+```text
+PendingAuxEval --verify authenticated-output link/fold/query--> BoundAuxEval
+```
+
+and must have no constructor that creates `BoundAuxEval` from a correction.
+
+For any nonzero `delta_b`, the entire compensating-shift family
+
+```text
+authV_b.plaintext = W_b(z_b) - delta_b
+authS_b.plaintext = g_b(u_b) + delta_b
+```
+
+still satisfies the old masked sum and response residual, but violates
+`R_(2b+1)=0`.  On a good link tape it therefore implies `delta_b=0`, a
+contradiction.  Accepted nonzero shifts are contained in the named
+authenticated-link, fold/query or ZeroBatch bad events, conditional on the
+separately stated canonical-frame and collision-free hash premises; there is
+no deterministic uncounted statistical branch and no hash assumption hidden
+inside a rational coefficient.
+
+### 0.10.2 Challenge order and normative v3 grammar delta
+
+The new profile string is exactly `x4-zkdeepfold-ud-e29-v3`; its digest is
+the ordinary BLAKE3 digest of those ASCII bytes.  Every v3 header has magic
+`VOLTAX43`, `schema=3`, unchanged 16-byte header width and the canonical
+integer/`E` encodings of Section 0.4.  All v2 hash contexts change their
+suffix to `/v3`; v2 roots can never be accepted under v3.  Kind `0x0c` and
+the context
+
+```text
+volta-zk/x4/auth-output-link-schedule/v3
+```
+
+are added.  The new frame is:
+
+| `kind` | value | body (in exact order) |
+| --- | ---: | --- |
+| authenticated-output link | `0x0c` | `relation_count:u16, round_count:u8, link_schedule_digest, round_correction_count:u16, ordered_round_correction_symbols, terminal_opened_tag_symbol` |
+
+The invariants are exact:
+
+```text
+relation_count         = 2*masked_count <= 3320
+round_count            = d <= 30
+round_correction_count = 2*d
+```
+
+Corrections are ordered `(round 0 at 0, round 0 at 2, ..., round d-1 at
+0, round d-1 at 2)`.  `terminal_opened_tag_symbol` is the one ZeroOpen tag
+for the terminal authenticated sumcheck claim; it is not a clear evaluation.
+
+`link_schedule_digest` hashes this exact canonical preimage in derive-key
+mode: `epoch:u64`, the complete ordered reduced-claim frames, the ordered
+descriptor digests, `masked_count:u16`, the ordered `h` symbols, the complete
+ordered M9 frames, `d:u8`, and the ordered `2*d` link-round correlation
+domain ids.  Counts and complete nested frames are included exactly as in
+Section 0.4.  The verifier reconstructs the preimage and every domain id;
+the digest is not prover-selected metadata.
+
+The response-envelope body order becomes
+
+```text
+profile_digest, model_root, epoch,
+descriptors, manifest frames, reduced claims,
+masked_count, ordered_h_symbols,
+m9_frame_count, ordered_m9_frames,
+authenticated_output_link_frame,
+fold frames, query frames, response_zero_batch_frame.
+```
+
+Live interaction and packed replay use the following partial order:
+
+```text
+roots/claims/points/h
+  < every M9 correction
+  < link batching challenge
+  < each (two round corrections < that round challenge)
+  < terminal tag and fold commitments
+  < exact query draws/answers/multiproofs
+  < response ZeroBatch challenge/tag.
+```
+
+In particular, the v2 order “multiproofs precede M9 corrections” is
+forbidden.  Reordering, omitting or duplicating a correction, relation atom,
+round, domain or terminal tag is a verifier rejection and a permanent tamper
+test.  Existing frame bodies `0x01`--`0x0b` retain their widths, but their
+schema/profile/hash domains are v3 and the `0x0a` M9 value remains pending
+until `0x0c` and its terminal fold/query closure succeed.
+
+### 0.10.3 Hiding and entropy accounting
+
+The amended seam reveals neither `s_b=g_b(u_b)` nor
+`v_b=h_b-s_b`.  For fixed `Delta` and secret `x`, define the verifier-visible
+ideal-correlation view
+
+```text
+View_Delta,x(a,m) = (m + Delta*a, x-a).
+```
+
+The map `(a,m) -> View_Delta,x(a,m)` is a bijection on `E^2` for every
+`x`: its inverse at `(k,c)` is
+`a=x-c, m=k-Delta*(x-c)`.  Consequently a correction plus its verifier key
+is exactly uniform and independent of `x`.  Applying the product bijection
+to the `B_touch` auxiliary corrections and `2*d` blind-round corrections
+shows that the new MAC view imposes zero additional equation on `g_b` or
+`W_b`.
+
+The public `h_b` still fixes exactly one nonzero linear functional of the
+uniform `2^ell_b`-coefficient auxiliary polynomial.  For every fixed
+correction/key/round-correction view, its fiber therefore remains
+
+```text
+|E|^(2^ell_b-1),
+```
+
+not `|E|^(2^ell_b-2)`.  The entropy after publishing `h_b` is exactly
+`(2^ell_b-1)*log2(|E|)` bits; no additional auxiliary coefficient or entropy
+is required beyond the already preregistered `+1` slack.  The amended check
+is stated on the remaining dimension itself:
+
+```text
+2^ell_b - 1 > 128*mu_b^2.
+```
+
+It holds for every admitted `14<=mu_b<=29` under
+`ell_b=ceil(log2(128*mu_b^2+1))`; at the maximum it is
+`131071 > 107648`.  Thus `ell_b=17` still leaves
+`|E|^131071` polynomials after publishing `h_b`.
+
+The terminal values and fold/query answers are covered by the selected
+zkDeepFold simulator.  The added sumcheck values are never clear: the M3
+round-correction bijection simulates them from fresh correlation views, and
+the terminal message is only a zero tag against the already simulated PCS
+terminal.  The ordinary fresh-common-point terminal values inside the cited
+PCS transcript remain simulator-covered public messages; they are not
+`W_b(z_b)`, `g_b(u_b)`, `v_b` or `s_b`.  The v3
+`NoIndividualEvalFields` predicate must reject any frame
+carrying clear `g_b(u_b)`, `W_b(z_b)`, `v_b`, `s_b`, a correlation plaintext
+or a per-block terminal evaluation outside the published zkDeepFold
+transcript.  One opening per commitment epoch remains mandatory.
+
+This is perfect hiding in the ideal full-correlation model plus the cited
+zkDeepFold simulator and hash assumptions.  The production PCG realization
+retains its already declared computational assumptions; no pseudorandomness
+claim is converted into a statistical term.
+
+### 0.10.4 Correlation and byte accounting
+
+The amended authenticated-output seam consumes exactly
+
+```text
+C_aux_auth = B_touch       one full correlation per pending authS
+C_link     = 2*d           two full correlations per blind sumcheck round
+C_zero     = 1             one response ZeroBatch mask
+C_seam     = B_touch + 2*d + 1.
+```
+
+At `B_touch=1660,d=30`, `C_seam=1,721` full correlations per role.  The
+previous `B_touch+1=1,661` statement omitted the now-mandatory authenticated
+link's 60 round correlations and is superseded.  The earlier per-block blind
+claim reductions remain separate and unchanged at `2*sum_b mu_b` full
+correlations; including their all-maximum screen gives
+
+```text
+2*(1660*29) + 1660 + 2*30 + 1 = 98,001
+```
+
+X4-specific full correlations.  This formula is a counter invariant; it does
+not modify the PCG generator, tuple, setup, pool or lifecycle.  Any concrete
+geometry uses its exact `sum_b mu_b`, `B_touch` and `d`, never the maximum as
+a measured count.
+
+At the seam maximum, the expanded local correlation material is `55,072 B`
+for the prover (`1,721 * 32 B` for `(a,m)`) and `27,536 B` for the verifier
+(`1,721 * 16 B` for `k`).  For the deliberately all-`mu=29` whole-X4 screen,
+the corresponding `98,001`-correlation local maxima are `3,136,032 B` and
+`1,568,016 B`.  These are local pool footprints, not transcript bytes and
+not a prediction of real-PCG setup traffic; the latter remains a measured
+implementation record.
+
+An M9 frame remains `16+32+16=64` bytes.  The v3 link frame is
+
+```text
+L_link(d) = 16 + (2+1+32+2+32*d+16) = 69+32*d bytes.
+```
+
+The response ZeroBatch frame remains 50 bytes.  Hence the exact amended seam
+frame bytes are
+
+```text
+L_seam(B_touch,d) = 64*B_touch + 119 + 32*d.
+```
+
+At the maximum this is `107,319 B`: `106,240 B` of M9 frames, `1,029 B`
+for the link frame and `50 B` for response ZeroBatch.  Relative to a
+well-formed v2 envelope at the same geometry, Amendment 3 adds exactly
+`1,029 B`; reordering and the v3 profile/hash widths add zero bytes.  Raw
+seam correction/tag payload is `16*B_touch+32*d+48 = 27,568 B` at the
+maximum; the rest is canonical framing and descriptor binding.
+
+All previously budgeted fold/query/cohort bytes remain unchanged in formula,
+but no v2 measurement or partial implementation is a v3 reference.  G3 uses
+the complete serialized v3 length and retains the verbatim 4,000,000-byte
+PCS and 45,270,464-byte response ceilings.  The amendment buys no byte-gate
+credit and changes no first-oracle, storage or G6 quantity.
+
+### 0.10.5 Specialized soundness re-derivation
+
+Let `LinkBad` mean that the authenticated dual-relation sumcheck accepts but
+one of its `2*B` fixed relations is false, conditional on the terminal
+fold/query values being the unique committed values.  The existing scalar
+M3 bound, applied once after every pending `authS` is fixed, gives
+
+```text
+C_authlink = P + 3*d + 2
+           = 3320 + 3*30 + 2
+           = 3412.
+```
+
+This is the same numeric slot formerly called `C_mpoint`; it is not an extra
+union term.  Amendment 3 narrows its ownership to the concrete dual relation
+and terminal opening.  Fold/query inconsistency remains in `C_fold`; the
+response ZeroBatch remains `C_zero=B+1=1661`.  A nonzero delta shift is
+therefore covered by `LinkBad`, `FoldBad` or `ZeroBatchBad` and is counted
+once by the existing event union.
+
+The complete maximum-geometry expression is re-derived as
+
+```text
+epsilon_prox  = 3320*(9/16)^128
+
+C_fold        = 3320*((2^33-1)+(2^20-1)) = 28,522,064,111,120
+C_claim       = 1660*(2+3*29+2)           =            151,060
+C_authlink    = 3320+3*30+2               =              3,412
+C_zero        = 1660+1                    =              1,661
+C_total_v3                                      28,522,064,267,253
+
+epsilon_X4_v3 = 3320*(9/16)^128
+               + 28,522,064,267,253 / |E|.
+```
+
+Thus `C_total_v3` and the exact rational expression are numerically unchanged
+from Amendment 2, but every coefficient now has a realizable owner.  With
+`|E|=340282366762482138490186164457219031041`, evaluation remains
+
+```text
+epsilon_prox       = 3.4420843757872683744986440971558333e-29
+C_total_v3/|E|     = 8.3818813588896498295265533026818019e-26
+epsilon_X4_v3      = 8.3853234432654370979010519467789577e-26
+-log2(epsilon_X4_v3) = 83.30226403378921 bits.
+```
+
+The exact Lean target remains `epsilon_X4_v3 < 1/2^83`, which exceeds the
+required 78.809294874-bit floor by 4.49296915978921 bits.  Rate `1/8` and
+`s=128` remain unchanged; no list-decoding credit is used and no parameter
+change is authorized by this amendment.
+
+### 0.10.6 Final Amendment-3 Lean statement freeze
+
+The Section-0.5 theorems not explicitly superseded below remain frozen.
+`masked_sum_zeroBatch_link_counterexample` remains in `Audit.lean` forever.
+The old `MaskedBatchBindsIntoMac` assumption and the old
+`masked_batch_transfers_evals` theorem may remain as historical declarations,
+but no v3 response theorem may depend on either.  Definitional scaffolding may
+add namespaces and implicit arguments; the following theorem names,
+hypotheses, conclusions and coefficients may not be weakened without another
+owner-approved amendment.
+
+```lean
+-- A correction and verifier key are a perfect one-time view of any secret.
+def corrCorrectionView (Delta x : E) (am : E × E) : E × E :=
+  (am.2 + Delta * am.1, x - am.1)
+
+theorem corr_correction_view_bijective (Delta x : E) :
+    Function.Bijective (corrCorrectionView Delta x)
+
+theorem corr_correction_views_unique_preimage
+    (Delta : E) (secret : Fin n -> E) (view : Fin n -> E × E) :
+    Fintype.card {am : Fin n -> E × E //
+      forall i, corrCorrectionView Delta (secret i) (am i) = view i} = 1
+
+-- Conditioning on every auxiliary/link correlation view does not consume a
+-- second equation from the auxiliary polynomial's public-h fiber.
+theorem masked_aux_authenticated_link_hiding_count
+    (hell : 0 < ell) (hfunc : EvalFunctionalNonzero u)
+    (h : E) (v : E) (fixedView : AuthenticatedLinkCorrView E n) :
+    Fintype.card {g : (Fin (2^ell) -> E) //
+      h = v + mle g u /\ HasAuthenticatedLinkView Delta g fixedView} =
+      Fintype.card E ^ (2^ell - 1)
+
+theorem x4_aux_mask_entropy_budget_max_v3 :
+    128 * 29^2 < 2^17 - 1
+
+theorem blind_authenticated_output_link_perfect_zk
+    (hfresh : FreshDisjointFullCorrDomains linkSchedule)
+    (hcorr : CorrCorrectionViewsAreBijective linkSchedule)
+    (hterminal : TerminalValuesCoveredByZkDeepFoldSimulator statement) :
+    RealAuthenticatedLinkView statement =
+      SimAuthenticatedLinkView statement publicH
+
+-- Corrections create only pending values; the sole transition to Bound is a
+-- successful blind link whose terminal is closed by the committed PCS.
+theorem pending_aux_cannot_escape
+    (p : PendingAuxEval E) :
+    not (UsableByResponseZeroBatch p)
+
+theorem authenticated_output_link_produces_bound_aux
+    (hfixed : AuthenticatedOutputClaimsFixedBeforeChallenge P)
+    (haccept : VerifyAuthenticatedOutputLink statement proof)
+    (hterminal : LinkTerminalClosedByUDFoldQueries statement proof) :
+    forall b : TouchedBlock P,
+      exists out : BoundAuxEval E,
+        out.auth = P.authS b /\
+        out.auth.x = P.committedAuxEval b
+
+-- Every value returned by the verifier as Bound has this verified origin;
+-- there is no correction-only constructor or prover assertion path.
+theorem bound_aux_has_verified_origin
+    (hout : verifierBoundAuxOutput statement proof b = some out) :
+    VerifyAuthenticatedOutputLink statement proof /\
+      LinkTerminalClosedByUDFoldQueries statement proof /\
+      out.auth = statement.authS b /\
+      out.auth.x = statement.committedAuxEval b
+
+-- One blind batch owns exactly the 2*B masked and auxiliary-output atoms.
+theorem authenticated_output_batch_link_sound
+    (hfixed : AuthenticatedOutputClaimsFixedBeforeChallenge P)
+    (hBpos : 0 < touchedBlocks)
+    (hrelations : relationCount = 2*touchedBlocks)
+    (hcount : relationCount <= 3320)
+    (hroundsPos : 0 < rounds)
+    (hrounds : rounds <= 30)
+    (hterminal : LinkTerminalBoundByUniqueCommittedOracles P) :
+    badTapeCard (AuthenticatedOutputBatchLink P) <=
+      (relationCount + 3*rounds + 2) * fieldTapeCard E
+
+def DeltaShiftAttempt (P : AuthenticatedOutputBatch E) (omega : Omega) : Prop :=
+  exists (b : TouchedBlock P) (delta : E), delta != 0 /\
+    (P.authV omega b).x = P.committedWeightEval omega b - delta /\
+    (P.authS omega b).x = P.committedAuxEval omega b + delta /\
+    P.publicH omega b =
+      P.committedWeightEval omega b + P.committedAuxEval omega b
+
+-- General class theorem; the concrete (3,5,8,4,4) witness is only one member.
+theorem authenticated_output_link_excludes_delta_shift
+    (hlink : AuthenticatedOutputLinkGood P omega)
+    (hzero : ResponseZeroBatchAcceptsV3 P omega) :
+    not (DeltaShiftAttempt P omega)
+
+-- The full nonzero-shift class, not merely the concrete audit witness, is
+-- charged to named events whenever an amended response accepts.
+theorem accepted_delta_shift_event_cover_v3
+    (hframes : CanonicalFramesAndOrderV3 P omega)
+    (hhash : CollisionFreeOn X4V3Hash (committedFrames P))
+    (hdelta : DeltaShiftAttempt P omega)
+    (haccept : X4ResponseAcceptsV3 P omega) :
+    omega ∈ X4AuthenticatedOutputLinkBad P ∪
+      X4FoldQueryBadV3 P ∪ X4ResponseZeroBatchBad P
+
+-- `hnotbad : not committedEvalWrong` is gone: equality is obtained from the
+-- link's Bound outputs, not assumed by the composition theorem.
+theorem masked_batch_transfers_evals_v3
+    (hlink : AuthenticatedOutputLinkGood P omega)
+    (hzero : ResponseZeroBatchAcceptsV3 P omega) :
+    forall b : TouchedBlock P,
+      ValidCommittedAuthEval P b omega
+
+theorem x4_authenticated_output_zk
+    (hmask : MaskedAuxAuthenticatedLinkEqualFiberCounts statement)
+    (hcorr : BlindAuthenticatedOutputLinkPerfectZK statement)
+    (hone : OneOpeningPerEpoch epoch transcript)
+    (hpaper : ZkDeepFoldSimulator E params)
+    (hframes : NoIndividualEvalFieldsV3 transcript) :
+    X4WeightOpeningZKV3 statement transcript
+
+-- Schema-3 canonicality and the required challenge prefix.
+theorem x4_v3_frame_decode_encode (f : X4FrameV3) :
+    decodeX4FrameV3 (encodeX4FrameV3 f) = some f
+
+theorem x4_v3_frame_decode_canonical
+    (h : decodeX4FrameV3 bytes = some f) :
+    encodeX4FrameV3 f = bytes
+
+theorem x4_v3_frame_kind_encoding_disjoint
+    (a b : X4FrameV3) (hkind : a.kind != b.kind) :
+    encodeX4FrameV3 a != encodeX4FrameV3 b
+
+theorem x4_v3_m9_fixed_before_link_challenge
+    (h : VerifyAuthenticatedOutputLink statement proof) :
+    AllM9FramesFixedBeforeLinkChallenge statement proof
+
+theorem cohort_opening_binding_v3
+    (hhash : CollisionFreeOn X4V3Hash committedFrames)
+    (ha : VerifyCohortOpeningV3 root descriptor point slot openA)
+    (hb : VerifyCohortOpeningV3 root descriptor point slot openB) :
+    openA.symbols = openB.symbols
+
+theorem x4_ud_pcs_binding_v3
+    (hframe : CanonicalCohortLayoutV3 statement)
+    (hmerkle : CollisionFreeOn X4V3Hash committedFrames)
+    (hud : UDFoldingAcceptsV3 statement proof) :
+    BoundToUniqueCommittedBlocksV3 statement proof
+
+def x4V3LinkFrameBytes (d : Nat) : Nat := 69 + 32*d
+def x4V3SeamFrameBytes (B d : Nat) : Nat := 64*B + 119 + 32*d
+def x4V3SeamFullCorrs (B d : Nat) : Nat := B + 2*d + 1
+
+theorem x4_v3_max_link_frame_bytes : x4V3LinkFrameBytes 30 = 1029
+theorem x4_v3_max_seam_frame_bytes : x4V3SeamFrameBytes 1660 30 = 107319
+theorem x4_v3_max_seam_full_corrs : x4V3SeamFullCorrs 1660 30 = 1721
+
+def x4ResponseErrorV3 : Rat :=
+  (3320 : Rat) * ((9 : Rat) / 16)^128 +
+  (28522064267253 : Rat) /
+    (340282366762482138490186164457219031041 : Rat)
+
+theorem x4_wrong_response_event_cover_v3
+    (hframes : CanonicalFramesAndOrderV3 statement proof)
+    (hhash : CollisionFreeOn X4V3Hash committedFrames)
+    (hcohort : CohortOpeningsBind statement proof)
+    (hpcs : BoundToUniqueCommittedBlocks statement proof)
+    (hlink : AuthenticatedOutputLinkTransfersAllTouchedEvals statement proof) :
+    X4WrongResponseCoveredByNamedEventsV3 statement proof
+
+theorem x4_response_soundness_v3
+    (hcover : X4WrongResponseCoveredByNamedEventsV3 statement proof)
+    (hfold : statisticalError (X4FoldBadV3 statement proof) <=
+      (3320 : Rat) * ((9 : Rat) / 16)^128 +
+      (28522064111120 : Rat) /
+        (340282366762482138490186164457219031041 : Rat))
+    (hclaim : statisticalError (X4ClaimReduceBadV3 statement proof) <=
+      (151060 : Rat) /
+        (340282366762482138490186164457219031041 : Rat))
+    (hlink : statisticalError (X4AuthenticatedOutputLinkBad statement proof) <=
+      (3412 : Rat) /
+        (340282366762482138490186164457219031041 : Rat))
+    (hzero : statisticalError (X4ResponseZeroBatchBad statement proof) <=
+      (1661 : Rat) /
+        (340282366762482138490186164457219031041 : Rat)) :
+    statisticalError (X4AcceptsWrongResponseV3 statement proof) <=
+      x4ResponseErrorV3
+
+theorem x4_response_error_v3_lt_two_pow_neg_83 :
+    x4ResponseErrorV3 < (1 : Rat) / 2^83
+
+theorem x4_response_error_v3_meets_registered_target :
+    ((x4ResponseErrorV3 : Rat) : Real) <
+      Real.rpow 2 (-((78809294874 : Real) / 1000000000))
+```
+
+Every new theorem enters `lean/Audit.lean`.  No new `Ideal.lean` axiom is
+permitted; the blind-link result must be derived from M3/ZeroBatch algebra and
+the separately cited PCS binding, ZK and batch obligations.  LogUp discharge
+continues to require its explicit characteristic hypothesis, and the
+MINOR-1/2 no-bundling constraints remain in force.
+
+### 0.10.7 R1b supersession, R1c scope and hard stop
+
+R1b M3's sentence “M9 masked-opening seam — sound as specified” is
+**SUPERSEDED ON THE AUXILIARY-TO-MAC LINK ONLY**.  The report remains an
+immutable, useful AI adversarial review with no independent-human assurance;
+the supersession records the limitation revealed by concrete discharge and
+assigns no blame to the reviewer.  Its other findings and dispositions are
+unchanged.
+
+Any future R1c review must include, as mandatory scope:
+
+1. the v3 correction-before-challenge order and pending-to-bound typestate;
+2. the dual relation `h-W-g=0` and `g-authS=0`, including terminal closure by
+   the commitment's own fold/query checks;
+3. the full nonzero delta-shift class theorem and permanent tamper family;
+4. the correction-view bijection, unchanged auxiliary fiber/entropy count,
+   absence of clear `g(u)`/`v`, and one-opening epoch;
+5. exact correlation domains/counts, 1,029-byte maximum frame delta and
+   response soundness coefficients; and
+6. separate binding, ZK and batch citations/discharges, with no bundled
+   assurance claim.
+
+**HARD STOP:** Amendment 3 ends here.  No new Lean declaration or proof, no
+v3 codec or M9 Rust, no CPU/GPT-2 record and no pod work is authorized until
+the product owner reviews and explicitly approves this amended design and
+statement freeze.  After a later approval the order is Lean proofs/audit,
+then v3 implementation/M9 and CPU synthetic records, then GPT-2 migration and
+records, and only then the provisioning stop for the A100 pod and NOTE-6
+`c3_weights` smoke.
 
 ---
 

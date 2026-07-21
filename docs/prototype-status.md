@@ -221,7 +221,9 @@ historical entries remain append-only evidence, not competing definitions.
   are pre-existing production-size C3 leakage smokes.  These are diagnostic
   checks, not CPU records and not an X4 gate verdict.  The broader
   `cargo test --workspace` non-regression run also completes with **271
-  passed / 0 failed / 4 existing production-size tests ignored**.
+  passed / 0 failed / 4 existing production-size tests ignored**.  The
+  diagnostic implementation and hard-stop evidence are frozen at checkpoint
+  `8578bfd06baa0f21aba74a82992fc7b3873e43e2`.
 
 - **2026-07-21 (X4 implementation clarification I1 registered before folding
   code; no format or parameter amendment)**: Section 0.8 of

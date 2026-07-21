@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 AMENDMENTS 1--2 FROZEN; LEAN-FIRST PHASE AUTHORIZED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 AMENDMENTS 1--2 FROZEN; X4 LEAN GREEN; RUST PHASE AUTHORIZED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -64,9 +64,10 @@ response bound is **83.30226403378921 bits**.  Final pre-code theorem
 statements and the v2 frame grammar are frozen.  On 2026-07-21 the product
 owner approved Amendment 2, which repairs the false bare-`Authed.Valid`
 premise of `direct_mask_transfer` by requiring MAC validity *and* zero
-plaintext on the good tape.  The Lean-first phase and the subsequent ordered
-plan are authorized subject to every existing hard stop; no X4 gate verdict
-has yet landed.
+plaintext on the good tape.  The complete X4 Lean-first package is now proved,
+built and audited with no new ideal axiom, so the ordered Rust phase is
+authorized subject to every existing hard stop.  No X4 implementation or gate
+verdict has yet landed.
 
 ## Milestones
 
@@ -102,7 +103,7 @@ has yet landed.
 | R1b X1--X3 delta + Ideal/X4 addenda review | **AI REVIEW DISPOSITION CLOSED; no independent assurance** (2026-07-20) | Detached `9b1ef2d`; zero CRITICAL/MAJOR, three MINOR, six NOTE; every finding explicitly disposed; criterion (1) remains external | Byte-identical report `docs/r1b-kimi3-report.md`, SHA-256 `a6d25a55c1220934666bf22f218740be1a9084243370fd031274dea2a222aa9f`. MINOR-1/2 docstrings corrected; MINOR-3 adopted; NOTE-1/3/5/6 actions pinned. The review is automated Kimi adversarial analysis, not human assurance. |
 | X4 folding PCS Phase 1 (historical) | **SUPERSEDED BY R1B AMENDMENT 1; immutable design history** (2026-07-20) | Original no-list-decoding/G1--G6 preregistration retained for provenance | Historical `x4-zkdeepfold-v1`: `K`, rate `1/8`, `s=128`, **10.7008-TB** logical floor. Addended SHA-256 `3588d9f360960d46ad219309ba67645bd992a56d89ed1ae627f69f6d7ca9bb44`; original SHA `bb693bb4b1a06244d4f30f4b23cb47a64563dcaa21b5502b74adb044e6284464`. No gate verdict. |
 | X4 R1b Amendment 1 + Phase-2 statement freeze | **AMENDED DESIGN/SOUNDNESS/LEAN STATEMENTS FROZEN; HARD STOP pending product-owner review** (2026-07-20) | Exact conservative response bound must prove before X4 Rust; all original G1--G6 and byte/wall gates remain conjunctive; no list-decoding credit | `x4-zkdeepfold-ud-e29-v2`: `E`, rate `1/8`, `s=128`, `mu_max=29`; **1,660 blocks / 3,320 claims**; gpt-oss floor **5.3504 TB**; GPT-2 unpadded first oracle **31,923,699,712 B**; direct M9 `B_touch+1`; `epsilon=8.3853234432654371e-26`, **83.30226403378921 bits, meeting the 78.809294874 target**. Normative v2 frames and separate binding/ZK/batch theorem statements frozen. Design SHA-256 `2f511ac162ed6fdfa88dcb7e43fb749ae7063acf4a4585e2693349c9f023f207`. No Lean proof or X4 gate verdict. |
-| X4 Amendment 2 direct-mask premise | **APPROVED; LEAN-FIRST EXECUTION AUTHORIZED** (2026-07-21) | Replace the false bare-MAC-validity transfer premise before proofs; no parameter, coefficient or gate change | `ResponseZeroBatchValid Delta a := a.Valid Delta /\ a.x=0` is now the deterministic good-tape premise of `direct_mask_transfer`; accepted bad tapes remain owned by the separate scalar ZeroBatch soundness theorem. `C_M9=1661`, `C_total`, `x4ResponseError` and **83.30226403378921 bits** are unchanged. Amended design SHA-256 `31828e41d0da09a8e331603a693c8d11e4d3582ec45a38d7adba2cb53c12022b`. No Lean or Rust result yet. |
+| X4 Amendment 2 + Lean-first package | **LEAN GREEN; RUST PHASE AUTHORIZED** (2026-07-21) | Frozen statements prove; `lake build`; zero `sorry`/`admit`; derived audit green; no new axiom or `Ideal` dependency | `ResponseZeroBatchValid Delta a := a.Valid Delta /\ a.x=0`; strict rate-1/8 UD, split MLE, exact masked fiber count, one-opening state, canonical frames/cohort binding, scalar reductions, strict-UD folding, separate binding/ZK/batch seams, M9, event cover and LogUp characteristic premise all proved. Exact `x4ResponseError < 2^-83` and the **78.809294874-bit** target theorem are green. Full build **3250 jobs**; audit **132 targets** (41 X4), stdout SHA-256 `4c1c11d09f6da82f732de2455b8fa4ec622934c97103e7c072644ee689f5b83f`; only `propext`, `Classical.choice`, `Quot.sound`. Source SHAs: field `b57cb0acb469b9053ae9dbc65898a3c1437679b09b250fdff65f5d3594a47805`, PCS `d21d4dac4d351636c63b9481349f0fbafeb85e3bacf884c9f76fd362f22be846`. No Rust result or X4 gate verdict yet. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -170,6 +171,39 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-21 (X4 Lean-first hard stop cleared; Rust phase authorized)**:
+  `lean/VoltaZk/X4Field.lean` and `lean/VoltaZk/X4FoldingPCS.lean`
+  prove the complete Amendment-1/2 pre-code statement set.  The concrete
+  Goldilocks primality fact uses a kernel-checked Proth witness and a 63-step
+  square-and-multiply certificate, not `native_decide`; the resulting
+  `E=GF(p^2)` cardinality, exact 2-adicity 33 and domain-root existence are
+  proved.  The strict rate-`1/8` unique decoder, split-block reconstruction,
+  exact `|E|^(2^ell-1)` mask-fiber count, one-opening epoch rule, Amendment-2
+  direct M9 transfer, canonical v2 frame codec, cohort binding, scalar claim
+  reductions, strict-UD folding bound, separate PCS binding/ZK/batch
+  interfaces and full response event cover all compile at their frozen
+  conclusions.  The three current-Ligero discharge theorems remain separate;
+  conditional UC composition has both realization premises; the discharged
+  LogUp statement explicitly assumes `[CharP F p]`, prime `p`, and
+  `lookupCount < p`.
+
+  The exact response expression is proved as
+  `x4ResponseError < (1:Q)/2^83`, followed by the registered real-exponent
+  target theorem, so the **78.809294874-bit** stop rule clears without changing
+  rate `1/8`, `s=128`, any coefficient or any gate.  `lake build` completes
+  **3250 jobs**.  `scripts/audit_lean.sh` finds zero `sorry`/`admit`, audits
+  **132 declarations** including 41 X4 declarations, and reports only
+  `propext`, `Classical.choice` and `Quot.sound`; its complete stdout SHA-256
+  is `4c1c11d09f6da82f732de2455b8fa4ec622934c97103e7c072644ee689f5b83f`.
+  No new declaration was added to `Ideal.lean` and no deferred named ideal
+  assumption entered an X4 proof.  Source SHA-256 values are
+  `b57cb0acb469b9053ae9dbc65898a3c1437679b09b250fdff65f5d3594a47805`
+  for `X4Field.lean` and
+  `d21d4dac4d351636c63b9481349f0fbafeb85e3bacf884c9f76fd362f22be846`
+  for `X4FoldingPCS.lean`.  This clears only the Lean-first hard stop and
+  authorizes the already ordered Rust implementation.  It is not an X4 gate
+  verdict, CPU record, pod record or independent review assurance.
 
 - **2026-07-21 (X4 Amendment 2 approved before Lean/Rust; direct-mask
   good-tape premise corrected)**: the product owner approved the normative

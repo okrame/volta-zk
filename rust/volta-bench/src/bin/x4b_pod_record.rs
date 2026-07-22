@@ -749,6 +749,7 @@ struct LargeSampleRow {
 
 #[derive(Clone, Serialize)]
 struct CorrectnessRecord {
+    synthetic_preflight_before_full_pass: bool,
     contexts: Vec<ContextEqualityRow>,
     synthetic: Vec<SyntheticEqualityRow>,
     complete_aux_roots: Vec<LargeSampleRow>,
@@ -1967,9 +1968,9 @@ fn warmup_correctness(
     specs: &[CohortSpec],
     artifacts: &[X4bCudaCohortArtifactsV4],
     cache_policy: OuterCachePolicyV4,
-    synthetic_directory: &Path,
+    contexts: Vec<ContextEqualityRow>,
+    synthetic: Vec<SyntheticEqualityRow>,
 ) -> CorrectnessRecord {
-    let (contexts, synthetic) = synthetic_correctness(backend, synthetic_directory);
     let mut complete_aux_roots = Vec::new();
     let mut larger_cohort_samples = Vec::new();
     for (index, (spec, artifact)) in specs.iter().zip(artifacts).enumerate() {
@@ -1984,7 +1985,14 @@ fn warmup_correctness(
         && synthetic.iter().all(|row| row.equal)
         && complete_aux_roots.iter().all(|row| row.all_equal)
         && larger_cohort_samples.iter().all(|row| row.all_equal);
-    CorrectnessRecord { contexts, synthetic, complete_aux_roots, larger_cohort_samples, all_equal }
+    CorrectnessRecord {
+        synthetic_preflight_before_full_pass: true,
+        contexts,
+        synthetic,
+        complete_aux_roots,
+        larger_cohort_samples,
+        all_equal,
+    }
 }
 
 struct Args {
@@ -2098,6 +2106,20 @@ fn main() {
     let mut backend = Backend::cuda_resident_with_timing(ResidentTimingPolicy::WallOnlyCounters)
         .expect("initialize wall-only X4b CUDA backend");
 
+    // Fail closed on the cheap synthetic geometries before allocating or
+    // committing the 77-GB GPT-2 oracle. This ordering is part of the pod
+    // record, not merely a runbook convention.
+    let (contexts, synthetic) = synthetic_correctness(
+        &mut backend,
+        &session_directory.join("correctness-synthetic-preflight"),
+    );
+    assert_eq!(contexts.len(), 4, "all N4 derive-key domains must be checked");
+    assert_eq!(synthetic.len(), 5, "all synthetic structural families must be checked");
+    assert!(
+        contexts.iter().all(|row| row.equal) && synthetic.iter().all(|row| row.equal),
+        "pre-full-pass CPU/GPU synthetic root/digest equality failed"
+    );
+
     let warmup_outcome = run_initial_pass(
         "warmup",
         &mut backend,
@@ -2110,7 +2132,8 @@ fn main() {
         &specs,
         &warmup_outcome.artifacts,
         args.cache_policy,
-        &session_directory.join("correctness-synthetic"),
+        contexts,
+        synthetic,
     );
     assert!(correctness.all_equal, "CPU/GPU X4b root/digest equality failed");
     let expected_roots =

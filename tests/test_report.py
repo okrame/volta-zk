@@ -729,6 +729,7 @@ def test_x4b_pod_validator_accepts_honest_conjunctive_verdict_only():
         "local_preflight_of_record": copy.deepcopy(local),
         "pod_host_cpu_preflight": copy.deepcopy(local),
         "correctness": {
+            "synthetic_preflight_before_full_pass": True,
             "contexts": [{"equal": True}] * 4,
             "synthetic": [{"equal": True}] * 5,
             "complete_aux_roots": [

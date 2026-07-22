@@ -814,6 +814,7 @@ def _x4b_pod_result_valid(row: dict[str, Any]) -> bool:
     if not (
         cache_ok
         and isinstance(correctness, dict)
+        and correctness.get("synthetic_preflight_before_full_pass") is True
         and correctness.get("all_equal") is True
         and len(correctness.get("contexts", [])) == 4
         and all(item.get("equal") is True for item in correctness["contexts"])

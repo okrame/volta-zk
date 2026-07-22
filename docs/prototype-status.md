@@ -289,6 +289,15 @@ historical entries remain append-only evidence, not competing definitions.
   independent human assurance.  CUDA synthetic root bring-up is next and
   remains mandatory before any 77-GB full pass.
 
+  That pre-full-pass gate subsequently ran from checkpoint
+  `5559c4e9b3ae2fa5075133a26b82c8d3e8970b8a` with
+  `VOLTA_REQUIRE_CUDA=1`, so backend absence or initialization failure could
+  not be reported as a skipped/pass test.  The exact CUDA 12.8 / `sm_80`
+  backend matched the Rust CPU reference for all four derive-key domains and
+  all five synthetic structural families; device test wall was **1.31 s**
+  (release compilation excluded).  Verdict: **CPU/GPU SYNTHETIC ROOT EQUALITY
+  PASS**.  No GPT-2/full-pass cohort had been launched at this point.
+
 - **2026-07-22 (X4b pod provisioned; synthetic CPU/GPU equality made a
   fail-closed pre-full-pass invariant)**: the owner provisioned host
   `832f581f63c3` with **2 x A100-SXM4-80GB**, **2,101,189,548 kB** reported

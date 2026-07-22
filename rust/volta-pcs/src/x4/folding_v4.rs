@@ -6,11 +6,17 @@
 //! exact 111-query tape and emit the single packed opening.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 
+use volta_accel::Backend;
 use volta_field::{Fp, Fp2};
 use volta_mac::Transcript;
 
 use super::accounting::projected_query_indices;
+use super::cuda_v4::{
+    commit_cohort_cuda_v4, verify_persisted_oracle_matches_v4, X4bCudaCohortArtifactsV4,
+    X4bCudaCohortPathsV4, X4bCudaCommitMetricsV4,
+};
 use super::frame::{Digest, FrameError};
 use super::frame_v4::{
     opening_schedule_digest_v4, profile_digest_v4, FoldCommitmentFrameV4, InitialOpeningScheduleV4,
@@ -19,7 +25,7 @@ use super::frame_v4::{
 use super::merkle::MerkleError;
 use super::merkle_v4::{
     verify_fold_round_packed_opening_v4, verify_initial_packed_opening_v4, CohortIdentityV4,
-    CohortTreeV4, CohortVerifierConfigV4,
+    CohortTreeV4, CohortVerifierConfigV4, OuterCachePolicyV4,
 };
 use super::ntt::{
     encode_rate_eighth, evaluate_multilinear_coefficients, fold_codeword, fold_coefficients,
@@ -35,6 +41,7 @@ pub enum FoldingErrorV4 {
     InvalidGeometry(&'static str),
     InvalidProof(&'static str),
     EarlyQueryRejected,
+    Artifact(String),
     Overflow,
 }
 
@@ -147,6 +154,13 @@ pub struct SourceRecomputeTrafficV4 {
     pub source_bytes_read: u64,
     pub oracle_bytes_recomputed: u64,
     pub merkle_bytes_recomputed: u64,
+    pub persisted_oracle_bytes_read: u64,
+    pub persisted_page_cache_dontneed_bytes: u64,
+    pub persisted_page_cache_advice_calls: u64,
+    pub outer_cache_bytes_read: u64,
+    pub inner_trees_rebuilt: u64,
+    pub outer_frontier_leaves_rebuilt: u64,
+    pub outer_internal_nodes_rebuilt: u64,
 }
 
 /// Source abstraction used by the global chain.  A retained cohort answers
@@ -192,9 +206,19 @@ impl ModelGlobalOpeningSourceV4 for CommittedModelGlobalCohortV4 {
         touched_slots: &[u16],
     ) -> Result<(super::frame_v4::InitialOpeningGroupV4, SourceRecomputeTrafficV4), FoldingErrorV4>
     {
+        let (opening, metrics) = self.tree.open_initial_with_metrics(query_draws, touched_slots)?;
         Ok((
-            self.tree.open_initial(query_draws, touched_slots)?,
-            SourceRecomputeTrafficV4::default(),
+            opening,
+            SourceRecomputeTrafficV4 {
+                outer_cache_bytes_read: metrics
+                    .cached_outer_digests_read
+                    .checked_mul(32)
+                    .ok_or(FoldingErrorV4::Overflow)?,
+                inner_trees_rebuilt: metrics.inner_trees_rebuilt,
+                outer_frontier_leaves_rebuilt: metrics.outer_frontier_leaves_rebuilt,
+                outer_internal_nodes_rebuilt: metrics.outer_internal_nodes_rebuilt,
+                ..SourceRecomputeTrafficV4::default()
+            },
         ))
     }
 }
@@ -242,6 +266,26 @@ pub struct GlobalOpenMetricsV4 {
     pub recomputed_source_bytes_read: u64,
     pub recomputed_oracle_bytes: u64,
     pub recomputed_merkle_bytes: u64,
+    pub persisted_oracle_bytes_read: u64,
+    pub persisted_page_cache_dontneed_bytes: u64,
+    pub persisted_page_cache_advice_calls: u64,
+    pub outer_cache_bytes_read: u64,
+    pub inner_trees_rebuilt: u64,
+    pub outer_frontier_leaves_rebuilt: u64,
+    pub outer_internal_nodes_rebuilt: u64,
+    pub x4b_fold_coefficient_bytes_persisted: u64,
+    pub x4b_fold_oracle_bytes_persisted: u64,
+    pub x4b_fold_root_bytes_persisted: u64,
+    pub x4b_fold_reference_bytes_read: u64,
+    pub x4b_fold_staging_bytes_read: u64,
+    pub x4b_fold_staging_bytes_written: u64,
+    pub x4b_fold_retained_outer_cache_bytes: u64,
+    pub x4b_fold_expected_h2d_bytes: u64,
+    pub x4b_fold_expected_d2h_bytes: u64,
+    pub x4b_fold_expected_device_zeroed_bytes: u64,
+    pub x4b_fold_maximum_n4_tile_bytes: u64,
+    pub x4b_fold_page_cache_dontneed_bytes: u64,
+    pub x4b_fold_page_cache_advice_calls: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -342,6 +386,110 @@ impl FoldChallengeSourceV4 for InteractiveFoldChallengeSourceV4<'_> {
     }
 }
 
+trait FoldRoundCommitterV4 {
+    fn commit_round(
+        &mut self,
+        config: CohortVerifierConfigV4,
+        coefficients: &[Fp2],
+        codeword: &[Fp2],
+    ) -> Result<CohortTreeV4, FoldingErrorV4>;
+
+    fn charge_metrics(&self, _metrics: &mut GlobalOpenMetricsV4) -> Result<(), FoldingErrorV4> {
+        Ok(())
+    }
+}
+
+struct CpuFoldRoundCommitterV4;
+
+impl FoldRoundCommitterV4 for CpuFoldRoundCommitterV4 {
+    fn commit_round(
+        &mut self,
+        config: CohortVerifierConfigV4,
+        _coefficients: &[Fp2],
+        codeword: &[Fp2],
+    ) -> Result<CohortTreeV4, FoldingErrorV4> {
+        CohortTreeV4::build_flat(config, vec![Some(codeword.to_vec())]).map_err(Into::into)
+    }
+}
+
+struct X4bCudaFoldRoundCommitterV4<'a> {
+    backend: &'a mut Backend,
+    artifact_directory: PathBuf,
+    cache_policy: OuterCachePolicyV4,
+    metrics: X4bCudaCommitMetricsV4,
+    reference_bytes_read: u64,
+}
+
+impl FoldRoundCommitterV4 for X4bCudaFoldRoundCommitterV4<'_> {
+    fn commit_round(
+        &mut self,
+        config: CohortVerifierConfigV4,
+        coefficients: &[Fp2],
+        codeword: &[Fp2],
+    ) -> Result<CohortTreeV4, FoldingErrorV4> {
+        let round = config.identity.fold_round;
+        let paths = X4bCudaCohortPathsV4 {
+            coefficients: self.artifact_directory.join(format!("fold-{round}-coefficients.bin")),
+            oracle: self.artifact_directory.join(format!("fold-{round}-oracle.bin")),
+            root: self.artifact_directory.join(format!("fold-{round}-root.bin")),
+            staging_directory: self.artifact_directory.join("n4-staging"),
+        };
+        let artifacts = commit_cohort_cuda_v4(
+            self.backend,
+            config.clone(),
+            &[Some(coefficients.to_vec())],
+            paths,
+            self.cache_policy,
+        )
+        .map_err(|error| FoldingErrorV4::Artifact(error.to_string()))?;
+        let X4bCudaCohortArtifactsV4 { commitment, outer_cache, paths, metrics } = artifacts;
+        if commitment.config != config {
+            return Err(FoldingErrorV4::Artifact(
+                "X4b fold commit returned a different verifier configuration".to_owned(),
+            ));
+        }
+        let compared =
+            verify_persisted_oracle_matches_v4(&paths.oracle, &config, &[Some(codeword)])
+                .map_err(|error| FoldingErrorV4::Artifact(error.to_string()))?;
+        let tree = CohortTreeV4::from_accelerated_commit_parts(
+            config,
+            vec![Some(codeword.to_vec())],
+            outer_cache,
+        )?;
+        for path in [&paths.coefficients, &paths.oracle, &paths.root] {
+            std::fs::remove_file(path).map_err(|error| {
+                FoldingErrorV4::Artifact(format!(
+                    "cannot remove response-local X4b fold artifact {}: {error}",
+                    path.display()
+                ))
+            })?;
+        }
+        self.metrics
+            .include(&metrics)
+            .map_err(|error| FoldingErrorV4::Artifact(error.to_string()))?;
+        self.reference_bytes_read =
+            self.reference_bytes_read.checked_add(compared).ok_or(FoldingErrorV4::Overflow)?;
+        Ok(tree)
+    }
+
+    fn charge_metrics(&self, metrics: &mut GlobalOpenMetricsV4) -> Result<(), FoldingErrorV4> {
+        metrics.x4b_fold_coefficient_bytes_persisted = self.metrics.coefficient_bytes_persisted;
+        metrics.x4b_fold_oracle_bytes_persisted = self.metrics.oracle_bytes_persisted;
+        metrics.x4b_fold_root_bytes_persisted = self.metrics.root_bytes_persisted;
+        metrics.x4b_fold_reference_bytes_read = self.reference_bytes_read;
+        metrics.x4b_fold_staging_bytes_read = self.metrics.staging_bytes_read;
+        metrics.x4b_fold_staging_bytes_written = self.metrics.staging_bytes_written;
+        metrics.x4b_fold_retained_outer_cache_bytes = self.metrics.retained_outer_cache_bytes;
+        metrics.x4b_fold_expected_h2d_bytes = self.metrics.expected_h2d_bytes;
+        metrics.x4b_fold_expected_d2h_bytes = self.metrics.expected_d2h_bytes;
+        metrics.x4b_fold_expected_device_zeroed_bytes = self.metrics.expected_device_zeroed_bytes;
+        metrics.x4b_fold_maximum_n4_tile_bytes = self.metrics.maximum_n4_tile_bytes;
+        metrics.x4b_fold_page_cache_dontneed_bytes = self.metrics.page_cache_dontneed_bytes;
+        metrics.x4b_fold_page_cache_advice_calls = self.metrics.page_cache_advice_calls;
+        Ok(())
+    }
+}
+
 impl<'a> GlobalChainDraftV4<'a> {
     pub fn new(
         model_root: Digest,
@@ -429,7 +577,7 @@ impl<'a> GlobalChainDraftV4<'a> {
             .clone()
             .ok_or(FoldingErrorV4::InvalidGeometry("v4 interactive seal required"))?;
         let mut source = FixedFoldChallengeSourceV4 { challenges, cursor: 0 };
-        self.seal_with_source(&mut source)
+        self.seal_with_source(&mut source, &mut CpuFoldRoundCommitterV4)
     }
 
     /// Fix each line message, receive its fresh verifier challenge, and only
@@ -443,12 +591,41 @@ impl<'a> GlobalChainDraftV4<'a> {
             return Err(FoldingErrorV4::InvalidGeometry("v4 fixed seal is not interactive"));
         }
         let mut source = InteractiveFoldChallengeSourceV4 { tx };
-        self.seal_with_source(&mut source)
+        self.seal_with_source(&mut source, &mut CpuFoldRoundCommitterV4)
+    }
+
+    /// X4b production seal: transcript/challenge order is identical to
+    /// [`Self::seal_interactive`], while every response-local fold cohort is
+    /// committed by the exact CUDA E-NTT/N4 path and retained in the compact
+    /// CPU opening representation. Query draws remain unavailable until all
+    /// roots have been fixed and this method returns.
+    pub fn seal_interactive_x4b_cuda(
+        self,
+        tx: &mut Transcript,
+        backend: &mut Backend,
+        artifact_directory: impl AsRef<Path>,
+        cache_policy: OuterCachePolicyV4,
+    ) -> Result<SealedGlobalChainV4<'a>, FoldingErrorV4> {
+        if self.fixed_challenges.is_some() {
+            return Err(FoldingErrorV4::InvalidGeometry("v4 fixed seal is not interactive"));
+        }
+        let mut source = InteractiveFoldChallengeSourceV4 { tx };
+        let mut committer = X4bCudaFoldRoundCommitterV4 {
+            backend,
+            artifact_directory: artifact_directory.as_ref().to_path_buf(),
+            cache_policy,
+            metrics: X4bCudaCommitMetricsV4::default(),
+            reference_bytes_read: 0,
+        };
+        std::fs::create_dir_all(&committer.artifact_directory)
+            .map_err(|error| FoldingErrorV4::Artifact(error.to_string()))?;
+        self.seal_with_source(&mut source, &mut committer)
     }
 
     fn seal_with_source(
         self,
         source: &mut impl FoldChallengeSourceV4,
+        committer: &mut impl FoldRoundCommitterV4,
     ) -> Result<SealedGlobalChainV4<'a>, FoldingErrorV4> {
         let max_domain_log2 = self.groups[0].cohort.commitment().config.outer_depth();
         if usize::from(max_domain_log2 - 3) != self.common_point.len() {
@@ -456,79 +633,30 @@ impl<'a> GlobalChainDraftV4<'a> {
         }
         let max_outer_len = self.groups[0].cohort.commitment().config.outer_len;
         let max_coefficient_len = max_outer_len / 8;
-        let mut combined = Vec::with_capacity(self.groups.len());
-        let mut verifier_groups = Vec::with_capacity(self.groups.len());
-        let mut metrics = GlobalOpenMetricsV4::default();
-        for group in &self.groups {
-            let (value, recompute) = group.cohort.combine_source(
-                &group.touched_slots,
-                &group.weights,
-                &group.target_point,
-            )?;
-            accumulate_recompute_traffic(&mut metrics, recompute)?;
-            let touched =
-                u64::try_from(group.touched_slots.len()).map_err(|_| FoldingErrorV4::Overflow)?;
-            metrics.source_coefficients_read = metrics
-                .source_coefficients_read
-                .checked_add(
-                    touched
-                        .checked_mul(
-                            u64::try_from(value.coefficients.len())
-                                .map_err(|_| FoldingErrorV4::Overflow)?,
-                        )
-                        .ok_or(FoldingErrorV4::Overflow)?,
-                )
-                .ok_or(FoldingErrorV4::Overflow)?;
-            metrics.initial_encoded_symbols_read = metrics
-                .initial_encoded_symbols_read
-                .checked_add(
-                    touched
-                        .checked_mul(
-                            u64::try_from(value.codeword.len())
-                                .map_err(|_| FoldingErrorV4::Overflow)?,
-                        )
-                        .ok_or(FoldingErrorV4::Overflow)?,
-                )
-                .ok_or(FoldingErrorV4::Overflow)?;
-            metrics.combined_coefficient_symbols = metrics
-                .combined_coefficient_symbols
-                .checked_add(
-                    u64::try_from(value.coefficients.len())
-                        .map_err(|_| FoldingErrorV4::Overflow)?,
-                )
-                .ok_or(FoldingErrorV4::Overflow)?;
-            metrics.combined_codeword_symbols = metrics
-                .combined_codeword_symbols
-                .checked_add(
-                    u64::try_from(value.codeword.len()).map_err(|_| FoldingErrorV4::Overflow)?,
-                )
-                .ok_or(FoldingErrorV4::Overflow)?;
-            verifier_groups.push(GlobalVerifierGroupV4 {
+        let verifier_groups = self
+            .groups
+            .iter()
+            .map(|group| GlobalVerifierGroupV4 {
                 commitment: group.cohort.commitment().clone(),
                 touched_slots: group.touched_slots.clone(),
                 weights: group.weights.clone(),
                 target_point: group.target_point.clone(),
                 activation_challenge: group.activation_challenge,
-            });
-            combined.push(value);
-        }
+            })
+            .collect::<Vec<_>>();
+        let mut metrics = GlobalOpenMetricsV4::default();
 
         let mut current_coefficients = vec![Fp2::ZERO; max_coefficient_len];
         let mut current_codeword = vec![Fp2::ZERO; max_outer_len];
         let mut current_claim = Fp2::ZERO;
-        activate_groups(
+        let mut activated = combine_and_activate_groups_streaming_v4(
             max_outer_len,
             &self.groups,
-            &combined,
             &mut current_coefficients,
             &mut current_codeword,
             &mut current_claim,
+            &mut metrics,
         )?;
-        let mut activated = self
-            .groups
-            .iter()
-            .filter(|group| group.cohort.commitment().config.outer_len == max_outer_len)
-            .count();
         if activated == 0 {
             return Err(FoldingErrorV4::InvalidGeometry("v4 initial activation"));
         }
@@ -552,19 +680,14 @@ impl<'a> GlobalChainDraftV4<'a> {
             current_codeword = fold_codeword(&current_codeword, fold_challenge)
                 .map_err(|_| FoldingErrorV4::InvalidGeometry("v4 codeword fold"))?;
             let output_len = input_len / 2;
-            activate_groups(
+            activated += combine_and_activate_groups_streaming_v4(
                 output_len,
                 &self.groups,
-                &combined,
                 &mut current_coefficients,
                 &mut current_codeword,
                 &mut current_claim,
+                &mut metrics,
             )?;
-            activated += self
-                .groups
-                .iter()
-                .filter(|group| group.cohort.commitment().config.outer_len == output_len)
-                .count();
             metrics.folded_symbols_written = metrics
                 .folded_symbols_written
                 .checked_add(u64::try_from(output_len).map_err(|_| FoldingErrorV4::Overflow)?)
@@ -592,7 +715,7 @@ impl<'a> GlobalChainDraftV4<'a> {
                 outer_len: output_len,
                 expected_symbol_count: 1,
             };
-            let tree = CohortTreeV4::build_flat(config, vec![Some(current_codeword.clone())])?;
+            let tree = committer.commit_round(config, &current_coefficients, &current_codeword)?;
             let mut messages = vec![line_zero, line_one];
             if round_index + 1 == self.common_point.len() {
                 if current_coefficients.as_slice() != [current_claim] {
@@ -618,6 +741,7 @@ impl<'a> GlobalChainDraftV4<'a> {
             return Err(FoldingErrorV4::InvalidGeometry("v4 final activation schedule"));
         }
         metrics.aggregate_merkle_symbols_written = metrics.folded_symbols_written;
+        committer.charge_metrics(&mut metrics)?;
         metrics.serialized_fold_bytes = fold_frames.iter().try_fold(0u64, |sum, frame| {
             sum.checked_add(
                 u64::try_from(
@@ -1071,21 +1195,78 @@ fn accumulate_recompute_traffic(
         .recomputed_merkle_bytes
         .checked_add(traffic.merkle_bytes_recomputed)
         .ok_or(FoldingErrorV4::Overflow)?;
+    metrics.persisted_oracle_bytes_read = metrics
+        .persisted_oracle_bytes_read
+        .checked_add(traffic.persisted_oracle_bytes_read)
+        .ok_or(FoldingErrorV4::Overflow)?;
+    metrics.persisted_page_cache_dontneed_bytes = metrics
+        .persisted_page_cache_dontneed_bytes
+        .checked_add(traffic.persisted_page_cache_dontneed_bytes)
+        .ok_or(FoldingErrorV4::Overflow)?;
+    metrics.persisted_page_cache_advice_calls = metrics
+        .persisted_page_cache_advice_calls
+        .checked_add(traffic.persisted_page_cache_advice_calls)
+        .ok_or(FoldingErrorV4::Overflow)?;
+    metrics.outer_cache_bytes_read = metrics
+        .outer_cache_bytes_read
+        .checked_add(traffic.outer_cache_bytes_read)
+        .ok_or(FoldingErrorV4::Overflow)?;
+    metrics.inner_trees_rebuilt = metrics
+        .inner_trees_rebuilt
+        .checked_add(traffic.inner_trees_rebuilt)
+        .ok_or(FoldingErrorV4::Overflow)?;
+    metrics.outer_frontier_leaves_rebuilt = metrics
+        .outer_frontier_leaves_rebuilt
+        .checked_add(traffic.outer_frontier_leaves_rebuilt)
+        .ok_or(FoldingErrorV4::Overflow)?;
+    metrics.outer_internal_nodes_rebuilt = metrics
+        .outer_internal_nodes_rebuilt
+        .checked_add(traffic.outer_internal_nodes_rebuilt)
+        .ok_or(FoldingErrorV4::Overflow)?;
     Ok(())
 }
 
-fn activate_groups(
+fn combine_and_activate_groups_streaming_v4(
     output_len: usize,
     groups: &[GlobalProverGroupV4<'_>],
-    combined: &[CombinedInitialV4],
     current_coefficients: &mut [Fp2],
     current_codeword: &mut [Fp2],
     current_claim: &mut Fp2,
-) -> Result<(), FoldingErrorV4> {
-    for (group, initial) in groups.iter().zip(combined) {
+    metrics: &mut GlobalOpenMetricsV4,
+) -> Result<usize, FoldingErrorV4> {
+    let mut activated = 0usize;
+    for group in groups {
         if group.cohort.commitment().config.outer_len != output_len {
             continue;
         }
+        let (initial, recompute) = group.cohort.combine_source(
+            &group.touched_slots,
+            &group.weights,
+            &group.target_point,
+        )?;
+        accumulate_recompute_traffic(metrics, recompute)?;
+        let touched =
+            u64::try_from(group.touched_slots.len()).map_err(|_| FoldingErrorV4::Overflow)?;
+        let coefficient_symbols =
+            u64::try_from(initial.coefficients.len()).map_err(|_| FoldingErrorV4::Overflow)?;
+        let codeword_symbols =
+            u64::try_from(initial.codeword.len()).map_err(|_| FoldingErrorV4::Overflow)?;
+        metrics.source_coefficients_read = metrics
+            .source_coefficients_read
+            .checked_add(touched.checked_mul(coefficient_symbols).ok_or(FoldingErrorV4::Overflow)?)
+            .ok_or(FoldingErrorV4::Overflow)?;
+        metrics.initial_encoded_symbols_read = metrics
+            .initial_encoded_symbols_read
+            .checked_add(touched.checked_mul(codeword_symbols).ok_or(FoldingErrorV4::Overflow)?)
+            .ok_or(FoldingErrorV4::Overflow)?;
+        metrics.combined_coefficient_symbols = metrics
+            .combined_coefficient_symbols
+            .checked_add(coefficient_symbols)
+            .ok_or(FoldingErrorV4::Overflow)?;
+        metrics.combined_codeword_symbols = metrics
+            .combined_codeword_symbols
+            .checked_add(codeword_symbols)
+            .ok_or(FoldingErrorV4::Overflow)?;
         if current_coefficients.len() != initial.coefficients.len()
             || current_codeword.len() != initial.codeword.len()
         {
@@ -1098,8 +1279,9 @@ fn activate_groups(
             *output += group.activation_challenge * *value;
         }
         *current_claim += group.activation_challenge * initial.claimed_value;
+        activated = activated.checked_add(1).ok_or(FoldingErrorV4::Overflow)?;
     }
-    Ok(())
+    Ok(activated)
 }
 
 fn verify_query_chain(

@@ -451,6 +451,384 @@ def test_x4_v4_pod_validator_accepts_only_the_fail_closed_physical_record():
     assert report._x4_v4_pod_result_valid(bad) is False
 
 
+def x4b_local_fixture(report):
+    cpu_walls = [0.78, 0.80, 0.82, 0.76, 0.74]
+    candidates = [
+        {
+            "wall_s": wall,
+            "canonical_frame_bytes_per_s": report.X4B_CPU_CANONICAL_BYTES / wall,
+            "oracle_bytes_per_s": 33_554_432 / wall,
+            "hash_calls_per_s": report.X4B_CPU_HASH_CALLS / wall,
+            "allocator": {
+                "allocations": 10,
+                "reallocations": 20,
+                "deallocations": 9,
+                "cumulative_requested_bytes": 1000,
+            },
+        }
+        for wall in cpu_walls
+    ]
+    selected = sorted(cpu_walls)[len(cpu_walls) // 2]
+
+    def opening(omitted, cache, saved, traffic, digest="c" * 64):
+        opens = [0.10, 0.12, 0.11]
+        verifies = [0.02, 0.03, 0.025]
+        return {
+            "name": "fixture",
+            "bottom_outer_levels_omitted": omitted,
+            "logical_outer_cache_bytes": cache,
+            "cache_bytes_saved_vs_full": saved,
+            "warmup_count": 1,
+            "candidate_open_wall_s": opens,
+            "selected_upper_median_open_wall_s": sorted(opens)[1],
+            "open_ceiling_s": 1.5,
+            "open_pass": True,
+            "candidate_verify_wall_s": verifies,
+            "selected_upper_median_verify_wall_s": sorted(verifies)[1],
+            "verify_ceiling_s": 0.25,
+            "verify_pass": True,
+            "traffic_per_open": traffic,
+            "encoded_bytes": 2_615_414,
+            "encoded_blake3": digest,
+        }
+
+    return {
+        "schema": 1,
+        "milestone": "X4b-local-CPU-persisted-opening-preflight",
+        "date": "2026-07-22",
+        "git_sha": "e" * 40,
+        "git_dirty": False,
+        "profile": report.X4_V4_PROFILE,
+        "pod_profile": report.X4B_POD_PROFILE,
+        "design_sha256": report.X4B_DESIGN_SHA256,
+        "source_policy": "PersistedOracle (record eligible)",
+        "audit_recompute_refused": True,
+        "profile_digest": "f" * 64,
+        "query_derive_context": "volta-zk/x4/amendment5-gpt2-preflight/v1",
+        "query_xof_input_ascii": "e29-r3-s111|gpt2-small|102-claims|2026-07-21",
+        "query_count": 111,
+        "query_draws_blake3": report.X4B_QUERY_TAPE_BLAKE3,
+        "cpu_full_node_pipeline": {
+            "status": "LOCAL_MEASUREMENT_ONLY",
+            "measurement_scope": "serialization + pipeline allocations + BLAKE3 hash_many",
+            "pinned_workers": 1,
+            "warmup_count": 1,
+            "measured_candidates": 5,
+            "canonical_frame_bytes": report.X4B_CPU_CANONICAL_BYTES,
+            "logical_oracle_bytes": 33_554_432,
+            "hash_calls": report.X4B_CPU_HASH_CALLS,
+            "candidates": candidates,
+            "selected_upper_median_wall_s": selected,
+            "selected_canonical_frame_bytes_per_s": report.X4B_CPU_CANONICAL_BYTES
+            / selected,
+            "gate_bytes_per_s_per_core": 500_000_000.0,
+            "local_gate_comparison_only": True,
+            "local_gate_met": True,
+            "available_parallelism": 8,
+            "all_local_cores_wall_s": 0.2,
+            "all_local_cores_canonical_frame_bytes_per_s": 2_000_000_000.0,
+            "root_hex": "a" * 64,
+        },
+        "sparse_artifacts": {
+            "file_count": 32,
+            "logical_bytes": 94_128_570_240,
+            "allocated_bytes": 0,
+            "scope": "fixture",
+        },
+        "persisted_open_full_cache": opening(
+            0,
+            report.X4B_FULL_INITIAL_CACHE_BYTES + report.X4B_FULL_FOLD_CACHE_BYTES,
+            0,
+            {
+                "oracle_file_bytes_read": 875_328,
+                "outer_cache_bytes_read": 1_930_304,
+                "inner_trees_rebuilt": 6_720,
+                "outer_frontier_leaves_rebuilt": 5_610,
+                "outer_internal_nodes_rebuilt": 0,
+            },
+        ),
+        "persisted_open_ram_degraded": opening(
+            1,
+            report.X4B_DEGRADED_INITIAL_CACHE_BYTES
+            + report.X4B_DEGRADED_FOLD_CACHE_BYTES,
+            35_727_081_344,
+            {
+                "oracle_file_bytes_read": 1_737_728,
+                "outer_cache_bytes_read": 1_756_992,
+                "inner_trees_rebuilt": 17_552,
+                "outer_frontier_leaves_rebuilt": 16_442,
+                "outer_internal_nodes_rebuilt": 5_416,
+            },
+        ),
+        "full_and_degraded_openings_byte_identical": True,
+        "local_pre_pod_gate_pass": True,
+        "ram_guidance": "At approximately 125 GiB use the explicit degraded policy.",
+    }
+
+
+def test_x4b_local_validator_pins_full_pipeline_and_both_ram_policies():
+    report = load_report_module()
+    row = x4b_local_fixture(report)
+    assert report._x4b_local_result_valid(row) is True
+    bad = copy.deepcopy(row)
+    bad["cpu_full_node_pipeline"]["measurement_scope"] = "hash-only"
+    assert report._x4b_local_result_valid(bad) is False
+    bad = copy.deepcopy(row)
+    bad["persisted_open_ram_degraded"]["traffic_per_open"][
+        "outer_internal_nodes_rebuilt"
+    ] = 0
+    assert report._x4b_local_result_valid(bad) is False
+
+
+def test_x4b_pod_validator_accepts_honest_conjunctive_verdict_only():
+    report = load_report_module()
+    local = x4b_local_fixture(report)
+    cohort_names = [
+        "Wext-mu26-global-tied-roles",
+        "Wext-mu22-all-layers",
+        "Wext-mu20-layers-and-position",
+        "auxiliary-ell17",
+        "auxiliary-ell16",
+    ]
+
+    def accelerator():
+        return {
+            "timing_method": "wall-only-counters",
+            "phase_attribution_available": False,
+            "measurement_wall_s": 1.0,
+            "operations": {},
+            "h2d_bytes": 1,
+            "d2h_bytes": 1,
+            "explicit_d2d_copy_bytes": 0,
+            "device_zeroed_bytes": 1,
+            "device_generated_bytes": 1,
+            "synchronizations": 1,
+            "synchronization_s": 0.1,
+            "sync_host_output": 1,
+            "sync_upload_lifetime": 0,
+            "sync_timing_flush": 0,
+            "sync_profiling_legacy": 0,
+            "sync_allocator_flush": 0,
+            "allocation_calls": 1,
+            "physical_free_calls": 1,
+            "live_device_bytes": 0,
+            "peak_device_bytes": 1_000,
+            "timing_event_api_calls": 0,
+            "timing_records": 0,
+        }
+
+    def initial(role, retained):
+        return {
+            "role": role,
+            "wall_s": 20.0,
+            "peak_rss_bytes": 1,
+            "process_io": {},
+            "accelerator": accelerator(),
+            "cohorts": [{"name": name} for name in cohort_names],
+            "totals": {
+                "coefficient_bytes_persisted": 9_618_587_648,
+                "oracle_bytes_persisted": 76_948_701_184,
+                "root_bytes_persisted": 160,
+                "persistent_artifact_bytes": 86_567_288_992,
+            },
+            "reconciliation_pass": True,
+            "artifacts_retained": retained,
+        }
+
+    def isolated(role, wall):
+        return {
+            "role": role,
+            "wall_s": wall,
+            "ceiling_s": 15.0,
+            "margin_s": 15.0 - wall,
+            "margin_percent": 100.0 * (15.0 - wall) / 15.0,
+            "pass": wall <= 15.0,
+            "peak_rss_bytes": 1,
+            "process_io": {},
+            "accelerator": accelerator(),
+            "root_hex": "1" * 64,
+            "metrics": {},
+            "reconciliation_pass": True,
+        }
+
+    def response(role, wall):
+        return {
+            "role": role,
+            "epoch": 1,
+            "seal_wall_s": 2.0,
+            "open_wall_s": wall,
+            "verify_wall_s": 0.05,
+            "peak_rss_bytes": 1,
+            "process_io": {},
+            "accelerator_seal": accelerator(),
+            "packed_opening_bytes": 2_615_414,
+            "opened_symbols": 27_564,
+            "real_sibling_digests": 67_930,
+            "accepted": True,
+            "metrics": {
+                "recomputed_source_bytes_read": 0,
+                "recomputed_oracle_bytes": 0,
+                "recomputed_merkle_bytes": 0,
+                "persisted_oracle_bytes_read": 1,
+            },
+            "g6_reconciliation_pass": True,
+        }
+
+    measured_initial = [initial(f"measured-{index}", False) for index in range(1, 4)]
+    measured_isolated = [isolated(f"measured-{index}", wall) for index, wall in enumerate(
+        [10.0, 11.0, 12.0], 1
+    )]
+    measured_response = [response(f"measured-{index}", wall) for index, wall in enumerate(
+        [0.5, 0.6, 0.7], 1
+    )]
+    row = {
+        "schema": 1,
+        "milestone": "X4b-A100-production-record",
+        "date": "2026-07-22",
+        "git_sha": "f" * 40,
+        "git_short_sha": "fffffff",
+        "git_dirty": False,
+        "pod_profile": report.X4B_POD_PROFILE,
+        "protocol_or_parameter_change": False,
+        "machine": {
+            "provider": "RunPod",
+            "gpu": "NVIDIA A100-SXM4-80GB",
+            "rayon_threads": 8,
+            "timing_policy": "wall-only+counters; no CUDA-event timing",
+            "memory_bytes": report.X4B_BASELINE_RAM_BYTES,
+            "persistent_volume_bytes": report.X4B_MIN_VOLUME_BYTES,
+        },
+        "frozen": {
+            "design_sha256": report.X4B_DESIGN_SHA256,
+            "migration_sha256": report.X4_V4_MIGRATION_SHA256,
+            "amendment5_preflight_sha256": "ba87722362c8825e13e02a6c563a436797ea852e09e1cebcf4a9265c6ce56499",
+            "local_preflight_sha256": "a" * 64,
+            "note6": {"passed": True, "first_action": True, "sha256": "b" * 64},
+            "profile": report.X4_V4_PROFILE,
+            "rate": "1/8",
+            "query_count": 111,
+            "maximum_claim_union": 3_320,
+            "opened_symbols": 27_564,
+            "real_sibling_digests": 67_930,
+            "packed_opening_bytes": 2_615_414,
+            "pcs_bytes": 2_683_236,
+            "response_bytes": 43_953_700,
+            "soundness_expression": report.X4_V4_SOUNDNESS_EXPRESSION,
+            "soundness_bits": report.X4_V4_SOUNDNESS_BITS,
+            "soundness_floor_bits": report.X4_V4_SOUNDNESS_FLOOR_BITS,
+            "soundness_new_terms": 0,
+        },
+        "cache_policy": {
+            "name": "full",
+            "bottom_levels_omitted": 0,
+            "retained_initial_outer_cache_bytes": report.X4B_FULL_INITIAL_CACHE_BYTES,
+            "retained_fold_outer_cache_bytes": report.X4B_FULL_FOLD_CACHE_BYTES,
+            "retained_total_outer_cache_bytes": report.X4B_FULL_INITIAL_CACHE_BYTES
+            + report.X4B_FULL_FOLD_CACHE_BYTES,
+        },
+        "local_preflight_of_record": copy.deepcopy(local),
+        "pod_host_cpu_preflight": copy.deepcopy(local),
+        "correctness": {
+            "contexts": [{"equal": True}] * 4,
+            "synthetic": [{"equal": True}] * 5,
+            "complete_aux_roots": [
+                {
+                    "all_equal": True,
+                    "ntt_symbols_checked": 8,
+                    "typed_inner_leaves_checked": 2,
+                    "typed_inner_nodes_checked": 1,
+                    "typed_inner_roots_checked": 1,
+                    "typed_outer_leaves_checked": 8,
+                    "outer_levels_checked": 20,
+                }
+            ]
+            * 2,
+            "larger_cohort_samples": [
+                {
+                    "all_equal": True,
+                    "ntt_symbols_checked": 8,
+                    "typed_inner_leaves_checked": 2,
+                    "typed_inner_nodes_checked": 1,
+                    "typed_inner_roots_checked": 1,
+                    "typed_outer_leaves_checked": 8,
+                    "outer_levels_checked": 30,
+                }
+            ]
+            * 3,
+            "all_equal": True,
+        },
+        "full_pass_commit": {
+            "status": "MEASURED/INFORMATIVE; no hard ceiling in runpod-a100-x4b-v1",
+            "warmup": initial("warmup", False),
+            "measured": measured_initial,
+            "selected_upper_median_wall_s": 20.0,
+            "selected_throughput_oracle_bytes_per_s": 1.0,
+            "final_materialization": initial("final", True),
+            "hard_ceiling": None,
+        },
+        "isolated_wext_mu26_commit": {
+            "warmup": isolated("warmup", 10.0),
+            "measured": measured_isolated,
+            "selected_upper_median_wall_s": 11.0,
+            "ceiling_s": 15.0,
+            "margin_s": 4.0,
+            "margin_percent": 100.0 * 4.0 / 15.0,
+            "pass": True,
+        },
+        "final_artifacts": {
+            "page_cache_dontneed_bytes": 9_618_587_808,
+            "page_cache_advice_calls": 10,
+            "footprint": {
+                "coefficient_bytes": 9_618_587_648,
+                "oracle_bytes": 76_948_701_184,
+                "root_bytes": 160,
+                "durable_bytes": 86_567_288_992,
+                "all_lengths_and_bindings_checked": True,
+            },
+        },
+        "persisted_response": {
+            "source_policy": "PersistedOracle (record eligible); AuditRecompute refused",
+            "warmup": response("warmup", 0.5),
+            "measured": measured_response,
+            "selected_upper_median_open_wall_s": 0.6,
+            "selected_upper_median_verify_wall_s": 0.05,
+            "open_ceiling_s": 1.5,
+            "verify_ceiling_s": 0.25,
+            "open_pass": True,
+            "verify_pass": True,
+            "all_accepted": True,
+            "all_byte_counts_exact": True,
+            "all_g6_reconciled": True,
+        },
+        "codec_reference": {
+            "migration_sha256": report.X4_V4_MIGRATION_SHA256,
+            "packed_opening_bytes": 2_615_414,
+            "complete_pcs_bytes": 2_683_236,
+            "response_bytes": 43_953_700,
+            "golden_decode_exact": True,
+            "exact_match": True,
+        },
+        "audit_recompute_refused": True,
+        "draw_before_complete_seal_rejected": True,
+        "historical_baseline": {
+            "immutable": True,
+            "verdict": "G4 COMMIT FAIL; OVERALL X4 FAIL",
+        },
+        "gate": {
+            "overall_x4b": "PASS — conjunctive",
+            "historical_x4": "FAIL IMMUTABLE — historical",
+        },
+    }
+    assert report._x4b_pod_result_valid(row) is True
+    bad = copy.deepcopy(row)
+    bad["persisted_response"]["measured"][1]["packed_opening_bytes"] += 1
+    assert report._x4b_pod_result_valid(bad) is False
+    bad = copy.deepcopy(row)
+    bad["machine"]["memory_bytes"] = 125 * 1024**3
+    bad["gate"]["overall_x4b"] = "PASS — improperly ignored hardware"
+    assert report._x4b_pod_result_valid(bad) is False
+
+
 def test_resident_profile_joins_only_same_host_native_anchor_and_keeps_full_accounting():
     report = load_report_module()
     raw = {

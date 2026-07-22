@@ -579,6 +579,24 @@ type NttFpBatch =
     unsafe extern "C" fn(*mut c_void, *const u64, usize, usize, usize, *mut u64) -> c_int;
 type NttFp2 =
     unsafe extern "C" fn(*mut c_void, *const Fp2Repr, usize, usize, *mut Fp2Repr) -> c_int;
+type X4bNttFp2 = NttFp2;
+type X4bContextProbe = unsafe extern "C" fn(*mut c_void, *const u8, usize, *mut u8) -> c_int;
+type X4bN4InnerTile = unsafe extern "C" fn(
+    *mut c_void,
+    *const Fp2Repr,
+    usize,
+    usize,
+    *const u16,
+    *const u8,
+    usize,
+    u64,
+    u32,
+    u8,
+    u8,
+    *mut u8,
+) -> c_int;
+type X4bN4OuterNodes =
+    unsafe extern "C" fn(*mut c_void, *const u8, usize, u64, u32, u8, u8, u8, *mut u8) -> c_int;
 type NttBatchDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, usize, usize, u64, usize) -> c_int;
 type LogupTree = unsafe extern "C" fn(
@@ -881,6 +899,10 @@ struct Api {
     ntt_fp: NttFp,
     ntt_fp_batch: NttFpBatch,
     ntt_fp2: NttFp2,
+    x4b_ntt_fp2: X4bNttFp2,
+    x4b_context_probe: X4bContextProbe,
+    x4b_n4_inner_tile: X4bN4InnerTile,
+    x4b_n4_outer_nodes: X4bN4OuterNodes,
     ntt_fp_batch_device: NttBatchDevice,
     ntt_fp2_batch_device: NttBatchDevice,
     logup_tree: LogupTree,
@@ -1120,6 +1142,10 @@ impl CudaContext {
             ntt_fp: unsafe { load_symbol(handle, b"volta_cuda_ntt_fp\0")? },
             ntt_fp_batch: unsafe { load_symbol(handle, b"volta_cuda_ntt_fp_batch\0")? },
             ntt_fp2: unsafe { load_symbol(handle, b"volta_cuda_ntt_fp2\0")? },
+            x4b_ntt_fp2: unsafe { load_symbol(handle, b"volta_cuda_x4b_ntt_fp2\0")? },
+            x4b_context_probe: unsafe { load_symbol(handle, b"volta_cuda_x4b_context_probe\0")? },
+            x4b_n4_inner_tile: unsafe { load_symbol(handle, b"volta_cuda_x4b_n4_inner_tile\0")? },
+            x4b_n4_outer_nodes: unsafe { load_symbol(handle, b"volta_cuda_x4b_n4_outer_nodes\0")? },
             ntt_fp_batch_device: unsafe {
                 load_symbol(handle, b"volta_cuda_ntt_fp_batch_device\0")?
             },
@@ -3012,6 +3038,102 @@ impl CudaContext {
             (self.api.ntt_fp2)(self.raw, input.as_ptr(), input.len(), size, output.as_mut_ptr())
         })?;
         Ok(output.into_iter().map(Into::into).collect())
+    }
+
+    pub(super) fn x4b_ntt_fp2(
+        &mut self,
+        coefficients: &[Fp2],
+        size: usize,
+    ) -> Result<Vec<Fp2>, AccelError> {
+        let input: Vec<Fp2Repr> = coefficients.iter().copied().map(Into::into).collect();
+        let mut output = vec![Fp2Repr::default(); size];
+        // SAFETY: Backend validates the non-empty coefficient and output geometries.
+        self.check(unsafe {
+            (self.api.x4b_ntt_fp2)(self.raw, input.as_ptr(), input.len(), size, output.as_mut_ptr())
+        })?;
+        Ok(output.into_iter().map(Into::into).collect())
+    }
+
+    pub(super) fn x4b_context_probe(
+        &mut self,
+        payload: &[u8],
+    ) -> Result<[[u8; 32]; 4], AccelError> {
+        let mut output = [[0u8; 32]; 4];
+        // SAFETY: payload is non-empty and bounded by the public validation;
+        // output contains exactly four 32-byte digests required by the ABI.
+        self.check(unsafe {
+            (self.api.x4b_context_probe)(
+                self.raw,
+                payload.as_ptr(),
+                payload.len(),
+                output.as_mut_ptr().cast::<u8>(),
+            )
+        })?;
+        Ok(output)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn x4b_n4_inner_tile(
+        &mut self,
+        symbols: &[Fp2],
+        coordinates: usize,
+        present_rank: &[u16],
+        descriptors: &[[u8; 32]],
+        coordinate_start: u64,
+        cohort_id: u32,
+        oracle_kind: u8,
+        fold_round: u8,
+    ) -> Result<Vec<[u8; 32]>, AccelError> {
+        let input: Vec<Fp2Repr> = symbols.iter().copied().map(Into::into).collect();
+        let present_slots = symbols.len() / coordinates;
+        let mut output = vec![[0u8; 32]; coordinates];
+        // SAFETY: Backend validates every slice and the rank/descriptor geometry.
+        self.check(unsafe {
+            (self.api.x4b_n4_inner_tile)(
+                self.raw,
+                input.as_ptr(),
+                present_slots,
+                coordinates,
+                present_rank.as_ptr(),
+                descriptors.as_ptr().cast::<u8>(),
+                present_rank.len(),
+                coordinate_start,
+                cohort_id,
+                oracle_kind,
+                fold_round,
+                output.as_mut_ptr().cast::<u8>(),
+            )
+        })?;
+        Ok(output)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn x4b_n4_outer_nodes(
+        &mut self,
+        children: &[[u8; 32]],
+        node_start: u64,
+        cohort_id: u32,
+        oracle_kind: u8,
+        fold_round: u8,
+        level: u8,
+    ) -> Result<Vec<[u8; 32]>, AccelError> {
+        let parents = children.len() / 2;
+        let mut output = vec![[0u8; 32]; parents];
+        // SAFETY: Backend validates the even child count and output geometry.
+        self.check(unsafe {
+            (self.api.x4b_n4_outer_nodes)(
+                self.raw,
+                children.as_ptr().cast::<u8>(),
+                parents,
+                node_start,
+                cohort_id,
+                oracle_kind,
+                fold_round,
+                level,
+                output.as_mut_ptr().cast::<u8>(),
+            )
+        })?;
+        Ok(output)
     }
 
     #[allow(clippy::too_many_arguments)]

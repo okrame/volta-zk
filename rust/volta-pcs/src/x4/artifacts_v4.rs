@@ -168,6 +168,7 @@ impl RecomputableModelGlobalCohortV4 {
                 source_bytes_read: self.plan.coefficient_bytes,
                 oracle_bytes_recomputed: self.plan.logical_first_oracle_bytes,
                 merkle_bytes_recomputed: self.plan.merkle_digest_bytes,
+                ..SourceRecomputeTrafficV4::default()
             },
         }
     }

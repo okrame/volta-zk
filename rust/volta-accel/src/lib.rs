@@ -17,7 +17,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 28;
+pub const CUDA_ABI_VERSION: u32 = 29;
 pub const OPERATION_COUNT: usize = 7;
 pub const DEFERRED_TIMING_CAPACITY: usize = 512;
 
@@ -3938,6 +3938,133 @@ impl Backend {
         #[cfg(feature = "cuda")]
         {
             return self.cuda.as_mut().ok_or(AccelError::FeatureDisabled)?.ntt_fp2(msg, size);
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Exact X4b extension-field NTT, specialized to the schema-4 `E` domain.
+    /// This is deliberately distinct from P7's historical componentwise Fp2
+    /// entry point, whose base-field twiddles are not root-compatible.
+    pub fn x4b_ntt_fp2(
+        &mut self,
+        coefficients: &[Fp2],
+        size: usize,
+    ) -> Result<Vec<Fp2>, AccelError> {
+        validate_ntt(coefficients.len(), size)?;
+        if coefficients.is_empty() || size.ilog2() > 33 {
+            return Err(AccelError::InvalidInput("invalid X4b Fp2 NTT geometry"));
+        }
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .ok_or(AccelError::FeatureDisabled)?
+                .x4b_ntt_fp2(coefficients, size);
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Bring-up-only differential probe for the four frozen schema-4
+    /// derive-key contexts (PCS leaf/node and manifest leaf/node).
+    pub fn x4b_context_probe(&mut self, payload: &[u8]) -> Result<[[u8; 32]; 4], AccelError> {
+        if payload.is_empty() || payload.len() > 104 {
+            return Err(AccelError::InvalidInput("invalid X4b context-probe payload"));
+        }
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .ok_or(AccelError::FeatureDisabled)?
+                .x4b_context_probe(payload);
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Hash one complete schema-4 N4 inner-tree tile and return its typed
+    /// outer leaves. Symbols are rank-major over present slots.
+    #[allow(clippy::too_many_arguments)]
+    pub fn x4b_n4_inner_tile(
+        &mut self,
+        symbols: &[Fp2],
+        coordinates: usize,
+        present_rank: &[u16],
+        descriptors: &[[u8; 32]],
+        coordinate_start: u64,
+        cohort_id: u32,
+        oracle_kind: u8,
+        fold_round: u8,
+    ) -> Result<Vec<[u8; 32]>, AccelError> {
+        if coordinates == 0
+            || !coordinates.is_power_of_two()
+            || present_rank.is_empty()
+            || !present_rank.len().is_power_of_two()
+            || present_rank.len() > 64
+            || descriptors.len() != present_rank.len()
+            || symbols.is_empty()
+            || symbols.len() % coordinates != 0
+            || symbols.len() / coordinates > present_rank.len()
+            || oracle_kind > 2
+        {
+            return Err(AccelError::InvalidInput("invalid X4b N4 inner-tile geometry"));
+        }
+        coordinate_start
+            .checked_add((coordinates - 1) as u64)
+            .ok_or(AccelError::InvalidInput("X4b N4 coordinate range overflows u64"))?;
+        #[cfg(not(feature = "cuda"))]
+        let _ = (cohort_id, fold_round);
+        #[cfg(feature = "cuda")]
+        {
+            return self.cuda.as_mut().ok_or(AccelError::FeatureDisabled)?.x4b_n4_inner_tile(
+                symbols,
+                coordinates,
+                present_rank,
+                descriptors,
+                coordinate_start,
+                cohort_id,
+                oracle_kind,
+                fold_round,
+            );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Hash one contiguous tile in an outer N4 level. The caller supplies
+    /// exactly two children per returned parent.
+    #[allow(clippy::too_many_arguments)]
+    pub fn x4b_n4_outer_nodes(
+        &mut self,
+        children: &[[u8; 32]],
+        node_start: u64,
+        cohort_id: u32,
+        oracle_kind: u8,
+        fold_round: u8,
+        level: u8,
+    ) -> Result<Vec<[u8; 32]>, AccelError> {
+        if children.len() < 2 || children.len() % 2 != 0 || level == 0 || oracle_kind > 2 {
+            return Err(AccelError::InvalidInput("invalid X4b N4 outer-node tile geometry"));
+        }
+        let parents = children.len() / 2;
+        node_start
+            .checked_add((parents - 1) as u64)
+            .ok_or(AccelError::InvalidInput("X4b N4 node range overflows u64"))?;
+        #[cfg(not(feature = "cuda"))]
+        let _ = (cohort_id, fold_round);
+        #[cfg(feature = "cuda")]
+        {
+            return self.cuda.as_mut().ok_or(AccelError::FeatureDisabled)?.x4b_n4_outer_nodes(
+                children,
+                node_start,
+                cohort_id,
+                oracle_kind,
+                fold_round,
+                level,
+            );
         }
         #[cfg(not(feature = "cuda"))]
         Err(AccelError::FeatureDisabled)

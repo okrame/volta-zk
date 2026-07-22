@@ -133,6 +133,27 @@ X4_V4_COUNTER_FAMILIES = [
     "delta_shift_attempt",
     "beta_collision_witness",
 ]
+X4B_DESIGN_SHA256 = (
+    "bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01"
+)
+X4B_POD_PROFILE = "runpod-a100-x4b-v1"
+X4B_QUERY_TAPE_BLAKE3 = (
+    "3654af24af8a3e903e15db2bf25e0ec587d1bd774aaab433d1fb6e1064b3d299"
+)
+X4B_CPU_CANONICAL_BYTES = 460_324_760
+X4B_CPU_HASH_CALLS = 5_242_879
+X4B_CPU_GATE_BPS = 500_000_000.0
+X4B_OPEN_CEILING_S = 1.50
+X4B_VERIFY_CEILING_S = 0.25
+X4B_COMMIT_CEILING_S = 15.0
+X4B_DURABLE_BYTES = 86_567_288_992
+X4B_FULL_INITIAL_CACHE_BYTES = 37_094_424_416
+X4B_DEGRADED_INITIAL_CACHE_BYTES = 18_547_212_128
+X4B_FULL_FOLD_CACHE_BYTES = 34_359_737_248
+X4B_DEGRADED_FOLD_CACHE_BYTES = 17_179_868_192
+X4B_DEVICE_BYTE_CEILING = 48 * 1024 * 1024 * 1024
+X4B_MIN_VOLUME_BYTES = 150_000_000_000
+X4B_BASELINE_RAM_BYTES = 128 * 1024 * 1024 * 1024
 
 LAYER_PARAMS = {
     "rows": 1 << 10,
@@ -430,6 +451,478 @@ def validate_x4_v4_pod_result(path: Path) -> bool:
         if not path.is_absolute():
             path = REPO / path
         return _x4_v4_pod_result_valid(load_json(path))
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return False
+
+
+def _x4b_upper_median(values: list[float]) -> float:
+    return sorted(values)[len(values) // 2]
+
+
+def _x4b_close(left: Any, right: Any, tolerance: float = 1e-9) -> bool:
+    return (
+        isinstance(left, (int, float))
+        and not isinstance(left, bool)
+        and isinstance(right, (int, float))
+        and not isinstance(right, bool)
+        and math.isfinite(float(left))
+        and math.isfinite(float(right))
+        and abs(float(left) - float(right)) <= tolerance * max(1.0, abs(float(right)))
+    )
+
+
+def _x4b_open_policy_valid(
+    row: Any,
+    *,
+    omitted: int,
+    cache_bytes: int,
+    saved_bytes: int,
+    traffic: dict[str, int],
+) -> bool:
+    if not isinstance(row, dict):
+        return False
+    opens = row.get("candidate_open_wall_s")
+    verifies = row.get("candidate_verify_wall_s")
+    return (
+        row.get("bottom_outer_levels_omitted") == omitted
+        and row.get("logical_outer_cache_bytes") == cache_bytes
+        and row.get("cache_bytes_saved_vs_full") == saved_bytes
+        and row.get("warmup_count") == 1
+        and isinstance(opens, list)
+        and len(opens) >= 3
+        and all(isinstance(value, (int, float)) and value > 0 for value in opens)
+        and _x4b_close(row.get("selected_upper_median_open_wall_s"), _x4b_upper_median(opens))
+        and row.get("open_ceiling_s") == X4B_OPEN_CEILING_S
+        and row.get("open_pass")
+        is (row.get("selected_upper_median_open_wall_s", math.inf) <= X4B_OPEN_CEILING_S)
+        and isinstance(verifies, list)
+        and len(verifies) >= 3
+        and all(isinstance(value, (int, float)) and value > 0 for value in verifies)
+        and _x4b_close(
+            row.get("selected_upper_median_verify_wall_s"), _x4b_upper_median(verifies)
+        )
+        and row.get("verify_ceiling_s") == X4B_VERIFY_CEILING_S
+        and row.get("verify_pass")
+        is (row.get("selected_upper_median_verify_wall_s", math.inf) <= X4B_VERIFY_CEILING_S)
+        and row.get("traffic_per_open") == traffic
+        and row.get("encoded_bytes") == X4_V4_PACKED_OPENING_BYTES
+        and isinstance(row.get("encoded_blake3"), str)
+        and len(row["encoded_blake3"]) == 64
+    )
+
+
+def _x4b_local_result_valid(row: dict[str, Any]) -> bool:
+    cpu = row.get("cpu_full_node_pipeline")
+    sparse = row.get("sparse_artifacts")
+    full = row.get("persisted_open_full_cache")
+    degraded = row.get("persisted_open_ram_degraded")
+    if not (
+        row.get("schema") == 1
+        and row.get("milestone") == "X4b-local-CPU-persisted-opening-preflight"
+        and row.get("git_dirty") is False
+        and isinstance(row.get("git_sha"), str)
+        and len(row["git_sha"]) == 40
+        and row.get("profile") == X4_V4_PROFILE
+        and row.get("pod_profile") == X4B_POD_PROFILE
+        and row.get("design_sha256") == X4B_DESIGN_SHA256
+        and row.get("source_policy") == "PersistedOracle (record eligible)"
+        and row.get("audit_recompute_refused") is True
+        and row.get("query_count") == 111
+        and row.get("query_draws_blake3") == X4B_QUERY_TAPE_BLAKE3
+        and isinstance(row.get("profile_digest"), str)
+        and len(row["profile_digest"]) == 64
+        and isinstance(cpu, dict)
+    ):
+        return False
+    scope = cpu.get("measurement_scope", "")
+    candidates = cpu.get("candidates")
+    if not (
+        all(word in scope for word in ("serialization", "allocations", "hash_many"))
+        and cpu.get("pinned_workers") == 1
+        and cpu.get("warmup_count") == 1
+        and isinstance(candidates, list)
+        and len(candidates) >= 5
+        and cpu.get("measured_candidates") == len(candidates)
+        and cpu.get("canonical_frame_bytes") == X4B_CPU_CANONICAL_BYTES
+        and cpu.get("logical_oracle_bytes") == 33_554_432
+        and cpu.get("hash_calls") == X4B_CPU_HASH_CALLS
+        and cpu.get("gate_bytes_per_s_per_core") == X4B_CPU_GATE_BPS
+        and cpu.get("local_gate_comparison_only") is True
+        and isinstance(cpu.get("root_hex"), str)
+        and len(cpu["root_hex"]) == 64
+    ):
+        return False
+    walls: list[float] = []
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            return False
+        wall = candidate.get("wall_s")
+        allocator = candidate.get("allocator")
+        if not (
+            isinstance(wall, (int, float))
+            and wall > 0
+            and _x4b_close(
+                candidate.get("canonical_frame_bytes_per_s"), X4B_CPU_CANONICAL_BYTES / wall
+            )
+            and _x4b_close(candidate.get("hash_calls_per_s"), X4B_CPU_HASH_CALLS / wall)
+            and isinstance(allocator, dict)
+            and allocator.get("allocations", 0) > 0
+            and allocator.get("reallocations", 0) > 0
+            and allocator.get("cumulative_requested_bytes", 0) > 0
+        ):
+            return False
+        walls.append(float(wall))
+    selected_wall = _x4b_upper_median(walls)
+    selected_bps = X4B_CPU_CANONICAL_BYTES / selected_wall
+    cpu_pass = selected_bps >= X4B_CPU_GATE_BPS
+    if not (
+        _x4b_close(cpu.get("selected_upper_median_wall_s"), selected_wall)
+        and _x4b_close(cpu.get("selected_canonical_frame_bytes_per_s"), selected_bps)
+        and cpu.get("local_gate_met") is cpu_pass
+        and isinstance(sparse, dict)
+        and sparse.get("file_count") == 32
+        and sparse.get("logical_bytes") == 94_128_570_240
+        and sparse.get("allocated_bytes", -1) >= 0
+    ):
+        return False
+    full_ok = _x4b_open_policy_valid(
+        full,
+        omitted=0,
+        cache_bytes=X4B_FULL_INITIAL_CACHE_BYTES + X4B_FULL_FOLD_CACHE_BYTES,
+        saved_bytes=0,
+        traffic={
+            "oracle_file_bytes_read": 875_328,
+            "outer_cache_bytes_read": 1_930_304,
+            "inner_trees_rebuilt": 6_720,
+            "outer_frontier_leaves_rebuilt": 5_610,
+            "outer_internal_nodes_rebuilt": 0,
+        },
+    )
+    degraded_ok = _x4b_open_policy_valid(
+        degraded,
+        omitted=1,
+        cache_bytes=X4B_DEGRADED_INITIAL_CACHE_BYTES + X4B_DEGRADED_FOLD_CACHE_BYTES,
+        saved_bytes=35_727_081_344,
+        traffic={
+            "oracle_file_bytes_read": 1_737_728,
+            "outer_cache_bytes_read": 1_756_992,
+            "inner_trees_rebuilt": 17_552,
+            "outer_frontier_leaves_rebuilt": 16_442,
+            "outer_internal_nodes_rebuilt": 5_416,
+        },
+    )
+    byte_identity = (
+        isinstance(full, dict)
+        and isinstance(degraded, dict)
+        and full.get("encoded_blake3") == degraded.get("encoded_blake3")
+        and row.get("full_and_degraded_openings_byte_identical") is True
+    )
+    expected_pass = cpu_pass and full_ok and degraded_ok and byte_identity
+    return (
+        full_ok
+        and degraded_ok
+        and byte_identity
+        and row.get("local_pre_pod_gate_pass") is expected_pass
+        and expected_pass
+        and "125 GiB" in row.get("ram_guidance", "")
+    )
+
+
+def validate_x4b_local_result(path: Path) -> bool:
+    try:
+        if not path.is_absolute():
+            path = REPO / path
+        return _x4b_local_result_valid(load_json(path))
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return False
+
+
+def _x4b_accelerator_valid(row: Any) -> bool:
+    return (
+        isinstance(row, dict)
+        and row.get("timing_method") == "wall-only-counters"
+        and row.get("phase_attribution_available") is False
+        and row.get("timing_event_api_calls") == 0
+        and row.get("timing_records") == 0
+        and row.get("peak_device_bytes", X4B_DEVICE_BYTE_CEILING + 1)
+        <= X4B_DEVICE_BYTE_CEILING
+        and row.get("h2d_bytes", -1) >= 0
+        and row.get("d2h_bytes", -1) >= 0
+        and row.get("device_generated_bytes", -1) >= 0
+        and row.get("device_zeroed_bytes", -1) >= 0
+    )
+
+
+def _x4b_initial_pass_valid(row: Any, *, retained: bool) -> bool:
+    return (
+        isinstance(row, dict)
+        and isinstance(row.get("wall_s"), (int, float))
+        and row["wall_s"] > 0
+        and row.get("peak_rss_bytes", 0) > 0
+        and isinstance(row.get("process_io"), dict)
+        and _x4b_accelerator_valid(row.get("accelerator"))
+        and isinstance(row.get("cohorts"), list)
+        and len(row["cohorts"]) == 5
+        and [cohort.get("name") for cohort in row["cohorts"]]
+        == [
+            "Wext-mu26-global-tied-roles",
+            "Wext-mu22-all-layers",
+            "Wext-mu20-layers-and-position",
+            "auxiliary-ell17",
+            "auxiliary-ell16",
+        ]
+        and row.get("totals", {}).get("coefficient_bytes_persisted") == 9_618_587_648
+        and row.get("totals", {}).get("oracle_bytes_persisted") == 76_948_701_184
+        and row.get("totals", {}).get("root_bytes_persisted") == 160
+        and row.get("totals", {}).get("persistent_artifact_bytes") == X4B_DURABLE_BYTES
+        and row.get("reconciliation_pass") is True
+        and row.get("artifacts_retained") is retained
+    )
+
+
+def _x4b_isolated_valid(row: Any) -> bool:
+    return (
+        isinstance(row, dict)
+        and isinstance(row.get("wall_s"), (int, float))
+        and row["wall_s"] > 0
+        and row.get("ceiling_s") == X4B_COMMIT_CEILING_S
+        and _x4b_close(row.get("margin_s"), X4B_COMMIT_CEILING_S - row["wall_s"])
+        and _x4b_close(
+            row.get("margin_percent"),
+            100.0 * (X4B_COMMIT_CEILING_S - row["wall_s"]) / X4B_COMMIT_CEILING_S,
+        )
+        and row.get("pass") is (row["wall_s"] <= X4B_COMMIT_CEILING_S)
+        and row.get("reconciliation_pass") is True
+        and _x4b_accelerator_valid(row.get("accelerator"))
+        and isinstance(row.get("root_hex"), str)
+        and len(row["root_hex"]) == 64
+    )
+
+
+def _x4b_response_candidate_valid(row: Any) -> bool:
+    return (
+        isinstance(row, dict)
+        and row.get("accepted") is True
+        and row.get("packed_opening_bytes") == X4_V4_PACKED_OPENING_BYTES
+        and row.get("opened_symbols") == 27_564
+        and row.get("real_sibling_digests") == 67_930
+        and isinstance(row.get("seal_wall_s"), (int, float))
+        and row["seal_wall_s"] > 0
+        and isinstance(row.get("open_wall_s"), (int, float))
+        and row["open_wall_s"] > 0
+        and isinstance(row.get("verify_wall_s"), (int, float))
+        and row["verify_wall_s"] > 0
+        and row.get("g6_reconciliation_pass") is True
+        and _x4b_accelerator_valid(row.get("accelerator_seal"))
+        and row.get("metrics", {}).get("recomputed_source_bytes_read") == 0
+        and row.get("metrics", {}).get("recomputed_oracle_bytes") == 0
+        and row.get("metrics", {}).get("recomputed_merkle_bytes") == 0
+        and row.get("metrics", {}).get("persisted_oracle_bytes_read", 0) > 0
+    )
+
+
+def _x4b_pod_result_valid(row: dict[str, Any]) -> bool:
+    machine = row.get("machine")
+    frozen = row.get("frozen")
+    cache = row.get("cache_policy")
+    correctness = row.get("correctness")
+    full = row.get("full_pass_commit")
+    isolated = row.get("isolated_wext_mu26_commit")
+    artifacts = row.get("final_artifacts")
+    opening = row.get("persisted_response")
+    codec = row.get("codec_reference")
+    gate = row.get("gate")
+
+    def typed_sample_valid(item: Any) -> bool:
+        return (
+            isinstance(item, dict)
+            and item.get("all_equal") is True
+            and item.get("ntt_symbols_checked", 0) > 0
+            and item.get("typed_inner_leaves_checked", 0) > 0
+            and item.get("typed_inner_nodes_checked", 0) > 0
+            and item.get("typed_inner_roots_checked") == 1
+            and item.get("typed_outer_leaves_checked", 0) >= 8
+            and item.get("outer_levels_checked", 0) > 0
+        )
+    if not (
+        row.get("schema") == 1
+        and row.get("milestone") == "X4b-A100-production-record"
+        and row.get("git_dirty") is False
+        and isinstance(row.get("git_sha"), str)
+        and len(row["git_sha"]) == 40
+        and row.get("pod_profile") == X4B_POD_PROFILE
+        and row.get("protocol_or_parameter_change") is False
+        and row.get("audit_recompute_refused") is True
+        and row.get("draw_before_complete_seal_rejected") is True
+        and isinstance(machine, dict)
+        and machine.get("provider") == "RunPod"
+        and "A100-SXM4-80GB" in machine.get("gpu", "")
+        and machine.get("rayon_threads") == 8
+        and machine.get("timing_policy") == "wall-only+counters; no CUDA-event timing"
+        and machine.get("persistent_volume_bytes", 0) >= X4B_MIN_VOLUME_BYTES
+        and isinstance(frozen, dict)
+        and frozen.get("design_sha256") == X4B_DESIGN_SHA256
+        and frozen.get("migration_sha256") == X4_V4_MIGRATION_SHA256
+        and frozen.get("amendment5_preflight_sha256")
+        == "ba87722362c8825e13e02a6c563a436797ea852e09e1cebcf4a9265c6ce56499"
+        and isinstance(frozen.get("local_preflight_sha256"), str)
+        and len(frozen["local_preflight_sha256"]) == 64
+        and frozen.get("profile") == X4_V4_PROFILE
+        and frozen.get("rate") == "1/8"
+        and frozen.get("query_count") == 111
+        and frozen.get("maximum_claim_union") == 3_320
+        and frozen.get("opened_symbols") == 27_564
+        and frozen.get("real_sibling_digests") == 67_930
+        and frozen.get("packed_opening_bytes") == X4_V4_PACKED_OPENING_BYTES
+        and frozen.get("pcs_bytes") == X4_V4_PCS_BYTES
+        and frozen.get("response_bytes") == X4_V4_RESPONSE_BYTES
+        and frozen.get("soundness_expression") == X4_V4_SOUNDNESS_EXPRESSION
+        and frozen.get("soundness_bits") == X4_V4_SOUNDNESS_BITS
+        and frozen.get("soundness_floor_bits") == X4_V4_SOUNDNESS_FLOOR_BITS
+        and frozen.get("soundness_new_terms") == 0
+        and isinstance(frozen.get("note6"), dict)
+        and frozen["note6"].get("passed") is True
+        and frozen["note6"].get("first_action") is True
+        and isinstance(frozen["note6"].get("sha256"), str)
+        and len(frozen["note6"]["sha256"]) == 64
+        and _x4b_local_result_valid(row.get("local_preflight_of_record", {}))
+        and _x4b_local_result_valid(row.get("pod_host_cpu_preflight", {}))
+        and isinstance(cache, dict)
+    ):
+        return False
+    if cache.get("name") == "full":
+        cache_ok = (
+            cache.get("bottom_levels_omitted") == 0
+            and cache.get("retained_initial_outer_cache_bytes")
+            == X4B_FULL_INITIAL_CACHE_BYTES
+            and cache.get("retained_fold_outer_cache_bytes") == X4B_FULL_FOLD_CACHE_BYTES
+        )
+    elif cache.get("name") == "ram-degraded-one-level":
+        cache_ok = (
+            cache.get("bottom_levels_omitted") == 1
+            and cache.get("retained_initial_outer_cache_bytes")
+            == X4B_DEGRADED_INITIAL_CACHE_BYTES
+            and cache.get("retained_fold_outer_cache_bytes")
+            == X4B_DEGRADED_FOLD_CACHE_BYTES
+        )
+    else:
+        cache_ok = False
+    cache_ok = cache_ok and cache.get("retained_total_outer_cache_bytes") == (
+        cache.get("retained_initial_outer_cache_bytes", 0)
+        + cache.get("retained_fold_outer_cache_bytes", 0)
+    )
+    if not (
+        cache_ok
+        and isinstance(correctness, dict)
+        and correctness.get("all_equal") is True
+        and len(correctness.get("contexts", [])) == 4
+        and all(item.get("equal") is True for item in correctness["contexts"])
+        and len(correctness.get("synthetic", [])) == 5
+        and all(item.get("equal") is True for item in correctness["synthetic"])
+        and len(correctness.get("complete_aux_roots", [])) == 2
+        and all(typed_sample_valid(item) for item in correctness["complete_aux_roots"])
+        and len(correctness.get("larger_cohort_samples", [])) == 3
+        and all(typed_sample_valid(item) for item in correctness["larger_cohort_samples"])
+        and isinstance(full, dict)
+        and full.get("hard_ceiling") is None
+        and full.get("status")
+        == "MEASURED/INFORMATIVE; no hard ceiling in runpod-a100-x4b-v1"
+        and _x4b_initial_pass_valid(full.get("warmup"), retained=False)
+        and isinstance(full.get("measured"), list)
+        and len(full["measured"]) == 3
+        and all(_x4b_initial_pass_valid(item, retained=False) for item in full["measured"])
+        and _x4b_close(
+            full.get("selected_upper_median_wall_s"),
+            _x4b_upper_median([item["wall_s"] for item in full["measured"]]),
+        )
+        and _x4b_initial_pass_valid(full.get("final_materialization"), retained=True)
+        and isinstance(isolated, dict)
+        and _x4b_isolated_valid(isolated.get("warmup"))
+        and isinstance(isolated.get("measured"), list)
+        and len(isolated["measured"]) == 3
+        and all(_x4b_isolated_valid(item) for item in isolated["measured"])
+    ):
+        return False
+    isolated_selected = _x4b_upper_median([item["wall_s"] for item in isolated["measured"]])
+    isolated_pass = isolated_selected <= X4B_COMMIT_CEILING_S
+    if not (
+        _x4b_close(isolated.get("selected_upper_median_wall_s"), isolated_selected)
+        and isolated.get("ceiling_s") == X4B_COMMIT_CEILING_S
+        and _x4b_close(isolated.get("margin_s"), X4B_COMMIT_CEILING_S - isolated_selected)
+        and isolated.get("pass") is isolated_pass
+        and isinstance(artifacts, dict)
+        and artifacts.get("page_cache_dontneed_bytes") == 9_618_587_808
+        and artifacts.get("page_cache_advice_calls") == 10
+        and artifacts.get("footprint", {}).get("coefficient_bytes") == 9_618_587_648
+        and artifacts.get("footprint", {}).get("oracle_bytes") == 76_948_701_184
+        and artifacts.get("footprint", {}).get("root_bytes") == 160
+        and artifacts.get("footprint", {}).get("durable_bytes") == X4B_DURABLE_BYTES
+        and artifacts.get("footprint", {}).get("all_lengths_and_bindings_checked") is True
+        and isinstance(opening, dict)
+        and opening.get("source_policy")
+        == "PersistedOracle (record eligible); AuditRecompute refused"
+        and _x4b_response_candidate_valid(opening.get("warmup"))
+        and isinstance(opening.get("measured"), list)
+        and len(opening["measured"]) == 3
+        and all(_x4b_response_candidate_valid(item) for item in opening["measured"])
+    ):
+        return False
+    selected_open = _x4b_upper_median([item["open_wall_s"] for item in opening["measured"]])
+    selected_verify = _x4b_upper_median([item["verify_wall_s"] for item in opening["measured"]])
+    open_pass = selected_open <= X4B_OPEN_CEILING_S
+    verify_pass = selected_verify <= X4B_VERIFY_CEILING_S
+    communication_pass = opening.get("all_byte_counts_exact") is True
+    g6_pass = opening.get("all_g6_reconciled") is True
+    hardware_pass = (
+        machine.get("memory_bytes", 0) >= X4B_BASELINE_RAM_BYTES
+        and machine.get("persistent_volume_bytes", 0) >= X4B_MIN_VOLUME_BYTES
+        and "A100-SXM4-80GB" in machine.get("gpu", "")
+        and machine.get("rayon_threads") == 8
+    )
+    cpu_pass = (
+        row["pod_host_cpu_preflight"]["cpu_full_node_pipeline"]
+        ["selected_canonical_frame_bytes_per_s"]
+        >= X4B_CPU_GATE_BPS
+    )
+    overall_pass = (
+        cpu_pass
+        and correctness["all_equal"]
+        and isolated_pass
+        and open_pass
+        and verify_pass
+        and opening.get("all_accepted") is True
+        and communication_pass
+        and g6_pass
+        and hardware_pass
+    )
+    expected_prefix = "PASS" if overall_pass else "FAIL"
+    return (
+        _x4b_close(opening.get("selected_upper_median_open_wall_s"), selected_open)
+        and _x4b_close(opening.get("selected_upper_median_verify_wall_s"), selected_verify)
+        and opening.get("open_pass") is open_pass
+        and opening.get("verify_pass") is verify_pass
+        and opening.get("all_accepted") is True
+        and isinstance(codec, dict)
+        and codec.get("migration_sha256") == X4_V4_MIGRATION_SHA256
+        and codec.get("packed_opening_bytes") == X4_V4_PACKED_OPENING_BYTES
+        and codec.get("complete_pcs_bytes") == X4_V4_PCS_BYTES
+        and codec.get("response_bytes") == X4_V4_RESPONSE_BYTES
+        and codec.get("golden_decode_exact") is True
+        and codec.get("exact_match") is True
+        and isinstance(gate, dict)
+        and gate.get("overall_x4b", "").startswith(expected_prefix)
+        and gate.get("historical_x4", "").startswith("FAIL IMMUTABLE")
+        and row.get("historical_baseline", {}).get("immutable") is True
+        and row.get("historical_baseline", {}).get("verdict")
+        == "G4 COMMIT FAIL; OVERALL X4 FAIL"
+    )
+
+
+def validate_x4b_pod_result(path: Path) -> bool:
+    try:
+        if not path.is_absolute():
+            path = REPO / path
+        return _x4b_pod_result_valid(load_json(path))
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
         return False
 
@@ -3267,6 +3760,16 @@ def main() -> None:
         type=Path,
         help="fail closed unless one JSON is the exact clean X4 v4 A100 production verdict",
     )
+    ap.add_argument(
+        "--validate-x4b-local",
+        type=Path,
+        help="fail closed unless one JSON is the clean X4b local CPU/persisted-opening preflight",
+    )
+    ap.add_argument(
+        "--validate-x4b-pod",
+        type=Path,
+        help="fail closed unless one JSON is an internally consistent X4b A100 verdict",
+    )
     args = ap.parse_args()
 
     selected_validators = sum(
@@ -3279,6 +3782,8 @@ def main() -> None:
             args.validate_x4_v4_cpu,
             args.validate_x4_v4_migration,
             args.validate_x4_v4_pod,
+            args.validate_x4b_local,
+            args.validate_x4b_pod,
         )
     )
     if selected_validators > 1:
@@ -3335,6 +3840,20 @@ def main() -> None:
         if not validate_x4_v4_pod_result(args.validate_x4_v4_pod):
             raise SystemExit("invalid or ineligible X4 v4 A100 production result")
         print(f"valid X4 v4 A100 production result: {args.validate_x4_v4_pod}")
+        return
+    if args.validate_x4b_local is not None:
+        if args.write_json:
+            raise SystemExit("--write-json and --validate-x4b-local are mutually exclusive")
+        if not validate_x4b_local_result(args.validate_x4b_local):
+            raise SystemExit("invalid or ineligible X4b local preflight result")
+        print(f"valid X4b local preflight result: {args.validate_x4b_local}")
+        return
+    if args.validate_x4b_pod is not None:
+        if args.write_json:
+            raise SystemExit("--write-json and --validate-x4b-pod are mutually exclusive")
+        if not validate_x4b_pod_result(args.validate_x4b_pod):
+            raise SystemExit("invalid or inconsistent X4b A100 result")
+        print(f"valid X4b A100 result: {args.validate_x4b_pod}")
         return
 
     report = p7_report(args.results_dir)

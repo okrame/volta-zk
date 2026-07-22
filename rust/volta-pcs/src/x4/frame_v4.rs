@@ -6,6 +6,7 @@
 //! packed batch opening.  No schema-4 decoder path falls back to schema 3.
 
 use std::collections::HashSet;
+use std::sync::OnceLock;
 
 use volta_field::{Fp, Fp2, P};
 
@@ -32,6 +33,23 @@ pub const TRANSFER_TEMPLATE_HASH_CONTEXT_V4: &str = "volta-zk/x4/transfer-templa
 pub const AUTH_OUTPUT_LINK_SCHEDULE_HASH_CONTEXT_V4: &str =
     "volta-zk/x4/auth-output-link-schedule/v4";
 pub const OPENING_SCHEDULE_HASH_CONTEXT_V4: &str = "volta-zk/x4/opening-schedule/v4";
+
+static PCS_LEAF_HASH_STATE_V4: OnceLock<blake3::Hasher> = OnceLock::new();
+static PCS_NODE_HASH_STATE_V4: OnceLock<blake3::Hasher> = OnceLock::new();
+static MANIFEST_LEAF_HASH_STATE_V4: OnceLock<blake3::Hasher> = OnceLock::new();
+static MANIFEST_NODE_HASH_STATE_V4: OnceLock<blake3::Hasher> = OnceLock::new();
+static PCS_LEAF_HASH_KEY_WORDS_V4: OnceLock<[u32; 8]> = OnceLock::new();
+static PCS_NODE_HASH_KEY_WORDS_V4: OnceLock<[u32; 8]> = OnceLock::new();
+static BLAKE3_PLATFORM_V4: OnceLock<blake3::platform::Platform> = OnceLock::new();
+
+// These values are the public BLAKE3 flag assignments. The low-level
+// `Platform::hash_many` API is deliberately isolated in this module and is
+// differential-tested against the normative derive-key `Hasher` path below.
+// Cargo.lock pins the BLAKE3 implementation used by record-producing builds.
+const BLAKE3_CHUNK_START_V4: u8 = 1 << 0;
+const BLAKE3_CHUNK_END_V4: u8 = 1 << 1;
+const BLAKE3_ROOT_V4: u8 = 1 << 3;
+const BLAKE3_DERIVE_KEY_MATERIAL_V4: u8 = 1 << 6;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u8)]
@@ -342,9 +360,148 @@ pub fn profile_digest_v4() -> Digest {
 }
 
 fn typed_hash_v4(context: &'static str, bytes: &[u8]) -> Digest {
-    let mut hasher = blake3::Hasher::new_derive_key(context);
+    // Cloning a derive-mode state preserves BLAKE3's normative context-key
+    // derivation while removing one derive_key initialization from every N4
+    // node.  These are states, not raw context keys and not unkeyed hashes.
+    let mut hasher = match context {
+        PCS_LEAF_HASH_CONTEXT_V4 => return hash_pcs_leaf_bytes_v4(bytes),
+        PCS_NODE_HASH_CONTEXT_V4 => return hash_pcs_node_bytes_v4(bytes),
+        MANIFEST_LEAF_HASH_CONTEXT_V4 => {
+            clone_hash_state_v4(&MANIFEST_LEAF_HASH_STATE_V4, MANIFEST_LEAF_HASH_CONTEXT_V4)
+        }
+        MANIFEST_NODE_HASH_CONTEXT_V4 => {
+            clone_hash_state_v4(&MANIFEST_NODE_HASH_STATE_V4, MANIFEST_NODE_HASH_CONTEXT_V4)
+        }
+        _ => blake3::Hasher::new_derive_key(context),
+    };
     hasher.update(bytes);
     *hasher.finalize().as_bytes()
+}
+
+#[inline]
+fn clone_hash_state_v4(
+    state: &'static OnceLock<blake3::Hasher>,
+    context: &'static str,
+) -> blake3::Hasher {
+    state.get_or_init(|| blake3::Hasher::new_derive_key(context)).clone()
+}
+
+#[inline]
+fn hash_pcs_leaf_bytes_v4(bytes: &[u8]) -> Digest {
+    let mut hasher = clone_hash_state_v4(&PCS_LEAF_HASH_STATE_V4, PCS_LEAF_HASH_CONTEXT_V4);
+    hasher.update(bytes);
+    *hasher.finalize().as_bytes()
+}
+
+#[inline]
+fn hash_pcs_node_bytes_v4(bytes: &[u8]) -> Digest {
+    let mut hasher = clone_hash_state_v4(&PCS_NODE_HASH_STATE_V4, PCS_NODE_HASH_CONTEXT_V4);
+    hasher.update(bytes);
+    *hasher.finalize().as_bytes()
+}
+
+fn derive_key_words_v4(context: &'static str) -> [u32; 8] {
+    blake3::platform::words_from_le_bytes_32(&blake3::hazmat::hash_derive_key_context(context))
+}
+
+/// SIMD many-at-once hashing for complete, single-chunk canonical frames.
+///
+/// `N` is a schema-pinned fixed frame width (63, 68, 84, or 104 bytes), so
+/// every input is one BLAKE3 chunk and the root flag is applied directly.
+/// This function performs one references/output allocation per tile, never
+/// one allocation per node.
+fn hash_pcs_frames_many_v4<const N: usize>(
+    frames: &[[u8; N]],
+    key_words: &'static OnceLock<[u32; 8]>,
+    context: &'static str,
+) -> Vec<Digest> {
+    if frames.is_empty() {
+        return Vec::new();
+    }
+    debug_assert!(N > 0 && N <= 1_024);
+    let platform = BLAKE3_PLATFORM_V4.get_or_init(blake3::platform::Platform::detect);
+    let key = key_words.get_or_init(|| derive_key_words_v4(context));
+    if N <= 64 {
+        // The low-level many-at-once API accepts whole 64-byte blocks only;
+        // padding a 63-byte outer leaf there would silently change block_len.
+        // Keep this one partial-block shape exact with direct compression.
+        return frames
+            .iter()
+            .map(|frame| {
+                let mut block = [0u8; 64];
+                block[..N].copy_from_slice(frame);
+                let root = platform.compress_xof(
+                    key,
+                    &block,
+                    N as u8,
+                    0,
+                    BLAKE3_DERIVE_KEY_MATERIAL_V4
+                        | BLAKE3_CHUNK_START_V4
+                        | BLAKE3_CHUNK_END_V4
+                        | BLAKE3_ROOT_V4,
+                );
+                let mut digest = [0u8; 32];
+                digest.copy_from_slice(&root[..32]);
+                digest
+            })
+            .collect();
+    }
+
+    // Schema-4 frames above 64 bytes contain exactly two BLAKE3 blocks.
+    // Hash the first full blocks lane-parallel, then perform each root/output
+    // compression with its lane-specific chaining value. `hash_many` cannot
+    // perform that second step directly because its key/CV is shared by all
+    // lanes.
+    debug_assert!(N <= 128);
+    let first_blocks = frames
+        .iter()
+        .map(|frame| {
+            let mut block = [0u8; 64];
+            block.copy_from_slice(&frame[..64]);
+            block
+        })
+        .collect::<Vec<_>>();
+    let inputs = first_blocks.iter().collect::<Vec<_>>();
+    let mut chaining_values = vec![0u8; frames.len() * 32];
+    platform.hash_many(
+        &inputs,
+        key,
+        0,
+        blake3::IncrementCounter::No,
+        BLAKE3_DERIVE_KEY_MATERIAL_V4,
+        BLAKE3_CHUNK_START_V4,
+        0,
+        &mut chaining_values,
+    );
+    frames
+        .iter()
+        .zip(chaining_values.chunks_exact(32))
+        .map(|(frame, cv_bytes)| {
+            let mut cv = [0u8; 32];
+            cv.copy_from_slice(cv_bytes);
+            let cv_words = blake3::platform::words_from_le_bytes_32(&cv);
+            let mut last_block = [0u8; 64];
+            last_block[..N - 64].copy_from_slice(&frame[64..]);
+            let root = platform.compress_xof(
+                &cv_words,
+                &last_block,
+                (N - 64) as u8,
+                0,
+                BLAKE3_DERIVE_KEY_MATERIAL_V4 | BLAKE3_CHUNK_END_V4 | BLAKE3_ROOT_V4,
+            );
+            let mut digest = [0u8; 32];
+            digest.copy_from_slice(&root[..32]);
+            digest
+        })
+        .collect()
+}
+
+pub(crate) fn hash_pcs_leaf_frames_many_v4<const N: usize>(frames: &[[u8; N]]) -> Vec<Digest> {
+    hash_pcs_frames_many_v4(frames, &PCS_LEAF_HASH_KEY_WORDS_V4, PCS_LEAF_HASH_CONTEXT_V4)
+}
+
+pub(crate) fn hash_pcs_node_frames_many_v4<const N: usize>(frames: &[[u8; N]]) -> Vec<Digest> {
+    hash_pcs_frames_many_v4(frames, &PCS_NODE_HASH_KEY_WORDS_V4, PCS_NODE_HASH_CONTEXT_V4)
 }
 
 pub fn hash_descriptor_v4(frame: &DescriptorFrameV4) -> Result<Digest, FrameError> {
@@ -352,11 +509,216 @@ pub fn hash_descriptor_v4(frame: &DescriptorFrameV4) -> Result<Digest, FrameErro
 }
 
 pub fn hash_pcs_leaf_v4(frame: &PcsLeafFrameV4) -> Result<Digest, FrameError> {
-    Ok(typed_hash_v4(PCS_LEAF_HASH_CONTEXT_V4, &FrameV4::PcsLeaf(frame.clone()).encode()?))
+    frame.validate()?;
+    match &frame.payload {
+        PcsLeafPayloadV4::Inner { descriptor_digest, slot, present, symbols }
+            if symbols.len() <= 1 =>
+        {
+            let symbol = symbols.first().copied();
+            if *present != symbol.is_some() {
+                return Err(FrameError::Invalid("inner leaf presence"));
+            }
+            hash_pcs_inner_leaf_fields_v4(
+                frame.cohort_id,
+                frame.oracle_kind,
+                frame.fold_round,
+                frame.outer_index,
+                *descriptor_digest,
+                *slot,
+                symbol,
+            )
+        }
+        PcsLeafPayloadV4::Outer { inner_root_digest } => hash_pcs_outer_leaf_fields_v4(
+            frame.cohort_id,
+            frame.oracle_kind,
+            frame.fold_round,
+            frame.outer_index,
+            *inner_root_digest,
+        ),
+        _ => {
+            Ok(typed_hash_v4(PCS_LEAF_HASH_CONTEXT_V4, &FrameV4::PcsLeaf(frame.clone()).encode()?))
+        }
+    }
 }
 
 pub fn hash_pcs_node_v4(frame: &PcsNodeFrameV4) -> Result<Digest, FrameError> {
-    Ok(typed_hash_v4(PCS_NODE_HASH_CONTEXT_V4, &FrameV4::PcsNode(frame.clone()).encode()?))
+    frame.validate()?;
+    hash_pcs_node_fields_v4(
+        frame.cohort_id,
+        frame.tree_role,
+        frame.oracle_kind,
+        frame.fold_round,
+        frame.outer_index,
+        frame.level,
+        frame.node_index,
+        frame.left_digest,
+        frame.right_digest,
+    )
+}
+
+/// Allocation-free canonical schema-4 inner-leaf hash used by the X4b N4
+/// pipeline. `None` encodes the committed absent-slot leaf.
+#[allow(clippy::too_many_arguments)]
+pub fn hash_pcs_inner_leaf_fields_v4(
+    cohort_id: u32,
+    oracle_kind: OracleKindV4,
+    fold_round: u8,
+    outer_index: u64,
+    descriptor_digest: Digest,
+    slot: u16,
+    symbol: Option<Fp2>,
+) -> Result<Digest, FrameError> {
+    let frame = encode_pcs_inner_leaf_fields_v4(
+        cohort_id,
+        oracle_kind,
+        fold_round,
+        outer_index,
+        descriptor_digest,
+        slot,
+        symbol,
+    )?;
+    let encoded = if symbol.is_some() { &frame[..84] } else { &frame[..68] };
+    Ok(hash_pcs_leaf_bytes_v4(encoded))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn encode_pcs_inner_leaf_fields_v4(
+    cohort_id: u32,
+    oracle_kind: OracleKindV4,
+    fold_round: u8,
+    outer_index: u64,
+    descriptor_digest: Digest,
+    slot: u16,
+    symbol: Option<Fp2>,
+) -> Result<[u8; 84], FrameError> {
+    if outer_index == u64::MAX {
+        return Err(FrameError::Invalid("inner leaf outer index"));
+    }
+    let mut frame = [0u8; 84];
+    write_fixed_header_v4(&mut frame, FrameKindV4::PcsLeaf, if symbol.is_some() { 68 } else { 52 });
+    frame[16..20].copy_from_slice(&cohort_id.to_le_bytes());
+    frame[20] = TreeRole::Inner as u8;
+    frame[21] = oracle_kind as u8;
+    frame[22] = fold_round;
+    frame[23..31].copy_from_slice(&outer_index.to_le_bytes());
+    frame[31..63].copy_from_slice(&descriptor_digest);
+    frame[63..65].copy_from_slice(&slot.to_le_bytes());
+    frame[65] = u8::from(symbol.is_some());
+    frame[66..68].copy_from_slice(&u16::from(symbol.is_some()).to_le_bytes());
+    if let Some(symbol) = symbol {
+        frame[68..76].copy_from_slice(&symbol.c0.value().to_le_bytes());
+        frame[76..84].copy_from_slice(&symbol.c1.value().to_le_bytes());
+    }
+    Ok(frame)
+}
+
+/// Allocation-free canonical schema-4 outer-leaf hash.
+pub fn hash_pcs_outer_leaf_fields_v4(
+    cohort_id: u32,
+    oracle_kind: OracleKindV4,
+    fold_round: u8,
+    outer_index: u64,
+    inner_root_digest: Digest,
+) -> Result<Digest, FrameError> {
+    let frame = encode_pcs_outer_leaf_fields_v4(
+        cohort_id,
+        oracle_kind,
+        fold_round,
+        outer_index,
+        inner_root_digest,
+    )?;
+    Ok(hash_pcs_leaf_bytes_v4(&frame))
+}
+
+pub(crate) fn encode_pcs_outer_leaf_fields_v4(
+    cohort_id: u32,
+    oracle_kind: OracleKindV4,
+    fold_round: u8,
+    outer_index: u64,
+    inner_root_digest: Digest,
+) -> Result<[u8; 63], FrameError> {
+    if outer_index == u64::MAX {
+        return Err(FrameError::Invalid("outer leaf index"));
+    }
+    let mut frame = [0u8; 63];
+    write_fixed_header_v4(&mut frame, FrameKindV4::PcsLeaf, 47);
+    frame[16..20].copy_from_slice(&cohort_id.to_le_bytes());
+    frame[20] = TreeRole::Outer as u8;
+    frame[21] = oracle_kind as u8;
+    frame[22] = fold_round;
+    frame[23..31].copy_from_slice(&outer_index.to_le_bytes());
+    frame[31..63].copy_from_slice(&inner_root_digest);
+    Ok(frame)
+}
+
+/// Allocation-free canonical schema-4 internal-node hash.
+#[allow(clippy::too_many_arguments)]
+pub fn hash_pcs_node_fields_v4(
+    cohort_id: u32,
+    tree_role: TreeRole,
+    oracle_kind: OracleKindV4,
+    fold_round: u8,
+    outer_index: u64,
+    level: u8,
+    node_index: u64,
+    left_digest: Digest,
+    right_digest: Digest,
+) -> Result<Digest, FrameError> {
+    let frame = encode_pcs_node_fields_v4(
+        cohort_id,
+        tree_role,
+        oracle_kind,
+        fold_round,
+        outer_index,
+        level,
+        node_index,
+        left_digest,
+        right_digest,
+    )?;
+    Ok(hash_pcs_node_bytes_v4(&frame))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn encode_pcs_node_fields_v4(
+    cohort_id: u32,
+    tree_role: TreeRole,
+    oracle_kind: OracleKindV4,
+    fold_round: u8,
+    outer_index: u64,
+    level: u8,
+    node_index: u64,
+    left_digest: Digest,
+    right_digest: Digest,
+) -> Result<[u8; 104], FrameError> {
+    if (tree_role == TreeRole::Inner && outer_index == u64::MAX)
+        || (tree_role == TreeRole::Outer && outer_index != u64::MAX)
+    {
+        return Err(FrameError::Invalid("node outer index"));
+    }
+    if level == 0 {
+        return Err(FrameError::Invalid("node level"));
+    }
+    let mut frame = [0u8; 104];
+    write_fixed_header_v4(&mut frame, FrameKindV4::PcsNode, 88);
+    frame[16..20].copy_from_slice(&cohort_id.to_le_bytes());
+    frame[20] = tree_role as u8;
+    frame[21] = oracle_kind as u8;
+    frame[22] = fold_round;
+    frame[23..31].copy_from_slice(&outer_index.to_le_bytes());
+    frame[31] = level;
+    frame[32..40].copy_from_slice(&node_index.to_le_bytes());
+    frame[40..72].copy_from_slice(&left_digest);
+    frame[72..104].copy_from_slice(&right_digest);
+    Ok(frame)
+}
+
+fn write_fixed_header_v4(frame: &mut [u8], kind: FrameKindV4, body_len: u32) {
+    debug_assert!(frame.len() >= HEADER_LEN_V4 + body_len as usize);
+    frame[..8].copy_from_slice(&MAGIC_V4);
+    frame[8..10].copy_from_slice(&SCHEMA_V4.to_le_bytes());
+    frame[10] = kind as u8;
+    frame[11] = 0;
+    frame[12..16].copy_from_slice(&body_len.to_le_bytes());
 }
 
 pub fn hash_manifest_leaf_v4(frame: &ManifestLeafFrame) -> Result<Digest, FrameError> {
@@ -2028,5 +2390,155 @@ mod tests {
             right_digest: [0; 32],
         };
         assert_ne!(hash_pcs_leaf_v4(&leaf).unwrap(), hash_pcs_node_v4(&node).unwrap());
+    }
+
+    #[test]
+    fn x4b_fixed_width_n4_hashes_match_the_normative_codec_byte_for_byte() {
+        let leaves = [
+            PcsLeafFrameV4 {
+                cohort_id: 0xA500_0011,
+                tree_role: TreeRole::Inner,
+                oracle_kind: OracleKindV4::Auxiliary,
+                fold_round: 0,
+                outer_index: 37,
+                payload: PcsLeafPayloadV4::Inner {
+                    descriptor_digest: [0xD3; 32],
+                    slot: 7,
+                    present: true,
+                    symbols: vec![symbol(91)],
+                },
+            },
+            PcsLeafFrameV4 {
+                cohort_id: 0xA500_0011,
+                tree_role: TreeRole::Inner,
+                oracle_kind: OracleKindV4::Auxiliary,
+                fold_round: 0,
+                outer_index: 37,
+                payload: PcsLeafPayloadV4::Inner {
+                    descriptor_digest: [0; 32],
+                    slot: 6,
+                    present: false,
+                    symbols: vec![],
+                },
+            },
+            PcsLeafFrameV4 {
+                cohort_id: 0xA500_0011,
+                tree_role: TreeRole::Outer,
+                oracle_kind: OracleKindV4::Auxiliary,
+                fold_round: 0,
+                outer_index: 37,
+                payload: PcsLeafPayloadV4::Outer { inner_root_digest: [0xA7; 32] },
+            },
+        ];
+        for leaf in leaves {
+            let canonical = FrameV4::PcsLeaf(leaf.clone()).encode().unwrap();
+            assert_eq!(
+                hash_pcs_leaf_v4(&leaf).unwrap(),
+                typed_hash_v4(PCS_LEAF_HASH_CONTEXT_V4, &canonical)
+            );
+        }
+
+        let node = PcsNodeFrameV4 {
+            cohort_id: 0xA500_0011,
+            tree_role: TreeRole::Outer,
+            oracle_kind: OracleKindV4::Auxiliary,
+            fold_round: 0,
+            outer_index: u64::MAX,
+            level: 17,
+            node_index: 1234,
+            left_digest: [0x31; 32],
+            right_digest: [0x72; 32],
+        };
+        let canonical = FrameV4::PcsNode(node.clone()).encode().unwrap();
+        assert_eq!(
+            hash_pcs_node_v4(&node).unwrap(),
+            typed_hash_v4(PCS_NODE_HASH_CONTEXT_V4, &canonical)
+        );
+    }
+
+    #[test]
+    fn x4b_many_at_once_hashes_match_normative_derive_key_hashes() {
+        let present = (0..37u64)
+            .map(|coordinate| {
+                encode_pcs_inner_leaf_fields_v4(
+                    0xA500_0011,
+                    OracleKindV4::Auxiliary,
+                    0,
+                    coordinate,
+                    [0x42; 32],
+                    3,
+                    Some(Fp2::new(Fp::new(coordinate + 1), Fp::new(coordinate + 2))),
+                )
+                .unwrap()
+            })
+            .collect::<Vec<_>>();
+        let present_many = hash_pcs_leaf_frames_many_v4(&present);
+        for (frame, digest) in present.iter().zip(&present_many) {
+            assert_eq!(*digest, hash_pcs_leaf_bytes_v4(frame));
+        }
+
+        let absent = (0..19u64)
+            .map(|coordinate| {
+                let wide = encode_pcs_inner_leaf_fields_v4(
+                    0xA500_0011,
+                    OracleKindV4::Auxiliary,
+                    0,
+                    coordinate,
+                    [0; 32],
+                    7,
+                    None,
+                )
+                .unwrap();
+                let mut compact = [0u8; 68];
+                compact.copy_from_slice(&wide[..68]);
+                compact
+            })
+            .collect::<Vec<_>>();
+        let absent_many = hash_pcs_leaf_frames_many_v4(&absent);
+        for (frame, digest) in absent.iter().zip(&absent_many) {
+            assert_eq!(*digest, hash_pcs_leaf_bytes_v4(frame));
+        }
+
+        let outer = present_many
+            .iter()
+            .enumerate()
+            .map(|(coordinate, inner_root)| {
+                encode_pcs_outer_leaf_fields_v4(
+                    0xA500_0011,
+                    OracleKindV4::Auxiliary,
+                    0,
+                    coordinate as u64,
+                    *inner_root,
+                )
+                .unwrap()
+            })
+            .collect::<Vec<_>>();
+        let outer_many = hash_pcs_leaf_frames_many_v4(&outer);
+        for (frame, digest) in outer.iter().zip(&outer_many) {
+            assert_eq!(*digest, hash_pcs_leaf_bytes_v4(frame));
+        }
+
+        let nodes = present_many
+            .chunks_exact(2)
+            .enumerate()
+            .map(|(node_index, pair)| {
+                encode_pcs_node_fields_v4(
+                    0xA500_0011,
+                    TreeRole::Outer,
+                    OracleKindV4::Auxiliary,
+                    0,
+                    u64::MAX,
+                    1,
+                    node_index as u64,
+                    pair[0],
+                    pair[1],
+                )
+                .unwrap()
+            })
+            .collect::<Vec<_>>();
+        let node_many = hash_pcs_node_frames_many_v4(&nodes);
+        for (frame, digest) in nodes.iter().zip(&node_many) {
+            assert_eq!(*digest, hash_pcs_node_bytes_v4(frame));
+        }
     }
 }

@@ -1,6 +1,7 @@
 #include <cuda_runtime.h>
 
 #include "volta_chacha8_fp.cuh"
+#include "volta_x4b.cuh"
 
 #include <algorithm>
 #include <array>
@@ -17,7 +18,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 28;
+constexpr uint32_t ABI_VERSION = 29;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -31,7 +32,10 @@ constexpr int OP_AUTH_MASKS = 5;
 constexpr int OP_MAILBOX = 6;
 constexpr uint64_t MOCK_CORRELATION_RESERVED_DOMAIN_BITS =
     (uint64_t{1} << 63) | (uint64_t{1} << 62) | (uint64_t{1} << 61);
-constexpr int BUFFER_COUNT = 16;
+constexpr int BUFFER_COUNT = 18;
+constexpr int X4B_KEY_BUFFER = 16;
+constexpr int X4B_TWIDDLE_BUFFER = 17;
+constexpr size_t X4B_N4_TILE_BYTE_CEILING = size_t{512} << 20;
 constexpr size_t MATRIX_FOLD_TARGET_BLOCKS = 1024;
 constexpr size_t MATRIX_FOLD_MAX_PARALLEL_OUTPUTS = 1024;
 constexpr size_t MATRIX_FOLD_MAX_PARTIALS = 2 * MATRIX_FOLD_TARGET_BLOCKS - 2;
@@ -45,6 +49,8 @@ struct alignas(16) Fp2 {
     uint64_t c0;
     uint64_t c1;
 };
+
+static_assert(sizeof(Fp2) == sizeof(volta_x4b::Fp2), "X4b Fp2 ABI mismatch");
 
 struct RawStats {
     uint64_t calls[OP_COUNT];
@@ -164,6 +170,8 @@ struct Context {
     std::vector<size_t> inactive_resident;
     RawStats stats{};
     size_t twiddle_size = 0;
+    size_t x4b_twiddle_size = 0;
+    bool x4b_keys_ready = false;
     uint32_t timing_mode = TIMING_CUDA_EVENTS;
     std::array<TimingRecord, TIMING_RING_SIZE> timing_ring;
     size_t timing_ring_begin = 0;
@@ -2322,6 +2330,35 @@ int ensure_twiddles(Context* c, size_t n, uint64_t* h2d) {
     *h2d += tw.size() * sizeof(uint64_t);
     c->twiddle_size = n;
     return 0;
+}
+
+int prepare_x4b_keys(Context* c, bool* needs_generation) {
+    if (ensure(c, X4B_KEY_BUFFER, 4 * sizeof(volta_x4b::Hash32))) return -1;
+    *needs_generation = !c->x4b_keys_ready;
+    return 0;
+}
+
+int generate_x4b_keys_if_needed(Context* c, bool needs_generation, uint64_t* generated) {
+    if (!needs_generation) return 0;
+    volta_x4b::initialize_n4_keys<<<1, 1, 0, c->stream>>>(
+        buf<volta_x4b::Hash32>(c, X4B_KEY_BUFFER));
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    c->x4b_keys_ready = true;
+    *generated += 4 * sizeof(volta_x4b::Hash32);
+    return 0;
+}
+
+bool x4b_tile_bytes_within_ceiling(
+    size_t symbols, size_t ranks, size_t descriptors,
+    size_t first_hashes, size_t second_hashes, size_t output) {
+    size_t total = 0;
+    return checked_add_size(symbols, ranks, &total) &&
+        checked_add_size(total, descriptors, &total) &&
+        checked_add_size(total, first_hashes, &total) &&
+        checked_add_size(total, second_hashes, &total) &&
+        checked_add_size(total, output, &total) &&
+        checked_add_size(total, 4 * sizeof(volta_x4b::Hash32), &total) &&
+        total <= X4B_N4_TILE_BYTE_CEILING;
 }
 
 // -------------------------------------------------------------------------
@@ -4667,6 +4704,241 @@ extern "C" int volta_cuda_ntt_fp2(void* raw,const Fp2* msg,size_t msg_len,size_t
     CUDA_OR_RETURN(c,cudaPeekAtLastError());if(mark_timing(c,2))return -1;
     CUDA_OR_RETURN(c,cudaMemcpyAsync(out,buf<Fp2>(c,1),n*sizeof(Fp2),cudaMemcpyDeviceToHost,c->stream));
     return finish_timing(c,OP_PCS_NTT,h2d,n*sizeof(Fp2));
+}
+
+/// X4b's exact extension-field NTT. Unlike the historical P7 entry point,
+/// every twiddle is in E and every butterfly uses a full Fp2 multiplication.
+/// A single codeword is resident at a time; the 2^30 maximum uses the frozen
+/// 16-GiB input + 16-GiB output + 8-GiB twiddle budget.
+extern "C" int volta_cuda_x4b_ntt_fp2(
+    void* raw, const volta_x4b::Fp2* coefficients, size_t coefficient_len,
+    size_t n, volta_x4b::Fp2* output) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !coefficients || !output || !coefficient_len || coefficient_len > n ||
+        n < 2 || (n & (n - 1)) || n > (size_t{1} << 33))
+        return fail_message(c, "invalid X4b Fp2 NTT geometry");
+    size_t total_bytes = 0, coefficient_bytes = 0, twiddle_bytes = 0;
+    if (!checked_mul_size(n, sizeof(volta_x4b::Fp2), &total_bytes) ||
+        !checked_mul_size(coefficient_len, sizeof(volta_x4b::Fp2), &coefficient_bytes) ||
+        !checked_mul_size(n / 2, sizeof(volta_x4b::Fp2), &twiddle_bytes))
+        return fail_message(c, "X4b Fp2 NTT byte geometry overflows size_t");
+    if (ensure(c, 0, total_bytes) || ensure(c, 1, total_bytes) ||
+        ensure(c, X4B_TWIDDLE_BUFFER, twiddle_bytes)) return -1;
+
+    const bool generate_twiddles = c->x4b_twiddle_size != n;
+    if (begin_timing(c)) return -1;
+    CUDA_OR_RETURN(c, cudaMemcpyAsync(
+        buf<volta_x4b::Fp2>(c, 0), coefficients, coefficient_bytes,
+        cudaMemcpyHostToDevice, c->stream));
+    const size_t zeroed_bytes = total_bytes - coefficient_bytes;
+    if (zeroed_bytes) CUDA_OR_RETURN(c, cudaMemsetAsync(
+        static_cast<uint8_t*>(c->buffers[0].ptr) + coefficient_bytes, 0,
+        zeroed_bytes, c->stream));
+    if (mark_timing(c, 1)) return -1;
+
+    uint64_t generated_bytes = 0;
+    if (generate_twiddles) {
+        constexpr size_t TWIDDLE_RUN = 256;
+        const size_t twiddle_count = n / 2;
+        const size_t lanes = (twiddle_count + TWIDDLE_RUN - 1) / TWIDDLE_RUN;
+        const size_t blocks = (lanes + BLOCK - 1) / BLOCK;
+        const uint32_t bits = static_cast<uint32_t>(__builtin_ctzll(n));
+        volta_x4b::generate_twiddles<<<blocks, BLOCK, 0, c->stream>>>(
+            buf<volta_x4b::Fp2>(c, X4B_TWIDDLE_BUFFER), twiddle_count,
+            volta_x4b::root_of_unity(bits));
+        CUDA_OR_RETURN(c, cudaPeekAtLastError());
+        c->x4b_twiddle_size = n;
+        generated_bytes = twiddle_bytes;
+    }
+    const int bits = __builtin_ctzll(n);
+    volta_x4b::bit_reverse_fp2<<<(n + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        buf<volta_x4b::Fp2>(c, 0), buf<volta_x4b::Fp2>(c, 1), n, bits);
+    for (size_t len = 2; len <= n; len *= 2) {
+        volta_x4b::ntt_stage_fp2<<<(n / 2 + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+            buf<volta_x4b::Fp2>(c, 1),
+            buf<volta_x4b::Fp2>(c, X4B_TWIDDLE_BUFFER), n, len);
+    }
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    CUDA_OR_RETURN(c, cudaMemcpyAsync(
+        output, buf<volta_x4b::Fp2>(c, 1), total_bytes,
+        cudaMemcpyDeviceToHost, c->stream));
+    return finish_timing(
+        c, OP_PCS_NTT, coefficient_bytes, total_bytes, 0,
+        zeroed_bytes, generated_bytes);
+}
+
+/// Differential probe for all four frozen X4b derive-key domains. This is a
+/// bring-up/test primitive only; proof construction never calls it.
+extern "C" int volta_cuda_x4b_context_probe(
+    void* raw, const uint8_t* payload, size_t length, uint8_t* output) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !payload || !output || !length || length > 104)
+        return fail_message(c, "invalid X4b context-probe geometry");
+    constexpr size_t output_bytes = 4 * sizeof(volta_x4b::Hash32);
+    bool generate_keys = false;
+    if (ensure(c, 0, length) || ensure(c, 5, output_bytes) ||
+        prepare_x4b_keys(c, &generate_keys)) return -1;
+    if (begin_timing(c)) return -1;
+    CUDA_OR_RETURN(c, cudaMemcpyAsync(
+        buf<uint8_t>(c, 0), payload, length, cudaMemcpyHostToDevice, c->stream));
+    if (mark_timing(c, 1)) return -1;
+    uint64_t generated_bytes = 0;
+    if (generate_x4b_keys_if_needed(c, generate_keys, &generated_bytes)) return -1;
+    volta_x4b::context_probe<<<1, 4, 0, c->stream>>>(
+        buf<uint8_t>(c, 0), length,
+        buf<volta_x4b::Hash32>(c, X4B_KEY_BUFFER),
+        buf<volta_x4b::Hash32>(c, 5));
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    CUDA_OR_RETURN(c, cudaMemcpyAsync(
+        output, buf<volta_x4b::Hash32>(c, 5), output_bytes,
+        cudaMemcpyDeviceToHost, c->stream));
+    return finish_timing(c, OP_PCS_MERKLE, length, output_bytes, 0, 0, generated_bytes);
+}
+
+/// Build one power-of-two coordinate tile of complete schema-4 inner trees
+/// and emit only the unchanged typed outer leaves. The caller persists those
+/// leaves and discards the tile buffers before advancing.
+extern "C" int volta_cuda_x4b_n4_inner_tile(
+    void* raw, const volta_x4b::Fp2* symbols, size_t present_slots,
+    size_t coordinates, const uint16_t* present_rank, const uint8_t* descriptors,
+    size_t structural_slots, uint64_t coordinate_start, uint32_t cohort_id,
+    uint8_t oracle_kind, uint8_t fold_round, uint8_t* outer_leaves) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !symbols || !present_rank || !descriptors || !outer_leaves ||
+        !present_slots || present_slots > structural_slots || !coordinates ||
+        !coordinates || (coordinates & (coordinates - 1)) || !structural_slots ||
+        (structural_slots & (structural_slots - 1)) || structural_slots > 64 ||
+        oracle_kind > 2 || coordinate_start > UINT64_MAX - (coordinates - 1))
+        return fail_message(c, "invalid X4b N4 inner-tile geometry");
+    bool seen_rank[64]{};
+    size_t observed_present = 0;
+    for (size_t slot = 0; slot < structural_slots; ++slot) {
+        const uint16_t rank = present_rank[slot];
+        if (rank == UINT16_MAX) continue;
+        if (rank >= present_slots || seen_rank[rank])
+            return fail_message(c, "invalid X4b N4 present-slot rank map");
+        seen_rank[rank] = true;
+        ++observed_present;
+    }
+    if (observed_present != present_slots)
+        return fail_message(c, "incomplete X4b N4 present-slot rank map");
+
+    size_t symbol_count = 0, leaf_count = 0;
+    size_t symbol_bytes = 0, rank_bytes = 0, descriptor_bytes = 0;
+    size_t first_hash_bytes = 0, second_hash_bytes = 0, output_bytes = 0;
+    if (!checked_mul_size(present_slots, coordinates, &symbol_count) ||
+        !checked_mul_size(structural_slots, coordinates, &leaf_count) ||
+        !checked_mul_size(symbol_count, sizeof(volta_x4b::Fp2), &symbol_bytes) ||
+        !checked_mul_size(structural_slots, sizeof(uint16_t), &rank_bytes) ||
+        !checked_mul_size(structural_slots, sizeof(volta_x4b::Hash32), &descriptor_bytes) ||
+        !checked_mul_size(leaf_count, sizeof(volta_x4b::Hash32), &first_hash_bytes) ||
+        !checked_mul_size(coordinates, sizeof(volta_x4b::Hash32), &output_bytes))
+        return fail_message(c, "X4b N4 inner-tile byte geometry overflows size_t");
+    second_hash_bytes = structural_slots == 1
+        ? sizeof(volta_x4b::Hash32) : first_hash_bytes / 2;
+    if (!x4b_tile_bytes_within_ceiling(
+            symbol_bytes, rank_bytes, descriptor_bytes, first_hash_bytes,
+            second_hash_bytes, output_bytes))
+        return fail_message(c, "X4b N4 inner tile exceeds the 512-MiB budget");
+    bool generate_keys = false;
+    if (ensure(c, 0, symbol_bytes) || ensure(c, 1, rank_bytes) ||
+        ensure(c, 2, descriptor_bytes) || ensure(c, 3, first_hash_bytes) ||
+        ensure(c, 4, second_hash_bytes) || ensure(c, 5, output_bytes) ||
+        prepare_x4b_keys(c, &generate_keys)) return -1;
+
+    if (begin_timing(c)) return -1;
+    CUDA_OR_RETURN(c, cudaMemcpyAsync(
+        buf<volta_x4b::Fp2>(c, 0), symbols, symbol_bytes,
+        cudaMemcpyHostToDevice, c->stream));
+    CUDA_OR_RETURN(c, cudaMemcpyAsync(
+        buf<uint16_t>(c, 1), present_rank, rank_bytes,
+        cudaMemcpyHostToDevice, c->stream));
+    CUDA_OR_RETURN(c, cudaMemcpyAsync(
+        buf<uint8_t>(c, 2), descriptors, descriptor_bytes,
+        cudaMemcpyHostToDevice, c->stream));
+    if (mark_timing(c, 1)) return -1;
+    uint64_t generated_bytes = 0;
+    if (generate_x4b_keys_if_needed(c, generate_keys, &generated_bytes)) return -1;
+
+    volta_x4b::inner_leaf_tile<<<(leaf_count + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        buf<volta_x4b::Fp2>(c, 0), buf<uint16_t>(c, 1),
+        buf<volta_x4b::Hash32>(c, 2), buf<volta_x4b::Hash32>(c, 3),
+        buf<volta_x4b::Hash32>(c, X4B_KEY_BUFFER), coordinates,
+        structural_slots, coordinate_start, cohort_id, oracle_kind, fold_round);
+    volta_x4b::Hash32* current = buf<volta_x4b::Hash32>(c, 3);
+    volta_x4b::Hash32* next = buf<volta_x4b::Hash32>(c, 4);
+    size_t width = structural_slots;
+    uint8_t level = 1;
+    while (width > 1) {
+        const size_t parent_count = coordinates * (width / 2);
+        volta_x4b::inner_node_tile<<<
+            (parent_count + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+            current, next, buf<volta_x4b::Hash32>(c, X4B_KEY_BUFFER),
+            coordinates, width, coordinate_start, cohort_id, oracle_kind,
+            fold_round, level);
+        current = next;
+        next = next == buf<volta_x4b::Hash32>(c, 3)
+            ? buf<volta_x4b::Hash32>(c, 4) : buf<volta_x4b::Hash32>(c, 3);
+        width /= 2;
+        ++level;
+    }
+    volta_x4b::outer_leaf_tile<<<
+        (coordinates + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        current, buf<volta_x4b::Hash32>(c, 5),
+        buf<volta_x4b::Hash32>(c, X4B_KEY_BUFFER), coordinates,
+        coordinate_start, cohort_id, oracle_kind, fold_round);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    CUDA_OR_RETURN(c, cudaMemcpyAsync(
+        outer_leaves, buf<volta_x4b::Hash32>(c, 5), output_bytes,
+        cudaMemcpyDeviceToHost, c->stream));
+    return finish_timing(
+        c, OP_PCS_MERKLE, symbol_bytes + rank_bytes + descriptor_bytes,
+        output_bytes, 0, 0, generated_bytes);
+}
+
+/// Hash a contiguous parent range of one outer N4 level. Production callers
+/// stream level files through this entry point in <=512-MiB logical tiles.
+extern "C" int volta_cuda_x4b_n4_outer_nodes(
+    void* raw, const uint8_t* children, size_t parents, uint64_t node_start,
+    uint32_t cohort_id, uint8_t oracle_kind, uint8_t fold_round, uint8_t level,
+    uint8_t* output) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !children || !output || !parents || !level || oracle_kind > 2 ||
+        node_start > UINT64_MAX - (parents - 1))
+        return fail_message(c, "invalid X4b N4 outer-node tile geometry");
+    size_t input_count = 0, input_bytes = 0, output_bytes = 0;
+    if (!checked_mul_size(parents, 2, &input_count) ||
+        !checked_mul_size(input_count, sizeof(volta_x4b::Hash32), &input_bytes) ||
+        !checked_mul_size(parents, sizeof(volta_x4b::Hash32), &output_bytes))
+        return fail_message(c, "X4b N4 outer-node byte geometry overflows size_t");
+    if (!x4b_tile_bytes_within_ceiling(
+            0, 0, 0, input_bytes, 0, output_bytes))
+        return fail_message(c, "X4b N4 outer-node tile exceeds the 512-MiB budget");
+    bool generate_keys = false;
+    if (ensure(c, 3, input_bytes) || ensure(c, 5, output_bytes) ||
+        prepare_x4b_keys(c, &generate_keys)) return -1;
+    if (begin_timing(c)) return -1;
+    CUDA_OR_RETURN(c, cudaMemcpyAsync(
+        buf<volta_x4b::Hash32>(c, 3), children, input_bytes,
+        cudaMemcpyHostToDevice, c->stream));
+    if (mark_timing(c, 1)) return -1;
+    uint64_t generated_bytes = 0;
+    if (generate_x4b_keys_if_needed(c, generate_keys, &generated_bytes)) return -1;
+    volta_x4b::outer_node_tile<<<
+        (parents + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        buf<volta_x4b::Hash32>(c, 3), buf<volta_x4b::Hash32>(c, 5),
+        buf<volta_x4b::Hash32>(c, X4B_KEY_BUFFER), parents, node_start,
+        cohort_id, oracle_kind, fold_round, level);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    CUDA_OR_RETURN(c, cudaMemcpyAsync(
+        output, buf<volta_x4b::Hash32>(c, 5), output_bytes,
+        cudaMemcpyDeviceToHost, c->stream));
+    return finish_timing(
+        c, OP_PCS_MERKLE, input_bytes, output_bytes, 0, 0, generated_bytes);
 }
 
 extern "C" int volta_cuda_ntt_fp_batch_device(

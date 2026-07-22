@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b PHASE 2 AUTHORIZED/IN PROGRESS; NO POD YET)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b LOCAL PHASE 2 GREEN; HARD STOP AWAITING POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -152,9 +152,10 @@ serialization are the larger removable overhead.  The frozen X4b profile is
 `runpod-a100-x4b-v1`.  The product owner approved frozen design SHA-256
 `bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01` and
 authorized Phase 2 with the three implementation/pre-pod riders recorded
-below.  Local implementation and validation are in progress; pod access
-remains forbidden until the local GPT-2-geometry persisted-opening preflight
-and the complete local test surface are green.
+below.  The local implementation, complete-pipeline CPU screen and exact-
+geometry persisted-opening preflight are now green at the clean checkpoint
+recorded below.  The second hard stop is active: no pod has been contacted,
+and provisioning is the next owner action.
 
 ## Milestones
 
@@ -204,7 +205,7 @@ and the complete local test surface are green.
 | X4 R1b NOTE-6 pod preflight | **PASS; X4 A100 RECORDS AUTHORIZED** (2026-07-22) | Exact `c3_weights` production-size smoke must be first; clean frozen checkout; command/wall/RSS/VRAM/exit/leakage evidence pinned | Clean `runpod-a100-x4-v1` source `71edbd7`; exact-name smoke **1 passed / 0 failed**, exit **0**, test wall **44.87 s**, encoded geometry **6,442,450,944 B**, peak RSS **11,493,740,544 B**, peak GPU memory **0 MiB**. Record `x4-note6-c3-weights-preflight-2026-07-22-71edbd7.json`, SHA-256 `8fef35aae0412c45556b37fbfba89c88041d9de8b3c9733ad65227daeb83b0c2`. Three ineligible setup attempts are retained: parse-before-exec, wrong Cargo directory, and MFS build-target stall; none started the test binary. No X4 gate verdict is claimed by this preflight. |
 | X4 Amendment 5 A100 production record | **G4 COMMIT FAIL; OVERALL X4 FAIL; STOPPED** (2026-07-22) | Gates conjunctive and verbatim; no synthetic production credit; wall-only+counters; one warm-up + three measured; physical inventory and X5 anchors explicit | Clean `runpod-a100-x4-v1` harness `47a701e`. Exact `Wext-mu26` constituent timed out at **16.340085726 s** warm-up and **16.187542362 / 16.127495669 / 16.179918053 s** measured against complete commit **<=15.000 s: FAIL**. G1 PASS; G3 **2,683,236 / 43,953,700 B PASS**; full G2, G4 open/verify and physical G6 NOT EVALUATED; overall **FAIL**. Exact padded first oracle **76,948,701,184 B**, Merkle **468,872,855,392 B**, per materialization **545,821,556,576 B**, twice-recompute **1,091,643,113,152 B**, persistent coefficients+roots **9,618,587,808 B**. CPU aux17 anchor **11,229,161.918552168 B/s**; one-query recompute **3.117810096 s / 205,520,864 B**; compatible GPU path absent. Record `x4-v4-a100-production-2026-07-22-47a701e.json`, SHA-256 `111e4056feb0ba53569889a0bf1d0af73c99ab4613ab9a76aae975f8adbb0237`. |
 | X4b sustainable oracle Phase 1 | **DIAGNOSIS + PREREGISTRATION COMPLETE; HARD STOP BEFORE IMPLEMENTATION/POD** (2026-07-22) | No format/root/reference/Lean/soundness change; exact postdiction; CPU >=500 MB/s/core; GPU root equality; unchanged 15 s / 1.50 s / 0.25 s; full pass informative | Design SHA-256 `bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01`. Clean-source CPU record `x4b-phase1-cpu-postdiction-2026-07-22-9164de4.json`, SHA-256 `78fdd12ed79c4cf05d42b428a7fa305c28e4254be82289608c45f1f85ce64ec1`: exact aux17 has **5,242,879** hashes / **460,324,760 canonical B**; tree wall is 92.14% explained by those calls; derive-key is material but allocation/serialization is larger. Exact padding **2.4103942174056745x**, Merkle/oracle **6.093317342300939x**, recompute **205,520,864 B / 3.117810096 s**. Profile `runpod-a100-x4b-v1`; durable artifacts **86,567,288,992 B**, volume >=150 GB, host RAM >=128 GiB, device ceiling 48 GiB. X4 FAIL remains immutable. |
-| X4b sustainable oracle Phase 2 | **AUTHORIZED / LOCAL IMPLEMENTATION IN PROGRESS; POD FORBIDDEN UNTIL LOCAL PREFLIGHT** (2026-07-22) | Frozen Phase-1 construction plus three owner riders; any local persisted-open failure at GPT-2 geometry is a hard stop before paid hardware | The CPU throughput gate measures the complete canonical node pipeline, including serialization, allocation behavior and hashing.  Before provisioning, both the normal and RAM-degraded persisted-opening policies are exercised at exact GPT-2 geometry against **1.50 s**.  Approximately 125-GiB hosts must select an explicit smaller-cache policy whose extra rebuild work and wall are reported, never silently page or overcommit.  No protocol/reference/byte/root/Lean/soundness change; design SHA remains `bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01`. |
+| X4b sustainable oracle Phase 2 | **LOCAL IMPLEMENTATION + PREFLIGHT PASS; HARD STOP / POD REQUIRED** (2026-07-22) | Frozen Phase-1 construction and all three riders implemented; local exact-geometry screens green; CUDA device bring-up and production gates remain pending A100 | Source `bcbda451ead3b7e70f59f4595109556dbbd89bb7`. Clean record `x4b-local-cpu-preflight-2026-07-22-bcbda45.json`, SHA-256 `bf391aa2045a426c67ff46d53215d6fd0d57847b5d4fdd42365740c43400447c`: complete serialization+pipeline-allocation+hash wall **0.550247588 s**, **836,577,515.3565962 canonical B/s/core** local PASS screen. Full/degraded persisted open **0.051483012 / 0.090788295 s**, verify **0.034853677 / 0.036755061 s**, byte-identical **2,615,414-B** openings. Degraded cache is **35,727,080,320 B**, saving **35,727,081,344 B** while explicitly counting **5,416** rebuilt outer nodes. Design SHA and every proof/root/reference/byte/Lean/soundness value remain unchanged. No pod verdict yet. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -272,6 +273,85 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-22 (X4b Phase 2 local implementation and pre-pod stop; all three
+  owner riders discharged locally)**: source checkpoint
+  `bcbda451ead3b7e70f59f4595109556dbbd89bb7` implements the frozen X4b
+  construction without changing the schema-4 grammar, any N4 preimage or
+  context, root, proof/reference byte, Lean statement, rate/query/claim
+  parameter, correlation count or soundness expression.  The design remains
+  SHA-256
+  `bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01`;
+  response and PCS remain exactly **43,953,700 / 2,683,236 B**, and the
+  response-wide bound remains **80.25537016399041 bits** with zero new error
+  terms.
+
+  The CPU N4 path hoists the four derive-mode BLAKE3 states, serializes fixed
+  63/68/84/104-byte frames into tile/level slabs, uses the pinned BLAKE3
+  many-at-once compression path, and allocates per tile/level rather than per
+  node.  Its clean local record is
+  `benchmarks/results/x4b-local-cpu-preflight-2026-07-22-bcbda45.json`,
+  SHA-256
+  `bf391aa2045a426c67ff46d53215d6fd0d57847b5d4fdd42365740c43400447c`.
+  One warm-up plus five pinned single-worker candidates measure the **full
+  serialization + pipeline-allocation + hashing path**, not a hash-only
+  surrogate.  Candidate walls are **0.551998305, 0.549102750, 0.571309404,
+  0.550247588, 0.547245823 s**; the selected upper median is
+  **0.550247588 s**, or **836,577,515.3565962 canonical frame B/s/core**
+  against the local **>=500,000,000** pre-pod screen.  Each candidate records
+  **19,792 allocations / 35,363 reallocations** for the entire tree pipeline;
+  those operations are included in the selected wall.  The official pod-host
+  gate remains to be measured again on the provisioned machine.
+
+  The production opening source is now `PersistedOracle`; record-producing
+  code rejects `AuditRecompute`.  The local preflight uses 32 sparse files
+  solely to realize exact GPT-2 logical lengths and accessed offsets without
+  pretending to be a physical G6 record.  It executes the frozen 111-draw
+  tape across all five initial cohorts and 27 fold rounds.  With the full
+  **71,454,161,664-B** logical outer cache, selected open/verify are
+  **0.051483012 / 0.034853677 s**; traffic is **875,328 oracle B**, **1,930,304
+  cache B**, **6,720** inner trees and **5,610** outer frontier leaves per
+  opening.  Omitting outer level one reduces the cache to
+  **35,727,080,320 B**, saving **35,727,081,344 B**.  Its selected open/verify
+  are **0.090788295 / 0.036755061 s** while explicitly counting **1,737,728
+  oracle B**, **1,756,992 cache B**, **17,552** inner trees, **16,442**
+  frontier leaves and **5,416** rebuilt outer nodes.  Both policies produce
+  the identical **2,615,414-B** packed opening with identical BLAKE3 digest
+  `c3ecac5827024807b7844944980cd9313178209764a5dc86fea79fd372babf7f`.
+  Thus the local **1.50-s** rider passes with large measured margin; this is a
+  local CPU screen, not the A100 production opening verdict.
+
+  The CUDA implementation adds the exact `E` root-of-unity NTT, full Fp2
+  butterflies, one-slot streaming, <=512-MiB N4 tiles, the four unchanged N4
+  derive domains, bounded disk staging, durable canonical coefficients/
+  oracle/roots, and explicit H2D/D2H/device-zero/staging/page-cache counters.
+  Correctness evidence is fail-closed: synthetic shapes 1/2/16/64 require
+  complete CPU/GPU root equality; production cohorts require exact auxiliary
+  roots and deterministic larger-cohort NTT, typed inner-leaf, inner-node,
+  inner-root, outer-leaf and every-outer-level samples.  The local host has no
+  CUDA toolkit/device, so the shared arithmetic/hash source is host-compiled
+  and byte-compared against the Rust reference, while actual NVCC compilation
+  and device execution remain explicitly the first kernel-bring-up work after
+  NOTE-6 on the pod.  `cargo test --workspace --all-features`, all report
+  tests (**33 passed**) and the host CUDA/Rust differential reference are
+  green.  No GPU result is inferred from those local checks.
+
+  Graceful degradation is explicit rather than a hidden overcommit.  A host
+  exposing approximately **125 GiB actual RAM** selects
+  `ram-degraded-one-level`, performs the additional counted leaf/inner/node
+  rebuilds above, and preserves roots and proof bytes.  However the frozen
+  hardware requirement remains **>=128 GiB actual `/proc/meminfo` RAM**:
+  a 125-GiB run is diagnostic and must report hardware/overall **FAIL**, even
+  if its opening wall passes.  For an eligible full-cache record, provision a
+  SKU whose actual RAM is at least 128 GiB; an advertised **>=192 GiB** SKU is
+  recommended to avoid nominal-capacity loss and leave allocator/I/O
+  headroom.  Persistent volume remains **>=150 GB** (more is operational
+  headroom, not a relaxed or changed gate).
+
+  **HARD STOP:** no pod was contacted.  The next action requires the product
+  owner to provision an **A100-SXM4 80 GB**, volume **>=150 GB**, and the RAM
+  choice above.  NOTE-6 remains the first production-size action; kernel
+  bring-up and every append-only production record follow only afterward.
 
 - **2026-07-22 (X4b Phase 2 explicitly approved; three pre-pod riders)**:
   the product owner approved the frozen Phase-1 design at SHA-256

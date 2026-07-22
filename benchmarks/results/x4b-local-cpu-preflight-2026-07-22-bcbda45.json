@@ -1,0 +1,171 @@
+{
+  "schema": 1,
+  "milestone": "X4b-local-CPU-persisted-opening-preflight",
+  "date": "2026-07-22",
+  "git_sha": "bcbda451ead3b7e70f59f4595109556dbbd89bb7",
+  "git_dirty": false,
+  "profile": "x4-zkdeepfold-ud-e29-v4",
+  "pod_profile": "runpod-a100-x4b-v1",
+  "design_sha256": "bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01",
+  "source_policy": "PersistedOracle (record eligible)",
+  "audit_recompute_refused": true,
+  "profile_digest": "511fdf4842a64dc8b5830ceccc71542ed354a9f2b2d96e30c763c5a48af2fe0a",
+  "query_derive_context": "volta-zk/x4/amendment5-gpt2-preflight/v1",
+  "query_xof_input_ascii": "e29-r3-s111|gpt2-small|102-claims|2026-07-21",
+  "query_count": 111,
+  "query_draws_blake3": "3654af24af8a3e903e15db2bf25e0ec587d1bd774aaab433d1fb6e1064b3d299",
+  "cpu_full_node_pipeline": {
+    "status": "LOCAL_MEASUREMENT_ONLY; runpod-a100-x4b-v1 gate remains pending",
+    "measurement_scope": "complete aux17 N4 node pipeline: fixed-width canonical serialization + tile/level pipeline allocations + BLAKE3 first-block hash_many and exact lane-specific root compression; NTT and input preparation excluded",
+    "pinned_workers": 1,
+    "warmup_count": 1,
+    "measured_candidates": 5,
+    "canonical_frame_bytes": 460324760,
+    "logical_oracle_bytes": 33554432,
+    "hash_calls": 5242879,
+    "candidates": [
+      {
+        "wall_s": 0.551998305,
+        "canonical_frame_bytes_per_s": 833924227.3579082,
+        "oracle_bytes_per_s": 60787201.149104975,
+        "hash_calls_per_s": 9497998.367947888,
+        "allocator": {
+          "allocations": 19792,
+          "reallocations": 35363,
+          "deallocations": 19770,
+          "cumulative_requested_bytes": 1657369336
+        }
+      },
+      {
+        "wall_s": 0.54910275,
+        "canonical_frame_bytes_per_s": 838321716.6550341,
+        "oracle_bytes_per_s": 61107747.13839988,
+        "hash_calls_per_s": 9548083.6692222,
+        "allocator": {
+          "allocations": 19792,
+          "reallocations": 35363,
+          "deallocations": 19770,
+          "cumulative_requested_bytes": 1657369336
+        }
+      },
+      {
+        "wall_s": 0.571309404,
+        "canonical_frame_bytes_per_s": 805736360.6778649,
+        "oracle_bytes_per_s": 58732504.25263436,
+        "hash_calls_per_s": 9176952.039109092,
+        "allocator": {
+          "allocations": 19792,
+          "reallocations": 35363,
+          "deallocations": 19771,
+          "cumulative_requested_bytes": 1657369336
+        }
+      },
+      {
+        "wall_s": 0.550247588,
+        "canonical_frame_bytes_per_s": 836577515.3565962,
+        "oracle_bytes_per_s": 60980607.15170278,
+        "hash_calls_per_s": 9528218.050089845,
+        "allocator": {
+          "allocations": 19792,
+          "reallocations": 35363,
+          "deallocations": 19772,
+          "cumulative_requested_bytes": 1657369336
+        }
+      },
+      {
+        "wall_s": 0.547245823,
+        "canonical_frame_bytes_per_s": 841166329.011889,
+        "oracle_bytes_per_s": 61315099.33882126,
+        "hash_calls_per_s": 9580482.444358464,
+        "allocator": {
+          "allocations": 19792,
+          "reallocations": 35363,
+          "deallocations": 19772,
+          "cumulative_requested_bytes": 1657369336
+        }
+      }
+    ],
+    "selected_upper_median_wall_s": 0.550247588,
+    "selected_canonical_frame_bytes_per_s": 836577515.3565962,
+    "gate_bytes_per_s_per_core": 500000000.0,
+    "local_gate_comparison_only": true,
+    "local_gate_met": true,
+    "available_parallelism": 4,
+    "all_local_cores_wall_s": 0.153234487,
+    "all_local_cores_canonical_frame_bytes_per_s": 3004054563.774537,
+    "root_hex": "1c0326076bce7b8989623bc16bb364786045d1d03fe8cbe57f67e13e8bf2e0b2"
+  },
+  "sparse_artifacts": {
+    "file_count": 32,
+    "logical_bytes": 94128570240,
+    "allocated_bytes": 0,
+    "scope": "local geometry-exact sparse fixture; logical lengths and every accessed offset are production-exact, unused pages are holes and this is not a physical G6 record"
+  },
+  "persisted_open_full_cache": {
+    "name": "full outer-internal cache",
+    "bottom_outer_levels_omitted": 0,
+    "logical_outer_cache_bytes": 71454161664,
+    "cache_bytes_saved_vs_full": 0,
+    "warmup_count": 1,
+    "candidate_open_wall_s": [
+      0.052328849,
+      0.050909925,
+      0.051483012
+    ],
+    "selected_upper_median_open_wall_s": 0.051483012,
+    "open_ceiling_s": 1.5,
+    "open_pass": true,
+    "candidate_verify_wall_s": [
+      0.035348805,
+      0.034853677,
+      0.03473526
+    ],
+    "selected_upper_median_verify_wall_s": 0.034853677,
+    "verify_ceiling_s": 0.25,
+    "verify_pass": true,
+    "traffic_per_open": {
+      "oracle_file_bytes_read": 875328,
+      "outer_cache_bytes_read": 1930304,
+      "inner_trees_rebuilt": 6720,
+      "outer_frontier_leaves_rebuilt": 5610,
+      "outer_internal_nodes_rebuilt": 0
+    },
+    "encoded_bytes": 2615414,
+    "encoded_blake3": "c3ecac5827024807b7844944980cd9313178209764a5dc86fea79fd372babf7f"
+  },
+  "persisted_open_ram_degraded": {
+    "name": "omit bottom outer-internal level; rebuild from persisted oracle",
+    "bottom_outer_levels_omitted": 1,
+    "logical_outer_cache_bytes": 35727080320,
+    "cache_bytes_saved_vs_full": 35727081344,
+    "warmup_count": 1,
+    "candidate_open_wall_s": [
+      0.090815253,
+      0.090788295,
+      0.089903999
+    ],
+    "selected_upper_median_open_wall_s": 0.090788295,
+    "open_ceiling_s": 1.5,
+    "open_pass": true,
+    "candidate_verify_wall_s": [
+      0.036755061,
+      0.036071808,
+      0.037077022
+    ],
+    "selected_upper_median_verify_wall_s": 0.036755061,
+    "verify_ceiling_s": 0.25,
+    "verify_pass": true,
+    "traffic_per_open": {
+      "oracle_file_bytes_read": 1737728,
+      "outer_cache_bytes_read": 1756992,
+      "inner_trees_rebuilt": 17552,
+      "outer_frontier_leaves_rebuilt": 16442,
+      "outer_internal_nodes_rebuilt": 5416
+    },
+    "encoded_bytes": 2615414,
+    "encoded_blake3": "c3ecac5827024807b7844944980cd9313178209764a5dc86fea79fd372babf7f"
+  },
+  "full_and_degraded_openings_byte_identical": true,
+  "local_pre_pod_gate_pass": true,
+  "ram_guidance": "At approximately 125 GiB select bottom_levels_omitted=1 for both initial and fold outer caches: retained cache falls from 71,454,161,664 B to 35,727,080,320 B (35,727,081,344 B saved). Every missing level-one node is rebuilt from two persisted level-zero neighbors and counted. If this degraded policy misses 1.50 s on the target host, provision >=128 GiB and use the full cache; never page or silently overcommit."
+}

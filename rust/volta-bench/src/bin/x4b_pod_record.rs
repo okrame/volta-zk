@@ -44,10 +44,10 @@ const MIGRATION_SHA256: &str = "d7c73d7f74cbc226c768330582cebcaed02939eb79401117
 const PREFLIGHT_PATH: &str =
     "benchmarks/results/x4-amendment5-gpt2-preflight-2026-07-21-93749b3.json";
 const PREFLIGHT_SHA256: &str = "ba87722362c8825e13e02a6c563a436797ea852e09e1cebcf4a9265c6ce56499";
-// Filled after the clean local record lands; a mismatched or absent pin makes
-// `--record` fail before any paid measurement.
-const LOCAL_PREFLIGHT_PATH: &str = "__X4B_LOCAL_PREFLIGHT_PATH_PENDING__";
-const LOCAL_PREFLIGHT_SHA256: &str = "__X4B_LOCAL_PREFLIGHT_SHA256_PENDING__";
+const LOCAL_PREFLIGHT_PATH: &str =
+    "benchmarks/results/x4b-local-cpu-preflight-2026-07-22-bcbda45.json";
+const LOCAL_PREFLIGHT_SHA256: &str =
+    "bf391aa2045a426c67ff46d53215d6fd0d57847b5d4fdd42365740c43400447c";
 
 const QUERY_COUNT: usize = 111;
 const PCS_BYTES: u64 = 2_683_236;

@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b LOCAL PHASE 2 GREEN; POD SESSION ACTIVE — NOTE-6 PENDING)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b LOCAL PHASE 2 GREEN; POD NOTE-6 PASS — CUDA BRING-UP NEXT)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -273,6 +273,21 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-22 (X4b pod NOTE-6 first-action PASS)**: from clean source
+  `819ea754a7f1db1afc0a7f0bd8bd7367151fb873`, the first production-size
+  execution on pod `832f581f63c3` was exactly
+  `c3_weights_two_weight_set_leakage_smoke`; no X4b CUDA kernel or wall
+  record had started.  The two-weight-set **6,442,450,944-B** encoded-geometry
+  smoke passed with exit code zero in recorder wall **55.151465629 s**
+  (test body **40.69 s**) at eight Rayon workers.  Leakage verdict:
+  **PASS**.  Append-only record
+  `benchmarks/results/x4b-note6-c3-weights-preflight-2026-07-22-819ea75.json`,
+  SHA-256
+  `4c1cd8efefde1389aebb1b860c5309af40b38336f94d911dc995dc6832958af7`.
+  This is execution evidence only, produced by an AI-authored harness with no
+  independent human assurance.  CUDA synthetic root bring-up is next and
+  remains mandatory before any 77-GB full pass.
 
 - **2026-07-22 (X4b pod provisioned; synthetic CPU/GPU equality made a
   fail-closed pre-full-pass invariant)**: the owner provisioned host

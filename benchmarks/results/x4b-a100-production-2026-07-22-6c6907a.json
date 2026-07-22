@@ -1,0 +1,2668 @@
+{
+  "schema": 1,
+  "milestone": "X4b-A100-production-record",
+  "date": "2026-07-22",
+  "git_sha": "6c6907ab144f4cfbe9cadb06ebb01d652d1dc82d",
+  "git_short_sha": "6c6907a",
+  "git_dirty": false,
+  "pod_profile": "runpod-a100-x4b-v1",
+  "protocol_or_parameter_change": false,
+  "machine": {
+    "provider": "RunPod",
+    "instance_id": "c94442d3ed14",
+    "hostname": "c94442d3ed14",
+    "gpu": "NVIDIA A100-SXM4-80GB, GPU-0e546fd7-d622-ad41-848d-9a76c2a24ac4, 81920\nNVIDIA A100-SXM4-80GB, GPU-5bb7f8bf-f124-66be-bd05-4588211da399, 81920",
+    "driver": "580.126.16\n580.126.16",
+    "cpu": "Architecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           43 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  128\nOn-line CPU(s) list:                     0-127\nVendor ID:                               AuthenticAMD\nModel name:                              AMD EPYC 7742 64-Core Processor\nCPU family:                              23\nModel:                                   49\nThread(s) per core:                      1\nCore(s) per socket:                      64\nSocket(s):                               2\nStepping:                                0\nFrequency boost:                         enabled\nCPU(s) scaling MHz:                      108%\nCPU max MHz:                             2250.0000\nCPU min MHz:                             1500.0000\nBogoMIPS:                                4491.56\nFlags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good nopl nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpb cat_l3 cdp_l3 hw_pstate ssbd mba ibrs ibpb stibp vmmcall fsgsbase bmi1 avx2 smep bmi2 cqm rdt_a rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local clzero irperf xsaveerptr rdpru wbnoinvd arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif v_spec_ctrl umip rdpid overflow_recov succor smca sev sev_es ibpb_exit_to_user\nVirtualization:                          AMD-V\nL1d cache:                               4 MiB (128 instances)\nL1i cache:                               4 MiB (128 instances)\nL2 cache:                                64 MiB (128 instances)\nL3 cache:                                512 MiB (32 instances)\nNUMA node(s):                            2\nNUMA node0 CPU(s):                       0-63\nNUMA node1 CPU(s):                       64-127\nVulnerability Gather data sampling:      Not affected\nVulnerability Indirect target selection: Not affected\nVulnerability Itlb multihit:             Not affected\nVulnerability L1tf:                      Not affected\nVulnerability Mds:                       Not affected\nVulnerability Meltdown:                  Not affected\nVulnerability Mmio stale data:           Not affected\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Mitigation; untrained return thunk; SMT disabled\nVulnerability Spec rstack overflow:      Mitigation; SMT disabled\nVulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl\nVulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:                Mitigation; Retpolines; IBPB conditional; STIBP disabled; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Not affected\nVulnerability Tsx async abort:           Not affected\nVulnerability Vmscape:                   Mitigation; IBPB before exit to userspace",
+    "logical_cpus": "128",
+    "memory_bytes": 2151618097152,
+    "volume_path": "/x4b-artifacts",
+    "persistent_volume_bytes": 161061273600,
+    "persistent_volume_available_bytes_at_start": 160370520064,
+    "rayon_threads": 8,
+    "cuda_abi": 29,
+    "timing_policy": "wall-only+counters; no CUDA-event timing"
+  },
+  "frozen": {
+    "design_sha256": "bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01",
+    "migration_path": "benchmarks/results/x4-v4-gpt2-migration-2026-07-21-31fc866.json",
+    "migration_sha256": "d7c73d7f74cbc226c768330582cebcaed02939eb7940111715da2fc3d87d2d5e",
+    "amendment5_preflight_path": "benchmarks/results/x4-amendment5-gpt2-preflight-2026-07-21-93749b3.json",
+    "amendment5_preflight_sha256": "ba87722362c8825e13e02a6c563a436797ea852e09e1cebcf4a9265c6ce56499",
+    "local_preflight_path": "benchmarks/results/x4b-local-cpu-preflight-2026-07-22-bcbda45.json",
+    "local_preflight_sha256": "bf391aa2045a426c67ff46d53215d6fd0d57847b5d4fdd42365740c43400447c",
+    "note6": {
+      "path": "/workspace/volta-zk/rust/volta-bench/../../benchmarks/results/x4b-note6-c3-weights-preflight-2026-07-22-819ea75.json",
+      "sha256": "4c1cd8efefde1389aebb1b860c5309af40b38336f94d911dc995dc6832958af7",
+      "source_git_sha": "819ea754a7f1db1afc0a7f0bd8bd7367151fb873",
+      "passed": true,
+      "first_action": true
+    },
+    "profile": "x4-zkdeepfold-ud-e29-v4",
+    "rate": "1/8",
+    "query_count": 111,
+    "maximum_claim_union": 3320,
+    "opened_symbols": 27564,
+    "real_sibling_digests": 67930,
+    "packed_opening_bytes": 2615414,
+    "pcs_bytes": 2683236,
+    "response_bytes": 43953700,
+    "soundness_expression": "3320*(9/16)^111 + 28522064267253/340282366762482138490186164457219031041",
+    "soundness_bits": 80.2553701639904,
+    "soundness_floor_bits": 78.809294874,
+    "soundness_new_terms": 0
+  },
+  "cache_policy": {
+    "name": "full",
+    "bottom_levels_omitted": 0,
+    "retained_initial_outer_cache_bytes": 37094424416,
+    "retained_fold_outer_cache_bytes": 34359737248,
+    "retained_total_outer_cache_bytes": 71454161664,
+    "memory_requirement": ">=128 GiB actual host RAM; a higher-memory SKU is recommended for allocator and I/O headroom",
+    "graceful_degradation": "Omit outer level 1 in every initial and fold cache; reconstruct each required level-1 sibling from two persisted level-0 leaves, increasing counted oracle reads, inner-tree rebuilds, frontier leaves and outer internal nodes. No paging, silent overcommit, root or proof-byte change is permitted."
+  },
+  "local_preflight_of_record": {
+    "audit_recompute_refused": true,
+    "cpu_full_node_pipeline": {
+      "all_local_cores_canonical_frame_bytes_per_s": 3004054563.774537,
+      "all_local_cores_wall_s": 0.153234487,
+      "available_parallelism": 4,
+      "candidates": [
+        {
+          "allocator": {
+            "allocations": 19792,
+            "cumulative_requested_bytes": 1657369336,
+            "deallocations": 19770,
+            "reallocations": 35363
+          },
+          "canonical_frame_bytes_per_s": 833924227.3579082,
+          "hash_calls_per_s": 9497998.367947888,
+          "oracle_bytes_per_s": 60787201.149104975,
+          "wall_s": 0.551998305
+        },
+        {
+          "allocator": {
+            "allocations": 19792,
+            "cumulative_requested_bytes": 1657369336,
+            "deallocations": 19770,
+            "reallocations": 35363
+          },
+          "canonical_frame_bytes_per_s": 838321716.6550341,
+          "hash_calls_per_s": 9548083.6692222,
+          "oracle_bytes_per_s": 61107747.13839988,
+          "wall_s": 0.54910275
+        },
+        {
+          "allocator": {
+            "allocations": 19792,
+            "cumulative_requested_bytes": 1657369336,
+            "deallocations": 19771,
+            "reallocations": 35363
+          },
+          "canonical_frame_bytes_per_s": 805736360.6778649,
+          "hash_calls_per_s": 9176952.039109092,
+          "oracle_bytes_per_s": 58732504.25263436,
+          "wall_s": 0.571309404
+        },
+        {
+          "allocator": {
+            "allocations": 19792,
+            "cumulative_requested_bytes": 1657369336,
+            "deallocations": 19772,
+            "reallocations": 35363
+          },
+          "canonical_frame_bytes_per_s": 836577515.3565962,
+          "hash_calls_per_s": 9528218.050089844,
+          "oracle_bytes_per_s": 60980607.15170278,
+          "wall_s": 0.550247588
+        },
+        {
+          "allocator": {
+            "allocations": 19792,
+            "cumulative_requested_bytes": 1657369336,
+            "deallocations": 19772,
+            "reallocations": 35363
+          },
+          "canonical_frame_bytes_per_s": 841166329.011889,
+          "hash_calls_per_s": 9580482.444358464,
+          "oracle_bytes_per_s": 61315099.33882126,
+          "wall_s": 0.547245823
+        }
+      ],
+      "canonical_frame_bytes": 460324760,
+      "gate_bytes_per_s_per_core": 500000000.0,
+      "hash_calls": 5242879,
+      "local_gate_comparison_only": true,
+      "local_gate_met": true,
+      "logical_oracle_bytes": 33554432,
+      "measured_candidates": 5,
+      "measurement_scope": "complete aux17 N4 node pipeline: fixed-width canonical serialization + tile/level pipeline allocations + BLAKE3 first-block hash_many and exact lane-specific root compression; NTT and input preparation excluded",
+      "pinned_workers": 1,
+      "root_hex": "1c0326076bce7b8989623bc16bb364786045d1d03fe8cbe57f67e13e8bf2e0b2",
+      "selected_canonical_frame_bytes_per_s": 836577515.3565962,
+      "selected_upper_median_wall_s": 0.550247588,
+      "status": "LOCAL_MEASUREMENT_ONLY; runpod-a100-x4b-v1 gate remains pending",
+      "warmup_count": 1
+    },
+    "date": "2026-07-22",
+    "design_sha256": "bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01",
+    "full_and_degraded_openings_byte_identical": true,
+    "git_dirty": false,
+    "git_sha": "bcbda451ead3b7e70f59f4595109556dbbd89bb7",
+    "local_pre_pod_gate_pass": true,
+    "milestone": "X4b-local-CPU-persisted-opening-preflight",
+    "persisted_open_full_cache": {
+      "bottom_outer_levels_omitted": 0,
+      "cache_bytes_saved_vs_full": 0,
+      "candidate_open_wall_s": [
+        0.052328849,
+        0.050909925,
+        0.051483012
+      ],
+      "candidate_verify_wall_s": [
+        0.035348805,
+        0.034853677,
+        0.03473526
+      ],
+      "encoded_blake3": "c3ecac5827024807b7844944980cd9313178209764a5dc86fea79fd372babf7f",
+      "encoded_bytes": 2615414,
+      "logical_outer_cache_bytes": 71454161664,
+      "name": "full outer-internal cache",
+      "open_ceiling_s": 1.5,
+      "open_pass": true,
+      "selected_upper_median_open_wall_s": 0.051483012,
+      "selected_upper_median_verify_wall_s": 0.034853677,
+      "traffic_per_open": {
+        "inner_trees_rebuilt": 6720,
+        "oracle_file_bytes_read": 875328,
+        "outer_cache_bytes_read": 1930304,
+        "outer_frontier_leaves_rebuilt": 5610,
+        "outer_internal_nodes_rebuilt": 0
+      },
+      "verify_ceiling_s": 0.25,
+      "verify_pass": true,
+      "warmup_count": 1
+    },
+    "persisted_open_ram_degraded": {
+      "bottom_outer_levels_omitted": 1,
+      "cache_bytes_saved_vs_full": 35727081344,
+      "candidate_open_wall_s": [
+        0.090815253,
+        0.090788295,
+        0.089903999
+      ],
+      "candidate_verify_wall_s": [
+        0.036755061,
+        0.036071808,
+        0.037077022
+      ],
+      "encoded_blake3": "c3ecac5827024807b7844944980cd9313178209764a5dc86fea79fd372babf7f",
+      "encoded_bytes": 2615414,
+      "logical_outer_cache_bytes": 35727080320,
+      "name": "omit bottom outer-internal level; rebuild from persisted oracle",
+      "open_ceiling_s": 1.5,
+      "open_pass": true,
+      "selected_upper_median_open_wall_s": 0.090788295,
+      "selected_upper_median_verify_wall_s": 0.036755061,
+      "traffic_per_open": {
+        "inner_trees_rebuilt": 17552,
+        "oracle_file_bytes_read": 1737728,
+        "outer_cache_bytes_read": 1756992,
+        "outer_frontier_leaves_rebuilt": 16442,
+        "outer_internal_nodes_rebuilt": 5416
+      },
+      "verify_ceiling_s": 0.25,
+      "verify_pass": true,
+      "warmup_count": 1
+    },
+    "pod_profile": "runpod-a100-x4b-v1",
+    "profile": "x4-zkdeepfold-ud-e29-v4",
+    "profile_digest": "511fdf4842a64dc8b5830ceccc71542ed354a9f2b2d96e30c763c5a48af2fe0a",
+    "query_count": 111,
+    "query_derive_context": "volta-zk/x4/amendment5-gpt2-preflight/v1",
+    "query_draws_blake3": "3654af24af8a3e903e15db2bf25e0ec587d1bd774aaab433d1fb6e1064b3d299",
+    "query_xof_input_ascii": "e29-r3-s111|gpt2-small|102-claims|2026-07-21",
+    "ram_guidance": "At approximately 125 GiB select bottom_levels_omitted=1 for both initial and fold outer caches: retained cache falls from 71,454,161,664 B to 35,727,080,320 B (35,727,081,344 B saved). Every missing level-one node is rebuilt from two persisted level-zero neighbors and counted. If this degraded policy misses 1.50 s on the target host, provision >=128 GiB and use the full cache; never page or silently overcommit.",
+    "schema": 1,
+    "source_policy": "PersistedOracle (record eligible)",
+    "sparse_artifacts": {
+      "allocated_bytes": 0,
+      "file_count": 32,
+      "logical_bytes": 94128570240,
+      "scope": "local geometry-exact sparse fixture; logical lengths and every accessed offset are production-exact, unused pages are holes and this is not a physical G6 record"
+    }
+  },
+  "pod_host_cpu_preflight": {
+    "audit_recompute_refused": true,
+    "cpu_full_node_pipeline": {
+      "all_local_cores_canonical_frame_bytes_per_s": 10718351223.921906,
+      "all_local_cores_wall_s": 0.042947348,
+      "available_parallelism": 27,
+      "candidates": [
+        {
+          "allocator": {
+            "allocations": 19792,
+            "cumulative_requested_bytes": 1657369336,
+            "deallocations": 19770,
+            "reallocations": 35363
+          },
+          "canonical_frame_bytes_per_s": 714561037.5562378,
+          "hash_calls_per_s": 8138508.686827558,
+          "oracle_bytes_per_s": 52086465.53040125,
+          "wall_s": 0.644206353
+        },
+        {
+          "allocator": {
+            "allocations": 19792,
+            "cumulative_requested_bytes": 1657369336,
+            "deallocations": 19770,
+            "reallocations": 35363
+          },
+          "canonical_frame_bytes_per_s": 723787859.8147162,
+          "hash_calls_per_s": 8243597.782308124,
+          "oracle_bytes_per_s": 52759035.869759485,
+          "wall_s": 0.635994033
+        },
+        {
+          "allocator": {
+            "allocations": 19792,
+            "cumulative_requested_bytes": 1657369336,
+            "deallocations": 19771,
+            "reallocations": 35363
+          },
+          "canonical_frame_bytes_per_s": 723716307.9520154,
+          "hash_calls_per_s": 8242782.840790825,
+          "oracle_bytes_per_s": 52753820.24305397,
+          "wall_s": 0.636056912
+        },
+        {
+          "allocator": {
+            "allocations": 19793,
+            "cumulative_requested_bytes": 1657371408,
+            "deallocations": 19786,
+            "reallocations": 35363
+          },
+          "canonical_frame_bytes_per_s": 716585231.8282977,
+          "hash_calls_per_s": 8161563.292104283,
+          "oracle_bytes_per_s": 52234015.03231513,
+          "wall_s": 0.642386613
+        },
+        {
+          "allocator": {
+            "allocations": 19792,
+            "cumulative_requested_bytes": 1657369336,
+            "deallocations": 19770,
+            "reallocations": 35363
+          },
+          "canonical_frame_bytes_per_s": 733709149.5592538,
+          "hash_calls_per_s": 8356596.530527863,
+          "oracle_bytes_per_s": 53482227.99630377,
+          "wall_s": 0.627394057
+        }
+      ],
+      "canonical_frame_bytes": 460324760,
+      "gate_bytes_per_s_per_core": 500000000.0,
+      "hash_calls": 5242879,
+      "local_gate_comparison_only": true,
+      "local_gate_met": true,
+      "logical_oracle_bytes": 33554432,
+      "measured_candidates": 5,
+      "measurement_scope": "complete aux17 N4 node pipeline: fixed-width canonical serialization + tile/level pipeline allocations + BLAKE3 first-block hash_many and exact lane-specific root compression; NTT and input preparation excluded",
+      "pinned_workers": 1,
+      "root_hex": "1c0326076bce7b8989623bc16bb364786045d1d03fe8cbe57f67e13e8bf2e0b2",
+      "selected_canonical_frame_bytes_per_s": 723716307.9520154,
+      "selected_upper_median_wall_s": 0.636056912,
+      "status": "LOCAL_MEASUREMENT_ONLY; runpod-a100-x4b-v1 gate remains pending",
+      "warmup_count": 1
+    },
+    "date": "2026-07-22",
+    "design_sha256": "bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01",
+    "full_and_degraded_openings_byte_identical": true,
+    "git_dirty": false,
+    "git_sha": "6c6907ab144f4cfbe9cadb06ebb01d652d1dc82d",
+    "local_pre_pod_gate_pass": true,
+    "milestone": "X4b-local-CPU-persisted-opening-preflight",
+    "persisted_open_full_cache": {
+      "bottom_outer_levels_omitted": 0,
+      "cache_bytes_saved_vs_full": 0,
+      "candidate_open_wall_s": [
+        0.111143027,
+        0.109631491,
+        0.106990273
+      ],
+      "candidate_verify_wall_s": [
+        0.04805362,
+        0.04768982,
+        0.047602775
+      ],
+      "encoded_blake3": "c3ecac5827024807b7844944980cd9313178209764a5dc86fea79fd372babf7f",
+      "encoded_bytes": 2615414,
+      "logical_outer_cache_bytes": 71454161664,
+      "name": "full outer-internal cache",
+      "open_ceiling_s": 1.5,
+      "open_pass": true,
+      "selected_upper_median_open_wall_s": 0.109631491,
+      "selected_upper_median_verify_wall_s": 0.04768982,
+      "traffic_per_open": {
+        "inner_trees_rebuilt": 6720,
+        "oracle_file_bytes_read": 875328,
+        "outer_cache_bytes_read": 1930304,
+        "outer_frontier_leaves_rebuilt": 5610,
+        "outer_internal_nodes_rebuilt": 0
+      },
+      "verify_ceiling_s": 0.25,
+      "verify_pass": true,
+      "warmup_count": 1
+    },
+    "persisted_open_ram_degraded": {
+      "bottom_outer_levels_omitted": 1,
+      "cache_bytes_saved_vs_full": 35727081344,
+      "candidate_open_wall_s": [
+        0.178293534,
+        0.177726539,
+        0.176193683
+      ],
+      "candidate_verify_wall_s": [
+        0.047724596,
+        0.048588394,
+        0.047696212
+      ],
+      "encoded_blake3": "c3ecac5827024807b7844944980cd9313178209764a5dc86fea79fd372babf7f",
+      "encoded_bytes": 2615414,
+      "logical_outer_cache_bytes": 35727080320,
+      "name": "omit bottom outer-internal level; rebuild from persisted oracle",
+      "open_ceiling_s": 1.5,
+      "open_pass": true,
+      "selected_upper_median_open_wall_s": 0.177726539,
+      "selected_upper_median_verify_wall_s": 0.047724596,
+      "traffic_per_open": {
+        "inner_trees_rebuilt": 17552,
+        "oracle_file_bytes_read": 1737728,
+        "outer_cache_bytes_read": 1756992,
+        "outer_frontier_leaves_rebuilt": 16442,
+        "outer_internal_nodes_rebuilt": 5416
+      },
+      "verify_ceiling_s": 0.25,
+      "verify_pass": true,
+      "warmup_count": 1
+    },
+    "pod_profile": "runpod-a100-x4b-v1",
+    "profile": "x4-zkdeepfold-ud-e29-v4",
+    "profile_digest": "511fdf4842a64dc8b5830ceccc71542ed354a9f2b2d96e30c763c5a48af2fe0a",
+    "query_count": 111,
+    "query_derive_context": "volta-zk/x4/amendment5-gpt2-preflight/v1",
+    "query_draws_blake3": "3654af24af8a3e903e15db2bf25e0ec587d1bd774aaab433d1fb6e1064b3d299",
+    "query_xof_input_ascii": "e29-r3-s111|gpt2-small|102-claims|2026-07-21",
+    "ram_guidance": "At approximately 125 GiB select bottom_levels_omitted=1 for both initial and fold outer caches: retained cache falls from 71,454,161,664 B to 35,727,080,320 B (35,727,081,344 B saved). Every missing level-one node is rebuilt from two persisted level-zero neighbors and counted. If this degraded policy misses 1.50 s on the target host, provision >=128 GiB and use the full cache; never page or silently overcommit.",
+    "schema": 1,
+    "source_policy": "PersistedOracle (record eligible)",
+    "sparse_artifacts": {
+      "allocated_bytes": 0,
+      "file_count": 32,
+      "logical_bytes": 94128570240,
+      "scope": "local geometry-exact sparse fixture; logical lengths and every accessed offset are production-exact, unused pages are holes and this is not a physical G6 record"
+    }
+  },
+  "correctness": {
+    "synthetic_preflight_before_full_pass": true,
+    "contexts": [
+      {
+        "context": "volta-zk/x4/pcs-leaf/v4",
+        "digest_hex": "ccb05de593e6393af3694854c73d8f3bb04e38a2f4688c951bbbd8495cfee100",
+        "equal": true
+      },
+      {
+        "context": "volta-zk/x4/pcs-node/v4",
+        "digest_hex": "4c1a35a44f4342aae259f92be02df29face2f2ea98bc983c22a3bea984d8e21f",
+        "equal": true
+      },
+      {
+        "context": "volta-zk/x4/manifest-leaf/v4",
+        "digest_hex": "2b1abcce933fe796a25880d0de3fe869451d53c6c30a5f963e81da6d452731a6",
+        "equal": true
+      },
+      {
+        "context": "volta-zk/x4/manifest-node/v4",
+        "digest_hex": "aa34ca71b39d484582feed7c8bc7b5c7634df6a465ebc4b0fb126c376653e727",
+        "equal": true
+      }
+    ],
+    "synthetic": [
+      {
+        "structural_slots": 1,
+        "present_slots": 1,
+        "oracle_kind": "WeightExtension",
+        "fold_round": 0,
+        "root_hex": "99848b52636bfbd44975aa3bfd5ab4723fc357298cd8573e59c2d730d7ef14ca",
+        "equal": true
+      },
+      {
+        "structural_slots": 2,
+        "present_slots": 1,
+        "oracle_kind": "Auxiliary",
+        "fold_round": 0,
+        "root_hex": "ac15983d676cbb0cc3b36400e861aa9e3d90e24e1a331ff01c6144d0759f0dee",
+        "equal": true
+      },
+      {
+        "structural_slots": 16,
+        "present_slots": 13,
+        "oracle_kind": "WeightExtension",
+        "fold_round": 0,
+        "root_hex": "7972eca9406ff0d4175bed001f5a5b4f0f33b245430b623b8a4a80a9cdedbb40",
+        "equal": true
+      },
+      {
+        "structural_slots": 64,
+        "present_slots": 49,
+        "oracle_kind": "Auxiliary",
+        "fold_round": 0,
+        "root_hex": "ba0696a0063098a7d2b1cf40db589b7993eae9c9a54494621696e6202ad73099",
+        "equal": true
+      },
+      {
+        "structural_slots": 1,
+        "present_slots": 1,
+        "oracle_kind": "GlobalFoldAggregate",
+        "fold_round": 3,
+        "root_hex": "5547068b231713ea47900a261cec825c3f1f3456f6828500c280b2a09b153f92",
+        "equal": true
+      }
+    ],
+    "complete_aux_roots": [
+      {
+        "cohort": "auxiliary-ell17",
+        "ntt_symbols_checked": 8,
+        "typed_inner_leaves_checked": 2,
+        "typed_inner_nodes_checked": 1,
+        "typed_inner_roots_checked": 1,
+        "typed_outer_leaves_checked": 8,
+        "outer_levels_checked": 20,
+        "all_equal": true
+      },
+      {
+        "cohort": "auxiliary-ell16",
+        "ntt_symbols_checked": 196,
+        "typed_inner_leaves_checked": 64,
+        "typed_inner_nodes_checked": 63,
+        "typed_inner_roots_checked": 1,
+        "typed_outer_leaves_checked": 8,
+        "outer_levels_checked": 19,
+        "all_equal": true
+      }
+    ],
+    "larger_cohort_samples": [
+      {
+        "cohort": "Wext-mu26-global-tied-roles",
+        "ntt_symbols_checked": 8,
+        "typed_inner_leaves_checked": 2,
+        "typed_inner_nodes_checked": 1,
+        "typed_inner_roots_checked": 1,
+        "typed_outer_leaves_checked": 8,
+        "outer_levels_checked": 30,
+        "all_equal": true
+      },
+      {
+        "cohort": "Wext-mu22-all-layers",
+        "ntt_symbols_checked": 144,
+        "typed_inner_leaves_checked": 64,
+        "typed_inner_nodes_checked": 63,
+        "typed_inner_roots_checked": 1,
+        "typed_outer_leaves_checked": 8,
+        "outer_levels_checked": 26,
+        "all_equal": true
+      },
+      {
+        "cohort": "Wext-mu20-layers-and-position",
+        "ntt_symbols_checked": 52,
+        "typed_inner_leaves_checked": 16,
+        "typed_inner_nodes_checked": 15,
+        "typed_inner_roots_checked": 1,
+        "typed_outer_leaves_checked": 8,
+        "outer_levels_checked": 24,
+        "all_equal": true
+      }
+    ],
+    "all_equal": true
+  },
+  "full_pass_commit": {
+    "status": "MEASURED/INFORMATIVE; no hard ceiling in runpod-a100-x4b-v1",
+    "warmup": {
+      "role": "warmup",
+      "wall_s": 435.11571266,
+      "peak_rss_bytes": 47072043008,
+      "process_io": {
+        "rchar": 151164093129,
+        "wchar": 160756137984,
+        "read_bytes": 151137652736,
+        "write_bytes": 160756281344
+      },
+      "accelerator": {
+        "timing_method": "wall-only-counters",
+        "phase_attribution_available": false,
+        "measurement_wall_s": 435.115753568,
+        "operations": {
+          "auth_masks": {
+            "calls": 0,
+            "cpu_residual_s": 0.0
+          },
+          "gemm": {
+            "calls": 0,
+            "cpu_residual_s": 0.0
+          },
+          "logup": {
+            "calls": 0,
+            "cpu_residual_s": 0.0
+          },
+          "mailbox": {
+            "calls": 0,
+            "cpu_residual_s": 0.0
+          },
+          "pcs_merkle": {
+            "calls": 1439,
+            "cpu_residual_s": 0.0
+          },
+          "pcs_ntt": {
+            "calls": 102,
+            "cpu_residual_s": 0.0
+          },
+          "pcs_rows": {
+            "calls": 0,
+            "cpu_residual_s": 0.0
+          }
+        },
+        "h2d_bytes": 160757312772,
+        "d2h_bytes": 151137550176,
+        "explicit_d2d_copy_bytes": 0,
+        "device_zeroed_bytes": 67330113536,
+        "device_generated_bytes": 9273606144,
+        "synchronizations": 1550,
+        "synchronization_s": 0.010257058,
+        "sync_host_output": 1541,
+        "sync_upload_lifetime": 0,
+        "sync_timing_flush": 0,
+        "sync_profiling_legacy": 0,
+        "sync_allocator_flush": 9,
+        "allocation_calls": 9,
+        "physical_free_calls": 9,
+        "live_device_bytes": 43486546048,
+        "peak_device_bytes": 43486546048,
+        "timing_event_api_calls": 0,
+        "timing_records": 0
+      },
+      "cohorts": [
+        {
+          "name": "Wext-mu26-global-tied-roles",
+          "cohort_id": 2768240641,
+          "domain_log2": 30,
+          "present_slots": 2,
+          "structural_slots": 2,
+          "wall_s": 291.830107588,
+          "root_hex": "024499106472dec09078b6a438fb0ff6a1a49b526d1f6aede79581dc84696879",
+          "metrics": {
+            "present_slots": 2,
+            "structural_slots": 2,
+            "coefficient_bytes_read": 4294967296,
+            "coefficient_bytes_persisted": 4294967296,
+            "oracle_bytes_persisted": 34359738368,
+            "root_bytes_persisted": 32,
+            "persisted_oracle_bytes_read_for_n4": 34359738368,
+            "staging_bytes_read": 68719476672,
+            "staging_bytes_written": 68719476704,
+            "peak_live_staging_bytes": 51539607552,
+            "retained_outer_cache_bytes": 34359738336,
+            "expected_h2d_bytes": 107374217152,
+            "expected_d2h_bytes": 103079215072,
+            "expected_device_zeroed_bytes": 30064771072,
+            "maximum_n4_tile_bytes": 402653312,
+            "ntt_calls": 2,
+            "inner_tile_calls": 512,
+            "outer_tile_calls": 277,
+            "page_cache_dontneed_bytes": 141733920768,
+            "page_cache_advice_calls": 35,
+            "persistent_artifact_bytes": 38654705696
+          }
+        },
+        {
+          "name": "Wext-mu22-all-layers",
+          "cohort_id": 2768240642,
+          "domain_log2": 26,
+          "present_slots": 36,
+          "structural_slots": 64,
+          "wall_s": 127.344382899,
+          "root_hex": "fbdba1ac3db0e0267da665e1677129604445bac261dee2ebde303bf6ac8cd8b1",
+          "metrics": {
+            "present_slots": 36,
+            "structural_slots": 64,
+            "coefficient_bytes_read": 4831838208,
+            "coefficient_bytes_persisted": 4831838208,
+            "oracle_bytes_persisted": 38654705664,
+            "root_bytes_persisted": 32,
+            "persisted_oracle_bytes_read_for_n4": 38654705664,
+            "staging_bytes_read": 4294967232,
+            "staging_bytes_written": 4294967264,
+            "peak_live_staging_bytes": 3221225472,
+            "retained_outer_cache_bytes": 2147483616,
+            "expected_h2d_bytes": 47782625216,
+            "expected_d2h_bytes": 42949672928,
+            "expected_device_zeroed_bytes": 33822867456,
+            "maximum_n4_tile_bytes": 482347264,
+            "ntt_calls": 36,
+            "inner_tile_calls": 512,
+            "outer_tile_calls": 37,
+            "page_cache_dontneed_bytes": 86436216832,
+            "page_cache_advice_calls": 31,
+            "persistent_artifact_bytes": 43486543904
+          }
+        },
+        {
+          "name": "Wext-mu20-layers-and-position",
+          "cohort_id": 2768240643,
+          "domain_log2": 24,
+          "present_slots": 13,
+          "structural_slots": 16,
+          "wall_s": 14.312622023,
+          "root_hex": "481e8f9ac396ade8aea7d558cdf682e75e7d7828e66675061b82c3d1e4e761cd",
+          "metrics": {
+            "present_slots": 13,
+            "structural_slots": 16,
+            "coefficient_bytes_read": 436207616,
+            "coefficient_bytes_persisted": 436207616,
+            "oracle_bytes_persisted": 3489660928,
+            "root_bytes_persisted": 32,
+            "persisted_oracle_bytes_read_for_n4": 3489660928,
+            "staging_bytes_read": 1073741760,
+            "staging_bytes_written": 1073741792,
+            "peak_live_staging_bytes": 805306368,
+            "retained_outer_cache_bytes": 536870880,
+            "expected_h2d_bytes": 4999627712,
+            "expected_d2h_bytes": 4563402720,
+            "expected_device_zeroed_bytes": 3053453312,
+            "maximum_n4_tile_bytes": 528482976,
+            "ntt_calls": 13,
+            "inner_tile_calls": 32,
+            "outer_tile_calls": 25,
+            "page_cache_dontneed_bytes": 8489271296,
+            "page_cache_advice_calls": 29,
+            "persistent_artifact_bytes": 3925868576
+          }
+        },
+        {
+          "name": "auxiliary-ell17",
+          "cohort_id": 2768240896,
+          "domain_log2": 20,
+          "present_slots": 2,
+          "structural_slots": 2,
+          "wall_s": 0.309063439,
+          "root_hex": "94c803c59707e979f76be4e5c68e5f68e8c870e175d19812f30ae32d5f6b07e0",
+          "metrics": {
+            "present_slots": 2,
+            "structural_slots": 2,
+            "coefficient_bytes_read": 4194304,
+            "coefficient_bytes_persisted": 4194304,
+            "oracle_bytes_persisted": 33554432,
+            "root_bytes_persisted": 32,
+            "persisted_oracle_bytes_read_for_n4": 33554432,
+            "staging_bytes_read": 67108800,
+            "staging_bytes_written": 67108832,
+            "peak_live_staging_bytes": 50331648,
+            "retained_outer_cache_bytes": 33554400,
+            "expected_h2d_bytes": 104857604,
+            "expected_d2h_bytes": 100663264,
+            "expected_device_zeroed_bytes": 29360128,
+            "maximum_n4_tile_bytes": 167772356,
+            "ntt_calls": 2,
+            "inner_tile_calls": 1,
+            "outer_tile_calls": 20,
+            "page_cache_dontneed_bytes": 138412032,
+            "page_cache_advice_calls": 25,
+            "persistent_artifact_bytes": 37748768
+          }
+        },
+        {
+          "name": "auxiliary-ell16",
+          "cohort_id": 2768240897,
+          "domain_log2": 19,
+          "present_slots": 49,
+          "structural_slots": 64,
+          "wall_s": 1.319301195,
+          "root_hex": "c79aa47d4f224080f00c07fb9a097a77897279b475a0b26eef491a27033e2cbe",
+          "metrics": {
+            "present_slots": 49,
+            "structural_slots": 64,
+            "coefficient_bytes_read": 51380224,
+            "coefficient_bytes_persisted": 51380224,
+            "oracle_bytes_persisted": 411041792,
+            "root_bytes_persisted": 32,
+            "persisted_oracle_bytes_read_for_n4": 411041792,
+            "staging_bytes_read": 33554368,
+            "staging_bytes_written": 33554400,
+            "peak_live_staging_bytes": 25165824,
+            "retained_outer_cache_bytes": 16777184,
+            "expected_h2d_bytes": 495985088,
+            "expected_d2h_bytes": 444596192,
+            "expected_device_zeroed_bytes": 359661568,
+            "maximum_n4_tile_bytes": 509610240,
+            "ntt_calls": 49,
+            "inner_tile_calls": 4,
+            "outer_tile_calls": 19,
+            "page_cache_dontneed_bytes": 907018240,
+            "page_cache_advice_calls": 24,
+            "persistent_artifact_bytes": 462422048
+          }
+        }
+      ],
+      "totals": {
+        "present_slots": 102,
+        "structural_slots": 148,
+        "coefficient_bytes_read": 9618587648,
+        "coefficient_bytes_persisted": 9618587648,
+        "oracle_bytes_persisted": 76948701184,
+        "root_bytes_persisted": 160,
+        "persisted_oracle_bytes_read_for_n4": 76948701184,
+        "staging_bytes_read": 74188848832,
+        "staging_bytes_written": 74188848992,
+        "peak_live_staging_bytes": 51539607552,
+        "retained_outer_cache_bytes": 37094424416,
+        "expected_h2d_bytes": 160757312772,
+        "expected_d2h_bytes": 151137550176,
+        "expected_device_zeroed_bytes": 67330113536,
+        "maximum_n4_tile_bytes": 528482976,
+        "ntt_calls": 102,
+        "inner_tile_calls": 1061,
+        "outer_tile_calls": 378,
+        "page_cache_dontneed_bytes": 237704839168,
+        "page_cache_advice_calls": 144,
+        "persistent_artifact_bytes": 86567288992
+      },
+      "reconciliation_pass": true,
+      "artifacts_retained": false
+    },
+    "measured": [
+      {
+        "role": "measured-1",
+        "wall_s": 420.75600616,
+        "peak_rss_bytes": 47149559808,
+        "process_io": {
+          "rchar": 151163250251,
+          "wchar": 160756137984,
+          "read_bytes": 151137652736,
+          "write_bytes": 160756281344
+        },
+        "accelerator": {
+          "timing_method": "wall-only-counters",
+          "phase_attribution_available": false,
+          "measurement_wall_s": 420.756028412,
+          "operations": {
+            "auth_masks": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "gemm": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "logup": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "mailbox": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_merkle": {
+              "calls": 1439,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_ntt": {
+              "calls": 102,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_rows": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            }
+          },
+          "h2d_bytes": 160757312772,
+          "d2h_bytes": 151137550176,
+          "explicit_d2d_copy_bytes": 0,
+          "device_zeroed_bytes": 67330113536,
+          "device_generated_bytes": 9273606144,
+          "synchronizations": 1541,
+          "synchronization_s": 0.009832176,
+          "sync_host_output": 1541,
+          "sync_upload_lifetime": 0,
+          "sync_timing_flush": 0,
+          "sync_profiling_legacy": 0,
+          "sync_allocator_flush": 0,
+          "allocation_calls": 0,
+          "physical_free_calls": 0,
+          "live_device_bytes": 43486546048,
+          "peak_device_bytes": 43486546048,
+          "timing_event_api_calls": 0,
+          "timing_records": 0
+        },
+        "cohorts": [
+          {
+            "name": "Wext-mu26-global-tied-roles",
+            "cohort_id": 2768240641,
+            "domain_log2": 30,
+            "present_slots": 2,
+            "structural_slots": 2,
+            "wall_s": 276.597955515,
+            "root_hex": "024499106472dec09078b6a438fb0ff6a1a49b526d1f6aede79581dc84696879",
+            "metrics": {
+              "present_slots": 2,
+              "structural_slots": 2,
+              "coefficient_bytes_read": 4294967296,
+              "coefficient_bytes_persisted": 4294967296,
+              "oracle_bytes_persisted": 34359738368,
+              "root_bytes_persisted": 32,
+              "persisted_oracle_bytes_read_for_n4": 34359738368,
+              "staging_bytes_read": 68719476672,
+              "staging_bytes_written": 68719476704,
+              "peak_live_staging_bytes": 51539607552,
+              "retained_outer_cache_bytes": 34359738336,
+              "expected_h2d_bytes": 107374217152,
+              "expected_d2h_bytes": 103079215072,
+              "expected_device_zeroed_bytes": 30064771072,
+              "maximum_n4_tile_bytes": 402653312,
+              "ntt_calls": 2,
+              "inner_tile_calls": 512,
+              "outer_tile_calls": 277,
+              "page_cache_dontneed_bytes": 141733920768,
+              "page_cache_advice_calls": 35,
+              "persistent_artifact_bytes": 38654705696
+            }
+          },
+          {
+            "name": "Wext-mu22-all-layers",
+            "cohort_id": 2768240642,
+            "domain_log2": 26,
+            "present_slots": 36,
+            "structural_slots": 64,
+            "wall_s": 127.866228018,
+            "root_hex": "fbdba1ac3db0e0267da665e1677129604445bac261dee2ebde303bf6ac8cd8b1",
+            "metrics": {
+              "present_slots": 36,
+              "structural_slots": 64,
+              "coefficient_bytes_read": 4831838208,
+              "coefficient_bytes_persisted": 4831838208,
+              "oracle_bytes_persisted": 38654705664,
+              "root_bytes_persisted": 32,
+              "persisted_oracle_bytes_read_for_n4": 38654705664,
+              "staging_bytes_read": 4294967232,
+              "staging_bytes_written": 4294967264,
+              "peak_live_staging_bytes": 3221225472,
+              "retained_outer_cache_bytes": 2147483616,
+              "expected_h2d_bytes": 47782625216,
+              "expected_d2h_bytes": 42949672928,
+              "expected_device_zeroed_bytes": 33822867456,
+              "maximum_n4_tile_bytes": 482347264,
+              "ntt_calls": 36,
+              "inner_tile_calls": 512,
+              "outer_tile_calls": 37,
+              "page_cache_dontneed_bytes": 86436216832,
+              "page_cache_advice_calls": 31,
+              "persistent_artifact_bytes": 43486543904
+            }
+          },
+          {
+            "name": "Wext-mu20-layers-and-position",
+            "cohort_id": 2768240643,
+            "domain_log2": 24,
+            "present_slots": 13,
+            "structural_slots": 16,
+            "wall_s": 14.623743844,
+            "root_hex": "481e8f9ac396ade8aea7d558cdf682e75e7d7828e66675061b82c3d1e4e761cd",
+            "metrics": {
+              "present_slots": 13,
+              "structural_slots": 16,
+              "coefficient_bytes_read": 436207616,
+              "coefficient_bytes_persisted": 436207616,
+              "oracle_bytes_persisted": 3489660928,
+              "root_bytes_persisted": 32,
+              "persisted_oracle_bytes_read_for_n4": 3489660928,
+              "staging_bytes_read": 1073741760,
+              "staging_bytes_written": 1073741792,
+              "peak_live_staging_bytes": 805306368,
+              "retained_outer_cache_bytes": 536870880,
+              "expected_h2d_bytes": 4999627712,
+              "expected_d2h_bytes": 4563402720,
+              "expected_device_zeroed_bytes": 3053453312,
+              "maximum_n4_tile_bytes": 528482976,
+              "ntt_calls": 13,
+              "inner_tile_calls": 32,
+              "outer_tile_calls": 25,
+              "page_cache_dontneed_bytes": 8489271296,
+              "page_cache_advice_calls": 29,
+              "persistent_artifact_bytes": 3925868576
+            }
+          },
+          {
+            "name": "auxiliary-ell17",
+            "cohort_id": 2768240896,
+            "domain_log2": 20,
+            "present_slots": 2,
+            "structural_slots": 2,
+            "wall_s": 0.310353846,
+            "root_hex": "94c803c59707e979f76be4e5c68e5f68e8c870e175d19812f30ae32d5f6b07e0",
+            "metrics": {
+              "present_slots": 2,
+              "structural_slots": 2,
+              "coefficient_bytes_read": 4194304,
+              "coefficient_bytes_persisted": 4194304,
+              "oracle_bytes_persisted": 33554432,
+              "root_bytes_persisted": 32,
+              "persisted_oracle_bytes_read_for_n4": 33554432,
+              "staging_bytes_read": 67108800,
+              "staging_bytes_written": 67108832,
+              "peak_live_staging_bytes": 50331648,
+              "retained_outer_cache_bytes": 33554400,
+              "expected_h2d_bytes": 104857604,
+              "expected_d2h_bytes": 100663264,
+              "expected_device_zeroed_bytes": 29360128,
+              "maximum_n4_tile_bytes": 167772356,
+              "ntt_calls": 2,
+              "inner_tile_calls": 1,
+              "outer_tile_calls": 20,
+              "page_cache_dontneed_bytes": 138412032,
+              "page_cache_advice_calls": 25,
+              "persistent_artifact_bytes": 37748768
+            }
+          },
+          {
+            "name": "auxiliary-ell16",
+            "cohort_id": 2768240897,
+            "domain_log2": 19,
+            "present_slots": 49,
+            "structural_slots": 64,
+            "wall_s": 1.3574967629999999,
+            "root_hex": "c79aa47d4f224080f00c07fb9a097a77897279b475a0b26eef491a27033e2cbe",
+            "metrics": {
+              "present_slots": 49,
+              "structural_slots": 64,
+              "coefficient_bytes_read": 51380224,
+              "coefficient_bytes_persisted": 51380224,
+              "oracle_bytes_persisted": 411041792,
+              "root_bytes_persisted": 32,
+              "persisted_oracle_bytes_read_for_n4": 411041792,
+              "staging_bytes_read": 33554368,
+              "staging_bytes_written": 33554400,
+              "peak_live_staging_bytes": 25165824,
+              "retained_outer_cache_bytes": 16777184,
+              "expected_h2d_bytes": 495985088,
+              "expected_d2h_bytes": 444596192,
+              "expected_device_zeroed_bytes": 359661568,
+              "maximum_n4_tile_bytes": 509610240,
+              "ntt_calls": 49,
+              "inner_tile_calls": 4,
+              "outer_tile_calls": 19,
+              "page_cache_dontneed_bytes": 907018240,
+              "page_cache_advice_calls": 24,
+              "persistent_artifact_bytes": 462422048
+            }
+          }
+        ],
+        "totals": {
+          "present_slots": 102,
+          "structural_slots": 148,
+          "coefficient_bytes_read": 9618587648,
+          "coefficient_bytes_persisted": 9618587648,
+          "oracle_bytes_persisted": 76948701184,
+          "root_bytes_persisted": 160,
+          "persisted_oracle_bytes_read_for_n4": 76948701184,
+          "staging_bytes_read": 74188848832,
+          "staging_bytes_written": 74188848992,
+          "peak_live_staging_bytes": 51539607552,
+          "retained_outer_cache_bytes": 37094424416,
+          "expected_h2d_bytes": 160757312772,
+          "expected_d2h_bytes": 151137550176,
+          "expected_device_zeroed_bytes": 67330113536,
+          "maximum_n4_tile_bytes": 528482976,
+          "ntt_calls": 102,
+          "inner_tile_calls": 1061,
+          "outer_tile_calls": 378,
+          "page_cache_dontneed_bytes": 237704839168,
+          "page_cache_advice_calls": 144,
+          "persistent_artifact_bytes": 86567288992
+        },
+        "reconciliation_pass": true,
+        "artifacts_retained": false
+      },
+      {
+        "role": "measured-2",
+        "wall_s": 401.723726678,
+        "peak_rss_bytes": 47152660480,
+        "process_io": {
+          "rchar": 151162115193,
+          "wchar": 160756137984,
+          "read_bytes": 151137652736,
+          "write_bytes": 160756281344
+        },
+        "accelerator": {
+          "timing_method": "wall-only-counters",
+          "phase_attribution_available": false,
+          "measurement_wall_s": 401.723747848,
+          "operations": {
+            "auth_masks": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "gemm": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "logup": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "mailbox": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_merkle": {
+              "calls": 1439,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_ntt": {
+              "calls": 102,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_rows": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            }
+          },
+          "h2d_bytes": 160757312772,
+          "d2h_bytes": 151137550176,
+          "explicit_d2d_copy_bytes": 0,
+          "device_zeroed_bytes": 67330113536,
+          "device_generated_bytes": 9273606144,
+          "synchronizations": 1541,
+          "synchronization_s": 0.009418369,
+          "sync_host_output": 1541,
+          "sync_upload_lifetime": 0,
+          "sync_timing_flush": 0,
+          "sync_profiling_legacy": 0,
+          "sync_allocator_flush": 0,
+          "allocation_calls": 0,
+          "physical_free_calls": 0,
+          "live_device_bytes": 43486546048,
+          "peak_device_bytes": 43486546048,
+          "timing_event_api_calls": 0,
+          "timing_records": 0
+        },
+        "cohorts": [
+          {
+            "name": "Wext-mu26-global-tied-roles",
+            "cohort_id": 2768240641,
+            "domain_log2": 30,
+            "present_slots": 2,
+            "structural_slots": 2,
+            "wall_s": 269.725604712,
+            "root_hex": "024499106472dec09078b6a438fb0ff6a1a49b526d1f6aede79581dc84696879",
+            "metrics": {
+              "present_slots": 2,
+              "structural_slots": 2,
+              "coefficient_bytes_read": 4294967296,
+              "coefficient_bytes_persisted": 4294967296,
+              "oracle_bytes_persisted": 34359738368,
+              "root_bytes_persisted": 32,
+              "persisted_oracle_bytes_read_for_n4": 34359738368,
+              "staging_bytes_read": 68719476672,
+              "staging_bytes_written": 68719476704,
+              "peak_live_staging_bytes": 51539607552,
+              "retained_outer_cache_bytes": 34359738336,
+              "expected_h2d_bytes": 107374217152,
+              "expected_d2h_bytes": 103079215072,
+              "expected_device_zeroed_bytes": 30064771072,
+              "maximum_n4_tile_bytes": 402653312,
+              "ntt_calls": 2,
+              "inner_tile_calls": 512,
+              "outer_tile_calls": 277,
+              "page_cache_dontneed_bytes": 141733920768,
+              "page_cache_advice_calls": 35,
+              "persistent_artifact_bytes": 38654705696
+            }
+          },
+          {
+            "name": "Wext-mu22-all-layers",
+            "cohort_id": 2768240642,
+            "domain_log2": 26,
+            "present_slots": 36,
+            "structural_slots": 64,
+            "wall_s": 116.331416863,
+            "root_hex": "fbdba1ac3db0e0267da665e1677129604445bac261dee2ebde303bf6ac8cd8b1",
+            "metrics": {
+              "present_slots": 36,
+              "structural_slots": 64,
+              "coefficient_bytes_read": 4831838208,
+              "coefficient_bytes_persisted": 4831838208,
+              "oracle_bytes_persisted": 38654705664,
+              "root_bytes_persisted": 32,
+              "persisted_oracle_bytes_read_for_n4": 38654705664,
+              "staging_bytes_read": 4294967232,
+              "staging_bytes_written": 4294967264,
+              "peak_live_staging_bytes": 3221225472,
+              "retained_outer_cache_bytes": 2147483616,
+              "expected_h2d_bytes": 47782625216,
+              "expected_d2h_bytes": 42949672928,
+              "expected_device_zeroed_bytes": 33822867456,
+              "maximum_n4_tile_bytes": 482347264,
+              "ntt_calls": 36,
+              "inner_tile_calls": 512,
+              "outer_tile_calls": 37,
+              "page_cache_dontneed_bytes": 86436216832,
+              "page_cache_advice_calls": 31,
+              "persistent_artifact_bytes": 43486543904
+            }
+          },
+          {
+            "name": "Wext-mu20-layers-and-position",
+            "cohort_id": 2768240643,
+            "domain_log2": 24,
+            "present_slots": 13,
+            "structural_slots": 16,
+            "wall_s": 14.07501339,
+            "root_hex": "481e8f9ac396ade8aea7d558cdf682e75e7d7828e66675061b82c3d1e4e761cd",
+            "metrics": {
+              "present_slots": 13,
+              "structural_slots": 16,
+              "coefficient_bytes_read": 436207616,
+              "coefficient_bytes_persisted": 436207616,
+              "oracle_bytes_persisted": 3489660928,
+              "root_bytes_persisted": 32,
+              "persisted_oracle_bytes_read_for_n4": 3489660928,
+              "staging_bytes_read": 1073741760,
+              "staging_bytes_written": 1073741792,
+              "peak_live_staging_bytes": 805306368,
+              "retained_outer_cache_bytes": 536870880,
+              "expected_h2d_bytes": 4999627712,
+              "expected_d2h_bytes": 4563402720,
+              "expected_device_zeroed_bytes": 3053453312,
+              "maximum_n4_tile_bytes": 528482976,
+              "ntt_calls": 13,
+              "inner_tile_calls": 32,
+              "outer_tile_calls": 25,
+              "page_cache_dontneed_bytes": 8489271296,
+              "page_cache_advice_calls": 29,
+              "persistent_artifact_bytes": 3925868576
+            }
+          },
+          {
+            "name": "auxiliary-ell17",
+            "cohort_id": 2768240896,
+            "domain_log2": 20,
+            "present_slots": 2,
+            "structural_slots": 2,
+            "wall_s": 0.299465161,
+            "root_hex": "94c803c59707e979f76be4e5c68e5f68e8c870e175d19812f30ae32d5f6b07e0",
+            "metrics": {
+              "present_slots": 2,
+              "structural_slots": 2,
+              "coefficient_bytes_read": 4194304,
+              "coefficient_bytes_persisted": 4194304,
+              "oracle_bytes_persisted": 33554432,
+              "root_bytes_persisted": 32,
+              "persisted_oracle_bytes_read_for_n4": 33554432,
+              "staging_bytes_read": 67108800,
+              "staging_bytes_written": 67108832,
+              "peak_live_staging_bytes": 50331648,
+              "retained_outer_cache_bytes": 33554400,
+              "expected_h2d_bytes": 104857604,
+              "expected_d2h_bytes": 100663264,
+              "expected_device_zeroed_bytes": 29360128,
+              "maximum_n4_tile_bytes": 167772356,
+              "ntt_calls": 2,
+              "inner_tile_calls": 1,
+              "outer_tile_calls": 20,
+              "page_cache_dontneed_bytes": 138412032,
+              "page_cache_advice_calls": 25,
+              "persistent_artifact_bytes": 37748768
+            }
+          },
+          {
+            "name": "auxiliary-ell16",
+            "cohort_id": 2768240897,
+            "domain_log2": 19,
+            "present_slots": 49,
+            "structural_slots": 64,
+            "wall_s": 1.292001055,
+            "root_hex": "c79aa47d4f224080f00c07fb9a097a77897279b475a0b26eef491a27033e2cbe",
+            "metrics": {
+              "present_slots": 49,
+              "structural_slots": 64,
+              "coefficient_bytes_read": 51380224,
+              "coefficient_bytes_persisted": 51380224,
+              "oracle_bytes_persisted": 411041792,
+              "root_bytes_persisted": 32,
+              "persisted_oracle_bytes_read_for_n4": 411041792,
+              "staging_bytes_read": 33554368,
+              "staging_bytes_written": 33554400,
+              "peak_live_staging_bytes": 25165824,
+              "retained_outer_cache_bytes": 16777184,
+              "expected_h2d_bytes": 495985088,
+              "expected_d2h_bytes": 444596192,
+              "expected_device_zeroed_bytes": 359661568,
+              "maximum_n4_tile_bytes": 509610240,
+              "ntt_calls": 49,
+              "inner_tile_calls": 4,
+              "outer_tile_calls": 19,
+              "page_cache_dontneed_bytes": 907018240,
+              "page_cache_advice_calls": 24,
+              "persistent_artifact_bytes": 462422048
+            }
+          }
+        ],
+        "totals": {
+          "present_slots": 102,
+          "structural_slots": 148,
+          "coefficient_bytes_read": 9618587648,
+          "coefficient_bytes_persisted": 9618587648,
+          "oracle_bytes_persisted": 76948701184,
+          "root_bytes_persisted": 160,
+          "persisted_oracle_bytes_read_for_n4": 76948701184,
+          "staging_bytes_read": 74188848832,
+          "staging_bytes_written": 74188848992,
+          "peak_live_staging_bytes": 51539607552,
+          "retained_outer_cache_bytes": 37094424416,
+          "expected_h2d_bytes": 160757312772,
+          "expected_d2h_bytes": 151137550176,
+          "expected_device_zeroed_bytes": 67330113536,
+          "maximum_n4_tile_bytes": 528482976,
+          "ntt_calls": 102,
+          "inner_tile_calls": 1061,
+          "outer_tile_calls": 378,
+          "page_cache_dontneed_bytes": 237704839168,
+          "page_cache_advice_calls": 144,
+          "persistent_artifact_bytes": 86567288992
+        },
+        "reconciliation_pass": true,
+        "artifacts_retained": false
+      },
+      {
+        "role": "measured-3",
+        "wall_s": 374.912922875,
+        "peak_rss_bytes": 47175016448,
+        "process_io": {
+          "rchar": 151160499780,
+          "wchar": 160756137984,
+          "read_bytes": 151137652736,
+          "write_bytes": 160756281344
+        },
+        "accelerator": {
+          "timing_method": "wall-only-counters",
+          "phase_attribution_available": false,
+          "measurement_wall_s": 374.912952661,
+          "operations": {
+            "auth_masks": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "gemm": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "logup": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "mailbox": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_merkle": {
+              "calls": 1439,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_ntt": {
+              "calls": 102,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_rows": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            }
+          },
+          "h2d_bytes": 160757312772,
+          "d2h_bytes": 151137550176,
+          "explicit_d2d_copy_bytes": 0,
+          "device_zeroed_bytes": 67330113536,
+          "device_generated_bytes": 9273606144,
+          "synchronizations": 1541,
+          "synchronization_s": 0.009262419,
+          "sync_host_output": 1541,
+          "sync_upload_lifetime": 0,
+          "sync_timing_flush": 0,
+          "sync_profiling_legacy": 0,
+          "sync_allocator_flush": 0,
+          "allocation_calls": 0,
+          "physical_free_calls": 0,
+          "live_device_bytes": 43486546048,
+          "peak_device_bytes": 43486546048,
+          "timing_event_api_calls": 0,
+          "timing_records": 0
+        },
+        "cohorts": [
+          {
+            "name": "Wext-mu26-global-tied-roles",
+            "cohort_id": 2768240641,
+            "domain_log2": 30,
+            "present_slots": 2,
+            "structural_slots": 2,
+            "wall_s": 255.872738687,
+            "root_hex": "024499106472dec09078b6a438fb0ff6a1a49b526d1f6aede79581dc84696879",
+            "metrics": {
+              "present_slots": 2,
+              "structural_slots": 2,
+              "coefficient_bytes_read": 4294967296,
+              "coefficient_bytes_persisted": 4294967296,
+              "oracle_bytes_persisted": 34359738368,
+              "root_bytes_persisted": 32,
+              "persisted_oracle_bytes_read_for_n4": 34359738368,
+              "staging_bytes_read": 68719476672,
+              "staging_bytes_written": 68719476704,
+              "peak_live_staging_bytes": 51539607552,
+              "retained_outer_cache_bytes": 34359738336,
+              "expected_h2d_bytes": 107374217152,
+              "expected_d2h_bytes": 103079215072,
+              "expected_device_zeroed_bytes": 30064771072,
+              "maximum_n4_tile_bytes": 402653312,
+              "ntt_calls": 2,
+              "inner_tile_calls": 512,
+              "outer_tile_calls": 277,
+              "page_cache_dontneed_bytes": 141733920768,
+              "page_cache_advice_calls": 35,
+              "persistent_artifact_bytes": 38654705696
+            }
+          },
+          {
+            "name": "Wext-mu22-all-layers",
+            "cohort_id": 2768240642,
+            "domain_log2": 26,
+            "present_slots": 36,
+            "structural_slots": 64,
+            "wall_s": 103.743584183,
+            "root_hex": "fbdba1ac3db0e0267da665e1677129604445bac261dee2ebde303bf6ac8cd8b1",
+            "metrics": {
+              "present_slots": 36,
+              "structural_slots": 64,
+              "coefficient_bytes_read": 4831838208,
+              "coefficient_bytes_persisted": 4831838208,
+              "oracle_bytes_persisted": 38654705664,
+              "root_bytes_persisted": 32,
+              "persisted_oracle_bytes_read_for_n4": 38654705664,
+              "staging_bytes_read": 4294967232,
+              "staging_bytes_written": 4294967264,
+              "peak_live_staging_bytes": 3221225472,
+              "retained_outer_cache_bytes": 2147483616,
+              "expected_h2d_bytes": 47782625216,
+              "expected_d2h_bytes": 42949672928,
+              "expected_device_zeroed_bytes": 33822867456,
+              "maximum_n4_tile_bytes": 482347264,
+              "ntt_calls": 36,
+              "inner_tile_calls": 512,
+              "outer_tile_calls": 37,
+              "page_cache_dontneed_bytes": 86436216832,
+              "page_cache_advice_calls": 31,
+              "persistent_artifact_bytes": 43486543904
+            }
+          },
+          {
+            "name": "Wext-mu20-layers-and-position",
+            "cohort_id": 2768240643,
+            "domain_log2": 24,
+            "present_slots": 13,
+            "structural_slots": 16,
+            "wall_s": 13.727708356,
+            "root_hex": "481e8f9ac396ade8aea7d558cdf682e75e7d7828e66675061b82c3d1e4e761cd",
+            "metrics": {
+              "present_slots": 13,
+              "structural_slots": 16,
+              "coefficient_bytes_read": 436207616,
+              "coefficient_bytes_persisted": 436207616,
+              "oracle_bytes_persisted": 3489660928,
+              "root_bytes_persisted": 32,
+              "persisted_oracle_bytes_read_for_n4": 3489660928,
+              "staging_bytes_read": 1073741760,
+              "staging_bytes_written": 1073741792,
+              "peak_live_staging_bytes": 805306368,
+              "retained_outer_cache_bytes": 536870880,
+              "expected_h2d_bytes": 4999627712,
+              "expected_d2h_bytes": 4563402720,
+              "expected_device_zeroed_bytes": 3053453312,
+              "maximum_n4_tile_bytes": 528482976,
+              "ntt_calls": 13,
+              "inner_tile_calls": 32,
+              "outer_tile_calls": 25,
+              "page_cache_dontneed_bytes": 8489271296,
+              "page_cache_advice_calls": 29,
+              "persistent_artifact_bytes": 3925868576
+            }
+          },
+          {
+            "name": "auxiliary-ell17",
+            "cohort_id": 2768240896,
+            "domain_log2": 20,
+            "present_slots": 2,
+            "structural_slots": 2,
+            "wall_s": 0.282455013,
+            "root_hex": "94c803c59707e979f76be4e5c68e5f68e8c870e175d19812f30ae32d5f6b07e0",
+            "metrics": {
+              "present_slots": 2,
+              "structural_slots": 2,
+              "coefficient_bytes_read": 4194304,
+              "coefficient_bytes_persisted": 4194304,
+              "oracle_bytes_persisted": 33554432,
+              "root_bytes_persisted": 32,
+              "persisted_oracle_bytes_read_for_n4": 33554432,
+              "staging_bytes_read": 67108800,
+              "staging_bytes_written": 67108832,
+              "peak_live_staging_bytes": 50331648,
+              "retained_outer_cache_bytes": 33554400,
+              "expected_h2d_bytes": 104857604,
+              "expected_d2h_bytes": 100663264,
+              "expected_device_zeroed_bytes": 29360128,
+              "maximum_n4_tile_bytes": 167772356,
+              "ntt_calls": 2,
+              "inner_tile_calls": 1,
+              "outer_tile_calls": 20,
+              "page_cache_dontneed_bytes": 138412032,
+              "page_cache_advice_calls": 25,
+              "persistent_artifact_bytes": 37748768
+            }
+          },
+          {
+            "name": "auxiliary-ell16",
+            "cohort_id": 2768240897,
+            "domain_log2": 19,
+            "present_slots": 49,
+            "structural_slots": 64,
+            "wall_s": 1.28620151,
+            "root_hex": "c79aa47d4f224080f00c07fb9a097a77897279b475a0b26eef491a27033e2cbe",
+            "metrics": {
+              "present_slots": 49,
+              "structural_slots": 64,
+              "coefficient_bytes_read": 51380224,
+              "coefficient_bytes_persisted": 51380224,
+              "oracle_bytes_persisted": 411041792,
+              "root_bytes_persisted": 32,
+              "persisted_oracle_bytes_read_for_n4": 411041792,
+              "staging_bytes_read": 33554368,
+              "staging_bytes_written": 33554400,
+              "peak_live_staging_bytes": 25165824,
+              "retained_outer_cache_bytes": 16777184,
+              "expected_h2d_bytes": 495985088,
+              "expected_d2h_bytes": 444596192,
+              "expected_device_zeroed_bytes": 359661568,
+              "maximum_n4_tile_bytes": 509610240,
+              "ntt_calls": 49,
+              "inner_tile_calls": 4,
+              "outer_tile_calls": 19,
+              "page_cache_dontneed_bytes": 907018240,
+              "page_cache_advice_calls": 24,
+              "persistent_artifact_bytes": 462422048
+            }
+          }
+        ],
+        "totals": {
+          "present_slots": 102,
+          "structural_slots": 148,
+          "coefficient_bytes_read": 9618587648,
+          "coefficient_bytes_persisted": 9618587648,
+          "oracle_bytes_persisted": 76948701184,
+          "root_bytes_persisted": 160,
+          "persisted_oracle_bytes_read_for_n4": 76948701184,
+          "staging_bytes_read": 74188848832,
+          "staging_bytes_written": 74188848992,
+          "peak_live_staging_bytes": 51539607552,
+          "retained_outer_cache_bytes": 37094424416,
+          "expected_h2d_bytes": 160757312772,
+          "expected_d2h_bytes": 151137550176,
+          "expected_device_zeroed_bytes": 67330113536,
+          "maximum_n4_tile_bytes": 528482976,
+          "ntt_calls": 102,
+          "inner_tile_calls": 1061,
+          "outer_tile_calls": 378,
+          "page_cache_dontneed_bytes": 237704839168,
+          "page_cache_advice_calls": 144,
+          "persistent_artifact_bytes": 86567288992
+        },
+        "reconciliation_pass": true,
+        "artifacts_retained": false
+      }
+    ],
+    "selected_upper_median_wall_s": 401.723726678,
+    "selected_throughput_oracle_bytes_per_s": 191546319.20876786,
+    "final_materialization": {
+      "role": "final-durable-materialization",
+      "wall_s": 365.918590373,
+      "peak_rss_bytes": 47186497536,
+      "process_io": {
+        "rchar": 151159948383,
+        "wchar": 160756137984,
+        "read_bytes": 151137652736,
+        "write_bytes": 160756281344
+      },
+      "accelerator": {
+        "timing_method": "wall-only-counters",
+        "phase_attribution_available": false,
+        "measurement_wall_s": 365.918619659,
+        "operations": {
+          "auth_masks": {
+            "calls": 0,
+            "cpu_residual_s": 0.0
+          },
+          "gemm": {
+            "calls": 0,
+            "cpu_residual_s": 0.0
+          },
+          "logup": {
+            "calls": 0,
+            "cpu_residual_s": 0.0
+          },
+          "mailbox": {
+            "calls": 0,
+            "cpu_residual_s": 0.0
+          },
+          "pcs_merkle": {
+            "calls": 1439,
+            "cpu_residual_s": 0.0
+          },
+          "pcs_ntt": {
+            "calls": 102,
+            "cpu_residual_s": 0.0
+          },
+          "pcs_rows": {
+            "calls": 0,
+            "cpu_residual_s": 0.0
+          }
+        },
+        "h2d_bytes": 160757312772,
+        "d2h_bytes": 151137550176,
+        "explicit_d2d_copy_bytes": 0,
+        "device_zeroed_bytes": 67330113536,
+        "device_generated_bytes": 683671552,
+        "synchronizations": 1541,
+        "synchronization_s": 0.00925835,
+        "sync_host_output": 1541,
+        "sync_upload_lifetime": 0,
+        "sync_timing_flush": 0,
+        "sync_profiling_legacy": 0,
+        "sync_allocator_flush": 0,
+        "allocation_calls": 0,
+        "physical_free_calls": 0,
+        "live_device_bytes": 43486546048,
+        "peak_device_bytes": 43486546048,
+        "timing_event_api_calls": 0,
+        "timing_records": 0
+      },
+      "cohorts": [
+        {
+          "name": "Wext-mu26-global-tied-roles",
+          "cohort_id": 2768240641,
+          "domain_log2": 30,
+          "present_slots": 2,
+          "structural_slots": 2,
+          "wall_s": 246.912061821,
+          "root_hex": "024499106472dec09078b6a438fb0ff6a1a49b526d1f6aede79581dc84696879",
+          "metrics": {
+            "present_slots": 2,
+            "structural_slots": 2,
+            "coefficient_bytes_read": 4294967296,
+            "coefficient_bytes_persisted": 4294967296,
+            "oracle_bytes_persisted": 34359738368,
+            "root_bytes_persisted": 32,
+            "persisted_oracle_bytes_read_for_n4": 34359738368,
+            "staging_bytes_read": 68719476672,
+            "staging_bytes_written": 68719476704,
+            "peak_live_staging_bytes": 51539607552,
+            "retained_outer_cache_bytes": 34359738336,
+            "expected_h2d_bytes": 107374217152,
+            "expected_d2h_bytes": 103079215072,
+            "expected_device_zeroed_bytes": 30064771072,
+            "maximum_n4_tile_bytes": 402653312,
+            "ntt_calls": 2,
+            "inner_tile_calls": 512,
+            "outer_tile_calls": 277,
+            "page_cache_dontneed_bytes": 141733920768,
+            "page_cache_advice_calls": 35,
+            "persistent_artifact_bytes": 38654705696
+          }
+        },
+        {
+          "name": "Wext-mu22-all-layers",
+          "cohort_id": 2768240642,
+          "domain_log2": 26,
+          "present_slots": 36,
+          "structural_slots": 64,
+          "wall_s": 103.666929001,
+          "root_hex": "fbdba1ac3db0e0267da665e1677129604445bac261dee2ebde303bf6ac8cd8b1",
+          "metrics": {
+            "present_slots": 36,
+            "structural_slots": 64,
+            "coefficient_bytes_read": 4831838208,
+            "coefficient_bytes_persisted": 4831838208,
+            "oracle_bytes_persisted": 38654705664,
+            "root_bytes_persisted": 32,
+            "persisted_oracle_bytes_read_for_n4": 38654705664,
+            "staging_bytes_read": 4294967232,
+            "staging_bytes_written": 4294967264,
+            "peak_live_staging_bytes": 3221225472,
+            "retained_outer_cache_bytes": 2147483616,
+            "expected_h2d_bytes": 47782625216,
+            "expected_d2h_bytes": 42949672928,
+            "expected_device_zeroed_bytes": 33822867456,
+            "maximum_n4_tile_bytes": 482347264,
+            "ntt_calls": 36,
+            "inner_tile_calls": 512,
+            "outer_tile_calls": 37,
+            "page_cache_dontneed_bytes": 86436216832,
+            "page_cache_advice_calls": 31,
+            "persistent_artifact_bytes": 43486543904
+          }
+        },
+        {
+          "name": "Wext-mu20-layers-and-position",
+          "cohort_id": 2768240643,
+          "domain_log2": 24,
+          "present_slots": 13,
+          "structural_slots": 16,
+          "wall_s": 13.749203927,
+          "root_hex": "481e8f9ac396ade8aea7d558cdf682e75e7d7828e66675061b82c3d1e4e761cd",
+          "metrics": {
+            "present_slots": 13,
+            "structural_slots": 16,
+            "coefficient_bytes_read": 436207616,
+            "coefficient_bytes_persisted": 436207616,
+            "oracle_bytes_persisted": 3489660928,
+            "root_bytes_persisted": 32,
+            "persisted_oracle_bytes_read_for_n4": 3489660928,
+            "staging_bytes_read": 1073741760,
+            "staging_bytes_written": 1073741792,
+            "peak_live_staging_bytes": 805306368,
+            "retained_outer_cache_bytes": 536870880,
+            "expected_h2d_bytes": 4999627712,
+            "expected_d2h_bytes": 4563402720,
+            "expected_device_zeroed_bytes": 3053453312,
+            "maximum_n4_tile_bytes": 528482976,
+            "ntt_calls": 13,
+            "inner_tile_calls": 32,
+            "outer_tile_calls": 25,
+            "page_cache_dontneed_bytes": 8489271296,
+            "page_cache_advice_calls": 29,
+            "persistent_artifact_bytes": 3925868576
+          }
+        },
+        {
+          "name": "auxiliary-ell17",
+          "cohort_id": 2768240896,
+          "domain_log2": 20,
+          "present_slots": 2,
+          "structural_slots": 2,
+          "wall_s": 0.287561183,
+          "root_hex": "94c803c59707e979f76be4e5c68e5f68e8c870e175d19812f30ae32d5f6b07e0",
+          "metrics": {
+            "present_slots": 2,
+            "structural_slots": 2,
+            "coefficient_bytes_read": 4194304,
+            "coefficient_bytes_persisted": 4194304,
+            "oracle_bytes_persisted": 33554432,
+            "root_bytes_persisted": 32,
+            "persisted_oracle_bytes_read_for_n4": 33554432,
+            "staging_bytes_read": 67108800,
+            "staging_bytes_written": 67108832,
+            "peak_live_staging_bytes": 50331648,
+            "retained_outer_cache_bytes": 33554400,
+            "expected_h2d_bytes": 104857604,
+            "expected_d2h_bytes": 100663264,
+            "expected_device_zeroed_bytes": 29360128,
+            "maximum_n4_tile_bytes": 167772356,
+            "ntt_calls": 2,
+            "inner_tile_calls": 1,
+            "outer_tile_calls": 20,
+            "page_cache_dontneed_bytes": 138412032,
+            "page_cache_advice_calls": 25,
+            "persistent_artifact_bytes": 37748768
+          }
+        },
+        {
+          "name": "auxiliary-ell16",
+          "cohort_id": 2768240897,
+          "domain_log2": 19,
+          "present_slots": 49,
+          "structural_slots": 64,
+          "wall_s": 1.302588965,
+          "root_hex": "c79aa47d4f224080f00c07fb9a097a77897279b475a0b26eef491a27033e2cbe",
+          "metrics": {
+            "present_slots": 49,
+            "structural_slots": 64,
+            "coefficient_bytes_read": 51380224,
+            "coefficient_bytes_persisted": 51380224,
+            "oracle_bytes_persisted": 411041792,
+            "root_bytes_persisted": 32,
+            "persisted_oracle_bytes_read_for_n4": 411041792,
+            "staging_bytes_read": 33554368,
+            "staging_bytes_written": 33554400,
+            "peak_live_staging_bytes": 25165824,
+            "retained_outer_cache_bytes": 16777184,
+            "expected_h2d_bytes": 495985088,
+            "expected_d2h_bytes": 444596192,
+            "expected_device_zeroed_bytes": 359661568,
+            "maximum_n4_tile_bytes": 509610240,
+            "ntt_calls": 49,
+            "inner_tile_calls": 4,
+            "outer_tile_calls": 19,
+            "page_cache_dontneed_bytes": 907018240,
+            "page_cache_advice_calls": 24,
+            "persistent_artifact_bytes": 462422048
+          }
+        }
+      ],
+      "totals": {
+        "present_slots": 102,
+        "structural_slots": 148,
+        "coefficient_bytes_read": 9618587648,
+        "coefficient_bytes_persisted": 9618587648,
+        "oracle_bytes_persisted": 76948701184,
+        "root_bytes_persisted": 160,
+        "persisted_oracle_bytes_read_for_n4": 76948701184,
+        "staging_bytes_read": 74188848832,
+        "staging_bytes_written": 74188848992,
+        "peak_live_staging_bytes": 51539607552,
+        "retained_outer_cache_bytes": 37094424416,
+        "expected_h2d_bytes": 160757312772,
+        "expected_d2h_bytes": 151137550176,
+        "expected_device_zeroed_bytes": 67330113536,
+        "maximum_n4_tile_bytes": 528482976,
+        "ntt_calls": 102,
+        "inner_tile_calls": 1061,
+        "outer_tile_calls": 378,
+        "page_cache_dontneed_bytes": 237704839168,
+        "page_cache_advice_calls": 144,
+        "persistent_artifact_bytes": 86567288992
+      },
+      "reconciliation_pass": true,
+      "artifacts_retained": true
+    },
+    "hard_ceiling": null
+  },
+  "isolated_wext_mu26_commit": {
+    "warmup": {
+      "role": "warmup",
+      "wall_s": 248.849271591,
+      "ceiling_s": 15.0,
+      "margin_s": -233.849271591,
+      "margin_percent": -1558.99514394,
+      "pass": false,
+      "peak_rss_bytes": 44780072960,
+      "process_io": {
+        "rchar": 103094448179,
+        "wchar": 107374182400,
+        "read_bytes": 103079235584,
+        "write_bytes": 107374211072
+      },
+      "accelerator": {
+        "timing_method": "wall-only-counters",
+        "phase_attribution_available": false,
+        "measurement_wall_s": 248.849291638,
+        "operations": {
+          "auth_masks": {
+            "calls": 0,
+            "cpu_residual_s": 0.0
+          },
+          "gemm": {
+            "calls": 0,
+            "cpu_residual_s": 0.0
+          },
+          "logup": {
+            "calls": 0,
+            "cpu_residual_s": 0.0
+          },
+          "mailbox": {
+            "calls": 0,
+            "cpu_residual_s": 0.0
+          },
+          "pcs_merkle": {
+            "calls": 789,
+            "cpu_residual_s": 0.0
+          },
+          "pcs_ntt": {
+            "calls": 2,
+            "cpu_residual_s": 0.0
+          },
+          "pcs_rows": {
+            "calls": 0,
+            "cpu_residual_s": 0.0
+          }
+        },
+        "h2d_bytes": 107374217152,
+        "d2h_bytes": 103079215072,
+        "explicit_d2d_copy_bytes": 0,
+        "device_zeroed_bytes": 30064771072,
+        "device_generated_bytes": 8589934592,
+        "synchronizations": 791,
+        "synchronization_s": 0.004891958,
+        "sync_host_output": 791,
+        "sync_upload_lifetime": 0,
+        "sync_timing_flush": 0,
+        "sync_profiling_legacy": 0,
+        "sync_allocator_flush": 0,
+        "allocation_calls": 0,
+        "physical_free_calls": 0,
+        "live_device_bytes": 43486546048,
+        "peak_device_bytes": 43486546048,
+        "timing_event_api_calls": 0,
+        "timing_records": 0
+      },
+      "root_hex": "024499106472dec09078b6a438fb0ff6a1a49b526d1f6aede79581dc84696879",
+      "metrics": {
+        "present_slots": 2,
+        "structural_slots": 2,
+        "coefficient_bytes_read": 4294967296,
+        "coefficient_bytes_persisted": 4294967296,
+        "oracle_bytes_persisted": 34359738368,
+        "root_bytes_persisted": 32,
+        "persisted_oracle_bytes_read_for_n4": 34359738368,
+        "staging_bytes_read": 68719476672,
+        "staging_bytes_written": 68719476704,
+        "peak_live_staging_bytes": 51539607552,
+        "retained_outer_cache_bytes": 34359738336,
+        "expected_h2d_bytes": 107374217152,
+        "expected_d2h_bytes": 103079215072,
+        "expected_device_zeroed_bytes": 30064771072,
+        "maximum_n4_tile_bytes": 402653312,
+        "ntt_calls": 2,
+        "inner_tile_calls": 512,
+        "outer_tile_calls": 277,
+        "page_cache_dontneed_bytes": 141733920768,
+        "page_cache_advice_calls": 35,
+        "persistent_artifact_bytes": 38654705696
+      },
+      "reconciliation_pass": true
+    },
+    "measured": [
+      {
+        "role": "measured-1",
+        "wall_s": 254.86152772,
+        "ceiling_s": 15.0,
+        "margin_s": -239.86152772,
+        "margin_percent": -1599.0768514666668,
+        "pass": false,
+        "peak_rss_bytes": 44768276480,
+        "process_io": {
+          "rchar": 103094815486,
+          "wchar": 107374182400,
+          "read_bytes": 103079235584,
+          "write_bytes": 107374211072
+        },
+        "accelerator": {
+          "timing_method": "wall-only-counters",
+          "phase_attribution_available": false,
+          "measurement_wall_s": 254.861547216,
+          "operations": {
+            "auth_masks": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "gemm": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "logup": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "mailbox": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_merkle": {
+              "calls": 789,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_ntt": {
+              "calls": 2,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_rows": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            }
+          },
+          "h2d_bytes": 107374217152,
+          "d2h_bytes": 103079215072,
+          "explicit_d2d_copy_bytes": 0,
+          "device_zeroed_bytes": 30064771072,
+          "device_generated_bytes": 0,
+          "synchronizations": 791,
+          "synchronization_s": 0.004786302,
+          "sync_host_output": 791,
+          "sync_upload_lifetime": 0,
+          "sync_timing_flush": 0,
+          "sync_profiling_legacy": 0,
+          "sync_allocator_flush": 0,
+          "allocation_calls": 0,
+          "physical_free_calls": 0,
+          "live_device_bytes": 43486546048,
+          "peak_device_bytes": 43486546048,
+          "timing_event_api_calls": 0,
+          "timing_records": 0
+        },
+        "root_hex": "024499106472dec09078b6a438fb0ff6a1a49b526d1f6aede79581dc84696879",
+        "metrics": {
+          "present_slots": 2,
+          "structural_slots": 2,
+          "coefficient_bytes_read": 4294967296,
+          "coefficient_bytes_persisted": 4294967296,
+          "oracle_bytes_persisted": 34359738368,
+          "root_bytes_persisted": 32,
+          "persisted_oracle_bytes_read_for_n4": 34359738368,
+          "staging_bytes_read": 68719476672,
+          "staging_bytes_written": 68719476704,
+          "peak_live_staging_bytes": 51539607552,
+          "retained_outer_cache_bytes": 34359738336,
+          "expected_h2d_bytes": 107374217152,
+          "expected_d2h_bytes": 103079215072,
+          "expected_device_zeroed_bytes": 30064771072,
+          "maximum_n4_tile_bytes": 402653312,
+          "ntt_calls": 2,
+          "inner_tile_calls": 512,
+          "outer_tile_calls": 277,
+          "page_cache_dontneed_bytes": 141733920768,
+          "page_cache_advice_calls": 35,
+          "persistent_artifact_bytes": 38654705696
+        },
+        "reconciliation_pass": true
+      },
+      {
+        "role": "measured-2",
+        "wall_s": 256.228667876,
+        "ceiling_s": 15.0,
+        "margin_s": -241.22866787599997,
+        "margin_percent": -1608.1911191733332,
+        "pass": false,
+        "peak_rss_bytes": 44774567936,
+        "process_io": {
+          "rchar": 103094899779,
+          "wchar": 107374182400,
+          "read_bytes": 103079235584,
+          "write_bytes": 107374211072
+        },
+        "accelerator": {
+          "timing_method": "wall-only-counters",
+          "phase_attribution_available": false,
+          "measurement_wall_s": 256.228687784,
+          "operations": {
+            "auth_masks": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "gemm": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "logup": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "mailbox": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_merkle": {
+              "calls": 789,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_ntt": {
+              "calls": 2,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_rows": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            }
+          },
+          "h2d_bytes": 107374217152,
+          "d2h_bytes": 103079215072,
+          "explicit_d2d_copy_bytes": 0,
+          "device_zeroed_bytes": 30064771072,
+          "device_generated_bytes": 0,
+          "synchronizations": 791,
+          "synchronization_s": 0.005229388,
+          "sync_host_output": 791,
+          "sync_upload_lifetime": 0,
+          "sync_timing_flush": 0,
+          "sync_profiling_legacy": 0,
+          "sync_allocator_flush": 0,
+          "allocation_calls": 0,
+          "physical_free_calls": 0,
+          "live_device_bytes": 43486546048,
+          "peak_device_bytes": 43486546048,
+          "timing_event_api_calls": 0,
+          "timing_records": 0
+        },
+        "root_hex": "024499106472dec09078b6a438fb0ff6a1a49b526d1f6aede79581dc84696879",
+        "metrics": {
+          "present_slots": 2,
+          "structural_slots": 2,
+          "coefficient_bytes_read": 4294967296,
+          "coefficient_bytes_persisted": 4294967296,
+          "oracle_bytes_persisted": 34359738368,
+          "root_bytes_persisted": 32,
+          "persisted_oracle_bytes_read_for_n4": 34359738368,
+          "staging_bytes_read": 68719476672,
+          "staging_bytes_written": 68719476704,
+          "peak_live_staging_bytes": 51539607552,
+          "retained_outer_cache_bytes": 34359738336,
+          "expected_h2d_bytes": 107374217152,
+          "expected_d2h_bytes": 103079215072,
+          "expected_device_zeroed_bytes": 30064771072,
+          "maximum_n4_tile_bytes": 402653312,
+          "ntt_calls": 2,
+          "inner_tile_calls": 512,
+          "outer_tile_calls": 277,
+          "page_cache_dontneed_bytes": 141733920768,
+          "page_cache_advice_calls": 35,
+          "persistent_artifact_bytes": 38654705696
+        },
+        "reconciliation_pass": true
+      },
+      {
+        "role": "measured-3",
+        "wall_s": 250.389515327,
+        "ceiling_s": 15.0,
+        "margin_s": -235.389515327,
+        "margin_percent": -1569.2634355133334,
+        "pass": false,
+        "peak_rss_bytes": 44771028992,
+        "process_io": {
+          "rchar": 103094543297,
+          "wchar": 107374182400,
+          "read_bytes": 103079235584,
+          "write_bytes": 107374211072
+        },
+        "accelerator": {
+          "timing_method": "wall-only-counters",
+          "phase_attribution_available": false,
+          "measurement_wall_s": 250.389535425,
+          "operations": {
+            "auth_masks": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "gemm": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "logup": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "mailbox": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_merkle": {
+              "calls": 789,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_ntt": {
+              "calls": 2,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_rows": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            }
+          },
+          "h2d_bytes": 107374217152,
+          "d2h_bytes": 103079215072,
+          "explicit_d2d_copy_bytes": 0,
+          "device_zeroed_bytes": 30064771072,
+          "device_generated_bytes": 0,
+          "synchronizations": 791,
+          "synchronization_s": 0.004803601,
+          "sync_host_output": 791,
+          "sync_upload_lifetime": 0,
+          "sync_timing_flush": 0,
+          "sync_profiling_legacy": 0,
+          "sync_allocator_flush": 0,
+          "allocation_calls": 0,
+          "physical_free_calls": 0,
+          "live_device_bytes": 43486546048,
+          "peak_device_bytes": 43486546048,
+          "timing_event_api_calls": 0,
+          "timing_records": 0
+        },
+        "root_hex": "024499106472dec09078b6a438fb0ff6a1a49b526d1f6aede79581dc84696879",
+        "metrics": {
+          "present_slots": 2,
+          "structural_slots": 2,
+          "coefficient_bytes_read": 4294967296,
+          "coefficient_bytes_persisted": 4294967296,
+          "oracle_bytes_persisted": 34359738368,
+          "root_bytes_persisted": 32,
+          "persisted_oracle_bytes_read_for_n4": 34359738368,
+          "staging_bytes_read": 68719476672,
+          "staging_bytes_written": 68719476704,
+          "peak_live_staging_bytes": 51539607552,
+          "retained_outer_cache_bytes": 34359738336,
+          "expected_h2d_bytes": 107374217152,
+          "expected_d2h_bytes": 103079215072,
+          "expected_device_zeroed_bytes": 30064771072,
+          "maximum_n4_tile_bytes": 402653312,
+          "ntt_calls": 2,
+          "inner_tile_calls": 512,
+          "outer_tile_calls": 277,
+          "page_cache_dontneed_bytes": 141733920768,
+          "page_cache_advice_calls": 35,
+          "persistent_artifact_bytes": 38654705696
+        },
+        "reconciliation_pass": true
+      }
+    ],
+    "selected_upper_median_wall_s": 254.86152772,
+    "ceiling_s": 15.0,
+    "margin_s": -239.86152772,
+    "margin_percent": -1599.0768514666668,
+    "pass": false
+  },
+  "final_artifacts": {
+    "wall_s": 16.861655657,
+    "peak_rss_bytes": 46930366464,
+    "process_io": {
+      "rchar": 9619624575,
+      "wchar": 0,
+      "read_bytes": 9618608128,
+      "write_bytes": 0
+    },
+    "page_cache_dontneed_bytes": 9618587808,
+    "page_cache_advice_calls": 10,
+    "footprint": {
+      "directory": "/x4b-artifacts/x4b-6c6907a-2667/durable-initial",
+      "coefficient_files": 5,
+      "oracle_files": 5,
+      "root_files": 5,
+      "coefficient_bytes": 9618587648,
+      "oracle_bytes": 76948701184,
+      "root_bytes": 160,
+      "durable_bytes": 86567288992,
+      "retained_initial_outer_cache_bytes": 37094424416,
+      "expected_initial_outer_cache_bytes": 37094424416,
+      "all_lengths_and_bindings_checked": true
+    }
+  },
+  "persisted_response": {
+    "source_policy": "PersistedOracle (record eligible); AuditRecompute refused",
+    "warmup": {
+      "role": "warmup",
+      "epoch": 1480720384,
+      "seal_wall_s": 544.092672056,
+      "open_wall_s": 6.675773511,
+      "verify_wall_s": 0.058429277,
+      "peak_rss_bytes": 98465030144,
+      "process_io": {
+        "rchar": 180062394546,
+        "wchar": 88046828912,
+        "read_bytes": 180120817664,
+        "write_bytes": 88047632384
+      },
+      "accelerator_seal": {
+        "timing_method": "wall-only-counters",
+        "phase_attribution_available": false,
+        "measurement_wall_s": 544.092691623,
+        "operations": {
+          "auth_masks": {
+            "calls": 0,
+            "cpu_residual_s": 0.0
+          },
+          "gemm": {
+            "calls": 0,
+            "cpu_residual_s": 0.0
+          },
+          "logup": {
+            "calls": 0,
+            "cpu_residual_s": 0.0
+          },
+          "mailbox": {
+            "calls": 0,
+            "cpu_residual_s": 0.0
+          },
+          "pcs_merkle": {
+            "calls": 925,
+            "cpu_residual_s": 0.0
+          },
+          "pcs_ntt": {
+            "calls": 27,
+            "cpu_residual_s": 0.0
+          },
+          "pcs_rows": {
+            "calls": 0,
+            "cpu_residual_s": 0.0
+          }
+        },
+        "h2d_bytes": 88046836500,
+        "d2h_bytes": 85899344416,
+        "explicit_d2d_copy_bytes": 0,
+        "device_zeroed_bytes": 15032385424,
+        "device_generated_bytes": 8589934528,
+        "synchronizations": 952,
+        "synchronization_s": 0.004938304,
+        "sync_host_output": 952,
+        "sync_upload_lifetime": 0,
+        "sync_timing_flush": 0,
+        "sync_profiling_legacy": 0,
+        "sync_allocator_flush": 0,
+        "allocation_calls": 0,
+        "physical_free_calls": 0,
+        "live_device_bytes": 43486546048,
+        "peak_device_bytes": 43486546048,
+        "timing_event_api_calls": 0,
+        "timing_records": 0
+      },
+      "packed_opening_bytes": 2615414,
+      "opened_symbols": 27564,
+      "real_sibling_digests": 67930,
+      "accepted": true,
+      "metrics": {
+        "source_coefficients_read": 601161728,
+        "initial_encoded_symbols_read": 4809293824,
+        "combined_coefficient_symbols": 144900096,
+        "combined_codeword_symbols": 1159200768,
+        "folded_symbols_written": 1073741816,
+        "aggregate_merkle_symbols_written": 1073741816,
+        "aggregate_merkle_digests_written": 3221225421,
+        "serialized_fold_bytes": 2446,
+        "serialized_packed_opening_bytes": 2615414,
+        "recomputed_source_bytes_read": 0,
+        "recomputed_oracle_bytes": 0,
+        "recomputed_merkle_bytes": 0,
+        "persisted_oracle_bytes_read": 76949425792,
+        "persisted_page_cache_dontneed_bytes": 76948701184,
+        "persisted_page_cache_advice_calls": 102,
+        "outer_cache_bytes_read": 507008,
+        "inner_trees_rebuilt": 2220,
+        "outer_frontier_leaves_rebuilt": 1110,
+        "outer_internal_nodes_rebuilt": 0,
+        "x4b_fold_coefficient_bytes_persisted": 2147483632,
+        "x4b_fold_oracle_bytes_persisted": 17179869056,
+        "x4b_fold_root_bytes_persisted": 864,
+        "x4b_fold_reference_bytes_read": 17179869056,
+        "x4b_fold_staging_bytes_read": 68719474496,
+        "x4b_fold_staging_bytes_written": 68719475360,
+        "x4b_fold_retained_outer_cache_bytes": 34359737248,
+        "x4b_fold_expected_h2d_bytes": 88046836500,
+        "x4b_fold_expected_d2h_bytes": 85899344416,
+        "x4b_fold_expected_device_zeroed_bytes": 15032385424,
+        "x4b_fold_maximum_n4_tile_bytes": 402653312,
+        "x4b_fold_page_cache_dontneed_bytes": 105226697968,
+        "x4b_fold_page_cache_advice_calls": 567
+      },
+      "g6_reconciliation_pass": true
+    },
+    "measured": [
+      {
+        "role": "measured-1",
+        "epoch": 1480720385,
+        "seal_wall_s": 546.306812705,
+        "open_wall_s": 6.683486611,
+        "verify_wall_s": 0.058438415,
+        "peak_rss_bytes": 98466013184,
+        "process_io": {
+          "rchar": 180062530610,
+          "wchar": 88046828912,
+          "read_bytes": 180028485632,
+          "write_bytes": 88047632384
+        },
+        "accelerator_seal": {
+          "timing_method": "wall-only-counters",
+          "phase_attribution_available": false,
+          "measurement_wall_s": 546.306833173,
+          "operations": {
+            "auth_masks": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "gemm": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "logup": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "mailbox": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_merkle": {
+              "calls": 925,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_ntt": {
+              "calls": 27,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_rows": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            }
+          },
+          "h2d_bytes": 88046836500,
+          "d2h_bytes": 85899344416,
+          "explicit_d2d_copy_bytes": 0,
+          "device_zeroed_bytes": 15032385424,
+          "device_generated_bytes": 8589934528,
+          "synchronizations": 952,
+          "synchronization_s": 0.005088116,
+          "sync_host_output": 952,
+          "sync_upload_lifetime": 0,
+          "sync_timing_flush": 0,
+          "sync_profiling_legacy": 0,
+          "sync_allocator_flush": 0,
+          "allocation_calls": 0,
+          "physical_free_calls": 0,
+          "live_device_bytes": 43486546048,
+          "peak_device_bytes": 43486546048,
+          "timing_event_api_calls": 0,
+          "timing_records": 0
+        },
+        "packed_opening_bytes": 2615414,
+        "opened_symbols": 27564,
+        "real_sibling_digests": 67930,
+        "accepted": true,
+        "metrics": {
+          "source_coefficients_read": 601161728,
+          "initial_encoded_symbols_read": 4809293824,
+          "combined_coefficient_symbols": 144900096,
+          "combined_codeword_symbols": 1159200768,
+          "folded_symbols_written": 1073741816,
+          "aggregate_merkle_symbols_written": 1073741816,
+          "aggregate_merkle_digests_written": 3221225421,
+          "serialized_fold_bytes": 2446,
+          "serialized_packed_opening_bytes": 2615414,
+          "recomputed_source_bytes_read": 0,
+          "recomputed_oracle_bytes": 0,
+          "recomputed_merkle_bytes": 0,
+          "persisted_oracle_bytes_read": 76949425792,
+          "persisted_page_cache_dontneed_bytes": 76948701184,
+          "persisted_page_cache_advice_calls": 102,
+          "outer_cache_bytes_read": 507008,
+          "inner_trees_rebuilt": 2220,
+          "outer_frontier_leaves_rebuilt": 1110,
+          "outer_internal_nodes_rebuilt": 0,
+          "x4b_fold_coefficient_bytes_persisted": 2147483632,
+          "x4b_fold_oracle_bytes_persisted": 17179869056,
+          "x4b_fold_root_bytes_persisted": 864,
+          "x4b_fold_reference_bytes_read": 17179869056,
+          "x4b_fold_staging_bytes_read": 68719474496,
+          "x4b_fold_staging_bytes_written": 68719475360,
+          "x4b_fold_retained_outer_cache_bytes": 34359737248,
+          "x4b_fold_expected_h2d_bytes": 88046836500,
+          "x4b_fold_expected_d2h_bytes": 85899344416,
+          "x4b_fold_expected_device_zeroed_bytes": 15032385424,
+          "x4b_fold_maximum_n4_tile_bytes": 402653312,
+          "x4b_fold_page_cache_dontneed_bytes": 105226697968,
+          "x4b_fold_page_cache_advice_calls": 567
+        },
+        "g6_reconciliation_pass": true
+      },
+      {
+        "role": "measured-2",
+        "epoch": 1480720386,
+        "seal_wall_s": 540.795752379,
+        "open_wall_s": 6.654546403,
+        "verify_wall_s": 0.058297648,
+        "peak_rss_bytes": 98484273152,
+        "process_io": {
+          "rchar": 180062191131,
+          "wchar": 88046828912,
+          "read_bytes": 180028485632,
+          "write_bytes": 88047632384
+        },
+        "accelerator_seal": {
+          "timing_method": "wall-only-counters",
+          "phase_attribution_available": false,
+          "measurement_wall_s": 540.795773298,
+          "operations": {
+            "auth_masks": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "gemm": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "logup": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "mailbox": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_merkle": {
+              "calls": 925,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_ntt": {
+              "calls": 27,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_rows": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            }
+          },
+          "h2d_bytes": 88046836500,
+          "d2h_bytes": 85899344416,
+          "explicit_d2d_copy_bytes": 0,
+          "device_zeroed_bytes": 15032385424,
+          "device_generated_bytes": 8589934528,
+          "synchronizations": 952,
+          "synchronization_s": 0.004838674,
+          "sync_host_output": 952,
+          "sync_upload_lifetime": 0,
+          "sync_timing_flush": 0,
+          "sync_profiling_legacy": 0,
+          "sync_allocator_flush": 0,
+          "allocation_calls": 0,
+          "physical_free_calls": 0,
+          "live_device_bytes": 43486546048,
+          "peak_device_bytes": 43486546048,
+          "timing_event_api_calls": 0,
+          "timing_records": 0
+        },
+        "packed_opening_bytes": 2615414,
+        "opened_symbols": 27564,
+        "real_sibling_digests": 67930,
+        "accepted": true,
+        "metrics": {
+          "source_coefficients_read": 601161728,
+          "initial_encoded_symbols_read": 4809293824,
+          "combined_coefficient_symbols": 144900096,
+          "combined_codeword_symbols": 1159200768,
+          "folded_symbols_written": 1073741816,
+          "aggregate_merkle_symbols_written": 1073741816,
+          "aggregate_merkle_digests_written": 3221225421,
+          "serialized_fold_bytes": 2446,
+          "serialized_packed_opening_bytes": 2615414,
+          "recomputed_source_bytes_read": 0,
+          "recomputed_oracle_bytes": 0,
+          "recomputed_merkle_bytes": 0,
+          "persisted_oracle_bytes_read": 76949425792,
+          "persisted_page_cache_dontneed_bytes": 76948701184,
+          "persisted_page_cache_advice_calls": 102,
+          "outer_cache_bytes_read": 507008,
+          "inner_trees_rebuilt": 2220,
+          "outer_frontier_leaves_rebuilt": 1110,
+          "outer_internal_nodes_rebuilt": 0,
+          "x4b_fold_coefficient_bytes_persisted": 2147483632,
+          "x4b_fold_oracle_bytes_persisted": 17179869056,
+          "x4b_fold_root_bytes_persisted": 864,
+          "x4b_fold_reference_bytes_read": 17179869056,
+          "x4b_fold_staging_bytes_read": 68719474496,
+          "x4b_fold_staging_bytes_written": 68719475360,
+          "x4b_fold_retained_outer_cache_bytes": 34359737248,
+          "x4b_fold_expected_h2d_bytes": 88046836500,
+          "x4b_fold_expected_d2h_bytes": 85899344416,
+          "x4b_fold_expected_device_zeroed_bytes": 15032385424,
+          "x4b_fold_maximum_n4_tile_bytes": 402653312,
+          "x4b_fold_page_cache_dontneed_bytes": 105226697968,
+          "x4b_fold_page_cache_advice_calls": 567
+        },
+        "g6_reconciliation_pass": true
+      },
+      {
+        "role": "measured-3",
+        "epoch": 1480720387,
+        "seal_wall_s": 528.818977844,
+        "open_wall_s": 6.730112741,
+        "verify_wall_s": 0.058573661,
+        "peak_rss_bytes": 98513633280,
+        "process_io": {
+          "rchar": 180061460788,
+          "wchar": 88046828912,
+          "read_bytes": 180028485632,
+          "write_bytes": 88047632384
+        },
+        "accelerator_seal": {
+          "timing_method": "wall-only-counters",
+          "phase_attribution_available": false,
+          "measurement_wall_s": 528.818997982,
+          "operations": {
+            "auth_masks": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "gemm": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "logup": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "mailbox": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_merkle": {
+              "calls": 925,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_ntt": {
+              "calls": 27,
+              "cpu_residual_s": 0.0
+            },
+            "pcs_rows": {
+              "calls": 0,
+              "cpu_residual_s": 0.0
+            }
+          },
+          "h2d_bytes": 88046836500,
+          "d2h_bytes": 85899344416,
+          "explicit_d2d_copy_bytes": 0,
+          "device_zeroed_bytes": 15032385424,
+          "device_generated_bytes": 8589934528,
+          "synchronizations": 952,
+          "synchronization_s": 0.004834943,
+          "sync_host_output": 952,
+          "sync_upload_lifetime": 0,
+          "sync_timing_flush": 0,
+          "sync_profiling_legacy": 0,
+          "sync_allocator_flush": 0,
+          "allocation_calls": 0,
+          "physical_free_calls": 0,
+          "live_device_bytes": 43486546048,
+          "peak_device_bytes": 43486546048,
+          "timing_event_api_calls": 0,
+          "timing_records": 0
+        },
+        "packed_opening_bytes": 2615414,
+        "opened_symbols": 27564,
+        "real_sibling_digests": 67930,
+        "accepted": true,
+        "metrics": {
+          "source_coefficients_read": 601161728,
+          "initial_encoded_symbols_read": 4809293824,
+          "combined_coefficient_symbols": 144900096,
+          "combined_codeword_symbols": 1159200768,
+          "folded_symbols_written": 1073741816,
+          "aggregate_merkle_symbols_written": 1073741816,
+          "aggregate_merkle_digests_written": 3221225421,
+          "serialized_fold_bytes": 2446,
+          "serialized_packed_opening_bytes": 2615414,
+          "recomputed_source_bytes_read": 0,
+          "recomputed_oracle_bytes": 0,
+          "recomputed_merkle_bytes": 0,
+          "persisted_oracle_bytes_read": 76949425792,
+          "persisted_page_cache_dontneed_bytes": 76948701184,
+          "persisted_page_cache_advice_calls": 102,
+          "outer_cache_bytes_read": 507008,
+          "inner_trees_rebuilt": 2220,
+          "outer_frontier_leaves_rebuilt": 1110,
+          "outer_internal_nodes_rebuilt": 0,
+          "x4b_fold_coefficient_bytes_persisted": 2147483632,
+          "x4b_fold_oracle_bytes_persisted": 17179869056,
+          "x4b_fold_root_bytes_persisted": 864,
+          "x4b_fold_reference_bytes_read": 17179869056,
+          "x4b_fold_staging_bytes_read": 68719474496,
+          "x4b_fold_staging_bytes_written": 68719475360,
+          "x4b_fold_retained_outer_cache_bytes": 34359737248,
+          "x4b_fold_expected_h2d_bytes": 88046836500,
+          "x4b_fold_expected_d2h_bytes": 85899344416,
+          "x4b_fold_expected_device_zeroed_bytes": 15032385424,
+          "x4b_fold_maximum_n4_tile_bytes": 402653312,
+          "x4b_fold_page_cache_dontneed_bytes": 105226697968,
+          "x4b_fold_page_cache_advice_calls": 567
+        },
+        "g6_reconciliation_pass": true
+      }
+    ],
+    "selected_upper_median_open_wall_s": 6.683486611,
+    "selected_upper_median_verify_wall_s": 0.058438415,
+    "open_ceiling_s": 1.5,
+    "verify_ceiling_s": 0.25,
+    "open_pass": false,
+    "verify_pass": true,
+    "all_accepted": true,
+    "all_byte_counts_exact": true,
+    "all_g6_reconciled": true
+  },
+  "codec_reference": {
+    "migration_path": "benchmarks/results/x4-v4-gpt2-migration-2026-07-21-31fc866.json",
+    "migration_sha256": "d7c73d7f74cbc226c768330582cebcaed02939eb7940111715da2fc3d87d2d5e",
+    "observed_codec_sha256": "7326f1e47d87bf6858b7811a152a45530359b869bcd9abb30e34bcc4c9dd2a9b",
+    "frozen_codec_sha256": "7326f1e47d87bf6858b7811a152a45530359b869bcd9abb30e34bcc4c9dd2a9b",
+    "packed_opening_bytes": 2615414,
+    "complete_pcs_bytes": 2683236,
+    "response_bytes": 43953700,
+    "golden_decode_exact": true,
+    "exact_match": true
+  },
+  "audit_recompute_refused": true,
+  "draw_before_complete_seal_rejected": true,
+  "historical_baseline": {
+    "path": "benchmarks/results/x4-v4-a100-production-2026-07-22-47a701e.json",
+    "sha256": "111e4056feb0ba53569889a0bf1d0af73c99ab4613ab9a76aae975f8adbb0237",
+    "verdict": "G4 COMMIT FAIL; OVERALL X4 FAIL",
+    "immutable": true
+  },
+  "gate": {
+    "cpu_full_node_pipeline": "PASS — full serialization+allocation+hash pipeline 723716307.952 B/s/core against >=500,000,000",
+    "cpu_gpu_root_equality": "PASS — all four derive contexts, synthetic structural families, complete aux roots and larger-cohort samples",
+    "isolated_commit": "FAIL — exact Wext-mu26 upper-median 254.861527720 s <=15.000 s; margin -239.861527720 s (-1599.076851%)",
+    "full_pass_commit": "MEASURED / INFORMATIVE — upper-median complete GPT-2 pass 401.723726678 s; no ceiling in this profile",
+    "persisted_open": "FAIL — PersistedOracle upper-median 6.683486611 s <=1.500 s",
+    "persisted_verify": "PASS — upper-median 0.058438415 s <=0.250 s",
+    "communication_identity": "PASS — PCS exactly 2,683,236 B; response exactly 43,953,700 B; frozen codec digest unchanged",
+    "g6_honesty": "PASS — durable/resident/recompute/H2D/D2H/host-I/O/scratch/RSS/page-cache/VRAM counters present and reconciled",
+    "hardware_profile": "PASS — A100-SXM4 80 GB, 8 Rayon workers, >=150 GB volume, actual RAM 2151618097152 B against frozen >=128 GiB requirement",
+    "overall_x4b": "FAIL — conjunctive runpod-a100-x4b-v1 gates; no threshold relaxed",
+    "historical_x4": "FAIL IMMUTABLE — x4-v4-a100-production-2026-07-22-47a701e.json remains the X4 verdict"
+  },
+  "assurance": "AI-generated implementation and records; no independent human-review assurance. R1c hostile review remains mandatory."
+}

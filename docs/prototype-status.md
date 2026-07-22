@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b LOCAL PHASE 2 GREEN; POD PACKAGING REPAIR PASS — ONE CLEAN RERUN NEXT)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; GATES UNCHANGED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -154,8 +154,18 @@ serialization are the larger removable overhead.  The frozen X4b profile is
 authorized Phase 2 with the three implementation/pre-pod riders recorded
 below.  The local implementation, complete-pipeline CPU screen and exact-
 geometry persisted-opening preflight are now green at the clean checkpoint
-recorded below.  The second hard stop is active: no pod has been contacted,
-and provisioning is the next owner action.
+recorded below.  The ordered pod session then completed from clean source
+`6c6907ab144f4cfbe9cadb06ebb01d652d1dc82d` after NOTE-6, fail-closed
+synthetic CPU/GPU root equality, two storage incidents and one fail-closed
+packaging incident.  Its official validated record makes the complete node
+pipeline, root equality, verify, communication identity, G6 honesty and
+hardware gates PASS, and measures the full pass informatively, but the exact
+Wext-mu26 isolated commit is **254.861527720 s > 15.000 s** and persisted
+opening is **6.683486611 s > 1.500 s**.  Therefore X4b closes **FAIL** with no
+threshold relaxed.  The immutable X4 FAIL remains historical truth, the v4
+protocol/design/reference/soundness freeze is unchanged, and R1c remains
+mandatory over the v3/v4 seam plus the X4b CPU-hash, CUDA and persistence
+surface.
 
 ## Milestones
 
@@ -205,7 +215,7 @@ and provisioning is the next owner action.
 | X4 R1b NOTE-6 pod preflight | **PASS; X4 A100 RECORDS AUTHORIZED** (2026-07-22) | Exact `c3_weights` production-size smoke must be first; clean frozen checkout; command/wall/RSS/VRAM/exit/leakage evidence pinned | Clean `runpod-a100-x4-v1` source `71edbd7`; exact-name smoke **1 passed / 0 failed**, exit **0**, test wall **44.87 s**, encoded geometry **6,442,450,944 B**, peak RSS **11,493,740,544 B**, peak GPU memory **0 MiB**. Record `x4-note6-c3-weights-preflight-2026-07-22-71edbd7.json`, SHA-256 `8fef35aae0412c45556b37fbfba89c88041d9de8b3c9733ad65227daeb83b0c2`. Three ineligible setup attempts are retained: parse-before-exec, wrong Cargo directory, and MFS build-target stall; none started the test binary. No X4 gate verdict is claimed by this preflight. |
 | X4 Amendment 5 A100 production record | **G4 COMMIT FAIL; OVERALL X4 FAIL; STOPPED** (2026-07-22) | Gates conjunctive and verbatim; no synthetic production credit; wall-only+counters; one warm-up + three measured; physical inventory and X5 anchors explicit | Clean `runpod-a100-x4-v1` harness `47a701e`. Exact `Wext-mu26` constituent timed out at **16.340085726 s** warm-up and **16.187542362 / 16.127495669 / 16.179918053 s** measured against complete commit **<=15.000 s: FAIL**. G1 PASS; G3 **2,683,236 / 43,953,700 B PASS**; full G2, G4 open/verify and physical G6 NOT EVALUATED; overall **FAIL**. Exact padded first oracle **76,948,701,184 B**, Merkle **468,872,855,392 B**, per materialization **545,821,556,576 B**, twice-recompute **1,091,643,113,152 B**, persistent coefficients+roots **9,618,587,808 B**. CPU aux17 anchor **11,229,161.918552168 B/s**; one-query recompute **3.117810096 s / 205,520,864 B**; compatible GPU path absent. Record `x4-v4-a100-production-2026-07-22-47a701e.json`, SHA-256 `111e4056feb0ba53569889a0bf1d0af73c99ab4613ab9a76aae975f8adbb0237`. |
 | X4b sustainable oracle Phase 1 | **DIAGNOSIS + PREREGISTRATION COMPLETE; HARD STOP BEFORE IMPLEMENTATION/POD** (2026-07-22) | No format/root/reference/Lean/soundness change; exact postdiction; CPU >=500 MB/s/core; GPU root equality; unchanged 15 s / 1.50 s / 0.25 s; full pass informative | Design SHA-256 `bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01`. Clean-source CPU record `x4b-phase1-cpu-postdiction-2026-07-22-9164de4.json`, SHA-256 `78fdd12ed79c4cf05d42b428a7fa305c28e4254be82289608c45f1f85ce64ec1`: exact aux17 has **5,242,879** hashes / **460,324,760 canonical B**; tree wall is 92.14% explained by those calls; derive-key is material but allocation/serialization is larger. Exact padding **2.4103942174056745x**, Merkle/oracle **6.093317342300939x**, recompute **205,520,864 B / 3.117810096 s**. Profile `runpod-a100-x4b-v1`; durable artifacts **86,567,288,992 B**, volume >=150 GB, host RAM >=128 GiB, device ceiling 48 GiB. X4 FAIL remains immutable. |
-| X4b sustainable oracle Phase 2 | **LOCAL IMPLEMENTATION + PREFLIGHT PASS; HARD STOP / POD REQUIRED** (2026-07-22) | Frozen Phase-1 construction and all three riders implemented; local exact-geometry screens green; CUDA device bring-up and production gates remain pending A100 | Source `bcbda451ead3b7e70f59f4595109556dbbd89bb7`. Clean record `x4b-local-cpu-preflight-2026-07-22-bcbda45.json`, SHA-256 `bf391aa2045a426c67ff46d53215d6fd0d57847b5d4fdd42365740c43400447c`: complete serialization+pipeline-allocation+hash wall **0.550247588 s**, **836,577,515.3565962 canonical B/s/core** local PASS screen. Full/degraded persisted open **0.051483012 / 0.090788295 s**, verify **0.034853677 / 0.036755061 s**, byte-identical **2,615,414-B** openings. Degraded cache is **35,727,080,320 B**, saving **35,727,081,344 B** while explicitly counting **5,416** rebuilt outer nodes. Design SHA and every proof/root/reference/byte/Lean/soundness value remain unchanged. No pod verdict yet. |
+| X4b sustainable oracle Phase 2 | **OFFICIAL X4b FAIL: ISOLATED COMMIT + PERSISTED OPEN; CLOSED** (2026-07-22) | Conjunctive `runpod-a100-x4b-v1`; complete node pipeline, CPU/GPU roots, verify, bytes, G6 and hardware PASS; full pass informative; isolated commit <=15 s FAIL; open <=1.50 s FAIL; no gate relaxed | Clean source `6c6907ab144f4cfbe9cadb06ebb01d652d1dc82d`. Validated record `x4b-a100-production-2026-07-22-6c6907a.json`, SHA-256 `63f4a97b263e4d09649d5a6ede5af1ba420efdcc78bb30f54b9f8cf200cfe6e0`. CPU pipeline **723,716,307.952 B/s/core PASS**; CPU/GPU roots equal; full pass **401.723726678 s / 191,546,319.209 oracle B/s informative**; Wext-mu26 **254.861527720 s FAIL**; persisted open **6.683486611 s FAIL**; verify **0.058438415 s PASS**; PCS/response exactly **2,683,236 / 43,953,700 B PASS**; G6 reconciled. Durable initial artifacts **86,567,288,992 B**, peak device **43,486,546,048 B**. Historical X4 FAIL immutable; design SHA, proof/root/reference bytes, Lean and **80.25537016399041-bit** soundness unchanged. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -273,6 +283,57 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-22 (X4b official A100 production closure: isolated commit FAIL,
+  persisted open FAIL, overall FAIL)**: the one eligible clean rerun completed
+  from source `6c6907ab144f4cfbe9cadb06ebb01d652d1dc82d` on RunPod instance
+  `c94442d3ed14` with 2 x A100-SXM4-80GB, **2,151,618,097,152 B** visible
+  host RAM, a **161,061,273,600-B** local overlay artifact filesystem and
+  eight Rayon workers.  The recorder used GPU 0 under the frozen single-
+  backend profile; the second GPU changed no protocol or gate.  NOTE-6 had
+  already passed first, and the synthetic CPU/GPU equality gate ran before
+  any 77-GB full pass.  The append-only official record is
+  `benchmarks/results/x4b-a100-production-2026-07-22-6c6907a.json`, SHA-256
+  `63f4a97b263e4d09649d5a6ede5af1ba420efdcc78bb30f54b9f8cf200cfe6e0`;
+  `scripts/report.py --validate-x4b-pod` accepts it.
+
+  The record's gate verdicts, copied verbatim, are:
+
+  - `PASS — full serialization+allocation+hash pipeline 723716307.952 B/s/core against >=500,000,000`
+  - `PASS — all four derive contexts, synthetic structural families, complete aux roots and larger-cohort samples`
+  - `FAIL — exact Wext-mu26 upper-median 254.861527720 s <=15.000 s; margin -239.861527720 s (-1599.076851%)`
+  - `MEASURED / INFORMATIVE — upper-median complete GPT-2 pass 401.723726678 s; no ceiling in this profile`
+  - `FAIL — PersistedOracle upper-median 6.683486611 s <=1.500 s`
+  - `PASS — upper-median 0.058438415 s <=0.250 s`
+  - `PASS — PCS exactly 2,683,236 B; response exactly 43,953,700 B; frozen codec digest unchanged`
+  - `PASS — durable/resident/recompute/H2D/D2H/host-I/O/scratch/RSS/page-cache/VRAM counters present and reconciled`
+  - `PASS — A100-SXM4 80 GB, 8 Rayon workers, >=150 GB volume, actual RAM 2151618097152 B against frozen >=128 GiB requirement`
+  - `FAIL — conjunctive runpod-a100-x4b-v1 gates; no threshold relaxed`
+  - `FAIL IMMUTABLE — x4-v4-a100-production-2026-07-22-47a701e.json remains the X4 verdict`
+
+  The informative full-pass throughput is
+  **191,546,319.20876786 oracle B/s**.  Final durable materialization took
+  **365.918590373 s** and retained exactly **9,618,587,648 B** coefficients,
+  **76,948,701,184 B** oracle data and **160 B** roots, or
+  **86,567,288,992 B** total.  The full initial outer cache is
+  **37,094,424,416 B**; the response seal additionally retains
+  **34,359,737,248 B** of fold outer cache.  All response candidates accepted,
+  emitted exactly **27,564** symbols and **67,930** real sibling digests, and
+  reconciled physical traffic.  The selected persisted opening nevertheless
+  needs **6.683486611 s**, despite a **0.058438415-s** verifier, so the local
+  sparse-fixture screen was not promoted to production credit.
+
+  Verdict: **OFFICIAL X4b FAIL; CLOSED**.  No proof format, Merkle root,
+  byte reference, gate ceiling, Lean statement, rate, query count, claim
+  union, correlation count or soundness expression changed, and no result is
+  rounded into a near pass.  The immutable X4 record remains an independent
+  historical FAIL.  R1c mandatory hostile-review scope explicitly includes
+  the Amendment-3/4 binding episodes, pre-pod draw-before-validate NOTE, and
+  the X4b allocation-free CPU hash, CUDA E-NTT/N4 and persisted-oracle
+  construction/opening code.  The named **X5 oracle-scale design addendum**
+  remains the only authorized home for format-touching levers.  This remains
+  AI-generated implementation and measurement evidence with no independent
+  human-review assurance.
 
 - **2026-07-22 (X4b packaging repair preflight PASS; one clean rerun
   eligible)**: checkpoint `6d7b22c98a0cba418c36f37a74c1464c8e49096c`

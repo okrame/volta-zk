@@ -332,6 +332,125 @@ def test_x4_v4_validators_pin_profile_bytes_events_and_incomplete_pod_scope():
     assert report._x4_v4_migration_result_valid(bad_migration) is False
 
 
+def test_x4_v4_pod_validator_accepts_only_the_fail_closed_physical_record():
+    report = load_report_module()
+    cohort_names = [
+        "Wext-mu26-global-tied-roles",
+        "Wext-mu22-all-layers",
+        "Wext-mu20-layers-and-position",
+        "auxiliary-ell17",
+        "auxiliary-ell16",
+    ]
+    row = {
+        "schema": 1,
+        "milestone": "X4-v4-A100-production-record",
+        "git_dirty": False,
+        "git_sha": "d" * 40,
+        "pod_profile": report.X4_V4_POD_PROFILE,
+        "protocol_or_parameter_change": False,
+        "machine": {
+            "provider": "RunPod",
+            "gpu": "NVIDIA A100-SXM4-80GB, GPU-test",
+            "rayon_threads": 8,
+            "timing_policy": "wall-only+counters; no CUDA-event timing",
+            "memory_bytes": 2_000_000_000_000,
+            "persistent_volume_available_bytes": 100_000_000_000_000,
+        },
+        "frozen": {
+            "profile": report.X4_V4_PROFILE,
+            "design_sha256": report.X4_V4_DESIGN_SHA256,
+            "frozen_design_baseline_sha256": report.X4_V4_FROZEN_BASELINE_SHA256,
+            "migration_sha256": report.X4_V4_MIGRATION_SHA256,
+            "note6_sha256": report.X4_V4_NOTE6_SHA256,
+            "rate": "1/8",
+            "query_count": 111,
+            "maximum_claim_union": 3320,
+            "opened_symbols": 27_564,
+            "real_sibling_digests": 67_930,
+            "pcs_bytes": 2_683_236,
+            "response_bytes": 43_953_700,
+            "soundness_expression": report.X4_V4_SOUNDNESS_EXPRESSION,
+            "soundness_bits": report.X4_V4_SOUNDNESS_BITS,
+            "soundness_floor_bits": report.X4_V4_SOUNDNESS_FLOOR_BITS,
+            "soundness_new_terms": 0,
+        },
+        "physical_inventory": {
+            "source_equivalent_unpadded_floor_bytes": 31_923_699_712,
+            "coefficient_bytes": 9_618_587_648,
+            "physical_padded_first_oracle_bytes": 76_948_701_184,
+            "inner_merkle_digests": 12_333_875_200,
+            "outer_merkle_digests": 2_318_401_531,
+            "merkle_digest_bytes": 468_872_855_392,
+            "bytes_per_materialization": 545_821_556_576,
+            "bytes_recomputed_per_response": 1_091_643_113_152,
+            "persistent_coefficients_plus_roots_bytes": 9_618_587_808,
+            "maximum_current_cohort_working_set_bytes": 363_998_478_304,
+            "cohorts": [{"name": name} for name in cohort_names],
+        },
+        "production_commit_probe": [
+            {
+                "role": role,
+                "exact_cohort": "Wext-mu26-global-tied-roles",
+                "domain_log2": 30,
+                "present_slots": 2,
+                "structural_slots": 2,
+                "ceiling_s": 15.0,
+                "observed_wall_s": 15.05,
+                "completed": False,
+                "timed_out": True,
+                "h2d_bytes": 0,
+                "d2h_bytes": 0,
+                "peak_vram_bytes": 0,
+            }
+            for role in ("warmup", "measured-1", "measured-2", "measured-3")
+        ],
+        "informative_streaming_commit": {
+            "status": "MEASURED_EXACT_AUX17_ANCHOR; FULL_FLOOR_BLOCKED_BY_G4_TIMEOUT",
+            "warmup_count": 1,
+            "measured_candidates": 3,
+            "candidate_wall_s": [1.0, 1.1, 1.2],
+            "selected_upper_median_wall_s": 1.1,
+            "measured_first_oracle_bytes_per_candidate": 33_554_432,
+            "measured_merkle_bytes_per_candidate": 167_772_128,
+            "selected_first_oracle_bytes_per_s": 30_000_000.0,
+            "projected_unpadded_floor_wall_s_at_measured_rate": 1000.0,
+            "projected_physical_padded_oracle_wall_s_at_measured_rate": 2500.0,
+            "full_31_9gb_pass_completed": False,
+        },
+        "informative_per_query_cohort_recompute": {
+            "query_count_per_candidate": 1,
+            "candidate_wall_s": [1.0, 1.1, 1.2],
+            "selected_upper_median_wall_s": 1.1,
+            "source_bytes_read_per_query": 4_194_304,
+            "oracle_bytes_recomputed_per_query": 33_554_432,
+            "merkle_bytes_recomputed_per_query": 167_772_128,
+            "total_logical_bytes_per_query": 205_520_864,
+            "root_checked": True,
+        },
+        "informative_gpu_assisted_streaming_commit": {
+            "available": False,
+            "measured": False,
+        },
+        "gate": {
+            "g1_lean": "PASS — exact",
+            "g2_full_production_correctness": "NOT EVALUATED — commit failure",
+            "g3_communication": "PASS — exact",
+            "g4_commit": "FAIL — timeout",
+            "g4_open": "NOT EVALUATED — commit failure",
+            "g4_verify": "NOT EVALUATED — commit failure",
+            "g6_storage_traffic": "NOT EVALUATED AS PASS — incomplete",
+            "overall_x4": "FAIL — conjunctive G4 commit gate failed; no threshold was relaxed",
+        },
+    }
+    assert report._x4_v4_pod_result_valid(row) is True
+    bad = copy.deepcopy(row)
+    bad["production_commit_probe"][2]["timed_out"] = False
+    assert report._x4_v4_pod_result_valid(bad) is False
+    bad = copy.deepcopy(row)
+    bad["physical_inventory"]["physical_padded_first_oracle_bytes"] = 31_923_699_712
+    assert report._x4_v4_pod_result_valid(bad) is False
+
+
 def test_resident_profile_joins_only_same_host_native_anchor_and_keeps_full_accounting():
     report = load_report_module()
     raw = {

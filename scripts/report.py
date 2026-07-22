@@ -94,6 +94,26 @@ X4_V4_SOUNDNESS_FLOOR_BITS = 78.809294874
 X4_V4_PACKED_OPENING_BYTES = 2_615_414
 X4_V4_PCS_BYTES = 2_683_236
 X4_V4_RESPONSE_BYTES = 43_953_700
+X4_V4_POD_PROFILE = "runpod-a100-x4-v1"
+X4_V4_FROZEN_BASELINE_SHA256 = (
+    "1383fa5d0a2eb9155f1ca76fe814238c04eaaa7aab965e10374b5f07d220bfb7"
+)
+X4_V4_MIGRATION_SHA256 = (
+    "d7c73d7f74cbc226c768330582cebcaed02939eb7940111715da2fc3d87d2d5e"
+)
+X4_V4_NOTE6_SHA256 = (
+    "8fef35aae0412c45556b37fbfba89c88041d9de8b3c9733ad65227daeb83b0c2"
+)
+X4_V4_SOURCE_FLOOR_BYTES = 31_923_699_712
+X4_V4_PHYSICAL_ORACLE_BYTES = 76_948_701_184
+X4_V4_COEFFICIENT_BYTES = 9_618_587_648
+X4_V4_INNER_MERKLE_DIGESTS = 12_333_875_200
+X4_V4_OUTER_MERKLE_DIGESTS = 2_318_401_531
+X4_V4_MERKLE_BYTES = 468_872_855_392
+X4_V4_MATERIALIZATION_BYTES = 545_821_556_576
+X4_V4_RESPONSE_RECOMPUTE_BYTES = 1_091_643_113_152
+X4_V4_PERSISTENT_COEFFICIENTS_ROOTS_BYTES = 9_618_587_808
+X4_V4_MAX_CURRENT_COHORT_WORKING_SET_BYTES = 363_998_478_304
 X4_V4_COUNTER_FAMILIES = [
     "frame_reject",
     "packed_schedule_reject",
@@ -277,6 +297,139 @@ def validate_x4_v4_migration_result(path: Path) -> bool:
         if not path.is_absolute():
             path = REPO / path
         return _x4_v4_migration_result_valid(load_json(path))
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return False
+
+
+def _x4_v4_pod_result_valid(row: dict[str, Any]) -> bool:
+    machine = row.get("machine")
+    frozen = row.get("frozen")
+    inventory = row.get("physical_inventory")
+    probes = row.get("production_commit_probe")
+    streaming = row.get("informative_streaming_commit")
+    recompute = row.get("informative_per_query_cohort_recompute")
+    gpu = row.get("informative_gpu_assisted_streaming_commit")
+    gate = row.get("gate")
+    if not (
+        row.get("schema") == 1
+        and row.get("milestone") == "X4-v4-A100-production-record"
+        and row.get("git_dirty") is False
+        and isinstance(row.get("git_sha"), str)
+        and len(row["git_sha"]) == 40
+        and row.get("pod_profile") == X4_V4_POD_PROFILE
+        and row.get("protocol_or_parameter_change") is False
+        and isinstance(machine, dict)
+        and machine.get("provider") == "RunPod"
+        and "A100-SXM4-80GB" in machine.get("gpu", "")
+        and machine.get("rayon_threads") == 8
+        and machine.get("timing_policy") == "wall-only+counters; no CUDA-event timing"
+        and machine.get("memory_bytes", 0) > X4_V4_MAX_CURRENT_COHORT_WORKING_SET_BYTES
+        and machine.get("persistent_volume_available_bytes", 0)
+        > X4_V4_PERSISTENT_COEFFICIENTS_ROOTS_BYTES
+        and isinstance(frozen, dict)
+        and frozen.get("profile") == X4_V4_PROFILE
+        and frozen.get("design_sha256") == X4_V4_DESIGN_SHA256
+        and frozen.get("frozen_design_baseline_sha256")
+        == X4_V4_FROZEN_BASELINE_SHA256
+        and frozen.get("migration_sha256") == X4_V4_MIGRATION_SHA256
+        and frozen.get("note6_sha256") == X4_V4_NOTE6_SHA256
+        and frozen.get("rate") == "1/8"
+        and frozen.get("query_count") == 111
+        and frozen.get("maximum_claim_union") == 3_320
+        and frozen.get("opened_symbols") == 27_564
+        and frozen.get("real_sibling_digests") == 67_930
+        and frozen.get("pcs_bytes") == X4_V4_PCS_BYTES
+        and frozen.get("response_bytes") == X4_V4_RESPONSE_BYTES
+        and frozen.get("soundness_expression") == X4_V4_SOUNDNESS_EXPRESSION
+        and frozen.get("soundness_bits") == X4_V4_SOUNDNESS_BITS
+        and frozen.get("soundness_floor_bits") == X4_V4_SOUNDNESS_FLOOR_BITS
+        and frozen.get("soundness_new_terms") == 0
+        and isinstance(inventory, dict)
+        and inventory.get("source_equivalent_unpadded_floor_bytes")
+        == X4_V4_SOURCE_FLOOR_BYTES
+        and inventory.get("coefficient_bytes") == X4_V4_COEFFICIENT_BYTES
+        and inventory.get("physical_padded_first_oracle_bytes")
+        == X4_V4_PHYSICAL_ORACLE_BYTES
+        and inventory.get("inner_merkle_digests") == X4_V4_INNER_MERKLE_DIGESTS
+        and inventory.get("outer_merkle_digests") == X4_V4_OUTER_MERKLE_DIGESTS
+        and inventory.get("merkle_digest_bytes") == X4_V4_MERKLE_BYTES
+        and inventory.get("bytes_per_materialization") == X4_V4_MATERIALIZATION_BYTES
+        and inventory.get("bytes_recomputed_per_response")
+        == X4_V4_RESPONSE_RECOMPUTE_BYTES
+        and inventory.get("persistent_coefficients_plus_roots_bytes")
+        == X4_V4_PERSISTENT_COEFFICIENTS_ROOTS_BYTES
+        and inventory.get("maximum_current_cohort_working_set_bytes")
+        == X4_V4_MAX_CURRENT_COHORT_WORKING_SET_BYTES
+        and isinstance(inventory.get("cohorts"), list)
+        and [cohort.get("name") for cohort in inventory["cohorts"]]
+        == [
+            "Wext-mu26-global-tied-roles",
+            "Wext-mu22-all-layers",
+            "Wext-mu20-layers-and-position",
+            "auxiliary-ell17",
+            "auxiliary-ell16",
+        ]
+    ):
+        return False
+    return (
+        isinstance(probes, list)
+        and len(probes) == 4
+        and [probe.get("role") for probe in probes]
+        == ["warmup", "measured-1", "measured-2", "measured-3"]
+        and all(probe.get("exact_cohort") == "Wext-mu26-global-tied-roles" for probe in probes)
+        and all(probe.get("domain_log2") == 30 for probe in probes)
+        and all(probe.get("present_slots") == 2 for probe in probes)
+        and all(probe.get("structural_slots") == 2 for probe in probes)
+        and all(probe.get("ceiling_s") == 15.0 for probe in probes)
+        and all(probe.get("completed") is False for probe in probes)
+        and all(probe.get("timed_out") is True for probe in probes)
+        and all(probe.get("observed_wall_s", 0) >= 15.0 for probe in probes)
+        and all(probe.get("h2d_bytes") == 0 for probe in probes)
+        and all(probe.get("d2h_bytes") == 0 for probe in probes)
+        and all(probe.get("peak_vram_bytes") == 0 for probe in probes)
+        and isinstance(streaming, dict)
+        and streaming.get("status")
+        == "MEASURED_EXACT_AUX17_ANCHOR; FULL_FLOOR_BLOCKED_BY_G4_TIMEOUT"
+        and streaming.get("warmup_count") == 1
+        and streaming.get("measured_candidates") == 3
+        and len(streaming.get("candidate_wall_s", [])) == 3
+        and streaming.get("selected_upper_median_wall_s", 0) > 0
+        and streaming.get("measured_first_oracle_bytes_per_candidate") == 33_554_432
+        and streaming.get("measured_merkle_bytes_per_candidate") == 167_772_128
+        and streaming.get("selected_first_oracle_bytes_per_s", 0) > 0
+        and streaming.get("projected_unpadded_floor_wall_s_at_measured_rate", 0) > 0
+        and streaming.get("projected_physical_padded_oracle_wall_s_at_measured_rate", 0) > 0
+        and streaming.get("full_31_9gb_pass_completed") is False
+        and isinstance(recompute, dict)
+        and recompute.get("query_count_per_candidate") == 1
+        and len(recompute.get("candidate_wall_s", [])) == 3
+        and recompute.get("selected_upper_median_wall_s", 0) > 0
+        and recompute.get("source_bytes_read_per_query") == 4_194_304
+        and recompute.get("oracle_bytes_recomputed_per_query") == 33_554_432
+        and recompute.get("merkle_bytes_recomputed_per_query") == 167_772_128
+        and recompute.get("total_logical_bytes_per_query") == 205_520_864
+        and recompute.get("root_checked") is True
+        and isinstance(gpu, dict)
+        and gpu.get("available") is False
+        and gpu.get("measured") is False
+        and isinstance(gate, dict)
+        and gate.get("g1_lean", "").startswith("PASS")
+        and gate.get("g2_full_production_correctness", "").startswith("NOT EVALUATED")
+        and gate.get("g3_communication", "").startswith("PASS")
+        and gate.get("g4_commit", "").startswith("FAIL")
+        and gate.get("g4_open", "").startswith("NOT EVALUATED")
+        and gate.get("g4_verify", "").startswith("NOT EVALUATED")
+        and gate.get("g6_storage_traffic", "").startswith("NOT EVALUATED AS PASS")
+        and gate.get("overall_x4")
+        == "FAIL — conjunctive G4 commit gate failed; no threshold was relaxed"
+    )
+
+
+def validate_x4_v4_pod_result(path: Path) -> bool:
+    try:
+        if not path.is_absolute():
+            path = REPO / path
+        return _x4_v4_pod_result_valid(load_json(path))
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
         return False
 
@@ -3109,6 +3262,11 @@ def main() -> None:
         type=Path,
         help="fail closed unless one JSON is the exact clean X4 v4 GPT-2 migration reference",
     )
+    ap.add_argument(
+        "--validate-x4-v4-pod",
+        type=Path,
+        help="fail closed unless one JSON is the exact clean X4 v4 A100 production verdict",
+    )
     args = ap.parse_args()
 
     selected_validators = sum(
@@ -3120,6 +3278,7 @@ def main() -> None:
             args.validate_t1_official,
             args.validate_x4_v4_cpu,
             args.validate_x4_v4_migration,
+            args.validate_x4_v4_pod,
         )
     )
     if selected_validators > 1:
@@ -3169,6 +3328,13 @@ def main() -> None:
         if not validate_x4_v4_migration_result(args.validate_x4_v4_migration):
             raise SystemExit("invalid or ineligible X4 v4 GPT-2 migration result")
         print(f"valid X4 v4 GPT-2 migration result: {args.validate_x4_v4_migration}")
+        return
+    if args.validate_x4_v4_pod is not None:
+        if args.write_json:
+            raise SystemExit("--write-json and --validate-x4-v4-pod are mutually exclusive")
+        if not validate_x4_v4_pod_result(args.validate_x4_v4_pod):
+            raise SystemExit("invalid or ineligible X4 v4 A100 production result")
+        print(f"valid X4 v4 A100 production result: {args.validate_x4_v4_pod}")
         return
 
     report = p7_report(args.results_dir)

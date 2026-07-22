@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "milestone": "X4b-pod-storage-retry-blocked",
+  "date": "2026-07-22",
+  "git_sha": "56ca0de55d207b175b657179a582cb70b70f8e08",
+  "git_dirty": false,
+  "pod_profile": "runpod-a100-x4b-v1",
+  "protocol_profile": "x4-zkdeepfold-ud-e29-v4",
+  "design_sha256": "bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01",
+  "prior_incident_record": {
+    "path": "benchmarks/results/x4b-pod-storage-incident-2026-07-22-e6c11d3.json",
+    "sha256": "db01c4e060be6611273d889f5336fa701435ce73fec2af9910bef0027ad96f0c",
+    "retry_rule": "Exactly one clean full-record retry; repeated EIO is a hard infrastructure stop."
+  },
+  "pod": {
+    "hostname": "832f581f63c3",
+    "gpu_selected": "NVIDIA A100-SXM4-80GB GPU 0",
+    "volume_mount": "/workspace",
+    "volume_type": "fuseblk",
+    "volume_source": "mfs#us-md-1.runpod.net:9421"
+  },
+  "ordering": {
+    "note6_passed_first": true,
+    "synthetic_cpu_gpu_root_equality_passed_before_full_pass": true
+  },
+  "single_authorized_retry": {
+    "session_directory": "/workspace/x4b-artifacts/x4b-56ca0de-2714",
+    "session_directory_created_utc": "2026-07-22T15:19:45Z",
+    "failure_cleanup_directory_mtime_utc": "2026-07-22T15:29:56Z",
+    "observed_elapsed_lower_bound_s": 611,
+    "stage": "initial-warmup, first Wext-mu26 cohort, before any N4 staging output",
+    "coefficient_file_bytes_observed_before_failure": 4294967296,
+    "oracle_file_bytes_observed_before_failure": 34359738368,
+    "combined_file_bytes_observed_before_failure": 38654705664,
+    "error": "Io(Os { code: 5, kind: Uncategorized, message: \"Input/output error\" })",
+    "exit_code": 101,
+    "created_files_rollback_left_staging_empty": true,
+    "reproduced_prior_failure_class": true
+  },
+  "disposition": {
+    "status": "BLOCKED: REPEATED POD STORAGE EIO; NO X4b GATE VERDICT",
+    "official_x4b_record_emitted": false,
+    "additional_retry_permitted_on_this_storage": false,
+    "required_reprovisioning": "A100-SXM4-80GB, >=128 GiB actual host RAM, and >=150 GB local block/NVMe or other non-mfs storage that passes a >=38,654,705,664-byte streamed-write plus fdatasync preflight without EIO.",
+    "gate_or_protocol_change": false
+  },
+  "assurance": "Operational blocker evidence recorded by an AI agent; no independent human assurance"
+}

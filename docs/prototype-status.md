@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b LOCAL PHASE 2 GREEN; POD NOTE-6 PASS — CUDA BRING-UP NEXT)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b LOCAL PHASE 2 GREEN; POD BLOCKED — REPEATED FUSE EIO)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -273,6 +273,28 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-22 (X4b single authorized retry reproduced volume EIO; HARD
+  INFRASTRUCTURE STOP)**: clean checkpoint
+  `56ca0de55d207b175b657179a582cb70b70f8e08` executed the one retry allowed
+  by the pinned incident rule.  It again passed the prerequisite chain and
+  reached the first exact `Wext-mu26` coefficient/oracle file lengths, then
+  the same `/workspace` `mfs` FUSE mount returned OS error 5 before any N4
+  staging output.  The repeat ran for at least **611 s** (15:19:45--15:29:56
+  UTC), exited 101, and reproduced the prior failure class exactly.
+
+  Status: **BLOCKED: REPEATED POD STORAGE EIO; NO X4b GATE VERDICT**.  No
+  third attempt is authorized on this storage; no official X4b pod result was
+  emitted, and no gate is inferred from the incomplete attempt.  Resume
+  requires the same frozen A100/RAM profile with **>=150 GB local block/NVMe
+  or other non-`mfs` storage** that first passes a
+  **>=38,654,705,664-B streamed-write + `fdatasync`** preflight without EIO.
+  This is provisioning only: no protocol, implementation schedule, root,
+  proof/reference byte, parameter, soundness, Lean statement, or gate change.
+  Append-only blocker record
+  `benchmarks/results/x4b-pod-storage-retry-blocked-2026-07-22-56ca0de.json`
+  SHA-256
+  `f25bd6debb9ae880738379274c0130029a29482a3c75596c626503a697b31a9e`.
 
 - **2026-07-22 (X4b first full-record attempt: volume EIO, no gate verdict;
   one retry preregistered)**: after NOTE-6 and the fail-closed synthetic root

@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 AMENDMENT 5 V4 LEAN/RUST + CPU/GPT-2 MIGRATION GREEN; A100 POD ACTIVE; NOTE-6 PASS; RECORDS IN PROGRESS)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 AMENDMENT 5 V4 LEAN/RUST + CPU/GPT-2 MIGRATION GREEN; NOTE-6 PASS; A100 G4 COMMIT FAIL; OVERALL X4 FAIL)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -133,11 +133,17 @@ materialized on the CPU VM: full-production G2, G4, physical G6 and the overall
 X4 verdict remain **NOT EVALUATED** until the preregistered A100 run.  No new
 failure event or soundness term surfaced, so **80.25537016399041 bits** remains
 unchanged.  Pod provisioning, including the R1b NOTE-6 `c3_weights` smoke, is
-now complete.  On the clean `runpod-a100-x4-v1` checkout at `71edbd7`, NOTE-6
+complete.  On the clean `runpod-a100-x4-v1` checkout at `71edbd7`, NOTE-6
 `c3_weights_two_weight_set_leakage_smoke` ran before every X4 wall record and
 passed in **44.87 s test wall**, with **11,493,740,544 B peak RSS** and
 **0 MiB peak GPU memory**.  Its SHA-pinned preflight record below authorizes
-the wall-only+counters X4 record phase, which remains in progress.
+the wall-only+counters X4 record phase.  That phase is now closed with an
+honest **G4 commit FAIL / overall X4 FAIL** at clean harness checkpoint
+`47a701e`: one exact maximum GPT-2 cohort exceeded the complete 15-second
+commit ceiling in the warm-up and all three measured candidates.  No full
+production commitment/opening exists, so G2, open/verify G4 and physical G6
+are not mislabeled as PASS.  G1 and G3 remain PASS, every threshold is
+unchanged, and no new soundness term appeared.
 
 ## Milestones
 
@@ -185,6 +191,7 @@ the wall-only+counters X4 record phase, which remains in progress.
 | X4 Amendment 5 v4 Rust + CPU synthetic | **RUST GREEN; G5 PASS; G6 PASS IN SYNTHETIC SCOPE; A100 PRODUCTION SURFACE PENDING** (2026-07-21) | Normative schema 4; N4 domains; seal-before-query; model-global cohorts; one different-size chain; blind M9; permanent tamper inventory; exact G6 accounting | Clean source `31fc866`. Full workspace tests are green (`volta-pcs` 69; `volta-proto` 109 passed / one historical production-size private-argmax test ignored; `p35` 13 passed / two production-size C3 smokes ignored); all 55 scoped X4 tests and seven report-validator tests pass. NOTE-6 `c3_weights` is not waived and remains first in pod preflight. Clean record `x4-v4-cpu-synthetic-2026-07-21-31fc866.json`, SHA-256 `e7d59d071bcf3f4e4e21458ed6a2dffb749e39e9cd7482c76a849e8e75c49f78`: touched family `1/2/4/8/16`, ABBA unopened-block ratio **1.0038429423095299 <= 1.05**, persisted/recompute responses byte-identical, exact logical traffic, peak RSS **78,823,424 B**, device/file traffic zero as declared. Ligero/v3 remains read-only and is refused by record-producing modes. No GPT-2 G4 or physical-production G6 verdict. |
 | X4 Amendment 5 GPT-2 migration | **MIGRATION GREEN; G3 PASS; FULL G2/G4/G6 AND OVERALL X4 PENDING A100** (2026-07-21) | Golden 100+50 unchanged; production codec complete; validators re-baselined; historical rows immutable; exact byte gates | Clean record `x4-v4-gpt2-migration-2026-07-21-31fc866.json`, SHA-256 `d7c73d7f74cbc226c768330582cebcaed02939eb7940111715da2fc3d87d2d5e`: one schema-4 opening emits exactly **27,564 symbols and all 67,930 real sibling digests**, encoded SHA-256 `7326f1e47d87bf6858b7811a152a45530359b869bcd9abb30e34bcc4c9dd2a9b`; complete PCS **2,683,236 B <= 4,000,000 B PASS**, response **43,953,700 B <= 45,270,464 B PASS**, common headroom **1,316,764 B**. Golden output is bit-exact and every pinned historical artifact hash is unchanged. The **31,923,699,712-B** logical first-oracle floor is pinned but not materialized on CPU; the fresh A100 record must evaluate isolated wall and all physical traffic/RSS/VRAM before an overall verdict. |
 | X4 R1b NOTE-6 pod preflight | **PASS; X4 A100 RECORDS AUTHORIZED** (2026-07-22) | Exact `c3_weights` production-size smoke must be first; clean frozen checkout; command/wall/RSS/VRAM/exit/leakage evidence pinned | Clean `runpod-a100-x4-v1` source `71edbd7`; exact-name smoke **1 passed / 0 failed**, exit **0**, test wall **44.87 s**, encoded geometry **6,442,450,944 B**, peak RSS **11,493,740,544 B**, peak GPU memory **0 MiB**. Record `x4-note6-c3-weights-preflight-2026-07-22-71edbd7.json`, SHA-256 `8fef35aae0412c45556b37fbfba89c88041d9de8b3c9733ad65227daeb83b0c2`. Three ineligible setup attempts are retained: parse-before-exec, wrong Cargo directory, and MFS build-target stall; none started the test binary. No X4 gate verdict is claimed by this preflight. |
+| X4 Amendment 5 A100 production record | **G4 COMMIT FAIL; OVERALL X4 FAIL; STOPPED** (2026-07-22) | Gates conjunctive and verbatim; no synthetic production credit; wall-only+counters; one warm-up + three measured; physical inventory and X5 anchors explicit | Clean `runpod-a100-x4-v1` harness `47a701e`. Exact `Wext-mu26` constituent timed out at **16.340085726 s** warm-up and **16.187542362 / 16.127495669 / 16.179918053 s** measured against complete commit **<=15.000 s: FAIL**. G1 PASS; G3 **2,683,236 / 43,953,700 B PASS**; full G2, G4 open/verify and physical G6 NOT EVALUATED; overall **FAIL**. Exact padded first oracle **76,948,701,184 B**, Merkle **468,872,855,392 B**, per materialization **545,821,556,576 B**, twice-recompute **1,091,643,113,152 B**, persistent coefficients+roots **9,618,587,808 B**. CPU aux17 anchor **11,229,161.918552168 B/s**; one-query recompute **3.117810096 s / 205,520,864 B**; compatible GPU path absent. Record `x4-v4-a100-production-2026-07-22-47a701e.json`, SHA-256 `111e4056feb0ba53569889a0bf1d0af73c99ab4613ab9a76aae975f8adbb0237`. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -252,6 +259,112 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-22 (X4 Amendment-5 A100 production verdict: G4 commit FAIL;
+  overall X4 FAIL and stop)**: the eligible append-only record ran on clean
+  `47a701e5590d6bbb6565501e32f692ad3d9c758b`, profile
+  `runpod-a100-x4-v1`, NVIDIA A100-SXM4-80GB, 128 logical EPYC 7742 CPUs,
+  2,151,618,895,872 B host RAM, `RAYON_NUM_THREADS=8` and wall-only counters
+  with no CUDA-event timing.  It is bound to the frozen design/reference
+  SHAs, rate `1/8`, `s=111`, union `<=3,320`, **27,564** symbols, all
+  **67,930** real sibling digests, **2,683,236 B** PCS,
+  **43,953,700 B** response and the unchanged
+  `3320*(9/16)^111 + 28,522,064,267,253/|E| =`
+  **80.25537016399041 bits**.  No new event/error term, protocol field,
+  parameter, byte or correlation appeared.
+
+  The exact `Wext-mu26-global-tied-roles` constituent (`domain_log2=30`, 2/2
+  slots) did not complete before the full-commit ceiling in the warm-up
+  (**16.340085726 s observed at kill/reap**) or any measured candidate
+  (**16.187542362, 16.127495669, 16.179918053 s**).  Their process RSS peaks
+  were respectively **13,489,848,320 / 14,455,750,656 / 14,122,471,424 /
+  13,765,361,664 B**; H2D, D2H and VRAM were zero because the schema-4 N4
+  implementation has no CUDA path.  Since this one constituent already
+  exceeds the complete **15.000-s** ceiling under the current sequential
+  implementation, **G4 commit is FAIL by lower bound**.  No complete
+  production commitment exists; authenticated production open/verify and a
+  full G2 run cannot be generated, and no synthetic root/path substitutes for
+  them.
+
+  The exact physical inventory explains the obstruction without changing the
+  frozen 31,923,699,712-B source-equivalent floor.  Padding yields
+  **76,948,701,184 B** of first-oracle payload and **9,618,587,648 B** of
+  coefficients.  The five N4 cohorts require **12,333,875,200** inner and
+  **2,318,401,531** outer digests, or **468,872,855,392 B**.  One logical
+  materialization is **545,821,556,576 B**; the selected implementation's two
+  rebuilds account **1,091,643,113,152 B/response**; its largest current
+  fully-materialized cohort working-set formula is **363,998,478,304 B**.
+  Only coefficients plus five roots persist, exactly **9,618,587,808 B**.
+  These complete logical counts are recorded, but physical G6 is **not
+  evaluated as PASS** because the production materialization never
+  completed and therefore supplied no closed full-run RSS/traffic evidence.
+
+  The requested informative X5 anchors are named in the record, with their
+  scope explicit.  A real `auxiliary-ell17`, 2/2-slot host encode+N4-hash run
+  used one warm-up plus walls **2.890614606 / 3.001283491 / 2.988151052 s**;
+  the selected upper median is **2.988151052 s** for **33,554,432 B** first
+  oracle plus **167,772,128 B** Merkle, or
+  **11,229,161.918552168 first-oracle B/s**.  Applying only that measured
+  rate gives explicitly informative projections of **2,842.9280781193047 s**
+  over the 31.9-GB unpadded floor and **6,852.577399999001 s** over the padded
+  first-oracle payload; these are not G4 measurements and do not model the
+  64-slot N4 multiplier.  A one-query, root-checked recompute of that exact
+  cohort selected **3.117810096 s** and reads/rebuilds **4,194,304 +
+  33,554,432 + 167,772,128 = 205,520,864 B**.  The full 31.9-GB production
+  streaming pass did not complete and is recorded as such.  GPU-assisted
+  throughput is **UNAVAILABLE / NOT MEASURED**: the only existing
+  `hash_fp2_tree_device` hashes a Ligero row-matrix tree and cannot reproduce
+  the complete schema-4 `PcsLeafFrameV4/PcsNodeFrameV4` preimages.  Substituting
+  it would change roots and is forbidden.  An external 373-sample trace
+  measured **0 MiB peak GPU memory**.  Eligible console/GPU/exit evidence
+  hashes are
+  `1bd536db9b7f0001e4f1a6827be468548019008a884cedeeba4e28618739bd91`,
+  `aff7f5e6ee4792efccf639f767e4c6aa11db68ff872ee87c16126cad85b16650`
+  and
+  `9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa`.
+  The record
+  `benchmarks/results/x4-v4-a100-production-2026-07-22-47a701e.json` passes
+  `scripts/report.py --validate-x4-v4-pod` and has SHA-256
+  `111e4056feb0ba53569889a0bf1d0af73c99ab4613ab9a76aae975f8adbb0237`.
+
+  Gate closure, verbatim and never relaxed:
+
+  - **G1 Lean: PASS** -- exact frozen v4 statements; 209/116 audit; no new
+    axioms.
+  - **G2 full production correctness: NOT EVALUATED** -- no complete
+    production commitment/opening after G4 commit failure.
+  - **G3 communication: PASS** -- PCS 2,683,236 B <=4,000,000 B; response
+    43,953,700 B <=45,270,464 B.
+  - **G4 commit: FAIL** -- one exact constituent exceeded 15.000 s in the
+    warm-up and all three measured candidates.
+  - **G4 open: NOT EVALUATED** -- production commitment unavailable; 1.50-s
+    ceiling unchanged.
+  - **G4 verify: NOT EVALUATED** -- production opening unavailable; 0.25-s
+    ceiling unchanged.
+  - **G5 proportionality: PASS IN IMMUTABLE CPU SYNTHETIC RECORD ONLY**.
+  - **G6 storage/traffic: NOT EVALUATED AS PASS** -- exact logical physical
+    inventory recorded, but no completed production materialization supplied
+    physical RSS/traffic closure.
+  - Inherited resident prefill/decode/H2D/max-sync/flatness were **NOT RE-RUN
+    after the conjunctive PCS G4 failure**; their unchanged ceilings remain
+    10 s / 4 s / 100,000,000 B / 0.150 s / 1.5.
+  - **Overall X4: FAIL** -- conjunctive G4 commit gate failed; no threshold
+    was relaxed.
+
+  Named backlog item, now pinned after the informative numbers landed:
+  **"X5 oracle-scale design addendum"**.  It must be separately
+  preregistered before X5 implementation and contain: (a) the floor-reduction
+  lever menu -- MXFP4-direct commitment per D2 option 2 (**approximately
+  4x**), the short-ZK-mask soundness question (**approximately 2x**), and
+  rate `1/4` explicitly requiring a product-owner decision because it trades
+  response bytes for prover resources against the 2026-07-06 convention;
+  (b) an exact streaming-commit schedule that covers both RS encode and the
+  N4 frontier without changing roots; and (c) the persistent-storage plan for
+  gpt-oss coefficients, roots and reconstruction scratch.  It must use the
+  measured anchors above, distinguish the unpadded floor from padded physical
+  artifacts, and obtain full-production/GPU measurements rather than assume
+  that the aux17 rate absorbs the 64-slot cohort cost.  R1c remains separately
+  pinned with the entire v3/v4 seam and draw-before-validation episode.
 
 - **2026-07-22 (X4 pre-pod implementation review PASS with one NOTE;
   AI-only)**: Claude performed a pre-pod implementation review of the v4 PCS

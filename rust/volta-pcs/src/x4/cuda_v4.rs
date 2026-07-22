@@ -831,7 +831,13 @@ mod tests {
     #[cfg(feature = "cuda")]
     #[test]
     fn cuda_ntt_and_n4_roots_match_cpu_for_all_structural_shapes() {
-        let Ok(mut gpu) = Backend::cuda_hybrid() else { return };
+        let mut gpu = match Backend::cuda_hybrid() {
+            Ok(gpu) => gpu,
+            Err(error) if std::env::var_os("VOLTA_REQUIRE_CUDA").is_some() => {
+                panic!("VOLTA_REQUIRE_CUDA set but the CUDA backend failed to initialize: {error}")
+            }
+            Err(_) => return,
+        };
         let payload = (0..104u8).map(|value| value.wrapping_mul(37)).collect::<Vec<_>>();
         let observed = gpu.x4b_context_probe(&payload).unwrap();
         for (index, context) in [

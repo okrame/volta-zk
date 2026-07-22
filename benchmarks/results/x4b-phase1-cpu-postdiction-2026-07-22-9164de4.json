@@ -1,0 +1,156 @@
+{
+  "schema": 1,
+  "milestone": "X4b-Phase1-CPU-postdiction",
+  "date": "2026-07-22",
+  "git_sha": "9164de49fff807d6b073e0c9a775052d80728239",
+  "git_short_sha": "9164de4",
+  "git_dirty_at_measurement": false,
+  "scope": "CPU-only diagnosis of the immutable X4 FAIL anchors; no protocol, production implementation, pod, reference, gate or historical record changed",
+  "immutable_baseline": {
+    "path": "benchmarks/results/x4-v4-a100-production-2026-07-22-47a701e.json",
+    "sha256": "111e4056feb0ba53569889a0bf1d0af73c99ab4613ab9a76aae975f8adbb0237",
+    "p7_blake3_lineage_path": "benchmarks/results/p7-gpu-blake3-merkle-2026-07-11-3b0a916.json",
+    "p7_blake3_lineage_sha256": "dd5d97782f807d2abb29befedae7415d71d5b6fb3a3d98472667a371b7ba0b6d",
+    "p7_pcs_arithmetic_lineage_path": "benchmarks/results/p7-gpu-pcs-arithmetic-2026-07-11-366ec4a.json",
+    "p7_pcs_arithmetic_lineage_sha256": "1ce358c2649ae5722d06ab2db5de3ccc2acc0854f6885402d1ce3d9b638b6cb7"
+  },
+  "machine": {
+    "hostname": "mydebian",
+    "os": "Debian GNU/Linux 13 (trixie)",
+    "kernel": "6.12.94+deb13-arm64",
+    "arch": "aarch64",
+    "cpu_description": "Apple-compatible ARM64 VM; 4 online single-thread cores",
+    "online_cpus": 4,
+    "affinity": "0-3",
+    "memory_bytes_from_meminfo": 12526510080,
+    "rustc": "rustc 1.96.1 (31fca3adb 2026-06-26)",
+    "cargo": "cargo 1.96.1 (356927216 2026-06-26)"
+  },
+  "diagnostic_harness": {
+    "location": "/tmp/volta-x4b-phase1-profile (outside the repository)",
+    "source_sha256": "6d0cfaae08ddd466443037ba1a288b412db519a43113ba0ec99f6cf355a8f68b",
+    "cargo_toml_sha256": "79bb7bc04332eb59e190e31ca1065a5ac52cf73dea3530a49b6aa7a3b62a49c0",
+    "cargo_lock_sha256": "7337921bbc1476314fea33585a69058f352441163576555b922a83d012cd7a6a",
+    "release_binary_sha256": "ca62f9f9bec99914b1283c35450026f103d04a3744721b5c3d921ae153c1011e",
+    "command": "CARGO_TARGET_DIR=/tmp/volta-x4b-phase1-profile-target cargo run --release --offline",
+    "allocator_counter_semantics": "cumulative allocation requests, not live bytes and not a G6 traffic counter"
+  },
+  "exact_aux17_code_model": {
+    "outer_len": 1048576,
+    "present_slots": 2,
+    "structural_slots": 2,
+    "coefficient_bytes": 4194304,
+    "first_oracle_bytes": 33554432,
+    "inner_present_leaf_hashes": 2097152,
+    "inner_node_hashes": 1048576,
+    "outer_leaf_hashes": 1048576,
+    "outer_node_hashes": 1048575,
+    "total_hash_invocations": 5242879,
+    "canonical_frame_widths_bytes": {
+      "inner_present_leaf": 84,
+      "outer_leaf": 63,
+      "pcs_node": 104
+    },
+    "canonical_hash_input_bytes": 460324760,
+    "canonical_hash_input_to_oracle_ratio": 13.718746900558472,
+    "merkle_digest_bytes": 167772128,
+    "total_one_materialization_logical_bytes_excluding_coefficients": 201326560,
+    "total_one_query_recompute_logical_bytes_including_coefficients": 205520864
+  },
+  "historical_anchor_postdiction": {
+    "selected_wall_s": 2.988151052,
+    "reported_oracle_normalized_bytes_per_s": 11229161.918552168,
+    "recomputed_oracle_normalized_bytes_per_s": 11229161.918552168,
+    "canonical_hash_input_normalized_bytes_per_s": 154050030.26600677,
+    "finding": "11.229 MB/s is an oracle-volume normalization over encode plus 5,242,879 framed hashes, not raw BLAKE3 throughput"
+  },
+  "local_exact_aux17_profile": {
+    "full_commit_warmup_s": 2.023812398,
+    "full_commit_candidates_s": [
+      2.026513351,
+      2.123586214,
+      2.100083875
+    ],
+    "full_commit_selected_upper_median_s": 2.100083875,
+    "root": "2be64b91100584dff4cb2f18e9d02b47a33c8205de7801531d4a9204cc9298d8",
+    "split_ntt_two_slots_s": 0.140072769,
+    "split_tree_clone_and_build_s": 1.916979865,
+    "split_sum_s": 2.057052634,
+    "split_sum_fraction_of_selected_full_commit": 0.9795097512474353,
+    "tree_allocation_calls": 17825818,
+    "tree_reallocation_calls": 17825792,
+    "tree_cumulative_alloc_request_bytes": 821035370,
+    "tree_cumulative_realloc_request_bytes": 999294128,
+    "tree_total_cumulative_request_bytes": 1820329498,
+    "public_hash_weighted_wall_s_from_exact_call_mix": 1.766389871078,
+    "public_hash_weighted_fraction_of_tree_wall": 0.9214441441605856,
+    "public_hash_canonical_input_bytes_per_s": 260602015.182,
+    "fresh_derive_preencoded_canonical_input_bytes_per_s": 410727943.0137315,
+    "precomputed_derive_state_preencoded_canonical_input_bytes_per_s": 540670345.1623754,
+    "weighted_precomputed_state_hash_s": 0.851396352914,
+    "weighted_per_call_derive_key_overhead_s": 0.26935709917,
+    "weighted_frame_construction_serialization_allocation_overhead_s": 0.645636418994,
+    "tree_non_hash_structural_residual_s": 0.150589993922,
+    "selected_full_commit_fraction": {
+      "precomputed_state_raw_hash": 0.40541064242684117,
+      "per_call_derive_key": 0.12826016254707922,
+      "frame_construction_serialization_allocation": 0.30743363476089735,
+      "tree_non_hash_structure": 0.0717066569172148,
+      "ntt": 0.06669865459540277,
+      "other_commit_control_and_cloning": 0.020490248752564705
+    }
+  },
+  "physical_inventory_derivation": {
+    "logical_source_i16_coefficients": 124701952,
+    "logical_source_i16_bytes": 249403904,
+    "source_equivalent_first_oracle_floor_formula": "249403904 * 16 / (1/8)",
+    "source_equivalent_first_oracle_floor_bytes": 31923699712,
+    "padded_weight_coefficients_before_twin_extension": 298844160,
+    "auxiliary_coefficients": 3473408,
+    "physical_committed_coefficient_symbols_formula": "2*298844160 + 3473408",
+    "physical_committed_coefficient_symbols": 601161728,
+    "physical_padded_first_oracle_formula": "601161728 * 8 * 16",
+    "physical_padded_first_oracle_bytes": 76948701184,
+    "physical_to_unpadded_floor_ratio": 2.4103942174056745,
+    "cohort_first_oracle_bytes": [
+      34359738368,
+      38654705664,
+      3489660928,
+      33554432,
+      411041792
+    ]
+  },
+  "n4_dual_tree_derivation": {
+    "per_cohort_digest_formula": "L*(2*M-1) + (2*L-1) = L*(2*M+1)-1, where L is outer_len and M is structural_slots",
+    "per_cohort_digest_bytes_formula": "32*(L*(2*M+1)-1)",
+    "cohort_merkle_digest_bytes": [
+      171798691808,
+      277025390560,
+      17716740064,
+      167772128,
+      2164260832
+    ],
+    "inner_digests": 12333875200,
+    "outer_digests": 2318401531,
+    "total_digests": 14652276731,
+    "total_merkle_digest_bytes": 468872855392,
+    "merkle_to_physical_oracle_ratio": 6.093317342300939
+  },
+  "recompute_derivation": {
+    "one_query_measured_wall_s": 3.117810096,
+    "one_query_logical_bytes_formula": "4194304 + 33554432 + 167772128",
+    "one_query_logical_bytes": 205520864,
+    "one_rebuild_over_1_5s_gate": 2.078540064,
+    "query_granular_111_rebuild_counterfactual_s": 346.076920656,
+    "current_api_semantics": "the 111 draws are batched in one open_initial_source call; the response path nevertheless rebuilds each cohort once for combine_source and once for open_initial_source",
+    "disposition": "recompute-only cannot meet 1.50 s because one exact aux17 rebuild already exceeds the entire gate; the 111x value is not mislabeled as current measured response wall"
+  },
+  "postdiction_verdict": {
+    "derive_key_hypothesis": "CONFIRMED AS A MATERIAL COMPONENT, REFUTED AS A COMPLETE OR DOMINANT EXPLANATION",
+    "allocation_hypothesis": "CONFIRMED; exact aux17 tree performs 17,825,818 allocation calls and 17,825,792 reallocations in the diagnostic allocator census",
+    "primary_measured_structure": "small framed BLAKE3 calls plus frame serialization/allocation dominate; NTT is 6.67% of selected local full-commit wall",
+    "protocol_change": false,
+    "format_change": false,
+    "gate_verdict_change": false
+  }
+}

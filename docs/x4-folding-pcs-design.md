@@ -2260,6 +2260,391 @@ or gate.  If the Lean or Rust discharge later needs another accepting event
 or hybrid, this section must be amended and the complete expression re-summed
 before work continues.
 
+### 0.13 X4b sustainable-oracle preregistration (Phase 1, 2026-07-22)
+
+X4's production verdict is immutable: the clean A100 record is **G4 commit
+FAIL / overall X4 FAIL**.  X4b is a separately named implementation profile
+that postdicts that failure and changes how the already-frozen oracle and N4
+tree are constructed and retained.  It does not reinterpret the failed run.
+
+The X4b scope boundary is exact.  It changes no field, rate, query count,
+claim union, soundness expression, transcript order, Lean statement, frame,
+hash preimage, hash context, root, opening symbol, sibling digest, reference or
+gate ceiling.  In particular, the profile remains
+`x4-zkdeepfold-ud-e29-v4`, with rate `1/8`, `s=111`, at most 3,320 claims,
+27,564 opened symbols, all 67,930 real sibling digests, **2,683,236 B PCS**
+and **43,953,700 B response**.  The exact response-wide expression remains
+
+```text
+3320*(9/16)^111
+  + 28,522,064,267,253
+      / 340282366762482138490186164457219031041
+= 80.255370163990410893382823542456484 bits.
+```
+
+There is no new accepting event, hybrid or union member.  The
+78.809294874-bit floor and the Amendment-5 slack rule are unchanged.  A
+format-touching optimization is not X4b: padding re-binning, Merkle arity or
+leaf grouping, MXFP4-direct coefficients and a multi-mask battery remain
+parked in the named **X5 oracle-scale design addendum**.
+
+The CPU-only postdiction record is
+`benchmarks/results/x4b-phase1-cpu-postdiction-2026-07-22-9164de4.json`,
+SHA-256
+`78fdd12ed79c4cf05d42b428a7fa305c28e4254be82289608c45f1f85ce64ec1`.
+It profiles unchanged clean source `9164de49fff807d6b073e0c9a775052d80728239`
+with a SHA-pinned temporary harness outside the repository.  It is diagnosis,
+not an X4b gate verdict and not a production implementation.
+
+#### 0.13.1 Postdiction of all four production anchors
+
+The historical aux17 throughput numerator was the first-oracle payload, not
+the bytes actually presented to BLAKE3.  For `L=2^20`, two present slots and
+two structural slots, the unchanged code executes:
+
+| exact aux17 call class | calls | canonical frame bytes | input bytes |
+| --- | ---: | ---: | ---: |
+| present inner leaf | `2L = 2,097,152` | 84 | 176,160,768 |
+| inner node | `L = 1,048,576` | 104 | 109,051,904 |
+| outer leaf | `L = 1,048,576` | 63 | 66,060,288 |
+| outer node | `L-1 = 1,048,575` | 104 | 109,051,800 |
+| **total** | **5,242,879** | -- | **460,324,760** |
+
+Thus the actual canonical hash-input numerator is
+`460,324,760 / 33,554,432 = 13.718746900558472` times the reported oracle
+numerator.  The immutable selected wall reproduces both normalizations:
+
+```text
+33,554,432 / 2.988151052 = 11,229,161.918552168 B/s
+460,324,760 / 2.988151052 = 154,050,030.26600678 canonical B/s.
+```
+
+The initial hypothesis is therefore corrected, not discarded.  The current
+path does call `blake3::Hasher::new_derive_key` for every node and constructs,
+clones and serializes a fresh `Vec`-backed frame for every call.  But the
+normative inputs are not 16--64 B: aux17 uses 63-, 84- and 104-byte complete
+frames.  On the exact local operation shape, the selected full commit is
+2.100083875 s; an independent split is 0.140072769 s for the two E-NTTs and
+1.916979865 s for codeword clone plus tree, reproducing 97.950975% of the
+full wall without a fitted coefficient.  The exact weighted public hash
+calls explain 1.766389871078 s, or 92.144414% of the tree wall.  The
+allocator census sees 17,825,818 allocations, 17,825,792 reallocations and
+1,820,329,498 cumulative requested bytes in the tree region; those cumulative
+requests are a profiler quantity, not live RSS or G6 traffic.
+
+Pre-encoding representative complete frames separates the hash call:
+
+```text
+weighted raw hash with a fresh derive state       1.120753452084 s
+weighted raw hash with a cloned precomputed state 0.851396352914 s
+per-call derive-key overhead                       0.269357099170 s
+frame construction/serialization/allocation       0.645636418994 s
+```
+
+Per-call derive-key work is material, but it is neither the complete nor the
+largest removable component.  The diagnosis is **derive-key hypothesis
+confirmed as a component; refuted as a complete explanation**.  Hoisting the
+state alone cannot meet the X4b target; allocation-free canonical
+serialization and independent-message batching are both load-bearing.
+These fractions are a local CPU attribution of a platform-independent call
+inventory, not a retroactive timing profile of the departed A100 host.
+
+The exact 2.4103942174056745 padding factor follows from the frozen cohort
+geometry.  Let `S=124,701,952` be the unpadded logical i16 weight coefficient
+count.  The source bytes and unpadded first-oracle floor are
+
+```text
+source bytes = 2*S = 249,403,904
+F0           = 249,403,904 * 16 / (1/8)
+             = 31,923,699,712 B.
+```
+
+The padded pre-extension weight count and auxiliary coefficient count are
+
+```text
+P = 2*2^26 + 36*2^22 + 13*2^20 = 298,844,160
+A = 2*2^17 + 49*2^16           =   3,473,408.
+```
+
+The twin extension contributes `2P`, so the five physical cohorts contain
+`2P+A = 601,161,728` committed E coefficients and exactly
+
+```text
+(2P+A)*8*16 = 76,948,701,184 B,
+76,948,701,184 / 31,923,699,712
+  = (2P+A)/(2S) = 2.4103942174056745.
+```
+
+This factor includes axis/block padding, the twin extension already present
+in both numerator conventions, and the auxiliary polynomials; it is not a
+generic compression or storage estimate.
+
+The 468,872,855,392-B Merkle count is likewise a closed consequence of the
+N4 dual tree.  For outer length `L` and `M` structural slots, each coordinate
+has `2M-1` inner leaf/node digests and the outer tree has `2L-1` leaf/node
+digests.  Therefore
+
+```text
+digests(L,M) = L*(2M-1) + (2L-1) = L*(2M+1)-1.
+```
+
+Applying `32*digests(L,M)` to the five `(L,M)` pairs
+`(2^30,2)`, `(2^26,64)`, `(2^24,16)`, `(2^20,2)` and `(2^19,64)` gives,
+respectively,
+
+```text
+171,798,691,808
+277,025,390,560
+ 17,716,740,064
+    167,772,128
+  2,164,260,832
+----------------
+468,872,855,392 B.
+```
+
+That is 14,652,276,731 digests and
+`468,872,855,392 / 76,948,701,184 = 6.093317342300939` times the physical
+oracle.  Structural absent slots are intentionally in this count; removing
+them would change the root.
+
+Finally, the exact aux17 recompute number is not a fitted per-byte model:
+
+```text
+coefficients read       4,194,304
+oracle rebuilt         33,554,432
+N4 digests rebuilt    167,772,128
+                     -----------
+logical work          205,520,864 B,
+selected wall          3.117810096 s.
+```
+
+One exact rebuild already consumes 2.078540064 times the complete 1.50-s
+opening ceiling.  A query-granular implementation would cost
+`111*3.117810096 = 346.076920656 s`, but that product is not mislabeled as
+the current response wall: `open_initial_source` batches all 111 draws in one
+call.  The current recompute policy still rebuilds each cohort once for
+`combine_source` and again for `open_initial_source`.  Since rebuild work is
+independent of whether the batched call contains one or 111 draws, the
+single-rebuild aux17 measurement alone proves that recompute-only cannot meet
+1.50 s.  Persisting the oracle/authentication source corrects an
+over-conservative artifact policy; it does not waive a gate.
+
+#### 0.13.2 CPU N4 hash-layer redesign
+
+The CPU implementation must preserve these four exact derive-key contexts:
+
+```text
+volta-zk/x4/pcs-leaf/v4
+volta-zk/x4/pcs-node/v4
+volta-zk/x4/manifest-leaf/v4
+volta-zk/x4/manifest-node/v4
+```
+
+Each context receives one process-wide initialized derive-mode base
+`blake3::Hasher`; a message hashes by cloning that base state.  It is not
+silently converted to ordinary keyed or unkeyed BLAKE3: the derive-key flags
+and root output must remain byte-identical.  Descriptor and schedule hashes
+remain semantically unchanged and are outside the tree-node throughput gate.
+
+Canonical fixed-width leaf/node bytes are written directly into reusable
+contiguous slabs.  Inner present, inner absent, outer and node frames retain
+their exact 84/68/63/104-byte encodings.  No frame or symbol `Vec` is
+allocated per node.  Every Merkle level is a contiguous level-order digest
+buffer; Rayon owns disjoint deterministic index ranges, and an
+independent-message BLAKE3 many-at-once path hashes same-width lanes with a
+scalar fallback.  Parallel completion order never changes digest order.
+
+The preregistered CPU microbenchmark uses the complete aux17 mix above, not a
+large-buffer BLAKE3 surrogate.  It runs one pinned worker, one warm-up and at
+least five measured candidates; the selected value is the upper-median wall.
+Its primary numerator is exactly 460,324,760 canonical input bytes from a
+full 2/2-slot aux17 tree, excluding NTT and setup.  The gate is
+
+```text
+canonical framed-hash throughput >= 500,000,000 B/s per physical core.
+```
+
+It also reports calls/s, oracle-normalized B/s, allocation count and
+multi-core scaling.  The existing local public path is 260.602015 MB/s on
+this convention, while precomputed-state hashing of already encoded messages
+is 540.670345 MB/s; the latter is headroom evidence only, not a projected
+gate pass because it excludes serialization and tree bookkeeping.
+
+For sustainable retention, initial inner levels are no longer kept for every
+outer coordinate.  During commit, a tile builds each complete inner root and
+then discards its inner levels after emitting the unchanged outer leaf.
+Opening reconstructs the at-most-64-slot inner tree only at verifier-derived
+queried coordinates from the persisted oracle.  Outer internal levels remain
+a session cache.  This changes no digest or proof byte and avoids retaining
+the full 468.9-GB inner-tree material.
+
+#### 0.13.3 CUDA E-NTT and N4 commit path
+
+The CUDA path reuses the compression, arithmetic, ABI/counter and
+correctness lineage measured in
+`p7-gpu-blake3-merkle-2026-07-11-3b0a916.json` and
+`p7-gpu-pcs-arithmetic-2026-07-11-366ec4a.json`; it does not reuse their
+transcript semantics blindly.  The P7 Merkle kernel hashes untyped Ligero
+matrix columns with ordinary BLAKE3.  X4b must instead hash the complete
+63/68/84/104-byte v4 frames under the four derive-key domains, including the
+correct derive-key material flags.  The P7 Fp2 NTT is componentwise over
+base-field twiddles; X4b must use the v4 E root of exact order `2^33`, Fp2
+twiddles and full Fp2 multiplication.  Neither existing primitive is a root-
+compatible substitute without this specialization.
+
+The device schedule is kernel-internal and cohort-streaming:
+
+1. process one present slot at a time;
+2. run the exact rate-`1/8` E-NTT, persist its codeword, and reuse the NTT
+   buffers for the next slot;
+3. stream power-of-two outer-coordinate tiles through the complete inner
+   N4 tree, emit unchanged outer leaves and discard inner levels;
+4. build contiguous outer levels, return the root and retain/copy the outer
+   internal session cache; and
+5. report every coefficient/oracle/digest/scratch H2D, D2H, host read/write
+   and persistent byte, including repeated transfers.
+
+The exact device allocation ceiling is **48 GiB = 51,539,607,552 B**,
+measured as peak live X4b artifact plus scratch allocation.  The largest
+single `2^30` E-NTT budgets 16 GiB input, 16 GiB output and 8 GiB Fp2
+twiddles; batching both slots at once is forbidden by this ceiling.  N4 tile
+buffers are at most 512 MiB and choose the largest power-of-two coordinate
+count not exceeding that bound for the cohort's structural-slot count.
+There is never a whole-model 76.9-GB device oracle.  Peak device bytes and
+all staging traffic are gates/counters, not inferred from allocation intent.
+
+Timing is host wall only, with the existing counters; CUDA events may be used
+for internal debugging but are ineligible as record wall.  CUDA graphs,
+scheduler expansion, epoch orchestration and sync-coalescing changes remain
+unauthorized under the 2026-07-15 robust-versus-fragile rule.  X4b may change
+kernel internals, memory layout and tiling only.
+
+CPU/GPU root equality is a gate.  Permanent local tests cover all four N4
+domains, present/absent leaves, every tree role and structural slot counts
+1/2/16/64 at synthetic geometries.  On the pod, complete roots are compared
+for the exact GPT-2 aux17 and aux16 cohorts, while deterministic sampled
+leaf, inner-root, outer-leaf and every-level node digests are compared for
+each larger GPT-2 cohort.  A single mismatch is FAIL; it cannot be waived by
+matching final proof bytes.  The production root is always the root of the
+same complete CPU-specified preimages.
+
+#### 0.13.4 Persisted-oracle production opening
+
+`PersistedOracle` becomes the production source policy.  The durable pod
+artifacts are exactly one canonical padded oracle plus coefficients and five
+roots:
+
+```text
+padded initial oracle             76,948,701,184 B
+coefficients plus five roots       9,618,587,808 B
+                                  --------------
+durable X4b artifacts             86,567,288,992 B
+```
+
+They are length-, profile-, model- and root-checked on load.  Local artifact
+metadata is not a proof frame and cannot influence transcript decoding.
+Provisioning remains **at least 150 GB persistent volume** so weights,
+append-only evidence and bounded staging coexist with those 86.567 GB.
+
+Fast authentication does require derived session state, and X4b counts it
+rather than hiding it.  Initial outer internal nodes require
+
+```text
+32 * sum_c (outer_len_c - 1) = 37,094,424,416 B.
+```
+
+They are retained in host memory, not mislabeled as durable root bytes.
+Inner trees are rebuilt only for queried coordinates from persisted symbols.
+For GPT-2's 27 fold rounds, logs 29 down to 3, the maximum response-local
+fold codewords and outer-internal cache are respectively 17,179,869,056 B
+and 34,359,737,248 B.  Together with initial outer cache and static
+coefficients/roots, the explicit logical resident subtotal is
+98,252,618,528 B before allocator, verifier, weight and I/O buffers.  The pod
+profile therefore additionally requires **at least 128 GiB host RAM**; peak
+RSS, page-cache effects and scratch remain measured G6 fields, not assumed
+to fit from this subtotal.  Sequential file writes are evicted/advised so a
+hidden whole-oracle page cache is not credited as free resident storage.
+
+After the chain is completely sealed and the verifier issues the existing
+111 draws, the prover reads only the selected initial symbols plus the
+level-zero neighbors needed to reconstruct queried inner/outer leaves, and
+uses the session outer cache for higher siblings.  Exact file reads and all
+encoded-symbol reads, including unopened structural slots used inside a
+queried inner tree, are counted separately.  The packed opening and its root
+are byte-identical to the retained CPU reference.
+
+`RecomputeOracleAndMerkle` is renamed/exposed as the explicit
+`AuditRecompute` fallback.  It stays covered by byte-identity and rejection
+tests but record-producing binaries refuse it as the production source.  A
+restart without the derived outer cache performs and counts a new commit-
+cache reconstruction before opening; it may not hide that work inside setup
+or claim the 1.50-s open gate.
+
+#### 0.13.5 Frozen `runpod-a100-x4b-v1` gates and record order
+
+The new pod profile is `runpod-a100-x4b-v1`: A100-SXM4 80 GB, at least
+128 GiB host RAM, at least 150 GB persistent volume, a tracked-clean source,
+the frozen v4 references, wall-only+counters, no CUDA-event record timing,
+and one warm-up plus at least three measured candidates unless a gate below
+specifies the five-candidate CPU microbench.  The selected timed result is the
+upper median.  NOTE-6 `c3_weights_two_weight_set_leakage_smoke` is the first
+pod execution again, before kernel bring-up or wall records.
+
+The X4b gates are conjunctive and preregistered verbatim:
+
+1. **CPU node-hash microbench:** at least 500,000,000 canonical frame B/s per
+   pinned physical core on the exact aux17 mix.
+2. **CPU/GPU equality:** every required synthetic root and exact selected
+   GPT-2 cohort root is equal, and every larger-cohort sampled typed digest
+   matches.
+3. **Isolated commit:** the complete exact `Wext-mu26` constituent commit is
+   `<=15.000 s`, unchanged.  The record reports `15-wall` in seconds and
+   percent; a positive value is required and no near-pass rounding exists.
+4. **Full-pass commit:** complete GPT-2 encode, persist, N4 hash and cache
+   wall is **MEASURED / INFORMATIVE** for this first profile.  It receives no
+   PASS ceiling until a later profile version preregisters one using this
+   baseline.
+5. **Persisted opening:** complete response PCS open is `<=1.50 s` and
+   verify is `<=0.25 s`; `AuditRecompute` is ineligible for these gates.
+6. **Communication identity:** PCS bytes equal **2,683,236** and response
+   bytes equal **43,953,700** exactly; the complete encoded response digest
+   matches the frozen migration reference.  No `<=` slack permits a format
+   change.
+7. **G6 honesty:** durable, resident, recomputed, H2D, D2H, host read/write,
+   scratch, peak RSS, page-cache treatment and peak VRAM counters reconcile;
+   peak X4b device allocation is `<=51,539,607,552 B`.  An unavailable or
+   omitted counter is FAIL.
+
+The record order is NOTE-6; CUDA correctness bring-up; CPU microbench and
+throughput spike; complete root cross-checks; full-pass informative baseline;
+isolated `Wext-mu26`; persisted open/verify; exact response/reference checks.
+Every run is append-only.  An honest FAIL remains FAIL.  The immutable X4
+record and overall X4 FAIL remain historical truth even if X4b later passes.
+
+R1c mandatory scope is extended in advance to the eventual X4b CPU hash,
+CUDA E-NTT/N4, compact inner-tree reconstruction, outer-cache, persisted-
+oracle lifecycle and all traffic-accounting code, in addition to the v3/v4
+seam and draw-before-validation NOTE.  This is scope pinning, not review
+assurance.
+
+#### 0.13.6 X5 mask disposition and Phase-1 hard stop
+
+The X5 mask-reuse question is answered: an auxiliary mask is one-time by ZK
+necessity.  Two openings under one mask expose correlated masked equations
+and leak linear combinations of the private target evaluations; the frozen
+one-opening theorem gives no joint-transcript security.  The sound future
+shape is a precommitted battery of `k` independent one-time auxiliary masks,
+with exactly one consumed per epoch and lifecycle-enforced non-reuse.  Its
+extra coefficients, slots, roots, soundness and bytes require the X5
+oracle-scale addendum; X4b does not implement or credit it.
+
+**HARD STOP:** Phase 1 ends with this postdiction and preregistration.  No
+production Rust, CUDA kernel, reference change, pod access, X4b measurement
+or X5 implementation is authorized before product-owner review.  After an
+explicit approval, Phase 2 implements locally and reaches a second stop to
+request an A100-SXM4 80-GB pod with the host-memory and volume requirements
+above.
+
 ---
 
 ## Historical Phase-1 baseline (superseded where Section 0 conflicts)

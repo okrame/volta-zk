@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b LOCAL PHASE 2 GREEN; POD BLOCKED — REPEATED FUSE EIO)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b LOCAL PHASE 2 GREEN; POD LOCAL-STORAGE PREFLIGHT PASS — FULL RECORD NEXT)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -273,6 +273,29 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-22 (X4b local container storage reprovisioned; exact recovery
+  preflight PASS)**: the pod was restarted with a **161,061,273,600-B** local
+  overlay/container disk, **161,044,668,416 B** initially available.  The
+  chosen `/x4b-artifacts` filesystem is local `overlay`, not the prohibited
+  `mfs` FUSE mount; it exceeds both the frozen **150,000,000,000-B** volume
+  minimum and the **129,516,961,952-B** durable-plus-staging requirement.
+  GPU and memory requirements remain satisfied (2 x A100-SXM4-80GB;
+  **2,151,618,097,152 B** visible RAM); only GPU 0 remains selected by the
+  frozen one-backend recorder.
+
+  The recovery condition from the repeated-EIO blocker was tested exactly:
+  **38,654,705,664 B** of incompressible `/dev/urandom` data were streamed in
+  8-MiB chunks and completed `fdatasync` in **108.872 s**, with exact length
+  checked and no EIO.  The generated random probe was then removed to restore
+  capacity; it is not an X4b artifact.  Verdict: **PASS: LOCAL CONTAINER
+  STORAGE ELIGIBLE FOR ONE RESUMED FULL RECORD**.  Network `mfs` remains
+  prohibited as the artifact root.  No cryptographic construction, kernel,
+  schedule, proof/root/reference byte, parameter, soundness expression, Lean
+  statement, or gate changed.  Append-only preflight record
+  `benchmarks/results/x4b-pod-local-storage-preflight-2026-07-22-34e1dbb.json`
+  SHA-256
+  `fadb9e99ca9b9150721a0c156deea6e88eb002ce0f892e62b2735dffa6adf865`.
 
 - **2026-07-22 (X4b single authorized retry reproduced volume EIO; HARD
   INFRASTRUCTURE STOP)**: clean checkpoint

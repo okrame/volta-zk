@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "milestone": "X4b-pod-local-storage-preflight",
+  "date": "2026-07-22",
+  "git_sha": "34e1dbb641fdf7dc53f0a7da5b932f745df774d9",
+  "git_dirty": false,
+  "pod_profile": "runpod-a100-x4b-v1",
+  "protocol_profile": "x4-zkdeepfold-ud-e29-v4",
+  "design_sha256": "bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01",
+  "prior_blocker_record": {
+    "path": "benchmarks/results/x4b-pod-storage-retry-blocked-2026-07-22-56ca0de.json",
+    "sha256": "f25bd6debb9ae880738379274c0130029a29482a3c75596c626503a697b31a9e"
+  },
+  "pod": {
+    "hostname": "c94442d3ed14",
+    "gpus": "2 x NVIDIA A100-SXM4-80GB",
+    "memory_bytes": 2151618097152,
+    "artifact_root": "/x4b-artifacts",
+    "filesystem": "overlay",
+    "filesystem_source": "overlay",
+    "filesystem_bytes": 161061273600,
+    "filesystem_available_bytes_before_probe": 161044668416,
+    "frozen_minimum_volume_bytes": 150000000000,
+    "required_durable_plus_staging_bytes": 129516961952
+  },
+  "test": {
+    "command": "dd if=/dev/urandom of=/x4b-artifacts/x4b-local-storage-preflight-38654705664.bin bs=8388608 count=4608 conv=fdatasync status=none",
+    "bytes": 38654705664,
+    "incompressible_source": true,
+    "fdatasync_included": true,
+    "wall_s": 108.872,
+    "exact_length_checked": true,
+    "passed": true,
+    "temporary_file_removed_after_pass": true
+  },
+  "disposition": {
+    "status": "PASS: LOCAL CONTAINER STORAGE ELIGIBLE FOR ONE RESUMED FULL RECORD",
+    "resume_authorized": true,
+    "artifact_root": "/x4b-artifacts",
+    "network_mfs_artifact_root_prohibited": true,
+    "gate_or_protocol_change": false
+  },
+  "assurance": "Operational storage preflight evidence recorded by an AI agent; no independent human assurance"
+}

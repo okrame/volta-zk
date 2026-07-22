@@ -248,6 +248,29 @@ historical entries remain append-only evidence, not competing definitions.
 
 ## Deviations / decisions log
 
+- **2026-07-22 (X4 pre-pod implementation review PASS with one NOTE;
+  AI-only)**: Claude performed a pre-pod implementation review of the v4 PCS
+  path.  The honest verdict is **AI review only, PASS with one NOTE; no
+  independent human-review assurance**.  The NOTE is a draw-before-full-
+  validation ordering in `verify_global_folding_interactive_v4`: after each
+  fold frame's local `validate`, the verifier takes the exact-bit draw width
+  from `proof.fold_frames[0].input_log2` and consumes the query challenges
+  before `verify_global_folding_v4` checks that value against the complete
+  verifier-group/schedule geometry.  A mismatched value is deterministically
+  rejected by the later schedule validation today; it is not an accepting
+  failure event and adds no soundness term.  No protocol, frame byte,
+  correlation, parameter, reference or gate changes by this disposition.
+
+  The pinned mandatory R1c scope is extended to cover this exact episode:
+  challenge-consumption order, validation of the first fold frame's
+  `input_log2` against verifier-owned geometry before any query draw, and the
+  transcript/lifecycle and denial-of-service consequences of deterministic
+  post-draw rejection.  R1c must decide whether this remains a documented
+  fail-closed implementation NOTE or requires hardening; it may not be
+  silently erased.  Per the preregistered pod order, the production-size
+  NOTE-6 `c3_weights_two_weight_set_leakage_smoke` remains the first pod
+  execution before every X4 wall-only+counters record.
+
 - **2026-07-21 (X4 Amendment-5 v4 Rust, CPU records and GPT-2 migration
   complete; A100 boundary reached)**: clean implementation source checkpoint
   `31fc866631f008c339981e4de9b40862f7979302` implements the normative
@@ -337,9 +360,10 @@ historical entries remain append-only evidence, not competing definitions.
   Named backlog, mandatory after X4: **R1c -- Kimi3-style adversarial review
   of the new PCS code, against a frozen baseline and with a hostile mandate**.
   Its scope includes the entire v3/v4 seam and Amendment-4 episode already
-  pinned above.  It remains honestly labeled AI adversarial review with no
-  independent-human assurance; after X4 this PCS is the only cryptographic
-  surface not yet inspected by hostile eyes.
+  pinned above, plus the 2026-07-22 draw-before-full-validation NOTE in
+  `verify_global_folding_interactive_v4`.  It remains honestly labeled AI
+  adversarial review with no independent-human assurance; after X4 this PCS
+  is the only cryptographic surface not yet inspected by hostile eyes.
 
 - **2026-07-21 (X4 Amendment-5 exact Lean-first checkpoint GREEN; schema-4
   v4 Rust gate opens)**: `lean/VoltaZk/X4FoldingPCSV4.lean` proves the exact

@@ -481,7 +481,9 @@ fn informative_anchors(physical_oracle_bytes: u64) -> (HostStreamingAnchor, Reco
             .open_initial_source(&[draw], &[0, 1])
             .expect("one-query exact aux17 rebuild, root-check and opening");
         recompute_walls.push(started.elapsed().as_secs_f64());
-        assert_eq!(opening.opened_symbols.len(), 2);
+        // One strict-UD draw opens its `+/-` coordinate pair, then each of
+        // the two touched slots at both coordinates.
+        assert_eq!(opening.opened_symbols.len(), 4);
         if let Some(previous) = traffic {
             assert_eq!(previous, observed);
         }

@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b PHASE 1 PREREGISTERED; HARD STOP)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b PHASE 2 AUTHORIZED/IN PROGRESS; NO POD YET)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -149,8 +149,12 @@ CPU/CUDA/persisted-oracle construction without changing the v4 protocol or
 references.  The CPU diagnosis reproduces all four production anchors and
 shows that per-call derive-key work is material but frame allocation and
 serialization are the larger removable overhead.  The frozen X4b profile is
-`runpod-a100-x4b-v1`; Phase 1 is hard-stopped before production Rust, CUDA or
-pod access pending product-owner review.
+`runpod-a100-x4b-v1`.  The product owner approved frozen design SHA-256
+`bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01` and
+authorized Phase 2 with the three implementation/pre-pod riders recorded
+below.  Local implementation and validation are in progress; pod access
+remains forbidden until the local GPT-2-geometry persisted-opening preflight
+and the complete local test surface are green.
 
 ## Milestones
 
@@ -200,6 +204,7 @@ pod access pending product-owner review.
 | X4 R1b NOTE-6 pod preflight | **PASS; X4 A100 RECORDS AUTHORIZED** (2026-07-22) | Exact `c3_weights` production-size smoke must be first; clean frozen checkout; command/wall/RSS/VRAM/exit/leakage evidence pinned | Clean `runpod-a100-x4-v1` source `71edbd7`; exact-name smoke **1 passed / 0 failed**, exit **0**, test wall **44.87 s**, encoded geometry **6,442,450,944 B**, peak RSS **11,493,740,544 B**, peak GPU memory **0 MiB**. Record `x4-note6-c3-weights-preflight-2026-07-22-71edbd7.json`, SHA-256 `8fef35aae0412c45556b37fbfba89c88041d9de8b3c9733ad65227daeb83b0c2`. Three ineligible setup attempts are retained: parse-before-exec, wrong Cargo directory, and MFS build-target stall; none started the test binary. No X4 gate verdict is claimed by this preflight. |
 | X4 Amendment 5 A100 production record | **G4 COMMIT FAIL; OVERALL X4 FAIL; STOPPED** (2026-07-22) | Gates conjunctive and verbatim; no synthetic production credit; wall-only+counters; one warm-up + three measured; physical inventory and X5 anchors explicit | Clean `runpod-a100-x4-v1` harness `47a701e`. Exact `Wext-mu26` constituent timed out at **16.340085726 s** warm-up and **16.187542362 / 16.127495669 / 16.179918053 s** measured against complete commit **<=15.000 s: FAIL**. G1 PASS; G3 **2,683,236 / 43,953,700 B PASS**; full G2, G4 open/verify and physical G6 NOT EVALUATED; overall **FAIL**. Exact padded first oracle **76,948,701,184 B**, Merkle **468,872,855,392 B**, per materialization **545,821,556,576 B**, twice-recompute **1,091,643,113,152 B**, persistent coefficients+roots **9,618,587,808 B**. CPU aux17 anchor **11,229,161.918552168 B/s**; one-query recompute **3.117810096 s / 205,520,864 B**; compatible GPU path absent. Record `x4-v4-a100-production-2026-07-22-47a701e.json`, SHA-256 `111e4056feb0ba53569889a0bf1d0af73c99ab4613ab9a76aae975f8adbb0237`. |
 | X4b sustainable oracle Phase 1 | **DIAGNOSIS + PREREGISTRATION COMPLETE; HARD STOP BEFORE IMPLEMENTATION/POD** (2026-07-22) | No format/root/reference/Lean/soundness change; exact postdiction; CPU >=500 MB/s/core; GPU root equality; unchanged 15 s / 1.50 s / 0.25 s; full pass informative | Design SHA-256 `bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01`. Clean-source CPU record `x4b-phase1-cpu-postdiction-2026-07-22-9164de4.json`, SHA-256 `78fdd12ed79c4cf05d42b428a7fa305c28e4254be82289608c45f1f85ce64ec1`: exact aux17 has **5,242,879** hashes / **460,324,760 canonical B**; tree wall is 92.14% explained by those calls; derive-key is material but allocation/serialization is larger. Exact padding **2.4103942174056745x**, Merkle/oracle **6.093317342300939x**, recompute **205,520,864 B / 3.117810096 s**. Profile `runpod-a100-x4b-v1`; durable artifacts **86,567,288,992 B**, volume >=150 GB, host RAM >=128 GiB, device ceiling 48 GiB. X4 FAIL remains immutable. |
+| X4b sustainable oracle Phase 2 | **AUTHORIZED / LOCAL IMPLEMENTATION IN PROGRESS; POD FORBIDDEN UNTIL LOCAL PREFLIGHT** (2026-07-22) | Frozen Phase-1 construction plus three owner riders; any local persisted-open failure at GPT-2 geometry is a hard stop before paid hardware | The CPU throughput gate measures the complete canonical node pipeline, including serialization, allocation behavior and hashing.  Before provisioning, both the normal and RAM-degraded persisted-opening policies are exercised at exact GPT-2 geometry against **1.50 s**.  Approximately 125-GiB hosts must select an explicit smaller-cache policy whose extra rebuild work and wall are reported, never silently page or overcommit.  No protocol/reference/byte/root/Lean/soundness change; design SHA remains `bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01`. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -267,6 +272,36 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-22 (X4b Phase 2 explicitly approved; three pre-pod riders)**:
+  the product owner approved the frozen Phase-1 design at SHA-256
+  `bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01`.
+  This authorization lifts only the implementation hard stop.  The v4 proof
+  grammar, roots, references, byte counts, gate ceilings, Lean statements,
+  parameters and soundness expression remain byte-for-byte and
+  statement-for-statement frozen; the immutable X4 FAIL remains the baseline.
+
+  Three riders are load-bearing.  First, the **>=500,000,000 B/s/core** CPU
+  gate times the complete canonical node pipeline -- fixed-width
+  serialization, all pipeline allocation behavior and BLAKE3 hashing -- and
+  may not quote a pre-encoded/hash-only inner loop.  Second, before any pod
+  request, a local CPU preflight must execute the production persisted-mode
+  opening hot path at exact GPT-2 cohort/query geometry, including outer-node
+  cache access and every queried-coordinate inner rebuild, against the
+  unchanged **<=1.50 s** ceiling.  A miss is a hard stop on the local host,
+  not a paid-hardware experiment.  Third, the implementation must expose and
+  measure an explicit graceful-degradation cache policy for an approximately
+  **125-GiB** host instead of silently assuming the **>=128-GiB** baseline:
+  the smaller retained outer frontier, exact bytes saved, additional subtree
+  rebuilds/reads and opening wall are reported so provisioning can choose the
+  SKU honestly.  Paging, overcommit and an uncounted rebuild are forbidden.
+
+  Phase 2 order is CPU framing/hash engineering, compact/persisted opening
+  and both local GPT-2-geometry preflights, CUDA N4/E-NTT implementation with
+  compile/reference tests, then the complete local workspace.  Only if all
+  local gates are green does work stop to request an A100-SXM4 80-GB pod with
+  a >=150-GB volume and the host-RAM recommendation established by the two
+  cache-policy measurements.  No pod was contacted by this ruling.
 
 - **2026-07-22 (X4b Phase-1 CPU postdiction and sustainable-oracle
   preregistration; HARD STOP before implementation or pod)**: the immutable

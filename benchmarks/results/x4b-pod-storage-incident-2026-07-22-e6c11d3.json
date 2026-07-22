@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "milestone": "X4b-pod-storage-incident",
+  "date": "2026-07-22",
+  "git_sha": "e6c11d336e5c9ff7b3b39481884a2eec92d28696",
+  "git_dirty": false,
+  "pod_profile": "runpod-a100-x4b-v1",
+  "protocol_profile": "x4-zkdeepfold-ud-e29-v4",
+  "design_sha256": "bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01",
+  "pod": {
+    "hostname": "832f581f63c3",
+    "gpu_selected": "NVIDIA A100-SXM4-80GB GPU 0",
+    "volume_mount": "/workspace",
+    "volume_type": "fuseblk",
+    "volume_source": "mfs#us-md-1.runpod.net:9421"
+  },
+  "ordering": {
+    "note6_passed_first": true,
+    "synthetic_cpu_gpu_root_equality_passed_before_full_pass": true
+  },
+  "failed_attempt": {
+    "session_directory": "/workspace/x4b-artifacts/x4b-e6c11d3-2339",
+    "session_directory_created_utc": "2026-07-22T15:05:12Z",
+    "failure_cleanup_directory_mtime_utc": "2026-07-22T15:15:19Z",
+    "observed_elapsed_lower_bound_s": 607,
+    "stage": "initial-warmup, first Wext-mu26 cohort, before any N4 staging output",
+    "coefficient_file_bytes_observed_before_failure": 4294967296,
+    "oracle_file_bytes_observed_before_failure": 34359738368,
+    "combined_file_bytes_observed_before_failure": 38654705664,
+    "main_thread_wait_channel_before_failure": "request_wait_answer",
+    "error": "Io(Os { code: 5, kind: Uncategorized, message: \"Input/output error\" })",
+    "exit_code": 101,
+    "created_files_rollback_left_staging_empty": true
+  },
+  "diagnostic_storage_probe": {
+    "command": "dd if=/dev/urandom of=/workspace/x4b-artifacts/x4b-storage-probe-4g.bin bs=8388608 count=512 conv=fsync status=none",
+    "bytes": 4294967296,
+    "incompressible_source": true,
+    "fsync_included": true,
+    "wall_s": 14.778,
+    "passed": true
+  },
+  "disposition": {
+    "status": "INFRASTRUCTURE FAIL; NO X4b GATE VERDICT",
+    "official_x4b_record_emitted": false,
+    "retry_rule": "Exactly one clean full-record retry is permitted because the immediate 4-GiB incompressible fsync probe passed. A repeated EIO is a hard infrastructure stop; no further paid retries.",
+    "gate_or_protocol_change": false
+  },
+  "assurance": "Operational incident evidence recorded by an AI agent; no independent human assurance"
+}

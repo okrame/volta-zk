@@ -274,6 +274,28 @@ historical entries remain append-only evidence, not competing definitions.
 
 ## Deviations / decisions log
 
+- **2026-07-22 (X4b first full-record attempt: volume EIO, no gate verdict;
+  one retry preregistered)**: after NOTE-6 and the fail-closed synthetic root
+  gate passed, clean checkpoint `e6c11d336e5c9ff7b3b39481884a2eec92d28696`
+  began the full recorder.  The first `Wext-mu26` warm-up reached the exact
+  **4,294,967,296-B** coefficient and **34,359,738,368-B** oracle file
+  positions, then the `/workspace` FUSE volume returned OS error 5 (`EIO`)
+  before any N4 staging output.  The attempt ran for at least **607 s** and
+  exited 101; the recorder's created-file rollback removed the two incomplete
+  durable files and left the session/staging directories for attribution.
+  This is **INFRASTRUCTURE FAIL; NO X4b GATE VERDICT** -- it is not converted
+  into a commit-wall FAIL and is not silently discarded.
+
+  An immediate **4,294,967,296-B incompressible** storage probe with `fsync`
+  passed in **14.778 s**.  Therefore exactly one clean full-record retry is
+  preregistered.  If OS error 5 recurs, the pod session hard-stops as an
+  infrastructure blocker with no further paid retry.  No gate, parameter,
+  format, protocol, root, byte reference, Lean statement, or soundness term
+  changes.  Append-only incident record
+  `benchmarks/results/x4b-pod-storage-incident-2026-07-22-e6c11d3.json`
+  SHA-256
+  `db01c4e060be6611273d889f5336fa701435ce73fec2af9910bef0027ad96f0c`.
+
 - **2026-07-22 (X4b pod NOTE-6 first-action PASS)**: from clean source
   `819ea754a7f1db1afc0a7f0bd8bd7367151fb873`, the first production-size
   execution on pod `832f581f63c3` was exactly

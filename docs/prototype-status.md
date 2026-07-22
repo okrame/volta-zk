@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b LOCAL PHASE 2 GREEN; HARD STOP AWAITING POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b LOCAL PHASE 2 GREEN; POD SESSION ACTIVE — NOTE-6 PENDING)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -273,6 +273,27 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-22 (X4b pod provisioned; synthetic CPU/GPU equality made a
+  fail-closed pre-full-pass invariant)**: the owner provisioned host
+  `832f581f63c3` with **2 x A100-SXM4-80GB**, **2,101,189,548 kB** reported
+  host RAM, and **443,466,171,875,328 B** `/workspace` capacity
+  (**168,954,947,108,864 B** initially available).  This exceeds every frozen
+  hardware minimum; the second GPU supplies SKU/host-memory headroom and does
+  not alter the one-backend protocol profile or any gate.
+
+  Source checkpoint `0619de9d654fc1a09de7ab6604f1774b401ec9ff`
+  enforces the owner's bring-up reminder mechanically.  The recorder now
+  requires all four N4 domain probes and all five synthetic structural root
+  comparisons to pass **before** the first 77-GB GPT-2 commit; failure aborts
+  immediately.  The append-only result and validator require
+  `synthetic_preflight_before_full_pass = true`, so a reordered run is
+  ineligible rather than merely nonconforming to prose.  This is scheduler/
+  harness fail-closure only: no kernel, protocol, proof format, root, byte,
+  parameter, soundness, Lean statement, or gate changed.  Local
+  `cargo test --workspace` and report tests are green.  NOTE-6 remains the
+  first production-size pod execution; no CUDA or production record has run
+  yet.
 
 - **2026-07-22 (X4b Phase 2 local implementation and pre-pod stop; all three
   owner riders discharged locally)**: source checkpoint

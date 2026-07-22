@@ -311,6 +311,48 @@ historical entries remain append-only evidence, not competing definitions.
   overwrote another run directory.  With the required ordering satisfied,
   `runpod-a100-x4-v1` wall-only+counters records are now authorized.
 
+- **2026-07-22 (X4 A100 production harness preregistration; before every X4
+  wall measurement)**: harness-only source checkpoint `c581490` adds
+  `x4_v4_pod_record` and its fail-closed validator without changing the
+  protocol, schema-4 codec, transcript, parameters, correlations, soundness
+  expression or frozen references.  The record remains bound to rate `1/8`,
+  `s=111`, union `<=3,320`, **27,564** symbols, all **67,930** real sibling
+  digests, **2,683,236 B** PCS, **43,953,700 B** response and
+  **80.25537016399041** bits.  It requires a tracked-clean
+  `runpod-a100-x4-v1` checkout, `RAYON_NUM_THREADS=8`, wall-only counters and
+  the already-passed NOTE-6 SHA.
+
+  A mechanical inventory of the five normative GPT-2 cohort configs records
+  an important distinction before timing: **31,923,699,712 B** is the frozen
+  unpadded source-equivalent floor, while axis/slot padding makes the physical
+  first-oracle payload **76,948,701,184 B**.  Exact coefficients are
+  **9,618,587,648 B**; N4 requires **12,333,875,200** inner plus
+  **2,318,401,531** outer digests, or **468,872,855,392 B** of logical Merkle
+  material.  One current materialization therefore accounts
+  **545,821,556,576 B**, the twice-recomputed response accounts
+  **1,091,643,113,152 B**, and the present fully materializing implementation
+  has a maximum cohort working-set formula of **363,998,478,304 B**.  The
+  selected persistent coefficients+five-roots artifact is only
+  **9,618,587,808 B**; none of the larger logical volumes is mislabeled as
+  persistent storage.  These are exact premeasurement counts derived from
+  the frozen configs, not a G4/G6 verdict and not a new soundness term.
+
+  The G4 probe is preregistered fail-closed.  It runs the exact largest
+  `Wext-mu26` GPT-2 cohort (`domain_log2=30`, 2/2 slots) with a deterministic
+  value-independent geometry fixture, one warm-up and three measured
+  candidates.  Each candidate is stopped just after the unchanged **15.000
+  s** complete-commit ceiling; if even that constituent has not completed,
+  the sequential full commit is **G4 FAIL** by lower bound and production
+  open/verify remain **NOT EVALUATED**, never synthesized.  Informative X5
+  anchors separately run one warm-up plus three exact CPU encode+N4-hash
+  commits and three one-query root-checked recomputations of the real
+  `auxiliary-ell17` cohort.  They report measured bytes/s, wall and bytes,
+  then clearly label any 31.9-GB/physical-oracle scaling as a projection.  A
+  full 31.9-GB pass is not claimed if the production probe times out.  GPU
+  throughput is measured only if a schema-4 N4-compatible path exists;
+  Ligero's row-matrix `hash_fp2_tree_device` is not accepted as a substitute.
+  No gate is relaxed and no pod measurement has yet run from this harness.
+
 - **2026-07-21 (X4 Amendment-5 v4 Rust, CPU records and GPT-2 migration
   complete; A100 boundary reached)**: clean implementation source checkpoint
   `31fc866631f008c339981e4de9b40862f7979302` implements the normative

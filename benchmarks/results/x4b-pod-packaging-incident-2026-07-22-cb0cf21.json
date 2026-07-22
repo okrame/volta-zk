@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "milestone": "X4b-pod-packaging-incident",
+  "date": "2026-07-22",
+  "git_sha": "cb0cf21edd3fec3a3efeccbcdd13566d7917e8ea",
+  "git_dirty": false,
+  "pod_profile": "runpod-a100-x4b-v1",
+  "protocol_profile": "x4-zkdeepfold-ud-e29-v4",
+  "design_sha256": "bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01",
+  "pod": {
+    "hostname": "c94442d3ed14",
+    "artifact_root": "/x4b-artifacts",
+    "filesystem": "overlay",
+    "gpu_selected": "NVIDIA A100-SXM4-80GB GPU 0"
+  },
+  "attempt": {
+    "session_directory": "/x4b-artifacts/x4b-cb0cf21-836",
+    "session_created_utc": "2026-07-22T16:14:41.249136618Z",
+    "failure_cleanup_mtime_utc": "2026-07-22T17:43:00.975345724Z",
+    "observed_elapsed_lower_bound_s": 5299,
+    "reached_control_flow_stage": "all warmup/measured full passes, isolated commits, durable materialization and four response candidates returned; frozen codec reference spawn",
+    "error": "re-run frozen GPT-2 migration/codec reference: Os { code: 2, kind: NotFound, message: \"No such file or directory\" }",
+    "missing_companion": "/workspace/volta-zk/rust/target/release/x4_v4_gpt2_migration",
+    "exit_code": 101,
+    "official_x4b_record_emitted": false,
+    "gate_verdict_available": false
+  },
+  "preserved_durable_artifacts": {
+    "path": "/x4b-artifacts/x4b-cb0cf21-836/durable-initial",
+    "bytes": 86567288992,
+    "coefficient_files": 5,
+    "oracle_files": 5,
+    "root_files": 5
+  },
+  "repair": {
+    "source_change": "Fail at recorder startup unless both x4b_cpu_preflight and x4_v4_gpt2_migration companion binaries exist.",
+    "required_preflight": "Build the recorder and both companions, execute and validate the frozen migration/codec companion before any rerun.",
+    "protocol_or_gate_change": false,
+    "single_clean_rerun_authorized_after_repair": true
+  },
+  "disposition": {
+    "status": "PACKAGING FAIL; NO X4b GATE VERDICT",
+    "reuse_for_timing_or_gate_credit": false,
+    "resume_path": "Delete only this failed session after inventory, rebuild/preflight all companions, then run one clean full recorder candidate."
+  },
+  "assurance": "Operational packaging incident evidence recorded by an AI agent; no independent human assurance"
+}

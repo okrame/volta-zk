@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b LOCAL PHASE 2 GREEN; POD LOCAL-STORAGE PREFLIGHT PASS — FULL RECORD NEXT)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b LOCAL PHASE 2 GREEN; POD PACKAGING REPAIR PENDING — NO GATE VERDICT)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -273,6 +273,32 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-22 (X4b local-storage run completed candidates but packaging
+  companion was absent; no gate verdict)**: clean checkpoint
+  `cb0cf21edd3fec3a3efeccbcdd13566d7917e8ea` ran for at least **5,299 s**
+  on the validated local container disk.  Control flow completed all
+  warm-up/measured full passes, isolated commits, the final durable
+  materialization and all four response candidates.  During finalization it
+  attempted the separately frozen codec/golden rerun, but the expected
+  sibling executable `rust/target/release/x4_v4_gpt2_migration` had not been
+  packaged on the recreated container.  `Command::output` returned OS error
+  2 and the recorder exited 101 before serializing a JSON.
+
+  Status: **PACKAGING FAIL; NO X4b GATE VERDICT**.  No in-memory timing is
+  reconstructed or credited.  The failed session retained exactly
+  **86,567,288,992 B** of durable initial artifacts (five coefficient, five
+  oracle and five root files), which are inventory evidence only and cannot
+  be reused for a timed record.  The harness now fails at startup unless both
+  `x4b_cpu_preflight` and `x4_v4_gpt2_migration` companions exist.  Before a
+  single clean rerun, all three binaries must be built and the frozen
+  migration/codec companion must execute successfully.  This is packaging
+  fail-closure only: no protocol, kernel, storage schedule, root, proof byte,
+  parameter, soundness expression, Lean statement, or gate changed.
+  Append-only incident record
+  `benchmarks/results/x4b-pod-packaging-incident-2026-07-22-cb0cf21.json`
+  SHA-256
+  `602d363b71340a6d9c151733f4acba2b8d971bc892af27e5a514ecb39d1bbdb6`.
 
 - **2026-07-22 (X4b local container storage reprovisioned; exact recovery
   preflight PASS)**: the pod was restarted with a **161,061,273,600-B** local

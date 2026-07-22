@@ -2052,6 +2052,14 @@ fn parse_args() -> Args {
 
 fn main() {
     let args = parse_args();
+    for companion in ["x4b_cpu_preflight", "x4_v4_gpt2_migration"] {
+        let path = std::env::current_exe().unwrap().with_file_name(companion);
+        assert!(
+            path.is_file(),
+            "required X4b companion binary missing before run: {}",
+            path.display()
+        );
+    }
     assert_eq!(rayon::current_num_threads(), 8, "frozen X4b pod profile requires 8 Rayon workers");
     assert!(!git_dirty(), "X4b pod records require a tracked-clean tree");
     assert!(!LOCAL_PREFLIGHT_PATH.starts_with("__"), "local X4b preflight pin was not frozen");

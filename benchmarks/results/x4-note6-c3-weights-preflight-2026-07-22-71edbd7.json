@@ -1,0 +1,95 @@
+{
+  "schema": 1,
+  "milestone": "X4-v4-R1b-NOTE-6-preflight",
+  "date": "2026-07-22",
+  "git_sha": "71edbd731411ff117ea3af8e9f6cdce87eead2c0",
+  "git_short_sha": "71edbd7",
+  "git_dirty": false,
+  "profile": "runpod-a100-x4-v1",
+  "protocol_profile": "x4-zkdeepfold-ud-e29-v4",
+  "design_sha256": "c963831373783504e855c6c9b54a4d1bf425206ccb68992c242c94290e1cf544",
+  "frozen_design_baseline_sha256": "1383fa5d0a2eb9155f1ca76fe814238c04eaaa7aab965e10374b5f07d220bfb7",
+  "preflight_order": {
+    "required_first": "c3_weights_two_weight_set_leakage_smoke",
+    "first_production_size_test_started": "c3_weights_two_weight_set_leakage_smoke",
+    "x4_wall_records_started_before_pass": false,
+    "order_satisfied": true
+  },
+  "command": "cargo test --release -p volta-pcs --test p35 c3_weights_two_weight_set_leakage_smoke -- --ignored --nocapture",
+  "environment": {
+    "hostname": "d394e1018824",
+    "kernel": "Linux 6.17.0-14-generic x86_64 GNU/Linux",
+    "cpu_model": "AMD EPYC 7742 64-Core Processor",
+    "logical_cpus": 128,
+    "host_memory_bytes": 2151618895872,
+    "rayon_workers": 8,
+    "gpu_name": "NVIDIA A100-SXM4-80GB",
+    "gpu_uuid": "GPU-e1dc12d7-585b-2015-78df-6d4ac6053606",
+    "gpu_memory_mib": 81920,
+    "nvidia_driver": "580.126.16",
+    "rustc": "rustc 1.96.1 (31fca3adb 2026-06-26)",
+    "cargo": "cargo 1.96.1 (356927216 2026-06-26)",
+    "workspace_volume_total_bytes": 443466171875328,
+    "workspace_volume_available_bytes": 170908328460288,
+    "build_target_location": "/root/volta-zk-x4-target",
+    "measurement_policy": "GNU time -v plus 200-ms nvidia-smi memory sampling"
+  },
+  "test": {
+    "passed": true,
+    "exit_code": 0,
+    "tests_passed": 1,
+    "tests_failed": 0,
+    "tests_filtered_out": 14,
+    "test_wall_s": 44.87,
+    "command_wall_s_including_first_release_build": 96.79,
+    "user_cpu_s": 207.27,
+    "system_cpu_s": 42.33,
+    "maximum_resident_set_kib": 11224356,
+    "maximum_resident_set_bytes": 11493740544,
+    "maximum_resident_set_gib": 10.70438003540039,
+    "peak_gpu_memory_mib": 0,
+    "gpu_memory_samples": 409,
+    "encoded_geometry_bytes": 6442450944,
+    "two_weight_transcript_ledgers_equal": true,
+    "masked_opening_contains_nonzero_u": true,
+    "leakage_verdict": "PASS"
+  },
+  "raw_evidence": {
+    "remote_run_directory": "/workspace/x4-note6-2026-07-22-71edbd7-r3",
+    "wrapper_sha256": "8edbe860fae65829941a1cb47e6e2ee96cfc335b92f16e52692122977a8c6bd6",
+    "combined_log_sha256": "f742ce6414969228235455d829c4acc3e50770f6c5367bd5455b50c8a6bbee7c",
+    "gpu_samples_sha256": "6841660d585ba5626a0efc4c89e6eaf1bcb757300213ad330df8bdcdb4e9c331",
+    "exit_code_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "peak_gpu_memory_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "first_gpu_sample": "1784704836.653198869,0",
+    "last_gpu_sample": "1784704933.382758186,0"
+  },
+  "setup_attempts": [
+    {
+      "id": "inline-parse",
+      "eligible": false,
+      "outcome": "shell syntax error before any remote test command executed"
+    },
+    {
+      "id": "r1",
+      "eligible": false,
+      "outcome": "Cargo invoked from repository root; no Cargo.toml found; test binary never started; exit 101"
+    },
+    {
+      "id": "r2",
+      "eligible": false,
+      "outcome": "release build target on persistent MFS blocked in request_wait_answer; manually interrupted before the test binary started"
+    },
+    {
+      "id": "r3",
+      "eligible": true,
+      "outcome": "exact-name production-size smoke passed"
+    }
+  ],
+  "assurance": "R1b NOTE-6 execution evidence only; no independent human-review assurance",
+  "gate": {
+    "note6_c3_weights_preflight": "PASS",
+    "x4_records_authorized_after_this_preflight": true,
+    "x4_gate_verdict": "NOT EVALUATED BY THIS PREFLIGHT"
+  }
+}

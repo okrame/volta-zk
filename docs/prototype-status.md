@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 AMENDMENT 5 V4 LEAN/RUST + CPU/GPT-2 MIGRATION GREEN; A100 POD PENDING)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 AMENDMENT 5 V4 LEAN/RUST + CPU/GPT-2 MIGRATION GREEN; A100 POD ACTIVE; NOTE-6 PASS; RECORDS IN PROGRESS)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -133,7 +133,11 @@ materialized on the CPU VM: full-production G2, G4, physical G6 and the overall
 X4 verdict remain **NOT EVALUATED** until the preregistered A100 run.  No new
 failure event or soundness term surfaced, so **80.25537016399041 bits** remains
 unchanged.  Pod provisioning, including the R1b NOTE-6 `c3_weights` smoke, is
-now the next authorized boundary.
+now complete.  On the clean `runpod-a100-x4-v1` checkout at `71edbd7`, NOTE-6
+`c3_weights_two_weight_set_leakage_smoke` ran before every X4 wall record and
+passed in **44.87 s test wall**, with **11,493,740,544 B peak RSS** and
+**0 MiB peak GPU memory**.  Its SHA-pinned preflight record below authorizes
+the wall-only+counters X4 record phase, which remains in progress.
 
 ## Milestones
 
@@ -180,6 +184,7 @@ now the next authorized boundary.
 | X4 Amendment 5 Lean-first discharge | **LEAN GREEN; SCHEMA-4/V4 RUST AUTHORIZED** (2026-07-21) | Exact frozen statements; full build; zero `sorry`/`admit`; derived audit; no new ideal axiom or surfaced error term | Checkpoint `d5227f2`: model-global slot/cohort binding, packed-to-explicit equivalence, seal-before-query typestate, one different-size chain, strict-UD `s=111`, separate binding/ZK/batch obligations, blind Pending-to-Bound seam, Amendment-4 `equality OR LinkBad`, permanent delta-shift/beta-collision artifacts, exact bytes/correlations and four-event response soundness all prove. Build **3,252 jobs**; audit **209 total / 116 X4** (46 new v4), standard axioms only. Exact `<2^-80` theorem and **78.809294874-bit** registered target pass with the unchanged **80.25537016399041-bit** expression. No Rust/record/G3/pod verdict yet. |
 | X4 Amendment 5 v4 Rust + CPU synthetic | **RUST GREEN; G5 PASS; G6 PASS IN SYNTHETIC SCOPE; A100 PRODUCTION SURFACE PENDING** (2026-07-21) | Normative schema 4; N4 domains; seal-before-query; model-global cohorts; one different-size chain; blind M9; permanent tamper inventory; exact G6 accounting | Clean source `31fc866`. Full workspace tests are green (`volta-pcs` 69; `volta-proto` 109 passed / one historical production-size private-argmax test ignored; `p35` 13 passed / two production-size C3 smokes ignored); all 55 scoped X4 tests and seven report-validator tests pass. NOTE-6 `c3_weights` is not waived and remains first in pod preflight. Clean record `x4-v4-cpu-synthetic-2026-07-21-31fc866.json`, SHA-256 `e7d59d071bcf3f4e4e21458ed6a2dffb749e39e9cd7482c76a849e8e75c49f78`: touched family `1/2/4/8/16`, ABBA unopened-block ratio **1.0038429423095299 <= 1.05**, persisted/recompute responses byte-identical, exact logical traffic, peak RSS **78,823,424 B**, device/file traffic zero as declared. Ligero/v3 remains read-only and is refused by record-producing modes. No GPT-2 G4 or physical-production G6 verdict. |
 | X4 Amendment 5 GPT-2 migration | **MIGRATION GREEN; G3 PASS; FULL G2/G4/G6 AND OVERALL X4 PENDING A100** (2026-07-21) | Golden 100+50 unchanged; production codec complete; validators re-baselined; historical rows immutable; exact byte gates | Clean record `x4-v4-gpt2-migration-2026-07-21-31fc866.json`, SHA-256 `d7c73d7f74cbc226c768330582cebcaed02939eb7940111715da2fc3d87d2d5e`: one schema-4 opening emits exactly **27,564 symbols and all 67,930 real sibling digests**, encoded SHA-256 `7326f1e47d87bf6858b7811a152a45530359b869bcd9abb30e34bcc4c9dd2a9b`; complete PCS **2,683,236 B <= 4,000,000 B PASS**, response **43,953,700 B <= 45,270,464 B PASS**, common headroom **1,316,764 B**. Golden output is bit-exact and every pinned historical artifact hash is unchanged. The **31,923,699,712-B** logical first-oracle floor is pinned but not materialized on CPU; the fresh A100 record must evaluate isolated wall and all physical traffic/RSS/VRAM before an overall verdict. |
+| X4 R1b NOTE-6 pod preflight | **PASS; X4 A100 RECORDS AUTHORIZED** (2026-07-22) | Exact `c3_weights` production-size smoke must be first; clean frozen checkout; command/wall/RSS/VRAM/exit/leakage evidence pinned | Clean `runpod-a100-x4-v1` source `71edbd7`; exact-name smoke **1 passed / 0 failed**, exit **0**, test wall **44.87 s**, encoded geometry **6,442,450,944 B**, peak RSS **11,493,740,544 B**, peak GPU memory **0 MiB**. Record `x4-note6-c3-weights-preflight-2026-07-22-71edbd7.json`, SHA-256 `8fef35aae0412c45556b37fbfba89c88041d9de8b3c9733ad65227daeb83b0c2`. Three ineligible setup attempts are retained: parse-before-exec, wrong Cargo directory, and MFS build-target stall; none started the test binary. No X4 gate verdict is claimed by this preflight. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -270,6 +275,41 @@ historical entries remain append-only evidence, not competing definitions.
   silently erased.  Per the preregistered pod order, the production-size
   NOTE-6 `c3_weights_two_weight_set_leakage_smoke` remains the first pod
   execution before every X4 wall-only+counters record.
+
+- **2026-07-22 (R1b NOTE-6 production `c3_weights` preflight PASS; X4 pod
+  records may start)**: the migrated pod is an NVIDIA A100-SXM4-80GB
+  (`GPU-e1dc12d7-585b-2015-78df-6d4ac6053606`, driver `580.126.16`) with 128
+  logical AMD EPYC 7742 CPUs, 2,151,618,895,872 B host memory and more than
+  100 GB persistent capacity.  A separate checkout preserved the old pod
+  checkout and its untracked historical records untouched.  The eligible
+  checkout was clean at
+  `71edbd731411ff117ea3af8e9f6cdce87eead2c0`, with Rust/Cargo `1.96.1` and
+  `RAYON_NUM_THREADS=8`.
+
+  Before any X4 wall record, the exact command
+  `cargo test --release -p volta-pcs --test p35
+  c3_weights_two_weight_set_leakage_smoke -- --ignored --nocapture` ran as the
+  first production-size test and returned **1 passed / 0 failed, exit 0**.
+  The test-only wall was **44.87 s**; GNU time around the first release build
+  plus test measured **96.79 s**, **11,224,356 KiB / 11,493,740,544 B peak
+  RSS**, and no swap.  A 409-sample, 200-ms `nvidia-smi` trace measured
+  **0 MiB peak GPU memory**.  The 6,442,450,944-B two-weight-set geometry
+  retained a nonzero masked opening and identical public transcript ledgers,
+  so the NOTE-6 leakage verdict is **PASS**.  This is execution evidence, not
+  independent-human review assurance and not an X4 gate verdict.
+
+  The append-only record is
+  `benchmarks/results/x4-note6-c3-weights-preflight-2026-07-22-71edbd7.json`,
+  SHA-256
+  `8fef35aae0412c45556b37fbfba89c88041d9de8b3c9733ad65227daeb83b0c2`.
+  Its raw eligible wrapper/log/GPU hashes are pinned inside the record.  It
+  also retains three ineligible setup attempts: an inline shell parse error
+  before remote execution, Cargo invoked outside `rust/` (no test binary),
+  and a persistent-MFS build-target stall interrupted before the test binary.
+  The passing run moved only Cargo build artifacts to the pod-local overlay;
+  sources, weights and evidence remained on persistent storage.  No attempt
+  overwrote another run directory.  With the required ordering satisfied,
+  `runpod-a100-x4-v1` wall-only+counters records are now authorized.
 
 - **2026-07-21 (X4 Amendment-5 v4 Rust, CPU records and GPT-2 migration
   complete; A100 boundary reached)**: clean implementation source checkpoint

@@ -351,7 +351,24 @@ historical entries remain append-only evidence, not competing definitions.
   full 31.9-GB pass is not claimed if the production probe times out.  GPU
   throughput is measured only if a schema-4 N4-compatible path exists;
   Ligero's row-matrix `hash_fp2_tree_device` is not accepted as a substitute.
-  No gate is relaxed and no pod measurement has yet run from this harness.
+  No gate is relaxed.
+
+  The first harness execution at `fb89870` is retained as **INELIGIBLE; no
+  JSON and no gate verdict**.  It completed the four timeout probes and the
+  host anchor candidates, then a reporter-only assertion expected two opened
+  symbols for one query over two touched slots.  The unchanged strict-UD path
+  correctly returned four: the draw opens its `+/-` coordinate pair and both
+  slots at each coordinate.  The process exited 101 after **84.84 s** wrapper
+  wall with **14,036,279,296 B** peak RSS.  Raw console/GPU/exit hashes are
+  respectively
+  `50c9d2207ad6f25b43d7383c7399880050b43cc1ecaadaee151bbd73be086fd5`,
+  `f995034abc48dc4a0458347855fb77240eedf8d1a75a552b60e80414158fa601`
+  and
+  `39b8dc3fc8b44765c8e6f1adee04c5b465e555ab791cc42d0d9e810d5b64297c`.
+  Harness-only fix `9e204ce` changes that assertion from two to four and
+  changes no measured primitive, protocol, byte/correlation count, parameter
+  or reference.  The eligible rerun must use a new append-only directory and
+  a clean ledger descendant; the failed directory is not reused.
 
 - **2026-07-21 (X4 Amendment-5 v4 Rust, CPU records and GPT-2 migration
   complete; A100 boundary reached)**: clean implementation source checkpoint

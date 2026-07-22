@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "milestone": "X4b-pod-packaging-repair-preflight",
+  "date": "2026-07-22",
+  "git_sha": "6d7b22c98a0cba418c36f37a74c1464c8e49096c",
+  "git_dirty": false,
+  "pod_profile": "runpod-a100-x4b-v1",
+  "protocol_profile": "x4-zkdeepfold-ud-e29-v4",
+  "design_sha256": "bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01",
+  "prior_incident": {
+    "path": "benchmarks/results/x4b-pod-packaging-incident-2026-07-22-cb0cf21.json",
+    "sha256": "602d363b71340a6d9c151733f4acba2b8d971bc892af27e5a514ecb39d1bbdb6"
+  },
+  "binaries": {
+    "x4b_pod_record": true,
+    "x4b_cpu_preflight": true,
+    "x4_v4_gpt2_migration": true,
+    "recorder_startup_fail_closed_on_all_companions": true
+  },
+  "migration_companion": {
+    "command": "x4_v4_gpt2_migration --profile=x4-zkdeepfold-ud-e29-v4",
+    "stdout_bytes": 4881,
+    "stdout_sha256": "4b8c3aa2b600714768e6682cd7740307de4f779ad473ebc522819cdc151b32b6",
+    "observed_codec_sha256": "7326f1e47d87bf6858b7811a152a45530359b869bcd9abb30e34bcc4c9dd2a9b",
+    "frozen_codec_sha256": "7326f1e47d87bf6858b7811a152a45530359b869bcd9abb30e34bcc4c9dd2a9b",
+    "packed_opening_bytes": 2615414,
+    "complete_pcs_bytes": 2683236,
+    "response_bytes": 43953700,
+    "golden_decode_exact": true,
+    "recorder_consumer_contract_passed": true,
+    "official_record_validator_applicable": false,
+    "official_record_validator_note": "The recorder intentionally consumes stdout diagnostic mode; the record-of-record validator requires --record metadata and is not used for this companion preflight."
+  },
+  "disposition": {
+    "status": "PASS: PACKAGING REPAIR ELIGIBLE FOR ONE CLEAN FULL RERUN",
+    "failed_session_reuse_for_timing": false,
+    "gate_or_protocol_change": false
+  },
+  "assurance": "Operational packaging preflight evidence recorded by an AI agent; no independent human assurance"
+}

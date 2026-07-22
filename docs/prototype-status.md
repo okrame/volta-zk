@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b LOCAL PHASE 2 GREEN; POD PACKAGING REPAIR PENDING — NO GATE VERDICT)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b LOCAL PHASE 2 GREEN; POD PACKAGING REPAIR PASS — ONE CLEAN RERUN NEXT)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -273,6 +273,30 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-22 (X4b packaging repair preflight PASS; one clean rerun
+  eligible)**: checkpoint `6d7b22c98a0cba418c36f37a74c1464c8e49096c`
+  adds startup fail-closure for both required companion binaries.  On the pod,
+  `x4b_pod_record`, `x4b_cpu_preflight` and `x4_v4_gpt2_migration` were all
+  built release with Rust 1.96.1.  The migration companion then executed in
+  the exact stdout mode consumed by the recorder: observed/frozen codec digest
+  both
+  `7326f1e47d87bf6858b7811a152a45530359b869bcd9abb30e34bcc4c9dd2a9b`,
+  packed opening **2,615,414 B**, PCS **2,683,236 B**, response
+  **43,953,700 B**, golden decode exact.  Its **4,881-B** stdout has SHA-256
+  `4b8c3aa2b600714768e6682cd7740307de4f779ad473ebc522819cdc151b32b6`.
+  The record-of-record migration validator is intentionally inapplicable to
+  this non-`--record` companion invocation; every field actually asserted by
+  `frozen_codec_reference` passed exactly.
+
+  Verdict: **PASS: PACKAGING REPAIR ELIGIBLE FOR ONE CLEAN FULL RERUN**.  The
+  failed 86,567,288,992-B session is not reusable for timing or gate credit
+  and may be removed only after this inventory/pin.  No protocol, kernel,
+  storage schedule, root, proof byte, parameter, soundness, Lean statement or
+  gate changed.  Append-only repair record
+  `benchmarks/results/x4b-pod-packaging-repair-preflight-2026-07-22-6d7b22c.json`
+  SHA-256
+  `61f434780a7b4c2dc7eb83c9e9d90a70709499f8427114022e5bf12d81ea4b03`.
 
 - **2026-07-22 (X4b local-storage run completed candidates but packaging
   companion was absent; no gate verdict)**: clean checkpoint

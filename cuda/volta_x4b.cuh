@@ -69,6 +69,22 @@ static_assert(
     sizeof(X4cCanonicalGatherOperation) == 88,
     "X4c canonical-gather operation ABI mismatch");
 
+/// Validate the ordering within one canonical gather round. Symbols are
+/// strictly index-ordered and precede the frontier; frontier nodes are then
+/// strictly ordered by `(level,index)`. The first frontier node is not
+/// comparable to the last symbol index because they are distinct classes.
+VOLTA_X4B_HD inline bool x4c_canonical_operation_ordered_after(
+    bool previous_was_symbol, uint8_t previous_level,
+    uint64_t previous_index, bool is_symbol, uint8_t level,
+    uint64_t index) {
+    if (previous_was_symbol) {
+        return is_symbol ? index > previous_index : true;
+    }
+    if (is_symbol) return false;
+    return level > previous_level ||
+           (level == previous_level && index > previous_index);
+}
+
 VOLTA_X4B_HD inline uint64_t fp_add(uint64_t a, uint64_t b) {
     const uint64_t r0 = a + b;
     const bool carry = r0 < a;

@@ -6103,13 +6103,9 @@ extern "C" int volta_cuda_x4c_batch_gather_canonical_operations(
                 return fail_message(c, "inconsistent X4c canonical round ownership");
             const bool is_symbol =
                 operation.source_kind == volta_x4b::X4C_GATHER_CODEWORD_SYMBOL;
-            if ((previous_was_symbol && is_symbol &&
-                 operation.index <= previous_index) ||
-                (!previous_was_symbol && is_symbol) ||
-                (!is_symbol &&
-                 (operation.level < previous_level ||
-                  (operation.level == previous_level &&
-                   operation.index <= previous_index))))
+            if (!volta_x4b::x4c_canonical_operation_ordered_after(
+                    previous_was_symbol, previous_level, previous_index,
+                    is_symbol, operation.level, operation.index))
                 return fail_message(c, "X4c canonical frontier is not ordered");
             previous_was_symbol = is_symbol;
             previous_level = operation.level;

@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 POD NOTE-6/SYNTHETIC/LIFECYCLE PASS; ONBOARDING/ONLINE PENDING; GATES UNCHANGED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 POD NOTE-6/SYNTHETIC/LIFECYCLE/ONBOARDING PASS; ONLINE HARD STOP — NATIVE GATHER VALIDATOR; ONLINE GATES NOT EVALUATED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -226,6 +226,19 @@ GPU name.  The runner now queries explicit physical GPU 0, matching
 `CUDA_VISIBLE_DEVICES=0` and the eligible NOTE-6 selection.  No onboarding
 directory, durable artifact or response workload was created by that
 fail-closed invocation.
+The corrected clean `130ad24` onboarding then passed: all four passes produced
+identical roots and the PERSISTENT durable tier contains exactly five
+coefficient files plus five roots, **9,618,587,808 B**, with zero durable
+oracle files.  The subsequent fresh-process online run completed rebuild
+control flow and entered the response arena, but HARD STOPPED in the warm-up
+before the canonical gather kernel: the native validator incorrectly compared
+the first frontier node with the last symbol index across the required
+symbol-to-frontier class transition.  No measured online candidate or eligible
+online record exists, so open/verify/communication/zero-staging gates remain
+**NOT EVALUATED**.  The correction preserves strict symbol and frontier
+ordering and requires no protocol, parameter, root, format, byte, Lean,
+soundness or gate change.  Pod rerun remains stopped pending its clean local
+checkpoint and owner direction.
 
 ## Milestones
 
@@ -277,7 +290,7 @@ fail-closed invocation.
 | X4b sustainable oracle Phase 1 | **DIAGNOSIS + PREREGISTRATION COMPLETE; HARD STOP BEFORE IMPLEMENTATION/POD** (2026-07-22) | No format/root/reference/Lean/soundness change; exact postdiction; CPU >=500 MB/s/core; GPU root equality; unchanged 15 s / 1.50 s / 0.25 s; full pass informative | Design SHA-256 `bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01`. Clean-source CPU record `x4b-phase1-cpu-postdiction-2026-07-22-9164de4.json`, SHA-256 `78fdd12ed79c4cf05d42b428a7fa305c28e4254be82289608c45f1f85ce64ec1`: exact aux17 has **5,242,879** hashes / **460,324,760 canonical B**; tree wall is 92.14% explained by those calls; derive-key is material but allocation/serialization is larger. Exact padding **2.4103942174056745x**, Merkle/oracle **6.093317342300939x**, recompute **205,520,864 B / 3.117810096 s**. Profile `runpod-a100-x4b-v1`; durable artifacts **86,567,288,992 B**, volume >=150 GB, host RAM >=128 GiB, device ceiling 48 GiB. X4 FAIL remains immutable. |
 | X4b sustainable oracle Phase 2 | **OFFICIAL X4b FAIL: ISOLATED COMMIT + PERSISTED OPEN; CLOSED** (2026-07-22) | Conjunctive `runpod-a100-x4b-v1`; complete node pipeline, CPU/GPU roots, verify, bytes, G6 and hardware PASS; full pass informative; isolated commit <=15 s FAIL; open <=1.50 s FAIL; no gate relaxed | Clean source `6c6907ab144f4cfbe9cadb06ebb01d652d1dc82d`. Validated record `x4b-a100-production-2026-07-22-6c6907a.json`, SHA-256 `63f4a97b263e4d09649d5a6ede5af1ba420efdcc78bb30f54b9f8cf200cfe6e0`. CPU pipeline **723,716,307.952 B/s/core PASS**; CPU/GPU roots equal; full pass **401.723726678 s / 191,546,319.209 oracle B/s informative**; Wext-mu26 **254.861527720 s FAIL**; persisted open **6.683486611 s FAIL**; verify **0.058438415 s PASS**; PCS/response exactly **2,683,236 / 43,953,700 B PASS**; G6 reconciled. Durable initial artifacts **86,567,288,992 B**, peak device **43,486,546,048 B**. Historical X4 FAIL immutable; design SHA, proof/root/reference bytes, Lean and **80.25537016399041-bit** soundness unchanged. |
 | X4c I/O-lifecycle Phase 1 | **COMPLETE; DROP-DOMINANCE HYPOTHESIS REFUTED BY LOCAL SYNTHETIC DIRECT PROJECTION; REDESIGN/PROFILE PREREGISTERED; HARD STOP** (2026-07-23) | Exact byte reconciliation; reconstructed wall is non-causal/self-derived; timing-only four-way `issue_queries` decomposition; no proof/root/reference/Lean/soundness change; no direct-fold implementation or pod | Eligible clean schema-2 record `x4c-phase1-open-decomposition-2026-07-23-f772013.json`, SHA-256 `ca9841ffce22f731dd45ba616e482a4528ae9ce934856965b0782ed3e052ebcf`: selected teardown projection **0.038496701 s**, interval **0.003520017--0.068747601 s**, only **0.585603121% / 1.045772987% high** of the **6.573855120-s** lifecycle gap. X4b mu26 reconciles **210,453,397,440 B modeled / 210,453,446,656 B observed**; its **0.825756043-GB/s** rate comes from the same wall and provides no independent causal timing evidence. Avoidable response staging is **137,438,949,856 B**. Corrected design SHA-256 `1a744625078e3ffe5772b040c24854e9510dcedebc906416279cf3a7c29bf191`; exact response/PCS remain **43,953,700 / 2,683,236 B**. |
-| X4c I/O-lifecycle Phase 2 | **POD NOTE-6, REAL-CUDA SYNTHETIC GATES AND EXACT LIFECYCLE PROBE PASS; ONBOARDING/ONLINE PENDING** (2026-07-23) | Direct-fold parity checks exactly `min(64, output_len)` unique coordinates per round; **1,592** production comparisons; diagnostic only and zero soundness credit | Checkpoint `9b7776f` passed local gates.  On approved RunPod session `hinsg2lmzlntha`, NOTE-6 was first and passed; real-CUDA N4/root and direct-fold gates passed; all four exact **51,539,606,304-B** lifecycle variants accepted.  Distributed teardown measured about **3.05 s**; the residual X4b cause remains OPEN and no legacy mu26 attribution run is used.  Pre-onboarding inspection found no record-eligible X4c production driver in `9b7776f`; a descendant adds it before any onboarding/online workload.  Design SHA-256 remains **`57d0c0d691cc63ec043d18384348ad0e1130a5e763dc8e9ef00a7132d8abb880`**.  Rate `1/8`, `s=111`, roots/reference/codec/Lean/soundness, gates and exact PCS/response **2,683,236 / 43,953,700 B** are unchanged. |
+| X4c I/O-lifecycle Phase 2 | **POD NOTE-6, REAL-CUDA SYNTHETIC, EXACT LIFECYCLE AND ONBOARDING PASS; ONLINE HARD STOP IN WARM-UP; ONLINE GATES NOT EVALUATED** (2026-07-23) | Direct-fold parity checks exactly `min(64, output_len)` unique coordinates per round; **1,592** production comparisons; diagnostic only and zero soundness credit | Checkpoint `130ad24` onboarding passes with identical roots and exact **9,618,587,808-B** coefficients-plus-five-roots durable tier.  The fresh-process online run reached the GPU arena but stopped before the canonical gather kernel because the native validator compared the first frontier node against the last symbol index.  Zero measured candidates completed; open/verify/communication/zero-staging remain **NOT EVALUATED**.  A strict class-transition correction is local-only pending clean checkpoint and owner direction before rerun.  The residual X4b cause remains OPEN and no legacy mu26 attribution run is used.  Design SHA-256 remains **`57d0c0d691cc63ec043d18384348ad0e1130a5e763dc8e9ef00a7132d8abb880`**.  Rate `1/8`, `s=111`, roots/reference/codec/Lean/soundness, gates and exact PCS/response **2,683,236 / 43,953,700 B** are unchanged. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -345,6 +358,54 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-23 (X4c onboarding PASS; online warm-up HARD STOP; strict native
+  gather-order correction local-only)**: clean source
+  `130ad24bcb24dbbc61487643fa0eeab744c0c225` completed the approved
+  onboarding sequence on RunPod session `hinsg2lmzlntha`.  Record
+  `x4c-v1-a100-onboarding-2026-07-23-130ad24.json`, SHA-256
+  **`7b83a27b29cecd56a025eed70de799014881676ff0c782d63bb848f046ff2124`**,
+  is eligible and **PASS**: warm-up **447.077112430 s**, measured candidates
+  **445.337458709 / 438.674482868 / 459.415952746 s**, identical roots in
+  every pass, exactly five coefficient files plus five 32-B roots,
+  **9,618,587,808 B** durable, and zero durable oracle files.  The complete
+  onboarding wall is informative only.
+
+  The fresh-process online invocation reconstructed the roots/state and
+  reached the **43,486,546,048-B** GPU arena, then exited with code 2 during
+  the warm-up before launching the canonical gather kernel.  Verbatim:
+  `x4c_pod_record HARD STOP: X4c opening: Runtime("CUDA backend error: X4c
+  canonical frontier is not ordered")`.  Zero measured candidates completed
+  and no normal online JSON was emitted.  The SHA-pinned stderr log is
+  `x4c-v1-a100-online-hard-stop-2026-07-23-130ad24.log`, SHA-256
+  **`f0b6e1171e521a187df3e86cdc1440cd5948236365bd7140b65661eb946079c1`**;
+  append-only obstruction record
+  `x4c-v1-a100-online-obstruction-2026-07-23-130ad24.json`, SHA-256
+  **`dd154d47649c56ed6a09992be334d58f768ff2e2b7908ad61f23a96486749fdf`**,
+  records every online gate as **NOT EVALUATED**.  Read-only post-exit
+  inspection found neither the runner process nor a GPU compute allocation.
+
+  Causal diagnosis is exact and pre-kernel: the canonical plan orders
+  strictly increasing symbols first and then the frontier strictly by
+  `(level,index)`, but the native validator also compared the first frontier
+  index with the last symbol index.  The local correction starts a fresh
+  frontier-order comparison at that required class transition while
+  retaining strict symbol order, strict frontier order and the prohibition
+  on symbols after frontier.  Host-reference regression covers the exact
+  rejected transition plus duplicate, decreasing and class-reversal
+  rejection.  No query schedule, root, reference, proof byte, rate, `s`,
+  soundness credit, protocol/Lean statement, communication value or gate
+  changes.
+
+  Operationally, the fresh rebuild spent roughly 68 observed wall minutes
+  before first GPU allocation.  This is not an online gate and no exact phase
+  timer was emitted because the warm-up aborted; it is recorded only as a
+  future engineering target.  Per the owner's direction, a later phase may
+  parallelize the rebuild CPU path or move it to GPU.  The active v1 run and
+  its eligibility are not rewritten, and no v2 ceiling is projected.
+  R1c scope is **EXTENDED** to the corrected native gather validator.  Pod
+  rerun remains HARD STOPPED pending a clean local correction checkpoint and
+  owner direction.
 
 - **2026-07-23 (X4c approved-pod partial execution; NOTE-6/synthetic/lifecycle
   pass; production runner omission corrected before onboarding)**: after the

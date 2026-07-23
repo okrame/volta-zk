@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "milestone": "X4c-v1-A100-online-obstruction",
+  "date": "2026-07-23",
+  "git_sha": "130ad24bcb24dbbc61487643fa0eeab744c0c225",
+  "git_dirty": false,
+  "pod_profile": "runpod-a100-x4c-v1",
+  "protocol_profile": "x4-zkdeepfold-ud-e29-v4",
+  "design_sha256": "57d0c0d691cc63ec043d18384348ad0e1130a5e763dc8e9ef00a7132d8abb880",
+  "pod_id": "hinsg2lmzlntha",
+  "selected_gpu": "NVIDIA A100-SXM4-80GB",
+  "source_onboarding_record": {
+    "path": "benchmarks/results/x4c-v1-a100-onboarding-2026-07-23-130ad24.json",
+    "sha256": "7b83a27b29cecd56a025eed70de799014881676ff0c782d63bb848f046ff2124",
+    "overall_pass": true
+  },
+  "source_stderr_log": {
+    "path": "benchmarks/results/x4c-v1-a100-online-hard-stop-2026-07-23-130ad24.log",
+    "sha256": "f0b6e1171e521a187df3e86cdc1440cd5948236365bd7140b65661eb946079c1"
+  },
+  "process_exit_code": 2,
+  "fresh_process_rebuild_control_flow_passed": true,
+  "warmup_completed": false,
+  "measured_candidates_completed": 0,
+  "normal_online_record_emitted": false,
+  "failure_phase": "warmup canonical opening, native pre-launch validation",
+  "verbatim_error": "x4c_pod_record HARD STOP: X4c opening: Runtime(\"CUDA backend error: X4c canonical frontier is not ordered\")",
+  "canonical_gather_kernel_launched": false,
+  "selected_gpu_compute_processes_after_exit": 0,
+  "runner_process_present_after_exit": false,
+  "diagnosis": {
+    "class": "native canonical-gather validator class-transition defect",
+    "detail": "The validator compared the first frontier (level,index) with the last opened-symbol index instead of beginning the independent strict frontier order after the symbol-to-frontier class transition.",
+    "canonical_plan_order_changed": false,
+    "protocol_or_parameter_change_required": false,
+    "root_or_proof_format_change_required": false,
+    "lean_or_soundness_change_required": false
+  },
+  "open_gate_verdict": "NOT_EVALUATED",
+  "verify_gate_verdict": "NOT_EVALUATED",
+  "communication_gate_verdict": "NOT_EVALUATED",
+  "zero_staging_gate_verdict": "NOT_EVALUATED",
+  "overall_pass": false,
+  "hard_stop": true,
+  "assurance": "AI-generated append-only obstruction record derived from the SHA-pinned stderr log and read-only post-exit process/GPU inspection; no independent human-review assurance. R1c review remains mandatory."
+}

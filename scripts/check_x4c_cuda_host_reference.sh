@@ -232,6 +232,35 @@ void check_one_slot_tree(size_t outer_len) {
     }
 }
 
+void check_canonical_operation_ordering() {
+    using volta_x4b::x4c_canonical_operation_ordered_after;
+
+    require(
+        x4c_canonical_operation_ordered_after(true, 0, 100, true, 0, 101),
+        "increasing canonical symbols were rejected");
+    require(
+        !x4c_canonical_operation_ordered_after(true, 0, 100, true, 0, 100),
+        "duplicate canonical symbol was accepted");
+    require(
+        x4c_canonical_operation_ordered_after(true, 0, 100, false, 0, 1),
+        "first frontier node was compared with the last symbol index");
+    require(
+        x4c_canonical_operation_ordered_after(false, 0, 7, false, 0, 8),
+        "increasing same-level frontier was rejected");
+    require(
+        x4c_canonical_operation_ordered_after(false, 0, 8, false, 1, 0),
+        "increasing frontier level was rejected");
+    require(
+        !x4c_canonical_operation_ordered_after(false, 1, 8, false, 1, 8),
+        "duplicate frontier node was accepted");
+    require(
+        !x4c_canonical_operation_ordered_after(false, 1, 8, false, 0, 9),
+        "decreasing frontier level was accepted");
+    require(
+        !x4c_canonical_operation_ordered_after(false, 1, 8, true, 0, 9),
+        "symbol after frontier was accepted");
+}
+
 void check_activation_add() {
     std::vector<Fp2> destination(257);
     std::vector<Fp2> source(257);
@@ -280,6 +309,7 @@ int main() {
         check_fold_length(size_t{1} << bits);
     }
     check_activation_add();
+    check_canonical_operation_ordering();
     check_one_slot_tree(8);
     check_one_slot_tree(32);
     check_one_slot_tree(256);

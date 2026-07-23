@@ -372,6 +372,68 @@ historical entries remain append-only evidence, not competing definitions.
 
 ## Deviations / decisions log
 
+- **2026-07-23 (X4c canonical-byte diagnostic and deterministic parallel
+  rebuild authorized; preregistration before code/pod retry)**: after the
+  `39a1868` online warm-up exposed a gathered canonical length unequal to the
+  frozen **2,615,414 B** without emitting the observed value, the owner
+  authorized a fail-closed diagnostic retry and requested that the
+  approximately 68-minute fresh rebuild not remain serial merely to obtain
+  that number.
+
+  The next descendant parallelizes only the five independent durable
+  coefficient-to-host-source rebuilds.  It launches exactly one task per
+  cohort on the existing unpinned Rayon pool, preserves cohort/result order
+  by the frozen configuration ordinal, and admits the combined sources only
+  after every per-cohort coefficient digest, durable root, rebuilt root,
+  oracle-byte and outer-cache-byte check passes.  Aggregate exact
+  **9,618,587,648 / 76,948,701,184 / 37,094,424,416 B** censuses remain
+  mandatory.  Per-cohort wall, bytes and root equality are recorded.  No
+  within-cohort algorithm, durable artifact, response path, query schedule,
+  root or proof byte changes.  Actual host RAM on this pod is
+  **2,151,618,048,000 B**, so concurrent cohort temporaries remain far below
+  the already validated capacity; any allocation failure or unexplained
+  ownership remains a HARD STOP.
+
+  The canonical diagnostic decomposes the gathered frame into observed
+  packed bytes, complete PCS bytes, opened symbols, initial inner/outer
+  siblings, fold siblings and metadata bytes.  A mismatch emits every value
+  verbatim after the existing proof-ready/reset/release cleanup and still
+  returns an error; it cannot produce a candidate or gate verdict.  A
+  successful candidate additionally requires the component vector to equal
+  the frozen schema-4 GPT-2 reference, not only its total length.  The exact
+  **2,615,414 / 2,683,236 / 43,953,700-B** requirements are unchanged and no
+  padding, variable-byte contingency, soundness credit or new ceiling is
+  authorized.
+
+  To avoid repeating the already eligible approximately 30-minute onboarding
+  merely to observe the obstruction, the retry has a separate
+  **diagnose-only** mode.  That mode may consume only the byte-pinned
+  `39a1868` onboarding record as an explicit Git ancestor: its record SHA,
+  source SHA, coefficient SHA, five root files and five rebuilt roots are all
+  revalidated, while the diagnostic descendant's own clean bundle remains a
+  separate recorded input.  It always writes a HARD-STOP obstruction record
+  and can never emit an online candidate or verdict, even if the bytes happen
+  to be exact.  Any eventual PASS run remains subject to same-source
+  onboarding and the full warm-up-plus-three policy.
+
+  Moving the rebuild to GPU is deliberately not part of this diagnostic:
+  that would add a substantially larger cryptographic-adjacent ownership and
+  transfer surface.  Cross-cohort CPU parallelism is the bounded cost-saving
+  change.  If the diagnostic identifies and a later clean implementation
+  corrects the mismatch without any protocol/format/root/Lean/soundness
+  change, X4c v1 must still pass warm-up plus three measured candidates and
+  close its ledger/R1c scope before a separate real-weight, real-inference
+  GPT-2 E2E record is claimed.  The present fixture is production GPT-2
+  geometry, not that inference E2E.
+
+  Local pre-pod verification of this diagnostic descendant is green:
+  `cargo fmt --all -- --check`, workspace/all-feature check and tests, all
+  **12** scoped X4c PCS tests, all **3** pod-harness tests, and all **13**
+  report-validator tests pass.  The exact **1,592** diagnostic comparisons
+  remain covered by the frozen-geometry test.  No Lean file, codec,
+  transcript, reference root, communication constant, protocol parameter or
+  soundness counter changed.
+
 - **2026-07-23 (X4c authorized backend-fix retry; real-CUDA regression and
   onboarding PASS; online canonical-byte HARD STOP)**: the owner authorized
   transfer and retry after the first native ordering obstruction.  Clean

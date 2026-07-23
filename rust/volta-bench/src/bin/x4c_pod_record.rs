@@ -6,6 +6,7 @@
 //! that durable tier, then runs one warm-up and three measured X4c responses.
 //! All timers are monotonic host wall timers. CUDA timing events are forbidden.
 
+use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -19,7 +20,8 @@ use volta_accel::{Backend, BackendStats, Operation, ResidentTimingPolicy};
 use volta_field::{Fp, Fp2};
 use volta_mac::Transcript;
 use volta_pcs::x4::{
-    commit_cohort_cuda_v4, global_fold_descriptor_digest_v4, read_persisted_coefficients_v4,
+    commit_cohort_cuda_v4, global_fold_descriptor_digest_v4,
+    gpt2_codec_reference_packed_opening_v4, read_persisted_coefficients_v4,
     validate_x4c_frozen_surface_v4, verify_global_folding_interactive_v4, CohortIdentityV4,
     CohortVerifierConfigV4, FrameV4, GlobalChainDraftV4, GlobalOpenMetricsV4, GlobalProverGroupV4,
     ModelGlobalOpeningSourceV4, OracleKindV4, OuterCachePolicyV4, X4bCudaCohortArtifactsV4,
@@ -38,6 +40,9 @@ const DESIGN_SHA256: &str = "57d0c0d691cc63ec043d18384348ad0e1130a5e763dc8e9ef00
 const NOTE6_MILESTONE: &str = "X4c-R1b-NOTE-6-preflight";
 const LIFECYCLE_MILESTONE: &str = "X4c-phase2-exact-size-lifecycle-probe";
 const NOTE6_SOURCE_SHA: &str = "9b7776f7e43366684b3b69714eed1cb0da0f438d";
+const DIAGNOSTIC_ONBOARDING_SOURCE_SHA: &str = "39a1868e64afd9d527756cfb2811a6f3f6a321a8";
+const DIAGNOSTIC_ONBOARDING_RECORD_SHA256: &str =
+    "2c4b8d71931f3bfecb48bd63612c499f2c1fe685495b705cc000449460e9e28f";
 const GPU_NAME: &str = "NVIDIA A100-SXM4-80GB";
 const COEFFICIENT_BYTES: u64 = 9_618_587_648;
 const ROOT_BYTES: u64 = 160;
@@ -96,15 +101,19 @@ fn clean_git_sha() -> Result<String, String> {
         return Err("record-eligible execution requires a tracked-clean tree".to_owned());
     }
     let sha = command_output("git", &["rev-parse", "HEAD"])?;
-    let ancestor = Command::new("git")
-        .args(["merge-base", "--is-ancestor", NOTE6_SOURCE_SHA, &sha])
-        .current_dir(repo_root())
-        .status()
-        .map_err(|error| format!("execute git merge-base: {error}"))?;
-    if !ancestor.success() {
+    if !git_is_ancestor(NOTE6_SOURCE_SHA, &sha)? {
         return Err("current source is not a descendant of the NOTE-6 checkpoint".to_owned());
     }
     Ok(sha)
+}
+
+fn git_is_ancestor(ancestor: &str, descendant: &str) -> Result<bool, String> {
+    let status = Command::new("git")
+        .args(["merge-base", "--is-ancestor", ancestor, descendant])
+        .current_dir(repo_root())
+        .status()
+        .map_err(|error| format!("execute git merge-base: {error}"))?;
+    Ok(status.success())
 }
 
 fn sha256(path: &Path) -> Result<String, String> {
@@ -928,9 +937,28 @@ fn read_durable_root(path: &Path) -> Result<[u8; 32], String> {
 }
 
 #[derive(Clone, Debug, Serialize)]
+struct RebuildCohortRow {
+    ordinal: usize,
+    name: String,
+    cohort_id: u32,
+    wall_s: f64,
+    coefficient_bytes_read: u64,
+    host_oracle_bytes: u64,
+    host_outer_cache_bytes: u64,
+    root: String,
+    expected_root: String,
+    root_equal: bool,
+    durable_oracle_file: bool,
+    accepted: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
 struct RebuildRow {
     wall_s: f64,
     io: IoSnapshot,
+    parallel_task_count: usize,
+    rayon_workers: usize,
+    cohorts: Vec<RebuildCohortRow>,
     coefficient_bytes_read: u64,
     host_oracle_bytes: u64,
     host_outer_cache_bytes: u64,
@@ -938,6 +966,91 @@ struct RebuildRow {
     roots_equal_onboarding: bool,
     durable_oracle_files: u64,
     accepted: bool,
+}
+
+fn rebuild_one_source(
+    ordinal: usize,
+    spec: CohortSpec,
+    recorded: &Value,
+    durable_root: &Path,
+) -> Result<(X4cRamModelGlobalCohortV4, RebuildCohortRow), String> {
+    let started = Instant::now();
+    let cohort_id = spec.config.identity.cohort_id;
+    let cohort = durable_root.join(format!("cohort-{cohort_id:08x}"));
+    let coefficient_path = cohort.join("coefficients.bin");
+    let root_path = cohort.join("root.bin");
+    let expected_root_hex =
+        recorded["root_hex"].as_str().ok_or_else(|| "onboarding root_hex missing".to_owned())?;
+    let expected_root = parse_hex_32(expected_root_hex)?;
+    if read_durable_root(&root_path)? != expected_root
+        || sha256(&coefficient_path)?
+            != recorded["coefficient_sha256"]
+                .as_str()
+                .ok_or_else(|| "onboarding coefficient digest missing".to_owned())?
+        || sha256(&root_path)?
+            != recorded["root_sha256"]
+                .as_str()
+                .ok_or_else(|| "onboarding root digest missing".to_owned())?
+    {
+        return Err(format!("durable artifact digest/root mismatch for cohort {cohort_id:08x}"));
+    }
+    let coefficient_bytes = fs::metadata(&coefficient_path)
+        .map_err(|error| format!("stat coefficients: {error}"))?
+        .len();
+    let expected_oracle_bytes =
+        u64::try_from(spec.config.slot_descriptors.iter().flatten().count())
+            .map_err(|_| "cohort present-slot count overflows u64".to_owned())?
+            .checked_mul(
+                u64::try_from(spec.config.outer_len)
+                    .map_err(|_| "cohort outer length overflows u64".to_owned())?,
+            )
+            .and_then(|symbols| symbols.checked_mul(16))
+            .ok_or_else(|| "cohort oracle byte overflow".to_owned())?;
+    let expected_outer_cache_bytes = u64::try_from(spec.config.outer_len)
+        .map_err(|_| "cohort outer length overflows u64".to_owned())?
+        .checked_sub(1)
+        .and_then(|digests| digests.checked_mul(32))
+        .ok_or_else(|| "cohort outer-cache byte overflow".to_owned())?;
+    let coefficients = read_persisted_coefficients_v4(&coefficient_path, &spec.config)
+        .map_err(|error| format!("read persisted coefficients: {error:?}"))?;
+    let source = X4cRamModelGlobalCohortV4::rebuild_from_coefficients_checked(
+        spec.config,
+        coefficients,
+        expected_root,
+    )
+    .map_err(|error| format!("rebuild X4c RAM source: {error:?}"))?;
+    let root = hex(&source.root());
+    let host_oracle_bytes =
+        source.host_oracle_bytes().map_err(|error| format!("host oracle census: {error:?}"))?;
+    let host_outer_cache_bytes =
+        source.host_outer_cache_bytes().map_err(|error| format!("host cache census: {error:?}"))?;
+    let root_equal = root == expected_root_hex;
+    let durable_oracle_file = cohort.join("oracle.bin").exists();
+    let accepted = root_equal
+        && coefficient_bytes
+            == recorded["coefficient_bytes"]
+                .as_u64()
+                .ok_or_else(|| "onboarding coefficient_bytes missing".to_owned())?
+        && host_oracle_bytes == expected_oracle_bytes
+        && host_outer_cache_bytes == expected_outer_cache_bytes
+        && !durable_oracle_file;
+    Ok((
+        source,
+        RebuildCohortRow {
+            ordinal,
+            name: spec.name.to_owned(),
+            cohort_id,
+            wall_s: started.elapsed().as_secs_f64(),
+            coefficient_bytes_read: coefficient_bytes,
+            host_oracle_bytes,
+            host_outer_cache_bytes,
+            root,
+            expected_root: expected_root_hex.to_owned(),
+            root_equal,
+            durable_oracle_file,
+            accepted,
+        },
+    ))
 }
 
 fn rebuild_sources(
@@ -953,77 +1066,46 @@ fn rebuild_sources(
     if recorded_files.len() != specs.len() {
         return Err("onboarding durable file count changed".to_owned());
     }
-    let mut sources = Vec::new();
-    let mut roots = Vec::new();
-    let mut coefficient_bytes = 0u64;
-    for (spec, recorded) in specs.iter().zip(recorded_files) {
-        let cohort = durable_root.join(format!("cohort-{:08x}", spec.config.identity.cohort_id));
-        let coefficient_path = cohort.join("coefficients.bin");
-        let root_path = cohort.join("root.bin");
-        let expected_root_hex = recorded["root_hex"]
-            .as_str()
-            .ok_or_else(|| "onboarding root_hex missing".to_owned())?;
-        let expected_root = parse_hex_32(expected_root_hex)?;
-        if read_durable_root(&root_path)? != expected_root
-            || sha256(&coefficient_path)?
-                != recorded["coefficient_sha256"]
-                    .as_str()
-                    .ok_or_else(|| "onboarding coefficient digest missing".to_owned())?
-            || sha256(&root_path)?
-                != recorded["root_sha256"]
-                    .as_str()
-                    .ok_or_else(|| "onboarding root digest missing".to_owned())?
-        {
-            return Err("durable artifact digest/root mismatch".to_owned());
-        }
-        coefficient_bytes = coefficient_bytes
-            .checked_add(
-                fs::metadata(&coefficient_path)
-                    .map_err(|error| format!("stat coefficients: {error}"))?
-                    .len(),
-            )
-            .ok_or_else(|| "coefficient byte overflow".to_owned())?;
-        let coefficients = read_persisted_coefficients_v4(&coefficient_path, &spec.config)
-            .map_err(|error| format!("read persisted coefficients: {error:?}"))?;
-        let source = X4cRamModelGlobalCohortV4::rebuild_from_coefficients_checked(
-            spec.config.clone(),
-            coefficients,
-            expected_root,
-        )
-        .map_err(|error| format!("rebuild X4c RAM source: {error:?}"))?;
-        roots.push(hex(&source.root()));
-        sources.push(source);
-    }
-    let host_oracle_bytes = sources.iter().try_fold(0u64, |sum, source| {
-        sum.checked_add(
-            source.host_oracle_bytes().map_err(|error| format!("host oracle census: {error:?}"))?,
-        )
-        .ok_or_else(|| "host oracle byte overflow".to_owned())
-    })?;
-    let host_outer_cache_bytes = sources.iter().try_fold(0u64, |sum, source| {
-        sum.checked_add(
-            source
-                .host_outer_cache_bytes()
-                .map_err(|error| format!("host cache census: {error:?}"))?,
-        )
-        .ok_or_else(|| "host cache byte overflow".to_owned())
-    })?;
-    let roots_equal = recorded_files
-        .iter()
-        .zip(&roots)
-        .all(|(recorded, root)| recorded["root_hex"].as_str() == Some(root.as_str()));
-    let durable_oracle_files = specs
-        .iter()
-        .filter(|spec| {
-            durable_root
-                .join(format!("cohort-{:08x}", spec.config.identity.cohort_id))
-                .join("oracle.bin")
-                .exists()
+    let parallel_task_count = specs.len();
+    let rebuilt = specs
+        .into_par_iter()
+        .zip(recorded_files.par_iter())
+        .enumerate()
+        .map(|(ordinal, (spec, recorded))| {
+            rebuild_one_source(ordinal, spec, recorded, durable_root)
         })
-        .count() as u64;
+        .collect::<Vec<_>>();
+    let mut sources = Vec::with_capacity(parallel_task_count);
+    let mut cohorts = Vec::with_capacity(parallel_task_count);
+    for result in rebuilt {
+        let (source, row) = result?;
+        sources.push(source);
+        cohorts.push(row);
+    }
+    if !cohorts.windows(2).all(|pair| pair[0].ordinal < pair[1].ordinal) {
+        return Err("parallel rebuild result order changed".to_owned());
+    }
+    let coefficient_bytes = cohorts.iter().try_fold(0u64, |sum, row| {
+        sum.checked_add(row.coefficient_bytes_read)
+            .ok_or_else(|| "coefficient byte overflow".to_owned())
+    })?;
+    let host_oracle_bytes = cohorts.iter().try_fold(0u64, |sum, row| {
+        sum.checked_add(row.host_oracle_bytes).ok_or_else(|| "host oracle byte overflow".to_owned())
+    })?;
+    let host_outer_cache_bytes = cohorts.iter().try_fold(0u64, |sum, row| {
+        sum.checked_add(row.host_outer_cache_bytes)
+            .ok_or_else(|| "host cache byte overflow".to_owned())
+    })?;
+    let roots = cohorts.iter().map(|row| row.root.clone()).collect::<Vec<_>>();
+    let roots_equal = cohorts.iter().all(|row| row.root_equal);
+    let durable_oracle_files = cohorts.iter().filter(|row| row.durable_oracle_file).count() as u64;
+    let all_cohorts_accepted = cohorts.iter().all(|row| row.accepted);
     let row = RebuildRow {
         wall_s: started.elapsed().as_secs_f64(),
         io: IoSnapshot::current().delta(&before_io),
+        parallel_task_count,
+        rayon_workers: rayon::current_num_threads(),
+        cohorts,
         coefficient_bytes_read: coefficient_bytes,
         host_oracle_bytes,
         host_outer_cache_bytes,
@@ -1034,7 +1116,8 @@ fn rebuild_sources(
             && host_oracle_bytes == INITIAL_ORACLE_BYTES
             && host_outer_cache_bytes == INITIAL_OUTER_CACHE_BYTES
             && roots_equal
-            && durable_oracle_files == 0,
+            && durable_oracle_files == 0
+            && all_cohorts_accepted,
     };
     Ok((sources, row))
 }
@@ -1256,6 +1339,16 @@ struct ResponseCandidateRow {
     complete_online_wall_s: f64,
     canonical_pcs_bytes: u64,
     packed_opening_bytes: u64,
+    packed_opened_symbol_count: u64,
+    packed_opened_symbol_bytes: u64,
+    packed_initial_inner_sibling_count: u64,
+    packed_initial_inner_sibling_bytes: u64,
+    packed_initial_outer_sibling_count: u64,
+    packed_initial_outer_sibling_bytes: u64,
+    packed_fold_outer_sibling_count: u64,
+    packed_fold_outer_sibling_bytes: u64,
+    packed_metadata_bytes: u64,
+    packed_components_exact: bool,
     response_bytes: u64,
     query_draws: u64,
     verifier_accepted: bool,
@@ -1313,19 +1406,29 @@ fn run_response(
         .map_err(|error| format!("begin response measurement: {error:?}"))?;
     let online_started = Instant::now();
     let seal_started = Instant::now();
-    let sealed = draft
-        .seal_interactive_x4c(
-            &mut prover_tx,
-            runtime,
-            X4cSealConfigV4::production(clean_source_sha, ordinal)
-                .map_err(|error| format!("production seal config: {error:?}"))?,
-        )
-        .map_err(|error| format!("X4c seal: {error:?}"))?;
+    let sealed = match draft.seal_interactive_x4c(
+        &mut prover_tx,
+        runtime,
+        X4cSealConfigV4::production(clean_source_sha, ordinal)
+            .map_err(|error| format!("production seal config: {error:?}"))?,
+    ) {
+        Ok(sealed) => sealed,
+        Err(error) => {
+            let finish = runtime.finish_response_measurement();
+            return Err(format!("X4c seal: {error:?}; backend_finish_after_error={finish:?}"));
+        }
+    };
     let seal_wall_s = seal_started.elapsed().as_secs_f64();
     let open_started = Instant::now();
-    let (proof, verifier_groups, metrics, draws) = sealed
+    let (proof, verifier_groups, metrics, draws) = match sealed
         .issue_queries_interactive_x4c(&mut prover_tx, runtime)
-        .map_err(|error| format!("X4c opening: {error:?}"))?;
+    {
+        Ok(result) => result,
+        Err(error) => {
+            let finish = runtime.finish_response_measurement();
+            return Err(format!("X4c opening: {error:?}; backend_finish_after_error={finish:?}"));
+        }
+    };
     let open_wall_s = open_started.elapsed().as_secs_f64();
     let complete_online_wall_s = online_started.elapsed().as_secs_f64();
     let stats = runtime
@@ -1351,6 +1454,14 @@ fn run_response(
         .encode()
         .map_err(|error| format!("encode packed opening: {error:?}"))?
         .len() as u64;
+    let packed_components = proof
+        .packed_opening
+        .byte_components()
+        .map_err(|error| format!("measure packed-opening components: {error:?}"))?;
+    let expected_packed_components = gpt2_codec_reference_packed_opening_v4()
+        .byte_components()
+        .map_err(|error| format!("measure reference packed-opening components: {error:?}"))?;
+    let packed_components_exact = packed_components == expected_packed_components;
     let expected_h2d_bytes = metrics
         .global_open
         .combined_codeword_symbols
@@ -1380,6 +1491,7 @@ fn run_response(
     let accepted = verifier_accepted
         && canonical_pcs_bytes == X4C_COMPLETE_PCS_BYTES_V4
         && packed_opening_bytes == X4C_PACKED_OPENING_BYTES_V4
+        && packed_components_exact
         && X4C_RESPONSE_BYTES_V4 == 43_953_700
         && draws.len() == X4C_QUERY_COUNT_V4
         && metrics.execution.direct_fold_sample_comparisons
@@ -1407,6 +1519,16 @@ fn run_response(
         complete_online_wall_s,
         canonical_pcs_bytes,
         packed_opening_bytes,
+        packed_opened_symbol_count: packed_components.opened_symbols,
+        packed_opened_symbol_bytes: packed_components.opened_symbols * 16,
+        packed_initial_inner_sibling_count: packed_components.initial_inner_siblings,
+        packed_initial_inner_sibling_bytes: packed_components.initial_inner_siblings * 32,
+        packed_initial_outer_sibling_count: packed_components.initial_outer_siblings,
+        packed_initial_outer_sibling_bytes: packed_components.initial_outer_siblings * 32,
+        packed_fold_outer_sibling_count: packed_components.fold_outer_siblings,
+        packed_fold_outer_sibling_bytes: packed_components.fold_outer_siblings * 32,
+        packed_metadata_bytes: packed_components.metadata_bytes,
+        packed_components_exact,
         response_bytes: X4C_RESPONSE_BYTES_V4,
         query_draws: draws.len() as u64,
         verifier_accepted,
@@ -1467,7 +1589,41 @@ struct OnlineReport {
     assurance: String,
 }
 
-fn run_online(args: &Args) -> Result<(), String> {
+#[derive(Clone, Debug, Serialize)]
+struct CanonicalDiagnosticReport {
+    schema: u64,
+    milestone: String,
+    date: String,
+    git_sha: String,
+    git_dirty: bool,
+    pod_profile: String,
+    protocol_profile: String,
+    design_sha256: String,
+    clean_source_sha256: String,
+    clean_source_bundle_path: String,
+    note6: InputPin,
+    lifecycle_probe: InputPin,
+    onboarding: InputPin,
+    onboarding_ancestor_input: bool,
+    machine: MachineRow,
+    worker_policy: String,
+    fresh_process_rebuild: RebuildRow,
+    response: Option<ResponseCandidateRow>,
+    response_error: Option<String>,
+    pinned_pool_release_wall_s: f64,
+    pinned_pool_release_error: Option<String>,
+    post_release_control: Value,
+    post_release_ownership_restored: bool,
+    candidate_eligible: bool,
+    gate_verdict: String,
+    hard_stop: bool,
+    protocol_or_parameter_change: bool,
+    root_or_proof_format_change: bool,
+    lean_or_soundness_change: bool,
+    assurance: String,
+}
+
+fn run_online(args: &Args, diagnostic_only: bool) -> Result<(), String> {
     validate_x4c_frozen_surface_v4(
         "1/8",
         X4C_QUERY_COUNT_V4,
@@ -1484,19 +1640,32 @@ fn run_online(args: &Args) -> Result<(), String> {
     let onboarding_path =
         args.onboarding.as_deref().ok_or_else(|| "online requires --onboarding".to_owned())?;
     let onboarding_value = load_json(onboarding_path)?;
+    let onboarding_sha256 = sha256(onboarding_path)?;
+    let onboarding_git_sha = onboarding_value["git_sha"]
+        .as_str()
+        .ok_or_else(|| "onboarding git_sha missing".to_owned())?
+        .to_owned();
+    let onboarding_clean_source_sha256 = onboarding_value["clean_source_sha256"]
+        .as_str()
+        .ok_or_else(|| "onboarding clean_source_sha256 missing".to_owned())?;
+    let exact_source =
+        onboarding_git_sha == git_sha && onboarding_clean_source_sha256 == clean_source_sha256;
+    let diagnostic_ancestor_input = diagnostic_only
+        && onboarding_git_sha == DIAGNOSTIC_ONBOARDING_SOURCE_SHA
+        && onboarding_sha256 == DIAGNOSTIC_ONBOARDING_RECORD_SHA256
+        && git_is_ancestor(&onboarding_git_sha, &git_sha)?;
     if onboarding_value["milestone"] != "X4c-v1-A100-onboarding"
         || onboarding_value["overall_pass"] != true
-        || onboarding_value["git_sha"] != git_sha
         || onboarding_value["design_sha256"] != DESIGN_SHA256
-        || onboarding_value["clean_source_sha256"] != clean_source_sha256
         || onboarding_value["durable_tier_exact"] != true
+        || (!exact_source && !diagnostic_ancestor_input)
     {
         return Err("onboarding record is not eligible for this source".to_owned());
     }
     let onboarding = InputPin {
         path: onboarding_path.display().to_string(),
-        sha256: sha256(onboarding_path)?,
-        git_sha: git_sha.clone(),
+        sha256: onboarding_sha256,
+        git_sha: onboarding_git_sha,
     };
     let local_anchor = PathBuf::from(required_env("VOLTA_X4C_LOCAL_STORAGE_DIR")?);
     let machine = validate_machine(&args.durable_root, &local_anchor)?;
@@ -1511,7 +1680,97 @@ fn run_online(args: &Args) -> Result<(), String> {
         .map_err(|error| format!("initialize wall-only CUDA backend: {error}"))?;
     let mut runtime = X4cCudaArenaRuntimeV4::production(&mut backend)
         .map_err(|error| format!("create X4c reusable runtime: {error:?}"))?;
-    let warmup = run_response("warmup", 0, false, &sources, &mut runtime, clean_source_sha)?;
+    let warmup_result = run_response("warmup", 0, false, &sources, &mut runtime, clean_source_sha);
+    if diagnostic_only {
+        let release_started = Instant::now();
+        let release_error = runtime.release_pinned_pool().err().map(|error| format!("{error:?}"));
+        let release_wall_s = release_started.elapsed().as_secs_f64();
+        let control_result = runtime.backend_control_state();
+        let release_restored = release_error.is_none()
+            && control_result.as_ref().is_ok_and(|control| {
+                !control.measurement_active
+                    && control.outstanding_cuda_operations == 0
+                    && control.active_device_allocations == 0
+                    && control.active_pinned_allocations == 0
+                    && control.in_flight_pinned_allocations == 0
+            });
+        let post_release_control = match control_result {
+            Ok(control) => serde_json::json!({
+                "stream_state": format!("{:?}", control.stream_state),
+                "measurement_active": control.measurement_active,
+                "coarse_timing_active": control.coarse_timing_active,
+                "timing_record_active": control.timing_record_active,
+                "measurement_poisoned": control.measurement_poisoned,
+                "outstanding_cuda_operations": control.outstanding_cuda_operations,
+                "pending_timing_records": control.pending_timing_records,
+                "active_device_allocations": control.active_device_allocations,
+                "cached_device_allocations": control.cached_device_allocations,
+                "active_pinned_allocations": control.active_pinned_allocations,
+                "cached_pinned_allocations": control.cached_pinned_allocations,
+                "in_flight_pinned_allocations": control.in_flight_pinned_allocations,
+                "workspace_device_bytes": control.workspace_device_bytes,
+                "active_device_bytes": control.active_device_bytes,
+                "cached_device_bytes": control.cached_device_bytes,
+                "active_pinned_bytes": control.active_pinned_bytes,
+                "cached_pinned_bytes": control.cached_pinned_bytes,
+            }),
+            Err(error) => serde_json::json!({"error": format!("{error:?}")}),
+        };
+        let (response, response_error) = match warmup_result {
+            Ok(response) => (
+                Some(response),
+                Some(
+                    "diagnose-only response unexpectedly reached exact canonical bytes; \
+                     no candidate may be emitted"
+                        .to_owned(),
+                ),
+            ),
+            Err(error) => (None, Some(error)),
+        };
+        let hard_stop_reason =
+            response_error.clone().expect("diagnostic response always has a stop reason");
+        let report = CanonicalDiagnosticReport {
+            schema: SCHEMA,
+            milestone: "X4c-v1-A100-canonical-byte-diagnostic".to_owned(),
+            date: command_output("date", &["+%Y-%m-%d"])?,
+            git_sha,
+            git_dirty: false,
+            pod_profile: POD_PROFILE.to_owned(),
+            protocol_profile: PROTOCOL_PROFILE.to_owned(),
+            design_sha256: DESIGN_SHA256.to_owned(),
+            clean_source_sha256,
+            clean_source_bundle_path,
+            note6,
+            lifecycle_probe: lifecycle,
+            onboarding,
+            onboarding_ancestor_input: diagnostic_ancestor_input,
+            machine,
+            worker_policy: "five ordered cohort tasks on unpinned Rayon; seal/open paths unpinned"
+                .to_owned(),
+            fresh_process_rebuild: rebuild,
+            response,
+            response_error,
+            pinned_pool_release_wall_s: release_wall_s,
+            pinned_pool_release_error: release_error,
+            post_release_control,
+            post_release_ownership_restored: release_restored,
+            candidate_eligible: false,
+            gate_verdict: "NOT EVALUATED — diagnose-only HARD STOP".to_owned(),
+            hard_stop: true,
+            protocol_or_parameter_change: false,
+            root_or_proof_format_change: false,
+            lean_or_soundness_change: false,
+            assurance:
+                "AI-generated diagnostic obstruction record; no independent human-review assurance."
+                    .to_owned(),
+        };
+        write_append_only(&args.output, &report)?;
+        return Err(format!(
+            "diagnose-only HARD STOP; no candidate emitted; {hard_stop_reason}; wrote {}",
+            args.output.display()
+        ));
+    }
+    let warmup = warmup_result?;
     let mut measured = Vec::new();
     for ordinal in 1..=3 {
         measured.push(run_response(
@@ -1622,6 +1881,7 @@ fn run_online(args: &Args) -> Result<(), String> {
 enum Mode {
     Onboard,
     Online,
+    Diagnose,
 }
 
 #[derive(Clone, Debug)]
@@ -1640,7 +1900,8 @@ fn parse_args_from(values: impl IntoIterator<Item = String>) -> Result<Args, Str
     let mode = match values.next().as_deref() {
         Some("onboard") => Mode::Onboard,
         Some("online") => Mode::Online,
-        _ => return Err("first argument must be onboard or online".to_owned()),
+        Some("diagnose") => Mode::Diagnose,
+        _ => return Err("first argument must be onboard, online or diagnose".to_owned()),
     };
     let mut note6 = None;
     let mut lifecycle = None;
@@ -1677,8 +1938,8 @@ fn parse_args_from(values: impl IntoIterator<Item = String>) -> Result<Args, Str
         Mode::Onboard if args.lifecycle.is_none() || args.scratch_root.is_none() => {
             Err("onboard requires --lifecycle and --scratch-root".to_owned())
         }
-        Mode::Online if args.lifecycle.is_none() || args.onboarding.is_none() => {
-            Err("online requires --lifecycle and --onboarding".to_owned())
+        Mode::Online | Mode::Diagnose if args.lifecycle.is_none() || args.onboarding.is_none() => {
+            Err("online/diagnose requires --lifecycle and --onboarding".to_owned())
         }
         _ => Ok(args),
     }
@@ -1687,7 +1948,8 @@ fn parse_args_from(values: impl IntoIterator<Item = String>) -> Result<Args, Str
 fn main() {
     let result = parse_args_from(env::args().skip(1)).and_then(|args| match args.mode {
         Mode::Onboard => run_onboard(&args),
-        Mode::Online => run_online(&args),
+        Mode::Online => run_online(&args, false),
+        Mode::Diagnose => run_online(&args, true),
     });
     if let Err(error) = result {
         eprintln!("x4c_pod_record HARD STOP: {error}");
@@ -1744,6 +2006,16 @@ mod tests {
         ])
         .unwrap();
         assert_eq!(args.mode, Mode::Online);
+        let args = parse_args_from([
+            "diagnose".to_owned(),
+            "--note6=n.json".to_owned(),
+            "--lifecycle=l.json".to_owned(),
+            "--onboarding=o.json".to_owned(),
+            "--durable-root=/persistent/run".to_owned(),
+            "--output=/local/diagnostic.json".to_owned(),
+        ])
+        .unwrap();
+        assert_eq!(args.mode, Mode::Diagnose);
     }
 
     #[test]

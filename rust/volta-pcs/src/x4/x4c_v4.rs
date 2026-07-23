@@ -26,10 +26,10 @@ use super::folding_v4::{
 };
 use super::frame::{Digest, FrameError, TreeRole};
 use super::frame_v4::{
-    decode_v4, hash_pcs_inner_leaf_fields_v4, hash_pcs_node_fields_v4,
-    hash_pcs_outer_leaf_fields_v4, opening_schedule_digest_v4, FoldCommitmentFrameV4,
-    FoldRoundOpeningV4, FrameV4, InitialOpeningGroupV4, OracleKindV4, PackedBatchOpeningFrameV4,
-    PackedOpeningScheduleV4, PRODUCTION_QUERY_COUNT_V4,
+    decode_v4, gpt2_codec_reference_packed_opening_v4, hash_pcs_inner_leaf_fields_v4,
+    hash_pcs_node_fields_v4, hash_pcs_outer_leaf_fields_v4, opening_schedule_digest_v4,
+    FoldCommitmentFrameV4, FoldRoundOpeningV4, FrameV4, InitialOpeningGroupV4, OracleKindV4,
+    PackedBatchOpeningFrameV4, PackedOpeningScheduleV4, PRODUCTION_QUERY_COUNT_V4,
 };
 use super::merkle_v4::{
     open_initial_from_sources_v4, CohortIdentityV4, CohortTreeV4, CohortVerifierConfigV4,
@@ -1984,10 +1984,42 @@ impl<A> SealedGlobalChainX4cV4<'_, A> {
         let io = X4cResponseIoCountersV4::default();
         io.validate_hard_zero()?;
         if config.arena_layout == X4cArenaLayoutV4::production()? {
-            execution.validate_production()?;
-            if metrics.serialized_packed_opening_bytes != X4C_PACKED_OPENING_BYTES_V4 {
-                return Err(X4cErrorV4::InvalidGeometry("X4c production packed-opening bytes"));
+            let observed_components = proof.packed_opening.byte_components()?;
+            let expected_components = gpt2_codec_reference_packed_opening_v4().byte_components()?;
+            let complete_pcs_bytes =
+                u64::try_from(proof.canonical_bytes()?.len()).map_err(|_| X4cErrorV4::Overflow)?;
+            if observed_components != expected_components
+                || metrics.serialized_packed_opening_bytes != X4C_PACKED_OPENING_BYTES_V4
+                || complete_pcs_bytes != X4C_COMPLETE_PCS_BYTES_V4
+            {
+                return Err(X4cErrorV4::Runtime(format!(
+                    "X4c production canonical-byte diagnostic: \
+                     packed_observed={}; packed_expected={}; \
+                     complete_pcs_observed={complete_pcs_bytes}; \
+                     complete_pcs_expected={X4C_COMPLETE_PCS_BYTES_V4}; \
+                     opened_symbols_observed={}; opened_symbols_expected={}; \
+                     initial_inner_siblings_observed={}; \
+                     initial_inner_siblings_expected={}; \
+                     initial_outer_siblings_observed={}; \
+                     initial_outer_siblings_expected={}; \
+                     fold_outer_siblings_observed={}; \
+                     fold_outer_siblings_expected={}; \
+                     metadata_bytes_observed={}; metadata_bytes_expected={}",
+                    observed_components.serialized_bytes,
+                    expected_components.serialized_bytes,
+                    observed_components.opened_symbols,
+                    expected_components.opened_symbols,
+                    observed_components.initial_inner_siblings,
+                    expected_components.initial_inner_siblings,
+                    observed_components.initial_outer_siblings,
+                    expected_components.initial_outer_siblings,
+                    observed_components.fold_outer_siblings,
+                    expected_components.fold_outer_siblings,
+                    observed_components.metadata_bytes,
+                    expected_components.metadata_bytes,
+                )));
             }
+            execution.validate_production()?;
         }
         Ok((
             proof,

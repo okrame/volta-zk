@@ -1,0 +1,12 @@
+2026-07-24T06:47:04,028138457+00:00
+monotonic_start_s=13427071.95
+TARGET     SOURCE                                                               FSTYPE MAJ:MIN FSROOT
+/workspace mfs#us-md-1.runpod.net:9421[/podvolumes/i5enji7h9v6w/yxdv3xt546piqw] fuse     0:62  /podvolumes/i5enji7h9v6w/yxdv3xt546piqw
+947912704 bytes (948 MB, 904 MiB) copied, 1 s, 946 MB/s1887436800 bytes (1.9 GB, 1.8 GiB) copied, 2 s, 943 MB/s2852126720 bytes (2.9 GB, 2.7 GiB) copied, 3 s, 948 MB/s3783262208 bytes (3.8 GB, 3.5 GiB) copied, 4 s, 944 MB/s4294967296 bytes (4.3 GB, 4.0 GiB) copied, 4.5425 s, 946 MB/s
+
+512+0 records in
+512+0 records out
+4294967296 bytes (4.3 GB, 4.0 GiB) copied, 4.58421 s, 937 MB/s
+monotonic_end_s=13427076.54
+2026-07-24T06:47:08,619907623+00:00
+payload_path=/workspace/x4c-storage-probes/deaccc50732e/04-persistent-fdatasync-4g-2026-07-24-207b92c.bin payload_bytes=4294967296 blocks=8388608 block_size=512

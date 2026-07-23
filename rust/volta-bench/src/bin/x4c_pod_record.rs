@@ -41,7 +41,7 @@ const PROTOCOL_PROFILE: &str = "x4-zkdeepfold-ud-e29-v4";
 const DESIGN_SHA256: &str = "57d0c0d691cc63ec043d18384348ad0e1130a5e763dc8e9ef00a7132d8abb880";
 const NOTE6_MILESTONE: &str = "X4c-R1b-NOTE-6-preflight";
 const LIFECYCLE_MILESTONE: &str = "X4c-phase2-exact-size-lifecycle-probe";
-const NOTE6_SOURCE_SHA: &str = "9b7776f7e43366684b3b69714eed1cb0da0f438d";
+const NOTE6_SOURCE_SHA: &str = "207b92c60c3656efca21ca2c3167a4390c8f4463";
 const DIAGNOSTIC_ONBOARDING_SOURCE_SHA: &str = "39a1868e64afd9d527756cfb2811a6f3f6a321a8";
 const DIAGNOSTIC_ONBOARDING_RECORD_SHA256: &str =
     "2c4b8d71931f3bfecb48bd63612c499f2c1fe685495b705cc000449460e9e28f";

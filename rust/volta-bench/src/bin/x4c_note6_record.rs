@@ -18,7 +18,7 @@ use std::time::Instant;
 
 const POD_PROFILE: &str = "runpod-a100-x4c-v1";
 const PROTOCOL_PROFILE: &str = "x4-zkdeepfold-ud-e29-v4";
-const DESIGN_SHA256: &str = "3a30502f783a0555019c770365a1fc63ff2dc922782a54de475ab9feb935a407";
+const DESIGN_SHA256: &str = "57d0c0d691cc63ec043d18384348ad0e1130a5e763dc8e9ef00a7132d8abb880";
 const GPU_NAME: &str = "NVIDIA A100-SXM4-80GB";
 const GPU_MEMORY_MIB: u64 = 81_920;
 const MIN_HOST_RAM_BYTES: u64 = 274_877_906_944;

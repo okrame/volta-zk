@@ -139,6 +139,7 @@ type PinnedMemoryStatsFn = unsafe extern "C" fn(*mut c_void, *mut RawPinnedMemor
 type X4cControlStateFn = unsafe extern "C" fn(*mut c_void, *mut RawX4cControlState) -> c_int;
 type PinnedAlloc = unsafe extern "C" fn(*mut c_void, usize, *mut u64) -> c_int;
 type PinnedWrite = unsafe extern "C" fn(*mut c_void, u64, usize, *const c_void, usize) -> c_int;
+type PinnedWaitReady = unsafe extern "C" fn(*mut c_void, u64) -> c_int;
 type PinnedFree = unsafe extern "C" fn(*mut c_void, u64) -> c_int;
 type TrimPinnedCache = unsafe extern "C" fn(*mut c_void) -> c_int;
 type ResidentAlloc = unsafe extern "C" fn(*mut c_void, usize, *mut u64) -> c_int;
@@ -693,6 +694,7 @@ type X4cGatherFp2Samples =
 type X4cBatchGather =
     unsafe extern "C" fn(*mut c_void, u64, u64, usize, usize, usize, usize, usize) -> c_int;
 type X4cArenaReset = unsafe extern "C" fn(*mut c_void, u64, usize, usize, c_int) -> c_int;
+type X4cSessionReusableBoundary = unsafe extern "C" fn(*mut c_void) -> c_int;
 type NttBatchDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, usize, usize, u64, usize) -> c_int;
 type LogupTree = unsafe extern "C" fn(
@@ -944,6 +946,7 @@ struct Api {
     x4c_control_state: X4cControlStateFn,
     pinned_alloc: PinnedAlloc,
     pinned_write: PinnedWrite,
+    pinned_wait_ready: PinnedWaitReady,
     pinned_free: PinnedFree,
     trim_pinned_cache: TrimPinnedCache,
     resident_alloc: ResidentAlloc,
@@ -1014,6 +1017,7 @@ struct Api {
     x4c_batch_gather_bytes: X4cBatchGather,
     x4c_batch_gather_canonical_operations: X4cBatchGather,
     x4c_arena_reset: X4cArenaReset,
+    x4c_session_reusable_boundary: X4cSessionReusableBoundary,
     ntt_fp_batch_device: NttBatchDevice,
     ntt_fp2_batch_device: NttBatchDevice,
     logup_tree: LogupTree,
@@ -1130,6 +1134,7 @@ impl CudaContext {
             x4c_control_state: unsafe { load_symbol(handle, b"volta_cuda_x4c_control_state\0")? },
             pinned_alloc: unsafe { load_symbol(handle, b"volta_cuda_pinned_alloc\0")? },
             pinned_write: unsafe { load_symbol(handle, b"volta_cuda_pinned_write\0")? },
+            pinned_wait_ready: unsafe { load_symbol(handle, b"volta_cuda_pinned_wait_ready\0")? },
             pinned_free: unsafe { load_symbol(handle, b"volta_cuda_pinned_free\0")? },
             trim_pinned_cache: unsafe { load_symbol(handle, b"volta_cuda_trim_pinned_cache\0")? },
             resident_alloc: unsafe { load_symbol(handle, b"volta_cuda_resident_alloc\0")? },
@@ -1288,6 +1293,9 @@ impl CudaContext {
                 load_symbol(handle, b"volta_cuda_x4c_batch_gather_canonical_operations\0")?
             },
             x4c_arena_reset: unsafe { load_symbol(handle, b"volta_cuda_x4c_arena_reset\0")? },
+            x4c_session_reusable_boundary: unsafe {
+                load_symbol(handle, b"volta_cuda_x4c_session_reusable_boundary\0")?
+            },
             ntt_fp_batch_device: unsafe {
                 load_symbol(handle, b"volta_cuda_ntt_fp_batch_device\0")?
             },
@@ -1603,6 +1611,11 @@ impl CudaContext {
     ) -> Result<(), AccelError> {
         // SAFETY: the safe caller retains a live typed slice for this CPU copy.
         self.check(unsafe { (self.api.pinned_write)(self.raw, id, offset_bytes, source, bytes) })
+    }
+
+    pub(super) fn wait_pinned_host_ready(&mut self, id: u64) -> Result<(), AccelError> {
+        // SAFETY: the public seam validates ownership of the opaque id.
+        self.check(unsafe { (self.api.pinned_wait_ready)(self.raw, id) })
     }
 
     pub(super) fn pinned_free(&mut self, id: u64) -> Result<(), AccelError> {
@@ -3598,6 +3611,11 @@ impl CudaContext {
         self.check(unsafe {
             (self.api.x4c_arena_reset)(self.raw, arena_id, offset_bytes, bytes, i32::from(zero))
         })
+    }
+
+    pub(super) fn x4c_session_reusable_boundary(&mut self) -> Result<(), AccelError> {
+        // SAFETY: the context is live and exclusively borrowed.
+        self.check(unsafe { (self.api.x4c_session_reusable_boundary)(self.raw) })
     }
 
     #[allow(clippy::too_many_arguments)]

@@ -156,17 +156,17 @@ are absent. A nonzero counter is evidence, not a permitted assumption. The
 production-host cause remains **OPEN**, and no X4c design element depends on a
 particular diagnosis.
 
-## 3.1 Phase-2 local implementation stop
+## 3.1 Phase-2 diagnostic correction
 
-The frozen direct-fold control cannot be instantiated as written.  Production
-fold outputs have lengths `2^29,...,2^3`, while the control requires 64
-unique output coordinates in each of all 27 rounds.  The last three output
-domains contain only 32, 16 and 8 coordinates, so the exact maximum is
-**1,592**, not **1,728**; the shortfall is **136**.  Production configuration
-now rejects this geometry before allocation or query gathering.  This is a
-Phase-2 obstruction only: it does not reinterpret the Phase-1 record or alter
-its narrow `REFUTED_LOCAL_SYNTHETIC_DIRECT_PROJECTION` disposition.  No pod
-was requested or contacted.
+Checkpoint `185b177` failed closed when the then-written 64-per-round
+diagnostic reached production fold outputs of lengths 32, 16 and 8.  The
+product owner corrected the control to **`min(64, output_len)` unique
+coordinates per round**, giving exactly **1,592** comparisons.  The
+correction is exclusively diagnostic, receives zero soundness credit and
+changes no protocol parameter, format, root, byte or gate.  It does not
+reinterpret the Phase-1 record or alter its narrow
+`REFUTED_LOCAL_SYNTHETIC_DIRECT_PROJECTION` disposition.  Local Phase-2 work
+resumes from `185b177`; no pod was requested or contacted.
 
 The corrected clean local run used a real schema-4 fold chain, one warm-up
 and five measured candidates at each scale, 111 queries, canonical encoding
@@ -214,8 +214,8 @@ the second hard stop before pod provisioning or contact:
 1. Fold the already-encoded codeword directly. The response path performs
    zero per-round E-NTTs, writes zero coefficient files and performs zero
    full-oracle comparisons. Permanent CPU/GPU parity tests are full at
-   synthetic scale. Production checks exactly 64 unique coordinates in each
-   of 27 rounds, **1,728 comparisons**, under domain
+   synthetic scale. Production checks exactly `min(64, output_len)` unique
+   coordinates in each of 27 rounds, **1,592 comparisons**, under domain
    `volta-zk/x4c/direct-fold-parity/v1`; they receive no soundness credit.
 2. Keep fold trees in one GPU arena with one outer level omitted and
    reconstructed in place. Retained codewords plus cache are
@@ -306,8 +306,6 @@ RAM-cache/restart semantics, batched gather and all new accounting
 boundaries. At Phase-1 closure no Phase-2 implementation, pod request or pod
 contact had occurred. Phase 2 is now authorized locally; after all local gates
 and the clean checkpoint land, work hard-stops to request separate pod
-provisioning approval. The impossible 1,728-unique-sample geometry identified
-in Section 3.1 stops implementation before those local gates, so no
-provisioning request is currently permitted. No existing or new pod may be
-contacted before both an explicit sampling-plan correction and the later
-provisioning approval.
+provisioning approval. The diagnostic correction in Section 3.1 resumes local
+implementation but does not clear this stop. No existing or new pod may be
+contacted before the local checkpoint and later provisioning approval.

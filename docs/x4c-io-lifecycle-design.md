@@ -17,16 +17,15 @@ The corrected Phase-1 artifact is preserved at checkpoint `c7e1043`, SHA-256
 `1a744625078e3ffe5772b040c24854e9510dcedebc906416279cf3a7c29bf191`;
 the present override does not mutate either append-only Phase-1 JSON.
 
-**Phase-2 implementation stop (2026-07-23):** the frozen production sampling
-rule below is internally inconsistent with the frozen fold geometry.  The 27
-output domains are `2^29,...,2^3`; the final three contain only 32, 16 and 8
-coordinates.  Thus 64 unique output coordinates per round can supply at most
-`24*64 + 32 + 16 + 8 = 1,592` unique comparisons, not 1,728.  Production
-configuration fails closed before allocation or query gathering.  Local
-implementation is stopped pending an explicit product-owner correction to
-the sampling requirement, and no pod may be requested or contacted.  The
-contradictory text in Section 3.1 remains visible as the frozen requirement;
-it has not been silently relaxed.
+**Phase-2 diagnostic correction (2026-07-23):** after checkpoint `185b177`
+failed closed on the final output domains of lengths 32, 16 and 8, the product
+owner corrected the production parity control to
+`min(64, output_len)` unique coordinates per round.  The exact total is
+`24*64 + 32 + 16 + 8 = 1,592` comparisons.  This is exclusively a
+diagnostic control, receives zero soundness credit and changes no protocol
+parameter, format, root, reference/proof byte or gate.  Local implementation
+resumes from `185b177`; the HARD STOP before any pod request or contact
+remains.
 
 This package follows the immutable X4 and X4b closures. X4 remains
 **G4 commit FAIL / overall FAIL** and X4b remains **official FAIL on isolated
@@ -298,17 +297,22 @@ Correctness no longer depends on a full production reread:
   `2^3, 2^8, 2^12, 2^16, 2^20` and challenges
   `0`, `1`, `Fp2(3,11)` and `Fp2(p-1,p-2)`. Every output symbol must be
   bit-identical.
-- Each production response checks **64 unique output coordinates in every
-  one of 27 rounds**: indices `0` and `output_len-1` plus 62 unique indices
-  from BLAKE3 XOF context
+- Each production response checks **`min(64, output_len)` unique output
+  coordinates in each of 27 rounds**: indices `0` and `output_len-1` when
+  distinct, plus unique indices up to the round target from BLAKE3 XOF context
   `volta-zk/x4c/direct-fold-parity/v1`. The XOF absorbs the X4c design SHA,
   clean source SHA, response ordinal, round number, fold challenge and fixed
   round root. Power-of-two masking is exact; duplicates are redrawn.
 - The CPU recomputes each selected output from its two input symbols and the
-  frozen `fold_codeword` equation. All **1,728** comparisons must match.
+  frozen `fold_codeword` equation. All **1,592** comparisons must match.
   The record includes the seed material, ordered-index digest, comparison
   count and zero mismatch count. Sampling affects no transcript and receives
   no soundness credit.
+- The production diagnostic traffic is accounted separately from proof
+  opening traffic: exactly **53 gathers**, **4,648 Fp2 symbols**,
+  **37,184 B index H2D** and **74,368 B value D2H**. These bytes are
+  out-of-band parity observations, never proof bytes and never soundness
+  evidence; `noncanonical_opening_d2h_bytes` remains hard zero.
 
 A mismatch fails closed before query gathering. Synthetic full comparisons
 and production samples supplement, rather than replace, the existing
@@ -368,6 +372,14 @@ registration/deregistration and ownership transition is counted. This pooling
 is prospective X4c lifecycle engineering, not a claimed explanation of the
 old X4b opening gap.
 
+The concrete pool has four allocations: a two-entry transfer ring, one
+canonical-opening mailbox and one canonical-gather operation table. Its exact
+requested ownership is **1,090,741,982 B**. Every transfer-ring slot carries
+an independent completion event and cannot be rewritten while its preceding
+H2D is outstanding. At the explicit session boundary all four buffers are
+awaited and returned together; the allocator census must return exactly to
+the pre-pool active-allocation and active-byte baseline.
+
 Restart is fail-closed:
 
 1. validate durable coefficient/root file count, length, binding and digest;
@@ -418,6 +430,12 @@ counters at both boundaries. `proof_ready_wall` may exclude teardown;
 `session_reusable_wall` may not. Thousands of distributed vector/set drops
 are a named anti-pattern and a failing allocation-census condition, not an
 acceptable way to make proof-ready latency look smaller.
+
+Reset covers and reports the complete **43,486,546,048-B** arena, including
+the registered scratch/workspace region, and is synchronized before the
+session-reusable boundary. A partial payload-only zero, a hidden outstanding
+operation or failure to restore the single cached arena ownership is a hard
+validator failure.
 
 ## 4. Gate restructure: strictness moved, not relaxed
 
@@ -555,7 +573,6 @@ direct-fold/root/rebuild byte identity, unchanged tamper coverage, exact
 communication, ledger update and a clean checkpoint, stop and request
 separate provisioning approval. Do not request or contact an existing or new
 pod before that local hard stop; do not contact a pod until provisioning is
-separately approved. The impossible production sampling geometry recorded at
-the top of this document prevents those local completion gates from being
-claimed. It must receive an explicit product-owner correction before local
-implementation resumes or any provisioning request can be made.
+separately approved. The owner correction at the top resolves only the
+diagnostic sampling geometry and resumes local implementation; it does not
+clear this pre-pod stop or authorize provisioning.

@@ -18,7 +18,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 30;
+constexpr uint32_t ABI_VERSION = 32;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -3515,6 +3515,32 @@ extern "C" int volta_cuda_pinned_write(
     return 0;
 }
 
+extern "C" int volta_cuda_pinned_wait_ready(void* raw, uint64_t id) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !id) return fail_message(c, "invalid pinned wait");
+    if (c->coarse_timing_active || c->coarse_inner_active ||
+        c->counter_timing_active ||
+        c->active_timing_record != TIMING_RING_SIZE)
+        return reject_message(c, "pinned wait inside an active timing scope");
+    PinnedBuffer* owner = find_pinned(c, id);
+    if (!owner) return fail_message(c, "unknown pinned buffer id");
+    bool ready = false;
+    if (refresh_pinned_ready(c, owner, &ready)) return -1;
+    if (ready) return 0;
+    const auto started = std::chrono::steady_clock::now();
+    const cudaError_t status = cudaEventSynchronize(owner->ready);
+    const auto finished = std::chrono::steady_clock::now();
+    if (status != cudaSuccess)
+        return fail(c, "cudaEventSynchronize(pinned ready)", status);
+    owner->in_flight = false;
+    ++c->stats.synchronizations;
+    ++c->stats.sync_upload_lifetime;
+    c->stats.synchronization_ns +=
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            finished - started).count();
+    return 0;
+}
+
 extern "C" int volta_cuda_pinned_free(void* raw, uint64_t id) {
     Context* c = static_cast<Context*>(raw);
     try {
@@ -6147,6 +6173,17 @@ extern "C" int volta_cuda_x4c_arena_reset(
     ++c->stats.x4c_arena_reset_calls;
     c->stats.x4c_arena_reset_bytes += bytes;
     return finish_timing(c, OP_MAILBOX, 0, 0, 0, bytes, 0);
+}
+
+extern "C" int volta_cuda_x4c_session_reusable_boundary(void* raw) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c) return -1;
+    if (c->coarse_timing_active || c->coarse_inner_active ||
+        c->counter_timing_active ||
+        c->active_timing_record != TIMING_RING_SIZE)
+        return reject_message(
+            c, "X4c reusable boundary inside an active timing scope");
+    return synchronize_stream(c, SyncReason::AllocatorFlush);
 }
 
 extern "C" int volta_cuda_ntt_fp_batch_device(

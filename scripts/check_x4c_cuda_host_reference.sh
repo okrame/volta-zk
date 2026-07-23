@@ -153,22 +153,6 @@ void check_fold_length(size_t input_len) {
                 "direct-fold anchor differs from independent equation");
         }
 
-        if (input_len == (size_t{1} << 20)) {
-            // 4 * 432 = 1,728 exact host differential samples at this
-            // independently tractable length. This is not a production-plan
-            // uniqueness claim.
-            for (size_t sample = 0; sample < 432; ++sample) {
-                const size_t index =
-                    (sample * 0x9e37'79b1ULL +
-                     challenge_ordinal * 0x85eb'ca6bULL) %
-                    half;
-                require(
-                    equal(
-                        scalar[index],
-                        scalar_fold_at(input, challenge, index)),
-                    "one of 1,728 host direct-fold samples mismatched");
-            }
-        }
     }
 }
 

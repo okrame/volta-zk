@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 HARD STOP — IMPOSSIBLE UNIQUE-SAMPLE GEOMETRY; NO POD; GATES UNCHANGED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 LOCAL IMPLEMENTATION COMPLETE; HARD STOP BEFORE POD; GATES UNCHANGED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -198,14 +198,16 @@ opening-window unlink/writeback culprit hypotheses are retracted; both remain
 zero-expected measured controls only.  The approved direct-fold construction
 keeps rate `1/8`, `s=111`, every root/reference/proof/Lean/correlation/
 soundness invariant and exact **2,683,236 / 43,953,700-B** communication.
-Local implementation then exposed a contradiction in the frozen production
-parity plan: the 27 fold output lengths are `2^29,...,2^3`, so the final
-three rounds contain only 32, 16 and 8 output coordinates.  The exact maximum
-under “64 unique output coordinates in every round” is therefore
-`24*64 + 32 + 16 + 8 = 1,592`, not 1,728.  Production sealing now rejects
-this geometry before allocation or query gathering.  X4c Phase 2 is
-hard-stopped pending a product-owner correction to the sampling requirement;
-no pod may be requested or contacted.
+Local implementation then exposed that the final three fold outputs contain
+only 32, 16 and 8 coordinates.  At checkpoint `185b177`, production sealing
+failed closed rather than silently weakening the then-written 64-per-round
+diagnostic.  The product owner has now corrected that diagnostic to
+`min(64, output_len)` unique coordinates per round, for the exact total
+`24*64 + 32 + 16 + 8 = 1,592`.  This control remains exclusively
+diagnostic, receives zero soundness credit and changes no protocol parameter,
+format, root, reference/proof byte or gate.  Phase 2 resumed locally from
+`185b177` and has reached its clean local checkpoint; the HARD STOP before
+any pod request or contact remains.
 
 ## Milestones
 
@@ -257,7 +259,7 @@ no pod may be requested or contacted.
 | X4b sustainable oracle Phase 1 | **DIAGNOSIS + PREREGISTRATION COMPLETE; HARD STOP BEFORE IMPLEMENTATION/POD** (2026-07-22) | No format/root/reference/Lean/soundness change; exact postdiction; CPU >=500 MB/s/core; GPU root equality; unchanged 15 s / 1.50 s / 0.25 s; full pass informative | Design SHA-256 `bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01`. Clean-source CPU record `x4b-phase1-cpu-postdiction-2026-07-22-9164de4.json`, SHA-256 `78fdd12ed79c4cf05d42b428a7fa305c28e4254be82289608c45f1f85ce64ec1`: exact aux17 has **5,242,879** hashes / **460,324,760 canonical B**; tree wall is 92.14% explained by those calls; derive-key is material but allocation/serialization is larger. Exact padding **2.4103942174056745x**, Merkle/oracle **6.093317342300939x**, recompute **205,520,864 B / 3.117810096 s**. Profile `runpod-a100-x4b-v1`; durable artifacts **86,567,288,992 B**, volume >=150 GB, host RAM >=128 GiB, device ceiling 48 GiB. X4 FAIL remains immutable. |
 | X4b sustainable oracle Phase 2 | **OFFICIAL X4b FAIL: ISOLATED COMMIT + PERSISTED OPEN; CLOSED** (2026-07-22) | Conjunctive `runpod-a100-x4b-v1`; complete node pipeline, CPU/GPU roots, verify, bytes, G6 and hardware PASS; full pass informative; isolated commit <=15 s FAIL; open <=1.50 s FAIL; no gate relaxed | Clean source `6c6907ab144f4cfbe9cadb06ebb01d652d1dc82d`. Validated record `x4b-a100-production-2026-07-22-6c6907a.json`, SHA-256 `63f4a97b263e4d09649d5a6ede5af1ba420efdcc78bb30f54b9f8cf200cfe6e0`. CPU pipeline **723,716,307.952 B/s/core PASS**; CPU/GPU roots equal; full pass **401.723726678 s / 191,546,319.209 oracle B/s informative**; Wext-mu26 **254.861527720 s FAIL**; persisted open **6.683486611 s FAIL**; verify **0.058438415 s PASS**; PCS/response exactly **2,683,236 / 43,953,700 B PASS**; G6 reconciled. Durable initial artifacts **86,567,288,992 B**, peak device **43,486,546,048 B**. Historical X4 FAIL immutable; design SHA, proof/root/reference bytes, Lean and **80.25537016399041-bit** soundness unchanged. |
 | X4c I/O-lifecycle Phase 1 | **COMPLETE; DROP-DOMINANCE HYPOTHESIS REFUTED BY LOCAL SYNTHETIC DIRECT PROJECTION; REDESIGN/PROFILE PREREGISTERED; HARD STOP** (2026-07-23) | Exact byte reconciliation; reconstructed wall is non-causal/self-derived; timing-only four-way `issue_queries` decomposition; no proof/root/reference/Lean/soundness change; no direct-fold implementation or pod | Eligible clean schema-2 record `x4c-phase1-open-decomposition-2026-07-23-f772013.json`, SHA-256 `ca9841ffce22f731dd45ba616e482a4528ae9ce934856965b0782ed3e052ebcf`: selected teardown projection **0.038496701 s**, interval **0.003520017--0.068747601 s**, only **0.585603121% / 1.045772987% high** of the **6.573855120-s** lifecycle gap. X4b mu26 reconciles **210,453,397,440 B modeled / 210,453,446,656 B observed**; its **0.825756043-GB/s** rate comes from the same wall and provides no independent causal timing evidence. Avoidable response staging is **137,438,949,856 B**. Corrected design SHA-256 `1a744625078e3ffe5772b040c24854e9510dcedebc906416279cf3a7c29bf191`; exact response/PCS remain **43,953,700 / 2,683,236 B**. |
-| X4c I/O-lifecycle Phase 2 | **HARD STOP: FROZEN 1,728-UNIQUE-SAMPLE REQUIREMENT IS IMPOSSIBLE; NO POD** (2026-07-23) | Production has 27 output domains `2^29,...,2^3`; every round must supply 64 unique output coordinates; no sampling-plan weakening is authorized | Exact capacity is **1,592 = 24*64 + 32 + 16 + 8**, a **136-comparison shortfall**.  The final three domains cannot supply 64 unique coordinates.  A fail-closed production-config guard and permanent regression test reject before arena allocation/query gathering.  Already-added local instrumentation, exact-size probe, direct-fold/arena/gather foundations and synthetic byte-identity tests are diagnostic only; Phase-2 completion gates and the pod request are not reached.  Phase-1 schema-1/schema-2 and X4b production artifacts remain append-only with hashes unchanged.  Rate `1/8`, `s=111`, roots/reference/codec/Lean/soundness and exact PCS/response **2,683,236 / 43,953,700 B** remain frozen. |
+| X4c I/O-lifecycle Phase 2 | **LOCAL IMPLEMENTATION COMPLETE; SECOND HARD STOP BEFORE POD** (2026-07-23) | Direct-fold parity checks exactly `min(64, output_len)` unique coordinates per round; **1,592** production comparisons; diagnostic only and zero soundness credit | From `185b177`, local Phase 2 adds causal lifecycle instrumentation, the exact-size probe, byte-identical direct fold, one counted arena, RAM rebuild and one canonical gather.  Design SHA-256 **`57d0c0d691cc63ec043d18384348ad0e1130a5e763dc8e9ef00a7132d8abb880`**.  All runnable workspace, report-validator, CPU direct-fold/N4/root, rebuild-byte-identity and tamper gates are green; actual CUDA and 51.54-GB execution await separately approved hardware.  Rate `1/8`, `s=111`, roots/reference/codec/Lean/soundness, gates and exact PCS/response **2,683,236 / 43,953,700 B** are unchanged.  Phase-1 schema-1/schema-2 and X4b production artifacts remain append-only.  No pod has been contacted. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -325,6 +327,95 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-23 (X4c Phase-2 local implementation checkpoint; all local
+  gates green; second HARD STOP before pod)**: beginning from
+  `185b177cd814fbac7c2b8dc28bf52aee1ad64707`, the corrected X4c Phase-2
+  implementation is locally complete.  The clean commit containing this
+  entry is the pre-pod checkpoint; its SHA is reported at handoff.  The
+  current design SHA-256 is
+  **`57d0c0d691cc63ec043d18384348ad0e1130a5e763dc8e9ef00a7132d8abb880`**.
+
+  **Causal controls and probe.**  The legacy-compatible seal/open path now
+  records every preregistered coarse wall boundary with process I/O,
+  page-fault, RSS/smaps, allocator, NUMA, CUDA synchronization and
+  sealed-state ownership anchors.  Missing or inconsistent fields fail
+  validation, and absent pinned/device/file-backed ownership is represented
+  by exact zero.  The exact-size **51,539,606,304-B** lifecycle probe
+  implements distributed ownership, no-teardown `ManuallyDrop`, categorized
+  teardown and single-arena reset, each with one warm-up and three measured
+  candidates.  Its CPU local smoke accepted all variants; exact-size
+  execution remains deferred to the pod and no causal production-host
+  attribution is claimed.
+
+  **Direct fold and ownership.**  Response folding consumes the already
+  encoded codeword with hard-zero response E-NTT, coefficient/oracle file,
+  full-oracle comparison, staging and CPU fold-tree clone counters.  The
+  single device arena is exactly **43,486,546,048 B**, including
+  **34,359,737,248 B** retained fold payload and **9,126,808,800 B**
+  scratch/workspace; session reset covers and synchronizes the complete
+  arena.  The reusable four-allocation pinned pool requests exactly
+  **1,090,741,982 B**, waits each transfer-ring slot before reuse and must
+  restore the pre-pool ownership baseline.  Proof-ready and
+  teardown-inclusive session-reusable walls are both mandatory.
+
+  **Correctness and traffic.**  The parity diagnostic uses exactly
+  `min(64, output_len)` unique coordinates per round and therefore
+  **1,592** production comparisons.  Its separately counted out-of-band
+  traffic is exactly **53 gathers / 4,648 Fp2 symbols / 37,184 B index H2D /
+  74,368 B value D2H**.  It affects no transcript and receives exactly
+  **zero soundness credit**.  The initial oracle and outer cache rebuild in
+  RAM from the durable coefficients, reproduce the committed roots and emit
+  the same complete canonical X4c proof bytes as the warm source.  All 111
+  post-root query paths use one canonical gather; no noncanonical opening
+  bytes cross to host.
+
+  **Local gates.**  `cargo fmt --all`,
+  `cargo check --workspace --all-features` and
+  `cargo test --workspace --all-features` are green; the latter retains only
+  the already declared production-size ignored tests.  The X4c PCS module
+  runs **12/12** tests, including exact production sampling geometry,
+  CPU direct-fold/N4/root equality, canonical gather equality and complete
+  durable-rebuild proof-byte identity.  `pytest -q tests/test_report.py` is
+  **13/13 green**, the independent CUDA-host reference reports
+  `X4C_CUDA_HOST_REFERENCE_OK`, and the lifecycle probe smoke accepts every
+  variant.  Native CUDA differentials compile but are intentionally not
+  represented as locally executed GPU evidence.  The unchanged codec test
+  pins exact **2,683,236-B PCS / 43,953,700-B response**; the existing
+  audit/tamper suite remains green.  No protocol, rate, query count, proof
+  grammar, root, reference, correlation, Lean statement, soundness expression
+  or gate changed.
+
+  No existing or new pod was requested or contacted.  Work now HARD STOPS
+  until the owner separately provisions/approves one A100-SXM4 80-GB pod
+  with **>=256 GiB actual host RAM** and **>=150 GB local non-`mfs`
+  storage**, while the coefficients-plus-five-roots durable tier remains on
+  the **PERSISTENT** volume and the proving-only `RAYON_NUM_THREADS=8` split
+  policy remains frozen.
+
+- **2026-07-23 (X4c Phase-2 owner correction; exact
+  `min(64, output_len)` diagnostic; local work resumed; HARD STOP before
+  pod)**: the product owner resolves the obstruction recorded at checkpoint
+  `185b177cd814fbac7c2b8dc28bf52aee1ad64707`.  The production direct-fold
+  parity control now samples **`min(64, output_len)` unique output
+  coordinates in each round**.  For output logs `29,...,3`, this is exactly
+  `24*64 + 32 + 16 + 8 = 1,592` comparisons.  Indices zero and
+  `output_len-1` remain fixed when distinct; the remaining coordinates remain
+  uniquely domain-separated and duplicates are redrawn.
+
+  This correction is exclusively diagnostic.  It affects no transcript,
+  verifier, proof field/order, N4 preimage, Merkle root, reference byte,
+  protocol parameter, rate, query count, correlation, Lean statement,
+  soundness expression, communication byte or gate, and it receives exactly
+  **zero soundness credit**.  Exact PCS and response remain
+  **2,683,236 / 43,953,700 B**.  The earlier fail-closed checkpoint and its
+  obstruction entry remain honest historical evidence; only the diagnostic
+  sampling requirement is superseded.
+
+  X4c Phase 2 resumes locally from `185b177`.  The second HARD STOP remains:
+  do not request or contact an existing or new pod until all local gates,
+  validator coverage, ledger update and a clean checkpoint have landed, and
+  the owner then separately approves provisioning.
 
 - **2026-07-23 (X4c Phase-2 local implementation HARD STOP; frozen
   production sampling geometry is internally inconsistent; no pod)**:

@@ -17,7 +17,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 30;
+pub const CUDA_ABI_VERSION: u32 = 32;
 pub const OPERATION_COUNT: usize = 7;
 pub const DEFERRED_TIMING_CAPACITY: usize = 512;
 
@@ -1240,6 +1240,25 @@ impl Backend {
                 values.as_ptr().cast(),
                 values.len() * size_of::<T>(),
             )
+        }
+    }
+
+    /// Wait only for the selected pooled buffer's preceding H2D lifetime.
+    /// This never registers or deregisters memory and is counted as an
+    /// upload-lifetime synchronization when an event wait is required.
+    pub fn wait_pinned_host_ready<T: DeviceElement>(
+        &mut self,
+        buffer: &PinnedHostBuffer<T>,
+    ) -> Result<(), AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        {
+            let _ = buffer;
+            return Err(AccelError::FeatureDisabled);
+        }
+        #[cfg(feature = "cuda")]
+        {
+            self.validate_pinned_buffer(buffer)?;
+            self.cuda.as_mut().expect("CUDA kind without context").wait_pinned_host_ready(buffer.id)
         }
     }
 
@@ -4905,6 +4924,22 @@ impl Backend {
                 bytes,
                 zero,
             )
+        }
+    }
+
+    /// Complete every operation enqueued before the reusable-session
+    /// boundary. This transfers no bytes and records an allocator-flush
+    /// synchronization, so asynchronous arena zeroing cannot escape the
+    /// teardown-inclusive lifecycle wall.
+    pub fn x4c_session_reusable_boundary(&mut self) -> Result<(), AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        {
+            return Err(AccelError::FeatureDisabled);
+        }
+        #[cfg(feature = "cuda")]
+        {
+            self.require_resident()?;
+            self.cuda.as_mut().expect("CUDA kind without context").x4c_session_reusable_boundary()
         }
     }
 

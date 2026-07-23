@@ -6,8 +6,14 @@
 //! codec remains the only wire format.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::mem::size_of;
 use std::time::Instant;
 
+use volta_accel::{
+    AccelError, Backend, CudaStreamState, DeviceBuffer, Fp2Repr, PinnedHostBuffer,
+    X4cCanonicalGatherOperation, X4cOneSlotN4Layout, X4C_GATHER_CACHED_OUTER_DIGEST,
+    X4C_GATHER_CODEWORD_SYMBOL, X4C_GATHER_REBUILT_OUTER_DIGEST,
+};
 use volta_field::{Fp, Fp2, P};
 use volta_mac::Transcript;
 
@@ -29,7 +35,7 @@ use super::merkle_v4::{
     open_initial_from_sources_v4, CohortIdentityV4, CohortTreeV4, CohortVerifierConfigV4,
     DenseOuterNodeCacheV4, OracleSymbolSourceV4, OuterCachePolicyV4, OuterNodeSourceV4,
 };
-use super::ntt::{fold_codeword, fold_coefficients, fp2_pow, root_of_unity};
+use super::ntt::{encode_rate_eighth, fold_codeword, fold_coefficients, fp2_pow, root_of_unity};
 
 pub const X4C_RATE_V4: &str = "1/8";
 pub const X4C_QUERY_COUNT_V4: usize = 111;
@@ -37,12 +43,23 @@ pub const X4C_PRODUCTION_MAX_OUTER_LOG2_V4: u8 = 30;
 pub const X4C_PRODUCTION_FINAL_OUTER_LOG2_V4: u8 = 3;
 pub const X4C_PRODUCTION_FOLD_ROUNDS_V4: usize = 27;
 pub const X4C_DIRECT_FOLD_SAMPLES_PER_ROUND_V4: usize = 64;
+/// Exact diagnostic comparison count for production output lengths 2^29
+/// through 2^3 under `min(64, output_len)` unique coordinates per round.
 pub const X4C_DIRECT_FOLD_PRODUCTION_SAMPLES_V4: usize =
-    X4C_PRODUCTION_FOLD_ROUNDS_V4 * X4C_DIRECT_FOLD_SAMPLES_PER_ROUND_V4;
-/// Maximum number of unique output coordinates available when the frozen
-/// production rounds have output lengths 2^29 through 2^3.  This is smaller
-/// than the preregistered 1,728 comparisons and therefore blocks production.
-pub const X4C_DIRECT_FOLD_MAX_UNIQUE_PRODUCTION_SAMPLES_V4: usize = 1_592;
+    24 * X4C_DIRECT_FOLD_SAMPLES_PER_ROUND_V4 + 32 + 16 + 8;
+/// One output gather in every round plus one positive/negative input-pair
+/// gather after the first round.
+pub const X4C_DIRECT_FOLD_DIAGNOSTIC_GATHER_CALLS_V4: u64 =
+    2 * X4C_PRODUCTION_FOLD_ROUNDS_V4 as u64 - 1;
+/// Output observations plus the two resident input symbols needed by the CPU
+/// equation after round one.
+pub const X4C_DIRECT_FOLD_DIAGNOSTIC_SYMBOLS_V4: u64 = X4C_DIRECT_FOLD_PRODUCTION_SAMPLES_V4 as u64
+    + 2 * (X4C_DIRECT_FOLD_PRODUCTION_SAMPLES_V4 as u64
+        - X4C_DIRECT_FOLD_SAMPLES_PER_ROUND_V4 as u64);
+pub const X4C_DIRECT_FOLD_DIAGNOSTIC_INDEX_H2D_BYTES_V4: u64 =
+    X4C_DIRECT_FOLD_DIAGNOSTIC_SYMBOLS_V4 * size_of::<u64>() as u64;
+pub const X4C_DIRECT_FOLD_DIAGNOSTIC_VALUE_D2H_BYTES_V4: u64 =
+    X4C_DIRECT_FOLD_DIAGNOSTIC_SYMBOLS_V4 * FP2_BYTES;
 
 pub const X4C_FOLD_CODEWORD_BYTES_V4: u64 = 17_179_869_056;
 pub const X4C_FOLD_OUTER_CACHE_BYTES_V4: u64 = 17_179_868_192;
@@ -63,9 +80,13 @@ pub const X4C_PACKED_OPENING_BYTES_V4: u64 = 2_615_414;
 pub const X4C_COMPLETE_PCS_BYTES_V4: u64 = 2_683_236;
 pub const X4C_RESPONSE_BYTES_V4: u64 = 43_953_700;
 pub const X4C_DIRECT_FOLD_PARITY_DOMAIN_V4: &str = "volta-zk/x4c/direct-fold-parity/v1";
+pub const X4C_PINNED_TILE_OUTPUT_SYMBOLS_V4: usize = 1 << 24;
+pub const X4C_PINNED_TRANSFER_RING_V4: usize = 2;
+pub const X4C_CANONICAL_GATHER_MAX_OPERATIONS_V4: usize =
+    X4C_PACKED_OPENING_BYTES_V4 as usize / FP2_BYTES as usize;
 pub const X4C_DESIGN_SHA256_V4: Digest = [
-    0x1a, 0x74, 0x46, 0x25, 0x07, 0x8e, 0x3f, 0xfe, 0x57, 0x72, 0xb0, 0x40, 0xc2, 0x48, 0x54, 0xe9,
-    0x51, 0x0d, 0xce, 0xdb, 0xc9, 0x06, 0x41, 0x62, 0x79, 0xcf, 0x3a, 0x7c, 0x29, 0xbf, 0x19, 0x1c,
+    0x57, 0xd0, 0xc0, 0xd6, 0x91, 0xcc, 0x63, 0xec, 0x04, 0x3d, 0x18, 0x38, 0x43, 0x48, 0xad, 0x0e,
+    0x11, 0x30, 0xa5, 0xe7, 0x63, 0xdc, 0x8e, 0x9e, 0xf0, 0x0a, 0x71, 0x32, 0xd8, 0xab, 0xb8, 0x80,
 ];
 
 const FP2_BYTES: u64 = 16;
@@ -99,6 +120,12 @@ impl From<FrameError> for X4cErrorV4 {
 impl From<FoldingErrorV4> for X4cErrorV4 {
     fn from(value: FoldingErrorV4) -> Self {
         Self::Folding(value)
+    }
+}
+
+impl From<AccelError> for X4cErrorV4 {
+    fn from(value: AccelError) -> Self {
+        Self::Runtime(value.to_string())
     }
 }
 
@@ -345,6 +372,25 @@ pub struct X4cArenaCensusV4 {
     pub outstanding_allocation_count: u64,
     pub outstanding_bytes: u64,
     pub cached_reusable_bytes: u64,
+    pub accelerator_available: bool,
+    pub backend_workspace_bytes: u64,
+    pub backend_baseline_resident_bytes: u64,
+    pub backend_resident_bytes: u64,
+    pub backend_cached_resident_bytes: u64,
+    pub backend_baseline_active_device_allocations: u64,
+    pub backend_active_device_allocations: u64,
+    pub backend_cached_device_allocations: u64,
+    pub backend_baseline_active_pinned_allocations: u64,
+    pub backend_baseline_active_pinned_bytes: u64,
+    pub backend_active_pinned_allocations: u64,
+    pub backend_cached_pinned_allocations: u64,
+    pub backend_in_flight_pinned_allocations: u64,
+    pub backend_active_pinned_bytes: u64,
+    pub backend_cached_pinned_bytes: u64,
+    pub backend_outstanding_cuda_operations: u64,
+    pub backend_stream_synchronized: bool,
+    pub x4c_pinned_pool_allocations: u64,
+    pub x4c_pinned_pool_requested_bytes: u64,
 }
 
 impl X4cArenaCensusV4 {
@@ -364,6 +410,37 @@ impl X4cArenaCensusV4 {
         {
             return Err(X4cErrorV4::InvalidGeometry("X4c proof-ready arena census"));
         }
+        if self.accelerator_available
+            && (self.backend_resident_bytes
+                < self
+                    .backend_baseline_resident_bytes
+                    .checked_add(layout.capacity_bytes)
+                    .ok_or(X4cErrorV4::Overflow)?
+                || self.backend_active_device_allocations
+                    != self
+                        .backend_baseline_active_device_allocations
+                        .checked_add(1)
+                        .ok_or(X4cErrorV4::Overflow)?
+                || self.backend_active_pinned_allocations
+                    != self
+                        .backend_baseline_active_pinned_allocations
+                        .checked_add(self.x4c_pinned_pool_allocations)
+                        .ok_or(X4cErrorV4::Overflow)?
+                || self.backend_active_pinned_bytes
+                    < self
+                        .backend_baseline_active_pinned_bytes
+                        .checked_add(self.x4c_pinned_pool_requested_bytes)
+                        .ok_or(X4cErrorV4::Overflow)?
+                || self.x4c_pinned_pool_allocations
+                    != u64::try_from(X4C_PINNED_TRANSFER_RING_V4 + 2)
+                        .map_err(|_| X4cErrorV4::Overflow)?
+                || self.x4c_pinned_pool_requested_bytes != x4c_pinned_pool_requested_bytes_v4()?
+                || self.backend_in_flight_pinned_allocations != 0
+                || self.backend_outstanding_cuda_operations != 0
+                || !self.backend_stream_synchronized)
+        {
+            return Err(X4cErrorV4::InvalidGeometry("X4c proof-ready accelerator census"));
+        }
         Ok(())
     }
 
@@ -381,12 +458,43 @@ impl X4cArenaCensusV4 {
             || self.reallocation_count != 0
             || self.logical_deallocation_count != 1
             || self.reset_count != 1
-            || self.zeroed_bytes < layout.retained_payload_bytes
+            || self.zeroed_bytes != layout.capacity_bytes
             || self.outstanding_allocation_count != 0
             || self.outstanding_bytes != 0
             || self.cached_reusable_bytes < layout.capacity_bytes
         {
             return Err(X4cErrorV4::InvalidGeometry("X4c reusable arena census"));
+        }
+        if self.accelerator_available
+            && (!proof_ready.accelerator_available
+                || self.backend_baseline_resident_bytes
+                    != proof_ready.backend_baseline_resident_bytes
+                || self.backend_resident_bytes != self.backend_baseline_resident_bytes
+                || self.backend_cached_resident_bytes
+                    < proof_ready
+                        .backend_cached_resident_bytes
+                        .checked_add(layout.capacity_bytes)
+                        .ok_or(X4cErrorV4::Overflow)?
+                || self.backend_baseline_active_device_allocations
+                    != proof_ready.backend_baseline_active_device_allocations
+                || self.backend_active_device_allocations
+                    != self.backend_baseline_active_device_allocations
+                || self.backend_cached_device_allocations == 0
+                || self.backend_baseline_active_pinned_allocations
+                    != proof_ready.backend_baseline_active_pinned_allocations
+                || self.backend_baseline_active_pinned_bytes
+                    != proof_ready.backend_baseline_active_pinned_bytes
+                || self.backend_active_pinned_allocations
+                    != proof_ready.backend_active_pinned_allocations
+                || self.backend_in_flight_pinned_allocations != 0
+                || self.backend_active_pinned_bytes != proof_ready.backend_active_pinned_bytes
+                || self.x4c_pinned_pool_allocations != proof_ready.x4c_pinned_pool_allocations
+                || self.x4c_pinned_pool_requested_bytes
+                    != proof_ready.x4c_pinned_pool_requested_bytes
+                || self.backend_outstanding_cuda_operations != 0
+                || !self.backend_stream_synchronized)
+        {
+            return Err(X4cErrorV4::InvalidGeometry("X4c reusable accelerator census"));
         }
         Ok(())
     }
@@ -415,6 +523,11 @@ pub struct X4cResponseExecutionCountersV4 {
     pub direct_fold_calls: u64,
     pub direct_fold_sample_comparisons: u64,
     pub direct_fold_sample_mismatches: u64,
+    /// Diagnostic traffic only; it is not an opening, transcript message or
+    /// soundness contribution.
+    pub direct_fold_diagnostic_gather_calls: u64,
+    pub direct_fold_diagnostic_index_h2d_bytes: u64,
+    pub direct_fold_diagnostic_value_d2h_bytes: u64,
     pub n4_tree_calls: u64,
     pub query_gather_calls: u64,
     pub query_draw_count: u64,
@@ -428,6 +541,12 @@ impl X4cResponseExecutionCountersV4 {
         if self.direct_fold_calls != X4C_PRODUCTION_FOLD_ROUNDS_V4 as u64
             || self.direct_fold_sample_comparisons != X4C_DIRECT_FOLD_PRODUCTION_SAMPLES_V4 as u64
             || self.direct_fold_sample_mismatches != 0
+            || self.direct_fold_diagnostic_gather_calls
+                != X4C_DIRECT_FOLD_DIAGNOSTIC_GATHER_CALLS_V4
+            || self.direct_fold_diagnostic_index_h2d_bytes
+                != X4C_DIRECT_FOLD_DIAGNOSTIC_INDEX_H2D_BYTES_V4
+            || self.direct_fold_diagnostic_value_d2h_bytes
+                != X4C_DIRECT_FOLD_DIAGNOSTIC_VALUE_D2H_BYTES_V4
             || self.n4_tree_calls != X4C_PRODUCTION_FOLD_ROUNDS_V4 as u64
             || self.query_gather_calls != 1
             || self.query_draw_count != X4C_QUERY_COUNT_V4 as u64
@@ -935,6 +1054,9 @@ fn rebuilt_outer_digest_cpu_v4(
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct X4cDirectFoldSamplePlanV4 {
+    pub design_sha256: Digest,
+    pub clean_source_sha256: Digest,
+    pub response_ordinal: u64,
     pub fold_round: u8,
     pub output_len: usize,
     pub indices: Vec<u64>,
@@ -952,7 +1074,13 @@ impl X4cDirectFoldSamplePlanV4 {
         root: Digest,
         output_len: usize,
     ) -> Result<Self, X4cErrorV4> {
-        if fold_round == 0 || output_len < 2 || !output_len.is_power_of_two() {
+        if design_sha256 == [0; 32]
+            || source_sha256 == [0; 32]
+            || root == [0; 32]
+            || fold_round == 0
+            || output_len < 2
+            || !output_len.is_power_of_two()
+        {
             return Err(X4cErrorV4::InvalidGeometry("X4c direct-fold sample geometry"));
         }
         let target = X4C_DIRECT_FOLD_SAMPLES_PER_ROUND_V4.min(output_len);
@@ -987,6 +1115,9 @@ impl X4cDirectFoldSamplePlanV4 {
             digest.update(&index.to_le_bytes());
         }
         Ok(Self {
+            design_sha256,
+            clean_source_sha256: source_sha256,
+            response_ordinal,
             fold_round,
             output_len,
             indices,
@@ -1021,6 +1152,44 @@ pub fn direct_fold_selected_v4(
             let even = (positive + negative) * inverse_two;
             let inverse_x = fp2_pow(omega_inverse, index as u128);
             let odd = (positive - negative) * inverse_two * inverse_x;
+            Ok(even + challenge * odd)
+        })
+        .collect()
+}
+
+/// Evaluate selected direct-fold outputs from already gathered positive and
+/// negative input pairs. Production uses this bounded CPU diagnostic after
+/// the resident fold; it never materializes a response-round CPU codeword.
+pub fn direct_fold_selected_pairs_v4(
+    input_len: usize,
+    challenge: Fp2,
+    indices: &[u64],
+    positive: &[Fp2],
+    negative: &[Fp2],
+) -> Result<Vec<Fp2>, X4cErrorV4> {
+    if input_len < 2
+        || !input_len.is_power_of_two()
+        || positive.len() != indices.len()
+        || negative.len() != indices.len()
+    {
+        return Err(X4cErrorV4::InvalidGeometry("X4c direct-fold sampled pair geometry"));
+    }
+    let half = input_len / 2;
+    if indices.iter().any(|index| *index >= half as u64) {
+        return Err(X4cErrorV4::InvalidGeometry("X4c direct-fold sampled pair index"));
+    }
+    let omega_inverse =
+        root_of_unity(input_len.ilog2()).map_err(|_| X4cErrorV4::InvalidGeometry("root"))?.inv();
+    let inverse_two = Fp2::from_base(Fp::new(2).inv());
+    indices
+        .iter()
+        .zip(positive)
+        .zip(negative)
+        .map(|((index, positive), negative)| {
+            let index = usize::try_from(*index).map_err(|_| X4cErrorV4::Overflow)?;
+            let even = (*positive + *negative) * inverse_two;
+            let inverse_x = fp2_pow(omega_inverse, index as u128);
+            let odd = (*positive - *negative) * inverse_two * inverse_x;
             Ok(even + challenge * odd)
         })
         .collect()
@@ -1165,26 +1334,21 @@ impl X4cSealConfigV4 {
         if self.arena_layout.max_outer_log2 == X4C_PRODUCTION_MAX_OUTER_LOG2_V4
             && self.arena_layout.final_outer_log2 == X4C_PRODUCTION_FINAL_OUTER_LOG2_V4
         {
-            validate_production_unique_sample_geometry_v4(&self.arena_layout)?;
+            validate_production_sample_geometry_v4(&self.arena_layout)?;
         }
         Ok(())
     }
 }
 
-fn validate_production_unique_sample_geometry_v4(
-    layout: &X4cArenaLayoutV4,
-) -> Result<(), X4cErrorV4> {
+fn validate_production_sample_geometry_v4(layout: &X4cArenaLayoutV4) -> Result<(), X4cErrorV4> {
     let available = layout.rounds.iter().try_fold(0usize, |total, round| {
         total
             .checked_add(round.output_len.min(X4C_DIRECT_FOLD_SAMPLES_PER_ROUND_V4))
             .ok_or(X4cErrorV4::Overflow)
     })?;
-    if available != X4C_DIRECT_FOLD_MAX_UNIQUE_PRODUCTION_SAMPLES_V4
-        || available != X4C_DIRECT_FOLD_PRODUCTION_SAMPLES_V4
-        || layout.rounds.iter().any(|round| round.output_len < X4C_DIRECT_FOLD_SAMPLES_PER_ROUND_V4)
-    {
+    if available != X4C_DIRECT_FOLD_PRODUCTION_SAMPLES_V4 {
         return Err(X4cErrorV4::InvalidGeometry(
-            "X4c frozen 1,728 unique output-coordinate samples are impossible",
+            "X4c production direct-fold diagnostic sample geometry",
         ));
     }
     Ok(())
@@ -1264,10 +1428,7 @@ impl<'a> GlobalChainDraftV4<'a> {
                 lifecycle_started: sealed.lifecycle_started,
             }),
             Err(error) => {
-                let _ = runtime.reset_arena(&mut arena, &config.arena_layout);
-                let proof_ready = X4cArenaCensusV4::default();
-                let _ = runtime.release_arena(arena, &config.arena_layout, &proof_ready);
-                Err(error)
+                Err(cleanup_failed_x4c_arena_v4(runtime, arena, &config.arena_layout, error))
             }
         }
     }
@@ -1318,13 +1479,13 @@ fn seal_x4c_into_arena_v4<'a, R: X4cArenaRuntimeV4>(
         .collect::<Vec<_>>();
     let mut metrics = GlobalOpenMetricsV4::default();
     let mut current_coefficients = vec![Fp2::ZERO; max_coefficient_len];
-    let mut current_codeword = vec![Fp2::ZERO; max_outer_len];
+    let mut initial_codeword = Some(vec![Fp2::ZERO; max_outer_len]);
     let mut current_claim = Fp2::ZERO;
     let mut activated = activate_groups_x4c_v4(
         max_outer_len,
         &groups,
         &mut current_coefficients,
-        &mut current_codeword,
+        initial_codeword.as_deref_mut(),
         &mut current_claim,
         &mut metrics,
         |_activation, _codeword| Ok(()),
@@ -1338,8 +1499,9 @@ fn seal_x4c_into_arena_v4<'a, R: X4cArenaRuntimeV4>(
     let mut parity = Vec::with_capacity(common_point.len());
     let mut lifecycle_started = None;
     for (round_index, round_layout) in layout.rounds.iter().enumerate() {
-        let input_len = current_codeword.len();
-        if input_len != round_layout.input_len {
+        if round_index == 0
+            && initial_codeword.as_ref().map(Vec::len) != Some(round_layout.input_len)
+        {
             return Err(X4cErrorV4::InvalidGeometry("X4c round input geometry"));
         }
         let (line_zero, line_one) =
@@ -1358,7 +1520,14 @@ fn seal_x4c_into_arena_v4<'a, R: X4cArenaRuntimeV4>(
             .map_err(|_| X4cErrorV4::InvalidGeometry("X4c coefficient fold"))?;
 
         if round_index == 0 {
-            runtime.direct_fold_host(arena, round_layout, &current_codeword, challenge)?;
+            runtime.direct_fold_host(
+                arena,
+                round_layout,
+                initial_codeword
+                    .as_deref()
+                    .ok_or(X4cErrorV4::InvalidGeometry("X4c missing initial codeword"))?,
+                challenge,
+            )?;
         } else {
             runtime.direct_fold_resident(
                 arena,
@@ -1367,14 +1536,16 @@ fn seal_x4c_into_arena_v4<'a, R: X4cArenaRuntimeV4>(
                 challenge,
             )?;
         }
-        let mut next_codeword = fold_codeword(&current_codeword, challenge)
-            .map_err(|_| X4cErrorV4::InvalidGeometry("X4c CPU direct fold"))?;
+        let mut round_activation_codeword = groups
+            .iter()
+            .any(|group| group.cohort.commitment().config.outer_len == round_layout.output_len)
+            .then(|| vec![Fp2::ZERO; round_layout.output_len]);
         activated = activated
             .checked_add(activate_groups_x4c_v4(
                 round_layout.output_len,
                 &groups,
                 &mut current_coefficients,
-                &mut next_codeword,
+                round_activation_codeword.as_deref_mut(),
                 &mut current_claim,
                 &mut metrics,
                 |activation, codeword| {
@@ -1399,16 +1570,49 @@ fn seal_x4c_into_arena_v4<'a, R: X4cArenaRuntimeV4>(
             round_layout.output_len,
         )?;
         let observed = runtime.gather_samples(arena, round_layout, &plan.indices)?;
-        let expected = plan
-            .indices
-            .iter()
-            .map(|index| {
-                next_codeword
+        let mut expected = if round_index == 0 {
+            direct_fold_selected_v4(
+                initial_codeword
+                    .as_deref()
+                    .ok_or(X4cErrorV4::InvalidGeometry("X4c missing initial codeword"))?,
+                challenge,
+                &plan.indices,
+            )?
+        } else {
+            let previous = &layout.rounds[round_index - 1];
+            let mut paired_indices = Vec::with_capacity(plan.indices.len() * 2);
+            paired_indices.extend_from_slice(&plan.indices);
+            for index in &plan.indices {
+                paired_indices.push(
+                    index
+                        .checked_add(
+                            u64::try_from(round_layout.output_len)
+                                .map_err(|_| X4cErrorV4::Overflow)?,
+                        )
+                        .ok_or(X4cErrorV4::Overflow)?,
+                );
+            }
+            let paired = runtime.gather_samples(arena, previous, &paired_indices)?;
+            let split = plan.indices.len();
+            direct_fold_selected_pairs_v4(
+                round_layout.input_len,
+                challenge,
+                &plan.indices,
+                paired
+                    .get(..split)
+                    .ok_or(X4cErrorV4::InvalidGeometry("X4c sampled positive fold inputs"))?,
+                paired
+                    .get(split..)
+                    .ok_or(X4cErrorV4::InvalidGeometry("X4c sampled negative fold inputs"))?,
+            )?
+        };
+        if let Some(activation_codeword) = round_activation_codeword.as_deref() {
+            for (expected, index) in expected.iter_mut().zip(&plan.indices) {
+                *expected += *activation_codeword
                     .get(usize::try_from(*index).map_err(|_| X4cErrorV4::Overflow)?)
-                    .copied()
-                    .ok_or(X4cErrorV4::InvalidGeometry("X4c sampled CPU output"))
-            })
-            .collect::<Result<Vec<_>, X4cErrorV4>>()?;
+                    .ok_or(X4cErrorV4::InvalidGeometry("X4c sampled activation codeword"))?;
+            }
+        }
         let mismatch_count =
             u64::try_from(expected.iter().zip(&observed).filter(|(a, b)| a != b).count())
                 .map_err(|_| X4cErrorV4::Overflow)?;
@@ -1419,6 +1623,9 @@ fn seal_x4c_into_arena_v4<'a, R: X4cArenaRuntimeV4>(
         };
         if mismatch_count != 0 || observed.len() != plan.indices.len() {
             return Err(X4cErrorV4::InvalidGeometry("X4c direct-fold parity mismatch"));
+        }
+        if round_index == 0 {
+            initial_codeword = None;
         }
         parity.push(X4cRoundParityRecordV4 {
             fold_round: round_layout.fold_round,
@@ -1468,9 +1675,11 @@ fn seal_x4c_into_arena_v4<'a, R: X4cArenaRuntimeV4>(
             .map_err(|_| X4cErrorV4::Overflow)?,
         );
         fold_frames.push(frame);
-        current_codeword = next_codeword;
     }
-    if current_codeword.len() != 8 || activated != groups.len() {
+    if layout.rounds.last().map(|round| round.output_len) != Some(8)
+        || initial_codeword.is_some()
+        || activated != groups.len()
+    {
         return Err(X4cErrorV4::InvalidGeometry("X4c final activation schedule"));
     }
     metrics.aggregate_merkle_symbols_written = metrics.folded_symbols_written;
@@ -1507,7 +1716,7 @@ fn activate_groups_x4c_v4(
     output_len: usize,
     groups: &[GlobalProverGroupV4<'_>],
     current_coefficients: &mut [Fp2],
-    current_codeword: &mut [Fp2],
+    mut current_codeword: Option<&mut [Fp2]>,
     current_claim: &mut Fp2,
     metrics: &mut GlobalOpenMetricsV4,
     mut resident_activation: impl FnMut(Fp2, &[Fp2]) -> Result<(), X4cErrorV4>,
@@ -1550,16 +1759,20 @@ fn activate_groups_x4c_v4(
             .combined_codeword_symbols
             .checked_add(codeword_symbols)
             .ok_or(X4cErrorV4::Overflow)?;
-        if current_coefficients.len() != initial.coefficients.len()
-            || current_codeword.len() != initial.codeword.len()
-        {
+        if current_coefficients.len() != initial.coefficients.len() {
+            return Err(X4cErrorV4::InvalidGeometry("X4c activation domain"));
+        }
+        let host_codeword = current_codeword
+            .as_deref_mut()
+            .ok_or(X4cErrorV4::InvalidGeometry("X4c missing activation diagnostic"))?;
+        if host_codeword.len() != initial.codeword.len() {
             return Err(X4cErrorV4::InvalidGeometry("X4c activation domain"));
         }
         resident_activation(group.activation_challenge, &initial.codeword)?;
         for (output, value) in current_coefficients.iter_mut().zip(&initial.coefficients) {
             *output += group.activation_challenge * *value;
         }
-        for (output, value) in current_codeword.iter_mut().zip(&initial.codeword) {
+        for (output, value) in host_codeword.iter_mut().zip(&initial.codeword) {
             *output += group.activation_challenge * *value;
         }
         *current_claim += group.activation_challenge * initial.claimed_value;
@@ -1666,10 +1879,12 @@ impl<A> SealedGlobalChainX4cV4<'_, A> {
         let (packed_opening, canonical) = match opening_result {
             Ok(value) => value,
             Err(error) => {
-                let _ = runtime.reset_arena(&mut arena, &config.arena_layout);
-                let proof_ready = X4cArenaCensusV4::default();
-                let _ = runtime.release_arena(arena, &config.arena_layout, &proof_ready);
-                return Err(error);
+                return Err(cleanup_failed_x4c_arena_v4(
+                    runtime,
+                    arena,
+                    &config.arena_layout,
+                    error,
+                ));
             }
         };
         tx.append(
@@ -1678,10 +1893,34 @@ impl<A> SealedGlobalChainX4cV4<'_, A> {
         );
         let proof = GlobalFoldingProofV4 { fold_frames, packed_opening };
         let proof_ready_wall_ns = elapsed_x4c_ns_v4(lifecycle_started)?;
-        let proof_ready = runtime.proof_ready_census(&arena, &config.arena_layout)?;
-        proof_ready.validate_proof_ready(&config.arena_layout)?;
+        let proof_ready = match runtime.proof_ready_census(&arena, &config.arena_layout) {
+            Ok(census) => {
+                if let Err(error) = census.validate_proof_ready(&config.arena_layout) {
+                    return Err(cleanup_failed_x4c_arena_v4(
+                        runtime,
+                        arena,
+                        &config.arena_layout,
+                        error,
+                    ));
+                }
+                census
+            }
+            Err(error) => {
+                return Err(cleanup_failed_x4c_arena_v4(
+                    runtime,
+                    arena,
+                    &config.arena_layout,
+                    error,
+                ));
+            }
+        };
 
-        runtime.reset_arena(&mut arena, &config.arena_layout)?;
+        if let Err(error) = runtime.reset_arena(&mut arena, &config.arena_layout) {
+            let release = runtime.release_arena(arena, &config.arena_layout, &proof_ready);
+            return Err(X4cErrorV4::Runtime(format!(
+                "X4c arena reset failed ({error:?}); cleanup release={release:?}"
+            )));
+        }
         let reusable = runtime.release_arena(arena, &config.arena_layout, &proof_ready)?;
         reusable.validate_session_reusable(&proof_ready, &config.arena_layout)?;
         let lifecycle_walls = X4cLifecycleWallsV4 {
@@ -1689,6 +1928,7 @@ impl<A> SealedGlobalChainX4cV4<'_, A> {
             session_reusable_wall_ns: elapsed_x4c_ns_v4(lifecycle_started)?,
         };
         lifecycle_walls.validate()?;
+        let diagnostic_symbols = direct_fold_diagnostic_symbols_v4(&parity)?;
         let execution = X4cResponseExecutionCountersV4 {
             direct_fold_calls: u64::try_from(config.arena_layout.rounds.len())
                 .map_err(|_| X4cErrorV4::Overflow)?,
@@ -1698,6 +1938,22 @@ impl<A> SealedGlobalChainX4cV4<'_, A> {
             direct_fold_sample_mismatches: parity.iter().try_fold(0u64, |sum, round| {
                 sum.checked_add(round.result.mismatch_count).ok_or(X4cErrorV4::Overflow)
             })?,
+            direct_fold_diagnostic_gather_calls: u64::try_from(
+                config
+                    .arena_layout
+                    .rounds
+                    .len()
+                    .checked_mul(2)
+                    .and_then(|calls| calls.checked_sub(1))
+                    .ok_or(X4cErrorV4::Overflow)?,
+            )
+            .map_err(|_| X4cErrorV4::Overflow)?,
+            direct_fold_diagnostic_index_h2d_bytes: diagnostic_symbols
+                .checked_mul(size_of::<u64>() as u64)
+                .ok_or(X4cErrorV4::Overflow)?,
+            direct_fold_diagnostic_value_d2h_bytes: diagnostic_symbols
+                .checked_mul(FP2_BYTES)
+                .ok_or(X4cErrorV4::Overflow)?,
             n4_tree_calls: u64::try_from(config.arena_layout.rounds.len())
                 .map_err(|_| X4cErrorV4::Overflow)?,
             query_gather_calls: 1,
@@ -1733,8 +1989,710 @@ impl<A> SealedGlobalChainX4cV4<'_, A> {
     }
 }
 
+fn cleanup_failed_x4c_arena_v4<R: X4cArenaRuntimeV4>(
+    runtime: &mut R,
+    mut arena: R::Arena,
+    layout: &X4cArenaLayoutV4,
+    primary: X4cErrorV4,
+) -> X4cErrorV4 {
+    let reset = runtime.reset_arena(&mut arena, layout);
+    let proof_ready = X4cArenaCensusV4::default();
+    let release = runtime.release_arena(arena, layout, &proof_ready);
+    if reset.is_err() || release.is_err() {
+        X4cErrorV4::Runtime(format!(
+            "X4c operation failed ({primary:?}); cleanup reset={reset:?}, release={release:?}"
+        ))
+    } else {
+        primary
+    }
+}
+
+fn direct_fold_diagnostic_symbols_v4(parity: &[X4cRoundParityRecordV4]) -> Result<u64, X4cErrorV4> {
+    let output_symbols = parity.iter().try_fold(0u64, |sum, round| {
+        sum.checked_add(round.result.comparison_count).ok_or(X4cErrorV4::Overflow)
+    })?;
+    let first_round = parity
+        .first()
+        .ok_or(X4cErrorV4::InvalidGeometry("X4c empty parity record"))?
+        .result
+        .comparison_count;
+    output_symbols
+        .checked_add(
+            output_symbols
+                .checked_sub(first_round)
+                .and_then(|symbols| symbols.checked_mul(2))
+                .ok_or(X4cErrorV4::Overflow)?,
+        )
+        .ok_or(X4cErrorV4::Overflow)
+}
+
 fn elapsed_x4c_ns_v4(started: Instant) -> Result<u64, X4cErrorV4> {
     u64::try_from(started.elapsed().as_nanos()).map_err(|_| X4cErrorV4::Overflow)
+}
+
+fn x4c_pinned_pool_requested_bytes_v4() -> Result<u64, X4cErrorV4> {
+    let transfer = u64::try_from(X4C_PINNED_TILE_OUTPUT_SYMBOLS_V4)
+        .map_err(|_| X4cErrorV4::Overflow)?
+        .checked_mul(2)
+        .and_then(|value| value.checked_mul(size_of::<Fp2Repr>() as u64))
+        .and_then(|value| value.checked_mul(X4C_PINNED_TRANSFER_RING_V4 as u64))
+        .ok_or(X4cErrorV4::Overflow)?;
+    let operations = u64::try_from(X4C_CANONICAL_GATHER_MAX_OPERATIONS_V4)
+        .map_err(|_| X4cErrorV4::Overflow)?
+        .checked_mul(size_of::<X4cCanonicalGatherOperation>() as u64)
+        .ok_or(X4cErrorV4::Overflow)?;
+    transfer
+        .checked_add(X4C_PACKED_OPENING_BYTES_V4)
+        .and_then(|value| value.checked_add(operations))
+        .ok_or(X4cErrorV4::Overflow)
+}
+
+fn x4c_usize_v4(value: u64) -> Result<usize, X4cErrorV4> {
+    usize::try_from(value).map_err(|_| X4cErrorV4::Overflow)
+}
+
+fn x4c_align_up_v4(value: usize, alignment: usize) -> Result<usize, X4cErrorV4> {
+    if alignment == 0 || !alignment.is_power_of_two() {
+        return Err(X4cErrorV4::InvalidGeometry("X4c workspace alignment"));
+    }
+    value
+        .checked_add(alignment - 1)
+        .map(|value| value & !(alignment - 1))
+        .ok_or(X4cErrorV4::Overflow)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct X4cCudaWorkspaceV4 {
+    tile_scratch_offset: usize,
+    mailbox_offset: usize,
+    operation_scratch_offset: usize,
+}
+
+impl X4cCudaWorkspaceV4 {
+    fn production(layout: &X4cArenaLayoutV4) -> Result<Self, X4cErrorV4> {
+        layout.validate()?;
+        let workspace_start = x4c_usize_v4(layout.workspace_byte_offset)?;
+        let tile_scratch_bytes = X4C_PINNED_TILE_OUTPUT_SYMBOLS_V4
+            .checked_mul(2)
+            .and_then(|value| value.checked_mul(size_of::<Fp2Repr>()))
+            .ok_or(X4cErrorV4::Overflow)?;
+        let mailbox_offset = x4c_align_up_v4(
+            workspace_start.checked_add(tile_scratch_bytes).ok_or(X4cErrorV4::Overflow)?,
+            8,
+        )?;
+        let mailbox_bytes = x4c_usize_v4(X4C_PACKED_OPENING_BYTES_V4)?;
+        let operation_scratch_offset = x4c_align_up_v4(
+            mailbox_offset.checked_add(mailbox_bytes).ok_or(X4cErrorV4::Overflow)?,
+            8,
+        )?;
+        let operation_scratch_bytes = X4C_CANONICAL_GATHER_MAX_OPERATIONS_V4
+            .checked_mul(size_of::<X4cCanonicalGatherOperation>())
+            .ok_or(X4cErrorV4::Overflow)?;
+        let end = operation_scratch_offset
+            .checked_add(operation_scratch_bytes)
+            .ok_or(X4cErrorV4::Overflow)?;
+        if end > x4c_usize_v4(layout.capacity_bytes)? {
+            return Err(X4cErrorV4::InvalidGeometry("X4c registered workspace capacity"));
+        }
+        Ok(Self { tile_scratch_offset: workspace_start, mailbox_offset, operation_scratch_offset })
+    }
+}
+
+/// Concrete X4c CUDA runtime. The transfer ring and canonical gather buffers
+/// are allocated before any response and remain active across responses;
+/// `release_pinned_pool`
+/// returns them to the registered cache only at an explicit session boundary.
+pub struct X4cCudaArenaRuntimeV4<'a> {
+    backend: &'a mut Backend,
+    transfer_ring: Vec<PinnedHostBuffer<Fp2Repr>>,
+    transfer_cursor: usize,
+    canonical_template: Option<PinnedHostBuffer<u8>>,
+    canonical_operations: Option<PinnedHostBuffer<X4cCanonicalGatherOperation>>,
+    transfer_staging: Vec<Fp2Repr>,
+    operation_staging: Vec<X4cCanonicalGatherOperation>,
+    baseline_resident_bytes: u64,
+    baseline_active_device_allocations: u64,
+    baseline_active_pinned_allocations: u64,
+    baseline_active_pinned_bytes: u64,
+    arena_live: bool,
+}
+
+#[derive(Debug)]
+pub struct X4cCudaArenaV4 {
+    buffer: Option<DeviceBuffer<u8>>,
+    capacity_bytes: u64,
+    workspace: X4cCudaWorkspaceV4,
+    reset: bool,
+}
+
+impl<'a> X4cCudaArenaRuntimeV4<'a> {
+    pub fn production(backend: &'a mut Backend) -> Result<Self, X4cErrorV4> {
+        let control = backend.x4c_control_state()?;
+        if control.stream_state != CudaStreamState::Idle
+            || control.outstanding_cuda_operations != 0
+            || control.measurement_active
+            || control.coarse_timing_active
+            || control.timing_record_active
+            || control.measurement_poisoned
+        {
+            return Err(X4cErrorV4::InvalidGeometry("X4c pinned-pool prewarm boundary"));
+        }
+        let memory = backend.device_memory_breakdown()?;
+        let baseline_pinned = backend.pinned_memory_stats()?;
+        if baseline_pinned.in_flight_allocations != 0 {
+            return Err(X4cErrorV4::InvalidGeometry(
+                "X4c pinned-pool baseline has in-flight ownership",
+            ));
+        }
+        let transfer_len =
+            X4C_PINNED_TILE_OUTPUT_SYMBOLS_V4.checked_mul(2).ok_or(X4cErrorV4::Overflow)?;
+        let mut transfer_ring = Vec::with_capacity(X4C_PINNED_TRANSFER_RING_V4);
+        for _ in 0..X4C_PINNED_TRANSFER_RING_V4 {
+            match backend.alloc_pinned_host::<Fp2Repr>(transfer_len) {
+                Ok(buffer) => transfer_ring.push(buffer),
+                Err(error) => {
+                    for buffer in transfer_ring {
+                        let _ = backend.free_pinned_host(buffer);
+                    }
+                    return Err(error.into());
+                }
+            }
+        }
+        let canonical_template =
+            match backend.alloc_pinned_host::<u8>(x4c_usize_v4(X4C_PACKED_OPENING_BYTES_V4)?) {
+                Ok(buffer) => buffer,
+                Err(error) => {
+                    for buffer in transfer_ring {
+                        let _ = backend.free_pinned_host(buffer);
+                    }
+                    return Err(error.into());
+                }
+            };
+        let canonical_operations = match backend.alloc_pinned_host::<X4cCanonicalGatherOperation>(
+            X4C_CANONICAL_GATHER_MAX_OPERATIONS_V4,
+        ) {
+            Ok(buffer) => buffer,
+            Err(error) => {
+                let _ = backend.free_pinned_host(canonical_template);
+                for buffer in transfer_ring {
+                    let _ = backend.free_pinned_host(buffer);
+                }
+                return Err(error.into());
+            }
+        };
+        let pinned = backend.pinned_memory_stats()?;
+        if pinned.active_allocations
+            != baseline_pinned
+                .active_allocations
+                .checked_add((X4C_PINNED_TRANSFER_RING_V4 + 2) as u64)
+                .ok_or(X4cErrorV4::Overflow)?
+            || pinned.active_bytes
+                < baseline_pinned
+                    .active_bytes
+                    .checked_add(x4c_pinned_pool_requested_bytes_v4()?)
+                    .ok_or(X4cErrorV4::Overflow)?
+            || pinned.in_flight_allocations != 0
+        {
+            let _ = backend.free_pinned_host(canonical_operations);
+            let _ = backend.free_pinned_host(canonical_template);
+            for buffer in transfer_ring {
+                let _ = backend.free_pinned_host(buffer);
+            }
+            return Err(X4cErrorV4::InvalidGeometry("X4c pinned-pool ownership census"));
+        }
+        Ok(Self {
+            backend,
+            transfer_ring,
+            transfer_cursor: 0,
+            canonical_template: Some(canonical_template),
+            canonical_operations: Some(canonical_operations),
+            transfer_staging: Vec::with_capacity(
+                X4C_PINNED_TILE_OUTPUT_SYMBOLS_V4.checked_mul(2).ok_or(X4cErrorV4::Overflow)?,
+            ),
+            operation_staging: Vec::with_capacity(X4C_CANONICAL_GATHER_MAX_OPERATIONS_V4),
+            baseline_resident_bytes: memory.resident_bytes,
+            baseline_active_device_allocations: control.active_device_allocations,
+            baseline_active_pinned_allocations: baseline_pinned.active_allocations,
+            baseline_active_pinned_bytes: baseline_pinned.active_bytes,
+            arena_live: false,
+        })
+    }
+
+    pub fn backend_control_state(&self) -> Result<volta_accel::X4cControlState, X4cErrorV4> {
+        self.backend.x4c_control_state().map_err(Into::into)
+    }
+
+    /// Logical session teardown for the pinned transfer pool. This does not
+    /// physically deregister memory; a later runtime may reuse the cache.
+    pub fn release_pinned_pool(&mut self) -> Result<(), X4cErrorV4> {
+        if self.arena_live {
+            return Err(X4cErrorV4::InvalidGeometry("X4c pinned pool released with live arena"));
+        }
+        let operations = self
+            .canonical_operations
+            .as_ref()
+            .ok_or(X4cErrorV4::InvalidGeometry("X4c pinned pool already released"))?;
+        let template = self
+            .canonical_template
+            .as_ref()
+            .ok_or(X4cErrorV4::InvalidGeometry("X4c pinned pool already released"))?;
+        if self.transfer_ring.len() != X4C_PINNED_TRANSFER_RING_V4 {
+            return Err(X4cErrorV4::InvalidGeometry("X4c pinned pool already released"));
+        }
+        self.backend.wait_pinned_host_ready(&operations)?;
+        self.backend.wait_pinned_host_ready(&template)?;
+        for transfer in &self.transfer_ring {
+            self.backend.wait_pinned_host_ready(&transfer)?;
+        }
+
+        let operations = self
+            .canonical_operations
+            .take()
+            .ok_or(X4cErrorV4::InvalidGeometry("X4c pinned pool already released"))?;
+        let template = self
+            .canonical_template
+            .take()
+            .ok_or(X4cErrorV4::InvalidGeometry("X4c pinned pool already released"))?;
+        let transfer_ring = std::mem::take(&mut self.transfer_ring);
+        let mut first_error = None;
+        for result in
+            [self.backend.free_pinned_host(operations), self.backend.free_pinned_host(template)]
+        {
+            if first_error.is_none() {
+                first_error = result.err();
+            }
+        }
+        for transfer in transfer_ring {
+            if let Err(error) = self.backend.free_pinned_host(transfer) {
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+            }
+        }
+        if let Some(error) = first_error {
+            return Err(error.into());
+        }
+        let pinned = self.backend.pinned_memory_stats()?;
+        if pinned.in_flight_allocations != 0
+            || pinned.active_allocations != self.baseline_active_pinned_allocations
+            || pinned.active_bytes != self.baseline_active_pinned_bytes
+        {
+            return Err(X4cErrorV4::InvalidGeometry(
+                "X4c pinned pool ownership mismatch at release",
+            ));
+        }
+        Ok(())
+    }
+
+    fn fill_transfer_staging(
+        &mut self,
+        values: impl IntoIterator<Item = Fp2>,
+    ) -> Result<(), X4cErrorV4> {
+        self.transfer_staging.clear();
+        self.transfer_staging.extend(values.into_iter().map(Fp2Repr::from));
+        if self.transfer_staging.len()
+            > X4C_PINNED_TILE_OUTPUT_SYMBOLS_V4.checked_mul(2).ok_or(X4cErrorV4::Overflow)?
+        {
+            return Err(X4cErrorV4::InvalidGeometry("X4c pinned transfer tile overflow"));
+        }
+        Ok(())
+    }
+
+    fn census(
+        &mut self,
+        layout: &X4cArenaLayoutV4,
+        proof_ready: bool,
+    ) -> Result<X4cArenaCensusV4, X4cErrorV4> {
+        let memory = self.backend.device_memory_breakdown()?;
+        let pinned = self.backend.pinned_memory_stats()?;
+        let control = self.backend.x4c_control_state()?;
+        let stream_synchronized = control.stream_state == CudaStreamState::Idle
+            && control.outstanding_cuda_operations == 0;
+        Ok(X4cArenaCensusV4 {
+            arena_capacity_bytes: layout.capacity_bytes,
+            arena_committed_bytes: layout.capacity_bytes,
+            arena_peak_bytes: layout.capacity_bytes,
+            logical_allocation_count: 1,
+            logical_deallocation_count: u64::from(!proof_ready),
+            reset_count: u64::from(!proof_ready),
+            zeroed_bytes: if proof_ready { 0 } else { layout.capacity_bytes },
+            outstanding_allocation_count: u64::from(proof_ready),
+            outstanding_bytes: if proof_ready { layout.capacity_bytes } else { 0 },
+            cached_reusable_bytes: if proof_ready { 0 } else { layout.capacity_bytes },
+            accelerator_available: true,
+            backend_workspace_bytes: memory.workspace_bytes,
+            backend_baseline_resident_bytes: self.baseline_resident_bytes,
+            backend_resident_bytes: memory.resident_bytes,
+            backend_cached_resident_bytes: memory.cached_resident_bytes,
+            backend_baseline_active_device_allocations: self.baseline_active_device_allocations,
+            backend_active_device_allocations: control.active_device_allocations,
+            backend_cached_device_allocations: control.cached_device_allocations,
+            backend_baseline_active_pinned_allocations: self.baseline_active_pinned_allocations,
+            backend_baseline_active_pinned_bytes: self.baseline_active_pinned_bytes,
+            backend_active_pinned_allocations: pinned.active_allocations,
+            backend_cached_pinned_allocations: pinned.cached_allocations,
+            backend_in_flight_pinned_allocations: pinned.in_flight_allocations,
+            backend_active_pinned_bytes: pinned.active_bytes,
+            backend_cached_pinned_bytes: pinned.cached_bytes,
+            backend_outstanding_cuda_operations: control.outstanding_cuda_operations,
+            backend_stream_synchronized: stream_synchronized,
+            x4c_pinned_pool_allocations: u64::try_from(X4C_PINNED_TRANSFER_RING_V4 + 2)
+                .map_err(|_| X4cErrorV4::Overflow)?,
+            x4c_pinned_pool_requested_bytes: x4c_pinned_pool_requested_bytes_v4()?,
+            ..X4cArenaCensusV4::default()
+        })
+    }
+}
+
+impl X4cCudaArenaV4 {
+    fn buffer(&self) -> Result<&DeviceBuffer<u8>, X4cErrorV4> {
+        self.buffer.as_ref().ok_or(X4cErrorV4::InvalidGeometry("X4c CUDA arena released"))
+    }
+}
+
+impl X4cArenaRuntimeV4 for X4cCudaArenaRuntimeV4<'_> {
+    type Arena = X4cCudaArenaV4;
+
+    fn allocate_arena(&mut self, layout: &X4cArenaLayoutV4) -> Result<Self::Arena, X4cErrorV4> {
+        layout.validate()?;
+        let workspace = X4cCudaWorkspaceV4::production(layout)?;
+        if self.arena_live
+            || self.transfer_ring.len() != X4C_PINNED_TRANSFER_RING_V4
+            || self.canonical_template.is_none()
+            || self.canonical_operations.is_none()
+        {
+            return Err(X4cErrorV4::InvalidGeometry("X4c CUDA arena allocation ownership"));
+        }
+        let buffer = self.backend.alloc_device::<u8>(x4c_usize_v4(layout.capacity_bytes)?)?;
+        if buffer.len() != x4c_usize_v4(layout.capacity_bytes)? || !buffer.is_owned_by(self.backend)
+        {
+            let _ = self.backend.free_device(buffer);
+            return Err(X4cErrorV4::InvalidGeometry("X4c CUDA arena allocation"));
+        }
+        self.arena_live = true;
+        Ok(X4cCudaArenaV4 {
+            buffer: Some(buffer),
+            capacity_bytes: layout.capacity_bytes,
+            workspace,
+            reset: false,
+        })
+    }
+
+    fn direct_fold_host(
+        &mut self,
+        arena: &mut Self::Arena,
+        round: &X4cArenaRoundV4,
+        input: &[Fp2],
+        challenge: Fp2,
+    ) -> Result<(), X4cErrorV4> {
+        if input.len() != round.input_len || arena.reset {
+            return Err(X4cErrorV4::InvalidGeometry("X4c CUDA host fold geometry"));
+        }
+        let workspace = arena.workspace;
+        let half = round.output_len;
+        for output_start in (0..half).step_by(X4C_PINNED_TILE_OUTPUT_SYMBOLS_V4) {
+            let count = (half - output_start).min(X4C_PINNED_TILE_OUTPUT_SYMBOLS_V4);
+            let positive = input[output_start..output_start + count].iter().copied();
+            let negative = input[output_start + half..output_start + half + count].iter().copied();
+            self.fill_transfer_staging(positive.chain(negative))?;
+            let transfer_index = self.transfer_cursor;
+            self.transfer_cursor = (self.transfer_cursor + 1) % self.transfer_ring.len();
+            let transfer = &self.transfer_ring[transfer_index];
+            self.backend.wait_pinned_host_ready(transfer)?;
+            self.backend.write_pinned_host(transfer, 0, &self.transfer_staging)?;
+            self.backend.x4c_direct_fold_pinned_tile_into_arena(
+                transfer,
+                0,
+                round.input_len,
+                output_start,
+                count,
+                arena.buffer()?,
+                x4c_usize_v4(round.codeword_byte_offset)?,
+                workspace.tile_scratch_offset,
+                challenge,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn direct_fold_resident(
+        &mut self,
+        arena: &mut Self::Arena,
+        previous: &X4cArenaRoundV4,
+        round: &X4cArenaRoundV4,
+        challenge: Fp2,
+    ) -> Result<(), X4cErrorV4> {
+        if arena.reset
+            || previous.output_len != round.input_len
+            || previous.fold_round.checked_add(1) != Some(round.fold_round)
+        {
+            return Err(X4cErrorV4::InvalidGeometry("X4c CUDA resident fold geometry"));
+        }
+        self.backend.x4c_direct_fold_arena_into_arena(
+            arena.buffer()?,
+            x4c_usize_v4(previous.codeword_byte_offset)?,
+            previous.output_len,
+            x4c_usize_v4(round.codeword_byte_offset)?,
+            challenge,
+        )?;
+        Ok(())
+    }
+
+    fn add_activation(
+        &mut self,
+        arena: &mut Self::Arena,
+        round: &X4cArenaRoundV4,
+        codeword: &[Fp2],
+        activation: Fp2,
+    ) -> Result<(), X4cErrorV4> {
+        if arena.reset || codeword.len() != round.output_len {
+            return Err(X4cErrorV4::InvalidGeometry("X4c CUDA activation geometry"));
+        }
+        let workspace = arena.workspace;
+        for start in (0..codeword.len()).step_by(X4C_PINNED_TILE_OUTPUT_SYMBOLS_V4) {
+            let count = (codeword.len() - start).min(X4C_PINNED_TILE_OUTPUT_SYMBOLS_V4);
+            self.fill_transfer_staging(codeword[start..start + count].iter().copied())?;
+            let transfer_index = self.transfer_cursor;
+            self.transfer_cursor = (self.transfer_cursor + 1) % self.transfer_ring.len();
+            let transfer = &self.transfer_ring[transfer_index];
+            self.backend.wait_pinned_host_ready(transfer)?;
+            self.backend.write_pinned_host(transfer, 0, &self.transfer_staging)?;
+            self.backend.x4c_activation_add_pinned_tile_into_arena(
+                transfer,
+                0,
+                arena.buffer()?,
+                x4c_usize_v4(round.codeword_byte_offset)?,
+                round.output_len,
+                start,
+                count,
+                workspace.tile_scratch_offset,
+                activation,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn build_one_slot_n4(
+        &mut self,
+        arena: &mut Self::Arena,
+        round: &X4cArenaRoundV4,
+        descriptor: Digest,
+        cohort_id: u32,
+    ) -> Result<Digest, X4cErrorV4> {
+        if arena.reset || descriptor == [0; 32] {
+            return Err(X4cErrorV4::InvalidGeometry("X4c CUDA N4 identity"));
+        }
+        let cache_offset = round
+            .retained_outer_levels
+            .first()
+            .ok_or(X4cErrorV4::InvalidGeometry("X4c CUDA N4 cache"))?
+            .byte_offset;
+        let native_layout = X4cOneSlotN4Layout::new(round.output_len, x4c_usize_v4(cache_offset)?)?;
+        if u64::try_from(native_layout.cache_bytes()).map_err(|_| X4cErrorV4::Overflow)?
+            != round.retained_outer_bytes()?
+        {
+            return Err(X4cErrorV4::InvalidGeometry("X4c CUDA N4 cache bytes"));
+        }
+        self.backend
+            .x4c_build_one_slot_n4(
+                arena.buffer()?,
+                x4c_usize_v4(round.codeword_byte_offset)?,
+                native_layout,
+                descriptor,
+                cohort_id,
+                OracleKindV4::GlobalFoldAggregate as u8,
+                round.fold_round,
+            )
+            .map_err(Into::into)
+    }
+
+    fn gather_samples(
+        &mut self,
+        arena: &mut Self::Arena,
+        round: &X4cArenaRoundV4,
+        indices: &[u64],
+    ) -> Result<Vec<Fp2>, X4cErrorV4> {
+        if arena.reset {
+            return Err(X4cErrorV4::InvalidGeometry("X4c CUDA sample after reset"));
+        }
+        self.backend
+            .x4c_gather_fp2_samples(
+                arena.buffer()?,
+                x4c_usize_v4(round.codeword_byte_offset)?,
+                round.output_len,
+                indices,
+            )
+            .map_err(Into::into)
+    }
+
+    fn gather_canonical_opening(
+        &mut self,
+        arena: &mut Self::Arena,
+        layout: &X4cArenaLayoutV4,
+        plan: &X4cCanonicalGatherPlanV4,
+    ) -> Result<Vec<u8>, X4cErrorV4> {
+        plan.validate(layout)?;
+        if arena.reset
+            || plan.canonical_template.len() > x4c_usize_v4(X4C_PACKED_OPENING_BYTES_V4)?
+            || plan.operations.len() > X4C_CANONICAL_GATHER_MAX_OPERATIONS_V4
+        {
+            return Err(X4cErrorV4::InvalidGeometry("X4c CUDA canonical gather capacity"));
+        }
+        let workspace = X4cCudaWorkspaceV4::production(layout)?;
+        let template = self
+            .canonical_template
+            .as_ref()
+            .ok_or(X4cErrorV4::InvalidGeometry("X4c canonical template pool unavailable"))?;
+        self.backend.wait_pinned_host_ready(template)?;
+        self.backend.write_pinned_host(template, 0, &plan.canonical_template)?;
+        self.backend.x4c_upload_pinned_into_arena(
+            template,
+            0,
+            arena.buffer()?,
+            workspace.mailbox_offset,
+            plan.canonical_template.len(),
+        )?;
+
+        self.operation_staging.clear();
+        for operation in &plan.operations {
+            let (round_ordinal, index, source_offset_bytes, source_kind, level) = match operation
+                .source
+            {
+                X4cGatherSourceV4::CodewordSymbol { round_ordinal, index, source_byte_offset } => {
+                    (round_ordinal, index, source_byte_offset, X4C_GATHER_CODEWORD_SYMBOL, 0)
+                }
+                X4cGatherSourceV4::CachedOuterDigest {
+                    round_ordinal,
+                    level,
+                    index,
+                    source_byte_offset,
+                } => (
+                    round_ordinal,
+                    index,
+                    source_byte_offset,
+                    X4C_GATHER_CACHED_OUTER_DIGEST,
+                    level,
+                ),
+                X4cGatherSourceV4::RebuiltOuterDigest { round_ordinal, level, index } => {
+                    let round = layout
+                        .rounds
+                        .get(round_ordinal)
+                        .ok_or(X4cErrorV4::InvalidGeometry("X4c gather rebuilt round"))?;
+                    (
+                        round_ordinal,
+                        index,
+                        round.codeword_byte_offset,
+                        X4C_GATHER_REBUILT_OUTER_DIGEST,
+                        level,
+                    )
+                }
+            };
+            let round = layout
+                .rounds
+                .get(round_ordinal)
+                .ok_or(X4cErrorV4::InvalidGeometry("X4c gather native round"))?;
+            let metadata = plan
+                .round_metadata
+                .get(round_ordinal)
+                .ok_or(X4cErrorV4::InvalidGeometry("X4c gather native metadata"))?;
+            let cache_offset_bytes = round
+                .retained_outer_levels
+                .first()
+                .ok_or(X4cErrorV4::InvalidGeometry("X4c gather native cache"))?
+                .byte_offset;
+            self.operation_staging.push(X4cCanonicalGatherOperation {
+                codeword_offset_bytes: round.codeword_byte_offset,
+                cache_offset_bytes,
+                source_offset_bytes,
+                outer_len: u64::try_from(round.output_len).map_err(|_| X4cErrorV4::Overflow)?,
+                index,
+                destination_offset_bytes: u64::try_from(workspace.mailbox_offset)
+                    .map_err(|_| X4cErrorV4::Overflow)?
+                    .checked_add(operation.destination_byte_offset)
+                    .ok_or(X4cErrorV4::Overflow)?,
+                descriptor: metadata.descriptor_digest,
+                cohort_id: metadata.cohort_id,
+                source_kind,
+                level,
+                oracle_kind: OracleKindV4::GlobalFoldAggregate as u8,
+                fold_round: metadata.fold_round,
+            });
+        }
+        let operations = self
+            .canonical_operations
+            .as_ref()
+            .ok_or(X4cErrorV4::InvalidGeometry("X4c canonical-operation pool unavailable"))?;
+        self.backend.wait_pinned_host_ready(operations)?;
+        self.backend.write_pinned_host(operations, 0, &self.operation_staging)?;
+        self.backend.x4c_batch_gather_canonical_operations(
+            arena.buffer()?,
+            operations,
+            0,
+            self.operation_staging.len(),
+            workspace.operation_scratch_offset,
+            workspace.mailbox_offset,
+            plan.canonical_template.len(),
+        )?;
+        self.backend
+            .download_device::<u8>(
+                arena.buffer()?,
+                workspace.mailbox_offset,
+                plan.canonical_template.len(),
+            )
+            .map_err(Into::into)
+    }
+
+    fn proof_ready_census(
+        &mut self,
+        arena: &Self::Arena,
+        layout: &X4cArenaLayoutV4,
+    ) -> Result<X4cArenaCensusV4, X4cErrorV4> {
+        if arena.reset
+            || arena.capacity_bytes != layout.capacity_bytes
+            || !self.arena_live
+            || !arena.buffer()?.is_owned_by(self.backend)
+        {
+            return Err(X4cErrorV4::InvalidGeometry("X4c CUDA proof-ready ownership"));
+        }
+        self.census(layout, true)
+    }
+
+    fn reset_arena(
+        &mut self,
+        arena: &mut Self::Arena,
+        layout: &X4cArenaLayoutV4,
+    ) -> Result<(), X4cErrorV4> {
+        if arena.reset || arena.capacity_bytes != layout.capacity_bytes || !self.arena_live {
+            return Err(X4cErrorV4::InvalidGeometry("X4c CUDA arena reset"));
+        }
+        self.backend.x4c_arena_reset(
+            arena.buffer()?,
+            0,
+            x4c_usize_v4(layout.capacity_bytes)?,
+            true,
+        )?;
+        self.backend.x4c_session_reusable_boundary()?;
+        arena.reset = true;
+        Ok(())
+    }
+
+    fn release_arena(
+        &mut self,
+        mut arena: Self::Arena,
+        layout: &X4cArenaLayoutV4,
+        _proof_ready: &X4cArenaCensusV4,
+    ) -> Result<X4cArenaCensusV4, X4cErrorV4> {
+        if !arena.reset || arena.capacity_bytes != layout.capacity_bytes || !self.arena_live {
+            return Err(X4cErrorV4::InvalidGeometry("X4c CUDA arena release"));
+        }
+        let buffer = arena
+            .buffer
+            .take()
+            .ok_or(X4cErrorV4::InvalidGeometry("X4c CUDA arena released twice"))?;
+        self.backend.free_device(buffer)?;
+        self.arena_live = false;
+        self.census(layout, false)
+    }
 }
 
 /// CPU-only arena oracle for local end-to-end byte tests.  It deliberately
@@ -1948,7 +2906,7 @@ impl X4cArenaRuntimeV4 for X4cCpuReferenceRuntimeV4 {
         Ok(X4cArenaCensusV4 {
             logical_deallocation_count: 1,
             reset_count: 1,
-            zeroed_bytes: layout.retained_payload_bytes,
+            zeroed_bytes: layout.capacity_bytes,
             outstanding_allocation_count: 0,
             outstanding_bytes: 0,
             cached_reusable_bytes: layout.capacity_bytes,
@@ -2032,6 +2990,51 @@ pub struct X4cRamModelGlobalCohortV4 {
 }
 
 impl X4cRamModelGlobalCohortV4 {
+    /// Reconstruct the complete host-RAM oracle and full outer cache from the
+    /// durable coefficient tier only. The returned owner contains no file
+    /// handles or mappings; callers must compare `root()` with the separately
+    /// durable root before admitting a response.
+    pub fn rebuild_from_coefficients(
+        config: CohortVerifierConfigV4,
+        coefficients: Vec<Option<Vec<Fp2>>>,
+    ) -> Result<Self, X4cErrorV4> {
+        config.validate().map_err(|_| X4cErrorV4::InvalidGeometry("X4c rebuild config"))?;
+        if coefficients.len() != config.slot_descriptors.len() {
+            return Err(X4cErrorV4::InvalidGeometry("X4c rebuild coefficient slots"));
+        }
+        let codewords = config
+            .slot_descriptors
+            .iter()
+            .zip(&coefficients)
+            .map(|(descriptor, coefficients)| match (descriptor, coefficients) {
+                (Some(_), Some(coefficients)) => encode_rate_eighth(coefficients)
+                    .map(Some)
+                    .map_err(|_| X4cErrorV4::InvalidGeometry("X4c rebuild encode")),
+                (None, None) => Ok(None),
+                _ => Err(X4cErrorV4::InvalidGeometry("X4c rebuild coefficient presence")),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let tree = CohortTreeV4::build_flat(config, codewords)
+            .map_err(|_| X4cErrorV4::InvalidGeometry("X4c rebuild N4"))?;
+        let parts = tree.into_lifecycle_parts();
+        Self::from_parts(parts.config, coefficients, parts.slot_symbols, parts.outer_cache)
+    }
+
+    pub fn rebuild_from_coefficients_checked(
+        config: CohortVerifierConfigV4,
+        coefficients: Vec<Option<Vec<Fp2>>>,
+        expected_root: Digest,
+    ) -> Result<Self, X4cErrorV4> {
+        if expected_root == [0; 32] {
+            return Err(X4cErrorV4::InvalidGeometry("X4c durable root"));
+        }
+        let rebuilt = Self::rebuild_from_coefficients(config, coefficients)?;
+        if rebuilt.root() != expected_root {
+            return Err(X4cErrorV4::InvalidGeometry("X4c durable rebuild root"));
+        }
+        Ok(rebuilt)
+    }
+
     pub fn from_parts(
         config: CohortVerifierConfigV4,
         coefficients: Vec<Option<Vec<Fp2>>>,
@@ -2191,13 +3194,41 @@ mod tests {
         profile_digest_v4, FoldCommitmentFrameV4, InitialOpeningScheduleV4,
     };
     use super::super::merkle_v4::{CohortIdentityV4, CohortTreeV4, OuterCachePolicyV4};
-    use super::super::ntt::encode_rate_eighth;
     use super::super::ntt::fold_codeword;
     use super::*;
 
     fn symbol(index: usize) -> Fp2 {
         let value = index as u64 + 1;
         Fp2::new(Fp::new(value.wrapping_mul(0x1_0001)), Fp::new(17 * value + 9))
+    }
+
+    #[cfg(feature = "cuda")]
+    fn x4c_cuda_or_skip() -> Option<Backend> {
+        match Backend::cuda_resident_with_timing(
+            volta_accel::ResidentTimingPolicy::WallOnlyCounters,
+        ) {
+            Ok(backend) => Some(backend),
+            Err(error) if std::env::var("VOLTA_REQUIRE_CUDA").as_deref() != Ok("1") => {
+                eprintln!("skipping X4c CUDA differential: {error}");
+                None
+            }
+            Err(error) => panic!("CUDA is required for X4c differential tests: {error}"),
+        }
+    }
+
+    #[cfg(feature = "cuda")]
+    fn decode_fp2_bytes(bytes: &[u8]) -> Vec<Fp2> {
+        assert_eq!(bytes.len() % FP2_BYTES as usize, 0);
+        bytes
+            .chunks_exact(FP2_BYTES as usize)
+            .map(|chunk| {
+                let mut c0 = [0u8; 8];
+                let mut c1 = [0u8; 8];
+                c0.copy_from_slice(&chunk[..8]);
+                c1.copy_from_slice(&chunk[8..]);
+                Fp2::new(Fp::new(u64::from_le_bytes(c0)), Fp::new(u64::from_le_bytes(c1)))
+            })
+            .collect()
     }
 
     #[test]
@@ -2230,11 +3261,232 @@ mod tests {
             for challenge in challenges {
                 let full = fold_codeword(&input, challenge).unwrap();
                 let selected = direct_fold_selected_v4(&input, challenge, &indices).unwrap();
+                let positive =
+                    indices.iter().map(|index| input[*index as usize]).collect::<Vec<_>>();
+                let negative = indices
+                    .iter()
+                    .map(|index| input[*index as usize + input.len() / 2])
+                    .collect::<Vec<_>>();
+                let selected_pairs = direct_fold_selected_pairs_v4(
+                    input.len(),
+                    challenge,
+                    &indices,
+                    &positive,
+                    &negative,
+                )
+                .unwrap();
                 assert_eq!(
                     selected,
                     indices.iter().map(|index| full[*index as usize]).collect::<Vec<_>>()
                 );
+                assert_eq!(selected_pairs, selected);
             }
+        }
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn cuda_host_and_resident_direct_fold_match_cpu_at_registered_lengths() {
+        let Some(mut backend) = x4c_cuda_or_skip() else {
+            return;
+        };
+        let challenges = [
+            Fp2::ZERO,
+            Fp2::ONE,
+            Fp2::new(Fp::new(3), Fp::new(11)),
+            Fp2::new(Fp::new(P - 1), Fp::new(P - 2)),
+        ];
+        for log2 in [3u8, 8, 12, 16, 20] {
+            let input = (0..1usize << log2).map(symbol).collect::<Vec<_>>();
+            let input_raw = input.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>();
+            let input_bytes = input.len() * FP2_BYTES as usize;
+            let output_bytes = input_bytes / 2;
+            let resident_output_offset = input_bytes;
+            let host_output_offset = resident_output_offset + output_bytes;
+            let tiled_output_offset = host_output_offset + output_bytes;
+            let scratch_offset = tiled_output_offset + output_bytes;
+            let arena_bytes = scratch_offset + input_bytes;
+            let input_pinned = backend.alloc_pinned_host::<Fp2Repr>(input.len()).unwrap();
+            backend.write_pinned_host(&input_pinned, 0, &input_raw).unwrap();
+            let arena = backend.alloc_device::<u8>(arena_bytes).unwrap();
+            backend.x4c_upload_pinned_into_arena(&input_pinned, 0, &arena, 0, input.len()).unwrap();
+
+            for challenge in challenges {
+                let expected = fold_codeword(&input, challenge).unwrap();
+                backend
+                    .x4c_direct_fold_arena_into_arena(
+                        &arena,
+                        0,
+                        input.len(),
+                        resident_output_offset,
+                        challenge,
+                    )
+                    .unwrap();
+                backend.wait_pinned_host_ready(&input_pinned).unwrap();
+                backend.write_pinned_host(&input_pinned, 0, &input_raw).unwrap();
+                backend
+                    .x4c_direct_fold_pinned_into_arena(
+                        &input_pinned,
+                        input.len(),
+                        &arena,
+                        host_output_offset,
+                        scratch_offset,
+                        challenge,
+                    )
+                    .unwrap();
+                let tile_outputs = (input.len() / 6).max(1);
+                for output_start in (0..input.len() / 2).step_by(tile_outputs) {
+                    let count = (input.len() / 2 - output_start).min(tile_outputs);
+                    let raw_tile = input[output_start..output_start + count]
+                        .iter()
+                        .chain(
+                            &input[output_start + input.len() / 2
+                                ..output_start + input.len() / 2 + count],
+                        )
+                        .copied()
+                        .map(Fp2Repr::from)
+                        .collect::<Vec<_>>();
+                    backend.wait_pinned_host_ready(&input_pinned).unwrap();
+                    backend.write_pinned_host(&input_pinned, 0, &raw_tile).unwrap();
+                    backend
+                        .x4c_direct_fold_pinned_tile_into_arena(
+                            &input_pinned,
+                            0,
+                            input.len(),
+                            output_start,
+                            count,
+                            &arena,
+                            tiled_output_offset,
+                            scratch_offset,
+                            challenge,
+                        )
+                        .unwrap();
+                }
+                let resident = decode_fp2_bytes(
+                    &backend
+                        .download_device::<u8>(&arena, resident_output_offset, output_bytes)
+                        .unwrap(),
+                );
+                let host = decode_fp2_bytes(
+                    &backend
+                        .download_device::<u8>(&arena, host_output_offset, output_bytes)
+                        .unwrap(),
+                );
+                let tiled = decode_fp2_bytes(
+                    &backend
+                        .download_device::<u8>(&arena, tiled_output_offset, output_bytes)
+                        .unwrap(),
+                );
+                assert_eq!(resident, expected);
+                assert_eq!(host, expected);
+                assert_eq!(tiled, expected);
+
+                let activation = Fp2::new(Fp::new(31), Fp::new(37));
+                let activation_source =
+                    (0..input.len() / 2).map(|index| symbol(index + 1_000_000)).collect::<Vec<_>>();
+                let activated = expected
+                    .iter()
+                    .zip(&activation_source)
+                    .map(|(value, source)| *value + activation * *source)
+                    .collect::<Vec<_>>();
+                for start in (0..activation_source.len()).step_by(tile_outputs) {
+                    let count = (activation_source.len() - start).min(tile_outputs);
+                    let raw_tile = activation_source[start..start + count]
+                        .iter()
+                        .copied()
+                        .map(Fp2Repr::from)
+                        .collect::<Vec<_>>();
+                    backend.wait_pinned_host_ready(&input_pinned).unwrap();
+                    backend.write_pinned_host(&input_pinned, 0, &raw_tile).unwrap();
+                    backend
+                        .x4c_activation_add_pinned_tile_into_arena(
+                            &input_pinned,
+                            0,
+                            &arena,
+                            resident_output_offset,
+                            activation_source.len(),
+                            start,
+                            count,
+                            scratch_offset,
+                            activation,
+                        )
+                        .unwrap();
+                }
+                assert_eq!(
+                    decode_fp2_bytes(
+                        &backend
+                            .download_device::<u8>(&arena, resident_output_offset, output_bytes)
+                            .unwrap(),
+                    ),
+                    activated,
+                );
+            }
+            backend.wait_pinned_host_ready(&input_pinned).unwrap();
+            backend.free_pinned_host(input_pinned).unwrap();
+            backend.free_device(arena).unwrap();
+        }
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn cuda_one_slot_n4_root_and_retained_levels_match_cpu() {
+        let Some(mut backend) = x4c_cuda_or_skip() else {
+            return;
+        };
+        let descriptor = [0x5au8; 32];
+        for output_len in [8usize, 32, 256] {
+            let codeword = (0..output_len).map(symbol).collect::<Vec<_>>();
+            let config = CohortVerifierConfigV4 {
+                identity: CohortIdentityV4 {
+                    cohort_id: 0xA500_F001,
+                    oracle_kind: OracleKindV4::GlobalFoldAggregate,
+                    fold_round: 7,
+                },
+                slot_descriptors: vec![Some(descriptor)],
+                outer_len: output_len,
+                expected_symbol_count: 1,
+            };
+            let cpu =
+                CohortTreeV4::build_flat(config.clone(), vec![Some(codeword.clone())]).unwrap();
+            let codeword_bytes = output_len * FP2_BYTES as usize;
+            let native_layout = X4cOneSlotN4Layout::new(output_len, codeword_bytes).unwrap();
+            let arena =
+                backend.alloc_device::<u8>(codeword_bytes + native_layout.cache_bytes()).unwrap();
+            let pinned = backend.alloc_pinned_host::<Fp2Repr>(output_len).unwrap();
+            let raw = codeword.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>();
+            backend.write_pinned_host(&pinned, 0, &raw).unwrap();
+            backend.x4c_upload_pinned_into_arena(&pinned, 0, &arena, 0, output_len).unwrap();
+            let root = backend
+                .x4c_build_one_slot_n4(
+                    &arena,
+                    0,
+                    native_layout,
+                    descriptor,
+                    config.identity.cohort_id,
+                    OracleKindV4::GlobalFoldAggregate as u8,
+                    config.identity.fold_round,
+                )
+                .unwrap();
+            assert_eq!(root, cpu.root());
+            let retained = backend
+                .download_device::<u8>(&arena, codeword_bytes, native_layout.cache_bytes())
+                .unwrap();
+            for level in 2..=output_len.ilog2() as u8 {
+                let relative = native_layout.level_offset_bytes(level).unwrap() - codeword_bytes;
+                let nodes = output_len >> level;
+                for index in 0..nodes {
+                    let start = relative + index * DIGEST_BYTES as usize;
+                    let mut observed = [0u8; 32];
+                    observed.copy_from_slice(&retained[start..start + DIGEST_BYTES as usize]);
+                    assert_eq!(
+                        observed,
+                        cpu.outer_cache().read_cached_digest(level, index as u64).unwrap()
+                    );
+                }
+            }
+            backend.wait_pinned_host_ready(&pinned).unwrap();
+            backend.free_pinned_host(pinned).unwrap();
+            backend.free_device(arena).unwrap();
         }
     }
 
@@ -2268,25 +3520,35 @@ mod tests {
     }
 
     #[test]
-    fn production_seal_fails_closed_on_impossible_unique_sample_geometry() {
+    fn production_sample_geometry_is_exactly_1592_unique_coordinates() {
         let layout = X4cArenaLayoutV4::production().unwrap();
-        let available = layout
-            .rounds
-            .iter()
-            .map(|round| round.output_len.min(X4C_DIRECT_FOLD_SAMPLES_PER_ROUND_V4))
-            .sum::<usize>();
-        assert_eq!(
-            layout.rounds.iter().rev().take(3).map(|round| round.output_len).collect::<Vec<_>>(),
-            vec![8, 16, 32]
-        );
-        assert_eq!(available, X4C_DIRECT_FOLD_MAX_UNIQUE_PRODUCTION_SAMPLES_V4);
-        assert_eq!(X4C_DIRECT_FOLD_PRODUCTION_SAMPLES_V4 - available, 136);
-        assert!(matches!(
-            X4cSealConfigV4::production([0x77; 32], 0),
-            Err(X4cErrorV4::InvalidGeometry(
-                "X4c frozen 1,728 unique output-coordinate samples are impossible"
-            ))
-        ));
+        let mut targets = Vec::with_capacity(layout.rounds.len());
+        for round in &layout.rounds {
+            let target = round.output_len.min(X4C_DIRECT_FOLD_SAMPLES_PER_ROUND_V4);
+            let plan = X4cDirectFoldSamplePlanV4::derive(
+                X4C_DESIGN_SHA256_V4,
+                [0x77; 32],
+                9,
+                round.fold_round,
+                Fp2::new(Fp::new(3), Fp::new(11)),
+                [round.fold_round; 32],
+                round.output_len,
+            )
+            .unwrap();
+            assert_eq!(plan.indices.len(), target);
+            assert_eq!(plan.indices.iter().copied().collect::<BTreeSet<_>>().len(), target);
+            assert_eq!(plan.indices[0], 0);
+            assert_eq!(plan.indices[1], round.output_len as u64 - 1);
+            targets.push(target);
+        }
+        assert_eq!(targets.iter().rev().take(3).copied().collect::<Vec<_>>(), vec![8, 16, 32],);
+        assert_eq!(targets.iter().sum::<usize>(), 1_592);
+        assert_eq!(X4C_DIRECT_FOLD_PRODUCTION_SAMPLES_V4, 1_592);
+        assert_eq!(X4C_DIRECT_FOLD_DIAGNOSTIC_GATHER_CALLS_V4, 53);
+        assert_eq!(X4C_DIRECT_FOLD_DIAGNOSTIC_SYMBOLS_V4, 4_648);
+        assert_eq!(X4C_DIRECT_FOLD_DIAGNOSTIC_INDEX_H2D_BYTES_V4, 37_184);
+        assert_eq!(X4C_DIRECT_FOLD_DIAGNOSTIC_VALUE_D2H_BYTES_V4, 74_368);
+        X4cSealConfigV4::production([0x77; 32], 0).unwrap();
     }
 
     #[test]
@@ -2311,6 +3573,7 @@ mod tests {
             X4C_INITIAL_ORACLE_HOST_BYTES_V4 + X4C_INITIAL_OUTER_CACHE_HOST_BYTES_V4,
             114_043_125_600
         );
+        assert_eq!(x4c_pinned_pool_requested_bytes_v4().unwrap(), 1_090_741_982);
     }
 
     #[test]
@@ -2443,17 +3706,18 @@ mod tests {
             durable_coefficients.clone(),
         )
         .unwrap();
-        let rebuilt_codeword = encode_rate_eighth(&coefficients).unwrap();
-        let rebuilt_tree =
-            CohortTreeV4::build_flat(config.clone(), vec![Some(rebuilt_codeword.clone()), None])
-                .unwrap();
-        let rebuilt = X4cRamModelGlobalCohortV4::from_parts(
-            config,
-            durable_coefficients,
-            vec![Some(rebuilt_codeword), None],
-            rebuilt_tree.outer_cache().clone(),
+        let rebuilt = X4cRamModelGlobalCohortV4::rebuild_from_coefficients_checked(
+            config.clone(),
+            durable_coefficients.clone(),
+            warm.commitment().root,
         )
         .unwrap();
+        assert!(X4cRamModelGlobalCohortV4::rebuild_from_coefficients_checked(
+            config,
+            durable_coefficients,
+            [0x55; 32],
+        )
+        .is_err());
         assert_eq!(rebuilt.root(), warm.commitment().root);
         let draws =
             (0..X4C_QUERY_COUNT_V4).map(|index| ((29 * index + 5) & 63) as u64).collect::<Vec<_>>();
@@ -2487,7 +3751,7 @@ mod tests {
         let reusable = X4cArenaCensusV4 {
             logical_deallocation_count: 1,
             reset_count: 1,
-            zeroed_bytes: layout.retained_payload_bytes,
+            zeroed_bytes: layout.capacity_bytes,
             outstanding_allocation_count: 0,
             outstanding_bytes: 0,
             cached_reusable_bytes: layout.capacity_bytes,
@@ -2497,11 +3761,47 @@ mod tests {
         let mut hidden = reusable;
         hidden.response_round_allocation_count = 1;
         assert!(hidden.validate_session_reusable(&proof_ready, &layout).is_err());
+
+        let pinned_pool_bytes = x4c_pinned_pool_requested_bytes_v4().unwrap();
+        let accelerated_proof_ready = X4cArenaCensusV4 {
+            accelerator_available: true,
+            backend_baseline_resident_bytes: 4096,
+            backend_resident_bytes: 4096 + layout.capacity_bytes,
+            backend_baseline_active_device_allocations: 2,
+            backend_active_device_allocations: 3,
+            backend_baseline_active_pinned_allocations: 7,
+            backend_baseline_active_pinned_bytes: 1024,
+            backend_active_pinned_allocations: 11,
+            backend_active_pinned_bytes: 1024 + pinned_pool_bytes,
+            backend_stream_synchronized: true,
+            x4c_pinned_pool_allocations: 4,
+            x4c_pinned_pool_requested_bytes: pinned_pool_bytes,
+            ..proof_ready
+        };
+        accelerated_proof_ready.validate_proof_ready(&layout).unwrap();
+        let accelerated_reusable = X4cArenaCensusV4 {
+            backend_resident_bytes: 4096,
+            backend_cached_resident_bytes: layout.capacity_bytes,
+            backend_active_device_allocations: 2,
+            backend_cached_device_allocations: 1,
+            logical_deallocation_count: 1,
+            reset_count: 1,
+            zeroed_bytes: layout.capacity_bytes,
+            outstanding_allocation_count: 0,
+            outstanding_bytes: 0,
+            cached_reusable_bytes: layout.capacity_bytes,
+            ..accelerated_proof_ready
+        };
+        accelerated_reusable.validate_session_reusable(&accelerated_proof_ready, &layout).unwrap();
     }
 
     #[test]
-    fn cpu_reference_x4c_chain_is_interactively_byte_identical_and_verifies() {
-        fn cohort(cohort_id: u32, outer_len: usize, seed: u64) -> CommittedModelGlobalCohortV4 {
+    fn durable_rebuild_x4c_chain_is_byte_identical_to_warm_chain_and_verifies() {
+        fn fixture(
+            cohort_id: u32,
+            outer_len: usize,
+            seed: u64,
+        ) -> (CohortVerifierConfigV4, Vec<Option<Vec<Fp2>>>) {
             let descriptor = {
                 let mut digest = [0u8; 32];
                 digest[..4].copy_from_slice(&cohort_id.to_le_bytes());
@@ -2510,7 +3810,7 @@ mod tests {
             };
             let coefficients =
                 (0..outer_len / 8).map(|index| symbol(index + seed as usize)).collect::<Vec<_>>();
-            CommittedModelGlobalCohortV4::commit(
+            (
                 CohortVerifierConfigV4 {
                     identity: CohortIdentityV4 {
                         cohort_id,
@@ -2523,103 +3823,138 @@ mod tests {
                 },
                 vec![Some(coefficients)],
             )
-            .unwrap()
         }
 
-        let large = cohort(10, 64, 100);
-        let small = cohort(20, 16, 200);
-        let common_point = vec![
-            Fp2::new(Fp::new(3), Fp::new(7)),
-            Fp2::new(Fp::new(5), Fp::new(11)),
-            Fp2::new(Fp::new(13), Fp::new(17)),
-        ];
-        let groups = vec![
-            GlobalProverGroupV4 {
-                cohort: &large,
-                touched_slots: vec![0],
-                weights: vec![Fp2::new(Fp::new(19), Fp::new(23))],
-                target_point: common_point.clone(),
-                activation_challenge: Fp2::new(Fp::new(29), Fp::new(31)),
-            },
-            GlobalProverGroupV4 {
-                cohort: &small,
-                touched_slots: vec![0],
-                weights: vec![Fp2::new(Fp::new(37), Fp::new(41))],
-                target_point: common_point[2..].to_vec(),
-                activation_challenge: Fp2::new(Fp::new(43), Fp::new(47)),
-            },
-        ];
-        let descriptor = global_fold_descriptor_digest_v4(
-            &groups
-                .iter()
-                .map(|group| {
-                    (
-                        group.cohort.commitment().config.identity.cohort_id,
-                        group.cohort.commitment().root,
-                    )
-                })
-                .collect::<Vec<_>>(),
-        );
-        let model_root = [0x55; 32];
-        let epoch = 9;
-        let draft = GlobalChainDraftV4::new_interactive(
-            model_root,
-            epoch,
-            77,
-            descriptor,
-            common_point.clone(),
-            groups,
-        )
-        .unwrap();
-        let seed = [0x42; 32];
-        let mut prover_tx = Transcript::new(seed);
-        let mut runtime = X4cCpuReferenceRuntimeV4;
-        let sealed = draft
-            .seal_interactive_x4c(
-                &mut prover_tx,
-                &mut runtime,
-                X4cSealConfigV4 {
-                    design_sha256: X4C_DESIGN_SHA256_V4,
-                    clean_source_sha256: [0x77; 32],
-                    response_ordinal: 4,
-                    arena_layout: X4cArenaLayoutV4::new(6, 3, 4096).unwrap(),
+        fn run_chain(
+            large: &dyn ModelGlobalOpeningSourceV4,
+            small: &dyn ModelGlobalOpeningSourceV4,
+        ) -> (Vec<u8>, Vec<u64>, u64, std::collections::BTreeMap<&'static str, u64>) {
+            let common_point = vec![
+                Fp2::new(Fp::new(3), Fp::new(7)),
+                Fp2::new(Fp::new(5), Fp::new(11)),
+                Fp2::new(Fp::new(13), Fp::new(17)),
+            ];
+            let groups = vec![
+                GlobalProverGroupV4 {
+                    cohort: large,
+                    touched_slots: vec![0],
+                    weights: vec![Fp2::new(Fp::new(19), Fp::new(23))],
+                    target_point: common_point.clone(),
+                    activation_challenge: Fp2::new(Fp::new(29), Fp::new(31)),
                 },
+                GlobalProverGroupV4 {
+                    cohort: small,
+                    touched_slots: vec![0],
+                    weights: vec![Fp2::new(Fp::new(37), Fp::new(41))],
+                    target_point: common_point[2..].to_vec(),
+                    activation_challenge: Fp2::new(Fp::new(43), Fp::new(47)),
+                },
+            ];
+            let descriptor = global_fold_descriptor_digest_v4(
+                &groups
+                    .iter()
+                    .map(|group| {
+                        (
+                            group.cohort.commitment().config.identity.cohort_id,
+                            group.cohort.commitment().root,
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+            );
+            let model_root = [0x55; 32];
+            let epoch = 9;
+            let draft = GlobalChainDraftV4::new_interactive(
+                model_root,
+                epoch,
+                77,
+                descriptor,
+                common_point.clone(),
+                groups,
             )
             .unwrap();
-        assert_eq!(sealed.fold_frames().len(), 3);
-        assert_eq!(
-            sealed.parity_records().iter().map(|round| round.result.comparison_count).sum::<u64>(),
-            32 + 16 + 8
-        );
-        let (proof, verifier_groups, metrics, draws) =
-            sealed.issue_queries_interactive_x4c(&mut prover_tx, &mut runtime).unwrap();
-        assert_eq!(draws.len(), X4C_QUERY_COUNT_V4);
-        assert_eq!(metrics.io, X4cResponseIoCountersV4::default());
-        assert_eq!(metrics.execution.query_gather_calls, 1);
-        assert_eq!(metrics.execution.noncanonical_opening_d2h_bytes, 0);
-        assert_eq!(metrics.execution.cpu_fold_tree_clone_bytes, 0);
-        assert_eq!(metrics.sampling_soundness_credit_bits, 0);
-        metrics
-            .session_reusable_arena
-            .validate_session_reusable(
-                &metrics.proof_ready_arena,
-                &X4cArenaLayoutV4::new(6, 3, 4096).unwrap(),
-            )
-            .unwrap();
+            let seed = [0x42; 32];
+            let mut prover_tx = Transcript::new(seed);
+            let mut runtime = X4cCpuReferenceRuntimeV4;
+            let layout = X4cArenaLayoutV4::new(6, 3, 4096).unwrap();
+            let sealed = draft
+                .seal_interactive_x4c(
+                    &mut prover_tx,
+                    &mut runtime,
+                    X4cSealConfigV4 {
+                        design_sha256: X4C_DESIGN_SHA256_V4,
+                        clean_source_sha256: [0x77; 32],
+                        response_ordinal: 4,
+                        arena_layout: layout.clone(),
+                    },
+                )
+                .unwrap();
+            assert_eq!(sealed.fold_frames().len(), 3);
+            assert_eq!(
+                sealed
+                    .parity_records()
+                    .iter()
+                    .map(|round| round.result.comparison_count)
+                    .sum::<u64>(),
+                32 + 16 + 8
+            );
+            let (proof, verifier_groups, metrics, draws) =
+                sealed.issue_queries_interactive_x4c(&mut prover_tx, &mut runtime).unwrap();
+            assert_eq!(draws.len(), X4C_QUERY_COUNT_V4);
+            assert_eq!(metrics.io, X4cResponseIoCountersV4::default());
+            assert_eq!(metrics.execution.query_gather_calls, 1);
+            assert_eq!(metrics.execution.noncanonical_opening_d2h_bytes, 0);
+            assert_eq!(metrics.execution.cpu_fold_tree_clone_bytes, 0);
+            assert_eq!(metrics.execution.direct_fold_diagnostic_gather_calls, 5);
+            assert_eq!(metrics.execution.direct_fold_diagnostic_index_h2d_bytes, 832);
+            assert_eq!(metrics.execution.direct_fold_diagnostic_value_d2h_bytes, 1_664);
+            assert_eq!(metrics.sampling_soundness_credit_bits, 0);
+            metrics
+                .session_reusable_arena
+                .validate_session_reusable(&metrics.proof_ready_arena, &layout)
+                .unwrap();
 
-        let mut verifier_tx = Transcript::new(seed);
-        verify_global_folding_interactive_v4(
-            model_root,
-            epoch,
-            &common_point,
-            &verifier_groups,
-            &proof,
-            &mut verifier_tx,
+            let mut verifier_tx = Transcript::new(seed);
+            verify_global_folding_interactive_v4(
+                model_root,
+                epoch,
+                &common_point,
+                &verifier_groups,
+                &proof,
+                &mut verifier_tx,
+            )
+            .unwrap();
+            assert_eq!(prover_tx.total_bytes(), verifier_tx.total_bytes());
+            assert_eq!(prover_tx.ledger(), verifier_tx.ledger());
+            let canonical = proof.canonical_bytes().unwrap();
+            assert!(!canonical.is_empty());
+            (canonical, draws, prover_tx.total_bytes(), prover_tx.ledger().clone())
+        }
+
+        let (large_config, large_coefficients) = fixture(10, 64, 100);
+        let (small_config, small_coefficients) = fixture(20, 16, 200);
+        let warm_large =
+            CommittedModelGlobalCohortV4::commit(large_config.clone(), large_coefficients.clone())
+                .unwrap();
+        let warm_small =
+            CommittedModelGlobalCohortV4::commit(small_config.clone(), small_coefficients.clone())
+                .unwrap();
+        let rebuilt_large = X4cRamModelGlobalCohortV4::rebuild_from_coefficients_checked(
+            large_config,
+            large_coefficients,
+            warm_large.commitment().root,
         )
         .unwrap();
-        assert_eq!(prover_tx.total_bytes(), verifier_tx.total_bytes());
-        assert_eq!(prover_tx.ledger(), verifier_tx.ledger());
-        let canonical = proof.canonical_bytes().unwrap();
-        assert!(!canonical.is_empty());
+        let rebuilt_small = X4cRamModelGlobalCohortV4::rebuild_from_coefficients_checked(
+            small_config,
+            small_coefficients,
+            warm_small.commitment().root,
+        )
+        .unwrap();
+        assert_eq!(rebuilt_large.root(), warm_large.commitment().root);
+        assert_eq!(rebuilt_small.root(), warm_small.commitment().root);
+
+        let warm = run_chain(&warm_large, &warm_small);
+        let rebuilt = run_chain(&rebuilt_large, &rebuilt_small);
+        assert_eq!(rebuilt, warm);
     }
 }

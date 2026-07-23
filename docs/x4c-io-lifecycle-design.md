@@ -1,14 +1,32 @@
-# X4c I/O-lifecycle redesign — Phase 1
+# X4c I/O-lifecycle redesign — Phase 1 record and Phase 2 override
 
-**Status:** postdiction, timing instrumentation, redesign and
-`runpod-a100-x4c-v1` preregistration only. **HARD STOP before the direct-fold,
-GPU-resident-tree, RAM-oracle or arena implementation and before any pod
-access.** The original pre-measurement artifact is preserved at commit
+**Status:** Phase 1 is closed at checkpoint
+`c7e104324fca41c2192a2e1a16bb58a8153d1ff6`. The product owner has authorized
+the direct-fold, GPU-resident-tree, RAM-oracle, gather and arena implementation
+locally under the frozen `runpod-a100-x4c-v1` contract. **HARD STOP before any
+pod request or contact; pod work requires a separate provisioning approval
+after the clean local checkpoint.** The original pre-measurement artifact is
+preserved at commit
 `61bf1fb0acf6ea693f24b049c6d31393845c7d95`, SHA-256
 `7d4f8254b066b91fea9ee52fbef0f0008632adccceef1513d3d3478eeea3a52a`.
-Its Section 2.3 incorrectly predeclared the hypothesis as confirmed. This
-revision is the explicit interpretation correction; it changes no experiment
-geometry, sampling plan, engineering design, profile, protocol or gate.
+Its Section 2.3 incorrectly predeclared the hypothesis as confirmed. The
+`c7e1043` revision is the explicit Phase-1 interpretation correction; it
+changed no experiment geometry, sampling plan, engineering design, profile,
+protocol or gate.
+The corrected Phase-1 artifact is preserved at checkpoint `c7e1043`, SHA-256
+`1a744625078e3ffe5772b040c24854e9510dcedebc906416279cf3a7c29bf191`;
+the present override does not mutate either append-only Phase-1 JSON.
+
+**Phase-2 implementation stop (2026-07-23):** the frozen production sampling
+rule below is internally inconsistent with the frozen fold geometry.  The 27
+output domains are `2^29,...,2^3`; the final three contain only 32, 16 and 8
+coordinates.  Thus 64 unique output coordinates per round can supply at most
+`24*64 + 32 + 16 + 8 = 1,592` unique comparisons, not 1,728.  Production
+configuration fails closed before allocation or query gathering.  Local
+implementation is stopped pending an explicit product-owner correction to
+the sampling requirement, and no pod may be requested or contacted.  The
+contradictory text in Section 3.1 remains visible as the frozen requirement;
+it has not been silently relaxed.
 
 This package follows the immutable X4 and X4b closures. X4 remains
 **G4 commit FAIL / overall FAIL** and X4b remains **official FAIL on isolated
@@ -31,7 +49,7 @@ exactly **43,953,700 B**. The response-wide bound remains
 The only Phase-1 Rust change is out-of-band lifecycle instrumentation. It
 does not change a proof or transcript.
 
-## 1. X4b I/O postdiction
+## 1. X4b I/O byte reconciliation
 
 ### 1.1 Exact `Wext-mu26` counter identity
 
@@ -55,11 +73,12 @@ give the following decimal-byte inventory.
 | observed `process_io.write_bytes` | 107,374,211,072 | 107.374211072 | kernel counter |
 | **observed physical I/O** | **210,453,446,656** | **210.453446656** | kernel read + write |
 
-The modeled and observed inventories differ by only **49,216 B** of
-filesystem/metadata traffic. The observed aggregate rate is
-**825,756,043.051 B/s = 0.825756043 GB/s**. Applying that one observed rate
-to the category identity postdicts **254.861468119 s**, only
-**0.000059601 s** below the measured **254.861527720 s**.
+The modeled and observed inventories differ by exactly **49,216 B**. No cause
+is assigned to those unmodeled bytes. The recorded aggregate rate is
+**825,756,043.051 B/s = 0.825756043 GB/s**, but it is itself
+`210,453,446,656 B / 254.861527720 s`. Applying that rate to the modeled
+inventory reconstructs **254.861468119 s**, only **0.000059601 s** below the
+measured wall.
 
 The accelerator layer moved essentially the same amount again:
 **107,374,217,152 B H2D** and **103,079,215,072 B D2H**, or
@@ -67,9 +86,13 @@ The accelerator layer moved essentially the same amount again:
 and are not added to the physical-host-I/O denominator because the two layers
 carry overlapping payloads.
 
-This is a postdiction, not a fit: every category is an exact record counter,
-there is one aggregate rate, and no per-category coefficient or intercept was
-optimized.
+This is an exact and valuable byte reconciliation, not an independent causal
+timing model. The **0.000059601-s** residual is the algebraic identity
+`254.861527720 s * 49,216 / 210,453,446,656`, because the rate was derived
+from the same wall. No per-category coefficient or intercept was optimized,
+but the reconstruction is not evidence that all wall time was I/O. Causal
+attribution requires independent phase timers plus storage and ownership
+anchors.
 
 ### 1.2 The seven redundant response-fold steps
 
@@ -99,8 +122,9 @@ For every one of the 27 response fold rounds, the current production path is:
 7. **Clean up response-local files.**
    Staging levels are removed at
    `rust/volta-pcs/src/x4/cuda_v4.rs:626,631`; coefficients, oracle and root
-   are removed at `rust/volta-pcs/src/x4/folding_v4.rs:475-481`, and the
-   response directory is removed by the recorder after the timed operation.
+   are removed at `rust/volta-pcs/src/x4/folding_v4.rs:475-481` during seal.
+   Residual response directories are removed by the recorder only after open
+   and verification.
 
 Across all 27 rounds, the X4b record counts:
 
@@ -138,8 +162,10 @@ the first incident's smaller 4-GiB probe succeeding. The required
 overlay storage. A subsequent complete run was invalidated by a missing
 companion binary after more than 5,299 s and 86,567,288,992 B had been
 materialized. X4c consequently has no response-path staging or overlay
-oracle, refuses network `mfs` for record artifacts, and fails closed on all
-companions before onboarding.
+oracle. The exact **9,618,587,808-B** coefficient-plus-five-root durable tier
+stays on the provider **PERSISTENT** volume; separate local non-`mfs` storage
+is reserved for scratch, RAM-spill and append-only records. The harness fails
+closed on all companions before onboarding.
 
 ## 2. Opening lifecycle decomposition
 
@@ -185,11 +211,24 @@ sealed state         51,539,606,304 B
 
 Because `issue_queries(self, ...)` consumes `self`, Rust destroys those
 round-tree allocations before returning to the recorder's `open_wall_s`
-timer. The pre-existing same-pod-host exact-geometry full-cache preflight,
-which performs more query work but owns no production sealed state, selected
+timer. The sealed `CohortTreeV4` owns ordinary CPU `Vec` codewords and
+`DenseOuterNodeCacheV4`; it does not own the CUDA backend.
+`backend.finish_measurement` completes before the recorder starts
+`open_wall_s`. Response-fold files have already been removed during seal, and
+residual directories are removed only after open and verification.
+
+The pre-existing same-pod-host exact-geometry full-cache preflight, which
+performs more query work but owns no production sealed state, selected
 **0.109631491 s**. Subtracting that conservative anchor from
-**6.683486611 s** leaves **6.573855120 s**, or **98.359666%**, as lifecycle
-debt.
+**6.683486611 s** leaves a **6.573855120-s**, or **98.359666%**,
+lifecycle-associated gap. The subtraction does not identify its cause.
+
+Pinned-host deregistration and opening-window unlink/writeback are
+**RETRACTED AS PROPOSED CULPRITS**. Phase-2 instrumentation retains
+pinned/device/file ownership and unlink/writeback as zero-expected controls;
+absence is recorded as exact zero, while a nonzero observation is evidence.
+The production-host cause is **OPEN**, and no redesign element may depend on a
+specific diagnosis.
 
 ### 2.3 Local synthetic result and pod-scale projection
 
@@ -235,8 +274,11 @@ unchanged and applies this explicit rule:
 The conclusion applies only to the stated local synthetic evidence plus the
 analytic byte projection. Even a refutation of ordinary container-drop
 dominance does not erase the measured same-host lifecycle gap or identify its
-cause. Phase 2 must report production-host timers rather than promote the
-projection.
+cause. Phase 2 must report independent production-host phase timers, process
+I/O and storage anchors, faults/RSS/smaps/NUMA/allocator state,
+pinned/device/ordinary-host ownership, outstanding synchronization and
+sealed-state files/mappings rather than promote the projection. Missing or
+inconsistent ownership is a validator failure.
 
 ## 3. Byte-identical X4c redesign
 
@@ -315,12 +357,16 @@ The initial padded oracle (**76,948,701,184 B**) and derived initial outer
 cache (**37,094,424,416 B**) are rebuildable host-RAM session caches.
 Coefficients plus five roots are the complete durable tier:
 **9,618,587,808 B**. The durable tier contains no oracle or derived node
-file.
+file and resides on the provider **PERSISTENT** volume.
 
 Onboarding streams pinned host tiles to the GPU, produces the initial oracle
 and tree, and retains the oracle/cache in RAM. The response path performs no
-overlay reread and no `FADV_DONTNEED` on these caches. Every H2D tile and
-pin/register/unregister operation is counted.
+overlay reread and no `FADV_DONTNEED` on these caches. Pinned transfer buffers
+are registered into a reusable pool and reused across responses; they are
+never registered or deregistered per response. Every H2D tile, pool
+registration/deregistration and ownership transition is counted. This pooling
+is prospective X4c lifecycle engineering, not a claimed explanation of the
+old X4b opening gap.
 
 Restart is fail-closed:
 
@@ -356,7 +402,8 @@ synchronizations and allocator bytes separately.
 The sealed response state uses one explicitly sized arena instead of
 distributed per-round `Vec`/`BTreeSet` ownership. The final opening is copied
 to its host proof buffer, establishing `proof_ready_wall`; arena reset,
-zeroing/unpinning and return to the reusable pool occur afterward.
+zeroing and return of the already-registered pinned buffers to their reusable
+pool occur afterward. Pool deregistration is not a per-response operation.
 
 Both walls are mandatory:
 
@@ -422,10 +469,12 @@ The first-tier planning envelope is:
 These ranges select provisioning and test duration only. They are not gate
 verdicts, speedup claims or substitutes for the v1 record.
 
-## 5. Rate contingency — preregistered decision material only
+## 5. Historical rate decision material — inactive in Phase 2
 
-The implemented path remains rate `1/8`, `s=111`. No code, profile, codec,
-Lean constant or reference in this package implements another rate.
+The implemented path remains exactly rate `1/8`, `s=111`. No rate
+contingency, alternate codec/reference, Lean constant or profile is authorized
+in Phase 2. The unchanged table below is retained as historical Phase-1
+decision material only.
 
 Under the same strict unique-decoding analysis, 3,320-response union and
 unchanged aggregate ClaimReduce/LinkBad/ZeroBatch term
@@ -441,15 +490,13 @@ Here `C=28,522,064,267,253`; it retains the existing LinkBad ownership.
 The byte ranges are preliminary until an exact codec preflight accounts for
 query-index deduplication and changed path depths.
 
-Trigger: consider the table only if the measured v1 online block still
-misses the product target after direct fold, GPU-resident trees, RAM oracle,
-batched gather and arena lifecycle engineering.
-
-Activation requires a separate explicit product-owner **GO**, logged as a
-deliberate exception to the 2026-07-06 cost-trade convention because it buys
-prover/storage resources with response bytes. It then requires new Lean
-constant discharge, exact codec preflight, full CPU/GPU correctness, leakage
-and tamper reruns, and a complete clean rebaseline. None is authorized here.
+The table receives no implementation, codec-preflight, projection-gate or
+fallback credit in this phase. Any future activation requires a separately
+authorized phase and product-owner **GO**, logged as a deliberate exception to
+the 2026-07-06 cost-trade convention because it buys prover/storage resources
+with response bytes. It would then require new Lean constant discharge, exact
+codec preflight, full CPU/GPU correctness, leakage and tamper reruns, and a
+complete clean rebaseline.
 
 Padding/re-binning, Merkle arity/leaf grouping, MXFP4-direct commitment and
 multi-mask batteries remain exclusively in the X5 oracle-scale addendum.
@@ -462,7 +509,10 @@ Hardware and execution profile:
 - actual `/proc/meminfo` host RAM
   **>=256 GiB = 274,877,906,944 B**, checked before allocation and failed
   closed if undersized;
-- local non-`mfs` volume **>=150,000,000,000 B**;
+- a provider **PERSISTENT** volume holding the exact **9,618,587,808-B**
+  coefficient-plus-five-root durable tier;
+- separate local non-`mfs` storage **>=150,000,000,000 B** for scratch,
+  RAM-spill and append-only records;
 - wall-only timing plus complete counters; no CUDA-event gate timing;
 - proving path `RAYON_NUM_THREADS=8` for historical comparability;
 - commit/onboarding, seal and open paths use their own unpinned worker policy,
@@ -498,7 +548,14 @@ surface.
 
 ## HARD STOP
 
-Phase 1 ends after the clean synthetic decomposition record, validator,
-ledger update and checkpoint. Do not implement Sections 3.1–3.5, do not
-activate the rate contingency, do not begin X5/R1c, and do not request or
-contact a pod without a new explicit approval.
+Phase 2 is authorized locally for the causal instrumentation and Sections
+3.1–3.5 at fixed rate `1/8`, `s=111`. Do not activate any rate contingency or
+begin X5/R1c. After format/check, full workspace and validator tests,
+direct-fold/root/rebuild byte identity, unchanged tamper coverage, exact
+communication, ledger update and a clean checkpoint, stop and request
+separate provisioning approval. Do not request or contact an existing or new
+pod before that local hard stop; do not contact a pod until provisioning is
+separately approved. The impossible production sampling geometry recorded at
+the top of this document prevents those local completion gates from being
+claimed. It must receive an explicit product-owner correction before local
+implementation resumes or any provisioning request can be made.

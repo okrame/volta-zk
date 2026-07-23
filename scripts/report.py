@@ -167,6 +167,38 @@ X4C_PRODUCTION_FOLD_CODEWORD_BYTES = 17_179_869_056
 X4C_PRODUCTION_FOLD_OUTER_CACHE_BYTES = 34_359_737_248
 X4C_X4B_OPEN_WALL_S = 6.683_486_611
 X4C_NO_TEARDOWN_OPEN_ANCHOR_S = 0.109_631_491
+X4C_POD_PROFILE = "runpod-a100-x4c-v1"
+X4C_LEGACY_CAUSAL_MILESTONE = "X4c-phase2-legacy-causal-diagnostic"
+X4C_LIFECYCLE_PROBE_MILESTONE = "X4c-phase2-exact-size-lifecycle-probe"
+X4C_PRODUCTION_SEALED_STATE_BYTES = (
+    X4C_PRODUCTION_FOLD_CODEWORD_BYTES + X4C_PRODUCTION_FOLD_OUTER_CACHE_BYTES
+)
+X4C_MIN_HOST_RAM_BYTES = 256 * 1024**3
+X4C_MIN_LOCAL_STORAGE_BYTES = 150_000_000_000
+X4C_LEGACY_SEAL_PHASES = {
+    "coefficient_clone_allocation",
+    "e_ntt",
+    "coefficient_oracle_write",
+    "flush_sync_data",
+    "oracle_reread_n4_inner",
+    "n4_outer_levels",
+    "full_oracle_comparison",
+    "cpu_codeword_cache_clone_back",
+    "file_cleanup",
+    "directory_cleanup",
+    "backend_finish_synchronization_boundary",
+}
+X4C_LEGACY_OPENING_PHASES = {
+    "draw_validation_schedule",
+    "initial_group_opening",
+    "fold_round_opening",
+    "inner_hashing_path_assembly",
+    "schedule_digest_structural_validation",
+    "canonical_encode_serialization",
+    "destroy_codewords",
+    "destroy_outer_cache_levels",
+    "destroy_remaining_sealed_state",
+}
 
 LAYER_PARAMS = {
     "rows": 1 << 10,
@@ -1216,6 +1248,975 @@ def validate_x4c_phase1_result(path: Path) -> bool:
         if not path.is_absolute():
             path = REPO / path
         return _x4c_phase1_result_valid(load_json(path))
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return False
+
+
+def _x4c_nonnegative_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _x4c_positive_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def _x4c_availability_valid(value: Any, *, required: bool) -> bool:
+    return (
+        isinstance(value, dict)
+        and isinstance(value.get("available"), bool)
+        and isinstance(value.get("reason"), str)
+        and (value["available"] is (value["reason"] == ""))
+        and (not required or value["available"] is True)
+    )
+
+
+def _x4c_boundary_snapshot_valid(row: Any, *, require_available: bool = True) -> bool:
+    if not (
+        isinstance(row, dict)
+        and row.get("schema") == 1
+        and _x4c_nonnegative_int(row.get("seq"))
+        and isinstance(row.get("label"), str)
+        and bool(row["label"])
+        and _x4c_nonnegative_int(row.get("monotonic_enter_ns"))
+        and _x4c_nonnegative_int(row.get("monotonic_exit_ns"))
+        and _x4c_nonnegative_int(row.get("snapshot_probe_wall_ns"))
+        and row["monotonic_exit_ns"] >= row["monotonic_enter_ns"]
+        and row["snapshot_probe_wall_ns"]
+        == row["monotonic_exit_ns"] - row["monotonic_enter_ns"]
+    ):
+        return False
+
+    io = row.get("process_io")
+    faults = row.get("page_faults")
+    memory = row.get("process_memory")
+    smaps = row.get("smaps_rollup")
+    allocator = row.get("allocator")
+    numa = row.get("numa")
+    cuda = row.get("cuda")
+    ownership = row.get("sealed_ownership")
+    temporary = row.get("temporary_files")
+    if not all(
+        isinstance(value, dict)
+        for value in (
+            io,
+            faults,
+            memory,
+            smaps,
+            allocator,
+            numa,
+            cuda,
+            ownership,
+            temporary,
+        )
+    ):
+        return False
+
+    if not (
+        _x4c_availability_valid(io.get("availability"), required=require_available)
+        and all(
+            _x4c_nonnegative_int(io.get(key))
+            for key in ("rchar", "wchar", "read_bytes", "write_bytes")
+        )
+        and _x4c_availability_valid(
+            faults.get("availability"), required=require_available
+        )
+        and all(
+            _x4c_nonnegative_int(faults.get(key))
+            for key in ("minor_faults", "major_faults")
+        )
+        and _x4c_availability_valid(
+            memory.get("availability"), required=require_available
+        )
+        and all(
+            _x4c_nonnegative_int(memory.get(key))
+            for key in ("rss_bytes", "locked_bytes")
+        )
+        and _x4c_availability_valid(
+            smaps.get("availability"), required=require_available
+        )
+        and all(
+            _x4c_nonnegative_int(smaps.get(key))
+            for key in (
+                "rss_bytes",
+                "pss_bytes",
+                "anonymous_bytes",
+                "file_bytes",
+                "shmem_bytes",
+                "private_clean_bytes",
+                "private_dirty_bytes",
+                "shared_clean_bytes",
+                "shared_dirty_bytes",
+                "swap_bytes",
+            )
+        )
+    ):
+        return False
+
+    allocator_fields = (
+        "allocation_calls",
+        "alloc_zeroed_calls",
+        "reallocation_calls",
+        "deallocation_calls",
+        "cumulative_allocated_bytes",
+        "cumulative_deallocated_bytes",
+        "outstanding_requested_bytes",
+        "allocator_allocated_bytes",
+        "allocator_mapped_bytes",
+        "arena_bytes",
+        "mmap_region_bytes",
+        "free_arena_bytes",
+    )
+    if not (
+        _x4c_availability_valid(
+            allocator.get("availability"), required=require_available
+        )
+        and all(_x4c_nonnegative_int(allocator.get(key)) for key in allocator_fields)
+        and allocator["cumulative_allocated_bytes"]
+        >= allocator["cumulative_deallocated_bytes"]
+        and allocator["outstanding_requested_bytes"]
+        == allocator["cumulative_allocated_bytes"]
+        - allocator["cumulative_deallocated_bytes"]
+        and allocator["allocator_mapped_bytes"]
+        == allocator["arena_bytes"] + allocator["mmap_region_bytes"]
+        and allocator["allocator_allocated_bytes"]
+        <= allocator["allocator_mapped_bytes"]
+    ):
+        return False
+
+    node_pages = numa.get("node_pages")
+    if not (
+        _x4c_availability_valid(numa.get("availability"), required=require_available)
+        and _x4c_nonnegative_int(numa.get("page_size_bytes"))
+        and (not numa["availability"]["available"] or numa["page_size_bytes"] > 0)
+        and _x4c_nonnegative_int(numa.get("total_node_pages"))
+        and isinstance(node_pages, dict)
+        and all(
+            isinstance(node, str)
+            and len(node) >= 2
+            and node.startswith("N")
+            and node[1:].isdigit()
+            and _x4c_nonnegative_int(pages)
+            for node, pages in node_pages.items()
+        )
+        and numa["total_node_pages"] == sum(node_pages.values())
+        and (not numa["availability"]["available"] or bool(node_pages))
+    ):
+        return False
+
+    cuda_fields = (
+        "device_workspace_bytes",
+        "device_resident_bytes",
+        "device_cached_bytes",
+        "device_live_bytes",
+        "pinned_host_bytes",
+        "outstanding_operations",
+    )
+    if not (
+        _x4c_availability_valid(cuda.get("availability"), required=require_available)
+        and all(_x4c_nonnegative_int(cuda.get(key)) for key in cuda_fields)
+        and isinstance(cuda.get("measurement_active"), bool)
+        and isinstance(cuda.get("synchronized"), bool)
+        and cuda["device_live_bytes"]
+        == cuda["device_workspace_bytes"]
+        + cuda["device_resident_bytes"]
+        + cuda["device_cached_bytes"]
+        and (not cuda["synchronized"] or cuda["outstanding_operations"] == 0)
+    ):
+        return False
+
+    ownership_fields = (
+        "fold_codeword_bytes",
+        "fold_outer_cache_bytes",
+        "other_ordinary_host_bytes",
+        "ordinary_host_bytes",
+        "pinned_host_bytes",
+        "device_bytes",
+        "file_backed_bytes",
+        "owned_file_count",
+        "owned_mapping_count",
+        "borrowed_initial_source_file_count",
+    )
+    if not (
+        all(_x4c_nonnegative_int(ownership.get(key)) for key in ownership_fields)
+        and ownership["ordinary_host_bytes"]
+        == ownership["fold_codeword_bytes"]
+        + ownership["fold_outer_cache_bytes"]
+        + ownership["other_ordinary_host_bytes"]
+        and isinstance(ownership.get("owned_files"), list)
+        and all(
+            isinstance(value, str) and value for value in ownership["owned_files"]
+        )
+        and isinstance(ownership.get("owned_mappings"), list)
+        and all(
+            isinstance(value, str) and value for value in ownership["owned_mappings"]
+        )
+        and isinstance(ownership.get("borrowed_initial_source_files"), list)
+        and all(
+            isinstance(value, str) and value
+            for value in ownership["borrowed_initial_source_files"]
+        )
+        and ownership["owned_file_count"] >= len(ownership["owned_files"])
+        and ownership["owned_mapping_count"] >= len(ownership["owned_mappings"])
+        and ownership["borrowed_initial_source_file_count"]
+        >= len(ownership["borrowed_initial_source_files"])
+        and (
+            ownership["file_backed_bytes"] > 0
+            or (
+                ownership["owned_file_count"] == 0
+                and ownership["owned_mapping_count"] == 0
+            )
+        )
+        and (
+            ownership["file_backed_bytes"] == 0
+            or ownership["owned_file_count"] > 0
+            or ownership["owned_mapping_count"] > 0
+        )
+    ):
+        return False
+
+    temporary_fields = (
+        "live_file_count",
+        "live_file_bytes",
+        "live_directory_count",
+        "cumulative_created_files",
+        "cumulative_deleted_files",
+        "cumulative_created_directories",
+        "cumulative_deleted_directories",
+    )
+    return (
+        all(_x4c_nonnegative_int(temporary.get(key)) for key in temporary_fields)
+        and temporary["cumulative_created_files"]
+        >= temporary["cumulative_deleted_files"]
+        and temporary["live_file_count"]
+        == temporary["cumulative_created_files"]
+        - temporary["cumulative_deleted_files"]
+        and temporary["cumulative_created_directories"]
+        >= temporary["cumulative_deleted_directories"]
+        and temporary["live_directory_count"]
+        == temporary["cumulative_created_directories"]
+        - temporary["cumulative_deleted_directories"]
+    )
+
+
+def _x4c_boundary_timeline_valid(
+    boundaries: Any, *, require_available: bool = True
+) -> bool:
+    if not (
+        isinstance(boundaries, list)
+        and boundaries
+        and all(
+            _x4c_boundary_snapshot_valid(
+                boundary, require_available=require_available
+            )
+            for boundary in boundaries
+        )
+        and [boundary["seq"] for boundary in boundaries]
+        == list(range(len(boundaries)))
+    ):
+        return False
+    monotonic_groups = {
+        "process_io": ("rchar", "wchar", "read_bytes", "write_bytes"),
+        "page_faults": ("minor_faults", "major_faults"),
+        "allocator": (
+            "allocation_calls",
+            "alloc_zeroed_calls",
+            "reallocation_calls",
+            "deallocation_calls",
+            "cumulative_allocated_bytes",
+            "cumulative_deallocated_bytes",
+        ),
+        "temporary_files": (
+            "cumulative_created_files",
+            "cumulative_deleted_files",
+            "cumulative_created_directories",
+            "cumulative_deleted_directories",
+        ),
+    }
+    for before, after in zip(boundaries, boundaries[1:]):
+        if (
+            after["monotonic_enter_ns"] < before["monotonic_exit_ns"]
+            or after["monotonic_exit_ns"] < before["monotonic_exit_ns"]
+        ):
+            return False
+        for group, fields in monotonic_groups.items():
+            if any(after[group][field] < before[group][field] for field in fields):
+                return False
+    return True
+
+
+def _x4c_context_valid(context: Any) -> bool:
+    if not isinstance(context, dict):
+        return False
+    optional_fields = {
+        "cohort_id": (0, (1 << 32) - 1),
+        "fold_round": (0, 255),
+        "slot_index": (0, (1 << 16) - 1),
+        "initial_group_index": (0, (1 << 32) - 1),
+        "outer_level": (0, 255),
+    }
+    for key, (minimum, maximum) in optional_fields.items():
+        if key not in context:
+            return False
+        value = context[key]
+        if value is not None and not (
+            _x4c_nonnegative_int(value) and minimum <= value <= maximum
+        ):
+            return False
+    return _x4c_nonnegative_int(context.get("segment_index"))
+
+
+def _x4c_span_key(row: dict[str, Any]) -> tuple[Any, ...]:
+    context = row["context"]
+    return (
+        row["track"],
+        row["phase"],
+        row["nesting"],
+        context["cohort_id"],
+        context["fold_round"],
+        context["slot_index"],
+        context["initial_group_index"],
+        context["outer_level"],
+        context["segment_index"],
+    )
+
+
+def _x4c_lifecycle_timeline_valid(
+    events: Any, spans: Any, boundaries: list[dict[str, Any]]
+) -> bool:
+    if not (
+        isinstance(events, list)
+        and events
+        and isinstance(spans, list)
+        and spans
+    ):
+        return False
+    boundary_by_seq = {boundary["seq"]: boundary for boundary in boundaries}
+    event_by_seq: dict[int, dict[str, Any]] = {}
+    stacks: dict[tuple[Any, ...], list[int]] = {}
+    matched: set[tuple[tuple[Any, ...], int, int]] = set()
+    for event in events:
+        if not (
+            isinstance(event, dict)
+            and event.get("schema") == 1
+            and event.get("track") in {"legacy_seal", "legacy_opening"}
+            and isinstance(event.get("phase"), str)
+            and event["phase"]
+            in X4C_LEGACY_SEAL_PHASES | X4C_LEGACY_OPENING_PHASES
+            and event.get("transition") in {"span_start", "span_end", "boundary"}
+            and event.get("nesting") in {"top_level", "nested"}
+            and _x4c_context_valid(event.get("context"))
+            and _x4c_nonnegative_int(event.get("boundary_seq"))
+            and event["boundary_seq"] in boundary_by_seq
+            and event["boundary_seq"] not in event_by_seq
+        ):
+            return False
+        if event["phase"] == "inner_hashing_path_assembly":
+            if event["nesting"] != "nested" or event["track"] != "legacy_opening":
+                return False
+        elif event["nesting"] != "top_level":
+            return False
+        if (
+            event["track"] == "legacy_seal"
+            and event["phase"] not in X4C_LEGACY_SEAL_PHASES
+        ) or (
+            event["track"] == "legacy_opening"
+            and event["phase"] not in X4C_LEGACY_OPENING_PHASES
+        ):
+            return False
+        event_by_seq[event["boundary_seq"]] = event
+        key = _x4c_span_key(event)
+        if event["transition"] == "span_start":
+            stacks.setdefault(key, []).append(event["boundary_seq"])
+        elif event["transition"] == "span_end":
+            starts = stacks.get(key)
+            if not starts:
+                return False
+            start = starts.pop()
+            if event["boundary_seq"] <= start:
+                return False
+            matched.add((key, start, event["boundary_seq"]))
+    if any(starts for starts in stacks.values()):
+        return False
+
+    supplied: set[tuple[tuple[Any, ...], int, int]] = set()
+    top_level_intervals: dict[str, list[tuple[int, int]]] = {
+        "legacy_seal": [],
+        "legacy_opening": [],
+    }
+    nested_intervals: list[tuple[int, int]] = []
+    for span in spans:
+        if not (
+            isinstance(span, dict)
+            and span.get("track") in {"legacy_seal", "legacy_opening"}
+            and span.get("phase")
+            in X4C_LEGACY_SEAL_PHASES | X4C_LEGACY_OPENING_PHASES
+            and span.get("nesting") in {"top_level", "nested"}
+            and _x4c_context_valid(span.get("context"))
+            and _x4c_nonnegative_int(span.get("start_seq"))
+            and _x4c_nonnegative_int(span.get("end_seq"))
+            and span["start_seq"] in boundary_by_seq
+            and span["end_seq"] in boundary_by_seq
+            and span["end_seq"] > span["start_seq"]
+            and _x4c_nonnegative_int(span.get("subject_wall_ns"))
+            and _x4c_nonnegative_int(span.get("inclusive_wall_ns"))
+            and _x4c_nonnegative_int(span.get("boundary_probe_wall_ns"))
+        ):
+            return False
+        start = boundary_by_seq[span["start_seq"]]
+        end = boundary_by_seq[span["end_seq"]]
+        subject_wall = end["monotonic_enter_ns"] - start["monotonic_exit_ns"]
+        inclusive_wall = end["monotonic_exit_ns"] - start["monotonic_enter_ns"]
+        boundary_probe_wall = (
+            start["snapshot_probe_wall_ns"] + end["snapshot_probe_wall_ns"]
+        )
+        if (
+            span["subject_wall_ns"] != subject_wall
+            or span["inclusive_wall_ns"] != inclusive_wall
+            or span["boundary_probe_wall_ns"] != boundary_probe_wall
+            or inclusive_wall != subject_wall + boundary_probe_wall
+        ):
+            return False
+        key = _x4c_span_key(span)
+        identity = (key, span["start_seq"], span["end_seq"])
+        if identity in supplied:
+            return False
+        supplied.add(identity)
+        interval = (span["start_seq"], span["end_seq"])
+        if span["nesting"] == "nested":
+            nested_intervals.append(interval)
+        else:
+            top_level_intervals[span["track"]].append(interval)
+    if supplied != matched:
+        return False
+
+    for intervals in top_level_intervals.values():
+        intervals.sort()
+        if any(after[0] < before[1] for before, after in zip(intervals, intervals[1:])):
+            return False
+    opening_containers = [
+        interval
+        for span, interval in zip(spans, [(s["start_seq"], s["end_seq"]) for s in spans])
+        if span.get("track") == "legacy_opening"
+        and span.get("phase") in {"initial_group_opening", "fold_round_opening"}
+        and span.get("nesting") == "top_level"
+    ]
+    if any(
+        not any(parent_start <= start and end <= parent_end for parent_start, parent_end in opening_containers)
+        for start, end in nested_intervals
+    ):
+        return False
+    nested_intervals.sort()
+    if any(
+        after[0] < before[1]
+        for before, after in zip(nested_intervals, nested_intervals[1:])
+    ):
+        return False
+
+    seal_phases = {
+        span["phase"] for span in spans if span["track"] == "legacy_seal"
+    }
+    opening_phases = {
+        span["phase"] for span in spans if span["track"] == "legacy_opening"
+    }
+    if not (
+        seal_phases == X4C_LEGACY_SEAL_PHASES
+        and opening_phases == X4C_LEGACY_OPENING_PHASES
+    ):
+        return False
+    finish_ends = [
+        span["end_seq"]
+        for span in spans
+        if span["phase"] == "backend_finish_synchronization_boundary"
+    ]
+    opening_starts = [
+        span["start_seq"] for span in spans if span["track"] == "legacy_opening"
+    ]
+    return (
+        len(finish_ends) == 1
+        and bool(opening_starts)
+        and finish_ends[0] < min(opening_starts)
+        and boundary_by_seq[finish_ends[0]]["cuda"]["synchronized"] is True
+        and boundary_by_seq[finish_ends[0]]["cuda"]["outstanding_operations"] == 0
+    )
+
+
+def _x4c_immutable_valid(row: Any) -> bool:
+    return (
+        isinstance(row, dict)
+        and row.get("protocol_profile") == X4_V4_PROFILE
+        and row.get("rate") == "1/8"
+        and row.get("query_count") == 111
+        and row.get("pcs_bytes") == X4_V4_PCS_BYTES
+        and row.get("response_bytes") == X4_V4_RESPONSE_BYTES
+        and row.get("proof_format_changed") is False
+        and row.get("root_changed") is False
+        and row.get("lean_changed") is False
+        and row.get("soundness_changed") is False
+    )
+
+
+def _x4c_storage_and_machine_valid(machine: Any) -> bool:
+    if not (
+        isinstance(machine, dict)
+        and machine.get("provider") == "RunPod"
+        and "A100-SXM4-80GB" in machine.get("gpu", "")
+        and _x4c_nonnegative_int(machine.get("memory_bytes"))
+        and machine["memory_bytes"] >= X4C_MIN_HOST_RAM_BYTES
+        and machine.get("rayon_threads") == 8
+        and machine.get("commit_seal_open_unpinned") is True
+        and machine.get("durable_tier")
+        == "coefficients_plus_five_roots_on_persistent"
+        and machine.get("local_storage_role") == "scratch_ram_spill_and_records"
+        and machine.get("persistent_class") == "PERSISTENT"
+    ):
+        return False
+    persistent = machine.get("persistent_volume")
+    local = machine.get("local_non_mfs_storage")
+    return (
+        isinstance(persistent, dict)
+        and isinstance(local, dict)
+        and isinstance(persistent.get("path"), str)
+        and bool(persistent["path"])
+        and isinstance(local.get("path"), str)
+        and bool(local["path"])
+        and persistent["path"] != local["path"]
+        and isinstance(persistent.get("filesystem_type"), str)
+        and bool(persistent["filesystem_type"])
+        and isinstance(persistent.get("mount_point"), str)
+        and bool(persistent["mount_point"])
+        and isinstance(local.get("filesystem_type"), str)
+        and local["filesystem_type"] not in {"", "tmpfs", "ramfs", "mfs"}
+        and isinstance(local.get("mount_point"), str)
+        and bool(local["mount_point"])
+        and persistent["mount_point"] != local["mount_point"]
+        and _x4c_nonnegative_int(persistent.get("available_bytes"))
+        and _x4c_nonnegative_int(local.get("available_bytes"))
+        and local["available_bytes"] >= X4C_MIN_LOCAL_STORAGE_BYTES
+    )
+
+
+def _x4c_legacy_causal_result_valid(row: dict[str, Any]) -> bool:
+    correction = row.get("terminology_correction")
+    candidates = row.get("candidates")
+    if not (
+        row.get("schema") == 1
+        and row.get("milestone") == X4C_LEGACY_CAUSAL_MILESTONE
+        and row.get("phase") == 2
+        and row.get("pod_profile") == X4C_POD_PROFILE
+        and row.get("git_dirty") is False
+        and isinstance(row.get("git_sha"), str)
+        and len(row["git_sha"]) == 40
+        and _x4c_immutable_valid(row.get("immutable"))
+        and _x4c_storage_and_machine_valid(row.get("machine"))
+        and isinstance(correction, dict)
+        and correction.get("byte_reconciliation_difference_bytes") == 49_216
+        and correction.get("byte_reconciliation_classification")
+        == "EXACT_BYTE_RECONCILIATION"
+        and correction.get("reconstructed_wall_residual_ns") == 59_601
+        and correction.get("aggregate_rate_derived_from_same_wall") is True
+        and correction.get("independent_causal_timing_evidence") is False
+        and correction.get("production_host_cause") == "OPEN_PENDING_PART4_PROBE"
+        and correction.get("design_depends_on_specific_cause") is False
+        and correction.get("retracted_hypotheses")
+        == ["pinned_memory_deregistration", "unlink_writeback_during_open"]
+        and isinstance(candidates, list)
+        and candidates
+    ):
+        return False
+
+    any_obstruction = False
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            return False
+        boundaries = candidate.get("boundaries")
+        obstruction_reasons = candidate.get("obstruction_reasons")
+        controls = candidate.get("zero_expected_controls")
+        if not (
+            _x4c_nonnegative_int(candidate.get("ordinal"))
+            and isinstance(candidate.get("accepted"), bool)
+            and isinstance(obstruction_reasons, list)
+            and all(
+                isinstance(reason, str) and reason for reason in obstruction_reasons
+            )
+            and _x4c_boundary_timeline_valid(
+                boundaries, require_available=False
+            )
+            and _x4c_lifecycle_timeline_valid(
+                candidate.get("events"), candidate.get("spans"), boundaries
+            )
+            and candidate.get("packed_opening_bytes") == X4_V4_PACKED_OPENING_BYTES
+            and candidate.get("pcs_bytes") == X4_V4_PCS_BYTES
+            and candidate.get("response_bytes") == X4_V4_RESPONSE_BYTES
+            and isinstance(controls, dict)
+            and all(
+                _x4c_nonnegative_int(controls.get(key))
+                for key in (
+                    "pinned_memory_deregistrations_during_open",
+                    "unlink_calls_during_open",
+                    "writeback_bytes_during_open",
+                    "sealed_owned_pinned_bytes",
+                    "sealed_owned_device_bytes",
+                    "sealed_owned_file_backed_bytes",
+                )
+            )
+        ):
+            return False
+        control_keys = (
+            "pinned_memory_deregistrations_during_open",
+            "unlink_calls_during_open",
+            "writeback_bytes_during_open",
+            "sealed_owned_pinned_bytes",
+            "sealed_owned_device_bytes",
+            "sealed_owned_file_backed_bytes",
+        )
+        nonzero_control = any(controls[key] != 0 for key in control_keys)
+        missing_counter = any(
+            not boundary[group]["availability"]["available"]
+            for boundary in boundaries
+            for group in (
+                "process_io",
+                "page_faults",
+                "process_memory",
+                "smaps_rollup",
+                "allocator",
+                "numa",
+                "cuda",
+            )
+        )
+        candidate_obstruction = bool(obstruction_reasons)
+        if (nonzero_control or missing_counter) != candidate_obstruction or candidate[
+            "accepted"
+        ] is candidate_obstruction:
+            return False
+        any_obstruction |= candidate_obstruction
+
+        maximum = {
+            "pinned": max(
+                boundary["sealed_ownership"]["pinned_host_bytes"]
+                for boundary in boundaries
+            ),
+            "device": max(
+                boundary["sealed_ownership"]["device_bytes"]
+                for boundary in boundaries
+            ),
+            "file": max(
+                boundary["sealed_ownership"]["file_backed_bytes"]
+                for boundary in boundaries
+            ),
+        }
+        if (
+            controls["sealed_owned_pinned_bytes"] != maximum["pinned"]
+            or controls["sealed_owned_device_bytes"] != maximum["device"]
+            or controls["sealed_owned_file_backed_bytes"] != maximum["file"]
+        ):
+            return False
+        opening_boundaries = [
+            boundaries[event["boundary_seq"]]
+            for event in candidate["events"]
+            if event["track"] == "legacy_opening"
+        ]
+        if not opening_boundaries:
+            return False
+        opening_boundaries.sort(key=lambda boundary: boundary["seq"])
+        if any(
+            boundary["sealed_ownership"]["owned_file_count"] != 0
+            or boundary["sealed_ownership"]["owned_mapping_count"] != 0
+            or boundary["sealed_ownership"]["borrowed_initial_source_file_count"] != 5
+            for boundary in opening_boundaries
+        ) and not candidate_obstruction:
+            return False
+        initial_ownership = opening_boundaries[0]["sealed_ownership"]
+        if (
+            initial_ownership["fold_codeword_bytes"]
+            != X4C_PRODUCTION_FOLD_CODEWORD_BYTES
+            or initial_ownership["fold_outer_cache_bytes"]
+            != X4C_PRODUCTION_FOLD_OUTER_CACHE_BYTES
+            or initial_ownership["ordinary_host_bytes"]
+            != X4C_PRODUCTION_SEALED_STATE_BYTES
+        ):
+            return False
+        phase_end_boundaries = {
+            event["phase"]: boundaries[event["boundary_seq"]]
+            for event in candidate["events"]
+            if event["track"] == "legacy_opening"
+            and event["transition"] == "span_end"
+            and event["phase"]
+            in {
+                "destroy_codewords",
+                "destroy_outer_cache_levels",
+                "destroy_remaining_sealed_state",
+            }
+        }
+        after_codewords = phase_end_boundaries.get("destroy_codewords", {}).get(
+            "sealed_ownership", {}
+        )
+        after_cache = phase_end_boundaries.get("destroy_outer_cache_levels", {}).get(
+            "sealed_ownership", {}
+        )
+        after_remaining = phase_end_boundaries.get(
+            "destroy_remaining_sealed_state", {}
+        ).get("sealed_ownership", {})
+        if not (
+            after_codewords.get("fold_codeword_bytes") == 0
+            and after_codewords.get("fold_outer_cache_bytes")
+            == X4C_PRODUCTION_FOLD_OUTER_CACHE_BYTES
+            and after_codewords.get("ordinary_host_bytes")
+            == X4C_PRODUCTION_FOLD_OUTER_CACHE_BYTES
+            and after_cache.get("fold_codeword_bytes") == 0
+            and after_cache.get("fold_outer_cache_bytes") == 0
+            and after_cache.get("ordinary_host_bytes") == 0
+            and after_remaining.get("ordinary_host_bytes") == 0
+        ):
+            return False
+        opening_unlinks = (
+            opening_boundaries[-1]["temporary_files"]["cumulative_deleted_files"]
+            - opening_boundaries[0]["temporary_files"]["cumulative_deleted_files"]
+        )
+        if controls["unlink_calls_during_open"] != opening_unlinks:
+            return False
+
+    verdict = row.get("verdict")
+    return (
+        isinstance(verdict, str)
+        and (
+            (not any_obstruction and verdict.startswith("DIAGNOSTIC_COMPLETE"))
+            or (any_obstruction and verdict.startswith("HARD_STOP_OBSTRUCTION"))
+        )
+        and row.get("hard_stop") is any_obstruction
+    )
+
+
+def validate_x4c_legacy_causal_result(path: Path) -> bool:
+    try:
+        if not path.is_absolute():
+            path = REPO / path
+        with path.open("r", encoding="utf-8") as handle:
+            return _x4c_legacy_causal_result_valid(json.load(handle))
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return False
+
+
+def _x4c_probe_candidate_valid(
+    candidate: Any,
+    *,
+    variant: str,
+    measured: bool,
+    geometry: dict[str, Any],
+) -> bool:
+    if not (
+        isinstance(candidate, dict)
+        and candidate.get("variant") == variant
+        and candidate.get("measured") is measured
+        and _x4c_nonnegative_int(candidate.get("ordinal"))
+        and _x4c_positive_int(candidate.get("child_pid"))
+        and candidate.get("geometry") == geometry
+        and candidate.get("populated_bytes") == geometry["populated_bytes"]
+        and _x4c_positive_int(candidate.get("touched_pages"))
+        and _x4c_positive_int(candidate.get("population_checksum_u64"))
+        and _x4c_boundary_timeline_valid(candidate.get("boundaries"))
+        and candidate.get("child_exit_success") is True
+        and candidate.get("child_exit_code") == 0
+        and candidate.get("accepted") is True
+        and candidate.get("obstruction_reasons") == []
+    ):
+        return False
+    timing = candidate.get("timing")
+    if not (
+        isinstance(timing, dict)
+        and _x4c_positive_int(timing.get("allocation_population_wall_ns"))
+        and _x4c_positive_int(timing.get("proof_ready_wall_ns"))
+        and _x4c_positive_int(timing.get("parent_child_wall_ns"))
+        and _x4c_nonnegative_int(timing.get("child_reap_wall_ns"))
+        and all(
+            _x4c_nonnegative_int(timing.get(key))
+            for key in (
+                "distributed_drop_wall_ns",
+                "destroy_codewords_wall_ns",
+                "destroy_outer_cache_levels_wall_ns",
+                "destroy_remaining_state_wall_ns",
+                "logical_arena_reset_wall_ns",
+                "backing_release_wall_ns",
+                "teardown_total_wall_ns",
+            )
+        )
+    ):
+        return False
+    boundaries = {boundary["label"]: boundary for boundary in candidate["boundaries"]}
+    populated = boundaries.get("payload_populated") or boundaries.get(
+        "payload_populated_no_teardown"
+    )
+    if not (
+        isinstance(populated, dict)
+        and populated["sealed_ownership"]["fold_codeword_bytes"]
+        == geometry["fold_codeword_bytes"]
+        and populated["sealed_ownership"]["fold_outer_cache_bytes"]
+        == geometry["fold_outer_cache_bytes"]
+        and populated["sealed_ownership"]["ordinary_host_bytes"]
+        == geometry["populated_bytes"]
+        and populated["sealed_ownership"]["pinned_host_bytes"] == 0
+        and populated["sealed_ownership"]["device_bytes"] == 0
+        and populated["sealed_ownership"]["file_backed_bytes"] == 0
+        and all(
+            boundary["temporary_files"]["live_file_count"] == 0
+            and boundary["temporary_files"]["live_file_bytes"] == 0
+            and boundary["temporary_files"]["live_directory_count"] == 0
+            for boundary in candidate["boundaries"]
+        )
+    ):
+        return False
+
+    final = candidate["boundaries"][-1]["sealed_ownership"]
+    if variant == "distributed_drop":
+        return (
+            candidate.get("termination") == "normal_return_after_explicit_teardown"
+            and timing["distributed_drop_wall_ns"] > 0
+            and timing["teardown_total_wall_ns"] > 0
+            and _x4c_positive_int(timing.get("session_reusable_wall_ns"))
+            and candidate.get("intentionally_retained_bytes") == 0
+            and candidate.get("arena_backing_retained_after_reset_bytes") == 0
+            and candidate.get("outstanding_payload_bytes_after_teardown") == 0
+            and final["ordinary_host_bytes"] == 0
+        )
+    if variant == "manually_drop_no_teardown":
+        return (
+            candidate.get("termination") == "_exit_no_destructors"
+            and timing["teardown_total_wall_ns"] == 0
+            and timing.get("session_reusable_wall_ns") is None
+            and candidate.get("intentionally_retained_bytes")
+            == geometry["populated_bytes"]
+            and candidate.get("outstanding_payload_bytes_after_teardown")
+            == geometry["populated_bytes"]
+            and final["ordinary_host_bytes"] == geometry["populated_bytes"]
+        )
+    if variant == "categorized_drop":
+        codewords = boundaries.get("codewords_destroyed")
+        cache = boundaries.get("outer_cache_levels_destroyed")
+        remaining = boundaries.get("remaining_state_destroyed")
+        return (
+            candidate.get("termination") == "normal_return_after_explicit_teardown"
+            and timing["destroy_codewords_wall_ns"] > 0
+            and timing["destroy_outer_cache_levels_wall_ns"] > 0
+            and timing["destroy_remaining_state_wall_ns"] > 0
+            and timing["teardown_total_wall_ns"] > 0
+            and _x4c_positive_int(timing.get("session_reusable_wall_ns"))
+            and isinstance(codewords, dict)
+            and codewords["sealed_ownership"]["fold_codeword_bytes"] == 0
+            and codewords["sealed_ownership"]["fold_outer_cache_bytes"]
+            == geometry["fold_outer_cache_bytes"]
+            and isinstance(cache, dict)
+            and cache["sealed_ownership"]["ordinary_host_bytes"] == 0
+            and isinstance(remaining, dict)
+            and remaining["sealed_ownership"]["ordinary_host_bytes"] == 0
+            and candidate.get("outstanding_payload_bytes_after_teardown") == 0
+            and final["ordinary_host_bytes"] == 0
+        )
+    if variant == "single_arena_reset":
+        reset = boundaries.get("arena_logically_reset_backing_retained")
+        release = boundaries.get("arena_backing_released")
+        return (
+            candidate.get("termination") == "normal_return_after_explicit_teardown"
+            and timing["logical_arena_reset_wall_ns"] > 0
+            and timing["backing_release_wall_ns"] > 0
+            and timing["teardown_total_wall_ns"] > 0
+            and _x4c_positive_int(timing.get("session_reusable_wall_ns"))
+            and candidate.get("arena_backing_retained_after_reset_bytes")
+            == geometry["populated_bytes"]
+            and isinstance(reset, dict)
+            and reset["sealed_ownership"]["fold_codeword_bytes"] == 0
+            and reset["sealed_ownership"]["fold_outer_cache_bytes"] == 0
+            and reset["sealed_ownership"]["other_ordinary_host_bytes"]
+            == geometry["populated_bytes"]
+            and isinstance(release, dict)
+            and release["sealed_ownership"]["ordinary_host_bytes"] == 0
+            and candidate.get("outstanding_payload_bytes_after_teardown") == 0
+            and final["ordinary_host_bytes"] == 0
+        )
+    return False
+
+
+def _x4c_lifecycle_probe_result_valid(row: dict[str, Any]) -> bool:
+    geometry = row.get("geometry")
+    variants = row.get("variants")
+    if not (
+        row.get("schema") == 1
+        and row.get("milestone") == X4C_LIFECYCLE_PROBE_MILESTONE
+        and row.get("phase") == 2
+        and row.get("pod_profile") == X4C_POD_PROFILE
+        and row.get("mode") == "exact_pod"
+        and row.get("pod_contacted") is True
+        and row.get("git_dirty") is False
+        and isinstance(row.get("git_sha"), str)
+        and len(row["git_sha"]) == 40
+        and _x4c_immutable_valid(row.get("immutable"))
+        and _x4c_storage_and_machine_valid(row.get("machine"))
+        and isinstance(geometry, dict)
+        and geometry.get("domain_log2") == 29
+        and geometry.get("fold_rounds") == 27
+        and geometry.get("fold_codeword_bytes")
+        == X4C_PRODUCTION_FOLD_CODEWORD_BYTES
+        and geometry.get("fold_outer_cache_bytes")
+        == X4C_PRODUCTION_FOLD_OUTER_CACHE_BYTES
+        and geometry.get("populated_bytes") == X4C_PRODUCTION_SEALED_STATE_BYTES
+        and row.get("warmup_count_per_variant") == 1
+        and _x4c_positive_int(row.get("measured_candidates_per_variant"))
+        and row["measured_candidates_per_variant"] >= 3
+        and row.get("child_process_isolation") is True
+        and isinstance(variants, list)
+        and [variant.get("variant") for variant in variants if isinstance(variant, dict)]
+        == [
+            "distributed_drop",
+            "manually_drop_no_teardown",
+            "categorized_drop",
+            "single_arena_reset",
+        ]
+    ):
+        return False
+
+    all_pids: set[int] = set()
+    for variant in variants:
+        name = variant["variant"]
+        warmup = variant.get("warmup")
+        measured = variant.get("measured_candidates")
+        if not (
+            variant.get("warmup_count") == 1
+            and variant.get("measured_candidate_count")
+            == row["measured_candidates_per_variant"]
+            and isinstance(measured, list)
+            and len(measured) == row["measured_candidates_per_variant"]
+            and _x4c_probe_candidate_valid(
+                warmup, variant=name, measured=False, geometry=geometry
+            )
+            and all(
+                _x4c_probe_candidate_valid(
+                    candidate, variant=name, measured=True, geometry=geometry
+                )
+                for candidate in measured
+            )
+            and [candidate["ordinal"] for candidate in measured]
+            == list(range(1, len(measured) + 1))
+            and variant.get("all_accepted") is True
+        ):
+            return False
+        pids = [warmup["child_pid"], *[candidate["child_pid"] for candidate in measured]]
+        if len(set(pids)) != len(pids) or any(pid in all_pids for pid in pids):
+            return False
+        all_pids.update(pids)
+        ordered = sorted(measured, key=lambda candidate: candidate["timing"]["parent_child_wall_ns"])
+        selected = ordered[len(ordered) // 2]
+        if variant.get("selected_upper_median_ordinal") != selected["ordinal"]:
+            return False
+    return (
+        row.get("all_accepted") is True
+        and row.get("hard_stop_before_x4c_online") is True
+    )
+
+
+def validate_x4c_lifecycle_probe_result(path: Path) -> bool:
+    try:
+        if not path.is_absolute():
+            path = REPO / path
+        with path.open("r", encoding="utf-8") as handle:
+            return _x4c_lifecycle_probe_result_valid(json.load(handle))
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
         return False
 
@@ -4068,6 +5069,16 @@ def main() -> None:
         type=Path,
         help="fail closed unless one JSON is the clean CPU-only X4c Phase-1 postdiction",
     )
+    ap.add_argument(
+        "--validate-x4c-legacy-causal",
+        type=Path,
+        help="fail closed unless one JSON is a complete X4c legacy causal diagnostic",
+    )
+    ap.add_argument(
+        "--validate-x4c-lifecycle-probe",
+        type=Path,
+        help="fail closed unless one JSON is the exact 51.54-GB X4c lifecycle probe",
+    )
     args = ap.parse_args()
 
     selected_validators = sum(
@@ -4083,6 +5094,8 @@ def main() -> None:
             args.validate_x4b_local,
             args.validate_x4b_pod,
             args.validate_x4c_phase1,
+            args.validate_x4c_legacy_causal,
+            args.validate_x4c_lifecycle_probe,
         )
     )
     if selected_validators > 1:
@@ -4160,6 +5173,24 @@ def main() -> None:
         if not validate_x4c_phase1_result(args.validate_x4c_phase1):
             raise SystemExit("invalid or inconsistent X4c Phase-1 result")
         print(f"valid X4c Phase-1 result: {args.validate_x4c_phase1}")
+        return
+    if args.validate_x4c_legacy_causal is not None:
+        if args.write_json:
+            raise SystemExit(
+                "--write-json and --validate-x4c-legacy-causal are mutually exclusive"
+            )
+        if not validate_x4c_legacy_causal_result(args.validate_x4c_legacy_causal):
+            raise SystemExit("invalid or inconsistent X4c legacy causal diagnostic")
+        print(f"valid X4c legacy causal diagnostic: {args.validate_x4c_legacy_causal}")
+        return
+    if args.validate_x4c_lifecycle_probe is not None:
+        if args.write_json:
+            raise SystemExit(
+                "--write-json and --validate-x4c-lifecycle-probe are mutually exclusive"
+            )
+        if not validate_x4c_lifecycle_probe_result(args.validate_x4c_lifecycle_probe):
+            raise SystemExit("invalid or inconsistent X4c exact-size lifecycle probe")
+        print(f"valid X4c exact-size lifecycle probe: {args.validate_x4c_lifecycle_probe}")
         return
 
     report = p7_report(args.results_dir)

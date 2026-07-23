@@ -17,7 +17,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 29;
+pub const CUDA_ABI_VERSION: u32 = 30;
 pub const OPERATION_COUNT: usize = 7;
 pub const DEFERRED_TIMING_CAPACITY: usize = 512;
 
@@ -211,6 +211,24 @@ pub struct BackendStats {
     pub physical_free_calls: u64,
     pub live_device_bytes: u64,
     pub peak_device_bytes: u64,
+    /// Successful physical `cudaMallocHost` calls. Pinned buffers are pooled,
+    /// so this changes only on a pool miss.
+    pub pinned_allocation_calls: u64,
+    pub pinned_alloc_requests: u64,
+    pub pinned_reuse_hits: u64,
+    pub pinned_free_requests: u64,
+    /// Physical `cudaFreeHost` calls, issued only by cache trim/context
+    /// teardown rather than per response.
+    pub pinned_physical_free_calls: u64,
+    pub pinned_host_write_calls: u64,
+    pub pinned_host_write_bytes: u64,
+    pub live_pinned_bytes: u64,
+    pub peak_pinned_bytes: u64,
+    pub x4c_arena_reset_calls: u64,
+    pub x4c_arena_reset_bytes: u64,
+    pub x4c_kernel_launches: u64,
+    pub x4c_control_peek_calls: u64,
+    pub x4c_control_peek_pending: u64,
     /// Deferred timing records enqueued since the most recent reset.
     pub timing_records: u64,
     /// All elapsed-time query attempts, including provider success/no-write.
@@ -220,9 +238,10 @@ pub struct BackendStats {
     pub timing_elapsed_no_write: u64,
     /// Successful `cudaEventElapsedTime` calls used for timing attribution.
     pub timing_event_queries: u64,
-    /// All CUDA event API calls issued in the measurement window (create,
-    /// record, elapsed and failure-path readiness queries). Counter-only mode
-    /// must keep this exactly zero.
+    /// CUDA timing-event API calls issued in the measurement window (create,
+    /// record, elapsed and failure-path timing readiness queries). Non-timing
+    /// pinned-buffer readiness events are excluded. Counter-only mode must
+    /// keep this exactly zero.
     pub timing_event_api_calls: u64,
     /// Maximum number of unflushed records in the fixed ring.
     pub timing_pending_high_water: u64,
@@ -247,6 +266,58 @@ pub struct DeviceMemoryBreakdown {
     pub resident_bytes: u64,
     /// Physical capacity retained by the resident best-fit arena for reuse.
     pub cached_resident_bytes: u64,
+}
+
+/// Exact physical/logical ownership of the reusable pinned-host pool.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PinnedMemoryStats {
+    pub active_bytes: u64,
+    pub cached_bytes: u64,
+    pub active_allocations: u64,
+    pub cached_allocations: u64,
+    pub in_flight_allocations: u64,
+    pub physical_allocation_calls: u64,
+    pub allocation_requests: u64,
+    pub reuse_hits: u64,
+    pub free_requests: u64,
+    pub physical_free_calls: u64,
+    pub host_write_calls: u64,
+    pub host_write_bytes: u64,
+    pub peak_bytes: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(u32)]
+pub enum CudaStreamState {
+    #[default]
+    Idle = 0,
+    Pending = 1,
+}
+
+/// A non-synchronizing ownership/control snapshot. The CUDA implementation
+/// performs exactly one `cudaStreamQuery`; it never flushes timing records or
+/// waits for device work.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct X4cControlState {
+    pub stream_state: CudaStreamState,
+    /// Rust-side measurement ownership copied without consulting or
+    /// synchronizing the CUDA stream.
+    pub measurement_active: bool,
+    pub coarse_timing_active: bool,
+    pub timing_record_active: bool,
+    pub measurement_poisoned: bool,
+    pub outstanding_cuda_operations: u64,
+    pub pending_timing_records: u64,
+    pub active_device_allocations: u64,
+    pub cached_device_allocations: u64,
+    pub active_pinned_allocations: u64,
+    pub cached_pinned_allocations: u64,
+    pub in_flight_pinned_allocations: u64,
+    pub workspace_device_bytes: u64,
+    pub active_device_bytes: u64,
+    pub cached_device_bytes: u64,
+    pub active_pinned_bytes: u64,
+    pub cached_pinned_bytes: u64,
 }
 
 impl BackendStats {
@@ -326,6 +397,42 @@ pub struct Fp2Repr {
     pub c1: u64,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct X4cGatherRequest {
+    pub source_offset_bytes: u64,
+    pub destination_offset_bytes: u64,
+    pub byte_len: u64,
+}
+
+const _: () = assert!(size_of::<X4cGatherRequest>() == 24);
+
+pub const X4C_GATHER_CODEWORD_SYMBOL: u8 = 0;
+pub const X4C_GATHER_CACHED_OUTER_DIGEST: u8 = 1;
+pub const X4C_GATHER_REBUILT_OUTER_DIGEST: u8 = 2;
+
+/// One exact operation from the frozen canonical gather plan. A submitted
+/// batch is ordered by round, then symbols, then the deduplicated frontier's
+/// `(level,index)` order.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct X4cCanonicalGatherOperation {
+    pub codeword_offset_bytes: u64,
+    pub cache_offset_bytes: u64,
+    pub source_offset_bytes: u64,
+    pub outer_len: u64,
+    pub index: u64,
+    pub destination_offset_bytes: u64,
+    pub descriptor: [u8; 32],
+    pub cohort_id: u32,
+    pub source_kind: u8,
+    pub level: u8,
+    pub oracle_kind: u8,
+    pub fold_round: u8,
+}
+
+const _: () = assert!(size_of::<X4cCanonicalGatherOperation>() == 88);
+
 mod device_element {
     pub trait Sealed {}
     impl Sealed for u8 {}
@@ -334,6 +441,8 @@ mod device_element {
     impl Sealed for u32 {}
     impl Sealed for u64 {}
     impl Sealed for super::Fp2Repr {}
+    impl Sealed for super::X4cCanonicalGatherOperation {}
+    impl Sealed for super::X4cGatherRequest {}
 }
 
 /// Plain-old-data values supported by the internal resident-buffer ABI.
@@ -346,6 +455,8 @@ impl DeviceElement for i64 {}
 impl DeviceElement for u32 {}
 impl DeviceElement for u64 {}
 impl DeviceElement for Fp2Repr {}
+impl DeviceElement for X4cCanonicalGatherOperation {}
+impl DeviceElement for X4cGatherRequest {}
 
 mod resident_matrix_element {
     pub trait Sealed {}
@@ -407,6 +518,88 @@ pub struct DeviceBuffer<T: DeviceElement> {
     len: usize,
     context_id: u64,
     _element: PhantomData<T>,
+}
+
+/// Opaque, typed allocation from the context-owned pinned-host pool. Callers
+/// populate it through [`Backend::write_pinned_host`]; no raw pointer escapes
+/// and a buffer cannot be physically registered/deregistered per response.
+#[derive(Debug)]
+pub struct PinnedHostBuffer<T: DeviceElement> {
+    #[cfg_attr(not(feature = "cuda"), allow(dead_code))]
+    id: u64,
+    len: usize,
+    context_id: u64,
+    _element: PhantomData<T>,
+}
+
+/// Deterministic one-level-omitted one-slot N4 cache layout. Digests are
+/// stored level-major for actual outer levels `2..=depth`, left-to-right
+/// within each level. Thus the final digest is the exact root.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct X4cOneSlotN4Layout {
+    outer_len: usize,
+    cache_offset_bytes: usize,
+}
+
+impl X4cOneSlotN4Layout {
+    pub fn new(outer_len: usize, cache_offset_bytes: usize) -> Result<Self, AccelError> {
+        if outer_len < 8
+            || !outer_len.is_power_of_two()
+            || outer_len > (1usize << 33)
+            || cache_offset_bytes % 32 != 0
+        {
+            return Err(AccelError::InvalidInput("invalid X4c one-slot N4 cache layout"));
+        }
+        let layout = Self { outer_len, cache_offset_bytes };
+        layout
+            .cache_offset_bytes
+            .checked_add(layout.cache_bytes())
+            .ok_or(AccelError::InvalidInput("X4c one-slot N4 cache layout overflows usize"))?;
+        Ok(layout)
+    }
+
+    pub fn outer_len(self) -> usize {
+        self.outer_len
+    }
+
+    pub fn depth(self) -> u8 {
+        self.outer_len.ilog2() as u8
+    }
+
+    pub fn retained_digest_count(self) -> usize {
+        self.outer_len / 2 - 1
+    }
+
+    pub fn cache_bytes(self) -> usize {
+        self.retained_digest_count() * 32
+    }
+
+    pub fn cache_offset_bytes(self) -> usize {
+        self.cache_offset_bytes
+    }
+
+    pub fn level_digest_count(self, level: u8) -> Result<usize, AccelError> {
+        if level < 2 || level > self.depth() {
+            return Err(AccelError::InvalidInput("X4c N4 cache level is not retained"));
+        }
+        Ok(self.outer_len >> level)
+    }
+
+    pub fn level_offset_bytes(self, level: u8) -> Result<usize, AccelError> {
+        self.level_digest_count(level)?;
+        let preceding_digests = self.outer_len / 2 - (self.outer_len >> usize::from(level - 1));
+        self.cache_offset_bytes
+            .checked_add(
+                preceding_digests
+                    .checked_mul(32)
+                    .ok_or(AccelError::InvalidInput("X4c N4 cache level offset overflows usize"))?,
+            )
+            .ok_or(AccelError::InvalidInput("X4c N4 cache level offset overflows usize"))
+    }
+
+    pub fn root_offset_bytes(self) -> usize {
+        self.level_offset_bytes(self.depth()).expect("validated X4c one-slot N4 root layout")
+    }
 }
 
 /// Borrowed typed region of an opaque resident allocation.  This is the
@@ -656,6 +849,20 @@ impl<T: DeviceElement> DeviceBuffer<T> {
 
     /// Pure ownership preflight. This performs no CUDA call and lets compound
     /// owners reject a wrong context before consuming any of their handles.
+    pub fn is_owned_by(&self, backend: &Backend) -> bool {
+        backend.kind == BackendKind::CudaResident && self.context_id == backend.context_id
+    }
+}
+
+impl<T: DeviceElement> PinnedHostBuffer<T> {
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
     pub fn is_owned_by(&self, backend: &Backend) -> bool {
         backend.kind == BackendKind::CudaResident && self.context_id == backend.context_id
     }
@@ -954,6 +1161,26 @@ impl Backend {
         Err(AccelError::FeatureDisabled)
     }
 
+    pub fn pinned_memory_stats(&self) -> Result<PinnedMemoryStats, AccelError> {
+        #[cfg(feature = "cuda")]
+        if let Some(cuda) = &self.cuda {
+            return cuda.pinned_memory_stats();
+        }
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Peek at stream/allocator ownership without a synchronization or timing
+    /// flush. A pending stream is an ordinary successful observation.
+    pub fn x4c_control_state(&self) -> Result<X4cControlState, AccelError> {
+        #[cfg(feature = "cuda")]
+        if let Some(cuda) = &self.cuda {
+            let mut state = cuda.x4c_control_state()?;
+            state.measurement_active = self.measurement_active;
+            return Ok(state);
+        }
+        Err(AccelError::FeatureDisabled)
+    }
+
     /// Physically release inactive resident-arena storage. Active buffers and
     /// primitive workspaces remain valid; normal `free_device` stays a cheap
     /// logical free so hot sessions retain reuse.
@@ -965,6 +1192,86 @@ impl Backend {
         }
         #[cfg(not(feature = "cuda"))]
         Err(AccelError::FeatureDisabled)
+    }
+
+    /// Allocate a typed buffer from the reusable pinned-host pool.
+    pub fn alloc_pinned_host<T: DeviceElement>(
+        &mut self,
+        len: usize,
+    ) -> Result<PinnedHostBuffer<T>, AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        {
+            let _ = len;
+            return Err(AccelError::FeatureDisabled);
+        }
+        #[cfg(feature = "cuda")]
+        {
+            self.require_resident()?;
+            let bytes = len
+                .checked_mul(size_of::<T>())
+                .filter(|&bytes| bytes > 0)
+                .ok_or(AccelError::InvalidInput("zero or overflowing pinned allocation"))?;
+            let id = self.cuda.as_mut().expect("CUDA kind without context").pinned_alloc(bytes)?;
+            Ok(PinnedHostBuffer { id, len, context_id: self.context_id, _element: PhantomData })
+        }
+    }
+
+    pub fn write_pinned_host<T: DeviceElement>(
+        &mut self,
+        buffer: &PinnedHostBuffer<T>,
+        offset: usize,
+        values: &[T],
+    ) -> Result<(), AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        {
+            let _ = (buffer, offset, values);
+            return Err(AccelError::FeatureDisabled);
+        }
+        #[cfg(feature = "cuda")]
+        {
+            self.validate_pinned_buffer(buffer)?;
+            validate_region(buffer.len, offset, values.len())?;
+            if values.is_empty() {
+                return Ok(());
+            }
+            self.cuda.as_mut().expect("CUDA kind without context").pinned_write(
+                buffer.id,
+                offset * size_of::<T>(),
+                values.as_ptr().cast(),
+                values.len() * size_of::<T>(),
+            )
+        }
+    }
+
+    /// Logical free: storage returns to the pool and remains registered.
+    pub fn free_pinned_host<T: DeviceElement>(
+        &mut self,
+        buffer: PinnedHostBuffer<T>,
+    ) -> Result<(), AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        {
+            let _ = buffer;
+            return Err(AccelError::FeatureDisabled);
+        }
+        #[cfg(feature = "cuda")]
+        {
+            self.validate_pinned_buffer(&buffer)?;
+            self.cuda.as_mut().expect("CUDA kind without context").pinned_free(buffer.id)
+        }
+    }
+
+    /// Physically deregister only inactive pooled buffers. This is a
+    /// session-teardown/pressure operation and may synchronize.
+    pub fn trim_pinned_cache(&mut self) -> Result<(), AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        {
+            return Err(AccelError::FeatureDisabled);
+        }
+        #[cfg(feature = "cuda")]
+        {
+            self.require_resident()?;
+            self.cuda.as_mut().expect("CUDA kind without context").trim_pinned_cache()
+        }
     }
 
     fn require_resident(&self) -> Result<(), AccelError> {
@@ -984,6 +1291,20 @@ impl Backend {
         if buffer.context_id != self.context_id {
             return Err(AccelError::InvalidInput(
                 "device buffer belongs to a different CUDA context",
+            ));
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "cuda")]
+    fn validate_pinned_buffer<T: DeviceElement>(
+        &self,
+        buffer: &PinnedHostBuffer<T>,
+    ) -> Result<(), AccelError> {
+        self.require_resident()?;
+        if buffer.context_id != self.context_id {
+            return Err(AccelError::InvalidInput(
+                "pinned buffer belongs to a different CUDA context",
             ));
         }
         Ok(())
@@ -4070,6 +4391,523 @@ impl Backend {
         Err(AccelError::FeatureDisabled)
     }
 
+    /// Upload from a pooled pinned buffer into caller-owned arena bytes. This
+    /// is the canonical-template/initial-opening transfer seam: it enqueues no
+    /// allocation and no synchronization.
+    pub fn x4c_upload_pinned_into_arena<T: DeviceElement>(
+        &mut self,
+        source: &PinnedHostBuffer<T>,
+        source_offset: usize,
+        arena: &DeviceBuffer<u8>,
+        destination_offset_bytes: usize,
+        count: usize,
+    ) -> Result<(), AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        {
+            let _ = (source, source_offset, arena, destination_offset_bytes, count);
+            return Err(AccelError::FeatureDisabled);
+        }
+        #[cfg(feature = "cuda")]
+        {
+            self.validate_pinned_buffer(source)?;
+            self.validate_buffer(arena)?;
+            if count == 0 {
+                return Err(AccelError::InvalidInput("empty X4c pinned upload"));
+            }
+            validate_region(source.len, source_offset, count)?;
+            let bytes = checked_product(count, size_of::<T>())?;
+            validate_region(arena.len, destination_offset_bytes, bytes)?;
+            self.cuda.as_mut().expect("CUDA kind without context").x4c_upload_pinned(
+                source.id,
+                source_offset * size_of::<T>(),
+                arena.id,
+                destination_offset_bytes,
+                bytes,
+            )
+        }
+    }
+
+    /// Fold one paired host tile into its global output subrange. The pinned
+    /// tile stores `positive[0..output_count]` followed by
+    /// `negative[0..output_count]`. `scratch_offset_bytes` is caller-owned
+    /// arena scratch of exactly `2 * output_count * sizeof(Fp2Repr)`; no
+    /// hidden device allocation or response staging is performed.
+    #[allow(clippy::too_many_arguments)]
+    pub fn x4c_direct_fold_pinned_tile_into_arena(
+        &mut self,
+        host_tile: &PinnedHostBuffer<Fp2Repr>,
+        host_offset: usize,
+        input_len: usize,
+        output_start: usize,
+        output_count: usize,
+        arena: &DeviceBuffer<u8>,
+        output_offset_bytes: usize,
+        scratch_offset_bytes: usize,
+        challenge: Fp2,
+    ) -> Result<(), AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        {
+            let _ = (
+                host_tile,
+                host_offset,
+                input_len,
+                output_start,
+                output_count,
+                arena,
+                output_offset_bytes,
+                scratch_offset_bytes,
+                challenge,
+            );
+            return Err(AccelError::FeatureDisabled);
+        }
+        #[cfg(feature = "cuda")]
+        {
+            self.validate_buffer(arena)?;
+            self.validate_pinned_buffer(host_tile)?;
+            let half = validate_x4c_fold_geometry(input_len, output_start, output_count)?;
+            let tile_elements = checked_product(output_count, 2)?;
+            validate_region(host_tile.len, host_offset, tile_elements)?;
+            let tile_bytes = checked_product(tile_elements, size_of::<Fp2Repr>())?;
+            let output_bytes = checked_product(half, size_of::<Fp2Repr>())?;
+            validate_aligned_region(
+                arena.len,
+                output_offset_bytes,
+                output_bytes,
+                size_of::<Fp2Repr>(),
+            )?;
+            validate_aligned_region(
+                arena.len,
+                scratch_offset_bytes,
+                tile_bytes,
+                size_of::<Fp2Repr>(),
+            )?;
+            if checked_regions_overlap(
+                scratch_offset_bytes,
+                tile_bytes,
+                output_offset_bytes,
+                output_bytes,
+            )? {
+                return Err(AccelError::InvalidInput(
+                    "X4c fold scratch overlaps its output codeword",
+                ));
+            }
+            self.cuda.as_mut().expect("CUDA kind without context").x4c_direct_fold_pinned_tile(
+                host_tile.id,
+                host_offset * size_of::<Fp2Repr>(),
+                arena.id,
+                output_offset_bytes,
+                scratch_offset_bytes,
+                input_len,
+                output_start,
+                output_count,
+                challenge.into(),
+            )
+        }
+    }
+
+    /// Whole-input pinned convenience used by differential tests. Production
+    /// must use [`Self::x4c_direct_fold_pinned_tile_into_arena`] with a bounded
+    /// reusable pool.
+    pub fn x4c_direct_fold_pinned_into_arena(
+        &mut self,
+        input: &PinnedHostBuffer<Fp2Repr>,
+        input_len: usize,
+        arena: &DeviceBuffer<u8>,
+        output_offset_bytes: usize,
+        scratch_offset_bytes: usize,
+        challenge: Fp2,
+    ) -> Result<(), AccelError> {
+        if input_len < 2 {
+            return Err(AccelError::InvalidInput("invalid X4c direct-fold input length"));
+        }
+        self.x4c_direct_fold_pinned_tile_into_arena(
+            input,
+            0,
+            input_len,
+            0,
+            input_len / 2,
+            arena,
+            output_offset_bytes,
+            scratch_offset_bytes,
+            challenge,
+        )
+    }
+
+    /// Fold an entire resident codeword into a distinct arena region.
+    pub fn x4c_direct_fold_arena_into_arena(
+        &mut self,
+        arena: &DeviceBuffer<u8>,
+        input_offset_bytes: usize,
+        input_len: usize,
+        output_offset_bytes: usize,
+        challenge: Fp2,
+    ) -> Result<(), AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        {
+            let _ = (arena, input_offset_bytes, input_len, output_offset_bytes, challenge);
+            return Err(AccelError::FeatureDisabled);
+        }
+        #[cfg(feature = "cuda")]
+        {
+            self.validate_buffer(arena)?;
+            let half = validate_x4c_fold_geometry(input_len, 0, input_len / 2)?;
+            let input_bytes = checked_product(input_len, size_of::<Fp2Repr>())?;
+            let output_bytes = checked_product(half, size_of::<Fp2Repr>())?;
+            validate_aligned_region(
+                arena.len,
+                input_offset_bytes,
+                input_bytes,
+                size_of::<Fp2Repr>(),
+            )?;
+            validate_aligned_region(
+                arena.len,
+                output_offset_bytes,
+                output_bytes,
+                size_of::<Fp2Repr>(),
+            )?;
+            if checked_regions_overlap(
+                input_offset_bytes,
+                input_bytes,
+                output_offset_bytes,
+                output_bytes,
+            )? {
+                return Err(AccelError::InvalidInput("X4c direct-fold input and output overlap"));
+            }
+            self.cuda.as_mut().expect("CUDA kind without context").x4c_direct_fold_arena(
+                arena.id,
+                input_offset_bytes,
+                input_len,
+                output_offset_bytes,
+                challenge.into(),
+            )
+        }
+    }
+
+    /// Add one activated host tile into an existing resident codeword.
+    #[allow(clippy::too_many_arguments)]
+    pub fn x4c_activation_add_pinned_tile_into_arena(
+        &mut self,
+        host_tile: &PinnedHostBuffer<Fp2Repr>,
+        host_offset: usize,
+        arena: &DeviceBuffer<u8>,
+        destination_offset_bytes: usize,
+        destination_len: usize,
+        destination_start: usize,
+        count: usize,
+        scratch_offset_bytes: usize,
+        activation: Fp2,
+    ) -> Result<(), AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        {
+            let _ = (
+                host_tile,
+                host_offset,
+                arena,
+                destination_offset_bytes,
+                destination_len,
+                destination_start,
+                count,
+                scratch_offset_bytes,
+                activation,
+            );
+            return Err(AccelError::FeatureDisabled);
+        }
+        #[cfg(feature = "cuda")]
+        {
+            self.validate_buffer(arena)?;
+            self.validate_pinned_buffer(host_tile)?;
+            if count == 0
+                || destination_start > destination_len
+                || count > destination_len - destination_start
+            {
+                return Err(AccelError::InvalidInput("invalid X4c activation tile geometry"));
+            }
+            validate_region(host_tile.len, host_offset, count)?;
+            let destination_bytes = checked_product(destination_len, size_of::<Fp2Repr>())?;
+            let scratch_bytes = checked_product(count, size_of::<Fp2Repr>())?;
+            validate_aligned_region(
+                arena.len,
+                destination_offset_bytes,
+                destination_bytes,
+                size_of::<Fp2Repr>(),
+            )?;
+            validate_aligned_region(
+                arena.len,
+                scratch_offset_bytes,
+                scratch_bytes,
+                size_of::<Fp2Repr>(),
+            )?;
+            let destination_tile_offset = destination_offset_bytes
+                .checked_add(checked_product(destination_start, size_of::<Fp2Repr>())?)
+                .ok_or(AccelError::InvalidInput(
+                    "X4c activation destination offset overflows usize",
+                ))?;
+            if checked_regions_overlap(
+                scratch_offset_bytes,
+                scratch_bytes,
+                destination_offset_bytes,
+                destination_bytes,
+            )? {
+                return Err(AccelError::InvalidInput(
+                    "X4c activation scratch overlaps destination",
+                ));
+            }
+            self.cuda.as_mut().expect("CUDA kind without context").x4c_activation_add_pinned_tile(
+                host_tile.id,
+                host_offset * size_of::<Fp2Repr>(),
+                arena.id,
+                destination_tile_offset,
+                scratch_offset_bytes,
+                count,
+                activation.into(),
+            )
+        }
+    }
+
+    /// Build one complete one-slot N4 outer tree while retaining actual levels
+    /// 2..=depth in deterministic level-major, left-to-right order.
+    #[allow(clippy::too_many_arguments)]
+    pub fn x4c_build_one_slot_n4(
+        &mut self,
+        arena: &DeviceBuffer<u8>,
+        codeword_offset_bytes: usize,
+        layout: X4cOneSlotN4Layout,
+        descriptor: [u8; 32],
+        cohort_id: u32,
+        oracle_kind: u8,
+        fold_round: u8,
+    ) -> Result<[u8; 32], AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        {
+            let _ = (
+                arena,
+                codeword_offset_bytes,
+                layout,
+                descriptor,
+                cohort_id,
+                oracle_kind,
+                fold_round,
+            );
+            return Err(AccelError::FeatureDisabled);
+        }
+        #[cfg(feature = "cuda")]
+        {
+            self.validate_buffer(arena)?;
+            if oracle_kind != 2 || fold_round == 0 || descriptor == [0; 32] {
+                return Err(AccelError::InvalidInput("invalid X4c one-slot N4 identity"));
+            }
+            let codeword_bytes = checked_product(layout.outer_len(), size_of::<Fp2Repr>())?;
+            validate_aligned_region(
+                arena.len,
+                codeword_offset_bytes,
+                codeword_bytes,
+                size_of::<Fp2Repr>(),
+            )?;
+            validate_aligned_region(
+                arena.len,
+                layout.cache_offset_bytes(),
+                layout.cache_bytes(),
+                32,
+            )?;
+            if checked_regions_overlap(
+                codeword_offset_bytes,
+                codeword_bytes,
+                layout.cache_offset_bytes(),
+                layout.cache_bytes(),
+            )? {
+                return Err(AccelError::InvalidInput("X4c codeword and retained N4 cache overlap"));
+            }
+            self.cuda.as_mut().expect("CUDA kind without context").x4c_build_one_slot_n4(
+                arena.id,
+                codeword_offset_bytes,
+                layout.outer_len(),
+                layout.cache_offset_bytes(),
+                &descriptor,
+                cohort_id,
+                oracle_kind,
+                fold_round,
+            )
+        }
+    }
+
+    pub fn x4c_gather_fp2_samples(
+        &mut self,
+        arena: &DeviceBuffer<u8>,
+        source_offset_bytes: usize,
+        symbols: usize,
+        indices: &[u64],
+    ) -> Result<Vec<Fp2>, AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        {
+            let _ = (arena, source_offset_bytes, symbols, indices);
+            return Err(AccelError::FeatureDisabled);
+        }
+        #[cfg(feature = "cuda")]
+        {
+            self.validate_buffer(arena)?;
+            if symbols == 0
+                || indices.is_empty()
+                || indices.iter().any(|&index| index >= symbols as u64)
+            {
+                return Err(AccelError::InvalidInput("invalid X4c Fp2 sample geometry"));
+            }
+            validate_aligned_region(
+                arena.len,
+                source_offset_bytes,
+                checked_product(symbols, size_of::<Fp2Repr>())?,
+                size_of::<Fp2Repr>(),
+            )?;
+            let output = self
+                .cuda
+                .as_mut()
+                .expect("CUDA kind without context")
+                .x4c_gather_fp2_samples(arena.id, source_offset_bytes, symbols, indices)?;
+            Ok(output.into_iter().map(Into::into).collect())
+        }
+    }
+
+    /// Copy arbitrary arena byte ranges into caller-selected canonical mailbox
+    /// offsets. The request table is copied from a reusable pinned buffer into
+    /// caller-owned arena scratch; the operation performs no hidden allocation.
+    #[allow(clippy::too_many_arguments)]
+    pub fn x4c_batch_gather_bytes(
+        &mut self,
+        arena: &DeviceBuffer<u8>,
+        requests: &PinnedHostBuffer<X4cGatherRequest>,
+        request_offset: usize,
+        request_count: usize,
+        request_scratch_offset_bytes: usize,
+        mailbox_offset_bytes: usize,
+        mailbox_len: usize,
+    ) -> Result<(), AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        {
+            let _ = (
+                arena,
+                requests,
+                request_offset,
+                request_count,
+                request_scratch_offset_bytes,
+                mailbox_offset_bytes,
+                mailbox_len,
+            );
+            return Err(AccelError::FeatureDisabled);
+        }
+        #[cfg(feature = "cuda")]
+        {
+            self.validate_buffer(arena)?;
+            self.validate_pinned_buffer(requests)?;
+            if request_count == 0 || mailbox_len == 0 {
+                return Err(AccelError::InvalidInput("empty X4c byte-gather batch"));
+            }
+            validate_region(requests.len, request_offset, request_count)?;
+            validate_region(arena.len, mailbox_offset_bytes, mailbox_len)?;
+            validate_aligned_region(
+                arena.len,
+                request_scratch_offset_bytes,
+                checked_product(request_count, size_of::<X4cGatherRequest>())?,
+                8,
+            )?;
+            self.cuda.as_mut().expect("CUDA kind without context").x4c_batch_gather_bytes(
+                arena.id,
+                requests.id,
+                request_offset * size_of::<X4cGatherRequest>(),
+                request_count,
+                request_scratch_offset_bytes,
+                mailbox_offset_bytes,
+                mailbox_len,
+            )
+        }
+    }
+
+    /// Execute every exact operation from the canonical deduplicated frontier
+    /// plan in one public batch. The native validator checks round/frontier
+    /// ordering, identities, source derivations, arena ranges, destination
+    /// overlap and exact request ownership.
+    #[allow(clippy::too_many_arguments)]
+    pub fn x4c_batch_gather_canonical_operations(
+        &mut self,
+        arena: &DeviceBuffer<u8>,
+        operations: &PinnedHostBuffer<X4cCanonicalGatherOperation>,
+        request_offset: usize,
+        operation_count: usize,
+        request_scratch_offset_bytes: usize,
+        mailbox_offset_bytes: usize,
+        mailbox_len: usize,
+    ) -> Result<(), AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        {
+            let _ = (
+                arena,
+                operations,
+                request_offset,
+                operation_count,
+                request_scratch_offset_bytes,
+                mailbox_offset_bytes,
+                mailbox_len,
+            );
+            return Err(AccelError::FeatureDisabled);
+        }
+        #[cfg(feature = "cuda")]
+        {
+            self.validate_buffer(arena)?;
+            self.validate_pinned_buffer(operations)?;
+            if operation_count == 0 || mailbox_len == 0 {
+                return Err(AccelError::InvalidInput("empty X4c canonical gather batch"));
+            }
+            validate_region(operations.len, request_offset, operation_count)?;
+            validate_region(arena.len, mailbox_offset_bytes, mailbox_len)?;
+            validate_aligned_region(
+                arena.len,
+                request_scratch_offset_bytes,
+                checked_product(operation_count, size_of::<X4cCanonicalGatherOperation>())?,
+                8,
+            )?;
+            self.cuda
+                .as_mut()
+                .expect("CUDA kind without context")
+                .x4c_batch_gather_canonical_operations(
+                    arena.id,
+                    operations.id,
+                    request_offset * size_of::<X4cCanonicalGatherOperation>(),
+                    operation_count,
+                    request_scratch_offset_bytes,
+                    mailbox_offset_bytes,
+                    mailbox_len,
+                )
+        }
+    }
+
+    /// Restore a reusable arena region. `zero=false` is a counted logical
+    /// reset; `zero=true` additionally enqueues exact device zeroing.
+    pub fn x4c_arena_reset(
+        &mut self,
+        arena: &DeviceBuffer<u8>,
+        offset_bytes: usize,
+        bytes: usize,
+        zero: bool,
+    ) -> Result<(), AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        {
+            let _ = (arena, offset_bytes, bytes, zero);
+            return Err(AccelError::FeatureDisabled);
+        }
+        #[cfg(feature = "cuda")]
+        {
+            self.validate_buffer(arena)?;
+            if bytes == 0 {
+                return Err(AccelError::InvalidInput("empty X4c arena reset"));
+            }
+            validate_region(arena.len, offset_bytes, bytes)?;
+            self.cuda.as_mut().expect("CUDA kind without context").x4c_arena_reset(
+                arena.id,
+                offset_bytes,
+                bytes,
+                zero,
+            )
+        }
+    }
+
     /// Batched NTT over already padded resident base-field rows.
     pub fn ntt_fp_batch_device(
         &mut self,
@@ -5386,6 +6224,39 @@ fn validate_region(total: usize, offset: usize, len: usize) -> Result<(), AccelE
     Ok(())
 }
 
+#[cfg(feature = "cuda")]
+fn validate_aligned_region(
+    total: usize,
+    offset: usize,
+    len: usize,
+    alignment: usize,
+) -> Result<(), AccelError> {
+    if alignment == 0 || !alignment.is_power_of_two() || offset % alignment != 0 {
+        return Err(AccelError::InvalidInput("device byte region is misaligned"));
+    }
+    validate_region(total, offset, len)
+}
+
+#[cfg(feature = "cuda")]
+fn validate_x4c_fold_geometry(
+    input_len: usize,
+    output_start: usize,
+    output_count: usize,
+) -> Result<usize, AccelError> {
+    if input_len < 2
+        || !input_len.is_power_of_two()
+        || input_len > (1usize << 33)
+        || output_count == 0
+    {
+        return Err(AccelError::InvalidInput("invalid X4c direct-fold geometry"));
+    }
+    let half = input_len / 2;
+    if output_start > half || output_count > half - output_start {
+        return Err(AccelError::InvalidInput("X4c direct-fold tile is out of bounds"));
+    }
+    Ok(half)
+}
+
 fn validate_ntt(msg_len: usize, size: usize) -> Result<(), AccelError> {
     if size < 2 || !size.is_power_of_two() || msg_len > size {
         return Err(AccelError::InvalidInput("invalid NTT geometry"));
@@ -5399,6 +6270,7 @@ mod cuda;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::mem::size_of;
 
     #[test]
     fn cpu_is_default_and_residual_runs() {
@@ -5429,6 +6301,40 @@ mod tests {
             Backend::cuda_resident_with_timing(ResidentTimingPolicy::WallOnlyCounters),
             Err(AccelError::FeatureDisabled)
         ));
+
+        let mut cpu = Backend::cpu();
+        assert!(matches!(cpu.alloc_pinned_host::<u8>(64), Err(AccelError::FeatureDisabled)));
+        assert_eq!(cpu.x4c_control_state(), Err(AccelError::FeatureDisabled));
+        assert_eq!(cpu.trim_pinned_cache(), Err(AccelError::FeatureDisabled));
+    }
+
+    #[test]
+    fn x4c_native_request_layouts_are_frozen() {
+        assert_eq!(size_of::<X4cGatherRequest>(), 24);
+        assert_eq!(size_of::<X4cCanonicalGatherOperation>(), 88);
+    }
+
+    #[test]
+    fn x4c_one_slot_n4_layout_is_level_major_and_exact() {
+        let layout = X4cOneSlotN4Layout::new(32, 4_096).unwrap();
+        assert_eq!(layout.depth(), 5);
+        assert_eq!(layout.retained_digest_count(), 15);
+        assert_eq!(layout.cache_bytes(), 480);
+        assert_eq!(layout.level_digest_count(2).unwrap(), 8);
+        assert_eq!(layout.level_digest_count(3).unwrap(), 4);
+        assert_eq!(layout.level_digest_count(4).unwrap(), 2);
+        assert_eq!(layout.level_digest_count(5).unwrap(), 1);
+        assert_eq!(layout.level_offset_bytes(2).unwrap(), 4_096);
+        assert_eq!(layout.level_offset_bytes(3).unwrap(), 4_352);
+        assert_eq!(layout.level_offset_bytes(4).unwrap(), 4_480);
+        assert_eq!(layout.root_offset_bytes(), 4_544);
+
+        assert!(X4cOneSlotN4Layout::new(4, 0).is_err());
+        assert!(X4cOneSlotN4Layout::new(24, 0).is_err());
+        assert!(X4cOneSlotN4Layout::new(32, 1).is_err());
+        assert!(X4cOneSlotN4Layout::new(1usize << 34, 0).is_err());
+        assert!(layout.level_offset_bytes(1).is_err());
+        assert!(layout.level_offset_bytes(6).is_err());
     }
 }
 

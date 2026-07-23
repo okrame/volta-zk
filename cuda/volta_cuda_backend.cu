@@ -18,7 +18,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 29;
+constexpr uint32_t ABI_VERSION = 30;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -85,14 +85,29 @@ struct RawStats {
     uint64_t physical_free_calls;
     uint64_t live_device_bytes;
     uint64_t peak_device_bytes;
+    uint64_t pinned_allocation_calls;
+    uint64_t pinned_alloc_requests;
+    uint64_t pinned_reuse_hits;
+    uint64_t pinned_free_requests;
+    uint64_t pinned_physical_free_calls;
+    uint64_t pinned_host_write_calls;
+    uint64_t pinned_host_write_bytes;
+    uint64_t live_pinned_bytes;
+    uint64_t peak_pinned_bytes;
+    uint64_t x4c_arena_reset_calls;
+    uint64_t x4c_arena_reset_bytes;
+    uint64_t x4c_kernel_launches;
+    uint64_t x4c_control_peek_calls;
+    uint64_t x4c_control_peek_pending;
     uint64_t timing_records;
     /// Every cudaEventElapsedTime attempt, including success/no-write.
     uint64_t timing_elapsed_query_attempts;
     /// cudaSuccess responses that did not populate a finite duration.
     uint64_t timing_elapsed_no_write;
     uint64_t timing_event_queries;
-    /// Every CUDA event API call issued inside the measurement window.
-    /// Wall-only counter mode must keep this exactly zero.
+    /// CUDA timing-event API calls issued inside the measurement window.
+    /// Non-timing pinned-buffer readiness events are excluded and carry no
+    /// timing attribution. Wall-only counter mode must keep this exactly zero.
     uint64_t timing_event_api_calls;
     uint64_t timing_pending_high_water;
     uint64_t timing_flush_count;
@@ -105,7 +120,48 @@ struct RawStats {
     uint32_t reserved;
 };
 
-static_assert(sizeof(RawStats) == 392, "RawStats ABI layout changed");
+static_assert(sizeof(RawStats) == 504, "RawStats ABI layout changed");
+
+struct RawPinnedMemoryStats {
+    uint64_t active_bytes;
+    uint64_t cached_bytes;
+    uint64_t active_allocations;
+    uint64_t cached_allocations;
+    uint64_t in_flight_allocations;
+    uint64_t physical_allocation_calls;
+    uint64_t allocation_requests;
+    uint64_t reuse_hits;
+    uint64_t free_requests;
+    uint64_t physical_free_calls;
+    uint64_t host_write_calls;
+    uint64_t host_write_bytes;
+    uint64_t peak_bytes;
+};
+
+static_assert(
+    sizeof(RawPinnedMemoryStats) == 104,
+    "RawPinnedMemoryStats ABI layout changed");
+
+struct RawX4cControlState {
+    uint32_t stream_state;
+    uint32_t flags;
+    uint64_t outstanding_cuda_operations;
+    uint64_t pending_timing_records;
+    uint64_t active_device_allocations;
+    uint64_t cached_device_allocations;
+    uint64_t active_pinned_allocations;
+    uint64_t cached_pinned_allocations;
+    uint64_t in_flight_pinned_allocations;
+    uint64_t workspace_device_bytes;
+    uint64_t active_device_bytes;
+    uint64_t cached_device_bytes;
+    uint64_t active_pinned_bytes;
+    uint64_t cached_pinned_bytes;
+};
+
+static_assert(
+    sizeof(RawX4cControlState) == 104,
+    "RawX4cControlState ABI layout changed");
 
 enum class SyncReason {
     HostOutput,
@@ -129,6 +185,20 @@ struct ResidentBuffer {
     size_t logical_bytes = 0;
     uint32_t generation = 0;
     bool active = false;
+};
+
+/// Physically pinned storage is also pooled through a generational id.
+/// `ready` is a non-timing event recorded immediately after the last H2D that
+/// consumed this host allocation; it prevents CPU overwrite/reuse before DMA
+/// completion without adding a stream synchronization.
+struct PinnedBuffer {
+    void* ptr = nullptr;
+    size_t capacity = 0;
+    size_t logical_bytes = 0;
+    cudaEvent_t ready = nullptr;
+    uint32_t generation = 0;
+    bool active = false;
+    bool in_flight = false;
 };
 
 enum class TimingRecordKind {
@@ -168,6 +238,8 @@ struct Context {
     Buffer buffers[BUFFER_COUNT];
     std::vector<ResidentBuffer> resident;
     std::vector<size_t> inactive_resident;
+    std::vector<PinnedBuffer> pinned;
+    std::vector<size_t> inactive_pinned;
     RawStats stats{};
     size_t twiddle_size = 0;
     size_t x4b_twiddle_size = 0;
@@ -194,6 +266,10 @@ struct Context {
     /// interval was discarded. This is internal state, not part of ABI 27.
     bool measurement_poisoned = false;
     int coarse_timing_operation = -1;
+    /// Enqueued public primitive/transfer units not yet covered by a known
+    /// stream-complete observation. This is an ownership counter, not a kernel
+    /// timing source.
+    uint64_t outstanding_cuda_operations = 0;
     std::chrono::steady_clock::time_point phase_started{};
     std::array<uint64_t, 3> phase_ns{};
     std::string error;
@@ -252,6 +328,16 @@ bool checked_add_size(size_t a, size_t b, size_t* out) {
     if (b > std::numeric_limits<size_t>::max() - a) return false;
     *out = a + b;
     return true;
+}
+
+bool byte_ranges_overlap(
+    size_t a_offset, size_t a_bytes, size_t b_offset, size_t b_bytes) {
+    size_t a_end = 0;
+    size_t b_end = 0;
+    if (!checked_add_size(a_offset, a_bytes, &a_end) ||
+        !checked_add_size(b_offset, b_bytes, &b_end))
+        return true;
+    return a_offset < b_end && b_offset < a_end;
 }
 
 int resident_strided_region(
@@ -339,6 +425,7 @@ int synchronize_stream_unclassified(Context* c) {
     const auto finished = std::chrono::steady_clock::now();
     if (e != cudaSuccess) return fail(c, "cudaStreamSynchronize(c->stream)", e);
     c->counter_stream_pending = false;
+    c->outstanding_cuda_operations = 0;
     ++c->stats.synchronizations;
     c->stats.synchronization_ns +=
         std::chrono::duration_cast<std::chrono::nanoseconds>(finished - started).count();
@@ -429,6 +516,145 @@ int trim_inactive_resident(Context* c) {
         b.ptr = nullptr;
         b.capacity = 0;
         b.logical_bytes = 0;
+    }
+    return 0;
+}
+
+uint64_t pinned_id(size_t slot, uint32_t generation) {
+    return (static_cast<uint64_t>(generation) << 32) | (slot + 1);
+}
+
+PinnedBuffer* find_pinned(Context* c, uint64_t id) {
+    if (!c || id == 0) return nullptr;
+    const uint64_t encoded_slot = id & RESIDENT_SLOT_MASK;
+    const uint32_t generation = static_cast<uint32_t>(id >> 32);
+    if (encoded_slot == 0 || generation == 0) return nullptr;
+    const size_t slot = static_cast<size_t>(encoded_slot - 1);
+    if (slot >= c->pinned.size()) return nullptr;
+    PinnedBuffer& b = c->pinned[slot];
+    return b.active && b.generation == generation ? &b : nullptr;
+}
+
+int pinned_region(
+    Context* c, uint64_t id, size_t offset, size_t bytes, void** out,
+    PinnedBuffer** owner = nullptr) {
+    PinnedBuffer* b = find_pinned(c, id);
+    if (!b) return fail_message(c, "unknown pinned buffer id");
+    if (offset > b->logical_bytes || bytes > b->logical_bytes - offset)
+        return fail_message(c, "pinned buffer region is out of bounds");
+    *out = static_cast<unsigned char*>(b->ptr) + offset;
+    if (owner) *owner = b;
+    return 0;
+}
+
+int refresh_pinned_ready(Context* c, PinnedBuffer* b, bool* ready) {
+    if (!b || !ready) return fail_message(c, "invalid pinned readiness query");
+    if (!b->in_flight) {
+        *ready = true;
+        return 0;
+    }
+    const cudaError_t status = cudaEventQuery(b->ready);
+    if (status == cudaSuccess) {
+        b->in_flight = false;
+        *ready = true;
+        return 0;
+    }
+    if (status == cudaErrorNotReady) {
+        *ready = false;
+        return 0;
+    }
+    return fail(c, "cudaEventQuery(pinned ready)", status);
+}
+
+int mark_pinned_in_flight(Context* c, PinnedBuffer* b) {
+    if (!b || !b->ready) return fail_message(c, "invalid pinned transfer owner");
+    const cudaError_t status = cudaEventRecord(b->ready, c->stream);
+    if (status != cudaSuccess) return fail(c, "cudaEventRecord(pinned ready)", status);
+    b->in_flight = true;
+    return 0;
+}
+
+int ensure_pinned_slot_capacity(Context* c) {
+    if (c->pinned.size() < c->pinned.capacity() &&
+        c->pinned.size() < c->inactive_pinned.capacity())
+        return 0;
+    const size_t current = c->pinned.capacity();
+    const size_t next = current == 0 ? 8 : current * 2;
+    if (next <= current || next > RESIDENT_SLOT_MASK)
+        return fail_message(c, "pinned slot id space exhausted");
+    c->pinned.reserve(next);
+    c->inactive_pinned.reserve(next);
+    return 0;
+}
+
+int take_best_fit_pinned(Context* c, size_t bytes, size_t* out_slot) {
+    size_t best_position = std::numeric_limits<size_t>::max();
+    size_t best_capacity = std::numeric_limits<size_t>::max();
+    size_t best_slot = std::numeric_limits<size_t>::max();
+    for (size_t position = 0; position < c->inactive_pinned.size(); ++position) {
+        const size_t slot = c->inactive_pinned[position];
+        PinnedBuffer& b = c->pinned[slot];
+        bool ready = false;
+        if (refresh_pinned_ready(c, &b, &ready)) return -1;
+        if (b.active || !b.ptr || !ready ||
+            b.generation == RESIDENT_GENERATION_MAX || b.capacity < bytes)
+            continue;
+        if (b.capacity < best_capacity ||
+            (b.capacity == best_capacity && slot < best_slot)) {
+            best_position = position;
+            best_capacity = b.capacity;
+            best_slot = slot;
+        }
+    }
+    if (best_position != std::numeric_limits<size_t>::max()) {
+        c->inactive_pinned[best_position] = c->inactive_pinned.back();
+        c->inactive_pinned.pop_back();
+    }
+    *out_slot = best_slot;
+    return 0;
+}
+
+size_t take_empty_pinned_slot(Context* c) {
+    for (size_t position = 0; position < c->inactive_pinned.size(); ++position) {
+        const size_t slot = c->inactive_pinned[position];
+        const PinnedBuffer& b = c->pinned[slot];
+        if (b.active || b.ptr || b.generation == RESIDENT_GENERATION_MAX) continue;
+        c->inactive_pinned[position] = c->inactive_pinned.back();
+        c->inactive_pinned.pop_back();
+        return slot;
+    }
+    return std::numeric_limits<size_t>::max();
+}
+
+int trim_inactive_pinned(Context* c) {
+    bool has_cached_allocation = false;
+    for (const size_t slot : c->inactive_pinned) {
+        const PinnedBuffer& b = c->pinned[slot];
+        if (!b.active && b.ptr) {
+            has_cached_allocation = true;
+            break;
+        }
+    }
+    if (!has_cached_allocation) return 0;
+    if (synchronize_for_reclamation(c)) return -1;
+    for (const size_t slot : c->inactive_pinned) {
+        PinnedBuffer& b = c->pinned[slot];
+        if (b.active || !b.ptr) continue;
+        const size_t capacity = b.capacity;
+        const uint32_t generation = b.generation;
+        if (b.ready) {
+            const cudaError_t event_status = cudaEventDestroy(b.ready);
+            if (event_status != cudaSuccess)
+                return fail(c, "cudaEventDestroy(pinned ready)", event_status);
+            b.ready = nullptr;
+        }
+        const cudaError_t free_status = cudaFreeHost(b.ptr);
+        if (free_status != cudaSuccess)
+            return fail(c, "cudaFreeHost(cached pinned buffer)", free_status);
+        ++c->stats.pinned_physical_free_calls;
+        c->stats.live_pinned_bytes -= capacity;
+        b = PinnedBuffer{};
+        b.generation = generation;
     }
     return 0;
 }
@@ -894,6 +1120,7 @@ int finish_timing(
     uint64_t d2d = 0, uint64_t device_zeroed = 0,
     uint64_t device_generated = 0) {
     uint64_t h2d_ns = 0, kernel_ns = 0, d2h_ns = 0;
+    ++c->outstanding_cuda_operations;
     if (c->coarse_timing_active) {
         if (!c->coarse_inner_active)
             return fail_message(c, "coarse timing finish without an active primitive");
@@ -1000,6 +1227,7 @@ int begin_transfer_timing(Context* c) {
 
 int finish_transfer_timing(Context* c, size_t bytes, bool h2d) {
     uint64_t elapsed_ns = 0;
+    ++c->outstanding_cuda_operations;
     if (c->timing_mode == TIMING_WALL_ONLY_COUNTERS) {
         if (!c->counter_timing_active)
             return fail_message(c, "counter-only transfer finish without active transfer");
@@ -2807,6 +3035,10 @@ extern "C" void volta_cuda_destroy(void* raw) {
     if (c->stream) (void)cudaStreamSynchronize(c->stream);
     for (auto& b : c->buffers) if (b.ptr) cudaFree(b.ptr);
     for (auto& b : c->resident) if (b.ptr) cudaFree(b.ptr);
+    for (auto& b : c->pinned) {
+        if (b.ready) cudaEventDestroy(b.ready);
+        if (b.ptr) cudaFreeHost(b.ptr);
+    }
     for (auto& record : c->timing_ring)
         for (auto event : record.events) if (event) cudaEventDestroy(event);
     for (auto event : c->events) if (event) cudaEventDestroy(event);
@@ -2987,10 +3219,13 @@ extern "C" int volta_cuda_reset_stats(void* raw) {
     if (c->measurement_poisoned && !had_pending_timing &&
         synchronize_stream(c, SyncReason::TimingFlush)) return -1;
     const uint64_t live = c->stats.live_device_bytes;
+    const uint64_t live_pinned = c->stats.live_pinned_bytes;
     const uint32_t timing_mode = c->timing_mode;
     c->stats = RawStats{};
     c->stats.live_device_bytes = live;
     c->stats.peak_device_bytes = live;
+    c->stats.live_pinned_bytes = live_pinned;
+    c->stats.peak_pinned_bytes = live_pinned;
     c->stats.timing_mode = timing_mode;
     c->measurement_poisoned = false;
     c->coarse_accounted_work = false;
@@ -3069,6 +3304,249 @@ extern "C" int volta_cuda_trim_resident_cache(void* raw) {
         return fail_exception(c, "resident-cache trim threw a C++ exception");
     } catch (...) {
         return fail_exception(c, "resident-cache trim threw an unknown exception");
+    }
+}
+
+extern "C" int volta_cuda_pinned_memory_stats(
+    void* raw, RawPinnedMemoryStats* out) {
+    Context* c = static_cast<Context*>(raw);
+    try {
+        if (!c || !out) return fail_message(c, "invalid pinned-memory stats output");
+        RawPinnedMemoryStats result{};
+        for (auto& b : c->pinned) {
+            if (!b.ptr) continue;
+            bool ready = false;
+            if (refresh_pinned_ready(c, &b, &ready)) return -1;
+            if (b.active) {
+                result.active_bytes += b.capacity;
+                ++result.active_allocations;
+            } else {
+                result.cached_bytes += b.capacity;
+                ++result.cached_allocations;
+            }
+            if (!ready) ++result.in_flight_allocations;
+        }
+        if (result.active_bytes + result.cached_bytes != c->stats.live_pinned_bytes)
+            return fail_message(c, "pinned-memory accounting mismatch");
+        result.physical_allocation_calls = c->stats.pinned_allocation_calls;
+        result.allocation_requests = c->stats.pinned_alloc_requests;
+        result.reuse_hits = c->stats.pinned_reuse_hits;
+        result.free_requests = c->stats.pinned_free_requests;
+        result.physical_free_calls = c->stats.pinned_physical_free_calls;
+        result.host_write_calls = c->stats.pinned_host_write_calls;
+        result.host_write_bytes = c->stats.pinned_host_write_bytes;
+        result.peak_bytes = c->stats.peak_pinned_bytes;
+        *out = result;
+        return 0;
+    } catch (const std::exception&) {
+        return fail_exception(c, "pinned-memory stats threw a C++ exception");
+    } catch (...) {
+        return fail_exception(c, "pinned-memory stats threw an unknown exception");
+    }
+}
+
+extern "C" int volta_cuda_x4c_control_state(
+    void* raw, RawX4cControlState* out) {
+    Context* c = static_cast<Context*>(raw);
+    try {
+        if (!c || !out) return fail_message(c, "invalid X4c control-state output");
+        ++c->stats.x4c_control_peek_calls;
+        const cudaError_t stream_status = cudaStreamQuery(c->stream);
+        uint32_t stream_state = 0;
+        if (stream_status == cudaSuccess) {
+            c->outstanding_cuda_operations = 0;
+            c->counter_stream_pending = false;
+            for (auto& b : c->pinned) b.in_flight = false;
+        } else if (stream_status == cudaErrorNotReady) {
+            stream_state = 1;
+            ++c->stats.x4c_control_peek_pending;
+        } else {
+            return fail(c, "cudaStreamQuery(X4c control state)", stream_status);
+        }
+
+        RawX4cControlState result{};
+        result.stream_state = stream_state;
+        result.flags =
+            (c->coarse_timing_active ? 1u : 0u) |
+            (c->active_timing_record != TIMING_RING_SIZE ||
+                     c->counter_timing_active
+                 ? 2u
+                 : 0u) |
+            (c->measurement_poisoned ? 4u : 0u);
+        result.outstanding_cuda_operations = c->outstanding_cuda_operations;
+        result.pending_timing_records = c->timing_ring_pending;
+        for (const auto& b : c->buffers) result.workspace_device_bytes += b.capacity;
+        for (const auto& b : c->resident) {
+            if (!b.ptr) continue;
+            if (b.active) {
+                ++result.active_device_allocations;
+                result.active_device_bytes += b.capacity;
+            } else {
+                ++result.cached_device_allocations;
+                result.cached_device_bytes += b.capacity;
+            }
+        }
+        for (const auto& b : c->pinned) {
+            if (!b.ptr) continue;
+            if (b.active) {
+                ++result.active_pinned_allocations;
+                result.active_pinned_bytes += b.capacity;
+            } else {
+                ++result.cached_pinned_allocations;
+                result.cached_pinned_bytes += b.capacity;
+            }
+            if (b.in_flight) ++result.in_flight_pinned_allocations;
+        }
+        if (result.workspace_device_bytes + result.active_device_bytes +
+                result.cached_device_bytes !=
+            c->stats.live_device_bytes)
+            return fail_message(c, "X4c control-state device ownership mismatch");
+        if (result.active_pinned_bytes + result.cached_pinned_bytes !=
+            c->stats.live_pinned_bytes)
+            return fail_message(c, "X4c control-state pinned ownership mismatch");
+        *out = result;
+        return 0;
+    } catch (const std::exception&) {
+        return fail_exception(c, "X4c control-state peek threw a C++ exception");
+    } catch (...) {
+        return fail_exception(c, "X4c control-state peek threw an unknown exception");
+    }
+}
+
+extern "C" int volta_cuda_pinned_alloc(
+    void* raw, size_t bytes, uint64_t* out_id) {
+    Context* c = static_cast<Context*>(raw);
+    try {
+        if (!c || !bytes || !out_id) return fail_message(c, "invalid pinned allocation");
+        if (c->coarse_timing_active)
+            return reject_message(c, "pinned allocation is forbidden inside a coarse timing scope");
+        ++c->stats.pinned_alloc_requests;
+
+        size_t reused_slot = std::numeric_limits<size_t>::max();
+        if (take_best_fit_pinned(c, bytes, &reused_slot)) return -1;
+        if (reused_slot != std::numeric_limits<size_t>::max()) {
+            PinnedBuffer& b = c->pinned[reused_slot];
+            ++b.generation;
+            b.logical_bytes = bytes;
+            b.active = true;
+            ++c->stats.pinned_reuse_hits;
+            *out_id = pinned_id(reused_slot, b.generation);
+            return 0;
+        }
+
+        bool has_empty_slot = false;
+        for (const size_t slot : c->inactive_pinned) {
+            const PinnedBuffer& b = c->pinned[slot];
+            if (!b.active && !b.ptr && b.generation != RESIDENT_GENERATION_MAX) {
+                has_empty_slot = true;
+                break;
+            }
+        }
+        if (!has_empty_slot && ensure_pinned_slot_capacity(c)) return -1;
+
+        void* ptr = nullptr;
+        cudaError_t status = cudaMallocHost(&ptr, bytes);
+        if (status != cudaSuccess) return fail(c, "cudaMallocHost(&pinned, bytes)", status);
+        cudaEvent_t ready = nullptr;
+        status = cudaEventCreateWithFlags(&ready, cudaEventDisableTiming);
+        if (status != cudaSuccess) {
+            (void)cudaFreeHost(ptr);
+            return fail(c, "cudaEventCreateWithFlags(pinned ready)", status);
+        }
+        ++c->stats.pinned_allocation_calls;
+        c->stats.live_pinned_bytes += bytes;
+        c->stats.peak_pinned_bytes =
+            std::max(c->stats.peak_pinned_bytes, c->stats.live_pinned_bytes);
+
+        size_t slot = take_empty_pinned_slot(c);
+        if (slot == std::numeric_limits<size_t>::max()) {
+            PinnedBuffer b;
+            b.ptr = ptr;
+            b.capacity = bytes;
+            b.logical_bytes = bytes;
+            b.ready = ready;
+            b.generation = 1;
+            b.active = true;
+            try {
+                c->pinned.push_back(b);
+            } catch (...) {
+                (void)cudaEventDestroy(ready);
+                if (cudaFreeHost(ptr) == cudaSuccess) {
+                    ++c->stats.pinned_physical_free_calls;
+                    c->stats.live_pinned_bytes -= bytes;
+                }
+                throw;
+            }
+            slot = c->pinned.size() - 1;
+        } else {
+            PinnedBuffer& b = c->pinned[slot];
+            ++b.generation;
+            b.ptr = ptr;
+            b.capacity = bytes;
+            b.logical_bytes = bytes;
+            b.ready = ready;
+            b.active = true;
+            b.in_flight = false;
+        }
+        *out_id = pinned_id(slot, c->pinned[slot].generation);
+        return 0;
+    } catch (const std::exception&) {
+        return fail_exception(c, "pinned allocation threw a C++ exception");
+    } catch (...) {
+        return fail_exception(c, "pinned allocation threw an unknown exception");
+    }
+}
+
+extern "C" int volta_cuda_pinned_write(
+    void* raw, uint64_t id, size_t offset_bytes, const void* source,
+    size_t bytes) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !source || !bytes) return fail_message(c, "invalid pinned write");
+    void* destination = nullptr;
+    PinnedBuffer* owner = nullptr;
+    if (pinned_region(c, id, offset_bytes, bytes, &destination, &owner)) return -1;
+    bool ready = false;
+    if (refresh_pinned_ready(c, owner, &ready)) return -1;
+    if (!ready)
+        return reject_message(c, "pinned buffer is still consumed by an outstanding H2D");
+    std::memcpy(destination, source, bytes);
+    ++c->stats.pinned_host_write_calls;
+    c->stats.pinned_host_write_bytes += bytes;
+    return 0;
+}
+
+extern "C" int volta_cuda_pinned_free(void* raw, uint64_t id) {
+    Context* c = static_cast<Context*>(raw);
+    try {
+        if (!c || !id) return fail_message(c, "invalid pinned free");
+        if (c->coarse_timing_active)
+            return reject_message(c, "pinned free is forbidden inside a coarse timing scope");
+        PinnedBuffer* b = find_pinned(c, id);
+        if (!b) return fail_message(c, "unknown or stale pinned buffer id");
+        ++c->stats.pinned_free_requests;
+        const size_t slot = static_cast<size_t>((id & RESIDENT_SLOT_MASK) - 1);
+        c->inactive_pinned.push_back(slot);
+        b->logical_bytes = 0;
+        b->active = false;
+        return 0;
+    } catch (const std::exception&) {
+        return fail_exception(c, "pinned free threw a C++ exception");
+    } catch (...) {
+        return fail_exception(c, "pinned free threw an unknown exception");
+    }
+}
+
+extern "C" int volta_cuda_trim_pinned_cache(void* raw) {
+    Context* c = static_cast<Context*>(raw);
+    try {
+        if (!c) return fail_message(c, "invalid pinned-cache trim context");
+        if (c->coarse_timing_active)
+            return reject_message(c, "pinned-cache trim is forbidden inside a coarse timing scope");
+        return trim_inactive_pinned(c);
+    } catch (const std::exception&) {
+        return fail_exception(c, "pinned-cache trim threw a C++ exception");
+    } catch (...) {
+        return fail_exception(c, "pinned-cache trim threw an unknown exception");
     }
 }
 
@@ -4939,6 +5417,736 @@ extern "C" int volta_cuda_x4b_n4_outer_nodes(
         cudaMemcpyDeviceToHost, c->stream));
     return finish_timing(
         c, OP_PCS_MERKLE, input_bytes, output_bytes, 0, 0, generated_bytes);
+}
+
+extern "C" int volta_cuda_x4c_upload_pinned(
+    void* raw, uint64_t pinned_id_value, size_t pinned_offset_bytes,
+    uint64_t arena_id, size_t arena_offset_bytes, size_t bytes) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !bytes) return fail_message(c, "invalid X4c pinned upload");
+    void* source = nullptr;
+    void* destination = nullptr;
+    PinnedBuffer* owner = nullptr;
+    if (pinned_region(
+            c, pinned_id_value, pinned_offset_bytes, bytes, &source, &owner) ||
+        resident_region(c, arena_id, arena_offset_bytes, bytes, &destination))
+        return -1;
+    bool ready = false;
+    if (refresh_pinned_ready(c, owner, &ready)) return -1;
+    if (!ready)
+        return reject_message(c, "X4c pinned upload source is still in flight");
+    if (begin_transfer_timing(c)) return -1;
+    const auto host_call_started = std::chrono::steady_clock::now();
+    const cudaError_t copy_status = cudaMemcpyAsync(
+        destination, source, bytes, cudaMemcpyHostToDevice, c->stream);
+    const auto host_call_finished = std::chrono::steady_clock::now();
+    if (copy_status != cudaSuccess)
+        return fail(c, "cudaMemcpyAsync(X4c pinned upload)", copy_status);
+    if (mark_pinned_in_flight(c, owner)) return -1;
+    ++c->stats.resident_h2d_host_calls;
+    c->stats.resident_h2d_host_call_ns +=
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            host_call_finished - host_call_started).count();
+    return finish_transfer_timing(c, bytes, true);
+}
+
+extern "C" int volta_cuda_x4c_direct_fold_pinned_tile(
+    void* raw, uint64_t pinned_id_value, size_t pinned_offset_bytes,
+    uint64_t arena_id, size_t output_offset_bytes, size_t scratch_offset_bytes,
+    size_t input_len, size_t output_start, size_t output_count,
+    uint64_t challenge_c0, uint64_t challenge_c1) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || input_len < 2 || (input_len & (input_len - 1)) ||
+        input_len > (size_t{1} << 33) || !output_count ||
+        output_start > input_len / 2 ||
+        output_count > input_len / 2 - output_start ||
+        challenge_c0 >= volta_x4b::P || challenge_c1 >= volta_x4b::P)
+        return fail_message(c, "invalid X4c pinned direct-fold geometry");
+    size_t tile_elements = 0;
+    size_t tile_bytes = 0;
+    size_t output_start_bytes = 0;
+    size_t output_tile_bytes = 0;
+    size_t output_bytes = 0;
+    if (!checked_mul_size(output_count, 2, &tile_elements) ||
+        !checked_mul_size(tile_elements, sizeof(volta_x4b::Fp2), &tile_bytes) ||
+        !checked_mul_size(output_start, sizeof(volta_x4b::Fp2), &output_start_bytes) ||
+        !checked_mul_size(output_count, sizeof(volta_x4b::Fp2), &output_tile_bytes) ||
+        !checked_mul_size(
+            input_len / 2, sizeof(volta_x4b::Fp2), &output_bytes))
+        return fail_message(c, "X4c pinned direct-fold byte geometry overflows size_t");
+    if (((pinned_offset_bytes | output_offset_bytes | scratch_offset_bytes) %
+         alignof(volta_x4b::Fp2)) != 0)
+        return fail_message(c, "misaligned X4c pinned direct-fold region");
+    void* pinned_source = nullptr;
+    void* scratch = nullptr;
+    void* output_base = nullptr;
+    PinnedBuffer* owner = nullptr;
+    if (pinned_region(
+            c, pinned_id_value, pinned_offset_bytes, tile_bytes,
+            &pinned_source, &owner) ||
+        resident_region(c, arena_id, scratch_offset_bytes, tile_bytes, &scratch) ||
+        resident_region(
+            c, arena_id, output_offset_bytes, output_bytes, &output_base))
+        return -1;
+    if (byte_ranges_overlap(
+            scratch_offset_bytes, tile_bytes, output_offset_bytes,
+            output_bytes))
+        return fail_message(c, "X4c pinned direct-fold scratch/output overlap");
+    auto* output = reinterpret_cast<volta_x4b::Fp2*>(
+        static_cast<uint8_t*>(output_base) + output_start_bytes);
+    bool ready = false;
+    if (refresh_pinned_ready(c, owner, &ready)) return -1;
+    if (!ready)
+        return reject_message(c, "X4c direct-fold pinned tile is still in flight");
+
+    if (begin_timing(c)) return -1;
+    const auto host_call_started = std::chrono::steady_clock::now();
+    const cudaError_t copy_status = cudaMemcpyAsync(
+        scratch, pinned_source, tile_bytes, cudaMemcpyHostToDevice, c->stream);
+    const auto host_call_finished = std::chrono::steady_clock::now();
+    if (copy_status != cudaSuccess)
+        return fail(c, "cudaMemcpyAsync(X4c direct-fold tile)", copy_status);
+    if (mark_pinned_in_flight(c, owner)) return -1;
+    ++c->stats.resident_h2d_host_calls;
+    c->stats.resident_h2d_host_call_ns +=
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            host_call_finished - host_call_started).count();
+    if (mark_timing(c, 1)) return -1;
+
+    const uint32_t bits = volta_x4b::power_of_two_log2(input_len);
+    const volta_x4b::Fp2 omega_inverse =
+        volta_x4b::fp2_inv(volta_x4b::root_of_unity(bits));
+    const volta_x4b::Fp2 omega_inverse_block = volta_x4b::fp2_pow(
+        omega_inverse, volta_x4b::X4C_DIRECT_FOLD_BLOCK);
+    const size_t outputs_per_block =
+        volta_x4b::X4C_DIRECT_FOLD_BLOCK * volta_x4b::X4C_DIRECT_FOLD_RUN;
+    const size_t blocks = (output_count + outputs_per_block - 1) / outputs_per_block;
+    auto* positive = static_cast<volta_x4b::Fp2*>(scratch);
+    auto* negative = positive + output_count;
+    volta_x4b::direct_fold_fp2_run<<<
+        blocks, volta_x4b::X4C_DIRECT_FOLD_BLOCK, 0, c->stream>>>(
+        positive, negative, output,
+        static_cast<uint64_t>(output_start), output_count,
+        volta_x4b::Fp2{challenge_c0, challenge_c1}, omega_inverse,
+        omega_inverse_block);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    ++c->stats.x4c_kernel_launches;
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(
+        c, OP_PCS_ROWS, tile_bytes, 0, 0, 0, output_tile_bytes);
+}
+
+extern "C" int volta_cuda_x4c_direct_fold_arena(
+    void* raw, uint64_t arena_id, size_t input_offset_bytes, size_t input_len,
+    size_t output_offset_bytes, uint64_t challenge_c0, uint64_t challenge_c1) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || input_len < 2 || (input_len & (input_len - 1)) ||
+        input_len > (size_t{1} << 33) || challenge_c0 >= volta_x4b::P ||
+        challenge_c1 >= volta_x4b::P)
+        return fail_message(c, "invalid X4c arena direct-fold geometry");
+    const size_t output_count = input_len / 2;
+    size_t input_bytes = 0;
+    size_t output_bytes = 0;
+    if (!checked_mul_size(input_len, sizeof(volta_x4b::Fp2), &input_bytes) ||
+        !checked_mul_size(output_count, sizeof(volta_x4b::Fp2), &output_bytes))
+        return fail_message(c, "X4c arena direct-fold byte geometry overflows size_t");
+    if (((input_offset_bytes | output_offset_bytes) %
+         alignof(volta_x4b::Fp2)) != 0)
+        return fail_message(c, "misaligned X4c arena direct-fold region");
+    void* input = nullptr;
+    void* output = nullptr;
+    if (resident_region(c, arena_id, input_offset_bytes, input_bytes, &input) ||
+        resident_region(c, arena_id, output_offset_bytes, output_bytes, &output))
+        return -1;
+    if (byte_ranges_overlap(
+            input_offset_bytes, input_bytes, output_offset_bytes, output_bytes))
+        return fail_message(c, "X4c arena direct-fold input/output overlap");
+
+    if (begin_timing(c) || mark_timing(c, 1)) return -1;
+    const uint32_t bits = volta_x4b::power_of_two_log2(input_len);
+    const volta_x4b::Fp2 omega_inverse =
+        volta_x4b::fp2_inv(volta_x4b::root_of_unity(bits));
+    const volta_x4b::Fp2 omega_inverse_block = volta_x4b::fp2_pow(
+        omega_inverse, volta_x4b::X4C_DIRECT_FOLD_BLOCK);
+    const size_t outputs_per_block =
+        volta_x4b::X4C_DIRECT_FOLD_BLOCK * volta_x4b::X4C_DIRECT_FOLD_RUN;
+    const size_t blocks = (output_count + outputs_per_block - 1) / outputs_per_block;
+    auto* positive = static_cast<volta_x4b::Fp2*>(input);
+    auto* negative = reinterpret_cast<volta_x4b::Fp2*>(
+        static_cast<uint8_t*>(input) + output_bytes);
+    volta_x4b::direct_fold_fp2_run<<<
+        blocks, volta_x4b::X4C_DIRECT_FOLD_BLOCK, 0, c->stream>>>(
+        positive, negative, static_cast<volta_x4b::Fp2*>(output), 0,
+        output_count, volta_x4b::Fp2{challenge_c0, challenge_c1},
+        omega_inverse, omega_inverse_block);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    ++c->stats.x4c_kernel_launches;
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_PCS_ROWS, 0, 0, 0, 0, output_bytes);
+}
+
+extern "C" int volta_cuda_x4c_activation_add_pinned_tile(
+    void* raw, uint64_t pinned_id_value, size_t pinned_offset_bytes,
+    uint64_t arena_id, size_t destination_offset_bytes,
+    size_t scratch_offset_bytes, size_t count, uint64_t activation_c0,
+    uint64_t activation_c1) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !count || activation_c0 >= volta_x4b::P ||
+        activation_c1 >= volta_x4b::P)
+        return fail_message(c, "invalid X4c activation-add geometry");
+    size_t bytes = 0;
+    if (!checked_mul_size(count, sizeof(volta_x4b::Fp2), &bytes))
+        return fail_message(c, "X4c activation-add byte geometry overflows size_t");
+    if (((pinned_offset_bytes | destination_offset_bytes |
+          scratch_offset_bytes) %
+         alignof(volta_x4b::Fp2)) != 0)
+        return fail_message(c, "misaligned X4c activation-add region");
+    void* pinned_source = nullptr;
+    void* destination = nullptr;
+    void* scratch = nullptr;
+    PinnedBuffer* owner = nullptr;
+    if (pinned_region(
+            c, pinned_id_value, pinned_offset_bytes, bytes,
+            &pinned_source, &owner) ||
+        resident_region(c, arena_id, destination_offset_bytes, bytes, &destination) ||
+        resident_region(c, arena_id, scratch_offset_bytes, bytes, &scratch))
+        return -1;
+    if (byte_ranges_overlap(
+            destination_offset_bytes, bytes, scratch_offset_bytes, bytes))
+        return fail_message(c, "X4c activation-add scratch/destination overlap");
+    bool ready = false;
+    if (refresh_pinned_ready(c, owner, &ready)) return -1;
+    if (!ready)
+        return reject_message(c, "X4c activation pinned tile is still in flight");
+
+    if (begin_timing(c)) return -1;
+    const auto host_call_started = std::chrono::steady_clock::now();
+    const cudaError_t copy_status = cudaMemcpyAsync(
+        scratch, pinned_source, bytes, cudaMemcpyHostToDevice, c->stream);
+    const auto host_call_finished = std::chrono::steady_clock::now();
+    if (copy_status != cudaSuccess)
+        return fail(c, "cudaMemcpyAsync(X4c activation tile)", copy_status);
+    if (mark_pinned_in_flight(c, owner)) return -1;
+    ++c->stats.resident_h2d_host_calls;
+    c->stats.resident_h2d_host_call_ns +=
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            host_call_finished - host_call_started).count();
+    if (mark_timing(c, 1)) return -1;
+    volta_x4b::activation_add_fp2<<<
+        (count + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<volta_x4b::Fp2*>(destination),
+        static_cast<const volta_x4b::Fp2*>(scratch), count,
+        volta_x4b::Fp2{activation_c0, activation_c1});
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    ++c->stats.x4c_kernel_launches;
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_PCS_ROWS, bytes, 0, 0, 0, bytes);
+}
+
+extern "C" int volta_cuda_x4c_build_one_slot_n4(
+    void* raw, uint64_t arena_id, size_t codeword_offset_bytes,
+    size_t outer_len, size_t cache_offset_bytes, const uint8_t* descriptor_bytes,
+    uint32_t cohort_id, uint8_t oracle_kind, uint8_t fold_round,
+    uint8_t* root_output) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !descriptor_bytes || !root_output || outer_len < 8 ||
+        (outer_len & (outer_len - 1)) || outer_len > (size_t{1} << 33) ||
+        oracle_kind != 2 || !fold_round)
+        return fail_message(c, "invalid X4c one-slot N4 geometry");
+    size_t codeword_bytes = 0;
+    size_t cache_digests = outer_len / 2 - 1;
+    size_t cache_bytes = 0;
+    if (!checked_mul_size(outer_len, sizeof(volta_x4b::Fp2), &codeword_bytes) ||
+        !checked_mul_size(cache_digests, sizeof(volta_x4b::Hash32), &cache_bytes))
+        return fail_message(c, "X4c one-slot N4 byte geometry overflows size_t");
+    if (codeword_offset_bytes % alignof(volta_x4b::Fp2) ||
+        cache_offset_bytes % alignof(volta_x4b::Hash32))
+        return fail_message(c, "misaligned X4c one-slot N4 region");
+    void* codeword = nullptr;
+    void* cache = nullptr;
+    if (resident_region(
+            c, arena_id, codeword_offset_bytes, codeword_bytes, &codeword) ||
+        resident_region(c, arena_id, cache_offset_bytes, cache_bytes, &cache))
+        return -1;
+    if (byte_ranges_overlap(
+            codeword_offset_bytes, codeword_bytes, cache_offset_bytes, cache_bytes))
+        return fail_message(c, "X4c one-slot N4 codeword/cache overlap");
+    volta_x4b::Hash32 descriptor{};
+    std::memcpy(&descriptor, descriptor_bytes, sizeof(descriptor));
+    bool descriptor_nonzero = false;
+    for (const auto word : descriptor.words) descriptor_nonzero |= word != 0;
+    if (!descriptor_nonzero)
+        return fail_message(c, "X4c one-slot N4 descriptor is zero");
+    bool generate_keys = false;
+    if (prepare_x4b_keys(c, &generate_keys)) return -1;
+
+    if (begin_timing(c) || mark_timing(c, 1)) return -1;
+    uint64_t generated_bytes = 0;
+    if (generate_x4b_keys_if_needed(c, generate_keys, &generated_bytes)) return -1;
+    auto* codeword_fp2 = static_cast<volta_x4b::Fp2*>(codeword);
+    auto* cache_hashes = static_cast<volta_x4b::Hash32*>(cache);
+    const size_t level_two_parents = outer_len / 4;
+    volta_x4b::one_slot_outer_level_two<<<
+        (level_two_parents + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        codeword_fp2, cache_hashes,
+        buf<volta_x4b::Hash32>(c, X4B_KEY_BUFFER), descriptor,
+        level_two_parents, cohort_id, oracle_kind, fold_round);
+    ++c->stats.x4c_kernel_launches;
+    const uint8_t depth = static_cast<uint8_t>(
+        volta_x4b::power_of_two_log2(outer_len));
+    volta_x4b::Hash32* current = cache_hashes;
+    for (uint8_t level = 3; level <= depth; ++level) {
+        const size_t parents = outer_len >> level;
+        const size_t destination_digest_offset =
+            static_cast<size_t>(volta_x4b::retained_level_digest_offset(
+                outer_len, level));
+        volta_x4b::Hash32* destination =
+            cache_hashes + destination_digest_offset;
+        volta_x4b::outer_node_tile<<<
+            (parents + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+            current, destination,
+            buf<volta_x4b::Hash32>(c, X4B_KEY_BUFFER), parents, 0,
+            cohort_id, oracle_kind, fold_round, level);
+        ++c->stats.x4c_kernel_launches;
+        current = destination;
+    }
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    CUDA_OR_RETURN(c, cudaMemcpyAsync(
+        root_output, current, sizeof(volta_x4b::Hash32),
+        cudaMemcpyDeviceToHost, c->stream));
+    return finish_timing(
+        c, OP_PCS_MERKLE, 0, sizeof(volta_x4b::Hash32), 0, 0,
+        generated_bytes + cache_bytes);
+}
+
+extern "C" int volta_cuda_x4c_gather_fp2_samples(
+    void* raw, uint64_t arena_id, size_t source_offset_bytes, size_t symbols,
+    const uint64_t* indices, size_t count, Fp2* output) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !symbols || !indices || !count || !output)
+        return fail_message(c, "invalid X4c Fp2 sample gather");
+    size_t source_bytes = 0;
+    size_t index_bytes = 0;
+    size_t output_bytes = 0;
+    if (!checked_mul_size(symbols, sizeof(volta_x4b::Fp2), &source_bytes) ||
+        !checked_mul_size(count, sizeof(uint64_t), &index_bytes) ||
+        !checked_mul_size(count, sizeof(volta_x4b::Fp2), &output_bytes))
+        return fail_message(c, "X4c sample-gather byte geometry overflows size_t");
+    if (source_offset_bytes % alignof(volta_x4b::Fp2))
+        return fail_message(c, "misaligned X4c sample-gather source");
+    for (size_t index = 0; index < count; ++index)
+        if (indices[index] >= symbols)
+            return fail_message(c, "X4c sample-gather index is out of range");
+    void* source = nullptr;
+    if (resident_region(c, arena_id, source_offset_bytes, source_bytes, &source) ||
+        ensure(c, 0, index_bytes) || ensure(c, 1, output_bytes))
+        return -1;
+    if (begin_timing(c)) return -1;
+    CUDA_OR_RETURN(c, cudaMemcpyAsync(
+        buf<uint64_t>(c, 0), indices, index_bytes,
+        cudaMemcpyHostToDevice, c->stream));
+    if (mark_timing(c, 1)) return -1;
+    volta_x4b::gather_fp2_samples<<<
+        (count + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const volta_x4b::Fp2*>(source), buf<uint64_t>(c, 0),
+        count, buf<volta_x4b::Fp2>(c, 1));
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    ++c->stats.x4c_kernel_launches;
+    if (mark_timing(c, 2)) return -1;
+    CUDA_OR_RETURN(c, cudaMemcpyAsync(
+        output, buf<volta_x4b::Fp2>(c, 1), output_bytes,
+        cudaMemcpyDeviceToHost, c->stream));
+    return finish_timing(
+        c, OP_PCS_ROWS, index_bytes, output_bytes, 0, 0, output_bytes);
+}
+
+extern "C" int volta_cuda_x4c_batch_gather_bytes(
+    void* raw, uint64_t arena_id, uint64_t pinned_requests_id,
+    size_t pinned_requests_offset_bytes, size_t request_count,
+    size_t request_scratch_offset_bytes, size_t mailbox_offset_bytes,
+    size_t mailbox_len) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !request_count || !mailbox_len)
+        return fail_message(c, "invalid X4c byte-gather batch");
+    size_t request_bytes = 0;
+    if (!checked_mul_size(
+            request_count, sizeof(volta_x4b::X4cGatherRequest),
+            &request_bytes))
+        return fail_message(c, "X4c byte-gather request geometry overflows size_t");
+    if (pinned_requests_offset_bytes %
+            alignof(volta_x4b::X4cGatherRequest) ||
+        request_scratch_offset_bytes %
+            alignof(volta_x4b::X4cGatherRequest))
+        return fail_message(c, "misaligned X4c byte-gather request scratch");
+    void* raw_requests = nullptr;
+    void* request_scratch = nullptr;
+    void* mailbox = nullptr;
+    PinnedBuffer* request_owner = nullptr;
+    if (pinned_region(
+            c, pinned_requests_id, pinned_requests_offset_bytes, request_bytes,
+            &raw_requests, &request_owner) ||
+        resident_region(
+            c, arena_id, request_scratch_offset_bytes, request_bytes,
+            &request_scratch) ||
+        resident_region(c, arena_id, mailbox_offset_bytes, mailbox_len, &mailbox))
+        return -1;
+    bool ready = false;
+    if (refresh_pinned_ready(c, request_owner, &ready)) return -1;
+    if (!ready)
+        return reject_message(c, "X4c byte-gather request table is still in flight");
+    if (byte_ranges_overlap(
+            request_scratch_offset_bytes, request_bytes,
+            mailbox_offset_bytes, mailbox_len))
+        return fail_message(c, "X4c byte-gather request scratch overlaps mailbox");
+
+    auto* requests =
+        static_cast<const volta_x4b::X4cGatherRequest*>(raw_requests);
+    uint64_t gathered_bytes = 0;
+    for (size_t index = 0; index < request_count; ++index) {
+        const auto& request = requests[index];
+        if (!request.byte_len ||
+            request.source_offset_bytes > std::numeric_limits<size_t>::max() ||
+            request.destination_offset_bytes > std::numeric_limits<size_t>::max() ||
+            request.byte_len > std::numeric_limits<size_t>::max())
+            return fail_message(c, "invalid X4c byte-gather request");
+        const size_t source_offset =
+            static_cast<size_t>(request.source_offset_bytes);
+        const size_t destination_offset =
+            static_cast<size_t>(request.destination_offset_bytes);
+        const size_t bytes = static_cast<size_t>(request.byte_len);
+        void* source = nullptr;
+        void* destination = nullptr;
+        if (resident_region(c, arena_id, source_offset, bytes, &source) ||
+            resident_region(c, arena_id, destination_offset, bytes, &destination))
+            return -1;
+        size_t mailbox_end = 0;
+        size_t destination_end = 0;
+        if (!checked_add_size(mailbox_offset_bytes, mailbox_len, &mailbox_end) ||
+            !checked_add_size(destination_offset, bytes, &destination_end) ||
+            destination_offset < mailbox_offset_bytes ||
+            destination_end > mailbox_end)
+            return fail_message(c, "X4c byte-gather destination is outside mailbox");
+        if (byte_ranges_overlap(
+                source_offset, bytes, mailbox_offset_bytes, mailbox_len) ||
+            byte_ranges_overlap(
+                source_offset, bytes, request_scratch_offset_bytes,
+                request_bytes))
+            return fail_message(c, "X4c byte-gather source overlaps output/scratch");
+        for (size_t prior = 0; prior < index; ++prior) {
+            if (byte_ranges_overlap(
+                    destination_offset, bytes,
+                    static_cast<size_t>(
+                        requests[prior].destination_offset_bytes),
+                    static_cast<size_t>(requests[prior].byte_len)))
+                return fail_message(c, "overlapping X4c byte-gather destinations");
+        }
+        if (request.byte_len > UINT64_MAX - gathered_bytes)
+            return fail_message(c, "X4c byte-gather traffic overflows u64");
+        gathered_bytes += request.byte_len;
+    }
+
+    if (begin_timing(c)) return -1;
+    const auto host_call_started = std::chrono::steady_clock::now();
+    const cudaError_t copy_status = cudaMemcpyAsync(
+        request_scratch, raw_requests, request_bytes,
+        cudaMemcpyHostToDevice, c->stream);
+    const auto host_call_finished = std::chrono::steady_clock::now();
+    if (copy_status != cudaSuccess)
+        return fail(c, "cudaMemcpyAsync(X4c byte-gather requests)", copy_status);
+    if (mark_pinned_in_flight(c, request_owner)) return -1;
+    ++c->stats.resident_h2d_host_calls;
+    c->stats.resident_h2d_host_call_ns +=
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            host_call_finished - host_call_started).count();
+    if (mark_timing(c, 1)) return -1;
+    ResidentBuffer* arena = find_resident(c, arena_id);
+    if (!arena) return fail_message(c, "unknown X4c byte-gather arena");
+    volta_x4b::gather_bytes<<<request_count, BLOCK, 0, c->stream>>>(
+        static_cast<uint8_t*>(arena->ptr),
+        static_cast<const volta_x4b::X4cGatherRequest*>(request_scratch),
+        request_count);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    ++c->stats.x4c_kernel_launches;
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(
+        c, OP_MAILBOX, request_bytes, 0, gathered_bytes, 0, 0);
+}
+
+extern "C" int volta_cuda_x4c_batch_gather_canonical_operations(
+    void* raw, uint64_t arena_id, uint64_t pinned_operations_id,
+    size_t pinned_operations_offset_bytes, size_t operation_count,
+    size_t operation_scratch_offset_bytes, size_t mailbox_offset_bytes,
+    size_t mailbox_len) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !operation_count || !mailbox_len)
+        return fail_message(c, "invalid X4c canonical-gather batch");
+    size_t operation_bytes = 0;
+    if (!checked_mul_size(
+            operation_count, sizeof(volta_x4b::X4cCanonicalGatherOperation),
+            &operation_bytes))
+        return fail_message(c, "X4c canonical-gather geometry overflows size_t");
+    if (pinned_operations_offset_bytes %
+            alignof(volta_x4b::X4cCanonicalGatherOperation) ||
+        operation_scratch_offset_bytes %
+            alignof(volta_x4b::X4cCanonicalGatherOperation))
+        return fail_message(
+            c, "misaligned X4c canonical-gather operation scratch");
+    void* raw_operations = nullptr;
+    void* operation_scratch = nullptr;
+    void* mailbox = nullptr;
+    PinnedBuffer* operation_owner = nullptr;
+    if (pinned_region(
+            c, pinned_operations_id, pinned_operations_offset_bytes,
+            operation_bytes, &raw_operations, &operation_owner) ||
+        resident_region(
+            c, arena_id, operation_scratch_offset_bytes, operation_bytes,
+            &operation_scratch) ||
+        resident_region(c, arena_id, mailbox_offset_bytes, mailbox_len, &mailbox))
+        return -1;
+    bool ready = false;
+    if (refresh_pinned_ready(c, operation_owner, &ready)) return -1;
+    if (!ready)
+        return reject_message(c, "X4c canonical-gather operations are still in flight");
+    if (byte_ranges_overlap(
+            operation_scratch_offset_bytes, operation_bytes,
+            mailbox_offset_bytes, mailbox_len))
+        return fail_message(c, "X4c canonical-gather scratch overlaps mailbox");
+
+    auto* operations =
+        static_cast<const volta_x4b::X4cCanonicalGatherOperation*>(
+            raw_operations);
+    uint64_t copied_bytes = 0;
+    uint64_t rebuilt_bytes = 0;
+    size_t previous_destination_end = mailbox_offset_bytes;
+    uint8_t previous_round = 0;
+    uint8_t previous_level = 0;
+    uint64_t previous_index = 0;
+    bool previous_was_symbol = false;
+    volta_x4b::X4cCanonicalGatherOperation round_anchor{};
+    for (size_t ordinal = 0; ordinal < operation_count; ++ordinal) {
+        const auto& operation = operations[ordinal];
+        if (operation.outer_len < 8 ||
+            (operation.outer_len & (operation.outer_len - 1)) ||
+            operation.outer_len > (uint64_t{1} << 33) ||
+            operation.oracle_kind != 2 || !operation.fold_round ||
+            operation.codeword_offset_bytes >
+                std::numeric_limits<size_t>::max() ||
+            operation.cache_offset_bytes >
+                std::numeric_limits<size_t>::max() ||
+            operation.source_offset_bytes >
+                std::numeric_limits<size_t>::max() ||
+            operation.destination_offset_bytes >
+                std::numeric_limits<size_t>::max())
+            return fail_message(c, "invalid X4c canonical-gather operation");
+        bool descriptor_nonzero = false;
+        for (const auto word : operation.descriptor.words)
+            descriptor_nonzero |= word != 0;
+        if (!descriptor_nonzero)
+            return fail_message(c, "zero X4c canonical-gather descriptor");
+        const size_t outer_len = static_cast<size_t>(operation.outer_len);
+        const uint8_t depth = static_cast<uint8_t>(
+            volta_x4b::power_of_two_log2(outer_len));
+        const size_t codeword_offset =
+            static_cast<size_t>(operation.codeword_offset_bytes);
+        const size_t cache_offset =
+            static_cast<size_t>(operation.cache_offset_bytes);
+        const size_t source_offset =
+            static_cast<size_t>(operation.source_offset_bytes);
+        const size_t destination_offset =
+            static_cast<size_t>(operation.destination_offset_bytes);
+        if (codeword_offset % alignof(volta_x4b::Fp2) ||
+            cache_offset % alignof(volta_x4b::Hash32))
+            return fail_message(
+                c, "misaligned X4c canonical-gather retained state");
+        size_t codeword_bytes = 0;
+        size_t cache_bytes = 0;
+        if (!checked_mul_size(
+                outer_len, sizeof(volta_x4b::Fp2), &codeword_bytes) ||
+            !checked_mul_size(
+                outer_len / 2 - 1, sizeof(volta_x4b::Hash32),
+                &cache_bytes))
+            return fail_message(c, "X4c canonical-gather source geometry overflows");
+        void* ignored = nullptr;
+        if (resident_region(
+                c, arena_id, codeword_offset, codeword_bytes, &ignored) ||
+            resident_region(c, arena_id, cache_offset, cache_bytes, &ignored))
+            return -1;
+        if (byte_ranges_overlap(
+                codeword_offset, codeword_bytes,
+                operation_scratch_offset_bytes, operation_bytes) ||
+            byte_ranges_overlap(
+                cache_offset, cache_bytes,
+                operation_scratch_offset_bytes, operation_bytes))
+            return fail_message(c, "X4c canonical-gather scratch overlaps retained state");
+        if (byte_ranges_overlap(
+                codeword_offset, codeword_bytes,
+                mailbox_offset_bytes, mailbox_len) ||
+            byte_ranges_overlap(
+                cache_offset, cache_bytes,
+                mailbox_offset_bytes, mailbox_len))
+            return fail_message(c, "X4c canonical-gather mailbox overlaps retained state");
+
+        size_t payload_bytes = 0;
+        if (operation.source_kind == volta_x4b::X4C_GATHER_CODEWORD_SYMBOL) {
+            if (operation.level != 0 || operation.index >= operation.outer_len)
+                return fail_message(c, "invalid X4c canonical symbol operation");
+            size_t index_bytes = 0;
+            size_t expected_source = 0;
+            if (!checked_mul_size(
+                    static_cast<size_t>(operation.index),
+                    sizeof(volta_x4b::Fp2), &index_bytes) ||
+                !checked_add_size(
+                    codeword_offset, index_bytes, &expected_source) ||
+                source_offset != expected_source)
+                return fail_message(c, "X4c canonical symbol source mismatch");
+            payload_bytes = sizeof(volta_x4b::Fp2);
+            if (payload_bytes > UINT64_MAX - copied_bytes)
+                return fail_message(c, "X4c canonical copied traffic overflows u64");
+            copied_bytes += payload_bytes;
+        } else if (
+            operation.source_kind ==
+            volta_x4b::X4C_GATHER_CACHED_OUTER_DIGEST) {
+            if (operation.level < 2 || operation.level >= depth ||
+                operation.index >= (operation.outer_len >> operation.level))
+                return fail_message(c, "invalid X4c cached-frontier operation");
+            const uint64_t level_digest_offset =
+                volta_x4b::retained_level_digest_offset(
+                    operation.outer_len, operation.level);
+            uint64_t expected_source = operation.cache_offset_bytes;
+            if (level_digest_offset >
+                    (UINT64_MAX - expected_source) / sizeof(volta_x4b::Hash32) ||
+                operation.index >
+                    (UINT64_MAX - expected_source -
+                     level_digest_offset * sizeof(volta_x4b::Hash32)) /
+                        sizeof(volta_x4b::Hash32))
+                return fail_message(c, "X4c cached-frontier source overflows u64");
+            expected_source +=
+                (level_digest_offset + operation.index) *
+                sizeof(volta_x4b::Hash32);
+            if (operation.source_offset_bytes != expected_source)
+                return fail_message(c, "X4c cached-frontier source mismatch");
+            payload_bytes = sizeof(volta_x4b::Hash32);
+            if (payload_bytes > UINT64_MAX - copied_bytes)
+                return fail_message(c, "X4c canonical copied traffic overflows u64");
+            copied_bytes += payload_bytes;
+        } else if (
+            operation.source_kind ==
+            volta_x4b::X4C_GATHER_REBUILT_OUTER_DIGEST) {
+            if (operation.level > 1 ||
+                operation.index >= (operation.outer_len >> operation.level) ||
+                operation.source_offset_bytes != operation.codeword_offset_bytes)
+                return fail_message(c, "invalid X4c rebuilt-frontier operation");
+            payload_bytes = sizeof(volta_x4b::Hash32);
+            if (payload_bytes > UINT64_MAX - rebuilt_bytes)
+                return fail_message(c, "X4c canonical rebuilt traffic overflows u64");
+            rebuilt_bytes += payload_bytes;
+        } else {
+            return fail_message(c, "unknown X4c canonical-gather source kind");
+        }
+
+        size_t destination_end = 0;
+        size_t mailbox_end = 0;
+        if (!checked_add_size(
+                destination_offset, payload_bytes, &destination_end) ||
+            !checked_add_size(mailbox_offset_bytes, mailbox_len, &mailbox_end) ||
+            destination_offset < mailbox_offset_bytes ||
+            destination_end > mailbox_end ||
+            destination_offset < previous_destination_end)
+            return fail_message(c, "invalid/overlapping X4c canonical destination");
+        previous_destination_end = destination_end;
+
+        if (ordinal == 0 || operation.fold_round != previous_round) {
+            if (ordinal != 0 && operation.fold_round <= previous_round)
+                return fail_message(c, "X4c canonical rounds are not ordered");
+            round_anchor = operation;
+            previous_round = operation.fold_round;
+            previous_was_symbol =
+                operation.source_kind == volta_x4b::X4C_GATHER_CODEWORD_SYMBOL;
+            previous_level = operation.level;
+            previous_index = operation.index;
+        } else {
+            if (operation.cohort_id != round_anchor.cohort_id ||
+                operation.outer_len != round_anchor.outer_len ||
+                operation.codeword_offset_bytes !=
+                    round_anchor.codeword_offset_bytes ||
+                operation.cache_offset_bytes != round_anchor.cache_offset_bytes ||
+                std::memcmp(
+                    &operation.descriptor, &round_anchor.descriptor,
+                    sizeof(operation.descriptor)) != 0)
+                return fail_message(c, "inconsistent X4c canonical round ownership");
+            const bool is_symbol =
+                operation.source_kind == volta_x4b::X4C_GATHER_CODEWORD_SYMBOL;
+            if ((previous_was_symbol && is_symbol &&
+                 operation.index <= previous_index) ||
+                (!previous_was_symbol && is_symbol) ||
+                (!is_symbol &&
+                 (operation.level < previous_level ||
+                  (operation.level == previous_level &&
+                   operation.index <= previous_index))))
+                return fail_message(c, "X4c canonical frontier is not ordered");
+            previous_was_symbol = is_symbol;
+            previous_level = operation.level;
+            previous_index = operation.index;
+        }
+    }
+
+    bool generate_keys = false;
+    if (prepare_x4b_keys(c, &generate_keys)) return -1;
+    if (begin_timing(c)) return -1;
+    const auto host_call_started = std::chrono::steady_clock::now();
+    const cudaError_t copy_status = cudaMemcpyAsync(
+        operation_scratch, raw_operations, operation_bytes,
+        cudaMemcpyHostToDevice, c->stream);
+    const auto host_call_finished = std::chrono::steady_clock::now();
+    if (copy_status != cudaSuccess)
+        return fail(c, "cudaMemcpyAsync(X4c canonical operations)", copy_status);
+    if (mark_pinned_in_flight(c, operation_owner)) return -1;
+    ++c->stats.resident_h2d_host_calls;
+    c->stats.resident_h2d_host_call_ns +=
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            host_call_finished - host_call_started).count();
+    if (mark_timing(c, 1)) return -1;
+    uint64_t generated_key_bytes = 0;
+    if (generate_x4b_keys_if_needed(
+            c, generate_keys, &generated_key_bytes))
+        return -1;
+    ResidentBuffer* arena = find_resident(c, arena_id);
+    if (!arena) return fail_message(c, "unknown X4c canonical-gather arena");
+    volta_x4b::gather_canonical_operations<<<
+        (operation_count + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<uint8_t*>(arena->ptr),
+        static_cast<const volta_x4b::X4cCanonicalGatherOperation*>(
+            operation_scratch),
+        operation_count,
+        buf<volta_x4b::Hash32>(c, X4B_KEY_BUFFER));
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    ++c->stats.x4c_kernel_launches;
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(
+        c, OP_MAILBOX, operation_bytes, 0, copied_bytes, 0,
+        rebuilt_bytes + generated_key_bytes);
+}
+
+extern "C" int volta_cuda_x4c_arena_reset(
+    void* raw, uint64_t arena_id, size_t offset_bytes, size_t bytes,
+    int zero) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !bytes || (zero != 0 && zero != 1))
+        return fail_message(c, "invalid X4c arena reset");
+    void* region = nullptr;
+    if (resident_region(c, arena_id, offset_bytes, bytes, &region)) return -1;
+    if (!zero) {
+        ++c->stats.x4c_arena_reset_calls;
+        c->stats.x4c_arena_reset_bytes += bytes;
+        return 0;
+    }
+    if (begin_timing(c) || mark_timing(c, 1)) return -1;
+    CUDA_OR_RETURN(c, cudaMemsetAsync(region, 0, bytes, c->stream));
+    if (mark_timing(c, 2)) return -1;
+    ++c->stats.x4c_arena_reset_calls;
+    c->stats.x4c_arena_reset_bytes += bytes;
+    return finish_timing(c, OP_MAILBOX, 0, 0, 0, bytes, 0);
 }
 
 extern "C" int volta_cuda_ntt_fp_batch_device(

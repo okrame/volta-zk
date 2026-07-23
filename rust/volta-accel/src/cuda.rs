@@ -1,7 +1,7 @@
 use super::{
-    AccelError, BackendStats, DeviceMemoryBreakdown, DeviceTimingMode, Fp2Repr, Operation,
-    OperationStats, ResidentTimingPolicy, TimingCapacityPreflight, CUDA_ABI_VERSION,
-    DEFERRED_TIMING_CAPACITY, OPERATION_COUNT,
+    AccelError, BackendStats, CudaStreamState, DeviceMemoryBreakdown, DeviceTimingMode, Fp2Repr,
+    Operation, OperationStats, PinnedMemoryStats, ResidentTimingPolicy, TimingCapacityPreflight,
+    X4cControlState, CUDA_ABI_VERSION, DEFERRED_TIMING_CAPACITY, OPERATION_COUNT,
 };
 use std::ffi::{c_char, c_int, c_void, CStr, CString};
 use std::ptr;
@@ -48,6 +48,20 @@ struct RawStats {
     physical_free_calls: u64,
     live_device_bytes: u64,
     peak_device_bytes: u64,
+    pinned_allocation_calls: u64,
+    pinned_alloc_requests: u64,
+    pinned_reuse_hits: u64,
+    pinned_free_requests: u64,
+    pinned_physical_free_calls: u64,
+    pinned_host_write_calls: u64,
+    pinned_host_write_bytes: u64,
+    live_pinned_bytes: u64,
+    peak_pinned_bytes: u64,
+    x4c_arena_reset_calls: u64,
+    x4c_arena_reset_bytes: u64,
+    x4c_kernel_launches: u64,
+    x4c_control_peek_calls: u64,
+    x4c_control_peek_pending: u64,
     timing_records: u64,
     timing_elapsed_query_attempts: u64,
     timing_elapsed_no_write: u64,
@@ -61,7 +75,48 @@ struct RawStats {
     reserved: u32,
 }
 
-const _: () = assert!(std::mem::size_of::<RawStats>() == 392);
+const _: () = assert!(std::mem::size_of::<RawStats>() == 504);
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct RawPinnedMemoryStats {
+    active_bytes: u64,
+    cached_bytes: u64,
+    active_allocations: u64,
+    cached_allocations: u64,
+    in_flight_allocations: u64,
+    physical_allocation_calls: u64,
+    allocation_requests: u64,
+    reuse_hits: u64,
+    free_requests: u64,
+    physical_free_calls: u64,
+    host_write_calls: u64,
+    host_write_bytes: u64,
+    peak_bytes: u64,
+}
+
+const _: () = assert!(std::mem::size_of::<RawPinnedMemoryStats>() == 104);
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct RawX4cControlState {
+    stream_state: u32,
+    flags: u32,
+    outstanding_cuda_operations: u64,
+    pending_timing_records: u64,
+    active_device_allocations: u64,
+    cached_device_allocations: u64,
+    active_pinned_allocations: u64,
+    cached_pinned_allocations: u64,
+    in_flight_pinned_allocations: u64,
+    workspace_device_bytes: u64,
+    active_device_bytes: u64,
+    cached_device_bytes: u64,
+    active_pinned_bytes: u64,
+    cached_pinned_bytes: u64,
+}
+
+const _: () = assert!(std::mem::size_of::<RawX4cControlState>() == 104);
 
 type AbiVersion = unsafe extern "C" fn() -> u32;
 type Create = unsafe extern "C" fn(*mut *mut c_void) -> c_int;
@@ -80,6 +135,12 @@ type ResetStats = unsafe extern "C" fn(*mut c_void) -> c_int;
 type GetStats = unsafe extern "C" fn(*mut c_void, *mut RawStats) -> c_int;
 type MemoryBreakdown = unsafe extern "C" fn(*mut c_void, *mut u64, *mut u64, *mut u64) -> c_int;
 type TrimResidentCache = unsafe extern "C" fn(*mut c_void) -> c_int;
+type PinnedMemoryStatsFn = unsafe extern "C" fn(*mut c_void, *mut RawPinnedMemoryStats) -> c_int;
+type X4cControlStateFn = unsafe extern "C" fn(*mut c_void, *mut RawX4cControlState) -> c_int;
+type PinnedAlloc = unsafe extern "C" fn(*mut c_void, usize, *mut u64) -> c_int;
+type PinnedWrite = unsafe extern "C" fn(*mut c_void, u64, usize, *const c_void, usize) -> c_int;
+type PinnedFree = unsafe extern "C" fn(*mut c_void, u64) -> c_int;
+type TrimPinnedCache = unsafe extern "C" fn(*mut c_void) -> c_int;
 type ResidentAlloc = unsafe extern "C" fn(*mut c_void, usize, *mut u64) -> c_int;
 type ResidentFree = unsafe extern "C" fn(*mut c_void, u64) -> c_int;
 type ResidentUpload = unsafe extern "C" fn(*mut c_void, u64, usize, *const c_void, usize) -> c_int;
@@ -597,6 +658,41 @@ type X4bN4InnerTile = unsafe extern "C" fn(
 ) -> c_int;
 type X4bN4OuterNodes =
     unsafe extern "C" fn(*mut c_void, *const u8, usize, u64, u32, u8, u8, u8, *mut u8) -> c_int;
+type X4cDirectFoldPinnedTile = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    u64,
+    usize,
+    usize,
+    usize,
+    usize,
+    usize,
+    u64,
+    u64,
+) -> c_int;
+type X4cUploadPinned = unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize) -> c_int;
+type X4cDirectFoldArena =
+    unsafe extern "C" fn(*mut c_void, u64, usize, usize, usize, u64, u64) -> c_int;
+type X4cActivationAddPinnedTile =
+    unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize, usize, u64, u64) -> c_int;
+type X4cBuildOneSlotN4 = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    usize,
+    usize,
+    *const u8,
+    u32,
+    u8,
+    u8,
+    *mut u8,
+) -> c_int;
+type X4cGatherFp2Samples =
+    unsafe extern "C" fn(*mut c_void, u64, usize, usize, *const u64, usize, *mut Fp2Repr) -> c_int;
+type X4cBatchGather =
+    unsafe extern "C" fn(*mut c_void, u64, u64, usize, usize, usize, usize, usize) -> c_int;
+type X4cArenaReset = unsafe extern "C" fn(*mut c_void, u64, usize, usize, c_int) -> c_int;
 type NttBatchDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, usize, usize, u64, usize) -> c_int;
 type LogupTree = unsafe extern "C" fn(
@@ -844,6 +940,12 @@ struct Api {
     get_stats: GetStats,
     memory_breakdown: MemoryBreakdown,
     trim_resident_cache: TrimResidentCache,
+    pinned_memory_stats: PinnedMemoryStatsFn,
+    x4c_control_state: X4cControlStateFn,
+    pinned_alloc: PinnedAlloc,
+    pinned_write: PinnedWrite,
+    pinned_free: PinnedFree,
+    trim_pinned_cache: TrimPinnedCache,
     resident_alloc: ResidentAlloc,
     resident_free: ResidentFree,
     resident_upload: ResidentUpload,
@@ -903,6 +1005,15 @@ struct Api {
     x4b_context_probe: X4bContextProbe,
     x4b_n4_inner_tile: X4bN4InnerTile,
     x4b_n4_outer_nodes: X4bN4OuterNodes,
+    x4c_direct_fold_pinned_tile: X4cDirectFoldPinnedTile,
+    x4c_upload_pinned: X4cUploadPinned,
+    x4c_direct_fold_arena: X4cDirectFoldArena,
+    x4c_activation_add_pinned_tile: X4cActivationAddPinnedTile,
+    x4c_build_one_slot_n4: X4cBuildOneSlotN4,
+    x4c_gather_fp2_samples: X4cGatherFp2Samples,
+    x4c_batch_gather_bytes: X4cBatchGather,
+    x4c_batch_gather_canonical_operations: X4cBatchGather,
+    x4c_arena_reset: X4cArenaReset,
     ntt_fp_batch_device: NttBatchDevice,
     ntt_fp2_batch_device: NttBatchDevice,
     logup_tree: LogupTree,
@@ -1013,6 +1124,14 @@ impl CudaContext {
             trim_resident_cache: unsafe {
                 load_symbol(handle, b"volta_cuda_trim_resident_cache\0")?
             },
+            pinned_memory_stats: unsafe {
+                load_symbol(handle, b"volta_cuda_pinned_memory_stats\0")?
+            },
+            x4c_control_state: unsafe { load_symbol(handle, b"volta_cuda_x4c_control_state\0")? },
+            pinned_alloc: unsafe { load_symbol(handle, b"volta_cuda_pinned_alloc\0")? },
+            pinned_write: unsafe { load_symbol(handle, b"volta_cuda_pinned_write\0")? },
+            pinned_free: unsafe { load_symbol(handle, b"volta_cuda_pinned_free\0")? },
+            trim_pinned_cache: unsafe { load_symbol(handle, b"volta_cuda_trim_pinned_cache\0")? },
             resident_alloc: unsafe { load_symbol(handle, b"volta_cuda_resident_alloc\0")? },
             resident_free: unsafe { load_symbol(handle, b"volta_cuda_resident_free\0")? },
             resident_upload: unsafe { load_symbol(handle, b"volta_cuda_resident_upload\0")? },
@@ -1146,6 +1265,29 @@ impl CudaContext {
             x4b_context_probe: unsafe { load_symbol(handle, b"volta_cuda_x4b_context_probe\0")? },
             x4b_n4_inner_tile: unsafe { load_symbol(handle, b"volta_cuda_x4b_n4_inner_tile\0")? },
             x4b_n4_outer_nodes: unsafe { load_symbol(handle, b"volta_cuda_x4b_n4_outer_nodes\0")? },
+            x4c_direct_fold_pinned_tile: unsafe {
+                load_symbol(handle, b"volta_cuda_x4c_direct_fold_pinned_tile\0")?
+            },
+            x4c_upload_pinned: unsafe { load_symbol(handle, b"volta_cuda_x4c_upload_pinned\0")? },
+            x4c_direct_fold_arena: unsafe {
+                load_symbol(handle, b"volta_cuda_x4c_direct_fold_arena\0")?
+            },
+            x4c_activation_add_pinned_tile: unsafe {
+                load_symbol(handle, b"volta_cuda_x4c_activation_add_pinned_tile\0")?
+            },
+            x4c_build_one_slot_n4: unsafe {
+                load_symbol(handle, b"volta_cuda_x4c_build_one_slot_n4\0")?
+            },
+            x4c_gather_fp2_samples: unsafe {
+                load_symbol(handle, b"volta_cuda_x4c_gather_fp2_samples\0")?
+            },
+            x4c_batch_gather_bytes: unsafe {
+                load_symbol(handle, b"volta_cuda_x4c_batch_gather_bytes\0")?
+            },
+            x4c_batch_gather_canonical_operations: unsafe {
+                load_symbol(handle, b"volta_cuda_x4c_batch_gather_canonical_operations\0")?
+            },
+            x4c_arena_reset: unsafe { load_symbol(handle, b"volta_cuda_x4c_arena_reset\0")? },
             ntt_fp_batch_device: unsafe {
                 load_symbol(handle, b"volta_cuda_ntt_fp_batch_device\0")?
             },
@@ -1332,6 +1474,20 @@ impl CudaContext {
             physical_free_calls: raw.physical_free_calls,
             live_device_bytes: raw.live_device_bytes,
             peak_device_bytes: raw.peak_device_bytes,
+            pinned_allocation_calls: raw.pinned_allocation_calls,
+            pinned_alloc_requests: raw.pinned_alloc_requests,
+            pinned_reuse_hits: raw.pinned_reuse_hits,
+            pinned_free_requests: raw.pinned_free_requests,
+            pinned_physical_free_calls: raw.pinned_physical_free_calls,
+            pinned_host_write_calls: raw.pinned_host_write_calls,
+            pinned_host_write_bytes: raw.pinned_host_write_bytes,
+            live_pinned_bytes: raw.live_pinned_bytes,
+            peak_pinned_bytes: raw.peak_pinned_bytes,
+            x4c_arena_reset_calls: raw.x4c_arena_reset_calls,
+            x4c_arena_reset_bytes: raw.x4c_arena_reset_bytes,
+            x4c_kernel_launches: raw.x4c_kernel_launches,
+            x4c_control_peek_calls: raw.x4c_control_peek_calls,
+            x4c_control_peek_pending: raw.x4c_control_peek_pending,
             timing_records: raw.timing_records,
             timing_elapsed_query_attempts: raw.timing_elapsed_query_attempts,
             timing_elapsed_no_write: raw.timing_elapsed_no_write,
@@ -1369,9 +1525,94 @@ impl CudaContext {
         Ok(DeviceMemoryBreakdown { workspace_bytes, resident_bytes, cached_resident_bytes })
     }
 
+    pub(super) fn pinned_memory_stats(&self) -> Result<PinnedMemoryStats, AccelError> {
+        let mut raw = RawPinnedMemoryStats::default();
+        // SAFETY: output points to the exact versioned C representation.
+        self.check(unsafe { (self.api.pinned_memory_stats)(self.raw, &mut raw) })?;
+        Ok(PinnedMemoryStats {
+            active_bytes: raw.active_bytes,
+            cached_bytes: raw.cached_bytes,
+            active_allocations: raw.active_allocations,
+            cached_allocations: raw.cached_allocations,
+            in_flight_allocations: raw.in_flight_allocations,
+            physical_allocation_calls: raw.physical_allocation_calls,
+            allocation_requests: raw.allocation_requests,
+            reuse_hits: raw.reuse_hits,
+            free_requests: raw.free_requests,
+            physical_free_calls: raw.physical_free_calls,
+            host_write_calls: raw.host_write_calls,
+            host_write_bytes: raw.host_write_bytes,
+            peak_bytes: raw.peak_bytes,
+        })
+    }
+
+    pub(super) fn x4c_control_state(&self) -> Result<X4cControlState, AccelError> {
+        let mut raw = RawX4cControlState::default();
+        // SAFETY: the output is exact ABI storage; the native call only peeks.
+        self.check(unsafe { (self.api.x4c_control_state)(self.raw, &mut raw) })?;
+        let stream_state = match raw.stream_state {
+            0 => CudaStreamState::Idle,
+            1 => CudaStreamState::Pending,
+            value => {
+                return Err(AccelError::Cuda(format!(
+                    "CUDA backend returned unknown X4c stream state {value}"
+                )));
+            }
+        };
+        Ok(X4cControlState {
+            stream_state,
+            // Filled by `Backend::x4c_control_state` from its Rust-side
+            // measurement owner without another native call.
+            measurement_active: false,
+            coarse_timing_active: raw.flags & 1 != 0,
+            timing_record_active: raw.flags & 2 != 0,
+            measurement_poisoned: raw.flags & 4 != 0,
+            outstanding_cuda_operations: raw.outstanding_cuda_operations,
+            pending_timing_records: raw.pending_timing_records,
+            active_device_allocations: raw.active_device_allocations,
+            cached_device_allocations: raw.cached_device_allocations,
+            active_pinned_allocations: raw.active_pinned_allocations,
+            cached_pinned_allocations: raw.cached_pinned_allocations,
+            in_flight_pinned_allocations: raw.in_flight_pinned_allocations,
+            workspace_device_bytes: raw.workspace_device_bytes,
+            active_device_bytes: raw.active_device_bytes,
+            cached_device_bytes: raw.cached_device_bytes,
+            active_pinned_bytes: raw.active_pinned_bytes,
+            cached_pinned_bytes: raw.cached_pinned_bytes,
+        })
+    }
+
     pub(super) fn trim_resident_cache(&mut self) -> Result<(), AccelError> {
         // SAFETY: the context is live and exclusively borrowed.
         self.check(unsafe { (self.api.trim_resident_cache)(self.raw) })
+    }
+
+    pub(super) fn pinned_alloc(&mut self, bytes: usize) -> Result<u64, AccelError> {
+        let mut id = 0;
+        // SAFETY: id points to one result and the context is exclusively borrowed.
+        self.check(unsafe { (self.api.pinned_alloc)(self.raw, bytes, &mut id) })?;
+        Ok(id)
+    }
+
+    pub(super) fn pinned_write(
+        &mut self,
+        id: u64,
+        offset_bytes: usize,
+        source: *const c_void,
+        bytes: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: the safe caller retains a live typed slice for this CPU copy.
+        self.check(unsafe { (self.api.pinned_write)(self.raw, id, offset_bytes, source, bytes) })
+    }
+
+    pub(super) fn pinned_free(&mut self, id: u64) -> Result<(), AccelError> {
+        // SAFETY: the context validates the opaque generational id.
+        self.check(unsafe { (self.api.pinned_free)(self.raw, id) })
+    }
+
+    pub(super) fn trim_pinned_cache(&mut self) -> Result<(), AccelError> {
+        // SAFETY: the context is live and exclusively borrowed.
+        self.check(unsafe { (self.api.trim_pinned_cache)(self.raw) })
     }
 
     pub(super) fn resident_alloc(&mut self, bytes: usize) -> Result<u64, AccelError> {
@@ -3134,6 +3375,229 @@ impl CudaContext {
             )
         })?;
         Ok(output)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn x4c_upload_pinned(
+        &mut self,
+        pinned_id: u64,
+        pinned_offset_bytes: usize,
+        arena_id: u64,
+        arena_offset_bytes: usize,
+        bytes: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: the public seam validates both typed regions.
+        self.check(unsafe {
+            (self.api.x4c_upload_pinned)(
+                self.raw,
+                pinned_id,
+                pinned_offset_bytes,
+                arena_id,
+                arena_offset_bytes,
+                bytes,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn x4c_direct_fold_pinned_tile(
+        &mut self,
+        pinned_id: u64,
+        pinned_offset_bytes: usize,
+        arena_id: u64,
+        output_offset_bytes: usize,
+        scratch_offset_bytes: usize,
+        input_len: usize,
+        output_start: usize,
+        output_count: usize,
+        challenge: Fp2Repr,
+    ) -> Result<(), AccelError> {
+        // SAFETY: the public seam validates typed pinned and arena ranges.
+        self.check(unsafe {
+            (self.api.x4c_direct_fold_pinned_tile)(
+                self.raw,
+                pinned_id,
+                pinned_offset_bytes,
+                arena_id,
+                output_offset_bytes,
+                scratch_offset_bytes,
+                input_len,
+                output_start,
+                output_count,
+                challenge.c0,
+                challenge.c1,
+            )
+        })
+    }
+
+    pub(super) fn x4c_direct_fold_arena(
+        &mut self,
+        arena_id: u64,
+        input_offset_bytes: usize,
+        input_len: usize,
+        output_offset_bytes: usize,
+        challenge: Fp2Repr,
+    ) -> Result<(), AccelError> {
+        // SAFETY: the public seam validates distinct aligned arena regions.
+        self.check(unsafe {
+            (self.api.x4c_direct_fold_arena)(
+                self.raw,
+                arena_id,
+                input_offset_bytes,
+                input_len,
+                output_offset_bytes,
+                challenge.c0,
+                challenge.c1,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn x4c_activation_add_pinned_tile(
+        &mut self,
+        pinned_id: u64,
+        pinned_offset_bytes: usize,
+        arena_id: u64,
+        destination_offset_bytes: usize,
+        scratch_offset_bytes: usize,
+        count: usize,
+        activation: Fp2Repr,
+    ) -> Result<(), AccelError> {
+        // SAFETY: the public seam validates all typed regions and non-overlap.
+        self.check(unsafe {
+            (self.api.x4c_activation_add_pinned_tile)(
+                self.raw,
+                pinned_id,
+                pinned_offset_bytes,
+                arena_id,
+                destination_offset_bytes,
+                scratch_offset_bytes,
+                count,
+                activation.c0,
+                activation.c1,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn x4c_build_one_slot_n4(
+        &mut self,
+        arena_id: u64,
+        codeword_offset_bytes: usize,
+        outer_len: usize,
+        cache_offset_bytes: usize,
+        descriptor: &[u8; 32],
+        cohort_id: u32,
+        oracle_kind: u8,
+        fold_round: u8,
+    ) -> Result<[u8; 32], AccelError> {
+        let mut root = [0u8; 32];
+        // SAFETY: all arena ranges and the exact descriptor/root widths are validated.
+        self.check(unsafe {
+            (self.api.x4c_build_one_slot_n4)(
+                self.raw,
+                arena_id,
+                codeword_offset_bytes,
+                outer_len,
+                cache_offset_bytes,
+                descriptor.as_ptr(),
+                cohort_id,
+                oracle_kind,
+                fold_round,
+                root.as_mut_ptr(),
+            )
+        })?;
+        Ok(root)
+    }
+
+    pub(super) fn x4c_gather_fp2_samples(
+        &mut self,
+        arena_id: u64,
+        source_offset_bytes: usize,
+        symbols: usize,
+        indices: &[u64],
+    ) -> Result<Vec<Fp2Repr>, AccelError> {
+        let mut output = vec![Fp2Repr::default(); indices.len()];
+        // SAFETY: the public seam validates every index and both slice lengths.
+        self.check(unsafe {
+            (self.api.x4c_gather_fp2_samples)(
+                self.raw,
+                arena_id,
+                source_offset_bytes,
+                symbols,
+                indices.as_ptr(),
+                indices.len(),
+                output.as_mut_ptr(),
+            )
+        })?;
+        Ok(output)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn x4c_batch_gather_bytes(
+        &mut self,
+        arena_id: u64,
+        pinned_requests_id: u64,
+        pinned_requests_offset_bytes: usize,
+        request_count: usize,
+        request_scratch_offset_bytes: usize,
+        mailbox_offset_bytes: usize,
+        mailbox_len: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: native validation reads the opaque pinned table before upload
+        // and repeats every arena/mailbox range and overlap check.
+        self.check(unsafe {
+            (self.api.x4c_batch_gather_bytes)(
+                self.raw,
+                arena_id,
+                pinned_requests_id,
+                pinned_requests_offset_bytes,
+                request_count,
+                request_scratch_offset_bytes,
+                mailbox_offset_bytes,
+                mailbox_len,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn x4c_batch_gather_canonical_operations(
+        &mut self,
+        arena_id: u64,
+        pinned_requests_id: u64,
+        pinned_requests_offset_bytes: usize,
+        request_count: usize,
+        request_scratch_offset_bytes: usize,
+        mailbox_offset_bytes: usize,
+        mailbox_len: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: native validation checks sorted identities, exact layouts,
+        // all source/destination ranges, and pairwise destination overlap.
+        self.check(unsafe {
+            (self.api.x4c_batch_gather_canonical_operations)(
+                self.raw,
+                arena_id,
+                pinned_requests_id,
+                pinned_requests_offset_bytes,
+                request_count,
+                request_scratch_offset_bytes,
+                mailbox_offset_bytes,
+                mailbox_len,
+            )
+        })
+    }
+
+    pub(super) fn x4c_arena_reset(
+        &mut self,
+        arena_id: u64,
+        offset_bytes: usize,
+        bytes: usize,
+        zero: bool,
+    ) -> Result<(), AccelError> {
+        // SAFETY: the public seam validates the live arena region.
+        self.check(unsafe {
+            (self.api.x4c_arena_reset)(self.raw, arena_id, offset_bytes, bytes, i32::from(zero))
+        })
     }
 
     #[allow(clippy::too_many_arguments)]

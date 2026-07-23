@@ -18,6 +18,7 @@ namespace volta_x4b {
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr uint64_t FP2_NON_RESIDUE = 7;
+constexpr uint64_t INVERSE_TWO = 0x7FFF'FFFF'8000'0001ULL;
 constexpr uint64_t PRIMITIVE_ROOT_2_33_C0 = 0;
 constexpr uint64_t PRIMITIVE_ROOT_2_33_C1 = 0x076d'e30b'51a3'f645ULL;
 
@@ -30,6 +31,44 @@ struct Hash32 {
     uint32_t words[8];
 };
 
+/// Canonical X4c byte-gather request. Offsets are absolute byte offsets in
+/// the one response arena. Requests are ordered by destination offset.
+struct X4cGatherRequest {
+    uint64_t source_offset_bytes;
+    uint64_t destination_offset_bytes;
+    uint64_t byte_len;
+};
+
+static_assert(sizeof(X4cGatherRequest) == 24, "X4c gather-request ABI mismatch");
+
+enum : uint8_t {
+    X4C_GATHER_CODEWORD_SYMBOL = 0,
+    X4C_GATHER_CACHED_OUTER_DIGEST = 1,
+    X4C_GATHER_REBUILT_OUTER_DIGEST = 2,
+};
+
+/// One exact operation from the frozen canonical gather plan. The batch is
+/// ordered by round, then symbols, then the deduplicated frontier's
+/// `(level,index)` order. It never expands the frontier into full paths.
+struct X4cCanonicalGatherOperation {
+    uint64_t codeword_offset_bytes;
+    uint64_t cache_offset_bytes;
+    uint64_t source_offset_bytes;
+    uint64_t outer_len;
+    uint64_t index;
+    uint64_t destination_offset_bytes;
+    Hash32 descriptor;
+    uint32_t cohort_id;
+    uint8_t source_kind;
+    uint8_t level;
+    uint8_t oracle_kind;
+    uint8_t fold_round;
+};
+
+static_assert(
+    sizeof(X4cCanonicalGatherOperation) == 88,
+    "X4c canonical-gather operation ABI mismatch");
+
 VOLTA_X4B_HD inline uint64_t fp_add(uint64_t a, uint64_t b) {
     const uint64_t r0 = a + b;
     const bool carry = r0 < a;
@@ -41,6 +80,10 @@ VOLTA_X4B_HD inline uint64_t fp_add(uint64_t a, uint64_t b) {
 VOLTA_X4B_HD inline uint64_t fp_sub(uint64_t a, uint64_t b) {
     const uint64_t r = a - b;
     return a < b ? r - EPSILON : r;
+}
+
+VOLTA_X4B_HD inline uint64_t fp_neg(uint64_t value) {
+    return value == 0 ? 0 : P - value;
 }
 
 VOLTA_X4B_HD inline uint64_t fp_mul(uint64_t a, uint64_t b) {
@@ -63,6 +106,20 @@ VOLTA_X4B_HD inline uint64_t fp_mul(uint64_t a, uint64_t b) {
     uint64_t r = carry ? r0 + EPSILON : r0;
     if (r >= P) r -= P;
     return r;
+}
+
+VOLTA_X4B_HD inline uint64_t fp_pow(uint64_t base, uint64_t exponent) {
+    uint64_t result = 1;
+    while (exponent) {
+        if (exponent & 1) result = fp_mul(result, base);
+        base = fp_mul(base, base);
+        exponent >>= 1;
+    }
+    return result;
+}
+
+VOLTA_X4B_HD inline uint64_t fp_inv(uint64_t value) {
+    return fp_pow(value, P - 2);
 }
 
 VOLTA_X4B_HD inline Fp2 fp2_add(Fp2 a, Fp2 b) {
@@ -90,11 +147,72 @@ VOLTA_X4B_HD inline Fp2 fp2_pow(Fp2 base, uint64_t exponent) {
     return result;
 }
 
+VOLTA_X4B_HD inline Fp2 fp2_inv(Fp2 value) {
+    const uint64_t denominator =
+        fp_sub(fp_mul(value.c0, value.c0),
+               fp_mul(FP2_NON_RESIDUE, fp_mul(value.c1, value.c1)));
+    const uint64_t inverse_denominator = fp_inv(denominator);
+    return Fp2{
+        fp_mul(value.c0, inverse_denominator),
+        fp_mul(fp_neg(value.c1), inverse_denominator),
+    };
+}
+
 VOLTA_X4B_HD inline Fp2 root_of_unity(uint32_t bits) {
     Fp2 root{PRIMITIVE_ROOT_2_33_C0, PRIMITIVE_ROOT_2_33_C1};
     for (uint32_t i = bits; i < 33; ++i) root = fp2_mul(root, root);
     return bits == 0 ? Fp2{1, 0} : root;
 }
+
+VOLTA_X4B_HD inline uint32_t power_of_two_log2(size_t value) {
+    uint32_t bits = 0;
+    while (value > 1) {
+        value >>= 1;
+        ++bits;
+    }
+    return bits;
+}
+
+/// Frozen X4c direct-fold equation. The input order is `omega^j`, so
+/// `positive[j]` and `negative[j]` are the evaluations at `+x` and `-x`.
+VOLTA_X4B_HD inline Fp2 direct_fold_symbol(
+    Fp2 positive, Fp2 negative, Fp2 challenge, Fp2 inverse_x) {
+    const Fp2 inverse_two{INVERSE_TWO, 0};
+    const Fp2 even = fp2_mul(fp2_add(positive, negative), inverse_two);
+    const Fp2 odd = fp2_mul(
+        fp2_mul(fp2_sub(positive, negative), inverse_two), inverse_x);
+    return fp2_add(even, fp2_mul(challenge, odd));
+}
+
+inline bool direct_fold_reference(
+    const Fp2* input, size_t input_len, Fp2 challenge, Fp2* output) {
+    if (!input || !output || input_len < 2 || (input_len & (input_len - 1)) ||
+        input_len > (size_t{1} << 33))
+        return false;
+    const size_t half = input_len / 2;
+    const Fp2 omega_inverse =
+        fp2_inv(root_of_unity(power_of_two_log2(input_len)));
+    Fp2 inverse_x{1, 0};
+    for (size_t index = 0; index < half; ++index) {
+        output[index] = direct_fold_symbol(
+            input[index], input[index + half], challenge, inverse_x);
+        inverse_x = fp2_mul(inverse_x, omega_inverse);
+    }
+    return true;
+}
+
+inline bool activation_add_reference(
+    Fp2* destination, const Fp2* source, size_t count, Fp2 activation) {
+    if (!destination || !source || !count) return false;
+    for (size_t index = 0; index < count; ++index) {
+        destination[index] =
+            fp2_add(destination[index], fp2_mul(activation, source[index]));
+    }
+    return true;
+}
+
+constexpr size_t X4C_DIRECT_FOLD_RUN = 256;
+constexpr size_t X4C_DIRECT_FOLD_BLOCK = 256;
 
 constexpr uint32_t BLAKE3_CHUNK_START = 1;
 constexpr uint32_t BLAKE3_CHUNK_END = 2;
@@ -296,6 +414,104 @@ VOLTA_X4B_HD inline Hash32 hash_node(
     return blake3_derive_hash(node_key, frame, sizeof(frame));
 }
 
+VOLTA_X4B_HD inline Hash32 one_slot_outer_leaf(
+    const Fp2* codeword, const Hash32* keys, Hash32 descriptor,
+    uint64_t coordinate, uint32_t cohort_id, uint8_t oracle_kind,
+    uint8_t fold_round) {
+    const Hash32 inner = hash_inner_leaf(
+        keys[0], cohort_id, oracle_kind, fold_round, coordinate, descriptor,
+        0, true, codeword[coordinate]);
+    return hash_outer_leaf(
+        keys[0], cohort_id, oracle_kind, fold_round, coordinate, inner);
+}
+
+/// Scalar reference for the deterministic level-major one-slot N4 cache.
+/// Actual outer levels 0 and 1 are omitted; levels 2..=depth are written
+/// left-to-right and the final digest is the root.
+inline bool one_slot_n4_retained_reference(
+    const Fp2* codeword, size_t outer_len, const Hash32* keys,
+    Hash32 descriptor, uint32_t cohort_id, uint8_t oracle_kind,
+    uint8_t fold_round, Hash32* retained) {
+    if (!codeword || !keys || !retained || outer_len < 8 ||
+        (outer_len & (outer_len - 1)) || outer_len > (size_t{1} << 33) ||
+        oracle_kind != 2 || fold_round == 0)
+        return false;
+    const size_t level_two_count = outer_len / 4;
+    for (size_t parent = 0; parent < level_two_count; ++parent) {
+        const uint64_t coordinate = static_cast<uint64_t>(4 * parent);
+        const Hash32 leaf0 = one_slot_outer_leaf(
+            codeword, keys, descriptor, coordinate, cohort_id, oracle_kind,
+            fold_round);
+        const Hash32 leaf1 = one_slot_outer_leaf(
+            codeword, keys, descriptor, coordinate + 1, cohort_id,
+            oracle_kind, fold_round);
+        const Hash32 leaf2 = one_slot_outer_leaf(
+            codeword, keys, descriptor, coordinate + 2, cohort_id,
+            oracle_kind, fold_round);
+        const Hash32 leaf3 = one_slot_outer_leaf(
+            codeword, keys, descriptor, coordinate + 3, cohort_id,
+            oracle_kind, fold_round);
+        const Hash32 left = hash_node(
+            keys[1], cohort_id, 1, oracle_kind, fold_round, UINT64_MAX, 1,
+            2 * parent, leaf0, leaf1);
+        const Hash32 right = hash_node(
+            keys[1], cohort_id, 1, oracle_kind, fold_round, UINT64_MAX, 1,
+            2 * parent + 1, leaf2, leaf3);
+        retained[parent] = hash_node(
+            keys[1], cohort_id, 1, oracle_kind, fold_round, UINT64_MAX, 2,
+            parent, left, right);
+    }
+    size_t source_offset = 0;
+    size_t source_count = level_two_count;
+    size_t destination_offset = source_count;
+    uint8_t level = 3;
+    while (source_count > 1) {
+        const size_t parent_count = source_count / 2;
+        for (size_t parent = 0; parent < parent_count; ++parent) {
+            retained[destination_offset + parent] = hash_node(
+                keys[1], cohort_id, 1, oracle_kind, fold_round, UINT64_MAX,
+                level, parent, retained[source_offset + 2 * parent],
+                retained[source_offset + 2 * parent + 1]);
+        }
+        source_offset = destination_offset;
+        source_count = parent_count;
+        destination_offset += parent_count;
+        ++level;
+    }
+    return true;
+}
+
+VOLTA_X4B_HD inline bool rebuild_one_slot_outer_digest(
+    const Fp2* codeword, uint64_t outer_len, const Hash32* keys,
+    Hash32 descriptor, uint32_t cohort_id, uint8_t oracle_kind,
+    uint8_t fold_round, uint8_t level, uint64_t index, Hash32* output) {
+    if (!codeword || !keys || !output || level > 1 ||
+        index >= (outer_len >> level))
+        return false;
+    if (level == 0) {
+        *output = one_slot_outer_leaf(
+            codeword, keys, descriptor, index, cohort_id, oracle_kind,
+            fold_round);
+        return true;
+    }
+    const uint64_t first_coordinate = 2 * index;
+    const Hash32 left = one_slot_outer_leaf(
+        codeword, keys, descriptor, first_coordinate, cohort_id, oracle_kind,
+        fold_round);
+    const Hash32 right = one_slot_outer_leaf(
+        codeword, keys, descriptor, first_coordinate + 1, cohort_id,
+        oracle_kind, fold_round);
+    *output = hash_node(
+        keys[1], cohort_id, 1, oracle_kind, fold_round, UINT64_MAX, 1, index,
+        left, right);
+    return true;
+}
+
+VOLTA_X4B_HD inline uint64_t retained_level_digest_offset(
+    uint64_t outer_len, uint8_t level) {
+    return outer_len / 2 - (outer_len >> (level - 1));
+}
+
 #if defined(__CUDACC__)
 
 VOLTA_X4B_GLOBAL void initialize_n4_keys(Hash32* keys) {
@@ -400,6 +616,139 @@ VOLTA_X4B_GLOBAL void outer_node_tile(
         output[local] = hash_node(
             keys[1], cohort_id, 1, oracle_kind, fold_round, UINT64_MAX,
             level, node_start + local, children[2 * local], children[2 * local + 1]);
+    }
+}
+
+/// Coalesced direct fold. One block covers `BLOCK * RUN` consecutive output
+/// coordinates. Thread zero derives the first inverse-x once, then fills the
+/// lane bases by recurrence; every lane advances by `omega_inverse^BLOCK`.
+/// There is no per-element exponentiation.
+VOLTA_X4B_GLOBAL void direct_fold_fp2_run(
+    const Fp2* positive, const Fp2* negative, Fp2* output,
+    uint64_t output_start, size_t output_count, Fp2 challenge,
+    Fp2 omega_inverse, Fp2 omega_inverse_block) {
+    __shared__ Fp2 lane_inverse[X4C_DIRECT_FOLD_BLOCK];
+    const size_t block_local_start =
+        static_cast<size_t>(blockIdx.x) * blockDim.x * X4C_DIRECT_FOLD_RUN;
+    if (threadIdx.x == 0) {
+        Fp2 value = fp2_pow(
+            omega_inverse, output_start + static_cast<uint64_t>(block_local_start));
+        for (size_t lane = 0; lane < blockDim.x; ++lane) {
+            lane_inverse[lane] = value;
+            value = fp2_mul(value, omega_inverse);
+        }
+    }
+    __syncthreads();
+
+    size_t local = block_local_start + threadIdx.x;
+    Fp2 inverse_x = lane_inverse[threadIdx.x];
+    for (size_t run = 0; run < X4C_DIRECT_FOLD_RUN; ++run) {
+        if (local < output_count) {
+            output[local] = direct_fold_symbol(
+                positive[local], negative[local], challenge, inverse_x);
+        }
+        local += blockDim.x;
+        inverse_x = fp2_mul(inverse_x, omega_inverse_block);
+    }
+}
+
+VOLTA_X4B_GLOBAL void activation_add_fp2(
+    Fp2* destination, const Fp2* source, size_t count, Fp2 activation) {
+    const size_t index =
+        static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (index < count) {
+        destination[index] =
+            fp2_add(destination[index], fp2_mul(activation, source[index]));
+    }
+}
+
+/// Build actual outer level 2 directly from four codeword symbols, omitting
+/// both outer leaves and level 1 from retained storage.
+VOLTA_X4B_GLOBAL void one_slot_outer_level_two(
+    const Fp2* codeword, Hash32* output, const Hash32* keys,
+    Hash32 descriptor, size_t parents, uint32_t cohort_id,
+    uint8_t oracle_kind, uint8_t fold_round) {
+    const size_t parent =
+        static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (parent >= parents) return;
+    const uint64_t coordinate = static_cast<uint64_t>(4 * parent);
+    const Hash32 leaf0 = one_slot_outer_leaf(
+        codeword, keys, descriptor, coordinate, cohort_id, oracle_kind,
+        fold_round);
+    const Hash32 leaf1 = one_slot_outer_leaf(
+        codeword, keys, descriptor, coordinate + 1, cohort_id, oracle_kind,
+        fold_round);
+    const Hash32 leaf2 = one_slot_outer_leaf(
+        codeword, keys, descriptor, coordinate + 2, cohort_id, oracle_kind,
+        fold_round);
+    const Hash32 leaf3 = one_slot_outer_leaf(
+        codeword, keys, descriptor, coordinate + 3, cohort_id, oracle_kind,
+        fold_round);
+    const Hash32 left = hash_node(
+        keys[1], cohort_id, 1, oracle_kind, fold_round, UINT64_MAX, 1,
+        2 * parent, leaf0, leaf1);
+    const Hash32 right = hash_node(
+        keys[1], cohort_id, 1, oracle_kind, fold_round, UINT64_MAX, 1,
+        2 * parent + 1, leaf2, leaf3);
+    output[parent] = hash_node(
+        keys[1], cohort_id, 1, oracle_kind, fold_round, UINT64_MAX, 2,
+        parent, left, right);
+}
+
+VOLTA_X4B_GLOBAL void gather_fp2_samples(
+    const Fp2* source, const uint64_t* indices, size_t count, Fp2* output) {
+    const size_t index =
+        static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (index < count) output[index] = source[indices[index]];
+}
+
+VOLTA_X4B_GLOBAL void gather_bytes(
+    uint8_t* arena, const X4cGatherRequest* requests, size_t request_count) {
+    const size_t request_index = blockIdx.x;
+    if (request_index >= request_count) return;
+    const X4cGatherRequest request = requests[request_index];
+    for (uint64_t byte = threadIdx.x; byte < request.byte_len; byte += blockDim.x) {
+        arena[request.destination_offset_bytes + byte] =
+            arena[request.source_offset_bytes + byte];
+    }
+}
+
+/// Execute the exact canonical deduplicated gather plan. Missing outer levels
+/// zero/one are rebuilt from the resident codeword; retained levels are copied
+/// from the one-level-omitted cache.
+VOLTA_X4B_GLOBAL void gather_canonical_operations(
+    uint8_t* arena, const X4cCanonicalGatherOperation* operations,
+    size_t operation_count, const Hash32* keys) {
+    const size_t operation_index =
+        static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (operation_index >= operation_count) return;
+    const X4cCanonicalGatherOperation operation = operations[operation_index];
+    const Fp2* codeword = reinterpret_cast<const Fp2*>(
+        arena + operation.codeword_offset_bytes);
+    uint8_t* destination = arena + operation.destination_offset_bytes;
+    if (operation.source_kind == X4C_GATHER_CODEWORD_SYMBOL) {
+        const Fp2 symbol = codeword[operation.index];
+        const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&symbol);
+        for (size_t byte = 0; byte < sizeof(Fp2); ++byte) {
+            destination[byte] = bytes[byte];
+        }
+    } else if (operation.source_kind == X4C_GATHER_CACHED_OUTER_DIGEST) {
+        const Hash32 digest = *reinterpret_cast<const Hash32*>(
+            arena + operation.source_offset_bytes);
+        const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&digest);
+        for (size_t byte = 0; byte < sizeof(Hash32); ++byte) {
+            destination[byte] = bytes[byte];
+        }
+    } else {
+        Hash32 rebuilt{};
+        (void)rebuild_one_slot_outer_digest(
+            codeword, operation.outer_len, keys, operation.descriptor,
+            operation.cohort_id, operation.oracle_kind, operation.fold_round,
+            operation.level, operation.index, &rebuilt);
+        const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&rebuilt);
+        for (size_t byte = 0; byte < sizeof(Hash32); ++byte) {
+            destination[byte] = bytes[byte];
+        }
     }
 }
 

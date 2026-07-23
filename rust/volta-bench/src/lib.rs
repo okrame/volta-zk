@@ -7,6 +7,7 @@
 
 pub mod logits_pack;
 pub mod logup;
+pub mod x4c_instrumentation;
 
 use volta_field::{Fp, Fp2, FpStream};
 

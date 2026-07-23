@@ -15,18 +15,24 @@ use volta_mac::Transcript;
 
 use super::accounting::projected_query_indices;
 use super::cuda_v4::{
-    commit_cohort_cuda_v4, verify_persisted_oracle_matches_v4, X4bCudaCohortArtifactsV4,
-    X4bCudaCohortPathsV4, X4bCudaCommitMetricsV4,
+    commit_cohort_cuda_v4_instrumented, verify_persisted_oracle_matches_v4,
+    X4bCudaCohortArtifactsV4, X4bCudaCohortPathsV4, X4bCudaCommitMetricsV4,
 };
 use super::frame::{Digest, FrameError};
 use super::frame_v4::{
     opening_schedule_digest_v4, profile_digest_v4, FoldCommitmentFrameV4, InitialOpeningScheduleV4,
     OracleKindV4, PackedBatchOpeningFrameV4, PackedOpeningScheduleV4, PRODUCTION_QUERY_COUNT_V4,
 };
+use super::lifecycle_v4::{
+    NoopX4LifecycleObserverV4, X4AcceleratorControlSnapshotV4, X4LegacySealedOwnershipV4,
+    X4LifecycleContextV4, X4LifecycleEventV4, X4LifecycleNestingV4, X4LifecycleObserverV4,
+    X4LifecyclePhaseV4, X4LifecycleTrackV4, X4TemporaryFileStateV4,
+};
 use super::merkle::MerkleError;
 use super::merkle_v4::{
     verify_fold_round_packed_opening_v4, verify_initial_packed_opening_v4, CohortIdentityV4,
-    CohortTreeV4, CohortVerifierConfigV4, OuterCachePolicyV4,
+    CohortTreeLifecyclePartsV4, CohortTreeV4, CohortVerifierConfigV4,
+    DenseOuterNodeCacheLifecyclePartsV4, OuterCachePolicyV4,
 };
 use super::ntt::{
     encode_rate_eighth, evaluate_multilinear_coefficients, fold_codeword, fold_coefficients,
@@ -302,6 +308,10 @@ pub struct GlobalOpenMetricsV4 {
     pub x4b_fold_maximum_n4_tile_bytes: u64,
     pub x4b_fold_page_cache_dontneed_bytes: u64,
     pub x4b_fold_page_cache_advice_calls: u64,
+    pub x4b_fold_files_created: u64,
+    pub x4b_fold_files_deleted: u64,
+    pub x4b_fold_directories_created: u64,
+    pub x4b_fold_directories_deleted: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -413,6 +423,34 @@ trait FoldRoundCommitterV4 {
     fn charge_metrics(&self, _metrics: &mut GlobalOpenMetricsV4) -> Result<(), FoldingErrorV4> {
         Ok(())
     }
+
+    fn seal_finished(&mut self) {}
+
+    fn temporary_file_state(&self) -> X4TemporaryFileStateV4 {
+        X4TemporaryFileStateV4::default()
+    }
+
+    fn accelerator_control_snapshot(&self) -> Option<X4AcceleratorControlSnapshotV4> {
+        None
+    }
+}
+
+fn observe_lifecycle_span_v4(
+    observer: &mut dyn X4LifecycleObserverV4,
+    track: X4LifecycleTrackV4,
+    phase: X4LifecyclePhaseV4,
+    nesting: X4LifecycleNestingV4,
+    span_start: bool,
+    context: X4LifecycleContextV4,
+    ownership: X4LegacySealedOwnershipV4,
+    files: X4TemporaryFileStateV4,
+) {
+    let event = if span_start {
+        X4LifecycleEventV4::span_start(track, phase, nesting, context, ownership, files)
+    } else {
+        X4LifecycleEventV4::span_end(track, phase, nesting, context, ownership, files)
+    };
+    observer.observe(&event);
 }
 
 struct CpuFoldRoundCommitterV4;
@@ -430,10 +468,36 @@ impl FoldRoundCommitterV4 for CpuFoldRoundCommitterV4 {
 
 struct X4bCudaFoldRoundCommitterV4<'a> {
     backend: &'a mut Backend,
+    observer: &'a mut dyn X4LifecycleObserverV4,
     artifact_directory: PathBuf,
     cache_policy: OuterCachePolicyV4,
     metrics: X4bCudaCommitMetricsV4,
     reference_bytes_read: u64,
+    sealed_ownership: X4LegacySealedOwnershipV4,
+    temporary_files: X4TemporaryFileStateV4,
+}
+
+impl X4bCudaFoldRoundCommitterV4<'_> {
+    fn observe_seal_phase(
+        &mut self,
+        phase: X4LifecyclePhaseV4,
+        span_start: bool,
+        context: X4LifecycleContextV4,
+    ) {
+        let ownership = self
+            .sealed_ownership
+            .with_accelerator_control(X4AcceleratorControlSnapshotV4::capture(self.backend));
+        observe_lifecycle_span_v4(
+            self.observer,
+            X4LifecycleTrackV4::LegacySeal,
+            phase,
+            X4LifecycleNestingV4::TopLevel,
+            span_start,
+            context,
+            ownership,
+            self.temporary_files,
+        );
+    }
 }
 
 impl FoldRoundCommitterV4 for X4bCudaFoldRoundCommitterV4<'_> {
@@ -444,42 +508,78 @@ impl FoldRoundCommitterV4 for X4bCudaFoldRoundCommitterV4<'_> {
         codeword: &[Fp2],
     ) -> Result<CohortTreeV4, FoldingErrorV4> {
         let round = config.identity.fold_round;
+        let context = X4LifecycleContextV4 {
+            cohort_id: Some(config.identity.cohort_id),
+            fold_round: Some(round),
+            ..X4LifecycleContextV4::default()
+        };
         let paths = X4bCudaCohortPathsV4 {
             coefficients: self.artifact_directory.join(format!("fold-{round}-coefficients.bin")),
             oracle: self.artifact_directory.join(format!("fold-{round}-oracle.bin")),
             root: self.artifact_directory.join(format!("fold-{round}-root.bin")),
             staging_directory: self.artifact_directory.join("n4-staging"),
         };
-        let artifacts = commit_cohort_cuda_v4(
+        self.observe_seal_phase(X4LifecyclePhaseV4::CoefficientCloneAllocation, true, context);
+        let cloned_coefficients = vec![Some(coefficients.to_vec())];
+        self.observe_seal_phase(X4LifecyclePhaseV4::CoefficientCloneAllocation, false, context);
+        let artifacts = commit_cohort_cuda_v4_instrumented(
             self.backend,
             config.clone(),
-            &[Some(coefficients.to_vec())],
+            &cloned_coefficients,
             paths,
             self.cache_policy,
+            self.observer,
+            self.sealed_ownership,
+            &mut self.temporary_files,
         )
         .map_err(|error| FoldingErrorV4::Artifact(error.to_string()))?;
-        let X4bCudaCohortArtifactsV4 { commitment, outer_cache, paths, metrics } = artifacts;
+        let X4bCudaCohortArtifactsV4 { commitment, outer_cache, paths, mut metrics } = artifacts;
         if commitment.config != config {
             return Err(FoldingErrorV4::Artifact(
                 "X4b fold commit returned a different verifier configuration".to_owned(),
             ));
         }
+        self.observe_seal_phase(X4LifecyclePhaseV4::FullOracleComparison, true, context);
         let compared =
             verify_persisted_oracle_matches_v4(&paths.oracle, &config, &[Some(codeword)])
                 .map_err(|error| FoldingErrorV4::Artifact(error.to_string()))?;
+        self.observe_seal_phase(X4LifecyclePhaseV4::FullOracleComparison, false, context);
+        self.observe_seal_phase(X4LifecyclePhaseV4::CpuCodewordCacheCloneBack, true, context);
         let tree = CohortTreeV4::from_accelerated_commit_parts(
             config,
             vec![Some(codeword.to_vec())],
             outer_cache,
         )?;
+        let round_codeword_bytes = tree.codeword_bytes()?;
+        let round_cache_bytes = tree.outer_cache_bytes()?;
+        self.sealed_ownership = X4LegacySealedOwnershipV4::from_fold_payload(
+            self.sealed_ownership
+                .fold_codeword_bytes
+                .checked_add(round_codeword_bytes)
+                .ok_or(FoldingErrorV4::Overflow)?,
+            self.sealed_ownership
+                .fold_outer_cache_bytes
+                .checked_add(round_cache_bytes)
+                .ok_or(FoldingErrorV4::Overflow)?,
+        )
+        .ok_or(FoldingErrorV4::Overflow)?;
+        self.observe_seal_phase(X4LifecyclePhaseV4::CpuCodewordCacheCloneBack, false, context);
+        self.observe_seal_phase(X4LifecyclePhaseV4::FileCleanup, true, context);
         for path in [&paths.coefficients, &paths.oracle, &paths.root] {
+            let bytes = std::fs::metadata(path)
+                .map_err(|error| FoldingErrorV4::Artifact(error.to_string()))?
+                .len();
             std::fs::remove_file(path).map_err(|error| {
                 FoldingErrorV4::Artifact(format!(
                     "cannot remove response-local X4b fold artifact {}: {error}",
                     path.display()
                 ))
             })?;
+            self.temporary_files.record_file_deleted(bytes).ok_or(FoldingErrorV4::Overflow)?;
+            metrics.files_deleted =
+                metrics.files_deleted.checked_add(1).ok_or(FoldingErrorV4::Overflow)?;
         }
+        self.observe_seal_phase(X4LifecyclePhaseV4::FileCleanup, false, context);
         self.metrics
             .include(&metrics)
             .map_err(|error| FoldingErrorV4::Artifact(error.to_string()))?;
@@ -502,7 +602,36 @@ impl FoldRoundCommitterV4 for X4bCudaFoldRoundCommitterV4<'_> {
         metrics.x4b_fold_maximum_n4_tile_bytes = self.metrics.maximum_n4_tile_bytes;
         metrics.x4b_fold_page_cache_dontneed_bytes = self.metrics.page_cache_dontneed_bytes;
         metrics.x4b_fold_page_cache_advice_calls = self.metrics.page_cache_advice_calls;
+        metrics.x4b_fold_files_created = self.metrics.files_created;
+        metrics.x4b_fold_files_deleted = self.metrics.files_deleted;
+        metrics.x4b_fold_directories_created = self.metrics.directories_created;
+        metrics.x4b_fold_directories_deleted = self.metrics.directories_deleted;
         Ok(())
+    }
+
+    fn seal_finished(&mut self) {
+        self.observe_seal_phase(
+            X4LifecyclePhaseV4::DirectoryCleanup,
+            true,
+            X4LifecycleContextV4::default(),
+        );
+        // The response-local fold files have already been unlinked, but the
+        // shared staging directory is intentionally retained until the
+        // runner's post-open/post-verify cleanup.  This measured no-op records
+        // the exact zero seal-window directory-deletion control.
+        self.observe_seal_phase(
+            X4LifecyclePhaseV4::DirectoryCleanup,
+            false,
+            X4LifecycleContextV4::default(),
+        );
+    }
+
+    fn temporary_file_state(&self) -> X4TemporaryFileStateV4 {
+        self.temporary_files
+    }
+
+    fn accelerator_control_snapshot(&self) -> Option<X4AcceleratorControlSnapshotV4> {
+        Some(X4AcceleratorControlSnapshotV4::capture(self.backend))
     }
 }
 
@@ -587,6 +716,18 @@ impl<'a> GlobalChainDraftV4<'a> {
         Err(FoldingErrorV4::EarlyQueryRejected)
     }
 
+    pub(crate) fn into_x4c_parts(self) -> super::x4c_v4::X4cDraftPartsV4<'a> {
+        super::x4c_v4::X4cDraftPartsV4 {
+            model_root: self.model_root,
+            epoch: self.epoch,
+            global_cohort_id: self.global_cohort_id,
+            global_descriptor_digest: self.global_descriptor_digest,
+            common_point: self.common_point,
+            groups: self.groups,
+            fixed_challenges: self.fixed_challenges,
+        }
+    }
+
     pub fn seal(self) -> Result<SealedGlobalChainV4<'a>, FoldingErrorV4> {
         let challenges = self
             .fixed_challenges
@@ -622,19 +763,49 @@ impl<'a> GlobalChainDraftV4<'a> {
         artifact_directory: impl AsRef<Path>,
         cache_policy: OuterCachePolicyV4,
     ) -> Result<SealedGlobalChainV4<'a>, FoldingErrorV4> {
+        let mut observer = NoopX4LifecycleObserverV4;
+        self.seal_interactive_x4b_cuda_instrumented(
+            tx,
+            backend,
+            artifact_directory,
+            cache_policy,
+            &mut observer,
+        )
+    }
+
+    /// Legacy X4b seal with coarse host-wall lifecycle events. The transcript,
+    /// roots and retained sealed representation are byte-identical to
+    /// [`Self::seal_interactive_x4b_cuda`].
+    pub fn seal_interactive_x4b_cuda_instrumented(
+        self,
+        tx: &mut Transcript,
+        backend: &mut Backend,
+        artifact_directory: impl AsRef<Path>,
+        cache_policy: OuterCachePolicyV4,
+        observer: &mut dyn X4LifecycleObserverV4,
+    ) -> Result<SealedGlobalChainV4<'a>, FoldingErrorV4> {
         if self.fixed_challenges.is_some() {
             return Err(FoldingErrorV4::InvalidGeometry("v4 fixed seal is not interactive"));
         }
         let mut source = InteractiveFoldChallengeSourceV4 { tx };
+        let artifact_directory = artifact_directory.as_ref().to_path_buf();
+        let directory_existed = artifact_directory.exists();
         let mut committer = X4bCudaFoldRoundCommitterV4 {
             backend,
-            artifact_directory: artifact_directory.as_ref().to_path_buf(),
+            observer,
+            artifact_directory,
             cache_policy,
             metrics: X4bCudaCommitMetricsV4::default(),
             reference_bytes_read: 0,
+            sealed_ownership: X4LegacySealedOwnershipV4::default(),
+            temporary_files: X4TemporaryFileStateV4::default(),
         };
         std::fs::create_dir_all(&committer.artifact_directory)
             .map_err(|error| FoldingErrorV4::Artifact(error.to_string()))?;
+        if !directory_existed {
+            committer.temporary_files.record_directory_created().ok_or(FoldingErrorV4::Overflow)?;
+            committer.metrics.directories_created = 1;
+        }
         self.seal_with_source(&mut source, &mut committer)
     }
 
@@ -779,6 +950,7 @@ impl<'a> GlobalChainDraftV4<'a> {
         }
         metrics.aggregate_merkle_symbols_written = metrics.folded_symbols_written;
         committer.charge_metrics(&mut metrics)?;
+        committer.seal_finished();
         metrics.serialized_fold_bytes = fold_frames.iter().try_fold(0u64, |sum, frame| {
             sum.checked_add(
                 u64::try_from(
@@ -788,6 +960,15 @@ impl<'a> GlobalChainDraftV4<'a> {
             )
             .ok_or(FoldingErrorV4::Overflow)
         })?;
+        let mut lifecycle_ownership = X4LegacySealedOwnershipV4::from_fold_payload(
+            metrics.sealed_fold_codeword_bytes,
+            metrics.sealed_fold_outer_cache_bytes,
+        )
+        .ok_or(FoldingErrorV4::Overflow)?;
+        if let Some(accelerator_control) = committer.accelerator_control_snapshot() {
+            lifecycle_ownership = lifecycle_ownership.with_accelerator_control(accelerator_control);
+        }
+        let lifecycle_temporary_files = committer.temporary_file_state();
         Ok(SealedGlobalChainV4 {
             model_root: self.model_root,
             epoch: self.epoch,
@@ -798,6 +979,8 @@ impl<'a> GlobalChainDraftV4<'a> {
             fold_frames,
             round_trees,
             metrics,
+            lifecycle_ownership,
+            lifecycle_temporary_files,
         })
     }
 }
@@ -813,6 +996,8 @@ pub struct SealedGlobalChainV4<'a> {
     fold_frames: Vec<FoldCommitmentFrameV4>,
     round_trees: Vec<CohortTreeV4>,
     metrics: GlobalOpenMetricsV4,
+    lifecycle_ownership: X4LegacySealedOwnershipV4,
+    lifecycle_temporary_files: X4TemporaryFileStateV4,
 }
 
 impl SealedGlobalChainV4<'_> {
@@ -832,10 +1017,58 @@ impl SealedGlobalChainV4<'_> {
         &self.fold_frames
     }
 
+    /// Exact logical ownership carried into lifecycle events.  This getter is
+    /// intentionally read-only so a runner can bracket the runner-owned
+    /// `Backend::finish_measurement` boundary without changing sealed state.
+    pub const fn lifecycle_ownership(&self) -> X4LegacySealedOwnershipV4 {
+        self.lifecycle_ownership
+    }
+
+    /// Exact response-local file/directory ledger at the end of seal.  The
+    /// runner uses this alongside [`Self::lifecycle_ownership`] when it emits
+    /// the backend-finish synchronization boundary.
+    pub const fn lifecycle_temporary_files(&self) -> X4TemporaryFileStateV4 {
+        self.lifecycle_temporary_files
+    }
+
+    /// Replace the copied accelerator boundary after the runner has measured
+    /// and completed `Backend::finish_measurement`.  Opening instrumentation
+    /// then carries that exact post-finish state at every boundary.
+    pub fn set_lifecycle_accelerator_control(
+        &mut self,
+        accelerator_control: X4AcceleratorControlSnapshotV4,
+    ) -> Result<(), FoldingErrorV4> {
+        if !accelerator_control.available
+            || !accelerator_control.is_consistent()
+            || accelerator_control.measurement_active
+            || !accelerator_control.synchronized
+        {
+            return Err(FoldingErrorV4::InvalidGeometry("v4 post-finish accelerator control"));
+        }
+        self.lifecycle_ownership =
+            self.lifecycle_ownership.with_accelerator_control(accelerator_control);
+        Ok(())
+    }
+
     /// Consume the sealed state so one epoch cannot emit a second opening.
     pub fn issue_queries(
         self,
         query_draws: Vec<u64>,
+    ) -> Result<
+        (GlobalFoldingProofV4, Vec<GlobalVerifierGroupV4>, GlobalOpenMetricsV4),
+        FoldingErrorV4,
+    > {
+        let mut observer = NoopX4LifecycleObserverV4;
+        self.issue_queries_instrumented(query_draws, &mut observer)
+    }
+
+    /// Consume the legacy sealed state while emitting coarse host-wall and
+    /// exact logical-ownership boundaries. Nested hashing/path spans are
+    /// hierarchical children of their initial/fold opening spans.
+    pub fn issue_queries_instrumented(
+        self,
+        query_draws: Vec<u64>,
+        observer: &mut dyn X4LifecycleObserverV4,
     ) -> Result<
         (GlobalFoldingProofV4, Vec<GlobalVerifierGroupV4>, GlobalOpenMetricsV4),
         FoldingErrorV4,
@@ -851,12 +1084,28 @@ impl SealedGlobalChainV4<'_> {
             fold_frames,
             round_trees,
             mut metrics,
+            mut lifecycle_ownership,
+            lifecycle_temporary_files,
         } = self;
+        if !lifecycle_ownership.is_consistent_legacy() || !lifecycle_temporary_files.is_consistent()
+        {
+            return Err(FoldingErrorV4::InvalidGeometry("v4 lifecycle ownership"));
+        }
 
         // "Query gather" is the verifier-owned schedule preparation: validate
         // the exact draw tape and gather the canonical per-cohort metadata
         // against which the opening will be assembled.
         let query_gather_started = Instant::now();
+        observe_lifecycle_span_v4(
+            observer,
+            X4LifecycleTrackV4::LegacyOpening,
+            X4LifecyclePhaseV4::DrawValidationSchedule,
+            X4LifecycleNestingV4::TopLevel,
+            true,
+            X4LifecycleContextV4::default(),
+            lifecycle_ownership,
+            lifecycle_temporary_files,
+        );
         validate_query_draws(&query_draws, groups[0].cohort.commitment().config.outer_len)?;
         let schedule = packed_schedule_from_verifier(
             model_root,
@@ -865,21 +1114,125 @@ impl SealedGlobalChainV4<'_> {
             &fold_frames,
             query_draws,
         )?;
+        observe_lifecycle_span_v4(
+            observer,
+            X4LifecycleTrackV4::LegacyOpening,
+            X4LifecyclePhaseV4::DrawValidationSchedule,
+            X4LifecycleNestingV4::TopLevel,
+            false,
+            X4LifecycleContextV4::default(),
+            lifecycle_ownership,
+            lifecycle_temporary_files,
+        );
         metrics.issue_queries_query_gather_wall_ns = elapsed_ns(query_gather_started)?;
 
         // All queried symbol/cache reads, inner-tree hashing and ordered
         // sibling-path assembly live in this coarse category.
         let hashing_path_started = Instant::now();
         let mut initial_groups = Vec::with_capacity(groups.len());
-        for group in &groups {
+        for (group_index, group) in groups.iter().enumerate() {
+            let context = X4LifecycleContextV4 {
+                cohort_id: Some(group.cohort.commitment().config.identity.cohort_id),
+                initial_group_index: Some(
+                    u32::try_from(group_index).map_err(|_| FoldingErrorV4::Overflow)?,
+                ),
+                segment_index: u32::try_from(group_index).map_err(|_| FoldingErrorV4::Overflow)?,
+                ..X4LifecycleContextV4::default()
+            };
+            observe_lifecycle_span_v4(
+                observer,
+                X4LifecycleTrackV4::LegacyOpening,
+                X4LifecyclePhaseV4::InitialGroupOpening,
+                X4LifecycleNestingV4::TopLevel,
+                true,
+                context,
+                lifecycle_ownership,
+                lifecycle_temporary_files,
+            );
+            observe_lifecycle_span_v4(
+                observer,
+                X4LifecycleTrackV4::LegacyOpening,
+                X4LifecyclePhaseV4::InnerHashingPathAssembly,
+                X4LifecycleNestingV4::Nested,
+                true,
+                context,
+                lifecycle_ownership,
+                lifecycle_temporary_files,
+            );
             let (opening, recompute) =
                 group.cohort.open_initial_source(&schedule.query_draws, &group.touched_slots)?;
+            observe_lifecycle_span_v4(
+                observer,
+                X4LifecycleTrackV4::LegacyOpening,
+                X4LifecyclePhaseV4::InnerHashingPathAssembly,
+                X4LifecycleNestingV4::Nested,
+                false,
+                context,
+                lifecycle_ownership,
+                lifecycle_temporary_files,
+            );
             accumulate_recompute_traffic(&mut metrics, recompute)?;
             initial_groups.push(opening);
+            observe_lifecycle_span_v4(
+                observer,
+                X4LifecycleTrackV4::LegacyOpening,
+                X4LifecyclePhaseV4::InitialGroupOpening,
+                X4LifecycleNestingV4::TopLevel,
+                false,
+                context,
+                lifecycle_ownership,
+                lifecycle_temporary_files,
+            );
         }
         let mut fold_rounds = Vec::with_capacity(round_trees.len());
-        for tree in &round_trees {
+        for (round_index, tree) in round_trees.iter().enumerate() {
+            let context = X4LifecycleContextV4 {
+                cohort_id: Some(tree.config().identity.cohort_id),
+                fold_round: Some(tree.config().identity.fold_round),
+                segment_index: u32::try_from(round_index).map_err(|_| FoldingErrorV4::Overflow)?,
+                ..X4LifecycleContextV4::default()
+            };
+            observe_lifecycle_span_v4(
+                observer,
+                X4LifecycleTrackV4::LegacyOpening,
+                X4LifecyclePhaseV4::FoldRoundOpening,
+                X4LifecycleNestingV4::TopLevel,
+                true,
+                context,
+                lifecycle_ownership,
+                lifecycle_temporary_files,
+            );
+            observe_lifecycle_span_v4(
+                observer,
+                X4LifecycleTrackV4::LegacyOpening,
+                X4LifecyclePhaseV4::InnerHashingPathAssembly,
+                X4LifecycleNestingV4::Nested,
+                true,
+                context,
+                lifecycle_ownership,
+                lifecycle_temporary_files,
+            );
             fold_rounds.push(tree.open_fold_round(&schedule.query_draws)?);
+            observe_lifecycle_span_v4(
+                observer,
+                X4LifecycleTrackV4::LegacyOpening,
+                X4LifecyclePhaseV4::InnerHashingPathAssembly,
+                X4LifecycleNestingV4::Nested,
+                false,
+                context,
+                lifecycle_ownership,
+                lifecycle_temporary_files,
+            );
+            observe_lifecycle_span_v4(
+                observer,
+                X4LifecycleTrackV4::LegacyOpening,
+                X4LifecyclePhaseV4::FoldRoundOpening,
+                X4LifecycleNestingV4::TopLevel,
+                false,
+                context,
+                lifecycle_ownership,
+                lifecycle_temporary_files,
+            );
         }
         metrics.issue_queries_hashing_path_assembly_wall_ns = elapsed_ns(hashing_path_started)?;
 
@@ -889,23 +1242,147 @@ impl SealedGlobalChainV4<'_> {
             initial_groups,
             fold_rounds,
         };
+        observe_lifecycle_span_v4(
+            observer,
+            X4LifecycleTrackV4::LegacyOpening,
+            X4LifecyclePhaseV4::ScheduleDigestStructuralValidation,
+            X4LifecycleNestingV4::TopLevel,
+            true,
+            X4LifecycleContextV4::default(),
+            lifecycle_ownership,
+            lifecycle_temporary_files,
+        );
         packed_opening.opening_schedule_digest = opening_schedule_digest_v4(&schedule)?;
         packed_opening.validate_against_schedule(&schedule)?;
+        observe_lifecycle_span_v4(
+            observer,
+            X4LifecycleTrackV4::LegacyOpening,
+            X4LifecyclePhaseV4::ScheduleDigestStructuralValidation,
+            X4LifecycleNestingV4::TopLevel,
+            false,
+            X4LifecycleContextV4::default(),
+            lifecycle_ownership,
+            lifecycle_temporary_files,
+        );
+        observe_lifecycle_span_v4(
+            observer,
+            X4LifecycleTrackV4::LegacyOpening,
+            X4LifecyclePhaseV4::CanonicalEncodeSerialization,
+            X4LifecycleNestingV4::TopLevel,
+            true,
+            X4LifecycleContextV4::default(),
+            lifecycle_ownership,
+            lifecycle_temporary_files,
+        );
         metrics.serialized_packed_opening_bytes = u64::try_from(
             super::frame_v4::FrameV4::PackedBatchOpening(packed_opening.clone()).encode()?.len(),
         )
         .map_err(|_| FoldingErrorV4::Overflow)?;
+        observe_lifecycle_span_v4(
+            observer,
+            X4LifecycleTrackV4::LegacyOpening,
+            X4LifecyclePhaseV4::CanonicalEncodeSerialization,
+            X4LifecycleNestingV4::TopLevel,
+            false,
+            X4LifecycleContextV4::default(),
+            lifecycle_ownership,
+            lifecycle_temporary_files,
+        );
         metrics.issue_queries_encode_serialize_wall_ns = elapsed_ns(encode_serialize_started)?;
 
         // The historical API consumes the sealed state, so Rust otherwise
         // destroys its multi-gigabyte round trees implicitly before returning
         // to the caller. Make that lifecycle boundary explicit and measured.
         let teardown_started = Instant::now();
-        drop(round_trees);
+        let mut codeword_payloads = Vec::with_capacity(round_trees.len());
+        let mut outer_cache_levels = Vec::with_capacity(round_trees.len());
+        let mut remaining_tree_metadata = Vec::with_capacity(round_trees.len());
+        for tree in round_trees {
+            let CohortTreeLifecyclePartsV4 { config, slot_symbols, outer_cache } =
+                tree.into_lifecycle_parts();
+            let DenseOuterNodeCacheLifecyclePartsV4 { outer_len, policy, levels, root } =
+                outer_cache.into_lifecycle_parts();
+            codeword_payloads.push(slot_symbols);
+            outer_cache_levels.push(levels);
+            remaining_tree_metadata.push((config, outer_len, policy, root));
+        }
+        observe_lifecycle_span_v4(
+            observer,
+            X4LifecycleTrackV4::LegacyOpening,
+            X4LifecyclePhaseV4::DestroyCodewords,
+            X4LifecycleNestingV4::TopLevel,
+            true,
+            X4LifecycleContextV4::default(),
+            lifecycle_ownership,
+            lifecycle_temporary_files,
+        );
+        drop(codeword_payloads);
+        let accelerator_control = lifecycle_ownership.accelerator_control;
+        lifecycle_ownership = X4LegacySealedOwnershipV4::from_fold_payload(
+            0,
+            lifecycle_ownership.fold_outer_cache_bytes,
+        )
+        .ok_or(FoldingErrorV4::Overflow)?
+        .with_accelerator_control(accelerator_control);
+        observe_lifecycle_span_v4(
+            observer,
+            X4LifecycleTrackV4::LegacyOpening,
+            X4LifecyclePhaseV4::DestroyCodewords,
+            X4LifecycleNestingV4::TopLevel,
+            false,
+            X4LifecycleContextV4::default(),
+            lifecycle_ownership,
+            lifecycle_temporary_files,
+        );
+        observe_lifecycle_span_v4(
+            observer,
+            X4LifecycleTrackV4::LegacyOpening,
+            X4LifecyclePhaseV4::DestroyOuterCacheLevels,
+            X4LifecycleNestingV4::TopLevel,
+            true,
+            X4LifecycleContextV4::default(),
+            lifecycle_ownership,
+            lifecycle_temporary_files,
+        );
+        drop(outer_cache_levels);
+        lifecycle_ownership = X4LegacySealedOwnershipV4::from_fold_payload(0, 0)
+            .ok_or(FoldingErrorV4::Overflow)?
+            .with_accelerator_control(accelerator_control);
+        observe_lifecycle_span_v4(
+            observer,
+            X4LifecycleTrackV4::LegacyOpening,
+            X4LifecyclePhaseV4::DestroyOuterCacheLevels,
+            X4LifecycleNestingV4::TopLevel,
+            false,
+            X4LifecycleContextV4::default(),
+            lifecycle_ownership,
+            lifecycle_temporary_files,
+        );
+        observe_lifecycle_span_v4(
+            observer,
+            X4LifecycleTrackV4::LegacyOpening,
+            X4LifecyclePhaseV4::DestroyRemainingSealedState,
+            X4LifecycleNestingV4::TopLevel,
+            true,
+            X4LifecycleContextV4::default(),
+            lifecycle_ownership,
+            lifecycle_temporary_files,
+        );
+        drop(remaining_tree_metadata);
         drop(groups);
         drop(common_point);
         drop(challenges);
         drop(schedule);
+        observe_lifecycle_span_v4(
+            observer,
+            X4LifecycleTrackV4::LegacyOpening,
+            X4LifecyclePhaseV4::DestroyRemainingSealedState,
+            X4LifecycleNestingV4::TopLevel,
+            false,
+            X4LifecycleContextV4::default(),
+            lifecycle_ownership,
+            lifecycle_temporary_files,
+        );
         metrics.issue_queries_teardown_wall_ns = elapsed_ns(teardown_started)?;
         metrics.issue_queries_total_wall_ns = elapsed_ns(total_started)?;
         Ok((GlobalFoldingProofV4 { fold_frames, packed_opening }, verifier_groups, metrics))
@@ -920,11 +1397,23 @@ impl SealedGlobalChainV4<'_> {
         (GlobalFoldingProofV4, Vec<GlobalVerifierGroupV4>, GlobalOpenMetricsV4, Vec<u64>),
         FoldingErrorV4,
     > {
+        let mut observer = NoopX4LifecycleObserverV4;
+        self.issue_queries_interactive_instrumented(tx, &mut observer)
+    }
+
+    pub fn issue_queries_interactive_instrumented(
+        self,
+        tx: &mut Transcript,
+        observer: &mut dyn X4LifecycleObserverV4,
+    ) -> Result<
+        (GlobalFoldingProofV4, Vec<GlobalVerifierGroupV4>, GlobalOpenMetricsV4, Vec<u64>),
+        FoldingErrorV4,
+    > {
         let draw_width = self.groups[0].cohort.commitment().config.outer_depth();
         let draws = (0..PRODUCTION_QUERY_COUNT_V4)
             .map(|_| tx.challenge_bits(draw_width))
             .collect::<Vec<_>>();
-        let (proof, groups, metrics) = self.issue_queries(draws.clone())?;
+        let (proof, groups, metrics) = self.issue_queries_instrumented(draws.clone(), observer)?;
         tx.append(
             "x4_v4_packed_opening",
             u64::try_from(
@@ -1125,7 +1614,7 @@ pub fn opened_global_value_from_lines_v4(
     Ok(opened)
 }
 
-fn packed_schedule_from_verifier(
+pub(crate) fn packed_schedule_from_verifier(
     model_root: Digest,
     epoch: u64,
     groups: &[GlobalVerifierGroupV4],
@@ -1241,7 +1730,10 @@ fn validate_group_geometry(
     Ok(())
 }
 
-fn validate_query_draws(draws: &[u64], max_outer_len: usize) -> Result<(), FoldingErrorV4> {
+pub(crate) fn validate_query_draws(
+    draws: &[u64],
+    max_outer_len: usize,
+) -> Result<(), FoldingErrorV4> {
     if draws.len() != PRODUCTION_QUERY_COUNT_V4
         || draws.iter().any(|draw| *draw >= max_outer_len as u64)
     {
@@ -1254,7 +1746,7 @@ fn elapsed_ns(started: Instant) -> Result<u64, FoldingErrorV4> {
     u64::try_from(started.elapsed().as_nanos()).map_err(|_| FoldingErrorV4::Overflow)
 }
 
-fn accumulate_recompute_traffic(
+pub(crate) fn accumulate_recompute_traffic(
     metrics: &mut GlobalOpenMetricsV4,
     traffic: SourceRecomputeTrafficV4,
 ) -> Result<(), FoldingErrorV4> {
@@ -1518,7 +2010,7 @@ pub fn global_fold_descriptor_digest_v4(ordered_commitments: &[(u32, Digest)]) -
     *hasher.finalize().as_bytes()
 }
 
-fn claim_line_v4(
+pub(crate) fn claim_line_v4(
     coefficients: &[Fp2],
     remaining_point: &[Fp2],
 ) -> Result<(Fp2, Fp2), FoldingErrorV4> {
@@ -1538,7 +2030,7 @@ fn claim_line_v4(
     Ok((at_zero, at_zero + odd_value))
 }
 
-fn interpolate_v4(at_zero: Fp2, at_one: Fp2, point: Fp2) -> Fp2 {
+pub(crate) fn interpolate_v4(at_zero: Fp2, at_one: Fp2, point: Fp2) -> Fp2 {
     at_zero + point * (at_one - at_zero)
 }
 
@@ -1561,6 +2053,18 @@ fn fold_pair_v4(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::x4::X4LifecycleTransitionV4;
+
+    #[derive(Default)]
+    struct RecordingObserver {
+        events: Vec<X4LifecycleEventV4>,
+    }
+
+    impl X4LifecycleObserverV4 for RecordingObserver {
+        fn observe(&mut self, event: &X4LifecycleEventV4) {
+            self.events.push(*event);
+        }
+    }
 
     fn symbol(value: u64) -> Fp2 {
         Fp2::new(Fp::new(value), Fp::new(value * 13 + 5))
@@ -1721,6 +2225,110 @@ mod tests {
         assert!(metrics.issue_queries_total_wall_ns >= metrics.issue_queries_teardown_wall_ns);
         assert_eq!(proof.packed_opening.initial_groups[0].touched_slots, [0, 2]);
         assert_eq!(proof.packed_opening.initial_groups[1].touched_slots, [0, 1]);
+    }
+
+    #[test]
+    fn instrumented_opening_orders_nested_spans_and_zeros_legacy_ownership() {
+        let large = committed(10, OracleKindV4::WeightExtension, 128, 4, Some(1));
+        let small = committed(20, OracleKindV4::Auxiliary, 32, 2, None);
+        let prover_groups = groups(&large, &small);
+        let descriptor = global_descriptor_from_prover_groups(&prover_groups);
+        let sealed = GlobalChainDraftV4::new(
+            [9; 32],
+            77,
+            0xA500_F001,
+            descriptor,
+            common_point(),
+            prover_groups,
+            challenges(),
+        )
+        .unwrap()
+        .seal()
+        .unwrap();
+        let mut observer = RecordingObserver::default();
+        let (proof, verifier_groups, _) =
+            sealed.issue_queries_instrumented(query_draws(), &mut observer).unwrap();
+        assert!(verify(&verifier_groups, &proof).is_ok());
+        let (plain_proof, plain_verifier_groups, _) = prove(&large, &small);
+        assert_eq!(proof, plain_proof);
+        assert_eq!(verifier_groups, plain_verifier_groups);
+        assert!(!observer.events.is_empty());
+
+        let mut stack = Vec::new();
+        for event in &observer.events {
+            assert_eq!(event.track, X4LifecycleTrackV4::LegacyOpening);
+            assert!(event.sealed_ownership.is_consistent_legacy());
+            assert_eq!(event.sealed_ownership.pinned_host_bytes, 0);
+            assert_eq!(event.sealed_ownership.device_bytes, 0);
+            assert_eq!(event.sealed_ownership.file_backed_bytes, 0);
+            assert_eq!(event.sealed_ownership.owned_files, 0);
+            assert_eq!(event.sealed_ownership.owned_mappings, 0);
+            assert_eq!(event.temporary_files, X4TemporaryFileStateV4::default());
+            match event.transition {
+                X4LifecycleTransitionV4::SpanStart => {
+                    stack.push((event.phase, event.nesting));
+                }
+                X4LifecycleTransitionV4::SpanEnd => {
+                    assert_eq!(stack.pop(), Some((event.phase, event.nesting)));
+                }
+                X4LifecycleTransitionV4::Boundary => {
+                    panic!("opening instrumentation emitted an unexpected instant boundary");
+                }
+            }
+        }
+        assert!(stack.is_empty());
+
+        let starts = observer
+            .events
+            .iter()
+            .filter(|event| {
+                event.transition == X4LifecycleTransitionV4::SpanStart
+                    && event.nesting == X4LifecycleNestingV4::TopLevel
+            })
+            .map(|event| event.phase)
+            .collect::<Vec<_>>();
+        assert_eq!(starts.first(), Some(&X4LifecyclePhaseV4::DrawValidationSchedule));
+        assert_eq!(
+            &starts[starts.len() - 5..],
+            &[
+                X4LifecyclePhaseV4::ScheduleDigestStructuralValidation,
+                X4LifecyclePhaseV4::CanonicalEncodeSerialization,
+                X4LifecyclePhaseV4::DestroyCodewords,
+                X4LifecyclePhaseV4::DestroyOuterCacheLevels,
+                X4LifecyclePhaseV4::DestroyRemainingSealedState,
+            ]
+        );
+        assert_eq!(
+            observer
+                .events
+                .iter()
+                .filter(|event| {
+                    event.phase == X4LifecyclePhaseV4::InnerHashingPathAssembly
+                        && event.transition == X4LifecycleTransitionV4::SpanStart
+                })
+                .count(),
+            6
+        );
+
+        let destroy_codewords_end = observer
+            .events
+            .iter()
+            .find(|event| {
+                event.phase == X4LifecyclePhaseV4::DestroyCodewords
+                    && event.transition == X4LifecycleTransitionV4::SpanEnd
+            })
+            .unwrap();
+        assert_eq!(destroy_codewords_end.sealed_ownership.fold_codeword_bytes, 0);
+        assert!(destroy_codewords_end.sealed_ownership.fold_outer_cache_bytes > 0);
+        let destroy_cache_end = observer
+            .events
+            .iter()
+            .find(|event| {
+                event.phase == X4LifecyclePhaseV4::DestroyOuterCacheLevels
+                    && event.transition == X4LifecycleTransitionV4::SpanEnd
+            })
+            .unwrap();
+        assert_eq!(destroy_cache_end.sealed_ownership.accounted_ordinary_host_bytes, 0);
     }
 
     #[test]

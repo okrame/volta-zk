@@ -19,6 +19,11 @@ use volta_field::{Fp, Fp2, P};
 
 use super::folding_v4::ModelGlobalCohortCommitmentV4;
 use super::frame::Digest;
+use super::lifecycle_v4::{
+    NoopX4LifecycleObserverV4, X4AcceleratorControlSnapshotV4, X4LegacySealedOwnershipV4,
+    X4LifecycleContextV4, X4LifecycleEventV4, X4LifecycleNestingV4, X4LifecycleObserverV4,
+    X4LifecyclePhaseV4, X4LifecycleTrackV4, X4TemporaryFileStateV4,
+};
 use super::merkle::MerkleError;
 use super::merkle_v4::{CohortVerifierConfigV4, DenseOuterNodeCacheV4, OuterCachePolicyV4};
 use super::persisted_v4::write_canonical_fp2_slice_v4;
@@ -60,6 +65,10 @@ pub struct X4bCudaCommitMetricsV4 {
     pub ntt_calls: u64,
     pub inner_tile_calls: u64,
     pub outer_tile_calls: u64,
+    pub files_created: u64,
+    pub files_deleted: u64,
+    pub directories_created: u64,
+    pub directories_deleted: u64,
 }
 
 impl X4bCudaCommitMetricsV4 {
@@ -93,6 +102,10 @@ impl X4bCudaCommitMetricsV4 {
         add!(ntt_calls);
         add!(inner_tile_calls);
         add!(outer_tile_calls);
+        add!(files_created);
+        add!(files_deleted);
+        add!(directories_created);
+        add!(directories_deleted);
         add!(page_cache_dontneed_bytes);
         add!(page_cache_advice_calls);
         self.peak_live_staging_bytes =
@@ -329,6 +342,76 @@ pub fn verify_persisted_oracle_matches_v4(
     Ok(expected_bytes)
 }
 
+fn observe_seal_v4(
+    backend: &Backend,
+    observer: &mut dyn X4LifecycleObserverV4,
+    phase: X4LifecyclePhaseV4,
+    span_start: bool,
+    context: X4LifecycleContextV4,
+    sealed_ownership: X4LegacySealedOwnershipV4,
+    temporary_files: X4TemporaryFileStateV4,
+) {
+    let event = if span_start {
+        X4LifecycleEventV4::span_start(
+            X4LifecycleTrackV4::LegacySeal,
+            phase,
+            X4LifecycleNestingV4::TopLevel,
+            context,
+            sealed_ownership,
+            temporary_files,
+        )
+    } else {
+        X4LifecycleEventV4::span_end(
+            X4LifecycleTrackV4::LegacySeal,
+            phase,
+            X4LifecycleNestingV4::TopLevel,
+            context,
+            sealed_ownership,
+            temporary_files,
+        )
+    };
+    observer
+        .observe(&event.with_accelerator_control(X4AcceleratorControlSnapshotV4::capture(backend)));
+}
+
+fn record_file_created_v4(
+    state: &mut X4TemporaryFileStateV4,
+    metrics: &mut X4bCudaCommitMetricsV4,
+) -> Result<(), X4bCudaCommitErrorV4> {
+    state.record_file_created().ok_or(X4bCudaCommitErrorV4::Overflow)?;
+    metrics.files_created =
+        metrics.files_created.checked_add(1).ok_or(X4bCudaCommitErrorV4::Overflow)?;
+    Ok(())
+}
+
+fn record_file_bytes_v4(
+    state: &mut X4TemporaryFileStateV4,
+    bytes: u64,
+) -> Result<(), X4bCudaCommitErrorV4> {
+    state.record_file_bytes_written(bytes).ok_or(X4bCudaCommitErrorV4::Overflow)
+}
+
+fn record_file_deleted_v4(
+    state: &mut X4TemporaryFileStateV4,
+    metrics: &mut X4bCudaCommitMetricsV4,
+    bytes: u64,
+) -> Result<(), X4bCudaCommitErrorV4> {
+    state.record_file_deleted(bytes).ok_or(X4bCudaCommitErrorV4::Overflow)?;
+    metrics.files_deleted =
+        metrics.files_deleted.checked_add(1).ok_or(X4bCudaCommitErrorV4::Overflow)?;
+    Ok(())
+}
+
+fn record_directory_created_v4(
+    state: &mut X4TemporaryFileStateV4,
+    metrics: &mut X4bCudaCommitMetricsV4,
+) -> Result<(), X4bCudaCommitErrorV4> {
+    state.record_directory_created().ok_or(X4bCudaCommitErrorV4::Overflow)?;
+    metrics.directories_created =
+        metrics.directories_created.checked_add(1).ok_or(X4bCudaCommitErrorV4::Overflow)?;
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn commit_cohort_cuda_v4(
     backend: &mut Backend,
@@ -337,8 +420,38 @@ pub fn commit_cohort_cuda_v4(
     paths: X4bCudaCohortPathsV4,
     cache_policy: OuterCachePolicyV4,
 ) -> Result<X4bCudaCohortArtifactsV4, X4bCudaCommitErrorV4> {
+    let mut observer = NoopX4LifecycleObserverV4;
+    let mut temporary_files = X4TemporaryFileStateV4::default();
+    commit_cohort_cuda_v4_instrumented(
+        backend,
+        config,
+        coefficients,
+        paths,
+        cache_policy,
+        &mut observer,
+        X4LegacySealedOwnershipV4::default(),
+        &mut temporary_files,
+    )
+}
+
+/// Instrumented legacy X4b cohort commit. The observer sees coarse host-wall
+/// boundaries only; no CUDA-event timing is introduced here.
+#[allow(clippy::too_many_arguments)]
+pub fn commit_cohort_cuda_v4_instrumented(
+    backend: &mut Backend,
+    config: CohortVerifierConfigV4,
+    coefficients: &[Option<Vec<Fp2>>],
+    paths: X4bCudaCohortPathsV4,
+    cache_policy: OuterCachePolicyV4,
+    observer: &mut dyn X4LifecycleObserverV4,
+    sealed_ownership: X4LegacySealedOwnershipV4,
+    temporary_files: &mut X4TemporaryFileStateV4,
+) -> Result<X4bCudaCohortArtifactsV4, X4bCudaCommitErrorV4> {
     if backend.kind() == BackendKind::Cpu {
         return Err(X4bCudaCommitErrorV4::Invalid("CPU backend supplied to CUDA commit"));
+    }
+    if !sealed_ownership.is_consistent_legacy() || !temporary_files.is_consistent() {
+        return Err(X4bCudaCommitErrorV4::Invalid("lifecycle ownership"));
     }
     config.validate()?;
     cache_policy.retained_bytes(config.outer_len)?;
@@ -351,8 +464,6 @@ pub fn commit_cohort_cuda_v4(
     {
         return Err(X4bCudaCommitErrorV4::Invalid("artifact paths must be distinct"));
     }
-    fs::create_dir_all(&paths.staging_directory)?;
-
     let present_slots = config.slot_descriptors.iter().flatten().count();
     let coefficient_len = config.outer_len / 8;
     let mut metrics = X4bCudaCommitMetricsV4 {
@@ -361,26 +472,113 @@ pub fn commit_cohort_cuda_v4(
             .map_err(|_| X4bCudaCommitErrorV4::Overflow)?,
         ..X4bCudaCommitMetricsV4::default()
     };
+    let staging_directory_existed = paths.staging_directory.exists();
+    fs::create_dir_all(&paths.staging_directory)?;
+    if !staging_directory_existed {
+        record_directory_created_v4(temporary_files, &mut metrics)?;
+    }
+    let base_context = X4LifecycleContextV4 {
+        cohort_id: Some(config.identity.cohort_id),
+        fold_round: Some(config.identity.fold_round),
+        ..X4LifecycleContextV4::default()
+    };
 
     let mut artifacts = CreatedFiles::default();
     let coefficient_file = artifacts.create(&paths.coefficients)?;
+    record_file_created_v4(temporary_files, &mut metrics)?;
     let oracle_file = artifacts.create(&paths.oracle)?;
+    record_file_created_v4(temporary_files, &mut metrics)?;
     let mut coefficient_writer = BufWriter::with_capacity(8 * 1024 * 1024, coefficient_file);
     let mut oracle_writer = BufWriter::with_capacity(8 * 1024 * 1024, oracle_file);
-    for (descriptor, slot_coefficients) in config.slot_descriptors.iter().zip(coefficients) {
+    for (slot_index, (descriptor, slot_coefficients)) in
+        config.slot_descriptors.iter().zip(coefficients).enumerate()
+    {
         match (descriptor, slot_coefficients) {
             (Some(_), Some(slot_coefficients)) if slot_coefficients.len() == coefficient_len => {
-                write_symbols(&mut coefficient_writer, slot_coefficients)?;
-                let codeword = backend.x4b_ntt_fp2(slot_coefficients, config.outer_len)?;
-                write_symbols(&mut oracle_writer, &codeword)?;
                 let coefficient_bytes = u64::try_from(slot_coefficients.len())
                     .map_err(|_| X4bCudaCommitErrorV4::Overflow)?
                     .checked_mul(SYMBOL_BYTES)
                     .ok_or(X4bCudaCommitErrorV4::Overflow)?;
+                let slot_index =
+                    u16::try_from(slot_index).map_err(|_| X4bCudaCommitErrorV4::Overflow)?;
+                let coefficient_write_context = X4LifecycleContextV4 {
+                    slot_index: Some(slot_index),
+                    segment_index: u32::from(slot_index) * 2,
+                    ..base_context
+                };
+                observe_seal_v4(
+                    backend,
+                    observer,
+                    X4LifecyclePhaseV4::CoefficientOracleWrite,
+                    true,
+                    coefficient_write_context,
+                    sealed_ownership,
+                    *temporary_files,
+                );
+                write_symbols(&mut coefficient_writer, slot_coefficients)?;
+                record_file_bytes_v4(temporary_files, coefficient_bytes)?;
+                observe_seal_v4(
+                    backend,
+                    observer,
+                    X4LifecyclePhaseV4::CoefficientOracleWrite,
+                    false,
+                    coefficient_write_context,
+                    sealed_ownership,
+                    *temporary_files,
+                );
+                let ntt_context = X4LifecycleContextV4 {
+                    slot_index: Some(slot_index),
+                    segment_index: u32::from(slot_index),
+                    ..base_context
+                };
+                observe_seal_v4(
+                    backend,
+                    observer,
+                    X4LifecyclePhaseV4::ENtt,
+                    true,
+                    ntt_context,
+                    sealed_ownership,
+                    *temporary_files,
+                );
+                let codeword = backend.x4b_ntt_fp2(slot_coefficients, config.outer_len)?;
+                observe_seal_v4(
+                    backend,
+                    observer,
+                    X4LifecyclePhaseV4::ENtt,
+                    false,
+                    ntt_context,
+                    sealed_ownership,
+                    *temporary_files,
+                );
                 let oracle_bytes = u64::try_from(codeword.len())
                     .map_err(|_| X4bCudaCommitErrorV4::Overflow)?
                     .checked_mul(SYMBOL_BYTES)
                     .ok_or(X4bCudaCommitErrorV4::Overflow)?;
+                let oracle_write_context = X4LifecycleContextV4 {
+                    slot_index: Some(slot_index),
+                    segment_index: u32::from(slot_index) * 2 + 1,
+                    ..base_context
+                };
+                observe_seal_v4(
+                    backend,
+                    observer,
+                    X4LifecyclePhaseV4::CoefficientOracleWrite,
+                    true,
+                    oracle_write_context,
+                    sealed_ownership,
+                    *temporary_files,
+                );
+                write_symbols(&mut oracle_writer, &codeword)?;
+                record_file_bytes_v4(temporary_files, oracle_bytes)?;
+                observe_seal_v4(
+                    backend,
+                    observer,
+                    X4LifecyclePhaseV4::CoefficientOracleWrite,
+                    false,
+                    oracle_write_context,
+                    sealed_ownership,
+                    *temporary_files,
+                );
                 metrics.coefficient_bytes_read = metrics
                     .coefficient_bytes_read
                     .checked_add(coefficient_bytes)
@@ -411,6 +609,15 @@ pub fn commit_cohort_cuda_v4(
             _ => return Err(X4bCudaCommitErrorV4::Invalid("coefficient slot geometry")),
         }
     }
+    observe_seal_v4(
+        backend,
+        observer,
+        X4LifecyclePhaseV4::FlushSyncData,
+        true,
+        X4LifecycleContextV4 { segment_index: 0, ..base_context },
+        sealed_ownership,
+        *temporary_files,
+    );
     coefficient_writer.flush()?;
     coefficient_writer.get_ref().sync_data()?;
     oracle_writer.flush()?;
@@ -424,6 +631,15 @@ pub fn commit_cohort_cuda_v4(
     metrics.page_cache_advice_calls = 2;
     drop(coefficient_writer);
     drop(oracle_writer);
+    observe_seal_v4(
+        backend,
+        observer,
+        X4LifecyclePhaseV4::FlushSyncData,
+        false,
+        X4LifecycleContextV4 { segment_index: 0, ..base_context },
+        sealed_ownership,
+        *temporary_files,
+    );
 
     let mut staging = StagingFiles::default();
     let nonce = STAGING_NONCE.fetch_add(1, Ordering::Relaxed);
@@ -437,7 +653,17 @@ pub fn commit_cohort_cuda_v4(
     );
     let leaves_path = paths.staging_directory.join(format!("{prefix}-outer-0.bin"));
     let leaves_file = staging.create(&leaves_path)?;
+    record_file_created_v4(temporary_files, &mut metrics)?;
     let mut leaves_writer = BufWriter::with_capacity(8 * 1024 * 1024, leaves_file);
+    observe_seal_v4(
+        backend,
+        observer,
+        X4LifecyclePhaseV4::OracleRereadN4Inner,
+        true,
+        base_context,
+        sealed_ownership,
+        *temporary_files,
+    );
     let oracle_reader = OpenOptions::new().read(true).open(&paths.oracle)?;
 
     let mut ranks = Vec::with_capacity(config.slot_descriptors.len());
@@ -493,6 +719,7 @@ pub fn commit_cohort_cuda_v4(
             .map_err(|_| X4bCudaCommitErrorV4::Overflow)?
             .checked_mul(DIGEST_BYTES)
             .ok_or(X4bCudaCommitErrorV4::Overflow)?;
+        record_file_bytes_v4(temporary_files, output_bytes)?;
         metrics.persisted_oracle_bytes_read_for_n4 = metrics
             .persisted_oracle_bytes_read_for_n4
             .checked_add(symbol_bytes)
@@ -523,6 +750,24 @@ pub fn commit_cohort_cuda_v4(
         .ok_or(X4bCudaCommitErrorV4::Overflow)?;
     metrics.page_cache_advice_calls += 1;
     drop(oracle_reader);
+    observe_seal_v4(
+        backend,
+        observer,
+        X4LifecyclePhaseV4::OracleRereadN4Inner,
+        false,
+        base_context,
+        sealed_ownership,
+        *temporary_files,
+    );
+    observe_seal_v4(
+        backend,
+        observer,
+        X4LifecyclePhaseV4::FlushSyncData,
+        true,
+        X4LifecycleContextV4 { segment_index: 1, ..base_context },
+        sealed_ownership,
+        *temporary_files,
+    );
     leaves_writer.flush()?;
     leaves_writer.get_ref().sync_data()?;
     let leaves_bytes = u64::try_from(config.outer_len)
@@ -536,6 +781,15 @@ pub fn commit_cohort_cuda_v4(
         .ok_or(X4bCudaCommitErrorV4::Overflow)?;
     metrics.page_cache_advice_calls += 1;
     drop(leaves_writer);
+    observe_seal_v4(
+        backend,
+        observer,
+        X4LifecyclePhaseV4::FlushSyncData,
+        false,
+        X4LifecycleContextV4 { segment_index: 1, ..base_context },
+        sealed_ownership,
+        *temporary_files,
+    );
 
     let outer_depth = config.outer_len.ilog2() as u8;
     let mut retained_levels = vec![None; usize::from(outer_depth)];
@@ -547,6 +801,20 @@ pub fn commit_cohort_cuda_v4(
         .checked_mul(DIGEST_BYTES)
         .ok_or(X4bCudaCommitErrorV4::Overflow)?;
     while current_count > 1 {
+        let level_context = X4LifecycleContextV4 {
+            outer_level: Some(level),
+            segment_index: u32::from(level),
+            ..base_context
+        };
+        observe_seal_v4(
+            backend,
+            observer,
+            X4LifecyclePhaseV4::N4OuterLevels,
+            true,
+            level_context,
+            sealed_ownership,
+            *temporary_files,
+        );
         let parent_count = current_count / 2;
         let parent_tile = x4b_outer_tile_parents_v4(parent_count)?;
         let outer_tile_bytes = u64::try_from(parent_tile)
@@ -557,6 +825,7 @@ pub fn commit_cohort_cuda_v4(
         metrics.maximum_n4_tile_bytes = metrics.maximum_n4_tile_bytes.max(outer_tile_bytes);
         let next_path = paths.staging_directory.join(format!("{prefix}-outer-{level}.bin"));
         let next_file = staging.create(&next_path)?;
+        record_file_created_v4(temporary_files, &mut metrics)?;
         let mut next_writer = BufWriter::with_capacity(8 * 1024 * 1024, next_file);
         let current_reader = OpenOptions::new().read(true).open(&current_path)?;
         let mut retained =
@@ -584,6 +853,7 @@ pub fn commit_cohort_cuda_v4(
                 .map_err(|_| X4bCudaCommitErrorV4::Overflow)?
                 .checked_mul(DIGEST_BYTES)
                 .ok_or(X4bCudaCommitErrorV4::Overflow)?;
+            record_file_bytes_v4(temporary_files, output_bytes)?;
             metrics.staging_bytes_read = metrics
                 .staging_bytes_read
                 .checked_add(input_bytes)
@@ -602,6 +872,24 @@ pub fn commit_cohort_cuda_v4(
                 .ok_or(X4bCudaCommitErrorV4::Overflow)?;
             metrics.outer_tile_calls += 1;
         }
+        observe_seal_v4(
+            backend,
+            observer,
+            X4LifecyclePhaseV4::N4OuterLevels,
+            false,
+            level_context,
+            sealed_ownership,
+            *temporary_files,
+        );
+        observe_seal_v4(
+            backend,
+            observer,
+            X4LifecyclePhaseV4::FlushSyncData,
+            true,
+            X4LifecycleContextV4 { segment_index: u32::from(level) + 1, ..level_context },
+            sealed_ownership,
+            *temporary_files,
+        );
         next_writer.flush()?;
         next_writer.get_ref().sync_data()?;
         let next_bytes = u64::try_from(parent_count)
@@ -616,6 +904,15 @@ pub fn commit_cohort_cuda_v4(
         metrics.page_cache_advice_calls += 1;
         drop(next_writer);
         drop(current_reader);
+        observe_seal_v4(
+            backend,
+            observer,
+            X4LifecyclePhaseV4::FlushSyncData,
+            false,
+            X4LifecycleContextV4 { segment_index: u32::from(level) + 1, ..level_context },
+            sealed_ownership,
+            *temporary_files,
+        );
         let current_bytes = u64::try_from(current_count)
             .map_err(|_| X4bCudaCommitErrorV4::Overflow)?
             .checked_mul(DIGEST_BYTES)
@@ -623,19 +920,100 @@ pub fn commit_cohort_cuda_v4(
         metrics.peak_live_staging_bytes =
             metrics.peak_live_staging_bytes.max(current_bytes + next_bytes);
         retained_levels[usize::from(level - 1)] = retained;
+        observe_seal_v4(
+            backend,
+            observer,
+            X4LifecyclePhaseV4::FileCleanup,
+            true,
+            level_context,
+            sealed_ownership,
+            *temporary_files,
+        );
         staging.remove(&current_path)?;
+        record_file_deleted_v4(temporary_files, &mut metrics, current_bytes)?;
+        observe_seal_v4(
+            backend,
+            observer,
+            X4LifecyclePhaseV4::FileCleanup,
+            false,
+            level_context,
+            sealed_ownership,
+            *temporary_files,
+        );
         current_path = next_path;
         current_count = parent_count;
         level += 1;
     }
+    let final_staging_bytes = u64::try_from(current_count)
+        .map_err(|_| X4bCudaCommitErrorV4::Overflow)?
+        .checked_mul(DIGEST_BYTES)
+        .ok_or(X4bCudaCommitErrorV4::Overflow)?;
+    let final_cleanup_context = X4LifecycleContextV4 {
+        outer_level: Some(level.saturating_sub(1)),
+        segment_index: u32::from(level),
+        ..base_context
+    };
+    observe_seal_v4(
+        backend,
+        observer,
+        X4LifecyclePhaseV4::FileCleanup,
+        true,
+        final_cleanup_context,
+        sealed_ownership,
+        *temporary_files,
+    );
     staging.remove(&current_path)?;
+    record_file_deleted_v4(temporary_files, &mut metrics, final_staging_bytes)?;
+    observe_seal_v4(
+        backend,
+        observer,
+        X4LifecyclePhaseV4::FileCleanup,
+        false,
+        final_cleanup_context,
+        sealed_ownership,
+        *temporary_files,
+    );
 
     let outer_cache =
         DenseOuterNodeCacheV4::from_levels(config.outer_len, cache_policy, retained_levels, root)?;
     metrics.retained_outer_cache_bytes = outer_cache.retained_bytes()?;
+    let root_context = X4LifecycleContextV4 {
+        outer_level: Some(outer_depth),
+        segment_index: u32::from(outer_depth) + 1,
+        ..base_context
+    };
+    observe_seal_v4(
+        backend,
+        observer,
+        X4LifecyclePhaseV4::N4OuterLevels,
+        true,
+        root_context,
+        sealed_ownership,
+        *temporary_files,
+    );
     let root_file = artifacts.create(&paths.root)?;
+    record_file_created_v4(temporary_files, &mut metrics)?;
     let mut root_writer = BufWriter::new(root_file);
     root_writer.write_all(&root)?;
+    record_file_bytes_v4(temporary_files, DIGEST_BYTES)?;
+    observe_seal_v4(
+        backend,
+        observer,
+        X4LifecyclePhaseV4::N4OuterLevels,
+        false,
+        root_context,
+        sealed_ownership,
+        *temporary_files,
+    );
+    observe_seal_v4(
+        backend,
+        observer,
+        X4LifecyclePhaseV4::FlushSyncData,
+        true,
+        root_context,
+        sealed_ownership,
+        *temporary_files,
+    );
     root_writer.flush()?;
     root_writer.get_ref().sync_data()?;
     advise_dontneed(root_writer.get_ref(), DIGEST_BYTES)?;
@@ -645,6 +1023,16 @@ pub fn commit_cohort_cuda_v4(
         .ok_or(X4bCudaCommitErrorV4::Overflow)?;
     metrics.page_cache_advice_calls += 1;
     metrics.root_bytes_persisted = DIGEST_BYTES;
+    drop(root_writer);
+    observe_seal_v4(
+        backend,
+        observer,
+        X4LifecyclePhaseV4::FlushSyncData,
+        false,
+        root_context,
+        sealed_ownership,
+        *temporary_files,
+    );
 
     let expected_coefficient_bytes = u64::try_from(present_slots)
         .map_err(|_| X4bCudaCommitErrorV4::Overflow)?
@@ -663,6 +1051,8 @@ pub fn commit_cohort_cuda_v4(
         || fs::metadata(&paths.root)?.len() != DIGEST_BYTES
         || metrics.persisted_oracle_bytes_read_for_n4 != expected_oracle_bytes
         || metrics.maximum_n4_tile_bytes > X4B_N4_TILE_BYTE_CEILING_V4
+        || metrics.files_created.checked_sub(metrics.files_deleted) != Some(3)
+        || !temporary_files.is_consistent()
     {
         return Err(X4bCudaCommitErrorV4::Invalid("artifact/accounting reconciliation"));
     }

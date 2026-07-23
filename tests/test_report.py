@@ -885,6 +885,595 @@ def test_x4c_phase1_validator_derives_refutation_and_rejects_schema1(tmp_path):
     assert report.validate_x4c_phase1_result(bad_path) is False
 
 
+def _x4c_test_availability():
+    return {"available": True, "reason": ""}
+
+
+def _x4c_test_ownership(codewords=0, cache=0, other=0, borrowed=0):
+    borrowed_paths = [f"/persistent/oracle-{index}" for index in range(borrowed)]
+    return {
+        "fold_codeword_bytes": codewords,
+        "fold_outer_cache_bytes": cache,
+        "other_ordinary_host_bytes": other,
+        "ordinary_host_bytes": codewords + cache + other,
+        "pinned_host_bytes": 0,
+        "device_bytes": 0,
+        "file_backed_bytes": 0,
+        "owned_file_count": 0,
+        "owned_mapping_count": 0,
+        "owned_files": [],
+        "owned_mappings": [],
+        "borrowed_initial_source_file_count": borrowed,
+        "borrowed_initial_source_files": borrowed_paths,
+    }
+
+
+def _x4c_test_boundary(seq, label, ownership, *, cuda_pending=False):
+    enter = seq * 100
+    allocated = 10_000 + seq * 100
+    deallocated = 1_000 + seq * 10
+    return {
+        "schema": 1,
+        "seq": seq,
+        "label": label,
+        "monotonic_enter_ns": enter,
+        "monotonic_exit_ns": enter + 10,
+        "snapshot_probe_wall_ns": 10,
+        "process_io": {
+            "availability": _x4c_test_availability(),
+            "rchar": 100 + seq,
+            "wchar": 200 + seq,
+            "read_bytes": 300 + seq,
+            "write_bytes": 400 + seq,
+        },
+        "page_faults": {
+            "availability": _x4c_test_availability(),
+            "minor_faults": 10 + seq,
+            "major_faults": seq,
+        },
+        "process_memory": {
+            "availability": _x4c_test_availability(),
+            "rss_bytes": 1_000_000,
+            "locked_bytes": 0,
+        },
+        "smaps_rollup": {
+            "availability": _x4c_test_availability(),
+            "rss_bytes": 1_000_000,
+            "pss_bytes": 900_000,
+            "anonymous_bytes": 800_000,
+            "file_bytes": 100_000,
+            "shmem_bytes": 0,
+            "private_clean_bytes": 0,
+            "private_dirty_bytes": 800_000,
+            "shared_clean_bytes": 100_000,
+            "shared_dirty_bytes": 100_000,
+            "swap_bytes": 0,
+        },
+        "allocator": {
+            "availability": _x4c_test_availability(),
+            "allocation_calls": 100 + seq,
+            "alloc_zeroed_calls": seq,
+            "reallocation_calls": seq,
+            "deallocation_calls": 50 + seq,
+            "cumulative_allocated_bytes": allocated,
+            "cumulative_deallocated_bytes": deallocated,
+            "outstanding_requested_bytes": allocated - deallocated,
+            "allocator_allocated_bytes": 500_000,
+            "allocator_mapped_bytes": 1_000_000,
+            "arena_bytes": 800_000,
+            "mmap_region_bytes": 200_000,
+            "free_arena_bytes": 300_000,
+        },
+        "numa": {
+            "availability": _x4c_test_availability(),
+            "page_size_bytes": 4096,
+            "total_node_pages": 100,
+            "node_pages": {"N0": 100},
+        },
+        "cuda": {
+            "availability": _x4c_test_availability(),
+            "device_workspace_bytes": 0,
+            "device_resident_bytes": 0,
+            "device_cached_bytes": 0,
+            "device_live_bytes": 0,
+            "pinned_host_bytes": 0,
+            "outstanding_operations": 1 if cuda_pending else 0,
+            "measurement_active": cuda_pending,
+            "synchronized": not cuda_pending,
+        },
+        "sealed_ownership": copy.deepcopy(ownership),
+        "temporary_files": {
+            "live_file_count": 0,
+            "live_file_bytes": 0,
+            "live_directory_count": 0,
+            "cumulative_created_files": 0,
+            "cumulative_deleted_files": 0,
+            "cumulative_created_directories": 0,
+            "cumulative_deleted_directories": 0,
+        },
+    }
+
+
+def _x4c_test_machine():
+    return {
+        "provider": "RunPod",
+        "gpu": "NVIDIA A100-SXM4-80GB",
+        "memory_bytes": 256 * 1024**3,
+        "rayon_threads": 8,
+        "commit_seal_open_unpinned": True,
+        "durable_tier": "coefficients_plus_five_roots_on_persistent",
+        "local_storage_role": "scratch_ram_spill_and_records",
+        "persistent_class": "PERSISTENT",
+        "persistent_volume": {
+            "path": "/persistent",
+            "filesystem_type": "ext4",
+            "mount_point": "/persistent",
+            "available_bytes": 20_000_000_000,
+        },
+        "local_non_mfs_storage": {
+            "path": "/local",
+            "filesystem_type": "ext4",
+            "mount_point": "/local",
+            "available_bytes": 200_000_000_000,
+        },
+    }
+
+
+def _x4c_test_immutable():
+    return {
+        "protocol_profile": "x4-zkdeepfold-ud-e29-v4",
+        "rate": "1/8",
+        "query_count": 111,
+        "pcs_bytes": 2_683_236,
+        "response_bytes": 43_953_700,
+        "proof_format_changed": False,
+        "root_changed": False,
+        "lean_changed": False,
+        "soundness_changed": False,
+    }
+
+
+def _x4c_test_probe_candidate(variant, ordinal, measured, pid, wall):
+    geometry = {
+        "domain_log2": 29,
+        "fold_rounds": 27,
+        "fold_codeword_bytes": 17_179_869_056,
+        "fold_outer_cache_bytes": 34_359_737_248,
+        "populated_bytes": 51_539_606_304,
+    }
+    zero = _x4c_test_ownership()
+    populated = _x4c_test_ownership(
+        geometry["fold_codeword_bytes"], geometry["fold_outer_cache_bytes"]
+    )
+    labels_and_ownership = [("probe_start", zero), ("payload_populated", populated)]
+    timing = {
+        "allocation_population_wall_ns": 10,
+        "proof_ready_wall_ns": 20,
+        "distributed_drop_wall_ns": 0,
+        "destroy_codewords_wall_ns": 0,
+        "destroy_outer_cache_levels_wall_ns": 0,
+        "destroy_remaining_state_wall_ns": 0,
+        "logical_arena_reset_wall_ns": 0,
+        "backing_release_wall_ns": 0,
+        "teardown_total_wall_ns": 0,
+        "session_reusable_wall_ns": 30,
+        "parent_child_wall_ns": wall,
+        "child_reap_wall_ns": 1,
+    }
+    termination = "normal_return_after_explicit_teardown"
+    retained = 0
+    arena_retained = 0
+    outstanding = 0
+    if variant == "distributed_drop":
+        timing["distributed_drop_wall_ns"] = 1
+        timing["teardown_total_wall_ns"] = 2
+        labels_and_ownership.append(("distributed_state_destroyed", zero))
+    elif variant == "manually_drop_no_teardown":
+        labels_and_ownership[1] = ("payload_populated_no_teardown", populated)
+        timing["session_reusable_wall_ns"] = None
+        termination = "_exit_no_destructors"
+        retained = geometry["populated_bytes"]
+        outstanding = geometry["populated_bytes"]
+    elif variant == "categorized_drop":
+        timing["destroy_codewords_wall_ns"] = 1
+        timing["destroy_outer_cache_levels_wall_ns"] = 1
+        timing["destroy_remaining_state_wall_ns"] = 1
+        timing["teardown_total_wall_ns"] = 3
+        labels_and_ownership.extend(
+            [
+                (
+                    "codewords_destroyed",
+                    _x4c_test_ownership(0, geometry["fold_outer_cache_bytes"]),
+                ),
+                ("outer_cache_levels_destroyed", zero),
+                ("remaining_state_destroyed", zero),
+            ]
+        )
+    elif variant == "single_arena_reset":
+        timing["logical_arena_reset_wall_ns"] = 1
+        timing["backing_release_wall_ns"] = 1
+        timing["teardown_total_wall_ns"] = 2
+        arena_retained = geometry["populated_bytes"]
+        labels_and_ownership.extend(
+            [
+                (
+                    "arena_logically_reset_backing_retained",
+                    _x4c_test_ownership(0, 0, geometry["populated_bytes"]),
+                ),
+                ("arena_backing_released", zero),
+            ]
+        )
+    else:
+        raise AssertionError(variant)
+    boundaries = [
+        _x4c_test_boundary(seq, label, ownership)
+        for seq, (label, ownership) in enumerate(labels_and_ownership)
+    ]
+    return {
+        "ordinal": ordinal,
+        "measured": measured,
+        "child_pid": pid,
+        "variant": variant,
+        "geometry": copy.deepcopy(geometry),
+        "populated_bytes": geometry["populated_bytes"],
+        "touched_pages": 1,
+        "population_checksum_u64": 123,
+        "timing": timing,
+        "boundaries": boundaries,
+        "termination": termination,
+        "intentionally_retained_bytes": retained,
+        "arena_backing_retained_after_reset_bytes": arena_retained,
+        "outstanding_payload_bytes_after_teardown": outstanding,
+        "child_exit_success": True,
+        "child_exit_code": 0,
+        "accepted": True,
+        "obstruction_reasons": [],
+    }
+
+
+def _x4c_test_probe_record():
+    geometry = {
+        "domain_log2": 29,
+        "fold_rounds": 27,
+        "fold_codeword_bytes": 17_179_869_056,
+        "fold_outer_cache_bytes": 34_359_737_248,
+        "populated_bytes": 51_539_606_304,
+    }
+    variants = []
+    pid = 1000
+    for name in (
+        "distributed_drop",
+        "manually_drop_no_teardown",
+        "categorized_drop",
+        "single_arena_reset",
+    ):
+        warmup = _x4c_test_probe_candidate(name, 0, False, pid, 500)
+        pid += 1
+        measured = [
+            _x4c_test_probe_candidate(name, 1, True, pid, 1000),
+            _x4c_test_probe_candidate(name, 2, True, pid + 1, 3000),
+            _x4c_test_probe_candidate(name, 3, True, pid + 2, 2000),
+        ]
+        pid += 3
+        variants.append(
+            {
+                "variant": name,
+                "warmup_count": 1,
+                "measured_candidate_count": 3,
+                "warmup": warmup,
+                "measured_candidates": measured,
+                "selected_upper_median_ordinal": 3,
+                "all_accepted": True,
+            }
+        )
+    return {
+        "schema": 1,
+        "milestone": "X4c-phase2-exact-size-lifecycle-probe",
+        "phase": 2,
+        "date": "2026-07-23",
+        "git_sha": "a" * 40,
+        "git_dirty": False,
+        "pod_profile": "runpod-a100-x4c-v1",
+        "mode": "exact_pod",
+        "pod_contacted": True,
+        "machine": _x4c_test_machine(),
+        "immutable": _x4c_test_immutable(),
+        "geometry": geometry,
+        "warmup_count_per_variant": 1,
+        "measured_candidates_per_variant": 3,
+        "child_process_isolation": True,
+        "variants": variants,
+        "all_accepted": True,
+        "hard_stop_before_x4c_online": True,
+    }
+
+
+def _x4c_test_context():
+    return {
+        "cohort_id": None,
+        "fold_round": None,
+        "slot_index": None,
+        "initial_group_index": None,
+        "outer_level": None,
+        "segment_index": 0,
+    }
+
+
+def _x4c_test_legacy_record(report):
+    events = []
+    spans = []
+    boundaries = []
+    current = _x4c_test_ownership(
+        report.X4C_PRODUCTION_FOLD_CODEWORD_BYTES,
+        report.X4C_PRODUCTION_FOLD_OUTER_CACHE_BYTES,
+        borrowed=5,
+    )
+
+    def event(track, phase, transition, nesting, ownership, *, pending=False):
+        seq = len(boundaries)
+        context = _x4c_test_context()
+        boundaries.append(
+            _x4c_test_boundary(
+                seq,
+                f"{track}:{phase}:{transition}",
+                ownership,
+                cuda_pending=pending,
+            )
+        )
+        events.append(
+            {
+                "schema": 1,
+                "track": track,
+                "phase": phase,
+                "transition": transition,
+                "nesting": nesting,
+                "context": context,
+                "boundary_seq": seq,
+            }
+        )
+        return seq
+
+    def span(track, phase, ownership, end_ownership=None, nested=None):
+        pending = phase == "backend_finish_synchronization_boundary"
+        start = event(track, phase, "span_start", "top_level", ownership, pending=pending)
+        if nested is not None:
+            nested_start = event(
+                track,
+                nested,
+                "span_start",
+                "nested",
+                ownership,
+            )
+            nested_end = event(track, nested, "span_end", "nested", ownership)
+            spans.append(
+                {
+                    "track": track,
+                    "phase": nested,
+                    "nesting": "nested",
+                    "context": _x4c_test_context(),
+                    "start_seq": nested_start,
+                    "end_seq": nested_end,
+                    "subject_wall_ns": 90,
+                    "inclusive_wall_ns": 110,
+                    "boundary_probe_wall_ns": 20,
+                }
+            )
+        end = event(
+            track,
+            phase,
+            "span_end",
+            "top_level",
+            end_ownership if end_ownership is not None else ownership,
+        )
+        spans.append(
+            {
+                "track": track,
+                "phase": phase,
+                "nesting": "top_level",
+                "context": _x4c_test_context(),
+                "start_seq": start,
+                "end_seq": end,
+                "subject_wall_ns": (end - start) * 100 - 10,
+                "inclusive_wall_ns": (end - start) * 100 + 10,
+                "boundary_probe_wall_ns": 20,
+            }
+        )
+
+    seal_order = [
+        "coefficient_clone_allocation",
+        "e_ntt",
+        "coefficient_oracle_write",
+        "flush_sync_data",
+        "oracle_reread_n4_inner",
+        "n4_outer_levels",
+        "full_oracle_comparison",
+        "cpu_codeword_cache_clone_back",
+        "file_cleanup",
+        "directory_cleanup",
+        "backend_finish_synchronization_boundary",
+    ]
+    for phase in seal_order:
+        span("legacy_seal", phase, current)
+
+    for phase in (
+        "draw_validation_schedule",
+        "initial_group_opening",
+        "fold_round_opening",
+        "schedule_digest_structural_validation",
+        "canonical_encode_serialization",
+    ):
+        span(
+            "legacy_opening",
+            phase,
+            current,
+            nested="inner_hashing_path_assembly"
+            if phase == "initial_group_opening"
+            else None,
+        )
+    cache_only = _x4c_test_ownership(
+        0, report.X4C_PRODUCTION_FOLD_OUTER_CACHE_BYTES, borrowed=5
+    )
+    zero = _x4c_test_ownership(borrowed=5)
+    span("legacy_opening", "destroy_codewords", current, cache_only)
+    current = cache_only
+    span("legacy_opening", "destroy_outer_cache_levels", current, zero)
+    current = zero
+    span("legacy_opening", "destroy_remaining_sealed_state", current, zero)
+    return {
+        "schema": 1,
+        "milestone": "X4c-phase2-legacy-causal-diagnostic",
+        "phase": 2,
+        "pod_profile": "runpod-a100-x4c-v1",
+        "git_sha": "b" * 40,
+        "git_dirty": False,
+        "immutable": _x4c_test_immutable(),
+        "machine": _x4c_test_machine(),
+        "terminology_correction": {
+            "byte_reconciliation_difference_bytes": 49_216,
+            "byte_reconciliation_classification": "EXACT_BYTE_RECONCILIATION",
+            "reconstructed_wall_residual_ns": 59_601,
+            "aggregate_rate_derived_from_same_wall": True,
+            "independent_causal_timing_evidence": False,
+            "production_host_cause": "OPEN_PENDING_PART4_PROBE",
+            "design_depends_on_specific_cause": False,
+            "retracted_hypotheses": [
+                "pinned_memory_deregistration",
+                "unlink_writeback_during_open",
+            ],
+        },
+        "candidates": [
+            {
+                "ordinal": 0,
+                "accepted": True,
+                "obstruction_reasons": [],
+                "packed_opening_bytes": 2_615_414,
+                "pcs_bytes": 2_683_236,
+                "response_bytes": 43_953_700,
+                "boundaries": boundaries,
+                "events": events,
+                "spans": spans,
+                "zero_expected_controls": {
+                    "pinned_memory_deregistrations_during_open": 0,
+                    "unlink_calls_during_open": 0,
+                    "writeback_bytes_during_open": 0,
+                    "sealed_owned_pinned_bytes": 0,
+                    "sealed_owned_device_bytes": 0,
+                    "sealed_owned_file_backed_bytes": 0,
+                },
+            }
+        ],
+        "verdict": "DIAGNOSTIC_COMPLETE — cause remains open",
+        "hard_stop": False,
+    }
+
+
+def test_x4c_phase2_lifecycle_probe_validator_is_fail_closed(tmp_path):
+    report = load_report_module()
+    record = _x4c_test_probe_record()
+    assert report._x4c_lifecycle_probe_result_valid(record) is True
+    path = tmp_path / "probe.json"
+    path.write_text(json.dumps(record))
+    assert report.validate_x4c_lifecycle_probe_result(path) is True
+
+    mutations = []
+    bad = copy.deepcopy(record)
+    bad["geometry"]["populated_bytes"] -= 1
+    mutations.append(bad)
+    bad = copy.deepcopy(record)
+    bad["variants"][0]["measured_candidates"][0]["boundaries"][0]["allocator"].pop(
+        "allocator_mapped_bytes"
+    )
+    mutations.append(bad)
+    bad = copy.deepcopy(record)
+    bad["variants"][0]["measured_candidates"][1]["child_pid"] = bad["variants"][0][
+        "measured_candidates"
+    ][0]["child_pid"]
+    mutations.append(bad)
+    bad = copy.deepcopy(record)
+    bad["variants"][1]["measured_candidates"][0]["termination"] = "normal_return"
+    mutations.append(bad)
+    bad = copy.deepcopy(record)
+    bad["variants"][2]["measured_candidates"][0]["boundaries"][2][
+        "sealed_ownership"
+    ]["fold_outer_cache_bytes"] -= 1
+    mutations.append(bad)
+    bad = copy.deepcopy(record)
+    bad["variants"][3]["measured_candidates"][0]["timing"][
+        "backing_release_wall_ns"
+    ] = 0
+    mutations.append(bad)
+    bad = copy.deepcopy(record)
+    bad["variants"][0]["selected_upper_median_ordinal"] = 1
+    mutations.append(bad)
+    bad = copy.deepcopy(record)
+    bad["machine"]["local_non_mfs_storage"]["filesystem_type"] = "tmpfs"
+    mutations.append(bad)
+    bad = copy.deepcopy(record)
+    bad["immutable"]["rate"] = "1/4"
+    mutations.append(bad)
+    for candidate in mutations:
+        assert report._x4c_lifecycle_probe_result_valid(candidate) is False
+
+
+def test_x4c_phase2_legacy_causal_validator_checks_timeline_and_zero_controls(
+    tmp_path,
+):
+    report = load_report_module()
+    record = _x4c_test_legacy_record(report)
+    assert report._x4c_legacy_causal_result_valid(record) is True
+    path = tmp_path / "legacy.json"
+    path.write_text(json.dumps(record))
+    assert report.validate_x4c_legacy_causal_result(path) is True
+
+    bad = copy.deepcopy(record)
+    bad["terminology_correction"]["independent_causal_timing_evidence"] = True
+    assert report._x4c_legacy_causal_result_valid(bad) is False
+    bad = copy.deepcopy(record)
+    finish = next(
+        span
+        for span in bad["candidates"][0]["spans"]
+        if span["phase"] == "backend_finish_synchronization_boundary"
+    )
+    finish["end_seq"] = len(bad["candidates"][0]["boundaries"]) - 1
+    assert report._x4c_legacy_causal_result_valid(bad) is False
+    bad = copy.deepcopy(record)
+    bad["candidates"][0]["zero_expected_controls"][
+        "pinned_memory_deregistrations_during_open"
+    ] = 1
+    assert report._x4c_legacy_causal_result_valid(bad) is False
+    bad["candidates"][0]["accepted"] = False
+    bad["candidates"][0]["obstruction_reasons"] = ["unexpected deregistration"]
+    bad["verdict"] = "HARD_STOP_OBSTRUCTION — unexpected legacy ownership"
+    bad["hard_stop"] = True
+    assert report._x4c_legacy_causal_result_valid(bad) is True
+    unavailable = copy.deepcopy(record)
+    unavailable["candidates"][0]["boundaries"][0]["smaps_rollup"][
+        "availability"
+    ] = {"available": False, "reason": "kernel denied smaps_rollup"}
+    unavailable["candidates"][0]["accepted"] = False
+    unavailable["candidates"][0]["obstruction_reasons"] = [
+        "required smaps_rollup counter unavailable"
+    ]
+    unavailable["verdict"] = "HARD_STOP_OBSTRUCTION — missing counter"
+    unavailable["hard_stop"] = True
+    assert report._x4c_legacy_causal_result_valid(unavailable) is True
+    unavailable["candidates"][0]["boundaries"][0]["smaps_rollup"].pop(
+        "availability"
+    )
+    assert report._x4c_legacy_causal_result_valid(unavailable) is False
+    bad = copy.deepcopy(record)
+    destroy = next(
+        event
+        for event in bad["candidates"][0]["events"]
+        if event["phase"] == "destroy_codewords"
+        and event["transition"] == "span_end"
+    )
+    bad["candidates"][0]["boundaries"][destroy["boundary_seq"]][
+        "sealed_ownership"
+    ]["fold_codeword_bytes"] = 1
+    assert report._x4c_legacy_causal_result_valid(bad) is False
+
+
 def test_resident_profile_joins_only_same_host_native_anchor_and_keeps_full_accounting():
     report = load_report_module()
     raw = {

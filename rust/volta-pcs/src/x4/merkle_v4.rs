@@ -194,6 +194,19 @@ impl DenseOuterNodeCacheV4 {
     pub fn retained_bytes(&self) -> Result<u64, MerkleError> {
         self.policy.retained_bytes(self.outer_len)
     }
+
+    pub(crate) fn into_lifecycle_parts(self) -> DenseOuterNodeCacheLifecyclePartsV4 {
+        let Self { outer_len, policy, levels, root } = self;
+        DenseOuterNodeCacheLifecyclePartsV4 { outer_len, policy, levels, root }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct DenseOuterNodeCacheLifecyclePartsV4 {
+    pub(crate) outer_len: usize,
+    pub(crate) policy: OuterCachePolicyV4,
+    pub(crate) levels: Vec<Option<Vec<Digest>>>,
+    pub(crate) root: Digest,
 }
 
 impl OuterNodeSourceV4 for DenseOuterNodeCacheV4 {
@@ -328,6 +341,24 @@ impl CohortTreeV4 {
         self.outer_cache.retained_bytes()
     }
 
+    pub(crate) fn codeword_bytes(&self) -> Result<u64, MerkleError> {
+        self.slot_symbols.iter().flatten().try_fold(0u64, |total, symbols| {
+            total
+                .checked_add(
+                    u64::try_from(symbols.len())
+                        .map_err(|_| MerkleError::Overflow)?
+                        .checked_mul(16)
+                        .ok_or(MerkleError::Overflow)?,
+                )
+                .ok_or(MerkleError::Overflow)
+        })
+    }
+
+    pub(crate) fn into_lifecycle_parts(self) -> CohortTreeLifecyclePartsV4 {
+        let Self { config, slot_symbols, outer_cache } = self;
+        CohortTreeLifecyclePartsV4 { config, slot_symbols, outer_cache }
+    }
+
     pub fn outer_cache(&self) -> &DenseOuterNodeCacheV4 {
         &self.outer_cache
     }
@@ -364,6 +395,13 @@ impl CohortTreeV4 {
     ) -> Result<(FoldRoundOpeningV4, OpeningRebuildMetricsV4), MerkleError> {
         open_fold_from_sources_v4(&self.config, query_draws, self, &self.outer_cache)
     }
+}
+
+#[derive(Debug)]
+pub(crate) struct CohortTreeLifecyclePartsV4 {
+    pub(crate) config: CohortVerifierConfigV4,
+    pub(crate) slot_symbols: Vec<Option<Vec<Fp2>>>,
+    pub(crate) outer_cache: DenseOuterNodeCacheV4,
 }
 
 impl OracleSymbolSourceV4 for CohortTreeV4 {

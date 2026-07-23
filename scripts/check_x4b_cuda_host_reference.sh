@@ -17,4 +17,5 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror \
 ) >"$scratch_dir/rust.txt"
 
 diff -u "$scratch_dir/rust.txt" "$scratch_dir/cuda.txt"
+bash "$repo_dir/scripts/check_x4c_cuda_host_reference.sh"
 echo "X4B_CUDA_HOST_REFERENCE_OK"

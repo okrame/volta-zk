@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "milestone": "X4c-v1-A100-online-obstruction",
+  "date": "2026-07-23",
+  "git_sha": "39a1868e64afd9d527756cfb2811a6f3f6a321a8",
+  "git_dirty": false,
+  "pod_profile": "runpod-a100-x4c-v1",
+  "protocol_profile": "x4-zkdeepfold-ud-e29-v4",
+  "design_sha256": "57d0c0d691cc63ec043d18384348ad0e1130a5e763dc8e9ef00a7132d8abb880",
+  "pod_id": "hinsg2lmzlntha",
+  "selected_gpu": "NVIDIA A100-SXM4-80GB",
+  "source_onboarding_record": {
+    "path": "benchmarks/results/x4c-v1-a100-onboarding-2026-07-23-39a1868.json",
+    "sha256": "2c4b8d71931f3bfecb48bd63612c499f2c1fe685495b705cc000449460e9e28f",
+    "overall_pass": true
+  },
+  "source_stderr_log": {
+    "path": "benchmarks/results/x4c-v1-a100-online-hard-stop-counters-2026-07-23-39a1868.log",
+    "sha256": "116d009ade6c0b0f914f16a97cd714889396d54d18be6c9566c95eaa8810a180"
+  },
+  "process_exit_code": 2,
+  "fresh_process_rebuild_control_flow_passed": true,
+  "warmup_completed": false,
+  "measured_candidates_completed": 0,
+  "normal_online_record_emitted": false,
+  "failure_phase": "warmup post-gather production execution-counter validation",
+  "verbatim_error": "x4c_pod_record HARD STOP: X4c opening: InvalidGeometry(\"X4c production execution counters\")",
+  "prior_native_ordering_obstruction": {
+    "real_cuda_regression_executed": true,
+    "real_cuda_regression_passed": true,
+    "canonical_gather_kernel_launched": true,
+    "canonical_gather_returned": true
+  },
+  "passed_before_failure": {
+    "direct_fold_parity": true,
+    "canonical_frame_decoded": true,
+    "canonical_reencode_equal": true,
+    "proof_ready_census": true,
+    "arena_reset": true,
+    "arena_release": true,
+    "session_reusable_census": true
+  },
+  "counter_failure_implication": {
+    "frozen_expected_packed_opening_bytes": 2615414,
+    "observed_packed_opening_bytes": null,
+    "observed_value_missing_reason": "The failing validator aggregated all exact predicates under one error and did not serialize the computed length.",
+    "only_remaining_unsatisfied_predicate": "canonical_template_h2d_bytes and canonical_opening_d2h_bytes, both set from the gathered canonical length, equal 2615414",
+    "canonical_proof_byte_mismatch_hard_stop": true
+  },
+  "selected_gpu_compute_processes_after_exit": 0,
+  "runner_process_present_after_exit": false,
+  "open_gate_verdict": "NOT_EVALUATED",
+  "verify_gate_verdict": "NOT_EVALUATED",
+  "communication_gate_verdict": "NOT_EVALUATED",
+  "zero_staging_gate_verdict": "NOT_EVALUATED",
+  "overall_pass": false,
+  "hard_stop": true,
+  "protocol_or_parameter_change": false,
+  "root_or_proof_format_change": false,
+  "lean_or_soundness_change": false,
+  "assurance": "AI-generated append-only obstruction record derived from the SHA-pinned stderr log, control-flow ordering and read-only post-exit inspection; the exact observed gathered length was not emitted and is deliberately not reconstructed. No independent human-review assurance. R1c review remains mandatory."
+}

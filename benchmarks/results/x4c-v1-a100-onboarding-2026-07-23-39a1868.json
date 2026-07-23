@@ -1,0 +1,708 @@
+{
+  "schema": 1,
+  "milestone": "X4c-v1-A100-onboarding",
+  "date": "2026-07-23",
+  "git_sha": "39a1868e64afd9d527756cfb2811a6f3f6a321a8",
+  "git_dirty": false,
+  "pod_profile": "runpod-a100-x4c-v1",
+  "protocol_profile": "x4-zkdeepfold-ud-e29-v4",
+  "design_sha256": "57d0c0d691cc63ec043d18384348ad0e1130a5e763dc8e9ef00a7132d8abb880",
+  "clean_source_sha256": "2110b78d93faad0547b7a501c5a7c7ce7a371b34c305411122e16d6ef50227f4",
+  "clean_source_bundle_path": "/local/volta-zk-x4c-39a1868.bundle",
+  "note6": {
+    "path": "/local/volta-zk-x4c-39a1868-run/benchmarks/results/x4c-note6-c3-weights-preflight-2026-07-23-9b7776f.json",
+    "sha256": "1de7a37f772df482e9490cc6d8ea3ff0c3ba95935a7d43cfa58f4ba8dc138ff2",
+    "git_sha": "9b7776f7e43366684b3b69714eed1cb0da0f438d"
+  },
+  "lifecycle_probe": {
+    "path": "/local/volta-zk-x4c-39a1868-run/benchmarks/results/02-exact-size-lifecycle-probe-2026-07-23-9b7776f.json",
+    "sha256": "d27ae86122bd41b4b74a5676d8c8277f41711ec3de4d6bd6f90daaa087deb164",
+    "git_sha": "9b7776f7e43366684b3b69714eed1cb0da0f438d"
+  },
+  "machine": {
+    "provider": "RunPod",
+    "pod_id": "hinsg2lmzlntha",
+    "gpu": "NVIDIA A100-SXM4-80GB",
+    "host_ram_bytes": 2151618048000,
+    "logical_cpus": 27,
+    "rayon_workers": 27,
+    "affinity": "pid 9576's current affinity list: 0-127",
+    "commit_seal_open_unpinned": true,
+    "persistent_root": "/workspace/x4c-durable",
+    "persistent_filesystem_type": "fuseblk",
+    "persistent_available_bytes": 165927807025152,
+    "local_root": "/local",
+    "local_filesystem_type": "overlayfs",
+    "local_available_bytes": 196577968128
+  },
+  "worker_policy": "UNPINNED commit path; RAYON_NUM_THREADS absent",
+  "warmup": {
+    "role": "warmup",
+    "measured": false,
+    "wall_s": 438.238081439,
+    "io": {
+      "rchar": 151137550117,
+      "wchar": 160756137984,
+      "read_bytes": 151137652736,
+      "write_bytes": 160756281344
+    },
+    "backend": {
+      "measurement_wall_ns": 438238118711,
+      "operations": [
+        [
+          "gemm",
+          0
+        ],
+        [
+          "logup",
+          0
+        ],
+        [
+          "pcs_rows",
+          0
+        ],
+        [
+          "pcs_ntt",
+          102
+        ],
+        [
+          "pcs_merkle",
+          1439
+        ],
+        [
+          "auth_masks",
+          0
+        ],
+        [
+          "mailbox",
+          0
+        ]
+      ],
+      "h2d_bytes": 160757312772,
+      "d2h_bytes": 151137550176,
+      "device_zeroed_bytes": 67330113536,
+      "synchronizations": 1545,
+      "allocation_calls": 12,
+      "resident_alloc_requests": 0,
+      "resident_reuse_hits": 0,
+      "resident_free_requests": 0,
+      "physical_free_calls": 4,
+      "peak_device_bytes": 43486546048,
+      "pinned_allocation_calls": 0,
+      "pinned_alloc_requests": 0,
+      "pinned_reuse_hits": 0,
+      "pinned_free_requests": 0,
+      "pinned_physical_free_calls": 0,
+      "x4c_arena_reset_calls": 0,
+      "x4c_arena_reset_bytes": 0,
+      "x4c_kernel_launches": 0,
+      "timing_event_api_calls": 0
+    },
+    "cohorts": [
+      {
+        "name": "Wext-mu26-global-tied-roles",
+        "cohort_id": 2768240641,
+        "wall_s": 288.237866269,
+        "root_hex": "024499106472dec09078b6a438fb0ff6a1a49b526d1f6aede79581dc84696879",
+        "metrics": {
+          "coefficient_bytes_persisted": 4294967296,
+          "oracle_bytes_persisted": 34359738368,
+          "root_bytes_persisted": 32,
+          "staging_bytes_read": 68719476672,
+          "staging_bytes_written": 68719476704,
+          "retained_outer_cache_bytes": 34359738336,
+          "expected_h2d_bytes": 107374217152,
+          "expected_d2h_bytes": 103079215072
+        }
+      },
+      {
+        "name": "Wext-mu22-all-layers",
+        "cohort_id": 2768240642,
+        "wall_s": 134.035926856,
+        "root_hex": "fbdba1ac3db0e0267da665e1677129604445bac261dee2ebde303bf6ac8cd8b1",
+        "metrics": {
+          "coefficient_bytes_persisted": 4831838208,
+          "oracle_bytes_persisted": 38654705664,
+          "root_bytes_persisted": 32,
+          "staging_bytes_read": 4294967232,
+          "staging_bytes_written": 4294967264,
+          "retained_outer_cache_bytes": 2147483616,
+          "expected_h2d_bytes": 47782625216,
+          "expected_d2h_bytes": 42949672928
+        }
+      },
+      {
+        "name": "Wext-mu20-layers-and-position",
+        "cohort_id": 2768240643,
+        "wall_s": 14.288942468,
+        "root_hex": "481e8f9ac396ade8aea7d558cdf682e75e7d7828e66675061b82c3d1e4e761cd",
+        "metrics": {
+          "coefficient_bytes_persisted": 436207616,
+          "oracle_bytes_persisted": 3489660928,
+          "root_bytes_persisted": 32,
+          "staging_bytes_read": 1073741760,
+          "staging_bytes_written": 1073741792,
+          "retained_outer_cache_bytes": 536870880,
+          "expected_h2d_bytes": 4999627712,
+          "expected_d2h_bytes": 4563402720
+        }
+      },
+      {
+        "name": "auxiliary-ell17",
+        "cohort_id": 2768240896,
+        "wall_s": 0.313897707,
+        "root_hex": "94c803c59707e979f76be4e5c68e5f68e8c870e175d19812f30ae32d5f6b07e0",
+        "metrics": {
+          "coefficient_bytes_persisted": 4194304,
+          "oracle_bytes_persisted": 33554432,
+          "root_bytes_persisted": 32,
+          "staging_bytes_read": 67108800,
+          "staging_bytes_written": 67108832,
+          "retained_outer_cache_bytes": 33554400,
+          "expected_h2d_bytes": 104857604,
+          "expected_d2h_bytes": 100663264
+        }
+      },
+      {
+        "name": "auxiliary-ell16",
+        "cohort_id": 2768240897,
+        "wall_s": 1.361035356,
+        "root_hex": "c79aa47d4f224080f00c07fb9a097a77897279b475a0b26eef491a27033e2cbe",
+        "metrics": {
+          "coefficient_bytes_persisted": 51380224,
+          "oracle_bytes_persisted": 411041792,
+          "root_bytes_persisted": 32,
+          "staging_bytes_read": 33554368,
+          "staging_bytes_written": 33554400,
+          "retained_outer_cache_bytes": 16777184,
+          "expected_h2d_bytes": 495985088,
+          "expected_d2h_bytes": 444596192
+        }
+      }
+    ],
+    "coefficient_bytes": 9618587648,
+    "oracle_bytes": 76948701184,
+    "root_bytes": 160,
+    "retained_durable": false,
+    "cleanup_complete": true,
+    "accepted": true
+  },
+  "measured": [
+    {
+      "role": "measured-1",
+      "measured": true,
+      "wall_s": 440.272702986,
+      "io": {
+        "rchar": 151137550158,
+        "wchar": 160756137984,
+        "read_bytes": 151137652736,
+        "write_bytes": 160756281344
+      },
+      "backend": {
+        "measurement_wall_ns": 440272722814,
+        "operations": [
+          [
+            "gemm",
+            0
+          ],
+          [
+            "logup",
+            0
+          ],
+          [
+            "pcs_rows",
+            0
+          ],
+          [
+            "pcs_ntt",
+            102
+          ],
+          [
+            "pcs_merkle",
+            1439
+          ],
+          [
+            "auth_masks",
+            0
+          ],
+          [
+            "mailbox",
+            0
+          ]
+        ],
+        "h2d_bytes": 160757312772,
+        "d2h_bytes": 151137550176,
+        "device_zeroed_bytes": 67330113536,
+        "synchronizations": 1541,
+        "allocation_calls": 0,
+        "resident_alloc_requests": 0,
+        "resident_reuse_hits": 0,
+        "resident_free_requests": 0,
+        "physical_free_calls": 0,
+        "peak_device_bytes": 43486546048,
+        "pinned_allocation_calls": 0,
+        "pinned_alloc_requests": 0,
+        "pinned_reuse_hits": 0,
+        "pinned_free_requests": 0,
+        "pinned_physical_free_calls": 0,
+        "x4c_arena_reset_calls": 0,
+        "x4c_arena_reset_bytes": 0,
+        "x4c_kernel_launches": 0,
+        "timing_event_api_calls": 0
+      },
+      "cohorts": [
+        {
+          "name": "Wext-mu26-global-tied-roles",
+          "cohort_id": 2768240641,
+          "wall_s": 290.982011096,
+          "root_hex": "024499106472dec09078b6a438fb0ff6a1a49b526d1f6aede79581dc84696879",
+          "metrics": {
+            "coefficient_bytes_persisted": 4294967296,
+            "oracle_bytes_persisted": 34359738368,
+            "root_bytes_persisted": 32,
+            "staging_bytes_read": 68719476672,
+            "staging_bytes_written": 68719476704,
+            "retained_outer_cache_bytes": 34359738336,
+            "expected_h2d_bytes": 107374217152,
+            "expected_d2h_bytes": 103079215072
+          }
+        },
+        {
+          "name": "Wext-mu22-all-layers",
+          "cohort_id": 2768240642,
+          "wall_s": 133.20720509,
+          "root_hex": "fbdba1ac3db0e0267da665e1677129604445bac261dee2ebde303bf6ac8cd8b1",
+          "metrics": {
+            "coefficient_bytes_persisted": 4831838208,
+            "oracle_bytes_persisted": 38654705664,
+            "root_bytes_persisted": 32,
+            "staging_bytes_read": 4294967232,
+            "staging_bytes_written": 4294967264,
+            "retained_outer_cache_bytes": 2147483616,
+            "expected_h2d_bytes": 47782625216,
+            "expected_d2h_bytes": 42949672928
+          }
+        },
+        {
+          "name": "Wext-mu20-layers-and-position",
+          "cohort_id": 2768240643,
+          "wall_s": 14.428530475,
+          "root_hex": "481e8f9ac396ade8aea7d558cdf682e75e7d7828e66675061b82c3d1e4e761cd",
+          "metrics": {
+            "coefficient_bytes_persisted": 436207616,
+            "oracle_bytes_persisted": 3489660928,
+            "root_bytes_persisted": 32,
+            "staging_bytes_read": 1073741760,
+            "staging_bytes_written": 1073741792,
+            "retained_outer_cache_bytes": 536870880,
+            "expected_h2d_bytes": 4999627712,
+            "expected_d2h_bytes": 4563402720
+          }
+        },
+        {
+          "name": "auxiliary-ell17",
+          "cohort_id": 2768240896,
+          "wall_s": 0.301022728,
+          "root_hex": "94c803c59707e979f76be4e5c68e5f68e8c870e175d19812f30ae32d5f6b07e0",
+          "metrics": {
+            "coefficient_bytes_persisted": 4194304,
+            "oracle_bytes_persisted": 33554432,
+            "root_bytes_persisted": 32,
+            "staging_bytes_read": 67108800,
+            "staging_bytes_written": 67108832,
+            "retained_outer_cache_bytes": 33554400,
+            "expected_h2d_bytes": 104857604,
+            "expected_d2h_bytes": 100663264
+          }
+        },
+        {
+          "name": "auxiliary-ell16",
+          "cohort_id": 2768240897,
+          "wall_s": 1.35355041,
+          "root_hex": "c79aa47d4f224080f00c07fb9a097a77897279b475a0b26eef491a27033e2cbe",
+          "metrics": {
+            "coefficient_bytes_persisted": 51380224,
+            "oracle_bytes_persisted": 411041792,
+            "root_bytes_persisted": 32,
+            "staging_bytes_read": 33554368,
+            "staging_bytes_written": 33554400,
+            "retained_outer_cache_bytes": 16777184,
+            "expected_h2d_bytes": 495985088,
+            "expected_d2h_bytes": 444596192
+          }
+        }
+      ],
+      "coefficient_bytes": 9618587648,
+      "oracle_bytes": 76948701184,
+      "root_bytes": 160,
+      "retained_durable": false,
+      "cleanup_complete": true,
+      "accepted": true
+    },
+    {
+      "role": "measured-2",
+      "measured": true,
+      "wall_s": 438.453177819,
+      "io": {
+        "rchar": 151137550158,
+        "wchar": 160756137984,
+        "read_bytes": 151137652736,
+        "write_bytes": 160756281344
+      },
+      "backend": {
+        "measurement_wall_ns": 438453197697,
+        "operations": [
+          [
+            "gemm",
+            0
+          ],
+          [
+            "logup",
+            0
+          ],
+          [
+            "pcs_rows",
+            0
+          ],
+          [
+            "pcs_ntt",
+            102
+          ],
+          [
+            "pcs_merkle",
+            1439
+          ],
+          [
+            "auth_masks",
+            0
+          ],
+          [
+            "mailbox",
+            0
+          ]
+        ],
+        "h2d_bytes": 160757312772,
+        "d2h_bytes": 151137550176,
+        "device_zeroed_bytes": 67330113536,
+        "synchronizations": 1541,
+        "allocation_calls": 0,
+        "resident_alloc_requests": 0,
+        "resident_reuse_hits": 0,
+        "resident_free_requests": 0,
+        "physical_free_calls": 0,
+        "peak_device_bytes": 43486546048,
+        "pinned_allocation_calls": 0,
+        "pinned_alloc_requests": 0,
+        "pinned_reuse_hits": 0,
+        "pinned_free_requests": 0,
+        "pinned_physical_free_calls": 0,
+        "x4c_arena_reset_calls": 0,
+        "x4c_arena_reset_bytes": 0,
+        "x4c_kernel_launches": 0,
+        "timing_event_api_calls": 0
+      },
+      "cohorts": [
+        {
+          "name": "Wext-mu26-global-tied-roles",
+          "cohort_id": 2768240641,
+          "wall_s": 290.779953924,
+          "root_hex": "024499106472dec09078b6a438fb0ff6a1a49b526d1f6aede79581dc84696879",
+          "metrics": {
+            "coefficient_bytes_persisted": 4294967296,
+            "oracle_bytes_persisted": 34359738368,
+            "root_bytes_persisted": 32,
+            "staging_bytes_read": 68719476672,
+            "staging_bytes_written": 68719476704,
+            "retained_outer_cache_bytes": 34359738336,
+            "expected_h2d_bytes": 107374217152,
+            "expected_d2h_bytes": 103079215072
+          }
+        },
+        {
+          "name": "Wext-mu22-all-layers",
+          "cohort_id": 2768240642,
+          "wall_s": 131.861539123,
+          "root_hex": "fbdba1ac3db0e0267da665e1677129604445bac261dee2ebde303bf6ac8cd8b1",
+          "metrics": {
+            "coefficient_bytes_persisted": 4831838208,
+            "oracle_bytes_persisted": 38654705664,
+            "root_bytes_persisted": 32,
+            "staging_bytes_read": 4294967232,
+            "staging_bytes_written": 4294967264,
+            "retained_outer_cache_bytes": 2147483616,
+            "expected_h2d_bytes": 47782625216,
+            "expected_d2h_bytes": 42949672928
+          }
+        },
+        {
+          "name": "Wext-mu20-layers-and-position",
+          "cohort_id": 2768240643,
+          "wall_s": 14.170403409,
+          "root_hex": "481e8f9ac396ade8aea7d558cdf682e75e7d7828e66675061b82c3d1e4e761cd",
+          "metrics": {
+            "coefficient_bytes_persisted": 436207616,
+            "oracle_bytes_persisted": 3489660928,
+            "root_bytes_persisted": 32,
+            "staging_bytes_read": 1073741760,
+            "staging_bytes_written": 1073741792,
+            "retained_outer_cache_bytes": 536870880,
+            "expected_h2d_bytes": 4999627712,
+            "expected_d2h_bytes": 4563402720
+          }
+        },
+        {
+          "name": "auxiliary-ell17",
+          "cohort_id": 2768240896,
+          "wall_s": 0.298024433,
+          "root_hex": "94c803c59707e979f76be4e5c68e5f68e8c870e175d19812f30ae32d5f6b07e0",
+          "metrics": {
+            "coefficient_bytes_persisted": 4194304,
+            "oracle_bytes_persisted": 33554432,
+            "root_bytes_persisted": 32,
+            "staging_bytes_read": 67108800,
+            "staging_bytes_written": 67108832,
+            "retained_outer_cache_bytes": 33554400,
+            "expected_h2d_bytes": 104857604,
+            "expected_d2h_bytes": 100663264
+          }
+        },
+        {
+          "name": "auxiliary-ell16",
+          "cohort_id": 2768240897,
+          "wall_s": 1.342858565,
+          "root_hex": "c79aa47d4f224080f00c07fb9a097a77897279b475a0b26eef491a27033e2cbe",
+          "metrics": {
+            "coefficient_bytes_persisted": 51380224,
+            "oracle_bytes_persisted": 411041792,
+            "root_bytes_persisted": 32,
+            "staging_bytes_read": 33554368,
+            "staging_bytes_written": 33554400,
+            "retained_outer_cache_bytes": 16777184,
+            "expected_h2d_bytes": 495985088,
+            "expected_d2h_bytes": 444596192
+          }
+        }
+      ],
+      "coefficient_bytes": 9618587648,
+      "oracle_bytes": 76948701184,
+      "root_bytes": 160,
+      "retained_durable": false,
+      "cleanup_complete": true,
+      "accepted": true
+    },
+    {
+      "role": "measured-3",
+      "measured": true,
+      "wall_s": 453.394884632,
+      "io": {
+        "rchar": 151137550158,
+        "wchar": 160756137984,
+        "read_bytes": 151137652736,
+        "write_bytes": 151137673216
+      },
+      "backend": {
+        "measurement_wall_ns": 453394903748,
+        "operations": [
+          [
+            "gemm",
+            0
+          ],
+          [
+            "logup",
+            0
+          ],
+          [
+            "pcs_rows",
+            0
+          ],
+          [
+            "pcs_ntt",
+            102
+          ],
+          [
+            "pcs_merkle",
+            1439
+          ],
+          [
+            "auth_masks",
+            0
+          ],
+          [
+            "mailbox",
+            0
+          ]
+        ],
+        "h2d_bytes": 160757312772,
+        "d2h_bytes": 151137550176,
+        "device_zeroed_bytes": 67330113536,
+        "synchronizations": 1541,
+        "allocation_calls": 0,
+        "resident_alloc_requests": 0,
+        "resident_reuse_hits": 0,
+        "resident_free_requests": 0,
+        "physical_free_calls": 0,
+        "peak_device_bytes": 43486546048,
+        "pinned_allocation_calls": 0,
+        "pinned_alloc_requests": 0,
+        "pinned_reuse_hits": 0,
+        "pinned_free_requests": 0,
+        "pinned_physical_free_calls": 0,
+        "x4c_arena_reset_calls": 0,
+        "x4c_arena_reset_bytes": 0,
+        "x4c_kernel_launches": 0,
+        "timing_event_api_calls": 0
+      },
+      "cohorts": [
+        {
+          "name": "Wext-mu26-global-tied-roles",
+          "cohort_id": 2768240641,
+          "wall_s": 301.100003916,
+          "root_hex": "024499106472dec09078b6a438fb0ff6a1a49b526d1f6aede79581dc84696879",
+          "metrics": {
+            "coefficient_bytes_persisted": 4294967296,
+            "oracle_bytes_persisted": 34359738368,
+            "root_bytes_persisted": 32,
+            "staging_bytes_read": 68719476672,
+            "staging_bytes_written": 68719476704,
+            "retained_outer_cache_bytes": 34359738336,
+            "expected_h2d_bytes": 107374217152,
+            "expected_d2h_bytes": 103079215072
+          }
+        },
+        {
+          "name": "Wext-mu22-all-layers",
+          "cohort_id": 2768240642,
+          "wall_s": 135.990427705,
+          "root_hex": "fbdba1ac3db0e0267da665e1677129604445bac261dee2ebde303bf6ac8cd8b1",
+          "metrics": {
+            "coefficient_bytes_persisted": 4831838208,
+            "oracle_bytes_persisted": 38654705664,
+            "root_bytes_persisted": 32,
+            "staging_bytes_read": 4294967232,
+            "staging_bytes_written": 4294967264,
+            "retained_outer_cache_bytes": 2147483616,
+            "expected_h2d_bytes": 47782625216,
+            "expected_d2h_bytes": 42949672928
+          }
+        },
+        {
+          "name": "Wext-mu20-layers-and-position",
+          "cohort_id": 2768240643,
+          "wall_s": 14.541321653,
+          "root_hex": "481e8f9ac396ade8aea7d558cdf682e75e7d7828e66675061b82c3d1e4e761cd",
+          "metrics": {
+            "coefficient_bytes_persisted": 436207616,
+            "oracle_bytes_persisted": 3489660928,
+            "root_bytes_persisted": 32,
+            "staging_bytes_read": 1073741760,
+            "staging_bytes_written": 1073741792,
+            "retained_outer_cache_bytes": 536870880,
+            "expected_h2d_bytes": 4999627712,
+            "expected_d2h_bytes": 4563402720
+          }
+        },
+        {
+          "name": "auxiliary-ell17",
+          "cohort_id": 2768240896,
+          "wall_s": 0.368018926,
+          "root_hex": "94c803c59707e979f76be4e5c68e5f68e8c870e175d19812f30ae32d5f6b07e0",
+          "metrics": {
+            "coefficient_bytes_persisted": 4194304,
+            "oracle_bytes_persisted": 33554432,
+            "root_bytes_persisted": 32,
+            "staging_bytes_read": 67108800,
+            "staging_bytes_written": 67108832,
+            "retained_outer_cache_bytes": 33554400,
+            "expected_h2d_bytes": 104857604,
+            "expected_d2h_bytes": 100663264
+          }
+        },
+        {
+          "name": "auxiliary-ell16",
+          "cohort_id": 2768240897,
+          "wall_s": 1.392619353,
+          "root_hex": "c79aa47d4f224080f00c07fb9a097a77897279b475a0b26eef491a27033e2cbe",
+          "metrics": {
+            "coefficient_bytes_persisted": 51380224,
+            "oracle_bytes_persisted": 411041792,
+            "root_bytes_persisted": 32,
+            "staging_bytes_read": 33554368,
+            "staging_bytes_written": 33554400,
+            "retained_outer_cache_bytes": 16777184,
+            "expected_h2d_bytes": 495985088,
+            "expected_d2h_bytes": 444596192
+          }
+        }
+      ],
+      "coefficient_bytes": 9618587648,
+      "oracle_bytes": 76948701184,
+      "root_bytes": 160,
+      "retained_durable": true,
+      "cleanup_complete": true,
+      "accepted": true
+    }
+  ],
+  "selected_upper_median_wall_s": 440.272702986,
+  "durable_files": [
+    {
+      "cohort_id": 2768240641,
+      "coefficient_path": "/workspace/x4c-durable/x4c-v1-39a1868/cohort-a5000001/coefficients.bin",
+      "coefficient_bytes": 4294967296,
+      "coefficient_sha256": "9e397e302c797f19d6e3ea18b44d27b1955d78fce5740915d495907446f77910",
+      "root_path": "/workspace/x4c-durable/x4c-v1-39a1868/cohort-a5000001/root.bin",
+      "root_bytes": 32,
+      "root_hex": "024499106472dec09078b6a438fb0ff6a1a49b526d1f6aede79581dc84696879",
+      "root_sha256": "db5f60f17a77d75e4091e839059e21593587a1b00312fef098b073a5a31d6a36"
+    },
+    {
+      "cohort_id": 2768240642,
+      "coefficient_path": "/workspace/x4c-durable/x4c-v1-39a1868/cohort-a5000002/coefficients.bin",
+      "coefficient_bytes": 4831838208,
+      "coefficient_sha256": "10384396bd26cc9277f42bf5e2791d8b82754d8674f04fe38f7cfec049a7bf93",
+      "root_path": "/workspace/x4c-durable/x4c-v1-39a1868/cohort-a5000002/root.bin",
+      "root_bytes": 32,
+      "root_hex": "fbdba1ac3db0e0267da665e1677129604445bac261dee2ebde303bf6ac8cd8b1",
+      "root_sha256": "f35052a0ca2cfb73e3458c30c6b5eacda6b83d04dc7dfb5ee790ebb4b1b4fcdb"
+    },
+    {
+      "cohort_id": 2768240643,
+      "coefficient_path": "/workspace/x4c-durable/x4c-v1-39a1868/cohort-a5000003/coefficients.bin",
+      "coefficient_bytes": 436207616,
+      "coefficient_sha256": "87b0c2c0f096c6f42724d4b00d45a70b5145bddbdf27f7b648e94cab5729db3b",
+      "root_path": "/workspace/x4c-durable/x4c-v1-39a1868/cohort-a5000003/root.bin",
+      "root_bytes": 32,
+      "root_hex": "481e8f9ac396ade8aea7d558cdf682e75e7d7828e66675061b82c3d1e4e761cd",
+      "root_sha256": "2d3d381d43dd9725001eac92cbacad95d3faefa72912106bd56d56e5da00bb1a"
+    },
+    {
+      "cohort_id": 2768240896,
+      "coefficient_path": "/workspace/x4c-durable/x4c-v1-39a1868/cohort-a5000100/coefficients.bin",
+      "coefficient_bytes": 4194304,
+      "coefficient_sha256": "4cc163fd814edb56d915c8885980a7fcf3a13131343a34754da703f54c6c6174",
+      "root_path": "/workspace/x4c-durable/x4c-v1-39a1868/cohort-a5000100/root.bin",
+      "root_bytes": 32,
+      "root_hex": "94c803c59707e979f76be4e5c68e5f68e8c870e175d19812f30ae32d5f6b07e0",
+      "root_sha256": "9882eaa1ea8989575557ba9b26752e4891ceda5b30c23fa65f2985f17906bbe0"
+    },
+    {
+      "cohort_id": 2768240897,
+      "coefficient_path": "/workspace/x4c-durable/x4c-v1-39a1868/cohort-a5000101/coefficients.bin",
+      "coefficient_bytes": 51380224,
+      "coefficient_sha256": "9f8a5dbcd9577e849e45c640cc1ec07e510d294bbd44bd4df61c1c03617ba4b4",
+      "root_path": "/workspace/x4c-durable/x4c-v1-39a1868/cohort-a5000101/root.bin",
+      "root_bytes": 32,
+      "root_hex": "c79aa47d4f224080f00c07fb9a097a77897279b475a0b26eef491a27033e2cbe",
+      "root_sha256": "1c492bdfa24096c28b6a371dc15508396d2287bb4fb73acf35e0ffe049153375"
+    }
+  ],
+  "durable_coefficient_file_count": 5,
+  "durable_root_file_count": 5,
+  "durable_oracle_file_count": 0,
+  "durable_bytes": 9618587808,
+  "durable_tier_exact": true,
+  "roots_identical_across_passes": true,
+  "response_work_executed": false,
+  "complete_online_wall_ceiling": null,
+  "overall_pass": true,
+  "assurance": "AI-generated X4c onboarding record; no independent human-review assurance. R1c review remains mandatory."
+}

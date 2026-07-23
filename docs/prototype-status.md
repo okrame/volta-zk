@@ -303,7 +303,7 @@ candidates exist and every online gate remains **NOT EVALUATED**.
 | X4b sustainable oracle Phase 1 | **DIAGNOSIS + PREREGISTRATION COMPLETE; HARD STOP BEFORE IMPLEMENTATION/POD** (2026-07-22) | No format/root/reference/Lean/soundness change; exact postdiction; CPU >=500 MB/s/core; GPU root equality; unchanged 15 s / 1.50 s / 0.25 s; full pass informative | Design SHA-256 `bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01`. Clean-source CPU record `x4b-phase1-cpu-postdiction-2026-07-22-9164de4.json`, SHA-256 `78fdd12ed79c4cf05d42b428a7fa305c28e4254be82289608c45f1f85ce64ec1`: exact aux17 has **5,242,879** hashes / **460,324,760 canonical B**; tree wall is 92.14% explained by those calls; derive-key is material but allocation/serialization is larger. Exact padding **2.4103942174056745x**, Merkle/oracle **6.093317342300939x**, recompute **205,520,864 B / 3.117810096 s**. Profile `runpod-a100-x4b-v1`; durable artifacts **86,567,288,992 B**, volume >=150 GB, host RAM >=128 GiB, device ceiling 48 GiB. X4 FAIL remains immutable. |
 | X4b sustainable oracle Phase 2 | **OFFICIAL X4b FAIL: ISOLATED COMMIT + PERSISTED OPEN; CLOSED** (2026-07-22) | Conjunctive `runpod-a100-x4b-v1`; complete node pipeline, CPU/GPU roots, verify, bytes, G6 and hardware PASS; full pass informative; isolated commit <=15 s FAIL; open <=1.50 s FAIL; no gate relaxed | Clean source `6c6907ab144f4cfbe9cadb06ebb01d652d1dc82d`. Validated record `x4b-a100-production-2026-07-22-6c6907a.json`, SHA-256 `63f4a97b263e4d09649d5a6ede5af1ba420efdcc78bb30f54b9f8cf200cfe6e0`. CPU pipeline **723,716,307.952 B/s/core PASS**; CPU/GPU roots equal; full pass **401.723726678 s / 191,546,319.209 oracle B/s informative**; Wext-mu26 **254.861527720 s FAIL**; persisted open **6.683486611 s FAIL**; verify **0.058438415 s PASS**; PCS/response exactly **2,683,236 / 43,953,700 B PASS**; G6 reconciled. Durable initial artifacts **86,567,288,992 B**, peak device **43,486,546,048 B**. Historical X4 FAIL immutable; design SHA, proof/root/reference bytes, Lean and **80.25537016399041-bit** soundness unchanged. |
 | X4c I/O-lifecycle Phase 1 | **COMPLETE; DROP-DOMINANCE HYPOTHESIS REFUTED BY LOCAL SYNTHETIC DIRECT PROJECTION; REDESIGN/PROFILE PREREGISTERED; HARD STOP** (2026-07-23) | Exact byte reconciliation; reconstructed wall is non-causal/self-derived; timing-only four-way `issue_queries` decomposition; no proof/root/reference/Lean/soundness change; no direct-fold implementation or pod | Eligible clean schema-2 record `x4c-phase1-open-decomposition-2026-07-23-f772013.json`, SHA-256 `ca9841ffce22f731dd45ba616e482a4528ae9ce934856965b0782ed3e052ebcf`: selected teardown projection **0.038496701 s**, interval **0.003520017--0.068747601 s**, only **0.585603121% / 1.045772987% high** of the **6.573855120-s** lifecycle gap. X4b mu26 reconciles **210,453,397,440 B modeled / 210,453,446,656 B observed**; its **0.825756043-GB/s** rate comes from the same wall and provides no independent causal timing evidence. Avoidable response staging is **137,438,949,856 B**. Corrected design SHA-256 `1a744625078e3ffe5772b040c24854e9510dcedebc906416279cf3a7c29bf191`; exact response/PCS remain **43,953,700 / 2,683,236 B**. |
-| X4c I/O-lifecycle Phase 2 | **POD NOTE-6, REAL-CUDA SYNTHETIC, EXACT LIFECYCLE AND ONBOARDING PASS; BYTE CAUSE ISOLATED; SELECTED-TAPE/PCS-LABEL CORRECTION LOCAL GREEN; FINAL ONLINE PENDING** (2026-07-23) | Direct-fold parity checks exactly `min(64, output_len)` unique coordinates per round; **1,592** production comparisons; diagnostic only and zero soundness credit | Checkpoint `06757e2` diagnose-only record emitted actual packed **2,599,382 B** and exact component delta **−16,032 B**, proving that X4c had used a new transcript-native tape instead of the frozen selected `e29-r3-s111` tape.  It also exposed a reporting bug: **2,601,828 B** was the global folding proof, not the complete PCS.  All five rebuild roots/censuses passed; parallel rebuild was **2,392.230210159 s** versus approximately 68 minutes serial; cleanup restored every active device/pinned/outstanding owner to zero.  Record SHA-256 `afca21d1e69d2e85685153c0a066d85338fa9dbbe8fab809c2978b30c6b1c2b7`.  The local correction restores sealed-only verifier-selected draws and distinguishes exact **2,617,860-B global folding proof / 2,683,236-B complete PCS**; workspace and validator suites are green.  Zero eligible online candidates have completed, so timing/communication/zero-staging gates remain **NOT EVALUATED** pending same-source onboarding and warm-up plus three.  The residual X4b cause remains OPEN and no legacy mu26 attribution run is used.  Design SHA-256 remains **`57d0c0d691cc63ec043d18384348ad0e1130a5e763dc8e9ef00a7132d8abb880`**.  Rate `1/8`, `s=111`, roots/reference/codec/Lean/soundness, gates and required exact PCS/response **2,683,236 / 43,953,700 B** are unchanged. |
+| X4c I/O-lifecycle Phase 2 | **BYTE CAUSE ISOLATED AND LOCAL CORRECTION GREEN; SAME-SOURCE ONBOARDING HARD STOP ON PERSISTENT-VOLUME EIO; ONLINE NOT RUN** (2026-07-23) | Direct-fold parity checks exactly `min(64, output_len)` unique coordinates per round; **1,592** production comparisons; diagnostic only and zero soundness credit | Checkpoint `06757e2` diagnose-only record emitted actual packed **2,599,382 B** and exact component delta **−16,032 B**, proving that X4c had used a new transcript-native tape instead of the frozen selected `e29-r3-s111` tape.  It also exposed a reporting bug: **2,601,828 B** was the global folding proof, not the complete PCS.  All five rebuild roots/censuses passed; parallel rebuild was **2,392.230210159 s** versus approximately 68 minutes serial; cleanup restored every active device/pinned/outstanding owner to zero.  Record SHA-256 `afca21d1e69d2e85685153c0a066d85338fa9dbbe8fab809c2978b30c6b1c2b7`.  Checkpoint `aeea217` restores sealed-only verifier-selected draws and distinguishes exact **2,617,860-B global folding proof / 2,683,236-B complete PCS**; local workspace/validator and pod real-CUDA regression suites are green.  Its mandatory same-source onboarding stopped on provider PERSISTENT-volume `EIO` while syncing the first durable cohort; log SHA-256 `537d1f9fec0a4e7f1acb2a9a8e2fcd694be5fb19d83e5839e17f6dac285f8302`.  No onboarding record or eligible online candidate was emitted, so timing/communication/zero-staging gates remain **NOT EVALUATED** and no rebuild/online response was run.  The residual X4b cause remains OPEN and no legacy mu26 attribution run is used.  Design SHA-256 remains **`57d0c0d691cc63ec043d18384348ad0e1130a5e763dc8e9ef00a7132d8abb880`**.  Rate `1/8`, `s=111`, roots/reference/codec/Lean/soundness, gates and required exact PCS/response **2,683,236 / 43,953,700 B** are unchanged. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -371,6 +371,43 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-23 (X4c corrected same-source onboarding HARD STOP —
+  provider PERSISTENT-volume `EIO`; online not run)**: clean correction
+  checkpoint `aeea2176797cfaa5efb711ace890cd10a7ab5e34`, clean-source bundle
+  SHA-256
+  `f0f4098f3d9d5ff6c7e47ce44f12277dc6ace8c173aec0494595837f99fb4100`
+  and separately built CUDA library SHA-256
+  `9e6393347ba36dc20e715d160519237ab02005962a5c165fde654fc332ce3442`
+  passed the real-A100 direct-fold CPU/GPU, N4/root and canonical-gather
+  regressions.  The mandatory fresh same-source onboarding then terminated
+  without a structured report.  Its append-only log
+  `09-x4c-onboarding-2026-07-23-aeea217.log`, SHA-256
+  `537d1f9fec0a4e7f1acb2a9a8e2fcd694be5fb19d83e5839e17f6dac285f8302`,
+  records verbatim:
+
+  `x4c_pod_record HARD STOP: commit Wext-mu26-global-tied-roles: X4b artifact I/O error: Input/output error (os error 5)`
+
+  Independent controls immediately before failure found the main thread in
+  `request_wait_answer` while the exact **4,294,967,296-B** first-cohort
+  coefficient file and its **32-B** root existed on the FUSE-mounted
+  PERSISTENT tier; process I/O counters stopped changing during that wait.
+  The log timestamps span approximately **2,227.053 s**, but this is only an
+  external lifecycle observation, not a complete onboarding timer or a
+  causal throughput identity.  After the `EIO`, the process exited, GPU
+  ownership returned to exact **0 MiB**, and neither the durable failure path
+  nor scratch failure path contained any file; their residual empty
+  directories are preserved.  The five roots in the prior immutable
+  `39a1868` durable tier remained readable, so this is a provider-volume
+  write/sync obstruction in the new pass, not evidence of a CUDA backend
+  error or a changed cryptographic root.
+
+  No onboarding JSON was emitted, no missing counter is synthesized, and the
+  online rebuild, warm-up and candidates were not started.  All X4c online
+  gates therefore remain **NOT EVALUATED**.  Retrying requires a fresh
+  append-only durable/scratch path and a complete same-source onboarding; the
+  durable tier may not be moved to local storage and no gate or byte invariant
+  is relaxed.
 
 - **2026-07-23 (X4c canonical diagnostic landed; selected-tape and PCS-label
   corrections preregistered before implementation/retry)**: clean diagnostic

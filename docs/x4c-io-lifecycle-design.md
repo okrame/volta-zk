@@ -3,7 +3,12 @@
 **Status:** postdiction, timing instrumentation, redesign and
 `runpod-a100-x4c-v1` preregistration only. **HARD STOP before the direct-fold,
 GPU-resident-tree, RAM-oracle or arena implementation and before any pod
-access.**
+access.** The original pre-measurement artifact is preserved at commit
+`61bf1fb0acf6ea693f24b049c6d31393845c7d95`, SHA-256
+`7d4f8254b066b91fea9ee52fbef0f0008632adccceef1513d3d3478eeea3a52a`.
+Its Section 2.3 incorrectly predeclared the hypothesis as confirmed. This
+revision is the explicit interpretation correction; it changes no experiment
+geometry, sampling plan, engineering design, profile, protocol or gate.
 
 This package follows the immutable X4 and X4b closures. X4 remains
 **G4 commit FAIL / overall FAIL** and X4b remains **official FAIL on isolated
@@ -210,16 +215,28 @@ projected teardown
 ```
 
 Candidate timers, upper medians, allocator counts, the direct projection and
-its min/max-candidate sensitivity interval land only in the append-only clean
-Phase-1 JSON and ledger. Keeping results out of this frozen preregistration
-prevents a measurement from rewriting its own design pin.
+its min/max-candidate sensitivity interval land only in an append-only clean
+Phase-1 JSON and the ledger. No regression, fitted intercept, rate chosen
+after measurement or pod result is permitted.
 
-Disposition: **the teardown-dominance hypothesis is confirmed for the
-current lifecycle**. Ownership places teardown inside the measured call, the
-same-host no-sealed-state control explains at most 1.64% of the observed wall,
-and the local timers isolate size-dependent destruction. The scaled value is
-an analytic projection, not a pod measurement; Phase 2 must report the real
-pod timers rather than promote the projection.
+The first local JSON from source `61bf1fb0acf6ea693f24b049c6d31393845c7d95`
+is retained append-only, but is ineligible for Phase-1 closure because its
+generator copied the predeclared `CONFIRMED` conclusion into the record before
+examining the projection. The corrected rerun keeps every experimental input
+unchanged and applies this explicit rule:
+
+- “dominant” means more than 50% of the **6.573855120-s** implied lifecycle
+  debt;
+- `REFUTED` when even the largest of the five direct byte-scaled `mu22`
+  teardown candidates is below that threshold;
+- `CONFIRMED` when even the smallest candidate is above it; and
+- `INCONCLUSIVE` otherwise.
+
+The conclusion applies only to the stated local synthetic evidence plus the
+analytic byte projection. Even a refutation of ordinary container-drop
+dominance does not erase the measured same-host lifecycle gap or identify its
+cause. Phase 2 must report production-host timers rather than promote the
+projection.
 
 ## 3. Byte-identical X4c redesign
 

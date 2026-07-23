@@ -154,8 +154,11 @@ X4B_DEGRADED_FOLD_CACHE_BYTES = 17_179_868_192
 X4B_DEVICE_BYTE_CEILING = 48 * 1024 * 1024 * 1024
 X4B_MIN_VOLUME_BYTES = 150_000_000_000
 X4B_BASELINE_RAM_BYTES = 128 * 1024 * 1024 * 1024
-X4C_DESIGN_SHA256 = (
+X4C_PREREGISTRATION_V1_SHA256 = (
     "7d4f8254b066b91fea9ee52fbef0f0008632adccceef1513d3d3478eeea3a52a"
+)
+X4C_DESIGN_SHA256 = (
+    "1a744625078e3ffe5772b040c24854e9510dcedebc906416279cf3a7c29bf191"
 )
 X4C_PHASE1_MILESTONE = "X4c-phase1-open-lifecycle-postdiction"
 X4C_SYNTHETIC_DOMAIN_LOG2 = [16, 18, 20, 22]
@@ -972,7 +975,7 @@ def _x4c_phase1_result_valid(row: dict[str, Any]) -> bool:
     scales = row.get("synthetic_scales")
     projection = row.get("analytic_pod_scale_projection")
     if not (
-        row.get("schema") == 1
+        row.get("schema") == 2
         and row.get("milestone") == X4C_PHASE1_MILESTONE
         and row.get("date") == "2026-07-23"
         and row.get("git_dirty") is False
@@ -980,7 +983,10 @@ def _x4c_phase1_result_valid(row: dict[str, Any]) -> bool:
         and len(row["git_sha"]) == 40
         and row.get("phase") == 1
         and row.get("pod_contacted") is False
+        and row.get("preregistration_v1_sha256")
+        == X4C_PREREGISTRATION_V1_SHA256
         and row.get("design_sha256") == X4C_DESIGN_SHA256
+        and "predeclared CONFIRMED" in row.get("interpretation_correction", "")
         and isinstance(immutable, dict)
         and immutable.get("protocol_profile") == X4_V4_PROFILE
         and immutable.get("rate") == "1/8"
@@ -1066,7 +1072,12 @@ def _x4c_phase1_result_valid(row: dict[str, Any]) -> bool:
         and opened.get("sealed_fold_outer_cache_bytes")
         == X4C_PRODUCTION_FOLD_OUTER_CACHE_BYTES
         and opened.get("sealed_state_bytes") == production_state
-        and opened.get("hypothesis_disposition", "").startswith("CONFIRMED")
+        and _x4b_close(
+            opened.get("lifecycle_debt_dominance_threshold_s"), implied / 2.0
+        )
+        and ">50%" in opened.get("hypothesis_decision_rule", "")
+        and "no regression or fitted intercept"
+        in opened.get("hypothesis_decision_rule", "")
     ):
         return False
 
@@ -1138,6 +1149,18 @@ def _x4c_phase1_result_valid(row: dict[str, Any]) -> bool:
     projected_teardown = (
         largest["selected_upper_median"]["teardown_wall_ns"] * byte_scale / 1e9
     )
+    projected_teardown_low = min(teardown_candidates) * byte_scale / 1e9
+    projected_teardown_high = max(teardown_candidates) * byte_scale / 1e9
+    dominance_threshold = implied / 2.0
+    if projected_teardown_high < dominance_threshold:
+        expected_disposition_code = "REFUTED_LOCAL_SYNTHETIC_DIRECT_PROJECTION"
+        expected_disposition_prefix = "REFUTED at the Phase-1 evidence level:"
+    elif projected_teardown_low > dominance_threshold:
+        expected_disposition_code = "CONFIRMED_LOCAL_SYNTHETIC_DIRECT_PROJECTION"
+        expected_disposition_prefix = "CONFIRMED at the Phase-1 evidence level:"
+    else:
+        expected_disposition_code = "INCONCLUSIVE_LOCAL_SYNTHETIC_DIRECT_PROJECTION"
+        expected_disposition_prefix = "INCONCLUSIVE at the Phase-1 evidence level:"
     if not (
         isinstance(projection, dict)
         and "no regression" in projection.get("policy", "")
@@ -1148,11 +1171,23 @@ def _x4c_phase1_result_valid(row: dict[str, Any]) -> bool:
         and _x4b_close(projection.get("projected_teardown_wall_s"), projected_teardown)
         and _x4b_close(
             projection.get("projected_teardown_wall_s_low"),
-            min(teardown_candidates) * byte_scale / 1e9,
+            projected_teardown_low,
         )
         and _x4b_close(
             projection.get("projected_teardown_wall_s_high"),
-            max(teardown_candidates) * byte_scale / 1e9,
+            projected_teardown_high,
+        )
+        and _x4b_close(
+            projection.get("projected_teardown_share_of_lifecycle_debt"),
+            projected_teardown / implied,
+        )
+        and _x4b_close(
+            projection.get("projected_teardown_share_of_lifecycle_debt_low"),
+            projected_teardown_low / implied,
+        )
+        and _x4b_close(
+            projection.get("projected_teardown_share_of_lifecycle_debt_high"),
+            projected_teardown_high / implied,
         )
         and _x4b_close(
             projection.get("same_host_no_teardown_anchor_s"),
@@ -1164,6 +1199,10 @@ def _x4c_phase1_result_valid(row: dict[str, Any]) -> bool:
         )
         and _x4b_close(
             projection.get("observed_x4b_open_wall_s"), X4C_X4B_OPEN_WALL_S
+        )
+        and opened.get("hypothesis_disposition_code") == expected_disposition_code
+        and opened.get("hypothesis_disposition", "").startswith(
+            expected_disposition_prefix
         )
         and "analytic projection only" in projection.get("hardware_transfer_warning", "")
         and row.get("hard_stop", "").startswith("PHASE 1 COMPLETE ONLY")

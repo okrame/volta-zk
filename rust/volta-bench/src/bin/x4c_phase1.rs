@@ -22,7 +22,9 @@ use volta_pcs::x4::{
 
 const DATE: &str = "2026-07-23";
 const MILESTONE: &str = "X4c-phase1-open-lifecycle-postdiction";
-const X4C_DESIGN_SHA256: &str = "7d4f8254b066b91fea9ee52fbef0f0008632adccceef1513d3d3478eeea3a52a";
+const X4C_PREREGISTRATION_V1_SHA256: &str =
+    "7d4f8254b066b91fea9ee52fbef0f0008632adccceef1513d3d3478eeea3a52a";
+const X4C_DESIGN_SHA256: &str = "1a744625078e3ffe5772b040c24854e9510dcedebc906416279cf3a7c29bf191";
 const X4B_RECORD: &str = "benchmarks/results/x4b-a100-production-2026-07-22-6c6907a.json";
 const X4B_RECORD_SHA256: &str = "63f4a97b263e4d09649d5a6ede5af1ba420efdcc78bb30f54b9f8cf200cfe6e0";
 const X4B_WEXT_WALL_S: f64 = 254.861_527_720;
@@ -224,6 +226,9 @@ struct OpenPostdictionRow {
     sealed_fold_codeword_bytes: u64,
     sealed_fold_outer_cache_bytes: u64,
     sealed_state_bytes: u64,
+    lifecycle_debt_dominance_threshold_s: f64,
+    hypothesis_decision_rule: String,
+    hypothesis_disposition_code: String,
     hypothesis_disposition: String,
 }
 
@@ -237,6 +242,9 @@ struct ProjectionRow {
     projected_teardown_wall_s: f64,
     projected_teardown_wall_s_low: f64,
     projected_teardown_wall_s_high: f64,
+    projected_teardown_share_of_lifecycle_debt: f64,
+    projected_teardown_share_of_lifecycle_debt_low: f64,
+    projected_teardown_share_of_lifecycle_debt_high: f64,
     same_host_no_teardown_anchor_s: f64,
     projected_total_open_wall_s: f64,
     observed_x4b_open_wall_s: f64,
@@ -253,7 +261,9 @@ struct Phase1Record {
     git_dirty: bool,
     phase: u64,
     pod_contacted: bool,
+    preregistration_v1_sha256: String,
     design_sha256: String,
+    interpretation_correction: String,
     machine: MachineRow,
     immutable: ImmutableRow,
     instrumentation: InstrumentationContractRow,
@@ -535,9 +545,34 @@ fn record() -> Phase1Record {
     let projected_teardown_wall_s_high =
         *teardown_candidates.iter().max().unwrap() as f64 * byte_scale / 1e9;
     let implied_lifecycle_debt_s = X4B_OPEN_WALL_S - X4B_POD_NO_TEARDOWN_OPEN_ANCHOR_S;
+    let dominance_threshold_s = implied_lifecycle_debt_s / 2.0;
+    let (hypothesis_disposition_code, hypothesis_disposition) = if projected_teardown_wall_s_high
+        < dominance_threshold_s
+    {
+        (
+                "REFUTED_LOCAL_SYNTHETIC_DIRECT_PROJECTION",
+                format!(
+                    "REFUTED at the Phase-1 evidence level: the selected direct byte-scaled teardown is {projected_teardown_wall_s:.9} s and the five-candidate sensitivity interval is {projected_teardown_wall_s_low:.9}--{projected_teardown_wall_s_high:.9} s; even its high endpoint is below the {dominance_threshold_s:.9}-s dominance threshold. The measured {implied_lifecycle_debt_s:.9}-s lifecycle gap remains real, but ordinary sealed-state container destruction does not postdict it and its cause remains unresolved pending production-host instrumentation"
+                ),
+            )
+    } else if projected_teardown_wall_s_low > dominance_threshold_s {
+        (
+                "CONFIRMED_LOCAL_SYNTHETIC_DIRECT_PROJECTION",
+                format!(
+                    "CONFIRMED at the Phase-1 evidence level: even the low endpoint {projected_teardown_wall_s_low:.9} s exceeds the {dominance_threshold_s:.9}-s dominance threshold; this remains an analytic local-to-pod projection rather than a production-host result"
+                ),
+            )
+    } else {
+        (
+                "INCONCLUSIVE_LOCAL_SYNTHETIC_DIRECT_PROJECTION",
+                format!(
+                    "INCONCLUSIVE at the Phase-1 evidence level: the five-candidate direct-projection interval {projected_teardown_wall_s_low:.9}--{projected_teardown_wall_s_high:.9} s crosses the {dominance_threshold_s:.9}-s dominance threshold; production-host instrumentation is required"
+                ),
+            )
+    };
 
     Phase1Record {
-        schema: 1,
+        schema: 2,
         milestone: MILESTONE.to_owned(),
         date: DATE.to_owned(),
         git_sha,
@@ -545,7 +580,9 @@ fn record() -> Phase1Record {
         git_dirty: false,
         phase: 1,
         pod_contacted: false,
+        preregistration_v1_sha256: X4C_PREREGISTRATION_V1_SHA256.to_owned(),
         design_sha256: X4C_DESIGN_SHA256.to_owned(),
+        interpretation_correction: "schema 1 predeclared CONFIRMED before measurement and is retained as an ineligible diagnostic; schema 2 derives the disposition from the unchanged five-candidate direct-projection interval and the explicit >50% lifecycle-debt rule".to_owned(),
         machine: MachineRow {
             architecture: std::env::consts::ARCH.to_owned(),
             kernel: command(&["uname", "-srmo"]),
@@ -585,7 +622,10 @@ fn record() -> Phase1Record {
             sealed_fold_codeword_bytes: PRODUCTION_FOLD_CODEWORD_BYTES,
             sealed_fold_outer_cache_bytes: PRODUCTION_FOLD_OUTER_CACHE_BYTES,
             sealed_state_bytes: production_state_bytes,
-            hypothesis_disposition: "CONFIRMED AS THE DOMINANT CURRENT-LIFECYCLE DEBT: ownership makes teardown part of the measured call, the same-host exact-geometry no-sealed-state anchor leaves 98% of wall unexplained by query work, and local synthetic timers isolate size-dependent teardown; the pod-scale timer itself remains a Phase-2 measurement".to_owned(),
+            lifecycle_debt_dominance_threshold_s: dominance_threshold_s,
+            hypothesis_decision_rule: "dominant means >50% of implied lifecycle debt; REFUTED if the largest direct byte-scaled candidate is below the threshold, CONFIRMED if the smallest is above it, otherwise INCONCLUSIVE; no regression or fitted intercept".to_owned(),
+            hypothesis_disposition_code: hypothesis_disposition_code.to_owned(),
+            hypothesis_disposition,
         },
         analytic_pod_scale_projection: ProjectionRow {
             policy: "direct byte-ratio projection from the largest synthetic scale; no regression or fitted intercept".to_owned(),
@@ -596,6 +636,12 @@ fn record() -> Phase1Record {
             projected_teardown_wall_s,
             projected_teardown_wall_s_low,
             projected_teardown_wall_s_high,
+            projected_teardown_share_of_lifecycle_debt:
+                projected_teardown_wall_s / implied_lifecycle_debt_s,
+            projected_teardown_share_of_lifecycle_debt_low:
+                projected_teardown_wall_s_low / implied_lifecycle_debt_s,
+            projected_teardown_share_of_lifecycle_debt_high:
+                projected_teardown_wall_s_high / implied_lifecycle_debt_s,
             same_host_no_teardown_anchor_s: X4B_POD_NO_TEARDOWN_OPEN_ANCHOR_S,
             projected_total_open_wall_s:
                 projected_teardown_wall_s + X4B_POD_NO_TEARDOWN_OPEN_ANCHOR_S,

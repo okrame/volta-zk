@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "milestone": "X4c-phase1-interpretation-incident",
+  "date": "2026-07-23",
+  "source_record": "benchmarks/results/x4c-phase1-open-decomposition-2026-07-23-61bf1fb.json",
+  "source_record_sha256": "672abb83107d82d2bb8bd929a594fb10647e1a201e71982446832c85d4ddc51a",
+  "source_git_sha": "61bf1fb0acf6ea693f24b049c6d31393845c7d95",
+  "source_git_dirty": false,
+  "pod_contacted": false,
+  "classification": "INTERPRETATION FAIL; raw timings retained as diagnostic evidence; not eligible for Phase-1 closure",
+  "cause": "The schema-1 generator and preregistration text predeclared CONFIRMED before inspecting the direct byte-scaled projection.",
+  "measured_contradiction": {
+    "observed_x4b_open_wall_s": 6.683486611,
+    "implied_lifecycle_debt_s": 6.57385512,
+    "projected_teardown_wall_s": 0.08807518384170104,
+    "projected_teardown_wall_s_low": 0.0032852641079884125,
+    "projected_teardown_wall_s_high": 0.2137180398815696,
+    "projected_teardown_share_of_lifecycle_debt": 0.013397798131228,
+    "projected_teardown_share_of_lifecycle_debt_high": 0.03251030574607
+  },
+  "correct_interpretation": "The ordinary sealed-state container-drop dominance hypothesis is refuted by this local synthetic direct projection. The 6.573855120-s same-host lifecycle gap remains real, but its cause is unresolved and requires production-host instrumentation.",
+  "corrective_action": "Preserve this JSON unchanged; register an explicit greater-than-50-percent dominance rule; make the schema-2 generator derive its disposition from the unchanged five-candidate interval; rerun from a clean checkpoint.",
+  "protocol_or_gate_effect": "none",
+  "hard_stop": "no X4c production implementation and no pod access"
+}

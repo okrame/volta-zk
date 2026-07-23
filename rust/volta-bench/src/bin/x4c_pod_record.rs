@@ -22,15 +22,17 @@ use volta_mac::Transcript;
 use volta_pcs::x4::{
     commit_cohort_cuda_v4, global_fold_descriptor_digest_v4,
     gpt2_codec_reference_packed_opening_v4, read_persisted_coefficients_v4,
-    validate_x4c_frozen_surface_v4, verify_global_folding_interactive_v4, CohortIdentityV4,
-    CohortVerifierConfigV4, FrameV4, GlobalChainDraftV4, GlobalOpenMetricsV4, GlobalProverGroupV4,
-    ModelGlobalOpeningSourceV4, OracleKindV4, OuterCachePolicyV4, X4bCudaCohortArtifactsV4,
-    X4bCudaCohortPathsV4, X4bCudaCommitMetricsV4, X4cArenaCensusV4, X4cCudaArenaRuntimeV4,
-    X4cLifecycleWallsV4, X4cRamModelGlobalCohortV4, X4cResponseExecutionCountersV4,
-    X4cResponseIoCountersV4, X4cResponseMetricsV4, X4cSealConfigV4, X4C_COMPLETE_PCS_BYTES_V4,
-    X4C_DIRECT_FOLD_PRODUCTION_SAMPLES_V4, X4C_PACKED_OPENING_BYTES_V4,
-    X4C_PRODUCTION_FOLD_ROUNDS_V4, X4C_QUERY_COUNT_V4, X4C_REGISTERED_DEVICE_ANCHOR_BYTES_V4,
-    X4C_RESPONSE_BYTES_V4,
+    validate_x4c_frozen_surface_v4, verify_global_folding_v4, CohortIdentityV4,
+    CohortVerifierConfigV4, FrameV4, GlobalChainDraftV4, GlobalFoldChallengesV4,
+    GlobalOpenMetricsV4, GlobalProverGroupV4, ModelGlobalOpeningSourceV4, OracleKindV4,
+    OuterCachePolicyV4, SealedGlobalChainX4cV4, X4bCudaCohortArtifactsV4, X4bCudaCohortPathsV4,
+    X4bCudaCommitMetricsV4, X4cArenaCensusV4, X4cCudaArenaRuntimeV4, X4cLifecycleWallsV4,
+    X4cRamModelGlobalCohortV4, X4cResponseExecutionCountersV4, X4cResponseIoCountersV4,
+    X4cResponseMetricsV4, X4cSealConfigV4, X4C_COMPLETE_PCS_BYTES_V4,
+    X4C_DIRECT_FOLD_PRODUCTION_SAMPLES_V4, X4C_FOLD_FRAME_BYTES_V4,
+    X4C_GLOBAL_FOLDING_PROOF_BYTES_V4, X4C_MANDATORY_NON_QUERY_BYTES_V4,
+    X4C_PACKED_OPENING_BYTES_V4, X4C_PRODUCTION_FOLD_ROUNDS_V4, X4C_QUERY_COUNT_V4,
+    X4C_REGISTERED_DEVICE_ANCHOR_BYTES_V4, X4C_RESPONSE_BYTES_V4,
 };
 
 const SCHEMA: u64 = 1;
@@ -43,6 +45,17 @@ const NOTE6_SOURCE_SHA: &str = "9b7776f7e43366684b3b69714eed1cb0da0f438d";
 const DIAGNOSTIC_ONBOARDING_SOURCE_SHA: &str = "39a1868e64afd9d527756cfb2811a6f3f6a321a8";
 const DIAGNOSTIC_ONBOARDING_RECORD_SHA256: &str =
     "2c4b8d71931f3bfecb48bd63612c499f2c1fe685495b705cc000449460e9e28f";
+const AMENDMENT5_PREFLIGHT_PATH: &str =
+    "benchmarks/results/x4-amendment5-gpt2-preflight-2026-07-21-93749b3.json";
+const AMENDMENT5_PREFLIGHT_SHA256: &str =
+    "ba87722362c8825e13e02a6c563a436797ea852e09e1cebcf4a9265c6ce56499";
+const AMENDMENT5_PREFLIGHT_SOURCE_SHA: &str = "93749b3878ea517602eee06a8d46a201b7cb3346";
+const SELECTED_QUERY_TAPE_BLAKE3: &str =
+    "3654af24af8a3e903e15db2bf25e0ec587d1bd774aaab433d1fb6e1064b3d299";
+const MIGRATION_REFERENCE_PATH: &str =
+    "benchmarks/results/x4-v4-gpt2-migration-2026-07-21-31fc866.json";
+const MIGRATION_REFERENCE_SHA256: &str =
+    "d7c73d7f74cbc226c768330582cebcaed02939eb7940111715da2fc3d87d2d5e";
 const GPU_NAME: &str = "NVIDIA A100-SXM4-80GB";
 const COEFFICIENT_BYTES: u64 = 9_618_587_648;
 const ROOT_BYTES: u64 = 160;
@@ -214,6 +227,116 @@ struct InputPin {
     path: String,
     sha256: String,
     git_sha: String,
+}
+
+fn amendment5_preflight_pin() -> Result<InputPin, String> {
+    let path = repo_root().join(AMENDMENT5_PREFLIGHT_PATH);
+    if sha256(&path)? != AMENDMENT5_PREFLIGHT_SHA256 {
+        return Err("Amendment-5 selected-tape reference digest changed".to_owned());
+    }
+    Ok(InputPin {
+        path: path.display().to_string(),
+        sha256: AMENDMENT5_PREFLIGHT_SHA256.to_owned(),
+        git_sha: AMENDMENT5_PREFLIGHT_SOURCE_SHA.to_owned(),
+    })
+}
+
+fn load_selected_query_draws() -> Result<Vec<u64>, String> {
+    let path = repo_root().join(AMENDMENT5_PREFLIGHT_PATH);
+    if sha256(&path)? != AMENDMENT5_PREFLIGHT_SHA256 {
+        return Err("Amendment-5 selected-tape reference digest changed".to_owned());
+    }
+    let value = load_json(&path)?;
+    let row = value["candidates"]
+        .as_array()
+        .and_then(|candidates| candidates.iter().find(|candidate| candidate["id"] == "e29-r3-s111"))
+        .ok_or_else(|| "selected e29-r3-s111 row missing".to_owned())?;
+    if row["rate"] != "1/8"
+        || row["query_count"] != X4C_QUERY_COUNT_V4 as u64
+        || row.pointer("/challenge/draw_width_bits").and_then(Value::as_u64) != Some(30)
+        || row.pointer("/challenge/replacement").and_then(Value::as_bool) != Some(true)
+        || row.pointer("/challenge/ordered_draws_blake3").and_then(Value::as_str)
+            != Some(SELECTED_QUERY_TAPE_BLAKE3)
+        || row.pointer("/bytes/packed_opening_serialized_bytes").and_then(Value::as_u64)
+            != Some(X4C_PACKED_OPENING_BYTES_V4)
+        || row.pointer("/bytes/complete_pcs_bytes").and_then(Value::as_u64)
+            != Some(X4C_COMPLETE_PCS_BYTES_V4)
+    {
+        return Err("selected Amendment-5 query row changed".to_owned());
+    }
+    let draws = row["challenge"]["ordered_draws"]
+        .as_array()
+        .ok_or_else(|| "selected query draws missing".to_owned())?
+        .iter()
+        .map(|draw| draw.as_u64().ok_or_else(|| "selected query draw is not u64".to_owned()))
+        .collect::<Result<Vec<_>, _>>()?;
+    if draws.len() != X4C_QUERY_COUNT_V4 {
+        return Err("selected query draw count changed".to_owned());
+    }
+    let mut encoded = Vec::with_capacity(4 * draws.len());
+    for draw in &draws {
+        encoded.extend_from_slice(
+            &u32::try_from(*draw)
+                .map_err(|_| "selected query draw exceeds u32".to_owned())?
+                .to_le_bytes(),
+        );
+    }
+    if blake3::hash(&encoded).to_hex().as_str() != SELECTED_QUERY_TAPE_BLAKE3 {
+        return Err("selected query tape digest mismatch".to_owned());
+    }
+    Ok(draws)
+}
+
+#[derive(Clone, Debug)]
+struct SelectedQueryTapeV4 {
+    draws: Vec<u64>,
+}
+
+impl SelectedQueryTapeV4 {
+    fn load() -> Result<Self, String> {
+        Ok(Self { draws: load_selected_query_draws()? })
+    }
+
+    /// The selected tape is verifier-owned and can be released only through
+    /// an already sealed X4c state. The prover draft/seal APIs never receive
+    /// this value.
+    fn release_after_roots<A>(&self, _sealed: &SealedGlobalChainX4cV4<'_, A>) -> Vec<u64> {
+        self.draws.clone()
+    }
+}
+
+fn validate_migration_reference() -> Result<InputPin, String> {
+    let path = repo_root().join(MIGRATION_REFERENCE_PATH);
+    if sha256(&path)? != MIGRATION_REFERENCE_SHA256 {
+        return Err("schema-4 GPT-2 migration reference digest changed".to_owned());
+    }
+    let value = load_json(&path)?;
+    if value["milestone"] != "X4-v4-GPT2-migration"
+        || value["git_dirty"] != false
+        || value["profile"] != PROTOCOL_PROFILE
+        || value["query_count"] != X4C_QUERY_COUNT_V4 as u64
+        || value["rate"] != "1/8"
+        || value["selected_tape_blake3"] != SELECTED_QUERY_TAPE_BLAKE3
+        || value.pointer("/codec/fold_frames").and_then(Value::as_u64)
+            != Some(X4C_FOLD_FRAME_BYTES_V4)
+        || value.pointer("/codec/packed_opening_frame").and_then(Value::as_u64)
+            != Some(X4C_PACKED_OPENING_BYTES_V4)
+        || value.pointer("/codec/serialized_bytes").and_then(Value::as_u64)
+            != Some(X4C_COMPLETE_PCS_BYTES_V4)
+        || value["complete_pcs_bytes"] != X4C_COMPLETE_PCS_BYTES_V4
+        || value["non_pcs_response_bytes"] != X4C_RESPONSE_BYTES_V4 - X4C_COMPLETE_PCS_BYTES_V4
+        || value["measured_response_bytes"] != X4C_RESPONSE_BYTES_V4
+    {
+        return Err("schema-4 GPT-2 migration reference fields changed".to_owned());
+    }
+    Ok(InputPin {
+        path: path.display().to_string(),
+        sha256: MIGRATION_REFERENCE_SHA256.to_owned(),
+        git_sha: value["git_sha"]
+            .as_str()
+            .ok_or_else(|| "migration reference git_sha missing".to_owned())?
+            .to_owned(),
+    })
 }
 
 fn validate_note6(path: &Path) -> Result<InputPin, String> {
@@ -1337,7 +1460,9 @@ struct ResponseCandidateRow {
     proof_ready_wall_s: f64,
     session_reusable_wall_s: f64,
     complete_online_wall_s: f64,
-    canonical_pcs_bytes: u64,
+    global_folding_proof_bytes: u64,
+    complete_pcs_bytes: u64,
+    frozen_non_query_pcs_bytes: u64,
     packed_opening_bytes: u64,
     packed_opened_symbol_count: u64,
     packed_opened_symbol_bytes: u64,
@@ -1349,6 +1474,9 @@ struct ResponseCandidateRow {
     packed_fold_outer_sibling_bytes: u64,
     packed_metadata_bytes: u64,
     packed_components_exact: bool,
+    selected_query_tape_blake3: String,
+    selected_query_tape_exact: bool,
+    fold_challenges_replayed: bool,
     response_bytes: u64,
     query_draws: u64,
     verifier_accepted: bool,
@@ -1371,6 +1499,7 @@ fn run_response(
     sources: &[X4cRamModelGlobalCohortV4],
     runtime: &mut X4cCudaArenaRuntimeV4<'_>,
     clean_source_sha: [u8; 32],
+    selected_query_tape: &SelectedQueryTapeV4,
 ) -> Result<ResponseCandidateRow, String> {
     let point = common_point();
     let groups = prover_groups(sources, &point);
@@ -1419,16 +1548,19 @@ fn run_response(
         }
     };
     let seal_wall_s = seal_started.elapsed().as_secs_f64();
+    let fold_challenges = sealed.challenges().clone();
+    let selected_draws = selected_query_tape.release_after_roots(&sealed);
     let open_started = Instant::now();
-    let (proof, verifier_groups, metrics, draws) = match sealed
-        .issue_queries_interactive_x4c(&mut prover_tx, runtime)
-    {
-        Ok(result) => result,
-        Err(error) => {
-            let finish = runtime.finish_response_measurement();
-            return Err(format!("X4c opening: {error:?}; backend_finish_after_error={finish:?}"));
-        }
-    };
+    let (proof, verifier_groups, metrics, draws) =
+        match sealed.issue_queries_x4c(selected_draws.clone(), &mut prover_tx, runtime) {
+            Ok(result) => result,
+            Err(error) => {
+                let finish = runtime.finish_response_measurement();
+                return Err(format!(
+                    "X4c opening: {error:?}; backend_finish_after_error={finish:?}"
+                ));
+            }
+        };
     let open_wall_s = open_started.elapsed().as_secs_f64();
     let complete_online_wall_s = online_started.elapsed().as_secs_f64();
     let stats = runtime
@@ -1436,24 +1568,56 @@ fn run_response(
         .map_err(|error| format!("finish response measurement: {error:?}"))?;
     let verify_started = Instant::now();
     let mut verifier_tx = Transcript::new(seed);
-    let verifier_accepted = verify_global_folding_interactive_v4(
-        MODEL_ROOT,
-        epoch,
-        &point,
-        &verifier_groups,
-        &proof,
-        &mut verifier_tx,
+    let mut replayed_folds = Vec::with_capacity(proof.fold_frames.len());
+    for frame in &proof.fold_frames {
+        verifier_tx.append("x4_v4_global_fold_line", 32);
+        replayed_folds.push(verifier_tx.challenge_fp2());
+        let frame_bytes = FrameV4::FoldCommitment(frame.clone())
+            .encode()
+            .map_err(|error| format!("encode fold frame for verifier replay: {error:?}"))?
+            .len();
+        verifier_tx.append(
+            "x4_v4_global_fold_post_challenge",
+            u64::try_from(
+                frame_bytes
+                    .checked_sub(32)
+                    .ok_or_else(|| "fold frame line width underflow".to_owned())?,
+            )
+            .map_err(|_| "fold frame byte count overflows u64".to_owned())?,
+        );
+    }
+    let fold_challenges_replayed =
+        GlobalFoldChallengesV4 { folds: replayed_folds } == fold_challenges;
+    let verifier_accepted = fold_challenges_replayed
+        && verify_global_folding_v4(
+            MODEL_ROOT,
+            epoch,
+            &point,
+            &verifier_groups,
+            &fold_challenges,
+            &draws,
+            &proof,
+        )
+        .is_ok();
+    let packed_opening_bytes = u64::try_from(
+        FrameV4::PackedBatchOpening(proof.packed_opening.clone())
+            .encode()
+            .map_err(|error| format!("encode packed opening: {error:?}"))?
+            .len(),
     )
-    .is_ok();
+    .map_err(|_| "packed-opening length overflows u64".to_owned())?;
+    verifier_tx.append("x4_v4_packed_opening", packed_opening_bytes);
     let verify_wall_s = verify_started.elapsed().as_secs_f64();
-    let canonical_pcs_bytes = proof
-        .canonical_bytes()
-        .map_err(|error| format!("encode canonical proof: {error:?}"))?
-        .len() as u64;
-    let packed_opening_bytes = FrameV4::PackedBatchOpening(proof.packed_opening.clone())
-        .encode()
-        .map_err(|error| format!("encode packed opening: {error:?}"))?
-        .len() as u64;
+    let global_folding_proof_bytes = u64::try_from(
+        proof
+            .canonical_bytes()
+            .map_err(|error| format!("encode canonical proof: {error:?}"))?
+            .len(),
+    )
+    .map_err(|_| "global folding proof length overflows u64".to_owned())?;
+    let complete_pcs_bytes = packed_opening_bytes
+        .checked_add(X4C_MANDATORY_NON_QUERY_BYTES_V4)
+        .ok_or_else(|| "complete PCS byte count overflows u64".to_owned())?;
     let packed_components = proof
         .packed_opening
         .byte_components()
@@ -1488,10 +1652,15 @@ fn run_response(
     let zero_response_staging = metrics.io == X4cResponseIoCountersV4::default();
     let transcript_bytes_equal = prover_tx.total_bytes() == verifier_tx.total_bytes();
     let transcript_ledger_equal = prover_tx.ledger() == verifier_tx.ledger();
+    let selected_query_tape_exact = selected_draws == draws && draws == selected_query_tape.draws;
     let accepted = verifier_accepted
-        && canonical_pcs_bytes == X4C_COMPLETE_PCS_BYTES_V4
+        && global_folding_proof_bytes == X4C_GLOBAL_FOLDING_PROOF_BYTES_V4
+        && complete_pcs_bytes == X4C_COMPLETE_PCS_BYTES_V4
+        && metrics.global_open.serialized_fold_bytes == X4C_FOLD_FRAME_BYTES_V4
         && packed_opening_bytes == X4C_PACKED_OPENING_BYTES_V4
         && packed_components_exact
+        && selected_query_tape_exact
+        && fold_challenges_replayed
         && X4C_RESPONSE_BYTES_V4 == 43_953_700
         && draws.len() == X4C_QUERY_COUNT_V4
         && metrics.execution.direct_fold_sample_comparisons
@@ -1517,7 +1686,9 @@ fn run_response(
         proof_ready_wall_s,
         session_reusable_wall_s,
         complete_online_wall_s,
-        canonical_pcs_bytes,
+        global_folding_proof_bytes,
+        complete_pcs_bytes,
+        frozen_non_query_pcs_bytes: X4C_MANDATORY_NON_QUERY_BYTES_V4,
         packed_opening_bytes,
         packed_opened_symbol_count: packed_components.opened_symbols,
         packed_opened_symbol_bytes: packed_components.opened_symbols * 16,
@@ -1529,6 +1700,9 @@ fn run_response(
         packed_fold_outer_sibling_bytes: packed_components.fold_outer_siblings * 32,
         packed_metadata_bytes: packed_components.metadata_bytes,
         packed_components_exact,
+        selected_query_tape_blake3: SELECTED_QUERY_TAPE_BLAKE3.to_owned(),
+        selected_query_tape_exact,
+        fold_challenges_replayed,
         response_bytes: X4C_RESPONSE_BYTES_V4,
         query_draws: draws.len() as u64,
         verifier_accepted,
@@ -1560,6 +1734,8 @@ struct OnlineReport {
     note6: InputPin,
     lifecycle_probe: InputPin,
     onboarding: InputPin,
+    amendment5_preflight: InputPin,
+    codec_reference: InputPin,
     machine: MachineRow,
     worker_policy: String,
     fresh_process_rebuild: RebuildRow,
@@ -1604,6 +1780,8 @@ struct CanonicalDiagnosticReport {
     note6: InputPin,
     lifecycle_probe: InputPin,
     onboarding: InputPin,
+    amendment5_preflight: InputPin,
+    codec_reference: InputPin,
     onboarding_ancestor_input: bool,
     machine: MachineRow,
     worker_policy: String,
@@ -1633,6 +1811,9 @@ fn run_online(args: &Args, diagnostic_only: bool) -> Result<(), String> {
     .map_err(|error| format!("frozen surface: {error:?}"))?;
     let git_sha = clean_git_sha()?;
     let (clean_source_sha, clean_source_sha256, clean_source_bundle_path) = clean_source_sha256()?;
+    let amendment5_preflight = amendment5_preflight_pin()?;
+    let selected_query_tape = SelectedQueryTapeV4::load()?;
+    let codec_reference = validate_migration_reference()?;
     let note6 = validate_note6(&args.note6)?;
     let lifecycle = validate_lifecycle(
         args.lifecycle.as_deref().ok_or_else(|| "online requires --lifecycle".to_owned())?,
@@ -1680,7 +1861,15 @@ fn run_online(args: &Args, diagnostic_only: bool) -> Result<(), String> {
         .map_err(|error| format!("initialize wall-only CUDA backend: {error}"))?;
     let mut runtime = X4cCudaArenaRuntimeV4::production(&mut backend)
         .map_err(|error| format!("create X4c reusable runtime: {error:?}"))?;
-    let warmup_result = run_response("warmup", 0, false, &sources, &mut runtime, clean_source_sha);
+    let warmup_result = run_response(
+        "warmup",
+        0,
+        false,
+        &sources,
+        &mut runtime,
+        clean_source_sha,
+        &selected_query_tape,
+    );
     if diagnostic_only {
         let release_started = Instant::now();
         let release_error = runtime.release_pinned_pool().err().map(|error| format!("{error:?}"));
@@ -1743,6 +1932,8 @@ fn run_online(args: &Args, diagnostic_only: bool) -> Result<(), String> {
             note6,
             lifecycle_probe: lifecycle,
             onboarding,
+            amendment5_preflight,
+            codec_reference,
             onboarding_ancestor_input: diagnostic_ancestor_input,
             machine,
             worker_policy: "five ordered cohort tasks on unpinned Rayon; seal/open paths unpinned"
@@ -1780,6 +1971,7 @@ fn run_online(args: &Args, diagnostic_only: bool) -> Result<(), String> {
             &sources,
             &mut runtime,
             clean_source_sha,
+            &selected_query_tape,
         )?);
     }
     let release_started = Instant::now();
@@ -1805,7 +1997,10 @@ fn run_online(args: &Args, diagnostic_only: bool) -> Result<(), String> {
     let zero_staging =
         std::iter::once(&warmup).chain(&measured).all(|candidate| candidate.zero_response_staging);
     let exact_communication = std::iter::once(&warmup).chain(&measured).all(|candidate| {
-        candidate.canonical_pcs_bytes == X4C_COMPLETE_PCS_BYTES_V4
+        candidate.complete_pcs_bytes == X4C_COMPLETE_PCS_BYTES_V4
+            && candidate.global_folding_proof_bytes == X4C_GLOBAL_FOLDING_PROOF_BYTES_V4
+            && candidate.packed_opening_bytes == X4C_PACKED_OPENING_BYTES_V4
+            && candidate.frozen_non_query_pcs_bytes == X4C_MANDATORY_NON_QUERY_BYTES_V4
             && candidate.response_bytes == X4C_RESPONSE_BYTES_V4
     });
     let open_pass = selected_open <= OPEN_CEILING_S;
@@ -1831,6 +2026,8 @@ fn run_online(args: &Args, diagnostic_only: bool) -> Result<(), String> {
         note6,
         lifecycle_probe: lifecycle,
         onboarding,
+        amendment5_preflight,
+        codec_reference,
         machine,
         worker_policy: "UNPINNED seal/open paths; RAYON_NUM_THREADS absent".to_owned(),
         fresh_process_rebuild: rebuild,
@@ -2022,5 +2219,17 @@ mod tests {
     fn frozen_surface_and_sample_count_are_unchanged() {
         validate_x4c_frozen_surface_v4("1/8", 111, 2_683_236, 43_953_700).unwrap();
         assert_eq!(X4C_DIRECT_FOLD_PRODUCTION_SAMPLES_V4, 1_592);
+        assert_eq!(
+            X4C_PACKED_OPENING_BYTES_V4 + X4C_MANDATORY_NON_QUERY_BYTES_V4,
+            X4C_COMPLETE_PCS_BYTES_V4
+        );
+        assert_eq!(
+            X4C_PACKED_OPENING_BYTES_V4 + X4C_FOLD_FRAME_BYTES_V4,
+            X4C_GLOBAL_FOLDING_PROOF_BYTES_V4
+        );
+        let tape = SelectedQueryTapeV4::load().unwrap();
+        assert_eq!(tape.draws.len(), X4C_QUERY_COUNT_V4);
+        amendment5_preflight_pin().unwrap();
+        validate_migration_reference().unwrap();
     }
 }

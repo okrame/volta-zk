@@ -77,6 +77,10 @@ pub const X4C_DURABLE_TIER_BYTES_V4: u64 =
     X4C_DURABLE_COEFFICIENT_BYTES_V4 + X4C_DURABLE_ROOT_BYTES_V4;
 
 pub const X4C_PACKED_OPENING_BYTES_V4: u64 = 2_615_414;
+pub const X4C_MANDATORY_NON_QUERY_BYTES_V4: u64 = 67_822;
+pub const X4C_FOLD_FRAME_BYTES_V4: u64 = 2_446;
+pub const X4C_GLOBAL_FOLDING_PROOF_BYTES_V4: u64 =
+    X4C_PACKED_OPENING_BYTES_V4 + X4C_FOLD_FRAME_BYTES_V4;
 pub const X4C_COMPLETE_PCS_BYTES_V4: u64 = 2_683_236;
 pub const X4C_RESPONSE_BYTES_V4: u64 = 43_953_700;
 pub const X4C_DIRECT_FOLD_PARITY_DOMAIN_V4: &str = "volta-zk/x4c/direct-fold-parity/v1";
@@ -1820,6 +1824,28 @@ impl<A> SealedGlobalChainX4cV4<'_, A> {
         (GlobalFoldingProofV4, Vec<GlobalVerifierGroupV4>, X4cResponseMetricsV4, Vec<u64>),
         X4cErrorV4,
     > {
+        let draw_width = self.groups[0].cohort.commitment().config.outer_depth();
+        let draws = (0..PRODUCTION_QUERY_COUNT_V4)
+            .map(|_| tx.challenge_bits(draw_width))
+            .collect::<Vec<_>>();
+        self.issue_queries_x4c(draws, tx, runtime)
+    }
+
+    /// Consume the sealed state with verifier-owned exact-bit query draws.
+    ///
+    /// This method exists only on [`SealedGlobalChainX4cV4`], so neither the
+    /// draft nor the seal path can consume or act on a query before every
+    /// fold root has been fixed. The production record uses this boundary to
+    /// replay the frozen selected tape byte-for-byte.
+    pub fn issue_queries_x4c<R: X4cArenaRuntimeV4<Arena = A>>(
+        self,
+        draws: Vec<u64>,
+        tx: &mut Transcript,
+        runtime: &mut R,
+    ) -> Result<
+        (GlobalFoldingProofV4, Vec<GlobalVerifierGroupV4>, X4cResponseMetricsV4, Vec<u64>),
+        X4cErrorV4,
+    > {
         let SealedGlobalChainX4cV4 {
             model_root,
             epoch,
@@ -1835,10 +1861,6 @@ impl<A> SealedGlobalChainX4cV4<'_, A> {
             mut metrics,
             lifecycle_started,
         } = self;
-        let draw_width = groups[0].cohort.commitment().config.outer_depth();
-        let draws = (0..PRODUCTION_QUERY_COUNT_V4)
-            .map(|_| tx.challenge_bits(draw_width))
-            .collect::<Vec<_>>();
 
         let opening_result = (|| {
             validate_query_draws(&draws, groups[0].cohort.commitment().config.outer_len)?;
@@ -1986,16 +2008,25 @@ impl<A> SealedGlobalChainX4cV4<'_, A> {
         if config.arena_layout == X4cArenaLayoutV4::production()? {
             let observed_components = proof.packed_opening.byte_components()?;
             let expected_components = gpt2_codec_reference_packed_opening_v4().byte_components()?;
-            let complete_pcs_bytes =
+            let global_folding_proof_bytes =
                 u64::try_from(proof.canonical_bytes()?.len()).map_err(|_| X4cErrorV4::Overflow)?;
+            let assembled_complete_pcs_bytes = observed_components
+                .serialized_bytes
+                .checked_add(X4C_MANDATORY_NON_QUERY_BYTES_V4)
+                .ok_or(X4cErrorV4::Overflow)?;
             if observed_components != expected_components
                 || metrics.serialized_packed_opening_bytes != X4C_PACKED_OPENING_BYTES_V4
-                || complete_pcs_bytes != X4C_COMPLETE_PCS_BYTES_V4
+                || metrics.serialized_fold_bytes != X4C_FOLD_FRAME_BYTES_V4
+                || global_folding_proof_bytes != X4C_GLOBAL_FOLDING_PROOF_BYTES_V4
+                || assembled_complete_pcs_bytes != X4C_COMPLETE_PCS_BYTES_V4
             {
                 return Err(X4cErrorV4::Runtime(format!(
                     "X4c production canonical-byte diagnostic: \
                      packed_observed={}; packed_expected={}; \
-                     complete_pcs_observed={complete_pcs_bytes}; \
+                     fold_frames_observed={}; fold_frames_expected={X4C_FOLD_FRAME_BYTES_V4}; \
+                     global_folding_proof_observed={global_folding_proof_bytes}; \
+                     global_folding_proof_expected={X4C_GLOBAL_FOLDING_PROOF_BYTES_V4}; \
+                     assembled_complete_pcs_observed={assembled_complete_pcs_bytes}; \
                      complete_pcs_expected={X4C_COMPLETE_PCS_BYTES_V4}; \
                      opened_symbols_observed={}; opened_symbols_expected={}; \
                      initial_inner_siblings_observed={}; \
@@ -2007,6 +2038,7 @@ impl<A> SealedGlobalChainX4cV4<'_, A> {
                      metadata_bytes_observed={}; metadata_bytes_expected={}",
                     observed_components.serialized_bytes,
                     expected_components.serialized_bytes,
+                    metrics.serialized_fold_bytes,
                     observed_components.opened_symbols,
                     expected_components.opened_symbols,
                     observed_components.initial_inner_siblings,
@@ -3255,8 +3287,7 @@ pub fn validate_x4c_frozen_surface_v4(
 #[cfg(test)]
 mod tests {
     use super::super::folding_v4::{
-        global_fold_descriptor_digest_v4, verify_global_folding_interactive_v4,
-        CommittedModelGlobalCohortV4,
+        global_fold_descriptor_digest_v4, verify_global_folding_v4, CommittedModelGlobalCohortV4,
     };
     use super::super::frame_v4::{
         profile_digest_v4, FoldCommitmentFrameV4, InitialOpeningScheduleV4,
@@ -3636,6 +3667,14 @@ mod tests {
     #[test]
     fn frozen_surface_and_storage_tiers_are_pinned() {
         validate_x4c_frozen_surface_v4("1/8", 111, 2_683_236, 43_953_700).unwrap();
+        assert_eq!(
+            X4C_PACKED_OPENING_BYTES_V4 + X4C_MANDATORY_NON_QUERY_BYTES_V4,
+            X4C_COMPLETE_PCS_BYTES_V4
+        );
+        assert_eq!(
+            X4C_PACKED_OPENING_BYTES_V4 + X4C_FOLD_FRAME_BYTES_V4,
+            X4C_GLOBAL_FOLDING_PROOF_BYTES_V4
+        );
         assert_eq!(X4C_DURABLE_TIER_BYTES_V4, 9_618_587_808);
         assert_eq!(
             X4C_INITIAL_ORACLE_HOST_BYTES_V4 + X4C_INITIAL_OUTER_CACHE_HOST_BYTES_V4,
@@ -3965,9 +4004,13 @@ mod tests {
                     .sum::<u64>(),
                 32 + 16 + 8
             );
-            let (proof, verifier_groups, metrics, draws) =
-                sealed.issue_queries_interactive_x4c(&mut prover_tx, &mut runtime).unwrap();
-            assert_eq!(draws.len(), X4C_QUERY_COUNT_V4);
+            let challenges = sealed.challenges().clone();
+            let selected_draws =
+                (0..X4C_QUERY_COUNT_V4).map(|index| (index as u64 * 13) & 63).collect::<Vec<_>>();
+            let (proof, verifier_groups, metrics, draws) = sealed
+                .issue_queries_x4c(selected_draws.clone(), &mut prover_tx, &mut runtime)
+                .unwrap();
+            assert_eq!(draws, selected_draws);
             assert_eq!(metrics.io, X4cResponseIoCountersV4::default());
             assert_eq!(metrics.execution.query_gather_calls, 1);
             assert_eq!(metrics.execution.noncanonical_opening_d2h_bytes, 0);
@@ -3981,18 +4024,16 @@ mod tests {
                 .validate_session_reusable(&metrics.proof_ready_arena, &layout)
                 .unwrap();
 
-            let mut verifier_tx = Transcript::new(seed);
-            verify_global_folding_interactive_v4(
+            verify_global_folding_v4(
                 model_root,
                 epoch,
                 &common_point,
                 &verifier_groups,
+                &challenges,
+                &draws,
                 &proof,
-                &mut verifier_tx,
             )
             .unwrap();
-            assert_eq!(prover_tx.total_bytes(), verifier_tx.total_bytes());
-            assert_eq!(prover_tx.ledger(), verifier_tx.ledger());
             let canonical = proof.canonical_bytes().unwrap();
             assert!(!canonical.is_empty());
             (canonical, draws, prover_tx.total_bytes(), prover_tx.ledger().clone())

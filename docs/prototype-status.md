@@ -303,7 +303,7 @@ candidates exist and every online gate remains **NOT EVALUATED**.
 | X4b sustainable oracle Phase 1 | **DIAGNOSIS + PREREGISTRATION COMPLETE; HARD STOP BEFORE IMPLEMENTATION/POD** (2026-07-22) | No format/root/reference/Lean/soundness change; exact postdiction; CPU >=500 MB/s/core; GPU root equality; unchanged 15 s / 1.50 s / 0.25 s; full pass informative | Design SHA-256 `bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01`. Clean-source CPU record `x4b-phase1-cpu-postdiction-2026-07-22-9164de4.json`, SHA-256 `78fdd12ed79c4cf05d42b428a7fa305c28e4254be82289608c45f1f85ce64ec1`: exact aux17 has **5,242,879** hashes / **460,324,760 canonical B**; tree wall is 92.14% explained by those calls; derive-key is material but allocation/serialization is larger. Exact padding **2.4103942174056745x**, Merkle/oracle **6.093317342300939x**, recompute **205,520,864 B / 3.117810096 s**. Profile `runpod-a100-x4b-v1`; durable artifacts **86,567,288,992 B**, volume >=150 GB, host RAM >=128 GiB, device ceiling 48 GiB. X4 FAIL remains immutable. |
 | X4b sustainable oracle Phase 2 | **OFFICIAL X4b FAIL: ISOLATED COMMIT + PERSISTED OPEN; CLOSED** (2026-07-22) | Conjunctive `runpod-a100-x4b-v1`; complete node pipeline, CPU/GPU roots, verify, bytes, G6 and hardware PASS; full pass informative; isolated commit <=15 s FAIL; open <=1.50 s FAIL; no gate relaxed | Clean source `6c6907ab144f4cfbe9cadb06ebb01d652d1dc82d`. Validated record `x4b-a100-production-2026-07-22-6c6907a.json`, SHA-256 `63f4a97b263e4d09649d5a6ede5af1ba420efdcc78bb30f54b9f8cf200cfe6e0`. CPU pipeline **723,716,307.952 B/s/core PASS**; CPU/GPU roots equal; full pass **401.723726678 s / 191,546,319.209 oracle B/s informative**; Wext-mu26 **254.861527720 s FAIL**; persisted open **6.683486611 s FAIL**; verify **0.058438415 s PASS**; PCS/response exactly **2,683,236 / 43,953,700 B PASS**; G6 reconciled. Durable initial artifacts **86,567,288,992 B**, peak device **43,486,546,048 B**. Historical X4 FAIL immutable; design SHA, proof/root/reference bytes, Lean and **80.25537016399041-bit** soundness unchanged. |
 | X4c I/O-lifecycle Phase 1 | **COMPLETE; DROP-DOMINANCE HYPOTHESIS REFUTED BY LOCAL SYNTHETIC DIRECT PROJECTION; REDESIGN/PROFILE PREREGISTERED; HARD STOP** (2026-07-23) | Exact byte reconciliation; reconstructed wall is non-causal/self-derived; timing-only four-way `issue_queries` decomposition; no proof/root/reference/Lean/soundness change; no direct-fold implementation or pod | Eligible clean schema-2 record `x4c-phase1-open-decomposition-2026-07-23-f772013.json`, SHA-256 `ca9841ffce22f731dd45ba616e482a4528ae9ce934856965b0782ed3e052ebcf`: selected teardown projection **0.038496701 s**, interval **0.003520017--0.068747601 s**, only **0.585603121% / 1.045772987% high** of the **6.573855120-s** lifecycle gap. X4b mu26 reconciles **210,453,397,440 B modeled / 210,453,446,656 B observed**; its **0.825756043-GB/s** rate comes from the same wall and provides no independent causal timing evidence. Avoidable response staging is **137,438,949,856 B**. Corrected design SHA-256 `1a744625078e3ffe5772b040c24854e9510dcedebc906416279cf3a7c29bf191`; exact response/PCS remain **43,953,700 / 2,683,236 B**. |
-| X4c I/O-lifecycle Phase 2 | **POD NOTE-6, REAL-CUDA SYNTHETIC, EXACT LIFECYCLE AND ONBOARDING PASS; ONLINE HARD STOP ON GATHERED CANONICAL BYTE COUNT; ONLINE GATES NOT EVALUATED** (2026-07-23) | Direct-fold parity checks exactly `min(64, output_len)` unique coordinates per round; **1,592** production comparisons; diagnostic only and zero soundness credit | Checkpoint `39a1868` real-CUDA regression passes and same-SHA onboarding has identical roots plus exact **9,618,587,808-B** durable tier.  The online warm-up passed direct-fold parity, native gather/kernel, canonical decode/re-encode, proof-ready census and arena reset/release, then failed the exact production counter requiring gathered canonical bytes **2,615,414**.  The observed unequal value was not emitted and is not reconstructed.  Zero measured candidates completed; open/verify/communication/zero-staging remain **NOT EVALUATED**.  This is a proof-byte mismatch HARD STOP; no byte contingency is authorized.  The residual X4b cause remains OPEN and no legacy mu26 attribution run is used.  Design SHA-256 remains **`57d0c0d691cc63ec043d18384348ad0e1130a5e763dc8e9ef00a7132d8abb880`**.  Rate `1/8`, `s=111`, roots/reference/codec/Lean/soundness, gates and required exact PCS/response **2,683,236 / 43,953,700 B** are unchanged. |
+| X4c I/O-lifecycle Phase 2 | **POD NOTE-6, REAL-CUDA SYNTHETIC, EXACT LIFECYCLE AND ONBOARDING PASS; BYTE CAUSE ISOLATED; SELECTED-TAPE/PCS-LABEL CORRECTION LOCAL GREEN; FINAL ONLINE PENDING** (2026-07-23) | Direct-fold parity checks exactly `min(64, output_len)` unique coordinates per round; **1,592** production comparisons; diagnostic only and zero soundness credit | Checkpoint `06757e2` diagnose-only record emitted actual packed **2,599,382 B** and exact component delta **−16,032 B**, proving that X4c had used a new transcript-native tape instead of the frozen selected `e29-r3-s111` tape.  It also exposed a reporting bug: **2,601,828 B** was the global folding proof, not the complete PCS.  All five rebuild roots/censuses passed; parallel rebuild was **2,392.230210159 s** versus approximately 68 minutes serial; cleanup restored every active device/pinned/outstanding owner to zero.  Record SHA-256 `afca21d1e69d2e85685153c0a066d85338fa9dbbe8fab809c2978b30c6b1c2b7`.  The local correction restores sealed-only verifier-selected draws and distinguishes exact **2,617,860-B global folding proof / 2,683,236-B complete PCS**; workspace and validator suites are green.  Zero eligible online candidates have completed, so timing/communication/zero-staging gates remain **NOT EVALUATED** pending same-source onboarding and warm-up plus three.  The residual X4b cause remains OPEN and no legacy mu26 attribution run is used.  Design SHA-256 remains **`57d0c0d691cc63ec043d18384348ad0e1130a5e763dc8e9ef00a7132d8abb880`**.  Rate `1/8`, `s=111`, roots/reference/codec/Lean/soundness, gates and required exact PCS/response **2,683,236 / 43,953,700 B** are unchanged. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -371,6 +371,70 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-23 (X4c canonical diagnostic landed; selected-tape and PCS-label
+  corrections preregistered before implementation/retry)**: clean diagnostic
+  checkpoint `06757e2` produced append-only obstruction record
+  `08-x4c-canonical-byte-diagnostic-2026-07-23-06757e2.json`, SHA-256
+  `afca21d1e69d2e85685153c0a066d85338fa9dbbe8fab809c2978b30c6b1c2b7`
+  (log SHA-256
+  `565c117015d10f97ca66a3a5efec9612774a96286021a23831bd43d0eeae1830`).
+  It emitted packed opening **2,599,382 B** against frozen **2,615,414 B**:
+  **27,618 / 27,564** opened symbols, exact **1,998** initial-inner
+  siblings, **16,820 / 16,954** initial-outer siblings, **48,584 / 48,978**
+  fold-outer siblings and exact **630-B** metadata.  The arithmetic reconciles
+  exactly: `54*16 - 134*32 - 394*32 = -16,032 B`.
+
+  This is not a codec contingency.  The runner incorrectly generated a new
+  transcript-native query tape, whereas the frozen v4 byte record and X4b
+  production harness use the selected `e29-r3-s111` tape with BLAKE3 digest
+  `3654af24af8a3e903e15db2bf25e0ec587d1bd774aaab433d1fb6e1064b3d299`.
+  The design explicitly states that path sharing and hence length are
+  tape-dependent.  The correction restores the selected tape only after the
+  sealed type has fixed every fold root: the draft still exposes no query
+  method, the sealed X4c method accepts the verifier-owned exact-bit draws,
+  and verification receives that same tape plus the already interactive fold
+  challenges.  It changes no query count, distribution, rate, root, frame,
+  transcript message, soundness term or protocol parameter.
+
+  The diagnostic's `complete_pcs_observed=2,601,828` label is also corrected
+  honestly: that value is **not** a serialized complete PCS.  It is only this
+  runner's `GlobalFoldingProofV4` (`2,599,382-B` packed opening plus the exact
+  unchanged `2,446-B` fold frames).  The frozen **67,822-B** non-query PCS
+  material includes those fold frames plus descriptor, manifest, reduced
+  claim, public-H, M9, authenticated-link, zero-batch and envelope material;
+  the complete PCS identity remains selected packed opening
+  `2,615,414 + 67,822 = 2,683,236 B`.  The next runner records the global
+  folding proof as a distinct diagnostic and derives the complete PCS only
+  from the actual selected-tape packed length plus the byte-pinned migration
+  reference.  No conclusion about a complete-PCS mismatch is retained from
+  the mislabeled field.
+
+  All five rebuild roots and exact aggregate
+  **9,618,587,648 / 76,948,701,184 / 37,094,424,416-B** censuses passed.
+  Parallel wall was **2,392.230210159 s**; cohort walls were
+  **2,392.230090342 / 1,492.222877603 / 96.814251709 / 0.453596919 /
+  4.637394459 s**, confirming the maximum-cohort critical path instead of
+  their serial sum.  The diagnostic emitted no candidate and no gate
+  verdict.  Explicit recovery finished the backend measurement, reset and
+  released the arena, released the pinned pool, left the stream idle, and
+  restored active device/pinned allocations and outstanding CUDA operations
+  all to exact zero.  Any retry remains subject to the original exact-byte,
+  zero-staging, ownership, warm-up-plus-three and same-source onboarding
+  requirements.
+
+  An earlier launch with the lifecycle record accidentally supplied as the
+  NOTE-6 anchor was rejected fail-closed before rebuild or CUDA work; its
+  append-only 80-B log is
+  `07-x4c-canonical-byte-diagnostic-2026-07-23-06757e2.log`, SHA-256
+  `a9c5c4b0a2acd6a54c299a6f8ccb239daa0e150aeb7e3429a4c603299e150407`.
+  The selected-tape/PCS-label correction then passed local
+  `cargo fmt --check`, all-feature workspace `cargo check` and
+  `cargo test --workspace`, the focused X4c direct-fold/root/rebuild and
+  runner-reference tests, and all **13** report-validator tests.  It changes
+  no root, encoded frame, frozen byte total, rate, query count, Lean theorem
+  or soundness claim.  A fresh same-source onboarding is still mandatory
+  before the corrected online warm-up plus three candidates.
 
 - **2026-07-23 (X4c canonical-byte diagnostic and deterministic parallel
   rebuild authorized; preregistration before code/pod retry)**: after the

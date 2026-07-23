@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 LOCAL IMPLEMENTATION COMPLETE; HARD STOP BEFORE POD; GATES UNCHANGED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 POD NOTE-6/SYNTHETIC/LIFECYCLE PASS; ONBOARDING/ONLINE PENDING; GATES UNCHANGED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -208,6 +208,18 @@ diagnostic, receives zero soundness credit and changes no protocol parameter,
 format, root, reference/proof byte or gate.  Phase 2 resumed locally from
 `185b177` and has reached its clean local checkpoint; the HARD STOP before
 any pod request or contact remains.
+The owner then provisioned RunPod session `hinsg2lmzlntha`, satisfying the
+separate approval.  NOTE-6 was the first workload and passed; real-CUDA
+synthetic root/direct-fold equality passed before any 77-GB work; and the
+exact **51,539,606,304-B** lifecycle probe accepted all four variants.  The
+ordinary distributed drop candidate directly measures about **3.05 s** of
+teardown, but no residual attribution is inferred and the remaining X4b
+production-host cause stays **OPEN**.  Pre-onboarding inspection found that
+the clean local checkpoint contained the X4c primitives but no
+record-eligible production onboarding/online driver.  No X4c onboarding,
+77-GB oracle materialization or online candidate has therefore begun.  A
+descendant checkpoint adds that fail-closed driver before pod execution
+resumes; this new record surface is included in mandatory R1c scope.
 
 ## Milestones
 
@@ -259,7 +271,7 @@ any pod request or contact remains.
 | X4b sustainable oracle Phase 1 | **DIAGNOSIS + PREREGISTRATION COMPLETE; HARD STOP BEFORE IMPLEMENTATION/POD** (2026-07-22) | No format/root/reference/Lean/soundness change; exact postdiction; CPU >=500 MB/s/core; GPU root equality; unchanged 15 s / 1.50 s / 0.25 s; full pass informative | Design SHA-256 `bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01`. Clean-source CPU record `x4b-phase1-cpu-postdiction-2026-07-22-9164de4.json`, SHA-256 `78fdd12ed79c4cf05d42b428a7fa305c28e4254be82289608c45f1f85ce64ec1`: exact aux17 has **5,242,879** hashes / **460,324,760 canonical B**; tree wall is 92.14% explained by those calls; derive-key is material but allocation/serialization is larger. Exact padding **2.4103942174056745x**, Merkle/oracle **6.093317342300939x**, recompute **205,520,864 B / 3.117810096 s**. Profile `runpod-a100-x4b-v1`; durable artifacts **86,567,288,992 B**, volume >=150 GB, host RAM >=128 GiB, device ceiling 48 GiB. X4 FAIL remains immutable. |
 | X4b sustainable oracle Phase 2 | **OFFICIAL X4b FAIL: ISOLATED COMMIT + PERSISTED OPEN; CLOSED** (2026-07-22) | Conjunctive `runpod-a100-x4b-v1`; complete node pipeline, CPU/GPU roots, verify, bytes, G6 and hardware PASS; full pass informative; isolated commit <=15 s FAIL; open <=1.50 s FAIL; no gate relaxed | Clean source `6c6907ab144f4cfbe9cadb06ebb01d652d1dc82d`. Validated record `x4b-a100-production-2026-07-22-6c6907a.json`, SHA-256 `63f4a97b263e4d09649d5a6ede5af1ba420efdcc78bb30f54b9f8cf200cfe6e0`. CPU pipeline **723,716,307.952 B/s/core PASS**; CPU/GPU roots equal; full pass **401.723726678 s / 191,546,319.209 oracle B/s informative**; Wext-mu26 **254.861527720 s FAIL**; persisted open **6.683486611 s FAIL**; verify **0.058438415 s PASS**; PCS/response exactly **2,683,236 / 43,953,700 B PASS**; G6 reconciled. Durable initial artifacts **86,567,288,992 B**, peak device **43,486,546,048 B**. Historical X4 FAIL immutable; design SHA, proof/root/reference bytes, Lean and **80.25537016399041-bit** soundness unchanged. |
 | X4c I/O-lifecycle Phase 1 | **COMPLETE; DROP-DOMINANCE HYPOTHESIS REFUTED BY LOCAL SYNTHETIC DIRECT PROJECTION; REDESIGN/PROFILE PREREGISTERED; HARD STOP** (2026-07-23) | Exact byte reconciliation; reconstructed wall is non-causal/self-derived; timing-only four-way `issue_queries` decomposition; no proof/root/reference/Lean/soundness change; no direct-fold implementation or pod | Eligible clean schema-2 record `x4c-phase1-open-decomposition-2026-07-23-f772013.json`, SHA-256 `ca9841ffce22f731dd45ba616e482a4528ae9ce934856965b0782ed3e052ebcf`: selected teardown projection **0.038496701 s**, interval **0.003520017--0.068747601 s**, only **0.585603121% / 1.045772987% high** of the **6.573855120-s** lifecycle gap. X4b mu26 reconciles **210,453,397,440 B modeled / 210,453,446,656 B observed**; its **0.825756043-GB/s** rate comes from the same wall and provides no independent causal timing evidence. Avoidable response staging is **137,438,949,856 B**. Corrected design SHA-256 `1a744625078e3ffe5772b040c24854e9510dcedebc906416279cf3a7c29bf191`; exact response/PCS remain **43,953,700 / 2,683,236 B**. |
-| X4c I/O-lifecycle Phase 2 | **LOCAL IMPLEMENTATION COMPLETE; SECOND HARD STOP BEFORE POD** (2026-07-23) | Direct-fold parity checks exactly `min(64, output_len)` unique coordinates per round; **1,592** production comparisons; diagnostic only and zero soundness credit | From `185b177`, local Phase 2 adds causal lifecycle instrumentation, the exact-size probe, byte-identical direct fold, one counted arena, RAM rebuild and one canonical gather.  Design SHA-256 **`57d0c0d691cc63ec043d18384348ad0e1130a5e763dc8e9ef00a7132d8abb880`**.  All runnable workspace, report-validator, CPU direct-fold/N4/root, rebuild-byte-identity and tamper gates are green; actual CUDA and 51.54-GB execution await separately approved hardware.  Rate `1/8`, `s=111`, roots/reference/codec/Lean/soundness, gates and exact PCS/response **2,683,236 / 43,953,700 B** are unchanged.  Phase-1 schema-1/schema-2 and X4b production artifacts remain append-only.  No pod has been contacted. |
+| X4c I/O-lifecycle Phase 2 | **POD NOTE-6, REAL-CUDA SYNTHETIC GATES AND EXACT LIFECYCLE PROBE PASS; ONBOARDING/ONLINE PENDING** (2026-07-23) | Direct-fold parity checks exactly `min(64, output_len)` unique coordinates per round; **1,592** production comparisons; diagnostic only and zero soundness credit | Checkpoint `9b7776f` passed local gates.  On approved RunPod session `hinsg2lmzlntha`, NOTE-6 was first and passed; real-CUDA N4/root and direct-fold gates passed; all four exact **51,539,606,304-B** lifecycle variants accepted.  Distributed teardown measured about **3.05 s**; the residual X4b cause remains OPEN and no legacy mu26 attribution run is used.  Pre-onboarding inspection found no record-eligible X4c production driver in `9b7776f`; a descendant adds it before any onboarding/online workload.  Design SHA-256 remains **`57d0c0d691cc63ec043d18384348ad0e1130a5e763dc8e9ef00a7132d8abb880`**.  Rate `1/8`, `s=111`, roots/reference/codec/Lean/soundness, gates and exact PCS/response **2,683,236 / 43,953,700 B** are unchanged. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -327,6 +339,54 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-23 (X4c approved-pod partial execution; NOTE-6/synthetic/lifecycle
+  pass; production runner omission corrected before onboarding)**: after the
+  owner separately provisioned RunPod session `hinsg2lmzlntha`, NOTE-6 was
+  the first workload.  It passed on clean source `9b7776f` with exact
+  `NVIDIA A100-SXM4-80GB`, **2,151,618,048,000 B** actual host RAM, separate
+  PERSISTENT `/workspace` and non-`mfs` `/local` storage, and the frozen
+  proving-only Rayon=8 / commit-seal-open-unpinned split.  Record
+  `x4c-note6-c3-weights-preflight-2026-07-23-9b7776f.json` has SHA-256
+  **`1de7a37f772df482e9490cc6d8ea3ff0c3ba95935a7d43cfa58f4ba8dc138ff2`**.
+  The two required real-CUDA synthetic gates then passed: CPU/GPU N4 roots
+  and retained levels were equal, and host/resident direct fold matched the
+  CPU reference at every registered length/challenge.  No 77-GB workload had
+  begun at either gate.
+
+  The exact-size lifecycle probe then populated exactly
+  **51,539,606,304 B** in one warm-up plus three measured candidates for
+  distributed drop, `ManuallyDrop`/no-teardown, categorized teardown and
+  single-arena reset.  All candidates accepted.  Record
+  `02-exact-size-lifecycle-probe-2026-07-23-9b7776f.json` has SHA-256
+  **`d27ae86122bd41b4b74a5676d8c8277f41711ec3de4d6bd6f90daaa087deb164`**.
+  Measured distributed candidate 3 has **15.311974672 s** allocation,
+  **16.655499143 s** proof-ready, **3.048023495 s** teardown and
+  **19.703991187 s** session-reusable wall.  The no-teardown child still
+  costs about **3.03 s** at process exit.  These observations establish an
+  ordinary teardown component but do not causally name the remaining X4b
+  production-host residual.  That cause remains **OPEN**; the optional legacy
+  mu26 diagnostic is not run and no design/gate depends on an attribution.
+
+  Before onboarding, source inspection found that `9b7776f` exported the
+  direct-fold, RAM-rebuild, one-arena, pinned-pool and one-gather primitives
+  but had no record-eligible production onboarding/online binary.  This is a
+  packaging/harness omission, not a measured X4c gate failure.  No X4c
+  onboarding, 77-GB initial-oracle pass or online candidate was started.  A
+  descendant clean checkpoint adds a two-process, append-only harness:
+  onboarding runs one warm-up plus three measured CUDA commits and retains
+  only five coefficient files plus five roots on PERSISTENT; online performs
+  a fresh-process RAM rebuild and one warm-up plus three candidates with
+  exact physical traffic, zero response staging, both lifecycle walls and
+  unchanged **1.50 / 0.25-s** open/verify gates.  The parity seed binds the
+  verified clean source-bundle SHA-256.  The complete online wall remains
+  informative for `runpod-a100-x4c-v1`; no v2 ceiling is projected.
+
+  R1c scope is **EXTENDED** to this production harness and the already new
+  lifecycle instrumentation, direct-fold, arena, pinned-pool and gather
+  code.  Rate `1/8`, `s=111`, the **1,592** zero-credit diagnostic,
+  root/reference/proof grammar, Lean/soundness and exact
+  **2,683,236 / 43,953,700-B** communication remain unchanged.
 
 - **2026-07-23 (X4c Phase-2 local implementation checkpoint; all local
   gates green; second HARD STOP before pod)**: beginning from

@@ -10,7 +10,7 @@ use std::mem::size_of;
 use std::time::Instant;
 
 use volta_accel::{
-    AccelError, Backend, CudaStreamState, DeviceBuffer, Fp2Repr, PinnedHostBuffer,
+    AccelError, Backend, BackendStats, CudaStreamState, DeviceBuffer, Fp2Repr, PinnedHostBuffer,
     X4cCanonicalGatherOperation, X4cOneSlotN4Layout, X4C_GATHER_CACHED_OUTER_DIGEST,
     X4C_GATHER_CODEWORD_SYMBOL, X4C_GATHER_REBUILT_OUTER_DIGEST,
 };
@@ -530,6 +530,9 @@ pub struct X4cResponseExecutionCountersV4 {
     pub direct_fold_diagnostic_value_d2h_bytes: u64,
     pub n4_tree_calls: u64,
     pub query_gather_calls: u64,
+    pub query_gather_operation_count: u64,
+    pub query_gather_operation_h2d_bytes: u64,
+    pub canonical_template_h2d_bytes: u64,
     pub query_draw_count: u64,
     pub canonical_opening_d2h_bytes: u64,
     pub noncanonical_opening_d2h_bytes: u64,
@@ -549,6 +552,13 @@ impl X4cResponseExecutionCountersV4 {
                 != X4C_DIRECT_FOLD_DIAGNOSTIC_VALUE_D2H_BYTES_V4
             || self.n4_tree_calls != X4C_PRODUCTION_FOLD_ROUNDS_V4 as u64
             || self.query_gather_calls != 1
+            || self.query_gather_operation_count == 0
+            || self.query_gather_operation_h2d_bytes
+                != self
+                    .query_gather_operation_count
+                    .checked_mul(size_of::<X4cCanonicalGatherOperation>() as u64)
+                    .ok_or(X4cErrorV4::Overflow)?
+            || self.canonical_template_h2d_bytes != X4C_PACKED_OPENING_BYTES_V4
             || self.query_draw_count != X4C_QUERY_COUNT_V4 as u64
             || self.canonical_opening_d2h_bytes != X4C_PACKED_OPENING_BYTES_V4
             || self.noncanonical_opening_d2h_bytes != 0
@@ -1873,10 +1883,10 @@ impl<A> SealedGlobalChainX4cV4<'_, A> {
             }
             metrics.serialized_packed_opening_bytes =
                 u64::try_from(canonical.len()).map_err(|_| X4cErrorV4::Overflow)?;
-            Ok((packed_opening, canonical))
+            Ok((packed_opening, canonical, plan.operations.len()))
         })();
 
-        let (packed_opening, canonical) = match opening_result {
+        let (packed_opening, canonical, query_gather_operation_count) = match opening_result {
             Ok(value) => value,
             Err(error) => {
                 return Err(cleanup_failed_x4c_arena_v4(
@@ -1957,6 +1967,14 @@ impl<A> SealedGlobalChainX4cV4<'_, A> {
             n4_tree_calls: u64::try_from(config.arena_layout.rounds.len())
                 .map_err(|_| X4cErrorV4::Overflow)?,
             query_gather_calls: 1,
+            query_gather_operation_count: u64::try_from(query_gather_operation_count)
+                .map_err(|_| X4cErrorV4::Overflow)?,
+            query_gather_operation_h2d_bytes: u64::try_from(query_gather_operation_count)
+                .map_err(|_| X4cErrorV4::Overflow)?
+                .checked_mul(size_of::<X4cCanonicalGatherOperation>() as u64)
+                .ok_or(X4cErrorV4::Overflow)?,
+            canonical_template_h2d_bytes: u64::try_from(canonical.len())
+                .map_err(|_| X4cErrorV4::Overflow)?,
             query_draw_count: u64::try_from(draws.len()).map_err(|_| X4cErrorV4::Overflow)?,
             canonical_opening_d2h_bytes: u64::try_from(canonical.len())
                 .map_err(|_| X4cErrorV4::Overflow)?,
@@ -2220,6 +2238,24 @@ impl<'a> X4cCudaArenaRuntimeV4<'a> {
 
     pub fn backend_control_state(&self) -> Result<volta_accel::X4cControlState, X4cErrorV4> {
         self.backend.x4c_control_state().map_err(Into::into)
+    }
+
+    pub fn begin_response_measurement(&mut self) -> Result<(), X4cErrorV4> {
+        if self.arena_live {
+            return Err(X4cErrorV4::InvalidGeometry(
+                "X4c response measurement begins with live arena",
+            ));
+        }
+        self.backend.begin_measurement().map_err(Into::into)
+    }
+
+    pub fn finish_response_measurement(&mut self) -> Result<BackendStats, X4cErrorV4> {
+        if self.arena_live {
+            return Err(X4cErrorV4::InvalidGeometry(
+                "X4c response measurement ends with live arena",
+            ));
+        }
+        self.backend.finish_measurement().map_err(Into::into)
     }
 
     /// Logical session teardown for the pinned transfer pool. This does not

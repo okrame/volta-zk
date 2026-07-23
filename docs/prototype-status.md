@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 INTERPRETATION CORRECTED; CLEAN RERUN PENDING; HARD STOP; GATES UNCHANGED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; HARD STOP; GATES UNCHANGED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -174,10 +174,14 @@ preserved at commit `61bf1fb0acf6ea693f24b049c6d31393845c7d95`, SHA-256
 It incorrectly predeclared the teardown hypothesis as confirmed.  The
 explicit interpretation correction, SHA-256
 `1a744625078e3ffe5772b040c24854e9510dcedebc906416279cf3a7c29bf191`,
-keeps the experiment and redesign unchanged, preserves the first clean JSON
-as ineligible diagnostic evidence, and requires a clean schema-2 rerun.
-Only out-of-band `issue_queries` wall/state/allocator instrumentation and
-that local rerun are authorized in this phase.  The direct-fold,
+kept the experiment and redesign unchanged and preserves the first clean JSON
+as ineligible diagnostic evidence.  The eligible clean schema-2 rerun is
+`x4c-phase1-open-decomposition-2026-07-23-f772013.json`, SHA-256
+`ca9841ffce22f731dd45ba616e482a4528ae9ce934856965b0782ed3e052ebcf`.
+Its no-fit direct projection is **0.038496701 s**, with a
+**0.003520017--0.068747601-s** candidate interval, so it refutes ordinary
+container-drop dominance while leaving the production lifecycle remainder
+unresolved.  Phase 1 is complete.  The direct-fold,
 GPU-resident-tree, RAM-oracle, batched-gather and arena implementation, the
 rate contingency and all pod access remain hard-stopped pending explicit
 review.  X4/X4b FAIL closures and every v4 protocol/root/reference/byte/Lean/
@@ -232,7 +236,7 @@ soundness invariant remain immutable.
 | X4 Amendment 5 A100 production record | **G4 COMMIT FAIL; OVERALL X4 FAIL; STOPPED** (2026-07-22) | Gates conjunctive and verbatim; no synthetic production credit; wall-only+counters; one warm-up + three measured; physical inventory and X5 anchors explicit | Clean `runpod-a100-x4-v1` harness `47a701e`. Exact `Wext-mu26` constituent timed out at **16.340085726 s** warm-up and **16.187542362 / 16.127495669 / 16.179918053 s** measured against complete commit **<=15.000 s: FAIL**. G1 PASS; G3 **2,683,236 / 43,953,700 B PASS**; full G2, G4 open/verify and physical G6 NOT EVALUATED; overall **FAIL**. Exact padded first oracle **76,948,701,184 B**, Merkle **468,872,855,392 B**, per materialization **545,821,556,576 B**, twice-recompute **1,091,643,113,152 B**, persistent coefficients+roots **9,618,587,808 B**. CPU aux17 anchor **11,229,161.918552168 B/s**; one-query recompute **3.117810096 s / 205,520,864 B**; compatible GPU path absent. Record `x4-v4-a100-production-2026-07-22-47a701e.json`, SHA-256 `111e4056feb0ba53569889a0bf1d0af73c99ab4613ab9a76aae975f8adbb0237`. |
 | X4b sustainable oracle Phase 1 | **DIAGNOSIS + PREREGISTRATION COMPLETE; HARD STOP BEFORE IMPLEMENTATION/POD** (2026-07-22) | No format/root/reference/Lean/soundness change; exact postdiction; CPU >=500 MB/s/core; GPU root equality; unchanged 15 s / 1.50 s / 0.25 s; full pass informative | Design SHA-256 `bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01`. Clean-source CPU record `x4b-phase1-cpu-postdiction-2026-07-22-9164de4.json`, SHA-256 `78fdd12ed79c4cf05d42b428a7fa305c28e4254be82289608c45f1f85ce64ec1`: exact aux17 has **5,242,879** hashes / **460,324,760 canonical B**; tree wall is 92.14% explained by those calls; derive-key is material but allocation/serialization is larger. Exact padding **2.4103942174056745x**, Merkle/oracle **6.093317342300939x**, recompute **205,520,864 B / 3.117810096 s**. Profile `runpod-a100-x4b-v1`; durable artifacts **86,567,288,992 B**, volume >=150 GB, host RAM >=128 GiB, device ceiling 48 GiB. X4 FAIL remains immutable. |
 | X4b sustainable oracle Phase 2 | **OFFICIAL X4b FAIL: ISOLATED COMMIT + PERSISTED OPEN; CLOSED** (2026-07-22) | Conjunctive `runpod-a100-x4b-v1`; complete node pipeline, CPU/GPU roots, verify, bytes, G6 and hardware PASS; full pass informative; isolated commit <=15 s FAIL; open <=1.50 s FAIL; no gate relaxed | Clean source `6c6907ab144f4cfbe9cadb06ebb01d652d1dc82d`. Validated record `x4b-a100-production-2026-07-22-6c6907a.json`, SHA-256 `63f4a97b263e4d09649d5a6ede5af1ba420efdcc78bb30f54b9f8cf200cfe6e0`. CPU pipeline **723,716,307.952 B/s/core PASS**; CPU/GPU roots equal; full pass **401.723726678 s / 191,546,319.209 oracle B/s informative**; Wext-mu26 **254.861527720 s FAIL**; persisted open **6.683486611 s FAIL**; verify **0.058438415 s PASS**; PCS/response exactly **2,683,236 / 43,953,700 B PASS**; G6 reconciled. Durable initial artifacts **86,567,288,992 B**, peak device **43,486,546,048 B**. Historical X4 FAIL immutable; design SHA, proof/root/reference bytes, Lean and **80.25537016399041-bit** soundness unchanged. |
-| X4c I/O-lifecycle Phase 1 | **SCHEMA-1 INTERPRETATION FAIL RETAINED; CORRECTED CLEAN RERUN PENDING; HARD STOP** (2026-07-23) | Timing-only four-way `issue_queries` decomposition; exact I/O identity; no proof/root/reference/Lean/soundness change; no direct-fold implementation or pod | Clean schema-1 diagnostic `x4c-phase1-open-decomposition-2026-07-23-61bf1fb.json`, SHA-256 `672abb83107d82d2bb8bd929a594fb10647e1a201e71982446832c85d4ddc51a`, measured a **0.088075184-s** direct teardown projection (**0.003285264--0.213718040 s**) versus **6.573855120 s** lifecycle debt, refuting ordinary drop dominance; its predeclared `CONFIRMED` field makes it ineligible. Corrected design SHA-256 `1a744625078e3ffe5772b040c24854e9510dcedebc906416279cf3a7c29bf191`; schema-2 rerun pending. Exact response/PCS remain **43,953,700 / 2,683,236 B**. |
+| X4c I/O-lifecycle Phase 1 | **COMPLETE; DROP-DOMINANCE HYPOTHESIS REFUTED BY LOCAL SYNTHETIC DIRECT PROJECTION; REDESIGN/PROFILE PREREGISTERED; HARD STOP** (2026-07-23) | Exact I/O postdiction; timing-only four-way `issue_queries` decomposition; no proof/root/reference/Lean/soundness change; no direct-fold implementation or pod | Eligible clean schema-2 record `x4c-phase1-open-decomposition-2026-07-23-f772013.json`, SHA-256 `ca9841ffce22f731dd45ba616e482a4528ae9ce934856965b0782ed3e052ebcf`: selected teardown projection **0.038496701 s**, interval **0.003520017--0.068747601 s**, only **0.585603121% / 1.045772987% high** of the **6.573855120-s** lifecycle gap. X4b mu26 postdicts as **210,453,397,440 B** at **0.825756043 GB/s**; avoidable response staging **137,438,949,856 B**. Corrected design SHA-256 `1a744625078e3ffe5772b040c24854e9510dcedebc906416279cf3a7c29bf191`; exact response/PCS remain **43,953,700 / 2,683,236 B**. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -300,6 +304,62 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-23 (X4c Phase-1 clean schema-2 closure; ordinary drop dominance
+  REFUTED locally; redesign/profile preregistered; HARD STOP)**: the corrected
+  run completed from clean source
+  `f77201398c6093afff6dd12124b43d0641e694fd` on the local aarch64 host with
+  12,526,510,080 B RAM and four Rayon workers.  No pod was contacted.  The
+  eligible append-only record is
+  `benchmarks/results/x4c-phase1-open-decomposition-2026-07-23-f772013.json`,
+  SHA-256
+  `ca9841ffce22f731dd45ba616e482a4528ae9ce934856965b0782ed3e052ebcf`;
+  `scripts/report.py --validate-x4c-phase1` accepts it.  Full details and the
+  preregistered Phase-2 contract are in `docs/x4c-phase1-results.md` and
+  `docs/x4c-io-lifecycle-design.md`.  `cargo test --workspace` is green,
+  `pytest -q tests/test_report.py` reports **11 passed**, and format/diff
+  checks are clean.
+
+  All 20 measured schema-4 openings verified.  At `mu16/18/20/22`, the exact
+  sealed-state sizes are **3,144,928 / 12,582,048 / 50,330,720 /
+  201,325,600 B**.  The selected four-way `mu22` decomposition is
+  **0.000001584 s query gather + 0.006110778 s hashing/path +
+  0.001610060 s encode/serialize + 0.000150377 s teardown**, with
+  **0.007861006 s** instrumented total.  The exact **256.00125520053086x**
+  byte projection gives **0.03849670075329023 s** teardown, with
+  **0.0035200172590072994--0.06874760107657137 s** across the five
+  candidates.  Those are **0.585603121%** selected and **1.045772987%** high
+  of the **6.573855120-s** same-host lifecycle gap, far below the explicit
+  **3.286927560-s** dominance threshold.
+
+  The record's disposition is:
+  `REFUTED_LOCAL_SYNTHETIC_DIRECT_PROJECTION`.  Ordinary destruction of the
+  **51,539,606,304-B** sealed codeword/cache state does not postdict X4b's
+  **6.683486611-s** open under the required local experiment.  The
+  **6.573855120-s** lifecycle-associated remainder remains real and causally
+  unresolved; no local projection is promoted to an A100-host result.
+
+  The exact I/O counter identity remains **210,453,397,440 B** modeled versus
+  **210,453,446,656 B** observed physical host I/O at
+  **825,756,043.051 B/s**, postdicting **254.861468119 s** against the
+  **254.861527720-s** wall without fitted category weights or intercept.
+  H2D/D2H remain separately **107,374,217,152 / 103,079,215,072 B**.  The
+  27-fold staging debt is **137,438,949,856 B**, and source tracing confirms
+  `current_codeword` already exists before the redundant X4b committer.
+
+  The owner-approved gate restructure remains **strictness MOVED, not
+  relaxed**: onboarding is offline/informative on v1 while correctness,
+  capacity and exact-byte gates stay hard; the online seal+issue+serialization
+  block measures both proof-ready and session-reusable walls informatively on
+  v1 before v2 pins its ceiling; persisted issue/open **<=1.50 s**, verify
+  **<=0.25 s** and exact communication stay hard.  The rate table is decision
+  material only and is not implemented.  X4/X4b FAIL closures remain
+  immutable, tier-2 levers remain X5-only, and R1c remains extended across
+  every planned direct-fold/device-tree/RAM-cache/gather/arena boundary.
+
+  **HARD STOP:** no direct-fold, GPU-resident-tree, RAM-oracle, batched-gather
+  or arena production implementation; no rate activation; no pod request or
+  access.  Phase 2 requires new explicit user approval.
 
 - **2026-07-23 (X4c schema-1 interpretation FAIL retained; corrected clean
   rerun required; no pod)**: the first local synthetic run completed from

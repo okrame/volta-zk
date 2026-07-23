@@ -830,6 +830,61 @@ def test_x4b_pod_validator_accepts_honest_conjunctive_verdict_only():
     assert report._x4b_pod_result_valid(bad) is False
 
 
+def test_x4c_phase1_validator_derives_refutation_and_rejects_schema1(tmp_path):
+    report = load_report_module()
+    repo = Path(__file__).resolve().parents[1]
+    eligible_path = (
+        repo
+        / "benchmarks/results/x4c-phase1-open-decomposition-2026-07-23-f772013.json"
+    )
+    schema1_path = (
+        repo
+        / "benchmarks/results/x4c-phase1-open-decomposition-2026-07-23-61bf1fb.json"
+    )
+    assert report.validate_x4c_phase1_result(eligible_path) is True
+    assert report.validate_x4c_phase1_result(schema1_path) is False
+
+    eligible = json.loads(eligible_path.read_text())
+    assert (
+        eligible["open_postdiction"]["hypothesis_disposition_code"]
+        == "REFUTED_LOCAL_SYNTHETIC_DIRECT_PROJECTION"
+    )
+    assert (
+        eligible["analytic_pod_scale_projection"][
+            "projected_teardown_wall_s_high"
+        ]
+        < eligible["open_postdiction"]["lifecycle_debt_dominance_threshold_s"]
+    )
+
+    mutations = [
+        ("schema", 1),
+        ("pod_contacted", True),
+        ("design_sha256", report.X4C_PREREGISTRATION_V1_SHA256),
+    ]
+    for key, value in mutations:
+        candidate = copy.deepcopy(eligible)
+        candidate[key] = value
+        path = tmp_path / f"x4c-bad-{key}.json"
+        path.write_text(json.dumps(candidate))
+        assert report.validate_x4c_phase1_result(path) is False
+
+    bad_disposition = copy.deepcopy(eligible)
+    bad_disposition["open_postdiction"][
+        "hypothesis_disposition_code"
+    ] = "CONFIRMED_LOCAL_SYNTHETIC_DIRECT_PROJECTION"
+    bad_path = tmp_path / "x4c-bad-disposition.json"
+    bad_path.write_text(json.dumps(bad_disposition))
+    assert report.validate_x4c_phase1_result(bad_path) is False
+
+    bad_projection = copy.deepcopy(eligible)
+    bad_projection["analytic_pod_scale_projection"][
+        "projected_teardown_wall_s_high"
+    ] += 1e-3
+    bad_path = tmp_path / "x4c-bad-projection.json"
+    bad_path.write_text(json.dumps(bad_projection))
+    assert report.validate_x4c_phase1_result(bad_path) is False
+
+
 def test_resident_profile_joins_only_same_host_native_anchor_and_keeps_full_accounting():
     report = load_report_module()
     raw = {

@@ -1,0 +1,670 @@
+{
+  "schema": 2,
+  "milestone": "X4c-phase1-open-lifecycle-postdiction",
+  "date": "2026-07-23",
+  "git_sha": "f77201398c6093afff6dd12124b43d0641e694fd",
+  "git_short_sha": "f772013",
+  "git_dirty": false,
+  "phase": 1,
+  "pod_contacted": false,
+  "preregistration_v1_sha256": "7d4f8254b066b91fea9ee52fbef0f0008632adccceef1513d3d3478eeea3a52a",
+  "design_sha256": "1a744625078e3ffe5772b040c24854e9510dcedebc906416279cf3a7c29bf191",
+  "interpretation_correction": "schema 1 predeclared CONFIRMED before measurement and is retained as an ineligible diagnostic; schema 2 derives the disposition from the unchanged five-candidate direct-projection interval and the explicit >50% lifecycle-debt rule",
+  "machine": {
+    "architecture": "aarch64",
+    "kernel": "Linux 6.12.94+deb13-arm64 aarch64 GNU/Linux",
+    "logical_parallelism": 4,
+    "rayon_threads": 4,
+    "memory_bytes": 12526510080
+  },
+  "immutable": {
+    "protocol_profile": "x4-zkdeepfold-ud-e29-v4",
+    "rate": "1/8",
+    "query_count": 111,
+    "pcs_bytes": 2683236,
+    "response_bytes": 43953700,
+    "proof_format_changed": false,
+    "root_changed": false,
+    "lean_changed": false,
+    "soundness_changed": false
+  },
+  "instrumentation": {
+    "query_gather": "draw validation plus canonical verifier-owned opening schedule construction",
+    "hashing_path_assembly": "all source/tree open calls: queried symbol and cached-digest reads, inner-tree hashing, and ordered sibling-path assembly",
+    "encode_serialize": "schedule digest, packed-opening structural validation, and one canonical packed-frame encode",
+    "teardown": "explicit destruction of residual sealed round trees, prover groups, common point, challenges, and query schedule before issue_queries returns",
+    "timer_unit": "host monotonic wall nanoseconds (std::time::Instant)",
+    "proof_or_transcript_effect": "none; timing and state-byte counters are out-of-band metrics"
+  },
+  "io_postdiction": {
+    "source_record": "benchmarks/results/x4b-a100-production-2026-07-22-6c6907a.json",
+    "source_record_sha256": "63f4a97b263e4d09649d5a6ede5af1ba420efdcc78bb30f54b9f8cf200cfe6e0",
+    "selected_wall_s": 254.86152772,
+    "coefficient_bytes": 4294967296,
+    "oracle_bytes": 34359738368,
+    "staging_bytes_read": 68719476672,
+    "staging_bytes_written": 68719476704,
+    "modeled_host_read_bytes": 103079215040,
+    "modeled_host_write_bytes": 107374182400,
+    "modeled_physical_io_bytes": 210453397440,
+    "observed_process_read_bytes": 103079235584,
+    "observed_process_write_bytes": 107374211072,
+    "observed_physical_io_bytes": 210453446656,
+    "reconciliation_delta_bytes": 49216,
+    "observed_aggregate_bytes_per_s": 825756043.0510002,
+    "postdicted_wall_s": 254.86146811886184,
+    "postdiction_residual_s": 0.00005960113816172452,
+    "h2d_bytes": 107374217152,
+    "d2h_bytes": 103079215072,
+    "pcie_transfer_bytes": 210453432224,
+    "model_policy": "counter identity with one observed aggregate physical-I/O rate; no fitted category coefficients"
+  },
+  "open_postdiction": {
+    "observed_open_wall_s": 6.683486611,
+    "same_host_exact_geometry_no_sealed_state_anchor_s": 0.109631491,
+    "implied_lifecycle_debt_s": 6.57385512,
+    "implied_lifecycle_share": 0.9835966618352219,
+    "issue_query_oracle_bytes_read": 724608,
+    "issue_query_outer_cache_bytes_read": 507008,
+    "inner_trees_rebuilt": 2220,
+    "sealed_fold_codeword_bytes": 17179869056,
+    "sealed_fold_outer_cache_bytes": 34359737248,
+    "sealed_state_bytes": 51539606304,
+    "lifecycle_debt_dominance_threshold_s": 3.28692756,
+    "hypothesis_decision_rule": "dominant means >50% of implied lifecycle debt; REFUTED if the largest direct byte-scaled candidate is below the threshold, CONFIRMED if the smallest is above it, otherwise INCONCLUSIVE; no regression or fitted intercept",
+    "hypothesis_disposition_code": "REFUTED_LOCAL_SYNTHETIC_DIRECT_PROJECTION",
+    "hypothesis_disposition": "REFUTED at the Phase-1 evidence level: the selected direct byte-scaled teardown is 0.038496701 s and the five-candidate sensitivity interval is 0.003520017--0.068747601 s; even its high endpoint is below the 3.286927560-s dominance threshold. The measured 6.573855120-s lifecycle gap remains real, but ordinary sealed-state container destruction does not postdict it and its cause remains unresolved pending production-host instrumentation"
+  },
+  "synthetic_scales": [
+    {
+      "domain_log2": 16,
+      "outer_len": 65536,
+      "warmup_count": 1,
+      "measured_candidates": 5,
+      "candidates": [
+        {
+          "ordinal": 1,
+          "sealed_fold_codeword_bytes": 1048448,
+          "sealed_fold_outer_cache_bytes": 2096480,
+          "sealed_state_bytes": 3144928,
+          "sealed_fold_tree_count": 13,
+          "sealed_fold_outer_level_vectors": 117,
+          "timing": {
+            "query_gather_wall_ns": 667,
+            "hashing_path_assembly_wall_ns": 1957439,
+            "encode_serialize_wall_ns": 745092,
+            "teardown_wall_ns": 5875,
+            "instrumented_total_wall_ns": 2709197,
+            "caller_wall_ns": 2709448
+          },
+          "allocator": {
+            "allocations": 7626,
+            "reallocations": 209,
+            "deallocations": 7776,
+            "cumulative_requested_bytes": 2974210,
+            "cumulative_deallocated_bytes": 5795415
+          },
+          "accepted": true,
+          "canonical_proof_bytes": 255566
+        },
+        {
+          "ordinal": 2,
+          "sealed_fold_codeword_bytes": 1048448,
+          "sealed_fold_outer_cache_bytes": 2096480,
+          "sealed_state_bytes": 3144928,
+          "sealed_fold_tree_count": 13,
+          "sealed_fold_outer_level_vectors": 117,
+          "timing": {
+            "query_gather_wall_ns": 833,
+            "hashing_path_assembly_wall_ns": 2011481,
+            "encode_serialize_wall_ns": 762508,
+            "teardown_wall_ns": 4958,
+            "instrumented_total_wall_ns": 2779906,
+            "caller_wall_ns": 2780157
+          },
+          "allocator": {
+            "allocations": 7626,
+            "reallocations": 209,
+            "deallocations": 7776,
+            "cumulative_requested_bytes": 2974210,
+            "cumulative_deallocated_bytes": 5795415
+          },
+          "accepted": true,
+          "canonical_proof_bytes": 255566
+        },
+        {
+          "ordinal": 3,
+          "sealed_fold_codeword_bytes": 1048448,
+          "sealed_fold_outer_cache_bytes": 2096480,
+          "sealed_state_bytes": 3144928,
+          "sealed_fold_tree_count": 13,
+          "sealed_fold_outer_level_vectors": 117,
+          "timing": {
+            "query_gather_wall_ns": 584,
+            "hashing_path_assembly_wall_ns": 1989398,
+            "encode_serialize_wall_ns": 722383,
+            "teardown_wall_ns": 4417,
+            "instrumented_total_wall_ns": 2716990,
+            "caller_wall_ns": 2717114
+          },
+          "allocator": {
+            "allocations": 7626,
+            "reallocations": 209,
+            "deallocations": 7776,
+            "cumulative_requested_bytes": 2974210,
+            "cumulative_deallocated_bytes": 5795415
+          },
+          "accepted": true,
+          "canonical_proof_bytes": 255566
+        },
+        {
+          "ordinal": 4,
+          "sealed_fold_codeword_bytes": 1048448,
+          "sealed_fold_outer_cache_bytes": 2096480,
+          "sealed_state_bytes": 3144928,
+          "sealed_fold_tree_count": 13,
+          "sealed_fold_outer_level_vectors": 117,
+          "timing": {
+            "query_gather_wall_ns": 542,
+            "hashing_path_assembly_wall_ns": 1959272,
+            "encode_serialize_wall_ns": 729217,
+            "teardown_wall_ns": 4750,
+            "instrumented_total_wall_ns": 2693906,
+            "caller_wall_ns": 2694156
+          },
+          "allocator": {
+            "allocations": 7626,
+            "reallocations": 209,
+            "deallocations": 7776,
+            "cumulative_requested_bytes": 2974210,
+            "cumulative_deallocated_bytes": 5795415
+          },
+          "accepted": true,
+          "canonical_proof_bytes": 255566
+        },
+        {
+          "ordinal": 5,
+          "sealed_fold_codeword_bytes": 1048448,
+          "sealed_fold_outer_cache_bytes": 2096480,
+          "sealed_state_bytes": 3144928,
+          "sealed_fold_tree_count": 13,
+          "sealed_fold_outer_level_vectors": 117,
+          "timing": {
+            "query_gather_wall_ns": 667,
+            "hashing_path_assembly_wall_ns": 1917147,
+            "encode_serialize_wall_ns": 724383,
+            "teardown_wall_ns": 4208,
+            "instrumented_total_wall_ns": 2646531,
+            "caller_wall_ns": 2646780
+          },
+          "allocator": {
+            "allocations": 7626,
+            "reallocations": 209,
+            "deallocations": 7776,
+            "cumulative_requested_bytes": 2974210,
+            "cumulative_deallocated_bytes": 5795415
+          },
+          "accepted": true,
+          "canonical_proof_bytes": 255566
+        }
+      ],
+      "selected_upper_median": {
+        "query_gather_wall_ns": 667,
+        "hashing_path_assembly_wall_ns": 1959272,
+        "encode_serialize_wall_ns": 729217,
+        "teardown_wall_ns": 4750,
+        "instrumented_total_wall_ns": 2709197,
+        "caller_wall_ns": 2709448
+      },
+      "all_accepted": true,
+      "exact_state_accounting": true
+    },
+    {
+      "domain_log2": 18,
+      "outer_len": 262144,
+      "warmup_count": 1,
+      "measured_candidates": 5,
+      "candidates": [
+        {
+          "ordinal": 1,
+          "sealed_fold_codeword_bytes": 4194176,
+          "sealed_fold_outer_cache_bytes": 8387872,
+          "sealed_state_bytes": 12582048,
+          "sealed_fold_tree_count": 15,
+          "sealed_fold_outer_level_vectors": 150,
+          "timing": {
+            "query_gather_wall_ns": 1167,
+            "hashing_path_assembly_wall_ns": 3082369,
+            "encode_serialize_wall_ns": 963470,
+            "teardown_wall_ns": 6666,
+            "instrumented_total_wall_ns": 4053838,
+            "caller_wall_ns": 4054130
+          },
+          "allocator": {
+            "allocations": 10480,
+            "reallocations": 249,
+            "deallocations": 10667,
+            "cumulative_requested_bytes": 4787022,
+            "cumulative_deallocated_bytes": 16841725
+          },
+          "accepted": true,
+          "canonical_proof_bytes": 392662
+        },
+        {
+          "ordinal": 2,
+          "sealed_fold_codeword_bytes": 4194176,
+          "sealed_fold_outer_cache_bytes": 8387872,
+          "sealed_state_bytes": 12582048,
+          "sealed_fold_tree_count": 15,
+          "sealed_fold_outer_level_vectors": 150,
+          "timing": {
+            "query_gather_wall_ns": 1042,
+            "hashing_path_assembly_wall_ns": 2922284,
+            "encode_serialize_wall_ns": 1015595,
+            "teardown_wall_ns": 6125,
+            "instrumented_total_wall_ns": 3945212,
+            "caller_wall_ns": 3945545
+          },
+          "allocator": {
+            "allocations": 10480,
+            "reallocations": 249,
+            "deallocations": 10667,
+            "cumulative_requested_bytes": 4787022,
+            "cumulative_deallocated_bytes": 16841725
+          },
+          "accepted": true,
+          "canonical_proof_bytes": 392662
+        },
+        {
+          "ordinal": 3,
+          "sealed_fold_codeword_bytes": 4194176,
+          "sealed_fold_outer_cache_bytes": 8387872,
+          "sealed_state_bytes": 12582048,
+          "sealed_fold_tree_count": 15,
+          "sealed_fold_outer_level_vectors": 150,
+          "timing": {
+            "query_gather_wall_ns": 1125,
+            "hashing_path_assembly_wall_ns": 3095285,
+            "encode_serialize_wall_ns": 962220,
+            "teardown_wall_ns": 6500,
+            "instrumented_total_wall_ns": 4065130,
+            "caller_wall_ns": 4065505
+          },
+          "allocator": {
+            "allocations": 10480,
+            "reallocations": 249,
+            "deallocations": 10667,
+            "cumulative_requested_bytes": 4787022,
+            "cumulative_deallocated_bytes": 16841725
+          },
+          "accepted": true,
+          "canonical_proof_bytes": 392662
+        },
+        {
+          "ordinal": 4,
+          "sealed_fold_codeword_bytes": 4194176,
+          "sealed_fold_outer_cache_bytes": 8387872,
+          "sealed_state_bytes": 12582048,
+          "sealed_fold_tree_count": 15,
+          "sealed_fold_outer_level_vectors": 150,
+          "timing": {
+            "query_gather_wall_ns": 917,
+            "hashing_path_assembly_wall_ns": 2987492,
+            "encode_serialize_wall_ns": 973303,
+            "teardown_wall_ns": 6041,
+            "instrumented_total_wall_ns": 3967879,
+            "caller_wall_ns": 3968171
+          },
+          "allocator": {
+            "allocations": 10480,
+            "reallocations": 249,
+            "deallocations": 10667,
+            "cumulative_requested_bytes": 4787022,
+            "cumulative_deallocated_bytes": 16841725
+          },
+          "accepted": true,
+          "canonical_proof_bytes": 392662
+        },
+        {
+          "ordinal": 5,
+          "sealed_fold_codeword_bytes": 4194176,
+          "sealed_fold_outer_cache_bytes": 8387872,
+          "sealed_state_bytes": 12582048,
+          "sealed_fold_tree_count": 15,
+          "sealed_fold_outer_level_vectors": 150,
+          "timing": {
+            "query_gather_wall_ns": 1084,
+            "hashing_path_assembly_wall_ns": 2988284,
+            "encode_serialize_wall_ns": 985136,
+            "teardown_wall_ns": 6375,
+            "instrumented_total_wall_ns": 3980963,
+            "caller_wall_ns": 3981212
+          },
+          "allocator": {
+            "allocations": 10480,
+            "reallocations": 249,
+            "deallocations": 10667,
+            "cumulative_requested_bytes": 4787022,
+            "cumulative_deallocated_bytes": 16841725
+          },
+          "accepted": true,
+          "canonical_proof_bytes": 392662
+        }
+      ],
+      "selected_upper_median": {
+        "query_gather_wall_ns": 1084,
+        "hashing_path_assembly_wall_ns": 2988284,
+        "encode_serialize_wall_ns": 973303,
+        "teardown_wall_ns": 6375,
+        "instrumented_total_wall_ns": 3980963,
+        "caller_wall_ns": 3981212
+      },
+      "all_accepted": true,
+      "exact_state_accounting": true
+    },
+    {
+      "domain_log2": 20,
+      "outer_len": 1048576,
+      "warmup_count": 1,
+      "measured_candidates": 5,
+      "candidates": [
+        {
+          "ordinal": 1,
+          "sealed_fold_codeword_bytes": 16777088,
+          "sealed_fold_outer_cache_bytes": 33553632,
+          "sealed_state_bytes": 50330720,
+          "sealed_fold_tree_count": 17,
+          "sealed_fold_outer_level_vectors": 187,
+          "timing": {
+            "query_gather_wall_ns": 1500,
+            "hashing_path_assembly_wall_ns": 4560802,
+            "encode_serialize_wall_ns": 1255306,
+            "teardown_wall_ns": 9875,
+            "instrumented_total_wall_ns": 5827691,
+            "caller_wall_ns": 5828025
+          },
+          "allocator": {
+            "allocations": 13841,
+            "reallocations": 292,
+            "deallocations": 14069,
+            "cumulative_requested_bytes": 7460858,
+            "cumulative_deallocated_bytes": 56995171
+          },
+          "accepted": true,
+          "canonical_proof_bytes": 562078
+        },
+        {
+          "ordinal": 2,
+          "sealed_fold_codeword_bytes": 16777088,
+          "sealed_fold_outer_cache_bytes": 33553632,
+          "sealed_state_bytes": 50330720,
+          "sealed_fold_tree_count": 17,
+          "sealed_fold_outer_level_vectors": 187,
+          "timing": {
+            "query_gather_wall_ns": 1333,
+            "hashing_path_assembly_wall_ns": 4521094,
+            "encode_serialize_wall_ns": 1298015,
+            "teardown_wall_ns": 8083,
+            "instrumented_total_wall_ns": 5828608,
+            "caller_wall_ns": 5828983
+          },
+          "allocator": {
+            "allocations": 13841,
+            "reallocations": 292,
+            "deallocations": 14069,
+            "cumulative_requested_bytes": 7460858,
+            "cumulative_deallocated_bytes": 56995171
+          },
+          "accepted": true,
+          "canonical_proof_bytes": 562078
+        },
+        {
+          "ordinal": 3,
+          "sealed_fold_codeword_bytes": 16777088,
+          "sealed_fold_outer_cache_bytes": 33553632,
+          "sealed_state_bytes": 50330720,
+          "sealed_fold_tree_count": 17,
+          "sealed_fold_outer_level_vectors": 187,
+          "timing": {
+            "query_gather_wall_ns": 1459,
+            "hashing_path_assembly_wall_ns": 4372300,
+            "encode_serialize_wall_ns": 1281765,
+            "teardown_wall_ns": 27542,
+            "instrumented_total_wall_ns": 5683190,
+            "caller_wall_ns": 5683440
+          },
+          "allocator": {
+            "allocations": 13841,
+            "reallocations": 292,
+            "deallocations": 14069,
+            "cumulative_requested_bytes": 7460858,
+            "cumulative_deallocated_bytes": 56995171
+          },
+          "accepted": true,
+          "canonical_proof_bytes": 562078
+        },
+        {
+          "ordinal": 4,
+          "sealed_fold_codeword_bytes": 16777088,
+          "sealed_fold_outer_cache_bytes": 33553632,
+          "sealed_state_bytes": 50330720,
+          "sealed_fold_tree_count": 17,
+          "sealed_fold_outer_level_vectors": 187,
+          "timing": {
+            "query_gather_wall_ns": 1709,
+            "hashing_path_assembly_wall_ns": 4531635,
+            "encode_serialize_wall_ns": 1341016,
+            "teardown_wall_ns": 9751,
+            "instrumented_total_wall_ns": 5884234,
+            "caller_wall_ns": 5884526
+          },
+          "allocator": {
+            "allocations": 13841,
+            "reallocations": 292,
+            "deallocations": 14069,
+            "cumulative_requested_bytes": 7460858,
+            "cumulative_deallocated_bytes": 56995171
+          },
+          "accepted": true,
+          "canonical_proof_bytes": 562078
+        },
+        {
+          "ordinal": 5,
+          "sealed_fold_codeword_bytes": 16777088,
+          "sealed_fold_outer_cache_bytes": 33553632,
+          "sealed_state_bytes": 50330720,
+          "sealed_fold_tree_count": 17,
+          "sealed_fold_outer_level_vectors": 187,
+          "timing": {
+            "query_gather_wall_ns": 1583,
+            "hashing_path_assembly_wall_ns": 5079641,
+            "encode_serialize_wall_ns": 1419349,
+            "teardown_wall_ns": 484422,
+            "instrumented_total_wall_ns": 6985246,
+            "caller_wall_ns": 6985455
+          },
+          "allocator": {
+            "allocations": 13841,
+            "reallocations": 292,
+            "deallocations": 14069,
+            "cumulative_requested_bytes": 7460858,
+            "cumulative_deallocated_bytes": 56995171
+          },
+          "accepted": true,
+          "canonical_proof_bytes": 562078
+        }
+      ],
+      "selected_upper_median": {
+        "query_gather_wall_ns": 1500,
+        "hashing_path_assembly_wall_ns": 4531635,
+        "encode_serialize_wall_ns": 1298015,
+        "teardown_wall_ns": 9875,
+        "instrumented_total_wall_ns": 5828608,
+        "caller_wall_ns": 5828983
+      },
+      "all_accepted": true,
+      "exact_state_accounting": true
+    },
+    {
+      "domain_log2": 22,
+      "outer_len": 4194304,
+      "warmup_count": 1,
+      "measured_candidates": 5,
+      "candidates": [
+        {
+          "ordinal": 1,
+          "sealed_fold_codeword_bytes": 67108736,
+          "sealed_fold_outer_cache_bytes": 134216864,
+          "sealed_state_bytes": 201325600,
+          "sealed_fold_tree_count": 19,
+          "sealed_fold_outer_level_vectors": 228,
+          "timing": {
+            "query_gather_wall_ns": 1458,
+            "hashing_path_assembly_wall_ns": 6155070,
+            "encode_serialize_wall_ns": 1754811,
+            "teardown_wall_ns": 252711,
+            "instrumented_total_wall_ns": 8164343,
+            "caller_wall_ns": 8164635
+          },
+          "allocator": {
+            "allocations": 17604,
+            "reallocations": 332,
+            "deallocations": 17877,
+            "cumulative_requested_bytes": 9234758,
+            "cumulative_deallocated_bytes": 209494985
+          },
+          "accepted": true,
+          "canonical_proof_bytes": 756838
+        },
+        {
+          "ordinal": 2,
+          "sealed_fold_codeword_bytes": 67108736,
+          "sealed_fold_outer_cache_bytes": 134216864,
+          "sealed_state_bytes": 201325600,
+          "sealed_fold_tree_count": 19,
+          "sealed_fold_outer_level_vectors": 228,
+          "timing": {
+            "query_gather_wall_ns": 1958,
+            "hashing_path_assembly_wall_ns": 6028194,
+            "encode_serialize_wall_ns": 1562227,
+            "teardown_wall_ns": 268544,
+            "instrumented_total_wall_ns": 7861006,
+            "caller_wall_ns": 7861423
+          },
+          "allocator": {
+            "allocations": 17604,
+            "reallocations": 332,
+            "deallocations": 17877,
+            "cumulative_requested_bytes": 9234758,
+            "cumulative_deallocated_bytes": 209494985
+          },
+          "accepted": true,
+          "canonical_proof_bytes": 756838
+        },
+        {
+          "ordinal": 3,
+          "sealed_fold_codeword_bytes": 67108736,
+          "sealed_fold_outer_cache_bytes": 134216864,
+          "sealed_state_bytes": 201325600,
+          "sealed_fold_tree_count": 19,
+          "sealed_fold_outer_level_vectors": 228,
+          "timing": {
+            "query_gather_wall_ns": 1584,
+            "hashing_path_assembly_wall_ns": 6015319,
+            "encode_serialize_wall_ns": 1590935,
+            "teardown_wall_ns": 127668,
+            "instrumented_total_wall_ns": 7735630,
+            "caller_wall_ns": 7735963
+          },
+          "allocator": {
+            "allocations": 17604,
+            "reallocations": 332,
+            "deallocations": 17877,
+            "cumulative_requested_bytes": 9234758,
+            "cumulative_deallocated_bytes": 209494985
+          },
+          "accepted": true,
+          "canonical_proof_bytes": 756838
+        },
+        {
+          "ordinal": 4,
+          "sealed_fold_codeword_bytes": 67108736,
+          "sealed_fold_outer_cache_bytes": 134216864,
+          "sealed_state_bytes": 201325600,
+          "sealed_fold_tree_count": 19,
+          "sealed_fold_outer_level_vectors": 228,
+          "timing": {
+            "query_gather_wall_ns": 1458,
+            "hashing_path_assembly_wall_ns": 6110778,
+            "encode_serialize_wall_ns": 1610060,
+            "teardown_wall_ns": 13750,
+            "instrumented_total_wall_ns": 7736255,
+            "caller_wall_ns": 7736463
+          },
+          "allocator": {
+            "allocations": 17604,
+            "reallocations": 332,
+            "deallocations": 17877,
+            "cumulative_requested_bytes": 9234758,
+            "cumulative_deallocated_bytes": 209494985
+          },
+          "accepted": true,
+          "canonical_proof_bytes": 756838
+        },
+        {
+          "ordinal": 5,
+          "sealed_fold_codeword_bytes": 67108736,
+          "sealed_fold_outer_cache_bytes": 134216864,
+          "sealed_state_bytes": 201325600,
+          "sealed_fold_tree_count": 19,
+          "sealed_fold_outer_level_vectors": 228,
+          "timing": {
+            "query_gather_wall_ns": 1916,
+            "hashing_path_assembly_wall_ns": 6715118,
+            "encode_serialize_wall_ns": 1681935,
+            "teardown_wall_ns": 150377,
+            "instrumented_total_wall_ns": 8549597,
+            "caller_wall_ns": 8549889
+          },
+          "allocator": {
+            "allocations": 17604,
+            "reallocations": 332,
+            "deallocations": 17877,
+            "cumulative_requested_bytes": 9234758,
+            "cumulative_deallocated_bytes": 209494985
+          },
+          "accepted": true,
+          "canonical_proof_bytes": 756838
+        }
+      ],
+      "selected_upper_median": {
+        "query_gather_wall_ns": 1584,
+        "hashing_path_assembly_wall_ns": 6110778,
+        "encode_serialize_wall_ns": 1610060,
+        "teardown_wall_ns": 150377,
+        "instrumented_total_wall_ns": 7861006,
+        "caller_wall_ns": 7861423
+      },
+      "all_accepted": true,
+      "exact_state_accounting": true
+    }
+  ],
+  "analytic_pod_scale_projection": {
+    "policy": "direct byte-ratio projection from the largest synthetic scale; no regression or fitted intercept",
+    "source_domain_log2": 22,
+    "source_sealed_state_bytes": 201325600,
+    "production_sealed_state_bytes": 51539606304,
+    "byte_scale": 256.00125520053086,
+    "projected_teardown_wall_s": 0.03849670075329023,
+    "projected_teardown_wall_s_low": 0.0035200172590072994,
+    "projected_teardown_wall_s_high": 0.06874760107657137,
+    "projected_teardown_share_of_lifecycle_debt": 0.005856031210083959,
+    "projected_teardown_share_of_lifecycle_debt_low": 0.0005354570787996464,
+    "projected_teardown_share_of_lifecycle_debt_high": 0.01045772987412162,
+    "same_host_no_teardown_anchor_s": 0.109631491,
+    "projected_total_open_wall_s": 0.14812819175329023,
+    "observed_x4b_open_wall_s": 6.683486611,
+    "hardware_transfer_warning": "analytic projection only: local aarch64/System allocator and kernel page-table teardown are not a pod A100-host measurement"
+  },
+  "hard_stop": "PHASE 1 COMPLETE ONLY; no X4c direct-fold/GPU-resident/RAM-oracle/arena implementation and no pod access"
+}

@@ -220,6 +220,12 @@ record-eligible production onboarding/online driver.  No X4c onboarding,
 77-GB oracle materialization or online candidate has therefore begun.  A
 descendant checkpoint adds that fail-closed driver before pod execution
 resumes; this new record surface is included in mandatory R1c scope.
+Its first preflight invocation also stopped before allocation because the
+two-GPU pod-wide `nvidia-smi` listing was compared with the single selected
+GPU name.  The runner now queries explicit physical GPU 0, matching
+`CUDA_VISIBLE_DEVICES=0` and the eligible NOTE-6 selection.  No onboarding
+directory, durable artifact or response workload was created by that
+fail-closed invocation.
 
 ## Milestones
 
@@ -381,6 +387,13 @@ historical entries remain append-only evidence, not competing definitions.
   unchanged **1.50 / 0.25-s** open/verify gates.  The parity seed binds the
   verified clean source-bundle SHA-256.  The complete online wall remains
   informative for `runpod-a100-x4c-v1`; no v2 ceiling is projected.
+
+  The first invocation of that driver failed closed during machine
+  preflight, before any allocation or path creation: this pod exposes two
+  A100s, while the runner initially compared a pod-wide two-row
+  `nvidia-smi` result with the one selected GPU name.  The correction queries
+  explicit physical GPU 0 and retains `CUDA_VISIBLE_DEVICES=0`, exactly as
+  the NOTE-6 record did.  This changes no workload, profile or gate.
 
   R1c scope is **EXTENDED** to this production harness and the already new
   lifecycle instrumentation, direct-fold, arena, pinned-pool and gather

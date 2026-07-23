@@ -297,7 +297,8 @@ fn validate_machine(durable_root: &Path, local_root: &Path) -> Result<MachineRow
     if !durable_root.starts_with(&persistent_anchor) || !local_root.starts_with(&local_anchor) {
         return Err("durable/local output roots violate their storage anchors".to_owned());
     }
-    let gpu = command_output("nvidia-smi", &["--query-gpu=name", "--format=csv,noheader"])?;
+    let gpu =
+        command_output("nvidia-smi", &["--id=0", "--query-gpu=name", "--format=csv,noheader"])?;
     if gpu != GPU_NAME {
         return Err(format!("selected GPU is {gpu:?}, expected {GPU_NAME:?}"));
     }

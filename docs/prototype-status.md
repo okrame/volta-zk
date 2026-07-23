@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; GATES UNCHANGED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 PREREGISTERED; HARD STOP; GATES UNCHANGED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -166,6 +166,16 @@ threshold relaxed.  The immutable X4 FAIL remains historical truth, the v4
 protocol/design/reference/soundness freeze is unchanged, and R1c remains
 mandatory over the v3/v4 seam plus the X4b CPU-hash, CUDA and persistence
 surface.
+X4c Phase 1 now postdicts the X4b I/O/lifecycle debt and freezes the
+byte-identical engineering redesign in
+`docs/x4c-io-lifecycle-design.md`, SHA-256
+`7d4f8254b066b91fea9ee52fbef0f0008632adccceef1513d3d3478eeea3a52a`.
+Only out-of-band `issue_queries` wall/state/allocator instrumentation and its
+clean local synthetic record are authorized in this phase.  The direct-fold,
+GPU-resident-tree, RAM-oracle, batched-gather and arena implementation, the
+rate contingency and all pod access remain hard-stopped pending explicit
+review.  X4/X4b FAIL closures and every v4 protocol/root/reference/byte/Lean/
+soundness invariant remain immutable.
 
 ## Milestones
 
@@ -216,6 +226,7 @@ surface.
 | X4 Amendment 5 A100 production record | **G4 COMMIT FAIL; OVERALL X4 FAIL; STOPPED** (2026-07-22) | Gates conjunctive and verbatim; no synthetic production credit; wall-only+counters; one warm-up + three measured; physical inventory and X5 anchors explicit | Clean `runpod-a100-x4-v1` harness `47a701e`. Exact `Wext-mu26` constituent timed out at **16.340085726 s** warm-up and **16.187542362 / 16.127495669 / 16.179918053 s** measured against complete commit **<=15.000 s: FAIL**. G1 PASS; G3 **2,683,236 / 43,953,700 B PASS**; full G2, G4 open/verify and physical G6 NOT EVALUATED; overall **FAIL**. Exact padded first oracle **76,948,701,184 B**, Merkle **468,872,855,392 B**, per materialization **545,821,556,576 B**, twice-recompute **1,091,643,113,152 B**, persistent coefficients+roots **9,618,587,808 B**. CPU aux17 anchor **11,229,161.918552168 B/s**; one-query recompute **3.117810096 s / 205,520,864 B**; compatible GPU path absent. Record `x4-v4-a100-production-2026-07-22-47a701e.json`, SHA-256 `111e4056feb0ba53569889a0bf1d0af73c99ab4613ab9a76aae975f8adbb0237`. |
 | X4b sustainable oracle Phase 1 | **DIAGNOSIS + PREREGISTRATION COMPLETE; HARD STOP BEFORE IMPLEMENTATION/POD** (2026-07-22) | No format/root/reference/Lean/soundness change; exact postdiction; CPU >=500 MB/s/core; GPU root equality; unchanged 15 s / 1.50 s / 0.25 s; full pass informative | Design SHA-256 `bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01`. Clean-source CPU record `x4b-phase1-cpu-postdiction-2026-07-22-9164de4.json`, SHA-256 `78fdd12ed79c4cf05d42b428a7fa305c28e4254be82289608c45f1f85ce64ec1`: exact aux17 has **5,242,879** hashes / **460,324,760 canonical B**; tree wall is 92.14% explained by those calls; derive-key is material but allocation/serialization is larger. Exact padding **2.4103942174056745x**, Merkle/oracle **6.093317342300939x**, recompute **205,520,864 B / 3.117810096 s**. Profile `runpod-a100-x4b-v1`; durable artifacts **86,567,288,992 B**, volume >=150 GB, host RAM >=128 GiB, device ceiling 48 GiB. X4 FAIL remains immutable. |
 | X4b sustainable oracle Phase 2 | **OFFICIAL X4b FAIL: ISOLATED COMMIT + PERSISTED OPEN; CLOSED** (2026-07-22) | Conjunctive `runpod-a100-x4b-v1`; complete node pipeline, CPU/GPU roots, verify, bytes, G6 and hardware PASS; full pass informative; isolated commit <=15 s FAIL; open <=1.50 s FAIL; no gate relaxed | Clean source `6c6907ab144f4cfbe9cadb06ebb01d652d1dc82d`. Validated record `x4b-a100-production-2026-07-22-6c6907a.json`, SHA-256 `63f4a97b263e4d09649d5a6ede5af1ba420efdcc78bb30f54b9f8cf200cfe6e0`. CPU pipeline **723,716,307.952 B/s/core PASS**; CPU/GPU roots equal; full pass **401.723726678 s / 191,546,319.209 oracle B/s informative**; Wext-mu26 **254.861527720 s FAIL**; persisted open **6.683486611 s FAIL**; verify **0.058438415 s PASS**; PCS/response exactly **2,683,236 / 43,953,700 B PASS**; G6 reconciled. Durable initial artifacts **86,567,288,992 B**, peak device **43,486,546,048 B**. Historical X4 FAIL immutable; design SHA, proof/root/reference bytes, Lean and **80.25537016399041-bit** soundness unchanged. |
+| X4c I/O-lifecycle Phase 1 | **POSTDICTION + REDESIGN PREREGISTERED; LOCAL SYNTHETIC RECORD PENDING; HARD STOP** (2026-07-23) | Timing-only four-way `issue_queries` decomposition; exact I/O identity; no proof/root/reference/Lean/soundness change; no direct-fold implementation or pod | Frozen design `docs/x4c-io-lifecycle-design.md`, SHA-256 `7d4f8254b066b91fea9ee52fbef0f0008632adccceef1513d3d3478eeea3a52a`. `runpod-a100-x4c-v1`: A100-SXM4 80 GB, actual RAM >=256 GiB fail-closed, local volume >=150 GB, proving Rayon=8, commit/seal/open unpinned, NOTE-6 first. X4b mu26 postdicts as **210,453,397,440 B** modeled physical I/O at **0.825756043 GB/s**; response staging debt **137,438,949,856 B**. Exact response/PCS remain **43,953,700 / 2,683,236 B**. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -283,6 +294,112 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-23 (X4c Phase-1 I/O/lifecycle postdiction and redesign
+  preregistration; HARD STOP before engineering implementation or pod)**:
+  X4 and X4b remain independent immutable FAIL closures.  X4c changes no
+  schema-4 field/order, N4 preimage/context, Merkle root, reference byte,
+  correction/correlation count, Lean statement, rate/query/claim parameter or
+  soundness term.  PCS and response remain exactly **2,683,236 B /
+  43,953,700 B** under the unchanged
+  `3320*(9/16)^111 + 28,522,064,267,253/|E|`
+  **80.25537016399041-bit** expression.  The frozen Phase-1 design is
+  `docs/x4c-io-lifecycle-design.md`, SHA-256
+  `7d4f8254b066b91fea9ee52fbef0f0008632adccceef1513d3d3478eeea3a52a`.
+
+  **I/O postdiction.**  The X4b selected `Wext-mu26` isolated candidate's
+  category counters give **4,294,967,296 B** coefficients,
+  **34,359,738,368 B** persisted oracle, **34,359,738,368 B** oracle reread,
+  **68,719,476,672 / 68,719,476,704 B** staging read/write and 32 B root:
+  **210,453,397,440 B** modeled physical host I/O.  Kernel process counters
+  report **210,453,446,656 B**, a 49,216-B metadata difference, or
+  **825,756,043.051 B/s** over **254.861527720 s**.  The counter identity
+  postdicts **254.861468119 s**, a **0.000059601-s** residual; it uses no
+  fitted category weights or intercept.  H2D/D2H are separately
+  **107,374,217,152 / 103,079,215,072 B**.  The exact 27-round response
+  staging debt is **137,438,949,856 B**.  Source tracing confirms that
+  `fold_codeword` has already produced and activated `current_codeword`
+  before the X4b committer recopies coefficients, reruns E-NTT, writes files,
+  stages Merkle, rereads/compares the oracle, clones back to CPU and removes
+  the temporary artifacts.
+
+  **Opening decomposition.**  Timing-only instrumentation makes four
+  `issue_queries` walls explicit: query schedule gather, queried
+  hashing/path assembly, canonical encode/serialize and residual sealed-state
+  teardown.  It also records exact sealed state and allocator counters.
+  X4b's issue-only reads are **724,608 B** oracle plus **507,008 B** outer
+  cache with **2,220** small inner trees, while the consumed round trees own
+  **17,179,869,056 B** codewords plus **34,359,737,248 B** outer cache,
+  **51,539,606,304 B** total.  The same pod host's exact-geometry no-sealed-
+  state opening anchor is **0.109631491 s**; subtracting it from
+  **6.683486611 s** leaves **6.573855120 s / 98.359666%** lifecycle debt.
+  A clean CPU-only synthetic record must run one warm-up plus five candidates
+  at domain logs 16/18/20/22, verify every real 111-query opening, report the
+  four walls and allocation census, and project the largest scale directly
+  by exact byte ratio.  The projection is analytic and cannot become a pod
+  result.
+
+  **Byte-identical redesign.**  After approval, the already-encoded
+  codeword folds directly with zero response-round E-NTTs, coefficient files
+  or full-oracle comparisons.  Permanent full CPU/GPU tests cover the pinned
+  five synthetic lengths/four challenges; production checks 64 exact
+  coordinates in each of 27 rounds (**1,728 comparisons**) under the frozen
+  BLAKE3 sampling plan, with no soundness credit.  Fold codewords plus a
+  one-level-omitted outer cache remain in one GPU arena; the exact retained
+  payload is **34,359,737,248 B**, and retained payload plus the registered
+  workspace anchor is the already measured **43,486,546,048-B** device peak.
+  Response staging read/write/file counts are hard zero.
+
+  The initial **76,948,701,184-B** oracle and
+  **37,094,424,416-B** derived outer cache become host-RAM caches.  Only
+  coefficients plus roots, **9,618,587,808 B**, remain durable.  Restart
+  admits no response until a fresh process reconstructs all caches from that
+  durable tier, reproduces all five roots and emits the byte-identical
+  registered fold/opening fixture.  Initial cache reads use pinned RAM tiles;
+  overlay rereads and response-path `FADV_DONTNEED` are forbidden.  One GPU
+  batch gathers all 111 fold paths after all roots are fixed; only the final
+  approximately 2.6-MB opening crosses to host.  A single-arena lifecycle
+  reports both challenge-to-proof-bytes `proof_ready_wall` and teardown-
+  inclusive `session_reusable_wall`, with allocator counters at both
+  boundaries.
+
+  **Strictness MOVED, not relaxed — owner decision.**  Initial commit is
+  reclassified as **OFFLINE MODEL ONBOARDING**, using the historical static-
+  Ligero precedent.  Isolated/full-pass throughput and storage are
+  informative on the first tier, but CPU/GPU roots, rebuild equivalence,
+  exact bytes, zero staging and hardware remain hard.  The online PCS block
+  is seal + issue + serialization and reports both walls; v1 measures an
+  informative baseline and v2 pins its ceiling from those numbers.  Persisted
+  issue/open **<=1.50 s**, verify **<=0.25 s** and exact communication remain
+  hard.  Planning projections only are mu26 onboarding about 5 s, full pass
+  60--90 s, seal 3--6 s, open 0.1--0.5 s and reusable session 9--11 s.
+
+  **Rate contingency is decision material only.**  Under the same UD and
+  LinkBad aggregate term, rate `1/4,s=136` is
+  **80.32497833580102 bits** (1.51568346180102-bit slack), about half the
+  oracle and preliminary 3.2--3.3-MB PCS.  Rate `1/2,s=219` is
+  **79.11483983122474 bits** with only **0.30554495722474-bit** slack and is
+  rejected.  Rate `1/2,s=224` is **80.95573450952145 bits**
+  (2.14643963552145-bit slack), about one-quarter the oracle and preliminary
+  46--47-MB response (+5--7%).  Exact codec preflight is pending.  Activation
+  requires a separate explicit owner GO, a logged exception to the
+  2026-07-06 no-byte-trade convention, new Lean constant discharge and full
+  rebaseline.  Padding, arity, MXFP4 and multi-mask remain X5-only.
+
+  **Frozen `runpod-a100-x4c-v1`.**  One selected A100-SXM4 80 GB; actual RAM
+  **>=274,877,906,944 B (256 GiB)** fail-closed; local non-`mfs` volume
+  **>=150,000,000,000 B**; wall-only+counters; proving path Rayon=8 while
+  onboarding/seal/open worker policy is unpinned and reported; NOTE-6
+  `c3_weights` first.  Offline and online blocks use one warm-up plus at least
+  three measured candidates and upper-median selection.  R1c scope is
+  extended to every new direct-fold, device-tree, RAM-cache, restart, query-
+  gather, arena and accounting boundary.
+
+  **HARD STOP:** Phase 1 authorizes only this design, timing instrumentation,
+  clean local synthetic record/validator, ledger update and checkpoint.  No
+  direct-fold/GPU-resident/RAM-oracle/arena production implementation, rate
+  activation, X5/R1c work, pod request or pod access may begin without a new
+  explicit approval.
 
 - **2026-07-22 (X4b official A100 production closure: isolated commit FAIL,
   persisted open FAIL, overall FAIL)**: the one eligible clean rerun completed

@@ -154,6 +154,16 @@ X4B_DEGRADED_FOLD_CACHE_BYTES = 17_179_868_192
 X4B_DEVICE_BYTE_CEILING = 48 * 1024 * 1024 * 1024
 X4B_MIN_VOLUME_BYTES = 150_000_000_000
 X4B_BASELINE_RAM_BYTES = 128 * 1024 * 1024 * 1024
+X4C_DESIGN_SHA256 = (
+    "7d4f8254b066b91fea9ee52fbef0f0008632adccceef1513d3d3478eeea3a52a"
+)
+X4C_PHASE1_MILESTONE = "X4c-phase1-open-lifecycle-postdiction"
+X4C_SYNTHETIC_DOMAIN_LOG2 = [16, 18, 20, 22]
+X4C_MEASURED_CANDIDATES = 5
+X4C_PRODUCTION_FOLD_CODEWORD_BYTES = 17_179_869_056
+X4C_PRODUCTION_FOLD_OUTER_CACHE_BYTES = 34_359_737_248
+X4C_X4B_OPEN_WALL_S = 6.683_486_611
+X4C_NO_TEARDOWN_OPEN_ANCHOR_S = 0.109_631_491
 
 LAYER_PARAMS = {
     "rows": 1 << 10,
@@ -924,6 +934,249 @@ def validate_x4b_pod_result(path: Path) -> bool:
         if not path.is_absolute():
             path = REPO / path
         return _x4b_pod_result_valid(load_json(path))
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return False
+
+
+def _x4c_state_bytes(domain_log2: int) -> tuple[int, int]:
+    outer_len = 1 << domain_log2
+    rounds = domain_log2 - 3
+    return (outer_len - 8) * 16, (outer_len - 8 - rounds) * 32
+
+
+def _x4c_timing_valid(timing: Any) -> bool:
+    if not isinstance(timing, dict):
+        return False
+    categories = [
+        timing.get("query_gather_wall_ns"),
+        timing.get("hashing_path_assembly_wall_ns"),
+        timing.get("encode_serialize_wall_ns"),
+        timing.get("teardown_wall_ns"),
+    ]
+    total = timing.get("instrumented_total_wall_ns")
+    caller = timing.get("caller_wall_ns")
+    return (
+        all(isinstance(value, int) and not isinstance(value, bool) and value > 0 for value in categories)
+        and isinstance(total, int)
+        and total >= sum(categories)
+        and isinstance(caller, int)
+        and caller >= total
+    )
+
+
+def _x4c_phase1_result_valid(row: dict[str, Any]) -> bool:
+    immutable = row.get("immutable")
+    instrumentation = row.get("instrumentation")
+    io = row.get("io_postdiction")
+    opened = row.get("open_postdiction")
+    scales = row.get("synthetic_scales")
+    projection = row.get("analytic_pod_scale_projection")
+    if not (
+        row.get("schema") == 1
+        and row.get("milestone") == X4C_PHASE1_MILESTONE
+        and row.get("date") == "2026-07-23"
+        and row.get("git_dirty") is False
+        and isinstance(row.get("git_sha"), str)
+        and len(row["git_sha"]) == 40
+        and row.get("phase") == 1
+        and row.get("pod_contacted") is False
+        and row.get("design_sha256") == X4C_DESIGN_SHA256
+        and isinstance(immutable, dict)
+        and immutable.get("protocol_profile") == X4_V4_PROFILE
+        and immutable.get("rate") == "1/8"
+        and immutable.get("query_count") == 111
+        and immutable.get("pcs_bytes") == X4_V4_PCS_BYTES
+        and immutable.get("response_bytes") == X4_V4_RESPONSE_BYTES
+        and immutable.get("proof_format_changed") is False
+        and immutable.get("root_changed") is False
+        and immutable.get("lean_changed") is False
+        and immutable.get("soundness_changed") is False
+        and isinstance(instrumentation, dict)
+        and all(
+            isinstance(instrumentation.get(key), str) and instrumentation[key]
+            for key in (
+                "query_gather",
+                "hashing_path_assembly",
+                "encode_serialize",
+                "teardown",
+                "timer_unit",
+                "proof_or_transcript_effect",
+            )
+        )
+    ):
+        return False
+
+    modeled_read = 34_359_738_368 + 68_719_476_672
+    modeled_write = 4_294_967_296 + 34_359_738_368 + 68_719_476_704 + 32
+    modeled_io = modeled_read + modeled_write
+    observed_read = 103_079_235_584
+    observed_write = 107_374_211_072
+    observed_io = observed_read + observed_write
+    selected_wall = 254.861_527_720
+    aggregate_rate = observed_io / selected_wall
+    postdicted_wall = modeled_io / aggregate_rate
+    if not (
+        isinstance(io, dict)
+        and io.get("source_record")
+        == "benchmarks/results/x4b-a100-production-2026-07-22-6c6907a.json"
+        and io.get("source_record_sha256")
+        == "63f4a97b263e4d09649d5a6ede5af1ba420efdcc78bb30f54b9f8cf200cfe6e0"
+        and io.get("coefficient_bytes") == 4_294_967_296
+        and io.get("oracle_bytes") == 34_359_738_368
+        and io.get("staging_bytes_read") == 68_719_476_672
+        and io.get("staging_bytes_written") == 68_719_476_704
+        and io.get("modeled_host_read_bytes") == modeled_read
+        and io.get("modeled_host_write_bytes") == modeled_write
+        and io.get("modeled_physical_io_bytes") == modeled_io
+        and io.get("observed_process_read_bytes") == observed_read
+        and io.get("observed_process_write_bytes") == observed_write
+        and io.get("observed_physical_io_bytes") == observed_io
+        and io.get("reconciliation_delta_bytes") == observed_io - modeled_io
+        and _x4b_close(io.get("selected_wall_s"), selected_wall)
+        and _x4b_close(io.get("observed_aggregate_bytes_per_s"), aggregate_rate)
+        and _x4b_close(io.get("postdicted_wall_s"), postdicted_wall)
+        and _x4b_close(
+            io.get("postdiction_residual_s"), selected_wall - postdicted_wall
+        )
+        and io.get("h2d_bytes") == 107_374_217_152
+        and io.get("d2h_bytes") == 103_079_215_072
+        and io.get("pcie_transfer_bytes") == 210_453_432_224
+        and "no fitted" in io.get("model_policy", "")
+    ):
+        return False
+
+    production_state = (
+        X4C_PRODUCTION_FOLD_CODEWORD_BYTES + X4C_PRODUCTION_FOLD_OUTER_CACHE_BYTES
+    )
+    implied = X4C_X4B_OPEN_WALL_S - X4C_NO_TEARDOWN_OPEN_ANCHOR_S
+    if not (
+        isinstance(opened, dict)
+        and _x4b_close(opened.get("observed_open_wall_s"), X4C_X4B_OPEN_WALL_S)
+        and _x4b_close(
+            opened.get("same_host_exact_geometry_no_sealed_state_anchor_s"),
+            X4C_NO_TEARDOWN_OPEN_ANCHOR_S,
+        )
+        and _x4b_close(opened.get("implied_lifecycle_debt_s"), implied)
+        and _x4b_close(opened.get("implied_lifecycle_share"), implied / X4C_X4B_OPEN_WALL_S)
+        and opened.get("issue_query_oracle_bytes_read") == 724_608
+        and opened.get("issue_query_outer_cache_bytes_read") == 507_008
+        and opened.get("inner_trees_rebuilt") == 2_220
+        and opened.get("sealed_fold_codeword_bytes")
+        == X4C_PRODUCTION_FOLD_CODEWORD_BYTES
+        and opened.get("sealed_fold_outer_cache_bytes")
+        == X4C_PRODUCTION_FOLD_OUTER_CACHE_BYTES
+        and opened.get("sealed_state_bytes") == production_state
+        and opened.get("hypothesis_disposition", "").startswith("CONFIRMED")
+    ):
+        return False
+
+    if not isinstance(scales, list) or [
+        item.get("domain_log2") for item in scales if isinstance(item, dict)
+    ] != X4C_SYNTHETIC_DOMAIN_LOG2:
+        return False
+    for scale in scales:
+        if not isinstance(scale, dict):
+            return False
+        domain_log2 = scale["domain_log2"]
+        expected_codeword, expected_cache = _x4c_state_bytes(domain_log2)
+        expected_state = expected_codeword + expected_cache
+        candidates = scale.get("candidates")
+        selected = scale.get("selected_upper_median")
+        if not (
+            scale.get("outer_len") == 1 << domain_log2
+            and scale.get("warmup_count") == 1
+            and scale.get("measured_candidates") == X4C_MEASURED_CANDIDATES
+            and isinstance(candidates, list)
+            and len(candidates) == X4C_MEASURED_CANDIDATES
+            and isinstance(selected, dict)
+            and scale.get("all_accepted") is True
+            and scale.get("exact_state_accounting") is True
+        ):
+            return False
+        expected_trees = domain_log2 - 3
+        expected_level_vectors = (domain_log2 + 2) * (domain_log2 - 3) // 2
+        for candidate in candidates:
+            allocator = candidate.get("allocator") if isinstance(candidate, dict) else None
+            if not (
+                isinstance(candidate, dict)
+                and candidate.get("sealed_fold_codeword_bytes") == expected_codeword
+                and candidate.get("sealed_fold_outer_cache_bytes") == expected_cache
+                and candidate.get("sealed_state_bytes") == expected_state
+                and candidate.get("sealed_fold_tree_count") == expected_trees
+                and candidate.get("sealed_fold_outer_level_vectors")
+                == expected_level_vectors
+                and _x4c_timing_valid(candidate.get("timing"))
+                and isinstance(allocator, dict)
+                and allocator.get("allocations", 0) > 0
+                and allocator.get("deallocations", 0) > 0
+                and allocator.get("cumulative_requested_bytes", 0) > 0
+                and allocator.get("cumulative_deallocated_bytes", 0) >= expected_state
+                and candidate.get("accepted") is True
+                and candidate.get("canonical_proof_bytes", 0) > 0
+            ):
+                return False
+        timing_keys = (
+            "query_gather_wall_ns",
+            "hashing_path_assembly_wall_ns",
+            "encode_serialize_wall_ns",
+            "teardown_wall_ns",
+            "instrumented_total_wall_ns",
+            "caller_wall_ns",
+        )
+        for key in timing_keys:
+            if selected.get(key) != _x4b_upper_median(
+                [candidate["timing"][key] for candidate in candidates]
+            ):
+                return False
+
+    largest = scales[-1]
+    source_state = largest["candidates"][0]["sealed_state_bytes"]
+    byte_scale = production_state / source_state
+    teardown_candidates = [
+        candidate["timing"]["teardown_wall_ns"] for candidate in largest["candidates"]
+    ]
+    projected_teardown = (
+        largest["selected_upper_median"]["teardown_wall_ns"] * byte_scale / 1e9
+    )
+    if not (
+        isinstance(projection, dict)
+        and "no regression" in projection.get("policy", "")
+        and projection.get("source_domain_log2") == X4C_SYNTHETIC_DOMAIN_LOG2[-1]
+        and projection.get("source_sealed_state_bytes") == source_state
+        and projection.get("production_sealed_state_bytes") == production_state
+        and _x4b_close(projection.get("byte_scale"), byte_scale)
+        and _x4b_close(projection.get("projected_teardown_wall_s"), projected_teardown)
+        and _x4b_close(
+            projection.get("projected_teardown_wall_s_low"),
+            min(teardown_candidates) * byte_scale / 1e9,
+        )
+        and _x4b_close(
+            projection.get("projected_teardown_wall_s_high"),
+            max(teardown_candidates) * byte_scale / 1e9,
+        )
+        and _x4b_close(
+            projection.get("same_host_no_teardown_anchor_s"),
+            X4C_NO_TEARDOWN_OPEN_ANCHOR_S,
+        )
+        and _x4b_close(
+            projection.get("projected_total_open_wall_s"),
+            projected_teardown + X4C_NO_TEARDOWN_OPEN_ANCHOR_S,
+        )
+        and _x4b_close(
+            projection.get("observed_x4b_open_wall_s"), X4C_X4B_OPEN_WALL_S
+        )
+        and "analytic projection only" in projection.get("hardware_transfer_warning", "")
+        and row.get("hard_stop", "").startswith("PHASE 1 COMPLETE ONLY")
+    ):
+        return False
+    return True
+
+
+def validate_x4c_phase1_result(path: Path) -> bool:
+    try:
+        if not path.is_absolute():
+            path = REPO / path
+        return _x4c_phase1_result_valid(load_json(path))
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
         return False
 
@@ -3771,6 +4024,11 @@ def main() -> None:
         type=Path,
         help="fail closed unless one JSON is an internally consistent X4b A100 verdict",
     )
+    ap.add_argument(
+        "--validate-x4c-phase1",
+        type=Path,
+        help="fail closed unless one JSON is the clean CPU-only X4c Phase-1 postdiction",
+    )
     args = ap.parse_args()
 
     selected_validators = sum(
@@ -3785,6 +4043,7 @@ def main() -> None:
             args.validate_x4_v4_pod,
             args.validate_x4b_local,
             args.validate_x4b_pod,
+            args.validate_x4c_phase1,
         )
     )
     if selected_validators > 1:
@@ -3855,6 +4114,13 @@ def main() -> None:
         if not validate_x4b_pod_result(args.validate_x4b_pod):
             raise SystemExit("invalid or inconsistent X4b A100 result")
         print(f"valid X4b A100 result: {args.validate_x4b_pod}")
+        return
+    if args.validate_x4c_phase1 is not None:
+        if args.write_json:
+            raise SystemExit("--write-json and --validate-x4c-phase1 are mutually exclusive")
+        if not validate_x4c_phase1_result(args.validate_x4c_phase1):
+            raise SystemExit("invalid or inconsistent X4c Phase-1 result")
+        print(f"valid X4c Phase-1 result: {args.validate_x4c_phase1}")
         return
 
     report = p7_report(args.results_dir)

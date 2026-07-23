@@ -7,6 +7,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use volta_accel::Backend;
 use volta_field::{Fp, Fp2};
@@ -261,8 +262,23 @@ pub struct GlobalOpenMetricsV4 {
     pub folded_symbols_written: u64,
     pub aggregate_merkle_symbols_written: u64,
     pub aggregate_merkle_digests_written: u64,
+    /// Exact live payload owned by the response-local fold trees when the
+    /// chain becomes sealed. These bytes are consumed by `issue_queries` and
+    /// explicitly dropped in its teardown timer.
+    pub sealed_fold_codeword_bytes: u64,
+    pub sealed_fold_outer_cache_bytes: u64,
+    pub sealed_fold_tree_count: u64,
+    pub sealed_fold_outer_level_vectors: u64,
     pub serialized_fold_bytes: u64,
     pub serialized_packed_opening_bytes: u64,
+    /// Coarse wall decomposition of the one-shot sealed-to-opening
+    /// transition. The categories are deliberately implementation-facing and
+    /// do not enter the transcript or proof grammar.
+    pub issue_queries_query_gather_wall_ns: u64,
+    pub issue_queries_hashing_path_assembly_wall_ns: u64,
+    pub issue_queries_encode_serialize_wall_ns: u64,
+    pub issue_queries_teardown_wall_ns: u64,
+    pub issue_queries_total_wall_ns: u64,
     pub recomputed_source_bytes_read: u64,
     pub recomputed_oracle_bytes: u64,
     pub recomputed_merkle_bytes: u64,
@@ -716,6 +732,27 @@ impl<'a> GlobalChainDraftV4<'a> {
                 expected_symbol_count: 1,
             };
             let tree = committer.commit_round(config, &current_coefficients, &current_codeword)?;
+            metrics.sealed_fold_codeword_bytes = metrics
+                .sealed_fold_codeword_bytes
+                .checked_add(
+                    u64::try_from(output_len)
+                        .map_err(|_| FoldingErrorV4::Overflow)?
+                        .checked_mul(16)
+                        .ok_or(FoldingErrorV4::Overflow)?,
+                )
+                .ok_or(FoldingErrorV4::Overflow)?;
+            metrics.sealed_fold_outer_cache_bytes = metrics
+                .sealed_fold_outer_cache_bytes
+                .checked_add(tree.outer_cache_bytes()?)
+                .ok_or(FoldingErrorV4::Overflow)?;
+            metrics.sealed_fold_tree_count =
+                metrics.sealed_fold_tree_count.checked_add(1).ok_or(FoldingErrorV4::Overflow)?;
+            metrics.sealed_fold_outer_level_vectors = metrics
+                .sealed_fold_outer_level_vectors
+                .checked_add(u64::from(
+                    tree.config().outer_depth() - tree.outer_cache_policy().bottom_levels_omitted,
+                ))
+                .ok_or(FoldingErrorV4::Overflow)?;
             let mut messages = vec![line_zero, line_one];
             if round_index + 1 == self.common_point.len() {
                 if current_coefficients.as_slice() != [current_claim] {
@@ -797,31 +834,56 @@ impl SealedGlobalChainV4<'_> {
 
     /// Consume the sealed state so one epoch cannot emit a second opening.
     pub fn issue_queries(
-        mut self,
+        self,
         query_draws: Vec<u64>,
     ) -> Result<
         (GlobalFoldingProofV4, Vec<GlobalVerifierGroupV4>, GlobalOpenMetricsV4),
         FoldingErrorV4,
     > {
-        validate_query_draws(&query_draws, self.groups[0].cohort.commitment().config.outer_len)?;
-        let mut initial_groups = Vec::with_capacity(self.groups.len());
-        for group in &self.groups {
-            let (opening, recompute) =
-                group.cohort.open_initial_source(&query_draws, &group.touched_slots)?;
-            accumulate_recompute_traffic(&mut self.metrics, recompute)?;
-            initial_groups.push(opening);
-        }
-        let mut fold_rounds = Vec::with_capacity(self.round_trees.len());
-        for tree in &self.round_trees {
-            fold_rounds.push(tree.open_fold_round(&query_draws)?);
-        }
+        let total_started = Instant::now();
+        let SealedGlobalChainV4 {
+            model_root,
+            epoch,
+            common_point,
+            groups,
+            verifier_groups,
+            challenges,
+            fold_frames,
+            round_trees,
+            mut metrics,
+        } = self;
+
+        // "Query gather" is the verifier-owned schedule preparation: validate
+        // the exact draw tape and gather the canonical per-cohort metadata
+        // against which the opening will be assembled.
+        let query_gather_started = Instant::now();
+        validate_query_draws(&query_draws, groups[0].cohort.commitment().config.outer_len)?;
         let schedule = packed_schedule_from_verifier(
-            self.model_root,
-            self.epoch,
-            &self.verifier_groups,
-            &self.fold_frames,
+            model_root,
+            epoch,
+            &verifier_groups,
+            &fold_frames,
             query_draws,
         )?;
+        metrics.issue_queries_query_gather_wall_ns = elapsed_ns(query_gather_started)?;
+
+        // All queried symbol/cache reads, inner-tree hashing and ordered
+        // sibling-path assembly live in this coarse category.
+        let hashing_path_started = Instant::now();
+        let mut initial_groups = Vec::with_capacity(groups.len());
+        for group in &groups {
+            let (opening, recompute) =
+                group.cohort.open_initial_source(&schedule.query_draws, &group.touched_slots)?;
+            accumulate_recompute_traffic(&mut metrics, recompute)?;
+            initial_groups.push(opening);
+        }
+        let mut fold_rounds = Vec::with_capacity(round_trees.len());
+        for tree in &round_trees {
+            fold_rounds.push(tree.open_fold_round(&schedule.query_draws)?);
+        }
+        metrics.issue_queries_hashing_path_assembly_wall_ns = elapsed_ns(hashing_path_started)?;
+
+        let encode_serialize_started = Instant::now();
         let mut packed_opening = PackedBatchOpeningFrameV4 {
             opening_schedule_digest: [0; 32],
             initial_groups,
@@ -829,15 +891,24 @@ impl SealedGlobalChainV4<'_> {
         };
         packed_opening.opening_schedule_digest = opening_schedule_digest_v4(&schedule)?;
         packed_opening.validate_against_schedule(&schedule)?;
-        self.metrics.serialized_packed_opening_bytes = u64::try_from(
+        metrics.serialized_packed_opening_bytes = u64::try_from(
             super::frame_v4::FrameV4::PackedBatchOpening(packed_opening.clone()).encode()?.len(),
         )
         .map_err(|_| FoldingErrorV4::Overflow)?;
-        Ok((
-            GlobalFoldingProofV4 { fold_frames: self.fold_frames, packed_opening },
-            self.verifier_groups,
-            self.metrics,
-        ))
+        metrics.issue_queries_encode_serialize_wall_ns = elapsed_ns(encode_serialize_started)?;
+
+        // The historical API consumes the sealed state, so Rust otherwise
+        // destroys its multi-gigabyte round trees implicitly before returning
+        // to the caller. Make that lifecycle boundary explicit and measured.
+        let teardown_started = Instant::now();
+        drop(round_trees);
+        drop(groups);
+        drop(common_point);
+        drop(challenges);
+        drop(schedule);
+        metrics.issue_queries_teardown_wall_ns = elapsed_ns(teardown_started)?;
+        metrics.issue_queries_total_wall_ns = elapsed_ns(total_started)?;
+        Ok((GlobalFoldingProofV4 { fold_frames, packed_opening }, verifier_groups, metrics))
     }
 
     /// Production query transition.  Exact-bit draws are unavailable until
@@ -1177,6 +1248,10 @@ fn validate_query_draws(draws: &[u64], max_outer_len: usize) -> Result<(), Foldi
         return Err(FoldingErrorV4::InvalidGeometry("v4 exact query tape"));
     }
     Ok(())
+}
+
+fn elapsed_ns(started: Instant) -> Result<u64, FoldingErrorV4> {
+    u64::try_from(started.elapsed().as_nanos()).map_err(|_| FoldingErrorV4::Overflow)
 }
 
 fn accumulate_recompute_traffic(
@@ -1634,8 +1709,16 @@ mod tests {
         assert_eq!(metrics.initial_encoded_symbols_read, 320);
         assert_eq!(metrics.folded_symbols_written, 120);
         assert_eq!(metrics.aggregate_merkle_symbols_written, 120);
+        assert_eq!(metrics.sealed_fold_codeword_bytes, 120 * 16);
+        assert_eq!(
+            metrics.sealed_fold_outer_cache_bytes,
+            ((64 - 1) + (32 - 1) + (16 - 1) + (8 - 1)) * 32
+        );
+        assert_eq!(metrics.sealed_fold_tree_count, 4);
+        assert_eq!(metrics.sealed_fold_outer_level_vectors, 6 + 5 + 4 + 3);
         assert!(metrics.serialized_fold_bytes > 0);
         assert!(metrics.serialized_packed_opening_bytes > 0);
+        assert!(metrics.issue_queries_total_wall_ns >= metrics.issue_queries_teardown_wall_ns);
         assert_eq!(proof.packed_opening.initial_groups[0].touched_slots, [0, 2]);
         assert_eq!(proof.packed_opening.initial_groups[1].touched_slots, [0, 1]);
     }

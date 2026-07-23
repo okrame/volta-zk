@@ -393,9 +393,12 @@ historical entries remain append-only evidence, not competing definitions.
   retaining strict symbol order, strict frontier order and the prohibition
   on symbols after frontier.  Host-reference regression covers the exact
   rejected transition plus duplicate, decreasing and class-reversal
-  rejection.  No query schedule, root, reference, proof byte, rate, `s`,
-  soundness credit, protocol/Lean statement, communication value or gate
-  changes.
+  rejection.  A native-ABI Rust regression additionally submits the formerly
+  rejected `symbol index 7 -> frontier (level 0,index 0)` pair to the real
+  CUDA backend; it must launch, return the exact symbol and a nonzero rebuilt
+  digest under `VOLTA_REQUIRE_CUDA=1` before any rerun onboarding.  No query
+  schedule, root, reference, proof byte, rate, `s`, soundness credit,
+  protocol/Lean statement, communication value or gate changes.
 
   Operationally, the fresh rebuild spent roughly 68 observed wall minutes
   before first GPU allocation.  This is not an online gate and no exact phase

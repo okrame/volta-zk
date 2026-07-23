@@ -6460,6 +6460,84 @@ mod cuda_tests {
         v
     }
 
+    #[test]
+    fn x4c_canonical_gather_accepts_symbol_to_independent_frontier_order() {
+        let Some(mut gpu) = resident_with_timing(ResidentTimingPolicy::WallOnlyCounters) else {
+            return;
+        };
+        const OUTER_LEN: usize = 8;
+        const CODEWORD_BYTES: usize = OUTER_LEN * 16;
+        const CACHE_OFFSET: usize = CODEWORD_BYTES;
+        const CACHE_BYTES: usize = (OUTER_LEN / 2 - 1) * 32;
+        const SCRATCH_OFFSET: usize = 256;
+        const MAILBOX_OFFSET: usize = 512;
+        const MAILBOX_BYTES: usize = 16 + 32;
+
+        let arena = gpu.alloc_device::<u8>(1_024).unwrap();
+        let mut codeword = vec![0u8; CODEWORD_BYTES];
+        for (index, symbol) in codeword.chunks_exact_mut(16).enumerate() {
+            symbol[..8].copy_from_slice(&(index as u64 + 1).to_le_bytes());
+            symbol[8..].copy_from_slice(&(100 + index as u64).to_le_bytes());
+        }
+        gpu.upload_device(&arena, 0, &codeword).unwrap();
+        gpu.upload_device(&arena, CACHE_OFFSET, &vec![0u8; CACHE_BYTES]).unwrap();
+        gpu.upload_device(&arena, MAILBOX_OFFSET, &[0u8; MAILBOX_BYTES]).unwrap();
+
+        let descriptor = [0x5au8; 32];
+        let operations = [
+            X4cCanonicalGatherOperation {
+                codeword_offset_bytes: 0,
+                cache_offset_bytes: CACHE_OFFSET as u64,
+                source_offset_bytes: 7 * 16,
+                outer_len: OUTER_LEN as u64,
+                index: 7,
+                destination_offset_bytes: MAILBOX_OFFSET as u64,
+                descriptor,
+                cohort_id: 17,
+                source_kind: X4C_GATHER_CODEWORD_SYMBOL,
+                level: 0,
+                oracle_kind: 2,
+                fold_round: 1,
+            },
+            X4cCanonicalGatherOperation {
+                codeword_offset_bytes: 0,
+                cache_offset_bytes: CACHE_OFFSET as u64,
+                source_offset_bytes: 0,
+                outer_len: OUTER_LEN as u64,
+                index: 0,
+                destination_offset_bytes: (MAILBOX_OFFSET + 16) as u64,
+                descriptor,
+                cohort_id: 17,
+                source_kind: X4C_GATHER_REBUILT_OUTER_DIGEST,
+                level: 0,
+                oracle_kind: 2,
+                fold_round: 1,
+            },
+        ];
+        let pinned =
+            gpu.alloc_pinned_host::<X4cCanonicalGatherOperation>(operations.len()).unwrap();
+        gpu.write_pinned_host(&pinned, 0, &operations).unwrap();
+
+        gpu.begin_measurement().unwrap();
+        gpu.x4c_batch_gather_canonical_operations(
+            &arena,
+            &pinned,
+            0,
+            operations.len(),
+            SCRATCH_OFFSET,
+            MAILBOX_OFFSET,
+            MAILBOX_BYTES,
+        )
+        .unwrap();
+        let mailbox = gpu.download_device(&arena, MAILBOX_OFFSET, MAILBOX_BYTES).unwrap();
+        gpu.finish_measurement().unwrap();
+
+        assert_eq!(&mailbox[..16], &codeword[7 * 16..8 * 16]);
+        assert!(mailbox[16..].iter().any(|&byte| byte != 0));
+        gpu.free_pinned_host(pinned).unwrap();
+        gpu.free_device(arena).unwrap();
+    }
+
     fn cpu_tree(a: &[Fp], alpha1: Fp, mult: Option<&[u32]>) -> (Vec<Vec<Fp2>>, Vec<Vec<Fp2>>) {
         let a1sq7 = Fp::new(7) * alpha1 * alpha1;
         let mut p: Vec<Fp2> = (0..a.len() / 2)

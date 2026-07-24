@@ -433,6 +433,25 @@ historical entries remain append-only evidence, not competing definitions.
   are not aggregated and no protocol, byte, root, gate or timing ceiling is
   changed.
 
+  GPU1 subsequently passed the direct-fold CPU/GPU, N4/root and canonical
+  gather regressions with no skip; append-only log
+  `06-real-cuda-regressions-gpu1-2026-07-24-864692b.log`, SHA-256
+  `7cf470237229971e2c1b13437b04018345cb37ebd8dd8daf8dcc2e8dc00a4f88`,
+  records `eligible_real_cuda=true`.  The first exact lifecycle execution
+  completed all four variants with one warm-up and three measured candidates
+  each, exact **51,539,606,304-B** population and internal
+  `all_accepted=true`, but its record
+  `07-exact-size-lifecycle-probe-2026-07-24-864692b.json`, SHA-256
+  `7db5577db1ca68b8cc205ddace0407469301ac0c61465842e7510c9bff7f8c61`,
+  is **ineligible**: the launcher cwd caused `git_sha=""`, and the recorder
+  still emitted a hard-coded prior-day date.  No missing provenance is
+  synthesized and this run receives no lifecycle credit.  Before retry, the
+  lifecycle recorder is changed to execute Git/date commands in its
+  compile-time clean checkout, propagate command/UTF-8/empty-output errors
+  fail-closed, and record the actual date.  This is instrumentation
+  provenance only and requires a fresh source/checkpoint and fresh output
+  path.
+
 - **2026-07-23 (X4c corrected same-source onboarding HARD STOP —
   provider PERSISTENT-volume `EIO`; online not run)**: clean correction
   checkpoint `aeea2176797cfaa5efb711ace890cd10a7ab5e34`, clean-source bundle

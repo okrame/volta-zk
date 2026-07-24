@@ -35,6 +35,10 @@ const MEASURED_CANDIDATES: usize = 3;
 const MIN_HOST_RAM_BYTES: u64 = 256 * 1024 * 1024 * 1024;
 const MIN_LOCAL_STORAGE_BYTES: u64 = 150_000_000_000;
 
+fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 enum Variant {
@@ -696,18 +700,44 @@ fn storage_anchor(path: &Path) -> Result<StorageAnchor, String> {
     })
 }
 
-fn command_output(program: &str, args: &[&str]) -> String {
-    Command::new(program)
+fn command_output(program: &str, args: &[&str]) -> Result<String, String> {
+    let output = Command::new(program)
         .args(args)
+        .current_dir(repo_root())
         .output()
-        .ok()
-        .filter(|output| output.status.success())
-        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
-        .unwrap_or_default()
+        .map_err(|error| format!("execute {program}: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "{program} {} failed with {:?}: {}",
+            args.join(" "),
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    let text = String::from_utf8(output.stdout)
+        .map_err(|error| format!("decode {program} output: {error}"))?
+        .trim()
+        .to_owned();
+    if text.is_empty() {
+        return Err(format!("{program} {} returned an empty result", args.join(" ")));
+    }
+    Ok(text)
 }
 
-fn git_dirty() -> bool {
-    !command_output("git", &["status", "--porcelain"]).is_empty()
+fn git_dirty() -> Result<bool, String> {
+    let output = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(repo_root())
+        .output()
+        .map_err(|error| format!("execute git status: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "git status failed with {:?}: {}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Ok(!output.stdout.is_empty())
 }
 
 fn exact_pod_guard() -> Result<MachineRecord, String> {
@@ -736,6 +766,7 @@ fn exact_pod_guard() -> Result<MachineRecord, String> {
         .map_err(|_| "VOLTA_X4C_LOCAL_STORAGE_DIR is required".to_owned())?;
     let persistent_volume = storage_anchor(Path::new(&persistent))?;
     let local_non_mfs_storage = storage_anchor(Path::new(&local))?;
+    let tree_dirty = git_dirty()?;
     if provider != "RunPod"
         || !gpu.contains("A100-SXM4-80GB")
         || memory_bytes < MIN_HOST_RAM_BYTES
@@ -745,7 +776,7 @@ fn exact_pod_guard() -> Result<MachineRecord, String> {
         || local_non_mfs_storage.available_bytes < MIN_LOCAL_STORAGE_BYTES
         || matches!(local_non_mfs_storage.filesystem_type.as_str(), "tmpfs" | "ramfs" | "mfs")
         || persistent_volume.mount_point == local_non_mfs_storage.mount_point
-        || git_dirty()
+        || tree_dirty
     {
         return Err(
             "exact probe refused: requires RunPod A100-SXM4-80GB, >=256 GiB actual RAM, RAYON_NUM_THREADS=8, unpinned commit/seal/open, distinct PERSISTENT and >=150 GB local non-mfs storage, and a clean tree"
@@ -849,9 +880,9 @@ fn run_record(exact: bool) -> Result<ProbeRecord, String> {
         schema: SCHEMA,
         milestone: MILESTONE.to_owned(),
         phase: 2,
-        date: "2026-07-23".to_owned(),
-        git_sha: command_output("git", &["rev-parse", "HEAD"]),
-        git_dirty: git_dirty(),
+        date: command_output("date", &["+%Y-%m-%d"])?,
+        git_sha: command_output("git", &["rev-parse", "HEAD"])?,
+        git_dirty: git_dirty()?,
         pod_profile: POD_PROFILE.to_owned(),
         mode: if exact { "exact_pod" } else { "local_smoke" }.to_owned(),
         pod_contacted: exact,

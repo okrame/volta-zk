@@ -413,6 +413,26 @@ historical entries remain append-only evidence, not competing definitions.
   the remaining frozen X4c order on fresh paths; it is not a protocol gate or
   evidence for the old X4b timing cause.
 
+  The first real-CUDA differential on physical selection 0 was explicitly
+  **not eligible**: `cudaStreamCreateWithFlags` returned
+  `CUDA-capable device(s) is/are busy or unavailable`, while `nvidia-smi`
+  repeatedly showed UUID
+  `GPU-41c84534-791e-ddb9-dd06-d6b3768128b4` at **100%** SM, **0 MiB**,
+  and no process visible in the container namespace.  Append-only log
+  `05-gpu0-real-cuda-unavailable-2026-07-24-8d29fd5.log`, SHA-256
+  `455d253265e14c4efb9c9603f151e383dc907f776dc2c8ef4e6b54c4bfbcb3de`,
+  records the skip and `eligible_real_cuda=false`; it is not counted as a
+  passing regression.  The pod's other allocated A100-SXM4-80GB, physical
+  selection 1 / UUID
+  `GPU-3286abe4-e484-485e-3a7c-68bc527f6059`, remained idle at **0% / 0
+  MiB**.  The frozen profile requires one selected A100, not physical index
+  zero, so the remaining session is preregistered to use only selection 1.
+  The runner now rejects zero or multiple selectors, resolves the one
+  selected physical device through `nvidia-smi`, and records both selector
+  and UUID.  This is a fail-closed hardware-provenance correction; resources
+  are not aggregated and no protocol, byte, root, gate or timing ceiling is
+  changed.
+
 - **2026-07-23 (X4c corrected same-source onboarding HARD STOP —
   provider PERSISTENT-volume `EIO`; online not run)**: clean correction
   checkpoint `aeea2176797cfaa5efb711ace890cd10a7ab5e34`, clean-source bundle

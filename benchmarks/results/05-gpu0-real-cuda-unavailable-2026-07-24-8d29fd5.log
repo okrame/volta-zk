@@ -1,0 +1,31 @@
+2026-07-24T06:56:42,191612837+00:00
+0, GPU-41c84534-791e-ddb9-dd06-d6b3768128b4, 0 MiB, 100 %, 91.73 W, 1410 MHz
+1, GPU-3286abe4-e484-485e-3a7c-68bc527f6059, 0 MiB, 0 %, 64.95 W, 210 MHz
+    Finished `release` profile [optimized] target(s) in 0.04s
+     Running unittests src/lib.rs (/local/x4c-target-8d29fd5/release/deps/volta_pcs-73ebb3a71e064193)
+
+running 1 test
+test x4::x4c_v4::tests::cuda_host_and_resident_direct_fold_match_cpu_at_registered_lengths ... skipping X4c CUDA differential: CUDA backend error: cudaStreamCreateWithFlags: CUDA-capable device(s) is/are busy or unavailable
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 93 filtered out; finished in 14.23s
+
+     Running tests/cuda.rs (/local/x4c-target-8d29fd5/release/deps/cuda-2c89726fe69c056d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/p35.rs (/local/x4c-target-8d29fd5/release/deps/p35-777a29d9e84d5fc7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 15 filtered out; finished in 0.00s
+
+     Running tests/p4_layer.rs (/local/x4c-target-8d29fd5/release/deps/p4_layer-58e442b5b1808461)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+eligible_real_cuda=false

@@ -402,6 +402,8 @@ struct MachineRow {
     provider: String,
     pod_id: String,
     gpu: String,
+    gpu_uuid: String,
+    cuda_visible_devices: String,
     host_ram_bytes: u64,
     logical_cpus: usize,
     rayon_workers: usize,
@@ -420,7 +422,10 @@ fn validate_machine(durable_root: &Path, local_root: &Path) -> Result<MachineRow
     exact_env("VOLTA_CLOUD_GPU_SKU", GPU_NAME)?;
     exact_env("VOLTA_X4C_PERSISTENT_CLASS", "PERSISTENT")?;
     exact_env("VOLTA_X4C_COMMIT_SEAL_OPEN_UNPINNED", "1")?;
-    exact_env("CUDA_VISIBLE_DEVICES", "0")?;
+    let cuda_visible_devices = required_env("CUDA_VISIBLE_DEVICES")?;
+    if cuda_visible_devices.contains(',') {
+        return Err("CUDA_VISIBLE_DEVICES must select exactly one device".to_owned());
+    }
     if env::var_os("RAYON_NUM_THREADS").is_some() {
         return Err("commit/seal/open must be unpinned; RAYON_NUM_THREADS is set".to_owned());
     }
@@ -429,8 +434,21 @@ fn validate_machine(durable_root: &Path, local_root: &Path) -> Result<MachineRow
     if !durable_root.starts_with(&persistent_anchor) || !local_root.starts_with(&local_anchor) {
         return Err("durable/local output roots violate their storage anchors".to_owned());
     }
-    let gpu =
-        command_output("nvidia-smi", &["--id=0", "--query-gpu=name", "--format=csv,noheader"])?;
+    let gpu_selector = format!("--id={cuda_visible_devices}");
+    let gpu_row = command_output(
+        "nvidia-smi",
+        &[&gpu_selector, "--query-gpu=name,uuid", "--format=csv,noheader,nounits"],
+    )?;
+    let gpu_rows = gpu_row.lines().filter(|line| !line.trim().is_empty()).collect::<Vec<_>>();
+    if gpu_rows.len() != 1 {
+        return Err("CUDA_VISIBLE_DEVICES did not resolve to exactly one physical GPU".to_owned());
+    }
+    let gpu_fields = gpu_rows[0].split(',').map(str::trim).collect::<Vec<_>>();
+    if gpu_fields.len() != 2 || gpu_fields[1].is_empty() {
+        return Err("selected GPU identity row is incomplete".to_owned());
+    }
+    let gpu = gpu_fields[0].to_owned();
+    let gpu_uuid = gpu_fields[1].to_owned();
     if gpu != GPU_NAME {
         return Err(format!("selected GPU is {gpu:?}, expected {GPU_NAME:?}"));
     }
@@ -451,6 +469,8 @@ fn validate_machine(durable_root: &Path, local_root: &Path) -> Result<MachineRow
         provider: "RunPod".to_owned(),
         pod_id: required_env("VOLTA_X4C_POD_ID")?,
         gpu,
+        gpu_uuid,
+        cuda_visible_devices,
         host_ram_bytes,
         logical_cpus: std::thread::available_parallelism().map_or(0, usize::from),
         rayon_workers: rayon::current_num_threads(),

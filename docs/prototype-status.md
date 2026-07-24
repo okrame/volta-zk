@@ -503,7 +503,8 @@ historical entries remain append-only evidence, not competing definitions.
   The exact real-weight input manifest and the next clean-driver boundary are
   recorded in `docs/x4c-gpt2-e2e-handoff.md`.  The production-geometry fixture
   used here is not mislabeled as real inference, and no GPT-2 E2E gate verdict
-  has landed.
+  has landed.  The append-only records, closure ledger and handoff landed
+  together at clean checkpoint `2652c21`.
 
 - **2026-07-24 (X4c restarted from clean `207b92c` on a new pod; fresh
   NOTE-6 and PERSISTENT health probe PASS before other production work)**:

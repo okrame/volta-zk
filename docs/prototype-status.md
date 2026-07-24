@@ -406,6 +406,37 @@ historical entries remain append-only evidence, not competing definitions.
 
 ## Deviations / decisions log
 
+- **2026-07-24 — Private-argmax verifier-ledger HARD STOP and accounting
+  correction.**  The clean `af3cb22ec8de87b17acfffadf1489be8afa0f857`
+  onboarding prepass passed the corrected golden geometry, structural model
+  verification and both MAC closures, then stopped before coefficient
+  materialization:
+
+  - `x4c_gpt2_e2e_record HARD STOP: mock model transcript differs after closure`
+
+  Exact code inspection found five private-argmax correction families whose
+  16-B prover messages were already charged by `authenticate_scalar`, while
+  the matching verifier `verify_scalar` expanded the authenticated key but
+  did not replay those same labels into its accounting ledger.  Challenges
+  are drawn from the independent verifier stream and the prover transcript
+  already contained the wire bytes, so proof acceptance, challenge order and
+  canonical response bytes were not changed by this missing mirror.
+
+  Checkpoint `45b29dbd87e8c2213317e8cc3155877b577cddb2` shares the five labels between
+  prover and verifier and charges the exact 16-B correction at every
+  verifier expansion.  A permanent unit test requires that verifier replay;
+  local format/check, full workspace (**365 passed, 0 failed, 4 existing
+  production-size tests ignored**) and report-validator suite
+  (**15 passed**) are green.  Prover transcript bytes, encoded proof and
+  response bytes, correlation consumption and every cryptographic operation
+  remain unchanged; only the previously incomplete verifier-side accounting
+  now mirrors the existing messages.
+
+  The failed invocation wrote no onboarding record or durable artifact and
+  carries no gate verdict.  Rate `1/8`, `s=111`, roots, codec, proof format,
+  Lean, soundness and gates remain frozen.  Any rerun requires a fresh clean
+  descendant checkout and fresh paths.
+
 - **2026-07-24 — Real-weight prepass transcript-boundary HARD STOP and
   fail-closed correction.**  After the golden-geometry repair, the first
   onboarding invocation from clean

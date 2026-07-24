@@ -58,6 +58,15 @@ explicit `+2` budget.  This corrects only prepass control flow; it changes no
 protocol transcript or parameter.  The failed attempt also wrote no
 onboarding record and carries no gate verdict.
 
+The clean `af3cb22` retry then passed both closures and exposed the underlying
+ledger delta: five private-argmax correction families were present in the
+prover accounting but not replayed by verifier `verify_scalar`.  Clean
+checkpoint `45b29dbd87e8c2213317e8cc3155877b577cddb2` shares those labels and
+charges the existing 16-B messages in the verifier ledger.  It changes no
+wire message, challenge, prover byte total, proof encoding or correlation;
+the failed attempt stopped before coefficient materialization and wrote no
+onboarding record.
+
 ## Frozen real-weight inputs
 
 The following repo-local generated artifacts are present and match

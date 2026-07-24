@@ -131,7 +131,10 @@ requires the native cache to cover the full arena without misclassifying
 separately accounted pre-response cache.  Missing arena cache, active
 ownership drift, response-window allocation fan-out and outstanding
 operations remain hard failures.  This is lifecycle accounting only and
-changes no protocol, proof, root, byte, correlation or soundness term.
+changes no protocol, proof, root, byte, correlation or soundness term.  Clean
+implementation checkpoint `1e3994170e2dcedceeaffd408d19367561d20fca` is
+locally green (367 workspace tests and 15 report-validator tests, zero
+failures).
 
 Because the failed process released the rebuilt host state and the
 onboarding/online validator requires identical source revisions, a corrected

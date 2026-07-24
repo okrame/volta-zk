@@ -453,9 +453,13 @@ historical entries remain append-only evidence, not competing definitions.
   extra response-window resident allocations, missing reset/release,
   outstanding bytes/operations or inconsistent native counters.  A permanent
   test covers both accepted pre-response cache and one-byte-short rejection.
-  This changes no allocation made inside the response, protocol message,
-  challenge, proof byte, root, rate, `s`, correlation, Lean statement,
-  soundness credit or gate.  PCS/response remain exactly
+  Clean implementation checkpoint
+  `1e3994170e2dcedceeaffd408d19367561d20fca` is locally green:
+  format/check, full workspace (**367 passed, 0 failed, 4 existing
+  production-size tests ignored**) and report-validator/tamper suite
+  (**15 passed**) all pass.  This changes no allocation made inside the
+  response, protocol message, challenge, proof byte, root, rate, `s`,
+  correlation, Lean statement, soundness credit or gate.  PCS/response remain exactly
   **2,683,236 / 43,953,700 B**.  Pod execution is HARD STOPPED; another run
   requires a clean locally verified checkpoint, new same-source onboarding
   and a new fresh rebuild because the failed process released all host state.

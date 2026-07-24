@@ -55,6 +55,11 @@ pub(crate) const ARGMAX_REAL_COMPARISONS: usize = 50 * VOCAB;
 const ARGMAX_PACKED_ROWS: usize = ARGMAX_REAL_COMPARISONS / VOCAB;
 const LIMB_BASE: u64 = 1 << 16;
 const MAX_LOGIT_ABS: i64 = 768 * 32_768 * 32_768;
+const PHASE_CLAIM_CORRECTION: &str = "argmax_phase_claim_correction";
+const PHASE_STRICT_CORRECTION: &str = "argmax_phase_strict_correction";
+const PACKED_BRIDGE_CLAIM_CORRECTION: &str = "argmax_packed_bridge_claim_correction";
+const PACKED_BRIDGE_FINAL_CORRECTION: &str = "argmax_packed_bridge_final_correction";
+const PACKED_BRIDGE_LIMB_CORRECTION: &str = "argmax_packed_bridge_limb_correction";
 
 #[derive(Clone, Copy)]
 pub(crate) struct ArgmaxPhaseInput<'a> {
@@ -546,9 +551,11 @@ fn authenticate_scalar(
     (correction, ProverAuthed { x: value, m: correlation.m })
 }
 
-fn verify_scalar(correction: Fp2, cx: &mut BlockCtxV<'_>) -> VerifierKey {
+fn verify_scalar(correction: Fp2, cx: &mut BlockCtxV<'_>, label: &'static str) -> VerifierKey {
     let domain = cx.doms.take(1);
-    VerifierKey { k: cx.ctx.expand_full_keys(domain, 1)[0] + cx.ctx.delta * correction }
+    let key = VerifierKey { k: cx.ctx.expand_full_keys(domain, 1)[0] + cx.ctx.delta * correction };
+    cx.tx.append(label, 16);
+    key
 }
 
 fn job_entries(job: usize) -> usize {
@@ -660,8 +667,7 @@ fn prove_packed_bridge_host(
             .zip(selector.par_iter())
             .map(|(&entry, &weight)| entry * weight)
             .reduce(|| Fp2::ZERO, |left, right| left + right);
-        let (correction, claim) =
-            authenticate_scalar(value, cx, "argmax_packed_bridge_claim_correction");
+        let (correction, claim) = authenticate_scalar(value, cx, PACKED_BRIDGE_CLAIM_CORRECTION);
         claim_corrs[job] = correction;
         initial[job] = claim;
         factors.push((column.to_vec(), selector));
@@ -687,7 +693,7 @@ fn prove_packed_bridge_host(
     let mut sumchecks = Vec::with_capacity(PACKED_JOBS);
     for (job, output) in outputs.into_iter().enumerate() {
         let (correction, strict_final) =
-            authenticate_scalar(output.a_final, cx, "argmax_packed_bridge_final_correction");
+            authenticate_scalar(output.a_final, cx, PACKED_BRIDGE_FINAL_CORRECTION);
         strict_final_corrs[job] = correction;
         let eq = eq_vec(&output.point);
         let start = if job == 0 { 0 } else { FIRST_JOB_ENTRIES };
@@ -700,7 +706,7 @@ fn prove_packed_bridge_host(
                 .reduce(|| Fp2::ZERO, |left, right| left + right);
             let instance = instance_index(limb, job);
             let (limb_correction, limb_claim) =
-                authenticate_scalar(value, cx, "argmax_packed_bridge_limb_correction");
+                authenticate_scalar(value, cx, PACKED_BRIDGE_LIMB_CORRECTION);
             limb_final_corrs[instance] = limb_correction;
             aux[instance].push(LeafAuxClaim {
                 col: 0,
@@ -895,7 +901,7 @@ fn prove_packed_bridge_resident(
                 }
             };
             let (correction, claim) =
-                authenticate_scalar(value, cx, "argmax_packed_bridge_claim_correction");
+                authenticate_scalar(value, cx, PACKED_BRIDGE_CLAIM_CORRECTION);
             claim_corrs[job] = correction;
             initial[job] = claim;
             jobs_owned.push((a, b));
@@ -928,16 +934,13 @@ fn prove_packed_bridge_resident(
         let mut sumchecks = Vec::with_capacity(PACKED_JOBS);
         for (job, output) in outputs.into_iter().enumerate() {
             let (correction, strict_final) =
-                authenticate_scalar(output.a_final, cx, "argmax_packed_bridge_final_correction");
+                authenticate_scalar(output.a_final, cx, PACKED_BRIDGE_FINAL_CORRECTION);
             strict_final_corrs[job] = correction;
             let limb_values = resident_limb_evals(resident, job, &output.point, backend)?;
             let limb_claims: [ProverAuthed; LIMBS] = std::array::from_fn(|limb| {
                 let instance = instance_index(limb, job);
-                let (limb_correction, limb_claim) = authenticate_scalar(
-                    limb_values[limb],
-                    cx,
-                    "argmax_packed_bridge_limb_correction",
-                );
+                let (limb_correction, limb_claim) =
+                    authenticate_scalar(limb_values[limb], cx, PACKED_BRIDGE_LIMB_CORRECTION);
                 limb_final_corrs[instance] = limb_correction;
                 aux[instance].push(LeafAuxClaim {
                     col: 0,
@@ -974,8 +977,9 @@ fn verify_packed_bridge(
         .iter()
         .zip(&coefficients)
         .fold(VerifierKey::ZERO, |sum, (&claim, &coefficient)| sum.add(claim.scale(coefficient)));
-    let initial: [VerifierKey; PACKED_JOBS] =
-        std::array::from_fn(|job| verify_scalar(proof.claim_corrs[job], cx));
+    let initial: [VerifierKey; PACKED_JOBS] = std::array::from_fn(|job| {
+        verify_scalar(proof.claim_corrs[job], cx, PACKED_BRIDGE_CLAIM_CORRECTION)
+    });
     cx.kzero.push(initial[0].add(initial[1]).sub(aggregate));
     let (schedule, bases) = mapping_schedule(&mut cx.doms);
     let jobs = (0..PACKED_JOBS)
@@ -989,10 +993,12 @@ fn verify_packed_bridge(
         .collect();
     let outputs = blind_verify_batch(&schedule, jobs, cx.ctx, cx.tx)?;
     for (job, output) in outputs.into_iter().enumerate() {
-        let strict_final = verify_scalar(proof.strict_final_corrs[job], cx);
+        let strict_final =
+            verify_scalar(proof.strict_final_corrs[job], cx, PACKED_BRIDGE_FINAL_CORRECTION);
         let limb_keys: [VerifierKey; LIMBS] = std::array::from_fn(|limb| {
             let instance = instance_index(limb, job);
-            let key = verify_scalar(proof.limb_final_corrs[instance], cx);
+            let key =
+                verify_scalar(proof.limb_final_corrs[instance], cx, PACKED_BRIDGE_LIMB_CORRECTION);
             aux[instance].push((0, output.point.clone(), key));
             key
         });
@@ -1135,7 +1141,7 @@ fn prove_private_argmax_host(
         let tau: Vec<Fp2> = (0..ARGMAX_VARS).map(|_| cx.tx.challenge_fp2()).collect();
         let phase_value = eval_phase_logits(&host, phase, &tau);
         let (phase_corr, phase_claim) =
-            authenticate_scalar(phase_value, &mut cx, "argmax_phase_claim_correction");
+            authenticate_scalar(phase_value, &mut cx, PHASE_CLAIM_CORRECTION);
         phase_claim_corrs.push(phase_corr);
         let hadamard_doms = HadamardDoms::alloc(&mut cx.doms, ARGMAX_VARS);
         let (hadamard, point, logit_claim, mask_claim) = hadamard_prove(
@@ -1152,7 +1158,7 @@ fn prove_private_argmax_host(
         cx.zero.push(mask_claim.sub(ProverAuthed::from_public(eval_phase_mask(phase, &point))));
         let strict_value = eval_fp2_column(&host.strict, &point);
         let (strict_corr, strict_claim) =
-            authenticate_scalar(strict_value, &mut cx, "argmax_phase_strict_correction");
+            authenticate_scalar(strict_value, &mut cx, PHASE_STRICT_CORRECTION);
         phase_strict_corrs.push(strict_corr);
         bridge_points.push(point.clone());
         bridge_claims.push(strict_claim);
@@ -1274,7 +1280,7 @@ fn prove_private_argmax_resident_inner(
             }
         };
         let (phase_corr, phase_claim) =
-            authenticate_scalar(phase_value, &mut cx, "argmax_phase_claim_correction");
+            authenticate_scalar(phase_value, &mut cx, PHASE_CLAIM_CORRECTION);
         phase_claim_corrs.push(phase_corr);
         let hadamard_doms = HadamardDoms::alloc(&mut cx.doms, ARGMAX_VARS);
         let (hadamard, point, logit_claim, mask_claim) = hadamard_prove_resident(
@@ -1296,7 +1302,7 @@ fn prove_private_argmax_resident_inner(
             .expect("resident argmax backend")
             .mle_eval_device(resident.strict(), &point)?;
         let (strict_corr, strict_claim) =
-            authenticate_scalar(strict_value, &mut cx, "argmax_phase_strict_correction");
+            authenticate_scalar(strict_value, &mut cx, PHASE_STRICT_CORRECTION);
         phase_strict_corrs.push(strict_corr);
         bridge_points.push(point.clone());
         bridge_claims.push(strict_claim);
@@ -1454,7 +1460,8 @@ pub(crate) fn verify_private_argmax(
 
     for (index, phase) in phases.iter().enumerate() {
         let tau: Vec<Fp2> = (0..ARGMAX_VARS).map(|_| cx.tx.challenge_fp2()).collect();
-        let phase_claim = verify_scalar(proof.phase_claim_corrs[index], &mut cx);
+        let phase_claim =
+            verify_scalar(proof.phase_claim_corrs[index], &mut cx, PHASE_CLAIM_CORRECTION);
         let hadamard_doms = HadamardDoms::alloc(&mut cx.doms, ARGMAX_VARS);
         let (point, logit_key, mask_key) = hadamard_verify(
             &tau,
@@ -1469,7 +1476,8 @@ pub(crate) fn verify_private_argmax(
         cx.kzero.push(
             mask_key.sub(VerifierKey::from_public(eval_phase_mask(phase, &point), cx.ctx.delta)),
         );
-        let strict_key = verify_scalar(proof.phase_strict_corrs[index], &mut cx);
+        let strict_key =
+            verify_scalar(proof.phase_strict_corrs[index], &mut cx, PHASE_STRICT_CORRECTION);
         bridge_points.push(point.clone());
         bridge_claims.push(strict_key);
         let c_key = open_fp_vec_k(&prepared.selected_row_keys, &point[ARGMAX_COL_BITS..]);
@@ -1626,5 +1634,25 @@ mod tests {
         assert!(phase_layout_from_lengths(&[1, 50]).is_none());
         assert!(phase_layout_from_lengths(&[1, 64]).is_none());
         assert!(phase_layout_from_lengths(&[0, 1]).is_none());
+    }
+
+    #[test]
+    fn verifier_scalar_replays_the_prover_correction_ledger() {
+        let seed = [0xA7; 32];
+        let delta = Fp2::new(Fp::new(17), Fp::new(29));
+        let mut verifier = VerifierCtx::new(seed, delta);
+        let mut transcript = Transcript::new(seed);
+        let mut bank = TableBankV::empty();
+        {
+            let mut context =
+                BlockCtxV::new(&mut verifier, &mut transcript, ARGMAX_SECTION, &mut bank);
+            let _ = verify_scalar(
+                Fp2::new(Fp::new(3), Fp::new(5)),
+                &mut context,
+                PHASE_CLAIM_CORRECTION,
+            );
+        }
+        assert_eq!(transcript.bytes_for(PHASE_CLAIM_CORRECTION), 16);
+        assert_eq!(transcript.total_bytes(), 16);
     }
 }

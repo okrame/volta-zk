@@ -406,6 +406,36 @@ historical entries remain append-only evidence, not competing definitions.
 
 ## Deviations / decisions log
 
+- **2026-07-24 — Real-weight prepass transcript-boundary HARD STOP and
+  fail-closed correction.**  After the golden-geometry repair, the first
+  onboarding invocation from clean
+  `4c97ebbdcb5ec3a3bb0641ea3720fcb921453ffd` passed the immutable golden and
+  stopped before coefficient materialization, durable-tier creation or
+  onboarding-record output:
+
+  - `x4c_gpt2_e2e_record HARD STOP: mock model transcript differs across roles`
+
+  Structural verification of the real-weight model proof had succeeded.  The
+  prepass then compared prover/verifier transcript byte counts too early:
+  before the product and zero-batch MAC closures that complete and reconcile
+  the two ledgers.  This was a driver timing-boundary error, not proof
+  acceptance and not a protocol transcript mismatch.
+
+  Checkpoint `79b0142106fc27ca3db2daf2ee99e6527b3d5c10` executes both MAC closures in
+  the prepass, requires their acceptance, and compares both transcript bytes
+  and the complete ledger only after that boundary.  It snapshots model
+  correlation counts before the closure, so the existing explicit `+2`
+  allocation for the two closures remains exact rather than being
+  double-counted.  Local format/check, the full Rust workspace
+  (**364 passed, 0 failed, 4 existing production-size tests ignored**) and
+  the report-validator suite (**15 passed**) are green.
+
+  No protocol step, transcript message, rate, `s`, root, codec, proof byte,
+  correlation budget, Lean statement, soundness term or gate changed.  The
+  failed invocation is append-only diagnostic evidence and no onboarding or
+  online verdict may be inferred from it.  A pod retry requires another fresh
+  clean descendant checkout and fresh onboarding paths.
+
 - **2026-07-24 — Real-weight onboarding golden-geometry HARD STOP and
   fail-closed correction.**  The first onboarding invocation from clean
   `092dda1077955505b19953b533d21e6f97d264bc` on migrated container hostname

@@ -48,6 +48,16 @@ unchanged and exact: **616 B**, SHA-256 `e102783a...`, with its documented
 require that full 616-B geometry and exact `T=100` / `N=50` header.  The
 failed invocation wrote no onboarding record and carries no gate verdict.
 
+The next clean `4c97ebb` attempt passed that input gate and then stopped
+before coefficient materialization because the driver compared the two model
+transcripts before their product and zero-batch MAC closures.  Clean
+checkpoint `79b0142106fc27ca3db2daf2ee99e6527b3d5c10` now executes and verifies
+both closures, compares byte counts and ledgers at the correct post-closure
+boundary, and preserves the pre-closure correlation census used by the
+explicit `+2` budget.  This corrects only prepass control flow; it changes no
+protocol transcript or parameter.  The failed attempt also wrote no
+onboarding record and carries no gate verdict.
+
 ## Frozen real-weight inputs
 
 The following repo-local generated artifacts are present and match

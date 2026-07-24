@@ -355,7 +355,7 @@ fn mock_model_outputs(workload: &Workload) -> Result<(ModelOut, ModelOutV, u64, 
     let chunks = [ChunkRef { band: &workload.band, seq: &workload.sequence }];
     let mut stream = CorrelationStream::new([0x42; 32]);
     let mut prover_tx = Transcript::new([0x18; 32]);
-    let (proof, output, _, _) = prove_response_private_logits(
+    let (proof, output, prod, zero) = prove_response_private_logits(
         &workload.model,
         &workload.prefill,
         &chunks,
@@ -366,7 +366,7 @@ fn mock_model_outputs(workload: &Workload) -> Result<(ModelOut, ModelOutV, u64, 
         VerifierCtx::new([0x42; 32], Fp2::new(Fp::new(0xD31C_5A17), Fp::new(0x0BAD_CAFE)));
     let mut verifier_tx = Transcript::new([0x18; 32]);
     let public = [PrivateChunkPub { q: workload.band.q, seq: &workload.sequence }];
-    let (verified, _, _) = verify_response_private_logits(
+    let (verified, kprod, kzero) = verify_response_private_logits(
         &workload.model,
         workload.prefill.t,
         &public,
@@ -375,10 +375,26 @@ fn mock_model_outputs(workload: &Workload) -> Result<(ModelOut, ModelOutV, u64, 
         &mut verifier_tx,
     )
     .ok_or_else(|| "mock model proof failed verification".to_owned())?;
-    if prover_tx.total_bytes() != verifier_tx.total_bytes() {
-        return Err("mock model transcript differs across roles".to_owned());
+    let model_sub_corrs = stream.counters.sub_corrs;
+    let model_full_corrs = stream.counters.full_corrs;
+    if !close_model_response(
+        &prod,
+        &zero,
+        &kprod,
+        &kzero,
+        &mut stream,
+        &mut verifier,
+        &mut prover_tx,
+        &mut verifier_tx,
+    ) {
+        return Err("mock model proof failed MAC closure".to_owned());
     }
-    Ok((output, verified, stream.counters.sub_corrs, stream.counters.full_corrs))
+    if prover_tx.total_bytes() != verifier_tx.total_bytes()
+        || prover_tx.ledger() != verifier_tx.ledger()
+    {
+        return Err("mock model transcript differs after closure".to_owned());
+    }
+    Ok((output, verified, model_sub_corrs, model_full_corrs))
 }
 
 fn selected_tape() -> Result<X4cSelectedQueryTapeV4, String> {

@@ -406,6 +406,41 @@ historical entries remain append-only evidence, not competing definitions.
 
 ## Deviations / decisions log
 
+- **2026-07-24 — Complete model-transcript accounting reconciliation after
+  fourth pre-materialization HARD STOP.**  The clean
+  `e771745cccb3ffc922f3e8259d411d66279473a2` retry confirmed that replaying
+  only the five private-argmax correction families was insufficient and
+  stopped at the same post-closure equality gate, again before coefficients,
+  durable files or an onboarding record.
+
+  A local real-weight diagnostic then measured the complete canonical
+  boundary instead of trying another pod projection.  Before the two 64-B
+  aggregate MAC-closure messages, the prover model transcript is exactly
+  **41,270,400 B**.  The structurally accepting verifier APIs natively charge
+  **236,288 B** of that accounting surface; the exact remaining ledger replay
+  is **41,034,112 B across 25 labels**.  The frozen byte identity closes:
+
+  - `41,270,400 model + 2,683,236 PCS + 64 closure = 43,953,700 response B`.
+
+  Checkpoint `ad3f1107ec320cbc7a049d2a1dedba9a58966c19` adds a driver-local,
+  fail-closed accounting reconciliation after structural model verification
+  and before X4c.  It rejects every verifier byte exceeding the canonical
+  prover ledger, requires exact final ledger equality, and additionally pins
+  the exact **41,270,400 / 41,034,112 / 25** census.  These values are
+  mandatory per-candidate schema-2 fields; the report validator rejects
+  missing or contradictory replay evidence.  The real-weight local
+  transcript diagnostic passes, as do format/check, the full workspace
+  (**366 passed, 0 failed, 4 existing production-size tests ignored**) and
+  the report-validator suite (**15 passed**).
+
+  This replay changes only verifier-side accounting in the single-process
+  harness.  It does not append a new wire message, change a challenge,
+  derive soundness credit, alter prover bytes, or change the canonical PCS or
+  response.  Protocol, rate `1/8`, `s=111`, roots, codec, proof format,
+  correlations, Lean, soundness and gates remain frozen.  The failed pod
+  invocation and the local diagnostic are append-only diagnostics, not
+  onboarding or online evidence.
+
 - **2026-07-24 — Private-argmax verifier-ledger HARD STOP and accounting
   correction.**  The clean `af3cb22ec8de87b17acfffadf1489be8afa0f857`
   onboarding prepass passed the corrected golden geometry, structural model

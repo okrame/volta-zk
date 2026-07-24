@@ -67,6 +67,17 @@ wire message, challenge, prover byte total, proof encoding or correlation;
 the failed attempt stopped before coefficient materialization and wrote no
 onboarding record.
 
+The clean `e771745` retry established that the remaining legacy model
+verifier APIs also omit accounting-only mirrors.  A local real-weight ledger
+diagnostic measured the complete boundary: **41,270,400 B** canonical model
+prover transcript, **41,034,112 B / 25 labels** replayed to the structurally
+accepting verifier, plus **2,683,236 B PCS** and **64 B** of aggregate MAC
+closure, exactly **43,953,700 B** total response.  Clean checkpoint
+`ad3f1107ec320cbc7a049d2a1dedba9a58966c19` makes those values fail-closed
+candidate fields and validator requirements.  The replay is accounting-only:
+it rejects verifier excess, requires exact final ledger equality, and changes
+no wire message, challenge, proof encoding, correlation or soundness claim.
+
 ## Frozen real-weight inputs
 
 The following repo-local generated artifacts are present and match

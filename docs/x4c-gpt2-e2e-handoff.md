@@ -103,9 +103,11 @@ Across the frozen 51-block geometry this is
 `32 × (2×26 + 36×22 + 13×20) = 35,328 B`.  The local correction mirrors only
 those already transmitted bytes, pins both role deltas to 35,328 B and
 requires full ledger equality.  It changes no wire byte, challenge,
-correlation, proof, root or protocol parameter.  Pod execution remains HARD
-STOPPED until this correction has a clean locally verified descendant
-checkpoint and a newly authorized retry uses fresh authorization stores.
+correlation, proof, root or protocol parameter.  Clean implementation
+checkpoint `187acc5c384ebde13e844dc30fb0792a6467ca80` is locally green (367
+workspace tests and 15 report-validator tests, zero failures).  Pod execution
+remains HARD STOPPED until a newly authorized retry uses a clean descendant
+checkout and fresh authorization stores.
 
 ## Frozen real-weight inputs
 

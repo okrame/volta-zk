@@ -452,7 +452,11 @@ historical entries remain append-only evidence, not competing definitions.
   by exactly **35,328 B**.  The correction mirrors those already-on-wire
   bytes after structural verification, pins both role deltas to 35,328 B and
   requires complete ledger equality.  A permanent production-geometry test
-  covers all 51 blocks.
+  covers all 51 blocks.  Implementation checkpoint
+  `187acc5c384ebde13e844dc30fb0792a6467ca80` is locally green:
+  format/check, full workspace (**367 passed, 0 failed, 4 existing
+  production-size tests ignored**) and report-validator/tamper suite
+  (**15 passed**) all pass.
 
   This correction adds no wire message or challenge, changes no prover
   transcript byte, proof encoding, correlation, root, codec or protocol

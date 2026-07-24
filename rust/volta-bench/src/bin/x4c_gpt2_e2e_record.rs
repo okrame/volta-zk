@@ -72,6 +72,11 @@ const GPT2_DECODE_TOKENS: usize = 50;
 const GOLDEN_P6_HEADER_BYTES: usize = 16;
 const GOLDEN_P6_BYTES: usize =
     GOLDEN_P6_HEADER_BYTES + 4 * GPT2_DECODE_TOKENS + 8 * GPT2_DECODE_TOKENS;
+const MODEL_MAC_CLOSURE_BYTES: u64 = 64;
+const MODEL_TRANSCRIPT_PROVER_BYTES: u64 =
+    X4C_GPT2_RESPONSE_BYTES - X4C_GPT2_PCS_BYTES - MODEL_MAC_CLOSURE_BYTES;
+const MODEL_TRANSCRIPT_REPLAY_BYTES: u64 = 41_034_112;
+const MODEL_TRANSCRIPT_REPLAY_LABELS: u64 = 25;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Mode {
@@ -175,6 +180,50 @@ fn hex(value: &[u8]) -> String {
 fn upper_median(mut values: Vec<f64>) -> f64 {
     values.sort_by(f64::total_cmp);
     values[values.len() / 2]
+}
+
+#[derive(Clone, Copy, Debug)]
+struct TranscriptAccountingReplay {
+    bytes: u64,
+    labels: u64,
+}
+
+fn reconcile_model_transcript_accounting(
+    prover: &Transcript,
+    verifier: &mut Transcript,
+) -> Result<TranscriptAccountingReplay, String> {
+    for (&label, &verifier_bytes) in verifier.ledger() {
+        let prover_bytes = prover.ledger().get(label).copied().unwrap_or(0);
+        if verifier_bytes > prover_bytes {
+            return Err(format!(
+                "verifier model transcript exceeds prover ledger at {label}: \
+                 verifier={verifier_bytes} prover={prover_bytes}"
+            ));
+        }
+    }
+    let replay = prover
+        .ledger()
+        .iter()
+        .filter_map(|(&label, &prover_bytes)| {
+            let verifier_bytes = verifier.ledger().get(label).copied().unwrap_or(0);
+            (prover_bytes > verifier_bytes).then_some((label, prover_bytes - verifier_bytes))
+        })
+        .collect::<Vec<_>>();
+    let mut bytes = 0u64;
+    for (label, delta) in &replay {
+        verifier.append(label, *delta);
+        bytes = bytes
+            .checked_add(*delta)
+            .ok_or_else(|| "model transcript replay byte count overflows".to_owned())?;
+    }
+    if prover.total_bytes() != verifier.total_bytes() || prover.ledger() != verifier.ledger() {
+        return Err("model transcript accounting replay did not reconcile exactly".to_owned());
+    }
+    Ok(TranscriptAccountingReplay {
+        bytes,
+        labels: u64::try_from(replay.len())
+            .map_err(|_| "model transcript replay label count overflows".to_owned())?,
+    })
 }
 
 fn sha256(path: &Path) -> Result<String, String> {
@@ -311,9 +360,10 @@ fn workload(weights: &Path) -> Result<Workload, String> {
 #[cfg(test)]
 mod golden_p6_tests {
     use super::{
-        parse_golden_p6_tokens, GOLDEN_P6_BYTES, GOLDEN_P6_HEADER_BYTES, GPT2_DECODE_TOKENS,
-        GPT2_PROMPT_TOKENS,
+        parse_golden_p6_tokens, reconcile_model_transcript_accounting, GOLDEN_P6_BYTES,
+        GOLDEN_P6_HEADER_BYTES, GPT2_DECODE_TOKENS, GPT2_PROMPT_TOKENS,
     };
+    use volta_mac::Transcript;
 
     fn canonical_golden() -> Vec<u8> {
         let mut golden = Vec::with_capacity(GOLDEN_P6_BYTES);
@@ -349,6 +399,23 @@ mod golden_p6_tests {
         wrong_shape[12..16].copy_from_slice(&49u32.to_le_bytes());
         assert!(parse_golden_p6_tokens(&wrong_shape).is_err());
     }
+
+    #[test]
+    fn model_transcript_accounting_replay_is_exact_and_fail_closed() {
+        let seed = [0x6A; 32];
+        let mut prover = Transcript::new(seed);
+        let mut verifier = Transcript::new(seed);
+        prover.append("model_test_a", 32);
+        prover.append("model_test_b", 16);
+        verifier.append("model_test_a", 8);
+        let replay = reconcile_model_transcript_accounting(&prover, &mut verifier).unwrap();
+        assert_eq!((replay.bytes, replay.labels), (40, 2));
+        assert_eq!(prover.ledger(), verifier.ledger());
+
+        let mut contradictory = Transcript::new(seed);
+        contradictory.append("model_test_a", 33);
+        assert!(reconcile_model_transcript_accounting(&prover, &mut contradictory).is_err());
+    }
 }
 
 fn mock_model_outputs(workload: &Workload) -> Result<(ModelOut, ModelOutV, u64, u64), String> {
@@ -377,6 +444,23 @@ fn mock_model_outputs(workload: &Workload) -> Result<(ModelOut, ModelOutV, u64, 
     .ok_or_else(|| "mock model proof failed verification".to_owned())?;
     let model_sub_corrs = stream.counters.sub_corrs;
     let model_full_corrs = stream.counters.full_corrs;
+    if prover_tx.total_bytes() != MODEL_TRANSCRIPT_PROVER_BYTES {
+        return Err(format!(
+            "mock model prover transcript bytes changed: expected \
+             {MODEL_TRANSCRIPT_PROVER_BYTES}, got {}",
+            prover_tx.total_bytes()
+        ));
+    }
+    let replay = reconcile_model_transcript_accounting(&prover_tx, &mut verifier_tx)?;
+    if replay.bytes != MODEL_TRANSCRIPT_REPLAY_BYTES
+        || replay.labels != MODEL_TRANSCRIPT_REPLAY_LABELS
+    {
+        return Err(format!(
+            "mock model transcript replay changed: expected \
+             {MODEL_TRANSCRIPT_REPLAY_BYTES} B/{MODEL_TRANSCRIPT_REPLAY_LABELS} labels, got {} B/{} labels",
+            replay.bytes, replay.labels
+        ));
+    }
     if !close_model_response(
         &prod,
         &zero,
@@ -392,7 +476,7 @@ fn mock_model_outputs(workload: &Workload) -> Result<(ModelOut, ModelOutV, u64, 
     if prover_tx.total_bytes() != verifier_tx.total_bytes()
         || prover_tx.ledger() != verifier_tx.ledger()
     {
-        return Err("mock model transcript differs after closure".to_owned());
+        return Err("mock model transcript differs after accounting replay and closure".to_owned());
     }
     Ok((output, verified, model_sub_corrs, model_full_corrs))
 }
@@ -1220,6 +1304,10 @@ struct CandidateRow {
     model_root: String,
     model_prove_s: f64,
     model_verify_s: f64,
+    model_transcript_prover_bytes: u64,
+    model_transcript_replay_bytes: u64,
+    model_transcript_replay_labels: u64,
+    model_transcript_accounting_exact: bool,
     pcs_total_s: f64,
     seal_wall_s: f64,
     open_wall_s: f64,
@@ -1779,6 +1867,25 @@ fn online(args: &Args) -> Result<(), String> {
         )
         .ok_or_else(|| "real-weight model proof rejected".to_owned())?;
         let model_verify_s = model_verify_started.elapsed().as_secs_f64();
+        let model_transcript_prover_bytes = prover_tx.total_bytes();
+        if model_transcript_prover_bytes != MODEL_TRANSCRIPT_PROVER_BYTES {
+            return Err(format!(
+                "real-weight model prover transcript bytes changed: expected \
+                 {MODEL_TRANSCRIPT_PROVER_BYTES}, got {model_transcript_prover_bytes}"
+            ));
+        }
+        let model_transcript_replay =
+            reconcile_model_transcript_accounting(&prover_tx, &mut verifier_tx)?;
+        let model_transcript_accounting_exact = model_transcript_replay.bytes
+            == MODEL_TRANSCRIPT_REPLAY_BYTES
+            && model_transcript_replay.labels == MODEL_TRANSCRIPT_REPLAY_LABELS;
+        if !model_transcript_accounting_exact {
+            return Err(format!(
+                "real-weight model transcript replay changed: expected \
+                 {MODEL_TRANSCRIPT_REPLAY_BYTES} B/{MODEL_TRANSCRIPT_REPLAY_LABELS} labels, got {} B/{} labels",
+                model_transcript_replay.bytes, model_transcript_replay.labels
+            ));
+        }
         let before_io = IoObservation::current()?;
         runtime
             .begin_response_measurement()
@@ -1881,6 +1988,7 @@ fn online(args: &Args) -> Result<(), String> {
         let verifier_accepted = closure_ok;
         let candidate_pass = verifier_accepted
             && freshness_markers_persisted
+            && model_transcript_accounting_exact
             && transcript_bytes_equal
             && transcript_ledger_equal
             && stream.counters == verifier.counters
@@ -1939,6 +2047,10 @@ fn online(args: &Args) -> Result<(), String> {
             model_root,
             model_prove_s,
             model_verify_s,
+            model_transcript_prover_bytes,
+            model_transcript_replay_bytes: model_transcript_replay.bytes,
+            model_transcript_replay_labels: model_transcript_replay.labels,
+            model_transcript_accounting_exact,
             pcs_total_s,
             seal_wall_s,
             open_wall_s,

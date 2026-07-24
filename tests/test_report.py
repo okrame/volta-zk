@@ -1344,6 +1344,16 @@ def _x4c_gpt2_records(report):
             "model_root": f"{900 + ordinal:064x}",
             "model_prove_s": 1.0,
             "model_verify_s": 0.1,
+            "model_transcript_prover_bytes": (
+                report.X4C_GPT2_MODEL_TRANSCRIPT_PROVER_BYTES
+            ),
+            "model_transcript_replay_bytes": (
+                report.X4C_GPT2_MODEL_TRANSCRIPT_REPLAY_BYTES
+            ),
+            "model_transcript_replay_labels": (
+                report.X4C_GPT2_MODEL_TRANSCRIPT_REPLAY_LABELS
+            ),
+            "model_transcript_accounting_exact": True,
             "pcs_total_s": 2.0,
             "seal_wall_s": 1.0,
             "open_wall_s": open_wall,
@@ -1551,6 +1561,12 @@ def test_x4c_gpt2_e2e_validators_are_complete_and_fail_closed(tmp_path):
         ].update({"response_round_allocations": 1}),
         lambda row: row["candidates"][0].update(
             {"expected_full_correlations": 1}
+        ),
+        lambda row: row["candidates"][0].pop(
+            "model_transcript_replay_bytes"
+        ),
+        lambda row: row["candidates"][0].update(
+            {"model_transcript_replay_labels": 24}
         ),
         lambda row: row["rebuild"].update({"host_oracle_bytes": 1}),
     )

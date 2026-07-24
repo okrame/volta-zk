@@ -95,6 +95,9 @@ X4_V4_SOUNDNESS_FLOOR_BITS = 78.809294874
 X4_V4_PACKED_OPENING_BYTES = 2_615_414
 X4_V4_PCS_BYTES = 2_683_236
 X4_V4_RESPONSE_BYTES = 43_953_700
+X4C_GPT2_MODEL_TRANSCRIPT_PROVER_BYTES = X4_V4_RESPONSE_BYTES - X4_V4_PCS_BYTES - 64
+X4C_GPT2_MODEL_TRANSCRIPT_REPLAY_BYTES = 41_034_112
+X4C_GPT2_MODEL_TRANSCRIPT_REPLAY_LABELS = 25
 X4_V4_POD_PROFILE = "runpod-a100-x4-v1"
 X4_V4_FROZEN_BASELINE_SHA256 = (
     "1383fa5d0a2eb9155f1ca76fe814238c04eaaa7aab965e10374b5f07d220bfb7"
@@ -3353,6 +3356,10 @@ def _x4c_gpt2_candidate_valid(
         "model_root",
         "model_prove_s",
         "model_verify_s",
+        "model_transcript_prover_bytes",
+        "model_transcript_replay_bytes",
+        "model_transcript_replay_labels",
+        "model_transcript_accounting_exact",
         "pcs_total_s",
         "seal_wall_s",
         "open_wall_s",
@@ -3417,6 +3424,13 @@ def _x4c_gpt2_candidate_valid(
             for key in timing_keys
         )
         and row["session_reusable_wall_s"] >= row["proof_ready_wall_s"]
+        and row["model_transcript_prover_bytes"]
+        == X4C_GPT2_MODEL_TRANSCRIPT_PROVER_BYTES
+        and row["model_transcript_replay_bytes"]
+        == X4C_GPT2_MODEL_TRANSCRIPT_REPLAY_BYTES
+        and row["model_transcript_replay_labels"]
+        == X4C_GPT2_MODEL_TRANSCRIPT_REPLAY_LABELS
+        and row["model_transcript_accounting_exact"] is True
         and row["complete_pcs_bytes"] == X4_V4_PCS_BYTES
         and row["response_bytes"] == X4_V4_RESPONSE_BYTES
         and row["sub_correlations"]

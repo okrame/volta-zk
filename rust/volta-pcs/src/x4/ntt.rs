@@ -5,6 +5,7 @@
 
 use std::sync::OnceLock;
 
+use rayon::prelude::*;
 use volta_field::{Fp, Fp2, P};
 
 use super::merkle::MerkleError;
@@ -137,16 +138,53 @@ pub fn multilinear_coefficients(evaluations: &[Fp2]) -> Result<Vec<Fp2>, MerkleE
         return Err(MerkleError::InvalidGeometry("MLE evaluation table"));
     }
     let mut coefficients = evaluations.to_vec();
-    let variables = evaluations.len().ilog2();
+    multilinear_coefficients_in_place(&mut coefficients)?;
+    Ok(coefficients)
+}
+
+/// In-place Möbius transform from Boolean-hypercube evaluations to
+/// multilinear monomial coefficients.
+///
+/// The production GPT-2 X4c exporter uses this form so a largest real-weight
+/// slot does not transiently own a second multi-gigabyte table. It is exactly
+/// the same transform as [`multilinear_coefficients`].
+pub fn multilinear_coefficients_in_place(values: &mut [Fp2]) -> Result<(), MerkleError> {
+    if values.is_empty() || !values.len().is_power_of_two() {
+        return Err(MerkleError::InvalidGeometry("MLE evaluation table"));
+    }
+    let variables = values.len().ilog2();
     for bit in 0..variables {
         let mask = 1usize << bit;
-        for index in 0..coefficients.len() {
-            if index & mask != 0 {
-                coefficients[index] = coefficients[index] - coefficients[index ^ mask];
+        values.par_chunks_exact_mut(2 * mask).for_each(|chunk| {
+            let (low, high) = chunk.split_at_mut(mask);
+            for (upper, lower) in high.iter_mut().zip(low) {
+                *upper = *upper - *lower;
             }
-        }
+        });
     }
-    Ok(coefficients)
+    Ok(())
+}
+
+/// Inverse of [`multilinear_coefficients_in_place`].
+///
+/// This reconstructs the exact evaluation table from the durable coefficient
+/// tier for the authenticated-output claim-reduction/link stage. No
+/// transcript field or committed value is changed.
+pub fn multilinear_evaluations_in_place(values: &mut [Fp2]) -> Result<(), MerkleError> {
+    if values.is_empty() || !values.len().is_power_of_two() {
+        return Err(MerkleError::InvalidGeometry("MLE coefficient table"));
+    }
+    let variables = values.len().ilog2();
+    for bit in 0..variables {
+        let mask = 1usize << bit;
+        values.par_chunks_exact_mut(2 * mask).for_each(|chunk| {
+            let (low, high) = chunk.split_at_mut(mask);
+            for (upper, lower) in high.iter_mut().zip(low) {
+                *upper = *upper + *lower;
+            }
+        });
+    }
+    Ok(())
 }
 
 pub fn evaluate_multilinear_coefficients(
@@ -280,5 +318,23 @@ mod tests {
                 table[index]
             );
         }
+    }
+
+    #[test]
+    fn in_place_mobius_and_inverse_are_exact_round_trips() {
+        let original: Vec<_> = (0..256).map(|index| symbol(index * 17 + 3)).collect();
+        let mut values = original.clone();
+        multilinear_coefficients_in_place(&mut values).unwrap();
+        assert_eq!(values, multilinear_coefficients(&original).unwrap());
+        multilinear_evaluations_in_place(&mut values).unwrap();
+        assert_eq!(values, original);
+    }
+
+    #[test]
+    fn in_place_mobius_rejects_non_power_of_two_geometry() {
+        assert!(multilinear_coefficients_in_place(&mut []).is_err());
+        assert!(multilinear_coefficients_in_place(&mut [Fp2::ZERO; 3]).is_err());
+        assert!(multilinear_evaluations_in_place(&mut []).is_err());
+        assert!(multilinear_evaluations_in_place(&mut [Fp2::ZERO; 6]).is_err());
     }
 }

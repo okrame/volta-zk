@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -1109,6 +1110,469 @@ def test_x4c_onboarding_and_online_validators_are_complete_and_fail_closed(tmp_p
             )
             is False
         )
+
+
+def _x4c_gpt2_backend(report, *, h2d=1, d2h=1):
+    return {
+        "measurement_wall_ns": 1,
+        "operations": [
+            [name, 0]
+            for name in (
+                "gemm",
+                "logup",
+                "pcs_rows",
+                "pcs_ntt",
+                "pcs_merkle",
+                "auth_masks",
+                "mailbox",
+            )
+        ],
+        "h2d_bytes": h2d,
+        "d2h_bytes": d2h,
+        "explicit_d2d_copy_bytes": 0,
+        "device_zeroed_bytes": report.X4C_ARENA_BYTES,
+        "device_generated_bytes": 0,
+        "resident_alloc_requests": 1,
+        "resident_reuse_hits": 0,
+        "resident_free_requests": 1,
+        "live_device_bytes": 0,
+        "peak_device_bytes": report.X4C_ARENA_BYTES,
+        "pinned_allocation_calls": 0,
+        "pinned_alloc_requests": 0,
+        "pinned_reuse_hits": 0,
+        "pinned_free_requests": 0,
+        "pinned_physical_free_calls": 0,
+        "live_pinned_bytes": 1_090_741_982,
+        "peak_pinned_bytes": 1_090_741_982,
+        "x4c_arena_reset_calls": 1,
+        "x4c_arena_reset_bytes": report.X4C_ARENA_BYTES,
+        "timing_event_api_calls": 0,
+        "outstanding_timing_records": 0,
+    }
+
+
+def _x4c_gpt2_io(*, response):
+    return {
+        "rchar": 100,
+        "wchar": 0,
+        "syscr": 1,
+        "syscw": 0,
+        "read_bytes": 0,
+        "write_bytes": 0,
+        "cancelled_write_bytes": 0,
+        "observer_rchar_bytes": 100,
+        "unexpected_rchar_bytes": 0,
+        "unexpected_wchar_bytes": 0,
+        "unexpected_read_bytes": 0,
+        "unexpected_write_bytes": 0,
+        "response_window_exact": response,
+    }
+
+
+def _x4c_gpt2_arena(report, *, proof_ready):
+    arena = report.X4C_ARENA_BYTES
+    return {
+        "capacity_bytes": arena,
+        "committed_bytes": arena,
+        "peak_bytes": arena,
+        "logical_allocations": 1,
+        "response_round_allocations": 0,
+        "reallocations": 0,
+        "logical_deallocations": 0 if proof_ready else 1,
+        "reset_count": 0 if proof_ready else 1,
+        "zeroed_bytes": 0 if proof_ready else arena,
+        "outstanding_allocations": 1 if proof_ready else 0,
+        "outstanding_bytes": arena if proof_ready else 0,
+        "cached_reusable_bytes": 0 if proof_ready else arena,
+        "accelerator_available": True,
+        "baseline_active_device_allocations": 10,
+        "baseline_active_pinned_allocations": 2,
+        "baseline_active_pinned_bytes": 4096,
+        "active_device_allocations": 11 if proof_ready else 10,
+        "active_pinned_allocations": 6,
+        "active_pinned_bytes": 4096 + 1_090_741_982,
+        "outstanding_cuda_operations": 0,
+        "stream_synchronized": True,
+        "pinned_pool_allocations": 4,
+        "pinned_pool_requested_bytes": 1_090_741_982,
+        "native_live_device_bytes": arena if proof_ready else 0,
+        "native_peak_device_bytes": arena,
+        "native_resident_alloc_requests": 1,
+        "native_resident_reuse_hits": 0,
+        "native_resident_free_requests": 0 if proof_ready else 1,
+        "native_arena_reset_calls": 0 if proof_ready else 1,
+        "native_arena_reset_bytes": 0 if proof_ready else arena,
+        "native_device_zeroed_bytes": 0 if proof_ready else arena,
+    }
+
+
+def _x4c_gpt2_records(report):
+    roots = [f"{100 + index:064x}" for index in range(5)]
+    io = _x4c_gpt2_io(response=False)
+    backend = _x4c_gpt2_backend(report)
+
+    def onboarding_pass(role, measured, wall, retained):
+        return {
+            "role": role,
+            "measured": measured,
+            "wall_s": wall,
+            "io": copy.deepcopy(io),
+            "backend": copy.deepcopy(backend),
+            "roots": roots,
+            "coefficient_bytes": report.X4C_DURABLE_COEFFICIENT_BYTES,
+            "oracle_bytes": report.X4C_INITIAL_ORACLE_BYTES,
+            "root_bytes": report.X4C_DURABLE_ROOT_BYTES,
+            "retained_durable": retained,
+            "cleanup_complete": True,
+            "accepted": True,
+        }
+
+    durable = [
+        {
+            "cohort_id": cohort_id,
+            "coefficient_bytes": coefficient_bytes,
+            "coefficient_sha256": f"{200 + index:064x}",
+            "root_bytes": 32,
+            "root_hex": roots[index],
+            "root_sha256": f"{300 + index:064x}",
+        }
+        for index, (cohort_id, coefficient_bytes, _) in enumerate(
+            report.X4C_COHORTS
+        )
+    ]
+    measured_onboarding = [
+        onboarding_pass("measured-1", True, 1.0, False),
+        onboarding_pass("measured-2", True, 3.0, False),
+        onboarding_pass("measured-3", True, 2.0, True),
+    ]
+    onboarding = {
+        "schema": 2,
+        "milestone": report.X4C_GPT2_ONBOARDING_MILESTONE,
+        "git_sha": "a" * 40,
+        "git_dirty": False,
+        "profile": report.X4C_POD_PROFILE,
+        "protocol": report.X4C_GPT2_PROTOCOL,
+        **report.X4C_GPT2_INPUT_SHA256,
+        "model_config_digest": report.X4C_GPT2_INPUT_SHA256[
+            "input_json_sha256"
+        ],
+        "weights_digest": report.X4C_GPT2_INPUT_SHA256["input_bin_sha256"],
+        "parent_domains": [[2 * index, 2 * index + 1] for index in range(51)],
+        "descriptor_digests": [
+            f"{1000 + index:064x}" for index in range(51)
+        ],
+        "mask_seed_commitment_blake3": "b" * 64,
+        "warmup": onboarding_pass("warmup", False, 0.5, False),
+        "measured": measured_onboarding,
+        "selected_upper_median_wall_s": 2.0,
+        "warmup_root_set": roots,
+        "measured_root_sets": [roots, roots, roots],
+        "durable": durable,
+        "durable_census": _x4c_schema2_durable_census(report),
+        "durable_bytes": report.X4C_DURABLE_BYTES,
+        "durable_tier_exact": True,
+        "roots_identical": True,
+        "golden_match": True,
+        "overall_pass": True,
+    }
+    execution = {
+        "direct_fold_calls": 27,
+        "diagnostic_comparisons": 1_592,
+        "diagnostic_mismatches": 0,
+        "diagnostic_gather_calls": 53,
+        "diagnostic_index_h2d_bytes": 37_184,
+        "diagnostic_value_d2h_bytes": 74_368,
+        "n4_tree_calls": 27,
+        "query_gather_calls": 1,
+        "query_gather_operation_count": 53_898,
+        "query_gather_operation_h2d_bytes": 4_743_024,
+        "canonical_template_h2d_bytes": report.X4C_PACKED_OPENING_BYTES,
+        "query_draw_count": 111,
+        "canonical_opening_d2h_bytes": report.X4C_PACKED_OPENING_BYTES,
+        "noncanonical_opening_d2h_bytes": 0,
+        "cpu_fold_tree_clone_bytes": 0,
+    }
+    h2d = (
+        1_159_200_768 * 16
+        + execution["diagnostic_index_h2d_bytes"]
+        + execution["query_gather_operation_h2d_bytes"]
+        + execution["canonical_template_h2d_bytes"]
+    )
+    d2h = (
+        27 * 32
+        + execution["diagnostic_value_d2h_bytes"]
+        + execution["canonical_opening_d2h_bytes"]
+    )
+    response_io = {
+        key: 0
+        for key in (
+            "response_e_ntt_calls",
+            "response_coefficient_files_created",
+            "response_coefficient_bytes_read",
+            "response_coefficient_bytes_written",
+            "response_oracle_files_created",
+            "response_oracle_bytes_read",
+            "response_oracle_bytes_written",
+            "response_full_oracle_comparison_bytes",
+            "staging_files_created",
+            "staging_bytes_read",
+            "staging_bytes_written",
+            "cpu_fold_tree_clone_bytes",
+            "response_overlay_reread_bytes",
+            "response_fadv_dontneed_calls",
+        )
+    }
+    model_sub = 100
+    model_full = 200
+    full = model_full + 2_314 + 2
+
+    def candidate(ordinal, open_wall, verify_wall):
+        return {
+            "role": "warmup" if ordinal == 0 else f"measured-{ordinal}",
+            "ordinal": ordinal,
+            "measured": ordinal != 0,
+            "epoch": 500 + ordinal,
+            "challenge_seed_digest": f"{400 + ordinal:064x}",
+            "response_nonce_digest": f"{500 + ordinal:064x}",
+            "freshness_binding_digest": f"{600 + ordinal:064x}",
+            "freshness_record_digest": f"{700 + ordinal:064x}",
+            "authorization_record_digest": f"{800 + ordinal:064x}",
+            "freshness_markers_persisted": True,
+            "model_root": f"{900 + ordinal:064x}",
+            "model_prove_s": 1.0,
+            "model_verify_s": 0.1,
+            "pcs_total_s": 2.0,
+            "seal_wall_s": 1.0,
+            "open_wall_s": open_wall,
+            "verify_wall_s": verify_wall,
+            "proof_ready_wall_s": 3.0 + ordinal,
+            "session_reusable_wall_s": 4.0 + ordinal,
+            "complete_e2e_wall_s": 10.0 + ordinal,
+            "complete_pcs_bytes": report.X4_V4_PCS_BYTES,
+            "response_bytes": report.X4_V4_RESPONSE_BYTES,
+            "sub_correlations": model_sub,
+            "full_correlations": full,
+            "expected_sub_correlations": model_sub,
+            "expected_full_correlations": full,
+            "correlation_allocation_digest": f"{1000 + ordinal:064x}",
+            "prover_verifier_correlation_digest_equal": True,
+            "transcript_bytes_equal": True,
+            "transcript_ledger_equal": True,
+            "process_io": _x4c_gpt2_io(response=True),
+            "response_window_io_exact": True,
+            "backend": _x4c_gpt2_backend(report, h2d=h2d, d2h=d2h),
+            "metrics": {
+                "response_io": copy.deepcopy(response_io),
+                "execution": copy.deepcopy(execution),
+                "proof_ready_arena": _x4c_gpt2_arena(
+                    report, proof_ready=True
+                ),
+                "session_reusable_arena": _x4c_gpt2_arena(
+                    report, proof_ready=False
+                ),
+                "proof_ready_wall_ns": 3_000_000_000 + ordinal,
+                "session_reusable_wall_ns": 4_000_000_000 + ordinal,
+                "source_coefficients_read": 601_161_728,
+                "initial_encoded_symbols_read": 4_809_293_824,
+                "combined_codeword_symbols": 1_159_200_768,
+                "serialized_fold_bytes": 2_446,
+                "serialized_packed_opening_bytes": report.X4C_PACKED_OPENING_BYTES,
+                "sampling_soundness_credit_bits": 0,
+            },
+            "expected_h2d_bytes": h2d,
+            "expected_d2h_bytes": d2h,
+            "traffic_exact": True,
+            "zero_response_staging": True,
+            "verifier_accepted": True,
+            "connection_audit": {
+                "response_nonce_digest": f"{500 + ordinal:064x}",
+                "allocation_digest": f"{1100 + ordinal:064x}",
+                "channel_ledger_digest": f"{1200 + ordinal:064x}",
+                "correlations_consumed": model_sub + 2 * full,
+                "channel_frames": 0,
+            },
+            "accepted": True,
+        }
+
+    candidates = [
+        candidate(0, 0.05, 0.01),
+        candidate(1, 0.1, 0.01),
+        candidate(2, 0.3, 0.03),
+        candidate(3, 0.2, 0.02),
+    ]
+    rebuild = {
+        "wall_s": 5.0,
+        "io": _x4c_gpt2_io(response=False),
+        "parallel_task_count": 5,
+        "rayon_workers": 8,
+        "cohorts": [
+            {
+                "cohort_id": cohort_id,
+                "coefficient_bytes_read": coefficient_bytes,
+                "host_oracle_bytes": coefficient_bytes * 8,
+                "host_outer_cache_bytes": cache_bytes,
+                "root": roots[index],
+                "expected_root": roots[index],
+                "root_equal": True,
+                "accepted": True,
+            }
+            for index, (cohort_id, coefficient_bytes, cache_bytes) in enumerate(
+                report.X4C_COHORTS
+            )
+        ],
+        "coefficient_bytes_read": report.X4C_DURABLE_COEFFICIENT_BYTES,
+        "evaluation_table_bytes": report.X4C_DURABLE_COEFFICIENT_BYTES,
+        "host_oracle_bytes": report.X4C_INITIAL_ORACLE_BYTES,
+        "host_outer_cache_bytes": report.X4C_INITIAL_OUTER_CACHE_BYTES,
+        "roots_equal_onboarding": True,
+        "durable_census_before": copy.deepcopy(onboarding["durable_census"]),
+        "durable_census_after": copy.deepcopy(onboarding["durable_census"]),
+        "durable_census_stable": True,
+        "accepted": True,
+    }
+    online = {
+        "schema": 2,
+        "milestone": report.X4C_GPT2_ONLINE_MILESTONE,
+        "git_sha": onboarding["git_sha"],
+        "git_dirty": False,
+        "profile": report.X4C_POD_PROFILE,
+        "protocol": report.X4C_GPT2_PROTOCOL,
+        "onboarding_path": "onboarding.json",
+        "onboarding_sha256": "0" * 64,
+        "onboarding_sha256_exact": True,
+        "onboarding_git_sha": onboarding["git_sha"],
+        "clean_source_sha256": "c" * 64,
+        "selected_query_tape_blake3": report.X4C_GPT2_SELECTED_TAPE,
+        **report.X4C_GPT2_INPUT_SHA256,
+        "prefill_tokens": 100,
+        "decode_tokens": 50,
+        "pcg_prg": "aes128-mmo",
+        "pcg_stage_plan": "terminal-one",
+        "model_sub_correlations": model_sub,
+        "model_full_correlations": model_full,
+        "x4c_full_correlations": 2_314,
+        "closure_full_correlations": 2,
+        "golden_match": True,
+        "cpu_cuda_prefill_logits_equal": True,
+        "cpu_cuda_band_logits_equal": True,
+        "rebuild": rebuild,
+        "rebuild_roots": roots,
+        "rebuild_roots_equal_onboarding": True,
+        "rebuild_parallel_tasks": 5,
+        "warmup_count": 1,
+        "measured_count": 3,
+        "candidates": candidates,
+        "selected_upper_median_open_wall_s": 0.2,
+        "selected_upper_median_verify_wall_s": 0.02,
+        "selected_upper_median_proof_ready_wall_s": 5.0,
+        "selected_upper_median_session_reusable_wall_s": 6.0,
+        "selected_upper_median_complete_e2e_wall_s": 12.0,
+        "open_ceiling_s": 1.50,
+        "verify_ceiling_s": 0.25,
+        "open_pass": True,
+        "verify_pass": True,
+        "pinned_pool_release_wall_s": 0.01,
+        "pinned_pool_release_restored_ownership": True,
+        "pcs_bytes": report.X4_V4_PCS_BYTES,
+        "response_bytes": report.X4_V4_RESPONSE_BYTES,
+        "rate": "1/8",
+        "query_count": 111,
+        "all_candidates_accepted": True,
+        "zero_response_staging": True,
+        "exact_communication": True,
+        "diagnostic_comparisons": 1_592,
+        "diagnostic_soundness_credit_bits": 0,
+        "protocol_or_parameter_change": False,
+        "root_or_proof_format_change": False,
+        "lean_or_soundness_change": False,
+        "overall_pass": True,
+    }
+    return onboarding, online
+
+
+def _write_x4c_gpt2_chain(tmp_path, onboarding, online):
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    onboarding_path = tmp_path / "onboarding.json"
+    onboarding_path.write_text(json.dumps(onboarding, indent=2) + "\n")
+    digest = hashlib.sha256(onboarding_path.read_bytes()).hexdigest()
+    online = copy.deepcopy(online)
+    online["onboarding_sha256"] = digest
+    online_path = tmp_path / "online.json"
+    online_path.write_text(json.dumps(online, indent=2) + "\n")
+    return onboarding_path, online_path
+
+
+def test_x4c_gpt2_e2e_validators_are_complete_and_fail_closed(tmp_path):
+    report = load_report_module()
+    onboarding, online = _x4c_gpt2_records(report)
+    onboarding_path, online_path = _write_x4c_gpt2_chain(
+        tmp_path, onboarding, online
+    )
+    assert report.validate_x4c_gpt2_onboarding_result(onboarding_path) is True
+    assert (
+        report.validate_x4c_gpt2_online_result(online_path, onboarding_path)
+        is True
+    )
+
+    onboarding_mutations = (
+        lambda row: row.pop("parent_domains"),
+        lambda row: row["durable_census"].update({"oracle_file_count": 1}),
+        lambda row: row.update({"selected_upper_median_wall_s": 0.0}),
+        lambda row: row["measured"][2].update({"retained_durable": False}),
+    )
+    for index, mutate in enumerate(onboarding_mutations):
+        bad = copy.deepcopy(onboarding)
+        mutate(bad)
+        path = tmp_path / f"bad-gpt2-onboarding-{index}.json"
+        path.write_text(json.dumps(bad))
+        assert report.validate_x4c_gpt2_onboarding_result(path) is False
+
+    online_mutations = (
+        lambda row: row["candidates"][0].pop("freshness_record_digest"),
+        lambda row: row.update({"selected_upper_median_open_wall_s": 0.0}),
+        lambda row: row["candidates"][0].update({"complete_pcs_bytes": 1}),
+        lambda row: row["candidates"][0]["process_io"].update(
+            {"unexpected_read_bytes": 1}
+        ),
+        lambda row: row["candidates"][0]["metrics"]["response_io"].update(
+            {"staging_bytes_written": 1}
+        ),
+        lambda row: row["candidates"][0]["metrics"]["execution"].update(
+            {"query_gather_calls": 2}
+        ),
+        lambda row: row["candidates"][0]["metrics"][
+            "proof_ready_arena"
+        ].update({"response_round_allocations": 1}),
+        lambda row: row["candidates"][0].update(
+            {"expected_full_correlations": 1}
+        ),
+        lambda row: row["rebuild"].update({"host_oracle_bytes": 1}),
+    )
+    for index, mutate in enumerate(online_mutations):
+        bad = copy.deepcopy(online)
+        mutate(bad)
+        case = tmp_path / f"bad-gpt2-online-{index}"
+        bad_onboarding, bad_online = _write_x4c_gpt2_chain(
+            case, onboarding, bad
+        )
+        assert (
+            report.validate_x4c_gpt2_online_result(
+                bad_online, bad_onboarding
+            )
+            is False
+        )
+
+    different_onboarding = copy.deepcopy(onboarding)
+    different_onboarding["mask_seed_commitment_blake3"] = "d" * 64
+    mismatched_onboarding, _ = _write_x4c_gpt2_chain(
+        tmp_path / "chain-mismatch", different_onboarding, online
+    )
+    assert (
+        report.validate_x4c_gpt2_online_result(
+            online_path, mismatched_onboarding
+        )
+        is False
+    )
 
 
 def _x4c_test_availability():

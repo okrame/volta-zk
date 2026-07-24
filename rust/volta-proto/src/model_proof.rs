@@ -1023,7 +1023,7 @@ fn prove_resident_band_logits(
     claim_point.extend(rho_v);
     Ok((
         LogitsClaimProof { sc: sumcheck, wte_corr: correction },
-        WeightClaimP { point: claim_point, value: wte_auth },
+        WeightClaimP { point: claim_point, value: wte_auth, auth_domain: claim_domain },
         cx.prod,
         cx.zero,
         cx.ctr_instances,
@@ -1196,8 +1196,8 @@ fn prove_resident_band_selection(
             sc_wpe: wpe_sc,
             wpe_corr: wpe_correction,
         },
-        WeightClaimP { point: wte_point, value: wte_auth },
-        WeightClaimP { point: wpe_point, value: wpe_auth },
+        WeightClaimP { point: wte_point, value: wte_auth, auth_domain: wte_domain },
+        WeightClaimP { point: wpe_point, value: wpe_auth, auth_domain: wpe_claim_domain },
         cx.prod,
         cx.zero,
         cx.ctr_instances,
@@ -2031,7 +2031,7 @@ fn prove_response_resident_impl<'chunk, 'source>(
             claim_point.extend(rho_v);
             Ok((
                 LogitsClaimProof { sc: sumcheck, wte_corr: corr },
-                WeightClaimP { point: claim_point, value: wte_auth },
+                WeightClaimP { point: claim_point, value: wte_auth, auth_domain: domain },
                 cx.prod,
                 cx.zero,
                 cx.ctr_instances,
@@ -2196,8 +2196,8 @@ fn prove_response_resident_impl<'chunk, 'source>(
             wpe_point.extend(rho_w);
             Ok((
                 SelectionProof { sc: selection_sc, wte_corr, p_corr, sc_wpe: wpe_sc, wpe_corr },
-                WeightClaimP { point: wte_point, value: wte_auth },
-                WeightClaimP { point: wpe_point, value: wpe_auth },
+                WeightClaimP { point: wte_point, value: wte_auth, auth_domain: wte_domain },
+                WeightClaimP { point: wpe_point, value: wpe_auth, auth_domain: wpe_claim_domain },
                 cx.prod,
                 cx.zero,
                 cx.ctr_instances,
@@ -3275,7 +3275,7 @@ fn prove_response_impl(
     cx.prod.push((fin_open, wte_auth, lg_claim_n));
     let mut pt_wte = r_l.clone();
     pt_wte.extend(rho_v.iter().copied());
-    embed_claims.push(WeightClaimP { point: pt_wte, value: wte_auth });
+    embed_claims.push(WeightClaimP { point: pt_wte, value: wte_auth, auth_domain: dom_wv });
     let logits_proof = LogitsClaimProof { sc: lg_sc, wte_corr: logits_wte_corr };
     let BlockCtxP { prod: lp, zero: lz, ctr_instances: lci, ctr_other: lco, .. } = cx;
     prod.extend(lp);
@@ -3337,7 +3337,7 @@ fn prove_response_impl(
     cx.zero.push(wte2_auth.scale(s_eval).sub(sel_claim_n));
     let mut pt_wte2 = r_d.to_vec();
     pt_wte2.extend(rho_z.iter().copied());
-    embed_claims.push(WeightClaimP { point: pt_wte2, value: wte2_auth });
+    embed_claims.push(WeightClaimP { point: pt_wte2, value: wte2_auth, auth_domain: dom_wv2 });
     // Masked-wpe sumcheck: P = Σ_w G(w)·w̃pe(w, r_d) over the 10 row vars,
     // G(w) = [w<t]·eq(r_i, w) public. Resolution: G̃(ρ_w) public × one wpe
     // claim at (r_d ‖ ρ_w).
@@ -3357,7 +3357,7 @@ fn prove_response_impl(
     cx.zero.push(wpe_auth.scale(g_eval).sub(wpe_claim_n));
     let mut wpe_pt = r_d.to_vec();
     wpe_pt.extend(rho_w.iter().copied());
-    embed_claims.push(WeightClaimP { point: wpe_pt, value: wpe_auth });
+    embed_claims.push(WeightClaimP { point: wpe_pt, value: wpe_auth, auth_domain: dom_wpe });
     let selection = SelectionProof {
         sc: sel_sc,
         wte_corr: sel_wte_corr,
@@ -3650,7 +3650,7 @@ fn prove_response_impl(
         cx.prod.push((fin_open, wte_auth, lg_claim_n));
         let mut pt_wte = r_l.clone();
         pt_wte.extend(rho_v.iter().copied());
-        embed_claims.push(WeightClaimP { point: pt_wte, value: wte_auth });
+        embed_claims.push(WeightClaimP { point: pt_wte, value: wte_auth, auth_domain: dom_wv });
         let logits_c = LogitsClaimProof { sc: lg_sc, wte_corr: logits_wte_corr };
         let BlockCtxP { prod: lp, zero: lz, ctr_instances: lci, ctr_other: lco, .. } = cx;
         prod.extend(lp);
@@ -3701,7 +3701,7 @@ fn prove_response_impl(
         cx.zero.push(wte2_auth.scale(s_eval).sub(sel_claim_n));
         let mut pt_wte2 = r_d.to_vec();
         pt_wte2.extend(rho_z.iter().copied());
-        embed_claims.push(WeightClaimP { point: pt_wte2, value: wte2_auth });
+        embed_claims.push(WeightClaimP { point: pt_wte2, value: wte2_auth, auth_domain: dom_wv2 });
         let mut g_tab = vec![Fp2::ZERO; 1 << 10];
         for r in 0..q {
             g_tab[bw.t0 + r] = eq_i[r];
@@ -3720,7 +3720,7 @@ fn prove_response_impl(
         cx.zero.push(wpe_auth.scale(g_eval).sub(wpe_claim_n));
         let mut wpe_pt = r_d.to_vec();
         wpe_pt.extend(rho_w.iter().copied());
-        embed_claims.push(WeightClaimP { point: wpe_pt, value: wpe_auth });
+        embed_claims.push(WeightClaimP { point: wpe_pt, value: wpe_auth, auth_domain: dom_wpe });
         let selection_c = SelectionProof {
             sc: sel_sc,
             wte_corr: sel_wte_corr,

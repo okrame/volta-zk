@@ -2339,6 +2339,31 @@ impl<'a> X4cCudaArenaRuntimeV4<'a> {
         })
     }
 
+    /// Borrow the shared backend between responses while retaining the
+    /// prewarmed pinned transfer pool.
+    ///
+    /// The response arena must already be released. This lets the real-weight
+    /// driver run the next resident witness/model proof without
+    /// registering/deregistering X4c transfer buffers per response.
+    pub fn backend_between_responses(&mut self) -> Result<&mut Backend, X4cErrorV4> {
+        if self.arena_live {
+            return Err(X4cErrorV4::InvalidGeometry(
+                "X4c backend borrowed while response arena is live",
+            ));
+        }
+        let control = self.backend.x4c_control_state()?;
+        if control.stream_state != CudaStreamState::Idle
+            || control.outstanding_cuda_operations != 0
+            || control.measurement_active
+            || control.coarse_timing_active
+            || control.timing_record_active
+            || control.measurement_poisoned
+        {
+            return Err(X4cErrorV4::InvalidGeometry("X4c backend between-response boundary"));
+        }
+        Ok(self.backend)
+    }
+
     pub fn backend_control_state(&self) -> Result<volta_accel::X4cControlState, X4cErrorV4> {
         self.backend.x4c_control_state().map_err(Into::into)
     }

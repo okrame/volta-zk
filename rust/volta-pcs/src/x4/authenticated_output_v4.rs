@@ -7,6 +7,7 @@
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
+use std::time::Instant;
 
 use volta_field::Fp2;
 use volta_mac::{
@@ -17,21 +18,78 @@ use volta_proto::mle::{eq_points, eq_vec, fold_low, lagrange3};
 
 use super::folding_v4::{
     global_fold_descriptor_digest_v4, opened_global_value_from_lines_v4,
-    verify_global_folding_interactive_v4, FoldingErrorV4, GlobalChainDraftV4, GlobalFoldingProofV4,
-    GlobalOpenMetricsV4, GlobalProverGroupV4, GlobalVerifierGroupV4, ModelGlobalOpeningSourceV4,
+    verify_global_folding_interactive_v4, verify_global_folding_v4, FoldingErrorV4,
+    GlobalChainDraftV4, GlobalFoldChallengesV4, GlobalFoldingProofV4, GlobalOpenMetricsV4,
+    GlobalProverGroupV4, GlobalVerifierGroupV4, ModelGlobalOpeningSourceV4,
 };
 use super::frame::{
     AuthenticatedOutputLinkFrame, Digest, FrameError, M9TransferFrame, ReducedClaimFrame,
     ResponseZeroBatchFrame,
 };
 use super::frame_v4::{authenticated_output_link_schedule_digest_v4, FrameV4, OracleKindV4};
+use super::x4c_v4::{
+    SealedGlobalChainX4cV4, X4cArenaRuntimeV4, X4cErrorV4, X4cResponseMetricsV4, X4cSealConfigV4,
+};
 
 pub const GLOBAL_FOLD_COHORT_ID_V4: u32 = 0xA500_F001;
+
+/// Wall-only phase boundaries for the physical X4c seal/open path.
+///
+/// These values are record instrumentation only. They are not transcript
+/// frames, protocol inputs, CUDA-event measurements or soundness evidence.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct X4cAuthenticatedOutputPhaseWallsV4 {
+    pub seal_wall_ns: u64,
+    pub open_wall_ns: u64,
+}
+
+/// Verifier-owned exact-bit query tape.
+///
+/// The draws are intentionally private and can be consumed only after an
+/// X4c sealed state proves the expected `(model_root, epoch)` binding.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct X4cSelectedQueryTapeV4 {
+    draws: Vec<u64>,
+}
+
+impl X4cSelectedQueryTapeV4 {
+    pub fn new(draws: Vec<u64>) -> Result<Self, AuthenticatedOutputErrorV4> {
+        if draws.is_empty() {
+            return Err(AuthenticatedOutputErrorV4::InvalidGeometry(
+                "empty X4c selected query tape",
+            ));
+        }
+        Ok(Self { draws })
+    }
+
+    pub fn draw_count(&self) -> usize {
+        self.draws.len()
+    }
+
+    fn release_after_roots<A>(
+        self,
+        sealed: &SealedGlobalChainX4cV4<'_, A>,
+        expected_model_root: Digest,
+        expected_epoch: u64,
+    ) -> Result<Vec<u64>, AuthenticatedOutputErrorV4> {
+        if sealed.model_root() != expected_model_root || sealed.epoch() != expected_epoch {
+            return Err(AuthenticatedOutputErrorV4::EpochMismatch);
+        }
+        Ok(self.draws)
+    }
+}
+
+fn phase_wall_ns_v4(started: Instant) -> Result<u64, AuthenticatedOutputErrorV4> {
+    u64::try_from(started.elapsed().as_nanos())
+        .map(|value| value.max(1))
+        .map_err(|_| AuthenticatedOutputErrorV4::Overflow)
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AuthenticatedOutputErrorV4 {
     Frame(FrameError),
     Folding(FoldingErrorV4),
+    X4c(X4cErrorV4),
     InvalidGeometry(&'static str),
     InvalidSchedule(&'static str),
     FalseInitialClaim,
@@ -54,6 +112,12 @@ impl From<FrameError> for AuthenticatedOutputErrorV4 {
 impl From<FoldingErrorV4> for AuthenticatedOutputErrorV4 {
     fn from(value: FoldingErrorV4) -> Self {
         Self::Folding(value)
+    }
+}
+
+impl From<X4cErrorV4> for AuthenticatedOutputErrorV4 {
+    fn from(value: X4cErrorV4) -> Self {
+        Self::X4c(value)
     }
 }
 
@@ -988,6 +1052,255 @@ pub fn prove_authenticated_output_link_v4(
     Ok((AuthenticatedOutputLinkProofV4 { frame, global_folding }, bound, metrics))
 }
 
+/// X4c execution of the unchanged schema-4 authenticated-output link.
+///
+/// This differs from [`prove_authenticated_output_link_v4`] only in the
+/// physical fold/open implementation: all response rounds live in one
+/// reusable arena and the verifier-owned selected draw tape is gathered once.
+/// A persisted freshness receipt is mandatory. No frame, challenge, claim,
+/// correlation or verifier equation is added.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_authenticated_output_link_x4c_v4<R: X4cArenaRuntimeV4>(
+    permit: X4OpeningPermitV4,
+    model_root: Digest,
+    blocks: Vec<AuthenticatedOutputBlockProverV4<'_>>,
+    prefix: AuthenticatedOutputLinkPrefixV4<'_>,
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+    selected_tape: X4cSelectedQueryTapeV4,
+    runtime: &mut R,
+    seal_config: X4cSealConfigV4,
+) -> Result<
+    (
+        AuthenticatedOutputLinkProofV4,
+        Vec<BoundAuxEvalProverV4>,
+        AuthenticatedOutputLinkMetricsV4,
+        X4cResponseMetricsV4,
+        X4cAuthenticatedOutputPhaseWallsV4,
+        Vec<u64>,
+    ),
+    AuthenticatedOutputErrorV4,
+> {
+    if permit.model_root != model_root
+        || permit.epoch != prefix.epoch
+        || permit.persistent_freshness_record_digest.is_none()
+    {
+        return Err(AuthenticatedOutputErrorV4::EpochMismatch);
+    }
+    let descriptors = blocks.iter().map(|block| block.descriptor_digest).collect::<Vec<_>>();
+    let public_h = blocks.iter().map(|block| block.public_h).collect::<Vec<_>>();
+    let mut round_count = 0usize;
+    for block in &blocks {
+        if block.pending_aux.descriptor_digest != block.descriptor_digest {
+            return Err(AuthenticatedOutputErrorV4::InvalidSchedule(
+                "v4 pending prover descriptor",
+            ));
+        }
+        validate_prover_polynomial_v4(
+            block.descriptor_digest,
+            OracleKindV4::WeightExtension,
+            &block.weight_extension,
+        )?;
+        validate_prover_polynomial_v4(
+            block.descriptor_digest,
+            OracleKindV4::Auxiliary,
+            &block.auxiliary,
+        )?;
+        if !validate_canonical_points_v4(
+            block.weight_extension.target_point,
+            block.auxiliary.target_point,
+        ) {
+            return Err(AuthenticatedOutputErrorV4::InvalidGeometry(
+                "v4 canonical auxiliary point",
+            ));
+        }
+        round_count = round_count
+            .max(block.weight_extension.target_point.len())
+            .max(block.auxiliary.target_point.len());
+    }
+    if round_count == 0 || round_count > 30 {
+        return Err(AuthenticatedOutputErrorV4::InvalidGeometry("v4 link maximum dimension"));
+    }
+    let schedule_digest = validate_prefix_common_v4(prefix, &descriptors, &public_h, round_count)?;
+    let keys = prover_keys_v4(&blocks);
+    let beta = tx.challenge_fp2();
+    let activation = activation_challenges_v4(&keys, tx);
+    let mut power = beta;
+    let mut initial_claim = ProverAuthed::ZERO;
+    let mut terms = Vec::with_capacity(2 * blocks.len());
+    let mut bases = Vec::with_capacity(blocks.len());
+    for block in &blocks {
+        let weight_key = LinkCohortKeyV4::from_cohort(block.weight_extension.cohort);
+        let auxiliary_key = LinkCohortKeyV4::from_cohort(block.auxiliary.cohort);
+        let weight_base = power;
+        let auxiliary_base = weight_base * beta;
+        let masked_coefficient = activation[&weight_key] * weight_base;
+        let auxiliary_coefficient = activation[&auxiliary_key] * auxiliary_base;
+        let output_coefficient = auxiliary_coefficient - masked_coefficient;
+        initial_claim = initial_claim
+            .add(ProverAuthed::from_public(block.public_h).scale(masked_coefficient))
+            .add(block.pending_aux.auth.scale(output_coefficient));
+        terms.push(DelayedSumcheckTermV4::new(
+            masked_coefficient,
+            block.weight_extension.evaluations,
+            block.weight_extension.target_point,
+            round_count,
+        )?);
+        terms.push(DelayedSumcheckTermV4::new(
+            auxiliary_coefficient,
+            block.auxiliary.evaluations,
+            block.auxiliary.target_point,
+            round_count,
+        )?);
+        bases.push((weight_base, auxiliary_base));
+        power = auxiliary_base * beta;
+    }
+    let sumcheck = prove_delayed_sumcheck_v4(
+        terms,
+        round_count,
+        initial_claim,
+        stream,
+        prefix.round_correlation_domain_ids,
+        tx,
+    )?;
+    let mut grouped = BTreeMap::new();
+    for (block, (weight_base, auxiliary_base)) in blocks.iter().zip(&bases) {
+        insert_prover_group_v4(
+            &mut grouped,
+            &block.weight_extension,
+            terminal_weight_v4(*weight_base, block.weight_extension.target_point, &sumcheck.point),
+        )?;
+        insert_prover_group_v4(
+            &mut grouped,
+            &block.auxiliary,
+            terminal_weight_v4(*auxiliary_base, block.auxiliary.target_point, &sumcheck.point),
+        )?;
+    }
+    if grouped.len() != keys.len() {
+        return Err(AuthenticatedOutputErrorV4::InvalidSchedule("v4 global cohort set"));
+    }
+    let groups = grouped
+        .iter()
+        .map(|(key, group)| GlobalProverGroupV4 {
+            cohort: group.cohort,
+            touched_slots: group.weights.keys().copied().collect(),
+            weights: group.weights.values().copied().collect(),
+            target_point: sumcheck.point[round_count - group.dimension..].to_vec(),
+            activation_challenge: activation[key],
+        })
+        .collect::<Vec<_>>();
+    let descriptor = global_fold_descriptor_digest_v4(
+        &groups
+            .iter()
+            .map(|group| {
+                (
+                    group.cohort.commitment().config.identity.cohort_id,
+                    group.cohort.commitment().root,
+                )
+            })
+            .collect::<Vec<_>>(),
+    );
+    let draft = GlobalChainDraftV4::new_interactive(
+        model_root,
+        prefix.epoch,
+        GLOBAL_FOLD_COHORT_ID_V4,
+        descriptor,
+        sumcheck.point.clone(),
+        groups,
+    )?;
+    let seal_started = Instant::now();
+    let sealed = draft.seal_interactive_x4c(tx, runtime, seal_config)?;
+    let seal_wall_ns = phase_wall_ns_v4(seal_started)?;
+    let fold_challenges = sealed.challenges().clone();
+    let selected_draws = selected_tape.release_after_roots(&sealed, model_root, prefix.epoch)?;
+    let open_started = Instant::now();
+    let (global_folding, _verifier_groups, x4c_metrics, returned_draws) =
+        sealed.issue_queries_x4c(selected_draws.clone(), tx, runtime)?;
+    let open_wall_ns = phase_wall_ns_v4(open_started)?;
+    if returned_draws != selected_draws {
+        return Err(AuthenticatedOutputErrorV4::InvalidSchedule("X4c selected draw tape"));
+    }
+    let opened_global = opened_global_value_from_lines_v4(
+        &sumcheck.point,
+        &fold_challenges,
+        &global_folding.fold_frames,
+    )?;
+    if opened_global != sumcheck.terminal_value {
+        return Err(AuthenticatedOutputErrorV4::GlobalTerminalMismatch);
+    }
+    let terminal_residual = sumcheck.final_claim.sub(ProverAuthed::from_public(opened_global));
+    if terminal_residual.x != Fp2::ZERO {
+        return Err(AuthenticatedOutputErrorV4::TerminalMacMismatch);
+    }
+    let terminal_tag = zero_open_prover(&terminal_residual, tx);
+    let frame = AuthenticatedOutputLinkFrame {
+        relation_count: u16::try_from(2 * blocks.len())
+            .map_err(|_| AuthenticatedOutputErrorV4::Overflow)?,
+        round_count: u8::try_from(round_count).map_err(|_| AuthenticatedOutputErrorV4::Overflow)?,
+        link_schedule_digest: schedule_digest,
+        ordered_round_correction_symbols: sumcheck.corrections,
+        terminal_opened_tag_symbol: terminal_tag,
+    };
+    frame.validate()?;
+    let mut metrics = AuthenticatedOutputLinkMetricsV4 {
+        touched_blocks: u64::try_from(blocks.len())
+            .map_err(|_| AuthenticatedOutputErrorV4::Overflow)?,
+        relation_count: u64::try_from(2 * blocks.len())
+            .map_err(|_| AuthenticatedOutputErrorV4::Overflow)?,
+        round_count: u64::try_from(round_count)
+            .map_err(|_| AuthenticatedOutputErrorV4::Overflow)?,
+        m9_full_correlations: u64::try_from(blocks.len())
+            .map_err(|_| AuthenticatedOutputErrorV4::Overflow)?,
+        link_round_full_correlations: u64::try_from(2 * round_count)
+            .map_err(|_| AuthenticatedOutputErrorV4::Overflow)?,
+        seam_full_correlations_with_response_zero: x4_v4_seam_full_correlations(
+            blocks.len(),
+            round_count,
+        )?,
+        m9_frame_bytes: u64::try_from(
+            64usize.checked_mul(blocks.len()).ok_or(AuthenticatedOutputErrorV4::Overflow)?,
+        )
+        .map_err(|_| AuthenticatedOutputErrorV4::Overflow)?,
+        link_frame_bytes: u64::try_from(
+            FrameV4::AuthenticatedOutputLink(frame.clone()).encode()?.len(),
+        )
+        .map_err(|_| AuthenticatedOutputErrorV4::Overflow)?,
+        response_zero_batch_frame_bytes: 50,
+        sumcheck_source_symbols_read: blocks.iter().try_fold(0u64, |sum, block| {
+            let count = block
+                .weight_extension
+                .evaluations
+                .len()
+                .checked_add(block.auxiliary.evaluations.len())
+                .ok_or(AuthenticatedOutputErrorV4::Overflow)?;
+            sum.checked_add(u64::try_from(count).map_err(|_| AuthenticatedOutputErrorV4::Overflow)?)
+                .ok_or(AuthenticatedOutputErrorV4::Overflow)
+        })?,
+        ..Default::default()
+    };
+    metrics.seam_frame_bytes = metrics
+        .m9_frame_bytes
+        .checked_add(metrics.link_frame_bytes)
+        .and_then(|bytes| bytes.checked_add(metrics.response_zero_batch_frame_bytes))
+        .ok_or(AuthenticatedOutputErrorV4::Overflow)?;
+    accumulate_global_metrics_v4(&mut metrics, &x4c_metrics.global_open);
+    let bound = blocks
+        .into_iter()
+        .map(|block| BoundAuxEvalProverV4 {
+            descriptor_digest: block.descriptor_digest,
+            auth: block.pending_aux.auth,
+        })
+        .collect();
+    Ok((
+        AuthenticatedOutputLinkProofV4 { frame, global_folding },
+        bound,
+        metrics,
+        x4c_metrics,
+        X4cAuthenticatedOutputPhaseWallsV4 { seal_wall_ns, open_wall_ns },
+        selected_draws,
+    ))
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn verify_authenticated_output_link_v4(
     permit: X4OpeningPermitV4,
@@ -1119,6 +1432,174 @@ pub fn verify_authenticated_output_link_v4(
         .collect())
 }
 
+/// Verifier replay for [`prove_authenticated_output_link_x4c_v4`].
+///
+/// Fold challenges are replayed from the unchanged transcript. Query draws
+/// are supplied by the frozen verifier-selected tape and therefore are not
+/// synthesized from the transcript a second time.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_authenticated_output_link_x4c_v4(
+    permit: X4OpeningPermitV4,
+    model_root: Digest,
+    blocks: Vec<AuthenticatedOutputBlockVerifierV4<'_>>,
+    prefix: AuthenticatedOutputLinkPrefixV4<'_>,
+    proof: &AuthenticatedOutputLinkProofV4,
+    selected_draws: &[u64],
+    ctx: &mut VerifierCtx,
+    tx: &mut Transcript,
+) -> Result<Vec<BoundAuxEvalVerifierV4>, AuthenticatedOutputErrorV4> {
+    if permit.model_root != model_root
+        || permit.epoch != prefix.epoch
+        || permit.persistent_freshness_record_digest.is_none()
+    {
+        return Err(AuthenticatedOutputErrorV4::EpochMismatch);
+    }
+    proof.frame.validate()?;
+    let descriptors = blocks.iter().map(|block| block.descriptor_digest).collect::<Vec<_>>();
+    let public_h = blocks.iter().map(|block| block.public_h).collect::<Vec<_>>();
+    let mut round_count = 0usize;
+    for block in &blocks {
+        if block.pending_aux.descriptor_digest != block.descriptor_digest {
+            return Err(AuthenticatedOutputErrorV4::InvalidSchedule(
+                "v4 pending verifier descriptor",
+            ));
+        }
+        validate_verifier_polynomial_v4(
+            block.descriptor_digest,
+            OracleKindV4::WeightExtension,
+            &block.weight_extension,
+        )?;
+        validate_verifier_polynomial_v4(
+            block.descriptor_digest,
+            OracleKindV4::Auxiliary,
+            &block.auxiliary,
+        )?;
+        if !validate_canonical_points_v4(
+            block.weight_extension.target_point,
+            block.auxiliary.target_point,
+        ) {
+            return Err(AuthenticatedOutputErrorV4::InvalidGeometry(
+                "v4 canonical auxiliary point",
+            ));
+        }
+        round_count = round_count
+            .max(block.weight_extension.target_point.len())
+            .max(block.auxiliary.target_point.len());
+    }
+    let expected_digest = validate_prefix_common_v4(prefix, &descriptors, &public_h, round_count)?;
+    if usize::from(proof.frame.relation_count) != 2 * blocks.len()
+        || usize::from(proof.frame.round_count) != round_count
+        || proof.frame.link_schedule_digest != expected_digest
+    {
+        return Err(AuthenticatedOutputErrorV4::InvalidSchedule("v4 link frame statement"));
+    }
+    let keys = verifier_keys_v4(&blocks);
+    let beta = tx.challenge_fp2();
+    let activation = activation_challenges_v4(&keys, tx);
+    let mut power = beta;
+    let mut initial_key = VerifierKey::ZERO;
+    let mut bases = Vec::with_capacity(blocks.len());
+    for block in &blocks {
+        let weight_key = verifier_key_v4(&block.weight_extension);
+        let auxiliary_key = verifier_key_v4(&block.auxiliary);
+        let weight_base = power;
+        let auxiliary_base = weight_base * beta;
+        let masked_coefficient = activation[&weight_key] * weight_base;
+        let auxiliary_coefficient = activation[&auxiliary_key] * auxiliary_base;
+        let output_coefficient = auxiliary_coefficient - masked_coefficient;
+        initial_key = initial_key
+            .add(VerifierKey::from_public(block.public_h, ctx.delta).scale(masked_coefficient))
+            .add(block.pending_aux.key.scale(output_coefficient));
+        bases.push((weight_base, auxiliary_base));
+        power = auxiliary_base * beta;
+    }
+    let (point, final_key) = verify_delayed_sumcheck_v4(
+        round_count,
+        initial_key,
+        &proof.frame.ordered_round_correction_symbols,
+        ctx,
+        prefix.round_correlation_domain_ids,
+        tx,
+    )?;
+    let mut grouped = BTreeMap::new();
+    for (block, (weight_base, auxiliary_base)) in blocks.iter().zip(&bases) {
+        insert_verifier_group_v4(
+            &mut grouped,
+            &block.weight_extension,
+            terminal_weight_v4(*weight_base, block.weight_extension.target_point, &point),
+        )?;
+        insert_verifier_group_v4(
+            &mut grouped,
+            &block.auxiliary,
+            terminal_weight_v4(*auxiliary_base, block.auxiliary.target_point, &point),
+        )?;
+    }
+    if grouped.len() != keys.len()
+        || proof.global_folding.packed_opening.initial_groups.len() != grouped.len()
+    {
+        return Err(AuthenticatedOutputErrorV4::InvalidSchedule("v4 global cohort proof set"));
+    }
+    let groups = grouped
+        .iter()
+        .map(|(key, group)| GlobalVerifierGroupV4 {
+            commitment: group.commitment.clone(),
+            touched_slots: group.weights.keys().copied().collect(),
+            weights: group.weights.values().copied().collect(),
+            target_point: point[round_count - group.dimension..].to_vec(),
+            activation_challenge: activation[key],
+        })
+        .collect::<Vec<_>>();
+    if proof.global_folding.fold_frames.is_empty() {
+        return Err(AuthenticatedOutputErrorV4::InvalidSchedule("v4 empty X4c fold chain"));
+    }
+    let mut folds = Vec::with_capacity(proof.global_folding.fold_frames.len());
+    for frame in &proof.global_folding.fold_frames {
+        frame.validate()?;
+        tx.append("x4_v4_global_fold_line", 32);
+        folds.push(tx.challenge_fp2());
+        let frame_bytes = FrameV4::FoldCommitment(frame.clone()).encode()?.len();
+        tx.append(
+            "x4_v4_global_fold_post_challenge",
+            u64::try_from(
+                frame_bytes.checked_sub(32).ok_or(AuthenticatedOutputErrorV4::InvalidSchedule(
+                    "v4 fold frame line width",
+                ))?,
+            )
+            .map_err(|_| AuthenticatedOutputErrorV4::Overflow)?,
+        );
+    }
+    let opened_global = verify_global_folding_v4(
+        model_root,
+        prefix.epoch,
+        &point,
+        &groups,
+        &GlobalFoldChallengesV4 { folds },
+        selected_draws,
+        &proof.global_folding,
+    )?;
+    tx.append(
+        "x4_v4_packed_opening",
+        u64::try_from(
+            FrameV4::PackedBatchOpening(proof.global_folding.packed_opening.clone())
+                .encode()?
+                .len(),
+        )
+        .map_err(|_| AuthenticatedOutputErrorV4::Overflow)?,
+    );
+    let terminal_key = final_key.sub(VerifierKey::from_public(opened_global, ctx.delta));
+    if !zero_open_verify(terminal_key, proof.frame.terminal_opened_tag_symbol) {
+        return Err(AuthenticatedOutputErrorV4::LinkRejected);
+    }
+    tx.append("zero_open_tag", 16);
+    Ok(blocks
+        .into_iter()
+        .map(|block| BoundAuxEvalVerifierV4 {
+            descriptor_digest: block.descriptor_digest,
+            key: block.pending_aux.key,
+        })
+        .collect())
+}
+
 pub fn prove_bound_response_zero_batch_v4(
     authenticated_weight_evals: &[ProverAuthed],
     bound_aux: &[BoundAuxEvalProverV4],
@@ -1212,6 +1693,7 @@ mod tests {
     use crate::x4::folding_v4::CommittedModelGlobalCohortV4;
     use crate::x4::merkle_v4::{CohortIdentityV4, CohortVerifierConfigV4};
     use crate::x4::ntt::{evaluate_multilinear_table, multilinear_coefficients};
+    use crate::x4::x4c_v4::{X4cArenaLayoutV4, X4cCpuReferenceRuntimeV4, X4C_DESIGN_SHA256_V4};
     use volta_field::Fp;
 
     const M9_DOMAIN: u64 = 0x61_000;
@@ -1509,6 +1991,207 @@ mod tests {
             crate::x4::frame_v4::decode_v4(&encoded).unwrap(),
             FrameV4::ResponseEnvelope(response)
         );
+    }
+
+    #[test]
+    fn x4c_arena_link_is_byte_identical_and_requires_persistent_freshness() {
+        let descriptor = [0x37; 32];
+        let weight_evaluations = (0..16).map(|index| symbol(110 + index)).collect::<Vec<_>>();
+        let auxiliary_evaluations = (0..4).map(|index| symbol(180 + 3 * index)).collect::<Vec<_>>();
+        let weight_point = vec![symbol(17), symbol(21), symbol(23), Fp2::ZERO];
+        let auxiliary_point = vec![symbol(23), Fp2::ZERO];
+        let weight_value = evaluate_multilinear_table(&weight_evaluations, &weight_point).unwrap();
+        let auxiliary_value =
+            evaluate_multilinear_table(&auxiliary_evaluations, &auxiliary_point).unwrap();
+        let public_h = vec![weight_value + auxiliary_value];
+        let descriptors = vec![descriptor];
+        let weight =
+            committed(descriptor, 0xA500_0001, OracleKindV4::WeightExtension, &weight_evaluations);
+        let auxiliary =
+            committed(descriptor, 0xA500_0100, OracleKindV4::Auxiliary, &auxiliary_evaluations);
+        let manifest = crate::x4::manifest_v4::ManifestTreeV4::build(
+            crate::x4::frame_v4::manifest_id_digest_v4(MODEL_CONFIG_DIGEST, WEIGHTS_DIGEST, 19),
+            vec![crate::x4::frame::ManifestLeafFrame {
+                descriptor_digest: descriptor,
+                ordered_roots: vec![weight.commitment().root, auxiliary.commitment().root],
+            }],
+        )
+        .unwrap();
+        let model_root = manifest.root();
+        let selected_draws = (0..crate::x4::frame_v4::PRODUCTION_QUERY_COUNT_V4)
+            .map(|index| (index as u64 * 13) & 127)
+            .collect::<Vec<_>>();
+
+        let mut prover_stream = CorrelationStream::new(PCG_SEED);
+        let mut prover_tx = Transcript::new(TX_SEED);
+        let (pending, m9) = authenticate_pending_aux_prover_v4(
+            descriptor,
+            auxiliary_value,
+            &mut prover_stream,
+            M9_DOMAIN,
+            &mut prover_tx,
+        )
+        .unwrap();
+        let m9_frames = vec![m9];
+        let prefix = AuthenticatedOutputLinkPrefixV4 {
+            epoch: 19,
+            claim_frames: &[],
+            descriptor_digests: &descriptors,
+            ordered_h_symbols: &public_h,
+            m9_frames: &m9_frames,
+            round_correlation_domain_ids: &LINK_DOMAINS,
+        };
+        let prover_blocks = vec![AuthenticatedOutputBlockProverV4 {
+            descriptor_digest: descriptor,
+            public_h: public_h[0],
+            pending_aux: pending,
+            weight_extension: LinkPolynomialProverV4 {
+                cohort: &weight,
+                slot: 0,
+                evaluations: &weight_evaluations,
+                target_point: &weight_point,
+            },
+            auxiliary: LinkPolynomialProverV4 {
+                cohort: &auxiliary,
+                slot: 0,
+                evaluations: &auxiliary_evaluations,
+                target_point: &auxiliary_point,
+            },
+        }];
+        let legacy_permit = X4OpeningRegistryV4::default().authorize(model_root, 19).unwrap();
+        let mut rejected_runtime = X4cCpuReferenceRuntimeV4;
+        let rejected = prove_authenticated_output_link_x4c_v4(
+            legacy_permit,
+            model_root,
+            prover_blocks,
+            prefix,
+            &mut prover_stream,
+            &mut prover_tx,
+            X4cSelectedQueryTapeV4::new(selected_draws.clone()).unwrap(),
+            &mut rejected_runtime,
+            X4cSealConfigV4 {
+                design_sha256: X4C_DESIGN_SHA256_V4,
+                clean_source_sha256: [0x81; 32],
+                response_ordinal: 1,
+                arena_layout: X4cArenaLayoutV4::new(7, 3, 4096).unwrap(),
+            },
+        );
+        assert!(matches!(rejected, Err(AuthenticatedOutputErrorV4::EpochMismatch)));
+
+        // Rebuild the one-shot prover state after the deliberate preflight
+        // rejection; the rejected call consumed no transcript/correlation.
+        let mut prover_stream = CorrelationStream::new(PCG_SEED);
+        let mut prover_tx = Transcript::new(TX_SEED);
+        let (pending, m9) = authenticate_pending_aux_prover_v4(
+            descriptor,
+            auxiliary_value,
+            &mut prover_stream,
+            M9_DOMAIN,
+            &mut prover_tx,
+        )
+        .unwrap();
+        let m9_frames = vec![m9];
+        let prefix = AuthenticatedOutputLinkPrefixV4 {
+            epoch: 19,
+            claim_frames: &[],
+            descriptor_digests: &descriptors,
+            ordered_h_symbols: &public_h,
+            m9_frames: &m9_frames,
+            round_correlation_domain_ids: &LINK_DOMAINS,
+        };
+        let blocks = vec![AuthenticatedOutputBlockProverV4 {
+            descriptor_digest: descriptor,
+            public_h: public_h[0],
+            pending_aux: pending,
+            weight_extension: LinkPolynomialProverV4 {
+                cohort: &weight,
+                slot: 0,
+                evaluations: &weight_evaluations,
+                target_point: &weight_point,
+            },
+            auxiliary: LinkPolynomialProverV4 {
+                cohort: &auxiliary,
+                slot: 0,
+                evaluations: &auxiliary_evaluations,
+                target_point: &auxiliary_point,
+            },
+        }];
+        let permit = X4OpeningRegistryV4::default()
+            .authorize_after_persistent_freshness(model_root, 19, [0x91; 32])
+            .unwrap();
+        let mut runtime = X4cCpuReferenceRuntimeV4;
+        let (proof, bound_prover, metrics, x4c_metrics, phase_walls, released_draws) =
+            prove_authenticated_output_link_x4c_v4(
+                permit,
+                model_root,
+                blocks,
+                prefix,
+                &mut prover_stream,
+                &mut prover_tx,
+                X4cSelectedQueryTapeV4::new(selected_draws.clone()).unwrap(),
+                &mut runtime,
+                X4cSealConfigV4 {
+                    design_sha256: X4C_DESIGN_SHA256_V4,
+                    clean_source_sha256: [0x81; 32],
+                    response_ordinal: 2,
+                    arena_layout: X4cArenaLayoutV4::new(7, 3, 4096).unwrap(),
+                },
+            )
+            .unwrap();
+        assert_eq!(metrics.fold_bytes, x4c_metrics.global_open.serialized_fold_bytes);
+        assert_eq!(
+            metrics.packed_opening_bytes,
+            x4c_metrics.global_open.serialized_packed_opening_bytes
+        );
+        assert_eq!(x4c_metrics.execution.query_gather_calls, 1);
+        assert_eq!(x4c_metrics.io, Default::default());
+        assert_eq!(x4c_metrics.sampling_soundness_credit_bits, 0);
+        assert!(phase_walls.seal_wall_ns > 0);
+        assert!(phase_walls.open_wall_ns > 0);
+        assert_eq!(released_draws, selected_draws);
+
+        let delta = symbol(201);
+        let mut ctx = VerifierCtx::new(PCG_SEED, delta);
+        let mut verifier_tx = Transcript::new(TX_SEED);
+        let pending = authenticate_pending_aux_verifier_v4(
+            &m9_frames[0],
+            &mut ctx,
+            M9_DOMAIN,
+            &mut verifier_tx,
+        )
+        .unwrap();
+        let verifier_blocks = vec![AuthenticatedOutputBlockVerifierV4 {
+            descriptor_digest: descriptor,
+            public_h: public_h[0],
+            pending_aux: pending,
+            weight_extension: LinkPolynomialVerifierV4 {
+                commitment: weight.commitment(),
+                slot: 0,
+                target_point: &weight_point,
+            },
+            auxiliary: LinkPolynomialVerifierV4 {
+                commitment: auxiliary.commitment(),
+                slot: 0,
+                target_point: &auxiliary_point,
+            },
+        }];
+        let verifier_permit = X4OpeningRegistryV4::default()
+            .authorize_after_persistent_freshness(model_root, 19, [0x91; 32])
+            .unwrap();
+        let bound_verifier = verify_authenticated_output_link_x4c_v4(
+            verifier_permit,
+            model_root,
+            verifier_blocks,
+            prefix,
+            &proof,
+            &selected_draws,
+            &mut ctx,
+            &mut verifier_tx,
+        )
+        .unwrap();
+        assert_eq!(bound_prover.len(), 1);
+        assert_eq!(bound_verifier.len(), 1);
+        assert_eq!(prover_tx.total_bytes(), verifier_tx.total_bytes());
     }
 
     #[test]

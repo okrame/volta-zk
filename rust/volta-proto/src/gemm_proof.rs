@@ -236,6 +236,12 @@ pub struct WeightClaimP {
     /// Point on the W MLE (k×n, column vars LSB): r_j ‖ r_l.
     pub point: Vec<Fp2>,
     pub value: ProverAuthed,
+    /// Correlation domain that authenticated `value`.
+    ///
+    /// Historical PCS callers did not need to retain this statement
+    /// metadata. X4 schema 4 does: every `ReducedClaimFrame` identifies the
+    /// already-authenticated parent claim without serializing its value.
+    pub auth_domain: u64,
 }
 
 /// Same as `prove_gemm_blind`, but the W̃ leg is authenticated at
@@ -345,7 +351,7 @@ pub fn prove_gemm_blind_committed_at(
 
     let mut w_point = r_j.clone();
     w_point.extend_from_slice(&point);
-    let claim = WeightClaimP { point: w_point, value: b_auth };
+    let claim = WeightClaimP { point: w_point, value: b_auth, auth_domain: dom_w_claim };
     (GemmBlindProof { corr_x, corr_y, sumcheck, prod }, corr_w, claim, tm, stream.counters)
 }
 
@@ -674,7 +680,7 @@ pub fn prove_gemm_committed_chained(
         ChainedGemmProof { sumcheck, prod },
         WireOut { point: x_point, value: x_auth, corr: corr_x },
         corr_w,
-        WeightClaimP { point: w_point, value: b_auth },
+        WeightClaimP { point: w_point, value: b_auth, auth_domain: doms.w_claim },
         tm,
         stream.counters,
     )
@@ -805,7 +811,7 @@ pub fn prove_gemm_committed_chained_resident(
         ChainedGemmProof { sumcheck, prod },
         WireOut { point: x_point, value: x_auth, corr: corr_x },
         corr_w,
-        WeightClaimP { point: w_point, value: b_auth },
+        WeightClaimP { point: w_point, value: b_auth, auth_domain: doms.w_claim },
         tm,
         stream.counters,
     ))

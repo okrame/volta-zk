@@ -2864,8 +2864,14 @@ fn prove_global(
         embedding.main.col_claims[1].value.sub(embedding_weight_auth),
         "X2 public embedding gather",
     );
-    let embedding_weight =
-        WeightClaimP { point: embedding_weight_point, value: embedding_weight_auth };
+    // X2 predates the X4 reduced-claim frame and does not export this claim
+    // through that path. Keep the sentinel explicit instead of presenting it
+    // as an X4 correlation-domain statement.
+    let embedding_weight = WeightClaimP {
+        point: embedding_weight_point,
+        value: embedding_weight_auth,
+        auth_domain: u64::MAX,
+    };
 
     let proof = X2GlobalProof {
         auth_corrs: prepared.auth_corrs.clone(),

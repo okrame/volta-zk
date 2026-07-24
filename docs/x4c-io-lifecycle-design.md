@@ -294,7 +294,7 @@ N4 frames and root construction remain unchanged.
 Correctness no longer depends on a full production reread:
 
 - Permanent full CPU/GPU direct-fold tests cover lengths
-  `2^3, 2^8, 2^12, 2^16, 2^20` and challenges
+  `2^3, 2^4, 2^5, 2^6, 2^7, 2^8, 2^12, 2^16, 2^20` and challenges
   `0`, `1`, `Fp2(3,11)` and `Fp2(p-1,p-2)`. Every output symbol must be
   bit-identical.
 - Each production response checks **`min(64, output_len)` unique output
@@ -308,6 +308,13 @@ Correctness no longer depends on a full production reread:
   The record includes the seed material, ordered-index digest, comparison
   count and zero mismatch count. Sampling affects no transcript and receives
   no soundness credit.
+- This is a **round-local differential**, not an independent track-to-track
+  binding. Round zero compares device output with host-owned initial input;
+  from round one onward both sampled input pairs and output values are
+  gathered from the same resident device chain. An unsampled self-consistent
+  device fault is handled only by the verifier's frozen queried fold
+  relation and existing soundness accounting, never credited to this
+  diagnostic.
 - The production diagnostic traffic is accounted separately from proof
   opening traffic: exactly **53 gathers**, **4,648 Fp2 symbols**,
   **37,184 B index H2D** and **74,368 B value D2H**. These bytes are

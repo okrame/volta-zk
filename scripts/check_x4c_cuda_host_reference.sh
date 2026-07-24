@@ -293,8 +293,9 @@ int main() {
     static_assert(
         sizeof(volta_x4b::X4cCanonicalGatherOperation) == 88,
         "X4c canonical-operation ABI changed");
-    for (const uint8_t bits : {uint8_t{3}, uint8_t{8}, uint8_t{12},
-                               uint8_t{16}, uint8_t{20}}) {
+    for (const uint8_t bits : {uint8_t{3}, uint8_t{4}, uint8_t{5},
+                               uint8_t{6}, uint8_t{7}, uint8_t{8},
+                               uint8_t{12}, uint8_t{16}, uint8_t{20}}) {
         const Fp2 root = volta_x4b::root_of_unity(bits);
         require(
             equal(

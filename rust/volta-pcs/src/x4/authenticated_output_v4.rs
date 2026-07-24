@@ -232,6 +232,7 @@ pub struct X4OpeningRegistryV4 {
 pub struct X4OpeningPermitV4 {
     model_root: Digest,
     epoch: u64,
+    persistent_freshness_record_digest: Option<Digest>,
 }
 
 impl X4OpeningRegistryV4 {
@@ -243,7 +244,32 @@ impl X4OpeningRegistryV4 {
         if !self.opened.insert((model_root, epoch)) {
             return Err(AuthenticatedOutputErrorV4::EpochAlreadyOpened);
         }
-        Ok(X4OpeningPermitV4 { model_root, epoch })
+        Ok(X4OpeningPermitV4 { model_root, epoch, persistent_freshness_record_digest: None })
+    }
+
+    /// Authorize an opening only after the caller has durably burned the X4
+    /// `(model_root, epoch)`, challenge seed, and real-PCG authorization.
+    /// The nonzero digest is the persisted burn receipt; production E2E
+    /// drivers must use this entry point rather than [`Self::authorize`].
+    pub fn authorize_after_persistent_freshness(
+        &mut self,
+        model_root: Digest,
+        epoch: u64,
+        freshness_record_digest: Digest,
+    ) -> Result<X4OpeningPermitV4, AuthenticatedOutputErrorV4> {
+        if freshness_record_digest == [0; 32] {
+            return Err(AuthenticatedOutputErrorV4::InvalidGeometry(
+                "persistent X4 freshness receipt",
+            ));
+        }
+        if !self.opened.insert((model_root, epoch)) {
+            return Err(AuthenticatedOutputErrorV4::EpochAlreadyOpened);
+        }
+        Ok(X4OpeningPermitV4 {
+            model_root,
+            epoch,
+            persistent_freshness_record_digest: Some(freshness_record_digest),
+        })
     }
 
     pub fn has_opened(&self, model_root: Digest, epoch: u64) -> bool {
@@ -258,6 +284,10 @@ impl X4OpeningPermitV4 {
 
     pub fn epoch(&self) -> u64 {
         self.epoch
+    }
+
+    pub fn persistent_freshness_record_digest(&self) -> Option<Digest> {
+        self.persistent_freshness_record_digest
     }
 }
 
@@ -1601,5 +1631,15 @@ mod tests {
             registry.authorize(root, 17),
             Err(AuthenticatedOutputErrorV4::EpochAlreadyOpened)
         ));
+
+        let persistent_root = [0xE6; 32];
+        assert!(matches!(
+            registry.authorize_after_persistent_freshness(persistent_root, 18, [0; 32]),
+            Err(AuthenticatedOutputErrorV4::InvalidGeometry(_))
+        ));
+        let receipt = [0xA7; 32];
+        let permit =
+            registry.authorize_after_persistent_freshness(persistent_root, 18, receipt).unwrap();
+        assert_eq!(permit.persistent_freshness_record_digest(), Some(receipt));
     }
 }

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import hashlib
 import json
 import math
 import platform
@@ -170,6 +171,27 @@ X4C_NO_TEARDOWN_OPEN_ANCHOR_S = 0.109_631_491
 X4C_POD_PROFILE = "runpod-a100-x4c-v1"
 X4C_LEGACY_CAUSAL_MILESTONE = "X4c-phase2-legacy-causal-diagnostic"
 X4C_LIFECYCLE_PROBE_MILESTONE = "X4c-phase2-exact-size-lifecycle-probe"
+X4C_ONBOARDING_MILESTONE = "X4c-v1-A100-onboarding"
+X4C_ONLINE_MILESTONE = "X4c-v1-A100-online"
+X4C_V1_DESIGN_SHA256 = (
+    "57d0c0d691cc63ec043d18384348ad0e1130a5e763dc8e9ef00a7132d8abb880"
+)
+X4C_DURABLE_COEFFICIENT_BYTES = 9_618_587_648
+X4C_DURABLE_ROOT_BYTES = 160
+X4C_DURABLE_BYTES = X4C_DURABLE_COEFFICIENT_BYTES + X4C_DURABLE_ROOT_BYTES
+X4C_INITIAL_ORACLE_BYTES = 76_948_701_184
+X4C_INITIAL_OUTER_CACHE_BYTES = 37_094_424_416
+X4C_ARENA_BYTES = 43_486_546_048
+X4C_PACKED_OPENING_BYTES = 2_615_414
+X4C_GLOBAL_FOLDING_PROOF_BYTES = 2_617_860
+X4C_MANDATORY_NON_QUERY_BYTES = 67_822
+X4C_COHORTS = (
+    (0xA5000001, 4_294_967_296, 34_359_738_336),
+    (0xA5000002, 4_831_838_208, 2_147_483_616),
+    (0xA5000003, 436_207_616, 536_870_880),
+    (0xA5000100, 4_194_304, 33_554_400),
+    (0xA5000101, 51_380_224, 16_777_184),
+)
 X4C_PRODUCTION_SEALED_STATE_BYTES = (
     X4C_PRODUCTION_FOLD_CODEWORD_BYTES + X4C_PRODUCTION_FOLD_OUTER_CACHE_BYTES
 )
@@ -1992,6 +2014,975 @@ def validate_x4c_legacy_causal_result(path: Path) -> bool:
             path = REPO / path
         with path.open("r", encoding="utf-8") as handle:
             return _x4c_legacy_causal_result_valid(json.load(handle))
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return False
+
+
+def _x4c_has(row: Any, keys: tuple[str, ...]) -> bool:
+    return isinstance(row, dict) and all(key in row for key in keys)
+
+
+def _x4c_hex(value: Any, length: int) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == length
+        and value == value.lower()
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def _x4c_pin_valid(row: Any) -> bool:
+    return (
+        _x4c_has(row, ("path", "sha256", "git_sha"))
+        and isinstance(row["path"], str)
+        and bool(row["path"])
+        and _x4c_hex(row["sha256"], 64)
+        and _x4c_hex(row["git_sha"], 40)
+    )
+
+
+def _x4c_v1_machine_valid(row: Any) -> bool:
+    return (
+        _x4c_has(
+            row,
+            (
+                "provider",
+                "pod_id",
+                "gpu",
+                "gpu_uuid",
+                "cuda_visible_devices",
+                "host_ram_bytes",
+                "logical_cpus",
+                "rayon_workers",
+                "commit_seal_open_unpinned",
+                "persistent_root",
+                "persistent_filesystem_type",
+                "persistent_available_bytes",
+                "local_root",
+                "local_filesystem_type",
+                "local_available_bytes",
+            ),
+        )
+        and row["provider"] == "RunPod"
+        and row["gpu"] == "NVIDIA A100-SXM4-80GB"
+        and isinstance(row["pod_id"], str)
+        and bool(row["pod_id"])
+        and isinstance(row["gpu_uuid"], str)
+        and row["gpu_uuid"].startswith("GPU-")
+        and isinstance(row["cuda_visible_devices"], str)
+        and bool(row["cuda_visible_devices"])
+        and _x4c_positive_int(row["logical_cpus"])
+        and row["rayon_workers"] == row["logical_cpus"]
+        and row["host_ram_bytes"] >= X4C_MIN_HOST_RAM_BYTES
+        and row["local_available_bytes"] >= X4C_MIN_LOCAL_STORAGE_BYTES
+        and _x4c_nonnegative_int(row["persistent_available_bytes"])
+        and row["commit_seal_open_unpinned"] is True
+        and row["persistent_filesystem_type"] != "mfs"
+        and row["local_filesystem_type"] != "mfs"
+    )
+
+
+_X4C_IO_KEYS = (
+    "rchar",
+    "wchar",
+    "syscr",
+    "syscw",
+    "read_bytes",
+    "write_bytes",
+    "cancelled_write_bytes",
+    "observer_rchar_bytes",
+    "unexpected_rchar_bytes",
+    "unexpected_wchar_bytes",
+    "unexpected_read_bytes",
+    "unexpected_write_bytes",
+    "response_window_exact",
+)
+
+
+def _x4c_io_valid(row: Any, *, response: bool) -> bool:
+    if not (
+        _x4c_has(row, _X4C_IO_KEYS)
+        and all(_x4c_nonnegative_int(row[key]) for key in _X4C_IO_KEYS[:-1])
+        and isinstance(row["response_window_exact"], bool)
+    ):
+        return False
+    if not response:
+        return True
+    return (
+        row["response_window_exact"] is True
+        and row["rchar"] == row["observer_rchar_bytes"]
+        and row["wchar"] == 0
+        and row["read_bytes"] == 0
+        and row["write_bytes"] == 0
+        and row["cancelled_write_bytes"] == 0
+        and all(
+            row[key] == 0
+            for key in (
+                "unexpected_rchar_bytes",
+                "unexpected_wchar_bytes",
+                "unexpected_read_bytes",
+                "unexpected_write_bytes",
+            )
+        )
+    )
+
+
+_X4C_BACKEND_INT_KEYS = (
+    "measurement_wall_ns",
+    "unattributed_cpu_residual_ns",
+    "h2d_bytes",
+    "d2h_bytes",
+    "explicit_d2d_copy_bytes",
+    "device_zeroed_bytes",
+    "device_generated_bytes",
+    "resident_h2d_host_calls",
+    "resident_d2h_host_calls",
+    "synchronizations",
+    "sync_host_output",
+    "sync_upload_lifetime",
+    "sync_timing_flush",
+    "sync_profiling_legacy",
+    "sync_allocator_flush",
+    "allocation_calls",
+    "resident_alloc_requests",
+    "resident_reuse_hits",
+    "resident_free_requests",
+    "physical_free_calls",
+    "live_device_bytes",
+    "peak_device_bytes",
+    "pinned_allocation_calls",
+    "pinned_alloc_requests",
+    "pinned_reuse_hits",
+    "pinned_free_requests",
+    "pinned_physical_free_calls",
+    "pinned_host_write_calls",
+    "pinned_host_write_bytes",
+    "live_pinned_bytes",
+    "peak_pinned_bytes",
+    "x4c_arena_reset_calls",
+    "x4c_arena_reset_bytes",
+    "x4c_kernel_launches",
+    "x4c_control_peek_calls",
+    "x4c_control_peek_pending",
+    "timing_records",
+    "timing_elapsed_query_attempts",
+    "timing_elapsed_no_write",
+    "timing_event_queries",
+    "timing_event_api_calls",
+    "timing_pending_high_water",
+    "timing_flush_count",
+    "coarse_timing_scopes",
+)
+
+
+def _x4c_backend_valid(row: Any) -> bool:
+    if not (
+        _x4c_has(
+            row,
+            _X4C_BACKEND_INT_KEYS
+            + (
+                "operations",
+                "operation_kernel_ns",
+                "operation_cpu_residual_ns",
+            ),
+        )
+        and all(_x4c_nonnegative_int(row[key]) for key in _X4C_BACKEND_INT_KEYS)
+    ):
+        return False
+    expected_names = (
+        "gemm",
+        "logup",
+        "pcs_rows",
+        "pcs_ntt",
+        "pcs_merkle",
+        "auth_masks",
+        "mailbox",
+    )
+    for key in ("operations", "operation_kernel_ns", "operation_cpu_residual_ns"):
+        values = row[key]
+        if not (
+            isinstance(values, list)
+            and len(values) == len(expected_names)
+            and tuple(item[0] for item in values) == expected_names
+            and all(
+                isinstance(item, list)
+                and len(item) == 2
+                and _x4c_nonnegative_int(item[1])
+                for item in values
+            )
+        ):
+            return False
+    return all(
+        row[key] == 0
+        for key in (
+            "timing_records",
+            "timing_elapsed_query_attempts",
+            "timing_elapsed_no_write",
+            "timing_event_queries",
+            "timing_event_api_calls",
+            "timing_pending_high_water",
+            "timing_flush_count",
+            "coarse_timing_scopes",
+        )
+    )
+
+
+def _x4c_durable_census_valid(row: Any) -> bool:
+    keys = (
+        "cohort_directory_count",
+        "cohort_ids",
+        "coefficient_file_count",
+        "root_file_count",
+        "oracle_file_count",
+        "other_file_count",
+        "other_directory_count",
+        "symlink_count",
+        "total_regular_file_bytes",
+        "unexpected_paths",
+        "exact",
+    )
+    expected_ids = [cohort[0] for cohort in X4C_COHORTS]
+    return (
+        _x4c_has(row, keys)
+        and row["cohort_directory_count"] == 5
+        and row["cohort_ids"] == expected_ids
+        and row["coefficient_file_count"] == 5
+        and row["root_file_count"] == 5
+        and row["oracle_file_count"] == 0
+        and row["other_file_count"] == 0
+        and row["other_directory_count"] == 0
+        and row["symlink_count"] == 0
+        and row["total_regular_file_bytes"] == X4C_DURABLE_BYTES
+        and row["unexpected_paths"] == []
+        and row["exact"] is True
+    )
+
+
+def _x4c_onboarding_pass_valid(
+    row: Any,
+    *,
+    role: str,
+    measured: bool,
+    retained: bool,
+) -> bool:
+    if not (
+        _x4c_has(
+            row,
+            (
+                "role",
+                "measured",
+                "wall_s",
+                "io",
+                "backend",
+                "cohorts",
+                "coefficient_bytes",
+                "oracle_bytes",
+                "root_bytes",
+                "retained_durable",
+                "cleanup_complete",
+                "accepted",
+            ),
+        )
+        and row["role"] == role
+        and row["measured"] is measured
+        and isinstance(row["wall_s"], (int, float))
+        and not isinstance(row["wall_s"], bool)
+        and row["wall_s"] > 0
+        and _x4c_io_valid(row["io"], response=False)
+        and _x4c_backend_valid(row["backend"])
+        and row["coefficient_bytes"] == X4C_DURABLE_COEFFICIENT_BYTES
+        and row["oracle_bytes"] == X4C_INITIAL_ORACLE_BYTES
+        and row["root_bytes"] == X4C_DURABLE_ROOT_BYTES
+        and row["retained_durable"] is retained
+        and row["cleanup_complete"] is True
+        and row["accepted"] is True
+        and isinstance(row["cohorts"], list)
+        and len(row["cohorts"]) == 5
+    ):
+        return False
+    coefficient_sum = oracle_sum = root_sum = h2d_sum = d2h_sum = 0
+    for cohort, expected in zip(row["cohorts"], X4C_COHORTS, strict=True):
+        cohort_id, coefficient_bytes, _ = expected
+        metrics = cohort.get("metrics") if isinstance(cohort, dict) else None
+        if not (
+            _x4c_has(cohort, ("cohort_id", "root_hex", "metrics"))
+            and cohort["cohort_id"] == cohort_id
+            and _x4c_hex(cohort["root_hex"], 64)
+            and _x4c_has(
+                metrics,
+                (
+                    "coefficient_bytes_persisted",
+                    "oracle_bytes_persisted",
+                    "root_bytes_persisted",
+                    "staging_bytes_read",
+                    "staging_bytes_written",
+                    "retained_outer_cache_bytes",
+                    "expected_h2d_bytes",
+                    "expected_d2h_bytes",
+                ),
+            )
+            and all(
+                _x4c_nonnegative_int(metrics[key])
+                for key in (
+                    "coefficient_bytes_persisted",
+                    "oracle_bytes_persisted",
+                    "root_bytes_persisted",
+                    "staging_bytes_read",
+                    "staging_bytes_written",
+                    "retained_outer_cache_bytes",
+                    "expected_h2d_bytes",
+                    "expected_d2h_bytes",
+                )
+            )
+            and metrics["coefficient_bytes_persisted"] == coefficient_bytes
+            and metrics["oracle_bytes_persisted"] == coefficient_bytes * 8
+            and metrics["root_bytes_persisted"] == 32
+        ):
+            return False
+        coefficient_sum += metrics["coefficient_bytes_persisted"]
+        oracle_sum += metrics["oracle_bytes_persisted"]
+        root_sum += metrics["root_bytes_persisted"]
+        h2d_sum += metrics["expected_h2d_bytes"]
+        d2h_sum += metrics["expected_d2h_bytes"]
+    return (
+        coefficient_sum == row["coefficient_bytes"]
+        and oracle_sum == row["oracle_bytes"]
+        and root_sum == row["root_bytes"]
+        and row["backend"]["h2d_bytes"] == h2d_sum
+        and row["backend"]["d2h_bytes"] == d2h_sum
+    )
+
+
+def _x4c_onboarding_result_valid(row: Any) -> bool:
+    required = (
+        "schema",
+        "milestone",
+        "git_sha",
+        "git_dirty",
+        "pod_profile",
+        "protocol_profile",
+        "design_sha256",
+        "clean_source_sha256",
+        "note6",
+        "lifecycle_probe",
+        "machine",
+        "warmup",
+        "measured",
+        "selected_upper_median_wall_s",
+        "durable_files",
+        "durable_census",
+        "durable_coefficient_file_count",
+        "durable_root_file_count",
+        "durable_oracle_file_count",
+        "durable_bytes",
+        "durable_tier_exact",
+        "roots_identical_across_passes",
+        "response_work_executed",
+        "complete_online_wall_ceiling",
+        "overall_pass",
+    )
+    if not (
+        _x4c_has(row, required)
+        and row["schema"] == 2
+        and row["milestone"] == X4C_ONBOARDING_MILESTONE
+        and _x4c_hex(row["git_sha"], 40)
+        and row["git_dirty"] is False
+        and row["pod_profile"] == X4C_POD_PROFILE
+        and row["protocol_profile"] == X4_V4_PROFILE
+        and row["design_sha256"] == X4C_V1_DESIGN_SHA256
+        and _x4c_hex(row["clean_source_sha256"], 64)
+        and _x4c_pin_valid(row["note6"])
+        and _x4c_pin_valid(row["lifecycle_probe"])
+        and _x4c_v1_machine_valid(row["machine"])
+        and _x4c_onboarding_pass_valid(
+            row["warmup"], role="warmup", measured=False, retained=False
+        )
+        and isinstance(row["measured"], list)
+        and len(row["measured"]) == 3
+        and all(
+            _x4c_onboarding_pass_valid(
+                candidate,
+                role=f"measured-{ordinal}",
+                measured=True,
+                retained=ordinal == 3,
+            )
+            for ordinal, candidate in enumerate(row["measured"], 1)
+        )
+        and _x4c_durable_census_valid(row["durable_census"])
+        and row["durable_coefficient_file_count"] == 5
+        and row["durable_root_file_count"] == 5
+        and row["durable_oracle_file_count"] == 0
+        and row["durable_bytes"] == X4C_DURABLE_BYTES
+        and row["durable_tier_exact"] is True
+        and row["roots_identical_across_passes"] is True
+        and row["response_work_executed"] is False
+        and row["complete_online_wall_ceiling"] is None
+        and row["overall_pass"] is True
+        and isinstance(row["durable_files"], list)
+        and len(row["durable_files"]) == 5
+    ):
+        return False
+    measured_walls = [candidate["wall_s"] for candidate in row["measured"]]
+    if row["selected_upper_median_wall_s"] != sorted(measured_walls)[1]:
+        return False
+    roots = [cohort["root_hex"] for cohort in row["warmup"]["cohorts"]]
+    for candidate in row["measured"]:
+        if [cohort["root_hex"] for cohort in candidate["cohorts"]] != roots:
+            return False
+    for durable, expected, root in zip(
+        row["durable_files"], X4C_COHORTS, roots, strict=True
+    ):
+        cohort_id, coefficient_bytes, _ = expected
+        if not (
+            _x4c_has(
+                durable,
+                (
+                    "cohort_id",
+                    "coefficient_path",
+                    "coefficient_bytes",
+                    "coefficient_sha256",
+                    "root_path",
+                    "root_bytes",
+                    "root_hex",
+                    "root_sha256",
+                ),
+            )
+            and durable["cohort_id"] == cohort_id
+            and durable["coefficient_bytes"] == coefficient_bytes
+            and durable["root_bytes"] == 32
+            and durable["root_hex"] == root
+            and _x4c_hex(durable["coefficient_sha256"], 64)
+            and _x4c_hex(durable["root_sha256"], 64)
+            and Path(durable["coefficient_path"]).name == "coefficients.bin"
+            and Path(durable["root_path"]).name == "root.bin"
+        ):
+            return False
+    return True
+
+
+def validate_x4c_onboarding_result(path: Path) -> bool:
+    try:
+        if not path.is_absolute():
+            path = REPO / path
+        with path.open("r", encoding="utf-8") as handle:
+            return _x4c_onboarding_result_valid(json.load(handle))
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return False
+
+
+_X4C_ARENA_INT_KEYS = (
+    "capacity_bytes",
+    "committed_bytes",
+    "peak_bytes",
+    "logical_allocations",
+    "response_round_allocations",
+    "reallocations",
+    "logical_deallocations",
+    "reset_count",
+    "zeroed_bytes",
+    "outstanding_allocations",
+    "outstanding_bytes",
+    "cached_reusable_bytes",
+    "backend_workspace_bytes",
+    "backend_baseline_resident_bytes",
+    "backend_resident_bytes",
+    "backend_cached_resident_bytes",
+    "baseline_active_device_allocations",
+    "active_device_allocations",
+    "cached_device_allocations",
+    "baseline_active_pinned_allocations",
+    "baseline_active_pinned_bytes",
+    "active_pinned_allocations",
+    "cached_pinned_allocations",
+    "in_flight_pinned_allocations",
+    "active_pinned_bytes",
+    "cached_pinned_bytes",
+    "outstanding_cuda_operations",
+    "pinned_pool_allocations",
+    "pinned_pool_requested_bytes",
+    "native_live_device_bytes",
+    "native_peak_device_bytes",
+    "native_resident_alloc_requests",
+    "native_resident_reuse_hits",
+    "native_resident_free_requests",
+    "native_arena_reset_calls",
+    "native_arena_reset_bytes",
+    "native_device_zeroed_bytes",
+)
+
+
+def _x4c_arena_valid(row: Any, *, proof_ready: bool) -> bool:
+    if not (
+        _x4c_has(row, _X4C_ARENA_INT_KEYS + ("accelerator_available", "stream_synchronized"))
+        and all(_x4c_nonnegative_int(row[key]) for key in _X4C_ARENA_INT_KEYS)
+        and row["accelerator_available"] is True
+        and row["stream_synchronized"] is True
+        and row["capacity_bytes"] == X4C_ARENA_BYTES
+        and row["committed_bytes"] == X4C_ARENA_BYTES
+        and row["peak_bytes"] == row["native_peak_device_bytes"]
+        and row["peak_bytes"] >= X4C_ARENA_BYTES
+        and row["logical_allocations"] == row["native_resident_alloc_requests"] == 1
+        and row["response_round_allocations"] == 0
+        and row["reallocations"] == 0
+        and row["logical_deallocations"] == row["native_resident_free_requests"]
+        and row["reset_count"] == row["native_arena_reset_calls"]
+        and row["zeroed_bytes"] == row["native_device_zeroed_bytes"]
+        and row["outstanding_cuda_operations"] == 0
+        and row["in_flight_pinned_allocations"] == 0
+        and row["pinned_pool_allocations"] == 4
+        and row["pinned_pool_requested_bytes"] == 1_090_741_982
+        and row["active_pinned_allocations"]
+        == row["baseline_active_pinned_allocations"] + 4
+        and row["active_pinned_bytes"]
+        >= row["baseline_active_pinned_bytes"] + row["pinned_pool_requested_bytes"]
+    ):
+        return False
+    if proof_ready:
+        return (
+            row["logical_deallocations"] == 0
+            and row["reset_count"] == 0
+            and row["zeroed_bytes"] == 0
+            and row["native_arena_reset_bytes"] == 0
+            and row["outstanding_allocations"] == 1
+            and row["outstanding_bytes"] == X4C_ARENA_BYTES
+            and row["cached_reusable_bytes"] == 0
+            and row["active_device_allocations"]
+            == row["baseline_active_device_allocations"] + 1
+        )
+    return (
+        row["logical_deallocations"] == 1
+        and row["reset_count"] == 1
+        and row["zeroed_bytes"] == X4C_ARENA_BYTES
+        and row["native_arena_reset_bytes"] == X4C_ARENA_BYTES
+        and row["outstanding_allocations"] == 0
+        and row["outstanding_bytes"] == 0
+        and row["cached_reusable_bytes"] == X4C_ARENA_BYTES
+        and row["active_device_allocations"] == row["baseline_active_device_allocations"]
+    )
+
+
+def _x4c_response_candidate_valid(
+    row: Any, *, role: str, ordinal: int, measured: bool
+) -> bool:
+    if not (
+        _x4c_has(
+            row,
+            (
+                "role",
+                "measured",
+                "ordinal",
+                "epoch",
+                "seal_wall_s",
+                "open_wall_s",
+                "verify_wall_s",
+                "proof_ready_wall_s",
+                "session_reusable_wall_s",
+                "complete_online_wall_s",
+                "global_folding_proof_bytes",
+                "complete_pcs_bytes",
+                "frozen_non_query_pcs_bytes",
+                "packed_opening_bytes",
+                "packed_opened_symbol_count",
+                "packed_opened_symbol_bytes",
+                "packed_initial_inner_sibling_count",
+                "packed_initial_inner_sibling_bytes",
+                "packed_initial_outer_sibling_count",
+                "packed_initial_outer_sibling_bytes",
+                "packed_fold_outer_sibling_count",
+                "packed_fold_outer_sibling_bytes",
+                "packed_metadata_bytes",
+                "packed_components_exact",
+                "selected_query_tape_blake3",
+                "selected_query_tape_exact",
+                "fold_challenges_replayed",
+                "response_bytes",
+                "query_draws",
+                "verifier_accepted",
+                "transcript_bytes_equal",
+                "transcript_ledger_equal",
+                "process_io",
+                "response_window_io_exact",
+                "backend",
+                "metrics",
+                "expected_h2d_bytes",
+                "expected_d2h_bytes",
+                "traffic_exact",
+                "zero_response_staging",
+                "accepted",
+            ),
+        )
+        and row["role"] == role
+        and row["ordinal"] == ordinal
+        and row["measured"] is measured
+        and row["epoch"] == 0x58430000 + ordinal
+        and all(
+            isinstance(row[key], (int, float))
+            and not isinstance(row[key], bool)
+            and row[key] > 0
+            for key in (
+                "seal_wall_s",
+                "open_wall_s",
+                "verify_wall_s",
+                "proof_ready_wall_s",
+                "session_reusable_wall_s",
+                "complete_online_wall_s",
+            )
+        )
+        and row["session_reusable_wall_s"] >= row["proof_ready_wall_s"]
+        and row["global_folding_proof_bytes"] == X4C_GLOBAL_FOLDING_PROOF_BYTES
+        and row["complete_pcs_bytes"] == X4_V4_PCS_BYTES
+        and row["frozen_non_query_pcs_bytes"] == X4C_MANDATORY_NON_QUERY_BYTES
+        and row["packed_opening_bytes"] == X4C_PACKED_OPENING_BYTES
+        and row["response_bytes"] == X4_V4_RESPONSE_BYTES
+        and row["query_draws"] == 111
+        and row["packed_opened_symbol_bytes"] == row["packed_opened_symbol_count"] * 16
+        and row["packed_initial_inner_sibling_bytes"]
+        == row["packed_initial_inner_sibling_count"] * 32
+        and row["packed_initial_outer_sibling_bytes"]
+        == row["packed_initial_outer_sibling_count"] * 32
+        and row["packed_fold_outer_sibling_bytes"]
+        == row["packed_fold_outer_sibling_count"] * 32
+        and sum(
+            row[key]
+            for key in (
+                "packed_opened_symbol_bytes",
+                "packed_initial_inner_sibling_bytes",
+                "packed_initial_outer_sibling_bytes",
+                "packed_fold_outer_sibling_bytes",
+                "packed_metadata_bytes",
+            )
+        )
+        == X4C_PACKED_OPENING_BYTES
+        and row["packed_components_exact"] is True
+        and _x4c_hex(row["selected_query_tape_blake3"], 64)
+        and row["selected_query_tape_exact"] is True
+        and row["fold_challenges_replayed"] is True
+        and row["verifier_accepted"] is True
+        and row["transcript_bytes_equal"] is True
+        and row["transcript_ledger_equal"] is True
+        and _x4c_io_valid(row["process_io"], response=True)
+        and row["response_window_io_exact"] is True
+        and _x4c_backend_valid(row["backend"])
+        and row["traffic_exact"] is True
+        and row["zero_response_staging"] is True
+        and row["accepted"] is True
+    ):
+        return False
+    metrics = row["metrics"]
+    if not _x4c_has(
+        metrics,
+        (
+            "response_io",
+            "execution",
+            "proof_ready_arena",
+            "session_reusable_arena",
+            "proof_ready_wall_ns",
+            "session_reusable_wall_ns",
+            "source_coefficients_read",
+            "initial_encoded_symbols_read",
+            "combined_codeword_symbols",
+            "serialized_fold_bytes",
+            "serialized_packed_opening_bytes",
+            "sampling_soundness_credit_bits",
+        ),
+    ):
+        return False
+    response_io = metrics["response_io"]
+    if not (
+        isinstance(response_io, dict)
+        and len(response_io) == 9
+        and all(_x4c_nonnegative_int(value) and value == 0 for value in response_io.values())
+    ):
+        return False
+    execution = metrics["execution"]
+    expected_execution = {
+        "direct_fold_calls": 27,
+        "diagnostic_comparisons": 1_592,
+        "diagnostic_mismatches": 0,
+        "diagnostic_gather_calls": 53,
+        "diagnostic_index_h2d_bytes": 37_184,
+        "diagnostic_value_d2h_bytes": 74_368,
+        "n4_tree_calls": 27,
+        "query_gather_calls": 1,
+        "query_gather_operation_count": 53_898,
+        "query_gather_operation_h2d_bytes": 4_743_024,
+        "canonical_template_h2d_bytes": X4C_PACKED_OPENING_BYTES,
+        "query_draw_count": 111,
+        "canonical_opening_d2h_bytes": X4C_PACKED_OPENING_BYTES,
+        "noncanonical_opening_d2h_bytes": 0,
+        "cpu_fold_tree_clone_bytes": 0,
+    }
+    if not isinstance(execution, dict) or any(
+        execution.get(key) != value for key, value in expected_execution.items()
+    ):
+        return False
+    expected_h2d = (
+        metrics["combined_codeword_symbols"] * 16
+        + execution["diagnostic_index_h2d_bytes"]
+        + execution["query_gather_operation_h2d_bytes"]
+        + execution["canonical_template_h2d_bytes"]
+    )
+    expected_d2h = (
+        27 * 32
+        + execution["diagnostic_value_d2h_bytes"]
+        + execution["canonical_opening_d2h_bytes"]
+    )
+    backend = row["backend"]
+    return (
+        metrics["source_coefficients_read"] == 601_161_728
+        and metrics["initial_encoded_symbols_read"] == 4_809_293_824
+        and metrics["combined_codeword_symbols"] == 1_159_200_768
+        and metrics["serialized_fold_bytes"] == 2_446
+        and metrics["serialized_packed_opening_bytes"] == X4C_PACKED_OPENING_BYTES
+        and metrics["sampling_soundness_credit_bits"] == 0
+        and metrics["proof_ready_wall_ns"] > 0
+        and metrics["session_reusable_wall_ns"] >= metrics["proof_ready_wall_ns"]
+        and _x4c_arena_valid(metrics["proof_ready_arena"], proof_ready=True)
+        and _x4c_arena_valid(metrics["session_reusable_arena"], proof_ready=False)
+        and row["expected_h2d_bytes"] == expected_h2d == backend["h2d_bytes"]
+        and row["expected_d2h_bytes"] == expected_d2h == backend["d2h_bytes"]
+        and backend["explicit_d2d_copy_bytes"] == 0
+        and backend["device_generated_bytes"] == 0
+        and backend["resident_alloc_requests"] == 1
+        and backend["resident_free_requests"] == 1
+        and backend["x4c_arena_reset_calls"] == 1
+        and backend["x4c_arena_reset_bytes"] == X4C_ARENA_BYTES
+        and backend["device_zeroed_bytes"] == X4C_ARENA_BYTES
+        and all(
+            backend[key] == 0
+            for key in (
+                "pinned_allocation_calls",
+                "pinned_alloc_requests",
+                "pinned_reuse_hits",
+                "pinned_free_requests",
+                "pinned_physical_free_calls",
+            )
+        )
+    )
+
+
+def _x4c_rebuild_valid(row: Any, onboarding: dict[str, Any]) -> bool:
+    if not (
+        _x4c_has(
+            row,
+            (
+                "wall_s",
+                "io",
+                "parallel_task_count",
+                "rayon_workers",
+                "cohorts",
+                "coefficient_bytes_read",
+                "host_oracle_bytes",
+                "host_outer_cache_bytes",
+                "roots",
+                "roots_equal_onboarding",
+                "durable_oracle_files",
+                "durable_census_before",
+                "durable_census_after",
+                "durable_census_stable",
+                "accepted",
+            ),
+        )
+        and isinstance(row["wall_s"], (int, float))
+        and row["wall_s"] > 0
+        and _x4c_io_valid(row["io"], response=False)
+        and row["parallel_task_count"] == 5
+        and _x4c_positive_int(row["rayon_workers"])
+        and row["coefficient_bytes_read"] == X4C_DURABLE_COEFFICIENT_BYTES
+        and row["host_oracle_bytes"] == X4C_INITIAL_ORACLE_BYTES
+        and row["host_outer_cache_bytes"] == X4C_INITIAL_OUTER_CACHE_BYTES
+        and row["durable_oracle_files"] == 0
+        and _x4c_durable_census_valid(row["durable_census_before"])
+        and _x4c_durable_census_valid(row["durable_census_after"])
+        and row["durable_census_before"] == row["durable_census_after"]
+        and row["durable_census_stable"] is True
+        and row["roots_equal_onboarding"] is True
+        and row["accepted"] is True
+        and isinstance(row["cohorts"], list)
+        and len(row["cohorts"]) == 5
+    ):
+        return False
+    expected_roots = [item["root_hex"] for item in onboarding["durable_files"]]
+    if row["roots"] != expected_roots:
+        return False
+    for ordinal, (cohort, expected, root) in enumerate(
+        zip(row["cohorts"], X4C_COHORTS, expected_roots, strict=True)
+    ):
+        cohort_id, coefficient_bytes, cache_bytes = expected
+        if not (
+            _x4c_has(
+                cohort,
+                (
+                    "ordinal",
+                    "cohort_id",
+                    "coefficient_bytes_read",
+                    "host_oracle_bytes",
+                    "host_outer_cache_bytes",
+                    "root",
+                    "expected_root",
+                    "root_equal",
+                    "durable_oracle_file",
+                    "accepted",
+                ),
+            )
+            and cohort["ordinal"] == ordinal
+            and cohort["cohort_id"] == cohort_id
+            and cohort["coefficient_bytes_read"] == coefficient_bytes
+            and cohort["host_oracle_bytes"] == coefficient_bytes * 8
+            and cohort["host_outer_cache_bytes"] == cache_bytes
+            and cohort["root"] == cohort["expected_root"] == root
+            and cohort["root_equal"] is True
+            and cohort["durable_oracle_file"] is False
+            and cohort["accepted"] is True
+        ):
+            return False
+    return True
+
+
+def _x4c_online_result_valid(
+    row: Any,
+    onboarding: dict[str, Any],
+    onboarding_sha256: str,
+) -> bool:
+    if not (
+        _x4c_onboarding_result_valid(onboarding)
+        and _x4c_has(
+            row,
+            (
+                "schema",
+                "milestone",
+                "git_sha",
+                "git_dirty",
+                "pod_profile",
+                "protocol_profile",
+                "design_sha256",
+                "clean_source_sha256",
+                "note6",
+                "lifecycle_probe",
+                "onboarding",
+                "expected_onboarding_sha256",
+                "onboarding_sha256_exact",
+                "machine",
+                "fresh_process_rebuild",
+                "warmup",
+                "measured",
+                "selected_upper_median_open_wall_s",
+                "selected_upper_median_verify_wall_s",
+                "selected_upper_median_proof_ready_wall_s",
+                "selected_upper_median_session_reusable_wall_s",
+                "selected_upper_median_complete_online_wall_s",
+                "open_ceiling_s",
+                "verify_ceiling_s",
+                "open_pass",
+                "verify_pass",
+                "all_candidates_accepted",
+                "zero_response_staging",
+                "exact_communication",
+                "diagnostic_comparisons",
+                "diagnostic_soundness_credit_bits",
+                "pinned_pool_release_wall_s",
+                "pinned_pool_release_restored_ownership",
+                "protocol_or_parameter_change",
+                "root_or_proof_format_change",
+                "lean_or_soundness_change",
+                "overall_pass",
+            ),
+        )
+        and row["schema"] == 2
+        and row["milestone"] == X4C_ONLINE_MILESTONE
+        and row["git_sha"] == onboarding["git_sha"]
+        and row["git_dirty"] is False
+        and row["pod_profile"] == X4C_POD_PROFILE
+        and row["protocol_profile"] == X4_V4_PROFILE
+        and row["design_sha256"] == X4C_V1_DESIGN_SHA256
+        and row["clean_source_sha256"] == onboarding["clean_source_sha256"]
+        and _x4c_pin_valid(row["note6"])
+        and _x4c_pin_valid(row["lifecycle_probe"])
+        and _x4c_pin_valid(row["onboarding"])
+        and row["onboarding"]["sha256"] == onboarding_sha256
+        and row["onboarding"]["git_sha"] == onboarding["git_sha"]
+        and row["expected_onboarding_sha256"] == onboarding_sha256
+        and row["onboarding_sha256_exact"] is True
+        and _x4c_v1_machine_valid(row["machine"])
+        and row["machine"]["pod_id"] == onboarding["machine"]["pod_id"]
+        and row["machine"]["gpu_uuid"] == onboarding["machine"]["gpu_uuid"]
+        and _x4c_rebuild_valid(row["fresh_process_rebuild"], onboarding)
+        and _x4c_response_candidate_valid(
+            row["warmup"], role="warmup", ordinal=0, measured=False
+        )
+        and isinstance(row["measured"], list)
+        and len(row["measured"]) == 3
+        and all(
+            _x4c_response_candidate_valid(
+                candidate,
+                role=f"measured-{ordinal}",
+                ordinal=ordinal,
+                measured=True,
+            )
+            for ordinal, candidate in enumerate(row["measured"], 1)
+        )
+    ):
+        return False
+    medians = {
+        "selected_upper_median_open_wall_s": "open_wall_s",
+        "selected_upper_median_verify_wall_s": "verify_wall_s",
+        "selected_upper_median_proof_ready_wall_s": "proof_ready_wall_s",
+        "selected_upper_median_session_reusable_wall_s": "session_reusable_wall_s",
+        "selected_upper_median_complete_online_wall_s": "complete_online_wall_s",
+    }
+    if any(
+        row[output] != sorted(candidate[source] for candidate in row["measured"])[1]
+        for output, source in medians.items()
+    ):
+        return False
+    candidates = [row["warmup"], *row["measured"]]
+    open_pass = row["selected_upper_median_open_wall_s"] <= row["open_ceiling_s"]
+    verify_pass = (
+        row["selected_upper_median_verify_wall_s"] <= row["verify_ceiling_s"]
+    )
+    return (
+        row["open_ceiling_s"] == 1.50
+        and row["verify_ceiling_s"] == 0.25
+        and row["open_pass"] is open_pass is True
+        and row["verify_pass"] is verify_pass is True
+        and row["all_candidates_accepted"] is all(
+            candidate["accepted"] for candidate in candidates
+        )
+        and row["all_candidates_accepted"] is True
+        and row["zero_response_staging"] is all(
+            candidate["zero_response_staging"] for candidate in candidates
+        )
+        and row["zero_response_staging"] is True
+        and row["exact_communication"] is all(
+            candidate["complete_pcs_bytes"] == X4_V4_PCS_BYTES
+            and candidate["response_bytes"] == X4_V4_RESPONSE_BYTES
+            for candidate in candidates
+        )
+        and row["exact_communication"] is True
+        and row["diagnostic_comparisons"] == 1_592
+        and row["diagnostic_soundness_credit_bits"] == 0
+        and isinstance(row["pinned_pool_release_wall_s"], (int, float))
+        and row["pinned_pool_release_wall_s"] >= 0
+        and row["pinned_pool_release_restored_ownership"] is True
+        and row["protocol_or_parameter_change"] is False
+        and row["root_or_proof_format_change"] is False
+        and row["lean_or_soundness_change"] is False
+        and row["overall_pass"] is True
+    )
+
+
+def validate_x4c_online_result(path: Path, onboarding_path: Path) -> bool:
+    try:
+        if not path.is_absolute():
+            path = REPO / path
+        if not onboarding_path.is_absolute():
+            onboarding_path = REPO / onboarding_path
+        with path.open("r", encoding="utf-8") as handle:
+            online = json.load(handle)
+        onboarding_bytes = onboarding_path.read_bytes()
+        onboarding = json.loads(onboarding_bytes)
+        onboarding_sha256 = hashlib.sha256(onboarding_bytes).hexdigest()
+        return _x4c_online_result_valid(online, onboarding, onboarding_sha256)
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
         return False
 
@@ -5079,6 +6070,21 @@ def main() -> None:
         type=Path,
         help="fail closed unless one JSON is the exact 51.54-GB X4c lifecycle probe",
     )
+    ap.add_argument(
+        "--validate-x4c-onboarding",
+        type=Path,
+        help="fail closed unless one JSON is a complete schema-2 X4c onboarding record",
+    )
+    ap.add_argument(
+        "--validate-x4c-online",
+        type=Path,
+        help="fail closed unless one JSON is a complete schema-2 X4c online record",
+    )
+    ap.add_argument(
+        "--x4c-onboarding",
+        type=Path,
+        help="onboarding JSON whose exact SHA/source/cohorts must anchor --validate-x4c-online",
+    )
     args = ap.parse_args()
 
     selected_validators = sum(
@@ -5096,10 +6102,16 @@ def main() -> None:
             args.validate_x4c_phase1,
             args.validate_x4c_legacy_causal,
             args.validate_x4c_lifecycle_probe,
+            args.validate_x4c_onboarding,
+            args.validate_x4c_online,
         )
     )
     if selected_validators > 1:
         raise SystemExit("official validators are mutually exclusive")
+    if (args.validate_x4c_online is None) != (args.x4c_onboarding is None):
+        raise SystemExit(
+            "--validate-x4c-online and --x4c-onboarding must be supplied together"
+        )
     if args.validate_p7b_official is not None:
         if args.write_json:
             raise SystemExit("--write-json and --validate-p7b-official are mutually exclusive")
@@ -5191,6 +6203,29 @@ def main() -> None:
         if not validate_x4c_lifecycle_probe_result(args.validate_x4c_lifecycle_probe):
             raise SystemExit("invalid or inconsistent X4c exact-size lifecycle probe")
         print(f"valid X4c exact-size lifecycle probe: {args.validate_x4c_lifecycle_probe}")
+        return
+    if args.validate_x4c_onboarding is not None:
+        if args.write_json:
+            raise SystemExit(
+                "--write-json and --validate-x4c-onboarding are mutually exclusive"
+            )
+        if not validate_x4c_onboarding_result(args.validate_x4c_onboarding):
+            raise SystemExit("invalid or inconsistent X4c onboarding record")
+        print(f"valid X4c onboarding record: {args.validate_x4c_onboarding}")
+        return
+    if args.validate_x4c_online is not None:
+        if args.write_json:
+            raise SystemExit(
+                "--write-json and --validate-x4c-online are mutually exclusive"
+            )
+        if not validate_x4c_online_result(
+            args.validate_x4c_online, args.x4c_onboarding
+        ):
+            raise SystemExit("invalid or inconsistent X4c online/onboarding chain")
+        print(
+            f"valid X4c online/onboarding chain: {args.validate_x4c_online} "
+            f"<- {args.x4c_onboarding}"
+        )
         return
 
     report = p7_report(args.results_dir)

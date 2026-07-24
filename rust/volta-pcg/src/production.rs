@@ -39,6 +39,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use volta_field::{Fp, Fp2};
 
 const BURN_RECORD_MAGIC: &[u8] = b"VOLTA-PCG-AUTH-BURN-v1\n";
+const X4_FRESHNESS_RECORD_MAGIC: &[u8] = b"VOLTA-X4-RESPONSE-FRESHNESS-v1\n";
 const CONNECTION_RECORD_MAGIC: &[u8] = b"VOLTA-PCG-CONNECTION-v1\n";
 const CORRELATION_SPOOL_ENTRY_BYTES: usize = 5 * std::mem::size_of::<u64>();
 const CORRELATION_SPOOL_CHUNK_ENTRIES: usize = 1 << 16;
@@ -54,6 +55,72 @@ pub struct ResponseAuthorizationStore {
 pub struct AuthorizationBurn {
     marker_path: PathBuf,
     pub record_digest: String,
+}
+
+/// Cross-instance response identity for X4 deployments. The real-PCG
+/// authorization nonce, `(model_root, epoch)`, and verifier challenge seed
+/// are reserved in one fail-closed operation before correlation allocation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct X4ResponseFreshnessBinding {
+    pub session: SessionBinding,
+    pub model_root: [u8; 32],
+    pub epoch: u64,
+    pub challenge_seed_digest: [u8; 32],
+}
+
+impl X4ResponseFreshnessBinding {
+    pub fn new(
+        session: SessionBinding,
+        model_root: [u8; 32],
+        epoch: u64,
+        challenge_seed_digest: [u8; 32],
+    ) -> Result<Self, PhaseBError> {
+        if model_root == [0; 32] || epoch == 0 || challenge_seed_digest == [0; 32] {
+            return Err(PhaseBError::new(
+                "X4 freshness model root, epoch, and challenge-seed digest must be nonzero",
+            ));
+        }
+        Ok(Self { session, model_root, epoch, challenge_seed_digest })
+    }
+
+    fn digest(&self) -> [u8; 32] {
+        let session_digest = self.session.digest_hex();
+        digest_parts(
+            b"volta-pcg/x4-response-freshness-binding/v1",
+            &[
+                session_digest.as_bytes(),
+                &self.model_root,
+                &self.epoch.to_le_bytes(),
+                &self.challenge_seed_digest,
+            ],
+        )
+    }
+
+    pub fn digest_hex(&self) -> String {
+        hex32(self.digest())
+    }
+}
+
+/// Evidence that all three X4 freshness dimensions and the real-PCG
+/// authorization nonce were durably burned. Markers remain after success,
+/// retry, abort, or process termination.
+#[derive(Clone, Debug)]
+pub struct X4ResponseAuthorizationBurn {
+    pub authorization: AuthorizationBurn,
+    epoch_marker_path: PathBuf,
+    challenge_marker_path: PathBuf,
+    pub freshness_record_digest: String,
+    pub freshness_record_digest_bytes: [u8; 32],
+}
+
+impl X4ResponseAuthorizationBurn {
+    pub fn epoch_marker_path(&self) -> &Path {
+        &self.epoch_marker_path
+    }
+
+    pub fn challenge_marker_path(&self) -> &Path {
+        &self.challenge_marker_path
+    }
 }
 
 impl AuthorizationBurn {
@@ -861,6 +928,74 @@ impl ResponseAuthorizationStore {
             )),
         })
     }
+
+    /// Permanently burn X4 epoch and challenge freshness before burning the
+    /// real-PCG authorization nonce. A partial failure intentionally leaves
+    /// every marker already created in place, so retry/abort is fail-closed.
+    pub fn reserve_x4_response(
+        &self,
+        binding: &X4ResponseFreshnessBinding,
+    ) -> Result<X4ResponseAuthorizationBurn, PhaseBError> {
+        let freshness_digest = binding.digest();
+        let record = [X4_FRESHNESS_RECORD_MAGIC, binding.digest_hex().as_bytes(), b"\n"].concat();
+        let epoch_key = digest_parts(
+            b"volta-pcg/x4-model-epoch-freshness/v1",
+            &[&binding.model_root, &binding.epoch.to_le_bytes()],
+        );
+        let challenge_key = digest_parts(
+            b"volta-pcg/x4-challenge-seed-freshness/v1",
+            &[&binding.challenge_seed_digest],
+        );
+        let epoch_marker_path = self.root.join(format!("x4-epoch-{}.burned", hex32(epoch_key)));
+        let challenge_marker_path =
+            self.root.join(format!("x4-challenge-{}.burned", hex32(challenge_key)));
+        write_freshness_marker(&self.root, &epoch_marker_path, &record, "model/epoch")?;
+        write_freshness_marker(&self.root, &challenge_marker_path, &record, "challenge seed")?;
+        let authorization = self.reserve(&binding.session)?;
+        let freshness_record_digest_bytes = digest_parts(
+            b"volta-pcg/x4-response-freshness-record/v1",
+            &[&freshness_digest, &record],
+        );
+        Ok(X4ResponseAuthorizationBurn {
+            authorization,
+            epoch_marker_path,
+            challenge_marker_path,
+            freshness_record_digest: hex32(freshness_record_digest_bytes),
+            freshness_record_digest_bytes,
+        })
+    }
+}
+
+fn write_freshness_marker(
+    root: &Path,
+    marker_path: &Path,
+    record: &[u8],
+    category: &str,
+) -> Result<(), PhaseBError> {
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(marker_path).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::AlreadyExists {
+            PhaseBError::new(format!("X4 {category} already burned; retry rejected"))
+        } else {
+            PhaseBError::new(format!(
+                "cannot burn X4 {category} marker {}: {error}",
+                marker_path.display()
+            ))
+        }
+    })?;
+    file.write_all(record)
+        .map_err(|error| PhaseBError::new(format!("cannot persist X4 {category}: {error}")))?;
+    file.sync_all()
+        .map_err(|error| PhaseBError::new(format!("cannot sync X4 {category}: {error}")))?;
+    File::open(root)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| PhaseBError::new(format!("cannot sync X4 freshness directory: {error}")))
 }
 
 impl ConnectionStore {
@@ -1281,6 +1416,39 @@ impl ConnectionHandle {
         authorizations: &ResponseAuthorizationStore,
         binding: SessionBinding,
     ) -> Result<AuthorizationBurn, PhaseBError> {
+        self.preflight_response_binding(binding)?;
+        let burn = match authorizations.reserve(&binding) {
+            Ok(burn) => burn,
+            Err(error) => {
+                let message = format!("response authorization failed: {error}");
+                return self.fail(ConnectionAbortReason::AuthorizationFailure, &message);
+            }
+        };
+        self.install_authorized_response(binding, &burn.record_digest)?;
+        Ok(burn)
+    }
+
+    /// Burn `(model_root, epoch)`, the verifier challenge-seed digest, and
+    /// the real-PCG response authorization before exposing correlations.
+    /// Every marker survives retry, abort, and process restart.
+    pub fn begin_x4_response(
+        &mut self,
+        authorizations: &ResponseAuthorizationStore,
+        binding: X4ResponseFreshnessBinding,
+    ) -> Result<X4ResponseAuthorizationBurn, PhaseBError> {
+        self.preflight_response_binding(binding.session)?;
+        let burn = match authorizations.reserve_x4_response(&binding) {
+            Ok(burn) => burn,
+            Err(error) => {
+                let message = format!("X4 response freshness authorization failed: {error}");
+                return self.fail(ConnectionAbortReason::AuthorizationFailure, &message);
+            }
+        };
+        self.install_authorized_response(binding.session, &burn.authorization.record_digest)?;
+        Ok(burn)
+    }
+
+    fn preflight_response_binding(&mut self, binding: SessionBinding) -> Result<(), PhaseBError> {
         self.ensure_active()?;
         if self.active_response.is_some() {
             return self.fail(
@@ -1296,13 +1464,14 @@ impl ConnectionHandle {
                 "response binding does not match connection/channel identity",
             );
         }
-        let burn = match authorizations.reserve(&binding) {
-            Ok(burn) => burn,
-            Err(error) => {
-                let message = format!("response authorization failed: {error}");
-                return self.fail(ConnectionAbortReason::AuthorizationFailure, &message);
-            }
-        };
+        Ok(())
+    }
+
+    fn install_authorized_response(
+        &mut self,
+        binding: SessionBinding,
+        authorization_record_digest: &str,
+    ) -> Result<(), PhaseBError> {
         let nonce_digest = digest_parts(
             b"volta-pcg/connection-response-nonce/v1",
             &[&binding.response_authorization_nonce],
@@ -1327,10 +1496,10 @@ impl ConnectionHandle {
             "RESPONSE_BEGIN|{}|{}|{}\n",
             hex32(nonce_digest),
             hex32(response_allocation_digest),
-            burn.record_digest
+            authorization_record_digest
         );
         self.append_or_burn(&record)?;
-        Ok(burn)
+        Ok(())
     }
 
     /// Allocate the next low-end canonical stage range to the active response.
@@ -2109,6 +2278,78 @@ mod tests {
                 .unwrap();
         let reconnect = restarted.reserve(&reused_nonce).unwrap_err();
         assert!(reconnect.to_string().contains("already burned"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn x4_epoch_challenge_and_real_pcg_authorization_are_cross_instance_fresh() {
+        let (root, store) = test_store("x4-freshness");
+        let first =
+            X4ResponseFreshnessBinding::new(binding(0x22), [0x31; 32], 7, [0x41; 32]).unwrap();
+        let burn = store.reserve_x4_response(&first).unwrap();
+        assert!(burn.authorization.marker_path().exists());
+        assert!(burn.epoch_marker_path().exists());
+        assert!(burn.challenge_marker_path().exists());
+        drop(store); // Retry/abort safety must not depend on the live instance.
+
+        let restarted = ResponseAuthorizationStore::new(&root).unwrap();
+        let epoch_retry = X4ResponseFreshnessBinding::new(
+            binding(0x32),
+            first.model_root,
+            first.epoch,
+            [0x42; 32],
+        )
+        .unwrap();
+        assert!(restarted
+            .reserve_x4_response(&epoch_retry)
+            .unwrap_err()
+            .to_string()
+            .contains("model/epoch already burned"));
+
+        let challenge_retry = X4ResponseFreshnessBinding::new(
+            binding(0x42),
+            [0x32; 32],
+            8,
+            first.challenge_seed_digest,
+        )
+        .unwrap();
+        assert!(restarted
+            .reserve_x4_response(&challenge_retry)
+            .unwrap_err()
+            .to_string()
+            .contains("challenge seed already burned"));
+
+        let nonce_retry =
+            X4ResponseFreshnessBinding::new(first.session, [0x33; 32], 9, [0x43; 32]).unwrap();
+        assert!(restarted
+            .reserve_x4_response(&nonce_retry)
+            .unwrap_err()
+            .to_string()
+            .contains("authorization nonce already burned"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn x4_connection_abort_keeps_all_freshness_markers_burned() {
+        let (root, connections, authorizations) = lifecycle_stores("x4-abort");
+        let connection_binding = connection_binding(0x44, ConnectionStagePlan::TerminalOne);
+        let mut connection = connections.create(connection_binding, None).unwrap();
+        connection.activate([0x45; 32]).unwrap();
+        connection.register_stage_output(0, 32, 0).unwrap();
+        let session = connection_binding.response_binding([0x46; 32]).unwrap();
+        let freshness =
+            X4ResponseFreshnessBinding::new(session, [0x47; 32], 11, [0x48; 32]).unwrap();
+        connection.begin_x4_response(&authorizations, freshness).unwrap();
+        connection.malicious_check_failed().unwrap();
+        drop(connection);
+        drop(authorizations);
+
+        let restarted = ResponseAuthorizationStore::new(root.join("authorizations")).unwrap();
+        assert!(restarted
+            .reserve_x4_response(&freshness)
+            .unwrap_err()
+            .to_string()
+            .contains("model/epoch already burned"));
         std::fs::remove_dir_all(root).unwrap();
     }
 

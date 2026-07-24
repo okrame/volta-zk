@@ -36,7 +36,7 @@ pub use production::{
     ConnectionState, ConnectionStore, CorrelationAllocation, CorrelationDomain,
     CorrelationSpoolAudit, ProductionConnectionSetupAudit, ProductionFaseDConnection,
     ProductionPhaseBExpansion, ProductionSetupAudit, ResponseAuthorizationStore,
-    StageCorrelationCounters,
+    StageCorrelationCounters, X4ResponseAuthorizationBurn, X4ResponseFreshnessBinding,
 };
 
 use serde::{Deserialize, Serialize};

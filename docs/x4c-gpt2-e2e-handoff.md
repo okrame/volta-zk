@@ -10,6 +10,14 @@ It uses exact production GPT-2 cohort and opening geometry, but it is not an
 inference E2E with real model weights.  No real-weight X4c E2E verdict is
 claimed by this handoff.
 
+The 2026-07-24 R1c remediation checkpoint supersedes the record-harness
+requirements for the next run without changing the historical records.
+Schema-1 onboarding/online JSON remains append-only evidence, but it does not
+carry the new measured response-window I/O, native census, durable-directory
+census or explicit onboarding-SHA fields and therefore is not accepted by the
+new schema-2 validators. No pod may be contacted while the local R1c
+checkpoint is being closed.
+
 The existing `scripts/run_prefill.sh` and `scripts/run_decode.sh` remain the
 historical P5/P6 real-weight baselines.  At source `603d5a7` they do not route
 their PCS through the new X4c onboarding, rebuild, direct-fold arena and
@@ -51,6 +59,14 @@ model artifact, rather than from the production-geometry fixture, and must
 retain the existing real/AES PCG connection and one-time response
 authorization lifecycle.
 
+Before any transcript challenge or correlation becomes available, the driver
+must call `ProductionFaseDConnection::begin_x4_response` with the actual
+`model_root`, nonzero epoch, digest of the verifier challenge seed and the
+real-PCG authorization nonce. It must pass the resulting persisted freshness
+receipt to `X4OpeningRegistryV4::authorize_after_persistent_freshness`.
+The three burn indexes survive success, retry, abort and process restart;
+legacy per-instance authorization is not record-eligible for this E2E.
+
 This integration may add orchestration and record fields only.  It is not
 authorized to change rate `1/8`, `s=111`, query availability/order, the
 selected tape, protocol frames, codec, roots as derived from the same inputs,
@@ -68,7 +84,7 @@ The driver must record both identities in one clean record:
    gather, canonical opening bytes, zero response staging and reconciled
    teardown ownership.
 
-## Ordered execution on the current pod
+## Ordered execution after a separate pod authorization
 
 1. Build and test a clean descendant locally, including the existing golden,
    tamper, direct-fold, N4/root, persisted/rebuild and report-validator
@@ -85,11 +101,14 @@ The driver must record both identities in one clean record:
 5. Run same-source real-weight onboarding on a fresh durable path, then a
    fresh-process five-cohort parallel rebuild.  Admit no response until all
    coefficient hashes, byte censuses and five roots agree.
-6. Run one warm-up plus three measured E2E candidates with fresh one-time PCG
-   authorizations.  Preserve exact phase timers, `proof_ready_wall`,
+6. Run one warm-up plus three measured E2E candidates with the composite
+   persistent epoch/challenge/real-PCG freshness burn described above.
+   Preserve exact phase timers, `proof_ready_wall`,
    teardown-inclusive `session_reusable_wall`, complete-session wall and all
    ownership/traffic counters.
-7. Validate and copy append-only records back before making any verdict.
+7. Validate onboarding and online/E2E records with the schema-2 fail-closed
+   validators, including their exact onboarding-SHA chain, before making any
+   verdict or copying an append-only record back.
 
 The X4c PCS gates remain open **<=1.50 s**, verify **<=0.25 s**, exact
 communication, staging zero and ownership fully reconciled.  Golden,

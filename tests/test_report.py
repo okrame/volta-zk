@@ -885,6 +885,232 @@ def test_x4c_phase1_validator_derives_refutation_and_rejects_schema1(tmp_path):
     assert report.validate_x4c_phase1_result(bad_path) is False
 
 
+def _upgrade_x4c_io_schema2(row, *, response):
+    upgraded = copy.deepcopy(row)
+    upgraded.update(
+        {
+            "syscr": 1,
+            "syscw": 0,
+            "cancelled_write_bytes": 0,
+            "observer_rchar_bytes": upgraded["rchar"] if response else 0,
+            "unexpected_rchar_bytes": 0,
+            "unexpected_wchar_bytes": 0,
+            "unexpected_read_bytes": 0,
+            "unexpected_write_bytes": 0,
+            "response_window_exact": response,
+        }
+    )
+    return upgraded
+
+
+def _upgrade_x4c_backend_schema2(row):
+    upgraded = copy.deepcopy(row)
+    names = [item[0] for item in upgraded["operations"]]
+    upgraded.update(
+        {
+            "unattributed_cpu_residual_ns": upgraded["measurement_wall_ns"],
+            "operation_kernel_ns": [[name, 0] for name in names],
+            "operation_cpu_residual_ns": [[name, 0] for name in names],
+            "explicit_d2d_copy_bytes": 0,
+            "device_generated_bytes": 0,
+            "resident_h2d_host_calls": 1,
+            "resident_d2h_host_calls": 1,
+            "sync_host_output": upgraded["synchronizations"],
+            "sync_upload_lifetime": 0,
+            "sync_timing_flush": 0,
+            "sync_profiling_legacy": 0,
+            "sync_allocator_flush": 0,
+            "live_device_bytes": 0,
+            "pinned_host_write_calls": 1,
+            "pinned_host_write_bytes": 1,
+            "live_pinned_bytes": 1_090_741_982,
+            "peak_pinned_bytes": 1_090_741_982,
+            "x4c_control_peek_calls": 2,
+            "x4c_control_peek_pending": 0,
+            "timing_records": 0,
+            "timing_elapsed_query_attempts": 0,
+            "timing_elapsed_no_write": 0,
+            "timing_event_queries": 0,
+            "timing_pending_high_water": 0,
+            "timing_flush_count": 0,
+            "coarse_timing_scopes": 0,
+        }
+    )
+    return upgraded
+
+
+def _x4c_schema2_durable_census(report):
+    return {
+        "cohort_directory_count": 5,
+        "cohort_ids": [cohort[0] for cohort in report.X4C_COHORTS],
+        "coefficient_file_count": 5,
+        "root_file_count": 5,
+        "oracle_file_count": 0,
+        "other_file_count": 0,
+        "other_directory_count": 0,
+        "symlink_count": 0,
+        "total_regular_file_bytes": report.X4C_DURABLE_BYTES,
+        "unexpected_paths": [],
+        "exact": True,
+    }
+
+
+def _upgrade_x4c_arena_schema2(old, backend, *, proof_ready):
+    arena_bytes = 43_486_546_048
+    baseline_device = old["active_device_allocations"] - (1 if proof_ready else 0)
+    baseline_pinned = old["active_pinned_allocations"] - 4
+    upgraded = copy.deepcopy(old)
+    upgraded.update(
+        {
+            "peak_bytes": backend["peak_device_bytes"],
+            "response_round_allocations": 0,
+            "reallocations": 0,
+            "accelerator_available": True,
+            "backend_workspace_bytes": 0,
+            "backend_baseline_resident_bytes": 0,
+            "backend_resident_bytes": arena_bytes if proof_ready else 0,
+            "backend_cached_resident_bytes": 0 if proof_ready else arena_bytes,
+            "baseline_active_device_allocations": baseline_device,
+            "cached_device_allocations": 0 if proof_ready else 1,
+            "baseline_active_pinned_allocations": baseline_pinned,
+            "baseline_active_pinned_bytes": 0,
+            "cached_pinned_allocations": 0,
+            "in_flight_pinned_allocations": 0,
+            "cached_pinned_bytes": 0,
+            "pinned_pool_allocations": 4,
+            "pinned_pool_requested_bytes": 1_090_741_982,
+            "native_live_device_bytes": arena_bytes if proof_ready else 0,
+            "native_peak_device_bytes": backend["peak_device_bytes"],
+            "native_resident_alloc_requests": 1,
+            "native_resident_reuse_hits": backend["resident_reuse_hits"],
+            "native_resident_free_requests": 0 if proof_ready else 1,
+            "native_arena_reset_calls": 0 if proof_ready else 1,
+            "native_arena_reset_bytes": 0 if proof_ready else arena_bytes,
+            "native_device_zeroed_bytes": 0 if proof_ready else arena_bytes,
+        }
+    )
+    return upgraded
+
+
+def _x4c_schema2_records(report):
+    root = Path(__file__).resolve().parents[1]
+    onboarding = json.loads(
+        (
+            root
+            / "benchmarks/results/10-x4c-onboarding-2026-07-24-603d5a7.json"
+        ).read_text()
+    )
+    online = json.loads(
+        (
+            root / "benchmarks/results/11-x4c-online-2026-07-24-603d5a7.json"
+        ).read_text()
+    )
+    onboarding["schema"] = 2
+    onboarding["durable_census"] = _x4c_schema2_durable_census(report)
+    for candidate in [onboarding["warmup"], *onboarding["measured"]]:
+        candidate["io"] = _upgrade_x4c_io_schema2(candidate["io"], response=False)
+        candidate["backend"] = _upgrade_x4c_backend_schema2(candidate["backend"])
+
+    online["schema"] = 2
+    census = _x4c_schema2_durable_census(report)
+    rebuild = online["fresh_process_rebuild"]
+    rebuild["io"] = _upgrade_x4c_io_schema2(rebuild["io"], response=False)
+    rebuild["durable_census_before"] = copy.deepcopy(census)
+    rebuild["durable_census_after"] = copy.deepcopy(census)
+    rebuild["durable_census_stable"] = True
+    for candidate in [online["warmup"], *online["measured"]]:
+        candidate["process_io"] = _upgrade_x4c_io_schema2(
+            candidate["process_io"], response=True
+        )
+        candidate["response_window_io_exact"] = True
+        candidate["backend"] = _upgrade_x4c_backend_schema2(candidate["backend"])
+        candidate["metrics"]["proof_ready_arena"] = _upgrade_x4c_arena_schema2(
+            candidate["metrics"]["proof_ready_arena"],
+            candidate["backend"],
+            proof_ready=True,
+        )
+        candidate["metrics"]["session_reusable_arena"] = (
+            _upgrade_x4c_arena_schema2(
+                candidate["metrics"]["session_reusable_arena"],
+                candidate["backend"],
+                proof_ready=False,
+            )
+        )
+    online["expected_onboarding_sha256"] = "0" * 64
+    online["onboarding_sha256_exact"] = True
+    return onboarding, online
+
+
+def _write_x4c_schema2_chain(tmp_path, onboarding, online):
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    onboarding_path = tmp_path / "onboarding.json"
+    onboarding_path.write_text(json.dumps(onboarding, indent=2) + "\n")
+    import hashlib
+
+    digest = hashlib.sha256(onboarding_path.read_bytes()).hexdigest()
+    online = copy.deepcopy(online)
+    online["onboarding"]["path"] = str(onboarding_path)
+    online["onboarding"]["sha256"] = digest
+    online["expected_onboarding_sha256"] = digest
+    online_path = tmp_path / "online.json"
+    online_path.write_text(json.dumps(online, indent=2) + "\n")
+    return onboarding_path, online_path
+
+
+def test_x4c_onboarding_and_online_validators_are_complete_and_fail_closed(tmp_path):
+    report = load_report_module()
+    onboarding, online = _x4c_schema2_records(report)
+    onboarding_path, online_path = _write_x4c_schema2_chain(
+        tmp_path, onboarding, online
+    )
+    assert report.validate_x4c_onboarding_result(onboarding_path) is True
+    assert report.validate_x4c_online_result(online_path, onboarding_path) is True
+
+    onboarding_mutations = [
+        lambda row: row.pop("durable_census"),
+        lambda row: row["durable_census"].update({"oracle_file_count": 1}),
+        lambda row: row.update({"selected_upper_median_wall_s": 0.0}),
+    ]
+    for index, mutate in enumerate(onboarding_mutations):
+        bad = copy.deepcopy(onboarding)
+        mutate(bad)
+        path = tmp_path / f"bad-onboarding-{index}.json"
+        path.write_text(json.dumps(bad))
+        assert report.validate_x4c_onboarding_result(path) is False
+
+    mutations = (
+        lambda row: row["warmup"].pop("response_window_io_exact"),
+        lambda row: row["onboarding"].update({"git_sha": "f" * 40}),
+        lambda row: row.update({"selected_upper_median_open_wall_s": 0.0}),
+        lambda row: row["measured"][0].update(
+            {"complete_pcs_bytes": row["measured"][0]["complete_pcs_bytes"] + 1}
+        ),
+        lambda row: row["measured"][0]["process_io"].update({"read_bytes": 1}),
+        lambda row: row["measured"][0]["metrics"]["response_io"].update(
+            {"response_staging_bytes_written": 1}
+        ),
+        lambda row: row["measured"][0]["metrics"]["execution"].update(
+            {"query_gather_calls": 2}
+        ),
+        lambda row: row["measured"][0]["metrics"]["proof_ready_arena"].update(
+            {"response_round_allocations": 1}
+        ),
+    )
+    for index, mutate in enumerate(mutations):
+        bad = copy.deepcopy(online)
+        mutate(bad)
+        case = tmp_path / f"case-{index}"
+        bad_onboarding_path, bad_online_path = _write_x4c_schema2_chain(
+            case, onboarding, bad
+        )
+        assert (
+            report.validate_x4c_online_result(
+                bad_online_path, bad_onboarding_path
+            )
+            is False
+        )
+
+
 def _x4c_test_availability():
     return {"available": True, "reason": ""}
 

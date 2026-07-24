@@ -35,7 +35,8 @@ use volta_pcs::x4::{
     X4C_REGISTERED_DEVICE_ANCHOR_BYTES_V4, X4C_RESPONSE_BYTES_V4,
 };
 
-const SCHEMA: u64 = 1;
+const INPUT_SCHEMA: u64 = 1;
+const SCHEMA: u64 = 2;
 const POD_PROFILE: &str = "runpod-a100-x4c-v1";
 const PROTOCOL_PROFILE: &str = "x4-zkdeepfold-ud-e29-v4";
 const DESIGN_SHA256: &str = "57d0c0d691cc63ec043d18384348ad0e1130a5e763dc8e9ef00a7132d8abb880";
@@ -182,7 +183,9 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 fn parse_hex_32(value: &str) -> Result<[u8; 32], String> {
-    if value.len() != 64 {
+    if value.len() != 64
+        || !value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
         return Err("expected 32-byte lowercase hex string".to_owned());
     }
     let mut output = [0u8; 32];
@@ -300,8 +303,16 @@ impl SelectedQueryTapeV4 {
     /// The selected tape is verifier-owned and can be released only through
     /// an already sealed X4c state. The prover draft/seal APIs never receive
     /// this value.
-    fn release_after_roots<A>(&self, _sealed: &SealedGlobalChainX4cV4<'_, A>) -> Vec<u64> {
-        self.draws.clone()
+    fn release_after_roots<A>(
+        &self,
+        sealed: &SealedGlobalChainX4cV4<'_, A>,
+        expected_model_root: [u8; 32],
+        expected_epoch: u64,
+    ) -> Result<Vec<u64>, String> {
+        if sealed.model_root() != expected_model_root || sealed.epoch() != expected_epoch {
+            return Err("selected query tape release binding mismatch".to_owned());
+        }
+        Ok(self.draws.clone())
     }
 }
 
@@ -341,7 +352,7 @@ fn validate_migration_reference() -> Result<InputPin, String> {
 
 fn validate_note6(path: &Path) -> Result<InputPin, String> {
     let value = load_json(path)?;
-    if value["schema"] != SCHEMA
+    if value["schema"] != INPUT_SCHEMA
         || value["milestone"] != NOTE6_MILESTONE
         || value["pod_profile"] != POD_PROFILE
         || value["design_sha256"] != DESIGN_SHA256
@@ -368,7 +379,7 @@ fn validate_lifecycle(path: &Path) -> Result<InputPin, String> {
     let value = load_json(path)?;
     let variants =
         value["variants"].as_array().ok_or_else(|| "lifecycle variants missing".to_owned())?;
-    if value["schema"] != SCHEMA
+    if value["schema"] != INPUT_SCHEMA
         || value["milestone"] != LIFECYCLE_MILESTONE
         || value["pod_profile"] != POD_PROFILE
         || value["mode"] != "exact_pod"
@@ -610,92 +621,219 @@ fn config_specs() -> Vec<CohortSpec> {
     .collect()
 }
 
+#[derive(Clone, Debug, Default)]
+struct IoObservation {
+    counters: IoSnapshot,
+    observer_rchar_bytes: u64,
+}
+
 #[derive(Clone, Debug, Default, Serialize)]
 struct IoSnapshot {
     rchar: u64,
     wchar: u64,
+    syscr: u64,
+    syscw: u64,
     read_bytes: u64,
     write_bytes: u64,
+    cancelled_write_bytes: u64,
+    observer_rchar_bytes: u64,
+    unexpected_rchar_bytes: u64,
+    unexpected_wchar_bytes: u64,
+    unexpected_read_bytes: u64,
+    unexpected_write_bytes: u64,
+    response_window_exact: bool,
 }
 
-impl IoSnapshot {
-    fn current() -> Self {
-        let text = fs::read_to_string("/proc/self/io").unwrap_or_default();
-        let read = |name: &str| {
+impl IoObservation {
+    fn current() -> Result<Self, String> {
+        let text = fs::read_to_string("/proc/self/io")
+            .map_err(|error| format!("read proc self io: {error}"))?;
+        let read = |name: &str| -> Result<u64, String> {
             text.lines()
-                .find_map(|line| line.strip_prefix(name)?.trim().parse::<u64>().ok())
-                .unwrap_or(0)
+                .find_map(|line| line.strip_prefix(name))
+                .ok_or_else(|| format!("required /proc/self/io field {name:?} missing"))?
+                .trim()
+                .parse::<u64>()
+                .map_err(|error| format!("invalid /proc/self/io field {name:?}: {error}"))
         };
-        Self {
-            rchar: read("rchar:"),
-            wchar: read("wchar:"),
-            read_bytes: read("read_bytes:"),
-            write_bytes: read("write_bytes:"),
-        }
+        Ok(Self {
+            counters: IoSnapshot {
+                rchar: read("rchar:")?,
+                wchar: read("wchar:")?,
+                syscr: read("syscr:")?,
+                syscw: read("syscw:")?,
+                read_bytes: read("read_bytes:")?,
+                write_bytes: read("write_bytes:")?,
+                cancelled_write_bytes: read("cancelled_write_bytes:")?,
+                ..IoSnapshot::default()
+            },
+            observer_rchar_bytes: u64::try_from(text.len())
+                .map_err(|_| "proc self io observation length overflows u64".to_owned())?,
+        })
     }
 
-    fn delta(&self, before: &Self) -> Self {
-        Self {
-            rchar: self.rchar.saturating_sub(before.rchar),
-            wchar: self.wchar.saturating_sub(before.wchar),
-            read_bytes: self.read_bytes.saturating_sub(before.read_bytes),
-            write_bytes: self.write_bytes.saturating_sub(before.write_bytes),
-        }
+    fn delta(&self, before: &Self) -> Result<IoSnapshot, String> {
+        let subtract = |after: u64, prior: u64, field: &str| {
+            after.checked_sub(prior).ok_or_else(|| {
+                format!("/proc/self/io counter {field} moved backwards during measurement")
+            })
+        };
+        let rchar = subtract(self.counters.rchar, before.counters.rchar, "rchar")?;
+        let wchar = subtract(self.counters.wchar, before.counters.wchar, "wchar")?;
+        let read_bytes =
+            subtract(self.counters.read_bytes, before.counters.read_bytes, "read_bytes")?;
+        let write_bytes =
+            subtract(self.counters.write_bytes, before.counters.write_bytes, "write_bytes")?;
+        let unexpected_rchar_bytes = rchar
+            .checked_sub(before.observer_rchar_bytes)
+            .ok_or_else(|| "response I/O observer read was not reflected in rchar".to_owned())?;
+        let unexpected_wchar_bytes = wchar;
+        let unexpected_read_bytes = read_bytes;
+        let unexpected_write_bytes = write_bytes;
+        Ok(IoSnapshot {
+            rchar,
+            wchar,
+            syscr: subtract(self.counters.syscr, before.counters.syscr, "syscr")?,
+            syscw: subtract(self.counters.syscw, before.counters.syscw, "syscw")?,
+            read_bytes,
+            write_bytes,
+            cancelled_write_bytes: subtract(
+                self.counters.cancelled_write_bytes,
+                before.counters.cancelled_write_bytes,
+                "cancelled_write_bytes",
+            )?,
+            observer_rchar_bytes: before.observer_rchar_bytes,
+            unexpected_rchar_bytes,
+            unexpected_wchar_bytes,
+            unexpected_read_bytes,
+            unexpected_write_bytes,
+            response_window_exact: unexpected_rchar_bytes == 0
+                && unexpected_wchar_bytes == 0
+                && unexpected_read_bytes == 0
+                && unexpected_write_bytes == 0
+                && subtract(
+                    self.counters.cancelled_write_bytes,
+                    before.counters.cancelled_write_bytes,
+                    "cancelled_write_bytes",
+                )? == 0,
+        })
     }
 }
 
 #[derive(Clone, Debug, Serialize)]
 struct BackendRow {
     measurement_wall_ns: u64,
+    unattributed_cpu_residual_ns: u64,
     operations: Vec<(String, u64)>,
+    operation_kernel_ns: Vec<(String, u64)>,
+    operation_cpu_residual_ns: Vec<(String, u64)>,
     h2d_bytes: u64,
     d2h_bytes: u64,
+    explicit_d2d_copy_bytes: u64,
     device_zeroed_bytes: u64,
+    device_generated_bytes: u64,
+    resident_h2d_host_calls: u64,
+    resident_d2h_host_calls: u64,
     synchronizations: u64,
+    sync_host_output: u64,
+    sync_upload_lifetime: u64,
+    sync_timing_flush: u64,
+    sync_profiling_legacy: u64,
+    sync_allocator_flush: u64,
     allocation_calls: u64,
     resident_alloc_requests: u64,
     resident_reuse_hits: u64,
     resident_free_requests: u64,
     physical_free_calls: u64,
+    live_device_bytes: u64,
     peak_device_bytes: u64,
     pinned_allocation_calls: u64,
     pinned_alloc_requests: u64,
     pinned_reuse_hits: u64,
     pinned_free_requests: u64,
     pinned_physical_free_calls: u64,
+    pinned_host_write_calls: u64,
+    pinned_host_write_bytes: u64,
+    live_pinned_bytes: u64,
+    peak_pinned_bytes: u64,
     x4c_arena_reset_calls: u64,
     x4c_arena_reset_bytes: u64,
     x4c_kernel_launches: u64,
+    x4c_control_peek_calls: u64,
+    x4c_control_peek_pending: u64,
+    timing_records: u64,
+    timing_elapsed_query_attempts: u64,
+    timing_elapsed_no_write: u64,
+    timing_event_queries: u64,
     timing_event_api_calls: u64,
+    timing_pending_high_water: u64,
+    timing_flush_count: u64,
+    coarse_timing_scopes: u64,
 }
 
 impl From<BackendStats> for BackendRow {
     fn from(stats: BackendStats) -> Self {
         Self {
             measurement_wall_ns: stats.measurement_wall_ns,
+            unattributed_cpu_residual_ns: stats.unattributed_cpu_residual_ns,
             operations: Operation::ALL
                 .into_iter()
                 .map(|operation| (operation.name().to_owned(), stats.operation(operation).calls))
                 .collect(),
+            operation_kernel_ns: Operation::ALL
+                .into_iter()
+                .map(|operation| {
+                    (operation.name().to_owned(), stats.operation(operation).kernel_ns)
+                })
+                .collect(),
+            operation_cpu_residual_ns: Operation::ALL
+                .into_iter()
+                .map(|operation| {
+                    (operation.name().to_owned(), stats.operation(operation).cpu_residual_ns)
+                })
+                .collect(),
             h2d_bytes: stats.h2d_bytes,
             d2h_bytes: stats.d2h_bytes,
+            explicit_d2d_copy_bytes: stats.explicit_d2d_copy_bytes,
             device_zeroed_bytes: stats.device_zeroed_bytes,
+            device_generated_bytes: stats.device_generated_bytes,
+            resident_h2d_host_calls: stats.resident_h2d_host_calls,
+            resident_d2h_host_calls: stats.resident_d2h_host_calls,
             synchronizations: stats.synchronizations,
+            sync_host_output: stats.sync_host_output,
+            sync_upload_lifetime: stats.sync_upload_lifetime,
+            sync_timing_flush: stats.sync_timing_flush,
+            sync_profiling_legacy: stats.sync_profiling_legacy,
+            sync_allocator_flush: stats.sync_allocator_flush,
             allocation_calls: stats.allocation_calls,
             resident_alloc_requests: stats.resident_alloc_requests,
             resident_reuse_hits: stats.resident_reuse_hits,
             resident_free_requests: stats.resident_free_requests,
             physical_free_calls: stats.physical_free_calls,
+            live_device_bytes: stats.live_device_bytes,
             peak_device_bytes: stats.peak_device_bytes,
             pinned_allocation_calls: stats.pinned_allocation_calls,
             pinned_alloc_requests: stats.pinned_alloc_requests,
             pinned_reuse_hits: stats.pinned_reuse_hits,
             pinned_free_requests: stats.pinned_free_requests,
             pinned_physical_free_calls: stats.pinned_physical_free_calls,
+            pinned_host_write_calls: stats.pinned_host_write_calls,
+            pinned_host_write_bytes: stats.pinned_host_write_bytes,
+            live_pinned_bytes: stats.live_pinned_bytes,
+            peak_pinned_bytes: stats.peak_pinned_bytes,
             x4c_arena_reset_calls: stats.x4c_arena_reset_calls,
             x4c_arena_reset_bytes: stats.x4c_arena_reset_bytes,
             x4c_kernel_launches: stats.x4c_kernel_launches,
+            x4c_control_peek_calls: stats.x4c_control_peek_calls,
+            x4c_control_peek_pending: stats.x4c_control_peek_pending,
+            timing_records: stats.timing_records,
+            timing_elapsed_query_attempts: stats.timing_elapsed_query_attempts,
+            timing_elapsed_no_write: stats.timing_elapsed_no_write,
+            timing_event_queries: stats.timing_event_queries,
             timing_event_api_calls: stats.timing_event_api_calls,
+            timing_pending_high_water: stats.timing_pending_high_water,
+            timing_flush_count: stats.timing_flush_count,
+            coarse_timing_scopes: stats.coarse_timing_scopes,
         }
     }
 }
@@ -784,7 +922,7 @@ fn run_onboarding_pass(
         .map_err(|error| format!("create pass coefficient root: {error}"))?;
     fs::create_dir_all(scratch_root)
         .map_err(|error| format!("create pass scratch root: {error}"))?;
-    let before_io = IoSnapshot::current();
+    let before_io = IoObservation::current()?;
     backend
         .begin_measurement()
         .map_err(|error| format!("begin onboarding measurement: {error}"))?;
@@ -850,7 +988,7 @@ fn run_onboarding_pass(
             .map_err(|error| format!("remove temporary coefficient root: {error}"))?;
     }
     let backend_row = BackendRow::from(stats);
-    let io = IoSnapshot::current().delta(&before_io);
+    let io = IoObservation::current()?.delta(&before_io)?;
     let accepted = totals.coefficient_bytes_persisted == COEFFICIENT_BYTES
         && totals.oracle_bytes_persisted == INITIAL_ORACLE_BYTES
         && totals.root_bytes_persisted == ROOT_BYTES
@@ -897,6 +1035,166 @@ struct DurableFileRow {
     root_sha256: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+struct DurableTierCensusRow {
+    cohort_directory_count: u64,
+    cohort_ids: Vec<u32>,
+    coefficient_file_count: u64,
+    root_file_count: u64,
+    oracle_file_count: u64,
+    other_file_count: u64,
+    other_directory_count: u64,
+    symlink_count: u64,
+    total_regular_file_bytes: u64,
+    unexpected_paths: Vec<String>,
+    exact: bool,
+}
+
+fn durable_tier_census(
+    durable_root: &Path,
+    expected_specs: &[CohortSpec],
+) -> Result<DurableTierCensusRow, String> {
+    let expected_ids =
+        expected_specs.iter().map(|spec| spec.config.identity.cohort_id).collect::<BTreeSet<_>>();
+    let mut cohort_ids = Vec::new();
+    let mut coefficient_file_count = 0u64;
+    let mut root_file_count = 0u64;
+    let mut oracle_file_count = 0u64;
+    let mut other_file_count = 0u64;
+    let mut other_directory_count = 0u64;
+    let mut symlink_count = 0u64;
+    let mut total_regular_file_bytes = 0u64;
+    let mut unexpected_paths = Vec::new();
+    let entries = fs::read_dir(durable_root)
+        .map_err(|error| format!("census durable root {}: {error}", durable_root.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("read durable root entry: {error}"))?;
+        let path = entry.path();
+        let kind = entry
+            .file_type()
+            .map_err(|error| format!("stat durable entry {}: {error}", path.display()))?;
+        if kind.is_symlink() {
+            symlink_count = symlink_count
+                .checked_add(1)
+                .ok_or_else(|| "durable symlink count overflow".to_owned())?;
+            unexpected_paths.push(path.display().to_string());
+            continue;
+        }
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let cohort_id = name.strip_prefix("cohort-").and_then(|suffix| {
+            (suffix.len() == 8).then(|| u32::from_str_radix(suffix, 16).ok()).flatten()
+        });
+        if !kind.is_dir() || cohort_id.is_none() {
+            if kind.is_dir() {
+                other_directory_count = other_directory_count
+                    .checked_add(1)
+                    .ok_or_else(|| "durable directory count overflow".to_owned())?;
+            } else if kind.is_file() {
+                other_file_count = other_file_count
+                    .checked_add(1)
+                    .ok_or_else(|| "durable file count overflow".to_owned())?;
+                total_regular_file_bytes = total_regular_file_bytes
+                    .checked_add(
+                        entry
+                            .metadata()
+                            .map_err(|error| {
+                                format!("stat durable file {}: {error}", path.display())
+                            })?
+                            .len(),
+                    )
+                    .ok_or_else(|| "durable byte census overflow".to_owned())?;
+            }
+            unexpected_paths.push(path.display().to_string());
+            continue;
+        }
+        let cohort_id = cohort_id.expect("checked cohort id");
+        cohort_ids.push(cohort_id);
+        if !expected_ids.contains(&cohort_id) {
+            unexpected_paths.push(path.display().to_string());
+        }
+        for child in fs::read_dir(&path)
+            .map_err(|error| format!("census durable cohort {}: {error}", path.display()))?
+        {
+            let child = child.map_err(|error| format!("read durable cohort entry: {error}"))?;
+            let child_path = child.path();
+            let child_kind = child.file_type().map_err(|error| {
+                format!("stat durable cohort entry {}: {error}", child_path.display())
+            })?;
+            if child_kind.is_symlink() {
+                symlink_count = symlink_count
+                    .checked_add(1)
+                    .ok_or_else(|| "durable symlink count overflow".to_owned())?;
+                unexpected_paths.push(child_path.display().to_string());
+                continue;
+            }
+            if child_kind.is_dir() {
+                other_directory_count = other_directory_count
+                    .checked_add(1)
+                    .ok_or_else(|| "durable directory count overflow".to_owned())?;
+                unexpected_paths.push(child_path.display().to_string());
+                continue;
+            }
+            if !child_kind.is_file() {
+                other_file_count = other_file_count
+                    .checked_add(1)
+                    .ok_or_else(|| "durable file count overflow".to_owned())?;
+                unexpected_paths.push(child_path.display().to_string());
+                continue;
+            }
+            total_regular_file_bytes = total_regular_file_bytes
+                .checked_add(
+                    child
+                        .metadata()
+                        .map_err(|error| {
+                            format!("stat durable file {}: {error}", child_path.display())
+                        })?
+                        .len(),
+                )
+                .ok_or_else(|| "durable byte census overflow".to_owned())?;
+            match child.file_name().to_str() {
+                Some("coefficients.bin") => coefficient_file_count += 1,
+                Some("root.bin") => root_file_count += 1,
+                Some("oracle.bin") => {
+                    oracle_file_count += 1;
+                    unexpected_paths.push(child_path.display().to_string());
+                }
+                _ => {
+                    other_file_count += 1;
+                    unexpected_paths.push(child_path.display().to_string());
+                }
+            }
+        }
+    }
+    cohort_ids.sort_unstable();
+    unexpected_paths.sort();
+    let expected_sorted = expected_ids.iter().copied().collect::<Vec<_>>();
+    let cohort_directory_count = u64::try_from(cohort_ids.len())
+        .map_err(|_| "durable cohort-directory count overflows u64".to_owned())?;
+    let exact = cohort_ids == expected_sorted
+        && coefficient_file_count == 5
+        && root_file_count == 5
+        && oracle_file_count == 0
+        && other_file_count == 0
+        && other_directory_count == 0
+        && symlink_count == 0
+        && total_regular_file_bytes == DURABLE_BYTES
+        && unexpected_paths.is_empty();
+    Ok(DurableTierCensusRow {
+        cohort_directory_count,
+        cohort_ids,
+        coefficient_file_count,
+        root_file_count,
+        oracle_file_count,
+        other_file_count,
+        other_directory_count,
+        symlink_count,
+        total_regular_file_bytes,
+        unexpected_paths,
+        exact,
+    })
+}
+
 #[derive(Clone, Debug, Serialize)]
 struct OnboardingReport {
     schema: u64,
@@ -917,6 +1215,7 @@ struct OnboardingReport {
     measured: Vec<OnboardingPassRow>,
     selected_upper_median_wall_s: f64,
     durable_files: Vec<DurableFileRow>,
+    durable_census: DurableTierCensusRow,
     durable_coefficient_file_count: u64,
     durable_root_file_count: u64,
     durable_oracle_file_count: u64,
@@ -1020,13 +1319,18 @@ fn run_onboard(args: &Args) -> Result<(), String> {
             root_sha256: sha256(&root_path)?,
         });
     }
-    let durable_bytes = durable_files.iter().try_fold(0u64, |sum, file| {
+    let expected_durable_bytes = durable_files.iter().try_fold(0u64, |sum, file| {
         sum.checked_add(file.coefficient_bytes + file.root_bytes)
             .ok_or_else(|| "durable byte sum overflow".to_owned())
     })?;
+    let durable_census = durable_tier_census(durable_root, &specs)?;
+    if expected_durable_bytes != durable_census.total_regular_file_bytes {
+        return Err("expected-file byte sum and durable directory census disagree".to_owned());
+    }
+    let durable_bytes = durable_census.total_regular_file_bytes;
     let selected = upper_median(measured.iter().map(|row| row.wall_s).collect());
     let all_passes = warmup.accepted && measured.iter().all(|row| row.accepted);
-    let durable_tier_exact = durable_files.len() == 5 && durable_bytes == DURABLE_BYTES;
+    let durable_tier_exact = durable_files.len() == 5 && durable_census.exact;
     let overall_pass = all_passes && durable_tier_exact && roots_identical;
     let report = OnboardingReport {
         schema: SCHEMA,
@@ -1047,11 +1351,12 @@ fn run_onboard(args: &Args) -> Result<(), String> {
         measured,
         selected_upper_median_wall_s: selected,
         durable_files,
-        durable_coefficient_file_count: 5,
-        durable_root_file_count: 5,
-        durable_oracle_file_count: 0,
+        durable_coefficient_file_count: durable_census.coefficient_file_count,
+        durable_root_file_count: durable_census.root_file_count,
+        durable_oracle_file_count: durable_census.oracle_file_count,
         durable_bytes,
         durable_tier_exact,
+        durable_census,
         roots_identical_across_passes: roots_identical,
         response_work_executed: false,
         complete_online_wall_ceiling: None,
@@ -1108,6 +1413,9 @@ struct RebuildRow {
     roots: Vec<String>,
     roots_equal_onboarding: bool,
     durable_oracle_files: u64,
+    durable_census_before: DurableTierCensusRow,
+    durable_census_after: DurableTierCensusRow,
+    durable_census_stable: bool,
     accepted: bool,
 }
 
@@ -1119,6 +1427,9 @@ fn rebuild_one_source(
 ) -> Result<(X4cRamModelGlobalCohortV4, RebuildCohortRow), String> {
     let started = Instant::now();
     let cohort_id = spec.config.identity.cohort_id;
+    if recorded["cohort_id"].as_u64() != Some(u64::from(cohort_id)) {
+        return Err(format!("onboarding cohort_id does not pin expected cohort {cohort_id:08x}"));
+    }
     let cohort = durable_root.join(format!("cohort-{cohort_id:08x}"));
     let coefficient_path = cohort.join("coefficients.bin");
     let root_path = cohort.join("root.bin");
@@ -1200,9 +1511,13 @@ fn rebuild_sources(
     durable_root: &Path,
     onboarding: &Value,
 ) -> Result<(Vec<X4cRamModelGlobalCohortV4>, RebuildRow), String> {
-    let before_io = IoSnapshot::current();
-    let started = Instant::now();
     let specs = config_specs();
+    let durable_census_before = durable_tier_census(durable_root, &specs)?;
+    if !durable_census_before.exact {
+        return Err("durable tier census is not exact before rebuild".to_owned());
+    }
+    let before_io = IoObservation::current()?;
+    let started = Instant::now();
     let recorded_files = onboarding["durable_files"]
         .as_array()
         .ok_or_else(|| "onboarding durable_files missing".to_owned())?;
@@ -1243,9 +1558,12 @@ fn rebuild_sources(
     let roots_equal = cohorts.iter().all(|row| row.root_equal);
     let durable_oracle_files = cohorts.iter().filter(|row| row.durable_oracle_file).count() as u64;
     let all_cohorts_accepted = cohorts.iter().all(|row| row.accepted);
+    let durable_census_after = durable_tier_census(durable_root, &config_specs())?;
+    let durable_census_stable =
+        durable_census_before == durable_census_after && durable_census_after.exact;
     let row = RebuildRow {
         wall_s: started.elapsed().as_secs_f64(),
-        io: IoSnapshot::current().delta(&before_io),
+        io: IoObservation::current()?.delta(&before_io)?,
         parallel_task_count,
         rayon_workers: rayon::current_num_threads(),
         cohorts,
@@ -1255,11 +1573,15 @@ fn rebuild_sources(
         roots,
         roots_equal_onboarding: roots_equal,
         durable_oracle_files,
+        durable_census_before,
+        durable_census_after,
+        durable_census_stable,
         accepted: coefficient_bytes == COEFFICIENT_BYTES
             && host_oracle_bytes == INITIAL_ORACLE_BYTES
             && host_outer_cache_bytes == INITIAL_OUTER_CACHE_BYTES
             && roots_equal
             && durable_oracle_files == 0
+            && durable_census_stable
             && all_cohorts_accepted,
     };
     Ok((sources, row))
@@ -1351,18 +1673,43 @@ impl From<X4cResponseExecutionCountersV4> for ExecutionRow {
 struct ArenaRow {
     capacity_bytes: u64,
     committed_bytes: u64,
+    peak_bytes: u64,
     logical_allocations: u64,
+    response_round_allocations: u64,
+    reallocations: u64,
     logical_deallocations: u64,
     reset_count: u64,
     zeroed_bytes: u64,
     outstanding_allocations: u64,
     outstanding_bytes: u64,
     cached_reusable_bytes: u64,
+    accelerator_available: bool,
+    backend_workspace_bytes: u64,
+    backend_baseline_resident_bytes: u64,
+    backend_resident_bytes: u64,
+    backend_cached_resident_bytes: u64,
+    baseline_active_device_allocations: u64,
     active_device_allocations: u64,
+    cached_device_allocations: u64,
+    baseline_active_pinned_allocations: u64,
+    baseline_active_pinned_bytes: u64,
     active_pinned_allocations: u64,
+    cached_pinned_allocations: u64,
+    in_flight_pinned_allocations: u64,
     active_pinned_bytes: u64,
+    cached_pinned_bytes: u64,
     outstanding_cuda_operations: u64,
     stream_synchronized: bool,
+    pinned_pool_allocations: u64,
+    pinned_pool_requested_bytes: u64,
+    native_live_device_bytes: u64,
+    native_peak_device_bytes: u64,
+    native_resident_alloc_requests: u64,
+    native_resident_reuse_hits: u64,
+    native_resident_free_requests: u64,
+    native_arena_reset_calls: u64,
+    native_arena_reset_bytes: u64,
+    native_device_zeroed_bytes: u64,
 }
 
 impl From<X4cArenaCensusV4> for ArenaRow {
@@ -1370,18 +1717,43 @@ impl From<X4cArenaCensusV4> for ArenaRow {
         Self {
             capacity_bytes: value.arena_capacity_bytes,
             committed_bytes: value.arena_committed_bytes,
+            peak_bytes: value.arena_peak_bytes,
             logical_allocations: value.logical_allocation_count,
+            response_round_allocations: value.response_round_allocation_count,
+            reallocations: value.reallocation_count,
             logical_deallocations: value.logical_deallocation_count,
             reset_count: value.reset_count,
             zeroed_bytes: value.zeroed_bytes,
             outstanding_allocations: value.outstanding_allocation_count,
             outstanding_bytes: value.outstanding_bytes,
             cached_reusable_bytes: value.cached_reusable_bytes,
+            accelerator_available: value.accelerator_available,
+            backend_workspace_bytes: value.backend_workspace_bytes,
+            backend_baseline_resident_bytes: value.backend_baseline_resident_bytes,
+            backend_resident_bytes: value.backend_resident_bytes,
+            backend_cached_resident_bytes: value.backend_cached_resident_bytes,
+            baseline_active_device_allocations: value.backend_baseline_active_device_allocations,
             active_device_allocations: value.backend_active_device_allocations,
+            cached_device_allocations: value.backend_cached_device_allocations,
+            baseline_active_pinned_allocations: value.backend_baseline_active_pinned_allocations,
+            baseline_active_pinned_bytes: value.backend_baseline_active_pinned_bytes,
             active_pinned_allocations: value.backend_active_pinned_allocations,
+            cached_pinned_allocations: value.backend_cached_pinned_allocations,
+            in_flight_pinned_allocations: value.backend_in_flight_pinned_allocations,
             active_pinned_bytes: value.backend_active_pinned_bytes,
+            cached_pinned_bytes: value.backend_cached_pinned_bytes,
             outstanding_cuda_operations: value.backend_outstanding_cuda_operations,
             stream_synchronized: value.backend_stream_synchronized,
+            pinned_pool_allocations: value.x4c_pinned_pool_allocations,
+            pinned_pool_requested_bytes: value.x4c_pinned_pool_requested_bytes,
+            native_live_device_bytes: value.native_live_device_bytes,
+            native_peak_device_bytes: value.native_peak_device_bytes,
+            native_resident_alloc_requests: value.native_resident_alloc_requests,
+            native_resident_reuse_hits: value.native_resident_reuse_hits,
+            native_resident_free_requests: value.native_resident_free_requests,
+            native_arena_reset_calls: value.native_arena_reset_calls,
+            native_arena_reset_bytes: value.native_arena_reset_bytes,
+            native_device_zeroed_bytes: value.native_device_zeroed_bytes,
         }
     }
 }
@@ -1503,6 +1875,7 @@ struct ResponseCandidateRow {
     transcript_bytes_equal: bool,
     transcript_ledger_equal: bool,
     process_io: IoSnapshot,
+    response_window_io_exact: bool,
     backend: BackendRow,
     metrics: MetricsRow,
     expected_h2d_bytes: u64,
@@ -1549,7 +1922,7 @@ fn run_response(
     }
     let seed = [0x70u8.wrapping_add(ordinal as u8); 32];
     let mut prover_tx = Transcript::new(seed);
-    let before_io = IoSnapshot::current();
+    let before_io = IoObservation::current()?;
     runtime
         .begin_response_measurement()
         .map_err(|error| format!("begin response measurement: {error:?}"))?;
@@ -1569,7 +1942,7 @@ fn run_response(
     };
     let seal_wall_s = seal_started.elapsed().as_secs_f64();
     let fold_challenges = sealed.challenges().clone();
-    let selected_draws = selected_query_tape.release_after_roots(&sealed);
+    let selected_draws = selected_query_tape.release_after_roots(&sealed, MODEL_ROOT, epoch)?;
     let open_started = Instant::now();
     let (proof, verifier_groups, metrics, draws) =
         match sealed.issue_queries_x4c(selected_draws.clone(), &mut prover_tx, runtime) {
@@ -1665,14 +2038,33 @@ fn run_response(
         .ok_or_else(|| "expected D2H overflow".to_owned())?;
     let traffic_exact = stats.h2d_bytes == expected_h2d_bytes
         && stats.d2h_bytes == expected_d2h_bytes
+        && stats.explicit_d2d_copy_bytes == 0
+        && stats.device_generated_bytes == 0
+        && stats.resident_alloc_requests == 1
+        && stats.resident_free_requests == 1
         && stats.x4c_arena_reset_calls == 1
         && stats.x4c_arena_reset_bytes == X4C_REGISTERED_DEVICE_ANCHOR_BYTES_V4
         && stats.device_zeroed_bytes == X4C_REGISTERED_DEVICE_ANCHOR_BYTES_V4
-        && stats.timing_event_api_calls == 0;
-    let zero_response_staging = metrics.io == X4cResponseIoCountersV4::default();
+        && stats.pinned_allocation_calls == 0
+        && stats.pinned_alloc_requests == 0
+        && stats.pinned_reuse_hits == 0
+        && stats.pinned_free_requests == 0
+        && stats.pinned_physical_free_calls == 0
+        && stats.timing_records == 0
+        && stats.timing_elapsed_query_attempts == 0
+        && stats.timing_elapsed_no_write == 0
+        && stats.timing_event_queries == 0
+        && stats.timing_event_api_calls == 0
+        && stats.timing_pending_high_water == 0
+        && stats.timing_flush_count == 0
+        && stats.coarse_timing_scopes == 0;
+    let structural_zero_response_staging = metrics.io == X4cResponseIoCountersV4::default();
     let transcript_bytes_equal = prover_tx.total_bytes() == verifier_tx.total_bytes();
     let transcript_ledger_equal = prover_tx.ledger() == verifier_tx.ledger();
     let selected_query_tape_exact = selected_draws == draws && draws == selected_query_tape.draws;
+    let process_io = IoObservation::current()?.delta(&before_io)?;
+    let response_window_io_exact = process_io.response_window_exact;
+    let zero_response_staging = structural_zero_response_staging && response_window_io_exact;
     let accepted = verifier_accepted
         && global_folding_proof_bytes == X4C_GLOBAL_FOLDING_PROOF_BYTES_V4
         && complete_pcs_bytes == X4C_COMPLETE_PCS_BYTES_V4
@@ -1690,6 +2082,7 @@ fn run_response(
         && metrics.execution.query_gather_calls == 1
         && metrics.execution.cpu_fold_tree_clone_bytes == 0
         && zero_response_staging
+        && response_window_io_exact
         && traffic_exact
         && transcript_bytes_equal
         && transcript_ledger_equal;
@@ -1728,7 +2121,8 @@ fn run_response(
         verifier_accepted,
         transcript_bytes_equal,
         transcript_ledger_equal,
-        process_io: IoSnapshot::current().delta(&before_io),
+        process_io,
+        response_window_io_exact,
         backend: stats.into(),
         metrics: metrics.into(),
         expected_h2d_bytes,
@@ -1754,6 +2148,8 @@ struct OnlineReport {
     note6: InputPin,
     lifecycle_probe: InputPin,
     onboarding: InputPin,
+    expected_onboarding_sha256: String,
+    onboarding_sha256_exact: bool,
     amendment5_preflight: InputPin,
     codec_reference: InputPin,
     machine: MachineRow,
@@ -1800,6 +2196,8 @@ struct CanonicalDiagnosticReport {
     note6: InputPin,
     lifecycle_probe: InputPin,
     onboarding: InputPin,
+    expected_onboarding_sha256: String,
+    onboarding_sha256_exact: bool,
     amendment5_preflight: InputPin,
     codec_reference: InputPin,
     onboarding_ancestor_input: bool,
@@ -1842,6 +2240,17 @@ fn run_online(args: &Args, diagnostic_only: bool) -> Result<(), String> {
         args.onboarding.as_deref().ok_or_else(|| "online requires --onboarding".to_owned())?;
     let onboarding_value = load_json(onboarding_path)?;
     let onboarding_sha256 = sha256(onboarding_path)?;
+    let expected_onboarding_sha256 = args
+        .expected_onboarding_sha256
+        .as_deref()
+        .ok_or_else(|| "online requires --expect-onboarding-sha256".to_owned())?;
+    parse_hex_32(expected_onboarding_sha256)?;
+    let onboarding_sha256_exact = onboarding_sha256 == expected_onboarding_sha256;
+    if !onboarding_sha256_exact {
+        return Err(format!(
+            "onboarding SHA-256 mismatch: expected {expected_onboarding_sha256}, got {onboarding_sha256}"
+        ));
+    }
     let onboarding_git_sha = onboarding_value["git_sha"]
         .as_str()
         .ok_or_else(|| "onboarding git_sha missing".to_owned())?
@@ -1952,6 +2361,8 @@ fn run_online(args: &Args, diagnostic_only: bool) -> Result<(), String> {
             note6,
             lifecycle_probe: lifecycle,
             onboarding,
+            expected_onboarding_sha256: expected_onboarding_sha256.to_owned(),
+            onboarding_sha256_exact,
             amendment5_preflight,
             codec_reference,
             onboarding_ancestor_input: diagnostic_ancestor_input,
@@ -2025,7 +2436,8 @@ fn run_online(args: &Args, diagnostic_only: bool) -> Result<(), String> {
     });
     let open_pass = selected_open <= OPEN_CEILING_S;
     let verify_pass = selected_verify <= VERIFY_CEILING_S;
-    let overall_pass = rebuild.accepted
+    let overall_pass = onboarding_sha256_exact
+        && rebuild.accepted
         && all_candidates
         && zero_staging
         && exact_communication
@@ -2046,6 +2458,8 @@ fn run_online(args: &Args, diagnostic_only: bool) -> Result<(), String> {
         note6,
         lifecycle_probe: lifecycle,
         onboarding,
+        expected_onboarding_sha256: expected_onboarding_sha256.to_owned(),
+        onboarding_sha256_exact,
         amendment5_preflight,
         codec_reference,
         machine,
@@ -2107,6 +2521,7 @@ struct Args {
     note6: PathBuf,
     lifecycle: Option<PathBuf>,
     onboarding: Option<PathBuf>,
+    expected_onboarding_sha256: Option<String>,
     durable_root: PathBuf,
     scratch_root: Option<PathBuf>,
     output: PathBuf,
@@ -2123,12 +2538,19 @@ fn parse_args_from(values: impl IntoIterator<Item = String>) -> Result<Args, Str
     let mut note6 = None;
     let mut lifecycle = None;
     let mut onboarding = None;
+    let mut expected_onboarding_sha256 = None;
     let mut durable_root = None;
     let mut scratch_root = None;
     let mut output = None;
     for value in values {
         let (name, argument) =
             value.split_once('=').ok_or_else(|| format!("expected --name=value, got {value:?}"))?;
+        if name == "--expect-onboarding-sha256" {
+            if expected_onboarding_sha256.replace(argument.to_owned()).is_some() {
+                return Err(format!("duplicate argument {name:?}"));
+            }
+            continue;
+        }
         let target = match name {
             "--note6" => &mut note6,
             "--lifecycle" => &mut lifecycle,
@@ -2147,6 +2569,7 @@ fn parse_args_from(values: impl IntoIterator<Item = String>) -> Result<Args, Str
         note6: note6.ok_or_else(|| "--note6 is required".to_owned())?,
         lifecycle,
         onboarding,
+        expected_onboarding_sha256,
         durable_root: durable_root.ok_or_else(|| "--durable-root is required".to_owned())?,
         scratch_root,
         output: output.ok_or_else(|| "--output is required".to_owned())?,
@@ -2155,8 +2578,14 @@ fn parse_args_from(values: impl IntoIterator<Item = String>) -> Result<Args, Str
         Mode::Onboard if args.lifecycle.is_none() || args.scratch_root.is_none() => {
             Err("onboard requires --lifecycle and --scratch-root".to_owned())
         }
-        Mode::Online | Mode::Diagnose if args.lifecycle.is_none() || args.onboarding.is_none() => {
-            Err("online/diagnose requires --lifecycle and --onboarding".to_owned())
+        Mode::Online | Mode::Diagnose
+            if args.lifecycle.is_none()
+                || args.onboarding.is_none()
+                || args.expected_onboarding_sha256.is_none() =>
+        {
+            Err("online/diagnose requires --lifecycle, --onboarding and \
+                 --expect-onboarding-sha256"
+                .to_owned())
         }
         _ => Ok(args),
     }
@@ -2177,6 +2606,12 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn test_directory(label: &str) -> PathBuf {
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        std::env::temp_dir().join(format!("volta-x4c-{label}-{}-{nonce}", std::process::id()))
+    }
 
     #[test]
     fn production_fixture_geometry_is_exact() {
@@ -2218,6 +2653,8 @@ mod tests {
             "--note6=n.json".to_owned(),
             "--lifecycle=l.json".to_owned(),
             "--onboarding=o.json".to_owned(),
+            "--expect-onboarding-sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                .to_owned(),
             "--durable-root=/persistent/run".to_owned(),
             "--output=/local/result.json".to_owned(),
         ])
@@ -2228,6 +2665,8 @@ mod tests {
             "--note6=n.json".to_owned(),
             "--lifecycle=l.json".to_owned(),
             "--onboarding=o.json".to_owned(),
+            "--expect-onboarding-sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                .to_owned(),
             "--durable-root=/persistent/run".to_owned(),
             "--output=/local/diagnostic.json".to_owned(),
         ])
@@ -2251,5 +2690,84 @@ mod tests {
         assert_eq!(tape.draws.len(), X4C_QUERY_COUNT_V4);
         amendment5_preflight_pin().unwrap();
         validate_migration_reference().unwrap();
+    }
+
+    #[test]
+    fn response_window_io_delta_rejects_unexpected_reads_and_writes() {
+        let before = IoObservation {
+            counters: IoSnapshot {
+                rchar: 100,
+                wchar: 200,
+                syscr: 10,
+                syscw: 20,
+                read_bytes: 300,
+                write_bytes: 400,
+                cancelled_write_bytes: 5,
+                ..IoSnapshot::default()
+            },
+            observer_rchar_bytes: 109,
+        };
+        let exact_after = IoObservation {
+            counters: IoSnapshot {
+                rchar: 209,
+                wchar: 200,
+                syscr: 12,
+                syscw: 20,
+                read_bytes: 300,
+                write_bytes: 400,
+                cancelled_write_bytes: 5,
+                ..IoSnapshot::default()
+            },
+            observer_rchar_bytes: 109,
+        };
+        assert!(exact_after.delta(&before).unwrap().response_window_exact);
+
+        let mut unexpected = exact_after.clone();
+        unexpected.counters.rchar += 1;
+        unexpected.counters.read_bytes += 4096;
+        let delta = unexpected.delta(&before).unwrap();
+        assert!(!delta.response_window_exact);
+        assert_eq!(delta.unexpected_rchar_bytes, 1);
+        assert_eq!(delta.unexpected_read_bytes, 4096);
+    }
+
+    #[test]
+    fn durable_tier_census_rejects_every_extra_entry() {
+        let root = test_directory("durable-census");
+        fs::create_dir(&root).unwrap();
+        let specs = config_specs();
+        for spec in &specs {
+            let cohort = root.join(format!("cohort-{:08x}", spec.config.identity.cohort_id));
+            fs::create_dir(&cohort).unwrap();
+            let coefficient_bytes = spec.config.slot_descriptors.iter().flatten().count() as u64
+                * (spec.config.outer_len / 8) as u64
+                * 16;
+            OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(cohort.join("coefficients.bin"))
+                .unwrap()
+                .set_len(coefficient_bytes)
+                .unwrap();
+            OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(cohort.join("root.bin"))
+                .unwrap()
+                .set_len(32)
+                .unwrap();
+        }
+        assert!(durable_tier_census(&root, &specs).unwrap().exact);
+        OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(root.join("cohort-a5000001").join("oracle.bin.bak"))
+            .unwrap()
+            .set_len(1)
+            .unwrap();
+        let census = durable_tier_census(&root, &specs).unwrap();
+        assert!(!census.exact);
+        assert_eq!(census.other_file_count, 1);
+        fs::remove_dir_all(root).unwrap();
     }
 }

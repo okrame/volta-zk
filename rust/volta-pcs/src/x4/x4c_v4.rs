@@ -395,6 +395,18 @@ pub struct X4cArenaCensusV4 {
     pub backend_stream_synchronized: bool,
     pub x4c_pinned_pool_allocations: u64,
     pub x4c_pinned_pool_requested_bytes: u64,
+    /// Native allocator/reset counters sampled at this exact census boundary.
+    /// These duplicate the logical fields deliberately: validation requires
+    /// agreement so the census cannot manufacture lifecycle evidence from
+    /// layout constants.
+    pub native_live_device_bytes: u64,
+    pub native_peak_device_bytes: u64,
+    pub native_resident_alloc_requests: u64,
+    pub native_resident_reuse_hits: u64,
+    pub native_resident_free_requests: u64,
+    pub native_arena_reset_calls: u64,
+    pub native_arena_reset_bytes: u64,
+    pub native_device_zeroed_bytes: u64,
 }
 
 impl X4cArenaCensusV4 {
@@ -415,11 +427,18 @@ impl X4cArenaCensusV4 {
             return Err(X4cErrorV4::InvalidGeometry("X4c proof-ready arena census"));
         }
         if self.accelerator_available
-            && (self.backend_resident_bytes
-                < self
-                    .backend_baseline_resident_bytes
-                    .checked_add(layout.capacity_bytes)
-                    .ok_or(X4cErrorV4::Overflow)?
+            && (self.arena_committed_bytes != self.outstanding_bytes
+                || self.arena_peak_bytes != self.native_peak_device_bytes
+                || self.logical_allocation_count != self.native_resident_alloc_requests
+                || self.logical_deallocation_count != self.native_resident_free_requests
+                || self.reset_count != self.native_arena_reset_calls
+                || self.zeroed_bytes != self.native_device_zeroed_bytes
+                || self.native_arena_reset_bytes != 0
+                || self.backend_resident_bytes
+                    < self
+                        .backend_baseline_resident_bytes
+                        .checked_add(layout.capacity_bytes)
+                        .ok_or(X4cErrorV4::Overflow)?
                 || self.backend_active_device_allocations
                     != self
                         .backend_baseline_active_device_allocations
@@ -470,7 +489,14 @@ impl X4cArenaCensusV4 {
             return Err(X4cErrorV4::InvalidGeometry("X4c reusable arena census"));
         }
         if self.accelerator_available
-            && (!proof_ready.accelerator_available
+            && (self.arena_committed_bytes != self.cached_reusable_bytes
+                || self.arena_peak_bytes != self.native_peak_device_bytes
+                || self.logical_allocation_count != self.native_resident_alloc_requests
+                || self.logical_deallocation_count != self.native_resident_free_requests
+                || self.reset_count != self.native_arena_reset_calls
+                || self.zeroed_bytes != self.native_device_zeroed_bytes
+                || self.native_arena_reset_bytes != layout.capacity_bytes
+                || !proof_ready.accelerator_available
                 || self.backend_baseline_resident_bytes
                     != proof_ready.backend_baseline_resident_bytes
                 || self.backend_resident_bytes != self.backend_baseline_resident_bytes
@@ -1234,9 +1260,12 @@ pub fn compare_direct_fold_samples_v4(
     })
 }
 
-/// Runtime seam for the one-allocation response path.  The CUDA
-/// implementation is the production implementation; the CPU implementation
-/// in this module is a byte-identity oracle used by permanent local tests.
+/// Runtime seam for the one-allocation response path. The CUDA implementation
+/// is the production implementation. The CPU implementation is a local
+/// differential oracle only: at round zero it compares CUDA output with the
+/// host input, while at later rounds both sampled inputs and outputs originate
+/// from the same resident device chain. It is not an independent track-to-track
+/// binding and receives zero soundness credit.
 pub trait X4cArenaRuntimeV4 {
     type Arena;
 
@@ -1796,6 +1825,14 @@ fn activate_groups_x4c_v4(
 }
 
 impl<A> SealedGlobalChainX4cV4<'_, A> {
+    pub fn model_root(&self) -> Digest {
+        self.model_root
+    }
+
+    pub fn epoch(&self) -> u64 {
+        self.epoch
+    }
+
     pub fn common_point(&self) -> &[Fp2] {
         &self.common_point
     }
@@ -2193,6 +2230,7 @@ pub struct X4cCudaArenaRuntimeV4<'a> {
     transfer_staging: Vec<Fp2Repr>,
     operation_staging: Vec<X4cCanonicalGatherOperation>,
     baseline_resident_bytes: u64,
+    baseline_cached_resident_bytes: u64,
     baseline_active_device_allocations: u64,
     baseline_active_pinned_allocations: u64,
     baseline_active_pinned_bytes: u64,
@@ -2293,6 +2331,7 @@ impl<'a> X4cCudaArenaRuntimeV4<'a> {
             ),
             operation_staging: Vec::with_capacity(X4C_CANONICAL_GATHER_MAX_OPERATIONS_V4),
             baseline_resident_bytes: memory.resident_bytes,
+            baseline_cached_resident_bytes: memory.cached_resident_bytes,
             baseline_active_device_allocations: control.active_device_allocations,
             baseline_active_pinned_allocations: baseline_pinned.active_allocations,
             baseline_active_pinned_bytes: baseline_pinned.active_bytes,
@@ -2406,19 +2445,33 @@ impl<'a> X4cCudaArenaRuntimeV4<'a> {
         let memory = self.backend.device_memory_breakdown()?;
         let pinned = self.backend.pinned_memory_stats()?;
         let control = self.backend.x4c_control_state()?;
+        let stats = self.backend.stats()?;
         let stream_synchronized = control.stream_state == CudaStreamState::Idle
             && control.outstanding_cuda_operations == 0;
+        let outstanding_allocations = control
+            .active_device_allocations
+            .checked_sub(self.baseline_active_device_allocations)
+            .ok_or(X4cErrorV4::InvalidGeometry("X4c native active-allocation baseline"))?;
+        let outstanding_bytes = memory
+            .resident_bytes
+            .checked_sub(self.baseline_resident_bytes)
+            .ok_or(X4cErrorV4::InvalidGeometry("X4c native resident-byte baseline"))?;
+        let cached_reusable_bytes = memory
+            .cached_resident_bytes
+            .checked_sub(self.baseline_cached_resident_bytes)
+            .ok_or(X4cErrorV4::InvalidGeometry("X4c native cached-byte baseline"))?;
+        let committed_bytes = if proof_ready { outstanding_bytes } else { cached_reusable_bytes };
         Ok(X4cArenaCensusV4 {
             arena_capacity_bytes: layout.capacity_bytes,
-            arena_committed_bytes: layout.capacity_bytes,
-            arena_peak_bytes: layout.capacity_bytes,
-            logical_allocation_count: 1,
-            logical_deallocation_count: u64::from(!proof_ready),
-            reset_count: u64::from(!proof_ready),
-            zeroed_bytes: if proof_ready { 0 } else { layout.capacity_bytes },
-            outstanding_allocation_count: u64::from(proof_ready),
-            outstanding_bytes: if proof_ready { layout.capacity_bytes } else { 0 },
-            cached_reusable_bytes: if proof_ready { 0 } else { layout.capacity_bytes },
+            arena_committed_bytes: committed_bytes,
+            arena_peak_bytes: stats.peak_device_bytes,
+            logical_allocation_count: stats.resident_alloc_requests,
+            logical_deallocation_count: stats.resident_free_requests,
+            reset_count: stats.x4c_arena_reset_calls,
+            zeroed_bytes: stats.device_zeroed_bytes,
+            outstanding_allocation_count: outstanding_allocations,
+            outstanding_bytes,
+            cached_reusable_bytes,
             accelerator_available: true,
             backend_workspace_bytes: memory.workspace_bytes,
             backend_baseline_resident_bytes: self.baseline_resident_bytes,
@@ -2439,6 +2492,14 @@ impl<'a> X4cCudaArenaRuntimeV4<'a> {
             x4c_pinned_pool_allocations: u64::try_from(X4C_PINNED_TRANSFER_RING_V4 + 2)
                 .map_err(|_| X4cErrorV4::Overflow)?,
             x4c_pinned_pool_requested_bytes: x4c_pinned_pool_requested_bytes_v4()?,
+            native_live_device_bytes: stats.live_device_bytes,
+            native_peak_device_bytes: stats.peak_device_bytes,
+            native_resident_alloc_requests: stats.resident_alloc_requests,
+            native_resident_reuse_hits: stats.resident_reuse_hits,
+            native_resident_free_requests: stats.resident_free_requests,
+            native_arena_reset_calls: stats.x4c_arena_reset_calls,
+            native_arena_reset_bytes: stats.x4c_arena_reset_bytes,
+            native_device_zeroed_bytes: stats.device_zeroed_bytes,
             ..X4cArenaCensusV4::default()
         })
     }
@@ -3354,7 +3415,7 @@ mod tests {
             Fp2::new(Fp::new(3), Fp::new(11)),
             Fp2::new(Fp::new(P - 1), Fp::new(P - 2)),
         ];
-        for log2 in [3u8, 8, 12, 16, 20] {
+        for log2 in [3u8, 4, 5, 6, 7, 8, 12, 16, 20] {
             let input = (0..1usize << log2).map(symbol).collect::<Vec<_>>();
             let indices = [0, 1, (input.len() / 4) as u64, (input.len() / 2 - 1) as u64];
             for challenge in challenges {
@@ -3395,7 +3456,7 @@ mod tests {
             Fp2::new(Fp::new(3), Fp::new(11)),
             Fp2::new(Fp::new(P - 1), Fp::new(P - 2)),
         ];
-        for log2 in [3u8, 8, 12, 16, 20] {
+        for log2 in [3u8, 4, 5, 6, 7, 8, 12, 16, 20] {
             let input = (0..1usize << log2).map(symbol).collect::<Vec<_>>();
             let input_raw = input.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>();
             let input_bytes = input.len() * FP2_BYTES as usize;
@@ -3883,6 +3944,8 @@ mod tests {
             backend_stream_synchronized: true,
             x4c_pinned_pool_allocations: 4,
             x4c_pinned_pool_requested_bytes: pinned_pool_bytes,
+            native_peak_device_bytes: layout.capacity_bytes,
+            native_resident_alloc_requests: 1,
             ..proof_ready
         };
         accelerated_proof_ready.validate_proof_ready(&layout).unwrap();
@@ -3897,6 +3960,10 @@ mod tests {
             outstanding_allocation_count: 0,
             outstanding_bytes: 0,
             cached_reusable_bytes: layout.capacity_bytes,
+            native_resident_free_requests: 1,
+            native_arena_reset_calls: 1,
+            native_arena_reset_bytes: layout.capacity_bytes,
+            native_device_zeroed_bytes: layout.capacity_bytes,
             ..accelerated_proof_ready
         };
         accelerated_reusable.validate_session_reusable(&accelerated_proof_ready, &layout).unwrap();

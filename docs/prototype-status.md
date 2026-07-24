@@ -406,6 +406,60 @@ historical entries remain append-only evidence, not competing definitions.
 
 ## Deviations / decisions log
 
+- **2026-07-24 — Real-weight online reusable-arena census HARD STOP.**
+  After the claim-reduction accounting correction, clean same-source
+  checkpoint `b5d8dfbbf588757d18b8199f44945957126e7a3b` completed a new
+  schema-2 onboarding on fresh paths:
+
+  - record:
+    `/local/x4c-session-61f9741b9b6d/24-gpt2-onboarding-2026-07-24-b5d8dfb.json`;
+  - SHA-256:
+    `4e7b792a96d04aa3097d2b865df1b1064942c575e9f057a090a8733a9681e00f`;
+  - measured walls: **450.632925431 / 452.259996536 /
+    470.979159824 s**, selected upper median **452.259996536 s**;
+  - five identical root sets, golden equality, full scratch cleanup and exact
+    **9,618,587,808-B** five-coefficient/five-root durable census.
+
+  The exact-source online invocation completed the fresh-process parallel
+  rebuild, passed the previously failing claim-reduction ledger boundary and
+  entered the warm-up X4c CUDA link.  It then stopped fail-closed before any
+  candidate or online record:
+
+  - `X4c link prover: X4c(InvalidGeometry("X4c reusable arena census"))`.
+
+  The error boundary reported one resident arena allocation, one logical
+  release, one reset of exactly **43,486,546,048 B**, zero outstanding CUDA
+  operations, and the expected persistent model/pinned ownership.  Response
+  authorization markers were already durably burned.  No online timing,
+  communication or gate verdict is inferred from this invocation.
+
+  Code attribution is a lifecycle-baseline error.  The CUDA runtime captured
+  its inactive resident-cache baseline at runtime construction, but the
+  warm-up model proof runs between construction and the first response
+  measurement and may grow that cache.  The reusable census consequently
+  attributed pre-response cached buffers to the X4c arena.  The local
+  correction:
+
+  1. finalizes the inactive-cache baseline exactly once at the first
+     `begin_response_measurement`, while requiring active resident bytes,
+     allocation count, stream and outstanding-operation state to remain
+     identical;
+  2. derives released arena committed bytes from native
+     `x4c_arena_reset_bytes`;
+  3. requires the native reusable cache to cover the complete arena, while
+     permitting separately accounted pre-response cache bytes above it.
+
+  The census still fails on missing arena cache, active-ownership drift,
+  extra response-window resident allocations, missing reset/release,
+  outstanding bytes/operations or inconsistent native counters.  A permanent
+  test covers both accepted pre-response cache and one-byte-short rejection.
+  This changes no allocation made inside the response, protocol message,
+  challenge, proof byte, root, rate, `s`, correlation, Lean statement,
+  soundness credit or gate.  PCS/response remain exactly
+  **2,683,236 / 43,953,700 B**.  Pod execution is HARD STOPPED; another run
+  requires a clean locally verified checkpoint, new same-source onboarding
+  and a new fresh rebuild because the failed process released all host state.
+
 - **2026-07-24 — Real-weight online claim-reduction accounting HARD STOP.**
   Same-source onboarding from clean
   `b49a7aff7b130c99aa0f24e552a9f60ff20acdaf` on migrated container

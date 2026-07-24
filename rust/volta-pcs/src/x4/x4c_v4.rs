@@ -491,7 +491,7 @@ impl X4cArenaCensusV4 {
             return Err(X4cErrorV4::InvalidGeometry("X4c reusable arena census"));
         }
         if self.accelerator_available
-            && (self.arena_committed_bytes != self.cached_reusable_bytes
+            && (self.cached_reusable_bytes < self.arena_committed_bytes
                 || self.arena_peak_bytes != self.native_peak_device_bytes
                 || self.logical_allocation_count != self.native_resident_alloc_requests
                 || self.logical_deallocation_count != self.native_resident_free_requests
@@ -2236,6 +2236,7 @@ pub struct X4cCudaArenaRuntimeV4<'a> {
     baseline_active_device_allocations: u64,
     baseline_active_pinned_allocations: u64,
     baseline_active_pinned_bytes: u64,
+    response_cache_baseline_finalized: bool,
     arena_live: bool,
 }
 
@@ -2337,6 +2338,7 @@ impl<'a> X4cCudaArenaRuntimeV4<'a> {
             baseline_active_device_allocations: control.active_device_allocations,
             baseline_active_pinned_allocations: baseline_pinned.active_allocations,
             baseline_active_pinned_bytes: baseline_pinned.active_bytes,
+            response_cache_baseline_finalized: false,
             arena_live: false,
         })
     }
@@ -2375,6 +2377,29 @@ impl<'a> X4cCudaArenaRuntimeV4<'a> {
             return Err(X4cErrorV4::InvalidGeometry(
                 "X4c response measurement begins with live arena",
             ));
+        }
+        let memory = self.backend.device_memory_breakdown()?;
+        let control = self.backend.x4c_control_state()?;
+        if memory.resident_bytes != self.baseline_resident_bytes
+            || control.active_device_allocations != self.baseline_active_device_allocations
+            || control.stream_state != CudaStreamState::Idle
+            || control.outstanding_cuda_operations != 0
+            || control.measurement_active
+            || control.coarse_timing_active
+            || control.timing_record_active
+            || control.measurement_poisoned
+        {
+            return Err(X4cErrorV4::InvalidGeometry(
+                "X4c response baseline active ownership changed",
+            ));
+        }
+        if !self.response_cache_baseline_finalized {
+            // The resident model proof runs after runtime construction but
+            // before the first response window. Its inactive cache is not
+            // response-arena ownership. Freeze that cache exactly once;
+            // later responses keep the released arena above this baseline.
+            self.baseline_cached_resident_bytes = memory.cached_resident_bytes;
+            self.response_cache_baseline_finalized = true;
         }
         self.backend.begin_measurement().map_err(Into::into)
     }
@@ -2487,7 +2512,8 @@ impl<'a> X4cCudaArenaRuntimeV4<'a> {
             .cached_resident_bytes
             .checked_sub(self.baseline_cached_resident_bytes)
             .ok_or(X4cErrorV4::InvalidGeometry("X4c native cached-byte baseline"))?;
-        let committed_bytes = if proof_ready { outstanding_bytes } else { cached_reusable_bytes };
+        let committed_bytes =
+            if proof_ready { outstanding_bytes } else { stats.x4c_arena_reset_bytes };
         Ok(X4cArenaCensusV4 {
             arena_capacity_bytes: layout.capacity_bytes,
             arena_committed_bytes: committed_bytes,
@@ -3994,6 +4020,17 @@ mod tests {
             ..accelerated_proof_ready
         };
         accelerated_reusable.validate_session_reusable(&accelerated_proof_ready, &layout).unwrap();
+        let mut extra_pre_response_cache = accelerated_reusable;
+        extra_pre_response_cache.cached_reusable_bytes += 2048;
+        extra_pre_response_cache.backend_cached_resident_bytes += 2048;
+        extra_pre_response_cache
+            .validate_session_reusable(&accelerated_proof_ready, &layout)
+            .unwrap();
+        let mut missing_arena_cache = accelerated_reusable;
+        missing_arena_cache.cached_reusable_bytes = layout.capacity_bytes - 1;
+        assert!(missing_arena_cache
+            .validate_session_reusable(&accelerated_proof_ready, &layout)
+            .is_err());
     }
 
     #[test]

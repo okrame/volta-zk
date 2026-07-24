@@ -112,6 +112,32 @@ and uses fresh authorization stores.  The validator deliberately rejects
 using the `b49a7af` onboarding to anchor a corrected descendant because the
 onboarding and online `git_sha` values must be identical.
 
+Clean same-source `b5d8dfb` subsequently completed onboarding again.  Record
+`/local/x4c-session-61f9741b9b6d/24-gpt2-onboarding-2026-07-24-b5d8dfb.json`
+has SHA-256
+`4e7b792a96d04aa3097d2b865df1b1064942c575e9f057a090a8733a9681e00f`,
+selected upper median **452.259996536 s**, identical roots and the exact
+**9,618,587,808-B** durable census.
+
+Its online attempt passed fresh rebuild and the corrected claim-reduction
+boundary, then stopped in the warm-up CUDA link at
+`InvalidGeometry("X4c reusable arena census")`; no candidate or online record
+was emitted.  The runtime had frozen its inactive resident-cache baseline
+before the model proof, although that proof legitimately grows reusable
+cache before the response window.  The local remediation freezes that
+baseline once at the first response boundary under exact active-ownership
+checks, derives released arena bytes from the native reset counter and
+requires the native cache to cover the full arena without misclassifying
+separately accounted pre-response cache.  Missing arena cache, active
+ownership drift, response-window allocation fan-out and outstanding
+operations remain hard failures.  This is lifecycle accounting only and
+changes no protocol, proof, root, byte, correlation or soundness term.
+
+Because the failed process released the rebuilt host state and the
+onboarding/online validator requires identical source revisions, a corrected
+retry still requires a new same-source onboarding and one new fresh rebuild.
+It cannot safely resume from the aborted in-memory boundary.
+
 ## Frozen real-weight inputs
 
 The following repo-local generated artifacts are present and match

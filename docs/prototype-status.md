@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 POD NOTE-6/SYNTHETIC/LIFECYCLE/ONBOARDING PASS; ONLINE HARD STOP — GATHERED CANONICAL BYTE COUNT; ONLINE GATES NOT EVALUATED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 E2E HANDOFF PREPARED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -253,6 +253,34 @@ error did not emit the observed length; it remains deliberately unknown, not
 reconstructed.  This is a proof-byte mismatch stop.  Zero measured online
 candidates exist and every online gate remains **NOT EVALUATED**.
 
+The owner then required a fresh restart from clean `207b92c` on a separately
+provisioned pod, with no hardware evidence reused from the prior session.
+Fresh NOTE-6 and the exact 4-GiB PERSISTENT `write + fdatasync` health control
+passed before any other production work.  After one explicitly ineligible
+GPU-0 availability attempt and one explicitly ineligible lifecycle-provenance
+attempt, the clean same-source `603d5a7` sequence on the pod's other selected
+A100 completed real-CUDA regressions, the exact-size lifecycle probe,
+onboarding, fresh-process parallel rebuild, one online warm-up and three
+measured candidates.  The append-only online record makes **X4c v1 PASS**:
+upper-median open **0.120104920 s <= 1.50 s**, verify
+**0.059300311 s <= 0.25 s**, exact **2,683,236-B PCS /
+43,953,700-B response**, zero response staging, one 111-query GPU gather,
+exact **1,592** unique diagnostic comparisons with zero mismatches and zero
+soundness credit, and teardown-inclusive ownership restored.  The selected
+upper-median proof-ready/session-reusable walls are
+**48.036825544 / 48.062177191 s**.  Complete online wall
+**107.691678134 s** is measured/informative only; no v2 ceiling is inferred.
+This closes X4c Phase 2 without changing protocol, rate, `s`, roots,
+reference, proof format, bytes, Lean or soundness.  It does not convert the
+immutable X4/X4b failures into passes and does not resolve the old X4b
+production-host cause, which remains **OPEN**.
+
+The X4c record uses the exact production GPT-2 geometry but is not a
+real-weight inference E2E claim.  The next-phase boundary and immutable input
+hashes are prepared in `docs/x4c-gpt2-e2e-handoff.md`; the existing P5/P6
+scripts remain historical baselines until a clean X4c-aware real-weight
+driver is implemented and separately recorded.
+
 ## Milestones
 
 | Milestone | Status | Gate | Key numbers |
@@ -303,7 +331,7 @@ candidates exist and every online gate remains **NOT EVALUATED**.
 | X4b sustainable oracle Phase 1 | **DIAGNOSIS + PREREGISTRATION COMPLETE; HARD STOP BEFORE IMPLEMENTATION/POD** (2026-07-22) | No format/root/reference/Lean/soundness change; exact postdiction; CPU >=500 MB/s/core; GPU root equality; unchanged 15 s / 1.50 s / 0.25 s; full pass informative | Design SHA-256 `bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01`. Clean-source CPU record `x4b-phase1-cpu-postdiction-2026-07-22-9164de4.json`, SHA-256 `78fdd12ed79c4cf05d42b428a7fa305c28e4254be82289608c45f1f85ce64ec1`: exact aux17 has **5,242,879** hashes / **460,324,760 canonical B**; tree wall is 92.14% explained by those calls; derive-key is material but allocation/serialization is larger. Exact padding **2.4103942174056745x**, Merkle/oracle **6.093317342300939x**, recompute **205,520,864 B / 3.117810096 s**. Profile `runpod-a100-x4b-v1`; durable artifacts **86,567,288,992 B**, volume >=150 GB, host RAM >=128 GiB, device ceiling 48 GiB. X4 FAIL remains immutable. |
 | X4b sustainable oracle Phase 2 | **OFFICIAL X4b FAIL: ISOLATED COMMIT + PERSISTED OPEN; CLOSED** (2026-07-22) | Conjunctive `runpod-a100-x4b-v1`; complete node pipeline, CPU/GPU roots, verify, bytes, G6 and hardware PASS; full pass informative; isolated commit <=15 s FAIL; open <=1.50 s FAIL; no gate relaxed | Clean source `6c6907ab144f4cfbe9cadb06ebb01d652d1dc82d`. Validated record `x4b-a100-production-2026-07-22-6c6907a.json`, SHA-256 `63f4a97b263e4d09649d5a6ede5af1ba420efdcc78bb30f54b9f8cf200cfe6e0`. CPU pipeline **723,716,307.952 B/s/core PASS**; CPU/GPU roots equal; full pass **401.723726678 s / 191,546,319.209 oracle B/s informative**; Wext-mu26 **254.861527720 s FAIL**; persisted open **6.683486611 s FAIL**; verify **0.058438415 s PASS**; PCS/response exactly **2,683,236 / 43,953,700 B PASS**; G6 reconciled. Durable initial artifacts **86,567,288,992 B**, peak device **43,486,546,048 B**. Historical X4 FAIL immutable; design SHA, proof/root/reference bytes, Lean and **80.25537016399041-bit** soundness unchanged. |
 | X4c I/O-lifecycle Phase 1 | **COMPLETE; DROP-DOMINANCE HYPOTHESIS REFUTED BY LOCAL SYNTHETIC DIRECT PROJECTION; REDESIGN/PROFILE PREREGISTERED; HARD STOP** (2026-07-23) | Exact byte reconciliation; reconstructed wall is non-causal/self-derived; timing-only four-way `issue_queries` decomposition; no proof/root/reference/Lean/soundness change; no direct-fold implementation or pod | Eligible clean schema-2 record `x4c-phase1-open-decomposition-2026-07-23-f772013.json`, SHA-256 `ca9841ffce22f731dd45ba616e482a4528ae9ce934856965b0782ed3e052ebcf`: selected teardown projection **0.038496701 s**, interval **0.003520017--0.068747601 s**, only **0.585603121% / 1.045772987% high** of the **6.573855120-s** lifecycle gap. X4b mu26 reconciles **210,453,397,440 B modeled / 210,453,446,656 B observed**; its **0.825756043-GB/s** rate comes from the same wall and provides no independent causal timing evidence. Avoidable response staging is **137,438,949,856 B**. Corrected design SHA-256 `1a744625078e3ffe5772b040c24854e9510dcedebc906416279cf3a7c29bf191`; exact response/PCS remain **43,953,700 / 2,683,236 B**. |
-| X4c I/O-lifecycle Phase 2 | **NEW-POD NOTE-6 AND 4-GiB PERSISTENT FDATASYNC PROBE PASS; CUDA/LIFECYCLE/ONBOARDING/ONLINE PENDING** (2026-07-24) | Direct-fold parity checks exactly `min(64, output_len)` unique coordinates per round; **1,592** production comparisons; diagnostic only and zero soundness credit | Checkpoint `06757e2` diagnose-only record emitted actual packed **2,599,382 B** and exact component delta **−16,032 B**, proving that X4c had used a new transcript-native tape instead of the frozen selected `e29-r3-s111` tape.  It also exposed a reporting bug: **2,601,828 B** was the global folding proof, not the complete PCS.  All five rebuild roots/censuses passed; parallel rebuild was **2,392.230210159 s** versus approximately 68 minutes serial; cleanup restored every active device/pinned/outstanding owner to zero.  Record SHA-256 `afca21d1e69d2e85685153c0a066d85338fa9dbbe8fab809c2978b30c6b1c2b7`.  Checkpoint `aeea217` restores sealed-only verifier-selected draws and distinguishes exact **2,617,860-B global folding proof / 2,683,236-B complete PCS**; local workspace/validator suites are green.  The prior-pod PERSISTENT `EIO` remains immutable but none of that pod's hardware records are reused for the new session.  On container `deaccc50732e`, fresh checkpoint-`207b92c` NOTE-6 passed in **55.060310462 s** (record SHA-256 `c3b63e720a53ff6f9e4178db3cdc3c07d1728e0f50b5e749d3378bd6620222c7`) and an exact **4,294,967,296-B** append-only write plus `fdatasync` completed without `EIO` in **4.59 s** monotonic wall (log SHA-256 `b17010780b6bfcca79aa1359b9e6de1a2d76950b82f0c79a99d91c29e1297f76`).  New-pod CUDA, lifecycle, onboarding, rebuild and online gates remain **NOT EVALUATED**.  The residual X4b cause remains OPEN and no legacy mu26 attribution run is used.  Design SHA-256 remains **`57d0c0d691cc63ec043d18384348ad0e1130a5e763dc8e9ef00a7132d8abb880`**.  Rate `1/8`, `s=111`, roots/reference/codec/Lean/soundness, gates and required exact PCS/response **2,683,236 / 43,953,700 B** are unchanged. |
+| X4c I/O-lifecycle Phase 2 | **X4c v1 A100 ONLINE PASS; PHASE COMPLETE; REAL-WEIGHT E2E NOT YET CLAIMED** (2026-07-24) | `min(64, output_len)` gives exactly **1,592** diagnostic comparisons with zero soundness credit; root/rebuild/ownership/zero-staging/exact-byte gates conjunctive; open <=1.50 s and verify <=0.25 s | Clean source `603d5a7`, selected GPU UUID `GPU-3286abe4-e484-485e-3a7c-68bc527f6059`.  Eligible lifecycle SHA-256 `148330b9156a7582c653ec892e26b6fe3d6ea9268cc0a4c28cc4a799827f4216`: exact **51,539,606,304 B**, four variants, 1+3 each, all accepted.  Onboarding SHA-256 `401852b11a68807e4632ea0d9991a5c404a9864e7c54034a625441e488f18428`: exact five coefficient files + five roots + zero oracle files, **9,618,587,808 B**, roots identical.  Fresh rebuild is five-task/27-worker parallel, **2,381.861456293 s**, exact **9,618,587,648 / 76,948,701,184 / 37,094,424,416 B** coefficients/oracle/cache, all five roots equal.  Online SHA-256 `aa1aafc5c956444c4d2fb2b8e921c9be7e2c6566d856f57569cfb3cf13a03f98`: warm-up + three accepted; selected open **0.120104920 s PASS**, verify **0.059300311 s PASS**, proof-ready/reusable **48.036825544 / 48.062177191 s**, complete online **107.691678134 s informative**, exact global folding proof / complete PCS / packed opening / response **2,617,860 / 2,683,236 / 2,615,414 / 43,953,700 B**; response staging and noncanonical D2H zero; one 111-query gather; arena reset and final pool release reconcile.  No v2 ceiling and no protocol/rate/root/byte/Lean/soundness change. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -371,6 +399,111 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-24 (X4c Phase-2 new-pod closure — X4c v1 ONLINE PASS;
+  real-weight GPT-2 E2E handoff prepared, not yet claimed)**: the complete
+  ordered production sequence ran from clean source
+  `603d5a7b670ae9730a504ac39c6cf0bf7d4a8273`, clean bundle SHA-256
+  `1f2c63fdf15e9fe4c210d2bf2c0915e2699a1ca3a13470caffefeb66ff2700e6`,
+  on container `deaccc50732e`.  No hardware result from the previous pod is
+  reused.  Physical GPU 0's namespace-invisible busy state remains an
+  explicitly ineligible availability log.  Every eligible CUDA and X4c
+  production action selected only physical GPU 1,
+  **NVIDIA A100-SXM4-80GB** UUID
+  `GPU-3286abe4-e484-485e-3a7c-68bc527f6059`.
+
+  The clean-source real-CUDA direct-fold/N4-root/gather regressions passed
+  with no skip; append-only log
+  `08-real-cuda-regressions-gpu1-2026-07-24-603d5a7.log`, SHA-256
+  `ec8ea11233d99db43c6e1e51a9be0a7907250691d4177c5ac310305ccd596c80`.
+  The eligible exact-size lifecycle record
+  `09-exact-size-lifecycle-probe-2026-07-24-603d5a7.json`, SHA-256
+  `148330b9156a7582c653ec892e26b6fe3d6ea9268cc0a4c28cc4a799827f4216`,
+  populated exactly **51,539,606,304 B** for ordinary distributed,
+  `ManuallyDrop`, categorized teardown and single-arena-reset variants.
+  Each variant ran one warm-up plus three measured candidates in isolated
+  child processes; every candidate accepted.  Selected teardown totals are
+  **2.374492423 s** distributed, exact **0 s** for the intentional
+  no-teardown control, **3.045257886 s** categorized and
+  **3.462415608 s** for logical arena reset plus backing release.  They are
+  lifecycle controls, not attribution of the old X4b opening gap.  The
+  earlier empty-SHA
+  lifecycle artifact stays append-only and ineligible; no provenance was
+  manufactured.
+
+  Same-source onboarding record
+  `10-x4c-onboarding-2026-07-24-603d5a7.json`, SHA-256
+  `401852b11a68807e4632ea0d9991a5c404a9864e7c54034a625441e488f18428`,
+  passed all four root-identical passes.  Its selected upper-median wall is
+  **451.491715071 s**.  PERSISTENT contains exactly five coefficient files
+  plus five roots, **9,618,587,808 B**, and zero oracle files.  The online
+  fresh process rebuilt the five cohorts concurrently in frozen ordinal
+  order using five tasks on the unpinned 27-worker pool.  Rebuild wall is
+  **2,381.861456293 s**, versus the earlier approximately 68-minute serial
+  path, and its exact coefficient/oracle/outer-cache censuses are
+  **9,618,587,648 / 76,948,701,184 / 37,094,424,416 B**.  All five rebuilt
+  roots equal onboarding; no durable oracle exists.
+
+  The append-only run of record is
+  `11-x4c-online-2026-07-24-603d5a7.json`, SHA-256
+  `aa1aafc5c956444c4d2fb2b8e921c9be7e2c6566d856f57569cfb3cf13a03f98`;
+  its console log SHA-256 is
+  `eaadd9cbbe7e5761647514a30cb75b6b93b6c3a5ebd00a99efe482eb4d7ac334`.
+  The runner verdict is copied verbatim:
+
+  - `X4c online PASS: open 0.120105s verify 0.059300s reusable 48.062177s`
+
+  One warm-up and all three measured candidates verify and satisfy every
+  exact-byte, staging, ownership and query-tape predicate.  Upper-median
+  open is **0.120104920 s <=1.50 s PASS** and verify is
+  **0.059300311 s <=0.25 s PASS**.  Selected proof-ready and
+  teardown-inclusive session-reusable walls are
+  **48.036825544 / 48.062177191 s**.  Complete online wall
+  **107.691678134 s** is **MEASURED/INFORMATIVE** under
+  `runpod-a100-x4c-v1`; no v2 ceiling is projected or pinned from it.
+  Global folding proof, complete PCS, packed opening and complete response
+  are exactly **2,617,860 / 2,683,236 / 2,615,414 / 43,953,700 B** in every
+  row.
+
+  Every response performs **27** direct folds, zero response-round E-NTTs,
+  exactly **1,592** unique-coordinate diagnostic comparisons with zero
+  mismatch and zero soundness credit, **27** N4 constructions and one
+  **111-query** GPU gather.  Every response coefficient/oracle/staging/
+  comparison/overlay file byte and file count is exact zero; CPU fold-tree
+  clone and noncanonical D2H are zero.  The one
+  **43,486,546,048-B** arena is reset once per response; at
+  `session_reusable_wall` it has zero outstanding logical/device ownership
+  and remains cached for reuse.  The four pooled pinned buffers are released
+  after the candidate set, restoring ownership.  CUDA outstanding operations
+  are zero and the stream is synchronized at both recorded boundaries.
+  Allocator census therefore finds neither distributed per-round ownership
+  nor a leak.
+
+  The production-host cause of the old X4b **6.57-s** opening gap remains
+  **OPEN**.  No legacy mu26 attribution run was needed or inferred from byte
+  identities, and pinned deregistration/unlink remain zero-expected controls,
+  not causes.  Rate remains exactly `1/8`, `s=111`; protocol, selected query
+  tape, codec/reference, proof format, roots, exact bytes, correlations,
+  gates, Lean statements and **80.25537016399041-bit** soundness accounting
+  are unchanged.  X4 and X4b remain immutable FAIL records.
+
+  Local closure is green: `cargo fmt --all -- --check`,
+  `cargo check --workspace`, `cargo test --workspace`, and all **13**
+  report-validator tests pass.  A separate fail-closed record audit
+  rechecked every final file hash, lifecycle count, rebuild byte/root census,
+  four online rows, exact communication value, response-I/O zero, gather
+  count, arena transition, pool release and upper-median gate.  No Lean file
+  changed.
+
+  R1c mandatory scope is **EXTENDED** to the new causal instrumentation,
+  direct-fold, device N4/outer-tree, host rebuild, one-arena lifecycle,
+  pooled pinned-buffer and batched canonical-gather surfaces.  These are
+  unreviewed cryptographic-adjacent changes: this closure is AI-generated
+  execution evidence and provides no independent human-review assurance.
+  The exact real-weight input manifest and the next clean-driver boundary are
+  recorded in `docs/x4c-gpt2-e2e-handoff.md`.  The production-geometry fixture
+  used here is not mislabeled as real inference, and no GPT-2 E2E gate verdict
+  has landed.
 
 - **2026-07-24 (X4c restarted from clean `207b92c` on a new pod; fresh
   NOTE-6 and PERSISTENT health probe PASS before other production work)**:

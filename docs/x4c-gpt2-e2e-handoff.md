@@ -107,7 +107,10 @@ correlation, proof, root or protocol parameter.  Clean implementation
 checkpoint `187acc5c384ebde13e844dc30fb0792a6467ca80` is locally green (367
 workspace tests and 15 report-validator tests, zero failures).  Pod execution
 remains HARD STOPPED until a newly authorized retry uses a clean descendant
-checkout and fresh authorization stores.
+checkout, reruns same-source onboarding on fresh durable/scratch/output paths
+and uses fresh authorization stores.  The validator deliberately rejects
+using the `b49a7af` onboarding to anchor a corrected descendant because the
+onboarding and online `git_sha` values must be identical.
 
 ## Frozen real-weight inputs
 

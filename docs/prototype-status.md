@@ -463,9 +463,11 @@ historical entries remain append-only evidence, not competing definitions.
   parameter, and receives no soundness credit.  PCS/response remain frozen
   at **2,683,236 / 43,953,700 B**; rate `1/8`, `s=111`, Lean, soundness and
   all gates are unchanged.  Pod execution is HARD STOPPED.  A retry requires
-  a clean descendant checkpoint, a fresh source checkout and fresh
-  epoch/challenge/real-PCG stores; the successful onboarding record may be
-  reused only through its exact SHA pin.
+  a clean descendant checkout, a new same-source onboarding on fresh
+  durable/scratch/output paths, and fresh epoch/challenge/real-PCG stores.
+  The successful `b49a7af` onboarding remains append-only hardware evidence
+  but cannot anchor the corrected descendant because the fail-closed chain
+  requires `online.git_sha == onboarding.git_sha`.
 
 - **2026-07-24 — Complete model-transcript accounting reconciliation after
   fourth pre-materialization HARD STOP.**  The clean

@@ -27,8 +27,17 @@ The clean local driver checkpoint is
 `7e8e957977fc51ca5d5deedd0c75371dc438118a`.  It adds
 `x4c_gpt2_e2e_record` with `preflight`, `onboard` and `online` modes plus
 schema-2 fail-closed report validation.  Local verification is green; no pod
-was contacted and no real-weight hardware verdict is claimed.  The current
-boundary is a HARD STOP until the product owner supplies a new pod endpoint.
+was contacted by that checkpoint and no real-weight hardware verdict is
+claimed.
+
+The first migrated-pod NOTE-6 invocation exposed a stale pre-R1c design
+digest pin and stopped before its production-size child test.  The corrected
+local checkpoint is `1facd7e0880cc614888a1176f547a222dcdf0831`: remediated
+schema-2 evidence now pins design SHA-256
+`9a3c64a65902046ba0a2b1891ff8fce03690d870773a346f7128b9f75f7a1164`
+in the shared X4c runtime, NOTE-6, onboarding/online records and validators.
+Historical `57d0c0...` records remain unchanged and are not reused as
+post-R1c evidence.
 
 ## Frozen real-weight inputs
 

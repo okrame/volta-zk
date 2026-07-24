@@ -280,9 +280,10 @@ real-weight inference E2E claim.  The next-phase boundary and immutable input
 hashes are recorded in `docs/x4c-gpt2-e2e-handoff.md`.  The clean
 real-weight X4c driver is now locally implemented at
 `7e8e957977fc51ca5d5deedd0c75371dc438118a`; no hardware E2E verdict exists,
-and the existing P5/P6 scripts remain historical baselines.  A new pod
-endpoint is required only after the local ledger/checkpoint closure and
-separate owner authorization.
+and the existing P5/P6 scripts remain historical baselines.  The R1c design
+digest pin correction is locally closed at
+`1facd7e0880cc614888a1176f547a222dcdf0831`; pod execution resumes only from
+its clean descendant closure.
 
 ## Milestones
 
@@ -404,6 +405,41 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-24 — Migrated-pod NOTE-6 pre-execution digest HARD STOP and
+  fail-closed correction.**  On container hostname `61f9741b9b6d`, after
+  read-only hardware/storage inspection and toolchain setup, the first
+  `x4c_note6_record` invocation stopped before launching its production-size
+  leakage smoke:
+
+  - `x4c_note6_record: X4c design digest mismatch: expected 57d0c0d691cc63ec043d18384348ad0e1130a5e763dc8e9ef00a7132d8abb880, got 9a3c64a65902046ba0a2b1891ff8fce03690d870773a346f7128b9f75f7a1164`
+
+  No NOTE-6 test, X4c workload, 4-GiB probe, 51.54-GB lifecycle probe,
+  onboarding, rebuild or online candidate began.  The cause is the authorized
+  R1c N3/N4 documentation delta at `0ab8826`: adding CUDA differential
+  `log2 4--7` and documenting the round-local diagnostic limitation changed
+  `docs/x4c-io-lifecycle-design.md` from the historical Phase-2 digest
+  `57d0c0...` to `9a3c64...`, while the executable/validator pins remained
+  stale.
+
+  Checkpoint `1facd7e0880cc614888a1176f547a222dcdf0831` makes the remediated
+  digest one shared Rust constant, pins both X4c record harnesses and the
+  Python validator to it, and includes it explicitly in the real-weight
+  schema-2 onboarding/online chain.  A permanent NOTE-6 unit test recomputes
+  the document SHA-256; validator tests reject missing or contradictory
+  real-weight design pins.  Local verification is green:
+  `cargo fmt --all -- --check`, `cargo check --workspace`,
+  `cargo test --workspace` (**362 passed, 0 failed, 4 existing
+  production-size tests ignored**) and the focused report suite
+  (**15 passed**).
+
+  This is a record/instrumentation binding repair only.  Rate `1/8`, `s=111`,
+  query tape/order, root/codec/proof bytes, correlations, Lean, gates and
+  soundness are unchanged.  The historical `57d0c0...` X4c-v1 records remain
+  append-only and valid in their pre-R1c scope; remediated schema-2 evidence
+  requires `9a3c64...`.  The failed pre-execution attempt is not hardware
+  gate evidence.  The ordered pod sequence may restart from a fresh clean
+  checkout, with NOTE-6 still the first production-size action.
 
 - **2026-07-24 — X4c real-weight GPT-2 small E2E driver local closure
   (HARD STOP before pod; no hardware verdict).** Clean implementation

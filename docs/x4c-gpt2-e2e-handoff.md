@@ -15,14 +15,20 @@ requirements for the next run without changing the historical records.
 Schema-1 onboarding/online JSON remains append-only evidence, but it does not
 carry the new measured response-window I/O, native census, durable-directory
 census or explicit onboarding-SHA fields and therefore is not accepted by the
-new schema-2 validators. No pod may be contacted while the local R1c
-checkpoint is being closed.
+new schema-2 validators.
 
 The existing `scripts/run_prefill.sh` and `scripts/run_decode.sh` remain the
 historical P5/P6 real-weight baselines.  At source `603d5a7` they do not route
 their PCS through the new X4c onboarding, rebuild, direct-fold arena and
 batched-gather driver.  Running either script alone must not be labeled an
 X4c E2E result.
+
+The clean local driver checkpoint is
+`7e8e957977fc51ca5d5deedd0c75371dc438118a`.  It adds
+`x4c_gpt2_e2e_record` with `preflight`, `onboard` and `online` modes plus
+schema-2 fail-closed report validation.  Local verification is green; no pod
+was contacted and no real-weight hardware verdict is claimed.  The current
+boundary is a HARD STOP until the product owner supplies a new pod endpoint.
 
 ## Frozen real-weight inputs
 
@@ -50,31 +56,31 @@ to the fresh PERSISTENT path
 exactly those six artifacts plus `SHA256SUMS`; its files and directory are
 read-only.  This is input preparation, not an E2E execution record.
 
-## Next implementation unit
+## Implemented local driver
 
-Create a clean descendant driver that connects the existing real GPT-2
+The clean descendant driver connects the existing real GPT-2
 T=100+50 witness/proof orchestration to the already qualified X4c APIs.  It
-must derive the five X4c cohort coefficient streams from the actual frozen
-model artifact, rather than from the production-geometry fixture, and must
-retain the existing real/AES PCG connection and one-time response
-authorization lifecycle.
+derives the five X4c cohort coefficient streams from the actual frozen model
+artifact, rather than from the production-geometry fixture, and retains the
+existing real/AES PCG connection and one-time response authorization
+lifecycle.
 
 Before any transcript challenge or correlation becomes available, the driver
-must call `ProductionFaseDConnection::begin_x4_response` with the actual
+calls `ProductionFaseDConnection::begin_x4_response` with the actual
 `model_root`, nonzero epoch, digest of the verifier challenge seed and the
-real-PCG authorization nonce. It must pass the resulting persisted freshness
+real-PCG authorization nonce. It passes the resulting persisted freshness
 receipt to `X4OpeningRegistryV4::authorize_after_persistent_freshness`.
 The three burn indexes survive success, retry, abort and process restart;
 legacy per-instance authorization is not record-eligible for this E2E.
 
-This integration may add orchestration and record fields only.  It is not
-authorized to change rate `1/8`, `s=111`, query availability/order, the
+This integration adds orchestration and record fields only.  It does not
+change rate `1/8`, `s=111`, query availability/order, the
 selected tape, protocol frames, codec, roots as derived from the same inputs,
 proof bytes, correlations, Lean statements, soundness accounting or any
 gate.  The complete PCS and response must remain exactly
 **2,683,236 / 43,953,700 B**.
 
-The driver must record both identities in one clean record:
+The driver records both identities in one clean record:
 
 1. Real inference identity: exact input-artifact hashes, T=100 prefill,
    50 greedy decode tokens, CPU/Rust golden equality, CPU/CUDA witness
@@ -84,18 +90,23 @@ The driver must record both identities in one clean record:
    gather, canonical opening bytes, zero response staging and reconciled
    teardown ownership.
 
-## Ordered execution after a separate pod authorization
+Local completion at this checkpoint includes format/check, the full Rust
+workspace, the Python/report-validator suite, tamper tests, exact input SHA
+checks, the host reference and the driver preflight.  Production-size
+onboarding/rebuild and real CUDA equality intentionally wait for the pod.
 
-1. Build and test a clean descendant locally, including the existing golden,
-   tamper, direct-fold, N4/root, persisted/rebuild and report-validator
-   suites.
-2. Revalidate every SHA-256 in the already prepared fresh PERSISTENT input
-   path before loading any model data.
-3. Use only selected physical GPU 1 / UUID
-   `GPU-3286abe4-e484-485e-3a7c-68bc527f6059`.  Keep code, target, scratch,
-   RAM spill and append-only records on fresh `/local` paths; keep immutable
-   model inputs and the coefficient-plus-five-root durable tier on
-   `/workspace`.
+## Ordered execution after the new pod endpoint is supplied
+
+1. Verify the new pod configuration, NOTE-6 and distinct local/PERSISTENT
+   storage, then run the append-only 4-GiB PERSISTENT `write + fdatasync`
+   health probe before expensive onboarding.
+2. Check out the exact clean closure and rerun format/check, the CUDA
+   regressors and every SHA-256 before loading model data.
+3. Select exactly one idle physical A100 by UUID on the new host.  Do not
+   reuse the previous pod's physical GPU number or UUID as a selection
+   assumption. Keep code, target, scratch, RAM spill and append-only records
+   on fresh local non-MFS paths; keep immutable model inputs and the
+   coefficient-plus-five-root durable tier on PERSISTENT.
 4. Run the real-weight CPU/Rust golden and CPU/CUDA witness differential
    before the first full X4c onboarding.
 5. Run same-source real-weight onboarding on a fresh durable path, then a

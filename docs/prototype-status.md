@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 E2E HANDOFF PREPARED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 E2E DRIVER LOCAL GREEN — HARD STOP BEFORE POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -277,9 +277,12 @@ production-host cause, which remains **OPEN**.
 
 The X4c record uses the exact production GPT-2 geometry but is not a
 real-weight inference E2E claim.  The next-phase boundary and immutable input
-hashes are prepared in `docs/x4c-gpt2-e2e-handoff.md`; the existing P5/P6
-scripts remain historical baselines until a clean X4c-aware real-weight
-driver is implemented and separately recorded.
+hashes are recorded in `docs/x4c-gpt2-e2e-handoff.md`.  The clean
+real-weight X4c driver is now locally implemented at
+`7e8e957977fc51ca5d5deedd0c75371dc438118a`; no hardware E2E verdict exists,
+and the existing P5/P6 scripts remain historical baselines.  A new pod
+endpoint is required only after the local ledger/checkpoint closure and
+separate owner authorization.
 
 ## Milestones
 
@@ -333,6 +336,7 @@ driver is implemented and separately recorded.
 | X4c I/O-lifecycle Phase 1 | **COMPLETE; DROP-DOMINANCE HYPOTHESIS REFUTED BY LOCAL SYNTHETIC DIRECT PROJECTION; REDESIGN/PROFILE PREREGISTERED; HARD STOP** (2026-07-23) | Exact byte reconciliation; reconstructed wall is non-causal/self-derived; timing-only four-way `issue_queries` decomposition; no proof/root/reference/Lean/soundness change; no direct-fold implementation or pod | Eligible clean schema-2 record `x4c-phase1-open-decomposition-2026-07-23-f772013.json`, SHA-256 `ca9841ffce22f731dd45ba616e482a4528ae9ce934856965b0782ed3e052ebcf`: selected teardown projection **0.038496701 s**, interval **0.003520017--0.068747601 s**, only **0.585603121% / 1.045772987% high** of the **6.573855120-s** lifecycle gap. X4b mu26 reconciles **210,453,397,440 B modeled / 210,453,446,656 B observed**; its **0.825756043-GB/s** rate comes from the same wall and provides no independent causal timing evidence. Avoidable response staging is **137,438,949,856 B**. Corrected design SHA-256 `1a744625078e3ffe5772b040c24854e9510dcedebc906416279cf3a7c29bf191`; exact response/PCS remain **43,953,700 / 2,683,236 B**. |
 | X4c I/O-lifecycle Phase 2 | **X4c v1 A100 ONLINE PASS; PHASE COMPLETE; REAL-WEIGHT E2E NOT YET CLAIMED** (2026-07-24) | `min(64, output_len)` gives exactly **1,592** diagnostic comparisons with zero soundness credit; root/rebuild/ownership/zero-staging/exact-byte gates conjunctive; open <=1.50 s and verify <=0.25 s | Clean source `603d5a7`, selected GPU UUID `GPU-3286abe4-e484-485e-3a7c-68bc527f6059`.  Eligible lifecycle SHA-256 `148330b9156a7582c653ec892e26b6fe3d6ea9268cc0a4c28cc4a799827f4216`: exact **51,539,606,304 B**, four variants, 1+3 each, all accepted.  Onboarding SHA-256 `401852b11a68807e4632ea0d9991a5c404a9864e7c54034a625441e488f18428`: exact five coefficient files + five roots + zero oracle files, **9,618,587,808 B**, roots identical.  Fresh rebuild is five-task/27-worker parallel, **2,381.861456293 s**, exact **9,618,587,648 / 76,948,701,184 / 37,094,424,416 B** coefficients/oracle/cache, all five roots equal.  Online SHA-256 `aa1aafc5c956444c4d2fb2b8e921c9be7e2c6566d856f57569cfb3cf13a03f98`: warm-up + three accepted; selected open **0.120104920 s PASS**, verify **0.059300311 s PASS**, proof-ready/reusable **48.036825544 / 48.062177191 s**, complete online **107.691678134 s informative**, exact global folding proof / complete PCS / packed opening / response **2,617,860 / 2,683,236 / 2,615,414 / 43,953,700 B**; response staging and noncanonical D2H zero; one 111-query gather; arena reset and final pool release reconcile.  No v2 ceiling and no protocol/rate/root/byte/Lean/soundness change. |
 | X4c selected R1c remediation | **LOCAL GREEN; HARD STOP BEFORE POD** (2026-07-24) | R1C-M1/M2/M3/M7, N2/N3/N4 and ABI-neutral M4 are implemented and locally verified; M5/M6 and all other NOTE items remain explicitly deferred | Implementation checkpoint `0ab8826ab0bbe76aba6ecc8911e3bfa1074e65dc`. The real-weight driver may now be implemented locally, but no pod execution is authorized by this checkpoint; see the closure entry below. |
+| X4c real-weight GPT-2 small E2E driver | **LOCAL GREEN; HARD STOP BEFORE POD / NO HARDWARE VERDICT** (2026-07-24) | Frozen six-input manifest; T=100+50 golden; actual 51-block/102-claim domains; real AES-PCG and persistent composite freshness; same-source onboarding/rebuild; exact X4c bytes, staging and ownership | Implementation checkpoint `7e8e957977fc51ca5d5deedd0c75371dc438118a`. Local preflight and complete suites pass. The schema-2 onboarding/online validators require their exact SHA chain, warm-up + three measured candidates, upper medians, exact **2,683,236 / 43,953,700 B**, one 111-query gather, exact **1,592** diagnostic comparisons, zero response-window I/O/staging and reconciled native arena ownership. Real CUDA, production-size onboarding/rebuild and online candidates await a separately supplied pod endpoint. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -400,6 +404,62 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-24 — X4c real-weight GPT-2 small E2E driver local closure
+  (HARD STOP before pod; no hardware verdict).** Clean implementation
+  checkpoint `7e8e957977fc51ca5d5deedd0c75371dc438118a` connects the frozen
+  real-weight T=100+50 GPT-2 flow to the qualified X4c APIs without routing
+  through the historical P5/P6 PCS path.
+
+  The driver verifies all six immutable input hashes, derives the actual
+  **51** weight blocks and **102** parent claims with their authenticated
+  domains, builds the frozen five-cohort occupancy `2/36/13/2/49`, and
+  materializes exactly **9,618,587,648 B** of coefficients plus five
+  **32-B** roots.  Onboarding retains exactly those five coefficient files
+  and five roots (**9,618,587,808 B**), while online performs a
+  five-cohort parallel fresh rebuild with exact oracle/cache censuses
+  **76,948,701,184 / 37,094,424,416 B** and root equality.  No production-
+  size materialization has been run locally and these are frozen geometry
+  invariants, not hardware measurements.
+
+  Each online response requires a terminal-one AES-128-MMO real-PCG
+  connection and persistently burns the actual `(model_root, epoch,
+  challenge_seed, authorization_nonce)` binding before transcript challenge,
+  correlation use or private query-tape release.  Retry, abort and process
+  restart cannot reuse the three independent freshness indexes.  The
+  selected tape remains inaccessible until the sealed state proves the same
+  nonzero epoch and model root.  The actual model proof and authenticated
+  output seam consume exactly **2,208 reduction + 106 seam = 2,314**
+  correlations.
+
+  The response record is fail-closed over measured `/proc/self/io`, native
+  backend traffic, arena ownership, teardown and final pooled-buffer
+  release.  Every accepted row must have zero response staging and
+  unexpected read/write bytes, exactly one **111-query** gather, **27**
+  direct folds, **1,592** unique diagnostic comparisons and exact
+  **2,683,236-B PCS / 43,953,700-B response**.  The diagnostic comparisons
+  remain round-local, receive zero soundness credit and do not bind an
+  execution trace.  Wall-only seal/open instrumentation is record metadata,
+  not CUDA-event or causal/soundness evidence.
+
+  Schema-2 onboarding and online validators reject missing or contradictory
+  input/domain/durable/rebuild/freshness/I/O/gather/ownership fields,
+  recompute the upper medians, and require the exact onboarding-file
+  SHA-256 plus same-source chain.  Local verification is green:
+  `cargo fmt --all -- --check`, `cargo check --workspace`,
+  `cargo test --workspace` (**361 passed, 0 failed, 4 existing
+  production-size tests ignored**), `pytest -q` (**38 passed**), the tamper
+  filter (**43 passed**), `scripts/check_x4c_cuda_host_reference.sh`, the
+  real-weight preflight and all six input SHA checks.
+
+  No Lean file, protocol parameter, rate (`1/8`), query count (`s=111`),
+  root/codec/proof byte, correlation formula, gate or soundness claim
+  changed.  No pod was contacted.  R1c mandatory scope is **EXTENDED** to
+  the new real-weight domain extraction, coefficient/rebuild pipeline,
+  query-tape typestate and combined model-proof/X4c record driver.  The next
+  action requires the owner-provided endpoint for a newly authorized pod;
+  execution must follow the ordered hard stops in
+  `docs/x4c-gpt2-e2e-handoff.md`.
 
 - **2026-07-24 — Selected X4c R1c remediation closure before real-weight E2E
   (local only; HARD STOP before pod).** The immutable review artifact

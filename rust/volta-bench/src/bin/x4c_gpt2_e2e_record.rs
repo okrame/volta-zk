@@ -67,6 +67,11 @@ const GPT2_PARAMS_SHA256: &str = "264dd1c8fcde2e82bf404e8442375d61783b18961507c2
 const GOLDEN_P5_SHA256: &str = "4ac774f208a414bf7fb591a29bd455968ce2d89846255fe8239eabd9b5c92f45";
 const GOLDEN_P6_SHA256: &str = "e102783acef548d30af65e56d636b6fc51a72697922e256aa5c97ded90567862";
 const SAFETENSORS_SHA256: &str = "248dfc3911869ec493c76e65bf2fcf7f615828b0254c12b473182f0f81d3a707";
+const GPT2_PROMPT_TOKENS: usize = 100;
+const GPT2_DECODE_TOKENS: usize = 50;
+const GOLDEN_P6_HEADER_BYTES: usize = 16;
+const GOLDEN_P6_BYTES: usize =
+    GOLDEN_P6_HEADER_BYTES + 4 * GPT2_DECODE_TOKENS + 8 * GPT2_DECODE_TOKENS;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Mode {
@@ -255,40 +260,95 @@ struct Workload {
     golden_match: bool,
 }
 
+fn parse_golden_p6_tokens(golden: &[u8]) -> Result<Vec<u32>, String> {
+    if golden.len() != GOLDEN_P6_BYTES || &golden[..8] != b"VGOLD2\0\0" {
+        return Err("golden-p6.bin has wrong canonical geometry".to_owned());
+    }
+    let prompt_tokens = u32::from_le_bytes(golden[8..12].try_into().unwrap()) as usize;
+    let decode_tokens = u32::from_le_bytes(golden[12..16].try_into().unwrap()) as usize;
+    if prompt_tokens != GPT2_PROMPT_TOKENS || decode_tokens != GPT2_DECODE_TOKENS {
+        return Err("golden-p6.bin has wrong canonical geometry".to_owned());
+    }
+    Ok((0..GPT2_DECODE_TOKENS)
+        .map(|index| {
+            let offset = GOLDEN_P6_HEADER_BYTES + 4 * index;
+            u32::from_le_bytes(golden[offset..offset + 4].try_into().unwrap())
+        })
+        .collect())
+}
+
 fn workload(weights: &Path) -> Result<Workload, String> {
     verify_inputs(weights)?;
     let model = load_model(weights).map_err(|error| format!("load model: {error}"))?;
     model.validate_layout()?;
-    let prefill = forward_model(&model, 100);
+    let prefill = forward_model(&model, GPT2_PROMPT_TOKENS);
     let kv = prefill
         .layers
         .iter()
         .map(|layer| (layer.k.as_slice(), layer.v.as_slice()))
         .collect::<Vec<_>>();
-    let mut cache = KvCache::from_prefill(&kv, 100);
-    let mut generated = Vec::with_capacity(50);
+    let mut cache = KvCache::from_prefill(&kv, GPT2_PROMPT_TOKENS);
+    let mut generated = Vec::with_capacity(GPT2_DECODE_TOKENS);
     let mut next = argmax(&prefill.logits);
-    for position in 0..50 {
+    for position in 0..GPT2_DECODE_TOKENS {
         generated.push(next);
-        next = argmax(&decode_step(&model, &mut cache, next, 100 + position));
+        next = argmax(&decode_step(&model, &mut cache, next, GPT2_PROMPT_TOKENS + position));
     }
     let golden = fs::read(weights.join("golden-p6.bin"))
         .map_err(|error| format!("read golden-p6.bin: {error}"))?;
-    if golden.len() != 16 + 4 * 50 || &golden[..8] != b"VGOLD2\0\0" {
-        return Err("golden-p6.bin has wrong canonical geometry".to_owned());
-    }
-    let golden_tokens = (0..50)
-        .map(|index| u32::from_le_bytes(golden[16 + 4 * index..20 + 4 * index].try_into().unwrap()))
-        .collect::<Vec<_>>();
+    let golden_tokens = parse_golden_p6_tokens(&golden)?;
     let golden_match = generated == golden_tokens;
     if !golden_match {
         return Err("real GPT-2 greedy decode differs from golden-p6".to_owned());
     }
-    let mut sequence = model.p.tokens[..100].to_vec();
+    let mut sequence = model.p.tokens[..GPT2_PROMPT_TOKENS].to_vec();
     sequence.extend_from_slice(&generated);
     let full = forward_model_tokens(&model, &sequence);
-    let band = band_model_witness(&model, &full, 100);
+    let band = band_model_witness(&model, &full, GPT2_PROMPT_TOKENS);
     Ok(Workload { model, prefill, band, sequence, golden_match })
+}
+
+#[cfg(test)]
+mod golden_p6_tests {
+    use super::{
+        parse_golden_p6_tokens, GOLDEN_P6_BYTES, GOLDEN_P6_HEADER_BYTES, GPT2_DECODE_TOKENS,
+        GPT2_PROMPT_TOKENS,
+    };
+
+    fn canonical_golden() -> Vec<u8> {
+        let mut golden = Vec::with_capacity(GOLDEN_P6_BYTES);
+        golden.extend_from_slice(b"VGOLD2\0\0");
+        golden.extend_from_slice(&(GPT2_PROMPT_TOKENS as u32).to_le_bytes());
+        golden.extend_from_slice(&(GPT2_DECODE_TOKENS as u32).to_le_bytes());
+        for token in 0..GPT2_DECODE_TOKENS as u32 {
+            golden.extend_from_slice(&token.to_le_bytes());
+        }
+        for checksum in 0..GPT2_DECODE_TOKENS as i64 {
+            golden.extend_from_slice(&checksum.to_le_bytes());
+        }
+        golden
+    }
+
+    #[test]
+    fn canonical_golden_p6_includes_checksum_tail() {
+        let golden = canonical_golden();
+        assert_eq!(golden.len(), GOLDEN_P6_BYTES);
+        assert_eq!(
+            parse_golden_p6_tokens(&golden).unwrap(),
+            (0..GPT2_DECODE_TOKENS as u32).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn golden_p6_rejects_missing_checksum_tail_or_wrong_header() {
+        let mut truncated = canonical_golden();
+        truncated.truncate(GOLDEN_P6_HEADER_BYTES + 4 * GPT2_DECODE_TOKENS);
+        assert!(parse_golden_p6_tokens(&truncated).is_err());
+
+        let mut wrong_shape = canonical_golden();
+        wrong_shape[12..16].copy_from_slice(&49u32.to_le_bytes());
+        assert!(parse_golden_p6_tokens(&wrong_shape).is_err());
+    }
 }
 
 fn mock_model_outputs(workload: &Workload) -> Result<(ModelOut, ModelOutV, u64, u64), String> {

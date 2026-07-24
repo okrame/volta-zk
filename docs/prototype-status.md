@@ -406,6 +406,63 @@ historical entries remain append-only evidence, not competing definitions.
 
 ## Deviations / decisions log
 
+- **2026-07-24 — Real-weight online claim-reduction accounting HARD STOP.**
+  Same-source onboarding from clean
+  `b49a7aff7b130c99aa0f24e552a9f60ff20acdaf` on migrated container
+  `61f9741b9b6d` is schema-2 validator-green:
+
+  - record:
+    `/local/x4c-session-61f9741b9b6d/22-gpt2-onboarding-2026-07-24-b49a7af.json`;
+  - SHA-256:
+    `ad393ae2f0baaad9e00e921d0d91733d7d7db335371723ba1666ec87504d24dc`;
+  - measured walls: **445.924276941 / 447.143830708 /
+    447.395516143 s**, selected upper median **447.143830708 s**;
+  - five identical root sets, golden equality, complete scratch cleanup and
+    an exact **9,618,587,808-B** durable tier containing only five
+    coefficient files plus five 32-B roots.
+
+  The first onboarding invocation had stopped only when the retained pass
+  attempted `create_dir` on a fresh durable leaf whose parent did not yet
+  exist.  It reported `ENOENT`, not `EIO`; the 4-GiB `write + fdatasync`
+  probe and kernel log remained clean.  Its log is preserved as invocation
+  `21`.  The eligible retry used the same clean source, a newly created empty
+  PERSISTENT parent, and otherwise fresh leaf/scratch/output paths; no code
+  or protocol change was made.
+
+  The pinned online invocation then completed its fresh-process parallel
+  rebuild far enough to enter the response and stopped fail-closed before an
+  online record:
+
+  - `x4c_gpt2_e2e_record HARD STOP: real-weight X4c execution: X4c
+    claim-reduction accounting diverged`.
+
+  No response result, timing candidate or gate verdict was written.  The
+  durable tier remained the same ten files and no EIO, root mismatch or CUDA
+  error was observed.  Epoch, challenge and real-PCG authorization were
+  persistently burned; the connection log closed with
+  `TERMINAL|process-kill-or-restart`, so this failed attempt cannot be
+  retried with the same authorization state.
+
+  Exact code-level attribution found an accounting-only omission.
+  `blind_prove_par` already charges the existing 32-B
+  `blind_round_corrections` message in each round, while the structurally
+  accepting `batch_reduce_verifier` consumes the same proof but does not
+  mirror those bytes in its local ledger.  Production geometry has
+  `2×26 + 36×22 + 13×20 = 1,104` rounds, leaving the verifier ledger short
+  by exactly **35,328 B**.  The correction mirrors those already-on-wire
+  bytes after structural verification, pins both role deltas to 35,328 B and
+  requires complete ledger equality.  A permanent production-geometry test
+  covers all 51 blocks.
+
+  This correction adds no wire message or challenge, changes no prover
+  transcript byte, proof encoding, correlation, root, codec or protocol
+  parameter, and receives no soundness credit.  PCS/response remain frozen
+  at **2,683,236 / 43,953,700 B**; rate `1/8`, `s=111`, Lean, soundness and
+  all gates are unchanged.  Pod execution is HARD STOPPED.  A retry requires
+  a clean descendant checkpoint, a fresh source checkout and fresh
+  epoch/challenge/real-PCG stores; the successful onboarding record may be
+  reused only through its exact SHA pin.
+
 - **2026-07-24 — Complete model-transcript accounting reconciliation after
   fourth pre-materialization HARD STOP.**  The clean
   `e771745cccb3ffc922f3e8259d411d66279473a2` retry confirmed that replaying

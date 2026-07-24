@@ -34,6 +34,8 @@ pub const X4C_GPT2_PHYSICAL_BLOCKS: usize = 51;
 pub const X4C_GPT2_REDUCED_CLAIMS: usize = 102;
 pub const X4C_GPT2_COHORTS: usize = 5;
 pub const X4C_GPT2_CLAIM_REDUCTION_FULL_CORRELATIONS: u64 = 2_208;
+pub const X4C_GPT2_CLAIM_REDUCTION_TRANSCRIPT_BYTES: u64 =
+    X4C_GPT2_CLAIM_REDUCTION_FULL_CORRELATIONS / 2 * 32;
 pub const X4C_GPT2_SEAM_FULL_CORRELATIONS: u64 = 106;
 pub const X4C_GPT2_FULL_CORRELATIONS: u64 = 2_314;
 pub const X4C_GPT2_DURABLE_COEFFICIENT_BYTES: u64 = 9_618_587_648;
@@ -910,6 +912,12 @@ fn padded_source_i16(model: &Gpt2Model, block: &X4cGpt2Block) -> Result<Vec<i16>
     Ok(padded)
 }
 
+fn mirror_claim_reduction_round_accounting(tx: &mut Transcript, rounds: usize) {
+    for _ in 0..rounds {
+        tx.append("blind_round_corrections", 32);
+    }
+}
+
 /// Reduce the 102 already-authenticated model claims to one authenticated
 /// point per physical block using the existing blind batch reducer.
 ///
@@ -934,6 +942,8 @@ pub fn reduce_real_weight_claims(
     }
     let frames = inventory.claim_frames(prover_output)?;
     let fulls_before = stream.counters.full_corrs;
+    let prover_round_bytes_before = prover_tx.bytes_for("blind_round_corrections");
+    let verifier_round_bytes_before = verifier_tx.bytes_for("blind_round_corrections");
     let mut proofs = Vec::with_capacity(X4C_GPT2_PHYSICAL_BLOCKS);
     let mut points = Vec::with_capacity(X4C_GPT2_PHYSICAL_BLOCKS);
     let mut prover_values = Vec::with_capacity(X4C_GPT2_PHYSICAL_BLOCKS);
@@ -987,6 +997,11 @@ pub fn reduce_real_weight_claims(
             verifier_tx,
         )
         .ok_or_else(|| "X4c verifier rejected a claim reduction".to_owned())?;
+        // `blind_verify` consumes the existing round corrections but, unlike
+        // the prover helper, does not charge their already-on-wire bytes.
+        // Mirror those messages locally so the two role ledgers stay exact.
+        // This is accounting only: no new wire message or challenge is made.
+        mirror_claim_reduction_round_accounting(verifier_tx, block.mu());
         if verifier_point != point {
             return Err("X4c claim-reduction point differs across roles".to_owned());
         }
@@ -995,11 +1010,24 @@ pub fn reduce_real_weight_claims(
         prover_values.push(value);
         verifier_keys.push(key);
     }
-    if stream.counters.full_corrs.checked_sub(fulls_before)
-        != Some(X4C_GPT2_CLAIM_REDUCTION_FULL_CORRELATIONS)
+    let fulls_used = stream.counters.full_corrs.checked_sub(fulls_before);
+    let prover_round_bytes =
+        prover_tx.bytes_for("blind_round_corrections").checked_sub(prover_round_bytes_before);
+    let verifier_round_bytes =
+        verifier_tx.bytes_for("blind_round_corrections").checked_sub(verifier_round_bytes_before);
+    if fulls_used != Some(X4C_GPT2_CLAIM_REDUCTION_FULL_CORRELATIONS)
+        || prover_round_bytes != Some(X4C_GPT2_CLAIM_REDUCTION_TRANSCRIPT_BYTES)
+        || verifier_round_bytes != Some(X4C_GPT2_CLAIM_REDUCTION_TRANSCRIPT_BYTES)
         || prover_tx.total_bytes() != verifier_tx.total_bytes()
+        || prover_tx.ledger() != verifier_tx.ledger()
     {
-        return Err("X4c claim-reduction accounting diverged".to_owned());
+        return Err(format!(
+            "X4c claim-reduction accounting diverged: fulls={fulls_used:?}, \
+             prover_round_bytes={prover_round_bytes:?}, \
+             verifier_round_bytes={verifier_round_bytes:?}, prover_total={}, verifier_total={}",
+            prover_tx.total_bytes(),
+            verifier_tx.total_bytes()
+        ));
     }
     Ok(X4cGpt2ReducedClaims { frames, proofs, points, prover_values, verifier_keys })
 }
@@ -1406,7 +1434,29 @@ mod tests {
         );
         assert_eq!(inventory.claim_frames(&output).unwrap().len(), 102);
         assert_eq!(X4C_GPT2_FULL_CORRELATIONS, 2_314);
+        assert_eq!(X4C_GPT2_CLAIM_REDUCTION_TRANSCRIPT_BYTES, 35_328);
         assert_eq!(X4C_GPT2_DURABLE_TIER_BYTES, 9_618_587_808);
+    }
+
+    #[test]
+    fn claim_reduction_verifier_accounting_mirrors_all_prover_rounds() {
+        let mut prover = Transcript::new([0x31; 32]);
+        let mut verifier = Transcript::new([0x31; 32]);
+        let rounds = std::iter::repeat_n(26, 2)
+            .chain(std::iter::repeat_n(22, 36))
+            .chain(std::iter::repeat_n(20, 13));
+        for block_rounds in rounds {
+            for _ in 0..block_rounds {
+                prover.append("blind_round_corrections", 32);
+            }
+            mirror_claim_reduction_round_accounting(&mut verifier, block_rounds);
+        }
+        assert_eq!(
+            prover.bytes_for("blind_round_corrections"),
+            X4C_GPT2_CLAIM_REDUCTION_TRANSCRIPT_BYTES
+        );
+        assert_eq!(prover.total_bytes(), verifier.total_bytes());
+        assert_eq!(prover.ledger(), verifier.ledger());
     }
 
     #[test]

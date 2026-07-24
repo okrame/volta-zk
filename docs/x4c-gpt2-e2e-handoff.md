@@ -78,6 +78,35 @@ candidate fields and validator requirements.  The replay is accounting-only:
 it rejects verifier excess, requires exact final ledger equality, and changes
 no wire message, challenge, proof encoding, correlation or soundness claim.
 
+Same-source onboarding at clean `b49a7af` is now hardware-complete and
+schema-2 validator-green.  The append-only pod record
+`/local/x4c-session-61f9741b9b6d/22-gpt2-onboarding-2026-07-24-b49a7af.json`
+has SHA-256
+`ad393ae2f0baaad9e00e921d0d91733d7d7db335371723ba1666ec87504d24dc`,
+selected upper-median wall **447.143830708 s**, identical roots and exact
+**9,618,587,808-B** coefficient-plus-five-root durable census.  The initial
+invocation log `21` is an ineligible operational stop: the fresh retained
+leaf used `create_dir` before its parent had been created.  The retry created
+only a fresh empty parent first; source and measured construction were
+unchanged.
+
+The online attempt pinned that onboarding record and completed its
+fresh-process parallel rebuild, but produced no online record or candidate
+verdict.  It stopped fail-closed at
+`X4c claim-reduction accounting diverged`.  The abort path persistently
+burned epoch, challenge and real-PCG authorization and terminalized the
+connection, while leaving the ten-file durable tier unchanged.
+
+Code attribution is exact: the verifier structurally consumes the existing
+blind-sumcheck round corrections but did not mirror their accounting ledger.
+Across the frozen 51-block geometry this is
+`32 × (2×26 + 36×22 + 13×20) = 35,328 B`.  The local correction mirrors only
+those already transmitted bytes, pins both role deltas to 35,328 B and
+requires full ledger equality.  It changes no wire byte, challenge,
+correlation, proof, root or protocol parameter.  Pod execution remains HARD
+STOPPED until this correction has a clean locally verified descendant
+checkpoint and a newly authorized retry uses fresh authorization stores.
+
 ## Frozen real-weight inputs
 
 The following repo-local generated artifacts are present and match

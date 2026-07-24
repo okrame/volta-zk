@@ -188,7 +188,7 @@ X4C_GPT2_INPUT_SHA256 = {
     "model_safetensors_sha256": "248dfc3911869ec493c76e65bf2fcf7f615828b0254c12b473182f0f81d3a707",
 }
 X4C_V1_DESIGN_SHA256 = (
-    "57d0c0d691cc63ec043d18384348ad0e1130a5e763dc8e9ef00a7132d8abb880"
+    "9a3c64a65902046ba0a2b1891ff8fce03690d870773a346f7128b9f75f7a1164"
 )
 X4C_DURABLE_COEFFICIENT_BYTES = 9_618_587_648
 X4C_DURABLE_ROOT_BYTES = 160
@@ -3134,6 +3134,7 @@ def _x4c_gpt2_onboarding_valid(row: Any) -> bool:
         "git_dirty",
         "profile",
         "protocol",
+        "design_sha256",
         *X4C_GPT2_INPUT_SHA256.keys(),
         "model_config_digest",
         "weights_digest",
@@ -3161,6 +3162,7 @@ def _x4c_gpt2_onboarding_valid(row: Any) -> bool:
         and row["git_dirty"] is False
         and row["profile"] == X4C_POD_PROFILE
         and row["protocol"] == X4C_GPT2_PROTOCOL
+        and row["design_sha256"] == X4C_V1_DESIGN_SHA256
         and all(row[key] == digest for key, digest in X4C_GPT2_INPUT_SHA256.items())
         and row["model_config_digest"] == X4C_GPT2_INPUT_SHA256["input_json_sha256"]
         and row["weights_digest"] == X4C_GPT2_INPUT_SHA256["input_bin_sha256"]
@@ -3623,6 +3625,7 @@ def _x4c_gpt2_online_valid(
         "git_dirty",
         "profile",
         "protocol",
+        "design_sha256",
         "onboarding_path",
         "onboarding_sha256",
         "onboarding_sha256_exact",
@@ -3682,6 +3685,9 @@ def _x4c_gpt2_online_valid(
         and row["git_dirty"] is False
         and row["profile"] == X4C_POD_PROFILE
         and row["protocol"] == X4C_GPT2_PROTOCOL
+        and row["design_sha256"]
+        == onboarding["design_sha256"]
+        == X4C_V1_DESIGN_SHA256
         and row["onboarding_sha256"] == onboarding_sha256
         and row["onboarding_sha256_exact"] is True
         and _x4c_hex(row["clean_source_sha256"], 64)

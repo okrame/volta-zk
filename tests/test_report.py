@@ -1007,12 +1007,14 @@ def _x4c_schema2_records(report):
         ).read_text()
     )
     onboarding["schema"] = 2
+    onboarding["design_sha256"] = report.X4C_V1_DESIGN_SHA256
     onboarding["durable_census"] = _x4c_schema2_durable_census(report)
     for candidate in [onboarding["warmup"], *onboarding["measured"]]:
         candidate["io"] = _upgrade_x4c_io_schema2(candidate["io"], response=False)
         candidate["backend"] = _upgrade_x4c_backend_schema2(candidate["backend"])
 
     online["schema"] = 2
+    online["design_sha256"] = report.X4C_V1_DESIGN_SHA256
     census = _x4c_schema2_durable_census(report)
     rebuild = online["fresh_process_rebuild"]
     rebuild["io"] = _upgrade_x4c_io_schema2(rebuild["io"], response=False)
@@ -1252,6 +1254,7 @@ def _x4c_gpt2_records(report):
         "git_dirty": False,
         "profile": report.X4C_POD_PROFILE,
         "protocol": report.X4C_GPT2_PROTOCOL,
+        "design_sha256": report.X4C_V1_DESIGN_SHA256,
         **report.X4C_GPT2_INPUT_SHA256,
         "model_config_digest": report.X4C_GPT2_INPUT_SHA256[
             "input_json_sha256"
@@ -1437,6 +1440,7 @@ def _x4c_gpt2_records(report):
         "git_dirty": False,
         "profile": report.X4C_POD_PROFILE,
         "protocol": report.X4C_GPT2_PROTOCOL,
+        "design_sha256": report.X4C_V1_DESIGN_SHA256,
         "onboarding_path": "onboarding.json",
         "onboarding_sha256": "0" * 64,
         "onboarding_sha256_exact": True,
@@ -1516,6 +1520,7 @@ def test_x4c_gpt2_e2e_validators_are_complete_and_fail_closed(tmp_path):
 
     onboarding_mutations = (
         lambda row: row.pop("parent_domains"),
+        lambda row: row.pop("design_sha256"),
         lambda row: row["durable_census"].update({"oracle_file_count": 1}),
         lambda row: row.update({"selected_upper_median_wall_s": 0.0}),
         lambda row: row["measured"][2].update({"retained_durable": False}),
@@ -1529,6 +1534,7 @@ def test_x4c_gpt2_e2e_validators_are_complete_and_fail_closed(tmp_path):
 
     online_mutations = (
         lambda row: row["candidates"][0].pop("freshness_record_digest"),
+        lambda row: row.update({"design_sha256": "0" * 64}),
         lambda row: row.update({"selected_upper_median_open_wall_s": 0.0}),
         lambda row: row["candidates"][0].update({"complete_pcs_bytes": 1}),
         lambda row: row["candidates"][0]["process_io"].update(

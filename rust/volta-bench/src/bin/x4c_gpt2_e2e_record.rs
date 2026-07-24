@@ -47,7 +47,7 @@ use volta_pcs::x4::{
     GlobalOpenMetricsV4, OuterCachePolicyV4, X4bCudaCohortPathsV4, X4bCudaCommitMetricsV4,
     X4cArenaCensusV4, X4cCudaArenaRuntimeV4, X4cLifecycleWallsV4, X4cRamModelGlobalCohortV4,
     X4cResponseExecutionCountersV4, X4cResponseIoCountersV4, X4cResponseMetricsV4, X4cSealConfigV4,
-    X4cSelectedQueryTapeV4,
+    X4cSelectedQueryTapeV4, X4C_DESIGN_SHA256_HEX_V4,
 };
 use volta_proto::logup::Doms;
 use volta_proto::model_proof::{
@@ -200,6 +200,18 @@ fn verify_inputs(root: &Path) -> Result<(), String> {
         if sha256(&root.join(name))? != digest {
             return Err(format!("frozen input digest mismatch: {name}"));
         }
+    }
+    Ok(())
+}
+
+fn verify_design_digest() -> Result<(), String> {
+    let design =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/x4c-io-lifecycle-design.md");
+    let observed = sha256(&design)?;
+    if observed != X4C_DESIGN_SHA256_HEX_V4 {
+        return Err(format!(
+            "X4c design digest mismatch: expected {X4C_DESIGN_SHA256_HEX_V4}, got {observed}"
+        ));
     }
     Ok(())
 }
@@ -498,6 +510,7 @@ struct OnboardingRecord {
     git_dirty: bool,
     profile: String,
     protocol: String,
+    design_sha256: String,
     input_bin_sha256: String,
     input_json_sha256: String,
     input_params_sha256: String,
@@ -631,6 +644,7 @@ fn onboard(args: &Args) -> Result<(), String> {
     if durable.exists() || scratch.exists() || output.exists() {
         return Err("onboarding paths must be fresh".to_owned());
     }
+    verify_design_digest()?;
     let git_sha = git_sha_clean()?;
     let workload = workload(&args.weights)?;
     let (mock, _, _, _) = mock_model_outputs(&workload)?;
@@ -721,6 +735,7 @@ fn onboard(args: &Args) -> Result<(), String> {
         git_dirty: false,
         profile: PROFILE.to_owned(),
         protocol: PROTOCOL.to_owned(),
+        design_sha256: X4C_DESIGN_SHA256_HEX_V4.to_owned(),
         input_bin_sha256: GPT2_BIN_SHA256.to_owned(),
         input_json_sha256: GPT2_JSON_SHA256.to_owned(),
         input_params_sha256: GPT2_PARAMS_SHA256.to_owned(),
@@ -1197,6 +1212,7 @@ struct OnlineRecord {
     git_dirty: bool,
     profile: String,
     protocol: String,
+    design_sha256: String,
     onboarding_path: String,
     onboarding_sha256: String,
     onboarding_sha256_exact: bool,
@@ -1331,6 +1347,7 @@ fn online(args: &Args) -> Result<(), String> {
     if output.exists() || args.epoch_base == 0 {
         return Err("online output must be fresh and epoch-base nonzero".to_owned());
     }
+    verify_design_digest()?;
     let git_sha = git_sha_clean()?;
     let observed_onboarding_sha256 = sha256(onboarding_path)?;
     if observed_onboarding_sha256 != expected_onboarding_sha256 {
@@ -1343,6 +1360,7 @@ fn online(args: &Args) -> Result<(), String> {
     if onboarding.schema != SCHEMA
         || !onboarding.overall_pass
         || onboarding.profile != PROFILE
+        || onboarding.design_sha256 != X4C_DESIGN_SHA256_HEX_V4
         || onboarding.protocol != PROTOCOL
         || onboarding.input_bin_sha256 != GPT2_BIN_SHA256
         || onboarding.input_json_sha256 != GPT2_JSON_SHA256
@@ -1952,6 +1970,7 @@ fn online(args: &Args) -> Result<(), String> {
         git_dirty: false,
         profile: PROFILE.to_owned(),
         protocol: PROTOCOL.to_owned(),
+        design_sha256: X4C_DESIGN_SHA256_HEX_V4.to_owned(),
         onboarding_path: onboarding_path.display().to_string(),
         onboarding_sha256: observed_onboarding_sha256,
         onboarding_sha256_exact: true,
@@ -2017,6 +2036,7 @@ fn online(args: &Args) -> Result<(), String> {
 fn preflight(args: &Args) -> Result<(), String> {
     validate_x4c_frozen_surface_v4("1/8", 111, X4C_GPT2_PCS_BYTES, X4C_GPT2_RESPONSE_BYTES)
         .map_err(|error| format!("frozen X4c surface: {error:?}"))?;
+    verify_design_digest()?;
     verify_inputs(&args.weights)?;
     if selected_tape()?.draw_count() != 111 {
         return Err("selected tape is not 111 draws".to_owned());

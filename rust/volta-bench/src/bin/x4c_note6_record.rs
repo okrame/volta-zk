@@ -15,10 +15,11 @@ use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::time::Instant;
+use volta_pcs::x4::X4C_DESIGN_SHA256_HEX_V4;
 
 const POD_PROFILE: &str = "runpod-a100-x4c-v1";
 const PROTOCOL_PROFILE: &str = "x4-zkdeepfold-ud-e29-v4";
-const DESIGN_SHA256: &str = "57d0c0d691cc63ec043d18384348ad0e1130a5e763dc8e9ef00a7132d8abb880";
+const DESIGN_SHA256: &str = X4C_DESIGN_SHA256_HEX_V4;
 const GPU_NAME: &str = "NVIDIA A100-SXM4-80GB";
 const GPU_MEMORY_MIB: u64 = 81_920;
 const MIN_HOST_RAM_BYTES: u64 = 274_877_906_944;
@@ -913,5 +914,13 @@ mod tests {
         assert_eq!(DURABLE_COEFFICIENT_BYTES + DURABLE_ROOT_BYTES, DURABLE_TIER_BYTES);
         assert_eq!(DURABLE_ROOT_BYTES, 5 * 32);
         assert_eq!(GPU_MEMORY_MIB * 1024 * 1024, 85_899_345_920);
+    }
+
+    #[test]
+    fn design_digest_matches_the_pinned_document() {
+        assert_eq!(
+            sha256(&repo_root().join("docs/x4c-io-lifecycle-design.md")).unwrap(),
+            DESIGN_SHA256
+        );
     }
 }

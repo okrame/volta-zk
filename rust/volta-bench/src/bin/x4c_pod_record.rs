@@ -28,7 +28,7 @@ use volta_pcs::x4::{
     OuterCachePolicyV4, SealedGlobalChainX4cV4, X4bCudaCohortArtifactsV4, X4bCudaCohortPathsV4,
     X4bCudaCommitMetricsV4, X4cArenaCensusV4, X4cCudaArenaRuntimeV4, X4cLifecycleWallsV4,
     X4cRamModelGlobalCohortV4, X4cResponseExecutionCountersV4, X4cResponseIoCountersV4,
-    X4cResponseMetricsV4, X4cSealConfigV4, X4C_COMPLETE_PCS_BYTES_V4,
+    X4cResponseMetricsV4, X4cSealConfigV4, X4C_COMPLETE_PCS_BYTES_V4, X4C_DESIGN_SHA256_HEX_V4,
     X4C_DIRECT_FOLD_PRODUCTION_SAMPLES_V4, X4C_FOLD_FRAME_BYTES_V4,
     X4C_GLOBAL_FOLDING_PROOF_BYTES_V4, X4C_MANDATORY_NON_QUERY_BYTES_V4,
     X4C_PACKED_OPENING_BYTES_V4, X4C_PRODUCTION_FOLD_ROUNDS_V4, X4C_QUERY_COUNT_V4,
@@ -39,7 +39,7 @@ const INPUT_SCHEMA: u64 = 1;
 const SCHEMA: u64 = 2;
 const POD_PROFILE: &str = "runpod-a100-x4c-v1";
 const PROTOCOL_PROFILE: &str = "x4-zkdeepfold-ud-e29-v4";
-const DESIGN_SHA256: &str = "57d0c0d691cc63ec043d18384348ad0e1130a5e763dc8e9ef00a7132d8abb880";
+const DESIGN_SHA256: &str = X4C_DESIGN_SHA256_HEX_V4;
 const NOTE6_MILESTONE: &str = "X4c-R1b-NOTE-6-preflight";
 const LIFECYCLE_MILESTONE: &str = "X4c-phase2-exact-size-lifecycle-probe";
 const NOTE6_SOURCE_SHA: &str = "207b92c60c3656efca21ca2c3167a4390c8f4463";

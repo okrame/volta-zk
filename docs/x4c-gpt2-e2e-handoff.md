@@ -39,6 +39,15 @@ in the shared X4c runtime, NOTE-6, onboarding/online records and validators.
 Historical `57d0c0...` records remain unchanged and are not reused as
 post-R1c evidence.
 
+The first real-weight onboarding attempt from clean `092dda1` then stopped
+before durable-tier creation because the new driver incorrectly treated the
+canonical `golden-p6.bin` as header plus tokens only.  The frozen artifact is
+unchanged and exact: **616 B**, SHA-256 `e102783a...`, with its documented
+50-token plus 50-checksum payload.  Clean checkpoint
+`1bbeb28a72f4270f884d16553e3bd9b89e273171` corrects the fail-closed parser to
+require that full 616-B geometry and exact `T=100` / `N=50` header.  The
+failed invocation wrote no onboarding record and carries no gate verdict.
+
 ## Frozen real-weight inputs
 
 The following repo-local generated artifacts are present and match

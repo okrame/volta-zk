@@ -406,6 +406,37 @@ historical entries remain append-only evidence, not competing definitions.
 
 ## Deviations / decisions log
 
+- **2026-07-24 — Real-weight onboarding golden-geometry HARD STOP and
+  fail-closed correction.**  The first onboarding invocation from clean
+  `092dda1077955505b19953b533d21e6f97d264bc` on migrated container hostname
+  `61f9741b9b6d` stopped before creating a durable tier or writing an
+  onboarding record:
+
+  - `x4c_gpt2_e2e_record HARD STOP: golden-p6.bin has wrong canonical geometry`
+
+  The immutable pod input was nevertheless exact: **616 B**, SHA-256
+  `e102783acef548d30af65e56d636b6fc51a72697922e256aa5c97ded90567862`,
+  magic `VGOLD2`, `T=100` and `N=50`, identical to the repo-local frozen
+  artifact.  The driver had incorrectly required only the 16-B header plus
+  50 `u32` tokens (**216 B**), omitting the documented tail of 50 `i64`
+  logits-row checksums (**400 B**) from its length predicate.
+
+  Checkpoint `1bbeb28a72f4270f884d16553e3bd9b89e273171` requires the exact complete
+  **616-B** geometry and the exact `T=100` / `N=50` header before extracting
+  tokens.  Permanent tests accept the canonical checksum-bearing artifact and
+  reject both the old truncated geometry and a contradictory header.  Local
+  `cargo fmt --all -- --check`, `cargo check --workspace`,
+  `cargo test --workspace` (**364 passed, 0 failed, 4 existing
+  production-size tests ignored**) and the report-validator suite
+  (**15 passed**) are green.
+
+  This is a stricter input-parser correction, not a changed golden or a
+  protocol relaxation.  Rate `1/8`, `s=111`, root, codec, proof bytes,
+  correlations, Lean, soundness and every gate are unchanged.  The failed
+  invocation is preserved as diagnostic evidence and supplies no onboarding
+  or online verdict; execution may restart only from a fresh clean descendant
+  checkpoint and fresh onboarding paths.
+
 - **2026-07-24 — Migrated-pod NOTE-6 pre-execution digest HARD STOP and
   fail-closed correction.**  On container hostname `61f9741b9b6d`, after
   read-only hardware/storage inspection and toolchain setup, the first

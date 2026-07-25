@@ -80,6 +80,7 @@ const GOLDEN_P6_BYTES: usize =
 const MODEL_SUB_CORRELATIONS: u64 = 4_793_590;
 const MODEL_FULL_CORRELATIONS: u64 = 181_933;
 const MODEL_CLOSURE_FULL_CORRELATIONS: u64 = 2;
+const FASE_D_ALLOCATABLE_STAGE: u32 = 1;
 const SETTLED_RESPONSES: usize = 16;
 const CONNECTION_RESPONSES: usize = 19;
 const HARD_RAM_BYTES: u64 = 274_877_906_944;
@@ -763,7 +764,7 @@ fn run_response(
     .map_err(|error| format!("response correlation domain: {error}"))?;
     let pools = production
         .allocate_pcg_pools(
-            0,
+            FASE_D_ALLOCATABLE_STAGE,
             usize::try_from(MODEL_SUB_CORRELATIONS).unwrap(),
             usize::try_from(MODEL_FULL_CORRELATIONS + MODEL_CLOSURE_FULL_CORRELATIONS).unwrap(),
             domain,
@@ -1393,7 +1394,7 @@ fn online(args: &Args) -> Result<(), String> {
     .map_err(|error| format!("settlement correlation domain: {error}"))?;
     let settlement_pools = production
         .allocate_x4d_settlement_pcg_pools(
-            0,
+            FASE_D_ALLOCATABLE_STAGE,
             0,
             usize::try_from(batch.counters.total_full_correlations_per_role)
                 .map_err(|_| "settlement correlation count exceeds usize")?,
@@ -1623,5 +1624,28 @@ fn main() {
     if let Err(error) = result {
         eprintln!("x4d_gpt2_pod_record HARD STOP: {error}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use volta_bench::x4d_gpt2::X4dGpt2SettlementCountersV1;
+    use volta_pcg::FaseDCapacityReport;
+
+    #[test]
+    fn phase3_response_and_settlement_plan_uses_the_allocatable_fase_d_stage() {
+        let capacity =
+            FaseDCapacityReport::for_params(&FaseDParams::production(FaseDStagePlan::TerminalOne))
+                .unwrap();
+        let response_raw = MODEL_SUB_CORRELATIONS
+            + 2 * (MODEL_FULL_CORRELATIONS + MODEL_CLOSURE_FULL_CORRELATIONS);
+        let settlement = X4dGpt2SettlementCountersV1::for_responses(SETTLED_RESPONSES).unwrap();
+        let planned_raw = response_raw * CONNECTION_RESPONSES as u64
+            + 2 * settlement.total_full_correlations_per_role;
+
+        assert_eq!(FASE_D_ALLOCATABLE_STAGE, 1);
+        assert!(response_raw > capacity.main_residual as u64);
+        assert!(planned_raw <= capacity.allocatable_stage3 as u64);
     }
 }

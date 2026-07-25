@@ -3289,7 +3289,12 @@ _X4C_GPT2_ARENA_INT_KEYS = (
 )
 
 
-def _x4c_gpt2_arena_valid(row: Any, *, proof_ready: bool) -> bool:
+def _x4c_gpt2_arena_valid(
+    row: Any,
+    *,
+    proof_ready: bool,
+    native_resident_cache: bool = False,
+) -> bool:
     if not (
         _x4c_has(
             row,
@@ -3324,7 +3329,11 @@ def _x4c_gpt2_arena_valid(row: Any, *, proof_ready: bool) -> bool:
             and row["outstanding_allocations"] == 1
             and row["outstanding_bytes"] == X4C_ARENA_BYTES
             and row["cached_reusable_bytes"] == 0
-            and row["native_live_device_bytes"] == X4C_ARENA_BYTES
+            and (
+                row["native_live_device_bytes"] >= X4C_ARENA_BYTES
+                if native_resident_cache
+                else row["native_live_device_bytes"] == X4C_ARENA_BYTES
+            )
             and row["active_device_allocations"]
             == row["baseline_active_device_allocations"] + 1
         )
@@ -3334,7 +3343,11 @@ def _x4c_gpt2_arena_valid(row: Any, *, proof_ready: bool) -> bool:
         and row["native_arena_reset_bytes"] == X4C_ARENA_BYTES
         and row["outstanding_allocations"] == row["outstanding_bytes"] == 0
         and row["cached_reusable_bytes"] == X4C_ARENA_BYTES
-        and row["native_live_device_bytes"] == 0
+        and (
+            row["native_live_device_bytes"] >= X4C_ARENA_BYTES
+            if native_resident_cache
+            else row["native_live_device_bytes"] == 0
+        )
         and row["active_device_allocations"] == row["baseline_active_device_allocations"]
     )
 
@@ -3489,6 +3502,8 @@ def _x4c_gpt2_candidate_valid(
     response_io = metrics["response_io"]
     execution = metrics["execution"]
     backend = row["backend"]
+    proof_ready_arena = metrics["proof_ready_arena"]
+    session_reusable_arena = metrics["session_reusable_arena"]
     expected_execution = {
         "direct_fold_calls": 27,
         "diagnostic_comparisons": 1_592,
@@ -3538,8 +3553,26 @@ def _x4c_gpt2_candidate_valid(
         and all(_x4c_nonnegative_int(value) and value == 0 for value in response_io.values())
         and isinstance(execution, dict)
         and all(execution.get(key) == value for key, value in expected_execution.items())
-        and _x4c_gpt2_arena_valid(metrics["proof_ready_arena"], proof_ready=True)
-        and _x4c_gpt2_arena_valid(metrics["session_reusable_arena"], proof_ready=False)
+        and _x4c_gpt2_arena_valid(
+            proof_ready_arena,
+            proof_ready=True,
+            native_resident_cache=accelerated,
+        )
+        and _x4c_gpt2_arena_valid(
+            session_reusable_arena,
+            proof_ready=False,
+            native_resident_cache=accelerated,
+        )
+        and (
+            proof_ready_arena["native_live_device_bytes"]
+            == session_reusable_arena["native_live_device_bytes"]
+            == backend["live_device_bytes"]
+            and proof_ready_arena["native_peak_device_bytes"]
+            == session_reusable_arena["native_peak_device_bytes"]
+            == backend["peak_device_bytes"]
+            if accelerated
+            else True
+        )
         and metrics["proof_ready_wall_ns"] > 0
         and metrics["session_reusable_wall_ns"] >= metrics["proof_ready_wall_ns"]
         and metrics["source_coefficients_read"] == 601_161_728

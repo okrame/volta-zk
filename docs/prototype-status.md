@@ -338,7 +338,7 @@ its clean descendant closure.
 | X4c I/O-lifecycle Phase 2 | **X4c v1 A100 ONLINE PASS; PHASE COMPLETE; REAL-WEIGHT E2E NOT YET CLAIMED** (2026-07-24) | `min(64, output_len)` gives exactly **1,592** diagnostic comparisons with zero soundness credit; root/rebuild/ownership/zero-staging/exact-byte gates conjunctive; open <=1.50 s and verify <=0.25 s | Clean source `603d5a7`, selected GPU UUID `GPU-3286abe4-e484-485e-3a7c-68bc527f6059`.  Eligible lifecycle SHA-256 `148330b9156a7582c653ec892e26b6fe3d6ea9268cc0a4c28cc4a799827f4216`: exact **51,539,606,304 B**, four variants, 1+3 each, all accepted.  Onboarding SHA-256 `401852b11a68807e4632ea0d9991a5c404a9864e7c54034a625441e488f18428`: exact five coefficient files + five roots + zero oracle files, **9,618,587,808 B**, roots identical.  Fresh rebuild is five-task/27-worker parallel, **2,381.861456293 s**, exact **9,618,587,648 / 76,948,701,184 / 37,094,424,416 B** coefficients/oracle/cache, all five roots equal.  Online SHA-256 `aa1aafc5c956444c4d2fb2b8e921c9be7e2c6566d856f57569cfb3cf13a03f98`: warm-up + three accepted; selected open **0.120104920 s PASS**, verify **0.059300311 s PASS**, proof-ready/reusable **48.036825544 / 48.062177191 s**, complete online **107.691678134 s informative**, exact global folding proof / complete PCS / packed opening / response **2,617,860 / 2,683,236 / 2,615,414 / 43,953,700 B**; response staging and noncanonical D2H zero; one 111-query gather; arena reset and final pool release reconcile.  No v2 ceiling and no protocol/rate/root/byte/Lean/soundness change. |
 | X4c selected R1c remediation | **LOCAL GREEN; HARD STOP BEFORE POD** (2026-07-24) | R1C-M1/M2/M3/M7, N2/N3/N4 and ABI-neutral M4 are implemented and locally verified; M5/M6 and all other NOTE items remain explicitly deferred | Implementation checkpoint `0ab8826ab0bbe76aba6ecc8911e3bfa1074e65dc`. The real-weight driver may now be implemented locally, but no pod execution is authorized by this checkpoint; see the closure entry below. |
 | X4c real-weight GPT-2 small E2E driver | **LOCAL GREEN; HARD STOP BEFORE POD / NO HARDWARE VERDICT** (2026-07-24) | Frozen six-input manifest; T=100+50 golden; actual 51-block/102-claim domains; real AES-PCG and persistent composite freshness; same-source onboarding/rebuild; exact X4c bytes, staging and ownership | Implementation checkpoint `7e8e957977fc51ca5d5deedd0c75371dc438118a`. Local preflight and complete suites pass. The schema-2 onboarding/online validators require their exact SHA chain, warm-up + three measured candidates, upper medians, exact **2,683,236 / 43,953,700 B**, one 111-query gather, exact **1,592** diagnostic comparisons, zero response-window I/O/staging and reconciled native arena ownership. Real CUDA, production-size onboarding/rebuild and online candidates await a separately supplied pod endpoint. |
-| X4c real-weight accelerated fresh rebuild | **LOCAL PREPARATION COMPLETE; HARD STOP BEFORE POD; HARDWARE/R1c UNQUALIFIED** (2026-07-25) | New schema-2 milestone `X4c-GPT2-real-weight-online-accelerated`; dedicated fail-closed validator; CUDA RAM-first rebuild from the unchanged durable tier; CPU fallback explicit/opt-in; no automatic preflight progression or performance gate | Implementation checkpoint `065e75c78bd1427329dddbd37be7beb472927b8a`. Existing byte-identical X4b E-NTT/N4 primitives are composed without a second cryptographic implementation. Deterministic serial cohort order, exact roots/traffic/ownership, zero scratch/file-backed ownership, rebuild-context destruction and a zero-memory fresh online CUDA context are mandatory. Local workspace **376 PASS / 0 failure / 4 preexisting ignored**; Python validator **41 PASS**; tamper filter **44 PASS**; host-reference and six immutable-input digests PASS. PCS/response remain exactly **2,683,236 / 43,953,700 B**. Historical records and the **2,381.861456293-s** CPU rebuild remain valid. No local projection is a gate; production CUDA counters and R1c review remain pending. No pod, endpoint or remote storage was contacted. |
+| X4c real-weight accelerated fresh rebuild | **A100 REAL-WEIGHT E2E PASS; R1c REVIEW PENDING** (2026-07-25) | Discriminated schema-2 `X4c-GPT2-real-weight-online-accelerated`; dedicated fail-closed validator; unchanged durable tier, roots, protocol and bytes; one warm-up + three measured | Clean source `6277c3c`; onboarding SHA-256 `bdf17c56e8e9a4d152b40ed2e1653d34cd665f09f52cb9dfe1cb1f57ae5e165d`; online SHA-256 `5a5417c11c0d5b4abe57af1e6ea5fa1191962c709c0f7b86fb780c30af1dac89`. Accelerated rebuild **240.623922522 s**, all five roots exact, scratch **0 B**, peak host/VRAM **133,544,189,952 / 43,486,546,048 B**. Four candidates accepted; selected open/verify **0.130465952 / 0.059185522 s PASS**, proof-ready/reusable **51.934139091 / 51.959601330 s**, complete E2E **303.190020886 s informative**. D2D **1,364,224 B** and ordinal-aware device-generated **35,727,436,640 / 35,727,436,512 B** exact. PCS/response **2,683,236 / 43,953,700 B** exact; zero response-window I/O/staging. R1c independent review is not claimed. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -406,6 +406,60 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-25 — X4c accelerated real-weight E2E PASS; same artifact
+  revalidated after validator-only cache-census correction.**  Clean source
+  `6277c3ce1f6715893245f27671cca24ddca0ee50` completed same-source
+  onboarding and the discriminated
+  `X4c-GPT2-real-weight-online-accelerated` run on A100-SXM4-80GB UUID
+  `GPU-4321b8c2-a55d-81b6-ab42-6cffae1e74ac`; the second physical GPU was
+  unused.  Onboarding and online record SHA-256 are
+  `bdf17c56e8e9a4d152b40ed2e1653d34cd665f09f52cb9dfe1cb1f57ae5e165d`
+  and
+  `5a5417c11c0d5b4abe57af1e6ea5fa1191962c709c0f7b86fb780c30af1dac89`.
+  After both append-only records were copied and hash-verified locally, the
+  five explicitly named campaign durable directories were removed from
+  `/workspace`, releasing about **36 GB**; no unrelated path was inspected or
+  modified.
+
+  The fresh rebuild completed in **240.623922522 s** versus the historical
+  CPU **2,381.861456293 s**.  It reconstructed all five exact roots from the
+  unchanged **9,618,587,808-B** durable tier, used zero scratch, read/wrote
+  no response-window file, reached **133,544,189,952 B** peak host RSS and
+  **43,486,546,048 B** peak rebuild VRAM, destroyed its rebuild context and
+  admitted a zero-device-byte fresh online context.
+
+  Warm-up and all three measured candidates passed.  Selected upper medians
+  are model prove/verify **4.190497854 / 0.667958900 s**, X4c open/verify
+  **0.130465952 / 0.059185522 s**, proof-ready/session-reusable
+  **51.934139091 / 51.959601330 s**, and complete E2E
+  **303.190020886 s**.  Native H2D/D2H are exactly
+  **18,554,607,910 / 2,690,646 B** per response, D2D exactly
+  **1,364,224 B**, and device-generated bytes exactly
+  **35,727,436,640 B** at ordinal 0 then **35,727,436,512 B** thereafter.
+  PCS/response remain **2,683,236 / 43,953,700 B** and every response has
+  zero staging and exact zero response-window I/O.
+
+  The emitted record was already internally PASS but the Python validator
+  initially rejected it because its historical arena check required native
+  live bytes to become zero after logical release.  The backend intentionally
+  retains the reset arena as reusable native cache.  The validator-only
+  correction preserves the old milestone semantics, and for the accelerated
+  milestone instead requires proof-ready and reusable native live/peak bytes
+  to equal each other and the backend counters exactly, while active device
+  allocations return to baseline and outstanding CUDA operations remain
+  zero.  Tampering any side of those equalities is rejected.  The same
+  append-only hardware JSON now validates PASS; no onboarding, rebuild or
+  candidate was rerun for this diagnostic correction.
+
+  A future architecture item is to define a frozen cryptographic-build
+  identity separately from validator/report implementation identity, with
+  both pins present and fail-closed.  That design may permit validator-only
+  descendants to validate a cryptographically identical chain without
+  repeating commitments.  It is not implemented or assumed here; the
+  current same-commit rule remains unchanged.  No protocol, ABI, primitive,
+  coefficient, root, proof byte, query, correlation, Lean statement or
+  soundness term changed.  R1c independent review remains pending.
 
 - **2026-07-25 — Exact fresh-context traffic remediation admits warm-up;
   measured-1 HARD STOP isolates one-time hash-key reuse.**  Clean checkpoint

@@ -2,30 +2,32 @@
 
 ## Current boundary
 
-The historical schema-2 same-source onboarding and CPU fresh rebuild remain
-valid evidence in the append-only ledger. The latest accelerated process
-admitted all five rebuilt roots and the fresh online CUDA context. Its
-warm-up passed the corrected exact traffic gate; the first measured candidate
-then stopped fail-closed because the four derived hash keys are generated
-once in the fresh context and reused thereafter. It emitted no online JSON
-and cannot resume the burned connection or released in-memory state.
+The clean schema-2 milestone
+`X4c-GPT2-real-weight-online-accelerated` completed on the owner-provisioned
+RunPod at source `6277c3c`. The same-source onboarding, all five rebuilt
+roots, fresh online CUDA context, warm-up and three measured candidates pass
+the dedicated fail-closed validator. The accepted online record is
+`benchmarks/results/x4c-gpt2-online-accelerated-2026-07-25-6277c3c.json`;
+its SHA-256 is
+`5a5417c11c0d5b4abe57af1e6ea5fa1191962c709c0f7b86fb780c30af1dac89`.
 
-The next milestone is
-`X4c-GPT2-real-weight-online-accelerated`, still schema 2 but discriminated
-from the historical `X4c-GPT2-real-weight-online` milestone. Its dedicated
-validator requires every accelerated rebuild counter. Local tests and
-projections grant no production gate. No new pod has been contacted for this
-milestone.
+The accelerated rebuild completed in **240.623922522 s**, with zero scratch,
+all roots exact, **133,544,189,952 B** peak host RSS and
+**43,486,546,048 B** peak rebuild VRAM. Selected upper medians are
+**0.130465952 s** open, **0.059185522 s** verify,
+**51.934139091 / 51.959601330 s** proof-ready/session-reusable, and
+**303.190020886 s** complete E2E. PCS and response remain exactly
+**2,683,236 / 43,953,700 B**.
 
-The accounting remediation is local and unqualified until its clean
-checkpoint and a new same-source run. It derives the exact production
-expectations—**1,364,224 B** explicit device-to-device copies and
-**35,727,436,640 B** device-generated output for the fresh-context warm-up,
-then **35,727,436,512 B** after one-time generation of the four 32-B hash
-keys—from canonical gather plan, response geometry and response ordinal. The
-dedicated accelerated validator requires ordinal, top-level expectations,
-execution receipt and native counters to agree exactly. This is
-accounting-only, not a protocol or cryptographic change.
+Production traffic is exactly **1,364,224 B** explicit device-to-device
+copies and **35,727,436,640 B** device-generated output for the fresh-context
+warm-up, then **35,727,436,512 B** after one-time generation of four 32-B
+hash keys. The validator requires ordinal, top-level expectations, execution
+receipt and native counters to agree. It also distinguishes logical arena
+release from the native allocator's reusable resident cache, while requiring
+both arena snapshots to equal the backend's exact live/peak counters and
+requiring active allocations and outstanding operations to return to their
+baselines.
 
 The live implementation adds:
 
@@ -227,19 +229,16 @@ python3 scripts/report.py \
   --x4c-gpt2-onboarding ONBOARDING.json
 ```
 
-## Next-pod runbook
+## Completed pod order
 
-HARD STOP locally until implementation, workspace tests, validator tests,
-tamper suite, ledger and this runbook are green.
-
-On a newly supplied endpoint, execute in this order:
+The completed run followed this order:
 
 1. verify configuration, NOTE-6, one idle physical A100 by UUID, host RAM and
    distinct local/PERSISTENT storage;
 2. run the append-only 4-GiB PERSISTENT `write + fdatasync` health probe;
 3. run CUDA regressors and immutable input SHA-256 checks;
 4. run each preflight stage manually in the order above, validating every
-   record before deciding whether to continue;
+   record before continuing;
 5. make an explicit economic go/no-go from counters and the diagnostic
    projection;
 6. run exactly one same-source onboarding on fresh paths;
@@ -247,23 +246,20 @@ On a newly supplied endpoint, execute in this order:
 8. only after digest/root/ownership, rebuild-context destruction and
    fresh-online-context admission, run one warm-up and three measured online
    candidates;
-9. validate the schema-2 onboarding/accelerated-online chain and copy raw
-   records append-only.
+9. validate the schema-2 onboarding/accelerated-online chain and copy both
+   raw records append-only.
 
 Do not reuse a failed authorization store, connection, epoch, scratch path,
 durable output path or record path. Do not describe pre-response scratch as
 “zero staging”; this implementation currently uses zero scratch at all, and
 the response window independently retains exact zero I/O.
 
-## Endpoint requirements
+## Measured host requirement
 
-The next host must satisfy the registered `runpod-a100-x4c-v1` profile.
-The admitted accelerated rebuild recorded **133,536,927,744 B** native peak
-host RSS and **43,486,546,048 B** native peak rebuild VRAM. Pending a complete
-accepted online record, retain the conservative requirement of at least
-**192 GiB host RAM** and at least **48 GiB free VRAM on one selected A100
-80GB**, reliable local scratch, and a distinct durable volume that passes the
-4-GiB synchronized-write probe. VRAM on another GPU is not pooled with the
-selected CUDA context and does not count toward either requirement.
-CUDA/driver identity, selected GPU UUID, CPU, RAM and storage counters must
-be recorded by NOTE-6.
+The accepted `runpod-a100-x4c-v1` run measured **133,544,189,952 B**
+(124.37 GiB) peak host RSS and **43,486,546,048 B** (40.50 GiB) peak rebuild
+VRAM. The operational requirement remains at least **192 GiB host RAM** and
+at least **48 GiB free VRAM on one selected A100 80GB**, plus a distinct
+durable volume that passes the 4-GiB synchronized-write probe. VRAM on
+another GPU is not pooled with the selected CUDA context and does not count
+toward either requirement.

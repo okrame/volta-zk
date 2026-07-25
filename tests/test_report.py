@@ -1540,6 +1540,7 @@ def _x4c_gpt2_accelerated_online(report, online):
         "traffic_exact",
     )
     for candidate in accelerated["candidates"]:
+        native_resident_bytes = report.X4C_ARENA_BYTES + 4096
         expected_device_generated_bytes = (
             report.X4C_PRODUCTION_FRESH_DEVICE_GENERATED_BYTES
             if candidate["ordinal"] == 0
@@ -1553,6 +1554,13 @@ def _x4c_gpt2_accelerated_online(report, online):
             report.X4C_PRODUCTION_EXPLICIT_D2D_COPY_BYTES
         )
         candidate["backend"]["device_generated_bytes"] = expected_device_generated_bytes
+        candidate["backend"]["live_device_bytes"] = native_resident_bytes
+        candidate["backend"]["peak_device_bytes"] = native_resident_bytes
+        for arena_name in ("proof_ready_arena", "session_reusable_arena"):
+            arena = candidate["metrics"][arena_name]
+            arena["peak_bytes"] = native_resident_bytes
+            arena["native_live_device_bytes"] = native_resident_bytes
+            arena["native_peak_device_bytes"] = native_resident_bytes
         candidate["metrics"]["execution"][
             "expected_explicit_d2d_copy_bytes"
         ] = report.X4C_PRODUCTION_EXPLICIT_D2D_COPY_BYTES
@@ -1851,6 +1859,15 @@ def test_x4c_gpt2_accelerated_validator_requires_native_counters(tmp_path):
                 "expected_device_generated_bytes":
                     report.X4C_PRODUCTION_FRESH_DEVICE_GENERATED_BYTES
             }
+        ),
+        lambda row: row["candidates"][0]["metrics"][
+            "session_reusable_arena"
+        ].update({"native_live_device_bytes": 0}),
+        lambda row: row["candidates"][0]["metrics"][
+            "proof_ready_arena"
+        ].update({"native_peak_device_bytes": report.X4C_ARENA_BYTES}),
+        lambda row: row["candidates"][0]["backend"].update(
+            {"live_device_bytes": report.X4C_ARENA_BYTES}
         ),
         lambda row: row["rebuild"].pop("accelerated"),
         lambda row: row["rebuild"]["accelerated"].pop("expected_h2d_bytes"),

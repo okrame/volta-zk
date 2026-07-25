@@ -5,9 +5,11 @@
 //! * `--mode onboard` derives the actual descriptor/domain inventory from a
 //!   mock-PCG model-proof prepass, materializes real-weight coefficients, and
 //!   writes only five coefficient files plus five roots to PERSISTENT.
-//! * `--mode online` verifies that exact onboarding chain, performs a
-//!   fresh-process parallel rebuild, then runs one warm-up plus three
-//!   real-PCG/CUDA/X4c candidates.
+//! * `--mode online` retains the historical explicit CPU rebuild.
+//! * `--mode online-accelerated` verifies the same onboarding chain, performs
+//!   a deterministic CUDA RAM-first rebuild, then runs one warm-up plus three
+//!   real-PCG/CUDA/X4c candidates. Accelerator failure never selects the CPU
+//!   path.
 //!
 //! Local CI uses `--mode preflight`; no pod is contacted by this binary.
 
@@ -31,6 +33,9 @@ use volta_bench::x4c_gpt2::{
     X4C_GPT2_HOST_ORACLE_BYTES, X4C_GPT2_HOST_OUTER_CACHE_BYTES, X4C_GPT2_PCS_BYTES,
     X4C_GPT2_RESPONSE_BYTES,
 };
+use volta_bench::x4c_rebuild_record::{
+    accelerated_rebuild_cohort_record, process_memory_record, AcceleratedRebuildRecord,
+};
 use volta_field::{Fp, Fp2};
 use volta_gpt2::{
     argmax, band_model_witness, band_model_witness_resident, decode_step, forward_model,
@@ -43,9 +48,10 @@ use volta_pcg::{
     FaseDParams, FaseDStagePlan, GgmPrg, ResponseAuthorizationStore, X4ResponseFreshnessBinding,
 };
 use volta_pcs::x4::{
-    commit_cohort_cuda_v4, read_persisted_coefficients_v4, validate_x4c_frozen_surface_v4,
-    GlobalOpenMetricsV4, OuterCachePolicyV4, X4bCudaCohortPathsV4, X4bCudaCommitMetricsV4,
-    X4cArenaCensusV4, X4cCudaArenaRuntimeV4, X4cLifecycleWallsV4, X4cRamModelGlobalCohortV4,
+    commit_cohort_cuda_v4, read_persisted_coefficients_v4, rebuild_cohort_ram_v4,
+    validate_x4c_frozen_surface_v4, CohortVerifierConfigV4, GlobalOpenMetricsV4,
+    OuterCachePolicyV4, X4bCudaCohortPathsV4, X4bCudaCommitMetricsV4, X4cArenaCensusV4,
+    X4cCudaArenaRuntimeV4, X4cLifecycleWallsV4, X4cRamRebuildStrategyV4,
     X4cResponseExecutionCountersV4, X4cResponseIoCountersV4, X4cResponseMetricsV4, X4cSealConfigV4,
     X4cSelectedQueryTapeV4, X4C_DESIGN_SHA256_HEX_V4,
 };
@@ -59,6 +65,8 @@ use volta_proto::{layer_dom_base, prod_batch_prover, prod_batch_verify, ModelOut
 const SCHEMA: u64 = 2;
 const PROFILE: &str = "runpod-a100-x4c-v1";
 const PROTOCOL: &str = "x4-zkdeepfold-ud-e29-v4";
+const ONLINE_MILESTONE: &str = "X4c-GPT2-real-weight-online";
+const ACCELERATED_ONLINE_MILESTONE: &str = "X4c-GPT2-real-weight-online-accelerated";
 const SELECTED_TAPE_DIGEST: &str =
     "3654af24af8a3e903e15db2bf25e0ec587d1bd774aaab433d1fb6e1064b3d299";
 const GPT2_BIN_SHA256: &str = "bdd193720adc8243c64897eaf1b9cd27883ae5613552c96ed4533c52892adc6a";
@@ -83,6 +91,7 @@ enum Mode {
     Preflight,
     Onboard,
     Online,
+    OnlineAccelerated,
 }
 
 struct Args {
@@ -101,7 +110,7 @@ struct Args {
 
 fn usage() -> ! {
     eprintln!(
-        "usage: x4c_gpt2_e2e_record --mode preflight|onboard|online \
+        "usage: x4c_gpt2_e2e_record --mode preflight|onboard|online|online-accelerated \
          --weights PATH [--durable-root PATH --scratch-root PATH --output PATH] \
          [--onboarding PATH --onboarding-sha256 HEX --authorization-store PATH --connection-store PATH \
           --clean-source-sha256 HEX --epoch-base N]"
@@ -130,6 +139,7 @@ fn parse_args() -> Args {
                     "preflight" => Mode::Preflight,
                     "onboard" => Mode::Onboard,
                     "online" => Mode::Online,
+                    "online-accelerated" => Mode::OnlineAccelerated,
                     _ => usage(),
                 })
             }
@@ -1365,6 +1375,8 @@ struct RebuildRow {
     durable_census_before: DurableTierCensusRow,
     durable_census_after: DurableTierCensusRow,
     durable_census_stable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    accelerated: Option<AcceleratedRebuildRecord>,
     accepted: bool,
 }
 
@@ -1471,7 +1483,46 @@ fn close_model_response(
     product_ok && zero_ok
 }
 
-fn online(args: &Args) -> Result<(), String> {
+fn load_durable_material(
+    durable: &Path,
+    config: &CohortVerifierConfigV4,
+    row: &DurableRow,
+) -> Result<(X4cGpt2CohortMaterial, [u8; 32]), String> {
+    if config.identity.cohort_id != row.cohort_id {
+        return Err("onboarding cohort order changed".to_owned());
+    }
+    let directory = durable.join(format!("cohort-{:08x}", row.cohort_id));
+    let coefficient_path = directory.join("coefficients.bin");
+    let root_path = directory.join("root.bin");
+    let coefficient_len = fs::metadata(&coefficient_path)
+        .map_err(|error| format!("stat durable coefficients: {error}"))?
+        .len();
+    let root_len =
+        fs::metadata(&root_path).map_err(|error| format!("stat durable root: {error}"))?.len();
+    if coefficient_len != row.coefficient_bytes || root_len != row.root_bytes || root_len != 32 {
+        return Err("durable X4c size mismatch".to_owned());
+    }
+    if sha256(&coefficient_path)? != row.coefficient_sha256
+        || sha256(&root_path)? != row.root_sha256
+    {
+        return Err("durable X4c digest mismatch".to_owned());
+    }
+    let root: [u8; 32] = fs::read(&root_path)
+        .map_err(|error| format!("read durable root: {error}"))?
+        .try_into()
+        .map_err(|_| "durable root is not 32 bytes".to_owned())?;
+    if hex(&root) != row.root_hex {
+        return Err("durable root bytes mismatch onboarding".to_owned());
+    }
+    let coefficients = read_persisted_coefficients_v4(&coefficient_path, config)
+        .map_err(|error| format!("read durable coefficients: {error:?}"))?;
+    Ok((
+        X4cGpt2CohortMaterial { name: "durable-real-weight", config: config.clone(), coefficients },
+        root,
+    ))
+}
+
+fn online(args: &Args, accelerated: bool) -> Result<(), String> {
     let output = args.output.as_ref().ok_or_else(|| "online requires --output".to_owned())?;
     let durable =
         args.durable_root.as_ref().ok_or_else(|| "online requires --durable-root".to_owned())?;
@@ -1552,57 +1603,168 @@ fn online(args: &Args) -> Result<(), String> {
     if !durable_census_before.exact || durable_census_before != onboarding.durable_census {
         return Err("durable tier no longer matches the exact onboarding census".to_owned());
     }
+    let mut rebuild_backend = if accelerated {
+        Some(
+            Backend::cuda_resident_with_timing(ResidentTimingPolicy::WallOnlyCounters)
+                .map_err(|error| format!("initialize accelerated rebuild CUDA: {error}"))?,
+        )
+    } else {
+        None
+    };
     let rebuild_before_io = IoObservation::current()?;
     let rebuild_started = Instant::now();
-    let loaded = inventory
-        .cohort_configs
-        .par_iter()
-        .zip(&onboarding.durable)
-        .map(|(config, row)| {
-            if config.identity.cohort_id != row.cohort_id {
-                return Err("onboarding cohort order changed".to_owned());
-            }
-            let directory = durable.join(format!("cohort-{:08x}", row.cohort_id));
-            let coefficient_path = directory.join("coefficients.bin");
-            let root_path = directory.join("root.bin");
-            if sha256(&coefficient_path)? != row.coefficient_sha256
-                || sha256(&root_path)? != row.root_sha256
-            {
-                return Err("durable X4c digest mismatch".to_owned());
-            }
-            let root: [u8; 32] = fs::read(&root_path)
-                .map_err(|error| format!("read durable root: {error}"))?
-                .try_into()
-                .map_err(|_| "durable root is not 32 bytes".to_owned())?;
-            if hex(&root) != row.root_hex {
-                return Err("durable root bytes mismatch onboarding".to_owned());
-            }
-            let coefficients = read_persisted_coefficients_v4(&coefficient_path, config)
-                .map_err(|error| format!("read durable coefficients: {error:?}"))?;
-            Ok((
-                X4cGpt2CohortMaterial {
-                    name: "durable-real-weight",
-                    config: config.clone(),
-                    coefficients,
-                },
-                root,
-            ))
-        })
-        .collect::<Result<Vec<_>, String>>()?;
+    let loaded = if accelerated {
+        inventory
+            .cohort_configs
+            .iter()
+            .zip(&onboarding.durable)
+            .map(|(config, row)| load_durable_material(durable, config, row))
+            .collect::<Result<Vec<_>, String>>()?
+    } else {
+        inventory
+            .cohort_configs
+            .par_iter()
+            .zip(&onboarding.durable)
+            .map(|(config, row)| load_durable_material(durable, config, row))
+            .collect::<Result<Vec<_>, String>>()?
+    };
     let (materials, roots): (Vec<_>, Vec<_>) = loaded.into_iter().unzip();
+    let evaluation_started = Instant::now();
     let evaluations = rebuild_evaluation_tables(&inventory, &materials)?;
-    let cohorts = materials
-        .into_par_iter()
-        .zip(roots.par_iter().copied())
-        .map(|(material, root)| {
-            X4cRamModelGlobalCohortV4::rebuild_from_coefficients_checked(
+    let evaluation_table_wall_s = evaluation_started.elapsed().as_secs_f64();
+    let (cohorts, mut accelerated_rebuild) = if accelerated {
+        // The inventory order is mu26, mu22, mu20, ell17, ell16.  Keep the
+        // two largest cohorts isolated and make the complete schedule part of
+        // the fail-closed record.
+        const SCHEDULE: [usize; 5] = [0, 1, 2, 4, 3];
+        let mut material_slots = materials.into_iter().map(Some).collect::<Vec<_>>();
+        let mut cohort_slots =
+            std::iter::repeat_with(|| None).take(material_slots.len()).collect::<Vec<_>>();
+        let mut metric_rows = Vec::with_capacity(SCHEDULE.len());
+        for index in SCHEDULE {
+            let material = material_slots[index]
+                .take()
+                .ok_or_else(|| "accelerated rebuild schedule reused a cohort".to_owned())?;
+            let process_memory_before = process_memory_record()?;
+            let cohort_id = material.config.identity.cohort_id;
+            let (cohort, metrics) = rebuild_cohort_ram_v4(
+                X4cRamRebuildStrategyV4::CudaRam,
+                Some(
+                    rebuild_backend
+                        .as_mut()
+                        .ok_or_else(|| "accelerated rebuild CUDA context missing".to_owned())?,
+                ),
                 material.config,
                 material.coefficients,
-                root,
+                roots[index],
             )
-            .map_err(|error| format!("parallel fresh rebuild: {error:?}"))
-        })
-        .collect::<Result<Vec<_>, String>>()?;
+            .map_err(|error| format!("accelerated fresh rebuild: {error}"))?;
+            let process_memory_after = process_memory_record()?;
+            let row = accelerated_rebuild_cohort_record(
+                cohort_id,
+                metrics,
+                process_memory_before,
+                process_memory_after,
+            )?;
+            if !row.accepted {
+                return Err("accelerated cohort counters failed closed".to_owned());
+            }
+            cohort_slots[index] = Some(cohort);
+            metric_rows.push(row);
+        }
+        if material_slots.iter().any(Option::is_some) {
+            return Err("accelerated rebuild schedule omitted a cohort".to_owned());
+        }
+        let cohorts = cohort_slots
+            .into_iter()
+            .map(|cohort| cohort.ok_or_else(|| "accelerated cohort ownership missing".to_owned()))
+            .collect::<Result<Vec<_>, _>>()?;
+        let expected_h2d_bytes = metric_rows.iter().map(|row| row.expected_h2d_bytes).sum::<u64>();
+        let expected_d2h_bytes = metric_rows.iter().map(|row| row.expected_d2h_bytes).sum::<u64>();
+        let peak_host_rss_bytes = metric_rows
+            .iter()
+            .map(|row| {
+                row.process_memory_before
+                    .peak_rss_bytes
+                    .max(row.process_memory_after.peak_rss_bytes)
+            })
+            .max()
+            .unwrap_or(0);
+        let peak_device_bytes =
+            metric_rows.iter().map(|row| row.backend.peak_device_bytes).max().unwrap_or(0);
+        let scratch_files_created =
+            metric_rows.iter().map(|row| row.scratch_files_created).sum::<u64>();
+        let scratch_bytes_read = metric_rows.iter().map(|row| row.scratch_bytes_read).sum::<u64>();
+        let scratch_bytes_written =
+            metric_rows.iter().map(|row| row.scratch_bytes_written).sum::<u64>();
+        let outstanding_cuda_operations = metric_rows
+            .iter()
+            .map(|row| row.control_after.outstanding_cuda_operations)
+            .max()
+            .unwrap_or(u64::MAX);
+        let cleanup_complete = metric_rows.iter().all(|row| row.cleanup_complete);
+        let traffic_exact = metric_rows.iter().all(|row| row.traffic_exact);
+        let accepted = metric_rows.len() == 5
+            && metric_rows.iter().all(|row| row.accepted)
+            && scratch_files_created == 0
+            && scratch_bytes_read == 0
+            && scratch_bytes_written == 0
+            && outstanding_cuda_operations == 0
+            && cleanup_complete
+            && traffic_exact;
+        let deterministic_schedule =
+            metric_rows.iter().map(|row| row.cohort_id).collect::<Vec<_>>();
+        let accelerated = AcceleratedRebuildRecord {
+            contract: "x4c-gpt2-accelerated-rebuild-schema-1".to_owned(),
+            strategy: X4cRamRebuildStrategyV4::CudaRam.as_str().to_owned(),
+            deterministic_schedule,
+            cuda_cohort_concurrency: 1,
+            mu26_mu22_overlap: false,
+            automatic_cpu_fallback: false,
+            cpu_fallback_opt_in_only: true,
+            evaluation_table_wall_s,
+            cohorts: metric_rows,
+            expected_h2d_bytes,
+            expected_d2h_bytes,
+            peak_host_rss_bytes,
+            peak_device_bytes,
+            scratch_files_created,
+            scratch_bytes_read,
+            scratch_bytes_written,
+            outstanding_cuda_operations,
+            rebuild_workspace_bytes_before_context_drop: 0,
+            rebuild_live_device_bytes_before_context_drop: 0,
+            backend_context_cleanup_wall_s: 0.0,
+            backend_context_dropped_before_response: false,
+            online_backend_fresh_context: false,
+            fresh_online_backend_device_bytes: u64::MAX,
+            fresh_online_backend_outstanding_cuda_operations: u64::MAX,
+            cleanup_complete,
+            traffic_exact,
+            accepted,
+        };
+        if !accelerated.accepted {
+            return Err("accelerated rebuild aggregate counters failed closed".to_owned());
+        }
+        (cohorts, Some(accelerated))
+    } else {
+        let cohorts = materials
+            .into_par_iter()
+            .zip(roots.par_iter().copied())
+            .map(|(material, root)| {
+                rebuild_cohort_ram_v4(
+                    X4cRamRebuildStrategyV4::CpuExplicit,
+                    None,
+                    material.config,
+                    material.coefficients,
+                    root,
+                )
+                .map(|(cohort, _)| cohort)
+                .map_err(|error| format!("explicit parallel CPU rebuild: {error}"))
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        (cohorts, None)
+    };
     let rebuild_roots = cohorts.iter().map(|cohort| hex(&cohort.root())).collect::<Vec<_>>();
     let rebuild_roots_equal_onboarding = rebuild_roots == onboarding.warmup_root_set;
     if !rebuild_roots_equal_onboarding {
@@ -1645,10 +1807,69 @@ fn online(args: &Args) -> Result<(), String> {
     let durable_census_after = durable_tier_census(durable, &expected_cohort_ids)?;
     let durable_census_stable =
         durable_census_before == durable_census_after && durable_census_after.exact;
+    let mut backend = if accelerated {
+        let accelerated_row = accelerated_rebuild
+            .as_mut()
+            .ok_or_else(|| "accelerated rebuild record missing".to_owned())?;
+        let final_cohort = accelerated_row
+            .cohorts
+            .last()
+            .ok_or_else(|| "accelerated rebuild final cohort counters missing".to_owned())?;
+        accelerated_row.rebuild_workspace_bytes_before_context_drop =
+            final_cohort.device_memory_after.workspace_bytes;
+        accelerated_row.rebuild_live_device_bytes_before_context_drop =
+            final_cohort.backend.live_device_bytes;
+        let cleanup_started = Instant::now();
+        drop(
+            rebuild_backend
+                .take()
+                .ok_or_else(|| "accelerated rebuild CUDA context missing at cleanup".to_owned())?,
+        );
+        accelerated_row.backend_context_cleanup_wall_s = cleanup_started.elapsed().as_secs_f64();
+        accelerated_row.backend_context_dropped_before_response = true;
+
+        let fresh = Backend::cuda_resident_with_timing(ResidentTimingPolicy::WallOnlyCounters)
+            .map_err(|error| format!("initialize fresh online CUDA context: {error}"))?;
+        let fresh_memory = fresh
+            .device_memory_breakdown()
+            .map_err(|error| format!("fresh online CUDA memory census: {error}"))?;
+        let fresh_control = fresh
+            .x4c_control_state()
+            .map_err(|error| format!("fresh online CUDA ownership census: {error}"))?;
+        accelerated_row.fresh_online_backend_device_bytes = fresh_memory
+            .workspace_bytes
+            .checked_add(fresh_memory.resident_bytes)
+            .and_then(|value| value.checked_add(fresh_memory.cached_resident_bytes))
+            .ok_or_else(|| "fresh online CUDA byte census overflows".to_owned())?;
+        accelerated_row.fresh_online_backend_outstanding_cuda_operations =
+            fresh_control.outstanding_cuda_operations;
+        accelerated_row.online_backend_fresh_context =
+            accelerated_row.fresh_online_backend_device_bytes == 0
+                && fresh_control.stream_state == CudaStreamState::Idle
+                && !fresh_control.measurement_active
+                && !fresh_control.coarse_timing_active
+                && !fresh_control.timing_record_active
+                && !fresh_control.measurement_poisoned
+                && fresh_control.outstanding_cuda_operations == 0
+                && fresh_control.pending_timing_records == 0
+                && fresh_control.active_device_allocations == 0
+                && fresh_control.cached_device_allocations == 0
+                && fresh_control.active_pinned_allocations == 0
+                && fresh_control.cached_pinned_allocations == 0
+                && fresh_control.in_flight_pinned_allocations == 0;
+        accelerated_row.cleanup_complete &= accelerated_row.backend_context_dropped_before_response
+            && accelerated_row.online_backend_fresh_context;
+        accelerated_row.accepted &= accelerated_row.cleanup_complete;
+        fresh
+    } else {
+        Backend::cuda_resident_with_timing(ResidentTimingPolicy::WallOnlyCounters)
+            .map_err(|error| format!("initialize resident CUDA: {error}"))?
+    };
+    let accelerated_rebuild_accepted = accelerated_rebuild.as_ref().is_none_or(|row| row.accepted);
     let rebuild = RebuildRow {
         wall_s: rebuild_started.elapsed().as_secs_f64(),
         io: IoObservation::current()?.delta(&rebuild_before_io)?,
-        parallel_task_count: 5,
+        parallel_task_count: if accelerated { 1 } else { 5 },
         rayon_workers: rayon::current_num_threads(),
         cohorts: rebuild_cohorts,
         coefficient_bytes_read: rebuild_coefficient_bytes,
@@ -1659,12 +1880,14 @@ fn online(args: &Args) -> Result<(), String> {
         durable_census_before,
         durable_census_after,
         durable_census_stable,
+        accelerated: accelerated_rebuild,
         accepted: rebuild_coefficient_bytes == X4C_GPT2_DURABLE_COEFFICIENT_BYTES
             && evaluation_table_bytes == X4C_GPT2_DURABLE_COEFFICIENT_BYTES
             && rebuild_host_oracle_bytes == X4C_GPT2_HOST_ORACLE_BYTES
             && rebuild_host_outer_cache_bytes == X4C_GPT2_HOST_OUTER_CACHE_BYTES
             && rebuild_roots_equal_onboarding
-            && durable_census_stable,
+            && durable_census_stable
+            && accelerated_rebuild_accepted,
     };
     if !rebuild.accepted {
         return Err("fresh rebuild exact byte/root/census gate failed".to_owned());
@@ -1679,8 +1902,6 @@ fn online(args: &Args) -> Result<(), String> {
         .and_then(|value| value.checked_add(2))
         .ok_or_else(|| "real-PCG count overflows".to_owned())?;
 
-    let mut backend = Backend::cuda_resident_with_timing(ResidentTimingPolicy::WallOnlyCounters)
-        .map_err(|error| format!("initialize resident CUDA: {error}"))?;
     let resident_model = upload_resident_model(&workload.model, &mut backend)
         .map_err(|error| format!("upload model: {error}"))?;
     let resident_prefill = forward_model_tokens_resident(
@@ -2153,7 +2374,8 @@ fn online(args: &Args) -> Result<(), String> {
         .unwrap_or(u64::MAX);
     let record = OnlineRecord {
         schema: SCHEMA,
-        milestone: "X4c-GPT2-real-weight-online".to_owned(),
+        milestone: if accelerated { ACCELERATED_ONLINE_MILESTONE } else { ONLINE_MILESTONE }
+            .to_owned(),
         git_sha,
         git_dirty: false,
         profile: PROFILE.to_owned(),
@@ -2185,7 +2407,7 @@ fn online(args: &Args) -> Result<(), String> {
         rebuild,
         rebuild_roots,
         rebuild_roots_equal_onboarding,
-        rebuild_parallel_tasks: 5,
+        rebuild_parallel_tasks: if accelerated { 1 } else { 5 },
         warmup_count: 1,
         measured_count: 3,
         candidates,
@@ -2239,10 +2461,85 @@ fn main() {
     let result = match args.mode {
         Mode::Preflight => preflight(&args),
         Mode::Onboard => onboard(&args),
-        Mode::Online => online(&args),
+        Mode::Online => online(&args, false),
+        Mode::OnlineAccelerated => online(&args, true),
     };
     if let Err(error) = result {
         eprintln!("x4c_gpt2_e2e_record HARD STOP: {error}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use volta_pcs::x4::{write_persisted_coefficients_v4, CohortIdentityV4, OracleKindV4};
+
+    static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_root() -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "volta-x4c-durable-load-{}-{}",
+            std::process::id(),
+            NEXT_TEMP.fetch_add(1, Ordering::Relaxed)
+        ))
+    }
+
+    #[test]
+    fn durable_load_rejects_digest_and_cohort_tampering() {
+        let root = temp_root();
+        let config = CohortVerifierConfigV4 {
+            identity: CohortIdentityV4 {
+                cohort_id: 0xA500_D001,
+                oracle_kind: OracleKindV4::WeightExtension,
+                fold_round: 0,
+            },
+            slot_descriptors: vec![Some([1; 32]), None],
+            outer_len: 64,
+            expected_symbol_count: 1,
+        };
+        let coefficients = vec![
+            Some((0..8).map(|value| Fp2::from_base(Fp::new(value + 1))).collect::<Vec<_>>()),
+            None,
+        ];
+        let directory = root.join(format!("cohort-{:08x}", config.identity.cohort_id));
+        fs::create_dir_all(&directory).unwrap();
+        let coefficient_path = directory.join("coefficients.bin");
+        let root_path = directory.join("root.bin");
+        write_persisted_coefficients_v4(&coefficient_path, &config, &coefficients).unwrap();
+        fs::write(&root_path, [7u8; 32]).unwrap();
+        let row = DurableRow {
+            cohort_id: config.identity.cohort_id,
+            coefficient_bytes: fs::metadata(&coefficient_path).unwrap().len(),
+            coefficient_sha256: sha256(&coefficient_path).unwrap(),
+            root_bytes: 32,
+            root_hex: hex(&[7u8; 32]),
+            root_sha256: sha256(&root_path).unwrap(),
+        };
+        assert!(load_durable_material(&root, &config, &row).is_ok());
+
+        let mut wrong_size = row.clone();
+        wrong_size.coefficient_bytes += 1;
+        assert_eq!(
+            load_durable_material(&root, &config, &wrong_size).unwrap_err(),
+            "durable X4c size mismatch"
+        );
+
+        let mut wrong_cohort = row.clone();
+        wrong_cohort.cohort_id ^= 1;
+        assert_eq!(
+            load_durable_material(&root, &config, &wrong_cohort).unwrap_err(),
+            "onboarding cohort order changed"
+        );
+
+        let mut bytes = fs::read(&coefficient_path).unwrap();
+        bytes[0] ^= 1;
+        fs::write(&coefficient_path, bytes).unwrap();
+        assert_eq!(
+            load_durable_material(&root, &config, &row).unwrap_err(),
+            "durable X4c digest mismatch"
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 }

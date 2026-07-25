@@ -1516,6 +1516,163 @@ def _write_x4c_gpt2_chain(tmp_path, onboarding, online):
     return onboarding_path, online_path
 
 
+def _x4c_gpt2_accelerated_online(report, online):
+    accelerated = copy.deepcopy(online)
+    accelerated["milestone"] = report.X4C_GPT2_ACCELERATED_ONLINE_MILESTONE
+    accelerated["rebuild_parallel_tasks"] = 1
+    accelerated["rebuild"]["parallel_task_count"] = 1
+    schedule = [
+        0xA5000001,
+        0xA5000002,
+        0xA5000003,
+        0xA5000101,
+        0xA5000100,
+    ]
+    expected_by_id = {cohort[0]: cohort for cohort in report.X4C_COHORTS}
+    structural_and_present = {
+        0xA5000001: (2, 2),
+        0xA5000002: (64, 36),
+        0xA5000003: (16, 13),
+        0xA5000100: (2, 2),
+        0xA5000101: (64, 49),
+    }
+
+    def control(cached_device_bytes=8192):
+        return {
+            "stream_state": "idle",
+            "measurement_active": False,
+            "coarse_timing_active": False,
+            "timing_record_active": False,
+            "measurement_poisoned": False,
+            "outstanding_cuda_operations": 0,
+            "pending_timing_records": 0,
+            "active_device_allocations": 4,
+            "cached_device_allocations": 2,
+            "workspace_device_bytes": 0,
+            "active_device_bytes": 4096,
+            "cached_device_bytes": cached_device_bytes,
+            "active_pinned_allocations": 0,
+            "cached_pinned_allocations": 1,
+            "in_flight_pinned_allocations": 0,
+            "active_pinned_bytes": 0,
+            "cached_pinned_bytes": 4096,
+        }
+
+    rows = []
+    for ordinal, cohort_id in enumerate(schedule, 1):
+        _, coefficient_bytes, cache_bytes = expected_by_id[cohort_id]
+        h2d = coefficient_bytes + ordinal
+        d2h = coefficient_bytes * 8 + ordinal
+        backend = _x4c_gpt2_backend(report, h2d=h2d, d2h=d2h)
+        backend.update(
+            {
+                "device_zeroed_bytes": 0,
+                "resident_alloc_requests": 2,
+                "resident_free_requests": 2,
+                "live_device_bytes": 20_480,
+                "live_pinned_bytes": 4096,
+                "peak_pinned_bytes": 4096,
+                "x4c_arena_reset_calls": 0,
+                "x4c_arena_reset_bytes": 0,
+                "peak_device_bytes": 30_000 + ordinal,
+            }
+        )
+        rows.append(
+            {
+                "cohort_id": cohort_id,
+                "strategy": "cuda-ram-v1",
+                "wall_s": 1e-8,
+                "phases": {
+                    "e_ntt_ns": 1,
+                    "n4_inner_ns": 1,
+                    "n4_outer_ns": 1,
+                    "assemble_and_root_check_ns": 1,
+                    "cleanup_ns": 1,
+                    "total_ns": 10,
+                },
+                "process_memory_before": {
+                    "rss_bytes": 100 + ordinal,
+                    "peak_rss_bytes": 200 + ordinal,
+                },
+                "process_memory_after": {
+                    "rss_bytes": 110 + ordinal,
+                    "peak_rss_bytes": 210 + ordinal,
+                },
+                "backend": backend,
+                "device_memory_before": {
+                    "workspace_bytes": 0,
+                    "resident_bytes": 4096,
+                    "cached_resident_bytes": 8192,
+                },
+                "device_memory_after": {
+                    "workspace_bytes": 0,
+                    "resident_bytes": 4096,
+                    "cached_resident_bytes": 16384,
+                },
+                "control_before": control(),
+                "control_after": control(16384),
+                "structural_slots": structural_and_present[cohort_id][0],
+                "present_slots": structural_and_present[cohort_id][1],
+                "coefficient_bytes": coefficient_bytes,
+                "host_oracle_bytes": coefficient_bytes * 8,
+                "host_outer_cache_bytes": cache_bytes,
+                "ntt_calls": structural_and_present[cohort_id][1],
+                "n4_inner_calls": 1,
+                "n4_outer_calls": 1,
+                "expected_h2d_bytes": h2d,
+                "expected_d2h_bytes": d2h,
+                "scratch_files_created": 0,
+                "scratch_bytes_read": 0,
+                "scratch_bytes_written": 0,
+                "file_backed_bytes": 0,
+                "owned_file_count": 0,
+                "owned_mapping_count": 0,
+                "root_equal": True,
+                "traffic_exact": True,
+                "cleanup_complete": True,
+                "accepted": True,
+            }
+        )
+    accelerated["rebuild"]["accelerated"] = {
+        "contract": "x4c-gpt2-accelerated-rebuild-schema-1",
+        "strategy": "cuda-ram-v1",
+        "deterministic_schedule": schedule,
+        "cuda_cohort_concurrency": 1,
+        "mu26_mu22_overlap": False,
+        "automatic_cpu_fallback": False,
+        "cpu_fallback_opt_in_only": True,
+        "evaluation_table_wall_s": 1.0,
+        "cohorts": rows,
+        "expected_h2d_bytes": sum(row["expected_h2d_bytes"] for row in rows),
+        "expected_d2h_bytes": sum(row["expected_d2h_bytes"] for row in rows),
+        "peak_host_rss_bytes": max(
+            row["process_memory_after"]["peak_rss_bytes"] for row in rows
+        ),
+        "peak_device_bytes": max(
+            row["backend"]["peak_device_bytes"] for row in rows
+        ),
+        "scratch_files_created": 0,
+        "scratch_bytes_read": 0,
+        "scratch_bytes_written": 0,
+        "outstanding_cuda_operations": 0,
+        "rebuild_workspace_bytes_before_context_drop": rows[-1][
+            "device_memory_after"
+        ]["workspace_bytes"],
+        "rebuild_live_device_bytes_before_context_drop": rows[-1]["backend"][
+            "live_device_bytes"
+        ],
+        "backend_context_cleanup_wall_s": 0.01,
+        "backend_context_dropped_before_response": True,
+        "online_backend_fresh_context": True,
+        "fresh_online_backend_device_bytes": 0,
+        "fresh_online_backend_outstanding_cuda_operations": 0,
+        "cleanup_complete": True,
+        "traffic_exact": True,
+        "accepted": True,
+    }
+    return accelerated
+
+
 def test_x4c_gpt2_e2e_validators_are_complete_and_fail_closed(tmp_path):
     report = load_report_module()
     onboarding, online = _x4c_gpt2_records(report)
@@ -1595,6 +1752,276 @@ def test_x4c_gpt2_e2e_validators_are_complete_and_fail_closed(tmp_path):
         )
         is False
     )
+
+
+def test_x4c_gpt2_accelerated_validator_requires_native_counters(tmp_path):
+    report = load_report_module()
+    onboarding, online = _x4c_gpt2_records(report)
+    accelerated = _x4c_gpt2_accelerated_online(report, online)
+    onboarding_path, accelerated_path = _write_x4c_gpt2_chain(
+        tmp_path / "valid", onboarding, accelerated
+    )
+    assert (
+        report.validate_x4c_gpt2_accelerated_online_result(
+            accelerated_path, onboarding_path
+        )
+        is True
+    )
+    assert (
+        report.validate_x4c_gpt2_online_result(
+            accelerated_path, onboarding_path
+        )
+        is False
+    )
+
+    mutations = (
+        lambda row: row["rebuild"].pop("accelerated"),
+        lambda row: row["rebuild"]["accelerated"].pop("expected_h2d_bytes"),
+        lambda row: row["rebuild"]["accelerated"].update(
+            {"automatic_cpu_fallback": True}
+        ),
+        lambda row: row["rebuild"]["accelerated"].update(
+            {"mu26_mu22_overlap": True}
+        ),
+        lambda row: row["rebuild"]["accelerated"]["cohorts"][0][
+            "backend"
+        ].update({"h2d_bytes": 1}),
+        lambda row: row["rebuild"]["accelerated"]["cohorts"][0][
+            "control_after"
+        ].update({"outstanding_cuda_operations": 1}),
+        lambda row: row["rebuild"]["accelerated"]["cohorts"][0][
+            "control_after"
+        ].pop("coarse_timing_active"),
+        lambda row: row["rebuild"]["accelerated"]["cohorts"][0].update(
+            {"scratch_bytes_written": 1}
+        ),
+        lambda row: row["rebuild"]["accelerated"]["cohorts"][0].update(
+            {"owned_file_count": 1}
+        ),
+        lambda row: row["rebuild"]["accelerated"]["cohorts"][0].update(
+            {"owned_mapping_count": 1}
+        ),
+        lambda row: row["rebuild"]["accelerated"]["cohorts"][0].update(
+            {"root_equal": False}
+        ),
+        lambda row: row["rebuild"]["accelerated"].update(
+            {"peak_device_bytes": 1}
+        ),
+        lambda row: row["rebuild"]["accelerated"].pop(
+            "backend_context_cleanup_wall_s"
+        ),
+        lambda row: row["rebuild"]["accelerated"].update(
+            {"backend_context_dropped_before_response": False}
+        ),
+        lambda row: row["rebuild"]["accelerated"].update(
+            {"online_backend_fresh_context": False}
+        ),
+        lambda row: row["rebuild"]["accelerated"].update(
+            {"fresh_online_backend_device_bytes": 1}
+        ),
+        lambda row: row["rebuild"]["accelerated"].update(
+            {"fresh_online_backend_outstanding_cuda_operations": 1}
+        ),
+        lambda row: row["rebuild"]["durable_census_after"].update(
+            {"other_file_count": 1}
+        ),
+        lambda row: row.update({"rebuild_parallel_tasks": 5}),
+    )
+    for index, mutate in enumerate(mutations):
+        bad = copy.deepcopy(accelerated)
+        mutate(bad)
+        bad_onboarding, bad_online = _write_x4c_gpt2_chain(
+            tmp_path / f"tamper-{index}", onboarding, bad
+        )
+        assert (
+            report.validate_x4c_gpt2_accelerated_online_result(
+                bad_online, bad_onboarding
+            )
+            is False
+        )
+
+
+def _x4c_rebuild_preflight_record(report):
+    _, online = _x4c_gpt2_records(report)
+    accelerated = _x4c_gpt2_accelerated_online(report, online)
+    rebuild = copy.deepcopy(
+        accelerated["rebuild"]["accelerated"]["cohorts"][3]
+    )
+    fixture = report._X4C_REBUILD_PREFLIGHT_STAGES["aux-ell16"]
+    logical = fixture["final_resident_host_bytes"]
+    census = {
+        "root_exists": False,
+        "directory_count": 0,
+        "file_count": 0,
+        "symlink_count": 0,
+        "byte_count": 0,
+        "structural_blake3": "d" * 64,
+    }
+    return {
+        "schema": 2,
+        "milestone": report.X4C_GPT2_REBUILD_PREFLIGHT_MILESTONE,
+        "git_sha": "a" * 40,
+        "git_dirty": False,
+        "profile": report.X4C_POD_PROFILE,
+        "protocol": report.X4C_GPT2_PROTOCOL,
+        "design_sha256": report.X4C_V1_DESIGN_SHA256,
+        "stage": "aux-ell16",
+        "manual_single_stage": True,
+        "next_stage_launched": False,
+        "automatic_cpu_fallback": False,
+        "production_gate_credit": False,
+        "fixture": copy.deepcopy(fixture),
+        "durable_census_before": copy.deepcopy(census),
+        "durable_census_after": copy.deepcopy(census),
+        "durable_census_stable": True,
+        "host_memory_preflight": {
+            "mem_available_bytes": fixture["estimated_rebuild_peak_bytes"] + 1,
+            "estimated_rebuild_peak_bytes": fixture[
+                "estimated_rebuild_peak_bytes"
+            ],
+            "sufficient": True,
+        },
+        "cuda_memory_preflight": {
+            "free_bytes": fixture["estimated_device_working_set_bytes"] + 1,
+            "total_bytes": fixture["estimated_device_working_set_bytes"] + 2,
+            "estimated_working_set_bytes": fixture[
+                "estimated_device_working_set_bytes"
+            ],
+            "sufficient": True,
+        },
+        "fixture_generation_wall_s": 0.1,
+        "cpu_reference_wall_s": 0.2,
+        "cpu_reference_root": "e" * 64,
+        "cuda_rebuild_root": "e" * 64,
+        "root_reference_equality": True,
+        "rebuild": rebuild,
+        "logical_rebuild_bytes": logical,
+        "logical_bytes_per_second": logical / rebuild["wall_s"],
+        "final_process_memory": {
+            "rss_bytes": 100,
+            "peak_rss_bytes": 200,
+        },
+        "scratch_files_created": 0,
+        "scratch_bytes_read": 0,
+        "scratch_bytes_written": 0,
+        "abort_reasons": [],
+        "accepted": True,
+    }
+
+
+def test_x4c_rebuild_preflight_validator_is_progressive_and_fail_closed(
+    tmp_path,
+):
+    report = load_report_module()
+    row = _x4c_rebuild_preflight_record(report)
+    path = tmp_path / "preflight.json"
+    path.write_text(json.dumps(row))
+    assert report.validate_x4c_rebuild_preflight_result(path) is True
+
+    mutations = (
+        lambda item: item.pop("cuda_memory_preflight"),
+        lambda item: item.update({"next_stage_launched": True}),
+        lambda item: item.update({"production_gate_credit": True}),
+        lambda item: item.update({"root_reference_equality": False}),
+        lambda item: item["rebuild"]["backend"].update({"d2h_bytes": 1}),
+        lambda item: item["rebuild"]["control_after"].update(
+            {"measurement_active": True}
+        ),
+        lambda item: item.update({"scratch_files_created": 1}),
+        lambda item: item["durable_census_after"].update({"file_count": 1}),
+        lambda item: item["host_memory_preflight"].update(
+            {"sufficient": False}
+        ),
+    )
+    for index, mutate in enumerate(mutations):
+        bad = copy.deepcopy(row)
+        mutate(bad)
+        bad_path = tmp_path / f"bad-preflight-{index}.json"
+        bad_path.write_text(json.dumps(bad))
+        assert report.validate_x4c_rebuild_preflight_result(bad_path) is False
+
+
+def test_x4c_rebuild_projection_is_diagnostic_only(tmp_path):
+    report = load_report_module()
+    stage = _x4c_rebuild_preflight_record(report)
+    floor = stage["logical_bytes_per_second"]
+    census = copy.deepcopy(stage["durable_census_before"])
+    targets = []
+    for name, expected in (
+        (
+            "mu22",
+            report._x4c_rebuild_preflight_geometry(
+                0xA5000002,
+                26,
+                64,
+                36,
+                oracle_kind="weight-extension",
+                production=True,
+            ),
+        ),
+        (
+            "mu26",
+            report._x4c_rebuild_preflight_geometry(
+                0xA5000001,
+                30,
+                2,
+                2,
+                oracle_kind="weight-extension",
+                production=True,
+            ),
+        ),
+    ):
+        targets.append(
+            {
+                "cohort_id": expected["cohort_id"],
+                "name": name,
+                "coefficient_bytes": expected["coefficient_bytes"],
+                "host_oracle_bytes": expected["host_oracle_bytes"],
+                "host_outer_cache_bytes": expected[
+                    "host_outer_cache_bytes"
+                ],
+                "final_resident_host_bytes": expected[
+                    "final_resident_host_bytes"
+                ],
+                "estimated_rebuild_peak_bytes": expected[
+                    "estimated_rebuild_peak_bytes"
+                ],
+                "estimated_device_working_set_bytes": expected[
+                    "estimated_device_working_set_bytes"
+                ],
+                "projected_wall_s": (
+                    expected["final_resident_host_bytes"] / floor
+                ),
+            }
+        )
+    projection = {
+        "schema": 2,
+        "milestone": report.X4C_GPT2_REBUILD_PREFLIGHT_MILESTONE,
+        "git_sha": "a" * 40,
+        "git_dirty": False,
+        "profile": report.X4C_POD_PROFILE,
+        "protocol": report.X4C_GPT2_PROTOCOL,
+        "design_sha256": report.X4C_V1_DESIGN_SHA256,
+        "stage": "project",
+        "manual_single_stage": True,
+        "next_stage_launched": False,
+        "production_gate_credit": False,
+        "source_stages": ["aux-ell16", "aux-ell17", "mu20"],
+        "source_record_blake3": ["a" * 64, "b" * 64, "c" * 64],
+        "conservative_floor_logical_bytes_per_second": floor,
+        "targets": targets,
+        "durable_census_before": copy.deepcopy(census),
+        "durable_census_after": copy.deepcopy(census),
+        "durable_census_stable": True,
+        "decision_only": True,
+        "accepted": True,
+    }
+    path = tmp_path / "projection.json"
+    path.write_text(json.dumps(projection))
+    assert report.validate_x4c_rebuild_preflight_result(path) is True
+    projection["production_gate_credit"] = True
+    path.write_text(json.dumps(projection))
+    assert report.validate_x4c_rebuild_preflight_result(path) is False
 
 
 def _x4c_test_availability():

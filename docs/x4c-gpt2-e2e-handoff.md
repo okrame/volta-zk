@@ -1,245 +1,236 @@
-# X4c to real-weight GPT-2 small E2E handoff
+# X4c real-weight GPT-2 E2E — live handoff
 
-## Status and boundary
+## Current boundary
 
-X4c Phase 2 / v1 is complete and PASS on the new pod.  The qualifying online
-record is
-`benchmarks/results/11-x4c-online-2026-07-24-603d5a7.json`, SHA-256
-`aa1aafc5c956444c4d2fb2b8e921c9be7e2c6566d856f57569cfb3cf13a03f98`.
-It uses exact production GPT-2 cohort and opening geometry, but it is not an
-inference E2E with real model weights.  No real-weight X4c E2E verdict is
-claimed by this handoff.
+The historical schema-2 same-source onboarding and CPU fresh rebuild remain
+valid evidence in the append-only ledger. The most recent online attempt
+reached CUDA warm-up and stopped fail-closed at the reusable-arena census;
+the lifecycle-accounting correction is locally green. It did not emit an
+online verdict and cannot be resumed from released in-memory state.
 
-The 2026-07-24 R1c remediation checkpoint supersedes the record-harness
-requirements for the next run without changing the historical records.
-Schema-1 onboarding/online JSON remains append-only evidence, but it does not
-carry the new measured response-window I/O, native census, durable-directory
-census or explicit onboarding-SHA fields and therefore is not accepted by the
-new schema-2 validators.
+The next milestone is
+`X4c-GPT2-real-weight-online-accelerated`, still schema 2 but discriminated
+from the historical `X4c-GPT2-real-weight-online` milestone. Its dedicated
+validator requires every accelerated rebuild counter. Local tests and
+projections grant no production gate. No new pod has been contacted for this
+milestone.
 
-The existing `scripts/run_prefill.sh` and `scripts/run_decode.sh` remain the
-historical P5/P6 real-weight baselines.  At source `603d5a7` they do not route
-their PCS through the new X4c onboarding, rebuild, direct-fold arena and
-batched-gather driver.  Running either script alone must not be labeled an
-X4c E2E result.
+The live implementation adds:
 
-The clean local driver checkpoint is
-`7e8e957977fc51ca5d5deedd0c75371dc438118a`.  It adds
-`x4c_gpt2_e2e_record` with `preflight`, `onboard` and `online` modes plus
-schema-2 fail-closed report validation.  Local verification is green; no pod
-was contacted by that checkpoint and no real-weight hardware verdict is
-claimed.
+- `online-accelerated` in `x4c_gpt2_e2e_record`;
+- a shared accelerated-rebuild record contract in
+  `volta-bench::x4c_rebuild_record`;
+- an explicit CUDA RAM-first rebuild in
+  `volta-pcs::x4::rebuild_cohort_ram_v4`;
+- the manual `x4c_rebuild_preflight` binary;
+- fail-closed online and preflight validators in `scripts/report.py`.
 
-The first migrated-pod NOTE-6 invocation exposed a stale pre-R1c design
-digest pin and stopped before its production-size child test.  The corrected
-local checkpoint is `1facd7e0880cc614888a1176f547a222dcdf0831`: remediated
-schema-2 evidence now pins design SHA-256
-`9a3c64a65902046ba0a2b1891ff8fce03690d870773a346f7128b9f75f7a1164`
-in the shared X4c runtime, NOTE-6, onboarding/online records and validators.
-Historical `57d0c0...` records remain unchanged and are not reused as
-post-R1c evidence.
+Historical incident and checkpoint chronology lives only in
+`docs/prototype-status.md` and the append-only raw records.
 
-The first real-weight onboarding attempt from clean `092dda1` then stopped
-before durable-tier creation because the new driver incorrectly treated the
-canonical `golden-p6.bin` as header plus tokens only.  The frozen artifact is
-unchanged and exact: **616 B**, SHA-256 `e102783a...`, with its documented
-50-token plus 50-checksum payload.  Clean checkpoint
-`1bbeb28a72f4270f884d16553e3bd9b89e273171` corrects the fail-closed parser to
-require that full 616-B geometry and exact `T=100` / `N=50` header.  The
-failed invocation wrote no onboarding record and carries no gate verdict.
+## Frozen boundary
 
-The next clean `4c97ebb` attempt passed that input gate and then stopped
-before coefficient materialization because the driver compared the two model
-transcripts before their product and zero-batch MAC closures.  Clean
-checkpoint `79b0142106fc27ca3db2daf2ee99e6527b3d5c10` now executes and verifies
-both closures, compares byte counts and ledgers at the correct post-closure
-boundary, and preserves the pre-closure correlation census used by the
-explicit `+2` budget.  This corrects only prepass control flow; it changes no
-protocol transcript or parameter.  The failed attempt also wrote no
-onboarding record and carries no gate verdict.
+The accelerated rebuild is an implementation substitution only. It does not
+change:
 
-The clean `af3cb22` retry then passed both closures and exposed the underlying
-ledger delta: five private-argmax correction families were present in the
-prover accounting but not replayed by verifier `verify_scalar`.  Clean
-checkpoint `45b29dbd87e8c2213317e8cc3155877b577cddb2` shares those labels and
-charges the existing 16-B messages in the verifier ledger.  It changes no
-wire message, challenge, prover byte total, proof encoding or correlation;
-the failed attempt stopped before coefficient materialization and wrote no
-onboarding record.
+- protocol, ABI, codec, frame or proof format;
+- rate `1/8`, `s=111`, query schedule or challenge availability;
+- coefficients, roots or canonical proof bytes;
+- PCS **2,683,236 B** or response **43,953,700 B**;
+- correlation accounting, Lean or soundness;
+- the durable tier.
 
-The clean `e771745` retry established that the remaining legacy model
-verifier APIs also omit accounting-only mirrors.  A local real-weight ledger
-diagnostic measured the complete boundary: **41,270,400 B** canonical model
-prover transcript, **41,034,112 B / 25 labels** replayed to the structurally
-accepting verifier, plus **2,683,236 B PCS** and **64 B** of aggregate MAC
-closure, exactly **43,953,700 B** total response.  Clean checkpoint
-`ad3f1107ec320cbc7a049d2a1dedba9a58966c19` makes those values fail-closed
-candidate fields and validator requirements.  The replay is accounting-only:
-it rejects verifier excess, requires exact final ledger equality, and changes
-no wire message, challenge, proof encoding, correlation or soundness claim.
+The durable X4c tier remains exactly five coefficient files plus five roots:
+no oracle, outer cache or hidden auxiliary file. Immutable model artifacts
+are separate inputs, hash-checked before use, and are not X4c durable state.
 
-Same-source onboarding at clean `b49a7af` is now hardware-complete and
-schema-2 validator-green.  The append-only pod record
-`/local/x4c-session-61f9741b9b6d/22-gpt2-onboarding-2026-07-24-b49a7af.json`
-has SHA-256
-`ad393ae2f0baaad9e00e921d0d91733d7d7db335371723ba1666ec87504d24dc`,
-selected upper-median wall **447.143830708 s**, identical roots and exact
-**9,618,587,808-B** coefficient-plus-five-root durable census.  The initial
-invocation log `21` is an ineligible operational stop: the fresh retained
-leaf used `create_dir` before its parent had been created.  The retry created
-only a fresh empty parent first; source and measured construction were
-unchanged.
+Any need for a new cryptographic primitive, hash construction, coefficient
+transform, transcript field or protocol-visible encoding is a HARD STOP to
+report before implementation.
 
-The online attempt pinned that onboarding record and completed its
-fresh-process parallel rebuild, but produced no online record or candidate
-verdict.  It stopped fail-closed at
-`X4c claim-reduction accounting diverged`.  The abort path persistently
-burned epoch, challenge and real-PCG authorization and terminalized the
-connection, while leaving the ten-file durable tier unchanged.
+## Rebuild diagnosis
 
-Code attribution is exact: the verifier structurally consumes the existing
-blind-sumcheck round corrections but did not mirror their accounting ledger.
-Across the frozen 51-block geometry this is
-`32 × (2×26 + 36×22 + 13×20) = 35,328 B`.  The local correction mirrors only
-those already transmitted bytes, pins both role deltas to 35,328 B and
-requires full ledger equality.  It changes no wire byte, challenge,
-correlation, proof, root or protocol parameter.  Clean implementation
-checkpoint `187acc5c384ebde13e844dc30fb0792a6467ca80` is locally green (367
-workspace tests and 15 report-validator tests, zero failures).  Pod execution
-remains HARD STOPPED until a newly authorized retry uses a clean descendant
-checkout, reruns same-source onboarding on fresh durable/scratch/output paths
-and uses fresh authorization stores.  The validator deliberately rejects
-using the `b49a7af` onboarding to anchor a corrected descendant because the
-onboarding and online `git_sha` values must be identical.
+The historical fresh rebuild has these ordered boundaries:
 
-Clean same-source `b5d8dfb` subsequently completed onboarding again.  Record
-`/local/x4c-session-61f9741b9b6d/24-gpt2-onboarding-2026-07-24-b5d8dfb.json`
-has SHA-256
-`4e7b792a96d04aa3097d2b865df1b1064942c575e9f057a090a8733a9681e00f`,
-selected upper median **452.259996536 s**, identical roots and the exact
-**9,618,587,808-B** durable census.
+1. exact durable-directory census and SHA-256 verification;
+2. five coefficient/root reads;
+3. clone plus inverse multilinear transform for evaluation tables;
+4. rate-1/8 E-NTT for every present slot;
+5. N4 inner leaf construction;
+6. full N4 outer-cache construction and root;
+7. exact five-root comparison and durable re-census;
+8. pre-response ownership admission.
 
-Its online attempt passed fresh rebuild and the corrected claim-reduction
-boundary, then stopped in the warm-up CUDA link at
-`InvalidGeometry("X4c reusable arena census")`; no candidate or online record
-was emitted.  The runtime had frozen its inactive resident-cache baseline
-before the model proof, although that proof legitimately grows reusable
-cache before the response window.  The local remediation freezes that
-baseline once at the first response boundary under exact active-ownership
-checks, derives released arena bytes from the native reset counter and
-requires the native cache to cover the full arena without misclassifying
-separately accounted pre-response cache.  Missing arena cache, active
-ownership drift, response-window allocation fan-out and outstanding
-operations remain hard failures.  This is lifecycle accounting only and
-changes no protocol, proof, root, byte, correlation or soundness term.  Clean
-implementation checkpoint `1e3994170e2dcedceeaffd408d19367561d20fca` is
-locally green (367 workspace tests and 15 report-validator tests, zero
-failures).
+The coefficient/root reads and CPU cohort rebuilds used five outer Rayon
+tasks. Evaluation-table reconstruction completes before those tasks; each
+inverse multilinear transform uses Rayon internally. In the CPU cohort
+rebuild, E-NTT is serial inside each outer task, while N4 inner and N4 outer
+use Rayon internally. The measured design therefore combines five
+memory-bandwidth-heavy cohort tasks with nested Rayon in N4. “Five tasks”
+does not imply five useful independent compute lanes.
 
-Because the failed process released the rebuilt host state and the
-onboarding/online validator requires identical source revisions, a corrected
-retry still requires a new same-source onboarding and one new fresh rebuild.
-It cannot safely resume from the aborted in-memory boundary.
+The resident byte geometry is:
 
-## Frozen real-weight inputs
+| Cohort | Coefficients | Host oracle | Full outer cache | Final resident |
+| --- | ---: | ---: | ---: | ---: |
+| mu26 | 4,294,967,296 | 34,359,738,368 | 34,359,738,336 | 73,014,444,000 |
+| mu22 | 4,831,838,208 | 38,654,705,664 | 2,147,483,616 | 45,634,027,488 |
+| mu20 | 436,207,616 | 3,489,660,928 | 536,870,880 | 4,462,739,424 |
+| auxiliary ell17 | 4,194,304 | 33,554,432 | 33,554,400 | 71,303,136 |
+| auxiliary ell16 | 51,380,224 | 411,041,792 | 16,777,184 | 479,199,200 |
+| **Total** | **9,618,587,648** | **76,948,701,184** | **37,094,424,416** | **123,661,713,248** |
 
-The following repo-local generated artifacts are present and match
-`benchmarks/weights/SHA256SUMS`:
+The evaluation tables add exactly **9,618,587,648 B**, for a required final
+host payload of **133,280,300,896 B** before ordinary runtime overhead.
+During CPU N4 construction, outer leaves and their first parent level can
+coexist. The per-cohort conservative transient formula used by the preflight
+is:
 
-| Artifact | Bytes | SHA-256 |
-| --- | ---: | --- |
-| `gpt2s-q.bin` | 249,403,904 | `bdd193720adc8243c64897eaf1b9cd27883ae5613552c96ed4533c52892adc6a` |
-| `gpt2s-q.json` | 18,322 | `98927cac03348c23b06ef336aca027bdd0af54c7fbd9ca2116b61a81fd065a9c` |
-| `gpt2s-q.params` | 704 | `264dd1c8fcde2e82bf404e8442375d61783b18961507c2cf5fa83217d8f3b2ac` |
-| `golden-p5.bin` | 402,280 | `4ac774f208a414bf7fb591a29bd455968ce2d89846255fe8239eabd9b5c92f45` |
-| `golden-p6.bin` | 616 | `e102783acef548d30af65e56d636b6fc51a72697922e256aa5c97ded90567862` |
-| `model.safetensors` | 548,105,171 | `248dfc3911869ec493c76e65bf2fcf7f615828b0254c12b473182f0f81d3a707` |
+`coefficient bytes + oracle bytes + outer_len × 48`.
 
-These input artifacts may live on PERSISTENT as immutable, hash-checked model
-inputs.  They are not X4c response staging and do not alter the X4c durable
-PCS tier: the latter remains exactly coefficient files plus five roots, with
-zero durable oracle files.
+If all five historical outer tasks reach that boundary together, their
+transients plus evaluation tables total **151,827,513,344 B** before allocator,
+thread-stack and model overhead. This is a geometry reconciliation, not a
+causal timing claim. The measured earlier critical path remains mu26; only a
+new hardware record can attribute accelerated wall time.
 
-For the current pod session, the manifest and all six files have been copied
-to the fresh PERSISTENT path
-`/workspace/x4c-gpt2-small-input-2026-07-24`.  An on-pod reread with
-`sha256sum -c` returned `OK` for all six entries.  The directory contains
-exactly those six artifacts plus `SHA256SUMS`; its files and directory are
-read-only.  This is input preparation, not an E2E execution record.
+The existing X4b NTT kernel documents a one-slot device budget of two full
+Fp2 buffers plus `n/2` Fp2 twiddles, exactly `40 × outer_len` bytes:
+**42,949,672,960 B** at mu26 and **2,684,354,560 B** at mu22. N4 tiles are
+capped at **512 MiB**. These are preflight working-set estimates, not observed
+VRAM peaks; native live/peak counters remain mandatory.
 
-## Implemented local driver
+Dependencies are strict within a cohort: coefficients precede E-NTT, all
+codewords precede N4 inner, inner leaves precede outer levels, and the exact
+root precedes admission. Evaluation-table reconstruction is independent of
+oracle/N4 construction after the coefficient read, but it is intentionally
+completed first to avoid unmeasured overlap. Cohorts are independent until
+the five-root admission gate, but the accelerated production schedule is
+deterministic and serial (`mu26`, `mu22`, `mu20`, `ell16`, `ell17`) so mu26
+and mu22 never overlap.
 
-The clean descendant driver connects the existing real GPT-2
-T=100+50 witness/proof orchestration to the already qualified X4c APIs.  It
-derives the five X4c cohort coefficient streams from the actual frozen model
-artifact, rather than from the production-geometry fixture, and retains the
-existing real/AES PCG connection and one-time response authorization
-lifecycle.
+## Accelerated architecture
 
-Before any transcript challenge or correlation becomes available, the driver
-calls `ProductionFaseDConnection::begin_x4_response` with the actual
-`model_root`, nonzero epoch, digest of the verifier challenge seed and the
-real-PCG authorization nonce. It passes the resulting persisted freshness
-receipt to `X4OpeningRegistryV4::authorize_after_persistent_freshness`.
-The three burn indexes survive success, retry, abort and process restart;
-legacy per-instance authorization is not record-eligible for this E2E.
+The RAM-first path reuses only the already qualified, byte-identical CUDA
+primitives:
 
-This integration adds orchestration and record fields only.  It does not
-change rate `1/8`, `s=111`, query availability/order, the
-selected tape, protocol frames, codec, roots as derived from the same inputs,
-proof bytes, correlations, Lean statements, soundness accounting or any
-gate.  The complete PCS and response must remain exactly
-**2,683,236 / 43,953,700 B**.
+- `x4b_ntt_fp2`;
+- `x4b_n4_inner_tile`;
+- `x4b_n4_outer_nodes`.
 
-The driver records both identities in one clean record:
+It does not call the file-oriented committer and creates no scratch. Each
+cohort is rebuilt into the normal online ownership:
 
-1. Real inference identity: exact input-artifact hashes, T=100 prefill,
-   50 greedy decode tokens, CPU/Rust golden equality, CPU/CUDA witness
-   equality, accepted model proof and real-PCG lifecycle/counters.
-2. X4c PCS identity: real-weight coefficient hashes and roots, same-source
-   onboarding/rebuild equality, direct-fold diagnostics, one 111-query
-   gather, canonical opening bytes, zero response staging and reconciled
-   teardown ownership.
+- coefficients in ordinary host RAM;
+- complete oracle in ordinary host RAM;
+- full outer cache in ordinary host RAM;
+- no file, mapping or file handle;
+- no active rebuild device or pinned allocation beyond the backend's
+  explicitly censused reusable workspace/cache;
+- idle CUDA stream and zero outstanding operation before the next cohort.
 
-Local completion at this checkpoint includes format/check, the full Rust
-workspace, the Python/report-validator suite, tamper tests, exact input SHA
-checks, the host reference and the driver preflight.  Production-size
-onboarding/rebuild and real CUDA equality intentionally wait for the pod.
+The expected root is supplied independently from the durable root file and
+must match exactly. Native H2D/D2H counters must equal the byte formula.
+Missing counters, traffic mismatch, dirty entry state, root mismatch,
+unfinished CUDA work or incomplete cleanup fail closed. A CUDA error performs
+idempotent measurement cleanup and returns an error; it never selects the CPU
+path. `CpuExplicit` remains a separate opt-in strategy for diagnostics.
 
-## Ordered execution after the new pod endpoint is supplied
+The reusable E-NTT workspace is not mislabeled as zero: after the final
+cohort, the record captures both workspace bytes and total live device bytes.
+The rebuild backend is then dropped before response authorization, its
+context-cleanup wall is recorded, and online work receives a newly
+constructed backend. Admission requires that fresh context to report zero
+workspace/resident/cache bytes, an idle stream, zero outstanding operations
+and no active or cached device/pinned allocation. These lifecycle counters
+are mandatory in the accelerated schema-2 validator.
 
-1. Verify the new pod configuration, NOTE-6 and distinct local/PERSISTENT
-   storage, then run the append-only 4-GiB PERSISTENT `write + fdatasync`
-   health probe before expensive onboarding.
-2. Check out the exact clean closure and rerun format/check, the CUDA
-   regressors and every SHA-256 before loading model data.
-3. Select exactly one idle physical A100 by UUID on the new host.  Do not
-   reuse the previous pod's physical GPU number or UUID as a selection
-   assumption. Keep code, target, scratch, RAM spill and append-only records
-   on fresh local non-MFS paths; keep immutable model inputs and the
-   coefficient-plus-five-root durable tier on PERSISTENT.
-4. Run the real-weight CPU/Rust golden and CPU/CUDA witness differential
-   before the first full X4c onboarding.
-5. Run same-source real-weight onboarding on a fresh durable path, then a
-   fresh-process five-cohort parallel rebuild.  Admit no response until all
-   coefficient hashes, byte censuses and five roots agree.
-6. Run one warm-up plus three measured E2E candidates with the composite
-   persistent epoch/challenge/real-PCG freshness burn described above.
-   Preserve exact phase timers, `proof_ready_wall`,
-   teardown-inclusive `session_reusable_wall`, complete-session wall and all
-   ownership/traffic counters.
-7. Validate onboarding and online/E2E records with the schema-2 fail-closed
-   validators, including their exact onboarding-SHA chain, before making any
-   verdict or copying an append-only record back.
+There are no duplicated reads or transforms in the accelerated cohort path:
+one verified coefficient load feeds one E-NTT, whose returned host codewords
+feed tiled N4 inner and N4 outer directly. Evaluation-table reconstruction is
+still a separate necessary clone/inverse transform for claim reduction.
 
-The X4c PCS gates remain open **<=1.50 s**, verify **<=0.25 s**, exact
-communication, staging zero and ownership fully reconciled.  Golden,
-CPU/CUDA equality, root/rebuild equality, verifier acceptance and one-time
-correlation accounting are conjunctive.  The complete E2E wall is informative
-until a separate ceiling is preregistered; the X4c v1 measurement does not
-create a v2 ceiling.
+## Manual progressive preflight
 
-HARD STOP on `EIO`, any golden/witness/root/reference/proof-byte mismatch,
-nonzero response staging, missing counter, inconsistent ownership, leaked or
-distributed per-round allocations, RAM/VRAM overflow, correlation reuse, or
-need for a protocol/rate/Lean/soundness change.
+`x4c_rebuild_preflight` executes exactly one requested stage and never starts
+the next. Every executable stage builds a deterministic fixture, constructs
+a CPU reference, performs the CUDA RAM-first rebuild, compares the exact root
+and records:
+
+- total and per-phase wall;
+- logical throughput;
+- CPU/CUDA root equality;
+- native H2D/D2H;
+- process RSS/HWM and device live/peak counters;
+- scratch reads/writes/files (required zero);
+- cleanup wall and final CUDA control state;
+- durable structural census before/after.
+
+The manual order is:
+
+1. `synthetic-small`;
+2. `aux-ell16`;
+3. `aux-ell17`;
+4. `mu20`;
+5. `project`, supplied exactly the accepted ell16, ell17 and mu20 records.
+
+The projection uses the slowest observed logical throughput to estimate mu22
+and mu26. It is decision-only: no threshold, automatic go/no-go, production
+gate or larger geometry execution is attached to it.
+
+Abort after any stage on root mismatch, backend error, insufficient reported
+RAM/VRAM, noncompetitive economics, scratch activity, durable-census drift,
+ownership inconsistency or missing/contradictory counters. Throughput
+economics are reviewed between invocations; the tool cannot auto-advance.
+
+Successful records validate with:
+
+```text
+python3 scripts/report.py \
+  --validate-x4c-rebuild-preflight RECORD.json
+```
+
+The final real-weight chain validates with:
+
+```text
+python3 scripts/report.py \
+  --validate-x4c-gpt2-accelerated-online ONLINE.json \
+  --x4c-gpt2-onboarding ONBOARDING.json
+```
+
+## Next-pod runbook
+
+HARD STOP locally until implementation, workspace tests, validator tests,
+tamper suite, ledger and this runbook are green.
+
+On a newly supplied endpoint, execute in this order:
+
+1. verify configuration, NOTE-6, one idle physical A100 by UUID, host RAM and
+   distinct local/PERSISTENT storage;
+2. run the append-only 4-GiB PERSISTENT `write + fdatasync` health probe;
+3. run CUDA regressors and immutable input SHA-256 checks;
+4. run each preflight stage manually in the order above, validating every
+   record before deciding whether to continue;
+5. make an explicit economic go/no-go from counters and the diagnostic
+   projection;
+6. run exactly one same-source onboarding on fresh paths;
+7. start a fresh process and run exactly one `online-accelerated` rebuild;
+8. only after digest/root/ownership, rebuild-context destruction and
+   fresh-online-context admission, run one warm-up and three measured online
+   candidates;
+9. validate the schema-2 onboarding/accelerated-online chain and copy raw
+   records append-only.
+
+Do not reuse a failed authorization store, connection, epoch, scratch path,
+durable output path or record path. Do not describe pre-response scratch as
+“zero staging”; this implementation currently uses zero scratch at all, and
+the response window independently retains exact zero I/O.
+
+## Endpoint requirements
+
+The next host must satisfy the registered `runpod-a100-x4c-v1` profile,
+including one idle **A100 80GB** with enough free VRAM for the reported
+working set, at least 256 GiB host RAM, reliable local scratch, and a distinct
+durable volume that passes the 4-GiB synchronized-write probe. CUDA/driver
+identity, GPU UUID, CPU, RAM and storage counters must be recorded by NOTE-6.
+No endpoint is requested until the local checkpoint is clean.

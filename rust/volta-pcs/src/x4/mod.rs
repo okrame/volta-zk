@@ -21,6 +21,7 @@ pub mod merkle;
 pub mod merkle_v4;
 pub mod ntt;
 pub mod persisted_v4;
+pub mod rebuild_v4;
 pub mod security_v4;
 pub mod x4c_v4;
 
@@ -41,5 +42,6 @@ pub use merkle::*;
 pub use merkle_v4::*;
 pub use ntt::*;
 pub use persisted_v4::*;
+pub use rebuild_v4::*;
 pub use security_v4::*;
 pub use x4c_v4::*;

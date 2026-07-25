@@ -829,7 +829,7 @@ pub fn reconstruct_fold_round_packed_opening_root_v4(
     Ok(computed)
 }
 
-fn outer_leaf_hashes_from_flat_tile_v4(
+pub(crate) fn outer_leaf_hashes_from_flat_tile_v4(
     config: &CohortVerifierConfigV4,
     slot_symbols: &[Option<Vec<Fp2>>],
     start: usize,

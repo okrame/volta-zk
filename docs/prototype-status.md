@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 E2E DRIVER LOCAL GREEN — HARD STOP BEFORE POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD LOCAL IMPLEMENTATION IN PROGRESS — HARD STOP BEFORE POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -338,6 +338,7 @@ its clean descendant closure.
 | X4c I/O-lifecycle Phase 2 | **X4c v1 A100 ONLINE PASS; PHASE COMPLETE; REAL-WEIGHT E2E NOT YET CLAIMED** (2026-07-24) | `min(64, output_len)` gives exactly **1,592** diagnostic comparisons with zero soundness credit; root/rebuild/ownership/zero-staging/exact-byte gates conjunctive; open <=1.50 s and verify <=0.25 s | Clean source `603d5a7`, selected GPU UUID `GPU-3286abe4-e484-485e-3a7c-68bc527f6059`.  Eligible lifecycle SHA-256 `148330b9156a7582c653ec892e26b6fe3d6ea9268cc0a4c28cc4a799827f4216`: exact **51,539,606,304 B**, four variants, 1+3 each, all accepted.  Onboarding SHA-256 `401852b11a68807e4632ea0d9991a5c404a9864e7c54034a625441e488f18428`: exact five coefficient files + five roots + zero oracle files, **9,618,587,808 B**, roots identical.  Fresh rebuild is five-task/27-worker parallel, **2,381.861456293 s**, exact **9,618,587,648 / 76,948,701,184 / 37,094,424,416 B** coefficients/oracle/cache, all five roots equal.  Online SHA-256 `aa1aafc5c956444c4d2fb2b8e921c9be7e2c6566d856f57569cfb3cf13a03f98`: warm-up + three accepted; selected open **0.120104920 s PASS**, verify **0.059300311 s PASS**, proof-ready/reusable **48.036825544 / 48.062177191 s**, complete online **107.691678134 s informative**, exact global folding proof / complete PCS / packed opening / response **2,617,860 / 2,683,236 / 2,615,414 / 43,953,700 B**; response staging and noncanonical D2H zero; one 111-query gather; arena reset and final pool release reconcile.  No v2 ceiling and no protocol/rate/root/byte/Lean/soundness change. |
 | X4c selected R1c remediation | **LOCAL GREEN; HARD STOP BEFORE POD** (2026-07-24) | R1C-M1/M2/M3/M7, N2/N3/N4 and ABI-neutral M4 are implemented and locally verified; M5/M6 and all other NOTE items remain explicitly deferred | Implementation checkpoint `0ab8826ab0bbe76aba6ecc8911e3bfa1074e65dc`. The real-weight driver may now be implemented locally, but no pod execution is authorized by this checkpoint; see the closure entry below. |
 | X4c real-weight GPT-2 small E2E driver | **LOCAL GREEN; HARD STOP BEFORE POD / NO HARDWARE VERDICT** (2026-07-24) | Frozen six-input manifest; T=100+50 golden; actual 51-block/102-claim domains; real AES-PCG and persistent composite freshness; same-source onboarding/rebuild; exact X4c bytes, staging and ownership | Implementation checkpoint `7e8e957977fc51ca5d5deedd0c75371dc438118a`. Local preflight and complete suites pass. The schema-2 onboarding/online validators require their exact SHA chain, warm-up + three measured candidates, upper medians, exact **2,683,236 / 43,953,700 B**, one 111-query gather, exact **1,592** diagnostic comparisons, zero response-window I/O/staging and reconciled native arena ownership. Real CUDA, production-size onboarding/rebuild and online candidates await a separately supplied pod endpoint. |
+| X4c real-weight accelerated fresh rebuild | **PREREGISTERED; LOCAL IMPLEMENTATION IN PROGRESS; HARD STOP BEFORE POD** (2026-07-25) | New schema-2 milestone `X4c-GPT2-real-weight-online-accelerated`; dedicated fail-closed validator; CUDA RAM-first rebuild from the unchanged durable tier; CPU fallback explicit/opt-in; no automatic preflight progression or performance gate | The implementation may reuse only the existing byte-identical X4b E-NTT/N4 CUDA primitives and must return ordinary host-owned coefficients, oracle and outer cache with zero outstanding CUDA work and unchanged five roots. No scratch is permitted in the primary path. A need for a new cryptographic primitive or any protocol/root/codec/proof/Lean/soundness change is a HARD STOP. Historical schema-2 records and the **2,381.861456293-s** CPU rebuild remain valid; projections are diagnostic only. R1c scope extends to the new rebuild engine, ownership receipt, record contract and preflight runner. No pod or remote storage may be contacted during local implementation. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -405,6 +406,55 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-25 — X4c real-weight accelerated fresh-rebuild
+  preregistration; local implementation only.**  The owner authorized a new
+  discriminated schema-2 milestone,
+  `X4c-GPT2-real-weight-online-accelerated`, with a dedicated validator whose
+  accelerated counters are mandatory.  Historical schema-2 onboarding and
+  online records retain their existing validators and validity.
+
+  The primary rebuild is CUDA and RAM-first.  It may compose only the
+  existing byte-identical `x4b_ntt_fp2`, `x4b_n4_inner_tile` and
+  `x4b_n4_outer_nodes` primitives.  It must return the normal online
+  ownership: host coefficients, host oracle and host outer cache, with the
+  expected durable root checked and no file handle, mapping, device
+  allocation or CUDA operation outstanding.  The five-coefficient/five-root
+  durable tier remains the sole authority and must be identical before and
+  after rebuild.  The primary path creates no scratch file.  Discovery that
+  correctness requires a new cryptographic implementation, or any change to
+  protocol, ABI, rate `1/8`, `s=111`, challenge schedule, codec, roots,
+  canonical proof bytes, correlations, Lean or soundness, is a HARD STOP
+  before that change.
+
+  The current CPU implementation first rebuilds evaluation tables in cohort
+  order with Rayon inside each inverse multilinear transform, then launches
+  five cohort tasks; each task runs a serial CPU E-NTT per present slot and
+  Rayon-parallel N4 inner/outer construction.  Thus the measured
+  **2,381.861456293-s** path combines cross-cohort work with nested N4 Rayon,
+  but its E-NTT itself is not internally Rayon-parallel.  This corrected
+  attribution is the diagnostic starting point, not a new causal timing
+  claim.
+
+  The accelerated scheduler is deterministic and size-aware, uses one CUDA
+  cohort at a time, and never overlaps `mu26` with `mu22`.  CPU fallback is
+  explicit opt-in and never follows a CUDA error automatically.  A separate
+  schema-2 preflight milestone advances only through distinct operator
+  invocations: small synthetic regressors, auxiliary ell16, auxiliary ell17
+  and mu20, followed by a conservative mu22/mu26 projection.  Deterministic
+  production-geometry fixtures supply CPU/GPU reference equality.  Missing
+  counters, mismatches, resource shortage, incomplete cleanup or incoherent
+  ownership fail closed.  Throughput and the comparison with the historical
+  CPU rebuild are diagnostic; neither creates a ceiling or gate and no stage
+  starts its successor automatically.
+
+  R1c mandatory scope is extended to the rebuild engine, durable streaming
+  validation, CUDA/host ownership receipt, abort cleanup, new record surface,
+  validator and preflight runner.  Local completion requires format/check,
+  the full workspace, validator/tamper suites, available CUDA or mock-backend
+  equivalence, exact **2,683,236 / 43,953,700-B** non-regression, a clean
+  checkpoint and a renewed HARD STOP.  No pod or remote storage is authorized
+  or contacted in this phase.
 
 - **2026-07-24 — Real-weight online reusable-arena census HARD STOP.**
   After the claim-reduction accounting correction, clean same-source

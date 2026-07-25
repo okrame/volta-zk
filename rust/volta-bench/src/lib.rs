@@ -9,6 +9,7 @@ pub mod logits_pack;
 pub mod logup;
 pub mod x4c_gpt2;
 pub mod x4c_instrumentation;
+pub mod x4c_rebuild_record;
 
 use volta_field::{Fp, Fp2, FpStream};
 

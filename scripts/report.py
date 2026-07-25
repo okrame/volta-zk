@@ -178,6 +178,10 @@ X4C_ONBOARDING_MILESTONE = "X4c-v1-A100-onboarding"
 X4C_ONLINE_MILESTONE = "X4c-v1-A100-online"
 X4C_GPT2_ONBOARDING_MILESTONE = "X4c-GPT2-real-weight-onboarding"
 X4C_GPT2_ONLINE_MILESTONE = "X4c-GPT2-real-weight-online"
+X4C_GPT2_ACCELERATED_ONLINE_MILESTONE = (
+    "X4c-GPT2-real-weight-online-accelerated"
+)
+X4C_GPT2_REBUILD_PREFLIGHT_MILESTONE = "X4c-GPT2-rebuild-preflight"
 X4C_GPT2_PROTOCOL = "x4-zkdeepfold-ud-e29-v4"
 X4C_GPT2_SELECTED_TAPE = (
     "3654af24af8a3e903e15db2bf25e0ec587d1bd774aaab433d1fb6e1064b3d299"
@@ -3595,6 +3599,7 @@ def _x4c_gpt2_rebuild_valid(row: Any, onboarding: dict[str, Any]) -> bool:
         and row["accepted"] is True
         and isinstance(row["cohorts"], list)
         and len(row["cohorts"]) == 5
+        and "accelerated" not in row
     ):
         return False
     for cohort, durable, expected in zip(
@@ -3629,8 +3634,306 @@ def _x4c_gpt2_rebuild_valid(row: Any, onboarding: dict[str, Any]) -> bool:
     return True
 
 
+def _x4c_gpt2_rebuild_control_valid(row: Any) -> bool:
+    integer_keys = (
+        "outstanding_cuda_operations",
+        "pending_timing_records",
+        "active_device_allocations",
+        "cached_device_allocations",
+        "workspace_device_bytes",
+        "active_device_bytes",
+        "cached_device_bytes",
+        "active_pinned_allocations",
+        "cached_pinned_allocations",
+        "in_flight_pinned_allocations",
+        "active_pinned_bytes",
+        "cached_pinned_bytes",
+    )
+    boolean_keys = (
+        "measurement_active",
+        "coarse_timing_active",
+        "timing_record_active",
+        "measurement_poisoned",
+    )
+    return (
+        _x4c_has(row, ("stream_state", *integer_keys, *boolean_keys))
+        and row["stream_state"] == "idle"
+        and all(_x4c_nonnegative_int(row[key]) for key in integer_keys)
+        and all(row[key] is False for key in boolean_keys)
+        and row["outstanding_cuda_operations"] == 0
+        and row["pending_timing_records"] == 0
+        and row["in_flight_pinned_allocations"] == 0
+    )
+
+
+def _x4c_gpt2_rebuild_memory_valid(row: Any) -> bool:
+    return _x4c_has(
+        row, ("workspace_bytes", "resident_bytes", "cached_resident_bytes")
+    ) and all(
+        _x4c_nonnegative_int(row[key])
+        for key in ("workspace_bytes", "resident_bytes", "cached_resident_bytes")
+    )
+
+
+def _x4c_gpt2_process_memory_valid(row: Any) -> bool:
+    return (
+        _x4c_has(row, ("rss_bytes", "peak_rss_bytes"))
+        and _x4c_positive_int(row["rss_bytes"])
+        and _x4c_positive_int(row["peak_rss_bytes"])
+        and row["peak_rss_bytes"] >= row["rss_bytes"]
+    )
+
+
+def _x4c_gpt2_accelerated_cohort_valid(
+    row: Any, expected: tuple[int, int, int]
+) -> bool:
+    required = (
+        "cohort_id",
+        "strategy",
+        "wall_s",
+        "phases",
+        "process_memory_before",
+        "process_memory_after",
+        "backend",
+        "device_memory_before",
+        "device_memory_after",
+        "control_before",
+        "control_after",
+        "structural_slots",
+        "present_slots",
+        "coefficient_bytes",
+        "host_oracle_bytes",
+        "host_outer_cache_bytes",
+        "ntt_calls",
+        "n4_inner_calls",
+        "n4_outer_calls",
+        "expected_h2d_bytes",
+        "expected_d2h_bytes",
+        "scratch_files_created",
+        "scratch_bytes_read",
+        "scratch_bytes_written",
+        "file_backed_bytes",
+        "owned_file_count",
+        "owned_mapping_count",
+        "root_equal",
+        "traffic_exact",
+        "cleanup_complete",
+        "accepted",
+    )
+    phase_keys = (
+        "e_ntt_ns",
+        "n4_inner_ns",
+        "n4_outer_ns",
+        "assemble_and_root_check_ns",
+        "cleanup_ns",
+        "total_ns",
+    )
+    cohort_id, coefficient_bytes, cache_bytes = expected
+    structural_and_present = {
+        0xA5000001: (2, 2),
+        0xA5000002: (64, 36),
+        0xA5000003: (16, 13),
+        0xA5000100: (2, 2),
+        0xA5000101: (64, 49),
+        0xA5FF0001: (4, 3),
+    }
+    if not (
+        _x4c_has(row, required)
+        and row["cohort_id"] == cohort_id
+        and row["strategy"] == "cuda-ram-v1"
+        and isinstance(row["wall_s"], (int, float))
+        and not isinstance(row["wall_s"], bool)
+        and row["wall_s"] > 0
+        and isinstance(row["phases"], dict)
+        and _x4c_has(row["phases"], phase_keys)
+        and all(_x4c_positive_int(row["phases"][key]) for key in phase_keys)
+        and row["phases"]["total_ns"]
+        >= sum(row["phases"][key] for key in phase_keys[:-1])
+        and abs(row["wall_s"] - row["phases"]["total_ns"] / 1e9) <= 1e-12
+        and _x4c_gpt2_process_memory_valid(row["process_memory_before"])
+        and _x4c_gpt2_process_memory_valid(row["process_memory_after"])
+        and _x4c_gpt2_backend_valid(row["backend"])
+        and _x4c_gpt2_rebuild_memory_valid(row["device_memory_before"])
+        and _x4c_gpt2_rebuild_memory_valid(row["device_memory_after"])
+        and _x4c_gpt2_rebuild_control_valid(row["control_before"])
+        and _x4c_gpt2_rebuild_control_valid(row["control_after"])
+        and (row["structural_slots"], row["present_slots"])
+        == structural_and_present[cohort_id]
+        and row["coefficient_bytes"] == coefficient_bytes
+        and row["host_oracle_bytes"] == coefficient_bytes * 8
+        and row["host_outer_cache_bytes"] == cache_bytes
+        and row["ntt_calls"] == row["present_slots"]
+        and _x4c_positive_int(row["n4_inner_calls"])
+        and _x4c_positive_int(row["n4_outer_calls"])
+        and _x4c_positive_int(row["expected_h2d_bytes"])
+        and _x4c_positive_int(row["expected_d2h_bytes"])
+        and row["backend"]["h2d_bytes"] == row["expected_h2d_bytes"]
+        and row["backend"]["d2h_bytes"] == row["expected_d2h_bytes"]
+        and row["backend"]["timing_event_api_calls"] == 0
+        and row["backend"]["outstanding_timing_records"] == 0
+        and row["scratch_files_created"] == 0
+        and row["scratch_bytes_read"] == 0
+        and row["scratch_bytes_written"] == 0
+        and row["file_backed_bytes"] == 0
+        and row["owned_file_count"] == 0
+        and row["owned_mapping_count"] == 0
+        and row["root_equal"] is True
+        and row["traffic_exact"] is True
+        and row["cleanup_complete"] is True
+        and row["accepted"] is True
+    ):
+        return False
+    before = row["control_before"]
+    after = row["control_after"]
+    memory_before = row["device_memory_before"]
+    memory_after = row["device_memory_after"]
+    return (
+        all(
+            before[key] == after[key]
+            for key in (
+                "active_device_allocations",
+                "active_device_bytes",
+                "active_pinned_allocations",
+                "active_pinned_bytes",
+            )
+        )
+        and before["workspace_device_bytes"]
+        == memory_before["workspace_bytes"]
+        and before["active_device_bytes"] == memory_before["resident_bytes"]
+        and before["cached_device_bytes"]
+        == memory_before["cached_resident_bytes"]
+        and after["workspace_device_bytes"] == memory_after["workspace_bytes"]
+        and after["active_device_bytes"] == memory_after["resident_bytes"]
+        and after["cached_device_bytes"]
+        == memory_after["cached_resident_bytes"]
+        and row["backend"]["live_device_bytes"]
+        == memory_after["workspace_bytes"]
+        + memory_after["resident_bytes"]
+        + memory_after["cached_resident_bytes"]
+        and row["backend"]["peak_device_bytes"]
+        >= row["backend"]["live_device_bytes"]
+        and row["backend"]["live_pinned_bytes"]
+        == after["active_pinned_bytes"] + after["cached_pinned_bytes"]
+        and row["backend"]["peak_pinned_bytes"]
+        >= row["backend"]["live_pinned_bytes"]
+    )
+
+
+def _x4c_gpt2_accelerated_rebuild_valid(
+    row: Any, onboarding: dict[str, Any]
+) -> bool:
+    required = (
+        "contract",
+        "strategy",
+        "deterministic_schedule",
+        "cuda_cohort_concurrency",
+        "mu26_mu22_overlap",
+        "automatic_cpu_fallback",
+        "cpu_fallback_opt_in_only",
+        "evaluation_table_wall_s",
+        "cohorts",
+        "expected_h2d_bytes",
+        "expected_d2h_bytes",
+        "peak_host_rss_bytes",
+        "peak_device_bytes",
+        "scratch_files_created",
+        "scratch_bytes_read",
+        "scratch_bytes_written",
+        "outstanding_cuda_operations",
+        "rebuild_workspace_bytes_before_context_drop",
+        "rebuild_live_device_bytes_before_context_drop",
+        "backend_context_cleanup_wall_s",
+        "backend_context_dropped_before_response",
+        "online_backend_fresh_context",
+        "fresh_online_backend_device_bytes",
+        "fresh_online_backend_outstanding_cuda_operations",
+        "cleanup_complete",
+        "traffic_exact",
+        "accepted",
+    )
+    if not (
+        isinstance(row, dict)
+        and row.get("parallel_task_count") == 1
+        and isinstance(row.get("accelerated"), dict)
+    ):
+        return False
+    historical_shape = dict(row)
+    accelerated = historical_shape.pop("accelerated")
+    historical_shape["parallel_task_count"] = 5
+    if not _x4c_gpt2_rebuild_valid(historical_shape, onboarding):
+        return False
+    expected_by_id = {cohort[0]: cohort for cohort in X4C_COHORTS}
+    schedule = [0xA5000001, 0xA5000002, 0xA5000003, 0xA5000101, 0xA5000100]
+    if not (
+        _x4c_has(accelerated, required)
+        and accelerated["contract"] == "x4c-gpt2-accelerated-rebuild-schema-1"
+        and accelerated["strategy"] == "cuda-ram-v1"
+        and accelerated["deterministic_schedule"] == schedule
+        and accelerated["cuda_cohort_concurrency"] == 1
+        and accelerated["mu26_mu22_overlap"] is False
+        and accelerated["automatic_cpu_fallback"] is False
+        and accelerated["cpu_fallback_opt_in_only"] is True
+        and isinstance(accelerated["evaluation_table_wall_s"], (int, float))
+        and not isinstance(accelerated["evaluation_table_wall_s"], bool)
+        and accelerated["evaluation_table_wall_s"] > 0
+        and isinstance(accelerated["cohorts"], list)
+        and len(accelerated["cohorts"]) == 5
+        and all(
+            _x4c_gpt2_accelerated_cohort_valid(
+                cohort, expected_by_id[cohort_id]
+            )
+            for cohort, cohort_id in zip(
+                accelerated["cohorts"], schedule, strict=True
+            )
+        )
+        and accelerated["expected_h2d_bytes"]
+        == sum(cohort["expected_h2d_bytes"] for cohort in accelerated["cohorts"])
+        and accelerated["expected_d2h_bytes"]
+        == sum(cohort["expected_d2h_bytes"] for cohort in accelerated["cohorts"])
+        and accelerated["peak_host_rss_bytes"]
+        == max(
+            max(
+                cohort["process_memory_before"]["peak_rss_bytes"],
+                cohort["process_memory_after"]["peak_rss_bytes"],
+            )
+            for cohort in accelerated["cohorts"]
+        )
+        and accelerated["peak_device_bytes"]
+        == max(cohort["backend"]["peak_device_bytes"] for cohort in accelerated["cohorts"])
+        and accelerated["scratch_files_created"] == 0
+        and accelerated["scratch_bytes_read"] == 0
+        and accelerated["scratch_bytes_written"] == 0
+        and accelerated["outstanding_cuda_operations"] == 0
+        and accelerated["rebuild_workspace_bytes_before_context_drop"]
+        == accelerated["cohorts"][-1]["device_memory_after"]["workspace_bytes"]
+        and accelerated["rebuild_live_device_bytes_before_context_drop"]
+        == accelerated["cohorts"][-1]["backend"]["live_device_bytes"]
+        and isinstance(
+            accelerated["backend_context_cleanup_wall_s"], (int, float)
+        )
+        and not isinstance(accelerated["backend_context_cleanup_wall_s"], bool)
+        and accelerated["backend_context_cleanup_wall_s"] >= 0
+        and accelerated["backend_context_dropped_before_response"] is True
+        and accelerated["online_backend_fresh_context"] is True
+        and accelerated["fresh_online_backend_device_bytes"] == 0
+        and accelerated[
+            "fresh_online_backend_outstanding_cuda_operations"
+        ]
+        == 0
+        and accelerated["cleanup_complete"] is True
+        and accelerated["traffic_exact"] is True
+        and accelerated["accepted"] is True
+    ):
+        return False
+    return True
+
+
 def _x4c_gpt2_online_valid(
-    row: Any, onboarding: dict[str, Any], onboarding_sha256: str
+    row: Any,
+    onboarding: dict[str, Any],
+    onboarding_sha256: str,
+    *,
+    accelerated: bool = False,
 ) -> bool:
     required = (
         "schema",
@@ -3694,7 +3997,12 @@ def _x4c_gpt2_online_valid(
         _x4c_gpt2_onboarding_valid(onboarding)
         and _x4c_has(row, required)
         and row["schema"] == 2
-        and row["milestone"] == X4C_GPT2_ONLINE_MILESTONE
+        and row["milestone"]
+        == (
+            X4C_GPT2_ACCELERATED_ONLINE_MILESTONE
+            if accelerated
+            else X4C_GPT2_ONLINE_MILESTONE
+        )
         and row["git_sha"] == row["onboarding_git_sha"] == onboarding["git_sha"]
         and row["git_dirty"] is False
         and row["profile"] == X4C_POD_PROFILE
@@ -3718,11 +4026,15 @@ def _x4c_gpt2_online_valid(
         and row["golden_match"] is True
         and row["cpu_cuda_prefill_logits_equal"] is True
         and row["cpu_cuda_band_logits_equal"] is True
-        and _x4c_gpt2_rebuild_valid(row["rebuild"], onboarding)
+        and (
+            _x4c_gpt2_accelerated_rebuild_valid(row["rebuild"], onboarding)
+            if accelerated
+            else _x4c_gpt2_rebuild_valid(row["rebuild"], onboarding)
+        )
         and row["rebuild_roots"]
         == [durable["root_hex"] for durable in onboarding["durable"]]
         and row["rebuild_roots_equal_onboarding"] is True
-        and row["rebuild_parallel_tasks"] == 5
+        and row["rebuild_parallel_tasks"] == (1 if accelerated else 5)
         and row["warmup_count"] == 1
         and row["measured_count"] == 3
         and isinstance(row["candidates"], list)
@@ -3794,6 +4106,343 @@ def validate_x4c_gpt2_online_result(path: Path, onboarding_path: Path) -> bool:
         online = json.loads(path.read_bytes())
         return _x4c_gpt2_online_valid(
             online, onboarding, hashlib.sha256(onboarding_bytes).hexdigest()
+        )
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return False
+
+
+def validate_x4c_gpt2_accelerated_online_result(
+    path: Path, onboarding_path: Path
+) -> bool:
+    try:
+        if not path.is_absolute():
+            path = REPO / path
+        if not onboarding_path.is_absolute():
+            onboarding_path = REPO / onboarding_path
+        onboarding_bytes = onboarding_path.read_bytes()
+        onboarding = json.loads(onboarding_bytes)
+        online = json.loads(path.read_bytes())
+        return _x4c_gpt2_online_valid(
+            online,
+            onboarding,
+            hashlib.sha256(onboarding_bytes).hexdigest(),
+            accelerated=True,
+        )
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return False
+
+
+def _x4c_rebuild_preflight_census_valid(row: Any) -> bool:
+    integer_keys = (
+        "directory_count",
+        "file_count",
+        "symlink_count",
+        "byte_count",
+    )
+    return (
+        _x4c_has(row, ("root_exists", "structural_blake3", *integer_keys))
+        and isinstance(row["root_exists"], bool)
+        and all(_x4c_nonnegative_int(row[key]) for key in integer_keys)
+        and _x4c_hex(row["structural_blake3"], 64)
+    )
+
+
+def _x4c_rebuild_preflight_geometry(
+    cohort_id: int,
+    outer_log2: int,
+    structural_slots: int,
+    present_slots: int,
+    *,
+    oracle_kind: str,
+    production: bool,
+) -> dict[str, Any]:
+    outer_len = 1 << outer_log2
+    coefficient_bytes = present_slots * outer_len * 2
+    host_oracle_bytes = present_slots * outer_len * 16
+    host_outer_cache_bytes = (outer_len - 1) * 32
+    return {
+        "contract": "x4c-deterministic-production-geometry-v1",
+        "descriptor_layout": "deterministic-prefix-present",
+        "cohort_id": cohort_id,
+        "oracle_kind": oracle_kind,
+        "outer_log2": outer_log2,
+        "outer_len": outer_len,
+        "structural_slots": structural_slots,
+        "present_slots": present_slots,
+        "coefficient_bytes": coefficient_bytes,
+        "host_oracle_bytes": host_oracle_bytes,
+        "host_outer_cache_bytes": host_outer_cache_bytes,
+        "final_resident_host_bytes": (
+            coefficient_bytes + host_oracle_bytes + host_outer_cache_bytes
+        ),
+        "estimated_rebuild_peak_bytes": (
+            coefficient_bytes + host_oracle_bytes + outer_len * 48
+        ),
+        "estimated_device_working_set_bytes": max(
+            outer_len * 40, 512 * 1024 * 1024
+        ),
+        "production_geometry": production,
+    }
+
+
+_X4C_REBUILD_PREFLIGHT_STAGES = {
+    "synthetic-small": _x4c_rebuild_preflight_geometry(
+        0xA5FF0001,
+        12,
+        4,
+        3,
+        oracle_kind="weight-extension",
+        production=False,
+    ),
+    "aux-ell16": _x4c_rebuild_preflight_geometry(
+        0xA5000101,
+        19,
+        64,
+        49,
+        oracle_kind="auxiliary",
+        production=True,
+    ),
+    "aux-ell17": _x4c_rebuild_preflight_geometry(
+        0xA5000100,
+        20,
+        2,
+        2,
+        oracle_kind="auxiliary",
+        production=True,
+    ),
+    "mu20": _x4c_rebuild_preflight_geometry(
+        0xA5000003,
+        24,
+        16,
+        13,
+        oracle_kind="weight-extension",
+        production=True,
+    ),
+}
+
+
+def _x4c_rebuild_preflight_common_valid(row: Any) -> bool:
+    return (
+        _x4c_has(
+            row,
+            (
+                "schema",
+                "milestone",
+                "git_sha",
+                "git_dirty",
+                "profile",
+                "protocol",
+                "design_sha256",
+                "stage",
+                "manual_single_stage",
+                "next_stage_launched",
+                "production_gate_credit",
+                "durable_census_before",
+                "durable_census_after",
+                "durable_census_stable",
+                "accepted",
+            ),
+        )
+        and row["schema"] == 2
+        and row["milestone"] == X4C_GPT2_REBUILD_PREFLIGHT_MILESTONE
+        and _x4c_hex(row["git_sha"], 40)
+        and row["git_dirty"] is False
+        and row["profile"] == X4C_POD_PROFILE
+        and row["protocol"] == X4C_GPT2_PROTOCOL
+        and row["design_sha256"] == X4C_V1_DESIGN_SHA256
+        and row["manual_single_stage"] is True
+        and row["next_stage_launched"] is False
+        and row["production_gate_credit"] is False
+        and _x4c_rebuild_preflight_census_valid(row["durable_census_before"])
+        and row["durable_census_after"] == row["durable_census_before"]
+        and row["durable_census_stable"] is True
+        and row["accepted"] is True
+    )
+
+
+def _x4c_rebuild_preflight_stage_valid(row: Any) -> bool:
+    stage = row.get("stage")
+    expected = _X4C_REBUILD_PREFLIGHT_STAGES.get(stage)
+    if expected is None:
+        return False
+    required = (
+        "automatic_cpu_fallback",
+        "fixture",
+        "host_memory_preflight",
+        "cuda_memory_preflight",
+        "fixture_generation_wall_s",
+        "cpu_reference_wall_s",
+        "cpu_reference_root",
+        "cuda_rebuild_root",
+        "root_reference_equality",
+        "rebuild",
+        "logical_rebuild_bytes",
+        "logical_bytes_per_second",
+        "final_process_memory",
+        "scratch_files_created",
+        "scratch_bytes_read",
+        "scratch_bytes_written",
+        "abort_reasons",
+    )
+    host = row.get("host_memory_preflight")
+    cuda = row.get("cuda_memory_preflight")
+    logical = expected["final_resident_host_bytes"]
+    cohort_expected = (
+        expected["cohort_id"],
+        expected["coefficient_bytes"],
+        expected["host_outer_cache_bytes"],
+    )
+    return (
+        _x4c_rebuild_preflight_common_valid(row)
+        and _x4c_has(row, required)
+        and row["automatic_cpu_fallback"] is False
+        and row["fixture"] == expected
+        and _x4c_has(
+            host,
+            (
+                "mem_available_bytes",
+                "estimated_rebuild_peak_bytes",
+                "sufficient",
+            ),
+        )
+        and _x4c_positive_int(host["mem_available_bytes"])
+        and host["estimated_rebuild_peak_bytes"]
+        == expected["estimated_rebuild_peak_bytes"]
+        and host["mem_available_bytes"] >= host["estimated_rebuild_peak_bytes"]
+        and host["sufficient"] is True
+        and _x4c_has(
+            cuda,
+            (
+                "free_bytes",
+                "total_bytes",
+                "estimated_working_set_bytes",
+                "sufficient",
+            ),
+        )
+        and _x4c_positive_int(cuda["free_bytes"])
+        and _x4c_positive_int(cuda["total_bytes"])
+        and cuda["total_bytes"] >= cuda["free_bytes"]
+        and cuda["estimated_working_set_bytes"]
+        == expected["estimated_device_working_set_bytes"]
+        and cuda["free_bytes"] >= cuda["estimated_working_set_bytes"]
+        and cuda["sufficient"] is True
+        and all(
+            isinstance(row[key], (int, float))
+            and not isinstance(row[key], bool)
+            and row[key] > 0
+            for key in ("fixture_generation_wall_s", "cpu_reference_wall_s")
+        )
+        and _x4c_hex(row["cpu_reference_root"], 64)
+        and row["cuda_rebuild_root"] == row["cpu_reference_root"]
+        and row["root_reference_equality"] is True
+        and _x4c_gpt2_accelerated_cohort_valid(
+            row["rebuild"], cohort_expected
+        )
+        and row["logical_rebuild_bytes"] == logical
+        and isinstance(row["logical_bytes_per_second"], (int, float))
+        and not isinstance(row["logical_bytes_per_second"], bool)
+        and row["logical_bytes_per_second"] > 0
+        and abs(
+            row["logical_bytes_per_second"]
+            - logical / row["rebuild"]["wall_s"]
+        )
+        <= max(1e-9, row["logical_bytes_per_second"] * 1e-12)
+        and _x4c_gpt2_process_memory_valid(row["final_process_memory"])
+        and row["scratch_files_created"] == 0
+        and row["scratch_bytes_read"] == 0
+        and row["scratch_bytes_written"] == 0
+        and row["abort_reasons"] == []
+    )
+
+
+def _x4c_rebuild_projection_valid(row: Any) -> bool:
+    required = (
+        "source_stages",
+        "source_record_blake3",
+        "conservative_floor_logical_bytes_per_second",
+        "targets",
+        "decision_only",
+    )
+    expected_source_stages = ["aux-ell16", "aux-ell17", "mu20"]
+    mu22 = _x4c_rebuild_preflight_geometry(
+        0xA5000002,
+        26,
+        64,
+        36,
+        oracle_kind="weight-extension",
+        production=True,
+    )
+    mu26 = _x4c_rebuild_preflight_geometry(
+        0xA5000001,
+        30,
+        2,
+        2,
+        oracle_kind="weight-extension",
+        production=True,
+    )
+    if not (
+        _x4c_rebuild_preflight_common_valid(row)
+        and row.get("stage") == "project"
+        and _x4c_has(row, required)
+        and row["source_stages"] == expected_source_stages
+        and isinstance(row["source_record_blake3"], list)
+        and len(row["source_record_blake3"]) == 3
+        and all(_x4c_hex(digest, 64) for digest in row["source_record_blake3"])
+        and isinstance(
+            row["conservative_floor_logical_bytes_per_second"], (int, float)
+        )
+        and not isinstance(
+            row["conservative_floor_logical_bytes_per_second"], bool
+        )
+        and row["conservative_floor_logical_bytes_per_second"] > 0
+        and isinstance(row["targets"], list)
+        and len(row["targets"]) == 2
+        and row["decision_only"] is True
+    ):
+        return False
+    floor = row["conservative_floor_logical_bytes_per_second"]
+    for target, name, expected in zip(
+        row["targets"], ("mu22", "mu26"), (mu22, mu26), strict=True
+    ):
+        expected_fields = {
+            "cohort_id": expected["cohort_id"],
+            "name": name,
+            "coefficient_bytes": expected["coefficient_bytes"],
+            "host_oracle_bytes": expected["host_oracle_bytes"],
+            "host_outer_cache_bytes": expected["host_outer_cache_bytes"],
+            "final_resident_host_bytes": expected["final_resident_host_bytes"],
+            "estimated_rebuild_peak_bytes": expected[
+                "estimated_rebuild_peak_bytes"
+            ],
+            "estimated_device_working_set_bytes": expected[
+                "estimated_device_working_set_bytes"
+            ],
+        }
+        if not (
+            isinstance(target, dict)
+            and all(target.get(key) == value for key, value in expected_fields.items())
+            and isinstance(target.get("projected_wall_s"), (int, float))
+            and not isinstance(target["projected_wall_s"], bool)
+            and target["projected_wall_s"] > 0
+            and abs(
+                target["projected_wall_s"]
+                - expected["final_resident_host_bytes"] / floor
+            )
+            <= max(1e-9, target["projected_wall_s"] * 1e-12)
+        ):
+            return False
+    return True
+
+
+def validate_x4c_rebuild_preflight_result(path: Path) -> bool:
+    try:
+        if not path.is_absolute():
+            path = REPO / path
+        row = json.loads(path.read_bytes())
+        return (
+            _x4c_rebuild_projection_valid(row)
+            if row.get("stage") == "project"
+            else _x4c_rebuild_preflight_stage_valid(row)
         )
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
         return False
@@ -6908,9 +7557,28 @@ def main() -> None:
         help="fail closed unless one JSON is a schema-2 real-weight X4c GPT-2 E2E record",
     )
     ap.add_argument(
+        "--validate-x4c-gpt2-accelerated-online",
+        type=Path,
+        help=(
+            "fail closed unless one JSON is the dedicated schema-2 accelerated "
+            "real-weight X4c GPT-2 E2E record"
+        ),
+    )
+    ap.add_argument(
+        "--validate-x4c-rebuild-preflight",
+        type=Path,
+        help=(
+            "fail closed unless one JSON is a complete manual X4c accelerated "
+            "rebuild preflight stage or diagnostic projection"
+        ),
+    )
+    ap.add_argument(
         "--x4c-gpt2-onboarding",
         type=Path,
-        help="exact onboarding JSON anchoring --validate-x4c-gpt2-online",
+        help=(
+            "exact onboarding JSON anchoring either real-weight X4c GPT-2 "
+            "online validator"
+        ),
     )
     args = ap.parse_args()
 
@@ -6933,6 +7601,8 @@ def main() -> None:
             args.validate_x4c_online,
             args.validate_x4c_gpt2_onboarding,
             args.validate_x4c_gpt2_online,
+            args.validate_x4c_gpt2_accelerated_online,
+            args.validate_x4c_rebuild_preflight,
         )
     )
     if selected_validators > 1:
@@ -6941,11 +7611,14 @@ def main() -> None:
         raise SystemExit(
             "--validate-x4c-online and --x4c-onboarding must be supplied together"
         )
-    if (args.validate_x4c_gpt2_online is None) != (
-        args.x4c_gpt2_onboarding is None
-    ):
+    gpt2_online_selected = (
+        args.validate_x4c_gpt2_online is not None
+        or args.validate_x4c_gpt2_accelerated_online is not None
+    )
+    if gpt2_online_selected == (args.x4c_gpt2_onboarding is None):
         raise SystemExit(
-            "--validate-x4c-gpt2-online and --x4c-gpt2-onboarding must be supplied together"
+            "a real-weight X4c GPT-2 online validator and "
+            "--x4c-gpt2-onboarding must be supplied together"
         )
     if args.validate_p7b_official is not None:
         if args.write_json:
@@ -7088,6 +7761,39 @@ def main() -> None:
         print(
             f"valid real-weight X4c GPT-2 chain: {args.validate_x4c_gpt2_online} "
             f"<- {args.x4c_gpt2_onboarding}"
+        )
+        return
+    if args.validate_x4c_gpt2_accelerated_online is not None:
+        if args.write_json:
+            raise SystemExit(
+                "--write-json and --validate-x4c-gpt2-accelerated-online "
+                "are mutually exclusive"
+            )
+        if not validate_x4c_gpt2_accelerated_online_result(
+            args.validate_x4c_gpt2_accelerated_online,
+            args.x4c_gpt2_onboarding,
+        ):
+            raise SystemExit(
+                "invalid accelerated real-weight X4c GPT-2 online/onboarding chain"
+            )
+        print(
+            "valid accelerated real-weight X4c GPT-2 chain: "
+            f"{args.validate_x4c_gpt2_accelerated_online} "
+            f"<- {args.x4c_gpt2_onboarding}"
+        )
+        return
+    if args.validate_x4c_rebuild_preflight is not None:
+        if args.write_json:
+            raise SystemExit(
+                "--write-json and --validate-x4c-rebuild-preflight are mutually exclusive"
+            )
+        if not validate_x4c_rebuild_preflight_result(
+            args.validate_x4c_rebuild_preflight
+        ):
+            raise SystemExit("invalid X4c accelerated rebuild preflight record")
+        print(
+            "valid X4c accelerated rebuild preflight record: "
+            f"{args.validate_x4c_rebuild_preflight}"
         )
         return
 

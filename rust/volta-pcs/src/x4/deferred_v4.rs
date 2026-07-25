@@ -1351,6 +1351,38 @@ mod tests {
     }
 
     #[test]
+    fn post_freeze_value_substitution_is_rejected_by_m2_mac() {
+        use volta_mac::{
+            zero_open_prover, zero_open_verify, ProverAuthed, Transcript, VerifierKey,
+        };
+
+        let handle = digest(0x52);
+        let delta = Fp2::from_base(Fp::new(17));
+        let honest =
+            ProverAuthed { x: Fp2::from_base(Fp::new(23)), m: Fp2::from_base(Fp::new(29)) };
+        let frozen_key = VerifierKey { k: honest.m + delta * honest.x };
+        let mut prover_store = X4dAuthenticatedValueStoreV1::default();
+        let mut verifier_store = X4dAuthenticatedValueStoreV1::default();
+        prover_store.freeze(handle, honest).unwrap();
+        verifier_store.freeze(handle, frozen_key).unwrap();
+
+        // The handle is write-once. Even if a malicious prover locally
+        // reopens its frozen share with a different plaintext while retaining
+        // the old tag, the verifier keeps the original Delta-bound key.
+        let substituted = ProverAuthed { x: honest.x + Fp2::ONE, m: honest.m };
+        assert_eq!(prover_store.freeze(handle, substituted), Err(X4dErrorV1::DigestMismatch));
+        let prover_residual = substituted.sub(ProverAuthed::from_public(substituted.x));
+        let verifier_residual = verifier_store
+            .get(&handle)
+            .copied()
+            .unwrap()
+            .sub(VerifierKey::from_public(substituted.x, delta));
+        let mut transcript = Transcript::new([0x53; 32]);
+        let opened_tag = zero_open_prover(&prover_residual, &mut transcript);
+        assert!(!zero_open_verify(verifier_residual, opened_tag));
+    }
+
+    #[test]
     fn claim_3321_refuses_until_settlement_succeeds() {
         let descriptor = digest(0x61);
         let mut accumulator = accumulator();
@@ -1443,6 +1475,22 @@ mod tests {
         );
         assert_eq!(accumulator.state(), X4dConnectionStateV1::Burned);
         assert_eq!(accumulator.seal_pending_range(), Err(X4dErrorV1::Terminal));
+    }
+
+    #[test]
+    fn explicit_abort_before_settlement_marks_pending_terminal_unverified() {
+        let descriptor = digest(0x84);
+        let nonce = digest(0x85);
+        let mut accumulator = accumulator();
+        freeze(&mut accumulator, nonce, vec![claim(descriptor, 0)]);
+        assert_eq!(accumulator.response_state(nonce), Some(X4dResponseStateV1::WeightPending));
+
+        accumulator.abort();
+
+        assert_eq!(accumulator.state(), X4dConnectionStateV1::Burned);
+        assert_eq!(accumulator.response_state(nonce), Some(X4dResponseStateV1::TerminalUnverified));
+        assert_eq!(accumulator.seal_pending_range(), Err(X4dErrorV1::Terminal));
+        assert_eq!(accumulator.close_after_all_verified(), Err(X4dErrorV1::Terminal));
     }
 
     #[test]

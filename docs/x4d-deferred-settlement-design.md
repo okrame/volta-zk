@@ -1007,6 +1007,12 @@ transcript parity. Record-producing mode refuses mock.
 
 - response: exactly **41,270,464 B**;
 - settlements: exactly `2,632,812 + 50,424*k` B for fixed GPT-2 `k`;
+- the historical **4,000,000-B** ceiling remains immutable and applies to
+  the X4/X4b/X4c **per-response PCS block**, not to the separate X4d
+  settlement message. X4d G3 uses the pinned settlement formula: at `k=32`
+  the message is **4,246,380 B** and amortizes to **132,699.375 settlement
+  B/response**. This is neither a silent overrun nor a retrospective
+  relaxation of any historical gate;
 - exact clean reference vectors at `k=1,8,16,32`;
 - exact component and amortized tables from Section 8;
 - connection-control/journal traffic separately and completely counted;

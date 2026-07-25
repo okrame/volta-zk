@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d M12 LEAN GREEN — LOCAL RUST AUTHORIZED; NO POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 2 LOCAL GREEN; PHASE 3 AUTHORIZED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -344,6 +344,7 @@ its clean descendant closure.
 | X4d Phase 2 M12 Lean-first discharge | **LEAN GREEN; LOCAL RUST AUTHORIZED; NO POD** (2026-07-25) | Frozen statements prove without weakening; full build, zero `sorry`/`admit`, derived audit green; public soundness theorem exposes all four v4 event bounds and adds only the per-response M9 MAC terms | `X4DeferredSettlement.lean` proves append/range binding, the structural 3,320 cap bridge, 3,321 refusal, batched-mask fiber and GPT-2 hiding budget, exact frozen-union/M9 lifting, unchanged v4 settlement error, M10 connection union, one opening per epoch, and terminal abort/burn semantics. The public M12 theorem requires Fold, ClaimReduce, LinkBad and ZeroBatch with their exact frozen coefficients; no certificate premise, fifth event or deterministic equality is smuggled in. Build **3,253 jobs**; audit **236 total / 143 X4** (**27 new M12 targets**), standard axioms only. Audit stdout SHA-256 `4f7f95c6a08ced10a59f252c72113f338c08a430e23675e79a3eaed7f76405cd`; M12 source SHA-256 `762370a896785ca66167c62fb749b43181cde11c9602961ee983b0991a5b8240`. No Rust file, reference artifact, record or pod was touched at this checkpoint. |
 | X4d Phase 2 local implementation | **LOCAL RUST GREEN; REBASELINE GENERATOR GREEN; HARD STOP BEFORE POD / NO HARDWARE VERDICT** (2026-07-25) | One cap alias; append-only claim freeze; exact sealed union; settlement-fresh aux/query/correlation state; one reused accelerated chain; fase-D burn journal; background dual accounting; permanent G2/G4/G6 cases | X4d adds isolated accumulator/codec/orchestration modules and a thin context parameter to the existing v4 accelerated engine; it does not add another PCS, PCG pool or lifecycle. The stable accumulator identity is the digest of the three static weight roots, while each epoch gets two fresh auxiliary roots and a fresh manifest `model_root`; this clarifies the Phase-1 word “model root” and matches existing epochized X4c roots without changing proof bytes or soundness. Query-seed, epoch, aux-root and exact correlation-count commitments are globally burn-reserved; 111 draws are derived only after all fold roots seal. Settlement success requires raw PCG use to equal exactly twice the registered full-correlation count. Full `cargo test --workspace --no-default-features` is green: bench **30**, PCG **44**, PCS **112**, proto **110** and all other workspace suites pass; four production-size ignores are pre-existing. Local two-response small geometry completes one shared chain, M9-to-MAC and ZeroBatch. Exact `k=1/8/16/32` codec round trips and every registered tamper/cap/abort case pass. The clean append-only reference SHA values are generated only after this source checkpoint; no G1/G5 or A100 verdict is claimed. |
 | X4d Phase 2 codec rebaseline | **LOCAL EXACT REFERENCES + FAIL-CLOSED VALIDATOR GREEN; HARD STOP BEFORE POD / NO GATE VERDICT** (2026-07-25) | Clean source; append-only schema-1 record; response projection explicitly distinguished from materialized settlement fixtures; central validator; historical rows immutable | Source `16e6c40b6620e09363a8c53eb3ecc632fa650f25`; record `x4d-codec-reference-2026-07-25-16e6c40.json`, SHA-256 `d2175a917d967a18784dd90a5bf5190d6ce1e782eb120e9e5a223040aa68d1af`. It binds design SHA-256 `405f3362a45f3d753d65827cdd48aacef2ec0b5c6d00c9f2b450129ad5b36fe8`, generator SHA-256 `95729dc166c2eb292efb570ada9410ac4edac97bb93859ff7b527c411be37bae` and frozen preflight SHA-256 `ba87722362c8825e13e02a6c563a436797ea852e09e1cebcf4a9265c6ce56499`; `git_dirty=false`, `historical_references_modified=false`, `proof_or_gate_verdict=false`. Response projection is exactly **41,270,464 B**, `WEIGHT_PENDING`, with PCS **0 B** and `materialized_wire_fixture=false`. Materialized settlement codec SHA-256 values for `k=1/8/16/32` are `fc5158b3bdd380df6e9d20657b3475fc386f797c151f0f7c214a216e91c356e5`, `81355cb2430d289769ec43c43d4a1ad3833f2f4180609b264bef589bc96b043f`, `62839bbbe8bf494fa2267bf3d486c094a3b51b7eab56e11123f088731eac6221`, `f7df30cddf241143db520c47fb29d9cd4b00b364a33e926d4e7c9a4d88e4739c`; their exact lengths are **2,683,236 / 3,036,204 / 3,439,596 / 4,246,380 B**. The existing central `scripts/report.py` validator pins the complete schema and rejects dirty/source/design/history/verdict/fixture/order/length/digest mutations; report tests are **20/20 PASS**. |
+| X4d Phase 2 review closure | **LOCAL GREEN; PHASE 3 AUTHORIZED / NO HARDWARE VERDICT YET** (2026-07-25) | Explicit M2/Delta post-freeze substitution test; explicit abort-before-settlement terminal test; historical 4,000,000-B G3 scope stated normatively | Design descendant SHA-256 `cd66fc3df5abe5471f59c4a01e79d85382ad052491889c835dcd7de2e16e66a4`; the prior codec record remains immutable evidence for its named source/design checkpoint. Permanent tests `post_freeze_value_substitution_is_rejected_by_m2_mac` and `explicit_abort_before_settlement_marks_pending_terminal_unverified` pass; full PCS count is now **114** and the workspace remains green. G3 now says verbatim that the historical **4,000,000-B** ceiling belongs to the X4/X4b/X4c per-response PCS block, while X4d settlement uses `2,632,812 + 50,424*k`: `k=32` is **4,246,380 B**, or **132,699.375 settlement B/response**, with no historical gate relaxation. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -411,6 +412,30 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-25 — X4d Phase 2 reviewer inventory closed before Phase 3;
+  no weakening and no historical rewrite.** Two previously implicit edges
+  now have individually named permanent tests. Test
+  `post_freeze_value_substitution_is_rejected_by_m2_mac` first confirms that
+  the authenticated-value handle is write-once and then attempts to use a
+  substituted plaintext with the frozen tag; the verifier retains the
+  original Delta-bound key and the M2 zero opening rejects. Test
+  `explicit_abort_before_settlement_marks_pending_terminal_unverified`
+  freezes a pending response, executes explicit abort, checks connection
+  state `Burned`, response state `TerminalUnverified`, and refusal of both
+  settlement sealing and normal close. The complete PCS suite is now
+  **114 PASS**; the full workspace and the **20/20** report suite are green.
+
+  Normative G3 now states that the immutable **4,000,000-B** historical
+  ceiling scoped the per-response PCS block of X4/X4b/X4c, not the distinct
+  X4d settlement message. The X4d settlement reference is exactly
+  `2,632,812 + 50,424*k` B: `k=32` is **4,246,380 B**, amortized
+  **132,699.375 settlement B/response**. This is neither a silent overrun nor
+  a retrospective relaxation. The corrected design descendant has SHA-256
+  `cd66fc3df5abe5471f59c4a01e79d85382ad052491889c835dcd7de2e16e66a4`.
+  The append-only codec record continues to bind its earlier named
+  point-in-time design hash and is not rewritten; all Phase-3 records bind
+  this corrected descendant.
 
 - **2026-07-25 — X4d Phase 2 exact codec rebaseline recorded locally;
   historical rows immutable; no proof, gate or pod verdict.** Clean source

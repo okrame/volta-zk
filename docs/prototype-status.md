@@ -347,6 +347,7 @@ its clean descendant closure.
 | X4d Phase 2 review closure | **LOCAL GREEN; PHASE 3 AUTHORIZED / NO HARDWARE VERDICT YET** (2026-07-25) | Explicit M2/Delta post-freeze substitution test; explicit abort-before-settlement terminal test; historical 4,000,000-B G3 scope stated normatively | Design descendant SHA-256 `cd66fc3df5abe5471f59c4a01e79d85382ad052491889c835dcd7de2e16e66a4`; the prior codec record remains immutable evidence for its named source/design checkpoint. Permanent tests `post_freeze_value_substitution_is_rejected_by_m2_mac` and `explicit_abort_before_settlement_marks_pending_terminal_unverified` pass; full PCS count is now **114** and the workspace remains green. G3 now says verbatim that the historical **4,000,000-B** ceiling belongs to the X4/X4b/X4c per-response PCS block, while X4d settlement uses `2,632,812 + 50,424*k`: `k=32` is **4,246,380 B**, or **132,699.375 settlement B/response**, with no historical gate relaxation. |
 | X4d Phase 3 run-of-record harness | **LOCAL HARNESS GREEN; INFRASTRUCTURE HARD STOP — POD ENDPOINT REFUSED / NO HARDWARE VERDICT** (2026-07-25) | Exact preflight and online record producers; clean-source/design/source-hash admission; pinned 8/27 CPU pools; response-priority ABBA accounting; one real 16-response settlement; central fail-closed validators | Producer source SHA-256 `978b6641a34f1bd3149a5275bcbfd7f34678e80d0602ec01c1747e1154521b2f`; design SHA-256 `cd66fc3df5abe5471f59c4a01e79d85382ad052491889c835dcd7de2e16e66a4`. Both CPU and CUDA builds are green; the full no-default-features workspace is green with bench **30**, PCG **44**, PCS **114**, proto **110**, and the central report suite is **21/21 PASS**. The adapter consumes existing X4c onboarding/X4d engines rather than adding a PCS, PCG pool, lifecycle or validator framework. Four independent SSH attempts to owner-supplied `64.247.206.116:13449` were refused before any remote command. Consequently no preflight JSON, NOTE-6, onboarding, G1/G2/G3/G4/G5/G6, hardware timing, comparison-table update or provider termination occurred; every Phase-3 gate is **NOT EVALUATED**, and NOTE-6 remains the first permitted production-size workload. |
 | X4d Phase 3 selected-GPU preflight correction | **LOCAL GREEN; POD REACHABLE / NOTE-6 STILL FIRST** (2026-07-25) | The frozen profile requires exactly one selected A100, not a single-GPU host; one `CUDA_VISIBLE_DEVICES` selector now drives both CUDA and the recorded `nvidia-smi --id` inventory | Replacement producer source SHA-256 `0cd17d332986bc9c94e78ef83c7e595007a81de2da8334e72bc38cb9f8e98a16`. The new endpoint `64.247.206.116:19482` exposes 2× A100-SXM4 80 GB, 128 CPUs, about 1.97 TiB RAM and sufficient volume. Run-of-record commands select exactly GPU 0, record its UUID and memory, and leave GPU 1 unused. No production-size workload or gate verdict preceded this correction. |
+| X4d Phase 3 X4c-design pin correction | **LOCAL GREEN; PRE-ONLINE HARD STOP HONORED / FRESH ONBOARDING REQUIRED** (2026-07-25) | X4d consumer now pins the current schema-3 X4c lifecycle file digest rather than the historical interpretation-correction digest; conservative crypto-build identity changes | Replacement producer source SHA-256 `f47f484d2f928f8fe551b1cd6848ce2cd6ffc6a6b4baaa1be1f95b0241e4a334`; current X4c lifecycle design SHA-256 `9a3c64a65902046ba0a2b1891ff8fce03690d870773a346f7128b9f75f7a1164`. The first schema-3 onboarding is valid X4c evidence but is ineligible for the corrected X4d consumer and will not be reused. Both rejected online invocations stopped before durable reads, rebuild, PCG connection or output/journal creation. NOTE-6 remains the first production-size session action and PASS. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -414,6 +415,29 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-25 — X4d consumer rejected an otherwise valid schema-3
+  onboarding before durable reads; historical X4c digest pin corrected and
+  fresh onboarding required.** The X4d adapter compared the onboarding
+  `design_sha256` against historical interpretation-correction digest
+  `1a744625078e3ffe5772b040c24854e9510dcedebc906416279cf3a7c29bf191`.
+  The current X4c producer, lifecycle file and central schema-3 validator
+  correctly use
+  `9a3c64a65902046ba0a2b1891ff8fce03690d870773a346f7128b9f75f7a1164`.
+  The consumer now pins that exact current digest. No X4c historical record,
+  validator rule, protocol byte or proof statement is changed.
+
+  The first new schema-3 onboarding itself validated and completed in
+  **1,905 s** from NOTE-6 start, with commit upper median
+  **380.451572887 s**, exact **9,618,587,808-B** durable census and five
+  internally stable roots. It remains append-only X4c evidence but is not
+  eligible for X4d because the conservative crypto-build identity includes
+  the corrected Rust consumer source. It is therefore not reused. The X4d
+  online runner rejected it before durable reads, CUDA rebuild, PCG
+  connection, response proof, output or authorization/connection journal.
+  The replacement producer SHA-256 is
+  `f47f484d2f928f8fe551b1cd6848ce2cd6ffc6a6b4baaa1be1f95b0241e4a334`;
+  a fresh schema-3 onboarding under that identity is mandatory.
 
 - **2026-07-25 — X4d profile admission distinguishes one selected GPU from
   total host inventory; no gate or hardware workload preceded the fix.**

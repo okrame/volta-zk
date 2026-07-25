@@ -1149,6 +1149,8 @@ struct ExecutionRow {
     canonical_opening_d2h_bytes: u64,
     noncanonical_opening_d2h_bytes: u64,
     cpu_fold_tree_clone_bytes: u64,
+    expected_explicit_d2d_copy_bytes: u64,
+    expected_device_generated_bytes: u64,
 }
 
 impl From<X4cResponseExecutionCountersV4> for ExecutionRow {
@@ -1169,6 +1171,8 @@ impl From<X4cResponseExecutionCountersV4> for ExecutionRow {
             canonical_opening_d2h_bytes: value.canonical_opening_d2h_bytes,
             noncanonical_opening_d2h_bytes: value.noncanonical_opening_d2h_bytes,
             cpu_fold_tree_clone_bytes: value.cpu_fold_tree_clone_bytes,
+            expected_explicit_d2d_copy_bytes: value.expected_explicit_d2d_copy_bytes,
+            expected_device_generated_bytes: value.expected_device_generated_bytes,
         }
     }
 }
@@ -1429,6 +1433,8 @@ struct CandidateRow {
     metrics: MetricsRow,
     expected_h2d_bytes: u64,
     expected_d2h_bytes: u64,
+    expected_explicit_d2d_copy_bytes: u64,
+    expected_device_generated_bytes: u64,
     traffic_exact: bool,
     zero_response_staging: bool,
     verifier_accepted: bool,
@@ -2273,8 +2279,10 @@ fn online(args: &Args, accelerated: bool) -> Result<(), String> {
             .ok_or_else(|| "expected X4c D2H bytes overflow".to_owned())?;
         let traffic_exact = backend_stats.h2d_bytes == expected_h2d_bytes
             && backend_stats.d2h_bytes == expected_d2h_bytes
-            && backend_stats.explicit_d2d_copy_bytes == 0
-            && backend_stats.device_generated_bytes == 0
+            && backend_stats.explicit_d2d_copy_bytes
+                == x4c.execution.expected_explicit_d2d_copy_bytes
+            && backend_stats.device_generated_bytes
+                == x4c.execution.expected_device_generated_bytes
             && backend_stats.resident_alloc_requests == 1
             && backend_stats.resident_free_requests == 1
             && backend_stats.x4c_arena_reset_calls == 1
@@ -2341,6 +2349,10 @@ fn online(args: &Args, accelerated: bool) -> Result<(), String> {
                 "expected_pcs_bytes": X4C_GPT2_PCS_BYTES,
                 "expected_h2d_bytes": expected_h2d_bytes,
                 "expected_d2h_bytes": expected_d2h_bytes,
+                "expected_explicit_d2d_copy_bytes":
+                    x4c.execution.expected_explicit_d2d_copy_bytes,
+                "expected_device_generated_bytes":
+                    x4c.execution.expected_device_generated_bytes,
             });
             return Err(format!(
                 "real-weight X4c candidate hard gate failed after durable burn: {diagnostic}"
@@ -2409,6 +2421,8 @@ fn online(args: &Args, accelerated: bool) -> Result<(), String> {
             metrics,
             expected_h2d_bytes,
             expected_d2h_bytes,
+            expected_explicit_d2d_copy_bytes: x4c.execution.expected_explicit_d2d_copy_bytes,
+            expected_device_generated_bytes: x4c.execution.expected_device_generated_bytes,
             traffic_exact,
             zero_response_staging,
             verifier_accepted,

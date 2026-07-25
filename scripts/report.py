@@ -181,6 +181,8 @@ X4C_GPT2_ONLINE_MILESTONE = "X4c-GPT2-real-weight-online"
 X4C_GPT2_ACCELERATED_ONLINE_MILESTONE = (
     "X4c-GPT2-real-weight-online-accelerated"
 )
+X4C_PRODUCTION_EXPLICIT_D2D_COPY_BYTES = 1_364_224
+X4C_PRODUCTION_DEVICE_GENERATED_BYTES = 35_727_436_640
 X4C_GPT2_REBUILD_PREFLIGHT_MILESTONE = "X4c-GPT2-rebuild-preflight"
 X4C_GPT2_PROTOCOL = "x4-zkdeepfold-ud-e29-v4"
 X4C_GPT2_SELECTED_TAPE = (
@@ -3345,6 +3347,7 @@ def _x4c_gpt2_candidate_valid(
     epoch_base: int,
     model_sub_correlations: int,
     model_full_correlations: int,
+    accelerated: bool = False,
 ) -> bool:
     required = (
         "role",
@@ -3387,6 +3390,14 @@ def _x4c_gpt2_candidate_valid(
         "metrics",
         "expected_h2d_bytes",
         "expected_d2h_bytes",
+        *(
+            (
+                "expected_explicit_d2d_copy_bytes",
+                "expected_device_generated_bytes",
+            )
+            if accelerated
+            else ()
+        ),
         "traffic_exact",
         "zero_response_staging",
         "verifier_accepted",
@@ -3494,6 +3505,15 @@ def _x4c_gpt2_candidate_valid(
         "noncanonical_opening_d2h_bytes": 0,
         "cpu_fold_tree_clone_bytes": 0,
     }
+    if accelerated:
+        expected_execution.update(
+            {
+                "expected_explicit_d2d_copy_bytes":
+                    X4C_PRODUCTION_EXPLICIT_D2D_COPY_BYTES,
+                "expected_device_generated_bytes":
+                    X4C_PRODUCTION_DEVICE_GENERATED_BYTES,
+            }
+        )
     audit = row["connection_audit"]
     expected_h2d = (
         metrics["combined_codeword_symbols"] * 16
@@ -3524,8 +3544,23 @@ def _x4c_gpt2_candidate_valid(
         and metrics["sampling_soundness_credit_bits"] == 0
         and row["expected_h2d_bytes"] == backend["h2d_bytes"] == expected_h2d
         and row["expected_d2h_bytes"] == backend["d2h_bytes"] == expected_d2h
-        and backend["explicit_d2d_copy_bytes"] == 0
-        and backend["device_generated_bytes"] == 0
+        and (
+            (
+                row["expected_explicit_d2d_copy_bytes"]
+                == execution["expected_explicit_d2d_copy_bytes"]
+                == backend["explicit_d2d_copy_bytes"]
+                == X4C_PRODUCTION_EXPLICIT_D2D_COPY_BYTES
+                and row["expected_device_generated_bytes"]
+                == execution["expected_device_generated_bytes"]
+                == backend["device_generated_bytes"]
+                == X4C_PRODUCTION_DEVICE_GENERATED_BYTES
+            )
+            if accelerated
+            else (
+                backend["explicit_d2d_copy_bytes"] == 0
+                and backend["device_generated_bytes"] == 0
+            )
+        )
         and backend["resident_alloc_requests"] == backend["resident_free_requests"] == 1
         and backend["x4c_arena_reset_calls"] == 1
         and backend["x4c_arena_reset_bytes"]
@@ -4082,6 +4117,7 @@ def _x4c_gpt2_online_valid(
             epoch_base=epoch_base,
             model_sub_correlations=row["model_sub_correlations"],
             model_full_correlations=row["model_full_correlations"],
+            accelerated=accelerated,
         ):
             return False
         if accelerated and not _x4c_gpt2_candidate_gate_audit_valid(

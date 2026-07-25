@@ -335,6 +335,58 @@ def test_x4_v4_validators_pin_profile_bytes_events_and_incomplete_pod_scope():
     assert report._x4_v4_migration_result_valid(bad_migration) is False
 
 
+def test_x4d_codec_reference_validator_is_exact_and_fail_closed(tmp_path):
+    report = load_report_module()
+    record_path = (
+        report.DEFAULT_RESULTS
+        / "x4d-codec-reference-2026-07-25-16e6c40.json"
+    )
+    row = json.loads(record_path.read_text())
+    assert report._x4d_codec_reference_valid(row) is True
+    assert report.validate_x4d_codec_reference(record_path) is True
+
+    invalid = []
+    bad = copy.deepcopy(row)
+    bad["schema"] = True
+    invalid.append(bad)
+    bad = copy.deepcopy(row)
+    bad["git_sha"] = "f" * 40
+    invalid.append(bad)
+    bad = copy.deepcopy(row)
+    bad["git_dirty"] = True
+    invalid.append(bad)
+    bad = copy.deepcopy(row)
+    bad["historical_references_modified"] = True
+    invalid.append(bad)
+    bad = copy.deepcopy(row)
+    bad["proof_or_gate_verdict"] = True
+    invalid.append(bad)
+    bad = copy.deepcopy(row)
+    bad["response"]["materialized_wire_fixture"] = True
+    invalid.append(bad)
+    bad = copy.deepcopy(row)
+    bad["response"]["exact_response_bytes"] += 1
+    invalid.append(bad)
+    bad = copy.deepcopy(row)
+    bad["settlements"].reverse()
+    invalid.append(bad)
+    bad = copy.deepcopy(row)
+    bad["settlements"][2]["serialized_bytes"] += 1
+    invalid.append(bad)
+    bad = copy.deepcopy(row)
+    bad["settlements"][3]["sha256"] = "0" * 64
+    invalid.append(bad)
+    bad = copy.deepcopy(row)
+    bad["unexpected"] = "schema extension without version bump"
+    invalid.append(bad)
+
+    for index, candidate in enumerate(invalid):
+        path = tmp_path / f"invalid-x4d-{index}.json"
+        path.write_text(json.dumps(candidate))
+        assert report._x4d_codec_reference_valid(candidate) is False
+        assert report.validate_x4d_codec_reference(path) is False
+
+
 def test_x4_v4_pod_validator_accepts_only_the_fail_closed_physical_record():
     report = load_report_module()
     cohort_names = [

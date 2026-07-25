@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "milestone": "X4d-Phase2-local-codec-reference",
+  "profile": "x4-zkdeepfold-ud-e29-x4d-v1",
+  "git_sha": "16e6c40b6620e09363a8c53eb3ecc632fa650f25",
+  "git_dirty": false,
+  "design_path": "docs/x4d-deferred-settlement-design.md",
+  "design_sha256": "405f3362a45f3d753d65827cdd48aacef2ec0b5c6d00c9f2b450129ad5b36fe8",
+  "source_path": "rust/volta-bench/src/bin/x4d_codec_reference.rs",
+  "source_sha256": "95729dc166c2eb292efb570ada9410ac4edac97bb93859ff7b527c411be37bae",
+  "preflight_path": "benchmarks/results/x4-amendment5-gpt2-preflight-2026-07-21-93749b3.json",
+  "preflight_sha256": "ba87722362c8825e13e02a6c563a436797ea852e09e1cebcf4a9265c6ce56499",
+  "historical_references_modified": false,
+  "proof_or_gate_verdict": false,
+  "response": {
+    "accounting_kind": "exact_x4c_response_traffic_projection_without_pcs",
+    "product_state_at_delivery": "WEIGHT_PENDING",
+    "model_transcript_bytes": 41270400,
+    "model_mac_closure_bytes": 64,
+    "pcs_bytes": 0,
+    "exact_response_bytes": 41270464,
+    "materialized_wire_fixture": false
+  },
+  "settlements": [
+    {
+      "responses": 1,
+      "claims": 102,
+      "masked_groups": 51,
+      "active_chain_polynomials": 102,
+      "fold_rounds": 27,
+      "query_draws": 111,
+      "serialized_bytes": 2683236,
+      "expected_bytes": 2683236,
+      "sha256": "fc5158b3bdd380df6e9d20657b3475fc386f797c151f0f7c214a216e91c356e5",
+      "settlement_bytes_per_response": 2683236.0,
+      "total_amortized_bytes_per_response": 43953700.0
+    },
+    {
+      "responses": 8,
+      "claims": 816,
+      "masked_groups": 408,
+      "active_chain_polynomials": 102,
+      "fold_rounds": 27,
+      "query_draws": 111,
+      "serialized_bytes": 3036204,
+      "expected_bytes": 3036204,
+      "sha256": "81355cb2430d289769ec43c43d4a1ad3833f2f4180609b264bef589bc96b043f",
+      "settlement_bytes_per_response": 379525.5,
+      "total_amortized_bytes_per_response": 41649989.5
+    },
+    {
+      "responses": 16,
+      "claims": 1632,
+      "masked_groups": 816,
+      "active_chain_polynomials": 102,
+      "fold_rounds": 27,
+      "query_draws": 111,
+      "serialized_bytes": 3439596,
+      "expected_bytes": 3439596,
+      "sha256": "62839bbbe8bf494fa2267bf3d486c094a3b51b7eab56e11123f088731eac6221",
+      "settlement_bytes_per_response": 214974.75,
+      "total_amortized_bytes_per_response": 41485438.75
+    },
+    {
+      "responses": 32,
+      "claims": 3264,
+      "masked_groups": 1632,
+      "active_chain_polynomials": 102,
+      "fold_rounds": 27,
+      "query_draws": 111,
+      "serialized_bytes": 4246380,
+      "expected_bytes": 4246380,
+      "sha256": "f7df30cddf241143db520c47fb29d9cd4b00b364a33e926d4e7c9a4d88e4739c",
+      "settlement_bytes_per_response": 132699.375,
+      "total_amortized_bytes_per_response": 41403163.375
+    }
+  ]
+}

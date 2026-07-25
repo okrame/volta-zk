@@ -138,6 +138,41 @@ X4_V4_COUNTER_FAMILIES = [
     "delta_shift_attempt",
     "beta_collision_witness",
 ]
+X4D_CODEC_REFERENCE_MILESTONE = "X4d-Phase2-local-codec-reference"
+X4D_PROFILE = "x4-zkdeepfold-ud-e29-x4d-v1"
+X4D_CODEC_SOURCE_GIT_SHA = "16e6c40b6620e09363a8c53eb3ecc632fa650f25"
+X4D_DESIGN_SHA256 = (
+    "405f3362a45f3d753d65827cdd48aacef2ec0b5c6d00c9f2b450129ad5b36fe8"
+)
+X4D_CODEC_GENERATOR_SHA256 = (
+    "95729dc166c2eb292efb570ada9410ac4edac97bb93859ff7b527c411be37bae"
+)
+X4D_FROZEN_PREFLIGHT_SHA256 = (
+    "ba87722362c8825e13e02a6c563a436797ea852e09e1cebcf4a9265c6ce56499"
+)
+X4D_RESPONSE_BYTES = 41_270_464
+X4D_SETTLEMENT_REFERENCES = (
+    (
+        1,
+        2_683_236,
+        "fc5158b3bdd380df6e9d20657b3475fc386f797c151f0f7c214a216e91c356e5",
+    ),
+    (
+        8,
+        3_036_204,
+        "81355cb2430d289769ec43c43d4a1ad3833f2f4180609b264bef589bc96b043f",
+    ),
+    (
+        16,
+        3_439_596,
+        "62839bbbe8bf494fa2267bf3d486c094a3b51b7eab56e11123f088731eac6221",
+    ),
+    (
+        32,
+        4_246_380,
+        "f7df30cddf241143db520c47fb29d9cd4b00b364a33e926d4e7c9a4d88e4739c",
+    ),
+)
 X4B_DESIGN_SHA256 = (
     "bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01"
 )
@@ -426,6 +461,130 @@ def validate_x4_v4_migration_result(path: Path) -> bool:
         if not path.is_absolute():
             path = REPO / path
         return _x4_v4_migration_result_valid(load_json(path))
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return False
+
+
+def _x4d_hex(value: Any, length: int) -> bool:
+    if not isinstance(value, str) or len(value) != length:
+        return False
+    try:
+        int(value, 16)
+    except ValueError:
+        return False
+    return True
+
+
+def _x4d_exact_int(value: Any, expected: int) -> bool:
+    return type(value) is int and value == expected
+
+
+def _x4d_codec_reference_valid(row: Any) -> bool:
+    if not isinstance(row, dict) or set(row) != {
+        "schema",
+        "milestone",
+        "profile",
+        "git_sha",
+        "git_dirty",
+        "design_path",
+        "design_sha256",
+        "source_path",
+        "source_sha256",
+        "preflight_path",
+        "preflight_sha256",
+        "historical_references_modified",
+        "proof_or_gate_verdict",
+        "response",
+        "settlements",
+    }:
+        return False
+    response = row["response"]
+    settlements = row["settlements"]
+    if not (
+        _x4d_exact_int(row["schema"], 1)
+        and row["milestone"] == X4D_CODEC_REFERENCE_MILESTONE
+        and row["profile"] == X4D_PROFILE
+        and row["git_sha"] == X4D_CODEC_SOURCE_GIT_SHA
+        and _x4d_hex(row["git_sha"], 40)
+        and row["git_dirty"] is False
+        and row["design_path"] == "docs/x4d-deferred-settlement-design.md"
+        and row["design_sha256"] == X4D_DESIGN_SHA256
+        and row["source_path"]
+        == "rust/volta-bench/src/bin/x4d_codec_reference.rs"
+        and row["source_sha256"] == X4D_CODEC_GENERATOR_SHA256
+        and row["preflight_path"]
+        == "benchmarks/results/x4-amendment5-gpt2-preflight-2026-07-21-93749b3.json"
+        and row["preflight_sha256"] == X4D_FROZEN_PREFLIGHT_SHA256
+        and row["historical_references_modified"] is False
+        and row["proof_or_gate_verdict"] is False
+        and isinstance(response, dict)
+        and set(response)
+        == {
+            "accounting_kind",
+            "product_state_at_delivery",
+            "model_transcript_bytes",
+            "model_mac_closure_bytes",
+            "pcs_bytes",
+            "exact_response_bytes",
+            "materialized_wire_fixture",
+        }
+        and response["accounting_kind"]
+        == "exact_x4c_response_traffic_projection_without_pcs"
+        and response["product_state_at_delivery"] == "WEIGHT_PENDING"
+        and _x4d_exact_int(response["model_transcript_bytes"], 41_270_400)
+        and _x4d_exact_int(response["model_mac_closure_bytes"], 64)
+        and _x4d_exact_int(response["pcs_bytes"], 0)
+        and _x4d_exact_int(response["exact_response_bytes"], X4D_RESPONSE_BYTES)
+        and response["materialized_wire_fixture"] is False
+        and isinstance(settlements, list)
+        and len(settlements) == len(X4D_SETTLEMENT_REFERENCES)
+    ):
+        return False
+    settlement_keys = {
+        "responses",
+        "claims",
+        "masked_groups",
+        "active_chain_polynomials",
+        "fold_rounds",
+        "query_draws",
+        "serialized_bytes",
+        "expected_bytes",
+        "sha256",
+        "settlement_bytes_per_response",
+        "total_amortized_bytes_per_response",
+    }
+    for actual, (responses, encoded_bytes, digest) in zip(
+        settlements, X4D_SETTLEMENT_REFERENCES, strict=True
+    ):
+        if not (
+            isinstance(actual, dict)
+            and set(actual) == settlement_keys
+            and _x4d_exact_int(actual["responses"], responses)
+            and _x4d_exact_int(actual["claims"], 102 * responses)
+            and _x4d_exact_int(actual["masked_groups"], 51 * responses)
+            and _x4d_exact_int(actual["active_chain_polynomials"], 102)
+            and _x4d_exact_int(actual["fold_rounds"], 27)
+            and _x4d_exact_int(actual["query_draws"], 111)
+            and _x4d_exact_int(actual["serialized_bytes"], encoded_bytes)
+            and _x4d_exact_int(actual["expected_bytes"], encoded_bytes)
+            and actual["sha256"] == digest
+            and _x4d_hex(actual["sha256"], 64)
+            and type(actual["settlement_bytes_per_response"]) is float
+            and actual["settlement_bytes_per_response"] == encoded_bytes / responses
+            and type(actual["total_amortized_bytes_per_response"]) is float
+            and actual["total_amortized_bytes_per_response"]
+            == X4D_RESPONSE_BYTES + encoded_bytes / responses
+        ):
+            return False
+    return True
+
+
+def validate_x4d_codec_reference(path: Path) -> bool:
+    try:
+        if not path.is_absolute():
+            path = REPO / path
+        with path.open("r", encoding="utf-8") as handle:
+            return _x4d_codec_reference_valid(json.load(handle))
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
         return False
 
@@ -7915,6 +8074,11 @@ def main() -> None:
         help="fail closed unless one JSON is the exact clean X4 v4 A100 production verdict",
     )
     ap.add_argument(
+        "--validate-x4d-codec-reference",
+        type=Path,
+        help="fail closed unless one JSON is the exact clean local X4d codec rebaseline",
+    )
+    ap.add_argument(
         "--validate-x4b-local",
         type=Path,
         help="fail closed unless one JSON is the clean X4b local CPU/persisted-opening preflight",
@@ -8032,6 +8196,7 @@ def main() -> None:
             args.validate_x4_v4_cpu,
             args.validate_x4_v4_migration,
             args.validate_x4_v4_pod,
+            args.validate_x4d_codec_reference,
             args.validate_x4b_local,
             args.validate_x4b_pod,
             args.validate_x4c_phase1,
@@ -8130,6 +8295,15 @@ def main() -> None:
         if not validate_x4_v4_pod_result(args.validate_x4_v4_pod):
             raise SystemExit("invalid or ineligible X4 v4 A100 production result")
         print(f"valid X4 v4 A100 production result: {args.validate_x4_v4_pod}")
+        return
+    if args.validate_x4d_codec_reference is not None:
+        if args.write_json:
+            raise SystemExit(
+                "--write-json and --validate-x4d-codec-reference are mutually exclusive"
+            )
+        if not validate_x4d_codec_reference(args.validate_x4d_codec_reference):
+            raise SystemExit("invalid or inconsistent X4d codec rebaseline")
+        print(f"valid X4d codec rebaseline: {args.validate_x4d_codec_reference}")
         return
     if args.validate_x4b_local is not None:
         if args.write_json:

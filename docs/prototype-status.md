@@ -343,6 +343,7 @@ its clean descendant closure.
 | X4d deferred settlement Phase 1 | **DESIGN/M12 STATEMENTS/CODEC/GATES FROZEN; HARD STOP BEFORE LEAN, RUST OR POD** (2026-07-25) | Per-connection digest-chained frozen-claim accumulator; soft trigger 1,632 claims, hard cap 3,320; one settlement/epoch/opening; pending product state; key-reuse stop disposed; G1--G6 preregistered | Design `docs/x4d-deferred-settlement-design.md`, SHA-256 `c59fcb0163930b63a2f12e000b4b6b3ab3a24966b550c1249195196add5f9ff0`. Exact response **41,270,464 B**. GPT-2 settlement bytes are **2,632,812 + 50,424*k**: `k=1/8/16/32` gives **2,683,236 / 3,036,204 / 3,439,596 / 4,246,380 B**. At `k=32`, claims/masked groups are **3,264 / 1,632**; 102 active chain polynomials, 27 fold rounds, 27,564 symbols and 67,930 sibling digests remain fixed. The exact **80.25537016399041-bit** settlement expression and 78.809294874-bit floor are unchanged; M12 adds the semantic cap bridge and composes per-response MAC terms through M10. `runpod-a100-x4d-v1` requires A100-SXM4 80 GB, >=256 GiB RAM, >=150 GB volume, split 8/27 workers and NOTE-6 first. No gate verdict, Lean proof, Rust/reference change or pod work. |
 | X4d Phase 2 M12 Lean-first discharge | **LEAN GREEN; LOCAL RUST AUTHORIZED; NO POD** (2026-07-25) | Frozen statements prove without weakening; full build, zero `sorry`/`admit`, derived audit green; public soundness theorem exposes all four v4 event bounds and adds only the per-response M9 MAC terms | `X4DeferredSettlement.lean` proves append/range binding, the structural 3,320 cap bridge, 3,321 refusal, batched-mask fiber and GPT-2 hiding budget, exact frozen-union/M9 lifting, unchanged v4 settlement error, M10 connection union, one opening per epoch, and terminal abort/burn semantics. The public M12 theorem requires Fold, ClaimReduce, LinkBad and ZeroBatch with their exact frozen coefficients; no certificate premise, fifth event or deterministic equality is smuggled in. Build **3,253 jobs**; audit **236 total / 143 X4** (**27 new M12 targets**), standard axioms only. Audit stdout SHA-256 `4f7f95c6a08ced10a59f252c72113f338c08a430e23675e79a3eaed7f76405cd`; M12 source SHA-256 `762370a896785ca66167c62fb749b43181cde11c9602961ee983b0991a5b8240`. No Rust file, reference artifact, record or pod was touched at this checkpoint. |
 | X4d Phase 2 local implementation | **LOCAL RUST GREEN; REBASELINE GENERATOR GREEN; HARD STOP BEFORE POD / NO HARDWARE VERDICT** (2026-07-25) | One cap alias; append-only claim freeze; exact sealed union; settlement-fresh aux/query/correlation state; one reused accelerated chain; fase-D burn journal; background dual accounting; permanent G2/G4/G6 cases | X4d adds isolated accumulator/codec/orchestration modules and a thin context parameter to the existing v4 accelerated engine; it does not add another PCS, PCG pool or lifecycle. The stable accumulator identity is the digest of the three static weight roots, while each epoch gets two fresh auxiliary roots and a fresh manifest `model_root`; this clarifies the Phase-1 word “model root” and matches existing epochized X4c roots without changing proof bytes or soundness. Query-seed, epoch, aux-root and exact correlation-count commitments are globally burn-reserved; 111 draws are derived only after all fold roots seal. Settlement success requires raw PCG use to equal exactly twice the registered full-correlation count. Full `cargo test --workspace --no-default-features` is green: bench **30**, PCG **44**, PCS **112**, proto **110** and all other workspace suites pass; four production-size ignores are pre-existing. Local two-response small geometry completes one shared chain, M9-to-MAC and ZeroBatch. Exact `k=1/8/16/32` codec round trips and every registered tamper/cap/abort case pass. The clean append-only reference SHA values are generated only after this source checkpoint; no G1/G5 or A100 verdict is claimed. |
+| X4d Phase 2 codec rebaseline | **LOCAL EXACT REFERENCES + FAIL-CLOSED VALIDATOR GREEN; HARD STOP BEFORE POD / NO GATE VERDICT** (2026-07-25) | Clean source; append-only schema-1 record; response projection explicitly distinguished from materialized settlement fixtures; central validator; historical rows immutable | Source `16e6c40b6620e09363a8c53eb3ecc632fa650f25`; record `x4d-codec-reference-2026-07-25-16e6c40.json`, SHA-256 `d2175a917d967a18784dd90a5bf5190d6ce1e782eb120e9e5a223040aa68d1af`. It binds design SHA-256 `405f3362a45f3d753d65827cdd48aacef2ec0b5c6d00c9f2b450129ad5b36fe8`, generator SHA-256 `95729dc166c2eb292efb570ada9410ac4edac97bb93859ff7b527c411be37bae` and frozen preflight SHA-256 `ba87722362c8825e13e02a6c563a436797ea852e09e1cebcf4a9265c6ce56499`; `git_dirty=false`, `historical_references_modified=false`, `proof_or_gate_verdict=false`. Response projection is exactly **41,270,464 B**, `WEIGHT_PENDING`, with PCS **0 B** and `materialized_wire_fixture=false`. Materialized settlement codec SHA-256 values for `k=1/8/16/32` are `fc5158b3bdd380df6e9d20657b3475fc386f797c151f0f7c214a216e91c356e5`, `81355cb2430d289769ec43c43d4a1ad3833f2f4180609b264bef589bc96b043f`, `62839bbbe8bf494fa2267bf3d486c094a3b51b7eab56e11123f088731eac6221`, `f7df30cddf241143db520c47fb29d9cd4b00b364a33e926d4e7c9a4d88e4739c`; their exact lengths are **2,683,236 / 3,036,204 / 3,439,596 / 4,246,380 B**. The existing central `scripts/report.py` validator pins the complete schema and rejects dirty/source/design/history/verdict/fixture/order/length/digest mutations; report tests are **20/20 PASS**. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -410,6 +411,44 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-25 — X4d Phase 2 exact codec rebaseline recorded locally;
+  historical rows immutable; no proof, gate or pod verdict.** Clean source
+  `16e6c40b6620e09363a8c53eb3ecc632fa650f25` generated append-only record
+  `x4d-codec-reference-2026-07-25-16e6c40.json` (**2,829 B**), SHA-256
+  `d2175a917d967a18784dd90a5bf5190d6ce1e782eb120e9e5a223040aa68d1af`.
+  The record has `git_dirty=false`, binds the Phase-2 design, generator and
+  frozen Amendment-5 preflight by SHA-256, and explicitly records
+  `historical_references_modified=false` and `proof_or_gate_verdict=false`.
+
+  Per-response accounting is the exact X4c response traffic projection with
+  the complete PCS block removed: model transcript **41,270,400 B**, MAC
+  closures **64 B**, PCS **0 B**, total **41,270,464 B**, delivery state
+  `WEIGHT_PENDING`. It is explicitly marked
+  `materialized_wire_fixture=false`; no synthetic serialization is
+  misrepresented as a model-proof response.
+
+  Settlement envelopes are materialized, decoded and re-encoded under the
+  X4d codec. For `k=1/8/16/32`, exact lengths are
+  **2,683,236 / 3,036,204 / 3,439,596 / 4,246,380 B**, yielding total
+  amortized bytes per response **43,953,700 / 41,649,989.5 /
+  41,485,438.75 / 41,403,163.375 B**. Their fixture SHA-256 values are,
+  in the same order,
+  `fc5158b3bdd380df6e9d20657b3475fc386f797c151f0f7c214a216e91c356e5`,
+  `81355cb2430d289769ec43c43d4a1ad3833f2f4180609b264bef589bc96b043f`,
+  `62839bbbe8bf494fa2267bf3d486c094a3b51b7eab56e11123f088731eac6221`
+  and
+  `f7df30cddf241143db520c47fb29d9cd4b00b364a33e926d4e7c9a4d88e4739c`.
+  The fail-closed validator is added to the existing central
+  `scripts/report.py` dispatch rather than creating an X4d-only validator
+  framework. It requires the exact schema, clean source commit, design,
+  generator, preflight, response accounting and ordered fixture table.
+  Permanent mutations cover boolean schema substitution, alternate source,
+  dirty state, historical-row mutation, false gate elevation, response
+  materialization mislabeling, response/settlement byte drift, settlement
+  reorder, fixture-digest drift and an unversioned extra field. The direct
+  CLI validation is green and `tests/test_report.py` is **20/20 PASS**.
+  No X4/X4b/X4c artifact, validator row or verdict changed.
 
 - **2026-07-25 — X4d Phase 2 local implementation is green; root
   terminology is corrected without weakening; HARD STOP before pod.**

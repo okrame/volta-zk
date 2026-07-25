@@ -386,6 +386,39 @@ impl X4dSplitThreadPolicyV1 {
             .map_err(|error| format!("build X4d settlement pool: {error}"))?;
         Ok((response, settlement))
     }
+
+    /// Build the registered Linux pod pools and pin every worker to its
+    /// declared CPU. Record-producing code uses this method; the unpinned
+    /// helper remains for portable local tests only.
+    #[cfg(target_os = "linux")]
+    pub fn build_pinned_pools(&self) -> Result<(rayon::ThreadPool, rayon::ThreadPool), String> {
+        self.validate()?;
+        fn build(name: &'static str, cpu_ids: Vec<usize>) -> Result<rayon::ThreadPool, String> {
+            let worker_count = cpu_ids.len();
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(worker_count)
+                .thread_name(move |index| format!("x4d-{name}-{index}"))
+                .start_handler(move |index| {
+                    let mut set = unsafe { std::mem::zeroed::<libc::cpu_set_t>() };
+                    // SAFETY: `set` is initialized and Rayon bounds `index`
+                    // by the captured worker vector.
+                    unsafe {
+                        libc::CPU_ZERO(&mut set);
+                        libc::CPU_SET(cpu_ids[index], &mut set);
+                    }
+                    let rc = unsafe {
+                        libc::sched_setaffinity(0, std::mem::size_of::<libc::cpu_set_t>(), &set)
+                    };
+                    assert_eq!(rc, 0, "X4d {name} worker affinity failed closed");
+                })
+                .build()
+                .map_err(|error| format!("build pinned X4d {name} pool: {error}"))
+        }
+        Ok((
+            build("response", self.response_cpu_ids.clone())?,
+            build("settlement", self.settlement_cpu_ids.clone())?,
+        ))
+    }
 }
 
 #[derive(Clone, Debug)]

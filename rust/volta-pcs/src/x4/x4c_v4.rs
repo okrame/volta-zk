@@ -66,7 +66,10 @@ pub const X4C_PRODUCTION_EXPLICIT_D2D_COPY_BYTES_V4: u64 = 1_364_224;
 /// Exact bytes written by response kernels in a fresh production CUDA
 /// context: direct folds, activation adds, retained N4 nodes, diagnostic
 /// samples, rebuilt canonical frontier nodes, and four derived hash keys.
-pub const X4C_PRODUCTION_DEVICE_GENERATED_BYTES_V4: u64 = 35_727_436_640;
+pub const X4C_PRODUCTION_FRESH_DEVICE_GENERATED_BYTES_V4: u64 = 35_727_436_640;
+/// Subsequent responses reuse the four derived X4b hash keys owned by the
+/// same online CUDA context, so they generate exactly 128 fewer bytes.
+pub const X4C_PRODUCTION_REUSED_DEVICE_GENERATED_BYTES_V4: u64 = 35_727_436_512;
 const X4C_DERIVED_HASH_KEY_BYTES_V4: u64 = 4 * DIGEST_BYTES;
 
 pub const X4C_FOLD_CODEWORD_BYTES_V4: u64 = 17_179_869_056;
@@ -582,7 +585,12 @@ pub struct X4cResponseExecutionCountersV4 {
 }
 
 impl X4cResponseExecutionCountersV4 {
-    pub fn validate_production(&self) -> Result<(), X4cErrorV4> {
+    pub fn validate_production(&self, response_ordinal: u64) -> Result<(), X4cErrorV4> {
+        let expected_device_generated_bytes = if response_ordinal == 0 {
+            X4C_PRODUCTION_FRESH_DEVICE_GENERATED_BYTES_V4
+        } else {
+            X4C_PRODUCTION_REUSED_DEVICE_GENERATED_BYTES_V4
+        };
         if self.direct_fold_calls != X4C_PRODUCTION_FOLD_ROUNDS_V4 as u64
             || self.direct_fold_sample_comparisons != X4C_DIRECT_FOLD_PRODUCTION_SAMPLES_V4 as u64
             || self.direct_fold_sample_mismatches != 0
@@ -606,7 +614,7 @@ impl X4cResponseExecutionCountersV4 {
             || self.noncanonical_opening_d2h_bytes != 0
             || self.cpu_fold_tree_clone_bytes != 0
             || self.expected_explicit_d2d_copy_bytes != X4C_PRODUCTION_EXPLICIT_D2D_COPY_BYTES_V4
-            || self.expected_device_generated_bytes != X4C_PRODUCTION_DEVICE_GENERATED_BYTES_V4
+            || self.expected_device_generated_bytes != expected_device_generated_bytes
         {
             return Err(X4cErrorV4::InvalidGeometry("X4c production execution counters"));
         }
@@ -2063,6 +2071,8 @@ impl<A> SealedGlobalChainX4cV4<'_, A> {
             metrics.combined_codeword_symbols.checked_sub(initial_codeword_symbols).ok_or(
                 X4cErrorV4::InvalidGeometry("X4c combined codeword census below initial domain"),
             )?;
+        let expected_derived_hash_key_bytes =
+            if config.response_ordinal == 0 { X4C_DERIVED_HASH_KEY_BYTES_V4 } else { 0 };
         let expected_device_generated_bytes = config
             .arena_layout
             .codeword_bytes
@@ -2078,7 +2088,7 @@ impl<A> SealedGlobalChainX4cV4<'_, A> {
                     .and_then(|diagnostic| bytes.checked_add(diagnostic))
             })
             .and_then(|bytes| bytes.checked_add(canonical_rebuilt_device_bytes))
-            .and_then(|bytes| bytes.checked_add(X4C_DERIVED_HASH_KEY_BYTES_V4))
+            .and_then(|bytes| bytes.checked_add(expected_derived_hash_key_bytes))
             .ok_or(X4cErrorV4::Overflow)?;
         let execution = X4cResponseExecutionCountersV4 {
             direct_fold_calls: u64::try_from(config.arena_layout.rounds.len())
@@ -2172,7 +2182,7 @@ impl<A> SealedGlobalChainX4cV4<'_, A> {
                     expected_components.metadata_bytes,
                 )));
             }
-            execution.validate_production()?;
+            execution.validate_production(config.response_ordinal)?;
         }
         Ok((
             proof,

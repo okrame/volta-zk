@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED — ONLINE TRAFFIC-ACCOUNTING HARD STOP)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED — ONLINE KEY-REUSE ACCOUNTING HARD STOP)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -406,6 +406,35 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-25 — Exact fresh-context traffic remediation admits warm-up;
+  measured-1 HARD STOP isolates one-time hash-key reuse.**  Clean checkpoint
+  `778a5fddbcc1dedebe25c72f63f6f181157ef250` and bundle SHA-256
+  `9f8c67764d4c18ee558987ece7c82b894b0f34caddf3d785928f456ba9ed6788`
+  passed a real-CUDA direct-fold differential before a new same-source
+  onboarding.  That onboarding validates at SHA-256
+  `ba7b08e6dee143ca18cc718617238c0da1643541f5eca38907f58bbc95ae3cb7`
+  with the exact ten-file **9,618,587,808-B** durable tier.
+
+  The fresh process rebuilt and admitted all five roots in
+  **248.867969408 s**, then accepted the warm-up under the corrected exact
+  traffic contract.  Measured candidate 1 passed every non-traffic gate but
+  stopped because device-generated traffic was **35,727,436,512 B**, exactly
+  **128 B** below the fresh-context expectation **35,727,436,640 B**.
+  D2D remained exactly **1,364,224 B**.  Cause: four 32-B X4b hash keys are
+  generated once during the warm-up and retained by the same online CUDA
+  context; subsequent responses correctly reuse them.  The local remediation
+  now derives **35,727,436,640 B** for ordinal 0 and
+  **35,727,436,512 B** for every later ordinal, while the validator requires
+  ordinal, execution receipt and native counter to agree.  The output JSON is
+  absent and the two used responses are durably burned.  Log and connection
+  journal SHA-256 are
+  `4a167a72df84d512e44d0d834c6f6a3a5264aa746a8763e316ccd8a3290712d0`
+  and
+  `104c00a23d6a5f9bc2124e407a93292f009076e4f13288b849f7f92ff2a36823`.
+  No protocol, cryptographic primitive, root, proof byte, Lean statement or
+  soundness accounting changed.  No rerun is authorized before a new clean
+  checkpoint and same-source onboarding.
 
 - **2026-07-25 — Accelerated rebuild admitted; second warm-up HARD STOP
   isolates an exact traffic-accounting defect.**  Clean diagnostic checkpoint

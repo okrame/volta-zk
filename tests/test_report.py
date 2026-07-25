@@ -1540,24 +1540,25 @@ def _x4c_gpt2_accelerated_online(report, online):
         "traffic_exact",
     )
     for candidate in accelerated["candidates"]:
+        expected_device_generated_bytes = (
+            report.X4C_PRODUCTION_FRESH_DEVICE_GENERATED_BYTES
+            if candidate["ordinal"] == 0
+            else report.X4C_PRODUCTION_REUSED_DEVICE_GENERATED_BYTES
+        )
         candidate["expected_explicit_d2d_copy_bytes"] = (
             report.X4C_PRODUCTION_EXPLICIT_D2D_COPY_BYTES
         )
-        candidate["expected_device_generated_bytes"] = (
-            report.X4C_PRODUCTION_DEVICE_GENERATED_BYTES
-        )
+        candidate["expected_device_generated_bytes"] = expected_device_generated_bytes
         candidate["backend"]["explicit_d2d_copy_bytes"] = (
             report.X4C_PRODUCTION_EXPLICIT_D2D_COPY_BYTES
         )
-        candidate["backend"]["device_generated_bytes"] = (
-            report.X4C_PRODUCTION_DEVICE_GENERATED_BYTES
-        )
+        candidate["backend"]["device_generated_bytes"] = expected_device_generated_bytes
         candidate["metrics"]["execution"][
             "expected_explicit_d2d_copy_bytes"
         ] = report.X4C_PRODUCTION_EXPLICIT_D2D_COPY_BYTES
-        candidate["metrics"]["execution"]["expected_device_generated_bytes"] = (
-            report.X4C_PRODUCTION_DEVICE_GENERATED_BYTES
-        )
+        candidate["metrics"]["execution"][
+            "expected_device_generated_bytes"
+        ] = expected_device_generated_bytes
         candidate["gate_audit"] = {
             **{key: True for key in gate_keys},
             "failed": [],
@@ -1844,6 +1845,12 @@ def test_x4c_gpt2_accelerated_validator_requires_native_counters(tmp_path):
         ),
         lambda row: row["candidates"][0]["backend"].update(
             {"device_generated_bytes": 1}
+        ),
+        lambda row: row["candidates"][1].update(
+            {
+                "expected_device_generated_bytes":
+                    report.X4C_PRODUCTION_FRESH_DEVICE_GENERATED_BYTES
+            }
         ),
         lambda row: row["rebuild"].pop("accelerated"),
         lambda row: row["rebuild"]["accelerated"].pop("expected_h2d_bytes"),

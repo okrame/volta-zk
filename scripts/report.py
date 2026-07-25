@@ -182,7 +182,8 @@ X4C_GPT2_ACCELERATED_ONLINE_MILESTONE = (
     "X4c-GPT2-real-weight-online-accelerated"
 )
 X4C_PRODUCTION_EXPLICIT_D2D_COPY_BYTES = 1_364_224
-X4C_PRODUCTION_DEVICE_GENERATED_BYTES = 35_727_436_640
+X4C_PRODUCTION_FRESH_DEVICE_GENERATED_BYTES = 35_727_436_640
+X4C_PRODUCTION_REUSED_DEVICE_GENERATED_BYTES = 35_727_436_512
 X4C_GPT2_REBUILD_PREFLIGHT_MILESTONE = "X4c-GPT2-rebuild-preflight"
 X4C_GPT2_PROTOCOL = "x4-zkdeepfold-ud-e29-v4"
 X4C_GPT2_SELECTED_TAPE = (
@@ -3506,12 +3507,17 @@ def _x4c_gpt2_candidate_valid(
         "cpu_fold_tree_clone_bytes": 0,
     }
     if accelerated:
+        expected_device_generated_bytes = (
+            X4C_PRODUCTION_FRESH_DEVICE_GENERATED_BYTES
+            if ordinal == 0
+            else X4C_PRODUCTION_REUSED_DEVICE_GENERATED_BYTES
+        )
         expected_execution.update(
             {
                 "expected_explicit_d2d_copy_bytes":
                     X4C_PRODUCTION_EXPLICIT_D2D_COPY_BYTES,
                 "expected_device_generated_bytes":
-                    X4C_PRODUCTION_DEVICE_GENERATED_BYTES,
+                    expected_device_generated_bytes,
             }
         )
     audit = row["connection_audit"]
@@ -3553,7 +3559,7 @@ def _x4c_gpt2_candidate_valid(
                 and row["expected_device_generated_bytes"]
                 == execution["expected_device_generated_bytes"]
                 == backend["device_generated_bytes"]
-                == X4C_PRODUCTION_DEVICE_GENERATED_BYTES
+                == expected_device_generated_bytes
             )
             if accelerated
             else (

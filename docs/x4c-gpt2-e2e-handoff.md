@@ -15,6 +15,13 @@ validator requires every accelerated rebuild counter. Local tests and
 projections grant no production gate. No new pod has been contacted for this
 milestone.
 
+Local implementation checkpoint
+`065e75c78bd1427329dddbd37be7beb472927b8a` is green: workspace
+**376 passed / 0 failed / 4 preexisting ignored**, Python validators
+**41 passed**, the tamper filter **44 passed**, and the host CUDA reference
+plus all six immutable-input SHA-256 checks pass. This is local preparation,
+not a hardware or production verdict; R1c review remains pending.
+
 The live implementation adds:
 
 - `online-accelerated` in `x4c_gpt2_e2e_record`;
@@ -71,14 +78,14 @@ does not imply five useful independent compute lanes.
 
 The resident byte geometry is:
 
-| Cohort | Coefficients | Host oracle | Full outer cache | Final resident |
-| --- | ---: | ---: | ---: | ---: |
-| mu26 | 4,294,967,296 | 34,359,738,368 | 34,359,738,336 | 73,014,444,000 |
-| mu22 | 4,831,838,208 | 38,654,705,664 | 2,147,483,616 | 45,634,027,488 |
-| mu20 | 436,207,616 | 3,489,660,928 | 536,870,880 | 4,462,739,424 |
-| auxiliary ell17 | 4,194,304 | 33,554,432 | 33,554,400 | 71,303,136 |
-| auxiliary ell16 | 51,380,224 | 411,041,792 | 16,777,184 | 479,199,200 |
-| **Total** | **9,618,587,648** | **76,948,701,184** | **37,094,424,416** | **123,661,713,248** |
+| Cohort | Coefficients | Host oracle | Full outer cache | Final resident | Conservative build peak |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| mu26 | 4,294,967,296 | 34,359,738,368 | 34,359,738,336 | 73,014,444,000 | 90,194,313,216 |
+| mu22 | 4,831,838,208 | 38,654,705,664 | 2,147,483,616 | 45,634,027,488 | 46,707,769,344 |
+| mu20 | 436,207,616 | 3,489,660,928 | 536,870,880 | 4,462,739,424 | 4,731,174,912 |
+| auxiliary ell17 | 4,194,304 | 33,554,432 | 33,554,400 | 71,303,136 | 88,080,384 |
+| auxiliary ell16 | 51,380,224 | 411,041,792 | 16,777,184 | 479,199,200 | 487,587,840 |
+| **Total final** | **9,618,587,648** | **76,948,701,184** | **37,094,424,416** | **123,661,713,248** | — |
 
 The evaluation tables add exactly **9,618,587,648 B**, for a required final
 host payload of **133,280,300,896 B** before ordinary runtime overhead.
@@ -94,11 +101,18 @@ thread-stack and model overhead. This is a geometry reconciliation, not a
 causal timing claim. The measured earlier critical path remains mu26; only a
 new hardware record can attribute accelerated wall time.
 
+With the accelerated serial order, already completed sources, remaining
+coefficient buffers and all evaluation tables are retained. The corresponding
+largest theoretical host payload is **133,297,078,144 B**, reached while
+building auxiliary ell17, again before allocator and runtime overhead.
+
 The existing X4b NTT kernel documents a one-slot device budget of two full
 Fp2 buffers plus `n/2` Fp2 twiddles, exactly `40 × outer_len` bytes:
-**42,949,672,960 B** at mu26 and **2,684,354,560 B** at mu22. N4 tiles are
-capped at **512 MiB**. These are preflight working-set estimates, not observed
-VRAM peaks; native live/peak counters remain mandatory.
+**42,949,672,960 B** at mu26, **2,684,354,560 B** at mu22 and
+**671,088,640 B** at mu20. Auxiliary ell16/ell17 use the **512 MiB** N4 tile
+ceiling as their conservative device estimate. These are preflight
+working-set estimates, not observed VRAM peaks; native live/peak counters
+remain mandatory.
 
 Dependencies are strict within a cohort: coefficients precede E-NTT, all
 codewords precede N4 inner, inner leaves precede outer levels, and the exact

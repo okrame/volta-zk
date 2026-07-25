@@ -346,6 +346,7 @@ its clean descendant closure.
 | X4d Phase 2 codec rebaseline | **LOCAL EXACT REFERENCES + FAIL-CLOSED VALIDATOR GREEN; HARD STOP BEFORE POD / NO GATE VERDICT** (2026-07-25) | Clean source; append-only schema-1 record; response projection explicitly distinguished from materialized settlement fixtures; central validator; historical rows immutable | Source `16e6c40b6620e09363a8c53eb3ecc632fa650f25`; record `x4d-codec-reference-2026-07-25-16e6c40.json`, SHA-256 `d2175a917d967a18784dd90a5bf5190d6ce1e782eb120e9e5a223040aa68d1af`. It binds design SHA-256 `405f3362a45f3d753d65827cdd48aacef2ec0b5c6d00c9f2b450129ad5b36fe8`, generator SHA-256 `95729dc166c2eb292efb570ada9410ac4edac97bb93859ff7b527c411be37bae` and frozen preflight SHA-256 `ba87722362c8825e13e02a6c563a436797ea852e09e1cebcf4a9265c6ce56499`; `git_dirty=false`, `historical_references_modified=false`, `proof_or_gate_verdict=false`. Response projection is exactly **41,270,464 B**, `WEIGHT_PENDING`, with PCS **0 B** and `materialized_wire_fixture=false`. Materialized settlement codec SHA-256 values for `k=1/8/16/32` are `fc5158b3bdd380df6e9d20657b3475fc386f797c151f0f7c214a216e91c356e5`, `81355cb2430d289769ec43c43d4a1ad3833f2f4180609b264bef589bc96b043f`, `62839bbbe8bf494fa2267bf3d486c094a3b51b7eab56e11123f088731eac6221`, `f7df30cddf241143db520c47fb29d9cd4b00b364a33e926d4e7c9a4d88e4739c`; their exact lengths are **2,683,236 / 3,036,204 / 3,439,596 / 4,246,380 B**. The existing central `scripts/report.py` validator pins the complete schema and rejects dirty/source/design/history/verdict/fixture/order/length/digest mutations; report tests are **20/20 PASS**. |
 | X4d Phase 2 review closure | **LOCAL GREEN; PHASE 3 AUTHORIZED / NO HARDWARE VERDICT YET** (2026-07-25) | Explicit M2/Delta post-freeze substitution test; explicit abort-before-settlement terminal test; historical 4,000,000-B G3 scope stated normatively | Design descendant SHA-256 `cd66fc3df5abe5471f59c4a01e79d85382ad052491889c835dcd7de2e16e66a4`; the prior codec record remains immutable evidence for its named source/design checkpoint. Permanent tests `post_freeze_value_substitution_is_rejected_by_m2_mac` and `explicit_abort_before_settlement_marks_pending_terminal_unverified` pass; full PCS count is now **114** and the workspace remains green. G3 now says verbatim that the historical **4,000,000-B** ceiling belongs to the X4/X4b/X4c per-response PCS block, while X4d settlement uses `2,632,812 + 50,424*k`: `k=32` is **4,246,380 B**, or **132,699.375 settlement B/response**, with no historical gate relaxation. |
 | X4d Phase 3 run-of-record harness | **LOCAL HARNESS GREEN; INFRASTRUCTURE HARD STOP — POD ENDPOINT REFUSED / NO HARDWARE VERDICT** (2026-07-25) | Exact preflight and online record producers; clean-source/design/source-hash admission; pinned 8/27 CPU pools; response-priority ABBA accounting; one real 16-response settlement; central fail-closed validators | Producer source SHA-256 `978b6641a34f1bd3149a5275bcbfd7f34678e80d0602ec01c1747e1154521b2f`; design SHA-256 `cd66fc3df5abe5471f59c4a01e79d85382ad052491889c835dcd7de2e16e66a4`. Both CPU and CUDA builds are green; the full no-default-features workspace is green with bench **30**, PCG **44**, PCS **114**, proto **110**, and the central report suite is **21/21 PASS**. The adapter consumes existing X4c onboarding/X4d engines rather than adding a PCS, PCG pool, lifecycle or validator framework. Four independent SSH attempts to owner-supplied `64.247.206.116:13449` were refused before any remote command. Consequently no preflight JSON, NOTE-6, onboarding, G1/G2/G3/G4/G5/G6, hardware timing, comparison-table update or provider termination occurred; every Phase-3 gate is **NOT EVALUATED**, and NOTE-6 remains the first permitted production-size workload. |
+| X4d Phase 3 selected-GPU preflight correction | **LOCAL GREEN; POD REACHABLE / NOTE-6 STILL FIRST** (2026-07-25) | The frozen profile requires exactly one selected A100, not a single-GPU host; one `CUDA_VISIBLE_DEVICES` selector now drives both CUDA and the recorded `nvidia-smi --id` inventory | Replacement producer source SHA-256 `0cd17d332986bc9c94e78ef83c7e595007a81de2da8334e72bc38cb9f8e98a16`. The new endpoint `64.247.206.116:19482` exposes 2× A100-SXM4 80 GB, 128 CPUs, about 1.97 TiB RAM and sufficient volume. Run-of-record commands select exactly GPU 0, record its UUID and memory, and leave GPU 1 unused. No production-size workload or gate verdict preceded this correction. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -413,6 +414,25 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-25 — X4d profile admission distinguishes one selected GPU from
+  total host inventory; no gate or hardware workload preceded the fix.**
+  The replacement endpoint is reachable and exposes two A100-SXM4 80 GB
+  devices. The frozen profile says “exactly one selected A100”, but the first
+  harness counted every row emitted by an unfiltered `nvidia-smi`, which
+  would reject a strictly isolated single-GPU run on a multi-GPU host.
+  Record production now requires `CUDA_VISIBLE_DEVICES` to contain at most
+  one selector, passes that same selector to `nvidia-smi --id`, and still
+  requires exactly one resulting A100-SXM4 80 GB row. CUDA and hardware
+  accounting therefore refer to the same physical device; the other device
+  is unused. This neither relaxes the GPU SKU nor permits multi-GPU proving.
+  Replacement producer SHA-256 is
+  `0cd17d332986bc9c94e78ef83c7e595007a81de2da8334e72bc38cb9f8e98a16`.
+
+  The read-only host census observed two qualifying GPUs, 128 CPUs, about
+  **1.97 TiB** RAM and a volume well above **150 GB**. The fresh container
+  had no repository checkout. No proof, NOTE-6, onboarding, model load,
+  allocation or gate workload ran, so NOTE-6 remains first.
 
 - **2026-07-25 — X4d Phase 3 run-of-record harness is locally green;
   owner-supplied pod endpoint refused all connections before any command.**

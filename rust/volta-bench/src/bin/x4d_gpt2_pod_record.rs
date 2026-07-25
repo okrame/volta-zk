@@ -375,7 +375,15 @@ fn hardware_preflight(args: &Args) -> Result<HardwareRow, String> {
     {
         return Err("X4d split CPU set is outside the process affinity mask".to_owned());
     }
-    let output = Command::new("nvidia-smi")
+    let selected_gpu = std::env::var("CUDA_VISIBLE_DEVICES").ok().filter(|value| !value.is_empty());
+    if selected_gpu.as_deref().is_some_and(|value| value.split(',').count() != 1) {
+        return Err("profile requires CUDA_VISIBLE_DEVICES to select exactly one GPU".to_owned());
+    }
+    let mut nvidia_smi = Command::new("nvidia-smi");
+    if let Some(selector) = selected_gpu.as_deref() {
+        nvidia_smi.arg(format!("--id={selector}"));
+    }
+    let output = nvidia_smi
         .args(["--query-gpu=name,uuid,memory.total", "--format=csv,noheader,nounits"])
         .output()
         .map_err(|error| format!("run nvidia-smi: {error}"))?;

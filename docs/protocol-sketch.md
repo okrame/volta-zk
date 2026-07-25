@@ -123,6 +123,7 @@ stated as equality of `PMF` transcript distributions.
 | **Affine late atoms followed by a sound chain (M11b)**: a false fixed pair collapsed by post-commit `eta`, degree-bounded clear sumcheck, and arbitrary later chain has bad-tape numerator `1 + Σd_i + B_up`; the proof uses fixed-slice counts and assumes no independence | `VoltaZk/BoundaryThinningSound.lean` (`affine_late_atoms_then_chain_sound`) | **proved** |
 | **Shared full-vector pair collapse (M11c)**: one fresh `t` collapses every fixed pair simultaneously with one root independent of vector length, then composes with a later bound `B_after` | `VoltaZk/BoundaryThinningSound.lean` (`shared_pair_collapse_then_chain_sound`) | **proved** |
 | **Concrete `layer_leaf_ones_aux` M11 instantiation**: `C=2+n_cols` enumerates `[p0,p1]`, `[q0,q1]`, then every column half-pair; the model unfolds the affine live/true totals and exact terminal formula, proves degree-three `0/2/3` reconstruction and clear recursion, and proves the child fold is the LSB-first MLE at `(t,rho)` | `VoltaZk/BoundaryThinningSound.lean` (`layerLeafOnesAux_terminal`, `lsbMle_cons`, `layer_leaf_ones_aux_full_vector_collapse_sound`, `layer_leaf_ones_aux_clearAccepts_iff_terminal`, `layer_leaf_ones_aux_affine_then_chain_sound`) | **proved** |
+| **Deferred-settlement composition (M12)**: collision-conditional append binding and exact contiguous range reconstruction bind the union of frozen claim identities; canonical two-claim grouping proves the runtime `3,320` cap is the v4 relation/active-polynomial cap; one auxiliary mask evaluated at `m` frozen points retains a fiber of at least `|E|^(2^ell-m)` and the GPT-2 `m<=32` budgets are positive; each frozen response yields its existing M9 statement or a per-response MAC event; one accepted settlement is bounded by the unchanged `x4ResponseErrorV4` plus those MAC terms, and M10's fixed-rest lift plus a union bound gives `S*x4ResponseErrorV4 + Σ MAC` across the connection without independence; pending/failed responses cannot be weight-accepted and a failed connection cannot retry settlement | `VoltaZk/X4DeferredSettlement.lean` (`x4d_accumulator_append_binding`, `x4d_verified_settlement_has_exact_frozen_union`, `x4d_claim_cap_implies_v4_bounds`, `x4d_batched_mask_fiber_lower_bound`, `x4d_frozen_response_m9_or_mac_bad`, `x4d_settlement_soundness_m12`, `x4d_connection_composition_m12`, `x4d_connection_fixed_slice_lift_m10`, `x4d_pending_never_weight_accepted`, `x4d_failed_settlement_cannot_retry`) | **proved** |
 | PCG/Ferret realization, PCS, LogUp, UC | `VoltaZk/Ideal.lean` | assumed (named axioms) |
 
 Axiom audit: every audited lemma — including the main ZK theorem, the generic
@@ -325,13 +326,21 @@ multiplicative claims alongside the `Π_ZeroBatch` opening `m_Z`
    `connection_responses_perfect_zk` composes fresh response windows under one
    `Δ`; the concrete lifecycle obligations remain outside Lean as stated
    above.
+9. ~~**Boundary-thinning composition (M11)**~~ — **done**:
+   `BoundaryThinningSound.lean` proves the late-point authenticated bridge,
+   affine late-atom chain, shared full-vector collapse and concrete
+   `layer_leaf_ones_aux` instantiation listed in the table.
+10. ~~**X4d deferred-settlement composition (M12)**~~ — **done**:
+    `X4DeferredSettlement.lean` proves exact frozen-range binding, the
+    canonical `3,320` cap bridge, the batched-mask fiber bound, M9 event
+    lifting, the unchanged v4 settlement expression plus per-response MAC
+    terms, M10 connection composition and terminal pending/failure states.
 
 **The formal exit gate to the implementation phase is closed**: every
 security claim of the paper draft, including the scalar-power batching used
-by Rust, is either a Lean theorem (M1–M10) or a
+by Rust and X4d deferred settlement, is either a Lean theorem (M1–M12) or a
 named, isolated assumption in `VoltaZk/Ideal.lean` (PCG/Ferret realization,
 weight-PCS binding, LogUp-GKR soundness, full UC composition — all
 established-literature or modular/swappable components, none in the
-per-token critical path). Next phase: CUDA/CPU prototype and the ρ benchmark
-protocol; LogUp composition gets a paper proof once the prototype freezes
-the fused-block circuit structure.
+per-token critical path). The next authorized X4d step is the local Rust
+accumulator/settlement implementation under the frozen Phase-1 gates.

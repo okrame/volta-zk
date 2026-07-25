@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 1 DESIGN/M12/CODEC/GATES FROZEN — KEY-REUSE STOP DISPOSED — HARD STOP)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d M12 LEAN GREEN — LOCAL RUST AUTHORIZED; NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -341,6 +341,7 @@ its clean descendant closure.
 | X4c real-weight accelerated fresh rebuild | **A100 REAL-WEIGHT E2E PASS; R1c REVIEW PENDING** (2026-07-25) | Discriminated schema-2 `X4c-GPT2-real-weight-online-accelerated`; dedicated fail-closed validator; unchanged durable tier, roots, protocol and bytes; one warm-up + three measured | Clean source `6277c3c`; onboarding SHA-256 `bdf17c56e8e9a4d152b40ed2e1653d34cd665f09f52cb9dfe1cb1f57ae5e165d`; online SHA-256 `5a5417c11c0d5b4abe57af1e6ea5fa1191962c709c0f7b86fb780c30af1dac89`. Accelerated rebuild **240.623922522 s**, all five roots exact, scratch **0 B**, peak host/VRAM **133,544,189,952 / 43,486,546,048 B**. Four candidates accepted; selected open/verify **0.130465952 / 0.059185522 s PASS**, proof-ready/reusable **51.934139091 / 51.959601330 s**, complete E2E **303.190020886 s informative**. D2D **1,364,224 B** and ordinal-aware device-generated **35,727,436,640 / 35,727,436,512 B** exact. PCS/response **2,683,236 / 43,953,700 B** exact; zero response-window I/O/staging. R1c independent review is not claimed. |
 | X4c schema-3 cryptographic build identity | **LOCAL MIGRATION GREEN; HARD STOP BEFORE NEXT POD** (2026-07-25) | Schema 2 immutable; schema 3 replaces same-commit with exact automatic crypto-build identity plus existing artifact/root/rebuild gates; append-only validator receipt; 2,700-s pod-ready→rebuild diagnostic target | `volta-x4c-crypto-build-v1` canonically covers production Rust/CUDA/Lean/build/spec sources and excludes validator/report-only files. Online runner checks identity before durable reads, permits differing clean Git SHAs only with exact identity equality, and writes a hash-anchored rebuild-admission marker before candidates. Target misses are recorded but do not timeout, kill, or fail validation; automatic CPU fallback remains forbidden. Local verification: **380 PASS / 0 failure / 4 ignored pre-existing**, schema-3/report validator **19/19 PASS**, tamper filter **44/44 PASS**. Next pod requires one new onboarding because the old durable tier was removed; preserve the new 9,618,587,808-B tier for later reuse. No protocol/ABI/root/proof/Lean/soundness change; hardware qualification pending. |
 | X4d deferred settlement Phase 1 | **DESIGN/M12 STATEMENTS/CODEC/GATES FROZEN; HARD STOP BEFORE LEAN, RUST OR POD** (2026-07-25) | Per-connection digest-chained frozen-claim accumulator; soft trigger 1,632 claims, hard cap 3,320; one settlement/epoch/opening; pending product state; key-reuse stop disposed; G1--G6 preregistered | Design `docs/x4d-deferred-settlement-design.md`, SHA-256 `c59fcb0163930b63a2f12e000b4b6b3ab3a24966b550c1249195196add5f9ff0`. Exact response **41,270,464 B**. GPT-2 settlement bytes are **2,632,812 + 50,424*k**: `k=1/8/16/32` gives **2,683,236 / 3,036,204 / 3,439,596 / 4,246,380 B**. At `k=32`, claims/masked groups are **3,264 / 1,632**; 102 active chain polynomials, 27 fold rounds, 27,564 symbols and 67,930 sibling digests remain fixed. The exact **80.25537016399041-bit** settlement expression and 78.809294874-bit floor are unchanged; M12 adds the semantic cap bridge and composes per-response MAC terms through M10. `runpod-a100-x4d-v1` requires A100-SXM4 80 GB, >=256 GiB RAM, >=150 GB volume, split 8/27 workers and NOTE-6 first. No gate verdict, Lean proof, Rust/reference change or pod work. |
+| X4d Phase 2 M12 Lean-first discharge | **LEAN GREEN; LOCAL RUST AUTHORIZED; NO POD** (2026-07-25) | Frozen statements prove without weakening; full build, zero `sorry`/`admit`, derived audit green; public soundness theorem exposes all four v4 event bounds and adds only the per-response M9 MAC terms | `X4DeferredSettlement.lean` proves append/range binding, the structural 3,320 cap bridge, 3,321 refusal, batched-mask fiber and GPT-2 hiding budget, exact frozen-union/M9 lifting, unchanged v4 settlement error, M10 connection union, one opening per epoch, and terminal abort/burn semantics. The public M12 theorem requires Fold, ClaimReduce, LinkBad and ZeroBatch with their exact frozen coefficients; no certificate premise, fifth event or deterministic equality is smuggled in. Build **3,253 jobs**; audit **236 total / 143 X4** (**27 new M12 targets**), standard axioms only. Audit stdout SHA-256 `4f7f95c6a08ced10a59f252c72113f338c08a430e23675e79a3eaed7f76405cd`; M12 source SHA-256 `762370a896785ca66167c62fb749b43181cde11c9602961ee983b0991a5b8240`. No Rust file, reference artifact, record or pod was touched at this checkpoint. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -408,6 +409,40 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-25 — X4d Phase 2 M12 Lean-first discharge is green; the local
+  Rust phase is authorized with no weakening and no pod authorization.**
+  The owner approved Phase 2 on the explicit condition that Rust remain
+  untouched until Lean was fully green and asked that the already
+  decision-saturated repository not gain avoidable architecture.  M12 is
+  therefore one thin module over the existing M9, M10 and X4-v4 types:
+  frozen claims contain the actual `PCSOpening`; settlement error is an
+  alias of `x4ResponseErrorV4`; connection lifting calls the existing M10
+  fixed-rest theorem; and one-opening state reuses the existing epoch rule.
+  No new ideal interface or competing protocol abstraction was introduced.
+
+  The public settlement-soundness theorem exposes the complete LinkBad
+  counter inventory rather than accepting an opaque soundness certificate:
+  Fold, ClaimReduce, authenticated-output LinkBad and ZeroBatch are required
+  with the exact v4 coefficients, then the theorem adds only the union of
+  the frozen responses' existing M9 MAC events.  The exact
+  `3320*(9/16)^111 + 28,522,064,267,253/|E|` term is definitionally the
+  existing v4 expression.  Canonical grouping derives relation count and
+  active-polynomial count from the same raw claim count, proving that the
+  `3,320` runtime cap is structural; `3,321` is refused.  One settlement mask
+  retains at least `|E|^(2^ell-m)` candidates after `m` frozen evaluations,
+  and the GPT-2 `m<=32` budgets prove for every registered `mu`.
+
+  `lake build` completed **3,253 jobs**.  The derived audit covers **236**
+  total targets, **143** in the X4 block and **27** new M12 targets; it finds
+  zero `sorry`/`admit`, no `Ideal` dependency and only `propext`,
+  `Classical.choice`, and `Quot.sound`.  Audit stdout SHA-256 is
+  `4f7f95c6a08ced10a59f252c72113f338c08a430e23675e79a3eaed7f76405cd`;
+  `lean/VoltaZk/X4DeferredSettlement.lean` SHA-256 is
+  `762370a896785ca66167c62fb749b43181cde11c9602961ee983b0991a5b8240`.
+  This closes the Lean-first hard stop and authorizes only the Phase-2 local
+  Rust implementation.  No Rust source, reference artifact, benchmark
+  record or pod state changed at this boundary.
 
 - **2026-07-25 — X4d deferred settlement Phase 1 preregistered; product
   acceptance is explicitly split; the online key-reuse stop is disposed;

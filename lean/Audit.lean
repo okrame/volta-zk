@@ -1,7 +1,7 @@
 import VoltaZk
 
 /-!
-Machine-readable named-assumption audit for the M1–M10 boundary.
+Machine-readable named-assumption audit for the M1–M12 boundary.
 
 Run with `lake env lean Audit.lean`. None of the four declarations in
 `VoltaZk.Ideal` should appear below; M9 carries `BindsIntoMac` as an explicit
@@ -241,3 +241,34 @@ vector-RLC bounds from being mistaken for implementation bounds.
 #print axioms VoltaZk.x4_response_soundness_v4
 #print axioms VoltaZk.x4_response_error_v4_lt_two_pow_neg_80
 #print axioms VoltaZk.x4_response_error_v4_meets_registered_target
+
+-- X4d M12: deferred settlement over the exact frozen-claim union.
+-- This block must remain a composition of M9, M10 and the audited v4 events;
+-- no new ideal functionality is admitted.
+#print axioms VoltaZk.x4d_claim_cap_is_v4_cap
+#print axioms VoltaZk.x4d_query_count_is_v4_query_count
+#print axioms VoltaZk.x4d_claim_cap_implies_v4_bounds
+#print axioms VoltaZk.x4d_claim_3321_refused
+#print axioms VoltaZk.x4d_accumulator_append_binding
+#print axioms VoltaZk.x4d_settlement_range_is_exact_union
+#print axioms VoltaZk.x4d_settlement_range_roles_agree
+#print axioms VoltaZk.x4d_frozen_response_m9_or_mac_bad
+#print axioms VoltaZk.x4d_frozen_claim_bad_card_le
+#print axioms VoltaZk.x4d_frozen_claim_opening_mac_sound
+#print axioms VoltaZk.x4d_batched_mask_fiber_lower_bound
+#print axioms VoltaZk.x4d_gpt2_mask_budget
+#print axioms VoltaZk.x4d_verified_settlement_has_exact_frozen_union
+#print axioms VoltaZk.x4d_accepted_settlement_implies_each_m9_or_bad
+#print axioms VoltaZk.x4d_settlement_error_is_v4
+#print axioms VoltaZk.x4d_settlement_error_expanded
+#print axioms VoltaZk.x4d_response_mac_union_error_le_sum
+#print axioms VoltaZk.x4d_settlement_soundness_m12
+#print axioms VoltaZk.x4d_connection_composition_m12
+#print axioms VoltaZk.x4d_connection_fixed_slice_lift_m10
+#print axioms VoltaZk.x4d_one_settlement_opening_per_epoch
+#print axioms VoltaZk.x4d_pending_never_weight_accepted
+#print axioms VoltaZk.x4d_abort_pending_is_terminal_unverified
+#print axioms VoltaZk.x4d_abort_preserves_older_verified
+#print axioms VoltaZk.x4d_failed_settlement_cannot_retry
+#print axioms VoltaZk.x4d_gpt2_codec_preflight
+#print axioms VoltaZk.x4d_gpt2_cap_geometry

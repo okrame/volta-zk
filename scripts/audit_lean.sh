@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Reproduce the M1-M11 named-assumption audit used by the artifact.
+# Reproduce the M1-M12 named-assumption audit used by the artifact.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -91,7 +91,7 @@ if [[ "$reported_count" != "${#audited_theorems[@]}" ]]; then
     exit 1
 fi
 if rg -q 'sorryAx|VoltaZk\.Ideal|FerretRealizesSVOLE|WeightPCSBinding|LogUpGKRSound|UCComposition' <<<"$output"; then
-    echo "audit_lean: a deferred named assumption entered the proved M1-M11 boundary" >&2
+    echo "audit_lean: a deferred named assumption entered the proved M1-M12 boundary" >&2
     exit 1
 fi
 

@@ -11,6 +11,7 @@ pub mod logup;
 pub mod x4c_gpt2;
 pub mod x4c_instrumentation;
 pub mod x4c_rebuild_record;
+pub mod x4d_gpt2;
 
 use volta_field::{Fp, Fp2, FpStream};
 

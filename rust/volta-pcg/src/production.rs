@@ -113,6 +113,106 @@ pub struct X4ResponseAuthorizationBurn {
     pub freshness_record_digest_bytes: [u8; 32],
 }
 
+/// Cross-process freshness identity for one X4d settlement. The query seed is
+/// reserved globally; the remaining fields bind it to the exact connection
+/// range and the settlement-fresh auxiliary commitment.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct X4dSettlementFreshnessBinding {
+    pub connection_id: [u8; 32],
+    pub static_weight_commitment_digest: [u8; 32],
+    pub settlement_epoch: u64,
+    pub sealed_accumulator_digest: [u8; 32],
+    pub auxiliary_seed_commitment: [u8; 32],
+    pub auxiliary_root_set_digest: [u8; 32],
+    pub query_seed_digest: [u8; 32],
+    pub mask_count: u32,
+    pub expected_full_correlations_per_role: u64,
+}
+
+impl X4dSettlementFreshnessBinding {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        connection_id: [u8; 32],
+        static_weight_commitment_digest: [u8; 32],
+        settlement_epoch: u64,
+        sealed_accumulator_digest: [u8; 32],
+        auxiliary_seed_commitment: [u8; 32],
+        auxiliary_root_set_digest: [u8; 32],
+        query_seed_digest: [u8; 32],
+        mask_count: u32,
+        expected_full_correlations_per_role: u64,
+    ) -> Result<Self, PhaseBError> {
+        if connection_id == [0; 32]
+            || static_weight_commitment_digest == [0; 32]
+            || settlement_epoch == 0
+            || sealed_accumulator_digest == [0; 32]
+            || auxiliary_seed_commitment == [0; 32]
+            || auxiliary_root_set_digest == [0; 32]
+            || query_seed_digest == [0; 32]
+            || mask_count == 0
+            || expected_full_correlations_per_role == 0
+        {
+            return Err(PhaseBError::new("X4d settlement freshness field is zero"));
+        }
+        Ok(Self {
+            connection_id,
+            static_weight_commitment_digest,
+            settlement_epoch,
+            sealed_accumulator_digest,
+            auxiliary_seed_commitment,
+            auxiliary_root_set_digest,
+            query_seed_digest,
+            mask_count,
+            expected_full_correlations_per_role,
+        })
+    }
+
+    fn digest(self) -> [u8; 32] {
+        digest_parts(
+            b"volta-pcg/x4d-settlement-freshness-binding/v1",
+            &[
+                &self.connection_id,
+                &self.static_weight_commitment_digest,
+                &self.settlement_epoch.to_le_bytes(),
+                &self.sealed_accumulator_digest,
+                &self.auxiliary_seed_commitment,
+                &self.auxiliary_root_set_digest,
+                &self.query_seed_digest,
+                &self.mask_count.to_le_bytes(),
+                &self.expected_full_correlations_per_role.to_le_bytes(),
+            ],
+        )
+    }
+
+    pub fn digest_hex(self) -> String {
+        hex32(self.digest())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct X4dSettlementFreshnessBurn {
+    binding: X4dSettlementFreshnessBinding,
+    epoch_marker_path: PathBuf,
+    auxiliary_marker_path: PathBuf,
+    query_marker_path: PathBuf,
+    pub freshness_record_digest: String,
+    pub freshness_record_digest_bytes: [u8; 32],
+}
+
+impl X4dSettlementFreshnessBurn {
+    pub fn epoch_marker_path(&self) -> &Path {
+        &self.epoch_marker_path
+    }
+
+    pub fn auxiliary_marker_path(&self) -> &Path {
+        &self.auxiliary_marker_path
+    }
+
+    pub fn query_marker_path(&self) -> &Path {
+        &self.query_marker_path
+    }
+}
+
 impl X4ResponseAuthorizationBurn {
     pub fn epoch_marker_path(&self) -> &Path {
         &self.epoch_marker_path
@@ -341,6 +441,54 @@ pub struct CorrelationAllocation {
     pub response_allocation_digest: String,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub struct X4dSettlementCorrelationDomain {
+    pub connection_id: [u8; 32],
+    pub settlement_epoch: u64,
+    pub lane: u32,
+    pub ordinal: u64,
+    pub tensor_tag: [u8; 32],
+}
+
+impl X4dSettlementCorrelationDomain {
+    pub fn new(
+        connection_id: [u8; 32],
+        settlement_epoch: u64,
+        lane: u32,
+        ordinal: u64,
+        tensor_tag: [u8; 32],
+    ) -> Result<Self, PhaseBError> {
+        if connection_id == [0; 32] || settlement_epoch == 0 || tensor_tag == [0; 32] {
+            return Err(PhaseBError::new("X4d settlement correlation domain field is zero"));
+        }
+        Ok(Self { connection_id, settlement_epoch, lane, ordinal, tensor_tag })
+    }
+
+    fn digest(self) -> [u8; 32] {
+        digest_parts(
+            b"volta-pcg/x4d-settlement-correlation-domain/v1",
+            &[
+                &self.connection_id,
+                &self.settlement_epoch.to_le_bytes(),
+                &self.lane.to_le_bytes(),
+                &self.ordinal.to_le_bytes(),
+                &self.tensor_tag,
+            ],
+        )
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct X4dSettlementCorrelationAllocation {
+    pub settlement_epoch: u64,
+    pub stage: u32,
+    pub start: u64,
+    pub count: u64,
+    pub domain_digest: String,
+    pub connection_allocation_digest: String,
+    pub settlement_allocation_digest: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct BaseCorrelationReservation {
     pub stage: u32,
@@ -356,6 +504,52 @@ pub struct ConnectionResponseAudit {
     pub channel_ledger_digest: String,
     pub correlations_consumed: u64,
     pub channel_frames: u64,
+}
+
+/// Durable X4d claim-freeze receipt.  The PCS crate owns canonical frame and
+/// accumulator validation; fase-D owns sync-before-delivery and nonce/lifecycle
+/// binding without depending on the proof crate.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct X4dClaimsFrozenJournalAudit {
+    pub response_nonce_digest: String,
+    pub first_claim_index: u64,
+    pub claim_count: u32,
+    pub ending_accumulator_digest: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct X4dSettlementSealJournalAudit {
+    pub settlement_epoch: u64,
+    pub first_claim_index: u64,
+    pub claim_count: u32,
+    pub starting_accumulator_digest: String,
+    pub sealed_accumulator_digest: String,
+    pub ordered_response_nonces_digest: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct X4dSettlementFreshnessJournalAudit {
+    pub settlement_epoch: u64,
+    pub static_weight_commitment_digest: String,
+    pub sealed_accumulator_digest: String,
+    pub auxiliary_seed_commitment: String,
+    pub auxiliary_root_set_digest: String,
+    pub query_seed_digest: String,
+    pub mask_count: u32,
+    pub expected_full_correlations_per_role: u64,
+    pub freshness_record_digest: String,
+    #[serde(skip)]
+    pub static_weight_commitment_digest_bytes: [u8; 32],
+    #[serde(skip)]
+    pub sealed_accumulator_digest_bytes: [u8; 32],
+    #[serde(skip)]
+    pub auxiliary_seed_commitment_bytes: [u8; 32],
+    #[serde(skip)]
+    pub auxiliary_root_set_digest_bytes: [u8; 32],
+    #[serde(skip)]
+    pub query_seed_digest_bytes: [u8; 32],
+    #[serde(skip)]
+    pub freshness_record_digest_bytes: [u8; 32],
 }
 
 #[derive(Clone, Debug)]
@@ -392,6 +586,16 @@ pub struct ConnectionHandle {
     allocated_domains: HashSet<[u8; 32]>,
     allocation_digest: [u8; 32],
     channel_digest: [u8; 32],
+    x4d_frozen_claims: u64,
+    x4d_verified_claims: u64,
+    x4d_accumulator_digest: Option<[u8; 32]>,
+    x4d_next_settlement_epoch: u64,
+    x4d_inflight_settlement: Option<X4dSettlementSealJournalAudit>,
+    x4d_inflight_settlement_freshness: Option<X4dSettlementFreshnessJournalAudit>,
+    x4d_used_auxiliary_root_sets: HashSet<[u8; 32]>,
+    x4d_settlement_allocation_digest: Option<[u8; 32]>,
+    x4d_settlement_correlations_consumed: u64,
+    x4d_active_response_freeze_recorded: bool,
     terminal_active_nonce_digest: Option<[u8; 32]>,
     terminal_record_synced: bool,
 }
@@ -498,6 +702,14 @@ pub struct AllocatedSubCorrelationBatch<'a> {
 #[derive(Debug)]
 pub struct AllocatedPcgPools {
     pub allocation: CorrelationAllocation,
+    pub prover: ProverPcgPool,
+    pub verifier: VerifierPcgPool,
+    pub verifier_delta: volta_field::Fp2,
+}
+
+#[derive(Debug)]
+pub struct AllocatedX4dSettlementPcgPools {
+    pub allocation: X4dSettlementCorrelationAllocation,
     pub prover: ProverPcgPool,
     pub verifier: VerifierPcgPool,
     pub verifier_delta: volta_field::Fp2,
@@ -722,6 +934,86 @@ impl ProductionFaseDConnection {
         Ok(audit)
     }
 
+    fn load_pcg_pools(
+        &mut self,
+        stage: u32,
+        allocation_start: u64,
+        sub_corrs: usize,
+        full_corrs: usize,
+    ) -> Result<(ProverPcgPool, VerifierPcgPool), PhaseBError> {
+        let loaded = self.try_load_pcg_pools(stage, allocation_start, sub_corrs, full_corrs);
+        if loaded.is_err() {
+            let _ = self.connection.abort(ConnectionAbortReason::ProtocolError);
+        }
+        loaded
+    }
+
+    fn try_load_pcg_pools(
+        &mut self,
+        stage: u32,
+        allocation_start: u64,
+        sub_corrs: usize,
+        full_corrs: usize,
+    ) -> Result<(ProverPcgPool, VerifierPcgPool), PhaseBError> {
+        if self.expansion.params.plan != crate::FaseDStagePlan::TerminalOne {
+            return Err(PhaseBError::new(
+                "digest-and-release chain-six connection has no allocatable flat pool",
+            ));
+        }
+        let stage_offset = match stage {
+            0 => 0usize,
+            1 => self.expansion.capacity.main_residual,
+            _ => {
+                return Err(PhaseBError::new(
+                    "terminal-one connection has only main and stage-1 pools",
+                ));
+            }
+        };
+        let local = usize::try_from(allocation_start)
+            .map_err(|_| PhaseBError::new("allocation start exceeds usize"))?;
+        let start = stage_offset
+            .checked_add(local)
+            .ok_or_else(|| PhaseBError::new("connection pool offset overflow"))?;
+
+        if let Some(spool) = self.correlation_spool.as_mut() {
+            return spool.allocate(start, sub_corrs, full_corrs);
+        }
+
+        let raw_count = sub_corrs
+            .checked_add(
+                full_corrs
+                    .checked_mul(2)
+                    .ok_or_else(|| PhaseBError::new("full-correlation raw count overflow"))?,
+            )
+            .ok_or_else(|| PhaseBError::new("raw-correlation count overflow"))?;
+        let end = start
+            .checked_add(raw_count)
+            .ok_or_else(|| PhaseBError::new("connection pool range overflow"))?;
+        if end > self.expansion.prover.subs.len() || end > self.expansion.verifier.sub_keys.len() {
+            return Err(PhaseBError::new("connection allocation exceeds retained crypto pool"));
+        }
+        let prover_raw = &self.expansion.prover.subs[start..end];
+        let verifier_raw = &self.expansion.verifier.sub_keys[start..end];
+        let mut prover = ProverPcgPool {
+            subs: prover_raw[..sub_corrs].to_vec(),
+            fulls: Vec::with_capacity(full_corrs),
+        };
+        let mut verifier = VerifierPcgPool {
+            sub_keys: verifier_raw[..sub_corrs].to_vec(),
+            full_keys: Vec::with_capacity(full_corrs),
+        };
+        for index in 0..full_corrs {
+            let lo = sub_corrs + 2 * index;
+            let hi = lo + 1;
+            prover.fulls.push(FullVole {
+                x: volta_field::Fp2::from_base(prover_raw[lo].r) + GAMMA.mul_base(prover_raw[hi].r),
+                m: prover_raw[lo].m + GAMMA * prover_raw[hi].m,
+            });
+            verifier.full_keys.push(verifier_raw[lo] + GAMMA * verifier_raw[hi]);
+        }
+        Ok((prover, verifier))
+    }
+
     /// Allocate canonical raw stage output and convert the requested tail
     /// pairs into full `F_p²` correlations without changing logical order.
     pub fn allocate_pcg_pools(
@@ -740,66 +1032,44 @@ impl ProductionFaseDConnection {
             .ok_or_else(|| PhaseBError::new("response raw-correlation count overflow"))?;
         let raw_count_u64 = u64::try_from(raw_count)
             .map_err(|_| PhaseBError::new("response raw-correlation count exceeds u64"))?;
-        if self.correlation_spool.is_some() {
-            let allocation = self.connection.allocate(stage, raw_count_u64, domain)?;
-            let stage_offset = match stage {
-                0 => 0usize,
-                1 => self.expansion.capacity.main_residual,
-                _ => {
-                    self.connection.abort(ConnectionAbortReason::ProtocolError)?;
-                    return Err(PhaseBError::new(
-                        "terminal-one connection has only main and stage-1 pools",
-                    ));
-                }
-            };
-            let local = usize::try_from(allocation.start)
-                .map_err(|_| PhaseBError::new("allocation start exceeds usize"))?;
-            let start = stage_offset
-                .checked_add(local)
-                .ok_or_else(|| PhaseBError::new("connection spool offset overflow"))?;
-            let loaded = self
-                .correlation_spool
-                .as_mut()
-                .expect("spool presence checked")
-                .allocate(start, sub_corrs, full_corrs);
-            let (prover, verifier) = match loaded {
-                Ok(value) => value,
-                Err(error) => {
-                    let _ = self.connection.abort(ConnectionAbortReason::ProtocolError);
-                    return Err(error);
-                }
-            };
-            return Ok(AllocatedPcgPools {
-                allocation,
-                prover,
-                verifier,
-                verifier_delta: self.expansion.verifier_delta,
-            });
-        }
-        let batch = self.allocate_sub_correlations(stage, raw_count_u64, domain)?;
-        let mut prover = ProverPcgPool {
-            subs: batch.prover[..sub_corrs].to_vec(),
-            fulls: Vec::with_capacity(full_corrs),
-        };
-        let mut verifier = VerifierPcgPool {
-            sub_keys: batch.verifier_keys[..sub_corrs].to_vec(),
-            full_keys: Vec::with_capacity(full_corrs),
-        };
-        for index in 0..full_corrs {
-            let lo = sub_corrs + 2 * index;
-            let hi = lo + 1;
-            prover.fulls.push(FullVole {
-                x: volta_field::Fp2::from_base(batch.prover[lo].r)
-                    + GAMMA.mul_base(batch.prover[hi].r),
-                m: batch.prover[lo].m + GAMMA * batch.prover[hi].m,
-            });
-            verifier.full_keys.push(batch.verifier_keys[lo] + GAMMA * batch.verifier_keys[hi]);
-        }
+        let allocation = self.connection.allocate(stage, raw_count_u64, domain)?;
+        let (prover, verifier) =
+            self.load_pcg_pools(stage, allocation.start, sub_corrs, full_corrs)?;
         Ok(AllocatedPcgPools {
-            allocation: batch.allocation,
+            allocation,
             prover,
             verifier,
-            verifier_delta: batch.verifier_delta,
+            verifier_delta: self.expansion.verifier_delta,
+        })
+    }
+
+    /// Allocate canonical raw stage output for one durably fresh X4d
+    /// settlement. The physical pool loader is shared with response proving,
+    /// while the lifecycle allocation domain and ledger remain disjoint.
+    pub fn allocate_x4d_settlement_pcg_pools(
+        &mut self,
+        stage: u32,
+        sub_corrs: usize,
+        full_corrs: usize,
+        domain: X4dSettlementCorrelationDomain,
+    ) -> Result<AllocatedX4dSettlementPcgPools, PhaseBError> {
+        let raw_count = sub_corrs
+            .checked_add(
+                full_corrs
+                    .checked_mul(2)
+                    .ok_or_else(|| PhaseBError::new("full-correlation raw count overflow"))?,
+            )
+            .ok_or_else(|| PhaseBError::new("settlement raw-correlation count overflow"))?;
+        let raw_count_u64 = u64::try_from(raw_count)
+            .map_err(|_| PhaseBError::new("settlement raw-correlation count exceeds u64"))?;
+        let allocation = self.connection.allocate_x4d_settlement(stage, raw_count_u64, domain)?;
+        let (prover, verifier) =
+            self.load_pcg_pools(stage, allocation.start, sub_corrs, full_corrs)?;
+        Ok(AllocatedX4dSettlementPcgPools {
+            allocation,
+            prover,
+            verifier,
+            verifier_delta: self.expansion.verifier_delta,
         })
     }
 
@@ -964,6 +1234,56 @@ impl ResponseAuthorizationStore {
             freshness_record_digest_bytes,
         })
     }
+
+    /// Permanently reserve an X4d settlement epoch, auxiliary root set and
+    /// verifier query seed. Partial success is intentionally unrecoverable:
+    /// every marker already created remains burned.
+    pub fn reserve_x4d_settlement(
+        &self,
+        binding: X4dSettlementFreshnessBinding,
+    ) -> Result<X4dSettlementFreshnessBurn, PhaseBError> {
+        let binding_digest = binding.digest();
+        let record = [
+            b"VOLTA_X4D_SETTLEMENT_FRESHNESS_V1\n".as_slice(),
+            binding.digest_hex().as_bytes(),
+            b"\n",
+        ]
+        .concat();
+        let epoch_key = digest_parts(
+            b"volta-pcg/x4d-settlement-epoch-freshness/v1",
+            &[&binding.connection_id, &binding.settlement_epoch.to_le_bytes()],
+        );
+        let auxiliary_key = digest_parts(
+            b"volta-pcg/x4d-auxiliary-root-freshness/v1",
+            &[&binding.auxiliary_root_set_digest],
+        );
+        let query_key =
+            digest_parts(b"volta-pcg/x4d-query-seed-freshness/v1", &[&binding.query_seed_digest]);
+        let epoch_marker_path = self.root.join(format!("x4d-epoch-{}.burned", hex32(epoch_key)));
+        let auxiliary_marker_path =
+            self.root.join(format!("x4d-auxiliary-{}.burned", hex32(auxiliary_key)));
+        let query_marker_path = self.root.join(format!("x4d-query-{}.burned", hex32(query_key)));
+        write_freshness_marker(&self.root, &epoch_marker_path, &record, "X4d settlement epoch")?;
+        write_freshness_marker(
+            &self.root,
+            &auxiliary_marker_path,
+            &record,
+            "X4d auxiliary root set",
+        )?;
+        write_freshness_marker(&self.root, &query_marker_path, &record, "X4d query seed")?;
+        let freshness_record_digest_bytes = digest_parts(
+            b"volta-pcg/x4d-settlement-freshness-record/v1",
+            &[&binding_digest, &record],
+        );
+        Ok(X4dSettlementFreshnessBurn {
+            binding,
+            epoch_marker_path,
+            auxiliary_marker_path,
+            query_marker_path,
+            freshness_record_digest: hex32(freshness_record_digest_bytes),
+            freshness_record_digest_bytes,
+        })
+    }
 }
 
 fn write_freshness_marker(
@@ -1117,6 +1437,16 @@ impl ConnectionStore {
             allocated_domains: HashSet::new(),
             allocation_digest,
             channel_digest,
+            x4d_frozen_claims: 0,
+            x4d_verified_claims: 0,
+            x4d_accumulator_digest: None,
+            x4d_next_settlement_epoch: 1,
+            x4d_inflight_settlement: None,
+            x4d_inflight_settlement_freshness: None,
+            x4d_used_auxiliary_root_sets: HashSet::new(),
+            x4d_settlement_allocation_digest: None,
+            x4d_settlement_correlations_consumed: 0,
+            x4d_active_response_freeze_recorded: false,
             terminal_active_nonce_digest: None,
             terminal_record_synced: false,
         })
@@ -1492,6 +1822,7 @@ impl ConnectionHandle {
             correlations_consumed: 0,
             channel_frames: 0,
         });
+        self.x4d_active_response_freeze_recorded = false;
         let record = format!(
             "RESPONSE_BEGIN|{}|{}|{}\n",
             hex32(nonce_digest),
@@ -1500,6 +1831,57 @@ impl ConnectionHandle {
         );
         self.append_or_burn(&record)?;
         Ok(())
+    }
+
+    fn consume_correlation_range(
+        &mut self,
+        stage: u32,
+        count: u64,
+        domain_digest: [u8; 32],
+        allocation_chain_domain: &[u8],
+    ) -> Result<(u64, [u8; 32]), PhaseBError> {
+        if count == 0 || self.allocated_domains.contains(&domain_digest) {
+            return self.fail(
+                ConnectionAbortReason::ProtocolError,
+                "correlation allocation is empty or its domain was already consumed",
+            );
+        }
+        let current = match self.stages.get(&stage).copied() {
+            Some(counters) => counters,
+            None => {
+                return self.fail(
+                    ConnectionAbortReason::ProtocolError,
+                    "cannot allocate from an unknown stage",
+                )
+            }
+        };
+        if count > current.available {
+            return self.fail(
+                ConnectionAbortReason::ProtocolError,
+                "correlation allocation exceeds the available non-reserved pool",
+            );
+        }
+        let start = current.consumed;
+        let mut updated = current;
+        updated.consumed = updated
+            .consumed
+            .checked_add(count)
+            .ok_or_else(|| PhaseBError::new("consumed counter overflow"))?;
+        updated.available -= count;
+        debug_assert!(updated.reconciled());
+        self.stages.insert(stage, updated);
+        self.allocated_domains.insert(domain_digest);
+        self.allocation_digest = digest_parts(
+            allocation_chain_domain,
+            &[
+                &self.allocation_digest,
+                &stage.to_le_bytes(),
+                &start.to_le_bytes(),
+                &count.to_le_bytes(),
+                &domain_digest,
+            ],
+        );
+        Ok((start, self.allocation_digest))
     }
 
     /// Allocate the next low-end canonical stage range to the active response.
@@ -1531,48 +1913,12 @@ impl ConnectionHandle {
             );
         }
         let domain_digest = domain.digest();
-        if self.allocated_domains.contains(&domain_digest) {
-            return self.fail(
-                ConnectionAbortReason::ProtocolError,
-                "correlation allocation domain was already consumed",
-            );
-        }
-        let current = match self.stages.get(&stage).copied() {
-            Some(counters) => counters,
-            None => {
-                return self.fail(
-                    ConnectionAbortReason::ProtocolError,
-                    "cannot allocate from an unknown stage",
-                )
-            }
-        };
-        if count > current.available {
-            return self.fail(
-                ConnectionAbortReason::ProtocolError,
-                "correlation allocation exceeds the available non-reserved pool",
-            );
-        }
-        let start = current.consumed;
-        let mut updated = current;
-        updated.consumed = updated
-            .consumed
-            .checked_add(count)
-            .ok_or_else(|| PhaseBError::new("consumed counter overflow"))?;
-        updated.available -= count;
-        debug_assert!(updated.reconciled());
-        self.stages.insert(stage, updated);
-        self.allocated_domains.insert(domain_digest);
-
-        self.allocation_digest = digest_parts(
+        let (start, connection_digest) = self.consume_correlation_range(
+            stage,
+            count,
+            domain_digest,
             b"volta-pcg/connection-allocation-chain/response/v1",
-            &[
-                &self.allocation_digest,
-                &stage.to_le_bytes(),
-                &start.to_le_bytes(),
-                &count.to_le_bytes(),
-                &domain_digest,
-            ],
-        );
+        )?;
         let response = self.active_response.as_mut().expect("checked above");
         response.allocation_digest = digest_parts(
             b"volta-pcg/response-allocation-chain/v1",
@@ -1595,7 +1941,7 @@ impl ConnectionHandle {
             start,
             count,
             hex32(domain_digest),
-            hex32(self.allocation_digest),
+            hex32(connection_digest),
             hex32(response_digest)
         );
         self.append_or_burn(&record)?;
@@ -1604,8 +1950,80 @@ impl ConnectionHandle {
             start,
             count,
             domain_digest: hex32(domain_digest),
-            connection_allocation_digest: hex32(self.allocation_digest),
+            connection_allocation_digest: hex32(connection_digest),
             response_allocation_digest: hex32(response_digest),
+        })
+    }
+
+    /// Allocate a correlation range for the in-flight X4d settlement. This
+    /// scope is unavailable until the freshness receipt has been synced and
+    /// is disjoint from every response domain.
+    pub fn allocate_x4d_settlement(
+        &mut self,
+        stage: u32,
+        count: u64,
+        domain: X4dSettlementCorrelationDomain,
+    ) -> Result<X4dSettlementCorrelationAllocation, PhaseBError> {
+        self.ensure_active()?;
+        let settlement_epoch = self
+            .x4d_inflight_settlement_freshness
+            .as_ref()
+            .map(|freshness| freshness.settlement_epoch);
+        if self.active_response.is_some()
+            || settlement_epoch != Some(domain.settlement_epoch)
+            || domain.connection_id != self.binding.connection_id
+            || self.x4d_settlement_allocation_digest.is_none()
+        {
+            return self.fail(
+                ConnectionAbortReason::ProtocolError,
+                "X4d settlement correlation allocation requires its synced freshness receipt",
+            );
+        }
+        let domain_digest = domain.digest();
+        let (start, connection_digest) = self.consume_correlation_range(
+            stage,
+            count,
+            domain_digest,
+            b"volta-pcg/connection-allocation-chain/x4d-settlement/v1",
+        )?;
+        let prior = self
+            .x4d_settlement_allocation_digest
+            .ok_or_else(|| PhaseBError::new("X4d settlement allocation ledger is missing"))?;
+        let settlement_digest = digest_parts(
+            b"volta-pcg/x4d-settlement-allocation-chain/v1",
+            &[
+                &prior,
+                &stage.to_le_bytes(),
+                &start.to_le_bytes(),
+                &count.to_le_bytes(),
+                &domain_digest,
+            ],
+        );
+        let consumed = self
+            .x4d_settlement_correlations_consumed
+            .checked_add(count)
+            .ok_or_else(|| PhaseBError::new("X4d settlement correlation counter overflow"))?;
+        let record = format!(
+            "SETTLEMENT_ALLOCATE|{}|{}|{}|{}|{}|{}|{}\n",
+            domain.settlement_epoch,
+            stage,
+            start,
+            count,
+            hex32(domain_digest),
+            hex32(connection_digest),
+            hex32(settlement_digest)
+        );
+        self.append_or_burn(&record)?;
+        self.x4d_settlement_allocation_digest = Some(settlement_digest);
+        self.x4d_settlement_correlations_consumed = consumed;
+        Ok(X4dSettlementCorrelationAllocation {
+            settlement_epoch: domain.settlement_epoch,
+            stage,
+            start,
+            count,
+            domain_digest: hex32(domain_digest),
+            connection_allocation_digest: hex32(connection_digest),
+            settlement_allocation_digest: hex32(settlement_digest),
         })
     }
 
@@ -1692,6 +2110,296 @@ impl ConnectionHandle {
             correlations_consumed: response.correlations_consumed,
             channel_frames: response.channel_frames,
         })
+    }
+
+    /// X4d response completion requires a synced claim-freeze record.  The
+    /// generic fase-D completion method remains available to non-X4d paths.
+    pub fn finish_x4d_response_pending(&mut self) -> Result<ConnectionResponseAudit, PhaseBError> {
+        self.ensure_active()?;
+        if !self.x4d_active_response_freeze_recorded {
+            return self.fail(
+                ConnectionAbortReason::ProtocolError,
+                "X4d response delivery requires a durable claim-freeze record",
+            );
+        }
+        self.finish_response_success()
+    }
+
+    /// Append and sync the X4d `CLAIMS_FROZEN` record before response
+    /// delivery.  The exact accumulator digest has already been compared by
+    /// the two proof roles; this layer binds it to the currently burned
+    /// response nonce and refuses gaps or duplicate indices.
+    pub fn record_x4d_claims_frozen(
+        &mut self,
+        response_nonce: [u8; 32],
+        first_claim_index: u64,
+        claim_count: u32,
+        ending_accumulator_digest: [u8; 32],
+    ) -> Result<X4dClaimsFrozenJournalAudit, PhaseBError> {
+        self.ensure_active()?;
+        let Some(response) = self.active_response.as_ref() else {
+            return self.fail(
+                ConnectionAbortReason::ProtocolError,
+                "X4d claim freeze requires an active response",
+            );
+        };
+        if response.nonce != response_nonce
+            || claim_count == 0
+            || ending_accumulator_digest == [0; 32]
+            || first_claim_index != self.x4d_frozen_claims
+            || self.x4d_active_response_freeze_recorded
+        {
+            return self
+                .fail(ConnectionAbortReason::ProtocolError, "invalid X4d claim-freeze receipt");
+        }
+        let ending_index = first_claim_index
+            .checked_add(u64::from(claim_count))
+            .ok_or_else(|| PhaseBError::new("X4d frozen-claim counter overflow"))?;
+        let audit = X4dClaimsFrozenJournalAudit {
+            response_nonce_digest: hex32(response.nonce_digest),
+            first_claim_index,
+            claim_count,
+            ending_accumulator_digest: hex32(ending_accumulator_digest),
+        };
+        let record = format!(
+            "CLAIMS_FROZEN|{}|{}|{}|{}\n",
+            audit.response_nonce_digest,
+            first_claim_index,
+            claim_count,
+            audit.ending_accumulator_digest
+        );
+        self.append_or_burn(&record)?;
+        self.x4d_frozen_claims = ending_index;
+        self.x4d_accumulator_digest = Some(ending_accumulator_digest);
+        self.x4d_active_response_freeze_recorded = true;
+        Ok(audit)
+    }
+
+    /// Durably burn one X4d settlement epoch and exact contiguous range
+    /// before any settlement correlation, mask or challenge is exposed.
+    #[allow(clippy::too_many_arguments)]
+    pub fn seal_x4d_settlement(
+        &mut self,
+        settlement_epoch: u64,
+        first_claim_index: u64,
+        claim_count: u32,
+        starting_accumulator_digest: [u8; 32],
+        sealed_accumulator_digest: [u8; 32],
+        ordered_response_nonces_digest: [u8; 32],
+    ) -> Result<X4dSettlementSealJournalAudit, PhaseBError> {
+        self.ensure_active()?;
+        let range_end = first_claim_index
+            .checked_add(u64::from(claim_count))
+            .ok_or_else(|| PhaseBError::new("X4d settlement range overflows"))?;
+        if self.active_response.is_some()
+            || self.x4d_inflight_settlement.is_some()
+            || settlement_epoch != self.x4d_next_settlement_epoch
+            || first_claim_index != self.x4d_verified_claims
+            || claim_count == 0
+            || range_end > self.x4d_frozen_claims
+            || starting_accumulator_digest == [0; 32]
+            || sealed_accumulator_digest == [0; 32]
+            || ordered_response_nonces_digest == [0; 32]
+        {
+            return self.fail(
+                ConnectionAbortReason::ProtocolError,
+                "invalid or replayed X4d settlement seal",
+            );
+        }
+        let audit = X4dSettlementSealJournalAudit {
+            settlement_epoch,
+            first_claim_index,
+            claim_count,
+            starting_accumulator_digest: hex32(starting_accumulator_digest),
+            sealed_accumulator_digest: hex32(sealed_accumulator_digest),
+            ordered_response_nonces_digest: hex32(ordered_response_nonces_digest),
+        };
+        let record = format!(
+            "SETTLEMENT_SEAL|{}|{}|{}|{}|{}|{}\n",
+            settlement_epoch,
+            first_claim_index,
+            claim_count,
+            audit.starting_accumulator_digest,
+            audit.sealed_accumulator_digest,
+            audit.ordered_response_nonces_digest
+        );
+        self.append_or_burn(&record)?;
+        self.x4d_next_settlement_epoch = self
+            .x4d_next_settlement_epoch
+            .checked_add(1)
+            .ok_or_else(|| PhaseBError::new("X4d settlement epoch overflow"))?;
+        self.x4d_inflight_settlement = Some(audit.clone());
+        Ok(audit)
+    }
+
+    /// Append and sync the already-reserved settlement freshness tuple after
+    /// the exact range seal and before any challenge or correlation is
+    /// released.
+    pub fn record_x4d_settlement_freshness(
+        &mut self,
+        burn: &X4dSettlementFreshnessBurn,
+    ) -> Result<X4dSettlementFreshnessJournalAudit, PhaseBError> {
+        self.ensure_active()?;
+        let Some(seal) = self.x4d_inflight_settlement.as_ref() else {
+            return self.fail(
+                ConnectionAbortReason::ProtocolError,
+                "X4d settlement freshness requires an in-flight seal",
+            );
+        };
+        let binding = burn.binding;
+        if binding.connection_id != self.binding.connection_id
+            || seal.settlement_epoch != binding.settlement_epoch
+            || seal.sealed_accumulator_digest != hex32(binding.sealed_accumulator_digest)
+            || self.x4d_inflight_settlement_freshness.is_some()
+            || self.x4d_used_auxiliary_root_sets.contains(&binding.auxiliary_root_set_digest)
+        {
+            return self.fail(
+                ConnectionAbortReason::ProtocolError,
+                "X4d settlement freshness is replayed or bound to the wrong sealed range",
+            );
+        }
+        let audit = X4dSettlementFreshnessJournalAudit {
+            settlement_epoch: binding.settlement_epoch,
+            static_weight_commitment_digest: hex32(binding.static_weight_commitment_digest),
+            sealed_accumulator_digest: hex32(binding.sealed_accumulator_digest),
+            auxiliary_seed_commitment: hex32(binding.auxiliary_seed_commitment),
+            auxiliary_root_set_digest: hex32(binding.auxiliary_root_set_digest),
+            query_seed_digest: hex32(binding.query_seed_digest),
+            mask_count: binding.mask_count,
+            expected_full_correlations_per_role: binding.expected_full_correlations_per_role,
+            freshness_record_digest: burn.freshness_record_digest.clone(),
+            static_weight_commitment_digest_bytes: binding.static_weight_commitment_digest,
+            sealed_accumulator_digest_bytes: binding.sealed_accumulator_digest,
+            auxiliary_seed_commitment_bytes: binding.auxiliary_seed_commitment,
+            auxiliary_root_set_digest_bytes: binding.auxiliary_root_set_digest,
+            query_seed_digest_bytes: binding.query_seed_digest,
+            freshness_record_digest_bytes: burn.freshness_record_digest_bytes,
+        };
+        let record = format!(
+            "SETTLEMENT_FRESHNESS|{}|{}|{}|{}|{}|{}|{}|{}|{}\n",
+            audit.settlement_epoch,
+            audit.static_weight_commitment_digest,
+            audit.sealed_accumulator_digest,
+            audit.auxiliary_seed_commitment,
+            audit.auxiliary_root_set_digest,
+            audit.query_seed_digest,
+            audit.mask_count,
+            audit.expected_full_correlations_per_role,
+            audit.freshness_record_digest
+        );
+        self.append_or_burn(&record)?;
+        self.x4d_used_auxiliary_root_sets.insert(binding.auxiliary_root_set_digest);
+        self.x4d_settlement_allocation_digest = Some(digest_parts(
+            b"volta-pcg/x4d-settlement-allocation-ledger/v1",
+            &[&burn.freshness_record_digest_bytes],
+        ));
+        self.x4d_settlement_correlations_consumed = 0;
+        self.x4d_inflight_settlement_freshness = Some(audit.clone());
+        Ok(audit)
+    }
+
+    pub fn finish_x4d_settlement_success(
+        &mut self,
+        settlement_epoch: u64,
+        sealed_accumulator_digest: [u8; 32],
+    ) -> Result<(), PhaseBError> {
+        self.ensure_active()?;
+        let Some(seal) = self.x4d_inflight_settlement.as_ref() else {
+            return self.fail(
+                ConnectionAbortReason::ProtocolError,
+                "X4d settlement success without an in-flight seal",
+            );
+        };
+        let freshness = self.x4d_inflight_settlement_freshness.as_ref();
+        let expected_raw_correlations =
+            freshness.and_then(|audit| audit.expected_full_correlations_per_role.checked_mul(2));
+        if seal.settlement_epoch != settlement_epoch
+            || seal.sealed_accumulator_digest != hex32(sealed_accumulator_digest)
+            || freshness.map(|audit| audit.settlement_epoch) != Some(settlement_epoch)
+            || expected_raw_correlations != Some(self.x4d_settlement_correlations_consumed)
+            || self.x4d_settlement_allocation_digest.is_none()
+        {
+            return self.fail(
+                ConnectionAbortReason::ProtocolError,
+                "X4d settlement success does not match its durable seal, freshness, and exact correlation account",
+            );
+        }
+        let verified = seal
+            .first_claim_index
+            .checked_add(u64::from(seal.claim_count))
+            .ok_or_else(|| PhaseBError::new("X4d verified-claim counter overflow"))?;
+        let record = format!(
+            "SETTLEMENT_SUCCESS|{}|{}|{}|{}|{}\n",
+            settlement_epoch,
+            verified,
+            seal.sealed_accumulator_digest,
+            self.x4d_settlement_correlations_consumed,
+            hex32(self.x4d_settlement_allocation_digest.unwrap())
+        );
+        self.append_or_burn(&record)?;
+        self.x4d_verified_claims = verified;
+        self.x4d_inflight_settlement = None;
+        self.x4d_inflight_settlement_freshness = None;
+        self.x4d_settlement_allocation_digest = None;
+        self.x4d_settlement_correlations_consumed = 0;
+        Ok(())
+    }
+
+    /// A failed settlement is never retried: record its epoch and immediately
+    /// execute the existing fase-D whole-connection burn.
+    pub fn fail_x4d_settlement(&mut self, settlement_epoch: u64) -> Result<(), PhaseBError> {
+        self.ensure_active()?;
+        let Some(seal) = self.x4d_inflight_settlement.as_ref() else {
+            return self.fail(
+                ConnectionAbortReason::ProtocolError,
+                "X4d settlement failure without an in-flight seal",
+            );
+        };
+        if seal.settlement_epoch != settlement_epoch {
+            return self.fail(
+                ConnectionAbortReason::ProtocolError,
+                "X4d settlement failure epoch mismatch",
+            );
+        }
+        self.append_or_burn(&format!("SETTLEMENT_FAILURE|{}\n", settlement_epoch))?;
+        self.terminal_burn(ConnectionAbortReason::MaliciousCheckFailure)
+    }
+
+    pub fn x4d_frozen_claims(&self) -> u64 {
+        self.x4d_frozen_claims
+    }
+
+    pub fn x4d_verified_claims(&self) -> u64 {
+        self.x4d_verified_claims
+    }
+
+    pub fn x4d_next_settlement_epoch(&self) -> u64 {
+        self.x4d_next_settlement_epoch
+    }
+
+    pub fn x4d_inflight_settlement(&self) -> Option<&X4dSettlementSealJournalAudit> {
+        self.x4d_inflight_settlement.as_ref()
+    }
+
+    pub fn x4d_inflight_settlement_freshness(&self) -> Option<&X4dSettlementFreshnessJournalAudit> {
+        self.x4d_inflight_settlement_freshness.as_ref()
+    }
+
+    /// Successful graceful X4d close is distinct from an explicit abort: it
+    /// is admitted only after every durably frozen claim has been verified.
+    pub fn close_x4d_after_all_verified(&mut self) -> Result<(), PhaseBError> {
+        self.ensure_active()?;
+        if self.active_response.is_some()
+            || self.x4d_inflight_settlement.is_some()
+            || self.x4d_inflight_settlement_freshness.is_some()
+            || self.x4d_frozen_claims != self.x4d_verified_claims
+        {
+            return self.fail(
+                ConnectionAbortReason::ProtocolError,
+                "X4d graceful close requires settlement of every frozen claim",
+            );
+        }
+        self.terminal_burn(ConnectionAbortReason::ExplicitClose)
     }
 
     pub fn abort(&mut self, reason: ConnectionAbortReason) -> Result<(), PhaseBError> {
@@ -2228,6 +2936,27 @@ mod tests {
         .unwrap()
     }
 
+    fn x4d_freshness(
+        binding: ConnectionBinding,
+        settlement_epoch: u64,
+        sealed_accumulator_digest: [u8; 32],
+        tag: u8,
+        expected_full_correlations_per_role: u64,
+    ) -> X4dSettlementFreshnessBinding {
+        X4dSettlementFreshnessBinding::new(
+            binding.connection_id,
+            [0xf0; 32],
+            settlement_epoch,
+            sealed_accumulator_digest,
+            [tag; 32],
+            [tag.wrapping_add(1); 32],
+            [tag.wrapping_add(2); 32],
+            51,
+            expected_full_correlations_per_role,
+        )
+        .unwrap()
+    }
+
     #[test]
     fn anonymous_connection_spool_range_loads_exact_pools() {
         let delta = Fp2::new(Fp::new(17), Fp::new(29));
@@ -2448,6 +3177,261 @@ mod tests {
         );
         assert_eq!(connection.stage_counters().get(&0).unwrap().burned, 70);
         drop(connection);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn x4d_freeze_settlement_and_graceful_close_are_durable_and_contiguous() {
+        let (root, connections, authorizations) = lifecycle_stores("x4d-happy");
+        let binding = connection_binding(0x72, ConnectionStagePlan::TerminalOne);
+        let mut connection = connections.create(binding, None).unwrap();
+        let journal_path = connection.journal_path().to_path_buf();
+        connection.activate([0x73; 32]).unwrap();
+        connection.register_stage_output(0, 10_000, 0).unwrap();
+        for (ordinal, nonce) in [[0x74; 32], [0x75; 32]].into_iter().enumerate() {
+            connection
+                .begin_response(&authorizations, binding.response_binding(nonce).unwrap())
+                .unwrap();
+            connection
+                .record_x4d_claims_frozen(
+                    nonce,
+                    (ordinal * 102) as u64,
+                    102,
+                    [0x76 + ordinal as u8; 32],
+                )
+                .unwrap();
+            connection.finish_x4d_response_pending().unwrap();
+        }
+        assert_eq!(connection.x4d_frozen_claims(), 204);
+        assert_eq!(connection.x4d_verified_claims(), 0);
+        let seal =
+            connection.seal_x4d_settlement(1, 0, 204, [0x78; 32], [0x77; 32], [0x79; 32]).unwrap();
+        assert_eq!(seal.claim_count, 204);
+        assert_eq!(connection.x4d_next_settlement_epoch(), 2);
+        let freshness_burn = authorizations
+            .reserve_x4d_settlement(x4d_freshness(binding, 1, [0x77; 32], 0x7a, 4_573))
+            .unwrap();
+        let freshness = connection.record_x4d_settlement_freshness(&freshness_burn).unwrap();
+        assert_eq!(freshness.mask_count, 51);
+        assert_eq!(freshness.expected_full_correlations_per_role, 4_573);
+        assert_eq!(
+            connection.x4d_inflight_settlement_freshness().map(|audit| audit.settlement_epoch),
+            Some(1)
+        );
+        let allocation = connection
+            .allocate_x4d_settlement(
+                0,
+                9_146,
+                X4dSettlementCorrelationDomain::new(binding.connection_id, 1, 0, 0, [0x7b; 32])
+                    .unwrap(),
+            )
+            .unwrap();
+        assert_eq!(allocation.count, 9_146);
+        connection.finish_x4d_settlement_success(1, [0x77; 32]).unwrap();
+        assert_eq!(connection.x4d_verified_claims(), 204);
+        assert!(connection.x4d_inflight_settlement().is_none());
+        connection.close_x4d_after_all_verified().unwrap();
+        let journal = std::fs::read_to_string(journal_path).unwrap();
+        assert_eq!(journal.matches("CLAIMS_FROZEN|").count(), 2);
+        assert_eq!(journal.matches("SETTLEMENT_SEAL|").count(), 1);
+        assert_eq!(journal.matches("SETTLEMENT_FRESHNESS|").count(), 1);
+        assert_eq!(journal.matches("SETTLEMENT_ALLOCATE|").count(), 1);
+        assert_eq!(journal.matches("SETTLEMENT_SUCCESS|").count(), 1);
+        assert!(journal.contains("TERMINAL|explicit-close"));
+        drop(connection);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn x4d_settlement_freshness_is_required_before_success_and_is_one_use() {
+        let (root, connections, authorizations) = lifecycle_stores("x4d-auxiliary-lifecycle");
+
+        let missing_binding = connection_binding(0xa1, ConnectionStagePlan::TerminalOne);
+        let mut missing = connections.create(missing_binding, None).unwrap();
+        missing.activate([0xa2; 32]).unwrap();
+        let missing_nonce = [0xa3; 32];
+        missing
+            .begin_response(
+                &authorizations,
+                missing_binding.response_binding(missing_nonce).unwrap(),
+            )
+            .unwrap();
+        missing.record_x4d_claims_frozen(missing_nonce, 0, 102, [0xa4; 32]).unwrap();
+        missing.finish_x4d_response_pending().unwrap();
+        missing.seal_x4d_settlement(1, 0, 102, [0xa5; 32], [0xa4; 32], [0xa6; 32]).unwrap();
+        assert!(missing
+            .finish_x4d_settlement_success(1, [0xa4; 32])
+            .unwrap_err()
+            .to_string()
+            .contains("freshness"));
+        assert_eq!(
+            missing.state(),
+            ConnectionState::Terminal { reason: ConnectionAbortReason::ProtocolError }
+        );
+        drop(missing);
+
+        let replay_binding = connection_binding(0xa7, ConnectionStagePlan::TerminalOne);
+        let mut replay = connections.create(replay_binding, None).unwrap();
+        replay.activate([0xa8; 32]).unwrap();
+        let replay_nonce = [0xa9; 32];
+        replay
+            .begin_response(&authorizations, replay_binding.response_binding(replay_nonce).unwrap())
+            .unwrap();
+        replay.record_x4d_claims_frozen(replay_nonce, 0, 102, [0xaa; 32]).unwrap();
+        replay.finish_x4d_response_pending().unwrap();
+        replay.seal_x4d_settlement(1, 0, 102, [0xab; 32], [0xaa; 32], [0xac; 32]).unwrap();
+        let freshness_binding = x4d_freshness(replay_binding, 1, [0xaa; 32], 0xad, 2_314);
+        let freshness_burn = authorizations.reserve_x4d_settlement(freshness_binding).unwrap();
+        assert!(authorizations
+            .reserve_x4d_settlement(freshness_binding)
+            .unwrap_err()
+            .to_string()
+            .contains("already burned"));
+        replay.record_x4d_settlement_freshness(&freshness_burn).unwrap();
+        assert!(replay
+            .record_x4d_settlement_freshness(&freshness_burn)
+            .unwrap_err()
+            .to_string()
+            .contains("replayed"));
+        assert_eq!(
+            replay.state(),
+            ConnectionState::Terminal { reason: ConnectionAbortReason::ProtocolError }
+        );
+        drop(replay);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn x4d_settlement_success_requires_exact_registered_correlations() {
+        let (root, connections, authorizations) = lifecycle_stores("x4d-exact-correlations");
+        let binding = connection_binding(0xae, ConnectionStagePlan::TerminalOne);
+        let mut connection = connections.create(binding, None).unwrap();
+        connection.activate([0xaf; 32]).unwrap();
+        connection.register_stage_output(0, 5_000, 0).unwrap();
+        let nonce = [0xb0; 32];
+        connection
+            .begin_response(&authorizations, binding.response_binding(nonce).unwrap())
+            .unwrap();
+        connection.record_x4d_claims_frozen(nonce, 0, 102, [0xb1; 32]).unwrap();
+        connection.finish_x4d_response_pending().unwrap();
+        connection.seal_x4d_settlement(1, 0, 102, [0xb2; 32], [0xb1; 32], [0xb3; 32]).unwrap();
+        let burn = authorizations
+            .reserve_x4d_settlement(x4d_freshness(binding, 1, [0xb1; 32], 0xb4, 2_314))
+            .unwrap();
+        connection.record_x4d_settlement_freshness(&burn).unwrap();
+        connection
+            .allocate_x4d_settlement(
+                0,
+                4_627,
+                X4dSettlementCorrelationDomain::new(binding.connection_id, 1, 0, 0, [0xb5; 32])
+                    .unwrap(),
+            )
+            .unwrap();
+        assert!(connection
+            .finish_x4d_settlement_success(1, [0xb1; 32])
+            .unwrap_err()
+            .to_string()
+            .contains("exact correlation account"));
+        assert_eq!(
+            connection.state(),
+            ConnectionState::Terminal { reason: ConnectionAbortReason::ProtocolError }
+        );
+        drop(connection);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn x4d_delivery_without_freeze_and_wrong_settlement_subset_burn_connection() {
+        let (root, connections, authorizations) = lifecycle_stores("x4d-fail-closed");
+        let missing_binding = connection_binding(0x7a, ConnectionStagePlan::TerminalOne);
+        let mut missing = connections.create(missing_binding, None).unwrap();
+        missing.activate([0x7b; 32]).unwrap();
+        let missing_nonce = [0x7c; 32];
+        missing
+            .begin_response(
+                &authorizations,
+                missing_binding.response_binding(missing_nonce).unwrap(),
+            )
+            .unwrap();
+        assert!(missing
+            .finish_x4d_response_pending()
+            .unwrap_err()
+            .to_string()
+            .contains("durable claim-freeze"));
+        assert_eq!(
+            missing.state(),
+            ConnectionState::Terminal { reason: ConnectionAbortReason::ProtocolError }
+        );
+        drop(missing);
+
+        let subset_binding = connection_binding(0x7d, ConnectionStagePlan::TerminalOne);
+        let mut subset = connections.create(subset_binding, None).unwrap();
+        subset.activate([0x7e; 32]).unwrap();
+        let nonce = [0x7f; 32];
+        subset
+            .begin_response(&authorizations, subset_binding.response_binding(nonce).unwrap())
+            .unwrap();
+        subset.record_x4d_claims_frozen(nonce, 0, 102, [0x80; 32]).unwrap();
+        subset.finish_x4d_response_pending().unwrap();
+        assert!(subset
+            .seal_x4d_settlement(1, 1, 101, [0x81; 32], [0x82; 32], [0x83; 32])
+            .unwrap_err()
+            .to_string()
+            .contains("invalid or replayed"));
+        assert_eq!(
+            subset.state(),
+            ConnectionState::Terminal { reason: ConnectionAbortReason::ProtocolError }
+        );
+        assert!(subset
+            .seal_x4d_settlement(1, 0, 102, [0x81; 32], [0x80; 32], [0x83; 32])
+            .unwrap_err()
+            .to_string()
+            .contains("terminally burned"));
+        drop(subset);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn x4d_failed_settlement_and_process_kill_cannot_resume() {
+        let (root, connections, authorizations) = lifecycle_stores("x4d-failure-restart");
+        let binding = connection_binding(0x84, ConnectionStagePlan::TerminalOne);
+        let mut failed = connections.create(binding, None).unwrap();
+        let journal_path = failed.journal_path().to_path_buf();
+        failed.activate([0x85; 32]).unwrap();
+        let nonce = [0x86; 32];
+        failed.begin_response(&authorizations, binding.response_binding(nonce).unwrap()).unwrap();
+        failed.record_x4d_claims_frozen(nonce, 0, 102, [0x87; 32]).unwrap();
+        failed.finish_x4d_response_pending().unwrap();
+        failed.seal_x4d_settlement(1, 0, 102, [0x88; 32], [0x87; 32], [0x89; 32]).unwrap();
+        failed.fail_x4d_settlement(1).unwrap();
+        assert_eq!(
+            failed.state(),
+            ConnectionState::Terminal { reason: ConnectionAbortReason::MaliciousCheckFailure }
+        );
+        let journal = std::fs::read_to_string(&journal_path).unwrap();
+        assert!(journal.contains("SETTLEMENT_FAILURE|1"));
+        assert!(journal.contains("TERMINAL|malicious-check-failure"));
+        drop(failed);
+
+        let killed_binding = connection_binding(0x8a, ConnectionStagePlan::TerminalOne);
+        let mut killed = connections.create(killed_binding, None).unwrap();
+        let killed_journal = killed.journal_path().to_path_buf();
+        killed.activate([0x8b; 32]).unwrap();
+        let killed_nonce = [0x8c; 32];
+        killed
+            .begin_response(&authorizations, killed_binding.response_binding(killed_nonce).unwrap())
+            .unwrap();
+        killed.record_x4d_claims_frozen(killed_nonce, 0, 102, [0x8d; 32]).unwrap();
+        killed.finish_x4d_response_pending().unwrap();
+        std::mem::forget(killed);
+        assert!(connections
+            .create(killed_binding, None)
+            .unwrap_err()
+            .to_string()
+            .contains("restart burned"));
+        assert!(std::fs::read_to_string(killed_journal)
+            .unwrap()
+            .contains("TERMINAL|process-kill-or-restart"));
         std::fs::remove_dir_all(root).unwrap();
     }
 

@@ -16,11 +16,15 @@ use volta_mac::{
 };
 use volta_proto::mle::{eq_points, eq_vec, fold_low, lagrange3};
 
+use super::deferred_v4::{
+    authenticated_output_link_schedule_digest_x4d_v1, x4d_settlement_context_digest_v1,
+    X4dSettlementContextV1, X4D_MASKED_GROUP_CAP_V1, X4D_QUERY_COUNT_V1,
+};
 use super::folding_v4::{
     global_fold_descriptor_digest_v4, opened_global_value_from_lines_v4,
     verify_global_folding_interactive_v4, verify_global_folding_v4, FoldingErrorV4,
     GlobalChainDraftV4, GlobalFoldChallengesV4, GlobalFoldingProofV4, GlobalOpenMetricsV4,
-    GlobalProverGroupV4, GlobalVerifierGroupV4, ModelGlobalOpeningSourceV4,
+    GlobalProverGroupV4, GlobalVerifierGroupV4, ModelGlobalOpeningSourceV4, MAX_RESPONSE_CLAIMS_V4,
 };
 use super::frame::{
     AuthenticatedOutputLinkFrame, Digest, FrameError, M9TransferFrame, ReducedClaimFrame,
@@ -50,6 +54,82 @@ pub struct X4cAuthenticatedOutputPhaseWallsV4 {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct X4cSelectedQueryTapeV4 {
     draws: Vec<u64>,
+}
+
+const X4D_QUERY_SEED_COMMITMENT_CONTEXT_V1: &str =
+    "volta-zk/x4d/settlement-query-seed-commitment/v1";
+const X4D_QUERY_DRAW_CONTEXT_V1: &str = "volta-zk/x4d/settlement-query-draws/v1";
+
+/// Verifier-owned X4d query seed. The commitment is durably burned before
+/// challenges; the exact draws are derived only after every fold root exists.
+#[derive(Debug)]
+pub struct X4dSettlementQuerySeedV1 {
+    seed: Digest,
+    commitment: Digest,
+}
+
+impl X4dSettlementQuerySeedV1 {
+    pub fn new(seed: Digest) -> Result<Self, AuthenticatedOutputErrorV4> {
+        if seed == [0; 32] {
+            return Err(AuthenticatedOutputErrorV4::InvalidGeometry("zero X4d query seed"));
+        }
+        let mut hasher = blake3::Hasher::new_derive_key(X4D_QUERY_SEED_COMMITMENT_CONTEXT_V1);
+        hasher.update(&seed);
+        Ok(Self { seed, commitment: *hasher.finalize().as_bytes() })
+    }
+
+    pub fn commitment(&self) -> Digest {
+        self.commitment
+    }
+
+    fn release_after_roots<A>(
+        self,
+        sealed: &SealedGlobalChainX4cV4<'_, A>,
+        context: &X4dSettlementContextV1,
+        expected_model_root: Digest,
+        expected_epoch: u64,
+    ) -> Result<Vec<u64>, AuthenticatedOutputErrorV4> {
+        if sealed.model_root() != expected_model_root
+            || sealed.epoch() != expected_epoch
+            || context.range.settlement_epoch != expected_epoch
+        {
+            return Err(AuthenticatedOutputErrorV4::EpochMismatch);
+        }
+        let draw_width = sealed
+            .verifier_groups()
+            .first()
+            .ok_or(AuthenticatedOutputErrorV4::InvalidSchedule("empty X4d verifier groups"))?
+            .commitment
+            .config
+            .outer_depth();
+        if draw_width == 0 || draw_width > 63 {
+            return Err(AuthenticatedOutputErrorV4::InvalidGeometry("X4d query width"));
+        }
+        let context_digest = x4d_settlement_context_digest_v1(context)
+            .map_err(|_| AuthenticatedOutputErrorV4::InvalidSchedule("X4d context digest"))?;
+        let mut hasher = blake3::Hasher::new_derive_key(X4D_QUERY_DRAW_CONTEXT_V1);
+        hasher.update(&self.seed);
+        hasher.update(&context_digest);
+        hasher.update(&expected_model_root);
+        hasher.update(&expected_epoch.to_le_bytes());
+        for frame in sealed.fold_frames() {
+            hasher.update(&frame.root_digest);
+        }
+        let mut reader = hasher.finalize_xof();
+        let mask = (1u64 << draw_width) - 1;
+        let mut draws = Vec::with_capacity(X4D_QUERY_COUNT_V1);
+        for _ in 0..X4D_QUERY_COUNT_V1 {
+            let mut bytes = [0u8; 8];
+            reader.fill(&mut bytes);
+            draws.push(u64::from_le_bytes(bytes) & mask);
+        }
+        Ok(draws)
+    }
+}
+
+enum X4AcceleratedQuerySourceV4 {
+    X4c(X4cSelectedQueryTapeV4),
+    X4d(X4dSettlementQuerySeedV1),
 }
 
 impl X4cSelectedQueryTapeV4 {
@@ -678,39 +758,85 @@ fn validate_verifier_polynomial_v4(
 
 fn validate_prefix_common_v4(
     prefix: AuthenticatedOutputLinkPrefixV4<'_>,
-    descriptors: &[Digest],
+    relation_descriptors: &[Digest],
     public_h: &[Fp2],
     round_count: usize,
+    settlement_context: Option<&X4dSettlementContextV1>,
 ) -> Result<Digest, AuthenticatedOutputErrorV4> {
-    if descriptors.is_empty()
-        || descriptors.len() > 1660
-        || prefix.descriptor_digests != descriptors
+    if relation_descriptors.is_empty()
+        || relation_descriptors.len() > X4D_MASKED_GROUP_CAP_V1
         || prefix.ordered_h_symbols != public_h
-        || prefix.m9_frames.len() != descriptors.len()
-        || descriptors.iter().copied().collect::<BTreeSet<_>>().len() != descriptors.len()
+        || prefix.m9_frames.len() != relation_descriptors.len()
     {
         return Err(AuthenticatedOutputErrorV4::InvalidSchedule("v4 authenticated-output prefix"));
     }
-    for (descriptor, frame) in descriptors.iter().zip(prefix.m9_frames) {
+    for (descriptor, frame) in relation_descriptors.iter().zip(prefix.m9_frames) {
         if descriptor != &frame.descriptor_digest {
             return Err(AuthenticatedOutputErrorV4::InvalidSchedule("v4 M9 descriptor order"));
         }
     }
-    if prefix.claim_frames.len() > 3320
-        || prefix.claim_frames.iter().any(|claim| !descriptors.contains(&claim.descriptor_digest))
-    {
+    if prefix.claim_frames.len() > MAX_RESPONSE_CLAIMS_V4 {
         return Err(AuthenticatedOutputErrorV4::InvalidSchedule("v4 link reduced claims"));
     }
     validate_domains_v4(prefix.round_correlation_domain_ids, round_count)?;
-    Ok(authenticated_output_link_schedule_digest_v4(
-        prefix.epoch,
-        prefix.claim_frames,
-        prefix.descriptor_digests,
-        prefix.ordered_h_symbols,
-        prefix.m9_frames,
-        u8::try_from(round_count).map_err(|_| AuthenticatedOutputErrorV4::Overflow)?,
-        prefix.round_correlation_domain_ids,
-    )?)
+    let round_count =
+        u8::try_from(round_count).map_err(|_| AuthenticatedOutputErrorV4::Overflow)?;
+    match settlement_context {
+        None => {
+            if prefix.descriptor_digests != relation_descriptors
+                || relation_descriptors.iter().copied().collect::<BTreeSet<_>>().len()
+                    != relation_descriptors.len()
+                || prefix
+                    .claim_frames
+                    .iter()
+                    .any(|claim| !relation_descriptors.contains(&claim.descriptor_digest))
+            {
+                return Err(AuthenticatedOutputErrorV4::InvalidSchedule(
+                    "v4 response descriptor inventory",
+                ));
+            }
+            Ok(authenticated_output_link_schedule_digest_v4(
+                prefix.epoch,
+                prefix.claim_frames,
+                prefix.descriptor_digests,
+                prefix.ordered_h_symbols,
+                prefix.m9_frames,
+                round_count,
+                prefix.round_correlation_domain_ids,
+            )?)
+        }
+        Some(context) => {
+            let inventory = prefix.descriptor_digests.iter().copied().collect::<BTreeSet<_>>();
+            if prefix.epoch != context.range.settlement_epoch
+                || prefix.claim_frames.len()
+                    != usize::try_from(context.range.claim_count)
+                        .map_err(|_| AuthenticatedOutputErrorV4::Overflow)?
+                || prefix.descriptor_digests.is_empty()
+                || inventory.len() != prefix.descriptor_digests.len()
+                || relation_descriptors.iter().any(|descriptor| !inventory.contains(descriptor))
+                || prefix
+                    .claim_frames
+                    .iter()
+                    .any(|claim| !inventory.contains(&claim.descriptor_digest))
+            {
+                return Err(AuthenticatedOutputErrorV4::InvalidSchedule(
+                    "X4d settlement descriptor inventory",
+                ));
+            }
+            authenticated_output_link_schedule_digest_x4d_v1(
+                context,
+                prefix.claim_frames,
+                prefix.descriptor_digests,
+                prefix.ordered_h_symbols,
+                prefix.m9_frames,
+                round_count,
+                prefix.round_correlation_domain_ids,
+            )
+            .map_err(|_| {
+                AuthenticatedOutputErrorV4::InvalidSchedule("X4d settlement link schedule")
+            })
+        }
+    }
 }
 
 fn terminal_weight_v4(base: Fp2, target: &[Fp2], common: &[Fp2]) -> Fp2 {
@@ -731,6 +857,7 @@ fn insert_prover_group_v4<'a>(
     groups: &mut BTreeMap<LinkCohortKeyV4, ProverGroupV4<'a>>,
     polynomial: &'a LinkPolynomialProverV4<'a>,
     weight: Fp2,
+    accumulate_duplicate_slot: bool,
 ) -> Result<(), AuthenticatedOutputErrorV4> {
     let key = LinkCohortKeyV4::from_cohort(polynomial.cohort);
     let entry = groups.entry(key).or_insert_with(|| ProverGroupV4 {
@@ -740,9 +867,21 @@ fn insert_prover_group_v4<'a>(
     });
     if entry.dimension != polynomial.target_point.len()
         || entry.cohort.commitment().root != polynomial.cohort.commitment().root
-        || entry.weights.insert(polynomial.slot, weight).is_some()
     {
         return Err(AuthenticatedOutputErrorV4::InvalidSchedule("v4 link prover cohort grouping"));
+    }
+    match entry.weights.entry(polynomial.slot) {
+        std::collections::btree_map::Entry::Vacant(slot) => {
+            slot.insert(weight);
+        }
+        std::collections::btree_map::Entry::Occupied(mut slot) if accumulate_duplicate_slot => {
+            *slot.get_mut() += weight;
+        }
+        std::collections::btree_map::Entry::Occupied(_) => {
+            return Err(AuthenticatedOutputErrorV4::InvalidSchedule(
+                "v4 link prover cohort grouping",
+            ))
+        }
     }
     Ok(())
 }
@@ -766,6 +905,7 @@ fn insert_verifier_group_v4<'a>(
     groups: &mut BTreeMap<LinkCohortKeyV4, VerifierGroupV4<'a>>,
     polynomial: &'a LinkPolynomialVerifierV4<'a>,
     weight: Fp2,
+    accumulate_duplicate_slot: bool,
 ) -> Result<(), AuthenticatedOutputErrorV4> {
     let key = verifier_key_v4(polynomial);
     let entry = groups.entry(key).or_insert_with(|| VerifierGroupV4 {
@@ -775,11 +915,23 @@ fn insert_verifier_group_v4<'a>(
     });
     if entry.dimension != polynomial.target_point.len()
         || entry.commitment.root != polynomial.commitment.root
-        || entry.weights.insert(polynomial.slot, weight).is_some()
     {
         return Err(AuthenticatedOutputErrorV4::InvalidSchedule(
             "v4 link verifier cohort grouping",
         ));
+    }
+    match entry.weights.entry(polynomial.slot) {
+        std::collections::btree_map::Entry::Vacant(slot) => {
+            slot.insert(weight);
+        }
+        std::collections::btree_map::Entry::Occupied(mut slot) if accumulate_duplicate_slot => {
+            *slot.get_mut() += weight;
+        }
+        std::collections::btree_map::Entry::Occupied(_) => {
+            return Err(AuthenticatedOutputErrorV4::InvalidSchedule(
+                "v4 link verifier cohort grouping",
+            ))
+        }
     }
     Ok(())
 }
@@ -881,7 +1033,8 @@ pub fn prove_authenticated_output_link_v4(
     if round_count == 0 || round_count > 30 {
         return Err(AuthenticatedOutputErrorV4::InvalidGeometry("v4 link maximum dimension"));
     }
-    let schedule_digest = validate_prefix_common_v4(prefix, &descriptors, &public_h, round_count)?;
+    let schedule_digest =
+        validate_prefix_common_v4(prefix, &descriptors, &public_h, round_count, None)?;
     let keys = prover_keys_v4(&blocks);
 
     // All roots, h values and M9 corrections are fixed before this vector of
@@ -935,11 +1088,13 @@ pub fn prove_authenticated_output_link_v4(
             &mut grouped,
             &block.weight_extension,
             terminal_weight_v4(*weight_base, block.weight_extension.target_point, &sumcheck.point),
+            false,
         )?;
         insert_prover_group_v4(
             &mut grouped,
             &block.auxiliary,
             terminal_weight_v4(*auxiliary_base, block.auxiliary.target_point, &sumcheck.point),
+            false,
         )?;
     }
     if grouped.len() != keys.len() {
@@ -1052,35 +1207,34 @@ pub fn prove_authenticated_output_link_v4(
     Ok((AuthenticatedOutputLinkProofV4 { frame, global_folding }, bound, metrics))
 }
 
-/// X4c execution of the unchanged schema-4 authenticated-output link.
+pub type X4AcceleratedAuthenticatedOutputProverResultV4 = (
+    AuthenticatedOutputLinkProofV4,
+    Vec<BoundAuxEvalProverV4>,
+    AuthenticatedOutputLinkMetricsV4,
+    X4cResponseMetricsV4,
+    X4cAuthenticatedOutputPhaseWallsV4,
+    Vec<u64>,
+);
+
+/// Shared accelerated execution for X4c responses and X4d settlements.
 ///
-/// This differs from [`prove_authenticated_output_link_v4`] only in the
-/// physical fold/open implementation: all response rounds live in one
-/// reusable arena and the verifier-owned selected draw tape is gathered once.
-/// A persisted freshness receipt is mandatory. No frame, challenge, claim,
-/// correlation or verifier equation is added.
+/// `settlement_context = None` preserves the immutable X4c statement.
+/// `Some(context)` lifts seal-before-query to the exact X4d frozen range and
+/// permits repeated response-local relations to accumulate onto the same
+/// static weight and settlement-fresh auxiliary slots.
 #[allow(clippy::too_many_arguments)]
-pub fn prove_authenticated_output_link_x4c_v4<R: X4cArenaRuntimeV4>(
+fn prove_authenticated_output_link_accelerated_v4<R: X4cArenaRuntimeV4>(
     permit: X4OpeningPermitV4,
     model_root: Digest,
     blocks: Vec<AuthenticatedOutputBlockProverV4<'_>>,
     prefix: AuthenticatedOutputLinkPrefixV4<'_>,
+    settlement_context: Option<&X4dSettlementContextV1>,
     stream: &mut CorrelationStream,
     tx: &mut Transcript,
-    selected_tape: X4cSelectedQueryTapeV4,
+    query_source: X4AcceleratedQuerySourceV4,
     runtime: &mut R,
     seal_config: X4cSealConfigV4,
-) -> Result<
-    (
-        AuthenticatedOutputLinkProofV4,
-        Vec<BoundAuxEvalProverV4>,
-        AuthenticatedOutputLinkMetricsV4,
-        X4cResponseMetricsV4,
-        X4cAuthenticatedOutputPhaseWallsV4,
-        Vec<u64>,
-    ),
-    AuthenticatedOutputErrorV4,
-> {
+) -> Result<X4AcceleratedAuthenticatedOutputProverResultV4, AuthenticatedOutputErrorV4> {
     if permit.model_root != model_root
         || permit.epoch != prefix.epoch
         || permit.persistent_freshness_record_digest.is_none()
@@ -1121,7 +1275,14 @@ pub fn prove_authenticated_output_link_x4c_v4<R: X4cArenaRuntimeV4>(
     if round_count == 0 || round_count > 30 {
         return Err(AuthenticatedOutputErrorV4::InvalidGeometry("v4 link maximum dimension"));
     }
-    let schedule_digest = validate_prefix_common_v4(prefix, &descriptors, &public_h, round_count)?;
+    let schedule_digest = validate_prefix_common_v4(
+        prefix,
+        &descriptors,
+        &public_h,
+        round_count,
+        settlement_context,
+    )?;
+    let accumulate_duplicate_slots = settlement_context.is_some();
     let keys = prover_keys_v4(&blocks);
     let beta = tx.challenge_fp2();
     let activation = activation_challenges_v4(&keys, tx);
@@ -1169,11 +1330,13 @@ pub fn prove_authenticated_output_link_x4c_v4<R: X4cArenaRuntimeV4>(
             &mut grouped,
             &block.weight_extension,
             terminal_weight_v4(*weight_base, block.weight_extension.target_point, &sumcheck.point),
+            accumulate_duplicate_slots,
         )?;
         insert_prover_group_v4(
             &mut grouped,
             &block.auxiliary,
             terminal_weight_v4(*auxiliary_base, block.auxiliary.target_point, &sumcheck.point),
+            accumulate_duplicate_slots,
         )?;
     }
     if grouped.len() != keys.len() {
@@ -1212,7 +1375,17 @@ pub fn prove_authenticated_output_link_x4c_v4<R: X4cArenaRuntimeV4>(
     let sealed = draft.seal_interactive_x4c(tx, runtime, seal_config)?;
     let seal_wall_ns = phase_wall_ns_v4(seal_started)?;
     let fold_challenges = sealed.challenges().clone();
-    let selected_draws = selected_tape.release_after_roots(&sealed, model_root, prefix.epoch)?;
+    let selected_draws = match (query_source, settlement_context) {
+        (X4AcceleratedQuerySourceV4::X4c(selected_tape), None) => {
+            selected_tape.release_after_roots(&sealed, model_root, prefix.epoch)?
+        }
+        (X4AcceleratedQuerySourceV4::X4d(query_seed), Some(context)) => {
+            query_seed.release_after_roots(&sealed, context, model_root, prefix.epoch)?
+        }
+        _ => {
+            return Err(AuthenticatedOutputErrorV4::InvalidSchedule("X4 accelerated query source"))
+        }
+    };
     let open_started = Instant::now();
     let (global_folding, _verifier_groups, x4c_metrics, returned_draws) =
         sealed.issue_queries_x4c(selected_draws.clone(), tx, runtime)?;
@@ -1301,6 +1474,61 @@ pub fn prove_authenticated_output_link_x4c_v4<R: X4cArenaRuntimeV4>(
     ))
 }
 
+/// X4c execution of the unchanged schema-4 authenticated-output link.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_authenticated_output_link_x4c_v4<R: X4cArenaRuntimeV4>(
+    permit: X4OpeningPermitV4,
+    model_root: Digest,
+    blocks: Vec<AuthenticatedOutputBlockProverV4<'_>>,
+    prefix: AuthenticatedOutputLinkPrefixV4<'_>,
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+    selected_tape: X4cSelectedQueryTapeV4,
+    runtime: &mut R,
+    seal_config: X4cSealConfigV4,
+) -> Result<X4AcceleratedAuthenticatedOutputProverResultV4, AuthenticatedOutputErrorV4> {
+    prove_authenticated_output_link_accelerated_v4(
+        permit,
+        model_root,
+        blocks,
+        prefix,
+        None,
+        stream,
+        tx,
+        X4AcceleratedQuerySourceV4::X4c(selected_tape),
+        runtime,
+        seal_config,
+    )
+}
+
+/// X4d settlement execution over one exact digest-sealed claim union.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_authenticated_output_link_x4d_v4<R: X4cArenaRuntimeV4>(
+    permit: X4OpeningPermitV4,
+    model_root: Digest,
+    blocks: Vec<AuthenticatedOutputBlockProverV4<'_>>,
+    prefix: AuthenticatedOutputLinkPrefixV4<'_>,
+    settlement_context: &X4dSettlementContextV1,
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+    query_seed: X4dSettlementQuerySeedV1,
+    runtime: &mut R,
+    seal_config: X4cSealConfigV4,
+) -> Result<X4AcceleratedAuthenticatedOutputProverResultV4, AuthenticatedOutputErrorV4> {
+    prove_authenticated_output_link_accelerated_v4(
+        permit,
+        model_root,
+        blocks,
+        prefix,
+        Some(settlement_context),
+        stream,
+        tx,
+        X4AcceleratedQuerySourceV4::X4d(query_seed),
+        runtime,
+        seal_config,
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn verify_authenticated_output_link_v4(
     permit: X4OpeningPermitV4,
@@ -1346,7 +1574,8 @@ pub fn verify_authenticated_output_link_v4(
             .max(block.weight_extension.target_point.len())
             .max(block.auxiliary.target_point.len());
     }
-    let expected_digest = validate_prefix_common_v4(prefix, &descriptors, &public_h, round_count)?;
+    let expected_digest =
+        validate_prefix_common_v4(prefix, &descriptors, &public_h, round_count, None)?;
     if usize::from(proof.frame.relation_count) != 2 * blocks.len()
         || usize::from(proof.frame.round_count) != round_count
         || proof.frame.link_schedule_digest != expected_digest
@@ -1388,11 +1617,13 @@ pub fn verify_authenticated_output_link_v4(
             &mut grouped,
             &block.weight_extension,
             terminal_weight_v4(*weight_base, block.weight_extension.target_point, &point),
+            false,
         )?;
         insert_verifier_group_v4(
             &mut grouped,
             &block.auxiliary,
             terminal_weight_v4(*auxiliary_base, block.auxiliary.target_point, &point),
+            false,
         )?;
     }
     if grouped.len() != keys.len()
@@ -1432,17 +1663,13 @@ pub fn verify_authenticated_output_link_v4(
         .collect())
 }
 
-/// Verifier replay for [`prove_authenticated_output_link_x4c_v4`].
-///
-/// Fold challenges are replayed from the unchanged transcript. Query draws
-/// are supplied by the frozen verifier-selected tape and therefore are not
-/// synthesized from the transcript a second time.
 #[allow(clippy::too_many_arguments)]
-pub fn verify_authenticated_output_link_x4c_v4(
+fn verify_authenticated_output_link_accelerated_v4(
     permit: X4OpeningPermitV4,
     model_root: Digest,
     blocks: Vec<AuthenticatedOutputBlockVerifierV4<'_>>,
     prefix: AuthenticatedOutputLinkPrefixV4<'_>,
+    settlement_context: Option<&X4dSettlementContextV1>,
     proof: &AuthenticatedOutputLinkProofV4,
     selected_draws: &[u64],
     ctx: &mut VerifierCtx,
@@ -1486,7 +1713,13 @@ pub fn verify_authenticated_output_link_x4c_v4(
             .max(block.weight_extension.target_point.len())
             .max(block.auxiliary.target_point.len());
     }
-    let expected_digest = validate_prefix_common_v4(prefix, &descriptors, &public_h, round_count)?;
+    let expected_digest = validate_prefix_common_v4(
+        prefix,
+        &descriptors,
+        &public_h,
+        round_count,
+        settlement_context,
+    )?;
     if usize::from(proof.frame.relation_count) != 2 * blocks.len()
         || usize::from(proof.frame.round_count) != round_count
         || proof.frame.link_schedule_digest != expected_digest
@@ -1521,17 +1754,20 @@ pub fn verify_authenticated_output_link_x4c_v4(
         prefix.round_correlation_domain_ids,
         tx,
     )?;
+    let accumulate_duplicate_slots = settlement_context.is_some();
     let mut grouped = BTreeMap::new();
     for (block, (weight_base, auxiliary_base)) in blocks.iter().zip(&bases) {
         insert_verifier_group_v4(
             &mut grouped,
             &block.weight_extension,
             terminal_weight_v4(*weight_base, block.weight_extension.target_point, &point),
+            accumulate_duplicate_slots,
         )?;
         insert_verifier_group_v4(
             &mut grouped,
             &block.auxiliary,
             terminal_weight_v4(*auxiliary_base, block.auxiliary.target_point, &point),
+            accumulate_duplicate_slots,
         )?;
     }
     if grouped.len() != keys.len()
@@ -1598,6 +1834,57 @@ pub fn verify_authenticated_output_link_x4c_v4(
             key: block.pending_aux.key,
         })
         .collect())
+}
+
+/// Verifier replay for the immutable X4c response statement.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_authenticated_output_link_x4c_v4(
+    permit: X4OpeningPermitV4,
+    model_root: Digest,
+    blocks: Vec<AuthenticatedOutputBlockVerifierV4<'_>>,
+    prefix: AuthenticatedOutputLinkPrefixV4<'_>,
+    proof: &AuthenticatedOutputLinkProofV4,
+    selected_draws: &[u64],
+    ctx: &mut VerifierCtx,
+    tx: &mut Transcript,
+) -> Result<Vec<BoundAuxEvalVerifierV4>, AuthenticatedOutputErrorV4> {
+    verify_authenticated_output_link_accelerated_v4(
+        permit,
+        model_root,
+        blocks,
+        prefix,
+        None,
+        proof,
+        selected_draws,
+        ctx,
+        tx,
+    )
+}
+
+/// Verifier replay for one digest-sealed X4d settlement union.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_authenticated_output_link_x4d_v4(
+    permit: X4OpeningPermitV4,
+    model_root: Digest,
+    blocks: Vec<AuthenticatedOutputBlockVerifierV4<'_>>,
+    prefix: AuthenticatedOutputLinkPrefixV4<'_>,
+    settlement_context: &X4dSettlementContextV1,
+    proof: &AuthenticatedOutputLinkProofV4,
+    selected_draws: &[u64],
+    ctx: &mut VerifierCtx,
+    tx: &mut Transcript,
+) -> Result<Vec<BoundAuxEvalVerifierV4>, AuthenticatedOutputErrorV4> {
+    verify_authenticated_output_link_accelerated_v4(
+        permit,
+        model_root,
+        blocks,
+        prefix,
+        Some(settlement_context),
+        proof,
+        selected_draws,
+        ctx,
+        tx,
+    )
 }
 
 pub fn prove_bound_response_zero_batch_v4(
@@ -2192,6 +2479,281 @@ mod tests {
         assert_eq!(bound_prover.len(), 1);
         assert_eq!(bound_verifier.len(), 1);
         assert_eq!(prover_tx.total_bytes(), verifier_tx.total_bytes());
+    }
+
+    #[test]
+    fn x4d_two_response_settlement_reuses_one_chain_and_binds_exact_union() {
+        let descriptor = [0x47; 32];
+        let weight_evaluations = (0..16).map(|index| symbol(210 + index)).collect::<Vec<_>>();
+        let auxiliary_evaluations = (0..4).map(|index| symbol(280 + 3 * index)).collect::<Vec<_>>();
+        let weight_points = [
+            vec![symbol(17), symbol(21), symbol(23), Fp2::ZERO],
+            vec![symbol(31), symbol(37), symbol(41), Fp2::ZERO],
+        ];
+        let auxiliary_points = [vec![symbol(23), Fp2::ZERO], vec![symbol(41), Fp2::ZERO]];
+        let weight_values = weight_points
+            .iter()
+            .map(|point| evaluate_multilinear_table(&weight_evaluations, point).unwrap())
+            .collect::<Vec<_>>();
+        let auxiliary_values = auxiliary_points
+            .iter()
+            .map(|point| evaluate_multilinear_table(&auxiliary_evaluations, point).unwrap())
+            .collect::<Vec<_>>();
+        let public_h = weight_values
+            .iter()
+            .zip(&auxiliary_values)
+            .map(|(weight, auxiliary)| *weight + *auxiliary)
+            .collect::<Vec<_>>();
+        let descriptor_inventory = vec![descriptor];
+        let weight =
+            committed(descriptor, 0xA500_0001, OracleKindV4::WeightExtension, &weight_evaluations);
+        let auxiliary =
+            committed(descriptor, 0xA500_0100, OracleKindV4::Auxiliary, &auxiliary_evaluations);
+        let manifest = crate::x4::manifest_v4::ManifestTreeV4::build(
+            crate::x4::frame_v4::manifest_id_digest_v4(MODEL_CONFIG_DIGEST, WEIGHTS_DIGEST, 29),
+            vec![crate::x4::frame::ManifestLeafFrame {
+                descriptor_digest: descriptor,
+                ordered_roots: vec![weight.commitment().root, auxiliary.commitment().root],
+            }],
+        )
+        .unwrap();
+        let model_root = manifest.root();
+        let claims = (0..2u16)
+            .map(|ordinal| ReducedClaimFrame {
+                descriptor_digest: descriptor,
+                parent_claim_digest: [0x51 + ordinal as u8; 32],
+                phase: crate::x4::frame::Phase::Decode,
+                phase_ordinal: ordinal,
+                point: vec![symbol(500 + u64::from(ordinal)); 14],
+                affine_scale: Fp2::ONE,
+                auth_domain: 0x64_000 + u64::from(ordinal),
+            })
+            .collect::<Vec<_>>();
+        let context = X4dSettlementContextV1 {
+            range: crate::x4::deferred_v4::X4dSettlementRangeV1 {
+                connection_id: [0x52; 32],
+                settlement_epoch: 29,
+                first_claim_index: 0,
+                claim_count: 2,
+                starting_accumulator_digest: [0x53; 32],
+                sealed_accumulator_digest: [0x54; 32],
+                ordered_response_nonces: vec![[0x55; 32], [0x56; 32]],
+            },
+        };
+        let mut prover_stream = CorrelationStream::new(PCG_SEED);
+        let mut prover_tx = Transcript::new(TX_SEED);
+        let mut pending_prover = Vec::new();
+        let mut m9_frames = Vec::new();
+        for (index, value) in auxiliary_values.iter().enumerate() {
+            let (pending, frame) = authenticate_pending_aux_prover_v4(
+                descriptor,
+                *value,
+                &mut prover_stream,
+                M9_DOMAIN + index as u64,
+                &mut prover_tx,
+            )
+            .unwrap();
+            pending_prover.push(pending);
+            m9_frames.push(frame);
+        }
+        let prover_blocks = pending_prover
+            .into_iter()
+            .enumerate()
+            .map(|(index, pending_aux)| AuthenticatedOutputBlockProverV4 {
+                descriptor_digest: descriptor,
+                public_h: public_h[index],
+                pending_aux,
+                weight_extension: LinkPolynomialProverV4 {
+                    cohort: &weight,
+                    slot: 0,
+                    evaluations: &weight_evaluations,
+                    target_point: &weight_points[index],
+                },
+                auxiliary: LinkPolynomialProverV4 {
+                    cohort: &auxiliary,
+                    slot: 0,
+                    evaluations: &auxiliary_evaluations,
+                    target_point: &auxiliary_points[index],
+                },
+            })
+            .collect::<Vec<_>>();
+        let prefix = AuthenticatedOutputLinkPrefixV4 {
+            epoch: 29,
+            claim_frames: &claims,
+            descriptor_digests: &descriptor_inventory,
+            ordered_h_symbols: &public_h,
+            m9_frames: &m9_frames,
+            round_correlation_domain_ids: &LINK_DOMAINS,
+        };
+        authenticated_output_link_schedule_digest_x4d_v1(
+            &context,
+            &claims,
+            &descriptor_inventory,
+            &public_h,
+            &m9_frames,
+            4,
+            &LINK_DOMAINS,
+        )
+        .unwrap();
+        let prover_permit = X4OpeningRegistryV4::default()
+            .authorize_after_persistent_freshness(model_root, 29, [0x57; 32])
+            .unwrap();
+        let mut runtime = X4cCpuReferenceRuntimeV4;
+        let (proof, bound_prover, _, _, _, released_draws) =
+            prove_authenticated_output_link_x4d_v4(
+                prover_permit,
+                model_root,
+                prover_blocks,
+                prefix,
+                &context,
+                &mut prover_stream,
+                &mut prover_tx,
+                X4dSettlementQuerySeedV1::new([0x59; 32]).unwrap(),
+                &mut runtime,
+                X4cSealConfigV4 {
+                    design_sha256: X4C_DESIGN_SHA256_V4,
+                    clean_source_sha256: [0x58; 32],
+                    response_ordinal: 1,
+                    arena_layout: X4cArenaLayoutV4::new(7, 3, 4096).unwrap(),
+                },
+            )
+            .unwrap();
+        assert_eq!(proof.frame.relation_count, 4);
+        assert_eq!(proof.global_folding.packed_opening.initial_groups.len(), 2);
+        assert_eq!(released_draws.len(), crate::x4::frame_v4::PRODUCTION_QUERY_COUNT_V4);
+        assert!(released_draws.iter().all(|draw| *draw < 128));
+
+        let delta = symbol(301);
+        let mut verifier = VerifierCtx::new(PCG_SEED, delta);
+        let mut verifier_tx = Transcript::new(TX_SEED);
+        let pending_verifier = m9_frames
+            .iter()
+            .enumerate()
+            .map(|(index, frame)| {
+                authenticate_pending_aux_verifier_v4(
+                    frame,
+                    &mut verifier,
+                    M9_DOMAIN + index as u64,
+                    &mut verifier_tx,
+                )
+                .unwrap()
+            })
+            .collect::<Vec<_>>();
+        let verifier_blocks = pending_verifier
+            .into_iter()
+            .enumerate()
+            .map(|(index, pending_aux)| AuthenticatedOutputBlockVerifierV4 {
+                descriptor_digest: descriptor,
+                public_h: public_h[index],
+                pending_aux,
+                weight_extension: LinkPolynomialVerifierV4 {
+                    commitment: weight.commitment(),
+                    slot: 0,
+                    target_point: &weight_points[index],
+                },
+                auxiliary: LinkPolynomialVerifierV4 {
+                    commitment: auxiliary.commitment(),
+                    slot: 0,
+                    target_point: &auxiliary_points[index],
+                },
+            })
+            .collect::<Vec<_>>();
+        let verifier_permit = X4OpeningRegistryV4::default()
+            .authorize_after_persistent_freshness(model_root, 29, [0x57; 32])
+            .unwrap();
+        let bound_verifier = verify_authenticated_output_link_x4d_v4(
+            verifier_permit,
+            model_root,
+            verifier_blocks,
+            prefix,
+            &context,
+            &proof,
+            &released_draws,
+            &mut verifier,
+            &mut verifier_tx,
+        )
+        .unwrap();
+        let prover_weight = weight_values
+            .iter()
+            .enumerate()
+            .map(|(index, value)| ProverAuthed { x: *value, m: symbol(400 + index as u64) })
+            .collect::<Vec<_>>();
+        let verifier_weight = prover_weight
+            .iter()
+            .map(|value| VerifierKey { k: value.m + delta * value.x })
+            .collect::<Vec<_>>();
+        let zero = prove_bound_response_zero_batch_v4(
+            &prover_weight,
+            &bound_prover,
+            &public_h,
+            &mut prover_stream,
+            ZERO_DOMAIN,
+            &mut prover_tx,
+        )
+        .unwrap();
+        verify_bound_response_zero_batch_v4(
+            &verifier_weight,
+            &bound_verifier,
+            &public_h,
+            &zero,
+            &mut verifier,
+            ZERO_DOMAIN,
+            &mut verifier_tx,
+        )
+        .unwrap();
+        assert_eq!(prover_tx.total_bytes(), verifier_tx.total_bytes());
+
+        let mut wrong_context = context.clone();
+        wrong_context.range.ordered_response_nonces.reverse();
+        let mut rejected_verifier = VerifierCtx::new(PCG_SEED, delta);
+        let mut rejected_tx = Transcript::new(TX_SEED);
+        let rejected_pending = m9_frames
+            .iter()
+            .enumerate()
+            .map(|(index, frame)| {
+                authenticate_pending_aux_verifier_v4(
+                    frame,
+                    &mut rejected_verifier,
+                    M9_DOMAIN + index as u64,
+                    &mut rejected_tx,
+                )
+                .unwrap()
+            })
+            .collect::<Vec<_>>();
+        let rejected_blocks = rejected_pending
+            .into_iter()
+            .enumerate()
+            .map(|(index, pending_aux)| AuthenticatedOutputBlockVerifierV4 {
+                descriptor_digest: descriptor,
+                public_h: public_h[index],
+                pending_aux,
+                weight_extension: LinkPolynomialVerifierV4 {
+                    commitment: weight.commitment(),
+                    slot: 0,
+                    target_point: &weight_points[index],
+                },
+                auxiliary: LinkPolynomialVerifierV4 {
+                    commitment: auxiliary.commitment(),
+                    slot: 0,
+                    target_point: &auxiliary_points[index],
+                },
+            })
+            .collect::<Vec<_>>();
+        let rejected_permit = X4OpeningRegistryV4::default()
+            .authorize_after_persistent_freshness(model_root, 29, [0x57; 32])
+            .unwrap();
+        assert!(verify_authenticated_output_link_x4d_v4(
+            rejected_permit,
+            model_root,
+            rejected_blocks,
+            prefix,
+            &wrong_context,
+            &proof,
+            &released_draws,
+            &mut rejected_verifier,
+            &mut rejected_tx,
+        )
+        .is_err());
     }
 
     #[test]

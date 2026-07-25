@@ -342,6 +342,7 @@ its clean descendant closure.
 | X4c schema-3 cryptographic build identity | **LOCAL MIGRATION GREEN; HARD STOP BEFORE NEXT POD** (2026-07-25) | Schema 2 immutable; schema 3 replaces same-commit with exact automatic crypto-build identity plus existing artifact/root/rebuild gates; append-only validator receipt; 2,700-s pod-ready→rebuild diagnostic target | `volta-x4c-crypto-build-v1` canonically covers production Rust/CUDA/Lean/build/spec sources and excludes validator/report-only files. Online runner checks identity before durable reads, permits differing clean Git SHAs only with exact identity equality, and writes a hash-anchored rebuild-admission marker before candidates. Target misses are recorded but do not timeout, kill, or fail validation; automatic CPU fallback remains forbidden. Local verification: **380 PASS / 0 failure / 4 ignored pre-existing**, schema-3/report validator **19/19 PASS**, tamper filter **44/44 PASS**. Next pod requires one new onboarding because the old durable tier was removed; preserve the new 9,618,587,808-B tier for later reuse. No protocol/ABI/root/proof/Lean/soundness change; hardware qualification pending. |
 | X4d deferred settlement Phase 1 | **DESIGN/M12 STATEMENTS/CODEC/GATES FROZEN; HARD STOP BEFORE LEAN, RUST OR POD** (2026-07-25) | Per-connection digest-chained frozen-claim accumulator; soft trigger 1,632 claims, hard cap 3,320; one settlement/epoch/opening; pending product state; key-reuse stop disposed; G1--G6 preregistered | Design `docs/x4d-deferred-settlement-design.md`, SHA-256 `c59fcb0163930b63a2f12e000b4b6b3ab3a24966b550c1249195196add5f9ff0`. Exact response **41,270,464 B**. GPT-2 settlement bytes are **2,632,812 + 50,424*k**: `k=1/8/16/32` gives **2,683,236 / 3,036,204 / 3,439,596 / 4,246,380 B**. At `k=32`, claims/masked groups are **3,264 / 1,632**; 102 active chain polynomials, 27 fold rounds, 27,564 symbols and 67,930 sibling digests remain fixed. The exact **80.25537016399041-bit** settlement expression and 78.809294874-bit floor are unchanged; M12 adds the semantic cap bridge and composes per-response MAC terms through M10. `runpod-a100-x4d-v1` requires A100-SXM4 80 GB, >=256 GiB RAM, >=150 GB volume, split 8/27 workers and NOTE-6 first. No gate verdict, Lean proof, Rust/reference change or pod work. |
 | X4d Phase 2 M12 Lean-first discharge | **LEAN GREEN; LOCAL RUST AUTHORIZED; NO POD** (2026-07-25) | Frozen statements prove without weakening; full build, zero `sorry`/`admit`, derived audit green; public soundness theorem exposes all four v4 event bounds and adds only the per-response M9 MAC terms | `X4DeferredSettlement.lean` proves append/range binding, the structural 3,320 cap bridge, 3,321 refusal, batched-mask fiber and GPT-2 hiding budget, exact frozen-union/M9 lifting, unchanged v4 settlement error, M10 connection union, one opening per epoch, and terminal abort/burn semantics. The public M12 theorem requires Fold, ClaimReduce, LinkBad and ZeroBatch with their exact frozen coefficients; no certificate premise, fifth event or deterministic equality is smuggled in. Build **3,253 jobs**; audit **236 total / 143 X4** (**27 new M12 targets**), standard axioms only. Audit stdout SHA-256 `4f7f95c6a08ced10a59f252c72113f338c08a430e23675e79a3eaed7f76405cd`; M12 source SHA-256 `762370a896785ca66167c62fb749b43181cde11c9602961ee983b0991a5b8240`. No Rust file, reference artifact, record or pod was touched at this checkpoint. |
+| X4d Phase 2 local implementation | **LOCAL RUST GREEN; REBASELINE GENERATOR GREEN; HARD STOP BEFORE POD / NO HARDWARE VERDICT** (2026-07-25) | One cap alias; append-only claim freeze; exact sealed union; settlement-fresh aux/query/correlation state; one reused accelerated chain; fase-D burn journal; background dual accounting; permanent G2/G4/G6 cases | X4d adds isolated accumulator/codec/orchestration modules and a thin context parameter to the existing v4 accelerated engine; it does not add another PCS, PCG pool or lifecycle. The stable accumulator identity is the digest of the three static weight roots, while each epoch gets two fresh auxiliary roots and a fresh manifest `model_root`; this clarifies the Phase-1 word “model root” and matches existing epochized X4c roots without changing proof bytes or soundness. Query-seed, epoch, aux-root and exact correlation-count commitments are globally burn-reserved; 111 draws are derived only after all fold roots seal. Settlement success requires raw PCG use to equal exactly twice the registered full-correlation count. Full `cargo test --workspace --no-default-features` is green: bench **30**, PCG **44**, PCS **112**, proto **110** and all other workspace suites pass; four production-size ignores are pre-existing. Local two-response small geometry completes one shared chain, M9-to-MAC and ZeroBatch. Exact `k=1/8/16/32` codec round trips and every registered tamper/cap/abort case pass. The clean append-only reference SHA values are generated only after this source checkpoint; no G1/G5 or A100 verdict is claimed. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -409,6 +410,64 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-25 — X4d Phase 2 local implementation is green; root
+  terminology is corrected without weakening; HARD STOP before pod.**
+  The implementation reuses the existing schema-4/v4 folding, manifest,
+  M9/link, ZeroBatch and fase-D lifecycle machinery. New code is separated
+  into the X4d accumulator/envelope module and GPT-2 orchestration module;
+  the accelerated authenticated-output implementation remains one engine
+  with thin X4c and X4d entry points. Historical X4c descriptors, codecs,
+  validators and records are untouched.
+
+  Phase-2 implementation made the Phase-1 phrase “static model root”
+  impossible to read literally: v4 `model_root` is an epochized manifest
+  root, and X4c epochs 3001--3004 already record distinct values. X4d now
+  names the stable object
+  `static_weight_commitment_digest = H(model config, weights digest, three
+  Wext roots, descriptors)`. The per-settlement v4 `model_root` is rebuilt
+  from those three roots plus two fresh auxiliary roots and the settlement
+  epoch. The accumulator binds the stable digest; the packed opening binds
+  the fresh manifest root. This is a binding clarification, not a statement,
+  error, codec-width or byte-formula change. The two durable X4c auxiliary
+  roots remain historical/onboarding evidence and are rejected as X4d
+  settlement masks.
+
+  `X4D_PENDING_CLAIM_CAP_V1` aliases the historical
+  `MAX_RESPONSE_CLAIMS_V4`; accumulator, range and envelope validators all
+  use it. The synthetic 3,321st claim and fixed GPT-2 33rd response are
+  refused before nonce/model-proof work. Claims are write-once behind opaque
+  authenticated handles and append into matching role digests. Exact
+  contiguous range validation rejects omission, reorder, wrong subset and
+  replay. Failure, close-with-pending, EOF and restart execute the existing
+  fase-D terminal burn, with no same-connection retry.
+
+  A settlement freshness tuple binds connection, static commitment, epoch,
+  sealed digest, auxiliary seed/root set, mask count, verifier query-seed
+  commitment and the exact full-correlation count per role. It is globally
+  burn-reserved and synced into the connection journal before challenge or
+  settlement-correlation release. Settlement allocation has a typed,
+  response-disjoint domain and reuses the single physical PCG pool loader;
+  acceptance requires raw consumption to equal exactly twice the registered
+  full-correlation count. Under-allocation is a permanent fail-closed test.
+  The 111 exact-bit query indices are derived from the one-use secret seed
+  only after all fold roots seal. Static-root use, challenge-epoch and
+  51-mask counters advance together.
+  The background scheduler uses disjoint 8/27 Rayon pools, a cooperative GPU
+  lease that yields only at kernel boundaries, and separate settlement wall,
+  active CPU/GPU, wait/pause and response-interference accounting.
+
+  Full `cargo test --workspace --no-default-features` is green: the relevant
+  package totals are bench **30**, PCG **44**, PCS **112** and proto **110**;
+  the four ignored production-size tests were already registered. The
+  two-response reduced-geometry settlement proves and verifies one shared
+  different-size chain through M9/link and ZeroBatch. Exact settlement codec
+  fixtures round-trip at `k=1/8/16/32`; response traffic remains the exact
+  **41,270,464-B** X4c projection with PCS removed. Clippy surfaces only
+  pre-existing warnings outside the new X4d files. R1c scope is extended to
+  the accumulator, authenticated-value store, freshness burn, shared link
+  context, settlement driver/codec, scheduler and abort cleanup. No G1/G5,
+  hardware, onboarding or overall gate verdict is claimed.
 
 - **2026-07-25 — X4d Phase 2 M12 Lean-first discharge is green; the local
   Rust phase is authorized with no weakening and no pod authorization.**

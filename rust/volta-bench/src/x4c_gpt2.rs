@@ -121,7 +121,7 @@ impl X4cGpt2Block {
         Ok([first, second])
     }
 
-    fn verifier_claims<'a>(
+    pub(crate) fn verifier_claims<'a>(
         &self,
         output: &'a ModelOutV,
     ) -> Result<[&'a (Vec<Fp2>, VerifierKey); 2], String> {
@@ -666,7 +666,7 @@ pub fn mask_seed_commitment(seed: [u8; 32]) -> Digest {
     *hasher.finalize().as_bytes()
 }
 
-struct UniformFp2Xof {
+pub(crate) struct UniformFp2Xof {
     reader: blake3::OutputReader,
     buffer: [u8; 65_536],
     cursor: usize,
@@ -674,8 +674,19 @@ struct UniformFp2Xof {
 
 impl UniformFp2Xof {
     fn new(seed: [u8; 32], descriptor: Digest, oracle_kind: OracleKindV4) -> Self {
-        let mut hasher = blake3::Hasher::new_derive_key(MASK_XOF_CONTEXT);
+        Self::new_with_context(MASK_XOF_CONTEXT, seed, &[], descriptor, oracle_kind)
+    }
+
+    pub(crate) fn new_with_context(
+        context: &str,
+        seed: [u8; 32],
+        binding: &[u8],
+        descriptor: Digest,
+        oracle_kind: OracleKindV4,
+    ) -> Self {
+        let mut hasher = blake3::Hasher::new_derive_key(context);
         hasher.update(&seed);
+        hasher.update(binding);
         hasher.update(&descriptor);
         hasher.update(&[oracle_kind as u8]);
         let mut value = Self { reader: hasher.finalize_xof(), buffer: [0; 65_536], cursor: 65_536 };
@@ -708,7 +719,7 @@ impl UniformFp2Xof {
         }
     }
 
-    fn fp2(&mut self) -> Fp2 {
+    pub(crate) fn fp2(&mut self) -> Fp2 {
         Fp2::new(self.fp(), self.fp())
     }
 }
@@ -876,7 +887,10 @@ pub fn rebuild_evaluation_tables(
     Ok(X4cGpt2EvaluationTables { slots })
 }
 
-fn padded_source_i16(model: &Gpt2Model, block: &X4cGpt2Block) -> Result<Vec<i16>, String> {
+pub(crate) fn padded_source_i16(
+    model: &Gpt2Model,
+    block: &X4cGpt2Block,
+) -> Result<Vec<i16>, String> {
     let rows = block.descriptor.padded_rows as usize;
     let cols = block.descriptor.padded_cols as usize;
     let mut padded = vec![0i16; rows * cols];
@@ -912,7 +926,7 @@ fn padded_source_i16(model: &Gpt2Model, block: &X4cGpt2Block) -> Result<Vec<i16>
     Ok(padded)
 }
 
-fn mirror_claim_reduction_round_accounting(tx: &mut Transcript, rounds: usize) {
+pub(crate) fn mirror_claim_reduction_round_accounting(tx: &mut Transcript, rounds: usize) {
     for _ in 0..rounds {
         tx.append("blind_round_corrections", 32);
     }
@@ -1032,7 +1046,7 @@ pub fn reduce_real_weight_claims(
     Ok(X4cGpt2ReducedClaims { frames, proofs, points, prover_values, verifier_keys })
 }
 
-fn cohort_index_for_weight(cohort_id: u32) -> Result<usize, String> {
+pub(crate) fn cohort_index_for_weight(cohort_id: u32) -> Result<usize, String> {
     match cohort_id {
         X4C_WEXT_MU26_COHORT_ID => Ok(0),
         X4C_WEXT_MU22_COHORT_ID => Ok(1),
@@ -1041,7 +1055,7 @@ fn cohort_index_for_weight(cohort_id: u32) -> Result<usize, String> {
     }
 }
 
-fn cohort_index_for_auxiliary(ell: usize) -> Result<usize, String> {
+pub(crate) fn cohort_index_for_auxiliary(ell: usize) -> Result<usize, String> {
     match ell {
         17 => Ok(3),
         16 => Ok(4),

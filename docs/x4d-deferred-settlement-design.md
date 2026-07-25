@@ -1,9 +1,8 @@
 # X4d deferred-settlement design and preregistration
 
-**Status (2026-07-25): PHASE 1 DESIGN, SOUNDNESS CROSS-CHECK, CODEC
-PREFLIGHT, M12 STATEMENT FREEZE AND GATES COMPLETE. HARD STOP BEFORE LEAN,
-RUST, REFERENCE GENERATION, BENCHMARKING OR POD WORK PENDING PRODUCT-OWNER
-REVIEW.**
+**Status (2026-07-25): PHASE 2 M12 AND LOCAL RUST COMPLETE; FULL LEAN AND
+RUST WORKSPACES GREEN; LOCAL CODEC REBASELINE COMPLETE. HARD STOP BEFORE
+POD WORK PENDING PRODUCT-OWNER REVIEW.**
 
 X4d moves the folding-PCS work out of each response and into one deferred
 settlement over an exact union of frozen, MAC-authenticated weight claims. A
@@ -70,6 +69,40 @@ The owner rulings fixed for this phase are:
 6. all resulting references and validators are new and append-only.
 
 No section below reopens those rulings.
+
+### 1.1 Phase-2 root terminology clarification
+
+Implementation exposed one terminology ambiguity in the Phase-1 prose. It is
+resolved here without changing a statement, soundness term, child codec or
+byte count.
+
+The historical v4 field named `model_root` is the root of an epochized
+manifest. It cannot be the object reused byte-for-byte across X4d
+settlements, because each settlement has two fresh auxiliary cohort roots.
+The X4c online record already demonstrates the distinction: epochs
+3001--3004 have distinct `model_root` values even though their three weight
+cohort roots and weight oracle are unchanged.
+
+X4d therefore uses these two explicit objects:
+
+```text
+static_weight_commitment_digest
+  = H(model config, weights digest,
+      three static Wext cohort ids/roots, ordered descriptors)
+
+settlement_model_root(epoch)
+  = v4 manifest root(
+      epochized manifest id,
+      three static Wext roots,
+      two settlement-fresh auxiliary roots)
+```
+
+The claim accumulator binds `static_weight_commitment_digest`. The packed
+opening and settlement envelope bind `settlement_model_root(epoch)`. The old
+X4c five-root durable tier and records remain immutable; X4d reuses only its
+three weight cohorts and does not admit its two historical auxiliary cohorts
+as settlement masks. The v4 manifest/root frame shapes are unchanged, so the
+Section-8 exact formula is unchanged.
 
 ## 2. Product state and settlement policy
 
@@ -153,7 +186,7 @@ The initial digest is
 ```text
 D_0 = BLAKE3-DERIVE(
   "volta-zk/x4d/claim-accumulator-init/v1",
-  pcs_profile_digest || model_root || connection_id
+  pcs_profile_digest || static_weight_commitment_digest || connection_id
 ).
 ```
 
@@ -241,7 +274,8 @@ instantiation).
 
 Deferral gives the prover no new adaptive choice:
 
-- the weight commitment and model root predate the connection;
+- the static weight commitment and its three weight roots predate the
+  connection;
 - block, point, authenticated handle, response nonce and claim order are
   frozen and digest-chained before delivery;
 - the complete settlement union is durably sealed before any settlement
@@ -290,12 +324,16 @@ The normative order is:
 ```text
 all response claims MAC-authenticated and accumulated
   -> settlement range/digests/epoch durably sealed
-  -> fresh auxiliary mask set and correlations allocated
+  -> fresh auxiliary mask set committed
+  -> epoch, auxiliary root set and verifier query-seed commitment
+     durably burned
+  -> fresh settlement correlations allocated
   -> response-local two-claim groups reduced in canonical order
   -> all h values and M9 corrections fixed
   -> authenticated-output link rounds closed
   -> same-domain roots and one different-size fold chain sealed
-  -> exactly 111 fresh query draws issued
+  -> exactly 111 fresh query draws derived from the one-use verifier seed,
+     settlement context, settlement model root and all sealed fold roots
   -> one packed query opening verified
   -> one settlement ZeroBatch closed
   -> every covered response marked WEIGHT_VERIFIED.
@@ -359,6 +397,12 @@ The current Rust schema-4 validator in
 `claim_frames.len() > 3320`. It separately enforces at most 1,660 masked/M9
 groups and `relation_count = 2*m9_frames.len()`.
 
+The Phase-2 X4d implementation does not duplicate that numeral:
+`X4D_PENDING_CLAIM_CAP_V1` in
+`rust/volta-pcs/src/x4/deferred_v4.rs` aliases
+`folding_v4::MAX_RESPONSE_CLAIMS_V4`, and accumulator preflight, range
+validation and settlement-envelope validation all consume that alias.
+
 The current Lean theorem
 `ud_model_global_folding_sound_v4` in
 `lean/VoltaZk/X4FoldingPCSV4.lean` has the hypothesis:
@@ -374,9 +418,8 @@ hcount : relationCount <= 3320.
 ```
 
 The numeral is therefore byte-for-byte and source-for-source the same
-constant today. M12 must add the missing semantic bridge from a canonical
-settlement union to these theorem carriers; Phase 2 may not rely on numeric
-coincidence alone:
+constant. M12 adds the semantic bridge from a canonical settlement union to
+these theorem carriers rather than relying on numeric coincidence:
 
 ```text
 claim_frames <= 3320
@@ -387,10 +430,9 @@ canonical union and activation schedule
   => activePolys <= 3320.
 ```
 
-Failure to prove this bridge is an M12 obstruction and immediate hard stop.
-After implementation there must be one exported Rust constant used by the
-accumulator, settlement codec and verifier. A duplicated literal is rejected
-at review.
+This bridge is proved by `x4d_claim_cap_implies_v4_bounds` in
+`lean/VoltaZk/X4DeferredSettlement.lean`; the runtime constant alias and its
+3,321 refusal tests are the implementation side of the same invariant.
 
 ### 5.2 Exact coefficient cross-check
 
@@ -500,7 +542,24 @@ total X4d settlement full         = 2259*k + 55.
 
 The 32-response value remains below the existing **98,001** all-maximum X4
 screen. Prover/verifier counts, domains, allocation offsets and digests must
-agree exactly. Unused settlement allocations are burned on every abort.
+agree exactly. The durable freshness binding records
+`expected_full_correlations_per_role = 2259*k + 55` before any settlement
+correlation is released. The fase-D allocation ledger then consumes exactly
+twice that number of raw sub-correlations, because each full `F_p^2`
+correlation is built from two raw entries. Settlement success requires:
+
+```text
+settlement_raw_correlations_consumed
+  = 2 * expected_full_correlations_per_role.
+```
+
+Zero, under- and over-allocation are terminal protocol errors. Settlement
+allocations use a typed domain
+`(connection_id, settlement_epoch, lane, ordinal, tensor_tag)` disjoint from
+response domains; the existing connection-global stage counters still prove
+that the same physical pool entry cannot be used twice. Response and
+settlement paths share one physical pool loader rather than a second PCG
+implementation. Unused settlement allocations are burned on every abort.
 
 ## 6. Abort, failure and connection close
 
@@ -726,8 +785,9 @@ remain unchanged.
 
 The settlement envelope uses a new top-level X4d message kind and transcript
 domains, but retains the canonical v4 child-frame widths and the 16-byte
-top-level width. The static v4 descriptor, manifest, N4 leaf/node and model
-root encodings remain unchanged.
+top-level width. The v4 descriptor, manifest, N4 leaf/node and model-root
+encodings remain unchanged; the model-root value is the fresh
+`settlement_model_root(epoch)` defined in Section 1.1.
 
 The two existing 32-byte schedule-digest fields are re-derived under:
 
@@ -741,7 +801,7 @@ claim-index range, starting/ending accumulator digests and ordered response
 nonces. Those are verifier-held statement/context data, not new prover
 fields. The proof is replayed only against the locally expected accumulator
 union. This gives cross-settlement replay and wrong-subset rejection without
-adding wire bytes or changing the static commitment root.
+adding wire bytes or changing any static weight root.
 
 For the frozen GPT-2 descriptor and query geometry, the settlement components
 are:
@@ -821,14 +881,17 @@ this design. It does not remain as a dangling X4c obligation.
 
 The following reuse is intentional and sound:
 
-- static weight coefficients, encoded oracle, N4 outer cache, model root and
-  commitment roots across responses and settlements;
+- static weight coefficients, encoded oracle, N4 outer cache, the three
+  weight cohort roots and `static_weight_commitment_digest` across responses
+  and settlements;
 - the verifier's one connection-scoped `Delta`, exactly as composed by M10;
 - the fase-D PCG connection and its pool containers, while individual
   correlations remain one-use;
 - public BLAKE3 derive-mode context states for the four v4 N4 hash domains;
   and
-- immutable descriptor/manifest data and the durable coefficient/root tier.
+- immutable descriptors and manifest schema. Manifest frames and the
+  settlement model root are rebuilt from static weight roots plus fresh
+  auxiliary roots for each epoch.
 
 The four cached 32-byte X4b hash-context keys seen by the X4c traffic
 accounting are public deterministic derive-mode context state, not VOLE
@@ -840,8 +903,9 @@ this a fresh cryptographic-key requirement is rejected.
 
 Static commitment reuse is legitimate because the weight commitment predates
 the connection and every settlement proves fresh, already-fixed claims
-against that same root. Binding does not require recommitting identical
-weights for each query.
+against that same static commitment. The settlement manifest root remains
+epoch/fresh-auxiliary specific. Binding does not require recommitting
+identical weights for each query.
 
 ### 9.2 Fresh state
 
@@ -855,6 +919,9 @@ The following is fresh and one-use per settlement:
 
 - settlement epoch and durable range seal;
 - auxiliary mask polynomials, seeds, roots and coefficients;
+- a verifier query seed whose commitment is globally burn-reserved before
+  challenge release; its 111 exact-bit draws are derived only after every
+  fold root is sealed;
 - every claim-reduction, same-domain, activation, link, fold and ZeroBatch
   challenge;
 - all 111 exact query draws;
@@ -874,13 +941,13 @@ They are protocol/accounting counters and do not enter proof bytes.
 
 | Object | Required counter identity |
 | --- | --- |
-| static commitment/oracle | `static_commitment_materializations = 1`; `settlement_static_root_uses = settlement_challenge_epochs_started` |
+| static commitment/oracle | `static_commitment_materializations = 1`; `settlement_static_root_uses = settlement_challenge_epochs_started`; no auxiliary root is counted here |
 | fase-D MAC key | `connection_delta_keys_created = 1`; every authorized response and challenge-bearing settlement records the same connection-key id |
 | public N4 hash contexts | `hash_context_initializations = 4`; `hash_context_initialization_bytes = 128` on online ordinal 0 and `0` thereafter; every later ordinal records a reuse hit |
 | response nonces/handles | `response_nonces_burned = responses_authorized`; `auth_handles_created = 102*responses_frozen`; no handle appears in two claim indices |
 | settlement epochs/seals | `settlement_epochs_burned = settlement_ranges_sealed`; exactly one durable range seal per epoch, including a pre-challenge failure |
 | auxiliary masks | `aux_masks_created = 51*settlement_challenge_epochs_started`; every created mask is destroyed or burned in the same epoch |
-| query challenges | `settlement_query_draws = 111*settlement_query_schedules_issued`; every issued schedule is domain-separated by epoch |
+| query challenges | `settlement_query_draws = 111*settlement_query_schedules_issued`; every seed commitment is globally burn-reserved and every issued schedule is domain-separated by connection, sealed range, epoch, settlement model root and fold-root vector |
 | settlement correlations | for challenge-bearing batch sizes `k_j`, prover and verifier each allocate `sum_j (2259*k_j + 55)` full correlations before the first challenge; consumed plus abort-burned equals allocated |
 
 The correlation ledger additionally compares first/last allocation offsets,
@@ -1009,6 +1076,44 @@ The following remain conjunctive:
 - R1b NOTE-6 `c3_weights_two_weight_set_leakage_smoke` as the first pod
   workload.
 
+The five-root check remains an unchanged carried X4c onboarding gate. X4d
+uses the three admitted weight roots and regenerates two auxiliary roots per
+settlement; accepting either durable X4c auxiliary root as an X4d mask is a
+freshness failure.
+
+### Phase-2 implementation map
+
+The implementation deliberately adds no competing PCS or connection
+lifecycle:
+
+- `volta-pcs/x4/deferred_v4.rs` owns the single cap alias, append-only
+  accumulator, exact range/envelope validation and cooperative GPU lease
+  accounting;
+- `authenticated_output_v4.rs` retains one accelerated folding engine, with
+  thin X4c and X4d entry points; only the X4d entry permits repeated
+  response-local relations to accumulate onto the same static slots;
+- `volta-pcg/production.rs` remains the sole durable fase-D lifecycle and
+  adds `CLAIMS_FROZEN`, `SETTLEMENT_SEAL`, `SETTLEMENT_FRESHNESS`,
+  `SETTLEMENT_ALLOCATE`, success/failure and crash-burn records. The
+  freshness record binds the exact full-correlation count per role, and
+  success reconciles it against the raw allocation ledger;
+- `volta-bench/x4d_gpt2.rs` is orchestration only: it maps model outputs to
+  frozen handles, materializes fresh auxiliary cohorts and invokes the
+  existing accelerated chain; and
+- `x4d_codec_reference` generates the exact response traffic projection and
+  materialized settlement envelopes without claiming a proof or hardware
+  gate verdict.
+
+The local small-geometry cryptographic test covers two responses in one
+different-size chain and completes M9-to-MAC plus ZeroBatch verification.
+Permanent tests cover value substitution, omission, reorder, wrong subset,
+claim replay, settlement-freshness replay, the 3,321st claim, the fixed GPT-2
+33rd-response refusal, correlation under-allocation, settlement failure,
+close, EOF and process restart.
+The full no-default-features Rust workspace is green. R1c review scope is
+extended to all implementation files above and the new X4d codec generator;
+independent review is not claimed.
+
 ## 11. Frozen profile and phase order
 
 `runpod-a100-x4d-v1` requires:
@@ -1023,20 +1128,20 @@ The following remain conjunctive:
 - one warm-up plus at least three measured candidates where applicable; and
 - NOTE-6 first.
 
-The implementation and execution order after a later explicit approval is:
+The phase order and current boundary are:
 
 ```text
-Phase 2a: exact M12 statements/proofs/audit
+Phase 2a COMPLETE: exact M12 statements/proofs/audit
   -> full lake build, zero sorry/admit, standard axioms only
   -> HARD STOP on any obstruction
 
-Phase 2b: local Rust implementation
+Phase 2b COMPLETE: local Rust implementation
   -> accumulator/freeze and product states
   -> settlement driver and generalized codecs
   -> cap/abort/background scheduler
   -> permanent G2/G4/G6 tests
   -> full workspace and synthetic-scale CPU green
-  -> HARD STOP before pod
+  -> HARD STOP before pod (current boundary)
 
 Phase 3: user-provisioned pod only
   -> NOTE-6 first and RAM/volume preflight
@@ -1051,7 +1156,6 @@ R1c mandatory scope is extended to the accumulator, authenticated-handle
 store, settlement codecs/driver, cap and product-state machine, background
 scheduler, interference accounting and abort cleanup.
 
-**HARD STOP:** Phase 1 ends here. No Lean source, Rust source, reference,
-validator, benchmark result, endpoint, pod, remote storage or provider
-control plane may be touched for X4d until the product owner reviews and
-explicitly approves this frozen design.
+**HARD STOP:** Phase 2 ends here. No endpoint, pod, remote storage, hardware
+benchmark or provider control plane may be touched for X4d until the product
+owner explicitly approves Phase 3 and provisions the registered profile.

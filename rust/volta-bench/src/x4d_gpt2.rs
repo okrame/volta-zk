@@ -10,7 +10,9 @@ use std::time::Instant;
 
 use volta_field::Fp2;
 use volta_gpt2::Gpt2Model;
-use volta_mac::{CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey};
+use volta_mac::{
+    CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey, RESERVED_DOMAIN_BITS,
+};
 use volta_pcg::X4dSettlementFreshnessJournalAudit;
 use volta_pcs::x4::{
     authenticate_pending_aux_prover_v4, authenticate_pending_aux_verifier_v4,
@@ -55,10 +57,10 @@ pub const X4D_STATIC_WEIGHT_COHORTS_V1: usize = 3;
 pub const X4D_FRESH_AUXILIARY_COHORTS_V1: usize = 2;
 
 const X4D_SETTLEMENT_DOMAIN_EPOCH_STRIDE_V1: u64 = 0x10_0000;
-const X4D_CLAIM_REDUCTION_DOMAIN_BASE_V1: u64 = 0x2000_0000_0000_0000;
-const X4D_M9_DOMAIN_BASE_V1: u64 = 0x2000_0000_0001_0000;
-const X4D_LINK_DOMAIN_BASE_V1: u64 = 0x2000_0000_0002_0000;
-const X4D_ZERO_DOMAIN_BASE_V1: u64 = 0x2000_0000_0003_0000;
+const X4D_CLAIM_REDUCTION_DOMAIN_BASE_V1: u64 = 0x1001_0000_0000_0000;
+const X4D_M9_DOMAIN_BASE_V1: u64 = 0x1001_0000_0001_0000;
+const X4D_LINK_DOMAIN_BASE_V1: u64 = 0x1001_0000_0002_0000;
+const X4D_ZERO_DOMAIN_BASE_V1: u64 = 0x1001_0000_0003_0000;
 const X4D_AUX_MASK_XOF_CONTEXT_V1: &str = "volta-zk/x4d/gpt2-settlement-aux-mask/v1";
 const X4D_AUX_MASK_SEED_COMMITMENT_CONTEXT_V1: &str =
     "volta-zk/x4d/gpt2-settlement-aux-mask-seed-commitment/v1";
@@ -223,10 +225,14 @@ fn settlement_binding_bytes_v1(context: &X4dSettlementContextV1) -> Result<Vec<u
 }
 
 fn settlement_domain_v1(base: u64, epoch: u64) -> Result<u64, String> {
-    epoch
+    let domain = epoch
         .checked_mul(X4D_SETTLEMENT_DOMAIN_EPOCH_STRIDE_V1)
         .and_then(|offset| base.checked_add(offset))
-        .ok_or_else(|| "X4d settlement domain overflows".to_owned())
+        .ok_or_else(|| "X4d settlement domain overflows".to_owned())?;
+    if domain & RESERVED_DOMAIN_BITS != 0 {
+        return Err("X4d settlement domain uses reserved MAC bits".to_owned());
+    }
+    Ok(domain)
 }
 
 pub fn x4d_static_weight_commitment_digest_v1(
@@ -1666,6 +1672,21 @@ mod tests {
             assert_eq!(counters.query_draws, 111);
         }
         assert!(X4dGpt2SettlementCountersV1::for_responses(33).is_err());
+    }
+
+    #[test]
+    fn settlement_domains_are_disjoint_from_x4c_and_mac_reserved_bits() {
+        let domains = [
+            X4D_CLAIM_REDUCTION_DOMAIN_BASE_V1,
+            X4D_M9_DOMAIN_BASE_V1,
+            X4D_LINK_DOMAIN_BASE_V1,
+            X4D_ZERO_DOMAIN_BASE_V1,
+        ]
+        .map(|base| settlement_domain_v1(base, 1).unwrap());
+        assert!(domains.iter().all(|domain| domain & RESERVED_DOMAIN_BITS == 0));
+        assert!(domains.iter().all(|domain| domain >> 48 == 0x1001));
+        assert_eq!(domains.iter().copied().collect::<BTreeSet<_>>().len(), domains.len());
+        assert!(settlement_domain_v1(1 << 61, 1).is_err());
     }
 
     #[test]

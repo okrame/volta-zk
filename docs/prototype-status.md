@@ -339,6 +339,7 @@ its clean descendant closure.
 | X4c selected R1c remediation | **LOCAL GREEN; HARD STOP BEFORE POD** (2026-07-24) | R1C-M1/M2/M3/M7, N2/N3/N4 and ABI-neutral M4 are implemented and locally verified; M5/M6 and all other NOTE items remain explicitly deferred | Implementation checkpoint `0ab8826ab0bbe76aba6ecc8911e3bfa1074e65dc`. The real-weight driver may now be implemented locally, but no pod execution is authorized by this checkpoint; see the closure entry below. |
 | X4c real-weight GPT-2 small E2E driver | **LOCAL GREEN; HARD STOP BEFORE POD / NO HARDWARE VERDICT** (2026-07-24) | Frozen six-input manifest; T=100+50 golden; actual 51-block/102-claim domains; real AES-PCG and persistent composite freshness; same-source onboarding/rebuild; exact X4c bytes, staging and ownership | Implementation checkpoint `7e8e957977fc51ca5d5deedd0c75371dc438118a`. Local preflight and complete suites pass. The schema-2 onboarding/online validators require their exact SHA chain, warm-up + three measured candidates, upper medians, exact **2,683,236 / 43,953,700 B**, one 111-query gather, exact **1,592** diagnostic comparisons, zero response-window I/O/staging and reconciled native arena ownership. Real CUDA, production-size onboarding/rebuild and online candidates await a separately supplied pod endpoint. |
 | X4c real-weight accelerated fresh rebuild | **A100 REAL-WEIGHT E2E PASS; R1c REVIEW PENDING** (2026-07-25) | Discriminated schema-2 `X4c-GPT2-real-weight-online-accelerated`; dedicated fail-closed validator; unchanged durable tier, roots, protocol and bytes; one warm-up + three measured | Clean source `6277c3c`; onboarding SHA-256 `bdf17c56e8e9a4d152b40ed2e1653d34cd665f09f52cb9dfe1cb1f57ae5e165d`; online SHA-256 `5a5417c11c0d5b4abe57af1e6ea5fa1191962c709c0f7b86fb780c30af1dac89`. Accelerated rebuild **240.623922522 s**, all five roots exact, scratch **0 B**, peak host/VRAM **133,544,189,952 / 43,486,546,048 B**. Four candidates accepted; selected open/verify **0.130465952 / 0.059185522 s PASS**, proof-ready/reusable **51.934139091 / 51.959601330 s**, complete E2E **303.190020886 s informative**. D2D **1,364,224 B** and ordinal-aware device-generated **35,727,436,640 / 35,727,436,512 B** exact. PCS/response **2,683,236 / 43,953,700 B** exact; zero response-window I/O/staging. R1c independent review is not claimed. |
+| X4c schema-3 cryptographic build identity | **LOCAL MIGRATION GREEN; HARD STOP BEFORE NEXT POD** (2026-07-25) | Schema 2 immutable; schema 3 replaces same-commit with exact automatic crypto-build identity plus existing artifact/root/rebuild gates; append-only validator receipt; 2,700-s pod-ready→rebuild diagnostic target | `volta-x4c-crypto-build-v1` canonically covers production Rust/CUDA/Lean/build/spec sources and excludes validator/report-only files. Online runner checks identity before durable reads, permits differing clean Git SHAs only with exact identity equality, and writes a hash-anchored rebuild-admission marker before candidates. Target misses are recorded but do not timeout, kill, or fail validation; automatic CPU fallback remains forbidden. Local verification: **380 PASS / 0 failure / 4 ignored pre-existing**, schema-3/report validator **19/19 PASS**, tamper filter **44/44 PASS**. Next pod requires one new onboarding because the old durable tier was removed; preserve the new 9,618,587,808-B tier for later reuse. No protocol/ABI/root/proof/Lean/soundness change; hardware qualification pending. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -406,6 +407,40 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-25 — Schema-3 cryptographic build identity and 45-minute
+  diagnostic campaign target preregistered.**  The owner approved a conservative
+  successor to the schema-2 same-commit rule.  Historical schema-2 records
+  and validators remain immutable and continue to require exact onboarding /
+  online Git-SHA equality.  New real-weight records use schema 3 and
+  `volta-x4c-crypto-build-v1`: a canonical BLAKE3 identity over the complete
+  production Rust/CUDA/Lean/build surface and frozen specifications.
+  Validator code, validator tests, ledger/handoff prose and raw results are
+  excluded.  Schema-3 admission requires exact onboarding-file SHA-256,
+  identical build identity, all existing immutable input/config/cohort pins,
+  coefficient digests, five roots, durable census and fresh-rebuild equality.
+  Producer commit and complete bundle digests remain mandatory audit fields
+  but may differ.
+
+  Validator provenance moves to a separate append-only validation receipt;
+  revalidation never rewrites a hardware record.  `clean_source_sha256`
+  remains separate because it domain-separates the direct-fold diagnostic and
+  receives zero soundness credit.  The next owner-supplied pod has a
+  **2,700-s diagnostic target** from pod-ready first workload through
+  fresh-rebuild admission; provider provisioning latency is reported
+  separately. One shared clock covers onboarding when required and rebuild.
+  A target miss is recorded and reported, but does not timeout or kill the
+  runner and does not fail validation. No candidate starts before the
+  independent rebuild gates pass, and CPU fallback remains forbidden. This
+  target is an owner estimate, not a protocol or performance gate.
+
+  The prior pod's durable tier was intentionally removed after its records
+  were copied.  Therefore the next pod must perform one schema-3 onboarding
+  and preserve its exact **9,618,587,808-B** five-coefficient/five-root tier
+  on transferable storage.  Compatible later validator-only descendants may
+  reuse it.  Full design:
+  `docs/x4c-crypto-build-identity-design.md`.  No protocol, ABI, proof byte,
+  root, coefficient, correlation, Lean theorem or soundness term is changed.
 
 - **2026-07-25 — X4c accelerated real-weight E2E PASS; same artifact
   revalidated after validator-only cache-census correction.**  Clean source

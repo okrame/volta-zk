@@ -5,6 +5,7 @@
 //! the fused pass expands mock-PCG keys, applies the correction update
 //! `k_x = k_r + Δ·δ`, and accumulates `⟨eq(r,·), k_x⟩` in one scan.
 
+pub mod crypto_build_identity;
 pub mod logits_pack;
 pub mod logup;
 pub mod x4c_gpt2;

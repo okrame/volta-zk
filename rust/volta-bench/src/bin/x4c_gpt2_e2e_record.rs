@@ -22,9 +22,12 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use volta_accel::{
     Backend, BackendStats, CudaStreamState, DeviceSlice, Operation, ResidentTimingPolicy,
+};
+use volta_bench::crypto_build_identity::{
+    x4c_crypto_build_identity, X4cCryptoBuildIdentity, X4C_CRYPTO_BUILD_ID_SCHEME,
 };
 use volta_bench::x4c_gpt2::{
     execute_real_weight_x4c, mask_seed_commitment, materialize_real_weight_cohorts,
@@ -62,11 +65,13 @@ use volta_proto::model_proof::{
 };
 use volta_proto::{layer_dom_base, prod_batch_prover, prod_batch_verify, ModelOut, ModelOutV};
 
-const SCHEMA: u64 = 2;
+const SCHEMA: u64 = 3;
 const PROFILE: &str = "runpod-a100-x4c-v1";
 const PROTOCOL: &str = "x4-zkdeepfold-ud-e29-v4";
-const ONLINE_MILESTONE: &str = "X4c-GPT2-real-weight-online";
-const ACCELERATED_ONLINE_MILESTONE: &str = "X4c-GPT2-real-weight-online-accelerated";
+const ONBOARDING_MILESTONE: &str = "X4c-GPT2-real-weight-onboarding-crypto-id-v1";
+const ONLINE_MILESTONE: &str = "X4c-GPT2-real-weight-online-crypto-id-v1";
+const ACCELERATED_ONLINE_MILESTONE: &str = "X4c-GPT2-real-weight-online-accelerated-crypto-id-v1";
+const CAMPAIGN_TARGET_S: u64 = 2_700;
 const SELECTED_TAPE_DIGEST: &str =
     "3654af24af8a3e903e15db2bf25e0ec587d1bd774aaab433d1fb6e1064b3d299";
 const GPT2_BIN_SHA256: &str = "bdd193720adc8243c64897eaf1b9cd27883ae5613552c96ed4533c52892adc6a";
@@ -102,9 +107,11 @@ struct Args {
     onboarding: Option<PathBuf>,
     onboarding_sha256: Option<String>,
     output: Option<PathBuf>,
+    rebuild_admission_marker: Option<PathBuf>,
     authorization_store: Option<PathBuf>,
     connection_store: Option<PathBuf>,
     clean_source_sha256: Option<String>,
+    campaign_started_unix_s: Option<u64>,
     epoch_base: u64,
 }
 
@@ -113,7 +120,8 @@ fn usage() -> ! {
         "usage: x4c_gpt2_e2e_record --mode preflight|onboard|online|online-accelerated \
          --weights PATH [--durable-root PATH --scratch-root PATH --output PATH] \
          [--onboarding PATH --onboarding-sha256 HEX --authorization-store PATH --connection-store PATH \
-          --clean-source-sha256 HEX --epoch-base N]"
+          --clean-source-sha256 HEX --campaign-started-unix-s N \
+          --rebuild-admission-marker PATH --epoch-base N]"
     );
     std::process::exit(2)
 }
@@ -126,9 +134,11 @@ fn parse_args() -> Args {
     let mut onboarding = None;
     let mut onboarding_sha256 = None;
     let mut output = None;
+    let mut rebuild_admission_marker = None;
     let mut authorization_store = None;
     let mut connection_store = None;
     let mut clean_source_sha256 = None;
+    let mut campaign_started_unix_s = None;
     let mut epoch_base = 1u64;
     let mut args = std::env::args().skip(1);
     while let Some(argument) = args.next() {
@@ -149,9 +159,13 @@ fn parse_args() -> Args {
             "--onboarding" => onboarding = Some(PathBuf::from(value())),
             "--onboarding-sha256" => onboarding_sha256 = Some(value()),
             "--output" => output = Some(PathBuf::from(value())),
+            "--rebuild-admission-marker" => rebuild_admission_marker = Some(PathBuf::from(value())),
             "--authorization-store" => authorization_store = Some(PathBuf::from(value())),
             "--connection-store" => connection_store = Some(PathBuf::from(value())),
             "--clean-source-sha256" => clean_source_sha256 = Some(value()),
+            "--campaign-started-unix-s" => {
+                campaign_started_unix_s = Some(value().parse().unwrap_or_else(|_| usage()))
+            }
             "--epoch-base" => epoch_base = value().parse().unwrap_or_else(|_| usage()),
             _ => usage(),
         }
@@ -164,9 +178,11 @@ fn parse_args() -> Args {
         onboarding,
         onboarding_sha256,
         output,
+        rebuild_admission_marker,
         authorization_store,
         connection_store,
         clean_source_sha256,
+        campaign_started_unix_s,
         epoch_base,
     }
 }
@@ -295,6 +311,45 @@ fn git_sha_clean() -> Result<String, String> {
     String::from_utf8(output.stdout)
         .map(|value| value.trim().to_owned())
         .map_err(|_| "git SHA is not UTF-8".to_owned())
+}
+
+fn unix_time_s() -> Result<u64, String> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| format!("system clock precedes Unix epoch: {error}"))
+        .map(|duration| duration.as_secs())
+}
+
+fn campaign_started(args: &Args) -> Result<u64, String> {
+    let started = args
+        .campaign_started_unix_s
+        .ok_or_else(|| "schema-3 record requires --campaign-started-unix-s".to_owned())?;
+    let now = unix_time_s()?;
+    if started == 0 || started > now {
+        return Err("campaign start must be a nonzero past Unix timestamp".to_owned());
+    }
+    Ok(started)
+}
+
+fn campaign_elapsed(started: u64) -> Result<(u64, u64, bool), String> {
+    let finished = unix_time_s()?;
+    let elapsed = finished
+        .checked_sub(started)
+        .ok_or_else(|| "campaign clock moved before start".to_owned())?;
+    Ok((finished, elapsed, elapsed <= CAMPAIGN_TARGET_S))
+}
+
+fn producer_source_sha256(args: &Args) -> Result<String, String> {
+    let digest = args
+        .clean_source_sha256
+        .as_deref()
+        .ok_or_else(|| "schema-3 record requires --clean-source-sha256".to_owned())?;
+    parse_hex_32(digest)?;
+    Ok(digest.to_owned())
+}
+
+fn current_crypto_build_identity() -> Result<X4cCryptoBuildIdentity, String> {
+    x4c_crypto_build_identity(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
 }
 
 fn write_append_only<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
@@ -678,6 +733,17 @@ struct OnboardingRecord {
     milestone: String,
     git_sha: String,
     git_dirty: bool,
+    producer_source_sha256: String,
+    crypto_build_id_scheme: String,
+    crypto_build_id: String,
+    crypto_build_manifest_blake3: String,
+    crypto_build_file_count: u64,
+    crypto_build_source_bytes: u64,
+    campaign_target_s: u64,
+    campaign_started_unix_s: u64,
+    campaign_finished_unix_s: u64,
+    campaign_elapsed_s: u64,
+    campaign_target_met: bool,
     profile: String,
     protocol: String,
     design_sha256: String,
@@ -814,8 +880,11 @@ fn onboard(args: &Args) -> Result<(), String> {
     if durable.exists() || scratch.exists() || output.exists() {
         return Err("onboarding paths must be fresh".to_owned());
     }
+    let campaign_started_unix_s = campaign_started(args)?;
+    let producer_source_sha256 = producer_source_sha256(args)?;
     verify_design_digest()?;
     let git_sha = git_sha_clean()?;
+    let crypto_build = current_crypto_build_identity()?;
     let workload = workload(&args.weights)?;
     let (mock, _, _, _) = mock_model_outputs(&workload)?;
     let parent_domains = X4cGpt2Inventory::parent_domains_from_output(&mock)?;
@@ -891,6 +960,8 @@ fn onboard(args: &Args) -> Result<(), String> {
         && durable_census.exact;
     let selected_upper_median_wall_s =
         upper_median(measured.iter().map(|pass| pass.wall_s).collect());
+    let (campaign_finished_unix_s, campaign_elapsed_s, campaign_target_met) =
+        campaign_elapsed(campaign_started_unix_s)?;
     let overall_pass = workload.golden_match
         && warmup.accepted
         && measured.iter().all(|pass| pass.accepted)
@@ -900,9 +971,20 @@ fn onboard(args: &Args) -> Result<(), String> {
     let measured_root_sets = measured.iter().map(|pass| pass.roots.clone()).collect();
     let record = OnboardingRecord {
         schema: SCHEMA,
-        milestone: "X4c-GPT2-real-weight-onboarding".to_owned(),
+        milestone: ONBOARDING_MILESTONE.to_owned(),
         git_sha,
         git_dirty: false,
+        producer_source_sha256,
+        crypto_build_id_scheme: crypto_build.scheme,
+        crypto_build_id: crypto_build.digest_blake3,
+        crypto_build_manifest_blake3: crypto_build.manifest_blake3,
+        crypto_build_file_count: crypto_build.file_count,
+        crypto_build_source_bytes: crypto_build.source_bytes,
+        campaign_target_s: CAMPAIGN_TARGET_S,
+        campaign_started_unix_s,
+        campaign_finished_unix_s,
+        campaign_elapsed_s,
+        campaign_target_met,
         profile: PROFILE.to_owned(),
         protocol: PROTOCOL.to_owned(),
         design_sha256: X4C_DESIGN_SHA256_HEX_V4.to_owned(),
@@ -1476,11 +1558,43 @@ struct RebuildRow {
 }
 
 #[derive(Serialize)]
+struct RebuildAdmissionRecord {
+    schema: u64,
+    milestone: String,
+    producer_git_sha: String,
+    producer_source_sha256: String,
+    crypto_build_id_scheme: String,
+    crypto_build_id: String,
+    onboarding_sha256: String,
+    campaign_target_s: u64,
+    campaign_started_unix_s: u64,
+    campaign_rebuild_finished_unix_s: u64,
+    campaign_elapsed_through_rebuild_s: u64,
+    rebuild_campaign_target_met: bool,
+    rebuild_roots: Vec<String>,
+    rebuild_roots_equal_onboarding: bool,
+    accepted: bool,
+}
+
+#[derive(Serialize)]
 struct OnlineRecord {
     schema: u64,
     milestone: String,
     git_sha: String,
     git_dirty: bool,
+    producer_source_sha256: String,
+    crypto_build_id_scheme: String,
+    crypto_build_id: String,
+    crypto_build_manifest_blake3: String,
+    crypto_build_file_count: u64,
+    crypto_build_source_bytes: u64,
+    campaign_target_s: u64,
+    campaign_started_unix_s: u64,
+    campaign_rebuild_finished_unix_s: u64,
+    campaign_elapsed_through_rebuild_s: u64,
+    rebuild_campaign_target_met: bool,
+    rebuild_admission_marker_path: String,
+    rebuild_admission_marker_sha256: String,
     profile: String,
     protocol: String,
     design_sha256: String,
@@ -1619,6 +1733,10 @@ fn load_durable_material(
 
 fn online(args: &Args, accelerated: bool) -> Result<(), String> {
     let output = args.output.as_ref().ok_or_else(|| "online requires --output".to_owned())?;
+    let rebuild_admission_marker = args
+        .rebuild_admission_marker
+        .as_ref()
+        .ok_or_else(|| "schema-3 online requires --rebuild-admission-marker".to_owned())?;
     let durable =
         args.durable_root.as_ref().ok_or_else(|| "online requires --durable-root".to_owned())?;
     let onboarding_path =
@@ -1642,23 +1760,15 @@ fn online(args: &Args, accelerated: bool) -> Result<(), String> {
         .connection_store
         .as_ref()
         .ok_or_else(|| "online requires --connection-store".to_owned())?;
-    let clean_source_sha256 = args
-        .clean_source_sha256
-        .as_deref()
-        .ok_or_else(|| "online requires --clean-source-sha256".to_owned())?;
-    if clean_source_sha256.len() != 64
-        || !clean_source_sha256
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    {
-        return Err("--clean-source-sha256 must be 64 lowercase hex digits".to_owned());
-    }
-    let clean_source = parse_hex_32(clean_source_sha256)?;
-    if output.exists() || args.epoch_base == 0 {
-        return Err("online output must be fresh and epoch-base nonzero".to_owned());
+    let campaign_started_unix_s = campaign_started(args)?;
+    let producer_source_sha256 = producer_source_sha256(args)?;
+    let clean_source = parse_hex_32(&producer_source_sha256)?;
+    if output.exists() || rebuild_admission_marker.exists() || args.epoch_base == 0 {
+        return Err("online output/marker must be fresh and epoch-base nonzero".to_owned());
     }
     verify_design_digest()?;
     let git_sha = git_sha_clean()?;
+    let crypto_build = current_crypto_build_identity()?;
     let observed_onboarding_sha256 = sha256(onboarding_path)?;
     if observed_onboarding_sha256 != expected_onboarding_sha256 {
         return Err("explicit onboarding SHA-256 pin mismatch".to_owned());
@@ -1668,10 +1778,16 @@ fn online(args: &Args, accelerated: bool) -> Result<(), String> {
     let onboarding: OnboardingRecord = serde_json::from_slice(&onboarding_bytes)
         .map_err(|error| format!("parse onboarding: {error}"))?;
     if onboarding.schema != SCHEMA
+        || onboarding.milestone != ONBOARDING_MILESTONE
         || !onboarding.overall_pass
         || onboarding.profile != PROFILE
         || onboarding.design_sha256 != X4C_DESIGN_SHA256_HEX_V4
         || onboarding.protocol != PROTOCOL
+        || onboarding.crypto_build_id_scheme != crypto_build.scheme
+        || onboarding.crypto_build_id != crypto_build.digest_blake3
+        || onboarding.crypto_build_manifest_blake3 != crypto_build.manifest_blake3
+        || onboarding.crypto_build_file_count != crypto_build.file_count
+        || onboarding.crypto_build_source_bytes != crypto_build.source_bytes
         || onboarding.input_bin_sha256 != GPT2_BIN_SHA256
         || onboarding.input_json_sha256 != GPT2_JSON_SHA256
         || onboarding.input_params_sha256 != GPT2_PARAMS_SHA256
@@ -1987,6 +2103,30 @@ fn online(args: &Args, accelerated: bool) -> Result<(), String> {
     if !rebuild.accepted {
         return Err("fresh rebuild exact byte/root/census gate failed".to_owned());
     }
+    let (
+        campaign_rebuild_finished_unix_s,
+        campaign_elapsed_through_rebuild_s,
+        rebuild_campaign_target_met,
+    ) = campaign_elapsed(campaign_started_unix_s)?;
+    let admission = RebuildAdmissionRecord {
+        schema: 1,
+        milestone: "X4c-GPT2-schema3-rebuild-admission".to_owned(),
+        producer_git_sha: git_sha.clone(),
+        producer_source_sha256: producer_source_sha256.clone(),
+        crypto_build_id_scheme: crypto_build.scheme.clone(),
+        crypto_build_id: crypto_build.digest_blake3.clone(),
+        onboarding_sha256: observed_onboarding_sha256.clone(),
+        campaign_target_s: CAMPAIGN_TARGET_S,
+        campaign_started_unix_s,
+        campaign_rebuild_finished_unix_s,
+        campaign_elapsed_through_rebuild_s,
+        rebuild_campaign_target_met,
+        rebuild_roots: rebuild_roots.clone(),
+        rebuild_roots_equal_onboarding,
+        accepted: true,
+    };
+    write_append_only(rebuild_admission_marker, &admission)?;
+    let rebuild_admission_marker_sha256 = sha256(rebuild_admission_marker)?;
 
     let workload = workload(&args.weights)?;
     let (mock, _, model_sub_corrs, model_full_corrs) = mock_model_outputs(&workload)?;
@@ -2507,6 +2647,19 @@ fn online(args: &Args, accelerated: bool) -> Result<(), String> {
             .to_owned(),
         git_sha,
         git_dirty: false,
+        producer_source_sha256: producer_source_sha256.clone(),
+        crypto_build_id_scheme: crypto_build.scheme,
+        crypto_build_id: crypto_build.digest_blake3,
+        crypto_build_manifest_blake3: crypto_build.manifest_blake3,
+        crypto_build_file_count: crypto_build.file_count,
+        crypto_build_source_bytes: crypto_build.source_bytes,
+        campaign_target_s: CAMPAIGN_TARGET_S,
+        campaign_started_unix_s,
+        campaign_rebuild_finished_unix_s,
+        campaign_elapsed_through_rebuild_s,
+        rebuild_campaign_target_met,
+        rebuild_admission_marker_path: rebuild_admission_marker.display().to_string(),
+        rebuild_admission_marker_sha256,
         profile: PROFILE.to_owned(),
         protocol: PROTOCOL.to_owned(),
         design_sha256: X4C_DESIGN_SHA256_HEX_V4.to_owned(),
@@ -2514,7 +2667,7 @@ fn online(args: &Args, accelerated: bool) -> Result<(), String> {
         onboarding_sha256: observed_onboarding_sha256,
         onboarding_sha256_exact: true,
         onboarding_git_sha: onboarding.git_sha,
-        clean_source_sha256: clean_source_sha256.to_owned(),
+        clean_source_sha256: producer_source_sha256,
         selected_query_tape_blake3: SELECTED_TAPE_DIGEST.to_owned(),
         input_bin_sha256: GPT2_BIN_SHA256.to_owned(),
         input_json_sha256: GPT2_JSON_SHA256.to_owned(),
@@ -2577,6 +2730,15 @@ fn preflight(args: &Args) -> Result<(), String> {
         .map_err(|error| format!("frozen X4c surface: {error:?}"))?;
     verify_design_digest()?;
     verify_inputs(&args.weights)?;
+    let identity = current_crypto_build_identity()?;
+    if identity.scheme != X4C_CRYPTO_BUILD_ID_SCHEME
+        || identity.digest_blake3.len() != 64
+        || identity.manifest_blake3.len() != 64
+        || identity.file_count == 0
+        || identity.source_bytes == 0
+    {
+        return Err("schema-3 crypto build identity is incomplete".to_owned());
+    }
     if selected_tape()?.draw_count() != 111 {
         return Err("selected tape is not 111 draws".to_owned());
     }

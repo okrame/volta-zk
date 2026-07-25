@@ -4,6 +4,8 @@ import importlib.util
 import json
 from pathlib import Path
 
+import pytest
+
 
 def load_report_module():
     path = Path(__file__).resolve().parents[1] / "scripts" / "report.py"
@@ -1516,6 +1518,48 @@ def _write_x4c_gpt2_chain(tmp_path, onboarding, online):
     return onboarding_path, online_path
 
 
+def _write_x4c_gpt2_v3_chain(tmp_path, report, onboarding, online):
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    onboarding_path = tmp_path / "onboarding.json"
+    onboarding_path.write_text(json.dumps(onboarding, indent=2) + "\n")
+    onboarding_sha256 = hashlib.sha256(
+        onboarding_path.read_bytes()
+    ).hexdigest()
+    online = copy.deepcopy(online)
+    online["onboarding_sha256"] = onboarding_sha256
+    admission = {
+        "schema": 1,
+        "milestone": report.X4C_SCHEMA3_REBUILD_ADMISSION_MILESTONE,
+        "producer_git_sha": online["git_sha"],
+        "producer_source_sha256": online["producer_source_sha256"],
+        "crypto_build_id_scheme": online["crypto_build_id_scheme"],
+        "crypto_build_id": online.get(
+            "crypto_build_id", onboarding["crypto_build_id"]
+        ),
+        "onboarding_sha256": onboarding_sha256,
+        "campaign_target_s": online["campaign_target_s"],
+        "campaign_started_unix_s": online["campaign_started_unix_s"],
+        "campaign_rebuild_finished_unix_s":
+            online["campaign_rebuild_finished_unix_s"],
+        "campaign_elapsed_through_rebuild_s":
+            online["campaign_elapsed_through_rebuild_s"],
+        "rebuild_campaign_target_met":
+            online["rebuild_campaign_target_met"],
+        "rebuild_roots": online["rebuild_roots"],
+        "rebuild_roots_equal_onboarding": True,
+        "accepted": True,
+    }
+    admission_path = tmp_path / "rebuild-admission.json"
+    admission_path.write_text(json.dumps(admission, indent=2) + "\n")
+    online["rebuild_admission_marker_path"] = str(admission_path)
+    online["rebuild_admission_marker_sha256"] = hashlib.sha256(
+        admission_path.read_bytes()
+    ).hexdigest()
+    online_path = tmp_path / "online.json"
+    online_path.write_text(json.dumps(online, indent=2) + "\n")
+    return onboarding_path, online_path, admission_path
+
+
 def _x4c_gpt2_accelerated_online(report, online):
     accelerated = copy.deepcopy(online)
     accelerated["milestone"] = report.X4C_GPT2_ACCELERATED_ONLINE_MILESTONE
@@ -1722,6 +1766,50 @@ def _x4c_gpt2_accelerated_online(report, online):
         "accepted": True,
     }
     return accelerated
+
+
+def _x4c_gpt2_v3_records(report):
+    onboarding, online = _x4c_gpt2_records(report)
+    onboarding = copy.deepcopy(onboarding)
+    onboarding.update(
+        {
+            "schema": 3,
+            "milestone": report.X4C_GPT2_V3_ONBOARDING_MILESTONE,
+            "producer_source_sha256": "b" * 64,
+            "crypto_build_id_scheme": report.X4C_CRYPTO_BUILD_ID_SCHEME,
+            "crypto_build_id": "c" * 64,
+            "crypto_build_manifest_blake3": "d" * 64,
+            "crypto_build_file_count": 321,
+            "crypto_build_source_bytes": 12_345_678,
+            "campaign_target_s": report.X4C_CAMPAIGN_TARGET_S,
+            "campaign_started_unix_s": 1_000,
+            "campaign_finished_unix_s": 1_900,
+            "campaign_elapsed_s": 900,
+            "campaign_target_met": True,
+        }
+    )
+    online = _x4c_gpt2_accelerated_online(report, online)
+    online.update(
+        {
+            "schema": 3,
+            "milestone":
+                report.X4C_GPT2_V3_ACCELERATED_ONLINE_MILESTONE,
+            "git_sha": "e" * 40,
+            "producer_source_sha256": "f" * 64,
+            "clean_source_sha256": "f" * 64,
+            "crypto_build_id_scheme": report.X4C_CRYPTO_BUILD_ID_SCHEME,
+            "crypto_build_id": "c" * 64,
+            "crypto_build_manifest_blake3": "d" * 64,
+            "crypto_build_file_count": 321,
+            "crypto_build_source_bytes": 12_345_678,
+            "campaign_target_s": report.X4C_CAMPAIGN_TARGET_S,
+            "campaign_started_unix_s": 2_000,
+            "campaign_rebuild_finished_unix_s": 2_240,
+            "campaign_elapsed_through_rebuild_s": 240,
+            "rebuild_campaign_target_met": True,
+        }
+    )
+    return onboarding, online
 
 
 def test_x4c_gpt2_e2e_validators_are_complete_and_fail_closed(tmp_path):
@@ -1932,6 +2020,110 @@ def test_x4c_gpt2_accelerated_validator_requires_native_counters(tmp_path):
                 bad_online, bad_onboarding
             )
             is False
+        )
+
+
+def test_x4c_gpt2_v3_crypto_identity_allows_only_compatible_descendants(
+    tmp_path, monkeypatch
+):
+    report = load_report_module()
+    onboarding, online = _x4c_gpt2_v3_records(report)
+    onboarding_path, online_path, admission_path = (
+        _write_x4c_gpt2_v3_chain(
+            tmp_path / "valid-v3", report, onboarding, online
+        )
+    )
+    assert onboarding["git_sha"] != online["git_sha"]
+    assert report.validate_x4c_gpt2_v3_onboarding_result(onboarding_path)
+    assert report.validate_x4c_gpt2_v3_accelerated_online_result(
+        online_path, onboarding_path, admission_path
+    )
+    assert not report.validate_x4c_gpt2_accelerated_online_result(
+        online_path, onboarding_path
+    )
+
+    target_miss = copy.deepcopy(online)
+    target_miss["campaign_rebuild_finished_unix_s"] = (
+        target_miss["campaign_started_unix_s"]
+        + report.X4C_CAMPAIGN_TARGET_S
+        + 300
+    )
+    target_miss["campaign_elapsed_through_rebuild_s"] = (
+        report.X4C_CAMPAIGN_TARGET_S + 300
+    )
+    target_miss["rebuild_campaign_target_met"] = False
+    miss_onboarding, miss_online, miss_admission = (
+        _write_x4c_gpt2_v3_chain(
+            tmp_path / "valid-target-miss-v3",
+            report,
+            onboarding,
+            target_miss,
+        )
+    )
+    assert report.validate_x4c_gpt2_v3_accelerated_online_result(
+        miss_online, miss_onboarding, miss_admission
+    )
+
+    mutations = (
+        lambda row: row["online"].pop("crypto_build_id"),
+        lambda row: row["online"].update({"crypto_build_id": "1" * 64}),
+        lambda row: row["online"].update(
+            {"crypto_build_id_scheme": "unregistered"}
+        ),
+        lambda row: row["online"].update(
+            {"crypto_build_manifest_blake3": "2" * 64}
+        ),
+        lambda row: row["online"].update({"crypto_build_file_count": 320}),
+        lambda row: row["online"].update({"producer_source_sha256": "3" * 64}),
+        lambda row: row["online"].update({"campaign_target_s": 2_701}),
+        lambda row: row["online"].update(
+            {"campaign_elapsed_through_rebuild_s": 241}
+        ),
+        lambda row: row["online"].update(
+            {"rebuild_campaign_target_met": False}
+        ),
+        lambda row: row["onboarding"].update(
+            {"campaign_target_met": False}
+        ),
+    )
+    for index, mutate in enumerate(mutations):
+        pair = {
+            "onboarding": copy.deepcopy(onboarding),
+            "online": copy.deepcopy(online),
+        }
+        mutate(pair)
+        bad_onboarding, bad_online, bad_admission = (
+            _write_x4c_gpt2_v3_chain(
+                tmp_path / f"tamper-v3-{index}",
+                report,
+                pair["onboarding"],
+                pair["online"],
+            )
+        )
+        assert not report.validate_x4c_gpt2_v3_accelerated_online_result(
+            bad_online, bad_onboarding, bad_admission
+        )
+
+    monkeypatch.setattr(
+        report,
+        "_clean_validator_provenance",
+        lambda: ("9" * 40, "8" * 64),
+    )
+    receipt_path = tmp_path / "receipt.json"
+    assert (
+        report.write_x4c_gpt2_v3_validation_receipt(
+            online_path, onboarding_path, admission_path, receipt_path
+        )
+        == receipt_path
+    )
+    receipt = json.loads(receipt_path.read_text())
+    assert receipt["overall_pass"] is True
+    assert receipt["crypto_build_id"] == online["crypto_build_id"]
+    assert receipt["validator_git_sha"] == "9" * 40
+    assert receipt["validator_implementation_sha256"] == "8" * 64
+    with pytest.raises(FileExistsError):
+        report.write_x4c_gpt2_v3_validation_receipt(
+            online_path, onboarding_path, admission_path, receipt_path
         )
 
 

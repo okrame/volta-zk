@@ -14,6 +14,7 @@ import datetime as _dt
 import hashlib
 import json
 import math
+import os
 import platform
 import subprocess
 from pathlib import Path
@@ -181,6 +182,22 @@ X4C_GPT2_ONLINE_MILESTONE = "X4c-GPT2-real-weight-online"
 X4C_GPT2_ACCELERATED_ONLINE_MILESTONE = (
     "X4c-GPT2-real-weight-online-accelerated"
 )
+X4C_GPT2_V3_ONBOARDING_MILESTONE = (
+    "X4c-GPT2-real-weight-onboarding-crypto-id-v1"
+)
+X4C_GPT2_V3_ONLINE_MILESTONE = "X4c-GPT2-real-weight-online-crypto-id-v1"
+X4C_GPT2_V3_ACCELERATED_ONLINE_MILESTONE = (
+    "X4c-GPT2-real-weight-online-accelerated-crypto-id-v1"
+)
+X4C_CRYPTO_BUILD_ID_SCHEME = "volta-x4c-crypto-build-v1"
+X4C_SCHEMA3_VALIDATOR_RULESET = "volta-x4c-schema3-validator-v1"
+X4C_SCHEMA3_VALIDATION_RECEIPT_MILESTONE = (
+    "X4c-GPT2-schema3-validation-receipt"
+)
+X4C_SCHEMA3_REBUILD_ADMISSION_MILESTONE = (
+    "X4c-GPT2-schema3-rebuild-admission"
+)
+X4C_CAMPAIGN_TARGET_S = 2_700
 X4C_PRODUCTION_EXPLICIT_D2D_COPY_BYTES = 1_364_224
 X4C_PRODUCTION_FRESH_DEVICE_GENERATED_BYTES = 35_727_436_640
 X4C_PRODUCTION_REUSED_DEVICE_GENERATED_BYTES = 35_727_436_512
@@ -3136,7 +3153,20 @@ def _x4c_gpt2_onboarding_pass_valid(
     )
 
 
-def _x4c_gpt2_onboarding_valid(row: Any) -> bool:
+def _x4c_gpt2_onboarding_valid(row: Any, *, schema: int = 2) -> bool:
+    schema3_required = (
+        "producer_source_sha256",
+        "crypto_build_id_scheme",
+        "crypto_build_id",
+        "crypto_build_manifest_blake3",
+        "crypto_build_file_count",
+        "crypto_build_source_bytes",
+        "campaign_target_s",
+        "campaign_started_unix_s",
+        "campaign_finished_unix_s",
+        "campaign_elapsed_s",
+        "campaign_target_met",
+    )
     required = (
         "schema",
         "milestone",
@@ -3163,13 +3193,44 @@ def _x4c_gpt2_onboarding_valid(row: Any) -> bool:
         "roots_identical",
         "golden_match",
         "overall_pass",
+        *(schema3_required if schema == 3 else ()),
     )
     if not (
         _x4c_has(row, required)
-        and row["schema"] == 2
-        and row["milestone"] == X4C_GPT2_ONBOARDING_MILESTONE
+        and row["schema"] == schema
+        and row["milestone"]
+        == (
+            X4C_GPT2_V3_ONBOARDING_MILESTONE
+            if schema == 3
+            else X4C_GPT2_ONBOARDING_MILESTONE
+        )
         and _x4c_hex(row["git_sha"], 40)
         and row["git_dirty"] is False
+        and (
+            (
+                _x4c_hex(row["producer_source_sha256"], 64)
+                and row["crypto_build_id_scheme"]
+                == X4C_CRYPTO_BUILD_ID_SCHEME
+                and _x4c_hex(row["crypto_build_id"], 64)
+                and _x4c_hex(row["crypto_build_manifest_blake3"], 64)
+                and _x4c_positive_int(row["crypto_build_file_count"])
+                and _x4c_positive_int(row["crypto_build_source_bytes"])
+                and row["campaign_target_s"] == X4C_CAMPAIGN_TARGET_S
+                and _x4c_positive_int(row["campaign_started_unix_s"])
+                and row["campaign_finished_unix_s"]
+                >= row["campaign_started_unix_s"]
+                and row["campaign_elapsed_s"]
+                == row["campaign_finished_unix_s"]
+                - row["campaign_started_unix_s"]
+                and row["campaign_target_met"]
+                is (
+                    row["campaign_elapsed_s"]
+                    <= X4C_CAMPAIGN_TARGET_S
+                )
+            )
+            if schema == 3
+            else True
+        )
         and row["profile"] == X4C_POD_PROFILE
         and row["protocol"] == X4C_GPT2_PROTOCOL
         and row["design_sha256"] == X4C_V1_DESIGN_SHA256
@@ -3252,6 +3313,17 @@ def validate_x4c_gpt2_onboarding_result(path: Path) -> bool:
         if not path.is_absolute():
             path = REPO / path
         return _x4c_gpt2_onboarding_valid(json.loads(path.read_bytes()))
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return False
+
+
+def validate_x4c_gpt2_v3_onboarding_result(path: Path) -> bool:
+    try:
+        if not path.is_absolute():
+            path = REPO / path
+        return _x4c_gpt2_onboarding_valid(
+            json.loads(path.read_bytes()), schema=3
+        )
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
         return False
 
@@ -4037,7 +4109,25 @@ def _x4c_gpt2_online_valid(
     onboarding_sha256: str,
     *,
     accelerated: bool = False,
+    schema: int = 2,
+    rebuild_admission: dict[str, Any] | None = None,
+    rebuild_admission_sha256: str | None = None,
 ) -> bool:
+    schema3_required = (
+        "producer_source_sha256",
+        "crypto_build_id_scheme",
+        "crypto_build_id",
+        "crypto_build_manifest_blake3",
+        "crypto_build_file_count",
+        "crypto_build_source_bytes",
+        "campaign_target_s",
+        "campaign_started_unix_s",
+        "campaign_rebuild_finished_unix_s",
+        "campaign_elapsed_through_rebuild_s",
+        "rebuild_campaign_target_met",
+        "rebuild_admission_marker_path",
+        "rebuild_admission_marker_sha256",
+    )
     required = (
         "schema",
         "milestone",
@@ -4095,19 +4185,117 @@ def _x4c_gpt2_online_valid(
         "root_or_proof_format_change",
         "lean_or_soundness_change",
         "overall_pass",
+        *(schema3_required if schema == 3 else ()),
     )
     if not (
-        _x4c_gpt2_onboarding_valid(onboarding)
+        _x4c_gpt2_onboarding_valid(onboarding, schema=schema)
         and _x4c_has(row, required)
-        and row["schema"] == 2
+        and row["schema"] == schema
         and row["milestone"]
         == (
-            X4C_GPT2_ACCELERATED_ONLINE_MILESTONE
-            if accelerated
-            else X4C_GPT2_ONLINE_MILESTONE
+            (
+                X4C_GPT2_V3_ACCELERATED_ONLINE_MILESTONE
+                if accelerated
+                else X4C_GPT2_V3_ONLINE_MILESTONE
+            )
+            if schema == 3
+            else (
+                X4C_GPT2_ACCELERATED_ONLINE_MILESTONE
+                if accelerated
+                else X4C_GPT2_ONLINE_MILESTONE
+            )
         )
-        and row["git_sha"] == row["onboarding_git_sha"] == onboarding["git_sha"]
+        and _x4c_hex(row["git_sha"], 40)
+        and row["onboarding_git_sha"] == onboarding["git_sha"]
+        and (schema == 3 or row["git_sha"] == onboarding["git_sha"])
         and row["git_dirty"] is False
+        and (
+            (
+                _x4c_hex(row["producer_source_sha256"], 64)
+                and row["clean_source_sha256"]
+                == row["producer_source_sha256"]
+                and row["crypto_build_id_scheme"]
+                == onboarding["crypto_build_id_scheme"]
+                == X4C_CRYPTO_BUILD_ID_SCHEME
+                and row["crypto_build_id"]
+                == onboarding["crypto_build_id"]
+                and _x4c_hex(row["crypto_build_id"], 64)
+                and row["crypto_build_manifest_blake3"]
+                == onboarding["crypto_build_manifest_blake3"]
+                and _x4c_hex(row["crypto_build_manifest_blake3"], 64)
+                and row["crypto_build_file_count"]
+                == onboarding["crypto_build_file_count"]
+                and _x4c_positive_int(row["crypto_build_file_count"])
+                and row["crypto_build_source_bytes"]
+                == onboarding["crypto_build_source_bytes"]
+                and _x4c_positive_int(row["crypto_build_source_bytes"])
+                and row["campaign_target_s"] == X4C_CAMPAIGN_TARGET_S
+                and _x4c_positive_int(row["campaign_started_unix_s"])
+                and row["campaign_rebuild_finished_unix_s"]
+                >= row["campaign_started_unix_s"]
+                and row["campaign_elapsed_through_rebuild_s"]
+                == row["campaign_rebuild_finished_unix_s"]
+                - row["campaign_started_unix_s"]
+                and row["rebuild_campaign_target_met"]
+                is (
+                    row["campaign_elapsed_through_rebuild_s"]
+                    <= X4C_CAMPAIGN_TARGET_S
+                )
+                and isinstance(row["rebuild_admission_marker_path"], str)
+                and bool(row["rebuild_admission_marker_path"])
+                and row["rebuild_admission_marker_sha256"]
+                == rebuild_admission_sha256
+                and _x4c_hex(row["rebuild_admission_marker_sha256"], 64)
+                and _x4c_has(
+                    rebuild_admission,
+                    (
+                        "schema",
+                        "milestone",
+                        "producer_git_sha",
+                        "producer_source_sha256",
+                        "crypto_build_id_scheme",
+                        "crypto_build_id",
+                        "onboarding_sha256",
+                        "campaign_target_s",
+                        "campaign_started_unix_s",
+                        "campaign_rebuild_finished_unix_s",
+                        "campaign_elapsed_through_rebuild_s",
+                        "rebuild_campaign_target_met",
+                        "rebuild_roots",
+                        "rebuild_roots_equal_onboarding",
+                        "accepted",
+                    ),
+                )
+                and rebuild_admission["schema"] == 1
+                and rebuild_admission["milestone"]
+                == X4C_SCHEMA3_REBUILD_ADMISSION_MILESTONE
+                and rebuild_admission["producer_git_sha"] == row["git_sha"]
+                and rebuild_admission["producer_source_sha256"]
+                == row["producer_source_sha256"]
+                and rebuild_admission["crypto_build_id_scheme"]
+                == row["crypto_build_id_scheme"]
+                and rebuild_admission["crypto_build_id"]
+                == row["crypto_build_id"]
+                and rebuild_admission["onboarding_sha256"]
+                == onboarding_sha256
+                and rebuild_admission["campaign_target_s"]
+                == row["campaign_target_s"]
+                and rebuild_admission["campaign_started_unix_s"]
+                == row["campaign_started_unix_s"]
+                and rebuild_admission["campaign_rebuild_finished_unix_s"]
+                == row["campaign_rebuild_finished_unix_s"]
+                and rebuild_admission["campaign_elapsed_through_rebuild_s"]
+                == row["campaign_elapsed_through_rebuild_s"]
+                and rebuild_admission["rebuild_campaign_target_met"]
+                is row["rebuild_campaign_target_met"]
+                and rebuild_admission["rebuild_roots"]
+                == row["rebuild_roots"]
+                and rebuild_admission["rebuild_roots_equal_onboarding"] is True
+                and rebuild_admission["accepted"] is True
+            )
+            if schema == 3
+            else True
+        )
         and row["profile"] == X4C_POD_PROFILE
         and row["protocol"] == X4C_GPT2_PROTOCOL
         and row["design_sha256"]
@@ -4238,6 +4426,118 @@ def validate_x4c_gpt2_accelerated_online_result(
         )
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
         return False
+
+
+def validate_x4c_gpt2_v3_accelerated_online_result(
+    path: Path, onboarding_path: Path, rebuild_admission_path: Path
+) -> bool:
+    try:
+        if not path.is_absolute():
+            path = REPO / path
+        if not onboarding_path.is_absolute():
+            onboarding_path = REPO / onboarding_path
+        if not rebuild_admission_path.is_absolute():
+            rebuild_admission_path = REPO / rebuild_admission_path
+        onboarding_bytes = onboarding_path.read_bytes()
+        rebuild_admission_bytes = rebuild_admission_path.read_bytes()
+        onboarding = json.loads(onboarding_bytes)
+        online = json.loads(path.read_bytes())
+        rebuild_admission = json.loads(rebuild_admission_bytes)
+        return _x4c_gpt2_online_valid(
+            online,
+            onboarding,
+            hashlib.sha256(onboarding_bytes).hexdigest(),
+            accelerated=True,
+            schema=3,
+            rebuild_admission=rebuild_admission,
+            rebuild_admission_sha256=hashlib.sha256(
+                rebuild_admission_bytes
+            ).hexdigest(),
+        )
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return False
+
+
+def _clean_validator_provenance() -> tuple[str, str]:
+    status = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=REPO,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    if status.stdout:
+        raise ValueError("validation receipt requires a clean Git tree")
+    git_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=REPO,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if not _x4c_hex(git_sha, 40):
+        raise ValueError("validator Git SHA is malformed")
+    implementation_sha256 = hashlib.sha256(
+        (REPO / "scripts" / "report.py").read_bytes()
+    ).hexdigest()
+    return git_sha, implementation_sha256
+
+
+def write_x4c_gpt2_v3_validation_receipt(
+    online_path: Path,
+    onboarding_path: Path,
+    rebuild_admission_path: Path,
+    receipt_path: Path,
+) -> Path:
+    online_path = online_path if online_path.is_absolute() else REPO / online_path
+    onboarding_path = (
+        onboarding_path
+        if onboarding_path.is_absolute()
+        else REPO / onboarding_path
+    )
+    rebuild_admission_path = (
+        rebuild_admission_path
+        if rebuild_admission_path.is_absolute()
+        else REPO / rebuild_admission_path
+    )
+    receipt_path = receipt_path if receipt_path.is_absolute() else REPO / receipt_path
+    if not validate_x4c_gpt2_v3_accelerated_online_result(
+        online_path, onboarding_path, rebuild_admission_path
+    ):
+        raise ValueError("schema-3 accelerated chain is not valid")
+    online_bytes = online_path.read_bytes()
+    onboarding_bytes = onboarding_path.read_bytes()
+    rebuild_admission_bytes = rebuild_admission_path.read_bytes()
+    online = json.loads(online_bytes)
+    validator_git_sha, validator_implementation_sha256 = (
+        _clean_validator_provenance()
+    )
+    receipt = {
+        "schema": 1,
+        "milestone": X4C_SCHEMA3_VALIDATION_RECEIPT_MILESTONE,
+        "ruleset": X4C_SCHEMA3_VALIDATOR_RULESET,
+        "online_sha256": hashlib.sha256(online_bytes).hexdigest(),
+        "onboarding_sha256": hashlib.sha256(onboarding_bytes).hexdigest(),
+        "rebuild_admission_sha256": hashlib.sha256(
+            rebuild_admission_bytes
+        ).hexdigest(),
+        "crypto_build_id_scheme": online["crypto_build_id_scheme"],
+        "crypto_build_id": online["crypto_build_id"],
+        "validator_git_sha": validator_git_sha,
+        "validator_git_dirty": False,
+        "validator_implementation_sha256": validator_implementation_sha256,
+        "validated_at_utc": _dt.datetime.now(_dt.timezone.utc)
+        .isoformat()
+        .replace("+00:00", "Z"),
+        "overall_pass": True,
+    }
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    with receipt_path.open("x", encoding="utf-8") as handle:
+        json.dump(receipt, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    return receipt_path
 
 
 def _x4c_rebuild_preflight_census_valid(row: Any) -> bool:
@@ -7673,6 +7973,38 @@ def main() -> None:
         ),
     )
     ap.add_argument(
+        "--validate-x4c-gpt2-v3-onboarding",
+        type=Path,
+        help=(
+            "fail closed unless one JSON is a schema-3 crypto-build-id "
+            "real-weight X4c onboarding record"
+        ),
+    )
+    ap.add_argument(
+        "--validate-x4c-gpt2-v3-accelerated-online",
+        type=Path,
+        help=(
+            "fail closed unless one JSON is a schema-3 crypto-build-id "
+            "accelerated real-weight X4c E2E record"
+        ),
+    )
+    ap.add_argument(
+        "--write-x4c-gpt2-v3-validation-receipt",
+        type=Path,
+        help=(
+            "append-only receipt path; requires the schema-3 accelerated "
+            "online validator and a clean validator checkout"
+        ),
+    )
+    ap.add_argument(
+        "--x4c-gpt2-rebuild-admission",
+        type=Path,
+        help=(
+            "append-only rebuild-admission marker anchoring the schema-3 "
+            "accelerated online record"
+        ),
+    )
+    ap.add_argument(
         "--validate-x4c-rebuild-preflight",
         type=Path,
         help=(
@@ -7710,6 +8042,8 @@ def main() -> None:
             args.validate_x4c_gpt2_onboarding,
             args.validate_x4c_gpt2_online,
             args.validate_x4c_gpt2_accelerated_online,
+            args.validate_x4c_gpt2_v3_onboarding,
+            args.validate_x4c_gpt2_v3_accelerated_online,
             args.validate_x4c_rebuild_preflight,
         )
     )
@@ -7722,11 +8056,27 @@ def main() -> None:
     gpt2_online_selected = (
         args.validate_x4c_gpt2_online is not None
         or args.validate_x4c_gpt2_accelerated_online is not None
+        or args.validate_x4c_gpt2_v3_accelerated_online is not None
     )
     if gpt2_online_selected == (args.x4c_gpt2_onboarding is None):
         raise SystemExit(
             "a real-weight X4c GPT-2 online validator and "
             "--x4c-gpt2-onboarding must be supplied together"
+        )
+    if (
+        args.write_x4c_gpt2_v3_validation_receipt is not None
+        and args.validate_x4c_gpt2_v3_accelerated_online is None
+    ):
+        raise SystemExit(
+            "--write-x4c-gpt2-v3-validation-receipt requires "
+            "--validate-x4c-gpt2-v3-accelerated-online"
+        )
+    if (
+        args.validate_x4c_gpt2_v3_accelerated_online is None
+    ) != (args.x4c_gpt2_rebuild_admission is None):
+        raise SystemExit(
+            "--validate-x4c-gpt2-v3-accelerated-online and "
+            "--x4c-gpt2-rebuild-admission must be supplied together"
         )
     if args.validate_p7b_official is not None:
         if args.write_json:
@@ -7889,6 +8239,52 @@ def main() -> None:
             f"{args.validate_x4c_gpt2_accelerated_online} "
             f"<- {args.x4c_gpt2_onboarding}"
         )
+        return
+    if args.validate_x4c_gpt2_v3_onboarding is not None:
+        if args.write_json:
+            raise SystemExit(
+                "--write-json and --validate-x4c-gpt2-v3-onboarding "
+                "are mutually exclusive"
+            )
+        if not validate_x4c_gpt2_v3_onboarding_result(
+            args.validate_x4c_gpt2_v3_onboarding
+        ):
+            raise SystemExit(
+                "invalid schema-3 real-weight X4c GPT-2 onboarding record"
+            )
+        print(
+            "valid schema-3 real-weight X4c GPT-2 onboarding record: "
+            f"{args.validate_x4c_gpt2_v3_onboarding}"
+        )
+        return
+    if args.validate_x4c_gpt2_v3_accelerated_online is not None:
+        if args.write_json:
+            raise SystemExit(
+                "--write-json and "
+                "--validate-x4c-gpt2-v3-accelerated-online "
+                "are mutually exclusive"
+            )
+        if not validate_x4c_gpt2_v3_accelerated_online_result(
+            args.validate_x4c_gpt2_v3_accelerated_online,
+            args.x4c_gpt2_onboarding,
+            args.x4c_gpt2_rebuild_admission,
+        ):
+            raise SystemExit(
+                "invalid schema-3 accelerated real-weight X4c GPT-2 chain"
+            )
+        print(
+            "valid schema-3 accelerated real-weight X4c GPT-2 chain: "
+            f"{args.validate_x4c_gpt2_v3_accelerated_online} "
+            f"<- {args.x4c_gpt2_onboarding}"
+        )
+        if args.write_x4c_gpt2_v3_validation_receipt is not None:
+            receipt = write_x4c_gpt2_v3_validation_receipt(
+                args.validate_x4c_gpt2_v3_accelerated_online,
+                args.x4c_gpt2_onboarding,
+                args.x4c_gpt2_rebuild_admission,
+                args.write_x4c_gpt2_v3_validation_receipt,
+            )
+            print(f"wrote append-only schema-3 validation receipt: {receipt}")
         return
     if args.validate_x4c_rebuild_preflight is not None:
         if args.write_json:

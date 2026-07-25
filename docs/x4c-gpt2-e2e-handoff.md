@@ -254,6 +254,44 @@ durable output path or record path. Do not describe pre-response scratch as
 “zero staging”; this implementation currently uses zero scratch at all, and
 the response window independently retains exact zero I/O.
 
+## Next pod: schema 3 and 45-minute rebuild target
+
+Future campaigns use the conservative schema-3 identity contract in
+`docs/x4c-crypto-build-identity-design.md` and the pod-local wrapper
+`scripts/run_x4c_schema3_campaign.sh`. Historical schema-2 validators remain
+unchanged.
+
+The next pod must perform one schema-3 onboarding because the prior pod's
+durable tier was removed after its append-only records were copied. Preserve
+the resulting exact **9,618,587,808-B** five-coefficient/five-root tier on a
+transferable volume or snapshot. Later validator-only descendants may reuse
+it when their `crypto_build_id` is identical.
+
+The wrapper starts a **2,700-s diagnostic target** immediately before the
+first repository workload and uses the same start for onboarding and online
+rebuild. It applies no timeout and never kills an otherwise valid run merely
+because the estimate is missed. The online runner writes an append-only
+rebuild-admission marker only after digest/root/census/context gates pass;
+both marker and record state whether the target was met. A miss is reported
+for investigation, while the current run continues. Independent failures
+remain fail-closed and the runner never selects the CPU fallback. Provider
+queue/provisioning latency is recorded separately because it cannot be
+controlled by repository code.
+
+Schema-3 validation requires all three immutable inputs:
+
+```text
+python3 scripts/report.py \
+  --validate-x4c-gpt2-v3-accelerated-online ONLINE.json \
+  --x4c-gpt2-onboarding ONBOARDING.json \
+  --x4c-gpt2-rebuild-admission REBUILD-ADMISSION.json \
+  --write-x4c-gpt2-v3-validation-receipt RECEIPT.json
+```
+
+The receipt is append-only and records validator provenance. A later
+validator-only correction writes a new receipt over the same three raw
+records; it does not authorize rewriting them or skipping any rebuild gate.
+
 ## Measured host requirement
 
 The accepted `runpod-a100-x4c-v1` run measured **133,544,189,952 B**

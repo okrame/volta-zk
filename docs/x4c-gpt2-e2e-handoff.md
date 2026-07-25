@@ -242,9 +242,16 @@ the response window independently retains exact zero I/O.
 
 ## Endpoint requirements
 
-The next host must satisfy the registered `runpod-a100-x4c-v1` profile,
-including one idle **A100 80GB** with enough free VRAM for the reported
-working set, at least 256 GiB host RAM, reliable local scratch, and a distinct
-durable volume that passes the 4-GiB synchronized-write probe. CUDA/driver
-identity, GPU UUID, CPU, RAM and storage counters must be recorded by NOTE-6.
-No endpoint is requested until the local checkpoint is clean.
+The next host must satisfy the registered `runpod-a100-x4c-v1` profile.
+The first hardware attempt observed at most 170,775,828 KiB process RSS and
+45,535 MiB device use through external sampling; those observations are
+diagnostic because the candidate stopped before publishing the native result
+record.  Pending a complete native record, require at least **192 GiB host
+RAM** and at least **48 GiB free VRAM on one selected A100 80GB**, reliable
+local scratch, and a distinct durable volume that passes the 4-GiB
+synchronized-write probe.  This replaces the earlier unmeasured 256-GiB host
+minimum with an explicitly provisional measured margin; the complete record
+must replace it with native live/peak counters.  VRAM on another GPU is not
+pooled with the selected CUDA context and does not count toward either
+requirement.  CUDA/driver identity, selected GPU UUID, CPU, RAM and storage
+counters must be recorded by NOTE-6.

@@ -1521,6 +1521,30 @@ def _x4c_gpt2_accelerated_online(report, online):
     accelerated["milestone"] = report.X4C_GPT2_ACCELERATED_ONLINE_MILESTONE
     accelerated["rebuild_parallel_tasks"] = 1
     accelerated["rebuild"]["parallel_task_count"] = 1
+    gate_keys = (
+        "verifier_accepted",
+        "freshness_markers_persisted",
+        "model_transcript_accounting_exact",
+        "transcript_bytes_equal",
+        "transcript_ledger_equal",
+        "correlation_counters_equal",
+        "sub_correlations_exact",
+        "full_correlations_exact",
+        "correlation_allocation_digest_equal",
+        "pcs_bytes_exact",
+        "query_gather_exact",
+        "direct_fold_comparisons_exact",
+        "direct_fold_mismatches_zero",
+        "zero_soundness_credit",
+        "zero_response_staging",
+        "traffic_exact",
+    )
+    for candidate in accelerated["candidates"]:
+        candidate["gate_audit"] = {
+            **{key: True for key in gate_keys},
+            "failed": [],
+            "all_pass": True,
+        }
     schedule = [
         0xA5000001,
         0xA5000002,
@@ -1775,6 +1799,16 @@ def test_x4c_gpt2_accelerated_validator_requires_native_counters(tmp_path):
     )
 
     mutations = (
+        lambda row: row["candidates"][0].pop("gate_audit"),
+        lambda row: row["candidates"][0]["gate_audit"].update(
+            {"traffic_exact": False}
+        ),
+        lambda row: row["candidates"][0]["gate_audit"].update(
+            {"failed": ["traffic_exact"]}
+        ),
+        lambda row: row["candidates"][0]["gate_audit"].update(
+            {"all_pass": False}
+        ),
         lambda row: row["rebuild"].pop("accelerated"),
         lambda row: row["rebuild"]["accelerated"].pop("expected_h2d_bytes"),
         lambda row: row["rebuild"]["accelerated"].update(

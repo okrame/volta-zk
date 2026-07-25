@@ -407,6 +407,71 @@ historical entries remain append-only evidence, not competing definitions.
 
 ## Deviations / decisions log
 
+- **2026-07-25 — First accelerated hardware attempt HARD STOP at the
+  warm-up candidate; rebuild admitted but milestone not qualified.**  The
+  owner-provisioned RunPod container `c97cb8761c8d` ran clean source
+  `1ab1164f27853de7770ffef790d7e2b4d2a6b1e4`, complete bundle SHA-256
+  `deadec59f86a8d6cb158a229987dbbbaf739cfca3be6d0a81e262bb5f4c18342`,
+  on physical GPU 0, A100-SXM4-80GB UUID
+  `GPU-4321b8c2-a55d-81b6-ab42-6cffae1e74ac`.  Physical GPU 1 remained
+  unused and is not treated as pooled host or device memory.  The host
+  exposed 2,113,572,784 KiB RAM; local source/build stayed on the 250-GB
+  overlay and the durable tier stayed on `/workspace`.
+
+  NOTE-6 passed first.  The exact 4-GiB PERSISTENT `write + fdatasync`
+  probe completed in 11.9234 s and was removed.  Real-CUDA regressors passed
+  5/5 plus the exact structural NTT/N4/root and resident-fold targets.  The
+  manually advanced rebuild preflight passed synthetic-small, auxiliary
+  ell16, auxiliary ell17 and mu20 with exact roots, zero scratch, stable
+  durable census and zero outstanding CUDA work.  Measured CUDA walls were
+  0.005939721 / 0.631041079 / 0.117692159 / 5.664002311 s respectively;
+  mu20's CPU reference was 106.668428629 s.  The conservative decision-only
+  projection used the slowest measured logical throughput,
+  605,844,404.6387151 B/s, and projected 75.3230155112 / 120.5168248497 s
+  for mu22/mu26.  It granted no gate credit.
+
+  One same-source onboarding completed and validates schema 2.  Append-only
+  record `x4c-gpt2-onboarding-2026-07-25-1ab1164.json` has SHA-256
+  `07a187633606efb26b02ae17cc46fe39e087f3bd6c08a376ae255710dd8edddc`,
+  selected upper-median wall 365.399565363 s, identical warm-up/measured
+  root sets, complete scratch cleanup and the exact 9,618,587,808-B durable
+  tier: five coefficient files, five 32-B roots, no oracle or other file.
+
+  The single fresh `online-accelerated` process then rebuilt all five roots,
+  destroyed its rebuild context and created the fresh online CUDA context;
+  this admission is evidenced by creation and durable burn of the epoch-1
+  authorization markers.  It is not a complete rebuild record or a
+  production verdict because the process later stopped at the unchanged
+  conjunctive warm-up gate:
+
+  `x4c_gpt2_e2e_record HARD STOP: real-weight X4c candidate hard gate failed`.
+
+  No online JSON was written, no measured candidate started and no timing or
+  production gate is inferred.  Both GPU contexts returned to 0 MiB, the
+  connection journal terminated `malicious-check-failure`, the output path
+  remained absent, and the durable tier remained the same ten immutable
+  files.  The append-only connection journal
+  `x4c-gpt2-accelerated-online-candidate-hard-stop-connection-2026-07-25-1ab1164.log`
+  has SHA-256
+  `07e5c729dc163ca733729eef079450ee2a0deca807cd9f205326535b44590954`.
+  The failed authorization, connection and epoch are permanently ineligible.
+
+  Source comparison proves that the candidate conjunction itself was
+  unchanged by the accelerated scheduler.  The runner nevertheless exposed
+  an observability defect: it burned correctly but returned a generic error
+  before preserving which predicate and native counters disagreed.  The
+  local descendant adds a named per-candidate `gate_audit`, makes every field
+  mandatory in the dedicated accelerated validator, and includes the audit,
+  rebuild receipt, backend/arena counters and response-I/O snapshot in any
+  post-burn error.  Missing, false or contradictory audit fields fail closed.
+  This changes no protocol, ABI, root, challenge, proof byte, correlation,
+  Lean statement or soundness credit.  Local verification is green:
+  workspace **377 passed / 0 failed / 4 preexisting ignored**, Python/report
+  validators **18 passed**, tamper filter **44 passed**, format/check and
+  `git diff --check` PASS.  A retry is forbidden until this diagnostic
+  descendant is checkpointed; it must then use a new same-source onboarding
+  plus fresh durable, output, authorization, connection and epoch paths.
+
 - **2026-07-25 — X4c accelerated fresh-rebuild local preparation
   complete; hardware verdict withheld.**  Clean implementation checkpoint
   `065e75c78bd1427329dddbd37be7beb472927b8a` adds the discriminated schema-2

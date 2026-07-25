@@ -1,0 +1,218 @@
+{
+  "schema": 2,
+  "milestone": "X4c-GPT2-rebuild-preflight",
+  "git_sha": "1ab1164f27853de7770ffef790d7e2b4d2a6b1e4",
+  "git_dirty": false,
+  "profile": "runpod-a100-x4c-v1",
+  "protocol": "x4-zkdeepfold-ud-e29-v4",
+  "design_sha256": "9a3c64a65902046ba0a2b1891ff8fce03690d870773a346f7128b9f75f7a1164",
+  "stage": "synthetic-small",
+  "manual_single_stage": true,
+  "next_stage_launched": false,
+  "automatic_cpu_fallback": false,
+  "production_gate_credit": false,
+  "fixture": {
+    "contract": "x4c-deterministic-production-geometry-v1",
+    "descriptor_layout": "deterministic-prefix-present",
+    "cohort_id": 2784952321,
+    "oracle_kind": "weight-extension",
+    "outer_log2": 12,
+    "outer_len": 4096,
+    "structural_slots": 4,
+    "present_slots": 3,
+    "coefficient_bytes": 24576,
+    "host_oracle_bytes": 196608,
+    "host_outer_cache_bytes": 131040,
+    "final_resident_host_bytes": 352224,
+    "estimated_rebuild_peak_bytes": 417792,
+    "estimated_device_working_set_bytes": 536870912,
+    "production_geometry": false
+  },
+  "durable_census_before": {
+    "root_exists": true,
+    "directory_count": 0,
+    "file_count": 0,
+    "symlink_count": 0,
+    "byte_count": 0,
+    "structural_blake3": "1b737e8fe8e53712c014042ed0929b31a1df564fffc5098259fc2626b0669515"
+  },
+  "durable_census_after": {
+    "root_exists": true,
+    "directory_count": 0,
+    "file_count": 0,
+    "symlink_count": 0,
+    "byte_count": 0,
+    "structural_blake3": "1b737e8fe8e53712c014042ed0929b31a1df564fffc5098259fc2626b0669515"
+  },
+  "durable_census_stable": true,
+  "host_memory_preflight": {
+    "mem_available_bytes": 2097018425344,
+    "estimated_rebuild_peak_bytes": 417792,
+    "sufficient": true
+  },
+  "cuda_memory_preflight": {
+    "free_bytes": 85094039552,
+    "total_bytes": 85899345920,
+    "estimated_working_set_bytes": 536870912,
+    "sufficient": true
+  },
+  "fixture_generation_wall_s": 0.000026340999999999997,
+  "cpu_reference_wall_s": 0.011093828,
+  "cpu_reference_root": "a63ba995b3e4a8014272f8548cf4a1e8d9262b055ab4070440e222fc812ef8f7",
+  "cuda_rebuild_root": "a63ba995b3e4a8014272f8548cf4a1e8d9262b055ab4070440e222fc812ef8f7",
+  "root_reference_equality": true,
+  "rebuild": {
+    "cohort_id": 2784952321,
+    "strategy": "cuda-ram-v1",
+    "wall_s": 0.005939721,
+    "phases": {
+      "e_ntt_ns": 4987961,
+      "n4_inner_ns": 473240,
+      "n4_outer_ns": 443483,
+      "assemble_and_root_check_ns": 1343,
+      "cleanup_ns": 27803,
+      "total_ns": 5939721
+    },
+    "process_memory_before": {
+      "rss_bytes": 112807936,
+      "peak_rss_bytes": 112807936
+    },
+    "process_memory_after": {
+      "rss_bytes": 118624256,
+      "peak_rss_bytes": 118624256
+    },
+    "backend": {
+      "measurement_wall_ns": 5930233,
+      "operations": [
+        [
+          "gemm",
+          0
+        ],
+        [
+          "logup",
+          0
+        ],
+        [
+          "pcs_rows",
+          0
+        ],
+        [
+          "pcs_ntt",
+          3
+        ],
+        [
+          "pcs_merkle",
+          13
+        ],
+        [
+          "auth_masks",
+          0
+        ],
+        [
+          "mailbox",
+          0
+        ]
+      ],
+      "h2d_bytes": 483400,
+      "d2h_bytes": 458720,
+      "explicit_d2d_copy_bytes": 0,
+      "device_zeroed_bytes": 172032,
+      "device_generated_bytes": 32896,
+      "resident_alloc_requests": 0,
+      "resident_reuse_hits": 0,
+      "resident_free_requests": 0,
+      "live_device_bytes": 1212672,
+      "peak_device_bytes": 1212672,
+      "pinned_allocation_calls": 0,
+      "pinned_alloc_requests": 0,
+      "pinned_reuse_hits": 0,
+      "pinned_free_requests": 0,
+      "pinned_physical_free_calls": 0,
+      "live_pinned_bytes": 0,
+      "peak_pinned_bytes": 0,
+      "x4c_arena_reset_calls": 0,
+      "x4c_arena_reset_bytes": 0,
+      "timing_event_api_calls": 0,
+      "outstanding_timing_records": 0
+    },
+    "device_memory_before": {
+      "workspace_bytes": 0,
+      "resident_bytes": 0,
+      "cached_resident_bytes": 0
+    },
+    "device_memory_after": {
+      "workspace_bytes": 1212672,
+      "resident_bytes": 0,
+      "cached_resident_bytes": 0
+    },
+    "control_before": {
+      "stream_state": "idle",
+      "measurement_active": false,
+      "coarse_timing_active": false,
+      "timing_record_active": false,
+      "measurement_poisoned": false,
+      "outstanding_cuda_operations": 0,
+      "pending_timing_records": 0,
+      "active_device_allocations": 0,
+      "cached_device_allocations": 0,
+      "workspace_device_bytes": 0,
+      "active_device_bytes": 0,
+      "cached_device_bytes": 0,
+      "active_pinned_allocations": 0,
+      "cached_pinned_allocations": 0,
+      "in_flight_pinned_allocations": 0,
+      "active_pinned_bytes": 0,
+      "cached_pinned_bytes": 0
+    },
+    "control_after": {
+      "stream_state": "idle",
+      "measurement_active": false,
+      "coarse_timing_active": false,
+      "timing_record_active": false,
+      "measurement_poisoned": false,
+      "outstanding_cuda_operations": 0,
+      "pending_timing_records": 0,
+      "active_device_allocations": 0,
+      "cached_device_allocations": 0,
+      "workspace_device_bytes": 1212672,
+      "active_device_bytes": 0,
+      "cached_device_bytes": 0,
+      "active_pinned_allocations": 0,
+      "cached_pinned_allocations": 0,
+      "in_flight_pinned_allocations": 0,
+      "active_pinned_bytes": 0,
+      "cached_pinned_bytes": 0
+    },
+    "structural_slots": 4,
+    "present_slots": 3,
+    "coefficient_bytes": 24576,
+    "host_oracle_bytes": 196608,
+    "host_outer_cache_bytes": 131040,
+    "ntt_calls": 3,
+    "n4_inner_calls": 1,
+    "n4_outer_calls": 12,
+    "expected_h2d_bytes": 483400,
+    "expected_d2h_bytes": 458720,
+    "scratch_files_created": 0,
+    "scratch_bytes_read": 0,
+    "scratch_bytes_written": 0,
+    "file_backed_bytes": 0,
+    "owned_file_count": 0,
+    "owned_mapping_count": 0,
+    "root_equal": true,
+    "traffic_exact": true,
+    "cleanup_complete": true,
+    "accepted": true
+  },
+  "logical_rebuild_bytes": 352224,
+  "logical_bytes_per_second": 59299754.98849188,
+  "final_process_memory": {
+    "rss_bytes": 118624256,
+    "peak_rss_bytes": 118624256
+  },
+  "scratch_files_created": 0,
+  "scratch_bytes_read": 0,
+  "scratch_bytes_written": 0,
+  "abort_reasons": [],
+  "accepted": true
+}

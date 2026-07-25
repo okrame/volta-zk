@@ -1299,6 +1299,94 @@ impl From<X4cResponseMetricsV4> for MetricsRow {
     }
 }
 
+#[derive(Clone, Debug, Serialize)]
+struct CandidateGateAudit {
+    verifier_accepted: bool,
+    freshness_markers_persisted: bool,
+    model_transcript_accounting_exact: bool,
+    transcript_bytes_equal: bool,
+    transcript_ledger_equal: bool,
+    correlation_counters_equal: bool,
+    sub_correlations_exact: bool,
+    full_correlations_exact: bool,
+    correlation_allocation_digest_equal: bool,
+    pcs_bytes_exact: bool,
+    query_gather_exact: bool,
+    direct_fold_comparisons_exact: bool,
+    direct_fold_mismatches_zero: bool,
+    zero_soundness_credit: bool,
+    zero_response_staging: bool,
+    traffic_exact: bool,
+    failed: Vec<&'static str>,
+    all_pass: bool,
+}
+
+impl CandidateGateAudit {
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        verifier_accepted: bool,
+        freshness_markers_persisted: bool,
+        model_transcript_accounting_exact: bool,
+        transcript_bytes_equal: bool,
+        transcript_ledger_equal: bool,
+        correlation_counters_equal: bool,
+        sub_correlations_exact: bool,
+        full_correlations_exact: bool,
+        correlation_allocation_digest_equal: bool,
+        pcs_bytes_exact: bool,
+        query_gather_exact: bool,
+        direct_fold_comparisons_exact: bool,
+        direct_fold_mismatches_zero: bool,
+        zero_soundness_credit: bool,
+        zero_response_staging: bool,
+        traffic_exact: bool,
+    ) -> Self {
+        let gates = [
+            ("verifier_accepted", verifier_accepted),
+            ("freshness_markers_persisted", freshness_markers_persisted),
+            ("model_transcript_accounting_exact", model_transcript_accounting_exact),
+            ("transcript_bytes_equal", transcript_bytes_equal),
+            ("transcript_ledger_equal", transcript_ledger_equal),
+            ("correlation_counters_equal", correlation_counters_equal),
+            ("sub_correlations_exact", sub_correlations_exact),
+            ("full_correlations_exact", full_correlations_exact),
+            ("correlation_allocation_digest_equal", correlation_allocation_digest_equal),
+            ("pcs_bytes_exact", pcs_bytes_exact),
+            ("query_gather_exact", query_gather_exact),
+            ("direct_fold_comparisons_exact", direct_fold_comparisons_exact),
+            ("direct_fold_mismatches_zero", direct_fold_mismatches_zero),
+            ("zero_soundness_credit", zero_soundness_credit),
+            ("zero_response_staging", zero_response_staging),
+            ("traffic_exact", traffic_exact),
+        ];
+        let failed = gates
+            .iter()
+            .filter_map(|(name, passed)| (!passed).then_some(*name))
+            .collect::<Vec<_>>();
+        let all_pass = failed.is_empty();
+        Self {
+            verifier_accepted,
+            freshness_markers_persisted,
+            model_transcript_accounting_exact,
+            transcript_bytes_equal,
+            transcript_ledger_equal,
+            correlation_counters_equal,
+            sub_correlations_exact,
+            full_correlations_exact,
+            correlation_allocation_digest_equal,
+            pcs_bytes_exact,
+            query_gather_exact,
+            direct_fold_comparisons_exact,
+            direct_fold_mismatches_zero,
+            zero_soundness_credit,
+            zero_response_staging,
+            traffic_exact,
+            failed,
+            all_pass,
+        }
+    }
+}
+
 #[derive(Serialize)]
 struct CandidateRow {
     role: String,
@@ -1344,6 +1432,7 @@ struct CandidateRow {
     traffic_exact: bool,
     zero_response_staging: bool,
     verifier_accepted: bool,
+    gate_audit: CandidateGateAudit,
     connection_audit: volta_pcg::ConnectionResponseAudit,
     accepted: bool,
 }
@@ -2207,28 +2296,55 @@ fn online(args: &Args, accelerated: bool) -> Result<(), String> {
         let response_window_io_exact = process_io.response_window_exact;
         let complete_pcs_bytes = result.encoded_pcs.len() as u64;
         let verifier_accepted = closure_ok;
-        let candidate_pass = verifier_accepted
-            && freshness_markers_persisted
-            && model_transcript_accounting_exact
-            && transcript_bytes_equal
-            && transcript_ledger_equal
-            && stream.counters == verifier.counters
-            && stream.counters.sub_corrs == required_sub_corrs
-            && stream.counters.full_corrs == required_full_corrs
-            && prover_verifier_correlation_digest_equal
-            && complete_pcs_bytes == X4C_GPT2_PCS_BYTES
-            && x4c.execution.query_gather_calls == 1
-            && direct_fold_comparisons == 1_592
-            && direct_fold_mismatches == 0
-            && x4c.sampling_soundness_credit_bits == 0
-            && zero_response_staging
-            && traffic_exact;
+        let gate_audit = CandidateGateAudit::new(
+            verifier_accepted,
+            freshness_markers_persisted,
+            model_transcript_accounting_exact,
+            transcript_bytes_equal,
+            transcript_ledger_equal,
+            stream.counters == verifier.counters,
+            stream.counters.sub_corrs == required_sub_corrs,
+            stream.counters.full_corrs == required_full_corrs,
+            prover_verifier_correlation_digest_equal,
+            complete_pcs_bytes == X4C_GPT2_PCS_BYTES,
+            x4c.execution.query_gather_calls == 1,
+            direct_fold_comparisons == 1_592,
+            direct_fold_mismatches == 0,
+            x4c.sampling_soundness_credit_bits == 0,
+            zero_response_staging,
+            traffic_exact,
+        );
+        let candidate_pass = gate_audit.all_pass;
+        let backend = BackendRow::from(backend_stats);
+        let metrics = MetricsRow::from(result.x4c_metrics.clone());
         if !candidate_pass {
             connection
                 .connection
                 .malicious_check_failed()
                 .map_err(|error| format!("burn rejected response: {error}"))?;
-            return Err("real-weight X4c candidate hard gate failed".to_owned());
+            let diagnostic = serde_json::json!({
+                "candidate_role": if ordinal == 0 { "warmup" } else { "measured" },
+                "candidate_ordinal": ordinal,
+                "epoch": epoch,
+                "gate_audit": gate_audit,
+                "rebuild": &rebuild,
+                "backend": backend,
+                "metrics": metrics,
+                "process_io": process_io,
+                "actual_sub_correlations": stream.counters.sub_corrs,
+                "expected_sub_correlations": required_sub_corrs,
+                "actual_full_correlations": stream.counters.full_corrs,
+                "expected_full_correlations": required_full_corrs,
+                "verifier_sub_correlations": verifier.counters.sub_corrs,
+                "verifier_full_correlations": verifier.counters.full_corrs,
+                "complete_pcs_bytes": complete_pcs_bytes,
+                "expected_pcs_bytes": X4C_GPT2_PCS_BYTES,
+                "expected_h2d_bytes": expected_h2d_bytes,
+                "expected_d2h_bytes": expected_d2h_bytes,
+            });
+            return Err(format!(
+                "real-weight X4c candidate hard gate failed after durable burn: {diagnostic}"
+            ));
         }
         let connection_audit = connection
             .connection
@@ -2252,8 +2368,6 @@ fn online(args: &Args, accelerated: bool) -> Result<(), String> {
         let open_wall_s = result.open_wall_ns as f64 / 1e9;
         let verify_wall_s = result.verify_wall_ns as f64 / 1e9;
         let model_root = hex(&result.model_root);
-        let metrics = result.x4c_metrics.into();
-        let backend = backend_stats.into();
         candidates.push(CandidateRow {
             role: if ordinal == 0 { "warmup".to_owned() } else { format!("measured-{ordinal}") },
             ordinal,
@@ -2298,6 +2412,7 @@ fn online(args: &Args, accelerated: bool) -> Result<(), String> {
             traffic_exact,
             zero_response_staging,
             verifier_accepted,
+            gate_audit,
             connection_audit,
             accepted: candidate_pass,
         });
@@ -2541,5 +2656,22 @@ mod tests {
             "durable X4c digest mismatch"
         );
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn candidate_gate_audit_names_every_failure_without_relaxing_acceptance() {
+        let accepted = CandidateGateAudit::new(
+            true, true, true, true, true, true, true, true, true, true, true, true, true, true,
+            true, true,
+        );
+        assert!(accepted.all_pass);
+        assert!(accepted.failed.is_empty());
+
+        let rejected = CandidateGateAudit::new(
+            true, true, true, true, true, true, true, true, true, true, true, true, true, true,
+            false, false,
+        );
+        assert!(!rejected.all_pass);
+        assert_eq!(rejected.failed, ["zero_response_staging", "traffic_exact"]);
     }
 }

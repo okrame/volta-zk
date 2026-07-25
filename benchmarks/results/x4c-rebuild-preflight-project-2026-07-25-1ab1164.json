@@ -1,0 +1,67 @@
+{
+  "schema": 2,
+  "milestone": "X4c-GPT2-rebuild-preflight",
+  "git_sha": "1ab1164f27853de7770ffef790d7e2b4d2a6b1e4",
+  "git_dirty": false,
+  "profile": "runpod-a100-x4c-v1",
+  "protocol": "x4-zkdeepfold-ud-e29-v4",
+  "design_sha256": "9a3c64a65902046ba0a2b1891ff8fce03690d870773a346f7128b9f75f7a1164",
+  "stage": "project",
+  "manual_single_stage": true,
+  "next_stage_launched": false,
+  "production_gate_credit": false,
+  "source_stages": [
+    "aux-ell16",
+    "aux-ell17",
+    "mu20"
+  ],
+  "source_record_blake3": [
+    "080703f3dde9af68c03dc0834db428bd40ce98e8d66602c40172e7d6e9b200da",
+    "686ad79efe9a62e68640808c9b29af04d7d3874d1d710c432c22ccee9e87d42d",
+    "cd5d6c3edec560d717f9e58badef1b647712b369941281724d0dfdc54099a017"
+  ],
+  "conservative_floor_logical_bytes_per_second": 605844404.6387151,
+  "targets": [
+    {
+      "cohort_id": 2768240642,
+      "name": "mu22",
+      "coefficient_bytes": 4831838208,
+      "host_oracle_bytes": 38654705664,
+      "host_outer_cache_bytes": 2147483616,
+      "final_resident_host_bytes": 45634027488,
+      "estimated_rebuild_peak_bytes": 46707769344,
+      "estimated_device_working_set_bytes": 2684354560,
+      "projected_wall_s": 75.32301551124016
+    },
+    {
+      "cohort_id": 2768240641,
+      "name": "mu26",
+      "coefficient_bytes": 4294967296,
+      "host_oracle_bytes": 34359738368,
+      "host_outer_cache_bytes": 34359738336,
+      "final_resident_host_bytes": 73014444000,
+      "estimated_rebuild_peak_bytes": 90194313216,
+      "estimated_device_working_set_bytes": 42949672960,
+      "projected_wall_s": 120.51682484967556
+    }
+  ],
+  "durable_census_before": {
+    "root_exists": true,
+    "directory_count": 0,
+    "file_count": 0,
+    "symlink_count": 0,
+    "byte_count": 0,
+    "structural_blake3": "1b737e8fe8e53712c014042ed0929b31a1df564fffc5098259fc2626b0669515"
+  },
+  "durable_census_after": {
+    "root_exists": true,
+    "directory_count": 0,
+    "file_count": 0,
+    "symlink_count": 0,
+    "byte_count": 0,
+    "structural_blake3": "1b737e8fe8e53712c014042ed0929b31a1df564fffc5098259fc2626b0669515"
+  },
+  "durable_census_stable": true,
+  "decision_only": true,
+  "accepted": true
+}

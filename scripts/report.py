@@ -3560,6 +3560,35 @@ def _x4c_gpt2_candidate_valid(
     )
 
 
+_X4C_GPT2_CANDIDATE_GATE_KEYS = (
+    "verifier_accepted",
+    "freshness_markers_persisted",
+    "model_transcript_accounting_exact",
+    "transcript_bytes_equal",
+    "transcript_ledger_equal",
+    "correlation_counters_equal",
+    "sub_correlations_exact",
+    "full_correlations_exact",
+    "correlation_allocation_digest_equal",
+    "pcs_bytes_exact",
+    "query_gather_exact",
+    "direct_fold_comparisons_exact",
+    "direct_fold_mismatches_zero",
+    "zero_soundness_credit",
+    "zero_response_staging",
+    "traffic_exact",
+)
+
+
+def _x4c_gpt2_candidate_gate_audit_valid(row: Any) -> bool:
+    return (
+        _x4c_has(row, _X4C_GPT2_CANDIDATE_GATE_KEYS + ("failed", "all_pass"))
+        and all(row[key] is True for key in _X4C_GPT2_CANDIDATE_GATE_KEYS)
+        and row["failed"] == []
+        and row["all_pass"] is True
+    )
+
+
 def _x4c_gpt2_rebuild_valid(row: Any, onboarding: dict[str, Any]) -> bool:
     if not (
         _x4c_has(
@@ -4053,6 +4082,10 @@ def _x4c_gpt2_online_valid(
             epoch_base=epoch_base,
             model_sub_correlations=row["model_sub_correlations"],
             model_full_correlations=row["model_full_correlations"],
+        ):
+            return False
+        if accelerated and not _x4c_gpt2_candidate_gate_audit_valid(
+            candidate.get("gate_audit")
         ):
             return False
     measured = row["candidates"][1:]

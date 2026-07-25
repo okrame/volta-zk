@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED — ONLINE KEY-REUSE ACCOUNTING HARD STOP)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 1 DESIGN/M12/CODEC/GATES FROZEN — KEY-REUSE STOP DISPOSED — HARD STOP)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -340,6 +340,7 @@ its clean descendant closure.
 | X4c real-weight GPT-2 small E2E driver | **LOCAL GREEN; HARD STOP BEFORE POD / NO HARDWARE VERDICT** (2026-07-24) | Frozen six-input manifest; T=100+50 golden; actual 51-block/102-claim domains; real AES-PCG and persistent composite freshness; same-source onboarding/rebuild; exact X4c bytes, staging and ownership | Implementation checkpoint `7e8e957977fc51ca5d5deedd0c75371dc438118a`. Local preflight and complete suites pass. The schema-2 onboarding/online validators require their exact SHA chain, warm-up + three measured candidates, upper medians, exact **2,683,236 / 43,953,700 B**, one 111-query gather, exact **1,592** diagnostic comparisons, zero response-window I/O/staging and reconciled native arena ownership. Real CUDA, production-size onboarding/rebuild and online candidates await a separately supplied pod endpoint. |
 | X4c real-weight accelerated fresh rebuild | **A100 REAL-WEIGHT E2E PASS; R1c REVIEW PENDING** (2026-07-25) | Discriminated schema-2 `X4c-GPT2-real-weight-online-accelerated`; dedicated fail-closed validator; unchanged durable tier, roots, protocol and bytes; one warm-up + three measured | Clean source `6277c3c`; onboarding SHA-256 `bdf17c56e8e9a4d152b40ed2e1653d34cd665f09f52cb9dfe1cb1f57ae5e165d`; online SHA-256 `5a5417c11c0d5b4abe57af1e6ea5fa1191962c709c0f7b86fb780c30af1dac89`. Accelerated rebuild **240.623922522 s**, all five roots exact, scratch **0 B**, peak host/VRAM **133,544,189,952 / 43,486,546,048 B**. Four candidates accepted; selected open/verify **0.130465952 / 0.059185522 s PASS**, proof-ready/reusable **51.934139091 / 51.959601330 s**, complete E2E **303.190020886 s informative**. D2D **1,364,224 B** and ordinal-aware device-generated **35,727,436,640 / 35,727,436,512 B** exact. PCS/response **2,683,236 / 43,953,700 B** exact; zero response-window I/O/staging. R1c independent review is not claimed. |
 | X4c schema-3 cryptographic build identity | **LOCAL MIGRATION GREEN; HARD STOP BEFORE NEXT POD** (2026-07-25) | Schema 2 immutable; schema 3 replaces same-commit with exact automatic crypto-build identity plus existing artifact/root/rebuild gates; append-only validator receipt; 2,700-s pod-ready→rebuild diagnostic target | `volta-x4c-crypto-build-v1` canonically covers production Rust/CUDA/Lean/build/spec sources and excludes validator/report-only files. Online runner checks identity before durable reads, permits differing clean Git SHAs only with exact identity equality, and writes a hash-anchored rebuild-admission marker before candidates. Target misses are recorded but do not timeout, kill, or fail validation; automatic CPU fallback remains forbidden. Local verification: **380 PASS / 0 failure / 4 ignored pre-existing**, schema-3/report validator **19/19 PASS**, tamper filter **44/44 PASS**. Next pod requires one new onboarding because the old durable tier was removed; preserve the new 9,618,587,808-B tier for later reuse. No protocol/ABI/root/proof/Lean/soundness change; hardware qualification pending. |
+| X4d deferred settlement Phase 1 | **DESIGN/M12 STATEMENTS/CODEC/GATES FROZEN; HARD STOP BEFORE LEAN, RUST OR POD** (2026-07-25) | Per-connection digest-chained frozen-claim accumulator; soft trigger 1,632 claims, hard cap 3,320; one settlement/epoch/opening; pending product state; key-reuse stop disposed; G1--G6 preregistered | Design `docs/x4d-deferred-settlement-design.md`, SHA-256 `c59fcb0163930b63a2f12e000b4b6b3ab3a24966b550c1249195196add5f9ff0`. Exact response **41,270,464 B**. GPT-2 settlement bytes are **2,632,812 + 50,424*k**: `k=1/8/16/32` gives **2,683,236 / 3,036,204 / 3,439,596 / 4,246,380 B**. At `k=32`, claims/masked groups are **3,264 / 1,632**; 102 active chain polynomials, 27 fold rounds, 27,564 symbols and 67,930 sibling digests remain fixed. The exact **80.25537016399041-bit** settlement expression and 78.809294874-bit floor are unchanged; M12 adds the semantic cap bridge and composes per-response MAC terms through M10. `runpod-a100-x4d-v1` requires A100-SXM4 80 GB, >=256 GiB RAM, >=150 GB volume, split 8/27 workers and NOTE-6 first. No gate verdict, Lean proof, Rust/reference change or pod work. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -407,6 +408,59 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-25 — X4d deferred settlement Phase 1 preregistered; product
+  acceptance is explicitly split; the online key-reuse stop is disposed;
+  HARD STOP.**  The X4c record makes the **4,809,293,824** initial encoded
+  symbols read per response and the resulting **288–307 s** warm
+  `pcs_total_s` structural for response-fresh different-size-chain
+  challenges.  X4d therefore removes the PCS block from each delivered
+  response and freezes its weight claims in an append-only,
+  allocation-digest-chained connection accumulator.  A delivered response is
+  complete and authenticated but remains weight-consistency **PENDING** until
+  the verifier accepts the one-opening settlement over its frozen set.  The
+  pinned policy starts background settlement at **1,632 claims / 16 GPT-2
+  responses**, and refuses any response that would push all pending claims
+  past **3,320** until settlement completes.  Close and explicit policy
+  requests also settle; mismatch, failure, or abort is fail-closed, leaves
+  pending responses terminally unverified, burns the fase-D connection, and
+  permits no same-connection retry.
+
+  The Rust `claim_frames.len() <= 3320` bound and Lean
+  `activePolys <= 3320` hypothesis are recorded as the same invariant.  The
+  frozen expression
+  `3320*(9/16)^111 + 28,522,064,267,253/|E|` remains byte-for-byte unchanged
+  at **80.25537016399041 bits**; the cap is now also the settlement trigger.
+  The statement-first M12 inventory maps each represented failure counter to
+  a disjunct before proof work, composes one accepted union settlement back
+  to every per-response M9 statement and then through M10, and admits no new
+  axiom or deterministic LinkBad equality with an uncounted failure event.
+
+  The exact response proof bytes without PCS are **41,270,464 B**.  A
+  settlement covering `k` GPT-2 responses is exactly
+  **2,632,812 + 50,424*k B**: **2,683,236 / 3,036,204 / 3,439,596 /
+  4,246,380 B** at `k = 1 / 8 / 16 / 32`.  Static weight coefficients,
+  encoded oracle, cache, root, descriptors and manifest are legitimately
+  reused.  The fase-D connection MAC key is connection-scoped.  Response
+  nonces, handles, model masks and response correlations are fresh per
+  response; epoch/range seal, auxiliary masks, fold/query seeds, challenges,
+  queries and settlement correlations are fresh per settlement and consumed
+  once.  The four 32-byte X4b/X4c hash-context values are public
+  deterministic domain states, not secret one-time keys; they are charged
+  once when materialized and reuse-hit thereafter.  This explicit
+  reuse/freshness/counter allocation closes the **ONLINE KEY-REUSE ACCOUNTING
+  HARD STOP** for the X4d path rather than carrying it forward.
+
+  Gates G1–G6, unchanged onboarding gates, background dual wall/interference
+  accounting, and profile `runpod-a100-x4d-v1` are frozen in
+  `docs/x4d-deferred-settlement-design.md` (SHA-256
+  `c59fcb0163930b63a2f12e000b4b6b3ab3a24966b550c1249195196add5f9ff0`).
+  Profile admission requires one A100-SXM4 80 GB, host RAM at least
+  **256 GiB**, volume at least **150 GB**, split thread policy, wall-only plus
+  counters, and NOTE-6 `c3_weights` first.  Phase 1 changes documentation
+  only: no Lean statement/proof, Rust implementation, reference rebaseline,
+  or pod action has occurred.  This is a preregistration checkpoint, not a
+  gate verdict, and work is at the required user-review hard stop.
 
 - **2026-07-25 — Schema-3 cryptographic build identity and 45-minute
   diagnostic campaign target preregistered.**  The owner approved a conservative

@@ -348,6 +348,7 @@ its clean descendant closure.
 | X4d Phase 3 run-of-record harness | **LOCAL HARNESS GREEN; INFRASTRUCTURE HARD STOP — POD ENDPOINT REFUSED / NO HARDWARE VERDICT** (2026-07-25) | Exact preflight and online record producers; clean-source/design/source-hash admission; pinned 8/27 CPU pools; response-priority ABBA accounting; one real 16-response settlement; central fail-closed validators | Producer source SHA-256 `978b6641a34f1bd3149a5275bcbfd7f34678e80d0602ec01c1747e1154521b2f`; design SHA-256 `cd66fc3df5abe5471f59c4a01e79d85382ad052491889c835dcd7de2e16e66a4`. Both CPU and CUDA builds are green; the full no-default-features workspace is green with bench **30**, PCG **44**, PCS **114**, proto **110**, and the central report suite is **21/21 PASS**. The adapter consumes existing X4c onboarding/X4d engines rather than adding a PCS, PCG pool, lifecycle or validator framework. Four independent SSH attempts to owner-supplied `64.247.206.116:13449` were refused before any remote command. Consequently no preflight JSON, NOTE-6, onboarding, G1/G2/G3/G4/G5/G6, hardware timing, comparison-table update or provider termination occurred; every Phase-3 gate is **NOT EVALUATED**, and NOTE-6 remains the first permitted production-size workload. |
 | X4d Phase 3 selected-GPU preflight correction | **LOCAL GREEN; POD REACHABLE / NOTE-6 STILL FIRST** (2026-07-25) | The frozen profile requires exactly one selected A100, not a single-GPU host; one `CUDA_VISIBLE_DEVICES` selector now drives both CUDA and the recorded `nvidia-smi --id` inventory | Replacement producer source SHA-256 `0cd17d332986bc9c94e78ef83c7e595007a81de2da8334e72bc38cb9f8e98a16`. The new endpoint `64.247.206.116:19482` exposes 2× A100-SXM4 80 GB, 128 CPUs, about 1.97 TiB RAM and sufficient volume. Run-of-record commands select exactly GPU 0, record its UUID and memory, and leave GPU 1 unused. No production-size workload or gate verdict preceded this correction. |
 | X4d Phase 3 X4c-design pin correction | **LOCAL GREEN; PRE-ONLINE HARD STOP HONORED / FRESH ONBOARDING REQUIRED** (2026-07-25) | X4d consumer now pins the current schema-3 X4c lifecycle file digest rather than the historical interpretation-correction digest; conservative crypto-build identity changes | Replacement producer source SHA-256 `f47f484d2f928f8fe551b1cd6848ce2cd6ffc6a6b4baaa1be1f95b0241e4a334`; current X4c lifecycle design SHA-256 `9a3c64a65902046ba0a2b1891ff8fce03690d870773a346f7128b9f75f7a1164`. The first schema-3 onboarding is valid X4c evidence but is ineligible for the corrected X4d consumer and will not be reused. Both rejected online invocations stopped before durable reads, rebuild, PCG connection or output/journal creation. NOTE-6 remains the first production-size session action and PASS. |
+| X4d Phase 3 fase-D stage correction | **HARD STOP HONORED; FAILED CONNECTION BURNED / LOCAL FIX GREEN / FRESH ONBOARDING REQUIRED** (2026-07-25) | First eligible online rebuild passed root admission, then response 0 allocation correctly failed and burned because the harness requested reserved stage 0 instead of the production allocatable stage 1 | Connection journal SHA-256 `299e9ddd377d7248d48a4761e7dc61337e25b91c46b3de717afd8dfeb7ab3b3c` ends `TERMINAL|protocol-error`; authorization burn marker SHA-256 `b8f5504b681366eee71228fc9cc10b9b687c6038a4018a9d3ac40777e807f4bf`. No response was proved or delivered, no settlement began and no online JSON exists. X4d now uses named stage 1 for both response and settlement allocations, matching the existing X4c production path; a permanent capacity regression covers the complete 19-response plus k=16 plan. Replacement producer source SHA-256 `75875a8add9051d6e6495a06c407b965df1ad6fc2066b65557444ef213b781eb`; conservative crypto-build identity requires a fresh onboarding and entirely new journals. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -415,6 +416,43 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-25 — First crypto-build-eligible X4d online attempt burned
+  before response 0 proof; fase-D allocatable-stage mismatch corrected
+  without retrying the connection.** The accelerated fresh rebuild completed
+  and matched all five onboarding roots. The first response authorization was
+  then durably reserved, but `allocate_pcg_pools` rejected the requested raw
+  range because the X4d harness passed stage `0`. In terminal-one fase-D,
+  stage 0 is the main residual after base reservation and exposes only
+  **3,692,373** correlations, less than one GPT-2 response's exact
+  **5,157,460** raw correlations. The production X4c path uses stage `1`,
+  whose recorded allocatable pool is **110,918,718** correlations. Nineteen
+  responses consume **97,991,740** raw correlations; the k=16 settlement
+  adds exactly **72,398**, so the frozen plan fits with no capacity or
+  parameter change.
+
+  The connection journal ends `TERMINAL|protocol-error` before model proof,
+  claim freeze or delivery and has SHA-256
+  `299e9ddd377d7248d48a4761e7dc61337e25b91c46b3de717afd8dfeb7ab3b3c`.
+  Its one response-authorization marker has SHA-256
+  `b8f5504b681366eee71228fc9cc10b9b687c6038a4018a9d3ac40777e807f4bf`.
+  No online JSON exists. That connection and marker remain burned and will
+  not be reused.
+
+  The harness now names `FASE_D_ALLOCATABLE_STAGE = 1` and uses it for both
+  response and settlement allocation through the already shared physical
+  pool loader. This matches the existing X4c production implementation and
+  adds no pool, correlation, protocol, proof or soundness lever. Replacement
+  producer SHA-256 is
+  `75875a8add9051d6e6495a06c407b965df1ad6fc2066b65557444ef213b781eb`.
+  Permanent test
+  `phase3_response_and_settlement_plan_uses_the_allocatable_fase_d_stage`
+  proves that one response exceeds stage 0 while the full registered
+  19-response plus k=16 settlement plan fits stage 1.
+  Since the conservative crypto-build identity covers all production Rust,
+  the otherwise valid corrected-design onboarding is not reused; a fresh
+  onboarding and new connection/journals are mandatory. R1c scope includes
+  the response/settlement stage-selection boundary.
 
 - **2026-07-25 — X4d consumer rejected an otherwise valid schema-3
   onboarding before durable reads; historical X4c digest pin corrected and

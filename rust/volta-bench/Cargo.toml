@@ -9,6 +9,7 @@ default = []
 cuda = ["volta-accel/cuda", "volta-gpt2/cuda", "volta-proto/cuda", "volta-pcs/cuda"]
 
 [dependencies]
+libc = { workspace = true }
 volta-accel = { workspace = true }
 volta-field = { workspace = true }
 volta-gpt2 = { workspace = true }

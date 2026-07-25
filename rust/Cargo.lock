@@ -664,6 +664,7 @@ version = "0.0.0"
 dependencies = [
  "blake3",
  "criterion",
+ "libc",
  "rand",
  "rayon",
  "serde",

@@ -1051,6 +1051,15 @@ pub(super) struct CudaContext {
     api: Api,
 }
 
+// SAFETY: `raw` uniquely owns one heap-allocated C++ Context and every C ABI
+// entry point requires `&mut CudaContext` at the Rust boundary. The backend
+// stores CUDA stream/event/allocation handles, not a creator-thread pointer;
+// CUDA runtime handles and the POSIX dlopen handle may be used and destroyed
+// from a different host thread. Moving the owner between pinned Rayon pools
+// is therefore sound, while Rust's exclusive borrow still forbids concurrent
+// calls. `Sync` is intentionally not implemented.
+unsafe impl Send for CudaContext {}
+
 impl CudaContext {
     pub(super) fn load() -> Result<CudaContext, AccelError> {
         let path = std::env::var("VOLTA_CUDA_LIBRARY")

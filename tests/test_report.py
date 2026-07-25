@@ -387,6 +387,291 @@ def test_x4d_codec_reference_validator_is_exact_and_fail_closed(tmp_path):
         assert report.validate_x4d_codec_reference(path) is False
 
 
+def _x4d_phase3_hardware():
+    return {
+        "gpu_name": "NVIDIA A100-SXM4-80GB",
+        "gpu_uuid": "GPU-11111111-2222-3333-4444-555555555555",
+        "gpu_memory_mib": 81_920,
+        "selected_gpu_count": 1,
+        "mem_total_bytes": 300_000_000_000,
+        "volume_total_bytes": 200_000_000_000,
+        "volume_available_bytes": 180_000_000_000,
+        "response_cpu_ids": list(range(8)),
+        "settlement_cpu_ids": list(range(8, 35)),
+        "split_policy_valid": True,
+        "gpu_pass": True,
+        "ram_pass": True,
+        "volume_pass": True,
+        "overall_pass": True,
+    }
+
+
+def _x4d_phase3_response(ordinal, role, *, prove_s=4.0):
+    total = prove_s + 0.6 + 0.001
+    digest = f"{ordinal + 1:064x}"
+    nonce_digest = f"{ordinal + 101:064x}"
+    raw = 4_793_590 + 2 * (181_933 + 2)
+    return {
+        "ordinal": ordinal,
+        "role": role,
+        "response_nonce_digest": digest,
+        "model_prove_s": prove_s,
+        "model_verify_s": 0.6,
+        "claim_freeze_s": 0.001,
+        "total_g1_s": total,
+        "prefill_prove_upper_s": 2.5,
+        "max_decode_marginal_s": 0.03,
+        "flatness_last_over_first": 1.1,
+        "h2d_bytes": 1_000_000,
+        "synchronization_wall_upper_s": 0.01,
+        "model_transcript_bytes": 41_270_400,
+        "model_mac_closure_bytes": 64,
+        "response_bytes": 41_270_464,
+        "pcs_bytes": 0,
+        "product_state_at_delivery": "WEIGHT_PENDING",
+        "transcript_replay_bytes": 41_034_112,
+        "transcript_replay_labels": 25,
+        "correlations_consumed": raw,
+        "freeze_journal": {
+            "response_nonce_digest": nonce_digest,
+            "first_claim_index": 102 * ordinal,
+            "claim_count": 102,
+            "ending_accumulator_digest": f"{ordinal + 201:064x}",
+        },
+        "connection_audit": {
+            "response_nonce_digest": nonce_digest,
+            "allocation_digest": f"{ordinal + 301:064x}",
+            "channel_ledger_digest": f"{ordinal + 401:064x}",
+            "correlations_consumed": raw,
+            "channel_frames": 0,
+        },
+        "accepted": True,
+    }
+
+
+def _x4d_phase3_online_fixture(report, onboarding, onboarding_sha):
+    roles = [
+        "g1-warmup",
+        "g1-measured",
+        "g1-measured",
+        "g1-measured",
+        *["connection-fill"] * 10,
+        "abba-isolated-a1",
+        "connection-fill",
+        "abba-settlement-queued-b",
+        "abba-settlement-queued-b",
+        "abba-isolated-a2",
+    ]
+    responses = [
+        _x4d_phase3_response(
+            ordinal,
+            role,
+            prove_s=4.099 if ordinal in (16, 17) else 4.0,
+        )
+        for ordinal, role in enumerate(roles)
+    ]
+    g1 = {
+        "selected_total_s": 4.601,
+        "selected_claim_freeze_s": 0.001,
+        "selected_prefill_upper_s": 2.5,
+        "selected_decode_marginal_s": 0.03,
+        "selected_h2d_bytes": 1_000_000,
+        "selected_sync_wall_upper_s": 0.01,
+        "selected_flatness": 1.1,
+        "total_pass": True,
+        "freeze_pass": True,
+        "prefill_pass": True,
+        "decode_pass": True,
+        "h2d_pass": True,
+        "sync_pass": True,
+        "flatness_pass": True,
+        "overall_pass": True,
+    }
+    isolated = [responses[14]["total_g1_s"], responses[18]["total_g1_s"]]
+    queued = [responses[16]["total_g1_s"], responses[17]["total_g1_s"]]
+    isolated_upper = max(isolated)
+    queued_upper = max(queued)
+    isolated_upper_ns = int(isolated_upper * 1e9)
+    queued_upper_ns = int(queued_upper * 1e9)
+    delta = (queued_upper_ns - isolated_upper_ns) / 1e9
+    settlement = {
+        "responses": 16,
+        "frozen_claims": 1_632,
+        "masked_groups": 816,
+        "settlement_epoch": 1,
+        "settlement_bytes": 3_439_596,
+        "expected_settlement_bytes": 3_439_596,
+        "amortized_settlement_bytes_per_response": 3_439_596 / 16,
+        "historical_four_mb_scope": "4,000,000 B is the immutable X4/X4b/X4c per-response PCS ceiling; X4d settlement uses the pinned batch formula",
+        "seal_to_terminal_wall_s": 10.0,
+        "proof_driver_wall_s": 2.0,
+        "auxiliary_materialization_wall_s": 1.0,
+        "response_priority_pause_wall_s": 1.0,
+        "active_cpu_host_window_s": 3.0,
+        "active_gpu_lease_host_window_s": 2.0,
+        "lease_wait_wall_s": 0.0,
+        "open_wall_s": 0.13,
+        "verify_wall_s": 0.06,
+        "open_pass": True,
+        "verify_pass": True,
+        "every_covered_response_weight_verified": True,
+        "exact_bytes": True,
+        "exact_correlations": True,
+        "fresh_auxiliary_masks": 51,
+        "static_weight_roots_reused": 3,
+        "query_draws": 111,
+        "soundness_expression": report.X4D_SOUNDNESS_EXPRESSION,
+        "soundness_bits": report.X4D_SOUNDNESS_BITS,
+        "interference": {
+            "order": "A1,B1,B2,A2",
+            "isolated_response_s": isolated,
+            "settlement_queued_response_s": queued,
+            "isolated_upper_median_s": isolated_upper,
+            "settlement_queued_upper_median_s": queued_upper,
+            "absolute_delta_s": delta,
+            "percentage_delta": (
+                100.0
+                * (queued_upper_ns - isolated_upper_ns)
+                / isolated_upper_ns
+            ),
+            "settlement_cpu_overlap_intervals": 0,
+            "settlement_gpu_overlap_intervals": 0,
+            "accounting_semantics": "B responses execute under strict response priority while the sealed settlement is queued; no CPU/GPU interval is falsely reported concurrent",
+        },
+        "accepted": True,
+    }
+    roots = onboarding["warmup_root_set"]
+    return {
+        "schema": 1,
+        "milestone": report.X4D_PHASE3_ONLINE_MILESTONE,
+        "git_sha": "a" * 40,
+        "git_dirty": False,
+        "producer_source_sha256": report.X4D_PHASE3_PRODUCER_SHA256,
+        "profile": report.X4D_PHASE3_PROFILE,
+        "protocol": report.X4D_PHASE3_PROTOCOL,
+        "design_sha256": report.X4D_PHASE3_DESIGN_SHA256,
+        "cloud": {
+            "provider": "RunPod",
+            "instance_id": "pod-test",
+            "region": "EU",
+            "image": "cuda",
+            "driver_version": "570",
+            "cuda_version": "12.8",
+            "gpu_sku": "NVIDIA A100-SXM4-80GB",
+            "cpu_model": "test",
+            "ram_gib": "300",
+            "vcpus": "64",
+        },
+        "hardware": _x4d_phase3_hardware(),
+        "onboarding_path": "/remote/onboarding.json",
+        "onboarding_sha256": onboarding_sha,
+        "onboarding_exact": True,
+        "crypto_build_id_scheme": onboarding["crypto_build_id_scheme"],
+        "crypto_build_id": onboarding["crypto_build_id"],
+        "durable_tier_bytes": 9_618_587_808,
+        "rebuild_wall_s": 10.0,
+        "rebuild_rows": [
+            {"cohort_id": cohort_id, "accepted": True}
+            for cohort_id in (0xA5000001, 0xA5000002, 0xA5000003, 0xA5000005, 0xA5000004)
+        ],
+        "rebuild_roots": roots,
+        "rebuild_roots_equal_onboarding": True,
+        "old_auxiliary_roots_rejected_for_settlement": True,
+        "setup_wall_s": 10.0,
+        "responses": responses,
+        "g1": g1,
+        "settlement": settlement,
+        "cap_test_name": "claim_3321_refuses_until_settlement_succeeds",
+        "cap_3321_permanent_test_present": True,
+        "cap_preflight_3321_rejected": True,
+        "soundness_expression_byte_exact": True,
+        "g2_permanent_tests": report.X4D_PHASE3_G2_TESTS,
+        "g6_test_name": "explicit_abort_before_settlement_marks_pending_terminal_unverified",
+        "g6_abort_before_settlement_terminal_unverified": True,
+        "no_retry_same_connection": True,
+        "provider_contract_state_at_delivery": "complete and fully authenticated; weight consistency WEIGHT_PENDING",
+        "provider_contract_state_at_settlement": "covered response set pronounced WEIGHT_VERIFIED only after settlement acceptance",
+        "historical_rows_modified": False,
+        "overall_pass": True,
+    }
+
+
+def test_x4d_phase3_validators_are_chained_and_fail_closed(tmp_path):
+    report = load_report_module()
+    preflight = {
+        "schema": 1,
+        "milestone": report.X4D_PHASE3_PREFLIGHT_MILESTONE,
+        "git_sha": "a" * 40,
+        "git_dirty": False,
+        "profile": report.X4D_PHASE3_PROFILE,
+        "protocol": report.X4D_PHASE3_PROTOCOL,
+        "design_sha256": report.X4D_PHASE3_DESIGN_SHA256,
+        "producer_source_sha256": report.X4D_PHASE3_PRODUCER_SHA256,
+        "hardware": _x4d_phase3_hardware(),
+        "inputs_exact": True,
+        "soundness_expression": report.X4D_SOUNDNESS_EXPRESSION,
+        "soundness_bits": report.X4D_SOUNDNESS_BITS,
+        "overall_pass": True,
+    }
+    assert report._x4d_phase3_preflight_valid(preflight) is True
+    preflight_path = tmp_path / "preflight.json"
+    preflight_path.write_text(json.dumps(preflight))
+    assert report.validate_x4d_phase3_preflight(preflight_path) is True
+
+    roots = [f"{index + 1:064x}" for index in range(5)]
+    onboarding = {
+        "schema": 3,
+        "milestone": "X4c-GPT2-real-weight-onboarding-crypto-id-v1",
+        "git_dirty": False,
+        "overall_pass": True,
+        "crypto_build_id_scheme": "volta-x4c-crypto-build-v1",
+        "crypto_build_id": "c" * 64,
+        "warmup_root_set": roots,
+    }
+    onboarding_path = tmp_path / "onboarding.json"
+    onboarding_path.write_text(json.dumps(onboarding))
+    onboarding_sha = hashlib.sha256(onboarding_path.read_bytes()).hexdigest()
+    online = _x4d_phase3_online_fixture(report, onboarding, onboarding_sha)
+    assert report._x4d_phase3_online_valid(online, onboarding, onboarding_sha) is True
+    online_path = tmp_path / "online.json"
+    online_path.write_text(json.dumps(online))
+    assert report.validate_x4d_phase3_online(online_path, onboarding_path) is True
+
+    invalid = []
+    bad = copy.deepcopy(preflight)
+    bad["hardware"]["mem_total_bytes"] -= 100_000_000_000
+    invalid.append(("preflight", bad))
+    bad = copy.deepcopy(online)
+    bad["responses"][16]["product_state_at_delivery"] = "WEIGHT_VERIFIED"
+    invalid.append(("online", bad))
+    bad = copy.deepcopy(online)
+    bad["settlement"]["settlement_bytes"] = 3_439_595
+    invalid.append(("online", bad))
+    bad = copy.deepcopy(online)
+    bad["settlement"]["interference"]["settlement_gpu_overlap_intervals"] = 1
+    invalid.append(("online", bad))
+    bad = copy.deepcopy(online)
+    bad["g2_permanent_tests"].pop()
+    invalid.append(("online", bad))
+    bad = copy.deepcopy(online)
+    bad["historical_rows_modified"] = True
+    invalid.append(("online", bad))
+    bad = copy.deepcopy(online)
+    bad["unexpected"] = "unversioned schema extension"
+    invalid.append(("online", bad))
+
+    for kind, candidate in invalid:
+        if kind == "preflight":
+            assert report._x4d_phase3_preflight_valid(candidate) is False
+        else:
+            assert (
+                report._x4d_phase3_online_valid(
+                    candidate, onboarding, onboarding_sha
+                )
+                is False
+            )
+
+
 def test_x4_v4_pod_validator_accepts_only_the_fail_closed_physical_record():
     report = load_report_module()
     cohort_names = [

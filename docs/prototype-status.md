@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 2 LOCAL GREEN; PHASE 3 AUTHORIZED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 2 LOCAL GREEN; PHASE 3 HARNESS GREEN / POD ENDPOINT REFUSED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -345,6 +345,7 @@ its clean descendant closure.
 | X4d Phase 2 local implementation | **LOCAL RUST GREEN; REBASELINE GENERATOR GREEN; HARD STOP BEFORE POD / NO HARDWARE VERDICT** (2026-07-25) | One cap alias; append-only claim freeze; exact sealed union; settlement-fresh aux/query/correlation state; one reused accelerated chain; fase-D burn journal; background dual accounting; permanent G2/G4/G6 cases | X4d adds isolated accumulator/codec/orchestration modules and a thin context parameter to the existing v4 accelerated engine; it does not add another PCS, PCG pool or lifecycle. The stable accumulator identity is the digest of the three static weight roots, while each epoch gets two fresh auxiliary roots and a fresh manifest `model_root`; this clarifies the Phase-1 word “model root” and matches existing epochized X4c roots without changing proof bytes or soundness. Query-seed, epoch, aux-root and exact correlation-count commitments are globally burn-reserved; 111 draws are derived only after all fold roots seal. Settlement success requires raw PCG use to equal exactly twice the registered full-correlation count. Full `cargo test --workspace --no-default-features` is green: bench **30**, PCG **44**, PCS **112**, proto **110** and all other workspace suites pass; four production-size ignores are pre-existing. Local two-response small geometry completes one shared chain, M9-to-MAC and ZeroBatch. Exact `k=1/8/16/32` codec round trips and every registered tamper/cap/abort case pass. The clean append-only reference SHA values are generated only after this source checkpoint; no G1/G5 or A100 verdict is claimed. |
 | X4d Phase 2 codec rebaseline | **LOCAL EXACT REFERENCES + FAIL-CLOSED VALIDATOR GREEN; HARD STOP BEFORE POD / NO GATE VERDICT** (2026-07-25) | Clean source; append-only schema-1 record; response projection explicitly distinguished from materialized settlement fixtures; central validator; historical rows immutable | Source `16e6c40b6620e09363a8c53eb3ecc632fa650f25`; record `x4d-codec-reference-2026-07-25-16e6c40.json`, SHA-256 `d2175a917d967a18784dd90a5bf5190d6ce1e782eb120e9e5a223040aa68d1af`. It binds design SHA-256 `405f3362a45f3d753d65827cdd48aacef2ec0b5c6d00c9f2b450129ad5b36fe8`, generator SHA-256 `95729dc166c2eb292efb570ada9410ac4edac97bb93859ff7b527c411be37bae` and frozen preflight SHA-256 `ba87722362c8825e13e02a6c563a436797ea852e09e1cebcf4a9265c6ce56499`; `git_dirty=false`, `historical_references_modified=false`, `proof_or_gate_verdict=false`. Response projection is exactly **41,270,464 B**, `WEIGHT_PENDING`, with PCS **0 B** and `materialized_wire_fixture=false`. Materialized settlement codec SHA-256 values for `k=1/8/16/32` are `fc5158b3bdd380df6e9d20657b3475fc386f797c151f0f7c214a216e91c356e5`, `81355cb2430d289769ec43c43d4a1ad3833f2f4180609b264bef589bc96b043f`, `62839bbbe8bf494fa2267bf3d486c094a3b51b7eab56e11123f088731eac6221`, `f7df30cddf241143db520c47fb29d9cd4b00b364a33e926d4e7c9a4d88e4739c`; their exact lengths are **2,683,236 / 3,036,204 / 3,439,596 / 4,246,380 B**. The existing central `scripts/report.py` validator pins the complete schema and rejects dirty/source/design/history/verdict/fixture/order/length/digest mutations; report tests are **20/20 PASS**. |
 | X4d Phase 2 review closure | **LOCAL GREEN; PHASE 3 AUTHORIZED / NO HARDWARE VERDICT YET** (2026-07-25) | Explicit M2/Delta post-freeze substitution test; explicit abort-before-settlement terminal test; historical 4,000,000-B G3 scope stated normatively | Design descendant SHA-256 `cd66fc3df5abe5471f59c4a01e79d85382ad052491889c835dcd7de2e16e66a4`; the prior codec record remains immutable evidence for its named source/design checkpoint. Permanent tests `post_freeze_value_substitution_is_rejected_by_m2_mac` and `explicit_abort_before_settlement_marks_pending_terminal_unverified` pass; full PCS count is now **114** and the workspace remains green. G3 now says verbatim that the historical **4,000,000-B** ceiling belongs to the X4/X4b/X4c per-response PCS block, while X4d settlement uses `2,632,812 + 50,424*k`: `k=32` is **4,246,380 B**, or **132,699.375 settlement B/response**, with no historical gate relaxation. |
+| X4d Phase 3 run-of-record harness | **LOCAL HARNESS GREEN; INFRASTRUCTURE HARD STOP — POD ENDPOINT REFUSED / NO HARDWARE VERDICT** (2026-07-25) | Exact preflight and online record producers; clean-source/design/source-hash admission; pinned 8/27 CPU pools; response-priority ABBA accounting; one real 16-response settlement; central fail-closed validators | Producer source SHA-256 `978b6641a34f1bd3149a5275bcbfd7f34678e80d0602ec01c1747e1154521b2f`; design SHA-256 `cd66fc3df5abe5471f59c4a01e79d85382ad052491889c835dcd7de2e16e66a4`. Both CPU and CUDA builds are green; the full no-default-features workspace is green with bench **30**, PCG **44**, PCS **114**, proto **110**, and the central report suite is **21/21 PASS**. The adapter consumes existing X4c onboarding/X4d engines rather than adding a PCS, PCG pool, lifecycle or validator framework. Three independent SSH attempts to owner-supplied `64.247.206.116:13449` were refused before any remote command. Consequently no preflight JSON, NOTE-6, onboarding, G1/G2/G3/G4/G5/G6, hardware timing, comparison-table update or provider termination occurred; every Phase-3 gate is **NOT EVALUATED**, and NOTE-6 remains the first permitted production-size workload. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -412,6 +413,68 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-25 — X4d Phase 3 run-of-record harness is locally green;
+  owner-supplied pod endpoint refused all connections before any command.**
+  The Phase-3 adapter is deliberately a consumer of the existing X4c
+  schema-3 onboarding and X4d accumulator/settlement machinery. It adds no
+  competing PCS implementation, PCG pool, connection lifecycle, proof
+  abstraction or validator framework. Its source SHA-256 is
+  `978b6641a34f1bd3149a5275bcbfd7f34678e80d0602ec01c1747e1154521b2f`,
+  and every eligible record must bind that hash plus corrected design
+  SHA-256
+  `cd66fc3df5abe5471f59c4a01e79d85382ad052491889c835dcd7de2e16e66a4`.
+  The fail-closed preflight requires a clean tree, the exact
+  A100-SXM4-80GB SKU with at least **81,920 MiB**, at least **256 GiB** host
+  RAM, at least **150 GB** volume and the registered **8 response / 27
+  settlement** CPU split inside the process affinity mask.
+
+  Linux record production now pins every Rayon worker to its declared CPU.
+  CUDA-enabled compilation exposed that the uniquely owned `CudaContext`
+  was conservatively `!Send`, preventing the exclusive backend from moving
+  between those two pools. The context is now explicitly `Send` but remains
+  `!Sync`: C ABI calls still require exclusive `&mut`, the C++ context has
+  one owner, and it stores CUDA/POSIX handles rather than a creator-thread
+  pointer. This is a host-thread migration decision, not permission for
+  concurrent calls. CPU and CUDA builds are green, but the first real-device
+  run must validate the premise; any hidden creator-thread affinity is an
+  exact Phase-3 obstruction and hard-stops the run.
+
+  The online producer rebuilds all five committed cohorts and requires root
+  equality with the carried onboarding before response timing. It runs one
+  fase-D connection with **19** real responses: response 0 is warmup, 1--3
+  are G1 measured, A1/B1/B2/A2 are ordinals 14/16/17/18, and the first
+  **16 responses / 1,632 claims / 816 masked groups** form one epoch and one
+  opening. The B responses execute with strict response priority while the
+  sealed settlement is queued; settlement wall, active CPU/GPU windows,
+  queue/pause time and the ABBA interference delta are separately recorded,
+  and zero overlap intervals are reported when no interval actually
+  overlaps. The remaining three pending responses are explicitly aborted
+  and must become terminally unverified with no same-connection retry.
+  G1/G5 ceilings, exact correlation counts, the unchanged soundness
+  expression, the **3,439,596-B** k=16 settlement, provider contract states,
+  root cross-checks and the complete named G2/G4/G6 permanent-test inventory
+  are all schema-pinned. An honest conjunctive gate failure is retained and
+  causes nonzero runner exit rather than being promoted to PASS.
+
+  Full `cargo test --workspace --no-default-features` remains green: bench
+  **30**, PCG **44**, PCS **114**, proto **110**, with only the four
+  pre-existing production-size ignores. Both non-CUDA and CUDA checks of the
+  record producer pass, targeted new-producer Clippy is clean under only the
+  four documented pre-existing crate lint allowances, Rust formatting is
+  clean, and the centralized fail-closed report suite is **21/21 PASS**.
+  R1c mandatory scope is extended to the pinned-pool affinity and exclusive
+  CUDA-context migration boundary in addition to the previously registered
+  accumulator/settlement surface.
+
+  Three independent SSH attempts to the owner-supplied endpoint
+  `root@64.247.206.116:13449` returned `Connection refused`. No remote shell
+  or command started, no preflight or append-only record was written, and no
+  production-size workload ran. NOTE-6 is therefore unconsumed and remains
+  the mandatory first workload. Every Phase-3 hardware gate is **NOT
+  EVALUATED**; `docs/x4c-gpt2-accelerated-comparison.md` is intentionally
+  unchanged because no current recorded data exists, and the pod could not
+  be terminated through an unreachable endpoint.
 
 - **2026-07-25 — X4d Phase 2 reviewer inventory closed before Phase 3;
   no weakening and no historical rewrite.** Two previously implicit edges

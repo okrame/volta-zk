@@ -173,6 +173,28 @@ X4D_SETTLEMENT_REFERENCES = (
         "f7df30cddf241143db520c47fb29d9cd4b00b364a33e926d4e7c9a4d88e4739c",
     ),
 )
+X4D_PHASE3_PROFILE = "runpod-a100-x4d-v1"
+X4D_PHASE3_PROTOCOL = "x4-zkdeepfold-ud-e29-v4+x4d-deferred-settlement-v1"
+X4D_PHASE3_DESIGN_SHA256 = (
+    "cd66fc3df5abe5471f59c4a01e79d85382ad052491889c835dcd7de2e16e66a4"
+)
+X4D_PHASE3_PRODUCER_SHA256 = (
+    "978b6641a34f1bd3149a5275bcbfd7f34678e80d0602ec01c1747e1154521b2f"
+)
+X4D_PHASE3_PREFLIGHT_MILESTONE = "X4d-GPT2-pod-preflight-v1"
+X4D_PHASE3_ONLINE_MILESTONE = "X4d-GPT2-real-weight-deferred-settlement-v1"
+X4D_SOUNDNESS_EXPRESSION = "3320*(9/16)^111 + 28,522,064,267,253/|E|"
+X4D_SOUNDNESS_BITS = 80.25537016399041
+X4D_PHASE3_SETTLED_RESPONSES = 16
+X4D_PHASE3_CONNECTION_RESPONSES = 19
+X4D_PHASE3_SETTLEMENT_BYTES = 3_439_596
+X4D_PHASE3_G2_TESTS = [
+    "post_freeze_value_substitution_is_rejected_by_m2_mac",
+    "accumulator_roles_match_and_omission_reorder_mismatch",
+    "exact_range_rejects_subset_reorder_and_replay",
+    "x4d_delivery_without_freeze_and_wrong_settlement_subset_burn_connection",
+    "x4d_settlement_freshness_is_required_before_success_and_is_one_use",
+]
 X4B_DESIGN_SHA256 = (
     "bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01"
 )
@@ -585,6 +607,559 @@ def validate_x4d_codec_reference(path: Path) -> bool:
             path = REPO / path
         with path.open("r", encoding="utf-8") as handle:
             return _x4d_codec_reference_valid(json.load(handle))
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return False
+
+
+def _x4d_number(value: Any, *, positive: bool = False) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+        and (value > 0 if positive else value >= 0)
+    )
+
+
+def _x4d_phase3_hardware_valid(row: Any) -> bool:
+    keys = {
+        "gpu_name",
+        "gpu_uuid",
+        "gpu_memory_mib",
+        "selected_gpu_count",
+        "mem_total_bytes",
+        "volume_total_bytes",
+        "volume_available_bytes",
+        "response_cpu_ids",
+        "settlement_cpu_ids",
+        "split_policy_valid",
+        "gpu_pass",
+        "ram_pass",
+        "volume_pass",
+        "overall_pass",
+    }
+    if not isinstance(row, dict) or set(row) != keys:
+        return False
+    response = row["response_cpu_ids"]
+    settlement = row["settlement_cpu_ids"]
+    gpu_pass = (
+        "A100-SXM4-80GB" in row["gpu_name"]
+        and _x4d_hex(row["gpu_uuid"].removeprefix("GPU-").replace("-", ""), 32)
+        and type(row["gpu_memory_mib"]) is int
+        and row["gpu_memory_mib"] >= 81_920
+        and _x4d_exact_int(row["selected_gpu_count"], 1)
+    )
+    ram_pass = (
+        type(row["mem_total_bytes"]) is int
+        and row["mem_total_bytes"] >= 274_877_906_944
+    )
+    volume_pass = (
+        type(row["volume_total_bytes"]) is int
+        and row["volume_total_bytes"] >= 150_000_000_000
+        and type(row["volume_available_bytes"]) is int
+        and 0 <= row["volume_available_bytes"] <= row["volume_total_bytes"]
+    )
+    split = (
+        isinstance(response, list)
+        and isinstance(settlement, list)
+        and len(response) == 8
+        and len(settlement) == 27
+        and all(type(cpu) is int and cpu >= 0 for cpu in [*response, *settlement])
+        and len(set(response)) == 8
+        and len(set(settlement)) == 27
+        and set(response).isdisjoint(settlement)
+    )
+    return (
+        row["split_policy_valid"] is split
+        and row["gpu_pass"] is gpu_pass
+        and row["ram_pass"] is ram_pass
+        and row["volume_pass"] is volume_pass
+        and row["overall_pass"] is (gpu_pass and ram_pass and volume_pass and split)
+    )
+
+
+def _x4d_phase3_preflight_valid(row: Any) -> bool:
+    return (
+        isinstance(row, dict)
+        and set(row)
+        == {
+            "schema",
+            "milestone",
+            "git_sha",
+            "git_dirty",
+            "profile",
+            "protocol",
+            "design_sha256",
+            "producer_source_sha256",
+            "hardware",
+            "inputs_exact",
+            "soundness_expression",
+            "soundness_bits",
+            "overall_pass",
+        }
+        and _x4d_exact_int(row["schema"], 1)
+        and row["milestone"] == X4D_PHASE3_PREFLIGHT_MILESTONE
+        and _x4d_hex(row["git_sha"], 40)
+        and row["git_dirty"] is False
+        and row["profile"] == X4D_PHASE3_PROFILE
+        and row["protocol"] == X4D_PHASE3_PROTOCOL
+        and row["design_sha256"] == X4D_PHASE3_DESIGN_SHA256
+        and row["producer_source_sha256"] == X4D_PHASE3_PRODUCER_SHA256
+        and _x4d_phase3_hardware_valid(row["hardware"])
+        and row["hardware"]["overall_pass"] is True
+        and row["inputs_exact"] is True
+        and row["soundness_expression"] == X4D_SOUNDNESS_EXPRESSION
+        and row["soundness_bits"] == X4D_SOUNDNESS_BITS
+        and row["overall_pass"] is True
+    )
+
+
+def validate_x4d_phase3_preflight(path: Path) -> bool:
+    try:
+        if not path.is_absolute():
+            path = REPO / path
+        with path.open("r", encoding="utf-8") as handle:
+            return _x4d_phase3_preflight_valid(json.load(handle))
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return False
+
+
+def _x4d_upper_median(values: list[float]) -> float:
+    return sorted(values)[len(values) // 2]
+
+
+def _x4d_phase3_response_valid(row: Any, ordinal: int, role: str) -> bool:
+    keys = {
+        "ordinal",
+        "role",
+        "response_nonce_digest",
+        "model_prove_s",
+        "model_verify_s",
+        "claim_freeze_s",
+        "total_g1_s",
+        "prefill_prove_upper_s",
+        "max_decode_marginal_s",
+        "flatness_last_over_first",
+        "h2d_bytes",
+        "synchronization_wall_upper_s",
+        "model_transcript_bytes",
+        "model_mac_closure_bytes",
+        "response_bytes",
+        "pcs_bytes",
+        "product_state_at_delivery",
+        "transcript_replay_bytes",
+        "transcript_replay_labels",
+        "correlations_consumed",
+        "freeze_journal",
+        "connection_audit",
+        "accepted",
+    }
+    if not isinstance(row, dict) or set(row) != keys:
+        return False
+    freeze = row["freeze_journal"]
+    audit = row["connection_audit"]
+    expected_raw = 4_793_590 + 2 * (181_933 + 2)
+    return (
+        _x4d_exact_int(row["ordinal"], ordinal)
+        and row["role"] == role
+        and _x4d_hex(row["response_nonce_digest"], 64)
+        and all(
+            _x4d_number(row[key], positive=True)
+            for key in ("model_prove_s", "model_verify_s", "claim_freeze_s", "total_g1_s")
+        )
+        and math.isclose(
+            row["total_g1_s"],
+            row["model_prove_s"] + row["model_verify_s"] + row["claim_freeze_s"],
+            rel_tol=1e-12,
+            abs_tol=1e-12,
+        )
+        and _x4d_number(row["prefill_prove_upper_s"])
+        and _x4d_number(row["max_decode_marginal_s"], positive=True)
+        and _x4d_number(row["flatness_last_over_first"], positive=True)
+        and type(row["h2d_bytes"]) is int
+        and row["h2d_bytes"] >= 0
+        and _x4d_number(row["synchronization_wall_upper_s"])
+        and _x4d_exact_int(row["model_transcript_bytes"], 41_270_400)
+        and _x4d_exact_int(row["model_mac_closure_bytes"], 64)
+        and _x4d_exact_int(row["response_bytes"], 41_270_464)
+        and _x4d_exact_int(row["pcs_bytes"], 0)
+        and row["product_state_at_delivery"] == "WEIGHT_PENDING"
+        and _x4d_exact_int(row["transcript_replay_bytes"], 41_034_112)
+        and _x4d_exact_int(row["transcript_replay_labels"], 25)
+        and _x4d_exact_int(row["correlations_consumed"], expected_raw)
+        and isinstance(freeze, dict)
+        and set(freeze)
+        == {
+            "response_nonce_digest",
+            "first_claim_index",
+            "claim_count",
+            "ending_accumulator_digest",
+        }
+        and _x4d_hex(freeze["response_nonce_digest"], 64)
+        and _x4d_exact_int(freeze["first_claim_index"], 102 * ordinal)
+        and _x4d_exact_int(freeze["claim_count"], 102)
+        and _x4d_hex(freeze["ending_accumulator_digest"], 64)
+        and isinstance(audit, dict)
+        and set(audit)
+        == {
+            "response_nonce_digest",
+            "allocation_digest",
+            "channel_ledger_digest",
+            "correlations_consumed",
+            "channel_frames",
+        }
+        and audit["response_nonce_digest"] == freeze["response_nonce_digest"]
+        and _x4d_hex(audit["allocation_digest"], 64)
+        and _x4d_hex(audit["channel_ledger_digest"], 64)
+        and _x4d_exact_int(audit["correlations_consumed"], expected_raw)
+        and type(audit["channel_frames"]) is int
+        and audit["channel_frames"] >= 0
+        and row["accepted"] is True
+    )
+
+
+def _x4d_phase3_g1_valid(row: Any, responses: list[dict[str, Any]]) -> bool:
+    keys = {
+        "selected_total_s",
+        "selected_claim_freeze_s",
+        "selected_prefill_upper_s",
+        "selected_decode_marginal_s",
+        "selected_h2d_bytes",
+        "selected_sync_wall_upper_s",
+        "selected_flatness",
+        "total_pass",
+        "freeze_pass",
+        "prefill_pass",
+        "decode_pass",
+        "h2d_pass",
+        "sync_pass",
+        "flatness_pass",
+        "overall_pass",
+    }
+    if not isinstance(row, dict) or set(row) != keys:
+        return False
+    measured = responses[1:4]
+    expected = {
+        "selected_total_s": _x4d_upper_median([item["total_g1_s"] for item in measured]),
+        "selected_claim_freeze_s": _x4d_upper_median(
+            [item["claim_freeze_s"] for item in measured]
+        ),
+        "selected_prefill_upper_s": _x4d_upper_median(
+            [item["prefill_prove_upper_s"] for item in measured]
+        ),
+        "selected_decode_marginal_s": _x4d_upper_median(
+            [item["max_decode_marginal_s"] for item in measured]
+        ),
+        "selected_h2d_bytes": max(item["h2d_bytes"] for item in measured),
+        "selected_sync_wall_upper_s": max(
+            item["synchronization_wall_upper_s"] for item in measured
+        ),
+        "selected_flatness": max(item["flatness_last_over_first"] for item in measured),
+    }
+    if any(row[key] != value for key, value in expected.items()):
+        return False
+    passes = {
+        "total_pass": row["selected_total_s"] <= 5.0,
+        "freeze_pass": row["selected_claim_freeze_s"] <= 0.025,
+        "prefill_pass": row["selected_prefill_upper_s"] <= 10.0,
+        "decode_pass": row["selected_decode_marginal_s"] <= 4.0,
+        "h2d_pass": row["selected_h2d_bytes"] <= 100_000_000,
+        "sync_pass": row["selected_sync_wall_upper_s"] <= 0.150,
+        "flatness_pass": row["selected_flatness"] <= 1.5,
+    }
+    return all(row[key] is value for key, value in passes.items()) and row[
+        "overall_pass"
+    ] is all(passes.values())
+
+
+def _x4d_phase3_settlement_valid(
+    row: Any, responses: list[dict[str, Any]]
+) -> bool:
+    required = {
+        "responses",
+        "frozen_claims",
+        "masked_groups",
+        "settlement_epoch",
+        "settlement_bytes",
+        "expected_settlement_bytes",
+        "amortized_settlement_bytes_per_response",
+        "historical_four_mb_scope",
+        "seal_to_terminal_wall_s",
+        "proof_driver_wall_s",
+        "auxiliary_materialization_wall_s",
+        "response_priority_pause_wall_s",
+        "active_cpu_host_window_s",
+        "active_gpu_lease_host_window_s",
+        "lease_wait_wall_s",
+        "open_wall_s",
+        "verify_wall_s",
+        "open_pass",
+        "verify_pass",
+        "every_covered_response_weight_verified",
+        "exact_bytes",
+        "exact_correlations",
+        "fresh_auxiliary_masks",
+        "static_weight_roots_reused",
+        "query_draws",
+        "soundness_expression",
+        "soundness_bits",
+        "interference",
+        "accepted",
+    }
+    if not isinstance(row, dict) or set(row) != required:
+        return False
+    interference = row["interference"]
+    if not isinstance(interference, dict) or set(interference) != {
+        "order",
+        "isolated_response_s",
+        "settlement_queued_response_s",
+        "isolated_upper_median_s",
+        "settlement_queued_upper_median_s",
+        "absolute_delta_s",
+        "percentage_delta",
+        "settlement_cpu_overlap_intervals",
+        "settlement_gpu_overlap_intervals",
+        "accounting_semantics",
+    }:
+        return False
+    isolated = [responses[14]["total_g1_s"], responses[18]["total_g1_s"]]
+    queued = [responses[16]["total_g1_s"], responses[17]["total_g1_s"]]
+    isolated_upper = _x4d_upper_median(isolated)
+    queued_upper = _x4d_upper_median(queued)
+    isolated_upper_ns = int(isolated_upper * 1e9)
+    queued_upper_ns = int(queued_upper * 1e9)
+    delta = (queued_upper_ns - isolated_upper_ns) / 1e9
+    percentage = 100.0 * (queued_upper_ns - isolated_upper_ns) / isolated_upper_ns
+    open_pass = row["open_wall_s"] <= 1.50
+    verify_pass = row["verify_wall_s"] <= 0.25
+    accepted = (
+        row["every_covered_response_weight_verified"]
+        and row["exact_bytes"]
+        and row["exact_correlations"]
+        and open_pass
+        and verify_pass
+    )
+    return (
+        _x4d_exact_int(row["responses"], 16)
+        and _x4d_exact_int(row["frozen_claims"], 1_632)
+        and _x4d_exact_int(row["masked_groups"], 816)
+        and _x4d_exact_int(row["settlement_epoch"], 1)
+        and _x4d_exact_int(row["settlement_bytes"], X4D_PHASE3_SETTLEMENT_BYTES)
+        and _x4d_exact_int(row["expected_settlement_bytes"], X4D_PHASE3_SETTLEMENT_BYTES)
+        and row["amortized_settlement_bytes_per_response"]
+        == X4D_PHASE3_SETTLEMENT_BYTES / 16
+        and row["historical_four_mb_scope"]
+        == "4,000,000 B is the immutable X4/X4b/X4c per-response PCS ceiling; X4d settlement uses the pinned batch formula"
+        and all(
+            _x4d_number(row[key], positive=True)
+            for key in (
+                "seal_to_terminal_wall_s",
+                "proof_driver_wall_s",
+                "auxiliary_materialization_wall_s",
+                "response_priority_pause_wall_s",
+                "active_cpu_host_window_s",
+                "active_gpu_lease_host_window_s",
+                "open_wall_s",
+                "verify_wall_s",
+            )
+        )
+        and _x4d_number(row["lease_wait_wall_s"])
+        and math.isclose(
+            row["active_cpu_host_window_s"],
+            row["auxiliary_materialization_wall_s"] + row["proof_driver_wall_s"],
+            rel_tol=1e-12,
+            abs_tol=1e-12,
+        )
+        and row["active_gpu_lease_host_window_s"] == row["proof_driver_wall_s"]
+        and row["open_pass"] is open_pass
+        and row["verify_pass"] is verify_pass
+        and row["every_covered_response_weight_verified"] is True
+        and row["exact_bytes"] is True
+        and row["exact_correlations"] is True
+        and _x4d_exact_int(row["fresh_auxiliary_masks"], 51)
+        and _x4d_exact_int(row["static_weight_roots_reused"], 3)
+        and _x4d_exact_int(row["query_draws"], 111)
+        and row["soundness_expression"] == X4D_SOUNDNESS_EXPRESSION
+        and row["soundness_bits"] == X4D_SOUNDNESS_BITS
+        and interference["order"] == "A1,B1,B2,A2"
+        and interference["isolated_response_s"] == isolated
+        and interference["settlement_queued_response_s"] == queued
+        and interference["isolated_upper_median_s"] == isolated_upper
+        and interference["settlement_queued_upper_median_s"] == queued_upper
+        and math.isclose(
+            interference["absolute_delta_s"], delta, rel_tol=1e-9, abs_tol=1e-9
+        )
+        and math.isclose(
+            interference["percentage_delta"], percentage, rel_tol=1e-9, abs_tol=1e-9
+        )
+        and _x4d_exact_int(interference["settlement_cpu_overlap_intervals"], 0)
+        and _x4d_exact_int(interference["settlement_gpu_overlap_intervals"], 0)
+        and interference["accounting_semantics"]
+        == "B responses execute under strict response priority while the sealed settlement is queued; no CPU/GPU interval is falsely reported concurrent"
+        and row["accepted"] is accepted
+    )
+
+
+def _x4d_phase3_online_valid(row: Any, onboarding: Any, onboarding_sha: str) -> bool:
+    keys = {
+        "schema",
+        "milestone",
+        "git_sha",
+        "git_dirty",
+        "producer_source_sha256",
+        "profile",
+        "protocol",
+        "design_sha256",
+        "cloud",
+        "hardware",
+        "onboarding_path",
+        "onboarding_sha256",
+        "onboarding_exact",
+        "crypto_build_id_scheme",
+        "crypto_build_id",
+        "durable_tier_bytes",
+        "rebuild_wall_s",
+        "rebuild_rows",
+        "rebuild_roots",
+        "rebuild_roots_equal_onboarding",
+        "old_auxiliary_roots_rejected_for_settlement",
+        "setup_wall_s",
+        "responses",
+        "g1",
+        "settlement",
+        "cap_test_name",
+        "cap_3321_permanent_test_present",
+        "cap_preflight_3321_rejected",
+        "soundness_expression_byte_exact",
+        "g2_permanent_tests",
+        "g6_test_name",
+        "g6_abort_before_settlement_terminal_unverified",
+        "no_retry_same_connection",
+        "provider_contract_state_at_delivery",
+        "provider_contract_state_at_settlement",
+        "historical_rows_modified",
+        "overall_pass",
+    }
+    if not isinstance(row, dict) or set(row) != keys:
+        return False
+    cloud = row["cloud"]
+    responses = row["responses"]
+    roles = [
+        "g1-warmup",
+        "g1-measured",
+        "g1-measured",
+        "g1-measured",
+        *["connection-fill"] * 10,
+        "abba-isolated-a1",
+        "connection-fill",
+        "abba-settlement-queued-b",
+        "abba-settlement-queued-b",
+        "abba-isolated-a2",
+    ]
+    if len(roles) != X4D_PHASE3_CONNECTION_RESPONSES:
+        return False
+    structural = (
+        _x4d_exact_int(row["schema"], 1)
+        and row["milestone"] == X4D_PHASE3_ONLINE_MILESTONE
+        and _x4d_hex(row["git_sha"], 40)
+        and row["git_dirty"] is False
+        and row["producer_source_sha256"] == X4D_PHASE3_PRODUCER_SHA256
+        and row["profile"] == X4D_PHASE3_PROFILE
+        and row["protocol"] == X4D_PHASE3_PROTOCOL
+        and row["design_sha256"] == X4D_PHASE3_DESIGN_SHA256
+        and isinstance(cloud, dict)
+        and set(cloud)
+        == {
+            "provider",
+            "instance_id",
+            "region",
+            "image",
+            "driver_version",
+            "cuda_version",
+            "gpu_sku",
+            "cpu_model",
+            "ram_gib",
+            "vcpus",
+        }
+        and cloud["provider"].lower() == "runpod"
+        and "A100-SXM4-80GB" in cloud["gpu_sku"]
+        and all(isinstance(value, str) and value for value in cloud.values())
+        and _x4d_phase3_hardware_valid(row["hardware"])
+        and row["hardware"]["overall_pass"] is True
+        and row["onboarding_sha256"] == onboarding_sha
+        and _x4d_hex(row["onboarding_sha256"], 64)
+        and row["onboarding_exact"] is True
+        and isinstance(onboarding, dict)
+        and onboarding.get("schema") == 3
+        and onboarding.get("milestone")
+        == "X4c-GPT2-real-weight-onboarding-crypto-id-v1"
+        and onboarding.get("git_dirty") is False
+        and onboarding.get("overall_pass") is True
+        and row["crypto_build_id_scheme"] == onboarding.get("crypto_build_id_scheme")
+        and row["crypto_build_id"] == onboarding.get("crypto_build_id")
+        and _x4d_hex(row["crypto_build_id"], 64)
+        and _x4d_exact_int(row["durable_tier_bytes"], 9_618_587_808)
+        and _x4d_number(row["rebuild_wall_s"], positive=True)
+        and isinstance(row["rebuild_rows"], list)
+        and len(row["rebuild_rows"]) == 5
+        and all(
+            isinstance(item, dict)
+            and item.get("accepted") is True
+            and type(item.get("cohort_id")) is int
+            for item in row["rebuild_rows"]
+        )
+        and isinstance(row["rebuild_roots"], list)
+        and len(row["rebuild_roots"]) == 5
+        and all(_x4d_hex(root, 64) for root in row["rebuild_roots"])
+        and row["rebuild_roots"] == onboarding.get("warmup_root_set")
+        and row["rebuild_roots_equal_onboarding"] is True
+        and row["old_auxiliary_roots_rejected_for_settlement"] is True
+        and _x4d_number(row["setup_wall_s"], positive=True)
+        and isinstance(responses, list)
+        and len(responses) == X4D_PHASE3_CONNECTION_RESPONSES
+        and all(
+            _x4d_phase3_response_valid(response, ordinal, roles[ordinal])
+            for ordinal, response in enumerate(responses)
+        )
+        and _x4d_phase3_g1_valid(row["g1"], responses)
+        and _x4d_phase3_settlement_valid(row["settlement"], responses)
+        and row["cap_test_name"] == "claim_3321_refuses_until_settlement_succeeds"
+        and row["cap_3321_permanent_test_present"] is True
+        and row["cap_preflight_3321_rejected"] is True
+        and row["soundness_expression_byte_exact"] is True
+        and row["g2_permanent_tests"] == X4D_PHASE3_G2_TESTS
+        and row["g6_test_name"]
+        == "explicit_abort_before_settlement_marks_pending_terminal_unverified"
+        and row["g6_abort_before_settlement_terminal_unverified"] is True
+        and row["no_retry_same_connection"] is True
+        and row["provider_contract_state_at_delivery"]
+        == "complete and fully authenticated; weight consistency WEIGHT_PENDING"
+        and row["provider_contract_state_at_settlement"]
+        == "covered response set pronounced WEIGHT_VERIFIED only after settlement acceptance"
+        and row["historical_rows_modified"] is False
+    )
+    expected_overall = (
+        structural
+        and row["g1"]["overall_pass"]
+        and row["settlement"]["accepted"]
+        and row["g6_abort_before_settlement_terminal_unverified"]
+        and row["no_retry_same_connection"]
+    )
+    return structural and row["overall_pass"] is expected_overall
+
+
+def validate_x4d_phase3_online(path: Path, onboarding_path: Path) -> bool:
+    try:
+        if not path.is_absolute():
+            path = REPO / path
+        if not onboarding_path.is_absolute():
+            onboarding_path = REPO / onboarding_path
+        onboarding_bytes = onboarding_path.read_bytes()
+        onboarding_sha = hashlib.sha256(onboarding_bytes).hexdigest()
+        onboarding = json.loads(onboarding_bytes)
+        with path.open("r", encoding="utf-8") as handle:
+            return _x4d_phase3_online_valid(
+                json.load(handle), onboarding, onboarding_sha
+            )
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
         return False
 
@@ -8079,6 +8654,21 @@ def main() -> None:
         help="fail closed unless one JSON is the exact clean local X4d codec rebaseline",
     )
     ap.add_argument(
+        "--validate-x4d-phase3-preflight",
+        type=Path,
+        help="fail closed unless one JSON is the exact clean X4d pod hardware preflight",
+    )
+    ap.add_argument(
+        "--validate-x4d-phase3-online",
+        type=Path,
+        help="fail closed unless one JSON is an internally complete X4d deferred-settlement verdict",
+    )
+    ap.add_argument(
+        "--x4d-onboarding",
+        type=Path,
+        help="explicit carried X4c onboarding record for --validate-x4d-phase3-online",
+    )
+    ap.add_argument(
         "--validate-x4b-local",
         type=Path,
         help="fail closed unless one JSON is the clean X4b local CPU/persisted-opening preflight",
@@ -8304,6 +8894,28 @@ def main() -> None:
         if not validate_x4d_codec_reference(args.validate_x4d_codec_reference):
             raise SystemExit("invalid or inconsistent X4d codec rebaseline")
         print(f"valid X4d codec rebaseline: {args.validate_x4d_codec_reference}")
+        return
+    if args.validate_x4d_phase3_preflight is not None:
+        if args.write_json:
+            raise SystemExit(
+                "--write-json and --validate-x4d-phase3-preflight are mutually exclusive"
+            )
+        if not validate_x4d_phase3_preflight(args.validate_x4d_phase3_preflight):
+            raise SystemExit("invalid or inconsistent X4d Phase-3 hardware preflight")
+        print(f"valid X4d Phase-3 preflight: {args.validate_x4d_phase3_preflight}")
+        return
+    if args.validate_x4d_phase3_online is not None:
+        if args.write_json:
+            raise SystemExit(
+                "--write-json and --validate-x4d-phase3-online are mutually exclusive"
+            )
+        if args.x4d_onboarding is None:
+            raise SystemExit("--x4d-onboarding is required for X4d Phase-3 validation")
+        if not validate_x4d_phase3_online(
+            args.validate_x4d_phase3_online, args.x4d_onboarding
+        ):
+            raise SystemExit("invalid or inconsistent X4d Phase-3 online verdict")
+        print(f"valid X4d Phase-3 online verdict: {args.validate_x4d_phase3_online}")
         return
     if args.validate_x4b_local is not None:
         if args.write_json:

@@ -349,6 +349,7 @@ its clean descendant closure.
 | X4d Phase 3 selected-GPU preflight correction | **LOCAL GREEN; POD REACHABLE / NOTE-6 STILL FIRST** (2026-07-25) | The frozen profile requires exactly one selected A100, not a single-GPU host; one `CUDA_VISIBLE_DEVICES` selector now drives both CUDA and the recorded `nvidia-smi --id` inventory | Replacement producer source SHA-256 `0cd17d332986bc9c94e78ef83c7e595007a81de2da8334e72bc38cb9f8e98a16`. The new endpoint `64.247.206.116:19482` exposes 2× A100-SXM4 80 GB, 128 CPUs, about 1.97 TiB RAM and sufficient volume. Run-of-record commands select exactly GPU 0, record its UUID and memory, and leave GPU 1 unused. No production-size workload or gate verdict preceded this correction. |
 | X4d Phase 3 X4c-design pin correction | **LOCAL GREEN; PRE-ONLINE HARD STOP HONORED / FRESH ONBOARDING REQUIRED** (2026-07-25) | X4d consumer now pins the current schema-3 X4c lifecycle file digest rather than the historical interpretation-correction digest; conservative crypto-build identity changes | Replacement producer source SHA-256 `f47f484d2f928f8fe551b1cd6848ce2cd6ffc6a6b4baaa1be1f95b0241e4a334`; current X4c lifecycle design SHA-256 `9a3c64a65902046ba0a2b1891ff8fce03690d870773a346f7128b9f75f7a1164`. The first schema-3 onboarding is valid X4c evidence but is ineligible for the corrected X4d consumer and will not be reused. Both rejected online invocations stopped before durable reads, rebuild, PCG connection or output/journal creation. NOTE-6 remains the first production-size session action and PASS. |
 | X4d Phase 3 fase-D stage correction | **HARD STOP HONORED; FAILED CONNECTION BURNED / LOCAL FIX GREEN / FRESH ONBOARDING REQUIRED** (2026-07-25) | First eligible online rebuild passed root admission, then response 0 allocation correctly failed and burned because the harness requested reserved stage 0 instead of the production allocatable stage 1 | Connection journal SHA-256 `299e9ddd377d7248d48a4761e7dc61337e25b91c46b3de717afd8dfeb7ab3b3c` ends `TERMINAL|protocol-error`; authorization burn marker SHA-256 `b8f5504b681366eee71228fc9cc10b9b687c6038a4018a9d3ac40777e807f4bf`. No response was proved or delivered, no settlement began and no online JSON exists. X4d now uses named stage 1 for both response and settlement allocations, matching the existing X4c production path; a permanent capacity regression covers the complete 19-response plus k=16 plan. Replacement producer source SHA-256 `75875a8add9051d6e6495a06c407b965df1ad6fc2066b65557444ef213b781eb`; conservative crypto-build identity requires a fresh onboarding and entirely new journals. |
+| X4d Phase 3 settlement-domain correction | **HARD STOP HONORED; 18 PENDING RESPONSES TERMINAL-UNVERIFIED / LOCAL FIX GREEN / FRESH ONBOARDING REQUIRED** (2026-07-25) | The next online run completed 18 response freezes and settlement allocation, then the MAC layer rejected the X4d `0x2000...` namespace because bit 61 is reserved as `LEDGER_SHADOW_BIT`; process-restart burn closed the connection | Connection journal SHA-256 `64b71049be19462898f9fd0e53b9ff4c0aa2cf9febc2615e7e7e9a3ecd7be7a0` ends `TERMINAL|process-kill-or-restart`; authorization-marker tree SHA-256 `b716721a0b0d430831921779181f2f1762d5a9eb0176f03ddb80039c2ca64971`. Sixteen responses were sealed, two further responses remained pending, settlement freshness/36,199 full correlations and raw allocation 72,398 were journaled, but no settlement proof accepted and no response became weight-verified. The new `0x1001...` X4d namespace is disjoint from X4c `0x1000...` and from all three MAC-reserved high bits; runtime validation and a permanent domain test prevent another panic. Shared X4d source SHA-256 `a61e9a8c802813db39932d0133a144e9beed0531e57cb36619ea52fdc2a6a5f4`; fresh onboarding/journals are mandatory. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -416,6 +417,42 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-25 — Settlement reached after 18 authenticated pending
+  responses, then the MAC domain register rejected X4d's bit-61 namespace;
+  process-restart burn closed the connection.** The stage-corrected run
+  passed fresh root admission, real fase-D setup, sixteen response freezes,
+  exact settlement seal, two response-priority B freezes, fresh auxiliary
+  materialization, freshness reservation and exact settlement allocation
+  (**36,199** full correlations per role / **72,398** raw). At the first
+  settlement `draw_fulls`, `volta-mac` rejected domain prefix `0x2000...`:
+  bit 61 is `LEDGER_SHADOW_BIT`, one of the three reserved correlation-domain
+  bits. The worker panic produced no online JSON and no accepted settlement.
+
+  The durable journal contains eighteen `RESPONSE_SUCCESS` entries in
+  weight-pending semantics, `SETTLEMENT_SEAL`, `SETTLEMENT_FRESHNESS`,
+  `SETTLEMENT_ALLOCATE`, and terminal
+  `TERMINAL|process-kill-or-restart`; its SHA-256 is
+  `64b71049be19462898f9fd0e53b9ff4c0aa2cf9febc2615e7e7e9a3ecd7be7a0`.
+  The twenty-one response/settlement authorization markers have aggregate
+  sorted-digest-tree SHA-256
+  `b716721a0b0d430831921779181f2f1762d5a9eb0176f03ddb80039c2ca64971`.
+  No response is pronounced weight-verified. The failed connection and all
+  markers are permanently ineligible for retry.
+
+  X4d's four settlement namespaces move to `0x1001...`, which is disjoint
+  from X4c's `0x1000...` family while leaving bits 63/62/61 clear. The domain
+  constructor now rejects any result intersecting
+  `RESERVED_DOMAIN_BITS` before a MAC draw. Permanent test
+  `settlement_domains_are_disjoint_from_x4c_and_mac_reserved_bits` covers all
+  four families, uniqueness and explicit rejection of bit 61. This is
+  internal domain separation only: no proof bytes, correlation count,
+  challenge, soundness term or product state changes. Shared X4d source
+  SHA-256 is
+  `a61e9a8c802813db39932d0133a144e9beed0531e57cb36619ea52fdc2a6a5f4`.
+  The conservative crypto-build identity changes, so a fresh onboarding and
+  entirely new connection/journals are required. R1c scope includes the
+  X4c/X4d/MAC domain-register boundary.
 
 - **2026-07-25 — First crypto-build-eligible X4d online attempt burned
   before response 0 proof; fase-D allocatable-stage mismatch corrected

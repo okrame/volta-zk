@@ -420,3 +420,41 @@ check green, formatting and `git diff --check` green. The workspace's
 pre-existing Clippy warning baseline prevents `-D warnings`; ordinary
 Clippy completes successfully. No Lean file or protocol statement changed.
 No pod was provisioned or contacted.
+
+## 12. Phase-2 A100 outcome — fail-closed before a settlement record
+
+Owner GO on 2026-07-26 admitted pod `xfjw217q6cq4ja` at unchanged clean SHA
+`e4e2b14`. NOTE-6, the registered A100/RAM/volume/device-live-set preflight,
+and all 38 fail-closed real-CUDA accelerator tests passed. The latter included
+the permanent X4d resident-kernel field differential.
+
+The crypto-build identity correctly rejected reuse of the historical X4d.1
+durable tier because X4d.2 changes registered crypto-surface files. One fresh
+schema-3 onboarding therefore ran after NOTE-6 and produced the exact
+9,618,587,808-byte tier in 1,967 seconds. This setup measurement is not part
+of the settlement wall.
+
+The sole eligible k=1 run then failed inside the production-size accelerated
+authenticated-output link with:
+
+```text
+X4d link prover: X4c(InvalidGeometry("X4d CUDA delayed-link terminal mismatch"))
+```
+
+The producer exited before writing a k=1 settlement record. Its fresh
+connection journal and six burned authorization/freshness markers are
+preserved. In accordance with the unchanged-build and no-selective-retry
+rules, k=1 was not rerun, k=16 was not started, and the paired adapter was not
+invoked. Consequently there is **no X4d.2 flatness or production gate
+verdict**; every paired gate is `NOT_EVALUATED`. The append-only obstruction
+record is
+`benchmarks/results/x4d2-phase2-k1-obstruction-2026-07-26-e4e2b14.json`.
+Any replacement production pair requires a new owner GO after a separately
+reviewed diagnosis/fix checkpoint. The immutable X4d.1 records, waiver and
+comparison column are unchanged.
+
+The pod was then stopped from inside the SSH session with `runpodctl`; the
+control plane returned `pod "xfjw217q6cq4ja" stopped`, and an independent
+connection to `154.54.102.44:13266` was refused. Teardown evidence is
+append-only in
+`benchmarks/results/x4d2-control-plane-teardown-2026-07-26-e4e2b14.json`.

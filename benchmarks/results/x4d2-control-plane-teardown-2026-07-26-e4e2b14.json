@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "milestone": "X4d.2-control-plane-teardown-v1",
+  "date": "2026-07-26",
+  "git_sha": "e4e2b14060a9d2a23b98e8d8fdca2ac3e8b2e729",
+  "pod_id": "xfjw217q6cq4ja",
+  "stop_origin": "runpodctl invoked inside the authorized SSH session",
+  "stop_command": "runpodctl stop pod xfjw217q6cq4ja",
+  "stop_output": "pod \"xfjw217q6cq4ja\" stopped",
+  "stop_pass": true,
+  "independent_endpoint": "154.54.102.44:13266",
+  "independent_ssh_result": "Connection refused",
+  "independent_ssh_refused": true,
+  "api_key_recorded": false,
+  "overall_pass": true
+}

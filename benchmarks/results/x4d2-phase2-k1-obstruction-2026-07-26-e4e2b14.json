@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "milestone": "X4d.2-Phase-2-k1-obstruction-v1",
+  "date": "2026-07-26",
+  "git_sha": "e4e2b14060a9d2a23b98e8d8fdca2ac3e8b2e729",
+  "git_dirty": false,
+  "profile": "runpod-a100-x4d-v1",
+  "pod_id": "xfjw217q6cq4ja",
+  "selected_gpu_uuid": "GPU-c7a82d87-f98a-fa26-05f9-ba7f4abe1526",
+  "producer_source_sha256": "9288e402e4426a5ef08e6e36e9d65da34360acfa3badc1859109dee06396c77b",
+  "cuda_backend_sha256": "27255018ac4f56448f9810773bb99b33cb4ee47254c3c68208e65fec054962db",
+  "prerequisites": {
+    "note6_record": "x4c-note6-c3-weights-preflight-2026-07-26-e4e2b14.json",
+    "note6_sha256": "e969ce3bacc0c82362b8646b9a61b46c1010cfe0546847b1af1e19a635128b3f",
+    "pod_preflight_record": "x4d2-pod-preflight-2026-07-26-e4e2b14.json",
+    "pod_preflight_sha256": "2a1636b5c5cd5d56dfbebbb3f230e2008f65ede87909f9d815d0bfacc82a8e25",
+    "onboarding_record": "x4c-gpt2-onboarding-2026-07-26-e4e2b14.json",
+    "onboarding_sha256": "7b5198eee53ee41f98d38621f6b015d7d5a60b5321eb0302044b5ec1d024b2d5",
+    "onboarding_crypto_build_id": "baf1c9285099b57c8b5deb757e8a45f7b1495428027ff35398ad6b53f5a7e0a3",
+    "onboarding_elapsed_s": 1967,
+    "durable_tier_bytes": 9618587808,
+    "real_cuda_tests_passed": 38,
+    "x4d_resident_kernel_differential_passed": true
+  },
+  "attempt": {
+    "settled_responses": 1,
+    "settlement_epoch": 1,
+    "fresh_connection": true,
+    "fresh_authorization_store": true,
+    "failure_stage": "authenticated-output CUDA resident delayed-link terminal check",
+    "error": "X4d link prover: X4c(InvalidGeometry(\"X4d CUDA delayed-link terminal mismatch\"))",
+    "settlement_record_written": false,
+    "k16_started": false,
+    "authorization_markers_burned": 6,
+    "connection_journals_preserved": 1,
+    "gpu_idle_after_failure": true
+  },
+  "gate": {
+    "flatness": "NOT_EVALUATED",
+    "physical_counters": "NOT_EVALUATED",
+    "byte_identity_production": "NOT_EVALUATED",
+    "hot_path": "NOT_EVALUATED",
+    "protocol_regressions": "NOT_EVALUATED",
+    "overall_verdict": "NO_VERDICT_FAIL_CLOSED"
+  },
+  "policy": {
+    "no_selective_retry": true,
+    "k1_not_retried": true,
+    "k16_not_started": true,
+    "unchanged_build_preserved": true,
+    "x4d1_history_modified": false,
+    "new_owner_go_required_for_any_new_production_pair": true
+  },
+  "assurance": "Operator-captured obstruction evidence after the sole eligible k=1 producer exited before its append-only settlement record; no performance result or gate verdict."
+}

@@ -1,0 +1,1018 @@
+{
+  "schema": 4,
+  "milestone": "X4d1-phase2-fused-settlement-local",
+  "date": "2026-07-26",
+  "git_sha": "74aba2ad6a3ff52e58807753e36752e374170d2b",
+  "git_short_sha": "74aba2a",
+  "git_dirty": true,
+  "phase": 2,
+  "pod_contacted": false,
+  "proof_or_gate_verdict": false,
+  "machine": {
+    "architecture": "aarch64",
+    "kernel": "Linux 6.12.94+deb13-arm64 aarch64 GNU/Linux",
+    "logical_cpus": 4,
+    "rayon_threads": 4,
+    "rayon_num_threads_environment": "unset"
+  },
+  "instrumented_sources": [
+    {
+      "path": "rust/volta-pcs/src/x4/folding_v4.rs",
+      "sha256": "1d99021d6039e350e77c8d36a5796e12280afc032964d9ad5eed75a24cd6df5f"
+    },
+    {
+      "path": "rust/volta-pcs/src/x4/x4c_v4.rs",
+      "sha256": "ae010f98cfc65199d4bcaa9a3b881c3f8807a0a5e6b0583a88aa3bddc3ff0edc"
+    },
+    {
+      "path": "rust/volta-pcs/src/x4/authenticated_output_v4.rs",
+      "sha256": "13b3cca62f361cd800e0f9af815124cb398de9becc3405ff99af3c84057b8d31"
+    },
+    {
+      "path": "rust/volta-bench/src/x4d_gpt2.rs",
+      "sha256": "fcced3e5236578e0a3ffae684f311c5674e7823cd1e0e205cc65de00f56efe87"
+    },
+    {
+      "path": "rust/volta-bench/src/bin/x4d_gpt2_pod_record.rs",
+      "sha256": "1899941efb4a8f9cedb6c108100d7e5dde5dba65a20a45787db42599e6bdbc0a"
+    },
+    {
+      "path": "rust/volta-bench/src/bin/x4d1_flatness_record.rs",
+      "sha256": "423664b890cb16368ec2dd0ab6a84d7353adff6b4ea41da68ad5d3b3966b6578"
+    },
+    {
+      "path": "rust/volta-bench/src/bin/x4d1_phase1.rs",
+      "sha256": "75d445df51b68698d40adb50a74af2fcfbecbbc5663a1e9b4e73e1a34b0da2cc"
+    }
+  ],
+  "x4c_record": "benchmarks/results/x4c-gpt2-online-accelerated-2026-07-25-6277c3c.json",
+  "x4c_record_sha256": "5a5417c11c0d5b4abe57af1e6ea5fa1191962c709c0f7b86fb780c30af1dac89",
+  "x4d_record": "benchmarks/results/x4d-gpt2-online-2026-07-26-bf4230c-bbd64aa1df41-local.json",
+  "x4d_record_sha256": "d6017dbadd930baa390b174e57e8d93ec6a413fd886d505ad37ebb484e6dc24b",
+  "immutable_scope": "no protocol, soundness, proof byte, codec, Lean, M12, 80.25537016399041-bit expression or existing gate-ceiling change",
+  "production_anchors": {
+    "relation_terms": 1632,
+    "materialized_relation_terms": 102,
+    "fused_relation_terms": 1530,
+    "unique_evaluation_tables": 102,
+    "evaluation_table_bytes": 9618587648,
+    "evaluation_table_cpu_resident_bytes": 9618587648,
+    "evaluation_table_gpu_resident_bytes": 0,
+    "evaluation_table_h2d_bytes": 0,
+    "evaluation_table_d2h_bytes": 0,
+    "materialized_evaluation_clone_bytes": 9618587648,
+    "materialized_equality_table_bytes": 9618587648,
+    "peak_relation_table_cpu_payload_bytes": 28855762944,
+    "peak_relation_table_gpu_payload_bytes": 0,
+    "logical_evaluation_table_symbols_read": 601161728,
+    "logical_evaluation_table_bytes_read": 9618587648,
+    "evaluation_table_passes_per_unique_table": 1,
+    "encoded_oracle_full_passes": 1,
+    "response_or_claim_proportional_encoded_oracle_passes": 0,
+    "source_coefficients_read": 601161728,
+    "initial_encoded_symbols_read": 4809293824,
+    "combined_codeword_symbols": 1159200768,
+    "query_gather_calls": 1
+  },
+  "synthetic_scales": [
+    {
+      "evaluation_domain_log2": 14,
+      "evaluation_symbols_per_table": 16384,
+      "unique_evaluation_table_bytes": 524288,
+      "batches": [
+        {
+          "responses": 1,
+          "warmup_count": 1,
+          "measured_candidates": 3,
+          "candidates": [
+            {
+              "ordinal": 1,
+              "phases": {
+                "claim_coefficient_preparation_wall_ns": 2915844,
+                "oracle_read_combine_wall_ns": 3473096,
+                "fold_merkle_wall_ns": 21642540,
+                "query_gather_wall_ns": 8199073,
+                "caller_wall_ns": 36245595
+              },
+              "counters": {
+                "relation_terms": 2,
+                "materialized_relation_terms": 2,
+                "fused_relation_terms": 0,
+                "unique_evaluation_tables": 2,
+                "evaluation_table_bytes": 524288,
+                "evaluation_table_cpu_resident_bytes": 524288,
+                "evaluation_table_gpu_resident_bytes": 0,
+                "evaluation_table_h2d_bytes": 0,
+                "evaluation_table_d2h_bytes": 0,
+                "materialized_evaluation_clone_bytes": 524288,
+                "materialized_equality_table_bytes": 524288,
+                "peak_relation_table_cpu_payload_bytes": 1572864,
+                "peak_relation_table_gpu_payload_bytes": 0,
+                "logical_evaluation_table_symbols_read": 32768,
+                "logical_evaluation_table_bytes_read": 524288,
+                "evaluation_table_passes_per_unique_table": 1,
+                "encoded_oracle_full_passes": 1,
+                "response_or_claim_proportional_encoded_oracle_passes": 0,
+                "source_coefficients_read": 32768,
+                "initial_encoded_symbols_read": 262144,
+                "combined_codeword_symbols": 262144,
+                "query_gather_calls": 1
+              },
+              "accepted": true
+            },
+            {
+              "ordinal": 2,
+              "phases": {
+                "claim_coefficient_preparation_wall_ns": 2831427,
+                "oracle_read_combine_wall_ns": 3546680,
+                "fold_merkle_wall_ns": 19054197,
+                "query_gather_wall_ns": 8199365,
+                "caller_wall_ns": 33646169
+              },
+              "counters": {
+                "relation_terms": 2,
+                "materialized_relation_terms": 2,
+                "fused_relation_terms": 0,
+                "unique_evaluation_tables": 2,
+                "evaluation_table_bytes": 524288,
+                "evaluation_table_cpu_resident_bytes": 524288,
+                "evaluation_table_gpu_resident_bytes": 0,
+                "evaluation_table_h2d_bytes": 0,
+                "evaluation_table_d2h_bytes": 0,
+                "materialized_evaluation_clone_bytes": 524288,
+                "materialized_equality_table_bytes": 524288,
+                "peak_relation_table_cpu_payload_bytes": 1572864,
+                "peak_relation_table_gpu_payload_bytes": 0,
+                "logical_evaluation_table_symbols_read": 32768,
+                "logical_evaluation_table_bytes_read": 524288,
+                "evaluation_table_passes_per_unique_table": 1,
+                "encoded_oracle_full_passes": 1,
+                "response_or_claim_proportional_encoded_oracle_passes": 0,
+                "source_coefficients_read": 32768,
+                "initial_encoded_symbols_read": 262144,
+                "combined_codeword_symbols": 262144,
+                "query_gather_calls": 1
+              },
+              "accepted": true
+            },
+            {
+              "ordinal": 3,
+              "phases": {
+                "claim_coefficient_preparation_wall_ns": 2898636,
+                "oracle_read_combine_wall_ns": 3511763,
+                "fold_merkle_wall_ns": 19140989,
+                "query_gather_wall_ns": 8208406,
+                "caller_wall_ns": 33774127
+              },
+              "counters": {
+                "relation_terms": 2,
+                "materialized_relation_terms": 2,
+                "fused_relation_terms": 0,
+                "unique_evaluation_tables": 2,
+                "evaluation_table_bytes": 524288,
+                "evaluation_table_cpu_resident_bytes": 524288,
+                "evaluation_table_gpu_resident_bytes": 0,
+                "evaluation_table_h2d_bytes": 0,
+                "evaluation_table_d2h_bytes": 0,
+                "materialized_evaluation_clone_bytes": 524288,
+                "materialized_equality_table_bytes": 524288,
+                "peak_relation_table_cpu_payload_bytes": 1572864,
+                "peak_relation_table_gpu_payload_bytes": 0,
+                "logical_evaluation_table_symbols_read": 32768,
+                "logical_evaluation_table_bytes_read": 524288,
+                "evaluation_table_passes_per_unique_table": 1,
+                "encoded_oracle_full_passes": 1,
+                "response_or_claim_proportional_encoded_oracle_passes": 0,
+                "source_coefficients_read": 32768,
+                "initial_encoded_symbols_read": 262144,
+                "combined_codeword_symbols": 262144,
+                "query_gather_calls": 1
+              },
+              "accepted": true
+            }
+          ],
+          "selected_upper_median": {
+            "phases": {
+              "claim_coefficient_preparation_wall_ns": 2898636,
+              "oracle_read_combine_wall_ns": 3511763,
+              "fold_merkle_wall_ns": 19140989,
+              "query_gather_wall_ns": 8199365,
+              "caller_wall_ns": 33774127
+            },
+            "counters": {
+              "relation_terms": 2,
+              "materialized_relation_terms": 2,
+              "fused_relation_terms": 0,
+              "unique_evaluation_tables": 2,
+              "evaluation_table_bytes": 524288,
+              "evaluation_table_cpu_resident_bytes": 524288,
+              "evaluation_table_gpu_resident_bytes": 0,
+              "evaluation_table_h2d_bytes": 0,
+              "evaluation_table_d2h_bytes": 0,
+              "materialized_evaluation_clone_bytes": 524288,
+              "materialized_equality_table_bytes": 524288,
+              "peak_relation_table_cpu_payload_bytes": 1572864,
+              "peak_relation_table_gpu_payload_bytes": 0,
+              "logical_evaluation_table_symbols_read": 32768,
+              "logical_evaluation_table_bytes_read": 524288,
+              "evaluation_table_passes_per_unique_table": 1,
+              "encoded_oracle_full_passes": 1,
+              "response_or_claim_proportional_encoded_oracle_passes": 0,
+              "source_coefficients_read": 32768,
+              "initial_encoded_symbols_read": 262144,
+              "combined_codeword_symbols": 262144,
+              "query_gather_calls": 1
+            }
+          },
+          "all_accepted": true
+        },
+        {
+          "responses": 16,
+          "warmup_count": 1,
+          "measured_candidates": 3,
+          "candidates": [
+            {
+              "ordinal": 1,
+              "phases": {
+                "claim_coefficient_preparation_wall_ns": 7796654,
+                "oracle_read_combine_wall_ns": 3590054,
+                "fold_merkle_wall_ns": 19978535,
+                "query_gather_wall_ns": 8077031,
+                "caller_wall_ns": 39458898
+              },
+              "counters": {
+                "relation_terms": 32,
+                "materialized_relation_terms": 2,
+                "fused_relation_terms": 30,
+                "unique_evaluation_tables": 2,
+                "evaluation_table_bytes": 524288,
+                "evaluation_table_cpu_resident_bytes": 524288,
+                "evaluation_table_gpu_resident_bytes": 0,
+                "evaluation_table_h2d_bytes": 0,
+                "evaluation_table_d2h_bytes": 0,
+                "materialized_evaluation_clone_bytes": 524288,
+                "materialized_equality_table_bytes": 524288,
+                "peak_relation_table_cpu_payload_bytes": 1572864,
+                "peak_relation_table_gpu_payload_bytes": 0,
+                "logical_evaluation_table_symbols_read": 32768,
+                "logical_evaluation_table_bytes_read": 524288,
+                "evaluation_table_passes_per_unique_table": 1,
+                "encoded_oracle_full_passes": 1,
+                "response_or_claim_proportional_encoded_oracle_passes": 0,
+                "source_coefficients_read": 32768,
+                "initial_encoded_symbols_read": 262144,
+                "combined_codeword_symbols": 262144,
+                "query_gather_calls": 1
+              },
+              "accepted": true
+            },
+            {
+              "ordinal": 2,
+              "phases": {
+                "claim_coefficient_preparation_wall_ns": 7827655,
+                "oracle_read_combine_wall_ns": 3557843,
+                "fold_merkle_wall_ns": 19026909,
+                "query_gather_wall_ns": 8124739,
+                "caller_wall_ns": 38553562
+              },
+              "counters": {
+                "relation_terms": 32,
+                "materialized_relation_terms": 2,
+                "fused_relation_terms": 30,
+                "unique_evaluation_tables": 2,
+                "evaluation_table_bytes": 524288,
+                "evaluation_table_cpu_resident_bytes": 524288,
+                "evaluation_table_gpu_resident_bytes": 0,
+                "evaluation_table_h2d_bytes": 0,
+                "evaluation_table_d2h_bytes": 0,
+                "materialized_evaluation_clone_bytes": 524288,
+                "materialized_equality_table_bytes": 524288,
+                "peak_relation_table_cpu_payload_bytes": 1572864,
+                "peak_relation_table_gpu_payload_bytes": 0,
+                "logical_evaluation_table_symbols_read": 32768,
+                "logical_evaluation_table_bytes_read": 524288,
+                "evaluation_table_passes_per_unique_table": 1,
+                "encoded_oracle_full_passes": 1,
+                "response_or_claim_proportional_encoded_oracle_passes": 0,
+                "source_coefficients_read": 32768,
+                "initial_encoded_symbols_read": 262144,
+                "combined_codeword_symbols": 262144,
+                "query_gather_calls": 1
+              },
+              "accepted": true
+            },
+            {
+              "ordinal": 3,
+              "phases": {
+                "claim_coefficient_preparation_wall_ns": 7851197,
+                "oracle_read_combine_wall_ns": 3521889,
+                "fold_merkle_wall_ns": 19032280,
+                "query_gather_wall_ns": 8317906,
+                "caller_wall_ns": 38739854
+              },
+              "counters": {
+                "relation_terms": 32,
+                "materialized_relation_terms": 2,
+                "fused_relation_terms": 30,
+                "unique_evaluation_tables": 2,
+                "evaluation_table_bytes": 524288,
+                "evaluation_table_cpu_resident_bytes": 524288,
+                "evaluation_table_gpu_resident_bytes": 0,
+                "evaluation_table_h2d_bytes": 0,
+                "evaluation_table_d2h_bytes": 0,
+                "materialized_evaluation_clone_bytes": 524288,
+                "materialized_equality_table_bytes": 524288,
+                "peak_relation_table_cpu_payload_bytes": 1572864,
+                "peak_relation_table_gpu_payload_bytes": 0,
+                "logical_evaluation_table_symbols_read": 32768,
+                "logical_evaluation_table_bytes_read": 524288,
+                "evaluation_table_passes_per_unique_table": 1,
+                "encoded_oracle_full_passes": 1,
+                "response_or_claim_proportional_encoded_oracle_passes": 0,
+                "source_coefficients_read": 32768,
+                "initial_encoded_symbols_read": 262144,
+                "combined_codeword_symbols": 262144,
+                "query_gather_calls": 1
+              },
+              "accepted": true
+            }
+          ],
+          "selected_upper_median": {
+            "phases": {
+              "claim_coefficient_preparation_wall_ns": 7827655,
+              "oracle_read_combine_wall_ns": 3557843,
+              "fold_merkle_wall_ns": 19032280,
+              "query_gather_wall_ns": 8124739,
+              "caller_wall_ns": 38739854
+            },
+            "counters": {
+              "relation_terms": 32,
+              "materialized_relation_terms": 2,
+              "fused_relation_terms": 30,
+              "unique_evaluation_tables": 2,
+              "evaluation_table_bytes": 524288,
+              "evaluation_table_cpu_resident_bytes": 524288,
+              "evaluation_table_gpu_resident_bytes": 0,
+              "evaluation_table_h2d_bytes": 0,
+              "evaluation_table_d2h_bytes": 0,
+              "materialized_evaluation_clone_bytes": 524288,
+              "materialized_equality_table_bytes": 524288,
+              "peak_relation_table_cpu_payload_bytes": 1572864,
+              "peak_relation_table_gpu_payload_bytes": 0,
+              "logical_evaluation_table_symbols_read": 32768,
+              "logical_evaluation_table_bytes_read": 524288,
+              "evaluation_table_passes_per_unique_table": 1,
+              "encoded_oracle_full_passes": 1,
+              "response_or_claim_proportional_encoded_oracle_passes": 0,
+              "source_coefficients_read": 32768,
+              "initial_encoded_symbols_read": 262144,
+              "combined_codeword_symbols": 262144,
+              "query_gather_calls": 1
+            }
+          },
+          "all_accepted": true
+        }
+      ],
+      "all_physical_counters_equal_k1_k16": true,
+      "evaluation_table_pass_ratio_k16_over_k1": 1.0,
+      "claim_preparation_wall_ratio_k16_over_k1": 2.7004615274218633,
+      "caller_wall_ratio_k16_over_k1": 1.1470275456712766
+    },
+    {
+      "evaluation_domain_log2": 16,
+      "evaluation_symbols_per_table": 65536,
+      "unique_evaluation_table_bytes": 2097152,
+      "batches": [
+        {
+          "responses": 1,
+          "warmup_count": 1,
+          "measured_candidates": 3,
+          "candidates": [
+            {
+              "ordinal": 1,
+              "phases": {
+                "claim_coefficient_preparation_wall_ns": 11075416,
+                "oracle_read_combine_wall_ns": 14170011,
+                "fold_merkle_wall_ns": 64395369,
+                "query_gather_wall_ns": 11097292,
+                "caller_wall_ns": 100755255
+              },
+              "counters": {
+                "relation_terms": 2,
+                "materialized_relation_terms": 2,
+                "fused_relation_terms": 0,
+                "unique_evaluation_tables": 2,
+                "evaluation_table_bytes": 2097152,
+                "evaluation_table_cpu_resident_bytes": 2097152,
+                "evaluation_table_gpu_resident_bytes": 0,
+                "evaluation_table_h2d_bytes": 0,
+                "evaluation_table_d2h_bytes": 0,
+                "materialized_evaluation_clone_bytes": 2097152,
+                "materialized_equality_table_bytes": 2097152,
+                "peak_relation_table_cpu_payload_bytes": 6291456,
+                "peak_relation_table_gpu_payload_bytes": 0,
+                "logical_evaluation_table_symbols_read": 131072,
+                "logical_evaluation_table_bytes_read": 2097152,
+                "evaluation_table_passes_per_unique_table": 1,
+                "encoded_oracle_full_passes": 1,
+                "response_or_claim_proportional_encoded_oracle_passes": 0,
+                "source_coefficients_read": 131072,
+                "initial_encoded_symbols_read": 1048576,
+                "combined_codeword_symbols": 1048576,
+                "query_gather_calls": 1
+              },
+              "accepted": true
+            },
+            {
+              "ordinal": 2,
+              "phases": {
+                "claim_coefficient_preparation_wall_ns": 11204959,
+                "oracle_read_combine_wall_ns": 14022428,
+                "fold_merkle_wall_ns": 64646577,
+                "query_gather_wall_ns": 11829753,
+                "caller_wall_ns": 101720842
+              },
+              "counters": {
+                "relation_terms": 2,
+                "materialized_relation_terms": 2,
+                "fused_relation_terms": 0,
+                "unique_evaluation_tables": 2,
+                "evaluation_table_bytes": 2097152,
+                "evaluation_table_cpu_resident_bytes": 2097152,
+                "evaluation_table_gpu_resident_bytes": 0,
+                "evaluation_table_h2d_bytes": 0,
+                "evaluation_table_d2h_bytes": 0,
+                "materialized_evaluation_clone_bytes": 2097152,
+                "materialized_equality_table_bytes": 2097152,
+                "peak_relation_table_cpu_payload_bytes": 6291456,
+                "peak_relation_table_gpu_payload_bytes": 0,
+                "logical_evaluation_table_symbols_read": 131072,
+                "logical_evaluation_table_bytes_read": 2097152,
+                "evaluation_table_passes_per_unique_table": 1,
+                "encoded_oracle_full_passes": 1,
+                "response_or_claim_proportional_encoded_oracle_passes": 0,
+                "source_coefficients_read": 131072,
+                "initial_encoded_symbols_read": 1048576,
+                "combined_codeword_symbols": 1048576,
+                "query_gather_calls": 1
+              },
+              "accepted": true
+            },
+            {
+              "ordinal": 3,
+              "phases": {
+                "claim_coefficient_preparation_wall_ns": 11180375,
+                "oracle_read_combine_wall_ns": 14197720,
+                "fold_merkle_wall_ns": 65071454,
+                "query_gather_wall_ns": 11255334,
+                "caller_wall_ns": 101722342
+              },
+              "counters": {
+                "relation_terms": 2,
+                "materialized_relation_terms": 2,
+                "fused_relation_terms": 0,
+                "unique_evaluation_tables": 2,
+                "evaluation_table_bytes": 2097152,
+                "evaluation_table_cpu_resident_bytes": 2097152,
+                "evaluation_table_gpu_resident_bytes": 0,
+                "evaluation_table_h2d_bytes": 0,
+                "evaluation_table_d2h_bytes": 0,
+                "materialized_evaluation_clone_bytes": 2097152,
+                "materialized_equality_table_bytes": 2097152,
+                "peak_relation_table_cpu_payload_bytes": 6291456,
+                "peak_relation_table_gpu_payload_bytes": 0,
+                "logical_evaluation_table_symbols_read": 131072,
+                "logical_evaluation_table_bytes_read": 2097152,
+                "evaluation_table_passes_per_unique_table": 1,
+                "encoded_oracle_full_passes": 1,
+                "response_or_claim_proportional_encoded_oracle_passes": 0,
+                "source_coefficients_read": 131072,
+                "initial_encoded_symbols_read": 1048576,
+                "combined_codeword_symbols": 1048576,
+                "query_gather_calls": 1
+              },
+              "accepted": true
+            }
+          ],
+          "selected_upper_median": {
+            "phases": {
+              "claim_coefficient_preparation_wall_ns": 11180375,
+              "oracle_read_combine_wall_ns": 14170011,
+              "fold_merkle_wall_ns": 64646577,
+              "query_gather_wall_ns": 11255334,
+              "caller_wall_ns": 101720842
+            },
+            "counters": {
+              "relation_terms": 2,
+              "materialized_relation_terms": 2,
+              "fused_relation_terms": 0,
+              "unique_evaluation_tables": 2,
+              "evaluation_table_bytes": 2097152,
+              "evaluation_table_cpu_resident_bytes": 2097152,
+              "evaluation_table_gpu_resident_bytes": 0,
+              "evaluation_table_h2d_bytes": 0,
+              "evaluation_table_d2h_bytes": 0,
+              "materialized_evaluation_clone_bytes": 2097152,
+              "materialized_equality_table_bytes": 2097152,
+              "peak_relation_table_cpu_payload_bytes": 6291456,
+              "peak_relation_table_gpu_payload_bytes": 0,
+              "logical_evaluation_table_symbols_read": 131072,
+              "logical_evaluation_table_bytes_read": 2097152,
+              "evaluation_table_passes_per_unique_table": 1,
+              "encoded_oracle_full_passes": 1,
+              "response_or_claim_proportional_encoded_oracle_passes": 0,
+              "source_coefficients_read": 131072,
+              "initial_encoded_symbols_read": 1048576,
+              "combined_codeword_symbols": 1048576,
+              "query_gather_calls": 1
+            }
+          },
+          "all_accepted": true
+        },
+        {
+          "responses": 16,
+          "warmup_count": 1,
+          "measured_candidates": 3,
+          "candidates": [
+            {
+              "ordinal": 1,
+              "phases": {
+                "claim_coefficient_preparation_wall_ns": 31504077,
+                "oracle_read_combine_wall_ns": 14488557,
+                "fold_merkle_wall_ns": 64911242,
+                "query_gather_wall_ns": 11129500,
+                "caller_wall_ns": 122051877
+              },
+              "counters": {
+                "relation_terms": 32,
+                "materialized_relation_terms": 2,
+                "fused_relation_terms": 30,
+                "unique_evaluation_tables": 2,
+                "evaluation_table_bytes": 2097152,
+                "evaluation_table_cpu_resident_bytes": 2097152,
+                "evaluation_table_gpu_resident_bytes": 0,
+                "evaluation_table_h2d_bytes": 0,
+                "evaluation_table_d2h_bytes": 0,
+                "materialized_evaluation_clone_bytes": 2097152,
+                "materialized_equality_table_bytes": 2097152,
+                "peak_relation_table_cpu_payload_bytes": 6291456,
+                "peak_relation_table_gpu_payload_bytes": 0,
+                "logical_evaluation_table_symbols_read": 131072,
+                "logical_evaluation_table_bytes_read": 2097152,
+                "evaluation_table_passes_per_unique_table": 1,
+                "encoded_oracle_full_passes": 1,
+                "response_or_claim_proportional_encoded_oracle_passes": 0,
+                "source_coefficients_read": 131072,
+                "initial_encoded_symbols_read": 1048576,
+                "combined_codeword_symbols": 1048576,
+                "query_gather_calls": 1
+              },
+              "accepted": true
+            },
+            {
+              "ordinal": 2,
+              "phases": {
+                "claim_coefficient_preparation_wall_ns": 31682036,
+                "oracle_read_combine_wall_ns": 14228640,
+                "fold_merkle_wall_ns": 73674650,
+                "query_gather_wall_ns": 13506759,
+                "caller_wall_ns": 133113919
+              },
+              "counters": {
+                "relation_terms": 32,
+                "materialized_relation_terms": 2,
+                "fused_relation_terms": 30,
+                "unique_evaluation_tables": 2,
+                "evaluation_table_bytes": 2097152,
+                "evaluation_table_cpu_resident_bytes": 2097152,
+                "evaluation_table_gpu_resident_bytes": 0,
+                "evaluation_table_h2d_bytes": 0,
+                "evaluation_table_d2h_bytes": 0,
+                "materialized_evaluation_clone_bytes": 2097152,
+                "materialized_equality_table_bytes": 2097152,
+                "peak_relation_table_cpu_payload_bytes": 6291456,
+                "peak_relation_table_gpu_payload_bytes": 0,
+                "logical_evaluation_table_symbols_read": 131072,
+                "logical_evaluation_table_bytes_read": 2097152,
+                "evaluation_table_passes_per_unique_table": 1,
+                "encoded_oracle_full_passes": 1,
+                "response_or_claim_proportional_encoded_oracle_passes": 0,
+                "source_coefficients_read": 131072,
+                "initial_encoded_symbols_read": 1048576,
+                "combined_codeword_symbols": 1048576,
+                "query_gather_calls": 1
+              },
+              "accepted": true
+            },
+            {
+              "ordinal": 3,
+              "phases": {
+                "claim_coefficient_preparation_wall_ns": 44417001,
+                "oracle_read_combine_wall_ns": 16502933,
+                "fold_merkle_wall_ns": 66479047,
+                "query_gather_wall_ns": 11333585,
+                "caller_wall_ns": 138756106
+              },
+              "counters": {
+                "relation_terms": 32,
+                "materialized_relation_terms": 2,
+                "fused_relation_terms": 30,
+                "unique_evaluation_tables": 2,
+                "evaluation_table_bytes": 2097152,
+                "evaluation_table_cpu_resident_bytes": 2097152,
+                "evaluation_table_gpu_resident_bytes": 0,
+                "evaluation_table_h2d_bytes": 0,
+                "evaluation_table_d2h_bytes": 0,
+                "materialized_evaluation_clone_bytes": 2097152,
+                "materialized_equality_table_bytes": 2097152,
+                "peak_relation_table_cpu_payload_bytes": 6291456,
+                "peak_relation_table_gpu_payload_bytes": 0,
+                "logical_evaluation_table_symbols_read": 131072,
+                "logical_evaluation_table_bytes_read": 2097152,
+                "evaluation_table_passes_per_unique_table": 1,
+                "encoded_oracle_full_passes": 1,
+                "response_or_claim_proportional_encoded_oracle_passes": 0,
+                "source_coefficients_read": 131072,
+                "initial_encoded_symbols_read": 1048576,
+                "combined_codeword_symbols": 1048576,
+                "query_gather_calls": 1
+              },
+              "accepted": true
+            }
+          ],
+          "selected_upper_median": {
+            "phases": {
+              "claim_coefficient_preparation_wall_ns": 31682036,
+              "oracle_read_combine_wall_ns": 14488557,
+              "fold_merkle_wall_ns": 66479047,
+              "query_gather_wall_ns": 11333585,
+              "caller_wall_ns": 133113919
+            },
+            "counters": {
+              "relation_terms": 32,
+              "materialized_relation_terms": 2,
+              "fused_relation_terms": 30,
+              "unique_evaluation_tables": 2,
+              "evaluation_table_bytes": 2097152,
+              "evaluation_table_cpu_resident_bytes": 2097152,
+              "evaluation_table_gpu_resident_bytes": 0,
+              "evaluation_table_h2d_bytes": 0,
+              "evaluation_table_d2h_bytes": 0,
+              "materialized_evaluation_clone_bytes": 2097152,
+              "materialized_equality_table_bytes": 2097152,
+              "peak_relation_table_cpu_payload_bytes": 6291456,
+              "peak_relation_table_gpu_payload_bytes": 0,
+              "logical_evaluation_table_symbols_read": 131072,
+              "logical_evaluation_table_bytes_read": 2097152,
+              "evaluation_table_passes_per_unique_table": 1,
+              "encoded_oracle_full_passes": 1,
+              "response_or_claim_proportional_encoded_oracle_passes": 0,
+              "source_coefficients_read": 131072,
+              "initial_encoded_symbols_read": 1048576,
+              "combined_codeword_symbols": 1048576,
+              "query_gather_calls": 1
+            }
+          },
+          "all_accepted": true
+        }
+      ],
+      "all_physical_counters_equal_k1_k16": true,
+      "evaluation_table_pass_ratio_k16_over_k1": 1.0,
+      "claim_preparation_wall_ratio_k16_over_k1": 2.8337185470075914,
+      "caller_wall_ratio_k16_over_k1": 1.3086199089858104
+    },
+    {
+      "evaluation_domain_log2": 18,
+      "evaluation_symbols_per_table": 262144,
+      "unique_evaluation_table_bytes": 8388608,
+      "batches": [
+        {
+          "responses": 1,
+          "warmup_count": 1,
+          "measured_candidates": 3,
+          "candidates": [
+            {
+              "ordinal": 1,
+              "phases": {
+                "claim_coefficient_preparation_wall_ns": 46949844,
+                "oracle_read_combine_wall_ns": 59724308,
+                "fold_merkle_wall_ns": 240534115,
+                "query_gather_wall_ns": 14337221,
+                "caller_wall_ns": 362411991
+              },
+              "counters": {
+                "relation_terms": 2,
+                "materialized_relation_terms": 2,
+                "fused_relation_terms": 0,
+                "unique_evaluation_tables": 2,
+                "evaluation_table_bytes": 8388608,
+                "evaluation_table_cpu_resident_bytes": 8388608,
+                "evaluation_table_gpu_resident_bytes": 0,
+                "evaluation_table_h2d_bytes": 0,
+                "evaluation_table_d2h_bytes": 0,
+                "materialized_evaluation_clone_bytes": 8388608,
+                "materialized_equality_table_bytes": 8388608,
+                "peak_relation_table_cpu_payload_bytes": 25165824,
+                "peak_relation_table_gpu_payload_bytes": 0,
+                "logical_evaluation_table_symbols_read": 524288,
+                "logical_evaluation_table_bytes_read": 8388608,
+                "evaluation_table_passes_per_unique_table": 1,
+                "encoded_oracle_full_passes": 1,
+                "response_or_claim_proportional_encoded_oracle_passes": 0,
+                "source_coefficients_read": 524288,
+                "initial_encoded_symbols_read": 4194304,
+                "combined_codeword_symbols": 4194304,
+                "query_gather_calls": 1
+              },
+              "accepted": true
+            },
+            {
+              "ordinal": 2,
+              "phases": {
+                "claim_coefficient_preparation_wall_ns": 46202257,
+                "oracle_read_combine_wall_ns": 58600681,
+                "fold_merkle_wall_ns": 262718655,
+                "query_gather_wall_ns": 17002522,
+                "caller_wall_ns": 384879284
+              },
+              "counters": {
+                "relation_terms": 2,
+                "materialized_relation_terms": 2,
+                "fused_relation_terms": 0,
+                "unique_evaluation_tables": 2,
+                "evaluation_table_bytes": 8388608,
+                "evaluation_table_cpu_resident_bytes": 8388608,
+                "evaluation_table_gpu_resident_bytes": 0,
+                "evaluation_table_h2d_bytes": 0,
+                "evaluation_table_d2h_bytes": 0,
+                "materialized_evaluation_clone_bytes": 8388608,
+                "materialized_equality_table_bytes": 8388608,
+                "peak_relation_table_cpu_payload_bytes": 25165824,
+                "peak_relation_table_gpu_payload_bytes": 0,
+                "logical_evaluation_table_symbols_read": 524288,
+                "logical_evaluation_table_bytes_read": 8388608,
+                "evaluation_table_passes_per_unique_table": 1,
+                "encoded_oracle_full_passes": 1,
+                "response_or_claim_proportional_encoded_oracle_passes": 0,
+                "source_coefficients_read": 524288,
+                "initial_encoded_symbols_read": 4194304,
+                "combined_codeword_symbols": 4194304,
+                "query_gather_calls": 1
+              },
+              "accepted": true
+            },
+            {
+              "ordinal": 3,
+              "phases": {
+                "claim_coefficient_preparation_wall_ns": 184380236,
+                "oracle_read_combine_wall_ns": 68180340,
+                "fold_merkle_wall_ns": 294850737,
+                "query_gather_wall_ns": 15349016,
+                "caller_wall_ns": 562783121
+              },
+              "counters": {
+                "relation_terms": 2,
+                "materialized_relation_terms": 2,
+                "fused_relation_terms": 0,
+                "unique_evaluation_tables": 2,
+                "evaluation_table_bytes": 8388608,
+                "evaluation_table_cpu_resident_bytes": 8388608,
+                "evaluation_table_gpu_resident_bytes": 0,
+                "evaluation_table_h2d_bytes": 0,
+                "evaluation_table_d2h_bytes": 0,
+                "materialized_evaluation_clone_bytes": 8388608,
+                "materialized_equality_table_bytes": 8388608,
+                "peak_relation_table_cpu_payload_bytes": 25165824,
+                "peak_relation_table_gpu_payload_bytes": 0,
+                "logical_evaluation_table_symbols_read": 524288,
+                "logical_evaluation_table_bytes_read": 8388608,
+                "evaluation_table_passes_per_unique_table": 1,
+                "encoded_oracle_full_passes": 1,
+                "response_or_claim_proportional_encoded_oracle_passes": 0,
+                "source_coefficients_read": 524288,
+                "initial_encoded_symbols_read": 4194304,
+                "combined_codeword_symbols": 4194304,
+                "query_gather_calls": 1
+              },
+              "accepted": true
+            }
+          ],
+          "selected_upper_median": {
+            "phases": {
+              "claim_coefficient_preparation_wall_ns": 46949844,
+              "oracle_read_combine_wall_ns": 59724308,
+              "fold_merkle_wall_ns": 262718655,
+              "query_gather_wall_ns": 15349016,
+              "caller_wall_ns": 384879284
+            },
+            "counters": {
+              "relation_terms": 2,
+              "materialized_relation_terms": 2,
+              "fused_relation_terms": 0,
+              "unique_evaluation_tables": 2,
+              "evaluation_table_bytes": 8388608,
+              "evaluation_table_cpu_resident_bytes": 8388608,
+              "evaluation_table_gpu_resident_bytes": 0,
+              "evaluation_table_h2d_bytes": 0,
+              "evaluation_table_d2h_bytes": 0,
+              "materialized_evaluation_clone_bytes": 8388608,
+              "materialized_equality_table_bytes": 8388608,
+              "peak_relation_table_cpu_payload_bytes": 25165824,
+              "peak_relation_table_gpu_payload_bytes": 0,
+              "logical_evaluation_table_symbols_read": 524288,
+              "logical_evaluation_table_bytes_read": 8388608,
+              "evaluation_table_passes_per_unique_table": 1,
+              "encoded_oracle_full_passes": 1,
+              "response_or_claim_proportional_encoded_oracle_passes": 0,
+              "source_coefficients_read": 524288,
+              "initial_encoded_symbols_read": 4194304,
+              "combined_codeword_symbols": 4194304,
+              "query_gather_calls": 1
+            }
+          },
+          "all_accepted": true
+        },
+        {
+          "responses": 16,
+          "warmup_count": 1,
+          "measured_candidates": 3,
+          "candidates": [
+            {
+              "ordinal": 1,
+              "phases": {
+                "claim_coefficient_preparation_wall_ns": 127248146,
+                "oracle_read_combine_wall_ns": 59095977,
+                "fold_merkle_wall_ns": 239102730,
+                "query_gather_wall_ns": 14474138,
+                "caller_wall_ns": 439941740
+              },
+              "counters": {
+                "relation_terms": 32,
+                "materialized_relation_terms": 2,
+                "fused_relation_terms": 30,
+                "unique_evaluation_tables": 2,
+                "evaluation_table_bytes": 8388608,
+                "evaluation_table_cpu_resident_bytes": 8388608,
+                "evaluation_table_gpu_resident_bytes": 0,
+                "evaluation_table_h2d_bytes": 0,
+                "evaluation_table_d2h_bytes": 0,
+                "materialized_evaluation_clone_bytes": 8388608,
+                "materialized_equality_table_bytes": 8388608,
+                "peak_relation_table_cpu_payload_bytes": 25165824,
+                "peak_relation_table_gpu_payload_bytes": 0,
+                "logical_evaluation_table_symbols_read": 524288,
+                "logical_evaluation_table_bytes_read": 8388608,
+                "evaluation_table_passes_per_unique_table": 1,
+                "encoded_oracle_full_passes": 1,
+                "response_or_claim_proportional_encoded_oracle_passes": 0,
+                "source_coefficients_read": 524288,
+                "initial_encoded_symbols_read": 4194304,
+                "combined_codeword_symbols": 4194304,
+                "query_gather_calls": 1
+              },
+              "accepted": true
+            },
+            {
+              "ordinal": 2,
+              "phases": {
+                "claim_coefficient_preparation_wall_ns": 127055770,
+                "oracle_read_combine_wall_ns": 59708390,
+                "fold_merkle_wall_ns": 234131758,
+                "query_gather_wall_ns": 14619722,
+                "caller_wall_ns": 435537099
+              },
+              "counters": {
+                "relation_terms": 32,
+                "materialized_relation_terms": 2,
+                "fused_relation_terms": 30,
+                "unique_evaluation_tables": 2,
+                "evaluation_table_bytes": 8388608,
+                "evaluation_table_cpu_resident_bytes": 8388608,
+                "evaluation_table_gpu_resident_bytes": 0,
+                "evaluation_table_h2d_bytes": 0,
+                "evaluation_table_d2h_bytes": 0,
+                "materialized_evaluation_clone_bytes": 8388608,
+                "materialized_equality_table_bytes": 8388608,
+                "peak_relation_table_cpu_payload_bytes": 25165824,
+                "peak_relation_table_gpu_payload_bytes": 0,
+                "logical_evaluation_table_symbols_read": 524288,
+                "logical_evaluation_table_bytes_read": 8388608,
+                "evaluation_table_passes_per_unique_table": 1,
+                "encoded_oracle_full_passes": 1,
+                "response_or_claim_proportional_encoded_oracle_passes": 0,
+                "source_coefficients_read": 524288,
+                "initial_encoded_symbols_read": 4194304,
+                "combined_codeword_symbols": 4194304,
+                "query_gather_calls": 1
+              },
+              "accepted": true
+            },
+            {
+              "ordinal": 3,
+              "phases": {
+                "claim_coefficient_preparation_wall_ns": 128175357,
+                "oracle_read_combine_wall_ns": 58935557,
+                "fold_merkle_wall_ns": 247726556,
+                "query_gather_wall_ns": 16043103,
+                "caller_wall_ns": 450907656
+              },
+              "counters": {
+                "relation_terms": 32,
+                "materialized_relation_terms": 2,
+                "fused_relation_terms": 30,
+                "unique_evaluation_tables": 2,
+                "evaluation_table_bytes": 8388608,
+                "evaluation_table_cpu_resident_bytes": 8388608,
+                "evaluation_table_gpu_resident_bytes": 0,
+                "evaluation_table_h2d_bytes": 0,
+                "evaluation_table_d2h_bytes": 0,
+                "materialized_evaluation_clone_bytes": 8388608,
+                "materialized_equality_table_bytes": 8388608,
+                "peak_relation_table_cpu_payload_bytes": 25165824,
+                "peak_relation_table_gpu_payload_bytes": 0,
+                "logical_evaluation_table_symbols_read": 524288,
+                "logical_evaluation_table_bytes_read": 8388608,
+                "evaluation_table_passes_per_unique_table": 1,
+                "encoded_oracle_full_passes": 1,
+                "response_or_claim_proportional_encoded_oracle_passes": 0,
+                "source_coefficients_read": 524288,
+                "initial_encoded_symbols_read": 4194304,
+                "combined_codeword_symbols": 4194304,
+                "query_gather_calls": 1
+              },
+              "accepted": true
+            }
+          ],
+          "selected_upper_median": {
+            "phases": {
+              "claim_coefficient_preparation_wall_ns": 127248146,
+              "oracle_read_combine_wall_ns": 59095977,
+              "fold_merkle_wall_ns": 239102730,
+              "query_gather_wall_ns": 14619722,
+              "caller_wall_ns": 439941740
+            },
+            "counters": {
+              "relation_terms": 32,
+              "materialized_relation_terms": 2,
+              "fused_relation_terms": 30,
+              "unique_evaluation_tables": 2,
+              "evaluation_table_bytes": 8388608,
+              "evaluation_table_cpu_resident_bytes": 8388608,
+              "evaluation_table_gpu_resident_bytes": 0,
+              "evaluation_table_h2d_bytes": 0,
+              "evaluation_table_d2h_bytes": 0,
+              "materialized_evaluation_clone_bytes": 8388608,
+              "materialized_equality_table_bytes": 8388608,
+              "peak_relation_table_cpu_payload_bytes": 25165824,
+              "peak_relation_table_gpu_payload_bytes": 0,
+              "logical_evaluation_table_symbols_read": 524288,
+              "logical_evaluation_table_bytes_read": 8388608,
+              "evaluation_table_passes_per_unique_table": 1,
+              "encoded_oracle_full_passes": 1,
+              "response_or_claim_proportional_encoded_oracle_passes": 0,
+              "source_coefficients_read": 524288,
+              "initial_encoded_symbols_read": 4194304,
+              "combined_codeword_symbols": 4194304,
+              "query_gather_calls": 1
+            }
+          },
+          "all_accepted": true
+        }
+      ],
+      "all_physical_counters_equal_k1_k16": true,
+      "evaluation_table_pass_ratio_k16_over_k1": 1.0,
+      "claim_preparation_wall_ratio_k16_over_k1": 2.7102996550957656,
+      "caller_wall_ratio_k16_over_k1": 1.1430642237424242
+    }
+  ],
+  "local_flatness": {
+    "largest_scale_caller_wall_ratio_k16_over_k1": 1.1430642237424242,
+    "largest_scale_claim_preparation_wall_ratio_k16_over_k1": 2.7102996550957656,
+    "all_scales_physical_counters_equal": true,
+    "diagnostic_only": true,
+    "production_gate_verdict": "NOT EVALUATED LOCALLY"
+  },
+  "fused_driver_implementation": "response-local equality/combination coefficients are reduced by physical cohort+slot before each unique source table is cloned; the sumcheck relation polynomial is round-exact, the protocol relation count remains unchanged, and the existing X4c GPU-resident encoded-oracle RLC, one combined fold/Merkle chain and one 111-query opening are reused",
+  "flatness_gate": {
+    "preregistered": true,
+    "wall_rule": "settlement_wall(k=16) <= 1.30 * settlement_wall(k=1) on the same host",
+    "symbol_rule": "settlement initial_encoded_symbols_read(k=1) == initial_encoded_symbols_read(k=16), and combined_codeword_symbols equality is recorded as the paired structural counter",
+    "same_host_required": true,
+    "informative_target": "settlement_wall <= the immutable X4c pcs_total baseline band (288-307 s); not a gate",
+    "existing_gates_unchanged": "G1 response wall/bytes/interference, G2-G6, opening <=1.50 s and verify <=0.25 s all re-run without relaxation",
+    "verdict": "NOT EVALUATED: LOCAL CPU DIAGNOSTIC ONLY"
+  },
+  "owner_phase2_rulings": [
+    "Binding gate only: same-host settlement wall k=16 <=1.30x k=1 plus initial and combined symbol equality; 288-307 s is informative, so 350 s with green flatness is PASS with a note",
+    "Rerun G1 and interference without relaxation: historical 4.87-5.04 s response range, exact 41,270,464 B and <=1.00% interference, with 0.399684884% as the accepted comparison anchor",
+    "Do not rename or update the accelerated comparison document before eligible paired pod records and ledger closure"
+  ],
+  "pod_checklist": [
+    "STOP and ask before provisioning or contacting a pod",
+    "NOTE-6 is the first production-size workload",
+    "Fail closed unless selected SKU RAM >=274,877,906,944 B and volume >=150,000,000,000 B",
+    "Write only fresh append-only x4d1-* records",
+    "Stop the pod through the provider control plane from the SSH session at session end"
+  ],
+  "hard_stop": "PHASE 2 LOCAL IMPLEMENTATION ONLY; no pod provisioned or contacted; explicit provisioning approval required"
+}

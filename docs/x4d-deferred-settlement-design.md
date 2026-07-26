@@ -1,8 +1,8 @@
 # X4d deferred-settlement design and preregistration
 
-**Status (2026-07-26): X4d V1 PHASE 3 CLOSED PASS. X4d.1 PHASE 1
-INSTRUMENTATION, DIAGNOSIS, POSTDICTION AND FUSED-DRIVER PREREGISTRATION
-COMPLETE; HARD STOP BEFORE IMPLEMENTATION OR POD.**
+**Status (2026-07-26): X4d V1 PHASE 3 CLOSED PASS. X4d.1 PHASE 2 LOCAL
+FUSED DRIVER, SYNTHETIC COUNTER TESTS AND PAIRED POD HARNESS COMPLETE; HARD
+STOP BEFORE POD PROVISIONING OR CONTACT.**
 
 X4d moves the folding-PCS work out of each response and into one deferred
 settlement over an exact union of frozen, MAC-authenticated weight claims. A
@@ -179,9 +179,96 @@ interference **0.399684884%**; the historical response ranges
 verification ceilings remain **1.50 s / 0.25 s**, and G2–G6, cap, tamper and
 abort semantics are untouched.
 
-**X4d.1 HARD STOP:** Phase 1 ends here. No fused driver, pod session, gate
-verdict, ledger closure or accelerated-comparison rename/update is authorized
-until owner review approves Phase 2.
+**Historical Phase-1 stop:** Phase 1 ended here. The owner subsequently
+approved Phase 2 with the three rulings preserved below.
+
+### X4d.1 Phase 2 local implementation
+
+The settlement-only accelerated path now reduces delayed-sumcheck terms by
+the exact physical `(cohort, slot)` key before cloning or scanning the source
+evaluation table. For a fixed table `f` and frozen targets `r_i`, it replaces
+
+```text
+sum_i c_i * f * eq(r_i)
+```
+
+with
+
+```text
+f * (sum_i c_i * eq(r_i)).
+```
+
+This is an exact linear identity at the initial sum, every degree-two
+sumcheck round and the terminal evaluation. The transcript still declares
+and verifies all `102*k` protocol relation terms, consumes the same
+correlations, retains the same initial authenticated claim and groups the same
+terminal slot weights. Only the prover's physical materialization schedule
+changes. A fail-closed alias check requires every contribution to a fused
+physical key to reference the same source allocation, length and dimension.
+
+The implementation is gated by the presence of an X4d sealed-settlement
+context. The X4c response path and the nonaccelerated v4 path retain their
+response-local term schedule. The existing X4c CUDA arena therefore remains
+the one encoded-oracle RLC engine; it consumes each unique slot once, builds
+one combined fold/Merkle chain and performs the unchanged opening.
+
+The production counter contract after fusion is:
+
+| Counter | k=1 | k=16 |
+|---|---:|---:|
+| protocol relation terms | 102 | 1,632 |
+| materialized physical terms | 102 | 102 |
+| fused response-local terms | 0 | 1,530 |
+| unique evaluation tables / symbols | 102 / 601,161,728 | 102 / 601,161,728 |
+| materialized evaluation clones | 9,618,587,648 B | 9,618,587,648 B |
+| combined equality tables | 9,618,587,648 B | 9,618,587,648 B |
+| peak relation-table CPU payload | 28,855,762,944 B | 28,855,762,944 B |
+| passes per unique evaluation table | 1 | 1 |
+| initial encoded symbols read | 4,809,293,824 | 4,809,293,824 |
+| combined-codeword symbols | 1,159,200,768 | 1,159,200,768 |
+| query gathers | 1 | 1 |
+
+The CPU-only permanent tests compare the fused and response-local round
+polynomials through every bind and terminal value, reject a duplicate slot
+backed by a different allocation, verify a two-response X4d proof end to end,
+and exercise complete synthetic k=1 and k=16 settlements. The latter retain
+`102*k` protocol relations while requiring exact equality of source-table
+symbols, encoded symbols, combined-codeword symbols and query gathers.
+
+The local Phase-2 probe repeats k=1 and k=16 at domains `2^14`, `2^16` and
+`2^18`. All physical counters are equal at every scale. Its selected local
+wall ratios remain timing diagnostics in the append-only raw record, not an
+A100 flatness verdict; only the paired same-host production record can
+evaluate the gate.
+
+The pod adapter now accepts only `--settled-responses 1` or `16`, uses a fresh
+connection and append-only output for each, and records the exact wall
+semantics as durable accumulator seal through terminal success. The k=1
+layout is `A1,B1,B2,A2`; the k=16 layout preserves the historical 19-response
+G1/interference campaign. A separate append-only paired adapter refuses
+different hosts/builds, checks both complete records, and emits the binding
+flatness verdict. Its `overall_pass` deliberately excludes the informative
+X4c wall target.
+
+The owner-approved Phase-2 rulings are:
+
+1. **Flatness is the binding new gate.** A k=16 wall at 350 s is a PASS with
+   a note, not a FAIL, when the same-host `<=1.30x` wall predicate and both
+   physical symbol equalities pass. The 288--307-s target remains informative.
+2. **G1 and interference rerun unchanged and may not regress.** The existing
+   4.87--5.04-s response range, exact **41,270,464 B** and historical
+   **<=1.00%** interference ceiling remain in force; the accepted
+   **0.399684884%** value is the comparison anchor.
+3. **Pod admission and teardown are unchanged.** NOTE-6 is first; the
+   hardware preflight fails closed below **256 GiB** RAM or **150 GB** volume;
+   all new files are `x4d1-*` append-only; and the pod is stopped from the
+   provider control plane at session end.
+
+**X4d.1 Phase-2 HARD STOP:** the local implementation and run-of-record
+harness are ready, but no pod has been provisioned or contacted and no
+production gate is evaluated. Owner approval is required before provisioning.
+The accelerated-comparison document is not renamed or updated until eligible
+paired pod records and the ledger closure exist.
 
 ## 1. Authority, inputs and fixed facts
 
@@ -1442,3 +1529,19 @@ scheduler, interference accounting and abort cleanup.
 **HARD STOP:** Phase 2 ends here. No endpoint, pod, remote storage, hardware
 benchmark or provider control plane may be touched for X4d until the product
 owner explicitly approves Phase 3 and provisions the registered profile.
+
+For X4d.1, the analogous local Phase-2 boundary is now complete. Its approved
+pod phase must run, in order:
+
+```text
+fresh clean checkpoint
+  -> NOTE-6 first
+  -> fail-closed A100 / RAM >=256 GiB / volume >=150 GB preflight
+  -> fresh append-only x4d1-k1 settlement
+  -> fresh append-only x4d1-k16 settlement with unchanged G1/interference
+  -> append-only paired flatness verdict
+  -> full validation, ledger/R1c closure and comparison-document update
+  -> provider-control-plane pod stop from the SSH session
+```
+
+The `288--307 s` X4c band is not in the paired verdict's `overall_pass`.

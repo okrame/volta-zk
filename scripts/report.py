@@ -230,6 +230,22 @@ X4D_PHASE3_G2_TESTS = [
     "x4d_delivery_without_freeze_and_wrong_settlement_subset_burn_connection",
     "x4d_settlement_freshness_is_required_before_success_and_is_one_use",
 ]
+X4D1_FLATNESS_MILESTONE = "X4d.1-GPT2-flatness-gate-v1"
+X4D1_DESIGN_SHA256 = (
+    "3ca7b497d3604c220a2de59ceb1279172dc8bd8e835081900b3cfc17fe3af463"
+)
+X4D1_FLATNESS_PRODUCER_SHA256 = (
+    "d7adf10afb9ab8a8d3aa934dced519784e51fa950937536b732dfd6a0b422b0d"
+)
+X4D1_WALL_SEMANTICS = (
+    "durable accumulator seal through terminal settlement success, including "
+    "queued-response priority pause and fresh auxiliary materialization"
+)
+X4D1_FLATNESS_CEILING = 1.30
+X4D1_INTERFERENCE_CEILING_PERCENT = 1.00
+X4D1_INITIAL_ENCODED_SYMBOLS = 4_809_293_824
+X4D1_COMBINED_CODEWORD_SYMBOLS = 1_159_200_768
+X4D1_RESPONSE_BYTES = 41_270_464
 X4B_DESIGN_SHA256 = (
     "bc057e458041e8123e3ef065d22b74573bcb7238a8dcee239bccfa0e8ff6be01"
 )
@@ -1249,6 +1265,189 @@ def validate_x4d_phase3_online(path: Path, onboarding_path: Path) -> bool:
             return _x4d_phase3_online_valid(
                 json.load(handle), onboarding, onboarding_sha
             )
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return False
+
+
+def _x4d1_run_summary_valid(row: Any, responses: int) -> bool:
+    keys = {
+        "input_path",
+        "input_sha256",
+        "responses",
+        "settlement_wall_s",
+        "selected_g1_wall_s",
+        "g1_overall_pass",
+        "settlement_accepted",
+        "min_response_wall_s",
+        "max_response_wall_s",
+        "response_bytes",
+        "interference_percentage_delta",
+        "initial_encoded_symbols_read",
+        "combined_codeword_symbols",
+        "materialized_relation_terms",
+        "fused_relation_terms",
+    }
+    return (
+        isinstance(row, dict)
+        and set(row) == keys
+        and isinstance(row["input_path"], str)
+        and Path(row["input_path"]).name.startswith("x4d1-")
+        and Path(row["input_path"]).suffix == ".json"
+        and _x4d_hex(row["input_sha256"], 64)
+        and _x4d_exact_int(row["responses"], responses)
+        and all(
+            _x4d_number(row[key], positive=True)
+            for key in (
+                "settlement_wall_s",
+                "selected_g1_wall_s",
+                "min_response_wall_s",
+                "max_response_wall_s",
+            )
+        )
+        and row["min_response_wall_s"] <= row["max_response_wall_s"]
+        and isinstance(row["g1_overall_pass"], bool)
+        and isinstance(row["settlement_accepted"], bool)
+        and _x4d_exact_int(row["response_bytes"], X4D1_RESPONSE_BYTES)
+        and isinstance(row["interference_percentage_delta"], (int, float))
+        and not isinstance(row["interference_percentage_delta"], bool)
+        and math.isfinite(row["interference_percentage_delta"])
+        and _x4d_exact_int(
+            row["initial_encoded_symbols_read"], X4D1_INITIAL_ENCODED_SYMBOLS
+        )
+        and _x4d_exact_int(
+            row["combined_codeword_symbols"], X4D1_COMBINED_CODEWORD_SYMBOLS
+        )
+        and _x4d_exact_int(row["materialized_relation_terms"], 102)
+        and _x4d_exact_int(row["fused_relation_terms"], 102 * (responses - 1))
+    )
+
+
+def _x4d1_flatness_valid(row: Any) -> bool:
+    keys = {
+        "schema",
+        "milestone",
+        "git_sha",
+        "git_dirty",
+        "producer_source_sha256",
+        "profile",
+        "protocol",
+        "design_sha256",
+        "same_host",
+        "wall_semantics",
+        "k1",
+        "k16",
+        "settlement_wall_ratio_k16_over_k1",
+        "flatness_ceiling",
+        "wall_flatness_pass",
+        "initial_encoded_symbols_equal",
+        "combined_codeword_symbols_equal",
+        "physical_counter_gate_pass",
+        "g1_rerun_pass",
+        "response_bytes_unchanged",
+        "interference_ceiling_percentage_delta",
+        "interference_rerun_pass",
+        "inherited_settlement_gates_pass",
+        "binding_gate_verdict_verbatim",
+        "informative_target",
+        "historical_rows_modified",
+        "overall_pass",
+    }
+    if not isinstance(row, dict) or set(row) != keys:
+        return False
+    k1 = row["k1"]
+    k16 = row["k16"]
+    informative = row["informative_target"]
+    if (
+        not _x4d1_run_summary_valid(k1, 1)
+        or not _x4d1_run_summary_valid(k16, 16)
+        or not isinstance(informative, dict)
+        or set(informative)
+        != {
+            "lower_s",
+            "upper_s",
+            "k16_at_or_below_upper",
+            "affects_binding_gate",
+            "policy",
+        }
+    ):
+        return False
+    ratio = k16["settlement_wall_s"] / k1["settlement_wall_s"]
+    wall_pass = ratio <= X4D1_FLATNESS_CEILING
+    initial_equal = (
+        k1["initial_encoded_symbols_read"] == k16["initial_encoded_symbols_read"]
+    )
+    combined_equal = (
+        k1["combined_codeword_symbols"] == k16["combined_codeword_symbols"]
+    )
+    counter_pass = initial_equal and combined_equal
+    g1_pass = k1["g1_overall_pass"] and k16["g1_overall_pass"]
+    inherited_pass = k1["settlement_accepted"] and k16["settlement_accepted"]
+    interference_pass = (
+        k16["interference_percentage_delta"]
+        <= X4D1_INTERFERENCE_CEILING_PERCENT
+    )
+    expected_overall = (
+        row["same_host"]
+        and wall_pass
+        and counter_pass
+        and g1_pass
+        and row["response_bytes_unchanged"]
+        and interference_pass
+        and inherited_pass
+    )
+    gate_word = "PASS" if expected_overall else "FAIL"
+    expected_verdict = (
+        f"{gate_word} — FLATNESS IN k: settlement_wall(k=16) <= 1.30 x "
+        "settlement_wall(k=1), with equal initial_encoded_symbols_read and "
+        "combined_codeword_symbols"
+    )
+    return (
+        _x4d_exact_int(row["schema"], 1)
+        and row["milestone"] == X4D1_FLATNESS_MILESTONE
+        and _x4d_hex(row["git_sha"], 40)
+        and row["git_dirty"] is False
+        and row["producer_source_sha256"] == X4D1_FLATNESS_PRODUCER_SHA256
+        and row["profile"] == X4D_PHASE3_PROFILE
+        and row["protocol"] == X4D_PHASE3_PROTOCOL
+        and row["design_sha256"] == X4D1_DESIGN_SHA256
+        and row["same_host"] is True
+        and row["wall_semantics"] == X4D1_WALL_SEMANTICS
+        and math.isclose(
+            row["settlement_wall_ratio_k16_over_k1"],
+            ratio,
+            rel_tol=1e-15,
+            abs_tol=1e-15,
+        )
+        and row["flatness_ceiling"] == X4D1_FLATNESS_CEILING
+        and row["wall_flatness_pass"] is wall_pass
+        and row["initial_encoded_symbols_equal"] is initial_equal
+        and row["combined_codeword_symbols_equal"] is combined_equal
+        and row["physical_counter_gate_pass"] is counter_pass
+        and row["g1_rerun_pass"] is g1_pass
+        and row["response_bytes_unchanged"] is True
+        and row["interference_ceiling_percentage_delta"]
+        == X4D1_INTERFERENCE_CEILING_PERCENT
+        and row["interference_rerun_pass"] is interference_pass
+        and row["inherited_settlement_gates_pass"] is inherited_pass
+        and row["binding_gate_verdict_verbatim"] == expected_verdict
+        and informative["lower_s"] == 288.0
+        and informative["upper_s"] == 307.0
+        and informative["k16_at_or_below_upper"]
+        is (k16["settlement_wall_s"] <= 307.0)
+        and informative["affects_binding_gate"] is False
+        and informative["policy"]
+        == "Informative only: a 350 s k=16 wall with a green flatness gate is PASS with a note, not FAIL"
+        and row["historical_rows_modified"] is False
+        and row["overall_pass"] is expected_overall
+    )
+
+
+def validate_x4d1_flatness(path: Path) -> bool:
+    try:
+        if not path.is_absolute():
+            path = REPO / path
+        with path.open("r", encoding="utf-8") as handle:
+            return _x4d1_flatness_valid(json.load(handle))
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
         return False
 
@@ -8753,6 +8952,11 @@ def main() -> None:
         help="fail closed unless one JSON is an internally complete X4d deferred-settlement verdict",
     )
     ap.add_argument(
+        "--validate-x4d1-flatness",
+        type=Path,
+        help="fail closed unless one JSON is a complete paired X4d.1 flatness verdict",
+    )
+    ap.add_argument(
         "--x4d-onboarding",
         type=Path,
         help="explicit carried X4c onboarding record for --validate-x4d-phase3-online",
@@ -9005,6 +9209,15 @@ def main() -> None:
         ):
             raise SystemExit("invalid or inconsistent X4d Phase-3 online verdict")
         print(f"valid X4d Phase-3 online verdict: {args.validate_x4d_phase3_online}")
+        return
+    if args.validate_x4d1_flatness is not None:
+        if args.write_json:
+            raise SystemExit(
+                "--write-json and --validate-x4d1-flatness are mutually exclusive"
+            )
+        if not validate_x4d1_flatness(args.validate_x4d1_flatness):
+            raise SystemExit("invalid or inconsistent X4d.1 flatness verdict")
+        print(f"valid X4d.1 flatness verdict: {args.validate_x4d1_flatness}")
         return
     if args.validate_x4b_local is not None:
         if args.write_json:

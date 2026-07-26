@@ -352,6 +352,7 @@ its clean descendant closure.
 | X4d Phase 3 settlement-domain correction | **HARD STOP HONORED; 18 PENDING RESPONSES TERMINAL-UNVERIFIED / LOCAL FIX GREEN / FRESH ONBOARDING REQUIRED** (2026-07-25) | The next online run completed 18 response freezes and settlement allocation, then the MAC layer rejected the X4d `0x2000...` namespace because bit 61 is reserved as `LEDGER_SHADOW_BIT`; process-restart burn closed the connection | Connection journal SHA-256 `64b71049be19462898f9fd0e53b9ff4c0aa2cf9febc2615e7e7e9a3ecd7be7a0` ends `TERMINAL|process-kill-or-restart`; authorization-marker tree SHA-256 `b716721a0b0d430831921779181f2f1762d5a9eb0176f03ddb80039c2ca64971`. Sixteen responses were sealed, two further responses remained pending, settlement freshness/36,199 full correlations and raw allocation 72,398 were journaled, but no settlement proof accepted and no response became weight-verified. The new `0x1001...` X4d namespace is disjoint from X4c `0x1000...` and from all three MAC-reserved high bits; runtime validation and a permanent domain test prevent another panic. Shared X4d source SHA-256 `a61e9a8c802813db39932d0133a144e9beed0531e57cb36619ea52fdc2a6a5f4`; fresh onboarding/journals are mandatory. |
 | X4d Phase 3 fresh-query codec amendment | **HARD STOP HONORED; 18 PENDING RESPONSES TERMINAL-UNVERIFIED / LOCAL AMENDMENT GREEN / NEW REBASELINE AND ONBOARDING REQUIRED** (2026-07-25) | The domain-corrected run reached the real k=16 opening, where a fresh query tape disproved the Phase-1 assumption that the selected-tape Merkle collision profile had fixed length | The observed packed opening was **2,604,726 B** versus the historical selected-tape fixture **2,615,414 B**; component counts were **27,608 / 1,998 / 16,830 / 48,746** opened symbols / initial-inner / initial-outer / fold-outer siblings. No online JSON or accepted settlement exists. Journal SHA-256 `808049c33a3e2dfb5d17b0365c25dcdf7b59aeb9a90ea3093d28c6c2aa0ae422`; authorization-marker tree SHA-256 `cdc5fe7d0c6173ed1a8e490665f1bd260f45a48007b617787a6ee29d0b55054f`. Amendment 1 retains fresh independent queries and bounds the packed opening componentwise at **2,740,598 B**, then adds verified zero padding in the X4d envelope. New exact settlement formula: **2,757,996 + 50,424*k B**, so `k=32` is **4,371,564 B / 136,611.375 B per response**. X4c bytes and validator remain immutable; no soundness term, proof child frame or query distribution changes. Design SHA-256 `61be8d68df8cd5482cd815b855fd2fc417bbc3c14b2a0d20dadbe2c479816451`. |
 | X4d Phase 3 Amendment-1 codec rebaseline | **LOCAL EXACT REFERENCES + VERSIONED VALIDATOR GREEN; POD RERUN AUTHORIZED** (2026-07-25) | Append-only schema-2 amendment record; schema-1 Phase-2 record and validator branch remain valid; fixed fresh-query bound/padding fields explicit | Clean source `4efa5f65ca6948fc0028ce74570943d7f6596f6d`; record `x4d-codec-reference-amendment1-2026-07-25-4efa5f6.json`, SHA-256 `9d21b97bba4f6f1783e8b83d0801c4ccbcd1c9e80356fe13786fa45655d1b6f7`. It binds design `61be8d68...16451`, generator `e80b142f...fcd82` and the immutable Amendment-5 preflight. Reference packed opening **2,615,414 B** plus **125,184 B** verified padding reaches the **2,740,598-B** bound. Exact settlement lengths for `k=1/8/16/32` are **2,808,420 / 3,161,388 / 3,564,780 / 4,371,564 B**; fixture SHA-256 values are `a81a246c...2d23c`, `082b3ba6...ff1f`, `33df9833...7dbd`, `42e1e28e...58ab`. Historical references were not modified and this record claims no proof or hardware verdict. |
+| X4d Phase 3 fresh-query counter amendment | **HARD STOP HONORED; FAILED CONNECTION BURNED / LOCAL EXACT-RELATION FIX GREEN / FRESH POD RUN REQUIRED** (2026-07-25) | The first padded run passed the fresh-query byte bound, then the execution validator exposed the same selected-tape assumption in explicit-D2D and rebuilt-device counters | No settlement accepted and no online JSON exists. Journal SHA-256 `809f80197540d60ced6e3438daa36530945828d1335b2817109b64106fcabe17`; authorization-marker tree SHA-256 `b611d18835407d061eaecc858270c0d75810c665fc05b4798f8e05532d754eac`. X4d now requires the exact equality `explicit D2D + (generated - invariant device base) = actual fold-gather payload <= 1,747,072 B`; all other counters remain exact and X4c retains its immutable selected-tape constants. The full no-default-feature workspace and the 21-record validator suite are green. Fresh onboarding and connection are mandatory after the new source checkpoint. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -419,6 +420,33 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-25 — First padded fresh-query run passed the proof-byte bound,
+  then a second selected-tape assumption in execution counters stopped
+  fail-closed.** The run again froze eighteen authenticated responses and
+  reached the k=16 settlement opening. The new variable packed-opening check
+  passed. The subsequent execution validator rejected because it still
+  required X4c's selected-tape **1,364,224-B** explicit D2D count and fixed
+  rebuilt-frontier contribution to generated device bytes. No settlement was
+  accepted, no online JSON exists and every pending response is terminally
+  unverified.
+
+  The connection journal SHA-256 is
+  `809f80197540d60ced6e3438daa36530945828d1335b2817109b64106fcabe17`;
+  its sorted tree SHA-256 is
+  `c59802c27a9d33efd397683ff06d5b75f98c53baa59965a51e9f0580de64688a`.
+  The twenty-one authorization markers have sorted-tree SHA-256
+  `b611d18835407d061eaecc858270c0d75810c665fc05b4798f8e05532d754eac`.
+  The connection is burned and will not be retried.
+
+  Both counters partition the same query-dependent fold-gather payload.
+  X4d therefore replaces the two independent selected-tape equalities with
+  the exact relation `explicit D2D + (generated device bytes - invariant
+  device base) = actual encoded fold payload`. The payload is computed from
+  the actual canonical fold symbols and sibling digests and must also remain
+  at or below the derived **1,747,072-B** fresh-query maximum. A permanent
+  test accepts the exact partition and rejects independent D2D or generated
+  byte drift. X4c retains every historical counter constant unchanged.
 
 - **2026-07-25 — Amendment-1 codec rebaseline is append-only and green;
   schema-1 historical validation remains live.** Clean source

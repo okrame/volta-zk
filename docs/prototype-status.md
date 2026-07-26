@@ -350,6 +350,7 @@ its clean descendant closure.
 | X4d Phase 3 X4c-design pin correction | **LOCAL GREEN; PRE-ONLINE HARD STOP HONORED / FRESH ONBOARDING REQUIRED** (2026-07-25) | X4d consumer now pins the current schema-3 X4c lifecycle file digest rather than the historical interpretation-correction digest; conservative crypto-build identity changes | Replacement producer source SHA-256 `f47f484d2f928f8fe551b1cd6848ce2cd6ffc6a6b4baaa1be1f95b0241e4a334`; current X4c lifecycle design SHA-256 `9a3c64a65902046ba0a2b1891ff8fce03690d870773a346f7128b9f75f7a1164`. The first schema-3 onboarding is valid X4c evidence but is ineligible for the corrected X4d consumer and will not be reused. Both rejected online invocations stopped before durable reads, rebuild, PCG connection or output/journal creation. NOTE-6 remains the first production-size session action and PASS. |
 | X4d Phase 3 fase-D stage correction | **HARD STOP HONORED; FAILED CONNECTION BURNED / LOCAL FIX GREEN / FRESH ONBOARDING REQUIRED** (2026-07-25) | First eligible online rebuild passed root admission, then response 0 allocation correctly failed and burned because the harness requested reserved stage 0 instead of the production allocatable stage 1 | Connection journal SHA-256 `299e9ddd377d7248d48a4761e7dc61337e25b91c46b3de717afd8dfeb7ab3b3c` ends `TERMINAL|protocol-error`; authorization burn marker SHA-256 `b8f5504b681366eee71228fc9cc10b9b687c6038a4018a9d3ac40777e807f4bf`. No response was proved or delivered, no settlement began and no online JSON exists. X4d now uses named stage 1 for both response and settlement allocations, matching the existing X4c production path; a permanent capacity regression covers the complete 19-response plus k=16 plan. Replacement producer source SHA-256 `75875a8add9051d6e6495a06c407b965df1ad6fc2066b65557444ef213b781eb`; conservative crypto-build identity requires a fresh onboarding and entirely new journals. |
 | X4d Phase 3 settlement-domain correction | **HARD STOP HONORED; 18 PENDING RESPONSES TERMINAL-UNVERIFIED / LOCAL FIX GREEN / FRESH ONBOARDING REQUIRED** (2026-07-25) | The next online run completed 18 response freezes and settlement allocation, then the MAC layer rejected the X4d `0x2000...` namespace because bit 61 is reserved as `LEDGER_SHADOW_BIT`; process-restart burn closed the connection | Connection journal SHA-256 `64b71049be19462898f9fd0e53b9ff4c0aa2cf9febc2615e7e7e9a3ecd7be7a0` ends `TERMINAL|process-kill-or-restart`; authorization-marker tree SHA-256 `b716721a0b0d430831921779181f2f1762d5a9eb0176f03ddb80039c2ca64971`. Sixteen responses were sealed, two further responses remained pending, settlement freshness/36,199 full correlations and raw allocation 72,398 were journaled, but no settlement proof accepted and no response became weight-verified. The new `0x1001...` X4d namespace is disjoint from X4c `0x1000...` and from all three MAC-reserved high bits; runtime validation and a permanent domain test prevent another panic. Shared X4d source SHA-256 `a61e9a8c802813db39932d0133a144e9beed0531e57cb36619ea52fdc2a6a5f4`; fresh onboarding/journals are mandatory. |
+| X4d Phase 3 fresh-query codec amendment | **HARD STOP HONORED; 18 PENDING RESPONSES TERMINAL-UNVERIFIED / LOCAL AMENDMENT GREEN / NEW REBASELINE AND ONBOARDING REQUIRED** (2026-07-25) | The domain-corrected run reached the real k=16 opening, where a fresh query tape disproved the Phase-1 assumption that the selected-tape Merkle collision profile had fixed length | The observed packed opening was **2,604,726 B** versus the historical selected-tape fixture **2,615,414 B**; component counts were **27,608 / 1,998 / 16,830 / 48,746** opened symbols / initial-inner / initial-outer / fold-outer siblings. No online JSON or accepted settlement exists. Journal SHA-256 `808049c33a3e2dfb5d17b0365c25dcdf7b59aeb9a90ea3093d28c6c2aa0ae422`; authorization-marker tree SHA-256 `cdc5fe7d0c6173ed1a8e490665f1bd260f45a48007b617787a6ee29d0b55054f`. Amendment 1 retains fresh independent queries and bounds the packed opening componentwise at **2,740,598 B**, then adds verified zero padding in the X4d envelope. New exact settlement formula: **2,757,996 + 50,424*k B**, so `k=32` is **4,371,564 B / 136,611.375 B per response**. X4c bytes and validator remain immutable; no soundness term, proof child frame or query distribution changes. Design SHA-256 `61be8d68df8cd5482cd815b855fd2fc417bbc3c14b2a0d20dadbe2c479816451`. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -417,6 +418,54 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-25 — Fresh X4d query tape disproved the fixed selected-tape
+  frontier assumption; failed connection burned and Amendment 1 adds bounded
+  fixed-size envelope padding.** The domain-corrected run completed eighteen
+  authenticated response freezes, sealed the first sixteen responses as one
+  1,632-claim settlement, reserved fresh query/auxiliary/epoch state and
+  allocated exactly **36,199** full correlations per role. The accelerated
+  opening then stopped fail-closed before any settlement acceptance because
+  its canonical packed opening was **2,604,726 B**, not the preregistered
+  **2,615,414-B** fixture. The observed components were **27,608** opened
+  symbols, **1,998** initial-inner siblings, **16,830** initial-outer siblings
+  and **48,746** fold-outer siblings. The full folding proof and assembled PCS
+  were correspondingly **2,607,172 / 2,672,548 B**. No online JSON exists and
+  none of the eighteen delivered responses is weight-verified.
+
+  The journal ends `TERMINAL|process-kill-or-restart`, SHA-256
+  `808049c33a3e2dfb5d17b0365c25dcdf7b59aeb9a90ea3093d28c6c2aa0ae422`.
+  The sorted authorization-marker tree SHA-256 is
+  `cdc5fe7d0c6173ed1a8e490665f1bd260f45a48007b617787a6ee29d0b55054f`.
+  This connection is permanently ineligible for retry.
+
+  Root cause: X4c production replays one selected query tape whose
+  deduplicated Merkle frontier has the historical fixed counts. X4d correctly
+  derives a fresh 111-draw tape after every settlement seal, so its canonical
+  frontier length varies with query collisions. Reusing a selected tape,
+  rejection-sampling to the old length or retrying a failed settlement would
+  change soundness or abort semantics and is rejected.
+
+  Amendment 1 keeps the registered fresh-query distribution. It derives a
+  componentwise all-domain maximum of **27,776** opened symbols and
+  **71,736** total sibling digests, giving a **2,740,598-B** packed-opening
+  bound. The X4d accelerated entry point checks the exact observed components
+  against this bound; the top-level settlement envelope appends canonical
+  all-zero padding to that maximum, and decode/statement validation reject
+  nonzero, missing or shortened padding. X4c retains its exact selected-tape
+  path unchanged.
+
+  The amended fixed settlement subtotal is **2,757,996 B** and the exact wire
+  formula is `2,757,996 + 50,424*k`: `k=1/8/16/32` gives **2,808,420 /
+  3,161,388 / 3,564,780 / 4,371,564 B**. At `k=32` this is
+  **136,611.375 settlement B/response**. The historical 4,000,000-B cap
+  remains scoped to the X4/X4b/X4c per-response PCS block. Padding introduces
+  no proof statement, challenge, oracle access, event or soundness credit, so
+  the frozen expression remains byte-for-byte unchanged. Amendment design
+  SHA-256 is
+  `61be8d68df8cd5482cd815b855fd2fc417bbc3c14b2a0d20dadbe2c479816451`.
+  The original Phase-2 codec record remains immutable and a new append-only
+  schema-2 codec record is required before another pod run.
 
 - **2026-07-25 — Settlement reached after 18 authenticated pending
   responses, then the MAC domain register rejected X4d's bit-61 namespace;

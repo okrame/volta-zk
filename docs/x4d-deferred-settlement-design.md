@@ -1,8 +1,8 @@
 # X4d deferred-settlement design and preregistration
 
-**Status (2026-07-25): PHASE 2 M12 AND LOCAL RUST COMPLETE; FULL LEAN AND
-RUST WORKSPACES GREEN; LOCAL CODEC REBASELINE COMPLETE. HARD STOP BEFORE
-POD WORK PENDING PRODUCT-OWNER REVIEW.**
+**Status (2026-07-25): PHASE 3 IN PROGRESS. PHASE-3 FRESH-QUERY CODEC
+OBSTRUCTION RECORDED; AMENDMENT 1 FIXED-SIZE SETTLEMENT PADDING IMPLEMENTED
+LOCALLY; NEW REBASELINE AND POD RERUN PENDING.**
 
 X4d moves the folding-PCS work out of each response and into one deferred
 settlement over an exact union of frozen, MAC-authenticated weight claims. A
@@ -69,6 +69,52 @@ The owner rulings fixed for this phase are:
 6. all resulting references and validators are new and append-only.
 
 No section below reopens those rulings.
+
+### 1.2 Amendment 1 — fresh-query frontier length and fixed-size padding
+
+The first Phase-3 settlement attempt on clean source `1b5cb38` reached the
+sealed 1,632-claim union and then stopped fail-closed in the production
+canonical-byte diagnostic. The fresh X4d query tape produced a
+**2,604,726-B** packed opening, while the preregistered fixture was
+**2,615,414 B**. The observed components were 27,608 opened symbols, 1,998
+initial-inner siblings, 16,830 initial-outer siblings and 48,746 fold-outer
+siblings. The connection journal SHA-256 is
+`808049c33a3e2dfb5d17b0365c25dcdf7b59aeb9a90ea3093d28c6c2aa0ae422`;
+all 18 delivered pending responses remain terminally unverified.
+
+The Phase-1 table had incorrectly treated the Amendment-5 X4c selected-tape
+collision profile as invariant. It is invariant in X4c because that path
+replays a frozen selected tape. X4d deliberately derives a fresh independent
+111-draw tape after every settlement seal, so sorted/deduplicated Merkle
+frontiers have challenge-dependent length. Reusing a selected tape,
+rejection-sampling tapes to a target length, or retrying the settlement would
+change the registered challenge distribution or abort semantics and is
+forbidden.
+
+Amendment 1 preserves the fresh query distribution and every proof child
+frame. The accelerated X4d entry point accepts only an observed packed opening
+whose components are at or below the geometry-derived 111-query maxima. The
+top-level X4d settlement envelope then appends canonical all-zero padding up
+to the summed componentwise bound. Decoding rejects nonzero padding and
+statement validation rejects a missing or shortened pad. X4c retains its
+byte-for-byte selected-tape diagnostic unchanged.
+
+For all production domains, the bound is 27,776 opened symbols, 1,998
+initial-inner siblings, 17,708 initial-outer siblings and 52,030 fold-outer
+siblings, plus 630 metadata bytes:
+
+```text
+16*27,776 + 32*(1,998 + 17,708 + 52,030) + 630
+  = 2,740,598 B.
+```
+
+The bound sums the independently maximal canonical frontier at every domain,
+so it remains safe even when no one query tape realizes every maximum at
+once. Padding adds no statement, oracle access, union event, transcript
+challenge or soundness credit. The frozen soundness expression and
+80.25537016399041-bit value are therefore byte-for-byte unchanged. Sections
+8 and G3 below contain the amended exact wire formula; the original Phase-2
+reference remains immutable historical evidence and is not overwritten.
 
 ### 1.1 Phase-2 root terminology clarification
 
@@ -813,9 +859,9 @@ are:
 | manifest frames | 12,227 |
 | authenticated-output link frame, `d=27` | 933 |
 | 27 fold frames | 2,446 |
-| packed opening | 2,615,414 |
+| packed opening plus canonical zero padding | 2,740,598 |
 | settlement ZeroBatch frame | 50 |
-| **fixed subtotal** | **2,632,812** |
+| **fixed subtotal** | **2,757,996** |
 | 102 reduced claim frames per response | `46,344*k` |
 | 51 public `h` symbols per response | `816*k` |
 | 51 M9 frames per response | `3,264*k` |
@@ -834,31 +880,33 @@ has 72 `mu=22`, 26 `mu=20` and 4 `mu=26` frames:
 Therefore:
 
 ```text
-X4D_GPT2_SETTLEMENT_BYTES(k) = 2,632,812 + 50,424*k.
+X4D_GPT2_SETTLEMENT_BYTES(k) = 2,757,996 + 50,424*k.
 ```
 
 The one auxiliary mask polynomial per physical block means claim multiplicity
-does not add initial chain polynomials or query paths. The counts below are
-exact, not estimates:
+does not add initial chain polynomials or query paths. The query-dependent
+component counts are bounded exactly and the canonical padding makes the wire
+length exact:
 
-| Responses `k` | Frozen claims | Masked groups | Active chain polynomials | Fold rounds | Opened symbols | sibling digests | Settlement bytes |
+| Responses `k` | Frozen claims | Masked groups | Active chain polynomials | Fold rounds | Max opened symbols | Max sibling digests | Exact settlement bytes |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 102 | 51 | 102 | 27 | 27,564 | 67,930 | **2,683,236** |
-| 8 | 816 | 408 | 102 | 27 | 27,564 | 67,930 | **3,036,204** |
-| 16 | 1,632 | 816 | 102 | 27 | 27,564 | 67,930 | **3,439,596** |
-| 32 | 3,264 | 1,632 | 102 | 27 | 27,564 | 67,930 | **4,246,380** |
+| 1 | 102 | 51 | 102 | 27 | 27,776 | 71,736 | **2,808,420** |
+| 8 | 816 | 408 | 102 | 27 | 27,776 | 71,736 | **3,161,388** |
+| 16 | 1,632 | 816 | 102 | 27 | 27,776 | 71,736 | **3,564,780** |
+| 32 | 3,264 | 1,632 | 102 | 27 | 27,776 | 71,736 | **4,371,564** |
 
-The one-response row has the historical length but will have a new reference
-digest because X4d changes the schedule domain and statement context.
+Every row receives a new append-only reference digest. The historical
+Phase-2 X4d references remain immutable and are explicitly ineligible for
+fresh-query settlements.
 
 ### 8.3 Amortized communication
 
 | Responses | Response payloads + settlement | Settlement B/response | Total amortized B/response |
 | ---: | ---: | ---: | ---: |
-| 1 | 43,953,700 | 2,683,236.000 | 43,953,700.000 |
-| 8 | 333,199,916 | 379,525.500 | 41,649,989.500 |
-| 16 | 663,767,020 | 214,974.750 | 41,485,438.750 |
-| 32 | 1,324,901,228 | 132,699.375 | 41,403,163.375 |
+| 1 | 44,078,884 | 2,808,420.000 | 44,078,884.000 |
+| 8 | 333,325,100 | 395,173.500 | 41,665,637.500 |
+| 16 | 663,892,204 | 222,798.750 | 41,493,262.750 |
+| 32 | 1,325,026,412 | 136,611.375 | 41,407,075.375 |
 
 The binding 150--200 MB product envelope remains satisfied by each response
 and by the separate settlement message. The old 4,000,000-B *per-response
@@ -1006,11 +1054,11 @@ transcript parity. Record-producing mode refuses mock.
 ### G3 — exact bytes and re-baseline
 
 - response: exactly **41,270,464 B**;
-- settlements: exactly `2,632,812 + 50,424*k` B for fixed GPT-2 `k`;
+- settlements: exactly `2,757,996 + 50,424*k` B for fixed GPT-2 `k`;
 - the historical **4,000,000-B** ceiling remains immutable and applies to
   the X4/X4b/X4c **per-response PCS block**, not to the separate X4d
-  settlement message. X4d G3 uses the pinned settlement formula: at `k=32`
-  the message is **4,246,380 B** and amortizes to **132,699.375 settlement
+  settlement message. X4d G3 uses the amended pinned settlement formula: at
+  `k=32` the message is **4,371,564 B** and amortizes to **136,611.375 settlement
   B/response**. This is neither a silent overrun nor a retrospective
   relaxation of any historical gate;
 - exact clean reference vectors at `k=1,8,16,32`;

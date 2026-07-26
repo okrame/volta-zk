@@ -26,7 +26,8 @@ use super::folding_v4::{
 };
 use super::frame::{Digest, FrameError, TreeRole};
 use super::frame_v4::{
-    decode_v4, gpt2_codec_reference_packed_opening_v4, hash_pcs_inner_leaf_fields_v4,
+    decode_v4, gpt2_codec_reference_packed_opening_v4,
+    gpt2_fresh_query_max_packed_opening_components_v4, hash_pcs_inner_leaf_fields_v4,
     hash_pcs_node_fields_v4, hash_pcs_outer_leaf_fields_v4, opening_schedule_digest_v4,
     FoldCommitmentFrameV4, FoldRoundOpeningV4, FrameV4, InitialOpeningGroupV4, OracleKindV4,
     PackedBatchOpeningFrameV4, PackedOpeningScheduleV4, PRODUCTION_QUERY_COUNT_V4,
@@ -586,10 +587,38 @@ pub struct X4cResponseExecutionCountersV4 {
 
 impl X4cResponseExecutionCountersV4 {
     pub fn validate_production(&self, response_ordinal: u64) -> Result<(), X4cErrorV4> {
+        self.validate_production_with_opening_bytes(
+            response_ordinal,
+            X4C_PACKED_OPENING_BYTES_V4,
+            true,
+        )
+    }
+
+    fn validate_production_fresh_x4d(
+        &self,
+        response_ordinal: u64,
+        max_opening_bytes: u64,
+    ) -> Result<(), X4cErrorV4> {
+        self.validate_production_with_opening_bytes(response_ordinal, max_opening_bytes, false)
+    }
+
+    fn validate_production_with_opening_bytes(
+        &self,
+        response_ordinal: u64,
+        opening_bytes: u64,
+        exact: bool,
+    ) -> Result<(), X4cErrorV4> {
         let expected_device_generated_bytes = if response_ordinal == 0 {
             X4C_PRODUCTION_FRESH_DEVICE_GENERATED_BYTES_V4
         } else {
             X4C_PRODUCTION_REUSED_DEVICE_GENERATED_BYTES_V4
+        };
+        let canonical_opening_bytes_valid = if exact {
+            self.canonical_template_h2d_bytes == opening_bytes
+                && self.canonical_opening_d2h_bytes == opening_bytes
+        } else {
+            self.canonical_template_h2d_bytes == self.canonical_opening_d2h_bytes
+                && self.canonical_opening_d2h_bytes <= opening_bytes
         };
         if self.direct_fold_calls != X4C_PRODUCTION_FOLD_ROUNDS_V4 as u64
             || self.direct_fold_sample_comparisons != X4C_DIRECT_FOLD_PRODUCTION_SAMPLES_V4 as u64
@@ -608,9 +637,8 @@ impl X4cResponseExecutionCountersV4 {
                     .query_gather_operation_count
                     .checked_mul(size_of::<X4cCanonicalGatherOperation>() as u64)
                     .ok_or(X4cErrorV4::Overflow)?
-            || self.canonical_template_h2d_bytes != X4C_PACKED_OPENING_BYTES_V4
+            || !canonical_opening_bytes_valid
             || self.query_draw_count != X4C_QUERY_COUNT_V4 as u64
-            || self.canonical_opening_d2h_bytes != X4C_PACKED_OPENING_BYTES_V4
             || self.noncanonical_opening_d2h_bytes != 0
             || self.cpu_fold_tree_clone_bytes != 0
             || self.expected_explicit_d2d_copy_bytes != X4C_PRODUCTION_EXPLICIT_D2D_COPY_BYTES_V4
@@ -620,6 +648,12 @@ impl X4cResponseExecutionCountersV4 {
         }
         Ok(())
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum X4cProductionBytePolicyV4 {
+    FrozenSelectedTape,
+    BoundedFreshX4d,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1929,6 +1963,47 @@ impl<A> SealedGlobalChainX4cV4<'_, A> {
         (GlobalFoldingProofV4, Vec<GlobalVerifierGroupV4>, X4cResponseMetricsV4, Vec<u64>),
         X4cErrorV4,
     > {
+        self.issue_queries_with_byte_policy(
+            draws,
+            tx,
+            runtime,
+            X4cProductionBytePolicyV4::FrozenSelectedTape,
+        )
+    }
+
+    /// Consume a fresh X4d settlement tape after the same seal boundary.
+    ///
+    /// Fresh tapes have variable Merkle-frontier compression.  Production
+    /// therefore checks the exact observed codec/counter identities against a
+    /// geometry-derived upper bound; the X4d envelope supplies canonical
+    /// fixed-size padding.  X4c selected-tape accounting remains byte-exact.
+    pub fn issue_queries_x4d<R: X4cArenaRuntimeV4<Arena = A>>(
+        self,
+        draws: Vec<u64>,
+        tx: &mut Transcript,
+        runtime: &mut R,
+    ) -> Result<
+        (GlobalFoldingProofV4, Vec<GlobalVerifierGroupV4>, X4cResponseMetricsV4, Vec<u64>),
+        X4cErrorV4,
+    > {
+        self.issue_queries_with_byte_policy(
+            draws,
+            tx,
+            runtime,
+            X4cProductionBytePolicyV4::BoundedFreshX4d,
+        )
+    }
+
+    fn issue_queries_with_byte_policy<R: X4cArenaRuntimeV4<Arena = A>>(
+        self,
+        draws: Vec<u64>,
+        tx: &mut Transcript,
+        runtime: &mut R,
+        byte_policy: X4cProductionBytePolicyV4,
+    ) -> Result<
+        (GlobalFoldingProofV4, Vec<GlobalVerifierGroupV4>, X4cResponseMetricsV4, Vec<u64>),
+        X4cErrorV4,
+    > {
         let SealedGlobalChainX4cV4 {
             model_root,
             epoch,
@@ -2139,18 +2214,45 @@ impl<A> SealedGlobalChainX4cV4<'_, A> {
         if config.arena_layout == X4cArenaLayoutV4::production()? {
             let observed_components = proof.packed_opening.byte_components()?;
             let expected_components = gpt2_codec_reference_packed_opening_v4().byte_components()?;
+            let fresh_x4d_max = gpt2_fresh_query_max_packed_opening_components_v4();
             let global_folding_proof_bytes =
                 u64::try_from(proof.canonical_bytes()?.len()).map_err(|_| X4cErrorV4::Overflow)?;
             let assembled_complete_pcs_bytes = observed_components
                 .serialized_bytes
                 .checked_add(X4C_MANDATORY_NON_QUERY_BYTES_V4)
                 .ok_or(X4cErrorV4::Overflow)?;
-            if observed_components != expected_components
-                || metrics.serialized_packed_opening_bytes != X4C_PACKED_OPENING_BYTES_V4
-                || metrics.serialized_fold_bytes != X4C_FOLD_FRAME_BYTES_V4
-                || global_folding_proof_bytes != X4C_GLOBAL_FOLDING_PROOF_BYTES_V4
-                || assembled_complete_pcs_bytes != X4C_COMPLETE_PCS_BYTES_V4
-            {
+            let opening_bytes_valid = match byte_policy {
+                X4cProductionBytePolicyV4::FrozenSelectedTape => {
+                    observed_components == expected_components
+                        && metrics.serialized_packed_opening_bytes == X4C_PACKED_OPENING_BYTES_V4
+                        && global_folding_proof_bytes == X4C_GLOBAL_FOLDING_PROOF_BYTES_V4
+                        && assembled_complete_pcs_bytes == X4C_COMPLETE_PCS_BYTES_V4
+                }
+                X4cProductionBytePolicyV4::BoundedFreshX4d => {
+                    observed_components.opened_symbols <= fresh_x4d_max.opened_symbols
+                        && observed_components.initial_inner_siblings
+                            <= fresh_x4d_max.initial_inner_siblings
+                        && observed_components.initial_outer_siblings
+                            <= fresh_x4d_max.initial_outer_siblings
+                        && observed_components.fold_outer_siblings
+                            <= fresh_x4d_max.fold_outer_siblings
+                        && observed_components.metadata_bytes == fresh_x4d_max.metadata_bytes
+                        && observed_components.serialized_bytes <= fresh_x4d_max.serialized_bytes
+                        && metrics.serialized_packed_opening_bytes
+                            == observed_components.serialized_bytes
+                        && global_folding_proof_bytes
+                            == observed_components
+                                .serialized_bytes
+                                .checked_add(X4C_FOLD_FRAME_BYTES_V4)
+                                .ok_or(X4cErrorV4::Overflow)?
+                        && assembled_complete_pcs_bytes
+                            == observed_components
+                                .serialized_bytes
+                                .checked_add(X4C_MANDATORY_NON_QUERY_BYTES_V4)
+                                .ok_or(X4cErrorV4::Overflow)?
+                }
+            };
+            if !opening_bytes_valid || metrics.serialized_fold_bytes != X4C_FOLD_FRAME_BYTES_V4 {
                 return Err(X4cErrorV4::Runtime(format!(
                     "X4c production canonical-byte diagnostic: \
                      packed_observed={}; packed_expected={}; \
@@ -2182,7 +2284,17 @@ impl<A> SealedGlobalChainX4cV4<'_, A> {
                     expected_components.metadata_bytes,
                 )));
             }
-            execution.validate_production(config.response_ordinal)?;
+            match byte_policy {
+                X4cProductionBytePolicyV4::FrozenSelectedTape => {
+                    execution.validate_production(config.response_ordinal)?;
+                }
+                X4cProductionBytePolicyV4::BoundedFreshX4d => {
+                    execution.validate_production_fresh_x4d(
+                        config.response_ordinal,
+                        fresh_x4d_max.serialized_bytes,
+                    )?;
+                }
+            }
         }
         Ok((
             proof,

@@ -1775,6 +1775,25 @@ pub fn gpt2_codec_reference_packed_opening_v4() -> PackedBatchOpeningFrameV4 {
     PackedBatchOpeningFrameV4 { opening_schedule_digest: [0; 32], initial_groups, fold_rounds }
 }
 
+/// Componentwise upper bound for a production GPT-2 packed opening generated
+/// from any 111-draw tape.
+///
+/// Unlike the historical X4c selected tape, X4d derives a fresh tape for each
+/// settlement.  Its sorted/deduplicated Merkle frontiers therefore have
+/// variable length.  These counts take the maximum at every production domain
+/// and are safe to sum even when no single tape realizes every component
+/// maximum simultaneously.
+pub fn gpt2_fresh_query_max_packed_opening_components_v4() -> PackedOpeningByteComponentsV4 {
+    PackedOpeningByteComponentsV4 {
+        opened_symbols: 27_776,
+        initial_inner_siblings: 1_998,
+        initial_outer_siblings: 17_708,
+        fold_outer_siblings: 52_030,
+        metadata_bytes: 630,
+        serialized_bytes: 2_740_598,
+    }
+}
+
 impl PackedOpeningScheduleV4 {
     pub fn validate(&self) -> Result<(), FrameError> {
         if self.profile_digest != profile_digest_v4()
@@ -2366,6 +2385,51 @@ mod tests {
         assert_eq!(components.serialized_bytes, 2_615_414);
         let bytes = FrameV4::PackedBatchOpening(opening.clone()).encode().unwrap();
         assert_eq!(decode_v4(&bytes).unwrap(), FrameV4::PackedBatchOpening(opening));
+    }
+
+    #[test]
+    fn gpt2_fresh_query_component_bound_is_derived_from_every_domain() {
+        fn max_frontier(depth: u8, opened: u64) -> u64 {
+            let mut current = opened.min(1u64 << depth);
+            let mut total = 0u64;
+            for level in 0..depth {
+                let parent_capacity = 1u64 << (depth - level - 1);
+                let parents = current.min(parent_capacity);
+                total += 2 * parents - current;
+                current = parents;
+            }
+            total
+        }
+        fn projected(domain_log2: u8) -> (u64, u64) {
+            let base = 111u64.min(1u64 << (domain_log2 - 1));
+            (2 * base, 2 * max_frontier(domain_log2 - 1, base))
+        }
+
+        let groups = [(30, 2), (26, 36), (24, 13), (20, 2), (19, 49)];
+        let initial_opened =
+            groups.iter().map(|(domain, touched)| projected(*domain).0 * touched).sum::<u64>();
+        let initial_outer = groups.iter().map(|(domain, _)| projected(*domain).1).sum::<u64>();
+        let fold = (3..=29).map(projected).collect::<Vec<_>>();
+        let fold_opened = fold.iter().map(|row| row.0).sum::<u64>();
+        let fold_outer = fold.iter().map(|row| row.1).sum::<u64>();
+        let bound = gpt2_fresh_query_max_packed_opening_components_v4();
+
+        assert_eq!(initial_opened, 22_644);
+        assert_eq!(initial_outer, 17_708);
+        assert_eq!(fold_opened, 5_132);
+        assert_eq!(fold_outer, 52_030);
+        assert_eq!(bound.opened_symbols, initial_opened + fold_opened);
+        assert_eq!(bound.initial_inner_siblings, 1_998);
+        assert_eq!(bound.initial_outer_siblings, initial_outer);
+        assert_eq!(bound.fold_outer_siblings, fold_outer);
+        assert_eq!(
+            bound.serialized_bytes,
+            16 * bound.opened_symbols
+                + 32 * (bound.initial_inner_siblings
+                    + bound.initial_outer_siblings
+                    + bound.fold_outer_siblings)
+                + bound.metadata_bytes
+        );
     }
 
     #[test]

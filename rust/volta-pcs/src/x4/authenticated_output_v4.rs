@@ -1375,20 +1375,23 @@ fn prove_authenticated_output_link_accelerated_v4<R: X4cArenaRuntimeV4>(
     let sealed = draft.seal_interactive_x4c(tx, runtime, seal_config)?;
     let seal_wall_ns = phase_wall_ns_v4(seal_started)?;
     let fold_challenges = sealed.challenges().clone();
-    let selected_draws = match (query_source, settlement_context) {
+    let (selected_draws, fresh_x4d_queries) = match (query_source, settlement_context) {
         (X4AcceleratedQuerySourceV4::X4c(selected_tape), None) => {
-            selected_tape.release_after_roots(&sealed, model_root, prefix.epoch)?
+            (selected_tape.release_after_roots(&sealed, model_root, prefix.epoch)?, false)
         }
         (X4AcceleratedQuerySourceV4::X4d(query_seed), Some(context)) => {
-            query_seed.release_after_roots(&sealed, context, model_root, prefix.epoch)?
+            (query_seed.release_after_roots(&sealed, context, model_root, prefix.epoch)?, true)
         }
         _ => {
             return Err(AuthenticatedOutputErrorV4::InvalidSchedule("X4 accelerated query source"))
         }
     };
     let open_started = Instant::now();
-    let (global_folding, _verifier_groups, x4c_metrics, returned_draws) =
-        sealed.issue_queries_x4c(selected_draws.clone(), tx, runtime)?;
+    let (global_folding, _verifier_groups, x4c_metrics, returned_draws) = if fresh_x4d_queries {
+        sealed.issue_queries_x4d(selected_draws.clone(), tx, runtime)?
+    } else {
+        sealed.issue_queries_x4c(selected_draws.clone(), tx, runtime)?
+    };
     let open_wall_ns = phase_wall_ns_v4(open_started)?;
     if returned_draws != selected_draws {
         return Err(AuthenticatedOutputErrorV4::InvalidSchedule("X4c selected draw tape"));

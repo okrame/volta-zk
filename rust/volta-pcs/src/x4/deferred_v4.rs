@@ -32,7 +32,8 @@ pub const X4D_GPT2_CLAIMS_PER_RESPONSE_V1: usize = 102;
 pub const X4D_GPT2_GROUPS_PER_RESPONSE_V1: usize = 51;
 pub const X4D_QUERY_COUNT_V1: usize = 111;
 pub const X4D_GPT2_RESPONSE_BYTES_V1: u64 = 41_270_464;
-pub const X4D_GPT2_SETTLEMENT_FIXED_BYTES_V1: u64 = 2_632_812;
+pub const X4D_GPT2_MAX_PACKED_OPENING_BYTES_V1: u64 = 2_740_598;
+pub const X4D_GPT2_SETTLEMENT_FIXED_BYTES_V1: u64 = 2_757_996;
 pub const X4D_GPT2_SETTLEMENT_PER_RESPONSE_BYTES_V1: u64 = 50_424;
 
 pub const X4D_ACCUMULATOR_INIT_CONTEXT_V1: &str = "volta-zk/x4d/claim-accumulator-init/v1";
@@ -762,9 +763,34 @@ pub struct X4dSettlementEnvelopeV1 {
     pub fold_frames: Vec<FoldCommitmentFrameV4>,
     pub packed_opening_frame: PackedBatchOpeningFrameV4,
     pub zero_batch_frame: ResponseZeroBatchFrame,
+    /// Canonical zero padding from the fresh-query packed-opening length to
+    /// the geometry-derived maximum. It is settlement-envelope data only and
+    /// carries no proof statement or soundness credit.
+    pub fixed_size_padding: Vec<u8>,
 }
 
 impl X4dSettlementEnvelopeV1 {
+    pub fn pad_gpt2_settlement(&mut self, responses: usize) -> Result<(), X4dErrorV1> {
+        if responses == 0
+            || responses > X4D_PENDING_CLAIM_CAP_V1 / X4D_GPT2_CLAIMS_PER_RESPONSE_V1
+            || self.claim_frames.len()
+                != responses
+                    .checked_mul(X4D_GPT2_CLAIMS_PER_RESPONSE_V1)
+                    .ok_or(X4dErrorV1::Overflow)?
+        {
+            return Err(X4dErrorV1::Invalid("X4d GPT-2 settlement response geometry"));
+        }
+        self.fixed_size_padding.clear();
+        let unpadded = u64::try_from(self.encode()?.len()).map_err(|_| X4dErrorV1::Overflow)?;
+        let target = x4d_gpt2_settlement_bytes_v1(responses)?;
+        let padding = target
+            .checked_sub(unpadded)
+            .ok_or(X4dErrorV1::Invalid("X4d packed opening exceeds fresh-query bound"))?;
+        self.fixed_size_padding
+            .resize(usize::try_from(padding).map_err(|_| X4dErrorV1::Overflow)?, 0);
+        Ok(())
+    }
+
     pub fn validate(
         &self,
         context: &X4dSettlementContextV1,
@@ -813,6 +839,17 @@ impl X4dSettlementEnvelopeV1 {
         }
         for frame in &self.m9_frames {
             FrameV4::M9Transfer(frame.clone()).encode()?;
+        }
+        if self.claim_frames.is_empty()
+            || self.claim_frames.len() % X4D_GPT2_CLAIMS_PER_RESPONSE_V1 != 0
+            || self.fixed_size_padding.iter().any(|byte| *byte != 0)
+        {
+            return Err(X4dErrorV1::Invalid("X4d fixed-size settlement padding"));
+        }
+        let responses = self.claim_frames.len() / X4D_GPT2_CLAIMS_PER_RESPONSE_V1;
+        let encoded_len = u64::try_from(self.encode()?.len()).map_err(|_| X4dErrorV1::Overflow)?;
+        if encoded_len != x4d_gpt2_settlement_bytes_v1(responses)? {
+            return Err(X4dErrorV1::Invalid("X4d fixed-size settlement length"));
         }
         for (index, frame) in self.fold_frames.iter().enumerate() {
             frame.validate()?;
@@ -890,6 +927,7 @@ impl X4dSettlementEnvelopeV1 {
             &mut body,
             &FrameV4::ResponseZeroBatch(self.zero_batch_frame.clone()).encode()?,
         )?;
+        body.extend_from_slice(&self.fixed_size_padding);
         let body_len = u32::try_from(body.len()).map_err(|_| X4dErrorV1::Overflow)?;
         let mut encoded = Vec::with_capacity(X4D_HEADER_BYTES_V1 + body.len());
         encoded.extend_from_slice(&X4D_MAGIC_V1);
@@ -978,6 +1016,10 @@ impl X4dSettlementEnvelopeV1 {
             FrameV4::ResponseZeroBatch(frame) => frame,
             _ => return Err(X4dErrorV1::Invalid("X4d ZeroBatch child kind")),
         };
+        let fixed_size_padding = input.remaining().to_vec();
+        if fixed_size_padding.iter().any(|byte| *byte != 0) {
+            return Err(X4dErrorV1::Invalid("nonzero X4d fixed-size padding"));
+        }
         input.finish()?;
         Ok(Self {
             profile_digest,
@@ -992,6 +1034,7 @@ impl X4dSettlementEnvelopeV1 {
             fold_frames,
             packed_opening_frame,
             zero_batch_frame,
+            fixed_size_padding,
         })
     }
 }
@@ -1080,6 +1123,12 @@ impl<'a> X4dReaderV1<'a> {
             .checked_add(usize::try_from(body_len).map_err(|_| X4dErrorV1::Overflow)?)
             .ok_or(X4dErrorV1::Overflow)?;
         Ok(decode_v4(self.take(total)?)?)
+    }
+
+    fn remaining(&mut self) -> &'a [u8] {
+        let remaining = &self.bytes[self.cursor..];
+        self.cursor = self.bytes.len();
+        remaining
     }
 
     fn finish(self) -> Result<(), X4dErrorV1> {
@@ -1520,10 +1569,11 @@ mod tests {
     #[test]
     fn codec_formula_and_response_projection_are_exact() {
         assert_eq!(X4D_GPT2_RESPONSE_BYTES_V1, 41_270_464);
-        assert_eq!(x4d_gpt2_settlement_bytes_v1(1).unwrap(), 2_683_236);
-        assert_eq!(x4d_gpt2_settlement_bytes_v1(8).unwrap(), 3_036_204);
-        assert_eq!(x4d_gpt2_settlement_bytes_v1(16).unwrap(), 3_439_596);
-        assert_eq!(x4d_gpt2_settlement_bytes_v1(32).unwrap(), 4_246_380);
+        assert_eq!(X4D_GPT2_MAX_PACKED_OPENING_BYTES_V1, 2_740_598);
+        assert_eq!(x4d_gpt2_settlement_bytes_v1(1).unwrap(), 2_808_420);
+        assert_eq!(x4d_gpt2_settlement_bytes_v1(8).unwrap(), 3_161_388);
+        assert_eq!(x4d_gpt2_settlement_bytes_v1(16).unwrap(), 3_564_780);
+        assert_eq!(x4d_gpt2_settlement_bytes_v1(32).unwrap(), 4_371_564);
     }
 
     #[test]

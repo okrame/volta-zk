@@ -499,9 +499,10 @@ def _x4d_phase3_online_fixture(report, onboarding, onboarding_sha):
         "frozen_claims": 1_632,
         "masked_groups": 816,
         "settlement_epoch": 1,
-        "settlement_bytes": 3_439_596,
-        "expected_settlement_bytes": 3_439_596,
-        "amortized_settlement_bytes_per_response": 3_439_596 / 16,
+        "settlement_bytes": report.X4D_PHASE3_SETTLEMENT_BYTES,
+        "expected_settlement_bytes": report.X4D_PHASE3_SETTLEMENT_BYTES,
+        "amortized_settlement_bytes_per_response":
+            report.X4D_PHASE3_SETTLEMENT_BYTES / 16,
         "historical_four_mb_scope": "4,000,000 B is the immutable X4/X4b/X4c per-response PCS ceiling; X4d settlement uses the pinned batch formula",
         "seal_to_terminal_wall_s": 10.0,
         "proof_driver_wall_s": 2.0,

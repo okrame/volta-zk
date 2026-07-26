@@ -12,7 +12,8 @@ use volta_bench::x4d_gpt2::{
     X4D_GPT2_MODEL_TRANSCRIPT_BYTES_V1,
 };
 use volta_pcs::x4::{
-    x4d_gpt2_settlement_bytes_v1, X4D_GPT2_RESPONSE_BYTES_V1, X4D_PROFILE_NAME_V1,
+    x4d_gpt2_settlement_bytes_v1, X4D_GPT2_MAX_PACKED_OPENING_BYTES_V1, X4D_GPT2_RESPONSE_BYTES_V1,
+    X4D_PROFILE_NAME_V1,
 };
 
 const PREFLIGHT_PATH: &str =
@@ -38,6 +39,9 @@ struct SettlementReference {
     active_chain_polynomials: usize,
     fold_rounds: usize,
     query_draws: usize,
+    packed_opening_bytes: u64,
+    max_packed_opening_bytes: u64,
+    fixed_size_padding_bytes: u64,
     serialized_bytes: u64,
     expected_bytes: u64,
     sha256: String,
@@ -60,6 +64,7 @@ struct Report {
     preflight_sha256: String,
     historical_references_modified: bool,
     proof_or_gate_verdict: bool,
+    fresh_query_length_semantics: &'static str,
     response: ResponseReference,
     settlements: Vec<SettlementReference>,
 }
@@ -132,6 +137,15 @@ fn run() -> Result<Report, String> {
         let counters = X4dGpt2SettlementCountersV1::for_responses(responses)?;
         let reference = x4d_codec_reference_v1(responses, draws.clone())?;
         let serialized_bytes = reference.encoded.len() as u64;
+        let packed_opening_bytes = reference
+            .envelope
+            .packed_opening_frame
+            .byte_components()
+            .map_err(|error| format!("X4d packed-opening components: {error:?}"))?
+            .serialized_bytes;
+        let fixed_size_padding_bytes =
+            u64::try_from(reference.envelope.fixed_size_padding.len())
+                .map_err(|_| "X4d fixed-size padding length overflows".to_owned())?;
         let expected_bytes = x4d_gpt2_settlement_bytes_v1(responses)
             .map_err(|error| format!("X4d settlement formula: {error:?}"))?;
         if serialized_bytes != expected_bytes {
@@ -144,6 +158,9 @@ fn run() -> Result<Report, String> {
             active_chain_polynomials: counters.active_chain_polynomials,
             fold_rounds: counters.fold_rounds,
             query_draws: counters.query_draws,
+            packed_opening_bytes,
+            max_packed_opening_bytes: X4D_GPT2_MAX_PACKED_OPENING_BYTES_V1,
+            fixed_size_padding_bytes,
             serialized_bytes,
             expected_bytes,
             sha256: sha256_bytes(&reference.encoded, responses)?,
@@ -154,8 +171,8 @@ fn run() -> Result<Report, String> {
     }
     let root = repo_root();
     Ok(Report {
-        schema: 1,
-        milestone: "X4d-Phase2-local-codec-reference",
+        schema: 2,
+        milestone: "X4d-Phase3-fresh-query-codec-amendment-1",
         profile: String::from_utf8_lossy(X4D_PROFILE_NAME_V1).into_owned(),
         git_sha: output(&["git", "rev-parse", "HEAD"])?,
         git_dirty: !output(&["git", "status", "--porcelain", "--untracked-files=no"])?.is_empty(),
@@ -167,6 +184,8 @@ fn run() -> Result<Report, String> {
         preflight_sha256: sha256(&root.join(PREFLIGHT_PATH))?,
         historical_references_modified: false,
         proof_or_gate_verdict: false,
+        fresh_query_length_semantics:
+            "fresh settlement queries retain their registered distribution; the variable canonical Merkle frontier is bounded componentwise and the X4d envelope is padded with verified zeros to the fixed wire maximum",
         response,
         settlements,
     })

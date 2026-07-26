@@ -1339,7 +1339,7 @@ pub fn execute_real_weight_x4d_settlement_v1<R: X4cArenaRuntimeV4>(
     link_proof.global_folding.packed_opening.opening_schedule_digest =
         opening_schedule_digest_x4d_v1(&batch.context, &schedule)
             .map_err(|error| format!("X4d opening schedule digest: {error:?}"))?;
-    let envelope = X4dSettlementEnvelopeV1 {
+    let mut envelope = X4dSettlementEnvelopeV1 {
         profile_digest: volta_pcs::x4::x4d_profile_digest_v1(),
         model_root: settlement_model_root,
         settlement_epoch: epoch,
@@ -1352,7 +1352,11 @@ pub fn execute_real_weight_x4d_settlement_v1<R: X4cArenaRuntimeV4>(
         fold_frames: link_proof.global_folding.fold_frames.clone(),
         packed_opening_frame: link_proof.global_folding.packed_opening.clone(),
         zero_batch_frame: zero_batch,
+        fixed_size_padding: Vec::new(),
     };
+    envelope
+        .pad_gpt2_settlement(batch.counters.responses)
+        .map_err(|error| format!("X4d settlement padding: {error:?}"))?;
     envelope
         .validate(&batch.context, &batch.frozen_claims, &manifest_frames, &link_domains, &schedule)
         .map_err(|error| format!("X4d settlement envelope: {error:?}"))?;
@@ -1608,7 +1612,7 @@ pub fn x4d_codec_reference_v1(
         mask_correction_symbol: Fp2::ZERO,
         opened_tag_symbol: Fp2::ZERO,
     };
-    let envelope = X4dSettlementEnvelopeV1 {
+    let mut envelope = X4dSettlementEnvelopeV1 {
         profile_digest: volta_pcs::x4::x4d_profile_digest_v1(),
         model_root,
         settlement_epoch: epoch,
@@ -1621,7 +1625,11 @@ pub fn x4d_codec_reference_v1(
         fold_frames: folds,
         packed_opening_frame: packed,
         zero_batch_frame: zero,
+        fixed_size_padding: Vec::new(),
     };
+    envelope
+        .pad_gpt2_settlement(responses)
+        .map_err(|error| format!("X4d reference padding: {error:?}"))?;
     envelope
         .validate(
             &context,
@@ -1730,7 +1738,21 @@ fn codec_references_round_trip_at_all_registered_batch_sizes() {
         let mut tampered = reference.encoded.clone();
         let last = tampered.len() - 1;
         tampered[last] ^= 1;
-        assert_ne!(X4dSettlementEnvelopeV1::decode(&tampered).unwrap(), reference.envelope);
+        assert!(X4dSettlementEnvelopeV1::decode(&tampered).is_err());
+        let mut shortened = reference.encoded.clone();
+        shortened.pop();
+        let body_len = u32::try_from(shortened.len() - 16).unwrap().to_le_bytes();
+        shortened[12..16].copy_from_slice(&body_len);
+        let shortened = X4dSettlementEnvelopeV1::decode(&shortened).unwrap();
+        assert!(shortened
+            .validate(
+                &reference.context,
+                &reference.expected_claims,
+                &reference.envelope.manifest_frames,
+                &reference.link_domains,
+                &reference.opening_schedule,
+            )
+            .is_err());
         let mut wrong_context = reference.context.clone();
         wrong_context.range.settlement_epoch += 1;
         assert!(reference

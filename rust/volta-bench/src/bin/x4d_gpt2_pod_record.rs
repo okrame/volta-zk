@@ -61,7 +61,7 @@ const PROFILE: &str = "runpod-a100-x4d-v1";
 const PROTOCOL: &str = "x4-zkdeepfold-ud-e29-v4+x4d-deferred-settlement-v1";
 const MILESTONE_PREFLIGHT: &str = "X4d-GPT2-pod-preflight-v1";
 const MILESTONE_ONLINE: &str = "X4d-GPT2-real-weight-deferred-settlement-v1";
-const X4D_DESIGN_SHA256: &str = "cd66fc3df5abe5471f59c4a01e79d85382ad052491889c835dcd7de2e16e66a4";
+const X4D_DESIGN_SHA256: &str = "61be8d68df8cd5482cd815b855fd2fc417bbc3c14b2a0d20dadbe2c479816451";
 const X4C_ONBOARDING_MILESTONE: &str = "X4c-GPT2-real-weight-onboarding-crypto-id-v1";
 const X4C_PROFILE: &str = "runpod-a100-x4c-v1";
 const X4C_PROTOCOL: &str = "x4-zkdeepfold-ud-e29-v4";
@@ -1501,7 +1501,8 @@ fn online(args: &Args) -> Result<(), String> {
         settlement_gpu_overlap_intervals: 0,
         accounting_semantics: "B responses execute under strict response priority while the sealed settlement is queued; no CPU/GPU interval is falsely reported concurrent".to_owned(),
     };
-    let expected_settlement_bytes = 2_632_812 + 50_424 * SETTLED_RESPONSES as u64;
+    let expected_settlement_bytes = volta_pcs::x4::x4d_gpt2_settlement_bytes_v1(SETTLED_RESPONSES)
+        .map_err(|error| format!("X4d settlement byte formula: {error:?}"))?;
     let exact_correlations = result.prover_full_correlations
         == batch.counters.total_full_correlations_per_role
         && result.verifier_full_correlations == batch.counters.total_full_correlations_per_role;

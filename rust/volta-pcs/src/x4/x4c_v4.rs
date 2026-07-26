@@ -1638,6 +1638,7 @@ fn seal_x4c_into_arena_v4<'a, R: X4cArenaRuntimeV4>(
     let mut current_coefficients = vec![Fp2::ZERO; max_coefficient_len];
     let mut initial_codeword = Some(vec![Fp2::ZERO; max_outer_len]);
     let mut current_claim = Fp2::ZERO;
+    let initial_activation_started = Instant::now();
     let mut activated = activate_groups_x4c_v4(
         max_outer_len,
         &groups,
@@ -1647,6 +1648,7 @@ fn seal_x4c_into_arena_v4<'a, R: X4cArenaRuntimeV4>(
         &mut metrics,
         |_activation, _codeword| Ok(()),
     )?;
+    metrics.oracle_read_combine_wall_ns = elapsed_x4c_ns_v4(initial_activation_started)?;
     if activated == 0 {
         return Err(X4cErrorV4::InvalidGeometry("X4c initial activation"));
     }
@@ -1697,19 +1699,23 @@ fn seal_x4c_into_arena_v4<'a, R: X4cArenaRuntimeV4>(
             .iter()
             .any(|group| group.cohort.commitment().config.outer_len == round_layout.output_len)
             .then(|| vec![Fp2::ZERO; round_layout.output_len]);
-        activated = activated
-            .checked_add(activate_groups_x4c_v4(
-                round_layout.output_len,
-                &groups,
-                &mut current_coefficients,
-                round_activation_codeword.as_deref_mut(),
-                &mut current_claim,
-                &mut metrics,
-                |activation, codeword| {
-                    runtime.add_activation(arena, round_layout, codeword, activation)
-                },
-            )?)
+        let activation_started = Instant::now();
+        let round_activated = activate_groups_x4c_v4(
+            round_layout.output_len,
+            &groups,
+            &mut current_coefficients,
+            round_activation_codeword.as_deref_mut(),
+            &mut current_claim,
+            &mut metrics,
+            |activation, codeword| {
+                runtime.add_activation(arena, round_layout, codeword, activation)
+            },
+        )?;
+        metrics.oracle_read_combine_wall_ns = metrics
+            .oracle_read_combine_wall_ns
+            .checked_add(elapsed_x4c_ns_v4(activation_started)?)
             .ok_or(X4cErrorV4::Overflow)?;
+        activated = activated.checked_add(round_activated).ok_or(X4cErrorV4::Overflow)?;
 
         let root = runtime.build_one_slot_n4(
             arena,

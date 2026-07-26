@@ -277,6 +277,10 @@ pub struct GlobalOpenMetricsV4 {
     pub sealed_fold_outer_level_vectors: u64,
     pub serialized_fold_bytes: u64,
     pub serialized_packed_opening_bytes: u64,
+    /// Host wall spent reading and linearly combining the initial coefficient
+    /// and encoded-oracle slots before they enter the resident fold arena.
+    /// This is out-of-band driver instrumentation, not transcript data.
+    pub oracle_read_combine_wall_ns: u64,
     /// Coarse wall decomposition of the one-shot sealed-to-opening
     /// transition. The categories are deliberately implementation-facing and
     /// do not enter the transcript or proof grammar.

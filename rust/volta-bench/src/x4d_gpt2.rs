@@ -114,6 +114,57 @@ pub struct X4dGpt2SettlementCountersV1 {
     pub total_full_correlations_per_role: u64,
 }
 
+/// Wall-only decomposition of the X4d settlement proof driver.
+///
+/// The first four fields cover the prover path from settlement entry through
+/// the canonical packed opening. Verification, envelope validation/encoding
+/// and terminal accounting remain visible in the post-open field. None of
+/// these values enters a proof or transcript.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct X4dSettlementDriverPhaseWallsV1 {
+    pub claim_coefficient_preparation_wall_ns: u64,
+    pub oracle_read_combine_wall_ns: u64,
+    pub fold_merkle_wall_ns: u64,
+    pub query_gather_wall_ns: u64,
+    pub instrumented_prover_wall_ns: u64,
+    pub post_open_verify_codec_wall_ns: u64,
+    pub total_settlement_driver_wall_ns: u64,
+}
+
+/// Internal settlement traffic/residency census omitted by the X4d-v1 record.
+///
+/// "Evaluation table" names the Boolean-hypercube tables borrowed by the
+/// authenticated-output relation sumcheck. They are distinct from the
+/// encoded oracle retained by the X4c accelerated folding engine.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct X4dSettlementDriverCountersV1 {
+    pub unique_evaluation_tables: u64,
+    pub unique_evaluation_table_symbols: u64,
+    pub evaluation_table_bytes: u64,
+    pub evaluation_table_cpu_resident_bytes: u64,
+    pub evaluation_table_gpu_resident_bytes: u64,
+    pub evaluation_table_h2d_bytes: u64,
+    pub evaluation_table_d2h_bytes: u64,
+    /// Host-owned evaluation copies materialized by response-local terms.
+    pub response_local_evaluation_clone_bytes: u64,
+    /// Host-owned equality vectors paired one-for-one with those copies.
+    pub response_local_equality_table_bytes: u64,
+    /// Unique source tables plus both response-local payload classes at the
+    /// pre-sumcheck materialization peak; allocator overhead is excluded.
+    pub peak_relation_table_cpu_payload_bytes: u64,
+    pub peak_relation_table_gpu_payload_bytes: u64,
+    pub relation_terms: u64,
+    pub logical_evaluation_table_symbols_read: u64,
+    pub logical_evaluation_table_bytes_read: u64,
+    pub evaluation_table_passes_per_unique_table: u64,
+    pub encoded_oracle_full_passes: u64,
+    pub response_or_claim_proportional_encoded_oracle_passes: u64,
+    pub source_coefficients_read: u64,
+    pub initial_encoded_symbols_read: u64,
+    pub combined_codeword_symbols: u64,
+    pub query_gather_calls: u64,
+}
+
 impl X4dGpt2SettlementCountersV1 {
     pub fn for_responses(responses: usize) -> Result<Self, String> {
         if responses == 0 || responses > 32 {
@@ -199,6 +250,8 @@ pub struct X4dGpt2SettlementResultV1 {
     pub open_wall_ns: u64,
     pub verify_wall_ns: u64,
     pub settlement_wall_ns: u64,
+    pub driver_phase_walls: X4dSettlementDriverPhaseWallsV1,
+    pub driver_counters: X4dSettlementDriverCountersV1,
     pub envelope: X4dSettlementEnvelopeV1,
     pub encoded_settlement: Vec<u8>,
     pub prover_full_correlations: u64,
@@ -865,6 +918,34 @@ fn combined_evaluations_v1<'a>(
     }
 }
 
+fn evaluation_table_residency_v1(
+    weight_evaluations: &X4cGpt2EvaluationTables,
+    auxiliary: &X4dFreshAuxiliarySetV1,
+) -> Result<(u64, u64), String> {
+    let mut identities = BTreeSet::new();
+    let mut symbols = 0u64;
+    for table in weight_evaluations
+        .slots
+        .iter()
+        .take(X4D_STATIC_WEIGHT_COHORTS_V1)
+        .chain(&auxiliary.evaluation_slots)
+        .flat_map(|cohort| cohort.iter().flatten())
+    {
+        let identity = (table.as_ptr() as usize, table.len());
+        if identities.insert(identity) {
+            symbols = symbols
+                .checked_add(
+                    u64::try_from(table.len())
+                        .map_err(|_| "X4d evaluation-table symbol count overflows".to_owned())?,
+                )
+                .ok_or_else(|| "X4d evaluation-table symbol count overflows".to_owned())?;
+        }
+    }
+    let tables = u64::try_from(identities.len())
+        .map_err(|_| "X4d evaluation-table count overflows".to_owned())?;
+    Ok((tables, symbols))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn reduce_frozen_weight_claims_v1(
     model: &Gpt2Model,
@@ -1092,6 +1173,8 @@ pub fn execute_real_weight_x4d_settlement_v1<R: X4cArenaRuntimeV4>(
 
     let prover_fulls_before = stream.counters.full_corrs;
     let verifier_fulls_before = verifier.counters.full_corrs;
+    let (unique_evaluation_tables, unique_evaluation_table_symbols) =
+        evaluation_table_residency_v1(weight_evaluations, &fresh_auxiliary)?;
     let reduced = reduce_frozen_weight_claims_v1(
         model,
         inventory,
@@ -1245,6 +1328,8 @@ pub fn execute_real_weight_x4d_settlement_v1<R: X4cArenaRuntimeV4>(
             freshness.freshness_record_digest_bytes,
         )
         .map_err(|error| format!("X4d prover opening permit: {error:?}"))?;
+    let pre_link_wall_ns = u64::try_from(settlement_started.elapsed().as_nanos())
+        .map_err(|_| "X4d pre-link wall overflows".to_owned())?;
     let (mut link_proof, bound_prover, link_metrics, x4c_metrics, phase_walls, selected_draws) =
         prove_authenticated_output_link_x4d_v4(
             prover_permit,
@@ -1393,6 +1478,80 @@ pub fn execute_real_weight_x4d_settlement_v1<R: X4cArenaRuntimeV4>(
     let settlement_wall_ns = u64::try_from(settlement_started.elapsed().as_nanos())
         .map(|value| value.max(1))
         .map_err(|_| "X4d settlement wall overflows".to_owned())?;
+    let claim_coefficient_preparation_wall_ns = pre_link_wall_ns
+        .checked_add(phase_walls.claim_coefficient_preparation_wall_ns)
+        .ok_or_else(|| "X4d coefficient-preparation wall overflows".to_owned())?;
+    let instrumented_prover_wall_ns = claim_coefficient_preparation_wall_ns
+        .checked_add(phase_walls.oracle_read_combine_wall_ns)
+        .and_then(|value| value.checked_add(phase_walls.fold_merkle_wall_ns))
+        .and_then(|value| value.checked_add(phase_walls.query_gather_wall_ns))
+        .ok_or_else(|| "X4d instrumented prover wall overflows".to_owned())?;
+    let post_open_verify_codec_wall_ns = settlement_wall_ns
+        .checked_sub(instrumented_prover_wall_ns)
+        .ok_or_else(|| "X4d phase-wall partition exceeds settlement wall".to_owned())?;
+    let evaluation_table_bytes = unique_evaluation_table_symbols
+        .checked_mul(16)
+        .ok_or_else(|| "X4d evaluation-table byte count overflows".to_owned())?;
+    let relation_terms = u64::try_from(
+        batch
+            .counters
+            .masked_groups
+            .checked_mul(2)
+            .ok_or_else(|| "X4d relation-term count overflows".to_owned())?,
+    )
+    .map_err(|_| "X4d relation-term count overflows".to_owned())?;
+    let logical_evaluation_table_symbols_read = link_metrics.sumcheck_source_symbols_read;
+    let logical_evaluation_table_bytes_read = logical_evaluation_table_symbols_read
+        .checked_mul(16)
+        .ok_or_else(|| "X4d logical evaluation-table byte count overflows".to_owned())?;
+    let response_local_evaluation_clone_bytes = logical_evaluation_table_bytes_read;
+    let response_local_equality_table_bytes = logical_evaluation_table_bytes_read;
+    let peak_relation_table_cpu_payload_bytes = evaluation_table_bytes
+        .checked_add(response_local_evaluation_clone_bytes)
+        .and_then(|value| value.checked_add(response_local_equality_table_bytes))
+        .ok_or_else(|| "X4d relation-table CPU payload overflows".to_owned())?;
+    let response_passes = u64::try_from(batch.counters.responses)
+        .map_err(|_| "X4d evaluation-table pass count overflows".to_owned())?;
+    if x4c_metrics.global_open.source_coefficients_read != unique_evaluation_table_symbols
+        || logical_evaluation_table_symbols_read
+            != unique_evaluation_table_symbols
+                .checked_mul(response_passes)
+                .ok_or_else(|| "X4d logical evaluation-table symbols overflow".to_owned())?
+    {
+        return Err("X4d evaluation-table/pass accounting diverged".to_owned());
+    }
+    let driver_phase_walls = X4dSettlementDriverPhaseWallsV1 {
+        claim_coefficient_preparation_wall_ns,
+        oracle_read_combine_wall_ns: phase_walls.oracle_read_combine_wall_ns,
+        fold_merkle_wall_ns: phase_walls.fold_merkle_wall_ns,
+        query_gather_wall_ns: phase_walls.query_gather_wall_ns,
+        instrumented_prover_wall_ns,
+        post_open_verify_codec_wall_ns,
+        total_settlement_driver_wall_ns: settlement_wall_ns,
+    };
+    let driver_counters = X4dSettlementDriverCountersV1 {
+        unique_evaluation_tables,
+        unique_evaluation_table_symbols,
+        evaluation_table_bytes,
+        evaluation_table_cpu_resident_bytes: evaluation_table_bytes,
+        evaluation_table_gpu_resident_bytes: 0,
+        evaluation_table_h2d_bytes: 0,
+        evaluation_table_d2h_bytes: 0,
+        response_local_evaluation_clone_bytes,
+        response_local_equality_table_bytes,
+        peak_relation_table_cpu_payload_bytes,
+        peak_relation_table_gpu_payload_bytes: 0,
+        relation_terms,
+        logical_evaluation_table_symbols_read,
+        logical_evaluation_table_bytes_read,
+        evaluation_table_passes_per_unique_table: response_passes,
+        encoded_oracle_full_passes: 1,
+        response_or_claim_proportional_encoded_oracle_passes: 0,
+        source_coefficients_read: x4c_metrics.global_open.source_coefficients_read,
+        initial_encoded_symbols_read: x4c_metrics.global_open.initial_encoded_symbols_read,
+        combined_codeword_symbols: x4c_metrics.global_open.combined_codeword_symbols,
+        query_gather_calls: x4c_metrics.execution.query_gather_calls,
+    };
     Ok(X4dGpt2SettlementResultV1 {
         static_weight_commitment_digest,
         settlement_model_root,
@@ -1407,6 +1566,8 @@ pub fn execute_real_weight_x4d_settlement_v1<R: X4cArenaRuntimeV4>(
         open_wall_ns: phase_walls.open_wall_ns,
         verify_wall_ns,
         settlement_wall_ns,
+        driver_phase_walls,
+        driver_counters,
         envelope,
         encoded_settlement,
         prover_full_correlations,

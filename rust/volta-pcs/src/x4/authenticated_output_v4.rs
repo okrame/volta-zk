@@ -43,6 +43,18 @@ pub const GLOBAL_FOLD_COHORT_ID_V4: u32 = 0xA500_F001;
 /// frames, protocol inputs, CUDA-event measurements or soundness evidence.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct X4cAuthenticatedOutputPhaseWallsV4 {
+    /// Validation, relation-coefficient construction, evaluation-table
+    /// materialization and delayed sumcheck before the encoded oracle is read.
+    pub claim_coefficient_preparation_wall_ns: u64,
+    /// Initial coefficient/codeword reads and linear combination across all
+    /// activated source groups.
+    pub oracle_read_combine_wall_ns: u64,
+    /// The remainder of the physical seal: resident folds, N4 construction
+    /// and parity gathers.
+    pub fold_merkle_wall_ns: u64,
+    /// The one canonical post-seal opening/query gather.
+    pub query_gather_wall_ns: u64,
+    /// Historical aggregate fields retained for X4c record compatibility.
     pub seal_wall_ns: u64,
     pub open_wall_ns: u64,
 }
@@ -1235,6 +1247,7 @@ fn prove_authenticated_output_link_accelerated_v4<R: X4cArenaRuntimeV4>(
     runtime: &mut R,
     seal_config: X4cSealConfigV4,
 ) -> Result<X4AcceleratedAuthenticatedOutputProverResultV4, AuthenticatedOutputErrorV4> {
+    let claim_coefficient_preparation_started = Instant::now();
     if permit.model_root != model_root
         || permit.epoch != prefix.epoch
         || permit.persistent_freshness_record_digest.is_none()
@@ -1371,6 +1384,8 @@ fn prove_authenticated_output_link_accelerated_v4<R: X4cArenaRuntimeV4>(
         sumcheck.point.clone(),
         groups,
     )?;
+    let claim_coefficient_preparation_wall_ns =
+        phase_wall_ns_v4(claim_coefficient_preparation_started)?;
     let seal_started = Instant::now();
     let sealed = draft.seal_interactive_x4c(tx, runtime, seal_config)?;
     let seal_wall_ns = phase_wall_ns_v4(seal_started)?;
@@ -1460,6 +1475,10 @@ fn prove_authenticated_output_link_accelerated_v4<R: X4cArenaRuntimeV4>(
         .and_then(|bytes| bytes.checked_add(metrics.response_zero_batch_frame_bytes))
         .ok_or(AuthenticatedOutputErrorV4::Overflow)?;
     accumulate_global_metrics_v4(&mut metrics, &x4c_metrics.global_open);
+    let oracle_read_combine_wall_ns = x4c_metrics.global_open.oracle_read_combine_wall_ns;
+    let fold_merkle_wall_ns = seal_wall_ns
+        .checked_sub(oracle_read_combine_wall_ns)
+        .ok_or(AuthenticatedOutputErrorV4::Overflow)?;
     let bound = blocks
         .into_iter()
         .map(|block| BoundAuxEvalProverV4 {
@@ -1472,7 +1491,14 @@ fn prove_authenticated_output_link_accelerated_v4<R: X4cArenaRuntimeV4>(
         bound,
         metrics,
         x4c_metrics,
-        X4cAuthenticatedOutputPhaseWallsV4 { seal_wall_ns, open_wall_ns },
+        X4cAuthenticatedOutputPhaseWallsV4 {
+            claim_coefficient_preparation_wall_ns,
+            oracle_read_combine_wall_ns,
+            fold_merkle_wall_ns,
+            query_gather_wall_ns: open_wall_ns,
+            seal_wall_ns,
+            open_wall_ns,
+        },
         selected_draws,
     ))
 }

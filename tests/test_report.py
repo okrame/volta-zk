@@ -690,6 +690,86 @@ def test_x4d_phase3_validators_are_chained_and_fail_closed(tmp_path):
             )
 
 
+def test_x4d1_flatness_validator_keeps_informative_wall_out_of_gate(tmp_path):
+    report = load_report_module()
+
+    def run_summary(responses, wall, interference):
+        return {
+            "input_path": f"/records/x4d1-k{responses}.json",
+            "input_sha256": f"{responses:064x}",
+            "responses": responses,
+            "settlement_wall_s": wall,
+            "selected_g1_wall_s": 4.90,
+            "g1_overall_pass": True,
+            "settlement_accepted": True,
+            "min_response_wall_s": 4.87,
+            "max_response_wall_s": 5.04,
+            "response_bytes": report.X4D1_RESPONSE_BYTES,
+            "interference_percentage_delta": interference,
+            "initial_encoded_symbols_read": report.X4D1_INITIAL_ENCODED_SYMBOLS,
+            "combined_codeword_symbols": report.X4D1_COMBINED_CODEWORD_SYMBOLS,
+            "materialized_relation_terms": 102,
+            "fused_relation_terms": 102 * (responses - 1),
+        }
+
+    row = {
+        "schema": 1,
+        "milestone": report.X4D1_FLATNESS_MILESTONE,
+        "git_sha": "a" * 40,
+        "git_dirty": False,
+        "producer_source_sha256": report.X4D1_FLATNESS_PRODUCER_SHA256,
+        "profile": report.X4D_PHASE3_PROFILE,
+        "protocol": report.X4D_PHASE3_PROTOCOL,
+        "design_sha256": report.X4D1_DESIGN_SHA256,
+        "same_host": True,
+        "wall_semantics": report.X4D1_WALL_SEMANTICS,
+        "k1": run_summary(1, 300.0, 0.2),
+        "k16": run_summary(16, 350.0, 0.4),
+        "settlement_wall_ratio_k16_over_k1": 350.0 / 300.0,
+        "flatness_ceiling": 1.30,
+        "wall_flatness_pass": True,
+        "initial_encoded_symbols_equal": True,
+        "combined_codeword_symbols_equal": True,
+        "physical_counter_gate_pass": True,
+        "g1_rerun_pass": True,
+        "response_bytes_unchanged": True,
+        "interference_ceiling_percentage_delta": 1.0,
+        "interference_rerun_pass": True,
+        "inherited_settlement_gates_pass": True,
+        "binding_gate_verdict_verbatim": (
+            "PASS — FLATNESS IN k: settlement_wall(k=16) <= 1.30 x "
+            "settlement_wall(k=1), with equal initial_encoded_symbols_read and "
+            "combined_codeword_symbols"
+        ),
+        "informative_target": {
+            "lower_s": 288.0,
+            "upper_s": 307.0,
+            "k16_at_or_below_upper": False,
+            "affects_binding_gate": False,
+            "policy": (
+                "Informative only: a 350 s k=16 wall with a green flatness gate "
+                "is PASS with a note, not FAIL"
+            ),
+        },
+        "historical_rows_modified": False,
+        "overall_pass": True,
+    }
+    assert report._x4d1_flatness_valid(row) is True
+    path = tmp_path / "x4d1-flatness.json"
+    path.write_text(json.dumps(row))
+    assert report.validate_x4d1_flatness(path) is True
+
+    bad = copy.deepcopy(row)
+    bad["informative_target"]["affects_binding_gate"] = True
+    assert report._x4d1_flatness_valid(bad) is False
+    bad = copy.deepcopy(row)
+    bad["k16"]["initial_encoded_symbols_read"] += 1
+    assert report._x4d1_flatness_valid(bad) is False
+    bad = copy.deepcopy(row)
+    bad["settlement_wall_ratio_k16_over_k1"] = 1.31
+    assert report._x4d1_flatness_valid(bad) is False
+
+
 def test_x4_v4_pod_validator_accepts_only_the_fail_closed_physical_record():
     report = load_report_module()
     cohort_names = [

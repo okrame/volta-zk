@@ -475,7 +475,17 @@ pub struct AuthenticatedOutputLinkMetricsV4 {
     pub seam_frame_bytes: u64,
     pub fold_bytes: u64,
     pub packed_opening_bytes: u64,
+    /// Protocol relation terms before any implementation-only linear fusion.
+    pub sumcheck_relation_terms: u64,
+    /// Physical delayed-sumcheck terms materialized by the prover driver.
+    pub sumcheck_materialized_terms: u64,
+    /// Response-local terms eliminated by settlement-only early fusion.
+    pub sumcheck_fused_terms: u64,
+    /// Source-table symbols cloned into materialized terms. This is an actual
+    /// driver pass counter, not the logical protocol relation count.
     pub sumcheck_source_symbols_read: u64,
+    /// Equality-table symbols retained by the materialized terms.
+    pub sumcheck_equality_symbols_materialized: u64,
     pub source_coefficients_read: u64,
     pub encoded_symbols_read: u64,
     pub combined_coefficient_symbols: u64,
@@ -610,6 +620,122 @@ impl DelayedSumcheckTermV4 {
         }
         Ok(self.coefficient * self.evaluations[0] * self.equality[0] * self.virtual_factor)
     }
+
+    fn from_fused_equality(
+        evaluations: &[Fp2],
+        equality: Vec<Fp2>,
+        dimension: usize,
+        global_rounds: usize,
+    ) -> Result<Self, AuthenticatedOutputErrorV4> {
+        if dimension == 0
+            || dimension > global_rounds
+            || evaluations.len() != equality.len()
+            || evaluations.len() != 1usize.checked_shl(dimension as u32).unwrap_or(0)
+        {
+            return Err(AuthenticatedOutputErrorV4::InvalidGeometry(
+                "X4d fused link polynomial table",
+            ));
+        }
+        Ok(Self {
+            coefficient: Fp2::ONE,
+            evaluations: evaluations.to_vec(),
+            equality,
+            leading_virtual_rounds: global_rounds - dimension,
+            virtual_factor: Fp2::ONE,
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct FusedSettlementTermKeyV4 {
+    cohort: LinkCohortKeyV4,
+    slot: u16,
+}
+
+struct FusedSettlementTermAccumulatorV4<'a> {
+    evaluations: &'a [Fp2],
+    equality: Vec<Fp2>,
+    dimension: usize,
+}
+
+fn accumulate_fused_settlement_term_v4<'a>(
+    terms: &mut BTreeMap<FusedSettlementTermKeyV4, FusedSettlementTermAccumulatorV4<'a>>,
+    polynomial: &LinkPolynomialProverV4<'a>,
+    coefficient: Fp2,
+) -> Result<(), AuthenticatedOutputErrorV4> {
+    let key = FusedSettlementTermKeyV4 {
+        cohort: LinkCohortKeyV4::from_cohort(polynomial.cohort),
+        slot: polynomial.slot,
+    };
+    let mut equality = eq_vec(polynomial.target_point);
+    for value in &mut equality {
+        *value = coefficient * *value;
+    }
+    match terms.entry(key) {
+        std::collections::btree_map::Entry::Vacant(entry) => {
+            entry.insert(FusedSettlementTermAccumulatorV4 {
+                evaluations: polynomial.evaluations,
+                equality,
+                dimension: polynomial.target_point.len(),
+            });
+        }
+        std::collections::btree_map::Entry::Occupied(mut entry) => {
+            let accumulator = entry.get_mut();
+            if accumulator.dimension != polynomial.target_point.len()
+                || accumulator.evaluations.len() != polynomial.evaluations.len()
+                || !std::ptr::eq(accumulator.evaluations.as_ptr(), polynomial.evaluations.as_ptr())
+                || accumulator.equality.len() != equality.len()
+            {
+                return Err(AuthenticatedOutputErrorV4::InvalidSchedule(
+                    "X4d fused link source alias",
+                ));
+            }
+            for (combined, contribution) in accumulator.equality.iter_mut().zip(equality) {
+                *combined += contribution;
+            }
+        }
+    }
+    Ok(())
+}
+
+struct MaterializedDelayedTermsV4 {
+    terms: Vec<DelayedSumcheckTermV4>,
+    source_symbols_read: u64,
+    equality_symbols_materialized: u64,
+}
+
+fn materialize_fused_settlement_terms_v4(
+    terms: BTreeMap<FusedSettlementTermKeyV4, FusedSettlementTermAccumulatorV4<'_>>,
+    global_rounds: usize,
+) -> Result<MaterializedDelayedTermsV4, AuthenticatedOutputErrorV4> {
+    let mut source_symbols_read = 0u64;
+    let mut equality_symbols_materialized = 0u64;
+    let mut materialized = Vec::with_capacity(terms.len());
+    for (_, term) in terms {
+        source_symbols_read = source_symbols_read
+            .checked_add(
+                u64::try_from(term.evaluations.len())
+                    .map_err(|_| AuthenticatedOutputErrorV4::Overflow)?,
+            )
+            .ok_or(AuthenticatedOutputErrorV4::Overflow)?;
+        equality_symbols_materialized = equality_symbols_materialized
+            .checked_add(
+                u64::try_from(term.equality.len())
+                    .map_err(|_| AuthenticatedOutputErrorV4::Overflow)?,
+            )
+            .ok_or(AuthenticatedOutputErrorV4::Overflow)?;
+        materialized.push(DelayedSumcheckTermV4::from_fused_equality(
+            term.evaluations,
+            term.equality,
+            term.dimension,
+            global_rounds,
+        )?);
+    }
+    Ok(MaterializedDelayedTermsV4 {
+        terms: materialized,
+        source_symbols_read,
+        equality_symbols_materialized,
+    })
 }
 
 struct SumcheckProverOutputV4 {
@@ -1047,6 +1173,7 @@ pub fn prove_authenticated_output_link_v4(
     }
     let schedule_digest =
         validate_prefix_common_v4(prefix, &descriptors, &public_h, round_count, None)?;
+    let accumulate_duplicate_slots = false;
     let keys = prover_keys_v4(&blocks);
 
     // All roots, h values and M9 corrections are fixed before this vector of
@@ -1057,7 +1184,8 @@ pub fn prove_authenticated_output_link_v4(
     let activation = activation_challenges_v4(&keys, tx);
     let mut power = beta;
     let mut initial_claim = ProverAuthed::ZERO;
-    let mut terms = Vec::with_capacity(2 * blocks.len());
+    let mut response_local_terms = Vec::with_capacity(2 * blocks.len());
+    let mut fused_settlement_terms = BTreeMap::new();
     let mut bases = Vec::with_capacity(blocks.len());
     for block in &blocks {
         let weight_key = LinkCohortKeyV4::from_cohort(block.weight_extension.cohort);
@@ -1070,23 +1198,67 @@ pub fn prove_authenticated_output_link_v4(
         initial_claim = initial_claim
             .add(ProverAuthed::from_public(block.public_h).scale(masked_coefficient))
             .add(block.pending_aux.auth.scale(output_coefficient));
-        terms.push(DelayedSumcheckTermV4::new(
-            masked_coefficient,
-            block.weight_extension.evaluations,
-            block.weight_extension.target_point,
-            round_count,
-        )?);
-        terms.push(DelayedSumcheckTermV4::new(
-            auxiliary_coefficient,
-            block.auxiliary.evaluations,
-            block.auxiliary.target_point,
-            round_count,
-        )?);
+        if accumulate_duplicate_slots {
+            accumulate_fused_settlement_term_v4(
+                &mut fused_settlement_terms,
+                &block.weight_extension,
+                masked_coefficient,
+            )?;
+            accumulate_fused_settlement_term_v4(
+                &mut fused_settlement_terms,
+                &block.auxiliary,
+                auxiliary_coefficient,
+            )?;
+        } else {
+            response_local_terms.push(DelayedSumcheckTermV4::new(
+                masked_coefficient,
+                block.weight_extension.evaluations,
+                block.weight_extension.target_point,
+                round_count,
+            )?);
+            response_local_terms.push(DelayedSumcheckTermV4::new(
+                auxiliary_coefficient,
+                block.auxiliary.evaluations,
+                block.auxiliary.target_point,
+                round_count,
+            )?);
+        }
         bases.push((weight_base, auxiliary_base));
         power = auxiliary_base * beta;
     }
+    let relation_terms =
+        u64::try_from(2 * blocks.len()).map_err(|_| AuthenticatedOutputErrorV4::Overflow)?;
+    let materialized = if accumulate_duplicate_slots {
+        materialize_fused_settlement_terms_v4(fused_settlement_terms, round_count)?
+    } else {
+        let source_symbols_read = response_local_terms.iter().try_fold(0u64, |sum, term| {
+            sum.checked_add(
+                u64::try_from(term.evaluations.len())
+                    .map_err(|_| AuthenticatedOutputErrorV4::Overflow)?,
+            )
+            .ok_or(AuthenticatedOutputErrorV4::Overflow)
+        })?;
+        let equality_symbols_materialized =
+            response_local_terms.iter().try_fold(0u64, |sum, term| {
+                sum.checked_add(
+                    u64::try_from(term.equality.len())
+                        .map_err(|_| AuthenticatedOutputErrorV4::Overflow)?,
+                )
+                .ok_or(AuthenticatedOutputErrorV4::Overflow)
+            })?;
+        MaterializedDelayedTermsV4 {
+            terms: response_local_terms,
+            source_symbols_read,
+            equality_symbols_materialized,
+        }
+    };
+    let materialized_terms = u64::try_from(materialized.terms.len())
+        .map_err(|_| AuthenticatedOutputErrorV4::Overflow)?;
+    let fused_terms = relation_terms
+        .checked_sub(materialized_terms)
+        .ok_or(AuthenticatedOutputErrorV4::Overflow)?;
     let sumcheck = prove_delayed_sumcheck_v4(
-        terms,
+        materialized.terms,
         round_count,
         initial_claim,
         stream,
@@ -1191,16 +1363,11 @@ pub fn prove_authenticated_output_link_v4(
         )
         .map_err(|_| AuthenticatedOutputErrorV4::Overflow)?,
         response_zero_batch_frame_bytes: 50,
-        sumcheck_source_symbols_read: blocks.iter().try_fold(0u64, |sum, block| {
-            let count = block
-                .weight_extension
-                .evaluations
-                .len()
-                .checked_add(block.auxiliary.evaluations.len())
-                .ok_or(AuthenticatedOutputErrorV4::Overflow)?;
-            sum.checked_add(u64::try_from(count).map_err(|_| AuthenticatedOutputErrorV4::Overflow)?)
-                .ok_or(AuthenticatedOutputErrorV4::Overflow)
-        })?,
+        sumcheck_relation_terms: relation_terms,
+        sumcheck_materialized_terms: materialized_terms,
+        sumcheck_fused_terms: fused_terms,
+        sumcheck_source_symbols_read: materialized.source_symbols_read,
+        sumcheck_equality_symbols_materialized: materialized.equality_symbols_materialized,
         ..Default::default()
     };
     metrics.seam_frame_bytes = metrics
@@ -1301,7 +1468,8 @@ fn prove_authenticated_output_link_accelerated_v4<R: X4cArenaRuntimeV4>(
     let activation = activation_challenges_v4(&keys, tx);
     let mut power = beta;
     let mut initial_claim = ProverAuthed::ZERO;
-    let mut terms = Vec::with_capacity(2 * blocks.len());
+    let mut response_local_terms = Vec::with_capacity(2 * blocks.len());
+    let mut fused_settlement_terms = BTreeMap::new();
     let mut bases = Vec::with_capacity(blocks.len());
     for block in &blocks {
         let weight_key = LinkCohortKeyV4::from_cohort(block.weight_extension.cohort);
@@ -1314,23 +1482,67 @@ fn prove_authenticated_output_link_accelerated_v4<R: X4cArenaRuntimeV4>(
         initial_claim = initial_claim
             .add(ProverAuthed::from_public(block.public_h).scale(masked_coefficient))
             .add(block.pending_aux.auth.scale(output_coefficient));
-        terms.push(DelayedSumcheckTermV4::new(
-            masked_coefficient,
-            block.weight_extension.evaluations,
-            block.weight_extension.target_point,
-            round_count,
-        )?);
-        terms.push(DelayedSumcheckTermV4::new(
-            auxiliary_coefficient,
-            block.auxiliary.evaluations,
-            block.auxiliary.target_point,
-            round_count,
-        )?);
+        if accumulate_duplicate_slots {
+            accumulate_fused_settlement_term_v4(
+                &mut fused_settlement_terms,
+                &block.weight_extension,
+                masked_coefficient,
+            )?;
+            accumulate_fused_settlement_term_v4(
+                &mut fused_settlement_terms,
+                &block.auxiliary,
+                auxiliary_coefficient,
+            )?;
+        } else {
+            response_local_terms.push(DelayedSumcheckTermV4::new(
+                masked_coefficient,
+                block.weight_extension.evaluations,
+                block.weight_extension.target_point,
+                round_count,
+            )?);
+            response_local_terms.push(DelayedSumcheckTermV4::new(
+                auxiliary_coefficient,
+                block.auxiliary.evaluations,
+                block.auxiliary.target_point,
+                round_count,
+            )?);
+        }
         bases.push((weight_base, auxiliary_base));
         power = auxiliary_base * beta;
     }
+    let relation_terms =
+        u64::try_from(2 * blocks.len()).map_err(|_| AuthenticatedOutputErrorV4::Overflow)?;
+    let materialized = if accumulate_duplicate_slots {
+        materialize_fused_settlement_terms_v4(fused_settlement_terms, round_count)?
+    } else {
+        let source_symbols_read = response_local_terms.iter().try_fold(0u64, |sum, term| {
+            sum.checked_add(
+                u64::try_from(term.evaluations.len())
+                    .map_err(|_| AuthenticatedOutputErrorV4::Overflow)?,
+            )
+            .ok_or(AuthenticatedOutputErrorV4::Overflow)
+        })?;
+        let equality_symbols_materialized =
+            response_local_terms.iter().try_fold(0u64, |sum, term| {
+                sum.checked_add(
+                    u64::try_from(term.equality.len())
+                        .map_err(|_| AuthenticatedOutputErrorV4::Overflow)?,
+                )
+                .ok_or(AuthenticatedOutputErrorV4::Overflow)
+            })?;
+        MaterializedDelayedTermsV4 {
+            terms: response_local_terms,
+            source_symbols_read,
+            equality_symbols_materialized,
+        }
+    };
+    let materialized_terms = u64::try_from(materialized.terms.len())
+        .map_err(|_| AuthenticatedOutputErrorV4::Overflow)?;
+    let fused_terms = relation_terms
+        .checked_sub(materialized_terms)
+        .ok_or(AuthenticatedOutputErrorV4::Overflow)?;
     let sumcheck = prove_delayed_sumcheck_v4(
-        terms,
+        materialized.terms,
         round_count,
         initial_claim,
         stream,
@@ -1457,16 +1669,11 @@ fn prove_authenticated_output_link_accelerated_v4<R: X4cArenaRuntimeV4>(
         )
         .map_err(|_| AuthenticatedOutputErrorV4::Overflow)?,
         response_zero_batch_frame_bytes: 50,
-        sumcheck_source_symbols_read: blocks.iter().try_fold(0u64, |sum, block| {
-            let count = block
-                .weight_extension
-                .evaluations
-                .len()
-                .checked_add(block.auxiliary.evaluations.len())
-                .ok_or(AuthenticatedOutputErrorV4::Overflow)?;
-            sum.checked_add(u64::try_from(count).map_err(|_| AuthenticatedOutputErrorV4::Overflow)?)
-                .ok_or(AuthenticatedOutputErrorV4::Overflow)
-        })?,
+        sumcheck_relation_terms: relation_terms,
+        sumcheck_materialized_terms: materialized_terms,
+        sumcheck_fused_terms: fused_terms,
+        sumcheck_source_symbols_read: materialized.source_symbols_read,
+        sumcheck_equality_symbols_materialized: materialized.equality_symbols_materialized,
         ..Default::default()
     };
     metrics.seam_frame_bytes = metrics
@@ -2060,6 +2267,99 @@ mod tests {
         assert_eq!(claim, term.terminal().unwrap());
     }
 
+    #[test]
+    fn fused_settlement_terms_are_round_exact_and_require_one_source_alias() {
+        let descriptor = [0x18; 32];
+        let evaluations = (0..16).map(|index| symbol(700 + index)).collect::<Vec<_>>();
+        let duplicate_allocation = evaluations.clone();
+        let cohort =
+            committed(descriptor, 0xA510_0001, OracleKindV4::WeightExtension, &evaluations);
+        let points = [
+            vec![symbol(3), symbol(5), symbol(7), Fp2::ZERO],
+            vec![symbol(11), symbol(13), symbol(17), Fp2::ZERO],
+            vec![symbol(19), symbol(23), symbol(29), Fp2::ZERO],
+        ];
+        let coefficients = [symbol(31), symbol(37), symbol(41)];
+        let mut response_local = points
+            .iter()
+            .zip(coefficients)
+            .map(|(point, coefficient)| {
+                DelayedSumcheckTermV4::new(coefficient, &evaluations, point, 4).unwrap()
+            })
+            .collect::<Vec<_>>();
+        let mut accumulators = BTreeMap::new();
+        for (point, coefficient) in points.iter().zip(coefficients) {
+            accumulate_fused_settlement_term_v4(
+                &mut accumulators,
+                &LinkPolynomialProverV4 {
+                    cohort: &cohort,
+                    slot: 0,
+                    evaluations: &evaluations,
+                    target_point: point,
+                },
+                coefficient,
+            )
+            .unwrap();
+        }
+        let alias_rejected = accumulate_fused_settlement_term_v4(
+            &mut accumulators,
+            &LinkPolynomialProverV4 {
+                cohort: &cohort,
+                slot: 0,
+                evaluations: &duplicate_allocation,
+                target_point: &points[0],
+            },
+            symbol(43),
+        );
+        assert!(matches!(
+            alias_rejected,
+            Err(AuthenticatedOutputErrorV4::InvalidSchedule("X4d fused link source alias"))
+        ));
+        let materialized = materialize_fused_settlement_terms_v4(accumulators, 4).unwrap();
+        assert_eq!(materialized.terms.len(), 1);
+        assert_eq!(materialized.source_symbols_read, 16);
+        assert_eq!(materialized.equality_symbols_materialized, 16);
+        let mut fused = materialized.terms;
+        let response_initial =
+            response_local.iter().fold(Fp2::ZERO, |sum, term| sum + term.initial_sum());
+        let fused_initial = fused.iter().fold(Fp2::ZERO, |sum, term| sum + term.initial_sum());
+        assert_eq!(response_initial, fused_initial);
+        for challenge in [symbol(47), symbol(53), symbol(59), symbol(61)] {
+            let response_round = response_local.iter().try_fold(
+                (Fp2::ZERO, Fp2::ZERO),
+                |(at_zero, at_two), term| {
+                    let (term_zero, term_two) = term.round_values()?;
+                    Ok::<_, AuthenticatedOutputErrorV4>((at_zero + term_zero, at_two + term_two))
+                },
+            );
+            let fused_round =
+                fused.iter().try_fold((Fp2::ZERO, Fp2::ZERO), |(at_zero, at_two), term| {
+                    let (term_zero, term_two) = term.round_values()?;
+                    Ok::<_, AuthenticatedOutputErrorV4>((at_zero + term_zero, at_two + term_two))
+                });
+            assert_eq!(response_round.unwrap(), fused_round.unwrap());
+            for term in &mut response_local {
+                term.bind(challenge);
+            }
+            for term in &mut fused {
+                term.bind(challenge);
+            }
+        }
+        let response_terminal = response_local
+            .iter()
+            .try_fold(Fp2::ZERO, |sum, term| {
+                Ok::<_, AuthenticatedOutputErrorV4>(sum + term.terminal()?)
+            })
+            .unwrap();
+        let fused_terminal = fused
+            .iter()
+            .try_fold(Fp2::ZERO, |sum, term| {
+                Ok::<_, AuthenticatedOutputErrorV4>(sum + term.terminal()?)
+            })
+            .unwrap();
+        assert_eq!(response_terminal, fused_terminal);
+    }
+
     struct Generated {
         descriptor: Digest,
         descriptors: Vec<Digest>,
@@ -2510,6 +2810,181 @@ mod tests {
         assert_eq!(prover_tx.total_bytes(), verifier_tx.total_bytes());
     }
 
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    struct SyntheticSettlementCounters {
+        relation_terms: u64,
+        materialized_terms: u64,
+        fused_terms: u64,
+        source_symbols_read: u64,
+        equality_symbols_materialized: u64,
+        initial_encoded_symbols_read: u64,
+        combined_codeword_symbols: u64,
+        query_gather_calls: u64,
+    }
+
+    fn synthetic_fused_settlement_counters(responses: usize) -> SyntheticSettlementCounters {
+        let descriptor = [0x67; 32];
+        let weight_evaluations = (0..16).map(|index| symbol(900 + index)).collect::<Vec<_>>();
+        let auxiliary_evaluations = (0..4).map(|index| symbol(980 + 3 * index)).collect::<Vec<_>>();
+        let weight_points = (0..responses)
+            .map(|index| {
+                vec![
+                    symbol(1_100 + 5 * index as u64),
+                    symbol(1_101 + 7 * index as u64),
+                    symbol(1_102 + 11 * index as u64),
+                    Fp2::ZERO,
+                ]
+            })
+            .collect::<Vec<_>>();
+        let auxiliary_points =
+            weight_points.iter().map(|point| vec![point[2], Fp2::ZERO]).collect::<Vec<_>>();
+        let weight_values = weight_points
+            .iter()
+            .map(|point| evaluate_multilinear_table(&weight_evaluations, point).unwrap())
+            .collect::<Vec<_>>();
+        let auxiliary_values = auxiliary_points
+            .iter()
+            .map(|point| evaluate_multilinear_table(&auxiliary_evaluations, point).unwrap())
+            .collect::<Vec<_>>();
+        let public_h = weight_values
+            .iter()
+            .zip(&auxiliary_values)
+            .map(|(weight, auxiliary)| *weight + *auxiliary)
+            .collect::<Vec<_>>();
+        let weight =
+            committed(descriptor, 0xA520_0001, OracleKindV4::WeightExtension, &weight_evaluations);
+        let auxiliary =
+            committed(descriptor, 0xA520_0100, OracleKindV4::Auxiliary, &auxiliary_evaluations);
+        let epoch = 70 + responses as u64;
+        let claims = (0..responses)
+            .map(|index| ReducedClaimFrame {
+                descriptor_digest: descriptor,
+                parent_claim_digest: [0x68 + index as u8; 32],
+                phase: crate::x4::frame::Phase::Decode,
+                phase_ordinal: u16::try_from(index).unwrap(),
+                point: vec![symbol(1_200 + index as u64); 14],
+                affine_scale: Fp2::ONE,
+                auth_domain: 0x6A_000 + index as u64,
+            })
+            .collect::<Vec<_>>();
+        let context = X4dSettlementContextV1 {
+            range: crate::x4::deferred_v4::X4dSettlementRangeV1 {
+                connection_id: [0x69; 32],
+                settlement_epoch: epoch,
+                first_claim_index: 0,
+                claim_count: u32::try_from(responses).unwrap(),
+                starting_accumulator_digest: [0x6A; 32],
+                sealed_accumulator_digest: [0x6B; 32],
+                ordered_response_nonces: (0..responses)
+                    .map(|index| {
+                        let mut nonce = [0x6C; 32];
+                        nonce[..8].copy_from_slice(&(index as u64).to_le_bytes());
+                        nonce
+                    })
+                    .collect(),
+            },
+        };
+        let mut prover_stream = CorrelationStream::new(PCG_SEED);
+        let mut prover_tx = Transcript::new(TX_SEED);
+        let mut pending = Vec::with_capacity(responses);
+        let mut m9_frames = Vec::with_capacity(responses);
+        for (index, value) in auxiliary_values.iter().enumerate() {
+            let (pending_aux, frame) = authenticate_pending_aux_prover_v4(
+                descriptor,
+                *value,
+                &mut prover_stream,
+                M9_DOMAIN + index as u64,
+                &mut prover_tx,
+            )
+            .unwrap();
+            pending.push(pending_aux);
+            m9_frames.push(frame);
+        }
+        let blocks = pending
+            .into_iter()
+            .enumerate()
+            .map(|(index, pending_aux)| AuthenticatedOutputBlockProverV4 {
+                descriptor_digest: descriptor,
+                public_h: public_h[index],
+                pending_aux,
+                weight_extension: LinkPolynomialProverV4 {
+                    cohort: &weight,
+                    slot: 0,
+                    evaluations: &weight_evaluations,
+                    target_point: &weight_points[index],
+                },
+                auxiliary: LinkPolynomialProverV4 {
+                    cohort: &auxiliary,
+                    slot: 0,
+                    evaluations: &auxiliary_evaluations,
+                    target_point: &auxiliary_points[index],
+                },
+            })
+            .collect::<Vec<_>>();
+        let descriptor_inventory = [descriptor];
+        let prefix = AuthenticatedOutputLinkPrefixV4 {
+            epoch,
+            claim_frames: &claims,
+            descriptor_digests: &descriptor_inventory,
+            ordered_h_symbols: &public_h,
+            m9_frames: &m9_frames,
+            round_correlation_domain_ids: &LINK_DOMAINS,
+        };
+        let model_root = [0x6D; 32];
+        let permit = X4OpeningRegistryV4::default()
+            .authorize_after_persistent_freshness(model_root, epoch, [0x6E; 32])
+            .unwrap();
+        let mut runtime = X4cCpuReferenceRuntimeV4;
+        let (_, _, metrics, x4c_metrics, _, _) = prove_authenticated_output_link_x4d_v4(
+            permit,
+            model_root,
+            blocks,
+            prefix,
+            &context,
+            &mut prover_stream,
+            &mut prover_tx,
+            X4dSettlementQuerySeedV1::new([0x6F; 32]).unwrap(),
+            &mut runtime,
+            X4cSealConfigV4 {
+                design_sha256: X4C_DESIGN_SHA256_V4,
+                clean_source_sha256: [0x70; 32],
+                response_ordinal: responses as u64,
+                arena_layout: X4cArenaLayoutV4::new(7, 3, 4096).unwrap(),
+            },
+        )
+        .unwrap();
+        SyntheticSettlementCounters {
+            relation_terms: metrics.sumcheck_relation_terms,
+            materialized_terms: metrics.sumcheck_materialized_terms,
+            fused_terms: metrics.sumcheck_fused_terms,
+            source_symbols_read: metrics.sumcheck_source_symbols_read,
+            equality_symbols_materialized: metrics.sumcheck_equality_symbols_materialized,
+            initial_encoded_symbols_read: x4c_metrics.global_open.initial_encoded_symbols_read,
+            combined_codeword_symbols: x4c_metrics.global_open.combined_codeword_symbols,
+            query_gather_calls: x4c_metrics.execution.query_gather_calls,
+        }
+    }
+
+    #[test]
+    fn fused_settlement_counters_are_flat_at_k1_and_k16() {
+        let k1 = synthetic_fused_settlement_counters(1);
+        let k16 = synthetic_fused_settlement_counters(16);
+        assert_eq!(k1.relation_terms, 2);
+        assert_eq!(k16.relation_terms, 32);
+        assert_eq!(k1.materialized_terms, 2);
+        assert_eq!(k16.materialized_terms, 2);
+        assert_eq!(k1.fused_terms, 0);
+        assert_eq!(k16.fused_terms, 30);
+        assert_eq!(k1.source_symbols_read, 20);
+        assert_eq!(k1.equality_symbols_materialized, 20);
+        assert_eq!(k1.source_symbols_read, k16.source_symbols_read);
+        assert_eq!(k1.equality_symbols_materialized, k16.equality_symbols_materialized);
+        assert_eq!(k1.initial_encoded_symbols_read, k16.initial_encoded_symbols_read);
+        assert_eq!(k1.combined_codeword_symbols, k16.combined_codeword_symbols);
+        assert_eq!(k1.query_gather_calls, 1);
+        assert_eq!(k16.query_gather_calls, 1);
+    }
+
     #[test]
     fn x4d_two_response_settlement_reuses_one_chain_and_binds_exact_union() {
         let descriptor = [0x47; 32];
@@ -2628,7 +3103,7 @@ mod tests {
             .authorize_after_persistent_freshness(model_root, 29, [0x57; 32])
             .unwrap();
         let mut runtime = X4cCpuReferenceRuntimeV4;
-        let (proof, bound_prover, _, _, _, released_draws) =
+        let (proof, bound_prover, metrics, x4c_metrics, _, released_draws) =
             prove_authenticated_output_link_x4d_v4(
                 prover_permit,
                 model_root,
@@ -2648,7 +3123,13 @@ mod tests {
             )
             .unwrap();
         assert_eq!(proof.frame.relation_count, 4);
+        assert_eq!(metrics.sumcheck_relation_terms, 4);
+        assert_eq!(metrics.sumcheck_materialized_terms, 2);
+        assert_eq!(metrics.sumcheck_fused_terms, 2);
+        assert_eq!(metrics.sumcheck_source_symbols_read, 20);
+        assert_eq!(metrics.sumcheck_equality_symbols_materialized, 20);
         assert_eq!(proof.global_folding.packed_opening.initial_groups.len(), 2);
+        assert_eq!(x4c_metrics.execution.query_gather_calls, 1);
         assert_eq!(released_draws.len(), crate::x4::frame_v4::PRODUCTION_QUERY_COUNT_V4);
         assert!(released_draws.iter().all(|draw| *draw < 128));
 

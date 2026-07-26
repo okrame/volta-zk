@@ -3,8 +3,10 @@
 //! X4c onboarding remains the only durable-material producer. This binary
 //! validates that append-only record, rebuilds the admitted cohorts, proves
 //! real responses under one fase-D connection, freezes their claims, and
-//! executes one 16-response X4d settlement. It introduces no alternate PCS,
-//! model loader, correlation pool, or lifecycle.
+//! executes one k=1 or k=16 X4d.1 settlement. Each invocation uses a fresh
+//! connection so the paired flatness record can compare identical physical
+//! counters without changing the protocol lifecycle. It introduces no
+//! alternate PCS, model loader, correlation pool, or lifecycle.
 
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
@@ -56,12 +58,12 @@ use volta_proto::model_proof::{
 };
 use volta_proto::{layer_dom_base, prod_batch_prover, prod_batch_verify};
 
-const SCHEMA: u64 = 1;
+const SCHEMA: u64 = 2;
 const PROFILE: &str = "runpod-a100-x4d-v1";
 const PROTOCOL: &str = "x4-zkdeepfold-ud-e29-v4+x4d-deferred-settlement-v1";
-const MILESTONE_PREFLIGHT: &str = "X4d-GPT2-pod-preflight-v1";
-const MILESTONE_ONLINE: &str = "X4d-GPT2-real-weight-deferred-settlement-v1";
-const X4D_DESIGN_SHA256: &str = "0f60edfc121978d5ce5411904cff766d46d8a4aa6d3eb860f92e13e535e9da12";
+const MILESTONE_PREFLIGHT: &str = "X4d.1-GPT2-pod-preflight-v1";
+const MILESTONE_ONLINE: &str = "X4d.1-GPT2-fused-settlement-v1";
+const X4D_DESIGN_SHA256: &str = "3ca7b497d3604c220a2de59ceb1279172dc8bd8e835081900b3cfc17fe3af463";
 const X4C_ONBOARDING_MILESTONE: &str = "X4c-GPT2-real-weight-onboarding-crypto-id-v1";
 const X4C_PROFILE: &str = "runpod-a100-x4c-v1";
 const X4C_PROTOCOL: &str = "x4-zkdeepfold-ud-e29-v4";
@@ -81,8 +83,7 @@ const MODEL_SUB_CORRELATIONS: u64 = 4_793_590;
 const MODEL_FULL_CORRELATIONS: u64 = 181_933;
 const MODEL_CLOSURE_FULL_CORRELATIONS: u64 = 2;
 const FASE_D_ALLOCATABLE_STAGE: u32 = 1;
-const SETTLED_RESPONSES: usize = 16;
-const CONNECTION_RESPONSES: usize = 19;
+const ALLOWED_SETTLEMENT_RESPONSES: [usize; 2] = [1, 16];
 const HARD_RAM_BYTES: u64 = 274_877_906_944;
 const HARD_VOLUME_BYTES: u64 = 150_000_000_000;
 const G1_TOTAL_CEILING_S: f64 = 5.0;
@@ -115,6 +116,7 @@ struct Args {
     connection_store: Option<PathBuf>,
     clean_source_sha256: Option<String>,
     settlement_epoch: u64,
+    settled_responses: usize,
     response_cpu_ids: Vec<usize>,
     settlement_cpu_ids: Vec<usize>,
 }
@@ -125,7 +127,8 @@ fn usage() -> ! {
          --volume-root PATH --output PATH \
          [--durable-root PATH --onboarding PATH --onboarding-sha256 HEX \
           --authorization-store PATH --connection-store PATH \
-          --clean-source-sha256 HEX --settlement-epoch N] \
+          --clean-source-sha256 HEX --settlement-epoch N \
+          --settled-responses 1|16] \
          --response-cpus C0,...,C7 --settlement-cpus C0,...,C26"
     );
     std::process::exit(2)
@@ -155,6 +158,7 @@ fn parse_args() -> Args {
     let mut connection_store = None;
     let mut clean_source_sha256 = None;
     let mut settlement_epoch = 1u64;
+    let mut settled_responses = 16usize;
     let mut response_cpu_ids = None;
     let mut settlement_cpu_ids = None;
     let mut args = std::env::args().skip(1);
@@ -178,6 +182,9 @@ fn parse_args() -> Args {
             "--connection-store" => connection_store = Some(PathBuf::from(value())),
             "--clean-source-sha256" => clean_source_sha256 = Some(value()),
             "--settlement-epoch" => settlement_epoch = value().parse().unwrap_or_else(|_| usage()),
+            "--settled-responses" => {
+                settled_responses = value().parse().unwrap_or_else(|_| usage())
+            }
             "--response-cpus" => response_cpu_ids = Some(parse_cpu_ids(value())),
             "--settlement-cpus" => settlement_cpu_ids = Some(parse_cpu_ids(value())),
             _ => usage(),
@@ -195,6 +202,7 @@ fn parse_args() -> Args {
         connection_store,
         clean_source_sha256,
         settlement_epoch,
+        settled_responses,
         response_cpu_ids: response_cpu_ids.unwrap_or_else(|| usage()),
         settlement_cpu_ids: settlement_cpu_ids.unwrap_or_else(|| usage()),
     }
@@ -304,6 +312,14 @@ fn write_append_only<T: Serialize>(path: &Path, value: &T) -> Result<(), String>
         .and_then(|_| file.write_all(b"\n"))
         .and_then(|_| file.sync_all())
         .map_err(|error| format!("persist record {}: {error}", path.display()))
+}
+
+fn validate_x4d1_output_path(path: &Path) -> Result<(), String> {
+    let name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
+    if !name.starts_with("x4d1-") || !name.ends_with(".json") {
+        return Err("X4d.1 records require an x4d1-*.json output name".to_owned());
+    }
+    Ok(())
 }
 
 fn mem_total_bytes() -> Result<u64, String> {
@@ -448,6 +464,7 @@ struct PreflightRecord {
 }
 
 fn preflight(args: &Args) -> Result<(), String> {
+    validate_x4d1_output_path(&args.output)?;
     if args.output.exists() {
         return Err("preflight output must be fresh".to_owned());
     }
@@ -976,11 +993,13 @@ struct SettlementInstrumentationRow {
     evaluation_table_gpu_resident_bytes: u64,
     evaluation_table_h2d_bytes: u64,
     evaluation_table_d2h_bytes: u64,
-    response_local_evaluation_clone_bytes: u64,
-    response_local_equality_table_bytes: u64,
+    materialized_evaluation_clone_bytes: u64,
+    materialized_equality_table_bytes: u64,
     peak_relation_table_cpu_payload_bytes: u64,
     peak_relation_table_gpu_payload_bytes: u64,
     relation_terms: u64,
+    materialized_relation_terms: u64,
+    fused_relation_terms: u64,
     logical_evaluation_table_symbols_read: u64,
     logical_evaluation_table_bytes_read: u64,
     evaluation_table_passes_per_unique_table: u64,
@@ -1001,6 +1020,7 @@ struct SettlementRow {
     frozen_claims: usize,
     masked_groups: usize,
     settlement_epoch: u64,
+    wall_semantics: String,
     settlement_bytes: u64,
     expected_settlement_bytes: u64,
     amortized_settlement_bytes_per_response: f64,
@@ -1053,6 +1073,7 @@ struct OnlineRecord {
     rebuild_roots_equal_onboarding: bool,
     old_auxiliary_roots_rejected_for_settlement: bool,
     setup_wall_s: f64,
+    flatness_pair_role: String,
     responses: Vec<ResponseRow>,
     g1: G1Row,
     settlement: SettlementRow,
@@ -1165,12 +1186,18 @@ fn validate_onboarding(
 }
 
 fn online(args: &Args) -> Result<(), String> {
+    validate_x4d1_output_path(&args.output)?;
     if args.output.exists() || args.settlement_epoch != 1 {
         return Err(
             "online output must be fresh and the first connection settlement epoch must be 1"
                 .to_owned(),
         );
     }
+    if !ALLOWED_SETTLEMENT_RESPONSES.contains(&args.settled_responses) {
+        return Err("X4d.1 online requires --settled-responses 1 or 16".to_owned());
+    }
+    let settled_responses = args.settled_responses;
+    let connection_responses = settled_responses + 3;
     verify_design()?;
     verify_inputs(&args.weights)?;
     let hardware = hardware_preflight(args)?;
@@ -1320,9 +1347,11 @@ fn online(args: &Args) -> Result<(), String> {
     let mut logical = X4dGpt2ConnectionV1::new(static_weight_commitment, binding.connection_id)?;
     let mut runtime = X4cCudaArenaRuntimeV4::production(&mut backend)
         .map_err(|error| format!("X4d CUDA arena runtime: {error:?}"))?;
-    let mut responses = Vec::with_capacity(CONNECTION_RESPONSES);
-    for ordinal in 0..SETTLED_RESPONSES {
-        let role = if ordinal == 0 {
+    let mut responses = Vec::with_capacity(connection_responses);
+    for ordinal in 0..settled_responses {
+        let role = if settled_responses == 1 {
+            "g1-warmup+abba-isolated-a1"
+        } else if ordinal == 0 {
             "g1-warmup"
         } else if ordinal < 4 {
             "g1-measured"
@@ -1363,7 +1392,7 @@ fn online(args: &Args) -> Result<(), String> {
         )
         .map_err(|error| format!("journal settlement seal: {error}"))?;
     let pause_started = Instant::now();
-    for ordinal in SETTLED_RESPONSES..SETTLED_RESPONSES + 2 {
+    for ordinal in settled_responses..settled_responses + 2 {
         responses.push(run_response(
             ordinal,
             "abba-settlement-queued-b",
@@ -1481,7 +1510,7 @@ fn online(args: &Args) -> Result<(), String> {
         .iter()
         .all(|nonce| logical.response_state(*nonce) == Some(X4dResponseStateV1::WeightVerified));
     responses.push(run_response(
-        CONNECTION_RESPONSES - 1,
+        connection_responses - 1,
         "abba-isolated-a2",
         &response_pool,
         &work,
@@ -1496,7 +1525,7 @@ fn online(args: &Args) -> Result<(), String> {
         binding,
         &mut runtime,
     )?);
-    let pending_after_settlement = responses[SETTLED_RESPONSES..].iter().all(|row| {
+    let pending_after_settlement = responses[settled_responses..].iter().all(|row| {
         let digest = &row.response_nonce_digest;
         !digest.is_empty()
     });
@@ -1504,7 +1533,7 @@ fn online(args: &Args) -> Result<(), String> {
         .prover_accumulator()
         .responses()
         .iter()
-        .skip(SETTLED_RESPONSES)
+        .skip(settled_responses)
         .map(|response| response.response_nonce)
         .collect::<Vec<_>>();
     logical.abort();
@@ -1518,9 +1547,11 @@ fn online(args: &Args) -> Result<(), String> {
         });
     let no_retry = logical.seal_settlement().is_err();
     let measured_g1 = g1(&responses[..4]);
-    let isolated = vec![responses[14].total_g1_s, responses[18].total_g1_s];
+    let isolated_a1 = if settled_responses == 16 { 14 } else { 0 };
+    let isolated =
+        vec![responses[isolated_a1].total_g1_s, responses[connection_responses - 1].total_g1_s];
     let queued =
-        vec![responses[SETTLED_RESPONSES].total_g1_s, responses[SETTLED_RESPONSES + 1].total_g1_s];
+        vec![responses[settled_responses].total_g1_s, responses[settled_responses + 1].total_g1_s];
     let isolated_upper = upper_median(isolated.clone());
     let queued_upper = upper_median(queued.clone());
     let interference_ns =
@@ -1537,7 +1568,7 @@ fn online(args: &Args) -> Result<(), String> {
         settlement_gpu_overlap_intervals: 0,
         accounting_semantics: "B responses execute under strict response priority while the sealed settlement is queued; no CPU/GPU interval is falsely reported concurrent".to_owned(),
     };
-    let expected_settlement_bytes = volta_pcs::x4::x4d_gpt2_settlement_bytes_v1(SETTLED_RESPONSES)
+    let expected_settlement_bytes = volta_pcs::x4::x4d_gpt2_settlement_bytes_v1(settled_responses)
         .map_err(|error| format!("X4d settlement byte formula: {error:?}"))?;
     let exact_correlations = result.prover_full_correlations
         == batch.counters.total_full_correlations_per_role
@@ -1570,11 +1601,13 @@ fn online(args: &Args) -> Result<(), String> {
         evaluation_table_gpu_resident_bytes: counters.evaluation_table_gpu_resident_bytes,
         evaluation_table_h2d_bytes: counters.evaluation_table_h2d_bytes,
         evaluation_table_d2h_bytes: counters.evaluation_table_d2h_bytes,
-        response_local_evaluation_clone_bytes: counters.response_local_evaluation_clone_bytes,
-        response_local_equality_table_bytes: counters.response_local_equality_table_bytes,
+        materialized_evaluation_clone_bytes: counters.materialized_evaluation_clone_bytes,
+        materialized_equality_table_bytes: counters.materialized_equality_table_bytes,
         peak_relation_table_cpu_payload_bytes: counters.peak_relation_table_cpu_payload_bytes,
         peak_relation_table_gpu_payload_bytes: counters.peak_relation_table_gpu_payload_bytes,
         relation_terms: counters.relation_terms,
+        materialized_relation_terms: counters.materialized_relation_terms,
+        fused_relation_terms: counters.fused_relation_terms,
         logical_evaluation_table_symbols_read: counters.logical_evaluation_table_symbols_read,
         logical_evaluation_table_bytes_read: counters.logical_evaluation_table_bytes_read,
         evaluation_table_passes_per_unique_table: counters.evaluation_table_passes_per_unique_table,
@@ -1594,10 +1627,13 @@ fn online(args: &Args) -> Result<(), String> {
         frozen_claims: batch.counters.frozen_claims,
         masked_groups: batch.counters.masked_groups,
         settlement_epoch: args.settlement_epoch,
+        wall_semantics:
+            "durable accumulator seal through terminal settlement success, including queued-response priority pause and fresh auxiliary materialization"
+                .to_owned(),
         settlement_bytes: result.encoded_settlement.len() as u64,
         expected_settlement_bytes,
         amortized_settlement_bytes_per_response: expected_settlement_bytes as f64
-            / SETTLED_RESPONSES as f64,
+            / settled_responses as f64,
         historical_four_mb_scope:
             "4,000,000 B is the immutable X4/X4b/X4c per-response PCS ceiling; X4d settlement uses the pinned batch formula"
                 .to_owned(),
@@ -1657,6 +1693,12 @@ fn online(args: &Args) -> Result<(), String> {
         rebuild_roots_equal_onboarding,
         old_auxiliary_roots_rejected_for_settlement,
         setup_wall_s,
+        flatness_pair_role: if settled_responses == 1 {
+            "k1-anchor"
+        } else {
+            "k16-candidate+unchanged-g1-interference-rerun"
+        }
+        .to_owned(),
         responses,
         g1: measured_g1,
         settlement,
@@ -1715,12 +1757,14 @@ mod tests {
                 .unwrap();
         let response_raw = MODEL_SUB_CORRELATIONS
             + 2 * (MODEL_FULL_CORRELATIONS + MODEL_CLOSURE_FULL_CORRELATIONS);
-        let settlement = X4dGpt2SettlementCountersV1::for_responses(SETTLED_RESPONSES).unwrap();
-        let planned_raw = response_raw * CONNECTION_RESPONSES as u64
-            + 2 * settlement.total_full_correlations_per_role;
+        for settled_responses in ALLOWED_SETTLEMENT_RESPONSES {
+            let settlement = X4dGpt2SettlementCountersV1::for_responses(settled_responses).unwrap();
+            let planned_raw = response_raw * (settled_responses + 3) as u64
+                + 2 * settlement.total_full_correlations_per_role;
 
-        assert_eq!(FASE_D_ALLOCATABLE_STAGE, 1);
-        assert!(response_raw > capacity.main_residual as u64);
-        assert!(planned_raw <= capacity.allocatable_stage3 as u64);
+            assert_eq!(FASE_D_ALLOCATABLE_STAGE, 1);
+            assert!(response_raw > capacity.main_residual as u64);
+            assert!(planned_raw <= capacity.allocatable_stage3 as u64);
+        }
     }
 }

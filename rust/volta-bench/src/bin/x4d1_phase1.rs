@@ -1,13 +1,11 @@
-//! X4d.1 Phase-1 local settlement-driver instrumentation and postdiction.
+//! X4d.1 Phase-2 local fused settlement-driver diagnostic.
 //!
-//! This is a CPU-only synthetic probe of the existing (unfused) X4d
-//! authenticated-output driver. It exercises k=1 and k=16 over the same two
-//! oracle slots, records the new phase walls/counters, and applies the
-//! measured local k-amplification to the immutable X4c A100 phase split. It
-//! does not implement the fused driver, contact a pod or claim a gate verdict.
+//! This CPU-only probe exercises the fused X4d authenticated-output driver at
+//! k=1 and k=16 over the same two physical slots. It records phase walls and
+//! exact counter equality, but it neither contacts a pod nor claims the
+//! production flatness gate.
 
 use serde::Serialize;
-use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -25,13 +23,12 @@ use volta_pcs::x4::{
 };
 
 const DATE: &str = "2026-07-26";
-const MILESTONE: &str = "X4d1-phase1-settlement-driver-postdiction-v3";
+const MILESTONE: &str = "X4d1-phase2-fused-settlement-local-v3";
 const X4C_RECORD: &str = "benchmarks/results/x4c-gpt2-online-accelerated-2026-07-25-6277c3c.json";
 const X4C_RECORD_SHA256: &str = "5a5417c11c0d5b4abe57af1e6ea5fa1191962c709c0f7b86fb780c30af1dac89";
 const X4D_RECORD: &str =
     "benchmarks/results/x4d-gpt2-online-2026-07-26-bf4230c-bbd64aa1df41-local.json";
 const X4D_RECORD_SHA256: &str = "d6017dbadd930baa390b174e57e8d93ec6a413fd886d505ad37ebb484e6dc24b";
-const OBSERVED_X4D_PROOF_DRIVER_WALL_S: f64 = 3_071.972_477_759;
 const PRODUCTION_EVALUATION_TABLE_BYTES: u64 = 9_618_587_648;
 const PRODUCTION_INITIAL_ENCODED_SYMBOLS_READ: u64 = 4_809_293_824;
 const PRODUCTION_COMBINED_CODEWORD_SYMBOLS: u64 = 1_159_200_768;
@@ -51,14 +48,16 @@ struct PhaseWallsRow {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 struct CounterRow {
     relation_terms: u64,
+    materialized_relation_terms: u64,
+    fused_relation_terms: u64,
     unique_evaluation_tables: u64,
     evaluation_table_bytes: u64,
     evaluation_table_cpu_resident_bytes: u64,
     evaluation_table_gpu_resident_bytes: u64,
     evaluation_table_h2d_bytes: u64,
     evaluation_table_d2h_bytes: u64,
-    response_local_evaluation_clone_bytes: u64,
-    response_local_equality_table_bytes: u64,
+    materialized_evaluation_clone_bytes: u64,
+    materialized_equality_table_bytes: u64,
     peak_relation_table_cpu_payload_bytes: u64,
     peak_relation_table_gpu_payload_bytes: u64,
     logical_evaluation_table_symbols_read: u64,
@@ -102,42 +101,19 @@ struct ScaleRow {
     evaluation_symbols_per_table: u64,
     unique_evaluation_table_bytes: u64,
     batches: Vec<BatchRow>,
-    encoded_oracle_counters_equal_k1_k16: bool,
+    all_physical_counters_equal_k1_k16: bool,
     evaluation_table_pass_ratio_k16_over_k1: f64,
     claim_preparation_wall_ratio_k16_over_k1: f64,
+    caller_wall_ratio_k16_over_k1: f64,
 }
 
 #[derive(Debug, Serialize)]
-struct A100AnchorCandidateRow {
-    role: String,
-    pcs_total_s: f64,
-    claim_coefficient_preparation_s: f64,
-    flat_oracle_fold_open_verify_s: f64,
-}
-
-#[derive(Debug, Serialize)]
-struct PostdictionRow {
-    model: String,
-    x4c_candidates: Vec<A100AnchorCandidateRow>,
-    selected_x4c_claim_coefficient_preparation_s: f64,
-    selected_x4c_flat_oracle_fold_open_verify_s: f64,
-    local_largest_scale_claim_preparation_wall_ratio_k16_over_k1: f64,
-    instrumented_logical_table_traffic_ratio_k16_over_k1: f64,
-    postdiction_multiplier: f64,
-    postdicted_x4d_k16_proof_driver_wall_s: f64,
-    observed_x4d_k16_proof_driver_wall_s: f64,
-    residual_s: f64,
-    absolute_percentage_error: f64,
-    sensitivity_low_s: f64,
-    sensitivity_high_s: f64,
-    within_ten_percent: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct FindingRow {
-    code: String,
-    disposition: String,
-    exact_loops: Vec<String>,
+struct LocalFlatnessRow {
+    largest_scale_caller_wall_ratio_k16_over_k1: f64,
+    largest_scale_claim_preparation_wall_ratio_k16_over_k1: f64,
+    all_scales_physical_counters_equal: bool,
+    diagnostic_only: bool,
+    production_gate_verdict: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -186,10 +162,11 @@ struct Record {
     immutable_scope: String,
     production_anchors: CounterRow,
     synthetic_scales: Vec<ScaleRow>,
-    postdiction: PostdictionRow,
-    findings: Vec<FindingRow>,
-    fused_driver_design: String,
+    local_flatness: LocalFlatnessRow,
+    fused_driver_implementation: String,
     flatness_gate: FlatnessGateRow,
+    owner_phase2_rulings: Vec<String>,
+    pod_checklist: Vec<String>,
     hard_stop: String,
 }
 
@@ -220,11 +197,6 @@ fn sha256(path: &Path) -> String {
 
 fn upper_median(mut values: Vec<u64>) -> u64 {
     values.sort_unstable();
-    values[values.len() / 2]
-}
-
-fn upper_median_f64(mut values: Vec<f64>) -> f64 {
-    values.sort_by(f64::total_cmp);
     values[values.len() / 2]
 }
 
@@ -409,25 +381,26 @@ fn run_candidate(fixture: &Fixture, responses: usize, ordinal: usize) -> Candida
             .unwrap();
     let evaluation_table_bytes = evaluation_symbols * 16;
     let logical_symbols = link_metrics.sumcheck_source_symbols_read;
-    let expected_logical = evaluation_symbols * responses as u64;
-    let response_local_payload_bytes = logical_symbols * 16;
+    let expected_logical = evaluation_symbols;
+    let materialized_payload_bytes = logical_symbols * 16;
     let global = x4c_metrics.global_open;
     let counters = CounterRow {
-        relation_terms: 2 * responses as u64,
+        relation_terms: link_metrics.sumcheck_relation_terms,
+        materialized_relation_terms: link_metrics.sumcheck_materialized_terms,
+        fused_relation_terms: link_metrics.sumcheck_fused_terms,
         unique_evaluation_tables: 2,
         evaluation_table_bytes,
         evaluation_table_cpu_resident_bytes: evaluation_table_bytes,
         evaluation_table_gpu_resident_bytes: 0,
         evaluation_table_h2d_bytes: 0,
         evaluation_table_d2h_bytes: 0,
-        response_local_evaluation_clone_bytes: response_local_payload_bytes,
-        response_local_equality_table_bytes: response_local_payload_bytes,
-        peak_relation_table_cpu_payload_bytes: evaluation_table_bytes
-            + 2 * response_local_payload_bytes,
+        materialized_evaluation_clone_bytes: materialized_payload_bytes,
+        materialized_equality_table_bytes: link_metrics.sumcheck_equality_symbols_materialized * 16,
+        peak_relation_table_cpu_payload_bytes: 3 * evaluation_table_bytes,
         peak_relation_table_gpu_payload_bytes: 0,
         logical_evaluation_table_symbols_read: logical_symbols,
-        logical_evaluation_table_bytes_read: response_local_payload_bytes,
-        evaluation_table_passes_per_unique_table: responses as u64,
+        logical_evaluation_table_bytes_read: materialized_payload_bytes,
+        evaluation_table_passes_per_unique_table: 1,
         encoded_oracle_full_passes: 1,
         response_or_claim_proportional_encoded_oracle_passes: 0,
         source_coefficients_read: global.source_coefficients_read,
@@ -436,11 +409,13 @@ fn run_candidate(fixture: &Fixture, responses: usize, ordinal: usize) -> Candida
         query_gather_calls: x4c_metrics.execution.query_gather_calls,
     };
     let accepted = draws.len() == 111
+        && counters.relation_terms == 2 * responses as u64
+        && counters.materialized_relation_terms == 2
+        && counters.fused_relation_terms == 2 * responses as u64 - 2
         && logical_symbols == expected_logical
-        && counters.response_local_evaluation_clone_bytes == expected_logical * 16
-        && counters.response_local_equality_table_bytes == expected_logical * 16
-        && counters.peak_relation_table_cpu_payload_bytes
-            == evaluation_table_bytes + 2 * expected_logical * 16
+        && counters.materialized_evaluation_clone_bytes == expected_logical * 16
+        && counters.materialized_equality_table_bytes == expected_logical * 16
+        && counters.peak_relation_table_cpu_payload_bytes == 3 * evaluation_table_bytes
         && global.source_coefficients_read == evaluation_symbols
         && global.initial_encoded_symbols_read == evaluation_symbols * 8
         && global.combined_codeword_symbols == evaluation_symbols * 8
@@ -507,12 +482,27 @@ fn run_scale(evaluation_domain_log2: u8) -> ScaleRow {
     }
     let k1 = &batches[0].selected_upper_median;
     let k16 = &batches[1].selected_upper_median;
-    let encoded_oracle_counters_equal_k1_k16 = k1.counters.initial_encoded_symbols_read
-        == k16.counters.initial_encoded_symbols_read
+    let all_physical_counters_equal_k1_k16 = k1.counters.materialized_relation_terms
+        == k16.counters.materialized_relation_terms
+        && k1.counters.unique_evaluation_tables == k16.counters.unique_evaluation_tables
+        && k1.counters.evaluation_table_bytes == k16.counters.evaluation_table_bytes
+        && k1.counters.materialized_evaluation_clone_bytes
+            == k16.counters.materialized_evaluation_clone_bytes
+        && k1.counters.materialized_equality_table_bytes
+            == k16.counters.materialized_equality_table_bytes
+        && k1.counters.peak_relation_table_cpu_payload_bytes
+            == k16.counters.peak_relation_table_cpu_payload_bytes
+        && k1.counters.logical_evaluation_table_symbols_read
+            == k16.counters.logical_evaluation_table_symbols_read
+        && k1.counters.evaluation_table_passes_per_unique_table
+            == k16.counters.evaluation_table_passes_per_unique_table
+        && k1.counters.source_coefficients_read == k16.counters.source_coefficients_read
+        && k1.counters.initial_encoded_symbols_read == k16.counters.initial_encoded_symbols_read
         && k1.counters.combined_codeword_symbols == k16.counters.combined_codeword_symbols
         && k1.counters.encoded_oracle_full_passes == 1
-        && k16.counters.encoded_oracle_full_passes == 1;
-    assert!(encoded_oracle_counters_equal_k1_k16);
+        && k16.counters.encoded_oracle_full_passes == 1
+        && k1.counters.query_gather_calls == k16.counters.query_gather_calls;
+    assert!(all_physical_counters_equal_k1_k16);
     ScaleRow {
         evaluation_domain_log2,
         evaluation_symbols_per_table: 1u64 << evaluation_domain_log2,
@@ -523,68 +513,10 @@ fn run_scale(evaluation_domain_log2: u8) -> ScaleRow {
         claim_preparation_wall_ratio_k16_over_k1: k16.phases.claim_coefficient_preparation_wall_ns
             as f64
             / k1.phases.claim_coefficient_preparation_wall_ns as f64,
-        encoded_oracle_counters_equal_k1_k16,
+        caller_wall_ratio_k16_over_k1: k16.phases.caller_wall_ns as f64
+            / k1.phases.caller_wall_ns as f64,
+        all_physical_counters_equal_k1_k16,
         batches,
-    }
-}
-
-fn x4c_anchors(root: &Path) -> Vec<A100AnchorCandidateRow> {
-    let value: Value = serde_json::from_slice(&fs::read(root.join(X4C_RECORD)).unwrap()).unwrap();
-    value["candidates"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|candidate| candidate["measured"].as_bool() == Some(true))
-        .map(|candidate| {
-            let number = |key: &str| candidate[key].as_f64().unwrap();
-            let pcs_total_s = number("pcs_total_s");
-            let flat = number("seal_wall_s") + number("open_wall_s") + number("verify_wall_s");
-            A100AnchorCandidateRow {
-                role: candidate["role"].as_str().unwrap().to_owned(),
-                pcs_total_s,
-                claim_coefficient_preparation_s: pcs_total_s - flat,
-                flat_oracle_fold_open_verify_s: flat,
-            }
-        })
-        .collect()
-}
-
-fn postdiction(scales: &[ScaleRow], candidates: Vec<A100AnchorCandidateRow>) -> PostdictionRow {
-    let largest = scales.last().unwrap();
-    let local_wall_ratio = largest.claim_preparation_wall_ratio_k16_over_k1;
-    let traffic_ratio = largest.evaluation_table_pass_ratio_k16_over_k1;
-    assert_eq!(traffic_ratio, 16.0);
-    let selected_claim = upper_median_f64(
-        candidates.iter().map(|row| row.claim_coefficient_preparation_s).collect(),
-    );
-    let selected_flat =
-        upper_median_f64(candidates.iter().map(|row| row.flat_oracle_fold_open_verify_s).collect());
-    let postdicted = selected_flat + traffic_ratio * selected_claim;
-    let residual = OBSERVED_X4D_PROOF_DRIVER_WALL_S - postdicted;
-    let projections = candidates
-        .iter()
-        .map(|row| {
-            row.flat_oracle_fold_open_verify_s + traffic_ratio * row.claim_coefficient_preparation_s
-        })
-        .collect::<Vec<_>>();
-    let low = projections.iter().copied().fold(f64::INFINITY, f64::min);
-    let high = projections.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    let absolute_percentage_error = residual.abs() / OBSERVED_X4D_PROOF_DRIVER_WALL_S * 100.0;
-    PostdictionRow {
-        model: "T16 = X4c_flat + exact instrumented logical evaluation-table traffic ratio(k16/k1) * X4c_claim_coefficient_preparation; the exact counter ratio, not the noisier local wall ratio, is the preregistered multiplier; selected anchors are upper medians of the three immutable measured X4c candidates; no fit to X4d".to_owned(),
-        x4c_candidates: candidates,
-        selected_x4c_claim_coefficient_preparation_s: selected_claim,
-        selected_x4c_flat_oracle_fold_open_verify_s: selected_flat,
-        local_largest_scale_claim_preparation_wall_ratio_k16_over_k1: local_wall_ratio,
-        instrumented_logical_table_traffic_ratio_k16_over_k1: traffic_ratio,
-        postdiction_multiplier: traffic_ratio,
-        postdicted_x4d_k16_proof_driver_wall_s: postdicted,
-        observed_x4d_k16_proof_driver_wall_s: OBSERVED_X4D_PROOF_DRIVER_WALL_S,
-        residual_s: residual,
-        absolute_percentage_error,
-        sensitivity_low_s: low,
-        sensitivity_high_s: high,
-        within_ten_percent: absolute_percentage_error <= 10.0,
     }
 }
 
@@ -593,27 +525,39 @@ fn record() -> Record {
     assert_eq!(sha256(&root.join(X4C_RECORD)), X4C_RECORD_SHA256);
     assert_eq!(sha256(&root.join(X4D_RECORD)), X4D_RECORD_SHA256);
     let scales = SYNTHETIC_DOMAIN_LOG2.into_iter().map(run_scale).collect::<Vec<_>>();
-    let postdiction = postdiction(&scales, x4c_anchors(&root));
-    assert!(postdiction.within_ten_percent);
+    let largest = scales.last().unwrap();
+    let all_scales_physical_counters_equal =
+        scales.iter().all(|scale| scale.all_physical_counters_equal_k1_k16);
+    assert!(all_scales_physical_counters_equal);
+    let local_flatness = LocalFlatnessRow {
+        largest_scale_caller_wall_ratio_k16_over_k1: largest.caller_wall_ratio_k16_over_k1,
+        largest_scale_claim_preparation_wall_ratio_k16_over_k1: largest
+            .claim_preparation_wall_ratio_k16_over_k1,
+        all_scales_physical_counters_equal,
+        diagnostic_only: true,
+        production_gate_verdict: "NOT EVALUATED LOCALLY".to_owned(),
+    };
     let instrumented_sources = [
+        "docs/x4d-deferred-settlement-design.md",
         "rust/volta-pcs/src/x4/folding_v4.rs",
         "rust/volta-pcs/src/x4/x4c_v4.rs",
         "rust/volta-pcs/src/x4/authenticated_output_v4.rs",
         "rust/volta-bench/src/x4d_gpt2.rs",
         "rust/volta-bench/src/bin/x4d_gpt2_pod_record.rs",
+        "rust/volta-bench/src/bin/x4d1_flatness_record.rs",
         "rust/volta-bench/src/bin/x4d1_phase1.rs",
     ]
     .into_iter()
     .map(|path| SourceDigestRow { path: path.to_owned(), sha256: sha256(&root.join(path)) })
     .collect();
     Record {
-        schema: 3,
+        schema: 6,
         milestone: MILESTONE.to_owned(),
         date: DATE.to_owned(),
         git_sha: git(&["rev-parse", "HEAD"]),
         git_short_sha: git(&["rev-parse", "--short", "HEAD"]),
         git_dirty: !git(&["status", "--porcelain", "--untracked-files=normal"]).is_empty(),
-        phase: 1,
+        phase: 2,
         pod_contacted: false,
         proof_or_gate_verdict: false,
         machine: MachineRow {
@@ -632,19 +576,21 @@ fn record() -> Record {
         immutable_scope: "no protocol, soundness, proof byte, codec, Lean, M12, 80.25537016399041-bit expression or existing gate-ceiling change".to_owned(),
         production_anchors: CounterRow {
             relation_terms: 1_632,
+            materialized_relation_terms: 102,
+            fused_relation_terms: 1_530,
             unique_evaluation_tables: 102,
             evaluation_table_bytes: PRODUCTION_EVALUATION_TABLE_BYTES,
             evaluation_table_cpu_resident_bytes: PRODUCTION_EVALUATION_TABLE_BYTES,
             evaluation_table_gpu_resident_bytes: 0,
             evaluation_table_h2d_bytes: 0,
             evaluation_table_d2h_bytes: 0,
-            response_local_evaluation_clone_bytes: 16 * PRODUCTION_EVALUATION_TABLE_BYTES,
-            response_local_equality_table_bytes: 16 * PRODUCTION_EVALUATION_TABLE_BYTES,
-            peak_relation_table_cpu_payload_bytes: 33 * PRODUCTION_EVALUATION_TABLE_BYTES,
+            materialized_evaluation_clone_bytes: PRODUCTION_EVALUATION_TABLE_BYTES,
+            materialized_equality_table_bytes: PRODUCTION_EVALUATION_TABLE_BYTES,
+            peak_relation_table_cpu_payload_bytes: 3 * PRODUCTION_EVALUATION_TABLE_BYTES,
             peak_relation_table_gpu_payload_bytes: 0,
-            logical_evaluation_table_symbols_read: 16 * (PRODUCTION_EVALUATION_TABLE_BYTES / 16),
-            logical_evaluation_table_bytes_read: 16 * PRODUCTION_EVALUATION_TABLE_BYTES,
-            evaluation_table_passes_per_unique_table: 16,
+            logical_evaluation_table_symbols_read: PRODUCTION_EVALUATION_TABLE_BYTES / 16,
+            logical_evaluation_table_bytes_read: PRODUCTION_EVALUATION_TABLE_BYTES,
+            evaluation_table_passes_per_unique_table: 1,
             encoded_oracle_full_passes: 1,
             response_or_claim_proportional_encoded_oracle_passes: 0,
             source_coefficients_read: PRODUCTION_EVALUATION_TABLE_BYTES / 16,
@@ -653,37 +599,8 @@ fn record() -> Record {
             query_gather_calls: 1,
         },
         synthetic_scales: scales,
-        postdiction,
-        findings: vec![
-            FindingRow {
-                code: "CONFIRMED_LATE_AGGREGATION_CPU_EVALUATION_TABLES".to_owned(),
-                disposition: "k response-local weight/auxiliary relations are cloned and traversed separately by the delayed sumcheck; duplicate slot weights are accumulated only after that work".to_owned(),
-                exact_loops: vec![
-                    "rust/volta-pcs/src/x4/authenticated_output_v4.rs:1306 (per-block term construction)".to_owned(),
-                    "rust/volta-pcs/src/x4/authenticated_output_v4.rs:639 (per-round loop; line 642 revisits every term)".to_owned(),
-                    "rust/volta-pcs/src/x4/authenticated_output_v4.rs:1341 (duplicate-slot grouping occurs late)".to_owned(),
-                ],
-            },
-            FindingRow {
-                code: "REFUTED_K_PROPORTIONAL_ENCODED_ORACLE_PASSES".to_owned(),
-                disposition: "the existing post-sumcheck BTreeMap already reduces duplicate slots before X4c combine_source; initial_encoded_symbols_read and combined_codeword_symbols are one-pass and equal at synthetic k=1/k=16".to_owned(),
-                exact_loops: vec![
-                    "rust/volta-pcs/src/x4/authenticated_output_v4.rs:1341 (late duplicate-slot grouping)".to_owned(),
-                    "rust/volta-pcs/src/x4/x4c_v4.rs:1888 (one loop over grouped cohorts)".to_owned(),
-                    "rust/volta-pcs/src/x4/x4c_v4.rs:3587 (one loop over unique touched slots)".to_owned(),
-                ],
-            },
-            FindingRow {
-                code: "CONFIRMED_CPU_RESIDENT_EVALUATION_TABLES".to_owned(),
-                disposition: "the settlement borrows Vec<Fp2> Boolean-hypercube tables in host memory; DelayedSumcheckTermV4 clones them into host Vecs and no evaluation-table H2D/D2H or GPU-resident allocation exists".to_owned(),
-                exact_loops: vec![
-                    "rust/volta-bench/src/x4c_gpt2.rs:167 (Vec-backed evaluation tables)".to_owned(),
-                    "rust/volta-pcs/src/x4/authenticated_output_v4.rs:548 (host Vec clone)".to_owned(),
-                    "rust/volta-pcs/src/x4/authenticated_output_v4.rs:580 (host table traversal)".to_owned(),
-                ],
-            },
-        ],
-        fused_driver_design: "after the accumulator seal and frozen challenge coefficients, aggregate all response-local equality/combination coefficients per physical block before reading its table/oracle; execute one GPU-resident RLC over the 102 unique slots with the existing X4c accelerated arena, then one unchanged 27-round combined fold/Merkle chain and one unchanged 111-query packed opening. Expected production counters at both k=1 and k=16: initial_encoded_symbols_read=4,809,293,824; combined_codeword_symbols=1,159,200,768; encoded_oracle_full_passes=1; query_gather_calls=1.".to_owned(),
+        local_flatness,
+        fused_driver_implementation: "response-local equality/combination coefficients are reduced by physical cohort+slot before each unique source table is cloned; the sumcheck relation polynomial is round-exact, the protocol relation count remains unchanged, and the existing X4c GPU-resident encoded-oracle RLC, one combined fold/Merkle chain and one 111-query opening are reused".to_owned(),
         flatness_gate: FlatnessGateRow {
             preregistered: true,
             wall_rule: "settlement_wall(k=16) <= 1.30 * settlement_wall(k=1) on the same host".to_owned(),
@@ -691,9 +608,21 @@ fn record() -> Record {
             same_host_required: true,
             informative_target: "settlement_wall <= the immutable X4c pcs_total baseline band (288-307 s); not a gate".to_owned(),
             existing_gates_unchanged: "G1 response wall/bytes/interference, G2-G6, opening <=1.50 s and verify <=0.25 s all re-run without relaxation".to_owned(),
-            verdict: "NOT EVALUATED IN PHASE 1".to_owned(),
+            verdict: "NOT EVALUATED: LOCAL CPU DIAGNOSTIC ONLY".to_owned(),
         },
-        hard_stop: "PHASE 1 COMPLETE ONLY; fused driver not implemented; no pod provisioned or contacted; await user review".to_owned(),
+        owner_phase2_rulings: vec![
+            "Binding gate only: same-host settlement wall k=16 <=1.30x k=1 plus initial and combined symbol equality; 288-307 s is informative, so 350 s with green flatness is PASS with a note".to_owned(),
+            "Rerun G1 and interference without relaxation: historical 4.87-5.04 s response range, exact 41,270,464 B and <=1.00% interference, with 0.399684884% as the accepted comparison anchor".to_owned(),
+            "Do not rename or update the accelerated comparison document before eligible paired pod records and ledger closure".to_owned(),
+        ],
+        pod_checklist: vec![
+            "STOP and ask before provisioning or contacting a pod".to_owned(),
+            "NOTE-6 is the first production-size workload".to_owned(),
+            "Fail closed unless selected SKU RAM >=274,877,906,944 B and volume >=150,000,000,000 B".to_owned(),
+            "Write only fresh append-only x4d1-* records".to_owned(),
+            "Stop the pod through the provider control plane from the SSH session at session end".to_owned(),
+        ],
+        hard_stop: "PHASE 2 LOCAL IMPLEMENTATION ONLY; no pod provisioned or contacted; explicit provisioning approval required".to_owned(),
     }
 }
 
@@ -707,11 +636,10 @@ fn main() {
         print!("{}", String::from_utf8(bytes).unwrap());
         return;
     }
-    let path = repo_root().join("benchmarks/results").join(format!(
-        "x4d1-phase1-settlement-postdiction-v3-{}-{}-local.json",
-        DATE, record.git_short_sha
-    ));
-    assert!(!path.exists(), "append-only Phase-1 record already exists: {}", path.display());
+    let path = repo_root()
+        .join("benchmarks/results")
+        .join(format!("x4d1-phase2-fused-v3-{}-{}-local.json", DATE, record.git_short_sha));
+    assert!(!path.exists(), "append-only Phase-2 record already exists: {}", path.display());
     fs::write(&path, bytes).unwrap();
     println!("{}", path.strip_prefix(repo_root()).unwrap().display());
 }

@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PHASE 1 COMPLETE — LATE CPU-TABLE AGGREGATION DIAGNOSED / FUSED DRIVER PREREGISTERED; HARD STOP)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PHASE 2 LOCAL FUSED DRIVER + PAIRED HARNESS GREEN; HARD STOP BEFORE POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -356,6 +356,7 @@ its clean descendant closure.
 | X4d Phase 3 fresh-query invariant-base correction | **HARD STOP HONORED; 18 PENDING RESPONSES TERMINAL-UNVERIFIED / 64-B DERIVATION ERROR IDENTIFIED / LOCAL STRUCTURAL FIX GREEN / FRESH ONBOARDING REQUIRED** (2026-07-25) | The exact-relation production rerun reached the same counter validator; static reconciliation found that its selected-tape baseline used 4,924 fold symbols instead of the immutable fixture's 4,920 | No settlement accepted and no online JSON exists. Journal SHA-256 `f2add8fc65bc4baec937de29f6133a607a4243f5abaf2b269c29640ff49d4cd7`; connection tree `e93e03473d4e54c8ba2fec8583c1b1c82ba11f703d39d6427e564e7f630f7128`; 21-marker tree `d83a4b97f1a3d2f0ccaf86ff2d49f464e907d78d0716f099912ef075e718e543`. The typo was exactly four Fp2 symbols, or **64 B**. X4d now derives the invariant bases structurally as **35,727,154,720 B reused / 35,727,154,848 B fresh**, then independently reconciles the historical **4,920 / 48,978** fold-symbol/sibling fixture and immutable X4c device counters. Full no-default-feature workspace is green with PCS **117/117** and Proto **110/110** non-ignored tests; validators are **21/21**. No ceiling, byte formula, query distribution or soundness term changes. |
 | X4d Phase 3 A100 deferred-settlement record | **V1 OVERALL PASS; G1--G6/CAP/ABORT VALIDATED; SETTLEMENT WALL INFORMATIVE** (2026-07-26) | Clean `bf4230c`; selected single A100-SXM4 80 GB; 8 response + 27 settlement CPUs; 16-response/1,632-claim union; historical 4-MB scope unchanged; open <=1.50 s and verify <=0.25 s remain HARD | Validated onboarding SHA-256 `15b8d87fcc0db8200dee06b5c1218c198c0551ad8ad5d062fa9975f3f37043ba`; validated online SHA-256 `d6017dbadd930baa390b174e57e8d93ec6a413fd886d505ad37ebb484e6dc24b`. G1 **4.900886414 s PASS**, freeze **0.000511270 s PASS**, response **41,270,464 B / PCS 0 B exact**. Rebuild **218.256070550 s**, roots exact. Settlement **3,564,780 B exact**, **3,088.031851727 s informative**, open/verify **0.132453794 / 0.062415304 s PASS HARD**; all 1,632 claims become weight-verified, exact correlations pass, cap 3,321 rejects, abort is terminal-unverified and no retry is possible. Three static roots are reused; 51 masks, epoch and 111 queries are fresh. Soundness remains byte-identical at **80.2553701639904 bits**. |
 | X4d.1 settlement-driver Phase 1 | **INSTRUMENTED + POSTDICTED + FUSED DRIVER/GATE PREREGISTERED; HARD STOP BEFORE IMPLEMENTATION OR POD** (2026-07-26) | No protocol/soundness/byte/codec/Lean/ceiling change; walls and traffic/residency census; local k=1/16 at `2^14/16/18`; exact-loop diagnosis; no-fit A100 postdiction; FLATNESS IN k added | Current k=16 does **16 CPU evaluation-table passes** over **102 tables / 9,618,587,648 unique B / 153,897,402,368 logical B**, materializing **153,897,402,368 B** each of response-local evaluation/equality tables for **317,413,392,384 B** peak relation payload, but already only **one encoded-oracle pass**: **4,809,293,824 initial symbols / 1,159,200,768 combined symbols**. Thus late aggregation is confirmed before the encoded oracle and CPU residency is confirmed; k-proportional encoded-oracle passes are refuted. The exact instrumented **16.0x** traffic multiplier postdicts the immutable **3,071.972477759-s** proof-driver wall at **2,949.050082660 s**, **4.0014%** absolute error, without fitting. New hard gate: same-host `wall(k16) <= 1.30*wall(k1)` and equal initial-symbol counts; **288–307 s** remains informative only. Diagnostic record `x4d1-phase1-settlement-postdiction-v3-2026-07-26-da5b6a7-local.json`, SHA-256 `0a1f5dba122f9e2ac184fbce11f2a5d20849b61b9878343b0ca8847c9a926fe7`, is intentionally dirty, `pod_contacted=false`, `proof_or_gate_verdict=false`. Design descendant SHA-256 `36f91776548b1690e93cca3f23886c78dd9721102187b69fb94514f5f342efb4`. Existing G1/G2–G6/cap/tamper/abort and **80.2553701639904-bit** expression remain unchanged. |
+| X4d.1 settlement-driver Phase 2 local | **FUSED DRIVER + SYNTHETIC COUNTER REGRESSION + PAIRED POD HARNESS GREEN; HARD STOP BEFORE POD** (2026-07-26) | Pure-linear settlement-only fusion; protocol relation/correlation/proof grammar unchanged; X4c response path unchanged; append-only k=1/k=16/pair producers ready | The sealed-settlement prover reduces equality/combination coefficients by physical `(cohort,slot)` before cloning each unique source once. Production k=16 retains **1,632 protocol relations** but materializes **102**, fusing **1,530**; k=1 also materializes **102**. Both require exactly **601,161,728 source symbols / 9,618,587,648 B**, one table pass, **4,809,293,824 initial encoded symbols**, **1,159,200,768 combined-codeword symbols** and one gather. Counted peak relation payload is now **28,855,762,944 B CPU / 0 B GPU**, independent of k. Permanent tests establish round-by-round/terminal identity, reject nonidentical source aliases, verify the existing two-response proof, and require full synthetic k=1/k=16 physical-counter equality. Append-only schema-6 diagnostic `x4d1-phase2-fused-v3-2026-07-26-74aba2a-local.json`, SHA-256 `c804d9deaf741f3c9808c925f7a70e4ea93ec60d9b217a69e6668c4db8a2b448`, records `2^18` selected caller/claim-preparation ratios **1.211805505x / 2.761999236x**, diagnostic only. The pod pair uses fresh connections, exact seal-to-terminal wall semantics and a separate same-host verdict whose `overall_pass` excludes the informative **288–307 s** target; **350 s with green flatness is PASS with a note**. G1/bytes/interference rerun unchanged (**4.87–5.04 s / 41,270,464 B / historical <=1.00%, 0.399684884% anchor**). Design descendant SHA-256 `3ca7b497d3604c220a2de59ceb1279172dc8bd8e835081900b3cfc17fe3af463`; pod/pair producer SHA-256 values `b8d68df9d52f4a223e7edb559b5be020490b26ad433ecc960aa52145d7d29009` / `d7adf10afb9ab8a8d3aa934dced519784e51fa950937536b732dfd6a0b422b0d`. NOTE-6 first, RAM **>=256 GiB**, volume **>=150 GB**, `x4d1-*` append-only and control-plane termination remain mandatory. No pod contacted; no production gate verdict; comparison document untouched. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -423,6 +424,66 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-26 — X4d.1 Phase 2 implements the settlement-only linear fusion
+  locally and prepares the paired run of record; HARD STOP before pod.**
+  Owner approval fixed three interpretation rules: the new binding gate is
+  same-host wall flatness plus physical-symbol equality; the 288--307-s X4c
+  band is informative only, so a 350-s k=16 result with green flatness is a
+  PASS with a note; and the already-delivered G1/byte/interference path must
+  rerun without relaxation. Pod admission remains NOTE-6 first, fail-closed
+  RAM **>=274,877,906,944 B**, volume **>=150,000,000,000 B**, append-only
+  `x4d1-*` records and provider-control-plane termination at session end.
+
+  The accelerated X4d prover now accumulates
+  `c_i * eq(r_i)` by exact physical cohort/slot after the accumulator seal,
+  then clones and scans each shared source table once. The algebraic relation
+  is unchanged: `sum_i c_i*f*eq(r_i) = f*sum_i c_i*eq(r_i)` at the initial
+  sum, every degree-two round and the terminal point. Protocol relation count,
+  transcript frame, correlations, terminal group weights, opening, proof
+  bytes, M12 and the **80.2553701639904-bit** expression are untouched. The
+  optimization is selected only when an X4d settlement context is present;
+  X4c response proving remains on its existing path.
+
+  Production k=1/k=16 now both materialize **102 physical terms**, read
+  **601,161,728 source symbols / 9,618,587,648 B** once and retain one
+  **9,618,587,648-B** combined equality tier. The protocol relation counts
+  remain **102 / 1,632**, so k=16 reports **1,530 fused terms**. Counted peak
+  relation payload falls from **317,413,392,384 B** to
+  **28,855,762,944 B**, while the already-single encoded path remains exactly
+  **4,809,293,824 initial symbols / 1,159,200,768 combined symbols / one
+  gather** at both k values.
+
+  Permanent tests establish response-local/fused round and terminal equality,
+  fail closed on a different allocation behind the same slot, verify a
+  complete two-response settlement and compare complete synthetic k=1/k=16
+  counters. The final append-only schema-6 local record
+  `x4d1-phase2-fused-v3-2026-07-26-74aba2a-local.json`, SHA-256
+  `c804d9deaf741f3c9808c925f7a70e4ea93ec60d9b217a69e6668c4db8a2b448`,
+  has exact physical-counter equality at all three scales; at `2^18` its
+  selected caller wall is **1.211805505x** and its isolated
+  claim-preparation wall is **2.761999236x**, neither a production verdict.
+  The append-only schema-4/schema-5 precursors remain as preliminary timing
+  evidence and are superseded because schema 6 pins the clean-verifying
+  paired producer as well as the final design.
+  The run-of-record adapter accepts only k=1 or k=16 on fresh connections;
+  its paired verdict checks same host/build, seal-to-terminal wall ratio,
+  initial and combined symbols, G1, exact **41,270,464-B** responses,
+  historical **<=1.00%** interference and all inherited settlement gates.
+  The informative target is structurally absent from `overall_pass`.
+  Final design SHA-256 is
+  `3ca7b497d3604c220a2de59ceb1279172dc8bd8e835081900b3cfc17fe3af463`;
+  the pod and paired-verdict producers are
+  `b8d68df9d52f4a223e7edb559b5be020490b26ad433ecc960aa52145d7d29009`
+  and `d7adf10afb9ab8a8d3aa934dced519784e51fa950937536b732dfd6a0b422b0d`.
+  A clean rebuild followed by `cargo test --workspace` is green: bench
+  **31**, PCG **44**, PCS **119** and proto **110** non-ignored unit tests;
+  all doc tests pass, and the central report suite is **22/22 PASS**.
+
+  No endpoint, pod, external storage or provider control plane was contacted.
+  No hardware/gate verdict or R1c closure is claimed, and
+  `docs/x4c-gpt2-accelerated-comparison.md` remains untouched pending the
+  eligible pair and final owner-authorized closure.
 
 - **2026-07-26 — X4d.1 Phase 1 isolates the k-linear settlement cost
   before the encoded-oracle pass and preregisters a fused driver; HARD STOP

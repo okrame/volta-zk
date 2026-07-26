@@ -145,15 +145,19 @@ pub struct X4dSettlementDriverCountersV1 {
     pub evaluation_table_gpu_resident_bytes: u64,
     pub evaluation_table_h2d_bytes: u64,
     pub evaluation_table_d2h_bytes: u64,
-    /// Host-owned evaluation copies materialized by response-local terms.
-    pub response_local_evaluation_clone_bytes: u64,
-    /// Host-owned equality vectors paired one-for-one with those copies.
-    pub response_local_equality_table_bytes: u64,
-    /// Unique source tables plus both response-local payload classes at the
+    /// Host-owned evaluation copies retained after settlement-only fusion.
+    pub materialized_evaluation_clone_bytes: u64,
+    /// Host-owned combined equality vectors paired with those copies.
+    pub materialized_equality_table_bytes: u64,
+    /// Unique source tables plus both materialized payload classes at the
     /// pre-sumcheck materialization peak; allocator overhead is excluded.
     pub peak_relation_table_cpu_payload_bytes: u64,
     pub peak_relation_table_gpu_payload_bytes: u64,
+    /// Protocol relation terms; this remains response/claim proportional.
     pub relation_terms: u64,
+    /// Physical delayed-sumcheck terms after pure-linear settlement fusion.
+    pub materialized_relation_terms: u64,
+    pub fused_relation_terms: u64,
     pub logical_evaluation_table_symbols_read: u64,
     pub logical_evaluation_table_bytes_read: u64,
     pub evaluation_table_passes_per_unique_table: u64,
@@ -1504,19 +1508,28 @@ pub fn execute_real_weight_x4d_settlement_v1<R: X4cArenaRuntimeV4>(
     let logical_evaluation_table_bytes_read = logical_evaluation_table_symbols_read
         .checked_mul(16)
         .ok_or_else(|| "X4d logical evaluation-table byte count overflows".to_owned())?;
-    let response_local_evaluation_clone_bytes = logical_evaluation_table_bytes_read;
-    let response_local_equality_table_bytes = logical_evaluation_table_bytes_read;
+    let materialized_evaluation_clone_bytes = logical_evaluation_table_bytes_read;
+    let materialized_equality_table_bytes = link_metrics
+        .sumcheck_equality_symbols_materialized
+        .checked_mul(16)
+        .ok_or_else(|| "X4d materialized equality-table bytes overflow".to_owned())?;
     let peak_relation_table_cpu_payload_bytes = evaluation_table_bytes
-        .checked_add(response_local_evaluation_clone_bytes)
-        .and_then(|value| value.checked_add(response_local_equality_table_bytes))
+        .checked_add(materialized_evaluation_clone_bytes)
+        .and_then(|value| value.checked_add(materialized_equality_table_bytes))
         .ok_or_else(|| "X4d relation-table CPU payload overflows".to_owned())?;
-    let response_passes = u64::try_from(batch.counters.responses)
-        .map_err(|_| "X4d evaluation-table pass count overflows".to_owned())?;
+    let evaluation_table_passes_per_unique_table = logical_evaluation_table_symbols_read
+        .checked_div(unique_evaluation_table_symbols)
+        .ok_or_else(|| "X4d unique evaluation-table symbol count is zero".to_owned())?;
     if x4c_metrics.global_open.source_coefficients_read != unique_evaluation_table_symbols
-        || logical_evaluation_table_symbols_read
-            != unique_evaluation_table_symbols
-                .checked_mul(response_passes)
-                .ok_or_else(|| "X4d logical evaluation-table symbols overflow".to_owned())?
+        || relation_terms != link_metrics.sumcheck_relation_terms
+        || link_metrics.sumcheck_materialized_terms != unique_evaluation_tables
+        || link_metrics.sumcheck_fused_terms
+            != relation_terms
+                .checked_sub(unique_evaluation_tables)
+                .ok_or_else(|| "X4d fused relation-term count underflows".to_owned())?
+        || logical_evaluation_table_symbols_read != unique_evaluation_table_symbols
+        || link_metrics.sumcheck_equality_symbols_materialized != unique_evaluation_table_symbols
+        || evaluation_table_passes_per_unique_table != 1
     {
         return Err("X4d evaluation-table/pass accounting diverged".to_owned());
     }
@@ -1537,14 +1550,16 @@ pub fn execute_real_weight_x4d_settlement_v1<R: X4cArenaRuntimeV4>(
         evaluation_table_gpu_resident_bytes: 0,
         evaluation_table_h2d_bytes: 0,
         evaluation_table_d2h_bytes: 0,
-        response_local_evaluation_clone_bytes,
-        response_local_equality_table_bytes,
+        materialized_evaluation_clone_bytes,
+        materialized_equality_table_bytes,
         peak_relation_table_cpu_payload_bytes,
         peak_relation_table_gpu_payload_bytes: 0,
         relation_terms,
+        materialized_relation_terms: link_metrics.sumcheck_materialized_terms,
+        fused_relation_terms: link_metrics.sumcheck_fused_terms,
         logical_evaluation_table_symbols_read,
         logical_evaluation_table_bytes_read,
-        evaluation_table_passes_per_unique_table: response_passes,
+        evaluation_table_passes_per_unique_table,
         encoded_oracle_full_passes: 1,
         response_or_claim_proportional_encoded_oracle_passes: 0,
         source_coefficients_read: x4c_metrics.global_open.source_coefficients_read,

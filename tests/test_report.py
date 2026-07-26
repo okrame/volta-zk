@@ -386,6 +386,23 @@ def test_x4d_codec_reference_validator_is_exact_and_fail_closed(tmp_path):
         assert report._x4d_codec_reference_valid(candidate) is False
         assert report.validate_x4d_codec_reference(path) is False
 
+    amendment_path = (
+        report.DEFAULT_RESULTS
+        / "x4d-codec-reference-amendment1-2026-07-25-4efa5f6.json"
+    )
+    amendment = json.loads(amendment_path.read_text())
+    assert report._x4d_codec_reference_valid(amendment) is True
+    assert report.validate_x4d_codec_reference(amendment_path) is True
+    assert amendment["settlements"][3]["serialized_bytes"] == 4_371_564
+    assert amendment["settlements"][3]["settlement_bytes_per_response"] == 136_611.375
+
+    bad_amendment = copy.deepcopy(amendment)
+    bad_amendment["settlements"][0]["fixed_size_padding_bytes"] -= 1
+    assert report._x4d_codec_reference_valid(bad_amendment) is False
+    bad_amendment = copy.deepcopy(amendment)
+    bad_amendment["fresh_query_length_semantics"] = "selected query tape"
+    assert report._x4d_codec_reference_valid(bad_amendment) is False
+
 
 def _x4d_phase3_hardware():
     return {

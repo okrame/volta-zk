@@ -1,8 +1,9 @@
 # X4d deferred-settlement design and preregistration
 
-**Status (2026-07-26): X4d V1 PHASE 3 CLOSED PASS. X4d.1 PHASE 2 LOCAL
-FUSED DRIVER, SYNTHETIC COUNTER TESTS AND PAIRED POD HARNESS COMPLETE; HARD
-STOP BEFORE POD PROVISIONING OR CONTACT.**
+**Status (2026-07-26): X4d V1 PHASE 3 CLOSED PASS. X4d.1 FUSED DRIVER AND
+PAIRED A100 MEASUREMENT COMPLETE; OFFICIAL FLATNESS FAIL. PHYSICAL SYMBOL
+COUNTERS PASS; INHERITED G1 RERUN FAILS ON THE k=1 SYNC CEILING. CONTROL-PLANE
+TEARDOWN REMAINS PENDING BECAUSE THE POD-SIDE `runpodctl` HAS NO API KEY.**
 
 X4d moves the folding-PCS work out of each response and into one deferred
 settlement over an exact union of frozen, MAC-authenticated weight claims. A
@@ -264,11 +265,75 @@ The owner-approved Phase-2 rulings are:
    all new files are `x4d1-*` append-only; and the pod is stopped from the
    provider control plane at session end.
 
-**X4d.1 Phase-2 HARD STOP:** the local implementation and run-of-record
-harness are ready, but no pod has been provisioned or contacted and no
-production gate is evaluated. Owner approval is required before provisioning.
-The accelerated-comparison document is not renamed or updated until eligible
-paired pod records and the ledger closure exist.
+**Historical Phase-2 stop:** the local implementation and run-of-record
+harness stopped here until the owner supplied and authorized the pod endpoint.
+
+### X4d.1 A100 paired result
+
+The owner-authorized session used clean source
+`b83ffc1d94e5484a398036b5207b72209ce270fe` and selected GPU 0,
+`GPU-e79a8a9c-dd06-a5b9-4bbb-6bdfef21ce73`, on the same two-A100 host for
+both records. The fail-closed hardware record measured
+**2,151,617,314,816 B** RAM and a **443,466,171,875,328-B** volume, with
+response CPUs 0--7 and settlement CPUs 8--34. NOTE-6 was the first
+production-size workload and passed before preflight, onboarding, rebuild or
+online work.
+
+Fresh schema-3 onboarding retained exactly five coefficient/root pairs,
+**9,618,587,808 B**, with identical roots, exact golden output and zero oracle
+files. Its selected upper median was **452.468691324 s** and the complete
+campaign was **1,941 s <=3,600 s PASS**. Fresh rebuild was
+**186.102826901 / 185.341514633 s** in the k=1/k=16 records, with exact roots.
+
+Both settlements were accepted by the inherited X4d protocol gates:
+
+| Measurement | k=1 | k=16 |
+|---|---:|---:|
+| seal to terminal | 333.456712047 s | 878.973897598 s |
+| proof driver | 317.908618836 s | 863.050484758 s |
+| claim-coefficient preparation | 167.865042048 s | 716.643018039 s |
+| oracle read + combine | 128.214018848 s | 125.295222121 s |
+| fold + Merkle | 21.606032798 s | 20.888810928 s |
+| query gather/open | 0.149103243 s | 0.141819753 s |
+| initial encoded symbols | 4,809,293,824 | 4,809,293,824 |
+| combined-codeword symbols | 1,159,200,768 | 1,159,200,768 |
+| materialized / fused terms | 102 / 0 | 102 / 1,530 |
+
+Thus the physical-symbol gate is green, but the binding wall ratio is
+**2.635946033901128 >1.30: FAIL**. The already-single oracle-combine and fold
+phases are flat; the remaining k-dependence is isolated in the caller-visible
+claim-coefficient preparation phase, which is **4.269161758x** slower at
+k=16. The **288--307-s** target remains informative only and does not affect
+this verdict.
+
+The k=16 hot path is green: selected G1 **4.783941572 s**, sync
+**0.126060151 s**, exact **41,270,464-B** responses and ABBA interference
+**-2.273545314%**. The paired inherited-G1 gate nevertheless fails because
+the only preregistered k=1 run observed **0.154283455 s >0.150 s** maximum
+sync. Its settlement was accepted, and no selective retry was performed.
+Opening/verify, exact bytes, correlations, cap, tamper and abort gates remain
+green. M12 and the **80.2553701639904-bit** expression are unchanged.
+
+The append-only paired record
+`x4d1-flatness-gate-2026-07-26-b83ffc1.json`, SHA-256
+`7b041e2d1d3028da1977f13de900d95e2da011f98349c86646596eaccb267250`,
+is accepted by the permanent validator as a coherent **FAIL** record. The
+input record SHA-256 values are
+`7cea0665a22e453eb5b695c5bd7fa830a261448a0e9985370d5007c75270ec2e`
+for k=1 and
+`381979e0b6e440b1b995e1e78134a21cdece3651af0bfd621b2b52ef925a5ae6`
+for k=16.
+
+R1c mandatory scope is extended to the physical-slot coefficient reduction,
+the still-k-dependent claim-preparation caller, production counter
+instrumentation, paired-verdict selection, and the k=1 G1 synchronization
+outlier. No independent review is claimed.
+
+All six records were copied and SHA-verified locally. The required
+pod-side command `runpodctl stop pod xfjw217q6cq4ja` was then attempted, but
+the CLI stopped before any control-plane mutation with `API key not found`.
+The pod remains running until the owner configures `runpodctl` or performs the
+equivalent control-plane stop; teardown credit is not claimed.
 
 ## 1. Authority, inputs and fixed facts
 
@@ -1530,8 +1595,7 @@ scheduler, interference accounting and abort cleanup.
 benchmark or provider control plane may be touched for X4d until the product
 owner explicitly approves Phase 3 and provisions the registered profile.
 
-For X4d.1, the analogous local Phase-2 boundary is now complete. Its approved
-pod phase must run, in order:
+For X4d.1, the approved pod phase ran in the registered order:
 
 ```text
 fresh clean checkpoint
@@ -1540,8 +1604,12 @@ fresh clean checkpoint
   -> fresh append-only x4d1-k1 settlement
   -> fresh append-only x4d1-k16 settlement with unchanged G1/interference
   -> append-only paired flatness verdict
-  -> full validation, ledger/R1c closure and comparison-document update
+  -> full validation, ledger/R1c closure and renamed comparison document
+     [COMPLETE, official verdict FAIL]
   -> provider-control-plane pod stop from the SSH session
+     [PENDING: pod-side runpodctl lacks an API key]
 ```
 
 The `288--307 s` X4c band is not in the paired verdict's `overall_pass`.
+R1c scope additionally includes the fused physical-slot reducer, residual
+claim-preparation scaling, production instrumentation and paired selector.

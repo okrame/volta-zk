@@ -71,6 +71,15 @@ pub const X4C_PRODUCTION_FRESH_DEVICE_GENERATED_BYTES_V4: u64 = 35_727_436_640;
 /// Subsequent responses reuse the four derived X4b hash keys owned by the
 /// same online CUDA context, so they generate exactly 128 fewer bytes.
 pub const X4C_PRODUCTION_REUSED_DEVICE_GENERATED_BYTES_V4: u64 = 35_727_436_512;
+const X4C_SELECTED_FOLD_GATHER_PAYLOAD_BYTES_V4: u64 = 4_924 * FP2_BYTES + 48_978 * DIGEST_BYTES;
+const X4C_SELECTED_REBUILT_FRONTIER_BYTES_V4: u64 =
+    X4C_SELECTED_FOLD_GATHER_PAYLOAD_BYTES_V4 - X4C_PRODUCTION_EXPLICIT_D2D_COPY_BYTES_V4;
+const X4C_PRODUCTION_FRESH_DEVICE_BASE_BYTES_V4: u64 =
+    X4C_PRODUCTION_FRESH_DEVICE_GENERATED_BYTES_V4 - X4C_SELECTED_REBUILT_FRONTIER_BYTES_V4;
+const X4C_PRODUCTION_REUSED_DEVICE_BASE_BYTES_V4: u64 =
+    X4C_PRODUCTION_REUSED_DEVICE_GENERATED_BYTES_V4 - X4C_SELECTED_REBUILT_FRONTIER_BYTES_V4;
+const X4D_PRODUCTION_MAX_FOLD_GATHER_PAYLOAD_BYTES_V4: u64 =
+    5_132 * FP2_BYTES + 52_030 * DIGEST_BYTES;
 const X4C_DERIVED_HASH_KEY_BYTES_V4: u64 = 4 * DIGEST_BYTES;
 
 pub const X4C_FOLD_CODEWORD_BYTES_V4: u64 = 17_179_869_056;
@@ -590,6 +599,7 @@ impl X4cResponseExecutionCountersV4 {
         self.validate_production_with_opening_bytes(
             response_ordinal,
             X4C_PACKED_OPENING_BYTES_V4,
+            0,
             true,
         )
     }
@@ -598,14 +608,21 @@ impl X4cResponseExecutionCountersV4 {
         &self,
         response_ordinal: u64,
         max_opening_bytes: u64,
+        fold_gather_payload_bytes: u64,
     ) -> Result<(), X4cErrorV4> {
-        self.validate_production_with_opening_bytes(response_ordinal, max_opening_bytes, false)
+        self.validate_production_with_opening_bytes(
+            response_ordinal,
+            max_opening_bytes,
+            fold_gather_payload_bytes,
+            false,
+        )
     }
 
     fn validate_production_with_opening_bytes(
         &self,
         response_ordinal: u64,
         opening_bytes: u64,
+        fold_gather_payload_bytes: u64,
         exact: bool,
     ) -> Result<(), X4cErrorV4> {
         let expected_device_generated_bytes = if response_ordinal == 0 {
@@ -619,6 +636,24 @@ impl X4cResponseExecutionCountersV4 {
         } else {
             self.canonical_template_h2d_bytes == self.canonical_opening_d2h_bytes
                 && self.canonical_opening_d2h_bytes <= opening_bytes
+        };
+        let query_dependent_counters_valid = if exact {
+            self.expected_explicit_d2d_copy_bytes == X4C_PRODUCTION_EXPLICIT_D2D_COPY_BYTES_V4
+                && self.expected_device_generated_bytes == expected_device_generated_bytes
+        } else {
+            let device_base_bytes = if response_ordinal == 0 {
+                X4C_PRODUCTION_FRESH_DEVICE_BASE_BYTES_V4
+            } else {
+                X4C_PRODUCTION_REUSED_DEVICE_BASE_BYTES_V4
+            };
+            self.expected_device_generated_bytes.checked_sub(device_base_bytes).and_then(
+                |rebuilt| {
+                    rebuilt.checked_add(self.expected_explicit_d2d_copy_bytes).map(|payload| {
+                        payload == fold_gather_payload_bytes
+                            && payload <= X4D_PRODUCTION_MAX_FOLD_GATHER_PAYLOAD_BYTES_V4
+                    })
+                },
+            ) == Some(true)
         };
         if self.direct_fold_calls != X4C_PRODUCTION_FOLD_ROUNDS_V4 as u64
             || self.direct_fold_sample_comparisons != X4C_DIRECT_FOLD_PRODUCTION_SAMPLES_V4 as u64
@@ -641,8 +676,7 @@ impl X4cResponseExecutionCountersV4 {
             || self.query_draw_count != X4C_QUERY_COUNT_V4 as u64
             || self.noncanonical_opening_d2h_bytes != 0
             || self.cpu_fold_tree_clone_bytes != 0
-            || self.expected_explicit_d2d_copy_bytes != X4C_PRODUCTION_EXPLICIT_D2D_COPY_BYTES_V4
-            || self.expected_device_generated_bytes != expected_device_generated_bytes
+            || !query_dependent_counters_valid
         {
             return Err(X4cErrorV4::InvalidGeometry("X4c production execution counters"));
         }
@@ -2221,6 +2255,21 @@ impl<A> SealedGlobalChainX4cV4<'_, A> {
                 .serialized_bytes
                 .checked_add(X4C_MANDATORY_NON_QUERY_BYTES_V4)
                 .ok_or(X4cErrorV4::Overflow)?;
+            let fold_gather_payload_bytes =
+                proof.packed_opening.fold_rounds.iter().try_fold(0u64, |bytes, round| {
+                    let symbols = u64::try_from(round.opened_symbols.len())
+                        .map_err(|_| X4cErrorV4::Overflow)?
+                        .checked_mul(FP2_BYTES)
+                        .ok_or(X4cErrorV4::Overflow)?;
+                    let siblings = u64::try_from(round.outer_sibling_digests.len())
+                        .map_err(|_| X4cErrorV4::Overflow)?
+                        .checked_mul(DIGEST_BYTES)
+                        .ok_or(X4cErrorV4::Overflow)?;
+                    bytes
+                        .checked_add(symbols)
+                        .and_then(|value| value.checked_add(siblings))
+                        .ok_or(X4cErrorV4::Overflow)
+                })?;
             let opening_bytes_valid = match byte_policy {
                 X4cProductionBytePolicyV4::FrozenSelectedTape => {
                     observed_components == expected_components
@@ -2292,6 +2341,7 @@ impl<A> SealedGlobalChainX4cV4<'_, A> {
                     execution.validate_production_fresh_x4d(
                         config.response_ordinal,
                         fresh_x4d_max.serialized_bytes,
+                        fold_gather_payload_bytes,
                     )?;
                 }
             }
@@ -3966,6 +4016,39 @@ mod tests {
         assert_eq!(X4C_DIRECT_FOLD_DIAGNOSTIC_INDEX_H2D_BYTES_V4, 37_184);
         assert_eq!(X4C_DIRECT_FOLD_DIAGNOSTIC_VALUE_D2H_BYTES_V4, 74_368);
         X4cSealConfigV4::production([0x77; 32], 0).unwrap();
+    }
+
+    #[test]
+    fn fresh_x4d_execution_counters_bind_variable_gather_payload_exactly() {
+        let fold_payload = 1_620_000;
+        let explicit = 1_350_000;
+        let rebuilt = fold_payload - explicit;
+        let mut counters = X4cResponseExecutionCountersV4 {
+            direct_fold_calls: X4C_PRODUCTION_FOLD_ROUNDS_V4 as u64,
+            direct_fold_sample_comparisons: X4C_DIRECT_FOLD_PRODUCTION_SAMPLES_V4 as u64,
+            direct_fold_sample_mismatches: 0,
+            direct_fold_diagnostic_gather_calls: X4C_DIRECT_FOLD_DIAGNOSTIC_GATHER_CALLS_V4,
+            direct_fold_diagnostic_index_h2d_bytes: X4C_DIRECT_FOLD_DIAGNOSTIC_INDEX_H2D_BYTES_V4,
+            direct_fold_diagnostic_value_d2h_bytes: X4C_DIRECT_FOLD_DIAGNOSTIC_VALUE_D2H_BYTES_V4,
+            n4_tree_calls: X4C_PRODUCTION_FOLD_ROUNDS_V4 as u64,
+            query_gather_calls: 1,
+            query_gather_operation_count: 1,
+            query_gather_operation_h2d_bytes: size_of::<X4cCanonicalGatherOperation>() as u64,
+            canonical_template_h2d_bytes: 2_700_000,
+            query_draw_count: X4C_QUERY_COUNT_V4 as u64,
+            canonical_opening_d2h_bytes: 2_700_000,
+            noncanonical_opening_d2h_bytes: 0,
+            cpu_fold_tree_clone_bytes: 0,
+            expected_explicit_d2d_copy_bytes: explicit,
+            expected_device_generated_bytes: X4C_PRODUCTION_REUSED_DEVICE_BASE_BYTES_V4 + rebuilt,
+        };
+        counters.validate_production_fresh_x4d(1, 2_740_598, fold_payload).unwrap();
+
+        counters.expected_explicit_d2d_copy_bytes += 16;
+        assert!(counters.validate_production_fresh_x4d(1, 2_740_598, fold_payload).is_err());
+        counters.expected_explicit_d2d_copy_bytes -= 16;
+        counters.expected_device_generated_bytes += 32;
+        assert!(counters.validate_production_fresh_x4d(1, 2_740_598, fold_payload).is_err());
     }
 
     #[test]

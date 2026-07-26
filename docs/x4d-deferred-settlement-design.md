@@ -116,6 +116,36 @@ challenge or soundness credit. The frozen soundness expression and
 8 and G3 below contain the amended exact wire formula; the original Phase-2
 reference remains immutable historical evidence and is not overwritten.
 
+The first amendment run passed this byte bound and exposed one second instance
+of the same selected-tape assumption in the execution-counter validator.
+`expected_explicit_d2d_copy_bytes` and the rebuilt-frontier contribution to
+`expected_device_generated_bytes` partition the variable fold-gather payload;
+they cannot each equal their X4c selected-tape constants under fresh queries.
+The connection stopped fail-closed before settlement acceptance and was
+burned. Its journal SHA-256 is
+`809f80197540d60ced6e3438daa36530945828d1335b2817109b64106fcabe17`;
+the authorization-marker tree SHA-256 is
+`b611d18835407d061eaecc858270c0d75810c665fc05b4798f8e05532d754eac`.
+
+The corrected X4d counter rule is an equality, not a relaxed ceiling:
+
+```text
+rebuilt_frontier_bytes
+  = expected_device_generated_bytes - invariant_device_base_bytes
+
+expected_explicit_d2d_copy_bytes + rebuilt_frontier_bytes
+  = actual canonical fold-gather payload bytes
+  <= 16*5,132 + 32*52,030
+  = 1,747,072 B.
+```
+
+The invariant device base is derived from the immutable X4c selected-tape
+record by subtracting its rebuilt frontier, not introduced as an independent
+estimate. All non-query-dependent call, parity, H2D-operation, I/O, arena and
+query-count identities remain exact. X4c still requires its original
+**1,364,224-B** explicit D2D and
+**35,727,436,640 / 35,727,436,512-B** fresh/reused generated-byte constants.
+
 ### 1.1 Phase-2 root terminology clarification
 
 Implementation exposed one terminology ambiguity in the Phase-1 prose. It is

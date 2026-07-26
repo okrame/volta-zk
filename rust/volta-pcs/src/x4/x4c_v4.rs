@@ -71,13 +71,13 @@ pub const X4C_PRODUCTION_FRESH_DEVICE_GENERATED_BYTES_V4: u64 = 35_727_436_640;
 /// Subsequent responses reuse the four derived X4b hash keys owned by the
 /// same online CUDA context, so they generate exactly 128 fewer bytes.
 pub const X4C_PRODUCTION_REUSED_DEVICE_GENERATED_BYTES_V4: u64 = 35_727_436_512;
-const X4C_SELECTED_FOLD_GATHER_PAYLOAD_BYTES_V4: u64 = 4_924 * FP2_BYTES + 48_978 * DIGEST_BYTES;
-const X4C_SELECTED_REBUILT_FRONTIER_BYTES_V4: u64 =
-    X4C_SELECTED_FOLD_GATHER_PAYLOAD_BYTES_V4 - X4C_PRODUCTION_EXPLICIT_D2D_COPY_BYTES_V4;
+const X4C_PRODUCTION_ACTIVATION_SYMBOLS_V4: u64 = (1 << 26) + (1 << 24) + (1 << 20) + (1 << 19);
+const X4C_PRODUCTION_REUSED_DEVICE_BASE_BYTES_V4: u64 = X4C_FOLD_CODEWORD_BYTES_V4
+    + X4C_FOLD_OUTER_CACHE_BYTES_V4
+    + X4C_PRODUCTION_ACTIVATION_SYMBOLS_V4 * FP2_BYTES
+    + X4C_DIRECT_FOLD_DIAGNOSTIC_SYMBOLS_V4 * FP2_BYTES;
 const X4C_PRODUCTION_FRESH_DEVICE_BASE_BYTES_V4: u64 =
-    X4C_PRODUCTION_FRESH_DEVICE_GENERATED_BYTES_V4 - X4C_SELECTED_REBUILT_FRONTIER_BYTES_V4;
-const X4C_PRODUCTION_REUSED_DEVICE_BASE_BYTES_V4: u64 =
-    X4C_PRODUCTION_REUSED_DEVICE_GENERATED_BYTES_V4 - X4C_SELECTED_REBUILT_FRONTIER_BYTES_V4;
+    X4C_PRODUCTION_REUSED_DEVICE_BASE_BYTES_V4 + X4C_DERIVED_HASH_KEY_BYTES_V4;
 const X4D_PRODUCTION_MAX_FOLD_GATHER_PAYLOAD_BYTES_V4: u64 =
     5_132 * FP2_BYTES + 52_030 * DIGEST_BYTES;
 const X4C_DERIVED_HASH_KEY_BYTES_V4: u64 = 4 * DIGEST_BYTES;
@@ -4016,6 +4016,36 @@ mod tests {
         assert_eq!(X4C_DIRECT_FOLD_DIAGNOSTIC_INDEX_H2D_BYTES_V4, 37_184);
         assert_eq!(X4C_DIRECT_FOLD_DIAGNOSTIC_VALUE_D2H_BYTES_V4, 74_368);
         X4cSealConfigV4::production([0x77; 32], 0).unwrap();
+    }
+
+    #[test]
+    fn fresh_x4d_device_bases_reconcile_structural_and_historical_counts() {
+        let selected = gpt2_codec_reference_packed_opening_v4();
+        let fold_symbols =
+            selected.fold_rounds.iter().map(|round| round.opened_symbols.len() as u64).sum::<u64>();
+        let fold_siblings = selected
+            .fold_rounds
+            .iter()
+            .map(|round| round.outer_sibling_digests.len() as u64)
+            .sum::<u64>();
+        let selected_payload = fold_symbols * FP2_BYTES + fold_siblings * DIGEST_BYTES;
+        let selected_rebuilt =
+            selected_payload.checked_sub(X4C_PRODUCTION_EXPLICIT_D2D_COPY_BYTES_V4).unwrap();
+
+        assert_eq!(fold_symbols, 4_920);
+        assert_eq!(fold_siblings, 48_978);
+        assert_eq!(selected_payload, 1_646_016);
+        assert_eq!(selected_rebuilt, 281_792);
+        assert_eq!(X4C_PRODUCTION_REUSED_DEVICE_BASE_BYTES_V4, 35_727_154_720);
+        assert_eq!(X4C_PRODUCTION_FRESH_DEVICE_BASE_BYTES_V4, 35_727_154_848);
+        assert_eq!(
+            X4C_PRODUCTION_REUSED_DEVICE_BASE_BYTES_V4 + selected_rebuilt,
+            X4C_PRODUCTION_REUSED_DEVICE_GENERATED_BYTES_V4
+        );
+        assert_eq!(
+            X4C_PRODUCTION_FRESH_DEVICE_BASE_BYTES_V4 + selected_rebuilt,
+            X4C_PRODUCTION_FRESH_DEVICE_GENERATED_BYTES_V4
+        );
     }
 
     #[test]

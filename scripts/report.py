@@ -173,13 +173,48 @@ X4D_SETTLEMENT_REFERENCES = (
         "f7df30cddf241143db520c47fb29d9cd4b00b364a33e926d4e7c9a4d88e4739c",
     ),
 )
+X4D_CODEC_AMENDMENT_MILESTONE = "X4d-Phase3-fresh-query-codec-amendment-1"
+X4D_CODEC_AMENDMENT_SOURCE_GIT_SHA = "4efa5f65ca6948fc0028ce74570943d7f6596f6d"
+X4D_CODEC_AMENDMENT_DESIGN_SHA256 = (
+    "61be8d68df8cd5482cd815b855fd2fc417bbc3c14b2a0d20dadbe2c479816451"
+)
+X4D_CODEC_AMENDMENT_GENERATOR_SHA256 = (
+    "e80b142faeccd76030e72e5ae59b7d92b9365391bd02de4e63683530a49fcd82"
+)
+X4D_CODEC_AMENDMENT_SEMANTICS = (
+    "fresh settlement queries retain their registered distribution; the variable "
+    "canonical Merkle frontier is bounded componentwise and the X4d envelope is "
+    "padded with verified zeros to the fixed wire maximum"
+)
+X4D_CODEC_AMENDMENT_REFERENCES = (
+    (
+        1,
+        2_808_420,
+        "a81a246cbbb3f0bfb29870563931f4f384e428ca3c38549be43f52a31b22d23c",
+    ),
+    (
+        8,
+        3_161_388,
+        "082b3ba66a6450ba4256576b0361f9e94651c79a23e1a227b0c2a213ea80ff1f",
+    ),
+    (
+        16,
+        3_564_780,
+        "33df9833b62692d0d81e32b68991894079995ce6f6cacd5857be53548f067dbd",
+    ),
+    (
+        32,
+        4_371_564,
+        "42e1e28e7db5d6df0a86344129be70a5b25656cca9980fc4a7ba8e15467558ab",
+    ),
+)
 X4D_PHASE3_PROFILE = "runpod-a100-x4d-v1"
 X4D_PHASE3_PROTOCOL = "x4-zkdeepfold-ud-e29-v4+x4d-deferred-settlement-v1"
 X4D_PHASE3_DESIGN_SHA256 = (
-    "cd66fc3df5abe5471f59c4a01e79d85382ad052491889c835dcd7de2e16e66a4"
+    "61be8d68df8cd5482cd815b855fd2fc417bbc3c14b2a0d20dadbe2c479816451"
 )
 X4D_PHASE3_PRODUCER_SHA256 = (
-    "75875a8add9051d6e6495a06c407b965df1ad6fc2066b65557444ef213b781eb"
+    "d43738c84a7f2f3734c4f5efbbe22702588ce373a2779fadc55d18426137d5d6"
 )
 X4D_PHASE3_PREFLIGHT_MILESTONE = "X4d-GPT2-pod-preflight-v1"
 X4D_PHASE3_ONLINE_MILESTONE = "X4d-GPT2-real-weight-deferred-settlement-v1"
@@ -502,7 +537,19 @@ def _x4d_exact_int(value: Any, expected: int) -> bool:
 
 
 def _x4d_codec_reference_valid(row: Any) -> bool:
-    if not isinstance(row, dict) or set(row) != {
+    if not isinstance(row, dict):
+        return False
+    amendment = (
+        _x4d_exact_int(row.get("schema"), 2)
+        and row.get("milestone") == X4D_CODEC_AMENDMENT_MILESTONE
+    )
+    historical = (
+        _x4d_exact_int(row.get("schema"), 1)
+        and row.get("milestone") == X4D_CODEC_REFERENCE_MILESTONE
+    )
+    if not amendment and not historical:
+        return False
+    top_level_keys = {
         "schema",
         "milestone",
         "profile",
@@ -518,27 +565,51 @@ def _x4d_codec_reference_valid(row: Any) -> bool:
         "proof_or_gate_verdict",
         "response",
         "settlements",
-    }:
+    }
+    if amendment:
+        top_level_keys.add("fresh_query_length_semantics")
+    if set(row) != top_level_keys:
         return False
+    source_git_sha = (
+        X4D_CODEC_AMENDMENT_SOURCE_GIT_SHA
+        if amendment
+        else X4D_CODEC_SOURCE_GIT_SHA
+    )
+    design_sha256 = (
+        X4D_CODEC_AMENDMENT_DESIGN_SHA256 if amendment else X4D_DESIGN_SHA256
+    )
+    generator_sha256 = (
+        X4D_CODEC_AMENDMENT_GENERATOR_SHA256
+        if amendment
+        else X4D_CODEC_GENERATOR_SHA256
+    )
+    references = (
+        X4D_CODEC_AMENDMENT_REFERENCES
+        if amendment
+        else X4D_SETTLEMENT_REFERENCES
+    )
     response = row["response"]
     settlements = row["settlements"]
     if not (
-        _x4d_exact_int(row["schema"], 1)
-        and row["milestone"] == X4D_CODEC_REFERENCE_MILESTONE
-        and row["profile"] == X4D_PROFILE
-        and row["git_sha"] == X4D_CODEC_SOURCE_GIT_SHA
+        row["profile"] == X4D_PROFILE
+        and row["git_sha"] == source_git_sha
         and _x4d_hex(row["git_sha"], 40)
         and row["git_dirty"] is False
         and row["design_path"] == "docs/x4d-deferred-settlement-design.md"
-        and row["design_sha256"] == X4D_DESIGN_SHA256
+        and row["design_sha256"] == design_sha256
         and row["source_path"]
         == "rust/volta-bench/src/bin/x4d_codec_reference.rs"
-        and row["source_sha256"] == X4D_CODEC_GENERATOR_SHA256
+        and row["source_sha256"] == generator_sha256
         and row["preflight_path"]
         == "benchmarks/results/x4-amendment5-gpt2-preflight-2026-07-21-93749b3.json"
         and row["preflight_sha256"] == X4D_FROZEN_PREFLIGHT_SHA256
         and row["historical_references_modified"] is False
         and row["proof_or_gate_verdict"] is False
+        and (
+            not amendment
+            or row["fresh_query_length_semantics"]
+            == X4D_CODEC_AMENDMENT_SEMANTICS
+        )
         and isinstance(response, dict)
         and set(response)
         == {
@@ -559,7 +630,7 @@ def _x4d_codec_reference_valid(row: Any) -> bool:
         and _x4d_exact_int(response["exact_response_bytes"], X4D_RESPONSE_BYTES)
         and response["materialized_wire_fixture"] is False
         and isinstance(settlements, list)
-        and len(settlements) == len(X4D_SETTLEMENT_REFERENCES)
+        and len(settlements) == len(references)
     ):
         return False
     settlement_keys = {
@@ -575,8 +646,14 @@ def _x4d_codec_reference_valid(row: Any) -> bool:
         "settlement_bytes_per_response",
         "total_amortized_bytes_per_response",
     }
+    if amendment:
+        settlement_keys |= {
+            "packed_opening_bytes",
+            "max_packed_opening_bytes",
+            "fixed_size_padding_bytes",
+        }
     for actual, (responses, encoded_bytes, digest) in zip(
-        settlements, X4D_SETTLEMENT_REFERENCES, strict=True
+        settlements, references, strict=True
     ):
         if not (
             isinstance(actual, dict)
@@ -587,6 +664,18 @@ def _x4d_codec_reference_valid(row: Any) -> bool:
             and _x4d_exact_int(actual["active_chain_polynomials"], 102)
             and _x4d_exact_int(actual["fold_rounds"], 27)
             and _x4d_exact_int(actual["query_draws"], 111)
+            and (
+                not amendment
+                or (
+                    _x4d_exact_int(actual["packed_opening_bytes"], 2_615_414)
+                    and _x4d_exact_int(
+                        actual["max_packed_opening_bytes"], 2_740_598
+                    )
+                    and _x4d_exact_int(
+                        actual["fixed_size_padding_bytes"], 125_184
+                    )
+                )
+            )
             and _x4d_exact_int(actual["serialized_bytes"], encoded_bytes)
             and _x4d_exact_int(actual["expected_bytes"], encoded_bytes)
             and actual["sha256"] == digest

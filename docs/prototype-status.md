@@ -351,6 +351,7 @@ its clean descendant closure.
 | X4d Phase 3 fase-D stage correction | **HARD STOP HONORED; FAILED CONNECTION BURNED / LOCAL FIX GREEN / FRESH ONBOARDING REQUIRED** (2026-07-25) | First eligible online rebuild passed root admission, then response 0 allocation correctly failed and burned because the harness requested reserved stage 0 instead of the production allocatable stage 1 | Connection journal SHA-256 `299e9ddd377d7248d48a4761e7dc61337e25b91c46b3de717afd8dfeb7ab3b3c` ends `TERMINAL|protocol-error`; authorization burn marker SHA-256 `b8f5504b681366eee71228fc9cc10b9b687c6038a4018a9d3ac40777e807f4bf`. No response was proved or delivered, no settlement began and no online JSON exists. X4d now uses named stage 1 for both response and settlement allocations, matching the existing X4c production path; a permanent capacity regression covers the complete 19-response plus k=16 plan. Replacement producer source SHA-256 `75875a8add9051d6e6495a06c407b965df1ad6fc2066b65557444ef213b781eb`; conservative crypto-build identity requires a fresh onboarding and entirely new journals. |
 | X4d Phase 3 settlement-domain correction | **HARD STOP HONORED; 18 PENDING RESPONSES TERMINAL-UNVERIFIED / LOCAL FIX GREEN / FRESH ONBOARDING REQUIRED** (2026-07-25) | The next online run completed 18 response freezes and settlement allocation, then the MAC layer rejected the X4d `0x2000...` namespace because bit 61 is reserved as `LEDGER_SHADOW_BIT`; process-restart burn closed the connection | Connection journal SHA-256 `64b71049be19462898f9fd0e53b9ff4c0aa2cf9febc2615e7e7e9a3ecd7be7a0` ends `TERMINAL|process-kill-or-restart`; authorization-marker tree SHA-256 `b716721a0b0d430831921779181f2f1762d5a9eb0176f03ddb80039c2ca64971`. Sixteen responses were sealed, two further responses remained pending, settlement freshness/36,199 full correlations and raw allocation 72,398 were journaled, but no settlement proof accepted and no response became weight-verified. The new `0x1001...` X4d namespace is disjoint from X4c `0x1000...` and from all three MAC-reserved high bits; runtime validation and a permanent domain test prevent another panic. Shared X4d source SHA-256 `a61e9a8c802813db39932d0133a144e9beed0531e57cb36619ea52fdc2a6a5f4`; fresh onboarding/journals are mandatory. |
 | X4d Phase 3 fresh-query codec amendment | **HARD STOP HONORED; 18 PENDING RESPONSES TERMINAL-UNVERIFIED / LOCAL AMENDMENT GREEN / NEW REBASELINE AND ONBOARDING REQUIRED** (2026-07-25) | The domain-corrected run reached the real k=16 opening, where a fresh query tape disproved the Phase-1 assumption that the selected-tape Merkle collision profile had fixed length | The observed packed opening was **2,604,726 B** versus the historical selected-tape fixture **2,615,414 B**; component counts were **27,608 / 1,998 / 16,830 / 48,746** opened symbols / initial-inner / initial-outer / fold-outer siblings. No online JSON or accepted settlement exists. Journal SHA-256 `808049c33a3e2dfb5d17b0365c25dcdf7b59aeb9a90ea3093d28c6c2aa0ae422`; authorization-marker tree SHA-256 `cdc5fe7d0c6173ed1a8e490665f1bd260f45a48007b617787a6ee29d0b55054f`. Amendment 1 retains fresh independent queries and bounds the packed opening componentwise at **2,740,598 B**, then adds verified zero padding in the X4d envelope. New exact settlement formula: **2,757,996 + 50,424*k B**, so `k=32` is **4,371,564 B / 136,611.375 B per response**. X4c bytes and validator remain immutable; no soundness term, proof child frame or query distribution changes. Design SHA-256 `61be8d68df8cd5482cd815b855fd2fc417bbc3c14b2a0d20dadbe2c479816451`. |
+| X4d Phase 3 Amendment-1 codec rebaseline | **LOCAL EXACT REFERENCES + VERSIONED VALIDATOR GREEN; POD RERUN AUTHORIZED** (2026-07-25) | Append-only schema-2 amendment record; schema-1 Phase-2 record and validator branch remain valid; fixed fresh-query bound/padding fields explicit | Clean source `4efa5f65ca6948fc0028ce74570943d7f6596f6d`; record `x4d-codec-reference-amendment1-2026-07-25-4efa5f6.json`, SHA-256 `9d21b97bba4f6f1783e8b83d0801c4ccbcd1c9e80356fe13786fa45655d1b6f7`. It binds design `61be8d68...16451`, generator `e80b142f...fcd82` and the immutable Amendment-5 preflight. Reference packed opening **2,615,414 B** plus **125,184 B** verified padding reaches the **2,740,598-B** bound. Exact settlement lengths for `k=1/8/16/32` are **2,808,420 / 3,161,388 / 3,564,780 / 4,371,564 B**; fixture SHA-256 values are `a81a246c...2d23c`, `082b3ba6...ff1f`, `33df9833...7dbd`, `42e1e28e...58ab`. Historical references were not modified and this record claims no proof or hardware verdict. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -418,6 +419,32 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-25 — Amendment-1 codec rebaseline is append-only and green;
+  schema-1 historical validation remains live.** Clean source
+  `4efa5f65ca6948fc0028ce74570943d7f6596f6d` generated
+  `x4d-codec-reference-amendment1-2026-07-25-4efa5f6.json`, SHA-256
+  `9d21b97bba4f6f1783e8b83d0801c4ccbcd1c9e80356fe13786fa45655d1b6f7`.
+  The schema-2 record binds design
+  `61be8d68df8cd5482cd815b855fd2fc417bbc3c14b2a0d20dadbe2c479816451`,
+  generator
+  `e80b142faeccd76030e72e5ae59b7d92b9365391bd02de4e63683530a49fcd82`
+  and the unchanged Amendment-5 preflight
+  `ba87722362c8825e13e02a6c563a436797ea852e09e1cebcf4a9265c6ce56499`.
+  It explicitly records the **2,615,414-B** selected fixture opening,
+  **2,740,598-B** fresh-query bound and **125,184-B** zero pad.
+
+  Exact materialized settlement lengths at `k=1/8/16/32` are **2,808,420 /
+  3,161,388 / 3,564,780 / 4,371,564 B**, with SHA-256 values
+  `a81a246cbbb3f0bfb29870563931f4f384e428ca3c38549be43f52a31b22d23c`,
+  `082b3ba66a6450ba4256576b0361f9e94651c79a23e1a227b0c2a213ea80ff1f`,
+  `33df9833b62692d0d81e32b68991894079995ce6f6cacd5857be53548f067dbd`
+  and
+  `42e1e28e7db5d6df0a86344129be70a5b25656cca9980fc4a7ba8e15467558ab`.
+  The central validator dispatches by schema/milestone: the original
+  schema-1 Phase-2 record remains valid under its original constants, while
+  schema 2 additionally pins fresh-query semantics and every padding field.
+  `historical_references_modified=false`, `proof_or_gate_verdict=false`.
 
 - **2026-07-25 — Fresh X4d query tape disproved the fixed selected-tape
   frontier assumption; failed connection burned and Amendment 1 adds bounded

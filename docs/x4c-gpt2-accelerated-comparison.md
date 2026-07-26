@@ -29,13 +29,48 @@ quantità non ri-emessa.
 | Logit pubblici packed | **0 MB** | **0 MB** | **0 MB** |
 | Primo scambio totale | **144,09 MB** | **144,09 MB** | **79,641929 MB** alla delivery; settlement differito **3,564780 MB/16** |
 
-Per X4d, `prova risposta totale` è l'upper median di `model_prove_s`;
-`verifica pura` è l'upper median di `model_verify_s`. Il totale G1 aggiunge
-verifica e claim-freeze e termina la delivery autenticata in stato
-`WEIGHT_PENDING`. La verifica contabilizzata è solo un equivalente
-per-risposta: la latenza reale di pronuncia del pending set resta il wall
-batch riportato separatamente. Il primo scambio usa i **38.371.465 B**
-fase-D invariati ma non ri-emessi dal record X4d.
+Come leggere la colonna X4d: onboarding materializza una volta i coefficienti
+e le root durevoli per questo modello; il rebuild CUDA ricostruisce una volta
+per il processo/sessione pod le cinque root esatte e lo stato GPU residente.
+Il setup fase-D apre poi una connessione con uno specifico verifier e genera
+le correlazioni real-PCG: il suo traffico fase-D è **38.371.465 B**, valore
+invariante ma non ri-emesso dal record X4d.
+
+Con questi prerequisiti già pronti, i **4,900886414 s** G1 non includono
+onboarding, rebuild, setup, rete o un separato wall di serving nativo:
+misurano prova del modello, verifica e freeze dei claim. Di questi,
+**4,264260505 s** sono `model_prove_s`, **0,641085382 s** sono
+`model_verify_s` e circa **0,000511270 s** sono il freeze. Sono upper median
+selezionati separatamente, quindi non devono essere risommati per ricostruire
+il totale G1. I **41.270.464 B** per risposta permettono quindi al verifier di
+verificare subito la prova del modello e l'autenticazione dei valori, ma non
+ancora la loro consistenza con il commitment statico dei pesi: la delivery
+termina correttamente in stato `WEIGHT_PENDING`.
+
+Dopo il seal dei primi 16 response claim-set, il run v1 tratta il settlement
+come job in background *schedulato*, non come calcolo realmente concorrente.
+Per **10,586787986 s** il settlement resta in coda mentre due nuove risposte
+con priorità vengono completate (`response_priority_pause_wall_s`: è una
+pausa del settlement, non della risposta). Seguono **5,458699300 s** per
+creare il nuovo set di maschere/auxiliary root. Il `proof_driver_wall_s`,
+**3.071,972477759 s**, è invece l'intera esecuzione pesante che costruisce la
+folding proof sul batch congelato, incluso il sottostadio finale di opening;
+nel profilo v1 usa poi la lease CPU/GPU in esclusiva. Gli intervalli di
+overlap CPU e GPU misurati sono infatti entrambi zero.
+
+I **3.088,031851727 s** `seal_to_terminal_wall_s` sono il wall end-to-end
+dal seal durevole del batch fino al successo terminale: coda per le due
+risposte prioritarie + auxiliary materialization + proof driver + breve
+contabilità/journaling. Non sono il solo opening e non sono 51 minuti di
+verifica. Dopo la costruzione, il prover invia l'intero settlement message da
+**3.564.780 B** (chain, fold e query path inclusi): l'opening finale costa al
+prover **0,132453794 s** dentro il proof driver e il verifier controlla il
+messaggio in **0,062415304 s**. Il run-of-record materializza e verifica questo
+wire message nello stesso harness, quindi i wall non includono trasporto di
+rete. Solo allora le 16 risposte coperte passano da `WEIGHT_PENDING` a
+`WEIGHT_VERIFIED`. La verifica contabilizzata nella tabella è soltanto un
+equivalente per-risposta; non rappresenta la latenza reale con cui il pending
+set riceve il verdetto.
 
 ## Contatori X4d deferred settlement
 
@@ -49,9 +84,9 @@ fase-D invariati ma non ri-emessi dal record X4d.
 | Settlement union | **16 risposte / 1.632 claim / 816 gruppi** |
 | Settlement wire | **3.564.780 B**, **222.798,75 B/risposta — exact** |
 | Settlement seal → terminale | **3.088,031851727 s — informativa v1** |
-| Proof driver / auxiliary materialization | **3.071,972477759 / 5,458699300 s** |
+| Folding-proof driver / auxiliary materialization | **3.071,972477759 / 5,458699300 s** |
 | Finestra host CPU / lease GPU | **3.077,431177059 / 3.071,972477759 s** |
-| Response-priority pause | **10,586787986 s** |
+| Settlement in coda per response priority | **10,586787986 s** |
 | Interferenza A1,B1,B2,A2 | **+0,019727179 s / +0,399684884%**, overlap dichiarato **0/0** |
 | Settlement open / verify | **0,132453794 / 0,062415304 s — PASS HARD** |
 | Freshness | **3 root statiche riusate / 51 mask fresh / 111 query draw** |

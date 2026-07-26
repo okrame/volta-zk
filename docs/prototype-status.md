@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS + k=1 G1 SYNC; PHYSICAL COUNTERS PASS; CONTROL-PLANE STOP COMPLETE)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 1 LOCAL IDENTITY COMPLETE; HARD STOP BEFORE POD; CONTROL-PLANE STOP COMPLETE)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -358,6 +358,7 @@ its clean descendant closure.
 | X4d.1 settlement-driver Phase 1 | **INSTRUMENTED + POSTDICTED + FUSED DRIVER/GATE PREREGISTERED; HARD STOP BEFORE IMPLEMENTATION OR POD** (2026-07-26) | No protocol/soundness/byte/codec/Lean/ceiling change; walls and traffic/residency census; local k=1/16 at `2^14/16/18`; exact-loop diagnosis; no-fit A100 postdiction; FLATNESS IN k added | Current k=16 does **16 CPU evaluation-table passes** over **102 tables / 9,618,587,648 unique B / 153,897,402,368 logical B**, materializing **153,897,402,368 B** each of response-local evaluation/equality tables for **317,413,392,384 B** peak relation payload, but already only **one encoded-oracle pass**: **4,809,293,824 initial symbols / 1,159,200,768 combined symbols**. Thus late aggregation is confirmed before the encoded oracle and CPU residency is confirmed; k-proportional encoded-oracle passes are refuted. The exact instrumented **16.0x** traffic multiplier postdicts the immutable **3,071.972477759-s** proof-driver wall at **2,949.050082660 s**, **4.0014%** absolute error, without fitting. New hard gate: same-host `wall(k16) <= 1.30*wall(k1)` and equal initial-symbol counts; **288–307 s** remains informative only. Diagnostic record `x4d1-phase1-settlement-postdiction-v3-2026-07-26-da5b6a7-local.json`, SHA-256 `0a1f5dba122f9e2ac184fbce11f2a5d20849b61b9878343b0ca8847c9a926fe7`, is intentionally dirty, `pod_contacted=false`, `proof_or_gate_verdict=false`. Design descendant SHA-256 `36f91776548b1690e93cca3f23886c78dd9721102187b69fb94514f5f342efb4`. Existing G1/G2–G6/cap/tamper/abort and **80.2553701639904-bit** expression remain unchanged. |
 | X4d.1 settlement-driver Phase 2 local | **FUSED DRIVER + SYNTHETIC COUNTER REGRESSION + PAIRED POD HARNESS GREEN; HARD STOP BEFORE POD** (2026-07-26) | Pure-linear settlement-only fusion; protocol relation/correlation/proof grammar unchanged; X4c response path unchanged; append-only k=1/k=16/pair producers ready | The sealed-settlement prover reduces equality/combination coefficients by physical `(cohort,slot)` before cloning each unique source once. Production k=16 retains **1,632 protocol relations** but materializes **102**, fusing **1,530**; k=1 also materializes **102**. Both require exactly **601,161,728 source symbols / 9,618,587,648 B**, one table pass, **4,809,293,824 initial encoded symbols**, **1,159,200,768 combined-codeword symbols** and one gather. Counted peak relation payload is now **28,855,762,944 B CPU / 0 B GPU**, independent of k. Permanent tests establish round-by-round/terminal identity, reject nonidentical source aliases, verify the existing two-response proof, and require full synthetic k=1/k=16 physical-counter equality. Append-only schema-6 diagnostic `x4d1-phase2-fused-v3-2026-07-26-74aba2a-local.json`, SHA-256 `c804d9deaf741f3c9808c925f7a70e4ea93ec60d9b217a69e6668c4db8a2b448`, records `2^18` selected caller/claim-preparation ratios **1.211805505x / 2.761999236x**, diagnostic only. The pod pair uses fresh connections, exact seal-to-terminal wall semantics and a separate same-host verdict whose `overall_pass` excludes the informative **288–307 s** target; **350 s with green flatness is PASS with a note**. G1/bytes/interference rerun unchanged (**4.87–5.04 s / 41,270,464 B / historical <=1.00%, 0.399684884% anchor**). Design descendant SHA-256 `3ca7b497d3604c220a2de59ceb1279172dc8bd8e835081900b3cfc17fe3af463`; pod/pair producer SHA-256 values `b8d68df9d52f4a223e7edb559b5be020490b26ad433ecc960aa52145d7d29009` / `d7adf10afb9ab8a8d3aa934dced519784e51fa950937536b732dfd6a0b422b0d`. NOTE-6 first, RAM **>=256 GiB**, volume **>=150 GB**, `x4d1-*` append-only and control-plane termination remain mandatory. No pod contacted; no production gate verdict; comparison document untouched. |
 | X4d.1 settlement-driver paired A100 | **OFFICIAL FAIL — FLATNESS 2.635946x >1.30x; k=1 G1 SYNC 0.154283455 s >0.150 s; PHYSICAL COUNTERS / k=16 HOT PATH / SETTLEMENT GATES PASS** (2026-07-26) | Clean `b83ffc1`; same host/build/GPU; one fresh k=1 and one fresh k=16 connection; informative 288–307-s target excluded from verdict; no selective retry | NOTE-6 first and preflight PASS on GPU `GPU-e79a8a9c-dd06-a5b9-4bbb-6bdfef21ce73`, **2,151,617,314,816 B** RAM and **443,466,171,875,328-B** volume. Exact onboarding tier **9,618,587,808 B**, selected **452.468691324 s**; rebuild **186.102826901 / 185.341514633 s**. Accepted settlement walls are **333.456712047 / 878.973897598 s**, ratio **2.635946033901128 FAIL**. Claim preparation is **167.865042048 / 716.643018039 s (4.269162x)**; oracle combine **128.214018848 / 125.295222121 s**, fold/Merkle **21.606032798 / 20.888810928 s**. Both read exactly **4,809,293,824 initial** and produce **1,159,200,768 combined** symbols with one table/oracle pass and one gather; k=16 materializes **102**, fuses **1,530** terms. k=16 G1 **4.783941572 s**, sync **0.126060151 s**, exact **41,270,464 B**, interference **-2.273545314% PASS**; paired G1 fails only because k=1 sync is **0.154283455 s**. Pair record `x4d1-flatness-gate-2026-07-26-b83ffc1.json`, SHA-256 `7b041e2d1d3028da1977f13de900d95e2da011f98349c86646596eaccb267250`, validates as a coherent FAIL. M12, codec, bytes, cap/tamper/abort and **80.2553701639904-bit** soundness remain unchanged. R1c scope is extended to fused reduction, residual claim preparation, instrumentation/pair selection and the sync outlier. Six records are local and checksum-verified. The owner identified `RUNPOD_API_KEY` in `.env`; it was passed only in memory to the SSH-side CLI. `runpodctl stop pod xfjw217q6cq4ja` returned `stopped`, and the first independent SSH probe returned `Connection refused`. Control-plane teardown is complete. |
+| X4d.2 byte-identical resident settlement Phase 1 | **LOCAL IDENTITY + OPERATION CENSUS COMPLETE; HARD STOP BEFORE POD / NO PERFORMANCE OR GATE VERDICT** (2026-07-26) | Evaluation strategy, residency and disjoint instrumentation only; exact sequential challenge tape; fail-closed production CUDA; no protocol/codec/bytes/soundness/Lean/hot-path change | The record corrects the refuted general factorization: independently pointed equality sums have rank up to `m`; no `blind_prove_batch`, round-synchronous schedule or asymptotic-flatness claim is used. ClaimReduce hoists exactly **51 / 298,844,160 i16-source symbols** into one immutable **4,781,506,560-B** Fp2 device tier; one maximum-geometry four-buffer pool is reused across exact `51*k` sequential instances. Auxiliary MLE and fused delayed-link source/equality work have resident paths with counted host/device bytes, H2D/D2H/D2D, kernel calls, scalar D2H, allocations/reuse and host/device scratch. The complete link source tier remains **601,161,728 symbols / 9,618,587,648 B**. Exact phase lifetimes project ClaimReduce at **10,687,087,456 B**, delayed link at **37,960,027,776 B**, both below the inherited measured X4c **47,256,774,900-B** device peak; the full **>=256-GiB RAM / >=150-GB volume** admission remains. Permanent CPU differentials pass at `mu=6/9/12`, deterministic scaled-shape k=1/k=16, auxiliary residency and the real two-response fixture; full workspace and report tests are green. CUDA-feature Rust/ABI compilation is green; the permanent CUDA kernel differential is present but locally skipped because `libvolta_cuda_backend.so` and `nvcc` are unavailable, so Phase 2 must run it with `VOLTA_REQUIRE_CUDA=1`. Append-only local record `x4d2-phase1-local-identity-2026-07-26-d298370.json`, SHA-256 `92def69607c9d59486220fc7f3571050f7d35afa76e8eeca039a7d5edcb3c842`; design descendant SHA-256 `9ffa929498e141917d242653a6563888e157dcc12d36dc3d6e9a8b52d2f5a98f`. The immutable X4d.1 flatness FAIL and raw records remain untouched; no pod contacted. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -425,6 +426,53 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-26 — Owner waives only the historical X4d.1 k=1 G1-sync
+  observation and X4d.2 Phase 1 closes locally on the byte-identical
+  resident strategy.** X4d.1 remains an immutable preregistered **FAIL**:
+  settlement flatness is **2.635946033901128x >1.30x**, and its k=1 raw
+  record continues to state **0.154283455 s >0.150 s** for the registered G1
+  synchronization predicate. The one-time owner waiver accepts that already
+  delivered hot path for the product decision only. It does not rewrite any
+  raw record, permit a selective retry, apply to X4d.2 or later, or relax the
+  **0.150-s** ceiling. Component classification is now explicit: physical
+  fusion **PASS**; hot path **accepted under the one-time historical
+  waiver**; amortization/flatness **FAIL**. X4d.2 retains the same binding
+  flatness predicate and inherited physical-counter equality with no relaxed
+  gate.
+
+  The prior proposed general `O(N + m*mu)` multi-point factorization is
+  corrected analytically, not measured: a weighted sum of independently
+  pointed equality tensors generally has rank up to `m`, and every round
+  needs a distinct suffix evaluation of the folded source. The P4 Gruen
+  split removes one shared public equality factor and is not a
+  counterexample. X4d.2 therefore preserves the exact sequential transcript
+  and challenge schedule and does not use `blind_prove_batch`.
+
+  Phase 1 adds disjoint fixed/ClaimReduce/auxiliary/link walls, geometry rows,
+  explicit residual reconciliation, and complete residency/traffic
+  counters. The selected implementation hoists immutable ClaimReduce W
+  tables, uses per-instance D2D ping-pong from a reusable maximum-geometry
+  pool, generates the two-claim F table without host equality tables, returns
+  only protocol-sized round pairs, and accelerates auxiliary MLE plus fused
+  link equality/delayed rounds through the fail-closed resident backend.
+  Permanent CPU resident differentials cover diverse dimensions and the
+  exact 51-block k=1/k=16 sequential shape; the real two-response, codec,
+  physical-counter, cap/tamper/freshness/abort and full workspace suites are
+  green. The CUDA-feature ABI compiles locally, but no local CUDA library or
+  `nvcc` exists; the permanent CUDA kernel differential must execute with
+  `VOLTA_REQUIRE_CUDA=1` in Phase 2.
+
+  The append-only, intentionally dirty non-production identity/census record
+  `benchmarks/results/x4d2-phase1-local-identity-2026-07-26-d298370.json`
+  has SHA-256
+  `92def69607c9d59486220fc7f3571050f7d35afa76e8eeca039a7d5edcb3c842`;
+  `pod_contacted=false` and `proof_or_gate_verdict=false`. The design
+  descendant has SHA-256
+  `9ffa929498e141917d242653a6563888e157dcc12d36dc3d6e9a8b52d2f5a98f`
+  and contains the informative 20B appendix, exact resource envelope,
+  decomposition-derived scenarios and verbatim Phase-2 gates. No pod was
+  provisioned or contacted. **HARD STOP pending explicit owner GO.**
 
 - **2026-07-26 — X4d.1 paired A100 run closes official FAIL: physical
   single-pass counters are flat, but claim preparation and one k=1 G1 sync

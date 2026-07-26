@@ -1,0 +1,113 @@
+{
+  "schema": 1,
+  "milestone": "X4d.2-Phase-1-local-identity-v1",
+  "date": "2026-07-26",
+  "base_git_sha": "d298370cf96becae09c259e3b647f26a99f8a249",
+  "git_dirty": true,
+  "design_path": "docs/x4d2-byte-identical-resident-settlement-design.md",
+  "design_sha256": "9ffa929498e141917d242653a6563888e157dcc12d36dc3d6e9a8b52d2f5a98f",
+  "pod_contacted": false,
+  "production_measurement": false,
+  "proof_or_gate_verdict": false,
+  "result": "PASS_LOCAL_IDENTITY_AND_OPERATION_CENSUS_ONLY",
+  "immutable_x4d1_inputs": {
+    "k1_path": "benchmarks/results/x4d1-gpt2-online-k1-2026-07-26-b83ffc1.json",
+    "k1_sha256": "7cea0665a22e453eb5b695c5bd7fa830a261448a0e9985370d5007c75270ec2e",
+    "k16_path": "benchmarks/results/x4d1-gpt2-online-k16-2026-07-26-b83ffc1.json",
+    "k16_sha256": "381979e0b6e440b1b995e1e78134a21cdece3651af0bfd621b2b52ef925a5ae6",
+    "flatness_path": "benchmarks/results/x4d1-flatness-gate-2026-07-26-b83ffc1.json",
+    "flatness_sha256": "7b041e2d1d3028da1977f13de900d95e2da011f98349c86646596eaccb267250",
+    "classification": {
+      "physical_fusion": "PASS",
+      "hot_path": "ACCEPTED_HISTORICAL_K1_SYNC_WAIVER_ONLY",
+      "amortization_flatness": "FAIL"
+    }
+  },
+  "rank_m_correction_recorded": true,
+  "round_synchronous_batching_used": false,
+  "synthetic_sequential_identity": {
+    "geometry_mapping": {
+      "production_mu26_blocks_to_local_mu8": 2,
+      "production_mu22_blocks_to_local_mu6": 36,
+      "production_mu20_blocks_to_local_mu4": 13
+    },
+    "physical": {
+      "canonical_sources": 51,
+      "canonical_source_symbols": 3024,
+      "canonical_i16_bytes": 6048,
+      "source_embedding_calls": 51
+    },
+    "k1": {
+      "responses": 1,
+      "claim_reduce_calls": 51,
+      "frozen_claims": 102,
+      "f_generation_calls": 51,
+      "product_round_calls": 284,
+      "f_fold_calls": 284,
+      "w_fold_calls": 284,
+      "product_round_symbols_read": 11892,
+      "f_fold_symbols_read": 5946,
+      "w_fold_symbols_read": 5946
+    },
+    "k16": {
+      "responses": 16,
+      "claim_reduce_calls": 816,
+      "frozen_claims": 1632,
+      "f_generation_calls": 816,
+      "product_round_calls": 4544,
+      "f_fold_calls": 4544,
+      "w_fold_calls": 4544,
+      "product_round_symbols_read": 190272,
+      "f_fold_symbols_read": 95136,
+      "w_fold_symbols_read": 95136
+    },
+    "physical_counters_equal": true,
+    "proof_round_messages_equal": true,
+    "terminal_points_and_values_equal": true,
+    "correlation_counters_equal": true,
+    "transcript_ledgers_equal": true,
+    "next_challenges_equal": true
+  },
+  "diverse_geometry_identity": {
+    "mu": [
+      6,
+      9,
+      12
+    ],
+    "repetitions": 3,
+    "proof_round_messages_equal": true,
+    "terminal_points_and_values_equal": true,
+    "correlation_counters_equal": true,
+    "transcript_ledgers_equal": true
+  },
+  "production_analytic_census": {
+    "claim_reduce_calls_per_response": 51,
+    "frozen_claims_per_response": 102,
+    "canonical_claim_reduce_symbols": 298844160,
+    "canonical_claim_reduce_fp2_bytes": 4781506560,
+    "complete_link_source_symbols": 601161728,
+    "complete_link_source_fp2_bytes": 9618587648,
+    "product_round_calls_per_response": 1104,
+    "f_fold_calls_per_response": 1104,
+    "w_fold_calls_per_response": 1104,
+    "product_round_symbols_read_per_response": 1195376436,
+    "f_fold_symbols_read_per_response": 597688218,
+    "w_fold_symbols_read_per_response": 597688218
+  },
+  "permanent_tests": {
+    "cpu_claim_reduce_diverse_geometry_identity": "PASS",
+    "cpu_claim_reduce_k1_k16_sequential_tape_identity": "PASS",
+    "cpu_auxiliary_mle_residency_identity": "PASS",
+    "fused_physical_counter_k1_k16_equality": "PASS",
+    "real_two_response_authenticated_output_fixture": "PASS",
+    "full_workspace": "PASS",
+    "report_validator": "PASS_22_TESTS",
+    "cuda_feature_rust_compile": "PASS",
+    "cuda_kernel_differential_present": true,
+    "cuda_kernel_differential_executed": false,
+    "cuda_kernel_differential_skip_reason": "libvolta_cuda_backend.so unavailable on local host",
+    "cuda_translation_unit_compiled": false,
+    "cuda_translation_unit_compile_reason": "nvcc unavailable on local host"
+  },
+  "hard_stop": "NO_POD_CONTACT_PENDING_EXPLICIT_OWNER_GO"
+}

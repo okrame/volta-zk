@@ -3,7 +3,7 @@
 //! X4c onboarding remains the only durable-material producer. This binary
 //! validates that append-only record, rebuilds the admitted cohorts, proves
 //! real responses under one fase-D connection, freezes their claims, and
-//! executes one k=1 or k=16 X4d.1 settlement. Each invocation uses a fresh
+//! executes one k=1 or k=16 X4d.2 settlement. Each invocation uses a fresh
 //! connection so the paired flatness record can compare identical physical
 //! counters without changing the protocol lifecycle. It introduces no
 //! alternate PCS, model loader, correlation pool, or lifecycle.
@@ -58,12 +58,12 @@ use volta_proto::model_proof::{
 };
 use volta_proto::{layer_dom_base, prod_batch_prover, prod_batch_verify};
 
-const SCHEMA: u64 = 2;
+const SCHEMA: u64 = 3;
 const PROFILE: &str = "runpod-a100-x4d-v1";
 const PROTOCOL: &str = "x4-zkdeepfold-ud-e29-v4+x4d-deferred-settlement-v1";
-const MILESTONE_PREFLIGHT: &str = "X4d.1-GPT2-pod-preflight-v1";
-const MILESTONE_ONLINE: &str = "X4d.1-GPT2-fused-settlement-v1";
-const X4D_DESIGN_SHA256: &str = "3ca7b497d3604c220a2de59ceb1279172dc8bd8e835081900b3cfc17fe3af463";
+const MILESTONE_PREFLIGHT: &str = "X4d.2-GPT2-resident-settlement-preflight-v1";
+const MILESTONE_ONLINE: &str = "X4d.2-GPT2-resident-settlement-v1";
+const X4D_DESIGN_SHA256: &str = "9ffa929498e141917d242653a6563888e157dcc12d36dc3d6e9a8b52d2f5a98f";
 const X4C_ONBOARDING_MILESTONE: &str = "X4c-GPT2-real-weight-onboarding-crypto-id-v1";
 const X4C_PROFILE: &str = "runpod-a100-x4c-v1";
 const X4C_PROTOCOL: &str = "x4-zkdeepfold-ud-e29-v4";
@@ -86,6 +86,7 @@ const FASE_D_ALLOCATABLE_STAGE: u32 = 1;
 const ALLOWED_SETTLEMENT_RESPONSES: [usize; 2] = [1, 16];
 const HARD_RAM_BYTES: u64 = 274_877_906_944;
 const HARD_VOLUME_BYTES: u64 = 150_000_000_000;
+const X4D2_DEVICE_LIVE_SET_PREFLIGHT_BYTES: u64 = 47_256_774_900;
 const G1_TOTAL_CEILING_S: f64 = 5.0;
 const G1_FREEZE_CEILING_S: f64 = 0.025;
 const G1_PREFILL_CEILING_S: f64 = 10.0;
@@ -268,8 +269,8 @@ fn verify_inputs(root: &Path) -> Result<(), String> {
 }
 
 fn verify_design() -> Result<(), String> {
-    let path =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/x4d-deferred-settlement-design.md");
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/x4d2-byte-identical-resident-settlement-design.md");
     let observed = sha256(&path)?;
     if observed != X4D_DESIGN_SHA256 {
         return Err(format!(
@@ -314,10 +315,10 @@ fn write_append_only<T: Serialize>(path: &Path, value: &T) -> Result<(), String>
         .map_err(|error| format!("persist record {}: {error}", path.display()))
 }
 
-fn validate_x4d1_output_path(path: &Path) -> Result<(), String> {
+fn validate_x4d2_output_path(path: &Path) -> Result<(), String> {
     let name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
-    if !name.starts_with("x4d1-") || !name.ends_with(".json") {
-        return Err("X4d.1 records require an x4d1-*.json output name".to_owned());
+    if !name.starts_with("x4d2-") || !name.ends_with(".json") {
+        return Err("X4d.2 records require an x4d2-*.json output name".to_owned());
     }
     Ok(())
 }
@@ -361,6 +362,8 @@ struct HardwareRow {
     gpu_name: String,
     gpu_uuid: String,
     gpu_memory_mib: u64,
+    gpu_memory_bytes: u64,
+    device_live_set_preflight_bytes: u64,
     selected_gpu_count: usize,
     mem_total_bytes: u64,
     volume_total_bytes: u64,
@@ -369,6 +372,7 @@ struct HardwareRow {
     settlement_cpu_ids: Vec<usize>,
     split_policy_valid: bool,
     gpu_pass: bool,
+    device_memory_pass: bool,
     ram_pass: bool,
     volume_pass: bool,
     overall_pass: bool,
@@ -419,15 +423,21 @@ fn hardware_preflight(args: &Args) -> Result<HardwareRow, String> {
     }
     let gpu_memory_mib =
         columns[2].parse::<u64>().map_err(|_| "GPU memory is not numeric".to_owned())?;
+    let gpu_memory_bytes = gpu_memory_mib
+        .checked_mul(1_048_576)
+        .ok_or_else(|| "GPU memory bytes overflow".to_owned())?;
     let mem_total_bytes = mem_total_bytes()?;
     let (volume_total_bytes, volume_available_bytes) = filesystem_bytes(&args.volume_root)?;
     let gpu_pass = columns[0].contains("A100-SXM4-80GB") && gpu_memory_mib >= 81_920;
+    let device_memory_pass = gpu_memory_bytes >= X4D2_DEVICE_LIVE_SET_PREFLIGHT_BYTES;
     let ram_pass = mem_total_bytes >= HARD_RAM_BYTES;
     let volume_pass = volume_total_bytes >= HARD_VOLUME_BYTES;
     let row = HardwareRow {
         gpu_name: columns[0].to_owned(),
         gpu_uuid: columns[1].to_owned(),
         gpu_memory_mib,
+        gpu_memory_bytes,
+        device_live_set_preflight_bytes: X4D2_DEVICE_LIVE_SET_PREFLIGHT_BYTES,
         selected_gpu_count: rows.len(),
         mem_total_bytes,
         volume_total_bytes,
@@ -436,9 +446,10 @@ fn hardware_preflight(args: &Args) -> Result<HardwareRow, String> {
         settlement_cpu_ids: args.settlement_cpu_ids.clone(),
         split_policy_valid: true,
         gpu_pass,
+        device_memory_pass,
         ram_pass,
         volume_pass,
-        overall_pass: gpu_pass && ram_pass && volume_pass,
+        overall_pass: gpu_pass && device_memory_pass && ram_pass && volume_pass,
     };
     if !row.overall_pass {
         return Err(format!("X4d hardware preflight failed closed: {row:?}"));
@@ -464,7 +475,7 @@ struct PreflightRecord {
 }
 
 fn preflight(args: &Args) -> Result<(), String> {
-    validate_x4d1_output_path(&args.output)?;
+    validate_x4d2_output_path(&args.output)?;
     if args.output.exists() {
         return Err("preflight output must be fresh".to_owned());
     }
@@ -980,12 +991,81 @@ struct InterferenceRow {
 #[derive(Serialize)]
 struct SettlementInstrumentationRow {
     claim_coefficient_preparation_wall_s: f64,
+    settlement_fixed_preprocessing_wall_s: f64,
+    claim_reduce_prover_wall_s: f64,
+    claim_reduce_f_construction_wall_s: f64,
+    claim_reduce_w_embedding_wall_s: f64,
+    claim_reduce_product_round_wall_s: f64,
+    claim_reduce_fold_wall_s: f64,
+    claim_reduce_masks_transcript_orchestration_wall_s: f64,
+    claim_reduce_verifier_wall_s: f64,
+    auxiliary_mle_evaluation_wall_s: f64,
+    link_coefficient_challenge_wall_s: f64,
+    combined_link_equality_wall_s: f64,
+    link_source_clone_wall_s: f64,
+    delayed_link_round_evaluation_wall_s: f64,
+    delayed_link_fold_wall_s: f64,
+    link_terminal_group_orchestration_wall_s: f64,
+    claim_preparation_unattributed_residual_wall_s: f64,
+    claim_preparation_unattributed_residual_percentage: f64,
+    claim_preparation_unattributed_residual_explanation: String,
     oracle_read_combine_wall_s: f64,
     fold_merkle_wall_s: f64,
     query_gather_wall_s: f64,
     instrumented_prover_wall_s: f64,
     post_open_verify_codec_wall_s: f64,
     total_settlement_driver_wall_s: f64,
+    claim_reduce_by_geometry: Vec<ClaimReduceGeometryRow>,
+    padded_i16_source_symbols: u64,
+    padded_i16_source_bytes: u64,
+    claim_reduce_calls: u64,
+    claim_reduce_frozen_claims: u64,
+    claim_reduce_product_round_calls: u64,
+    claim_reduce_f_fold_calls: u64,
+    claim_reduce_w_fold_calls: u64,
+    claim_reduce_product_round_symbols_read: u64,
+    claim_reduce_f_fold_symbols_read: u64,
+    claim_reduce_w_fold_symbols_read: u64,
+    auxiliary_mle_calls: u64,
+    auxiliary_mle_symbols_read: u64,
+    auxiliary_mle_unique_tables: u64,
+    auxiliary_mle_unique_symbols: u64,
+    auxiliary_mle_unique_host_bytes: u64,
+    auxiliary_mle_unique_device_bytes: u64,
+    auxiliary_mle_h2d_bytes: u64,
+    auxiliary_mle_d2h_bytes: u64,
+    auxiliary_mle_kernel_calls: u64,
+    auxiliary_mle_allocation_requests: u64,
+    auxiliary_mle_buffer_reuse_hits: u64,
+    auxiliary_mle_peak_live_host_scratch_bytes: u64,
+    auxiliary_mle_peak_live_device_scratch_bytes: u64,
+    claim_reduce_unique_host_bytes: u64,
+    claim_reduce_unique_device_bytes: u64,
+    claim_reduce_unique_sources: u64,
+    claim_reduce_unique_source_symbols: u64,
+    claim_reduce_source_embedding_calls: u64,
+    claim_reduce_f_generation_calls: u64,
+    claim_reduce_h2d_bytes: u64,
+    claim_reduce_d2h_bytes: u64,
+    claim_reduce_d2d_bytes: u64,
+    claim_reduce_kernel_calls: u64,
+    claim_reduce_protocol_scalar_d2h_bytes: u64,
+    claim_reduce_peak_live_host_scratch_bytes: u64,
+    claim_reduce_peak_live_device_scratch_bytes: u64,
+    claim_reduce_allocation_requests: u64,
+    claim_reduce_buffer_reuse_hits: u64,
+    resident_link_host_bytes: u64,
+    resident_link_device_bytes: u64,
+    resident_link_h2d_bytes: u64,
+    resident_link_source_clone_bytes: u64,
+    resident_link_d2h_bytes: u64,
+    resident_link_d2d_bytes: u64,
+    resident_link_protocol_scalar_d2h_bytes: u64,
+    resident_link_kernel_calls: u64,
+    resident_link_allocation_requests: u64,
+    resident_link_buffer_reuse_hits: u64,
+    resident_link_peak_live_host_scratch_bytes: u64,
+    resident_link_peak_live_device_scratch_bytes: u64,
     unique_evaluation_tables: u64,
     unique_evaluation_table_symbols: u64,
     evaluation_table_bytes: u64,
@@ -1012,6 +1092,26 @@ struct SettlementInstrumentationRow {
     backend_h2d_bytes: u64,
     backend_d2h_bytes: u64,
     backend_peak_device_bytes: u64,
+}
+
+#[derive(Serialize)]
+struct ClaimReduceGeometryRow {
+    mu: u32,
+    calls: u64,
+    frozen_claims: u64,
+    source_symbols: u64,
+    f_construction_wall_s: f64,
+    w_embedding_wall_s: f64,
+    product_round_wall_s: f64,
+    fold_wall_s: f64,
+    masks_transcript_orchestration_wall_s: f64,
+    verifier_wall_s: f64,
+    product_round_calls: u64,
+    f_fold_calls: u64,
+    w_fold_calls: u64,
+    product_round_symbols_read: u64,
+    f_fold_symbols_read: u64,
+    w_fold_symbols_read: u64,
 }
 
 #[derive(Serialize)]
@@ -1186,7 +1286,7 @@ fn validate_onboarding(
 }
 
 fn online(args: &Args) -> Result<(), String> {
-    validate_x4d1_output_path(&args.output)?;
+    validate_x4d2_output_path(&args.output)?;
     if args.output.exists() || args.settlement_epoch != 1 {
         return Err(
             "online output must be fresh and the first connection settlement epoch must be 1"
@@ -1194,7 +1294,7 @@ fn online(args: &Args) -> Result<(), String> {
         );
     }
     if !ALLOWED_SETTLEMENT_RESPONSES.contains(&args.settled_responses) {
-        return Err("X4d.1 online requires --settled-responses 1 or 16".to_owned());
+        return Err("X4d.2 online requires --settled-responses 1 or 16".to_owned());
     }
     let settled_responses = args.settled_responses;
     let connection_responses = settled_responses + 3;
@@ -1585,15 +1685,132 @@ fn online(args: &Args) -> Result<(), String> {
         && verify_pass;
     let phases = result.driver_phase_walls;
     let counters = result.driver_counters;
+    let claim_reduce_by_geometry = result
+        .claim_reduce_geometries
+        .iter()
+        .map(|row| ClaimReduceGeometryRow {
+            mu: row.mu,
+            calls: row.calls,
+            frozen_claims: row.frozen_claims,
+            source_symbols: row.source_symbols,
+            f_construction_wall_s: row.f_construction_wall_ns as f64 / 1e9,
+            w_embedding_wall_s: row.w_embedding_wall_ns as f64 / 1e9,
+            product_round_wall_s: row.product_round_wall_ns as f64 / 1e9,
+            fold_wall_s: row.fold_wall_ns as f64 / 1e9,
+            masks_transcript_orchestration_wall_s: row.masks_transcript_orchestration_wall_ns
+                as f64
+                / 1e9,
+            verifier_wall_s: row.verifier_wall_ns as f64 / 1e9,
+            product_round_calls: row.product_round_calls,
+            f_fold_calls: row.f_fold_calls,
+            w_fold_calls: row.w_fold_calls,
+            product_round_symbols_read: row.product_round_symbols_read,
+            f_fold_symbols_read: row.f_fold_symbols_read,
+            w_fold_symbols_read: row.w_fold_symbols_read,
+        })
+        .collect();
     let instrumentation = SettlementInstrumentationRow {
         claim_coefficient_preparation_wall_s: phases.claim_coefficient_preparation_wall_ns as f64
             / 1e9,
+        settlement_fixed_preprocessing_wall_s: phases.settlement_fixed_preprocessing_wall_ns as f64
+            / 1e9,
+        claim_reduce_prover_wall_s: phases.claim_reduce_prover_wall_ns as f64 / 1e9,
+        claim_reduce_f_construction_wall_s: phases.claim_reduce_f_construction_wall_ns as f64 / 1e9,
+        claim_reduce_w_embedding_wall_s: phases.claim_reduce_w_embedding_wall_ns as f64 / 1e9,
+        claim_reduce_product_round_wall_s: phases.claim_reduce_product_round_wall_ns as f64 / 1e9,
+        claim_reduce_fold_wall_s: phases.claim_reduce_fold_wall_ns as f64 / 1e9,
+        claim_reduce_masks_transcript_orchestration_wall_s: phases
+            .claim_reduce_masks_transcript_orchestration_wall_ns
+            as f64
+            / 1e9,
+        claim_reduce_verifier_wall_s: phases.claim_reduce_verifier_wall_ns as f64 / 1e9,
+        auxiliary_mle_evaluation_wall_s: phases.auxiliary_mle_evaluation_wall_ns as f64 / 1e9,
+        link_coefficient_challenge_wall_s: phases.link_coefficient_challenge_wall_ns as f64 / 1e9,
+        combined_link_equality_wall_s: phases.combined_link_equality_wall_ns as f64 / 1e9,
+        link_source_clone_wall_s: phases.link_source_clone_wall_ns as f64 / 1e9,
+        delayed_link_round_evaluation_wall_s: phases.delayed_link_round_evaluation_wall_ns as f64
+            / 1e9,
+        delayed_link_fold_wall_s: phases.delayed_link_fold_wall_ns as f64 / 1e9,
+        link_terminal_group_orchestration_wall_s: phases.link_terminal_group_orchestration_wall_ns
+            as f64
+            / 1e9,
+        claim_preparation_unattributed_residual_wall_s: phases
+            .claim_preparation_unattributed_residual_wall_ns
+            as f64
+            / 1e9,
+        claim_preparation_unattributed_residual_percentage: if phases
+            .claim_coefficient_preparation_wall_ns
+            == 0
+        {
+            0.0
+        } else {
+            100.0 * phases.claim_preparation_unattributed_residual_wall_ns as f64
+                / phases.claim_coefficient_preparation_wall_ns as f64
+        },
+        claim_preparation_unattributed_residual_explanation:
+            "manifest/frame construction, inventory lookups, allocation bookkeeping, timer conversion and caller overhead outside the named arithmetic children"
+                .to_owned(),
         oracle_read_combine_wall_s: phases.oracle_read_combine_wall_ns as f64 / 1e9,
         fold_merkle_wall_s: phases.fold_merkle_wall_ns as f64 / 1e9,
         query_gather_wall_s: phases.query_gather_wall_ns as f64 / 1e9,
         instrumented_prover_wall_s: phases.instrumented_prover_wall_ns as f64 / 1e9,
         post_open_verify_codec_wall_s: phases.post_open_verify_codec_wall_ns as f64 / 1e9,
         total_settlement_driver_wall_s: phases.total_settlement_driver_wall_ns as f64 / 1e9,
+        claim_reduce_by_geometry,
+        padded_i16_source_symbols: counters.padded_i16_source_symbols,
+        padded_i16_source_bytes: counters.padded_i16_source_bytes,
+        claim_reduce_calls: counters.claim_reduce_calls,
+        claim_reduce_frozen_claims: counters.claim_reduce_frozen_claims,
+        claim_reduce_product_round_calls: counters.claim_reduce_product_round_calls,
+        claim_reduce_f_fold_calls: counters.claim_reduce_f_fold_calls,
+        claim_reduce_w_fold_calls: counters.claim_reduce_w_fold_calls,
+        claim_reduce_product_round_symbols_read: counters.claim_reduce_product_round_symbols_read,
+        claim_reduce_f_fold_symbols_read: counters.claim_reduce_f_fold_symbols_read,
+        claim_reduce_w_fold_symbols_read: counters.claim_reduce_w_fold_symbols_read,
+        auxiliary_mle_calls: counters.auxiliary_mle_calls,
+        auxiliary_mle_symbols_read: counters.auxiliary_mle_symbols_read,
+        auxiliary_mle_unique_tables: counters.auxiliary_mle_unique_tables,
+        auxiliary_mle_unique_symbols: counters.auxiliary_mle_unique_symbols,
+        auxiliary_mle_unique_host_bytes: counters.auxiliary_mle_unique_host_bytes,
+        auxiliary_mle_unique_device_bytes: counters.auxiliary_mle_unique_device_bytes,
+        auxiliary_mle_h2d_bytes: counters.auxiliary_mle_h2d_bytes,
+        auxiliary_mle_d2h_bytes: counters.auxiliary_mle_d2h_bytes,
+        auxiliary_mle_kernel_calls: counters.auxiliary_mle_kernel_calls,
+        auxiliary_mle_allocation_requests: counters.auxiliary_mle_allocation_requests,
+        auxiliary_mle_buffer_reuse_hits: counters.auxiliary_mle_buffer_reuse_hits,
+        auxiliary_mle_peak_live_host_scratch_bytes: counters
+            .auxiliary_mle_peak_live_host_scratch_bytes,
+        auxiliary_mle_peak_live_device_scratch_bytes: counters
+            .auxiliary_mle_peak_live_scratch_bytes,
+        claim_reduce_unique_host_bytes: counters.claim_reduce_unique_host_bytes,
+        claim_reduce_unique_device_bytes: counters.claim_reduce_unique_device_bytes,
+        claim_reduce_unique_sources: counters.claim_reduce_unique_sources,
+        claim_reduce_unique_source_symbols: counters.claim_reduce_unique_source_symbols,
+        claim_reduce_source_embedding_calls: counters.claim_reduce_source_embedding_calls,
+        claim_reduce_f_generation_calls: counters.claim_reduce_f_generation_calls,
+        claim_reduce_h2d_bytes: counters.claim_reduce_h2d_bytes,
+        claim_reduce_d2h_bytes: counters.claim_reduce_d2h_bytes,
+        claim_reduce_d2d_bytes: counters.claim_reduce_d2d_bytes,
+        claim_reduce_kernel_calls: counters.claim_reduce_kernel_calls,
+        claim_reduce_protocol_scalar_d2h_bytes: counters.claim_reduce_protocol_scalar_d2h_bytes,
+        claim_reduce_peak_live_host_scratch_bytes: counters
+            .claim_reduce_peak_live_host_scratch_bytes,
+        claim_reduce_peak_live_device_scratch_bytes: counters.claim_reduce_peak_live_scratch_bytes,
+        claim_reduce_allocation_requests: counters.claim_reduce_allocation_requests,
+        claim_reduce_buffer_reuse_hits: counters.claim_reduce_buffer_reuse_hits,
+        resident_link_host_bytes: counters.resident_link_host_bytes,
+        resident_link_device_bytes: counters.resident_link_device_bytes,
+        resident_link_h2d_bytes: counters.resident_link_h2d_bytes,
+        resident_link_source_clone_bytes: counters.resident_link_source_clone_bytes,
+        resident_link_d2h_bytes: counters.resident_link_d2h_bytes,
+        resident_link_d2d_bytes: counters.resident_link_d2d_bytes,
+        resident_link_protocol_scalar_d2h_bytes: counters.resident_link_protocol_scalar_d2h_bytes,
+        resident_link_kernel_calls: counters.resident_link_kernel_calls,
+        resident_link_allocation_requests: counters.resident_link_allocation_requests,
+        resident_link_buffer_reuse_hits: counters.resident_link_buffer_reuse_hits,
+        resident_link_peak_live_host_scratch_bytes: counters
+            .resident_link_peak_live_host_scratch_bytes,
+        resident_link_peak_live_device_scratch_bytes: counters.resident_link_peak_live_scratch_bytes,
         unique_evaluation_tables: counters.unique_evaluation_tables,
         unique_evaluation_table_symbols: counters.unique_evaluation_table_symbols,
         evaluation_table_bytes: counters.evaluation_table_bytes,
@@ -1751,7 +1968,14 @@ mod tests {
     use volta_pcg::FaseDCapacityReport;
 
     #[test]
-    fn phase3_response_and_settlement_plan_uses_the_allocatable_fase_d_stage() {
+    fn x4d2_design_digest_and_output_namespace_are_pinned() {
+        verify_design().unwrap();
+        assert!(validate_x4d2_output_path(Path::new("x4d2-k1.json")).is_ok());
+        assert!(validate_x4d2_output_path(Path::new("x4d1-k1.json")).is_err());
+    }
+
+    #[test]
+    fn x4d2_response_and_settlement_plan_uses_the_allocatable_fase_d_stage() {
         let capacity =
             FaseDCapacityReport::for_params(&FaseDParams::production(FaseDStagePlan::TerminalOne))
                 .unwrap();

@@ -2061,6 +2061,42 @@ __global__ void reduce_product_round(
     output[z] = value;
 }
 
+__global__ void claim_reduce_eq_seed(Fp2* output, const Fp2* scale) {
+    if (blockIdx.x == 0 && threadIdx.x == 0) output[0] = *scale;
+}
+
+__global__ void claim_reduce_eq_expand(
+    const Fp2* input, const Fp2* point_coordinate, Fp2* output,
+    size_t input_len) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z >= input_len) return;
+    const Fp2 value = input[z];
+    const Fp2 one = fp2_mul(value, *point_coordinate);
+    output[2 * z] = fp2_sub(value, one);
+    output[2 * z + 1] = one;
+}
+
+__global__ void claim_reduce_add(Fp2* target, const Fp2* add, size_t len) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z < len) target[z] = fp2_add(target[z], add[z]);
+}
+
+__global__ void x4d_link_eq_accumulate_kernel(
+    Fp2* target, const Fp2* contribution, size_t len, int initialize) {
+    const size_t z = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (z < len)
+        target[z] = initialize ? contribution[z] : fp2_add(target[z], contribution[z]);
+}
+
+__global__ void x4d_scaled_dot_pair_kernel(
+    const DotAcc* dot, Fp2 scale, Fp2* output) {
+    if (blockIdx.x == 0 && threadIdx.x == 0) {
+        const Fp2 value = fp2_mul(scale, dot[0].value);
+        output[0] = value;
+        output[1] = fp2_sub(Fp2{0, 0}, value);
+    }
+}
+
 __global__ void fp2_triple_product_round_terms(
     const Fp2* a, const Fp2* b, const Fp2* c, TripleRoundAcc* output,
     size_t pairs) {
@@ -4706,6 +4742,180 @@ extern "C" int volta_cuda_fp2_product_round_into_device(
     return fp2_product_round_resident_impl(
         c, static_cast<const Fp2*>(a), static_cast<const Fp2*>(b), pairs,
         static_cast<Fp2*>(output), true);
+}
+
+extern "C" int volta_cuda_claim_reduce_f_two_into_device(
+    void* raw, uint64_t points_id, size_t points_offset, size_t n_vars,
+    uint64_t output_id, size_t output_offset,
+    uint64_t scratch_one_id, size_t scratch_one_offset,
+    uint64_t scratch_two_id, size_t scratch_two_offset,
+    uint64_t scratch_three_id, size_t scratch_three_offset) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !n_vars || n_vars > 30)
+        return fail_message(c, "invalid ClaimReduce F geometry");
+    const size_t len = size_t{1} << n_vars;
+    size_t points_bytes = 0, vector_bytes = 0;
+    if (!checked_mul_size(2 * n_vars + 2, sizeof(Fp2), &points_bytes) ||
+        !checked_mul_size(len, sizeof(Fp2), &vector_bytes))
+        return fail_message(c, "ClaimReduce F geometry overflows size_t");
+    void *points_raw = nullptr, *output_raw = nullptr, *scratch_one_raw = nullptr;
+    void *scratch_two_raw = nullptr, *scratch_three_raw = nullptr;
+    if (resident_region(c, points_id, points_offset * sizeof(Fp2),
+                        points_bytes, &points_raw) ||
+        resident_region(c, output_id, output_offset * sizeof(Fp2),
+                        vector_bytes, &output_raw) ||
+        resident_region(c, scratch_one_id, scratch_one_offset * sizeof(Fp2),
+                        vector_bytes, &scratch_one_raw) ||
+        resident_region(c, scratch_two_id, scratch_two_offset * sizeof(Fp2),
+                        vector_bytes, &scratch_two_raw) ||
+        resident_region(c, scratch_three_id, scratch_three_offset * sizeof(Fp2),
+                        vector_bytes, &scratch_three_raw)) return -1;
+    const Fp2* points = static_cast<const Fp2*>(points_raw);
+    Fp2* output = static_cast<Fp2*>(output_raw);
+    Fp2* scratch_one = static_cast<Fp2*>(scratch_one_raw);
+    Fp2* scratch_two = static_cast<Fp2*>(scratch_two_raw);
+    Fp2* scratch_three = static_cast<Fp2*>(scratch_three_raw);
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+
+    Fp2* first_current = (n_vars & 1) ? scratch_one : output;
+    Fp2* first_next = (n_vars & 1) ? output : scratch_one;
+    claim_reduce_eq_seed<<<1, 1, 0, c->stream>>>(
+        first_current, &points[2 * n_vars]);
+    size_t active = 1;
+    for (size_t stage = 0; stage < n_vars; ++stage) {
+        claim_reduce_eq_expand<<<(active + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+            first_current, &points[n_vars - 1 - stage], first_next, active);
+        std::swap(first_current, first_next);
+        active *= 2;
+    }
+
+    Fp2* second_current = (n_vars & 1) ? scratch_three : scratch_two;
+    Fp2* second_next = (n_vars & 1) ? scratch_two : scratch_three;
+    claim_reduce_eq_seed<<<1, 1, 0, c->stream>>>(
+        second_current, &points[2 * n_vars + 1]);
+    active = 1;
+    for (size_t stage = 0; stage < n_vars; ++stage) {
+        claim_reduce_eq_expand<<<(active + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+            second_current, &points[2 * n_vars - 1 - stage], second_next, active);
+        std::swap(second_current, second_next);
+        active *= 2;
+    }
+    claim_reduce_add<<<(len + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        output, scratch_two, len);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_GEMM, 0, 0);
+}
+
+extern "C" int volta_cuda_x4d_link_eq_accumulate_device(
+    void* raw, uint64_t point_id, size_t point_offset, size_t n_vars,
+    uint64_t target_id, size_t target_offset,
+    uint64_t scratch_one_id, size_t scratch_one_offset,
+    uint64_t scratch_two_id, size_t scratch_two_offset, int initialize) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !n_vars || n_vars > 30 || (initialize != 0 && initialize != 1))
+        return fail_message(c, "invalid X4d link-equality geometry");
+    const size_t len = size_t{1} << n_vars;
+    void *point_raw = nullptr, *target_raw = nullptr;
+    void *scratch_one_raw = nullptr, *scratch_two_raw = nullptr;
+    if (resident_region(c, point_id, point_offset * sizeof(Fp2),
+                        (n_vars + 1) * sizeof(Fp2), &point_raw) ||
+        resident_region(c, target_id, target_offset * sizeof(Fp2),
+                        len * sizeof(Fp2), &target_raw) ||
+        resident_region(c, scratch_one_id, scratch_one_offset * sizeof(Fp2),
+                        len * sizeof(Fp2), &scratch_one_raw) ||
+        resident_region(c, scratch_two_id, scratch_two_offset * sizeof(Fp2),
+                        len * sizeof(Fp2), &scratch_two_raw)) return -1;
+    const Fp2* point = static_cast<const Fp2*>(point_raw);
+    Fp2* target = static_cast<Fp2*>(target_raw);
+    Fp2* scratch_one = static_cast<Fp2*>(scratch_one_raw);
+    Fp2* scratch_two = static_cast<Fp2*>(scratch_two_raw);
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    Fp2* current = (n_vars & 1) ? scratch_two : scratch_one;
+    Fp2* next = (n_vars & 1) ? scratch_one : scratch_two;
+    claim_reduce_eq_seed<<<1, 1, 0, c->stream>>>(current, &point[n_vars]);
+    size_t active = 1;
+    for (size_t stage = 0; stage < n_vars; ++stage) {
+        claim_reduce_eq_expand<<<(active + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+            current, &point[n_vars - 1 - stage], next, active);
+        std::swap(current, next);
+        active *= 2;
+    }
+    x4d_link_eq_accumulate_kernel<<<(len + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        target, scratch_one, len, initialize);
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_GEMM, 0, 0);
+}
+
+extern "C" int volta_cuda_fp2_dot_scaled_pair_into_device(
+    void* raw, uint64_t a_id, size_t a_offset,
+    uint64_t b_id, size_t b_offset, size_t n, Fp2 scale,
+    uint64_t output_id, size_t output_offset) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !n) return fail_message(c, "invalid X4d scaled-dot geometry");
+    void *a = nullptr, *b = nullptr, *output = nullptr;
+    if (resident_region(c, a_id, a_offset * sizeof(Fp2), n * sizeof(Fp2), &a) ||
+        resident_region(c, b_id, b_offset * sizeof(Fp2), n * sizeof(Fp2), &b) ||
+        resident_region(c, output_id, output_offset * sizeof(Fp2),
+                        2 * sizeof(Fp2), &output) ||
+        ensure(c, 12, n * sizeof(DotAcc)) ||
+        ensure(c, 13, std::max(size_t{1}, (n + 1) / 2) * sizeof(DotAcc))) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    DotAcc* src = buf<DotAcc>(c, 12);
+    DotAcc* dst = buf<DotAcc>(c, 13);
+    fp2_dot_terms<<<(n + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+        static_cast<const Fp2*>(a), static_cast<const Fp2*>(b), src, n);
+    size_t active = n;
+    while (active > 1) {
+        const size_t next = (active + 1) / 2;
+        reduce_dot<<<(next + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(src, dst, active);
+        std::swap(src, dst);
+        active = next;
+    }
+    x4d_scaled_dot_pair_kernel<<<1, 1, 0, c->stream>>>(
+        src, scale, static_cast<Fp2*>(output));
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    return finish_timing(c, OP_GEMM, 0, 0);
+}
+
+extern "C" int volta_cuda_fp2_pair_sum_device(
+    void* raw, uint64_t input_id, size_t input_offset,
+    size_t pairs, Fp2* output) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !pairs || !output)
+        return fail_message(c, "invalid X4d pair-mailbox geometry");
+    void *input = nullptr;
+    if (resident_region(c, input_id, input_offset * sizeof(ProductRoundAcc),
+                        pairs * sizeof(ProductRoundAcc), &input) ||
+        ensure(c, 12, pairs * sizeof(ProductRoundAcc)) ||
+        ensure(c, 13, std::max(size_t{1}, (pairs + 1) / 2) *
+                          sizeof(ProductRoundAcc))) return -1;
+    if (begin_timing(c)) return -1;
+    if (mark_timing(c, 1)) return -1;
+    ProductRoundAcc* src = buf<ProductRoundAcc>(c, 12);
+    ProductRoundAcc* dst = buf<ProductRoundAcc>(c, 13);
+    CUDA_OR_RETURN(c, cudaMemcpyAsync(
+        src, input, pairs * sizeof(ProductRoundAcc),
+        cudaMemcpyDeviceToDevice, c->stream));
+    size_t active = pairs;
+    while (active > 1) {
+        const size_t next = (active + 1) / 2;
+        reduce_product_round<<<(next + BLOCK - 1) / BLOCK, BLOCK, 0, c->stream>>>(
+            src, dst, active);
+        std::swap(src, dst);
+        active = next;
+    }
+    CUDA_OR_RETURN(c, cudaPeekAtLastError());
+    if (mark_timing(c, 2)) return -1;
+    CUDA_OR_RETURN(c, cudaMemcpyAsync(
+        output, src, sizeof(ProductRoundAcc),
+        cudaMemcpyDeviceToHost, c->stream));
+    return finish_timing(c, OP_GEMM, 0, sizeof(ProductRoundAcc));
 }
 
 int fp2_triple_product_round_resident_impl(

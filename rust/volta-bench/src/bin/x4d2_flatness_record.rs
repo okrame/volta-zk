@@ -1,4 +1,4 @@
-//! Append-only paired verdict for the X4d.1 k=1/k=16 settlement gate.
+//! Append-only paired verdict for the X4d.2 k=1/k=16 settlement gate.
 //!
 //! This adapter performs no proving. It consumes two fresh same-host records
 //! produced by `x4d_gpt2_pod_record`, checks all binding counters and inherited
@@ -11,10 +11,10 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const SCHEMA: u64 = 1;
-const INPUT_SCHEMA: u64 = 2;
-const INPUT_MILESTONE: &str = "X4d.1-GPT2-fused-settlement-v1";
-const MILESTONE: &str = "X4d.1-GPT2-flatness-gate-v1";
+const SCHEMA: u64 = 2;
+const INPUT_SCHEMA: u64 = 3;
+const INPUT_MILESTONE: &str = "X4d.2-GPT2-resident-settlement-v1";
+const MILESTONE: &str = "X4d.2-GPT2-flatness-gate-v1";
 const PROFILE: &str = "runpod-a100-x4d-v1";
 const PROTOCOL: &str = "x4-zkdeepfold-ud-e29-v4+x4d-deferred-settlement-v1";
 const WALL_SEMANTICS: &str = "durable accumulator seal through terminal settlement success, including queued-response priority pause and fresh auxiliary materialization";
@@ -24,6 +24,8 @@ const INFORMATIVE_X4C_LOWER_S: f64 = 288.0;
 const INFORMATIVE_X4C_UPPER_S: f64 = 307.0;
 const UNIQUE_EVALUATION_TABLES: u64 = 102;
 const UNIQUE_EVALUATION_TABLE_SYMBOLS: u64 = 601_161_728;
+const UNIQUE_CLAIM_REDUCE_SOURCES: u64 = 51;
+const UNIQUE_CLAIM_REDUCE_SOURCE_SYMBOLS: u64 = 298_844_160;
 const INITIAL_ENCODED_SYMBOLS: u64 = 4_809_293_824;
 const COMBINED_CODEWORD_SYMBOLS: u64 = 1_159_200_768;
 const RESPONSE_BYTES: u64 = 41_270_464;
@@ -35,7 +37,7 @@ struct Args {
 }
 
 fn usage() -> ! {
-    eprintln!("usage: x4d1_flatness_record --k1 PATH --k16 PATH --output FRESH_PATH");
+    eprintln!("usage: x4d2_flatness_record --k1 PATH --k16 PATH --output FRESH_PATH");
     std::process::exit(2)
 }
 
@@ -77,7 +79,7 @@ fn sha256(path: &Path) -> Result<String, String> {
 }
 
 fn producer_source_path() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("src/bin/x4d1_flatness_record.rs")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("src/bin/x4d2_flatness_record.rs")
 }
 
 fn clean_git_sha() -> Result<String, String> {
@@ -116,8 +118,8 @@ fn write_append_only<T: Serialize>(path: &Path, value: &T) -> Result<(), String>
 
 fn validate_output_path(path: &Path) -> Result<(), String> {
     let name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
-    if !name.starts_with("x4d1-") || !name.ends_with(".json") {
-        return Err("paired verdict requires an x4d1-*.json output name".to_owned());
+    if !name.starts_with("x4d2-") || !name.ends_with(".json") {
+        return Err("paired verdict requires an x4d2-*.json output name".to_owned());
     }
     Ok(())
 }
@@ -157,6 +159,10 @@ struct InterferenceRow {
 
 #[derive(Deserialize)]
 struct InstrumentationRow {
+    claim_reduce_calls: u64,
+    claim_reduce_frozen_claims: u64,
+    claim_reduce_unique_sources: u64,
+    claim_reduce_unique_source_symbols: u64,
     unique_evaluation_tables: u64,
     unique_evaluation_table_symbols: u64,
     materialized_relation_terms: u64,
@@ -211,6 +217,13 @@ struct RunSummary {
     max_response_wall_s: f64,
     response_bytes: u64,
     interference_percentage_delta: f64,
+    claim_reduce_calls: u64,
+    claim_reduce_frozen_claims: u64,
+    claim_reduce_unique_sources: u64,
+    claim_reduce_unique_source_symbols: u64,
+    unique_evaluation_table_symbols: u64,
+    encoded_oracle_full_passes: u64,
+    query_gather_calls: u64,
     initial_encoded_symbols_read: u64,
     combined_codeword_symbols: u64,
     materialized_relation_terms: u64,
@@ -245,6 +258,10 @@ struct VerdictRecord {
     wall_flatness_pass: bool,
     initial_encoded_symbols_equal: bool,
     combined_codeword_symbols_equal: bool,
+    unique_evaluation_table_symbols_equal: bool,
+    unique_claim_reduce_source_symbols_equal: bool,
+    encoded_oracle_full_passes_equal: bool,
+    query_gather_calls_equal: bool,
     physical_counter_gate_pass: bool,
     g1_rerun_pass: bool,
     response_bytes_unchanged: bool,
@@ -281,6 +298,10 @@ fn input_valid(row: &InputRecord, responses: usize, role: &str) -> bool {
         && row.settlement.wall_semantics == WALL_SEMANTICS
         && positive_finite(row.settlement.seal_to_terminal_wall_s)
         && row.settlement.interference.percentage_delta.is_finite()
+        && counters.claim_reduce_calls == 51 * responses as u64
+        && counters.claim_reduce_frozen_claims == 102 * responses as u64
+        && counters.claim_reduce_unique_sources == UNIQUE_CLAIM_REDUCE_SOURCES
+        && counters.claim_reduce_unique_source_symbols == UNIQUE_CLAIM_REDUCE_SOURCE_SYMBOLS
         && counters.unique_evaluation_tables == UNIQUE_EVALUATION_TABLES
         && counters.unique_evaluation_table_symbols == UNIQUE_EVALUATION_TABLE_SYMBOLS
         && counters.materialized_relation_terms == UNIQUE_EVALUATION_TABLES
@@ -312,6 +333,13 @@ fn summary(path: &Path, digest: String, row: &InputRecord) -> RunSummary {
         max_response_wall_s,
         response_bytes: RESPONSE_BYTES,
         interference_percentage_delta: row.settlement.interference.percentage_delta,
+        claim_reduce_calls: counters.claim_reduce_calls,
+        claim_reduce_frozen_claims: counters.claim_reduce_frozen_claims,
+        claim_reduce_unique_sources: counters.claim_reduce_unique_sources,
+        claim_reduce_unique_source_symbols: counters.claim_reduce_unique_source_symbols,
+        unique_evaluation_table_symbols: counters.unique_evaluation_table_symbols,
+        encoded_oracle_full_passes: counters.encoded_oracle_full_passes,
+        query_gather_calls: counters.query_gather_calls,
         initial_encoded_symbols_read: counters.initial_encoded_symbols_read,
         combined_codeword_symbols: counters.combined_codeword_symbols,
         materialized_relation_terms: counters.materialized_relation_terms,
@@ -329,7 +357,7 @@ fn evaluate(args: &Args) -> Result<VerdictRecord, String> {
     if !input_valid(&k1, 1, "k1-anchor")
         || !input_valid(&k16, 16, "k16-candidate+unchanged-g1-interference-rerun")
     {
-        return Err("an X4d.1 input record failed its structural or inherited gates".to_owned());
+        return Err("an X4d.2 input record failed its structural or inherited gates".to_owned());
     }
     let same_host = k1.git_sha == k16.git_sha
         && k1.producer_source_sha256 == k16.producer_source_sha256
@@ -354,8 +382,22 @@ fn evaluate(args: &Args) -> Result<VerdictRecord, String> {
         == k16.settlement.instrumentation.initial_encoded_symbols_read;
     let combined_codeword_symbols_equal = k1.settlement.instrumentation.combined_codeword_symbols
         == k16.settlement.instrumentation.combined_codeword_symbols;
-    let physical_counter_gate_pass =
-        initial_encoded_symbols_equal && combined_codeword_symbols_equal;
+    let unique_evaluation_table_symbols_equal =
+        k1.settlement.instrumentation.unique_evaluation_table_symbols
+            == k16.settlement.instrumentation.unique_evaluation_table_symbols;
+    let unique_claim_reduce_source_symbols_equal =
+        k1.settlement.instrumentation.claim_reduce_unique_source_symbols
+            == k16.settlement.instrumentation.claim_reduce_unique_source_symbols;
+    let encoded_oracle_full_passes_equal = k1.settlement.instrumentation.encoded_oracle_full_passes
+        == k16.settlement.instrumentation.encoded_oracle_full_passes;
+    let query_gather_calls_equal = k1.settlement.instrumentation.query_gather_calls
+        == k16.settlement.instrumentation.query_gather_calls;
+    let physical_counter_gate_pass = initial_encoded_symbols_equal
+        && combined_codeword_symbols_equal
+        && unique_evaluation_table_symbols_equal
+        && unique_claim_reduce_source_symbols_equal
+        && encoded_oracle_full_passes_equal
+        && query_gather_calls_equal;
     let g1_rerun_pass = k1.g1.overall_pass && k16.g1.overall_pass;
     let response_bytes_unchanged = k1
         .responses
@@ -391,6 +433,10 @@ fn evaluate(args: &Args) -> Result<VerdictRecord, String> {
         wall_flatness_pass,
         initial_encoded_symbols_equal,
         combined_codeword_symbols_equal,
+        unique_evaluation_table_symbols_equal,
+        unique_claim_reduce_source_symbols_equal,
+        encoded_oracle_full_passes_equal,
+        query_gather_calls_equal,
         physical_counter_gate_pass,
         g1_rerun_pass,
         response_bytes_unchanged,
@@ -399,8 +445,9 @@ fn evaluate(args: &Args) -> Result<VerdictRecord, String> {
         inherited_settlement_gates_pass,
         binding_gate_verdict_verbatim: format!(
             "{gate_word} — FLATNESS IN k: settlement_wall(k=16) <= 1.30 x \
-             settlement_wall(k=1), with equal initial_encoded_symbols_read and \
-             combined_codeword_symbols"
+             settlement_wall(k=1), with equal initial_encoded_symbols_read, \
+             combined_codeword_symbols, unique physical evaluation/source \
+             symbols, encoded-oracle pass count and query-gather count"
         ),
         informative_target: InformativeTarget {
             lower_s: INFORMATIVE_X4C_LOWER_S,
@@ -427,12 +474,12 @@ fn main() {
         let overall_pass = record.overall_pass;
         write_append_only(&args.output, &record)?;
         if !overall_pass {
-            return Err("X4d.1 binding or inherited gate failed; record retained".to_owned());
+            return Err("X4d.2 binding or inherited gate failed; record retained".to_owned());
         }
         Ok(())
     })();
     if let Err(error) = result {
-        eprintln!("x4d1_flatness_record HARD STOP: {error}");
+        eprintln!("x4d2_flatness_record HARD STOP: {error}");
         std::process::exit(1);
     }
 }
@@ -454,5 +501,6 @@ mod tests {
         assert_eq!(INITIAL_ENCODED_SYMBOLS, 4_809_293_824);
         assert_eq!(COMBINED_CODEWORD_SYMBOLS, 1_159_200_768);
         assert_eq!(UNIQUE_EVALUATION_TABLE_SYMBOLS, 601_161_728);
+        assert_eq!(UNIQUE_CLAIM_REDUCE_SOURCE_SYMBOLS, 298_844_160);
     }
 }

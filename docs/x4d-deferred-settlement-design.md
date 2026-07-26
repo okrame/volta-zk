@@ -2,8 +2,8 @@
 
 **Status (2026-07-26): X4d V1 PHASE 3 CLOSED PASS. X4d.1 FUSED DRIVER AND
 PAIRED A100 MEASUREMENT COMPLETE; OFFICIAL FLATNESS FAIL. PHYSICAL SYMBOL
-COUNTERS PASS; INHERITED G1 RERUN FAILS ON THE k=1 SYNC CEILING. CONTROL-PLANE
-TEARDOWN REMAINS PENDING BECAUSE THE POD-SIDE `runpodctl` HAS NO API KEY.**
+COUNTERS PASS; INHERITED G1 RERUN FAILS ON THE k=1 SYNC CEILING.
+CONTROL-PLANE TEARDOWN COMPLETE.**
 
 X4d moves the folding-PCS work out of each response and into one deferred
 settlement over an exact union of frozen, MAC-authenticated weight claims. A
@@ -332,8 +332,11 @@ outlier. No independent review is claimed.
 All six records were copied and SHA-verified locally. The required
 pod-side command `runpodctl stop pod xfjw217q6cq4ja` was then attempted, but
 the CLI stopped before any control-plane mutation with `API key not found`.
-The pod remains running until the owner configures `runpodctl` or performs the
-equivalent control-plane stop; teardown credit is not claimed.
+The owner then identified `RUNPOD_API_KEY` in the repo-local `.env`. It was
+passed only in memory via SSH stdin, exported for that one remote command and
+never printed or persisted in a pod config. `runpodctl stop pod
+xfjw217q6cq4ja` returned `pod "xfjw217q6cq4ja" stopped`; the first independent
+SSH probe returned `Connection refused`. Control-plane teardown is complete.
 
 ## 1. Authority, inputs and fixed facts
 
@@ -1607,7 +1610,7 @@ fresh clean checkpoint
   -> full validation, ledger/R1c closure and renamed comparison document
      [COMPLETE, official verdict FAIL]
   -> provider-control-plane pod stop from the SSH session
-     [PENDING: pod-side runpodctl lacks an API key]
+     [COMPLETE; CLI returned stopped, independent SSH refused]
 ```
 
 The `288--307 s` X4c band is not in the paired verdict's `overall_pass`.

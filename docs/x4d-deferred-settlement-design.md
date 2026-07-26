@@ -139,12 +139,42 @@ expected_explicit_d2d_copy_bytes + rebuilt_frontier_bytes
   = 1,747,072 B.
 ```
 
-The invariant device base is derived from the immutable X4c selected-tape
-record by subtracting its rebuilt frontier, not introduced as an independent
-estimate. All non-query-dependent call, parity, H2D-operation, I/O, arena and
+The first implementation of this equality derived the invariant base by
+subtracting a hand-transcribed historical selected-tape payload. A
+production rerun stopped fail-closed because that transcription said 4,924
+fold symbols while the immutable fixture contains exactly 4,920
+(`27,564 - 22,644`). The resulting 64-B error made the equality false. No
+settlement was accepted. The connection journal SHA-256 is
+`f2add8fc65bc4baec937de29f6133a607a4243f5abaf2b269c29640ff49d4cd7`;
+its sorted tree SHA-256 is
+`e93e03473d4e54c8ba2fec8583c1b1c82ba11f703d39d6427e564e7f630f7128`.
+The twenty-one authorization markers have sorted-tree SHA-256
+`d83a4b97f1a3d2f0ccaf86ff2d49f464e907d78d0716f099912ef075e718e543`.
+
+The invariant device base is therefore constructed directly from structural
+production quantities, never from a selected query tape:
+
+```text
+activation_symbols = 2^26 + 2^24 + 2^20 + 2^19 = 85,458,944
+
+reused_device_base
+  = fold_codeword_bytes + fold_outer_cache_bytes
+  + 16*activation_symbols + 16*diagnostic_symbols
+  = 35,727,154,720 B
+
+fresh_device_base
+  = reused_device_base + 4*32
+  = 35,727,154,848 B.
+```
+
+A permanent reconciliation test independently derives the historical fold
+payload from the canonical fixture: `16*4,920 + 32*48,978 = 1,646,016 B`;
+subtracting immutable explicit D2D gives 281,792 rebuilt bytes, and adding
+that value to the two structural bases recovers the immutable
+**35,727,436,512 / 35,727,436,640-B** reused/fresh generated-byte counters.
+All non-query-dependent call, parity, H2D-operation, I/O, arena and
 query-count identities remain exact. X4c still requires its original
-**1,364,224-B** explicit D2D and
-**35,727,436,640 / 35,727,436,512-B** fresh/reused generated-byte constants.
+**1,364,224-B** explicit D2D and generated-byte constants.
 
 ### 1.1 Phase-2 root terminology clarification
 

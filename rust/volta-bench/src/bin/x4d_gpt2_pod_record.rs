@@ -961,6 +961,41 @@ struct InterferenceRow {
 }
 
 #[derive(Serialize)]
+struct SettlementInstrumentationRow {
+    claim_coefficient_preparation_wall_s: f64,
+    oracle_read_combine_wall_s: f64,
+    fold_merkle_wall_s: f64,
+    query_gather_wall_s: f64,
+    instrumented_prover_wall_s: f64,
+    post_open_verify_codec_wall_s: f64,
+    total_settlement_driver_wall_s: f64,
+    unique_evaluation_tables: u64,
+    unique_evaluation_table_symbols: u64,
+    evaluation_table_bytes: u64,
+    evaluation_table_cpu_resident_bytes: u64,
+    evaluation_table_gpu_resident_bytes: u64,
+    evaluation_table_h2d_bytes: u64,
+    evaluation_table_d2h_bytes: u64,
+    response_local_evaluation_clone_bytes: u64,
+    response_local_equality_table_bytes: u64,
+    peak_relation_table_cpu_payload_bytes: u64,
+    peak_relation_table_gpu_payload_bytes: u64,
+    relation_terms: u64,
+    logical_evaluation_table_symbols_read: u64,
+    logical_evaluation_table_bytes_read: u64,
+    evaluation_table_passes_per_unique_table: u64,
+    encoded_oracle_full_passes: u64,
+    response_or_claim_proportional_encoded_oracle_passes: u64,
+    source_coefficients_read: u64,
+    initial_encoded_symbols_read: u64,
+    combined_codeword_symbols: u64,
+    query_gather_calls: u64,
+    backend_h2d_bytes: u64,
+    backend_d2h_bytes: u64,
+    backend_peak_device_bytes: u64,
+}
+
+#[derive(Serialize)]
 struct SettlementRow {
     responses: usize,
     frozen_claims: usize,
@@ -989,6 +1024,7 @@ struct SettlementRow {
     query_draws: usize,
     soundness_expression: String,
     soundness_bits: f64,
+    instrumentation: SettlementInstrumentationRow,
     interference: InterferenceRow,
     accepted: bool,
 }
@@ -1431,7 +1467,7 @@ fn online(args: &Args) -> Result<(), String> {
         )
     })?;
     let proof_driver_wall_s = proof_started.elapsed().as_secs_f64();
-    let _settlement_backend: BackendStats = runtime
+    let settlement_backend: BackendStats = runtime
         .finish_response_measurement()
         .map_err(|error| format!("finish settlement measurement: {error:?}"))?;
     production
@@ -1516,6 +1552,43 @@ fn online(args: &Args) -> Result<(), String> {
         && exact_correlations
         && open_pass
         && verify_pass;
+    let phases = result.driver_phase_walls;
+    let counters = result.driver_counters;
+    let instrumentation = SettlementInstrumentationRow {
+        claim_coefficient_preparation_wall_s: phases.claim_coefficient_preparation_wall_ns as f64
+            / 1e9,
+        oracle_read_combine_wall_s: phases.oracle_read_combine_wall_ns as f64 / 1e9,
+        fold_merkle_wall_s: phases.fold_merkle_wall_ns as f64 / 1e9,
+        query_gather_wall_s: phases.query_gather_wall_ns as f64 / 1e9,
+        instrumented_prover_wall_s: phases.instrumented_prover_wall_ns as f64 / 1e9,
+        post_open_verify_codec_wall_s: phases.post_open_verify_codec_wall_ns as f64 / 1e9,
+        total_settlement_driver_wall_s: phases.total_settlement_driver_wall_ns as f64 / 1e9,
+        unique_evaluation_tables: counters.unique_evaluation_tables,
+        unique_evaluation_table_symbols: counters.unique_evaluation_table_symbols,
+        evaluation_table_bytes: counters.evaluation_table_bytes,
+        evaluation_table_cpu_resident_bytes: counters.evaluation_table_cpu_resident_bytes,
+        evaluation_table_gpu_resident_bytes: counters.evaluation_table_gpu_resident_bytes,
+        evaluation_table_h2d_bytes: counters.evaluation_table_h2d_bytes,
+        evaluation_table_d2h_bytes: counters.evaluation_table_d2h_bytes,
+        response_local_evaluation_clone_bytes: counters.response_local_evaluation_clone_bytes,
+        response_local_equality_table_bytes: counters.response_local_equality_table_bytes,
+        peak_relation_table_cpu_payload_bytes: counters.peak_relation_table_cpu_payload_bytes,
+        peak_relation_table_gpu_payload_bytes: counters.peak_relation_table_gpu_payload_bytes,
+        relation_terms: counters.relation_terms,
+        logical_evaluation_table_symbols_read: counters.logical_evaluation_table_symbols_read,
+        logical_evaluation_table_bytes_read: counters.logical_evaluation_table_bytes_read,
+        evaluation_table_passes_per_unique_table: counters.evaluation_table_passes_per_unique_table,
+        encoded_oracle_full_passes: counters.encoded_oracle_full_passes,
+        response_or_claim_proportional_encoded_oracle_passes: counters
+            .response_or_claim_proportional_encoded_oracle_passes,
+        source_coefficients_read: counters.source_coefficients_read,
+        initial_encoded_symbols_read: counters.initial_encoded_symbols_read,
+        combined_codeword_symbols: counters.combined_codeword_symbols,
+        query_gather_calls: counters.query_gather_calls,
+        backend_h2d_bytes: settlement_backend.h2d_bytes,
+        backend_d2h_bytes: settlement_backend.d2h_bytes,
+        backend_peak_device_bytes: settlement_backend.peak_device_bytes,
+    };
     let settlement = SettlementRow {
         responses: batch.counters.responses,
         frozen_claims: batch.counters.frozen_claims,
@@ -1547,6 +1620,7 @@ fn online(args: &Args) -> Result<(), String> {
         query_draws: batch.counters.query_draws,
         soundness_expression: SOUNDNESS_EXPRESSION.to_owned(),
         soundness_bits: SOUNDNESS_BITS,
+        instrumentation,
         interference,
         accepted: settlement_accepted,
     };

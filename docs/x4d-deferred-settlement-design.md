@@ -1,8 +1,8 @@
 # X4d deferred-settlement design and preregistration
 
-**Status (2026-07-25): PHASE 3 IN PROGRESS. PHASE-3 FRESH-QUERY CODEC
-OBSTRUCTION RECORDED; AMENDMENT 1 FIXED-SIZE SETTLEMENT PADDING IMPLEMENTED
-LOCALLY; NEW REBASELINE AND POD RERUN PENDING.**
+**Status (2026-07-26): X4d V1 PHASE 3 CLOSED PASS. X4d.1 PHASE 1
+INSTRUMENTATION, DIAGNOSIS, POSTDICTION AND FUSED-DRIVER PREREGISTRATION
+COMPLETE; HARD STOP BEFORE IMPLEMENTATION OR POD.**
 
 X4d moves the folding-PCS work out of each response and into one deferred
 settlement over an exact union of frozen, MAC-authenticated weight claims. A
@@ -13,6 +13,175 @@ state to accepted only after a settlement covering the response succeeds.
 This is a product-semantics and message-placement change. It does not convert
 the immutable X4 or X4b failures into passes, and it does not reinterpret the
 X4c measurements. Historical records, references and verdicts are immutable.
+
+## X4d.1 amendment — settlement-driver aggregation
+
+This amendment is an implementation-only reordering of linear work. It changes
+no protocol statement, soundness term, proof byte, codec, Lean theorem, gate
+ceiling, M12 obligation or the **80.2553701639904-bit** expression. Settlement
+challenges are already drawn after the accumulator seal, so every coefficient
+needed to combine the frozen claims is known before the oracle is touched.
+X4d's existing gates remain in force; X4d.1 adds one gate below.
+
+### X4d.1 Phase 1 boundary and accounting
+
+Phase 1 adds internal accounting to the current driver and stops before the
+fused driver is implemented. The settlement record now has these disjoint
+walls:
+
+- claim-coefficient preparation, including delayed-sumcheck relation work;
+- encoded-oracle read and combine;
+- the remaining fold and Merkle construction;
+- final query gather/open.
+
+It also records relation terms, unique evaluation tables, physical and logical
+evaluation-table bytes, CPU/GPU residency, evaluation-table H2D/D2H, passes per
+unique table, encoded-oracle full passes, source coefficients, initial encoded
+symbols, combined-codeword symbols and query-gather calls. Backend-wide
+H2D/D2H and peak device bytes remain separately visible in the pod record.
+
+The immutable k=16 production anchors reconstructed from the X4d and X4c
+records are:
+
+| Counter | Current k=16 settlement |
+|---|---:|
+| response-local relation terms | 1,632 |
+| unique evaluation tables | 102 |
+| unique evaluation-table bytes | 9,618,587,648 |
+| unique source-table CPU / GPU residency | 9,618,587,648 / 0 B |
+| evaluation-table H2D / D2H | 0 / 0 B |
+| response-local evaluation clones | 153,897,402,368 B |
+| response-local equality tables | 153,897,402,368 B |
+| peak relation-table CPU / GPU payload | 317,413,392,384 / 0 B |
+| logical source-table bytes read | 153,897,402,368 |
+| passes per unique evaluation table | 16 |
+| encoded-oracle full passes | 1 |
+| initial encoded symbols read | 4,809,293,824 |
+| combined-codeword symbols | 1,159,200,768 |
+| query gathers | 1 |
+
+### Diagnosis and exact loops
+
+The broad “late aggregation” hypothesis is **confirmed for the CPU-resident
+evaluation-table relation path**, but **refuted for the encoded-oracle pass**.
+The current driver builds two terms for every response/block, clones each
+borrowed `Vec<Fp2>` into a host-owned delayed-sumcheck term, and revisits every
+term in every sumcheck round. It accumulates duplicate physical slot weights
+only after that work. The later X4c path already consumes each unique encoded
+slot once, which is why its production symbol counters are the X4c single-pass
+values rather than 16 times those values.
+
+The exact loops in the instrumented source are:
+
+- `rust/volta-pcs/src/x4/authenticated_output_v4.rs:1306`: per-block
+  weight/auxiliary term construction;
+- `rust/volta-pcs/src/x4/authenticated_output_v4.rs:548`: host `Vec` clone;
+- `rust/volta-pcs/src/x4/authenticated_output_v4.rs:580`: host evaluation-table
+  traversal;
+- `rust/volta-pcs/src/x4/authenticated_output_v4.rs:639` and `:642`: outer
+  sumcheck rounds and the inner traversal of every response-local term;
+- `rust/volta-pcs/src/x4/authenticated_output_v4.rs:1341`: duplicate-slot
+  weights are grouped only after the delayed sumcheck;
+- `rust/volta-pcs/src/x4/x4c_v4.rs:1888` and `:3587`: the already-grouped
+  cohorts and unique touched slots enter the single encoded-oracle pass;
+- `rust/volta-bench/src/x4c_gpt2.rs:167`: the production evaluation tables are
+  host `Vec<Fp2>` values.
+
+Thus (a) there are k-proportional table scans, not k-proportional encoded-oracle
+passes, and (b) the evaluation tables on this path are CPU-resident. At k=16,
+the 9.619-GB unique source tier coexists with 153.897 GB of response-local
+evaluation clones and the same amount of equality tables: **317.413392384 GB**
+of structurally counted relation-table payload before allocator overhead. No
+evaluation-table transfer or GPU-resident allocation exists in the current
+settlement path.
+
+### Synthetic reproduction and no-fit postdiction
+
+The Phase-1 probe runs the current unfused driver at evaluation domains
+`2^14`, `2^16` and `2^18`, with one warm-up and three measured candidates at
+k=1 and k=16. At every scale:
+
+- `initial_encoded_symbols_read`, `combined_codeword_symbols` and the one
+  encoded-oracle pass are identical at k=1 and k=16;
+- logical evaluation-table traffic is exactly **16.0x** at k=16;
+- all 111 query draws and the single gather are accepted.
+
+The three local claim-preparation wall ratios are
+**16.646869498x / 15.718505099x / 16.106268570x**. Because those short local
+walls are noisier than the structural traffic census, the postdiction fixes
+the exact measured **16.0x logical table-traffic ratio** as its multiplier,
+without fitting to X4d:
+
+```text
+T16 = X4c_flat
+    + exact_instrumented_table_traffic_ratio(k16/k1)
+      * X4c_claim_preparation
+```
+
+The upper medians of the three immutable measured X4c candidates give
+**176.715006534 s** for claim preparation and **121.609978116 s** for the flat
+oracle/fold/open/verify component. The resulting postdiction is
+**2,949.050082660 s**, versus the observed **3,071.972477759 s**: residual
+**122.922395099 s**, absolute error **4.0014%**. Applying the same ratio to
+each of the three X4c candidates gives a
+**2,933.001968413–3,037.476146390 s** sensitivity band. The observation is
+**34.496331369 s**, or **1.1229%** of observed wall, above that band. This
+supports the diagnosed linear-in-k host-table work while leaving a small
+positive unmodeled residual; it is diagnostic evidence, not a gate verdict.
+
+### Preregistered fused driver
+
+After the accumulator seal, the fused driver will:
+
+1. preserve the frozen claim order, statements, transcript and opening;
+2. precompute all response-local equality and combination coefficients for
+   each of the 51 physical blocks;
+3. reduce those coefficients to one stream per unique physical slot before
+   scanning any evaluation table or encoded oracle;
+4. perform one GPU-resident RLC pass using the existing X4c accelerated arena;
+5. build one unchanged combined 27-round fold/Merkle chain; and
+6. make the same single 111-query packed opening.
+
+The required production counters at both k=1 and k=16 are therefore:
+
+```text
+encoded_oracle_full_passes       = 1
+initial_encoded_symbols_read     = 4,809,293,824
+combined_codeword_symbols        = 1,159,200,768
+query_gather_calls               = 1
+```
+
+The important implementation change is earlier coefficient reduction and
+GPU-resident RLC, not a claim that the existing encoded-oracle combiner itself
+currently makes 16 full passes.
+
+### New X4d.1 gate and unchanged gates
+
+The new hard gate is **FLATNESS IN k**, evaluated on the same host:
+
+```text
+settlement_wall(k=16) <= 1.30 * settlement_wall(k=1)
+AND
+initial_encoded_symbols_read(k=16) == initial_encoded_symbols_read(k=1)
+```
+
+`combined_codeword_symbols` equality is a mandatory paired structural counter.
+The informative target, explicitly not a gate, is settlement wall at or below
+the immutable X4c `pcs_total` baseline band of about **288–307 s**. Remaining
+GPU evaluation-table lifetime, RLC/first-activation fusion, removable host
+mirrors where parity permits, and seal-arena lifecycle work are engineering
+headroom for follow-up, not promises.
+
+All existing X4d gates rerun unchanged. In particular, the accepted G1 anchors
+remain response wall **4.900886414 s**, response bytes **41,270,464 B** and
+interference **0.399684884%**; the historical response ranges
+**4.87–5.04 s / 41,270,464 B / <=1.00%** are not relaxed. The opening and
+verification ceilings remain **1.50 s / 0.25 s**, and G2–G6, cap, tamper and
+abort semantics are untouched.
+
+**X4d.1 HARD STOP:** Phase 1 ends here. No fused driver, pod session, gate
+verdict, ledger closure or accelerated-comparison rename/update is authorized
+until owner review approves Phase 2.
 
 ## 1. Authority, inputs and fixed facts
 

@@ -33,7 +33,8 @@ use super::frame::{
 use super::frame_v4::{authenticated_output_link_schedule_digest_v4, FrameV4, OracleKindV4};
 use super::x4c_v4::{
     SealedGlobalChainX4cV4, X4cArenaRuntimeV4, X4cErrorV4, X4cResponseMetricsV4, X4cSealConfigV4,
-    X4dLinkEqualityContributionV4, X4dResidentLinkTermV4,
+    X4dLinkEqualityContributionV4, X4dResidentLinkCountersV4, X4dResidentLinkOutputV4,
+    X4dResidentLinkTermV4,
 };
 
 pub const GLOBAL_FOLD_COHORT_ID_V4: u32 = 0xA500_F001;
@@ -883,6 +884,103 @@ fn prove_delayed_sumcheck_v4(
         final_claim: claim,
         terminal_value,
         phase_walls,
+    })
+}
+
+/// CPU implementation of the resident delayed-link operation contract.
+///
+/// This deliberately enters the same `Some(resident)` orchestration branch
+/// as CUDA while retaining the existing CPU sumcheck as its byte oracle.
+/// It is used by permanent local tests; all device traffic remains zero.
+pub(crate) fn prove_x4d_delayed_link_cpu_resident_v4(
+    terms: &[X4dResidentLinkTermV4<'_>],
+    round_count: usize,
+    initial_claim: ProverAuthed,
+    stream: &mut CorrelationStream,
+    domains: &[u64],
+    tx: &mut Transcript,
+) -> Result<X4dResidentLinkOutputV4, AuthenticatedOutputErrorV4> {
+    if terms.is_empty()
+        || round_count == 0
+        || round_count > 30
+        || domains.len() != 2 * round_count
+        || terms.iter().any(|term| {
+            term.dimension == 0
+                || term.dimension > round_count
+                || term.evaluations.len() != 1usize << term.dimension
+                || term.contributions.is_empty()
+                || term
+                    .contributions
+                    .iter()
+                    .any(|contribution| contribution.point.len() != term.dimension)
+        })
+    {
+        return Err(AuthenticatedOutputErrorV4::InvalidGeometry(
+            "X4d CPU resident delayed-link geometry",
+        ));
+    }
+    let mut counters =
+        X4dResidentLinkCountersV4 { unique_terms: terms.len() as u64, ..Default::default() };
+    let mut materialized = Vec::with_capacity(terms.len());
+    let mut equality_generation_wall_ns = 0u64;
+    let mut source_copy_wall_ns = 0u64;
+    for term in terms {
+        let equality_started = Instant::now();
+        let mut equality = vec![Fp2::ZERO; term.evaluations.len()];
+        for contribution in &term.contributions {
+            for (combined, value) in equality.iter_mut().zip(eq_vec(&contribution.point)) {
+                *combined += contribution.coefficient * value;
+            }
+        }
+        equality_generation_wall_ns = equality_generation_wall_ns
+            .checked_add(phase_wall_ns_v4(equality_started)?)
+            .ok_or(AuthenticatedOutputErrorV4::Overflow)?;
+        let copy_started = Instant::now();
+        materialized.push(DelayedSumcheckTermV4::from_fused_equality(
+            term.evaluations,
+            equality,
+            term.dimension,
+            round_count,
+        )?);
+        source_copy_wall_ns = source_copy_wall_ns
+            .checked_add(phase_wall_ns_v4(copy_started)?)
+            .ok_or(AuthenticatedOutputErrorV4::Overflow)?;
+        let symbols = u64::try_from(term.evaluations.len())
+            .map_err(|_| AuthenticatedOutputErrorV4::Overflow)?;
+        counters.source_symbols = counters
+            .source_symbols
+            .checked_add(symbols)
+            .ok_or(AuthenticatedOutputErrorV4::Overflow)?;
+        counters.equality_symbols = counters
+            .equality_symbols
+            .checked_add(symbols)
+            .ok_or(AuthenticatedOutputErrorV4::Overflow)?;
+        counters.allocation_requests = counters
+            .allocation_requests
+            .checked_add(2)
+            .ok_or(AuthenticatedOutputErrorV4::Overflow)?;
+    }
+    counters.host_bytes = counters
+        .source_symbols
+        .checked_add(counters.equality_symbols)
+        .and_then(|symbols| symbols.checked_mul(16))
+        .ok_or(AuthenticatedOutputErrorV4::Overflow)?;
+    counters.source_clone_bytes =
+        counters.source_symbols.checked_mul(16).ok_or(AuthenticatedOutputErrorV4::Overflow)?;
+    counters.peak_live_host_scratch_bytes = counters.host_bytes;
+    let sumcheck =
+        prove_delayed_sumcheck_v4(materialized, round_count, initial_claim, stream, domains, tx)?;
+    Ok(X4dResidentLinkOutputV4 {
+        corrections: sumcheck.corrections,
+        point: sumcheck.point,
+        final_claim: sumcheck.final_claim,
+        terminal_value: sumcheck.terminal_value,
+        equality_generation_wall_ns,
+        source_copy_wall_ns,
+        round_evaluation_wall_ns: sumcheck.phase_walls.round_evaluation_wall_ns,
+        fold_wall_ns: sumcheck.phase_walls.fold_wall_ns,
+        masks_transcript_terminal_wall_ns: sumcheck.phase_walls.masks_transcript_terminal_wall_ns,
+        counters,
     })
 }
 

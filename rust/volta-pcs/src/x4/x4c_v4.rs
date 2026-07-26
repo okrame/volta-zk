@@ -3934,16 +3934,23 @@ impl X4cArenaRuntimeV4 for X4cCpuReferenceRuntimeV4 {
 
     fn prove_x4d_delayed_link_resident(
         &mut self,
-        _terms: &[X4dResidentLinkTermV4<'_>],
-        _round_count: usize,
-        _initial_claim: ProverAuthed,
-        _stream: &mut CorrelationStream,
-        _domains: &[u64],
-        _tx: &mut Transcript,
+        terms: &[X4dResidentLinkTermV4<'_>],
+        round_count: usize,
+        initial_claim: ProverAuthed,
+        stream: &mut CorrelationStream,
+        domains: &[u64],
+        tx: &mut Transcript,
     ) -> Result<Option<X4dResidentLinkOutputV4>, X4cErrorV4> {
-        // The CPU reference below in authenticated_output_v4 is the
-        // independent byte oracle for this operation.
-        Ok(None)
+        super::authenticated_output_v4::prove_x4d_delayed_link_cpu_resident_v4(
+            terms,
+            round_count,
+            initial_claim,
+            stream,
+            domains,
+            tx,
+        )
+        .map(Some)
+        .map_err(|_| X4cErrorV4::InvalidGeometry("X4d CPU resident delayed-link"))
     }
 
     fn allocate_arena(&mut self, layout: &X4cArenaLayoutV4) -> Result<Self::Arena, X4cErrorV4> {

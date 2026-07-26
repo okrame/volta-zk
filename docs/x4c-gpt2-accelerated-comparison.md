@@ -1,61 +1,81 @@
-# GPT-2 real-weight — confronto CPU, A100 e X4c accelerato
+# GPT-2 real-weight — confronto CPU, A100 e X4d deferred settlement
 
-Il terzo dato A100 proviene dal run pulito
-`X4c-GPT2-real-weight-online-accelerated` a `6277c3c`, con un warm-up e tre
-candidati misurati. I tempi riportati sono gli upper median quando il record
-espone la metrica; `n/d` evita di ricostruire separazioni non misurate.
+La terza colonna è stata sostituita con il run pulito
+`X4d-GPT2-real-weight-deferred-settlement-v1` a `bf4230c`: un warm-up,
+tre risposte G1 misurate e una connessione da 19 risposte con settlement
+effettivo su 16 risposte. I tempi sono gli upper median esposti o calcolabili
+dalle tre righe misurate del record. `n/d` evita di promuovere a misura una
+quantità non ri-emessa.
 
-| Voce | CPU locale (4 thread) | A100 RunPod (8 worker Rayon) | A100 RunPod X4c accelerato (8 worker Rayon) |
+| Voce | CPU locale (4 thread) | A100 RunPod (8 worker Rayon) | A100 RunPod X4d (8 response + 27 settlement worker) |
 | --- | ---: | ---: | ---: |
-| Prova prefill | 10,10 s | 2,54 s | n/d (non separata nel record) |
-| Prova decode marginale | 8,26 s | 1,65 s | n/d (non separata nel record) |
-| Prova risposta totale | 18,37 s | 4,18 s | **4,19 s** |
-| Sessione online completa | 30,45 s | 5,60 s | **303,19 s** (informativa, PCS incluso) |
-| G2 rispetto a fase-D appaiato | **+14,54% — PASS** | **−14,83% — PASS** | **−14,68% — PASS** |
-| Flat cost (ultimo/primo) | **1,163 — PASS** | **1,228 — PASS** | n/d (curva non emessa) |
-| H2D massimo sessione | n/d | **88,81 MB — PASS** | **18.554,61 MB X4c — PASS** |
-| Sync wall massimo | n/d | **0,1149 s — PASS** | n/d (non emesso) |
-| Verifica pura | 0,387 s | 0,832 s | **0,668 s** |
-| Verifica contabilizzata | 0,468 s | 0,911 s | **0,727 s** |
-| Token di decode provati al secondo | 2,72 | 11,95 | **11,93** |
-| Setup real-PCG | 67,90 s | 48,84 s | n/d (non emesso) |
-| Traffico setup totale | 38,37 MB | 38,37 MB | **38,37 MB** (invariante) |
-| Prover → verifier | 31,58 MB | 31,58 MB | **31,58 MB** (invariante) |
-| Verifier → prover | 6,79 MB | 6,79 MB | **6,79 MB** (invariante) |
-| Transcript / risposta packed | **105,72 MB** | **105,72 MB** | **43,95 MB — PASS** |
-| PCS opening (già incluso) | 43,27 MB | 43,27 MB | **2,68 MB — PASS** |
+| Prova prefill | 10,10 s | 2,54 s | **2,294197 s — PASS** |
+| Prova decode marginale | 8,26 s | 1,65 s | **1,957724 s — PASS** |
+| Prova risposta totale | 18,37 s | 4,18 s | **4,264261 s** |
+| Sessione online completa | 30,45 s | 5,60 s | **4,900886 s — PASS** alla delivery (`WEIGHT_PENDING`); **3.088,031852 s/batch** al settlement (informativa) |
+| G2 rispetto a fase-D appaiato | **+14,54% — PASS** | **−14,83% — PASS** | n/d; G1 assoluto **<=5 s PASS**, interferenza settlement-queued **+0,399685%** informativa |
+| Flat cost (ultimo/primo) | **1,163 — PASS** | **1,228 — PASS** | **1,000 — PASS** |
+| H2D massimo sessione | n/d | **88,81 MB — PASS** | **66,93 MB — PASS** |
+| Sync wall massimo | n/d | **0,1149 s — PASS** | **0,125173 s — PASS** |
+| Verifica pura | 0,387 s | 0,832 s | **0,641085 s** |
+| Verifica contabilizzata | 0,468 s | 0,911 s | **0,644986 s/risposta equivalente** (`0,641085 + 0,062415/16`) |
+| Token di decode provati al secondo | 2,72 | 11,95 | **11,73** |
+| Setup real-PCG | 67,90 s | 48,84 s | **43,037916 s** |
+| Traffico setup totale | 38,37 MB | 38,37 MB | 38,37 MB (invariante fase-D, non ri-emesso) |
+| Prover → verifier | 31,58 MB | 31,58 MB | 31,58 MB (invariante fase-D, non ri-emesso) |
+| Verifier → prover | 6,79 MB | 6,79 MB | 6,79 MB (invariante fase-D, non ri-emesso) |
+| Transcript / risposta packed | **105,72 MB** | **105,72 MB** | **41,270464 MB — PASS**, stato `WEIGHT_PENDING` |
+| PCS opening (già incluso) | 43,27 MB | 43,27 MB | **0 B/risposta**; **3,564780 MB/batch**, **0,222799 MB/risposta equivalente** |
 | Logit pubblici packed | **0 MB** | **0 MB** | **0 MB** |
-| Primo scambio totale | **144,09 MB** | **144,09 MB** | **82,33 MB** |
+| Primo scambio totale | **144,09 MB** | **144,09 MB** | **79,641929 MB** alla delivery; settlement differito **3,564780 MB/16** |
 
-Per la nuova colonna, `prova risposta totale` è `model_prove_s`;
-`verifica pura` è `model_verify_s`; `verifica contabilizzata` aggiunge
-`verify_wall_s`; e la sessione completa è `complete_e2e_wall_s`. Il contatore
-H2D copre la sola finestra X4c e non va confrontato come se fosse il vecchio
-contatore del solo model prover. La risposta esatta è **43.953.700 B**, di cui
-**2.683.236 B** di PCS; il primo scambio somma i **38.371.465 B** invariati di
-setup real-PCG.
+Per X4d, `prova risposta totale` è l'upper median di `model_prove_s`;
+`verifica pura` è l'upper median di `model_verify_s`. Il totale G1 aggiunge
+verifica e claim-freeze e termina la delivery autenticata in stato
+`WEIGHT_PENDING`. La verifica contabilizzata è solo un equivalente
+per-risposta: la latenza reale di pronuncia del pending set resta il wall
+batch riportato separatamente. Il primo scambio usa i **38.371.465 B**
+fase-D invariati ma non ri-emessi dal record X4d.
 
-## Contatori X4c specifici
+## Contatori X4d deferred settlement
 
 | Voce | Risultato |
 | --- | ---: |
-| Fresh rebuild CUDA | **240,623922522 s — PASS** |
-| Vecchio fresh rebuild CPU | 2.381,861456293 s |
-| Speedup rebuild | **9,90×** |
-| Evaluation-table reconstruction | 17,884190806 s |
-| X4c proof-ready / session reusable | 51,934139091 / 51,959601330 s |
-| X4c open / verify | **0,130465952 / 0,059185522 s — PASS** |
-| PCS totale | 298,324984650 s |
-| Picco RAM rebuild | 133.544.189.952 B (124,37 GiB) |
-| Picco VRAM rebuild | 43.486.546.048 B (40,50 GiB) |
-| Scratch read / write / file | **0 / 0 / 0 — PASS** |
-| D2D esplicito per risposta | **1.364.224 B — exact** |
-| Device-generated, warm-up / misurate | **35.727.436.640 / 35.727.436.512 B — exact** |
-| PCS / response | **2.683.236 / 43.953.700 B — exact** |
+| Onboarding upper median / campagna | **458,541460716 / 1.891 s — PASS** |
+| Fresh rebuild CUDA, cinque root esatte | **218,256070550 s — PASS** |
+| Setup fase-D | **43,037915783 s** |
+| G1 delivery totale / claim-freeze | **4,900886414 / 0,000511270 s — PASS** |
+| Risposta | **41.270.464 B, PCS 0 B, `WEIGHT_PENDING` — exact** |
+| Settlement union | **16 risposte / 1.632 claim / 816 gruppi** |
+| Settlement wire | **3.564.780 B**, **222.798,75 B/risposta — exact** |
+| Settlement seal → terminale | **3.088,031851727 s — informativa v1** |
+| Proof driver / auxiliary materialization | **3.071,972477759 / 5,458699300 s** |
+| Finestra host CPU / lease GPU | **3.077,431177059 / 3.071,972477759 s** |
+| Response-priority pause | **10,586787986 s** |
+| Interferenza A1,B1,B2,A2 | **+0,019727179 s / +0,399684884%**, overlap dichiarato **0/0** |
+| Settlement open / verify | **0,132453794 / 0,062415304 s — PASS HARD** |
+| Freshness | **3 root statiche riusate / 51 mask fresh / 111 query draw** |
+| Cap e abort | **3.321° claim respinto; abort terminal-unverified; no retry — PASS** |
+| Soundness | **80,2553701639904 bit**, espressione byte-identica |
+
+Il cap storico **4.000.000 B** resta quello del PCS per-risposta
+X4/X4b/X4c. Il settlement X4d usa la formula pinnata
+`2.757.996 + 50.424*k`: il record `k=16` è quindi **3.564.780 B**, mentre
+il riferimento `k=32` è **4.371.564 B**, cioè **136.611,375 B/risposta**
+equivalenti. Il precedente riferimento Phase-2 `k=32` da **4.246.380 B**
+resta storico e immutabile; l'Amendment-1 aggiunge il padding verificato, non
+una deroga retroattiva al gate storico.
 
 Record append-only:
 
-- `benchmarks/results/x4c-gpt2-onboarding-2026-07-25-6277c3c.json`
-  (`bdf17c56e8e9a4d152b40ed2e1653d34cd665f09f52cb9dfe1cb1f57ae5e165d`);
-- `benchmarks/results/x4c-gpt2-online-accelerated-2026-07-25-6277c3c.json`
-  (`5a5417c11c0d5b4abe57af1e6ea5fa1191962c709c0f7b86fb780c30af1dac89`).
+- `benchmarks/results/x4c-note6-c3-weights-preflight-2026-07-26-bf4230c.json`
+  (`6f5e272f1b94b686f347d7c449afb31420fe292930f96ad91653e1b30c02ad11`);
+- `benchmarks/results/x4d-pod-preflight-2026-07-26-bf4230c-bbd64aa1df41.json`
+  (`72fb85c89be9c15c61701c04117533218d3c13f9472ab3d176e9080d75187bd1`,
+  preflight FUSE conservato come evidenza, non come storage anchor);
+- `benchmarks/results/x4d-pod-preflight-local-2026-07-26-bf4230c-bbd64aa1df41.json`
+  (`ca26edfad1053d51e7509fa116bbac124dd8cb1cccbc0466050a226f029d52b0`);
+- `benchmarks/results/x4d-x4c-onboarding-2026-07-26-bf4230c-bbd64aa1df41-local.json`
+  (`15b8d87fcc0db8200dee06b5c1218c198c0551ad8ad5d062fa9975f3f37043ba`);
+- `benchmarks/results/x4d-gpt2-online-2026-07-26-bf4230c-bbd64aa1df41-local.json`
+  (`d6017dbadd930baa390b174e57e8d93ec6a413fd886d505ad37ebb484e6dc24b`).

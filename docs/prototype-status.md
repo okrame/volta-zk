@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 2 LOCAL GREEN; PHASE 3 HARNESS GREEN / POD ENDPOINT REFUSED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; DEFERRED SETTLEMENT BASELINE RECORDED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -354,6 +354,7 @@ its clean descendant closure.
 | X4d Phase 3 Amendment-1 codec rebaseline | **LOCAL EXACT REFERENCES + VERSIONED VALIDATOR GREEN; POD RERUN AUTHORIZED** (2026-07-25) | Append-only schema-2 amendment record; schema-1 Phase-2 record and validator branch remain valid; fixed fresh-query bound/padding fields explicit | Clean source `4efa5f65ca6948fc0028ce74570943d7f6596f6d`; record `x4d-codec-reference-amendment1-2026-07-25-4efa5f6.json`, SHA-256 `9d21b97bba4f6f1783e8b83d0801c4ccbcd1c9e80356fe13786fa45655d1b6f7`. It binds design `61be8d68...16451`, generator `e80b142f...fcd82` and the immutable Amendment-5 preflight. Reference packed opening **2,615,414 B** plus **125,184 B** verified padding reaches the **2,740,598-B** bound. Exact settlement lengths for `k=1/8/16/32` are **2,808,420 / 3,161,388 / 3,564,780 / 4,371,564 B**; fixture SHA-256 values are `a81a246c...2d23c`, `082b3ba6...ff1f`, `33df9833...7dbd`, `42e1e28e...58ab`. Historical references were not modified and this record claims no proof or hardware verdict. |
 | X4d Phase 3 fresh-query counter amendment | **HARD STOP HONORED; FAILED CONNECTION BURNED / LOCAL EXACT-RELATION FIX GREEN / FRESH POD RUN REQUIRED** (2026-07-25) | The first padded run passed the fresh-query byte bound, then the execution validator exposed the same selected-tape assumption in explicit-D2D and rebuilt-device counters | No settlement accepted and no online JSON exists. Journal SHA-256 `809f80197540d60ced6e3438daa36530945828d1335b2817109b64106fcabe17`; authorization-marker tree SHA-256 `b611d18835407d061eaecc858270c0d75810c665fc05b4798f8e05532d754eac`. X4d now requires the exact equality `explicit D2D + (generated - invariant device base) = actual fold-gather payload <= 1,747,072 B`; all other counters remain exact and X4c retains its immutable selected-tape constants. The full no-default-feature workspace and the 21-record validator suite are green. Fresh onboarding and connection are mandatory after the new source checkpoint. |
 | X4d Phase 3 fresh-query invariant-base correction | **HARD STOP HONORED; 18 PENDING RESPONSES TERMINAL-UNVERIFIED / 64-B DERIVATION ERROR IDENTIFIED / LOCAL STRUCTURAL FIX GREEN / FRESH ONBOARDING REQUIRED** (2026-07-25) | The exact-relation production rerun reached the same counter validator; static reconciliation found that its selected-tape baseline used 4,924 fold symbols instead of the immutable fixture's 4,920 | No settlement accepted and no online JSON exists. Journal SHA-256 `f2add8fc65bc4baec937de29f6133a607a4243f5abaf2b269c29640ff49d4cd7`; connection tree `e93e03473d4e54c8ba2fec8583c1b1c82ba11f703d39d6427e564e7f630f7128`; 21-marker tree `d83a4b97f1a3d2f0ccaf86ff2d49f464e907d78d0716f099912ef075e718e543`. The typo was exactly four Fp2 symbols, or **64 B**. X4d now derives the invariant bases structurally as **35,727,154,720 B reused / 35,727,154,848 B fresh**, then independently reconciles the historical **4,920 / 48,978** fold-symbol/sibling fixture and immutable X4c device counters. Full no-default-feature workspace is green with PCS **117/117** and Proto **110/110** non-ignored tests; validators are **21/21**. No ceiling, byte formula, query distribution or soundness term changes. |
+| X4d Phase 3 A100 deferred-settlement record | **V1 OVERALL PASS; G1--G6/CAP/ABORT VALIDATED; SETTLEMENT WALL INFORMATIVE** (2026-07-26) | Clean `bf4230c`; selected single A100-SXM4 80 GB; 8 response + 27 settlement CPUs; 16-response/1,632-claim union; historical 4-MB scope unchanged; open <=1.50 s and verify <=0.25 s remain HARD | Validated onboarding SHA-256 `15b8d87fcc0db8200dee06b5c1218c198c0551ad8ad5d062fa9975f3f37043ba`; validated online SHA-256 `d6017dbadd930baa390b174e57e8d93ec6a413fd886d505ad37ebb484e6dc24b`. G1 **4.900886414 s PASS**, freeze **0.000511270 s PASS**, response **41,270,464 B / PCS 0 B exact**. Rebuild **218.256070550 s**, roots exact. Settlement **3,564,780 B exact**, **3,088.031851727 s informative**, open/verify **0.132453794 / 0.062415304 s PASS HARD**; all 1,632 claims become weight-verified, exact correlations pass, cap 3,321 rejects, abort is terminal-unverified and no retry is possible. Three static roots are reused; 51 masks, epoch and 111 queries are fresh. Soundness remains byte-identical at **80.2553701639904 bits**. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -421,6 +422,112 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-26 — X4d Phase 3 A100 v1 closes PASS; deferred-settlement
+  product semantics and the informative settlement debt are recorded
+  without weakening.** The owner-supplied RunPod endpoint exposed two
+  A100-SXM4 80 GB GPUs, 2,151,617,314,816 B host RAM and 128 logical EPYC
+  7742 CPUs. The preregistered profile selected only GPU 0
+  (`GPU-b93ad7b0-286a-18ba-fe54-300e46891e46`), pinned response CPUs 0--7
+  and settlement CPUs 8--34, and left GPU 1/NVLink unused because the frozen
+  driver is single-device. NOTE-6 remained the first production-size
+  workload and passed **1/1** in **42.35 s**; append-only record
+  `x4c-note6-c3-weights-preflight-2026-07-26-bf4230c.json` has SHA-256
+  `6f5e272f1b94b686f347d7c449afb31420fe292930f96ad91653e1b30c02ad11`.
+
+  Two operational incidents precede the eligible records and grant no gate
+  credit. The first onboarding command stopped before creating any path
+  because `VOLTA_CUDA_LIBRARY` was absent; the exact ABI backend was then
+  built and passed **37/37** CUDA tests, with shared-library SHA-256
+  `ca26d863fbaecd1b142d62da99ab603e6b7ce3cea40f400db9d91ec150e51914`.
+  A subsequent attempt on RunPod's FUSE `/workspace` wrote a partial first
+  cohort and then returned `EIO`; no onboarding JSON or accepted durable tier
+  exists from that attempt. Its already-written directories remain
+  ineligible incident state. The effective append-only preflight therefore
+  measured the 268,435,456,000-B local overlay actually used for scratch and
+  the 9.6-GB durable tier; it passed all GPU/RAM/volume/8+27 gates. Record
+  `x4d-pod-preflight-local-2026-07-26-bf4230c-bbd64aa1df41.json` has SHA-256
+  `ca26edfad1053d51e7509fa116bbac124dd8cb1cccbc0466050a226f029d52b0`.
+  The earlier FUSE hardware preflight remains immutable PASS evidence for
+  that named volume, not the storage anchor of the accepted run.
+
+  Schema-3 onboarding used clean source
+  `bf4230c4ff659e053de8e07ef56262c301dd89be`, producer-source SHA-256
+  `a6ea3b4620ab8fa4966d78e9070317030e7a5a4bb082de6e2da19545726db429`
+  and crypto-build ID
+  `529ccf912ae53ef283f85ba039fcebc90528e05202bf2f5e48b3740015a97f8a`.
+  Warm-up wall was **441.832253821 s**; measured walls were
+  **446.853018699 / 458.541460716 / 462.372185163 s**, selecting upper median
+  **458.541460716 s**. The complete campaign took **1,891 s <=3,600 s PASS**.
+  All roots are identical, the golden is exact and the five retained
+  coefficient/root pairs total exactly **9,618,587,808 B**. The central
+  schema-3 validator accepts
+  `x4d-x4c-onboarding-2026-07-26-bf4230c-bbd64aa1df41-local.json`, SHA-256
+  `15b8d87fcc0db8200dee06b5c1218c198c0551ad8ad5d062fa9975f3f37043ba`.
+
+  The exact carried tier rebuilt all five roots in
+  **218.256070550 s** with zero scratch files and exact traffic. One fresh
+  fase-D connection then delivered 19 authenticated responses. G1 selects
+  **4.900886414 s <=5.0 s PASS**, claim-freeze
+  **0.000511270 s <=0.025 s PASS**, prefill/decode
+  **2.294197293 / 1.957723595 s PASS**, H2D **66,926,908 B PASS**,
+  synchronization **0.125172690 s PASS** and flatness **1.0 PASS**. Each
+  delivered response is exactly **41,270,464 B**, carries PCS **0 B** and is
+  explicitly `WEIGHT_PENDING`, not prematurely weight-verified.
+
+  The accepted epoch seals 16 responses, **1,632 frozen claims** and
+  **816 masked groups** into one opening. Its wire message is exactly
+  **3,564,780 B**, or **222,798.75 B/response**. The historical
+  **4,000,000-B** ceiling remains scoped to the old per-response
+  X4/X4b/X4c PCS block; X4d uses the pinned
+  `2,757,996 + 50,424*k` settlement formula. Seal-to-terminal wall is
+  **3,088.031851727 s informative**; proof-driver wall is
+  **3,071.972477759 s**, exposing a material CPU-resident fresh-cohort
+  bottleneck that is not mislabeled as overlap or GPU work. The HARD opening
+  and verifier walls are nevertheless **0.132453794 <=1.50 s PASS** and
+  **0.062415304 <=0.25 s PASS**. Response-priority ABBA reports
+  **+0.019727179 s / +0.399684884%** with declared CPU/GPU overlap intervals
+  both zero.
+
+  G2/G4/G6 close with the permanent inventory carried verbatim:
+  `post_freeze_value_substitution_is_rejected_by_m2_mac`;
+  `accumulator_roles_match_and_omission_reorder_mismatch`;
+  `exact_range_rejects_subset_reorder_and_replay`;
+  `x4d_delivery_without_freeze_and_wrong_settlement_subset_burn_connection`;
+  `x4d_settlement_freshness_is_required_before_success_and_is_one_use`;
+  `claim_3321_refuses_until_settlement_succeeds`; and
+  `explicit_abort_before_settlement_marks_pending_terminal_unverified`.
+  Runtime evidence additionally makes every covered response
+  `WEIGHT_VERIFIED`, rejects the cap probe at 3,321, terminally marks the
+  three post-settlement pending responses unverified on explicit abort and
+  refuses retry in the same connection. The terminal connection journal
+  SHA-256 is
+  `057a0ec46f12afbf269c6dc02847228545af54eaab27c50d4c618ef860d30a2c`.
+
+  Key reuse is disposed exactly as designed: three static weight roots are
+  reused, while the settlement creates **51 fresh masks**, rejects the old
+  auxiliary roots, burns a fresh epoch/auxiliary/query triple and draws
+  exactly **111** post-seal queries. Exact correlations pass. The soundness
+  string remains byte-for-byte
+  `3320*(9/16)^111 + 28,522,064,267,253/|E|`, or
+  **80.2553701639904 bits**. No false acceptance exists before settlement:
+  provider delivery means “complete and fully authenticated; weight
+  consistency `WEIGHT_PENDING`”, and only accepted settlement pronounces the
+  covered set `WEIGHT_VERIFIED`. Historical X4/X4b FAILs and every failed
+  X4d connection above remain immutable. R1c remains extended to the
+  accumulator, settlement codec/driver, scheduler, abort cleanup and the
+  newly measured CPU-resident fresh-cohort bottleneck. The central validator
+  accepts
+  `x4d-gpt2-online-2026-07-26-bf4230c-bbd64aa1df41-local.json`, SHA-256
+  `d6017dbadd930baa390b174e57e8d93ec6a413fd886d505ad37ebb484e6dc24b`;
+  `docs/x4c-gpt2-accelerated-comparison.md` now replaces its third data
+  column with these recorded X4d values. After all five records were copied,
+  checksummed and accepted by the central validators, the authenticated SSH
+  session sourced RunPod's pod-scoped environment and executed
+  `runpodctl stop pod bbf76b099uv1eb`; the CLI returned `stopped`, and the
+  first independent SSH probe then returned `Connection refused`. The earlier
+  container-local `shutdown -h now` failure under non-systemd PID 1 grants no
+  termination credit; the control-plane stop is the billing-session closure.
 
 - **2026-07-25 — The first exact-relation rerun exposed a 64-B
   transcription error in its invariant device base; the connection stopped

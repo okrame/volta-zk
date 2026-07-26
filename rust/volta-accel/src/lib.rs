@@ -3218,6 +3218,191 @@ impl Backend {
         Err(AccelError::FeatureDisabled)
     }
 
+    /// Generate `F = lambda*eq(z0, ·) + lambda^2*eq(z1, ·)` directly into a
+    /// resident full-domain buffer. `points_and_scales` is
+    /// `[z0, z1, lambda, lambda^2]`; the three scratch buffers are reused by
+    /// the expansion and no host equality table is materialized.
+    #[allow(clippy::too_many_arguments)]
+    pub fn claim_reduce_f_two_into_device(
+        &mut self,
+        points_and_scales: DeviceSlice<'_, Fp2Repr>,
+        n_vars: usize,
+        output: &DeviceBuffer<Fp2Repr>,
+        output_offset: usize,
+        scratch_one: &DeviceBuffer<Fp2Repr>,
+        scratch_one_offset: usize,
+        scratch_two: &DeviceBuffer<Fp2Repr>,
+        scratch_two_offset: usize,
+        scratch_three: &DeviceBuffer<Fp2Repr>,
+        scratch_three_offset: usize,
+    ) -> Result<(), AccelError> {
+        let len = 1usize
+            .checked_shl(n_vars as u32)
+            .ok_or(AccelError::InvalidInput("ClaimReduce F dimension overflow"))?;
+        let point_len = n_vars
+            .checked_mul(2)
+            .and_then(|value| value.checked_add(2))
+            .ok_or(AccelError::InvalidInput("ClaimReduce point geometry overflow"))?;
+        self.validate_device_slice(points_and_scales, point_len)?;
+        for (buffer, offset) in [
+            (output, output_offset),
+            (scratch_one, scratch_one_offset),
+            (scratch_two, scratch_two_offset),
+            (scratch_three, scratch_three_offset),
+        ] {
+            self.validate_buffer(buffer)?;
+            validate_region(buffer.len, offset, len)?;
+        }
+        let ids = [output.id, scratch_one.id, scratch_two.id, scratch_three.id];
+        if ids.iter().enumerate().any(|(index, id)| ids[index + 1..].contains(id)) {
+            return Err(AccelError::InvalidInput(
+                "ClaimReduce F generation buffers must be distinct",
+            ));
+        }
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .expect("CUDA kind without context")
+                .claim_reduce_f_two_into_device(
+                    points_and_scales.buffer.id,
+                    points_and_scales.offset,
+                    n_vars,
+                    output.id,
+                    output_offset,
+                    scratch_one.id,
+                    scratch_one_offset,
+                    scratch_two.id,
+                    scratch_two_offset,
+                    scratch_three.id,
+                    scratch_three_offset,
+                );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Generate one scaled equality table and initialize or accumulate it
+    /// into a resident physical-term equality buffer.
+    #[allow(clippy::too_many_arguments)]
+    pub fn x4d_link_eq_accumulate_device(
+        &mut self,
+        point_and_scale: DeviceSlice<'_, Fp2Repr>,
+        n_vars: usize,
+        target: &DeviceBuffer<Fp2Repr>,
+        target_offset: usize,
+        scratch_one: &DeviceBuffer<Fp2Repr>,
+        scratch_one_offset: usize,
+        scratch_two: &DeviceBuffer<Fp2Repr>,
+        scratch_two_offset: usize,
+        initialize: bool,
+    ) -> Result<(), AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        let _ = initialize;
+        let len = 1usize
+            .checked_shl(n_vars as u32)
+            .ok_or(AccelError::InvalidInput("X4d link-equality dimension overflow"))?;
+        self.validate_device_slice(point_and_scale, n_vars + 1)?;
+        for (buffer, offset) in [
+            (target, target_offset),
+            (scratch_one, scratch_one_offset),
+            (scratch_two, scratch_two_offset),
+        ] {
+            self.validate_buffer(buffer)?;
+            validate_region(buffer.len, offset, len)?;
+        }
+        if target.id == scratch_one.id
+            || target.id == scratch_two.id
+            || scratch_one.id == scratch_two.id
+        {
+            return Err(AccelError::InvalidInput("X4d link-equality buffers must be distinct"));
+        }
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .expect("CUDA kind without context")
+                .x4d_link_eq_accumulate_device(
+                    point_and_scale.buffer.id,
+                    point_and_scale.offset,
+                    n_vars,
+                    target.id,
+                    target_offset,
+                    scratch_one.id,
+                    scratch_one_offset,
+                    scratch_two.id,
+                    scratch_two_offset,
+                    initialize,
+                );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Write `[scale*dot(a,b), -scale*dot(a,b)]` into a resident mailbox.
+    #[allow(clippy::too_many_arguments)]
+    pub fn fp2_dot_scaled_pair_into_device(
+        &mut self,
+        a: DeviceSlice<'_, Fp2Repr>,
+        b: DeviceSlice<'_, Fp2Repr>,
+        scale: Fp2,
+        output: &DeviceBuffer<Fp2Repr>,
+        output_offset: usize,
+    ) -> Result<(), AccelError> {
+        #[cfg(not(feature = "cuda"))]
+        let _ = scale;
+        if a.is_empty() || a.len() != b.len() {
+            return Err(AccelError::InvalidInput("X4d virtual-link dot geometry"));
+        }
+        self.validate_device_slice(a, a.len())?;
+        self.validate_device_slice(b, b.len())?;
+        self.validate_buffer(output)?;
+        validate_region(output.len, output_offset, 2)?;
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .expect("CUDA kind without context")
+                .fp2_dot_scaled_pair_into_device(
+                    a.buffer.id,
+                    a.offset,
+                    b.buffer.id,
+                    b.offset,
+                    a.len,
+                    scale.into(),
+                    output.id,
+                    output_offset,
+                );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Sum `pairs` resident `[x,y]` messages and return one protocol pair.
+    pub fn fp2_pair_sum_device(
+        &mut self,
+        input: DeviceSlice<'_, Fp2Repr>,
+        pairs: usize,
+    ) -> Result<[Fp2; 2], AccelError> {
+        if pairs == 0 || input.len() != 2 * pairs {
+            return Err(AccelError::InvalidInput("X4d link mailbox geometry"));
+        }
+        self.validate_device_slice(input, input.len())?;
+        #[cfg(feature = "cuda")]
+        {
+            return self.cuda.as_mut().expect("CUDA kind without context").fp2_pair_sum_device(
+                input.buffer.id,
+                input.offset,
+                pairs,
+            );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
     /// Preallocate the private reduction scratch needed by every product
     /// round up to `max_pairs`. This launches no kernel and enqueues no timing
     /// record; call it before a coarse scope so no lazy workspace growth can
@@ -9498,6 +9683,167 @@ mod cuda_tests {
         gpu.free_device(dv).unwrap();
         gpu.free_device(dk).unwrap();
         gpu.free_device(dq).unwrap();
+    }
+
+    fn scaled_equality(point: &[Fp2], scale: Fp2) -> Vec<Fp2> {
+        let mut values = vec![Fp2::ZERO; 1usize << point.len()];
+        values[0] = scale;
+        let mut active = 1;
+        for &coordinate in point.iter().rev() {
+            for index in (0..active).rev() {
+                let value = values[index];
+                let positive = value * coordinate;
+                values[2 * index] = value - positive;
+                values[2 * index + 1] = positive;
+            }
+            active *= 2;
+        }
+        values
+    }
+
+    #[test]
+    fn x4d_resident_kernels_match_cpu_field_evaluation_exactly() {
+        let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
+        let dimension = 7usize;
+        let len = 1usize << dimension;
+        let mut field_stream = FpStream::from_seed([0xD2; 32]);
+        let point_zero = (0..dimension).map(|_| field_stream.next_fp2()).collect::<Vec<_>>();
+        let point_one = (0..dimension).map(|_| field_stream.next_fp2()).collect::<Vec<_>>();
+        let lambda = field_stream.next_fp2();
+        let lambda_squared = lambda * lambda;
+
+        let mut claim_public =
+            point_zero.iter().chain(&point_one).copied().map(Fp2Repr::from).collect::<Vec<_>>();
+        claim_public.push(Fp2Repr::from(lambda));
+        claim_public.push(Fp2Repr::from(lambda_squared));
+        let claim_row = gpu.upload_new_device(&claim_public).unwrap();
+        let output = gpu.alloc_device::<Fp2Repr>(len).unwrap();
+        let scratch_one = gpu.alloc_device::<Fp2Repr>(len).unwrap();
+        let scratch_two = gpu.alloc_device::<Fp2Repr>(len).unwrap();
+        let scratch_three = gpu.alloc_device::<Fp2Repr>(len).unwrap();
+        gpu.claim_reduce_f_two_into_device(
+            DeviceSlice::new(&claim_row, 0, claim_row.len()).unwrap(),
+            dimension,
+            &output,
+            0,
+            &scratch_one,
+            0,
+            &scratch_two,
+            0,
+            &scratch_three,
+            0,
+        )
+        .unwrap();
+        let observed = gpu
+            .download_device(&output, 0, len)
+            .unwrap()
+            .into_iter()
+            .map(Fp2::from)
+            .collect::<Vec<_>>();
+        let expected_zero = scaled_equality(&point_zero, lambda);
+        let expected_one = scaled_equality(&point_one, lambda_squared);
+        assert_eq!(
+            observed,
+            expected_zero
+                .iter()
+                .zip(&expected_one)
+                .map(|(&zero, &one)| zero + one)
+                .collect::<Vec<_>>()
+        );
+
+        let coefficient_zero = field_stream.next_fp2();
+        let coefficient_one = field_stream.next_fp2();
+        let mut link_public = point_zero.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>();
+        link_public.push(coefficient_zero.into());
+        let link_row = gpu.upload_new_device(&link_public).unwrap();
+        let link_target = gpu.alloc_device::<Fp2Repr>(len).unwrap();
+        gpu.x4d_link_eq_accumulate_device(
+            DeviceSlice::new(&link_row, 0, link_row.len()).unwrap(),
+            dimension,
+            &link_target,
+            0,
+            &scratch_one,
+            0,
+            &scratch_two,
+            0,
+            true,
+        )
+        .unwrap();
+        let mut link_public_one = point_one.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>();
+        link_public_one.push(coefficient_one.into());
+        gpu.upload_device(&link_row, 0, &link_public_one).unwrap();
+        gpu.x4d_link_eq_accumulate_device(
+            DeviceSlice::new(&link_row, 0, link_row.len()).unwrap(),
+            dimension,
+            &link_target,
+            0,
+            &scratch_one,
+            0,
+            &scratch_two,
+            0,
+            false,
+        )
+        .unwrap();
+        let observed_link = gpu
+            .download_device(&link_target, 0, len)
+            .unwrap()
+            .into_iter()
+            .map(Fp2::from)
+            .collect::<Vec<_>>();
+        let expected_link_zero = scaled_equality(&point_zero, coefficient_zero);
+        let expected_link_one = scaled_equality(&point_one, coefficient_one);
+        assert_eq!(
+            observed_link,
+            expected_link_zero
+                .iter()
+                .zip(&expected_link_one)
+                .map(|(&zero, &one)| zero + one)
+                .collect::<Vec<_>>()
+        );
+
+        let source = (0..len).map(|_| field_stream.next_fp2()).collect::<Vec<_>>();
+        let source_raw = source.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>();
+        let source_device = gpu.upload_new_device(&source_raw).unwrap();
+        let equality_device = gpu
+            .upload_new_device(
+                &observed_link.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>(),
+            )
+            .unwrap();
+        let mailbox = gpu.alloc_device::<Fp2Repr>(4).unwrap();
+        let scale_zero = field_stream.next_fp2();
+        let scale_one = field_stream.next_fp2();
+        for (pair, scale) in [scale_zero, scale_one].into_iter().enumerate() {
+            gpu.fp2_dot_scaled_pair_into_device(
+                DeviceSlice::new(&source_device, 0, len).unwrap(),
+                DeviceSlice::new(&equality_device, 0, len).unwrap(),
+                scale,
+                &mailbox,
+                2 * pair,
+            )
+            .unwrap();
+        }
+        let pair = gpu.fp2_pair_sum_device(DeviceSlice::new(&mailbox, 0, 4).unwrap(), 2).unwrap();
+        let dot = source
+            .iter()
+            .zip(&observed_link)
+            .fold(Fp2::ZERO, |sum, (&left, &right)| sum + left * right);
+        let positive = (scale_zero + scale_one) * dot;
+        assert_eq!(pair, [positive, Fp2::ZERO - positive]);
+
+        for buffer in [
+            claim_row,
+            output,
+            scratch_one,
+            scratch_two,
+            scratch_three,
+            link_row,
+            link_target,
+            source_device,
+            equality_device,
+            mailbox,
+        ] {
+            gpu.free_device(buffer).unwrap();
+        }
     }
 
     #[test]

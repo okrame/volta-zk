@@ -465,6 +465,36 @@ type Fp2DotDevice =
 type Fp2ProductRoundDevice = Fp2DotDevice;
 type Fp2ProductRoundIntoDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize, u64, usize) -> c_int;
+type ClaimReduceFTwoIntoDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+) -> c_int;
+type X4dLinkEqAccumulateDevice = unsafe extern "C" fn(
+    *mut c_void,
+    u64,
+    usize,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    u64,
+    usize,
+    c_int,
+) -> c_int;
+type Fp2DotScaledPairIntoDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize, Fp2Repr, u64, usize) -> c_int;
+type Fp2PairSumDevice = unsafe extern "C" fn(*mut c_void, u64, usize, usize, *mut Fp2Repr) -> c_int;
 type Fp2TripleProductRoundDevice = unsafe extern "C" fn(
     *mut c_void,
     u64,
@@ -984,6 +1014,10 @@ struct Api {
     fp2_dot_device: Fp2DotDevice,
     fp2_product_round_device: Fp2ProductRoundDevice,
     fp2_product_round_into_device: Fp2ProductRoundIntoDevice,
+    claim_reduce_f_two_into_device: ClaimReduceFTwoIntoDevice,
+    x4d_link_eq_accumulate_device: X4dLinkEqAccumulateDevice,
+    fp2_dot_scaled_pair_into_device: Fp2DotScaledPairIntoDevice,
+    fp2_pair_sum_device: Fp2PairSumDevice,
     reserve_fp2_product_round_workspace: ReserveFp2ProductRoundWorkspace,
     reserve_logup_round_workspace: ReserveLogupRoundWorkspace,
     fp2_triple_product_round_device: Fp2TripleProductRoundDevice,
@@ -1220,6 +1254,18 @@ impl CudaContext {
             },
             fp2_product_round_into_device: unsafe {
                 load_symbol(handle, b"volta_cuda_fp2_product_round_into_device\0")?
+            },
+            claim_reduce_f_two_into_device: unsafe {
+                load_symbol(handle, b"volta_cuda_claim_reduce_f_two_into_device\0")?
+            },
+            x4d_link_eq_accumulate_device: unsafe {
+                load_symbol(handle, b"volta_cuda_x4d_link_eq_accumulate_device\0")?
+            },
+            fp2_dot_scaled_pair_into_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fp2_dot_scaled_pair_into_device\0")?
+            },
+            fp2_pair_sum_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fp2_pair_sum_device\0")?
             },
             reserve_fp2_product_round_workspace: unsafe {
                 load_symbol(handle, b"volta_cuda_reserve_fp2_product_round_workspace\0")?
@@ -2683,6 +2729,118 @@ impl CudaContext {
                 a_offset,
                 b,
                 b_offset,
+                pairs,
+                output.as_mut_ptr(),
+            )
+        })?;
+        Ok(output.map(Into::into))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn claim_reduce_f_two_into_device(
+        &mut self,
+        points: u64,
+        points_offset: usize,
+        n_vars: usize,
+        output: u64,
+        output_offset: usize,
+        scratch_one: u64,
+        scratch_one_offset: usize,
+        scratch_two: u64,
+        scratch_two_offset: usize,
+        scratch_three: u64,
+        scratch_three_offset: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: the safe wrapper validates the public point/scalar row and
+        // four non-overlapping full-domain Fp2 buffers.
+        self.check(unsafe {
+            (self.api.claim_reduce_f_two_into_device)(
+                self.raw,
+                points,
+                points_offset,
+                n_vars,
+                output,
+                output_offset,
+                scratch_one,
+                scratch_one_offset,
+                scratch_two,
+                scratch_two_offset,
+                scratch_three,
+                scratch_three_offset,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn x4d_link_eq_accumulate_device(
+        &mut self,
+        point_and_scale: u64,
+        point_and_scale_offset: usize,
+        n_vars: usize,
+        target: u64,
+        target_offset: usize,
+        scratch_one: u64,
+        scratch_one_offset: usize,
+        scratch_two: u64,
+        scratch_two_offset: usize,
+        initialize: bool,
+    ) -> Result<(), AccelError> {
+        self.check(unsafe {
+            (self.api.x4d_link_eq_accumulate_device)(
+                self.raw,
+                point_and_scale,
+                point_and_scale_offset,
+                n_vars,
+                target,
+                target_offset,
+                scratch_one,
+                scratch_one_offset,
+                scratch_two,
+                scratch_two_offset,
+                i32::from(initialize),
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn fp2_dot_scaled_pair_into_device(
+        &mut self,
+        a: u64,
+        a_offset: usize,
+        b: u64,
+        b_offset: usize,
+        len: usize,
+        scale: Fp2Repr,
+        output: u64,
+        output_offset: usize,
+    ) -> Result<(), AccelError> {
+        self.check(unsafe {
+            (self.api.fp2_dot_scaled_pair_into_device)(
+                self.raw,
+                a,
+                a_offset,
+                b,
+                b_offset,
+                len,
+                scale,
+                output,
+                output_offset,
+            )
+        })
+    }
+
+    pub(super) fn fp2_pair_sum_device(
+        &mut self,
+        input: u64,
+        input_offset: usize,
+        pairs: usize,
+    ) -> Result<[Fp2; 2], AccelError> {
+        let mut output = [Fp2Repr::default(); 2];
+        self.check(unsafe {
+            (self.api.fp2_pair_sum_device)(
+                self.raw,
+                input,
+                input_offset,
                 pairs,
                 output.as_mut_ptr(),
             )

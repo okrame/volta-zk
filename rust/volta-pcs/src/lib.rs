@@ -15,7 +15,11 @@ pub mod merkle;
 pub mod ntt;
 pub mod x4;
 
-pub use batch::{batch_reduce_prover, batch_reduce_verifier, BatchTimings, BlockClaim};
+pub use batch::{
+    batch_reduce_prover, batch_reduce_prover_cpu_resident, batch_reduce_prover_cuda_resident,
+    batch_reduce_verifier, BatchTimings, BlockClaim, ClaimReduceResidentCounters,
+    CpuClaimReduceSettlement, CudaClaimReduceSettlement,
+};
 pub use layer_layout::{
     layout_gpt2_embed, layout_gpt2_embed_c3, layout_gpt2_layer, layout_gpt2_weights_c3,
     pcs_cost_projection, LayerWeightLayout, LayerWeightLayout2, ModelWeightLayout, TensorSlot,

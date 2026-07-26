@@ -16,9 +16,8 @@ use volta_mac::{
 use volta_pcg::X4dSettlementFreshnessJournalAudit;
 use volta_pcs::x4::{
     authenticate_pending_aux_prover_v4, authenticate_pending_aux_verifier_v4,
-    authenticated_output_link_schedule_digest_x4d_v1, evaluate_multilinear_table,
-    gpt2_codec_reference_packed_opening_v4, manifest_id_digest_v4,
-    multilinear_coefficients_in_place, multilinear_evaluations_in_place,
+    authenticated_output_link_schedule_digest_x4d_v1, gpt2_codec_reference_packed_opening_v4,
+    manifest_id_digest_v4, multilinear_coefficients_in_place, multilinear_evaluations_in_place,
     opening_schedule_digest_x4d_v1, profile_digest_v4, prove_authenticated_output_link_x4d_v4,
     prove_bound_response_zero_batch_v4, verify_authenticated_output_link_x4d_v4,
     verify_bound_response_zero_batch_v4, AuthenticatedOutputBlockProverV4,
@@ -35,7 +34,7 @@ use volta_pcs::x4::{
     X4D_GPT2_CLAIMS_PER_RESPONSE_V1, X4D_GPT2_GROUPS_PER_RESPONSE_V1, X4D_GPT2_RESPONSE_BYTES_V1,
     X4D_PENDING_CLAIM_CAP_V1, X4D_QUERY_COUNT_V1,
 };
-use volta_pcs::{batch_reduce_prover, batch_reduce_verifier, BlockClaim};
+use volta_pcs::{batch_reduce_verifier, BatchTimings, BlockClaim, ClaimReduceResidentCounters};
 use volta_proto::sumcheck_blind::BlindSumcheckProof;
 use volta_proto::{ModelOut, ModelOutV, WeightClaimP};
 
@@ -123,12 +122,65 @@ pub struct X4dGpt2SettlementCountersV1 {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct X4dSettlementDriverPhaseWallsV1 {
     pub claim_coefficient_preparation_wall_ns: u64,
+    pub settlement_fixed_preprocessing_wall_ns: u64,
+    pub claim_reduce_prover_wall_ns: u64,
+    pub claim_reduce_f_construction_wall_ns: u64,
+    pub claim_reduce_w_embedding_wall_ns: u64,
+    pub claim_reduce_product_round_wall_ns: u64,
+    pub claim_reduce_fold_wall_ns: u64,
+    pub claim_reduce_masks_transcript_orchestration_wall_ns: u64,
+    pub claim_reduce_verifier_wall_ns: u64,
+    pub auxiliary_mle_evaluation_wall_ns: u64,
+    pub link_coefficient_challenge_wall_ns: u64,
+    pub combined_link_equality_wall_ns: u64,
+    pub link_source_clone_wall_ns: u64,
+    pub delayed_link_round_evaluation_wall_ns: u64,
+    pub delayed_link_fold_wall_ns: u64,
+    pub link_terminal_group_orchestration_wall_ns: u64,
+    pub claim_preparation_unattributed_residual_wall_ns: u64,
     pub oracle_read_combine_wall_ns: u64,
     pub fold_merkle_wall_ns: u64,
     pub query_gather_wall_ns: u64,
     pub instrumented_prover_wall_ns: u64,
     pub post_open_verify_codec_wall_ns: u64,
     pub total_settlement_driver_wall_ns: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct X4dClaimReduceGeometryCountersV1 {
+    pub mu: u32,
+    pub calls: u64,
+    pub frozen_claims: u64,
+    pub source_symbols: u64,
+    pub f_construction_wall_ns: u64,
+    pub w_embedding_wall_ns: u64,
+    pub product_round_wall_ns: u64,
+    pub fold_wall_ns: u64,
+    pub masks_transcript_orchestration_wall_ns: u64,
+    pub verifier_wall_ns: u64,
+    pub product_round_calls: u64,
+    pub f_fold_calls: u64,
+    pub w_fold_calls: u64,
+    pub product_round_symbols_read: u64,
+    pub f_fold_symbols_read: u64,
+    pub w_fold_symbols_read: u64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct X4dClaimReduceAttributionV1 {
+    pub settlement_fixed_preprocessing_wall_ns: u64,
+    pub claim_reduce_total_wall_ns: u64,
+    pub prover_wall_ns: u64,
+    pub verifier_wall_ns: u64,
+    pub f_construction_wall_ns: u64,
+    pub w_embedding_wall_ns: u64,
+    pub product_round_wall_ns: u64,
+    pub fold_wall_ns: u64,
+    pub masks_transcript_orchestration_wall_ns: u64,
+    pub call_count: u64,
+    pub frozen_claims: u64,
+    pub resident_counters: ClaimReduceResidentCounters,
+    pub geometries: Vec<X4dClaimReduceGeometryCountersV1>,
 }
 
 /// Internal settlement traffic/residency census omitted by the X4d-v1 record.
@@ -138,6 +190,56 @@ pub struct X4dSettlementDriverPhaseWallsV1 {
 /// encoded oracle retained by the X4c accelerated folding engine.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct X4dSettlementDriverCountersV1 {
+    pub padded_i16_source_symbols: u64,
+    pub padded_i16_source_bytes: u64,
+    pub claim_reduce_calls: u64,
+    pub claim_reduce_frozen_claims: u64,
+    pub claim_reduce_product_round_calls: u64,
+    pub claim_reduce_f_fold_calls: u64,
+    pub claim_reduce_w_fold_calls: u64,
+    pub claim_reduce_product_round_symbols_read: u64,
+    pub claim_reduce_f_fold_symbols_read: u64,
+    pub claim_reduce_w_fold_symbols_read: u64,
+    pub auxiliary_mle_calls: u64,
+    pub auxiliary_mle_symbols_read: u64,
+    pub auxiliary_mle_unique_tables: u64,
+    pub auxiliary_mle_unique_symbols: u64,
+    pub auxiliary_mle_unique_host_bytes: u64,
+    pub auxiliary_mle_unique_device_bytes: u64,
+    pub auxiliary_mle_h2d_bytes: u64,
+    pub auxiliary_mle_d2h_bytes: u64,
+    pub auxiliary_mle_kernel_calls: u64,
+    pub auxiliary_mle_allocation_requests: u64,
+    pub auxiliary_mle_buffer_reuse_hits: u64,
+    pub auxiliary_mle_peak_live_host_scratch_bytes: u64,
+    pub auxiliary_mle_peak_live_scratch_bytes: u64,
+    pub claim_reduce_unique_host_bytes: u64,
+    pub claim_reduce_unique_device_bytes: u64,
+    pub claim_reduce_unique_sources: u64,
+    pub claim_reduce_unique_source_symbols: u64,
+    pub claim_reduce_source_embedding_calls: u64,
+    pub claim_reduce_f_generation_calls: u64,
+    pub claim_reduce_h2d_bytes: u64,
+    pub claim_reduce_d2h_bytes: u64,
+    pub claim_reduce_d2d_bytes: u64,
+    pub claim_reduce_kernel_calls: u64,
+    pub claim_reduce_protocol_scalar_d2h_bytes: u64,
+    pub claim_reduce_peak_live_host_scratch_bytes: u64,
+    pub claim_reduce_peak_live_scratch_bytes: u64,
+    pub claim_reduce_allocation_requests: u64,
+    pub claim_reduce_buffer_reuse_hits: u64,
+    pub resident_link_host_bytes: u64,
+    pub resident_link_device_bytes: u64,
+    pub resident_link_h2d_bytes: u64,
+    pub resident_link_source_clone_bytes: u64,
+    pub resident_link_d2h_bytes: u64,
+    pub resident_link_d2d_bytes: u64,
+    pub resident_link_protocol_scalar_d2h_bytes: u64,
+    pub resident_link_kernel_calls: u64,
+    pub resident_link_allocation_requests: u64,
+    pub resident_link_buffer_reuse_hits: u64,
+    pub resident_link_peak_live_host_scratch_bytes: u64,
+    pub resident_link_peak_live_scratch_bytes: u64,
     pub unique_evaluation_tables: u64,
     pub unique_evaluation_table_symbols: u64,
     pub evaluation_table_bytes: u64,
@@ -256,6 +358,7 @@ pub struct X4dGpt2SettlementResultV1 {
     pub settlement_wall_ns: u64,
     pub driver_phase_walls: X4dSettlementDriverPhaseWallsV1,
     pub driver_counters: X4dSettlementDriverCountersV1,
+    pub claim_reduce_geometries: Vec<X4dClaimReduceGeometryCountersV1>,
     pub envelope: X4dSettlementEnvelopeV1,
     pub encoded_settlement: Vec<u8>,
     pub prover_full_correlations: u64,
@@ -950,8 +1053,90 @@ fn evaluation_table_residency_v1(
     Ok((tables, symbols))
 }
 
+fn padded_i16_source_symbols_v1(inventory: &X4cGpt2Inventory) -> Result<u64, String> {
+    inventory.blocks.iter().try_fold(0u64, |sum, block| {
+        let symbols = 1u64
+            .checked_shl(
+                u32::try_from(block.mu())
+                    .map_err(|_| "X4d padded source dimension overflows".to_owned())?,
+            )
+            .ok_or_else(|| "X4d padded source dimension overflows".to_owned())?;
+        sum.checked_add(symbols)
+            .ok_or_else(|| "X4d padded source symbol count overflows".to_owned())
+    })
+}
+
+fn timing_seconds_to_ns_v1(seconds: f64) -> Result<u64, String> {
+    if !seconds.is_finite() || seconds < 0.0 || seconds > u64::MAX as f64 / 1e9 {
+        return Err("X4d timing value is outside the u64 nanosecond range".to_owned());
+    }
+    Ok((seconds * 1e9).round() as u64)
+}
+
+fn add_batch_timing_v1(
+    aggregate: &mut X4dClaimReduceGeometryCountersV1,
+    timings: BatchTimings,
+    prover_wall_ns: u64,
+) -> Result<(), String> {
+    let f_ns = timing_seconds_to_ns_v1(timings.t_f_build_s)?;
+    let w_ns = timing_seconds_to_ns_v1(timings.t_w_embed_s)?;
+    let product_ns = timing_seconds_to_ns_v1(timings.t_product_round_s)?;
+    let fold_ns = timing_seconds_to_ns_v1(timings.t_folds_s)?;
+    let measured = f_ns
+        .checked_add(w_ns)
+        .and_then(|value| value.checked_add(product_ns))
+        .and_then(|value| value.checked_add(fold_ns))
+        .ok_or_else(|| "X4d ClaimReduce timing sum overflows".to_owned())?;
+    let orchestration_ns = prover_wall_ns.saturating_sub(measured);
+    aggregate.f_construction_wall_ns = aggregate
+        .f_construction_wall_ns
+        .checked_add(f_ns)
+        .ok_or_else(|| "X4d ClaimReduce F timing overflows".to_owned())?;
+    aggregate.w_embedding_wall_ns = aggregate
+        .w_embedding_wall_ns
+        .checked_add(w_ns)
+        .ok_or_else(|| "X4d ClaimReduce W timing overflows".to_owned())?;
+    aggregate.product_round_wall_ns = aggregate
+        .product_round_wall_ns
+        .checked_add(product_ns)
+        .ok_or_else(|| "X4d ClaimReduce product timing overflows".to_owned())?;
+    aggregate.fold_wall_ns = aggregate
+        .fold_wall_ns
+        .checked_add(fold_ns)
+        .ok_or_else(|| "X4d ClaimReduce fold timing overflows".to_owned())?;
+    aggregate.masks_transcript_orchestration_wall_ns = aggregate
+        .masks_transcript_orchestration_wall_ns
+        .checked_add(orchestration_ns)
+        .ok_or_else(|| "X4d ClaimReduce orchestration timing overflows".to_owned())?;
+    aggregate.product_round_calls = aggregate
+        .product_round_calls
+        .checked_add(timings.product_round_calls)
+        .ok_or_else(|| "X4d ClaimReduce product call count overflows".to_owned())?;
+    aggregate.f_fold_calls = aggregate
+        .f_fold_calls
+        .checked_add(timings.f_fold_calls)
+        .ok_or_else(|| "X4d ClaimReduce F-fold count overflows".to_owned())?;
+    aggregate.w_fold_calls = aggregate
+        .w_fold_calls
+        .checked_add(timings.w_fold_calls)
+        .ok_or_else(|| "X4d ClaimReduce W-fold count overflows".to_owned())?;
+    aggregate.product_round_symbols_read = aggregate
+        .product_round_symbols_read
+        .checked_add(timings.product_round_symbols_read)
+        .ok_or_else(|| "X4d ClaimReduce product traffic overflows".to_owned())?;
+    aggregate.f_fold_symbols_read = aggregate
+        .f_fold_symbols_read
+        .checked_add(timings.f_fold_symbols_read)
+        .ok_or_else(|| "X4d ClaimReduce F-fold traffic overflows".to_owned())?;
+    aggregate.w_fold_symbols_read = aggregate
+        .w_fold_symbols_read
+        .checked_add(timings.w_fold_symbols_read)
+        .ok_or_else(|| "X4d ClaimReduce W-fold traffic overflows".to_owned())?;
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
-fn reduce_frozen_weight_claims_v1(
+fn reduce_frozen_weight_claims_v1<R: X4cArenaRuntimeV4>(
     model: &Gpt2Model,
     inventory: &X4cGpt2Inventory,
     batch: &X4dGpt2SettlementBatchV1,
@@ -959,7 +1144,9 @@ fn reduce_frozen_weight_claims_v1(
     verifier: &mut VerifierCtx,
     prover_tx: &mut Transcript,
     verifier_tx: &mut Transcript,
-) -> Result<X4dGpt2ReducedClaimsV1, String> {
+    runtime: &mut R,
+) -> Result<(X4dGpt2ReducedClaimsV1, X4dClaimReduceAttributionV1), String> {
+    let reduction_started = Instant::now();
     let expected_claims = batch.counters.frozen_claims;
     if batch.frozen_claims.len() != expected_claims
         || batch.prover_parent_values.len() != expected_claims
@@ -970,11 +1157,18 @@ fn reduce_frozen_weight_claims_v1(
     }
     let frames =
         batch.frozen_claims.iter().map(|claim| claim.claim_frame.clone()).collect::<Vec<_>>();
+    let fixed_preprocessing_started = Instant::now();
     let padded_sources = inventory
         .blocks
         .iter()
         .map(|block| padded_source_i16(model, block))
         .collect::<Result<Vec<_>, _>>()?;
+    let mut resident_settlement = runtime
+        .prepare_claim_reduce_settlement(&padded_sources)
+        .map_err(|error| format!("X4d resident ClaimReduce preparation: {error:?}"))?;
+    let settlement_fixed_preprocessing_wall_ns =
+        u64::try_from(fixed_preprocessing_started.elapsed().as_nanos())
+            .map_err(|_| "X4d fixed preprocessing wall overflows".to_owned())?;
     let claim_domain_base = settlement_domain_v1(
         X4D_CLAIM_REDUCTION_DOMAIN_BASE_V1,
         batch.context.range.settlement_epoch,
@@ -988,6 +1182,9 @@ fn reduce_frozen_weight_claims_v1(
     let mut points = Vec::with_capacity(batch.counters.masked_groups);
     let mut prover_values = Vec::with_capacity(batch.counters.masked_groups);
     let mut verifier_keys = Vec::with_capacity(batch.counters.masked_groups);
+    let mut geometries = BTreeMap::<u32, X4dClaimReduceGeometryCountersV1>::new();
+    let mut prover_wall_ns = 0u64;
+    let mut verifier_wall_ns = 0u64;
     for response_index in 0..batch.counters.responses {
         for (block_index, block) in inventory.blocks.iter().enumerate() {
             let group_index = response_index
@@ -1039,14 +1236,45 @@ fn reduce_frozen_weight_claims_v1(
                 .checked_add(response_offset)
                 .and_then(|value| value.checked_add(block_offset))
                 .ok_or_else(|| "X4d claim-reduction domain overflows".to_owned())?;
-            let (proof, point, value, _) = batch_reduce_prover(
-                &padded_sources[block_index],
-                block.mu(),
-                &prover_claims,
-                stream,
-                domain,
-                prover_tx,
-            );
+            let prover_started = Instant::now();
+            let (proof, point, value, timings) = runtime
+                .prove_claim_reduce_sequential(
+                    &mut resident_settlement,
+                    block_index,
+                    block.mu(),
+                    &prover_claims,
+                    stream,
+                    domain,
+                    prover_tx,
+                )
+                .map_err(|error| format!("X4d resident ClaimReduce instance: {error:?}"))?;
+            let call_prover_wall_ns = u64::try_from(prover_started.elapsed().as_nanos())
+                .map_err(|_| "X4d ClaimReduce prover wall overflows".to_owned())?;
+            prover_wall_ns = prover_wall_ns
+                .checked_add(call_prover_wall_ns)
+                .ok_or_else(|| "X4d ClaimReduce prover wall sum overflows".to_owned())?;
+            let mu =
+                u32::try_from(block.mu()).map_err(|_| "X4d ClaimReduce mu overflows".to_owned())?;
+            let geometry = geometries
+                .entry(mu)
+                .or_insert_with(|| X4dClaimReduceGeometryCountersV1 { mu, ..Default::default() });
+            geometry.calls = geometry
+                .calls
+                .checked_add(1)
+                .ok_or_else(|| "X4d ClaimReduce call count overflows".to_owned())?;
+            geometry.frozen_claims = geometry
+                .frozen_claims
+                .checked_add(2)
+                .ok_or_else(|| "X4d ClaimReduce claim count overflows".to_owned())?;
+            geometry.source_symbols = geometry
+                .source_symbols
+                .checked_add(
+                    u64::try_from(padded_sources[block_index].len())
+                        .map_err(|_| "X4d ClaimReduce source symbols overflow".to_owned())?,
+                )
+                .ok_or_else(|| "X4d ClaimReduce source symbols overflow".to_owned())?;
+            add_batch_timing_v1(geometry, timings, call_prover_wall_ns)?;
+            let verifier_started = Instant::now();
             let (verifier_point, key) = batch_reduce_verifier(
                 block.mu(),
                 &verifier_claims,
@@ -1058,6 +1286,15 @@ fn reduce_frozen_weight_claims_v1(
             .ok_or_else(|| {
                 format!("X4d verifier rejected response-local reduced group {group_index}")
             })?;
+            let call_verifier_wall_ns = u64::try_from(verifier_started.elapsed().as_nanos())
+                .map_err(|_| "X4d ClaimReduce verifier wall overflows".to_owned())?;
+            verifier_wall_ns = verifier_wall_ns
+                .checked_add(call_verifier_wall_ns)
+                .ok_or_else(|| "X4d ClaimReduce verifier wall sum overflows".to_owned())?;
+            geometry.verifier_wall_ns = geometry
+                .verifier_wall_ns
+                .checked_add(call_verifier_wall_ns)
+                .ok_or_else(|| "X4d ClaimReduce verifier wall overflows".to_owned())?;
             mirror_claim_reduction_round_accounting(verifier_tx, block.mu());
             if point != verifier_point {
                 return Err("X4d claim-reduction point differs across roles".to_owned());
@@ -1084,7 +1321,43 @@ fn reduce_frozen_weight_claims_v1(
     {
         return Err("X4d batched claim-reduction accounting diverged".to_owned());
     }
-    Ok(X4dGpt2ReducedClaimsV1 { frames, proofs, points, prover_values, verifier_keys })
+    let resident_counters = runtime
+        .release_claim_reduce_settlement(resident_settlement)
+        .map_err(|error| format!("X4d resident ClaimReduce release: {error:?}"))?;
+    let geometries = geometries.into_values().collect::<Vec<_>>();
+    let sum = |select: fn(&X4dClaimReduceGeometryCountersV1) -> u64| {
+        geometries.iter().map(select).try_fold(0u64, u64::checked_add)
+    };
+    let attribution = X4dClaimReduceAttributionV1 {
+        settlement_fixed_preprocessing_wall_ns,
+        claim_reduce_total_wall_ns: u64::try_from(reduction_started.elapsed().as_nanos())
+            .map_err(|_| "X4d ClaimReduce total wall overflows".to_owned())?
+            .saturating_sub(settlement_fixed_preprocessing_wall_ns),
+        prover_wall_ns,
+        verifier_wall_ns,
+        f_construction_wall_ns: sum(|row| row.f_construction_wall_ns)
+            .ok_or_else(|| "X4d ClaimReduce F timing sum overflows".to_owned())?,
+        w_embedding_wall_ns: sum(|row| row.w_embedding_wall_ns)
+            .ok_or_else(|| "X4d ClaimReduce W timing sum overflows".to_owned())?,
+        product_round_wall_ns: sum(|row| row.product_round_wall_ns)
+            .ok_or_else(|| "X4d ClaimReduce product timing sum overflows".to_owned())?,
+        fold_wall_ns: sum(|row| row.fold_wall_ns)
+            .ok_or_else(|| "X4d ClaimReduce fold timing sum overflows".to_owned())?,
+        masks_transcript_orchestration_wall_ns: sum(|row| {
+            row.masks_transcript_orchestration_wall_ns
+        })
+        .ok_or_else(|| "X4d ClaimReduce orchestration timing sum overflows".to_owned())?,
+        call_count: sum(|row| row.calls)
+            .ok_or_else(|| "X4d ClaimReduce call count sum overflows".to_owned())?,
+        frozen_claims: sum(|row| row.frozen_claims)
+            .ok_or_else(|| "X4d ClaimReduce claim count sum overflows".to_owned())?,
+        resident_counters,
+        geometries,
+    };
+    Ok((
+        X4dGpt2ReducedClaimsV1 { frames, proofs, points, prover_values, verifier_keys },
+        attribution,
+    ))
 }
 
 /// Execute one complete X4d settlement. Static weight cohorts/evaluations are
@@ -1179,7 +1452,7 @@ pub fn execute_real_weight_x4d_settlement_v1<R: X4cArenaRuntimeV4>(
     let verifier_fulls_before = verifier.counters.full_corrs;
     let (unique_evaluation_tables, unique_evaluation_table_symbols) =
         evaluation_table_residency_v1(weight_evaluations, &fresh_auxiliary)?;
-    let reduced = reduce_frozen_weight_claims_v1(
+    let (reduced, claim_reduce_attribution) = reduce_frozen_weight_claims_v1(
         model,
         inventory,
         batch,
@@ -1187,11 +1460,28 @@ pub fn execute_real_weight_x4d_settlement_v1<R: X4cArenaRuntimeV4>(
         verifier,
         prover_tx,
         verifier_tx,
+        runtime,
     )?;
     let mut weight_points = Vec::with_capacity(batch.counters.masked_groups);
     let mut auxiliary_points = Vec::with_capacity(batch.counters.masked_groups);
     let mut auxiliary_values = Vec::with_capacity(batch.counters.masked_groups);
     let mut public_h = Vec::with_capacity(batch.counters.masked_groups);
+    let auxiliary_tables = inventory
+        .blocks
+        .iter()
+        .map(|block| {
+            let auxiliary_index = cohort_index_for_auxiliary(block.ell())?;
+            combined_evaluations_v1(auxiliary_index, weight_evaluations, &fresh_auxiliary)?
+                .get(usize::from(block.auxiliary_slot))
+                .and_then(Option::as_ref)
+                .map(Vec::as_slice)
+                .ok_or_else(|| "X4d auxiliary evaluation table is missing".to_owned())
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let mut auxiliary_mle_settlement = runtime
+        .prepare_auxiliary_mle_settlement(&auxiliary_tables)
+        .map_err(|error| format!("X4d resident auxiliary MLE preparation: {error:?}"))?;
+    let auxiliary_mle_started = Instant::now();
     for response_index in 0..batch.counters.responses {
         for (block_index, block) in inventory.blocks.iter().enumerate() {
             let group_index = response_index * X4C_GPT2_PHYSICAL_BLOCKS + block_index;
@@ -1201,20 +1491,25 @@ pub fn execute_real_weight_x4d_settlement_v1<R: X4cArenaRuntimeV4>(
                 &reduced.points[group_index],
                 block.ell(),
             )?;
-            let auxiliary_index = cohort_index_for_auxiliary(block.ell())?;
-            let table =
-                combined_evaluations_v1(auxiliary_index, weight_evaluations, &fresh_auxiliary)?
-                    .get(usize::from(block.auxiliary_slot))
-                    .and_then(Option::as_ref)
-                    .ok_or_else(|| "X4d auxiliary evaluation table is missing".to_owned())?;
-            let auxiliary_value = evaluate_multilinear_table(table, &auxiliary_point)
-                .map_err(|error| format!("X4d auxiliary evaluation: {error:?}"))?;
+            let auxiliary_value = runtime
+                .evaluate_auxiliary_mle_resident(
+                    &mut auxiliary_mle_settlement,
+                    block_index,
+                    &auxiliary_point,
+                )
+                .map_err(|error| format!("X4d resident auxiliary MLE: {error:?}"))?;
             public_h.push(reduced.prover_values[group_index].x + auxiliary_value);
             weight_points.push(weight_point);
             auxiliary_points.push(auxiliary_point);
             auxiliary_values.push(auxiliary_value);
         }
     }
+    let auxiliary_mle_evaluation_wall_ns =
+        u64::try_from(auxiliary_mle_started.elapsed().as_nanos())
+            .map_err(|_| "X4d auxiliary MLE wall overflows".to_owned())?;
+    let auxiliary_mle_counters = runtime
+        .release_auxiliary_mle_settlement(auxiliary_mle_settlement)
+        .map_err(|error| format!("X4d resident auxiliary MLE release: {error:?}"))?;
 
     let m9_domain_base = settlement_domain_v1(X4D_M9_DOMAIN_BASE_V1, epoch)?;
     let mut pending_prover = Vec::with_capacity(batch.counters.masked_groups);
@@ -1485,6 +1780,20 @@ pub fn execute_real_weight_x4d_settlement_v1<R: X4cArenaRuntimeV4>(
     let claim_coefficient_preparation_wall_ns = pre_link_wall_ns
         .checked_add(phase_walls.claim_coefficient_preparation_wall_ns)
         .ok_or_else(|| "X4d coefficient-preparation wall overflows".to_owned())?;
+    let disjoint_claim_preparation_children = claim_reduce_attribution
+        .settlement_fixed_preprocessing_wall_ns
+        .checked_add(claim_reduce_attribution.claim_reduce_total_wall_ns)
+        .and_then(|value| value.checked_add(auxiliary_mle_evaluation_wall_ns))
+        .and_then(|value| value.checked_add(phase_walls.link_coefficient_challenge_wall_ns))
+        .and_then(|value| value.checked_add(phase_walls.combined_link_equality_wall_ns))
+        .and_then(|value| value.checked_add(phase_walls.link_source_clone_wall_ns))
+        .and_then(|value| value.checked_add(phase_walls.delayed_link_round_evaluation_wall_ns))
+        .and_then(|value| value.checked_add(phase_walls.delayed_link_fold_wall_ns))
+        .and_then(|value| value.checked_add(phase_walls.link_terminal_group_orchestration_wall_ns))
+        .ok_or_else(|| "X4d disjoint claim-preparation wall sum overflows".to_owned())?;
+    let claim_preparation_unattributed_residual_wall_ns = claim_coefficient_preparation_wall_ns
+        .checked_sub(disjoint_claim_preparation_children)
+        .ok_or_else(|| "X4d disjoint claim-preparation walls exceed their parent".to_owned())?;
     let instrumented_prover_wall_ns = claim_coefficient_preparation_wall_ns
         .checked_add(phase_walls.oracle_read_combine_wall_ns)
         .and_then(|value| value.checked_add(phase_walls.fold_merkle_wall_ns))
@@ -1535,6 +1844,25 @@ pub fn execute_real_weight_x4d_settlement_v1<R: X4cArenaRuntimeV4>(
     }
     let driver_phase_walls = X4dSettlementDriverPhaseWallsV1 {
         claim_coefficient_preparation_wall_ns,
+        settlement_fixed_preprocessing_wall_ns: claim_reduce_attribution
+            .settlement_fixed_preprocessing_wall_ns,
+        claim_reduce_prover_wall_ns: claim_reduce_attribution.prover_wall_ns,
+        claim_reduce_f_construction_wall_ns: claim_reduce_attribution.f_construction_wall_ns,
+        claim_reduce_w_embedding_wall_ns: claim_reduce_attribution.w_embedding_wall_ns,
+        claim_reduce_product_round_wall_ns: claim_reduce_attribution.product_round_wall_ns,
+        claim_reduce_fold_wall_ns: claim_reduce_attribution.fold_wall_ns,
+        claim_reduce_masks_transcript_orchestration_wall_ns: claim_reduce_attribution
+            .masks_transcript_orchestration_wall_ns,
+        claim_reduce_verifier_wall_ns: claim_reduce_attribution.verifier_wall_ns,
+        auxiliary_mle_evaluation_wall_ns,
+        link_coefficient_challenge_wall_ns: phase_walls.link_coefficient_challenge_wall_ns,
+        combined_link_equality_wall_ns: phase_walls.combined_link_equality_wall_ns,
+        link_source_clone_wall_ns: phase_walls.link_source_clone_wall_ns,
+        delayed_link_round_evaluation_wall_ns: phase_walls.delayed_link_round_evaluation_wall_ns,
+        delayed_link_fold_wall_ns: phase_walls.delayed_link_fold_wall_ns,
+        link_terminal_group_orchestration_wall_ns: phase_walls
+            .link_terminal_group_orchestration_wall_ns,
+        claim_preparation_unattributed_residual_wall_ns,
         oracle_read_combine_wall_ns: phase_walls.oracle_read_combine_wall_ns,
         fold_merkle_wall_ns: phase_walls.fold_merkle_wall_ns,
         query_gather_wall_ns: phase_walls.query_gather_wall_ns,
@@ -1543,6 +1871,111 @@ pub fn execute_real_weight_x4d_settlement_v1<R: X4cArenaRuntimeV4>(
         total_settlement_driver_wall_ns: settlement_wall_ns,
     };
     let driver_counters = X4dSettlementDriverCountersV1 {
+        padded_i16_source_symbols: padded_i16_source_symbols_v1(inventory)?,
+        padded_i16_source_bytes: padded_i16_source_symbols_v1(inventory)?
+            .checked_mul(2)
+            .ok_or_else(|| "X4d padded i16 source bytes overflow".to_owned())?,
+        claim_reduce_calls: claim_reduce_attribution.call_count,
+        claim_reduce_frozen_claims: claim_reduce_attribution.frozen_claims,
+        claim_reduce_product_round_calls: claim_reduce_attribution
+            .geometries
+            .iter()
+            .map(|row| row.product_round_calls)
+            .try_fold(0u64, u64::checked_add)
+            .ok_or_else(|| "X4d ClaimReduce product calls overflow".to_owned())?,
+        claim_reduce_f_fold_calls: claim_reduce_attribution
+            .geometries
+            .iter()
+            .map(|row| row.f_fold_calls)
+            .try_fold(0u64, u64::checked_add)
+            .ok_or_else(|| "X4d ClaimReduce F-fold calls overflow".to_owned())?,
+        claim_reduce_w_fold_calls: claim_reduce_attribution
+            .geometries
+            .iter()
+            .map(|row| row.w_fold_calls)
+            .try_fold(0u64, u64::checked_add)
+            .ok_or_else(|| "X4d ClaimReduce W-fold calls overflow".to_owned())?,
+        claim_reduce_product_round_symbols_read: claim_reduce_attribution
+            .geometries
+            .iter()
+            .map(|row| row.product_round_symbols_read)
+            .try_fold(0u64, u64::checked_add)
+            .ok_or_else(|| "X4d ClaimReduce product traffic overflows".to_owned())?,
+        claim_reduce_f_fold_symbols_read: claim_reduce_attribution
+            .geometries
+            .iter()
+            .map(|row| row.f_fold_symbols_read)
+            .try_fold(0u64, u64::checked_add)
+            .ok_or_else(|| "X4d ClaimReduce F-fold traffic overflows".to_owned())?,
+        claim_reduce_w_fold_symbols_read: claim_reduce_attribution
+            .geometries
+            .iter()
+            .map(|row| row.w_fold_symbols_read)
+            .try_fold(0u64, u64::checked_add)
+            .ok_or_else(|| "X4d ClaimReduce W-fold traffic overflows".to_owned())?,
+        auxiliary_mle_calls: auxiliary_mle_counters.calls,
+        auxiliary_mle_symbols_read: auxiliary_mle_counters.symbols_read,
+        auxiliary_mle_unique_tables: auxiliary_mle_counters.unique_tables,
+        auxiliary_mle_unique_symbols: auxiliary_mle_counters.unique_symbols,
+        auxiliary_mle_unique_host_bytes: auxiliary_mle_counters.host_bytes,
+        auxiliary_mle_unique_device_bytes: auxiliary_mle_counters.device_bytes,
+        auxiliary_mle_h2d_bytes: auxiliary_mle_counters.h2d_bytes,
+        auxiliary_mle_d2h_bytes: auxiliary_mle_counters.d2h_bytes,
+        auxiliary_mle_kernel_calls: auxiliary_mle_counters.kernel_calls,
+        auxiliary_mle_allocation_requests: auxiliary_mle_counters.allocation_requests,
+        auxiliary_mle_buffer_reuse_hits: auxiliary_mle_counters.buffer_reuse_hits,
+        auxiliary_mle_peak_live_host_scratch_bytes: auxiliary_mle_counters
+            .peak_live_host_scratch_bytes,
+        auxiliary_mle_peak_live_scratch_bytes: auxiliary_mle_counters.peak_live_scratch_bytes,
+        claim_reduce_unique_host_bytes: claim_reduce_attribution
+            .resident_counters
+            .canonical_source_bytes,
+        claim_reduce_unique_device_bytes: claim_reduce_attribution
+            .resident_counters
+            .canonical_device_bytes,
+        claim_reduce_unique_sources: claim_reduce_attribution.resident_counters.canonical_sources,
+        claim_reduce_unique_source_symbols: claim_reduce_attribution
+            .resident_counters
+            .canonical_source_symbols,
+        claim_reduce_source_embedding_calls: claim_reduce_attribution
+            .resident_counters
+            .source_embedding_calls,
+        claim_reduce_f_generation_calls: claim_reduce_attribution
+            .resident_counters
+            .f_generation_calls,
+        claim_reduce_h2d_bytes: claim_reduce_attribution.resident_counters.h2d_bytes,
+        claim_reduce_d2h_bytes: claim_reduce_attribution.resident_counters.d2h_bytes,
+        claim_reduce_d2d_bytes: claim_reduce_attribution.resident_counters.d2d_bytes,
+        claim_reduce_kernel_calls: claim_reduce_attribution.resident_counters.kernel_calls,
+        claim_reduce_protocol_scalar_d2h_bytes: claim_reduce_attribution
+            .resident_counters
+            .protocol_scalar_d2h_bytes,
+        claim_reduce_peak_live_host_scratch_bytes: claim_reduce_attribution
+            .resident_counters
+            .peak_live_host_scratch_bytes,
+        claim_reduce_peak_live_scratch_bytes: claim_reduce_attribution
+            .resident_counters
+            .peak_live_scratch_bytes,
+        claim_reduce_allocation_requests: claim_reduce_attribution
+            .resident_counters
+            .allocation_requests,
+        claim_reduce_buffer_reuse_hits: claim_reduce_attribution
+            .resident_counters
+            .buffer_reuse_hits,
+        resident_link_host_bytes: link_metrics.resident_link_host_bytes,
+        resident_link_device_bytes: link_metrics.resident_link_device_bytes,
+        resident_link_h2d_bytes: link_metrics.resident_link_h2d_bytes,
+        resident_link_source_clone_bytes: link_metrics.resident_link_source_clone_bytes,
+        resident_link_d2h_bytes: link_metrics.resident_link_d2h_bytes,
+        resident_link_d2d_bytes: link_metrics.resident_link_d2d_bytes,
+        resident_link_protocol_scalar_d2h_bytes: link_metrics
+            .resident_link_protocol_scalar_d2h_bytes,
+        resident_link_kernel_calls: link_metrics.resident_link_kernel_calls,
+        resident_link_allocation_requests: link_metrics.resident_link_allocation_requests,
+        resident_link_buffer_reuse_hits: link_metrics.resident_link_buffer_reuse_hits,
+        resident_link_peak_live_host_scratch_bytes: link_metrics
+            .resident_link_peak_live_host_scratch_bytes,
+        resident_link_peak_live_scratch_bytes: link_metrics.resident_link_peak_live_scratch_bytes,
         unique_evaluation_tables,
         unique_evaluation_table_symbols,
         evaluation_table_bytes,
@@ -1583,6 +2016,7 @@ pub fn execute_real_weight_x4d_settlement_v1<R: X4cArenaRuntimeV4>(
         settlement_wall_ns,
         driver_phase_walls,
         driver_counters,
+        claim_reduce_geometries: claim_reduce_attribution.geometries,
         envelope,
         encoded_settlement,
         prover_full_correlations,

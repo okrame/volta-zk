@@ -4127,9 +4127,7 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7(tmp_path)
         row["c4"] = {
             "profile": profile,
             "design_file": "docs/c4-ligero-inline-rate-design.md",
-            "design_sha256": (
-                "e58a7f965c4a28796a149308828a82128d3c86482d24c81a8c86a8484f4dcbf8"
-            ),
+            "design_sha256": report.C4_DESIGN_SHA256,
             "resource_admission": {
                 "selected_gpu": "0",
                 "gpu_free_bytes": 60_000_000_000,
@@ -4186,6 +4184,19 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7(tmp_path)
     c4_candidate_path.write_text(json.dumps(c4_candidate))
     assert report.validate_c4_official_result(c4_anchor_path) is True
     assert report.validate_c4_official_result(c4_candidate_path) is True
+
+    historical_anchor_path = (
+        Path(__file__).resolve().parents[1]
+        / "benchmarks/results/c4-ligero-t1-anchor-a100-2026-07-27-4097179.json"
+    )
+    assert report.validate_c4_official_result(historical_anchor_path) is True
+    historical_anchor = json.loads(historical_anchor_path.read_text())
+    for field in ("git_sha", "git_sha_before_benchmark", "git_sha_before_serialization"):
+        historical_anchor[field] = "a" * 40
+    historical_repin_path = tmp_path / "c4-historical-digest-on-future-sha.json"
+    historical_repin_path.write_text(json.dumps(historical_anchor))
+    assert report.validate_c4_official_result(historical_repin_path) is False
+
     c4_pair = report.c4_paired_verdict(c4_anchor_path, c4_candidate_path)
     assert c4_pair is not None
     assert c4_pair["overall_pass"] is True

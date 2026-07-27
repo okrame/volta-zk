@@ -232,11 +232,18 @@ Each profile uses fresh authorization and connection stores. No selective
 retry is allowed. An anchor obstruction prevents candidate execution.
 
 The two producer commands are identical except for the profile and fresh
-store paths:
+store paths. The CUDA feature is explicit and the producer is built once;
+both runs execute that unchanged binary directly:
 
 ```text
+cd rust
+
+VOLTA_CUDA_LIBRARY=../target/cuda/libvolta_cuda_backend.so \
+cargo build --release --features cuda -p volta-bench --bin p6_report
+
 CUDA_VISIBLE_DEVICES=0 RAYON_NUM_THREADS=8 VOLTA_REQUIRE_CUDA=1 \
-cargo run --release -p volta-bench --bin p6_report -- \
+VOLTA_CUDA_LIBRARY=../target/cuda/libvolta_cuda_backend.so \
+target/release/p6_report \
   --c4-record --c4-profile anchor \
   --accelerator cuda-resident --resident-timing wall-only-counters \
   --pcg-backend real --ggm-prg aes128-mmo \
@@ -244,7 +251,8 @@ cargo run --release -p volta-bench --bin p6_report -- \
   --pcg-connection-store ANCHOR_CONNECTION
 
 CUDA_VISIBLE_DEVICES=0 RAYON_NUM_THREADS=8 VOLTA_REQUIRE_CUDA=1 \
-cargo run --release -p volta-bench --bin p6_report -- \
+VOLTA_CUDA_LIBRARY=../target/cuda/libvolta_cuda_backend.so \
+target/release/p6_report \
   --c4-record --c4-profile rate8 \
   --accelerator cuda-resident --resident-timing wall-only-counters \
   --pcg-backend real --ggm-prg aes128-mmo \
@@ -308,3 +316,61 @@ history. Only then may its stale-build warning be removed.
 The local hard stop was lifted by the owner's explicit Phase-2 GO. No
 producer workload may start until the storage-admission correction is a
 clean committed build and the complete preflight passes.
+
+## 8. Phase-2 anchor and rate-8 producer obstruction
+
+The replacement campaign on 2026-07-27 used clean checkpoint `4097179` on
+one RunPod A100-SXM4-80GB, 13 effective CPUs, eight Rayon workers and the
+admitted Docker-local overlay. The CUDA ABI, real-CUDA differentials,
+production leakage smokes and full release/CUDA workspace were green before
+the producer workload.
+
+The first operator invocation exposed an error in the command text above:
+without an explicit Cargo `cuda` feature, `VOLTA_REQUIRE_CUDA=1` correctly
+refused the CPU-only binary before benchmark setup. It emitted no record and
+created only two empty store directories, which were removed before the
+actual producer. The corrected procedure builds the CUDA producer once and
+then runs that binary directly, as now specified in section 5.
+
+The sole effective anchor run used fresh stores, one warmup and three measured
+repetitions. Its append-only record is
+`c4-ligero-t1-anchor-a100-2026-07-27-4097179.json`, SHA-256
+`6778cb837406c705c34aa0d3021da48791d2e6ccc8aa98580b0e19888e1ee18d`.
+The official validator accepts it with exact `43,273,888-B` PCS,
+`84,544,352-B` response, `2.405747059-s` prefill,
+`1.606139665-s` decode marginal, `4.011647701-s` response proof,
+`5.245756507-s` response session, `1.235979019232481` flat-cost ratio,
+`67,618,556-B` H2D maximum and `0.116591164-s` synchronization maximum.
+This is a valid current-build T1 anchor. Its C4-local `gate_verdict=false`
+remains correct because no performance pair is embedded in a raw profile
+record.
+
+Only after that validation did the single authorized rate-8 attempt start.
+It reached deterministic source/witness construction and the mock prepass,
+which computed the correct candidate PCS size `38,296,040 B`, then panicked
+before real-PCG setup, warmup or measured repetitions:
+
+```text
+assertion `left == right` failed:
+C3 PCS byte formula diverged from the preregistered exact value
+  left: 38296040
+ right: 43273888
+```
+
+At checkpoint `4097179`, the post-opening assertion selected
+`C3_PCS_OPENING_BYTES` whenever the shared C3/T1 surface was active. C4
+intentionally reuses that surface, so the rate-8 profile was compared with
+the anchor constant despite having correctly generated the candidate byte
+count. The fix selects the exact expected PCS bytes from the actual inline
+Ligero geometry: legacy T1 and C4 anchor remain `43,273,888 B`; C4 rate-8 is
+`38,296,040 B`. A permanent test exercises all three selections. This is a
+producer assertion fix only: it changes no PCS arithmetic, transcript,
+proof bytes, query schedule, soundness calculation, timing boundary or gate.
+
+No rate-8 JSON or paired record exists, and the empty candidate stores contain
+no correlations. The attempt is an operational obstruction, not a
+performance sample. It is not eligible for selective retry; every candidate
+and paired gate remains **NOT EVALUATED**. A replacement anchor/rate-8 pair
+requires a new clean checkpoint, fresh stores and a new explicit owner GO.
+The pod was stopped through `runpodctl` from its SSH session and a separate
+connection was refused.

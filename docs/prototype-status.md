@@ -362,7 +362,7 @@ its clean descendant closure.
 | X4d.2 byte-identical resident settlement Phase 1 | **LOCAL IDENTITY + OPERATION CENSUS COMPLETE; HARD STOP BEFORE POD / NO PERFORMANCE OR GATE VERDICT** (2026-07-26) | Evaluation strategy, residency and disjoint instrumentation only; exact sequential challenge tape; fail-closed production CUDA; no protocol/codec/bytes/soundness/Lean/hot-path change | The record corrects the refuted general factorization: independently pointed equality sums have rank up to `m`; no `blind_prove_batch`, round-synchronous schedule or asymptotic-flatness claim is used. ClaimReduce hoists exactly **51 / 298,844,160 i16-source symbols** into one immutable **4,781,506,560-B** Fp2 device tier; one maximum-geometry four-buffer pool is reused across exact `51*k` sequential instances. Auxiliary MLE and fused delayed-link source/equality work have resident paths with counted host/device bytes, H2D/D2H/D2D, kernel calls, scalar D2H, allocations/reuse and host/device scratch. The complete link source tier remains **601,161,728 symbols / 9,618,587,648 B**. Exact phase lifetimes project ClaimReduce at **10,687,087,456 B**, delayed link at **37,960,027,776 B**, both below the inherited measured X4c **47,256,774,900-B** device peak; the full **>=256-GiB RAM / >=150-GB volume** admission remains. Permanent CPU differentials pass at `mu=6/9/12`, deterministic scaled-shape k=1/k=16, auxiliary residency and the real two-response fixture; full workspace and report tests are green. CUDA-feature Rust/ABI compilation is green; the permanent CUDA kernel differential is present but locally skipped because `libvolta_cuda_backend.so` and `nvcc` are unavailable, so Phase 2 must run it with `VOLTA_REQUIRE_CUDA=1`. Append-only local record `x4d2-phase1-local-identity-2026-07-26-d298370.json`, SHA-256 `92def69607c9d59486220fc7f3571050f7d35afa76e8eeca039a7d5edcb3c842`; design descendant SHA-256 `9ffa929498e141917d242653a6563888e157dcc12d36dc3d6e9a8b52d2f5a98f`. The immutable X4d.1 flatness FAIL and raw records remain untouched; no pod contacted. |
 | X4d.2 Phase 2 A100 campaign | **FAIL-CLOSED BEFORE k=1 RECORD; NO FLATNESS OR PRODUCTION GATE VERDICT; k=16 NOT STARTED; POD STOPPED** (2026-07-26) | One eligible production pair, unchanged build, no selective retry; any replacement pair requires a new owner GO | Owner GO used pod `xfjw217q6cq4ja` at clean `e4e2b14`. NOTE-6 PASS, fail-closed hardware/device admission PASS, and all **38** real-CUDA accelerator tests PASS including `x4d_resident_kernels_match_cpu_field_evaluation_exactly`. The strengthened crypto-build identity correctly rejected the historical X4d.1 durable tier; one fresh schema-3 onboarding then PASSed in **1,967 s** with exact **9,618,587,808 B** durable payload. The sole k=1 run opened fresh stores and failed during settlement with `X4d CUDA delayed-link terminal mismatch`; six authorization/freshness markers are burned and the connection journal is preserved. The producer exited before writing a settlement JSON, so k=1 was not retried, k=16 was not started, the paired selector was not run, and FLATNESS / PHYSICAL COUNTERS / BYTE IDENTITY / HOT PATH / PROTOCOL REGRESSIONS are all **NOT EVALUATED**. Append-only obstruction record `x4d2-phase2-k1-obstruction-2026-07-26-e4e2b14.json`; X4d.1 records and comparison remain immutable. Pod-local `runpodctl` returned stopped and the independent endpoint check was refused; teardown record `x4d2-control-plane-teardown-2026-07-26-e4e2b14.json`. |
 | X4d.2 delayed-link diagnosis and repair | **LOCAL ROOT CAUSE CONFIRMED; BYTE IDENTITY GREEN; HARD STOP / NO POD / NO REPLACEMENT PAIR OR GATE VERDICT** (2026-07-27) | Evaluation-only repair: backend-generic sequential resident orchestrator plus one exactly-once scaled product-round message; protocol/transcript/challenge/codec/correlations/terminal semantics unchanged | The extracted `e4e2b14` arithmetic reproduced the obstruction with the initial claim, ledgers, challenges and folds still green: first divergence **term 0 / round 1 / dimension 8 / active_len 256**, captured output SHA-256 `2ac466d9bcfc61fc5ef0a83c59d5bc8b0c2f32434ed17e37de1b7ac5cc925c1f`; all **51/51** production-relative terms are affected at their first real round. Root cause is the missing `virtual_factor` on `fp2_product_round_into_device`. ABI 33 adds `fp2_product_round_scaled_into_device` / `volta_cuda_fp2_product_round_scaled_into_device` / `scale_product_round_message`; scale one is raw-mailbox byte-identical, folds are unscaled, and the real branch alone uses it. Permanent value-mismatch and geometry-not-drained faults are distinct. CPU BackendKind lifecycle and exact message/fold-vector-digest identity pass at the 51/51/102 local multiplicity fixture and `max_mu=20/22/24/26`; the full serialized workspace, 23 report-validator tests and CUDA-feature all-target compilation are green, while real CUDA remains deliberately unexecuted locally. A clean, fail-closed standalone `x4d2_delayed_link_reproducer` is prepared for a future GO; it needs no weights/onboarding/durable tier/connection/settlement. Append-only local record `x4d2-diag-delayed-link-2026-07-27-bc76048.json`, SHA-256 `0bf3ed63b4ec34243a3f42cd1b6fce286c07a5b07f9e09b72bbb2f081f35538a`; diagnostic design SHA-256 `91cc8eb6566122724a75b9f051a75d5245e981b52194c5545b7701ca853b6fe4`. Historical X4d.1 and X4d.2 records/digests/gates remain immutable. |
-| C4 Ligero inline rate reduction | **FIRST PHASE-2 CAMPAIGN FAIL-CLOSED BEFORE WORKLOAD; OWNER AMENDMENT 1 SETS FUTURE EFFECTIVE-CPU FLOOR TO 13; LOCAL GREEN; NO REPLACEMENT PAIR, PERFORMANCE RESULT OR GATE VERDICT; HARD STOP BEFORE POD** (2026-07-27) | Return to inline T1 weight certification; same-build anchor `rate=1/4,Q=120` versus candidate `rate=1/8,Q=97`; no deferred settlement; any new pod/pair requires a new owner GO | Phase 1 preserves T1 boundary thinning, the two commitment layouts, `96+6` claims, fresh post-seal query timing, AES-PCG/MAC lifecycle and every non-PCS byte. New immutable `C4_WEIGHTS/C4_EMBED` double only code length and set `Q=97`; formula tests give exact candidate PCS/response/first-exchange **38,296,040 / 79,566,504 / 117,937,969 B**, a **4,977,848-B** response saving, with **78.86651649674867-bit** soundness above the exact **78.80929487391641-bit** anchor. Schema 11 adds fail-closed profile selection, exact geometry/byte/counter/soundness/device fields, current CUDA ABI 33 and no CPU fallback. The corrected clean checkpoint `3058c3c` admitted the exact Docker-local overlay, built ABI 33 and passed every preregistered CUDA/workspace check. Its sole anchor invocation then stopped before loading weights because cgroup quota 13.6 was conservatively reported as **13** against the original floor **16**. No PCG store, warmup, repetition or raw anchor record exists; anchor was not retried, rate8 and the pair selector did not start, and every C4 gate is **NOT EVALUATED**. Obstruction and teardown records remain immutable. Owner Amendment 1 uses direct historical production evidence: clean T1 A100 `b14577e` already records **13 effective CPUs / 8 Rayon**, real-PCG setup **38.845157077 s**, response session **5.289037812 s** and all T1 gates green. Future C4 admission therefore requires **>=13 effective CPUs**, rejects 12, and leaves every absolute and paired performance gate unchanged. New design SHA-256 `e58a7f965c4a28796a149308828a82128d3c86482d24c81a8c86a8484f4dcbf8`; append-only amendment record `c4-owner-amendment1-cpu-floor-2026-07-27-c7caf4a.json`, SHA-256 `98a1cd87d76f2bbc2bc0fa3103dafa46ac3805a175a6a1e8cd7312be7f4619f3`. Full workspace, 46 validator tests, CUDA-feature all-target compilation, formatting and diff hygiene are green. No pod was contacted after the amendment. Historical T1/C4/X4 records and recorded design digests remain immutable. |
+| C4 Ligero inline rate reduction | **CURRENT-BUILD T1 ANCHOR PASS; RATE-8 PRODUCER OBSTRUCTION BEFORE REAL-PCG/TIMING; ASSERTION FIXED LOCALLY; NO CANDIDATE, PAIR OR C4 PAIR VERDICT; POD STOPPED; HARD STOP** (2026-07-27) | Return to inline T1 weight certification; same-build anchor `rate=1/4,Q=120` versus candidate `rate=1/8,Q=97`; no deferred settlement; any replacement pair requires a new owner GO | Clean `4097179` on one A100/13-effective-CPU/eight-Rayon host passed ABI 33, 39 accelerator CUDA tests, 5 PCS CUDA tests, both production leakage smokes and the full release/CUDA workspace. The sole effective anchor is officially valid: exact PCS/response **43,273,888 / 84,544,352 B**, prefill/decode/response/session **2.405747059 / 1.606139665 / 4.011647701 / 5.245756507 s**, flat **1.235979019**, H2D **67,618,556 B**, sync **0.116591164 s**, all inherited T1 gates PASS. Record `c4-ligero-t1-anchor-a100-2026-07-27-4097179.json`, SHA-256 `6778cb837406c705c34aa0d3021da48791d2e6ccc8aa98580b0e19888e1ee18d`. The only authorized rate-8 attempt correctly computed **38,296,040 B** in its mock prepass but the shared C3/T1 assertion compared it to **43,273,888 B** and panicked before real-PCG setup, warmup or measured repetitions. No candidate JSON or pair exists. The local fix selects the exact expected byte count from the active Ligero geometry and permanently tests legacy/T1, C4 anchor and C4 rate-8; protocol, proof bytes, queries, soundness, timing boundaries and gates are unchanged. Diagnostic design SHA-256 `0b8739d6d8d5e1d605e2d4dfa8fb1f064dc046ca77b02d390ecc4d0f20461bcb`; the anchor retains its historical `e58a7f...` pin by exact Git SHA. Obstruction SHA-256 `c01de2c0c03e6a481f28c5d1112717d3fb393a7c97a22b55cfe7cc547bd6a6c5`; teardown SHA-256 `a8d3fa6f83cc0e83a17e2dfa9e56424cf9f8e43f3180240bfd274f7bb85679f7`. `runpodctl` stopped the pod and a fresh SSH connection was refused. Historical records/digests remain immutable; no retry is authorized. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -430,6 +430,63 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-27 — C4 replacement campaign: current-build anchor PASS; sole
+  rate-8 attempt obstructed before real-PCG/timing; no pair verdict; pod
+  stopped.** Owner GO admitted replacement pod `lq55v8ijz63z00` at endpoint
+  `154.54.102.39:16703`. Clean checkpoint
+  `4097179eac379dd7985b61ae23633de8900b6963` used one
+  A100-SXM4-80GB, 13 effective CPUs and eight Rayon workers on the exact
+  Docker-local overlay. CUDA ABI 33, all 39 accelerator CUDA tests, all five
+  PCS CUDA tests, the C4 scaled differential, both production leakage smokes
+  and the full release/CUDA workspace passed.
+
+  The preregistered example `cargo run` command omitted `--features cuda`.
+  `VOLTA_REQUIRE_CUDA=1` correctly rejected that CPU-only build before
+  benchmark setup; no record was emitted and only two empty store directories
+  existed. They were removed, the CUDA producer was built explicitly once,
+  and both effective invocations used that unchanged binary directly. This
+  operational correction is not a performance retry.
+
+  The sole effective anchor used fresh real-PCG stores, one warmup and three
+  measured repetitions. The official validator accepts
+  `c4-ligero-t1-anchor-a100-2026-07-27-4097179.json`, SHA-256
+  `6778cb837406c705c34aa0d3021da48791d2e6ccc8aa98580b0e19888e1ee18d`.
+  It records exact PCS/response **43,273,888 / 84,544,352 B**; median
+  prefill/decode/response/session **2.405747059 / 1.606139665 /
+  4.011647701 / 5.245756507 s**; flat cost **1.235979019232481**; H2D
+  **67,618,556 B**; sync **0.116591164 s**; setup **38.190167573 s**; and
+  `p7b_all_gates_pass=true`. This is a valid current-build T1 anchor, not a
+  C4 pair verdict.
+
+  Only after anchor validation did the sole authorized rate-8 attempt start.
+  The deterministic mock prepass generated the correct **38,296,040-B** PCS,
+  then the post-opening assertion compared it with the anchor-only
+  **43,273,888-B** constant because C4 shares the C3/T1 surface. The process
+  panicked at baseline `p6_report.rs:3074` before real-PCG setup, correlation
+  spool, warmup or measured repetition. Candidate store directories remained
+  empty; no rate-8 JSON and no pair exist. Candidate communication,
+  soundness and both paired performance gates are **NOT EVALUATED**.
+
+  The local repair selects the exact expected PCS byte count from the active
+  Ligero geometry and tests legacy/T1, C4 anchor and C4 rate-8 separately.
+  It changes no PCS operation, transcript, proof byte, query schedule,
+  soundness expression, timing boundary or gate. The corrected command builds
+  with `--features cuda` once and executes `target/release/p6_report`
+  directly. The updated future design pin is
+  `0b8739d6d8d5e1d605e2d4dfa8fb1f064dc046ca77b02d390ecc4d0f20461bcb`;
+  the raw anchor retains its recorded
+  `e58a7f965c4a28796a149308828a82128d3c86482d24c81a8c86a8484f4dcbf8`
+  pin, accepted only for its exact historical Git SHA. Append-only
+  obstruction record
+  `c4-phase2-rate8-producer-obstruction-2026-07-27-4097179.json` has SHA-256
+  `c01de2c0c03e6a481f28c5d1112717d3fb393a7c97a22b55cfe7cc547bd6a6c5`.
+  SSH-side `runpodctl stop pod lq55v8ijz63z00` succeeded and an independent
+  connection was refused; teardown record
+  `c4-control-plane-teardown-2026-07-27-4097179.json` has SHA-256
+  `a8d3fa6f83cc0e83a17e2dfa9e56424cf9f8e43f3180240bfd274f7bb85679f7`.
+  No selective retry is authorized. A new clean replacement pair, fresh
+  stores and a new explicit owner GO are required before any pod contact.
 
 - **2026-07-27 — C4 Owner Amendment 1 lowers only the future effective-CPU
   admission floor from 16 to 13; local green, hard stop before pod.** The

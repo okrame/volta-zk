@@ -91,7 +91,12 @@ C4_DEVICE_LIVE_GATE_BYTES = 40_000_000_000
 C4_HOST_RAM_FLOOR_BYTES = 64 * 1024 * 1024 * 1024
 C4_LOCAL_STORAGE_FLOOR_BYTES = 80_000_000_000
 C4_LOGICAL_CPU_FLOOR = 13
-C4_DESIGN_SHA256 = "e58a7f965c4a28796a149308828a82128d3c86482d24c81a8c86a8484f4dcbf8"
+C4_DESIGN_SHA256 = "0b8739d6d8d5e1d605e2d4dfa8fb1f064dc046ca77b02d390ecc4d0f20461bcb"
+C4_HISTORICAL_DESIGN_SHA256_BY_GIT_SHA = {
+    "4097179eac379dd7985b61ae23633de8900b6963": (
+        "e58a7f965c4a28796a149308828a82128d3c86482d24c81a8c86a8484f4dcbf8"
+    ),
+}
 C4_GEOMETRY = {
     "anchor": {
         "weights": {
@@ -8143,6 +8148,12 @@ def _c4_non_pcs_labels(row: dict[str, Any]) -> dict[str, int] | None:
     return labels
 
 
+def _c4_design_pin_valid(row: dict[str, Any], c4: dict[str, Any]) -> bool:
+    git_sha = row.get("git_sha")
+    expected = C4_HISTORICAL_DESIGN_SHA256_BY_GIT_SHA.get(git_sha, C4_DESIGN_SHA256)
+    return c4.get("design_sha256") == expected
+
+
 def _c4_record_valid(row: dict[str, Any]) -> bool:
     c4 = row.get("c4")
     if not isinstance(c4, dict):
@@ -8278,7 +8289,7 @@ def _c4_record_valid(row: dict[str, Any]) -> bool:
         and row.get("pcg_burn_on_success_or_abort") is True
         and row.get("pcg_reconnect_retry_resume_allowed") is False
         and c4.get("design_file") == "docs/c4-ligero-inline-rate-design.md"
-        and c4.get("design_sha256") == C4_DESIGN_SHA256
+        and _c4_design_pin_valid(row, c4)
         and isinstance(resource.get("selected_gpu"), str)
         and bool(resource["selected_gpu"])
         and "," not in resource["selected_gpu"]

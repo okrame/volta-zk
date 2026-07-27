@@ -143,7 +143,7 @@ const C4_LOCAL_STORAGE_FLOOR_BYTES: u64 = 80_000_000_000;
 const C4_LOGICAL_CPU_FLOOR: usize = 13;
 const C4_ANCHOR_CODEWORD_BYTES: u64 = 8_623_489_024;
 const C4_CANDIDATE_CODEWORD_BYTES: u64 = 17_246_978_048;
-const C4_DESIGN_SHA256: &str = "e58a7f965c4a28796a149308828a82128d3c86482d24c81a8c86a8484f4dcbf8";
+const C4_DESIGN_SHA256: &str = "0b8739d6d8d5e1d605e2d4dfa8fb1f064dc046ca77b02d390ecc4d0f20461bcb";
 const T1_SUB_CORRS: u64 = 4_793_590;
 const T1_FULL_CORRS: u64 = 181_933;
 const T1_ZERO_CLAIMS: usize = 8_170;
@@ -1416,6 +1416,15 @@ impl C4ProfileArg {
             Self::Anchor => C4_ANCHOR_CODEWORD_BYTES,
             Self::Rate8 => C4_CANDIDATE_CODEWORD_BYTES,
         }
+    }
+}
+
+fn expected_inline_pcs_bytes(layer_params: &LigeroParams, embed_params: &LigeroParams) -> u64 {
+    if same_ligero_params(layer_params, &C4_WEIGHTS) && same_ligero_params(embed_params, &C4_EMBED)
+    {
+        C4_PCS_OPENING_BYTES
+    } else {
+        C3_PCS_OPENING_BYTES
     }
 }
 
@@ -3072,8 +3081,9 @@ fn run_session_impl<'source>(
         if c3 {
             assert_eq!(pcs_rows.len(), 2, "C3 must open exactly two commitment trees");
             assert_eq!(
-                pcs_opening_bytes, C3_PCS_OPENING_BYTES,
-                "C3 PCS byte formula diverged from the preregistered exact value"
+                pcs_opening_bytes,
+                expected_inline_pcs_bytes(layer_params, embed_params),
+                "inline PCS byte formula diverged from the selected profile's preregistered exact value"
             );
         }
     }
@@ -5797,6 +5807,8 @@ mod report_tests {
     fn c4_profiles_match_preregistered_bytes_soundness_and_storage() {
         assert_eq!(C4_LOGICAL_CPU_FLOOR, 13);
         assert!(C4_LOGICAL_CPU_FLOOR > P7B_OFFICIAL_RAYON_THREADS);
+        assert_eq!(expected_inline_pcs_bytes(&C3_WEIGHTS, &C3_EMBED), C3_PCS_OPENING_BYTES);
+        assert_eq!(expected_inline_pcs_bytes(&C4_WEIGHTS, &C4_EMBED), C4_PCS_OPENING_BYTES);
         let anchor = pcs_response_soundness_bits(&[(&C3_WEIGHTS, 1, 96), (&C3_EMBED, 1, 6)]);
         let candidate = pcs_response_soundness_bits(&[(&C4_WEIGHTS, 1, 96), (&C4_EMBED, 1, 6)]);
         assert!((anchor - C4_ANCHOR_SOUNDNESS_BITS).abs() < 1e-12, "{anchor}");

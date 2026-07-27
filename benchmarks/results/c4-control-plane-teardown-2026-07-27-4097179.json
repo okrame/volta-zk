@@ -28,7 +28,7 @@
     "paired_record_emitted": false,
     "gate_verdict": false,
     "obstruction_record": "benchmarks/results/c4-phase2-rate8-producer-obstruction-2026-07-27-4097179.json",
-    "obstruction_record_sha256": "c01de2c0c03e6a481f28c5d1112717d3fb393a7c97a22b55cfe7cc547bd6a6c5"
+    "obstruction_record_sha256": "10697ed15949bf6e325309726505cc0ad44a58291a8e70be422b19851ebe55cc"
   },
   "assurance": "Append-only teardown evidence. The provider stop command succeeded from the pod session and a separate post-stop SSH connection was refused. The anchor remains a valid raw performance record; no rate8 performance record or C4 pair verdict exists."
 }

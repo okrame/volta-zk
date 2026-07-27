@@ -98,6 +98,18 @@
     "timing_boundary_changed": false,
     "gate_changed": false
   },
+  "post_fix_local_verification": {
+    "full_workspace_pass": true,
+    "p6_report_tests_passed": 13,
+    "p6_report_tests_ignored_preexisting": 1,
+    "report_validator_tests_passed": 23,
+    "cuda_feature_all_targets_compilation_pass": true,
+    "formatting_pass": true,
+    "diff_hygiene_pass": true,
+    "historical_anchor_official_validator_pass": true,
+    "record_hash_chain_pass": true,
+    "pod_contacted_after_fix": false
+  },
   "gate": {
     "anchor_correctness": "PASS",
     "anchor_absolute_timing": "PASS",

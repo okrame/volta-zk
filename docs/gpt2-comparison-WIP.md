@@ -177,10 +177,10 @@ real-PCG, warmup e timing per il confronto errato
 seleziona ora il byte count dal profilo ed è coperto localmente, ma non
 autorizza un retry. Il record di obstruction è
 `c4-phase2-rate8-producer-obstruction-2026-07-27-4097179.json` (SHA-256
-`c01de2c0c03e6a481f28c5d1112717d3fb393a7c97a22b55cfe7cc547bd6a6c5`);
+`10697ed15949bf6e325309726505cc0ad44a58291a8e70be422b19851ebe55cc`);
 il teardown è `c4-control-plane-teardown-2026-07-27-4097179.json`
 (SHA-256
-`a8d3fa6f83cc0e83a17e2dfa9e56424cf9f8e43f3180240bfd274f7bb85679f7`).
+`11d02e7f024a88cb9cdf4148c207d48a001861fda8467c6b41704d9f317bbd1c`).
 Il design futuro corretto ha digest
 `0b8739d6d8d5e1d605e2d4dfa8fb1f064dc046ca77b02d390ecc4d0f20461bcb`;
 il record anchor conserva il proprio pin storico `e58a7f...`. Il pod è

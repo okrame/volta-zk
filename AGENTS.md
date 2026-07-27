@@ -7,7 +7,8 @@ are CLOSED.
 X4/X4d is suspended with immutable history. Current phase: **C4 Ligero inline
 rate reduction** — same-build A100 comparison of the unchanged T1
 `rate=1/4,Q=120` anchor and the `rate=1/8,Q=97` candidate. Phase 1 is locally
-complete and at a HARD STOP before pod contact.
+complete; Phase 2 is owner-authorized and stopped before producer execution
+while the RunPod local-overlay admission correction is committed and tested.
 
 **Read `docs/prototype-status.md` first**, then the current task-specific
 design named by its latest ledger entry. For C4, that is

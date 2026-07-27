@@ -1,7 +1,8 @@
 # C4 — Ligero inline rate reduction
 
-**Status (2026-07-27): Phase 1 implemented and locally verified; HARD STOP
-before pod contact; no A100 or performance verdict.**
+**Status (2026-07-27): Phase 1 implemented and locally verified; Phase 2
+owner GO received for pod preflight; no producer workload, A100 performance
+record or gate verdict yet.**
 
 C4 returns the product path to the accepted T1 Ligero opening and compares
 two inline profiles on one unchanged build:
@@ -124,6 +125,20 @@ non-FUSE/non-network with at least 80,000,000,000 B free, at least 16 logical
 CPUs are visible and Rayon is exactly eight. Every observation and floor is
 serialized and rechecked by the validator.
 
+RunPod exposes its local container disk as `overlayfs`, while its separately
+provisioned `/workspace` volume is network FUSE. The first authorized Phase-2
+preflight therefore stopped before checkout, build, weights, PCG stores or
+any producer workload: the original filesystem allowlist admitted only the
+backing ext4/XFS spelling and rejected the provider's local overlay view.
+The admission correction keeps the 80,000,000,000-B floor and still rejects
+all FUSE/network storage. `overlayfs` is accepted only when `findmnt -T`
+reports source exactly `overlay`, filesystem exactly `overlay`, and mount
+options contain both Docker-local `upperdir=/var/lib/docker/` and
+`workdir=/var/lib/docker/`; the repository path, mount source, filesystem,
+mount options and boolean evidence are serialized and revalidated. Plain
+ext4 (`stat` spelling `ext2/ext3`) and XFS remain admitted without overlay
+evidence. No generic `overlayfs` or capacity waiver is introduced.
+
 `scripts/report.py --validate-c4-official RECORD` validates each raw A100
 profile. The paired selector requires an anchor and candidate on the same
 full Git SHA, instance, GPU, ABI and eight-worker configuration, distinct
@@ -162,7 +177,8 @@ GO. The admitted profile is:
 - one selected NVIDIA A100-SXM4 80 GB (`sm_80`), even on a multi-GPU host;
 - at least 40 GB free device memory;
 - at least 64 GiB host RAM;
-- at least 80 GB free local non-FUSE ext4/XFS/NVMe storage;
+- at least 80 GB free local non-FUSE ext4/XFS storage, either directly
+  mounted or exposed through the exact Docker-local overlay contract above;
 - at least 16 logical CPUs, with proving and PCG Rayon fixed at exactly 8;
 - CUDA toolchain and `nvcc` capable of building the current fail-closed ABI.
 
@@ -260,5 +276,6 @@ same-build anchor, the C4 candidate, first-exchange and two/five-response
 amortization, cost/resource deltas, exact record hashes and the immutable X4
 history. Only then may its stale-build warning be removed.
 
-**HARD STOP after the local checkpoint. No pod contact until the owner
-supplies an admitted endpoint and gives a new explicit GO.**
+The local hard stop was lifted by the owner's explicit Phase-2 GO. No
+producer workload may start until the storage-admission correction is a
+clean committed build and the complete preflight passes.

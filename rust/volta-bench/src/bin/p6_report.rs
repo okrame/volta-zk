@@ -143,7 +143,7 @@ const C4_LOCAL_STORAGE_FLOOR_BYTES: u64 = 80_000_000_000;
 const C4_LOGICAL_CPU_FLOOR: usize = 16;
 const C4_ANCHOR_CODEWORD_BYTES: u64 = 8_623_489_024;
 const C4_CANDIDATE_CODEWORD_BYTES: u64 = 17_246_978_048;
-const C4_DESIGN_SHA256: &str = "bcc69cd39419c497dae45b695b15e5f1fd6a06e3f300d46e8581fb19976582eb";
+const C4_DESIGN_SHA256: &str = "a475379f9a690b76864e98a9a3e7bf60e46c2315bc5c95a347a58e0af41b3b3a";
 const T1_SUB_CORRS: u64 = 4_793_590;
 const T1_FULL_CORRS: u64 = 181_933;
 const T1_ZERO_CLAIMS: usize = 8_170;
@@ -340,13 +340,30 @@ fn c4_host_ram_bytes() -> Option<u64> {
     })
 }
 
-fn c4_storage_admission(path: &std::path::Path) -> Option<(String, u64)> {
+fn c4_storage_admission(path: &std::path::Path) -> Option<(String, String, String, String, u64)> {
     let fs_output =
         std::process::Command::new("stat").args(["-f", "-c", "%T"]).arg(path).output().ok()?;
     if !fs_output.status.success() {
         return None;
     }
     let fs_type = String::from_utf8_lossy(&fs_output.stdout).trim().to_owned();
+    let mount_output = std::process::Command::new("findmnt")
+        .args(["-T"])
+        .arg(path)
+        .args(["-n", "-o", "SOURCE,FSTYPE,OPTIONS"])
+        .output()
+        .ok()?;
+    if !mount_output.status.success() {
+        return None;
+    }
+    let mount_line = String::from_utf8_lossy(&mount_output.stdout);
+    let mut mount_fields = mount_line.trim().splitn(3, char::is_whitespace);
+    let mount_source = mount_fields.next()?.to_owned();
+    let mount_fs_type = mount_fields.next()?.to_owned();
+    let mount_options = mount_fields.next()?.trim().to_owned();
+    if mount_source.is_empty() || mount_fs_type.is_empty() || mount_options.is_empty() {
+        return None;
+    }
     let df_output = std::process::Command::new("df").args(["-PB1"]).arg(path).output().ok()?;
     if !df_output.status.success() {
         return None;
@@ -358,7 +375,7 @@ fn c4_storage_admission(path: &std::path::Path) -> Option<(String, u64)> {
         .nth(3)?
         .parse::<u64>()
         .ok()?;
-    Some((fs_type, free_bytes))
+    Some((fs_type, mount_source, mount_fs_type, mount_options, free_bytes))
 }
 
 fn c4_gpu_free_bytes(selected_gpu: &str) -> Option<u64> {
@@ -373,8 +390,19 @@ fn c4_gpu_free_bytes(selected_gpu: &str) -> Option<u64> {
     mib.checked_mul(1024 * 1024)
 }
 
-fn c4_local_storage_fs_type(fs_type: &str) -> bool {
-    matches!(fs_type, "ext2/ext3" | "xfs")
+fn c4_local_storage_admitted(
+    fs_type: &str,
+    mount_source: &str,
+    mount_fs_type: &str,
+    mount_options: &str,
+) -> (bool, bool) {
+    let direct_local = matches!((fs_type, mount_fs_type), ("ext2/ext3", "ext4") | ("xfs", "xfs"));
+    let docker_local_overlay = fs_type == "overlayfs"
+        && mount_source == "overlay"
+        && mount_fs_type == "overlay"
+        && mount_options.contains("upperdir=/var/lib/docker/")
+        && mount_options.contains("workdir=/var/lib/docker/");
+    (direct_local || docker_local_overlay, docker_local_overlay)
 }
 
 fn c4_resource_admission(
@@ -388,8 +416,20 @@ fn c4_resource_admission(
     let gpu_free_bytes = c4_gpu_free_bytes(&selected_gpu)?;
     let host_ram_bytes = c4_host_ram_bytes()?;
     let storage_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let (local_storage_fs_type, local_storage_free_bytes) = c4_storage_admission(&storage_path)?;
-    let non_fuse_local_storage = c4_local_storage_fs_type(&local_storage_fs_type);
+    let (
+        local_storage_fs_type,
+        local_storage_mount_source,
+        local_storage_mount_fs_type,
+        local_storage_mount_options,
+        local_storage_free_bytes,
+    ) = c4_storage_admission(&storage_path)?;
+    let (non_fuse_local_storage, container_overlay_local_backing_evidence) =
+        c4_local_storage_admitted(
+            &local_storage_fs_type,
+            &local_storage_mount_source,
+            &local_storage_mount_fs_type,
+            &local_storage_mount_options,
+        );
     let overall_pass = gpu_free_bytes >= C4_DEVICE_LIVE_GATE_BYTES
         && host_ram_bytes >= C4_HOST_RAM_FLOOR_BYTES
         && local_storage_free_bytes >= C4_LOCAL_STORAGE_FLOOR_BYTES
@@ -404,12 +444,16 @@ fn c4_resource_admission(
         host_ram_floor_bytes: C4_HOST_RAM_FLOOR_BYTES,
         local_storage_path: storage_path.display().to_string(),
         local_storage_fs_type,
+        local_storage_mount_source,
+        local_storage_mount_fs_type,
+        local_storage_mount_options,
         local_storage_free_bytes,
         local_storage_floor_bytes: C4_LOCAL_STORAGE_FLOOR_BYTES,
         detected_logical_cpus: logical_cpu_cores,
         logical_cpu_floor: C4_LOGICAL_CPU_FLOOR,
         rayon_workers: rayon_threads,
         non_fuse_local_storage,
+        container_overlay_local_backing_evidence,
         overall_pass,
     })
 }
@@ -1182,12 +1226,16 @@ struct C4ResourceAdmission {
     host_ram_floor_bytes: u64,
     local_storage_path: String,
     local_storage_fs_type: String,
+    local_storage_mount_source: String,
+    local_storage_mount_fs_type: String,
+    local_storage_mount_options: String,
     local_storage_free_bytes: u64,
     local_storage_floor_bytes: u64,
     detected_logical_cpus: usize,
     logical_cpu_floor: usize,
     rayon_workers: usize,
     non_fuse_local_storage: bool,
+    container_overlay_local_backing_evidence: bool,
     overall_pass: bool,
 }
 
@@ -5774,11 +5822,41 @@ mod report_tests {
         assert_eq!(anchor_codewords, C4_ANCHOR_CODEWORD_BYTES);
         assert_eq!(candidate_codewords, C4_CANDIDATE_CODEWORD_BYTES);
         assert_eq!(candidate_codewords, 2 * anchor_codewords);
-        assert!(c4_local_storage_fs_type("ext2/ext3"));
-        assert!(c4_local_storage_fs_type("xfs"));
-        assert!(!c4_local_storage_fs_type("overlayfs"));
-        assert!(!c4_local_storage_fs_type("fuseblk"));
-        assert!(!c4_local_storage_fs_type("nfs"));
+        assert_eq!(
+            c4_local_storage_admitted("ext2/ext3", "/dev/nvme0n1p1", "ext4", "rw,relatime"),
+            (true, false)
+        );
+        assert_eq!(
+            c4_local_storage_admitted("xfs", "/dev/mapper/local", "xfs", "rw,relatime"),
+            (true, false)
+        );
+        let overlay_options = concat!(
+            "rw,relatime,",
+            "upperdir=/var/lib/docker/100000.100000/overlay2/abc/diff,",
+            "workdir=/var/lib/docker/100000.100000/overlay2/abc/work"
+        );
+        assert_eq!(
+            c4_local_storage_admitted("overlayfs", "overlay", "overlay", overlay_options),
+            (true, true)
+        );
+        assert_eq!(
+            c4_local_storage_admitted(
+                "overlayfs",
+                "overlay",
+                "overlay",
+                "rw,upperdir=/tmp/diff,workdir=/tmp/work"
+            ),
+            (false, false)
+        );
+        assert_eq!(
+            c4_local_storage_admitted(
+                "fuseblk",
+                "mfs#provider",
+                "fuse",
+                "rw,upperdir=/var/lib/docker/a,workdir=/var/lib/docker/b"
+            ),
+            (false, false)
+        );
     }
 
     #[test]

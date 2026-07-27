@@ -7,13 +7,13 @@ are CLOSED.
 X4/X4d is suspended with immutable history. Current phase: **C4 Ligero inline
 rate reduction** — same-build A100 comparison of the unchanged T1
 `rate=1/4,Q=120` anchor and the `rate=1/8,Q=97` candidate. Phase 1 is locally
-complete. The first Phase-2 campaign is **fail-closed at anchor resource
-admission with no workload, performance record or gate verdict**: the selected
-pod exposed 13.6 cgroup CPUs, conservatively admitted as 13 against the frozen
-minimum of 16. The candidate was not started and the pod is stopped. Owner
-Amendment 1 is locally complete: the future floor is 13 effective CPUs, backed
-by the immutable green T1 A100 record at 13 CPUs / 8 Rayon; 12 still rejects.
-Another pod contact or production pair requires a new explicit owner GO.
+complete. The replacement Phase-2 campaign produced a clean, officially valid
+current-build anchor at `4097179`, then stopped fail-closed before rate-8
+real-PCG setup or timing: the shared producer asserted the anchor PCS size
+against the correctly computed candidate size. The assertion is fixed and
+covered locally, but no candidate record, pair or C4 pair verdict exists. The
+pod is stopped. Another pod contact or replacement production pair requires a
+new explicit owner GO.
 
 **Read `docs/prototype-status.md` first**, then the current task-specific
 design named by its latest ledger entry. For C4, that is

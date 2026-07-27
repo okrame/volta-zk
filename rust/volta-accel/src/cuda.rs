@@ -465,6 +465,8 @@ type Fp2DotDevice =
 type Fp2ProductRoundDevice = Fp2DotDevice;
 type Fp2ProductRoundIntoDevice =
     unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize, u64, usize) -> c_int;
+type Fp2ProductRoundScaledIntoDevice =
+    unsafe extern "C" fn(*mut c_void, u64, usize, u64, usize, usize, Fp2Repr, u64, usize) -> c_int;
 type ClaimReduceFTwoIntoDevice = unsafe extern "C" fn(
     *mut c_void,
     u64,
@@ -1014,6 +1016,7 @@ struct Api {
     fp2_dot_device: Fp2DotDevice,
     fp2_product_round_device: Fp2ProductRoundDevice,
     fp2_product_round_into_device: Fp2ProductRoundIntoDevice,
+    fp2_product_round_scaled_into_device: Fp2ProductRoundScaledIntoDevice,
     claim_reduce_f_two_into_device: ClaimReduceFTwoIntoDevice,
     x4d_link_eq_accumulate_device: X4dLinkEqAccumulateDevice,
     fp2_dot_scaled_pair_into_device: Fp2DotScaledPairIntoDevice,
@@ -1254,6 +1257,9 @@ impl CudaContext {
             },
             fp2_product_round_into_device: unsafe {
                 load_symbol(handle, b"volta_cuda_fp2_product_round_into_device\0")?
+            },
+            fp2_product_round_scaled_into_device: unsafe {
+                load_symbol(handle, b"volta_cuda_fp2_product_round_scaled_into_device\0")?
             },
             claim_reduce_f_two_into_device: unsafe {
                 load_symbol(handle, b"volta_cuda_claim_reduce_f_two_into_device\0")?
@@ -2887,6 +2893,36 @@ impl CudaContext {
                 b,
                 b_offset,
                 pairs,
+                output,
+                output_offset,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn fp2_product_round_scaled_into_device(
+        &mut self,
+        a: u64,
+        a_offset: usize,
+        b: u64,
+        b_offset: usize,
+        pairs: usize,
+        scale: Fp2,
+        output: u64,
+        output_offset: usize,
+    ) -> Result<(), AccelError> {
+        // SAFETY: Backend validates both input regions and the two-element
+        // mailbox slot. The C ABI applies `scale` to the compressed message,
+        // never to either fold input.
+        self.check(unsafe {
+            (self.api.fp2_product_round_scaled_into_device)(
+                self.raw,
+                a,
+                a_offset,
+                b,
+                b_offset,
+                pairs,
+                scale.into(),
                 output,
                 output_offset,
             )

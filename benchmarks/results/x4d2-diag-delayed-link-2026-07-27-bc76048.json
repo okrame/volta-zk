@@ -1,0 +1,260 @@
+{
+  "schema": 1,
+  "milestone": "X4d.2-delayed-link-local-diagnosis-v1",
+  "date": "2026-07-27",
+  "base_git_sha": "bc76048cb7249575f145fda4a6f8d917cca5cca8",
+  "failed_production_build": "e4e2b14060a9d2a23b98e8d8fdca2ac3e8b2e729",
+  "git_dirty": true,
+  "design_path": "docs/x4d2-byte-identical-resident-settlement-design.md",
+  "design_sha256": "91cc8eb6566122724a75b9f051a75d5245e981b52194c5545b7701ca853b6fe4",
+  "producer_path": "rust/volta-bench/src/bin/x4d2_delayed_link_reproducer.rs",
+  "producer_source_sha256": "83836b5b70879f7a6bc238faf0ac85a19aefff1b75cdc4b6bfa3344c3f1f74db",
+  "pod_contacted": false,
+  "production_pair_started": false,
+  "replacement_pair_authorized": false,
+  "production_measurement": false,
+  "performance_result": false,
+  "gate_verdict": false,
+  "result": "PASS_LOCAL_DIAGNOSIS_AND_BYTE_IDENTITY_ONLY",
+  "immutable_history": {
+    "x4d2_phase1_record": "benchmarks/results/x4d2-phase1-local-identity-2026-07-26-d298370.json",
+    "x4d2_phase1_sha256": "92def69607c9d59486220fc7f3571050f7d35afa76e8eeca039a7d5edcb3c842",
+    "x4d2_phase1_recorded_design_sha256": "9ffa929498e141917d242653a6563888e157dcc12d36dc3d6e9a8b52d2f5a98f",
+    "x4d2_obstruction_record": "benchmarks/results/x4d2-phase2-k1-obstruction-2026-07-26-e4e2b14.json",
+    "x4d2_obstruction_sha256": "fd7dbcddf804e8bc86b7da29c78d48a36e7fc7b273d1ee0b34cb9ab4d66a1a86",
+    "x4d2_teardown_record": "benchmarks/results/x4d2-control-plane-teardown-2026-07-26-e4e2b14.json",
+    "x4d2_teardown_sha256": "11fa82792b7cd41ed52237867b8107b85029991e21e11874c6381ab88780fbff",
+    "x4d_deferred_design_sha256": "df8e36e8402da73e29b2e3ee68f929a862bf19dcab7012c7369cf4dc4ee613df",
+    "x4d1_history_modified": false,
+    "frozen_gates_modified": false
+  },
+  "pre_fix_failure": {
+    "arithmetic_baseline": "e4e2b14060a9d2a23b98e8d8fdca2ac3e8b2e729",
+    "extraction_checkpoint_base": "bc76048cb7249575f145fda4a6f8d917cca5cca8",
+    "orchestrator": "prove_x4d_delayed_link_resident_sequential_v4",
+    "suspected_omission_intentionally_preserved": true,
+    "command": "cd rust && cargo test -p volta-pcs x4::x4c_v4::tests::x4d_resident_production_relative_shape_matches_independent_reference -- --exact --nocapture",
+    "expected_exit": "FAIL",
+    "captured_output_sha256": "2ac466d9bcfc61fc5ef0a83c59d5bc8b0c2f32434ed17e37de1b7ac5cc925c1f",
+    "fixture": {
+      "round_count": 9,
+      "local_max_mu": 8,
+      "physical_source_slots": 51,
+      "resident_terms": 51,
+      "logical_contributions": 102,
+      "dimensions_and_multiplicities": [
+        {
+          "dimension": 8,
+          "multiplicity": 2
+        },
+        {
+          "dimension": 4,
+          "multiplicity": 36
+        },
+        {
+          "dimension": 2,
+          "multiplicity": 13
+        }
+      ],
+      "two_independently_pointed_contributions_per_slot": true,
+      "duplicate_slot_fusion_exercised": true
+    },
+    "first_divergence": {
+      "term_index": 0,
+      "round": 1,
+      "dimension": 8,
+      "active_len": 256,
+      "leading_virtual_rounds": 0,
+      "observed_unscaled_message": [
+        [
+          13799617702964774841,
+          9825127679694975049
+        ],
+        [
+          11269937139495800329,
+          6547251504081734707
+        ]
+      ],
+      "expected_scaled_message": [
+        [
+          18434659355227187076,
+          17030266533995709689
+        ],
+        [
+          2934736563073931943,
+          17933557729959337794
+        ]
+      ]
+    },
+    "terminal_error": {
+      "kind": "X4dResidentTerminalValueMismatch",
+      "term_index": 0,
+      "dimension": 8,
+      "active_len": 1,
+      "leading_virtual_rounds": 0,
+      "current_round": 9,
+      "expected": [
+        18183803614264291991,
+        5638876947962906968
+      ],
+      "observed": [
+        7770634438871490339,
+        14398301263355612508
+      ]
+    },
+    "initial_claim_check_equal": true,
+    "correlation_ledger_equal": true,
+    "transcript_ledger_equal_before_divergence": true,
+    "challenge_sequence_equal_before_divergence": true,
+    "fold_state_equal_before_divergence": true,
+    "affected_terms_at_first_real_round": 51,
+    "resident_terms_checked": 51,
+    "root_cause": "the real product-round branch omitted the term virtual_factor while the virtual, active_len==1, terminal and independent CPU-reference paths applied it"
+  },
+  "repair": {
+    "cuda_abi_version": 33,
+    "operation_contract": "Backend::fp2_product_round_scaled_into_device",
+    "cpu_backend": "BackendKind::Cpu resident typed-buffer implementation",
+    "cuda_rust_wrapper": "CudaContext::fp2_product_round_scaled_into_device",
+    "cuda_c_abi": "volta_cuda_fp2_product_round_scaled_into_device",
+    "cuda_message_kernel": "scale_product_round_message",
+    "existing_product_terms_kernel": "fp2_product_round_terms",
+    "existing_reduction_kernel": "reduce_product_round",
+    "message_scaled_exactly_once": true,
+    "fold_state_scaled": false,
+    "scale_one_raw_fp2repr_mailbox_byte_identical": true,
+    "sequential_transcript_schedule_changed": false,
+    "proof_grammar_or_codec_changed": false,
+    "correlation_schedule_changed": false
+  },
+  "post_fix_identity": {
+    "command": "cd rust && cargo test -p volta-pcs x4::x4c_v4::tests::x4d_resident_production_relative_shape_matches_independent_reference -- --exact --nocapture",
+    "result": "PASS",
+    "captured_output_sha256": "4f0e0f78210b032e7d6597c3cd7095ba411658ffc8a3e75638c0f6c993316a27",
+    "physical_source_slots": 51,
+    "resident_terms": 51,
+    "logical_contributions": 102,
+    "term_round_states_compared": 459,
+    "full_source_and_equality_fold_digests_compared": 918,
+    "round_messages_equal": true,
+    "challenges_equal": true,
+    "fold_states_equal": true,
+    "terminal_point_equal": true,
+    "terminal_value_equal": true,
+    "correlation_ledger_equal": true,
+    "transcript_ledger_equal": true,
+    "authenticated_output_link_proof_equal": true,
+    "encoded_proof_bytes_equal": true
+  },
+  "permanent_negative_diagnostics": {
+    "unscaled_real_round": {
+      "fault_mode": "FaultUnscaled",
+      "expected_error": "X4dResidentTerminalValueMismatch",
+      "pass": true
+    },
+    "undrained_geometry": {
+      "fault_mode": "FaultSkipFold",
+      "expected_error": "X4dResidentGeometryNotDrained",
+      "observed_active_len": 2,
+      "pass": true
+    },
+    "cpu_shadow_in_production_timed_path": false
+  },
+  "adjacent_resident_surface_audit": [
+    {
+      "symbols": "volta_cuda_claim_reduce_f_two_into_device; claim_reduce_eq_seed; claim_reduce_eq_expand; claim_reduce_add",
+      "classification": "PASS"
+    },
+    {
+      "symbols": "volta_cuda_x4d_link_eq_accumulate_device; x4d_link_eq_accumulate_kernel",
+      "classification": "PASS"
+    },
+    {
+      "symbols": "volta_cuda_fp2_dot_scaled_pair_into_device; fp2_dot_terms; reduce_dot; x4d_scaled_dot_pair_kernel",
+      "classification": "PASS"
+    },
+    {
+      "symbols": "volta_cuda_fp2_pair_sum_device; reduce_product_round",
+      "classification": "PASS"
+    },
+    {
+      "symbols": "volta_cuda_fp2_fold_rows_device; fp2_fold_rows",
+      "classification": "PASS"
+    },
+    {
+      "symbols": "shared private workspace slots 12/13",
+      "classification": "PASS",
+      "reason": "pre-reserved ProductRoundAcc covers DotAcc, one ordered stream consumes results before slot reuse, and no alias, stale-data or interleaving defect was demonstrated"
+    }
+  ],
+  "scale_ladder": {
+    "lower_command": "cd rust && cargo test -p volta-pcs x4::x4c_v4::tests::x4d2_standalone_cpu_backend_runs_the_lower_production_scale_ladder -- --exact --nocapture",
+    "lower_max_mu": [
+      20,
+      22
+    ],
+    "lower_result": "PASS",
+    "upper_command": "cd rust && cargo test --release -p volta-pcs x4::x4c_v4::tests::x4d2_standalone_cpu_backend_runs_the_upper_production_scale_ladder -- --exact --ignored --nocapture",
+    "upper_max_mu": [
+      24,
+      26
+    ],
+    "upper_result": "PASS",
+    "relative_dimensions": "max/max-4/max-6",
+    "multiplicity_per_dimension_per_ladder_case": 1,
+    "exact_production_shape_cuda_case_compiled": true,
+    "exact_production_shape_cuda_case_executed_locally": false,
+    "real_cuda_executed_locally": false,
+    "reason": "no local CUDA backend shared object or nvcc; pod contact prohibited"
+  },
+  "synthetic_production_shape_projection": {
+    "round_count": 27,
+    "physical_source_slots": 51,
+    "logical_contributions": 102,
+    "source_symbols": 298844160,
+    "source_fp2_bytes": 4781506560,
+    "per_term_fold_scratch_symbols": 448266240,
+    "per_term_fold_scratch_bytes": 7172259840,
+    "source_and_equality_device_tier_bytes": 9563013120,
+    "generation_fold_and_mailbox_scratch_bytes": 9319745552,
+    "projected_device_live_bytes": 18882758672,
+    "projected_diagnostic_host_peak_bytes": 15418261504,
+    "classification": "ANALYTIC_PROJECTION_NOT_MEASUREMENT"
+  },
+  "verification": {
+    "resident_orchestrator_vs_independent_cpu_reference": "PASS",
+    "permanent_unscaled_round_negative": "PASS",
+    "diverse_geometry_and_scale_ladder": "PASS",
+    "k1_k16_physical_counter_equality": "PASS",
+    "real_two_response_fixture": "PASS",
+    "cap_tamper_stale_root_freshness_abort_burn_codec_correlation_and_settlement_acceptance": "PASS",
+    "full_workspace_command": "cd rust && cargo test --workspace -q -- --test-threads=1",
+    "full_workspace": "PASS",
+    "workspace_serialization_reason": "avoid local 11-GiB host overcommit; allocation-free config_specs is used by the pre-existing production-geometry assertion",
+    "report_validator_command": "pytest -q tests/test_report.py",
+    "report_validator": "PASS_23_TESTS",
+    "cuda_feature_command": "cd rust && cargo check --workspace --all-targets --features cuda",
+    "cuda_feature_compilation": "PASS",
+    "cuda_translation_unit_compiled_locally": false,
+    "cuda_translation_unit_reason": "nvcc unavailable on the local host",
+    "format_command": "cd rust && cargo fmt --all -- --check",
+    "format": "PASS",
+    "diff_hygiene_command": "git diff --check",
+    "diff_hygiene": "PASS"
+  },
+  "standalone_reproducer": {
+    "command": "cd rust && cargo run --release -p volta-bench --features cuda --bin x4d2_delayed_link_reproducer -- --backend cuda --output ../benchmarks/results/x4d2-diag-<date>-<gitsha>.json --hourly-usd-scenario 2.00",
+    "requires_weights": false,
+    "requires_schema3_onboarding": false,
+    "requires_durable_tier": false,
+    "requires_fase_d_connection": false,
+    "requires_settlement": false,
+    "fail_closed_cuda": true,
+    "fresh_append_only_output": true,
+    "checks_rounds_challenges_folds_terminal_and_counters": true,
+    "runtime_and_cost_are_projection_until_measured": true,
+    "executed_locally": false
+  },
+  "assurance": "Local diagnostic and permanent byte-identity evidence only; no performance result, no gate verdict, no replacement production pair and no pod contact.",
+  "hard_stop": "NO_POD_CONTACT_PENDING_NEW_EXPLICIT_OWNER_GO"
+}

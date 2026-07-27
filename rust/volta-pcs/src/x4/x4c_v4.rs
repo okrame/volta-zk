@@ -139,6 +139,22 @@ pub(crate) struct X4cDraftPartsV4<'a> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum X4cErrorV4 {
     InvalidGeometry(&'static str),
+    X4dResidentGeometryNotDrained {
+        term_index: usize,
+        dimension: usize,
+        active_len: usize,
+        leading_virtual_rounds: usize,
+        current_round: usize,
+    },
+    X4dResidentTerminalValueMismatch {
+        term_index: usize,
+        dimension: usize,
+        active_len: usize,
+        leading_virtual_rounds: usize,
+        current_round: usize,
+        expected: Fp2,
+        observed: Fp2,
+    },
     Overflow,
     Runtime(String),
     Frame(FrameError),
@@ -1586,20 +1602,21 @@ pub struct X4dResidentLinkOutputV4 {
 }
 
 #[derive(Debug)]
-struct X4dCudaResidentLinkTermV4 {
+struct X4dResidentLinkStateV4 {
     source: DeviceBuffer<Fp2Repr>,
     equality: DeviceBuffer<Fp2Repr>,
     source_ping: DeviceBuffer<Fp2Repr>,
     source_pong: DeviceBuffer<Fp2Repr>,
     equality_scratch: DeviceBuffer<Fp2Repr>,
     active_len: usize,
+    dimension: usize,
     leading_virtual_rounds: usize,
     virtual_factor: Fp2,
     source_state: u8,
     equality_primary: bool,
 }
 
-impl X4dCudaResidentLinkTermV4 {
+impl X4dResidentLinkStateV4 {
     fn source_slice(&self) -> Result<DeviceSlice<'_, Fp2Repr>, X4cErrorV4> {
         let buffer = match self.source_state {
             0 => &self.source,
@@ -1614,6 +1631,917 @@ impl X4dCudaResidentLinkTermV4 {
         let buffer = if self.equality_primary { &self.equality } else { &self.equality_scratch };
         DeviceSlice::new(buffer, 0, self.active_len).map_err(Into::into)
     }
+}
+
+fn release_x4d_resident_link_buffers_v4(
+    backend: &mut Backend,
+    states: Vec<X4dResidentLinkStateV4>,
+    generation_one: DeviceBuffer<Fp2Repr>,
+    generation_two: DeviceBuffer<Fp2Repr>,
+    point_row: DeviceBuffer<Fp2Repr>,
+    mailbox: DeviceBuffer<Fp2Repr>,
+) -> Result<(), X4cErrorV4> {
+    let mut first_error = None;
+    for state in states {
+        for result in [
+            backend.free_device(state.source),
+            backend.free_device(state.equality),
+            backend.free_device(state.source_ping),
+            backend.free_device(state.source_pong),
+            backend.free_device(state.equality_scratch),
+        ] {
+            if let Err(error) = result {
+                first_error.get_or_insert(error);
+            }
+        }
+    }
+    for result in [
+        backend.free_device(generation_one),
+        backend.free_device(generation_two),
+        backend.free_device(point_row),
+        backend.free_device(mailbox),
+    ] {
+        if let Err(error) = result {
+            first_error.get_or_insert(error);
+        }
+    }
+    match first_error {
+        Some(error) => Err(error.into()),
+        None => Ok(()),
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[allow(dead_code)]
+enum X4dProductRoundModeV4 {
+    #[default]
+    UnscaledBaseline,
+    Scaled,
+    FaultUnscaled {
+        term_index: usize,
+        round: usize,
+    },
+    FaultSkipFold {
+        term_index: usize,
+        round: usize,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct X4dResidentTermRoundTraceV4 {
+    dimension: usize,
+    active_len: usize,
+    leading_virtual_rounds: usize,
+    virtual_factor: Fp2,
+    message: [Fp2; 2],
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct X4dResidentRoundTraceV4 {
+    round: usize,
+    terms: Vec<X4dResidentTermRoundTraceV4>,
+    aggregate: [Fp2; 2],
+    challenge: Fp2,
+    post_fold_active_lens: Vec<usize>,
+    post_fold_leading_virtual_rounds: Vec<usize>,
+    post_fold_virtual_factors: Vec<Fp2>,
+    post_fold_source_digests: Vec<[u8; 32]>,
+    post_fold_equality_digests: Vec<[u8; 32]>,
+}
+
+fn x4d_fp2_repr_digest_v4(values: &[Fp2Repr]) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    for value in values {
+        hasher.update(&value.c0.to_le_bytes());
+        hasher.update(&value.c1.to_le_bytes());
+    }
+    *hasher.finalize().as_bytes()
+}
+
+#[derive(Clone)]
+struct X4dDelayedLinkOracleStateV4 {
+    evaluations: Vec<Fp2>,
+    equality: Vec<Fp2>,
+    leading_virtual_rounds: usize,
+    virtual_factor: Fp2,
+}
+
+impl X4dDelayedLinkOracleStateV4 {
+    fn round_message(&self) -> [Fp2; 2] {
+        if self.leading_virtual_rounds > 0 || self.evaluations.len() == 1 {
+            let at_zero = self
+                .evaluations
+                .iter()
+                .zip(&self.equality)
+                .fold(Fp2::ZERO, |sum, (value, equality)| {
+                    sum + *value * *equality * self.virtual_factor
+                });
+            return [at_zero, Fp2::ZERO - at_zero];
+        }
+        let mut at_zero = Fp2::ZERO;
+        let mut at_two = Fp2::ZERO;
+        for (values, equalities) in
+            self.evaluations.chunks_exact(2).zip(self.equality.chunks_exact(2))
+        {
+            let value_two = values[1] + values[1] - values[0];
+            let equality_two = equalities[1] + equalities[1] - equalities[0];
+            at_zero += values[0] * equalities[0] * self.virtual_factor;
+            at_two += value_two * equality_two * self.virtual_factor;
+        }
+        [at_zero, at_two]
+    }
+
+    fn bind(&mut self, challenge: Fp2) {
+        if self.leading_virtual_rounds > 0 {
+            self.virtual_factor = self.virtual_factor * (Fp2::ONE - challenge);
+            self.leading_virtual_rounds -= 1;
+            return;
+        }
+        if self.evaluations.len() == 1 {
+            self.virtual_factor = self.virtual_factor * (Fp2::ONE - challenge);
+            return;
+        }
+        let fold = |values: &mut Vec<Fp2>| {
+            let half = values.len() / 2;
+            for index in 0..half {
+                values[index] =
+                    values[2 * index] + challenge * (values[2 * index + 1] - values[2 * index]);
+            }
+            values.truncate(half);
+        };
+        fold(&mut self.evaluations);
+        fold(&mut self.equality);
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct X4dDelayedLinkDiagnosticCaseV4 {
+    pub max_mu: usize,
+    pub round_count: usize,
+    pub dimension_multiplicities: [(usize, usize); 3],
+    pub physical_source_slots: u64,
+    pub resident_terms: u64,
+    pub logical_contributions: u64,
+    pub source_symbols: u64,
+    pub round_messages_checked: u64,
+    pub challenges_checked: u64,
+    pub fold_states_checked: u64,
+    pub correction_count: u64,
+    pub transcript_bytes: u64,
+    pub correlation_counters_equal: bool,
+    pub correlation_allocation_ledger_equal: bool,
+    pub transcript_ledger_equal: bool,
+    pub terminal_point_equal: bool,
+    pub terminal_value_equal: bool,
+    pub resident_counters: X4dResidentLinkCountersV4,
+    pub analytic_host_source_bytes: u64,
+    pub analytic_device_live_bytes: u64,
+    pub trace_blake3: [u8; 32],
+}
+
+fn x4d_diagnostic_symbol_v4(slot: usize, index: usize, lane: u64) -> Fp2 {
+    let ordinal =
+        (slot as u64).wrapping_mul(0x1_0000_01b3).wrapping_add(index as u64).wrapping_add(lane);
+    Fp2::new(
+        Fp::new(ordinal.wrapping_mul(0x9e37_79b1).wrapping_add(17)),
+        Fp::new(ordinal.wrapping_mul(0x85eb_ca6b).wrapping_add(29)),
+    )
+}
+
+fn x4d_trace_hash_fp2_v4(hasher: &mut blake3::Hasher, value: Fp2) {
+    hasher.update(&value.c0.value().to_le_bytes());
+    hasher.update(&value.c1.value().to_le_bytes());
+}
+
+/// Standalone synthetic differential for the X4d.2 delayed-link resident
+/// state machine. It needs no weights, onboarding record, durable tier,
+/// connection, or settlement. Production callers do not enable its trace
+/// downloads; this function exists only for the local/permanent diagnostic
+/// and the separately authorized CUDA reproducer.
+pub fn x4d2_delayed_link_diagnostic_case_v4(
+    backend: &mut Backend,
+    max_mu: usize,
+    multiplicities: [usize; 3],
+) -> Result<X4dDelayedLinkDiagnosticCaseV4, X4cErrorV4> {
+    if !(6..=26).contains(&max_mu) || multiplicities.contains(&0) {
+        return Err(X4cErrorV4::InvalidGeometry("X4d.2 diagnostic shape"));
+    }
+    let round_count = max_mu + 1;
+    let dimensions = [max_mu, max_mu - 4, max_mu - 6];
+    let dimension_multiplicities = [
+        (dimensions[0], multiplicities[0]),
+        (dimensions[1], multiplicities[1]),
+        (dimensions[2], multiplicities[2]),
+    ];
+    let expanded_dimensions = dimension_multiplicities
+        .iter()
+        .flat_map(|(dimension, count)| std::iter::repeat_n(*dimension, *count))
+        .collect::<Vec<_>>();
+    let physical_source_slots = expanded_dimensions.len();
+    let logical_contributions = physical_source_slots.checked_mul(2).ok_or(X4cErrorV4::Overflow)?;
+    let sources = expanded_dimensions
+        .iter()
+        .enumerate()
+        .map(|(slot, dimension)| {
+            (0..1usize << dimension)
+                .map(|index| x4d_diagnostic_symbol_v4(slot, index, 0xD200_0000))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let contributions = expanded_dimensions
+        .iter()
+        .enumerate()
+        .map(|(slot, dimension)| {
+            (0..2)
+                .map(|ordinal| {
+                    let mut point_stream =
+                        volta_field::FpStream::from_seed([(2 * slot + ordinal + 1) as u8; 32]);
+                    X4dLinkEqualityContributionV4 {
+                        coefficient: x4d_diagnostic_symbol_v4(slot, ordinal, 0xD210_0000),
+                        point: (0..*dimension).map(|_| point_stream.next_fp2()).collect(),
+                    }
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let terms = sources
+        .iter()
+        .zip(&expanded_dimensions)
+        .zip(contributions)
+        .map(|((evaluations, dimension), contributions)| X4dResidentLinkTermV4 {
+            evaluations,
+            dimension: *dimension,
+            contributions,
+        })
+        .collect::<Vec<_>>();
+    if terms.len() != physical_source_slots
+        || terms.iter().map(|term| term.contributions.len()).sum::<usize>() != logical_contributions
+    {
+        return Err(X4cErrorV4::InvalidGeometry("X4d.2 diagnostic fusion census"));
+    }
+    let source_symbols = terms.iter().try_fold(0u64, |sum, term| {
+        sum.checked_add(term.evaluations.len() as u64).ok_or(X4cErrorV4::Overflow)
+    })?;
+    let initial_value = terms.iter().try_fold(Fp2::ZERO, |settlement_sum, term| {
+        let mut equality = vec![Fp2::ZERO; term.evaluations.len()];
+        for contribution in &term.contributions {
+            for (combined, value) in
+                equality.iter_mut().zip(volta_proto::mle::eq_vec(&contribution.point))
+            {
+                *combined += contribution.coefficient * value;
+            }
+        }
+        Ok::<_, X4cErrorV4>(
+            settlement_sum
+                + term
+                    .evaluations
+                    .iter()
+                    .zip(equality)
+                    .fold(Fp2::ZERO, |sum, (value, equality)| sum + *value * equality),
+        )
+    })?;
+    let initial_claim = ProverAuthed {
+        x: initial_value,
+        m: x4d_diagnostic_symbol_v4(physical_source_slots, round_count, 0xD220_0000),
+    };
+    let domains = (0..2 * round_count).map(|index| 0xD230_0000 + index as u64).collect::<Vec<_>>();
+    let correlation_seed = [0xD2; 32];
+    let transcript_seed = [0x42; 32];
+
+    let mut reference_stream = CorrelationStream::new(correlation_seed);
+    let mut reference_tx = Transcript::new(transcript_seed);
+    let reference = super::authenticated_output_v4::prove_x4d_delayed_link_cpu_resident_v4(
+        &terms,
+        round_count,
+        initial_claim,
+        &mut reference_stream,
+        &domains,
+        &mut reference_tx,
+    )
+    .map_err(|error| X4cErrorV4::Runtime(format!("X4d.2 independent oracle: {error:?}")))?;
+
+    let mut resident_stream = CorrelationStream::new(correlation_seed);
+    let mut resident_tx = Transcript::new(transcript_seed);
+    let mut trace = Vec::with_capacity(round_count);
+    let resident = prove_x4d_delayed_link_resident_sequential_v4(
+        backend,
+        false,
+        &terms,
+        round_count,
+        initial_claim,
+        &mut resident_stream,
+        &domains,
+        &mut resident_tx,
+        X4dProductRoundModeV4::Scaled,
+        Some(&mut trace),
+    )?;
+    if resident.corrections != reference.corrections
+        || resident.point != reference.point
+        || resident.final_claim != reference.final_claim
+        || resident.terminal_value != reference.terminal_value
+    {
+        return Err(X4cErrorV4::InvalidGeometry("X4d.2 resident/reference proof-state mismatch"));
+    }
+
+    let mut oracle_terms = terms
+        .iter()
+        .map(|term| {
+            let mut equality = vec![Fp2::ZERO; term.evaluations.len()];
+            for contribution in &term.contributions {
+                for (combined, value) in
+                    equality.iter_mut().zip(volta_proto::mle::eq_vec(&contribution.point))
+                {
+                    *combined += contribution.coefficient * value;
+                }
+            }
+            X4dDelayedLinkOracleStateV4 {
+                evaluations: term.evaluations.to_vec(),
+                equality,
+                leading_virtual_rounds: round_count - term.dimension,
+                virtual_factor: Fp2::ONE,
+            }
+        })
+        .collect::<Vec<_>>();
+    let mut fold_states_checked = 0u64;
+    let mut round_messages_checked = 0u64;
+    let mut trace_hasher = blake3::Hasher::new();
+    for round_trace in &trace {
+        if round_trace.round >= reference.point.len()
+            || round_trace.challenge != reference.point[round_trace.round]
+        {
+            return Err(X4cErrorV4::InvalidGeometry("X4d.2 resident/reference challenge mismatch"));
+        }
+        let expected_messages =
+            oracle_terms.iter().map(X4dDelayedLinkOracleStateV4::round_message).collect::<Vec<_>>();
+        for (term_index, (observed, expected)) in
+            round_trace.terms.iter().zip(&expected_messages).enumerate()
+        {
+            if observed.message != *expected
+                || observed.dimension != terms[term_index].dimension
+                || observed.active_len != oracle_terms[term_index].evaluations.len()
+                || observed.leading_virtual_rounds
+                    != oracle_terms[term_index].leading_virtual_rounds
+                || observed.virtual_factor != oracle_terms[term_index].virtual_factor
+            {
+                return Err(X4cErrorV4::Runtime(format!(
+                    "X4d.2 first round divergence term={term_index} round={}",
+                    round_trace.round
+                )));
+            }
+            x4d_trace_hash_fp2_v4(&mut trace_hasher, observed.message[0]);
+            x4d_trace_hash_fp2_v4(&mut trace_hasher, observed.message[1]);
+            round_messages_checked =
+                round_messages_checked.checked_add(1).ok_or(X4cErrorV4::Overflow)?;
+        }
+        for oracle in &mut oracle_terms {
+            oracle.bind(round_trace.challenge);
+        }
+        let expected_source_digests = oracle_terms
+            .iter()
+            .map(|term| {
+                x4d_fp2_repr_digest_v4(
+                    &term.evaluations.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let expected_equality_digests = oracle_terms
+            .iter()
+            .map(|term| {
+                x4d_fp2_repr_digest_v4(
+                    &term.equality.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>(),
+                )
+            })
+            .collect::<Vec<_>>();
+        if round_trace.post_fold_active_lens
+            != oracle_terms.iter().map(|term| term.evaluations.len()).collect::<Vec<_>>()
+            || round_trace.post_fold_leading_virtual_rounds
+                != oracle_terms.iter().map(|term| term.leading_virtual_rounds).collect::<Vec<_>>()
+            || round_trace.post_fold_virtual_factors
+                != oracle_terms.iter().map(|term| term.virtual_factor).collect::<Vec<_>>()
+            || round_trace.post_fold_source_digests != expected_source_digests
+            || round_trace.post_fold_equality_digests != expected_equality_digests
+        {
+            return Err(X4cErrorV4::Runtime(format!(
+                "X4d.2 first fold-state divergence round={}",
+                round_trace.round
+            )));
+        }
+        for digest in expected_source_digests.iter().chain(&expected_equality_digests) {
+            trace_hasher.update(digest);
+            fold_states_checked = fold_states_checked.checked_add(1).ok_or(X4cErrorV4::Overflow)?;
+        }
+        x4d_trace_hash_fp2_v4(&mut trace_hasher, round_trace.challenge);
+    }
+    let correlation_counters_equal = resident_stream.counters == reference_stream.counters;
+    let correlation_allocation_ledger_equal =
+        resident_stream.allocation_digest_hex() == reference_stream.allocation_digest_hex();
+    let transcript_ledger_equal = resident_tx.ledger() == reference_tx.ledger()
+        && resident_tx.total_bytes() == reference_tx.total_bytes();
+    if !correlation_counters_equal
+        || !correlation_allocation_ledger_equal
+        || !transcript_ledger_equal
+    {
+        return Err(X4cErrorV4::InvalidGeometry("X4d.2 diagnostic ledger mismatch"));
+    }
+    let analytic_host_source_bytes = source_symbols.checked_mul(16).ok_or(X4cErrorV4::Overflow)?;
+    let analytic_device_live_bytes = resident
+        .counters
+        .device_bytes
+        .checked_add(resident.counters.peak_live_scratch_bytes)
+        .ok_or(X4cErrorV4::Overflow)?;
+    Ok(X4dDelayedLinkDiagnosticCaseV4 {
+        max_mu,
+        round_count,
+        dimension_multiplicities,
+        physical_source_slots: physical_source_slots as u64,
+        resident_terms: resident.counters.unique_terms,
+        logical_contributions: logical_contributions as u64,
+        source_symbols,
+        round_messages_checked,
+        challenges_checked: trace.len() as u64,
+        fold_states_checked,
+        correction_count: resident.corrections.len() as u64,
+        transcript_bytes: resident_tx.total_bytes(),
+        correlation_counters_equal,
+        correlation_allocation_ledger_equal,
+        transcript_ledger_equal,
+        terminal_point_equal: resident.point == reference.point,
+        terminal_value_equal: resident.terminal_value == reference.terminal_value,
+        resident_counters: resident.counters,
+        analytic_host_source_bytes,
+        analytic_device_live_bytes,
+        trace_blake3: *trace_hasher.finalize().as_bytes(),
+    })
+}
+
+/// Backend-generic, transcript-sequential delayed-link resident orchestrator.
+///
+/// `BackendKind::Cpu` and `BackendKind::CudaResident` enter this exact
+/// allocation, mailbox, challenge, fold and terminal state machine. The CPU
+/// implementation is a local lifecycle/identity target; the independent
+/// `prove_delayed_sumcheck_v4` implementation remains the arithmetic oracle.
+#[allow(clippy::too_many_arguments)]
+fn prove_x4d_delayed_link_resident_sequential_v4(
+    backend: &mut Backend,
+    arena_live: bool,
+    terms: &[X4dResidentLinkTermV4<'_>],
+    round_count: usize,
+    initial_claim: ProverAuthed,
+    stream: &mut CorrelationStream,
+    domains: &[u64],
+    tx: &mut Transcript,
+    product_round_mode: X4dProductRoundModeV4,
+    mut diagnostic_trace: Option<&mut Vec<X4dResidentRoundTraceV4>>,
+) -> Result<X4dResidentLinkOutputV4, X4cErrorV4> {
+    if arena_live
+        || terms.is_empty()
+        || round_count == 0
+        || round_count > 30
+        || domains.len() != 2 * round_count
+        || terms.iter().any(|term| {
+            term.dimension == 0
+                || term.dimension > round_count
+                || term.evaluations.len() != 1usize << term.dimension
+                || term.contributions.is_empty()
+                || term
+                    .contributions
+                    .iter()
+                    .any(|contribution| contribution.point.len() != term.dimension)
+        })
+    {
+        return Err(X4cErrorV4::InvalidGeometry("X4d delayed-link resident geometry"));
+    }
+    let max_len = terms.iter().map(|term| term.evaluations.len()).max().unwrap();
+    let max_dimension = max_len.trailing_zeros() as usize;
+    backend.reserve_fp2_product_round_workspace(max_len / 2)?;
+    let generation_one = backend.alloc_device::<Fp2Repr>(max_len)?;
+    let generation_two = backend.alloc_device::<Fp2Repr>(max_len)?;
+    let point_row = backend.alloc_device::<Fp2Repr>(max_dimension + 1)?;
+    let mailbox = backend.alloc_device::<Fp2Repr>(2 * terms.len())?;
+    let mut equality_generation_wall_ns = 0u64;
+    let mut source_copy_wall_ns = 0u64;
+    let mut resident_terms = Vec::with_capacity(terms.len());
+    let mut counters = X4dResidentLinkCountersV4 {
+        unique_terms: terms.len() as u64,
+        allocation_requests: 4,
+        ..Default::default()
+    };
+    for term in terms {
+        let source_copy_started = Instant::now();
+        let source_raw = term.evaluations.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>();
+        let source = backend.upload_new_device(&source_raw)?;
+        source_copy_wall_ns = source_copy_wall_ns
+            .checked_add(
+                u64::try_from(source_copy_started.elapsed().as_nanos())
+                    .map_err(|_| X4cErrorV4::Overflow)?,
+            )
+            .ok_or(X4cErrorV4::Overflow)?;
+        let source_bytes = (term.evaluations.len() * size_of::<Fp2Repr>()) as u64;
+        counters.source_clone_bytes =
+            counters.source_clone_bytes.checked_add(source_bytes).ok_or(X4cErrorV4::Overflow)?;
+        counters.peak_live_host_scratch_bytes =
+            counters.peak_live_host_scratch_bytes.max(source_bytes);
+        let equality_generation_started = Instant::now();
+        let equality = backend.alloc_device::<Fp2Repr>(term.evaluations.len())?;
+        let scratch_len = (term.evaluations.len() / 2).max(1);
+        let source_ping = backend.alloc_device::<Fp2Repr>(scratch_len)?;
+        let source_pong = backend.alloc_device::<Fp2Repr>(scratch_len)?;
+        let equality_scratch = backend.alloc_device::<Fp2Repr>(scratch_len)?;
+        counters.allocation_requests += 5;
+        counters.source_symbols = counters
+            .source_symbols
+            .checked_add(term.evaluations.len() as u64)
+            .ok_or(X4cErrorV4::Overflow)?;
+        counters.equality_symbols = counters
+            .equality_symbols
+            .checked_add(term.evaluations.len() as u64)
+            .ok_or(X4cErrorV4::Overflow)?;
+        counters.h2d_bytes = counters
+            .h2d_bytes
+            .checked_add((term.evaluations.len() * size_of::<Fp2Repr>()) as u64)
+            .ok_or(X4cErrorV4::Overflow)?;
+        for (ordinal, contribution) in term.contributions.iter().enumerate() {
+            let mut public =
+                contribution.point.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>();
+            public.push(contribution.coefficient.into());
+            backend.upload_device(&point_row, 0, &public)?;
+            backend.x4d_link_eq_accumulate_device(
+                DeviceSlice::new(&point_row, 0, public.len())?,
+                term.dimension,
+                &equality,
+                0,
+                &generation_one,
+                0,
+                &generation_two,
+                0,
+                ordinal == 0,
+            )?;
+            counters.h2d_bytes = counters
+                .h2d_bytes
+                .checked_add((public.len() * size_of::<Fp2Repr>()) as u64)
+                .ok_or(X4cErrorV4::Overflow)?;
+            counters.kernel_calls += (term.dimension + 2) as u64;
+            counters.buffer_reuse_hits += 3;
+            counters.peak_live_host_scratch_bytes = counters.peak_live_host_scratch_bytes.max(
+                source_bytes
+                    .checked_add((public.len() * size_of::<Fp2Repr>()) as u64)
+                    .ok_or(X4cErrorV4::Overflow)?,
+            );
+        }
+        equality_generation_wall_ns = equality_generation_wall_ns
+            .checked_add(
+                u64::try_from(equality_generation_started.elapsed().as_nanos())
+                    .map_err(|_| X4cErrorV4::Overflow)?,
+            )
+            .ok_or(X4cErrorV4::Overflow)?;
+        resident_terms.push(X4dResidentLinkStateV4 {
+            source,
+            equality,
+            source_ping,
+            source_pong,
+            equality_scratch,
+            active_len: term.evaluations.len(),
+            dimension: term.dimension,
+            leading_virtual_rounds: round_count - term.dimension,
+            virtual_factor: Fp2::ONE,
+            source_state: 0,
+            equality_primary: true,
+        });
+    }
+    counters.host_bytes = counters.source_symbols.checked_mul(16).ok_or(X4cErrorV4::Overflow)?;
+    counters.device_bytes = counters
+        .source_symbols
+        .checked_add(counters.equality_symbols)
+        .and_then(|symbols| symbols.checked_mul(16))
+        .ok_or(X4cErrorV4::Overflow)?;
+    let term_scratch_bytes = terms.iter().try_fold(0u64, |sum, term| {
+        sum.checked_add((3 * (term.evaluations.len() / 2).max(1) * size_of::<Fp2Repr>()) as u64)
+            .ok_or(X4cErrorV4::Overflow)
+    })?;
+    counters.peak_live_scratch_bytes = term_scratch_bytes
+        .checked_add((2 * max_len * size_of::<Fp2Repr>()) as u64)
+        .and_then(|value| {
+            value.checked_add(((max_dimension + 1 + 2 * terms.len()) * size_of::<Fp2Repr>()) as u64)
+        })
+        .ok_or(X4cErrorV4::Overflow)?;
+    let fill_dot_mailbox = |backend: &mut Backend,
+                            states: &[X4dResidentLinkStateV4],
+                            mailbox: &DeviceBuffer<Fp2Repr>|
+     -> Result<(), X4cErrorV4> {
+        for (index, state) in states.iter().enumerate() {
+            backend.fp2_dot_scaled_pair_into_device(
+                state.source_slice()?,
+                state.equality_slice()?,
+                state.virtual_factor,
+                mailbox,
+                2 * index,
+            )?;
+        }
+        Ok(())
+    };
+    fill_dot_mailbox(backend, &resident_terms, &mailbox)?;
+    let initial = backend.fp2_pair_sum_device(
+        DeviceSlice::new(&mailbox, 0, 2 * resident_terms.len())?,
+        resident_terms.len(),
+    )?[0];
+    counters.d2h_bytes += 32;
+    counters.protocol_scalar_d2h_bytes += 32;
+    counters.kernel_calls += resident_terms.len() as u64 + 1;
+    if initial != initial_claim.x {
+        let error = X4cErrorV4::InvalidGeometry("X4d delayed-link false initial claim");
+        let _ = release_x4d_resident_link_buffers_v4(
+            backend,
+            resident_terms,
+            generation_one,
+            generation_two,
+            point_row,
+            mailbox,
+        );
+        return Err(error);
+    }
+
+    let sumcheck_started = Instant::now();
+    let mut round_evaluation_wall_ns = 0u64;
+    let mut fold_wall_ns = 0u64;
+    let mut masks_transcript_terminal_wall_ns = 0u64;
+    let mut corrections = Vec::with_capacity(2 * round_count);
+    let mut point = Vec::with_capacity(round_count);
+    let mut claim = initial_claim;
+    for round in 0..round_count {
+        let evaluation_started = Instant::now();
+        for (index, state) in resident_terms.iter().enumerate() {
+            if state.leading_virtual_rounds > 0 || state.active_len == 1 {
+                backend.fp2_dot_scaled_pair_into_device(
+                    state.source_slice()?,
+                    state.equality_slice()?,
+                    state.virtual_factor,
+                    &mailbox,
+                    2 * index,
+                )?;
+            } else {
+                let use_scaled = match product_round_mode {
+                    X4dProductRoundModeV4::Scaled => true,
+                    X4dProductRoundModeV4::UnscaledBaseline => false,
+                    X4dProductRoundModeV4::FaultUnscaled { term_index, round: fault_round } => {
+                        !(index == term_index && round == fault_round)
+                    }
+                    X4dProductRoundModeV4::FaultSkipFold { .. } => true,
+                };
+                if use_scaled {
+                    backend.fp2_product_round_scaled_into_device(
+                        state.source_slice()?,
+                        state.equality_slice()?,
+                        state.virtual_factor,
+                        &mailbox,
+                        2 * index,
+                    )?;
+                } else {
+                    backend.fp2_product_round_into_device(
+                        state.source_slice()?,
+                        state.equality_slice()?,
+                        &mailbox,
+                        2 * index,
+                    )?;
+                }
+            }
+        }
+        let [at_zero, at_two] = backend.fp2_pair_sum_device(
+            DeviceSlice::new(&mailbox, 0, 2 * resident_terms.len())?,
+            resident_terms.len(),
+        )?;
+        let trace_index = if let Some(trace) = diagnostic_trace.as_deref_mut() {
+            let raw_messages = backend.download_device(&mailbox, 0, 2 * resident_terms.len())?;
+            let terms = resident_terms
+                .iter()
+                .zip(raw_messages.chunks_exact(2))
+                .map(|(state, message)| X4dResidentTermRoundTraceV4 {
+                    dimension: state.dimension,
+                    active_len: state.active_len,
+                    leading_virtual_rounds: state.leading_virtual_rounds,
+                    virtual_factor: state.virtual_factor,
+                    message: [message[0].into(), message[1].into()],
+                })
+                .collect();
+            trace.push(X4dResidentRoundTraceV4 {
+                round,
+                terms,
+                aggregate: [at_zero, at_two],
+                challenge: Fp2::ZERO,
+                post_fold_active_lens: Vec::new(),
+                post_fold_leading_virtual_rounds: Vec::new(),
+                post_fold_virtual_factors: Vec::new(),
+                post_fold_source_digests: Vec::new(),
+                post_fold_equality_digests: Vec::new(),
+            });
+            Some(trace.len() - 1)
+        } else {
+            None
+        };
+        round_evaluation_wall_ns = round_evaluation_wall_ns
+            .checked_add(
+                u64::try_from(evaluation_started.elapsed().as_nanos())
+                    .map_err(|_| X4cErrorV4::Overflow)?,
+            )
+            .ok_or(X4cErrorV4::Overflow)?;
+        counters.d2h_bytes += 32;
+        counters.protocol_scalar_d2h_bytes += 32;
+        counters.kernel_calls += resident_terms.len() as u64 + 1;
+
+        let orchestration_started = Instant::now();
+        let mask_zero = stream.draw_fulls(domains[2 * round], 1)[0];
+        let mask_two = stream.draw_fulls(domains[2 * round + 1], 1)[0];
+        corrections.push(at_zero - mask_zero.x);
+        corrections.push(at_two - mask_two.x);
+        tx.append("x4_v4_auth_output_link_round_corrections", 32);
+        let auth_zero = ProverAuthed { x: at_zero, m: mask_zero.m };
+        let auth_two = ProverAuthed { x: at_two, m: mask_two.m };
+        let auth_one = claim.sub(auth_zero);
+        let challenge = tx.challenge_fp2();
+        let weights = lagrange3(challenge);
+        claim = auth_zero
+            .scale(weights[0])
+            .add(auth_one.scale(weights[1]))
+            .add(auth_two.scale(weights[2]));
+        masks_transcript_terminal_wall_ns = masks_transcript_terminal_wall_ns
+            .checked_add(
+                u64::try_from(orchestration_started.elapsed().as_nanos())
+                    .map_err(|_| X4cErrorV4::Overflow)?,
+            )
+            .ok_or(X4cErrorV4::Overflow)?;
+
+        let folds_started = Instant::now();
+        for (term_index, state) in resident_terms.iter_mut().enumerate() {
+            if state.leading_virtual_rounds > 0 {
+                state.virtual_factor = state.virtual_factor * (Fp2::ONE - challenge);
+                state.leading_virtual_rounds -= 1;
+                continue;
+            }
+            if state.active_len == 1 {
+                state.virtual_factor = state.virtual_factor * (Fp2::ONE - challenge);
+                continue;
+            }
+            if matches!(
+                product_round_mode,
+                X4dProductRoundModeV4::FaultSkipFold {
+                    term_index: fault_term,
+                    round: fault_round,
+                } if term_index == fault_term && round == fault_round
+            ) {
+                continue;
+            }
+            let source_input = state.source_slice()?;
+            let equality_input = state.equality_slice()?;
+            let source_output =
+                if state.source_state == 1 { &state.source_pong } else { &state.source_ping };
+            let equality_output =
+                if state.equality_primary { &state.equality_scratch } else { &state.equality };
+            backend.fp2_fold_rows_into_device(
+                source_input,
+                1,
+                state.active_len,
+                challenge,
+                source_output,
+                0,
+            )?;
+            backend.fp2_fold_rows_into_device(
+                equality_input,
+                1,
+                state.active_len,
+                challenge,
+                equality_output,
+                0,
+            )?;
+            let next_len = state.active_len / 2;
+            counters.d2d_bytes = counters
+                .d2d_bytes
+                .checked_add((2 * next_len * size_of::<Fp2Repr>()) as u64)
+                .ok_or(X4cErrorV4::Overflow)?;
+            counters.kernel_calls += 2;
+            state.source_state = if state.source_state == 1 { 2 } else { 1 };
+            state.equality_primary = !state.equality_primary;
+            state.active_len = next_len;
+        }
+        fold_wall_ns = fold_wall_ns
+            .checked_add(
+                u64::try_from(folds_started.elapsed().as_nanos())
+                    .map_err(|_| X4cErrorV4::Overflow)?,
+            )
+            .ok_or(X4cErrorV4::Overflow)?;
+        if let (Some(trace), Some(trace_index)) = (diagnostic_trace.as_deref_mut(), trace_index) {
+            trace[trace_index].challenge = challenge;
+            trace[trace_index].post_fold_active_lens =
+                resident_terms.iter().map(|state| state.active_len).collect();
+            trace[trace_index].post_fold_leading_virtual_rounds =
+                resident_terms.iter().map(|state| state.leading_virtual_rounds).collect();
+            trace[trace_index].post_fold_virtual_factors =
+                resident_terms.iter().map(|state| state.virtual_factor).collect();
+            let mut source_digests = Vec::with_capacity(resident_terms.len());
+            let mut equality_digests = Vec::with_capacity(resident_terms.len());
+            for state in &resident_terms {
+                let source = state.source_slice()?;
+                let equality = state.equality_slice()?;
+                source_digests.push(x4d_fp2_repr_digest_v4(&backend.download_device(
+                    source.buffer(),
+                    source.offset(),
+                    source.len(),
+                )?));
+                equality_digests.push(x4d_fp2_repr_digest_v4(&backend.download_device(
+                    equality.buffer(),
+                    equality.offset(),
+                    equality.len(),
+                )?));
+            }
+            trace[trace_index].post_fold_source_digests = source_digests;
+            trace[trace_index].post_fold_equality_digests = equality_digests;
+        }
+        point.push(challenge);
+    }
+    fill_dot_mailbox(backend, &resident_terms, &mailbox)?;
+    let terminal_value = backend.fp2_pair_sum_device(
+        DeviceSlice::new(&mailbox, 0, 2 * resident_terms.len())?,
+        resident_terms.len(),
+    )?[0];
+    counters.d2h_bytes += 32;
+    counters.protocol_scalar_d2h_bytes += 32;
+    counters.kernel_calls += resident_terms.len() as u64 + 1;
+    if let Some((term_index, state)) = resident_terms
+        .iter()
+        .enumerate()
+        .find(|(_, state)| state.leading_virtual_rounds != 0 || state.active_len != 1)
+    {
+        let error = X4cErrorV4::X4dResidentGeometryNotDrained {
+            term_index,
+            dimension: state.dimension,
+            active_len: state.active_len,
+            leading_virtual_rounds: state.leading_virtual_rounds,
+            current_round: round_count,
+        };
+        let _ = release_x4d_resident_link_buffers_v4(
+            backend,
+            resident_terms,
+            generation_one,
+            generation_two,
+            point_row,
+            mailbox,
+        );
+        return Err(error);
+    }
+    if terminal_value != claim.x {
+        let term_index = match product_round_mode {
+            X4dProductRoundModeV4::FaultUnscaled { term_index, .. } => term_index,
+            X4dProductRoundModeV4::FaultSkipFold { term_index, .. } => term_index,
+            _ => resident_terms.iter().position(|state| state.dimension < round_count).unwrap_or(0),
+        };
+        let state = &resident_terms[term_index];
+        let error = X4cErrorV4::X4dResidentTerminalValueMismatch {
+            term_index,
+            dimension: state.dimension,
+            active_len: state.active_len,
+            leading_virtual_rounds: state.leading_virtual_rounds,
+            current_round: round_count,
+            expected: claim.x,
+            observed: terminal_value,
+        };
+        let _ = release_x4d_resident_link_buffers_v4(
+            backend,
+            resident_terms,
+            generation_one,
+            generation_two,
+            point_row,
+            mailbox,
+        );
+        return Err(error);
+    }
+    let total_sumcheck_ns =
+        u64::try_from(sumcheck_started.elapsed().as_nanos()).map_err(|_| X4cErrorV4::Overflow)?;
+    let children = round_evaluation_wall_ns
+        .checked_add(fold_wall_ns)
+        .and_then(|value| value.checked_add(masks_transcript_terminal_wall_ns))
+        .ok_or(X4cErrorV4::Overflow)?;
+    masks_transcript_terminal_wall_ns = masks_transcript_terminal_wall_ns
+        .checked_add(total_sumcheck_ns.saturating_sub(children))
+        .ok_or(X4cErrorV4::Overflow)?;
+
+    release_x4d_resident_link_buffers_v4(
+        backend,
+        resident_terms,
+        generation_one,
+        generation_two,
+        point_row,
+        mailbox,
+    )?;
+    Ok(X4dResidentLinkOutputV4 {
+        corrections,
+        point,
+        final_claim: claim,
+        terminal_value,
+        equality_generation_wall_ns,
+        source_copy_wall_ns,
+        round_evaluation_wall_ns,
+        fold_wall_ns,
+        masks_transcript_terminal_wall_ns,
+        counters,
+    })
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -3147,331 +4075,359 @@ impl X4cArenaRuntimeV4 for X4cCudaArenaRuntimeV4<'_> {
         domains: &[u64],
         tx: &mut Transcript,
     ) -> Result<Option<X4dResidentLinkOutputV4>, X4cErrorV4> {
-        if self.arena_live
-            || terms.is_empty()
-            || round_count == 0
-            || round_count > 30
-            || domains.len() != 2 * round_count
-            || terms.iter().any(|term| {
-                term.dimension == 0
-                    || term.dimension > round_count
-                    || term.evaluations.len() != 1usize << term.dimension
-                    || term.contributions.is_empty()
-                    || term
-                        .contributions
-                        .iter()
-                        .any(|contribution| contribution.point.len() != term.dimension)
-            })
+        return prove_x4d_delayed_link_resident_sequential_v4(
+            self.backend,
+            self.arena_live,
+            terms,
+            round_count,
+            initial_claim,
+            stream,
+            domains,
+            tx,
+            X4dProductRoundModeV4::Scaled,
+            None,
+        )
+        .map(Some);
+        #[cfg(any())]
         {
-            return Err(X4cErrorV4::InvalidGeometry("X4d CUDA delayed-link resident geometry"));
-        }
-        let max_len = terms.iter().map(|term| term.evaluations.len()).max().unwrap();
-        let max_dimension = max_len.trailing_zeros() as usize;
-        self.backend.reserve_fp2_product_round_workspace(max_len / 2)?;
-        let generation_one = self.backend.alloc_device::<Fp2Repr>(max_len)?;
-        let generation_two = self.backend.alloc_device::<Fp2Repr>(max_len)?;
-        let point_row = self.backend.alloc_device::<Fp2Repr>(max_dimension + 1)?;
-        let mailbox = self.backend.alloc_device::<Fp2Repr>(2 * terms.len())?;
-        let mut equality_generation_wall_ns = 0u64;
-        let mut source_copy_wall_ns = 0u64;
-        let mut resident_terms = Vec::with_capacity(terms.len());
-        let mut counters = X4dResidentLinkCountersV4 {
-            unique_terms: terms.len() as u64,
-            allocation_requests: 4,
-            ..Default::default()
-        };
-        for term in terms {
-            let source_copy_started = Instant::now();
-            let source_raw =
-                term.evaluations.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>();
-            let source = self.backend.upload_new_device(&source_raw)?;
-            source_copy_wall_ns = source_copy_wall_ns
-                .checked_add(
-                    u64::try_from(source_copy_started.elapsed().as_nanos())
-                        .map_err(|_| X4cErrorV4::Overflow)?,
-                )
-                .ok_or(X4cErrorV4::Overflow)?;
-            let source_bytes = (term.evaluations.len() * size_of::<Fp2Repr>()) as u64;
-            counters.source_clone_bytes = counters
-                .source_clone_bytes
-                .checked_add(source_bytes)
-                .ok_or(X4cErrorV4::Overflow)?;
-            counters.peak_live_host_scratch_bytes =
-                counters.peak_live_host_scratch_bytes.max(source_bytes);
-            let equality_generation_started = Instant::now();
-            let equality = self.backend.alloc_device::<Fp2Repr>(term.evaluations.len())?;
-            let scratch_len = (term.evaluations.len() / 2).max(1);
-            let source_ping = self.backend.alloc_device::<Fp2Repr>(scratch_len)?;
-            let source_pong = self.backend.alloc_device::<Fp2Repr>(scratch_len)?;
-            let equality_scratch = self.backend.alloc_device::<Fp2Repr>(scratch_len)?;
-            counters.allocation_requests += 5;
-            counters.source_symbols = counters
-                .source_symbols
-                .checked_add(term.evaluations.len() as u64)
-                .ok_or(X4cErrorV4::Overflow)?;
-            counters.equality_symbols = counters
-                .equality_symbols
-                .checked_add(term.evaluations.len() as u64)
-                .ok_or(X4cErrorV4::Overflow)?;
-            counters.h2d_bytes = counters
-                .h2d_bytes
-                .checked_add((term.evaluations.len() * size_of::<Fp2Repr>()) as u64)
-                .ok_or(X4cErrorV4::Overflow)?;
-            for (ordinal, contribution) in term.contributions.iter().enumerate() {
-                let mut public =
-                    contribution.point.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>();
-                public.push(contribution.coefficient.into());
-                self.backend.upload_device(&point_row, 0, &public)?;
-                self.backend.x4d_link_eq_accumulate_device(
-                    DeviceSlice::new(&point_row, 0, public.len())?,
-                    term.dimension,
-                    &equality,
-                    0,
-                    &generation_one,
-                    0,
-                    &generation_two,
-                    0,
-                    ordinal == 0,
-                )?;
+            if self.arena_live
+                || terms.is_empty()
+                || round_count == 0
+                || round_count > 30
+                || domains.len() != 2 * round_count
+                || terms.iter().any(|term| {
+                    term.dimension == 0
+                        || term.dimension > round_count
+                        || term.evaluations.len() != 1usize << term.dimension
+                        || term.contributions.is_empty()
+                        || term
+                            .contributions
+                            .iter()
+                            .any(|contribution| contribution.point.len() != term.dimension)
+                })
+            {
+                return Err(X4cErrorV4::InvalidGeometry("X4d CUDA delayed-link resident geometry"));
+            }
+            let max_len = terms.iter().map(|term| term.evaluations.len()).max().unwrap();
+            let max_dimension = max_len.trailing_zeros() as usize;
+            self.backend.reserve_fp2_product_round_workspace(max_len / 2)?;
+            let generation_one = self.backend.alloc_device::<Fp2Repr>(max_len)?;
+            let generation_two = self.backend.alloc_device::<Fp2Repr>(max_len)?;
+            let point_row = self.backend.alloc_device::<Fp2Repr>(max_dimension + 1)?;
+            let mailbox = self.backend.alloc_device::<Fp2Repr>(2 * terms.len())?;
+            let mut equality_generation_wall_ns = 0u64;
+            let mut source_copy_wall_ns = 0u64;
+            let mut resident_terms = Vec::with_capacity(terms.len());
+            let mut counters = X4dResidentLinkCountersV4 {
+                unique_terms: terms.len() as u64,
+                allocation_requests: 4,
+                ..Default::default()
+            };
+            for term in terms {
+                let source_copy_started = Instant::now();
+                let source_raw =
+                    term.evaluations.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>();
+                let source = self.backend.upload_new_device(&source_raw)?;
+                source_copy_wall_ns = source_copy_wall_ns
+                    .checked_add(
+                        u64::try_from(source_copy_started.elapsed().as_nanos())
+                            .map_err(|_| X4cErrorV4::Overflow)?,
+                    )
+                    .ok_or(X4cErrorV4::Overflow)?;
+                let source_bytes = (term.evaluations.len() * size_of::<Fp2Repr>()) as u64;
+                counters.source_clone_bytes = counters
+                    .source_clone_bytes
+                    .checked_add(source_bytes)
+                    .ok_or(X4cErrorV4::Overflow)?;
+                counters.peak_live_host_scratch_bytes =
+                    counters.peak_live_host_scratch_bytes.max(source_bytes);
+                let equality_generation_started = Instant::now();
+                let equality = self.backend.alloc_device::<Fp2Repr>(term.evaluations.len())?;
+                let scratch_len = (term.evaluations.len() / 2).max(1);
+                let source_ping = self.backend.alloc_device::<Fp2Repr>(scratch_len)?;
+                let source_pong = self.backend.alloc_device::<Fp2Repr>(scratch_len)?;
+                let equality_scratch = self.backend.alloc_device::<Fp2Repr>(scratch_len)?;
+                counters.allocation_requests += 5;
+                counters.source_symbols = counters
+                    .source_symbols
+                    .checked_add(term.evaluations.len() as u64)
+                    .ok_or(X4cErrorV4::Overflow)?;
+                counters.equality_symbols = counters
+                    .equality_symbols
+                    .checked_add(term.evaluations.len() as u64)
+                    .ok_or(X4cErrorV4::Overflow)?;
                 counters.h2d_bytes = counters
                     .h2d_bytes
-                    .checked_add((public.len() * size_of::<Fp2Repr>()) as u64)
+                    .checked_add((term.evaluations.len() * size_of::<Fp2Repr>()) as u64)
                     .ok_or(X4cErrorV4::Overflow)?;
-                counters.kernel_calls += (term.dimension + 2) as u64;
-                counters.buffer_reuse_hits += 3;
-                counters.peak_live_host_scratch_bytes = counters.peak_live_host_scratch_bytes.max(
-                    source_bytes
+                for (ordinal, contribution) in term.contributions.iter().enumerate() {
+                    let mut public =
+                        contribution.point.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>();
+                    public.push(contribution.coefficient.into());
+                    self.backend.upload_device(&point_row, 0, &public)?;
+                    self.backend.x4d_link_eq_accumulate_device(
+                        DeviceSlice::new(&point_row, 0, public.len())?,
+                        term.dimension,
+                        &equality,
+                        0,
+                        &generation_one,
+                        0,
+                        &generation_two,
+                        0,
+                        ordinal == 0,
+                    )?;
+                    counters.h2d_bytes = counters
+                        .h2d_bytes
                         .checked_add((public.len() * size_of::<Fp2Repr>()) as u64)
-                        .ok_or(X4cErrorV4::Overflow)?,
-                );
+                        .ok_or(X4cErrorV4::Overflow)?;
+                    counters.kernel_calls += (term.dimension + 2) as u64;
+                    counters.buffer_reuse_hits += 3;
+                    counters.peak_live_host_scratch_bytes =
+                        counters.peak_live_host_scratch_bytes.max(
+                            source_bytes
+                                .checked_add((public.len() * size_of::<Fp2Repr>()) as u64)
+                                .ok_or(X4cErrorV4::Overflow)?,
+                        );
+                }
+                equality_generation_wall_ns = equality_generation_wall_ns
+                    .checked_add(
+                        u64::try_from(equality_generation_started.elapsed().as_nanos())
+                            .map_err(|_| X4cErrorV4::Overflow)?,
+                    )
+                    .ok_or(X4cErrorV4::Overflow)?;
+                resident_terms.push(X4dResidentLinkStateV4 {
+                    source,
+                    equality,
+                    source_ping,
+                    source_pong,
+                    equality_scratch,
+                    active_len: term.evaluations.len(),
+                    dimension: term.dimension,
+                    leading_virtual_rounds: round_count - term.dimension,
+                    virtual_factor: Fp2::ONE,
+                    source_state: 0,
+                    equality_primary: true,
+                });
             }
-            equality_generation_wall_ns = equality_generation_wall_ns
-                .checked_add(
-                    u64::try_from(equality_generation_started.elapsed().as_nanos())
-                        .map_err(|_| X4cErrorV4::Overflow)?,
-                )
+            counters.host_bytes =
+                counters.source_symbols.checked_mul(16).ok_or(X4cErrorV4::Overflow)?;
+            counters.device_bytes = counters
+                .source_symbols
+                .checked_add(counters.equality_symbols)
+                .and_then(|symbols| symbols.checked_mul(16))
                 .ok_or(X4cErrorV4::Overflow)?;
-            resident_terms.push(X4dCudaResidentLinkTermV4 {
-                source,
-                equality,
-                source_ping,
-                source_pong,
-                equality_scratch,
-                active_len: term.evaluations.len(),
-                leading_virtual_rounds: round_count - term.dimension,
-                virtual_factor: Fp2::ONE,
-                source_state: 0,
-                equality_primary: true,
-            });
-        }
-        counters.host_bytes =
-            counters.source_symbols.checked_mul(16).ok_or(X4cErrorV4::Overflow)?;
-        counters.device_bytes = counters
-            .source_symbols
-            .checked_add(counters.equality_symbols)
-            .and_then(|symbols| symbols.checked_mul(16))
-            .ok_or(X4cErrorV4::Overflow)?;
-        let term_scratch_bytes = terms.iter().try_fold(0u64, |sum, term| {
-            sum.checked_add((3 * (term.evaluations.len() / 2).max(1) * size_of::<Fp2Repr>()) as u64)
-                .ok_or(X4cErrorV4::Overflow)
-        })?;
-        counters.peak_live_scratch_bytes = term_scratch_bytes
-            .checked_add((2 * max_len * size_of::<Fp2Repr>()) as u64)
-            .and_then(|value| {
-                value.checked_add(
-                    ((max_dimension + 1 + 2 * terms.len()) * size_of::<Fp2Repr>()) as u64,
+            let term_scratch_bytes = terms.iter().try_fold(0u64, |sum, term| {
+                sum.checked_add(
+                    (3 * (term.evaluations.len() / 2).max(1) * size_of::<Fp2Repr>()) as u64,
                 )
-            })
-            .ok_or(X4cErrorV4::Overflow)?;
-        let fill_dot_mailbox = |backend: &mut Backend,
-                                states: &[X4dCudaResidentLinkTermV4],
-                                mailbox: &DeviceBuffer<Fp2Repr>|
-         -> Result<(), X4cErrorV4> {
-            for (index, state) in states.iter().enumerate() {
-                backend.fp2_dot_scaled_pair_into_device(
-                    state.source_slice()?,
-                    state.equality_slice()?,
-                    state.virtual_factor,
-                    mailbox,
-                    2 * index,
-                )?;
-            }
-            Ok(())
-        };
-        fill_dot_mailbox(self.backend, &resident_terms, &mailbox)?;
-        let initial = self.backend.fp2_pair_sum_device(
-            DeviceSlice::new(&mailbox, 0, 2 * resident_terms.len())?,
-            resident_terms.len(),
-        )?[0];
-        counters.d2h_bytes += 32;
-        counters.protocol_scalar_d2h_bytes += 32;
-        counters.kernel_calls += resident_terms.len() as u64 + 1;
-        if initial != initial_claim.x {
-            return Err(X4cErrorV4::InvalidGeometry("X4d CUDA delayed-link false initial claim"));
-        }
-
-        let sumcheck_started = Instant::now();
-        let mut round_evaluation_wall_ns = 0u64;
-        let mut fold_wall_ns = 0u64;
-        let mut masks_transcript_terminal_wall_ns = 0u64;
-        let mut corrections = Vec::with_capacity(2 * round_count);
-        let mut point = Vec::with_capacity(round_count);
-        let mut claim = initial_claim;
-        for round in 0..round_count {
-            let evaluation_started = Instant::now();
-            for (index, state) in resident_terms.iter().enumerate() {
-                if state.leading_virtual_rounds > 0 || state.active_len == 1 {
-                    self.backend.fp2_dot_scaled_pair_into_device(
+                .ok_or(X4cErrorV4::Overflow)
+            })?;
+            counters.peak_live_scratch_bytes = term_scratch_bytes
+                .checked_add((2 * max_len * size_of::<Fp2Repr>()) as u64)
+                .and_then(|value| {
+                    value.checked_add(
+                        ((max_dimension + 1 + 2 * terms.len()) * size_of::<Fp2Repr>()) as u64,
+                    )
+                })
+                .ok_or(X4cErrorV4::Overflow)?;
+            let fill_dot_mailbox = |backend: &mut Backend,
+                                    states: &[X4dResidentLinkStateV4],
+                                    mailbox: &DeviceBuffer<Fp2Repr>|
+             -> Result<(), X4cErrorV4> {
+                for (index, state) in states.iter().enumerate() {
+                    backend.fp2_dot_scaled_pair_into_device(
                         state.source_slice()?,
                         state.equality_slice()?,
                         state.virtual_factor,
-                        &mailbox,
-                        2 * index,
-                    )?;
-                } else {
-                    self.backend.fp2_product_round_into_device(
-                        state.source_slice()?,
-                        state.equality_slice()?,
-                        &mailbox,
+                        mailbox,
                         2 * index,
                     )?;
                 }
-            }
-            let [at_zero, at_two] = self.backend.fp2_pair_sum_device(
+                Ok(())
+            };
+            fill_dot_mailbox(self.backend, &resident_terms, &mailbox)?;
+            let initial = self.backend.fp2_pair_sum_device(
                 DeviceSlice::new(&mailbox, 0, 2 * resident_terms.len())?,
                 resident_terms.len(),
-            )?;
-            round_evaluation_wall_ns = round_evaluation_wall_ns
-                .checked_add(
-                    u64::try_from(evaluation_started.elapsed().as_nanos())
-                        .map_err(|_| X4cErrorV4::Overflow)?,
-                )
-                .ok_or(X4cErrorV4::Overflow)?;
+            )?[0];
             counters.d2h_bytes += 32;
             counters.protocol_scalar_d2h_bytes += 32;
             counters.kernel_calls += resident_terms.len() as u64 + 1;
-
-            let orchestration_started = Instant::now();
-            let mask_zero = stream.draw_fulls(domains[2 * round], 1)[0];
-            let mask_two = stream.draw_fulls(domains[2 * round + 1], 1)[0];
-            corrections.push(at_zero - mask_zero.x);
-            corrections.push(at_two - mask_two.x);
-            tx.append("x4_v4_auth_output_link_round_corrections", 32);
-            let auth_zero = ProverAuthed { x: at_zero, m: mask_zero.m };
-            let auth_two = ProverAuthed { x: at_two, m: mask_two.m };
-            let auth_one = claim.sub(auth_zero);
-            let challenge = tx.challenge_fp2();
-            let weights = lagrange3(challenge);
-            claim = auth_zero
-                .scale(weights[0])
-                .add(auth_one.scale(weights[1]))
-                .add(auth_two.scale(weights[2]));
-            masks_transcript_terminal_wall_ns = masks_transcript_terminal_wall_ns
-                .checked_add(
-                    u64::try_from(orchestration_started.elapsed().as_nanos())
-                        .map_err(|_| X4cErrorV4::Overflow)?,
-                )
-                .ok_or(X4cErrorV4::Overflow)?;
-
-            let folds_started = Instant::now();
-            for state in &mut resident_terms {
-                if state.leading_virtual_rounds > 0 {
-                    state.virtual_factor = state.virtual_factor * (Fp2::ONE - challenge);
-                    state.leading_virtual_rounds -= 1;
-                    continue;
-                }
-                if state.active_len == 1 {
-                    state.virtual_factor = state.virtual_factor * (Fp2::ONE - challenge);
-                    continue;
-                }
-                let source_input = state.source_slice()?;
-                let equality_input = state.equality_slice()?;
-                let source_output =
-                    if state.source_state == 1 { &state.source_pong } else { &state.source_ping };
-                let equality_output =
-                    if state.equality_primary { &state.equality_scratch } else { &state.equality };
-                self.backend.fp2_fold_rows_into_device(
-                    source_input,
-                    1,
-                    state.active_len,
-                    challenge,
-                    source_output,
-                    0,
-                )?;
-                self.backend.fp2_fold_rows_into_device(
-                    equality_input,
-                    1,
-                    state.active_len,
-                    challenge,
-                    equality_output,
-                    0,
-                )?;
-                let next_len = state.active_len / 2;
-                counters.d2d_bytes = counters
-                    .d2d_bytes
-                    .checked_add((2 * next_len * size_of::<Fp2Repr>()) as u64)
-                    .ok_or(X4cErrorV4::Overflow)?;
-                counters.kernel_calls += 2;
-                state.source_state = if state.source_state == 1 { 2 } else { 1 };
-                state.equality_primary = !state.equality_primary;
-                state.active_len = next_len;
+            if initial != initial_claim.x {
+                return Err(X4cErrorV4::InvalidGeometry(
+                    "X4d CUDA delayed-link false initial claim",
+                ));
             }
-            fold_wall_ns = fold_wall_ns
-                .checked_add(
-                    u64::try_from(folds_started.elapsed().as_nanos())
-                        .map_err(|_| X4cErrorV4::Overflow)?,
-                )
-                .ok_or(X4cErrorV4::Overflow)?;
-            point.push(challenge);
-        }
-        fill_dot_mailbox(self.backend, &resident_terms, &mailbox)?;
-        let terminal_value = self.backend.fp2_pair_sum_device(
-            DeviceSlice::new(&mailbox, 0, 2 * resident_terms.len())?,
-            resident_terms.len(),
-        )?[0];
-        counters.d2h_bytes += 32;
-        counters.protocol_scalar_d2h_bytes += 32;
-        counters.kernel_calls += resident_terms.len() as u64 + 1;
-        if resident_terms
-            .iter()
-            .any(|state| state.leading_virtual_rounds != 0 || state.active_len != 1)
-            || terminal_value != claim.x
-        {
-            return Err(X4cErrorV4::InvalidGeometry("X4d CUDA delayed-link terminal mismatch"));
-        }
-        let total_sumcheck_ns = u64::try_from(sumcheck_started.elapsed().as_nanos())
-            .map_err(|_| X4cErrorV4::Overflow)?;
-        let children = round_evaluation_wall_ns
-            .checked_add(fold_wall_ns)
-            .and_then(|value| value.checked_add(masks_transcript_terminal_wall_ns))
-            .ok_or(X4cErrorV4::Overflow)?;
-        masks_transcript_terminal_wall_ns = masks_transcript_terminal_wall_ns
-            .checked_add(total_sumcheck_ns.saturating_sub(children))
-            .ok_or(X4cErrorV4::Overflow)?;
 
-        for state in resident_terms {
-            self.backend.free_device(state.source)?;
-            self.backend.free_device(state.equality)?;
-            self.backend.free_device(state.source_ping)?;
-            self.backend.free_device(state.source_pong)?;
-            self.backend.free_device(state.equality_scratch)?;
+            let sumcheck_started = Instant::now();
+            let mut round_evaluation_wall_ns = 0u64;
+            let mut fold_wall_ns = 0u64;
+            let mut masks_transcript_terminal_wall_ns = 0u64;
+            let mut corrections = Vec::with_capacity(2 * round_count);
+            let mut point = Vec::with_capacity(round_count);
+            let mut claim = initial_claim;
+            for round in 0..round_count {
+                let evaluation_started = Instant::now();
+                for (index, state) in resident_terms.iter().enumerate() {
+                    if state.leading_virtual_rounds > 0 || state.active_len == 1 {
+                        self.backend.fp2_dot_scaled_pair_into_device(
+                            state.source_slice()?,
+                            state.equality_slice()?,
+                            state.virtual_factor,
+                            &mailbox,
+                            2 * index,
+                        )?;
+                    } else {
+                        self.backend.fp2_product_round_into_device(
+                            state.source_slice()?,
+                            state.equality_slice()?,
+                            &mailbox,
+                            2 * index,
+                        )?;
+                    }
+                }
+                let [at_zero, at_two] = self.backend.fp2_pair_sum_device(
+                    DeviceSlice::new(&mailbox, 0, 2 * resident_terms.len())?,
+                    resident_terms.len(),
+                )?;
+                round_evaluation_wall_ns = round_evaluation_wall_ns
+                    .checked_add(
+                        u64::try_from(evaluation_started.elapsed().as_nanos())
+                            .map_err(|_| X4cErrorV4::Overflow)?,
+                    )
+                    .ok_or(X4cErrorV4::Overflow)?;
+                counters.d2h_bytes += 32;
+                counters.protocol_scalar_d2h_bytes += 32;
+                counters.kernel_calls += resident_terms.len() as u64 + 1;
+
+                let orchestration_started = Instant::now();
+                let mask_zero = stream.draw_fulls(domains[2 * round], 1)[0];
+                let mask_two = stream.draw_fulls(domains[2 * round + 1], 1)[0];
+                corrections.push(at_zero - mask_zero.x);
+                corrections.push(at_two - mask_two.x);
+                tx.append("x4_v4_auth_output_link_round_corrections", 32);
+                let auth_zero = ProverAuthed { x: at_zero, m: mask_zero.m };
+                let auth_two = ProverAuthed { x: at_two, m: mask_two.m };
+                let auth_one = claim.sub(auth_zero);
+                let challenge = tx.challenge_fp2();
+                let weights = lagrange3(challenge);
+                claim = auth_zero
+                    .scale(weights[0])
+                    .add(auth_one.scale(weights[1]))
+                    .add(auth_two.scale(weights[2]));
+                masks_transcript_terminal_wall_ns = masks_transcript_terminal_wall_ns
+                    .checked_add(
+                        u64::try_from(orchestration_started.elapsed().as_nanos())
+                            .map_err(|_| X4cErrorV4::Overflow)?,
+                    )
+                    .ok_or(X4cErrorV4::Overflow)?;
+
+                let folds_started = Instant::now();
+                for state in &mut resident_terms {
+                    if state.leading_virtual_rounds > 0 {
+                        state.virtual_factor = state.virtual_factor * (Fp2::ONE - challenge);
+                        state.leading_virtual_rounds -= 1;
+                        continue;
+                    }
+                    if state.active_len == 1 {
+                        state.virtual_factor = state.virtual_factor * (Fp2::ONE - challenge);
+                        continue;
+                    }
+                    let source_input = state.source_slice()?;
+                    let equality_input = state.equality_slice()?;
+                    let source_output = if state.source_state == 1 {
+                        &state.source_pong
+                    } else {
+                        &state.source_ping
+                    };
+                    let equality_output = if state.equality_primary {
+                        &state.equality_scratch
+                    } else {
+                        &state.equality
+                    };
+                    self.backend.fp2_fold_rows_into_device(
+                        source_input,
+                        1,
+                        state.active_len,
+                        challenge,
+                        source_output,
+                        0,
+                    )?;
+                    self.backend.fp2_fold_rows_into_device(
+                        equality_input,
+                        1,
+                        state.active_len,
+                        challenge,
+                        equality_output,
+                        0,
+                    )?;
+                    let next_len = state.active_len / 2;
+                    counters.d2d_bytes = counters
+                        .d2d_bytes
+                        .checked_add((2 * next_len * size_of::<Fp2Repr>()) as u64)
+                        .ok_or(X4cErrorV4::Overflow)?;
+                    counters.kernel_calls += 2;
+                    state.source_state = if state.source_state == 1 { 2 } else { 1 };
+                    state.equality_primary = !state.equality_primary;
+                    state.active_len = next_len;
+                }
+                fold_wall_ns = fold_wall_ns
+                    .checked_add(
+                        u64::try_from(folds_started.elapsed().as_nanos())
+                            .map_err(|_| X4cErrorV4::Overflow)?,
+                    )
+                    .ok_or(X4cErrorV4::Overflow)?;
+                point.push(challenge);
+            }
+            fill_dot_mailbox(self.backend, &resident_terms, &mailbox)?;
+            let terminal_value = self.backend.fp2_pair_sum_device(
+                DeviceSlice::new(&mailbox, 0, 2 * resident_terms.len())?,
+                resident_terms.len(),
+            )?[0];
+            counters.d2h_bytes += 32;
+            counters.protocol_scalar_d2h_bytes += 32;
+            counters.kernel_calls += resident_terms.len() as u64 + 1;
+            if resident_terms
+                .iter()
+                .any(|state| state.leading_virtual_rounds != 0 || state.active_len != 1)
+                || terminal_value != claim.x
+            {
+                return Err(X4cErrorV4::InvalidGeometry("X4d CUDA delayed-link terminal mismatch"));
+            }
+            let total_sumcheck_ns = u64::try_from(sumcheck_started.elapsed().as_nanos())
+                .map_err(|_| X4cErrorV4::Overflow)?;
+            let children = round_evaluation_wall_ns
+                .checked_add(fold_wall_ns)
+                .and_then(|value| value.checked_add(masks_transcript_terminal_wall_ns))
+                .ok_or(X4cErrorV4::Overflow)?;
+            masks_transcript_terminal_wall_ns = masks_transcript_terminal_wall_ns
+                .checked_add(total_sumcheck_ns.saturating_sub(children))
+                .ok_or(X4cErrorV4::Overflow)?;
+
+            for state in resident_terms {
+                self.backend.free_device(state.source)?;
+                self.backend.free_device(state.equality)?;
+                self.backend.free_device(state.source_ping)?;
+                self.backend.free_device(state.source_pong)?;
+                self.backend.free_device(state.equality_scratch)?;
+            }
+            self.backend.free_device(generation_one)?;
+            self.backend.free_device(generation_two)?;
+            self.backend.free_device(point_row)?;
+            self.backend.free_device(mailbox)?;
+            Ok(Some(X4dResidentLinkOutputV4 {
+                corrections,
+                point,
+                final_claim: claim,
+                terminal_value,
+                equality_generation_wall_ns,
+                source_copy_wall_ns,
+                round_evaluation_wall_ns,
+                fold_wall_ns,
+                masks_transcript_terminal_wall_ns,
+                counters,
+            }))
         }
-        self.backend.free_device(generation_one)?;
-        self.backend.free_device(generation_two)?;
-        self.backend.free_device(point_row)?;
-        self.backend.free_device(mailbox)?;
-        Ok(Some(X4dResidentLinkOutputV4 {
-            corrections,
-            point,
-            final_claim: claim,
-            terminal_value,
-            equality_generation_wall_ns,
-            source_copy_wall_ns,
-            round_evaluation_wall_ns,
-            fold_wall_ns,
-            masks_transcript_terminal_wall_ns,
-            counters,
-        }))
     }
 
     fn allocate_arena(&mut self, layout: &X4cArenaLayoutV4) -> Result<Self::Arena, X4cErrorV4> {
@@ -3941,16 +4897,20 @@ impl X4cArenaRuntimeV4 for X4cCpuReferenceRuntimeV4 {
         domains: &[u64],
         tx: &mut Transcript,
     ) -> Result<Option<X4dResidentLinkOutputV4>, X4cErrorV4> {
-        super::authenticated_output_v4::prove_x4d_delayed_link_cpu_resident_v4(
+        let mut backend = Backend::cpu();
+        prove_x4d_delayed_link_resident_sequential_v4(
+            &mut backend,
+            false,
             terms,
             round_count,
             initial_claim,
             stream,
             domains,
             tx,
+            X4dProductRoundModeV4::Scaled,
+            None,
         )
         .map(Some)
-        .map_err(|_| X4cErrorV4::InvalidGeometry("X4d CPU resident delayed-link"))
     }
 
     fn allocate_arena(&mut self, layout: &X4cArenaLayoutV4) -> Result<Self::Arena, X4cErrorV4> {
@@ -4435,6 +5395,457 @@ mod tests {
     fn symbol(index: usize) -> Fp2 {
         let value = index as u64 + 1;
         Fp2::new(Fp::new(value.wrapping_mul(0x1_0001)), Fp::new(17 * value + 9))
+    }
+
+    #[derive(Clone)]
+    struct DelayedLinkTraceOracleTerm {
+        evaluations: Vec<Fp2>,
+        equality: Vec<Fp2>,
+        leading_virtual_rounds: usize,
+        virtual_factor: Fp2,
+    }
+
+    impl DelayedLinkTraceOracleTerm {
+        fn round_message(&self) -> [Fp2; 2] {
+            if self.leading_virtual_rounds > 0 || self.evaluations.len() == 1 {
+                let at_zero = self
+                    .evaluations
+                    .iter()
+                    .zip(&self.equality)
+                    .fold(Fp2::ZERO, |sum, (value, equality)| {
+                        sum + *value * *equality * self.virtual_factor
+                    });
+                return [at_zero, Fp2::ZERO - at_zero];
+            }
+            let mut at_zero = Fp2::ZERO;
+            let mut at_two = Fp2::ZERO;
+            for (values, equalities) in
+                self.evaluations.chunks_exact(2).zip(self.equality.chunks_exact(2))
+            {
+                let two = Fp2::from_base(Fp::new(2));
+                let value_two = values[0] + (values[1] - values[0]) * two;
+                let equality_two = equalities[0] + (equalities[1] - equalities[0]) * two;
+                at_zero += values[0] * equalities[0] * self.virtual_factor;
+                at_two += value_two * equality_two * self.virtual_factor;
+            }
+            [at_zero, at_two]
+        }
+
+        fn bind(&mut self, challenge: Fp2) {
+            if self.leading_virtual_rounds > 0 {
+                self.virtual_factor = self.virtual_factor * (Fp2::ONE - challenge);
+                self.leading_virtual_rounds -= 1;
+                return;
+            }
+            if self.evaluations.len() == 1 {
+                self.virtual_factor = self.virtual_factor * (Fp2::ONE - challenge);
+                return;
+            }
+            let fold = |values: &mut Vec<Fp2>| {
+                let half = values.len() / 2;
+                for index in 0..half {
+                    values[index] =
+                        values[2 * index] + challenge * (values[2 * index + 1] - values[2 * index]);
+                }
+                values.truncate(half);
+            };
+            fold(&mut self.evaluations);
+            fold(&mut self.equality);
+        }
+    }
+
+    #[test]
+    fn x4d_resident_production_relative_shape_matches_independent_reference() {
+        const LOCAL_MAX_MU: usize = 8;
+        const ROUND_COUNT: usize = LOCAL_MAX_MU + 1;
+        const PHYSICAL_SLOTS: usize = 51;
+        const LOGICAL_CONTRIBUTIONS: usize = 102;
+        const BASELINE_SHA: &str = "e4e2b14";
+
+        let dimensions = std::iter::repeat_n(LOCAL_MAX_MU, 2)
+            .chain(std::iter::repeat_n(LOCAL_MAX_MU - 4, 36))
+            .chain(std::iter::repeat_n(LOCAL_MAX_MU - 6, 13))
+            .collect::<Vec<_>>();
+        assert_eq!(dimensions.len(), PHYSICAL_SLOTS);
+        let sources = dimensions
+            .iter()
+            .enumerate()
+            .map(|(slot, dimension)| {
+                (0..1usize << dimension)
+                    .map(|index| symbol(10_000 * slot + index))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        let logical = dimensions
+            .iter()
+            .enumerate()
+            .flat_map(|(slot, dimension)| {
+                (0..2).map(move |ordinal| {
+                    let mut point_stream =
+                        volta_field::FpStream::from_seed([(3 * slot + ordinal + 1) as u8; 32]);
+                    (
+                        slot,
+                        X4dLinkEqualityContributionV4 {
+                            coefficient: symbol(20_000 + 2 * slot + ordinal),
+                            point: (0..*dimension).map(|_| point_stream.next_fp2()).collect(),
+                        },
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(logical.len(), LOGICAL_CONTRIBUTIONS);
+        let mut fused = vec![Vec::new(); PHYSICAL_SLOTS];
+        for (slot, contribution) in logical {
+            fused[slot].push(contribution);
+        }
+        assert!(fused.iter().all(|contributions| contributions.len() == 2));
+        let terms = sources
+            .iter()
+            .zip(&dimensions)
+            .zip(fused)
+            .map(|((evaluations, dimension), contributions)| X4dResidentLinkTermV4 {
+                evaluations,
+                dimension: *dimension,
+                contributions,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(terms.len(), PHYSICAL_SLOTS, "resident-term census");
+        assert_eq!(
+            terms.iter().map(|term| term.contributions.len()).sum::<usize>(),
+            LOGICAL_CONTRIBUTIONS,
+            "logical-contribution census"
+        );
+
+        let initial_value = terms.iter().fold(Fp2::ZERO, |settlement_sum, term| {
+            let mut equality = vec![Fp2::ZERO; term.evaluations.len()];
+            for contribution in &term.contributions {
+                for (combined, value) in
+                    equality.iter_mut().zip(volta_proto::mle::eq_vec(&contribution.point))
+                {
+                    *combined += contribution.coefficient * value;
+                }
+            }
+            settlement_sum
+                + term
+                    .evaluations
+                    .iter()
+                    .zip(equality)
+                    .fold(Fp2::ZERO, |term_sum, (value, equality)| term_sum + *value * equality)
+        });
+        let initial_claim = ProverAuthed { x: initial_value, m: symbol(30_000) };
+        let domains =
+            (0..2 * ROUND_COUNT).map(|index| 0xD200_0000 + index as u64).collect::<Vec<_>>();
+        let correlation_seed = [0x41; 32];
+        let transcript_seed = [0x52; 32];
+
+        let mut reference_stream = CorrelationStream::new(correlation_seed);
+        let mut reference_tx = Transcript::new(transcript_seed);
+        let reference =
+            super::super::authenticated_output_v4::prove_x4d_delayed_link_cpu_resident_v4(
+                &terms,
+                ROUND_COUNT,
+                initial_claim,
+                &mut reference_stream,
+                &domains,
+                &mut reference_tx,
+            )
+            .expect("independent CPU delayed-link byte oracle");
+
+        let mut resident_stream = CorrelationStream::new(correlation_seed);
+        let mut resident_tx = Transcript::new(transcript_seed);
+        let mut trace = Vec::new();
+        let resident = prove_x4d_delayed_link_resident_sequential_v4(
+            &mut Backend::cpu(),
+            false,
+            &terms,
+            ROUND_COUNT,
+            initial_claim,
+            &mut resident_stream,
+            &domains,
+            &mut resident_tx,
+            X4dProductRoundModeV4::Scaled,
+            Some(&mut trace),
+        )
+        .expect("the repaired resident orchestrator must match the independent CPU reference");
+        assert_eq!(trace.len(), ROUND_COUNT);
+        assert_eq!(resident_stream.counters, reference_stream.counters);
+        assert_eq!(
+            resident_stream.allocation_digest_hex(),
+            reference_stream.allocation_digest_hex()
+        );
+        assert_eq!(resident_tx.ledger(), reference_tx.ledger());
+        assert_eq!(resident_tx.total_bytes(), reference_tx.total_bytes());
+        assert_eq!(
+            trace.iter().map(|round| round.challenge).collect::<Vec<_>>(),
+            reference.point,
+            "challenge schedule changed in the arithmetic repair"
+        );
+        assert_eq!(resident.corrections, reference.corrections);
+        assert_eq!(resident.point, reference.point);
+        assert_eq!(resident.final_claim, reference.final_claim);
+        assert_eq!(resident.terminal_value, reference.terminal_value);
+        assert_eq!(resident.counters.unique_terms, PHYSICAL_SLOTS as u64);
+        assert_eq!(
+            resident.counters.source_symbols,
+            terms.iter().map(|term| term.evaluations.len() as u64).sum::<u64>()
+        );
+
+        let mut oracle_terms = terms
+            .iter()
+            .map(|term| {
+                let mut equality = vec![Fp2::ZERO; term.evaluations.len()];
+                for contribution in &term.contributions {
+                    for (combined, value) in
+                        equality.iter_mut().zip(volta_proto::mle::eq_vec(&contribution.point))
+                    {
+                        *combined += contribution.coefficient * value;
+                    }
+                }
+                DelayedLinkTraceOracleTerm {
+                    evaluations: term.evaluations.to_vec(),
+                    equality,
+                    leading_virtual_rounds: ROUND_COUNT - term.dimension,
+                    virtual_factor: Fp2::ONE,
+                }
+            })
+            .collect::<Vec<_>>();
+        let mut first_divergence = None;
+        for round_trace in &trace {
+            let expected_messages = oracle_terms
+                .iter()
+                .map(DelayedLinkTraceOracleTerm::round_message)
+                .collect::<Vec<_>>();
+            for (term_index, (observed, expected)) in
+                round_trace.terms.iter().zip(&expected_messages).enumerate()
+            {
+                assert_eq!(observed.dimension, terms[term_index].dimension);
+                assert_eq!(observed.active_len, oracle_terms[term_index].evaluations.len());
+                assert_eq!(
+                    observed.leading_virtual_rounds,
+                    oracle_terms[term_index].leading_virtual_rounds
+                );
+                assert_eq!(observed.virtual_factor, oracle_terms[term_index].virtual_factor);
+                if observed.message != *expected && first_divergence.is_none() {
+                    first_divergence = Some((
+                        term_index,
+                        round_trace.round,
+                        observed.message,
+                        *expected,
+                        observed.dimension,
+                        observed.active_len,
+                        observed.leading_virtual_rounds,
+                    ));
+                }
+            }
+            assert_eq!(
+                round_trace.aggregate,
+                expected_messages.iter().fold([Fp2::ZERO; 2], |sum, message| [
+                    sum[0] + message[0],
+                    sum[1] + message[1],
+                ])
+            );
+            for term in &mut oracle_terms {
+                term.bind(round_trace.challenge);
+            }
+            assert_eq!(
+                round_trace.post_fold_active_lens,
+                oracle_terms.iter().map(|term| term.evaluations.len()).collect::<Vec<_>>()
+            );
+            assert_eq!(
+                round_trace.post_fold_leading_virtual_rounds,
+                oracle_terms.iter().map(|term| term.leading_virtual_rounds).collect::<Vec<_>>()
+            );
+            assert_eq!(
+                round_trace.post_fold_virtual_factors,
+                oracle_terms.iter().map(|term| term.virtual_factor).collect::<Vec<_>>()
+            );
+            assert_eq!(
+                round_trace.post_fold_source_digests,
+                oracle_terms
+                    .iter()
+                    .map(|term| {
+                        x4d_fp2_repr_digest_v4(
+                            &term
+                                .evaluations
+                                .iter()
+                                .copied()
+                                .map(Fp2Repr::from)
+                                .collect::<Vec<_>>(),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(
+                round_trace.post_fold_equality_digests,
+                oracle_terms
+                    .iter()
+                    .map(|term| {
+                        x4d_fp2_repr_digest_v4(
+                            &term.equality.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>(),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            );
+        }
+        assert_eq!(
+            first_divergence, None,
+            "the scaled resident round must match the independent oracle at every term and round"
+        );
+
+        let mut unscaled_stream = CorrelationStream::new(correlation_seed);
+        let mut unscaled_tx = Transcript::new(transcript_seed);
+        let mut unscaled_trace = Vec::new();
+        let unscaled_error = prove_x4d_delayed_link_resident_sequential_v4(
+            &mut Backend::cpu(),
+            false,
+            &terms,
+            ROUND_COUNT,
+            initial_claim,
+            &mut unscaled_stream,
+            &domains,
+            &mut unscaled_tx,
+            X4dProductRoundModeV4::UnscaledBaseline,
+            Some(&mut unscaled_trace),
+        )
+        .expect_err("the e4e2b14 unscaled real-round arithmetic must remain a negative artifact");
+        assert!(matches!(
+            unscaled_error,
+            X4cErrorV4::X4dResidentTerminalValueMismatch { term_index: 0, .. }
+        ));
+        assert_eq!(unscaled_stream.counters, reference_stream.counters);
+        assert_eq!(unscaled_tx.ledger(), reference_tx.ledger());
+        let mut affected_terms = 0usize;
+        for (term_index, term) in terms.iter().enumerate() {
+            let mut equality = vec![Fp2::ZERO; term.evaluations.len()];
+            for contribution in &term.contributions {
+                for (combined, value) in
+                    equality.iter_mut().zip(volta_proto::mle::eq_vec(&contribution.point))
+                {
+                    *combined += contribution.coefficient * value;
+                }
+            }
+            let mut oracle = DelayedLinkTraceOracleTerm {
+                evaluations: term.evaluations.to_vec(),
+                equality,
+                leading_virtual_rounds: ROUND_COUNT - term.dimension,
+                virtual_factor: Fp2::ONE,
+            };
+            let first_real_round = oracle.leading_virtual_rounds;
+            for challenge in &reference.point[..first_real_round] {
+                oracle.bind(*challenge);
+            }
+            assert_ne!(
+                unscaled_trace[first_real_round].terms[term_index].message,
+                oracle.round_message(),
+                "production-relative term {term_index} was unexpectedly unaffected"
+            );
+            affected_terms += 1;
+        }
+        assert_eq!(affected_terms, PHYSICAL_SLOTS);
+
+        let mut fault_stream = CorrelationStream::new(correlation_seed);
+        let mut fault_tx = Transcript::new(transcript_seed);
+        let fault = prove_x4d_delayed_link_resident_sequential_v4(
+            &mut Backend::cpu(),
+            false,
+            &terms,
+            ROUND_COUNT,
+            initial_claim,
+            &mut fault_stream,
+            &domains,
+            &mut fault_tx,
+            X4dProductRoundModeV4::FaultUnscaled { term_index: 0, round: 1 },
+            None,
+        )
+        .expect_err("the permanent unscaled-round fault must fail closed");
+        assert!(matches!(
+            fault,
+            X4cErrorV4::X4dResidentTerminalValueMismatch {
+                term_index: 0,
+                dimension: LOCAL_MAX_MU,
+                active_len: 1,
+                leading_virtual_rounds: 0,
+                current_round: ROUND_COUNT,
+                ..
+            }
+        ));
+        assert_eq!(fault_stream.counters, reference_stream.counters);
+        assert_eq!(fault_tx.ledger(), reference_tx.ledger());
+
+        let mut geometry_stream = CorrelationStream::new(correlation_seed);
+        let mut geometry_tx = Transcript::new(transcript_seed);
+        let geometry_fault = prove_x4d_delayed_link_resident_sequential_v4(
+            &mut Backend::cpu(),
+            false,
+            &terms,
+            ROUND_COUNT,
+            initial_claim,
+            &mut geometry_stream,
+            &domains,
+            &mut geometry_tx,
+            X4dProductRoundModeV4::FaultSkipFold { term_index: 0, round: 1 },
+            None,
+        )
+        .expect_err("a deliberately undrained resident term must fail as geometry");
+        assert!(matches!(
+            geometry_fault,
+            X4cErrorV4::X4dResidentGeometryNotDrained {
+                term_index: 0,
+                dimension: LOCAL_MAX_MU,
+                active_len: 2,
+                leading_virtual_rounds: 0,
+                current_round: ROUND_COUNT,
+            }
+        ));
+        assert_eq!(BASELINE_SHA, "e4e2b14");
+    }
+
+    #[test]
+    fn x4d2_standalone_cpu_backend_runs_the_lower_production_scale_ladder() {
+        for max_mu in [20usize, 22] {
+            let mut backend = Backend::cpu();
+            let diagnostic =
+                x4d2_delayed_link_diagnostic_case_v4(&mut backend, max_mu, [1, 1, 1]).unwrap();
+            assert_eq!(diagnostic.round_count, max_mu + 1);
+            assert_eq!(
+                diagnostic.dimension_multiplicities,
+                [(max_mu, 1), (max_mu - 4, 1), (max_mu - 6, 1)]
+            );
+            assert_eq!(diagnostic.physical_source_slots, 3);
+            assert_eq!(diagnostic.resident_terms, 3);
+            assert_eq!(diagnostic.logical_contributions, 6);
+            assert_eq!(diagnostic.challenges_checked, (max_mu + 1) as u64);
+            assert_eq!(diagnostic.round_messages_checked, 3 * (max_mu + 1) as u64);
+            assert_eq!(diagnostic.fold_states_checked, 6 * (max_mu + 1) as u64);
+            assert!(diagnostic.correlation_counters_equal);
+            assert!(diagnostic.correlation_allocation_ledger_equal);
+            assert!(diagnostic.transcript_ledger_equal);
+            assert!(diagnostic.terminal_point_equal);
+            assert!(diagnostic.terminal_value_equal);
+        }
+    }
+
+    #[test]
+    #[ignore = "explicit production-scale diagnostic; run locally in release mode"]
+    fn x4d2_standalone_cpu_backend_runs_the_upper_production_scale_ladder() {
+        for max_mu in [24usize, 26] {
+            let mut backend = Backend::cpu();
+            let diagnostic =
+                x4d2_delayed_link_diagnostic_case_v4(&mut backend, max_mu, [1, 1, 1]).unwrap();
+            assert_eq!(
+                diagnostic.dimension_multiplicities,
+                [(max_mu, 1), (max_mu - 4, 1), (max_mu - 6, 1)]
+            );
+            assert_eq!(diagnostic.physical_source_slots, 3);
+            assert_eq!(diagnostic.logical_contributions, 6);
+            assert_eq!(diagnostic.round_messages_checked, 3 * (max_mu + 1) as u64);
+            assert_eq!(diagnostic.fold_states_checked, 6 * (max_mu + 1) as u64);
+            assert!(diagnostic.correlation_counters_equal);
+            assert!(diagnostic.correlation_allocation_ledger_equal);
+            assert!(diagnostic.transcript_ledger_equal);
+            assert!(diagnostic.terminal_point_equal);
+            assert!(diagnostic.terminal_value_equal);
+        }
     }
 
     #[test]

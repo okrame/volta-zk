@@ -7,6 +7,7 @@
 //! rejects residual work, which prevents an accidental staged path from being
 //! reported as the resident gate.
 
+use std::collections::BTreeMap;
 use std::fmt;
 use std::marker::PhantomData;
 use std::mem::size_of;
@@ -17,7 +18,7 @@ use std::time::Duration;
 use std::time::Instant;
 use volta_field::{Fp, Fp2};
 
-pub const CUDA_ABI_VERSION: u32 = 32;
+pub const CUDA_ABI_VERSION: u32 = 33;
 pub const OPERATION_COUNT: usize = 7;
 pub const DEFERRED_TIMING_CAPACITY: usize = 512;
 
@@ -850,7 +851,8 @@ impl<T: DeviceElement> DeviceBuffer<T> {
     /// Pure ownership preflight. This performs no CUDA call and lets compound
     /// owners reject a wrong context before consuming any of their handles.
     pub fn is_owned_by(&self, backend: &Backend) -> bool {
-        backend.kind == BackendKind::CudaResident && self.context_id == backend.context_id
+        matches!(backend.kind, BackendKind::Cpu | BackendKind::CudaResident)
+            && self.context_id == backend.context_id
     }
 }
 
@@ -868,7 +870,6 @@ impl<T: DeviceElement> PinnedHostBuffer<T> {
     }
 }
 
-#[cfg_attr(not(feature = "cuda"), allow(dead_code))]
 static NEXT_CONTEXT_ID: AtomicU64 = AtomicU64::new(1);
 
 impl From<Fp2> for Fp2Repr {
@@ -883,9 +884,26 @@ impl From<Fp2Repr> for Fp2 {
     }
 }
 
+fn fp2_from_repr_bytes(bytes: &[u8]) -> Fp2 {
+    debug_assert_eq!(bytes.len(), size_of::<Fp2Repr>());
+    let mut c0 = [0u8; 8];
+    let mut c1 = [0u8; 8];
+    c0.copy_from_slice(&bytes[..8]);
+    c1.copy_from_slice(&bytes[8..]);
+    Fp2::new(Fp::new(u64::from_ne_bytes(c0)), Fp::new(u64::from_ne_bytes(c1)))
+}
+
+fn fp2_write_repr_bytes(value: Fp2, bytes: &mut [u8]) {
+    debug_assert_eq!(bytes.len(), size_of::<Fp2Repr>());
+    bytes[..8].copy_from_slice(&value.c0.value().to_ne_bytes());
+    bytes[8..].copy_from_slice(&value.c1.value().to_ne_bytes());
+}
+
 pub struct Backend {
     kind: BackendKind,
     context_id: u64,
+    cpu_device_buffers: BTreeMap<u64, Vec<u8>>,
+    cpu_next_device_id: u64,
     #[cfg(feature = "cuda")]
     cuda: Option<cuda::CudaContext>,
     cpu_residual_ns: [u64; OPERATION_COUNT],
@@ -962,7 +980,9 @@ impl Backend {
     pub fn cpu() -> Backend {
         Backend {
             kind: BackendKind::Cpu,
-            context_id: 0,
+            context_id: NEXT_CONTEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            cpu_device_buffers: BTreeMap::new(),
+            cpu_next_device_id: 1,
             #[cfg(feature = "cuda")]
             cuda: None,
             cpu_residual_ns: [0; OPERATION_COUNT],
@@ -999,6 +1019,8 @@ impl Backend {
         Ok(Backend {
             kind,
             context_id: NEXT_CONTEXT_ID.fetch_add(1, Ordering::Relaxed),
+            cpu_device_buffers: BTreeMap::new(),
+            cpu_next_device_id: 1,
             cuda: Some(cuda),
             cpu_residual_ns: [0; OPERATION_COUNT],
             measurement_active: false,
@@ -1302,11 +1324,20 @@ impl Backend {
         Ok(())
     }
 
+    fn require_buffer_backend(&self) -> Result<(), AccelError> {
+        if !matches!(self.kind, BackendKind::Cpu | BackendKind::CudaResident) {
+            return Err(AccelError::InvalidInput(
+                "resident buffers require the cpu-reference or cuda-resident backend",
+            ));
+        }
+        Ok(())
+    }
+
     fn validate_buffer<T: DeviceElement>(
         &self,
         buffer: &DeviceBuffer<T>,
     ) -> Result<(), AccelError> {
-        self.require_resident()?;
+        self.require_buffer_backend()?;
         if buffer.context_id != self.context_id {
             return Err(AccelError::InvalidInput(
                 "device buffer belongs to a different CUDA context",
@@ -1335,13 +1366,25 @@ impl Backend {
         &mut self,
         len: usize,
     ) -> Result<DeviceBuffer<T>, AccelError> {
-        self.require_resident()?;
+        self.require_buffer_backend()?;
         let bytes = len
             .checked_mul(size_of::<T>())
             .filter(|&n| n > 0)
             .ok_or(AccelError::InvalidInput("zero or overflowing device allocation"))?;
-        #[cfg(not(feature = "cuda"))]
-        let _ = bytes;
+        if self.kind == BackendKind::Cpu {
+            let id = self.cpu_next_device_id;
+            self.cpu_next_device_id = self
+                .cpu_next_device_id
+                .checked_add(1)
+                .ok_or(AccelError::InvalidInput("CPU resident allocation id overflow"))?;
+            self.cpu_device_buffers.insert(id, vec![0u8; bytes]);
+            return Ok(DeviceBuffer {
+                id,
+                len,
+                context_id: self.context_id,
+                _element: PhantomData,
+            });
+        }
         #[cfg(feature = "cuda")]
         {
             let id =
@@ -1362,6 +1405,13 @@ impl Backend {
         buffer: DeviceBuffer<T>,
     ) -> Result<(), AccelError> {
         self.validate_buffer(&buffer)?;
+        if self.kind == BackendKind::Cpu {
+            return self
+                .cpu_device_buffers
+                .remove(&buffer.id)
+                .map(|_| ())
+                .ok_or(AccelError::InvalidInput("unknown CPU resident allocation"));
+        }
         #[cfg(feature = "cuda")]
         {
             return self.cuda.as_mut().expect("CUDA kind without context").resident_free(buffer.id);
@@ -1379,6 +1429,25 @@ impl Backend {
         self.validate_buffer(buffer)?;
         validate_region(buffer.len, offset, values.len())?;
         if values.is_empty() {
+            return Ok(());
+        }
+        if self.kind == BackendKind::Cpu {
+            let bytes = self
+                .cpu_device_buffers
+                .get_mut(&buffer.id)
+                .ok_or(AccelError::InvalidInput("unknown CPU resident allocation"))?;
+            let byte_offset = offset
+                .checked_mul(size_of::<T>())
+                .ok_or(AccelError::InvalidInput("CPU resident upload offset overflow"))?;
+            let byte_len = values
+                .len()
+                .checked_mul(size_of::<T>())
+                .ok_or(AccelError::InvalidInput("CPU resident upload length overflow"))?;
+            // SAFETY: DeviceElement is sealed to plain-old-data types. The
+            // destination range was validated against the typed allocation.
+            let source =
+                unsafe { std::slice::from_raw_parts(values.as_ptr().cast::<u8>(), byte_len) };
+            bytes[byte_offset..byte_offset + byte_len].copy_from_slice(source);
             return Ok(());
         }
         #[cfg(feature = "cuda")]
@@ -1406,6 +1475,25 @@ impl Backend {
         validate_region(buffer.len, offset, len)?;
         if len == 0 {
             return Ok(Vec::new());
+        }
+        if self.kind == BackendKind::Cpu {
+            let bytes = self
+                .cpu_device_buffers
+                .get(&buffer.id)
+                .ok_or(AccelError::InvalidInput("unknown CPU resident allocation"))?;
+            let byte_offset = offset
+                .checked_mul(size_of::<T>())
+                .ok_or(AccelError::InvalidInput("CPU resident download offset overflow"))?;
+            let byte_len = len
+                .checked_mul(size_of::<T>())
+                .ok_or(AccelError::InvalidInput("CPU resident download length overflow"))?;
+            let mut out = vec![T::default(); len];
+            // SAFETY: DeviceElement is sealed to plain-old-data types and the
+            // output owns exactly `byte_len` writable bytes.
+            let destination =
+                unsafe { std::slice::from_raw_parts_mut(out.as_mut_ptr().cast::<u8>(), byte_len) };
+            destination.copy_from_slice(&bytes[byte_offset..byte_offset + byte_len]);
+            return Ok(out);
         }
         #[cfg(feature = "cuda")]
         {
@@ -3318,6 +3406,43 @@ impl Backend {
         {
             return Err(AccelError::InvalidInput("X4d link-equality buffers must be distinct"));
         }
+        if self.kind == BackendKind::Cpu {
+            let public = self.download_device(
+                point_and_scale.buffer(),
+                point_and_scale.offset(),
+                n_vars + 1,
+            )?;
+            let point = public[..n_vars].iter().copied().map(Fp2::from).collect::<Vec<_>>();
+            let scale = Fp2::from(public[n_vars]);
+            let mut equality = vec![Fp2Repr::default(); len];
+            equality[0] = scale.into();
+            let mut active = 1usize;
+            for coordinate in point.iter().rev() {
+                for index in (0..active).rev() {
+                    let value = Fp2::from(equality[index]);
+                    let at_one = value * *coordinate;
+                    equality[2 * index] = (value - at_one).into();
+                    equality[2 * index + 1] = at_one.into();
+                }
+                active *= 2;
+            }
+            if initialize {
+                return self.upload_device(target, target_offset, &equality);
+            }
+            let target_bytes = self
+                .cpu_device_buffers
+                .get_mut(&target.id)
+                .ok_or(AccelError::InvalidInput("unknown CPU resident allocation"))?;
+            let byte_offset = target_offset
+                .checked_mul(size_of::<Fp2Repr>())
+                .ok_or(AccelError::InvalidInput("CPU X4d equality offset overflow"))?;
+            for (current, addition) in
+                target_bytes[byte_offset..byte_offset + len * 16].chunks_exact_mut(16).zip(equality)
+            {
+                fp2_write_repr_bytes(fp2_from_repr_bytes(current) + Fp2::from(addition), current);
+            }
+            return Ok(());
+        }
         #[cfg(feature = "cuda")]
         {
             return self
@@ -3360,6 +3485,32 @@ impl Backend {
         self.validate_device_slice(b, b.len())?;
         self.validate_buffer(output)?;
         validate_region(output.len, output_offset, 2)?;
+        if self.kind == BackendKind::Cpu {
+            let value = {
+                let a_bytes = self
+                    .cpu_device_buffers
+                    .get(&a.buffer().id)
+                    .ok_or(AccelError::InvalidInput("unknown CPU resident allocation"))?;
+                let b_bytes = self
+                    .cpu_device_buffers
+                    .get(&b.buffer().id)
+                    .ok_or(AccelError::InvalidInput("unknown CPU resident allocation"))?;
+                let a_start = a.offset() * 16;
+                let b_start = b.offset() * 16;
+                a_bytes[a_start..a_start + a.len() * 16]
+                    .chunks_exact(16)
+                    .zip(b_bytes[b_start..b_start + b.len() * 16].chunks_exact(16))
+                    .fold(Fp2::ZERO, |sum, (left, right)| {
+                        sum + fp2_from_repr_bytes(left) * fp2_from_repr_bytes(right)
+                    })
+                    * scale
+            };
+            return self.upload_device(
+                output,
+                output_offset,
+                &[Fp2Repr::from(value), Fp2Repr::from(Fp2::ZERO - value)],
+            );
+        }
         #[cfg(feature = "cuda")]
         {
             return self
@@ -3391,6 +3542,15 @@ impl Backend {
             return Err(AccelError::InvalidInput("X4d link mailbox geometry"));
         }
         self.validate_device_slice(input, input.len())?;
+        if self.kind == BackendKind::Cpu {
+            let values = self.download_device(input.buffer(), input.offset(), input.len())?;
+            let mut output = [Fp2::ZERO; 2];
+            for pair in values.chunks_exact(2) {
+                output[0] += Fp2::from(pair[0]);
+                output[1] += Fp2::from(pair[1]);
+            }
+            return Ok(output);
+        }
         #[cfg(feature = "cuda")]
         {
             return self.cuda.as_mut().expect("CUDA kind without context").fp2_pair_sum_device(
@@ -3415,6 +3575,9 @@ impl Backend {
             return Err(AccelError::InvalidInput(
                 "product-round workspace reservation requires non-zero pairs",
             ));
+        }
+        if self.kind == BackendKind::Cpu {
+            return Ok(());
         }
         self.require_resident()?;
         #[cfg(feature = "cuda")]
@@ -3470,6 +3633,39 @@ impl Backend {
         self.validate_device_slice(b, b.len())?;
         self.validate_buffer(output)?;
         validate_region(output.len, output_offset, 2)?;
+        if self.kind == BackendKind::Cpu {
+            let mut at_zero = Fp2::ZERO;
+            let mut at_two = Fp2::ZERO;
+            {
+                let a_bytes = self
+                    .cpu_device_buffers
+                    .get(&a.buffer().id)
+                    .ok_or(AccelError::InvalidInput("unknown CPU resident allocation"))?;
+                let b_bytes = self
+                    .cpu_device_buffers
+                    .get(&b.buffer().id)
+                    .ok_or(AccelError::InvalidInput("unknown CPU resident allocation"))?;
+                let a_start = a.offset() * 16;
+                let b_start = b.offset() * 16;
+                for (left, right) in a_bytes[a_start..a_start + a.len() * 16]
+                    .chunks_exact(32)
+                    .zip(b_bytes[b_start..b_start + b.len() * 16].chunks_exact(32))
+                {
+                    let left_zero = fp2_from_repr_bytes(&left[..16]);
+                    let left_one = fp2_from_repr_bytes(&left[16..]);
+                    let right_zero = fp2_from_repr_bytes(&right[..16]);
+                    let right_one = fp2_from_repr_bytes(&right[16..]);
+                    at_zero += left_zero * right_zero;
+                    at_two +=
+                        (left_one + left_one - left_zero) * (right_one + right_one - right_zero);
+                }
+            }
+            return self.upload_device(
+                output,
+                output_offset,
+                &[Fp2Repr::from(at_zero), Fp2Repr::from(at_two)],
+            );
+        }
         #[cfg(feature = "cuda")]
         {
             return self
@@ -3482,6 +3678,82 @@ impl Backend {
                     b.buffer.id,
                     b.offset,
                     a.len / 2,
+                    output.id,
+                    output_offset,
+                );
+        }
+        #[cfg(not(feature = "cuda"))]
+        Err(AccelError::FeatureDisabled)
+    }
+
+    /// Enqueue one product-sumcheck round, multiply the compressed
+    /// `[g(0), g(2)]` message exactly once by `scale`, and place it in a
+    /// caller-owned resident mailbox. The fold inputs and their later fold
+    /// state are not scaled. `scale == 1` is field- and byte-identical to
+    /// [`Self::fp2_product_round_into_device`].
+    pub fn fp2_product_round_scaled_into_device(
+        &mut self,
+        a: DeviceSlice<'_, Fp2Repr>,
+        b: DeviceSlice<'_, Fp2Repr>,
+        scale: Fp2,
+        output: &DeviceBuffer<Fp2Repr>,
+        output_offset: usize,
+    ) -> Result<(), AccelError> {
+        if a.len() != b.len() || a.len() < 2 || a.len() % 2 != 0 {
+            return Err(AccelError::InvalidInput(
+                "invalid resident scaled product-sumcheck mailbox geometry",
+            ));
+        }
+        self.validate_device_slice(a, a.len())?;
+        self.validate_device_slice(b, b.len())?;
+        self.validate_buffer(output)?;
+        validate_region(output.len, output_offset, 2)?;
+        if self.kind == BackendKind::Cpu {
+            let mut at_zero = Fp2::ZERO;
+            let mut at_two = Fp2::ZERO;
+            {
+                let a_bytes = self
+                    .cpu_device_buffers
+                    .get(&a.buffer().id)
+                    .ok_or(AccelError::InvalidInput("unknown CPU resident allocation"))?;
+                let b_bytes = self
+                    .cpu_device_buffers
+                    .get(&b.buffer().id)
+                    .ok_or(AccelError::InvalidInput("unknown CPU resident allocation"))?;
+                let a_start = a.offset() * 16;
+                let b_start = b.offset() * 16;
+                for (left, right) in a_bytes[a_start..a_start + a.len() * 16]
+                    .chunks_exact(32)
+                    .zip(b_bytes[b_start..b_start + b.len() * 16].chunks_exact(32))
+                {
+                    let left_zero = fp2_from_repr_bytes(&left[..16]);
+                    let left_one = fp2_from_repr_bytes(&left[16..]);
+                    let right_zero = fp2_from_repr_bytes(&right[..16]);
+                    let right_one = fp2_from_repr_bytes(&right[16..]);
+                    at_zero += left_zero * right_zero;
+                    at_two +=
+                        (left_one + left_one - left_zero) * (right_one + right_one - right_zero);
+                }
+            }
+            return self.upload_device(
+                output,
+                output_offset,
+                &[Fp2Repr::from(at_zero * scale), Fp2Repr::from(at_two * scale)],
+            );
+        }
+        #[cfg(feature = "cuda")]
+        {
+            return self
+                .cuda
+                .as_mut()
+                .expect("CUDA kind without context")
+                .fp2_product_round_scaled_into_device(
+                    a.buffer.id,
+                    a.offset,
+                    b.buffer.id,
+                    b.offset,
+                    a.len / 2,
+                    scale,
                     output.id,
                     output_offset,
                 );
@@ -5730,6 +6002,27 @@ impl Backend {
         {
             return Err(AccelError::InvalidInput("resident row-fold input and output overlap"));
         }
+        if self.kind == BackendKind::Cpu {
+            let folded = {
+                let input_bytes = self
+                    .cpu_device_buffers
+                    .get(&input.buffer().id)
+                    .ok_or(AccelError::InvalidInput("unknown CPU resident allocation"))?;
+                let input_start = input.offset() * 16;
+                let mut folded = Vec::with_capacity(output_len);
+                for row in
+                    input_bytes[input_start..input_start + input_len * 16].chunks_exact(len * 16)
+                {
+                    for pair in row.chunks_exact(32) {
+                        let at_zero = fp2_from_repr_bytes(&pair[..16]);
+                        let at_one = fp2_from_repr_bytes(&pair[16..]);
+                        folded.push(Fp2Repr::from(at_zero + (at_one - at_zero) * r));
+                    }
+                }
+                folded
+            };
+            return self.upload_device(output, output_offset, &folded);
+        }
         #[cfg(feature = "cuda")]
         {
             return self.cuda.as_mut().expect("CUDA kind without context").fp2_fold_rows_device(
@@ -6510,6 +6803,57 @@ mod tests {
         b.begin_measurement().unwrap();
         assert_eq!(b.begin_measurement(), Err(AccelError::MeasurementAlreadyActive));
         b.finish_measurement().unwrap();
+    }
+
+    #[test]
+    fn cpu_resident_scaled_product_round_is_exact_and_scale_one_is_byte_identical() {
+        for dimension in [2usize, 4, 8, 12] {
+            let len = 1usize << dimension;
+            let left = (0..len)
+                .map(|index| {
+                    Fp2::new(Fp::new(17 + 31 * index as u64), Fp::new(23 + 47 * index as u64))
+                })
+                .collect::<Vec<_>>();
+            let right = (0..len)
+                .map(|index| {
+                    Fp2::new(Fp::new(101 + 53 * index as u64), Fp::new(211 + 71 * index as u64))
+                })
+                .collect::<Vec<_>>();
+            let left_raw = left.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>();
+            let right_raw = right.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>();
+            let mut backend = Backend::cpu();
+            let left_device = backend.upload_new_device(&left_raw).unwrap();
+            let right_device = backend.upload_new_device(&right_raw).unwrap();
+            let mailbox = backend.alloc_device::<Fp2Repr>(6).unwrap();
+            let left_slice = DeviceSlice::new(&left_device, 0, len).unwrap();
+            let right_slice = DeviceSlice::new(&right_device, 0, len).unwrap();
+            backend.fp2_product_round_into_device(left_slice, right_slice, &mailbox, 0).unwrap();
+            backend
+                .fp2_product_round_scaled_into_device(
+                    left_slice,
+                    right_slice,
+                    Fp2::ONE,
+                    &mailbox,
+                    2,
+                )
+                .unwrap();
+            let scale = Fp2::new(Fp::new(0x1234_5678), Fp::new(0x9abc_def0));
+            backend
+                .fp2_product_round_scaled_into_device(left_slice, right_slice, scale, &mailbox, 4)
+                .unwrap();
+            let output_raw = backend.download_device(&mailbox, 0, 6).unwrap();
+            assert_eq!(
+                &output_raw[0..2],
+                &output_raw[2..4],
+                "scale=1 changed the resident mailbox bytes"
+            );
+            let output = output_raw.into_iter().map(Fp2::from).collect::<Vec<_>>();
+            assert_eq!(output[4], output[0] * scale);
+            assert_eq!(output[5], output[1] * scale);
+            backend.free_device(mailbox).unwrap();
+            backend.free_device(right_device).unwrap();
+            backend.free_device(left_device).unwrap();
+        }
     }
 
     #[cfg(not(feature = "cuda"))]
@@ -9704,7 +10048,7 @@ mod cuda_tests {
     #[test]
     fn x4d_resident_kernels_match_cpu_field_evaluation_exactly() {
         let Some(mut gpu) = cuda(BackendKind::CudaResident) else { return };
-        let dimension = 7usize;
+        let dimension = 10usize;
         let len = 1usize << dimension;
         let mut field_stream = FpStream::from_seed([0xD2; 32]);
         let point_zero = (0..dimension).map(|_| field_stream.next_fp2()).collect::<Vec<_>>();
@@ -9809,7 +10153,7 @@ mod cuda_tests {
                 &observed_link.iter().copied().map(Fp2Repr::from).collect::<Vec<_>>(),
             )
             .unwrap();
-        let mailbox = gpu.alloc_device::<Fp2Repr>(4).unwrap();
+        let mailbox = gpu.alloc_device::<Fp2Repr>(6).unwrap();
         let scale_zero = field_stream.next_fp2();
         let scale_one = field_stream.next_fp2();
         for (pair, scale) in [scale_zero, scale_one].into_iter().enumerate() {
@@ -9829,6 +10173,32 @@ mod cuda_tests {
             .fold(Fp2::ZERO, |sum, (&left, &right)| sum + left * right);
         let positive = (scale_zero + scale_one) * dot;
         assert_eq!(pair, [positive, Fp2::ZERO - positive]);
+        let product_scale = field_stream.next_fp2();
+        gpu.reserve_fp2_product_round_workspace(len / 2).unwrap();
+        gpu.fp2_product_round_scaled_into_device(
+            DeviceSlice::new(&source_device, 0, len).unwrap(),
+            DeviceSlice::new(&equality_device, 0, len).unwrap(),
+            product_scale,
+            &mailbox,
+            4,
+        )
+        .unwrap();
+        let observed_product = gpu
+            .download_device(&mailbox, 4, 2)
+            .unwrap()
+            .into_iter()
+            .map(Fp2::from)
+            .collect::<Vec<_>>();
+        let expected_product = source.chunks_exact(2).zip(observed_link.chunks_exact(2)).fold(
+            [Fp2::ZERO; 2],
+            |mut output, (source, equality)| {
+                output[0] += source[0] * equality[0] * product_scale;
+                output[1] +=
+                    at2(source[0], source[1]) * at2(equality[0], equality[1]) * product_scale;
+                output
+            },
+        );
+        assert_eq!(observed_product, expected_product);
 
         for buffer in [
             claim_row,

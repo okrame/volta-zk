@@ -2615,7 +2615,7 @@ mod tests {
 
     #[test]
     fn production_fixture_geometry_is_exact() {
-        let specs = gpt2_specs();
+        let specs = config_specs();
         assert_eq!(specs.len(), 5);
         assert_eq!(
             specs

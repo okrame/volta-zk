@@ -1,0 +1,89 @@
+{
+  "report_schema_version": 1,
+  "milestone": "C4-Ligero-Phase1-local",
+  "date": "2026-07-27",
+  "baseline_git_sha": "7bb4428b52dde4810b2e8b3dd525eb5b1e50a906",
+  "git_dirty": true,
+  "record_kind": "append-only non-production local implementation and formula evidence",
+  "design_file": "docs/c4-ligero-inline-rate-design.md",
+  "design_sha256": "bcc69cd39419c497dae45b695b15e5f1fd6a06e3f300d46e8581fb19976582eb",
+  "pod_contacted": false,
+  "production_pair_started": false,
+  "gate_verdict": false,
+  "performance_result": false,
+  "x4_campaign_status": "suspended; immutable history retained",
+  "profiles": {
+    "anchor": {
+      "nominal_rate": "1/4",
+      "queries": 120,
+      "weights_code_len": 32768,
+      "embed_code_len": 131072,
+      "pcs_bytes": 43273888,
+      "non_pcs_transcript_bytes": 41270464,
+      "response_bytes": 84544352,
+      "first_exchange_bytes": 122915817,
+      "soundness_bits": 78.80929487391641,
+      "encoded_codeword_bytes": 8623489024
+    },
+    "rate8": {
+      "nominal_rate": "1/8",
+      "queries": 97,
+      "weights_code_len": 65536,
+      "embed_code_len": 262144,
+      "pcs_bytes": 38296040,
+      "non_pcs_transcript_bytes": 41270464,
+      "response_bytes": 79566504,
+      "first_exchange_bytes": 117937969,
+      "soundness_bits": 78.86651649674867,
+      "encoded_codeword_bytes": 17246978048
+    }
+  },
+  "exact_response_saving_bytes": 4977848,
+  "setup_bytes": 38371465,
+  "amortized_five_response_bytes": {
+    "anchor": 92218645,
+    "rate8": 87240797
+  },
+  "implementation": {
+    "report_schema_version": 11,
+    "cuda_abi_version": 33,
+    "record_selector": "--c4-record --c4-profile anchor|rate8",
+    "raw_validator": "python3 scripts/report.py --validate-c4-official RECORD",
+    "paired_validator": "python3 scripts/report.py --validate-c4-pair ANCHOR RATE8 --write-c4-pair OUTPUT",
+    "production_cpu_fallback": false,
+    "historical_t1_constants_mutated": false
+  },
+  "local_crypto_differential": {
+    "profiles_executed": [
+      "scaled anchor",
+      "scaled rate8"
+    ],
+    "commit_open_verify": true,
+    "tampered_merkle_path_rejected": true,
+    "tampered_authenticated_correction_rejected": true,
+    "production_formula_tests": true,
+    "production_candidate_materialized": false
+  },
+  "verification": {
+    "cargo_test_workspace": "PASS",
+    "pytest_report_validator_23": "PASS",
+    "cargo_check_workspace_all_targets_cuda": "PASS",
+    "cargo_fmt_all_check": "PASS",
+    "git_diff_check": "PASS"
+  },
+  "phase2_resource_floor": {
+    "gpu": "one selected NVIDIA A100-SXM4-80GB sm_80",
+    "free_device_bytes": 40000000000,
+    "host_ram_gib": 64,
+    "free_local_non_fuse_storage_gb": 80,
+    "logical_cpus": 16,
+    "rayon_workers": 8,
+    "recommended_host_ram_gib": 128,
+    "recommended_local_storage_gb": 100
+  },
+  "notes": [
+    "All communication and soundness values are locally checked formulas, not A100 measurements.",
+    "The 17.25-GB production candidate codeword tier was not materialized on the 11-GiB local host.",
+    "A new explicit owner GO and admitted endpoint are required before any pod contact."
+  ]
+}

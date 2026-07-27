@@ -3,9 +3,8 @@
 The authoritative repository instructions are in `AGENTS.md`. Read them
 first, then read:
 
-1. `docs/p7-handoff-spec.md` for the plan of record and frozen gates;
-2. `docs/prototype-status.md` for the append-only state ledger;
-3. the current task-specific handoff named by the ledger.
+1. `docs/prototype-status.md` for the append-only plan and state ledger;
+2. the current task-specific design named by the latest ledger entry.
 
 Do not maintain a second copy of project state or historical checkpoint
 chronology in this file. Milestone boundaries, measurements and deviations

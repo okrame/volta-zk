@@ -4066,6 +4066,187 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7(tmp_path)
     bad_t1_auth_path.write_text(json.dumps(bad_t1_auth))
     assert report.validate_t1_official_result(bad_t1_auth_path) is False
 
+    def c4_record(profile: str):
+        row = copy.deepcopy(t1_pod)
+        is_rate8 = profile == "rate8"
+        pcs_weights = 32_831_444 if is_rate8 else 37_405_088
+        pcs_embed = 5_464_596 if is_rate8 else 5_868_800
+        pcs_bytes = pcs_weights + pcs_embed
+        response_bytes = 41_270_464 + pcs_bytes
+        fixed_non_pcs = 38_348_720 + 22_176 + 672 + 672
+        row.update(
+            {
+                "report_schema_version": 11,
+                "milestone": f"C4-G4-{profile}",
+                "accelerator_cuda_abi_version": 33,
+                "p7b_gate_profile": "runpod-a100-c4-v1",
+                "pcs_n_queries": 97 if is_rate8 else 120,
+                "comm_response_bytes": response_bytes,
+                "comm_response_by_label": {
+                    "auth_corrections": 38_348_720,
+                    "t1_eq_round_corrections": 22_176,
+                    "t1_eq_terminal_correction": 672,
+                    "t1_q_bridge_correction": 672,
+                    "other": 41_270_464 - fixed_non_pcs,
+                    "weights": pcs_weights,
+                    "embed": pcs_embed,
+                },
+                "comm_pcs_by_label": {
+                    "weights": pcs_weights,
+                    "embed": pcs_embed,
+                },
+                "pcs_opening_bytes_total": pcs_bytes,
+                "total_response_download_bytes": response_bytes,
+                "total_response_download_packed_bytes": response_bytes,
+                "response_communication_observed_bytes": response_bytes,
+                "p7b_transcript_reference_bytes": response_bytes,
+                "p7b_pcs_opening_reference_bytes": pcs_bytes,
+                "p7b_packed_response_reference_bytes": response_bytes,
+                "prove_response_timing": {
+                    "samples_s": [4.0, 4.1, 4.2],
+                    "median_s": 4.1,
+                },
+                "response_session_wall_timing": {
+                    "samples_s": [5.0, 5.1, 5.2],
+                    "median_s": 5.1,
+                },
+            }
+        )
+        for repetition in row["repetitions"]:
+            repetition["accelerator_session"]["peak_device_bytes"] = 20_000_000_000
+        peak = max(
+            repetition["accelerator_session"]["peak_device_bytes"]
+            for repetition in row["repetitions"]
+        )
+        row["c4"] = {
+            "profile": profile,
+            "design_file": "docs/c4-ligero-inline-rate-design.md",
+            "design_sha256": (
+                "bcc69cd39419c497dae45b695b15e5f1fd6a06e3f300d46e8581fb19976582eb"
+            ),
+            "resource_admission": {
+                "selected_gpu": "0",
+                "gpu_free_bytes": 60_000_000_000,
+                "gpu_free_floor_bytes": 40_000_000_000,
+                "host_ram_bytes": 128 * 1024 * 1024 * 1024,
+                "host_ram_floor_bytes": 64 * 1024 * 1024 * 1024,
+                "local_storage_path": "/local/volta-zk",
+                "local_storage_fs_type": "xfs",
+                "local_storage_free_bytes": 100_000_000_000,
+                "local_storage_floor_bytes": 80_000_000_000,
+                "detected_logical_cpus": 32,
+                "logical_cpu_floor": 16,
+                "rayon_workers": 8,
+                "non_fuse_local_storage": True,
+                "overall_pass": True,
+            },
+            "weights": report.C4_GEOMETRY[profile]["weights"],
+            "embed": report.C4_GEOMETRY[profile]["embed"],
+            "non_pcs_transcript_bytes": 41_270_464,
+            "expected_pcs_bytes": pcs_bytes,
+            "observed_pcs_bytes": pcs_bytes,
+            "expected_response_bytes": response_bytes,
+            "observed_response_bytes": response_bytes,
+            "response_saving_from_anchor_bytes": 4_977_848 if is_rate8 else 0,
+            "setup_bytes": 38_371_465,
+            "first_exchange_bytes": 117_937_969 if is_rate8 else 122_915_817,
+            "encoded_codeword_bytes": 17_246_978_048 if is_rate8 else 8_623_489_024,
+            "device_live_gate_bytes": 40_000_000_000,
+            "observed_peak_device_bytes": peak,
+            "device_live_gate_pass": peak < 40_000_000_000,
+            "soundness_floor_bits": 78.809_294_873_916_41,
+            "observed_soundness_bits": (
+                78.866_516_496_748_67 if is_rate8 else 78.809_294_873_916_41
+            ),
+            "soundness_gate_pass": True,
+            "exact_communication_pass": True,
+            "inherited_t1_surface_pass": True,
+            "performance_pair_evaluated": False,
+            "gate_verdict": False,
+        }
+        return row
+
+    c4_anchor = c4_record("anchor")
+    c4_candidate = c4_record("rate8")
+    c4_anchor["fase_d_lifecycle"]["channel_ledger_digest"] = "a" * 64
+    c4_candidate["fase_d_lifecycle"]["channel_ledger_digest"] = "b" * 64
+    c4_anchor_path = tmp_path / "c4-anchor.json"
+    c4_candidate_path = tmp_path / "c4-rate8.json"
+    c4_anchor_path.write_text(json.dumps(c4_anchor))
+    c4_candidate_path.write_text(json.dumps(c4_candidate))
+    assert report.validate_c4_official_result(c4_anchor_path) is True
+    assert report.validate_c4_official_result(c4_candidate_path) is True
+    c4_pair = report.c4_paired_verdict(c4_anchor_path, c4_candidate_path)
+    assert c4_pair is not None
+    assert c4_pair["overall_pass"] is True
+    assert c4_pair["communication_saving_bytes"] == 4_977_848
+    c4_pair_path = tmp_path / "c4-pair.json"
+    assert (
+        report.write_c4_paired_verdict(
+            c4_anchor_path, c4_candidate_path, c4_pair_path
+        )
+        == c4_pair_path
+    )
+    assert json.loads(c4_pair_path.read_text())["overall_pass"] is True
+    assert (
+        report.write_c4_paired_verdict(
+            c4_anchor_path, c4_candidate_path, c4_pair_path
+        )
+        is None
+    )
+
+    c4_mutations = [
+        ("c4", "profile", "anchor"),
+        ("c4", "expected_pcs_bytes", 38_296_041),
+        ("c4", "soundness_gate_pass", False),
+        ("c4", "device_live_gate_pass", False),
+    ]
+    for index, (section, key, value) in enumerate(c4_mutations):
+        bad = copy.deepcopy(c4_candidate)
+        bad[section][key] = value
+        path = tmp_path / f"c4-bad-{index}.json"
+        path.write_text(json.dumps(bad))
+        assert report.validate_c4_official_result(path) is False
+
+    bad_c4_resource = copy.deepcopy(c4_candidate)
+    bad_c4_resource["c4"]["resource_admission"]["local_storage_free_bytes"] = 79_999_999_999
+    bad_c4_resource_path = tmp_path / "c4-bad-resource.json"
+    bad_c4_resource_path.write_text(json.dumps(bad_c4_resource))
+    assert report.validate_c4_official_result(bad_c4_resource_path) is False
+
+    bad_c4_overlay = copy.deepcopy(c4_candidate)
+    bad_c4_overlay["c4"]["resource_admission"]["local_storage_fs_type"] = "overlayfs"
+    bad_c4_overlay_path = tmp_path / "c4-bad-overlay.json"
+    bad_c4_overlay_path.write_text(json.dumps(bad_c4_overlay))
+    assert report.validate_c4_official_result(bad_c4_overlay_path) is False
+
+    mismatched_pair = copy.deepcopy(c4_candidate)
+    mismatched_pair["git_sha"] = "f" * 40
+    mismatched_pair["git_sha_before_benchmark"] = "f" * 40
+    mismatched_pair["git_sha_before_serialization"] = "f" * 40
+    mismatched_path = tmp_path / "c4-mismatched-pair.json"
+    mismatched_path.write_text(json.dumps(mismatched_pair))
+    assert report.c4_paired_verdict(c4_anchor_path, mismatched_path) is None
+
+    mismatched_gpu = copy.deepcopy(c4_candidate)
+    mismatched_gpu["c4"]["resource_admission"]["selected_gpu"] = "1"
+    mismatched_gpu_path = tmp_path / "c4-mismatched-gpu.json"
+    mismatched_gpu_path.write_text(json.dumps(mismatched_gpu))
+    assert report.validate_c4_official_result(mismatched_gpu_path) is True
+    assert report.c4_paired_verdict(c4_anchor_path, mismatched_gpu_path) is None
+
+    failed_anchor = copy.deepcopy(c4_anchor)
+    failed_anchor["repetitions"][1]["accelerator_session"]["synchronization_s"] = 0.151
+    failed_anchor["repetitions"][1]["p7b_sync_wall_fraction"] = 0.0151
+    failed_anchor["p7b_sync_wall_fraction_observed"] = 0.0151
+    failed_anchor["p7b_sync_wall_absolute_observed_s"] = 0.151
+    failed_anchor["p7b_sync_wall_absolute_gate_pass"] = False
+    failed_anchor["p7b_all_gates_pass"] = False
+    failed_anchor_path = tmp_path / "c4-failed-anchor.json"
+    failed_anchor_path.write_text(json.dumps(failed_anchor))
+    assert report.validate_c4_official_result(failed_anchor_path) is True
+    assert report.c4_paired_verdict(failed_anchor_path, c4_candidate_path) is None
+
     fase_d_v2["p7b_sync_wall_absolute_gate_s"] = 0.151
     fase_d_v2_path.write_text(json.dumps(fase_d_v2))
     assert report.validate_fase_d_pod_official_result(fase_d_v2_path) is False

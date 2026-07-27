@@ -1,16 +1,18 @@
 # VOLTA-ZK — agent instructions
 
 Designated-verifier proving system for transformer inference (VOLE-MAC blind
-GKR), GPT-2 small fixed-point. Formal phase M1–M9 is CLOSED (Lean theorems in
-`lean/`, frozen). Prototype milestones P0–P7 are CLOSED. Current phase:
-**P7b iteration 2** — resident-A100 orchestration and prover optimization on
-RunPod. The official `runpod-a100-v1` profile and current gates are
-pre-registered in the 2026-07-14 provider-migration ledger deviation. P7b is
-in progress; no checkpoint or projection is itself a gate verdict.
+GKR), GPT-2 small fixed-point. Formal milestones M1–M11 are CLOSED (Lean
+theorems in `lean/`, frozen). Prototype milestones P0–P7b, fase-D and X1–X3
+are CLOSED.
+X4/X4d is suspended with immutable history. Current phase: **C4 Ligero inline
+rate reduction** — same-build A100 comparison of the unchanged T1
+`rate=1/4,Q=120` anchor and the `rate=1/8,Q=97` candidate. Phase 1 is locally
+complete and at a HARD STOP before pod contact.
 
-**Read `docs/p7-handoff-spec.md` first**, including its P7b override — it and
-the ledger are the plan of record: state and numbers of record, quantified
-levers, invariants, and known traps.
+**Read `docs/prototype-status.md` first**, then the current task-specific
+design named by its latest ledger entry. For C4, that is
+`docs/c4-ligero-inline-rate-design.md`. The ledger and current design are the
+plan of record; historical runbooks and designs do not override them.
 
 ## State ledger — single source of truth
 
@@ -50,8 +52,13 @@ overwrite old runs; runs of record need a clean tree, `git_dirty: false`).
   deferred and stacked.
 - PCS openings resolve into VOLE-authenticated values — never cleartext
   W̃(r); one batched opening per response.
-- Corrections are 8 bytes (F_p). Correlations are mock-PCG, one-time use,
-  domain-separated, every consumption counted.
-- Protocol code mirrors the Lean theorems (M2–M8); anything the theorems
-  don't cover goes in the ledger's deviations log first.
+- Corrections are 8 bytes (F_p). Correlations are connection-scoped,
+  one-time use and domain-separated; every consumption is counted.
+- Production correlations use the real/AES PCG; mock PCG is diagnostic and
+  test-only. Production records are fail-closed and may not fall back to CPU.
+- Protocol code mirrors the Lean theorems (M2–M11 as applicable); anything
+  the theorems don't cover goes in the ledger's deviations log first.
 - Milestone end = commit checkpoint + ledger update.
+- Pod/provider contact requires an explicit owner GO after the local
+  checkpoint. Production runs use create-new append-only records and permit
+  no selective retry unless separately authorized.

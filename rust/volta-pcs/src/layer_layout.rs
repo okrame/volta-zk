@@ -33,6 +33,17 @@ pub const C3_WEIGHTS: LigeroParams =
 pub const C3_EMBED: LigeroParams =
     LigeroParams { rows: 2_080, col_bits: 15, pad: 512, code_bits: 17, n_queries: 120 };
 
+/// C4 inline-rate candidate for the consolidated weights tree.
+///
+/// The message geometry is byte-for-byte the C3/T1 geometry. Only the
+/// Reed--Solomon code length and fresh post-seal query count change.
+pub const C4_WEIGHTS: LigeroParams =
+    LigeroParams { rows: 24_576, col_bits: 13, pad: 512, code_bits: 16, n_queries: 97 };
+
+/// C4 inline-rate candidate for the exact-block embedding tree.
+pub const C4_EMBED: LigeroParams =
+    LigeroParams { rows: 2_080, col_bits: 15, pad: 512, code_bits: 18, n_queries: 97 };
+
 /// Placement of one weight tensor inside the flat commitment vector.
 #[derive(Clone, Copy, Debug)]
 pub struct TensorSlot {
@@ -419,6 +430,36 @@ mod tests {
         assert_eq!(weights.total + embed.total, 43_273_888);
         assert_eq!((weights.data_columns, embed.data_columns), (23_592_960, 1_996_800));
         assert_eq!((weights.u_vectors, embed.u_vectors), (13_508_608, 3_727_360));
+    }
+
+    #[test]
+    fn c4_production_geometries_preserve_messages_and_double_codewords() {
+        C4_WEIGHTS.validate();
+        C4_EMBED.validate();
+        assert_eq!(
+            (C4_WEIGHTS.rows(), C4_WEIGHTS.cols(), C4_WEIGHTS.msg_len(), C4_WEIGHTS.code_len()),
+            (24_576, 8_192, 8_704, 65_536)
+        );
+        assert_eq!(
+            (C4_EMBED.rows(), C4_EMBED.cols(), C4_EMBED.msg_len(), C4_EMBED.code_len()),
+            (2_080, 32_768, 33_280, 262_144)
+        );
+        assert_eq!(C4_WEIGHTS.msg_len(), C3_WEIGHTS.msg_len());
+        assert_eq!(C4_EMBED.msg_len(), C3_EMBED.msg_len());
+        assert_eq!(C4_WEIGHTS.code_len(), 2 * C3_WEIGHTS.code_len());
+        assert_eq!(C4_EMBED.code_len(), 2 * C3_EMBED.code_len());
+        assert_eq!(C4_WEIGHTS.n_queries, 97);
+        assert_eq!(C4_EMBED.n_queries, 97);
+    }
+
+    #[test]
+    fn c4_projected_opening_bytes_match_preregistration() {
+        let weights = crate::ligero::projected_multi_open_bytes(&C4_WEIGHTS, 96);
+        let embed = crate::ligero::projected_multi_open_bytes(&C4_EMBED, 6);
+        assert_eq!(weights.total, 32_831_444);
+        assert_eq!(embed.total, 5_464_596);
+        assert_eq!(weights.total + embed.total, 38_296_040);
+        assert_eq!(43_273_888 - (weights.total + embed.total), 4_977_848);
     }
 
     #[test]

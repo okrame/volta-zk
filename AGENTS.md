@@ -12,8 +12,9 @@ current-build anchor at `4097179`, then stopped fail-closed before rate-8
 real-PCG setup or timing: the shared producer asserted the anchor PCS size
 against the correctly computed candidate size. The assertion is fixed and
 covered locally, but no candidate record, pair or C4 pair verdict exists. The
-pod is stopped. Another pod contact or replacement production pair requires a
-new explicit owner GO.
+pod is stopped. Owner GO2 now authorizes exactly one fresh replacement
+anchor/rate-8 pair on a new admitted A100 host; the endpoint has not yet been
+supplied or contacted. No selective retry or gate change is authorized.
 
 **Read `docs/prototype-status.md` first**, then the current task-specific
 design named by its latest ledger entry. For C4, that is

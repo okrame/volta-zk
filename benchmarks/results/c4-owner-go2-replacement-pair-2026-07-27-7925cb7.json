@@ -1,0 +1,54 @@
+{
+  "report_schema_version": 1,
+  "milestone": "C4-owner-GO2-replacement-pair",
+  "date": "2026-07-27",
+  "authorization_checkpoint_git_sha": "7925cb7b8cabb72c799fba2e790a8c47d034c21c",
+  "design_sha256": "0b8739d6d8d5e1d605e2d4dfa8fb1f064dc046ca77b02d390ecc4d0f20461bcb",
+  "owner_go_received": true,
+  "scope": {
+    "campaign": "one replacement C4 anchor/rate8 pair on one admitted A100 host",
+    "anchor_profile": "rate=1/4,Q=120",
+    "candidate_profile": "rate=1/8,Q=97",
+    "same_clean_git_sha_required": true,
+    "same_host_gpu_cpu_build_required": true,
+    "fresh_authorization_and_connection_stores_per_profile": true,
+    "candidate_forbidden_until_anchor_official_validator_passes": true,
+    "one_effective_anchor_attempt": true,
+    "one_effective_candidate_attempt": true,
+    "selective_retry_authorized": false
+  },
+  "frozen_gates": {
+    "anchor_response_bytes": 84544352,
+    "anchor_pcs_bytes": 43273888,
+    "candidate_response_bytes": 79566504,
+    "candidate_pcs_bytes": 38296040,
+    "candidate_response_saving_bytes": 4977848,
+    "candidate_soundness_floor_bits": 78.80929487391641,
+    "prove_response_ratio_ceiling": 1.05,
+    "response_session_ratio_ceiling": 1.05,
+    "device_live_bytes_ceiling": 40000000000,
+    "rayon_workers": 8,
+    "minimum_effective_cpus": 13,
+    "minimum_host_ram_gib": 64,
+    "minimum_local_non_fuse_storage_bytes": 80000000000
+  },
+  "required_closure": {
+    "raw_anchor_record": true,
+    "raw_candidate_record": true,
+    "paired_validator_record": true,
+    "gpt2_comparison_rate8_column": true,
+    "tradeoff_text_measured_bytes_and_wall": true,
+    "control_plane_stop_from_ssh": true,
+    "independent_ssh_refusal": true
+  },
+  "pre_pod_state": {
+    "producer_assertion_fix_committed": true,
+    "full_workspace_green": true,
+    "report_validator_tests_passed": 23,
+    "cuda_feature_all_targets_compilation_green": true,
+    "pod_contacted": false,
+    "production_pair_started": false,
+    "gate_verdict": false
+  },
+  "assurance": "Owner GO authorizes only the frozen replacement pair above. It does not retroactively pair the 4097179 anchor with a future candidate, relax a gate, authorize a selective retry, or revive X4/X4d."
+}

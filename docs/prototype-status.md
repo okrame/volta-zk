@@ -431,6 +431,33 @@ historical entries remain append-only evidence, not competing definitions.
 
 ## Deviations / decisions log
 
+- **2026-07-27 — C4 Owner GO2 authorizes one fresh replacement pair; awaiting
+  a new A100 endpoint.** The owner explicitly authorizes one anchor
+  `rate=1/4,Q=120` followed, only after official anchor validation, by one
+  candidate `rate=1/8,Q=97` on the same clean post-fix SHA, host, GPU, CPU
+  quota, CUDA binary and eight-worker configuration. Both profiles require
+  new authorization and connection stores. The prior `4097179` anchor remains
+  an immutable standalone performance record and cannot be paired with the
+  future candidate. No selective retry is authorized.
+
+  Every existing byte, soundness, resource and timing gate remains frozen:
+  anchor/candidate PCS **43,273,888 / 38,296,040 B**, response
+  **84,544,352 / 79,566,504 B**, saving **4,977,848 B**, candidate soundness
+  at least **78.80929487391641 bits**, both prover and complete-session ratios
+  `<=1.05`, device live set `<40,000,000,000 B`, at least 13 effective CPUs,
+  eight Rayon workers, 64 GiB RAM and 80,000,000,000 B free local non-FUSE
+  storage. A successful closure must append both raw records and the paired
+  verdict, add the measured rate-8 column and explicit MB-versus-wall
+  trade-off to `docs/gpt2-comparison-WIP.md`, then stop the pod through
+  SSH-side `runpodctl` and independently verify connection refusal.
+
+  Authorization record
+  `c4-owner-go2-replacement-pair-2026-07-27-7925cb7.json` is local and
+  append-only, SHA-256
+  `e4a2b2ea8625b741056bed7f36a25aed35703eaa0f682a056dc3beb04f657b69`.
+  At this entry no new pod has been contacted, no replacement run has started
+  and no gate verdict is claimed.
+
 - **2026-07-27 — C4 replacement campaign: current-build anchor PASS; sole
   rate-8 attempt obstructed before real-PCG/timing; no pair verdict; pod
   stopped.** Owner GO admitted replacement pod `lq55v8ijz63z00` at endpoint

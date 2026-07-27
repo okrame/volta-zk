@@ -388,6 +388,22 @@ fn multi_open_completeness_across_blocks() {
 }
 
 #[test]
+fn c4_scaled_rate_ladder_preserves_multi_open_and_tamper_rejection() {
+    let anchor = LigeroParams { rows: 1 << 5, col_bits: 5, pad: 16, code_bits: 7, n_queries: 9 };
+    let rate8 = LigeroParams { rows: 1 << 5, col_bits: 5, pad: 16, code_bits: 8, n_queries: 7 };
+    assert_eq!(anchor.msg_len(), rate8.msg_len());
+    assert_eq!(rate8.code_len(), 2 * anchor.code_len());
+    assert!(run_multi_once(&anchor, 7, 8, 0xC4, |_| ()));
+    assert!(run_multi_once(&rate8, 7, 8, 0xC5, |_| ()));
+    assert!(!run_multi_once(&rate8, 7, 8, 0xC6, |proof| {
+        proof.columns[0].path[0][0] ^= 1;
+    }));
+    assert!(!run_multi_once(&rate8, 7, 8, 0xC7, |proof| {
+        proof.corr_ss[0] += Fp2::ONE;
+    }));
+}
+
+#[test]
 fn multi_open_rejects_tampered_tag_column_and_correction() {
     assert!(!run_multi_once(&MULTI, 7, 9, 31, |p| p.m_z = p.m_z + Fp2::ONE));
     assert!(!run_multi_once(&MULTI, 7, 9, 32, |p| p.columns[2].col[5] += Fp::ONE));

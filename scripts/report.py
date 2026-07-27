@@ -72,6 +72,64 @@ T1_PROD_CLAIMS = 21_667
 T1_ZERO_CLAIMS = 8_170
 T1_EMULT_INSTANCES_TOTAL = 2_800_595_736.8
 T1_EMULT_OTHER_TOTAL = 114_852_961.2
+C4_REPORT_SCHEMA_VERSION = 11
+C4_POD_GATE_PROFILE = "runpod-a100-c4-v1"
+C4_CUDA_ABI_VERSION = 33
+C4_NON_PCS_TRANSCRIPT_BYTES = 41_270_464
+C4_PCS_BYTES = {"anchor": 43_273_888, "rate8": 38_296_040}
+C4_RESPONSE_BYTES = {"anchor": 84_544_352, "rate8": 79_566_504}
+C4_FIRST_EXCHANGE_BYTES = {"anchor": 122_915_817, "rate8": 117_937_969}
+C4_RESPONSE_SAVING_BYTES = 4_977_848
+C4_SETUP_BYTES = 38_371_465
+C4_SOUNDNESS_FLOOR_BITS = 78.809_294_873_916_41
+C4_SOUNDNESS_BITS = {
+    "anchor": 78.809_294_873_916_41,
+    "rate8": 78.866_516_496_748_67,
+}
+C4_CODEWORD_BYTES = {"anchor": 8_623_489_024, "rate8": 17_246_978_048}
+C4_DEVICE_LIVE_GATE_BYTES = 40_000_000_000
+C4_HOST_RAM_FLOOR_BYTES = 64 * 1024 * 1024 * 1024
+C4_LOCAL_STORAGE_FLOOR_BYTES = 80_000_000_000
+C4_LOGICAL_CPU_FLOOR = 16
+C4_DESIGN_SHA256 = "bcc69cd39419c497dae45b695b15e5f1fd6a06e3f300d46e8581fb19976582eb"
+C4_GEOMETRY = {
+    "anchor": {
+        "weights": {
+            "rows": 24_576,
+            "cols": 8_192,
+            "pad": 512,
+            "message_len": 8_704,
+            "code_len": 32_768,
+            "queries": 120,
+        },
+        "embed": {
+            "rows": 2_080,
+            "cols": 32_768,
+            "pad": 512,
+            "message_len": 33_280,
+            "code_len": 131_072,
+            "queries": 120,
+        },
+    },
+    "rate8": {
+        "weights": {
+            "rows": 24_576,
+            "cols": 8_192,
+            "pad": 512,
+            "message_len": 8_704,
+            "code_len": 65_536,
+            "queries": 97,
+        },
+        "embed": {
+            "rows": 2_080,
+            "cols": 32_768,
+            "pad": 512,
+            "message_len": 33_280,
+            "code_len": 262_144,
+            "queries": 97,
+        },
+    },
+}
 P7B_TIMING_STATISTIC = "upper median across measured repetitions"
 P7B_COUNTER_STATISTIC = "maximum across measured sessions"
 C1_REPORT_SCHEMA_VERSION = 3
@@ -8066,6 +8124,290 @@ def validate_t1_official_result(path: Path) -> bool:
     return False
 
 
+def _c4_non_pcs_labels(row: dict[str, Any]) -> dict[str, int] | None:
+    transcript = row.get("comm_response_by_label")
+    pcs = row.get("comm_pcs_by_label")
+    if not isinstance(transcript, dict) or not isinstance(pcs, dict):
+        return None
+    if not all(_nonnegative_int(value) for value in transcript.values()):
+        return None
+    if not all(_nonnegative_int(value) for value in pcs.values()):
+        return None
+    labels: dict[str, int] = {}
+    for key, value in transcript.items():
+        remaining = value - pcs.get(key, 0)
+        if remaining < 0:
+            return None
+        if remaining:
+            labels[key] = remaining
+    return labels
+
+
+def _c4_record_valid(row: dict[str, Any]) -> bool:
+    c4 = row.get("c4")
+    if not isinstance(c4, dict):
+        return False
+    resource = c4.get("resource_admission")
+    if not isinstance(resource, dict):
+        return False
+    profile = c4.get("profile")
+    if profile not in C4_GEOMETRY:
+        return False
+    expected_milestone = f"C4-G4-{profile}"
+    transcript = row.get("comm_response_by_label")
+    pcs = row.get("comm_pcs_by_label")
+    repetitions = row.get("repetitions")
+    if not isinstance(repetitions, list) or not repetitions:
+        return False
+    peak_values = [
+        item.get("accelerator_session", {}).get("peak_device_bytes")
+        for item in repetitions
+        if isinstance(item, dict) and isinstance(item.get("accelerator_session"), dict)
+    ]
+    if not peak_values or not all(_nonnegative_int(value) for value in peak_values):
+        return False
+    observed_peak = max(peak_values)
+    expected_response = C4_RESPONSE_BYTES[profile]
+    expected_pcs = C4_PCS_BYTES[profile]
+    expected_saving = C4_RESPONSE_SAVING_BYTES if profile == "rate8" else 0
+    common = (
+        row.get("report_schema_version") == C4_REPORT_SCHEMA_VERSION
+        and row.get("milestone") == expected_milestone
+        and row.get("git_dirty") is False
+        and row.get("git_dirty_before_benchmark") is False
+        and row.get("git_dirty_before_serialization") is False
+        and _p7b_git_provenance_valid(row)
+        and row.get("benchmark_warmup_repetitions", 0) >= 1
+        and row.get("benchmark_repetitions", 0) >= 3
+        and row.get("t_prefill") == 100
+        and row.get("n_decode") == 50
+        and row.get("accepted") is True
+        and row.get("chunked_accepted") is True
+        and row.get("golden_decode_checked") is True
+        and row.get("golden_decode_match") is True
+        and row.get("gate_flat_cost_per_token") is True
+        and _finite_nonnegative(row.get("curve_last_over_first"))
+        and row["curve_last_over_first"] <= 1.5
+        and row.get("accelerator_backend") == "cuda-resident"
+        and row.get("accelerator_cuda_abi_version") == C4_CUDA_ABI_VERSION
+        and row.get("resident_timing_policy") == P7B_OFFICIAL_RESIDENT_TIMING_POLICY
+        and row.get("p7b_gate_profile") == C4_POD_GATE_PROFILE
+        and row.get("p7b_gate_evaluated") is True
+        and row.get("p7b_machine_eligible") is True
+        and _realpcg_pod_metadata_valid(row)
+        and _c3b_resident_cleanup_valid(row)
+        and _p7b_sampling_statistics_valid(row)
+        and _p7b_performance_verdict_valid(row)
+        and row.get("p7b_all_gates_pass")
+        is (
+            row.get("p7b_prefill_core_gate_pass") is True
+            and row.get("p7b_decode_marginal_gate_pass") is True
+            and row.get("p7b_sync_wall_absolute_gate_pass") is True
+            and row.get("p7b_h2d_gate_pass") is True
+        )
+        and isinstance(row.get("prove_response_timing"), dict)
+        and _finite_positive(row["prove_response_timing"].get("median_s"))
+        and isinstance(row.get("response_session_wall_timing"), dict)
+        and _finite_positive(row["response_session_wall_timing"].get("median_s"))
+        and row.get("response_communication_envelope_bytes")
+        == P7B_RESPONSE_COMMUNICATION_ENVELOPE_BYTES
+        and row.get("response_communication_observed_bytes") == expected_response
+        and row.get("response_communication_invariant_pass") is True
+        and row.get("p7b_transcript_reference_bytes") == expected_response
+        and row.get("p7b_pcs_opening_reference_bytes") == expected_pcs
+        and row.get("p7b_packed_logits_reference_bytes") == 0
+        and row.get("p7b_packed_response_reference_bytes") == expected_response
+        and row.get("p7b_response_communication_no_growth_pass") is True
+        and row.get("comm_response_bytes") == expected_response
+        and row.get("total_response_download_bytes") == expected_response
+        and row.get("total_response_download_packed_bytes") == expected_response
+        and row.get("pcs_opening_bytes_total") == expected_pcs
+        and row.get("public_logits_bytes") == 0
+        and row.get("public_logits_packed_bytes") == 0
+        and isinstance(transcript, dict)
+        and all(_nonnegative_int(value) for value in transcript.values())
+        and sum(transcript.values()) == expected_response
+        and transcript.get("auth_corrections") == T1_AUTH_CORRECTION_REFERENCE_BYTES
+        and isinstance(pcs, dict)
+        and all(_nonnegative_int(value) for value in pcs.values())
+        and sum(pcs.values()) == expected_pcs
+        and sum((_c4_non_pcs_labels(row) or {}).values())
+        == C4_NON_PCS_TRANSCRIPT_BYTES
+        and row.get("pcs_n_queries") == C4_GEOMETRY[profile]["weights"]["queries"]
+        and row.get("n_weight_claims") == 96
+        and row.get("n_embed_claims") == 6
+        and row.get("closure_prod_claims") == T1_PROD_CLAIMS
+        and row.get("closure_zero_claims") == T1_ZERO_CLAIMS
+        and row.get("corr_sub_corrs") == T1_SUB_CORRS
+        and row.get("corr_full_corrs") == T1_FULL_CORRS
+        and row.get("emult_instances_total") == T1_EMULT_INSTANCES_TOTAL
+        and row.get("t1_exact_counter_pass") is True
+        and row.get("c3b_transcript_category_sum_pass") is True
+        and row.get("c3b_pcs_category_sum_pass") is True
+        and row.get("c3b_public_logits_disabled") is True
+        and row.get("pcg_backend") == "real"
+        and row.get("ggm_prg") == "aes128-mmo"
+        and row.get("pcg_production_ready") is True
+        and row.get("pcg_setup_instances") == 1
+        and row.get("pcg_setup_wire_count_invariant_pass") is True
+        and row.get("pcg_mock_prepass_counters_match") is True
+        and row.get("pcg_mock_prepass_channel_ledger_digest_match") is True
+        and row.get("pcg_mock_prepass_allocation_digest_match") is True
+        and row.get("pcg_allocation_hash_match") is True
+        and row.get("pcg_response_authorization_burned_before_setup") is True
+        and row.get("pcg_burn_on_success_or_abort") is True
+        and row.get("pcg_reconnect_retry_resume_allowed") is False
+        and c4.get("design_file") == "docs/c4-ligero-inline-rate-design.md"
+        and c4.get("design_sha256") == C4_DESIGN_SHA256
+        and isinstance(resource.get("selected_gpu"), str)
+        and bool(resource["selected_gpu"])
+        and "," not in resource["selected_gpu"]
+        and _nonnegative_int(resource.get("gpu_free_bytes"))
+        and resource["gpu_free_bytes"] >= C4_DEVICE_LIVE_GATE_BYTES
+        and resource.get("gpu_free_floor_bytes") == C4_DEVICE_LIVE_GATE_BYTES
+        and _nonnegative_int(resource.get("host_ram_bytes"))
+        and resource["host_ram_bytes"] >= C4_HOST_RAM_FLOOR_BYTES
+        and resource.get("host_ram_floor_bytes") == C4_HOST_RAM_FLOOR_BYTES
+        and isinstance(resource.get("local_storage_path"), str)
+        and bool(resource["local_storage_path"])
+        and isinstance(resource.get("local_storage_fs_type"), str)
+        and resource["local_storage_fs_type"] in ("ext2/ext3", "xfs")
+        and _nonnegative_int(resource.get("local_storage_free_bytes"))
+        and resource["local_storage_free_bytes"] >= C4_LOCAL_STORAGE_FLOOR_BYTES
+        and resource.get("local_storage_floor_bytes") == C4_LOCAL_STORAGE_FLOOR_BYTES
+        and _nonnegative_int(resource.get("detected_logical_cpus"))
+        and resource["detected_logical_cpus"] >= C4_LOGICAL_CPU_FLOOR
+        and resource.get("logical_cpu_floor") == C4_LOGICAL_CPU_FLOOR
+        and resource.get("rayon_workers") == P7B_OFFICIAL_RAYON_THREADS
+        and resource.get("non_fuse_local_storage") is True
+        and resource.get("overall_pass") is True
+        and c4.get("weights") == C4_GEOMETRY[profile]["weights"]
+        and c4.get("embed") == C4_GEOMETRY[profile]["embed"]
+        and c4.get("non_pcs_transcript_bytes") == C4_NON_PCS_TRANSCRIPT_BYTES
+        and c4.get("expected_pcs_bytes") == expected_pcs
+        and c4.get("observed_pcs_bytes") == expected_pcs
+        and c4.get("expected_response_bytes") == expected_response
+        and c4.get("observed_response_bytes") == expected_response
+        and c4.get("response_saving_from_anchor_bytes") == expected_saving
+        and c4.get("setup_bytes") == C4_SETUP_BYTES
+        and c4.get("first_exchange_bytes") == C4_FIRST_EXCHANGE_BYTES[profile]
+        and c4.get("encoded_codeword_bytes") == C4_CODEWORD_BYTES[profile]
+        and c4.get("device_live_gate_bytes") == C4_DEVICE_LIVE_GATE_BYTES
+        and c4.get("observed_peak_device_bytes") == observed_peak
+        and c4.get("device_live_gate_pass")
+        is (observed_peak < C4_DEVICE_LIVE_GATE_BYTES)
+        and _same_number(c4.get("soundness_floor_bits"), C4_SOUNDNESS_FLOOR_BITS)
+        and _same_number(c4.get("observed_soundness_bits"), C4_SOUNDNESS_BITS[profile])
+        and c4.get("soundness_gate_pass") is True
+        and c4.get("exact_communication_pass") is True
+        and c4.get("inherited_t1_surface_pass") is True
+        and c4.get("performance_pair_evaluated") is False
+        and c4.get("gate_verdict") is False
+    )
+    return common and _c3b_spool_and_lifecycle_valid(row)
+
+
+def validate_c4_official_result(path: Path) -> bool:
+    try:
+        raw = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    return isinstance(raw, dict) and _c4_record_valid(raw)
+
+
+def c4_paired_verdict(anchor_path: Path, candidate_path: Path) -> dict[str, Any] | None:
+    try:
+        anchor = json.loads(anchor_path.read_text())
+        candidate = json.loads(candidate_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not (
+        isinstance(anchor, dict)
+        and isinstance(candidate, dict)
+        and _c4_record_valid(anchor)
+        and _c4_record_valid(candidate)
+        and anchor["c4"]["profile"] == "anchor"
+        and candidate["c4"]["profile"] == "rate8"
+        and anchor.get("p7b_all_gates_pass") is True
+        and anchor.get("git_sha") == candidate.get("git_sha")
+        and anchor.get("accelerator_cuda_abi_version")
+        == candidate.get("accelerator_cuda_abi_version")
+        and anchor.get("threads") == candidate.get("threads") == P7B_OFFICIAL_RAYON_THREADS
+        and anchor.get("cloud") == candidate.get("cloud")
+        and anchor["c4"]["resource_admission"].get("selected_gpu")
+        == candidate["c4"]["resource_admission"].get("selected_gpu")
+        and anchor["c4"]["resource_admission"].get("local_storage_path")
+        == candidate["c4"]["resource_admission"].get("local_storage_path")
+        and anchor["c4"]["resource_admission"].get("local_storage_fs_type")
+        == candidate["c4"]["resource_admission"].get("local_storage_fs_type")
+        and anchor["c4"]["resource_admission"].get("detected_logical_cpus")
+        == candidate["c4"]["resource_admission"].get("detected_logical_cpus")
+        and _c4_non_pcs_labels(anchor) == _c4_non_pcs_labels(candidate)
+        and anchor.get("corr_sub_corrs") == candidate.get("corr_sub_corrs")
+        and anchor.get("corr_full_corrs") == candidate.get("corr_full_corrs")
+        and anchor.get("closure_prod_claims") == candidate.get("closure_prod_claims")
+        and anchor.get("closure_zero_claims") == candidate.get("closure_zero_claims")
+        and anchor.get("emult_instances_total") == candidate.get("emult_instances_total")
+        and isinstance(anchor.get("fase_d_lifecycle"), dict)
+        and isinstance(candidate.get("fase_d_lifecycle"), dict)
+        and isinstance(anchor["fase_d_lifecycle"].get("channel_ledger_digest"), str)
+        and isinstance(candidate["fase_d_lifecycle"].get("channel_ledger_digest"), str)
+        and anchor["fase_d_lifecycle"]["channel_ledger_digest"]
+        != candidate["fase_d_lifecycle"]["channel_ledger_digest"]
+    ):
+        return None
+    prove_ratio = (
+        candidate["prove_response_timing"]["median_s"]
+        / anchor["prove_response_timing"]["median_s"]
+    )
+    session_ratio = (
+        candidate["response_session_wall_timing"]["median_s"]
+        / anchor["response_session_wall_timing"]["median_s"]
+    )
+    anchor_pass = anchor.get("p7b_all_gates_pass") is True
+    candidate_absolute_pass = candidate.get("p7b_all_gates_pass") is True
+    performance_pass = prove_ratio <= 1.05 and session_ratio <= 1.05
+    device_pass = candidate["c4"]["device_live_gate_pass"] is True
+    return {
+        "report_schema_version": 1,
+        "milestone": "C4-Ligero-paired-A100",
+        "date": _dt.date.today().isoformat(),
+        "anchor_file": anchor_path.name,
+        "candidate_file": candidate_path.name,
+        "anchor_sha256": hashlib.sha256(anchor_path.read_bytes()).hexdigest(),
+        "candidate_sha256": hashlib.sha256(candidate_path.read_bytes()).hexdigest(),
+        "git_sha": anchor["git_sha"],
+        "instance_id": anchor["cloud"]["instance_id"],
+        "prove_response_ratio": prove_ratio,
+        "response_session_ratio": session_ratio,
+        "prove_response_gate_pass": prove_ratio <= 1.05,
+        "response_session_gate_pass": session_ratio <= 1.05,
+        "anchor_absolute_gates_pass": anchor_pass,
+        "candidate_absolute_gates_pass": candidate_absolute_pass,
+        "candidate_device_gate_pass": device_pass,
+        "communication_saving_bytes": C4_RESPONSE_SAVING_BYTES,
+        "overall_pass": (
+            anchor_pass and candidate_absolute_pass and performance_pass and device_pass
+        ),
+    }
+
+
+def write_c4_paired_verdict(
+    anchor_path: Path, candidate_path: Path, output_path: Path
+) -> Path | None:
+    verdict = c4_paired_verdict(anchor_path, candidate_path)
+    if verdict is None:
+        return None
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with output_path.open("x") as handle:
+            json.dump(verdict, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+    except FileExistsError:
+        return None
+    return output_path
+
+
 def _finite_nonnegative(value: Any) -> bool:
     return type(value) in (int, float) and math.isfinite(value) and value >= 0
 
@@ -8271,6 +8613,7 @@ def _p7b_performance_verdict_valid(row: dict[str, Any]) -> bool:
         FASE_D_POD_GATE_PROFILE_V2,
         C3B_POD_GATE_PROFILE,
         T1_POD_GATE_PROFILE,
+        C4_POD_GATE_PROFILE,
     )
     thresholds = (
         row.get("p7b_prefill_core_gate_s") == P7B_PREFILL_CORE_GATE_S
@@ -9162,6 +9505,23 @@ def main() -> None:
         help="fail closed unless one raw JSON is a complete CPU or pod T1 verdict",
     )
     ap.add_argument(
+        "--validate-c4-official",
+        type=Path,
+        help="fail closed unless one raw JSON is a complete C4 A100 profile record",
+    )
+    ap.add_argument(
+        "--validate-c4-pair",
+        type=Path,
+        nargs=2,
+        metavar=("ANCHOR", "RATE8"),
+        help="validate and report the same-build C4 anchor/rate8 paired verdict",
+    )
+    ap.add_argument(
+        "--write-c4-pair",
+        type=Path,
+        help="append-only paired-verdict path; requires --validate-c4-pair",
+    )
+    ap.add_argument(
         "--validate-x4-v4-cpu",
         type=Path,
         help="fail closed unless one JSON is the exact clean X4 v4 CPU synthetic record",
@@ -9321,6 +9681,8 @@ def main() -> None:
             args.validate_fase_d_pod_official,
             args.validate_c3b_official,
             args.validate_t1_official,
+            args.validate_c4_official,
+            args.validate_c4_pair,
             args.validate_x4_v4_cpu,
             args.validate_x4_v4_migration,
             args.validate_x4_v4_pod,
@@ -9342,6 +9704,9 @@ def main() -> None:
     )
     if selected_validators > 1:
         raise SystemExit("official validators are mutually exclusive")
+    if (args.write_c4_pair is None) != (args.validate_c4_pair is None):
+        if args.write_c4_pair is not None:
+            raise SystemExit("--write-c4-pair requires --validate-c4-pair")
     if (args.validate_x4c_online is None) != (args.x4c_onboarding is None):
         raise SystemExit(
             "--validate-x4c-online and --x4c-onboarding must be supplied together"
@@ -9400,6 +9765,28 @@ def main() -> None:
         if not validate_t1_official_result(args.validate_t1_official):
             raise SystemExit("invalid or ineligible official T1 result")
         print(f"valid official T1 result: {args.validate_t1_official}")
+        return
+    if args.validate_c4_official is not None:
+        if args.write_json:
+            raise SystemExit("--write-json and --validate-c4-official are mutually exclusive")
+        if not validate_c4_official_result(args.validate_c4_official):
+            raise SystemExit("invalid or inconsistent C4 A100 profile record")
+        print(f"valid C4 A100 profile record: {args.validate_c4_official}")
+        return
+    if args.validate_c4_pair is not None:
+        if args.write_json:
+            raise SystemExit("--write-json and --validate-c4-pair are mutually exclusive")
+        verdict = c4_paired_verdict(*args.validate_c4_pair)
+        if verdict is None:
+            raise SystemExit("invalid or inconsistent C4 anchor/rate8 pair")
+        if args.write_c4_pair is not None:
+            written = write_c4_paired_verdict(
+                *args.validate_c4_pair, args.write_c4_pair
+            )
+            if written is None:
+                raise SystemExit("C4 paired output exists or pair became invalid")
+            print(f"wrote append-only C4 paired verdict: {written}")
+        print(json.dumps(verdict, sort_keys=True))
         return
     if args.validate_x4_v4_cpu is not None:
         if args.write_json:

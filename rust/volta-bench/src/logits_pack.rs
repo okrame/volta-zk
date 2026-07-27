@@ -1,5 +1,5 @@
 //! Row-wise bit-packing codec for the PUBLIC band-logits download
-//! (P7 prep, handoff spec §4.6.E).
+//! (P7 prep; historical transport decision retained in the state ledger).
 //!
 //! Transport-only: the logits matrix is public response output (never in
 //! the transcript); the verifier decodes bit-exact i64 values and runs the

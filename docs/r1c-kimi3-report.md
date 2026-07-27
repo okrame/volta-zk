@@ -40,7 +40,8 @@ ledger pins at `docs/prototype-status.md:331-334,640-642`):
 Mandatory reading completed: `CLAUDE.md`, `AGENTS.md`,
 `docs/prototype-status.md` (full ledger incl. R1/R1b dispositions and the
 2026-07-23 selected-tape correction at lines 626-688),
-`docs/p7-handoff-spec.md`, `docs/x4-folding-pcs-design.md`,
+the then-current P7b contract now retained in that ledger,
+`docs/x4-folding-pcs-design.md`,
 `docs/x4c-io-lifecycle-design.md`, `docs/x4c-phase1-results.md`,
 `docs/x4c-gpt2-e2e-handoff.md`, `docs/r1-kimi3-report.md`,
 `docs/r1b-kimi3-report.md`, `docs/r1b-delta-handoff.md`, the immutable X4b

@@ -23,7 +23,7 @@ pub use batch::{
 pub use layer_layout::{
     layout_gpt2_embed, layout_gpt2_embed_c3, layout_gpt2_layer, layout_gpt2_weights_c3,
     pcs_cost_projection, LayerWeightLayout, LayerWeightLayout2, ModelWeightLayout, TensorSlot,
-    C3_EMBED, C3_WEIGHTS, P4_LAYER,
+    C3_EMBED, C3_WEIGHTS, C4_EMBED, C4_WEIGHTS, P4_LAYER,
 };
 pub use ligero::{
     commit, commit_resident, commit_resident_from_device, commit_with_backend,

@@ -57,7 +57,7 @@ use volta_pcs::{
     layout_gpt2_embed, layout_gpt2_embed_c3, layout_gpt2_layer, layout_gpt2_weights_c3,
     open_multi_zk, open_multi_zk_resident, open_multi_zk_with_backend, verify_multi_open,
     LigeroParams, ProverMatrix, ResidentProverMatrix, ResidentWeightPlacement, C3_EMBED,
-    C3_WEIGHTS, GPT2_FULL, P4_LAYER,
+    C3_WEIGHTS, C4_EMBED, C4_WEIGHTS, GPT2_FULL, P4_LAYER,
 };
 use volta_proto::block_proof::layer_dom_base;
 use volta_proto::logup::Doms;
@@ -79,6 +79,7 @@ const FASE_D_POD_GATE_PROFILE_V1: &str = "runpod-a100-realpcg-v1";
 const FASE_D_POD_GATE_PROFILE_V2: &str = "runpod-a100-realpcg-v2";
 const C3B_POD_GATE_PROFILE: &str = "runpod-a100-realpcg-v3";
 const T1_POD_GATE_PROFILE: &str = "runpod-a100-realpcg-v4";
+const C4_POD_GATE_PROFILE: &str = "runpod-a100-c4-v1";
 const P7B_SYNC_WALL_FRACTION_GATE: f64 = 0.02;
 const FASE_D_POD_SYNC_WALL_ABSOLUTE_GATE_S: f64 = 0.150;
 const P7B_OFFICIAL_RAYON_THREADS: usize = 8;
@@ -128,6 +129,21 @@ const T1_AUTH_CORRECTION_GATE_BYTES: u64 = 38_348_720;
 const T1_AUTH_CORRECTION_REFERENCE_BYTES: u64 = 38_348_720;
 const T1_EQ_REDUCER_TRANSCRIPT_BYTES: u64 = 22_848;
 const T1_Q_BRIDGE_CORRECTION_BYTES: u64 = 672;
+const C4_PCS_OPENING_BYTES: u64 = 38_296_040;
+const C4_NON_PCS_TRANSCRIPT_BYTES: u64 = 41_270_464;
+const C4_RESPONSE_BYTES: u64 = 79_566_504;
+const C4_RESPONSE_SAVING_BYTES: u64 = 4_977_848;
+const C4_SETUP_BYTES: u64 = 38_371_465;
+const C4_ANCHOR_FIRST_EXCHANGE_BYTES: u64 = 122_915_817;
+const C4_CANDIDATE_FIRST_EXCHANGE_BYTES: u64 = 117_937_969;
+const C4_ANCHOR_SOUNDNESS_BITS: f64 = 78.809_294_873_916_41;
+const C4_DEVICE_LIVE_GATE_BYTES: u64 = 40_000_000_000;
+const C4_HOST_RAM_FLOOR_BYTES: u64 = 64 * 1024 * 1024 * 1024;
+const C4_LOCAL_STORAGE_FLOOR_BYTES: u64 = 80_000_000_000;
+const C4_LOGICAL_CPU_FLOOR: usize = 16;
+const C4_ANCHOR_CODEWORD_BYTES: u64 = 8_623_489_024;
+const C4_CANDIDATE_CODEWORD_BYTES: u64 = 17_246_978_048;
+const C4_DESIGN_SHA256: &str = "bcc69cd39419c497dae45b695b15e5f1fd6a06e3f300d46e8581fb19976582eb";
 const T1_SUB_CORRS: u64 = 4_793_590;
 const T1_FULL_CORRS: u64 = 181_933;
 const T1_ZERO_CLAIMS: usize = 8_170;
@@ -315,6 +331,87 @@ fn detected_physical_cpu_cores(logical_fallback: usize) -> usize {
     } else {
         cores.len()
     }
+}
+
+fn c4_host_ram_bytes() -> Option<u64> {
+    std::fs::read_to_string("/proc/meminfo").ok()?.lines().find_map(|line| {
+        let kib = line.strip_prefix("MemTotal:")?.split_whitespace().next()?.parse::<u64>().ok()?;
+        kib.checked_mul(1024)
+    })
+}
+
+fn c4_storage_admission(path: &std::path::Path) -> Option<(String, u64)> {
+    let fs_output =
+        std::process::Command::new("stat").args(["-f", "-c", "%T"]).arg(path).output().ok()?;
+    if !fs_output.status.success() {
+        return None;
+    }
+    let fs_type = String::from_utf8_lossy(&fs_output.stdout).trim().to_owned();
+    let df_output = std::process::Command::new("df").args(["-PB1"]).arg(path).output().ok()?;
+    if !df_output.status.success() {
+        return None;
+    }
+    let free_bytes = String::from_utf8_lossy(&df_output.stdout)
+        .lines()
+        .last()?
+        .split_whitespace()
+        .nth(3)?
+        .parse::<u64>()
+        .ok()?;
+    Some((fs_type, free_bytes))
+}
+
+fn c4_gpu_free_bytes(selected_gpu: &str) -> Option<u64> {
+    let output = std::process::Command::new("nvidia-smi")
+        .args(["-i", selected_gpu, "--query-gpu=memory.free", "--format=csv,noheader,nounits"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let mib = String::from_utf8_lossy(&output.stdout).trim().parse::<u64>().ok()?;
+    mib.checked_mul(1024 * 1024)
+}
+
+fn c4_local_storage_fs_type(fs_type: &str) -> bool {
+    matches!(fs_type, "ext2/ext3" | "xfs")
+}
+
+fn c4_resource_admission(
+    logical_cpu_cores: usize,
+    rayon_threads: usize,
+) -> Option<C4ResourceAdmission> {
+    let selected_gpu = std::env::var("CUDA_VISIBLE_DEVICES").ok()?;
+    if selected_gpu.is_empty() || selected_gpu.contains(',') {
+        return None;
+    }
+    let gpu_free_bytes = c4_gpu_free_bytes(&selected_gpu)?;
+    let host_ram_bytes = c4_host_ram_bytes()?;
+    let storage_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let (local_storage_fs_type, local_storage_free_bytes) = c4_storage_admission(&storage_path)?;
+    let non_fuse_local_storage = c4_local_storage_fs_type(&local_storage_fs_type);
+    let overall_pass = gpu_free_bytes >= C4_DEVICE_LIVE_GATE_BYTES
+        && host_ram_bytes >= C4_HOST_RAM_FLOOR_BYTES
+        && local_storage_free_bytes >= C4_LOCAL_STORAGE_FLOOR_BYTES
+        && non_fuse_local_storage
+        && logical_cpu_cores >= C4_LOGICAL_CPU_FLOOR
+        && rayon_threads == P7B_OFFICIAL_RAYON_THREADS;
+    Some(C4ResourceAdmission {
+        selected_gpu,
+        gpu_free_bytes,
+        gpu_free_floor_bytes: C4_DEVICE_LIVE_GATE_BYTES,
+        host_ram_bytes,
+        host_ram_floor_bytes: C4_HOST_RAM_FLOOR_BYTES,
+        local_storage_path: storage_path.display().to_string(),
+        local_storage_fs_type,
+        local_storage_free_bytes,
+        local_storage_floor_bytes: C4_LOCAL_STORAGE_FLOOR_BYTES,
+        detected_logical_cpus: logical_cpu_cores,
+        logical_cpu_floor: C4_LOGICAL_CPU_FLOOR,
+        rayon_workers: rayon_threads,
+        non_fuse_local_storage,
+        overall_pass,
+    })
 }
 
 fn p7b_machine_eligible(
@@ -751,6 +848,8 @@ struct Report {
     #[serde(skip_serializing_if = "Option::is_none")]
     t1_emult_other_total: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    c4: Option<C4Record>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     x123_foundation_reference_file: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     x123_foundation_reference_digest: Option<String>,
@@ -892,7 +991,7 @@ struct Report {
     /// Public response outputs, NOT in the transcript: the band logits
     /// matrix (q×VOCAB×8) + the prefill last-row logits (VOCAB×8).
     public_logits_bytes: u64,
-    /// Same logits bit-packed (VLPK1 row codec, handoff spec §4.6.E) — the
+    /// Same logits bit-packed (VLPK1 row codec; historical P7 transport decision) — the
     /// actual download; the verifier consumes the decoded matrix.
     public_logits_packed_bytes: u64,
     total_response_download_bytes: u64,
@@ -1023,6 +1122,76 @@ struct Report {
 }
 
 #[derive(Serialize)]
+struct C4GeometryRecord {
+    rows: usize,
+    cols: usize,
+    pad: usize,
+    message_len: usize,
+    code_len: usize,
+    queries: usize,
+}
+
+impl C4GeometryRecord {
+    fn from_params(params: &LigeroParams) -> Self {
+        Self {
+            rows: params.rows(),
+            cols: params.cols(),
+            pad: params.pad,
+            message_len: params.msg_len(),
+            code_len: params.code_len(),
+            queries: params.n_queries,
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct C4Record {
+    profile: &'static str,
+    design_file: &'static str,
+    design_sha256: &'static str,
+    resource_admission: Option<C4ResourceAdmission>,
+    weights: C4GeometryRecord,
+    embed: C4GeometryRecord,
+    non_pcs_transcript_bytes: u64,
+    expected_pcs_bytes: u64,
+    observed_pcs_bytes: u64,
+    expected_response_bytes: u64,
+    observed_response_bytes: u64,
+    response_saving_from_anchor_bytes: u64,
+    setup_bytes: u64,
+    first_exchange_bytes: u64,
+    encoded_codeword_bytes: u64,
+    device_live_gate_bytes: u64,
+    observed_peak_device_bytes: Option<u64>,
+    device_live_gate_pass: Option<bool>,
+    soundness_floor_bits: f64,
+    observed_soundness_bits: f64,
+    soundness_gate_pass: bool,
+    exact_communication_pass: bool,
+    inherited_t1_surface_pass: bool,
+    performance_pair_evaluated: bool,
+    gate_verdict: bool,
+}
+
+#[derive(Clone, Serialize)]
+struct C4ResourceAdmission {
+    selected_gpu: String,
+    gpu_free_bytes: u64,
+    gpu_free_floor_bytes: u64,
+    host_ram_bytes: u64,
+    host_ram_floor_bytes: u64,
+    local_storage_path: String,
+    local_storage_fs_type: String,
+    local_storage_free_bytes: u64,
+    local_storage_floor_bytes: u64,
+    detected_logical_cpus: usize,
+    logical_cpu_floor: usize,
+    rayon_workers: usize,
+    non_fuse_local_storage: bool,
+    overall_pass: bool,
+}
+
+#[derive(Serialize)]
 struct C1IdentitySeamReuse {
     scope: &'static str,
     baseline_artifact: &'static str,
@@ -1127,6 +1296,8 @@ struct Args {
     c3: bool,
     c3_record: bool,
     t1_record: bool,
+    c4_record: bool,
+    c4_profile: Option<C4ProfileArg>,
     x123_foundation_record: bool,
     c1_record: bool,
     flip_readiness_record: bool,
@@ -1148,6 +1319,56 @@ struct Args {
 enum PcgBackendArg {
     Mock,
     Real,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum C4ProfileArg {
+    Anchor,
+    Rate8,
+}
+
+impl C4ProfileArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Anchor => "anchor",
+            Self::Rate8 => "rate8",
+        }
+    }
+
+    fn params(self) -> (LigeroParams, LigeroParams) {
+        match self {
+            Self::Anchor => (C3_WEIGHTS, C3_EMBED),
+            Self::Rate8 => (C4_WEIGHTS, C4_EMBED),
+        }
+    }
+
+    fn expected_pcs_bytes(self) -> u64 {
+        match self {
+            Self::Anchor => C3_PCS_OPENING_BYTES,
+            Self::Rate8 => C4_PCS_OPENING_BYTES,
+        }
+    }
+
+    fn expected_response_bytes(self) -> u64 {
+        match self {
+            Self::Anchor => T1_RESPONSE_REFERENCE_BYTES,
+            Self::Rate8 => C4_RESPONSE_BYTES,
+        }
+    }
+
+    fn first_exchange_bytes(self) -> u64 {
+        match self {
+            Self::Anchor => C4_ANCHOR_FIRST_EXCHANGE_BYTES,
+            Self::Rate8 => C4_CANDIDATE_FIRST_EXCHANGE_BYTES,
+        }
+    }
+
+    fn codeword_bytes(self) -> u64 {
+        match self {
+            Self::Anchor => C4_ANCHOR_CODEWORD_BYTES,
+            Self::Rate8 => C4_CANDIDATE_CODEWORD_BYTES,
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1215,7 +1436,7 @@ impl PcgBackendArg {
 
 fn usage() -> ! {
     eprintln!(
-        "usage: p6_report [--quick] [--c3|--c3-record|--t1-record|--x123-foundation-record|--c1-record|--flip-readiness-record|--fase-d-record] [--pcs-q Q] \
+        "usage: p6_report [--quick] [--c3|--c3-record|--t1-record|--c4-record|--x123-foundation-record|--c1-record|--flip-readiness-record|--fase-d-record] [--c4-profile anchor|rate8] [--pcs-q Q] \
          [--fase-d-pod-profile v1|v2] \
          [--pcg-backend mock|real] [--pcg-authorization-store PATH] \
          [--pcg-connection-store PATH] \
@@ -1233,6 +1454,8 @@ fn parse_args() -> Args {
         c3: false,
         c3_record: false,
         t1_record: false,
+        c4_record: false,
+        c4_profile: None,
         x123_foundation_record: false,
         c1_record: false,
         flip_readiness_record: false,
@@ -1259,6 +1482,13 @@ fn parse_args() -> Args {
             out.c3_record = true;
         } else if a == "--t1-record" {
             out.t1_record = true;
+        } else if a == "--c4-record" {
+            out.c4_record = true;
+        } else if a == "--c4-profile" {
+            let Some(profile) = args.next() else { usage() };
+            out.c4_profile = Some(parse_c4_profile(&profile));
+        } else if let Some(profile) = a.strip_prefix("--c4-profile=") {
+            out.c4_profile = Some(parse_c4_profile(profile));
         } else if a == "--x123-foundation-record" {
             out.t1_record = true;
             out.x123_foundation_record = true;
@@ -1325,6 +1555,14 @@ fn parse_args() -> Args {
         }
     }
     out
+}
+
+fn parse_c4_profile(value: &str) -> C4ProfileArg {
+    match value {
+        "anchor" => C4ProfileArg::Anchor,
+        "rate8" => C4ProfileArg::Rate8,
+        _ => usage(),
+    }
 }
 
 fn parse_accelerator(s: &str) -> AcceleratorArg {
@@ -2210,7 +2448,7 @@ fn run_session_impl<'source>(
     };
     let prove_s = tp0.elapsed().as_secs_f64();
 
-    // P7 prep (handoff spec §4.6.E): the public logits travel bit-packed;
+    // P7 prep: the public logits travel bit-packed (historical ledger decision);
     // the verifier consumes the DECODED matrix (asserted bit-exact), so the
     // packed size is the real download and the codec is on the e2e path.
     // Transport-only — nothing enters the transcript.
@@ -2889,7 +3127,9 @@ fn main() {
     let fase_d_realpcg_profile = args.fase_d_record;
     let c3b_pod_profile = args.c3_record && args.accelerator == AcceleratorArg::CudaResident;
     let t1_pod_profile = args.t1_record && args.accelerator == AcceleratorArg::CudaResident;
-    let connection_realpcg_profile = fase_d_realpcg_profile || args.c3_record || args.t1_record;
+    let c4_pod_profile = args.c4_record && args.accelerator == AcceleratorArg::CudaResident;
+    let connection_realpcg_profile =
+        fase_d_realpcg_profile || args.c3_record || args.t1_record || args.c4_record;
     let p7b_machine_is_eligible =
         p7b_machine_eligible(cloud.as_ref(), rayon_threads, connection_realpcg_profile);
     let logical_cpu_cores = detected_logical_cpu_cores();
@@ -2898,9 +3138,11 @@ fn main() {
     // merely happen to be clean when the JSON verdict is assembled.
     let git_dirty_before_benchmark = git_worktree_dirty();
     let quick = args.quick;
-    let c3_mode = args.c3 || args.c3_record || args.t1_record;
+    let t1_surface = args.t1_record || args.c4_record;
+    let c3_mode = args.c3 || args.c3_record || t1_surface;
     let c3b_reporting = args.c3 || args.c3_record;
-    let shared_connection_record = args.fase_d_record || args.c3_record || args.t1_record;
+    let shared_connection_record =
+        args.fase_d_record || args.c3_record || args.t1_record || args.c4_record;
     if args.pcg_backend == PcgBackendArg::Mock && !args.diagnostic {
         eprintln!(
             "p6_report: mock PCG is diagnostic-only after the fase-D default flip; add --diagnostic (no result artifact)"
@@ -2916,6 +3158,7 @@ fn main() {
     if args.diagnostic
         && (args.c3_record
             || args.t1_record
+            || args.c4_record
             || args.c1_record
             || args.flip_readiness_record
             || args.fase_d_record)
@@ -2923,7 +3166,7 @@ fn main() {
         eprintln!("p6_report: diagnostic mode cannot be combined with a record mode");
         std::process::exit(2);
     }
-    if args.c3 && (args.c3_record || args.t1_record) {
+    if args.c3 && (args.c3_record || args.t1_record || args.c4_record) {
         eprintln!("p6_report: choose either --c3 diagnostic mode or a private-logit record mode");
         std::process::exit(2);
     }
@@ -2933,6 +3176,7 @@ fn main() {
     }
     if usize::from(args.c3_record)
         + usize::from(args.t1_record)
+        + usize::from(args.c4_record)
         + usize::from(args.c1_record)
         + usize::from(args.flip_readiness_record)
         + usize::from(args.fase_d_record)
@@ -2942,19 +3186,23 @@ fn main() {
         std::process::exit(2);
     }
     if args.c3
-        && (args.t1_record || args.c1_record || args.flip_readiness_record || args.fase_d_record)
+        && (args.t1_record
+            || args.c4_record
+            || args.c1_record
+            || args.flip_readiness_record
+            || args.fase_d_record)
     {
         eprintln!("p6_report: --c3 cannot modify a historical record mode");
         std::process::exit(2);
     }
-    if (args.c3_record || args.t1_record)
+    if (args.c3_record || args.t1_record || args.c4_record)
         && (quick
             || args.accelerator == AcceleratorArg::CudaHybrid
             || args.pcg_backend != PcgBackendArg::Real
             || args.ggm_prg != GgmPrg::Aes128Mmo)
     {
         eprintln!(
-            "p6_report: --c3-record/--t1-record requires full CPU or cuda-resident real/AES geometry"
+            "p6_report: --c3-record/--t1-record/--c4-record requires full CPU or cuda-resident real/AES geometry"
         );
         std::process::exit(2);
     }
@@ -2970,10 +3218,18 @@ fn main() {
         eprintln!("p6_report: the T1 pod record requires wall-only-counters timing");
         std::process::exit(2);
     }
-    if (args.c3_record || args.t1_record) && git_dirty_before_benchmark {
+    if c4_pod_profile && args.resident_timing != ResidentTimingArg::WallOnlyCounters {
+        eprintln!("p6_report: the C4 pod record requires wall-only-counters timing");
+        std::process::exit(2);
+    }
+    if (args.c3_record || args.t1_record || args.c4_record) && git_dirty_before_benchmark {
         eprintln!(
-            "p6_report: --c3-record/--t1-record requires a clean tree before benchmark setup"
+            "p6_report: --c3-record/--t1-record/--c4-record requires a clean tree before benchmark setup"
         );
+        std::process::exit(2);
+    }
+    if args.c4_record != args.c4_profile.is_some() {
+        eprintln!("p6_report: --c4-record requires exactly one --c4-profile anchor|rate8");
         std::process::exit(2);
     }
     if args.c1_record
@@ -3030,10 +3286,10 @@ fn main() {
         eprintln!("p6_report: --repetitions must be at least 1");
         std::process::exit(2);
     }
-    if (args.c3_record || args.t1_record) && (repetitions < 3 || warmup_repetitions < 1) {
-        eprintln!(
-            "p6_report: --c3-record/--t1-record requires at least one warmup and three repetitions"
-        );
+    if (args.c3_record || args.t1_record || args.c4_record)
+        && (repetitions < 3 || warmup_repetitions < 1)
+    {
+        eprintln!("p6_report: record mode requires at least one warmup and three repetitions");
         std::process::exit(2);
     }
     if repetitions + warmup_repetitions > 32 {
@@ -3046,6 +3302,35 @@ fn main() {
         eprintln!("p6_report: --resident-timing is valid only with --accelerator cuda-resident");
         std::process::exit(2);
     }
+    if c4_pod_profile && !p7b_machine_is_eligible {
+        eprintln!(
+            "p6_report: C4 requires complete RunPod metadata for one NVIDIA A100-SXM4-80GB and exactly eight Rayon workers"
+        );
+        std::process::exit(2);
+    }
+    let c4_resource_admission = if c4_pod_profile {
+        let Some(admission) = c4_resource_admission(logical_cpu_cores, rayon_threads) else {
+            eprintln!(
+                "p6_report: C4 resource admission could not resolve one selected GPU, VRAM, RAM, or local storage"
+            );
+            std::process::exit(2);
+        };
+        if !admission.overall_pass {
+            eprintln!(
+                "p6_report: C4 resource admission failed (GPU free={} B, RAM={} B, storage={} B on {}, CPUs={}, Rayon={})",
+                admission.gpu_free_bytes,
+                admission.host_ram_bytes,
+                admission.local_storage_free_bytes,
+                admission.local_storage_fs_type,
+                admission.detected_logical_cpus,
+                admission.rayon_workers
+            );
+            std::process::exit(2);
+        }
+        Some(admission)
+    } else {
+        None
+    };
     let authorization_store_path = args
         .pcg_authorization_store
         .clone()
@@ -3096,8 +3381,13 @@ fn main() {
         ),
     };
     let (t0, n_gen, curve_chunk) = if quick { (16usize, 8usize, 4usize) } else { (100, 50, 10) };
-    let mut layer_params = if c3_mode { C3_WEIGHTS } else { P4_LAYER };
-    let mut embed_params = if c3_mode { C3_EMBED } else { GPT2_FULL };
+    let (mut layer_params, mut embed_params) = if let Some(profile) = args.c4_profile {
+        profile.params()
+    } else if c3_mode {
+        (C3_WEIGHTS, C3_EMBED)
+    } else {
+        (P4_LAYER, GPT2_FULL)
+    };
     if let Some(q) = args.pcs_q {
         layer_params.n_queries = q;
         embed_params.n_queries = q;
@@ -3117,6 +3407,10 @@ fn main() {
     }
     if (args.c3_record || args.t1_record) && layer_params.n_queries != C3_WEIGHTS.n_queries {
         eprintln!("p6_report: --c3-record/--t1-record freezes PCS Q=120");
+        std::process::exit(2);
+    }
+    if args.c4_record && args.pcs_q.is_some() {
+        eprintln!("p6_report: --c4-record freezes both profile geometries and query counts");
         std::process::exit(2);
     }
 
@@ -4268,7 +4562,13 @@ fn main() {
             t0,
             n_gen,
             layer_params.n_queries,
-            if c3_mode { C3_WEIGHTS.n_queries } else { P4_LAYER.n_queries },
+            if args.c4_record {
+                layer_params.n_queries
+            } else if c3_mode {
+                C3_WEIGHTS.n_queries
+            } else {
+                P4_LAYER.n_queries
+            },
             warmup_repetitions,
             repetitions,
         ) && args.resident_timing == P7B_OFFICIAL_RESIDENT_TIMING,
@@ -4276,6 +4576,7 @@ fn main() {
     let gate_is_official = p7b_gate_evaluated == Some(true);
     let absolute_sync_profile = c3b_pod_profile
         || t1_pod_profile
+        || c4_pod_profile
         || (fase_d_realpcg_profile && args.fase_d_pod_profile == FaseDPodProfileArg::V2);
     let p7b_prefill_core_gate_pass = gate_is_official.then(|| {
         p7b_prefill_core_observed_s.expect("resident prefill observation")
@@ -4310,14 +4611,20 @@ fn main() {
     let response_communication_invariant_pass = response_communication_observed_bytes
         .map(|bytes| bytes <= RESPONSE_COMMUNICATION_ENVELOPE_BYTES);
     let p7b_response_communication_no_growth_pass = gate_is_official.then(|| {
-        p7b_communication_gate(
-            rec.comm_bytes,
-            rec.pcs_opening_bytes,
-            rec.public_logits_packed_bytes,
-            fase_d_realpcg_profile,
-            c3b_pod_profile,
-            t1_pod_profile,
-        )
+        if let Some(profile) = args.c4_profile {
+            rec.comm_bytes == profile.expected_response_bytes()
+                && rec.pcs_opening_bytes == profile.expected_pcs_bytes()
+                && rec.public_logits_packed_bytes == 0
+        } else {
+            p7b_communication_gate(
+                rec.comm_bytes,
+                rec.pcs_opening_bytes,
+                rec.public_logits_packed_bytes,
+                fase_d_realpcg_profile,
+                c3b_pod_profile,
+                t1_pod_profile,
+            )
+        }
     });
     let p7b_all_gates_pass = gate_is_official.then(|| {
         accepted
@@ -4438,19 +4745,19 @@ fn main() {
         c3_mode.then(|| pcs_category_sum == Some(rec.pcs_opening_bytes));
     let c3b_exact_instance_counter_pass =
         (args.c3 || args.c3_record).then(|| rec.emult_instances == C3B_EMULT_INSTANCES_TOTAL);
-    if args.c3_record || args.t1_record {
+    if args.c3_record || t1_surface {
         assert_eq!(
             rec.public_logits_packed_bytes, 0,
             "private-logit record paths may never serialize public logits"
         );
     }
-    let t1_auth_correction_bytes = args.t1_record.then(|| {
+    let t1_auth_correction_bytes = t1_surface.then(|| {
         rec.transcript_by_label
             .get("auth_corrections")
             .copied()
             .expect("T1 record requires the auth_corrections byte label")
     });
-    let t1_eq_reducer_transcript_bytes = args.t1_record.then(|| {
+    let t1_eq_reducer_transcript_bytes = t1_surface.then(|| {
         rec.transcript_by_label
             .get("t1_eq_round_corrections")
             .copied()
@@ -4460,10 +4767,9 @@ fn main() {
             )
             .expect("T1 reducer transcript accounting overflow")
     });
-    let t1_q_bridge_correction_bytes = args
-        .t1_record
+    let t1_q_bridge_correction_bytes = t1_surface
         .then(|| rec.transcript_by_label.get("t1_q_bridge_correction").copied().unwrap_or(0));
-    let t1_exact_counter_pass = args.t1_record.then(|| {
+    let t1_exact_counter_pass = t1_surface.then(|| {
         rec.emult_instances == T1_EMULT_INSTANCES_TOTAL
             && rec.emult_other == T1_EMULT_OTHER_TOTAL
             && rec.sub_corrs == T1_SUB_CORRS
@@ -4624,7 +4930,7 @@ fn main() {
                     && lifecycle.responses_after_first_repeat_ot_extension_bytes == 0
             })
     });
-    let t1_g3_pass = args.t1_record.then(|| {
+    let t1_surface_g3_pass = t1_surface.then(|| {
         golden_checked
             && golden_match == Some(true)
             && accepted
@@ -4643,6 +4949,7 @@ fn main() {
             && pcg_gate.mock_prepass_channel_ledger_digest_match == Some(true)
             && pcg_gate.mock_prepass_allocation_digest_match == Some(true)
     });
+    let t1_g3_pass = args.t1_record.then(|| t1_surface_g3_pass == Some(true));
     let t1_common_gate = || {
         !git_dirty
             && !quick
@@ -4659,7 +4966,7 @@ fn main() {
             && t1_eq_reducer_transcript_bytes == Some(T1_EQ_REDUCER_TRANSCRIPT_BYTES)
             && t1_q_bridge_correction_bytes == Some(T1_Q_BRIDGE_CORRECTION_BYTES)
             && rec.pcs_opening_bytes == C3_PCS_OPENING_BYTES
-            && t1_g3_pass == Some(true)
+            && t1_surface_g3_pass == Some(true)
             && pcg_gate.setup_instances == 1
             && pcg_gate.setup_wire_count_invariant_pass
             && fase_d_setup.as_ref().is_some_and(|setup| {
@@ -4685,8 +4992,63 @@ fn main() {
             && p7b_sync_wall_absolute_gate_pass == Some(true)
             && p7b_h2d_gate_pass == Some(true)
     });
+    let c4 = args.c4_profile.map(|profile| {
+        let expected_pcs_bytes = profile.expected_pcs_bytes();
+        let expected_response_bytes = profile.expected_response_bytes();
+        let observed_soundness_bits =
+            pcs_response_soundness_bits(&[(&layer_params, 1, 96), (&embed_params, 1, 6)]);
+        let exact_communication_pass = rec.pcs_opening_bytes == expected_pcs_bytes
+            && rec.comm_bytes == expected_response_bytes
+            && rec.comm_bytes.checked_sub(rec.pcs_opening_bytes)
+                == Some(C4_NON_PCS_TRANSCRIPT_BYTES);
+        let inherited_t1_surface_pass = t1_surface_g3_pass == Some(true)
+            && t1_auth_correction_bytes == Some(T1_AUTH_CORRECTION_REFERENCE_BYTES)
+            && t1_eq_reducer_transcript_bytes == Some(T1_EQ_REDUCER_TRANSCRIPT_BYTES)
+            && t1_q_bridge_correction_bytes == Some(T1_Q_BRIDGE_CORRECTION_BYTES)
+            && t1_exact_counter_pass == Some(true)
+            && pcg_gate.setup_instances == 1
+            && pcg_gate.setup_wire_count_invariant_pass;
+        let observed_peak_device_bytes = repetitions_rows
+            .iter()
+            .filter_map(|row| row.accelerator_session.as_ref().map(|stats| stats.peak_device_bytes))
+            .max();
+        C4Record {
+            profile: profile.as_str(),
+            design_file: "docs/c4-ligero-inline-rate-design.md",
+            design_sha256: C4_DESIGN_SHA256,
+            resource_admission: c4_resource_admission.clone(),
+            weights: C4GeometryRecord::from_params(&layer_params),
+            embed: C4GeometryRecord::from_params(&embed_params),
+            non_pcs_transcript_bytes: C4_NON_PCS_TRANSCRIPT_BYTES,
+            expected_pcs_bytes,
+            observed_pcs_bytes: rec.pcs_opening_bytes,
+            expected_response_bytes,
+            observed_response_bytes: rec.comm_bytes,
+            response_saving_from_anchor_bytes: if profile == C4ProfileArg::Rate8 {
+                C4_RESPONSE_SAVING_BYTES
+            } else {
+                0
+            },
+            setup_bytes: C4_SETUP_BYTES,
+            first_exchange_bytes: profile.first_exchange_bytes(),
+            encoded_codeword_bytes: profile.codeword_bytes(),
+            device_live_gate_bytes: C4_DEVICE_LIVE_GATE_BYTES,
+            observed_peak_device_bytes,
+            device_live_gate_pass: observed_peak_device_bytes
+                .map(|bytes| bytes < C4_DEVICE_LIVE_GATE_BYTES),
+            soundness_floor_bits: C4_ANCHOR_SOUNDNESS_BITS,
+            observed_soundness_bits,
+            soundness_gate_pass: observed_soundness_bits >= C4_ANCHOR_SOUNDNESS_BITS,
+            exact_communication_pass,
+            inherited_t1_surface_pass,
+            performance_pair_evaluated: false,
+            gate_verdict: false,
+        }
+    });
     let mut report = Report {
-        report_schema_version: if args.t1_record {
+        report_schema_version: if args.c4_record {
+            11
+        } else if args.t1_record {
             10
         } else if args.c3_record {
             9
@@ -4701,7 +5063,16 @@ fn main() {
         } else {
             6
         },
-        milestone: if args.t1_record {
+        milestone: if args.c4_record {
+            match (args.c4_profile.expect("C4 profile"), args.accelerator) {
+                (C4ProfileArg::Anchor, AcceleratorArg::Cpu) => "C4-G1-anchor",
+                (C4ProfileArg::Rate8, AcceleratorArg::Cpu) => "C4-G1-rate8",
+                (C4ProfileArg::Anchor, AcceleratorArg::CudaResident) => "C4-G4-anchor",
+                (C4ProfileArg::Rate8, AcceleratorArg::CudaResident) => "C4-G4-rate8",
+                (_, AcceleratorArg::CudaHybrid) => unreachable!("C4 rejects hybrid CUDA"),
+            }
+            .into()
+        } else if args.t1_record {
             if args.accelerator == AcceleratorArg::Cpu { "T1-G1" } else { "T1-G4" }.into()
         } else if c3_mode {
             if quick { "C3b-quick" } else { "C3b" }.into()
@@ -4813,7 +5184,8 @@ fn main() {
         t1_eq_reducer_transcript_bytes,
         t1_q_bridge_correction_bytes,
         t1_exact_counter_pass,
-        t1_emult_other_total: args.t1_record.then_some(rec.emult_other),
+        t1_emult_other_total: t1_surface.then_some(rec.emult_other),
+        c4,
         x123_foundation_reference_file: None,
         x123_foundation_reference_digest: None,
         x123_foundation_observed_digest: None,
@@ -4822,7 +5194,9 @@ fn main() {
         x123_foundation_t1_gate_pass: None,
         p7b_gate_evaluated,
         p7b_gate_profile: is_resident.then_some(
-            if t1_pod_profile {
+            if c4_pod_profile {
+                C4_POD_GATE_PROFILE
+            } else if t1_pod_profile {
                 T1_POD_GATE_PROFILE
             } else if c3b_pod_profile {
                 C3B_POD_GATE_PROFILE
@@ -4860,7 +5234,9 @@ fn main() {
             .then_some(RESPONSE_COMMUNICATION_ENVELOPE_BYTES),
         response_communication_observed_bytes,
         response_communication_invariant_pass,
-        p7b_transcript_reference_bytes: is_resident.then_some(if t1_pod_profile {
+        p7b_transcript_reference_bytes: is_resident.then_some(if c4_pod_profile {
+            args.c4_profile.expect("C4 profile").expected_response_bytes()
+        } else if t1_pod_profile {
             T1_RESPONSE_REFERENCE_BYTES
         } else if c3b_pod_profile {
             C3B_TRANSCRIPT_REFERENCE_BYTES
@@ -4869,17 +5245,23 @@ fn main() {
         } else {
             P7B_TRANSCRIPT_REFERENCE_BYTES
         }),
-        p7b_pcs_opening_reference_bytes: is_resident.then_some(
-            if c3b_pod_profile || t1_pod_profile {
-                C3_PCS_OPENING_BYTES
+        p7b_pcs_opening_reference_bytes: is_resident.then_some(if c4_pod_profile {
+            args.c4_profile.expect("C4 profile").expected_pcs_bytes()
+        } else if c3b_pod_profile || t1_pod_profile {
+            C3_PCS_OPENING_BYTES
+        } else {
+            P7B_PCS_OPENING_REFERENCE_BYTES
+        }),
+        p7b_packed_logits_reference_bytes: is_resident.then_some(
+            if c3b_pod_profile || t1_pod_profile || c4_pod_profile {
+                0
             } else {
-                P7B_PCS_OPENING_REFERENCE_BYTES
+                P7B_PACKED_LOGITS_REFERENCE_BYTES
             },
         ),
-        p7b_packed_logits_reference_bytes: is_resident.then_some(
-            if c3b_pod_profile || t1_pod_profile { 0 } else { P7B_PACKED_LOGITS_REFERENCE_BYTES },
-        ),
-        p7b_packed_response_reference_bytes: is_resident.then_some(if t1_pod_profile {
+        p7b_packed_response_reference_bytes: is_resident.then_some(if c4_pod_profile {
+            args.c4_profile.expect("C4 profile").expected_response_bytes()
+        } else if t1_pod_profile {
             T1_RESPONSE_REFERENCE_BYTES
         } else if c3b_pod_profile {
             C3B_TRANSCRIPT_REFERENCE_BYTES
@@ -5122,6 +5504,11 @@ fn main() {
     assert!(gate_flat, "P6 gate: per-token cost must stay ~flat as the cache grows");
     let mut label = if args.x123_foundation_record {
         "x1-foundation".to_string()
+    } else if args.c4_record {
+        match args.c4_profile.expect("C4 profile") {
+            C4ProfileArg::Anchor => "c4-ligero-t1-anchor-a100".to_string(),
+            C4ProfileArg::Rate8 => "c4-ligero-rate8-a100".to_string(),
+        }
     } else if args.t1_record {
         match args.accelerator {
             AcceleratorArg::Cpu => "t1-cpu-real".to_string(),
@@ -5155,13 +5542,20 @@ fn main() {
             (AcceleratorArg::Cpu, false) => "p6".to_string(),
         }
     };
-    let default_queries = if c3_mode { C3_WEIGHTS.n_queries } else { P4_LAYER.n_queries };
+    let default_queries = if args.c4_record {
+        layer_params.n_queries
+    } else if c3_mode {
+        C3_WEIGHTS.n_queries
+    } else {
+        P4_LAYER.n_queries
+    };
     if layer_params.n_queries != default_queries {
         label.push_str(&format!("-q{}", layer_params.n_queries));
     }
     if args.pcg_backend == PcgBackendArg::Real
         && !args.c3_record
         && !args.t1_record
+        && !args.c4_record
         && !args.flip_readiness_record
         && !args.fase_d_record
     {
@@ -5171,6 +5565,7 @@ fn main() {
         && !args.fase_d_record
         && !args.c3_record
         && !args.t1_record
+        && !args.c4_record
     {
         label.push_str("-wall-only-counters");
     }
@@ -5348,6 +5743,42 @@ mod report_tests {
         assert!(C3B_PACKED_ENTRIES_PER_LIMB as f64 / C3B_REAL_COMPARISONS as f64 <= 1.15);
         assert_eq!(C3B_EMULT_INSTANCES_TOTAL, 2_775_723_398.8);
         assert!(C3B_L4_EMULT_INSTANCES <= C3B_L4_EMULT_CEILING);
+    }
+
+    #[test]
+    fn c4_profiles_match_preregistered_bytes_soundness_and_storage() {
+        let anchor = pcs_response_soundness_bits(&[(&C3_WEIGHTS, 1, 96), (&C3_EMBED, 1, 6)]);
+        let candidate = pcs_response_soundness_bits(&[(&C4_WEIGHTS, 1, 96), (&C4_EMBED, 1, 6)]);
+        assert!((anchor - C4_ANCHOR_SOUNDNESS_BITS).abs() < 1e-12, "{anchor}");
+        assert!((candidate - 78.866_516_496_748_67).abs() < 1e-12, "{candidate}");
+        assert!(candidate >= anchor);
+
+        let anchor_pcs = volta_pcs::projected_multi_open_bytes(&C3_WEIGHTS, 96).total
+            + volta_pcs::projected_multi_open_bytes(&C3_EMBED, 6).total;
+        let candidate_pcs = volta_pcs::projected_multi_open_bytes(&C4_WEIGHTS, 96).total
+            + volta_pcs::projected_multi_open_bytes(&C4_EMBED, 6).total;
+        assert_eq!(anchor_pcs, C3_PCS_OPENING_BYTES);
+        assert_eq!(candidate_pcs, C4_PCS_OPENING_BYTES);
+        assert_eq!(anchor_pcs - candidate_pcs, C4_RESPONSE_SAVING_BYTES);
+        assert_eq!(C4_NON_PCS_TRANSCRIPT_BYTES + anchor_pcs, T1_RESPONSE_REFERENCE_BYTES);
+        assert_eq!(C4_NON_PCS_TRANSCRIPT_BYTES + candidate_pcs, C4_RESPONSE_BYTES);
+        assert_eq!(C4_SETUP_BYTES + T1_RESPONSE_REFERENCE_BYTES, C4_ANCHOR_FIRST_EXCHANGE_BYTES);
+        assert_eq!(C4_SETUP_BYTES + C4_RESPONSE_BYTES, C4_CANDIDATE_FIRST_EXCHANGE_BYTES);
+
+        let anchor_codewords = (C3_WEIGHTS.rows() * C3_WEIGHTS.code_len()
+            + C3_EMBED.rows() * C3_EMBED.code_len()) as u64
+            * 8;
+        let candidate_codewords = (C4_WEIGHTS.rows() * C4_WEIGHTS.code_len()
+            + C4_EMBED.rows() * C4_EMBED.code_len()) as u64
+            * 8;
+        assert_eq!(anchor_codewords, C4_ANCHOR_CODEWORD_BYTES);
+        assert_eq!(candidate_codewords, C4_CANDIDATE_CODEWORD_BYTES);
+        assert_eq!(candidate_codewords, 2 * anchor_codewords);
+        assert!(c4_local_storage_fs_type("ext2/ext3"));
+        assert!(c4_local_storage_fs_type("xfs"));
+        assert!(!c4_local_storage_fs_type("overlayfs"));
+        assert!(!c4_local_storage_fs_type("fuseblk"));
+        assert!(!c4_local_storage_fs_type("nfs"));
     }
 
     #[test]

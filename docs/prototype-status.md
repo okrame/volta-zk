@@ -1,9 +1,10 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 LIGERO INLINE PHASE 1 LOCAL COMPLETE — HARD STOP BEFORE POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
-land in `benchmarks/results/*.json`. The repo-local plan of record is
-`docs/p7-handoff-spec.md` plus this ledger; no external plan is authoritative.
+land in `benchmarks/results/*.json`. This ledger plus the current
+task-specific design named by its latest entry are the repo-local plan of
+record; no external plan is authoritative.
 
 Workload of record: **GPT-2 small (124M, L=12, d=768, h=12, d_ff=3072),
 prefill T=100 + 50 deferred decode tokens, causal, C3b PCS Q=120**, on the
@@ -361,6 +362,7 @@ its clean descendant closure.
 | X4d.2 byte-identical resident settlement Phase 1 | **LOCAL IDENTITY + OPERATION CENSUS COMPLETE; HARD STOP BEFORE POD / NO PERFORMANCE OR GATE VERDICT** (2026-07-26) | Evaluation strategy, residency and disjoint instrumentation only; exact sequential challenge tape; fail-closed production CUDA; no protocol/codec/bytes/soundness/Lean/hot-path change | The record corrects the refuted general factorization: independently pointed equality sums have rank up to `m`; no `blind_prove_batch`, round-synchronous schedule or asymptotic-flatness claim is used. ClaimReduce hoists exactly **51 / 298,844,160 i16-source symbols** into one immutable **4,781,506,560-B** Fp2 device tier; one maximum-geometry four-buffer pool is reused across exact `51*k` sequential instances. Auxiliary MLE and fused delayed-link source/equality work have resident paths with counted host/device bytes, H2D/D2H/D2D, kernel calls, scalar D2H, allocations/reuse and host/device scratch. The complete link source tier remains **601,161,728 symbols / 9,618,587,648 B**. Exact phase lifetimes project ClaimReduce at **10,687,087,456 B**, delayed link at **37,960,027,776 B**, both below the inherited measured X4c **47,256,774,900-B** device peak; the full **>=256-GiB RAM / >=150-GB volume** admission remains. Permanent CPU differentials pass at `mu=6/9/12`, deterministic scaled-shape k=1/k=16, auxiliary residency and the real two-response fixture; full workspace and report tests are green. CUDA-feature Rust/ABI compilation is green; the permanent CUDA kernel differential is present but locally skipped because `libvolta_cuda_backend.so` and `nvcc` are unavailable, so Phase 2 must run it with `VOLTA_REQUIRE_CUDA=1`. Append-only local record `x4d2-phase1-local-identity-2026-07-26-d298370.json`, SHA-256 `92def69607c9d59486220fc7f3571050f7d35afa76e8eeca039a7d5edcb3c842`; design descendant SHA-256 `9ffa929498e141917d242653a6563888e157dcc12d36dc3d6e9a8b52d2f5a98f`. The immutable X4d.1 flatness FAIL and raw records remain untouched; no pod contacted. |
 | X4d.2 Phase 2 A100 campaign | **FAIL-CLOSED BEFORE k=1 RECORD; NO FLATNESS OR PRODUCTION GATE VERDICT; k=16 NOT STARTED; POD STOPPED** (2026-07-26) | One eligible production pair, unchanged build, no selective retry; any replacement pair requires a new owner GO | Owner GO used pod `xfjw217q6cq4ja` at clean `e4e2b14`. NOTE-6 PASS, fail-closed hardware/device admission PASS, and all **38** real-CUDA accelerator tests PASS including `x4d_resident_kernels_match_cpu_field_evaluation_exactly`. The strengthened crypto-build identity correctly rejected the historical X4d.1 durable tier; one fresh schema-3 onboarding then PASSed in **1,967 s** with exact **9,618,587,808 B** durable payload. The sole k=1 run opened fresh stores and failed during settlement with `X4d CUDA delayed-link terminal mismatch`; six authorization/freshness markers are burned and the connection journal is preserved. The producer exited before writing a settlement JSON, so k=1 was not retried, k=16 was not started, the paired selector was not run, and FLATNESS / PHYSICAL COUNTERS / BYTE IDENTITY / HOT PATH / PROTOCOL REGRESSIONS are all **NOT EVALUATED**. Append-only obstruction record `x4d2-phase2-k1-obstruction-2026-07-26-e4e2b14.json`; X4d.1 records and comparison remain immutable. Pod-local `runpodctl` returned stopped and the independent endpoint check was refused; teardown record `x4d2-control-plane-teardown-2026-07-26-e4e2b14.json`. |
 | X4d.2 delayed-link diagnosis and repair | **LOCAL ROOT CAUSE CONFIRMED; BYTE IDENTITY GREEN; HARD STOP / NO POD / NO REPLACEMENT PAIR OR GATE VERDICT** (2026-07-27) | Evaluation-only repair: backend-generic sequential resident orchestrator plus one exactly-once scaled product-round message; protocol/transcript/challenge/codec/correlations/terminal semantics unchanged | The extracted `e4e2b14` arithmetic reproduced the obstruction with the initial claim, ledgers, challenges and folds still green: first divergence **term 0 / round 1 / dimension 8 / active_len 256**, captured output SHA-256 `2ac466d9bcfc61fc5ef0a83c59d5bc8b0c2f32434ed17e37de1b7ac5cc925c1f`; all **51/51** production-relative terms are affected at their first real round. Root cause is the missing `virtual_factor` on `fp2_product_round_into_device`. ABI 33 adds `fp2_product_round_scaled_into_device` / `volta_cuda_fp2_product_round_scaled_into_device` / `scale_product_round_message`; scale one is raw-mailbox byte-identical, folds are unscaled, and the real branch alone uses it. Permanent value-mismatch and geometry-not-drained faults are distinct. CPU BackendKind lifecycle and exact message/fold-vector-digest identity pass at the 51/51/102 local multiplicity fixture and `max_mu=20/22/24/26`; the full serialized workspace, 23 report-validator tests and CUDA-feature all-target compilation are green, while real CUDA remains deliberately unexecuted locally. A clean, fail-closed standalone `x4d2_delayed_link_reproducer` is prepared for a future GO; it needs no weights/onboarding/durable tier/connection/settlement. Append-only local record `x4d2-diag-delayed-link-2026-07-27-bc76048.json`, SHA-256 `0bf3ed63b4ec34243a3f42cd1b6fce286c07a5b07f9e09b72bbb2f081f35538a`; diagnostic design SHA-256 `91cc8eb6566122724a75b9f051a75d5245e981b52194c5545b7701ca853b6fe4`. Historical X4d.1 and X4d.2 records/digests/gates remain immutable. |
+| C4 Ligero inline rate reduction | **PHASE 1 LOCAL COMPLETE; HARD STOP BEFORE POD / NO A100 OR PERFORMANCE VERDICT** (2026-07-27) | Return to inline T1 weight certification; same-build anchor `rate=1/4,Q=120` versus candidate `rate=1/8,Q=97`; no deferred settlement | C4 preserves T1 boundary thinning, the two commitment layouts, `96+6` claims, fresh post-seal query timing, AES-PCG/MAC lifecycle and every non-PCS byte. New immutable `C4_WEIGHTS/C4_EMBED` double only code length and set `Q=97`; formula tests give exact candidate PCS/response/first-exchange **38,296,040 / 79,566,504 / 117,937,969 B**, a **4,977,848-B** response saving, with **78.86651649674867-bit** soundness above the exact **78.80929487391641-bit** anchor. Schema 11 adds fail-closed profile selection, exact geometry/byte/counter/soundness/device fields, current CUDA ABI 33 and no CPU fallback. The raw A100 validator and append-only paired selector require same SHA/instance/GPU/eight workers, distinct connection ledgers, equal non-PCS/correlation surfaces and both timing ratios `<=1.05x`. Scaled commit/open/verify and path/correction tamper negatives pass. Full workspace, **23** report tests, CUDA-feature all-target compilation, formatting and diff hygiene are green. Local record `c4-ligero-local-2026-07-27-7bb4428.json`, SHA-256 `6ea4fa7a62847262c67f2bbeb45c199a2e24a9332ba1aed508d2ff5da91877e9`; design SHA-256 `bcc69cd39419c497dae45b695b15e5f1fd6a06e3f300d46e8581fb19976582eb`. `pod_contacted=false`, `production_pair_started=false`, `gate_verdict=false`. X4/X4d history remains immutable and suspended. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -428,6 +430,59 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-27 — C4 replaces further X4 execution with a same-build Ligero
+  inline comparison; local implementation only before a new owner GO.**
+  X4/X4d is suspended, not deleted or reclassified: every historical record,
+  obstruction, teardown, design digest, waiver and frozen gate remains
+  immutable. The accepted product path returns to T1's inline weight
+  certification. C4 compares the unchanged `rate=1/4,Q=120` anchor with one
+  `rate=1/8,Q=97` candidate on the same build and A100, while preserving T1
+  boundary thinning, the two commitment layouts, `96+6` claims, fresh
+  post-seal queries, AES-PCG, authenticated corrections and the complete
+  non-PCS transcript.
+
+  The exact candidate projection is **38,296,040-B PCS** and
+  **79,566,504-B response**, saving **4,977,848 B** from the immutable T1
+  response; setup remains **38,371,465 B** and first exchange becomes
+  **117,937,969 B**. The candidate's formula-derived
+  **78.866516497-bit** soundness must meet the exact
+  **78.80929487391641-bit** anchor. These are preregistered formulas, not
+  measurements. Both candidate prove-response and complete-session upper
+  medians must be at most **1.05x** the freshly measured current-build
+  anchor, in addition to unchanged T1 absolute gates. The production profile
+  is one selected A100-SXM4 80 GB, at least **40 GB free VRAM**, **64 GiB
+  RAM**, **80 GB free local non-FUSE storage**, at least 16 logical CPUs and
+  exactly eight Rayon workers. `docs/gpt2-comparison-WIP.md` becomes the
+  tracked comparison descendant; its stale-build warning remains until the
+  paired A100 record lands. Phase 1 is local and ends at a hard stop before
+  any pod contact.
+
+  Phase 1 closed locally on baseline `7bb4428` with schema 11, CUDA ABI 33,
+  immutable C4 parameters, an exact formula/accounting test and a scaled
+  commit/open/verify differential for both rates. Merkle-path and
+  authenticated-correction faults reject. The raw validator and append-only
+  pair writer are fail-closed on profile, geometry, bytes, soundness,
+  current-build/host identity, fresh connection ledgers, non-PCS equality,
+  physical counters, device peak and both `1.05x` timing predicates. Before
+  weight loading, the producer now also requires one explicit GPU selector,
+  **40,000,000,000 B free VRAM**, **64 GiB RAM**, **80,000,000,000 B free
+  local non-FUSE/non-network storage**, at least 16 logical CPUs and exactly
+  eight Rayon workers. Full
+  workspace, **23** report tests, CUDA-feature all-target compilation,
+  formatting and diff hygiene pass. The append-only local record
+  `c4-ligero-local-2026-07-27-7bb4428.json` has SHA-256
+  `6ea4fa7a62847262c67f2bbeb45c199a2e24a9332ba1aed508d2ff5da91877e9`;
+  design SHA-256 is
+  `bcc69cd39419c497dae45b695b15e5f1fd6a06e3f300d46e8581fb19976582eb`.
+  No production-size C4 workload or A100 performance measurement ran.
+  The obsolete P7 handoff content was retired at this checkpoint: it
+  duplicated the ledger, still named P7b as current and preserved two
+  later-refuted compression proposals as live suggestions. Its pathname now
+  contains only a retirement tombstone because immutable historical designs
+  cite it. `AGENTS.md` and `CLAUDE.md` direct agents to this ledger and its
+  current task-specific design; historical P7 decisions remain in their
+  append-only ledger entries and runbooks.
 
 - **2026-07-26 — Owner waives only the historical X4d.1 k=1 G1-sync
   observation and X4d.2 Phase 1 closes locally on the byte-identical
@@ -551,7 +606,9 @@ historical entries remain append-only evidence, not competing definitions.
   the k=1 synchronization outlier. Independent review is not claimed.
   `docs/x4c-gpt2-accelerated-comparison.md` was renamed to
   `docs/x4d1-gpt2-fused-settlement-comparison.md`, and its third data column
-  now carries this official FAIL rather than the historical X4d candidate.
+  carried this official FAIL rather than the historical X4d candidate. The
+  later C4 decision tracks that same append-only comparison lineage as
+  `docs/gpt2-comparison-WIP.md`; the X4d.1 column and verdict are unchanged.
 
   All six `x4d1-*` JSON files were copied locally, SHA-verified and the pair
   was revalidated before teardown. The required SSH-side
@@ -9639,8 +9696,9 @@ historical entries remain append-only evidence, not competing definitions.
   category (`setup_comm_bytes`), never folded into response download; no
   proving-path/transcript change. LPN parameters (≥128-bit) are a security
   assumption to pre-register, same status as PCS binding in M9; no Lean
-  work expected (optional future M10 interface lemma). Full work item:
-  handoff spec §4.4.
+  work expected (optional future M10 interface lemma). This historical work
+  item is retained in this ledger after retirement of the obsolete P7
+  handoff.
 
 - **2026-07-07 (P7 pre-cloud local complete)**:
   clean full P6 rerun with transcript-label accounting landed as
@@ -9784,7 +9842,8 @@ historical entries remain append-only evidence, not competing definitions.
   GPU run happened.
 
 - **2026-07-07 (P7 prep — public-logits bit-packing landed, measured)**:
-  handoff spec §4.6.E implemented: the public band logits (i64, true range
+  the historical public-logit transport lever was implemented: the public
+  band logits (i64, true range
   ≪ 2^64) travel bit-packed (per-row min + fixed-width offsets, "VLPK1"
   codec in `volta-bench/src/logits_pack.rs`); the verifier consumes the
   DECODED matrix (asserted bit-exact) inside `p6_report`'s e2e session, so

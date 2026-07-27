@@ -7,8 +7,11 @@ are CLOSED.
 X4/X4d is suspended with immutable history. Current phase: **C4 Ligero inline
 rate reduction** — same-build A100 comparison of the unchanged T1
 `rate=1/4,Q=120` anchor and the `rate=1/8,Q=97` candidate. Phase 1 is locally
-complete; Phase 2 is owner-authorized and stopped before producer execution
-while the RunPod local-overlay admission correction is committed and tested.
+complete. The first Phase-2 campaign is **fail-closed at anchor resource
+admission with no workload, performance record or gate verdict**: the selected
+pod exposed 13.6 cgroup CPUs, conservatively admitted as 13 against the frozen
+minimum of 16. The candidate was not started, the pod is stopped, and another
+pod contact or production pair requires a new explicit owner GO.
 
 **Read `docs/prototype-status.md` first**, then the current task-specific
 design named by its latest ledger entry. For C4, that is

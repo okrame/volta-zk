@@ -9,11 +9,16 @@
 > finché non atterra il nuovo pair. L'avvertenza sulla build T1 obsoleta
 > rimane quindi vincolante.
 >
-> Il primo preflight Phase 2 autorizzato ha confermato A100/RAM/CPU/capacità,
-> ma si è fermato prima di checkout, build e workload perché RunPod espone il
-> disco container locale come `overlayfs` e `/workspace` come FUSE remoto.
-> La correzione di ammissione distingue fail-closed l'esatto overlay Docker
-> locale dal volume FUSE; non esiste ancora alcun nuovo tempo o verdetto.
+> Il primo preflight Phase 2 autorizzato si è fermato prima del checkout
+> sull'interpretazione del disco Docker `overlayfs`; la correzione
+> preregistrata distingue quel disco locale dal volume FUSE remoto. Sul
+> checkpoint pulito corretto `3058c3c`, build, differenziali CUDA, leakage
+> smoke e workspace release sono poi risultati verdi. L'unica invocazione
+> dell'anchor ufficiale si è però fermata fail-closed nell'ammissione, prima
+> di caricare pesi o creare store PCG: `cpu.max=1360000 100000` espone 13,6
+> CPU effettive, contabilizzate conservativamente come 13 contro il minimo
+> congelato di 16. Nessun warmup, candidato, tempo A100 C4 o verdetto esiste;
+> il pod è stato fermato e serve un nuovo owner GO con un host ammesso.
 
 La quarta colonna dati è stata sostituita con il pair pulito X4d.1 a
 `b83ffc1`: un settlement `k=1` e uno `k=16` sullo stesso host, build, GPU e
@@ -124,6 +129,18 @@ quella della sessione completa devono restare entro `1,05x` l'ancora
 same-build, oltre a tutti i tetti T1 assoluti. La misura storica T1 resta
 visibile sopra, ma non decide questo pair. X4/X4d rimane conservato come
 storico immutabile e non è nel percorso di esecuzione C4.
+
+La prima campagna C4 non ha prodotto il pair. Dopo la verifica completa sul
+checkpoint `3058c3c`, il producer dell'anchor ha respinto la quota cgroup di
+13,6 CPU prima del caricamento dei pesi; il candidato era quindi vietato e
+non è partito. Il record append-only di obstruction è
+`c4-phase2-anchor-admission-obstruction-2026-07-27-3058c3c.json` (SHA-256
+`535fc314608f94278d2b44cb0703be685f1a8b205bc766ecb65cc8c811dd4f97`);
+il teardown è
+`c4-control-plane-teardown-2026-07-27-3058c3c.json` (SHA-256
+`fe65a850fc68aa653edc22738608c9f65ef2a76b90e26620abd638f841badaea`).
+Questi sono record operativi, non misure di prestazione. Le formule della
+tabella restano proiezioni e l'avvertenza same-build rimane in vigore.
 
 ## Lettura del verdict
 

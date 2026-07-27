@@ -1,0 +1,30 @@
+{
+  "report_schema_version": 1,
+  "milestone": "C4-control-plane-teardown",
+  "date": "2026-07-27",
+  "git_sha": "3058c3c82623cd51e9901cffaec14c3e3f5fad8e",
+  "git_dirty": false,
+  "pod_id": "zrt36y5g68az7q",
+  "endpoint": "154.54.102.44:13962",
+  "provider": "RunPod",
+  "stop_origin": "runpodctl executed inside the pod SSH session",
+  "stop_command": "runpodctl stop pod zrt36y5g68az7q",
+  "stop_exit_code": 0,
+  "stop_stdout": "pod \"zrt36y5g68az7q\" stopped",
+  "independent_endpoint_check": {
+    "method": "new SSH connection from the operator host",
+    "exit_code": 255,
+    "result": "ssh: connect to host 154.54.102.44 port 13962: Connection refused",
+    "endpoint_refused": true
+  },
+  "campaign_outcome": {
+    "anchor_workload_started": false,
+    "candidate_started": false,
+    "raw_performance_records_emitted": 0,
+    "paired_record_emitted": false,
+    "gate_verdict": false,
+    "obstruction_record": "benchmarks/results/c4-phase2-anchor-admission-obstruction-2026-07-27-3058c3c.json",
+    "obstruction_record_sha256": "535fc314608f94278d2b44cb0703be685f1a8b205bc766ecb65cc8c811dd4f97"
+  },
+  "assurance": "Append-only teardown evidence. The provider stop command succeeded and a separate post-stop SSH connection was refused."
+}

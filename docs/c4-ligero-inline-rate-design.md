@@ -121,7 +121,7 @@ maximum measured device live set and whether the 40-GB ceiling is met.
 Before loading weights, an A100 record also resolves exactly one
 `CUDA_VISIBLE_DEVICES` selector and fails closed unless free VRAM is at least
 40,000,000,000 B, host RAM is at least 64 GiB, the repository filesystem is
-non-FUSE/non-network with at least 80,000,000,000 B free, at least 16 logical
+non-FUSE/non-network with at least 80,000,000,000 B free, at least 13 effective
 CPUs are visible and Rayon is exactly eight. Every observation and floor is
 serialized and rechecked by the validator.
 
@@ -138,6 +138,35 @@ options contain both Docker-local `upperdir=/var/lib/docker/` and
 mount options and boolean evidence are serialized and revalidated. Plain
 ext4 (`stat` spelling `ext2/ext3`) and XFS remain admitted without overlay
 evidence. No generic `overlayfs` or capacity waiver is introduced.
+
+### Owner Amendment 1 — effective-CPU floor
+
+The original C4 floor of 16 logical CPUs was conservative headroom, not a
+measured requirement of the eight-worker inline Ligero path. The clean
+historical T1 A100 record
+`t1-a100-realpcg-v4-2026-07-19-b14577e.json` (SHA-256
+`1a659df70a5996e2ac0a188f49d190ebc50e3224733536cb9e03c642a6b2f8dc`)
+reports `detected_logical_cpu_cores=13`, `pcg_setup_rayon_threads=8`, a
+38.845157077-s real-PCG setup, a 5.289037812-s response session and green T1
+gates. It is therefore direct production evidence that the workload and PCG
+setup do not require 16 effective CPUs.
+
+The owner amends only the C4 resource floor from 16 to **13 effective CPUs**.
+The producer continues to use cgroup-aware
+`std::thread::available_parallelism`, so a fractional quota such as 13.6 is
+counted conservatively as 13. Rayon remains exactly eight, leaving five
+admitted effective CPUs outside the scheduled pool. A host reporting 12 is
+rejected. The anchor and candidate must still use the same detected CPU
+count, build, host and GPU; the anchor must pass every absolute T1 gate before
+the candidate may start, and both paired timing ratios remain `<=1.05x`.
+Thus the amendment cannot convert CPU contention into a passing performance
+result. It changes no protocol, proof byte, soundness expression, rate,
+query count, CUDA operation, PCG lifecycle or communication gate.
+
+The failed 16-CPU admission attempt and its teardown records remain immutable
+and are not retried. This amendment is local preregistration only; a new pod
+contact or replacement pair still requires a new explicit owner GO and fresh
+authorization/connection stores.
 
 `scripts/report.py --validate-c4-official RECORD` validates each raw A100
 profile. The paired selector requires an anchor and candidate on the same
@@ -179,7 +208,7 @@ GO. The admitted profile is:
 - at least 64 GiB host RAM;
 - at least 80 GB free local non-FUSE ext4/XFS storage, either directly
   mounted or exposed through the exact Docker-local overlay contract above;
-- at least 16 logical CPUs, with proving and PCG Rayon fixed at exactly 8;
+- at least 13 effective CPUs, with proving and PCG Rayon fixed at exactly 8;
 - CUDA toolchain and `nvcc` capable of building the current fail-closed ABI.
 
 The measured T1 anchors are 8.164 GiB peak RSS, a 4,584,443,640-B

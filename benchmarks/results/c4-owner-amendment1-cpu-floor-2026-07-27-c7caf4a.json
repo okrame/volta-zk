@@ -1,0 +1,64 @@
+{
+  "report_schema_version": 1,
+  "milestone": "C4-owner-amendment1-effective-cpu-floor",
+  "date": "2026-07-27",
+  "baseline_git_sha": "c7caf4a15bc914f7ae4cfdad1b4749f38dec55a6",
+  "git_dirty": true,
+  "record_kind": "append-only local owner amendment before replacement producer",
+  "old_design_sha256": "a475379f9a690b76864e98a9a3e7bf60e46c2315bc5c95a347a58e0af41b3b3a",
+  "new_design_sha256": "e58a7f965c4a28796a149308828a82128d3c86482d24c81a8c86a8484f4dcbf8",
+  "resource_amendment": {
+    "old_effective_logical_cpu_floor": 16,
+    "new_effective_logical_cpu_floor": 13,
+    "rayon_workers_unchanged": 8,
+    "cgroup_aware_detector": "std::thread::available_parallelism",
+    "fractional_quota_counted_conservatively": true,
+    "twelve_effective_cpus_rejected": true
+  },
+  "historical_evidence": {
+    "record": "benchmarks/results/t1-a100-realpcg-v4-2026-07-19-b14577e.json",
+    "record_sha256": "1a659df70a5996e2ac0a188f49d190ebc50e3224733536cb9e03c642a6b2f8dc",
+    "git_sha": "b14577e12f35276c31482cf24dba41b6478905f9",
+    "detected_logical_cpu_cores": 13,
+    "pcg_setup_rayon_threads": 8,
+    "real_pcg_setup_wall_s": 38.845157077,
+    "response_session_wall_upper_median_s": 5.289037812,
+    "prove_response_upper_median_s": 4.031071209,
+    "p7b_sync_wall_absolute_observed_s": 0.117210172,
+    "p7b_all_gates_pass": true
+  },
+  "unchanged_gates_and_invariants": {
+    "same_build_host_gpu_pair": true,
+    "same_detected_cpu_count_required": true,
+    "anchor_must_pass_before_candidate": true,
+    "prove_response_ratio_ceiling": 1.05,
+    "response_session_ratio_ceiling": 1.05,
+    "absolute_t1_gates_unchanged": true,
+    "communication_and_soundness_unchanged": true,
+    "protocol_transcript_codec_and_pcg_lifecycle_unchanged": true
+  },
+  "historical_obstruction_preserved": {
+    "record": "benchmarks/results/c4-phase2-anchor-admission-obstruction-2026-07-27-3058c3c.json",
+    "record_sha256": "535fc314608f94278d2b44cb0703be685f1a8b205bc766ecb65cc8c811dd4f97",
+    "teardown_record": "benchmarks/results/c4-control-plane-teardown-2026-07-27-3058c3c.json",
+    "teardown_record_sha256": "fe65a850fc68aa653edc22738608c9f65ef2a76b90e26620abd638f841badaea",
+    "anchor_retried": false,
+    "candidate_started": false
+  },
+  "local_verification": {
+    "c4_rust_floor_and_geometry_test_passed": true,
+    "report_validator_tests_passed": 46,
+    "full_workspace_green": true,
+    "cuda_feature_all_targets_compilation_green": true,
+    "formatting_and_diff_hygiene_green": true
+  },
+  "authority_and_stop": {
+    "owner_amendment_authorized": true,
+    "pod_contacted_after_amendment": false,
+    "replacement_production_pair_started": false,
+    "performance_result": false,
+    "gate_verdict": false,
+    "new_explicit_owner_go_required_before_pod_contact": true
+  },
+  "assurance": "Local amendment evidence only. The 13-CPU floor is supported by the immutable clean T1 A100 record; no replacement producer or A100 performance workload ran."
+}

@@ -140,10 +140,10 @@ const C4_ANCHOR_SOUNDNESS_BITS: f64 = 78.809_294_873_916_41;
 const C4_DEVICE_LIVE_GATE_BYTES: u64 = 40_000_000_000;
 const C4_HOST_RAM_FLOOR_BYTES: u64 = 64 * 1024 * 1024 * 1024;
 const C4_LOCAL_STORAGE_FLOOR_BYTES: u64 = 80_000_000_000;
-const C4_LOGICAL_CPU_FLOOR: usize = 16;
+const C4_LOGICAL_CPU_FLOOR: usize = 13;
 const C4_ANCHOR_CODEWORD_BYTES: u64 = 8_623_489_024;
 const C4_CANDIDATE_CODEWORD_BYTES: u64 = 17_246_978_048;
-const C4_DESIGN_SHA256: &str = "a475379f9a690b76864e98a9a3e7bf60e46c2315bc5c95a347a58e0af41b3b3a";
+const C4_DESIGN_SHA256: &str = "e58a7f965c4a28796a149308828a82128d3c86482d24c81a8c86a8484f4dcbf8";
 const T1_SUB_CORRS: u64 = 4_793_590;
 const T1_FULL_CORRS: u64 = 181_933;
 const T1_ZERO_CLAIMS: usize = 8_170;
@@ -5795,6 +5795,8 @@ mod report_tests {
 
     #[test]
     fn c4_profiles_match_preregistered_bytes_soundness_and_storage() {
+        assert_eq!(C4_LOGICAL_CPU_FLOOR, 13);
+        assert!(C4_LOGICAL_CPU_FLOOR > P7B_OFFICIAL_RAYON_THREADS);
         let anchor = pcs_response_soundness_bits(&[(&C3_WEIGHTS, 1, 96), (&C3_EMBED, 1, 6)]);
         let candidate = pcs_response_soundness_bits(&[(&C4_WEIGHTS, 1, 96), (&C4_EMBED, 1, 6)]);
         assert!((anchor - C4_ANCHOR_SOUNDNESS_BITS).abs() < 1e-12, "{anchor}");

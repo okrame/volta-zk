@@ -18,7 +18,11 @@
 > di caricare pesi o creare store PCG: `cpu.max=1360000 100000` espone 13,6
 > CPU effettive, contabilizzate conservativamente come 13 contro il minimo
 > congelato di 16. Nessun warmup, candidato, tempo A100 C4 o verdetto esiste;
-> il pod è stato fermato e serve un nuovo owner GO con un host ammesso.
+> il pod è stato fermato. L'Owner Amendment 1 locale riduce il floor futuro a
+> 13 CPU effettive: il record T1 A100 immutabile `b14577e` aveva già
+> `detected_logical_cpu_cores=13`, 8 Rayon e tutti i gate verdi. Dodici CPU
+> continuano a essere respinte; serve comunque un nuovo owner GO prima di
+> qualsiasi pod o replacement pair.
 
 La quarta colonna dati è stata sostituita con il pair pulito X4d.1 a
 `b83ffc1`: un settlement `k=1` e uno `k=16` sullo stesso host, build, GPU e
@@ -141,6 +145,20 @@ il teardown è
 `fe65a850fc68aa653edc22738608c9f65ef2a76b90e26620abd638f841badaea`).
 Questi sono record operativi, non misure di prestazione. Le formule della
 tabella restano proiezioni e l'avvertenza same-build rimane in vigore.
+
+L'Owner Amendment 1 corregge soltanto il requisito di ammissione futuro da 16
+a **13 CPU effettive**, senza modificare gli 8 worker Rayon. L'evidenza non è
+una proiezione: il T1 A100 pulito `b14577e` registra già 13 CPU effettive,
+setup real-PCG **38,845157077 s**, sessione **5,289037812 s** e gate verdi.
+Il validator rifiuta 12 CPU e richiede ancora identità di host/CPU tra anchor
+e candidato; l'anchor deve superare tutti i tetti assoluti prima di avviare
+rate8. Il record locale append-only è
+`c4-owner-amendment1-cpu-floor-2026-07-27-c7caf4a.json` (SHA-256
+`98a1cd87d76f2bbc2bc0fa3103dafa46ac3805a175a6a1e8cd7312be7f4619f3`);
+il nuovo design pin è
+`e58a7f965c4a28796a149308828a82128d3c86482d24c81a8c86a8484f4dcbf8`.
+Nessun pod è stato contattato dopo l'emendamento e nessun replacement pair è
+iniziato.
 
 ## Lettura del verdict
 

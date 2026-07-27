@@ -4066,6 +4066,12 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7(tmp_path)
     bad_t1_auth_path.write_text(json.dumps(bad_t1_auth))
     assert report.validate_t1_official_result(bad_t1_auth_path) is False
 
+    c4_design_path = (
+        Path(__file__).resolve().parents[1] / "docs" / "c4-ligero-inline-rate-design.md"
+    )
+    assert hashlib.sha256(c4_design_path.read_bytes()).hexdigest() == report.C4_DESIGN_SHA256
+    assert report.C4_LOGICAL_CPU_FLOOR == 13
+
     def c4_record(profile: str):
         row = copy.deepcopy(t1_pod)
         is_rate8 = profile == "rate8"
@@ -4122,7 +4128,7 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7(tmp_path)
             "profile": profile,
             "design_file": "docs/c4-ligero-inline-rate-design.md",
             "design_sha256": (
-                "a475379f9a690b76864e98a9a3e7bf60e46c2315bc5c95a347a58e0af41b3b3a"
+                "e58a7f965c4a28796a149308828a82128d3c86482d24c81a8c86a8484f4dcbf8"
             ),
             "resource_admission": {
                 "selected_gpu": "0",
@@ -4137,8 +4143,8 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7(tmp_path)
                 "local_storage_mount_options": "rw,relatime",
                 "local_storage_free_bytes": 100_000_000_000,
                 "local_storage_floor_bytes": 80_000_000_000,
-                "detected_logical_cpus": 32,
-                "logical_cpu_floor": 16,
+                "detected_logical_cpus": 13,
+                "logical_cpu_floor": 13,
                 "rayon_workers": 8,
                 "non_fuse_local_storage": True,
                 "container_overlay_local_backing_evidence": False,
@@ -4217,6 +4223,18 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7(tmp_path)
     bad_c4_resource_path = tmp_path / "c4-bad-resource.json"
     bad_c4_resource_path.write_text(json.dumps(bad_c4_resource))
     assert report.validate_c4_official_result(bad_c4_resource_path) is False
+
+    bad_c4_cpu = copy.deepcopy(c4_candidate)
+    bad_c4_cpu["c4"]["resource_admission"]["detected_logical_cpus"] = 12
+    bad_c4_cpu_path = tmp_path / "c4-bad-cpu.json"
+    bad_c4_cpu_path.write_text(json.dumps(bad_c4_cpu))
+    assert report.validate_c4_official_result(bad_c4_cpu_path) is False
+
+    bad_c4_cpu_floor = copy.deepcopy(c4_candidate)
+    bad_c4_cpu_floor["c4"]["resource_admission"]["logical_cpu_floor"] = 12
+    bad_c4_cpu_floor_path = tmp_path / "c4-bad-cpu-floor.json"
+    bad_c4_cpu_floor_path.write_text(json.dumps(bad_c4_cpu_floor))
+    assert report.validate_c4_official_result(bad_c4_cpu_floor_path) is False
 
     c4_overlay = copy.deepcopy(c4_candidate)
     overlay_resource = c4_overlay["c4"]["resource_admission"]

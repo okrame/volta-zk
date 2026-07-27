@@ -1,82 +1,57 @@
 # GPT-2 real-weight — confronto CPU, A100, Ligero inline e storico X4
 
-> **Stato 2026-07-27 — documento WIP tracciato.** X4/X4d resta nello storico
-> e la campagna è sospesa. C4 torna alla certificazione Ligero inline:
-> l'ancora T1 `rate=1/4,Q=120` è stata rimisurata su A100 alla build pulita
-> `4097179` ed è ufficialmente valida; sostituisce nella terza colonna il
-> vecchio record `b14577e`. Il candidato `rate=1/8,Q=97` non ha invece una
-> misura: la sola esecuzione autorizzata si è fermata prima di real-PCG,
-> warmup e timing per un assert del producer. Le sue cifre restano formule
-> verificate localmente e nessun pair o verdetto C4 esiste.
->
-> Il primo preflight Phase 2 autorizzato si era fermato prima del checkout
-> sull'interpretazione del disco Docker `overlayfs`; la correzione
-> preregistrata distingue quel disco locale dal volume FUSE remoto. Sul
-> checkpoint pulito `3058c3c`, build, differenziali CUDA, leakage smoke e
-> workspace release erano poi risultati verdi. L'invocazione dell'anchor si
-> era però fermata fail-closed nell'ammissione, prima
-> di caricare pesi o creare store PCG: `cpu.max=1360000 100000` espone 13,6
-> CPU effettive, contabilizzate conservativamente come 13 contro il minimo
-> congelato di 16. Nessun warmup, candidato, tempo A100 C4 o verdetto esiste;
-> il pod è stato fermato. L'Owner Amendment 1 locale riduce il floor futuro a
-> 13 CPU effettive: il record T1 A100 immutabile `b14577e` aveva già
-> `detected_logical_cpu_cores=13`, 8 Rayon e tutti i gate verdi. Dodici CPU
-> continuano a essere respinte.
->
-> Il replacement autorizzato su `4097179` ha superato l'intero preflight e
-> prodotto l'anchor valida. Solo dopo la sua validazione è partita rate-8:
-> il mock prepass ha calcolato correttamente **38.296.040 B**, ma l'assert
-> condiviso C3/T1 li ha confrontati con i **43.273.888 B** dell'anchor e ha
-> terminato il processo prima di qualsiasi misura candidata. Il fix è locale
-> e testato, il pod è fermo, e un nuovo pair richiede comunque un nuovo owner
-> GO e due run freschi sullo stesso nuovo SHA.
+> **Stato 2026-07-27 — documento WIP tracciato.** X4/X4d resta storico e
+> sospeso. C4 ha completato un pair A100 same-build pulito a `e99a1e5`:
+> l'anchor Ligero inline `rate=1/4,Q=120` passa tutti i gate; il candidato
+> `rate=1/8,Q=97` risparmia esattamente **4.977.848 B/risposta** e passa i
+> gate di prover puro, soundness e memoria, ma il verdetto complessivo è
+> **FAIL**. La sessione completa misura **1,050816638x >1,05x** e una
+> ripetizione misura **0,155717607 s >0,150 s** di sincronizzazione. Non è
+> stato eseguito alcun retry selettivo. L'anchor resta il profilo accettato.
 
-La quarta colonna dati è stata sostituita con il pair pulito X4d.1 a
+La quinta colonna conserva il pair pulito X4d.1 a
 `b83ffc1`: un settlement `k=1` e uno `k=16` sullo stesso host, build, GPU e
 split CPU. Il record `k=16` accetta il settlement e mantiene verde il proprio
 G1, ma il verdetto appaiato è **FAIL**: il wall cresce di **2,635946x** contro
 il limite vincolante **1,30x**. Inoltre il rerun G1 appaiato è rosso perché
 `k=1` misura **0,154283455 s** di sync contro il tetto invariato **0,150 s**.
 
-La terza colonna è ora il record C4-anchor su A100 a `4097179`, cioè la
-configurazione **Ligero con boundary thinning** rimisurata dopo X1--X4d sul
-checkpoint corrente della campagna. Non è una proiezione: tutti i valori
-provengono da
-`c4-ligero-t1-anchor-a100-2026-07-27-4097179.json`, validato dal selettore
-ufficiale. La sezione «Confronto Ligero inline vs settlement differito»
-sotto spiega perché è la colonna di riferimento corretta per la
-comunicazione, e non la seconda.
+La terza e la quarta colonna sono il pair C4 sullo stesso checkpoint, host,
+GPU, quota CPU e binary. Tutti i valori vengono dai due record raw validati e
+dal selettore paired, non da proiezioni.
 
-| Voce | CPU locale (4 thread) | A100 RunPod (8 worker Rayon) | A100 RunPod C4 anchor (Ligero + boundary thinning) | A100 RunPod X4d.1 (8 response + 27 settlement worker) |
-| --- | ---: | ---: | ---: | ---: |
-| **PCS e legatura dei pesi** | Ligero rate `1/4`, `Q=120` — apertura **inline** per risposta | Ligero rate `1/4`, `Q=120` — apertura **inline** per risposta | Ligero rate `1/4`, `Q=120` — apertura **inline** per risposta | `x4-zkdeepfold-ud-e29-v4` (BaseFold/DeepFold), rate `1/8`, `s=111` — **settlement differito**, risposta senza blocco PCS |
-| Prova prefill | 10,10 s | 2,54 s | **2,405747 s** | **2,256217 s — PASS** (`k=16`) |
-| Prova decode marginale | 8,26 s | 1,65 s | **1,606140 s** | **1,896501 s — PASS** (`k=16`) |
-| Prova risposta totale | 18,37 s | 4,18 s | **4,011648 s** (mediana di tre) | **4,148145 s** (`k=16`, upper median delle tre misurate) |
-| Sessione online completa | 30,45 s | 5,60 s | **5,245757 s**, legatura pesi **inclusa** | **4,783942 s — PASS** alla delivery `k=16`; settlement **878,973898 s/batch — FLATNESS FAIL** |
-| G2 rispetto a fase-D appaiato | **+14,54% — PASS** | **−14,83% — PASS** | gate p7b: prefill **2,405747 s ≤10 s** e decode **1,606140 s ≤4 s — PASS**; nessun pair C4 | G1 `k=16` PASS; pair G1 **FAIL** per sync `k=1`; interferenza `k=16` **−2,273545% — PASS** |
-| Flat cost (ultimo/primo) | **1,163 — PASS** | **1,228 — PASS** | **1,235979 — PASS** | G1 **1,000 — PASS**; settlement `k16/k1` **2,635946 — FAIL** |
-| H2D massimo sessione | n/d | **88,81 MB — PASS** | **67,618556 MB — PASS** | **66,93 MB — PASS** |
-| Sync wall massimo | n/d | **0,1149 s — PASS** | **0,116591 s — PASS** | pair **0,154283 s — FAIL** (`k=16`: **0,126060 s — PASS**) |
-| Verifica pura | 0,387 s | 0,832 s | **0,650482 s** | **0,635883 s** (`k=16`) |
-| Verifica contabilizzata | 0,468 s | 0,911 s | **0,731349 s** (`0,650482 + 0,080867` PCS) | **0,639966 s/risposta equivalente** (`0,635883 + 0,065331/16`) |
-| Token di decode provati al secondo | 2,72 | 11,95 | **12,46** | **12,05** |
-| Setup real-PCG | 67,90 s | 48,84 s | **38,190168 s** | **42,151358 s** |
-| Traffico setup totale | 38,37 MB | 38,37 MB | 38,37 MB | 38,37 MB (invariante fase-D, non ri-emesso) |
-| Prover → verifier | 31,58 MB | 31,58 MB | 31,58 MB | 31,58 MB (invariante fase-D, non ri-emesso) |
-| Verifier → prover | 6,79 MB | 6,79 MB | 6,79 MB | 6,79 MB (invariante fase-D, non ri-emesso) |
-| Transcript / risposta packed | **105,72 MB** | **105,72 MB** | **84,544352 MB — exact**, stato terminale accettato | **41,270464 MB — exact**, stato `WEIGHT_PENDING` |
-| PCS opening (già incluso) | 43,27 MB | 43,27 MB | 43,273888 MB inline; commit/open/verify **0,202912 / 0,296582 / 0,080867 s** | **0 B/risposta**; **3,564780 MB/batch**, **0,222799 MB/risposta equivalente** |
-| Logit pubblici packed | **0 MB** | **0 MB** | **0 MB** | **0 MB** |
-| Primo scambio totale | **144,09 MB** | **144,09 MB** | **122,915817 MB** | **79,641929 MB** alla delivery; settlement differito **3,564780 MB/16** |
-| Latenza al certificato dei pesi | inline | inline | **inline (0,296582 s)** | **333,456712 s** (`k=1`) / **878,973898 s** (`k=16`) dal seal |
+| Voce | CPU locale (4 thread) | A100 RunPod (8 worker Rayon) | C4 anchor A100 `1/4,Q=120` | C4 rate-8 A100 `1/8,Q=97` | A100 RunPod X4d.1 (8 response + 27 settlement worker) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| **PCS e legatura dei pesi** | Ligero rate `1/4`, `Q=120` — apertura **inline** per risposta | Ligero rate `1/4`, `Q=120` — apertura **inline** per risposta | Ligero rate `1/4`, `Q=120` — **inline**, profilo accettato | Ligero rate `1/8`, `Q=97` — **inline**, C4 **FAIL** | `x4-zkdeepfold-ud-e29-v4` (BaseFold/DeepFold), rate `1/8`, `s=111` — **settlement differito**, risposta senza blocco PCS |
+| Prova prefill | 10,10 s | 2,54 s | **2,459967 s — PASS** | **2,448463 s — PASS** | **2,256217 s — PASS** (`k=16`) |
+| Prova decode marginale | 8,26 s | 1,65 s | **1,647298 s — PASS** | **1,637910 s — PASS** | **1,896501 s — PASS** (`k=16`) |
+| Prova risposta totale | 18,37 s | 4,18 s | **4,104596 s** | **4,079376 s; 0,993856x — PASS** | **4,148145 s** (`k=16`, upper median delle tre misurate) |
+| Sessione online completa | 30,45 s | 5,60 s | **5,322726 s**, legatura inclusa | **5,593209 s; 1,050817x — FAIL** | **4,783942 s — PASS** alla delivery `k=16`; settlement **878,973898 s/batch — FLATNESS FAIL** |
+| Gate corrente | **+14,54% — PASS** | **−14,83% — PASS** | tutti i gate assoluti e anchor **PASS** | prover paired **PASS**; sessione paired e sync assoluto **FAIL** | G1 `k=16` PASS; pair G1 **FAIL** per sync `k=1`; interferenza `k=16` **−2,273545% — PASS** |
+| Flat cost (ultimo/primo) | **1,163 — PASS** | **1,228 — PASS** | **1,239678 — PASS** | **1,258492 — PASS** | G1 **1,000 — PASS**; settlement `k16/k1` **2,635946 — FAIL** |
+| H2D massimo sessione | n/d | **88,81 MB — PASS** | **67,618556 MB — PASS** | **68,273732 MB — PASS** | **66,93 MB — PASS** |
+| Sync wall massimo | n/d | **0,1149 s — PASS** | **0,126796 s — PASS** | **0,155718 s — FAIL** | pair **0,154283 s — FAIL** (`k=16`: **0,126060 s — PASS**) |
+| Verifica pura | 0,387 s | 0,832 s | **0,632347 s** | **0,649684 s** | **0,635883 s** (`k=16`) |
+| Verifica contabilizzata | 0,468 s | 0,911 s | **0,713656 s** | **0,784628 s** | **0,639966 s/risposta equivalente** (`0,635883 + 0,065331/16`) |
+| Token di decode provati al secondo | 2,72 | 11,95 | **12,18** | **12,26** | **12,05** |
+| Setup real-PCG | 67,90 s | 48,84 s | **37,811301 s** | **38,859739 s** | **42,151358 s** |
+| Peak device live | n/d | n/d | **17,158968 GB — PASS** | **30,146106 GB — PASS** | **47,256775 GB** (X4c peak ereditato) |
+| Traffico setup totale | 38,37 MB | 38,37 MB | 38,371465 MB | 38,371465 MB | 38,37 MB (invariante fase-D, non ri-emesso) |
+| Prover → verifier | 31,58 MB | 31,58 MB | 31,581007 MB | 31,581007 MB | 31,58 MB (invariante fase-D, non ri-emesso) |
+| Verifier → prover | 6,79 MB | 6,79 MB | 6,790458 MB | 6,790458 MB | 6,79 MB (invariante fase-D, non ri-emesso) |
+| Transcript / risposta packed | **105,72 MB** | **105,72 MB** | **84,544352 MB — exact** | **79,566504 MB — exact** | **41,270464 MB — exact**, stato `WEIGHT_PENDING` |
+| PCS opening (già incluso) | 43,27 MB | 43,27 MB | 43,273888 MB; commit/open/verify **0,202900 / 0,298579 / 0,081479 s** | 38,296040 MB; commit/open/verify **0,419875 / 0,307923 / 0,135791 s** | **0 B/risposta**; **3,564780 MB/batch**, **0,222799 MB/risposta equivalente** |
+| Logit pubblici packed | **0 MB** | **0 MB** | **0 MB** | **0 MB** | **0 MB** |
+| Primo scambio totale | **144,09 MB** | **144,09 MB** | **122,915817 MB** | **117,937969 MB** | **79,641929 MB** alla delivery; settlement differito **3,564780 MB/16** |
+| Latenza al certificato dei pesi | inline | inline | **inline (0,298579 s)** | **inline (0,307923 s)** | **333,456712 s** (`k=1`) / **878,973898 s** (`k=16`) dal seal |
 
 ## Confronto Ligero inline vs settlement differito
 
 Le prime due colonne sono record dell'era C3b (`161fc59`, pre-T1) e riportano
 una risposta di **105,72 MB**. Quel valore non è più il riferimento Ligero
-corretto: la nuova anchor `4097179` conferma **84.544.352 B esatti** con lo
-stesso PCS Ligero e la stessa apertura **43.273.888 B**. Confrontare X4d.1
+corretto: la nuova anchor same-build `e99a1e5` conferma **84.544.352 B
+esatti** con lo stesso PCS Ligero e la stessa apertura **43.273.888 B**.
+Confrontare X4d.1
 con la seconda colonna attribuisce quindi alla migrazione PCS anche i
 **21,17 MB** già vinti da T1 sul transcript, che sono indipendenti dal PCS.
 La terza colonna rimuove questa confusione.
@@ -85,15 +60,15 @@ A parità di generazione dello stack, la sostituzione del PCS vale:
 
 | Grandezza | T1 Ligero inline | X4d.1 `k=16` | Delta |
 | --- | ---: | ---: | ---: |
-| Prova modello per risposta | 4,011648 s | 4,152718 s | **+0,141070 s** |
-| Legatura pesi per risposta | 0,296582 s | 54,935869 s (`878,973898/16`) | **+54,639287 s** |
+| Prova modello per risposta | 4,104596 s | 4,152718 s | **+0,048122 s** |
+| Legatura pesi per risposta | 0,298579 s | 54,935869 s (`878,973898/16`) | **+54,637290 s** |
 | Byte per risposta | 84.544.352 B | 41.270.464 B + 222.799 B/risposta equiv. | **−43.051.089 B** |
 | Primo scambio | 122,915817 MB | 79,641929 MB | **−43,273888 MB** |
 
-Il rapporto è **185,2x** sul costo di legatura dei pesi a `k=16` e **1.124,3x**
+Il rapporto è **184,0x** sul costo di legatura dei pesi a `k=16` e **1.116,8x**
 a `k=1`, in cambio di **43,05 MB** per risposta: circa **788 kB risparmiati per
 secondo di prover A100 speso**. L'hot path di proving del modello non migliora:
-X4d.1 è **+3,516%** più lento dell'anchor Ligero.
+X4d.1 è **+1,172%** più lento dell'anchor Ligero.
 
 Il pavimento raggiungibile da X4d è visibile nella decomposizione sotto: le tre
 fasi piatte sommano **146,325853 s** a `k=16` e la banda informativa X4c è
@@ -112,80 +87,62 @@ Riferimenti dei valori T1: `t_prove_prefill_only_s`,
 `pcs_verify_total_s`. Il primo scambio è
 `84.544.352 + 38.371.465 = 122.915.817 B`.
 
-**Avvertenza di confronto.** L'anchor Ligero è ora a `4097179`, quindi non
+**Avvertenza di confronto.** L'anchor Ligero è ora a `e99a1e5`, quindi non
 precede più X1--X4d; questo chiude il dubbio sulla portabilità del vecchio
 record T1. Non è però appaiata per host, build e GPU con X4d.1 `b83ffc1`, né
-può essere appaiata retroattivamente con il futuro rate-8 corretto, che avrà
-un nuovo SHA. Il confronto Ligero/X4d resta descrittivo; il gate C4 richiede
-due nuovi run sullo stesso checkpoint corretto.
+ne condivide la strategia. Il confronto Ligero/X4d resta descrittivo. Il
+confronto C4 anchor/rate-8 è invece same-build e vincolante.
 
-## C4 Ligero inline — prossimo confronto preregistrato
+## C4 Ligero inline — paired A100
 
-C4 non riapre il settlement differito. L'anchor T1 `rate=1/4,Q=120` è stata
-misurata e validata a `4097179`; il candidato `rate=1/8,Q=97` resta non
-misurato. La tabella separa quindi l'evidenza A100 dell'anchor dalle formule
-candidate:
+C4 non riapre il settlement differito. Il pair a `e99a1e5` misura
+direttamente sia l'anchor `rate=1/4,Q=120` sia rate-8 `rate=1/8,Q=97`:
 
-| Grandezza | Ancora T1 misurata (`4097179`) | C4 `rate=1/8,Q=97` non misurato | Delta analitico |
+| Grandezza | Anchor misurata (`e99a1e5`) | Rate-8 misurato (`e99a1e5`) | Delta / esito |
 | --- | ---: | ---: | ---: |
 | PCS inline | 43.273.888 B | 38.296.040 B | **−4.977.848 B** |
 | Transcript non-PCS | 41.270.464 B | 41.270.464 B | **0 B** |
 | Risposta | 84.544.352 B | 79.566.504 B | **−4.977.848 B** |
 | Primo scambio, setup incluso | 122.915.817 B | 117.937.969 B | **−4.977.848 B** |
+| Media a 2 risposte | 103.730.084,5 B | 98.752.236,5 B | **−4.977.848 B/risposta** |
 | Media a 5 risposte | 92.218.645 B | 87.240.797 B | **−4.977.848 B/risposta** |
 | Soundness statistica | 78,80929487391641 bit | 78,86651649674867 bit | più forte |
 | Codeword residenti | 8.623.489.024 B | 17.246.978.048 B | **+8.623.489.024 B** |
+| Peak device live misurato | 17.158.968.308 B | 30.146.106.356 B | **+12.987.138.048 B; PASS <40 GB** |
+| Prova risposta | 4,104595717 s | 4,079375688 s | **−0,025220029 s; −0,614434%; PASS** |
+| Sessione completa | 5,322725729 s | 5,593208756 s | **+0,270483027 s; +5,081664%; FAIL** |
+| Setup real-PCG | 37,811300978 s | 38,859738583 s | **+1,048437605 s** |
+| PCS commit | 0,202899867 s | 0,419875443 s | **+0,216975576 s; +106,94%** |
+| PCS open | 0,298579063 s | 0,307922895 s | **+0,009343832 s; +3,13%** |
+| PCS verify | 0,081478679 s | 0,135791215 s | **+0,054312536 s; +66,66%** |
+| Sync massimo | 0,126796018 s | 0,155717607 s | **+0,028921589 s; FAIL >0,150 s** |
 
-Il gate costo è volutamente stretto: sia la mediana superiore del prover sia
-quella della sessione completa devono restare entro `1,05x` l'ancora
-same-build, oltre a tutti i tetti T1 assoluti. L'anchor `4097179` resta
-visibile sopra, ma non può decidere un futuro pair su un nuovo SHA. X4/X4d
-rimane conservato come storico immutabile e non è nel percorso di esecuzione
-C4.
+Il prezzo misurato dei **4,977848 MB** in meno per risposta è quindi:
+codeword raddoppiato, **12,987138 GB** di picco GPU aggiuntivo, circa
+**1,048 s** di setup in più e **270,483 ms** in più nella sessione completa.
+Il prover puro è invece **25,220 ms più veloce**; il costo emerge nel PCS e
+nel verifier, non nel protocol core. Il tetto sessione era
+**5,588862015 s**: il candidato lo manca per **4,346741 ms**, e fallisce
+comunque separatamente il sync assoluto di **5,717607 ms**. Il risparmio
+equivale a circa **18,40 MB per secondo di sessione aggiuntivo**, ma il
+prodotto resta non ammissibile perché i gate sono congiuntivi e non
+negoziabili.
 
-La prima campagna C4 non aveva prodotto il pair. Dopo la verifica completa sul
-checkpoint `3058c3c`, il producer dell'anchor ha respinto la quota cgroup di
-13,6 CPU prima del caricamento dei pesi; il candidato era quindi vietato e
-non è partito. Il record append-only di obstruction è
-`c4-phase2-anchor-admission-obstruction-2026-07-27-3058c3c.json` (SHA-256
-`535fc314608f94278d2b44cb0703be685f1a8b205bc766ecb65cc8c811dd4f97`);
-il teardown è
-`c4-control-plane-teardown-2026-07-27-3058c3c.json` (SHA-256
-`fe65a850fc68aa653edc22738608c9f65ef2a76b90e26620abd638f841badaea`).
-Questi sono record operativi, non misure di prestazione. Le formule della
-colonna candidata restano proiezioni e il requisito same-build rimane in
-vigore.
+I record append-only del pair sono:
 
-L'Owner Amendment 1 corregge soltanto il requisito di ammissione futuro da 16
-a **13 CPU effettive**, senza modificare gli 8 worker Rayon. L'evidenza non è
-una proiezione: il T1 A100 pulito `b14577e` registra già 13 CPU effettive,
-setup real-PCG **38,845157077 s**, sessione **5,289037812 s** e gate verdi.
-Il validator rifiuta 12 CPU e richiede ancora identità di host/CPU tra anchor
-e candidato; l'anchor deve superare tutti i tetti assoluti prima di avviare
-rate8. Il record locale append-only è
-`c4-owner-amendment1-cpu-floor-2026-07-27-c7caf4a.json` (SHA-256
-`98a1cd87d76f2bbc2bc0fa3103dafa46ac3805a175a6a1e8cd7312be7f4619f3`);
-il design pin introdotto dall'emendamento era
-`e58a7f965c4a28796a149308828a82128d3c86482d24c81a8c86a8484f4dcbf8`.
-La campagna replacement autorizzata ha invece prodotto una nuova anchor
-valida su `4097179`:
-`c4-ligero-t1-anchor-a100-2026-07-27-4097179.json`, SHA-256
-`6778cb837406c705c34aa0d3021da48791d2e6ccc8aa98580b0e19888e1ee18d`.
-La sola candidata rate-8 si è fermata dopo il mock prepass ma prima di
-real-PCG, warmup e timing per il confronto errato
-`38.296.040 != 43.273.888`; nessun JSON candidato o pair esiste. Il fix
-seleziona ora il byte count dal profilo ed è coperto localmente, ma non
-autorizza un retry. Il record di obstruction è
-`c4-phase2-rate8-producer-obstruction-2026-07-27-4097179.json` (SHA-256
-`10697ed15949bf6e325309726505cc0ad44a58291a8e70be422b19851ebe55cc`);
-il teardown è `c4-control-plane-teardown-2026-07-27-4097179.json`
-(SHA-256
-`11d02e7f024a88cb9cdf4148c207d48a001861fda8467c6b41704d9f317bbd1c`).
-Il design futuro corretto ha digest
-`0b8739d6d8d5e1d605e2d4dfa8fb1f064dc046ca77b02d390ecc4d0f20461bcb`;
-il record anchor conserva il proprio pin storico `e58a7f...`. Il pod è
-stato fermato e l'endpoint SSH rifiuta la connessione. Serve un nuovo owner
-GO per un pair fresco sul checkpoint corretto.
+- `c4-ligero-t1-anchor-a100-2026-07-27-e99a1e5.json`, SHA-256
+  `c25c3321b10d17b8c8db675af55d9a4ba0accd2895148c715493dd0883303acd`;
+- `c4-ligero-rate8-a100-2026-07-27-e99a1e5.json`, SHA-256
+  `aeab6ac703f73ca1f6a40ae85737f4d69838d3b0be1e1f21d005c658484c445e`;
+- `c4-ligero-paired-a100-2026-07-27-e99a1e5.json`, SHA-256
+  `8506de9ccad35bba76f9cd337ef5a4528613fc91894962e597937b63e3ad3e56`.
+
+Il pair è **overall FAIL**; non è stato ritentato. Le precedenti obstruction
+`3058c3c` (floor CPU) e `4097179` (assert del producer), i loro teardown e
+l'anchor standalone `4097179` restano immutabili come storia operativa. Il
+pod del pair è stato fermato via SSH-side `runpodctl` e il nuovo tentativo SSH
+ha ricevuto `Connection refused`. X4/X4d resta conservato ma non è nel
+percorso di esecuzione C4.
 
 ## Lettura del verdict
 
@@ -272,11 +229,18 @@ restano byte-identici a **80,2553701639904 bit**.
 - `benchmarks/results/x4d1-flatness-gate-2026-07-26-b83ffc1.json`
   (`7b041e2d1d3028da1977f13de900d95e2da011f98349c86646596eaccb267250`).
 
-La colonna Ligero corrente proviene dal record immutabile
+Le colonne Ligero correnti provengono dal pair immutabile
 
-- `benchmarks/results/c4-ligero-t1-anchor-a100-2026-07-27-4097179.json`
-  (`6778cb837406c705c34aa0d3021da48791d2e6ccc8aa98580b0e19888e1ee18d`).
+- `benchmarks/results/c4-ligero-t1-anchor-a100-2026-07-27-e99a1e5.json`
+  (`c25c3321b10d17b8c8db675af55d9a4ba0accd2895148c715493dd0883303acd`);
+- `benchmarks/results/c4-ligero-rate8-a100-2026-07-27-e99a1e5.json`
+  (`aeab6ac703f73ca1f6a40ae85737f4d69838d3b0be1e1f21d005c658484c445e`);
+- `benchmarks/results/c4-ligero-paired-a100-2026-07-27-e99a1e5.json`
+  (`8506de9ccad35bba76f9cd337ef5a4528613fc91894962e597937b63e3ad3e56`).
 
-Il precedente T1 `b14577e` resta storico e immutabile:
+I precedenti T1 `4097179` e `b14577e` restano storici e immutabili. Il primo
+è `c4-ligero-t1-anchor-a100-2026-07-27-4097179.json`
+(`6778cb837406c705c34aa0d3021da48791d2e6ccc8aa98580b0e19888e1ee18d`);
+il secondo è
 `t1-a100-realpcg-v4-2026-07-19-b14577e.json`
 (`1a659df70a5996e2ac0a188f49d190ebc50e3224733536cb9e03c642a6b2f8dc`).

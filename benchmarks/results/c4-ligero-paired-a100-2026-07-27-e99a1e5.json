@@ -1,0 +1,20 @@
+{
+  "anchor_absolute_gates_pass": true,
+  "anchor_file": "c4-ligero-t1-anchor-a100-2026-07-27-e99a1e5.json",
+  "anchor_sha256": "c25c3321b10d17b8c8db675af55d9a4ba0accd2895148c715493dd0883303acd",
+  "candidate_absolute_gates_pass": false,
+  "candidate_device_gate_pass": true,
+  "candidate_file": "c4-ligero-rate8-a100-2026-07-27-e99a1e5.json",
+  "candidate_sha256": "aeab6ac703f73ca1f6a40ae85737f4d69838d3b0be1e1f21d005c658484c445e",
+  "communication_saving_bytes": 4977848,
+  "date": "2026-07-27",
+  "git_sha": "e99a1e5c9d27cd4cec3d051f6a175220107a1be2",
+  "instance_id": "154.54.102.40:19037",
+  "milestone": "C4-Ligero-paired-A100",
+  "overall_pass": false,
+  "prove_response_gate_pass": true,
+  "prove_response_ratio": 0.9938556606450799,
+  "report_schema_version": 1,
+  "response_session_gate_pass": false,
+  "response_session_ratio": 1.0508166380856931
+}

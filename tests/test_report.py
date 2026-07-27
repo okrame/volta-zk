@@ -4071,6 +4071,9 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7(tmp_path)
     )
     assert hashlib.sha256(c4_design_path.read_bytes()).hexdigest() == report.C4_DESIGN_SHA256
     assert report.C4_LOGICAL_CPU_FLOOR == 13
+    assert report.C4_HISTORICAL_DESIGN_SHA256_BY_GIT_SHA[
+        "e99a1e5c9d27cd4cec3d051f6a175220107a1be2"
+    ] == "0b8739d6d8d5e1d605e2d4dfa8fb1f064dc046ca77b02d390ecc4d0f20461bcb"
 
     def c4_record(profile: str):
         row = copy.deepcopy(t1_pod)

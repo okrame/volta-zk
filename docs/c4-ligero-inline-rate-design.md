@@ -1,8 +1,9 @@
 # C4 — Ligero inline rate reduction
 
-**Status (2026-07-27): Phase 1 implemented and locally verified; Phase 2
-owner GO received for pod preflight; no producer workload, A100 performance
-record or gate verdict yet.**
+**Status (2026-07-27): Phase 2 paired A100 campaign complete; anchor PASS,
+rate-8 exact communication and device gates PASS, but candidate absolute
+sync and paired response-session gates FAIL; overall C4 FAIL, pod stopped,
+no selective retry.**
 
 C4 returns the product path to the accepted T1 Ligero opening and compares
 two inline profiles on one unchanged build:
@@ -374,3 +375,57 @@ and paired gate remains **NOT EVALUATED**. A replacement anchor/rate-8 pair
 requires a new clean checkpoint, fresh stores and a new explicit owner GO.
 The pod was stopped through `runpodctl` from its SSH session and a separate
 connection was refused.
+
+## 9. Phase-2 same-build paired closure
+
+Owner GO2 authorized exactly one fresh replacement pair. Clean checkpoint
+`e99a1e5c9d27cd4cec3d051f6a175220107a1be2` ran on one
+RunPod A100-SXM4-80GB with 13 effective CPUs, eight Rayon workers,
+2,151,617,314,816 B host RAM and the admitted Docker-local overlay. The
+producer binary and CUDA backend remained unchanged across both profiles:
+their SHA-256 values were respectively
+`e12b690bdfc1698080bd9a6d49733279ed15c74dde075cc78cb68199cbf8a620`
+and
+`e458ae42fa293982a230de08d678757cf57c21a07d7cff4705db56b486f70151`.
+The complete release/CUDA workspace passed before either producer.
+
+The fresh anchor passed the official raw validator. The sole rate-8 run
+started only after that validation, used independent fresh real-PCG stores,
+and also passed the raw-record validator. Each profile used one warmup and
+three measured repetitions. No selective retry occurred.
+
+The paired record confirms the exact intended communication change:
+
+| Quantity | anchor `1/4,Q=120` | rate-8 `1/8,Q=97` | Delta |
+|---|---:|---:|---:|
+| PCS opening | 43,273,888 B | 38,296,040 B | **-4,977,848 B** |
+| response | 84,544,352 B | 79,566,504 B | **-4,977,848 B** |
+| response proof median | 4.104595717 s | 4.079375688 s | **-0.025220029 s; 0.993855661x PASS** |
+| complete response-session median | 5.322725729 s | 5.593208756 s | **+0.270483027 s; 1.050816638x FAIL** |
+| maximum synchronization wall | 0.126796018 s | 0.155717607 s | **+0.028921589 s; rate-8 FAIL** |
+| encoded codewords | 8,623,489,024 B | 17,246,978,048 B | **+8,623,489,024 B** |
+| measured peak device live set | 17,158,968,308 B | 30,146,106,356 B | **+12,987,138,048 B; device gate PASS** |
+
+The pure prover ratio passes, but the complete-session ceiling is
+`5.58886201545 s`; rate-8 exceeds it by `0.004346741 s`. Independently, its
+maximum synchronization wall exceeds the unchanged `0.150 s` ceiling by
+`0.005717607 s`. The candidate therefore has
+`candidate_absolute_gates_pass=false`, and the paired result is
+**overall FAIL**. The byte saving, stronger
+`78.86651649674867`-bit statistical bound and device admission do not offset
+either failure.
+
+The immutable raw and paired records are:
+
+- `c4-ligero-t1-anchor-a100-2026-07-27-e99a1e5.json`, SHA-256
+  `c25c3321b10d17b8c8db675af55d9a4ba0accd2895148c715493dd0883303acd`;
+- `c4-ligero-rate8-a100-2026-07-27-e99a1e5.json`, SHA-256
+  `aeab6ac703f73ca1f6a40ae85737f4d69838d3b0be1e1f21d005c658484c445e`;
+- `c4-ligero-paired-a100-2026-07-27-e99a1e5.json`, SHA-256
+  `8506de9ccad35bba76f9cd337ef5a4528613fc91894962e597937b63e3ad3e56`.
+
+SSH-side `runpodctl stop pod mi3dk7ah9jny9b` returned stopped, and an
+independent SSH connection was refused. C4 is closed at this checkpoint with
+the anchor retained as the accepted inline profile. A future experiment
+would require a separately preregistered design and new owner authorization;
+this result authorizes neither a retry nor a gate relaxation.

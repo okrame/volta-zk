@@ -6,15 +6,15 @@ theorems in `lean/`, frozen). Prototype milestones P0–P7b, fase-D and X1–X3
 are CLOSED.
 X4/X4d is suspended with immutable history. Current phase: **C4 Ligero inline
 rate reduction** — same-build A100 comparison of the unchanged T1
-`rate=1/4,Q=120` anchor and the `rate=1/8,Q=97` candidate. Phase 1 is locally
-complete. The replacement Phase-2 campaign produced a clean, officially valid
-current-build anchor at `4097179`, then stopped fail-closed before rate-8
-real-PCG setup or timing: the shared producer asserted the anchor PCS size
-against the correctly computed candidate size. The assertion is fixed and
-covered locally, but no candidate record, pair or C4 pair verdict exists. The
-pod is stopped. Owner GO2 now authorizes exactly one fresh replacement
-anchor/rate-8 pair on a new admitted A100 host; the endpoint has not yet been
-supplied or contacted. No selective retry or gate change is authorized.
+`rate=1/4,Q=120` anchor and the `rate=1/8,Q=97` candidate. The replacement
+Phase-2 pair is complete at clean `e99a1e5`: the anchor passes, while rate-8
+saves exactly 4,977,848 B/response and passes its pure-prover and device
+gates but fails the complete-session ratio
+`1.050816638 >1.05` and absolute synchronization
+`0.155717607 s >0.150 s`. C4 is therefore overall FAIL with no selective
+retry. The pod is stopped and independently unreachable. The anchor remains
+the accepted inline profile; any new production experiment requires a
+separately preregistered design and explicit owner GO.
 
 **Read `docs/prototype-status.md` first**, then the current task-specific
 design named by its latest ledger entry. For C4, that is

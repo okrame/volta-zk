@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 FIRST PHASE-2 CAMPAIGN FAIL-CLOSED BEFORE WORKLOAD; OWNER AMENDMENT 1 SETS FUTURE EFFECTIVE-CPU FLOOR TO 13; LOCAL GREEN; NO REPLACEMENT PAIR OR GATE VERDICT; HARD STOP BEFORE POD)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — ANCHOR PASS / RATE-8 OVERALL FAIL ON SESSION RATIO AND ABSOLUTE SYNC; NO SELECTIVE RETRY; POD STOPPED)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -362,7 +362,7 @@ its clean descendant closure.
 | X4d.2 byte-identical resident settlement Phase 1 | **LOCAL IDENTITY + OPERATION CENSUS COMPLETE; HARD STOP BEFORE POD / NO PERFORMANCE OR GATE VERDICT** (2026-07-26) | Evaluation strategy, residency and disjoint instrumentation only; exact sequential challenge tape; fail-closed production CUDA; no protocol/codec/bytes/soundness/Lean/hot-path change | The record corrects the refuted general factorization: independently pointed equality sums have rank up to `m`; no `blind_prove_batch`, round-synchronous schedule or asymptotic-flatness claim is used. ClaimReduce hoists exactly **51 / 298,844,160 i16-source symbols** into one immutable **4,781,506,560-B** Fp2 device tier; one maximum-geometry four-buffer pool is reused across exact `51*k` sequential instances. Auxiliary MLE and fused delayed-link source/equality work have resident paths with counted host/device bytes, H2D/D2H/D2D, kernel calls, scalar D2H, allocations/reuse and host/device scratch. The complete link source tier remains **601,161,728 symbols / 9,618,587,648 B**. Exact phase lifetimes project ClaimReduce at **10,687,087,456 B**, delayed link at **37,960,027,776 B**, both below the inherited measured X4c **47,256,774,900-B** device peak; the full **>=256-GiB RAM / >=150-GB volume** admission remains. Permanent CPU differentials pass at `mu=6/9/12`, deterministic scaled-shape k=1/k=16, auxiliary residency and the real two-response fixture; full workspace and report tests are green. CUDA-feature Rust/ABI compilation is green; the permanent CUDA kernel differential is present but locally skipped because `libvolta_cuda_backend.so` and `nvcc` are unavailable, so Phase 2 must run it with `VOLTA_REQUIRE_CUDA=1`. Append-only local record `x4d2-phase1-local-identity-2026-07-26-d298370.json`, SHA-256 `92def69607c9d59486220fc7f3571050f7d35afa76e8eeca039a7d5edcb3c842`; design descendant SHA-256 `9ffa929498e141917d242653a6563888e157dcc12d36dc3d6e9a8b52d2f5a98f`. The immutable X4d.1 flatness FAIL and raw records remain untouched; no pod contacted. |
 | X4d.2 Phase 2 A100 campaign | **FAIL-CLOSED BEFORE k=1 RECORD; NO FLATNESS OR PRODUCTION GATE VERDICT; k=16 NOT STARTED; POD STOPPED** (2026-07-26) | One eligible production pair, unchanged build, no selective retry; any replacement pair requires a new owner GO | Owner GO used pod `xfjw217q6cq4ja` at clean `e4e2b14`. NOTE-6 PASS, fail-closed hardware/device admission PASS, and all **38** real-CUDA accelerator tests PASS including `x4d_resident_kernels_match_cpu_field_evaluation_exactly`. The strengthened crypto-build identity correctly rejected the historical X4d.1 durable tier; one fresh schema-3 onboarding then PASSed in **1,967 s** with exact **9,618,587,808 B** durable payload. The sole k=1 run opened fresh stores and failed during settlement with `X4d CUDA delayed-link terminal mismatch`; six authorization/freshness markers are burned and the connection journal is preserved. The producer exited before writing a settlement JSON, so k=1 was not retried, k=16 was not started, the paired selector was not run, and FLATNESS / PHYSICAL COUNTERS / BYTE IDENTITY / HOT PATH / PROTOCOL REGRESSIONS are all **NOT EVALUATED**. Append-only obstruction record `x4d2-phase2-k1-obstruction-2026-07-26-e4e2b14.json`; X4d.1 records and comparison remain immutable. Pod-local `runpodctl` returned stopped and the independent endpoint check was refused; teardown record `x4d2-control-plane-teardown-2026-07-26-e4e2b14.json`. |
 | X4d.2 delayed-link diagnosis and repair | **LOCAL ROOT CAUSE CONFIRMED; BYTE IDENTITY GREEN; HARD STOP / NO POD / NO REPLACEMENT PAIR OR GATE VERDICT** (2026-07-27) | Evaluation-only repair: backend-generic sequential resident orchestrator plus one exactly-once scaled product-round message; protocol/transcript/challenge/codec/correlations/terminal semantics unchanged | The extracted `e4e2b14` arithmetic reproduced the obstruction with the initial claim, ledgers, challenges and folds still green: first divergence **term 0 / round 1 / dimension 8 / active_len 256**, captured output SHA-256 `2ac466d9bcfc61fc5ef0a83c59d5bc8b0c2f32434ed17e37de1b7ac5cc925c1f`; all **51/51** production-relative terms are affected at their first real round. Root cause is the missing `virtual_factor` on `fp2_product_round_into_device`. ABI 33 adds `fp2_product_round_scaled_into_device` / `volta_cuda_fp2_product_round_scaled_into_device` / `scale_product_round_message`; scale one is raw-mailbox byte-identical, folds are unscaled, and the real branch alone uses it. Permanent value-mismatch and geometry-not-drained faults are distinct. CPU BackendKind lifecycle and exact message/fold-vector-digest identity pass at the 51/51/102 local multiplicity fixture and `max_mu=20/22/24/26`; the full serialized workspace, 23 report-validator tests and CUDA-feature all-target compilation are green, while real CUDA remains deliberately unexecuted locally. A clean, fail-closed standalone `x4d2_delayed_link_reproducer` is prepared for a future GO; it needs no weights/onboarding/durable tier/connection/settlement. Append-only local record `x4d2-diag-delayed-link-2026-07-27-bc76048.json`, SHA-256 `0bf3ed63b4ec34243a3f42cd1b6fce286c07a5b07f9e09b72bbb2f081f35538a`; diagnostic design SHA-256 `91cc8eb6566122724a75b9f051a75d5245e981b52194c5545b7701ca853b6fe4`. Historical X4d.1 and X4d.2 records/digests/gates remain immutable. |
-| C4 Ligero inline rate reduction | **CURRENT-BUILD T1 ANCHOR PASS; RATE-8 PRODUCER OBSTRUCTION BEFORE REAL-PCG/TIMING; ASSERTION FIXED LOCALLY; NO CANDIDATE, PAIR OR C4 PAIR VERDICT; POD STOPPED; HARD STOP** (2026-07-27) | Return to inline T1 weight certification; same-build anchor `rate=1/4,Q=120` versus candidate `rate=1/8,Q=97`; no deferred settlement; any replacement pair requires a new owner GO | Clean `4097179` on one A100/13-effective-CPU/eight-Rayon host passed ABI 33, 39 accelerator CUDA tests, 5 PCS CUDA tests, both production leakage smokes and the full release/CUDA workspace. The sole effective anchor is officially valid: exact PCS/response **43,273,888 / 84,544,352 B**, prefill/decode/response/session **2.405747059 / 1.606139665 / 4.011647701 / 5.245756507 s**, flat **1.235979019**, H2D **67,618,556 B**, sync **0.116591164 s**, all inherited T1 gates PASS. Record `c4-ligero-t1-anchor-a100-2026-07-27-4097179.json`, SHA-256 `6778cb837406c705c34aa0d3021da48791d2e6ccc8aa98580b0e19888e1ee18d`. The only authorized rate-8 attempt correctly computed **38,296,040 B** in its mock prepass but the shared C3/T1 assertion compared it to **43,273,888 B** and panicked before real-PCG setup, warmup or measured repetitions. No candidate JSON or pair exists. The local fix selects the exact expected byte count from the active Ligero geometry and permanently tests legacy/T1, C4 anchor and C4 rate-8; protocol, proof bytes, queries, soundness, timing boundaries and gates are unchanged. Diagnostic design SHA-256 `0b8739d6d8d5e1d605e2d4dfa8fb1f064dc046ca77b02d390ecc4d0f20461bcb`; the anchor retains its historical `e58a7f...` pin by exact Git SHA. Obstruction SHA-256 `10697ed15949bf6e325309726505cc0ad44a58291a8e70be422b19851ebe55cc`; teardown SHA-256 `11d02e7f024a88cb9cdf4148c207d48a001861fda8467c6b41704d9f317bbd1c`. `runpodctl` stopped the pod and a fresh SSH connection was refused. Historical records/digests remain immutable; no retry is authorized. |
+| C4 Ligero inline rate reduction | **PAIRED A100 COMPLETE — ANCHOR PASS; RATE-8 EXACT BYTES / PROVER / DEVICE PASS; SESSION 1.050816638x >1.05 AND SYNC 0.155717607 s >0.150 FAIL; OVERALL FAIL; NO RETRY; POD STOPPED** (2026-07-27) | Return to inline T1 weight certification; same-build anchor `rate=1/4,Q=120` versus candidate `rate=1/8,Q=97`; no deferred settlement; frozen gates conjunctive | Clean `e99a1e5` on one A100/13-effective-CPU/eight-Rayon host passed ABI 33 and the full release/CUDA workspace before either producer. Both profiles used the same binary/backend and independent fresh stores, one warmup and three measured repetitions. Anchor PCS/response **43,273,888 / 84,544,352 B**, prove/session **4.104595717 / 5.322725729 s**, all absolute gates PASS. Rate-8 PCS/response **38,296,040 / 79,566,504 B**, exact saving **4,977,848 B**, prove **4.079375688 s / 0.993855661x PASS**, but session **5.593208756 s / 1.050816638x FAIL** and maximum sync **0.155717607 s FAIL**; device peak **30,146,106,356 B PASS**. Pair `c4-ligero-paired-a100-2026-07-27-e99a1e5.json`, SHA-256 `8506de9ccad35bba76f9cd337ef5a4528613fc91894962e597937b63e3ad3e56`, is a coherent **overall FAIL**. No selective retry occurred. SSH-side `runpodctl` stopped pod `mi3dk7ah9jny9b` and an independent connection was refused. The anchor remains the accepted inline profile; all prior records and design pins remain immutable. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -430,6 +430,64 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-27 — C4 same-build A100 pair complete: exact communication
+  saving measured; candidate overall FAIL on complete-session ratio and
+  absolute synchronization; no retry; pod stopped.** Owner GO2 ran exactly
+  one fresh anchor and, only after its official validation, one fresh rate-8
+  candidate on clean
+  `e99a1e5c9d27cd4cec3d051f6a175220107a1be2`, endpoint
+  `154.54.102.40:19037`. Both used the unchanged producer SHA-256
+  `e12b690bdfc1698080bd9a6d49733279ed15c74dde075cc78cb68199cbf8a620`,
+  CUDA backend
+  `e458ae42fa293982a230de08d678757cf57c21a07d7cff4705db56b486f70151`,
+  one A100-SXM4-80GB, 13 effective CPUs, eight Rayon workers and independent
+  fresh real-PCG authorization/connection stores. The full release/CUDA
+  workspace was green before the pair. Each profile executed one warmup and
+  three measured repetitions; no selective retry occurred.
+
+  The anchor raw validator passes with exact PCS/response
+  **43,273,888 / 84,544,352 B**, prefill/decode/prove/session
+  **2.459966723 / 1.647298441 / 4.104595717 / 5.322725729 s**, flat cost
+  **1.2396780108876377**, H2D **67,618,556 B**, maximum sync
+  **0.126796018 s** and device peak **17,158,968,308 B**. Record
+  `c4-ligero-t1-anchor-a100-2026-07-27-e99a1e5.json`, SHA-256
+  `c25c3321b10d17b8c8db675af55d9a4ba0accd2895148c715493dd0883303acd`,
+  has all inherited absolute gates green.
+
+  Rate-8 also passes the raw schema/identity validator and records exact
+  PCS/response **38,296,040 / 79,566,504 B**, saving **4,977,848 B**,
+  soundness **78.86651649674867 bits** and device peak
+  **30,146,106,356 B <40,000,000,000 B**. Its response-proof median is
+  **4.079375688 s**, ratio **0.9938556606450799 PASS**. Its complete
+  response-session median is **5.593208756 s**, ratio
+  **1.0508166380856931 FAIL** against the frozen `1.05` ceiling; it exceeds
+  the exact **5.58886201545-s** ceiling by **0.004346741 s**. Independently,
+  the maximum synchronization wall is **0.155717607 s >0.150 s**, so
+  `candidate_absolute_gates_pass=false`. Record
+  `c4-ligero-rate8-a100-2026-07-27-e99a1e5.json`, SHA-256
+  `aeab6ac703f73ca1f6a40ae85737f4d69838d3b0be1e1f21d005c658484c445e`.
+
+  The paired selector therefore emits the coherent **overall FAIL** record
+  `c4-ligero-paired-a100-2026-07-27-e99a1e5.json`, SHA-256
+  `8506de9ccad35bba76f9cd337ef5a4528613fc91894962e597937b63e3ad3e56`.
+  The measured price of the byte saving is a doubled
+  **17,246,978,048-B** codeword tier, **12,987,138,048 B** more observed
+  peak device memory, **0.270483027 s** more complete-session wall and
+  **1.048437605 s** more real-PCG setup, even though pure proving improves
+  by **0.025220029 s**. `docs/gpt2-comparison-WIP.md` now contains both
+  columns and this byte-versus-cost decomposition.
+
+  SSH-side `runpodctl stop pod mi3dk7ah9jny9b` returned stopped and a fresh
+  independent SSH connection returned `Connection refused`. Teardown record
+  `c4-control-plane-teardown-2026-07-27-e99a1e5.json`, SHA-256
+  `43538b72ac8cdbec9f04d8cff92c5132d8944ab2bff25b0028b82ec21732bcb5`.
+  The pair retains its recorded design digest
+  `0b8739d6d8d5e1d605e2d4dfa8fb1f064dc046ca77b02d390ecc4d0f20461bcb`;
+  the finalized descendant digest for future producers is
+  `7bb8a4e64c35047c76c0a999feca33fe0da261d20c9f14776661c9832559e3f4`.
+  Historical JSON is not rewritten. C4 closes with the anchor retained as
+  the accepted inline profile; no gate is waived and no retry is authorized.
 
 - **2026-07-27 — C4 Owner GO2 authorizes one fresh replacement pair; awaiting
   a new A100 endpoint.** The owner explicitly authorizes one anchor

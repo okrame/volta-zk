@@ -4122,7 +4122,7 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7(tmp_path)
             "profile": profile,
             "design_file": "docs/c4-ligero-inline-rate-design.md",
             "design_sha256": (
-                "bcc69cd39419c497dae45b695b15e5f1fd6a06e3f300d46e8581fb19976582eb"
+                "a475379f9a690b76864e98a9a3e7bf60e46c2315bc5c95a347a58e0af41b3b3a"
             ),
             "resource_admission": {
                 "selected_gpu": "0",
@@ -4132,12 +4132,16 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7(tmp_path)
                 "host_ram_floor_bytes": 64 * 1024 * 1024 * 1024,
                 "local_storage_path": "/local/volta-zk",
                 "local_storage_fs_type": "xfs",
+                "local_storage_mount_source": "/dev/nvme0n1p1",
+                "local_storage_mount_fs_type": "xfs",
+                "local_storage_mount_options": "rw,relatime",
                 "local_storage_free_bytes": 100_000_000_000,
                 "local_storage_floor_bytes": 80_000_000_000,
                 "detected_logical_cpus": 32,
                 "logical_cpu_floor": 16,
                 "rayon_workers": 8,
                 "non_fuse_local_storage": True,
+                "container_overlay_local_backing_evidence": False,
                 "overall_pass": True,
             },
             "weights": report.C4_GEOMETRY[profile]["weights"],
@@ -4214,8 +4218,30 @@ def test_p7b_resident_profile_is_separate_and_cannot_replace_closed_p7(tmp_path)
     bad_c4_resource_path.write_text(json.dumps(bad_c4_resource))
     assert report.validate_c4_official_result(bad_c4_resource_path) is False
 
-    bad_c4_overlay = copy.deepcopy(c4_candidate)
-    bad_c4_overlay["c4"]["resource_admission"]["local_storage_fs_type"] = "overlayfs"
+    c4_overlay = copy.deepcopy(c4_candidate)
+    overlay_resource = c4_overlay["c4"]["resource_admission"]
+    overlay_resource.update(
+        {
+            "local_storage_path": "/root/volta-zk",
+            "local_storage_fs_type": "overlayfs",
+            "local_storage_mount_source": "overlay",
+            "local_storage_mount_fs_type": "overlay",
+            "local_storage_mount_options": (
+                "rw,relatime,"
+                "upperdir=/var/lib/docker/100000.100000/overlay2/abc/diff,"
+                "workdir=/var/lib/docker/100000.100000/overlay2/abc/work"
+            ),
+            "container_overlay_local_backing_evidence": True,
+        }
+    )
+    c4_overlay_path = tmp_path / "c4-overlay.json"
+    c4_overlay_path.write_text(json.dumps(c4_overlay))
+    assert report.validate_c4_official_result(c4_overlay_path) is True
+
+    bad_c4_overlay = copy.deepcopy(c4_overlay)
+    bad_c4_overlay["c4"]["resource_admission"]["local_storage_mount_options"] = (
+        "rw,relatime,upperdir=/tmp/diff,workdir=/tmp/work"
+    )
     bad_c4_overlay_path = tmp_path / "c4-bad-overlay.json"
     bad_c4_overlay_path.write_text(json.dumps(bad_c4_overlay))
     assert report.validate_c4_official_result(bad_c4_overlay_path) is False

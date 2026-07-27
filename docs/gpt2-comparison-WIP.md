@@ -8,6 +8,12 @@
 > proiezioni analitiche, non misure A100; le colonne sotto restano immutabili
 > finché non atterra il nuovo pair. L'avvertenza sulla build T1 obsoleta
 > rimane quindi vincolante.
+>
+> Il primo preflight Phase 2 autorizzato ha confermato A100/RAM/CPU/capacità,
+> ma si è fermato prima di checkout, build e workload perché RunPod espone il
+> disco container locale come `overlayfs` e `/workspace` come FUSE remoto.
+> La correzione di ammissione distingue fail-closed l'esatto overlay Docker
+> locale dal volume FUSE; non esiste ancora alcun nuovo tempo o verdetto.
 
 La quarta colonna dati è stata sostituita con il pair pulito X4d.1 a
 `b83ffc1`: un settlement `k=1` e uno `k=16` sullo stesso host, build, GPU e

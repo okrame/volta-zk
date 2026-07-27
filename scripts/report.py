@@ -91,7 +91,7 @@ C4_DEVICE_LIVE_GATE_BYTES = 40_000_000_000
 C4_HOST_RAM_FLOOR_BYTES = 64 * 1024 * 1024 * 1024
 C4_LOCAL_STORAGE_FLOOR_BYTES = 80_000_000_000
 C4_LOGICAL_CPU_FLOOR = 16
-C4_DESIGN_SHA256 = "bcc69cd39419c497dae45b695b15e5f1fd6a06e3f300d46e8581fb19976582eb"
+C4_DESIGN_SHA256 = "a475379f9a690b76864e98a9a3e7bf60e46c2315bc5c95a347a58e0af41b3b3a"
 C4_GEOMETRY = {
     "anchor": {
         "weights": {
@@ -8150,6 +8150,26 @@ def _c4_record_valid(row: dict[str, Any]) -> bool:
     resource = c4.get("resource_admission")
     if not isinstance(resource, dict):
         return False
+    storage_fs_type = resource.get("local_storage_fs_type")
+    storage_mount_source = resource.get("local_storage_mount_source")
+    storage_mount_fs_type = resource.get("local_storage_mount_fs_type")
+    storage_mount_options = resource.get("local_storage_mount_options")
+    direct_local_storage = (
+        (storage_fs_type, storage_mount_fs_type)
+        in (("ext2/ext3", "ext4"), ("xfs", "xfs"))
+        and isinstance(storage_mount_source, str)
+        and bool(storage_mount_source)
+        and isinstance(storage_mount_options, str)
+        and bool(storage_mount_options)
+    )
+    docker_local_overlay = (
+        storage_fs_type == "overlayfs"
+        and storage_mount_source == "overlay"
+        and storage_mount_fs_type == "overlay"
+        and isinstance(storage_mount_options, str)
+        and "upperdir=/var/lib/docker/" in storage_mount_options
+        and "workdir=/var/lib/docker/" in storage_mount_options
+    )
     profile = c4.get("profile")
     if profile not in C4_GEOMETRY:
         return False
@@ -8270,8 +8290,11 @@ def _c4_record_valid(row: dict[str, Any]) -> bool:
         and resource.get("host_ram_floor_bytes") == C4_HOST_RAM_FLOOR_BYTES
         and isinstance(resource.get("local_storage_path"), str)
         and bool(resource["local_storage_path"])
-        and isinstance(resource.get("local_storage_fs_type"), str)
-        and resource["local_storage_fs_type"] in ("ext2/ext3", "xfs")
+        and isinstance(storage_fs_type, str)
+        and isinstance(storage_mount_source, str)
+        and isinstance(storage_mount_fs_type, str)
+        and isinstance(storage_mount_options, str)
+        and (direct_local_storage or docker_local_overlay)
         and _nonnegative_int(resource.get("local_storage_free_bytes"))
         and resource["local_storage_free_bytes"] >= C4_LOCAL_STORAGE_FLOOR_BYTES
         and resource.get("local_storage_floor_bytes") == C4_LOCAL_STORAGE_FLOOR_BYTES
@@ -8280,6 +8303,8 @@ def _c4_record_valid(row: dict[str, Any]) -> bool:
         and resource.get("logical_cpu_floor") == C4_LOGICAL_CPU_FLOOR
         and resource.get("rayon_workers") == P7B_OFFICIAL_RAYON_THREADS
         and resource.get("non_fuse_local_storage") is True
+        and resource.get("container_overlay_local_backing_evidence")
+        is docker_local_overlay
         and resource.get("overall_pass") is True
         and c4.get("weights") == C4_GEOMETRY[profile]["weights"]
         and c4.get("embed") == C4_GEOMETRY[profile]["embed"]
@@ -8340,6 +8365,12 @@ def c4_paired_verdict(anchor_path: Path, candidate_path: Path) -> dict[str, Any]
         == candidate["c4"]["resource_admission"].get("local_storage_path")
         and anchor["c4"]["resource_admission"].get("local_storage_fs_type")
         == candidate["c4"]["resource_admission"].get("local_storage_fs_type")
+        and anchor["c4"]["resource_admission"].get("local_storage_mount_source")
+        == candidate["c4"]["resource_admission"].get("local_storage_mount_source")
+        and anchor["c4"]["resource_admission"].get("local_storage_mount_fs_type")
+        == candidate["c4"]["resource_admission"].get("local_storage_mount_fs_type")
+        and anchor["c4"]["resource_admission"].get("local_storage_mount_options")
+        == candidate["c4"]["resource_admission"].get("local_storage_mount_options")
         and anchor["c4"]["resource_admission"].get("detected_logical_cpus")
         == candidate["c4"]["resource_admission"].get("detected_logical_cpus")
         and _c4_non_pcs_labels(anchor) == _c4_non_pcs_labels(candidate)

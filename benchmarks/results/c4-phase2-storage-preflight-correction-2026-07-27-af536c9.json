@@ -1,0 +1,79 @@
+{
+  "report_schema_version": 1,
+  "milestone": "C4-Phase2-storage-preflight-correction",
+  "date": "2026-07-27",
+  "baseline_git_sha": "af536c92b160ed9d121ced669a4cc0d94b6d58ae",
+  "git_dirty": true,
+  "record_kind": "append-only pre-producer provider storage-view correction",
+  "pod_contacted": true,
+  "production_pair_started": false,
+  "producer_workload_started": false,
+  "weights_loaded": false,
+  "pcg_store_created": false,
+  "performance_result": false,
+  "gate_verdict": false,
+  "endpoint": "154.54.102.44:13962",
+  "pod_hostname": "2a23d5dbe950",
+  "old_design_sha256": "bcc69cd39419c497dae45b695b15e5f1fd6a06e3f300d46e8581fb19976582eb",
+  "new_design_sha256": "a475379f9a690b76864e98a9a3e7bf60e46c2315bc5c95a347a58e0af41b3b3a",
+  "unchanged_resource_floors": {
+    "gpu_free_bytes": 40000000000,
+    "host_ram_gib": 64,
+    "local_storage_free_bytes": 80000000000,
+    "logical_cpus": 16,
+    "rayon_workers": 8
+  },
+  "observed_hardware": {
+    "gpu_index": 0,
+    "gpu_name": "NVIDIA A100-SXM4-80GB",
+    "gpu_uuid": "GPU-e79a8a9c-dd06-a5b9-4bbb-6bdfef21ce73",
+    "gpu_total_mib": 81920,
+    "gpu_free_mib": 81152,
+    "driver_version": "580.126.16",
+    "host_ram_kib": 2101188784,
+    "logical_cpus": 128
+  },
+  "container_local_storage": {
+    "path": "/",
+    "df_source": "overlay",
+    "total_bytes": 128849018880,
+    "used_bytes": 16621568,
+    "free_bytes": 128832397312,
+    "stat_fs_type": "overlayfs",
+    "findmnt_source": "overlay",
+    "findmnt_fs_type": "overlay",
+    "findmnt_options_sha256": "194cca0763071834d7b646e4094e89adc5e710175ce162999a6d65d2b8ed01e7",
+    "docker_upperdir_prefix_present": true,
+    "docker_workdir_prefix_present": true,
+    "old_allowlist_pass": false,
+    "corrected_admission_pass": true
+  },
+  "workspace_storage": {
+    "path": "/workspace",
+    "stat_fs_type": "fuseblk",
+    "findmnt_source": "mfs#us-md-1.runpod.net:9421",
+    "findmnt_fs_type": "fuse",
+    "findmnt_options_sha256": "b54fb6c11b0eb51290e37fcf4aa47884a770307386544b1db1e89341b86b9e59",
+    "corrected_admission_pass": false
+  },
+  "correction_contract": {
+    "direct_local_filesystems": [
+      "ext4",
+      "xfs"
+    ],
+    "overlay_source_must_equal": "overlay",
+    "overlay_fs_type_must_equal": "overlay",
+    "required_mount_option_prefixes": [
+      "upperdir=/var/lib/docker/",
+      "workdir=/var/lib/docker/"
+    ],
+    "fuse_and_network_remain_rejected": true,
+    "generic_overlay_remains_rejected": true,
+    "capacity_floor_relaxed": false
+  },
+  "notes": [
+    "Read-only preflight stopped before repository checkout, build, weights, authorization or connection stores, and producer execution.",
+    "The historical Phase-1 local JSON retains its recorded design digest and is not rewritten.",
+    "Only future producer, validator and pin tests advance to the corrected design digest."
+  ]
+}

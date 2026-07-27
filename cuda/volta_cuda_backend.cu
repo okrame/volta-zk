@@ -18,7 +18,7 @@
 
 namespace volta_cuda_internal {
 
-constexpr uint32_t ABI_VERSION = 32;
+constexpr uint32_t ABI_VERSION = 33;
 constexpr uint64_t P = 0xFFFF'FFFF'0000'0001ULL;
 constexpr uint64_t EPSILON = 0x0000'0000'FFFF'FFFFULL;
 constexpr int BLOCK = 256;
@@ -2059,6 +2059,13 @@ __global__ void reduce_product_round(
         value.g2 = fp2_add(value.g2, input[2 * z + 1].g2);
     }
     output[z] = value;
+}
+
+__global__ void scale_product_round_message(
+    const ProductRoundAcc* input, Fp2 scale, Fp2* output) {
+    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+    output[0] = fp2_mul(input[0].g0, scale);
+    output[1] = fp2_mul(input[0].g2, scale);
 }
 
 __global__ void claim_reduce_eq_seed(Fp2* output, const Fp2* scale) {
@@ -4667,7 +4674,7 @@ extern "C" int volta_cuda_reserve_logup_round_workspace(
 
 int fp2_product_round_resident_impl(
     Context* c, const Fp2* a, const Fp2* b, size_t pairs,
-    Fp2* output, bool output_is_device) {
+    Fp2* output, bool output_is_device, bool apply_scale, Fp2 scale) {
     size_t workspace_bytes = 0;
     size_t reduced_bytes = 0;
     if (!checked_mul_size(pairs, sizeof(ProductRoundAcc), &workspace_bytes) ||
@@ -4690,8 +4697,13 @@ int fp2_product_round_resident_impl(
     }
     CUDA_OR_RETURN(c, cudaPeekAtLastError());
     if (output_is_device) {
-        CUDA_OR_RETURN(c, cudaMemcpyAsync(output, &src[0], sizeof(ProductRoundAcc),
-                                         cudaMemcpyDeviceToDevice, c->stream));
+        if (apply_scale) {
+            scale_product_round_message<<<1, 1, 0, c->stream>>>(src, scale, output);
+            CUDA_OR_RETURN(c, cudaPeekAtLastError());
+        } else {
+            CUDA_OR_RETURN(c, cudaMemcpyAsync(output, &src[0], sizeof(ProductRoundAcc),
+                                             cudaMemcpyDeviceToDevice, c->stream));
+        }
         if (mark_timing(c, 2)) return -1;
         return finish_timing(c, OP_GEMM, 0, 0);
     }
@@ -4717,7 +4729,7 @@ extern "C" int volta_cuda_fp2_product_round_device(
         resident_region(c, b_id, b_offset_bytes, input_bytes, &b)) return -1;
     return fp2_product_round_resident_impl(
         c, static_cast<const Fp2*>(a), static_cast<const Fp2*>(b),
-        pairs, output, false);
+        pairs, output, false, false, Fp2{1, 0});
 }
 
 extern "C" int volta_cuda_fp2_product_round_into_device(
@@ -4741,7 +4753,32 @@ extern "C" int volta_cuda_fp2_product_round_into_device(
                         sizeof(ProductRoundAcc), &output)) return -1;
     return fp2_product_round_resident_impl(
         c, static_cast<const Fp2*>(a), static_cast<const Fp2*>(b), pairs,
-        static_cast<Fp2*>(output), true);
+        static_cast<Fp2*>(output), true, false, Fp2{1, 0});
+}
+
+extern "C" int volta_cuda_fp2_product_round_scaled_into_device(
+    void* raw, uint64_t a_id, size_t a_offset,
+    uint64_t b_id, size_t b_offset, size_t pairs, Fp2 scale,
+    uint64_t output_id, size_t output_offset) {
+    Context* c = static_cast<Context*>(raw);
+    if (!c || !pairs)
+        return fail_message(c, "invalid resident scaled product-round mailbox geometry");
+    size_t a_offset_bytes = 0, b_offset_bytes = 0, input_bytes = 0;
+    size_t output_offset_bytes = 0;
+    if (!checked_mul_size(a_offset, sizeof(Fp2), &a_offset_bytes) ||
+        !checked_mul_size(b_offset, sizeof(Fp2), &b_offset_bytes) ||
+        !checked_mul_size(pairs, 2 * sizeof(Fp2), &input_bytes) ||
+        !checked_mul_size(output_offset, sizeof(Fp2), &output_offset_bytes))
+        return fail_message(
+            c, "resident scaled product-round mailbox geometry overflows size_t");
+    void *a = nullptr, *b = nullptr, *output = nullptr;
+    if (resident_region(c, a_id, a_offset_bytes, input_bytes, &a) ||
+        resident_region(c, b_id, b_offset_bytes, input_bytes, &b) ||
+        resident_region(c, output_id, output_offset_bytes,
+                        sizeof(ProductRoundAcc), &output)) return -1;
+    return fp2_product_round_resident_impl(
+        c, static_cast<const Fp2*>(a), static_cast<const Fp2*>(b), pairs,
+        static_cast<Fp2*>(output), true, true, scale);
 }
 
 extern "C" int volta_cuda_claim_reduce_f_two_into_device(

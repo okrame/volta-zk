@@ -1,8 +1,9 @@
 # X4d.2 byte-identical GPU-resident settlement
 
-**Status (2026-07-26): Phase 1 local implementation and identity proof
-complete. HARD STOP before pod contact pending explicit owner GO. No
-production measurement or gate verdict.**
+**Status (2026-07-27): delayed-link terminal mismatch reproduced, diagnosed
+and repaired locally with permanent identity/negative diagnostics and a
+standalone reproducer. HARD STOP before pod contact pending a new explicit
+owner GO. No replacement pair, production measurement or gate verdict.**
 
 This descendant is subordinate to `AGENTS.md`,
 `docs/p7-handoff-spec.md`, `docs/prototype-status.md` and
@@ -458,3 +459,200 @@ control plane returned `pod "xfjw217q6cq4ja" stopped`, and an independent
 connection to `154.54.102.44:13266` was refused. Teardown evidence is
 append-only in
 `benchmarks/results/x4d2-control-plane-teardown-2026-07-26-e4e2b14.json`.
+
+## 13. Delayed-link terminal-mismatch diagnosis and local repair
+
+This section is a local diagnostic descendant of the failed Phase-2
+checkpoint. It authorizes no replacement production pair. The failed build
+`e4e2b14`, the obstruction and teardown records, their recorded design
+digests, and all gates remain immutable.
+
+### 13.1 Reproduction before the arithmetic repair
+
+The CUDA and CPU-resident control flow was first extracted into
+`prove_x4d_delayed_link_resident_sequential_v4`. Both backends now use the
+same allocation order, resident-term state, real/virtual selection, mailbox
+read, mask draw, message append, challenge draw, source/equality folds and
+terminal checks. At this stage the real-round operation intentionally
+retained the `e4e2b14` omission. The independent
+`prove_delayed_sumcheck_v4` path remained the byte oracle.
+
+The required production-relative fixture has `round_count=local_max_mu+1`,
+51 fused physical source slots with multiplicities `2/36/13` at
+`max/max-4/max-6`, and two independently pointed contributions per slot.
+Its assertions materialize exactly **51 physical slots, 51 resident terms
+and 102 logical contributions**. Sources, points, coefficients, masks,
+correlations and transcript seeds are deterministic.
+
+The pre-fix command was:
+
+```text
+cd rust && cargo test -p volta-pcs \
+  x4::x4c_v4::tests::x4d_resident_production_relative_shape_matches_independent_reference \
+  -- --exact --nocapture
+```
+
+Against baseline `e4e2b14060a9d2a23b98e8d8fdca2ac3e8b2e729`, it failed
+with the first divergence at **term 0, round 1, dimension 8,
+active_len 256, leading_virtual_rounds 0**. The resident unscaled message
+was:
+
+```text
+[Fp2(13799617702964774841, 9825127679694975049),
+ Fp2(11269937139495800329, 6547251504081734707)]
+```
+
+while the independent scaled message was:
+
+```text
+[Fp2(18434659355227187076, 17030266533995709689),
+ Fp2(2934736563073931943, 17933557729959337794)]
+```
+
+The run ended in
+`X4dResidentTerminalValueMismatch { term_index: 0, dimension: 8,
+active_len: 1, leading_virtual_rounds: 0, current_round: 9, ... }`.
+Captured stdout/stderr SHA-256 is
+`2ac466d9bcfc61fc5ef0a83c59d5bc8b0c2f32434ed17e37de1b7ac5cc925c1f`.
+The initial-claim check, correlation allocation/counters, transcript ledger,
+challenge sequence and fold-state evolution were green before the first
+message divergence. The permanent unscaled trace further establishes that
+all **51/51** production-relative resident terms diverge at their first real
+round. These are test observations, not performance measurements.
+
+The diagnosis is therefore confirmed: the real product-round branch called
+`fp2_product_round_into_device` without multiplying its compressed
+`[g(0),g(2)]` by the term's accumulated `virtual_factor`. Virtual rounds,
+the `active_len==1` branch, initial/terminal dot mailboxes and the independent
+CPU relation already applied the factor exactly once.
+
+### 13.2 Repair and ABI contract
+
+The repair adds one explicitly named operation at every layer:
+
+- Rust operation contract:
+  `Backend::fp2_product_round_scaled_into_device`;
+- dynamic CUDA wrapper:
+  `CudaContext::fp2_product_round_scaled_into_device`;
+- C ABI:
+  `volta_cuda_fp2_product_round_scaled_into_device`;
+- CUDA message kernel:
+  `scale_product_round_message`, after the unchanged
+  `fp2_product_round_terms`/`reduce_product_round` reduction.
+
+The ABI is fail-closed at version **33**. The operation multiplies only the
+two compressed mailbox elements, exactly once. It does not modify either
+resident fold input, the fold challenge, or the fold output. Scale one is
+checked against the old operation at the raw `Fp2Repr` mailbox level and is
+byte-identical. The sequential orchestrator uses the scaled operation only
+for real product rounds. Virtual/terminal dot evaluation remains
+`fp2_dot_scaled_pair_into_device`; all messages, challenges, correlations,
+terminal state and encoded proof bytes retain the existing schedule.
+
+Terminal diagnostics are now disjoint and fail-closed:
+
+- `X4dResidentGeometryNotDrained` for non-unit `active_len` or remaining
+  virtual rounds;
+- `X4dResidentTerminalValueMismatch` for a drained geometry whose folded
+  terminal value differs from the authenticated claim.
+
+Both report term index, original dimension, active length, remaining leading
+virtual rounds and current round. The value error also reports expected and
+observed Fp2 values. A permanent unscaled-round fault reproduces the value
+error; a separate skipped-fold fault reproduces the geometry error. Neither
+fault mode is reachable from the production runtime, and no CPU shadow
+evaluation was added to the production timed path.
+
+### 13.3 Adjacent-kernel and workspace audit
+
+The adjacent surface was inspected in Rust, the dynamic wrapper, C ABI and
+CUDA translation unit:
+
+| exact operation/kernel | classification | scaling, alias and lifetime result |
+|---|---|---|
+| `volta_cuda_claim_reduce_f_two_into_device`; `claim_reduce_eq_seed`, `claim_reduce_eq_expand`, `claim_reduce_add` | **PASS** | each public coefficient seeds its equality expansion once; four caller buffers must be distinct; no delayed-link virtual factor belongs here |
+| `volta_cuda_x4d_link_eq_accumulate_device`; `x4d_link_eq_accumulate_kernel` | **PASS** | the contribution coefficient is applied by the seed exactly once; target and the two generation buffers are distinct |
+| `volta_cuda_fp2_dot_scaled_pair_into_device`; `fp2_dot_terms`, `reduce_dot`, `x4d_scaled_dot_pair_kernel` | **PASS** | virtual/terminal factor is applied exactly once to the reduced dot and its negation |
+| `volta_cuda_fp2_pair_sum_device`; `reduce_product_round` | **PASS** | mailbox pairs are copied to private scratch before reduction; it adds already-scaled messages and introduces no scale |
+| `volta_cuda_fp2_fold_rows_device`; `fp2_fold_rows` | **PASS** | source/equality inputs and outputs are non-overlapping; the factor is never folded into either table |
+
+Private shared workspace slots **12/13** are pre-sized by
+`volta_cuda_reserve_fp2_product_round_workspace`. The reserved
+`ProductRoundAcc` byte envelope also covers the same-length `DotAcc`
+reduction. Product, dot and pair-sum operations run on one ordered CUDA
+stream: each mailbox write consumes its scratch result before a later
+operation can reuse the slots. No stale-data, cross-stream, alias or
+interleaving defect was found. No adjacent CUDA arithmetic was changed.
+
+The real-CUDA field differential is raised from dimension 7 to dimension 10
+and now includes the scaled product round after link-equality, scaled-dot and
+pair-sum interleaving. CUDA-feature Rust/ABI compilation is permanent.
+Because this local host has neither the backend shared object nor `nvcc`,
+the CUDA kernel execution/translation-unit compile remains a required first
+step of any separately authorized reproducer; it is not silently credited
+locally.
+
+### 13.4 Local identity and scale evidence
+
+The fixed production-relative fixture compares every term's round message,
+aggregate message and challenge; every post-fold active length,
+virtual-factor state, full source-vector digest and full equality-vector
+digest; the final point/value, correlation allocation/counters and
+transcript ledger. It passes. Its captured post-fix output SHA-256 is
+`4f0e0f78210b032e7d6597c3cd7095ba411658ffc8a3e75638c0f6c993316a27`.
+
+The standalone CPU-backend ladder executed locally at exact
+`max_mu=20,22,24,26` with dimensions `max/max-4/max-6`. The upper two were
+run explicitly in optimized diagnostic mode because their full-vector
+digest checks are intentionally heavyweight. The exact **51/51/102**
+multiplicity census executes permanently at the locally practical
+`max_mu=8`; the standalone CUDA command below owns the full
+`round_count=27`, `2/36/13` execution. This division is a local resource
+fact, not identity or performance credit for CUDA.
+
+The serialized full workspace suite is green, including the existing cap,
+tamper, stale-root, freshness, abort/burn, codec, correlation and
+settlement-acceptance coverage. `cargo check --workspace --all-targets
+--features cuda`, all 23 report-validator tests, `cargo fmt --all -- --check`
+and `git diff --check` are also green. Serialization is required only to
+avoid the 11-GiB local host overcommitting when an older production-geometry
+test runs; that test now uses its existing allocation-free `config_specs`
+view instead of allocating unused multi-gigabyte coefficient fixtures.
+
+The exact synthetic `round_count=27` analytic census is **298,844,160 source
+symbols / 4,781,506,560 host source bytes**. The diagnostic orchestrator's
+source+equality tier is **9,563,013,120 B**, its per-term/generation/mailbox
+scratch is **9,319,745,552 B**, and their simultaneous device live set is
+**18,882,758,672 B**. A conservative diagnostic-only host projection is
+**15,418,261,504 B**. These numbers describe the standalone synthetic
+fixture, not the complete production settlement admission. The unchanged
+production preflight still uses the complete live-set history in section 5,
+RAM `>=256 GiB`, volume `>=150 GB`, admitted A100 profile and measured
+device admission.
+
+### 13.5 Standalone reproducer and stop condition
+
+After a new owner GO, the standalone pod command is:
+
+```text
+cd rust && cargo run --release -p volta-bench --features cuda \
+  --bin x4d2_delayed_link_reproducer -- \
+  --backend cuda \
+  --output ../benchmarks/results/x4d2-diag-<date>-<gitsha>.json \
+  --hourly-usd-scenario 2.00
+```
+
+It fail-closes CUDA selection, requires a clean tree and a fresh append-only
+`x4d2-diag-*.json`, runs separate `max_mu=20/22/24/26` ladder cases and the
+exact `round_count=27`, `2/36/13`, 51-term/102-contribution case, and checks
+all round messages, challenges, full fold-state digests, terminal state and
+operation/correlation/transcript counters against the independent CPU
+reference. It does not load weights or require schema-3 onboarding, a
+durable tier, fase-D connection, authorization store or settlement. Its
+memory envelope and runtime/cost band are explicitly labelled unmeasured
+engineering scenarios and cannot be a gate result.
+
+The local append-only diagnosis record is in the `x4d2-diag-*.json`
+namespace with `pod_contacted=false`, `production_pair_started=false` and
+`gate_verdict=false`. There is no replacement k=1/k=16 pair and no
+performance or gate verdict. **HARD STOP pending a new explicit owner GO.**

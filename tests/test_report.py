@@ -16,6 +16,30 @@ def load_report_module():
     return mod
 
 
+def test_c5_typed_pcg_obstruction_record_is_exact_and_fail_closed(tmp_path):
+    report = load_report_module()
+    record_path = (
+        Path(__file__).resolve().parents[1]
+        / "benchmarks/results/c5-typed-pcg-obstruction-2026-07-28-0309320.json"
+    )
+    assert report.validate_c5_typed_pcg_obstruction(record_path) is True
+
+    row = json.loads(record_path.read_text())
+    mutations = [
+        ("typed_setup_budget", "typed_increment_ceiling_bytes", 18_273_601),
+        ("conditional_response_projection", "response_bytes", 61_292_903),
+        ("census", "response_inventories", 4),
+        ("screen_result", "universal_impossibility_claimed", True),
+        ("execution_state", "pod_contacted", True),
+    ]
+    for index, (section, key, value) in enumerate(mutations):
+        bad = copy.deepcopy(row)
+        bad[section][key] = value
+        path = tmp_path / f"c5-obstruction-bad-{index}.json"
+        path.write_text(json.dumps(bad))
+        assert report.validate_c5_typed_pcg_obstruction(path) is False
+
+
 def test_pcs_formula_matches_p6_opening_bytes():
     report = load_report_module()
 

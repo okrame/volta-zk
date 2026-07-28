@@ -23,6 +23,15 @@ rate/field and two-level-sharding alternatives, and leaves the analytic
 `<=35,000,000 B` opening gate unchanged. None of those alternatives is
 selected. X5 remains a later package and is not authorized here.
 
+**2026-07-28 current-path amendment.** X4/X4d is suspended with immutable
+history, C4 is closed as a raw FAIL, and C5 Packed16 stopped locally at its
+typed-PCG security/byte gate. The narrower GPT-2 target remains a conditional
+`61,292,904-B` response, but the evaluated exact current-sVOLE conversion
+needs at least `217,728,000 B` of typed setup increment against
+`18,273,600 B` of headroom. See
+`docs/c5-packed16-rate8-design.md` §5. This scaling note does not authorize
+X4, C5 implementation, a pod, or X5/gpt-oss work.
+
 ## 1. The scaling thesis: ρ is ~scale-invariant; communication is not
 
 **Prover side — ρ holds.** Every prover cost is O(active work) with
@@ -147,9 +156,12 @@ the calibrated i16 block in both cases.
 
 The former prerequisite text is retracted.  **Lever A** (verifier-cached PCS
 consistency columns) is unsound by the 2026-07-15 ledger §4.6.A attack; its
-projections stay retracted.  **Lever B** (Packed16) is shelved: the only sound
-costed realization moves about 1.55 GB/session to save about 32.5 MB/response.
-They are not Phase-X prerequisites.
+projections stay retracted. **Lever B** (Packed16) remains shelved. C2's
+historical sound costing was about 1.55 GB/session for its older census; the
+2026-07-28 C5 five-inventory census raises that lift to **4,230,144,000 B**,
+and a newly derived exact current-sVOLE route still needs at least
+**217,728,000 B** before malicious range-proof overhead. They are not Phase-X
+prerequisites.
 
 The prerequisites for an end-to-end scale claim are now **T1 boundary
 thinning** for corrections/correlations and **X4 folding PCS** for openings.

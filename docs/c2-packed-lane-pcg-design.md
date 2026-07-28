@@ -6,6 +6,12 @@ implementation.  It authorizes no Rust, CUDA, Lean, PCG, proving-path, or C1
 Phase-2 work.  The mock backend remains the default and C1 Phase 2 remains
 **BLOCKED**.
 
+**2026-07-28 pointer:** C5 scales Candidate A to five post-T1 inventories:
+its arithmetic lift is `4,230,144,000 B`, so it is not an implementation
+candidate. The fresh screen in `docs/c5-packed16-rate8-design.md` §5 also
+derives and rejects an exact current-sVOLE quotient route at an optimistic
+`217,728,000-B` typed increment. This historical C2 selection is not revived.
+
 The C1 §3.4 review decision is now fixed: the frozen correlation semantics are
 the MAC equation, verifier-only `Delta`, one-time use, domain separation, and
 exact counting.  The plaintext-distribution catalogue is extensible, and the

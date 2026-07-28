@@ -4,21 +4,26 @@ Designated-verifier proving system for transformer inference (VOLE-MAC blind
 GKR), GPT-2 small fixed-point. Formal milestones M1–M11 are CLOSED (Lean
 theorems in `lean/`, frozen). Prototype milestones P0–P7b, fase-D and X1–X3
 are CLOSED.
-X4/X4d is suspended with immutable history. Current phase: **C4 Ligero inline
-rate reduction** — same-build A100 comparison of the unchanged T1
-`rate=1/4,Q=120` anchor and the `rate=1/8,Q=97` candidate. The replacement
-Phase-2 pair is complete at clean `e99a1e5`: the anchor passes, while rate-8
-saves exactly 4,977,848 B/response and passes its pure-prover and device
-gates but fails the complete-session ratio
+X4/X4d is suspended with immutable history. C4 is closed as an immutable raw
+FAIL: its rate-8 candidate saved 4,977,848 B/response and passed pure-prover
+and device gates, but measured complete-session ratio
 `1.050816638 >1.05` and absolute synchronization
-`0.155717607 s >0.150 s`. C4 is therefore overall FAIL with no selective
-retry. The pod is stopped and independently unreachable. The anchor remains
-the accepted inline profile; any new production experiment requires a
-separately preregistered design and explicit owner GO.
+`0.155717607 s >0.150 s`. The product owner has adopted that rate-8 profile
+as the baseline for a distinct new milestone without rewriting C4.
+**C5 Packed16 over inline Ligero rate-8 is locally obstructed.** Its exact
+projected `61,292,904-B` response would meet the response goal, but no cited
+dealerless malicious typed-PCG directly supplies authenticated uniform-u16
+and bit masks under the existing `Fp2 Delta` within the binding
+`56,645,065-B` combined-setup ceiling. The best exact conversion from current
+sVOLE has an optimistic `217,728,000-B` typed increment; C2's per-bit lift is
+`4,230,144,000 B` at the C5 five-inventory census. No Lean/Rust/CUDA protocol
+implementation or performance verdict exists. Current phase: **C5 local
+obstruction checkpoint / HARD STOP**. A new concrete typed-PCG design and a
+new explicit owner GO are both required before any pod/provider contact.
 
 **Read `docs/prototype-status.md` first**, then the current task-specific
-design named by its latest ledger entry. For C4, that is
-`docs/c4-ligero-inline-rate-design.md`. The ledger and current design are the
+design named by its latest ledger entry. For C5, that is
+`docs/c5-packed16-rate8-design.md`. The ledger and current design are the
 plan of record; historical runbooks and designs do not override them.
 
 ## State ledger — single source of truth

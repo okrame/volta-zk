@@ -6,8 +6,9 @@ refuted compression proposals as live suggestions.
 
 The authoritative entry point is `AGENTS.md`. Read
 `docs/prototype-status.md`, then the current task-specific design named by
-the latest ledger entry. For C4, read
-`docs/c4-ligero-inline-rate-design.md`.
+the latest ledger entry. The current checkpoint is the C5 local typed-PCG
+obstruction in `docs/c5-packed16-rate8-design.md`; it authorizes no pod or
+protocol implementation.
 
 This pathname remains only because immutable historical designs cite it.
 It is not a plan of record and contains no active gate or implementation

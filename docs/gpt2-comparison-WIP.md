@@ -1,13 +1,17 @@
 # GPT-2 real-weight — confronto CPU, A100, Ligero inline e storico X4
 
-> **Stato 2026-07-27 — documento WIP tracciato.** X4/X4d resta storico e
+> **Stato 2026-07-28 — documento WIP tracciato.** X4/X4d resta storico e
 > sospeso. C4 ha completato un pair A100 same-build pulito a `e99a1e5`:
 > l'anchor Ligero inline `rate=1/4,Q=120` passa tutti i gate; il candidato
 > `rate=1/8,Q=97` risparmia esattamente **4.977.848 B/risposta** e passa i
 > gate di prover puro, soundness e memoria, ma il verdetto complessivo è
 > **FAIL**. La sessione completa misura **1,050816638x >1,05x** e una
 > ripetizione misura **0,155717607 s >0,150 s** di sincronizzazione. Non è
-> stato eseguito alcun retry selettivo. L'anchor resta il profilo accettato.
+> stato eseguito alcun retry selettivo. Il product owner ha adottato il
+> rate-8 come base di un distinto C5 senza riscrivere questo FAIL. C5
+> Packed16 si è però fermato localmente al gate typed-PCG: la risposta
+> **61.292.904 B** resta una proiezione, non una nuova colonna misurata. Non
+> esistono implementazione, pod, pair o verdict C5.
 
 La quinta colonna conserva il pair pulito X4d.1 a
 `b83ffc1`: un settlement `k=1` e uno `k=16` sullo stesso host, build, GPU e
@@ -22,7 +26,7 @@ dal selettore paired, non da proiezioni.
 
 | Voce | CPU locale (4 thread) | A100 RunPod (8 worker Rayon) | C4 anchor A100 `1/4,Q=120` | C4 rate-8 A100 `1/8,Q=97` | A100 RunPod X4d.1 (8 response + 27 settlement worker) |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| **PCS e legatura dei pesi** | Ligero rate `1/4`, `Q=120` — apertura **inline** per risposta | Ligero rate `1/4`, `Q=120` — apertura **inline** per risposta | Ligero rate `1/4`, `Q=120` — **inline**, profilo accettato | Ligero rate `1/8`, `Q=97` — **inline**, C4 **FAIL** | `x4-zkdeepfold-ud-e29-v4` (BaseFold/DeepFold), rate `1/8`, `s=111` — **settlement differito**, risposta senza blocco PCS |
+| **PCS e legatura dei pesi** | Ligero rate `1/4`, `Q=120` — apertura **inline** per risposta | Ligero rate `1/4`, `Q=120` — apertura **inline** per risposta | Ligero rate `1/4`, `Q=120` — **inline**, profilo accettato | Ligero rate `1/8`, `Q=97` — **inline**, C4 raw **FAIL**, owner-adopted C5 base | `x4-zkdeepfold-ud-e29-v4` (BaseFold/DeepFold), rate `1/8`, `s=111` — **settlement differito**, risposta senza blocco PCS |
 | Prova prefill | 10,10 s | 2,54 s | **2,459967 s — PASS** | **2,448463 s — PASS** | **2,256217 s — PASS** (`k=16`) |
 | Prova decode marginale | 8,26 s | 1,65 s | **1,647298 s — PASS** | **1,637910 s — PASS** | **1,896501 s — PASS** (`k=16`) |
 | Prova risposta totale | 18,37 s | 4,18 s | **4,104596 s** | **4,079376 s; 0,993856x — PASS** | **4,148145 s** (`k=16`, upper median delle tre misurate) |
@@ -143,6 +147,52 @@ l'anchor standalone `4097179` restano immutabili come storia operativa. Il
 pod del pair è stato fermato via SSH-side `runpodctl` e il nuovo tentativo SSH
 ha ricevuto `Connection refused`. X4/X4d resta conservato ma non è nel
 percorso di esecuzione C4.
+
+## C5 Packed16 — target valido, typed-PCG localmente ostruita
+
+Il target di wire rimane matematicamente valido sul rate-8 adottato:
+
+| Grandezza | C4 rate-8 misurato | C5 Packed16 condizionale | Delta |
+| --- | ---: | ---: | ---: |
+| Correzioni eleggibili | 24.883.200 B | 6.609.600 B | **−18.273.600 B** |
+| Non-PCS totale | 41.270.464 B | 22.996.864 B | **−18.273.600 B** |
+| PCS inline | 38.296.040 B | 38.296.040 B | 0 B |
+| Risposta | 79.566.504 B | **61.292.904 B** | **−18.273.600 B** |
+| Setup massimo | 38.371.465 B misurati | **56.645.065 B** | al massimo +18.273.600 B |
+| Primo scambio massimo | 117.937.969 B | **117.937.969 B** | invariato |
+
+La colonna C5 non viene aggiunta alla tabella principale perché non è stata
+realizzata né misurata. Il gate preliminare richiede cinque scorte da
+3.110.400 coppie `(u16,bit)`, cioè 15.552.000 coppie. Restano solo **9,4 bit
+di setup per coppia** per generatore, conversione, controlli e frame.
+
+Lo screening locale ha chiuso due conti concreti:
+
+- il C2 malicious-COT con lift aritmetico usa 264.384.000 bit sorgente e
+  **4.230.144.000 B** di correzioni `Fp2`; persino il solo core Ferret
+  proiettato a 0,73 bit/COT vale **24.125.040 B**, già oltre il margine;
+- la conversione esatta dal corrente sVOLE Goldilocks può evitare il bias
+  rigettando `p-1` e pubblicando quozienti canonici, ma costa ottimisticamente
+  **217.728.000 B** prima delle prove di range malicious. Il setup risultante
+  è almeno **256.099.465 B**, cioè **199.454.400 B** oltre il gate.
+
+Le famiglie subfield-VOLE restano nello stesso carattere del campo, gli
+edaBits citati introducono autenticazioni e conversioni in due domini, e le
+PCG/PCF valutate non forniscono una generazione dealerless malicious di
+variabili limitate sotto il `Delta` `Fp2` esterno con un costo serializzato
+sotto il tetto. Questa è un'ostruzione della costruzione e dei parametri
+valutati, non un teorema d'impossibilità generale.
+
+Il record append-only è
+`benchmarks/results/c5-typed-pcg-obstruction-2026-07-28-0309320.json`.
+Il suo SHA-256 è
+`9e292301af185093b1cc81d3a1b7bc229fad61e6ded61e294d84af0dd2844e49`;
+il design C5 finale è
+`30a999044e8f61d6625814b51088871c184e2ae72a9397b5fc2da9e05e9f34fc`.
+Riporta `pod_contacted=false`, `production_pair_started=false` e
+`gate_verdict=false`. Per riaprire C5 serve prima una costruzione typed-PCG
+con riduzione di sicurezza e formula byte complete; solo dopo un nuovo
+checkpoint locale avrebbe senso richiedere un A100.
 
 ## Lettura del verdict
 

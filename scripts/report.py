@@ -100,6 +100,20 @@ C4_HISTORICAL_DESIGN_SHA256_BY_GIT_SHA = {
         "0b8739d6d8d5e1d605e2d4dfa8fb1f064dc046ca77b02d390ecc4d0f20461bcb"
     ),
 }
+C5_OBSTRUCTION_REPORT_SCHEMA_VERSION = 1
+C5_ELIGIBLE_CELLS = 3_110_400
+C5_INVENTORIES = 5
+C5_SETUP_BYTES = 38_371_465
+C5_SETUP_CEILING_BYTES = 56_645_065
+C5_TYPED_INCREMENT_CEILING_BYTES = 18_273_600
+C5_RESPONSE_BYTES = 61_292_904
+C5_PCS_BYTES = 38_296_040
+C5_C2_SOURCE_BITS = 264_384_000
+C5_C2_LIFT_BYTES = 4_230_144_000
+C5_FERRET_CORE_BYTES = 24_125_040
+C5_QUOTIENT_BYTES = 217_728_000
+C5_QUOTIENT_SETUP_BYTES = 256_099_465
+C5_QUOTIENT_FIRST_EXCHANGE_BYTES = 317_392_369
 C4_GEOMETRY = {
     "anchor": {
         "weights": {
@@ -8451,6 +8465,139 @@ def write_c4_paired_verdict(
     except FileExistsError:
         return None
     return output_path
+
+
+def validate_c5_typed_pcg_obstruction(path: Path) -> bool:
+    """Validate the local C5 security/byte obstruction without promoting a gate."""
+    try:
+        row = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(row, dict):
+        return False
+    design_file = row.get("design_file")
+    if design_file != "docs/c5-packed16-rate8-design.md":
+        return False
+    design_path = REPO / design_file
+    try:
+        design_sha256 = hashlib.sha256(design_path.read_bytes()).hexdigest()
+    except OSError:
+        return False
+
+    census = row.get("census")
+    projection = row.get("conditional_response_projection")
+    budget = row.get("typed_setup_budget")
+    candidates = row.get("candidate_screen")
+    screen = row.get("screen_result")
+    execution = row.get("execution_state")
+    owner = row.get("owner_ruling")
+    if not all(
+        isinstance(value, dict)
+        for value in (census, projection, budget, screen, execution, owner)
+    ) or not isinstance(candidates, list):
+        return False
+    by_name = {
+        candidate.get("candidate"): candidate
+        for candidate in candidates
+        if isinstance(candidate, dict) and isinstance(candidate.get("candidate"), str)
+    }
+    c2 = by_name.get("C2 Ferret-Uni binary COT plus explicit Fp2 arithmetic lift")
+    quotient = by_name.get(
+        "current Goldilocks Fp sVOLE plus exact rejection and public quotients"
+    )
+    if not isinstance(c2, dict) or not isinstance(quotient, dict):
+        return False
+
+    inventories = C5_ELIGIBLE_CELLS * C5_INVENTORIES
+    return (
+        row.get("report_schema_version") == C5_OBSTRUCTION_REPORT_SCHEMA_VERSION
+        and row.get("milestone") == "C5-typed-PCG-local-obstruction"
+        and row.get("record_kind") == "analytic-security-and-byte-feasibility"
+        and _full_git_sha(row.get("baseline_git_sha"))
+        and row.get("baseline_git_dirty") is False
+        and row.get("design_sha256") == design_sha256
+        and owner.get("c4_raw_history_rewritten") is False
+        and owner.get("c4_rate8_owner_adopted_for_c5") is True
+        and owner.get("response_ceiling_bytes") == 70_000_000
+        and owner.get("combined_setup_ceiling_bytes") == C5_SETUP_CEILING_BYTES
+        and owner.get("first_exchange_ceiling_bytes") == 117_937_969
+        and owner.get("five_response_inventories_binding") is True
+        and owner.get("deferred_settlement_allowed") is False
+        and census.get("kv_cells") == 2 * 12 * 150 * 768
+        and census.get("t1_chain_exit_cells") == 3 * 150 * 768
+        and census.get("eligible_cells_per_response") == C5_ELIGIBLE_CELLS
+        and census.get("response_inventories") == C5_INVENTORIES
+        and census.get("u16_outputs") == inventories
+        and census.get("carry_bit_outputs") == inventories
+        and census.get("independent_entropy_bits_per_cell") == 17
+        and census.get("binary_source_outputs_for_bit_composition")
+        == C5_C2_SOURCE_BITS
+        and projection.get("old_eligible_payload_bytes")
+        == 8 * C5_ELIGIBLE_CELLS
+        and projection.get("u16_payload_bytes") == 2 * C5_ELIGIBLE_CELLS
+        and projection.get("carry_bitmap_bytes") == C5_ELIGIBLE_CELLS // 8
+        and projection.get("new_eligible_payload_bytes") == 6_609_600
+        and projection.get("saving_bytes") == C5_TYPED_INCREMENT_CEILING_BYTES
+        and projection.get("auth_corrections_bytes") == 20_075_120
+        and projection.get("other_non_pcs_bytes") == 2_921_744
+        and projection.get("non_pcs_bytes") == 22_996_864
+        and projection.get("pcs_bytes") == C5_PCS_BYTES
+        and projection.get("response_bytes") == C5_RESPONSE_BYTES
+        and 22_996_864 + C5_PCS_BYTES == C5_RESPONSE_BYTES
+        and projection.get("measured") is False
+        and budget.get("measured_c4_setup_bytes") == C5_SETUP_BYTES
+        and budget.get("combined_setup_ceiling_bytes") == C5_SETUP_CEILING_BYTES
+        and budget.get("typed_increment_ceiling_bytes")
+        == C5_TYPED_INCREMENT_CEILING_BYTES
+        and budget.get("typed_increment_ceiling_bits")
+        == 8 * C5_TYPED_INCREMENT_CEILING_BYTES
+        and budget.get("five_inventory_cells") == inventories
+        and _same_number(budget.get("bits_per_cell_including_all_overheads"), 9.4)
+        and c2.get("security_interface_fit") is True
+        and c2.get("exact_distribution_fit") is True
+        and c2.get("typed_increment_bytes") == C5_C2_LIFT_BYTES
+        and c2.get("typed_increment_bytes") == C5_C2_SOURCE_BITS * 16
+        and c2.get("combined_setup_lower_bound_bytes")
+        == C5_SETUP_BYTES + C5_C2_LIFT_BYTES
+        and c2.get("first_exchange_lower_bound_bytes")
+        == C5_SETUP_BYTES + C5_C2_LIFT_BYTES + C5_RESPONSE_BYTES
+        and _same_number(c2.get("pinned_binary_core_bits_per_cot"), 0.73)
+        and c2.get("pinned_binary_core_bytes_before_lift_and_checks")
+        == C5_FERRET_CORE_BYTES
+        and quotient.get("goldilocks_prime") == (1 << 64) - (1 << 32) + 1
+        and quotient.get("rejected_value") == (1 << 64) - (1 << 32)
+        and quotient.get("u16_quotient_bound_exclusive")
+        == (((1 << 64) - (1 << 32)) // (1 << 16))
+        and quotient.get("u16_quotient_bytes") == inventories * 6
+        and quotient.get("bit_quotient_bytes") == inventories * 8
+        and quotient.get("typed_increment_lower_bound_bytes") == C5_QUOTIENT_BYTES
+        and quotient.get("combined_setup_lower_bound_bytes")
+        == C5_QUOTIENT_SETUP_BYTES
+        and quotient.get("first_exchange_lower_bound_bytes")
+        == C5_QUOTIENT_FIRST_EXCHANGE_BYTES
+        and quotient.get("setup_gate_excess_lower_bound_bytes")
+        == C5_QUOTIENT_SETUP_BYTES - C5_SETUP_CEILING_BYTES
+        and quotient.get("range_proof_check_and_rejection_overhead_charged_bytes")
+        == 0
+        and len(candidates) == 8
+        and screen.get("selected_construction") is None
+        and screen.get("complete_security_reduction_available") is False
+        and screen.get("complete_serialized_formula_within_gate") is False
+        and screen.get("universal_impossibility_claimed") is False
+        and screen.get("disposition") == "HARD_STOP_TYPED_PCG_OBSTRUCTION"
+        and all(
+            execution.get(key) is False
+            for key in (
+                "lean_protocol_change_started",
+                "rust_protocol_change_started",
+                "cuda_protocol_change_started",
+                "pod_contacted",
+                "production_pair_started",
+                "performance_result_claimed",
+                "gate_verdict",
+            )
+        )
+    )
 
 
 def _finite_nonnegative(value: Any) -> bool:

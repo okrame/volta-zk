@@ -10,6 +10,11 @@ demand is 7,443,126, and the adapted acceptance contract is the ledger entry.
 This note is retained so the rejected packing path is not rediscovered or
 silently reintroduced.
 
+**2026-07-28 pointer:** C5 re-screened the narrower post-T1 Packed16 census
+under a binding tens-of-MB setup budget and stopped at a fresh typed-PCG
+obstruction. See `docs/c5-packed16-rate8-design.md` §5. C1's wire algebra
+remains conditional history; no Packed16 implementation or new result exists.
+
 ## 1. Frozen baseline and scope
 
 The clean P6 accounting record

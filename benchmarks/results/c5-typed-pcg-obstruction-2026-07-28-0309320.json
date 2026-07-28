@@ -1,0 +1,143 @@
+{
+  "report_schema_version": 1,
+  "milestone": "C5-typed-PCG-local-obstruction",
+  "date": "2026-07-28",
+  "record_kind": "analytic-security-and-byte-feasibility",
+  "baseline_git_sha": "0309320fdfda9215e170575adb0c4d61cbef37c3",
+  "baseline_git_dirty": false,
+  "design_file": "docs/c5-packed16-rate8-design.md",
+  "design_sha256": "30a999044e8f61d6625814b51088871c184e2ae72a9397b5fc2da9e05e9f34fc",
+  "owner_ruling": {
+    "c4_raw_history_rewritten": false,
+    "c4_rate8_owner_adopted_for_c5": true,
+    "response_ceiling_bytes": 70000000,
+    "combined_setup_ceiling_bytes": 56645065,
+    "first_exchange_ceiling_bytes": 117937969,
+    "five_response_inventories_binding": true,
+    "trust_model": "two-party dealerless malicious-with-abort; verifier-only connection Delta in Goldilocks Fp2",
+    "deferred_settlement_allowed": false
+  },
+  "census": {
+    "kv_cells": 2764800,
+    "t1_chain_exit_cells": 345600,
+    "eligible_cells_per_response": 3110400,
+    "response_inventories": 5,
+    "u16_outputs": 15552000,
+    "carry_bit_outputs": 15552000,
+    "independent_entropy_bits_per_cell": 17,
+    "binary_source_outputs_for_bit_composition": 264384000
+  },
+  "conditional_response_projection": {
+    "old_eligible_payload_bytes": 24883200,
+    "u16_payload_bytes": 6220800,
+    "carry_bitmap_bytes": 388800,
+    "new_eligible_payload_bytes": 6609600,
+    "saving_bytes": 18273600,
+    "auth_corrections_bytes": 20075120,
+    "other_non_pcs_bytes": 2921744,
+    "non_pcs_bytes": 22996864,
+    "pcs_bytes": 38296040,
+    "response_bytes": 61292904,
+    "measured": false
+  },
+  "typed_setup_budget": {
+    "measured_c4_setup_bytes": 38371465,
+    "combined_setup_ceiling_bytes": 56645065,
+    "typed_increment_ceiling_bytes": 18273600,
+    "typed_increment_ceiling_bits": 146188800,
+    "five_inventory_cells": 15552000,
+    "bits_per_cell_including_all_overheads": 9.4
+  },
+  "candidate_screen": [
+    {
+      "candidate": "C2 Ferret-Uni binary COT plus explicit Fp2 arithmetic lift",
+      "primary_source": "https://eprint.iacr.org/2020/924",
+      "security_interface_fit": true,
+      "exact_distribution_fit": true,
+      "serialized_formula": "264384000 source bits * 16 B/Fp2 correction",
+      "typed_increment_bytes": 4230144000,
+      "combined_setup_lower_bound_bytes": 4268515465,
+      "first_exchange_lower_bound_bytes": 4329808369,
+      "pinned_binary_core_bits_per_cot": 0.73,
+      "pinned_binary_core_bytes_before_lift_and_checks": 24125040,
+      "obstruction": "byte gate"
+    },
+    {
+      "candidate": "current Goldilocks Fp sVOLE plus exact rejection and public quotients",
+      "primary_source": "existing VOLTA fase-D sVOLE contract",
+      "security_interface_fit": "requires an additional malicious hidden-remainder range proof",
+      "exact_distribution_fit": true,
+      "goldilocks_prime": 18446744069414584321,
+      "rejected_value": 18446744069414584320,
+      "u16_quotient_bound_exclusive": 281474976645120,
+      "u16_quotient_bytes_per_output": 6,
+      "bit_quotient_bound_exclusive": 9223372034707292160,
+      "bit_quotient_bytes_per_output": 8,
+      "u16_quotient_bytes": 93312000,
+      "bit_quotient_bytes": 124416000,
+      "typed_increment_lower_bound_bytes": 217728000,
+      "combined_setup_lower_bound_bytes": 256099465,
+      "first_exchange_lower_bound_bytes": 317392369,
+      "setup_gate_excess_lower_bound_bytes": 199454400,
+      "range_proof_check_and_rejection_overhead_charged_bytes": 0,
+      "obstruction": "byte gate even under zero-cost malicious range proof and zero incremental sVOLE generation"
+    },
+    {
+      "candidate": "SoftSpokenOT / Half-Tree / subfield-OLE PCGs",
+      "primary_sources": [
+        "https://eprint.iacr.org/2022/192",
+        "https://eprint.iacr.org/2022/1431",
+        "https://eprint.iacr.org/2025/169"
+      ],
+      "security_interface_fit": false,
+      "obstruction": "same-characteristic subfield coefficients; F2 is not a subfield of odd-characteristic Fp2"
+    },
+    {
+      "candidate": "Mystique zk-edaBits and arithmetic-Boolean conversion",
+      "primary_source": "https://eprint.iacr.org/2021/730",
+      "security_interface_fit": false,
+      "obstruction": "full-Fp arithmetic value plus separately keyed Boolean authentication and conversion, not direct typed outputs under the existing Fp2 Delta"
+    },
+    {
+      "candidate": "Scholl low-communication random OT and arbitrary-group correlated base OT",
+      "primary_source": "https://eprint.iacr.org/2018/036",
+      "security_interface_fit": false,
+      "obstruction": "arbitrary-abelian-group correlation is supplied only for the base k OTs; scalable random OTs need per-output chosen-message/correction conversion to the connection Delta"
+    },
+    {
+      "candidate": "EA-code and quasi-abelian PCG/PCF authenticated correlations",
+      "primary_source": "https://eprint.iacr.org/2022/1014",
+      "security_interface_fit": false,
+      "obstruction": "uniform same-ring variables and correlated-key generation; no cited dealerless malicious bounded-domain instantiation under the externally held Fp2 Delta with a complete sub-gate serializer"
+    },
+    {
+      "candidate": "BarnOwl silent daBits/edaBits",
+      "primary_source": "https://eprint.iacr.org/2022/800",
+      "security_interface_fit": false,
+      "obstruction": "three-party honest-majority trust model"
+    },
+    {
+      "candidate": "Bounded-integer / RSA-ring VOLE",
+      "primary_source": "https://eprint.iacr.org/2024/283",
+      "security_interface_fit": false,
+      "obstruction": "changes the frozen Fp2 MAC field and downstream proof algebra"
+    }
+  ],
+  "screen_result": {
+    "selected_construction": null,
+    "complete_security_reduction_available": false,
+    "complete_serialized_formula_within_gate": false,
+    "universal_impossibility_claimed": false,
+    "disposition": "HARD_STOP_TYPED_PCG_OBSTRUCTION"
+  },
+  "execution_state": {
+    "lean_protocol_change_started": false,
+    "rust_protocol_change_started": false,
+    "cuda_protocol_change_started": false,
+    "pod_contacted": false,
+    "production_pair_started": false,
+    "performance_result_claimed": false,
+    "gate_verdict": false
+  },
+  "assurance": "Append-only local analytic obstruction. The 61,292,904-B response is a conditional wire projection, not a measurement or product verdict. Historical C4/X4 records and design hashes remain immutable."
+}

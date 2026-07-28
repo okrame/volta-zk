@@ -1,4 +1,4 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — ANCHOR PASS / RATE-8 OVERALL FAIL ON SESSION RATIO AND ABSOLUTE SYNC; NO SELECTIVE RETRY; POD STOPPED)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
@@ -363,6 +363,7 @@ its clean descendant closure.
 | X4d.2 Phase 2 A100 campaign | **FAIL-CLOSED BEFORE k=1 RECORD; NO FLATNESS OR PRODUCTION GATE VERDICT; k=16 NOT STARTED; POD STOPPED** (2026-07-26) | One eligible production pair, unchanged build, no selective retry; any replacement pair requires a new owner GO | Owner GO used pod `xfjw217q6cq4ja` at clean `e4e2b14`. NOTE-6 PASS, fail-closed hardware/device admission PASS, and all **38** real-CUDA accelerator tests PASS including `x4d_resident_kernels_match_cpu_field_evaluation_exactly`. The strengthened crypto-build identity correctly rejected the historical X4d.1 durable tier; one fresh schema-3 onboarding then PASSed in **1,967 s** with exact **9,618,587,808 B** durable payload. The sole k=1 run opened fresh stores and failed during settlement with `X4d CUDA delayed-link terminal mismatch`; six authorization/freshness markers are burned and the connection journal is preserved. The producer exited before writing a settlement JSON, so k=1 was not retried, k=16 was not started, the paired selector was not run, and FLATNESS / PHYSICAL COUNTERS / BYTE IDENTITY / HOT PATH / PROTOCOL REGRESSIONS are all **NOT EVALUATED**. Append-only obstruction record `x4d2-phase2-k1-obstruction-2026-07-26-e4e2b14.json`; X4d.1 records and comparison remain immutable. Pod-local `runpodctl` returned stopped and the independent endpoint check was refused; teardown record `x4d2-control-plane-teardown-2026-07-26-e4e2b14.json`. |
 | X4d.2 delayed-link diagnosis and repair | **LOCAL ROOT CAUSE CONFIRMED; BYTE IDENTITY GREEN; HARD STOP / NO POD / NO REPLACEMENT PAIR OR GATE VERDICT** (2026-07-27) | Evaluation-only repair: backend-generic sequential resident orchestrator plus one exactly-once scaled product-round message; protocol/transcript/challenge/codec/correlations/terminal semantics unchanged | The extracted `e4e2b14` arithmetic reproduced the obstruction with the initial claim, ledgers, challenges and folds still green: first divergence **term 0 / round 1 / dimension 8 / active_len 256**, captured output SHA-256 `2ac466d9bcfc61fc5ef0a83c59d5bc8b0c2f32434ed17e37de1b7ac5cc925c1f`; all **51/51** production-relative terms are affected at their first real round. Root cause is the missing `virtual_factor` on `fp2_product_round_into_device`. ABI 33 adds `fp2_product_round_scaled_into_device` / `volta_cuda_fp2_product_round_scaled_into_device` / `scale_product_round_message`; scale one is raw-mailbox byte-identical, folds are unscaled, and the real branch alone uses it. Permanent value-mismatch and geometry-not-drained faults are distinct. CPU BackendKind lifecycle and exact message/fold-vector-digest identity pass at the 51/51/102 local multiplicity fixture and `max_mu=20/22/24/26`; the full serialized workspace, 23 report-validator tests and CUDA-feature all-target compilation are green, while real CUDA remains deliberately unexecuted locally. A clean, fail-closed standalone `x4d2_delayed_link_reproducer` is prepared for a future GO; it needs no weights/onboarding/durable tier/connection/settlement. Append-only local record `x4d2-diag-delayed-link-2026-07-27-bc76048.json`, SHA-256 `0bf3ed63b4ec34243a3f42cd1b6fce286c07a5b07f9e09b72bbb2f081f35538a`; diagnostic design SHA-256 `91cc8eb6566122724a75b9f051a75d5245e981b52194c5545b7701ca853b6fe4`. Historical X4d.1 and X4d.2 records/digests/gates remain immutable. |
 | C4 Ligero inline rate reduction | **PAIRED A100 COMPLETE — ANCHOR PASS; RATE-8 EXACT BYTES / PROVER / DEVICE PASS; SESSION 1.050816638x >1.05 AND SYNC 0.155717607 s >0.150 FAIL; OVERALL FAIL; NO RETRY; POD STOPPED** (2026-07-27) | Return to inline T1 weight certification; same-build anchor `rate=1/4,Q=120` versus candidate `rate=1/8,Q=97`; no deferred settlement; frozen gates conjunctive | Clean `e99a1e5` on one A100/13-effective-CPU/eight-Rayon host passed ABI 33 and the full release/CUDA workspace before either producer. Both profiles used the same binary/backend and independent fresh stores, one warmup and three measured repetitions. Anchor PCS/response **43,273,888 / 84,544,352 B**, prove/session **4.104595717 / 5.322725729 s**, all absolute gates PASS. Rate-8 PCS/response **38,296,040 / 79,566,504 B**, exact saving **4,977,848 B**, prove **4.079375688 s / 0.993855661x PASS**, but session **5.593208756 s / 1.050816638x FAIL** and maximum sync **0.155717607 s FAIL**; device peak **30,146,106,356 B PASS**. Pair `c4-ligero-paired-a100-2026-07-27-e99a1e5.json`, SHA-256 `8506de9ccad35bba76f9cd337ef5a4528613fc91894962e597937b63e3ad3e56`, is a coherent **overall FAIL**. No selective retry occurred. SSH-side `runpodctl` stopped pod `mi3dk7ah9jny9b` and an independent connection was refused. The anchor remains the accepted inline profile; all prior records and design pins remain immutable. |
+| C5 Packed16 over Ligero rate-8 | **LOCAL HARD STOP — TYPED-PCG SECURITY/BYTE GATE OBSTRUCTED; NO LEAN/RUST/CUDA IMPLEMENTATION; NO POD / NO VERDICT** (2026-07-28) | Direct authenticated uniform-u16/carry lanes, canonical Packed16 correction wire and exact setup accounting; no deferred settlement or PCS change | The owner-adopted rate-8 base and raw C4 FAIL remain distinct and immutable. Exact Packed16 response remains a conditional **61,292,904-B** projection, but typed setup has only **18,273,600 B / 9.4 bits per five-inventory cell** of headroom. C2's malicious-COT arithmetic lift requires **4,230,144,000 B** at this census; its pinned `0.73-bit/COT` binary core alone is **24,125,040 B** before lift. An exact Goldilocks `p-1` rejection/quotient route from current sVOLE has an optimistic **217,728,000-B** public quotient payload and combined setup **256,099,465 B**, excluding the required malicious range proof, hence fails by at least **199,454,400 B**. Same-characteristic subfield VOLE, dual-domain edaBits, base-only group COT, dealer-keyed PCG/PCF, three-party daBits and bounded-integer VOLE do not instantiate the frozen interface. Local record `c5-typed-pcg-obstruction-2026-07-28-0309320.json`, SHA-256 `9e292301af185093b1cc81d3a1b7bc229fad61e6ded61e294d84af0dd2844e49`; design SHA-256 `30a999044e8f61d6625814b51088871c184e2ae72a9397b5fc2da9e05e9f34fc`; `pod_contacted=false`, `production_pair_started=false`, `gate_verdict=false`. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -430,6 +431,72 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-28 — C5 owner ruling adopts rate-8 as a new product baseline;
+  raw C4 FAIL remains immutable; Packed16 local Phase 1 starts with a
+  fail-closed typed-PCG screen.** The product owner accepts the marginal C4
+  rate-8 session and synchronization observations for the sole purpose of
+  defining C5's baseline. The C4 records, pair verdict, thresholds and
+  no-retry history are not rewritten. C5 is a distinct experiment with a
+  same-build raw-rate8/Packed16 pair and append-only records.
+
+  The exact eligible post-T1 census is **3,110,400** values: K/V contribute
+  **2,764,800** and the three four-layer-chain exits contribute **345,600**.
+  Canonical two-byte corrections plus a **388,800-B** carry bitmap replace
+  **24,883,200 B** with **6,609,600 B**. Therefore authentication corrections
+  project to **20,075,120 B**, non-PCS transcript to **22,996,864 B** and the
+  unchanged C4 PCS gives an exact **61,292,904-B** response. Both exact
+  equality and the **70,000,000-B** ceiling bind.
+
+  The combined setup gate is **56,645,065 B**, so first exchange remains
+  **<=117,937,969 B**. It includes every ordinary and typed base/setup/check/
+  frame byte and must preprovision five response inventories; responses 2--5
+  repeat zero setup categories. The security model remains two-party,
+  dealerless, malicious-with-abort, verifier-only shared connection `Delta`,
+  exact-uniform u16/bit masks, domain separation and one-time burn. The
+  historical C2 per-source-bit arithmetic lift is prohibited. If no cited
+  construction closes the security and byte formula, C5 appends a local
+  obstruction and stops before formal or implementation work.
+
+  A future authorized pair uses nine fixed-order same-build pairs. The
+  response-proof and complete-session paired medians target **<=1.05** and
+  pass within the preregistered measurement band at **<=1.06**, provided at
+  least eight of nine individual ratios are **<=1.075**. Candidate sync
+  requires at least eight of nine samples **<=0.150 s** and every sample
+  **<=0.175 s**. This robust rule is prospective C5 policy, not a
+  reinterpretation of C4. Design descendant:
+  `docs/c5-packed16-rate8-design.md`. No pod/provider contact has occurred.
+
+  The ordered feasibility screen is now complete and **obstructed**. The
+  existing setup leaves exactly **18,273,600 B**, or **9.4 bits per
+  five-inventory cell**, for both typed lanes and all checks. The C2
+  realization scales to **264,384,000** binary source correlations and
+  **4,230,144,000 B** of arithmetic-lift corrections; even its pinned
+  `0.73-bit/COT` binary core alone projects **24,125,040 B**. A new exact
+  extraction from current Goldilocks sVOLE was derived rather than dismissed
+  for modulo bias: reject `p-1`, publish a 48-bit quotient for each u16 and a
+  63-bit quotient for each bit, and prove the hidden remainder ranges. Even
+  pricing those malicious range proofs and all extra PCG work at zero, the
+  quotients total **217,728,000 B**, combined setup is **256,099,465 B** and
+  first exchange is **317,392,369 B**. This lower envelope misses the setup
+  gate by **199,454,400 B**.
+
+  Same-characteristic subfield VOLE cannot embed `F2` into odd-characteristic
+  `Fp2`; Mystique-style edaBits use separate Boolean/arithmetic authentication
+  and conversion; Scholl's arbitrary-group correlated OTs are only the base
+  `k` OTs, not scalable outputs under the connection `Delta`; the evaluated
+  PCG/PCF families do not supply a dealerless malicious bounded-domain output
+  under that externally held key; BarnOwl changes the party/trust model. This
+  is a cited construction obstruction, not a universal impossibility theorem.
+  No M1--M11/Lean, Rust, CUDA, codec, transcript or proof-path file is changed,
+  and `61,292,904 B` is not promoted from projection to result. Append-only
+  record `c5-typed-pcg-obstruction-2026-07-28-0309320.json`; no pod/provider
+  contact, production pair or gate verdict. Its SHA-256 is
+  `9e292301af185093b1cc81d3a1b7bc229fad61e6ded61e294d84af0dd2844e49`;
+  the final design SHA-256 is
+  `30a999044e8f61d6625814b51088871c184e2ae72a9397b5fc2da9e05e9f34fc`.
+  A revival requires a newly costed concrete typed-PCG design and a new owner
+  GO.
 
 - **2026-07-27 — C4 same-build A100 pair complete: exact communication
   saving measured; candidate overall FAIL on complete-session ratio and

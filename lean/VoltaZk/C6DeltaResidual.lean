@@ -5,8 +5,11 @@ import VoltaZk.ZeroBatchSound
 # C6 Δ-residual compression
 
 C6 removes the direct authentication-correction vector from the response
-wire.  The verifier's key program is linear, so after all public challenges
-are fixed its leaves can be reverse-accumulated into one affine equation.
+wire.  After every nonlinear QuickSilver key multiplication is discharged by
+the explicit `C6ProductClosure` seam, the remaining verifier key subgraph is
+linear and its leaves can be reverse-accumulated into one affine equation.
+This file formalizes that affine subgraph; it does not claim that the complete
+production verifier is globally linear.
 
 For each base correlation the corrupted prover knows `(a,m)`, while the
 designated verifier holds `keyOf Δ (a,m) = m + Δ*a`.  Authenticating `x`
@@ -68,7 +71,7 @@ theorem correctedKey (Δ : F) (base : F × F) (correction : F) :
   unfold keyOf correctedPair
   ring
 
-/-- **C6 affine residual identity.**  The expanded old verifier key
+/-- **C6 affine residual identity.**  An expanded linear-subgraph key
 combination equals the compact base-key aggregate plus `Δ` times the one
 hidden-correction dot product certified by the wrapper. -/
 theorem c6_delta_residual_decompose {T : ℕ} (Δ : F) (coeff : Fin T → F)

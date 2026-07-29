@@ -122,7 +122,7 @@ embed:   16 * 33,280 * ( 6 + 1) =  3,727,360 B
 total                                17,235,968 B.
 ```
 
-## 3. Why Δ-residual is sufficient
+## 3. Why the final residual remains affine
 
 Every verifier-side MAC key is affine in the secret:
 
@@ -137,11 +137,77 @@ correction `d=x-a`:
 kx = k0 + Delta*d = m + Delta*x.
 ```
 
-All verifier operations on authenticated values are linear in keys; the
-nonlinear model relations are reduced by the existing GKR/LogUp/product
-protocols to authenticated zero checks.  After the existing public
-challenges are fixed, reverse accumulation through the verifier's linear-key
-DAG gives one response-wide equation
+The production verifier is **not** globally linear in its key inputs.
+`prod_batch_verify` contains the unique nonlinear key expression
+
+```text
+k_a*k_b - Delta*k_c.
+```
+
+Treating this expression as a linear reverse-DAG node would discard a
+quadratic term and is forbidden.  C6 instead splits the authenticated-value
+IR into ordinary linear nodes and an opaque `ProductClosure` node.
+
+For every direct authenticated source `i`, the provider-side committed
+witness contains the base share `(r_i,m_i)`, hidden correction `d_i` and
+corrected plaintext `x_i`, while the client retains the actual verifier-only
+base key `k0_i`:
+
+```text
+x_i  = r_i + d_i
+k0_i = m_i + Delta*r_i
+k_i  = k0_i + Delta*d_i = m_i + Delta*x_i.
+```
+
+The wrapper proves the first equality and the typed `x`/`m` projection of
+every public add/sub/scale node.  A post-commit client RLC binds the committed
+base shares to the actual verifier-only base-key leaves:
+
+```text
+sum_i alpha_i*k0_i
+    + Delta*(-sum_i alpha_i*r_i)
+  = sum_i alpha_i*m_i.
+```
+
+The `alpha_i` schedule is generated from the already budgeted,
+domain-separated wrapper batching challenge after every bound commitment.
+It covers every direct source and every product mask correlation.  The
+wrapper proves that its two aggregates use the same committed canonical
+arrays.  In the information-theoretic model the coefficients are independent
+uniform field challenges; the implementation expands the interactive client
+challenge through the already named cryptographic transcript sampler and
+reports that computational assumption separately.  No scalar-power RLC with
+an uncharged `T/|F|` loss is permitted.
+
+For one QuickSilver batch, with the existing post-commit product challenge
+`chi` and `w_j = chi^(j+1)`, the wrapper proves
+
+```text
+Q  = sum_j w_j*(x_a[j]*x_b[j] - x_c[j]) = 0
+M0 = m_mask + sum_j w_j*m_a[j]*m_b[j]
+M1 = x_mask
+     + sum_j w_j*(x_a[j]*m_b[j] + x_b[j]*m_a[j] - m_c[j]).
+```
+
+The mask is a full authenticated correlation and participates in the same
+base-share binding.  Corrected-key validity and the existing M7 algebra then
+give, for every `Delta`,
+
+```text
+sum_j w_j*(k_a[j]*k_b[j] - Delta*k_c[j]) + k_mask
+  = M0 + Delta*M1 + Delta^2*Q
+  = M0 + Delta*M1.
+```
+
+Thus `ProductClosure` discharges the nonlinear verifier node without placing
+a key multiplication in the residual accumulator.  If any claimed product
+is false, `Q=0` is precisely the already-audited M8 scalar-`chi` collapse
+event; C6 does not introduce a second product event or challenge.
+
+After every `ProductClosure` is discharged, all remaining verifier key
+operations are public add/sub/scale.  Reverse accumulation over those typed
+linear nodes, combined with the base-share binding constraints in the same
+grand residual schedule, gives one response-wide equation
 
 ```text
 K_base + Delta * D_corr = M_public.
@@ -156,16 +222,23 @@ K_base + Delta * D_corr = M_public.
 - `M_public` is the matching combination of retained prover tags and public
   values.
 
-The provider can compute and prove `D_corr` but cannot predict whether a
-false equation passes because it does not know `Delta` or `K_base`.  The
-client performs the final affine check outside the transparent wrapper.
-This is the only designated-verifier residual left by `pi_final`.
+The provider computes and proves the two committed-witness aggregates but
+cannot adapt them after the binding challenge and does not know `Delta` or
+`K_base`.  The client performs this single grand affine check outside the
+transparent wrapper.  A nonzero vector of affine closure errors is charged
+once to the existing `epsilon_Delta_residual`; base-share binding is not a
+fifth statistical wrapper event.  The old M8 product term remains in the
+retained T1 soundness accounting.
 
-The implementation MUST derive the coefficient schedule by reverse
-accumulation over a typed linear DAG.  Hand-maintained parallel formulas are
-forbidden.  Every base-key leaf and every hidden-correction leaf has a
-canonical correlation index, transcript position and domain.  Missing,
-duplicate, reordered or dead leaves fail the exact census.
+The implementation MUST derive both prover constraints and the client
+coefficient schedule from one typed authenticated-value DAG.  Its only legal
+node classes are direct source/correction, public constant, add, subtract,
+public scale, zero closure and `ProductClosure`.  A key multiplication outside
+a certified `ProductClosure` is a construction-time error.  Hand-maintained
+parallel formulas are forbidden.  Every base-key leaf, hidden-correction leaf
+and product-mask leaf has one canonical correlation index, transcript
+position and domain.  Missing, duplicate, reordered or dead leaves fail the
+exact census.
 
 ## 4. Hidden Ligero vectors without an NTT trace
 
@@ -421,7 +494,11 @@ Every statistical wrapper profile MUST be at least 128 bits before union;
 the implementation reports every term and counter explicitly.  Merkle/hash
 collision resistance and PCG assumptions remain separately named
 computational assumptions rather than being silently converted into a
-statistical bit count.
+statistical bit count.  The existing M3/M7/M8/M2 MAC-closure inventory is
+unchanged and remains tracked under the inherited T1 convention rather than
+being duplicated as a fifth C6 wrapper allocation.  The four new allocations
+remain linear-functional sumchecks, wrapper PCS, cache argument and the grand
+Δ-residual.
 
 The 17-certificate session union is informational and does not repartition
 the per-certificate floor:
@@ -443,8 +520,10 @@ All gates are conjunctive.
 1. Append this C6 decision to `docs/prototype-status.md`.
 2. Land an executable exact budget for Q, bytes, setup and raw credit.
 3. Prove the new Lean addenda without editing frozen M1--M11/X4 theorems:
-   Δ-residual algebra, predecessor-conditional cache refinement,
-   idempotent retransmission, unique child, abort-head stability and
+   Δ-residual algebra, base-share binding, corrected-key validity,
+   QuickSilver product-polynomial expansion and `ProductClosure`
+   composition, predecessor-conditional cache refinement, idempotent
+   retransmission, unique child, abort-head stability and
    per-certificate/session composition.
 4. Full `lake build`; zero `sorry`/`admit`; no new axiom beyond the standard
    mathlib set.  Commitment binding stays an explicit premise.
@@ -459,15 +538,23 @@ All gates are conjunctive.
 
 ### C. Residual IR
 
-1. Implement the typed linear-key DAG and reverse accumulator.
-2. Prove exact parity with the old verifier on scaled fixtures.
-3. The leaf census must equal the old correlation/correction schedule.
+1. Implement one typed authenticated-value DAG, explicit
+   `ProductClosure` nodes and the reverse accumulator for its linear
+   subgraph.
+2. Prove exact parity with the old verifier on scaled fixtures, including a
+   nontrivial QuickSilver batch and its mask.
+3. The direct, correction and product-mask leaf census must equal the old
+   correlation/correction schedule.
 4. Deleting, duplicating, reordering or changing one leaf must reject.
+5. Any nonlinear key operation outside a certified `ProductClosure` must
+   fail construction.
 
 ### D. Hidden-vector and cache wrapper
 
 1. Commit before query and prove all old Ligero NTT/ip equations.
-2. Prove the hidden correction dot product and the Δ-residual statement.
+2. Prove `x=r+d`, the base-share RLC, every QuickSilver `Q/M0/M1`
+   `ProductClosure`, the hidden correction dot product and the grand
+   Δ-residual statement.
 3. Prove fixed-capacity cache read/update and the authenticated new-slab
    link.
 4. Exactly one packed wrapper opening per response; no per-token instance.
@@ -517,6 +604,11 @@ C6 stops locally and records the obstruction if any of these occurs:
   instance;
 - the residual coefficient schedule cannot be generated independently by
   the client without receiving the hidden correction vector;
+- a key multiplication reaches the linear residual accumulator without an
+  explicit, wrapper-certified `ProductClosure`;
+- the base-share binding omits a direct source or product-mask correlation,
+  uses a scalar-power RLC with an uncharged length loss, or is sampled before
+  its witness commitments;
 - one accepted predecessor admits two distinct accepted children for the
   same nonce/slot;
 - abort permits correlation reuse or changes the accepted head;

@@ -372,7 +372,7 @@ its clean descendant closure.
 | X4d.2 delayed-link diagnosis and repair | **LOCAL ROOT CAUSE CONFIRMED; BYTE IDENTITY GREEN; HARD STOP / NO POD / NO REPLACEMENT PAIR OR GATE VERDICT** (2026-07-27) | Evaluation-only repair: backend-generic sequential resident orchestrator plus one exactly-once scaled product-round message; protocol/transcript/challenge/codec/correlations/terminal semantics unchanged | The extracted `e4e2b14` arithmetic reproduced the obstruction with the initial claim, ledgers, challenges and folds still green: first divergence **term 0 / round 1 / dimension 8 / active_len 256**, captured output SHA-256 `2ac466d9bcfc61fc5ef0a83c59d5bc8b0c2f32434ed17e37de1b7ac5cc925c1f`; all **51/51** production-relative terms are affected at their first real round. Root cause is the missing `virtual_factor` on `fp2_product_round_into_device`. ABI 33 adds `fp2_product_round_scaled_into_device` / `volta_cuda_fp2_product_round_scaled_into_device` / `scale_product_round_message`; scale one is raw-mailbox byte-identical, folds are unscaled, and the real branch alone uses it. Permanent value-mismatch and geometry-not-drained faults are distinct. CPU BackendKind lifecycle and exact message/fold-vector-digest identity pass at the 51/51/102 local multiplicity fixture and `max_mu=20/22/24/26`; the full serialized workspace, 23 report-validator tests and CUDA-feature all-target compilation are green, while real CUDA remains deliberately unexecuted locally. A clean, fail-closed standalone `x4d2_delayed_link_reproducer` is prepared for a future GO; it needs no weights/onboarding/durable tier/connection/settlement. Append-only local record `x4d2-diag-delayed-link-2026-07-27-bc76048.json`, SHA-256 `0bf3ed63b4ec34243a3f42cd1b6fce286c07a5b07f9e09b72bbb2f081f35538a`; diagnostic design SHA-256 `91cc8eb6566122724a75b9f051a75d5245e981b52194c5545b7701ca853b6fe4`. Historical X4d.1 and X4d.2 records/digests/gates remain immutable. |
 | C4 Ligero inline rate reduction | **PAIRED A100 COMPLETE — ANCHOR PASS; RATE-8 EXACT BYTES / PROVER / DEVICE PASS; SESSION 1.050816638x >1.05 AND SYNC 0.155717607 s >0.150 FAIL; OVERALL FAIL; NO RETRY; POD STOPPED** (2026-07-27) | Return to inline T1 weight certification; same-build anchor `rate=1/4,Q=120` versus candidate `rate=1/8,Q=97`; no deferred settlement; frozen gates conjunctive | Clean `e99a1e5` on one A100/13-effective-CPU/eight-Rayon host passed ABI 33 and the full release/CUDA workspace before either producer. Both profiles used the same binary/backend and independent fresh stores, one warmup and three measured repetitions. Anchor PCS/response **43,273,888 / 84,544,352 B**, prove/session **4.104595717 / 5.322725729 s**, all absolute gates PASS. Rate-8 PCS/response **38,296,040 / 79,566,504 B**, exact saving **4,977,848 B**, prove **4.079375688 s / 0.993855661x PASS**, but session **5.593208756 s / 1.050816638x FAIL** and maximum sync **0.155717607 s FAIL**; device peak **30,146,106,356 B PASS**. Pair `c4-ligero-paired-a100-2026-07-27-e99a1e5.json`, SHA-256 `8506de9ccad35bba76f9cd337ef5a4528613fc91894962e597937b63e3ad3e56`, is a coherent **overall FAIL**. No selective retry occurred. SSH-side `runpodctl` stopped pod `mi3dk7ah9jny9b` and an independent connection was refused. The anchor remains the accepted inline profile; all prior records and design pins remain immutable. |
 | C5 Packed16 over Ligero rate-8 | **LOCAL HARD STOP — TYPED-PCG SECURITY/BYTE GATE OBSTRUCTED; NO LEAN/RUST/CUDA IMPLEMENTATION; NO POD / NO VERDICT** (2026-07-28) | Direct authenticated uniform-u16/carry lanes, canonical Packed16 correction wire and exact setup accounting; no deferred settlement or PCS change | The owner-adopted rate-8 base and raw C4 FAIL remain distinct and immutable. Exact Packed16 response remains a conditional **61,292,904-B** projection, but typed setup has only **18,273,600 B / 9.4 bits per five-inventory cell** of headroom. C2's malicious-COT arithmetic lift requires **4,230,144,000 B** at this census; its pinned `0.73-bit/COT` binary core alone is **24,125,040 B** before lift. An exact Goldilocks `p-1` rejection/quotient route from current sVOLE has an optimistic **217,728,000-B** public quotient payload and combined setup **256,099,465 B**, excluding the required malicious range proof, hence fails by at least **199,454,400 B**. Same-characteristic subfield VOLE, dual-domain edaBits, base-only group COT, dealer-keyed PCG/PCF, three-party daBits and bounded-integer VOLE do not instantiate the frozen interface. Local record `c5-typed-pcg-obstruction-2026-07-28-0309320.json`, SHA-256 `9e292301af185093b1cc81d3a1b7bc229fad61e6ded61e294d84af0dd2844e49`; design SHA-256 `30a999044e8f61d6625814b51088871c184e2ae72a9397b5fc2da9e05e9f34fc`; `pod_contacted=false`, `production_pair_started=false`, `gate_verdict=false`. |
-| C6 Δ-residual inline certificate | **LEAN + RUST STATE/CODEC GREEN; RESIDUAL-IR PHASE AUTHORIZED LOCALLY; HARD STOP BEFORE POD** (2026-07-29) | Hide direct `auth_corrections` and Ligero `u_vectors`; one inline native-field wrapper; fixed-capacity committed KV cache; 17 accepts plus retry reserve; no deferred settlement | The retained Q=121 response is exactly **29,176,632 B**.  The complete new-payload budget is **5,823,368 B**, while the tighter `pi_final <=4,500,000 B` now rejects framing-plus-proof byte 4,500,001; the exact projected response remains **33,676,632 B <=35,000,000 B**.  Q=121 gives **79.472744138609166392... bits** after four `2^-128` wrapper allocations, preserving the **78.80929487391641-bit** per-certificate floor.  Terminal-one fits **17 accepted + 4 abort/retry** baseline ranges, leaving **969,186** raw correlations; PCG setup stays **38,371,465 B**.  The Lean build/audit remains **3,255 jobs / 252 total / 16 C6**, zero `sorry`/`admit`.  Rust now has canonical setup/state/certificate codecs, client-issued pending attempts and slot high-water, atomic old-or-new state recovery, checksummed append-only provider slot journals, irreversible range burn, orphan-certificate recovery and byte-identical retransmission.  The C6 suite is **11/11 PASS**.  Pinned fixture lengths/digests are setup **309 B / `88498ac8...fab00`**, genesis state **260 B / `8fa67c46...31f96`**, and small certificate **819 B / `33227677...4e0b`**.  No residual DAG, wrapper proof, Rust end-to-end result, hardware verdict or pod contact yet. |
+| C6 Δ-residual inline certificate | **LEAN PRODUCT-CLOSURE + RUST STATE/CODEC GREEN; RESIDUAL-IR PHASE AUTHORIZED LOCALLY; HARD STOP BEFORE POD** (2026-07-29) | Hide direct `auth_corrections` and Ligero `u_vectors`; one inline native-field wrapper; fixed-capacity committed KV cache; 17 accepts plus retry reserve; no deferred settlement | The retained Q=121 response is exactly **29,176,632 B**.  The complete new-payload budget is **5,823,368 B**, while the tighter `pi_final <=4,500,000 B` now rejects framing-plus-proof byte 4,500,001; the exact projected response remains **33,676,632 B <=35,000,000 B**.  Q=121 gives **79.472744138609166392... bits** after four `2^-128` wrapper allocations, preserving the **78.80929487391641-bit** per-certificate floor.  Terminal-one fits **17 accepted + 4 abort/retry** baseline ranges, leaving **969,186** raw correlations; PCG setup stays **38,371,465 B**.  The corrected Lean build/audit is **3,256 jobs / 264 total / 28 C6**, zero `sorry`/`admit`: it exposes `Delta^2*Q`, proves independent-vector base-share binding and discharges the nonlinear verifier node only through `ProductClosure`.  Rust now has canonical setup/state/certificate codecs, client-issued pending attempts and slot high-water, atomic old-or-new state recovery, checksummed append-only provider slot journals, irreversible range burn, orphan-certificate recovery and byte-identical retransmission.  The C6 suite is **11/11 PASS**.  Pinned fixture lengths/digests are setup **309 B / `88498ac8...fab00`**, genesis state **260 B / `8fa67c46...31f96`**, and small certificate **819 B / `33227677...4e0b`**.  No residual DAG, wrapper proof, Rust end-to-end result, hardware verdict or pod contact yet. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -441,6 +441,63 @@ historical entries remain append-only evidence, not competing definitions.
 
 ## Deviations / decisions log
 
+- **2026-07-29 — C6 residual-IR preflight corrects the false
+  “all verifier key operations are linear” sentence; affine final residual
+  retained via an explicit QuickSilver product-closure seam.**  Read-only
+  source census found the unique nonlinear production key operation in
+  `prod_batch_verify`: `k_a*k_b - Delta*k_c`.  For hidden direct
+  corrections, blindly reverse-accumulating that expression as a linear DAG
+  would omit its quadratic term and is unsound.  No residual-IR/backend Rust
+  was written before recording this obstruction.
+
+  C6 does **not** switch to a quadratic final certificate and does not expose
+  `Delta`.  The wrapper instead binds every provider-side base-correlation
+  share `(r,m)` to the client's verifier-only base key with one fresh affine
+  RLC, proves `x=r+d` against the committed hidden correction `d`, and proves
+  the existing QuickSilver batch conditions on the derived authenticated
+  plaintext/tag expressions: `x_c=x_a*x_b` under the already-existing
+  post-commit `chi`, plus exact formation of the retained `(m0,m1)` messages.
+  M7 completeness then makes the old key-side product equation an affine
+  consequence for every `Delta`; a false product remains covered by the
+  existing M8 event/challenge rather than a new C6 event.  All other
+  production key operations are public add/sub/scale.
+
+  The base-share check uses an independent-vector RLC sampled after all
+  witness commitments from the existing interactive verifier challenge
+  stream.  A scalar-power schedule with an uncharged list-length loss is
+  forbidden.  For the fixed accepted connection key, a nonzero vector of
+  share/key mismatches collapses with probability at most `1/|Fp2|`; this is
+  the already allocated grand `epsilon_Delta_residual`, not a fifth wrapper
+  event.  Product-mask correlations are included in the same canonical leaf
+  census.
+
+  This repair adds no certificate field, response opening, correlation,
+  setup byte, query, or statistical event.  The exact Q=121,
+  **29,176,632 / 4,500,000 / 33,676,632-B** communication numbers and
+  **79.472744138609166392... / 78.80929487391641-bit** budget/floor remain
+  unchanged.  It does add a mandatory wrapper relation and therefore may
+  affect prover time; the existing **20.000-s** gate is not relaxed.  The
+  ordered implementation returns to Lean-first for base-share binding,
+  corrected-key validity, product-polynomial expansion and product-closure
+  composition before the typed Rust DAG may land.
+
+  That formal return is now green.  `C6ProductClosure.lean` proves corrected
+  source validity, the exact base-share RLC identity and its
+  `|Fp2|^(T-1)` accepting-vector bound, the full
+  `M0 + Delta*M1 + Delta^2*Q` expansion, affine closure from `Q=0`, the
+  inherited scalar-`chi` collapse bound and composition with an uncorrected
+  product-mask correlation.  Full `lake build` completes **3,256 jobs** and
+  the derived audit is green for **264 total / 28 C6** targets, with zero
+  `sorry`/`admit`, no `Ideal` dependency and only the standard permitted
+  axioms.  Source SHA-256 is
+  `773afca43c3c899a49ae35d9e85ccfd62eb8f1b3e8bd361a71ae8dcc7183356b`;
+  the corrected residual source and design SHA-256 values are respectively
+  `0d616ad6165d76c28d65dd164d348868b23fd39a74a2f5c2744c2a299e138866`
+  and
+  `85b76763f157a7357511f413aaa666ebf9ba2519b97a003b5efafee9bd88fe54`.
+  This clears only the typed residual-IR phase; a key multiplication outside
+  `ProductClosure` remains a mandatory construction-time rejection.
+
 - **2026-07-29 — C6 owner requirements frozen; Δ-residual inline path
   authorized locally; Q=121 contingency activated before code.**  C6 is a
   new descendant of the accepted C4/T1 rate-1/4 inline anchor.  C4's rate-8
@@ -490,22 +547,26 @@ historical entries remain append-only evidence, not competing definitions.
   owner GO.
 
   The ordered Lean-first seam is now green.  `C6DeltaResidual.lean` proves
-  the exact base-key-plus-`Delta`-dot-product decomposition, completeness, a
-  one-key forgery bound for a nonzero accumulated plaintext and the ordinary
-  17-event connection union without weakening any individual premise.
-  `C6PersistentCache.lean` keeps commitment binding explicit as
+  the exact base-key-plus-`Delta`-dot-product decomposition for the linear
+  subgraph, completeness, a one-key forgery bound for a nonzero accumulated
+  plaintext and the ordinary 17-event connection union without weakening
+  any individual premise.  `C6ProductClosure.lean` separately prevents the
+  production QuickSilver key multiplication from being mislabeled linear,
+  and `C6PersistentCache.lean` keeps commitment binding explicit as
   `Function.Injective` and proves old-cache uniqueness, append/length
   monotonicity, durable anti-replay, unique retransmission digest,
   slot-local abort stability and atomic old-or-new recovery.  Full
-  `lake build` completes **3,255 jobs**.  The derived assumption audit is
-  green for **252 total / 16 C6** targets with zero `sorry`/`admit`, no new
+  `lake build` completes **3,256 jobs**.  The derived assumption audit is
+  green for **264 total / 28 C6** targets with zero `sorry`/`admit`, no new
   `Ideal` dependency and only `propext`, `Classical.choice` and `Quot.sound`
   where required.  Source SHA-256 values are
-  `6901922327657165a66047ca8001c53ab204dbb1ecfd47af573194726244d53a`
+  `0d616ad6165d76c28d65dd164d348868b23fd39a74a2f5c2744c2a299e138866`
   (residual) and
+  `773afca43c3c899a49ae35d9e85ccfd62eb8f1b3e8bd361a71ae8dcc7183356b`
+  (product closure) and
   `1ed0e871d3c4f410215614e3b1482d8ef41497eb29225ed1e9070380ecfd2601`
   (cache); the design SHA-256 is
-  `08c387296c7b76fa74fa7eaf1b9b493ee33d6dc01874b7f70164d32ab26d1942`.
+  `85b76763f157a7357511f413aaa666ebf9ba2519b97a003b5efafee9bd88fe54`.
   This clears the local Rust state/codec phase only.
 
   The Rust state/codec boundary is now green.  Canonical V1 encodings reject

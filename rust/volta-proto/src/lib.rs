@@ -5,6 +5,7 @@
 
 pub mod block_proof;
 pub(crate) mod boundary_thinning;
+pub mod c6;
 pub(crate) mod ffn_schedule;
 pub mod gemm_proof;
 pub mod hadamard;
@@ -29,6 +30,15 @@ pub use block_proof::{
     prove_layer_phase1_with_wires, prove_layer_phase2, verify_layer_phase1, verify_layer_phase2,
     AttnBlockProof, AttnWires, BlockCtxP, BlockCtxV, FfnBlockProof, InstanceLookups, LayerBytes,
     LayerOut, LayerOutV, LayerProof, LnChainProof, TableBankP, TableBankV, TableCloseProof,
+};
+pub use c6::{
+    C6CacheHead, C6ClientAttempt, C6ClientState, C6ClientStore, C6CorrelationRange,
+    C6DeltaResidual, C6Digest, C6Error, C6FinalCertificate, C6SetupManifest, C6SlotHandle,
+    C6SlotReservation, C6SlotStatus, C6SlotStore, C6Workload, C6WrapperCommitments,
+    C6_ABORT_RETRY_CREDITS, C6_ACCEPTANCE_CREDITS, C6_BASELINE_RAW_CORRELATIONS,
+    C6_CERTIFICATE_VERSION, C6_FASE_D_SETUP_BYTES, C6_FINAL_PROOF_CAP_BYTES, C6_LIGERO_QUERIES,
+    C6_MAX_CONTEXT, C6_NEW_PAYLOAD_BUDGET_BYTES, C6_PI_FINAL_CAP_BYTES, C6_RESPONSE_CAP_BYTES,
+    C6_RETAINED_Q121_BASELINE_BYTES, C6_SETUP_CAP_BYTES, C6_TERMINAL_ONE_RAW_CAPACITY,
 };
 pub use gemm_proof::{
     auth_phase, prove_gemm_blind, prove_gemm_blind_committed, verify_gemm_blind,

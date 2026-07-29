@@ -258,6 +258,24 @@ vector-RLC bounds from being mistaken for implementation bounds.
 #print axioms VoltaZk.x4d_batched_mask_fiber_lower_bound
 #print axioms VoltaZk.x4d_gpt2_mask_budget
 #print axioms VoltaZk.x4d_verified_settlement_has_exact_frozen_union
+
+-- C6 inline Δ-residual and predecessor-conditional persistent cache.
+#print axioms VoltaZk.correctedKey
+#print axioms VoltaZk.c6_delta_residual_decompose
+#print axioms VoltaZk.c6_delta_residual_keyOf
+#print axioms VoltaZk.c6_delta_residual_complete
+#print axioms VoltaZk.c6_delta_residual_sound
+#print axioms VoltaZk.c6_seventeen_certificate_union_bound
+#print axioms VoltaZk.C6Certificate.accepted_certificate_not_replayable
+#print axioms VoltaZk.C6CacheTransition.old_cache_unique
+#print axioms VoltaZk.C6CacheTransition.append_only
+#print axioms VoltaZk.C6CacheTransition.cache_length_monotone
+#print axioms VoltaZk.C6Slot.retransmission_digest_unique
+#print axioms VoltaZk.C6Slot.burn_preserves_range
+#print axioms VoltaZk.C6Slot.burn_preserves_attempt_identity
+#print axioms VoltaZk.c6_abort_preserves_accepted_state
+#print axioms VoltaZk.c6_atomic_state_is_old_or_new
+#print axioms VoltaZk.c6_false_transition_event_cover
 #print axioms VoltaZk.x4d_accepted_settlement_implies_each_m9_or_bad
 #print axioms VoltaZk.x4d_settlement_error_is_v4
 #print axioms VoltaZk.x4d_settlement_error_expanded

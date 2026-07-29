@@ -1,10 +1,18 @@
-# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT)
+# Prototype Status Ledger (T1 CLOSED; X1 PASS; X2 FAIL immutable; X2b PASS; X3 PASS; X1--X3 CLOSED; R1/R1B DISPOSITIONS CLOSED; X4 OVERALL FAIL IMMUTABLE; X4b OFFICIAL FAIL — COMMIT/OPEN; X4c PHASE 1 COMPLETE — DROP DOMINANCE REFUTED LOCALLY; X4c PHASE 2 / V1 A100 ONLINE PASS; REAL-WEIGHT GPT-2 ACCELERATED REBUILD ADMITTED; X4d PHASE 3 A100 V1 PASS; X4d.1 PAIRED A100 OFFICIAL FAIL — FLATNESS; HISTORICAL k=1 G1 SYNC WAIVED ONCE; PHYSICAL COUNTERS PASS; X4d.2 PHASE 2 FAIL-CLOSED BEFORE RECORD — CUDA DELAYED-LINK TERMINAL MISMATCH; NO GATE VERDICT; CONTROL-PLANE STOP COMPLETE; C4 PAIRED A100 COMPLETE — RAW OVERALL FAIL IMMUTABLE; C5 LOCAL TYPED-PCG OBSTRUCTION — NO IMPLEMENTATION / POD / VERDICT; C6 Δ-RESIDUAL INLINE — OWNER REQUIREMENTS FROZEN / Q=121 / LOCAL IMPLEMENTATION AUTHORIZED / NO POD)
 
 The implementation-phase analogue of the formalization table in
 `protocol-sketch.md`. One row per milestone; key numbers land here, raw runs
 land in `benchmarks/results/*.json`. This ledger plus the current
 task-specific design named by its latest entry are the repo-local plan of
 record; no external plan is authoritative.
+
+Current phase: **C6 Δ-residual inline certificate and persistent cache**.
+The owner requirements, pre-code Q ruling, state semantics and ordered gates
+are frozen in `docs/c6-delta-residual-inline-design.md`.  Q=121 is activated
+before implementation because the Q=120 Ligero term is exactly the registered
+floor and the new wrapper necessarily contributes a nonzero failure event.
+C6 is local-only until a separate owner GO; no provider/pod contact is
+authorized.
 
 Workload of record: **GPT-2 small (124M, L=12, d=768, h=12, d_ff=3072),
 prefill T=100 + 50 deferred decode tokens, causal, C3b PCS Q=120**, on the
@@ -364,6 +372,7 @@ its clean descendant closure.
 | X4d.2 delayed-link diagnosis and repair | **LOCAL ROOT CAUSE CONFIRMED; BYTE IDENTITY GREEN; HARD STOP / NO POD / NO REPLACEMENT PAIR OR GATE VERDICT** (2026-07-27) | Evaluation-only repair: backend-generic sequential resident orchestrator plus one exactly-once scaled product-round message; protocol/transcript/challenge/codec/correlations/terminal semantics unchanged | The extracted `e4e2b14` arithmetic reproduced the obstruction with the initial claim, ledgers, challenges and folds still green: first divergence **term 0 / round 1 / dimension 8 / active_len 256**, captured output SHA-256 `2ac466d9bcfc61fc5ef0a83c59d5bc8b0c2f32434ed17e37de1b7ac5cc925c1f`; all **51/51** production-relative terms are affected at their first real round. Root cause is the missing `virtual_factor` on `fp2_product_round_into_device`. ABI 33 adds `fp2_product_round_scaled_into_device` / `volta_cuda_fp2_product_round_scaled_into_device` / `scale_product_round_message`; scale one is raw-mailbox byte-identical, folds are unscaled, and the real branch alone uses it. Permanent value-mismatch and geometry-not-drained faults are distinct. CPU BackendKind lifecycle and exact message/fold-vector-digest identity pass at the 51/51/102 local multiplicity fixture and `max_mu=20/22/24/26`; the full serialized workspace, 23 report-validator tests and CUDA-feature all-target compilation are green, while real CUDA remains deliberately unexecuted locally. A clean, fail-closed standalone `x4d2_delayed_link_reproducer` is prepared for a future GO; it needs no weights/onboarding/durable tier/connection/settlement. Append-only local record `x4d2-diag-delayed-link-2026-07-27-bc76048.json`, SHA-256 `0bf3ed63b4ec34243a3f42cd1b6fce286c07a5b07f9e09b72bbb2f081f35538a`; diagnostic design SHA-256 `91cc8eb6566122724a75b9f051a75d5245e981b52194c5545b7701ca853b6fe4`. Historical X4d.1 and X4d.2 records/digests/gates remain immutable. |
 | C4 Ligero inline rate reduction | **PAIRED A100 COMPLETE — ANCHOR PASS; RATE-8 EXACT BYTES / PROVER / DEVICE PASS; SESSION 1.050816638x >1.05 AND SYNC 0.155717607 s >0.150 FAIL; OVERALL FAIL; NO RETRY; POD STOPPED** (2026-07-27) | Return to inline T1 weight certification; same-build anchor `rate=1/4,Q=120` versus candidate `rate=1/8,Q=97`; no deferred settlement; frozen gates conjunctive | Clean `e99a1e5` on one A100/13-effective-CPU/eight-Rayon host passed ABI 33 and the full release/CUDA workspace before either producer. Both profiles used the same binary/backend and independent fresh stores, one warmup and three measured repetitions. Anchor PCS/response **43,273,888 / 84,544,352 B**, prove/session **4.104595717 / 5.322725729 s**, all absolute gates PASS. Rate-8 PCS/response **38,296,040 / 79,566,504 B**, exact saving **4,977,848 B**, prove **4.079375688 s / 0.993855661x PASS**, but session **5.593208756 s / 1.050816638x FAIL** and maximum sync **0.155717607 s FAIL**; device peak **30,146,106,356 B PASS**. Pair `c4-ligero-paired-a100-2026-07-27-e99a1e5.json`, SHA-256 `8506de9ccad35bba76f9cd337ef5a4528613fc91894962e597937b63e3ad3e56`, is a coherent **overall FAIL**. No selective retry occurred. SSH-side `runpodctl` stopped pod `mi3dk7ah9jny9b` and an independent connection was refused. The anchor remains the accepted inline profile; all prior records and design pins remain immutable. |
 | C5 Packed16 over Ligero rate-8 | **LOCAL HARD STOP — TYPED-PCG SECURITY/BYTE GATE OBSTRUCTED; NO LEAN/RUST/CUDA IMPLEMENTATION; NO POD / NO VERDICT** (2026-07-28) | Direct authenticated uniform-u16/carry lanes, canonical Packed16 correction wire and exact setup accounting; no deferred settlement or PCS change | The owner-adopted rate-8 base and raw C4 FAIL remain distinct and immutable. Exact Packed16 response remains a conditional **61,292,904-B** projection, but typed setup has only **18,273,600 B / 9.4 bits per five-inventory cell** of headroom. C2's malicious-COT arithmetic lift requires **4,230,144,000 B** at this census; its pinned `0.73-bit/COT` binary core alone is **24,125,040 B** before lift. An exact Goldilocks `p-1` rejection/quotient route from current sVOLE has an optimistic **217,728,000-B** public quotient payload and combined setup **256,099,465 B**, excluding the required malicious range proof, hence fails by at least **199,454,400 B**. Same-characteristic subfield VOLE, dual-domain edaBits, base-only group COT, dealer-keyed PCG/PCF, three-party daBits and bounded-integer VOLE do not instantiate the frozen interface. Local record `c5-typed-pcg-obstruction-2026-07-28-0309320.json`, SHA-256 `9e292301af185093b1cc81d3a1b7bc229fad61e6ded61e294d84af0dd2844e49`; design SHA-256 `30a999044e8f61d6625814b51088871c184e2ae72a9397b5fc2da9e05e9f34fc`; `pod_contacted=false`, `production_pair_started=false`, `gate_verdict=false`. |
+| C6 Δ-residual inline certificate | **LEAN + RUST STATE/CODEC GREEN; RESIDUAL-IR PHASE AUTHORIZED LOCALLY; HARD STOP BEFORE POD** (2026-07-29) | Hide direct `auth_corrections` and Ligero `u_vectors`; one inline native-field wrapper; fixed-capacity committed KV cache; 17 accepts plus retry reserve; no deferred settlement | The retained Q=121 response is exactly **29,176,632 B**.  The complete new-payload budget is **5,823,368 B**, while the tighter `pi_final <=4,500,000 B` now rejects framing-plus-proof byte 4,500,001; the exact projected response remains **33,676,632 B <=35,000,000 B**.  Q=121 gives **79.472744138609166392... bits** after four `2^-128` wrapper allocations, preserving the **78.80929487391641-bit** per-certificate floor.  Terminal-one fits **17 accepted + 4 abort/retry** baseline ranges, leaving **969,186** raw correlations; PCG setup stays **38,371,465 B**.  The Lean build/audit remains **3,255 jobs / 252 total / 16 C6**, zero `sorry`/`admit`.  Rust now has canonical setup/state/certificate codecs, client-issued pending attempts and slot high-water, atomic old-or-new state recovery, checksummed append-only provider slot journals, irreversible range burn, orphan-certificate recovery and byte-identical retransmission.  The C6 suite is **11/11 PASS**.  Pinned fixture lengths/digests are setup **309 B / `88498ac8...fab00`**, genesis state **260 B / `8fa67c46...31f96`**, and small certificate **819 B / `33227677...4e0b`**.  No residual DAG, wrapper proof, Rust end-to-end result, hardware verdict or pod contact yet. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -431,6 +440,115 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-29 — C6 owner requirements frozen; Δ-residual inline path
+  authorized locally; Q=121 contingency activated before code.**  C6 is a
+  new descendant of the accepted C4/T1 rate-1/4 inline anchor.  C4's rate-8
+  FAIL, C5's typed-PCG obstruction and every X4/X4d record remain immutable.
+  The current plan of record is
+  `docs/c6-delta-residual-inline-design.md`.
+
+  The owner permits at most **150,000,000 B** in the first exchange and
+  requires at least **17 accepted baseline certificates** with
+  certificate/cache wire independent of accepted ordinal and cache length.
+  The client remains designated; each certificate is sound conditional on
+  its accepted predecessor at the exact registered
+  **78.80929487391641-bit** floor.  Across 17 certificates the registered
+  conditional union is reported separately as
+  **74.72183203266607 bits**; the rounded `2^-79` convention gives about
+  **74.9125 bits**.
+
+  Hiding `38,348,720 B` of direct `auth_corrections` and `17,235,968 B` of
+  `u_vectors` leaves **28,959,664 B** at Q=120.  Because the old Ligero term
+  is exactly the registered floor and C6 adds a nonzero wrapper event, the
+  preregistered Q=121 contingency is activated now, not after a benchmark.
+  Its one additional query costs exactly **216,968 B** and raises Ligero to
+  **79.47274413860918 bits**.  Therefore retained response,
+  new-payload budget, selected final-proof cap and projected complete
+  response are respectively **29,176,632 / 5,823,368 / 4,500,000 /
+  33,676,632 B**.
+
+  The exact production allocation is **5,235,692 raw correlations** per
+  baseline attempt.  Terminal-one stage 3 fits 21 such ranges:
+  **109,949,532 <=110,918,718**, leaving **969,186**.  C6 assigns 17 to
+  accepted baseline responses and four to abort/retry reserve.  Variable
+  legal workloads reserve and burn their exact preflight count and can
+  exhaust the connection earlier.  The real/AES PCG first exchange stays
+  **38,371,465 B**; all client-received verifier parameters and framing count
+  toward the 150-MB setup cap.
+
+  Abort leaves the accepted cache head unchanged and burns the complete
+  slot/range; retry uses a new nonce and range.  Once a certificate is
+  produced, ambiguous ACK permits only byte-identical retransmission, never
+  a second child from the same `(old_head,nonce,slot)`.  V1 protects one
+  durable authenticated client state against provider replay, rollback and
+  fork; malicious restoration of an old client-disk snapshot and concurrent
+  multi-device writers remain outside scope.  The wrapper is transparent and
+  inline; there is no V1 SRS, model-global settlement, per-token proof
+  instance or second response PCS opening.  Local design/Lean/Rust/tests are
+  authorized in the frozen order.  Provider/pod contact requires a separate
+  owner GO.
+
+  The ordered Lean-first seam is now green.  `C6DeltaResidual.lean` proves
+  the exact base-key-plus-`Delta`-dot-product decomposition, completeness, a
+  one-key forgery bound for a nonzero accumulated plaintext and the ordinary
+  17-event connection union without weakening any individual premise.
+  `C6PersistentCache.lean` keeps commitment binding explicit as
+  `Function.Injective` and proves old-cache uniqueness, append/length
+  monotonicity, durable anti-replay, unique retransmission digest,
+  slot-local abort stability and atomic old-or-new recovery.  Full
+  `lake build` completes **3,255 jobs**.  The derived assumption audit is
+  green for **252 total / 16 C6** targets with zero `sorry`/`admit`, no new
+  `Ideal` dependency and only `propext`, `Classical.choice` and `Quot.sound`
+  where required.  Source SHA-256 values are
+  `6901922327657165a66047ca8001c53ab204dbb1ecfd47af573194726244d53a`
+  (residual) and
+  `1ed0e871d3c4f410215614e3b1482d8ef41497eb29225ed1e9070380ecfd2601`
+  (cache); the design SHA-256 is
+  `08c387296c7b76fa74fa7eaf1b9b493ee33d6dc01874b7f70164d32ab26d1942`.
+  This clears the local Rust state/codec phase only.
+
+  The Rust state/codec boundary is now green.  Canonical V1 encodings reject
+  trailing bytes, noncanonical Goldilocks elements, payload/digest mismatch,
+  unknown flags and every cap violation.  The setup manifest counts all
+  received framing and pins its client-parameter payload separately from the
+  full provider-parameter digest.  Pinned small-fixture
+  `(length,digest)` pairs are setup
+  `(309 B,88498ac806b84f1b5d1318be893b11031ee63b8c3ad407ad88e91627ba6fab00)`,
+  genesis client state
+  `(260 B,8fa67c46913b1fb6cf36ccb4177a9661a51975b12e6f1cc523f978f139931f96)`
+  and certificate
+  `(819 B,3322767771ce04bff2f09458974d908e79bcb59ba67418643450af53fdc24e0b)`.
+
+  Acceptance is no longer driven by provider-supplied certificate fields
+  alone: the client first atomically records one pending
+  `(slot,nonce,old_head,predecessor,range,workload)` attempt.  Its monotone
+  slot high-water advances on reservation, including aborts, while abort
+  clears only the pending attempt and leaves the accepted head/digest
+  unchanged.  Nonces are derived from client entropy plus connection, slot
+  and head, so reusing the entropy on a retry still produces a new nonce.
+  Produced-certificate retransmission is recognized idempotently against the
+  already accepted digest.
+
+  Provider journals have a checksummed fixed header and hash-chained legal
+  transitions.  The durable `InFlight` marker precedes correlation reads;
+  reopening an empty in-flight attempt burns it, while a certificate synced
+  before a crash is promoted only if its canonical bytes match the exact
+  reservation.  Burned ranges overlap-check forever, a non-burned
+  predecessor forbids a second child, and `Produced`/`Accepted` permits only
+  byte-identical retransmission.  Atomic client tests cover torn temp create,
+  temp write, synced temp and post-rename recovery.  The permanent C6 suite
+  is **11/11 PASS**.
+
+  The implementation also closes an accounting ambiguity: the
+  **4,500,000-B `pi_final` cap includes certificate framing and public C6
+  claims**, not just `wrapper_proof`.  A proof blob therefore receives only
+  the remaining bytes after fixed framing.  The exact equality
+  `29,176,632 + 4,500,000 = 33,676,632 B` is tested and byte 4,500,001
+  rejects.  The looser 5,823,368-B response headroom remains informative but
+  cannot override this tighter cap.  This checkpoint clears the local
+  residual-IR phase only; no wrapper/backend/E2E or hardware result is
+  claimed, and no provider was contacted.
 
 - **2026-07-28 — C5 owner ruling adopts rate-8 as a new product baseline;
   raw C4 FAIL remains immutable; Packed16 local Phase 1 starts with a

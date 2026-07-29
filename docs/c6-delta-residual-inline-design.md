@@ -327,7 +327,8 @@ bridge and no client SRS.
 - Cache membership/update uses a fixed-capacity algebraic Merkle statement
   over the same field.  Paths and cache values are private proof witness.
 - The proof envelope contains one packed wrapper opening per response, even
-  when the backend internally has different-size oracle chains.
+  when the backend internally has different-size oracle chains and the two
+  independent PCS fold/query repetitions required by Section 11.
 - Transparent preprocessing tables may be installed model-globally on the
   provider.  Their canonical digest/version is in every certificate.
 
@@ -487,20 +488,48 @@ C6 reserves 21 baseline slots:
 - 17 acceptance credits;
 - 4 abort/retry credits.
 
-The PCG first exchange stays exactly `38,371,465 B`.  No chain-six expansion
-or seventh fase-D stage is needed.  Actual allocation is by raw count, not
-by a nominal slot multiplier.  A legal variable workload declares and
-durably reserves its exact preflight count; insufficient remaining credit
-rejects before proof work and does not partially allocate a range.
+The ordinary T1 tape keeps its exact `38,371,465-B` first exchange.  C6 adds
+one independently generated residual-only tape with the same conservative
+first-exchange budget and capacity.  This is required because repeating an
+RLC with the same connection secret does not amplify the case in which every
+forged affine relation has that secret as a common root.  The two independent
+MAC coordinates are:
+
+```text
+Delta_res[0] = ordinary T1 connection Delta
+Delta_res[1] = independent C6 residual-only connection secret.
+```
+
+For each direct source, coordinate `b` has its own provider share
+`(r_i[b],m_i[b])`, verifier base key and hidden correction
+`d_i[b] = x_i-r_i[b]`.  The wrapper proves that both coordinates authenticate
+the same typed plaintext DAG.  Product masks, base-share challenges and grand
+residual checks are independent per coordinate.  The second tape is never
+used to change the retained T1 verifier and adds no clear correction or tag
+vector to the response.
+
+Each attempt reserves equal raw ranges from both tapes atomically.  Abort
+burns both ranges; neither coordinate can be partially reused.  Actual
+allocation is by raw count, not by a nominal slot multiplier.  A legal
+variable workload declares and durably reserves its exact preflight count in
+both tapes; insufficient remaining credit in either tape rejects before proof
+work and does not partially allocate a range.
 
 The total C6 setup ledger is
 
 ```text
-fase-D real/AES PCG                         38,371,465 B
+ordinary fase-D real/AES PCG               38,371,465 B
+C6 residual-only real/AES PCG              38,371,465 B
+paired-PCG subtotal                         76,742,930 B
 + all client-received C6 verifier params
 + canonical setup framing
 <=                                         150,000,000 B.
 ```
+
+Thus at most `73,257,070 B` remain for all client-received C6 parameters and
+setup framing.  A future implementation may measure a smaller paired setup,
+but the preregistered capacity proof and hard gate use the conservative full
+duplication above.
 
 Provider-only model-global tables do not count as client traffic, but their
 digest/version/max geometry is certificate-bound.  Any byte received by the
@@ -522,15 +551,38 @@ Pr[client accepts a false transition i | predecessor i-1 valid]
     <= 2^-78.80929487391641.
 ```
 
-Every statistical wrapper profile MUST be at least 128 bits before union;
-the implementation reports every term and counter explicitly.  Merkle/hash
-collision resistance and PCG assumptions remain separately named
-computational assumptions rather than being silently converted into a
-statistical bit count.  The existing M3/M7/M8/M2 MAC-closure inventory is
-unchanged and remains tracked under the inherited T1 convention rather than
-being duplicated as a fifth C6 wrapper allocation.  The four new allocations
-remain linear-functional sumchecks, wrapper PCS, cache argument and the grand
-Δ-residual.
+Every statistical wrapper profile MUST be at least 128 bits before union.
+Because
+
+```text
+|Fp2| = 340282366762482138490186164457219031041 < 2^128,
+```
+
+one field challenge is not literally a 128-bit event.  All four named C6
+events therefore require two independent complete repetitions:
+
+1. hidden-linear-functional RLC plus both family sumchecks;
+2. wrapper PCS fold/query chain;
+3. cache-argument batching plus its sumcheck;
+4. the grand Δ-residual MAC coordinate, including its base-share binding.
+
+For events 1--3 the two independent challenge tapes are derived under
+distinct certificate-bound domains after all relevant commitments.  For
+event 4 they additionally use the two independent connection secrets and
+correlation tapes defined in Section 10; two RLCs under one `Delta` are
+explicitly insufficient.  The two PCS chains remain inside **one** canonical
+packed opening/envelope, so this amplification does not authorize a second
+response opening or a fifth event.  The exact bytes, rounds, query counts and
+per-event rational bounds land in the pre-backend roofline.
+
+The implementation reports every term and counter explicitly.  Merkle/hash
+collision resistance, transcript expansion and PCG assumptions remain
+separately named computational assumptions rather than being silently
+converted into a statistical bit count.  The existing M3/M7/M8/M2
+MAC-closure inventory is unchanged and remains tracked under the inherited
+T1 convention rather than being duplicated as a fifth C6 wrapper allocation.
+The four new allocations remain linear-functional sumchecks, wrapper PCS,
+cache argument and the amplified grand Δ-residual.
 
 The 17-certificate session union is informational and does not repartition
 the per-certificate floor:
@@ -556,7 +608,11 @@ All gates are conjunctive.
    QuickSilver product-polynomial expansion and `ProductClosure`
    composition, predecessor-conditional cache refinement, idempotent
    retransmission, unique child, abort-head stability and
-   per-certificate/session composition.
+   per-certificate/session composition.  Before backend code, the additive
+   `C6Amplification.lean` module must also prove the exact `Fp2` cardinal is
+   below `2^128`, the generic two-independent-repetition cardinality square,
+   the two-secret Δ-residual accepting-pair bound and the concrete
+   Goldilocks inequalities used by the hidden-linear and Δ event budgets.
 4. Full `lake build`; zero `sorry`/`admit`; no new axiom beyond the standard
    mathlib set.  Commitment binding stays an explicit premise.
 
@@ -586,7 +642,8 @@ All gates are conjunctive.
 1. Commit before query and prove all old Ligero NTT/ip equations.
 2. Prove `x=r+d`, the base-share RLC, every QuickSilver `Q/M0/M1`
    `ProductClosure`, the hidden correction dot product and the grand
-   Δ-residual statement.
+   Δ-residual statement in both independent MAC coordinates, with a
+   cross-coordinate equality to the same typed plaintext DAG.
 3. Prove fixed-capacity cache read/update and the authenticated new-slab
    link.
 4. Exactly one packed wrapper opening per response; no per-token instance.
@@ -630,12 +687,15 @@ C6 stops locally and records the obstruction if any of these occurs:
 - the exact response lower bound exceeds `35,000,000 B`;
 - the exact wrapper payload exceeds `4,500,000 B`;
 - the setup/capacity formula cannot retain 17 accepts plus four burned
-  baseline attempts below `150,000,000 B`;
+  baseline attempts in **both** residual tapes below `150,000,000 B`;
 - any cache proof field or opening count grows with current cache length;
 - the construction needs a second response PCS opening or per-token proof
   instance;
 - weights and embedding are collapsed under separate hidden-`u` RLC events,
   or the linear-functional block uses only one unamplified `Fp2` repetition;
+- any of the four named C6 statistical events uses only one unamplified
+  `Fp2` repetition, the PCS repetitions become two response openings, or
+  the Δ-residual repetitions reuse one connection secret/tape;
 - the residual coefficient schedule cannot be generated independently by
   the client without receiving the hidden correction vector;
 - a key multiplication reaches the linear residual accumulator without an

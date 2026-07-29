@@ -285,6 +285,16 @@ vector-RLC bounds from being mistaken for implementation bounds.
 #print axioms VoltaZk.C6Slot.retransmission_digest_unique
 #print axioms VoltaZk.C6Slot.burn_preserves_range
 #print axioms VoltaZk.C6Slot.burn_preserves_attempt_identity
+#print axioms VoltaZk.c6_independent_pair_accepting_card
+#print axioms VoltaZk.c6_independent_pair_accepting_card_le
+#print axioms VoltaZk.c6_same_secret_repetition_no_amplification
+#print axioms VoltaZk.c6_delta_residual_accepting_secrets_card_le_one
+#print axioms VoltaZk.c6_delta_residual_two_secret_sound
+#print axioms VoltaZk.c6_base_share_binding_two_vector_sound
+#print axioms VoltaZk.goldilocks_fp2_card_lt_two_pow_128
+#print axioms VoltaZk.two_pow_255_lt_goldilocks_fp2_pair_card
+#print axioms VoltaZk.c6_hidden_linear_error_better_than_243
+#print axioms VoltaZk.c6_delta_event_error_better_than_253
 #print axioms VoltaZk.c6_abort_preserves_accepted_state
 #print axioms VoltaZk.c6_atomic_state_is_old_or_new
 #print axioms VoltaZk.c6_false_transition_event_cover

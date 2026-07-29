@@ -343,6 +343,124 @@ oracles whose logical input is the hidden correction/vector/cache-verifier
 witness.  There is no model-global multi-minute settlement and no later
 certificate can change the acceptance status of an earlier response.
 
+### 5.1 Pre-backend wrapper roofline
+
+Before backend code, C6 freezes the following capacity profile:
+
+```text
+profile                     mu/ell   slots/touched   encoded domain
+cache witness                  24          8/8             2^28
+paired Δ-residual witness      23          8/8             2^27
+hidden-u weights               21          8/8             2^25
+hidden-u embedding             19          8/8             2^23
+wrapper auxiliaries        ell=16        32/32             2^19
+```
+
+The first four cohorts use the audited strict-rate weight-oracle geometry
+`n_W=2^(mu+4)`; the auxiliary cohort uses `n_g=2^(ell+3)`.  The maximum
+`mu=24` gives
+
+```text
+ell = ceil(log2(86 * 24^2 + 1)) = 16.
+```
+
+All 64 slots are present and touched, including zero/dummy capacity slots.
+This keeps the opening grammar independent of the realized cache length,
+response ordinal and final circuit census, and makes every inner-slot
+frontier empty.  It is capacity, not evidence that the circuit fits.  The
+production census must fit the exact per-cohort slots above; otherwise C6
+hard-stops before backend benchmarking.
+
+The wrapper PCS uses rate `1/8`, two independent fold/query chains and
+`s=86` queries per chain.  Under the conservative 64-active-polynomial,
+`2^28` weight-oracle and `2^19` auxiliary maxima, one repetition has
+
+```text
+epsilon_PCS,one =
+    64 * (9/16)^86
+  + 64 * ((2^28-1) + (2^19-1)) / |Fp2|.
+```
+
+The complete PCS event is its square.  The exact minimum satisfying the
+literal 128-bit event gate is `s=85`; C6 selects `s=86` before backend code
+and measurements, giving **130.7728997448832 bits**.  `s` may not be reduced
+after seeing a benchmark.
+
+Wire accounting maximizes the combined symbol-plus-Merkle-frontier bytes at
+every domain over every possible number of distinct projected draws.  This
+is stricter than assuming 86 distinct draws: collision-heavy tapes can have
+fewer opened symbols but a larger small-domain frontier.  For one chain:
+
+```text
+opened Fp2 symbols                                  14,528
+outer sibling digests                               49,052
+inner sibling digests                                    0
+packed-section metadata                                534 B
+packed query section                             1,802,646 B
+25 fold commitment frames (last has one extra E)     2,266 B
+one-chain subtotal                               1,804,912 B
+two-chain PCS subtotal                           3,609,824 B.
+```
+
+Both chain sections and all terminal claims are carried by one C6 packed
+opening envelope.  The two-chain subtotal deliberately charges each section
+as if it retained a complete standalone header; any future header sharing is
+headroom, not a prerequisite.
+
+C6 allocates at most `800,000 B` to **all** non-PCS new-response material:
+certificate framing, paired ranges and residual outputs, prequery/root
+frames, the client challenge seed, hidden-linear/cache/residual sumchecks,
+terminal claims and wrapper-envelope metadata.  This is a cap, not a
+predicted size.  Therefore:
+
+```text
+two-chain PCS subtotal                           3,609,824 B
+non-PCS allocation                                 800,000 B
+preregistered pi_final maximum                   4,409,824 B
+pi_final cap - maximum                              90,176 B
+complete response maximum                       33,586,456 B
+35-MB response headroom                           1,413,544 B.
+```
+
+The exact non-PCS codec/census must land at or below its allocation; unused
+allocation is not transmitted.  No field can escape into the retained
+`29,176,632-B` transcript.
+
+The remaining event allocations use the exact conservative bounds
+
+```text
+hidden-linear    6,401 / |Fp2|^2        >243 bits
+cache argument   2^64 / |Fp2|^2         >191 bits
+Delta residual       4 / |Fp2|^2        >253 bits.
+```
+
+The cache numerator is a hard capacity of at most `2^32` field roots per
+repetition; the backend theorem and census must discharge it.  Together with
+the amplified PCS term, all four events remain below their individual
+`2^-128` allocations.
+
+The time model is a screening boundary, not a hardware verdict.  Reusing the
+current X4c response engine is forbidden: proportional scaling of its clean
+`111.552679710-s` seal counter projects approximately `76.825 s` of wrapper
+work, before the `4.104595717-s` model proof.  The only admitted backend route
+is the response-local fused CUDA path backed by the existing P7 A100
+Goldilocks NTT, BLAKE3/Merkle and streaming kernels.  Charging two full
+commit/recompute passes, two fold chains and 32 coefficient-equivalent
+sumcheck passes gives an informative kernel floor of approximately
+`8.380 s` including the model proof.  It leaves approximately `11.620 s` for
+unmodeled cache construction, orchestration and integration under the
+`20.000-s` gate.  This does not turn the P7 microbenchmarks into an end-to-end
+PASS: if the optimized implementation cannot remain below the ceiling, C6
+stops without falling back to the historical multi-minute engine.
+
+The executable source of record is `scripts/budget_c6_wrapper.py`; it emits
+the exact rational/integer report with `--json`.  Its permanent tests are in
+`tests/test_budget_c6_wrapper.py`, including exhaustive frontier comparison
+through 16 leaves and selected 32-leaf boundary cases.  At this checkpoint
+the combined base-budget/wrapper suite is `8/8 PASS`.  This local evidence
+closes the roofline milestone only; it is not a production census, backend
+implementation or A100 measurement.
+
 ## 6. Persistent cache commitment
 
 The cache is a fixed-capacity `1,024`-token authenticated state.  The client

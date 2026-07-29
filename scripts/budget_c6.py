@@ -31,6 +31,8 @@ RESPONSE_CAP_BYTES = 35_000_000
 FINAL_PROOF_CAP_BYTES = 4_500_000
 SETUP_CAP_BYTES = 150_000_000
 FASE_D_SETUP_BYTES = 38_371_465
+RESIDUAL_MAC_TAPES = 2
+PAIRED_PCG_SETUP_BYTES = RESIDUAL_MAC_TAPES * FASE_D_SETUP_BYTES
 
 REGISTERED_SOUNDNESS_FLOOR_BITS = Decimal("78.80929487391641")
 LEGACY_Q = 120
@@ -219,15 +221,33 @@ def build_report() -> dict[str, Any]:
         },
         "setup_and_credit": {
             "setup_cap_bytes": SETUP_CAP_BYTES,
+            "residual_mac_tapes": RESIDUAL_MAC_TAPES,
             "fase_d_setup_bytes": FASE_D_SETUP_BYTES,
-            "remaining_client_parameter_budget_bytes": SETUP_CAP_BYTES - FASE_D_SETUP_BYTES,
+            "paired_pcg_setup_bytes": PAIRED_PCG_SETUP_BYTES,
+            "remaining_client_parameter_budget_bytes": (
+                SETUP_CAP_BYTES - PAIRED_PCG_SETUP_BYTES
+            ),
             "terminal_one_stage3_raw_capacity": TERMINAL_ONE_STAGE3_CAPACITY,
+            "terminal_one_stage3_raw_capacity_per_tape": (
+                TERMINAL_ONE_STAGE3_CAPACITY
+            ),
             "baseline_raw_correlations": BASELINE_RAW_CORRELATIONS,
+            "baseline_raw_correlations_per_attempt_per_tape": (
+                BASELINE_RAW_CORRELATIONS
+            ),
             "acceptance_credits": ACCEPTANCE_CREDITS,
             "abort_retry_credits": ABORT_RETRY_CREDITS,
             "reserved_baseline_slots": reserved_slots,
             "reserved_raw_correlations": reserved_raw,
+            "reserved_raw_correlations_per_tape": reserved_raw,
+            "paired_reserved_raw_correlations": (
+                RESIDUAL_MAC_TAPES * reserved_raw
+            ),
             "remaining_raw_correlations": remaining_raw,
+            "remaining_raw_correlations_per_tape": remaining_raw,
+            "paired_remaining_raw_correlations": (
+                RESIDUAL_MAC_TAPES * remaining_raw
+            ),
         },
         "soundness": {
             "field_cardinality": str(FP2_CARDINALITY),
@@ -261,6 +281,10 @@ def build_report() -> dict[str, Any]:
     assert reserved_slots == 21
     assert reserved_raw == 109_949_532
     assert remaining_raw == 969_186
+    assert RESIDUAL_MAC_TAPES * reserved_raw == 219_899_064
+    assert RESIDUAL_MAC_TAPES * remaining_raw == 1_938_372
+    assert PAIRED_PCG_SETUP_BYTES == 76_742_930
+    assert SETUP_CAP_BYTES - PAIRED_PCG_SETUP_BYTES == 73_257_070
     assert minimum_q() == C6_Q
     assert not report["soundness"]["q120_complete_meets_floor"]
     assert report["soundness"]["q121_complete_meets_floor"]
@@ -269,7 +293,9 @@ def build_report() -> dict[str, Any]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--json", action="store_true", help="emit the canonical JSON report")
+    parser.add_argument(
+        "--json", action="store_true", help="emit the canonical JSON report"
+    )
     args = parser.parse_args()
     report = build_report()
     if args.json:

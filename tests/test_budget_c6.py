@@ -65,7 +65,13 @@ def test_terminal_one_capacity_covers_17_accepts_and_four_aborts() -> None:
 
     assert credit["reserved_baseline_slots"] == 21
     assert credit["reserved_raw_correlations"] == 109_949_532
+    assert credit["reserved_raw_correlations_per_tape"] == 109_949_532
+    assert credit["paired_reserved_raw_correlations"] == 219_899_064
     assert credit["terminal_one_stage3_raw_capacity"] == 110_918_718
     assert credit["remaining_raw_correlations"] == 969_186
+    assert credit["remaining_raw_correlations_per_tape"] == 969_186
+    assert credit["paired_remaining_raw_correlations"] == 1_938_372
+    assert credit["residual_mac_tapes"] == 2
     assert credit["fase_d_setup_bytes"] == 38_371_465
-    assert credit["remaining_client_parameter_budget_bytes"] == 111_628_535
+    assert credit["paired_pcg_setup_bytes"] == 76_742_930
+    assert credit["remaining_client_parameter_budget_bytes"] == 73_257_070

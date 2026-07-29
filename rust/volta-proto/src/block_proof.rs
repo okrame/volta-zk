@@ -9808,8 +9808,8 @@ mod tests {
         assert_eq!(challenge, verifier_tx.challenge_fp2());
         let product_domain = prover_batch_doms.take(1);
         assert_eq!(product_domain, verifier_batch_doms.take(1));
-        let product_mask = stream.draw_fulls(product_domain, 1)[0];
-        let product_key = verifier.expand_full_keys(product_domain, 1)[0];
+        let product_mask = stream.draw_product_mask(product_domain, got.3.len());
+        let product_key = verifier.expand_product_mask_key(product_domain, key_prod.len());
         let product_proof = prod_batch_prover(&got.3, challenge, product_mask, &mut tx);
         assert!(prod_batch_verify(&key_prod, product_key, delta, challenge, &product_proof));
         let zero_domain = prover_batch_doms.take(1);
@@ -10073,8 +10073,8 @@ mod tests {
         assert_eq!(challenge, verifier_tx.challenge_fp2());
         let product_domain = got.15.take(1);
         assert_eq!(product_domain, verifier_doms.take(1));
-        let product_mask = stream.draw_fulls(product_domain, 1)[0];
-        let product_key = verifier.expand_full_keys(product_domain, 1)[0];
+        let product_mask = stream.draw_product_mask(product_domain, got.11.len());
+        let product_key = verifier.expand_product_mask_key(product_domain, key_prod.len());
         let product_proof = prod_batch_prover(&got.11, challenge, product_mask, &mut tx);
         assert!(prod_batch_verify(&key_prod, product_key, delta, challenge, &product_proof));
         let zero_domain = got.15.take(1);
@@ -10699,8 +10699,8 @@ mod tests {
         assert_eq!(challenge, verifier_tx.challenge_fp2());
         let product_domain = prover_batch_doms.take(1);
         assert_eq!(product_domain, verifier_batch_doms.take(1));
-        let product_mask = stream.draw_fulls(product_domain, 1)[0];
-        let product_key = verifier.expand_full_keys(product_domain, 1)[0];
+        let product_mask = stream.draw_product_mask(product_domain, got.3.len());
+        let product_key = verifier.expand_product_mask_key(product_domain, key_prod.len());
         let product_proof = prod_batch_prover(&got.3, challenge, product_mask, &mut tx);
         assert!(prod_batch_verify(&key_prod, product_key, delta, challenge, &product_proof));
         let zero_domain = prover_batch_doms.take(1);
@@ -11026,8 +11026,8 @@ mod tests {
         assert_eq!(chi, txv.challenge_fp2());
         let md = domsp.take(1);
         assert_eq!(md, domsv.take(1));
-        let mask = stream.draw_fulls(md, 1)[0];
-        let k_mask = vc.expand_full_keys(md, 1)[0];
+        let mask = stream.draw_product_mask(md, prod.len());
+        let k_mask = vc.expand_product_mask_key(md, kprod.len());
         let pp = prod_batch_prover(&prod, chi, mask, &mut txp);
         let ok_prod = prod_batch_verify(&kprod, k_mask, delta, chi, &pp);
         let mz = domsp.take(1);
@@ -11307,8 +11307,8 @@ mod tests {
         assert_eq!(chi, txv.challenge_fp2());
         let md = domsp.take(1);
         assert_eq!(md, domsv.take(1));
-        let mask = stream.draw_fulls(md, 1)[0];
-        let k_mask = vc.expand_full_keys(md, 1)[0];
+        let mask = stream.draw_product_mask(md, prod.len());
+        let k_mask = vc.expand_product_mask_key(md, kprod.len());
         let pp = prod_batch_prover(&prod, chi, mask, &mut txp);
         let ok_prod = prod_batch_verify(&kprod, k_mask, delta, chi, &pp);
         let mz = domsp.take(1);
@@ -11369,8 +11369,8 @@ mod tests {
         assert_eq!(chi, txv.challenge_fp2());
         let md = domsp.take(1);
         assert_eq!(md, domsv.take(1));
-        let mask = stream.draw_fulls(md, 1)[0];
-        let k_mask = vc.expand_full_keys(md, 1)[0];
+        let mask = stream.draw_product_mask(md, prod.len());
+        let k_mask = vc.expand_product_mask_key(md, kprod.len());
         let pp = prod_batch_prover(&prod, chi, mask, &mut txp);
         let ok_prod = prod_batch_verify(&kprod, k_mask, delta, chi, &pp);
         let mz = domsp.take(1);
@@ -11435,8 +11435,8 @@ mod tests {
         assert_eq!(chi, txv.challenge_fp2());
         let md = domsp.take(1);
         assert_eq!(md, domsv.take(1));
-        let mask = stream.draw_fulls(md, 1)[0];
-        let k_mask = vc.expand_full_keys(md, 1)[0];
+        let mask = stream.draw_product_mask(md, prod.len());
+        let k_mask = vc.expand_product_mask_key(md, kprod.len());
         let pp = prod_batch_prover(&prod, chi, mask, &mut txp);
         let ok_prod = prod_batch_verify(&kprod, k_mask, delta, chi, &pp);
         let mz = domsp.take(1);

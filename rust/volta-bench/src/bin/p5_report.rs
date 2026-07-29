@@ -636,8 +636,8 @@ fn main() {
     let mut domsv = Doms::new(layer_dom_base(255));
     let md = domsp.take(1);
     assert_eq!(md, domsv.take(1));
-    let mask = stream.draw_fulls(md, 1)[0];
-    let k_mask = vc.expand_full_keys(md, 1)[0];
+    let mask = stream.draw_product_mask(md, prod.len());
+    let k_mask = vc.expand_product_mask_key(md, kprod.len());
     let pp = prod_batch_prover(&prod, chi, mask, &mut txp);
     let ok_prod = prod_batch_verify(&kprod, k_mask, delta, chi, &pp);
     let mz = domsp.take(1);

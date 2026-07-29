@@ -3306,8 +3306,8 @@ mod tests {
         // Batched closures (mask domains after everything else).
         let chi = h.txp.challenge_fp2();
         assert_eq!(chi, h.txv.challenge_fp2());
-        let mask = h.ps.draw_fulls(9000, 1)[0];
-        let k_mask = h.vc.expand_full_keys(9000, 1)[0];
+        let mask = h.ps.draw_product_mask(9000, prod.len());
+        let k_mask = h.vc.expand_product_mask_key(9000, kprod.len());
         let pp = prod_batch_prover(&prod, chi, mask, &mut h.txp);
         let ok_prod = prod_batch_verify(&kprod, k_mask, h.vc.delta, chi, &pp);
         let ok_zero = zero_batch_exchange(&zero, &kzero, &mut h.ps, &mut h.vc, 9001, &mut h.txp);
@@ -3389,8 +3389,8 @@ mod tests {
         }
         let chi = h.txp.challenge_fp2();
         assert_eq!(chi, h.txv.challenge_fp2());
-        let mask = h.ps.draw_fulls(9000, 1)[0];
-        let k_mask = h.vc.expand_full_keys(9000, 1)[0];
+        let mask = h.ps.draw_product_mask(9000, prod.len());
+        let k_mask = h.vc.expand_product_mask_key(9000, kprod.len());
         let pp = prod_batch_prover(&prod, chi, mask, &mut h.txp);
         let ok_prod = prod_batch_verify(&kprod, k_mask, h.vc.delta, chi, &pp);
         let ok_zero = zero_batch_exchange(&zero, &kzero, &mut h.ps, &mut h.vc, 9001, &mut h.txp);
@@ -3583,8 +3583,8 @@ mod tests {
 
         let chi = h.txp.challenge_fp2();
         assert_eq!(chi, h.txv.challenge_fp2());
-        let mask = h.ps.draw_fulls(9000, 1)[0];
-        let k_mask = h.vc.expand_full_keys(9000, 1)[0];
+        let mask = h.ps.draw_product_mask(9000, prod.len());
+        let k_mask = h.vc.expand_product_mask_key(9000, kprod.len());
         let pp = prod_batch_prover(&prod, chi, mask, &mut h.txp);
         let ok_prod = prod_batch_verify(&kprod, k_mask, h.vc.delta, chi, &pp);
         let ok_zero = zero_batch_exchange(&zero, &kzero, &mut h.ps, &mut h.vc, 9001, &mut h.txp);
@@ -3726,8 +3726,8 @@ mod tests {
 
         let chi = h.txp.challenge_fp2();
         assert_eq!(chi, h.txv.challenge_fp2());
-        let mask = h.ps.draw_fulls(9000, 1)[0];
-        let k_mask = h.vc.expand_full_keys(9000, 1)[0];
+        let mask = h.ps.draw_product_mask(9000, prod.len());
+        let k_mask = h.vc.expand_product_mask_key(9000, kprod.len());
         let pp = prod_batch_prover(&prod, chi, mask, &mut h.txp);
         assert!(prod_batch_verify(&kprod, k_mask, h.vc.delta, chi, &pp));
         assert!(zero_batch_exchange(&zero, &kzero, &mut h.ps, &mut h.vc, 9001, &mut h.txp));

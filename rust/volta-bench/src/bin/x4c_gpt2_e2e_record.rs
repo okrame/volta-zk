@@ -1674,8 +1674,8 @@ fn close_model_response(
     if product_domain != verifier_doms.take(1) {
         return false;
     }
-    let mask = stream.draw_fulls(product_domain, 1)[0];
-    let key_mask = verifier.expand_full_keys(product_domain, 1)[0];
+    let mask = stream.draw_product_mask(product_domain, prod.len());
+    let key_mask = verifier.expand_product_mask_key(product_domain, kprod.len());
     let proof = prod_batch_prover(prod, challenge, mask, prover_tx);
     verifier_tx.append("prod_check_m0_m1", 32);
     let product_ok = prod_batch_verify(kprod, key_mask, verifier.delta, challenge, &proof);

@@ -3102,8 +3102,8 @@ fn run_session_impl<'source>(
     let mut domsv = Doms::new(layer_dom_base(255));
     let md = domsp.take(1);
     assert_eq!(md, domsv.take(1));
-    let mask = stream.draw_fulls(md, 1)[0];
-    let k_mask = vc.expand_full_keys(md, 1)[0];
+    let mask = stream.draw_product_mask(md, prod.len());
+    let k_mask = vc.expand_product_mask_key(md, kprod.len());
     let pp = prod_batch_prover(&prod, chi, mask, &mut txp);
     let ok_prod = prod_batch_verify(&kprod, k_mask, delta, chi, &pp);
     let mz = domsp.take(1);
@@ -5642,6 +5642,12 @@ fn main() {
 #[cfg(test)]
 mod report_tests {
     use super::*;
+    use volta_mac::{CorrScheduleKind, CorrScheduleRole};
+    use volta_proto::{
+        C6_T1_FULL_CORRECTION_BYTES, C6_T1_MODEL_ALLOCATION_SCHEDULE_DIGEST_HEX,
+        C6_T1_MODEL_LOCAL_PRODUCT_CLOSURES, C6_T1_MODEL_LOCAL_PRODUCT_TRIPLES,
+        C6_T1_MODEL_PRODUCT_MESSAGE_BYTES, C6_T1_MODEL_SUB_CORRELATIONS,
+    };
 
     #[test]
     fn x123_foundation_reference_projection_is_pinned() {
@@ -5722,6 +5728,7 @@ mod report_tests {
 
         let run = |t1: bool, seed: u8| {
             let mut stream = CorrelationStream::new([seed; 32]);
+            stream.enable_schedule_audit().expect("fresh T1 census stream");
             let mut tx = Transcript::new([seed ^ 0x5A; 32]);
             let (proof, out, prod, zero) = if t1 {
                 prove_response_private_logits(&model, &prefill, &chunks, &mut stream, &mut tx)
@@ -5735,10 +5742,18 @@ mod report_tests {
                 )
             };
             std::hint::black_box(proof);
-            (out, prod.len(), zero.len(), stream.counters, ledger_to_owned(&tx), tx.total_bytes())
+            (
+                out,
+                prod.len(),
+                zero.len(),
+                stream.counters,
+                stream.schedule_audit().expect("enabled T1 census audit"),
+                ledger_to_owned(&tx),
+                tx.total_bytes(),
+            )
         };
-        let (baseline, baseline_prod, baseline_zero, _, _, baseline_bytes) = run(false, 0xA0);
-        let (candidate, prod, zero, counters, ledger, candidate_bytes) = run(true, 0xA1);
+        let (baseline, baseline_prod, baseline_zero, _, _, _, baseline_bytes) = run(false, 0xA0);
+        let (candidate, prod, zero, counters, schedule, ledger, candidate_bytes) = run(true, 0xA1);
 
         eprintln!(
             "T1 counters: baseline instances {:.1}, candidate {:.1}, delta {:.1}; other baseline {:.1}, candidate {:.1}; core sub/full {}/{}; core bytes baseline/candidate {}/{}",
@@ -5752,6 +5767,47 @@ mod report_tests {
             baseline_bytes,
             candidate_bytes,
         );
+        let schedule_digest =
+            schedule.digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+        let local_product_draws =
+            schedule.draws.iter().filter(|draw| draw.role == CorrScheduleRole::ProductMask);
+        let local_product_closures = local_product_draws.clone().count() as u64;
+        let local_product_triples =
+            local_product_draws.clone().map(|draw| draw.product_triples).sum::<u64>();
+        assert!(schedule.is_canonical());
+        assert_eq!(schedule.counters, counters);
+        assert_eq!(schedule.draws.len(), 81_661);
+        assert_eq!(schedule_digest, C6_T1_MODEL_ALLOCATION_SCHEDULE_DIGEST_HEX);
+        assert_eq!(local_product_closures, C6_T1_MODEL_LOCAL_PRODUCT_CLOSURES);
+        assert_eq!(local_product_triples, C6_T1_MODEL_LOCAL_PRODUCT_TRIPLES);
+        assert!(local_product_draws.clone().all(|draw| {
+            draw.kind == CorrScheduleKind::FullField && draw.count == 1 && draw.product_triples == 1
+        }));
+        assert_eq!(
+            schedule
+                .draws
+                .iter()
+                .filter(|draw| {
+                    draw.kind == CorrScheduleKind::Subfield
+                        && draw.role == CorrScheduleRole::DirectCorrection
+                })
+                .map(|draw| draw.count)
+                .sum::<u64>(),
+            C6_T1_MODEL_SUB_CORRELATIONS
+        );
+        assert_eq!(
+            schedule
+                .draws
+                .iter()
+                .filter(|draw| {
+                    draw.kind == CorrScheduleKind::FullField
+                        && draw.role == CorrScheduleRole::DirectCorrection
+                })
+                .map(|draw| draw.count)
+                .sum::<u64>()
+                * 16,
+            C6_T1_FULL_CORRECTION_BYTES
+        );
 
         assert_eq!(baseline_prod, T1_PROD_CLAIMS);
         assert_eq!(baseline_zero, 8_238);
@@ -5762,6 +5818,22 @@ mod report_tests {
         assert_eq!(baseline_bytes + C3_PCS_OPENING_BYTES + 64, C3B_TRANSCRIPT_REFERENCE_BYTES);
         assert_eq!(candidate_bytes + C3_PCS_OPENING_BYTES + 64, T1_RESPONSE_REFERENCE_BYTES);
         assert_eq!(ledger.get("auth_corrections"), Some(&T1_AUTH_CORRECTION_REFERENCE_BYTES));
+        assert_eq!(ledger.get("prod_check_m0_m1"), Some(&C6_T1_MODEL_PRODUCT_MESSAGE_BYTES));
+        assert_eq!(
+            ledger
+                .iter()
+                .filter(|(label, _)| label.as_str() != "auth_corrections"
+                    && label.contains("correction"))
+                .map(|(_, bytes)| *bytes)
+                .sum::<u64>(),
+            C6_T1_FULL_CORRECTION_BYTES
+        );
+        assert_eq!(
+            candidate_bytes,
+            T1_AUTH_CORRECTION_REFERENCE_BYTES
+                + C6_T1_FULL_CORRECTION_BYTES
+                + C6_T1_MODEL_PRODUCT_MESSAGE_BYTES
+        );
         assert_eq!(
             ledger.get("t1_eq_round_corrections").copied().unwrap_or(0)
                 + ledger.get("t1_eq_terminal_correction").copied().unwrap_or(0),

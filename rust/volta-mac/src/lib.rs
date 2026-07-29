@@ -17,8 +17,9 @@ pub use auth::{
 };
 pub use authed::{ProverAuthed, ProverSubAuthed, VerifierKey};
 pub use corr::{
-    ConnectionCorrelationScope, CorrCounters, CorrIndex, CorrReservationError, CorrelationStream,
-    FullCorr, FullCorrBatchReservation, FullCorrRange, FullKeyBatchReservation, SubCorr,
+    ConnectionCorrelationScope, CorrCounters, CorrIndex, CorrReservationError, CorrScheduleAudit,
+    CorrScheduleDraw, CorrScheduleKind, CorrScheduleRole, CorrelationStream, FullCorr,
+    FullCorrBatchReservation, FullCorrRange, FullKeyBatchReservation, ProductMaskCorr, SubCorr,
     SubMaskRowsReservation, VerifierCtx, FULL_BIT, LEDGER_SHADOW_BIT, RESERVED_DOMAIN_BITS,
     TAG_BIT,
 };

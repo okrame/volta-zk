@@ -219,7 +219,7 @@ pub fn prove_gemm_blind_at(
     let x_open = ProverAuthed { x: x_val, m: m_x };
     let b_pub = ProverAuthed::from_public(b_final);
     debug_assert_eq!(claim_n.x, x_val * b_final, "honest final claim mismatch");
-    let mask = stream.draw_fulls(doms.prod_mask, 1)[0];
+    let mask = stream.draw_product_mask(doms.prod_mask, 1);
     let chi = tx.challenge_fp2();
     let prod = prod_batch_prover(&[(x_open, b_pub, claim_n)], chi, mask, tx);
     tm.t_prod_s = t4.elapsed().as_secs_f64();
@@ -344,7 +344,7 @@ pub fn prove_gemm_blind_committed_at(
     tx.append("w_claim_correction", 16);
     let b_auth = ProverAuthed { x: b_final, m: fc.m };
     debug_assert_eq!(claim_n.x, x_val * b_final, "honest final claim mismatch");
-    let mask = stream.draw_fulls(doms.prod_mask, 1)[0];
+    let mask = stream.draw_product_mask(doms.prod_mask, 1);
     let chi = tx.challenge_fp2();
     let prod = prod_batch_prover(&[(x_open, b_auth, claim_n)], chi, mask, tx);
     tm.t_prod_s = t4.elapsed().as_secs_f64();
@@ -431,7 +431,7 @@ pub fn verify_gemm_blind_committed_at(
     // Committed W̃ leg: key from the correlation + correction, no cleartext.
     let k_b = VerifierKey { k: ctx.expand_full_keys(dom_w_claim, 1)[0] + ctx.delta * corr_w };
 
-    let k_mask = ctx.expand_full_keys(doms.prod_mask, 1)[0];
+    let k_mask = ctx.expand_product_mask_key(doms.prod_mask, 1);
     let chi = tx.challenge_fp2();
     let keys = [(VerifierKey { k: k_x }, k_b, k_claim_n)];
     if !prod_batch_verify(&keys, k_mask, ctx.delta, chi, &proof.prod) {
@@ -509,7 +509,7 @@ pub fn verify_gemm_blind_at(
     let b = fold_w(w, k, n, &eq_j);
     let b_final = eval_mle(&b, &point);
 
-    let k_mask = ctx.expand_full_keys(doms.prod_mask, 1)[0];
+    let k_mask = ctx.expand_product_mask_key(doms.prod_mask, 1);
     let chi = tx.challenge_fp2();
     let keys = [(VerifierKey { k: k_x }, VerifierKey::from_public(b_final, ctx.delta), k_claim_n)];
     prod_batch_verify(&keys, k_mask, ctx.delta, chi, &proof.prod)
@@ -667,7 +667,7 @@ pub fn prove_gemm_committed_chained(
     tx.append("w_claim_correction", 16);
     let b_auth = ProverAuthed { x: b_final, m: fw.m };
     debug_assert_eq!(claim_n.x, x_val * b_final, "honest final claim mismatch");
-    let mask = stream.draw_fulls(doms.prod_mask, 1)[0];
+    let mask = stream.draw_product_mask(doms.prod_mask, 1);
     let chi = tx.challenge_fp2();
     let prod = prod_batch_prover(&[(x_auth, b_auth, claim_n)], chi, mask, tx);
     tm.t_prod_s = t4.elapsed().as_secs_f64();
@@ -798,7 +798,7 @@ pub fn prove_gemm_committed_chained_resident(
     tx.append("w_claim_correction", 16);
     let b_auth = ProverAuthed { x: b_final, m: fw.m };
     debug_assert_eq!(claim_n.x, x_val * b_final, "honest final claim mismatch");
-    let mask = stream.draw_fulls(doms.prod_mask, 1)[0];
+    let mask = stream.draw_product_mask(doms.prod_mask, 1);
     let chi = tx.challenge_fp2();
     let prod = prod_batch_prover(&[(x_auth, b_auth, claim_n)], chi, mask, tx);
     tm.t_prod_s = t4.elapsed().as_secs_f64();
@@ -846,7 +846,7 @@ pub fn verify_gemm_committed_chained(
     let k_x = VerifierKey { k: ctx.expand_full_keys(doms.x_claim, 1)[0] + ctx.delta * x_corr };
     let k_w = VerifierKey { k: ctx.expand_full_keys(doms.w_claim, 1)[0] + ctx.delta * corr_w };
 
-    let k_mask = ctx.expand_full_keys(doms.prod_mask, 1)[0];
+    let k_mask = ctx.expand_product_mask_key(doms.prod_mask, 1);
     let chi = tx.challenge_fp2();
     if !prod_batch_verify(&[(k_x, k_w, k_claim_n)], k_mask, ctx.delta, chi, &proof.prod) {
         return None;
@@ -970,7 +970,7 @@ pub(crate) fn finalize_gemm_act_chained(
         rounds.x_final * rounds.b_final,
         "honest final claim mismatch"
     );
-    let product_mask = stream.draw_fulls(doms.prod_mask, 1)[0];
+    let product_mask = stream.draw_product_mask(doms.prod_mask, 1);
     let chi = tx.challenge_fp2();
     let prod = prod_batch_prover(&[(x_auth, b_open, rounds.claim)], chi, product_mask, tx);
     timings.t_prod_s = product_started.elapsed().as_secs_f64();
@@ -1107,7 +1107,7 @@ pub(crate) fn finalize_verify_gemm_act_chained(
     tx: &mut Transcript,
 ) -> Option<(WireKey, Vec<Fp2>)> {
     let k_x = VerifierKey { k: ctx.expand_full_keys(doms.x_claim, 1)[0] + ctx.delta * x_corr };
-    let k_mask = ctx.expand_full_keys(doms.prod_mask, 1)[0];
+    let k_mask = ctx.expand_product_mask_key(doms.prod_mask, 1);
     let chi = tx.challenge_fp2();
     if !prod_batch_verify(&[(k_x, k_b, rounds.claim)], k_mask, ctx.delta, chi, &proof.prod) {
         return None;

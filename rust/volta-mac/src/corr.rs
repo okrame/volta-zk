@@ -93,6 +93,33 @@ pub struct FullCorr {
     pub m: Fp2,
 }
 
+/// Full-field correlation consumed uncorrected as the masking leaf of one
+/// QuickSilver product closure.  Construction is intentionally restricted to
+/// [`CorrelationStream::draw_product_mask`].
+#[derive(Clone, Copy, Debug)]
+pub struct ProductMaskCorr {
+    correlation: FullCorr,
+    product_triples: usize,
+}
+
+impl ProductMaskCorr {
+    pub fn into_inner(self) -> FullCorr {
+        self.correlation
+    }
+
+    pub fn plaintext(&self) -> Fp2 {
+        self.correlation.x
+    }
+
+    pub fn tag(&self) -> Fp2 {
+        self.correlation.m
+    }
+
+    pub fn product_triples(&self) -> usize {
+        self.product_triples
+    }
+}
+
 /// Audited reservation of row-major subfield masks.
 ///
 /// `ChaCha8` is returned only by [`CorrelationStream::new`], the explicitly
@@ -206,6 +233,159 @@ pub struct CorrCounters {
     pub full_corrs: u64,
     /// Domains opened (one-time indices actually used).
     pub domains: u64,
+}
+
+/// Public type discriminator for the optional correlation-schedule audit.
+///
+/// The audit records logical allocation metadata only.  It never contains a
+/// mask, tag, verifier key, PCG seed or `Delta`.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CorrScheduleKind {
+    Subfield = 1,
+    FullField = 2,
+}
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CorrScheduleRole {
+    DirectCorrection = 1,
+    ProductMask = 2,
+}
+
+/// One canonical logical draw in protocol execution order.
+///
+/// `global_offset` is maintained independently for subfield and full-field
+/// streams, exactly like the existing allocation digest.  `count` leaves at
+/// this draw have physical identities `(kind, domain, 0..count)`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CorrScheduleDraw {
+    pub ordinal: u64,
+    pub kind: CorrScheduleKind,
+    pub role: CorrScheduleRole,
+    /// Nonzero only for `ProductMask`: the exact number of triples closed by
+    /// the corresponding QuickSilver batch.
+    pub product_triples: u64,
+    pub domain: u64,
+    pub global_offset: u64,
+    pub count: u64,
+}
+
+/// Immutable snapshot of the optional logical schedule recorder.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CorrScheduleAudit {
+    pub draws: Vec<CorrScheduleDraw>,
+    pub counters: CorrCounters,
+    pub digest: [u8; 32],
+}
+
+impl CorrScheduleAudit {
+    pub fn canonical_digest(draws: &[CorrScheduleDraw]) -> [u8; 32] {
+        let mut hasher = blake3::Hasher::new_derive_key("volta/mac/correlation-schedule-audit/v1");
+        for draw in draws {
+            hasher.update(&draw.ordinal.to_le_bytes());
+            hasher.update(&[draw.kind as u8, draw.role as u8]);
+            hasher.update(&draw.product_triples.to_le_bytes());
+            hasher.update(&draw.domain.to_le_bytes());
+            hasher.update(&draw.global_offset.to_le_bytes());
+            hasher.update(&draw.count.to_le_bytes());
+        }
+        *hasher.finalize().as_bytes()
+    }
+
+    /// Recompute ordinals, kind-local offsets, counters and digest.
+    pub fn is_canonical(&self) -> bool {
+        let mut next_sub = 0u64;
+        let mut next_full = 0u64;
+        for (index, draw) in self.draws.iter().enumerate() {
+            if draw.ordinal != index as u64 || draw.count == 0 {
+                return false;
+            }
+            match draw.role {
+                CorrScheduleRole::DirectCorrection if draw.product_triples != 0 => return false,
+                CorrScheduleRole::ProductMask
+                    if draw.kind != CorrScheduleKind::FullField
+                        || draw.count != 1
+                        || draw.product_triples == 0 =>
+                {
+                    return false;
+                }
+                CorrScheduleRole::DirectCorrection | CorrScheduleRole::ProductMask => {}
+            }
+            let next = match draw.kind {
+                CorrScheduleKind::Subfield => &mut next_sub,
+                CorrScheduleKind::FullField => &mut next_full,
+            };
+            if draw.global_offset != *next {
+                return false;
+            }
+            let Some(updated) = next.checked_add(draw.count) else {
+                return false;
+            };
+            *next = updated;
+        }
+        self.counters
+            == (CorrCounters {
+                sub_corrs: next_sub,
+                full_corrs: next_full,
+                domains: self.draws.len() as u64,
+            })
+            && self.digest == Self::canonical_digest(&self.draws)
+    }
+}
+
+#[derive(Default)]
+struct CorrScheduleRecorder {
+    draws: Vec<CorrScheduleDraw>,
+    next_sub: u64,
+    next_full: u64,
+}
+
+impl CorrScheduleRecorder {
+    fn record(
+        &mut self,
+        kind: CorrScheduleKind,
+        role: CorrScheduleRole,
+        product_triples: usize,
+        domain: u64,
+        count: usize,
+    ) {
+        let count = u64::try_from(count).expect("correlation audit count exceeds u64");
+        let ordinal =
+            u64::try_from(self.draws.len()).expect("correlation audit draw count exceeds u64");
+        let global_offset = match kind {
+            CorrScheduleKind::Subfield => self.next_sub,
+            CorrScheduleKind::FullField => self.next_full,
+        };
+        let next = global_offset.checked_add(count).expect("correlation audit offset overflow");
+        match kind {
+            CorrScheduleKind::Subfield => self.next_sub = next,
+            CorrScheduleKind::FullField => self.next_full = next,
+        }
+        self.draws.push(CorrScheduleDraw {
+            ordinal,
+            kind,
+            role,
+            product_triples: u64::try_from(product_triples)
+                .expect("product triple count exceeds u64"),
+            domain,
+            global_offset,
+            count,
+        });
+    }
+
+    fn snapshot(&self) -> CorrScheduleAudit {
+        CorrScheduleAudit {
+            draws: self.draws.clone(),
+            counters: CorrCounters {
+                sub_corrs: self.next_sub,
+                full_corrs: self.next_full,
+                domains: u64::try_from(self.draws.len())
+                    .expect("correlation audit draw count exceeds u64"),
+            },
+            digest: CorrScheduleAudit::canonical_digest(&self.draws),
+        }
+    }
 }
 
 /// Shared one-time-use ledger: domain → number of correlations drawn there.
@@ -433,6 +613,7 @@ pub struct CorrelationStream {
     backend: ProverBackend,
     ledger: DomainLedger,
     pub counters: CorrCounters,
+    schedule_audit: Option<CorrScheduleRecorder>,
 }
 
 impl CorrelationStream {
@@ -441,6 +622,7 @@ impl CorrelationStream {
             backend: ProverBackend::Mock { seed, allocation: LogicalAllocation::new(None) },
             ledger: DomainLedger::default(),
             counters: CorrCounters::default(),
+            schedule_audit: None,
         }
     }
 
@@ -455,6 +637,7 @@ impl CorrelationStream {
             },
             ledger: DomainLedger::default(),
             counters: CorrCounters::default(),
+            schedule_audit: None,
         }
     }
 
@@ -463,6 +646,7 @@ impl CorrelationStream {
             backend: ProverBackend::Pooled(PooledProver::new(pool, None)),
             ledger: DomainLedger::default(),
             counters: CorrCounters::default(),
+            schedule_audit: None,
         }
     }
 
@@ -474,7 +658,27 @@ impl CorrelationStream {
             backend: ProverBackend::Pooled(PooledProver::new(pool, Some(scope))),
             ledger: DomainLedger::default(),
             counters: CorrCounters::default(),
+            schedule_audit: None,
         }
+    }
+
+    /// Enable the diagnostic logical-schedule recorder before the first draw.
+    ///
+    /// Existing production and benchmark constructors leave it disabled, so
+    /// historical profiles pay neither per-domain storage nor digest work.
+    pub fn enable_schedule_audit(&mut self) -> Result<(), &'static str> {
+        if self.counters != CorrCounters::default() {
+            return Err("correlation schedule audit must start before the first draw");
+        }
+        if self.schedule_audit.is_some() {
+            return Err("correlation schedule audit already enabled");
+        }
+        self.schedule_audit = Some(CorrScheduleRecorder::default());
+        Ok(())
+    }
+
+    pub fn schedule_audit(&self) -> Option<CorrScheduleAudit> {
+        self.schedule_audit.as_ref().map(CorrScheduleRecorder::snapshot)
     }
 
     pub fn allocation_digest_hex(&self) -> Option<String> {
@@ -562,7 +766,7 @@ impl CorrelationStream {
             .domains
             .checked_add(u64::try_from(rows).expect("validated sub-mask rows exceed u64"))
             .expect("correlation domain counter overflow");
-        match &mut self.backend {
+        let reservation = match &mut self.backend {
             ProverBackend::Mock { seed, allocation } => {
                 for row in 0..rows {
                     allocation.take_sub(base_domain + row as u64, cols);
@@ -574,7 +778,19 @@ impl CorrelationStream {
                 rows,
                 cols,
             },
+        };
+        if let Some(audit) = &mut self.schedule_audit {
+            for row in 0..rows {
+                audit.record(
+                    CorrScheduleKind::Subfield,
+                    CorrScheduleRole::DirectCorrection,
+                    0,
+                    base_domain + row as u64,
+                    cols,
+                );
+            }
         }
+        reservation
     }
 
     /// Draw `n` subfield correlations at `dom`. One-shot per domain.
@@ -606,11 +822,43 @@ impl CorrelationStream {
 
     /// Draw `n` full-field correlations at `dom`. One-shot per domain.
     pub fn draw_fulls(&mut self, dom: u64, n: usize) -> Vec<FullCorr> {
+        self.draw_fulls_with_role(dom, n, CorrScheduleRole::DirectCorrection, 0)
+    }
+
+    /// Draw the unique uncorrected full-field mask of one ProductClosure.
+    pub fn draw_product_mask(&mut self, dom: u64, product_triples: usize) -> ProductMaskCorr {
+        assert!(product_triples > 0, "a ProductClosure cannot be empty");
+        ProductMaskCorr {
+            correlation: self
+                .draw_fulls_with_role(dom, 1, CorrScheduleRole::ProductMask, product_triples)
+                .into_iter()
+                .next()
+                .expect("one C6 product-mask correlation"),
+            product_triples,
+        }
+    }
+
+    fn draw_fulls_with_role(
+        &mut self,
+        dom: u64,
+        n: usize,
+        role: CorrScheduleRole,
+        product_triples: usize,
+    ) -> Vec<FullCorr> {
         assert!(dom & RESERVED_DOMAIN_BITS == 0, "reserved correlation domain bits set");
+        assert!(
+            role != CorrScheduleRole::ProductMask || n == 1,
+            "a ProductClosure consumes exactly one full-field mask"
+        );
+        assert_eq!(
+            role == CorrScheduleRole::ProductMask,
+            product_triples > 0,
+            "only a nonempty ProductClosure carries a triple count"
+        );
         self.ledger.open(dom | FULL_BIT_SHADOW, n);
         self.counters.full_corrs += n as u64;
         self.counters.domains += 1;
-        match &mut self.backend {
+        let correlations = match &mut self.backend {
             ProverBackend::Mock { seed, allocation } => {
                 allocation.take_full(dom, n);
                 let mut xs = FpStream::domain_separated(*seed, dom | FULL_BIT);
@@ -618,7 +866,11 @@ impl CorrelationStream {
                 (0..n).map(|_| FullCorr { x: xs.next_fp2(), m: ms.next_fp2() }).collect()
             }
             ProverBackend::Pooled(p) => p.draw_fulls(dom, n),
+        };
+        if let Some(audit) = &mut self.schedule_audit {
+            audit.record(CorrScheduleKind::FullField, role, product_triples, dom, n);
         }
+        correlations
     }
 }
 
@@ -633,6 +885,7 @@ pub struct VerifierCtx {
     backend: VerifierBackend,
     ledger: DomainLedger,
     pub counters: CorrCounters,
+    schedule_audit: Option<CorrScheduleRecorder>,
 }
 
 impl VerifierCtx {
@@ -642,6 +895,7 @@ impl VerifierCtx {
             backend: VerifierBackend::Mock { seed, allocation: LogicalAllocation::new(None) },
             ledger: DomainLedger::default(),
             counters: CorrCounters::default(),
+            schedule_audit: None,
         }
     }
 
@@ -658,6 +912,7 @@ impl VerifierCtx {
             },
             ledger: DomainLedger::default(),
             counters: CorrCounters::default(),
+            schedule_audit: None,
         }
     }
 
@@ -667,6 +922,7 @@ impl VerifierCtx {
             backend: VerifierBackend::Pooled(PooledVerifier::new(pool, None)),
             ledger: DomainLedger::default(),
             counters: CorrCounters::default(),
+            schedule_audit: None,
         }
     }
 
@@ -680,7 +936,23 @@ impl VerifierCtx {
             backend: VerifierBackend::Pooled(PooledVerifier::new(pool, Some(scope))),
             ledger: DomainLedger::default(),
             counters: CorrCounters::default(),
+            schedule_audit: None,
         }
+    }
+
+    pub fn enable_schedule_audit(&mut self) -> Result<(), &'static str> {
+        if self.counters != CorrCounters::default() {
+            return Err("correlation schedule audit must start before the first draw");
+        }
+        if self.schedule_audit.is_some() {
+            return Err("correlation schedule audit already enabled");
+        }
+        self.schedule_audit = Some(CorrScheduleRecorder::default());
+        Ok(())
+    }
+
+    pub fn schedule_audit(&self) -> Option<CorrScheduleAudit> {
+        self.schedule_audit.as_ref().map(CorrScheduleRecorder::snapshot)
     }
 
     pub fn allocation_digest_hex(&self) -> Option<String> {
@@ -722,7 +994,7 @@ impl VerifierCtx {
         self.ledger.open(dom, n);
         self.counters.sub_corrs += n as u64;
         self.counters.domains += 1;
-        match &mut self.backend {
+        let keys = match &mut self.backend {
             VerifierBackend::Mock { seed, allocation } => {
                 allocation.take_sub(dom, n);
                 let mut rs = FpStream::domain_separated(*seed, dom);
@@ -730,16 +1002,48 @@ impl VerifierCtx {
                 (0..n).map(|_| ms.next_fp2() + self.delta.mul_base(rs.next_fp())).collect()
             }
             VerifierBackend::Pooled(v) => v.expand_sub_keys(dom, n),
+        };
+        if let Some(audit) = &mut self.schedule_audit {
+            audit.record(CorrScheduleKind::Subfield, CorrScheduleRole::DirectCorrection, 0, dom, n);
         }
+        keys
     }
 
     /// Keys `k = m + Δ·x` for `n` full-field correlations at `dom`.
     pub fn expand_full_keys(&mut self, dom: u64, n: usize) -> Vec<Fp2> {
+        self.expand_full_keys_with_role(dom, n, CorrScheduleRole::DirectCorrection, 0)
+    }
+
+    /// Expand the verifier key matching one uncorrected ProductClosure mask.
+    pub fn expand_product_mask_key(&mut self, dom: u64, product_triples: usize) -> Fp2 {
+        assert!(product_triples > 0, "a ProductClosure cannot be empty");
+        self.expand_full_keys_with_role(dom, 1, CorrScheduleRole::ProductMask, product_triples)
+            .into_iter()
+            .next()
+            .expect("one C6 product-mask key")
+    }
+
+    fn expand_full_keys_with_role(
+        &mut self,
+        dom: u64,
+        n: usize,
+        role: CorrScheduleRole,
+        product_triples: usize,
+    ) -> Vec<Fp2> {
         assert!(dom & RESERVED_DOMAIN_BITS == 0, "reserved correlation domain bits set");
+        assert!(
+            role != CorrScheduleRole::ProductMask || n == 1,
+            "a ProductClosure consumes exactly one full-field key"
+        );
+        assert_eq!(
+            role == CorrScheduleRole::ProductMask,
+            product_triples > 0,
+            "only a nonempty ProductClosure carries a triple count"
+        );
         self.ledger.open(dom | FULL_BIT_SHADOW, n);
         self.counters.full_corrs += n as u64;
         self.counters.domains += 1;
-        match &mut self.backend {
+        let keys = match &mut self.backend {
             VerifierBackend::Mock { seed, allocation } => {
                 allocation.take_full(dom, n);
                 let mut xs = FpStream::domain_separated(*seed, dom | FULL_BIT);
@@ -747,7 +1051,11 @@ impl VerifierCtx {
                 (0..n).map(|_| ms.next_fp2() + self.delta * xs.next_fp2()).collect()
             }
             VerifierBackend::Pooled(v) => v.expand_full_keys(dom, n),
+        };
+        if let Some(audit) = &mut self.schedule_audit {
+            audit.record(CorrScheduleKind::FullField, role, product_triples, dom, n);
         }
+        keys
     }
 }
 
@@ -1017,6 +1325,90 @@ mod tests {
     fn corr_index_matches_p1_packing() {
         let idx = CorrIndex { session: 0, layer: 0, head: 0, tensor: 3, row: 5 };
         assert_eq!(idx.domain(), (3u64 << 32) | 5); // P1 epilogue: (tensor_tag<<32)|row
+    }
+
+    #[test]
+    fn optional_schedule_audit_is_canonical_and_role_symmetric() {
+        let seed = [0xA6; 32];
+        let delta = Fp2::new(Fp::new(17), Fp::new(23));
+        let mut prover = CorrelationStream::new(seed);
+        let mut verifier = VerifierCtx::new(seed, delta);
+        assert!(prover.schedule_audit().is_none());
+        assert!(verifier.schedule_audit().is_none());
+        prover.enable_schedule_audit().unwrap();
+        verifier.enable_schedule_audit().unwrap();
+
+        let _ = prover.draw_subs(10, 2);
+        let _ = verifier.expand_sub_keys(10, 2);
+        let _ = prover.reserve_sub_mask_rows(20, 2, 3);
+        let _ = verifier.expand_sub_keys(20, 3);
+        let _ = verifier.expand_sub_keys(21, 3);
+        let _ = prover.draw_fulls(30, 2);
+        let _ = verifier.expand_full_keys(30, 2);
+        let _ = prover.draw_product_mask(40, 7);
+        let _ = verifier.expand_product_mask_key(40, 7);
+
+        let prover_audit = prover.schedule_audit().unwrap();
+        let verifier_audit = verifier.schedule_audit().unwrap();
+        assert_eq!(prover_audit, verifier_audit);
+        assert!(prover_audit.is_canonical());
+        assert_eq!(prover_audit.counters, CorrCounters { sub_corrs: 8, full_corrs: 3, domains: 5 });
+        assert_eq!(
+            prover_audit.draws,
+            vec![
+                CorrScheduleDraw {
+                    ordinal: 0,
+                    kind: CorrScheduleKind::Subfield,
+                    role: CorrScheduleRole::DirectCorrection,
+                    product_triples: 0,
+                    domain: 10,
+                    global_offset: 0,
+                    count: 2,
+                },
+                CorrScheduleDraw {
+                    ordinal: 1,
+                    kind: CorrScheduleKind::Subfield,
+                    role: CorrScheduleRole::DirectCorrection,
+                    product_triples: 0,
+                    domain: 20,
+                    global_offset: 2,
+                    count: 3,
+                },
+                CorrScheduleDraw {
+                    ordinal: 2,
+                    kind: CorrScheduleKind::Subfield,
+                    role: CorrScheduleRole::DirectCorrection,
+                    product_triples: 0,
+                    domain: 21,
+                    global_offset: 5,
+                    count: 3,
+                },
+                CorrScheduleDraw {
+                    ordinal: 3,
+                    kind: CorrScheduleKind::FullField,
+                    role: CorrScheduleRole::DirectCorrection,
+                    product_triples: 0,
+                    domain: 30,
+                    global_offset: 0,
+                    count: 2,
+                },
+                CorrScheduleDraw {
+                    ordinal: 4,
+                    kind: CorrScheduleKind::FullField,
+                    role: CorrScheduleRole::ProductMask,
+                    product_triples: 7,
+                    domain: 40,
+                    global_offset: 2,
+                    count: 1,
+                },
+            ]
+        );
+        assert_eq!(prover_audit.digest, prover.schedule_audit().unwrap().digest);
+        let mut noncanonical = prover_audit.clone();
+        noncanonical.draws.swap(0, 1);
+        assert!(!noncanonical.is_canonical());
+        assert!(prover.enable_schedule_audit().is_err());
+        assert!(verifier.enable_schedule_audit().is_err());
     }
 
     #[test]

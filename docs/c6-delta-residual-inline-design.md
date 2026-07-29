@@ -1,8 +1,8 @@
 # C6 — inline Δ-residual certificate and persistent cache
 
 Status: **OWNER REQUIREMENTS FROZEN; Q=121 CONTINGENCY ACTIVATED BEFORE
-IMPLEMENTATION; FORMAL SEAM / ROOFLINE / PAIRED CODEC GREEN; LOCAL
-IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
+IMPLEMENTATION; FORMAL SEAM / ROOFLINE / PAIRED CODEC / PRODUCTION SOURCE
+CENSUS GREEN; LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
 accepted C4/T1 `rate=1/4,Q=120` inline profile.  It does not reopen or rewrite
@@ -243,6 +243,73 @@ and product-mask leaf has one canonical correlation index, transcript
 position and domain.  Missing, duplicate, reordered or dead leaves fail the
 exact census.
 
+### 3.1 Frozen production T1 source/correction census
+
+The unchanged production-size T1 prover and verifier now expose an optional
+logical schedule audit.  It is disabled by default and records only
+`(ordinal, kind, role, product_triples, domain, kind-local offset, count)`;
+it never records a mask, tag, verifier key, PCG seed or `Delta`.  The typed
+`ProductMaskCorr` API makes an uncorrected full-field product mask distinct
+from a direct corrected source and rejects a mask whose registered triple
+count differs from the actual `prod_batch_prover` input.
+
+Running the frozen GPT-2 `100+50` workload through the unchanged T1
+prover/verifier gives:
+
+```text
+model direct subfield correction leaves             4,793,590
+model direct full-field correction leaves              181,261
+model-local ProductClosure masks / triples                672 / 672
+final response-wide ProductClosure mask / triples           1 / 21,667
+final response-wide ZeroBatch mask / zero closures          1 / 8,170
+
+complete direct subfield leaves                     4,793,590
+complete direct full-field leaves                     181,262
+complete direct-correction leaves                   4,974,852
+complete product-mask leaves                              673
+complete source leaves                              4,975,525
+total ProductClosure nodes / triples                   673 / 22,339.
+```
+
+The 672 local product closures are real one-triple QuickSilver closures
+inside the model proof; they may not be collapsed in a hand-maintained
+census.  They account for `672 * 32 = 21,504 B` of retained model product
+messages.  The exact model transcript classification is:
+
+```text
+subfield auth_corrections                           38,348,720 B
+full-field correction fields                        2,900,176 B
+model-local product messages                           21,504 B
+other model transcript bytes                                 0 B
+model transcript total                             41,270,400 B
+final product message + zero mask correction/tag           64 B
+complete MAC transcript                            41,270,464 B.
+```
+
+The raw-correlation reservation independently reconciles:
+
+```text
+model raw = 4,793,590 + 2*181,933                    5,157,456
+final product and zero masks                                  4
+complete MAC raw                                    5,157,460
+historical PCS reserve = 2*39,116                      78,232
+complete allocated raw range                        5,235,692.
+```
+
+The canonical audit contains `81,661` model draws and `81,663` draws after
+the two final masks.  Its pinned digests are:
+
+```text
+model allocation  06e789d6e27b9b5092c144463bc6a3e25328fa17f7fca38bd79c02385a134dc8
+complete alloc.   b002d4a55d890aa61299c6dbe3e5794cef8d699d96dd64ad3c41d1ad34bb6c35
+source schedule   526c28885fb6f77e8f569ece89c0c7442be24301a9430f3df4383428528cd9e7
+correction sched. a7e22b733c9635de931ef3d9bd001c298facd413b80ff93ea48fa1b610e620da.
+```
+
+This closes the old-schedule source/correction census only.  The complete
+GPT-2 authenticated-value DAG, cache witness and wrapper constraint census
+remain separate gates.
+
 ## 4. Hidden Ligero vectors without an NTT trace
 
 Simply omitting `u_c` or `u_g` is unsound.  C6 commits to them before the
@@ -373,6 +440,20 @@ response ordinal and final circuit census, and makes every inner-slot
 frontier empty.  It is capacity, not evidence that the circuit fits.  The
 production census must fit the exact per-cohort slots above; otherwise C6
 hard-stops before backend benchmarking.
+
+The frozen source census now discharges the paired-residual source capacity
+preflight at `mu=23`.  Seven leaf-aligned columns use
+`7 * 4,975,525 = 34,828,675` live entries.  The eighth closure-workspace
+column is conservatively bounded by
+
+```text
+12*22,339 + 4*8,170 + 64 = 300,812 entries.
+```
+
+Thus the live upper bound is `35,129,487` entries inside
+`8 * 2^23 = 67,108,864`, leaving `31,979,377` padded entries of headroom.
+This is not yet the complete DAG/auxiliary circuit census and cannot be used
+to waive any later wrapper-capacity gate.
 
 The wrapper PCS uses rate `1/8`, two independent fold/query chains and
 `s=86` queries per chain.  Under the conservative 64-active-polynomial,
@@ -600,6 +681,9 @@ The clean T1 connection record gives the canonical baseline raw allocation:
 
 ```text
 sub/full protocol counts            4,793,590 / 181,933
+model raw correlations                           5,157,456
+final ProductClosure/ZeroBatch raw                         4
+historical PCS raw reserve                          78,232
 complete allocated raw range                     5,235,692
 terminal-one stage-3 usable                    110,918,718
 21 * 5,235,692                                 109,949,532

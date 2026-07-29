@@ -1249,8 +1249,8 @@ mod tests {
         if prod_dom != closure_v.take(1) {
             return false;
         }
-        let mask = stream.draw_fulls(prod_dom, 1)[0];
-        let key = verifier.expand_full_keys(prod_dom, 1)[0];
+        let mask = stream.draw_product_mask(prod_dom, pout.prod.len());
+        let key = verifier.expand_product_mask_key(prod_dom, vout.kprod.len());
         let prod_proof = prod_batch_prover(&pout.prod, chi, mask, &mut txp);
         let prod_ok = prod_batch_verify(&vout.kprod, key, delta, chi, &prod_proof);
         let zero_dom = closure_p.take(1);

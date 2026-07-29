@@ -424,8 +424,8 @@ mod tests {
         }
 
         // Close the Π_Prod batch (fresh mask, both sides).
-        let mask = stream.draw_fulls(2, 1)[0];
-        let k_mask = ctx.expand_full_keys(2, 1)[0];
+        let mask = stream.draw_product_mask(2, prod_p.len());
+        let k_mask = ctx.expand_product_mask_key(2, prod_k.len());
         let chi = tx.challenge_fp2();
         let chi_v = vtx.challenge_fp2();
         let pp = prod_batch_prover(&prod_p, chi, mask, &mut tx);

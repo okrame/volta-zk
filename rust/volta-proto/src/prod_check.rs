@@ -8,7 +8,7 @@
 //! M8: batched soundness error ≤ 3/|F|).
 
 use volta_field::Fp2;
-use volta_mac::{FullCorr, ProverAuthed, Transcript, VerifierKey};
+use volta_mac::{ProductMaskCorr, ProverAuthed, Transcript, VerifierKey};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ProdProof {
@@ -20,9 +20,11 @@ pub struct ProdProof {
 pub fn prod_batch_prover(
     triples: &[(ProverAuthed, ProverAuthed, ProverAuthed)],
     chi: Fp2,
-    mask: FullCorr,
+    mask: ProductMaskCorr,
     tx: &mut Transcript,
 ) -> ProdProof {
+    assert_eq!(mask.product_triples(), triples.len(), "ProductClosure mask/triple census mismatch");
+    let mask = mask.into_inner();
     let mut m0 = mask.m;
     let mut m1 = mask.x;
     let mut w = Fp2::ONE;
@@ -107,15 +109,15 @@ mod tests {
         let (pa, ka) = authed_batch(&mut ps, &mut vc, 1, &xa);
         let (pb, kb) = authed_batch(&mut ps, &mut vc, 2, &xb);
         let (pc, kc) = authed_batch(&mut ps, &mut vc, 3, &xc);
-        let mask = ps.draw_fulls(9, 1)[0];
-        let k_mask = vc.expand_full_keys(9, 1)[0];
+        let mask = ps.draw_product_mask(9, t);
+        let k_mask = vc.expand_product_mask_key(9, t);
         let chi = tx.challenge_fp2();
         let triples: Vec<_> = (0..t).map(|i| (pa[i], pb[i], pc[i])).collect();
         let keys: Vec<_> = (0..t).map(|i| (ka[i], kb[i], kc[i])).collect();
         let proof = if tamper {
             // bypass the debug assert: prover lies, computing A1 as if honest
-            let mut m0 = mask.m;
-            let mut m1 = mask.x;
+            let mut m0 = mask.tag();
+            let mut m1 = mask.plaintext();
             let mut w = Fp2::ONE;
             for (a, b, c) in &triples {
                 w = w * chi;

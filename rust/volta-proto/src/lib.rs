@@ -34,12 +34,14 @@ pub use block_proof::{
 };
 pub use c6::{
     C6CacheHead, C6ClientAttempt, C6ClientState, C6ClientStore, C6CorrelationRange,
-    C6DeltaResidual, C6Digest, C6Error, C6FinalCertificate, C6SetupManifest, C6SlotHandle,
+    C6DeltaResidual, C6Digest, C6Error, C6FinalCertificate, C6MacTapeManifest,
+    C6PairedCorrelationRanges, C6PairedDeltaResidual, C6SetupManifest, C6SlotHandle,
     C6SlotReservation, C6SlotStatus, C6SlotStore, C6Workload, C6WrapperCommitments,
     C6_ABORT_RETRY_CREDITS, C6_ACCEPTANCE_CREDITS, C6_BASELINE_RAW_CORRELATIONS,
     C6_CERTIFICATE_VERSION, C6_FASE_D_SETUP_BYTES, C6_FINAL_PROOF_CAP_BYTES, C6_LIGERO_QUERIES,
-    C6_MAX_CONTEXT, C6_NEW_PAYLOAD_BUDGET_BYTES, C6_PI_FINAL_CAP_BYTES, C6_RESPONSE_CAP_BYTES,
-    C6_RETAINED_Q121_BASELINE_BYTES, C6_SETUP_CAP_BYTES, C6_TERMINAL_ONE_RAW_CAPACITY,
+    C6_MAC_COORDINATES, C6_MAX_CONTEXT, C6_NEW_PAYLOAD_BUDGET_BYTES, C6_PAIRED_PCG_SETUP_BYTES,
+    C6_PI_FINAL_CAP_BYTES, C6_RESPONSE_CAP_BYTES, C6_RETAINED_Q121_BASELINE_BYTES,
+    C6_ROOFLINE_PI_FINAL_MAX_BYTES, C6_SETUP_CAP_BYTES, C6_TERMINAL_ONE_RAW_CAPACITY,
 };
 pub use c6_residual::{
     C6CommittedResidualProgram, C6LeafId, C6LeafKind, C6LeafRole, C6ProductPostCommit,

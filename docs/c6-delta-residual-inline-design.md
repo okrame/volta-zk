@@ -1,7 +1,8 @@
 # C6 — inline Δ-residual certificate and persistent cache
 
 Status: **OWNER REQUIREMENTS FROZEN; Q=121 CONTINGENCY ACTIVATED BEFORE
-IMPLEMENTATION; LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
+IMPLEMENTATION; FORMAL SEAM / ROOFLINE / PAIRED CODEC GREEN; LOCAL
+IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
 accepted C4/T1 `rate=1/4,Q=120` inline profile.  It does not reopen or rewrite
@@ -13,7 +14,8 @@ record lineage.
 The construction removes the two dominant response fields:
 
 1. the `38,348,720-B` direct `auth_corrections` vector is private witness to
-   one verifier-linear **Δ-residual**;
+   one amplified verifier-linear **Δ-residual event** evaluated in two
+   independent MAC coordinates;
 2. the `17,235,968-B` Ligero `u_vectors` are private witness to native-field
    linear-functional proofs.
 
@@ -207,10 +209,10 @@ event; C6 does not introduce a second product event or challenge.
 After every `ProductClosure` is discharged, all remaining verifier key
 operations are public add/sub/scale.  Reverse accumulation over those typed
 linear nodes, combined with the base-share binding constraints in the same
-grand residual schedule, gives one response-wide equation
+grand residual schedule, gives one response-wide equation per coordinate
 
 ```text
-K_base + Delta * D_corr = M_public.
+K_base[b] + Delta[b] * D_corr[b] = M_public[b],  b in {0,1}.
 ```
 
 - `K_base` is a linear combination of verifier-only base-correlation keys.
@@ -222,13 +224,14 @@ K_base + Delta * D_corr = M_public.
 - `M_public` is the matching combination of retained prover tags and public
   values.
 
-The provider computes and proves the two committed-witness aggregates but
-cannot adapt them after the binding challenge and does not know `Delta` or
-`K_base`.  The client performs this single grand affine check outside the
-transparent wrapper.  A nonzero vector of affine closure errors is charged
-once to the existing `epsilon_Delta_residual`; base-share binding is not a
-fifth statistical wrapper event.  The old M8 product term remains in the
-retained T1 soundness accounting.
+The provider computes and proves each coordinate's committed-witness
+aggregates but cannot adapt them after the binding challenge and does not
+know either `Delta[b]` or `K_base[b]`.  The client performs both grand affine
+checks outside the transparent wrapper.  They form one independently
+amplified Δ-residual event.  A nonzero vector of affine closure errors is
+charged once to the existing `epsilon_Delta_residual`; base-share binding is
+not a fifth statistical wrapper event.  The old M8 product term remains in
+the retained T1 soundness accounting.
 
 The implementation MUST derive both prover constraints and the client
 coefficient schedule from one typed authenticated-value DAG.  Its only legal
@@ -508,36 +511,37 @@ lengths, duplicate fields, trailing bytes and noncanonical field values.
 
 The response protocol is ordered:
 
-1. client sends the accepted head, fresh 32-byte nonce, requested workload
-   and a reserved correlation range;
-2. provider durably reserves the slot/range and sends the canonical public
-   response prefix;
+1. client sends the accepted head, setup-manifest digest, fresh 32-byte
+   nonce, requested workload and one indivisible pair of correlation ranges;
+2. provider durably reserves the slot/range pair and sends the canonical
+   public response prefix;
 3. provider sends commitments to hidden direct corrections, hidden
    `u_vectors`, cache witness and the complete pre-query statement;
 4. client sends the next verifier challenges, including Q=121 Ligero column
    queries and wrapper batching challenges;
 5. provider sends retained T1 fields, queried columns, compact residual
    outputs, `new_head` and `pi_final`;
-6. client verifies the wrapper, streams `K_base`, checks the Δ-residual, and
-   atomically commits the new head plus certificate digest;
+6. client verifies the wrapper, streams both `K_base[b]` values, checks both
+   coordinates of the amplified Δ-residual event, and atomically commits the
+   new head plus certificate digest;
 7. client sends an ACK naming that digest.
 
-Every challenge is domain-separated by protocol/version, connection,
-response nonce, epoch, old head, slot/range and the digest of all prior
-frames.  A query is never cached or reused.
+Every challenge is domain-separated by protocol/version, setup manifest,
+connection, response nonce, epoch, old head, slot/range pair and the digest
+of all prior frames.  A query is never cached or reused.
 
 The final certificate binds at least:
 
 ```text
-version, protocol/model/params digests,
+version, protocol/model/params/setup-manifest digests,
 connection_id, epoch, nonce,
 old_head digest, predecessor certificate digest,
 new_head digest, old/new cache lengths,
-correlation stage/start/count and slot id,
+both correlation stage/start/count tuples and slot id,
 workload digest and public token/output digest,
 retained transcript digest,
-wrapper statement/root digests,
-Delta-residual public outputs,
+wrapper statement/root digests, including both correction roots,
+both Delta-residual public-output pairs,
 pi_final length and digest.
 ```
 
@@ -552,11 +556,11 @@ Available -> Reserved -> InFlight -> Produced -> Accepted
                          \-------------> Burned
 ```
 
-- Reservation durably burns the complete correlation range before proof
-  work starts.
+- Reservation durably burns both complete correlation ranges in one journal
+  record before proof work starts.  No half-reservation is representable.
 - Abort before acceptance leaves the client's accepted head unchanged and
-  moves the slot to `Burned`.  Its range is never reused.
-- A retry reserves a new slot/range and a new nonce.
+  moves the slot to `Burned`.  Neither range is ever reused.
+- A retry reserves a new slot/range pair and a new nonce.
 - Once `Produced`, `(old_head, nonce, slot)` has exactly one canonical
   certificate digest.  An ambiguous ACK permits retransmission of those
   exact bytes only.
@@ -576,7 +580,8 @@ keeps:
 
 ```text
 connection_id, accepted epoch/head, accepted certificate digest,
-used nonce/slot high-water information, params/model/protocol digests.
+used nonce/slot high-water information, params/model/protocol digests,
+setup-manifest digest binding both tape identities.
 ```
 
 Acceptance is a compare-and-swap against the exact old state, implemented as
@@ -652,6 +657,44 @@ duplication above.
 Provider-only model-global tables do not count as client traffic, but their
 digest/version/max geometry is certificate-bound.  Any byte received by the
 client counts in full.
+
+### 10.1 Paired codec and durable-state schema
+
+The pre-amplification reference codec is not wire-compatible with the
+two-tape construction.  C6 therefore uses canonical codec schema `v2` and
+rejects the old `v1` magic/version fail-closed; this is a codec/schema bump,
+not a second product protocol.
+
+The setup manifest now binds `connection_id`, two distinct ordered tape
+identities, and for each tape its raw capacity, per-baseline count and
+client-received PCG setup bytes.  The client state and every attempt, slot
+reservation and final certificate bind the setup-manifest digest.  An
+attempt carries one `C6PairedCorrelationRanges` value: two complete ranges
+with equal raw counts, serialized and journaled as one indivisible record.
+Overlap of either coordinate with any live or burned predecessor rejects the
+whole reservation.
+
+The wrapper commitments carry two correction roots and the certificate
+carries two affine residual-output pairs.  The final designated verifier
+accepts only if both coordinates pass.  The compact cache head remains
+single: both coordinates certify the same typed plaintext DAG and the same
+atomic cache transition.
+
+The scaled canonical fixtures are:
+
+```text
+setup manifest     437 B   c3388a149106ea3f...525c2fd833b29d75
+genesis state      292 B   193255528fb5f7e3...066b99c8cc402c51
+small certificate  935 B   454a4482ab3329fc...c6322f8465ca8c1
+```
+
+The fixture setup exchange is exactly `76,743,367 B`, including both
+`38,371,465-B` PCG tapes and the 437-byte manifest.  Certificate validation
+also enforces the preregistered roofline maximum
+`pi_final <=4,409,824 B`, strictly inside the owner hard cap
+`4,500,000 B`; with the retained transcript this is
+`33,586,456 B`.  The paired C6/residual target is `20/20 PASS`; the complete
+`volta-proto` crate is `130 PASS / 1 pre-existing production-size ignore`.
 
 ## 11. Soundness statement
 

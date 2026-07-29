@@ -6,9 +6,11 @@
 //!
 //! * all client-received setup bytes are counted;
 //! * a certificate binds one accepted predecessor and one compact cache head;
-//! * the final designated-verifier check is one affine Δ residual;
+//! * the final designated-verifier check is one amplified affine Δ-residual
+//!   event over two independent MAC coordinates;
 //! * client acceptance is a durable compare-and-swap;
-//! * provider attempts use append-only, burn-before-use slot journals.
+//! * provider attempts atomically reserve both one-time ranges in an
+//!   append-only, burn-before-use slot journal.
 //!
 //! Cryptographic proof generation lives behind the C6 wrapper module.  The
 //! codec here never accepts a placeholder proof in a production certificate:
@@ -23,28 +25,31 @@ use volta_field::{Fp, Fp2, P};
 
 pub type C6Digest = [u8; 32];
 
-pub const C6_CERTIFICATE_VERSION: u16 = 1;
+pub const C6_CERTIFICATE_VERSION: u16 = 2;
 pub const C6_LIGERO_QUERIES: u16 = 121;
 pub const C6_MAX_CONTEXT: u32 = 1_024;
 pub const C6_ACCEPTANCE_CREDITS: u16 = 17;
 pub const C6_ABORT_RETRY_CREDITS: u16 = 4;
+pub const C6_MAC_COORDINATES: usize = 2;
 pub const C6_BASELINE_RAW_CORRELATIONS: u64 = 5_235_692;
 pub const C6_TERMINAL_ONE_RAW_CAPACITY: u64 = 110_918_718;
 pub const C6_FASE_D_SETUP_BYTES: u64 = 38_371_465;
+pub const C6_PAIRED_PCG_SETUP_BYTES: u64 = C6_MAC_COORDINATES as u64 * C6_FASE_D_SETUP_BYTES;
 pub const C6_SETUP_CAP_BYTES: u64 = 150_000_000;
 pub const C6_RETAINED_Q121_BASELINE_BYTES: u64 = 29_176_632;
 pub const C6_NEW_PAYLOAD_BUDGET_BYTES: u64 = 5_823_368;
 pub const C6_PI_FINAL_CAP_BYTES: u64 = 4_500_000;
+pub const C6_ROOFLINE_PI_FINAL_MAX_BYTES: u64 = 4_409_824;
 /// Compatibility name for the cap historically described as the “final
 /// proof”.  The normative cap includes its C6 framing and public claims.
 pub const C6_FINAL_PROOF_CAP_BYTES: u64 = C6_PI_FINAL_CAP_BYTES;
 pub const C6_RESPONSE_CAP_BYTES: u64 = 35_000_000;
 
-const CERT_MAGIC: &[u8] = b"VOLTA-C6-CERT-v1\0";
-const SETUP_MAGIC: &[u8] = b"VOLTA-C6-SETUP-v1";
-const STATE_MAGIC: &[u8] = b"VOLTA-C6-STATE-v1";
-const SLOT_MAGIC: &[u8] = b"VOLTA-C6-SLOT-v1\0";
-const MAX_CLIENT_PARAMETER_BYTES: usize = (C6_SETUP_CAP_BYTES - C6_FASE_D_SETUP_BYTES) as usize;
+const CERT_MAGIC: &[u8] = b"VOLTA-C6-CERT-v2\0";
+const SETUP_MAGIC: &[u8] = b"VOLTA-C6-SETUP-v2";
+const STATE_MAGIC: &[u8] = b"VOLTA-C6-STATE-v2";
+const SLOT_MAGIC: &[u8] = b"VOLTA-C6-SLOT-v2\0";
+const MAX_CLIENT_PARAMETER_BYTES: usize = (C6_SETUP_CAP_BYTES - C6_PAIRED_PCG_SETUP_BYTES) as usize;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6Error(String);
@@ -303,6 +308,59 @@ impl C6CorrelationRange {
     }
 }
 
+/// One indivisible reservation from each independent C6 MAC tape.
+///
+/// Coordinate zero names the ordinary T1 tape and coordinate one names the
+/// residual-only tape.  Their offsets may differ, but an attempt consumes
+/// the same raw count from both and no public API represents a half-pair.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6PairedCorrelationRanges {
+    pub coordinates: [C6CorrelationRange; C6_MAC_COORDINATES],
+}
+
+impl C6PairedCorrelationRanges {
+    fn encode_into(self, out: &mut Encoder) {
+        for range in self.coordinates {
+            range.encode_into(out);
+        }
+    }
+
+    fn decode_from(input: &mut Decoder<'_>) -> C6Result<Self> {
+        Ok(Self {
+            coordinates: [
+                C6CorrelationRange::decode_from(input)?,
+                C6CorrelationRange::decode_from(input)?,
+            ],
+        })
+    }
+
+    pub fn validate(self) -> C6Result<()> {
+        for range in self.coordinates {
+            range.validate()?;
+        }
+        if self.coordinates[0].count != self.coordinates[1].count {
+            return Err(C6Error::new("C6 paired correlation ranges consume different raw counts"));
+        }
+        Ok(())
+    }
+
+    pub fn raw_count(self) -> C6Result<u64> {
+        self.validate()?;
+        Ok(self.coordinates[0].count)
+    }
+
+    pub fn overlaps(self, other: Self) -> C6Result<bool> {
+        self.validate()?;
+        other.validate()?;
+        for coordinate in 0..C6_MAC_COORDINATES {
+            if self.coordinates[coordinate].overlaps(other.coordinates[coordinate])? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct C6Workload {
     pub prompt_tokens: u32,
@@ -353,9 +411,10 @@ impl C6Workload {
 pub struct C6ClientAttempt {
     pub slot: u32,
     pub nonce: C6Digest,
+    pub setup_manifest_digest: C6Digest,
     pub old_head_digest: C6Digest,
     pub predecessor_certificate_digest: C6Digest,
-    pub correlation_range: C6CorrelationRange,
+    pub correlation_ranges: C6PairedCorrelationRanges,
     pub workload: C6Workload,
 }
 
@@ -363,9 +422,10 @@ impl C6ClientAttempt {
     fn encode_into(self, out: &mut Encoder) {
         out.u32(self.slot);
         out.digest(&self.nonce);
+        out.digest(&self.setup_manifest_digest);
         out.digest(&self.old_head_digest);
         out.digest(&self.predecessor_certificate_digest);
-        self.correlation_range.encode_into(out);
+        self.correlation_ranges.encode_into(out);
         self.workload.encode_into(out);
     }
 
@@ -373,15 +433,17 @@ impl C6ClientAttempt {
         Ok(Self {
             slot: input.u32()?,
             nonce: input.digest()?,
+            setup_manifest_digest: input.digest()?,
             old_head_digest: input.digest()?,
             predecessor_certificate_digest: input.digest()?,
-            correlation_range: C6CorrelationRange::decode_from(input)?,
+            correlation_ranges: C6PairedCorrelationRanges::decode_from(input)?,
             workload: C6Workload::decode_from(input)?,
         })
     }
 
     fn validate_for(self, state: C6ClientState) -> C6Result<()> {
         if !is_nonzero(&self.nonce)
+            || self.setup_manifest_digest != state.setup_manifest_digest
             || !is_nonzero(&self.old_head_digest)
             || self.old_head_digest != state.head.digest()
             || self.predecessor_certificate_digest != state.accepted_certificate_digest
@@ -389,16 +451,17 @@ impl C6ClientAttempt {
         {
             return Err(C6Error::new("C6 pending attempt does not bind the current durable head"));
         }
-        self.correlation_range.validate()?;
+        self.correlation_ranges.validate()?;
         self.workload.validate()
     }
 
     fn matches_certificate(self, certificate: &C6FinalCertificate) -> C6Result<()> {
         if certificate.slot != self.slot
             || certificate.nonce != self.nonce
+            || certificate.setup_manifest_digest != self.setup_manifest_digest
             || certificate.old_head.digest() != self.old_head_digest
             || certificate.predecessor_certificate_digest != self.predecessor_certificate_digest
-            || certificate.correlation_range != self.correlation_range
+            || certificate.correlation_ranges != self.correlation_ranges
             || certificate.workload != self.workload
         {
             return Err(C6Error::new("C6 certificate does not match the client-reserved attempt"));
@@ -410,7 +473,7 @@ impl C6ClientAttempt {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct C6WrapperCommitments {
     pub prequery_statement_digest: C6Digest,
-    pub correction_root: C6Digest,
+    pub correction_roots: [C6Digest; C6_MAC_COORDINATES],
     pub weights_u_root: C6Digest,
     pub embed_u_root: C6Digest,
     pub cache_witness_root: C6Digest,
@@ -419,7 +482,9 @@ pub struct C6WrapperCommitments {
 impl C6WrapperCommitments {
     fn encode_into(self, out: &mut Encoder) {
         out.digest(&self.prequery_statement_digest);
-        out.digest(&self.correction_root);
+        for root in self.correction_roots {
+            out.digest(&root);
+        }
         out.digest(&self.weights_u_root);
         out.digest(&self.embed_u_root);
         out.digest(&self.cache_witness_root);
@@ -428,7 +493,7 @@ impl C6WrapperCommitments {
     fn decode_from(input: &mut Decoder<'_>) -> C6Result<Self> {
         Ok(Self {
             prequery_statement_digest: input.digest()?,
-            correction_root: input.digest()?,
+            correction_roots: [input.digest()?, input.digest()?],
             weights_u_root: input.digest()?,
             embed_u_root: input.digest()?,
             cache_witness_root: input.digest()?,
@@ -438,7 +503,8 @@ impl C6WrapperCommitments {
     fn validate(self) -> C6Result<()> {
         let values = [
             self.prequery_statement_digest,
-            self.correction_root,
+            self.correction_roots[0],
+            self.correction_roots[1],
             self.weights_u_root,
             self.embed_u_root,
             self.cache_witness_root,
@@ -474,6 +540,39 @@ impl C6DeltaResidual {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6PairedDeltaResidual {
+    pub coordinates: [C6DeltaResidual; C6_MAC_COORDINATES],
+}
+
+impl C6PairedDeltaResidual {
+    fn encode_into(self, out: &mut Encoder) {
+        for residual in self.coordinates {
+            residual.encode_into(out);
+        }
+    }
+
+    fn decode_from(input: &mut Decoder<'_>) -> C6Result<Self> {
+        Ok(Self {
+            coordinates: [
+                C6DeltaResidual::decode_from(input)?,
+                C6DeltaResidual::decode_from(input)?,
+            ],
+        })
+    }
+
+    /// Both independent designated-verifier coordinates must accept.
+    pub fn verify(
+        self,
+        base_key_rlcs: [Fp2; C6_MAC_COORDINATES],
+        deltas: [Fp2; C6_MAC_COORDINATES],
+    ) -> bool {
+        (0..C6_MAC_COORDINATES).all(|coordinate| {
+            self.coordinates[coordinate].verify(base_key_rlcs[coordinate], deltas[coordinate])
+        })
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6FinalCertificate {
     pub version: u16,
@@ -481,17 +580,18 @@ pub struct C6FinalCertificate {
     pub protocol_digest: C6Digest,
     pub model_digest: C6Digest,
     pub params_digest: C6Digest,
+    pub setup_manifest_digest: C6Digest,
     pub connection_id: C6Digest,
     pub nonce: C6Digest,
     pub slot: u32,
-    pub correlation_range: C6CorrelationRange,
+    pub correlation_ranges: C6PairedCorrelationRanges,
     pub predecessor_certificate_digest: C6Digest,
     pub old_head: C6CacheHead,
     pub new_head: C6CacheHead,
     pub workload: C6Workload,
     pub public_output_digest: C6Digest,
     pub wrapper: C6WrapperCommitments,
-    pub residual: C6DeltaResidual,
+    pub residual: C6PairedDeltaResidual,
     pub retained_transcript_digest: C6Digest,
     pub wrapper_proof_digest: C6Digest,
     pub transition_statement_digest: C6Digest,
@@ -501,17 +601,18 @@ pub struct C6FinalCertificate {
 
 impl C6FinalCertificate {
     fn encode_statement(&self) -> Vec<u8> {
-        let mut out = Encoder::with_capacity(640);
-        out.raw(b"VOLTA-C6-STATEMENT-v1");
+        let mut out = Encoder::with_capacity(768);
+        out.raw(b"VOLTA-C6-STATEMENT-v2");
         out.u16(self.version);
         out.u16(self.ligero_queries);
         out.digest(&self.protocol_digest);
         out.digest(&self.model_digest);
         out.digest(&self.params_digest);
+        out.digest(&self.setup_manifest_digest);
         out.digest(&self.connection_id);
         out.digest(&self.nonce);
         out.u32(self.slot);
-        self.correlation_range.encode_into(&mut out);
+        self.correlation_ranges.encode_into(&mut out);
         out.digest(&self.predecessor_certificate_digest);
         self.old_head.encode_into(&mut out);
         out.u64(self.new_head.epoch);
@@ -527,7 +628,7 @@ impl C6FinalCertificate {
     }
 
     pub fn compute_transition_statement_digest(&self) -> C6Digest {
-        hash_parts(b"volta-zk/c6/transition-statement/v1", &[&self.encode_statement()])
+        hash_parts(b"volta-zk/c6/transition-statement/v2", &[&self.encode_statement()])
     }
 
     fn encode_unchecked(&self) -> Vec<u8> {
@@ -541,10 +642,11 @@ impl C6FinalCertificate {
         out.digest(&self.protocol_digest);
         out.digest(&self.model_digest);
         out.digest(&self.params_digest);
+        out.digest(&self.setup_manifest_digest);
         out.digest(&self.connection_id);
         out.digest(&self.nonce);
         out.u32(self.slot);
-        self.correlation_range.encode_into(&mut out);
+        self.correlation_ranges.encode_into(&mut out);
         out.digest(&self.predecessor_certificate_digest);
         self.old_head.encode_into(&mut out);
         self.new_head.encode_into(&mut out);
@@ -577,17 +679,18 @@ impl C6FinalCertificate {
             protocol_digest: input.digest()?,
             model_digest: input.digest()?,
             params_digest: input.digest()?,
+            setup_manifest_digest: input.digest()?,
             connection_id: input.digest()?,
             nonce: input.digest()?,
             slot: input.u32()?,
-            correlation_range: C6CorrelationRange::decode_from(&mut input)?,
+            correlation_ranges: C6PairedCorrelationRanges::decode_from(&mut input)?,
             predecessor_certificate_digest: input.digest()?,
             old_head: C6CacheHead::decode_from(&mut input)?,
             new_head: C6CacheHead::decode_from(&mut input)?,
             workload: C6Workload::decode_from(&mut input)?,
             public_output_digest: input.digest()?,
             wrapper: C6WrapperCommitments::decode_from(&mut input)?,
-            residual: C6DeltaResidual::decode_from(&mut input)?,
+            residual: C6PairedDeltaResidual::decode_from(&mut input)?,
             retained_transcript_digest: input.digest()?,
             wrapper_proof_digest: input.digest()?,
             transition_statement_digest: input.digest()?,
@@ -603,7 +706,7 @@ impl C6FinalCertificate {
     }
 
     pub fn digest(&self) -> C6Result<C6Digest> {
-        Ok(hash_parts(b"volta-zk/c6/final-certificate/v1", &[&self.encode()?]))
+        Ok(hash_parts(b"volta-zk/c6/final-certificate/v2", &[&self.encode()?]))
     }
 
     pub fn encoded_len(&self) -> C6Result<u64> {
@@ -624,6 +727,7 @@ impl C6FinalCertificate {
             self.protocol_digest,
             self.model_digest,
             self.params_digest,
+            self.setup_manifest_digest,
             self.connection_id,
             self.nonce,
             self.public_output_digest,
@@ -643,7 +747,7 @@ impl C6FinalCertificate {
                 "C6 predecessor certificate digest does not match genesis status",
             ));
         }
-        self.correlation_range.validate()?;
+        self.correlation_ranges.validate()?;
         self.workload.validate()?;
         self.wrapper.validate()?;
         if self.new_head.epoch
@@ -684,9 +788,47 @@ impl C6FinalCertificate {
             .ok_or_else(|| C6Error::new("C6 payload accounting underflow"))?;
         if encoded_len > C6_RESPONSE_CAP_BYTES
             || new_payload > C6_NEW_PAYLOAD_BUDGET_BYTES
+            || new_payload > C6_ROOFLINE_PI_FINAL_MAX_BYTES
             || new_payload > C6_PI_FINAL_CAP_BYTES
         {
             return Err(C6Error::new("C6 complete/new-payload wire cap exceeded"));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6MacTapeManifest {
+    pub tape_id: C6Digest,
+    pub raw_capacity: u64,
+    pub baseline_raw_correlations: u64,
+    pub first_exchange_bytes: u64,
+}
+
+impl C6MacTapeManifest {
+    fn encode_into(self, out: &mut Encoder) {
+        out.digest(&self.tape_id);
+        out.u64(self.raw_capacity);
+        out.u64(self.baseline_raw_correlations);
+        out.u64(self.first_exchange_bytes);
+    }
+
+    fn decode_from(input: &mut Decoder<'_>) -> C6Result<Self> {
+        Ok(Self {
+            tape_id: input.digest()?,
+            raw_capacity: input.u64()?,
+            baseline_raw_correlations: input.u64()?,
+            first_exchange_bytes: input.u64()?,
+        })
+    }
+
+    fn validate(self) -> C6Result<()> {
+        if !is_nonzero(&self.tape_id)
+            || self.raw_capacity != C6_TERMINAL_ONE_RAW_CAPACITY
+            || self.baseline_raw_correlations != C6_BASELINE_RAW_CORRELATIONS
+            || self.first_exchange_bytes != C6_FASE_D_SETUP_BYTES
+        {
+            return Err(C6Error::new("C6 MAC-tape manifest differs from the frozen profile"));
         }
         Ok(())
     }
@@ -699,11 +841,13 @@ pub struct C6SetupManifest {
     pub protocol_digest: C6Digest,
     pub model_digest: C6Digest,
     pub params_digest: C6Digest,
+    pub connection_id: C6Digest,
     pub max_context: u32,
     pub acceptance_credits: u16,
     pub abort_retry_credits: u16,
-    pub raw_capacity: u64,
-    pub baseline_raw_correlations: u64,
+    /// Coordinate zero is the ordinary T1 tape; coordinate one is the
+    /// independent residual-only tape.
+    pub mac_tapes: [C6MacTapeManifest; C6_MAC_COORDINATES],
     /// Transparent verifier tables actually received by the client.
     pub client_parameters: Vec<u8>,
     /// Separate from the full `params_digest`, which may also bind
@@ -713,18 +857,20 @@ pub struct C6SetupManifest {
 
 impl C6SetupManifest {
     fn encode_unchecked(&self) -> Vec<u8> {
-        let mut out = Encoder::with_capacity(160 + self.client_parameters.len());
+        let mut out = Encoder::with_capacity(320 + self.client_parameters.len());
         out.raw(SETUP_MAGIC);
         out.u16(self.version);
         out.u16(self.ligero_queries);
         out.digest(&self.protocol_digest);
         out.digest(&self.model_digest);
         out.digest(&self.params_digest);
+        out.digest(&self.connection_id);
         out.u32(self.max_context);
         out.u16(self.acceptance_credits);
         out.u16(self.abort_retry_credits);
-        out.u64(self.raw_capacity);
-        out.u64(self.baseline_raw_correlations);
+        for tape in self.mac_tapes {
+            tape.encode_into(&mut out);
+        }
         out.digest(&self.client_parameters_digest);
         out.blob(&self.client_parameters);
         out.finish()
@@ -744,11 +890,14 @@ impl C6SetupManifest {
             protocol_digest: input.digest()?,
             model_digest: input.digest()?,
             params_digest: input.digest()?,
+            connection_id: input.digest()?,
             max_context: input.u32()?,
             acceptance_credits: input.u16()?,
             abort_retry_credits: input.u16()?,
-            raw_capacity: input.u64()?,
-            baseline_raw_correlations: input.u64()?,
+            mac_tapes: [
+                C6MacTapeManifest::decode_from(&mut input)?,
+                C6MacTapeManifest::decode_from(&mut input)?,
+            ],
             client_parameters_digest: input.digest()?,
             client_parameters: input.blob(MAX_CLIENT_PARAMETER_BYTES)?,
         };
@@ -761,13 +910,20 @@ impl C6SetupManifest {
     }
 
     pub fn digest(&self) -> C6Result<C6Digest> {
-        Ok(hash_parts(b"volta-zk/c6/setup-manifest/v1", &[&self.encode()?]))
+        Ok(hash_parts(b"volta-zk/c6/setup-manifest/v2", &[&self.encode()?]))
+    }
+
+    pub fn paired_pcg_setup_bytes(&self) -> C6Result<u64> {
+        self.mac_tapes.iter().try_fold(0u64, |total, tape| {
+            total
+                .checked_add(tape.first_exchange_bytes)
+                .ok_or_else(|| C6Error::new("C6 paired PCG setup byte count overflow"))
+        })
     }
 
     pub fn first_exchange_bytes(&self) -> C6Result<u64> {
-        C6_FASE_D_SETUP_BYTES
-            .checked_add(self.encode()?.len() as u64)
-            .ok_or_else(|| C6Error::new("C6 setup byte count overflow"))
+        self.validate()?;
+        self.first_exchange_bytes_unchecked()
     }
 
     pub fn validate(&self) -> C6Result<()> {
@@ -776,8 +932,6 @@ impl C6SetupManifest {
             || self.max_context != C6_MAX_CONTEXT
             || self.acceptance_credits != C6_ACCEPTANCE_CREDITS
             || self.abort_retry_credits != C6_ABORT_RETRY_CREDITS
-            || self.raw_capacity != C6_TERMINAL_ONE_RAW_CAPACITY
-            || self.baseline_raw_correlations != C6_BASELINE_RAW_CORRELATIONS
         {
             return Err(C6Error::new("C6 setup profile differs from the frozen profile"));
         }
@@ -785,6 +939,7 @@ impl C6SetupManifest {
             self.protocol_digest,
             self.model_digest,
             self.params_digest,
+            self.connection_id,
             self.client_parameters_digest,
         ]
         .iter()
@@ -792,17 +947,28 @@ impl C6SetupManifest {
         {
             return Err(C6Error::new("zero C6 setup identity digest"));
         }
+        for tape in self.mac_tapes {
+            tape.validate()?;
+        }
+        if self.mac_tapes[0].tape_id == self.mac_tapes[1].tape_id {
+            return Err(C6Error::new("C6 setup reuses one MAC tape identity"));
+        }
         let client_parameters_digest =
-            hash_parts(b"volta-zk/c6/client-parameters/v1", &[&self.client_parameters]);
+            hash_parts(b"volta-zk/c6/client-parameters/v2", &[&self.client_parameters]);
         if client_parameters_digest != self.client_parameters_digest {
             return Err(C6Error::new("C6 client-parameter digest mismatch"));
         }
         let slots = u64::from(self.acceptance_credits) + u64::from(self.abort_retry_credits);
-        if slots
-            .checked_mul(self.baseline_raw_correlations)
-            .is_none_or(|needed| needed > self.raw_capacity)
-        {
-            return Err(C6Error::new("C6 setup lacks 17+4 baseline ranges"));
+        for tape in self.mac_tapes {
+            if slots
+                .checked_mul(tape.baseline_raw_correlations)
+                .is_none_or(|needed| needed > tape.raw_capacity)
+            {
+                return Err(C6Error::new("C6 setup lacks 17+4 baseline ranges in both tapes"));
+            }
+        }
+        if self.paired_pcg_setup_bytes()? != C6_PAIRED_PCG_SETUP_BYTES {
+            return Err(C6Error::new("C6 paired PCG setup byte count mismatch"));
         }
         if self.first_exchange_bytes_unchecked()? > C6_SETUP_CAP_BYTES {
             return Err(C6Error::new("C6 first exchange exceeds 150 MB"));
@@ -811,7 +977,7 @@ impl C6SetupManifest {
     }
 
     fn first_exchange_bytes_unchecked(&self) -> C6Result<u64> {
-        C6_FASE_D_SETUP_BYTES
+        self.paired_pcg_setup_bytes()?
             .checked_add(self.encode_unchecked().len() as u64)
             .ok_or_else(|| C6Error::new("C6 setup byte count overflow"))
     }
@@ -822,6 +988,7 @@ pub struct C6ClientState {
     pub protocol_digest: C6Digest,
     pub model_digest: C6Digest,
     pub params_digest: C6Digest,
+    pub setup_manifest_digest: C6Digest,
     pub connection_id: C6Digest,
     pub head: C6CacheHead,
     /// Separate from `head.producer_transition_digest` to avoid a
@@ -832,19 +999,45 @@ pub struct C6ClientState {
     /// replay cannot move the slot high-water mark backwards.
     pub next_slot: u32,
     /// At most one response may be in flight for the single-writer V1
-    /// client.  This binds acceptance to a client-issued nonce/range/workload
-    /// rather than trusting a provider-created certificate request.
+    /// client.  This binds acceptance to a client-issued nonce/paired-range/
+    /// workload rather than trusting a provider-created certificate request.
     pub pending_attempt: Option<C6ClientAttempt>,
 }
 
 impl C6ClientState {
+    pub fn genesis_from_setup(setup: &C6SetupManifest, cache_root: C6Digest) -> C6Result<Self> {
+        setup.validate()?;
+        if !is_nonzero(&cache_root) {
+            return Err(C6Error::new("zero C6 genesis cache root"));
+        }
+        let state = Self {
+            protocol_digest: setup.protocol_digest,
+            model_digest: setup.model_digest,
+            params_digest: setup.params_digest,
+            setup_manifest_digest: setup.digest()?,
+            connection_id: setup.connection_id,
+            head: C6CacheHead {
+                epoch: 0,
+                cache_len: 0,
+                cache_root,
+                producer_transition_digest: [0; 32],
+            },
+            accepted_certificate_digest: [0; 32],
+            next_slot: 0,
+            pending_attempt: None,
+        };
+        state.validate()?;
+        Ok(state)
+    }
+
     fn encode_unchecked(self) -> Vec<u8> {
-        let mut out = Encoder::with_capacity(240);
+        let mut out = Encoder::with_capacity(320);
         out.raw(STATE_MAGIC);
         out.u16(C6_CERTIFICATE_VERSION);
         out.digest(&self.protocol_digest);
         out.digest(&self.model_digest);
         out.digest(&self.params_digest);
+        out.digest(&self.setup_manifest_digest);
         out.digest(&self.connection_id);
         self.head.encode_into(&mut out);
         out.digest(&self.accepted_certificate_digest);
@@ -874,6 +1067,7 @@ impl C6ClientState {
             protocol_digest: input.digest()?,
             model_digest: input.digest()?,
             params_digest: input.digest()?,
+            setup_manifest_digest: input.digest()?,
             connection_id: input.digest()?,
             head: C6CacheHead::decode_from(&mut input)?,
             accepted_certificate_digest: input.digest()?,
@@ -894,9 +1088,15 @@ impl C6ClientState {
 
     pub fn validate(self) -> C6Result<()> {
         self.head.validate()?;
-        if [self.protocol_digest, self.model_digest, self.params_digest, self.connection_id]
-            .iter()
-            .any(|value| !is_nonzero(value))
+        if [
+            self.protocol_digest,
+            self.model_digest,
+            self.params_digest,
+            self.setup_manifest_digest,
+            self.connection_id,
+        ]
+        .iter()
+        .any(|value| !is_nonzero(value))
         {
             return Err(C6Error::new("zero C6 client-state identity"));
         }
@@ -917,7 +1117,7 @@ impl C6ClientState {
     }
 
     pub fn digest(self) -> C6Result<C6Digest> {
-        Ok(hash_parts(b"volta-zk/c6/client-state/v1", &[&self.encode()?]))
+        Ok(hash_parts(b"volta-zk/c6/client-state/v2", &[&self.encode()?]))
     }
 
     pub fn accepts(self, certificate: &C6FinalCertificate) -> C6Result<Self> {
@@ -930,6 +1130,7 @@ impl C6ClientState {
         if certificate.protocol_digest != self.protocol_digest
             || certificate.model_digest != self.model_digest
             || certificate.params_digest != self.params_digest
+            || certificate.setup_manifest_digest != self.setup_manifest_digest
             || certificate.connection_id != self.connection_id
             || certificate.old_head != self.head
             || certificate.predecessor_certificate_digest != self.accepted_certificate_digest
@@ -940,6 +1141,7 @@ impl C6ClientState {
             protocol_digest: self.protocol_digest,
             model_digest: self.model_digest,
             params_digest: self.params_digest,
+            setup_manifest_digest: self.setup_manifest_digest,
             connection_id: self.connection_id,
             head: certificate.new_head,
             accepted_certificate_digest: certificate.digest()?,
@@ -951,14 +1153,14 @@ impl C6ClientState {
     pub fn reserve_attempt(
         self,
         nonce_entropy: C6Digest,
-        correlation_range: C6CorrelationRange,
+        correlation_ranges: C6PairedCorrelationRanges,
         workload: C6Workload,
     ) -> C6Result<(Self, C6ClientAttempt)> {
         self.validate()?;
         if self.pending_attempt.is_some() {
             return Err(C6Error::new("C6 single-writer client already has a pending attempt"));
         }
-        correlation_range.validate()?;
+        correlation_ranges.validate()?;
         workload.validate()?;
         if workload.old_context != self.head.cache_len {
             return Err(C6Error::new(
@@ -970,7 +1172,7 @@ impl C6ClientState {
             .checked_add(1)
             .ok_or_else(|| C6Error::new("C6 client slot high-water overflow"))?;
         let nonce = hash_parts(
-            b"volta-zk/c6/client-nonce/v1",
+            b"volta-zk/c6/client-nonce/v2",
             &[
                 &self.connection_id,
                 &self.next_slot.to_le_bytes(),
@@ -981,9 +1183,10 @@ impl C6ClientState {
         let attempt = C6ClientAttempt {
             slot: self.next_slot,
             nonce,
+            setup_manifest_digest: self.setup_manifest_digest,
             old_head_digest: self.head.digest(),
             predecessor_certificate_digest: self.accepted_certificate_digest,
-            correlation_range,
+            correlation_ranges,
             workload,
         };
         let next = Self { next_slot, pending_attempt: Some(attempt), ..self };
@@ -1008,6 +1211,7 @@ impl C6ClientState {
             && certificate.protocol_digest == self.protocol_digest
             && certificate.model_digest == self.model_digest
             && certificate.params_digest == self.params_digest
+            && certificate.setup_manifest_digest == self.setup_manifest_digest
             && certificate.new_head == self.head
             && certificate.digest()? == self.accepted_certificate_digest)
     }
@@ -1036,6 +1240,7 @@ fn valid_client_state_transition(current: C6ClientState, next: C6ClientState) ->
     if current.protocol_digest != next.protocol_digest
         || current.model_digest != next.model_digest
         || current.params_digest != next.params_digest
+        || current.setup_manifest_digest != next.setup_manifest_digest
         || current.connection_id != next.connection_id
     {
         return Err(C6Error::new("C6 atomic state transition changes connection identity"));
@@ -1211,7 +1416,7 @@ impl C6ClientStore {
         &self,
         expected: C6ClientState,
         nonce_entropy: C6Digest,
-        correlation_range: C6CorrelationRange,
+        correlation_ranges: C6PairedCorrelationRanges,
         workload: C6Workload,
     ) -> C6Result<(C6ClientState, C6ClientAttempt)> {
         let current = self.load()?;
@@ -1219,7 +1424,7 @@ impl C6ClientStore {
             return Err(C6Error::new("C6 client compare-and-swap predecessor mismatch"));
         }
         let (next, attempt) =
-            current.reserve_attempt(nonce_entropy, correlation_range, workload)?;
+            current.reserve_attempt(nonce_entropy, correlation_ranges, workload)?;
         valid_client_state_transition(current, next)?;
         atomic_replace_state(&self.path, next, AtomicFault::None)?;
         Ok((next, attempt))
@@ -1240,59 +1445,64 @@ impl C6ClientStore {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct C6SlotReservation {
     pub connection_id: C6Digest,
+    pub setup_manifest_digest: C6Digest,
     pub slot: u32,
     pub nonce: C6Digest,
     pub old_head_digest: C6Digest,
     pub predecessor_certificate_digest: C6Digest,
-    pub correlation_range: C6CorrelationRange,
+    pub correlation_ranges: C6PairedCorrelationRanges,
 }
 
 impl C6SlotReservation {
     fn encode_into(self, out: &mut Encoder) {
         out.digest(&self.connection_id);
+        out.digest(&self.setup_manifest_digest);
         out.u32(self.slot);
         out.digest(&self.nonce);
         out.digest(&self.old_head_digest);
         out.digest(&self.predecessor_certificate_digest);
-        self.correlation_range.encode_into(out);
+        self.correlation_ranges.encode_into(out);
     }
 
     fn decode_from(input: &mut Decoder<'_>) -> C6Result<Self> {
         Ok(Self {
             connection_id: input.digest()?,
+            setup_manifest_digest: input.digest()?,
             slot: input.u32()?,
             nonce: input.digest()?,
             old_head_digest: input.digest()?,
             predecessor_certificate_digest: input.digest()?,
-            correlation_range: C6CorrelationRange::decode_from(input)?,
+            correlation_ranges: C6PairedCorrelationRanges::decode_from(input)?,
         })
     }
 
     pub fn validate(self) -> C6Result<()> {
         if !is_nonzero(&self.connection_id)
+            || !is_nonzero(&self.setup_manifest_digest)
             || !is_nonzero(&self.nonce)
             || !is_nonzero(&self.old_head_digest)
         {
             return Err(C6Error::new("zero identity in C6 slot reservation"));
         }
-        self.correlation_range.validate()
+        self.correlation_ranges.validate()
     }
 
     pub fn digest(self) -> C6Result<C6Digest> {
         self.validate()?;
-        let mut encoded = Encoder::with_capacity(152);
+        let mut encoded = Encoder::with_capacity(256);
         self.encode_into(&mut encoded);
-        Ok(hash_parts(b"volta-zk/c6/slot-reservation/v1", &[&encoded.finish()]))
+        Ok(hash_parts(b"volta-zk/c6/slot-reservation/v2", &[&encoded.finish()]))
     }
 
     fn matches_certificate(self, certificate: &C6FinalCertificate) -> C6Result<()> {
         certificate.validate()?;
         if certificate.connection_id != self.connection_id
+            || certificate.setup_manifest_digest != self.setup_manifest_digest
             || certificate.slot != self.slot
             || certificate.nonce != self.nonce
             || certificate.old_head.digest() != self.old_head_digest
             || certificate.predecessor_certificate_digest != self.predecessor_certificate_digest
-            || certificate.correlation_range != self.correlation_range
+            || certificate.correlation_ranges != self.correlation_ranges
         {
             return Err(C6Error::new("C6 certificate does not match its durable slot reservation"));
         }
@@ -1331,7 +1541,7 @@ fn slot_header(reservation: C6SlotReservation) -> C6Result<(Vec<u8>, C6Digest)> 
     encoded.u16(C6_CERTIFICATE_VERSION);
     reservation.encode_into(&mut encoded);
     let body = encoded.finish();
-    let checksum = hash_parts(b"volta-zk/c6/slot-header/v1", &[&body]);
+    let checksum = hash_parts(b"volta-zk/c6/slot-header/v2", &[&body]);
     let mut header = body;
     header.extend_from_slice(&checksum);
     Ok((header, checksum))
@@ -1352,7 +1562,7 @@ fn slot_transition_bytes(
     body.u64(certificate_len);
     let body = body.finish();
     let checksum = hash_parts(
-        b"volta-zk/c6/slot-transition/v1",
+        b"volta-zk/c6/slot-transition/v2",
         &[&reservation_digest, &previous_checksum, &body],
     );
     let mut record = body;
@@ -1371,7 +1581,7 @@ fn parse_slot_journal(bytes: &[u8]) -> C6Result<C6SlotRecord> {
     let header_body_end = input.offset;
     let header_checksum = input.digest()?;
     let expected_header_checksum =
-        hash_parts(b"volta-zk/c6/slot-header/v1", &[&bytes[..header_body_end]]);
+        hash_parts(b"volta-zk/c6/slot-header/v2", &[&bytes[..header_body_end]]);
     if header_checksum != expected_header_checksum {
         return Err(C6Error::new("C6 slot header checksum mismatch"));
     }
@@ -1440,14 +1650,14 @@ fn parse_slot_journal(bytes: &[u8]) -> C6Result<C6SlotRecord> {
 
 fn slot_id(reservation: C6SlotReservation) -> C6Digest {
     hash_parts(
-        b"volta-zk/c6/slot-journal-name/v1",
+        b"volta-zk/c6/slot-journal-name/v2",
         &[&reservation.connection_id, &reservation.slot.to_le_bytes()],
     )
 }
 
 fn slot_path(root: &Path, connection_id: C6Digest, slot: u32) -> PathBuf {
     let id =
-        hash_parts(b"volta-zk/c6/slot-journal-name/v1", &[&connection_id, &slot.to_le_bytes()]);
+        hash_parts(b"volta-zk/c6/slot-journal-name/v2", &[&connection_id, &slot.to_le_bytes()]);
     root.join(format!("{}.slot", hex_digest(id)))
 }
 
@@ -1501,9 +1711,9 @@ impl C6SlotStore {
             {
                 return Err(C6Error::new("reused C6 slot nonce"));
             }
-            if prior.reservation.correlation_range.overlaps(reservation.correlation_range)? {
+            if prior.reservation.correlation_ranges.overlaps(reservation.correlation_ranges)? {
                 return Err(C6Error::new(
-                    "C6 correlation range overlaps an existing or burned slot",
+                    "a C6 paired correlation range overlaps an existing or burned slot",
                 ));
             }
             let same_predecessor = prior.reservation.connection_id == reservation.connection_id
@@ -1789,25 +1999,15 @@ mod tests {
     }
 
     fn genesis(connection_id: C6Digest) -> C6ClientState {
-        C6ClientState {
-            protocol_digest: digest(1),
-            model_digest: digest(2),
-            params_digest: digest(3),
-            connection_id,
-            head: C6CacheHead {
-                epoch: 0,
-                cache_len: 0,
-                cache_root: digest(4),
-                producer_transition_digest: [0; 32],
-            },
-            accepted_certificate_digest: [0; 32],
-            next_slot: 0,
-            pending_attempt: None,
-        }
+        C6ClientState::genesis_from_setup(&setup_manifest(connection_id), digest(4)).unwrap()
     }
 
     fn range(start: u64) -> C6CorrelationRange {
         C6CorrelationRange { stage: 1, start, count: 100 }
+    }
+
+    fn paired_ranges(start: u64) -> C6PairedCorrelationRanges {
+        C6PairedCorrelationRanges { coordinates: [range(start), range(start)] }
     }
 
     fn workload(state: C6ClientState) -> C6Workload {
@@ -1823,7 +2023,7 @@ mod tests {
         state: C6ClientState,
         slot: u32,
         nonce: C6Digest,
-        correlation_range: C6CorrelationRange,
+        correlation_ranges: C6PairedCorrelationRanges,
         retained_len: usize,
         proof_len: usize,
     ) -> C6FinalCertificate {
@@ -1836,10 +2036,11 @@ mod tests {
             protocol_digest: state.protocol_digest,
             model_digest: state.model_digest,
             params_digest: state.params_digest,
+            setup_manifest_digest: state.setup_manifest_digest,
             connection_id: state.connection_id,
             nonce,
             slot,
-            correlation_range,
+            correlation_ranges,
             predecessor_certificate_digest: state.accepted_certificate_digest,
             old_head: state.head,
             new_head: C6CacheHead {
@@ -1855,14 +2056,22 @@ mod tests {
             public_output_digest: digest(8),
             wrapper: C6WrapperCommitments {
                 prequery_statement_digest: digest(9),
-                correction_root: digest(10),
+                correction_roots: [digest(10), digest(14)],
                 weights_u_root: digest(11),
                 embed_u_root: digest(12),
                 cache_witness_root: digest(13),
             },
-            residual: C6DeltaResidual {
-                correction_rlc: Fp2::new(Fp::new(7), Fp::new(11)),
-                public_tag_rlc: Fp2::new(Fp::new(13), Fp::new(17)),
+            residual: C6PairedDeltaResidual {
+                coordinates: [
+                    C6DeltaResidual {
+                        correction_rlc: Fp2::new(Fp::new(7), Fp::new(11)),
+                        public_tag_rlc: Fp2::new(Fp::new(13), Fp::new(17)),
+                    },
+                    C6DeltaResidual {
+                        correction_rlc: Fp2::new(Fp::new(19), Fp::new(23)),
+                        public_tag_rlc: Fp2::new(Fp::new(29), Fp::new(31)),
+                    },
+                ],
             },
             retained_transcript_digest: hash_parts(
                 b"volta-zk/c6/retained-transcript/v1",
@@ -1883,19 +2092,20 @@ mod tests {
         state: C6ClientState,
         slot: u32,
         nonce: C6Digest,
-        correlation_range: C6CorrelationRange,
+        correlation_ranges: C6PairedCorrelationRanges,
     ) -> C6SlotReservation {
         C6SlotReservation {
             connection_id: state.connection_id,
+            setup_manifest_digest: state.setup_manifest_digest,
             slot,
             nonce,
             old_head_digest: state.head.digest(),
             predecessor_certificate_digest: state.accepted_certificate_digest,
-            correlation_range,
+            correlation_ranges,
         }
     }
 
-    fn setup_manifest() -> C6SetupManifest {
+    fn setup_manifest(connection_id: C6Digest) -> C6SetupManifest {
         let client_parameters = vec![0x42; 128];
         C6SetupManifest {
             version: C6_CERTIFICATE_VERSION,
@@ -1903,13 +2113,26 @@ mod tests {
             protocol_digest: digest(1),
             model_digest: digest(2),
             params_digest: digest(3),
+            connection_id,
             max_context: C6_MAX_CONTEXT,
             acceptance_credits: C6_ACCEPTANCE_CREDITS,
             abort_retry_credits: C6_ABORT_RETRY_CREDITS,
-            raw_capacity: C6_TERMINAL_ONE_RAW_CAPACITY,
-            baseline_raw_correlations: C6_BASELINE_RAW_CORRELATIONS,
+            mac_tapes: [
+                C6MacTapeManifest {
+                    tape_id: hash_parts(b"volta-zk/c6/test-tape/ordinary", &[&connection_id]),
+                    raw_capacity: C6_TERMINAL_ONE_RAW_CAPACITY,
+                    baseline_raw_correlations: C6_BASELINE_RAW_CORRELATIONS,
+                    first_exchange_bytes: C6_FASE_D_SETUP_BYTES,
+                },
+                C6MacTapeManifest {
+                    tape_id: hash_parts(b"volta-zk/c6/test-tape/residual", &[&connection_id]),
+                    raw_capacity: C6_TERMINAL_ONE_RAW_CAPACITY,
+                    baseline_raw_correlations: C6_BASELINE_RAW_CORRELATIONS,
+                    first_exchange_bytes: C6_FASE_D_SETUP_BYTES,
+                },
+            ],
             client_parameters_digest: hash_parts(
-                b"volta-zk/c6/client-parameters/v1",
+                b"volta-zk/c6/client-parameters/v2",
                 &[&client_parameters],
             ),
             client_parameters,
@@ -1918,19 +2141,31 @@ mod tests {
 
     #[test]
     fn setup_manifest_is_canonical_and_counts_every_client_byte() {
-        let manifest = setup_manifest();
+        let manifest = setup_manifest(digest(19));
         let bytes = manifest.encode().unwrap();
-        assert_eq!(bytes.len(), 309);
+        assert_eq!(bytes.len(), 437);
         assert_eq!(
             hex_digest(manifest.digest().unwrap()),
-            "88498ac806b84f1b5d1318be893b11031ee63b8c3ad407ad88e91627ba6fab00"
+            "c3388a149106ea3f9442199a3e711f2c137d5fa66b13f82f525c2fd833b29d75"
         );
         assert_eq!(C6SetupManifest::decode(&bytes).unwrap(), manifest);
+        assert_eq!(manifest.paired_pcg_setup_bytes().unwrap(), C6_PAIRED_PCG_SETUP_BYTES);
+        assert_eq!(C6_PAIRED_PCG_SETUP_BYTES, 76_742_930);
         assert_eq!(
             manifest.first_exchange_bytes().unwrap(),
-            C6_FASE_D_SETUP_BYTES + bytes.len() as u64
+            C6_PAIRED_PCG_SETUP_BYTES + bytes.len() as u64
         );
+        assert_eq!(manifest.first_exchange_bytes().unwrap(), 76_743_367);
         assert!(manifest.first_exchange_bytes().unwrap() <= C6_SETUP_CAP_BYTES);
+        assert_ne!(manifest.mac_tapes[0].tape_id, manifest.mac_tapes[1].tape_id);
+        for tape in manifest.mac_tapes {
+            assert_eq!(
+                tape.raw_capacity
+                    - u64::from(C6_ACCEPTANCE_CREDITS + C6_ABORT_RETRY_CREDITS)
+                        * tape.baseline_raw_correlations,
+                969_186
+            );
+        }
 
         let mut trailing = bytes;
         trailing.push(0);
@@ -1939,22 +2174,52 @@ mod tests {
         let mut mismatched_parameters = manifest.encode().unwrap();
         *mismatched_parameters.last_mut().unwrap() ^= 1;
         assert!(C6SetupManifest::decode(&mismatched_parameters).is_err());
+
+        let mut reused_tape = manifest;
+        reused_tape.mac_tapes[1].tape_id = reused_tape.mac_tapes[0].tape_id;
+        assert!(reused_tape.validate().is_err());
+    }
+
+    #[test]
+    fn paired_ranges_are_indivisible_and_overlap_checks_cover_both_tapes() {
+        let mut unequal = paired_ranges(0);
+        unequal.coordinates[1].count -= 1;
+        assert!(unequal.validate().is_err());
+
+        let root = test_directory("paired-range-overlap");
+        let store = C6SlotStore::open(&root).unwrap();
+        let state = genesis(digest(18));
+        let first_ranges = C6PairedCorrelationRanges { coordinates: [range(0), range(1_000)] };
+        let mut first = store.reserve(reservation(state, 0, digest(17), first_ranges)).unwrap();
+        assert_eq!(first.reservation().correlation_ranges, first_ranges);
+        first.abort().unwrap();
+
+        // Coordinate zero starts exactly after the old range, but coordinate
+        // one overlaps a burned range.  The pair must still be rejected.
+        let overlaps_only_second =
+            C6PairedCorrelationRanges { coordinates: [range(100), range(1_050)] };
+        assert!(store.reserve(reservation(state, 1, digest(16), overlaps_only_second)).is_err());
+
+        let disjoint = C6PairedCorrelationRanges { coordinates: [range(100), range(1_100)] };
+        let mut retry = store.reserve(reservation(state, 1, digest(15), disjoint)).unwrap();
+        retry.abort().unwrap();
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
     fn certificate_codec_rejects_malleability_and_noncanonical_field_elements() {
         let state = genesis(digest(20));
-        let certificate = certificate(state, 0, digest(21), range(0), 37, 41);
+        let certificate = certificate(state, 0, digest(21), paired_ranges(0), 37, 41);
         let bytes = certificate.encode().unwrap();
-        assert_eq!(bytes.len(), 819);
+        assert_eq!(bytes.len(), 935);
         assert_eq!(
             hex_digest(certificate.digest().unwrap()),
-            "3322767771ce04bff2f09458974d908e79bcb59ba67418643450af53fdc24e0b"
+            "454a4482ab3329fc5991d127a812f94c1f664348c2872e358c6322f8465ca8c1"
         );
-        assert_eq!(state.encode().unwrap().len(), 260);
+        assert_eq!(state.encode().unwrap().len(), 292);
         assert_eq!(
             hex_digest(state.digest().unwrap()),
-            "8fa67c46913b1fb6cf36ccb4177a9661a51975b12e6f1cc523f978f139931f96"
+            "193255528fb5f7e31b3d6cbdf2e52b0e00b28fb01bca5869066b99c8cc402c51"
         );
         assert_eq!(C6FinalCertificate::decode(&bytes).unwrap(), certificate);
 
@@ -1962,16 +2227,21 @@ mod tests {
         trailing.push(0);
         assert!(C6FinalCertificate::decode(&trailing).is_err());
 
+        let mut old_magic = bytes.clone();
+        let version_offset = b"VOLTA-C6-CERT-v".len();
+        old_magic[version_offset] = b'1';
+        assert!(C6FinalCertificate::decode(&old_magic).is_err());
+
         let mut noncanonical = bytes;
         let mut input = Decoder::new(&noncanonical);
         input.magic(CERT_MAGIC).unwrap();
         input.u16().unwrap();
         input.u16().unwrap();
-        for _ in 0..5 {
+        for _ in 0..6 {
             input.digest().unwrap();
         }
         input.u32().unwrap();
-        C6CorrelationRange::decode_from(&mut input).unwrap();
+        C6PairedCorrelationRanges::decode_from(&mut input).unwrap();
         input.digest().unwrap();
         C6CacheHead::decode_from(&mut input).unwrap();
         C6CacheHead::decode_from(&mut input).unwrap();
@@ -1984,14 +2254,33 @@ mod tests {
     }
 
     #[test]
+    fn setup_digest_is_bound_across_client_attempt_slot_and_certificate() {
+        let initial = genesis(digest(66));
+        let (pending, attempt) =
+            initial.reserve_attempt(digest(67), paired_ranges(0), workload(initial)).unwrap();
+        let mut forged =
+            certificate(pending, attempt.slot, attempt.nonce, attempt.correlation_ranges, 32, 32);
+        forged.setup_manifest_digest = digest(68);
+        let statement = forged.compute_transition_statement_digest();
+        forged.transition_statement_digest = statement;
+        forged.new_head.producer_transition_digest = statement;
+        assert!(forged.validate().is_ok());
+        assert!(pending.accepts(&forged).is_err());
+        assert!(reservation(pending, attempt.slot, attempt.nonce, attempt.correlation_ranges,)
+            .matches_certificate(&forged)
+            .is_err());
+    }
+
+    #[test]
     fn certificate_wire_is_flat_in_cache_length_and_history() {
         let first_state = genesis(digest(22));
-        let first = certificate(first_state, 0, digest(23), range(0), 256, 512);
+        let first = certificate(first_state, 0, digest(23), paired_ranges(0), 256, 512);
 
         let late_state = C6ClientState {
             protocol_digest: first_state.protocol_digest,
             model_digest: first_state.model_digest,
             params_digest: first_state.params_digest,
+            setup_manifest_digest: first_state.setup_manifest_digest,
             connection_id: first_state.connection_id,
             head: C6CacheHead {
                 epoch: 16,
@@ -2003,7 +2292,7 @@ mod tests {
             next_slot: 16,
             pending_attempt: None,
         };
-        let late = certificate(late_state, 16, digest(27), range(1_600), 256, 512);
+        let late = certificate(late_state, 16, digest(27), paired_ranges(1_600), 256, 512);
         assert_eq!(first.encoded_len().unwrap(), late.encoded_len().unwrap());
         assert_eq!(first.new_payload_bytes().unwrap(), late.new_payload_bytes().unwrap());
         assert!(late.encoded_len().unwrap() <= C6_RESPONSE_CAP_BYTES);
@@ -2012,17 +2301,17 @@ mod tests {
     #[test]
     fn pi_final_cap_includes_certificate_framing_and_public_claims() {
         let state = genesis(digest(28));
-        let mut certificate = certificate(state, 0, digest(29), range(0), 1, 1);
+        let mut certificate = certificate(state, 0, digest(29), paired_ranges(0), 1, 1);
         let framing = certificate.new_payload_bytes().unwrap() - 1;
-        let maximum_proof_len = usize::try_from(C6_PI_FINAL_CAP_BYTES - framing).unwrap();
+        let maximum_proof_len = usize::try_from(C6_ROOFLINE_PI_FINAL_MAX_BYTES - framing).unwrap();
         certificate.wrapper_proof = vec![0x5a; maximum_proof_len];
         certificate.wrapper_proof_digest =
             hash_parts(b"volta-zk/c6/wrapper-proof/v1", &[&certificate.wrapper_proof]);
         let statement = certificate.compute_transition_statement_digest();
         certificate.transition_statement_digest = statement;
         certificate.new_head.producer_transition_digest = statement;
-        assert_eq!(certificate.new_payload_bytes().unwrap(), C6_PI_FINAL_CAP_BYTES);
-        assert_eq!(C6_RETAINED_Q121_BASELINE_BYTES + C6_PI_FINAL_CAP_BYTES, 33_676_632);
+        assert_eq!(certificate.new_payload_bytes().unwrap(), C6_ROOFLINE_PI_FINAL_MAX_BYTES);
+        assert_eq!(C6_RETAINED_Q121_BASELINE_BYTES + C6_ROOFLINE_PI_FINAL_MAX_BYTES, 33_586_456);
 
         certificate.wrapper_proof.push(0x5a);
         certificate.wrapper_proof_digest =
@@ -2034,20 +2323,26 @@ mod tests {
     }
 
     #[test]
-    fn delta_residual_accepts_only_the_matching_affine_identity() {
-        let base = Fp2::new(Fp::new(3), Fp::new(5));
-        let delta = Fp2::new(Fp::new(7), Fp::new(11));
-        let correction = Fp2::new(Fp::new(13), Fp::new(17));
-        let honest = C6DeltaResidual {
-            correction_rlc: correction,
-            public_tag_rlc: base + delta * correction,
+    fn paired_delta_residual_requires_both_matching_affine_identities() {
+        let bases = [Fp2::new(Fp::new(3), Fp::new(5)), Fp2::new(Fp::new(19), Fp::new(23))];
+        let deltas = [Fp2::new(Fp::new(7), Fp::new(11)), Fp2::new(Fp::new(29), Fp::new(31))];
+        let corrections = [Fp2::new(Fp::new(13), Fp::new(17)), Fp2::new(Fp::new(37), Fp::new(41))];
+        let honest = C6PairedDeltaResidual {
+            coordinates: [
+                C6DeltaResidual {
+                    correction_rlc: corrections[0],
+                    public_tag_rlc: bases[0] + deltas[0] * corrections[0],
+                },
+                C6DeltaResidual {
+                    correction_rlc: corrections[1],
+                    public_tag_rlc: bases[1] + deltas[1] * corrections[1],
+                },
+            ],
         };
-        assert!(honest.verify(base, delta));
-        assert!(!C6DeltaResidual {
-            public_tag_rlc: honest.public_tag_rlc + Fp2::from_base(Fp::new(1)),
-            ..honest
-        }
-        .verify(base, delta));
+        assert!(honest.verify(bases, deltas));
+        let mut forged = honest;
+        forged.coordinates[1].public_tag_rlc += Fp2::from_base(Fp::new(1));
+        assert!(!forged.verify(bases, deltas));
     }
 
     #[test]
@@ -2057,10 +2352,11 @@ mod tests {
         let initial = genesis(digest(30));
         let path = root.join("head.state");
         let store = C6ClientStore::initialize(&path, initial).unwrap();
-        let (pending, attempt) =
-            store.reserve_attempt(initial, digest(31), range(0), workload(initial)).unwrap();
+        let (pending, attempt) = store
+            .reserve_attempt(initial, digest(31), paired_ranges(0), workload(initial))
+            .unwrap();
         let first_certificate =
-            certificate(pending, attempt.slot, attempt.nonce, attempt.correlation_range, 32, 32);
+            certificate(pending, attempt.slot, attempt.nonce, attempt.correlation_ranges, 32, 32);
         let next = store.accept(pending, &first_certificate).unwrap();
         assert_eq!(store.load().unwrap(), next);
         assert!(store.accept(initial, &first_certificate).is_err());
@@ -2072,13 +2368,13 @@ mod tests {
         let temp_path = temp_root.join("head.state");
         let temp_store = C6ClientStore::initialize(&temp_path, temp_initial).unwrap();
         let (temp_pending, temp_attempt) = temp_store
-            .reserve_attempt(temp_initial, digest(33), range(100), workload(temp_initial))
+            .reserve_attempt(temp_initial, digest(33), paired_ranges(100), workload(temp_initial))
             .unwrap();
         let temp_certificate = certificate(
             temp_pending,
             temp_attempt.slot,
             temp_attempt.nonce,
-            temp_attempt.correlation_range,
+            temp_attempt.correlation_ranges,
             32,
             32,
         );
@@ -2094,13 +2390,18 @@ mod tests {
         let rename_path = rename_root.join("head.state");
         let rename_store = C6ClientStore::initialize(&rename_path, rename_initial).unwrap();
         let (rename_pending, rename_attempt) = rename_store
-            .reserve_attempt(rename_initial, digest(35), range(200), workload(rename_initial))
+            .reserve_attempt(
+                rename_initial,
+                digest(35),
+                paired_ranges(200),
+                workload(rename_initial),
+            )
             .unwrap();
         let rename_certificate = certificate(
             rename_pending,
             rename_attempt.slot,
             rename_attempt.nonce,
-            rename_attempt.correlation_range,
+            rename_attempt.correlation_ranges,
             32,
             32,
         );
@@ -2120,8 +2421,9 @@ mod tests {
         let initial = genesis(digest(36));
         let path = root.join("head.state");
         let store = C6ClientStore::initialize(&path, initial).unwrap();
-        let (pending, first_attempt) =
-            store.reserve_attempt(initial, digest(37), range(0), workload(initial)).unwrap();
+        let (pending, first_attempt) = store
+            .reserve_attempt(initial, digest(37), paired_ranges(0), workload(initial))
+            .unwrap();
         let after_abort = store.abort_attempt(pending).unwrap();
         assert_eq!(after_abort.head, initial.head);
         assert_eq!(after_abort.accepted_certificate_digest, initial.accepted_certificate_digest);
@@ -2129,7 +2431,7 @@ mod tests {
         assert!(after_abort.pending_attempt.is_none());
 
         let (retry, retry_attempt) = store
-            .reserve_attempt(after_abort, digest(37), range(100), workload(after_abort))
+            .reserve_attempt(after_abort, digest(37), paired_ranges(100), workload(after_abort))
             .unwrap();
         assert_eq!(retry_attempt.slot, 1);
         assert_ne!(retry_attempt.nonce, first_attempt.nonce);
@@ -2150,7 +2452,7 @@ mod tests {
                 .reserve_attempt(
                     initial,
                     digest(72 + ordinal as u8),
-                    range(ordinal as u64 * 100),
+                    paired_ranges(ordinal as u64 * 100),
                     workload(initial),
                 )
                 .unwrap();
@@ -2158,7 +2460,7 @@ mod tests {
                 pending,
                 attempt.slot,
                 attempt.nonce,
-                attempt.correlation_range,
+                attempt.correlation_ranges,
                 32,
                 32,
             );
@@ -2175,16 +2477,18 @@ mod tests {
         let store = C6SlotStore::open(&root).unwrap();
         let state = genesis(digest(40));
 
-        let mut aborted = store.reserve(reservation(state, 0, digest(41), range(0))).unwrap();
+        let mut aborted =
+            store.reserve(reservation(state, 0, digest(41), paired_ranges(0))).unwrap();
         aborted.start().unwrap();
-        assert!(store.reserve(reservation(state, 1, digest(42), range(100))).is_err());
+        assert!(store.reserve(reservation(state, 1, digest(42), paired_ranges(100))).is_err());
         aborted.abort().unwrap();
         assert_eq!(aborted.status(), C6SlotStatus::Burned);
-        assert!(store.reserve(reservation(state, 1, digest(42), range(50))).is_err());
+        assert!(store.reserve(reservation(state, 1, digest(42), paired_ranges(50))).is_err());
 
-        let mut produced = store.reserve(reservation(state, 1, digest(42), range(100))).unwrap();
+        let mut produced =
+            store.reserve(reservation(state, 1, digest(42), paired_ranges(100))).unwrap();
         produced.start().unwrap();
-        let certificate = certificate(state, 1, digest(42), range(100), 64, 96);
+        let certificate = certificate(state, 1, digest(42), paired_ranges(100), 64, 96);
         let expected_bytes = certificate.encode().unwrap();
         let certificate_digest = produced.produce(&certificate).unwrap();
         assert_eq!(produced.retransmit().unwrap(), expected_bytes);
@@ -2202,8 +2506,8 @@ mod tests {
         assert_eq!(produced.status(), C6SlotStatus::Accepted);
         assert_eq!(produced.retransmit().unwrap(), expected_bytes);
 
-        assert!(store.reserve(reservation(state, 2, digest(42), range(200))).is_err());
-        assert!(store.reserve(reservation(state, 2, digest(44), range(200))).is_err());
+        assert!(store.reserve(reservation(state, 2, digest(42), paired_ranges(200))).is_err());
+        assert!(store.reserve(reservation(state, 2, digest(44), paired_ranges(200))).is_err());
 
         fs::remove_dir_all(root).unwrap();
     }
@@ -2214,25 +2518,25 @@ mod tests {
         let store = C6SlotStore::open(&root).unwrap();
         let initial = genesis(digest(50));
         let (first_pending, first_attempt) =
-            initial.reserve_attempt(digest(51), range(0), workload(initial)).unwrap();
+            initial.reserve_attempt(digest(51), paired_ranges(0), workload(initial)).unwrap();
         let first = certificate(
             first_pending,
             first_attempt.slot,
             first_attempt.nonce,
-            first_attempt.correlation_range,
+            first_attempt.correlation_ranges,
             48,
             80,
         );
         let next = first_pending.accepts(&first).unwrap();
 
         let (orphan_pending, orphan_attempt) =
-            next.reserve_attempt(digest(52), range(100), workload(next)).unwrap();
+            next.reserve_attempt(digest(52), paired_ranges(100), workload(next)).unwrap();
         let mut orphan = store
             .reserve(reservation(
                 orphan_pending,
                 orphan_attempt.slot,
                 orphan_attempt.nonce,
-                orphan_attempt.correlation_range,
+                orphan_attempt.correlation_ranges,
             ))
             .unwrap();
         orphan.start().unwrap();
@@ -2240,7 +2544,7 @@ mod tests {
             orphan_pending,
             orphan_attempt.slot,
             orphan_attempt.nonce,
-            orphan_attempt.correlation_range,
+            orphan_attempt.correlation_ranges,
             48,
             80,
         );
@@ -2256,7 +2560,8 @@ mod tests {
         drop(recovered);
 
         let later = orphan_pending.accepts(&orphan_certificate).unwrap();
-        let mut empty = store.reserve(reservation(later, 2, digest(53), range(200))).unwrap();
+        let mut empty =
+            store.reserve(reservation(later, 2, digest(53), paired_ranges(200))).unwrap();
         empty.start().unwrap();
         drop(empty);
         let burned = store.open_slot(later.connection_id, 2).unwrap();
@@ -2270,7 +2575,7 @@ mod tests {
         let root = test_directory("slot-corrupt");
         let store = C6SlotStore::open(&root).unwrap();
         let state = genesis(digest(60));
-        let slot = store.reserve(reservation(state, 0, digest(61), range(0))).unwrap();
+        let slot = store.reserve(reservation(state, 0, digest(61), paired_ranges(0))).unwrap();
         let path = slot.journal_path.clone();
         drop(slot);
         OpenOptions::new().append(true).open(&path).unwrap().write_all(&[0xff]).unwrap();

@@ -9,6 +9,7 @@
 //!   → `ligero::open_zk` / `verify_open` (claim bound to the public C_W).
 
 pub mod batch;
+pub mod c6_hidden_u;
 pub mod layer_layout;
 pub mod ligero;
 pub mod merkle;
@@ -19,6 +20,14 @@ pub use batch::{
     batch_reduce_prover, batch_reduce_prover_cpu_resident, batch_reduce_prover_cuda_resident,
     batch_reduce_verifier, BatchTimings, BlockClaim, ClaimReduceResidentCounters,
     CpuClaimReduceSettlement, CudaClaimReduceSettlement,
+};
+pub use c6_hidden_u::{
+    derive_hidden_u_family_claims, hidden_u_functional_digest, hidden_u_prequery_encoded_len,
+    production_hidden_u_reference_budget, C6HiddenUBundleWitness, C6HiddenUDerivedFamily,
+    C6HiddenUDigest, C6HiddenUError, C6HiddenUFamily, C6HiddenUFamilyPostCommit,
+    C6HiddenUFamilyWitness, C6HiddenULayout, C6HiddenUPostCommit, C6HiddenUPrequery,
+    C6HiddenUQueryClaim, C6HiddenUReferenceAudit, C6HiddenUReferenceBudget, C6SealedHiddenUBundle,
+    C6_EMBED_Q121, C6_HIDDEN_U_BATCH_SEED_BYTES, C6_HIDDEN_U_REPETITIONS, C6_WEIGHTS_Q121,
 };
 pub use layer_layout::{
     layout_gpt2_embed, layout_gpt2_embed_c3, layout_gpt2_layer, layout_gpt2_weights_c3,

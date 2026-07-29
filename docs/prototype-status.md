@@ -372,7 +372,7 @@ its clean descendant closure.
 | X4d.2 delayed-link diagnosis and repair | **LOCAL ROOT CAUSE CONFIRMED; BYTE IDENTITY GREEN; HARD STOP / NO POD / NO REPLACEMENT PAIR OR GATE VERDICT** (2026-07-27) | Evaluation-only repair: backend-generic sequential resident orchestrator plus one exactly-once scaled product-round message; protocol/transcript/challenge/codec/correlations/terminal semantics unchanged | The extracted `e4e2b14` arithmetic reproduced the obstruction with the initial claim, ledgers, challenges and folds still green: first divergence **term 0 / round 1 / dimension 8 / active_len 256**, captured output SHA-256 `2ac466d9bcfc61fc5ef0a83c59d5bc8b0c2f32434ed17e37de1b7ac5cc925c1f`; all **51/51** production-relative terms are affected at their first real round. Root cause is the missing `virtual_factor` on `fp2_product_round_into_device`. ABI 33 adds `fp2_product_round_scaled_into_device` / `volta_cuda_fp2_product_round_scaled_into_device` / `scale_product_round_message`; scale one is raw-mailbox byte-identical, folds are unscaled, and the real branch alone uses it. Permanent value-mismatch and geometry-not-drained faults are distinct. CPU BackendKind lifecycle and exact message/fold-vector-digest identity pass at the 51/51/102 local multiplicity fixture and `max_mu=20/22/24/26`; the full serialized workspace, 23 report-validator tests and CUDA-feature all-target compilation are green, while real CUDA remains deliberately unexecuted locally. A clean, fail-closed standalone `x4d2_delayed_link_reproducer` is prepared for a future GO; it needs no weights/onboarding/durable tier/connection/settlement. Append-only local record `x4d2-diag-delayed-link-2026-07-27-bc76048.json`, SHA-256 `0bf3ed63b4ec34243a3f42cd1b6fce286c07a5b07f9e09b72bbb2f081f35538a`; diagnostic design SHA-256 `91cc8eb6566122724a75b9f051a75d5245e981b52194c5545b7701ca853b6fe4`. Historical X4d.1 and X4d.2 records/digests/gates remain immutable. |
 | C4 Ligero inline rate reduction | **PAIRED A100 COMPLETE — ANCHOR PASS; RATE-8 EXACT BYTES / PROVER / DEVICE PASS; SESSION 1.050816638x >1.05 AND SYNC 0.155717607 s >0.150 FAIL; OVERALL FAIL; NO RETRY; POD STOPPED** (2026-07-27) | Return to inline T1 weight certification; same-build anchor `rate=1/4,Q=120` versus candidate `rate=1/8,Q=97`; no deferred settlement; frozen gates conjunctive | Clean `e99a1e5` on one A100/13-effective-CPU/eight-Rayon host passed ABI 33 and the full release/CUDA workspace before either producer. Both profiles used the same binary/backend and independent fresh stores, one warmup and three measured repetitions. Anchor PCS/response **43,273,888 / 84,544,352 B**, prove/session **4.104595717 / 5.322725729 s**, all absolute gates PASS. Rate-8 PCS/response **38,296,040 / 79,566,504 B**, exact saving **4,977,848 B**, prove **4.079375688 s / 0.993855661x PASS**, but session **5.593208756 s / 1.050816638x FAIL** and maximum sync **0.155717607 s FAIL**; device peak **30,146,106,356 B PASS**. Pair `c4-ligero-paired-a100-2026-07-27-e99a1e5.json`, SHA-256 `8506de9ccad35bba76f9cd337ef5a4528613fc91894962e597937b63e3ad3e56`, is a coherent **overall FAIL**. No selective retry occurred. SSH-side `runpodctl` stopped pod `mi3dk7ah9jny9b` and an independent connection was refused. The anchor remains the accepted inline profile; all prior records and design pins remain immutable. |
 | C5 Packed16 over Ligero rate-8 | **LOCAL HARD STOP — TYPED-PCG SECURITY/BYTE GATE OBSTRUCTED; NO LEAN/RUST/CUDA IMPLEMENTATION; NO POD / NO VERDICT** (2026-07-28) | Direct authenticated uniform-u16/carry lanes, canonical Packed16 correction wire and exact setup accounting; no deferred settlement or PCS change | The owner-adopted rate-8 base and raw C4 FAIL remain distinct and immutable. Exact Packed16 response remains a conditional **61,292,904-B** projection, but typed setup has only **18,273,600 B / 9.4 bits per five-inventory cell** of headroom. C2's malicious-COT arithmetic lift requires **4,230,144,000 B** at this census; its pinned `0.73-bit/COT` binary core alone is **24,125,040 B** before lift. An exact Goldilocks `p-1` rejection/quotient route from current sVOLE has an optimistic **217,728,000-B** public quotient payload and combined setup **256,099,465 B**, excluding the required malicious range proof, hence fails by at least **199,454,400 B**. Same-characteristic subfield VOLE, dual-domain edaBits, base-only group COT, dealer-keyed PCG/PCF, three-party daBits and bounded-integer VOLE do not instantiate the frozen interface. Local record `c5-typed-pcg-obstruction-2026-07-28-0309320.json`, SHA-256 `9e292301af185093b1cc81d3a1b7bc229fad61e6ded61e294d84af0dd2844e49`; design SHA-256 `30a999044e8f61d6625814b51088871c184e2ae72a9397b5fc2da9e05e9f34fc`; `pod_contacted=false`, `production_pair_started=false`, `gate_verdict=false`. |
-| C6 Δ-residual inline certificate | **LEAN PRODUCT-CLOSURE + RUST RESIDUAL-IR SCALED GREEN; PRODUCTION CENSUS/WRAPPER PENDING; HARD STOP BEFORE POD** (2026-07-29) | Hide direct `auth_corrections` and Ligero `u_vectors`; one inline native-field wrapper; fixed-capacity committed KV cache; 17 accepts plus retry reserve; no deferred settlement | The retained Q=121 response is exactly **29,176,632 B**.  The complete new-payload budget is **5,823,368 B**, while the tighter `pi_final <=4,500,000 B` now rejects framing-plus-proof byte 4,500,001; the exact projected response remains **33,676,632 B <=35,000,000 B**.  Q=121 gives **79.472744138609166392... bits** after four `2^-128` wrapper allocations, preserving the **78.80929487391641-bit** per-certificate floor.  Terminal-one fits **17 accepted + 4 abort/retry** baseline ranges, leaving **969,186** raw correlations; PCG setup stays **38,371,465 B**.  The corrected Lean build/audit is **3,256 jobs / 264 total / 28 C6**, zero `sorry`/`admit`: it exposes `Delta^2*Q`, proves independent-vector base-share binding and discharges the nonlinear verifier node only through `ProductClosure`.  Rust now has canonical setup/state/certificate codecs plus a commit-before-challenge authenticated-value DAG with add/sub/scale, independent base-share binding and opaque QuickSilver closure; ordinary key multiplication fails construction.  C6 is **18/18 PASS**, and the complete `volta-proto` suite is **128 PASS / 1 pre-existing production-size ignore**.  Pinned codec fixture lengths/digests remain setup **309 B / `88498ac8...fab00`**, genesis state **260 B / `8fa67c46...31f96`**, and small certificate **819 B / `33227677...4e0b`**.  Scaled residual census/parity is green; the full GPT-2 old-schedule census, hidden-vector/cache wrapper proof, Rust end-to-end result, hardware verdict and pod contact remain pending. |
+| C6 Δ-residual inline certificate | **LEAN PRODUCT-CLOSURE + RUST RESIDUAL-IR / HIDDEN-U REFERENCE GREEN; BACKEND ROOFLINE AND PRODUCTION CENSUS PENDING; HARD STOP BEFORE POD** (2026-07-29) | Hide direct `auth_corrections` and Ligero `u_vectors`; one inline native-field wrapper; fixed-capacity committed KV cache; 17 accepts plus retry reserve; no deferred settlement | The retained Q=121 response is exactly **29,176,632 B**.  The complete new-payload budget is **5,823,368 B**, while the tighter `pi_final <=4,500,000 B` now rejects framing-plus-proof byte 4,500,001; the exact projected response remains **33,676,632 B <=35,000,000 B**.  Q=121 gives **79.472744138609166392... bits** after four `2^-128` wrapper allocations, preserving the **78.80929487391641-bit** per-certificate floor.  Terminal-one fits **17 accepted + 4 abort/retry** baseline ranges, leaving **969,186** raw correlations; PCG setup stays **38,371,465 B**.  The corrected Lean build/audit is **3,256 jobs / 264 total / 28 C6**, zero `sorry`/`admit`: it exposes `Delta^2*Q`, proves independent-vector base-share binding and discharges the nonlinear verifier node only through `ProductClosure`.  Rust now has canonical setup/state/certificate codecs plus a commit-before-challenge authenticated-value DAG with add/sub/scale, independent base-share binding and opaque QuickSilver closure; ordinary key multiplication fails construction.  C6 is **18/18 PASS**, and the complete `volta-proto` suite is **128 PASS / 1 pre-existing production-size ignore**.  Pinned codec fixture lengths/digests remain setup **309 B / `88498ac8...fab00`**, genesis state **260 B / `8fa67c46...31f96`**, and small certificate **819 B / `33227677...4e0b`**.  The additive hidden-`u` reference fixes the production Q=121 layouts at **2^21 + 2^19 padded `Fp2` entries**, removes exactly **17,235,968 B**, binds **12,686** NTT/`ip` relations under two complete response-wide repetitions, and emits a **1,912-B** prequery frame plus one **32-B** client seed before proof bytes.  Its scaled prequery golden is **208 B / `7e6ae8da...f3e7fc`**; old `verify_multi_open` parity and NTT/`ip`/schedule/canonical tamper rejection are green.  Targeted hidden-`u` is **5/5 PASS**; full `volta-pcs` is **147 PASS / 3 pre-existing production-size ignores**.  This remains a witness-bearing reference, not a succinct verifier: the full GPT-2 old-schedule census, exact backend roofline, hidden-correction/cache wrapper proof, Rust end-to-end result, hardware verdict and pod contact remain pending. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -440,6 +440,56 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-29 — C6 hidden-`u` exact-field amplification fixed before the
+  wrapper backend.**  The first typed reference pass exposed an exact
+  security edge that the phrase “128-bit `Fp2` sumcheck” would hide:
+  `log2(|Fp2|) = 127.9999999993282...`, while a degree-two 21-round
+  sumcheck has only about **123.6 bits** before amplification.  C6 therefore
+  uses two independent complete repetitions of the response-wide hidden-`u`
+  RLC and its per-family linear sumchecks.  For the fixed 21/19-round
+  layouts, the conservative block bound
+  `|Fp2|^-2 + (2*(21+19)/|Fp2|)^2` is better than **243 bits**.
+
+  Weights and embedding share one canonical coefficient stream per
+  repetition, ordered family/query/vector/`ip`; separate family RLCs are
+  forbidden because they would spend two collision events.  Both
+  repetitions' terminal claims remain inside the one packed wrapper opening.
+  The public `ip_g` values and digest of every exact `q_col_g` schedule are
+  sealed before the batching seed, old ZeroBatch `chi` and column queries.
+  The verifier derives the functional schedule independently from retained
+  block claims.  This is amplification of the already named
+  `epsilon_linear_sumchecks`, not a fifth statistical event; Q=121 and all
+  response/setup/correlation caps remain unchanged.  The extra sumcheck work
+  and bytes must be included in the pre-benchmark roofline and retain the
+  existing **4,500,000-B / 20.000-s** hard stops.
+
+  The additive Rust reference seam is now green without changing
+  `MultiOpenProof` or the historical verifier.  Its fixed Q=121 layouts are
+  weights `128*16,384 = 2^21` with 97 live vectors and embedding
+  `8*65,536 = 2^19` with seven live vectors.  The exact relation census is
+  **11,833 + 853 = 12,686**, and the omitted historical vectors remain
+  exactly **13,508,608 + 3,727,360 = 17,235,968 B**.  One canonical
+  two-family prequery frame is **1,912 B** and the fresh client batching seed
+  is **32 B**.  The scaled codec golden is **208 B**, digest
+  `7e6ae8da6a0eec1d4c4daca7e745a2639d4730aac7c51851e2c267a961f3e7fc`.
+
+  The typestate owns the hidden witness before accepting query/RLC inputs;
+  the prequery binds both wrapper roots, public `ip_g` values, external
+  context and independently recomputed `q_col` functional digests.  One
+  stream spans both families and two domain-separated complete repetitions.
+  Permanent tests cover old `verify_multi_open` parity, NTT and `ip` tamper,
+  changed functional schedule, missing query, wrong prequery digest,
+  noncanonical field/version/reserved/trailing bytes and shape/census
+  rejection.  Targeted tests are **5/5 PASS**; complete `volta-pcs` is
+  **147 PASS / 3 pre-existing production-size ignores** (unit core
+  **131/1**, P3.5 **14/2**, P4 **2/0**).  Source SHA-256 is
+  `84f0e26e210c1106ff57f2ca5035f16924310b8c627e980995bb85279a5bb551`;
+  amended design SHA-256 is
+  `0f62782f2b7f0590fd0022a0526d45405a57189abb95126a035c421b04c158b5`.
+  This artifact explicitly requires the witness and cannot accept a
+  production certificate.  Backend proof bytes, timing, cache constraints
+  and the production GPT-2 census remain hard-pending.
 
 - **2026-07-29 — C6 residual-IR preflight corrects the false
   “all verifier key operations are linear” sentence; affine final residual

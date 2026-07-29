@@ -259,12 +259,44 @@ ip_g = sum_{k < cols} u_g[k] * q_col_g[k].
 ```
 
 The wrapper batches all queried NTT equations and all `ip_g` equations with
-fresh verifier challenges, runs native-`Fp2` sumchecks for the resulting
-linear functionals, and opens the committed multilinear vectors through one
-packed response opening.  This avoids the field/representation obstruction
-of pretending that an X4 MLE opening is itself a Ligero univariate opening.
-The explicit linear-functional sumcheck is the link between the two
-representations.
+fresh verifier challenges.  **Weights and embedding use one response-wide
+coefficient stream and one grand residual**, in canonical
+family/query/vector/`ip` order; two independent per-family collapses are
+forbidden because they would create two collision events.  The public
+`ip_g` values and a digest of the exact `q_col_g` functional schedule are in
+the pre-query statement.  The verifier derives that schedule independently
+from the retained block claims.
+
+A single `Fp2` check is not literally 128 bits:
+
+```text
+log2(|Fp2|) = 127.9999999993282...
+```
+
+Moreover, the ordinary degree-two sumcheck bound for the 21-round weights
+oracle is only about `123.6` bits before amplification.  C6 therefore runs
+**two independent complete repetitions** of the response-wide RLC and its
+per-family linear sumchecks.  With at most `21 + 19` rounds and degree two,
+the conservative named-event bound is
+
+```text
+epsilon_linear_functional
+    <= |Fp2|^-2 + (2*(21+19)/|Fp2|)^2
+    < 2^-243.
+```
+
+This is one amplified instance of the already allocated
+`epsilon_linear_sumchecks`, not a fifth event.  Both repetitions' terminal
+claims are included in the same packed wrapper opening.  A 32-byte
+post-commit client seed may expand both independent coefficient vectors
+through the already declared computational transcript sampler; the two
+domain labels and coefficient order are certificate-bound.
+
+The native-`Fp2` sumchecks prove the resulting linear functionals and open
+the committed multilinear vectors through one packed response opening.
+This avoids the field/representation obstruction of pretending that an X4
+MLE opening is itself a Ligero univariate opening.  The explicit
+linear-functional sumcheck is the link between the two representations.
 
 The two fixed padded layouts are:
 
@@ -602,6 +634,8 @@ C6 stops locally and records the obstruction if any of these occurs:
 - any cache proof field or opening count grows with current cache length;
 - the construction needs a second response PCS opening or per-token proof
   instance;
+- weights and embedding are collapsed under separate hidden-`u` RLC events,
+  or the linear-functional block uses only one unamplified `Fp2` repetition;
 - the residual coefficient schedule cannot be generated independently by
   the client without receiving the hidden correction vector;
 - a key multiplication reaches the linear residual accumulator without an

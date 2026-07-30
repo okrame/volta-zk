@@ -7,8 +7,9 @@ OPERATION DAG GREEN; PARAMETERIZED V2 TWO-SEED IDENTITY GREEN; CANONICAL PLAN
 CODEC + FULL-T1 COMPILED RESIDUAL + DURABLE 17+4 SESSION + HIDDEN-U NATIVE
 SUMCHECK REDUCTION + SCALED DUAL-TAPE C6RSC3 CODEC/DIFFERENTIAL GREEN; FUSED
 T1 EVENT-SINK + FIRST/FOLDED/TERMINAL SCALED DIFFERENTIAL GREEN;
-ROUND-SYNCHRONOUS SINGLE-BACKING ARENA LOCAL DIFFERENTIAL GREEN / C6RSC3
-CONNECTION NEXT; CACHE ARGUMENT / PACKED PCS / FINAL WRAPPER PENDING; LOCAL
+ROUND-SYNCHRONOUS SINGLE-BACKING ARENA LOCAL DIFFERENTIAL GREEN; SHARED
+C6RSC3 PROVER COORDINATOR REFERENCE DIFFERENTIAL GREEN / FUSED CONNECTION
+NEXT; CACHE ARGUMENT / PACKED PCS / FINAL WRAPPER PENDING; LOCAL
 IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
@@ -2597,6 +2598,30 @@ C6 source and export reports none.
 This is still a scaled/local ownership checkpoint.  It does not execute a
 production T1 allocation, feed a round into `C6RSC3`, remove response bytes or
 earn timing, packed-PCS, cache, real-PCG, CUDA or hardware credit.
+
+#### 5.1.8 Shared C6RSC3 prover-coordinator checkpoint
+
+Before adding fused arithmetic, the reference prover's transcript/MAC loop
+was factored behind one private round-synchronous arithmetic interface.  The
+coordinator remains the sole owner of dual-tape authentication, correction
+domains, activation `ZeroOpen`, challenge release, pending transfers,
+terminal `ProductClosure`/`ZeroBatch`, proof assembly and transcript byte
+charges.  Arithmetic providers may only fix the current leaf/optional
+auxiliary messages, bind the released challenge and return terminal opening
+values plus the compact **8 + 16 + 8** coefficient scalars.
+
+The existing materialized reference state is the first adapter.  It rejects
+statement/repetition/target/round/activation mismatches before transcript
+progress and must return its clear proof to the diagnostic trace.  The
+reference public API, proof codec and verifier are unchanged.  All five
+focused blind tests remain green, including exact production census, strict
+codec, byte/transcript/correlation differential and every registered terminal
+tamper.
+
+This is a semantic-neutral integration checkpoint only.  No fused sink or
+arena is connected yet, no verifier replay changes, and no production
+allocation, response removal, PCS, cache, setup, timing, CUDA or hardware
+credit is earned.
 
 The wrapper PCS uses rate `1/8`, two independent fold/query chains and
 `s=86` queries per chain.  Under the conservative 64-active-polynomial,

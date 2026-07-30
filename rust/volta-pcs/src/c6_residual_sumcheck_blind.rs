@@ -26,11 +26,11 @@ use volta_proto::C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS;
 
 use crate::c6_residual_sumcheck::{
     prepare_residual_sumcheck_prover_round_state, C6ResidualOpeningClaim, C6ResidualSumcheckFamily,
-    C6ResidualSumcheckRepetitionProof, C6ResidualSumcheckStatement, C6ResidualSumcheckTerm,
-    C6ResidualSumcheckWitness, C6ResidualTableRef, C6_RESIDUAL_AUXILIARY_ROUNDS,
-    C6_RESIDUAL_AUXILIARY_TABLES_PER_REPETITION, C6_RESIDUAL_LEAF_ROUNDS,
-    C6_RESIDUAL_LEAF_TABLES_PER_REPETITION, C6_RESIDUAL_SUMCHECK_REPETITIONS,
-    C6_RESIDUAL_TABLES_PER_REPETITION,
+    C6ResidualSumcheckProverRoundState, C6ResidualSumcheckRepetitionProof,
+    C6ResidualSumcheckStatement, C6ResidualSumcheckTerm, C6ResidualSumcheckWitness,
+    C6ResidualTableRef, C6_RESIDUAL_AUXILIARY_ROUNDS, C6_RESIDUAL_AUXILIARY_TABLES_PER_REPETITION,
+    C6_RESIDUAL_LEAF_ROUNDS, C6_RESIDUAL_LEAF_TABLES_PER_REPETITION,
+    C6_RESIDUAL_SUMCHECK_REPETITIONS, C6_RESIDUAL_TABLES_PER_REPETITION,
 };
 
 const PROOF_MAGIC: [u8; 8] = *b"C6RSC3\0\0";
@@ -768,6 +768,302 @@ struct ReferenceTrace {
     claims: Vec<Vec<C6ResidualOpeningClaim>>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct C6BlindResidualTerminalScalars {
+    leaf_linear: [Fp2; C6_RESIDUAL_LEAF_TABLES_PER_REPETITION],
+    auxiliary_linear: [Fp2; C6_RESIDUAL_AUXILIARY_TABLES_PER_REPETITION],
+    auxiliary_quadratic: [Fp2; TERMINAL_PRODUCTS],
+}
+
+fn terminal_scalars_from_reference(
+    statement: &C6BlindResidualStatement,
+    leaf_point: &[Fp2],
+    auxiliary_point: &[Fp2],
+) -> Result<C6BlindResidualTerminalScalars> {
+    let mut terminal = C6BlindResidualTerminalScalars {
+        leaf_linear: [Fp2::ZERO; C6_RESIDUAL_LEAF_TABLES_PER_REPETITION],
+        auxiliary_linear: [Fp2::ZERO; C6_RESIDUAL_AUXILIARY_TABLES_PER_REPETITION],
+        auxiliary_quadratic: [Fp2::ZERO; TERMINAL_PRODUCTS],
+    };
+    for (index, term) in statement.reference.leaf().terms().iter().enumerate() {
+        let C6ResidualSumcheckTerm::Linear { table, coefficients } = term else {
+            return Err(C6BlindResidualError::new("quadratic term in C6RSC3 leaf family"));
+        };
+        if usize::from(*table) != index {
+            return Err(C6BlindResidualError::new(
+                "C6RSC3 leaf terminal scalar owner is noncanonical",
+            ));
+        }
+        terminal.leaf_linear[index] = eval_mle(coefficients, leaf_point);
+    }
+    for (index, term) in statement.reference.auxiliary().terms().iter().enumerate() {
+        match term {
+            C6ResidualSumcheckTerm::Linear { table, coefficients } => {
+                if index >= C6_RESIDUAL_AUXILIARY_TABLES_PER_REPETITION
+                    || usize::from(*table) != index
+                {
+                    return Err(C6BlindResidualError::new(
+                        "C6RSC3 auxiliary terminal scalar owner is noncanonical",
+                    ));
+                }
+                terminal.auxiliary_linear[index] = eval_mle(coefficients, auxiliary_point);
+            }
+            C6ResidualSumcheckTerm::Quadratic { lhs, rhs, coefficients } => {
+                let product_index = index
+                    .checked_sub(C6_RESIDUAL_AUXILIARY_TABLES_PER_REPETITION)
+                    .ok_or_else(|| {
+                        C6BlindResidualError::new(
+                            "C6RSC3 quadratic terminal scalar precedes linear owners",
+                        )
+                    })?;
+                if C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS.get(product_index) != Some(&(*lhs, *rhs))
+                {
+                    return Err(C6BlindResidualError::new(
+                        "C6RSC3 quadratic terminal scalar owner is noncanonical",
+                    ));
+                }
+                terminal.auxiliary_quadratic[product_index] =
+                    eval_mle(coefficients, auxiliary_point);
+            }
+        }
+    }
+    Ok(terminal)
+}
+
+struct C6BlindResidualArithmeticFinish {
+    opening_claims: Vec<C6ResidualOpeningClaim>,
+    terminal_scalars: C6BlindResidualTerminalScalars,
+    reference_proof: Option<C6ResidualSumcheckRepetitionProof>,
+}
+
+trait C6BlindResidualProverArithmetic {
+    fn repetition(&self) -> u8;
+    fn target(&self) -> Fp2;
+    fn round_count(&self) -> usize;
+    fn round_index(&self) -> usize;
+    fn auxiliary_activation_round(&self) -> usize;
+    fn fix_next_round(&mut self) -> Result<(Vec<Fp2>, Option<Vec<Fp2>>)>;
+    fn bind_challenge(&mut self, challenge: Fp2) -> Result<()>;
+    fn finish(self: Box<Self>) -> Result<C6BlindResidualArithmeticFinish>;
+}
+
+struct C6BlindResidualReferenceArithmetic<'a> {
+    statement: &'a C6BlindResidualStatement,
+    clear: C6ResidualSumcheckProverRoundState,
+}
+
+impl<'a> C6BlindResidualReferenceArithmetic<'a> {
+    fn new(
+        statement: &'a C6BlindResidualStatement,
+        witness: &C6ResidualSumcheckWitness,
+    ) -> Result<Self> {
+        let clear = prepare_residual_sumcheck_prover_round_state(&statement.reference, witness)
+            .map_err(clear_error)?;
+        Ok(Self { statement, clear })
+    }
+}
+
+impl C6BlindResidualProverArithmetic for C6BlindResidualReferenceArithmetic<'_> {
+    fn repetition(&self) -> u8 {
+        self.clear.repetition()
+    }
+
+    fn target(&self) -> Fp2 {
+        self.statement.target()
+    }
+
+    fn round_count(&self) -> usize {
+        self.clear.round_count()
+    }
+
+    fn round_index(&self) -> usize {
+        self.clear.round_index()
+    }
+
+    fn auxiliary_activation_round(&self) -> usize {
+        self.clear.auxiliary_activation_round()
+    }
+
+    fn fix_next_round(&mut self) -> Result<(Vec<Fp2>, Option<Vec<Fp2>>)> {
+        self.clear.fix_next_round().map_err(clear_error)?;
+        let (leaf, auxiliary) = self.clear.pending_round_messages().map_err(clear_error)?;
+        Ok((leaf.to_vec(), auxiliary.map(<[Fp2]>::to_vec)))
+    }
+
+    fn bind_challenge(&mut self, challenge: Fp2) -> Result<()> {
+        self.clear.bind_challenge(challenge).map_err(clear_error)
+    }
+
+    fn finish(self: Box<Self>) -> Result<C6BlindResidualArithmeticFinish> {
+        let this = *self;
+        let (reference_proof, opening_claims) = this.clear.finish().map_err(clear_error)?;
+        let terminal_scalars = terminal_scalars_from_reference(
+            this.statement,
+            &opening_claims[0].point,
+            &opening_claims[C6_RESIDUAL_LEAF_TABLES_PER_REPETITION].point,
+        )?;
+        Ok(C6BlindResidualArithmeticFinish {
+            opening_claims,
+            terminal_scalars,
+            reference_proof: Some(reference_proof),
+        })
+    }
+}
+
+struct C6BlindResidualProverRepetitionOutput {
+    proof: C6BlindResidualRepetitionProof,
+    pending_claims: Vec<C6BlindResidualPendingClaimProver>,
+    pending_transfers: Vec<C6BlindResidualPendingTransfer>,
+    challenges: Vec<Fp2>,
+    reference_proof: Option<C6ResidualSumcheckRepetitionProof>,
+    opening_claims: Vec<C6ResidualOpeningClaim>,
+}
+
+fn prove_c6_blind_residual_repetition(
+    statement: &C6BlindResidualStatement,
+    mut arithmetic: Box<dyn C6BlindResidualProverArithmetic + '_>,
+    streams: &mut [CorrelationStream; MAC_TAPES],
+    transcript: &mut Transcript,
+) -> Result<C6BlindResidualProverRepetitionOutput> {
+    let repetition = statement.repetition();
+    if arithmetic.repetition() != repetition
+        || arithmetic.target() != statement.target()
+        || arithmetic.round_count() != statement.reference.leaf().rounds()
+        || arithmetic.auxiliary_activation_round() != statement.auxiliary_activation_round()
+        || arithmetic.round_index() != 0
+    {
+        return Err(C6BlindResidualError::new(
+            "C6RSC3 prover arithmetic does not match its semantic statement",
+        ));
+    }
+    let mut builders: [TapeProofBuilder; MAC_TAPES] =
+        array::from_fn(|_| TapeProofBuilder::default());
+    let mut leaf_states: [ProverFamilyAuthState; MAC_TAPES] =
+        array::from_fn(|_| ProverFamilyAuthState::default());
+    let mut auxiliary_states: [ProverFamilyAuthState; MAC_TAPES] =
+        array::from_fn(|_| ProverFamilyAuthState::default());
+    let mut challenge_trace = Vec::with_capacity(arithmetic.round_count());
+
+    while arithmetic.round_index() < arithmetic.round_count() {
+        let global_round = arithmetic.round_index();
+        let (leaf_message, auxiliary_message) = arithmetic.fix_next_round()?;
+        let mut leaf_nodes: [Vec<ProverAuthed>; MAC_TAPES] = array::from_fn(|_| Vec::new());
+        let mut auxiliary_nodes: [Vec<ProverAuthed>; MAC_TAPES] = array::from_fn(|_| Vec::new());
+
+        for tape in 0..MAC_TAPES {
+            let domain =
+                correlation_domain(repetition, tape, CorrelationPurpose::LeafRound, global_round)?;
+            let (corrections, nodes) = leaf_states[tape].fix_round(
+                C6ResidualSumcheckFamily::LeafRaw,
+                &leaf_message,
+                &mut streams[tape],
+                domain,
+            )?;
+            transcript.append(
+                "c6_residual_blind_round_corrections",
+                corrections.len() as u64 * FP2_BYTES,
+            );
+            builders[tape].leaf_round_corrections.push(corrections);
+            leaf_nodes[tape] = nodes;
+
+            if let Some(message) = &auxiliary_message {
+                let local_round = global_round - statement.auxiliary_activation_round();
+                let domain = correlation_domain(
+                    repetition,
+                    tape,
+                    CorrelationPurpose::AuxiliaryRound,
+                    local_round,
+                )?;
+                let (corrections, nodes) = auxiliary_states[tape].fix_round(
+                    C6ResidualSumcheckFamily::Auxiliary,
+                    message,
+                    &mut streams[tape],
+                    domain,
+                )?;
+                transcript.append(
+                    "c6_residual_blind_round_corrections",
+                    corrections.len() as u64 * FP2_BYTES,
+                );
+                builders[tape].auxiliary_round_corrections.push(corrections);
+                auxiliary_nodes[tape] = nodes;
+            }
+        }
+
+        if global_round == statement.auxiliary_activation_round() {
+            for tape in 0..MAC_TAPES {
+                let leaf_initial = leaf_states[tape]
+                    .initial
+                    .ok_or_else(|| C6BlindResidualError::new("missing leaf initial claim"))?;
+                let auxiliary_initial = auxiliary_states[tape]
+                    .initial
+                    .ok_or_else(|| C6BlindResidualError::new("missing auxiliary initial claim"))?;
+                let residual = leaf_initial
+                    .add(auxiliary_initial)
+                    .sub(ProverAuthed::from_public(statement.target()));
+                if residual.x != Fp2::ZERO {
+                    return Err(C6BlindResidualError::new("C6RSC3 activation residual is nonzero"));
+                }
+                builders[tape].activation_tag = Some(zero_open_prover(&residual, transcript));
+            }
+        }
+
+        let challenge = transcript.challenge_fp2();
+        challenge_trace.push(challenge);
+        arithmetic.bind_challenge(challenge)?;
+        for tape in 0..MAC_TAPES {
+            leaf_states[tape].bind_challenge(
+                C6ResidualSumcheckFamily::LeafRaw,
+                &leaf_nodes[tape],
+                challenge,
+            )?;
+            if !auxiliary_nodes[tape].is_empty() {
+                auxiliary_states[tape].bind_challenge(
+                    C6ResidualSumcheckFamily::Auxiliary,
+                    &auxiliary_nodes[tape],
+                    challenge,
+                )?;
+            }
+        }
+    }
+
+    let finished = arithmetic.finish()?;
+    let (local_pending, local_transfers) = authenticate_pending_prover_claims(
+        statement,
+        &finished.opening_claims,
+        streams,
+        transcript,
+    )?;
+    finish_prover_terminal(
+        statement,
+        &local_pending,
+        &finished.terminal_scalars,
+        &leaf_states,
+        &auxiliary_states,
+        streams,
+        transcript,
+        &mut builders,
+    )?;
+
+    let tapes = builders
+        .into_iter()
+        .map(TapeProofBuilder::finish)
+        .collect::<Result<Vec<_>>>()?
+        .try_into()
+        .map_err(|_| C6BlindResidualError::new("C6RSC3 tape builder census mismatch"))?;
+    Ok(C6BlindResidualProverRepetitionOutput {
+        proof: C6BlindResidualRepetitionProof {
+            repetition,
+            statement_digest: statement.digest,
+            tapes,
+        },
+        pending_claims: local_pending,
+        pending_transfers: local_transfers,
+        challenges: challenge_trace,
+        reference_proof: finished.reference_proof,
+        opening_claims: finished.opening_claims,
+    })
+}
+
 /// Scaled/reference C6RSC3 prover.  The returned pending claims are not PCS
 /// bound and deliberately have no constructor that upgrades them.
 pub fn prove_c6_blind_residual_sumchecks_reference(
@@ -812,139 +1108,18 @@ fn prove_c6_blind_residual_sumchecks_reference_inner(
     let mut reference_claims = Vec::with_capacity(C6_RESIDUAL_SUMCHECK_REPETITIONS);
 
     for (statement, witness) in statements.iter().zip(witnesses) {
-        let repetition = statement.repetition();
-        let mut clear = prepare_residual_sumcheck_prover_round_state(&statement.reference, witness)
-            .map_err(clear_error)?;
-        let mut builders: [TapeProofBuilder; MAC_TAPES] =
-            array::from_fn(|_| TapeProofBuilder::default());
-        let mut leaf_states: [ProverFamilyAuthState; MAC_TAPES] =
-            array::from_fn(|_| ProverFamilyAuthState::default());
-        let mut auxiliary_states: [ProverFamilyAuthState; MAC_TAPES] =
-            array::from_fn(|_| ProverFamilyAuthState::default());
-        let mut challenge_trace = Vec::with_capacity(clear.round_count());
-
-        while clear.round_index() < clear.round_count() {
-            let global_round = clear.round_index();
-            clear.fix_next_round().map_err(clear_error)?;
-            let (leaf_message, auxiliary_message) =
-                clear.pending_round_messages().map_err(clear_error)?;
-            let leaf_message = leaf_message.to_vec();
-            let auxiliary_message = auxiliary_message.map(<[Fp2]>::to_vec);
-            let mut leaf_nodes: [Vec<ProverAuthed>; MAC_TAPES] = array::from_fn(|_| Vec::new());
-            let mut auxiliary_nodes: [Vec<ProverAuthed>; MAC_TAPES] =
-                array::from_fn(|_| Vec::new());
-
-            for tape in 0..MAC_TAPES {
-                let domain = correlation_domain(
-                    repetition,
-                    tape,
-                    CorrelationPurpose::LeafRound,
-                    global_round,
-                )?;
-                let (corrections, nodes) = leaf_states[tape].fix_round(
-                    C6ResidualSumcheckFamily::LeafRaw,
-                    &leaf_message,
-                    &mut streams[tape],
-                    domain,
-                )?;
-                transcript.append(
-                    "c6_residual_blind_round_corrections",
-                    corrections.len() as u64 * FP2_BYTES,
-                );
-                builders[tape].leaf_round_corrections.push(corrections);
-                leaf_nodes[tape] = nodes;
-
-                if let Some(message) = &auxiliary_message {
-                    let local_round = global_round - statement.auxiliary_activation_round();
-                    let domain = correlation_domain(
-                        repetition,
-                        tape,
-                        CorrelationPurpose::AuxiliaryRound,
-                        local_round,
-                    )?;
-                    let (corrections, nodes) = auxiliary_states[tape].fix_round(
-                        C6ResidualSumcheckFamily::Auxiliary,
-                        message,
-                        &mut streams[tape],
-                        domain,
-                    )?;
-                    transcript.append(
-                        "c6_residual_blind_round_corrections",
-                        corrections.len() as u64 * FP2_BYTES,
-                    );
-                    builders[tape].auxiliary_round_corrections.push(corrections);
-                    auxiliary_nodes[tape] = nodes;
-                }
-            }
-
-            if global_round == statement.auxiliary_activation_round() {
-                for tape in 0..MAC_TAPES {
-                    let leaf_initial = leaf_states[tape]
-                        .initial
-                        .ok_or_else(|| C6BlindResidualError::new("missing leaf initial claim"))?;
-                    let auxiliary_initial = auxiliary_states[tape].initial.ok_or_else(|| {
-                        C6BlindResidualError::new("missing auxiliary initial claim")
-                    })?;
-                    let residual = leaf_initial
-                        .add(auxiliary_initial)
-                        .sub(ProverAuthed::from_public(statement.target()));
-                    if residual.x != Fp2::ZERO {
-                        return Err(C6BlindResidualError::new(
-                            "C6RSC3 activation residual is nonzero",
-                        ));
-                    }
-                    builders[tape].activation_tag = Some(zero_open_prover(&residual, transcript));
-                }
-            }
-
-            let challenge = transcript.challenge_fp2();
-            challenge_trace.push(challenge);
-            clear.bind_challenge(challenge).map_err(clear_error)?;
-            for tape in 0..MAC_TAPES {
-                leaf_states[tape].bind_challenge(
-                    C6ResidualSumcheckFamily::LeafRaw,
-                    &leaf_nodes[tape],
-                    challenge,
-                )?;
-                if !auxiliary_nodes[tape].is_empty() {
-                    auxiliary_states[tape].bind_challenge(
-                        C6ResidualSumcheckFamily::Auxiliary,
-                        &auxiliary_nodes[tape],
-                        challenge,
-                    )?;
-                }
-            }
-        }
-
-        let (reference_proof, clear_claims) = clear.finish().map_err(clear_error)?;
-        let (local_pending, local_transfers) =
-            authenticate_pending_prover_claims(statement, &clear_claims, streams, transcript)?;
-        finish_prover_terminal(
-            statement,
-            &local_pending,
-            &leaf_states,
-            &auxiliary_states,
-            streams,
-            transcript,
-            &mut builders,
-        )?;
-
-        let tapes = builders
-            .into_iter()
-            .map(TapeProofBuilder::finish)
-            .collect::<Result<Vec<_>>>()?
-            .try_into()
-            .map_err(|_| C6BlindResidualError::new("C6RSC3 tape builder census mismatch"))?;
-        repetition_proofs.push(C6BlindResidualRepetitionProof {
-            repetition,
-            statement_digest: statement.digest,
-            tapes,
-        });
-        pending_claims.extend(local_pending);
-        pending_transfers.extend(local_transfers);
-        reference_challenges.push(challenge_trace);
+        let arithmetic = Box::new(C6BlindResidualReferenceArithmetic::new(statement, witness)?);
+        let output =
+            prove_c6_blind_residual_repetition(statement, arithmetic, streams, transcript)?;
+        let reference_proof = output.reference_proof.ok_or_else(|| {
+            C6BlindResidualError::new("C6RSC3 reference arithmetic omitted its clear proof")
+        })?;
+        repetition_proofs.push(output.proof);
+        pending_claims.extend(output.pending_claims);
+        pending_transfers.extend(output.pending_transfers);
+        reference_challenges.push(output.challenges);
         reference_proofs.push(reference_proof);
-        reference_claims.push(clear_claims);
+        reference_claims.push(output.opening_claims);
     }
 
     transcript.append("c6_residual_blind_framing", 32);
@@ -1018,6 +1193,7 @@ fn authenticate_pending_prover_claims(
 fn finish_prover_terminal(
     statement: &C6BlindResidualStatement,
     pending: &[C6BlindResidualPendingClaimProver],
+    terminal_scalars: &C6BlindResidualTerminalScalars,
     leaf_states: &[ProverFamilyAuthState; MAC_TAPES],
     auxiliary_states: &[ProverFamilyAuthState; MAC_TAPES],
     streams: &mut [CorrelationStream; MAC_TAPES],
@@ -1025,8 +1201,6 @@ fn finish_prover_terminal(
     builders: &mut [TapeProofBuilder; MAC_TAPES],
 ) -> Result<()> {
     validate_pending_prover_claims(statement, pending)?;
-    let leaf_point = &pending[0].descriptor.point;
-    let auxiliary_point = &pending[C6_RESIDUAL_LEAF_TABLES_PER_REPETITION].descriptor.point;
     let leaf = &pending[..C6_RESIDUAL_LEAF_TABLES_PER_REPETITION];
     let auxiliary = &pending[C6_RESIDUAL_LEAF_TABLES_PER_REPETITION..];
     let mut product_auth: [Vec<ProverAuthed>; MAC_TAPES] =
@@ -1096,10 +1270,9 @@ fn finish_prover_terminal(
         builders[tape].product_m0 = Some(product.m0);
         builders[tape].product_m1 = Some(product.m1);
 
-        let leaf_expression = terminal_leaf_expression_prover(statement, leaf_point, leaf, tape)?;
+        let leaf_expression = terminal_leaf_expression_prover(terminal_scalars, leaf, tape)?;
         let auxiliary_expression = terminal_auxiliary_expression_prover(
-            statement,
-            auxiliary_point,
+            terminal_scalars,
             auxiliary,
             &product_auth[tape],
             tape,
@@ -1256,10 +1429,16 @@ pub fn verify_c6_blind_residual_sumchecks(
             contexts,
             transcript,
         )?;
+        let terminal_scalars = terminal_scalars_from_reference(
+            statement,
+            &local_pending[0].descriptor.point,
+            &local_pending[C6_RESIDUAL_LEAF_TABLES_PER_REPETITION].descriptor.point,
+        )?;
         finish_verifier_terminal(
             statement,
             repetition_proof,
             &local_pending,
+            &terminal_scalars,
             &leaf_states,
             &auxiliary_states,
             contexts,
@@ -1305,14 +1484,13 @@ fn finish_verifier_terminal(
     statement: &C6BlindResidualStatement,
     proof: &C6BlindResidualRepetitionProof,
     pending: &[C6BlindResidualPendingClaimVerifier],
+    terminal_scalars: &C6BlindResidualTerminalScalars,
     leaf_states: &[VerifierFamilyAuthState; MAC_TAPES],
     auxiliary_states: &[VerifierFamilyAuthState; MAC_TAPES],
     contexts: &mut [VerifierCtx; MAC_TAPES],
     transcript: &mut Transcript,
 ) -> Result<()> {
     validate_pending_verifier_claims(statement, pending)?;
-    let leaf_point = &pending[0].descriptor.point;
-    let auxiliary_point = &pending[C6_RESIDUAL_LEAF_TABLES_PER_REPETITION].descriptor.point;
     let leaf = &pending[..C6_RESIDUAL_LEAF_TABLES_PER_REPETITION];
     let auxiliary = &pending[C6_RESIDUAL_LEAF_TABLES_PER_REPETITION..];
     let mut product_keys: [Vec<VerifierKey>; MAC_TAPES] =
@@ -1359,10 +1537,9 @@ fn finish_verifier_terminal(
         ) {
             return Err(C6BlindResidualError::new("C6RSC3 terminal ProductClosure failed"));
         }
-        let leaf_expression = terminal_leaf_expression_verifier(statement, leaf_point, leaf, tape)?;
+        let leaf_expression = terminal_leaf_expression_verifier(terminal_scalars, leaf, tape)?;
         let auxiliary_expression = terminal_auxiliary_expression_verifier(
-            statement,
-            auxiliary_point,
+            terminal_scalars,
             auxiliary,
             &product_keys[tape],
             tape,
@@ -1405,109 +1582,79 @@ fn finish_verifier_terminal(
 }
 
 fn terminal_leaf_expression_prover(
-    statement: &C6BlindResidualStatement,
-    point: &[Fp2],
+    terminal: &C6BlindResidualTerminalScalars,
     claims: &[C6BlindResidualPendingClaimProver],
     tape: usize,
 ) -> Result<ProverAuthed> {
+    if claims.len() != terminal.leaf_linear.len() {
+        return Err(C6BlindResidualError::new("C6RSC3 leaf terminal claim/scalar census mismatch"));
+    }
     let mut expression = ProverAuthed::ZERO;
-    for term in statement.reference.leaf().terms() {
-        let C6ResidualSumcheckTerm::Linear { table, coefficients } = term else {
-            return Err(C6BlindResidualError::new("quadratic term in C6RSC3 leaf family"));
-        };
-        expression = expression
-            .add(claims[usize::from(*table)].auth[tape].scale(eval_mle(coefficients, point)));
+    for (claim, coefficient) in claims.iter().zip(terminal.leaf_linear) {
+        expression = expression.add(claim.auth[tape].scale(coefficient));
     }
     Ok(expression)
 }
 
 fn terminal_leaf_expression_verifier(
-    statement: &C6BlindResidualStatement,
-    point: &[Fp2],
+    terminal: &C6BlindResidualTerminalScalars,
     claims: &[C6BlindResidualPendingClaimVerifier],
     tape: usize,
 ) -> Result<VerifierKey> {
+    if claims.len() != terminal.leaf_linear.len() {
+        return Err(C6BlindResidualError::new(
+            "C6RSC3 verifier leaf terminal claim/scalar census mismatch",
+        ));
+    }
     let mut expression = VerifierKey::ZERO;
-    for term in statement.reference.leaf().terms() {
-        let C6ResidualSumcheckTerm::Linear { table, coefficients } = term else {
-            return Err(C6BlindResidualError::new("quadratic term in C6RSC3 leaf family"));
-        };
-        expression = expression
-            .add(claims[usize::from(*table)].keys[tape].scale(eval_mle(coefficients, point)));
+    for (claim, coefficient) in claims.iter().zip(terminal.leaf_linear) {
+        expression = expression.add(claim.keys[tape].scale(coefficient));
     }
     Ok(expression)
 }
 
 fn terminal_auxiliary_expression_prover(
-    statement: &C6BlindResidualStatement,
-    point: &[Fp2],
+    terminal: &C6BlindResidualTerminalScalars,
     claims: &[C6BlindResidualPendingClaimProver],
     products: &[ProverAuthed],
     tape: usize,
 ) -> Result<ProverAuthed> {
-    let mut expression = ProverAuthed::ZERO;
-    let mut product_index = 0;
-    for term in statement.reference.auxiliary().terms() {
-        match term {
-            C6ResidualSumcheckTerm::Linear { table, coefficients } => {
-                expression = expression.add(
-                    claims[usize::from(*table)].auth[tape].scale(eval_mle(coefficients, point)),
-                );
-            }
-            C6ResidualSumcheckTerm::Quadratic { coefficients, .. } => {
-                expression = expression.add(
-                    products
-                        .get(product_index)
-                        .copied()
-                        .ok_or_else(|| {
-                            C6BlindResidualError::new("missing C6RSC3 terminal product")
-                        })?
-                        .scale(eval_mle(coefficients, point)),
-                );
-                product_index += 1;
-            }
-        }
-    }
-    if product_index != TERMINAL_PRODUCTS {
+    if claims.len() != terminal.auxiliary_linear.len()
+        || products.len() != terminal.auxiliary_quadratic.len()
+    {
         return Err(C6BlindResidualError::new(
-            "C6RSC3 terminal product expression census mismatch",
+            "C6RSC3 auxiliary terminal claim/scalar census mismatch",
         ));
+    }
+    let mut expression = ProverAuthed::ZERO;
+    for (claim, coefficient) in claims.iter().zip(terminal.auxiliary_linear) {
+        expression = expression.add(claim.auth[tape].scale(coefficient));
+    }
+    for (product, coefficient) in products.iter().zip(terminal.auxiliary_quadratic) {
+        expression = expression.add(product.scale(coefficient));
     }
     Ok(expression)
 }
 
 fn terminal_auxiliary_expression_verifier(
-    statement: &C6BlindResidualStatement,
-    point: &[Fp2],
+    terminal: &C6BlindResidualTerminalScalars,
     claims: &[C6BlindResidualPendingClaimVerifier],
     products: &[VerifierKey],
     tape: usize,
 ) -> Result<VerifierKey> {
-    let mut expression = VerifierKey::ZERO;
-    let mut product_index = 0;
-    for term in statement.reference.auxiliary().terms() {
-        match term {
-            C6ResidualSumcheckTerm::Linear { table, coefficients } => {
-                expression = expression.add(
-                    claims[usize::from(*table)].keys[tape].scale(eval_mle(coefficients, point)),
-                );
-            }
-            C6ResidualSumcheckTerm::Quadratic { coefficients, .. } => {
-                expression = expression.add(
-                    products
-                        .get(product_index)
-                        .copied()
-                        .ok_or_else(|| {
-                            C6BlindResidualError::new("missing verifier terminal product")
-                        })?
-                        .scale(eval_mle(coefficients, point)),
-                );
-                product_index += 1;
-            }
-        }
+    if claims.len() != terminal.auxiliary_linear.len()
+        || products.len() != terminal.auxiliary_quadratic.len()
+    {
+        return Err(C6BlindResidualError::new(
+            "C6RSC3 verifier auxiliary terminal claim/scalar census mismatch",
+        ));
     }
-    if product_index != TERMINAL_PRODUCTS {
-        return Err(C6BlindResidualError::new("C6RSC3 verifier terminal product census mismatch"));
+    let mut expression = VerifierKey::ZERO;
+    for (claim, coefficient) in claims.iter().zip(terminal.auxiliary_linear) {
+        expression = expression.add(claim.keys[tape].scale(coefficient));
+    }
+    for (product, coefficient) in products.iter().zip(terminal.auxiliary_quadratic) {
+        expression = expression.add(product.scale(coefficient));
     }
     Ok(expression)
 }

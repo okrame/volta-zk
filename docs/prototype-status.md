@@ -77,8 +77,11 @@ small leaf state while admitting the auxiliary state.  A round-synchronous
 single-backing arena now implements that amendment locally: leaf prefixes are
 compacted in place and auxiliary reuses the same physical allocation.  The
 scaled pointer/capacity and arithmetic differential is green and the original
-512-MiB production cap remains unchanged.  Fused `C6RSC3` integration is next,
-followed by synchronized packed-PCS authenticated-output assembly.
+512-MiB production cap remains unchanged.  The reference prover now runs
+through one shared round-synchronous `C6RSC3` arithmetic coordinator with its
+five-test byte/transcript/correlation differential unchanged.  Fused
+arithmetic integration is next, followed by synchronized packed-PCS
+authenticated-output assembly.
 Cache constraint census, wrapper proof, local end-to-end and hardware gates
 remain pending.
 
@@ -446,6 +449,7 @@ its clean descendant closure.
 | C6 fused atomic event-sink | **LOCAL SCALED REPLAY / FIRST / FOLDED / TERMINAL DIFFERENTIAL GREEN; C6RSC3 CONNECTION NEXT; NO POD** (2026-07-29) | One witness-independent v3 emitter now owns every weight and typed write; the old compiler is a test-only oracle; no array digest or equality vector | Both repetitions reproduce the legacy statements, targets, family residuals and mutation attribution exactly.  The scaled replay is **1,056 outputs / 1,185 writes** with family writes **[21,24,48,64,28,4,964,32]**; provider/client audits are identical.  Live-prefix first messages match materialized degree-2/3 rounds and sum to the target.  Folded sinks match every `fold_low`; the client’s constant-memory cursor matches all **8+16+8** `eval_mle` terminals, including 0/1 coordinates and nonmonotone resets.  Production census formulas remain **47,434,352 / 112,998,706 per repetition**; selected writes split **111,889,262 leaf / 1,109,444 auxiliary**.  The hard states are **536,870,912 B leaf / 6,291,456 B auxiliary**.  A manifest-bound allocation lease rejects a second live family/repetition before allocation; scaled peak is **8,192 B**.  `volta-proto --features c6-trace` is **146/0/1**, the workspace suite, all-target check and format are green, and strict-clippy filtering reports no warning in the modified file.  Three stale pre-amendment Python asserts were aligned to the unchanged executable report; the C6 budget is **9/9 PASS** and the script was not changed.  This remains scaled/reference only: no production execution/timing, C6RSC3/PCS link, response removal, cache, real-PCG, CUDA or hardware credit. |
 | C6 round-synchronous fused arena | **SINGLE-BACKING OWNERSHIP AMENDMENT FROZEN BEFORE COORDINATOR CODE; NO POD** (2026-07-29) | Correct the literal single-family lease without changing the C6RSC3 interaction: one response-local arena and one proof repetition, with auxiliary admitted only after global challenge 8 | Leaf alone still defines the peak at **33,554,432 Fp2 / 536,870,912 B**.  At auxiliary admission the leaf has shrunk logically to **131,072 Fp2 / 2,097,152 B** and auxiliary occupies **393,216 Fp2 / 6,291,456 B**, for **524,288 Fp2 / 8,388,608 B** live.  Because `Vec::truncate` does not release capacity, one initial leaf-sized backing allocation remains physically reserved; leaf prefixes are compacted in place and auxiliary reuses its tail, with no second coefficient allocation or allocator-dependent shrink.  The arena must reject early/duplicate family admission, a changed or second live repetition, a second backing allocation, cap overflow, accounting underflow and persistence after completion.  Transcript order, four event replays, proof bytes, correlations, terminal claims, soundness and budget are unchanged; no implementation or timing credit is claimed. |
 | C6 single-backing fused arena | **LOCAL SCALED ALLOCATION / COMPACTION / FOLD DIFFERENTIAL GREEN; C6RSC3 CONNECTION NEXT; NO POD** (2026-07-29) | One fallible exact-capacity `Vec<Fp2>` per live repetition; metadata table layouts; in-place leaf compaction; auxiliary tail reuse; logical and reserved counters separated | Scaled leaf starts at **512 Fp2 / 8,192 B live and reserved**.  At activation leaf+auxiliary are **16+48=64 Fp2 live** while reserved capacity stays **512 Fp2** and the backing pointer is unchanged; terminal live state is **8+24=32 Fp2**, and both releases return live/reserved to zero.  Every folded table matches the independent materialized oracle before and after compaction.  Production is re-summed without allocating it in tests at **33,554,432 Fp2 / 536,870,912 B reserved** and **524,288 Fp2 / 8,388,608 B live** at activation.  Negatives cover early/no-leaf/duplicate/wrong-repetition/wrong-manifest/terminal-overfold/oversize/non-fitting geometry.  `volta-proto --features c6-trace` is **146/0/1**; all-target check, format and modified-file clippy filter are green.  This remains scaled/local: no C6RSC3 transcript, production allocation/timing, response removal, PCS, cache, real-PCG, CUDA or hardware credit. |
+| C6 shared blind prover coordinator | **REFERENCE LOOP FACTORED / 5-TEST DIFFERENTIAL GREEN; FUSED ARITHMETIC NEXT; NO POD** (2026-07-29) | One private round-synchronous arithmetic interface under the existing dual-tape transcript/MAC coordinator; materialized reference is the first adapter | The coordinator alone owns round authentication, activation-before-challenge, synchronized challenge binding, pending transfers, terminal ProductClosure/ZeroBatch, proof framing and transcript byte charges.  Arithmetic returns only current messages, terminal opening values and **8+16+8** compact terminal coefficient scalars.  Statement/repetition/target/geometry mismatches reject before transcript progress, while the reference adapter must retain its clear diagnostic proof.  All five existing blind tests remain green, including codec/census, byte/transcript/correlation parity and registered tamper seams.  This is semantic-neutral scaffolding: no fused arena/replay, verifier change, production allocation/timing, response removal, PCS, cache, setup, real-PCG, CUDA or hardware credit. |
 | C6 role-local instance extraction codec | **CLEAN TWO-SEED MAP + RUNTIME PASS; SETUP/SEAM CLOSED; BOUND ORDINARY TIMING PENDING** (2026-07-29) | No response-value vector on wire; role-specific model-global maps; maximal-`+1` run codec fixed before measurement; strict ordinary-build decoder and thread-local value recorder | Clean seed-24/25 runs preserve the verifier map at **5,320,386 B**, **1,466 / 10,828,876 raw public/scalar slots**, **1,436 / 10,828,852 canonical slots**, **262 / 2,552,791 runs** and BLAKE3 `17ed0942...7183535`.  Known first exchange is **146,058,504 B**, leaving **3,941,496 B**.  Runtime records `c6-runtime-instance-recorder-seed24-2026-07-29-3b01789.json` / `c6-runtime-instance-recorder-seed25-2026-07-29-abf081c.json`, SHA-256 `f4ea526e...110681b` / `c1775060...5aff5b`, reproduce the exact prover/verifier raw censuses and reconstruct `7a21189b...45cacaa` / `1bd5aa75...6f734f7` respectively; both are clean PASSes.  Full trace was enabled, so this closes setup/seam correctness but gives no bound ordinary runtime, prover-time, residual or production credit. |
 | C6 parameterized canonical plan codec | **CLEAN TWO-SEED RUN-OF-RECORD PASS; PLAN-CODEC SETUP FIT CLOSED; COMPILED RESIDUAL PENDING** (2026-07-29) | Model-global v2 topology artifact; exact strict ordinary-build decoder; independent prover/verifier compile; response instance values excluded | Both clean `100+50` seed-24/25 records recover topology `bcdd169f...c57af344`, produce distinct instance digests and the same **63,994,751-B** artifact at BLAKE3 `265f874c...e51ebac`.  The actual first exchange subtotal is **140,738,118 B <=150,000,000 B**, leaving **9,261,882 B** for all remaining parameters/framing.  Records `c6-parameterized-plan-codec-seed24-2026-07-29-e437394.json` / `c6-parameterized-plan-codec-seed25-2026-07-29-8006f36.json`, SHA-256 `af785f98...ee5580` / `6e054a12...6a861`, are `git_dirty:false`, `diagnostic:false`, `pod_contacted:false`, `all_pass:true`.  This is not an overall setup, residual, response-byte, timing or production verdict. |
 | C6 installed compiled-residual core | **CLEAN TWO-SEED FULL-T1 PAIRED RECORD PASS; ORDINARY OVERHEAD / WRAPPER PENDING** (2026-07-29) | Consuming strict decoder installation; local reverse workspace; role-map runtime values; transcript-streamed base-share coefficients; paired source/key folds | Clean schema-11 seed-24/25 records at `5f9a7ba` accept both independent Δ coordinates over all **4,975,525** sources with provider/verifier linear-form equality and provider/client coefficient-binding equality; no coefficient vector is serialized.  Topology `bcdd169f...c57af344`, artifact `265f874c...e51ebac` and memory are cross-seed invariant, while instance and coefficient digests change.  The installed plan is **196,741,767 B** resident.  Each role retains **79,611,404 B** and uses a counted **541,141,500-B** residual-only compile peak.  Informative clean provider residual subtotals are **2.115027772 / 2.031618948 s** after **1.637407891 / 1.646412629 s** one-off installs.  The residual output itself is **64 B**, but this is not the final wrapper/certificate and earns no wire or timing credit.  Bound ordinary-build overhead, wrapper, real-PCG session and hardware gates remain pending. |
@@ -524,6 +528,36 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-29 — C6 reference prover now exercises the shared blind
+  coordinator before fused arithmetic is admitted.**  The previous
+  materialized prover loop duplicated transcript/MAC orchestration that the
+  fused path must reuse.  It is now an adapter behind one private
+  round-synchronous arithmetic interface.  The shared coordinator remains
+  authoritative for both MAC tapes, correlation domains, activation
+  `ZeroOpen`, challenge release, pending transfers, terminal
+  `ProductClosure`/`ZeroBatch`, proof framing and transcript byte charges.
+  Arithmetic can supply only the current family messages, bind the released
+  challenge, and return opening values plus the compact **8 + 16 + 8**
+  terminal coefficient scalars.
+
+  The adapter validates repetition, target, total rounds, activation boundary
+  and initial round before transcript progress, and the reference path
+  rejects if its diagnostic clear proof is absent.  The five focused
+  `c6_residual_sumcheck_blind` tests remain **5/5 PASS**, covering the exact
+  production census, strict codec, clear/reference differential, distinct
+  tapes and all registered tamper seams.  This checkpoint changes no proof
+  byte, transcript append, correlation draw, terminal claim, statement
+  digest, soundness or budget.
+
+  Design SHA-256 is
+  `11f4b047798bd35b2050c0e2c982716f8469abe0baa787df937c307ed5652254`;
+  blind coordinator source SHA-256 is
+  `ae6e2ca7696f19734c1d7ae90b2ad3ff82672cb1df3a78b4c1bc914e791e0f27`.
+  No fused sink, production allocation, response removal, PCS, cache, setup,
+  timing, real-PCG, CUDA or hardware credit is claimed.  No provider or pod
+  was contacted; the pre-existing untracked user note was not read, staged
+  or modified.
 
 - **2026-07-29 — C6 single-backing arena implementation and scaled physical
   differential are green.**  The response-local owner now allocates one

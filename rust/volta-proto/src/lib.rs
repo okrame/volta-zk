@@ -61,6 +61,8 @@ pub use c6_census::{
     C6_T1_SOURCE_SCHEDULE_DIGEST_HEX, C6_T1_SUB_CORRECTION_BYTES, C6_T1_TOTAL_PRODUCT_CLOSURES,
     C6_T1_TOTAL_PRODUCT_TRIPLES, C6_T1_ZERO_CLOSURES,
 };
+#[cfg(feature = "c6-trace")]
+pub use c6_residual::{build_c6_residual_fused_scaled_fixture, C6ResidualFusedScaledFixture};
 pub use c6_residual::{
     c6_residual_fused_coefficient_memory_census, compile_c6_residual_atomic_relation_reference,
     compile_c6_residual_fused_first_round, compile_c6_residual_fused_folded_coefficients,

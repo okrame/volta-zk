@@ -8,8 +8,9 @@ CODEC + FULL-T1 COMPILED RESIDUAL + DURABLE 17+4 SESSION + HIDDEN-U NATIVE
 SUMCHECK REDUCTION + SCALED DUAL-TAPE C6RSC3 CODEC/DIFFERENTIAL GREEN; FUSED
 T1 EVENT-SINK + FIRST/FOLDED/TERMINAL SCALED DIFFERENTIAL GREEN;
 ROUND-SYNCHRONOUS SINGLE-BACKING ARENA LOCAL DIFFERENTIAL GREEN; SHARED
-C6RSC3 PROVER COORDINATOR REFERENCE DIFFERENTIAL GREEN / FUSED CONNECTION
-NEXT; CACHE ARGUMENT / PACKED PCS / FINAL WRAPPER PENDING; LOCAL
+C6RSC3 COORDINATOR + SCALED FUSED PROVER BYTE/TRANSCRIPT/PENDING DIFFERENTIAL
+GREEN / VECTOR-FREE CLIENT TERMINAL CONNECTION NEXT; CACHE ARGUMENT / PACKED
+PCS / FINAL WRAPPER PENDING; LOCAL
 IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
@@ -2622,6 +2623,39 @@ This is a semantic-neutral integration checkpoint only.  No fused sink or
 arena is connected yet, no verifier replay changes, and no production
 allocation, response removal, PCS, cache, setup, timing, CUDA or hardware
 credit is earned.
+
+#### 5.1.9 Scaled fused C6RSC3 prover checkpoint
+
+The diagnostic `c6-trace` path now feeds the three provider fused consumers
+into the shared coordinator.  One live-witness replay fixes both first
+messages.  Challenge 0 admits the half-size leaf coefficient state; later
+leaf rounds read the arena views directly.  At the activation boundary the
+leaf state is folded first with the shared challenge, then the auxiliary
+replay is admitted into the reclaimed tail with that same challenge.  Every
+remaining shared challenge folds both families before the next message pair.
+Terminal coefficient scalars are copied from the one-entry arena views and
+the arena is empty before the next proof repetition begins.
+
+The scaled witness adapter constructs each first folded witness table
+directly at half size; it does not clone a full table and truncate it.  Later
+witness folds are explicitly diagnostic and receive no production-memory
+credit.  A feature-gated cross-crate fixture owns the installed operation
+plan, runtime extraction, relation context, live paired witnesses and
+independent materialized oracle under the same global trace lock.
+
+The six focused blind tests pass.  The new differential proves exact equality
+of proof objects and encoded bytes, pending corrections and authenticated
+claims, transcript ledger/bytes, correlation counters and terminal
+plaintexts between reference and fused provers.  The scaled arena reaches
+the frozen **512-Fp2** reserved peak, reuses one backing and returns
+active/reserved occupancy to zero after each repetition.  The independent
+proto atomic differential remains green.
+
+The designated verifier still derives terminal scalars from the materialized
+reference statement at this checkpoint.  Therefore client vector-free replay
+and the complete fused prover/client gate remain pending.  No production
+allocation, response removal, PCS, cache, setup, timing, real-PCG, CUDA or
+hardware credit is earned.
 
 The wrapper PCS uses rate `1/8`, two independent fold/query chains and
 `s=86` queries per chain.  Under the conservative 64-active-polynomial,

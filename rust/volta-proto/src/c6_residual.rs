@@ -37,6 +37,14 @@ use volta_mac::{
     CorrScheduleAudit, CorrScheduleKind, CorrScheduleRole, ProverAuthed, Transcript, VerifierKey,
 };
 
+#[cfg(feature = "c6-trace")]
+mod fused_fixture;
+#[cfg(feature = "c6-trace")]
+pub use fused_fixture::{build_c6_residual_fused_scaled_fixture, C6ResidualFusedScaledFixture};
+
+#[cfg(feature = "c6-trace")]
+static C6_RESIDUAL_TRACE_FIXTURE_LOCK: Mutex<()> = Mutex::new(());
+
 pub type C6ResidualDigest = [u8; 32];
 
 const CENSUS_DOMAIN: &[u8] = b"volta-zk/c6/residual-census/v1";
@@ -7376,9 +7384,6 @@ mod tests {
         record_c6_zero_roots, C6InstanceExtractionRole, C6TraceSourceManifest, CorrelationStream,
     };
 
-    #[cfg(feature = "c6-trace")]
-    static INSTALLED_FIXTURE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
     fn fp(value: u64) -> Fp {
         Fp::new(value)
     }
@@ -7847,7 +7852,7 @@ mod tests {
     #[cfg(feature = "c6-trace")]
     #[test]
     fn installed_reverse_accumulator_matches_reference_without_leaf_vectors_on_wire() {
-        let _fixture_guard = INSTALLED_FIXTURE_LOCK.lock().unwrap();
+        let _fixture_guard = C6_RESIDUAL_TRACE_FIXTURE_LOCK.lock().unwrap();
         let fixture = fixture(Fp2::ZERO, false);
         let witnesses = fixture.witnesses.clone();
         let census = fixture.builder.census().unwrap();
@@ -8215,7 +8220,7 @@ mod tests {
     #[cfg(feature = "c6-trace")]
     #[test]
     fn v3_atomic_relation_typestate_and_all_families_are_differentially_bound() {
-        let _fixture_guard = INSTALLED_FIXTURE_LOCK.lock().unwrap();
+        let _fixture_guard = C6_RESIDUAL_TRACE_FIXTURE_LOCK.lock().unwrap();
 
         let primary_fixture = fixture(Fp2::ZERO, false);
         let installed_witnesses = primary_fixture.witnesses.clone();
@@ -9139,7 +9144,7 @@ mod tests {
     #[cfg(feature = "c6-trace")]
     #[test]
     fn paired_source_fold_is_interleaved_bound_and_fail_closed() {
-        let _fixture_guard = INSTALLED_FIXTURE_LOCK.lock().unwrap();
+        let _fixture_guard = C6_RESIDUAL_TRACE_FIXTURE_LOCK.lock().unwrap();
         let (installed, extraction, runtime, schedule, paired) = installed_paired_fixture();
         let zero_weights = [fp2(59), fp2(61), fp2(67)];
         let compiled =

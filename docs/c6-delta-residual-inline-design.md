@@ -1079,6 +1079,35 @@ The complete `volta-proto --features c6-trace` suite is
 green.  The implementation source SHA-256 is
 `63fddf8e1843987a6019c0dbb9e6197807b7bbf72d8c63db7a9fc4c47bf58c8e`.
 
+The T1-to-sumcheck compiler is staged through the existing installed reverse
+accumulator, never through a second hand-maintained DAG formula.  Its first
+checkpoint accepts an exact terminal-weight schedule in installed
+`ProductClosure/triple/(a,b,c)` order followed by installed zero-root order.
+The schedule is bound to the plan artifact/topology, repetition and
+plaintext-versus-tag role.  Both roles use the same reverse walker:
+plaintext forms include public-node values, while tag forms treat public
+nodes as zero and retain the same public scale inputs.  A zero-root-only
+differential must reproduce the accepted compiled residual's leaf
+coefficients and public term exactly.
+
+This intermediate compiler deliberately does not yet define the post-root
+weight-expansion domains or assemble source grammar, raw copy,
+`ProductClosure` and `ZeroBatch` into a sumcheck statement.  Materialized
+weights/leaf coefficients are reference-only and carry no production
+memory, timing, proof or soundness credit.
+
+The local checkpoint is green.  The installed census is exactly **22,339**
+product triples and **8,170** zero roots.  One shared reverse walker now
+serves both the historical compiled residual and the new plaintext/tag
+terminal forms; the zero-product differential reproduces the historical
+leaf coefficients and public term exactly, while an independent nontrivial
+differential closes both plaintext and tag evaluations.  Runtime extraction
+binding is checked even when a form happens to read no public or scalar
+value.  The complete feature suite is **145 pass / 0 fail / 1 ignored**.
+This result does not yet derive terminal weights from the transcript, build
+the residual-sumcheck statement, hide its messages or bind its terminal PCS
+claims.
+
 ## 4. Hidden Ligero vectors without an NTT trace
 
 Simply omitting `u_c` or `u_g` is unsound.  C6 commits to them before the

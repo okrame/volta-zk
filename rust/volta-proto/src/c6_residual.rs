@@ -49,6 +49,8 @@ const PAIRED_COEFFICIENT_STREAM_DOMAINS: [u64; 2] =
 const PAIRED_LEAF_WRAPPER_DOMAIN: &str = "volta-zk/c6/paired-residual-leaf-wrapper/v1";
 const PAIRED_CLOSURE_WRAPPER_DOMAIN: &str = "volta-zk/c6/paired-residual-closure-wrapper/v1";
 const PAIRED_AUXILIARY_WRAPPER_DOMAIN: &str = "volta-zk/c6/paired-residual-auxiliary-wrapper/v1";
+const TERMINAL_WEIGHT_SCHEDULE_DOMAIN: &str = "volta-zk/c6/residual-terminal-weight-schedule/v1";
+const TERMINAL_LINEAR_FORM_DOMAIN: &str = "volta-zk/c6/residual-terminal-linear-form/v1";
 
 pub const C6_RESIDUAL_AUXILIARY_LANES: u32 = 16;
 pub const C6_RESIDUAL_AUXILIARY_PRODUCT_LANES: u32 = 12;
@@ -1143,6 +1145,446 @@ impl C6CompiledPairedResidualPlan {
     }
 }
 
+/// Whether one reverse terminal form follows authenticated plaintexts or
+/// tags.  Public authenticated constants contribute their value only to the
+/// plaintext form; their tag is canonically zero.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum C6ResidualTerminalFormKind {
+    Plaintext = 1,
+    Tag = 2,
+}
+
+/// Exact reference schedule for batching installed ProductClosure operands
+/// and zero roots into one reverse linear form.
+///
+/// `product_weights` is flat in installed ProductClosure order, triple
+/// order, then `(a,b,c)` component order.  It is local compiler input, never
+/// a response field.  A later checkpoint derives these weights from the
+/// post-root verifier challenge; this type deliberately does not choose that
+/// expansion domain.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualTerminalWeightSchedule {
+    operation_plan_artifact_digest: C6ResidualDigest,
+    topology_digest: C6ResidualDigest,
+    repetition: u8,
+    kind: C6ResidualTerminalFormKind,
+    product_weights: Vec<[Fp2; 3]>,
+    zero_weights: Vec<Fp2>,
+    digest: C6ResidualDigest,
+}
+
+impl C6ResidualTerminalWeightSchedule {
+    pub fn new(
+        operation_plan: &C6InstalledOperationPlan,
+        repetition: u8,
+        kind: C6ResidualTerminalFormKind,
+        product_weights: Vec<[Fp2; 3]>,
+        zero_weights: Vec<Fp2>,
+    ) -> C6ResidualResult<Self> {
+        if repetition >= 2 {
+            return Err(C6ResidualError::new("C6 residual terminal repetition is out of range"));
+        }
+        let product_triples = installed_product_triple_count(operation_plan)?;
+        if product_weights.len() as u64 != product_triples
+            || zero_weights.len() != operation_plan.zero_roots().len()
+        {
+            return Err(C6ResidualError::new(
+                "C6 residual terminal-weight census differs from installed terminals",
+            ));
+        }
+        let mut schedule = Self {
+            operation_plan_artifact_digest: operation_plan.artifact_digest(),
+            topology_digest: operation_plan.topology().topology_digest,
+            repetition,
+            kind,
+            product_weights,
+            zero_weights,
+            digest: [0; 32],
+        };
+        schedule.digest = terminal_weight_schedule_digest(&schedule);
+        schedule.validate(operation_plan)?;
+        Ok(schedule)
+    }
+
+    pub fn repetition(&self) -> u8 {
+        self.repetition
+    }
+
+    pub fn kind(&self) -> C6ResidualTerminalFormKind {
+        self.kind
+    }
+
+    pub fn product_weights(&self) -> &[[Fp2; 3]] {
+        &self.product_weights
+    }
+
+    pub fn zero_weights(&self) -> &[Fp2] {
+        &self.zero_weights
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+
+    fn validate(&self, operation_plan: &C6InstalledOperationPlan) -> C6ResidualResult<()> {
+        if self.repetition >= 2
+            || self.operation_plan_artifact_digest != operation_plan.artifact_digest()
+            || self.topology_digest != operation_plan.topology().topology_digest
+            || self.product_weights.len() as u64 != installed_product_triple_count(operation_plan)?
+            || self.zero_weights.len() != operation_plan.zero_roots().len()
+            || self.digest == [0; 32]
+            || self.digest != terminal_weight_schedule_digest(self)
+        {
+            return Err(C6ResidualError::new(
+                "C6 residual terminal-weight schedule binding mismatch",
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Materialized reference output of one installed terminal reverse form.
+///
+/// The leaf coefficients remain local and may be consumed by the later
+/// sumcheck-statement compiler.  Production credit requires a fused path
+/// that does not retain another full source-length vector.
+pub struct C6CompiledTerminalLinearForm {
+    operation_plan_artifact_digest: C6ResidualDigest,
+    topology: C6OperationPlanTopologyIdentity,
+    instance: C6OperationPlanInstanceIdentity,
+    repetition: u8,
+    kind: C6ResidualTerminalFormKind,
+    schedule_digest: C6ResidualDigest,
+    leaf_coefficients: Vec<Fp2>,
+    public_plaintext: Fp2,
+    linear_form_digest: C6ResidualDigest,
+}
+
+impl fmt::Debug for C6CompiledTerminalLinearForm {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("C6CompiledTerminalLinearForm")
+            .field("operation_plan_artifact_digest", &self.operation_plan_artifact_digest)
+            .field("topology", &self.topology)
+            .field("instance", &self.instance)
+            .field("repetition", &self.repetition)
+            .field("kind", &self.kind)
+            .field("schedule_digest", &self.schedule_digest)
+            .field("leaf_coefficients", &self.leaf_coefficients.len())
+            .field("public_plaintext", &self.public_plaintext)
+            .field("linear_form_digest", &self.linear_form_digest)
+            .finish_non_exhaustive()
+    }
+}
+
+impl C6CompiledTerminalLinearForm {
+    pub fn compile(
+        operation_plan: &C6InstalledOperationPlan,
+        extraction: &C6DecodedInstanceExtractionPlan,
+        runtime: &C6RuntimeInstanceValues,
+        schedule: &C6ResidualTerminalWeightSchedule,
+    ) -> C6ResidualResult<Self> {
+        schedule.validate(operation_plan)?;
+        let include_public = schedule.kind == C6ResidualTerminalFormKind::Plaintext;
+        let reverse = reverse_installed_linear_form(
+            operation_plan,
+            extraction,
+            runtime,
+            include_public,
+            |node_coefficients| {
+                let mut product_cursor = 0usize;
+                for product in operation_plan.products() {
+                    for triple in product.triples() {
+                        let weights = schedule.product_weights[product_cursor];
+                        product_cursor += 1;
+                        for (node, weight) in triple.iter().zip(weights) {
+                            let coefficient =
+                                node_coefficients.get_mut(*node as usize).ok_or_else(|| {
+                                    C6ResidualError::new(
+                                        "C6 terminal ProductClosure operand is outside the plan",
+                                    )
+                                })?;
+                            *coefficient += weight;
+                        }
+                    }
+                }
+                if product_cursor != schedule.product_weights.len() {
+                    return Err(C6ResidualError::new(
+                        "C6 terminal ProductClosure cursor differs from its schedule",
+                    ));
+                }
+                for (&root, &weight) in
+                    operation_plan.zero_roots().iter().zip(&schedule.zero_weights)
+                {
+                    let coefficient =
+                        node_coefficients.get_mut(root as usize).ok_or_else(|| {
+                            C6ResidualError::new("C6 terminal zero root is outside the plan")
+                        })?;
+                    *coefficient += weight;
+                }
+                Ok(())
+            },
+        )?;
+        if schedule.kind == C6ResidualTerminalFormKind::Tag && reverse.public_plaintext != Fp2::ZERO
+        {
+            return Err(C6ResidualError::new("C6 tag terminal form acquired a public plaintext"));
+        }
+        let mut hasher = blake3::Hasher::new_derive_key(TERMINAL_LINEAR_FORM_DOMAIN);
+        hasher.update(&operation_plan.artifact_digest());
+        hasher.update(&reverse.topology.topology_digest);
+        hasher.update(&reverse.instance.instance_digest);
+        hasher.update(&[schedule.repetition, schedule.kind as u8]);
+        hasher.update(&schedule.digest);
+        hash_fp2(&mut hasher, reverse.public_plaintext);
+        hasher.update(&(reverse.leaf_coefficients.len() as u64).to_le_bytes());
+        for (source, coefficient) in reverse.leaf_coefficients.iter().enumerate() {
+            hasher.update(&(source as u32).to_le_bytes());
+            hash_fp2(&mut hasher, *coefficient);
+        }
+        Ok(Self {
+            operation_plan_artifact_digest: operation_plan.artifact_digest(),
+            topology: reverse.topology,
+            instance: reverse.instance,
+            repetition: schedule.repetition,
+            kind: schedule.kind,
+            schedule_digest: schedule.digest,
+            leaf_coefficients: reverse.leaf_coefficients,
+            public_plaintext: reverse.public_plaintext,
+            linear_form_digest: *hasher.finalize().as_bytes(),
+        })
+    }
+
+    pub fn topology(&self) -> C6OperationPlanTopologyIdentity {
+        self.topology
+    }
+
+    pub fn instance(&self) -> C6OperationPlanInstanceIdentity {
+        self.instance
+    }
+
+    pub fn repetition(&self) -> u8 {
+        self.repetition
+    }
+
+    pub fn kind(&self) -> C6ResidualTerminalFormKind {
+        self.kind
+    }
+
+    pub fn schedule_digest(&self) -> C6ResidualDigest {
+        self.schedule_digest
+    }
+
+    pub fn leaf_coefficients(&self) -> &[Fp2] {
+        &self.leaf_coefficients
+    }
+
+    pub fn public_plaintext(&self) -> Fp2 {
+        self.public_plaintext
+    }
+
+    pub fn linear_form_digest(&self) -> C6ResidualDigest {
+        self.linear_form_digest
+    }
+}
+
+fn installed_product_triple_count(
+    operation_plan: &C6InstalledOperationPlan,
+) -> C6ResidualResult<u64> {
+    operation_plan.products().iter().try_fold(0u64, |total, product| {
+        total
+            .checked_add(product.triples().len() as u64)
+            .ok_or_else(|| C6ResidualError::new("C6 ProductClosure census overflows"))
+    })
+}
+
+fn terminal_weight_schedule_digest(
+    schedule: &C6ResidualTerminalWeightSchedule,
+) -> C6ResidualDigest {
+    let mut hasher = blake3::Hasher::new_derive_key(TERMINAL_WEIGHT_SCHEDULE_DOMAIN);
+    hasher.update(&schedule.operation_plan_artifact_digest);
+    hasher.update(&schedule.topology_digest);
+    hasher.update(&[schedule.repetition, schedule.kind as u8]);
+    hasher.update(&(schedule.product_weights.len() as u64).to_le_bytes());
+    for (triple, weights) in schedule.product_weights.iter().enumerate() {
+        hasher.update(&(triple as u64).to_le_bytes());
+        for weight in weights {
+            hash_fp2(&mut hasher, *weight);
+        }
+    }
+    hasher.update(&(schedule.zero_weights.len() as u64).to_le_bytes());
+    for (root, weight) in schedule.zero_weights.iter().enumerate() {
+        hasher.update(&(root as u64).to_le_bytes());
+        hash_fp2(&mut hasher, *weight);
+    }
+    *hasher.finalize().as_bytes()
+}
+
+struct C6ReverseInstalledLinearForm {
+    topology: C6OperationPlanTopologyIdentity,
+    instance: C6OperationPlanInstanceIdentity,
+    leaf_coefficients: Vec<Fp2>,
+    product_mask_sources: Vec<u32>,
+    public_plaintext: Fp2,
+}
+
+fn reverse_installed_linear_form(
+    operation_plan: &C6InstalledOperationPlan,
+    extraction: &C6DecodedInstanceExtractionPlan,
+    runtime: &C6RuntimeInstanceValues,
+    include_public_inputs: bool,
+    seed_terminals: impl FnOnce(&mut [Fp2]) -> C6ResidualResult<()>,
+) -> C6ResidualResult<C6ReverseInstalledLinearForm> {
+    let decoded = operation_plan.decoded();
+    let topology = decoded.topology;
+    let instance = runtime.instance_identity();
+    let extraction_census = extraction.census();
+    runtime
+        .validate_extraction_binding(extraction)
+        .map_err(|error| C6ResidualError::new(error.to_string()))?;
+    if runtime.role() != extraction.role()
+        || extraction.topology_digest() != topology.topology_digest
+        || instance.version != topology.version
+        || instance.topology_digest != topology.topology_digest
+        || instance.public_input_count != topology.public_input_count
+        || instance.scalar_input_count != topology.scalar_input_count
+        || extraction_census.canonical_public_input_count != topology.public_input_count
+        || extraction_census.canonical_scalar_input_count != topology.scalar_input_count
+    {
+        return Err(C6ResidualError::new(
+            "C6 installed plan, runtime instance and extraction map differ",
+        ));
+    }
+    let canonical_node_count = usize::try_from(topology.canonical_node_count)
+        .map_err(|_| C6ResidualError::new("C6 canonical node count exceeds usize"))?;
+    let source_count = usize::try_from(topology.source_count)
+        .map_err(|_| C6ResidualError::new("C6 source count exceeds usize"))?;
+    if operation_plan.operation_kinds().len() != canonical_node_count
+        || operation_plan.source_ordinals().len() as u64 != decoded.node_kinds.source
+        || operation_plan.operands().len() as u64 != decoded.encoding.operand_count
+        || operation_plan.products().len() != topology.product_closure_count as usize
+        || operation_plan.zero_roots().len() != topology.zero_root_count as usize
+        || installed_product_triple_count(operation_plan)? != topology.product_triple_count
+    {
+        return Err(C6ResidualError::new(
+            "C6 installed reverse arrays differ from their decoded census",
+        ));
+    }
+
+    let mut node_coefficients =
+        try_zeroed_fp2_vec(canonical_node_count, "C6 reverse node workspace")?;
+    seed_terminals(&mut node_coefficients)?;
+    let mut leaf_coefficients = try_zeroed_fp2_vec(source_count, "C6 reverse leaf coefficients")?;
+
+    let mut product_mask_nodes = Vec::with_capacity(operation_plan.products().len());
+    product_mask_nodes.extend(operation_plan.products().iter().map(|product| product.mask()));
+    product_mask_nodes.sort_unstable();
+    if product_mask_nodes.windows(2).any(|window| window[0] == window[1]) {
+        return Err(C6ResidualError::new("C6 installed ProductClosure mask node is reused"));
+    }
+
+    let mut source_cursor = operation_plan.source_ordinals().len();
+    let mut operand_cursor = operation_plan.operands().len();
+    let mut public_cursor = topology.public_input_count as usize;
+    let mut scalar_cursor = topology.scalar_input_count as usize;
+    let mut product_mask_sources = Vec::with_capacity(product_mask_nodes.len());
+    let mut public_plaintext = Fp2::ZERO;
+
+    for (canonical, &kind) in operation_plan.operation_kinds().iter().enumerate().rev() {
+        let coefficient = node_coefficients[canonical];
+        match kind {
+            C6InstalledOperationKind::Source => {
+                source_cursor = source_cursor
+                    .checked_sub(1)
+                    .ok_or_else(|| C6ResidualError::new("C6 installed source cursor underflows"))?;
+                let source = operation_plan.source_ordinals()[source_cursor] as usize;
+                let leaf = leaf_coefficients.get_mut(source).ok_or_else(|| {
+                    C6ResidualError::new("C6 installed source is outside its manifest")
+                })?;
+                *leaf += coefficient;
+                if product_mask_nodes.binary_search(&(canonical as u32)).is_ok() {
+                    if coefficient != Fp2::ZERO {
+                        return Err(C6ResidualError::new(
+                            "C6 ProductClosure mask acquired a linear coefficient",
+                        ));
+                    }
+                    product_mask_sources.push(source as u32);
+                }
+            }
+            C6InstalledOperationKind::StructuralZero => {}
+            C6InstalledOperationKind::PublicInput => {
+                public_cursor = public_cursor.checked_sub(1).ok_or_else(|| {
+                    C6ResidualError::new("C6 installed public-input cursor underflows")
+                })?;
+                if include_public_inputs && coefficient != Fp2::ZERO {
+                    let value = runtime
+                        .public_value(extraction, public_cursor as u32)
+                        .map_err(|error| C6ResidualError::new(error.to_string()))?;
+                    public_plaintext += coefficient * value;
+                }
+            }
+            C6InstalledOperationKind::Add | C6InstalledOperationKind::Sub => {
+                operand_cursor = operand_cursor.checked_sub(2).ok_or_else(|| {
+                    C6ResidualError::new("C6 installed binary-operand cursor underflows")
+                })?;
+                let lhs = operation_plan.operands()[operand_cursor] as usize;
+                let rhs = operation_plan.operands()[operand_cursor + 1] as usize;
+                if lhs >= canonical || rhs >= canonical {
+                    return Err(C6ResidualError::new(
+                        "C6 installed binary operation is not topological",
+                    ));
+                }
+                if coefficient != Fp2::ZERO {
+                    node_coefficients[lhs] += coefficient;
+                    if kind == C6InstalledOperationKind::Add {
+                        node_coefficients[rhs] += coefficient;
+                    } else {
+                        node_coefficients[rhs] = node_coefficients[rhs] - coefficient;
+                    }
+                }
+            }
+            C6InstalledOperationKind::Scale => {
+                operand_cursor = operand_cursor.checked_sub(1).ok_or_else(|| {
+                    C6ResidualError::new("C6 installed scale-operand cursor underflows")
+                })?;
+                scalar_cursor = scalar_cursor.checked_sub(1).ok_or_else(|| {
+                    C6ResidualError::new("C6 installed scalar-input cursor underflows")
+                })?;
+                let input = operation_plan.operands()[operand_cursor] as usize;
+                if input >= canonical {
+                    return Err(C6ResidualError::new(
+                        "C6 installed scale operation is not topological",
+                    ));
+                }
+                if coefficient != Fp2::ZERO {
+                    let scalar = runtime
+                        .scalar_value(extraction, scalar_cursor as u32)
+                        .map_err(|error| C6ResidualError::new(error.to_string()))?;
+                    node_coefficients[input] += coefficient * scalar;
+                }
+            }
+        }
+    }
+    if source_cursor != 0
+        || operand_cursor != 0
+        || public_cursor != 0
+        || scalar_cursor != 0
+        || product_mask_sources.len() != topology.product_closure_count as usize
+    {
+        return Err(C6ResidualError::new(
+            "C6 installed reverse cursors differ from their exact census",
+        ));
+    }
+    product_mask_sources.sort_unstable();
+    Ok(C6ReverseInstalledLinearForm {
+        topology,
+        instance,
+        leaf_coefficients,
+        product_mask_sources,
+        public_plaintext,
+    })
+}
+
 /// Response-local reverse accumulation over the strictly installed
 /// parameterized operation plan.
 ///
@@ -1180,174 +1622,40 @@ impl C6CompiledLinearResidual {
         runtime: &C6RuntimeInstanceValues,
         zero_weights: &[Fp2],
     ) -> C6ResidualResult<Self> {
-        let decoded = operation_plan.decoded();
-        let topology = decoded.topology;
-        let instance = runtime.instance_identity();
-        let extraction_census = extraction.census();
-        if runtime.role() != extraction.role()
-            || extraction.topology_digest() != topology.topology_digest
-            || instance.version != topology.version
-            || instance.topology_digest != topology.topology_digest
-            || instance.public_input_count != topology.public_input_count
-            || instance.scalar_input_count != topology.scalar_input_count
-            || extraction_census.canonical_public_input_count != topology.public_input_count
-            || extraction_census.canonical_scalar_input_count != topology.scalar_input_count
-        {
+        if zero_weights.len() != operation_plan.zero_roots().len() {
             return Err(C6ResidualError::new(
-                "C6 installed plan, runtime instance and extraction map differ",
+                "C6 zero-closure weight count differs from installed terminals",
             ));
         }
-        let canonical_node_count = usize::try_from(topology.canonical_node_count)
-            .map_err(|_| C6ResidualError::new("C6 canonical node count exceeds usize"))?;
-        let source_count = usize::try_from(topology.source_count)
-            .map_err(|_| C6ResidualError::new("C6 source count exceeds usize"))?;
-        if operation_plan.operation_kinds().len() != canonical_node_count
-            || operation_plan.source_ordinals().len() as u64 != decoded.node_kinds.source
-            || operation_plan.operands().len() as u64 != decoded.encoding.operand_count
-            || operation_plan.products().len() != topology.product_closure_count as usize
-            || operation_plan.zero_roots().len() != topology.zero_root_count as usize
-            || zero_weights.len() != topology.zero_root_count as usize
-        {
-            return Err(C6ResidualError::new(
-                "C6 installed reverse arrays differ from their decoded census",
-            ));
-        }
-        let product_triple_count =
-            operation_plan.products().iter().try_fold(0u64, |total, product| {
-                total
-                    .checked_add(product.triples().len() as u64)
-                    .ok_or_else(|| C6ResidualError::new("C6 ProductClosure census overflows"))
-            })?;
-        if product_triple_count != topology.product_triple_count {
-            return Err(C6ResidualError::new(
-                "C6 installed ProductClosure triples differ from topology",
-            ));
-        }
-
-        let mut node_coefficients =
-            try_zeroed_fp2_vec(canonical_node_count, "C6 reverse node workspace")?;
-        for (&root, &weight) in operation_plan.zero_roots().iter().zip(zero_weights) {
-            let coefficient = node_coefficients.get_mut(root as usize).ok_or_else(|| {
-                C6ResidualError::new("C6 zero root is outside the installed plan")
-            })?;
-            *coefficient += weight;
-        }
-        let mut leaf_coefficients =
-            try_zeroed_fp2_vec(source_count, "C6 reverse leaf coefficients")?;
-
-        let mut product_mask_nodes = Vec::with_capacity(operation_plan.products().len());
-        product_mask_nodes.extend(operation_plan.products().iter().map(|product| product.mask()));
-        product_mask_nodes.sort_unstable();
-        if product_mask_nodes.windows(2).any(|window| window[0] == window[1]) {
-            return Err(C6ResidualError::new("C6 installed ProductClosure mask node is reused"));
-        }
-
-        let mut source_cursor = operation_plan.source_ordinals().len();
-        let mut operand_cursor = operation_plan.operands().len();
-        let mut public_cursor = topology.public_input_count as usize;
-        let mut scalar_cursor = topology.scalar_input_count as usize;
-        let mut product_mask_sources = Vec::with_capacity(product_mask_nodes.len());
-        let mut public_plaintext = Fp2::ZERO;
-
-        for (canonical, &kind) in operation_plan.operation_kinds().iter().enumerate().rev() {
-            let coefficient = node_coefficients[canonical];
-            match kind {
-                C6InstalledOperationKind::Source => {
-                    source_cursor = source_cursor.checked_sub(1).ok_or_else(|| {
-                        C6ResidualError::new("C6 installed source cursor underflows")
-                    })?;
-                    let source = operation_plan.source_ordinals()[source_cursor] as usize;
-                    let leaf = leaf_coefficients.get_mut(source).ok_or_else(|| {
-                        C6ResidualError::new("C6 installed source is outside its manifest")
-                    })?;
-                    *leaf += coefficient;
-                    if product_mask_nodes.binary_search(&(canonical as u32)).is_ok() {
-                        if coefficient != Fp2::ZERO {
-                            return Err(C6ResidualError::new(
-                                "C6 ProductClosure mask acquired a linear coefficient",
-                            ));
-                        }
-                        product_mask_sources.push(source as u32);
-                    }
+        let reverse = reverse_installed_linear_form(
+            operation_plan,
+            extraction,
+            runtime,
+            true,
+            |node_coefficients| {
+                for (&root, &weight) in operation_plan.zero_roots().iter().zip(zero_weights) {
+                    let coefficient =
+                        node_coefficients.get_mut(root as usize).ok_or_else(|| {
+                            C6ResidualError::new("C6 zero root is outside the installed plan")
+                        })?;
+                    *coefficient += weight;
                 }
-                C6InstalledOperationKind::StructuralZero => {}
-                C6InstalledOperationKind::PublicInput => {
-                    public_cursor = public_cursor.checked_sub(1).ok_or_else(|| {
-                        C6ResidualError::new("C6 installed public-input cursor underflows")
-                    })?;
-                    if coefficient != Fp2::ZERO {
-                        let value = runtime
-                            .public_value(extraction, public_cursor as u32)
-                            .map_err(|error| C6ResidualError::new(error.to_string()))?;
-                        public_plaintext += coefficient * value;
-                    }
-                }
-                C6InstalledOperationKind::Add | C6InstalledOperationKind::Sub => {
-                    operand_cursor = operand_cursor.checked_sub(2).ok_or_else(|| {
-                        C6ResidualError::new("C6 installed binary-operand cursor underflows")
-                    })?;
-                    let lhs = operation_plan.operands()[operand_cursor] as usize;
-                    let rhs = operation_plan.operands()[operand_cursor + 1] as usize;
-                    if lhs >= canonical || rhs >= canonical {
-                        return Err(C6ResidualError::new(
-                            "C6 installed binary operation is not topological",
-                        ));
-                    }
-                    if coefficient != Fp2::ZERO {
-                        node_coefficients[lhs] += coefficient;
-                        if kind == C6InstalledOperationKind::Add {
-                            node_coefficients[rhs] += coefficient;
-                        } else {
-                            node_coefficients[rhs] = node_coefficients[rhs] - coefficient;
-                        }
-                    }
-                }
-                C6InstalledOperationKind::Scale => {
-                    operand_cursor = operand_cursor.checked_sub(1).ok_or_else(|| {
-                        C6ResidualError::new("C6 installed scale-operand cursor underflows")
-                    })?;
-                    scalar_cursor = scalar_cursor.checked_sub(1).ok_or_else(|| {
-                        C6ResidualError::new("C6 installed scalar-input cursor underflows")
-                    })?;
-                    let input = operation_plan.operands()[operand_cursor] as usize;
-                    if input >= canonical {
-                        return Err(C6ResidualError::new(
-                            "C6 installed scale operation is not topological",
-                        ));
-                    }
-                    if coefficient != Fp2::ZERO {
-                        let scalar = runtime
-                            .scalar_value(extraction, scalar_cursor as u32)
-                            .map_err(|error| C6ResidualError::new(error.to_string()))?;
-                        node_coefficients[input] += coefficient * scalar;
-                    }
-                }
-            }
-        }
-        if source_cursor != 0
-            || operand_cursor != 0
-            || public_cursor != 0
-            || scalar_cursor != 0
-            || product_mask_sources.len() != topology.product_closure_count as usize
-        {
-            return Err(C6ResidualError::new(
-                "C6 installed reverse cursors differ from their exact census",
-            ));
-        }
-        product_mask_sources.sort_unstable();
+                Ok(())
+            },
+        )?;
 
         let mut linear_hasher = blake3::Hasher::new();
         linear_hasher.update(COMPILED_LINEAR_FORM_DOMAIN);
         linear_hasher.update(&operation_plan.artifact_digest());
-        linear_hasher.update(&topology.topology_digest);
-        linear_hasher.update(&instance.instance_digest);
-        linear_hasher.update(&topology.source_count.to_le_bytes());
+        linear_hasher.update(&reverse.topology.topology_digest);
+        linear_hasher.update(&reverse.instance.instance_digest);
+        linear_hasher.update(&reverse.topology.source_count.to_le_bytes());
         linear_hasher.update(&(zero_weights.len() as u64).to_le_bytes());
         for weight in zero_weights {
             hash_fp2(&mut linear_hasher, *weight);
         }
-        hash_fp2(&mut linear_hasher, public_plaintext);
-        for (source, coefficient) in leaf_coefficients.iter().enumerate() {
+        hash_fp2(&mut linear_hasher, reverse.public_plaintext);
+        for (source, coefficient) in reverse.leaf_coefficients.iter().enumerate() {
             linear_hasher.update(&(source as u32).to_le_bytes());
             hash_fp2(&mut linear_hasher, *coefficient);
         }
@@ -1355,11 +1663,11 @@ impl C6CompiledLinearResidual {
 
         Ok(Self {
             operation_plan_artifact_digest: operation_plan.artifact_digest(),
-            topology,
-            instance,
-            leaf_coefficients,
-            product_mask_sources,
-            public_plaintext,
+            topology: reverse.topology,
+            instance: reverse.instance,
+            leaf_coefficients: reverse.leaf_coefficients,
+            product_mask_sources: reverse.product_mask_sources,
+            public_plaintext: reverse.public_plaintext,
             linear_form_digest,
         })
     }
@@ -1374,6 +1682,13 @@ impl C6CompiledLinearResidual {
 
     pub fn source_count(&self) -> usize {
         self.leaf_coefficients.len()
+    }
+
+    /// Local coefficient view for the residual-sumcheck statement compiler.
+    /// The slice is reconstructed independently by both response roles and
+    /// is never serialized as setup or certificate data.
+    pub fn leaf_coefficients(&self) -> &[Fp2] {
+        &self.leaf_coefficients
     }
 
     pub fn product_mask_sources(&self) -> &[u32] {
@@ -2329,6 +2644,9 @@ mod tests {
         record_c6_zero_roots, C6InstanceExtractionRole, C6TraceSourceManifest, CorrelationStream,
     };
 
+    #[cfg(feature = "c6-trace")]
+    static INSTALLED_FIXTURE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     fn fp(value: u64) -> Fp {
         Fp::new(value)
     }
@@ -2602,8 +2920,10 @@ mod tests {
         assert_eq!(C6_RESIDUAL_AUXILIARY_SEMANTIC_ENTRIES, 32_768);
         assert_eq!(C6_T1_TOTAL_PRODUCT_TRIPLES, 22_339);
         assert_eq!(C6_T1_ZERO_CLOSURES, 8_170);
-        assert!(C6_T1_TOTAL_PRODUCT_TRIPLES <= C6_RESIDUAL_AUXILIARY_SEMANTIC_ENTRIES);
-        assert!(C6_T1_ZERO_CLOSURES <= C6_RESIDUAL_AUXILIARY_SEMANTIC_ENTRIES);
+        const {
+            assert!(C6_T1_TOTAL_PRODUCT_TRIPLES <= C6_RESIDUAL_AUXILIARY_SEMANTIC_ENTRIES);
+            assert!(C6_T1_ZERO_CLOSURES <= C6_RESIDUAL_AUXILIARY_SEMANTIC_ENTRIES);
+        }
         for (index, lane) in C6ResidualAuxiliaryLane::ALL.into_iter().enumerate() {
             assert_eq!(lane.index(), index);
         }
@@ -2711,7 +3031,7 @@ mod tests {
         }
 
         let mut changed_value = witness.clone();
-        changed_value.values[0] = changed_value.values[0] + Fp2::ONE;
+        changed_value.values[0] += Fp2::ONE;
         let changed_auxiliary = changed_value.transpose_auxiliary_lanes().unwrap();
         assert_ne!(changed_auxiliary.witness_digest(), auxiliary.witness_digest());
 
@@ -2737,6 +3057,7 @@ mod tests {
     #[cfg(feature = "c6-trace")]
     #[test]
     fn installed_reverse_accumulator_matches_reference_without_leaf_vectors_on_wire() {
+        let _fixture_guard = INSTALLED_FIXTURE_LOCK.lock().unwrap();
         let fixture = fixture(Fp2::ZERO, false);
         let witnesses = fixture.witnesses.clone();
         let census = fixture.builder.census().unwrap();
@@ -2781,11 +3102,144 @@ mod tests {
         assert_ne!(response.binding.linear_form_digest, [0; 32]);
         assert_ne!(response.binding.coefficient_digest, [0; 32]);
         assert!(std::mem::size_of_val(&response) <= 256);
+        assert_installed_terminal_forms_reuse_the_residual_reverse_walker_exactly(
+            &installed,
+            &extraction,
+            &runtime,
+            &witnesses,
+            &compiled,
+        );
+    }
+
+    #[cfg(feature = "c6-trace")]
+    fn assert_installed_terminal_forms_reuse_the_residual_reverse_walker_exactly(
+        installed: &C6InstalledOperationPlan,
+        extraction: &C6DecodedInstanceExtractionPlan,
+        runtime: &C6RuntimeInstanceValues,
+        witnesses: &[C6SourceWitness],
+        compiled: &C6CompiledLinearResidual,
+    ) {
+        let zero_weights = [fp2(59), fp2(61)];
+
+        let zero_only = C6ResidualTerminalWeightSchedule::new(
+            installed,
+            0,
+            C6ResidualTerminalFormKind::Plaintext,
+            vec![[Fp2::ZERO; 3]; 2],
+            zero_weights.to_vec(),
+        )
+        .unwrap();
+        let zero_form =
+            C6CompiledTerminalLinearForm::compile(installed, extraction, runtime, &zero_only)
+                .unwrap();
+        assert_eq!(zero_form.leaf_coefficients(), compiled.leaf_coefficients());
+        assert_eq!(zero_form.public_plaintext(), compiled.public_plaintext());
+        assert_eq!(zero_form.topology(), compiled.topology());
+        assert_eq!(zero_form.instance(), compiled.instance());
+
+        let product_weights = vec![[fp2(2), fp2(3), fp2(5)], [fp2(7), fp2(11), fp2(13)]];
+        let terminal_zero_weights = vec![fp2(17), fp2(19)];
+        let plaintext_schedule = C6ResidualTerminalWeightSchedule::new(
+            installed,
+            1,
+            C6ResidualTerminalFormKind::Plaintext,
+            product_weights.clone(),
+            terminal_zero_weights.clone(),
+        )
+        .unwrap();
+        let tag_schedule = C6ResidualTerminalWeightSchedule::new(
+            installed,
+            1,
+            C6ResidualTerminalFormKind::Tag,
+            product_weights.clone(),
+            terminal_zero_weights.clone(),
+        )
+        .unwrap();
+        assert_ne!(plaintext_schedule.digest(), tag_schedule.digest());
+        let plaintext = C6CompiledTerminalLinearForm::compile(
+            installed,
+            extraction,
+            runtime,
+            &plaintext_schedule,
+        )
+        .unwrap();
+        let tag =
+            C6CompiledTerminalLinearForm::compile(installed, extraction, runtime, &tag_schedule)
+                .unwrap();
+        assert_eq!(plaintext.leaf_coefficients(), tag.leaf_coefficients());
+        assert_eq!(tag.public_plaintext(), Fp2::ZERO);
+        assert_ne!(plaintext.linear_form_digest(), tag.linear_form_digest());
+        assert_eq!(plaintext.repetition(), 1);
+        assert_eq!(plaintext.kind(), C6ResidualTerminalFormKind::Plaintext);
+        assert_eq!(plaintext.schedule_digest(), plaintext_schedule.digest());
+        assert_eq!(plaintext.leaf_coefficients()[3], Fp2::ZERO);
+
+        let values = witnesses.iter().map(|witness| witness.prover_value()).collect::<Vec<_>>();
+        let zero = values[0].add(values[1]).sub(ProverAuthed::from_public(fp2(7)));
+        let scaled_zero = values[0].scale(fp2(2)).sub(ProverAuthed::from_public(fp2(6)));
+        let terminal_values =
+            [[values[0], values[1], values[2]], [values[1], values[0], values[2]]];
+        let expected_plaintext = terminal_values.iter().zip(&product_weights).fold(
+            Fp2::ZERO,
+            |sum, (triple, weights)| {
+                sum + triple
+                    .iter()
+                    .zip(weights)
+                    .fold(Fp2::ZERO, |row, (value, weight)| row + value.x * *weight)
+            },
+        ) + terminal_zero_weights[0] * zero.x
+            + terminal_zero_weights[1] * scaled_zero.x;
+        let expected_tag = terminal_values.iter().zip(&product_weights).fold(
+            Fp2::ZERO,
+            |sum, (triple, weights)| {
+                sum + triple
+                    .iter()
+                    .zip(weights)
+                    .fold(Fp2::ZERO, |row, (value, weight)| row + value.m * *weight)
+            },
+        ) + terminal_zero_weights[0] * zero.m
+            + terminal_zero_weights[1] * scaled_zero.m;
+        let source_plaintext = plaintext
+            .leaf_coefficients()
+            .iter()
+            .zip(&values)
+            .fold(plaintext.public_plaintext(), |sum, (coefficient, value)| {
+                sum + *coefficient * value.x
+            });
+        let source_tag = tag
+            .leaf_coefficients()
+            .iter()
+            .zip(&values)
+            .fold(tag.public_plaintext(), |sum, (coefficient, value)| sum + *coefficient * value.m);
+        assert_eq!(source_plaintext, expected_plaintext);
+        assert_eq!(source_tag, expected_tag);
+
+        assert!(C6ResidualTerminalWeightSchedule::new(
+            installed,
+            0,
+            C6ResidualTerminalFormKind::Plaintext,
+            vec![[Fp2::ZERO; 3]; 1],
+            zero_weights.to_vec(),
+        )
+        .is_err());
+        assert!(C6ResidualTerminalWeightSchedule::new(
+            installed,
+            2,
+            C6ResidualTerminalFormKind::Plaintext,
+            vec![[Fp2::ZERO; 3]; 2],
+            zero_weights.to_vec(),
+        )
+        .is_err());
+        let mut malformed = plaintext_schedule.clone();
+        malformed.product_weights[0][0] += Fp2::ONE;
+        assert!(C6CompiledTerminalLinearForm::compile(installed, extraction, runtime, &malformed,)
+            .is_err());
     }
 
     #[cfg(feature = "c6-trace")]
     #[test]
     fn paired_source_fold_is_interleaved_bound_and_fail_closed() {
+        let _fixture_guard = INSTALLED_FIXTURE_LOCK.lock().unwrap();
         let (installed, extraction, runtime, schedule, paired) = installed_paired_fixture();
         let zero_weights = [fp2(59), fp2(61), fp2(67)];
         let compiled =

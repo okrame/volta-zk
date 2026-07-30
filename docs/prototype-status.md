@@ -44,8 +44,10 @@ overhead remains pending.  The consuming ordinary decoder and scaled
 compiled-residual core now execute the reverse plan without a response-linear
 coefficient field: provider/client stream the same transcript coefficients,
 the paired provider fold covers both MAC coordinates, and the paired witness
-additionally binds the accepted source-schedule digest.  Full-T1 compiled
-execution, cache constraint census, wrapper proof, local end-to-end and
+additionally binds the accepted source-schedule digest.  The statement-generic
+residual sumcheck arithmetic and the installed terminal reverse compiler are
+locally green, but transcript-derived terminal weights, full T1 statement
+assembly, cache constraint census, wrapper proof, local end-to-end and
 hardware gates remain pending.
 
 Workload of record: **GPT-2 small (124M, L=12, d=768, h=12, d_ff=3072),
@@ -415,7 +417,8 @@ its clean descendant closure.
 | C6 production T1 source/correction census | **LOCAL EXACT CENSUS GREEN; FULL DAG/CACHE/WRAPPER CENSUS PENDING; HARD STOP BEFORE POD** (2026-07-29) | Optional secret-free logical allocation audit on the unchanged frozen T1 `100+50` prover/verifier; typed ProductMask/triple boundary; append-only clean record follows the implementation checkpoint | Exact schedule: **4,793,590 direct subfield + 181,262 direct full-field + 673 product-mask = 4,975,525 leaves**; **672 local plus 1 final ProductClosure / 22,339 triples**; **8,170 zero closures**.  Model transcript is exactly **41,270,400 B** = **38,348,720 B** sub corrections + **2,900,176 B** full corrections + **21,504 B** local product messages, with zero unclassified bytes; final Product/ZeroBatch adds **64 B**.  Model/complete raw correlations are **5,157,456 / 5,157,460** and the frozen **78,232-raw** PCS reserve restores **5,235,692**.  Model/complete allocation digests are `06e789d6...a134dc8` / `b002d4a5...4bb6c35`; source/correction digests are `526c2888...8cd9e7` / `a7e22b73...e620da`.  The `mu=23` preflight uses **35,129,487 / 67,108,864** entries, leaving **31,979,377** padded headroom.  This is not a wrapper proof or end-to-end verdict; no provider/pod contact occurred. |
 | C6 production T1 source/correction record | **CLEAN APPEND-ONLY RECORD PASS; SOURCE-CENSUS MILESTONE CLOSED; NEXT GATE FULL DAG/CACHE WRAPPER** (2026-07-29) | Clean source `7d5b55b`; frozen local GPT-2 `100+50`; no PCS/backend/provider mode; record producer is create-new and pins all input, source and schedule digests | Record `c6-t1-census-2026-07-29-7d5b55b.json`, SHA-256 `3285e9e2d0ce7e12e14c5cb167c8ca2dc4146f282ebec4ed49c8c0a35f603794`, has `git_dirty:false`, `golden_match:true`, `prover_verifier_schedule_equal:true`, `all_pass:true` and `pod_contacted:false`.  It preserves the exact **4,975,525 leaves / 673 ProductClosures / 22,339 triples / 8,170 zero closures / 5,235,692 reserved raw** census and the **35,129,487 / 67,108,864** residual-capacity preflight.  The user-owned untracked conversation note is explicitly listed but not read, staged or modified.  This record has no prover-time, final-proof, wrapper-soundness, real-PCG or hardware verdict. |
 | C6 paired direct-subfield witness | **CLEAN APPEND-ONLY REFERENCE PASS; SUBFIELD EXTRACTION MILESTONE CLOSED; NEXT GATE FULL-FIELD/PRODUCT DAG** (2026-07-29) | Clean source `ba08871`; opt-in prover-only `(r,d,m)` collection on frozen local GPT-2 `100+50`; independent mock stream replay; no model rerun, backend, provider or wire claim | Record `c6-t1-subfield-witness-2026-07-29-ba08871.json`, SHA-256 `ae6d193329843445b5ff4e2fe757c5dcc87ee280ab5d39fa387966993fbdf505`, has `git_dirty:false`, `diagnostic:false`, `golden_match:true`, `prover_verifier_schedule_equal:true`, `all_pass:true`, `pod_contacted:false`.  Both coordinates contain **4,793,590** leaves and the same plaintext digest, with distinct witness/correction digests; coordinate one performs **0** model reruns.  The **153,394,880-B** per-coordinate secret sidecar is local witness memory, never client setup/wire.  Full-field leaves, 673 ProductClosures, cache/wrapper, final bytes, real PCG and timing remain open. |
-| C6 paired complete-source witness | **CLEAN APPEND-ONLY REFERENCE PASS; SOURCE EXTRACTION MILESTONE CLOSED; NEXT GATE OPERATION DAG + PRODUCTCLOSURE OPERAND LINKAGE** (2026-07-29) | Clean source `b98e453`; opt-in prover-only subfield/full-field collection on frozen local GPT-2 `100+50`; independent mock-stream replay; direct plaintexts shared, ProductMasks refreshed; no model rerun, backend, provider or wire claim | Record `c6-t1-source-witness-2026-07-29-b98e453.json`, SHA-256 `c62941afd4cda3b0eed5c3e36dd27cffcd03301e7d0df14e9808ecffc9601ab5`, has `git_dirty:false`, `diagnostic:false`, `golden_match:true`, `prover_verifier_schedule_equal:true`, `all_pass:true`, `pod_contacted:false`.  Per coordinate it contains **4,793,590 subfield + 181,262 direct full-field + 673 ProductMask = 4,975,525** source leaves; coordinate one performs **0** model reruns.  Hidden direct corrections are **41,248,912 B/coordinate**; the **162,127,760-B/coordinate** complete secret sidecar is prover-only memory, never setup/wire.  The direct full-field plaintext digest matches while coordinate-wide full-field digests differ because ProductMasks are independent.  Operation/value IDs, all 673 ProductClosure operands, cache/wrapper, final bytes, real PCG and timing remain open. |
+| C6 paired complete-source witness | **CLEAN APPEND-ONLY REFERENCE PASS; SOURCE EXTRACTION MILESTONE CLOSED; NEXT GATE OPERATION DAG + PRODUCTCLOSURE OPERAND LINKAGE** (2026-07-29) | Clean source `b98e453`; opt-in prover-only subfield/full-field collection on frozen local GPT-2 `100+50`; independent mock stream replay; direct plaintexts shared, ProductMasks refreshed; no model rerun, backend, provider or wire claim | Record `c6-t1-source-witness-2026-07-29-b98e453.json`, SHA-256 `c62941afd4cda3b0eed5c3e36dd27cffcd03301e7d0df14e9808ecffc9601ab5`, has `git_dirty:false`, `diagnostic:false`, `golden_match:true`, `prover_verifier_schedule_equal:true`, `all_pass:true`, `pod_contacted:false`.  Per coordinate it contains **4,793,590 subfield + 181,262 direct full-field + 673 ProductMask = 4,975,525** source leaves; coordinate one performs **0** model reruns.  Hidden direct corrections are **41,248,912 B/coordinate**; the **162,127,760-B/coordinate** complete secret sidecar is prover-only memory, never setup/wire.  The direct full-field plaintext digest matches while coordinate-wide full-field digests differ because ProductMasks are independent.  Operation/value IDs, all 673 ProductClosure operands, cache/wrapper, final bytes, real PCG and timing remain open. |
+| C6 installed terminal reverse compiler | **LOCAL DIFFERENTIAL PASS; SHARED WALKER CLOSED; CHALLENGE EXPANSION / FULL STATEMENT PENDING** (2026-07-29) | Exact installed **22,339 triple / 8,170 zero-root** terminal schedule; plaintext/tag roles; no second DAG formula; reference-only vectors | The versioned schedule binds plan artifact, topology, repetition, role and all positional weights.  Both forms use the historical compiled-residual walker; zero-product weights reproduce every accepted historical coefficient/public term, nontrivial plaintext/tag terminal evaluations match independent source-side evaluation, ProductMask coefficients remain zero and extraction binding is unconditional.  Focused tests are **11/11**, the complete feature suite is **145/0/1**, and the workspace is green.  Terminal weights are not yet transcript-derived and no statement, proof, memory, wire, soundness, timing, PCS, cache or production credit is claimed; no pod contacted. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -483,6 +486,71 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-29 — C6 installed terminal reverse compiler is locally green;
+  challenge expansion and full statement assembly remain blocked.**
+  `C6ResidualTerminalWeightSchedule` now accepts the exact installed
+  **22,339 ProductClosure triples / 8,170 zero roots** in canonical
+  `ProductClosure/triple/(a,b,c)` then zero-root order.  Its versioned digest
+  binds the plan artifact, topology, repetition, plaintext-versus-tag role
+  and every positional weight.  Missing/extra entries, cross-plan use and
+  any mutation after binding reject.  The values are still caller-supplied
+  reference inputs: no transcript challenge-expansion domain has been
+  selected or credited.
+
+  `C6CompiledTerminalLinearForm` and the previously accepted
+  `C6CompiledLinearResidual` now call the same installed reverse walker.
+  Plaintext forms include public inputs, tag forms set their contribution to
+  zero, both retain identical public scale operands, and ProductMask sources
+  remain coefficient-zero.  The zero-product differential reproduces every
+  old leaf coefficient, public term, topology and instance exactly; a second
+  differential evaluates nontrivial product/zero terminal combinations
+  independently on plaintexts and tags.  An explicit runtime/extraction-map
+  binding check also runs before the walk, so all-zero and tag-only forms
+  cannot skip it accidentally.
+
+  Focused residual tests are **11/11 PASS**, `volta-mac` C6 trace tests are
+  **2/2 PASS**, the complete `volta-proto --features c6-trace` suite is
+  **145 pass / 0 fail / 1 ignored**, and the complete workspace is green.
+  Formatting, workspace check and the new targeted Clippy lints are green;
+  repository-wide `-D warnings` remains blocked by the pre-existing lint
+  backlog outside this checkpoint.  Source SHA-256 values are residual
+  compiler
+  `4cbe6147a8bed8c677c29cd2a6a93ede263708be14ac9088aff7768590db7e62`,
+  proto exports
+  `26141187ca0b52efcbae08c5fcad17f3a4bde794cf90fc9dfb597ef699411619`
+  and extraction binding
+  `4858490d42af22c1cbf1fee3908c705f927943763785b975a3aba137af567fbe`.
+  This checkpoint earns no soundness, wire-size, memory, timing, PCS,
+  cache or production credit and authorizes no provider/pod action.
+
+- **2026-07-29 — C6 T1-to-sumcheck compilation starts by sharing one
+  installed reverse walker; no parallel residual formula is permitted.**
+  The next local checkpoint generalizes the already accepted installed-plan
+  reverse accumulator to one exact terminal-weight schedule.  Product
+  weights are ordered by installed `ProductClosure`, then triple, then
+  `(a,b,c)`; zero-root weights follow installed zero-root order.  The
+  schedule binds the operation-plan artifact/topology, repetition,
+  plaintext-versus-tag role and every positional weight in a versioned
+  digest.  Missing, extra or cross-plan entries reject; after construction,
+  any value/order mutation rejects.  The later transcript expander must
+  populate the same canonical order deterministically.
+
+  Plaintext and tag forms walk the same canonical opcodes, source ordinals
+  and scale operands.  Plaintext accumulation includes the installed public
+  inputs; tag accumulation treats every public input as zero while retaining
+  the same public scale values.  ProductMask sources must still receive zero
+  linear coefficient.  The existing zero-root compiled residual is refactored
+  onto this one walker and a permanent differential must reproduce every
+  leaf coefficient and the public term exactly; copying the reverse formula
+  into the PCS crate is forbidden.
+
+  This checkpoint may materialize terminal weights and leaf coefficients for
+  scaled/reference tests only.  It does not yet choose the post-root
+  challenge-expansion domains, compile raw-copy/source-grammar/product
+  equations, construct a residual-sumcheck statement, add transcript hiding
+  or bind a PCS opening.  Therefore it receives no soundness, response-byte,
+  memory, timing or production credit and authorizes no provider/pod action.
 
 - **2026-07-29 — C6 statement-generic residual sumcheck arithmetic is
   locally green; T1 compilation, hiding and PCS admission remain blocked.**

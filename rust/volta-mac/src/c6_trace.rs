@@ -512,6 +512,15 @@ impl C6RuntimeInstanceValues {
         Ok(())
     }
 
+    /// Fail-closed binding check for consumers whose algebra may not read a
+    /// public/scalar slot (for example an all-zero or tag-only reverse form).
+    pub fn validate_extraction_binding(
+        &self,
+        extraction: &C6DecodedInstanceExtractionPlan,
+    ) -> Result<(), C6TraceError> {
+        self.validate_extraction(extraction)
+    }
+
     pub fn public_value(
         &self,
         extraction: &C6DecodedInstanceExtractionPlan,

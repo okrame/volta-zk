@@ -6,9 +6,9 @@ CENSUS / PAIRED COMPLETE SOURCE WITNESS / INDEPENDENT EXACT-INSTANCE
 OPERATION DAG GREEN; PARAMETERIZED V2 TWO-SEED IDENTITY GREEN; CANONICAL PLAN
 CODEC + FULL-T1 COMPILED RESIDUAL + DURABLE 17+4 SESSION + HIDDEN-U NATIVE
 SUMCHECK REDUCTION + SCALED DUAL-TAPE C6RSC3 CODEC/DIFFERENTIAL GREEN; FUSED
-T1 EVENT-SINK INTERFACE FROZEN / IMPLEMENTATION NEXT; CACHE ARGUMENT / PACKED
-PCS / FINAL WRAPPER PENDING; LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP
-BEFORE POD**.
+T1 EVENT-SINK + FIRST/FOLDED/TERMINAL SCALED DIFFERENTIAL GREEN / C6RSC3
+CONNECTION NEXT; CACHE ARGUMENT / PACKED PCS / FINAL WRAPPER PENDING; LOCAL
+IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
 accepted C4/T1 `rate=1/4,Q=120` inline profile.  It does not reopen or rewrite
@@ -2398,6 +2398,78 @@ same event completion and scaled per-event audit digest.  Only after that
 differential is green may first-message, folded-state and terminal sinks be
 connected to `C6RSC3`.  No proof bytes, soundness term, correlation count,
 setup byte or gate changes in this interface freeze.
+
+#### 5.1.5 Scaled fused event-sink checkpoint
+
+The frozen interface is now implemented locally.  The old materializing
+compiler remains only under `test+c6-trace` as an independent pre-refactor
+oracle; the public scaled reference compiler uses the same
+`replay_c6_residual_atomic_events` emitter as every fused consumer.  Both
+proof repetitions reproduce the complete statement, target, family
+residuals and mutation attribution byte-for-byte.  In the scaled fixture each
+replay emits exactly **1,056 outputs / 1,185 coefficient writes**, with write
+census
+
+```text
+[21, 24, 48, 64, 28, 4, 964, 32].
+```
+
+Provider and client audit sinks independently obtain the same semantic
+completion and optional per-event digest.  Swapped repetitions, malformed
+live-witness ownership, invalid row/point geometry and an oversized
+coefficient allocation reject before acceptance.
+
+The three concrete fused consumers are green against materialized arithmetic:
+
+1. the live-prefix witness sink produces the exact three leaf and four
+   auxiliary first-round evaluations, and their Boolean split sums to the
+   statement target;
+2. the folded sink reproduces every materialized `fold_low` coefficient table
+   after an arbitrary first challenge;
+3. the terminal sink reproduces all **8 + 16 + 8** `eval_mle` coefficient
+   scalars without constructing an equality vector.
+
+The terminal equality cursor is LSB-first, caches repeated rows and updates
+sequential rows by their changed binary digits.  It precomputes inverses only
+for nonzero factors and separately counts zero factors, so transcript
+coordinates exactly equal to zero or one and nonmonotone row resets are
+covered by permanent differentials.
+
+The production target split implied by the same emitter is exact:
+
+```text
+leaf-selected writes / repetition                111,889,262
+auxiliary-selected writes / repetition             1,109,444
+total                                             112,998,706
+
+leaf folded state       8 * 2^22 Fp2             536,870,912 B
+auxiliary folded state 24 * 2^14 Fp2               6,291,456 B.
+```
+
+`RawCopy` is deliberately split one leaf and one auxiliary write per output;
+the four closure writes per ProductClosure belong to the leaf family while
+the triple expansion belongs to the auxiliary family.  A manifest-bound
+response-local allocation tracker owns a non-clone lease for the live state:
+a second family or repetition under the same owner fails before vector
+reservation, dropping the first state returns the lease, and active/peak
+elements and bytes are exposed for later backend accounting.  The scaled
+test peak is **512 Fp2 / 8,192 B**.
+
+The complete `volta-proto` feature suite is **146 pass / 0 fail / 1 ignored**,
+the complete workspace suite exits zero, and all-target checking and
+formatting are clean.  The final gate exposed
+three stale assertions left behind when `7a0ea20` amended the executable
+blind/fused re-sum but did not amend its Python test.  Only those assertions
+were updated to the already-frozen report schema and constants; the budget
+script was not changed, and the combined C6 budget suite is **9/9 PASS**.
+Repository-wide strict clippy remains blocked by historical warnings in
+unrelated modules; filtering the strict run to the modified
+`c6_residual.rs` reports no warning.  This is still scaled/reference
+evidence.  The production formulas and allocation guard have not been
+exercised as a T1 prover, and no C6RSC3 proof, packed opening, response-byte
+removal, setup/correlation change, cache argument, real-PCG, CUDA, timing or
+hardware credit is earned.  The next ordered gate is to feed these sinks into
+the already-versioned `C6RSC3` coordinator.
 
 The wrapper PCS uses rate `1/8`, two independent fold/query chains and
 `s=86` queries per chain.  Under the conservative 64-active-polynomial,

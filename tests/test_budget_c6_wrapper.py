@@ -123,7 +123,7 @@ def test_s86_is_selected_before_benchmark_and_all_events_exceed_128_bits() -> No
     assert soundness["all_events_meet_literal_128_bits"] is True
     assert Decimal(soundness["event_bits"]["wrapper_pcs"]) > Decimal("130.77")
     assert Decimal(soundness["event_bits"]["linear_functional_sumchecks"]) > Decimal(
-        "243.35"
+        "239.99"
     )
     assert Decimal(soundness["event_bits"]["cache_argument"]) > Decimal("191.99")
     assert (
@@ -132,12 +132,22 @@ def test_s86_is_selected_before_benchmark_and_all_events_exceed_128_bits() -> No
         ]
         == 91
     )
-    assert soundness["delta_root_bound_per_complete_proof_repetition"] == 256
-    assert soundness["delta_event_numerator"] == 2**16
-    assert Decimal(soundness["event_bits"]["delta_residual"]) > Decimal("239.99")
-    assert Decimal(soundness["q121_complete_candidate_bits"]) > Decimal(
-        "78.80929487391641"
+    assert (
+        soundness[
+            "residual_blind_transcript_roots_per_complete_proof_repetition"
+        ]
+        == 105
     )
+    assert soundness["residual_blind_transcript_root_components"] == {
+        "sumcheck_degree_rounds": 91,
+        "activation_zero_open": 1,
+        "terminal_product_scalar_power": 10,
+        "terminal_zero_batch_scalar_power": 3,
+    }
+    assert soundness["delta_root_bound_per_complete_proof_repetition"] == 256
+    assert soundness["delta_event_numerator"] == 2**17
+    assert Decimal(soundness["event_bits"]["delta_residual"]) > Decimal("238.99")
+    assert Decimal(soundness["q121_complete_candidate_bits"]) > Decimal("79.47")
     assert ownership["proof_repetitions"] == 2
     assert ownership["mac_coordinates_per_complete_relation"] == 2
     assert ownership["terminal_form_kinds_per_coordinate"] == 2
@@ -153,7 +163,15 @@ def test_s86_is_selected_before_benchmark_and_all_events_exceed_128_bits() -> No
     assert ownership["split_v1_owner_coefficient_symbols"] == 68_157_440
     assert ownership["complete_v2_owner_coefficient_symbols"] == 136_314_880
     assert ownership["additional_owner_coefficient_symbols"] == 68_157_440
-    assert ownership["proof_codec_bytes"] == 4_244
+    assert ownership["proof_codec_bytes"] == 6_900
+    assert ownership["superseded_clear_proof_codec_bytes"] == 4_244
+    assert ownership["wire_delta_from_clear_codec_bytes"] == 2_656
+    assert ownership["blind_round_values_per_repetition"] == 93
+    assert ownership["blind_core_full_correlations_per_tape"] == 206
+    assert ownership["pending_slot_full_correlations_per_tape"] == 48
+    assert ownership["blind_full_correlations_per_tape"] == 254
+    assert ownership["historical_pcs_full_correlation_reserve_per_tape"] == 39_116
+    assert ownership["historical_pcs_full_correlation_headroom_after_residual"] == 38_862
     assert ownership["wire_slot_addition_bytes"] == 0
 
 
@@ -209,7 +227,12 @@ def test_atomic_relation_census_and_claims_before_weights_are_exact() -> None:
         "total": 112_998_706,
     }
     assert relation["coefficient_writes_total"] == 225_997_412
-    assert relation["compiler_equivalent_symbols"] == 547_465_024
+    assert relation["reference_compiler_equivalent_symbols"] == 547_465_024
+    assert relation["fused_atomic_replays"] == 4
+    assert relation["fused_accumulation_symbols_per_write"] == 10
+    assert relation["fused_compiler_equivalent_symbols"] == 2_640_050_432
+    assert relation["maximum_folded_coefficient_elements"] == 33_554_432
+    assert relation["maximum_folded_coefficient_bytes"] == 536_870_912
 
 
 def test_time_screen_rejects_x4c_and_keeps_hardware_verdict_open() -> None:
@@ -221,12 +244,19 @@ def test_time_screen_rejects_x4c_and_keeps_hardware_verdict_open() -> None:
     assert (
         timing["ownership_amendment_additional_coefficient_symbols"] == 68_157_440
     )
-    assert timing["atomic_relation_compiler_equivalent_symbols"] == 547_465_024
+    assert (
+        timing["atomic_relation_reference_compiler_equivalent_symbols"]
+        == 547_465_024
+    )
+    assert (
+        timing["atomic_relation_fused_compiler_equivalent_symbols"]
+        == 2_640_050_432
+    )
     assert Decimal(timing["sumcheck_effective_equivalent_passes"]) > Decimal(
-        "34.74"
+        "44.06"
     )
     assert Decimal(timing["sumcheck_effective_equivalent_passes"]) < Decimal(
-        "34.75"
+        "44.07"
     )
     assert (
         timing["ownership_amendment_timing_credit"]

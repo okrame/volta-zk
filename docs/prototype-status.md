@@ -437,7 +437,7 @@ its clean descendant closure.
 | C6 Δ-residual inline certificate | **V3 CLAIMS-BEFORE-WEIGHTS TYPESTATE + COMPLETE SCALED ATOMIC COMPILER/C6RSC2 BRIDGE + SCALED BLIND C6RSC3 GREEN; FUSED T1 EVENT SINK NEXT; NO POD** (2026-07-29) | Hide direct `auth_corrections` and Ligero `u_vectors`; one inline native-field wrapper; fixed-capacity committed KV cache; 17 accepts plus retry reserve; no deferred settlement | Q=121 keeps complete soundness at **79.472744138609180097... bits**.  The `pi_final` roof remains **4,409,824 B** and the complete response roof **33,586,456 B <=35,000,000 B**; paired PCG setup remains **76,742,930 B**, and the known first exchange remains **146,058,504 B**.  Lean is now **3,258 jobs / 303 total / 67 C6**, zero `sorry`/`admit`, after closing the blind first-round, terminal and amplified-event seams.  The exact two-seed manifest charges **94,868,704 atomic outputs**, **601,496 terminal outputs** and **225,997,412 coefficient writes**.  Rust enforces roots→base seed→canonical public claims→independent relation seed, compiles all eight relation families in both repetitions on a scaled fixture and binds the opaque atomic digest into immutable diagnostic `C6RSC2` framing (**4,244 B**).  Separate blind `C6RSC3` now authenticates every hidden round scalar on both tapes, rejects every tested seam mutation and derives the strict production codec/correlation census at **6,900 B / 254 full correlations per tape**.  Both scaled paths deliberately refuse production geometry and earn no timing/wire-removal credit.  Fused provider/client T1 compilation, hidden-u/cache blinding, production auxiliary sources, terminal-to-PCS authenticated-output assembly, final wrapper envelope, fused CUDA, real-PCG session, bound prover wall and hardware verdict remain pending; no production response field is removed yet. |
 | C6 dual-tape blind/fused amendment | **LEAN PACKAGE + EXECUTABLE RE-SUM GREEN; HARD STOP MOVED TO SCALED C6RSC3 CODEC; NO POD** (2026-07-29) | Post-`d18e187` obstruction audit: one-tape masking loses the >239-bit residual claim; generic coefficient MLE retention is inadmissible; clear `r||0` terminal values do not discharge M9 | `C6RSC3` authenticates all 93 round scalars/repetition on both tapes, derives the initial split from the uncompressed first rounds, and closes eight terminal products plus two terminal zero rows per repetition.  Exact strict payload is **6,900 B** versus immutable clear `C6RSC2` **4,244 B**.  The exact blind root census is **91 + 1 + (8+2) + (2+1) = 105 <=256 per complete proof repetition**; the `T+2` ProductClosure and `T+1` ZeroBatch charges use the scalar-power Rust theorems, and both proof repetitions check both MAC coordinates.  `C6BlindTranscript.lean` ties the full first round to compressed M3/M11, closes activation and terminal rows, specializes the scalar Product/ZeroBatch bounds, proves the two-repetition square and unions the clear/blind branches at `2^17`; exact `Fp2` soundness is **238.9999999986... bits**.  Full Lean is **3,258 jobs** and the audit **303 total / 67 C6**, zero `sorry`/`admit`, standard axioms only.  The blind core consumes **206 full correlations/tape**; 48 residual pending-slot transfers make **254/tape**, inside the frozen **39,116-full** PCS reserve and therefore do not change the **5,235,692-raw** attempt reservation.  A common M9-style link must move all pending terminal claims to a fresh PCS point with a checked nonzero ZK coordinate; the two-chain **3,609,824-B** PCS roof is unchanged.  The fused schedule uses three provider atomic replays and one client terminal replay, never materializes full coefficient MLEs, and caps live folded coefficient state at **33,554,432 Fp2 / 536,870,912 B**.  Conservative compiler charge becomes **2,640,050,432 symbols**; the screen is **44.0689172477... passes / 8.6911235221... s**, leaving **11.3088764778... s** to 20 s.  The unchanged four-event inventory yields Q=121 complete **79.472744138609180097... bits**.  Required next order: scaled dual-tape codec and negatives → fused provider/client event sink → packed authenticated-output link. |
 | C6 scaled dual-tape `C6RSC3` | **LOCAL STRICT CODEC / PROVER / VERIFIER / NEGATIVE DIFFERENTIAL GREEN; FUSED T1 EVENT SINK NEXT; NO POD** (2026-07-29) | Separate v3 magic/domains and semantic compiler binding; dual-tape authenticated round compression; activation-before-challenge; ProductClosure and terminal ZeroBatch; terminal claims remain pending | Production constants are derived from frozen geometry: **93** round scalars/repetition, **206** core plus **48** pending full correlations/tape, and a strict **6,900-B** proof.  The non-production 5/3-round fixture is **2,292 B** plus **1,536 B** of explicitly separate pending corrections, consumes **110** full correlations/tape across **24** domains, and is byte/transcript-identical across prover/verifier while matching clear `C6RSC2` terminal values.  Five focused tests cover the census, strict old/noncanonical/corrupt codec rejection, the clear differential, both distinct MAC coordinates, malformed topology and tampering of every round/activation/product/zero/pending/owner/tape seam.  `volta-pcs` is **157 pass / 0 fail / 1 ignored** and `cargo test --workspace -q` exits 0; all-target check, formatting, exact budget and Lean audit are green.  This is scaled/reference evidence only: the statement still owns small C6RSC2 arrays as an arithmetic oracle, pending values cannot become accepted PCS values, and no production compiler/memory/time/response-removal/real-PCG/cache/CUDA/hardware credit is claimed. |
-| C6 fused atomic event-sink interface | **DESIGN / ORDER / OWNERSHIP / CENSUS FROZEN; LOCAL IMPLEMENTATION NEXT; NO POD** (2026-07-29) | One witness-independent v3 replay emits canonical `Output` then typed `CoefficientWrite` events; provider and client attach distinct sinks to the same stream; no second compiler or array digest | Exact family order and range checks are frozen.  Per repetition the replay emits **47,434,352 atomic outputs** and **112,998,706 coefficient writes**; two repetitions retain the registered **94,868,704 / 225,997,412** totals.  The semantic completion binds version, manifest, relation challenges, linear form, atomic schedule, target and per-family censuses without hashing or retaining an array.  Provider consumers are one dual-first-message replay, one half-leaf-state replay and one half-auxiliary-state replay; the client performs one vector-free 8+16+8 terminal evaluation replay.  Only one reverse form, family and repetition may be live; the hard leaf-state ceiling stays **33,554,432 Fp2 / 536,870,912 B**.  The existing scaled reference compiler must be refactored onto this emitter and remain the differential oracle before `C6RSC3` integration.  This freeze changes no proof byte, event bound, correlation/setup count or gate. |
+| C6 fused atomic event-sink | **LOCAL SCALED REPLAY / FIRST / FOLDED / TERMINAL DIFFERENTIAL GREEN; C6RSC3 CONNECTION NEXT; NO POD** (2026-07-29) | One witness-independent v3 emitter now owns every weight and typed write; the old compiler is a test-only oracle; no array digest or equality vector | Both repetitions reproduce the legacy statements, targets, family residuals and mutation attribution exactly.  The scaled replay is **1,056 outputs / 1,185 writes** with family writes **[21,24,48,64,28,4,964,32]**; provider/client audits are identical.  Live-prefix first messages match materialized degree-2/3 rounds and sum to the target.  Folded sinks match every `fold_low`; the client’s constant-memory cursor matches all **8+16+8** `eval_mle` terminals, including 0/1 coordinates and nonmonotone resets.  Production census formulas remain **47,434,352 / 112,998,706 per repetition**; selected writes split **111,889,262 leaf / 1,109,444 auxiliary**.  The hard states are **536,870,912 B leaf / 6,291,456 B auxiliary**.  A manifest-bound allocation lease rejects a second live family/repetition before allocation; scaled peak is **8,192 B**.  `volta-proto --features c6-trace` is **146/0/1**, the workspace suite, all-target check and format are green, and strict-clippy filtering reports no warning in the modified file.  Three stale pre-amendment Python asserts were aligned to the unchanged executable report; the C6 budget is **9/9 PASS** and the script was not changed.  This remains scaled/reference only: no production execution/timing, C6RSC3/PCS link, response removal, cache, real-PCG, CUDA or hardware credit. |
 | C6 role-local instance extraction codec | **CLEAN TWO-SEED MAP + RUNTIME PASS; SETUP/SEAM CLOSED; BOUND ORDINARY TIMING PENDING** (2026-07-29) | No response-value vector on wire; role-specific model-global maps; maximal-`+1` run codec fixed before measurement; strict ordinary-build decoder and thread-local value recorder | Clean seed-24/25 runs preserve the verifier map at **5,320,386 B**, **1,466 / 10,828,876 raw public/scalar slots**, **1,436 / 10,828,852 canonical slots**, **262 / 2,552,791 runs** and BLAKE3 `17ed0942...7183535`.  Known first exchange is **146,058,504 B**, leaving **3,941,496 B**.  Runtime records `c6-runtime-instance-recorder-seed24-2026-07-29-3b01789.json` / `c6-runtime-instance-recorder-seed25-2026-07-29-abf081c.json`, SHA-256 `f4ea526e...110681b` / `c1775060...5aff5b`, reproduce the exact prover/verifier raw censuses and reconstruct `7a21189b...45cacaa` / `1bd5aa75...6f734f7` respectively; both are clean PASSes.  Full trace was enabled, so this closes setup/seam correctness but gives no bound ordinary runtime, prover-time, residual or production credit. |
 | C6 parameterized canonical plan codec | **CLEAN TWO-SEED RUN-OF-RECORD PASS; PLAN-CODEC SETUP FIT CLOSED; COMPILED RESIDUAL PENDING** (2026-07-29) | Model-global v2 topology artifact; exact strict ordinary-build decoder; independent prover/verifier compile; response instance values excluded | Both clean `100+50` seed-24/25 records recover topology `bcdd169f...c57af344`, produce distinct instance digests and the same **63,994,751-B** artifact at BLAKE3 `265f874c...e51ebac`.  The actual first exchange subtotal is **140,738,118 B <=150,000,000 B**, leaving **9,261,882 B** for all remaining parameters/framing.  Records `c6-parameterized-plan-codec-seed24-2026-07-29-e437394.json` / `c6-parameterized-plan-codec-seed25-2026-07-29-8006f36.json`, SHA-256 `af785f98...ee5580` / `6e054a12...6a861`, are `git_dirty:false`, `diagnostic:false`, `pod_contacted:false`, `all_pass:true`.  This is not an overall setup, residual, response-byte, timing or production verdict. |
 | C6 installed compiled-residual core | **CLEAN TWO-SEED FULL-T1 PAIRED RECORD PASS; ORDINARY OVERHEAD / WRAPPER PENDING** (2026-07-29) | Consuming strict decoder installation; local reverse workspace; role-map runtime values; transcript-streamed base-share coefficients; paired source/key folds | Clean schema-11 seed-24/25 records at `5f9a7ba` accept both independent Δ coordinates over all **4,975,525** sources with provider/verifier linear-form equality and provider/client coefficient-binding equality; no coefficient vector is serialized.  Topology `bcdd169f...c57af344`, artifact `265f874c...e51ebac` and memory are cross-seed invariant, while instance and coefficient digests change.  The installed plan is **196,741,767 B** resident.  Each role retains **79,611,404 B** and uses a counted **541,141,500-B** residual-only compile peak.  Informative clean provider residual subtotals are **2.115027772 / 2.031618948 s** after **1.637407891 / 1.646412629 s** one-off installs.  The residual output itself is **64 B**, but this is not the final wrapper/certificate and earns no wire or timing credit.  Bound ordinary-build overhead, wrapper, real-PCG session and hardware gates remain pending. |
@@ -516,6 +516,72 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-29 — C6 fused atomic replay and all four scaled consumers are
+  locally green.**  The v3 atomic grammar now has one public
+  witness-independent emitter.  It emits canonical `Output` then typed
+  `CoefficientWrite` events, owns all atomic weights and validates every
+  repetition, table, row and quadratic factor before delivery.  Its semantic
+  completion binds the manifest, relation challenges, installed linear form,
+  atomic schedule, target and exact family censuses without hashing any
+  coefficient array.
+
+  The public scaled compiler was refactored onto this emitter.  The old
+  compiler remains under `test+c6-trace` only and independently agrees on
+  both complete statements, expression values, family residuals, digests and
+  all existing mutation attribution.  The scaled fixture emits **1,056
+  outputs / 1,185 writes** per repetition with family write census
+  **[21,24,48,64,28,4,964,32]**.  Provider and client audit replays have
+  byte-identical summaries and per-event digests.
+
+  A live-prefix provider view binds leaf, closure and auxiliary ownership and
+  supplies canonical zero padding without padded witness allocation.  Its
+  fused first-round sink exactly matches the materialized three-value leaf
+  and four-value auxiliary messages, whose Boolean sums reconstruct the
+  statement target.  Separate folded sinks exactly match every materialized
+  `fold_low` coefficient table.  The witness-free client sink returns only
+  the **8 leaf + 16 auxiliary-linear + 8 auxiliary-quadratic** terminal
+  scalars and matches `eval_mle` for both repetitions.
+
+  The terminal equality cursor never materializes `eq_vec`: repeated rows are
+  cached, sequential rows update changed binary digits and arbitrary jumps
+  reset in `O(log N)`.  Nonzero factor inverses are precomputed once while
+  zero factors are counted, so challenges exactly zero or one are accepted
+  without zero inversion.  Permanent negatives cover swapped repetitions,
+  malformed live ownership, wrong point lengths, nonmonotone resets,
+  oversized state and a tracker from another manifest.
+
+  The same exact census partitions production writes into **111,889,262
+  leaf / 1,109,444 auxiliary = 112,998,706** per repetition.  `RawCopy`
+  contributes one write to each side; ProductClosure mask-message writes are
+  leaf-owned and triple expansions auxiliary-owned.  The maximum states are
+  **33,554,432 Fp2 / 536,870,912 B** for leaf and **393,216 Fp2 /
+  6,291,456 B** for auxiliary.  A manifest-bound response-local allocation
+  tracker holds a non-clone lease in every state, rejects a second live
+  family or repetition before allocation, and records active/peak bytes; the
+  scaled peak is **512 Fp2 / 8,192 B**.
+
+  The focused differential passes, the complete `volta-proto` feature suite
+  is **146 pass / 0 fail / 1 ignored**, and the workspace suite, all-target
+  checking and formatting exit zero.  This final gate exposed three stale
+  assertions left when
+  `7a0ea20` changed the executable blind/fused budget but not its Python
+  tests.  The tests now pin the already-frozen **6,900-B / 105-root /
+  `2^17` / 2,640,050,432-symbol** report; the script itself is unchanged and
+  the combined budget suite is **9/9 PASS**.  Strict clippy remains globally
+  blocked by unrelated historical warnings; filtering that run to the
+  modified `c6_residual.rs` produces no warning.  This checkpoint earns no
+  production execution, prover-time, response-removal, C6RSC3/PCS, cache,
+  setup/correlation, real-PCG, CUDA or hardware credit.  The next ordered
+  gate is the fused `C6RSC3` coordinator, then the common packed
+  authenticated-output link.  No provider or pod was contacted; the
+  pre-existing untracked user conversation note was not read, staged or
+  modified.  Source SHA-256 values are fused residual
+  `820ab48138c16bfda29fbe83968aaf5bd5b528fcd68c1121bfe63de3fc175ba2`,
+  crate export
+  `28870715ed0df72f27252c6d3f1b5ee34797c32d22672e9abe8e96eb820a2b26`
+  and repaired budget test
+  `b2a8d773eec29377d1673ea5c33cfe51dc8a308d224a3a7677167caa7f8047f7`.
 
 - **2026-07-29 — C6 fused atomic event-sink interface is frozen before
   implementation.**  This is an implementation-only factorization of the

@@ -29,6 +29,8 @@ use crate::c6_source::C6PairedSourceWitness;
 use crate::prod_check::{prod_batch_verify, ProdProof};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
+use std::sync::Arc;
 use volta_field::{Fp, Fp2, FpStream};
 use volta_mac::{
     C6DecodedInstanceExtractionPlan, C6InstalledOperationKind, C6InstalledOperationPlan,
@@ -66,6 +68,11 @@ const PUBLIC_CLAIMS_DOMAIN: &str = "volta-zk/c6/residual-public-claims/v1";
 const RELATION_CONTEXT_DOMAIN: &str = "volta-zk/c6/residual-relation-context/v3";
 const RELATION_CHALLENGES_DOMAIN: &str = "volta-zk/c6/residual-relation-challenges/v3";
 const ATOMIC_WEIGHT_SCHEDULE_DOMAIN: &str = "volta-zk/c6/residual-atomic-weight-schedule/v1";
+const ATOMIC_EVENT_COMPLETION_DOMAIN: &str = "volta-zk/c6/residual-atomic-event-completion/v1";
+const ATOMIC_EVENT_AUDIT_DOMAIN: &str = "volta-zk/c6/residual-atomic-event-audit/v1";
+const FUSED_FOLDED_COEFFICIENT_DOMAIN: &str = "volta-zk/c6/residual-fused-folded-coefficients/v1";
+const FUSED_TERMINAL_COEFFICIENT_DOMAIN: &str =
+    "volta-zk/c6/residual-fused-terminal-coefficients/v1";
 const TERMINAL_WEIGHT_STREAM_DOMAINS: [[[u64; 2]; 2]; 2] = [
     [
         [0xC6_54_45_52_4D_00_00_01, 0xC6_54_45_52_4D_00_00_02],
@@ -96,6 +103,10 @@ pub const C6_RESIDUAL_AUXILIARY_PRODUCT_LANES: u32 = 12;
 pub const C6_RESIDUAL_AUXILIARY_ZERO_LANES: u32 = 4;
 pub const C6_RESIDUAL_AUXILIARY_SEMANTIC_LOG2: u32 = 15;
 pub const C6_RESIDUAL_AUXILIARY_SEMANTIC_ENTRIES: u64 = 1 << C6_RESIDUAL_AUXILIARY_SEMANTIC_LOG2;
+pub const C6_RESIDUAL_FUSED_MAX_COEFFICIENT_STATE_ELEMENTS: u64 =
+    C6_RESIDUAL_RELATION_LEAF_TABLES as u64 * (C6_RESIDUAL_SLOT_ENTRIES / 2);
+pub const C6_RESIDUAL_FUSED_MAX_COEFFICIENT_STATE_BYTES: u64 =
+    C6_RESIDUAL_FUSED_MAX_COEFFICIENT_STATE_ELEMENTS * std::mem::size_of::<Fp2>() as u64;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6ResidualError(String);
@@ -1566,8 +1577,83 @@ impl C6ResidualAtomicFamily {
         Self::AuxiliaryTail,
     ];
 
-    fn index(self) -> usize {
+    pub const fn index(self) -> usize {
         self as usize
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum C6ResidualAtomicCoefficientTarget {
+    LeafLinear { table: u8, row: u32 },
+    AuxiliaryLinear { table: u8, row: u32 },
+    AuxiliaryQuadratic { lhs: u8, rhs: u8, row: u32 },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6ResidualAtomicOutputEvent {
+    pub proof_repetition: u8,
+    pub output_ordinal: u64,
+    pub family: C6ResidualAtomicFamily,
+    pub weight: Fp2,
+    pub weighted_public_constant: Fp2,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6ResidualAtomicCoefficientEvent {
+    pub proof_repetition: u8,
+    pub output_ordinal: u64,
+    pub family: C6ResidualAtomicFamily,
+    pub target: C6ResidualAtomicCoefficientTarget,
+    pub coefficient: Fp2,
+}
+
+pub trait C6ResidualAtomicEventSink {
+    fn output(&mut self, event: C6ResidualAtomicOutputEvent) -> Result<(), C6ResidualError>;
+
+    fn coefficient(
+        &mut self,
+        event: C6ResidualAtomicCoefficientEvent,
+    ) -> Result<(), C6ResidualError>;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6ResidualAtomicReplaySummary {
+    proof_repetition: u8,
+    target: Fp2,
+    family_outputs: [u64; 8],
+    family_coefficient_writes: [u64; 8],
+    atomic_outputs: u64,
+    coefficient_writes: u64,
+    semantic_digest: C6ResidualDigest,
+}
+
+impl C6ResidualAtomicReplaySummary {
+    pub fn proof_repetition(&self) -> u8 {
+        self.proof_repetition
+    }
+
+    pub fn target(&self) -> Fp2 {
+        self.target
+    }
+
+    pub fn family_outputs(&self) -> &[u64; 8] {
+        &self.family_outputs
+    }
+
+    pub fn family_coefficient_writes(&self) -> &[u64; 8] {
+        &self.family_coefficient_writes
+    }
+
+    pub fn atomic_outputs(&self) -> u64 {
+        self.atomic_outputs
+    }
+
+    pub fn coefficient_writes(&self) -> u64 {
+        self.coefficient_writes
+    }
+
+    pub fn semantic_digest(&self) -> C6ResidualDigest {
+        self.semantic_digest
     }
 }
 
@@ -1818,6 +1904,871 @@ impl C6ResidualAtomicReferenceCompilation {
     }
 }
 
+struct C6AtomicEventAudit {
+    hasher: blake3::Hasher,
+}
+
+impl C6AtomicEventAudit {
+    fn new(proof_repetition: u8) -> Self {
+        let mut hasher = blake3::Hasher::new_derive_key(ATOMIC_EVENT_AUDIT_DOMAIN);
+        hasher.update(&[proof_repetition]);
+        Self { hasher }
+    }
+
+    fn output(&mut self, event: C6ResidualAtomicOutputEvent) {
+        self.hasher.update(&[0, event.proof_repetition, event.family as u8]);
+        self.hasher.update(&event.output_ordinal.to_le_bytes());
+        hash_fp2(&mut self.hasher, event.weight);
+        hash_fp2(&mut self.hasher, event.weighted_public_constant);
+    }
+
+    fn coefficient(&mut self, event: C6ResidualAtomicCoefficientEvent) {
+        self.hasher.update(&[1, event.proof_repetition, event.family as u8]);
+        self.hasher.update(&event.output_ordinal.to_le_bytes());
+        match event.target {
+            C6ResidualAtomicCoefficientTarget::LeafLinear { table, row } => {
+                self.hasher.update(&[0, table, 0]);
+                self.hasher.update(&row.to_le_bytes());
+            }
+            C6ResidualAtomicCoefficientTarget::AuxiliaryLinear { table, row } => {
+                self.hasher.update(&[1, table, 0]);
+                self.hasher.update(&row.to_le_bytes());
+            }
+            C6ResidualAtomicCoefficientTarget::AuxiliaryQuadratic { lhs, rhs, row } => {
+                self.hasher.update(&[2, lhs, rhs]);
+                self.hasher.update(&row.to_le_bytes());
+            }
+        }
+        hash_fp2(&mut self.hasher, event.coefficient);
+    }
+
+    fn digest(&self) -> C6ResidualDigest {
+        *self.hasher.finalize().as_bytes()
+    }
+}
+
+pub struct C6ResidualAtomicEventAuditSink {
+    proof_repetition: u8,
+    audit: C6AtomicEventAudit,
+}
+
+impl C6ResidualAtomicEventAuditSink {
+    pub fn new(proof_repetition: u8) -> Self {
+        Self { proof_repetition, audit: C6AtomicEventAudit::new(proof_repetition) }
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.audit.digest()
+    }
+}
+
+impl C6ResidualAtomicEventSink for C6ResidualAtomicEventAuditSink {
+    fn output(&mut self, event: C6ResidualAtomicOutputEvent) -> Result<(), C6ResidualError> {
+        if event.proof_repetition != self.proof_repetition {
+            return Err(C6ResidualError::new("C6 atomic audit sink received a swapped repetition"));
+        }
+        self.audit.output(event);
+        Ok(())
+    }
+
+    fn coefficient(
+        &mut self,
+        event: C6ResidualAtomicCoefficientEvent,
+    ) -> Result<(), C6ResidualError> {
+        if event.proof_repetition != self.proof_repetition {
+            return Err(C6ResidualError::new(
+                "C6 atomic audit coefficient has a swapped repetition",
+            ));
+        }
+        self.audit.coefficient(event);
+        Ok(())
+    }
+}
+
+struct C6AtomicReferenceSink<'a> {
+    witness: &'a C6ResidualRelationReferenceWitness,
+    family_residuals: [Fp2; 8],
+    leaf_linear: [Vec<Fp2>; C6_RESIDUAL_RELATION_LEAF_TABLES],
+    auxiliary_linear: [Vec<Fp2>; C6_RESIDUAL_AUXILIARY_LANES as usize],
+    auxiliary_quadratic: BTreeMap<(u8, u8), Vec<Fp2>>,
+    audit: C6AtomicEventAudit,
+}
+
+impl<'a> C6AtomicReferenceSink<'a> {
+    fn new(
+        proof_repetition: u8,
+        witness: &'a C6ResidualRelationReferenceWitness,
+        leaf_entries: usize,
+        auxiliary_entries: usize,
+    ) -> Self {
+        Self {
+            witness,
+            family_residuals: [Fp2::ZERO; 8],
+            leaf_linear: std::array::from_fn(|_| vec![Fp2::ZERO; leaf_entries]),
+            auxiliary_linear: std::array::from_fn(|_| vec![Fp2::ZERO; auxiliary_entries]),
+            auxiliary_quadratic: C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS
+                .into_iter()
+                .map(|factors| (factors, vec![Fp2::ZERO; auxiliary_entries]))
+                .collect(),
+            audit: C6AtomicEventAudit::new(proof_repetition),
+        }
+    }
+}
+
+impl C6ResidualAtomicEventSink for C6AtomicReferenceSink<'_> {
+    fn output(&mut self, event: C6ResidualAtomicOutputEvent) -> Result<(), C6ResidualError> {
+        self.family_residuals[event.family.index()] += event.weighted_public_constant;
+        self.audit.output(event);
+        Ok(())
+    }
+
+    fn coefficient(
+        &mut self,
+        event: C6ResidualAtomicCoefficientEvent,
+    ) -> Result<(), C6ResidualError> {
+        let witness_value = match event.target {
+            C6ResidualAtomicCoefficientTarget::LeafLinear { table, row } => {
+                let table = usize::from(table);
+                let row = row as usize;
+                let coefficient = self
+                    .leaf_linear
+                    .get_mut(table)
+                    .and_then(|values| values.get_mut(row))
+                    .ok_or_else(|| {
+                        C6ResidualError::new("C6 atomic reference leaf event is out of range")
+                    })?;
+                *coefficient += event.coefficient;
+                *self.witness.leaf_tables.get(table).and_then(|values| values.get(row)).ok_or_else(
+                    || C6ResidualError::new("C6 atomic reference leaf witness is out of range"),
+                )?
+            }
+            C6ResidualAtomicCoefficientTarget::AuxiliaryLinear { table, row } => {
+                let table = usize::from(table);
+                let row = row as usize;
+                let coefficient = self
+                    .auxiliary_linear
+                    .get_mut(table)
+                    .and_then(|values| values.get_mut(row))
+                    .ok_or_else(|| {
+                        C6ResidualError::new("C6 atomic reference auxiliary event is out of range")
+                    })?;
+                *coefficient += event.coefficient;
+                *self
+                    .witness
+                    .auxiliary_tables
+                    .get(table)
+                    .and_then(|values| values.get(row))
+                    .ok_or_else(|| {
+                        C6ResidualError::new(
+                            "C6 atomic reference auxiliary witness is out of range",
+                        )
+                    })?
+            }
+            C6ResidualAtomicCoefficientTarget::AuxiliaryQuadratic { lhs, rhs, row } => {
+                let row = row as usize;
+                let coefficient = self
+                    .auxiliary_quadratic
+                    .get_mut(&(lhs, rhs))
+                    .and_then(|values| values.get_mut(row))
+                    .ok_or_else(|| {
+                        C6ResidualError::new("C6 atomic reference quadratic event is out of range")
+                    })?;
+                *coefficient += event.coefficient;
+                let lhs = *self
+                    .witness
+                    .auxiliary_tables
+                    .get(usize::from(lhs))
+                    .and_then(|values| values.get(row))
+                    .ok_or_else(|| {
+                        C6ResidualError::new("C6 atomic reference quadratic lhs is out of range")
+                    })?;
+                let rhs = *self
+                    .witness
+                    .auxiliary_tables
+                    .get(usize::from(rhs))
+                    .and_then(|values| values.get(row))
+                    .ok_or_else(|| {
+                        C6ResidualError::new("C6 atomic reference quadratic rhs is out of range")
+                    })?;
+                lhs * rhs
+            }
+        };
+        self.family_residuals[event.family.index()] += event.coefficient * witness_value;
+        self.audit.coefficient(event);
+        Ok(())
+    }
+}
+
+struct C6AtomicEventEmitter<'a, S: C6ResidualAtomicEventSink> {
+    proof_repetition: u8,
+    leaf_entries: u64,
+    auxiliary_entries: u64,
+    stream: FpStream,
+    sink: &'a mut S,
+    family_outputs: [u64; 8],
+    family_coefficient_writes: [u64; 8],
+    atomic_outputs: u64,
+    coefficient_writes: u64,
+    weighted_public_constant: Fp2,
+    current_output: Option<(u64, C6ResidualAtomicFamily)>,
+}
+
+impl<'a, S: C6ResidualAtomicEventSink> C6AtomicEventEmitter<'a, S> {
+    fn new(
+        proof_repetition: u8,
+        manifest: &C6ResidualRelationManifest,
+        schedule: &C6ResidualAtomicWeightSchedule,
+        sink: &'a mut S,
+    ) -> Self {
+        Self {
+            proof_repetition,
+            leaf_entries: manifest.leaf_entries,
+            auxiliary_entries: manifest.auxiliary_entries,
+            stream: schedule.stream(),
+            sink,
+            family_outputs: [0; 8],
+            family_coefficient_writes: [0; 8],
+            atomic_outputs: 0,
+            coefficient_writes: 0,
+            weighted_public_constant: Fp2::ZERO,
+            current_output: None,
+        }
+    }
+
+    fn next(
+        &mut self,
+        family: C6ResidualAtomicFamily,
+        public_constant: Fp2,
+    ) -> C6ResidualResult<Fp2> {
+        let weight = self.stream.next_fp2();
+        let output_ordinal = self.atomic_outputs;
+        let weighted_public_constant = weight * public_constant;
+        self.sink.output(C6ResidualAtomicOutputEvent {
+            proof_repetition: self.proof_repetition,
+            output_ordinal,
+            family,
+            weight,
+            weighted_public_constant,
+        })?;
+        self.atomic_outputs = self
+            .atomic_outputs
+            .checked_add(1)
+            .ok_or_else(|| C6ResidualError::new("C6 atomic output census overflows"))?;
+        self.family_outputs[family.index()] = self.family_outputs[family.index()]
+            .checked_add(1)
+            .ok_or_else(|| C6ResidualError::new("C6 atomic family output census overflows"))?;
+        self.weighted_public_constant += weighted_public_constant;
+        self.current_output = Some((output_ordinal, family));
+        Ok(weight)
+    }
+
+    fn add_leaf(&mut self, table: usize, row: usize, coefficient: Fp2) -> C6ResidualResult<()> {
+        if table >= C6_RESIDUAL_RELATION_LEAF_TABLES || row as u64 >= self.leaf_entries {
+            return Err(C6ResidualError::new("C6 atomic leaf coefficient target is out of range"));
+        }
+        self.write(
+            C6ResidualAtomicCoefficientTarget::LeafLinear {
+                table: table as u8,
+                row: u32::try_from(row)
+                    .map_err(|_| C6ResidualError::new("C6 atomic leaf row exceeds u32"))?,
+            },
+            coefficient,
+        )
+    }
+
+    fn add_auxiliary(
+        &mut self,
+        table: usize,
+        row: usize,
+        coefficient: Fp2,
+    ) -> C6ResidualResult<()> {
+        if table >= C6_RESIDUAL_AUXILIARY_LANES as usize || row as u64 >= self.auxiliary_entries {
+            return Err(C6ResidualError::new(
+                "C6 atomic auxiliary coefficient target is out of range",
+            ));
+        }
+        self.write(
+            C6ResidualAtomicCoefficientTarget::AuxiliaryLinear {
+                table: table as u8,
+                row: u32::try_from(row)
+                    .map_err(|_| C6ResidualError::new("C6 atomic auxiliary row exceeds u32"))?,
+            },
+            coefficient,
+        )
+    }
+
+    fn add_quadratic(
+        &mut self,
+        lhs: u8,
+        rhs: u8,
+        row: usize,
+        coefficient: Fp2,
+    ) -> C6ResidualResult<()> {
+        if !C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS.contains(&(lhs, rhs))
+            || row as u64 >= self.auxiliary_entries
+        {
+            return Err(C6ResidualError::new(
+                "C6 atomic quadratic coefficient target is out of range",
+            ));
+        }
+        self.write(
+            C6ResidualAtomicCoefficientTarget::AuxiliaryQuadratic {
+                lhs,
+                rhs,
+                row: u32::try_from(row)
+                    .map_err(|_| C6ResidualError::new("C6 atomic quadratic row exceeds u32"))?,
+            },
+            coefficient,
+        )
+    }
+
+    fn write(
+        &mut self,
+        target: C6ResidualAtomicCoefficientTarget,
+        coefficient: Fp2,
+    ) -> C6ResidualResult<()> {
+        let (output_ordinal, family) = self
+            .current_output
+            .ok_or_else(|| C6ResidualError::new("C6 coefficient precedes its atomic output"))?;
+        self.sink.coefficient(C6ResidualAtomicCoefficientEvent {
+            proof_repetition: self.proof_repetition,
+            output_ordinal,
+            family,
+            target,
+            coefficient,
+        })?;
+        self.coefficient_writes = self
+            .coefficient_writes
+            .checked_add(1)
+            .ok_or_else(|| C6ResidualError::new("C6 coefficient-write census overflows"))?;
+        self.family_coefficient_writes[family.index()] = self.family_coefficient_writes
+            [family.index()]
+        .checked_add(1)
+        .ok_or_else(|| C6ResidualError::new("C6 family coefficient-write census overflows"))?;
+        Ok(())
+    }
+}
+
+fn expected_atomic_family_outputs(
+    manifest: &C6ResidualRelationManifest,
+) -> C6ResidualResult<[u64; 8]> {
+    Ok([
+        u64::from(manifest.topology.source_count)
+            .checked_mul(3)
+            .ok_or_else(|| C6ResidualError::new("C6 SourceGrammar output census overflows"))?,
+        4,
+        4,
+        manifest.raw_copy_entries,
+        u64::from(manifest.topology.product_closure_count)
+            .checked_mul(6)
+            .ok_or_else(|| C6ResidualError::new("C6 Product output census overflows"))?,
+        2,
+        manifest.leaf_tail_outputs,
+        manifest.auxiliary_tail_outputs,
+    ])
+}
+
+fn expected_atomic_family_coefficient_writes(
+    manifest: &C6ResidualRelationManifest,
+) -> C6ResidualResult<[u64; 8]> {
+    let sources = u64::from(manifest.topology.source_count);
+    let masks = u64::try_from(manifest.product_mask_sources.len())
+        .map_err(|_| C6ResidualError::new("C6 ProductMask census exceeds u64"))?;
+    let direct = sources
+        .checked_sub(masks)
+        .ok_or_else(|| C6ResidualError::new("C6 direct-source census underflows"))?;
+    let triples = manifest.topology.product_triple_count;
+    let closures = u64::from(manifest.topology.product_closure_count);
+    let zeros = u64::from(manifest.topology.zero_root_count);
+    let checked_sum = |terms: &[u64], label: &str| {
+        terms.iter().try_fold(0u64, |sum, term| {
+            sum.checked_add(*term)
+                .ok_or_else(|| C6ResidualError::new(format!("{label} write census overflows")))
+        })
+    };
+    let checked_mul = |value: u64, factor: u64, label: &str| {
+        value
+            .checked_mul(factor)
+            .ok_or_else(|| C6ResidualError::new(format!("{label} write census overflows")))
+    };
+    Ok([
+        checked_sum(
+            &[
+                checked_mul(direct, 6, "C6 SourceGrammar")?,
+                checked_mul(masks, 3, "C6 SourceGrammar")?,
+            ],
+            "C6 SourceGrammar",
+        )?,
+        checked_mul(sources, 6, "C6 Affine")?,
+        checked_sum(
+            &[
+                checked_mul(sources, 4, "C6 Reverse")?,
+                checked_mul(triples, 12, "C6 Reverse")?,
+                checked_mul(zeros, 4, "C6 Reverse")?,
+            ],
+            "C6 Reverse",
+        )?,
+        checked_mul(manifest.raw_copy_entries, 2, "C6 RawCopy")?,
+        checked_sum(
+            &[checked_mul(triples, 12, "C6 Product")?, checked_mul(closures, 4, "C6 Product")?],
+            "C6 Product",
+        )?,
+        checked_mul(zeros, 2, "C6 Zero")?,
+        manifest.leaf_tail_outputs,
+        manifest.auxiliary_tail_outputs,
+    ])
+}
+
+/// Replay the exact v3 atomic compiler grammar into a caller-owned sink.
+///
+/// The replay is witness-independent.  It accepts production geometry, owns
+/// every atomic weight and emits no materialized coefficient array.
+#[allow(clippy::too_many_arguments)]
+pub fn replay_c6_residual_atomic_events<S: C6ResidualAtomicEventSink>(
+    operation_plan: &C6InstalledOperationPlan,
+    extraction: &C6DecodedInstanceExtractionPlan,
+    runtime: &C6RuntimeInstanceValues,
+    linear: &C6CompiledLinearResidual,
+    challenges: &C6ResidualRelationChallenges,
+    proof_repetition: u8,
+    sink: &mut S,
+) -> C6ResidualResult<C6ResidualAtomicReplaySummary> {
+    challenges.validate(operation_plan)?;
+    let manifest = challenges.manifest();
+    if linear.operation_plan_artifact_digest != manifest.operation_plan_artifact_digest
+        || linear.topology != manifest.topology
+        || linear.instance != manifest.instance
+        || linear.product_mask_sources != manifest.product_mask_sources
+        || linear.linear_form_digest != challenges.claims().linear_form_digest
+    {
+        return Err(C6ResidualError::new(
+            "C6 atomic event replay linear form differs from manifest/public claims",
+        ));
+    }
+    let atomic_schedule = challenges.atomic_schedule(proof_repetition)?;
+    if atomic_schedule.output_count != manifest.atomic_outputs_per_repetition {
+        return Err(C6ResidualError::new(
+            "C6 atomic event replay schedule differs from the manifest",
+        ));
+    }
+
+    let source_count = usize::try_from(manifest.topology.source_count)
+        .map_err(|_| C6ResidualError::new("C6 source census exceeds usize"))?;
+    let leaf_entries = usize::try_from(manifest.leaf_entries)
+        .map_err(|_| C6ResidualError::new("C6 leaf entry census exceeds usize"))?;
+    let auxiliary_entries = usize::try_from(manifest.auxiliary_entries)
+        .map_err(|_| C6ResidualError::new("C6 auxiliary entry census exceeds usize"))?;
+    let product_triples = usize::try_from(manifest.topology.product_triple_count)
+        .map_err(|_| C6ResidualError::new("C6 product-triple census exceeds usize"))?;
+    let zero_roots = usize::try_from(manifest.topology.zero_root_count)
+        .map_err(|_| C6ResidualError::new("C6 zero-root census exceeds usize"))?;
+    let mut emitter = C6AtomicEventEmitter::new(proof_repetition, manifest, atomic_schedule, sink);
+
+    for source in 0..source_count {
+        let is_mask = manifest.product_mask_sources.binary_search(&(source as u32)).is_ok();
+        let direct = !is_mask;
+
+        let weight = emitter.next(C6ResidualAtomicFamily::SourceGrammar, Fp2::ZERO)?;
+        if direct {
+            emitter.add_leaf(0, source, weight)?;
+            emitter.add_leaf(1, source, Fp2::ZERO - weight)?;
+            emitter.add_leaf(3, source, Fp2::ZERO - weight)?;
+        } else {
+            emitter.add_leaf(3, source, weight)?;
+        }
+
+        let weight = emitter.next(C6ResidualAtomicFamily::SourceGrammar, Fp2::ZERO)?;
+        if direct {
+            emitter.add_leaf(0, source, weight)?;
+            emitter.add_leaf(4, source, Fp2::ZERO - weight)?;
+            emitter.add_leaf(6, source, Fp2::ZERO - weight)?;
+        } else {
+            emitter.add_leaf(6, source, weight)?;
+        }
+
+        let weight = emitter.next(C6ResidualAtomicFamily::SourceGrammar, Fp2::ZERO)?;
+        if is_mask {
+            emitter.add_leaf(0, source, weight)?;
+        }
+    }
+
+    for coordinate in 0..2u8 {
+        let (r_table, m_table, d_table) =
+            if coordinate == 0 { (1usize, 2usize, 3usize) } else { (4, 5, 6) };
+        let residual = challenges.claims().residual.coordinates[usize::from(coordinate)];
+
+        let weight = emitter.next(
+            C6ResidualAtomicFamily::Affine,
+            linear.public_plaintext - residual.correction_rlc,
+        )?;
+        let mut alphas = challenges.base_share_context().alpha_stream(coordinate)?;
+        for (source, &linear_coefficient) in linear.leaf_coefficients.iter().enumerate() {
+            let alpha = alphas.next_fp2();
+            emitter.add_leaf(d_table, source, weight * linear_coefficient)?;
+            emitter.add_leaf(r_table, source, Fp2::ZERO - weight * alpha)?;
+        }
+
+        let weight =
+            emitter.next(C6ResidualAtomicFamily::Affine, Fp2::ZERO - residual.public_tag_rlc)?;
+        let mut alphas = challenges.base_share_context().alpha_stream(coordinate)?;
+        for (source, &linear_coefficient) in linear.leaf_coefficients.iter().enumerate() {
+            let alpha = alphas.next_fp2();
+            emitter.add_leaf(m_table, source, weight * (linear_coefficient + alpha))?;
+        }
+    }
+
+    for coordinate in 0..2u8 {
+        for kind in [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag] {
+            let schedule = challenges.terminal_schedule(proof_repetition, coordinate, kind)?;
+            let form = C6CompiledTerminalLinearForm::compile(
+                operation_plan,
+                extraction,
+                runtime,
+                schedule,
+            )?;
+            if form.protocol_version != RESIDUAL_RELATION_PROTOCOL_V3
+                || form.topology != manifest.topology
+                || form.instance != manifest.instance
+                || form.leaf_coefficients.len() != source_count
+            {
+                return Err(C6ResidualError::new(
+                    "C6 atomic event replay terminal form differs from C6RLM1",
+                ));
+            }
+            let outer = emitter.next(C6ResidualAtomicFamily::Reverse, form.public_plaintext)?;
+            for (source, &coefficient) in form.leaf_coefficients.iter().enumerate() {
+                let is_mask = manifest.product_mask_sources.binary_search(&(source as u32)).is_ok();
+                let table = match kind {
+                    C6ResidualTerminalFormKind::Plaintext => {
+                        if is_mask {
+                            if coordinate == 0 {
+                                1
+                            } else {
+                                4
+                            }
+                        } else {
+                            0
+                        }
+                    }
+                    C6ResidualTerminalFormKind::Tag => {
+                        if coordinate == 0 {
+                            2
+                        } else {
+                            5
+                        }
+                    }
+                };
+                emitter.add_leaf(table, source, outer * coefficient)?;
+            }
+            let lane_base = usize::from(coordinate) * 6;
+            for (triple, weights) in schedule.product_weights.iter().enumerate() {
+                let lanes = match kind {
+                    C6ResidualTerminalFormKind::Plaintext => {
+                        [lane_base, lane_base + 2, lane_base + 4]
+                    }
+                    C6ResidualTerminalFormKind::Tag => {
+                        [lane_base + 1, lane_base + 3, lane_base + 5]
+                    }
+                };
+                for (lane, terminal_weight) in lanes.into_iter().zip(weights) {
+                    emitter.add_auxiliary(lane, triple, Fp2::ZERO - outer * *terminal_weight)?;
+                }
+            }
+            let zero_lane = 12
+                + 2 * usize::from(coordinate)
+                + usize::from(kind == C6ResidualTerminalFormKind::Tag);
+            for (zero, terminal_weight) in schedule.zero_weights.iter().enumerate() {
+                emitter.add_auxiliary(zero_lane, zero, Fp2::ZERO - outer * *terminal_weight)?;
+            }
+        }
+    }
+
+    let mut raw_position = 0usize;
+    for triple in 0..product_triples {
+        for coordinate in 0..2usize {
+            for component in 0..6usize {
+                let lane = 6 * coordinate + component;
+                let weight = emitter.next(C6ResidualAtomicFamily::RawCopy, Fp2::ZERO)?;
+                emitter.add_leaf(7, raw_position, weight)?;
+                emitter.add_auxiliary(lane, triple, Fp2::ZERO - weight)?;
+                raw_position += 1;
+            }
+        }
+    }
+    for zero in 0..zero_roots {
+        for coordinate in 0..2usize {
+            for component in 0..2usize {
+                let lane = 12 + 2 * coordinate + component;
+                let weight = emitter.next(C6ResidualAtomicFamily::RawCopy, Fp2::ZERO)?;
+                emitter.add_leaf(7, raw_position, weight)?;
+                emitter.add_auxiliary(lane, zero, Fp2::ZERO - weight)?;
+                raw_position += 1;
+            }
+        }
+    }
+    if raw_position as u64 != manifest.raw_copy_entries {
+        return Err(C6ResidualError::new(
+            "C6 atomic event replay raw-copy cursor differs from C6RLM1",
+        ));
+    }
+
+    let mut triple_cursor = 0usize;
+    for (closure, product) in operation_plan.products().iter().enumerate() {
+        let chi = challenges.base_share_context().retained.product_challenges[closure];
+        let mask_source = manifest.product_mask_sources[closure] as usize;
+        for coordinate in 0..2usize {
+            let lane_base = 6 * coordinate;
+            let r_table = if coordinate == 0 { 1 } else { 4 };
+            let m_table = if coordinate == 0 { 2 } else { 5 };
+            let messages = challenges.claims().products[closure].messages[coordinate];
+
+            let outer = emitter.next(C6ResidualAtomicFamily::Product, Fp2::ZERO)?;
+            let mut power = Fp2::ONE;
+            for triple in 0..product.triples().len() {
+                power = power * chi;
+                let row = triple_cursor + triple;
+                emitter.add_quadratic(
+                    lane_base as u8,
+                    (lane_base + 2) as u8,
+                    row,
+                    outer * power,
+                )?;
+                emitter.add_auxiliary(lane_base + 4, row, Fp2::ZERO - outer * power)?;
+            }
+
+            let outer = emitter.next(C6ResidualAtomicFamily::Product, Fp2::ZERO - messages[0])?;
+            emitter.add_leaf(m_table, mask_source, outer)?;
+            let mut power = Fp2::ONE;
+            for triple in 0..product.triples().len() {
+                power = power * chi;
+                let row = triple_cursor + triple;
+                emitter.add_quadratic(
+                    (lane_base + 1) as u8,
+                    (lane_base + 3) as u8,
+                    row,
+                    outer * power,
+                )?;
+            }
+
+            let outer = emitter.next(C6ResidualAtomicFamily::Product, Fp2::ZERO - messages[1])?;
+            emitter.add_leaf(r_table, mask_source, outer)?;
+            let mut power = Fp2::ONE;
+            for triple in 0..product.triples().len() {
+                power = power * chi;
+                let row = triple_cursor + triple;
+                emitter.add_quadratic(
+                    lane_base as u8,
+                    (lane_base + 3) as u8,
+                    row,
+                    outer * power,
+                )?;
+                emitter.add_quadratic(
+                    (lane_base + 1) as u8,
+                    (lane_base + 2) as u8,
+                    row,
+                    outer * power,
+                )?;
+                emitter.add_auxiliary(lane_base + 5, row, Fp2::ZERO - outer * power)?;
+            }
+        }
+        triple_cursor += product.triples().len();
+    }
+    if triple_cursor != product_triples {
+        return Err(C6ResidualError::new("C6 atomic event replay ProductClosure cursor mismatch"));
+    }
+
+    let zero_weights = challenges.base_share_context().retained.zero_weights(zero_roots);
+    for coordinate in 0..2usize {
+        let lane = 12 + 2 * coordinate;
+        let outer = emitter.next(C6ResidualAtomicFamily::Zero, Fp2::ZERO)?;
+        for (zero, weight) in zero_weights.iter().enumerate() {
+            emitter.add_auxiliary(lane, zero, outer * *weight)?;
+        }
+    }
+
+    for table in 0..7usize {
+        for row in source_count..leaf_entries {
+            let weight = emitter.next(C6ResidualAtomicFamily::LeafTail, Fp2::ZERO)?;
+            emitter.add_leaf(table, row, weight)?;
+        }
+    }
+    for row in raw_position..leaf_entries {
+        let weight = emitter.next(C6ResidualAtomicFamily::LeafTail, Fp2::ZERO)?;
+        emitter.add_leaf(7, row, weight)?;
+    }
+    for lane in 0..12usize {
+        for row in product_triples..auxiliary_entries {
+            let weight = emitter.next(C6ResidualAtomicFamily::AuxiliaryTail, Fp2::ZERO)?;
+            emitter.add_auxiliary(lane, row, weight)?;
+        }
+    }
+    for lane in 12..16usize {
+        for row in zero_roots..auxiliary_entries {
+            let weight = emitter.next(C6ResidualAtomicFamily::AuxiliaryTail, Fp2::ZERO)?;
+            emitter.add_auxiliary(lane, row, weight)?;
+        }
+    }
+
+    let expected_outputs = expected_atomic_family_outputs(manifest)?;
+    let expected_writes = expected_atomic_family_coefficient_writes(manifest)?;
+    if emitter.family_outputs != expected_outputs
+        || emitter.family_coefficient_writes != expected_writes
+        || emitter.atomic_outputs != manifest.atomic_outputs_per_repetition
+        || emitter.atomic_outputs != atomic_schedule.output_count
+    {
+        return Err(C6ResidualError::new("C6 atomic event replay census differs from C6RLM1"));
+    }
+    let expected_total_writes = expected_writes.iter().try_fold(0u64, |sum, writes| {
+        sum.checked_add(*writes)
+            .ok_or_else(|| C6ResidualError::new("C6 atomic total write census overflows"))
+    })?;
+    if emitter.coefficient_writes != expected_total_writes {
+        return Err(C6ResidualError::new("C6 atomic event replay total write census mismatch"));
+    }
+
+    let target = Fp2::ZERO - emitter.weighted_public_constant;
+    let mut summary = C6ResidualAtomicReplaySummary {
+        proof_repetition,
+        target,
+        family_outputs: emitter.family_outputs,
+        family_coefficient_writes: emitter.family_coefficient_writes,
+        atomic_outputs: emitter.atomic_outputs,
+        coefficient_writes: emitter.coefficient_writes,
+        semantic_digest: [0; 32],
+    };
+    let mut hasher = blake3::Hasher::new_derive_key(ATOMIC_EVENT_COMPLETION_DOMAIN);
+    hasher.update(&[1, proof_repetition]);
+    hasher.update(&manifest.digest);
+    hasher.update(&challenges.digest);
+    hasher.update(&linear.linear_form_digest);
+    hasher.update(&atomic_schedule.digest);
+    hash_fp2(&mut hasher, summary.target);
+    for family in C6ResidualAtomicFamily::ALL {
+        hasher.update(&[family as u8]);
+        hasher.update(&summary.family_outputs[family.index()].to_le_bytes());
+        hasher.update(&summary.family_coefficient_writes[family.index()].to_le_bytes());
+    }
+    hasher.update(&summary.atomic_outputs.to_le_bytes());
+    hasher.update(&summary.coefficient_writes.to_le_bytes());
+    summary.semantic_digest = *hasher.finalize().as_bytes();
+    Ok(summary)
+}
+
+/// Materializing scaled differential over the same event replay used by the
+/// fused provider/client sinks.  Production geometry is deliberately
+/// rejected here; production callers use [`replay_c6_residual_atomic_events`]
+/// directly.
+#[allow(clippy::too_many_arguments)]
+pub fn compile_c6_residual_atomic_relation_reference(
+    operation_plan: &C6InstalledOperationPlan,
+    extraction: &C6DecodedInstanceExtractionPlan,
+    runtime: &C6RuntimeInstanceValues,
+    linear: &C6CompiledLinearResidual,
+    challenges: &C6ResidualRelationChallenges,
+    witness: &C6ResidualRelationReferenceWitness,
+) -> C6ResidualResult<C6ResidualAtomicReferenceCompilation> {
+    challenges.validate(operation_plan)?;
+    let manifest = challenges.manifest();
+    if manifest.production_geometry {
+        return Err(C6ResidualError::new(
+            "C6 atomic reference compiler cannot materialize production coefficient tables",
+        ));
+    }
+    if manifest.leaf_entries > (1 << 20) || manifest.auxiliary_entries > (1 << 16) {
+        return Err(C6ResidualError::new(
+            "C6 atomic reference compiler exceeds its scaled allocation guard",
+        ));
+    }
+    witness.validate(manifest)?;
+
+    let leaf_entries = usize::try_from(manifest.leaf_entries)
+        .map_err(|_| C6ResidualError::new("C6 reference leaf entries exceed usize"))?;
+    let auxiliary_entries = usize::try_from(manifest.auxiliary_entries)
+        .map_err(|_| C6ResidualError::new("C6 reference auxiliary entries exceed usize"))?;
+    let mut statements = Vec::with_capacity(C6_RESIDUAL_PROOF_REPETITIONS as usize);
+    let mut family_outputs = Vec::with_capacity(C6_RESIDUAL_PROOF_REPETITIONS as usize);
+    let mut family_residuals = Vec::with_capacity(C6_RESIDUAL_PROOF_REPETITIONS as usize);
+    let mut expression_evaluations = Vec::with_capacity(C6_RESIDUAL_PROOF_REPETITIONS as usize);
+
+    for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
+        let mut sink =
+            C6AtomicReferenceSink::new(proof_repetition, witness, leaf_entries, auxiliary_entries);
+        let summary = replay_c6_residual_atomic_events(
+            operation_plan,
+            extraction,
+            runtime,
+            linear,
+            challenges,
+            proof_repetition,
+            &mut sink,
+        )?;
+        if summary.semantic_digest == [0; 32] || sink.audit.digest() == [0; 32] {
+            return Err(C6ResidualError::new(
+                "C6 atomic event replay produced an empty semantic/audit binding",
+            ));
+        }
+        let auxiliary_quadratic = sink.auxiliary_quadratic.into_iter().collect::<Vec<_>>();
+        if auxiliary_quadratic
+            .iter()
+            .map(|(factors, _)| *factors)
+            .ne(C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS)
+        {
+            return Err(C6ResidualError::new(
+                "C6 atomic event replay emitted a noncanonical quadratic tuple",
+            ));
+        }
+        let mut statement = C6ResidualAtomicRelationStatement {
+            proof_repetition,
+            manifest_digest: manifest.digest,
+            relation_challenges_digest: challenges.digest,
+            target: summary.target,
+            leaf_linear: sink.leaf_linear,
+            auxiliary_linear: sink.auxiliary_linear,
+            auxiliary_quadratic,
+            atomic_outputs_consumed: summary.atomic_outputs,
+            digest: [0; 32],
+        };
+        statement.digest = atomic_relation_statement_digest(&statement);
+        let expression = statement.evaluate(witness)?;
+        let direct = sink.family_residuals.iter().fold(Fp2::ZERO, |sum, residual| sum + *residual);
+        if expression - statement.target != direct {
+            return Err(C6ResidualError::new(
+                "C6 atomic event replay coefficient/source differential mismatch",
+            ));
+        }
+        statements.push(statement);
+        family_outputs.push(summary.family_outputs);
+        family_residuals.push(sink.family_residuals);
+        expression_evaluations.push(expression);
+    }
+
+    let statements: [C6ResidualAtomicRelationStatement; C6_RESIDUAL_PROOF_REPETITIONS as usize] =
+        statements
+            .try_into()
+            .map_err(|_| C6ResidualError::new("C6 atomic event replay lost a repetition"))?;
+    let family_outputs: [[u64; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize] = family_outputs
+        .try_into()
+        .map_err(|_| C6ResidualError::new("C6 atomic event replay lost a family census"))?;
+    let family_weighted_residuals: [[Fp2; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize] =
+        family_residuals
+            .try_into()
+            .map_err(|_| C6ResidualError::new("C6 atomic event replay lost a differential"))?;
+    let expression_evaluations: [Fp2; C6_RESIDUAL_PROOF_REPETITIONS as usize] =
+        expression_evaluations
+            .try_into()
+            .map_err(|_| C6ResidualError::new("C6 atomic event replay lost an evaluation"))?;
+    let mut compilation = C6ResidualAtomicReferenceCompilation {
+        statements,
+        family_outputs,
+        family_weighted_residuals,
+        expression_evaluations,
+        digest: [0; 32],
+    };
+    compilation.digest = atomic_reference_compilation_digest(&compilation);
+    Ok(compilation)
+}
+
+#[cfg(all(test, feature = "c6-trace"))]
 struct C6AtomicReferenceAccumulator {
     stream: FpStream,
     consumed: u64,
@@ -1829,6 +2780,7 @@ struct C6AtomicReferenceAccumulator {
     auxiliary_quadratic: BTreeMap<(u8, u8), Vec<Fp2>>,
 }
 
+#[cfg(all(test, feature = "c6-trace"))]
 impl C6AtomicReferenceAccumulator {
     fn new(
         schedule: &C6ResidualAtomicWeightSchedule,
@@ -1876,10 +2828,11 @@ impl C6AtomicReferenceAccumulator {
 
 /// Compile and independently evaluate every C6RLM1 family on a scaled
 /// installed relation.  This path deliberately rejects production geometry:
-/// it is a correctness oracle for the later fused compiler, not its memory
-/// implementation.
+/// it is retained under `cfg(test)` only as the independent pre-refactor
+/// oracle for the event replay.
+#[cfg(all(test, feature = "c6-trace"))]
 #[allow(clippy::too_many_arguments)]
-pub fn compile_c6_residual_atomic_relation_reference(
+fn compile_c6_residual_atomic_relation_reference_legacy(
     operation_plan: &C6InstalledOperationPlan,
     extraction: &C6DecodedInstanceExtractionPlan,
     runtime: &C6RuntimeInstanceValues,
@@ -2920,6 +3873,1125 @@ impl C6PairedResidualAuxiliaryWitness {
         }
         Ok(semantic)
     }
+}
+
+/// Bound live-prefix view used by fused provider sinks.
+///
+/// Missing semantic rows are canonical zero padding.  Constructing this view
+/// never allocates a padded witness table.
+#[derive(Clone, Copy)]
+pub struct C6ResidualFusedWitnessView<'a> {
+    manifest_digest: C6ResidualDigest,
+    leaf: &'a C6PairedResidualLeafWitness,
+    closure: &'a C6PairedResidualClosureWitness,
+    auxiliary: &'a C6PairedResidualAuxiliaryWitness,
+    digest: C6ResidualDigest,
+}
+
+impl<'a> C6ResidualFusedWitnessView<'a> {
+    pub fn new(
+        manifest: &C6ResidualRelationManifest,
+        leaf: &'a C6PairedResidualLeafWitness,
+        closure: &'a C6PairedResidualClosureWitness,
+        auxiliary: &'a C6PairedResidualAuxiliaryWitness,
+    ) -> C6ResidualResult<Self> {
+        let expected_closure_values = manifest
+            .raw_copy_entries
+            .checked_add(C6_RESIDUAL_CLOSURE_FOOTER_ENTRIES)
+            .ok_or_else(|| C6ResidualError::new("C6 fused closure length overflows"))?;
+        let closure_values = u64::try_from(closure.values.len())
+            .map_err(|_| C6ResidualError::new("C6 fused closure length exceeds u64"))?;
+        if leaf.source_schedule_digest != manifest.topology.source_schedule_digest
+            || leaf.source_count != manifest.topology.source_count
+            || leaf.product_mask_count as usize != manifest.product_mask_sources.len()
+            || closure.census.product_closures != manifest.topology.product_closure_count
+            || closure.census.product_triples != manifest.topology.product_triple_count
+            || closure.census.zero_roots != manifest.topology.zero_root_count
+            || closure_values != expected_closure_values
+            || auxiliary.closure_witness_digest != closure.witness_digest
+            || auxiliary.census.product_rows != manifest.topology.product_triple_count
+            || auxiliary.census.zero_rows != u64::from(manifest.topology.zero_root_count)
+        {
+            return Err(C6ResidualError::new(
+                "C6 fused witness view differs from C6RLM1 ownership",
+            ));
+        }
+        let mut hasher =
+            blake3::Hasher::new_derive_key("volta-zk/c6/residual-fused-witness-view/v1");
+        hasher.update(&manifest.digest);
+        hasher.update(&leaf.witness_digest);
+        hasher.update(&closure.witness_digest);
+        hasher.update(&auxiliary.witness_digest);
+        let view = Self {
+            manifest_digest: manifest.digest,
+            leaf,
+            closure,
+            auxiliary,
+            digest: *hasher.finalize().as_bytes(),
+        };
+        if view.digest == [0; 32] {
+            return Err(C6ResidualError::new("C6 fused witness view digest is zero"));
+        }
+        Ok(view)
+    }
+
+    pub fn manifest_digest(&self) -> C6ResidualDigest {
+        self.manifest_digest
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+
+    fn leaf_value(&self, table: usize, row: usize) -> C6ResidualResult<Fp2> {
+        match table {
+            0..=6 => Ok(self
+                .leaf
+                .columns
+                .get(table)
+                .and_then(|values| values.get(row))
+                .copied()
+                .unwrap_or(Fp2::ZERO)),
+            7 => Ok(self.closure.values.get(row).copied().unwrap_or(Fp2::ZERO)),
+            _ => Err(C6ResidualError::new("C6 fused witness leaf table is out of range")),
+        }
+    }
+
+    fn auxiliary_value(&self, table: usize, row: usize) -> C6ResidualResult<Fp2> {
+        self.auxiliary
+            .lanes
+            .get(table)
+            .map(|values| values.get(row).copied().unwrap_or(Fp2::ZERO))
+            .ok_or_else(|| C6ResidualError::new("C6 fused witness auxiliary table is out of range"))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualFusedFirstRound {
+    proof_repetition: u8,
+    target: Fp2,
+    leaf_message: [Fp2; 3],
+    auxiliary_message: [Fp2; 4],
+    semantic_digest: C6ResidualDigest,
+    witness_view_digest: C6ResidualDigest,
+    digest: C6ResidualDigest,
+}
+
+impl C6ResidualFusedFirstRound {
+    pub fn proof_repetition(&self) -> u8 {
+        self.proof_repetition
+    }
+
+    pub fn target(&self) -> Fp2 {
+        self.target
+    }
+
+    pub fn leaf_message(&self) -> &[Fp2; 3] {
+        &self.leaf_message
+    }
+
+    pub fn auxiliary_message(&self) -> &[Fp2; 4] {
+        &self.auxiliary_message
+    }
+
+    pub fn semantic_digest(&self) -> C6ResidualDigest {
+        self.semantic_digest
+    }
+
+    pub fn witness_view_digest(&self) -> C6ResidualDigest {
+        self.witness_view_digest
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+}
+
+struct C6ResidualFusedFirstRoundSink<'a> {
+    proof_repetition: u8,
+    witness: C6ResidualFusedWitnessView<'a>,
+    leaf_message: [Fp2; 3],
+    auxiliary_message: [Fp2; 4],
+}
+
+impl C6ResidualFusedFirstRoundSink<'_> {
+    fn interpolation_point(index: usize) -> Fp2 {
+        Fp2::new(Fp::new(index as u64), Fp::ZERO)
+    }
+
+    fn selector(bit: usize, point: Fp2) -> Fp2 {
+        if bit == 0 {
+            Fp2::ONE - point
+        } else {
+            point
+        }
+    }
+
+    fn linear_at(
+        &self,
+        table: usize,
+        row: usize,
+        point: Fp2,
+        auxiliary: bool,
+    ) -> C6ResidualResult<Fp2> {
+        let base = row & !1;
+        let (zero, one) = if auxiliary {
+            (
+                self.witness.auxiliary_value(table, base)?,
+                self.witness.auxiliary_value(table, base + 1)?,
+            )
+        } else {
+            (self.witness.leaf_value(table, base)?, self.witness.leaf_value(table, base + 1)?)
+        };
+        Ok(zero * (Fp2::ONE - point) + one * point)
+    }
+}
+
+impl C6ResidualAtomicEventSink for C6ResidualFusedFirstRoundSink<'_> {
+    fn output(&mut self, event: C6ResidualAtomicOutputEvent) -> Result<(), C6ResidualError> {
+        if event.proof_repetition != self.proof_repetition {
+            return Err(C6ResidualError::new("C6 first-round sink received a swapped repetition"));
+        }
+        Ok(())
+    }
+
+    fn coefficient(
+        &mut self,
+        event: C6ResidualAtomicCoefficientEvent,
+    ) -> Result<(), C6ResidualError> {
+        if event.proof_repetition != self.proof_repetition {
+            return Err(C6ResidualError::new(
+                "C6 first-round coefficient has a swapped repetition",
+            ));
+        }
+        match event.target {
+            C6ResidualAtomicCoefficientTarget::LeafLinear { table, row } => {
+                let row = row as usize;
+                for index in 0..self.leaf_message.len() {
+                    let point = Self::interpolation_point(index);
+                    let selector = Self::selector(row & 1, point);
+                    let witness = self.linear_at(usize::from(table), row, point, false)?;
+                    self.leaf_message[index] += event.coefficient * selector * witness;
+                }
+            }
+            C6ResidualAtomicCoefficientTarget::AuxiliaryLinear { table, row } => {
+                let row = row as usize;
+                for index in 0..self.auxiliary_message.len() {
+                    let point = Self::interpolation_point(index);
+                    let selector = Self::selector(row & 1, point);
+                    let witness = self.linear_at(usize::from(table), row, point, true)?;
+                    self.auxiliary_message[index] += event.coefficient * selector * witness;
+                }
+            }
+            C6ResidualAtomicCoefficientTarget::AuxiliaryQuadratic { lhs, rhs, row } => {
+                let row = row as usize;
+                for index in 0..self.auxiliary_message.len() {
+                    let point = Self::interpolation_point(index);
+                    let selector = Self::selector(row & 1, point);
+                    let lhs = self.linear_at(usize::from(lhs), row, point, true)?;
+                    let rhs = self.linear_at(usize::from(rhs), row, point, true)?;
+                    self.auxiliary_message[index] += event.coefficient * selector * lhs * rhs;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn compile_c6_residual_fused_first_round(
+    operation_plan: &C6InstalledOperationPlan,
+    extraction: &C6DecodedInstanceExtractionPlan,
+    runtime: &C6RuntimeInstanceValues,
+    linear: &C6CompiledLinearResidual,
+    challenges: &C6ResidualRelationChallenges,
+    proof_repetition: u8,
+    witness: C6ResidualFusedWitnessView<'_>,
+) -> C6ResidualResult<C6ResidualFusedFirstRound> {
+    if witness.manifest_digest != challenges.manifest().digest {
+        return Err(C6ResidualError::new("C6 first-round witness view uses a different manifest"));
+    }
+    let mut sink = C6ResidualFusedFirstRoundSink {
+        proof_repetition,
+        witness,
+        leaf_message: [Fp2::ZERO; 3],
+        auxiliary_message: [Fp2::ZERO; 4],
+    };
+    let summary = replay_c6_residual_atomic_events(
+        operation_plan,
+        extraction,
+        runtime,
+        linear,
+        challenges,
+        proof_repetition,
+        &mut sink,
+    )?;
+    let mut round = C6ResidualFusedFirstRound {
+        proof_repetition,
+        target: summary.target,
+        leaf_message: sink.leaf_message,
+        auxiliary_message: sink.auxiliary_message,
+        semantic_digest: summary.semantic_digest,
+        witness_view_digest: witness.digest,
+        digest: [0; 32],
+    };
+    let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c6/residual-fused-first-round/v1");
+    hasher.update(&[proof_repetition]);
+    hasher.update(&round.semantic_digest);
+    hasher.update(&round.witness_view_digest);
+    hash_fp2(&mut hasher, round.target);
+    for value in round.leaf_message.iter().chain(&round.auxiliary_message) {
+        hash_fp2(&mut hasher, *value);
+    }
+    round.digest = *hasher.finalize().as_bytes();
+    Ok(round)
+}
+
+/// Coefficient family retained after the first fused sumcheck challenge.
+///
+/// The two families are replayed separately so the production prover never
+/// owns the 512 MiB leaf state and the auxiliary state at the same time.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum C6ResidualFusedCoefficientFamily {
+    Leaf = 0,
+    Auxiliary = 1,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6ResidualFusedCoefficientMemoryCensus {
+    family: C6ResidualFusedCoefficientFamily,
+    input_entries_per_table: u64,
+    folded_entries_per_table: u64,
+    linear_tables: u64,
+    quadratic_tables: u64,
+    state_elements: u64,
+    state_bytes: u64,
+}
+
+impl C6ResidualFusedCoefficientMemoryCensus {
+    pub fn family(&self) -> C6ResidualFusedCoefficientFamily {
+        self.family
+    }
+
+    pub fn input_entries_per_table(&self) -> u64 {
+        self.input_entries_per_table
+    }
+
+    pub fn folded_entries_per_table(&self) -> u64 {
+        self.folded_entries_per_table
+    }
+
+    pub fn linear_tables(&self) -> u64 {
+        self.linear_tables
+    }
+
+    pub fn quadratic_tables(&self) -> u64 {
+        self.quadratic_tables
+    }
+
+    pub fn state_elements(&self) -> u64 {
+        self.state_elements
+    }
+
+    pub fn state_bytes(&self) -> u64 {
+        self.state_bytes
+    }
+}
+
+pub fn c6_residual_fused_coefficient_memory_census(
+    manifest: &C6ResidualRelationManifest,
+    family: C6ResidualFusedCoefficientFamily,
+) -> C6ResidualResult<C6ResidualFusedCoefficientMemoryCensus> {
+    let (input_entries_per_table, linear_tables, quadratic_tables) = match family {
+        C6ResidualFusedCoefficientFamily::Leaf => {
+            (manifest.leaf_entries, C6_RESIDUAL_RELATION_LEAF_TABLES as u64, 0)
+        }
+        C6ResidualFusedCoefficientFamily::Auxiliary => (
+            manifest.auxiliary_entries,
+            u64::from(C6_RESIDUAL_AUXILIARY_LANES),
+            C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS.len() as u64,
+        ),
+    };
+    if input_entries_per_table < 2 || !input_entries_per_table.is_power_of_two() {
+        return Err(C6ResidualError::new(
+            "C6 fused coefficient input length is not a nontrivial power of two",
+        ));
+    }
+    let folded_entries_per_table = input_entries_per_table / 2;
+    let tables = linear_tables
+        .checked_add(quadratic_tables)
+        .ok_or_else(|| C6ResidualError::new("C6 fused coefficient table census overflows"))?;
+    let state_elements = folded_entries_per_table
+        .checked_mul(tables)
+        .ok_or_else(|| C6ResidualError::new("C6 fused coefficient element census overflows"))?;
+    let element_bytes = u64::try_from(std::mem::size_of::<Fp2>())
+        .map_err(|_| C6ResidualError::new("C6 Fp2 size exceeds u64"))?;
+    let state_bytes = state_elements
+        .checked_mul(element_bytes)
+        .ok_or_else(|| C6ResidualError::new("C6 fused coefficient byte census overflows"))?;
+    if state_elements > C6_RESIDUAL_FUSED_MAX_COEFFICIENT_STATE_ELEMENTS
+        || state_bytes > C6_RESIDUAL_FUSED_MAX_COEFFICIENT_STATE_BYTES
+    {
+        return Err(C6ResidualError::new(
+            "C6 fused coefficient state exceeds the frozen production memory cap",
+        ));
+    }
+    Ok(C6ResidualFusedCoefficientMemoryCensus {
+        family,
+        input_entries_per_table,
+        folded_entries_per_table,
+        linear_tables,
+        quadratic_tables,
+        state_elements,
+        state_bytes,
+    })
+}
+
+/// Response-local owner of the single legal fused coefficient allocation.
+///
+/// A response typestate constructs exactly one tracker and passes it through
+/// both repetitions.  A live state holds an internal lease, so attempting to
+/// allocate another family or repetition through the same owner fails before
+/// any coefficient vector is reserved.
+pub struct C6ResidualFusedCoefficientAllocationTracker {
+    manifest_digest: C6ResidualDigest,
+    active_elements: Arc<AtomicU64>,
+    peak_elements: Arc<AtomicU64>,
+}
+
+impl C6ResidualFusedCoefficientAllocationTracker {
+    pub fn new(manifest: &C6ResidualRelationManifest) -> Self {
+        Self {
+            manifest_digest: manifest.digest,
+            active_elements: Arc::new(AtomicU64::new(0)),
+            peak_elements: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    pub fn manifest_digest(&self) -> C6ResidualDigest {
+        self.manifest_digest
+    }
+
+    pub fn active_elements(&self) -> u64 {
+        self.active_elements.load(AtomicOrdering::Acquire)
+    }
+
+    pub fn active_bytes(&self) -> u64 {
+        self.active_elements() * std::mem::size_of::<Fp2>() as u64
+    }
+
+    pub fn peak_elements(&self) -> u64 {
+        self.peak_elements.load(AtomicOrdering::Acquire)
+    }
+
+    pub fn peak_bytes(&self) -> u64 {
+        self.peak_elements() * std::mem::size_of::<Fp2>() as u64
+    }
+
+    fn reserve(
+        &self,
+        manifest: &C6ResidualRelationManifest,
+        census: C6ResidualFusedCoefficientMemoryCensus,
+    ) -> C6ResidualResult<C6ResidualFusedCoefficientAllocationLease> {
+        if self.manifest_digest != manifest.digest {
+            return Err(C6ResidualError::new(
+                "C6 fused allocation tracker uses a different manifest",
+            ));
+        }
+        self.active_elements
+            .compare_exchange(
+                0,
+                census.state_elements,
+                AtomicOrdering::AcqRel,
+                AtomicOrdering::Acquire,
+            )
+            .map_err(|_| {
+                C6ResidualError::new("C6 fused coefficient family or repetition is already live")
+            })?;
+        self.peak_elements.fetch_max(census.state_elements, AtomicOrdering::AcqRel);
+        Ok(C6ResidualFusedCoefficientAllocationLease {
+            active_elements: Arc::clone(&self.active_elements),
+            reserved_elements: census.state_elements,
+        })
+    }
+}
+
+struct C6ResidualFusedCoefficientAllocationLease {
+    active_elements: Arc<AtomicU64>,
+    reserved_elements: u64,
+}
+
+impl Drop for C6ResidualFusedCoefficientAllocationLease {
+    fn drop(&mut self) {
+        let previous = self.active_elements.swap(0, AtomicOrdering::AcqRel);
+        debug_assert_eq!(previous, self.reserved_elements);
+    }
+}
+
+// The enum stores only 24 Vec headers at worst; boxing them would add an
+// infallible metadata allocation beside the explicitly fallible coefficient
+// allocations while saving nothing material against the 512 MiB hard cap.
+#[allow(clippy::large_enum_variant)]
+enum C6ResidualFusedCoefficientTables {
+    Leaf {
+        linear: [Vec<Fp2>; C6_RESIDUAL_RELATION_LEAF_TABLES],
+    },
+    Auxiliary {
+        linear: [Vec<Fp2>; C6_RESIDUAL_AUXILIARY_LANES as usize],
+        quadratic: [Vec<Fp2>; C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS.len()],
+    },
+}
+
+pub struct C6ResidualFusedFoldedCoefficients {
+    proof_repetition: u8,
+    family: C6ResidualFusedCoefficientFamily,
+    challenge: Fp2,
+    target: Fp2,
+    selected_coefficient_writes: u64,
+    memory_census: C6ResidualFusedCoefficientMemoryCensus,
+    semantic_digest: C6ResidualDigest,
+    completion_digest: C6ResidualDigest,
+    tables: C6ResidualFusedCoefficientTables,
+    _allocation_lease: C6ResidualFusedCoefficientAllocationLease,
+}
+
+impl C6ResidualFusedFoldedCoefficients {
+    pub fn proof_repetition(&self) -> u8 {
+        self.proof_repetition
+    }
+
+    pub fn family(&self) -> C6ResidualFusedCoefficientFamily {
+        self.family
+    }
+
+    pub fn challenge(&self) -> Fp2 {
+        self.challenge
+    }
+
+    pub fn target(&self) -> Fp2 {
+        self.target
+    }
+
+    pub fn selected_coefficient_writes(&self) -> u64 {
+        self.selected_coefficient_writes
+    }
+
+    pub fn memory_census(&self) -> C6ResidualFusedCoefficientMemoryCensus {
+        self.memory_census
+    }
+
+    pub fn semantic_digest(&self) -> C6ResidualDigest {
+        self.semantic_digest
+    }
+
+    /// Metadata-only completion binding.
+    ///
+    /// The private coefficient arrays are deliberately not hashed: a
+    /// production-sized leaf state is 512 MiB and is consumed immediately by
+    /// the remaining sumcheck rounds.
+    pub fn completion_digest(&self) -> C6ResidualDigest {
+        self.completion_digest
+    }
+
+    pub fn leaf_linear(&self) -> Option<&[Vec<Fp2>; C6_RESIDUAL_RELATION_LEAF_TABLES]> {
+        match &self.tables {
+            C6ResidualFusedCoefficientTables::Leaf { linear } => Some(linear),
+            C6ResidualFusedCoefficientTables::Auxiliary { .. } => None,
+        }
+    }
+
+    pub fn auxiliary_linear(&self) -> Option<&[Vec<Fp2>; C6_RESIDUAL_AUXILIARY_LANES as usize]> {
+        match &self.tables {
+            C6ResidualFusedCoefficientTables::Leaf { .. } => None,
+            C6ResidualFusedCoefficientTables::Auxiliary { linear, .. } => Some(linear),
+        }
+    }
+
+    pub fn auxiliary_quadratic(
+        &self,
+    ) -> Option<&[Vec<Fp2>; C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS.len()]> {
+        match &self.tables {
+            C6ResidualFusedCoefficientTables::Leaf { .. } => None,
+            C6ResidualFusedCoefficientTables::Auxiliary { quadratic, .. } => Some(quadratic),
+        }
+    }
+}
+
+fn allocate_fused_zero_tables<const N: usize>(entries: usize) -> C6ResidualResult<[Vec<Fp2>; N]> {
+    let mut tables = Vec::new();
+    tables
+        .try_reserve_exact(N)
+        .map_err(|_| C6ResidualError::new("C6 fused coefficient table allocation failed"))?;
+    for _ in 0..N {
+        let mut table = Vec::new();
+        table
+            .try_reserve_exact(entries)
+            .map_err(|_| C6ResidualError::new("C6 fused coefficient state allocation failed"))?;
+        table.resize(entries, Fp2::ZERO);
+        tables.push(table);
+    }
+    tables
+        .try_into()
+        .map_err(|_| C6ResidualError::new("C6 fused coefficient table census diverged"))
+}
+
+fn expected_fused_selected_coefficient_writes(
+    manifest: &C6ResidualRelationManifest,
+    family: C6ResidualFusedCoefficientFamily,
+) -> C6ResidualResult<u64> {
+    let all = expected_atomic_family_coefficient_writes(manifest)?;
+    let sources = u64::from(manifest.topology.source_count);
+    let reverse_leaf = sources
+        .checked_mul(4)
+        .ok_or_else(|| C6ResidualError::new("C6 fused reverse leaf census overflows"))?;
+    let reverse_auxiliary = all[C6ResidualAtomicFamily::Reverse.index()]
+        .checked_sub(reverse_leaf)
+        .ok_or_else(|| C6ResidualError::new("C6 fused reverse auxiliary census underflows"))?;
+    let product_leaf = u64::from(manifest.topology.product_closure_count)
+        .checked_mul(4)
+        .ok_or_else(|| C6ResidualError::new("C6 fused product leaf census overflows"))?;
+    let product_auxiliary = all[C6ResidualAtomicFamily::Product.index()]
+        .checked_sub(product_leaf)
+        .ok_or_else(|| C6ResidualError::new("C6 fused product auxiliary census underflows"))?;
+    let selected = match family {
+        C6ResidualFusedCoefficientFamily::Leaf => [
+            all[C6ResidualAtomicFamily::SourceGrammar.index()],
+            all[C6ResidualAtomicFamily::Affine.index()],
+            reverse_leaf,
+            manifest.raw_copy_entries,
+            all[C6ResidualAtomicFamily::LeafTail.index()]
+                .checked_add(product_leaf)
+                .ok_or_else(|| C6ResidualError::new("C6 fused leaf census overflows"))?,
+        ],
+        C6ResidualFusedCoefficientFamily::Auxiliary => [
+            reverse_auxiliary,
+            product_auxiliary,
+            all[C6ResidualAtomicFamily::Zero.index()],
+            all[C6ResidualAtomicFamily::AuxiliaryTail.index()],
+            manifest.raw_copy_entries,
+        ],
+    };
+    selected.iter().try_fold(0u64, |sum, value| {
+        sum.checked_add(*value)
+            .ok_or_else(|| C6ResidualError::new("C6 fused selected-write census overflows"))
+    })
+}
+
+struct C6ResidualFusedFoldedCoefficientSink {
+    proof_repetition: u8,
+    challenge: Fp2,
+    selected_coefficient_writes: u64,
+    tables: C6ResidualFusedCoefficientTables,
+}
+
+impl C6ResidualFusedFoldedCoefficientSink {
+    fn new(
+        proof_repetition: u8,
+        family: C6ResidualFusedCoefficientFamily,
+        challenge: Fp2,
+        census: C6ResidualFusedCoefficientMemoryCensus,
+    ) -> C6ResidualResult<Self> {
+        if census.family != family {
+            return Err(C6ResidualError::new(
+                "C6 fused coefficient allocation uses a different family census",
+            ));
+        }
+        let entries = usize::try_from(census.folded_entries_per_table)
+            .map_err(|_| C6ResidualError::new("C6 fused folded length exceeds usize"))?;
+        let tables = match family {
+            C6ResidualFusedCoefficientFamily::Leaf => C6ResidualFusedCoefficientTables::Leaf {
+                linear: allocate_fused_zero_tables(entries)?,
+            },
+            C6ResidualFusedCoefficientFamily::Auxiliary => {
+                C6ResidualFusedCoefficientTables::Auxiliary {
+                    linear: allocate_fused_zero_tables(entries)?,
+                    quadratic: allocate_fused_zero_tables(entries)?,
+                }
+            }
+        };
+        Ok(Self { proof_repetition, challenge, selected_coefficient_writes: 0, tables })
+    }
+
+    fn add(table: &mut [Fp2], row: u32, coefficient: Fp2, challenge: Fp2) -> C6ResidualResult<()> {
+        let selector = if row & 1 == 0 { Fp2::ONE - challenge } else { challenge };
+        let folded_row = usize::try_from(row / 2)
+            .map_err(|_| C6ResidualError::new("C6 fused folded row exceeds usize"))?;
+        let entry = table
+            .get_mut(folded_row)
+            .ok_or_else(|| C6ResidualError::new("C6 fused folded row is out of range"))?;
+        *entry += coefficient * selector;
+        Ok(())
+    }
+}
+
+impl C6ResidualAtomicEventSink for C6ResidualFusedFoldedCoefficientSink {
+    fn output(&mut self, event: C6ResidualAtomicOutputEvent) -> Result<(), C6ResidualError> {
+        if event.proof_repetition != self.proof_repetition {
+            return Err(C6ResidualError::new("C6 fused folded sink received a swapped repetition"));
+        }
+        Ok(())
+    }
+
+    fn coefficient(
+        &mut self,
+        event: C6ResidualAtomicCoefficientEvent,
+    ) -> Result<(), C6ResidualError> {
+        if event.proof_repetition != self.proof_repetition {
+            return Err(C6ResidualError::new(
+                "C6 fused folded coefficient has a swapped repetition",
+            ));
+        }
+        let challenge = self.challenge;
+        let selected = match (&mut self.tables, event.target) {
+            (
+                C6ResidualFusedCoefficientTables::Leaf { linear },
+                C6ResidualAtomicCoefficientTarget::LeafLinear { table, row },
+            ) => {
+                Self::add(
+                    linear.get_mut(usize::from(table)).ok_or_else(|| {
+                        C6ResidualError::new("C6 fused folded leaf table is out of range")
+                    })?,
+                    row,
+                    event.coefficient,
+                    challenge,
+                )?;
+                true
+            }
+            (
+                C6ResidualFusedCoefficientTables::Auxiliary { linear, .. },
+                C6ResidualAtomicCoefficientTarget::AuxiliaryLinear { table, row },
+            ) => {
+                Self::add(
+                    linear.get_mut(usize::from(table)).ok_or_else(|| {
+                        C6ResidualError::new("C6 fused folded auxiliary table is out of range")
+                    })?,
+                    row,
+                    event.coefficient,
+                    challenge,
+                )?;
+                true
+            }
+            (
+                C6ResidualFusedCoefficientTables::Auxiliary { quadratic, .. },
+                C6ResidualAtomicCoefficientTarget::AuxiliaryQuadratic { lhs, rhs, row },
+            ) => {
+                let table = C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS
+                    .iter()
+                    .position(|factors| *factors == (lhs, rhs))
+                    .ok_or_else(|| {
+                        C6ResidualError::new("C6 fused folded quadratic tuple is not canonical")
+                    })?;
+                Self::add(&mut quadratic[table], row, event.coefficient, challenge)?;
+                true
+            }
+            (C6ResidualFusedCoefficientTables::Leaf { .. }, _) => false,
+            (C6ResidualFusedCoefficientTables::Auxiliary { .. }, _) => false,
+        };
+        if selected {
+            self.selected_coefficient_writes = self
+                .selected_coefficient_writes
+                .checked_add(1)
+                .ok_or_else(|| C6ResidualError::new("C6 fused selected-write census overflows"))?;
+        }
+        Ok(())
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn compile_c6_residual_fused_folded_coefficients(
+    operation_plan: &C6InstalledOperationPlan,
+    extraction: &C6DecodedInstanceExtractionPlan,
+    runtime: &C6RuntimeInstanceValues,
+    linear: &C6CompiledLinearResidual,
+    challenges: &C6ResidualRelationChallenges,
+    allocation_tracker: &C6ResidualFusedCoefficientAllocationTracker,
+    proof_repetition: u8,
+    family: C6ResidualFusedCoefficientFamily,
+    challenge: Fp2,
+) -> C6ResidualResult<C6ResidualFusedFoldedCoefficients> {
+    challenges.atomic_schedule(proof_repetition)?;
+    let memory_census = c6_residual_fused_coefficient_memory_census(challenges.manifest(), family)?;
+    let allocation_lease = allocation_tracker.reserve(challenges.manifest(), memory_census)?;
+    let expected_writes =
+        expected_fused_selected_coefficient_writes(challenges.manifest(), family)?;
+    let mut sink = C6ResidualFusedFoldedCoefficientSink::new(
+        proof_repetition,
+        family,
+        challenge,
+        memory_census,
+    )?;
+    let summary = replay_c6_residual_atomic_events(
+        operation_plan,
+        extraction,
+        runtime,
+        linear,
+        challenges,
+        proof_repetition,
+        &mut sink,
+    )?;
+    if sink.selected_coefficient_writes != expected_writes {
+        return Err(C6ResidualError::new(format!(
+            "C6 fused folded selected-write census differs from the manifest: got {}, expected {}",
+            sink.selected_coefficient_writes, expected_writes
+        )));
+    }
+    let mut hasher = blake3::Hasher::new_derive_key(FUSED_FOLDED_COEFFICIENT_DOMAIN);
+    hasher.update(&[proof_repetition, family as u8]);
+    hasher.update(&summary.semantic_digest);
+    hash_fp2(&mut hasher, challenge);
+    hasher.update(&memory_census.input_entries_per_table.to_le_bytes());
+    hasher.update(&memory_census.folded_entries_per_table.to_le_bytes());
+    hasher.update(&memory_census.linear_tables.to_le_bytes());
+    hasher.update(&memory_census.quadratic_tables.to_le_bytes());
+    hasher.update(&memory_census.state_elements.to_le_bytes());
+    hasher.update(&memory_census.state_bytes.to_le_bytes());
+    hasher.update(&sink.selected_coefficient_writes.to_le_bytes());
+    Ok(C6ResidualFusedFoldedCoefficients {
+        proof_repetition,
+        family,
+        challenge,
+        target: summary.target,
+        selected_coefficient_writes: sink.selected_coefficient_writes,
+        memory_census,
+        semantic_digest: summary.semantic_digest,
+        completion_digest: *hasher.finalize().as_bytes(),
+        tables: sink.tables,
+        _allocation_lease: allocation_lease,
+    })
+}
+
+/// Constant-memory cursor for `eq(point, row)` in LSB-first order.
+///
+/// Sequential rows update only the toggled binary digits.  Nonzero factor
+/// inverses are precomputed once; zero factors are counted separately, so
+/// transcript challenges equal to zero or one require no exceptional path
+/// and never invert zero.
+struct C6ResidualEqPointCursor {
+    entries: u64,
+    factors: Vec<[Fp2; 2]>,
+    inverses: Vec<[Option<Fp2>; 2]>,
+    current_row: Option<u32>,
+    nonzero_product: Fp2,
+    zero_factors: u32,
+}
+
+impl C6ResidualEqPointCursor {
+    fn new(point: &[Fp2], entries: u64, label: &str) -> C6ResidualResult<Self> {
+        if entries == 0 || !entries.is_power_of_two() {
+            return Err(C6ResidualError::new(format!(
+                "C6 {label} terminal entries are not a power of two"
+            )));
+        }
+        let expected_point_len = usize::try_from(entries.trailing_zeros())
+            .map_err(|_| C6ResidualError::new(format!("C6 {label} point length exceeds usize")))?;
+        if point.len() != expected_point_len || point.len() > u32::BITS as usize {
+            return Err(C6ResidualError::new(format!(
+                "C6 {label} terminal point has the wrong length"
+            )));
+        }
+        let factors =
+            point.iter().map(|&coordinate| [Fp2::ONE - coordinate, coordinate]).collect::<Vec<_>>();
+        let inverses = factors
+            .iter()
+            .map(|pair| {
+                pair.map(|factor| if factor == Fp2::ZERO { None } else { Some(factor.inv()) })
+            })
+            .collect();
+        Ok(Self {
+            entries,
+            factors,
+            inverses,
+            current_row: None,
+            nonzero_product: Fp2::ONE,
+            zero_factors: 0,
+        })
+    }
+
+    fn reset(&mut self, row: u32) -> C6ResidualResult<Fp2> {
+        if u64::from(row) >= self.entries {
+            return Err(C6ResidualError::new("C6 terminal coefficient row is out of range"));
+        }
+        self.nonzero_product = Fp2::ONE;
+        self.zero_factors = 0;
+        for (bit, factors) in self.factors.iter().enumerate() {
+            let factor = factors[((row >> bit) & 1) as usize];
+            if factor == Fp2::ZERO {
+                self.zero_factors = self
+                    .zero_factors
+                    .checked_add(1)
+                    .ok_or_else(|| C6ResidualError::new("C6 terminal zero census overflows"))?;
+            } else {
+                self.nonzero_product = self.nonzero_product * factor;
+            }
+        }
+        self.current_row = Some(row);
+        Ok(self.current_value())
+    }
+
+    fn replace_factor(&mut self, bit: usize, old: usize, new: usize) -> C6ResidualResult<()> {
+        let old_factor = self.factors[bit][old];
+        if old_factor == Fp2::ZERO {
+            self.zero_factors = self
+                .zero_factors
+                .checked_sub(1)
+                .ok_or_else(|| C6ResidualError::new("C6 terminal zero census underflows"))?;
+        } else {
+            let inverse = self.inverses[bit][old].ok_or_else(|| {
+                C6ResidualError::new("C6 terminal nonzero factor lost its inverse")
+            })?;
+            self.nonzero_product = self.nonzero_product * inverse;
+        }
+        let new_factor = self.factors[bit][new];
+        if new_factor == Fp2::ZERO {
+            self.zero_factors = self
+                .zero_factors
+                .checked_add(1)
+                .ok_or_else(|| C6ResidualError::new("C6 terminal zero census overflows"))?;
+        } else {
+            self.nonzero_product = self.nonzero_product * new_factor;
+        }
+        Ok(())
+    }
+
+    fn current_value(&self) -> Fp2 {
+        if self.zero_factors == 0 {
+            self.nonzero_product
+        } else {
+            Fp2::ZERO
+        }
+    }
+
+    fn at(&mut self, row: u32) -> C6ResidualResult<Fp2> {
+        if u64::from(row) >= self.entries {
+            return Err(C6ResidualError::new("C6 terminal coefficient row is out of range"));
+        }
+        let Some(current) = self.current_row else {
+            return self.reset(row);
+        };
+        if current == row {
+            return Ok(self.current_value());
+        }
+        if current.checked_add(1) != Some(row) {
+            return self.reset(row);
+        }
+        let changed = current ^ row;
+        for bit in 0..self.factors.len() {
+            if changed & (1u32 << bit) != 0 {
+                self.replace_factor(
+                    bit,
+                    ((current >> bit) & 1) as usize,
+                    ((row >> bit) & 1) as usize,
+                )?;
+            }
+        }
+        self.current_row = Some(row);
+        Ok(self.current_value())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualFusedTerminalCoefficients {
+    proof_repetition: u8,
+    target: Fp2,
+    leaf_point: Vec<Fp2>,
+    auxiliary_point: Vec<Fp2>,
+    leaf_linear: [Fp2; C6_RESIDUAL_RELATION_LEAF_TABLES],
+    auxiliary_linear: [Fp2; C6_RESIDUAL_AUXILIARY_LANES as usize],
+    auxiliary_quadratic: [Fp2; C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS.len()],
+    coefficient_writes: u64,
+    semantic_digest: C6ResidualDigest,
+    digest: C6ResidualDigest,
+}
+
+impl C6ResidualFusedTerminalCoefficients {
+    pub fn proof_repetition(&self) -> u8 {
+        self.proof_repetition
+    }
+
+    pub fn target(&self) -> Fp2 {
+        self.target
+    }
+
+    pub fn leaf_point(&self) -> &[Fp2] {
+        &self.leaf_point
+    }
+
+    pub fn auxiliary_point(&self) -> &[Fp2] {
+        &self.auxiliary_point
+    }
+
+    pub fn leaf_linear(&self) -> &[Fp2; C6_RESIDUAL_RELATION_LEAF_TABLES] {
+        &self.leaf_linear
+    }
+
+    pub fn auxiliary_linear(&self) -> &[Fp2; C6_RESIDUAL_AUXILIARY_LANES as usize] {
+        &self.auxiliary_linear
+    }
+
+    pub fn auxiliary_quadratic(&self) -> &[Fp2; C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS.len()] {
+        &self.auxiliary_quadratic
+    }
+
+    pub fn coefficient_writes(&self) -> u64 {
+        self.coefficient_writes
+    }
+
+    pub fn semantic_digest(&self) -> C6ResidualDigest {
+        self.semantic_digest
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+}
+
+struct C6ResidualFusedTerminalCoefficientSink {
+    proof_repetition: u8,
+    leaf_cursor: C6ResidualEqPointCursor,
+    auxiliary_cursor: C6ResidualEqPointCursor,
+    leaf_linear: [Fp2; C6_RESIDUAL_RELATION_LEAF_TABLES],
+    auxiliary_linear: [Fp2; C6_RESIDUAL_AUXILIARY_LANES as usize],
+    auxiliary_quadratic: [Fp2; C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS.len()],
+    coefficient_writes: u64,
+}
+
+impl C6ResidualAtomicEventSink for C6ResidualFusedTerminalCoefficientSink {
+    fn output(&mut self, event: C6ResidualAtomicOutputEvent) -> Result<(), C6ResidualError> {
+        if event.proof_repetition != self.proof_repetition {
+            return Err(C6ResidualError::new(
+                "C6 fused terminal sink received a swapped repetition",
+            ));
+        }
+        Ok(())
+    }
+
+    fn coefficient(
+        &mut self,
+        event: C6ResidualAtomicCoefficientEvent,
+    ) -> Result<(), C6ResidualError> {
+        if event.proof_repetition != self.proof_repetition {
+            return Err(C6ResidualError::new(
+                "C6 fused terminal coefficient has a swapped repetition",
+            ));
+        }
+        match event.target {
+            C6ResidualAtomicCoefficientTarget::LeafLinear { table, row } => {
+                let equality = self.leaf_cursor.at(row)?;
+                let value = self.leaf_linear.get_mut(usize::from(table)).ok_or_else(|| {
+                    C6ResidualError::new("C6 fused terminal leaf table is out of range")
+                })?;
+                *value += event.coefficient * equality;
+            }
+            C6ResidualAtomicCoefficientTarget::AuxiliaryLinear { table, row } => {
+                let equality = self.auxiliary_cursor.at(row)?;
+                let value = self.auxiliary_linear.get_mut(usize::from(table)).ok_or_else(|| {
+                    C6ResidualError::new("C6 fused terminal auxiliary table is out of range")
+                })?;
+                *value += event.coefficient * equality;
+            }
+            C6ResidualAtomicCoefficientTarget::AuxiliaryQuadratic { lhs, rhs, row } => {
+                let equality = self.auxiliary_cursor.at(row)?;
+                let table = C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS
+                    .iter()
+                    .position(|factors| *factors == (lhs, rhs))
+                    .ok_or_else(|| {
+                        C6ResidualError::new("C6 fused terminal quadratic tuple is not canonical")
+                    })?;
+                self.auxiliary_quadratic[table] += event.coefficient * equality;
+            }
+        }
+        self.coefficient_writes = self
+            .coefficient_writes
+            .checked_add(1)
+            .ok_or_else(|| C6ResidualError::new("C6 terminal coefficient census overflows"))?;
+        Ok(())
+    }
+}
+
+/// Replay the atomic grammar directly into its 8 + 16 + 8 terminal
+/// coefficient evaluations.
+///
+/// This path allocates only the two challenge points and cursor metadata.  It
+/// never materializes an equality vector or a coefficient MLE.
+#[allow(clippy::too_many_arguments)]
+pub fn compile_c6_residual_fused_terminal_coefficients(
+    operation_plan: &C6InstalledOperationPlan,
+    extraction: &C6DecodedInstanceExtractionPlan,
+    runtime: &C6RuntimeInstanceValues,
+    linear: &C6CompiledLinearResidual,
+    challenges: &C6ResidualRelationChallenges,
+    proof_repetition: u8,
+    leaf_point: &[Fp2],
+    auxiliary_point: &[Fp2],
+) -> C6ResidualResult<C6ResidualFusedTerminalCoefficients> {
+    challenges.atomic_schedule(proof_repetition)?;
+    let mut sink = C6ResidualFusedTerminalCoefficientSink {
+        proof_repetition,
+        leaf_cursor: C6ResidualEqPointCursor::new(
+            leaf_point,
+            challenges.manifest().leaf_entries,
+            "leaf",
+        )?,
+        auxiliary_cursor: C6ResidualEqPointCursor::new(
+            auxiliary_point,
+            challenges.manifest().auxiliary_entries,
+            "auxiliary",
+        )?,
+        leaf_linear: [Fp2::ZERO; C6_RESIDUAL_RELATION_LEAF_TABLES],
+        auxiliary_linear: [Fp2::ZERO; C6_RESIDUAL_AUXILIARY_LANES as usize],
+        auxiliary_quadratic: [Fp2::ZERO; C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS.len()],
+        coefficient_writes: 0,
+    };
+    let summary = replay_c6_residual_atomic_events(
+        operation_plan,
+        extraction,
+        runtime,
+        linear,
+        challenges,
+        proof_repetition,
+        &mut sink,
+    )?;
+    if sink.coefficient_writes != summary.coefficient_writes {
+        return Err(C6ResidualError::new(
+            "C6 fused terminal coefficient census differs from atomic replay",
+        ));
+    }
+    let mut terminal = C6ResidualFusedTerminalCoefficients {
+        proof_repetition,
+        target: summary.target,
+        leaf_point: leaf_point.to_vec(),
+        auxiliary_point: auxiliary_point.to_vec(),
+        leaf_linear: sink.leaf_linear,
+        auxiliary_linear: sink.auxiliary_linear,
+        auxiliary_quadratic: sink.auxiliary_quadratic,
+        coefficient_writes: sink.coefficient_writes,
+        semantic_digest: summary.semantic_digest,
+        digest: [0; 32],
+    };
+    let mut hasher = blake3::Hasher::new_derive_key(FUSED_TERMINAL_COEFFICIENT_DOMAIN);
+    hasher.update(&[proof_repetition]);
+    hasher.update(&terminal.semantic_digest);
+    hash_fp2(&mut hasher, terminal.target);
+    hasher.update(&(terminal.leaf_point.len() as u64).to_le_bytes());
+    for value in &terminal.leaf_point {
+        hash_fp2(&mut hasher, *value);
+    }
+    hasher.update(&(terminal.auxiliary_point.len() as u64).to_le_bytes());
+    for value in &terminal.auxiliary_point {
+        hash_fp2(&mut hasher, *value);
+    }
+    for value in terminal
+        .leaf_linear
+        .iter()
+        .chain(&terminal.auxiliary_linear)
+        .chain(&terminal.auxiliary_quadratic)
+    {
+        hash_fp2(&mut hasher, *value);
+    }
+    hasher.update(&terminal.coefficient_writes.to_le_bytes());
+    terminal.digest = *hasher.finalize().as_bytes();
+    Ok(terminal)
 }
 
 /// Provider output of one compiled affine residual coordinate.
@@ -4890,6 +6962,14 @@ mod tests {
         Fp2::from_base(fp(value))
     }
 
+    #[cfg(feature = "c6-trace")]
+    fn fold_once(values: &[Fp2], challenge: Fp2) -> Vec<Fp2> {
+        values
+            .chunks_exact(2)
+            .map(|pair| pair[0] * (Fp2::ONE - challenge) + pair[1] * challenge)
+            .collect()
+    }
+
     fn hex_digest(value: C6ResidualDigest) -> String {
         value.iter().map(|byte| format!("{byte:02x}")).collect()
     }
@@ -5780,20 +7860,20 @@ mod tests {
         }
         let mut residuals =
             [C6DeltaResidual { correction_rlc: Fp2::ZERO, public_tag_rlc: Fp2::ZERO }; 2];
-        for coordinate in 0..2usize {
+        for (coordinate, (coordinate_alphas, residual)) in
+            alphas.iter().zip(&mut residuals).enumerate()
+        {
             let (r_table, m_table, d_table) = if coordinate == 0 { (1, 2, 3) } else { (4, 5, 6) };
             let mut correction = linear.public_plaintext();
             let mut message = Fp2::ZERO;
-            for source in 0..linear.source_count() {
+            for (source, &alpha) in coordinate_alphas.iter().enumerate() {
                 correction +=
                     linear.leaf_coefficients()[source] * reference.leaf_tables[d_table][source];
-                correction = correction
-                    - alphas[coordinate][source] * reference.leaf_tables[r_table][source];
-                message += (linear.leaf_coefficients()[source] + alphas[coordinate][source])
+                correction = correction - alpha * reference.leaf_tables[r_table][source];
+                message += (linear.leaf_coefficients()[source] + alpha)
                     * reference.leaf_tables[m_table][source];
             }
-            residuals[coordinate] =
-                C6DeltaResidual { correction_rlc: correction, public_tag_rlc: message };
+            *residual = C6DeltaResidual { correction_rlc: correction, public_tag_rlc: message };
         }
 
         let mut product_claims = Vec::new();
@@ -5801,7 +7881,7 @@ mod tests {
         for (closure_index, product) in installed.products().iter().enumerate() {
             let mask_source = manifest.product_mask_sources()[closure_index] as usize;
             let mut messages = [[Fp2::ZERO; 2]; 2];
-            for coordinate in 0..2usize {
+            for (coordinate, message) in messages.iter_mut().enumerate() {
                 let lane = 6 * coordinate;
                 let r_table = if coordinate == 0 { 1 } else { 4 };
                 let m_table = if coordinate == 0 { 2 } else { 5 };
@@ -5827,7 +7907,7 @@ mod tests {
                             - reference.auxiliary_tables[lane + 5][row]);
                 }
                 assert_eq!(q, Fp2::ZERO);
-                messages[coordinate] = [m0, m1];
+                *message = [m0, m1];
             }
             triple_cursor += product.triples().len();
             product_claims.push(C6ResidualProductPublicClaim { messages });
@@ -5899,6 +7979,16 @@ mod tests {
             &reference,
         )
         .unwrap();
+        let legacy = compile_c6_residual_atomic_relation_reference_legacy(
+            &installed,
+            &extraction,
+            &runtime,
+            &linear,
+            &relation,
+            &reference,
+        )
+        .unwrap();
+        assert_eq!(compiled, legacy);
         assert!(compiled.is_satisfied());
         assert_ne!(compiled.digest(), [0; 32]);
         assert_eq!(compiled.family_outputs()[0], [12, 4, 4, 32, 6, 2, 964, 32]);
@@ -5921,6 +8011,392 @@ mod tests {
                 C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS
             );
             assert_eq!(statement.evaluate(&reference).unwrap(), statement.target());
+        }
+        let fused_witness =
+            C6ResidualFusedWitnessView::new(&manifest, &leaf, &closure, &auxiliary).unwrap();
+        assert_eq!(fused_witness.manifest_digest(), manifest.digest());
+        assert_ne!(fused_witness.digest(), [0; 32]);
+        for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
+            let statement = &compiled.statements()[usize::from(proof_repetition)];
+            let first_round = compile_c6_residual_fused_first_round(
+                &installed,
+                &extraction,
+                &runtime,
+                &linear,
+                &relation,
+                proof_repetition,
+                fused_witness,
+            )
+            .unwrap();
+            assert_eq!(first_round.proof_repetition(), proof_repetition);
+            assert_eq!(first_round.target(), statement.target());
+            assert_eq!(first_round.witness_view_digest(), fused_witness.digest());
+            assert_ne!(first_round.digest(), [0; 32]);
+
+            let mut expected_leaf = [Fp2::ZERO; 3];
+            for (coefficients, witness) in
+                statement.leaf_linear().iter().zip(reference.leaf_tables())
+            {
+                for pair in 0..coefficients.len() / 2 {
+                    for (index, expected) in expected_leaf.iter_mut().enumerate() {
+                        let point = fp2(index as u64);
+                        let coefficient = coefficients[2 * pair] * (Fp2::ONE - point)
+                            + coefficients[2 * pair + 1] * point;
+                        let value =
+                            witness[2 * pair] * (Fp2::ONE - point) + witness[2 * pair + 1] * point;
+                        *expected += coefficient * value;
+                    }
+                }
+            }
+            let mut expected_auxiliary = [Fp2::ZERO; 4];
+            for (coefficients, witness) in
+                statement.auxiliary_linear().iter().zip(reference.auxiliary_tables())
+            {
+                for pair in 0..coefficients.len() / 2 {
+                    for (index, expected) in expected_auxiliary.iter_mut().enumerate() {
+                        let point = fp2(index as u64);
+                        let coefficient = coefficients[2 * pair] * (Fp2::ONE - point)
+                            + coefficients[2 * pair + 1] * point;
+                        let value =
+                            witness[2 * pair] * (Fp2::ONE - point) + witness[2 * pair + 1] * point;
+                        *expected += coefficient * value;
+                    }
+                }
+            }
+            for ((lhs, rhs), coefficients) in statement.auxiliary_quadratic() {
+                let lhs = &reference.auxiliary_tables()[usize::from(*lhs)];
+                let rhs = &reference.auxiliary_tables()[usize::from(*rhs)];
+                for pair in 0..coefficients.len() / 2 {
+                    for (index, expected) in expected_auxiliary.iter_mut().enumerate() {
+                        let point = fp2(index as u64);
+                        let coefficient = coefficients[2 * pair] * (Fp2::ONE - point)
+                            + coefficients[2 * pair + 1] * point;
+                        let lhs = lhs[2 * pair] * (Fp2::ONE - point) + lhs[2 * pair + 1] * point;
+                        let rhs = rhs[2 * pair] * (Fp2::ONE - point) + rhs[2 * pair + 1] * point;
+                        *expected += coefficient * lhs * rhs;
+                    }
+                }
+            }
+            assert_eq!(first_round.leaf_message(), &expected_leaf);
+            assert_eq!(first_round.auxiliary_message(), &expected_auxiliary);
+            assert_eq!(
+                first_round.leaf_message()[0]
+                    + first_round.leaf_message()[1]
+                    + first_round.auxiliary_message()[0]
+                    + first_round.auxiliary_message()[1],
+                first_round.target()
+            );
+
+            let mut audit = C6ResidualAtomicEventAuditSink::new(proof_repetition);
+            let summary = replay_c6_residual_atomic_events(
+                &installed,
+                &extraction,
+                &runtime,
+                &linear,
+                &relation,
+                proof_repetition,
+                &mut audit,
+            )
+            .unwrap();
+            assert_eq!(first_round.semantic_digest(), summary.semantic_digest());
+        }
+        let mut malformed_auxiliary = auxiliary.clone();
+        malformed_auxiliary.closure_witness_digest = [0; 32];
+        assert!(C6ResidualFusedWitnessView::new(&manifest, &leaf, &closure, &malformed_auxiliary)
+            .is_err());
+
+        assert_eq!(std::mem::size_of::<Fp2>(), 16);
+        assert_eq!(C6_RESIDUAL_FUSED_MAX_COEFFICIENT_STATE_ELEMENTS, 33_554_432);
+        assert_eq!(C6_RESIDUAL_FUSED_MAX_COEFFICIENT_STATE_BYTES, 536_870_912);
+        let leaf_memory = c6_residual_fused_coefficient_memory_census(
+            &manifest,
+            C6ResidualFusedCoefficientFamily::Leaf,
+        )
+        .unwrap();
+        assert_eq!(leaf_memory.input_entries_per_table(), 128);
+        assert_eq!(leaf_memory.folded_entries_per_table(), 64);
+        assert_eq!(leaf_memory.linear_tables(), 8);
+        assert_eq!(leaf_memory.quadratic_tables(), 0);
+        assert_eq!(leaf_memory.state_elements(), 512);
+        assert_eq!(leaf_memory.state_bytes(), 8_192);
+        let auxiliary_memory = c6_residual_fused_coefficient_memory_census(
+            &manifest,
+            C6ResidualFusedCoefficientFamily::Auxiliary,
+        )
+        .unwrap();
+        assert_eq!(auxiliary_memory.input_entries_per_table(), 4);
+        assert_eq!(auxiliary_memory.folded_entries_per_table(), 2);
+        assert_eq!(auxiliary_memory.linear_tables(), 16);
+        assert_eq!(auxiliary_memory.quadratic_tables(), 8);
+        assert_eq!(auxiliary_memory.state_elements(), 48);
+        assert_eq!(auxiliary_memory.state_bytes(), 768);
+
+        let allocation_tracker = C6ResidualFusedCoefficientAllocationTracker::new(&manifest);
+        assert_eq!(allocation_tracker.manifest_digest(), manifest.digest());
+        assert_eq!(allocation_tracker.active_elements(), 0);
+        assert_eq!(allocation_tracker.active_bytes(), 0);
+        for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
+            let challenge = fp2(83 + u64::from(proof_repetition));
+            let statement = &compiled.statements()[usize::from(proof_repetition)];
+            let leaf_folded = compile_c6_residual_fused_folded_coefficients(
+                &installed,
+                &extraction,
+                &runtime,
+                &linear,
+                &relation,
+                &allocation_tracker,
+                proof_repetition,
+                C6ResidualFusedCoefficientFamily::Leaf,
+                challenge,
+            )
+            .unwrap();
+            assert_eq!(leaf_folded.proof_repetition(), proof_repetition);
+            assert_eq!(leaf_folded.family(), C6ResidualFusedCoefficientFamily::Leaf);
+            assert_eq!(leaf_folded.challenge(), challenge);
+            assert_eq!(leaf_folded.target(), statement.target());
+            assert_eq!(leaf_folded.selected_coefficient_writes(), 1_061);
+            assert_eq!(leaf_folded.memory_census(), leaf_memory);
+            assert!(leaf_folded.auxiliary_linear().is_none());
+            assert!(leaf_folded.auxiliary_quadratic().is_none());
+            for (actual, coefficients) in
+                leaf_folded.leaf_linear().unwrap().iter().zip(statement.leaf_linear())
+            {
+                assert_eq!(actual, &fold_once(coefficients, challenge));
+            }
+            assert_eq!(allocation_tracker.active_elements(), 512);
+            assert_eq!(allocation_tracker.active_bytes(), 8_192);
+            assert!(compile_c6_residual_fused_folded_coefficients(
+                &installed,
+                &extraction,
+                &runtime,
+                &linear,
+                &relation,
+                &allocation_tracker,
+                proof_repetition,
+                C6ResidualFusedCoefficientFamily::Auxiliary,
+                challenge,
+            )
+            .is_err());
+            let leaf_semantic_digest = leaf_folded.semantic_digest();
+            let leaf_completion_digest = leaf_folded.completion_digest();
+            drop(leaf_folded);
+            assert_eq!(allocation_tracker.active_elements(), 0);
+
+            let auxiliary_folded = compile_c6_residual_fused_folded_coefficients(
+                &installed,
+                &extraction,
+                &runtime,
+                &linear,
+                &relation,
+                &allocation_tracker,
+                proof_repetition,
+                C6ResidualFusedCoefficientFamily::Auxiliary,
+                challenge,
+            )
+            .unwrap();
+            assert_eq!(auxiliary_folded.family(), C6ResidualFusedCoefficientFamily::Auxiliary);
+            assert_eq!(auxiliary_folded.target(), statement.target());
+            assert_eq!(auxiliary_folded.selected_coefficient_writes(), 124);
+            assert_eq!(auxiliary_folded.memory_census(), auxiliary_memory);
+            assert!(auxiliary_folded.leaf_linear().is_none());
+            for (actual, coefficients) in auxiliary_folded
+                .auxiliary_linear()
+                .unwrap()
+                .iter()
+                .zip(statement.auxiliary_linear())
+            {
+                assert_eq!(actual, &fold_once(coefficients, challenge));
+            }
+            for (actual, (_, coefficients)) in auxiliary_folded
+                .auxiliary_quadratic()
+                .unwrap()
+                .iter()
+                .zip(statement.auxiliary_quadratic())
+            {
+                assert_eq!(actual, &fold_once(coefficients, challenge));
+            }
+            assert_eq!(allocation_tracker.active_elements(), 48);
+            assert_eq!(leaf_semantic_digest, auxiliary_folded.semantic_digest());
+            assert_ne!(leaf_completion_digest, [0; 32]);
+            assert_ne!(auxiliary_folded.completion_digest(), [0; 32]);
+            assert_ne!(leaf_completion_digest, auxiliary_folded.completion_digest());
+            drop(auxiliary_folded);
+            assert_eq!(allocation_tracker.active_elements(), 0);
+        }
+        assert_eq!(allocation_tracker.peak_elements(), 512);
+        assert_eq!(allocation_tracker.peak_bytes(), 8_192);
+        let leaf_point = [Fp2::ZERO, Fp2::ONE, fp2(2), fp2(3), Fp2::ZERO, fp2(5), Fp2::ONE];
+        let auxiliary_point = [Fp2::ONE, Fp2::ZERO];
+        let mut cursor = C6ResidualEqPointCursor::new(&leaf_point, 128, "test").unwrap();
+        for row in (0..128u32).chain([63, 64, 127, 0]) {
+            let expected = leaf_point.iter().enumerate().fold(Fp2::ONE, |product, (bit, point)| {
+                product * if row & (1 << bit) == 0 { Fp2::ONE - *point } else { *point }
+            });
+            assert_eq!(cursor.at(row).unwrap(), expected);
+        }
+        for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
+            let statement = &compiled.statements()[usize::from(proof_repetition)];
+            let terminal = compile_c6_residual_fused_terminal_coefficients(
+                &installed,
+                &extraction,
+                &runtime,
+                &linear,
+                &relation,
+                proof_repetition,
+                &leaf_point,
+                &auxiliary_point,
+            )
+            .unwrap();
+            assert_eq!(terminal.proof_repetition(), proof_repetition);
+            assert_eq!(terminal.target(), statement.target());
+            assert_eq!(terminal.leaf_point(), &leaf_point);
+            assert_eq!(terminal.auxiliary_point(), &auxiliary_point);
+            assert_eq!(terminal.coefficient_writes(), 1_185);
+            assert_ne!(terminal.semantic_digest(), [0; 32]);
+            assert_ne!(terminal.digest(), [0; 32]);
+            for (actual, coefficients) in terminal.leaf_linear().iter().zip(statement.leaf_linear())
+            {
+                assert_eq!(*actual, crate::mle::eval_mle(coefficients, &leaf_point));
+            }
+            for (actual, coefficients) in
+                terminal.auxiliary_linear().iter().zip(statement.auxiliary_linear())
+            {
+                assert_eq!(*actual, crate::mle::eval_mle(coefficients, &auxiliary_point));
+            }
+            for (actual, (_, coefficients)) in
+                terminal.auxiliary_quadratic().iter().zip(statement.auxiliary_quadratic())
+            {
+                assert_eq!(*actual, crate::mle::eval_mle(coefficients, &auxiliary_point));
+            }
+            let changed_leaf_point = [fp2(7), fp2(11), fp2(13), fp2(17), fp2(19), fp2(23), fp2(29)];
+            let changed = compile_c6_residual_fused_terminal_coefficients(
+                &installed,
+                &extraction,
+                &runtime,
+                &linear,
+                &relation,
+                proof_repetition,
+                &changed_leaf_point,
+                &auxiliary_point,
+            )
+            .unwrap();
+            assert_ne!(terminal.digest(), changed.digest());
+        }
+        assert!(compile_c6_residual_fused_terminal_coefficients(
+            &installed,
+            &extraction,
+            &runtime,
+            &linear,
+            &relation,
+            0,
+            &leaf_point[..6],
+            &auxiliary_point,
+        )
+        .is_err());
+        assert!(compile_c6_residual_fused_terminal_coefficients(
+            &installed,
+            &extraction,
+            &runtime,
+            &linear,
+            &relation,
+            0,
+            &leaf_point,
+            &auxiliary_point[..1],
+        )
+        .is_err());
+        assert!(compile_c6_residual_fused_folded_coefficients(
+            &installed,
+            &extraction,
+            &runtime,
+            &linear,
+            &relation,
+            &allocation_tracker,
+            C6_RESIDUAL_PROOF_REPETITIONS,
+            C6ResidualFusedCoefficientFamily::Leaf,
+            fp2(89),
+        )
+        .is_err());
+        let mut oversized_manifest = manifest.clone();
+        oversized_manifest.leaf_entries = C6_RESIDUAL_SLOT_ENTRIES * 2;
+        assert!(c6_residual_fused_coefficient_memory_census(
+            &oversized_manifest,
+            C6ResidualFusedCoefficientFamily::Leaf,
+        )
+        .is_err());
+        let mut wrong_tracker_manifest = manifest.clone();
+        wrong_tracker_manifest.digest[0] ^= 1;
+        let wrong_tracker =
+            C6ResidualFusedCoefficientAllocationTracker::new(&wrong_tracker_manifest);
+        assert!(compile_c6_residual_fused_folded_coefficients(
+            &installed,
+            &extraction,
+            &runtime,
+            &linear,
+            &relation,
+            &wrong_tracker,
+            0,
+            C6ResidualFusedCoefficientFamily::Leaf,
+            fp2(97),
+        )
+        .is_err());
+        assert_eq!(wrong_tracker.active_elements(), 0);
+
+        let mut swapped_audit = C6ResidualAtomicEventAuditSink::new(0);
+        assert!(swapped_audit
+            .output(C6ResidualAtomicOutputEvent {
+                proof_repetition: 1,
+                output_ordinal: 0,
+                family: C6ResidualAtomicFamily::SourceGrammar,
+                weight: Fp2::ONE,
+                weighted_public_constant: Fp2::ZERO,
+            })
+            .is_err());
+        assert!(swapped_audit
+            .coefficient(C6ResidualAtomicCoefficientEvent {
+                proof_repetition: 1,
+                output_ordinal: 0,
+                family: C6ResidualAtomicFamily::SourceGrammar,
+                target: C6ResidualAtomicCoefficientTarget::LeafLinear { table: 0, row: 0 },
+                coefficient: Fp2::ONE,
+            })
+            .is_err());
+
+        for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
+            let mut provider_audit = C6ResidualAtomicEventAuditSink::new(proof_repetition);
+            let provider_summary = replay_c6_residual_atomic_events(
+                &installed,
+                &extraction,
+                &runtime,
+                &linear,
+                &relation,
+                proof_repetition,
+                &mut provider_audit,
+            )
+            .unwrap();
+            let mut client_audit = C6ResidualAtomicEventAuditSink::new(proof_repetition);
+            let client_summary = replay_c6_residual_atomic_events(
+                &installed,
+                &extraction,
+                &runtime,
+                &linear,
+                &relation,
+                proof_repetition,
+                &mut client_audit,
+            )
+            .unwrap();
+            assert_eq!(provider_summary, client_summary);
+            assert_eq!(provider_audit.digest(), client_audit.digest());
+            assert_ne!(provider_audit.digest(), [0; 32]);
+            assert_eq!(provider_summary.atomic_outputs(), 1_056);
+            assert_eq!(provider_summary.coefficient_writes(), 1_185);
+            assert_eq!(
+                provider_summary.family_coefficient_writes(),
+                &[21, 24, 48, 64, 28, 4, 964, 32]
+            );
+            assert_eq!(
+                provider_summary.target(),
+                compiled.statements()[usize::from(proof_repetition)].target()
+            );
         }
 
         let mut changed_claims = product_claims.clone();

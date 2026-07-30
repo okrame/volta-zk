@@ -1166,6 +1166,35 @@ open the full registry.  Lean and the executable budget must certify this
 amendment before the generic owner map or bundle v2 is implemented; v1 earns
 no production credit.
 
+Those two pre-code gates and the corresponding narrow Rust v2 checkpoint are
+now green.  Both proof repetitions own leaf slots `0..7` and auxiliary slots
+`0..15`, so each statement exposes **24** terminal tables and the pair exposes
+**48** references without adding a PCS slot.  The residual proof magic,
+version, proof domain and statement domain moved fail-closed to v2; a v1
+proof is never reinterpreted as v2.  The encoded proof remains exactly
+**4,244 B**.
+
+The post-root schedule, context, seed-commitment, terminal-linear-form and
+bundle domains likewise moved to v2.  The exact terminal stream domains, in
+`(proof repetition, MAC coordinate, plaintext/tag)` order, are:
+
+```text
+(0,0): 0xC65445524D000001 / 0xC65445524D000002
+(0,1): 0xC65445524D000101 / 0xC65445524D000102
+(1,0): 0xC65445524D010001 / 0xC65445524D010002
+(1,1): 0xC65445524D010101 / 0xC65445524D010102
+```
+
+All eight schedules replay exactly in installed triple-then-zero order, have
+distinct schedule digests and are disjoint from the two retained paired-alpha
+domains.  Schedule and terminal-form digests bind proof repetition, MAC
+coordinate and form kind; out-of-range indices, kind/coordinate/repetition
+swaps, changed roots, changed seeds and changed weights fail closed.  The
+workspace, all-target check and the complete `c6-trace` feature suite are
+green.  This checkpoint still receives no wire, timing or production credit:
+the PCS fixed-root typestate join and the complete T1 relation compiler remain
+mandatory.
+
 ## 4. Hidden Ligero vectors without an NTT trace
 
 Simply omitting `u_c` or `u_g` is unsound.  C6 commits to them before the
@@ -1590,6 +1619,17 @@ common-point suffixes.  This measured codec result still earns no
 production-response removal: the materialized coefficient tables are not the
 T1 relation compiler, the round messages have no implemented hiding layer,
 and the terminal factors have not yet entered the packed PCS assembly.
+
+The historical split-owner instance of that engine is superseded.  Its v2
+statement builder now requires the complete `8 leaf + 16 auxiliary` owner set
+in **each** proof repetition, and its scaled fixture exercises all 24 terminal
+claims on both chains.  The post-root reverse compiler consumes one of the
+eight `(proof repetition, MAC coordinate, kind)` schedules, while its v2
+digest prevents any old four-stream form from being admitted.  This is only
+the generic owner and challenge boundary: source grammar, reverse-DAG
+equations, randomized raw-copy, ProductClosure/ZeroBatch equations and
+semantic/padded-tail constraints must still be assembled by the separately
+preregistered T1 compiler.
 
 The wrapper PCS uses rate `1/8`, two independent fold/query chains and
 `s=86` queries per chain.  Under the conservative 64-active-polynomial,

@@ -49,16 +49,28 @@ const PAIRED_COEFFICIENT_STREAM_DOMAINS: [u64; 2] =
 const PAIRED_LEAF_WRAPPER_DOMAIN: &str = "volta-zk/c6/paired-residual-leaf-wrapper/v1";
 const PAIRED_CLOSURE_WRAPPER_DOMAIN: &str = "volta-zk/c6/paired-residual-closure-wrapper/v1";
 const PAIRED_AUXILIARY_WRAPPER_DOMAIN: &str = "volta-zk/c6/paired-residual-auxiliary-wrapper/v1";
-const TERMINAL_WEIGHT_SCHEDULE_DOMAIN: &str = "volta-zk/c6/residual-terminal-weight-schedule/v1";
-const TERMINAL_LINEAR_FORM_DOMAIN: &str = "volta-zk/c6/residual-terminal-linear-form/v1";
-const POST_ROOT_CONTEXT_SEED_DOMAIN: &str = "volta-zk/c6/residual-post-root-context-seed/v1";
-const POST_ROOT_CHALLENGES_DOMAIN: &str = "volta-zk/c6/residual-post-root-challenges/v1";
-const POST_ROOT_SEED_COMMITMENT_DOMAIN: &str = "volta-zk/c6/residual-post-root-seed-commitment/v1";
-const TERMINAL_WEIGHT_STREAM_DOMAINS: [[u64; 2]; 2] = [
-    [0xC6_54_45_52_4D_00_01, 0xC6_54_45_52_4D_00_02],
-    [0xC6_54_45_52_4D_01_01, 0xC6_54_45_52_4D_01_02],
+const TERMINAL_WEIGHT_SCHEDULE_DOMAIN: &str = "volta-zk/c6/residual-terminal-weight-schedule/v2";
+const TERMINAL_LINEAR_FORM_DOMAIN: &str = "volta-zk/c6/residual-terminal-linear-form/v2";
+const POST_ROOT_CONTEXT_SEED_DOMAIN: &str = "volta-zk/c6/residual-post-root-context-seed/v2";
+const POST_ROOT_CHALLENGES_DOMAIN: &str = "volta-zk/c6/residual-post-root-challenges/v2";
+const POST_ROOT_SEED_COMMITMENT_DOMAIN: &str = "volta-zk/c6/residual-post-root-seed-commitment/v2";
+const TERMINAL_WEIGHT_STREAM_DOMAINS: [[[u64; 2]; 2]; 2] = [
+    [
+        [0xC6_54_45_52_4D_00_00_01, 0xC6_54_45_52_4D_00_00_02],
+        [0xC6_54_45_52_4D_00_01_01, 0xC6_54_45_52_4D_00_01_02],
+    ],
+    [
+        [0xC6_54_45_52_4D_01_00_01, 0xC6_54_45_52_4D_01_00_02],
+        [0xC6_54_45_52_4D_01_01_01, 0xC6_54_45_52_4D_01_01_02],
+    ],
 ];
 
+pub const C6_RESIDUAL_PROOF_REPETITIONS: u8 = 2;
+pub const C6_RESIDUAL_MAC_COORDINATES: u8 = 2;
+pub const C6_RESIDUAL_TERMINAL_FORM_KINDS: usize = 2;
+pub const C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS: usize = C6_RESIDUAL_PROOF_REPETITIONS as usize
+    * C6_RESIDUAL_MAC_COORDINATES as usize
+    * C6_RESIDUAL_TERMINAL_FORM_KINDS;
 pub const C6_RESIDUAL_AUXILIARY_LANES: u32 = 16;
 pub const C6_RESIDUAL_AUXILIARY_PRODUCT_LANES: u32 = 12;
 pub const C6_RESIDUAL_AUXILIARY_ZERO_LANES: u32 = 4;
@@ -1183,7 +1195,8 @@ impl C6ResidualTerminalFormKind {
 pub struct C6ResidualTerminalWeightSchedule {
     operation_plan_artifact_digest: C6ResidualDigest,
     topology_digest: C6ResidualDigest,
-    repetition: u8,
+    proof_repetition: u8,
+    mac_coordinate: u8,
     kind: C6ResidualTerminalFormKind,
     product_weights: Vec<[Fp2; 3]>,
     zero_weights: Vec<Fp2>,
@@ -1193,13 +1206,18 @@ pub struct C6ResidualTerminalWeightSchedule {
 impl C6ResidualTerminalWeightSchedule {
     pub fn new(
         operation_plan: &C6InstalledOperationPlan,
-        repetition: u8,
+        proof_repetition: u8,
+        mac_coordinate: u8,
         kind: C6ResidualTerminalFormKind,
         product_weights: Vec<[Fp2; 3]>,
         zero_weights: Vec<Fp2>,
     ) -> C6ResidualResult<Self> {
-        if repetition >= 2 {
-            return Err(C6ResidualError::new("C6 residual terminal repetition is out of range"));
+        if proof_repetition >= C6_RESIDUAL_PROOF_REPETITIONS
+            || mac_coordinate >= C6_RESIDUAL_MAC_COORDINATES
+        {
+            return Err(C6ResidualError::new(
+                "C6 residual terminal proof repetition or MAC coordinate is out of range",
+            ));
         }
         let product_triples = installed_product_triple_count(operation_plan)?;
         if product_weights.len() as u64 != product_triples
@@ -1212,7 +1230,8 @@ impl C6ResidualTerminalWeightSchedule {
         let mut schedule = Self {
             operation_plan_artifact_digest: operation_plan.artifact_digest(),
             topology_digest: operation_plan.topology().topology_digest,
-            repetition,
+            proof_repetition,
+            mac_coordinate,
             kind,
             product_weights,
             zero_weights,
@@ -1223,8 +1242,12 @@ impl C6ResidualTerminalWeightSchedule {
         Ok(schedule)
     }
 
-    pub fn repetition(&self) -> u8 {
-        self.repetition
+    pub fn proof_repetition(&self) -> u8 {
+        self.proof_repetition
+    }
+
+    pub fn mac_coordinate(&self) -> u8 {
+        self.mac_coordinate
     }
 
     pub fn kind(&self) -> C6ResidualTerminalFormKind {
@@ -1244,7 +1267,8 @@ impl C6ResidualTerminalWeightSchedule {
     }
 
     fn validate(&self, operation_plan: &C6InstalledOperationPlan) -> C6ResidualResult<()> {
-        if self.repetition >= 2
+        if self.proof_repetition >= C6_RESIDUAL_PROOF_REPETITIONS
+            || self.mac_coordinate >= C6_RESIDUAL_MAC_COORDINATES
             || self.operation_plan_artifact_digest != operation_plan.artifact_digest()
             || self.topology_digest != operation_plan.topology().topology_digest
             || self.product_weights.len() as u64 != installed_product_triple_count(operation_plan)?
@@ -1267,7 +1291,7 @@ impl C6ResidualTerminalWeightSchedule {
 /// transition: it must release the fresh client seed only after obtaining a
 /// validated fixed-root token.  This bundle binds that root context and
 /// prevents downstream code from accepting provider-selected terminal
-/// weights.  Its four materialized schedules are a CPU/reference seam; the
+/// weights.  Its eight materialized schedules are a CPU/reference seam; the
 /// production compiler must eventually stream the same expansion.
 #[derive(Clone, PartialEq, Eq)]
 pub struct C6ResidualPostRootChallenges {
@@ -1276,7 +1300,7 @@ pub struct C6ResidualPostRootChallenges {
     topology_digest: C6ResidualDigest,
     batching_seed_commitment: C6ResidualDigest,
     context_seed: [u8; 32],
-    terminal_schedules: [C6ResidualTerminalWeightSchedule; 4],
+    terminal_schedules: [C6ResidualTerminalWeightSchedule; C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS],
     digest: C6ResidualDigest,
 }
 
@@ -1325,18 +1349,23 @@ impl C6ResidualPostRootChallenges {
         context_hasher.update(&batching_seed);
         let context_seed = *context_hasher.finalize().as_bytes();
 
-        let mut schedules = Vec::with_capacity(4);
-        for repetition in 0..2u8 {
-            for kind in [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag] {
-                schedules.push(derive_terminal_weight_schedule(
-                    operation_plan,
-                    repetition,
-                    kind,
-                    context_seed,
-                )?);
+        let mut schedules = Vec::with_capacity(C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS);
+        for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
+            for mac_coordinate in 0..C6_RESIDUAL_MAC_COORDINATES {
+                for kind in [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag]
+                {
+                    schedules.push(derive_terminal_weight_schedule(
+                        operation_plan,
+                        proof_repetition,
+                        mac_coordinate,
+                        kind,
+                        context_seed,
+                    )?);
+                }
             }
         }
-        let terminal_schedules: [C6ResidualTerminalWeightSchedule; 4] = schedules
+        let terminal_schedules: [C6ResidualTerminalWeightSchedule;
+            C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS] = schedules
             .try_into()
             .map_err(|_| C6ResidualError::new("C6 residual terminal expansion lost a schedule"))?;
         let mut bundle = Self {
@@ -1367,15 +1396,27 @@ impl C6ResidualPostRootChallenges {
 
     pub fn terminal_schedule(
         &self,
-        repetition: u8,
+        proof_repetition: u8,
+        mac_coordinate: u8,
         kind: C6ResidualTerminalFormKind,
     ) -> C6ResidualResult<&C6ResidualTerminalWeightSchedule> {
-        let index = usize::from(repetition)
-            .checked_mul(2)
+        if proof_repetition >= C6_RESIDUAL_PROOF_REPETITIONS
+            || mac_coordinate >= C6_RESIDUAL_MAC_COORDINATES
+        {
+            return Err(C6ResidualError::new(
+                "C6 residual terminal schedule proof repetition or MAC coordinate is out of range",
+            ));
+        }
+        let index = usize::from(proof_repetition)
+            .checked_mul(usize::from(C6_RESIDUAL_MAC_COORDINATES))
+            .and_then(|base| base.checked_add(usize::from(mac_coordinate)))
+            .and_then(|base| base.checked_mul(C6_RESIDUAL_TERMINAL_FORM_KINDS))
             .and_then(|base| base.checked_add(kind.stream_index()))
             .ok_or_else(|| C6ResidualError::new("C6 residual terminal schedule index overflows"))?;
         self.terminal_schedules.get(index).ok_or_else(|| {
-            C6ResidualError::new("C6 residual terminal schedule repetition is out of range")
+            C6ResidualError::new(
+                "C6 residual terminal schedule proof repetition or MAC coordinate is out of range",
+            )
         })
     }
 
@@ -1390,15 +1431,22 @@ impl C6ResidualPostRootChallenges {
         {
             return Err(C6ResidualError::new("C6 residual post-root challenge binding mismatch"));
         }
-        for repetition in 0..2u8 {
-            for kind in [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag] {
-                let schedule = self.terminal_schedule(repetition, kind)?;
-                if schedule.repetition() != repetition || schedule.kind() != kind {
-                    return Err(C6ResidualError::new(
-                        "C6 residual terminal challenge streams are swapped",
-                    ));
+        for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
+            for mac_coordinate in 0..C6_RESIDUAL_MAC_COORDINATES {
+                for kind in [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag]
+                {
+                    let schedule =
+                        self.terminal_schedule(proof_repetition, mac_coordinate, kind)?;
+                    if schedule.proof_repetition() != proof_repetition
+                        || schedule.mac_coordinate() != mac_coordinate
+                        || schedule.kind() != kind
+                    {
+                        return Err(C6ResidualError::new(
+                            "C6 residual terminal challenge streams are swapped",
+                        ));
+                    }
+                    schedule.validate(operation_plan)?;
                 }
-                schedule.validate(operation_plan)?;
             }
         }
         Ok(())
@@ -1434,7 +1482,8 @@ pub struct C6CompiledTerminalLinearForm {
     operation_plan_artifact_digest: C6ResidualDigest,
     topology: C6OperationPlanTopologyIdentity,
     instance: C6OperationPlanInstanceIdentity,
-    repetition: u8,
+    proof_repetition: u8,
+    mac_coordinate: u8,
     kind: C6ResidualTerminalFormKind,
     schedule_digest: C6ResidualDigest,
     leaf_coefficients: Vec<Fp2>,
@@ -1449,7 +1498,8 @@ impl fmt::Debug for C6CompiledTerminalLinearForm {
             .field("operation_plan_artifact_digest", &self.operation_plan_artifact_digest)
             .field("topology", &self.topology)
             .field("instance", &self.instance)
-            .field("repetition", &self.repetition)
+            .field("proof_repetition", &self.proof_repetition)
+            .field("mac_coordinate", &self.mac_coordinate)
             .field("kind", &self.kind)
             .field("schedule_digest", &self.schedule_digest)
             .field("leaf_coefficients", &self.leaf_coefficients.len())
@@ -1467,7 +1517,8 @@ impl C6CompiledTerminalLinearForm {
         extraction: &C6DecodedInstanceExtractionPlan,
         runtime: &C6RuntimeInstanceValues,
         challenges: &C6ResidualPostRootChallenges,
-        repetition: u8,
+        proof_repetition: u8,
+        mac_coordinate: u8,
         kind: C6ResidualTerminalFormKind,
     ) -> C6ResidualResult<Self> {
         challenges.validate(operation_plan)?;
@@ -1475,7 +1526,7 @@ impl C6CompiledTerminalLinearForm {
             operation_plan,
             extraction,
             runtime,
-            challenges.terminal_schedule(repetition, kind)?,
+            challenges.terminal_schedule(proof_repetition, mac_coordinate, kind)?,
         )
     }
 
@@ -1537,7 +1588,7 @@ impl C6CompiledTerminalLinearForm {
         hasher.update(&operation_plan.artifact_digest());
         hasher.update(&reverse.topology.topology_digest);
         hasher.update(&reverse.instance.instance_digest);
-        hasher.update(&[schedule.repetition, schedule.kind as u8]);
+        hasher.update(&[schedule.proof_repetition, schedule.mac_coordinate, schedule.kind as u8]);
         hasher.update(&schedule.digest);
         hash_fp2(&mut hasher, reverse.public_plaintext);
         hasher.update(&(reverse.leaf_coefficients.len() as u64).to_le_bytes());
@@ -1549,7 +1600,8 @@ impl C6CompiledTerminalLinearForm {
             operation_plan_artifact_digest: operation_plan.artifact_digest(),
             topology: reverse.topology,
             instance: reverse.instance,
-            repetition: schedule.repetition,
+            proof_repetition: schedule.proof_repetition,
+            mac_coordinate: schedule.mac_coordinate,
             kind: schedule.kind,
             schedule_digest: schedule.digest,
             leaf_coefficients: reverse.leaf_coefficients,
@@ -1566,8 +1618,12 @@ impl C6CompiledTerminalLinearForm {
         self.instance
     }
 
-    pub fn repetition(&self) -> u8 {
-        self.repetition
+    pub fn proof_repetition(&self) -> u8 {
+        self.proof_repetition
+    }
+
+    pub fn mac_coordinate(&self) -> u8 {
+        self.mac_coordinate
     }
 
     pub fn kind(&self) -> C6ResidualTerminalFormKind {
@@ -1607,7 +1663,7 @@ fn terminal_weight_schedule_digest(
     let mut hasher = blake3::Hasher::new_derive_key(TERMINAL_WEIGHT_SCHEDULE_DOMAIN);
     hasher.update(&schedule.operation_plan_artifact_digest);
     hasher.update(&schedule.topology_digest);
-    hasher.update(&[schedule.repetition, schedule.kind as u8]);
+    hasher.update(&[schedule.proof_repetition, schedule.mac_coordinate, schedule.kind as u8]);
     hasher.update(&(schedule.product_weights.len() as u64).to_le_bytes());
     for (triple, weights) in schedule.product_weights.iter().enumerate() {
         hasher.update(&(triple as u64).to_le_bytes());
@@ -1625,13 +1681,15 @@ fn terminal_weight_schedule_digest(
 
 fn derive_terminal_weight_schedule(
     operation_plan: &C6InstalledOperationPlan,
-    repetition: u8,
+    proof_repetition: u8,
+    mac_coordinate: u8,
     kind: C6ResidualTerminalFormKind,
     context_seed: [u8; 32],
 ) -> C6ResidualResult<C6ResidualTerminalWeightSchedule> {
     let domain = *TERMINAL_WEIGHT_STREAM_DOMAINS
-        .get(usize::from(repetition))
-        .and_then(|domains| domains.get(kind.stream_index()))
+        .get(usize::from(proof_repetition))
+        .and_then(|coordinates| coordinates.get(usize::from(mac_coordinate)))
+        .and_then(|kinds| kinds.get(kind.stream_index()))
         .ok_or_else(|| C6ResidualError::new("C6 residual terminal stream domain is missing"))?;
     let product_triples = usize::try_from(installed_product_triple_count(operation_plan)?)
         .map_err(|_| {
@@ -1654,7 +1712,8 @@ fn derive_terminal_weight_schedule(
     }
     C6ResidualTerminalWeightSchedule::new(
         operation_plan,
-        repetition,
+        proof_repetition,
+        mac_coordinate,
         kind,
         product_weights,
         zero_weights,
@@ -1670,7 +1729,11 @@ fn post_root_challenges_digest(challenges: &C6ResidualPostRootChallenges) -> C6R
     hasher.update(&challenges.context_seed);
     hasher.update(&(challenges.terminal_schedules.len() as u64).to_le_bytes());
     for schedule in &challenges.terminal_schedules {
-        hasher.update(&[schedule.repetition(), schedule.kind() as u8]);
+        hasher.update(&[
+            schedule.proof_repetition(),
+            schedule.mac_coordinate(),
+            schedule.kind() as u8,
+        ]);
         hasher.update(&schedule.digest());
     }
     *hasher.finalize().as_bytes()
@@ -3418,6 +3481,7 @@ mod tests {
         let zero_only = C6ResidualTerminalWeightSchedule::new(
             installed,
             0,
+            0,
             C6ResidualTerminalFormKind::Plaintext,
             vec![[Fp2::ZERO; 3]; 2],
             zero_weights.to_vec(),
@@ -3436,6 +3500,7 @@ mod tests {
         let plaintext_schedule = C6ResidualTerminalWeightSchedule::new(
             installed,
             1,
+            1,
             C6ResidualTerminalFormKind::Plaintext,
             product_weights.clone(),
             terminal_zero_weights.clone(),
@@ -3444,12 +3509,33 @@ mod tests {
         let tag_schedule = C6ResidualTerminalWeightSchedule::new(
             installed,
             1,
+            1,
             C6ResidualTerminalFormKind::Tag,
             product_weights.clone(),
             terminal_zero_weights.clone(),
         )
         .unwrap();
+        let other_coordinate_schedule = C6ResidualTerminalWeightSchedule::new(
+            installed,
+            1,
+            0,
+            C6ResidualTerminalFormKind::Plaintext,
+            product_weights.clone(),
+            terminal_zero_weights.clone(),
+        )
+        .unwrap();
+        let other_repetition_schedule = C6ResidualTerminalWeightSchedule::new(
+            installed,
+            0,
+            1,
+            C6ResidualTerminalFormKind::Plaintext,
+            product_weights.clone(),
+            terminal_zero_weights.clone(),
+        )
+        .unwrap();
         assert_ne!(plaintext_schedule.digest(), tag_schedule.digest());
+        assert_ne!(plaintext_schedule.digest(), other_coordinate_schedule.digest());
+        assert_ne!(plaintext_schedule.digest(), other_repetition_schedule.digest());
         let plaintext = C6CompiledTerminalLinearForm::compile(
             installed,
             extraction,
@@ -3460,10 +3546,20 @@ mod tests {
         let tag =
             C6CompiledTerminalLinearForm::compile(installed, extraction, runtime, &tag_schedule)
                 .unwrap();
+        let other_coordinate = C6CompiledTerminalLinearForm::compile(
+            installed,
+            extraction,
+            runtime,
+            &other_coordinate_schedule,
+        )
+        .unwrap();
         assert_eq!(plaintext.leaf_coefficients(), tag.leaf_coefficients());
+        assert_eq!(plaintext.leaf_coefficients(), other_coordinate.leaf_coefficients());
         assert_eq!(tag.public_plaintext(), Fp2::ZERO);
         assert_ne!(plaintext.linear_form_digest(), tag.linear_form_digest());
-        assert_eq!(plaintext.repetition(), 1);
+        assert_ne!(plaintext.linear_form_digest(), other_coordinate.linear_form_digest());
+        assert_eq!(plaintext.proof_repetition(), 1);
+        assert_eq!(plaintext.mac_coordinate(), 1);
         assert_eq!(plaintext.kind(), C6ResidualTerminalFormKind::Plaintext);
         assert_eq!(plaintext.schedule_digest(), plaintext_schedule.digest());
         assert_eq!(plaintext.leaf_coefficients()[3], Fp2::ZERO);
@@ -3521,51 +3617,72 @@ mod tests {
             C6ResidualPostRootChallenges::derive(installed, fixed_roots_digest, batching_seed,)
                 .unwrap()
         );
+        let terminal_domains = TERMINAL_WEIGHT_STREAM_DOMAINS
+            .iter()
+            .flat_map(|coordinates| coordinates.iter())
+            .flat_map(|kinds| kinds.iter())
+            .copied()
+            .collect::<BTreeSet<_>>();
+        let alpha_domains = PAIRED_COEFFICIENT_STREAM_DOMAINS.into_iter().collect::<BTreeSet<_>>();
+        assert_eq!(terminal_domains.len(), C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS);
+        assert!(terminal_domains.is_disjoint(&alpha_domains));
         let mut schedule_digests = Vec::new();
-        for repetition in 0..2u8 {
-            for kind in [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag] {
-                let schedule = post_root.terminal_schedule(repetition, kind).unwrap();
-                assert_eq!(schedule.repetition(), repetition);
-                assert_eq!(schedule.kind(), kind);
-                assert_eq!(schedule.product_weights().len(), 2);
-                assert_eq!(schedule.zero_weights().len(), 2);
-                schedule_digests.push(schedule.digest());
-
-                let compiled_post_root = C6CompiledTerminalLinearForm::compile_post_root(
-                    installed, extraction, runtime, &post_root, repetition, kind,
-                )
-                .unwrap();
-                let compiled_reference =
-                    C6CompiledTerminalLinearForm::compile(installed, extraction, runtime, schedule)
+        for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
+            for mac_coordinate in 0..C6_RESIDUAL_MAC_COORDINATES {
+                for kind in [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag]
+                {
+                    let schedule = post_root
+                        .terminal_schedule(proof_repetition, mac_coordinate, kind)
                         .unwrap();
-                assert_eq!(
-                    compiled_post_root.linear_form_digest(),
-                    compiled_reference.linear_form_digest()
-                );
+                    assert_eq!(schedule.proof_repetition(), proof_repetition);
+                    assert_eq!(schedule.mac_coordinate(), mac_coordinate);
+                    assert_eq!(schedule.kind(), kind);
+                    assert_eq!(schedule.product_weights().len(), 2);
+                    assert_eq!(schedule.zero_weights().len(), 2);
+                    schedule_digests.push(schedule.digest());
+
+                    let compiled_post_root = C6CompiledTerminalLinearForm::compile_post_root(
+                        installed,
+                        extraction,
+                        runtime,
+                        &post_root,
+                        proof_repetition,
+                        mac_coordinate,
+                        kind,
+                    )
+                    .unwrap();
+                    let compiled_reference = C6CompiledTerminalLinearForm::compile(
+                        installed, extraction, runtime, schedule,
+                    )
+                    .unwrap();
+                    assert_eq!(
+                        compiled_post_root.linear_form_digest(),
+                        compiled_reference.linear_form_digest()
+                    );
+
+                    let mut reference_stream = FpStream::domain_separated(
+                        post_root.context_seed,
+                        TERMINAL_WEIGHT_STREAM_DOMAINS[usize::from(proof_repetition)]
+                            [usize::from(mac_coordinate)][kind.stream_index()],
+                    );
+                    for weights in schedule.product_weights() {
+                        assert_eq!(
+                            *weights,
+                            [
+                                reference_stream.next_fp2(),
+                                reference_stream.next_fp2(),
+                                reference_stream.next_fp2(),
+                            ]
+                        );
+                    }
+                    for weight in schedule.zero_weights() {
+                        assert_eq!(*weight, reference_stream.next_fp2());
+                    }
+                }
             }
         }
         let unique_schedule_digests = schedule_digests.iter().copied().collect::<BTreeSet<_>>();
-        assert_eq!(unique_schedule_digests.len(), 4);
-
-        let reference_schedule =
-            post_root.terminal_schedule(0, C6ResidualTerminalFormKind::Plaintext).unwrap();
-        let mut reference_stream = FpStream::domain_separated(
-            post_root.context_seed,
-            TERMINAL_WEIGHT_STREAM_DOMAINS[0][0],
-        );
-        for weights in reference_schedule.product_weights() {
-            assert_eq!(
-                *weights,
-                [
-                    reference_stream.next_fp2(),
-                    reference_stream.next_fp2(),
-                    reference_stream.next_fp2(),
-                ]
-            );
-        }
-        for weight in reference_schedule.zero_weights() {
-            assert_eq!(*weight, reference_stream.next_fp2());
-        }
+        assert_eq!(unique_schedule_digests.len(), C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS);
 
         let changed_root =
             C6ResidualPostRootChallenges::derive(installed, [0xB9; 32], batching_seed).unwrap();
@@ -3577,15 +3694,41 @@ mod tests {
         assert_ne!(changed_root.context_seed, post_root.context_seed);
         assert_ne!(changed_seed.context_seed, post_root.context_seed);
         assert!(C6ResidualPostRootChallenges::derive(installed, [0; 32], batching_seed).is_err());
-        assert!(post_root.terminal_schedule(2, C6ResidualTerminalFormKind::Plaintext).is_err());
+        assert!(post_root.terminal_schedule(2, 0, C6ResidualTerminalFormKind::Plaintext).is_err());
+        assert!(post_root.terminal_schedule(0, 2, C6ResidualTerminalFormKind::Plaintext).is_err());
 
-        let mut swapped_streams = post_root.clone();
-        swapped_streams.terminal_schedules.swap(0, 1);
+        let mut swapped_kinds = post_root.clone();
+        swapped_kinds.terminal_schedules.swap(0, 1);
         assert!(C6CompiledTerminalLinearForm::compile_post_root(
             installed,
             extraction,
             runtime,
-            &swapped_streams,
+            &swapped_kinds,
+            0,
+            0,
+            C6ResidualTerminalFormKind::Plaintext,
+        )
+        .is_err());
+        let mut swapped_coordinates = post_root.clone();
+        swapped_coordinates.terminal_schedules.swap(0, 2);
+        assert!(C6CompiledTerminalLinearForm::compile_post_root(
+            installed,
+            extraction,
+            runtime,
+            &swapped_coordinates,
+            0,
+            0,
+            C6ResidualTerminalFormKind::Plaintext,
+        )
+        .is_err());
+        let mut swapped_repetitions = post_root.clone();
+        swapped_repetitions.terminal_schedules.swap(0, 4);
+        assert!(C6CompiledTerminalLinearForm::compile_post_root(
+            installed,
+            extraction,
+            runtime,
+            &swapped_repetitions,
+            0,
             0,
             C6ResidualTerminalFormKind::Plaintext,
         )
@@ -3598,12 +3741,14 @@ mod tests {
             runtime,
             &changed_weight,
             0,
+            0,
             C6ResidualTerminalFormKind::Plaintext,
         )
         .is_err());
 
         assert!(C6ResidualTerminalWeightSchedule::new(
             installed,
+            0,
             0,
             C6ResidualTerminalFormKind::Plaintext,
             vec![[Fp2::ZERO; 3]; 1],
@@ -3612,6 +3757,16 @@ mod tests {
         .is_err());
         assert!(C6ResidualTerminalWeightSchedule::new(
             installed,
+            2,
+            0,
+            C6ResidualTerminalFormKind::Plaintext,
+            vec![[Fp2::ZERO; 3]; 2],
+            zero_weights.to_vec(),
+        )
+        .is_err());
+        assert!(C6ResidualTerminalWeightSchedule::new(
+            installed,
+            0,
             2,
             C6ResidualTerminalFormKind::Plaintext,
             vec![[Fp2::ZERO; 3]; 2],

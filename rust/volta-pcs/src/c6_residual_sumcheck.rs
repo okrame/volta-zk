@@ -20,12 +20,20 @@ use volta_proto::mle::{eval_mle, fold_low, lagrange3};
 
 use crate::c6_wrapper_pcs::{C6_DELTA_RESIDUAL_COHORT_ID, C6_WRAPPER_AUXILIARY_COHORT_ID};
 
-const PROOF_MAGIC: [u8; 8] = *b"C6RSC1\0\0";
-const PROOF_VERSION: u16 = 1;
-const PROOF_DOMAIN: &str = "volta-zk/c6/residual-sumcheck-proof/v1";
-const STATEMENT_DOMAIN: &str = "volta-zk/c6/residual-sumcheck-statement/v1";
+const PROOF_MAGIC: [u8; 8] = *b"C6RSC2\0\0";
+const PROOF_VERSION: u16 = 2;
+const PROOF_DOMAIN: &str = "volta-zk/c6/residual-sumcheck-proof/v2";
+const STATEMENT_DOMAIN: &str = "volta-zk/c6/residual-sumcheck-statement/v2";
 
 pub const C6_RESIDUAL_SUMCHECK_REPETITIONS: usize = 2;
+pub const C6_RESIDUAL_LEAF_TABLES_PER_REPETITION: usize = 8;
+pub const C6_RESIDUAL_AUXILIARY_TABLES_PER_REPETITION: usize = 16;
+pub const C6_RESIDUAL_TABLES_PER_REPETITION: usize =
+    C6_RESIDUAL_LEAF_TABLES_PER_REPETITION + C6_RESIDUAL_AUXILIARY_TABLES_PER_REPETITION;
+const C6_RESIDUAL_LEAF_TABLE_SLOTS: [u16; C6_RESIDUAL_LEAF_TABLES_PER_REPETITION] =
+    [0, 1, 2, 3, 4, 5, 6, 7];
+const C6_RESIDUAL_AUXILIARY_TABLE_SLOTS: [u16; C6_RESIDUAL_AUXILIARY_TABLES_PER_REPETITION] =
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 pub const C6_RESIDUAL_LEAF_ROUNDS: usize = 23;
 pub const C6_RESIDUAL_AUXILIARY_ROUNDS: usize = 15;
 pub const C6_RESIDUAL_AUXILIARY_LOCAL_ACTIVATION: usize =
@@ -271,7 +279,7 @@ impl C6ResidualSumcheckStatement {
             || auxiliary_tables != expected_tables(repetition, C6ResidualSumcheckFamily::Auxiliary)?
         {
             return Err(C6ResidualSumcheckError::new(
-                "C6 residual table owners do not match the frozen coordinate",
+                "C6 residual table owners do not match the frozen complete relation",
             ));
         }
         let leaf = C6ResidualSumcheckFamilyStatement {
@@ -1277,10 +1285,8 @@ fn expected_tables(
     family: C6ResidualSumcheckFamily,
 ) -> Result<Vec<C6ResidualTableRef>> {
     let slots: &[u16] = match (repetition, family) {
-        (0, C6ResidualSumcheckFamily::LeafRaw) => &[0, 1, 2, 3, 7],
-        (1, C6ResidualSumcheckFamily::LeafRaw) => &[0, 4, 5, 6, 7],
-        (0, C6ResidualSumcheckFamily::Auxiliary) => &[0, 1, 2, 3, 4, 5, 12, 13],
-        (1, C6ResidualSumcheckFamily::Auxiliary) => &[6, 7, 8, 9, 10, 11, 14, 15],
+        (0 | 1, C6ResidualSumcheckFamily::LeafRaw) => &C6_RESIDUAL_LEAF_TABLE_SLOTS,
+        (0 | 1, C6ResidualSumcheckFamily::Auxiliary) => &C6_RESIDUAL_AUXILIARY_TABLE_SLOTS,
         _ => {
             return Err(C6ResidualSumcheckError::new(
                 "C6 residual table repetition is out of range",
@@ -1454,17 +1460,17 @@ mod tests {
     }
 
     fn scaled_fixture(repetition: u8) -> (C6ResidualSumcheckStatement, C6ResidualSumcheckWitness) {
-        let leaf_tables = (0..5)
+        let leaf_tables = (0..C6_RESIDUAL_LEAF_TABLES_PER_REPETITION as u64)
             .map(|table_index| {
                 table(LEAF_ROUNDS, 10_000 * u64::from(repetition) + 1_000 * table_index + 10)
             })
             .collect::<Vec<_>>();
-        let auxiliary_tables = (0..8)
+        let auxiliary_tables = (0..C6_RESIDUAL_AUXILIARY_TABLES_PER_REPETITION as u64)
             .map(|table_index| {
                 table(AUXILIARY_ROUNDS, 20_000 * u64::from(repetition) + 1_000 * table_index + 20)
             })
             .collect::<Vec<_>>();
-        let leaf_terms = (0..5u8)
+        let leaf_terms = (0..C6_RESIDUAL_LEAF_TABLES_PER_REPETITION as u8)
             .map(|table_index| {
                 C6ResidualSumcheckTerm::linear(
                     table_index,
@@ -1475,7 +1481,7 @@ mod tests {
                 )
             })
             .collect::<Vec<_>>();
-        let mut auxiliary_terms = (0..8u8)
+        let mut auxiliary_terms = (0..C6_RESIDUAL_AUXILIARY_TABLES_PER_REPETITION as u8)
             .map(|table_index| {
                 C6ResidualSumcheckTerm::linear(
                     table_index,
@@ -1639,19 +1645,24 @@ mod tests {
             }
             let point = coordinator.finish().unwrap();
             let (proof, claims) = state.finish().unwrap();
-            assert_eq!(claims.len(), 13);
-            for (claim, source) in claims[..5].iter().zip(witness.leaf_tables()) {
+            assert_eq!(claims.len(), C6_RESIDUAL_TABLES_PER_REPETITION);
+            for (claim, source) in
+                claims[..C6_RESIDUAL_LEAF_TABLES_PER_REPETITION].iter().zip(witness.leaf_tables())
+            {
                 assert_eq!(claim.value, eval_mle(source, &claim.point));
             }
-            for (claim, source) in claims[5..].iter().zip(witness.auxiliary_tables()) {
+            for (claim, source) in claims[C6_RESIDUAL_LEAF_TABLES_PER_REPETITION..]
+                .iter()
+                .zip(witness.auxiliary_tables())
+            {
                 assert_eq!(claim.value, eval_mle(source, &claim.point));
             }
             let residual_point = point.cohort_point(specs[1]).unwrap();
             let auxiliary_point = point.cohort_point(specs[2]).unwrap();
-            for claim in &claims[..5] {
+            for claim in &claims[..C6_RESIDUAL_LEAF_TABLES_PER_REPETITION] {
                 assert_eq!(claim.wrapper_point(), residual_point);
             }
-            for claim in &claims[5..] {
+            for claim in &claims[C6_RESIDUAL_LEAF_TABLES_PER_REPETITION..] {
                 assert_eq!(claim.wrapper_point(), auxiliary_point);
             }
             repetition_proofs.push(proof);
@@ -1856,15 +1867,16 @@ mod tests {
         )
         .is_err());
 
-        let mut cross_coordinate = expected_tables(0, C6ResidualSumcheckFamily::Auxiliary).unwrap();
-        cross_coordinate[0].slot = 6;
+        let mut wrong_auxiliary_owner =
+            expected_tables(0, C6ResidualSumcheckFamily::Auxiliary).unwrap();
+        wrong_auxiliary_owner[0].slot = 16;
         assert!(C6ResidualSumcheckStatement::build(
             0,
             Fp2::ZERO,
             LEAF_ROUNDS,
             AUXILIARY_ROUNDS,
             expected_tables(0, C6ResidualSumcheckFamily::LeafRaw).unwrap(),
-            cross_coordinate,
+            wrong_auxiliary_owner,
             statement.leaf().terms().to_vec(),
             statement.auxiliary().terms().to_vec(),
         )
@@ -1937,7 +1949,7 @@ mod tests {
     }
 
     #[test]
-    fn statement_digest_binds_coefficients_target_and_coordinate() {
+    fn statement_digest_binds_coefficients_target_and_complete_repetition() {
         let (statement, _) = scaled_fixture(0);
         let mut changed_terms = statement.leaf().terms().to_vec();
         match &mut changed_terms[0] {
@@ -1968,28 +1980,29 @@ mod tests {
         .unwrap();
         assert_ne!(changed_target.digest(), statement.digest());
 
-        let (other_coordinate, _) = scaled_fixture(1);
-        assert_ne!(other_coordinate.digest(), statement.digest());
+        let (other_repetition, _) = scaled_fixture(1);
+        assert_ne!(other_repetition.digest(), statement.digest());
         assert_eq!(
             statement.leaf().tables().iter().map(|table| table.slot).collect::<Vec<_>>(),
-            vec![0, 1, 2, 3, 7]
+            (0..8).collect::<Vec<_>>()
         );
         assert_eq!(
-            other_coordinate.leaf().tables().iter().map(|table| table.slot).collect::<Vec<_>>(),
-            vec![0, 4, 5, 6, 7]
+            other_repetition.leaf().tables().iter().map(|table| table.slot).collect::<Vec<_>>(),
+            (0..8).collect::<Vec<_>>()
         );
         assert_eq!(
             statement.auxiliary().tables().iter().map(|table| table.slot).collect::<Vec<_>>(),
-            vec![0, 1, 2, 3, 4, 5, 12, 13]
+            (0..16).collect::<Vec<_>>()
         );
         assert_eq!(
-            other_coordinate
+            other_repetition
                 .auxiliary()
                 .tables()
                 .iter()
                 .map(|table| table.slot)
                 .collect::<Vec<_>>(),
-            vec![6, 7, 8, 9, 10, 11, 14, 15]
+            (0..16).collect::<Vec<_>>()
         );
+        assert_eq!(C6_RESIDUAL_TABLES_PER_REPETITION, 24);
     }
 }

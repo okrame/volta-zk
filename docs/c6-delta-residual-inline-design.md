@@ -2,8 +2,9 @@
 
 Status: **OWNER REQUIREMENTS FROZEN; Q=121 CONTINGENCY ACTIVATED BEFORE
 IMPLEMENTATION; FORMAL SEAM / ROOFLINE / PAIRED CODEC / PRODUCTION SOURCE
-CENSUS / PAIRED COMPLETE SOURCE WITNESS GREEN; OPERATION DAG/CACHE/WRAPPER
-PENDING; LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
+CENSUS / PAIRED COMPLETE SOURCE WITNESS / INDEPENDENT EXACT-INSTANCE
+OPERATION DAG GREEN; PARAMETERIZED COMPILED PLAN/CACHE/WRAPPER PENDING; LOCAL
+IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
 accepted C4/T1 `rate=1/4,Q=120` inline profile.  It does not reopen or rewrite
@@ -641,6 +642,69 @@ pre-existing untracked user note is named explicitly and excluded.  This
 closes independent operation-plan identity only: the record still uses the
 local mock PCG trace compiler and carries no inline-prover, final-byte,
 session, real-PCG or hardware timing verdict.
+
+#### 3.4.2 Parameterized compiled-plan seam frozen before code
+
+The v1 identity above deliberately hashes the exact `Fp2` value of every
+public node and every scale scalar.  That is correct evidence that the
+prover and verifier executed the same authenticated-value program in the
+frozen run.  It is not, however, a reusable model/build-global plan:
+transcript challenges and public proof values change between responses, so
+the v1 digest can change while the operation topology remains identical.
+Treating the clean v1 record as reusable client parameters would therefore
+be an engineering error.  The record remains valid and immutable in its
+exact-instance scope.
+
+Before a compiled residual plan or wrapper backend is implemented, C6 adds a
+versioned parameterized identity with two separate bindings:
+
+```text
+topology_digest:
+    source ordinals, structural zero, public-input slots,
+    Add/Sub operand order, Scale(input, scalar-input slot),
+    ProductClosure boundaries/roots and ZeroBatch roots
+
+instance_digest:
+    the canonical ordered `(slot kind, slot ordinal, Fp2 value)` stream
+    for all public-node and scale-scalar slots in this response
+```
+
+`topology_digest` contains no response-specific field value.  A structural
+zero created by the authenticated-value `ZERO` constructor is distinct from
+a public-input slot whose runtime value happens to be zero; otherwise a
+zero challenge or proof value could change graph sharing.  Public and scalar
+slot ordinals are assigned in canonical post-order, not raw allocation
+order.  The exact-instance v1 digest may continue to be emitted
+diagnostically, but v2 topology equality and the per-response instance
+binding are separate fields and may not substitute for one another.
+
+Every certificate binds the v2 topology version/digest and the response's
+instance digest after the public values and transcript prefix that determine
+it.  The client derives the slot values independently from the retained
+public proof and its own challenge transcript; the provider may not transmit
+an instance-value vector or choose a client coefficient table.  The wrapper
+proves its residual evaluation against that same ordered instance stream.
+Changing, deleting, duplicating or reordering a slot must reject.
+
+The first implementation checkpoint must satisfy all of the following before
+the compiled plan is admitted:
+
+1. independently captured prover and verifier traces have identical v2
+   topology and instance identities for one response;
+2. two otherwise identical full T1 runs with distinct transcript seeds have
+   identical topology identities and different instance identities;
+3. a permanent zero-valued public-slot test proves it does not alias the
+   structural-zero node;
+4. an exact opcode/operand/root encoding census establishes whether any
+   client-received topology bytes fit the remaining `73,257,070-B` setup
+   allowance.  No compression ratio is credited before a canonical decoder
+   and measured artifact exist.
+
+This checkpoint still does not authorize an inline trace compiler.  The
+diagnostic trace remains outside the timed prover.  If the client cannot
+regenerate the public slot stream or the topology cannot be represented
+within setup without adding response-linear traffic, C6 records the
+obstruction and hard-stops before wrapper benchmarking.
 
 ## 4. Hidden Ligero vectors without an NTT trace
 

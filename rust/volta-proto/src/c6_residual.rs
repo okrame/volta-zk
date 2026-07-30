@@ -51,6 +51,13 @@ const PAIRED_CLOSURE_WRAPPER_DOMAIN: &str = "volta-zk/c6/paired-residual-closure
 const PAIRED_AUXILIARY_WRAPPER_DOMAIN: &str = "volta-zk/c6/paired-residual-auxiliary-wrapper/v1";
 const TERMINAL_WEIGHT_SCHEDULE_DOMAIN: &str = "volta-zk/c6/residual-terminal-weight-schedule/v1";
 const TERMINAL_LINEAR_FORM_DOMAIN: &str = "volta-zk/c6/residual-terminal-linear-form/v1";
+const POST_ROOT_CONTEXT_SEED_DOMAIN: &str = "volta-zk/c6/residual-post-root-context-seed/v1";
+const POST_ROOT_CHALLENGES_DOMAIN: &str = "volta-zk/c6/residual-post-root-challenges/v1";
+const POST_ROOT_SEED_COMMITMENT_DOMAIN: &str = "volta-zk/c6/residual-post-root-seed-commitment/v1";
+const TERMINAL_WEIGHT_STREAM_DOMAINS: [[u64; 2]; 2] = [
+    [0xC6_54_45_52_4D_00_01, 0xC6_54_45_52_4D_00_02],
+    [0xC6_54_45_52_4D_01_01, 0xC6_54_45_52_4D_01_02],
+];
 
 pub const C6_RESIDUAL_AUXILIARY_LANES: u32 = 16;
 pub const C6_RESIDUAL_AUXILIARY_PRODUCT_LANES: u32 = 12;
@@ -1155,6 +1162,15 @@ pub enum C6ResidualTerminalFormKind {
     Tag = 2,
 }
 
+impl C6ResidualTerminalFormKind {
+    fn stream_index(self) -> usize {
+        match self {
+            Self::Plaintext => 0,
+            Self::Tag => 1,
+        }
+    }
+}
+
 /// Exact reference schedule for batching installed ProductClosure operands
 /// and zero roots into one reverse linear form.
 ///
@@ -1244,6 +1260,171 @@ impl C6ResidualTerminalWeightSchedule {
     }
 }
 
+/// Reference materialization of every residual challenge derived after the
+/// five wrapper roots are fixed.
+///
+/// The outer PCS orchestrator remains responsible for the temporal
+/// transition: it must release the fresh client seed only after obtaining a
+/// validated fixed-root token.  This bundle binds that root context and
+/// prevents downstream code from accepting provider-selected terminal
+/// weights.  Its four materialized schedules are a CPU/reference seam; the
+/// production compiler must eventually stream the same expansion.
+#[derive(Clone, PartialEq, Eq)]
+pub struct C6ResidualPostRootChallenges {
+    fixed_roots_digest: C6ResidualDigest,
+    operation_plan_artifact_digest: C6ResidualDigest,
+    topology_digest: C6ResidualDigest,
+    batching_seed_commitment: C6ResidualDigest,
+    context_seed: [u8; 32],
+    terminal_schedules: [C6ResidualTerminalWeightSchedule; 4],
+    digest: C6ResidualDigest,
+}
+
+impl fmt::Debug for C6ResidualPostRootChallenges {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let terminal_schedule_digests =
+            self.terminal_schedules.iter().map(|schedule| schedule.digest()).collect::<Vec<_>>();
+        formatter
+            .debug_struct("C6ResidualPostRootChallenges")
+            .field("fixed_roots_digest", &self.fixed_roots_digest)
+            .field("operation_plan_artifact_digest", &self.operation_plan_artifact_digest)
+            .field("topology_digest", &self.topology_digest)
+            .field("batching_seed_commitment", &self.batching_seed_commitment)
+            .field("terminal_schedule_digests", &terminal_schedule_digests)
+            .field("digest", &self.digest)
+            .finish_non_exhaustive()
+    }
+}
+
+impl C6ResidualPostRootChallenges {
+    /// Expand the one already-budgeted client batching seed under the fixed
+    /// root/plan context.  This method adds no transcript or certificate
+    /// field.
+    pub fn derive(
+        operation_plan: &C6InstalledOperationPlan,
+        fixed_roots_digest: C6ResidualDigest,
+        batching_seed: [u8; 32],
+    ) -> C6ResidualResult<Self> {
+        if fixed_roots_digest == [0; 32] {
+            return Err(C6ResidualError::new(
+                "C6 residual post-root challenges require a nonzero fixed-root binding",
+            ));
+        }
+        let operation_plan_artifact_digest = operation_plan.artifact_digest();
+        let topology_digest = operation_plan.topology().topology_digest;
+
+        let mut seed_commitment_hasher =
+            blake3::Hasher::new_derive_key(POST_ROOT_SEED_COMMITMENT_DOMAIN);
+        seed_commitment_hasher.update(&batching_seed);
+        let batching_seed_commitment = *seed_commitment_hasher.finalize().as_bytes();
+
+        let mut context_hasher = blake3::Hasher::new_derive_key(POST_ROOT_CONTEXT_SEED_DOMAIN);
+        context_hasher.update(&fixed_roots_digest);
+        context_hasher.update(&operation_plan_artifact_digest);
+        context_hasher.update(&topology_digest);
+        context_hasher.update(&batching_seed);
+        let context_seed = *context_hasher.finalize().as_bytes();
+
+        let mut schedules = Vec::with_capacity(4);
+        for repetition in 0..2u8 {
+            for kind in [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag] {
+                schedules.push(derive_terminal_weight_schedule(
+                    operation_plan,
+                    repetition,
+                    kind,
+                    context_seed,
+                )?);
+            }
+        }
+        let terminal_schedules: [C6ResidualTerminalWeightSchedule; 4] = schedules
+            .try_into()
+            .map_err(|_| C6ResidualError::new("C6 residual terminal expansion lost a schedule"))?;
+        let mut bundle = Self {
+            fixed_roots_digest,
+            operation_plan_artifact_digest,
+            topology_digest,
+            batching_seed_commitment,
+            context_seed,
+            terminal_schedules,
+            digest: [0; 32],
+        };
+        bundle.digest = post_root_challenges_digest(&bundle);
+        bundle.validate(operation_plan)?;
+        Ok(bundle)
+    }
+
+    pub fn fixed_roots_digest(&self) -> C6ResidualDigest {
+        self.fixed_roots_digest
+    }
+
+    pub fn batching_seed_commitment(&self) -> C6ResidualDigest {
+        self.batching_seed_commitment
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+
+    pub fn terminal_schedule(
+        &self,
+        repetition: u8,
+        kind: C6ResidualTerminalFormKind,
+    ) -> C6ResidualResult<&C6ResidualTerminalWeightSchedule> {
+        let index = usize::from(repetition)
+            .checked_mul(2)
+            .and_then(|base| base.checked_add(kind.stream_index()))
+            .ok_or_else(|| C6ResidualError::new("C6 residual terminal schedule index overflows"))?;
+        self.terminal_schedules.get(index).ok_or_else(|| {
+            C6ResidualError::new("C6 residual terminal schedule repetition is out of range")
+        })
+    }
+
+    fn validate(&self, operation_plan: &C6InstalledOperationPlan) -> C6ResidualResult<()> {
+        if self.fixed_roots_digest == [0; 32]
+            || self.operation_plan_artifact_digest != operation_plan.artifact_digest()
+            || self.topology_digest != operation_plan.topology().topology_digest
+            || self.batching_seed_commitment == [0; 32]
+            || self.context_seed == [0; 32]
+            || self.digest == [0; 32]
+            || self.digest != post_root_challenges_digest(self)
+        {
+            return Err(C6ResidualError::new("C6 residual post-root challenge binding mismatch"));
+        }
+        for repetition in 0..2u8 {
+            for kind in [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag] {
+                let schedule = self.terminal_schedule(repetition, kind)?;
+                if schedule.repetition() != repetition || schedule.kind() != kind {
+                    return Err(C6ResidualError::new(
+                        "C6 residual terminal challenge streams are swapped",
+                    ));
+                }
+                schedule.validate(operation_plan)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_compiled_binding(
+        &self,
+        operation_plan_artifact_digest: C6ResidualDigest,
+        topology: C6OperationPlanTopologyIdentity,
+    ) -> C6ResidualResult<()> {
+        if self.fixed_roots_digest == [0; 32]
+            || self.operation_plan_artifact_digest != operation_plan_artifact_digest
+            || self.topology_digest != topology.topology_digest
+            || self.batching_seed_commitment == [0; 32]
+            || self.context_seed == [0; 32]
+            || self.digest == [0; 32]
+            || self.digest != post_root_challenges_digest(self)
+        {
+            return Err(C6ResidualError::new(
+                "C6 compiled residual differs from its post-root challenge bundle",
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// Materialized reference output of one installed terminal reverse form.
 ///
 /// The leaf coefficients remain local and may be consumed by the later
@@ -1279,6 +1460,28 @@ impl fmt::Debug for C6CompiledTerminalLinearForm {
 }
 
 impl C6CompiledTerminalLinearForm {
+    /// Compile one terminal form from the sealed post-root expansion instead
+    /// of accepting a caller-provided weight vector.
+    pub fn compile_post_root(
+        operation_plan: &C6InstalledOperationPlan,
+        extraction: &C6DecodedInstanceExtractionPlan,
+        runtime: &C6RuntimeInstanceValues,
+        challenges: &C6ResidualPostRootChallenges,
+        repetition: u8,
+        kind: C6ResidualTerminalFormKind,
+    ) -> C6ResidualResult<Self> {
+        challenges.validate(operation_plan)?;
+        Self::compile(
+            operation_plan,
+            extraction,
+            runtime,
+            challenges.terminal_schedule(repetition, kind)?,
+        )
+    }
+
+    /// Reference-only entry point for an explicitly supplied schedule.
+    /// Production statement assembly must use [`Self::compile_post_root`].
+    #[doc(hidden)]
     pub fn compile(
         operation_plan: &C6InstalledOperationPlan,
         extraction: &C6DecodedInstanceExtractionPlan,
@@ -1416,6 +1619,59 @@ fn terminal_weight_schedule_digest(
     for (root, weight) in schedule.zero_weights.iter().enumerate() {
         hasher.update(&(root as u64).to_le_bytes());
         hash_fp2(&mut hasher, *weight);
+    }
+    *hasher.finalize().as_bytes()
+}
+
+fn derive_terminal_weight_schedule(
+    operation_plan: &C6InstalledOperationPlan,
+    repetition: u8,
+    kind: C6ResidualTerminalFormKind,
+    context_seed: [u8; 32],
+) -> C6ResidualResult<C6ResidualTerminalWeightSchedule> {
+    let domain = *TERMINAL_WEIGHT_STREAM_DOMAINS
+        .get(usize::from(repetition))
+        .and_then(|domains| domains.get(kind.stream_index()))
+        .ok_or_else(|| C6ResidualError::new("C6 residual terminal stream domain is missing"))?;
+    let product_triples = usize::try_from(installed_product_triple_count(operation_plan)?)
+        .map_err(|_| {
+            C6ResidualError::new("C6 residual ProductClosure triple count exceeds usize")
+        })?;
+    let mut stream = FpStream::domain_separated(context_seed, domain);
+    let mut product_weights = Vec::new();
+    product_weights.try_reserve_exact(product_triples).map_err(|_| {
+        C6ResidualError::new("C6 residual terminal product-weight allocation failed")
+    })?;
+    for _ in 0..product_triples {
+        product_weights.push([stream.next_fp2(), stream.next_fp2(), stream.next_fp2()]);
+    }
+    let mut zero_weights = Vec::new();
+    zero_weights
+        .try_reserve_exact(operation_plan.zero_roots().len())
+        .map_err(|_| C6ResidualError::new("C6 residual terminal zero-weight allocation failed"))?;
+    for _ in operation_plan.zero_roots() {
+        zero_weights.push(stream.next_fp2());
+    }
+    C6ResidualTerminalWeightSchedule::new(
+        operation_plan,
+        repetition,
+        kind,
+        product_weights,
+        zero_weights,
+    )
+}
+
+fn post_root_challenges_digest(challenges: &C6ResidualPostRootChallenges) -> C6ResidualDigest {
+    let mut hasher = blake3::Hasher::new_derive_key(POST_ROOT_CHALLENGES_DOMAIN);
+    hasher.update(&challenges.fixed_roots_digest);
+    hasher.update(&challenges.operation_plan_artifact_digest);
+    hasher.update(&challenges.topology_digest);
+    hasher.update(&challenges.batching_seed_commitment);
+    hasher.update(&challenges.context_seed);
+    hasher.update(&(challenges.terminal_schedules.len() as u64).to_le_bytes());
+    for schedule in &challenges.terminal_schedules {
+        hasher.update(&[schedule.repetition(), schedule.kind() as u8]);
+        hasher.update(&schedule.digest());
     }
     *hasher.finalize().as_bytes()
 }
@@ -1991,6 +2247,20 @@ impl C6CompiledLinearResidual {
     /// Production-shape provider fold over both source coordinates in the
     /// canonical interleaved allocation order. The paired witness remains a
     /// prover-only sidecar and is streamed once.
+    pub fn respond_paired_sources_post_root(
+        &self,
+        sources: &C6PairedSourceWitness,
+        schedule: &CorrScheduleAudit,
+        challenges: &C6ResidualPostRootChallenges,
+    ) -> C6ResidualResult<C6CompiledPairedResidualPlan> {
+        challenges.validate_compiled_binding(self.operation_plan_artifact_digest, self.topology)?;
+        self.respond_paired_sources(sources, schedule, challenges.context_seed)
+    }
+
+    /// Diagnostic/raw-seed seam retained for frozen records and scaled
+    /// differentials.  Production wrapper integration uses
+    /// [`Self::respond_paired_sources_post_root`].
+    #[doc(hidden)]
     pub fn respond_paired_sources(
         &self,
         sources: &C6PairedSourceWitness,
@@ -2058,6 +2328,18 @@ impl C6CompiledLinearResidual {
     /// Client-only paired base-key fold. The two vectors are local
     /// verifier-tape views; neither vector nor the derived coefficients is a
     /// certificate field.
+    pub fn fold_paired_base_keys_post_root(
+        &self,
+        base_keys: [&[Fp2]; 2],
+        challenges: &C6ResidualPostRootChallenges,
+    ) -> C6ResidualResult<C6CompiledPairedBaseKeyRlc> {
+        challenges.validate_compiled_binding(self.operation_plan_artifact_digest, self.topology)?;
+        self.fold_paired_base_keys(base_keys, challenges.context_seed)
+    }
+
+    /// Diagnostic/raw-seed seam retained for frozen records and scaled
+    /// differentials.
+    #[doc(hidden)]
     pub fn fold_paired_base_keys(
         &self,
         base_keys: [&[Fp2]; 2],
@@ -2075,6 +2357,18 @@ impl C6CompiledLinearResidual {
 
     /// Streaming client seam for a local paired key tape. Exactly one
     /// callback is made per canonical source ordinal.
+    pub fn fold_paired_base_keys_stream_post_root(
+        &self,
+        challenges: &C6ResidualPostRootChallenges,
+        base_keys: impl FnMut(u32) -> C6ResidualResult<[Fp2; 2]>,
+    ) -> C6ResidualResult<C6CompiledPairedBaseKeyRlc> {
+        challenges.validate_compiled_binding(self.operation_plan_artifact_digest, self.topology)?;
+        self.fold_paired_base_keys_stream(challenges.context_seed, base_keys)
+    }
+
+    /// Diagnostic/raw-seed seam retained for frozen records and scaled
+    /// differentials.
+    #[doc(hidden)]
     pub fn fold_paired_base_keys_stream(
         &self,
         batching_seed: [u8; 32],
@@ -3214,6 +3508,100 @@ mod tests {
         assert_eq!(source_plaintext, expected_plaintext);
         assert_eq!(source_tag, expected_tag);
 
+        let fixed_roots_digest = [0xB7; 32];
+        let batching_seed = [0xB8; 32];
+        let post_root =
+            C6ResidualPostRootChallenges::derive(installed, fixed_roots_digest, batching_seed)
+                .unwrap();
+        assert_eq!(post_root.fixed_roots_digest(), fixed_roots_digest);
+        assert_ne!(post_root.batching_seed_commitment(), [0; 32]);
+        assert_ne!(post_root.digest(), [0; 32]);
+        assert_eq!(
+            post_root,
+            C6ResidualPostRootChallenges::derive(installed, fixed_roots_digest, batching_seed,)
+                .unwrap()
+        );
+        let mut schedule_digests = Vec::new();
+        for repetition in 0..2u8 {
+            for kind in [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag] {
+                let schedule = post_root.terminal_schedule(repetition, kind).unwrap();
+                assert_eq!(schedule.repetition(), repetition);
+                assert_eq!(schedule.kind(), kind);
+                assert_eq!(schedule.product_weights().len(), 2);
+                assert_eq!(schedule.zero_weights().len(), 2);
+                schedule_digests.push(schedule.digest());
+
+                let compiled_post_root = C6CompiledTerminalLinearForm::compile_post_root(
+                    installed, extraction, runtime, &post_root, repetition, kind,
+                )
+                .unwrap();
+                let compiled_reference =
+                    C6CompiledTerminalLinearForm::compile(installed, extraction, runtime, schedule)
+                        .unwrap();
+                assert_eq!(
+                    compiled_post_root.linear_form_digest(),
+                    compiled_reference.linear_form_digest()
+                );
+            }
+        }
+        let unique_schedule_digests = schedule_digests.iter().copied().collect::<BTreeSet<_>>();
+        assert_eq!(unique_schedule_digests.len(), 4);
+
+        let reference_schedule =
+            post_root.terminal_schedule(0, C6ResidualTerminalFormKind::Plaintext).unwrap();
+        let mut reference_stream = FpStream::domain_separated(
+            post_root.context_seed,
+            TERMINAL_WEIGHT_STREAM_DOMAINS[0][0],
+        );
+        for weights in reference_schedule.product_weights() {
+            assert_eq!(
+                *weights,
+                [
+                    reference_stream.next_fp2(),
+                    reference_stream.next_fp2(),
+                    reference_stream.next_fp2(),
+                ]
+            );
+        }
+        for weight in reference_schedule.zero_weights() {
+            assert_eq!(*weight, reference_stream.next_fp2());
+        }
+
+        let changed_root =
+            C6ResidualPostRootChallenges::derive(installed, [0xB9; 32], batching_seed).unwrap();
+        let changed_seed =
+            C6ResidualPostRootChallenges::derive(installed, fixed_roots_digest, [0xBA; 32])
+                .unwrap();
+        assert_ne!(changed_root.digest(), post_root.digest());
+        assert_ne!(changed_seed.digest(), post_root.digest());
+        assert_ne!(changed_root.context_seed, post_root.context_seed);
+        assert_ne!(changed_seed.context_seed, post_root.context_seed);
+        assert!(C6ResidualPostRootChallenges::derive(installed, [0; 32], batching_seed).is_err());
+        assert!(post_root.terminal_schedule(2, C6ResidualTerminalFormKind::Plaintext).is_err());
+
+        let mut swapped_streams = post_root.clone();
+        swapped_streams.terminal_schedules.swap(0, 1);
+        assert!(C6CompiledTerminalLinearForm::compile_post_root(
+            installed,
+            extraction,
+            runtime,
+            &swapped_streams,
+            0,
+            C6ResidualTerminalFormKind::Plaintext,
+        )
+        .is_err());
+        let mut changed_weight = post_root.clone();
+        changed_weight.terminal_schedules[0].product_weights[0][0] += Fp2::ONE;
+        assert!(C6CompiledTerminalLinearForm::compile_post_root(
+            installed,
+            extraction,
+            runtime,
+            &changed_weight,
+            0,
+            C6ResidualTerminalFormKind::Plaintext,
+        )
+        .is_err());
+
         assert!(C6ResidualTerminalWeightSchedule::new(
             installed,
             0,
@@ -3336,6 +3724,37 @@ mod tests {
         assert!(response.verify(client, deltas).unwrap());
         assert_eq!(response.binding.source_count, 5);
         assert!(std::mem::size_of_val(&response) <= 288);
+
+        let post_root =
+            C6ResidualPostRootChallenges::derive(&installed, [0xBB; 32], alpha_seed).unwrap();
+        let post_root_response =
+            compiled.respond_paired_sources_post_root(&paired, &schedule, &post_root).unwrap();
+        let post_root_client = compiled
+            .fold_paired_base_keys_post_root(
+                [base_keys[0].as_slice(), base_keys[1].as_slice()],
+                &post_root,
+            )
+            .unwrap();
+        assert!(post_root_response.verify(post_root_client, deltas).unwrap());
+        assert_ne!(
+            post_root_response.binding.coefficient_digest,
+            response.binding.coefficient_digest
+        );
+
+        let changed_root =
+            C6ResidualPostRootChallenges::derive(&installed, [0xBC; 32], alpha_seed).unwrap();
+        let changed_root_client = compiled
+            .fold_paired_base_keys_post_root(
+                [base_keys[0].as_slice(), base_keys[1].as_slice()],
+                &changed_root,
+            )
+            .unwrap();
+        assert!(post_root_response.verify(changed_root_client, deltas).is_err());
+        let mut malformed_post_root = post_root.clone();
+        malformed_post_root.context_seed[0] ^= 1;
+        assert!(compiled
+            .respond_paired_sources_post_root(&paired, &schedule, &malformed_post_root)
+            .is_err());
 
         let divergent_client = compiled
             .fold_paired_base_keys([base_keys[0].as_slice(), base_keys[1].as_slice()], [0xA9; 32])

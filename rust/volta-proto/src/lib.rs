@@ -69,7 +69,7 @@ pub use c6_residual::{
     C6PairedResidualLeafWitness, C6ProductPostCommit, C6ResidualAuxiliaryLane,
     C6ResidualAuxiliaryWitnessCensus, C6ResidualBuilder, C6ResidualCensus,
     C6ResidualClosureWitnessCensus, C6ResidualDigest, C6ResidualError, C6ResidualLeafColumn,
-    C6ResidualPlan, C6ResidualPostCommit, C6ResidualTerminalFormKind,
+    C6ResidualPlan, C6ResidualPostCommit, C6ResidualPostRootChallenges, C6ResidualTerminalFormKind,
     C6ResidualTerminalWeightSchedule, C6SourceWitness, C6ValueId, C6ValueOperation,
     C6_RESIDUAL_AUXILIARY_LANES, C6_RESIDUAL_AUXILIARY_PRODUCT_LANES,
     C6_RESIDUAL_AUXILIARY_SEMANTIC_ENTRIES, C6_RESIDUAL_AUXILIARY_SEMANTIC_LOG2,

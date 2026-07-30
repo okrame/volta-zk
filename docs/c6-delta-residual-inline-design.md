@@ -1108,6 +1108,38 @@ This result does not yet derive terminal weights from the transcript, build
 the residual-sumcheck statement, hide its messages or bind its terminal PCS
 claims.
 
+The next checkpoint keeps the pre-query structural/root binding distinct
+from the post-root relation statement.  After the five wrapper roots are
+fixed, the already-budgeted 32-byte client residual batching seed is combined
+with the fixed-root digest and installed plan artifact/topology under
+`volta-zk/c6/residual-post-root-context-seed/v1`; the complete bundle is
+bound under `volta-zk/c6/residual-post-root-challenges/v1`.  The resulting
+context seed is local derivation state, not another message.  Existing
+base-share streams continue to use their frozen coordinate domains, now from
+this context seed.
+
+The four terminal-weight streams use exact domains
+`0xC65445524d0001`, `0xC65445524d0002`,
+`0xC65445524d0101`, `0xC65445524d0102` for coordinate-0 plaintext/tag and
+coordinate-1 plaintext/tag respectively.  Each expands ProductClosure
+triples in installed `ProductClosure/triple/(a,b,c)` order, followed by
+installed zero-root order.  A sealed bundle binds the root context, plan,
+raw-seed commitment and all four schedule digests.  This closes challenge
+provenance only; materialized schedules remain reference-only and the later
+PCS orchestrator must enforce that the root token precedes release of the
+client seed.
+
+This local checkpoint is green.  The sealed reference bundle expands all
+four schedules at the installed **22,339 triple / 8,170 zero-root** census,
+and both the terminal reverse forms and paired base-key/provider folds have
+post-root entry points that consume its context seed.  Deterministic replay
+and every root/seed/domain/swap/mutation negative pass; the complete feature
+suite is **145 pass / 0 fail / 1 ignored**.  The remaining ownership seam is
+explicit: `volta-proto` currently receives the fixed-root digest, while the
+later `volta-pcs` orchestrator must source it from the private fixed-root
+typestate before releasing the seed.  Until that join and the complete
+relation compiler exist, this carries no production or resource credit.
+
 ## 4. Hidden Ligero vectors without an NTT trace
 
 Simply omitting `u_c` or `u_g` is unsound.  C6 commits to them before the

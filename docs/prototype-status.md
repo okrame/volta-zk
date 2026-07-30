@@ -45,10 +45,10 @@ compiled-residual core now execute the reverse plan without a response-linear
 coefficient field: provider/client stream the same transcript coefficients,
 the paired provider fold covers both MAC coordinates, and the paired witness
 additionally binds the accepted source-schedule digest.  The statement-generic
-residual sumcheck arithmetic and the installed terminal reverse compiler are
-locally green, but transcript-derived terminal weights, full T1 statement
-assembly, cache constraint census, wrapper proof, local end-to-end and
-hardware gates remain pending.
+residual sumcheck arithmetic, installed terminal reverse compiler and
+context-bound four-stream terminal expansion are locally green, but the PCS
+fixed-root typestate join, full T1 statement assembly, cache constraint
+census, wrapper proof, local end-to-end and hardware gates remain pending.
 
 Workload of record: **GPT-2 small (124M, L=12, d=768, h=12, d_ff=3072),
 prefill T=100 + 50 deferred decode tokens, causal, C3b PCS Q=120**, on the
@@ -419,6 +419,7 @@ its clean descendant closure.
 | C6 paired direct-subfield witness | **CLEAN APPEND-ONLY REFERENCE PASS; SUBFIELD EXTRACTION MILESTONE CLOSED; NEXT GATE FULL-FIELD/PRODUCT DAG** (2026-07-29) | Clean source `ba08871`; opt-in prover-only `(r,d,m)` collection on frozen local GPT-2 `100+50`; independent mock stream replay; no model rerun, backend, provider or wire claim | Record `c6-t1-subfield-witness-2026-07-29-ba08871.json`, SHA-256 `ae6d193329843445b5ff4e2fe757c5dcc87ee280ab5d39fa387966993fbdf505`, has `git_dirty:false`, `diagnostic:false`, `golden_match:true`, `prover_verifier_schedule_equal:true`, `all_pass:true`, `pod_contacted:false`.  Both coordinates contain **4,793,590** leaves and the same plaintext digest, with distinct witness/correction digests; coordinate one performs **0** model reruns.  The **153,394,880-B** per-coordinate secret sidecar is local witness memory, never client setup/wire.  Full-field leaves, 673 ProductClosures, cache/wrapper, final bytes, real PCG and timing remain open. |
 | C6 paired complete-source witness | **CLEAN APPEND-ONLY REFERENCE PASS; SOURCE EXTRACTION MILESTONE CLOSED; NEXT GATE OPERATION DAG + PRODUCTCLOSURE OPERAND LINKAGE** (2026-07-29) | Clean source `b98e453`; opt-in prover-only subfield/full-field collection on frozen local GPT-2 `100+50`; independent mock stream replay; direct plaintexts shared, ProductMasks refreshed; no model rerun, backend, provider or wire claim | Record `c6-t1-source-witness-2026-07-29-b98e453.json`, SHA-256 `c62941afd4cda3b0eed5c3e36dd27cffcd03301e7d0df14e9808ecffc9601ab5`, has `git_dirty:false`, `diagnostic:false`, `golden_match:true`, `prover_verifier_schedule_equal:true`, `all_pass:true`, `pod_contacted:false`.  Per coordinate it contains **4,793,590 subfield + 181,262 direct full-field + 673 ProductMask = 4,975,525** source leaves; coordinate one performs **0** model reruns.  Hidden direct corrections are **41,248,912 B/coordinate**; the **162,127,760-B/coordinate** complete secret sidecar is prover-only memory, never setup/wire.  The direct full-field plaintext digest matches while coordinate-wide full-field digests differ because ProductMasks are independent.  Operation/value IDs, all 673 ProductClosure operands, cache/wrapper, final bytes, real PCG and timing remain open. |
 | C6 installed terminal reverse compiler | **LOCAL DIFFERENTIAL PASS; SHARED WALKER CLOSED; CHALLENGE EXPANSION / FULL STATEMENT PENDING** (2026-07-29) | Exact installed **22,339 triple / 8,170 zero-root** terminal schedule; plaintext/tag roles; no second DAG formula; reference-only vectors | The versioned schedule binds plan artifact, topology, repetition, role and all positional weights.  Both forms use the historical compiled-residual walker; zero-product weights reproduce every accepted historical coefficient/public term, nontrivial plaintext/tag terminal evaluations match independent source-side evaluation, ProductMask coefficients remain zero and extraction binding is unconditional.  Focused tests are **11/11**, the complete feature suite is **145/0/1**, and the workspace is green.  Terminal weights are not yet transcript-derived and no statement, proof, memory, wire, soundness, timing, PCS, cache or production credit is claimed; no pod contacted. |
+| C6 post-root residual challenge bundle | **LOCAL FOUR-STREAM EXPANSION PASS; ROOT/SEED/PLAN BINDING GREEN; PCS TYPESTATE JOIN / RELATION COMPILER PENDING** (2026-07-29) | One already-budgeted 32-byte client seed; context-bound paired alpha and terminal domains; exact **22,339 triple / 8,170 zero-root** expansion | The immutable bundle binds fixed-root digest, installed artifact/topology, raw-seed commitment and four complete schedule digests.  Post-root terminal forms and paired provider/client folds consume it; replay is deterministic and changed root/seed, swapped roles or mutated weights reject.  Feature suite **145/0/1**, workspace green.  Schedules remain materialized reference state and `volta-pcs` must still source the digest from its private fixed-root token before seed release; no statement, resource, proof or production credit and no pod contact. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -486,6 +487,68 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-29 — C6 context-bound post-root terminal expansion is locally
+  green; PCS root-token ownership and relation assembly remain pending.**
+  `C6ResidualPostRootChallenges` now derives one context seed from the
+  fixed-root binding digest, installed artifact/topology and the
+  already-budgeted 32-byte client seed.  It expands the four frozen
+  coordinate/plaintext-tag domains into the exact installed
+  **22,339 triple / 8,170 zero-root** order and binds their complete schedule
+  digests in one immutable bundle.  Determinism, exact stream replay,
+  coordinate/role separation, changed root, changed seed, zero root binding,
+  swapped schedules and mutated weights are permanent regressions.
+
+  Terminal reverse forms have a sealed post-root entry point.  The paired
+  provider and client base-key folds likewise use the bundle's
+  context-derived seed with the previously frozen independent alpha domains;
+  honest folds agree and a changed root produces a binding mismatch.  The
+  raw-seed and caller-supplied schedule APIs remain explicitly diagnostic
+  for frozen records and reference differentials.
+
+  Focused residual tests remain **11/11 PASS**, the complete
+  `volta-proto --features c6-trace` suite is
+  **145 pass / 0 fail / 1 ignored**, and the complete workspace is green
+  (including PCS **150/0/1** and ordinary proto **143/0/1**).  Formatting,
+  all-target compilation and Clippy on the changed module are green.  Source
+  SHA-256 values are residual
+  `c4e4a16cc67121c06675d3dea7b2d1e3b7f9718c240b9a53cab1b969625d7c24`
+  and proto exports
+  `1390ffb4f370f6a822c2a7364c8ae4547fc921ecf10dc69c5d47d6523d22cf5a`.
+
+  This is still a materialized reference seam.  The proto constructor
+  accepts a fixed-root *digest*; the production PCS orchestrator must later
+  supply it from its private `C6FixedWrapperCommitments` typestate before
+  releasing the client seed.  No remaining relation batching stream,
+  statement, proof, wire, soundness, memory, timing, cache or production
+  credit is claimed; no provider/pod was contacted.
+
+- **2026-07-29 — C6 separates the fixed pre-query root binding from one
+  context-bound post-root residual challenge bundle.**
+  The next local checkpoint derives a reference
+  `C6ResidualPostRootChallenges` only from the nonzero fixed-root binding
+  digest, the installed plan artifact/topology and the already-budgeted
+  32-byte client batching seed.  A versioned BLAKE3 derivation produces one
+  context seed; it is not another wire field.  The existing independent
+  base-share domains remain unchanged and later production integration must
+  consume that context seed rather than the raw seed.
+
+  Four independent terminal streams are frozen, indexed by
+  `(repetition, plaintext-versus-tag)`, at domains
+  `0xC65445524d0001`, `0xC65445524d0002`,
+  `0xC65445524d0101`, `0xC65445524d0102`.  Each stream expands first all
+  installed ProductClosure triples in `ProductClosure/triple/(a,b,c)` order
+  and then every installed zero root.  The sealed bundle binds the four
+  complete schedule digests, root binding, artifact, topology and raw-seed
+  commitment.  Repetition/role stream reuse, swapping, missing entries,
+  changed root/seed/plan or provider-supplied production weights must reject.
+
+  This checkpoint may materialize the four schedules only for
+  scaled/reference tests.  It does not yet define the remaining relation
+  batching streams, the pre-query frame codec, the post-commit statement,
+  transcript typestate, sumcheck hiding or PCS assembly.  It earns no
+  soundness, wire, memory, timing or production credit and authorizes no
+  provider/pod action.
 
 - **2026-07-29 — C6 installed terminal reverse compiler is locally green;
   challenge expansion and full statement assembly remain blocked.**

@@ -2,7 +2,8 @@
 
 Status: **OWNER REQUIREMENTS FROZEN; Q=121 CONTINGENCY ACTIVATED BEFORE
 IMPLEMENTATION; FORMAL SEAM / ROOFLINE / PAIRED CODEC / PRODUCTION SOURCE
-CENSUS GREEN; LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
+CENSUS / PAIRED SUBFIELD WITNESS GREEN; FULL DAG/CACHE/WRAPPER PENDING;
+LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
 accepted C4/T1 `rate=1/4,Q=120` inline profile.  It does not reopen or rewrite
@@ -309,6 +310,65 @@ correction sched. a7e22b733c9635de931ef3d9bd001c298facd413b80ff93ea48fa1b610e620
 This closes the old-schedule source/correction census only.  The complete
 GPT-2 authenticated-value DAG, cache witness and wrapper constraint census
 remain separate gates.
+
+### 3.2 Paired subfield witness extraction checkpoint
+
+The production T1 path now has a second, explicitly opt-in prover-only
+sidecar for the direct subfield leaves.  It materializes the canonical
+`(r_i,d_i,m_i)` tuple in exactly the public schedule order:
+
+- masks are copied only when witness collection is enabled;
+- each historical correction-emission site attaches its canonical hidden
+  `d_i`;
+- tags already opened by T1 are retained, while tags for sources that T1
+  never opens are expanded at sidecar close from the same already-consumed
+  correlation range.  This does not consume a new domain, change counters or
+  alter the allocation digest;
+- a missing correction, duplicate/reordered domain, changed replayed tag or
+  subfield draw after close fails closed.
+
+The ordinary path never enables this collector and therefore retains the
+frozen allocation and transcript.  After coordinate zero has run the model
+once, coordinate one replays the exact complete correlation schedule against
+an independent stream.  It reconstructs
+
+```text
+d_i[1] = x_i - r_i[1]
+```
+
+from coordinate zero's committed plaintext order, without rerunning model
+inference or the old proof.  Full-field and ProductMask draws are replayed as
+well so both stream schedules stay identical, but their witness extraction
+belongs to the next full-DAG gate.  Distinct nonzero setup tape identities
+are mandatory, and identical secret witness digests reject as an engineering
+guard against relabelling one stream as two tapes.  The setup manifest, not
+this digest inequality alone, remains the binding source of tape identity
+and independence.
+
+The clean frozen `100+50` reference run at `ba08871` gives:
+
+```text
+subfield leaves / coordinate                         4,793,590
+hidden correction bytes / coordinate                38,348,720
+prover-only (r,d,m) bytes / coordinate              153,394,880
+second-coordinate model reruns                                0
+plaintext digest
+  b18cb65f0468dfbd9a9508bf2d70fcdfb57257a187235ae4b78e68a9bf782ea1
+coordinate witness digests
+  218bb80f5bfcb4fab22fd15e1b2ae9eee2041c5e934f32ce196ce0100ad3b8f4
+  20add661a866d157f253f30e7f9b9e7b3cb1925fa2e7cf05735a68dd8733c5f8
+pair digest
+  4ed3f65d9c17f0eaeca7ea9f477f5516aa1a16f862a570b09759b17d2687cc1b
+```
+
+The `153,394,880-B` figure is local secret witness material, not client
+setup, certificate traffic or a proposed serialized object.  The append-only
+mock-PCG reference record is
+`benchmarks/results/c6-t1-subfield-witness-2026-07-29-ba08871.json`,
+SHA-256
+`ae6d193329843445b5ff4e2fe757c5dcc87ee280ab5d39fa387966993fbdf505`.
+It has no real/AES-PCG, wrapper-proof, final-byte, prover-time, cache or
+hardware verdict.
 
 ## 4. Hidden Ligero vectors without an NTT trace
 

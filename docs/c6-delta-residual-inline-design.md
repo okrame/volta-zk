@@ -7,8 +7,8 @@ OPERATION DAG GREEN; PARAMETERIZED V2 TWO-SEED IDENTITY GREEN; CANONICAL PLAN
 CODEC + FULL-T1 COMPILED RESIDUAL + DURABLE 17+4 SESSION + HIDDEN-U NATIVE
 SUMCHECK REDUCTION + SCALED DUAL-TAPE C6RSC3 CODEC/DIFFERENTIAL GREEN; FUSED
 T1 EVENT-SINK + FIRST/FOLDED/TERMINAL SCALED DIFFERENTIAL GREEN;
-ROUND-SYNCHRONOUS SINGLE-BACKING ARENA AMENDMENT FROZEN / C6RSC3 CONNECTION
-NEXT; CACHE ARGUMENT / PACKED PCS / FINAL WRAPPER PENDING; LOCAL
+ROUND-SYNCHRONOUS SINGLE-BACKING ARENA LOCAL DIFFERENTIAL GREEN / C6RSC3
+CONNECTION NEXT; CACHE ARGUMENT / PACKED PCS / FINAL WRAPPER PENDING; LOCAL
 IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
@@ -2548,6 +2548,55 @@ replays, proof codec and bytes, correlation domains and counts, terminal
 claims, soundness re-sum and the **536,870,912-B** maximum.  The earlier
 single-family tracker is intentionally superseded before it is connected to
 `C6RSC3`; no production or timing credit is earned by this freeze.
+
+#### 5.1.7 Single-backing arena checkpoint
+
+The amended arena is locally implemented.  Leaf admission performs one
+fallible exact-capacity allocation for all eight coefficient tables; table
+layout is metadata over that single `Vec<Fp2>`, not eight coefficient vectors.
+Every fold updates live prefixes in place without changing capacity.  At the
+shared-suffix boundary the leaf prefixes are compacted to the front and the
+auxiliary replay writes its sixteen linear and eight quadratic tables into a
+zeroed range of the reclaimed tail.  Read-only table views are stack arrays
+of slices held under the arena lock and allocate no coefficient storage.
+
+The arena separately reports current leaf, auxiliary and aggregate logical
+elements, current/peak reserved capacity and peak logical occupancy.  A
+non-clone family lease binds manifest, repetition, family and current table
+length; every exact binary fold updates the arena before transcript progress.
+Dropping one family releases only its layout.  The backing allocation is
+released only when both synchronized families are gone, after which the next
+proof repetition may start.
+
+The scaled differential pins:
+
+```text
+initial leaf live/reserved                512 / 512 Fp2
+activation leaf + auxiliary           16 + 48 = 64 Fp2
+activation reserved                          512 Fp2
+terminal leaf + auxiliary              8 + 24 = 32 Fp2
+arena empty after both releases                 0 Fp2.
+```
+
+The backing pointer and capacity are identical before and after auxiliary
+admission, while all folded leaf and auxiliary tables remain exactly equal to
+the independent materialized `fold_low` oracle through terminal evaluation.
+A separate no-large-allocation re-sum pins production at
+**33,554,432 Fp2 / 536,870,912 B** reserved and
+**524,288 Fp2 / 8,388,608 B** logically live at activation.
+
+Permanent negatives reject auxiliary before leaf, early auxiliary admission,
+duplicate family, changed live repetition, wrong manifest, terminal overfold,
+individual/aggregate cap violations and a geometry whose combined activation
+state cannot fit the leaf backing.  The complete `volta-proto --features
+c6-trace` suite is **146 pass / 0 fail / 1 ignored**; workspace all-target
+checking and formatting are green.  Strict clippy remains globally blocked by
+historical unrelated warnings, while filtering the strict run to the modified
+C6 source and export reports none.
+
+This is still a scaled/local ownership checkpoint.  It does not execute a
+production T1 allocation, feed a round into `C6RSC3`, remove response bytes or
+earn timing, packed-PCS, cache, real-PCG, CUDA or hardware credit.
 
 The wrapper PCS uses rate `1/8`, two independent fold/query chains and
 `s=86` queries per chain.  Under the conservative 64-active-polynomial,

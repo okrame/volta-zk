@@ -29,8 +29,7 @@ use crate::c6_source::C6PairedSourceWitness;
 use crate::prod_check::{prod_batch_verify, ProdProof};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
-use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use volta_field::{Fp, Fp2, FpStream};
 use volta_mac::{
     C6DecodedInstanceExtractionPlan, C6InstalledOperationKind, C6InstalledOperationPlan,
@@ -4149,8 +4148,9 @@ pub fn compile_c6_residual_fused_first_round(
 
 /// Coefficient family retained after the first fused sumcheck challenge.
 ///
-/// The two families are replayed separately so the production prover never
-/// owns the 512 MiB leaf state and the auxiliary state at the same time.
+/// The leaf family is replayed first and owns the production peak.  The much
+/// smaller auxiliary family may join only after leaf has reached the shared
+/// suffix admission length.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum C6ResidualFusedCoefficientFamily {
@@ -4248,24 +4248,182 @@ pub fn c6_residual_fused_coefficient_memory_census(
     })
 }
 
-/// Response-local owner of the single legal fused coefficient allocation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct C6ResidualFusedCoefficientArenaLayout {
+    offset: usize,
+    entries_per_table: usize,
+    table_stride: usize,
+    tables: usize,
+}
+
+impl C6ResidualFusedCoefficientArenaLayout {
+    fn elements(self) -> C6ResidualResult<u64> {
+        u64::try_from(self.entries_per_table)
+            .ok()
+            .and_then(|entries| {
+                u64::try_from(self.tables).ok().and_then(|tables| entries.checked_mul(tables))
+            })
+            .ok_or_else(|| C6ResidualError::new("C6 fused arena layout census overflows"))
+    }
+
+    fn table_range(self, table: usize) -> C6ResidualResult<std::ops::Range<usize>> {
+        if table >= self.tables {
+            return Err(C6ResidualError::new("C6 fused arena table is out of range"));
+        }
+        let start = table
+            .checked_mul(self.table_stride)
+            .and_then(|delta| self.offset.checked_add(delta))
+            .ok_or_else(|| C6ResidualError::new("C6 fused arena table offset overflows"))?;
+        let end = start
+            .checked_add(self.entries_per_table)
+            .ok_or_else(|| C6ResidualError::new("C6 fused arena table end overflows"))?;
+        Ok(start..end)
+    }
+}
+
+#[derive(Debug, Default)]
+struct C6ResidualFusedCoefficientArenaState {
+    active_repetition: Option<u8>,
+    leaf_admitted: bool,
+    auxiliary_admitted: bool,
+    leaf: Option<C6ResidualFusedCoefficientArenaLayout>,
+    auxiliary: Option<C6ResidualFusedCoefficientArenaLayout>,
+    backing: Vec<Fp2>,
+    peak_logical_elements: u64,
+    peak_reserved_elements: u64,
+    faulted: bool,
+}
+
+impl C6ResidualFusedCoefficientArenaState {
+    fn layout(
+        &self,
+        family: C6ResidualFusedCoefficientFamily,
+    ) -> Option<C6ResidualFusedCoefficientArenaLayout> {
+        match family {
+            C6ResidualFusedCoefficientFamily::Leaf => self.leaf,
+            C6ResidualFusedCoefficientFamily::Auxiliary => self.auxiliary,
+        }
+    }
+
+    fn layout_mut(
+        &mut self,
+        family: C6ResidualFusedCoefficientFamily,
+    ) -> &mut Option<C6ResidualFusedCoefficientArenaLayout> {
+        match family {
+            C6ResidualFusedCoefficientFamily::Leaf => &mut self.leaf,
+            C6ResidualFusedCoefficientFamily::Auxiliary => &mut self.auxiliary,
+        }
+    }
+
+    fn active_family_elements(&self, family: C6ResidualFusedCoefficientFamily) -> u64 {
+        self.layout(family).and_then(|layout| layout.elements().ok()).unwrap_or(0)
+    }
+
+    fn active_elements(&self) -> u64 {
+        self.active_family_elements(C6ResidualFusedCoefficientFamily::Leaf).saturating_add(
+            self.active_family_elements(C6ResidualFusedCoefficientFamily::Auxiliary),
+        )
+    }
+
+    fn reserved_elements(&self) -> u64 {
+        u64::try_from(self.backing.capacity()).unwrap_or(u64::MAX)
+    }
+
+    fn fold_family(
+        &mut self,
+        proof_repetition: u8,
+        family: C6ResidualFusedCoefficientFamily,
+        expected_entries_per_table: u64,
+        challenge: Fp2,
+    ) -> C6ResidualResult<u64> {
+        if self.faulted || self.active_repetition != Some(proof_repetition) {
+            return Err(C6ResidualError::new(
+                "C6 fused coefficient arena lost its active repetition",
+            ));
+        }
+        let layout = self
+            .layout(family)
+            .ok_or_else(|| C6ResidualError::new("C6 fused coefficient family is not live"))?;
+        let expected_entries = usize::try_from(expected_entries_per_table)
+            .map_err(|_| C6ResidualError::new("C6 fused coefficient length exceeds usize"))?;
+        if layout.entries_per_table != expected_entries
+            || layout.entries_per_table <= 1
+            || layout.entries_per_table & 1 != 0
+        {
+            return Err(C6ResidualError::new(
+                "C6 fused coefficient state has no legal binary fold",
+            ));
+        }
+        let next_entries = layout.entries_per_table / 2;
+        for table in 0..layout.tables {
+            let range = layout.table_range(table)?;
+            if range.end > self.backing.len() {
+                return Err(C6ResidualError::new(
+                    "C6 fused coefficient table exceeds its single backing allocation",
+                ));
+            }
+            for row in 0..next_entries {
+                let even = self.backing[range.start + 2 * row];
+                let odd = self.backing[range.start + 2 * row + 1];
+                self.backing[range.start + row] = even + (odd - even) * challenge;
+            }
+        }
+        let mut next = layout;
+        next.entries_per_table = next_entries;
+        *self.layout_mut(family) = Some(next);
+        u64::try_from(next_entries)
+            .map_err(|_| C6ResidualError::new("C6 fused folded length exceeds u64"))
+    }
+
+    fn release(
+        &mut self,
+        proof_repetition: u8,
+        family: C6ResidualFusedCoefficientFamily,
+        expected_entries_per_table: u64,
+    ) {
+        if self.active_repetition != Some(proof_repetition) {
+            self.faulted = true;
+            return;
+        }
+        let Some(layout) = self.layout(family) else {
+            self.faulted = true;
+            return;
+        };
+        if u64::try_from(layout.entries_per_table).ok() != Some(expected_entries_per_table) {
+            self.faulted = true;
+            return;
+        }
+        *self.layout_mut(family) = None;
+        if self.leaf.is_none() && self.auxiliary.is_none() {
+            self.active_repetition = None;
+            self.leaf_admitted = false;
+            self.auxiliary_admitted = false;
+            self.backing = Vec::new();
+        }
+    }
+}
+
+/// Response-local owner of the single legal fused coefficient backing.
 ///
-/// A response typestate constructs exactly one tracker and passes it through
-/// both repetitions.  A live state holds an internal lease, so attempting to
-/// allocate another family or repetition through the same owner fails before
-/// any coefficient vector is reserved.
+/// Leaf state is admitted first and allocates the only coefficient buffer.
+/// Auxiliary may join the same proof repetition only after leaf reaches the
+/// shared suffix; its tables reuse the compacted leaf buffer's tail.
 pub struct C6ResidualFusedCoefficientAllocationTracker {
     manifest_digest: C6ResidualDigest,
-    active_elements: Arc<AtomicU64>,
-    peak_elements: Arc<AtomicU64>,
+    state: Arc<Mutex<C6ResidualFusedCoefficientArenaState>>,
 }
+
+/// Canonical name for the round-synchronous single-backing owner.
+///
+/// The original longer type remains source-compatible with the first scaled
+/// checkpoint.
+pub type C6ResidualFusedCoefficientArena = C6ResidualFusedCoefficientAllocationTracker;
 
 impl C6ResidualFusedCoefficientAllocationTracker {
     pub fn new(manifest: &C6ResidualRelationManifest) -> Self {
         Self {
             manifest_digest: manifest.digest,
-            active_elements: Arc::new(AtomicU64::new(0)),
-            peak_elements: Arc::new(AtomicU64::new(0)),
+            state: Arc::new(Mutex::new(C6ResidualFusedCoefficientArenaState::default())),
         }
     }
 
@@ -4273,25 +4431,67 @@ impl C6ResidualFusedCoefficientAllocationTracker {
         self.manifest_digest
     }
 
+    fn with_snapshot<R>(&self, read: impl FnOnce(&C6ResidualFusedCoefficientArenaState) -> R) -> R {
+        let state = self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        read(&state)
+    }
+
+    pub fn active_repetition(&self) -> Option<u8> {
+        self.with_snapshot(|state| state.active_repetition)
+    }
+
     pub fn active_elements(&self) -> u64 {
-        self.active_elements.load(AtomicOrdering::Acquire)
+        self.with_snapshot(C6ResidualFusedCoefficientArenaState::active_elements)
     }
 
     pub fn active_bytes(&self) -> u64 {
         self.active_elements() * std::mem::size_of::<Fp2>() as u64
     }
 
+    pub fn active_leaf_elements(&self) -> u64 {
+        self.with_snapshot(|state| {
+            state.active_family_elements(C6ResidualFusedCoefficientFamily::Leaf)
+        })
+    }
+
+    pub fn active_auxiliary_elements(&self) -> u64 {
+        self.with_snapshot(|state| {
+            state.active_family_elements(C6ResidualFusedCoefficientFamily::Auxiliary)
+        })
+    }
+
+    pub fn reserved_elements(&self) -> u64 {
+        self.with_snapshot(C6ResidualFusedCoefficientArenaState::reserved_elements)
+    }
+
+    pub fn reserved_bytes(&self) -> u64 {
+        self.reserved_elements() * std::mem::size_of::<Fp2>() as u64
+    }
+
     pub fn peak_elements(&self) -> u64 {
-        self.peak_elements.load(AtomicOrdering::Acquire)
+        self.with_snapshot(|state| state.peak_logical_elements)
     }
 
     pub fn peak_bytes(&self) -> u64 {
         self.peak_elements() * std::mem::size_of::<Fp2>() as u64
     }
 
+    pub fn peak_reserved_elements(&self) -> u64 {
+        self.with_snapshot(|state| state.peak_reserved_elements)
+    }
+
+    pub fn peak_reserved_bytes(&self) -> u64 {
+        self.peak_reserved_elements() * std::mem::size_of::<Fp2>() as u64
+    }
+
+    pub fn is_faulted(&self) -> bool {
+        self.with_snapshot(|state| state.faulted)
+    }
+
     fn reserve(
         &self,
         manifest: &C6ResidualRelationManifest,
+        proof_repetition: u8,
         census: C6ResidualFusedCoefficientMemoryCensus,
     ) -> C6ResidualResult<C6ResidualFusedCoefficientAllocationLease> {
         if self.manifest_digest != manifest.digest {
@@ -4299,60 +4499,185 @@ impl C6ResidualFusedCoefficientAllocationTracker {
                 "C6 fused allocation tracker uses a different manifest",
             ));
         }
-        self.active_elements
-            .compare_exchange(
-                0,
-                census.state_elements,
-                AtomicOrdering::AcqRel,
-                AtomicOrdering::Acquire,
-            )
-            .map_err(|_| {
-                C6ResidualError::new("C6 fused coefficient family or repetition is already live")
-            })?;
-        self.peak_elements.fetch_max(census.state_elements, AtomicOrdering::AcqRel);
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| C6ResidualError::new("C6 fused coefficient arena is poisoned"))?;
+        if state.faulted {
+            return Err(C6ResidualError::new("C6 fused coefficient arena is faulted"));
+        }
+        let entries = usize::try_from(census.folded_entries_per_table)
+            .map_err(|_| C6ResidualError::new("C6 fused coefficient length exceeds usize"))?;
+        match census.family {
+            C6ResidualFusedCoefficientFamily::Leaf => {
+                if state.active_repetition.is_some()
+                    || state.leaf_admitted
+                    || state.auxiliary_admitted
+                    || state.leaf.is_some()
+                    || state.auxiliary.is_some()
+                    || !state.backing.is_empty()
+                {
+                    return Err(C6ResidualError::new(
+                        "C6 fused leaf state requires an empty coefficient arena",
+                    ));
+                }
+                let required = usize::try_from(census.state_elements).map_err(|_| {
+                    C6ResidualError::new("C6 fused leaf backing length exceeds usize")
+                })?;
+                let mut backing = Vec::new();
+                backing.try_reserve_exact(required).map_err(|_| {
+                    C6ResidualError::new("C6 fused coefficient backing allocation failed")
+                })?;
+                if backing.capacity() != required {
+                    return Err(C6ResidualError::new(
+                        "C6 fused coefficient backing capacity is not exact",
+                    ));
+                }
+                backing.resize(required, Fp2::ZERO);
+                state.backing = backing;
+                state.active_repetition = Some(proof_repetition);
+                state.leaf_admitted = true;
+                state.leaf = Some(C6ResidualFusedCoefficientArenaLayout {
+                    offset: 0,
+                    entries_per_table: entries,
+                    table_stride: entries,
+                    tables: C6_RESIDUAL_RELATION_LEAF_TABLES,
+                });
+            }
+            C6ResidualFusedCoefficientFamily::Auxiliary => {
+                if state.active_repetition != Some(proof_repetition) {
+                    return Err(C6ResidualError::new(
+                        "C6 fused auxiliary state uses a different or inactive repetition",
+                    ));
+                }
+                if !state.leaf_admitted || state.auxiliary_admitted || state.auxiliary.is_some() {
+                    return Err(C6ResidualError::new(
+                        "C6 fused auxiliary state is duplicate or lacks its leaf predecessor",
+                    ));
+                }
+                let leaf = state.leaf.ok_or_else(|| {
+                    C6ResidualError::new("C6 fused auxiliary state lacks a live leaf layout")
+                })?;
+                if leaf.entries_per_table != entries {
+                    return Err(C6ResidualError::new(
+                        "C6 fused auxiliary state was admitted before the shared suffix",
+                    ));
+                }
+                let leaf_elements =
+                    leaf.entries_per_table.checked_mul(leaf.tables).ok_or_else(|| {
+                        C6ResidualError::new("C6 fused compacted leaf census overflows")
+                    })?;
+                let auxiliary_linear_tables = usize::try_from(C6_RESIDUAL_AUXILIARY_LANES)
+                    .map_err(|_| {
+                        C6ResidualError::new("C6 fused auxiliary lane count exceeds usize")
+                    })?;
+                let auxiliary_tables = auxiliary_linear_tables
+                    .checked_add(C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS.len())
+                    .ok_or_else(|| {
+                        C6ResidualError::new("C6 fused auxiliary table census overflows")
+                    })?;
+                let auxiliary_elements =
+                    entries.checked_mul(auxiliary_tables).ok_or_else(|| {
+                        C6ResidualError::new("C6 fused auxiliary state census overflows")
+                    })?;
+                let combined = leaf_elements
+                    .checked_add(auxiliary_elements)
+                    .ok_or_else(|| C6ResidualError::new("C6 fused activation census overflows"))?;
+                if combined > state.backing.len() {
+                    return Err(C6ResidualError::new(
+                        "C6 fused activation state does not fit the single leaf backing",
+                    ));
+                }
+                for table in 0..leaf.tables {
+                    let source = leaf.table_range(table)?;
+                    let destination_start =
+                        table.checked_mul(leaf.entries_per_table).ok_or_else(|| {
+                            C6ResidualError::new("C6 fused leaf compaction offset overflows")
+                        })?;
+                    state.backing.copy_within(source, destination_start);
+                }
+                let auxiliary_end = leaf_elements
+                    .checked_add(auxiliary_elements)
+                    .ok_or_else(|| C6ResidualError::new("C6 fused auxiliary tail end overflows"))?;
+                state.backing[leaf_elements..auxiliary_end].fill(Fp2::ZERO);
+                state.leaf = Some(C6ResidualFusedCoefficientArenaLayout {
+                    offset: 0,
+                    entries_per_table: leaf.entries_per_table,
+                    table_stride: leaf.entries_per_table,
+                    tables: leaf.tables,
+                });
+                state.auxiliary = Some(C6ResidualFusedCoefficientArenaLayout {
+                    offset: leaf_elements,
+                    entries_per_table: entries,
+                    table_stride: entries,
+                    tables: auxiliary_tables,
+                });
+                state.auxiliary_admitted = true;
+            }
+        }
+        let active_elements = state.active_elements();
+        let reserved_elements = state.reserved_elements();
+        if active_elements > C6_RESIDUAL_FUSED_MAX_COEFFICIENT_STATE_ELEMENTS
+            || reserved_elements > C6_RESIDUAL_FUSED_MAX_COEFFICIENT_STATE_ELEMENTS
+        {
+            state.faulted = true;
+            return Err(C6ResidualError::new(
+                "C6 fused coefficient arena exceeds the frozen production memory cap",
+            ));
+        }
+        state.peak_logical_elements = state.peak_logical_elements.max(active_elements);
+        state.peak_reserved_elements = state.peak_reserved_elements.max(reserved_elements);
         Ok(C6ResidualFusedCoefficientAllocationLease {
-            active_elements: Arc::clone(&self.active_elements),
-            reserved_elements: census.state_elements,
+            state: Arc::clone(&self.state),
+            proof_repetition,
+            family: census.family,
+            entries_per_table: census.folded_entries_per_table,
         })
     }
 }
 
 struct C6ResidualFusedCoefficientAllocationLease {
-    active_elements: Arc<AtomicU64>,
-    reserved_elements: u64,
+    state: Arc<Mutex<C6ResidualFusedCoefficientArenaState>>,
+    proof_repetition: u8,
+    family: C6ResidualFusedCoefficientFamily,
+    entries_per_table: u64,
+}
+
+impl C6ResidualFusedCoefficientAllocationLease {
+    fn fold_next(&mut self, challenge: Fp2) -> C6ResidualResult<u64> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| C6ResidualError::new("C6 fused coefficient arena is poisoned"))?;
+        let next = state.fold_family(
+            self.proof_repetition,
+            self.family,
+            self.entries_per_table,
+            challenge,
+        )?;
+        self.entries_per_table = next;
+        Ok(next)
+    }
 }
 
 impl Drop for C6ResidualFusedCoefficientAllocationLease {
     fn drop(&mut self) {
-        let previous = self.active_elements.swap(0, AtomicOrdering::AcqRel);
-        debug_assert_eq!(previous, self.reserved_elements);
+        let mut state = self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.release(self.proof_repetition, self.family, self.entries_per_table);
     }
-}
-
-// The enum stores only 24 Vec headers at worst; boxing them would add an
-// infallible metadata allocation beside the explicitly fallible coefficient
-// allocations while saving nothing material against the 512 MiB hard cap.
-#[allow(clippy::large_enum_variant)]
-enum C6ResidualFusedCoefficientTables {
-    Leaf {
-        linear: [Vec<Fp2>; C6_RESIDUAL_RELATION_LEAF_TABLES],
-    },
-    Auxiliary {
-        linear: [Vec<Fp2>; C6_RESIDUAL_AUXILIARY_LANES as usize],
-        quadratic: [Vec<Fp2>; C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS.len()],
-    },
 }
 
 pub struct C6ResidualFusedFoldedCoefficients {
     proof_repetition: u8,
     family: C6ResidualFusedCoefficientFamily,
     challenge: Fp2,
+    point: Vec<Fp2>,
+    entries_per_table: u64,
     target: Fp2,
     selected_coefficient_writes: u64,
     memory_census: C6ResidualFusedCoefficientMemoryCensus,
     semantic_digest: C6ResidualDigest,
     completion_digest: C6ResidualDigest,
-    tables: C6ResidualFusedCoefficientTables,
     _allocation_lease: C6ResidualFusedCoefficientAllocationLease,
 }
 
@@ -4367,6 +4692,28 @@ impl C6ResidualFusedFoldedCoefficients {
 
     pub fn challenge(&self) -> Fp2 {
         self.challenge
+    }
+
+    pub fn point(&self) -> &[Fp2] {
+        &self.point
+    }
+
+    pub fn entries_per_table(&self) -> u64 {
+        self.entries_per_table
+    }
+
+    pub fn active_elements(&self) -> u64 {
+        let tables =
+            self.memory_census.linear_tables.saturating_add(self.memory_census.quadratic_tables);
+        self.entries_per_table.saturating_mul(tables)
+    }
+
+    pub fn active_bytes(&self) -> u64 {
+        self.active_elements() * std::mem::size_of::<Fp2>() as u64
+    }
+
+    pub fn is_terminal(&self) -> bool {
+        self.entries_per_table == 1
     }
 
     pub fn target(&self) -> Fp2 {
@@ -4394,46 +4741,105 @@ impl C6ResidualFusedFoldedCoefficients {
         self.completion_digest
     }
 
-    pub fn leaf_linear(&self) -> Option<&[Vec<Fp2>; C6_RESIDUAL_RELATION_LEAF_TABLES]> {
-        match &self.tables {
-            C6ResidualFusedCoefficientTables::Leaf { linear } => Some(linear),
-            C6ResidualFusedCoefficientTables::Auxiliary { .. } => None,
-        }
-    }
-
-    pub fn auxiliary_linear(&self) -> Option<&[Vec<Fp2>; C6_RESIDUAL_AUXILIARY_LANES as usize]> {
-        match &self.tables {
-            C6ResidualFusedCoefficientTables::Leaf { .. } => None,
-            C6ResidualFusedCoefficientTables::Auxiliary { linear, .. } => Some(linear),
-        }
-    }
-
-    pub fn auxiliary_quadratic(
+    pub fn with_leaf_linear<R>(
         &self,
-    ) -> Option<&[Vec<Fp2>; C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS.len()]> {
-        match &self.tables {
-            C6ResidualFusedCoefficientTables::Leaf { .. } => None,
-            C6ResidualFusedCoefficientTables::Auxiliary { quadratic, .. } => Some(quadratic),
+        read: impl FnOnce([&[Fp2]; C6_RESIDUAL_RELATION_LEAF_TABLES]) -> R,
+    ) -> C6ResidualResult<R> {
+        if self.family != C6ResidualFusedCoefficientFamily::Leaf {
+            return Err(C6ResidualError::new(
+                "C6 fused auxiliary state cannot expose leaf coefficient views",
+            ));
         }
+        let state = self
+            ._allocation_lease
+            .state
+            .lock()
+            .map_err(|_| C6ResidualError::new("C6 fused coefficient arena is poisoned"))?;
+        let layout =
+            state.leaf.ok_or_else(|| C6ResidualError::new("C6 fused leaf layout is not live"))?;
+        if layout.tables != C6_RESIDUAL_RELATION_LEAF_TABLES
+            || u64::try_from(layout.entries_per_table).ok() != Some(self.entries_per_table)
+        {
+            return Err(C6ResidualError::new("C6 fused leaf view geometry diverged"));
+        }
+        let last = layout.table_range(C6_RESIDUAL_RELATION_LEAF_TABLES - 1)?;
+        if last.end > state.backing.len() {
+            return Err(C6ResidualError::new(
+                "C6 fused leaf views exceed their single backing allocation",
+            ));
+        }
+        let tables = std::array::from_fn(|table| {
+            let start = layout.offset + table * layout.table_stride;
+            &state.backing[start..start + layout.entries_per_table]
+        });
+        Ok(read(tables))
     }
-}
 
-fn allocate_fused_zero_tables<const N: usize>(entries: usize) -> C6ResidualResult<[Vec<Fp2>; N]> {
-    let mut tables = Vec::new();
-    tables
-        .try_reserve_exact(N)
-        .map_err(|_| C6ResidualError::new("C6 fused coefficient table allocation failed"))?;
-    for _ in 0..N {
-        let mut table = Vec::new();
-        table
-            .try_reserve_exact(entries)
-            .map_err(|_| C6ResidualError::new("C6 fused coefficient state allocation failed"))?;
-        table.resize(entries, Fp2::ZERO);
-        tables.push(table);
+    pub fn with_auxiliary_tables<R>(
+        &self,
+        read: impl FnOnce(
+            [&[Fp2]; C6_RESIDUAL_AUXILIARY_LANES as usize],
+            [&[Fp2]; C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS.len()],
+        ) -> R,
+    ) -> C6ResidualResult<R> {
+        if self.family != C6ResidualFusedCoefficientFamily::Auxiliary {
+            return Err(C6ResidualError::new(
+                "C6 fused leaf state cannot expose auxiliary coefficient views",
+            ));
+        }
+        let state = self
+            ._allocation_lease
+            .state
+            .lock()
+            .map_err(|_| C6ResidualError::new("C6 fused coefficient arena is poisoned"))?;
+        let layout = state
+            .auxiliary
+            .ok_or_else(|| C6ResidualError::new("C6 fused auxiliary layout is not live"))?;
+        let linear_tables = usize::try_from(C6_RESIDUAL_AUXILIARY_LANES)
+            .map_err(|_| C6ResidualError::new("C6 fused auxiliary lane count exceeds usize"))?;
+        let expected_tables = linear_tables
+            .checked_add(C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS.len())
+            .ok_or_else(|| C6ResidualError::new("C6 fused auxiliary table census overflows"))?;
+        if layout.tables != expected_tables
+            || u64::try_from(layout.entries_per_table).ok() != Some(self.entries_per_table)
+        {
+            return Err(C6ResidualError::new("C6 fused auxiliary view geometry diverged"));
+        }
+        let last = layout.table_range(expected_tables - 1)?;
+        if last.end > state.backing.len() {
+            return Err(C6ResidualError::new(
+                "C6 fused auxiliary views exceed their single backing allocation",
+            ));
+        }
+        let linear = std::array::from_fn(|table| {
+            let start = layout.offset + table * layout.table_stride;
+            &state.backing[start..start + layout.entries_per_table]
+        });
+        let quadratic = std::array::from_fn(|table| {
+            let table = linear_tables + table;
+            let start = layout.offset + table * layout.table_stride;
+            &state.backing[start..start + layout.entries_per_table]
+        });
+        Ok(read(linear, quadratic))
     }
-    tables
-        .try_into()
-        .map_err(|_| C6ResidualError::new("C6 fused coefficient table census diverged"))
+
+    /// Bind the next shared sumcheck challenge in place.
+    ///
+    /// The single backing allocation is folded in place; its physical
+    /// capacity never changes.
+    pub fn fold_next(&mut self, challenge: Fp2) -> C6ResidualResult<()> {
+        if self.entries_per_table <= 1 || self.entries_per_table & 1 != 0 {
+            return Err(C6ResidualError::new(
+                "C6 fused coefficient state has no legal binary fold",
+            ));
+        }
+        self.point
+            .try_reserve(1)
+            .map_err(|_| C6ResidualError::new("C6 fused coefficient point allocation failed"))?;
+        self.entries_per_table = self._allocation_lease.fold_next(challenge)?;
+        self.point.push(challenge);
+        Ok(())
+    }
 }
 
 fn expected_fused_selected_coefficient_writes(
@@ -4478,54 +4884,77 @@ fn expected_fused_selected_coefficient_writes(
     })
 }
 
-struct C6ResidualFusedFoldedCoefficientSink {
+struct C6ResidualFusedFoldedCoefficientSink<'a> {
     proof_repetition: u8,
+    family: C6ResidualFusedCoefficientFamily,
     challenge: Fp2,
     selected_coefficient_writes: u64,
-    tables: C6ResidualFusedCoefficientTables,
+    arena: std::sync::MutexGuard<'a, C6ResidualFusedCoefficientArenaState>,
 }
 
-impl C6ResidualFusedFoldedCoefficientSink {
+impl<'a> C6ResidualFusedFoldedCoefficientSink<'a> {
     fn new(
         proof_repetition: u8,
         family: C6ResidualFusedCoefficientFamily,
         challenge: Fp2,
         census: C6ResidualFusedCoefficientMemoryCensus,
+        arena: std::sync::MutexGuard<'a, C6ResidualFusedCoefficientArenaState>,
     ) -> C6ResidualResult<Self> {
         if census.family != family {
             return Err(C6ResidualError::new(
                 "C6 fused coefficient allocation uses a different family census",
             ));
         }
-        let entries = usize::try_from(census.folded_entries_per_table)
-            .map_err(|_| C6ResidualError::new("C6 fused folded length exceeds usize"))?;
-        let tables = match family {
-            C6ResidualFusedCoefficientFamily::Leaf => C6ResidualFusedCoefficientTables::Leaf {
-                linear: allocate_fused_zero_tables(entries)?,
-            },
-            C6ResidualFusedCoefficientFamily::Auxiliary => {
-                C6ResidualFusedCoefficientTables::Auxiliary {
-                    linear: allocate_fused_zero_tables(entries)?,
-                    quadratic: allocate_fused_zero_tables(entries)?,
-                }
-            }
-        };
-        Ok(Self { proof_repetition, challenge, selected_coefficient_writes: 0, tables })
+        if arena.active_repetition != Some(proof_repetition) {
+            return Err(C6ResidualError::new(
+                "C6 fused coefficient sink uses an inactive repetition",
+            ));
+        }
+        let layout = arena
+            .layout(family)
+            .ok_or_else(|| C6ResidualError::new("C6 fused coefficient sink lacks its layout"))?;
+        let expected_tables =
+            usize::try_from(census.linear_tables.checked_add(census.quadratic_tables).ok_or_else(
+                || C6ResidualError::new("C6 fused coefficient table census overflows"),
+            )?)
+            .map_err(|_| C6ResidualError::new("C6 fused coefficient table count exceeds usize"))?;
+        if u64::try_from(layout.entries_per_table).ok() != Some(census.folded_entries_per_table)
+            || layout.tables != expected_tables
+        {
+            return Err(C6ResidualError::new(
+                "C6 fused coefficient sink layout differs from its census",
+            ));
+        }
+        Ok(Self { proof_repetition, family, challenge, selected_coefficient_writes: 0, arena })
     }
 
-    fn add(table: &mut [Fp2], row: u32, coefficient: Fp2, challenge: Fp2) -> C6ResidualResult<()> {
-        let selector = if row & 1 == 0 { Fp2::ONE - challenge } else { challenge };
+    fn add(&mut self, table: usize, row: u32, coefficient: Fp2) -> C6ResidualResult<()> {
+        let selector = if row & 1 == 0 { Fp2::ONE - self.challenge } else { self.challenge };
         let folded_row = usize::try_from(row / 2)
             .map_err(|_| C6ResidualError::new("C6 fused folded row exceeds usize"))?;
-        let entry = table
-            .get_mut(folded_row)
+        let layout = self
+            .arena
+            .layout(self.family)
+            .ok_or_else(|| C6ResidualError::new("C6 fused coefficient sink lost its layout"))?;
+        let range = layout.table_range(table)?;
+        let index = range
+            .start
+            .checked_add(folded_row)
+            .ok_or_else(|| C6ResidualError::new("C6 fused folded row index overflows"))?;
+        if index >= range.end {
+            return Err(C6ResidualError::new("C6 fused folded row is out of range"));
+        }
+        let entry = self
+            .arena
+            .backing
+            .get_mut(index)
             .ok_or_else(|| C6ResidualError::new("C6 fused folded row is out of range"))?;
         *entry += coefficient * selector;
         Ok(())
     }
 }
 
-impl C6ResidualAtomicEventSink for C6ResidualFusedFoldedCoefficientSink {
+impl C6ResidualAtomicEventSink for C6ResidualFusedFoldedCoefficientSink<'_> {
     fn output(&mut self, event: C6ResidualAtomicOutputEvent) -> Result<(), C6ResidualError> {
         if event.proof_repetition != self.proof_repetition {
             return Err(C6ResidualError::new("C6 fused folded sink received a swapped repetition"));
@@ -4542,38 +4971,23 @@ impl C6ResidualAtomicEventSink for C6ResidualFusedFoldedCoefficientSink {
                 "C6 fused folded coefficient has a swapped repetition",
             ));
         }
-        let challenge = self.challenge;
-        let selected = match (&mut self.tables, event.target) {
+        let selected = match (self.family, event.target) {
             (
-                C6ResidualFusedCoefficientTables::Leaf { linear },
+                C6ResidualFusedCoefficientFamily::Leaf,
                 C6ResidualAtomicCoefficientTarget::LeafLinear { table, row },
             ) => {
-                Self::add(
-                    linear.get_mut(usize::from(table)).ok_or_else(|| {
-                        C6ResidualError::new("C6 fused folded leaf table is out of range")
-                    })?,
-                    row,
-                    event.coefficient,
-                    challenge,
-                )?;
+                self.add(usize::from(table), row, event.coefficient)?;
                 true
             }
             (
-                C6ResidualFusedCoefficientTables::Auxiliary { linear, .. },
+                C6ResidualFusedCoefficientFamily::Auxiliary,
                 C6ResidualAtomicCoefficientTarget::AuxiliaryLinear { table, row },
             ) => {
-                Self::add(
-                    linear.get_mut(usize::from(table)).ok_or_else(|| {
-                        C6ResidualError::new("C6 fused folded auxiliary table is out of range")
-                    })?,
-                    row,
-                    event.coefficient,
-                    challenge,
-                )?;
+                self.add(usize::from(table), row, event.coefficient)?;
                 true
             }
             (
-                C6ResidualFusedCoefficientTables::Auxiliary { quadratic, .. },
+                C6ResidualFusedCoefficientFamily::Auxiliary,
                 C6ResidualAtomicCoefficientTarget::AuxiliaryQuadratic { lhs, rhs, row },
             ) => {
                 let table = C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS
@@ -4582,11 +4996,13 @@ impl C6ResidualAtomicEventSink for C6ResidualFusedFoldedCoefficientSink {
                     .ok_or_else(|| {
                         C6ResidualError::new("C6 fused folded quadratic tuple is not canonical")
                     })?;
-                Self::add(&mut quadratic[table], row, event.coefficient, challenge)?;
+                let linear_tables = usize::try_from(C6_RESIDUAL_AUXILIARY_LANES).map_err(|_| {
+                    C6ResidualError::new("C6 fused auxiliary lane count exceeds usize")
+                })?;
+                self.add(linear_tables + table, row, event.coefficient)?;
                 true
             }
-            (C6ResidualFusedCoefficientTables::Leaf { .. }, _) => false,
-            (C6ResidualFusedCoefficientTables::Auxiliary { .. }, _) => false,
+            _ => false,
         };
         if selected {
             self.selected_coefficient_writes = self
@@ -4612,14 +5028,20 @@ pub fn compile_c6_residual_fused_folded_coefficients(
 ) -> C6ResidualResult<C6ResidualFusedFoldedCoefficients> {
     challenges.atomic_schedule(proof_repetition)?;
     let memory_census = c6_residual_fused_coefficient_memory_census(challenges.manifest(), family)?;
-    let allocation_lease = allocation_tracker.reserve(challenges.manifest(), memory_census)?;
+    let allocation_lease =
+        allocation_tracker.reserve(challenges.manifest(), proof_repetition, memory_census)?;
     let expected_writes =
         expected_fused_selected_coefficient_writes(challenges.manifest(), family)?;
+    let arena = allocation_tracker
+        .state
+        .lock()
+        .map_err(|_| C6ResidualError::new("C6 fused coefficient arena is poisoned"))?;
     let mut sink = C6ResidualFusedFoldedCoefficientSink::new(
         proof_repetition,
         family,
         challenge,
         memory_census,
+        arena,
     )?;
     let summary = replay_c6_residual_atomic_events(
         operation_plan,
@@ -4636,6 +5058,8 @@ pub fn compile_c6_residual_fused_folded_coefficients(
             sink.selected_coefficient_writes, expected_writes
         )));
     }
+    let selected_coefficient_writes = sink.selected_coefficient_writes;
+    drop(sink);
     let mut hasher = blake3::Hasher::new_derive_key(FUSED_FOLDED_COEFFICIENT_DOMAIN);
     hasher.update(&[proof_repetition, family as u8]);
     hasher.update(&summary.semantic_digest);
@@ -4646,17 +5070,18 @@ pub fn compile_c6_residual_fused_folded_coefficients(
     hasher.update(&memory_census.quadratic_tables.to_le_bytes());
     hasher.update(&memory_census.state_elements.to_le_bytes());
     hasher.update(&memory_census.state_bytes.to_le_bytes());
-    hasher.update(&sink.selected_coefficient_writes.to_le_bytes());
+    hasher.update(&selected_coefficient_writes.to_le_bytes());
     Ok(C6ResidualFusedFoldedCoefficients {
         proof_repetition,
         family,
         challenge,
+        point: vec![challenge],
+        entries_per_table: memory_census.folded_entries_per_table,
         target: summary.target,
-        selected_coefficient_writes: sink.selected_coefficient_writes,
+        selected_coefficient_writes,
         memory_census,
         semantic_digest: summary.semantic_digest,
         completion_digest: *hasher.finalize().as_bytes(),
-        tables: sink.tables,
         _allocation_lease: allocation_lease,
     })
 }
@@ -8133,12 +8558,26 @@ mod tests {
 
         let allocation_tracker = C6ResidualFusedCoefficientAllocationTracker::new(&manifest);
         assert_eq!(allocation_tracker.manifest_digest(), manifest.digest());
+        assert_eq!(allocation_tracker.active_repetition(), None);
         assert_eq!(allocation_tracker.active_elements(), 0);
         assert_eq!(allocation_tracker.active_bytes(), 0);
+        assert!(!allocation_tracker.is_faulted());
+        assert!(compile_c6_residual_fused_folded_coefficients(
+            &installed,
+            &extraction,
+            &runtime,
+            &linear,
+            &relation,
+            &allocation_tracker,
+            0,
+            C6ResidualFusedCoefficientFamily::Auxiliary,
+            fp2(79),
+        )
+        .is_err());
         for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
             let challenge = fp2(83 + u64::from(proof_repetition));
             let statement = &compiled.statements()[usize::from(proof_repetition)];
-            let leaf_folded = compile_c6_residual_fused_folded_coefficients(
+            let mut leaf_folded = compile_c6_residual_fused_folded_coefficients(
                 &installed,
                 &extraction,
                 &runtime,
@@ -8153,18 +8592,29 @@ mod tests {
             assert_eq!(leaf_folded.proof_repetition(), proof_repetition);
             assert_eq!(leaf_folded.family(), C6ResidualFusedCoefficientFamily::Leaf);
             assert_eq!(leaf_folded.challenge(), challenge);
+            assert_eq!(leaf_folded.point(), &[challenge]);
+            assert_eq!(leaf_folded.entries_per_table(), 64);
+            assert_eq!(leaf_folded.active_elements(), 512);
             assert_eq!(leaf_folded.target(), statement.target());
             assert_eq!(leaf_folded.selected_coefficient_writes(), 1_061);
             assert_eq!(leaf_folded.memory_census(), leaf_memory);
-            assert!(leaf_folded.auxiliary_linear().is_none());
-            assert!(leaf_folded.auxiliary_quadratic().is_none());
-            for (actual, coefficients) in
-                leaf_folded.leaf_linear().unwrap().iter().zip(statement.leaf_linear())
-            {
-                assert_eq!(actual, &fold_once(coefficients, challenge));
-            }
+            assert!(leaf_folded.with_auxiliary_tables(|_, _| ()).is_err());
+            leaf_folded
+                .with_leaf_linear(|actual| {
+                    for (actual, coefficients) in actual.iter().zip(statement.leaf_linear()) {
+                        assert_eq!(*actual, fold_once(coefficients, challenge));
+                    }
+                })
+                .unwrap();
+            assert_eq!(allocation_tracker.active_repetition(), Some(proof_repetition));
             assert_eq!(allocation_tracker.active_elements(), 512);
+            assert_eq!(allocation_tracker.active_leaf_elements(), 512);
+            assert_eq!(allocation_tracker.active_auxiliary_elements(), 0);
             assert_eq!(allocation_tracker.active_bytes(), 8_192);
+            assert_eq!(allocation_tracker.reserved_elements(), 512);
+            assert_eq!(allocation_tracker.reserved_bytes(), 8_192);
+            let backing_pointer =
+                allocation_tracker.with_snapshot(|state| state.backing.as_ptr() as usize);
             assert!(compile_c6_residual_fused_folded_coefficients(
                 &installed,
                 &extraction,
@@ -8177,12 +8627,45 @@ mod tests {
                 challenge,
             )
             .is_err());
+            assert!(compile_c6_residual_fused_folded_coefficients(
+                &installed,
+                &extraction,
+                &runtime,
+                &linear,
+                &relation,
+                &allocation_tracker,
+                1 - proof_repetition,
+                C6ResidualFusedCoefficientFamily::Leaf,
+                challenge,
+            )
+            .is_err());
+
+            let shared_prefix: [Fp2; 5] = std::array::from_fn(|index| {
+                fp2(101 + 8 * u64::from(proof_repetition) + index as u64)
+            });
+            for next_challenge in shared_prefix {
+                leaf_folded.fold_next(next_challenge).unwrap();
+                leaf_folded
+                    .with_leaf_linear(|actual| {
+                        for (actual, coefficients) in actual.iter().zip(statement.leaf_linear()) {
+                            let mut expected = coefficients.clone();
+                            for point in leaf_folded.point() {
+                                crate::mle::fold_low(&mut expected, *point);
+                            }
+                            assert_eq!(*actual, expected);
+                        }
+                    })
+                    .unwrap();
+            }
+            assert_eq!(leaf_folded.entries_per_table(), 2);
+            assert_eq!(leaf_folded.active_elements(), 16);
+            assert_eq!(allocation_tracker.active_leaf_elements(), 16);
+            assert_eq!(allocation_tracker.active_elements(), 16);
+
             let leaf_semantic_digest = leaf_folded.semantic_digest();
             let leaf_completion_digest = leaf_folded.completion_digest();
-            drop(leaf_folded);
-            assert_eq!(allocation_tracker.active_elements(), 0);
-
-            let auxiliary_folded = compile_c6_residual_fused_folded_coefficients(
+            let activation_challenge = *shared_prefix.last().unwrap();
+            let mut auxiliary_folded = compile_c6_residual_fused_folded_coefficients(
                 &installed,
                 &extraction,
                 &runtime,
@@ -8191,40 +8674,179 @@ mod tests {
                 &allocation_tracker,
                 proof_repetition,
                 C6ResidualFusedCoefficientFamily::Auxiliary,
-                challenge,
+                activation_challenge,
             )
             .unwrap();
             assert_eq!(auxiliary_folded.family(), C6ResidualFusedCoefficientFamily::Auxiliary);
+            assert_eq!(auxiliary_folded.point(), &[activation_challenge]);
+            assert_eq!(auxiliary_folded.entries_per_table(), 2);
             assert_eq!(auxiliary_folded.target(), statement.target());
             assert_eq!(auxiliary_folded.selected_coefficient_writes(), 124);
             assert_eq!(auxiliary_folded.memory_census(), auxiliary_memory);
-            assert!(auxiliary_folded.leaf_linear().is_none());
-            for (actual, coefficients) in auxiliary_folded
-                .auxiliary_linear()
-                .unwrap()
-                .iter()
-                .zip(statement.auxiliary_linear())
-            {
-                assert_eq!(actual, &fold_once(coefficients, challenge));
-            }
-            for (actual, (_, coefficients)) in auxiliary_folded
-                .auxiliary_quadratic()
-                .unwrap()
-                .iter()
-                .zip(statement.auxiliary_quadratic())
-            {
-                assert_eq!(actual, &fold_once(coefficients, challenge));
-            }
-            assert_eq!(allocation_tracker.active_elements(), 48);
+            assert!(auxiliary_folded.with_leaf_linear(|_| ()).is_err());
+            auxiliary_folded
+                .with_auxiliary_tables(|linear, quadratic| {
+                    for (actual, coefficients) in linear.iter().zip(statement.auxiliary_linear()) {
+                        assert_eq!(*actual, fold_once(coefficients, activation_challenge));
+                    }
+                    for (actual, (_, coefficients)) in
+                        quadratic.iter().zip(statement.auxiliary_quadratic())
+                    {
+                        assert_eq!(*actual, fold_once(coefficients, activation_challenge));
+                    }
+                })
+                .unwrap();
+            assert_eq!(allocation_tracker.active_leaf_elements(), 16);
+            assert_eq!(allocation_tracker.active_auxiliary_elements(), 48);
+            assert_eq!(allocation_tracker.active_elements(), 64);
+            assert_eq!(allocation_tracker.reserved_elements(), 512);
+            assert_eq!(allocation_tracker.reserved_bytes(), 8_192);
+            assert_eq!(
+                allocation_tracker.with_snapshot(|state| state.backing.as_ptr() as usize),
+                backing_pointer
+            );
+            leaf_folded
+                .with_leaf_linear(|actual| {
+                    for (actual, coefficients) in actual.iter().zip(statement.leaf_linear()) {
+                        let mut expected = coefficients.clone();
+                        for point in leaf_folded.point() {
+                            crate::mle::fold_low(&mut expected, *point);
+                        }
+                        assert_eq!(*actual, expected);
+                    }
+                })
+                .unwrap();
+            assert!(compile_c6_residual_fused_folded_coefficients(
+                &installed,
+                &extraction,
+                &runtime,
+                &linear,
+                &relation,
+                &allocation_tracker,
+                proof_repetition,
+                C6ResidualFusedCoefficientFamily::Auxiliary,
+                activation_challenge,
+            )
+            .is_err());
             assert_eq!(leaf_semantic_digest, auxiliary_folded.semantic_digest());
             assert_ne!(leaf_completion_digest, [0; 32]);
             assert_ne!(auxiliary_folded.completion_digest(), [0; 32]);
             assert_ne!(leaf_completion_digest, auxiliary_folded.completion_digest());
+
+            let terminal_challenge = fp2(151 + u64::from(proof_repetition));
+            leaf_folded.fold_next(terminal_challenge).unwrap();
+            auxiliary_folded.fold_next(terminal_challenge).unwrap();
+            assert!(leaf_folded.is_terminal());
+            assert!(auxiliary_folded.is_terminal());
+            assert_eq!(leaf_folded.entries_per_table(), 1);
+            assert_eq!(auxiliary_folded.entries_per_table(), 1);
+            assert_eq!(allocation_tracker.active_leaf_elements(), 8);
+            assert_eq!(allocation_tracker.active_auxiliary_elements(), 24);
+            assert_eq!(allocation_tracker.active_elements(), 32);
+            assert_eq!(allocation_tracker.reserved_elements(), 512);
+            leaf_folded
+                .with_leaf_linear(|actual| {
+                    for (actual, coefficients) in actual.iter().zip(statement.leaf_linear()) {
+                        assert_eq!(
+                            actual[0],
+                            crate::mle::eval_mle(coefficients, leaf_folded.point())
+                        );
+                    }
+                })
+                .unwrap();
+            auxiliary_folded
+                .with_auxiliary_tables(|linear, quadratic| {
+                    for (actual, coefficients) in linear.iter().zip(statement.auxiliary_linear()) {
+                        assert_eq!(
+                            actual[0],
+                            crate::mle::eval_mle(coefficients, auxiliary_folded.point())
+                        );
+                    }
+                    for (actual, (_, coefficients)) in
+                        quadratic.iter().zip(statement.auxiliary_quadratic())
+                    {
+                        assert_eq!(
+                            actual[0],
+                            crate::mle::eval_mle(coefficients, auxiliary_folded.point())
+                        );
+                    }
+                })
+                .unwrap();
+            assert!(leaf_folded.fold_next(fp2(173)).is_err());
+            assert!(auxiliary_folded.fold_next(fp2(179)).is_err());
+
             drop(auxiliary_folded);
+            assert_eq!(allocation_tracker.active_elements(), 8);
+            assert_eq!(allocation_tracker.reserved_elements(), 512);
+            assert_eq!(allocation_tracker.active_repetition(), Some(proof_repetition));
+            drop(leaf_folded);
             assert_eq!(allocation_tracker.active_elements(), 0);
+            assert_eq!(allocation_tracker.reserved_elements(), 0);
+            assert_eq!(allocation_tracker.active_repetition(), None);
+            assert!(!allocation_tracker.is_faulted());
         }
         assert_eq!(allocation_tracker.peak_elements(), 512);
         assert_eq!(allocation_tracker.peak_bytes(), 8_192);
+        assert_eq!(allocation_tracker.peak_reserved_elements(), 512);
+        assert_eq!(allocation_tracker.peak_reserved_bytes(), 8_192);
+
+        // Re-sum the exact production arena lifecycle without allocating its
+        // 512 MiB backing buffer in a unit test.
+        let mut production_manifest = manifest.clone();
+        production_manifest.leaf_entries = 1 << 23;
+        production_manifest.auxiliary_entries = 1 << 15;
+        production_manifest.digest = [0xA5; 32];
+        let production_leaf = c6_residual_fused_coefficient_memory_census(
+            &production_manifest,
+            C6ResidualFusedCoefficientFamily::Leaf,
+        )
+        .unwrap();
+        let production_auxiliary = c6_residual_fused_coefficient_memory_census(
+            &production_manifest,
+            C6ResidualFusedCoefficientFamily::Auxiliary,
+        )
+        .unwrap();
+        assert_eq!(production_leaf.state_elements(), 33_554_432);
+        assert_eq!(production_leaf.state_bytes(), 536_870_912);
+        assert_eq!(production_auxiliary.state_elements(), 393_216);
+        assert_eq!(production_auxiliary.state_bytes(), 6_291_456);
+        let production_leaf_at_activation = u64::from(C6_RESIDUAL_RELATION_LEAF_TABLES as u32)
+            * production_auxiliary.folded_entries_per_table();
+        let production_combined =
+            production_leaf_at_activation + production_auxiliary.state_elements();
+        assert_eq!(production_leaf_at_activation, 131_072);
+        assert_eq!(production_combined, 524_288);
+        assert_eq!(production_combined * std::mem::size_of::<Fp2>() as u64, 8_388_608);
+        assert!(production_combined <= production_leaf.state_elements());
+
+        let mut undersized_backing_manifest = manifest.clone();
+        undersized_backing_manifest.leaf_entries = 8;
+        undersized_backing_manifest.auxiliary_entries = 4;
+        undersized_backing_manifest.digest = [0xA6; 32];
+        let undersized_tracker = C6ResidualFusedCoefficientArena::new(&undersized_backing_manifest);
+        let undersized_leaf = c6_residual_fused_coefficient_memory_census(
+            &undersized_backing_manifest,
+            C6ResidualFusedCoefficientFamily::Leaf,
+        )
+        .unwrap();
+        let undersized_auxiliary = c6_residual_fused_coefficient_memory_census(
+            &undersized_backing_manifest,
+            C6ResidualFusedCoefficientFamily::Auxiliary,
+        )
+        .unwrap();
+        let mut undersized_leaf_lease =
+            undersized_tracker.reserve(&undersized_backing_manifest, 0, undersized_leaf).unwrap();
+        undersized_leaf_lease.fold_next(fp2(181)).unwrap();
+        assert_eq!(undersized_tracker.active_leaf_elements(), 16);
+        assert_eq!(undersized_tracker.reserved_elements(), 32);
+        assert!(undersized_tracker
+            .reserve(&undersized_backing_manifest, 0, undersized_auxiliary)
+            .is_err());
+        assert_eq!(undersized_tracker.reserved_elements(), 32);
+        drop(undersized_leaf_lease);
+        assert_eq!(undersized_tracker.reserved_elements(), 0);
+        assert!(!undersized_tracker.is_faulted());
+
         let leaf_point = [Fp2::ZERO, Fp2::ONE, fp2(2), fp2(3), Fp2::ZERO, fp2(5), Fp2::ONE];
         let auxiliary_point = [Fp2::ONE, Fp2::ZERO];
         let mut cursor = C6ResidualEqPointCursor::new(&leaf_point, 128, "test").unwrap();

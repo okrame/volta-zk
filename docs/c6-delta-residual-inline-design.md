@@ -2,8 +2,8 @@
 
 Status: **OWNER REQUIREMENTS FROZEN; Q=121 CONTINGENCY ACTIVATED BEFORE
 IMPLEMENTATION; FORMAL SEAM / ROOFLINE / PAIRED CODEC / PRODUCTION SOURCE
-CENSUS / PAIRED SUBFIELD WITNESS GREEN; FULL DAG/CACHE/WRAPPER PENDING;
-LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
+CENSUS / PAIRED COMPLETE SOURCE WITNESS GREEN; OPERATION DAG/CACHE/WRAPPER
+PENDING; LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
 accepted C4/T1 `rate=1/4,Q=120` inline profile.  It does not reopen or rewrite
@@ -369,6 +369,79 @@ SHA-256
 `ae6d193329843445b5ff4e2fe757c5dcc87ee280ab5d39fa387966993fbdf505`.
 It has no real/AES-PCG, wrapper-proof, final-byte, prover-time, cache or
 hardware verdict.
+
+### 3.3 Paired complete-source witness checkpoint
+
+The opt-in source collector now also covers every full-field draw.  A direct
+full-field source records `(r_i,d_i,m_i)` with `x_i=r_i+d_i`; a
+`ProductMask` is separately typed, carries its exact product-triple count and
+has canonical correction zero.  Every production T1 full-correction emission
+site attaches its already-computed plaintext to the matching draw.  Missing
+or duplicate direct corrections, a role/count mismatch, a correction on a
+`ProductMask`, a late full-field draw after close, or any departure from the
+pinned public schedule fails closed.  The collector is disabled on the
+ordinary T1 path.
+
+After the one coordinate-zero model/proof run, coordinate one replays the
+same complete allocation schedule on a fresh stream:
+
+```text
+direct subfield:    d_i[1] = x_i - r_i[1]
+direct full-field:  d_i[1] = x_i - r_i[1]
+ProductMask:        fresh uncorrected r_mask[1], d_mask[1] = 0.
+```
+
+Consequently, the two coordinates must have identical direct-source
+plaintexts but independent `ProductMask` plaintexts.  Comparing the aggregate
+full-field plaintext digest across coordinates would be wrong because that
+digest intentionally includes the fresh masks; a separate canonical digest
+binds only the direct full-field plaintext schedule.  Distinct setup tape
+identities and distinct subfield and full-field secret-witness digests remain
+mandatory engineering guards.  The setup manifest remains the binding source
+of tape identity and independence.
+
+The clean frozen `100+50` reference run at `b98e453` gives:
+
+```text
+subfield leaves / coordinate                         4,793,590
+direct full-field leaves / coordinate                  181,262
+ProductMask leaves / coordinate                            673
+all source leaves / coordinate                       4,975,525
+
+hidden subfield corrections / coordinate            38,348,720 B
+hidden direct full corrections / coordinate          2,900,192 B
+all hidden direct corrections / coordinate          41,248,912 B
+
+prover-only subfield (r,d,m) / coordinate           153,394,880 B
+prover-only full-field (r,d,m) / coordinate           8,732,880 B
+complete secret source sidecar / coordinate         162,127,760 B
+second-coordinate model reruns                                0
+
+subfield direct-plaintext digest
+  b18cb65f0468dfbd9a9508bf2d70fcdfb57257a187235ae4b78e68a9bf782ea1
+full-field direct-plaintext digest
+  6e76ae45df26ae097dc47e85fd0fe571e1bd9af014be781dbd48cbe3c22a129d
+coordinate full-field witness digests
+  d907b75284ade00327d726854274946a5fdbe74cf98a058698d7cf44be381e3a
+  84b7320269a1fa8c51768a73e0aff56d58bdc5a025debdb7aea4f37579a599dd
+pair digest
+  af1a0cbd392bfbb37b8bfa669d4bcafa8423f0dfbc8dc4f29513d8947e6d4b3d
+```
+
+The extra `16 B` beyond the model's `2,900,176-B` full-correction transcript
+is the final response-wide ZeroBatch mask correction.  The 673 product masks
+have canonical zero correction and add no hidden correction bytes.  All
+secret-sidecar figures above are prover memory, not client setup,
+certificate traffic or proposed serialization.
+
+The create-new mock-PCG reference record is
+`benchmarks/results/c6-t1-source-witness-2026-07-29-b98e453.json`, SHA-256
+`c62941afd4cda3b0eed5c3e36dd27cffcd03301e7d0df14e9808ecffc9601ab5`.
+It closes extraction and paired replay of the source leaves only.  It does
+not yet link source/value IDs through the full authenticated-value operation
+DAG, identify every operand of the 673 `ProductClosure` nodes, or prove the
+cache/wrapper statement.  It carries no real/AES-PCG, final-byte,
+prover-time, session or hardware verdict.
 
 ## 4. Hidden Ligero vectors without an NTT trace
 

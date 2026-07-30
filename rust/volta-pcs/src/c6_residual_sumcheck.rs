@@ -1,12 +1,11 @@
 //! Statement-generic arithmetic engine for the two C6 residual sumchecks.
 //!
-//! This module deliberately stops before the production T1 relation
-//! compiler.  A statement contains already-precombined public coefficient
-//! MLEs and refers to the exact packed-wrapper slots that own its witness
-//! factors.  The engine proves the supplied arithmetic expression, but it
-//! does not establish that the expression was compiled from the frozen T1
-//! source grammar, reverse DAG, raw-copy relation, `ProductClosure`, or
-//! `ZeroBatch`.
+//! A statement contains already-precombined public coefficient MLEs and
+//! refers to the exact packed-wrapper slots that own its witness factors.
+//! The scaled reference path accepts only an opaque atomic-relation statement
+//! emitted by the C6RLM1 compiler and binds that compiler digest into the
+//! sumcheck statement.  Production T1 still requires the fused streaming
+//! compiler and must never materialize these coefficient arrays.
 //!
 //! Terminal factor values are returned as typed opening claims.  They remain
 //! untrusted until the response-local packed PCS opens the same wrapper slots
@@ -17,6 +16,7 @@ use std::fmt;
 use volta_field::{Fp, Fp2, P};
 use volta_proto::logup::lagrange4;
 use volta_proto::mle::{eval_mle, fold_low, lagrange3};
+use volta_proto::{C6ResidualAtomicRelationStatement, C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS};
 
 use crate::c6_wrapper_pcs::{C6_DELTA_RESIDUAL_COHORT_ID, C6_WRAPPER_AUXILIARY_COHORT_ID};
 
@@ -24,6 +24,7 @@ const PROOF_MAGIC: [u8; 8] = *b"C6RSC2\0\0";
 const PROOF_VERSION: u16 = 2;
 const PROOF_DOMAIN: &str = "volta-zk/c6/residual-sumcheck-proof/v2";
 const STATEMENT_DOMAIN: &str = "volta-zk/c6/residual-sumcheck-statement/v2";
+const ATOMIC_COMPILER_BINDING_MARKER: u8 = 0xC6;
 
 pub const C6_RESIDUAL_SUMCHECK_REPETITIONS: usize = 2;
 pub const C6_RESIDUAL_LEAF_TABLES_PER_REPETITION: usize = 8;
@@ -210,6 +211,7 @@ pub struct C6ResidualSumcheckStatement {
     target: Fp2,
     leaf: C6ResidualSumcheckFamilyStatement,
     auxiliary: C6ResidualSumcheckFamilyStatement,
+    compiler_binding_digest: [u8; 32],
     digest: [u8; 32],
 }
 
@@ -232,6 +234,99 @@ impl C6ResidualSumcheckStatement {
             expected_tables(repetition, C6ResidualSumcheckFamily::Auxiliary)?,
             leaf_terms,
             auxiliary_terms,
+            [0; 32],
+        )
+    }
+
+    /// Convert a scaled C6RLM1 compiler output into the generic two-family
+    /// arithmetic engine.
+    ///
+    /// This clones every coefficient table and is intentionally a reference
+    /// path.  The production T1 compiler must stream the same relation into
+    /// the prover instead of calling this allocation-heavy constructor.
+    pub fn from_atomic_relation_reference(
+        atomic: &C6ResidualAtomicRelationStatement,
+    ) -> Result<Self> {
+        Self::from_atomic_relation_reference_parts(
+            atomic.proof_repetition(),
+            atomic.target(),
+            atomic.leaf_linear(),
+            atomic.auxiliary_linear(),
+            atomic.auxiliary_quadratic(),
+            atomic.atomic_outputs_consumed(),
+            atomic.digest(),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn from_atomic_relation_reference_parts(
+        repetition: u8,
+        target: Fp2,
+        leaf_linear: &[Vec<Fp2>; C6_RESIDUAL_LEAF_TABLES_PER_REPETITION],
+        auxiliary_linear: &[Vec<Fp2>; C6_RESIDUAL_AUXILIARY_TABLES_PER_REPETITION],
+        auxiliary_quadratic: &[((u8, u8), Vec<Fp2>)],
+        atomic_outputs_consumed: u64,
+        compiler_binding_digest: [u8; 32],
+    ) -> Result<Self> {
+        if compiler_binding_digest == [0; 32] || atomic_outputs_consumed == 0 {
+            return Err(C6ResidualSumcheckError::new("unbound C6 atomic relation statement"));
+        }
+
+        let leaf_len = common_atomic_table_len("leaf", leaf_linear.iter().map(Vec::as_slice))?;
+        let auxiliary_len =
+            common_atomic_table_len("auxiliary", auxiliary_linear.iter().map(Vec::as_slice))?;
+        let leaf_rounds = exact_rounds_for_table_len("leaf", leaf_len)?;
+        let auxiliary_rounds = exact_rounds_for_table_len("auxiliary", auxiliary_len)?;
+        if leaf_rounds < auxiliary_rounds {
+            return Err(C6ResidualSumcheckError::new(
+                "C6 atomic relation has an invalid suffix schedule",
+            ));
+        }
+        if auxiliary_quadratic.len() != C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS.len() {
+            return Err(C6ResidualSumcheckError::new(
+                "C6 atomic relation has the wrong quadratic tuple census",
+            ));
+        }
+
+        let leaf_terms = leaf_linear
+            .iter()
+            .enumerate()
+            .map(|(table, coefficients)| {
+                C6ResidualSumcheckTerm::linear(table as u8, coefficients.clone())
+            })
+            .collect();
+        let mut auxiliary_terms = auxiliary_linear
+            .iter()
+            .enumerate()
+            .map(|(table, coefficients)| {
+                C6ResidualSumcheckTerm::linear(table as u8, coefficients.clone())
+            })
+            .collect::<Vec<_>>();
+        for (index, ((lhs, rhs), coefficients)) in auxiliary_quadratic.iter().enumerate() {
+            if (*lhs, *rhs) != C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS[index]
+                || coefficients.len() != auxiliary_len
+            {
+                return Err(C6ResidualSumcheckError::new(
+                    "C6 atomic relation quadratic tuple/geometry mismatch",
+                ));
+            }
+            auxiliary_terms.push(C6ResidualSumcheckTerm::quadratic(
+                *lhs,
+                *rhs,
+                coefficients.clone(),
+            )?);
+        }
+
+        Self::build(
+            repetition,
+            target,
+            leaf_rounds,
+            auxiliary_rounds,
+            expected_tables(repetition, C6ResidualSumcheckFamily::LeafRaw)?,
+            expected_tables(repetition, C6ResidualSumcheckFamily::Auxiliary)?,
+            leaf_terms,
+            auxiliary_terms,
+            compiler_binding_digest,
         )
     }
 
@@ -253,6 +348,7 @@ impl C6ResidualSumcheckStatement {
             expected_tables(repetition, C6ResidualSumcheckFamily::Auxiliary)?,
             leaf_terms,
             auxiliary_terms,
+            [0; 32],
         )
     }
 
@@ -266,6 +362,7 @@ impl C6ResidualSumcheckStatement {
         auxiliary_tables: Vec<C6ResidualTableRef>,
         leaf_terms: Vec<C6ResidualSumcheckTerm>,
         auxiliary_terms: Vec<C6ResidualSumcheckTerm>,
+        compiler_binding_digest: [u8; 32],
     ) -> Result<Self> {
         if usize::from(repetition) >= C6_RESIDUAL_SUMCHECK_REPETITIONS
             || auxiliary_rounds == 0
@@ -296,7 +393,8 @@ impl C6ResidualSumcheckStatement {
         };
         leaf.validate()?;
         auxiliary.validate()?;
-        let mut statement = Self { repetition, target, leaf, auxiliary, digest: [0; 32] };
+        let mut statement =
+            Self { repetition, target, leaf, auxiliary, compiler_binding_digest, digest: [0; 32] };
         statement.digest = statement_digest(&statement);
         statement.validate()?;
         Ok(statement)
@@ -320,6 +418,10 @@ impl C6ResidualSumcheckStatement {
 
     pub fn digest(&self) -> [u8; 32] {
         self.digest
+    }
+
+    pub fn compiler_binding_digest(&self) -> Option<[u8; 32]> {
+        (self.compiler_binding_digest != [0; 32]).then_some(self.compiler_binding_digest)
     }
 
     pub fn auxiliary_activation_round(&self) -> usize {
@@ -1309,10 +1411,39 @@ fn checked_table_len(rounds: usize) -> Result<usize> {
         .ok_or_else(|| C6ResidualSumcheckError::new("C6 residual table length overflows"))
 }
 
+fn common_atomic_table_len<'a>(
+    family: &str,
+    mut tables: impl Iterator<Item = &'a [Fp2]>,
+) -> Result<usize> {
+    let expected = tables
+        .next()
+        .ok_or_else(|| C6ResidualSumcheckError::new("empty C6 atomic relation family"))?
+        .len();
+    if tables.any(|table| table.len() != expected) {
+        return Err(C6ResidualSumcheckError::new(format!(
+            "C6 atomic {family} coefficient-table geometry mismatch"
+        )));
+    }
+    Ok(expected)
+}
+
+fn exact_rounds_for_table_len(family: &str, table_len: usize) -> Result<usize> {
+    if table_len < 2 || !table_len.is_power_of_two() {
+        return Err(C6ResidualSumcheckError::new(format!(
+            "C6 atomic {family} coefficient-table length is not a nontrivial power of two"
+        )));
+    }
+    Ok(table_len.trailing_zeros() as usize)
+}
+
 fn statement_digest(statement: &C6ResidualSumcheckStatement) -> [u8; 32] {
     let mut hasher = blake3::Hasher::new_derive_key(STATEMENT_DOMAIN);
     hasher.update(&[statement.repetition]);
     hash_fp2(&mut hasher, statement.target);
+    if statement.compiler_binding_digest != [0; 32] {
+        hasher.update(&[ATOMIC_COMPILER_BINDING_MARKER]);
+        hasher.update(&statement.compiler_binding_digest);
+    }
     for family in [&statement.leaf, &statement.auxiliary] {
         hasher.update(&[family.family as u8]);
         hasher.update(&(family.rounds as u64).to_le_bytes());
@@ -1513,6 +1644,88 @@ mod tests {
         .unwrap();
         let witness =
             C6ResidualSumcheckWitness::new(&statement, leaf_tables, auxiliary_tables).unwrap();
+        (statement, witness)
+    }
+
+    fn atomic_reference_fixture(
+        repetition: u8,
+        compiler_binding_digest: [u8; 32],
+    ) -> (C6ResidualSumcheckStatement, C6ResidualSumcheckWitness) {
+        let leaf_tables: [Vec<Fp2>; C6_RESIDUAL_LEAF_TABLES_PER_REPETITION] =
+            std::array::from_fn(|table_index| {
+                table(
+                    LEAF_ROUNDS,
+                    110_000 * u64::from(repetition) + 1_000 * table_index as u64 + 110,
+                )
+            });
+        let auxiliary_tables: [Vec<Fp2>; C6_RESIDUAL_AUXILIARY_TABLES_PER_REPETITION] =
+            std::array::from_fn(|table_index| {
+                table(
+                    AUXILIARY_ROUNDS,
+                    120_000 * u64::from(repetition) + 1_000 * table_index as u64 + 120,
+                )
+            });
+        let leaf_linear: [Vec<Fp2>; C6_RESIDUAL_LEAF_TABLES_PER_REPETITION] =
+            std::array::from_fn(|table_index| {
+                table(LEAF_ROUNDS, 130_000 * u64::from(repetition) + 200 * table_index as u64 + 130)
+            });
+        let auxiliary_linear: [Vec<Fp2>; C6_RESIDUAL_AUXILIARY_TABLES_PER_REPETITION] =
+            std::array::from_fn(|table_index| {
+                table(
+                    AUXILIARY_ROUNDS,
+                    140_000 * u64::from(repetition) + 200 * table_index as u64 + 140,
+                )
+            });
+        let auxiliary_quadratic = C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS
+            .iter()
+            .enumerate()
+            .map(|(tuple_index, factors)| {
+                (
+                    *factors,
+                    table(
+                        AUXILIARY_ROUNDS,
+                        150_000 * u64::from(repetition) + 200 * tuple_index as u64 + 150,
+                    ),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let leaf_terms = leaf_linear
+            .iter()
+            .enumerate()
+            .map(|(table, coefficients)| {
+                C6ResidualSumcheckTerm::linear(table as u8, coefficients.clone())
+            })
+            .collect::<Vec<_>>();
+        let mut auxiliary_terms = auxiliary_linear
+            .iter()
+            .enumerate()
+            .map(|(table, coefficients)| {
+                C6ResidualSumcheckTerm::linear(table as u8, coefficients.clone())
+            })
+            .collect::<Vec<_>>();
+        auxiliary_terms.extend(auxiliary_quadratic.iter().map(|((lhs, rhs), coefficients)| {
+            C6ResidualSumcheckTerm::quadratic(*lhs, *rhs, coefficients.clone()).unwrap()
+        }));
+        let target = expression_sum(&leaf_terms, &leaf_tables)
+            + expression_sum(&auxiliary_terms, &auxiliary_tables);
+
+        let statement = C6ResidualSumcheckStatement::from_atomic_relation_reference_parts(
+            repetition,
+            target,
+            &leaf_linear,
+            &auxiliary_linear,
+            &auxiliary_quadratic,
+            1_056,
+            compiler_binding_digest,
+        )
+        .unwrap();
+        let witness = C6ResidualSumcheckWitness::new(
+            &statement,
+            leaf_tables.into_iter().collect(),
+            auxiliary_tables.into_iter().collect(),
+        )
+        .unwrap();
         (statement, witness)
     }
 
@@ -1864,6 +2077,7 @@ mod tests {
             expected_tables(0, C6ResidualSumcheckFamily::Auxiliary).unwrap(),
             statement.leaf().terms().to_vec(),
             statement.auxiliary().terms().to_vec(),
+            [0; 32],
         )
         .is_err());
 
@@ -1879,6 +2093,7 @@ mod tests {
             wrong_auxiliary_owner,
             statement.leaf().terms().to_vec(),
             statement.auxiliary().terms().to_vec(),
+            [0; 32],
         )
         .is_err());
 
@@ -2004,5 +2219,130 @@ mod tests {
             (0..16).collect::<Vec<_>>()
         );
         assert_eq!(C6_RESIDUAL_TABLES_PER_REPETITION, 24);
+    }
+
+    #[test]
+    fn atomic_reference_bridge_proves_and_binds_the_compiler_statement() {
+        let compiler_binding_digest = [0xE1; 32];
+        let (statement, witness) = atomic_reference_fixture(0, compiler_binding_digest);
+        assert_eq!(statement.compiler_binding_digest(), Some(compiler_binding_digest));
+        assert_eq!(statement.leaf().terms().len(), 8);
+        assert_eq!(statement.auxiliary().terms().len(), 24);
+        assert_eq!(
+            statement
+                .auxiliary()
+                .terms()
+                .iter()
+                .filter_map(|term| match term {
+                    C6ResidualSumcheckTerm::Quadratic { lhs, rhs, .. } => Some((*lhs, *rhs)),
+                    C6ResidualSumcheckTerm::Linear { .. } => None,
+                })
+                .collect::<Vec<_>>(),
+            C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS
+        );
+
+        let challenge_values = challenges();
+        let (repetition_proof, claims) =
+            prove_scaled_repetition(&statement, &witness, &challenge_values);
+        assert_eq!(
+            verify_scaled_repetition(&statement, &repetition_proof, &claims, &challenge_values,)
+                .unwrap(),
+            claims
+        );
+
+        let (other_statement, other_witness) = atomic_reference_fixture(1, [0xE4; 32]);
+        let (other_repetition_proof, other_claims) =
+            prove_scaled_repetition(&other_statement, &other_witness, &challenge_values);
+        assert_eq!(
+            verify_scaled_repetition(
+                &other_statement,
+                &other_repetition_proof,
+                &other_claims,
+                &challenge_values,
+            )
+            .unwrap(),
+            other_claims
+        );
+        let statements = vec![statement.clone(), other_statement];
+        let proof = C6ResidualSumcheckProof::new(
+            &statements,
+            vec![repetition_proof.clone(), other_repetition_proof],
+        )
+        .unwrap();
+        let encoded = proof.encode(&statements).unwrap();
+        assert_eq!(encoded.len(), 980);
+        assert_eq!(C6ResidualSumcheckProof::decode(&statements, &encoded).unwrap(), proof);
+
+        let (changed_binding, _) = atomic_reference_fixture(0, [0xE2; 32]);
+        assert_eq!(changed_binding.target(), statement.target());
+        assert_ne!(changed_binding.digest(), statement.digest());
+        assert!(prepare_residual_sumcheck_verifier_round_state(
+            &changed_binding,
+            &repetition_proof
+        )
+        .is_err());
+
+        let mut post_build_mutation = statement.clone();
+        post_build_mutation.compiler_binding_digest[0] ^= 1;
+        assert!(post_build_mutation.validate().is_err());
+
+        let (legacy, _) = scaled_fixture(0);
+        assert_eq!(legacy.compiler_binding_digest(), None);
+        assert_ne!(legacy.digest(), statement.digest());
+        assert_eq!(production_c6_residual_sumcheck_encoded_len(), 4_244);
+    }
+
+    #[test]
+    fn atomic_reference_bridge_rejects_noncanonical_parts() {
+        let leaf_linear: [Vec<Fp2>; C6_RESIDUAL_LEAF_TABLES_PER_REPETITION] =
+            std::array::from_fn(|_| vec![Fp2::ONE; 32]);
+        let auxiliary_linear: [Vec<Fp2>; C6_RESIDUAL_AUXILIARY_TABLES_PER_REPETITION] =
+            std::array::from_fn(|_| vec![Fp2::ONE; 8]);
+        let quadratic = C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS
+            .map(|factors| (factors, vec![Fp2::ONE; 8]))
+            .to_vec();
+        let build = |repetition,
+                     leaf: &[Vec<Fp2>; C6_RESIDUAL_LEAF_TABLES_PER_REPETITION],
+                     auxiliary: &[Vec<Fp2>; C6_RESIDUAL_AUXILIARY_TABLES_PER_REPETITION],
+                     quadratic: &[((u8, u8), Vec<Fp2>)],
+                     outputs,
+                     digest| {
+            C6ResidualSumcheckStatement::from_atomic_relation_reference_parts(
+                repetition,
+                Fp2::ZERO,
+                leaf,
+                auxiliary,
+                quadratic,
+                outputs,
+                digest,
+            )
+        };
+        assert!(build(0, &leaf_linear, &auxiliary_linear, &quadratic, 1_056, [0xE3; 32],).is_ok());
+        assert!(build(0, &leaf_linear, &auxiliary_linear, &quadratic, 0, [0xE3; 32],).is_err());
+        assert!(build(0, &leaf_linear, &auxiliary_linear, &quadratic, 1_056, [0; 32],).is_err());
+        assert!(build(2, &leaf_linear, &auxiliary_linear, &quadratic, 1_056, [0xE3; 32],).is_err());
+
+        let mut reordered = quadratic.clone();
+        reordered.swap(0, 1);
+        assert!(build(0, &leaf_linear, &auxiliary_linear, &reordered, 1_056, [0xE3; 32],).is_err());
+
+        let non_power_leaf = std::array::from_fn(|_| vec![Fp2::ONE; 24]);
+        assert!(
+            build(0, &non_power_leaf, &auxiliary_linear, &quadratic, 1_056, [0xE3; 32],).is_err()
+        );
+
+        let oversized_auxiliary = std::array::from_fn(|_| vec![Fp2::ONE; 64]);
+        let oversized_quadratic = C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS
+            .map(|factors| (factors, vec![Fp2::ONE; 64]))
+            .to_vec();
+        assert!(build(
+            0,
+            &leaf_linear,
+            &oversized_auxiliary,
+            &oversized_quadratic,
+            1_056,
+            [0xE3; 32],
+        )
+        .is_err());
     }
 }

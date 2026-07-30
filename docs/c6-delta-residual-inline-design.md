@@ -1942,12 +1942,63 @@ The second seed remains inside the frozen 800,000-B non-PCS allocation:
 `pi_final` stays **4,409,824 B** and the complete response stays
 **33,586,456 B**.  All six focused wrapper-budget tests pass.
 
-This clears only the next local implementation gate.  A scaled reference
-compiler must still differentially evaluate every atomic family,
-reconstruct the target independently, reject every order/selector/tail
-mutation and demonstrate that changing any post-root public claim before the
-relation seed changes both complete statements.  No PCS, measured timing or
-response-removal credit follows from the formal/budget checkpoint.
+The authorized local v3 checkpoint is now green.  `C6RLM1` reconstructs and
+binds the installed artifact, topology, runtime instance, exact
+ProductMask-to-closure ownership, capacities, formulas, factor tuples and all
+ten stream domains.  The production PCS seam can create the root-bound
+typestate only from its private five-root token and an exact production
+manifest.  The subsequent Rust states enforce
+
+```text
+fixed roots + retained chi
+  -> base-share seed / alpha streams
+  -> canonical D/M and ordered M0/M1 public-claims frame
+  -> independent relation seed
+  -> eight terminal schedules + two atomic schedules.
+```
+
+The two raw seeds have one common commitment domain; a zero seed or reuse of
+the base-share seed as the relation seed rejects.  A claims mutation after
+the relation seed invalidates the bound digest rather than silently
+recompiling different weights.
+
+The scaled differential compiler consumes all eight frozen atomic families
+in order, independently evaluates each original equation, reconstructs the
+public target with the registered sign and accumulates exactly the eight
+leaf-linear, sixteen auxiliary-linear and eight canonical
+auxiliary-quadratic coefficient MLEs.  Its nontrivial reference fixture has
+family census
+
+```text
+[12, 4, 4, 32, 6, 2, 964, 32] = 1,056 outputs / repetition
+```
+
+and both complete repetitions accept the honest witness.  Independent
+source-grammar, raw-order, leaf-tail and auxiliary-tail mutations reject in
+their named family.  Changing an `M0` claim before relation-seed release
+changes both complete statement digests and makes the Product family false;
+changing it after seed release fails the context digest.  The v3 terminal
+schedule digests are eight distinct values and remain separated from the v2
+diagnostic schedule.
+
+The reference bridge into `C6RSC2` validates the exact owner/table geometry
+and factor-tuple set and binds the atomic compiler digest into the sumcheck
+statement digest.  A two-repetition scaled prove/encode/decode/verify passes;
+changed compiler binding, zero binding/output census, reordered tuples,
+non-power-of-two tables, invalid suffix geometry and post-build mutation all
+reject.  The legacy generic-statement hash path is unchanged when no compiler
+binding is present, and the production proof codec remains exactly
+**4,244 B**.
+
+This remains a CPU/reference checkpoint.  It deliberately refuses production
+geometry and clones materialized coefficient arrays only at small scale.
+Therefore it earns no PCS, response-removal, memory or measured-time credit.
+The next algebraic/engineering gate is a provider/client byte-identical fused
+T1 compiler that streams coefficients and terminal evaluations into the
+existing synchronized sumcheck/packed-PCS assembly without retaining or
+serializing response-linear vectors.  Sumcheck-message hiding, production
+auxiliary/upper-half sources, cache constraints and the final certificate
+envelope remain pending.
 
 The wrapper PCS uses rate `1/8`, two independent fold/query chains and
 `s=86` queries per chain.  Under the conservative 64-active-polynomial,

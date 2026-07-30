@@ -16,6 +16,7 @@ use std::fmt;
 
 use volta_field::{Fp, Fp2};
 use volta_mac::Transcript;
+use volta_proto::{C6ResidualRelationManifest, C6ResidualRelationRootBound};
 
 use crate::c6_hidden_u::C6HiddenUFamily;
 use crate::c6_hidden_u_sumcheck::C6HiddenUOpeningClaim;
@@ -303,6 +304,30 @@ impl C6FixedWrapperCommitments {
     pub fn commitments(&self) -> &[C6WrapperCommitment] {
         &self.commitments
     }
+
+    pub(crate) fn is_production_profile(&self) -> bool {
+        self.production_profile
+    }
+}
+
+/// Join the private PCS fixed-root token to the exact production C6RLM1
+/// manifest.  This is the only admitted production constructor for the
+/// residual v3 root-bound typestate.
+pub fn bind_production_c6_residual_relation_roots(
+    fixed: &C6FixedWrapperCommitments,
+    manifest: C6ResidualRelationManifest,
+) -> Result<C6ResidualRelationRootBound> {
+    if !fixed.is_production_profile() || !manifest.is_production_geometry() {
+        return Err(C6WrapperPcsError::new(
+            "C6 residual relation root join requires production roots and C6RLM1 geometry",
+        ));
+    }
+    C6ResidualRelationRootBound::bind_fixed_roots(
+        manifest,
+        fixed.statement_digest,
+        fixed.binding_digest,
+    )
+    .map_err(|error| C6WrapperPcsError::new(error.to_string()))
 }
 
 /// Fix the exact five production roots before any response-global sumcheck

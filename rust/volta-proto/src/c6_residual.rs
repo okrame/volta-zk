@@ -22,11 +22,12 @@
 use crate::c6::{C6DeltaResidual, C6PairedDeltaResidual};
 use crate::c6_census::{
     C6_RESIDUAL_CLOSURE_FOOTER_ENTRIES, C6_RESIDUAL_LEAF_ALIGNED_SLOTS, C6_RESIDUAL_SLOT_ENTRIES,
-    C6_RESIDUAL_SLOT_LOG2,
+    C6_RESIDUAL_SLOT_LOG2, C6_T1_TOTAL_PRODUCT_CLOSURES, C6_T1_TOTAL_PRODUCT_TRIPLES,
+    C6_T1_ZERO_CLOSURES,
 };
 use crate::c6_source::C6PairedSourceWitness;
 use crate::prod_check::{prod_batch_verify, ProdProof};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use volta_field::{Fp, Fp2, FpStream};
 use volta_mac::{
@@ -49,11 +50,22 @@ const PAIRED_COEFFICIENT_STREAM_DOMAINS: [u64; 2] =
 const PAIRED_LEAF_WRAPPER_DOMAIN: &str = "volta-zk/c6/paired-residual-leaf-wrapper/v1";
 const PAIRED_CLOSURE_WRAPPER_DOMAIN: &str = "volta-zk/c6/paired-residual-closure-wrapper/v1";
 const PAIRED_AUXILIARY_WRAPPER_DOMAIN: &str = "volta-zk/c6/paired-residual-auxiliary-wrapper/v1";
-const TERMINAL_WEIGHT_SCHEDULE_DOMAIN: &str = "volta-zk/c6/residual-terminal-weight-schedule/v2";
-const TERMINAL_LINEAR_FORM_DOMAIN: &str = "volta-zk/c6/residual-terminal-linear-form/v2";
+const TERMINAL_WEIGHT_SCHEDULE_DOMAIN_V2: &str = "volta-zk/c6/residual-terminal-weight-schedule/v2";
+const TERMINAL_WEIGHT_SCHEDULE_DOMAIN_V3: &str = "volta-zk/c6/residual-terminal-weight-schedule/v3";
+const TERMINAL_LINEAR_FORM_DOMAIN_V2: &str = "volta-zk/c6/residual-terminal-linear-form/v2";
+const TERMINAL_LINEAR_FORM_DOMAIN_V3: &str = "volta-zk/c6/residual-terminal-linear-form/v3";
 const POST_ROOT_CONTEXT_SEED_DOMAIN: &str = "volta-zk/c6/residual-post-root-context-seed/v2";
 const POST_ROOT_CHALLENGES_DOMAIN: &str = "volta-zk/c6/residual-post-root-challenges/v2";
 const POST_ROOT_SEED_COMMITMENT_DOMAIN: &str = "volta-zk/c6/residual-post-root-seed-commitment/v2";
+const RELATION_MANIFEST_DOMAIN: &str = "volta-zk/c6/t1-residual-relation-manifest/v1";
+const RELATION_MANIFEST_MAGIC: [u8; 8] = *b"C6RLM1\0\0";
+const RELATION_ROOT_BINDING_DOMAIN: &str = "volta-zk/c6/residual-root-binding/v3";
+const BASE_SHARE_CONTEXT_DOMAIN: &str = "volta-zk/c6/residual-base-share-context/v3";
+const VERIFIER_SEED_COMMITMENT_DOMAIN: &str = "volta-zk/c6/residual-verifier-seed-commitment/v1";
+const PUBLIC_CLAIMS_DOMAIN: &str = "volta-zk/c6/residual-public-claims/v1";
+const RELATION_CONTEXT_DOMAIN: &str = "volta-zk/c6/residual-relation-context/v3";
+const RELATION_CHALLENGES_DOMAIN: &str = "volta-zk/c6/residual-relation-challenges/v3";
+const ATOMIC_WEIGHT_SCHEDULE_DOMAIN: &str = "volta-zk/c6/residual-atomic-weight-schedule/v1";
 const TERMINAL_WEIGHT_STREAM_DOMAINS: [[[u64; 2]; 2]; 2] = [
     [
         [0xC6_54_45_52_4D_00_00_01, 0xC6_54_45_52_4D_00_00_02],
@@ -64,6 +76,14 @@ const TERMINAL_WEIGHT_STREAM_DOMAINS: [[[u64; 2]; 2]; 2] = [
         [0xC6_54_45_52_4D_01_01_01, 0xC6_54_45_52_4D_01_01_02],
     ],
 ];
+const ATOMIC_WEIGHT_STREAM_DOMAINS: [u64; 2] =
+    [0xC6_41_54_4F_4D_00_00_01, 0xC6_41_54_4F_4D_01_00_01];
+const RESIDUAL_RELATION_PROTOCOL_V2: u8 = 2;
+const RESIDUAL_RELATION_PROTOCOL_V3: u8 = 3;
+pub const C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS: [(u8, u8); 8] =
+    [(0, 2), (0, 3), (1, 2), (1, 3), (6, 8), (6, 9), (7, 8), (7, 9)];
+const RESIDUAL_RELATION_SOURCE_FORMULAS: [&[u8]; 3] =
+    [b"dir*(L0-L1-L3)+pm*L3", b"dir*(L0-L4-L6)+pm*L6", b"pm*L0"];
 
 pub const C6_RESIDUAL_PROOF_REPETITIONS: u8 = 2;
 pub const C6_RESIDUAL_MAC_COORDINATES: u8 = 2;
@@ -633,6 +653,1801 @@ fn hash_digest_parts(domain: &[u8], parts: &[&[u8]]) -> C6ResidualDigest {
     *hasher.finalize().as_bytes()
 }
 
+fn installed_product_mask_sources(
+    operation_plan: &C6InstalledOperationPlan,
+) -> C6ResidualResult<Vec<u32>> {
+    let mut source_cursor = 0usize;
+    let mut source_by_node = BTreeMap::new();
+    for (canonical, kind) in operation_plan.operation_kinds().iter().copied().enumerate() {
+        if kind == C6InstalledOperationKind::Source {
+            let source = *operation_plan.source_ordinals().get(source_cursor).ok_or_else(|| {
+                C6ResidualError::new("C6 installed source-ordinal stream is truncated")
+            })?;
+            source_cursor += 1;
+            source_by_node.insert(canonical as u32, source);
+        }
+    }
+    if source_cursor != operation_plan.source_ordinals().len()
+        || source_cursor != operation_plan.topology().source_count as usize
+    {
+        return Err(C6ResidualError::new(
+            "C6 installed source-ordinal stream differs from topology",
+        ));
+    }
+
+    let mut seen = BTreeSet::new();
+    let mut masks = Vec::with_capacity(operation_plan.products().len());
+    for product in operation_plan.products() {
+        let source = *source_by_node.get(&product.mask()).ok_or_else(|| {
+            C6ResidualError::new("C6 installed ProductClosure mask is not a source node")
+        })?;
+        if source >= operation_plan.topology().source_count || !seen.insert(source) {
+            return Err(C6ResidualError::new(
+                "C6 installed ProductClosure masks are reused or out of range",
+            ));
+        }
+        masks.push(source);
+    }
+    Ok(masks)
+}
+
+fn checked_relation_entries(log2: u8, label: &str) -> C6ResidualResult<u64> {
+    1u64.checked_shl(u32::from(log2))
+        .ok_or_else(|| C6ResidualError::new(format!("C6 residual {label} capacity overflows")))
+}
+
+fn residual_relation_atomic_outputs(
+    source_count: u64,
+    product_closures: u64,
+    product_triples: u64,
+    zero_roots: u64,
+    leaf_entries: u64,
+    auxiliary_entries: u64,
+) -> C6ResidualResult<(u64, u64, u64)> {
+    let raw_copy_entries = product_triples
+        .checked_mul(12)
+        .and_then(|value| value.checked_add(zero_roots.checked_mul(4)?))
+        .ok_or_else(|| C6ResidualError::new("C6 residual raw-copy census overflows"))?;
+    let leaf_tails = leaf_entries
+        .checked_sub(source_count)
+        .and_then(|tail| tail.checked_mul(7))
+        .and_then(|tail| tail.checked_add(leaf_entries.checked_sub(raw_copy_entries)?))
+        .ok_or_else(|| C6ResidualError::new("C6 residual leaf-tail census is invalid"))?;
+    let auxiliary_tails = auxiliary_entries
+        .checked_sub(product_triples)
+        .and_then(|tail| tail.checked_mul(12))
+        .and_then(|tail| {
+            tail.checked_add(auxiliary_entries.checked_sub(zero_roots)?.checked_mul(4)?)
+        })
+        .ok_or_else(|| C6ResidualError::new("C6 residual auxiliary-tail census is invalid"))?;
+    let atomic_outputs = source_count
+        .checked_mul(3)
+        .and_then(|value| value.checked_add(4))
+        .and_then(|value| value.checked_add(4))
+        .and_then(|value| value.checked_add(raw_copy_entries))
+        .and_then(|value| value.checked_add(product_closures.checked_mul(6)?))
+        .and_then(|value| value.checked_add(2))
+        .and_then(|value| value.checked_add(leaf_tails))
+        .and_then(|value| value.checked_add(auxiliary_tails))
+        .ok_or_else(|| C6ResidualError::new("C6 residual atomic-output census overflows"))?;
+    Ok((raw_copy_entries, leaf_tails, atomic_outputs))
+}
+
+/// Canonical C6RLM1 binding for one installed residual relation.
+///
+/// The production constructor fixes the exact T1 capacities.  Tests use the
+/// private scaled constructor below; a scaled digest can never satisfy
+/// [`Self::is_production_geometry`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualRelationManifest {
+    operation_plan_artifact_digest: C6ResidualDigest,
+    topology: C6OperationPlanTopologyIdentity,
+    instance: C6OperationPlanInstanceIdentity,
+    product_mask_sources: Vec<u32>,
+    leaf_log2: u8,
+    auxiliary_log2: u8,
+    leaf_entries: u64,
+    auxiliary_entries: u64,
+    raw_copy_entries: u64,
+    leaf_tail_outputs: u64,
+    auxiliary_tail_outputs: u64,
+    atomic_outputs_per_repetition: u64,
+    production_geometry: bool,
+    digest: C6ResidualDigest,
+}
+
+impl C6ResidualRelationManifest {
+    pub fn new(
+        operation_plan: &C6InstalledOperationPlan,
+        extraction: &C6DecodedInstanceExtractionPlan,
+        runtime: &C6RuntimeInstanceValues,
+    ) -> C6ResidualResult<Self> {
+        Self::new_with_geometry(
+            operation_plan,
+            extraction,
+            runtime,
+            C6_RESIDUAL_SLOT_LOG2 as u8,
+            C6_RESIDUAL_AUXILIARY_SEMANTIC_LOG2 as u8,
+            true,
+        )
+    }
+
+    fn new_with_geometry(
+        operation_plan: &C6InstalledOperationPlan,
+        extraction: &C6DecodedInstanceExtractionPlan,
+        runtime: &C6RuntimeInstanceValues,
+        leaf_log2: u8,
+        auxiliary_log2: u8,
+        require_production: bool,
+    ) -> C6ResidualResult<Self> {
+        runtime
+            .validate_extraction_binding(extraction)
+            .map_err(|error| C6ResidualError::new(error.to_string()))?;
+        let topology = operation_plan.topology();
+        let instance = runtime.instance_identity();
+        let extraction_census = extraction.census();
+        if runtime.role() != extraction.role()
+            || extraction.topology_digest() != topology.topology_digest
+            || instance.version != topology.version
+            || instance.topology_digest != topology.topology_digest
+            || instance.public_input_count != topology.public_input_count
+            || instance.scalar_input_count != topology.scalar_input_count
+            || extraction_census.canonical_public_input_count != topology.public_input_count
+            || extraction_census.canonical_scalar_input_count != topology.scalar_input_count
+        {
+            return Err(C6ResidualError::new(
+                "C6 relation manifest instance/extraction binding mismatch",
+            ));
+        }
+
+        let product_mask_sources = installed_product_mask_sources(operation_plan)?;
+        let product_triples = installed_product_triple_count(operation_plan)?;
+        let leaf_entries = checked_relation_entries(leaf_log2, "leaf")?;
+        let auxiliary_entries = checked_relation_entries(auxiliary_log2, "auxiliary")?;
+        let source_count = u64::from(topology.source_count);
+        let product_closures = u64::from(topology.product_closure_count);
+        let zero_roots = u64::from(topology.zero_root_count);
+        let (raw_copy_entries, leaf_tail_outputs, atomic_outputs_per_repetition) =
+            residual_relation_atomic_outputs(
+                source_count,
+                product_closures,
+                product_triples,
+                zero_roots,
+                leaf_entries,
+                auxiliary_entries,
+            )?;
+        let auxiliary_tail_outputs = auxiliary_entries
+            .checked_sub(product_triples)
+            .and_then(|tail| tail.checked_mul(12))
+            .and_then(|tail| {
+                tail.checked_add(auxiliary_entries.checked_sub(zero_roots)?.checked_mul(4)?)
+            })
+            .ok_or_else(|| C6ResidualError::new("C6 residual auxiliary-tail census is invalid"))?;
+        let closure_live_entries = raw_copy_entries
+            .checked_add(C6_RESIDUAL_CLOSURE_FOOTER_ENTRIES)
+            .ok_or_else(|| C6ResidualError::new("C6 residual closure live census overflows"))?;
+        if topology.product_closure_count as usize != operation_plan.products().len()
+            || topology.product_closure_count as usize != product_mask_sources.len()
+            || topology.product_triple_count != product_triples
+            || topology.zero_root_count as usize != operation_plan.zero_roots().len()
+            || source_count > leaf_entries
+            || closure_live_entries > leaf_entries
+            || product_triples > auxiliary_entries
+            || zero_roots > auxiliary_entries
+        {
+            return Err(C6ResidualError::new(
+                "C6 relation manifest geometry differs from installed plan/capacity",
+            ));
+        }
+
+        let production_geometry = topology.source_count == 4_975_525
+            && topology.product_closure_count == C6_T1_TOTAL_PRODUCT_CLOSURES as u32
+            && topology.product_triple_count == C6_T1_TOTAL_PRODUCT_TRIPLES
+            && topology.zero_root_count == C6_T1_ZERO_CLOSURES as u32
+            && leaf_log2 == C6_RESIDUAL_SLOT_LOG2 as u8
+            && auxiliary_log2 == C6_RESIDUAL_AUXILIARY_SEMANTIC_LOG2 as u8;
+        if require_production && !production_geometry {
+            return Err(C6ResidualError::new(
+                "C6RLM1 production manifest does not have the frozen T1 geometry",
+            ));
+        }
+
+        let mut manifest = Self {
+            operation_plan_artifact_digest: operation_plan.artifact_digest(),
+            topology,
+            instance,
+            product_mask_sources,
+            leaf_log2,
+            auxiliary_log2,
+            leaf_entries,
+            auxiliary_entries,
+            raw_copy_entries,
+            leaf_tail_outputs,
+            auxiliary_tail_outputs,
+            atomic_outputs_per_repetition,
+            production_geometry,
+            digest: [0; 32],
+        };
+        manifest.digest = residual_relation_manifest_digest(&manifest);
+        manifest.validate(operation_plan)?;
+        Ok(manifest)
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+
+    pub fn topology(&self) -> C6OperationPlanTopologyIdentity {
+        self.topology
+    }
+
+    pub fn instance(&self) -> C6OperationPlanInstanceIdentity {
+        self.instance
+    }
+
+    pub fn product_mask_sources(&self) -> &[u32] {
+        &self.product_mask_sources
+    }
+
+    pub fn leaf_log2(&self) -> u8 {
+        self.leaf_log2
+    }
+
+    pub fn auxiliary_log2(&self) -> u8 {
+        self.auxiliary_log2
+    }
+
+    pub fn leaf_entries(&self) -> u64 {
+        self.leaf_entries
+    }
+
+    pub fn auxiliary_entries(&self) -> u64 {
+        self.auxiliary_entries
+    }
+
+    pub fn raw_copy_entries(&self) -> u64 {
+        self.raw_copy_entries
+    }
+
+    pub fn atomic_outputs_per_repetition(&self) -> u64 {
+        self.atomic_outputs_per_repetition
+    }
+
+    pub fn is_production_geometry(&self) -> bool {
+        self.production_geometry
+    }
+
+    fn validate(&self, operation_plan: &C6InstalledOperationPlan) -> C6ResidualResult<()> {
+        if self.operation_plan_artifact_digest != operation_plan.artifact_digest()
+            || self.topology != operation_plan.topology()
+            || self.product_mask_sources != installed_product_mask_sources(operation_plan)?
+            || self.digest == [0; 32]
+            || self.digest != residual_relation_manifest_digest(self)
+        {
+            return Err(C6ResidualError::new("C6 residual relation manifest binding mismatch"));
+        }
+        Ok(())
+    }
+}
+
+fn residual_relation_manifest_digest(manifest: &C6ResidualRelationManifest) -> C6ResidualDigest {
+    let mut hasher = blake3::Hasher::new_derive_key(RELATION_MANIFEST_DOMAIN);
+    hasher.update(&RELATION_MANIFEST_MAGIC);
+    hasher.update(&manifest.operation_plan_artifact_digest);
+    hasher.update(&manifest.topology.version.to_le_bytes());
+    hasher.update(&manifest.topology.source_count.to_le_bytes());
+    hasher.update(&manifest.topology.source_schedule_digest);
+    hasher.update(&manifest.topology.canonical_node_count.to_le_bytes());
+    hasher.update(&manifest.topology.public_input_count.to_le_bytes());
+    hasher.update(&manifest.topology.scalar_input_count.to_le_bytes());
+    hasher.update(&manifest.topology.product_closure_count.to_le_bytes());
+    hasher.update(&manifest.topology.product_triple_count.to_le_bytes());
+    hasher.update(&manifest.topology.zero_root_count.to_le_bytes());
+    hasher.update(&manifest.topology.topology_digest);
+    hasher.update(&manifest.instance.version.to_le_bytes());
+    hasher.update(&manifest.instance.topology_digest);
+    hasher.update(&manifest.instance.public_input_count.to_le_bytes());
+    hasher.update(&manifest.instance.scalar_input_count.to_le_bytes());
+    hasher.update(&manifest.instance.instance_digest);
+    hasher.update(&[manifest.leaf_log2, manifest.auxiliary_log2]);
+    hasher.update(&manifest.leaf_entries.to_le_bytes());
+    hasher.update(&manifest.auxiliary_entries.to_le_bytes());
+    hasher.update(&manifest.raw_copy_entries.to_le_bytes());
+    hasher.update(&manifest.leaf_tail_outputs.to_le_bytes());
+    hasher.update(&manifest.auxiliary_tail_outputs.to_le_bytes());
+    hasher.update(&manifest.atomic_outputs_per_repetition.to_le_bytes());
+    hasher.update(&(manifest.product_mask_sources.len() as u64).to_le_bytes());
+    for (closure, source) in manifest.product_mask_sources.iter().enumerate() {
+        hasher.update(&(closure as u64).to_le_bytes());
+        hasher.update(&source.to_le_bytes());
+    }
+    for formula in RESIDUAL_RELATION_SOURCE_FORMULAS {
+        hasher.update(&(formula.len() as u64).to_le_bytes());
+        hasher.update(formula);
+    }
+    hasher.update(b"R_D=P+sum(ell*d)-sum(alpha*r)-D");
+    hasher.update(b"R_M=sum((ell+alpha)*m)-M");
+    hasher.update(b"raw=12*t+6*b+k;zero=12*T+4*z+2*b+k");
+    hasher.update(b"product=Q,M0,M1;zero=sum(zeta*A_zero_x)");
+    for (lhs, rhs) in C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS {
+        hasher.update(&[lhs, rhs]);
+    }
+    for domains in TERMINAL_WEIGHT_STREAM_DOMAINS {
+        for coordinate in domains {
+            for domain in coordinate {
+                hasher.update(&domain.to_le_bytes());
+            }
+        }
+    }
+    for domain in ATOMIC_WEIGHT_STREAM_DOMAINS {
+        hasher.update(&domain.to_le_bytes());
+    }
+    *hasher.finalize().as_bytes()
+}
+
+/// Retained ProductClosure and response-wide ZeroBatch challenges fixed
+/// after the roots and before provider public claims.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualRetainedChallenges {
+    manifest_digest: C6ResidualDigest,
+    product_challenges: Vec<Fp2>,
+    zero_challenge: Fp2,
+    digest: C6ResidualDigest,
+}
+
+impl C6ResidualRetainedChallenges {
+    pub fn new(
+        manifest: &C6ResidualRelationManifest,
+        product_challenges: Vec<Fp2>,
+        zero_challenge: Fp2,
+    ) -> C6ResidualResult<Self> {
+        if product_challenges.len() != manifest.topology.product_closure_count as usize {
+            return Err(C6ResidualError::new(
+                "C6 retained ProductClosure challenge census mismatch",
+            ));
+        }
+        let mut retained = Self {
+            manifest_digest: manifest.digest,
+            product_challenges,
+            zero_challenge,
+            digest: [0; 32],
+        };
+        retained.digest = retained_challenges_digest(&retained);
+        Ok(retained)
+    }
+
+    pub fn product_challenges(&self) -> &[Fp2] {
+        &self.product_challenges
+    }
+
+    pub fn zero_challenge(&self) -> Fp2 {
+        self.zero_challenge
+    }
+
+    pub fn zero_weights(&self, zero_roots: usize) -> Vec<Fp2> {
+        let mut power = Fp2::ONE;
+        (0..zero_roots)
+            .map(|_| {
+                power = power * self.zero_challenge;
+                power
+            })
+            .collect()
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+}
+
+fn retained_challenges_digest(retained: &C6ResidualRetainedChallenges) -> C6ResidualDigest {
+    let mut hasher = blake3::Hasher::new_derive_key(BASE_SHARE_CONTEXT_DOMAIN);
+    hasher.update(b"retained-challenges");
+    hasher.update(&retained.manifest_digest);
+    hasher.update(&(retained.product_challenges.len() as u64).to_le_bytes());
+    for challenge in &retained.product_challenges {
+        hash_fp2(&mut hasher, *challenge);
+    }
+    hash_fp2(&mut hasher, retained.zero_challenge);
+    *hasher.finalize().as_bytes()
+}
+
+/// Private typestate after the wrapper statement and roots are fixed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualRelationRootBound {
+    manifest: C6ResidualRelationManifest,
+    wrapper_statement_digest: C6ResidualDigest,
+    fixed_roots_digest: C6ResidualDigest,
+    digest: C6ResidualDigest,
+}
+
+impl C6ResidualRelationRootBound {
+    /// Low-level join used by the PCS crate after it has produced its private
+    /// fixed-root token.  Production callers must not substitute a raw
+    /// provider digest for that token.
+    #[doc(hidden)]
+    pub fn bind_fixed_roots(
+        manifest: C6ResidualRelationManifest,
+        wrapper_statement_digest: C6ResidualDigest,
+        fixed_roots_digest: C6ResidualDigest,
+    ) -> C6ResidualResult<Self> {
+        if wrapper_statement_digest == [0; 32]
+            || fixed_roots_digest == [0; 32]
+            || manifest.digest == [0; 32]
+        {
+            return Err(C6ResidualError::new("C6 residual v3 root binding contains a zero digest"));
+        }
+        let mut root =
+            Self { manifest, wrapper_statement_digest, fixed_roots_digest, digest: [0; 32] };
+        root.digest = relation_root_binding_digest(&root);
+        Ok(root)
+    }
+
+    pub fn manifest(&self) -> &C6ResidualRelationManifest {
+        &self.manifest
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+
+    pub fn release_base_share_seed(
+        self,
+        retained: C6ResidualRetainedChallenges,
+        base_share_seed: [u8; 32],
+    ) -> C6ResidualResult<C6ResidualBaseShareContext> {
+        if base_share_seed == [0; 32]
+            || retained.manifest_digest != self.manifest.digest
+            || retained.digest == [0; 32]
+            || retained.digest != retained_challenges_digest(&retained)
+        {
+            return Err(C6ResidualError::new(
+                "C6 residual base-share transition has an invalid seed/challenge binding",
+            ));
+        }
+        let mut commitment_hasher = blake3::Hasher::new_derive_key(VERIFIER_SEED_COMMITMENT_DOMAIN);
+        commitment_hasher.update(&base_share_seed);
+        let base_share_seed_commitment = *commitment_hasher.finalize().as_bytes();
+
+        let mut alpha_hasher = blake3::Hasher::new_derive_key(BASE_SHARE_CONTEXT_DOMAIN);
+        alpha_hasher.update(b"alpha-seed");
+        alpha_hasher.update(&self.digest);
+        alpha_hasher.update(&retained.digest);
+        alpha_hasher.update(&base_share_seed);
+        let alpha_seed = *alpha_hasher.finalize().as_bytes();
+
+        let mut context = C6ResidualBaseShareContext {
+            root: self,
+            retained,
+            base_share_seed_commitment,
+            alpha_seed,
+            digest: [0; 32],
+        };
+        context.digest = base_share_context_digest(&context);
+        Ok(context)
+    }
+}
+
+fn relation_root_binding_digest(root: &C6ResidualRelationRootBound) -> C6ResidualDigest {
+    let mut hasher = blake3::Hasher::new_derive_key(RELATION_ROOT_BINDING_DOMAIN);
+    hasher.update(&root.manifest.digest);
+    hasher.update(&root.wrapper_statement_digest);
+    hasher.update(&root.fixed_roots_digest);
+    *hasher.finalize().as_bytes()
+}
+
+/// Typestate after the first verifier seed and retained challenges, but
+/// before provider public outputs are committed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualBaseShareContext {
+    root: C6ResidualRelationRootBound,
+    retained: C6ResidualRetainedChallenges,
+    base_share_seed_commitment: C6ResidualDigest,
+    alpha_seed: [u8; 32],
+    digest: C6ResidualDigest,
+}
+
+impl C6ResidualBaseShareContext {
+    pub fn manifest(&self) -> &C6ResidualRelationManifest {
+        &self.root.manifest
+    }
+
+    pub fn retained(&self) -> &C6ResidualRetainedChallenges {
+        &self.retained
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+
+    pub fn base_share_seed_commitment(&self) -> C6ResidualDigest {
+        self.base_share_seed_commitment
+    }
+
+    pub fn alpha_stream(&self, coordinate: u8) -> C6ResidualResult<FpStream> {
+        let domain = *PAIRED_COEFFICIENT_STREAM_DOMAINS
+            .get(usize::from(coordinate))
+            .ok_or_else(|| C6ResidualError::new("C6 residual alpha coordinate is out of range"))?;
+        Ok(FpStream::domain_separated(self.alpha_seed, domain))
+    }
+
+    pub fn commit_public_claims(
+        self,
+        linear_form_digest: C6ResidualDigest,
+        products: Vec<C6ResidualProductPublicClaim>,
+        residual: C6PairedDeltaResidual,
+    ) -> C6ResidualResult<C6ResidualClaimsBoundContext> {
+        if linear_form_digest == [0; 32]
+            || products.len() != self.root.manifest.topology.product_closure_count as usize
+        {
+            return Err(C6ResidualError::new(
+                "C6 residual public-claims frame has an invalid digest/census",
+            ));
+        }
+        let mut frame = C6ResidualPublicClaimsFrame {
+            manifest_digest: self.root.manifest.digest,
+            base_share_context_digest: self.digest,
+            retained_challenges_digest: self.retained.digest,
+            linear_form_digest,
+            products,
+            residual,
+            digest: [0; 32],
+        };
+        frame.digest = public_claims_digest(&frame);
+        Ok(C6ResidualClaimsBoundContext { base: self, claims: frame })
+    }
+}
+
+fn base_share_context_digest(context: &C6ResidualBaseShareContext) -> C6ResidualDigest {
+    let mut hasher = blake3::Hasher::new_derive_key(BASE_SHARE_CONTEXT_DOMAIN);
+    hasher.update(&context.root.digest);
+    hasher.update(&context.retained.digest);
+    hasher.update(&context.base_share_seed_commitment);
+    hasher.update(&context.alpha_seed);
+    *hasher.finalize().as_bytes()
+}
+
+/// Ordered `(M0,M1)` provider outputs for both MAC coordinates of one
+/// installed ProductClosure.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6ResidualProductPublicClaim {
+    pub messages: [[Fp2; 2]; 2],
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualPublicClaimsFrame {
+    manifest_digest: C6ResidualDigest,
+    base_share_context_digest: C6ResidualDigest,
+    retained_challenges_digest: C6ResidualDigest,
+    linear_form_digest: C6ResidualDigest,
+    products: Vec<C6ResidualProductPublicClaim>,
+    residual: C6PairedDeltaResidual,
+    digest: C6ResidualDigest,
+}
+
+impl C6ResidualPublicClaimsFrame {
+    pub fn products(&self) -> &[C6ResidualProductPublicClaim] {
+        &self.products
+    }
+
+    pub fn residual(&self) -> C6PairedDeltaResidual {
+        self.residual
+    }
+
+    pub fn linear_form_digest(&self) -> C6ResidualDigest {
+        self.linear_form_digest
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+}
+
+fn public_claims_digest(frame: &C6ResidualPublicClaimsFrame) -> C6ResidualDigest {
+    let mut hasher = blake3::Hasher::new_derive_key(PUBLIC_CLAIMS_DOMAIN);
+    hasher.update(&frame.manifest_digest);
+    hasher.update(&frame.base_share_context_digest);
+    hasher.update(&frame.retained_challenges_digest);
+    hasher.update(&frame.linear_form_digest);
+    hasher.update(&(frame.products.len() as u64).to_le_bytes());
+    for (closure, product) in frame.products.iter().enumerate() {
+        hasher.update(&(closure as u64).to_le_bytes());
+        for coordinate in 0..2 {
+            hasher.update(&[coordinate as u8]);
+            hash_fp2(&mut hasher, product.messages[coordinate][0]);
+            hash_fp2(&mut hasher, product.messages[coordinate][1]);
+        }
+    }
+    for (coordinate, residual) in frame.residual.coordinates.iter().enumerate() {
+        hasher.update(&[coordinate as u8]);
+        hash_fp2(&mut hasher, residual.correction_rlc);
+        hash_fp2(&mut hasher, residual.public_tag_rlc);
+    }
+    *hasher.finalize().as_bytes()
+}
+
+/// Typestate proving that all provider-controlled public outputs were fixed
+/// before the independent relation seed exists.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualClaimsBoundContext {
+    base: C6ResidualBaseShareContext,
+    claims: C6ResidualPublicClaimsFrame,
+}
+
+impl C6ResidualClaimsBoundContext {
+    pub fn claims(&self) -> &C6ResidualPublicClaimsFrame {
+        &self.claims
+    }
+
+    pub fn release_relation_seed(
+        self,
+        operation_plan: &C6InstalledOperationPlan,
+        relation_seed: [u8; 32],
+    ) -> C6ResidualResult<C6ResidualRelationChallenges> {
+        self.base.root.manifest.validate(operation_plan)?;
+        if relation_seed == [0; 32] {
+            return Err(C6ResidualError::new("C6 residual relation seed is zero"));
+        }
+        let mut commitment_hasher = blake3::Hasher::new_derive_key(VERIFIER_SEED_COMMITMENT_DOMAIN);
+        commitment_hasher.update(&relation_seed);
+        let relation_seed_commitment = *commitment_hasher.finalize().as_bytes();
+        if relation_seed_commitment == self.base.base_share_seed_commitment {
+            return Err(C6ResidualError::new(
+                "C6 residual relation seed reuses the base-share seed",
+            ));
+        }
+
+        let mut context_hasher = blake3::Hasher::new_derive_key(RELATION_CONTEXT_DOMAIN);
+        context_hasher.update(&self.base.digest);
+        context_hasher.update(&self.claims.digest);
+        context_hasher.update(&relation_seed);
+        let context_seed = *context_hasher.finalize().as_bytes();
+
+        let mut terminal_schedules = Vec::with_capacity(C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS);
+        for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
+            for mac_coordinate in 0..C6_RESIDUAL_MAC_COORDINATES {
+                for kind in [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag]
+                {
+                    terminal_schedules.push(derive_terminal_weight_schedule(
+                        operation_plan,
+                        RESIDUAL_RELATION_PROTOCOL_V3,
+                        proof_repetition,
+                        mac_coordinate,
+                        kind,
+                        context_seed,
+                    )?);
+                }
+            }
+        }
+        let terminal_schedules: [C6ResidualTerminalWeightSchedule;
+            C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS] =
+            terminal_schedules.try_into().map_err(|_| {
+                C6ResidualError::new("C6 residual v3 terminal expansion lost a schedule")
+            })?;
+        let atomic_schedules = std::array::from_fn(|repetition| {
+            C6ResidualAtomicWeightSchedule::new(
+                self.base.root.manifest.digest,
+                self.claims.digest,
+                context_seed,
+                repetition as u8,
+                self.base.root.manifest.atomic_outputs_per_repetition,
+            )
+        });
+        let mut challenges = C6ResidualRelationChallenges {
+            claims_bound: self,
+            relation_seed_commitment,
+            context_seed,
+            terminal_schedules,
+            atomic_schedules,
+            digest: [0; 32],
+        };
+        challenges.digest = relation_challenges_digest(&challenges);
+        challenges.validate(operation_plan)?;
+        Ok(challenges)
+    }
+}
+
+/// Non-materialized atomic-weight stream for one complete relation
+/// repetition.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualAtomicWeightSchedule {
+    manifest_digest: C6ResidualDigest,
+    public_claims_digest: C6ResidualDigest,
+    context_seed: [u8; 32],
+    proof_repetition: u8,
+    stream_domain: u64,
+    output_count: u64,
+    digest: C6ResidualDigest,
+}
+
+impl C6ResidualAtomicWeightSchedule {
+    fn new(
+        manifest_digest: C6ResidualDigest,
+        public_claims_digest: C6ResidualDigest,
+        context_seed: [u8; 32],
+        proof_repetition: u8,
+        output_count: u64,
+    ) -> Self {
+        let stream_domain = ATOMIC_WEIGHT_STREAM_DOMAINS[usize::from(proof_repetition)];
+        let mut schedule = Self {
+            manifest_digest,
+            public_claims_digest,
+            context_seed,
+            proof_repetition,
+            stream_domain,
+            output_count,
+            digest: [0; 32],
+        };
+        schedule.digest = atomic_weight_schedule_digest(&schedule);
+        schedule
+    }
+
+    pub fn proof_repetition(&self) -> u8 {
+        self.proof_repetition
+    }
+
+    pub fn stream_domain(&self) -> u64 {
+        self.stream_domain
+    }
+
+    pub fn output_count(&self) -> u64 {
+        self.output_count
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+
+    pub fn stream(&self) -> FpStream {
+        FpStream::domain_separated(self.context_seed, self.stream_domain)
+    }
+}
+
+fn atomic_weight_schedule_digest(schedule: &C6ResidualAtomicWeightSchedule) -> C6ResidualDigest {
+    let mut hasher = blake3::Hasher::new_derive_key(ATOMIC_WEIGHT_SCHEDULE_DOMAIN);
+    hasher.update(&schedule.manifest_digest);
+    hasher.update(&schedule.public_claims_digest);
+    hasher.update(&[schedule.proof_repetition]);
+    hasher.update(&schedule.stream_domain.to_le_bytes());
+    hasher.update(&schedule.output_count.to_le_bytes());
+    *hasher.finalize().as_bytes()
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualRelationChallenges {
+    claims_bound: C6ResidualClaimsBoundContext,
+    relation_seed_commitment: C6ResidualDigest,
+    context_seed: [u8; 32],
+    terminal_schedules: [C6ResidualTerminalWeightSchedule; C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS],
+    atomic_schedules: [C6ResidualAtomicWeightSchedule; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    digest: C6ResidualDigest,
+}
+
+impl C6ResidualRelationChallenges {
+    pub fn manifest(&self) -> &C6ResidualRelationManifest {
+        &self.claims_bound.base.root.manifest
+    }
+
+    pub fn base_share_context(&self) -> &C6ResidualBaseShareContext {
+        &self.claims_bound.base
+    }
+
+    pub fn claims(&self) -> &C6ResidualPublicClaimsFrame {
+        &self.claims_bound.claims
+    }
+
+    pub fn relation_seed_commitment(&self) -> C6ResidualDigest {
+        self.relation_seed_commitment
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+
+    pub fn terminal_schedule(
+        &self,
+        proof_repetition: u8,
+        mac_coordinate: u8,
+        kind: C6ResidualTerminalFormKind,
+    ) -> C6ResidualResult<&C6ResidualTerminalWeightSchedule> {
+        if proof_repetition >= C6_RESIDUAL_PROOF_REPETITIONS
+            || mac_coordinate >= C6_RESIDUAL_MAC_COORDINATES
+        {
+            return Err(C6ResidualError::new(
+                "C6 residual v3 terminal schedule index is out of range",
+            ));
+        }
+        let index = usize::from(proof_repetition)
+            .checked_mul(usize::from(C6_RESIDUAL_MAC_COORDINATES))
+            .and_then(|base| base.checked_add(usize::from(mac_coordinate)))
+            .and_then(|base| base.checked_mul(C6_RESIDUAL_TERMINAL_FORM_KINDS))
+            .and_then(|base| base.checked_add(kind.stream_index()))
+            .ok_or_else(|| C6ResidualError::new("C6 residual v3 schedule index overflows"))?;
+        self.terminal_schedules
+            .get(index)
+            .ok_or_else(|| C6ResidualError::new("C6 residual v3 schedule is missing"))
+    }
+
+    pub fn atomic_schedule(
+        &self,
+        proof_repetition: u8,
+    ) -> C6ResidualResult<&C6ResidualAtomicWeightSchedule> {
+        self.atomic_schedules
+            .get(usize::from(proof_repetition))
+            .ok_or_else(|| C6ResidualError::new("C6 residual atomic repetition is out of range"))
+    }
+
+    fn validate(&self, operation_plan: &C6InstalledOperationPlan) -> C6ResidualResult<()> {
+        self.manifest().validate(operation_plan)?;
+        if self.relation_seed_commitment == [0; 32]
+            || self.context_seed == [0; 32]
+            || self.claims().digest == [0; 32]
+            || self.claims().digest != public_claims_digest(self.claims())
+            || self.digest == [0; 32]
+            || self.digest != relation_challenges_digest(self)
+        {
+            return Err(C6ResidualError::new("C6 residual relation-challenge binding mismatch"));
+        }
+        for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
+            let atomic = self.atomic_schedule(proof_repetition)?;
+            if atomic.proof_repetition != proof_repetition
+                || atomic.stream_domain
+                    != ATOMIC_WEIGHT_STREAM_DOMAINS[usize::from(proof_repetition)]
+                || atomic.output_count != self.manifest().atomic_outputs_per_repetition
+                || atomic.digest != atomic_weight_schedule_digest(atomic)
+            {
+                return Err(C6ResidualError::new(
+                    "C6 residual atomic-weight schedule binding mismatch",
+                ));
+            }
+            for mac_coordinate in 0..C6_RESIDUAL_MAC_COORDINATES {
+                for kind in [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag]
+                {
+                    let schedule =
+                        self.terminal_schedule(proof_repetition, mac_coordinate, kind)?;
+                    if schedule.protocol_version != RESIDUAL_RELATION_PROTOCOL_V3
+                        || schedule.proof_repetition != proof_repetition
+                        || schedule.mac_coordinate != mac_coordinate
+                        || schedule.kind != kind
+                    {
+                        return Err(C6ResidualError::new(
+                            "C6 residual v3 terminal streams are swapped",
+                        ));
+                    }
+                    schedule.validate(operation_plan)?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+fn relation_challenges_digest(challenges: &C6ResidualRelationChallenges) -> C6ResidualDigest {
+    let mut hasher = blake3::Hasher::new_derive_key(RELATION_CHALLENGES_DOMAIN);
+    hasher.update(&challenges.claims_bound.base.root.manifest.digest);
+    hasher.update(&challenges.claims_bound.base.digest);
+    hasher.update(&challenges.claims_bound.claims.digest);
+    hasher.update(&challenges.relation_seed_commitment);
+    hasher.update(&challenges.context_seed);
+    for schedule in &challenges.terminal_schedules {
+        hasher.update(&[schedule.proof_repetition, schedule.mac_coordinate, schedule.kind as u8]);
+        hasher.update(&schedule.digest);
+    }
+    for schedule in &challenges.atomic_schedules {
+        hasher.update(&[schedule.proof_repetition]);
+        hasher.update(&schedule.digest);
+    }
+    *hasher.finalize().as_bytes()
+}
+
+pub const C6_RESIDUAL_RELATION_LEAF_TABLES: usize = 8;
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum C6ResidualAtomicFamily {
+    SourceGrammar = 0,
+    Affine = 1,
+    Reverse = 2,
+    RawCopy = 3,
+    Product = 4,
+    Zero = 5,
+    LeafTail = 6,
+    AuxiliaryTail = 7,
+}
+
+impl C6ResidualAtomicFamily {
+    pub const ALL: [Self; 8] = [
+        Self::SourceGrammar,
+        Self::Affine,
+        Self::Reverse,
+        Self::RawCopy,
+        Self::Product,
+        Self::Zero,
+        Self::LeafTail,
+        Self::AuxiliaryTail,
+    ];
+
+    fn index(self) -> usize {
+        self as usize
+    }
+}
+
+/// Full scaled witness used only by the differential reference compiler.
+///
+/// Production code must stream the same coefficients against committed
+/// wrapper tables and must never materialize these arrays at T1 capacity.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualRelationReferenceWitness {
+    manifest_digest: C6ResidualDigest,
+    leaf_tables: [Vec<Fp2>; C6_RESIDUAL_RELATION_LEAF_TABLES],
+    auxiliary_tables: [Vec<Fp2>; C6_RESIDUAL_AUXILIARY_LANES as usize],
+    digest: C6ResidualDigest,
+}
+
+impl C6ResidualRelationReferenceWitness {
+    pub fn from_live(
+        manifest: &C6ResidualRelationManifest,
+        leaf: &C6PairedResidualLeafWitness,
+        closure: &C6PairedResidualClosureWitness,
+        auxiliary: &C6PairedResidualAuxiliaryWitness,
+    ) -> C6ResidualResult<Self> {
+        if manifest.production_geometry {
+            return Err(C6ResidualError::new(
+                "C6 production relation witness must use the fused streaming compiler",
+            ));
+        }
+        let leaf_entries = usize::try_from(manifest.leaf_entries)
+            .map_err(|_| C6ResidualError::new("C6 reference leaf capacity exceeds usize"))?;
+        let auxiliary_entries = usize::try_from(manifest.auxiliary_entries)
+            .map_err(|_| C6ResidualError::new("C6 reference auxiliary capacity exceeds usize"))?;
+        if leaf.source_schedule_digest != manifest.topology.source_schedule_digest
+            || leaf.source_count != manifest.topology.source_count
+            || leaf.product_mask_count as usize != manifest.product_mask_sources.len()
+            || closure.census.product_closures != manifest.topology.product_closure_count
+            || closure.census.product_triples != manifest.topology.product_triple_count
+            || closure.census.zero_roots != manifest.topology.zero_root_count
+            || closure.values.len()
+                != usize::try_from(
+                    manifest
+                        .raw_copy_entries
+                        .checked_add(C6_RESIDUAL_CLOSURE_FOOTER_ENTRIES)
+                        .ok_or_else(|| {
+                            C6ResidualError::new("C6 reference closure length overflows")
+                        })?,
+                )
+                .map_err(|_| C6ResidualError::new("C6 reference closure length exceeds usize"))?
+            || auxiliary.closure_witness_digest != closure.witness_digest
+            || auxiliary.census.product_rows != manifest.topology.product_triple_count
+            || auxiliary.census.zero_rows != u64::from(manifest.topology.zero_root_count)
+        {
+            return Err(C6ResidualError::new("C6 reference witness bindings differ from C6RLM1"));
+        }
+
+        let mut leaf_tables = std::array::from_fn(|_| vec![Fp2::ZERO; leaf_entries]);
+        for column in C6ResidualLeafColumn::ALL {
+            leaf_tables[column.index()][..leaf.source_count as usize]
+                .copy_from_slice(leaf.column(column));
+        }
+        leaf_tables[7][..closure.values.len()].copy_from_slice(&closure.values);
+
+        let mut auxiliary_tables = std::array::from_fn(|_| vec![Fp2::ZERO; auxiliary_entries]);
+        for lane in C6ResidualAuxiliaryLane::ALL {
+            let live = auxiliary.lane(lane);
+            if live.len() > auxiliary_entries {
+                return Err(C6ResidualError::new(
+                    "C6 reference auxiliary lane exceeds scaled capacity",
+                ));
+            }
+            auxiliary_tables[lane.index()][..live.len()].copy_from_slice(live);
+        }
+
+        let mut witness = Self {
+            manifest_digest: manifest.digest,
+            leaf_tables,
+            auxiliary_tables,
+            digest: [0; 32],
+        };
+        witness.digest = relation_reference_witness_digest(&witness);
+        Ok(witness)
+    }
+
+    pub fn leaf_tables(&self) -> &[Vec<Fp2>; C6_RESIDUAL_RELATION_LEAF_TABLES] {
+        &self.leaf_tables
+    }
+
+    pub fn auxiliary_tables(&self) -> &[Vec<Fp2>; C6_RESIDUAL_AUXILIARY_LANES as usize] {
+        &self.auxiliary_tables
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+
+    fn validate(&self, manifest: &C6ResidualRelationManifest) -> C6ResidualResult<()> {
+        let leaf_entries = usize::try_from(manifest.leaf_entries)
+            .map_err(|_| C6ResidualError::new("C6 reference leaf capacity exceeds usize"))?;
+        let auxiliary_entries = usize::try_from(manifest.auxiliary_entries)
+            .map_err(|_| C6ResidualError::new("C6 reference auxiliary capacity exceeds usize"))?;
+        if self.manifest_digest != manifest.digest
+            || self.leaf_tables.iter().any(|table| table.len() != leaf_entries)
+            || self.auxiliary_tables.iter().any(|table| table.len() != auxiliary_entries)
+            || self.digest == [0; 32]
+            || self.digest != relation_reference_witness_digest(self)
+        {
+            return Err(C6ResidualError::new(
+                "C6 residual reference witness digest/geometry mismatch",
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn relation_reference_witness_digest(
+    witness: &C6ResidualRelationReferenceWitness,
+) -> C6ResidualDigest {
+    let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c6/residual-reference-witness/v1");
+    hasher.update(&witness.manifest_digest);
+    for (table, values) in witness.leaf_tables.iter().enumerate() {
+        hasher.update(&[0, table as u8]);
+        hasher.update(&(values.len() as u64).to_le_bytes());
+        for value in values {
+            hash_fp2(&mut hasher, *value);
+        }
+    }
+    for (table, values) in witness.auxiliary_tables.iter().enumerate() {
+        hasher.update(&[1, table as u8]);
+        hasher.update(&(values.len() as u64).to_le_bytes());
+        for value in values {
+            hash_fp2(&mut hasher, *value);
+        }
+    }
+    *hasher.finalize().as_bytes()
+}
+
+/// Canonical coefficient MLEs for one complete residual repetition.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualAtomicRelationStatement {
+    proof_repetition: u8,
+    manifest_digest: C6ResidualDigest,
+    relation_challenges_digest: C6ResidualDigest,
+    target: Fp2,
+    leaf_linear: [Vec<Fp2>; C6_RESIDUAL_RELATION_LEAF_TABLES],
+    auxiliary_linear: [Vec<Fp2>; C6_RESIDUAL_AUXILIARY_LANES as usize],
+    auxiliary_quadratic: Vec<((u8, u8), Vec<Fp2>)>,
+    atomic_outputs_consumed: u64,
+    digest: C6ResidualDigest,
+}
+
+impl C6ResidualAtomicRelationStatement {
+    pub fn proof_repetition(&self) -> u8 {
+        self.proof_repetition
+    }
+
+    pub fn target(&self) -> Fp2 {
+        self.target
+    }
+
+    pub fn leaf_linear(&self) -> &[Vec<Fp2>; C6_RESIDUAL_RELATION_LEAF_TABLES] {
+        &self.leaf_linear
+    }
+
+    pub fn auxiliary_linear(&self) -> &[Vec<Fp2>; C6_RESIDUAL_AUXILIARY_LANES as usize] {
+        &self.auxiliary_linear
+    }
+
+    pub fn auxiliary_quadratic(&self) -> &[((u8, u8), Vec<Fp2>)] {
+        &self.auxiliary_quadratic
+    }
+
+    pub fn atomic_outputs_consumed(&self) -> u64 {
+        self.atomic_outputs_consumed
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+
+    pub fn evaluate(&self, witness: &C6ResidualRelationReferenceWitness) -> C6ResidualResult<Fp2> {
+        if self.manifest_digest != witness.manifest_digest {
+            return Err(C6ResidualError::new(
+                "C6 atomic statement and reference witness use different manifests",
+            ));
+        }
+        let mut value = Fp2::ZERO;
+        for (coefficients, table) in self.leaf_linear.iter().zip(&witness.leaf_tables) {
+            value += coefficients
+                .iter()
+                .zip(table)
+                .fold(Fp2::ZERO, |sum, (&coefficient, &entry)| sum + coefficient * entry);
+        }
+        for (coefficients, table) in self.auxiliary_linear.iter().zip(&witness.auxiliary_tables) {
+            value += coefficients
+                .iter()
+                .zip(table)
+                .fold(Fp2::ZERO, |sum, (&coefficient, &entry)| sum + coefficient * entry);
+        }
+        for ((lhs, rhs), coefficients) in &self.auxiliary_quadratic {
+            value += coefficients
+                .iter()
+                .zip(&witness.auxiliary_tables[usize::from(*lhs)])
+                .zip(&witness.auxiliary_tables[usize::from(*rhs)])
+                .fold(Fp2::ZERO, |sum, ((&coefficient, &lhs), &rhs)| sum + coefficient * lhs * rhs);
+        }
+        Ok(value)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6ResidualAtomicReferenceCompilation {
+    statements: [C6ResidualAtomicRelationStatement; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    family_outputs: [[u64; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    family_weighted_residuals: [[Fp2; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    expression_evaluations: [Fp2; C6_RESIDUAL_PROOF_REPETITIONS as usize],
+    digest: C6ResidualDigest,
+}
+
+impl C6ResidualAtomicReferenceCompilation {
+    pub fn statements(
+        &self,
+    ) -> &[C6ResidualAtomicRelationStatement; C6_RESIDUAL_PROOF_REPETITIONS as usize] {
+        &self.statements
+    }
+
+    pub fn family_outputs(&self) -> &[[u64; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize] {
+        &self.family_outputs
+    }
+
+    pub fn family_weighted_residuals(&self) -> &[[Fp2; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize] {
+        &self.family_weighted_residuals
+    }
+
+    pub fn expression_evaluations(&self) -> &[Fp2; C6_RESIDUAL_PROOF_REPETITIONS as usize] {
+        &self.expression_evaluations
+    }
+
+    pub fn is_satisfied(&self) -> bool {
+        self.statements.iter().enumerate().all(|(repetition, statement)| {
+            self.expression_evaluations[repetition] == statement.target
+                && self.family_weighted_residuals[repetition]
+                    .iter()
+                    .all(|residual| *residual == Fp2::ZERO)
+        })
+    }
+
+    pub fn digest(&self) -> C6ResidualDigest {
+        self.digest
+    }
+}
+
+struct C6AtomicReferenceAccumulator {
+    stream: FpStream,
+    consumed: u64,
+    family_outputs: [u64; 8],
+    family_residuals: [Fp2; 8],
+    constant: Fp2,
+    leaf_linear: [Vec<Fp2>; C6_RESIDUAL_RELATION_LEAF_TABLES],
+    auxiliary_linear: [Vec<Fp2>; C6_RESIDUAL_AUXILIARY_LANES as usize],
+    auxiliary_quadratic: BTreeMap<(u8, u8), Vec<Fp2>>,
+}
+
+impl C6AtomicReferenceAccumulator {
+    fn new(
+        schedule: &C6ResidualAtomicWeightSchedule,
+        leaf_entries: usize,
+        auxiliary_entries: usize,
+    ) -> Self {
+        Self {
+            stream: schedule.stream(),
+            consumed: 0,
+            family_outputs: [0; 8],
+            family_residuals: [Fp2::ZERO; 8],
+            constant: Fp2::ZERO,
+            leaf_linear: std::array::from_fn(|_| vec![Fp2::ZERO; leaf_entries]),
+            auxiliary_linear: std::array::from_fn(|_| vec![Fp2::ZERO; auxiliary_entries]),
+            auxiliary_quadratic: C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS
+                .into_iter()
+                .map(|factors| (factors, vec![Fp2::ZERO; auxiliary_entries]))
+                .collect(),
+        }
+    }
+
+    fn next(&mut self, family: C6ResidualAtomicFamily, constant: Fp2, witness: Fp2) -> Fp2 {
+        let weight = self.stream.next_fp2();
+        self.consumed += 1;
+        self.family_outputs[family.index()] += 1;
+        self.family_residuals[family.index()] += weight * (constant + witness);
+        self.constant += weight * constant;
+        weight
+    }
+
+    fn add_leaf(&mut self, table: usize, row: usize, value: Fp2) {
+        self.leaf_linear[table][row] += value;
+    }
+
+    fn add_auxiliary(&mut self, table: usize, row: usize, value: Fp2) {
+        self.auxiliary_linear[table][row] += value;
+    }
+
+    fn add_quadratic(&mut self, lhs: u8, rhs: u8, row: usize, value: Fp2) {
+        self.auxiliary_quadratic
+            .get_mut(&(lhs, rhs))
+            .expect("frozen C6 auxiliary quadratic tuple")[row] += value;
+    }
+}
+
+/// Compile and independently evaluate every C6RLM1 family on a scaled
+/// installed relation.  This path deliberately rejects production geometry:
+/// it is a correctness oracle for the later fused compiler, not its memory
+/// implementation.
+#[allow(clippy::too_many_arguments)]
+pub fn compile_c6_residual_atomic_relation_reference(
+    operation_plan: &C6InstalledOperationPlan,
+    extraction: &C6DecodedInstanceExtractionPlan,
+    runtime: &C6RuntimeInstanceValues,
+    linear: &C6CompiledLinearResidual,
+    challenges: &C6ResidualRelationChallenges,
+    witness: &C6ResidualRelationReferenceWitness,
+) -> C6ResidualResult<C6ResidualAtomicReferenceCompilation> {
+    challenges.validate(operation_plan)?;
+    let manifest = challenges.manifest();
+    if manifest.production_geometry {
+        return Err(C6ResidualError::new(
+            "C6 atomic reference compiler cannot materialize production coefficient tables",
+        ));
+    }
+    if manifest.leaf_entries > (1 << 20) || manifest.auxiliary_entries > (1 << 16) {
+        return Err(C6ResidualError::new(
+            "C6 atomic reference compiler exceeds its scaled allocation guard",
+        ));
+    }
+    witness.validate(manifest)?;
+    if linear.operation_plan_artifact_digest != manifest.operation_plan_artifact_digest
+        || linear.topology != manifest.topology
+        || linear.instance != manifest.instance
+        || linear.product_mask_sources != manifest.product_mask_sources
+        || linear.linear_form_digest != challenges.claims().linear_form_digest
+    {
+        return Err(C6ResidualError::new(
+            "C6 atomic compiler linear form differs from manifest/public claims",
+        ));
+    }
+
+    let source_count = manifest.topology.source_count as usize;
+    let leaf_entries = manifest.leaf_entries as usize;
+    let auxiliary_entries = manifest.auxiliary_entries as usize;
+    let product_triples = manifest.topology.product_triple_count as usize;
+    let zero_roots = manifest.topology.zero_root_count as usize;
+    let mask_sources = manifest.product_mask_sources.iter().copied().collect::<BTreeSet<_>>();
+    let mut alphas: [Vec<Fp2>; 2] = std::array::from_fn(|_| Vec::with_capacity(source_count));
+    for coordinate in 0..2u8 {
+        let mut stream = challenges.base_share_context().alpha_stream(coordinate)?;
+        for _ in 0..source_count {
+            alphas[usize::from(coordinate)].push(stream.next_fp2());
+        }
+    }
+
+    let mut terminal_forms = Vec::with_capacity(C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS);
+    for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
+        for mac_coordinate in 0..C6_RESIDUAL_MAC_COORDINATES {
+            for kind in [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag] {
+                let schedule =
+                    challenges.terminal_schedule(proof_repetition, mac_coordinate, kind)?;
+                let form = C6CompiledTerminalLinearForm::compile(
+                    operation_plan,
+                    extraction,
+                    runtime,
+                    schedule,
+                )?;
+                if form.protocol_version != RESIDUAL_RELATION_PROTOCOL_V3
+                    || form.topology != manifest.topology
+                    || form.instance != manifest.instance
+                    || form.leaf_coefficients.len() != source_count
+                {
+                    return Err(C6ResidualError::new(
+                        "C6 atomic compiler terminal form differs from C6RLM1",
+                    ));
+                }
+                terminal_forms.push(form);
+            }
+        }
+    }
+
+    let mut statements = Vec::with_capacity(C6_RESIDUAL_PROOF_REPETITIONS as usize);
+    let mut family_outputs = Vec::with_capacity(C6_RESIDUAL_PROOF_REPETITIONS as usize);
+    let mut family_residuals = Vec::with_capacity(C6_RESIDUAL_PROOF_REPETITIONS as usize);
+    let mut expression_evaluations = Vec::with_capacity(C6_RESIDUAL_PROOF_REPETITIONS as usize);
+
+    for proof_repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS {
+        let atomic_schedule = challenges.atomic_schedule(proof_repetition)?;
+        let mut accumulator =
+            C6AtomicReferenceAccumulator::new(atomic_schedule, leaf_entries, auxiliary_entries);
+
+        for source in 0..source_count {
+            let is_mask = mask_sources.contains(&(source as u32));
+            let direct = !is_mask;
+            let l = &witness.leaf_tables;
+
+            let source0 =
+                if direct { l[0][source] - l[1][source] - l[3][source] } else { l[3][source] };
+            let weight =
+                accumulator.next(C6ResidualAtomicFamily::SourceGrammar, Fp2::ZERO, source0);
+            if direct {
+                accumulator.add_leaf(0, source, weight);
+                accumulator.add_leaf(1, source, Fp2::ZERO - weight);
+                accumulator.add_leaf(3, source, Fp2::ZERO - weight);
+            } else {
+                accumulator.add_leaf(3, source, weight);
+            }
+
+            let source1 =
+                if direct { l[0][source] - l[4][source] - l[6][source] } else { l[6][source] };
+            let weight =
+                accumulator.next(C6ResidualAtomicFamily::SourceGrammar, Fp2::ZERO, source1);
+            if direct {
+                accumulator.add_leaf(0, source, weight);
+                accumulator.add_leaf(4, source, Fp2::ZERO - weight);
+                accumulator.add_leaf(6, source, Fp2::ZERO - weight);
+            } else {
+                accumulator.add_leaf(6, source, weight);
+            }
+
+            let source_x = if is_mask { l[0][source] } else { Fp2::ZERO };
+            let weight =
+                accumulator.next(C6ResidualAtomicFamily::SourceGrammar, Fp2::ZERO, source_x);
+            if is_mask {
+                accumulator.add_leaf(0, source, weight);
+            }
+        }
+
+        for (coordinate, coordinate_alphas) in alphas.iter().enumerate() {
+            let (r_table, m_table, d_table) = if coordinate == 0 { (1, 2, 3) } else { (4, 5, 6) };
+            let residual = challenges.claims().residual.coordinates[coordinate];
+            let mut d_witness = Fp2::ZERO;
+            let mut m_witness = Fp2::ZERO;
+            for (source, (&linear_coefficient, &alpha)) in
+                linear.leaf_coefficients.iter().zip(coordinate_alphas).enumerate()
+            {
+                d_witness += linear_coefficient * witness.leaf_tables[d_table][source]
+                    - alpha * witness.leaf_tables[r_table][source];
+                m_witness += (linear_coefficient + alpha) * witness.leaf_tables[m_table][source];
+            }
+            let d_constant = linear.public_plaintext - residual.correction_rlc;
+            let weight = accumulator.next(C6ResidualAtomicFamily::Affine, d_constant, d_witness);
+            for (source, (&linear_coefficient, &alpha)) in
+                linear.leaf_coefficients.iter().zip(coordinate_alphas).enumerate()
+            {
+                accumulator.add_leaf(d_table, source, weight * linear_coefficient);
+                accumulator.add_leaf(r_table, source, Fp2::ZERO - weight * alpha);
+            }
+            let m_constant = Fp2::ZERO - residual.public_tag_rlc;
+            let weight = accumulator.next(C6ResidualAtomicFamily::Affine, m_constant, m_witness);
+            for (source, (&linear_coefficient, &alpha)) in
+                linear.leaf_coefficients.iter().zip(coordinate_alphas).enumerate()
+            {
+                accumulator.add_leaf(m_table, source, weight * (linear_coefficient + alpha));
+            }
+        }
+
+        for coordinate in 0..2usize {
+            for kind in [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag] {
+                let form_index =
+                    usize::from(proof_repetition) * 4 + coordinate * 2 + kind.stream_index();
+                let form = &terminal_forms[form_index];
+                let schedule =
+                    challenges.terminal_schedule(proof_repetition, coordinate as u8, kind)?;
+                let mut witness_value = Fp2::ZERO;
+                for source in 0..source_count {
+                    let is_mask = mask_sources.contains(&(source as u32));
+                    let table = match kind {
+                        C6ResidualTerminalFormKind::Plaintext => {
+                            if is_mask {
+                                if coordinate == 0 {
+                                    1
+                                } else {
+                                    4
+                                }
+                            } else {
+                                0
+                            }
+                        }
+                        C6ResidualTerminalFormKind::Tag => {
+                            if coordinate == 0 {
+                                2
+                            } else {
+                                5
+                            }
+                        }
+                    };
+                    witness_value +=
+                        form.leaf_coefficients[source] * witness.leaf_tables[table][source];
+                }
+                let lane_base = coordinate * 6;
+                for (triple, weights) in schedule.product_weights.iter().enumerate() {
+                    let lanes = match kind {
+                        C6ResidualTerminalFormKind::Plaintext => {
+                            [lane_base, lane_base + 2, lane_base + 4]
+                        }
+                        C6ResidualTerminalFormKind::Tag => {
+                            [lane_base + 1, lane_base + 3, lane_base + 5]
+                        }
+                    };
+                    for (lane, terminal_weight) in lanes.into_iter().zip(weights) {
+                        witness_value = witness_value
+                            - *terminal_weight * witness.auxiliary_tables[lane][triple];
+                    }
+                }
+                let zero_lane =
+                    12 + 2 * coordinate + usize::from(kind == C6ResidualTerminalFormKind::Tag);
+                for (zero, terminal_weight) in schedule.zero_weights.iter().enumerate() {
+                    witness_value = witness_value
+                        - *terminal_weight * witness.auxiliary_tables[zero_lane][zero];
+                }
+                let constant = form.public_plaintext;
+                let outer =
+                    accumulator.next(C6ResidualAtomicFamily::Reverse, constant, witness_value);
+                for source in 0..source_count {
+                    let is_mask = mask_sources.contains(&(source as u32));
+                    let table = match kind {
+                        C6ResidualTerminalFormKind::Plaintext => {
+                            if is_mask {
+                                if coordinate == 0 {
+                                    1
+                                } else {
+                                    4
+                                }
+                            } else {
+                                0
+                            }
+                        }
+                        C6ResidualTerminalFormKind::Tag => {
+                            if coordinate == 0 {
+                                2
+                            } else {
+                                5
+                            }
+                        }
+                    };
+                    accumulator.add_leaf(table, source, outer * form.leaf_coefficients[source]);
+                }
+                for (triple, weights) in schedule.product_weights.iter().enumerate() {
+                    let lanes = match kind {
+                        C6ResidualTerminalFormKind::Plaintext => {
+                            [lane_base, lane_base + 2, lane_base + 4]
+                        }
+                        C6ResidualTerminalFormKind::Tag => {
+                            [lane_base + 1, lane_base + 3, lane_base + 5]
+                        }
+                    };
+                    for (lane, terminal_weight) in lanes.into_iter().zip(weights) {
+                        accumulator.add_auxiliary(
+                            lane,
+                            triple,
+                            Fp2::ZERO - outer * *terminal_weight,
+                        );
+                    }
+                }
+                for (zero, terminal_weight) in schedule.zero_weights.iter().enumerate() {
+                    accumulator.add_auxiliary(
+                        zero_lane,
+                        zero,
+                        Fp2::ZERO - outer * *terminal_weight,
+                    );
+                }
+            }
+        }
+
+        let mut raw_position = 0usize;
+        for triple in 0..product_triples {
+            for coordinate in 0..2usize {
+                for component in 0..6usize {
+                    let lane = 6 * coordinate + component;
+                    let relation = witness.leaf_tables[7][raw_position]
+                        - witness.auxiliary_tables[lane][triple];
+                    let weight =
+                        accumulator.next(C6ResidualAtomicFamily::RawCopy, Fp2::ZERO, relation);
+                    accumulator.add_leaf(7, raw_position, weight);
+                    accumulator.add_auxiliary(lane, triple, Fp2::ZERO - weight);
+                    raw_position += 1;
+                }
+            }
+        }
+        for zero in 0..zero_roots {
+            for coordinate in 0..2usize {
+                for component in 0..2usize {
+                    let lane = 12 + 2 * coordinate + component;
+                    let relation =
+                        witness.leaf_tables[7][raw_position] - witness.auxiliary_tables[lane][zero];
+                    let weight =
+                        accumulator.next(C6ResidualAtomicFamily::RawCopy, Fp2::ZERO, relation);
+                    accumulator.add_leaf(7, raw_position, weight);
+                    accumulator.add_auxiliary(lane, zero, Fp2::ZERO - weight);
+                    raw_position += 1;
+                }
+            }
+        }
+        if raw_position as u64 != manifest.raw_copy_entries {
+            return Err(C6ResidualError::new(
+                "C6 atomic compiler raw-copy cursor differs from C6RLM1",
+            ));
+        }
+
+        let mut triple_cursor = 0usize;
+        for (closure, product) in operation_plan.products().iter().enumerate() {
+            let chi = challenges.base_share_context().retained.product_challenges[closure];
+            let mask_source = manifest.product_mask_sources[closure] as usize;
+            for coordinate in 0..2usize {
+                let lane_base = 6 * coordinate;
+                let r_table = if coordinate == 0 { 1 } else { 4 };
+                let m_table = if coordinate == 0 { 2 } else { 5 };
+                let messages = challenges.claims().products[closure].messages[coordinate];
+
+                let mut power = Fp2::ONE;
+                let mut q_witness = Fp2::ZERO;
+                for triple in 0..product.triples().len() {
+                    power = power * chi;
+                    let row = triple_cursor + triple;
+                    q_witness += power
+                        * (witness.auxiliary_tables[lane_base][row]
+                            * witness.auxiliary_tables[lane_base + 2][row]
+                            - witness.auxiliary_tables[lane_base + 4][row]);
+                }
+                let outer = accumulator.next(C6ResidualAtomicFamily::Product, Fp2::ZERO, q_witness);
+                power = Fp2::ONE;
+                for triple in 0..product.triples().len() {
+                    power = power * chi;
+                    let row = triple_cursor + triple;
+                    accumulator.add_quadratic(
+                        lane_base as u8,
+                        (lane_base + 2) as u8,
+                        row,
+                        outer * power,
+                    );
+                    accumulator.add_auxiliary(lane_base + 4, row, Fp2::ZERO - outer * power);
+                }
+
+                power = Fp2::ONE;
+                let mut m0_witness = witness.leaf_tables[m_table][mask_source];
+                for triple in 0..product.triples().len() {
+                    power = power * chi;
+                    let row = triple_cursor + triple;
+                    m0_witness += power
+                        * witness.auxiliary_tables[lane_base + 1][row]
+                        * witness.auxiliary_tables[lane_base + 3][row];
+                }
+                let outer = accumulator.next(
+                    C6ResidualAtomicFamily::Product,
+                    Fp2::ZERO - messages[0],
+                    m0_witness,
+                );
+                accumulator.add_leaf(m_table, mask_source, outer);
+                power = Fp2::ONE;
+                for triple in 0..product.triples().len() {
+                    power = power * chi;
+                    let row = triple_cursor + triple;
+                    accumulator.add_quadratic(
+                        (lane_base + 1) as u8,
+                        (lane_base + 3) as u8,
+                        row,
+                        outer * power,
+                    );
+                }
+
+                power = Fp2::ONE;
+                let mut m1_witness = witness.leaf_tables[r_table][mask_source];
+                for triple in 0..product.triples().len() {
+                    power = power * chi;
+                    let row = triple_cursor + triple;
+                    m1_witness += power
+                        * (witness.auxiliary_tables[lane_base][row]
+                            * witness.auxiliary_tables[lane_base + 3][row]
+                            + witness.auxiliary_tables[lane_base + 1][row]
+                                * witness.auxiliary_tables[lane_base + 2][row]
+                            - witness.auxiliary_tables[lane_base + 5][row]);
+                }
+                let outer = accumulator.next(
+                    C6ResidualAtomicFamily::Product,
+                    Fp2::ZERO - messages[1],
+                    m1_witness,
+                );
+                accumulator.add_leaf(r_table, mask_source, outer);
+                power = Fp2::ONE;
+                for triple in 0..product.triples().len() {
+                    power = power * chi;
+                    let row = triple_cursor + triple;
+                    accumulator.add_quadratic(
+                        lane_base as u8,
+                        (lane_base + 3) as u8,
+                        row,
+                        outer * power,
+                    );
+                    accumulator.add_quadratic(
+                        (lane_base + 1) as u8,
+                        (lane_base + 2) as u8,
+                        row,
+                        outer * power,
+                    );
+                    accumulator.add_auxiliary(lane_base + 5, row, Fp2::ZERO - outer * power);
+                }
+            }
+            triple_cursor += product.triples().len();
+        }
+        if triple_cursor != product_triples {
+            return Err(C6ResidualError::new(
+                "C6 atomic compiler ProductClosure triple cursor mismatch",
+            ));
+        }
+
+        let zero_weights = challenges.base_share_context().retained.zero_weights(zero_roots);
+        for coordinate in 0..2usize {
+            let lane = 12 + 2 * coordinate;
+            let witness_value = zero_weights
+                .iter()
+                .zip(&witness.auxiliary_tables[lane][..zero_roots])
+                .fold(Fp2::ZERO, |sum, (&weight, &value)| sum + weight * value);
+            let outer = accumulator.next(C6ResidualAtomicFamily::Zero, Fp2::ZERO, witness_value);
+            for (zero, weight) in zero_weights.iter().enumerate() {
+                accumulator.add_auxiliary(lane, zero, outer * *weight);
+            }
+        }
+
+        for table in 0..7usize {
+            for row in source_count..leaf_entries {
+                let value = witness.leaf_tables[table][row];
+                let weight = accumulator.next(C6ResidualAtomicFamily::LeafTail, Fp2::ZERO, value);
+                accumulator.add_leaf(table, row, weight);
+            }
+        }
+        for row in raw_position..leaf_entries {
+            let value = witness.leaf_tables[7][row];
+            let weight = accumulator.next(C6ResidualAtomicFamily::LeafTail, Fp2::ZERO, value);
+            accumulator.add_leaf(7, row, weight);
+        }
+        for lane in 0..12usize {
+            for row in product_triples..auxiliary_entries {
+                let value = witness.auxiliary_tables[lane][row];
+                let weight =
+                    accumulator.next(C6ResidualAtomicFamily::AuxiliaryTail, Fp2::ZERO, value);
+                accumulator.add_auxiliary(lane, row, weight);
+            }
+        }
+        for lane in 12..16usize {
+            for row in zero_roots..auxiliary_entries {
+                let value = witness.auxiliary_tables[lane][row];
+                let weight =
+                    accumulator.next(C6ResidualAtomicFamily::AuxiliaryTail, Fp2::ZERO, value);
+                accumulator.add_auxiliary(lane, row, weight);
+            }
+        }
+
+        let expected_family_outputs = [
+            u64::from(manifest.topology.source_count) * 3,
+            4,
+            4,
+            manifest.raw_copy_entries,
+            u64::from(manifest.topology.product_closure_count) * 6,
+            2,
+            manifest.leaf_tail_outputs,
+            manifest.auxiliary_tail_outputs,
+        ];
+        if accumulator.family_outputs != expected_family_outputs
+            || accumulator.consumed != manifest.atomic_outputs_per_repetition
+            || accumulator.consumed != atomic_schedule.output_count
+        {
+            return Err(C6ResidualError::new(
+                "C6 atomic compiler stream consumption differs from C6RLM1",
+            ));
+        }
+
+        let target = Fp2::ZERO - accumulator.constant;
+        let auxiliary_quadratic = accumulator.auxiliary_quadratic.into_iter().collect::<Vec<_>>();
+        if auxiliary_quadratic
+            .iter()
+            .map(|(factors, _)| *factors)
+            .ne(C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS)
+        {
+            return Err(C6ResidualError::new(
+                "C6 atomic compiler emitted a noncanonical quadratic tuple",
+            ));
+        }
+        let mut statement = C6ResidualAtomicRelationStatement {
+            proof_repetition,
+            manifest_digest: manifest.digest,
+            relation_challenges_digest: challenges.digest,
+            target,
+            leaf_linear: accumulator.leaf_linear,
+            auxiliary_linear: accumulator.auxiliary_linear,
+            auxiliary_quadratic,
+            atomic_outputs_consumed: accumulator.consumed,
+            digest: [0; 32],
+        };
+        statement.digest = atomic_relation_statement_digest(&statement);
+        let expression = statement.evaluate(witness)?;
+        let direct =
+            accumulator.family_residuals.iter().fold(Fp2::ZERO, |sum, residual| sum + *residual);
+        if expression - statement.target != direct {
+            return Err(C6ResidualError::new(
+                "C6 atomic compiler coefficient/source differential mismatch",
+            ));
+        }
+        statements.push(statement);
+        family_outputs.push(accumulator.family_outputs);
+        family_residuals.push(accumulator.family_residuals);
+        expression_evaluations.push(expression);
+    }
+
+    let statements: [C6ResidualAtomicRelationStatement; C6_RESIDUAL_PROOF_REPETITIONS as usize] =
+        statements
+            .try_into()
+            .map_err(|_| C6ResidualError::new("C6 atomic compiler lost a repetition"))?;
+    let family_outputs: [[u64; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize] = family_outputs
+        .try_into()
+        .map_err(|_| C6ResidualError::new("C6 atomic compiler lost a family census"))?;
+    let family_weighted_residuals: [[Fp2; 8]; C6_RESIDUAL_PROOF_REPETITIONS as usize] =
+        family_residuals
+            .try_into()
+            .map_err(|_| C6ResidualError::new("C6 atomic compiler lost a differential"))?;
+    let expression_evaluations: [Fp2; C6_RESIDUAL_PROOF_REPETITIONS as usize] =
+        expression_evaluations
+            .try_into()
+            .map_err(|_| C6ResidualError::new("C6 atomic compiler lost an evaluation"))?;
+    let mut compilation = C6ResidualAtomicReferenceCompilation {
+        statements,
+        family_outputs,
+        family_weighted_residuals,
+        expression_evaluations,
+        digest: [0; 32],
+    };
+    compilation.digest = atomic_reference_compilation_digest(&compilation);
+    Ok(compilation)
+}
+
+fn atomic_relation_statement_digest(
+    statement: &C6ResidualAtomicRelationStatement,
+) -> C6ResidualDigest {
+    let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c6/residual-atomic-statement/v1");
+    hasher.update(&[statement.proof_repetition]);
+    hasher.update(&statement.manifest_digest);
+    hasher.update(&statement.relation_challenges_digest);
+    hash_fp2(&mut hasher, statement.target);
+    hasher.update(&statement.atomic_outputs_consumed.to_le_bytes());
+    for (table, coefficients) in statement.leaf_linear.iter().enumerate() {
+        hasher.update(&[0, table as u8]);
+        for coefficient in coefficients {
+            hash_fp2(&mut hasher, *coefficient);
+        }
+    }
+    for (table, coefficients) in statement.auxiliary_linear.iter().enumerate() {
+        hasher.update(&[1, table as u8]);
+        for coefficient in coefficients {
+            hash_fp2(&mut hasher, *coefficient);
+        }
+    }
+    for ((lhs, rhs), coefficients) in &statement.auxiliary_quadratic {
+        hasher.update(&[2, *lhs, *rhs]);
+        for coefficient in coefficients {
+            hash_fp2(&mut hasher, *coefficient);
+        }
+    }
+    *hasher.finalize().as_bytes()
+}
+
+fn atomic_reference_compilation_digest(
+    compilation: &C6ResidualAtomicReferenceCompilation,
+) -> C6ResidualDigest {
+    let mut hasher = blake3::Hasher::new_derive_key("volta-zk/c6/residual-atomic-reference/v1");
+    for repetition in 0..C6_RESIDUAL_PROOF_REPETITIONS as usize {
+        hasher.update(&compilation.statements[repetition].digest);
+        for family in C6ResidualAtomicFamily::ALL {
+            hasher.update(&compilation.family_outputs[repetition][family.index()].to_le_bytes());
+            hash_fp2(
+                &mut hasher,
+                compilation.family_weighted_residuals[repetition][family.index()],
+            );
+        }
+        hash_fp2(&mut hasher, compilation.expression_evaluations[repetition]);
+    }
+    *hasher.finalize().as_bytes()
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct C6ProductPostCommit {
     pub chi: Fp2,
@@ -1195,6 +3010,7 @@ impl C6ResidualTerminalFormKind {
 pub struct C6ResidualTerminalWeightSchedule {
     operation_plan_artifact_digest: C6ResidualDigest,
     topology_digest: C6ResidualDigest,
+    protocol_version: u8,
     proof_repetition: u8,
     mac_coordinate: u8,
     kind: C6ResidualTerminalFormKind,
@@ -1212,11 +3028,35 @@ impl C6ResidualTerminalWeightSchedule {
         product_weights: Vec<[Fp2; 3]>,
         zero_weights: Vec<Fp2>,
     ) -> C6ResidualResult<Self> {
+        Self::new_for_version(
+            operation_plan,
+            RESIDUAL_RELATION_PROTOCOL_V2,
+            proof_repetition,
+            mac_coordinate,
+            kind,
+            product_weights,
+            zero_weights,
+        )
+    }
+
+    fn new_for_version(
+        operation_plan: &C6InstalledOperationPlan,
+        protocol_version: u8,
+        proof_repetition: u8,
+        mac_coordinate: u8,
+        kind: C6ResidualTerminalFormKind,
+        product_weights: Vec<[Fp2; 3]>,
+        zero_weights: Vec<Fp2>,
+    ) -> C6ResidualResult<Self> {
         if proof_repetition >= C6_RESIDUAL_PROOF_REPETITIONS
             || mac_coordinate >= C6_RESIDUAL_MAC_COORDINATES
+            || !matches!(
+                protocol_version,
+                RESIDUAL_RELATION_PROTOCOL_V2 | RESIDUAL_RELATION_PROTOCOL_V3
+            )
         {
             return Err(C6ResidualError::new(
-                "C6 residual terminal proof repetition or MAC coordinate is out of range",
+                "C6 residual terminal version/repetition/MAC coordinate is out of range",
             ));
         }
         let product_triples = installed_product_triple_count(operation_plan)?;
@@ -1230,6 +3070,7 @@ impl C6ResidualTerminalWeightSchedule {
         let mut schedule = Self {
             operation_plan_artifact_digest: operation_plan.artifact_digest(),
             topology_digest: operation_plan.topology().topology_digest,
+            protocol_version,
             proof_repetition,
             mac_coordinate,
             kind,
@@ -1240,6 +3081,10 @@ impl C6ResidualTerminalWeightSchedule {
         schedule.digest = terminal_weight_schedule_digest(&schedule);
         schedule.validate(operation_plan)?;
         Ok(schedule)
+    }
+
+    pub fn protocol_version(&self) -> u8 {
+        self.protocol_version
     }
 
     pub fn proof_repetition(&self) -> u8 {
@@ -1269,6 +3114,10 @@ impl C6ResidualTerminalWeightSchedule {
     fn validate(&self, operation_plan: &C6InstalledOperationPlan) -> C6ResidualResult<()> {
         if self.proof_repetition >= C6_RESIDUAL_PROOF_REPETITIONS
             || self.mac_coordinate >= C6_RESIDUAL_MAC_COORDINATES
+            || !matches!(
+                self.protocol_version,
+                RESIDUAL_RELATION_PROTOCOL_V2 | RESIDUAL_RELATION_PROTOCOL_V3
+            )
             || self.operation_plan_artifact_digest != operation_plan.artifact_digest()
             || self.topology_digest != operation_plan.topology().topology_digest
             || self.product_weights.len() as u64 != installed_product_triple_count(operation_plan)?
@@ -1356,6 +3205,7 @@ impl C6ResidualPostRootChallenges {
                 {
                     schedules.push(derive_terminal_weight_schedule(
                         operation_plan,
+                        RESIDUAL_RELATION_PROTOCOL_V2,
                         proof_repetition,
                         mac_coordinate,
                         kind,
@@ -1440,6 +3290,7 @@ impl C6ResidualPostRootChallenges {
                     if schedule.proof_repetition() != proof_repetition
                         || schedule.mac_coordinate() != mac_coordinate
                         || schedule.kind() != kind
+                        || schedule.protocol_version() != RESIDUAL_RELATION_PROTOCOL_V2
                     {
                         return Err(C6ResidualError::new(
                             "C6 residual terminal challenge streams are swapped",
@@ -1482,6 +3333,7 @@ pub struct C6CompiledTerminalLinearForm {
     operation_plan_artifact_digest: C6ResidualDigest,
     topology: C6OperationPlanTopologyIdentity,
     instance: C6OperationPlanInstanceIdentity,
+    protocol_version: u8,
     proof_repetition: u8,
     mac_coordinate: u8,
     kind: C6ResidualTerminalFormKind,
@@ -1498,6 +3350,7 @@ impl fmt::Debug for C6CompiledTerminalLinearForm {
             .field("operation_plan_artifact_digest", &self.operation_plan_artifact_digest)
             .field("topology", &self.topology)
             .field("instance", &self.instance)
+            .field("protocol_version", &self.protocol_version)
             .field("proof_repetition", &self.proof_repetition)
             .field("mac_coordinate", &self.mac_coordinate)
             .field("kind", &self.kind)
@@ -1584,7 +3437,16 @@ impl C6CompiledTerminalLinearForm {
         {
             return Err(C6ResidualError::new("C6 tag terminal form acquired a public plaintext"));
         }
-        let mut hasher = blake3::Hasher::new_derive_key(TERMINAL_LINEAR_FORM_DOMAIN);
+        let linear_form_domain = match schedule.protocol_version {
+            RESIDUAL_RELATION_PROTOCOL_V2 => TERMINAL_LINEAR_FORM_DOMAIN_V2,
+            RESIDUAL_RELATION_PROTOCOL_V3 => TERMINAL_LINEAR_FORM_DOMAIN_V3,
+            _ => {
+                return Err(C6ResidualError::new(
+                    "C6 residual terminal linear form has an unknown protocol version",
+                ));
+            }
+        };
+        let mut hasher = blake3::Hasher::new_derive_key(linear_form_domain);
         hasher.update(&operation_plan.artifact_digest());
         hasher.update(&reverse.topology.topology_digest);
         hasher.update(&reverse.instance.instance_digest);
@@ -1600,6 +3462,7 @@ impl C6CompiledTerminalLinearForm {
             operation_plan_artifact_digest: operation_plan.artifact_digest(),
             topology: reverse.topology,
             instance: reverse.instance,
+            protocol_version: schedule.protocol_version,
             proof_repetition: schedule.proof_repetition,
             mac_coordinate: schedule.mac_coordinate,
             kind: schedule.kind,
@@ -1612,6 +3475,10 @@ impl C6CompiledTerminalLinearForm {
 
     pub fn topology(&self) -> C6OperationPlanTopologyIdentity {
         self.topology
+    }
+
+    pub fn protocol_version(&self) -> u8 {
+        self.protocol_version
     }
 
     pub fn instance(&self) -> C6OperationPlanInstanceIdentity {
@@ -1660,7 +3527,12 @@ fn installed_product_triple_count(
 fn terminal_weight_schedule_digest(
     schedule: &C6ResidualTerminalWeightSchedule,
 ) -> C6ResidualDigest {
-    let mut hasher = blake3::Hasher::new_derive_key(TERMINAL_WEIGHT_SCHEDULE_DOMAIN);
+    let domain = match schedule.protocol_version {
+        RESIDUAL_RELATION_PROTOCOL_V2 => TERMINAL_WEIGHT_SCHEDULE_DOMAIN_V2,
+        RESIDUAL_RELATION_PROTOCOL_V3 => TERMINAL_WEIGHT_SCHEDULE_DOMAIN_V3,
+        _ => return [0; 32],
+    };
+    let mut hasher = blake3::Hasher::new_derive_key(domain);
     hasher.update(&schedule.operation_plan_artifact_digest);
     hasher.update(&schedule.topology_digest);
     hasher.update(&[schedule.proof_repetition, schedule.mac_coordinate, schedule.kind as u8]);
@@ -1681,6 +3553,7 @@ fn terminal_weight_schedule_digest(
 
 fn derive_terminal_weight_schedule(
     operation_plan: &C6InstalledOperationPlan,
+    protocol_version: u8,
     proof_repetition: u8,
     mac_coordinate: u8,
     kind: C6ResidualTerminalFormKind,
@@ -1710,8 +3583,9 @@ fn derive_terminal_weight_schedule(
     for _ in operation_plan.zero_roots() {
         zero_weights.push(stream.next_fp2());
     }
-    C6ResidualTerminalWeightSchedule::new(
+    C6ResidualTerminalWeightSchedule::new_for_version(
         operation_plan,
+        protocol_version,
         proof_repetition,
         mac_coordinate,
         kind,
@@ -1993,6 +3867,10 @@ impl C6CompiledLinearResidual {
 
     pub fn topology(&self) -> C6OperationPlanTopologyIdentity {
         self.topology
+    }
+
+    pub fn operation_plan_artifact_digest(&self) -> C6ResidualDigest {
+        self.operation_plan_artifact_digest
     }
 
     pub fn instance(&self) -> C6OperationPlanInstanceIdentity {
@@ -3139,6 +5017,56 @@ mod tests {
     }
 
     #[cfg(feature = "c6-trace")]
+    fn paired_leaf_witness_from_programs(
+        primary: &C6CommittedResidualProgram,
+        secondary: &C6CommittedResidualProgram,
+        source_schedule_digest: C6ResidualDigest,
+    ) -> C6PairedResidualLeafWitness {
+        assert_eq!(primary.sources.len(), secondary.sources.len());
+        let mut columns: [Vec<Fp2>; C6_RESIDUAL_LEAF_ALIGNED_SLOTS as usize] =
+            std::array::from_fn(|_| Vec::with_capacity(primary.sources.len()));
+        let mut product_mask_count = 0u32;
+        for (left, right) in primary.sources.iter().zip(&secondary.sources) {
+            assert_eq!(left.id, right.id);
+            assert_eq!(left.role, right.role);
+            let is_mask = left.role == C6LeafRole::ProductMask;
+            if is_mask {
+                product_mask_count += 1;
+                assert_eq!(left.witness.correction(), Fp2::ZERO);
+                assert_eq!(right.witness.correction(), Fp2::ZERO);
+            }
+            let common = if is_mask {
+                Fp2::ZERO
+            } else {
+                let left_x = left.witness.base_plaintext() + left.witness.correction();
+                let right_x = right.witness.base_plaintext() + right.witness.correction();
+                assert_eq!(left_x, right_x);
+                left_x
+            };
+            let row = [
+                common,
+                left.witness.base_plaintext(),
+                left.witness.tag(),
+                left.witness.correction(),
+                right.witness.base_plaintext(),
+                right.witness.tag(),
+                right.witness.correction(),
+            ];
+            for (column, value) in columns.iter_mut().zip(row) {
+                column.push(value);
+            }
+        }
+        C6PairedResidualLeafWitness {
+            source_schedule_digest,
+            paired_source_digest: [0xA1; 32],
+            source_count: primary.sources.len() as u32,
+            product_mask_count,
+            columns,
+            witness_digest: [0xA2; 32],
+        }
+    }
+
+    #[cfg(feature = "c6-trace")]
     fn installed_paired_fixture() -> (
         C6InstalledOperationPlan,
         C6DecodedInstanceExtractionPlan,
@@ -3777,6 +5705,337 @@ mod tests {
         malformed.product_weights[0][0] += Fp2::ONE;
         assert!(C6CompiledTerminalLinearForm::compile(installed, extraction, runtime, &malformed,)
             .is_err());
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn v3_atomic_relation_typestate_and_all_families_are_differentially_bound() {
+        let _fixture_guard = INSTALLED_FIXTURE_LOCK.lock().unwrap();
+
+        let primary_fixture = fixture(Fp2::ZERO, false);
+        let installed_witnesses = primary_fixture.witnesses.clone();
+        let chi = primary_fixture.chi;
+        let primary_census = primary_fixture.builder.census().unwrap();
+        let primary = primary_fixture.builder.commit([0xC1; 32], primary_census).unwrap();
+        let secondary_fixture = fixture(fp2(1), false);
+        let secondary_census = secondary_fixture.builder.census().unwrap();
+        let secondary = secondary_fixture.builder.commit([0xC2; 32], secondary_census).unwrap();
+        let leaf = paired_leaf_witness_from_programs(&primary, &secondary, [0x5A; 32]);
+        let closure = primary.build_paired_closure_witness(&secondary).unwrap();
+        let auxiliary = closure.transpose_auxiliary_lanes().unwrap();
+
+        let (installed, extraction, runtime) = installed_fixture(&installed_witnesses);
+        assert!(C6ResidualRelationManifest::new(&installed, &extraction, &runtime).is_err());
+        let manifest = C6ResidualRelationManifest::new_with_geometry(
+            &installed,
+            &extraction,
+            &runtime,
+            7,
+            2,
+            false,
+        )
+        .unwrap();
+        assert!(!manifest.is_production_geometry());
+        assert_eq!(manifest.product_mask_sources(), &[3]);
+        assert_eq!(manifest.leaf_entries(), 128);
+        assert_eq!(manifest.auxiliary_entries(), 4);
+        assert_eq!(manifest.raw_copy_entries(), 32);
+        assert_eq!(manifest.atomic_outputs_per_repetition(), 1_056);
+
+        let reference =
+            C6ResidualRelationReferenceWitness::from_live(&manifest, &leaf, &closure, &auxiliary)
+                .unwrap();
+        let retained = C6ResidualRetainedChallenges::new(&manifest, vec![chi], fp2(79)).unwrap();
+        let zero_weights = retained.zero_weights(installed.zero_roots().len());
+        let linear =
+            C6CompiledLinearResidual::compile(&installed, &extraction, &runtime, &zero_weights)
+                .unwrap();
+
+        let root =
+            C6ResidualRelationRootBound::bind_fixed_roots(manifest.clone(), [0xD1; 32], [0xD2; 32])
+                .unwrap();
+        assert!(C6ResidualRelationRootBound::bind_fixed_roots(
+            manifest.clone(),
+            [0; 32],
+            [0xD2; 32],
+        )
+        .is_err());
+        let base_seed = [0xD3; 32];
+        let base = root.release_base_share_seed(retained, base_seed).unwrap();
+        assert_ne!(base.digest(), [0; 32]);
+        assert_ne!(base.base_share_seed_commitment(), [0; 32]);
+        assert_ne!(
+            base.alpha_stream(0).unwrap().next_fp2(),
+            base.alpha_stream(1).unwrap().next_fp2()
+        );
+        assert!(base.alpha_stream(2).is_err());
+
+        let mut alphas: [Vec<Fp2>; 2] =
+            std::array::from_fn(|_| Vec::with_capacity(linear.source_count()));
+        for coordinate in 0..2u8 {
+            let mut stream = base.alpha_stream(coordinate).unwrap();
+            for _ in 0..linear.source_count() {
+                alphas[usize::from(coordinate)].push(stream.next_fp2());
+            }
+        }
+        let mut residuals =
+            [C6DeltaResidual { correction_rlc: Fp2::ZERO, public_tag_rlc: Fp2::ZERO }; 2];
+        for coordinate in 0..2usize {
+            let (r_table, m_table, d_table) = if coordinate == 0 { (1, 2, 3) } else { (4, 5, 6) };
+            let mut correction = linear.public_plaintext();
+            let mut message = Fp2::ZERO;
+            for source in 0..linear.source_count() {
+                correction +=
+                    linear.leaf_coefficients()[source] * reference.leaf_tables[d_table][source];
+                correction = correction
+                    - alphas[coordinate][source] * reference.leaf_tables[r_table][source];
+                message += (linear.leaf_coefficients()[source] + alphas[coordinate][source])
+                    * reference.leaf_tables[m_table][source];
+            }
+            residuals[coordinate] =
+                C6DeltaResidual { correction_rlc: correction, public_tag_rlc: message };
+        }
+
+        let mut product_claims = Vec::new();
+        let mut triple_cursor = 0usize;
+        for (closure_index, product) in installed.products().iter().enumerate() {
+            let mask_source = manifest.product_mask_sources()[closure_index] as usize;
+            let mut messages = [[Fp2::ZERO; 2]; 2];
+            for coordinate in 0..2usize {
+                let lane = 6 * coordinate;
+                let r_table = if coordinate == 0 { 1 } else { 4 };
+                let m_table = if coordinate == 0 { 2 } else { 5 };
+                let mut q = Fp2::ZERO;
+                let mut m0 = reference.leaf_tables[m_table][mask_source];
+                let mut m1 = reference.leaf_tables[r_table][mask_source];
+                let mut power = Fp2::ONE;
+                for triple in 0..product.triples().len() {
+                    power = power * chi;
+                    let row = triple_cursor + triple;
+                    q += power
+                        * (reference.auxiliary_tables[lane][row]
+                            * reference.auxiliary_tables[lane + 2][row]
+                            - reference.auxiliary_tables[lane + 4][row]);
+                    m0 += power
+                        * reference.auxiliary_tables[lane + 1][row]
+                        * reference.auxiliary_tables[lane + 3][row];
+                    m1 += power
+                        * (reference.auxiliary_tables[lane][row]
+                            * reference.auxiliary_tables[lane + 3][row]
+                            + reference.auxiliary_tables[lane + 1][row]
+                                * reference.auxiliary_tables[lane + 2][row]
+                            - reference.auxiliary_tables[lane + 5][row]);
+                }
+                assert_eq!(q, Fp2::ZERO);
+                messages[coordinate] = [m0, m1];
+            }
+            triple_cursor += product.triples().len();
+            product_claims.push(C6ResidualProductPublicClaim { messages });
+        }
+        assert_eq!(triple_cursor, 2);
+
+        let residual = C6PairedDeltaResidual { coordinates: residuals };
+        let claims_bound = base
+            .clone()
+            .commit_public_claims(linear.linear_form_digest(), product_claims.clone(), residual)
+            .unwrap();
+        let relation_seed = [0xD4; 32];
+        let relation = claims_bound.release_relation_seed(&installed, relation_seed).unwrap();
+        assert_ne!(relation.digest(), [0; 32]);
+        assert_ne!(relation.relation_seed_commitment(), base.base_share_seed_commitment());
+        assert!(base
+            .clone()
+            .commit_public_claims(linear.linear_form_digest(), product_claims.clone(), residual,)
+            .unwrap()
+            .release_relation_seed(&installed, base_seed)
+            .is_err());
+
+        let mut terminal_digests = BTreeSet::new();
+        for proof_repetition in 0..2u8 {
+            let atomic = relation.atomic_schedule(proof_repetition).unwrap();
+            assert_eq!(atomic.output_count(), 1_056);
+            assert_eq!(
+                atomic.stream_domain(),
+                ATOMIC_WEIGHT_STREAM_DOMAINS[usize::from(proof_repetition)]
+            );
+            assert_ne!(atomic.digest(), [0; 32]);
+            for coordinate in 0..2u8 {
+                for kind in [C6ResidualTerminalFormKind::Plaintext, C6ResidualTerminalFormKind::Tag]
+                {
+                    let schedule =
+                        relation.terminal_schedule(proof_repetition, coordinate, kind).unwrap();
+                    assert_eq!(schedule.protocol_version(), RESIDUAL_RELATION_PROTOCOL_V3);
+                    terminal_digests.insert(schedule.digest());
+                }
+            }
+        }
+        assert_eq!(terminal_digests.len(), 8);
+        let diagnostic_v2 =
+            C6ResidualPostRootChallenges::derive(&installed, [0xD2; 32], base_seed).unwrap();
+        assert_eq!(
+            diagnostic_v2
+                .terminal_schedule(0, 0, C6ResidualTerminalFormKind::Plaintext)
+                .unwrap()
+                .protocol_version(),
+            RESIDUAL_RELATION_PROTOCOL_V2
+        );
+        assert_ne!(
+            diagnostic_v2
+                .terminal_schedule(0, 0, C6ResidualTerminalFormKind::Plaintext)
+                .unwrap()
+                .digest(),
+            relation
+                .terminal_schedule(0, 0, C6ResidualTerminalFormKind::Plaintext)
+                .unwrap()
+                .digest()
+        );
+
+        let compiled = compile_c6_residual_atomic_relation_reference(
+            &installed,
+            &extraction,
+            &runtime,
+            &linear,
+            &relation,
+            &reference,
+        )
+        .unwrap();
+        assert!(compiled.is_satisfied());
+        assert_ne!(compiled.digest(), [0; 32]);
+        assert_eq!(compiled.family_outputs()[0], [12, 4, 4, 32, 6, 2, 964, 32]);
+        assert_eq!(compiled.family_outputs()[0], compiled.family_outputs()[1]);
+        assert!(compiled
+            .family_weighted_residuals()
+            .iter()
+            .flatten()
+            .all(|residual| *residual == Fp2::ZERO));
+        assert_ne!(compiled.statements()[0].digest(), compiled.statements()[1].digest());
+        for statement in compiled.statements() {
+            assert_eq!(statement.atomic_outputs_consumed(), 1_056);
+            assert_eq!(statement.auxiliary_quadratic().len(), 8);
+            assert_eq!(
+                statement
+                    .auxiliary_quadratic()
+                    .iter()
+                    .map(|(factors, _)| *factors)
+                    .collect::<Vec<_>>(),
+                C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS
+            );
+            assert_eq!(statement.evaluate(&reference).unwrap(), statement.target());
+        }
+
+        let mut changed_claims = product_claims.clone();
+        changed_claims[0].messages[0][0] += Fp2::ONE;
+        let changed_relation = base
+            .clone()
+            .commit_public_claims(linear.linear_form_digest(), changed_claims, residual)
+            .unwrap()
+            .release_relation_seed(&installed, relation_seed)
+            .unwrap();
+        let changed = compile_c6_residual_atomic_relation_reference(
+            &installed,
+            &extraction,
+            &runtime,
+            &linear,
+            &changed_relation,
+            &reference,
+        )
+        .unwrap();
+        assert!(!changed.is_satisfied());
+        for repetition in 0..2usize {
+            assert_ne!(
+                changed.statements()[repetition].digest(),
+                compiled.statements()[repetition].digest()
+            );
+            assert_ne!(
+                changed.family_weighted_residuals()[repetition]
+                    [C6ResidualAtomicFamily::Product.index()],
+                Fp2::ZERO
+            );
+        }
+
+        let mut post_seed_mutation = relation.clone();
+        post_seed_mutation.claims_bound.claims.residual.coordinates[0].correction_rlc += Fp2::ONE;
+        assert!(compile_c6_residual_atomic_relation_reference(
+            &installed,
+            &extraction,
+            &runtime,
+            &linear,
+            &post_seed_mutation,
+            &reference,
+        )
+        .is_err());
+
+        let mut source_mutation = reference.clone();
+        source_mutation.leaf_tables[0][0] += Fp2::ONE;
+        source_mutation.digest = relation_reference_witness_digest(&source_mutation);
+        let source_reject = compile_c6_residual_atomic_relation_reference(
+            &installed,
+            &extraction,
+            &runtime,
+            &linear,
+            &relation,
+            &source_mutation,
+        )
+        .unwrap();
+        assert!(!source_reject.is_satisfied());
+        assert!(source_reject.family_weighted_residuals().iter().all(|families| {
+            families[C6ResidualAtomicFamily::SourceGrammar.index()] != Fp2::ZERO
+        }));
+
+        let mut raw_mutation = reference.clone();
+        raw_mutation.leaf_tables[7].swap(0, 1);
+        raw_mutation.digest = relation_reference_witness_digest(&raw_mutation);
+        let raw_reject = compile_c6_residual_atomic_relation_reference(
+            &installed,
+            &extraction,
+            &runtime,
+            &linear,
+            &relation,
+            &raw_mutation,
+        )
+        .unwrap();
+        assert!(!raw_reject.is_satisfied());
+        assert!(raw_reject
+            .family_weighted_residuals()
+            .iter()
+            .all(|families| { families[C6ResidualAtomicFamily::RawCopy.index()] != Fp2::ZERO }));
+
+        let mut leaf_tail_mutation = reference.clone();
+        leaf_tail_mutation.leaf_tables[0][manifest.topology.source_count as usize] = Fp2::ONE;
+        leaf_tail_mutation.digest = relation_reference_witness_digest(&leaf_tail_mutation);
+        let leaf_tail_reject = compile_c6_residual_atomic_relation_reference(
+            &installed,
+            &extraction,
+            &runtime,
+            &linear,
+            &relation,
+            &leaf_tail_mutation,
+        )
+        .unwrap();
+        assert!(!leaf_tail_reject.is_satisfied());
+        assert!(leaf_tail_reject
+            .family_weighted_residuals()
+            .iter()
+            .all(|families| { families[C6ResidualAtomicFamily::LeafTail.index()] != Fp2::ZERO }));
+
+        let mut auxiliary_tail_mutation = reference.clone();
+        auxiliary_tail_mutation.auxiliary_tables[0]
+            [manifest.topology.product_triple_count as usize] = Fp2::ONE;
+        auxiliary_tail_mutation.digest =
+            relation_reference_witness_digest(&auxiliary_tail_mutation);
+        let auxiliary_tail_reject = compile_c6_residual_atomic_relation_reference(
+            &installed,
+            &extraction,
+            &runtime,
+            &linear,
+            &relation,
+            &auxiliary_tail_mutation,
+        )
+        .unwrap();
+        assert!(!auxiliary_tail_reject.is_satisfied());
+        assert!(auxiliary_tail_reject.family_weighted_residuals().iter().all(|families| {
+            families[C6ResidualAtomicFamily::AuxiliaryTail.index()] != Fp2::ZERO
+        }));
     }
 
     #[cfg(feature = "c6-trace")]

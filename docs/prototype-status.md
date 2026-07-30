@@ -55,9 +55,13 @@ typestate join exposed a further pre-code ordering requirement: public
 residual/closure outputs must be fixed before the weights that batch them.
 The exact atomic T1 relation and two-seed repair are preregistered, and their
 additive Lean/order certificate plus executable re-sum are now green.  The
-next hard gate is the fail-closed v3 typestate and scaled atomic reference
-compiler.  Full T1 statement assembly, cache constraint census, wrapper
-proof, local end-to-end and hardware gates remain pending.
+fail-closed v3 root/base/claims/relation typestate, complete scaled atomic
+reference compiler and compiler-digest-bound `C6RSC2` bridge are also locally
+green.  The reference compiler rejects production geometry rather than
+materializing T1 coefficient arrays.  The next hard gate is a byte-identical
+provider/client fused T1 compiler and synchronized packed-PCS assembly.
+Cache constraint census, wrapper proof, local end-to-end and hardware gates
+remain pending.
 
 Workload of record: **GPT-2 small (124M, L=12, d=768, h=12, d_ff=3072),
 prefill T=100 + 50 deferred decode tokens, causal, C3b PCS Q=120**, on the
@@ -417,7 +421,7 @@ its clean descendant closure.
 | X4d.2 delayed-link diagnosis and repair | **LOCAL ROOT CAUSE CONFIRMED; BYTE IDENTITY GREEN; HARD STOP / NO POD / NO REPLACEMENT PAIR OR GATE VERDICT** (2026-07-27) | Evaluation-only repair: backend-generic sequential resident orchestrator plus one exactly-once scaled product-round message; protocol/transcript/challenge/codec/correlations/terminal semantics unchanged | The extracted `e4e2b14` arithmetic reproduced the obstruction with the initial claim, ledgers, challenges and folds still green: first divergence **term 0 / round 1 / dimension 8 / active_len 256**, captured output SHA-256 `2ac466d9bcfc61fc5ef0a83c59d5bc8b0c2f32434ed17e37de1b7ac5cc925c1f`; all **51/51** production-relative terms are affected at their first real round. Root cause is the missing `virtual_factor` on `fp2_product_round_into_device`. ABI 33 adds `fp2_product_round_scaled_into_device` / `volta_cuda_fp2_product_round_scaled_into_device` / `scale_product_round_message`; scale one is raw-mailbox byte-identical, folds are unscaled, and the real branch alone uses it. Permanent value-mismatch and geometry-not-drained faults are distinct. CPU BackendKind lifecycle and exact message/fold-vector-digest identity pass at the 51/51/102 local multiplicity fixture and `max_mu=20/22/24/26`; the full serialized workspace, 23 report-validator tests and CUDA-feature all-target compilation are green, while real CUDA remains deliberately unexecuted locally. A clean, fail-closed standalone `x4d2_delayed_link_reproducer` is prepared for a future GO; it needs no weights/onboarding/durable tier/connection/settlement. Append-only local record `x4d2-diag-delayed-link-2026-07-27-bc76048.json`, SHA-256 `0bf3ed63b4ec34243a3f42cd1b6fce286c07a5b07f9e09b72bbb2f081f35538a`; diagnostic design SHA-256 `91cc8eb6566122724a75b9f051a75d5245e981b52194c5545b7701ca853b6fe4`. Historical X4d.1 and X4d.2 records/digests/gates remain immutable. |
 | C4 Ligero inline rate reduction | **PAIRED A100 COMPLETE — ANCHOR PASS; RATE-8 EXACT BYTES / PROVER / DEVICE PASS; SESSION 1.050816638x >1.05 AND SYNC 0.155717607 s >0.150 FAIL; OVERALL FAIL; NO RETRY; POD STOPPED** (2026-07-27) | Return to inline T1 weight certification; same-build anchor `rate=1/4,Q=120` versus candidate `rate=1/8,Q=97`; no deferred settlement; frozen gates conjunctive | Clean `e99a1e5` on one A100/13-effective-CPU/eight-Rayon host passed ABI 33 and the full release/CUDA workspace before either producer. Both profiles used the same binary/backend and independent fresh stores, one warmup and three measured repetitions. Anchor PCS/response **43,273,888 / 84,544,352 B**, prove/session **4.104595717 / 5.322725729 s**, all absolute gates PASS. Rate-8 PCS/response **38,296,040 / 79,566,504 B**, exact saving **4,977,848 B**, prove **4.079375688 s / 0.993855661x PASS**, but session **5.593208756 s / 1.050816638x FAIL** and maximum sync **0.155717607 s FAIL**; device peak **30,146,106,356 B PASS**. Pair `c4-ligero-paired-a100-2026-07-27-e99a1e5.json`, SHA-256 `8506de9ccad35bba76f9cd337ef5a4528613fc91894962e597937b63e3ad3e56`, is a coherent **overall FAIL**. No selective retry occurred. SSH-side `runpodctl` stopped pod `mi3dk7ah9jny9b` and an independent connection was refused. The anchor remains the accepted inline profile; all prior records and design pins remain immutable. |
 | C5 Packed16 over Ligero rate-8 | **LOCAL HARD STOP — TYPED-PCG SECURITY/BYTE GATE OBSTRUCTED; NO LEAN/RUST/CUDA IMPLEMENTATION; NO POD / NO VERDICT** (2026-07-28) | Direct authenticated uniform-u16/carry lanes, canonical Packed16 correction wire and exact setup accounting; no deferred settlement or PCS change | The owner-adopted rate-8 base and raw C4 FAIL remain distinct and immutable. Exact Packed16 response remains a conditional **61,292,904-B** projection, but typed setup has only **18,273,600 B / 9.4 bits per five-inventory cell** of headroom. C2's malicious-COT arithmetic lift requires **4,230,144,000 B** at this census; its pinned `0.73-bit/COT` binary core alone is **24,125,040 B** before lift. An exact Goldilocks `p-1` rejection/quotient route from current sVOLE has an optimistic **217,728,000-B** public quotient payload and combined setup **256,099,465 B**, excluding the required malicious range proof, hence fails by at least **199,454,400 B**. Same-characteristic subfield VOLE, dual-domain edaBits, base-only group COT, dealer-keyed PCG/PCF, three-party daBits and bounded-integer VOLE do not instantiate the frozen interface. Local record `c5-typed-pcg-obstruction-2026-07-28-0309320.json`, SHA-256 `9e292301af185093b1cc81d3a1b7bc229fad61e6ded61e294d84af0dd2844e49`; design SHA-256 `30a999044e8f61d6625814b51088871c184e2ae72a9397b5fc2da9e05e9f34fc`; `pod_contacted=false`, `production_pair_started=false`, `gate_verdict=false`. |
-| C6 Δ-residual inline certificate | **FOUNDATIONS + COMPLETE-RELATION RUST V2 GREEN / ATOMIC T1 MANIFEST + TWO-SEED ORDER FROZEN / CHALLENGE-ORDER LEAN+BUDGET GREEN; V3 T1 COMPILER + REAL CACHE PENDING; HARD STOP BEFORE POD** (2026-07-29) | Hide direct `auth_corrections` and Ligero `u_vectors`; one inline native-field wrapper; fixed-capacity committed KV cache; 17 accepts plus retry reserve; no deferred settlement | Q=121 keeps complete soundness at **79.472744138609180097... bits**.  The `pi_final` roof remains **4,409,824 B** and the complete response roof **33,586,456 B <=35,000,000 B**; paired PCG setup remains **76,742,930 B**, and the known first exchange remains **146,058,504 B**.  Lean is **3,257 jobs / 287 total / 51 C6**, zero `sorry`/`admit`.  The exact two-seed manifest fixes public claims before relation weights and charges **94,868,704 atomic outputs**, **601,496 terminal outputs** and **225,997,412 coefficient writes**.  The conservative screen is **34.7434735164... passes / 8.450848617... s**, leaving **11.549151382... s** to 20 s with no timing credit.  Durable 17-accept/4-abort state, packed PCS, complete owners, eight terminal streams and historical compiled-residual records remain green reference evidence.  T1 relation compilation/reverse-DAG/raw-copy binding, sumcheck hiding, real cache/production auxiliary sources, terminal-to-PCS assembly, final wrapper envelope, fused CUDA, real-PCG session, bound prover wall and hardware verdict remain pending; no production response field is removed yet. |
+| C6 Δ-residual inline certificate | **V3 CLAIMS-BEFORE-WEIGHTS TYPESTATE + COMPLETE SCALED ATOMIC COMPILER/C6RSC2 BRIDGE GREEN; FUSED T1 + REAL CACHE PENDING; HARD STOP BEFORE POD** (2026-07-29) | Hide direct `auth_corrections` and Ligero `u_vectors`; one inline native-field wrapper; fixed-capacity committed KV cache; 17 accepts plus retry reserve; no deferred settlement | Q=121 keeps complete soundness at **79.472744138609180097... bits**.  The `pi_final` roof remains **4,409,824 B** and the complete response roof **33,586,456 B <=35,000,000 B**; paired PCG setup remains **76,742,930 B**, and the known first exchange remains **146,058,504 B**.  Lean is **3,257 jobs / 287 total / 51 C6**, zero `sorry`/`admit`.  The exact two-seed manifest charges **94,868,704 atomic outputs**, **601,496 terminal outputs** and **225,997,412 coefficient writes**.  Rust now enforces roots→base seed→canonical public claims→independent relation seed, compiles all eight relation families in both repetitions on a scaled fixture and binds the opaque atomic digest into unchanged `C6RSC2` framing (**4,244 B** production codec).  The reference path deliberately refuses production geometry and earns no timing/wire credit.  The conservative screen therefore remains **34.7434735164... passes / 8.450848617... s**, leaving **11.549151382... s** to 20 s.  Fused provider/client T1 compilation, sumcheck hiding, real cache/production auxiliary sources, terminal-to-PCS assembly, final wrapper envelope, fused CUDA, real-PCG session, bound prover wall and hardware verdict remain pending; no production response field is removed yet. |
 | C6 role-local instance extraction codec | **CLEAN TWO-SEED MAP + RUNTIME PASS; SETUP/SEAM CLOSED; BOUND ORDINARY TIMING PENDING** (2026-07-29) | No response-value vector on wire; role-specific model-global maps; maximal-`+1` run codec fixed before measurement; strict ordinary-build decoder and thread-local value recorder | Clean seed-24/25 runs preserve the verifier map at **5,320,386 B**, **1,466 / 10,828,876 raw public/scalar slots**, **1,436 / 10,828,852 canonical slots**, **262 / 2,552,791 runs** and BLAKE3 `17ed0942...7183535`.  Known first exchange is **146,058,504 B**, leaving **3,941,496 B**.  Runtime records `c6-runtime-instance-recorder-seed24-2026-07-29-3b01789.json` / `c6-runtime-instance-recorder-seed25-2026-07-29-abf081c.json`, SHA-256 `f4ea526e...110681b` / `c1775060...5aff5b`, reproduce the exact prover/verifier raw censuses and reconstruct `7a21189b...45cacaa` / `1bd5aa75...6f734f7` respectively; both are clean PASSes.  Full trace was enabled, so this closes setup/seam correctness but gives no bound ordinary runtime, prover-time, residual or production credit. |
 | C6 parameterized canonical plan codec | **CLEAN TWO-SEED RUN-OF-RECORD PASS; PLAN-CODEC SETUP FIT CLOSED; COMPILED RESIDUAL PENDING** (2026-07-29) | Model-global v2 topology artifact; exact strict ordinary-build decoder; independent prover/verifier compile; response instance values excluded | Both clean `100+50` seed-24/25 records recover topology `bcdd169f...c57af344`, produce distinct instance digests and the same **63,994,751-B** artifact at BLAKE3 `265f874c...e51ebac`.  The actual first exchange subtotal is **140,738,118 B <=150,000,000 B**, leaving **9,261,882 B** for all remaining parameters/framing.  Records `c6-parameterized-plan-codec-seed24-2026-07-29-e437394.json` / `c6-parameterized-plan-codec-seed25-2026-07-29-8006f36.json`, SHA-256 `af785f98...ee5580` / `6e054a12...6a861`, are `git_dirty:false`, `diagnostic:false`, `pod_contacted:false`, `all_pass:true`.  This is not an overall setup, residual, response-byte, timing or production verdict. |
 | C6 installed compiled-residual core | **CLEAN TWO-SEED FULL-T1 PAIRED RECORD PASS; ORDINARY OVERHEAD / WRAPPER PENDING** (2026-07-29) | Consuming strict decoder installation; local reverse workspace; role-map runtime values; transcript-streamed base-share coefficients; paired source/key folds | Clean schema-11 seed-24/25 records at `5f9a7ba` accept both independent Δ coordinates over all **4,975,525** sources with provider/verifier linear-form equality and provider/client coefficient-binding equality; no coefficient vector is serialized.  Topology `bcdd169f...c57af344`, artifact `265f874c...e51ebac` and memory are cross-seed invariant, while instance and coefficient digests change.  The installed plan is **196,741,767 B** resident.  Each role retains **79,611,404 B** and uses a counted **541,141,500-B** residual-only compile peak.  Informative clean provider residual subtotals are **2.115027772 / 2.031618948 s** after **1.637407891 / 1.646412629 s** one-off installs.  The residual output itself is **64 B**, but this is not the final wrapper/certificate and earns no wire or timing credit.  Bound ordinary-build overhead, wrapper, real-PCG session and hardware gates remain pending. |
@@ -496,6 +500,68 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-29 — C6 v3 claims-before-weights typestate, complete scaled
+  atomic compiler and compiler-bound `C6RSC2` bridge are locally green.**
+  `C6RLM1` now validates the installed artifact/topology/runtime identity,
+  exact source and ProductMask ownership, capacities, tail boundaries,
+  formulas, factor tuples and stream domains.  The PCS crate exposes the
+  production root join only from its private fixed-five-root token and an
+  exact production-geometry manifest.  Subsequent consuming typestates
+  enforce fixed roots plus retained challenges → independent base-share seed
+  and alpha streams → canonical ordered `M0/M1` plus paired `D/M` public
+  claims → independent relation seed → eight v3 terminal schedules and two
+  atomic schedules.  Zero seeds reject, and reuse of the base seed as the
+  relation seed rejects through the common seed-commitment domain.
+
+  The scaled reference compiler implements all eight frozen relation
+  families in their registered stream order and reconstructs both the
+  coefficient expression and every original weighted residual independently.
+  Its nontrivial fixture consumes exactly
+  `[12,4,4,32,6,2,964,32] = 1,056` atomic outputs per repetition, emits the
+  exact **8 leaf-linear + 16 auxiliary-linear + 8 auxiliary-quadratic**
+  canonical terms, and accepts in both complete repetitions.  Source grammar,
+  raw order, leaf tail and auxiliary tail mutations fail in their named
+  families.  Changing an `M0` claim before relation-seed release changes both
+  statement digests and makes the Product family false; changing the frame
+  after seed release fails its digest.  All eight v3 terminal schedule
+  digests are distinct, while v2 remains a separate diagnostic domain.
+
+  `C6ResidualSumcheckStatement::from_atomic_relation_reference` now binds the
+  opaque atomic compiler digest into the sumcheck statement digest and
+  validates the exact table geometry and quadratic tuple order.  The
+  two-repetition scaled prove/encode/decode/verify path is green.  Changed or
+  zero compiler bindings, zero output census, reordered tuples,
+  non-power-of-two coefficient tables, invalid suffix geometry and
+  post-build binding mutation all reject.  The no-binding legacy statement
+  hash path is byte-compatible, and the strict production `C6RSC2` codec
+  remains exactly **4,244 B**.
+
+  The complete serial feature suite is **146 pass / 0 fail / 1 ignored** for
+  `volta-proto`; `volta-pcs` is **152 pass / 0 fail / 1 ignored**.  Focused
+  residual-sumcheck tests are **7/7 PASS**, workspace all-target compilation,
+  formatting and diff checks are green, and normal Clippy reports no warning
+  in any changed source file.  Source SHA-256 values are residual protocol
+  `d2e822418ef1facc9ef556b51056f1fda2538a9b17835719e70eae49bf422119`,
+  protocol export
+  `40b68c4542ccf69bfdec02461dddea58b1b6c88ac43ce58e5ccd95f70e74cc0f`,
+  residual sumcheck
+  `2bc29ca0e1761349c135763c18cd8726e33c4b32885eaa77691fc1e848d3d71c`,
+  wrapper PCS
+  `1553e9c1dbe21f74c19f3cb23f4b3444f916bd4f72909a9083869ffff1965b65`,
+  PCS export
+  `55ff656c2523fc3ed07d25a4f8544ce811792d9d5eea63d084aea8959fcef6cc`
+  and design
+  `79bc535562130fdc8ba4fe249787fd9d6d6b57f9d28d649fe45afc84278d8b74`.
+
+  This is deliberately a scaled CPU/reference checkpoint: the materialized
+  compiler refuses production geometry.  It earns no response removal,
+  setup, memory, PCS, prover-time, real-PCG or hardware credit.  A
+  byte-identical provider/client fused T1 compiler, synchronized hidden
+  sumcheck messages, production auxiliary/upper-half sources, real cache and
+  final certificate assembly remain pending.  No provider or pod was
+  contacted.  The pre-existing untracked user conversation note remains
+  unread, unstaged and unmodified.
 
 - **2026-07-29 — C6 claims-before-weights Lean and executable-budget hard
   stops are cleared; only the local v3 reference compiler is authorized

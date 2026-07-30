@@ -54,7 +54,8 @@ pub use c6_residual_sumcheck::{
 };
 pub use c6_wrapper_pcs::{
     assemble_production_c6_wrapper_claims, bind_hidden_u_opening_claims_to_wrapper_slots,
-    c6_wrapper_profile_digest, commit_c6_wrapper_cohort, fix_production_c6_wrapper_commitments,
+    bind_production_c6_residual_relation_roots, c6_wrapper_profile_digest,
+    commit_c6_wrapper_cohort, fix_production_c6_wrapper_commitments,
     production_c6_wrapper_codec_reference, production_c6_wrapper_specs, prove_c6_wrapper_pcs,
     prove_c6_wrapper_pcs_assembled, verify_c6_wrapper_pcs, verify_c6_wrapper_pcs_assembled,
     C6AssembledWrapperClaims, C6CommittedWrapperCohort, C6FixedWrapperCommitments,

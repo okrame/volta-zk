@@ -17,8 +17,8 @@ use volta_gpt2::{
     Gpt2Model, KvCache,
 };
 use volta_mac::{
-    begin_c6_prover_trace, begin_c6_verifier_trace, finish_c6_prover_trace,
-    finish_c6_verifier_trace, fresh_zero_mask, normalize_c6_operation_trace,
+    begin_c6_prover_trace, begin_c6_verifier_trace, compile_c6_operation_trace,
+    finish_c6_prover_trace, finish_c6_verifier_trace, fresh_zero_mask,
     normalize_c6_operation_trace_debug_block, zero_batch_prover, zero_batch_verify, zero_mask_key,
     CorrelationStream, Transcript, VerifierCtx,
 };
@@ -28,8 +28,8 @@ use volta_proto::{
     prod_batch_verify, prove_response_private_logits, replay_c6_source_coordinate,
     replay_c6_subfield_coordinate, verify_response_private_logits, C6PairedSourceWitness,
     C6PairedSubfieldWitness, C6SourceCoordinate, C6T1CensusInput, ChunkRef, PrivateChunkPub,
-    C6_T1_COMPLETE_ALLOCATION_SCHEDULE_DIGEST_HEX, C6_T1_CORRECTION_SCHEDULE_DIGEST_HEX,
-    C6_T1_FINAL_PRODUCT_TRIPLES, C6_T1_FULL_CORRECTION_BYTES,
+    C6_PAIRED_PCG_SETUP_BYTES, C6_SETUP_CAP_BYTES, C6_T1_COMPLETE_ALLOCATION_SCHEDULE_DIGEST_HEX,
+    C6_T1_CORRECTION_SCHEDULE_DIGEST_HEX, C6_T1_FINAL_PRODUCT_TRIPLES, C6_T1_FULL_CORRECTION_BYTES,
     C6_T1_MODEL_ALLOCATION_SCHEDULE_DIGEST_HEX, C6_T1_MODEL_LOCAL_PRODUCT_CLOSURES,
     C6_T1_MODEL_LOCAL_PRODUCT_TRIPLES, C6_T1_MODEL_PRODUCT_MESSAGE_BYTES,
     C6_T1_SOURCE_SCHEDULE_DIGEST_HEX, C6_T1_SUB_CORRECTION_BYTES,
@@ -44,6 +44,7 @@ const GPT2_BIN_SHA256: &str = "bdd193720adc8243c64897eaf1b9cd27883ae5613552c96ed
 const GPT2_JSON_SHA256: &str = "98927cac03348c23b06ef336aca027bdd0af54c7fbd9ca2116b61a81fd065a9c";
 const GPT2_PARAMS_SHA256: &str = "264dd1c8fcde2e82bf404e8442375d61783b18961507c2cf5fa83217d8f3b2ac";
 const GOLDEN_P6_SHA256: &str = "e102783acef548d30af65e56d636b6fc51a72697922e256aa5c97ded90567862";
+const C6_SETUP_MANIFEST_FIXED_BYTES: u64 = 437;
 
 struct Args {
     weights: PathBuf,
@@ -483,6 +484,12 @@ struct OperationPlanSpecializedEncodingRow {
     materialized_artifact: bool,
     production_decoder_implemented: bool,
     setup_fit_credit: bool,
+    prover_verifier_artifact_equal: bool,
+    decoder_roundtrip: bool,
+    artifact_digest: String,
+    first_exchange_bytes_with_artifact: u64,
+    first_exchange_cap_bytes: u64,
+    first_exchange_headroom_bytes: u64,
     header_bytes: u64,
     packed_opcode_bytes: u64,
     source_delta_payload_bytes: u64,
@@ -610,18 +617,43 @@ fn run(args: &Args) -> Result<Record, String> {
     } else {
         None
     };
-    let prover_plan = match raw_prover_trace {
+    let (prover_plan, prover_artifact) = match raw_prover_trace {
         Some(trace) => {
             let manifest =
                 trace_manifest.as_ref().ok_or_else(|| "missing C6 trace manifest".to_owned())?;
-            let plan = match args.operation_trace_debug_block {
-                Some(block) => normalize_c6_operation_trace_debug_block(&trace, manifest, block),
-                None => normalize_c6_operation_trace(&trace, manifest),
+            match args.operation_trace_debug_block {
+                Some(block) => {
+                    let plan = normalize_c6_operation_trace_debug_block(&trace, manifest, block)
+                        .map_err(|error| {
+                            format!("C6 prover operation-plan normalization: {error}")
+                        })?;
+                    (Some(plan), None)
+                }
+                None => {
+                    let compiled =
+                        compile_c6_operation_trace(&trace, manifest).map_err(|error| {
+                            format!("C6 prover operation-plan compilation: {error}")
+                        })?;
+                    let decoded = compiled
+                        .artifact
+                        .decode(manifest)
+                        .map_err(|error| format!("C6 prover plan artifact decode: {error}"))?;
+                    if decoded.topology != compiled.plan.topology
+                        || decoded.node_kinds != compiled.plan.diagnostics.node_kinds
+                        || decoded.product_phase_node_count
+                            != compiled.plan.diagnostics.product_phase_node_count
+                        || decoded.encoding
+                            != compiled.plan.diagnostics.specialized_encoding_projection
+                    {
+                        return Err(
+                            "C6 prover plan artifact roundtrip differs from compilation".to_owned()
+                        );
+                    }
+                    (Some(compiled.plan), Some(compiled.artifact))
+                }
             }
-            .map_err(|error| format!("C6 prover operation-plan normalization: {error}"))?;
-            Some(plan)
         }
-        None => None,
+        None => (None, None),
     };
 
     if args.operation_trace {
@@ -701,22 +733,47 @@ fn run(args: &Args) -> Result<Record, String> {
         return Err("C6 independent verifier changed the accepted source census".to_owned());
     }
 
-    let operation_trace = match (prover_plan, raw_verifier_trace) {
-        (Some(prover_plan), Some(verifier_trace)) => {
+    let operation_trace = match (prover_plan, prover_artifact, raw_verifier_trace) {
+        (Some(prover_plan), prover_artifact, Some(verifier_trace)) => {
             let accepted_manifest = c6_t1_trace_source_manifest(&prover_schedule, &census)
                 .map_err(|error| error.to_string())?;
             if trace_manifest.as_ref() != Some(&accepted_manifest) {
                 return Err("C6 trace manifest changed after independent verification".to_owned());
             }
-            let verifier_plan = match args.operation_trace_debug_block {
-                Some(block) => normalize_c6_operation_trace_debug_block(
-                    &verifier_trace,
-                    &accepted_manifest,
-                    block,
-                ),
-                None => normalize_c6_operation_trace(&verifier_trace, &accepted_manifest),
-            }
-            .map_err(|error| format!("C6 verifier operation-plan normalization: {error}"))?;
+            let (verifier_plan, verifier_artifact) = match args.operation_trace_debug_block {
+                Some(block) => {
+                    let plan = normalize_c6_operation_trace_debug_block(
+                        &verifier_trace,
+                        &accepted_manifest,
+                        block,
+                    )
+                    .map_err(|error| {
+                        format!("C6 verifier operation-plan normalization: {error}")
+                    })?;
+                    (plan, None)
+                }
+                None => {
+                    let compiled = compile_c6_operation_trace(&verifier_trace, &accepted_manifest)
+                        .map_err(|error| {
+                            format!("C6 verifier operation-plan compilation: {error}")
+                        })?;
+                    let decoded = compiled
+                        .artifact
+                        .decode(&accepted_manifest)
+                        .map_err(|error| format!("C6 verifier plan artifact decode: {error}"))?;
+                    if decoded.topology != compiled.plan.topology
+                        || decoded.node_kinds != compiled.plan.diagnostics.node_kinds
+                        || decoded.product_phase_node_count
+                            != compiled.plan.diagnostics.product_phase_node_count
+                        || decoded.encoding
+                            != compiled.plan.diagnostics.specialized_encoding_projection
+                    {
+                        return Err("C6 verifier plan artifact roundtrip differs from compilation"
+                            .to_owned());
+                    }
+                    (compiled.plan, Some(compiled.artifact))
+                }
+            };
             let identity = prover_plan.identity;
             let topology = prover_plan.topology;
             let instance = prover_plan.instance;
@@ -769,6 +826,58 @@ fn run(args: &Args) -> Result<Record, String> {
                     "C6 prover/verifier parameterized plan census or encoding differs".to_owned()
                 );
             }
+            let (
+                materialized_artifact,
+                prover_verifier_artifact_equal,
+                decoder_roundtrip,
+                artifact_digest,
+                first_exchange_bytes_with_artifact,
+                first_exchange_headroom_bytes,
+            ) = match (prover_artifact, verifier_artifact) {
+                (Some(prover), Some(verifier)) => {
+                    if prover != verifier {
+                        return Err("C6 prover/verifier canonical plan artifacts differ".to_owned());
+                    }
+                    let decoded = prover
+                        .decode(&accepted_manifest)
+                        .map_err(|error| format!("C6 accepted plan artifact decode: {error}"))?;
+                    if decoded.topology != topology
+                        || decoded.encoding
+                            != prover_plan.diagnostics.specialized_encoding_projection
+                    {
+                        return Err(
+                            "C6 accepted plan artifact differs from canonical identity".to_owned()
+                        );
+                    }
+                    let artifact_bytes = u64::try_from(prover.len())
+                        .map_err(|_| "C6 plan artifact length exceeds u64".to_owned())?;
+                    let first_exchange = C6_PAIRED_PCG_SETUP_BYTES
+                        .checked_add(C6_SETUP_MANIFEST_FIXED_BYTES)
+                        .and_then(|bytes| bytes.checked_add(artifact_bytes))
+                        .ok_or_else(|| "C6 first exchange with plan overflows".to_owned())?;
+                    let headroom = C6_SETUP_CAP_BYTES.checked_sub(first_exchange).ok_or_else(|| {
+                        format!(
+                            "C6 materialized plan exceeds setup cap: {first_exchange} > {C6_SETUP_CAP_BYTES}"
+                        )
+                    })?;
+                    (
+                        true,
+                        true,
+                        true,
+                        hex(blake3::hash(prover.as_bytes()).as_bytes()),
+                        first_exchange,
+                        headroom,
+                    )
+                }
+                (None, None) if args.operation_trace_debug_block.is_some() => {
+                    (false, false, false, String::new(), 0, 0)
+                }
+                _ => {
+                    return Err(
+                        "C6 prover/verifier plan artifact lifecycle is asymmetric".to_owned()
+                    );
+                }
+            };
             if u64::from(identity.source_count) != census.total_leaves
                 || u64::from(identity.product_closure_count) != census.total_product_closures
                 || identity.product_triple_count != census.total_product_triples
@@ -841,9 +950,16 @@ fn run(args: &Args) -> Result<Record, String> {
                     total_bytes: prover_plan.diagnostics.candidate_encoding.total_bytes,
                 },
                 specialized_encoding_projection: OperationPlanSpecializedEncodingRow {
-                    materialized_artifact: false,
-                    production_decoder_implemented: false,
-                    setup_fit_credit: false,
+                    materialized_artifact,
+                    production_decoder_implemented: true,
+                    setup_fit_credit: materialized_artifact
+                        && first_exchange_bytes_with_artifact <= C6_SETUP_CAP_BYTES,
+                    prover_verifier_artifact_equal,
+                    decoder_roundtrip,
+                    artifact_digest,
+                    first_exchange_bytes_with_artifact,
+                    first_exchange_cap_bytes: C6_SETUP_CAP_BYTES,
+                    first_exchange_headroom_bytes,
                     header_bytes: prover_plan
                         .diagnostics
                         .specialized_encoding_projection
@@ -887,7 +1003,7 @@ fn run(args: &Args) -> Result<Record, String> {
                 },
             })
         }
-        (None, None) => None,
+        (None, None, None) => None,
         _ => return Err("C6 prover/verifier trace lifecycle is asymmetric".to_owned()),
     };
 
@@ -1067,7 +1183,7 @@ fn run(args: &Args) -> Result<Record, String> {
     }
     Ok(Record {
         schema: if args.operation_trace {
-            7
+            8
         } else if args.source_witness {
             3
         } else if args.subfield_witness {
@@ -1076,7 +1192,7 @@ fn run(args: &Args) -> Result<Record, String> {
             1
         },
         milestone: if args.operation_trace {
-            "C6-T1-parameterized-operation-plan".to_owned()
+            "C6-T1-canonical-parameterized-operation-plan-codec".to_owned()
         } else if args.source_witness {
             "C6-T1-paired-source-witness-reference".to_owned()
         } else if args.subfield_witness {

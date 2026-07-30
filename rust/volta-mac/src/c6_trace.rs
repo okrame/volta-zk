@@ -15,18 +15,19 @@ const C6_OPERATION_NODE_DOMAIN: &str = "volta/proto/c6/operation-plan/nodes/v2";
 #[cfg(feature = "c6-trace")]
 const C6_OPERATION_NODE_BLOCK_DOMAIN: &str =
     "volta/proto/c6/operation-plan/node-block-diagnostic/v2";
-#[cfg(feature = "c6-trace")]
 const C6_OPERATION_ROOT_DOMAIN: &str = "volta/proto/c6/operation-plan/roots/v2";
 #[cfg(feature = "c6-trace")]
 const C6_OPERATION_PLAN_DOMAIN: &str = "volta/proto/c6/operation-plan/v2";
-#[cfg(feature = "c6-trace")]
 const C6_OPERATION_TOPOLOGY_NODE_DOMAIN: &str = "volta/proto/c6/operation-plan/topology-nodes/v2";
-#[cfg(feature = "c6-trace")]
 const C6_OPERATION_TOPOLOGY_PLAN_DOMAIN: &str = "volta/proto/c6/operation-plan/topology/v2";
 #[cfg(feature = "c6-trace")]
 const C6_OPERATION_INSTANCE_VALUE_DOMAIN: &str = "volta/proto/c6/operation-plan/instance-values/v2";
 #[cfg(feature = "c6-trace")]
 const C6_OPERATION_INSTANCE_DOMAIN: &str = "volta/proto/c6/operation-plan/instance/v2";
+
+const C6_OPERATION_PLAN_CODEC_MAGIC: &[u8; 8] = b"VC6PLN2\0";
+const C6_OPERATION_PLAN_CODEC_VERSION: u32 = 1;
+const C6_OPERATION_PARAMETERIZED_HEADER_BYTES: u64 = 152;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6TraceError(String);
@@ -203,10 +204,11 @@ pub struct C6OperationPlanEncodingCensus {
     pub total_bytes: u64,
 }
 
-/// Exact projection for the specialized canonical v2 operand/source coding.
+/// Exact census for the specialized canonical v2 operand/source coding.
 ///
-/// This remains zero setup credit until an encoder, strict decoder and
-/// materialized full artifact reproduce the same census and topology digest.
+/// A normalizer-only value is a projection and receives no setup credit.
+/// [`compile_c6_operation_trace`] materializes the sections and requires
+/// their measured census to equal this value exactly.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct C6OperationPlanSpecializedEncodingCensus {
     pub header_bytes: u64,
@@ -274,6 +276,64 @@ pub struct C6CanonicalOperationPlan {
     pub topology: C6OperationPlanTopologyIdentity,
     pub instance: C6OperationPlanInstanceIdentity,
     pub diagnostics: C6OperationPlanDiagnostics,
+}
+
+pub struct C6CompiledOperationPlan {
+    pub plan: C6CanonicalOperationPlan,
+    pub artifact: C6OperationPlanArtifact,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct C6OperationPlanArtifact {
+    bytes: Vec<u8>,
+}
+
+impl fmt::Debug for C6OperationPlanArtifact {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("C6OperationPlanArtifact")
+            .field("bytes", &self.bytes.len())
+            .finish_non_exhaustive()
+    }
+}
+
+impl C6OperationPlanArtifact {
+    /// Parse client-received setup bytes with the strict ordinary-build
+    /// decoder before admitting them as an installed artifact.
+    pub fn parse(bytes: Vec<u8>, manifest: &C6TraceSourceManifest) -> Result<Self, C6TraceError> {
+        decode_c6_operation_plan_artifact(&bytes, manifest)?;
+        Ok(Self { bytes })
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
+    pub fn len(&self) -> usize {
+        self.bytes.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.bytes.is_empty()
+    }
+
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.bytes
+    }
+
+    pub fn decode(
+        &self,
+        manifest: &C6TraceSourceManifest,
+    ) -> Result<C6DecodedOperationPlan, C6TraceError> {
+        decode_c6_operation_plan_artifact(&self.bytes, manifest)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6DecodedOperationPlan {
+    pub topology: C6OperationPlanTopologyIdentity,
+    pub node_kinds: C6CanonicalNodeKindCensus,
+    pub product_phase_node_count: u64,
+    pub encoding: C6OperationPlanSpecializedEncodingCensus,
 }
 
 #[cfg(feature = "c6-trace")]
@@ -435,12 +495,11 @@ struct C6TraceNormalizer<'a> {
     capture_block: Option<u64>,
     captured_nodes: Vec<C6CanonicalNodeDebug>,
     current_terminal: Option<C6CanonicalTerminalDebug>,
+    encoder: Option<C6PlanEncodingBuilder>,
 }
 
 #[cfg(feature = "c6-trace")]
 const C6_OPERATION_DIAGNOSTIC_BLOCK_NODES: u32 = 64;
-#[cfg(feature = "c6-trace")]
-const C6_OPERATION_PARAMETERIZED_HEADER_BYTES: u64 = 152;
 
 #[cfg(feature = "c6-trace")]
 fn new_node_block_hasher(block_index: u64) -> blake3::Hasher {
@@ -454,7 +513,6 @@ fn uleb128_u32_len(value: u32) -> u64 {
     uleb128_u64_len(u64::from(value))
 }
 
-#[cfg(feature = "c6-trace")]
 fn uleb128_u64_len(mut value: u64) -> u64 {
     let mut bytes = 1;
     while value >= 0x80 {
@@ -470,11 +528,206 @@ fn zigzag_i64(value: i64) -> u64 {
 }
 
 #[cfg(feature = "c6-trace")]
+#[derive(Default)]
+struct C6BitWriter {
+    bytes: Vec<u8>,
+    bits: u64,
+}
+
+#[cfg(feature = "c6-trace")]
+impl C6BitWriter {
+    fn push(&mut self, value: u8, width: u8) -> Result<(), C6TraceError> {
+        if width == 0 || width > 8 || value >> width != 0 {
+            return Err(C6TraceError::new("invalid C6 packed-bit value"));
+        }
+        for shift in 0..width {
+            let bit_index = self.bits;
+            if bit_index % 8 == 0 {
+                self.bytes.push(0);
+            }
+            if value & (1 << shift) != 0 {
+                let byte = self
+                    .bytes
+                    .last_mut()
+                    .ok_or_else(|| C6TraceError::new("missing C6 packed-bit output byte"))?;
+                *byte |= 1 << (bit_index % 8);
+            }
+            self.bits = self
+                .bits
+                .checked_add(1)
+                .ok_or_else(|| C6TraceError::new("C6 packed-bit count overflows"))?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(feature = "c6-trace")]
+#[derive(Default)]
+struct C6PlanEncodingBuilder {
+    opcodes: C6BitWriter,
+    source_payload: Vec<u8>,
+    operand_flags: C6BitWriter,
+    operand_payload: Vec<u8>,
+    terminal_payload: Vec<u8>,
+    previous_source: Option<u32>,
+    source_successor_count: u64,
+    unit_operand_count: u64,
+}
+
+#[cfg(feature = "c6-trace")]
+impl C6PlanEncodingBuilder {
+    fn push_uleb(output: &mut Vec<u8>, mut value: u64) {
+        loop {
+            let mut byte = (value & 0x7f) as u8;
+            value >>= 7;
+            if value != 0 {
+                byte |= 0x80;
+            }
+            output.push(byte);
+            if value == 0 {
+                break;
+            }
+        }
+    }
+
+    fn source(&mut self, source: u32) -> Result<(), C6TraceError> {
+        self.opcodes.push(1, 3)?;
+        let previous = self.previous_source.map_or(-1, i64::from);
+        let delta = i64::from(source) - previous;
+        Self::push_uleb(&mut self.source_payload, zigzag_i64(delta));
+        if delta == 1 {
+            self.source_successor_count = self
+                .source_successor_count
+                .checked_add(1)
+                .ok_or_else(|| C6TraceError::new("C6 encoded source-successor count overflows"))?;
+        }
+        self.previous_source = Some(source);
+        Ok(())
+    }
+
+    fn structural_zero(&mut self) -> Result<(), C6TraceError> {
+        self.opcodes.push(2, 3)
+    }
+
+    fn public_input(&mut self) -> Result<(), C6TraceError> {
+        self.opcodes.push(3, 3)
+    }
+
+    fn operand(&mut self, canonical: u32, operand: u32) -> Result<(), C6TraceError> {
+        let distance = canonical.checked_sub(operand).ok_or_else(|| {
+            C6TraceError::new("C6 encoded operand is not before its canonical node")
+        })?;
+        if distance == 0 {
+            return Err(C6TraceError::new("C6 encoded operand has zero backward distance"));
+        }
+        if distance == 1 {
+            self.operand_flags.push(0, 1)?;
+            self.unit_operand_count = self
+                .unit_operand_count
+                .checked_add(1)
+                .ok_or_else(|| C6TraceError::new("C6 encoded unit-operand count overflows"))?;
+        } else {
+            self.operand_flags.push(1, 1)?;
+            Self::push_uleb(&mut self.operand_payload, u64::from(distance - 2));
+        }
+        Ok(())
+    }
+
+    fn add(&mut self, canonical: u32, lhs: u32, rhs: u32) -> Result<(), C6TraceError> {
+        self.opcodes.push(4, 3)?;
+        self.operand(canonical, lhs)?;
+        self.operand(canonical, rhs)
+    }
+
+    fn sub(&mut self, canonical: u32, lhs: u32, rhs: u32) -> Result<(), C6TraceError> {
+        self.opcodes.push(5, 3)?;
+        self.operand(canonical, lhs)?;
+        self.operand(canonical, rhs)
+    }
+
+    fn scale(&mut self, canonical: u32, value: u32) -> Result<(), C6TraceError> {
+        self.opcodes.push(6, 3)?;
+        self.operand(canonical, value)
+    }
+
+    fn terminal_count(&mut self, count: u64) {
+        Self::push_uleb(&mut self.terminal_payload, count);
+    }
+
+    fn terminal_node(&mut self, canonical: u32) {
+        Self::push_uleb(&mut self.terminal_payload, u64::from(canonical));
+    }
+
+    fn finish(
+        self,
+        topology: C6OperationPlanTopologyIdentity,
+        expected: C6OperationPlanSpecializedEncodingCensus,
+    ) -> Result<C6OperationPlanArtifact, C6TraceError> {
+        let section_lengths = [
+            self.opcodes.bytes.len(),
+            self.source_payload.len(),
+            self.operand_flags.bytes.len(),
+            self.operand_payload.len(),
+            self.terminal_payload.len(),
+        ];
+        let actual = C6OperationPlanSpecializedEncodingCensus {
+            header_bytes: C6_OPERATION_PARAMETERIZED_HEADER_BYTES,
+            packed_opcode_bytes: section_lengths[0] as u64,
+            source_delta_payload_bytes: section_lengths[1] as u64,
+            operand_unit_flag_bytes: section_lengths[2] as u64,
+            nonunit_operand_payload_bytes: section_lengths[3] as u64,
+            terminal_payload_bytes: section_lengths[4] as u64,
+            total_bytes: C6_OPERATION_PARAMETERIZED_HEADER_BYTES
+                + section_lengths.iter().map(|&length| length as u64).sum::<u64>(),
+            source_successor_count: self.source_successor_count,
+            operand_count: self.operand_flags.bits,
+            unit_operand_count: self.unit_operand_count,
+        };
+        if actual != expected {
+            return Err(C6TraceError::new(format!(
+                "materialized C6 plan encoding differs from projection: {actual:?} != {expected:?}"
+            )));
+        }
+        let capacity = usize::try_from(actual.total_bytes)
+            .map_err(|_| C6TraceError::new("C6 encoded plan length exceeds usize"))?;
+        let mut bytes = Vec::with_capacity(capacity);
+        bytes.extend_from_slice(C6_OPERATION_PLAN_CODEC_MAGIC);
+        bytes.extend_from_slice(&C6_OPERATION_PLAN_CODEC_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&topology.version.to_le_bytes());
+        bytes.extend_from_slice(&topology.source_count.to_le_bytes());
+        bytes.extend_from_slice(&topology.source_schedule_digest);
+        bytes.extend_from_slice(&topology.canonical_node_count.to_le_bytes());
+        bytes.extend_from_slice(&topology.public_input_count.to_le_bytes());
+        bytes.extend_from_slice(&topology.scalar_input_count.to_le_bytes());
+        bytes.extend_from_slice(&topology.product_closure_count.to_le_bytes());
+        bytes.extend_from_slice(&topology.product_triple_count.to_le_bytes());
+        bytes.extend_from_slice(&topology.zero_root_count.to_le_bytes());
+        bytes.extend_from_slice(&topology.topology_digest);
+        for length in section_lengths {
+            bytes.extend_from_slice(&(length as u64).to_le_bytes());
+        }
+        if bytes.len() as u64 != C6_OPERATION_PARAMETERIZED_HEADER_BYTES {
+            return Err(C6TraceError::new("C6 operation-plan header length changed"));
+        }
+        bytes.extend_from_slice(&self.opcodes.bytes);
+        bytes.extend_from_slice(&self.source_payload);
+        bytes.extend_from_slice(&self.operand_flags.bytes);
+        bytes.extend_from_slice(&self.operand_payload);
+        bytes.extend_from_slice(&self.terminal_payload);
+        if bytes.len() != capacity {
+            return Err(C6TraceError::new("C6 operation-plan artifact length changed"));
+        }
+        Ok(C6OperationPlanArtifact { bytes })
+    }
+}
+
+#[cfg(feature = "c6-trace")]
 impl<'a> C6TraceNormalizer<'a> {
     fn new(
         trace: &'a C6ProverTraceSnapshot,
         manifest: &'a C6TraceSourceManifest,
         capture_block: Option<u64>,
+        compile: bool,
     ) -> Result<Self, C6TraceError> {
         if trace.namespace == 0 {
             return Err(C6TraceError::new("C6 trace snapshot has no namespace"));
@@ -518,6 +771,7 @@ impl<'a> C6TraceNormalizer<'a> {
             capture_block,
             captured_nodes: Vec::new(),
             current_terminal: None,
+            encoder: compile.then(C6PlanEncodingBuilder::default),
         })
     }
 
@@ -703,6 +957,9 @@ impl<'a> C6TraceNormalizer<'a> {
                 self.hash_node_fp2(Fp2::ZERO);
                 self.hash_topology_node_prefix(canonical, 2);
                 self.node_kinds.structural_zero += 1;
+                if let Some(encoder) = &mut self.encoder {
+                    encoder.structural_zero()?;
+                }
                 self.capture_node(canonical, C6CanonicalNodeDebugKind::Public(Fp2::ZERO));
                 self.finish_node_record();
                 self.public_zero_canonical = canonical;
@@ -731,6 +988,9 @@ impl<'a> C6TraceNormalizer<'a> {
         self.topology_node_hasher.update(&source.to_le_bytes());
         self.node_kinds.source += 1;
         self.add_source_payload(source)?;
+        if let Some(encoder) = &mut self.encoder {
+            encoder.source(source)?;
+        }
         self.capture_node(canonical, C6CanonicalNodeDebugKind::Source(source));
         self.finish_node_record();
         self.source_to_canonical[source as usize] = canonical;
@@ -773,6 +1033,9 @@ impl<'a> C6TraceNormalizer<'a> {
                 self.topology_node_hasher.update(&slot.to_le_bytes());
                 self.hash_instance_value(canonical, 1, slot, value);
                 self.node_kinds.public_input += 1;
+                if let Some(encoder) = &mut self.encoder {
+                    encoder.public_input()?;
+                }
                 self.capture_node(canonical, C6CanonicalNodeDebugKind::Public(value));
             }
             C6TraceNode::Add { lhs, rhs } => {
@@ -791,6 +1054,9 @@ impl<'a> C6TraceNormalizer<'a> {
                 self.node_kinds.add += 1;
                 self.add_operand_payload(canonical, lhs)?;
                 self.add_operand_payload(canonical, rhs)?;
+                if let Some(encoder) = &mut self.encoder {
+                    encoder.add(canonical, lhs, rhs)?;
+                }
                 self.capture_node(canonical, C6CanonicalNodeDebugKind::Add { lhs, rhs });
             }
             C6TraceNode::Sub { lhs, rhs } => {
@@ -809,6 +1075,9 @@ impl<'a> C6TraceNormalizer<'a> {
                 self.node_kinds.sub += 1;
                 self.add_operand_payload(canonical, lhs)?;
                 self.add_operand_payload(canonical, rhs)?;
+                if let Some(encoder) = &mut self.encoder {
+                    encoder.sub(canonical, lhs, rhs)?;
+                }
                 self.capture_node(canonical, C6CanonicalNodeDebugKind::Sub { lhs, rhs });
             }
             C6TraceNode::Scale { value, scalar } => {
@@ -825,6 +1094,9 @@ impl<'a> C6TraceNormalizer<'a> {
                 self.hash_instance_value(canonical, 2, slot, scalar);
                 self.node_kinds.scale += 1;
                 self.add_operand_payload(canonical, value)?;
+                if let Some(encoder) = &mut self.encoder {
+                    encoder.scale(canonical, value)?;
+                }
                 self.capture_node(canonical, C6CanonicalNodeDebugKind::Scale { value, scalar });
             }
         }
@@ -898,7 +1170,24 @@ pub fn normalize_c6_operation_trace(
     trace: &C6ProverTraceSnapshot,
     manifest: &C6TraceSourceManifest,
 ) -> Result<C6CanonicalOperationPlan, C6TraceError> {
-    normalize_c6_operation_trace_impl(trace, manifest, None)
+    normalize_c6_operation_trace_impl(trace, manifest, None, false).map(|(plan, _)| plan)
+}
+
+/// Compile one canonical parameterized topology artifact while producing the
+/// same exact-instance diagnostics as [`normalize_c6_operation_trace`].
+///
+/// The compiler remains a `c6-trace` development path. The artifact decoder
+/// itself is available to ordinary client builds.
+pub fn compile_c6_operation_trace(
+    trace: &C6ProverTraceSnapshot,
+    manifest: &C6TraceSourceManifest,
+) -> Result<C6CompiledOperationPlan, C6TraceError> {
+    let (plan, artifact) = normalize_c6_operation_trace_impl(trace, manifest, None, true)?;
+    Ok(C6CompiledOperationPlan {
+        plan,
+        artifact: artifact
+            .ok_or_else(|| C6TraceError::new("C6 operation-plan compiler emitted no artifact"))?,
+    })
 }
 
 /// Targeted diagnostic twin of [`normalize_c6_operation_trace`]. The
@@ -909,14 +1198,15 @@ pub fn normalize_c6_operation_trace_debug_block(
     manifest: &C6TraceSourceManifest,
     block: u64,
 ) -> Result<C6CanonicalOperationPlan, C6TraceError> {
-    normalize_c6_operation_trace_impl(trace, manifest, Some(block))
+    normalize_c6_operation_trace_impl(trace, manifest, Some(block), false).map(|(plan, _)| plan)
 }
 
 fn normalize_c6_operation_trace_impl(
     trace: &C6ProverTraceSnapshot,
     manifest: &C6TraceSourceManifest,
     capture_block: Option<u64>,
-) -> Result<C6CanonicalOperationPlan, C6TraceError> {
+    compile: bool,
+) -> Result<(C6CanonicalOperationPlan, Option<C6OperationPlanArtifact>), C6TraceError> {
     #[cfg(feature = "c6-trace")]
     {
         if trace.products.len() != manifest.product_mask_sources.len() {
@@ -930,7 +1220,7 @@ fn normalize_c6_operation_trace_impl(
             .map_err(|_| C6TraceError::new("C6 zero-root count exceeds u32"))?;
         let mut product_triple_count = 0u64;
         let mut terminal_payload_bytes = 0u64;
-        let mut normalizer = C6TraceNormalizer::new(trace, manifest, capture_block)?;
+        let mut normalizer = C6TraceNormalizer::new(trace, manifest, capture_block, compile)?;
         let mut root_hasher = blake3::Hasher::new_derive_key(C6_OPERATION_ROOT_DOMAIN);
         root_hasher.update(&product_closure_count.to_le_bytes());
 
@@ -952,6 +1242,9 @@ fn normalize_c6_operation_trace_impl(
             terminal_payload_bytes = terminal_payload_bytes
                 .checked_add(uleb128_u64_len(triple_count))
                 .ok_or_else(|| C6TraceError::new("C6 terminal encoding byte count overflows"))?;
+            if let Some(encoder) = &mut normalizer.encoder {
+                encoder.terminal_count(triple_count);
+            }
             root_hasher.update(&(closure_index as u64).to_le_bytes());
             root_hasher.update(&triple_count.to_le_bytes());
             for (triple_index, triple) in closure.triples.iter().enumerate() {
@@ -967,6 +1260,9 @@ fn normalize_c6_operation_trace_impl(
                         terminal_payload_bytes.checked_add(uleb128_u32_len(canonical)).ok_or_else(
                             || C6TraceError::new("C6 terminal encoding byte count overflows"),
                         )?;
+                    if let Some(encoder) = &mut normalizer.encoder {
+                        encoder.terminal_node(canonical);
+                    }
                 }
             }
             normalizer.current_terminal =
@@ -976,6 +1272,9 @@ fn normalize_c6_operation_trace_impl(
             terminal_payload_bytes = terminal_payload_bytes
                 .checked_add(uleb128_u32_len(canonical_mask))
                 .ok_or_else(|| C6TraceError::new("C6 terminal encoding byte count overflows"))?;
+            if let Some(encoder) = &mut normalizer.encoder {
+                encoder.terminal_node(canonical_mask);
+            }
         }
         let product_phase_node_count = u64::from(normalizer.canonical_node_count);
 
@@ -988,6 +1287,9 @@ fn normalize_c6_operation_trace_impl(
             terminal_payload_bytes = terminal_payload_bytes
                 .checked_add(uleb128_u32_len(canonical))
                 .ok_or_else(|| C6TraceError::new("C6 terminal encoding byte count overflows"))?;
+            if let Some(encoder) = &mut normalizer.encoder {
+                encoder.terminal_node(canonical);
+            }
         }
         normalizer.current_terminal = None;
 
@@ -1084,7 +1386,24 @@ fn normalize_c6_operation_trace_impl(
             unit_operand_count: normalizer.unit_operand_count,
         };
 
-        return Ok(C6CanonicalOperationPlan {
+        let topology = C6OperationPlanTopologyIdentity {
+            version: C6_OPERATION_PLAN_VERSION,
+            source_count: manifest.source_count,
+            source_schedule_digest: manifest.source_schedule_digest,
+            canonical_node_count: normalizer.canonical_node_count,
+            public_input_count: normalizer.public_input_count,
+            scalar_input_count: normalizer.scalar_input_count,
+            product_closure_count,
+            product_triple_count,
+            zero_root_count,
+            topology_digest,
+        };
+        let artifact = normalizer
+            .encoder
+            .take()
+            .map(|encoder| encoder.finish(topology, specialized_encoding_projection))
+            .transpose()?;
+        let plan = C6CanonicalOperationPlan {
             identity: C6OperationPlanIdentity {
                 version: C6_OPERATION_PLAN_VERSION,
                 source_count: manifest.source_count,
@@ -1095,18 +1414,7 @@ fn normalize_c6_operation_trace_impl(
                 zero_root_count,
                 program_digest,
             },
-            topology: C6OperationPlanTopologyIdentity {
-                version: C6_OPERATION_PLAN_VERSION,
-                source_count: manifest.source_count,
-                source_schedule_digest: manifest.source_schedule_digest,
-                canonical_node_count: normalizer.canonical_node_count,
-                public_input_count: normalizer.public_input_count,
-                scalar_input_count: normalizer.scalar_input_count,
-                product_closure_count,
-                product_triple_count,
-                zero_root_count,
-                topology_digest,
-            },
+            topology,
             instance: C6OperationPlanInstanceIdentity {
                 version: C6_OPERATION_PLAN_VERSION,
                 topology_digest,
@@ -1129,15 +1437,567 @@ fn normalize_c6_operation_trace_impl(
                 candidate_encoding,
                 specialized_encoding_projection,
             },
-        });
+        };
+        return Ok((plan, artifact));
     }
     #[cfg(not(feature = "c6-trace"))]
     {
-        let _ = (trace, manifest, capture_block);
+        let _ = (trace, manifest, capture_block, compile);
         Err(C6TraceError::new(
             "C6 operation-plan normalization requires the diagnostic c6-trace feature",
         ))
     }
+}
+
+struct C6ByteCursor<'a> {
+    bytes: &'a [u8],
+    position: usize,
+}
+
+impl<'a> C6ByteCursor<'a> {
+    fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes, position: 0 }
+    }
+
+    fn take(&mut self, count: usize) -> Result<&'a [u8], C6TraceError> {
+        let end = self
+            .position
+            .checked_add(count)
+            .ok_or_else(|| C6TraceError::new("C6 operation-plan cursor overflows"))?;
+        let value = self
+            .bytes
+            .get(self.position..end)
+            .ok_or_else(|| C6TraceError::new("truncated C6 operation-plan artifact"))?;
+        self.position = end;
+        Ok(value)
+    }
+
+    fn u32(&mut self) -> Result<u32, C6TraceError> {
+        Ok(u32::from_le_bytes(
+            self.take(4)?.try_into().map_err(|_| C6TraceError::new("truncated C6 u32"))?,
+        ))
+    }
+
+    fn u64(&mut self) -> Result<u64, C6TraceError> {
+        Ok(u64::from_le_bytes(
+            self.take(8)?.try_into().map_err(|_| C6TraceError::new("truncated C6 u64"))?,
+        ))
+    }
+
+    fn digest(&mut self) -> Result<[u8; 32], C6TraceError> {
+        self.take(32)?.try_into().map_err(|_| C6TraceError::new("truncated C6 digest"))
+    }
+}
+
+struct C6BitReader<'a> {
+    bytes: &'a [u8],
+    bits: u64,
+}
+
+impl<'a> C6BitReader<'a> {
+    fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes, bits: 0 }
+    }
+
+    fn read(&mut self, width: u8) -> Result<u8, C6TraceError> {
+        if width == 0 || width > 8 {
+            return Err(C6TraceError::new("invalid C6 packed-bit width"));
+        }
+        let end = self
+            .bits
+            .checked_add(u64::from(width))
+            .ok_or_else(|| C6TraceError::new("C6 packed-bit cursor overflows"))?;
+        if end
+            > u64::try_from(self.bytes.len())
+                .map_err(|_| C6TraceError::new("C6 packed section exceeds u64"))?
+                .saturating_mul(8)
+        {
+            return Err(C6TraceError::new("truncated C6 packed-bit section"));
+        }
+        let mut value = 0u8;
+        for shift in 0..width {
+            let bit = self.bits + u64::from(shift);
+            let byte_index = usize::try_from(bit / 8)
+                .map_err(|_| C6TraceError::new("C6 packed-bit index exceeds usize"))?;
+            value |= ((self.bytes[byte_index] >> (bit % 8)) & 1) << shift;
+        }
+        self.bits = end;
+        Ok(value)
+    }
+
+    fn finish(&self, expected_bits: u64, label: &str) -> Result<(), C6TraceError> {
+        if self.bits != expected_bits {
+            return Err(C6TraceError::new(format!(
+                "C6 {label} bit count differs from decoded program"
+            )));
+        }
+        let expected_bytes = expected_bits
+            .checked_add(7)
+            .ok_or_else(|| C6TraceError::new(format!("C6 {label} byte count overflows")))?
+            / 8;
+        if u64::try_from(self.bytes.len())
+            .map_err(|_| C6TraceError::new(format!("C6 {label} length exceeds u64")))?
+            != expected_bytes
+        {
+            return Err(C6TraceError::new(format!("C6 {label} section has noncanonical length")));
+        }
+        if expected_bits % 8 != 0 {
+            let used = (expected_bits % 8) as u8;
+            let padding_mask = !((1u8 << used) - 1);
+            if self.bytes.last().is_some_and(|byte| byte & padding_mask != 0) {
+                return Err(C6TraceError::new(format!("C6 {label} section has nonzero padding")));
+            }
+        }
+        Ok(())
+    }
+}
+
+struct C6UlebReader<'a> {
+    bytes: &'a [u8],
+    position: usize,
+}
+
+impl<'a> C6UlebReader<'a> {
+    fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes, position: 0 }
+    }
+
+    fn read(&mut self, label: &str) -> Result<u64, C6TraceError> {
+        let start = self.position;
+        let mut value = 0u64;
+        let mut shift = 0u32;
+        loop {
+            let byte = *self
+                .bytes
+                .get(self.position)
+                .ok_or_else(|| C6TraceError::new(format!("truncated C6 {label} ULEB128")))?;
+            self.position += 1;
+            let payload = u64::from(byte & 0x7f);
+            if shift >= 64 || payload > (u64::MAX >> shift) {
+                return Err(C6TraceError::new(format!("C6 {label} ULEB128 overflows")));
+            }
+            value |= payload << shift;
+            if byte & 0x80 == 0 {
+                let consumed = self.position - start;
+                if u64::try_from(consumed)
+                    .map_err(|_| C6TraceError::new("C6 ULEB128 length exceeds u64"))?
+                    != uleb128_u64_len(value)
+                {
+                    return Err(C6TraceError::new(format!("C6 {label} ULEB128 is nonminimal")));
+                }
+                return Ok(value);
+            }
+            shift = shift
+                .checked_add(7)
+                .ok_or_else(|| C6TraceError::new(format!("C6 {label} ULEB128 shift overflows")))?;
+            if self.position - start >= 10 {
+                return Err(C6TraceError::new(format!("C6 {label} ULEB128 is too long")));
+            }
+        }
+    }
+
+    fn finish(&self, label: &str) -> Result<(), C6TraceError> {
+        if self.position != self.bytes.len() {
+            return Err(C6TraceError::new(format!("C6 {label} section has trailing bytes")));
+        }
+        Ok(())
+    }
+}
+
+fn c6_bitset_len(bits: u32) -> Result<usize, C6TraceError> {
+    let bytes = u64::from(bits)
+        .checked_add(7)
+        .ok_or_else(|| C6TraceError::new("C6 bitset length overflows"))?
+        / 8;
+    usize::try_from(bytes).map_err(|_| C6TraceError::new("C6 bitset length exceeds usize"))
+}
+
+fn c6_bitset_get(bits: &[u8], index: u32) -> bool {
+    bits[index as usize / 8] & (1 << (index % 8)) != 0
+}
+
+fn c6_bitset_insert(bits: &mut [u8], index: u32) -> bool {
+    let byte = &mut bits[index as usize / 8];
+    let mask = 1 << (index % 8);
+    let fresh = *byte & mask == 0;
+    *byte |= mask;
+    fresh
+}
+
+fn c6_unzigzag(value: u64) -> i64 {
+    ((value >> 1) as i64) ^ -((value & 1) as i64)
+}
+
+fn c6_section<'a>(
+    bytes: &'a [u8],
+    offset: &mut usize,
+    length: u64,
+) -> Result<&'a [u8], C6TraceError> {
+    let length = usize::try_from(length)
+        .map_err(|_| C6TraceError::new("C6 operation-plan section exceeds usize"))?;
+    let end = offset
+        .checked_add(length)
+        .ok_or_else(|| C6TraceError::new("C6 operation-plan section offset overflows"))?;
+    let section = bytes
+        .get(*offset..end)
+        .ok_or_else(|| C6TraceError::new("truncated C6 operation-plan section"))?;
+    *offset = end;
+    Ok(section)
+}
+
+fn decode_c6_operation_plan_artifact(
+    bytes: &[u8],
+    manifest: &C6TraceSourceManifest,
+) -> Result<C6DecodedOperationPlan, C6TraceError> {
+    let header_len = usize::try_from(C6_OPERATION_PARAMETERIZED_HEADER_BYTES)
+        .map_err(|_| C6TraceError::new("C6 operation-plan header exceeds usize"))?;
+    let header_bytes = bytes
+        .get(..header_len)
+        .ok_or_else(|| C6TraceError::new("truncated C6 operation-plan header"))?;
+    let mut header = C6ByteCursor::new(header_bytes);
+    if header.take(8)? != C6_OPERATION_PLAN_CODEC_MAGIC {
+        return Err(C6TraceError::new("wrong C6 operation-plan codec magic"));
+    }
+    if header.u32()? != C6_OPERATION_PLAN_CODEC_VERSION {
+        return Err(C6TraceError::new("wrong C6 operation-plan codec version"));
+    }
+    let version = header.u32()?;
+    if version != C6_OPERATION_PLAN_VERSION {
+        return Err(C6TraceError::new("wrong C6 operation-plan topology version"));
+    }
+    let source_count = header.u32()?;
+    let source_schedule_digest = header.digest()?;
+    let canonical_node_count = header.u32()?;
+    let public_input_count = header.u32()?;
+    let scalar_input_count = header.u32()?;
+    let product_closure_count = header.u32()?;
+    let product_triple_count = header.u64()?;
+    let zero_root_count = header.u32()?;
+    let claimed_topology_digest = header.digest()?;
+    let section_lengths =
+        [header.u64()?, header.u64()?, header.u64()?, header.u64()?, header.u64()?];
+    if header.position != header_len {
+        return Err(C6TraceError::new("C6 operation-plan header has trailing bytes"));
+    }
+    if source_count != manifest.source_count
+        || source_schedule_digest != manifest.source_schedule_digest
+    {
+        return Err(C6TraceError::new("C6 operation-plan header differs from source manifest"));
+    }
+    if usize::try_from(product_closure_count)
+        .map_err(|_| C6TraceError::new("C6 ProductClosure count exceeds usize"))?
+        != manifest.product_mask_sources.len()
+    {
+        return Err(C6TraceError::new(
+            "C6 operation-plan ProductClosure count differs from mask manifest",
+        ));
+    }
+    let expected_opcode_bytes = u64::from(canonical_node_count)
+        .checked_mul(3)
+        .and_then(|bits| bits.checked_add(7))
+        .ok_or_else(|| C6TraceError::new("C6 operation-plan opcode length overflows"))?
+        / 8;
+    if section_lengths[0] != expected_opcode_bytes {
+        return Err(C6TraceError::new(
+            "C6 operation-plan opcode section length differs from node census",
+        ));
+    }
+    let claimed_total = C6_OPERATION_PARAMETERIZED_HEADER_BYTES
+        .checked_add(
+            section_lengths
+                .iter()
+                .try_fold(0u64, |sum, &length| sum.checked_add(length))
+                .ok_or_else(|| C6TraceError::new("C6 operation-plan section lengths overflow"))?,
+        )
+        .ok_or_else(|| C6TraceError::new("C6 operation-plan total length overflows"))?;
+    if claimed_total
+        != u64::try_from(bytes.len())
+            .map_err(|_| C6TraceError::new("C6 operation-plan length exceeds u64"))?
+    {
+        return Err(C6TraceError::new("C6 operation-plan header length differs from artifact"));
+    }
+
+    let mut offset = header_len;
+    let opcode_section = c6_section(bytes, &mut offset, section_lengths[0])?;
+    let source_section = c6_section(bytes, &mut offset, section_lengths[1])?;
+    let operand_flag_section = c6_section(bytes, &mut offset, section_lengths[2])?;
+    let operand_section = c6_section(bytes, &mut offset, section_lengths[3])?;
+    let terminal_section = c6_section(bytes, &mut offset, section_lengths[4])?;
+    if offset != bytes.len() {
+        return Err(C6TraceError::new("C6 operation-plan artifact has trailing bytes"));
+    }
+
+    let mut opcodes = C6BitReader::new(opcode_section);
+    let mut sources = C6UlebReader::new(source_section);
+    let mut operand_flags = C6BitReader::new(operand_flag_section);
+    let mut operands = C6UlebReader::new(operand_section);
+    let mut node_hasher = blake3::Hasher::new_derive_key(C6_OPERATION_TOPOLOGY_NODE_DOMAIN);
+    let mut node_kinds = C6CanonicalNodeKindCensus::default();
+    let mut source_seen = vec![0u8; c6_bitset_len(source_count)?];
+    let mut product_mask_nodes = vec![None; manifest.product_mask_sources.len()];
+    let mut node_is_product_mask = vec![0u8; c6_bitset_len(canonical_node_count)?];
+    let mut previous_source = -1i64;
+    let mut source_successor_count = 0u64;
+    let mut decoded_public_inputs = 0u32;
+    let mut decoded_scalar_inputs = 0u32;
+    let mut operand_count = 0u64;
+    let mut unit_operand_count = 0u64;
+
+    let decode_operand = |canonical: u32,
+                          operand_flags: &mut C6BitReader<'_>,
+                          operands: &mut C6UlebReader<'_>,
+                          operand_count: &mut u64,
+                          unit_operand_count: &mut u64|
+     -> Result<u32, C6TraceError> {
+        *operand_count = operand_count
+            .checked_add(1)
+            .ok_or_else(|| C6TraceError::new("decoded C6 operand count overflows"))?;
+        let distance = if operand_flags.read(1)? == 0 {
+            *unit_operand_count = unit_operand_count
+                .checked_add(1)
+                .ok_or_else(|| C6TraceError::new("decoded C6 unit-operand count overflows"))?;
+            1u64
+        } else {
+            operands
+                .read("operand")?
+                .checked_add(2)
+                .ok_or_else(|| C6TraceError::new("decoded C6 operand distance overflows"))?
+        };
+        let distance = u32::try_from(distance)
+            .map_err(|_| C6TraceError::new("decoded C6 operand distance exceeds u32"))?;
+        canonical
+            .checked_sub(distance)
+            .ok_or_else(|| C6TraceError::new("decoded C6 operand is not a prior node"))
+    };
+
+    for canonical in 0..canonical_node_count {
+        let tag = opcodes.read(3)?;
+        node_hasher.update(&canonical.to_le_bytes());
+        node_hasher.update(&[tag]);
+        match tag {
+            1 => {
+                let delta = c6_unzigzag(sources.read("source delta")?);
+                let source = previous_source
+                    .checked_add(delta)
+                    .ok_or_else(|| C6TraceError::new("decoded C6 source delta overflows"))?;
+                if source < 0 || source >= i64::from(source_count) {
+                    return Err(C6TraceError::new(
+                        "decoded C6 source is outside the source manifest",
+                    ));
+                }
+                let source = source as u32;
+                if !c6_bitset_insert(&mut source_seen, source) {
+                    return Err(C6TraceError::new("duplicate decoded C6 source node"));
+                }
+                if delta == 1 {
+                    source_successor_count =
+                        source_successor_count.checked_add(1).ok_or_else(|| {
+                            C6TraceError::new("decoded C6 source-successor count overflows")
+                        })?;
+                }
+                previous_source = i64::from(source);
+                node_hasher.update(&source.to_le_bytes());
+                node_kinds.source += 1;
+                if let Ok(mask_index) = manifest.product_mask_sources.binary_search(&source) {
+                    if product_mask_nodes[mask_index].replace(canonical).is_some() {
+                        return Err(C6TraceError::new("duplicate decoded C6 ProductMask source"));
+                    }
+                    c6_bitset_insert(&mut node_is_product_mask, canonical);
+                }
+            }
+            2 => {
+                node_kinds.structural_zero += 1;
+                if node_kinds.structural_zero > 1 {
+                    return Err(C6TraceError::new(
+                        "decoded C6 plan contains multiple structural zeros",
+                    ));
+                }
+            }
+            3 => {
+                node_hasher.update(&decoded_public_inputs.to_le_bytes());
+                decoded_public_inputs = decoded_public_inputs
+                    .checked_add(1)
+                    .ok_or_else(|| C6TraceError::new("decoded C6 public slots overflow"))?;
+                node_kinds.public_input += 1;
+            }
+            4 | 5 => {
+                let lhs = decode_operand(
+                    canonical,
+                    &mut operand_flags,
+                    &mut operands,
+                    &mut operand_count,
+                    &mut unit_operand_count,
+                )?;
+                let rhs = decode_operand(
+                    canonical,
+                    &mut operand_flags,
+                    &mut operands,
+                    &mut operand_count,
+                    &mut unit_operand_count,
+                )?;
+                if c6_bitset_get(&node_is_product_mask, lhs)
+                    || c6_bitset_get(&node_is_product_mask, rhs)
+                {
+                    return Err(C6TraceError::new(
+                        "decoded C6 ProductMask reaches a linear operation",
+                    ));
+                }
+                node_hasher.update(&lhs.to_le_bytes());
+                node_hasher.update(&rhs.to_le_bytes());
+                if tag == 4 {
+                    node_kinds.add += 1;
+                } else {
+                    node_kinds.sub += 1;
+                }
+            }
+            6 => {
+                let value = decode_operand(
+                    canonical,
+                    &mut operand_flags,
+                    &mut operands,
+                    &mut operand_count,
+                    &mut unit_operand_count,
+                )?;
+                if c6_bitset_get(&node_is_product_mask, value) {
+                    return Err(C6TraceError::new("decoded C6 ProductMask reaches a linear scale"));
+                }
+                node_hasher.update(&value.to_le_bytes());
+                node_hasher.update(&decoded_scalar_inputs.to_le_bytes());
+                decoded_scalar_inputs = decoded_scalar_inputs
+                    .checked_add(1)
+                    .ok_or_else(|| C6TraceError::new("decoded C6 scalar slots overflow"))?;
+                node_kinds.scale += 1;
+            }
+            _ => return Err(C6TraceError::new("decoded C6 operation-plan opcode is reserved")),
+        }
+    }
+    let opcode_bits = u64::from(canonical_node_count)
+        .checked_mul(3)
+        .ok_or_else(|| C6TraceError::new("decoded C6 opcode bit count overflows"))?;
+    opcodes.finish(opcode_bits, "opcode")?;
+    sources.finish("source-delta")?;
+    operand_flags.finish(operand_count, "operand-flag")?;
+    operands.finish("operand")?;
+    if decoded_public_inputs != public_input_count
+        || decoded_scalar_inputs != scalar_input_count
+        || node_kinds.total() != u64::from(canonical_node_count)
+    {
+        return Err(C6TraceError::new(
+            "decoded C6 node or instance-slot census differs from header",
+        ));
+    }
+    let topology_node_digest = *node_hasher.finalize().as_bytes();
+
+    let mut terminals = C6UlebReader::new(terminal_section);
+    let mut root_hasher = blake3::Hasher::new_derive_key(C6_OPERATION_ROOT_DOMAIN);
+    root_hasher.update(&product_closure_count.to_le_bytes());
+    let mut decoded_product_triples = 0u64;
+    let mut product_max_node = None::<u32>;
+    let read_terminal_node = |terminals: &mut C6UlebReader<'_>| -> Result<u32, C6TraceError> {
+        let node = terminals.read("terminal node")?;
+        let node = u32::try_from(node)
+            .map_err(|_| C6TraceError::new("decoded C6 terminal node exceeds u32"))?;
+        if node >= canonical_node_count {
+            return Err(C6TraceError::new(
+                "decoded C6 terminal node is outside the canonical plan",
+            ));
+        }
+        Ok(node)
+    };
+    for closure_index in 0..product_closure_count {
+        let triple_count = terminals.read("ProductClosure triple count")?;
+        if triple_count == 0 {
+            return Err(C6TraceError::new("decoded C6 ProductClosure is empty"));
+        }
+        decoded_product_triples = decoded_product_triples
+            .checked_add(triple_count)
+            .ok_or_else(|| C6TraceError::new("decoded C6 product triple count overflows"))?;
+        root_hasher.update(&u64::from(closure_index).to_le_bytes());
+        root_hasher.update(&triple_count.to_le_bytes());
+        for _ in 0..triple_count {
+            for _ in 0..3 {
+                let node = read_terminal_node(&mut terminals)?;
+                if c6_bitset_get(&node_is_product_mask, node) {
+                    return Err(C6TraceError::new("decoded C6 ProductMask is a product operand"));
+                }
+                product_max_node = Some(product_max_node.map_or(node, |value| value.max(node)));
+                root_hasher.update(&node.to_le_bytes());
+            }
+        }
+        let mask_node = read_terminal_node(&mut terminals)?;
+        let mask_index = usize::try_from(closure_index)
+            .map_err(|_| C6TraceError::new("C6 closure index exceeds usize"))?;
+        if product_mask_nodes.get(mask_index).copied().flatten() != Some(mask_node) {
+            return Err(C6TraceError::new(
+                "decoded C6 ProductClosure mask differs from canonical manifest",
+            ));
+        }
+        product_max_node = Some(product_max_node.map_or(mask_node, |value| value.max(mask_node)));
+        root_hasher.update(&mask_node.to_le_bytes());
+    }
+    if decoded_product_triples != product_triple_count {
+        return Err(C6TraceError::new("decoded C6 product triple count differs from header"));
+    }
+    if product_mask_nodes.iter().any(Option::is_none) {
+        return Err(C6TraceError::new("decoded C6 plan omits a ProductMask source"));
+    }
+    let product_phase_node_count = product_max_node
+        .and_then(|node| node.checked_add(1))
+        .map(u64::from)
+        .ok_or_else(|| C6TraceError::new("decoded C6 product phase is empty or overflows"))?;
+
+    root_hasher.update(&zero_root_count.to_le_bytes());
+    for _ in 0..zero_root_count {
+        let node = read_terminal_node(&mut terminals)?;
+        if c6_bitset_get(&node_is_product_mask, node) {
+            return Err(C6TraceError::new("decoded C6 ProductMask is a zero root"));
+        }
+        root_hasher.update(&node.to_le_bytes());
+    }
+    terminals.finish("terminal")?;
+    let root_digest = *root_hasher.finalize().as_bytes();
+
+    let mut topology_hasher = blake3::Hasher::new_derive_key(C6_OPERATION_TOPOLOGY_PLAN_DOMAIN);
+    topology_hasher.update(&version.to_le_bytes());
+    topology_hasher.update(&source_count.to_le_bytes());
+    topology_hasher.update(&source_schedule_digest);
+    topology_hasher.update(&canonical_node_count.to_le_bytes());
+    topology_hasher.update(&public_input_count.to_le_bytes());
+    topology_hasher.update(&scalar_input_count.to_le_bytes());
+    topology_hasher.update(&product_closure_count.to_le_bytes());
+    topology_hasher.update(&product_triple_count.to_le_bytes());
+    topology_hasher.update(&zero_root_count.to_le_bytes());
+    topology_hasher.update(&topology_node_digest);
+    topology_hasher.update(&root_digest);
+    let topology_digest = *topology_hasher.finalize().as_bytes();
+    if topology_digest != claimed_topology_digest {
+        return Err(C6TraceError::new("decoded C6 topology digest mismatch"));
+    }
+    let topology = C6OperationPlanTopologyIdentity {
+        version,
+        source_count,
+        source_schedule_digest,
+        canonical_node_count,
+        public_input_count,
+        scalar_input_count,
+        product_closure_count,
+        product_triple_count,
+        zero_root_count,
+        topology_digest,
+    };
+    let encoding = C6OperationPlanSpecializedEncodingCensus {
+        header_bytes: C6_OPERATION_PARAMETERIZED_HEADER_BYTES,
+        packed_opcode_bytes: section_lengths[0],
+        source_delta_payload_bytes: section_lengths[1],
+        operand_unit_flag_bytes: section_lengths[2],
+        nonunit_operand_payload_bytes: section_lengths[3],
+        terminal_payload_bytes: section_lengths[4],
+        total_bytes: claimed_total,
+        source_successor_count,
+        operand_count,
+        unit_operand_count,
+    };
+    Ok(C6DecodedOperationPlan { topology, node_kinds, product_phase_node_count, encoding })
 }
 
 impl C6TraceToken {
@@ -1450,6 +2310,70 @@ mod tests {
         assert_eq!(std::mem::size_of::<C6TraceToken>(), 8);
     }
 
+    #[test]
+    fn ordinary_build_can_parse_a_canonical_plan_artifact() {
+        let manifest = C6TraceSourceManifest::new(2, [0xA5; 32], vec![1]).unwrap();
+        let mut node_hasher = blake3::Hasher::new_derive_key(C6_OPERATION_TOPOLOGY_NODE_DOMAIN);
+        for (canonical, source) in [(0u32, 0u32), (1, 1)] {
+            node_hasher.update(&canonical.to_le_bytes());
+            node_hasher.update(&[1]);
+            node_hasher.update(&source.to_le_bytes());
+        }
+        let topology_node_digest = *node_hasher.finalize().as_bytes();
+
+        let mut root_hasher = blake3::Hasher::new_derive_key(C6_OPERATION_ROOT_DOMAIN);
+        root_hasher.update(&1u32.to_le_bytes());
+        root_hasher.update(&0u64.to_le_bytes());
+        root_hasher.update(&1u64.to_le_bytes());
+        for node in [0u32, 0, 0, 1] {
+            root_hasher.update(&node.to_le_bytes());
+        }
+        root_hasher.update(&0u32.to_le_bytes());
+        let root_digest = *root_hasher.finalize().as_bytes();
+
+        let mut topology_hasher = blake3::Hasher::new_derive_key(C6_OPERATION_TOPOLOGY_PLAN_DOMAIN);
+        topology_hasher.update(&C6_OPERATION_PLAN_VERSION.to_le_bytes());
+        topology_hasher.update(&2u32.to_le_bytes());
+        topology_hasher.update(&manifest.source_schedule_digest);
+        topology_hasher.update(&2u32.to_le_bytes());
+        topology_hasher.update(&0u32.to_le_bytes());
+        topology_hasher.update(&0u32.to_le_bytes());
+        topology_hasher.update(&1u32.to_le_bytes());
+        topology_hasher.update(&1u64.to_le_bytes());
+        topology_hasher.update(&0u32.to_le_bytes());
+        topology_hasher.update(&topology_node_digest);
+        topology_hasher.update(&root_digest);
+        let topology_digest = *topology_hasher.finalize().as_bytes();
+
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(C6_OPERATION_PLAN_CODEC_MAGIC);
+        bytes.extend_from_slice(&C6_OPERATION_PLAN_CODEC_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&C6_OPERATION_PLAN_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(&manifest.source_schedule_digest);
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        bytes.extend_from_slice(&1u64.to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&topology_digest);
+        for length in [1u64, 2, 0, 0, 5] {
+            bytes.extend_from_slice(&length.to_le_bytes());
+        }
+        bytes.push(0b00_001_001);
+        bytes.extend_from_slice(&[2, 2]);
+        bytes.extend_from_slice(&[1, 0, 0, 0, 1]);
+        assert_eq!(bytes.len(), 160);
+
+        let artifact = C6OperationPlanArtifact::parse(bytes, &manifest).unwrap();
+        let decoded = artifact.decode(&manifest).unwrap();
+        assert_eq!(decoded.topology.topology_digest, topology_digest);
+        assert_eq!(decoded.node_kinds.source, 2);
+        assert_eq!(decoded.product_phase_node_count, 2);
+        assert_eq!(decoded.encoding.total_bytes, 160);
+    }
+
     #[cfg(feature = "c6-trace")]
     #[test]
     fn trace_rejects_missing_provenance_and_censuses_sources() {
@@ -1599,6 +2523,62 @@ mod tests {
         assert_ne!(baseline.instance.instance_digest, changed.instance.instance_digest);
         assert_eq!(baseline.instance.topology_digest, baseline.topology.topology_digest);
         assert_eq!(changed.instance.topology_digest, changed.topology.topology_digest);
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn parameterized_plan_codec_roundtrips_and_rejects_noncanonical_mutations() {
+        let manifest = manifest(3, vec![2]);
+        let normalized = normalize_c6_operation_trace(&allocation_trace(false), &manifest).unwrap();
+        let compiled = compile_c6_operation_trace(&allocation_trace(false), &manifest).unwrap();
+        assert_eq!(compiled.plan, normalized);
+        assert_eq!(
+            compiled.artifact.len() as u64,
+            compiled.plan.diagnostics.specialized_encoding_projection.total_bytes
+        );
+        let decoded = compiled.artifact.decode(&manifest).unwrap();
+        assert_eq!(decoded.topology, normalized.topology);
+        assert_eq!(decoded.node_kinds, normalized.diagnostics.node_kinds);
+        assert_eq!(
+            decoded.product_phase_node_count,
+            normalized.diagnostics.product_phase_node_count
+        );
+        assert_eq!(decoded.encoding, normalized.diagnostics.specialized_encoding_projection);
+
+        let shifted = compile_c6_operation_trace(&allocation_trace(true), &manifest).unwrap();
+        assert_eq!(compiled.artifact, shifted.artifact);
+
+        let reject = |mut bytes: Vec<u8>, mutate: fn(&mut Vec<u8>)| {
+            mutate(&mut bytes);
+            assert!(C6OperationPlanArtifact::parse(bytes, &manifest).is_err());
+        };
+        reject(compiled.artifact.as_bytes().to_vec(), |bytes| bytes[0] ^= 1);
+        reject(compiled.artifact.as_bytes().to_vec(), |bytes| bytes[12] ^= 1);
+        reject(compiled.artifact.as_bytes().to_vec(), |bytes| bytes[80] ^= 1);
+        reject(compiled.artifact.as_bytes().to_vec(), |bytes| {
+            bytes[C6_OPERATION_PARAMETERIZED_HEADER_BYTES as usize] |= 7;
+        });
+        reject(compiled.artifact.as_bytes().to_vec(), |bytes| {
+            let opcode_len = u64::from_le_bytes(bytes[112..120].try_into().unwrap()) as usize;
+            let source_len = u64::from_le_bytes(bytes[120..128].try_into().unwrap()) as usize;
+            let source_start = C6_OPERATION_PARAMETERIZED_HEADER_BYTES as usize + opcode_len;
+            bytes[source_start] |= 0x80;
+            bytes.insert(source_start + 1, 0);
+            bytes[120..128].copy_from_slice(&((source_len + 1) as u64).to_le_bytes());
+        });
+        reject(compiled.artifact.as_bytes().to_vec(), |bytes| bytes.push(0));
+
+        let parsed =
+            C6OperationPlanArtifact::parse(compiled.artifact.as_bytes().to_vec(), &manifest)
+                .unwrap();
+        assert_eq!(parsed, compiled.artifact);
+
+        let wrong_manifest = C6TraceSourceManifest::new(3, [0x5A; 32], vec![2]).unwrap();
+        assert!(C6OperationPlanArtifact::parse(
+            compiled.artifact.as_bytes().to_vec(),
+            &wrong_manifest
+        )
+        .is_err());
     }
 
     #[cfg(feature = "c6-trace")]

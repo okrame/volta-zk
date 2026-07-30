@@ -757,14 +757,37 @@ projection total                                  63,994,751 B
 
 Of `36,917,836` operands, `18,183,230` have unit backward distance; of
 `4,970,850` reachable sources, `3,422,207` immediately follow the previous
-source ordinal.  The projected plan is `9,262,319 B` below the parameter
-allowance and would put the fixture first exchange at `140,738,118 B`
-including the existing `437-B` manifest.  These are diagnostic arithmetic
-figures only: `materialized_artifact:false`,
-`production_decoder_implemented:false` and `setup_fit_credit:false`.
-Canonical encode/decode, mutation rejection and a measured full artifact
-must reproduce the topology digest and exact byte count before any setup
-PASS is recorded.
+source ordinal.
+
+The canonical codec checkpoint reproduces the projection exactly.  Full
+schema-8 runs at both transcript seed bytes `24` and `25` materialize
+independent prover and verifier artifacts of **63,994,751 B** and require
+them to be byte-identical.  The cross-seed artifact is also identical, with
+BLAKE3
+`265f874ccf8dae865890a3218b33b0b29dd0f4236678470e093e6da31e51ebac`,
+while the exact/instance digests differ as required.
+
+The installed codec is `VC6PLN2\0`: a `152-B` manifest-bound header followed
+by packed 3-bit opcodes, minimal zig-zag source-delta ULEB, one canonical
+unit-distance bit per operand, minimal non-unit backward distances and
+minimal terminal ids.  Its decoder is available in the ordinary non-trace
+client build through a validating parser.  It recomputes the topology
+digest and exact census and rejects wrong versions/manifests/digests,
+reserved opcodes, noncanonical lengths/padding/ULEB, invalid sources,
+forward operands, illegal ProductMask roles and trailing bytes.  Permanent
+tests also establish compiler/normalizer equality and byte identity after
+inserting an unreachable raw prefix.
+
+The measured artifact is `9,262,319 B` below the total
+`73,257,070-B` client-parameter/framing allowance.  Paired PCG
+`76,742,930 B` + the existing `437-B` manifest + the artifact gives a
+first exchange of **140,738,118 B**, leaving **9,261,882 B** for every
+remaining client parameter and setup frame.  The plan-codec component
+therefore records `materialized_artifact:true`,
+`production_decoder_implemented:true` and `setup_fit_credit:true`.
+This is not yet an overall setup or C6 PASS: the client-side generation of
+the ordered instance slot stream, compiled residual execution, all other
+setup parameters, inline timing, cache and wrapper remain open gates.
 
 ## 4. Hidden Ligero vectors without an NTT trace
 

@@ -509,6 +509,73 @@ milestone therefore remains open until ordered-root normalization emits a
 compact plan digest and an independently generated verifier trace normalizes
 to the same digest.
 
+#### 3.4.1 Canonical trace normalization frozen before verifier migration
+
+The normalizer is versioned as
+`volta/proto/c6/operation-plan/v1`.  Its public inputs are the canonical
+source manifest derived from the already-audited correlation draw schedule,
+that manifest's `source_schedule_digest`, and exactly one independently
+captured prover or verifier trace.  It does not inspect witness values, MAC
+tags, verifier keys or corrections.
+
+The ordered terminal stream is frozen as follows:
+
+1. `ProductClosure`s in central-capture/protocol order;
+2. within each closure, triples in vector order and operands in literal
+   `(a,b,c)` order, followed by the closure's mask source;
+3. after the last product closure, all pre-mask ZeroBatch roots in
+   central-capture/vector order.
+
+Closure boundaries, each triple count and both terminal counts are part of
+the digest.  Reordering equal-looking roots is therefore not permitted.
+
+Normalization performs an **iterative** ordered post-order traversal from
+that terminal stream.  Source nodes encode their canonical flattened
+schedule ordinal.  Public nodes encode the exact canonical little-endian
+`Fp2(c0,c1)`.  `Add`, `Sub` and `Scale` retain their opcode, operand order and
+exact scalar.  A raw operation is assigned its canonical node number at its
+first post-order visit, so raw allocation IDs and worker interleaving are
+irrelevant.  Existing DAG sharing is retained, but there is deliberately no
+commutation, reassociation, constant folding, algebraic cancellation or
+structural hash-consing: two separately constructed equal subgraphs remain
+two nodes.  Cycles, out-of-range/future tokens, mixed trace namespaces and
+untracked terminals fail closed.
+
+Only terminal-reachable public/linear nodes enter the compiled plan.  Raw
+operations outside every terminal are compiler garbage and are omitted while
+their count is reported diagnostically; it is not hashed and receives no
+security or timing credit.  In contrast, **every** scheduled source remains
+in the leaf manifest and base-share RLC even when it is not reachable from a
+linear/product operand.  This is required for the final corrected ZeroBatch
+mask and for any direct leaf whose only terminal use is the base-share
+binding.  It replaces the early residual-IR prototype's blanket
+“every allocated node must be closure-reachable” check; it does not weaken
+source binding.
+
+The normalizer additionally enforces that every source whose manifest role
+is `ProductMask` is the direct mask of exactly one ProductClosure, that no
+other source is used as such a mask, and that a ProductMask is absent from
+all linear operand graphs, product operands and ZeroBatch roots.  The final
+ZeroBatch mask has role `DirectCorrection`; it is bound by the source
+manifest/base-share RLC and is intentionally absent from the `8,170`
+pre-mask root stream.
+
+The compact artifact contains the version, source count and source-schedule
+digest, reachable canonical node count, product/triple/zero censuses,
+canonical program digest and diagnostic raw/reachable/omitted counts.  Only
+the version, manifest identity, canonical census and program digest define
+program equality; raw and omitted counts are informative.  The prover and
+verifier use disjoint trace namespaces, normalize independently, and must
+match all program-identity fields byte-for-byte.  A plan synthesized from
+the prover result, a verifier formula table maintained by hand, or comparison
+of counts without digest equality is not admissible.
+
+The compiled model/build-global plan may be preinstalled at the provider.
+Its digest and version are bound by every C6 certificate; if plan bytes are
+ever installed at the client they count in full against the initial setup
+budget.  The diagnostic trace/compiler remains outside the timed inline
+prover.
+
 ## 4. Hidden Ligero vectors without an NTT trace
 
 Simply omitting `u_c` or `u_g` is unsound.  C6 commits to them before the

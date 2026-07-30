@@ -456,6 +456,37 @@ historical entries remain append-only evidence, not competing definitions.
 
 ## Deviations / decisions log
 
+- **2026-07-29 — C6 canonical operation-plan normalization frozen before
+  verifier migration.**  Program identity is now
+  `volta/proto/c6/operation-plan/v1` over the already-audited source manifest
+  and one independently captured trace.  Terminal order is all
+  ProductClosures in protocol order (triples in vector order, literal
+  `(a,b,c)` operand order, then the direct mask), followed by all pre-mask
+  ZeroBatch roots in central-capture/vector order.  An iterative ordered
+  post-order traversal renumbers only terminal-reachable public/add/sub/scale
+  nodes.  It preserves operand order and existing DAG sharing and performs no
+  commutation, reassociation, cancellation, constant folding or structural
+  hash-consing.
+
+  Raw unreachable operations are compiler garbage: they are omitted and
+  reported diagnostically, not hashed.  All **4,975,525** scheduled sources
+  nevertheless remain in the manifest/base-share RLC whether or not a source
+  is reachable from a closure root.  This explicitly replaces the early
+  residual-IR prototype's blanket dead-node rejection and is necessary for
+  the final corrected ZeroBatch mask; it does not permit an unbound source.
+  Every typed ProductMask must be the direct, unique mask of exactly one of
+  the **673** ProductClosures and may not occur in any linear graph, product
+  operand or ZeroBatch root.
+
+  The compact artifact binds version, source count/schedule digest, canonical
+  reachable node census, **673 / 22,339 / 8,170** closure censuses and the
+  canonical program digest.  Raw/reachable/omitted allocation counts are
+  informative only.  Prover and verifier traces have disjoint namespaces,
+  are normalized independently and must match every program-identity field
+  byte-for-byte; no prover-derived verifier plan or hand-maintained parallel
+  formula is admissible.  The diagnostic compiler is outside timed proving.
+  No provider/pod contact is authorized or performed by this decision.
+
 - **2026-07-29 — C6 prover operation trace reaches the exact full T1 closure
   census; canonical DAG milestone remains open.**  The separately enabled
   `c6-trace` build now assigns ghost tokens from the canonical interleaved

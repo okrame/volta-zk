@@ -48,6 +48,13 @@ const PAIRED_COEFFICIENT_STREAM_DOMAINS: [u64; 2] =
     [0xC6_52_45_53_49_44_01, 0xC6_52_45_53_49_44_02];
 const PAIRED_LEAF_WRAPPER_DOMAIN: &str = "volta-zk/c6/paired-residual-leaf-wrapper/v1";
 const PAIRED_CLOSURE_WRAPPER_DOMAIN: &str = "volta-zk/c6/paired-residual-closure-wrapper/v1";
+const PAIRED_AUXILIARY_WRAPPER_DOMAIN: &str = "volta-zk/c6/paired-residual-auxiliary-wrapper/v1";
+
+pub const C6_RESIDUAL_AUXILIARY_LANES: u32 = 16;
+pub const C6_RESIDUAL_AUXILIARY_PRODUCT_LANES: u32 = 12;
+pub const C6_RESIDUAL_AUXILIARY_ZERO_LANES: u32 = 4;
+pub const C6_RESIDUAL_AUXILIARY_SEMANTIC_LOG2: u32 = 15;
+pub const C6_RESIDUAL_AUXILIARY_SEMANTIC_ENTRIES: u64 = 1 << C6_RESIDUAL_AUXILIARY_SEMANTIC_LOG2;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6ResidualError(String);
@@ -807,6 +814,275 @@ impl C6PairedResidualClosureWitness {
         let mut padded = vec![Fp2::ZERO; slot_entries];
         padded[..self.values.len()].copy_from_slice(&self.values);
         Ok(padded)
+    }
+
+    /// Deterministically transpose the canonical slot-7 live prefix into the
+    /// sixteen residual auxiliary semantic lanes.
+    ///
+    /// This remains a prover-only witness adapter.  In particular, it does
+    /// not construct the independent upper-half ZK masks and does not create
+    /// a PCS obligation.
+    pub fn transpose_auxiliary_lanes(&self) -> C6ResidualResult<C6PairedResidualAuxiliaryWitness> {
+        let expected_product_values = self
+            .census
+            .product_triples
+            .checked_mul(u64::from(C6_RESIDUAL_AUXILIARY_PRODUCT_LANES))
+            .ok_or_else(|| C6ResidualError::new("C6 auxiliary product census overflows"))?;
+        let expected_zero_values = u64::from(self.census.zero_roots)
+            .checked_mul(u64::from(C6_RESIDUAL_AUXILIARY_ZERO_LANES))
+            .ok_or_else(|| C6ResidualError::new("C6 auxiliary zero census overflows"))?;
+        let expected_live_values = expected_product_values
+            .checked_add(expected_zero_values)
+            .and_then(|values| values.checked_add(C6_RESIDUAL_CLOSURE_FOOTER_ENTRIES))
+            .ok_or_else(|| C6ResidualError::new("C6 auxiliary live census overflows"))?;
+        let actual_values = u64::try_from(self.values.len())
+            .map_err(|_| C6ResidualError::new("C6 auxiliary source length exceeds u64"))?;
+        if self.census.product_operand_values != expected_product_values
+            || self.census.zero_root_values != expected_zero_values
+            || self.census.footer_values != C6_RESIDUAL_CLOSURE_FOOTER_ENTRIES
+            || self.census.live_values != expected_live_values
+            || actual_values != expected_live_values
+        {
+            return Err(C6ResidualError::new(
+                "C6 auxiliary source does not match the frozen slot-7 census",
+            ));
+        }
+        if self.census.product_triples > C6_RESIDUAL_AUXILIARY_SEMANTIC_ENTRIES
+            || u64::from(self.census.zero_roots) > C6_RESIDUAL_AUXILIARY_SEMANTIC_ENTRIES
+        {
+            return Err(C6ResidualError::new(
+                "C6 auxiliary live rows exceed their semantic halves",
+            ));
+        }
+
+        let product_end = usize::try_from(expected_product_values)
+            .map_err(|_| C6ResidualError::new("C6 auxiliary product prefix exceeds usize"))?;
+        let footer_start = usize::try_from(
+            expected_product_values
+                .checked_add(expected_zero_values)
+                .ok_or_else(|| C6ResidualError::new("C6 auxiliary footer offset overflows"))?,
+        )
+        .map_err(|_| C6ResidualError::new("C6 auxiliary footer offset exceeds usize"))?;
+        let footer = self
+            .values
+            .get(footer_start..)
+            .ok_or_else(|| C6ResidualError::new("C6 auxiliary footer is truncated"))?;
+        if footer.len() != C6_RESIDUAL_CLOSURE_FOOTER_ENTRIES as usize
+            || footer.iter().any(|value| *value != Fp2::ZERO)
+        {
+            return Err(C6ResidualError::new(
+                "C6 auxiliary source footer is not the frozen zero reserve",
+            ));
+        }
+
+        let product_rows = usize::try_from(self.census.product_triples)
+            .map_err(|_| C6ResidualError::new("C6 auxiliary product rows exceed usize"))?;
+        let zero_rows = usize::try_from(self.census.zero_roots)
+            .map_err(|_| C6ResidualError::new("C6 auxiliary zero rows exceed usize"))?;
+        let mut lanes: [Vec<Fp2>; C6_RESIDUAL_AUXILIARY_LANES as usize] =
+            std::array::from_fn(|lane| {
+                Vec::with_capacity(if lane < C6_RESIDUAL_AUXILIARY_PRODUCT_LANES as usize {
+                    product_rows
+                } else {
+                    zero_rows
+                })
+            });
+
+        let mut product_chunks =
+            self.values[..product_end].chunks_exact(C6_RESIDUAL_AUXILIARY_PRODUCT_LANES as usize);
+        for row in &mut product_chunks {
+            for (lane, value) in row.iter().copied().enumerate() {
+                lanes[lane].push(value);
+            }
+        }
+        if !product_chunks.remainder().is_empty() {
+            return Err(C6ResidualError::new("C6 auxiliary product prefix is not lane-aligned"));
+        }
+
+        let mut zero_chunks = self.values[product_end..footer_start]
+            .chunks_exact(C6_RESIDUAL_AUXILIARY_ZERO_LANES as usize);
+        for row in &mut zero_chunks {
+            for (lane, value) in row.iter().copied().enumerate() {
+                lanes[C6_RESIDUAL_AUXILIARY_PRODUCT_LANES as usize + lane].push(value);
+            }
+        }
+        if !zero_chunks.remainder().is_empty()
+            || lanes[..C6_RESIDUAL_AUXILIARY_PRODUCT_LANES as usize]
+                .iter()
+                .any(|lane| lane.len() != product_rows)
+            || lanes[C6_RESIDUAL_AUXILIARY_PRODUCT_LANES as usize..]
+                .iter()
+                .any(|lane| lane.len() != zero_rows)
+        {
+            return Err(C6ResidualError::new(
+                "C6 auxiliary transpose does not match its row census",
+            ));
+        }
+
+        let transposed_live_values = expected_product_values
+            .checked_add(expected_zero_values)
+            .ok_or_else(|| C6ResidualError::new("C6 auxiliary transpose census overflows"))?;
+        let census = C6ResidualAuxiliaryWitnessCensus {
+            product_rows: self.census.product_triples,
+            zero_rows: u64::from(self.census.zero_roots),
+            product_lanes: C6_RESIDUAL_AUXILIARY_PRODUCT_LANES,
+            zero_lanes: C6_RESIDUAL_AUXILIARY_ZERO_LANES,
+            semantic_entries_per_lane: C6_RESIDUAL_AUXILIARY_SEMANTIC_ENTRIES,
+            transposed_live_values,
+        };
+        let mut hasher = blake3::Hasher::new_derive_key(PAIRED_AUXILIARY_WRAPPER_DOMAIN);
+        hasher.update(&self.program_digest);
+        hasher.update(&self.witness_digest);
+        hasher.update(&u64::from(self.census.product_closures).to_le_bytes());
+        hasher.update(&self.census.product_triples.to_le_bytes());
+        hasher.update(&u64::from(self.census.zero_roots).to_le_bytes());
+        hasher.update(&self.census.product_operand_values.to_le_bytes());
+        hasher.update(&self.census.zero_root_values.to_le_bytes());
+        hasher.update(&self.census.footer_values.to_le_bytes());
+        hasher.update(&self.census.live_values.to_le_bytes());
+        hasher.update(&census.product_rows.to_le_bytes());
+        hasher.update(&census.zero_rows.to_le_bytes());
+        hasher.update(&u64::from(census.product_lanes).to_le_bytes());
+        hasher.update(&u64::from(census.zero_lanes).to_le_bytes());
+        hasher.update(&census.semantic_entries_per_lane.to_le_bytes());
+        hasher.update(&census.transposed_live_values.to_le_bytes());
+        for lane in C6ResidualAuxiliaryLane::ALL {
+            hasher.update(&[lane as u8]);
+            hasher.update(&(lanes[lane.index()].len() as u64).to_le_bytes());
+            for value in &lanes[lane.index()] {
+                hash_fp2(&mut hasher, *value);
+            }
+        }
+
+        Ok(C6PairedResidualAuxiliaryWitness {
+            program_digest: self.program_digest,
+            closure_witness_digest: self.witness_digest,
+            closure_census: self.census,
+            census,
+            lanes,
+            witness_digest: *hasher.finalize().as_bytes(),
+        })
+    }
+}
+
+/// Frozen order of the sixteen residual auxiliary semantic lanes.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum C6ResidualAuxiliaryLane {
+    Coordinate0ProductXa = 0,
+    Coordinate0ProductMa = 1,
+    Coordinate0ProductXb = 2,
+    Coordinate0ProductMb = 3,
+    Coordinate0ProductXc = 4,
+    Coordinate0ProductMc = 5,
+    Coordinate1ProductXa = 6,
+    Coordinate1ProductMa = 7,
+    Coordinate1ProductXb = 8,
+    Coordinate1ProductMb = 9,
+    Coordinate1ProductXc = 10,
+    Coordinate1ProductMc = 11,
+    Coordinate0ZeroX = 12,
+    Coordinate0ZeroM = 13,
+    Coordinate1ZeroX = 14,
+    Coordinate1ZeroM = 15,
+}
+
+impl C6ResidualAuxiliaryLane {
+    pub const ALL: [Self; C6_RESIDUAL_AUXILIARY_LANES as usize] = [
+        Self::Coordinate0ProductXa,
+        Self::Coordinate0ProductMa,
+        Self::Coordinate0ProductXb,
+        Self::Coordinate0ProductMb,
+        Self::Coordinate0ProductXc,
+        Self::Coordinate0ProductMc,
+        Self::Coordinate1ProductXa,
+        Self::Coordinate1ProductMa,
+        Self::Coordinate1ProductXb,
+        Self::Coordinate1ProductMb,
+        Self::Coordinate1ProductXc,
+        Self::Coordinate1ProductMc,
+        Self::Coordinate0ZeroX,
+        Self::Coordinate0ZeroM,
+        Self::Coordinate1ZeroX,
+        Self::Coordinate1ZeroM,
+    ];
+
+    pub const fn index(self) -> usize {
+        self as usize
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6ResidualAuxiliaryWitnessCensus {
+    pub product_rows: u64,
+    pub zero_rows: u64,
+    pub product_lanes: u32,
+    pub zero_lanes: u32,
+    pub semantic_entries_per_lane: u64,
+    pub transposed_live_values: u64,
+}
+
+/// Prover-only live prefixes for residual auxiliary slots 0--15.
+///
+/// The vectors contain only semantic rows.  The independent upper-half ZK
+/// masks are intentionally absent and must be supplied by the later sealed
+/// wrapper source.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6PairedResidualAuxiliaryWitness {
+    program_digest: C6ResidualDigest,
+    closure_witness_digest: C6ResidualDigest,
+    closure_census: C6ResidualClosureWitnessCensus,
+    census: C6ResidualAuxiliaryWitnessCensus,
+    lanes: [Vec<Fp2>; C6_RESIDUAL_AUXILIARY_LANES as usize],
+    witness_digest: C6ResidualDigest,
+}
+
+impl C6PairedResidualAuxiliaryWitness {
+    pub fn program_digest(&self) -> C6ResidualDigest {
+        self.program_digest
+    }
+
+    pub fn closure_witness_digest(&self) -> C6ResidualDigest {
+        self.closure_witness_digest
+    }
+
+    pub fn closure_census(&self) -> C6ResidualClosureWitnessCensus {
+        self.closure_census
+    }
+
+    pub fn census(&self) -> C6ResidualAuxiliaryWitnessCensus {
+        self.census
+    }
+
+    pub fn witness_digest(&self) -> C6ResidualDigest {
+        self.witness_digest
+    }
+
+    pub fn lane(&self, lane: C6ResidualAuxiliaryLane) -> &[Fp2] {
+        &self.lanes[lane.index()]
+    }
+
+    /// Materialize exactly the semantic halves for CPU/reference tests.
+    ///
+    /// This method deliberately returns `2^15`, not `2^16`, entries per
+    /// lane.  It therefore cannot silently stand in for the independently
+    /// masked auxiliary PCS coefficients.
+    pub fn materialize_semantic_halves(
+        &self,
+    ) -> C6ResidualResult<[Vec<Fp2>; C6_RESIDUAL_AUXILIARY_LANES as usize]> {
+        let semantic_entries = usize::try_from(C6_RESIDUAL_AUXILIARY_SEMANTIC_ENTRIES)
+            .map_err(|_| C6ResidualError::new("C6 auxiliary semantic length exceeds usize"))?;
+        let mut semantic = std::array::from_fn(|_| vec![Fp2::ZERO; semantic_entries]);
+        for lane in C6ResidualAuxiliaryLane::ALL {
+            let live = self.lane(lane);
+            if live.len() > semantic_entries {
+                return Err(C6ResidualError::new(
+                    "C6 auxiliary live lane exceeds its semantic half",
+                ));
+            }
+            semantic[lane.index()][..live.len()].copy_from_slice(live);
+        }
+        Ok(semantic)
     }
 }
 
@@ -2313,7 +2589,28 @@ mod tests {
     }
 
     #[test]
-    fn paired_closure_workspace_has_the_frozen_product_zero_and_footer_order() {
+    fn t1_auxiliary_lane_geometry_is_exact_and_fits_semantic_halves() {
+        use crate::c6_census::{C6_T1_TOTAL_PRODUCT_TRIPLES, C6_T1_ZERO_CLOSURES};
+
+        assert_eq!(C6_RESIDUAL_AUXILIARY_PRODUCT_LANES, 12);
+        assert_eq!(C6_RESIDUAL_AUXILIARY_ZERO_LANES, 4);
+        assert_eq!(
+            C6_RESIDUAL_AUXILIARY_PRODUCT_LANES + C6_RESIDUAL_AUXILIARY_ZERO_LANES,
+            C6_RESIDUAL_AUXILIARY_LANES
+        );
+        assert_eq!(C6_RESIDUAL_AUXILIARY_SEMANTIC_LOG2, 15);
+        assert_eq!(C6_RESIDUAL_AUXILIARY_SEMANTIC_ENTRIES, 32_768);
+        assert_eq!(C6_T1_TOTAL_PRODUCT_TRIPLES, 22_339);
+        assert_eq!(C6_T1_ZERO_CLOSURES, 8_170);
+        assert!(C6_T1_TOTAL_PRODUCT_TRIPLES <= C6_RESIDUAL_AUXILIARY_SEMANTIC_ENTRIES);
+        assert!(C6_T1_ZERO_CLOSURES <= C6_RESIDUAL_AUXILIARY_SEMANTIC_ENTRIES);
+        for (index, lane) in C6ResidualAuxiliaryLane::ALL.into_iter().enumerate() {
+            assert_eq!(lane.index(), index);
+        }
+    }
+
+    #[test]
+    fn paired_closure_and_auxiliary_workspaces_have_the_frozen_order() {
         let primary_fixture = fixture(Fp2::ZERO, false);
         let primary_census = primary_fixture.builder.census().unwrap();
         let primary = primary_fixture.builder.commit([0x71; 32], primary_census).unwrap();
@@ -2363,6 +2660,73 @@ mod tests {
         assert_eq!(padded.len(), 128);
         assert_eq!(&padded[..96], witness.values());
         assert!(padded[96..].iter().all(|value| *value == Fp2::ZERO));
+
+        let auxiliary = witness.transpose_auxiliary_lanes().unwrap();
+        assert_eq!(auxiliary.program_digest(), witness.program_digest());
+        assert_eq!(auxiliary.closure_witness_digest(), witness.witness_digest());
+        assert_eq!(auxiliary.closure_census(), witness.census());
+        assert_eq!(
+            auxiliary.census(),
+            C6ResidualAuxiliaryWitnessCensus {
+                product_rows: 2,
+                zero_rows: 2,
+                product_lanes: 12,
+                zero_lanes: 4,
+                semantic_entries_per_lane: 1 << 15,
+                transposed_live_values: 32,
+            }
+        );
+        assert_ne!(auxiliary.witness_digest(), [0; 32]);
+        let expected_lanes = [
+            (C6ResidualAuxiliaryLane::Coordinate0ProductXa, [fp2(3), fp2(4)]),
+            (C6ResidualAuxiliaryLane::Coordinate0ProductMa, [fp2(19), fp2(23)]),
+            (C6ResidualAuxiliaryLane::Coordinate0ProductXb, [fp2(4), fp2(3)]),
+            (C6ResidualAuxiliaryLane::Coordinate0ProductMb, [fp2(23), fp2(19)]),
+            (C6ResidualAuxiliaryLane::Coordinate0ProductXc, [fp2(12), fp2(12)]),
+            (C6ResidualAuxiliaryLane::Coordinate0ProductMc, [fp2(29), fp2(29)]),
+            (C6ResidualAuxiliaryLane::Coordinate1ProductXa, [fp2(3), fp2(4)]),
+            (C6ResidualAuxiliaryLane::Coordinate1ProductMa, [fp2(20), fp2(23)]),
+            (C6ResidualAuxiliaryLane::Coordinate1ProductXb, [fp2(4), fp2(3)]),
+            (C6ResidualAuxiliaryLane::Coordinate1ProductMb, [fp2(23), fp2(20)]),
+            (C6ResidualAuxiliaryLane::Coordinate1ProductXc, [fp2(12), fp2(12)]),
+            (C6ResidualAuxiliaryLane::Coordinate1ProductMc, [fp2(29), fp2(29)]),
+            (C6ResidualAuxiliaryLane::Coordinate0ZeroX, [Fp2::ZERO, Fp2::ZERO]),
+            (C6ResidualAuxiliaryLane::Coordinate0ZeroM, [fp2(42), fp2(38)]),
+            (C6ResidualAuxiliaryLane::Coordinate1ZeroX, [Fp2::ZERO, Fp2::ZERO]),
+            (C6ResidualAuxiliaryLane::Coordinate1ZeroM, [fp2(43), fp2(40)]),
+        ];
+        for (lane, expected) in expected_lanes {
+            assert_eq!(auxiliary.lane(lane), expected);
+        }
+
+        let semantic = auxiliary.materialize_semantic_halves().unwrap();
+        for lane in C6ResidualAuxiliaryLane::ALL {
+            let live = auxiliary.lane(lane);
+            assert_eq!(
+                semantic[lane.index()].len(),
+                C6_RESIDUAL_AUXILIARY_SEMANTIC_ENTRIES as usize
+            );
+            assert_eq!(&semantic[lane.index()][..live.len()], live);
+            assert!(semantic[lane.index()][live.len()..].iter().all(|value| *value == Fp2::ZERO));
+        }
+
+        let mut changed_value = witness.clone();
+        changed_value.values[0] = changed_value.values[0] + Fp2::ONE;
+        let changed_auxiliary = changed_value.transpose_auxiliary_lanes().unwrap();
+        assert_ne!(changed_auxiliary.witness_digest(), auxiliary.witness_digest());
+
+        let mut malformed_layout = witness.clone();
+        malformed_layout.census.product_operand_values -= 1;
+        assert!(malformed_layout.transpose_auxiliary_lanes().is_err());
+
+        let mut malformed_footer = witness.clone();
+        let footer_index = malformed_footer.values.len() - 1;
+        malformed_footer.values[footer_index] = Fp2::ONE;
+        assert!(malformed_footer.transpose_auxiliary_lanes().is_err());
+
+        let mut truncated = witness.clone();
+        truncated.values.pop();
+        assert!(truncated.transpose_auxiliary_lanes().is_err());
 
         let changed_fixture = fixture(Fp2::ZERO, true);
         let changed_census = changed_fixture.builder.census().unwrap();

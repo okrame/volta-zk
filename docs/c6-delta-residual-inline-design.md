@@ -1455,6 +1455,22 @@ additive certificate is
 `c6_delta_wrapper_event_better_than_239`; the sharper historical theorem
 continues to describe only the MAC/base-share core.
 
+The first Rust milestone after this freeze is green and intentionally
+narrower than the residual argument.  The versioned witness-only adapter
+transposes the canonical slot-7 live prefix into the sixteen lane-aligned
+semantic live prefixes above, rechecks the exact census and zero footer, and
+materializes a zero-padded `2^15` semantic half only as a CPU/reference seam.
+The T1 geometry **22,339 / 8,170 <= 32,768** and every scaled lane/order/tail
+and malformed-layout case are permanent regressions.  The feature suite is
+**145 pass / 0 fail / 1 ignored** and all-target compilation is green.
+Residual source/export SHA-256 values are
+`493fc8a501d51aeb4459194e3a18e7063a8fb842b12a539f09b94ffc71ef301b` /
+`12dea86dbe8646d76d1688d55554ffa42aa477f2d86cde4e0cde2c9aa651df57`.
+The adapter does not create the independent upper-half masks, a PCS source,
+a proof field or any accepted obligation.  Admission into the wrapper
+remains blocked on production installed-plan capture, the randomized
+raw-copy identity and synchronized residual sumcheck.
+
 The wrapper PCS uses rate `1/8`, two independent fold/query chains and
 `s=86` queries per chain.  Under the conservative 64-active-polynomial,
 `2^28` weight-oracle and `2^19` auxiliary maxima, one repetition has

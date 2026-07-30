@@ -1029,6 +1029,28 @@ cross-seed records are required before this full-shape checkpoint closes.
 The hidden-vector/cache wrapper, final wire size, real-PCG session and
 hardware gates remain open.
 
+The clean cross-seed checkpoint is now complete at
+`5f9a7ba1d7b1bcc8eaeec2739495170c4a2bea8e`.  Schema-11 records
+`c6-compiled-residual-seed24-2026-07-29-5f9a7ba.json` and
+`c6-compiled-residual-seed25-2026-07-29-5f9a7ba.json` have SHA-256
+`b6d78a68f09e4dd2a78876e7e8451b715bd172f643c82a3d711a4b8ea2c852e4`
+and
+`445755cdde6ef33231986db29c60adeb462661bc8ce73e7e5a01d3b9bcc4139a`.
+Both are clean non-diagnostic outer records with `pod_contacted:false` and
+`all_pass:true`; the compiled-residual subrecord remains explicitly
+diagnostic and receives no timing credit.
+
+The topology, canonical plan artifact and all structural memory fields are
+identical across the two seeds.  Instance, linear-form and combined
+coefficient digests differ, establishing that the installed topology is
+model-global while response-local values and transcript challenges are not
+silently frozen.  Clean provider compile-plus-fold subtotals are
+**2.115027772 s** and **2.031618948 s**, after one-off installs of
+**1.637407891 s** and **1.646412629 s** respectively.  This closes Gate C's
+full-shape residual execution evidence.  It does not close Gate D, the
+ordinary-build timing scope, final wire replacement, real-PCG session or any
+hardware gate.
+
 ## 4. Hidden Ligero vectors without an NTT trace
 
 Simply omitting `u_c` or `u_g` is unsound.  C6 commits to them before the

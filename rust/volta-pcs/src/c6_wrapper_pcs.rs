@@ -17,6 +17,8 @@ use std::fmt;
 use volta_field::{Fp, Fp2};
 use volta_mac::Transcript;
 
+use crate::c6_hidden_u::C6HiddenUFamily;
+use crate::c6_hidden_u_sumcheck::C6HiddenUOpeningClaim;
 use crate::x4::accounting::projected_query_indices;
 use crate::x4::frame::Digest;
 use crate::x4::frame_v4::{
@@ -36,8 +38,19 @@ pub const C6_WRAPPER_QUERY_COUNT: usize = 86;
 pub const C6_WRAPPER_REPETITIONS: usize = 2;
 pub const C6_WRAPPER_TERMINAL_LOG2: u8 = 3;
 pub const C6_WRAPPER_ACTIVE_SLOTS: usize = 64;
+pub const C6_WRAPPER_RANDOM_POINT_LEN: usize = 24;
+pub const C6_WRAPPER_COMMON_POINT_LEN: usize = 25;
+pub const C6_DELTA_RESIDUAL_ACTIVATION_ROUND: usize = 1;
+pub const C6_HIDDEN_U_WEIGHTS_ACTIVATION_ROUND: usize = 3;
+pub const C6_HIDDEN_U_EMBED_ACTIVATION_ROUND: usize = 5;
+pub const C6_WRAPPER_AUXILIARY_ACTIVATION_ROUND: usize = 9;
 pub const C6_WRAPPER_ONE_CHAIN_BYTES: u64 = 1_804_912;
 pub const C6_WRAPPER_TWO_CHAIN_BYTES: u64 = 3_609_824;
+pub const C6_CACHE_COHORT_ID: u32 = 0xC601_0001;
+pub const C6_DELTA_RESIDUAL_COHORT_ID: u32 = 0xC601_0002;
+pub const C6_HIDDEN_U_WEIGHTS_COHORT_ID: u32 = 0xC601_0003;
+pub const C6_HIDDEN_U_EMBED_COHORT_ID: u32 = 0xC601_0004;
+pub const C6_WRAPPER_AUXILIARY_COHORT_ID: u32 = 0xC601_0005;
 
 const C6_WRAPPER_PROFILE_NAME: &[u8] = b"c6-transparent-rate8-s86-p64-two-repetition-v1";
 const C6_SLOT_DESCRIPTOR_CONTEXT: &str = "volta-zk/c6/wrapper-slot-descriptor/v1";
@@ -144,31 +157,31 @@ impl C6WrapperCohortSpec {
 pub fn production_c6_wrapper_specs() -> [C6WrapperCohortSpec; 5] {
     [
         C6WrapperCohortSpec {
-            cohort_id: 0xC601_0001,
+            cohort_id: C6_CACHE_COHORT_ID,
             oracle_kind: C6WrapperOracleKind::Witness,
             payload_log2: 24,
             slot_count: 8,
         },
         C6WrapperCohortSpec {
-            cohort_id: 0xC601_0002,
+            cohort_id: C6_DELTA_RESIDUAL_COHORT_ID,
             oracle_kind: C6WrapperOracleKind::Witness,
             payload_log2: 23,
             slot_count: 8,
         },
         C6WrapperCohortSpec {
-            cohort_id: 0xC601_0003,
+            cohort_id: C6_HIDDEN_U_WEIGHTS_COHORT_ID,
             oracle_kind: C6WrapperOracleKind::Witness,
             payload_log2: 21,
             slot_count: 8,
         },
         C6WrapperCohortSpec {
-            cohort_id: 0xC601_0004,
+            cohort_id: C6_HIDDEN_U_EMBED_COHORT_ID,
             oracle_kind: C6WrapperOracleKind::Witness,
             payload_log2: 19,
             slot_count: 8,
         },
         C6WrapperCohortSpec {
-            cohort_id: 0xC601_0005,
+            cohort_id: C6_WRAPPER_AUXILIARY_COHORT_ID,
             oracle_kind: C6WrapperOracleKind::Auxiliary,
             payload_log2: 16,
             slot_count: 32,
@@ -366,6 +379,83 @@ pub struct C6WrapperOpeningClaim {
     /// Same-point reduction weights for every capacity slot, in slot order.
     pub slot_weights: Vec<Fp2>,
     pub value: Fp2,
+}
+
+/// One typed terminal value before the verifier-owned same-point slot
+/// reduction is assembled.  This is an in-memory seam, not a wire field:
+/// the cohort/slot registry and reduction weights are reconstructed by the
+/// final wrapper orchestrator.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6WrapperSlotOpeningClaim {
+    pub repetition: u8,
+    pub cohort_id: u32,
+    pub slot: u16,
+    pub point: Vec<Fp2>,
+    pub value: Fp2,
+}
+
+/// Map the four hidden-`u` terminal claims into two registered wrapper slots.
+/// No `u_vector` or prior key vector is copied or serialized.
+pub fn bind_hidden_u_opening_claims_to_wrapper_slots(
+    hidden_claims: &[C6HiddenUOpeningClaim],
+    weights_spec: C6WrapperCohortSpec,
+    weights_slot: u16,
+    embed_spec: C6WrapperCohortSpec,
+    embed_slot: u16,
+) -> Result<Vec<C6WrapperSlotOpeningClaim>> {
+    weights_spec.validate()?;
+    embed_spec.validate()?;
+    if weights_spec.oracle_kind != C6WrapperOracleKind::Witness
+        || embed_spec.oracle_kind != C6WrapperOracleKind::Witness
+        || weights_slot >= weights_spec.slot_count
+        || embed_slot >= embed_spec.slot_count
+        || hidden_claims.len() != 2 * C6_WRAPPER_REPETITIONS
+    {
+        return Err(C6WrapperPcsError::new("C6 hidden-u wrapper slot registry mismatch"));
+    }
+    let mut output = Vec::with_capacity(hidden_claims.len());
+    for repetition in 0..C6_WRAPPER_REPETITIONS {
+        let weights = &hidden_claims[2 * repetition];
+        let embed = &hidden_claims[2 * repetition + 1];
+        if usize::from(weights.repetition) != repetition
+            || usize::from(embed.repetition) != repetition
+            || weights.family != C6HiddenUFamily::Weights
+            || embed.family != C6HiddenUFamily::Embed
+            || weights.point.len() != usize::from(weights_spec.payload_log2)
+            || embed.point.len() != usize::from(embed_spec.payload_log2)
+            || embed.point.len() > weights.point.len()
+            || embed.point != weights.point[weights.point.len() - embed.point.len()..]
+        {
+            return Err(C6WrapperPcsError::new(
+                "C6 hidden-u claims do not match the registered suffix geometry",
+            ));
+        }
+        let weights_point = weights.wrapper_point();
+        let embed_point = embed.wrapper_point();
+        if weights_point.len() != usize::from(weights_spec.coefficient_log2()?)
+            || embed_point.len() != usize::from(embed_spec.coefficient_log2()?)
+            || embed_point != weights_point[weights_point.len() - embed_point.len()..]
+        {
+            return Err(C6WrapperPcsError::new(
+                "C6 hidden-u strict-rate points are not suffix aligned",
+            ));
+        }
+        output.push(C6WrapperSlotOpeningClaim {
+            repetition: repetition as u8,
+            cohort_id: weights_spec.cohort_id,
+            slot: weights_slot,
+            point: weights_point,
+            value: weights.value,
+        });
+        output.push(C6WrapperSlotOpeningClaim {
+            repetition: repetition as u8,
+            cohort_id: embed_spec.cohort_id,
+            slot: embed_slot,
+            point: embed_point,
+            value: embed.value,
+        });
+    }
+    Ok(output)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1719,6 +1809,187 @@ mod tests {
     }
 
     #[test]
+    fn hidden_u_claims_bind_to_registered_slots_without_vector_payloads() {
+        let specs = production_c6_wrapper_specs();
+        let mut hidden_claims = Vec::new();
+        let mut common_points = Vec::new();
+        for repetition in 0..C6_WRAPPER_REPETITIONS {
+            let random_point = (0..C6_WRAPPER_RANDOM_POINT_LEN)
+                .map(|index| symbol(800_000 + 100 * repetition as u64 + index as u64))
+                .collect::<Vec<_>>();
+            hidden_claims.push(C6HiddenUOpeningClaim {
+                repetition: repetition as u8,
+                family: C6HiddenUFamily::Weights,
+                point: random_point[C6_HIDDEN_U_WEIGHTS_ACTIVATION_ROUND..].to_vec(),
+                value: symbol(810_000 + repetition as u64),
+            });
+            hidden_claims.push(C6HiddenUOpeningClaim {
+                repetition: repetition as u8,
+                family: C6HiddenUFamily::Embed,
+                point: random_point[C6_HIDDEN_U_EMBED_ACTIVATION_ROUND..].to_vec(),
+                value: symbol(820_000 + repetition as u64),
+            });
+            let mut common = random_point;
+            common.push(Fp2::ZERO);
+            common_points.push(common);
+        }
+        let slots =
+            bind_hidden_u_opening_claims_to_wrapper_slots(&hidden_claims, specs[2], 2, specs[3], 5)
+                .unwrap();
+        assert_eq!(slots.len(), 4);
+        for repetition in 0..C6_WRAPPER_REPETITIONS {
+            let weights = &slots[2 * repetition];
+            let embed = &slots[2 * repetition + 1];
+            assert_eq!(weights.cohort_id, C6_HIDDEN_U_WEIGHTS_COHORT_ID);
+            assert_eq!(embed.cohort_id, C6_HIDDEN_U_EMBED_COHORT_ID);
+            assert_eq!((weights.slot, embed.slot), (2, 5));
+            assert_eq!(
+                weights.point,
+                common_points[repetition][common_points[repetition].len() - weights.point.len()..]
+            );
+            assert_eq!(
+                embed.point,
+                common_points[repetition][common_points[repetition].len() - embed.point.len()..]
+            );
+            assert_eq!(weights.value, hidden_claims[2 * repetition].value);
+            assert_eq!(embed.value, hidden_claims[2 * repetition + 1].value);
+        }
+
+        let mut bad = hidden_claims.clone();
+        bad[1].point[0] += Fp2::ONE;
+        assert!(
+            bind_hidden_u_opening_claims_to_wrapper_slots(&bad, specs[2], 2, specs[3], 5).is_err()
+        );
+        assert!(bind_hidden_u_opening_claims_to_wrapper_slots(
+            &hidden_claims,
+            specs[2],
+            specs[2].slot_count,
+            specs[3],
+            5,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn mapped_hidden_u_slot_claims_enter_the_two_packed_chains() {
+        let specs = [
+            C6WrapperCohortSpec {
+                cohort_id: C6_CACHE_COHORT_ID,
+                oracle_kind: C6WrapperOracleKind::Witness,
+                payload_log2: 8,
+                slot_count: 1,
+            },
+            C6WrapperCohortSpec {
+                cohort_id: C6_HIDDEN_U_WEIGHTS_COHORT_ID,
+                oracle_kind: C6WrapperOracleKind::Witness,
+                payload_log2: 5,
+                slot_count: 1,
+            },
+            C6WrapperCohortSpec {
+                cohort_id: C6_HIDDEN_U_EMBED_COHORT_ID,
+                oracle_kind: C6WrapperOracleKind::Witness,
+                payload_log2: 3,
+                slot_count: 1,
+            },
+        ];
+        let tables = specs
+            .iter()
+            .enumerate()
+            .map(|(cohort, spec)| {
+                (0..spec.payload_len().unwrap())
+                    .map(|index| symbol(900_000 + 10_000 * cohort as u64 + index as u64))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        let cohorts = specs
+            .iter()
+            .enumerate()
+            .map(|(cohort, spec)| {
+                let mask = (0..spec.payload_len().unwrap())
+                    .map(|index| symbol(950_000 + 10_000 * cohort as u64 + index as u64))
+                    .collect::<Vec<_>>();
+                commit_c6_wrapper_cohort(
+                    statement(),
+                    *spec,
+                    vec![C6WrapperSlotWitness::Witness {
+                        witness: tables[cohort].clone(),
+                        zk_mask: mask,
+                    }],
+                )
+                .unwrap()
+            })
+            .collect::<Vec<_>>();
+
+        let mut hidden_claims = Vec::new();
+        let mut random_points = Vec::new();
+        for repetition in 0..C6_WRAPPER_REPETITIONS {
+            let random_point = (0..8)
+                .map(|index| symbol(970_000 + 100 * repetition as u64 + index))
+                .collect::<Vec<_>>();
+            let weights_point = random_point[3..].to_vec();
+            let embed_point = random_point[5..].to_vec();
+            hidden_claims.push(C6HiddenUOpeningClaim {
+                repetition: repetition as u8,
+                family: C6HiddenUFamily::Weights,
+                value: evaluate_multilinear_table(&tables[1], &weights_point).unwrap(),
+                point: weights_point,
+            });
+            hidden_claims.push(C6HiddenUOpeningClaim {
+                repetition: repetition as u8,
+                family: C6HiddenUFamily::Embed,
+                value: evaluate_multilinear_table(&tables[2], &embed_point).unwrap(),
+                point: embed_point,
+            });
+            random_points.push(random_point);
+        }
+        let hidden_slots =
+            bind_hidden_u_opening_claims_to_wrapper_slots(&hidden_claims, specs[1], 0, specs[2], 0)
+                .unwrap();
+        let claims = (0..C6_WRAPPER_REPETITIONS)
+            .map(|repetition| {
+                let mut cache_point = random_points[repetition].clone();
+                cache_point.push(Fp2::ZERO);
+                vec![
+                    C6WrapperOpeningClaim {
+                        repetition: repetition as u8,
+                        cohort_id: specs[0].cohort_id,
+                        point: cache_point,
+                        slot_weights: vec![Fp2::ONE],
+                        value: evaluate_multilinear_table(&tables[0], &random_points[repetition])
+                            .unwrap(),
+                    },
+                    C6WrapperOpeningClaim {
+                        repetition: repetition as u8,
+                        cohort_id: hidden_slots[2 * repetition].cohort_id,
+                        point: hidden_slots[2 * repetition].point.clone(),
+                        slot_weights: vec![Fp2::ONE],
+                        value: hidden_slots[2 * repetition].value,
+                    },
+                    C6WrapperOpeningClaim {
+                        repetition: repetition as u8,
+                        cohort_id: hidden_slots[2 * repetition + 1].cohort_id,
+                        point: hidden_slots[2 * repetition + 1].point.clone(),
+                        slot_weights: vec![Fp2::ONE],
+                        value: hidden_slots[2 * repetition + 1].value,
+                    },
+                ]
+            })
+            .collect::<Vec<_>>();
+        let commitments =
+            cohorts.iter().map(|cohort| cohort.commitment.clone()).collect::<Vec<_>>();
+        let seed = [0x63; 32];
+        let mut prover_tx = Transcript::new(seed);
+        let proof = prove_c6_wrapper_pcs(statement(), &cohorts, &claims, &mut prover_tx).unwrap();
+        let mut verifier_tx = Transcript::new(seed);
+        verify_c6_wrapper_pcs(statement(), &commitments, &claims, &proof, &mut verifier_tx)
+            .unwrap();
+        assert_eq!(prover_tx.ledger(), verifier_tx.ledger());
+        assert_eq!(hidden_slots.iter().map(|claim| claim.value).collect::<Vec<_>>(), {
+            hidden_claims.iter().map(|claim| claim.value).collect::<Vec<_>>()
+        });
+    }
+
+    #[test]
     fn witness_zero_suffix_selects_the_non_mask_half() {
         let spec = C6WrapperCohortSpec {
             cohort_id: 9,
@@ -1879,6 +2150,24 @@ mod tests {
         assert_eq!(
             specs.iter().map(|spec| spec.encoded_domain_log2().unwrap()).collect::<Vec<_>>(),
             vec![28, 27, 25, 23, 19]
+        );
+        let maximum_point = usize::from(specs[0].coefficient_log2().unwrap());
+        assert_eq!(maximum_point, C6_WRAPPER_COMMON_POINT_LEN);
+        assert_eq!(
+            maximum_point - usize::from(specs[1].coefficient_log2().unwrap()),
+            C6_DELTA_RESIDUAL_ACTIVATION_ROUND
+        );
+        assert_eq!(
+            maximum_point - usize::from(specs[2].coefficient_log2().unwrap()),
+            C6_HIDDEN_U_WEIGHTS_ACTIVATION_ROUND
+        );
+        assert_eq!(
+            maximum_point - usize::from(specs[3].coefficient_log2().unwrap()),
+            C6_HIDDEN_U_EMBED_ACTIVATION_ROUND
+        );
+        assert_eq!(
+            maximum_point - usize::from(specs[4].coefficient_log2().unwrap()),
+            C6_WRAPPER_AUXILIARY_ACTIVATION_ROUND
         );
         for spec in specs {
             spec.validate().unwrap();

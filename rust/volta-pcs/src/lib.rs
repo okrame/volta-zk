@@ -32,17 +32,23 @@ pub use c6_hidden_u::{
     C6_EMBED_Q121, C6_HIDDEN_U_BATCH_SEED_BYTES, C6_HIDDEN_U_REPETITIONS, C6_WEIGHTS_Q121,
 };
 pub use c6_hidden_u_sumcheck::{
-    hidden_u_sumcheck_encoded_len, prove_hidden_u_sumchecks, reduce_hidden_u_sumchecks,
-    C6HiddenUOpeningClaim, C6HiddenUSumcheckFamilyProof, C6HiddenUSumcheckProof,
-    C6HiddenUSumcheckRepetition,
+    hidden_u_sumcheck_encoded_len, prepare_hidden_u_prover_round_state,
+    prepare_hidden_u_verifier_round_state, prove_hidden_u_sumchecks, reduce_hidden_u_sumchecks,
+    C6HiddenUOpeningClaim, C6HiddenUProverRoundState, C6HiddenUSumcheckFamilyProof,
+    C6HiddenUSumcheckProof, C6HiddenUSumcheckRepetition, C6HiddenUVerifierRoundState,
 };
 pub use c6_wrapper_pcs::{
-    c6_wrapper_profile_digest, commit_c6_wrapper_cohort, production_c6_wrapper_codec_reference,
-    production_c6_wrapper_specs, prove_c6_wrapper_pcs, verify_c6_wrapper_pcs,
-    C6CommittedWrapperCohort, C6WrapperChainProof, C6WrapperCohortSpec, C6WrapperCommitment,
-    C6WrapperDigest, C6WrapperOpeningClaim, C6WrapperOracleKind, C6WrapperPcsError,
-    C6WrapperPcsProof, C6WrapperSlotWitness, C6_WRAPPER_ACTIVE_SLOTS, C6_WRAPPER_ONE_CHAIN_BYTES,
-    C6_WRAPPER_QUERY_COUNT, C6_WRAPPER_REPETITIONS, C6_WRAPPER_TERMINAL_LOG2,
+    bind_hidden_u_opening_claims_to_wrapper_slots, c6_wrapper_profile_digest,
+    commit_c6_wrapper_cohort, production_c6_wrapper_codec_reference, production_c6_wrapper_specs,
+    prove_c6_wrapper_pcs, verify_c6_wrapper_pcs, C6CommittedWrapperCohort, C6WrapperChainProof,
+    C6WrapperCohortSpec, C6WrapperCommitment, C6WrapperDigest, C6WrapperOpeningClaim,
+    C6WrapperOracleKind, C6WrapperPcsError, C6WrapperPcsProof, C6WrapperSlotOpeningClaim,
+    C6WrapperSlotWitness, C6_CACHE_COHORT_ID, C6_DELTA_RESIDUAL_ACTIVATION_ROUND,
+    C6_DELTA_RESIDUAL_COHORT_ID, C6_HIDDEN_U_EMBED_ACTIVATION_ROUND, C6_HIDDEN_U_EMBED_COHORT_ID,
+    C6_HIDDEN_U_WEIGHTS_ACTIVATION_ROUND, C6_HIDDEN_U_WEIGHTS_COHORT_ID, C6_WRAPPER_ACTIVE_SLOTS,
+    C6_WRAPPER_AUXILIARY_ACTIVATION_ROUND, C6_WRAPPER_AUXILIARY_COHORT_ID,
+    C6_WRAPPER_COMMON_POINT_LEN, C6_WRAPPER_ONE_CHAIN_BYTES, C6_WRAPPER_QUERY_COUNT,
+    C6_WRAPPER_RANDOM_POINT_LEN, C6_WRAPPER_REPETITIONS, C6_WRAPPER_TERMINAL_LOG2,
     C6_WRAPPER_TWO_CHAIN_BYTES,
 };
 pub use layer_layout::{

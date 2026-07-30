@@ -1156,6 +1156,39 @@ functional analytically; it never receives or reconstructs a hidden
 enters the strict-rate wrapper, selecting the witness half rather than the
 random ZK half.
 
+That hidden-only 21-round driver is not itself the final wrapper scheduler.
+The complete repetition has one 24-challenge random point from the
+`mu=24` cache family.  Paired residual activates at global round 1,
+hidden-`u` weights at round 3, hidden-`u` embedding at round 5, and the
+`ell=16` auxiliary point uses the last 15 random coordinates followed by the
+shared fixed zero.  After all random rounds, appending that one zero gives
+the 25-coordinate strict-rate PCS point; the residual, hidden-weight,
+hidden-embedding and auxiliary points are its exact suffixes.
+
+Consequently the hidden reducer must expose a step-wise prover/verifier
+state: form and fix the active round messages, then accept exactly one
+externally coordinated challenge, then bind.  Supplying an already sampled
+24-challenge tape is forbidden for the same backwards-interpolation reason
+as an upfront hidden-only tape.  The existing convenience driver may use the
+step-wise state with no outer participants in arithmetic tests, but
+production integration must use the one response-global coordinator.
+
+The step-wise seam is now implemented.  For either side,
+`fix/check_next_round` first freezes and validates every active hidden-family
+message and returns its existing byte charge; only then may the outer
+coordinator provide one challenge to `bind_challenge`.  A second round cannot
+be formed while a challenge is pending.  The unchanged hidden-only
+convenience functions are implemented on top of this state machine.
+
+The four terminal values map into registered
+`C6WrapperSlotOpeningClaim`s at their strict-rate `r || 0` points.  This
+typed intermediate contains only repetition, cohort, slot, point and scalar
+value; it contains no hidden `u` table.  A scaled cross-module differential
+places those slot claims into two real packed PCS chains and verifies them.
+This closes the hidden-to-PCS seam, not the complete wrapper scheduler:
+cache, residual, auxiliary and the verifier-owned all-slot reduction still
+must join the same 24-round coordinator before production acceptance.
+
 The canonical sumcheck proof is exactly **4,004 B** at the production
 `21+19`-round geometry, including its terminal digest.  This is charged
 inside the existing `800,000-B` non-PCS allocation; it does not change the

@@ -484,6 +484,54 @@ historical entries remain append-only evidence, not competing definitions.
 
 ## Deviations / decisions log
 
+- **2026-07-29 — Hidden-`u` now has a step-wise global-round seam and enters
+  the packed PCS as typed slot claims; the complete 24-round orchestrator
+  remains open.**  `C6HiddenUProverRoundState` and
+  `C6HiddenUVerifierRoundState` enforce message/check before bind and refuse
+  a second round while the current challenge is pending.  The old
+  hidden-only convenience path is rebuilt on those states and retains its
+  exact **4,004-B** production codec.
+
+  A permanent offset test inserts three outer rounds, then proves/verifies
+  the scaled weights/embedding messages under one shared tape and checks that
+  both `r || 0` points are suffixes of the larger point.  The typed
+  `C6WrapperSlotOpeningClaim` mapper binds the canonical hidden family,
+  registered cohort/slot, point and scalar while carrying no `u_vector`.
+  A second cross-module differential commits those hidden tables, maps both
+  repetitions and verifies the mapped values through the two response-local
+  packed chains.  Wrong suffixes, duplicate round formation and out-of-range
+  slots reject.
+
+  Complete `volta-pcs` is **159 pass / 0 fail / 3 ignored** and the workspace
+  all-target `c6-trace` check is green.  Hidden-state source SHA-256 is
+  `7e52187a6d72409d1e84fdd819c7251cb0574c234aaeeb36211a8ee88ed4d3a0`;
+  packed-PCS source SHA-256 is
+  `6905830dc3348c534e715accc3c4cb2068f97fb1cd7a0d18b4b28103da708966`.
+  The real cache/residual/auxiliary states and verifier-owned 64-slot claim
+  assembler have not yet joined the coordinator, so no historical
+  `u_c/u_gs` field is removed and no production wire/timing verdict is
+  claimed.  No provider/pod was contacted.
+
+- **2026-07-29 — Hidden-`u` integration requires one step-wise 24-round
+  wrapper coordinator; an independently completed 21-round tape is not a
+  production point.**  The post-`f296654` claim-integration audit made the
+  activation offsets explicit.  Per repetition, cache owns 24 random
+  rounds, paired residual activates at offset 1, hidden weights at offset 3,
+  hidden embedding at offset 5, and the `ell=16` auxiliary target is the last
+  15 random coordinates followed by the common fixed zero.  Appending that
+  zero to the 24-round cache point yields the 25-coordinate PCS point and
+  every smaller opening is its exact suffix.
+
+  Therefore the hidden reducer may not draw and finish its 21 challenges
+  independently in production, nor may it accept a pre-sampled global tape.
+  It must expose step-wise prover/verifier state so one outer coordinator
+  fixes every active family message before releasing each shared challenge.
+  The current hidden-only convenience driver remains valid for isolated
+  arithmetic tests and will be rebuilt on that state machine.  This is an
+  ordering/interface correction before claim integration; it changes no
+  round count, hidden codec byte, roofline or soundness numerator.  No
+  provider/pod was contacted.
+
 - **2026-07-29 — C6 response-local packed PCS reference is locally green;
   fused CUDA and complete-wrapper integration remain open.**  The new
   `c6_wrapper_pcs` module implements two independent interactive chains,

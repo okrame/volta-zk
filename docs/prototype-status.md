@@ -470,7 +470,7 @@ historical entries remain append-only evidence, not competing definitions.
 ## Deviations / decisions log
 
 - **2026-07-29 — C6 canonical parameterized-plan codec materializes exactly;
-  component setup-fit PASS, clean records pending.**  Schema-8 full local
+  component setup-fit PASS, seed-24 clean / seed-25 clean pending.**  Schema-8 full local
   diagnostics for transcript seed bytes `24` and `25` each compile both the
   independent prover and verifier traces, require byte-for-byte artifact
   equality, parse the result through the strict client decoder and recover
@@ -496,11 +496,16 @@ historical entries remain append-only evidence, not competing definitions.
   **140,738,118 B <= 150,000,000 B**, leaving **9,261,882 B** for every
   remaining client parameter and setup frame.  This earns
   `materialized_artifact:true`, `production_decoder_implemented:true` and
-  `setup_fit_credit:true` for the plan-codec component only.  The runs are
-  intentionally dirty pre-checkpoint diagnostics; no clean append-only
-  record, client instance-stream regeneration, residual execution, complete
-  setup, timing, real-PCG or production verdict is claimed yet.  No
-  provider/pod was contacted.
+  `setup_fit_credit:true` for the plan-codec component only.  The first clean
+  append-only record is
+  `c6-parameterized-plan-codec-seed24-2026-07-29-e437394.json`, SHA-256
+  `af785f987d7ef31cffc2111a607b778634bef5c7bd443220c644d5c1b9ee5580`;
+  it has `git_dirty:false`, declares and excludes the user-owned untracked
+  note, and has `all_pass:true`.  The independent clean seed-25 record is
+  still required before closing cross-seed run-of-record evidence.  No
+  client instance-stream regeneration, residual execution, complete setup,
+  timing, real-PCG or production verdict is claimed yet.  No provider/pod
+  was contacted.
 
 - **2026-07-29 — C6 parameterized v2 two-seed identity PASS; specialized
   codec remains a zero-credit projection.**  Complete local mock-PCG

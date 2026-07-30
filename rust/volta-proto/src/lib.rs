@@ -8,6 +8,7 @@ pub(crate) mod boundary_thinning;
 pub mod c6;
 pub mod c6_census;
 pub mod c6_residual;
+pub mod c6_subfield;
 pub(crate) mod ffn_schedule;
 pub mod gemm_proof;
 pub mod hadamard;
@@ -62,6 +63,9 @@ pub use c6_residual::{
     C6CommittedResidualProgram, C6LeafId, C6LeafKind, C6LeafRole, C6ProductPostCommit,
     C6ResidualBuilder, C6ResidualCensus, C6ResidualDigest, C6ResidualError, C6ResidualPlan,
     C6ResidualPostCommit, C6SourceWitness, C6ValueId, C6ValueOperation,
+};
+pub use c6_subfield::{
+    replay_c6_subfield_coordinate, C6PairedSubfieldWitness, C6SubfieldDigest, C6SubfieldError,
 };
 pub use gemm_proof::{
     auth_phase, prove_gemm_blind, prove_gemm_blind_committed, verify_gemm_blind,

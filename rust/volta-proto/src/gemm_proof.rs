@@ -121,16 +121,28 @@ pub fn auth_phase_at(
     let mut corr_x = Vec::with_capacity(m * k);
     let mut corr_y = Vec::with_capacity(m * n);
     for row in 0..m {
-        let masks = stream.draw_sub_masks(doms.dom_x(row), k);
+        let domain = doms.dom_x(row);
+        let masks = stream.draw_sub_masks(domain, k);
+        let mut row_corrections = Vec::with_capacity(k);
         for (l, &r) in masks.iter().enumerate() {
-            corr_x.push((Fp::from_i64(x[row * k + l] as i64) - r).value());
+            row_corrections.push((Fp::from_i64(x[row * k + l] as i64) - r).value());
         }
+        stream
+            .record_c6_subfield_corrections(domain, &row_corrections)
+            .expect("C6 GEMM x-correction schedule");
+        corr_x.extend(row_corrections);
     }
     for row in 0..m {
-        let masks = stream.draw_sub_masks(doms.dom_y(row), n);
+        let domain = doms.dom_y(row);
+        let masks = stream.draw_sub_masks(domain, n);
+        let mut row_corrections = Vec::with_capacity(n);
         for (j, &r) in masks.iter().enumerate() {
-            corr_y.push((Fp::from_i64(yacc[row * n + j]) - r).value());
+            row_corrections.push((Fp::from_i64(yacc[row * n + j]) - r).value());
         }
+        stream
+            .record_c6_subfield_corrections(domain, &row_corrections)
+            .expect("C6 GEMM y-correction schedule");
+        corr_y.extend(row_corrections);
     }
     tx.append("auth_corrections", 8 * (corr_x.len() + corr_y.len()) as u64);
     (corr_x, corr_y)

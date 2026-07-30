@@ -334,6 +334,297 @@ impl CorrScheduleAudit {
     }
 }
 
+/// One subfield draw in the prover-only C6 witness sidecar.
+///
+/// The sidecar is never part of the public schedule audit or a wire object:
+/// it contains secret masks/tags and hidden corrections. `witness_offset`
+/// indexes the flat arrays in [`C6SubfieldWitnessAudit`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6SubfieldWitnessDraw {
+    pub domain: u64,
+    pub global_offset: u64,
+    pub count: u64,
+    pub witness_offset: u64,
+}
+
+/// Prover-only reference witness for every corrected subfield source.
+///
+/// Collection is explicit and disabled by default. The digests are reference
+/// commitments for census/replay tests, not a replacement for the binding C6
+/// wrapper PCS. This value must never be serialized to the client.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6SubfieldWitnessAudit {
+    draws: Vec<C6SubfieldWitnessDraw>,
+    masks: Vec<Fp>,
+    corrections: Vec<Fp>,
+    tags: Vec<Fp2>,
+    pub witness_digest: [u8; 32],
+    pub correction_digest: [u8; 32],
+    pub plaintext_digest: [u8; 32],
+}
+
+impl C6SubfieldWitnessAudit {
+    pub fn draws(&self) -> &[C6SubfieldWitnessDraw] {
+        &self.draws
+    }
+
+    pub fn masks(&self) -> &[Fp] {
+        &self.masks
+    }
+
+    pub fn corrections(&self) -> &[Fp] {
+        &self.corrections
+    }
+
+    pub fn tags(&self) -> &[Fp2] {
+        &self.tags
+    }
+
+    pub fn len(&self) -> usize {
+        self.masks.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.masks.is_empty()
+    }
+
+    pub fn plaintext(&self, index: usize) -> Option<Fp> {
+        self.masks
+            .get(index)
+            .zip(self.corrections.get(index))
+            .map(|(&mask, &correction)| mask + correction)
+    }
+
+    pub fn validate_against(&self, schedule: &CorrScheduleAudit) -> Result<(), String> {
+        if !schedule.is_canonical() {
+            return Err("C6 subfield witness received a noncanonical schedule".to_owned());
+        }
+        if self.masks.len() != self.corrections.len() || self.masks.len() != self.tags.len() {
+            return Err("C6 subfield witness flat arrays have different lengths".to_owned());
+        }
+        let schedule_draws =
+            schedule.draws.iter().filter(|draw| draw.kind == CorrScheduleKind::Subfield);
+        let mut expected_witness_offset = 0u64;
+        for (witness_draw, schedule_draw) in self.draws.iter().zip(schedule_draws) {
+            if witness_draw.domain != schedule_draw.domain
+                || witness_draw.global_offset != schedule_draw.global_offset
+                || witness_draw.count != schedule_draw.count
+                || witness_draw.witness_offset != expected_witness_offset
+            {
+                return Err("C6 subfield witness draw order differs from the correlation schedule"
+                    .to_owned());
+            }
+            expected_witness_offset = expected_witness_offset
+                .checked_add(witness_draw.count)
+                .ok_or_else(|| "C6 subfield witness offset overflows".to_owned())?;
+        }
+        let schedule_sub_draw_count =
+            schedule.draws.iter().filter(|draw| draw.kind == CorrScheduleKind::Subfield).count();
+        if self.draws.len() != schedule_sub_draw_count
+            || expected_witness_offset != self.masks.len() as u64
+            || expected_witness_offset != schedule.counters.sub_corrs
+        {
+            return Err("C6 subfield witness count differs from its schedule".to_owned());
+        }
+        let (witness_digest, correction_digest, plaintext_digest) =
+            c6_subfield_witness_digests(&self.draws, &self.masks, &self.corrections, &self.tags)?;
+        if witness_digest != self.witness_digest
+            || correction_digest != self.correction_digest
+            || plaintext_digest != self.plaintext_digest
+        {
+            return Err("C6 subfield witness reference digest mismatch".to_owned());
+        }
+        Ok(())
+    }
+}
+
+fn c6_subfield_witness_digests(
+    draws: &[C6SubfieldWitnessDraw],
+    masks: &[Fp],
+    corrections: &[Fp],
+    tags: &[Fp2],
+) -> Result<([u8; 32], [u8; 32], [u8; 32]), String> {
+    if masks.len() != corrections.len() || masks.len() != tags.len() {
+        return Err("C6 subfield witness digest arrays have different lengths".to_owned());
+    }
+    let mut witness = blake3::Hasher::new_derive_key("volta/mac/c6/subfield-witness-reference/v1");
+    let mut correction =
+        blake3::Hasher::new_derive_key("volta/mac/c6/subfield-correction-reference/v1");
+    let mut plaintext =
+        blake3::Hasher::new_derive_key("volta/mac/c6/subfield-plaintext-reference/v1");
+    for draw in draws {
+        for hasher in [&mut witness, &mut correction, &mut plaintext] {
+            hasher.update(&draw.domain.to_le_bytes());
+            hasher.update(&draw.global_offset.to_le_bytes());
+            hasher.update(&draw.count.to_le_bytes());
+            hasher.update(&draw.witness_offset.to_le_bytes());
+        }
+        let first = usize::try_from(draw.witness_offset)
+            .map_err(|_| "C6 subfield witness offset exceeds usize".to_owned())?;
+        let count = usize::try_from(draw.count)
+            .map_err(|_| "C6 subfield witness count exceeds usize".to_owned())?;
+        let end = first
+            .checked_add(count)
+            .ok_or_else(|| "C6 subfield witness range overflows".to_owned())?;
+        if end > masks.len() {
+            return Err("C6 subfield witness draw exceeds its flat arrays".to_owned());
+        }
+        for index in first..end {
+            let mask = masks[index];
+            let direct_correction = corrections[index];
+            let tag = tags[index];
+            let value = mask + direct_correction;
+            witness.update(&mask.value().to_le_bytes());
+            witness.update(&direct_correction.value().to_le_bytes());
+            witness.update(&tag.c0.value().to_le_bytes());
+            witness.update(&tag.c1.value().to_le_bytes());
+            correction.update(&direct_correction.value().to_le_bytes());
+            plaintext.update(&value.value().to_le_bytes());
+        }
+    }
+    Ok((
+        *witness.finalize().as_bytes(),
+        *correction.finalize().as_bytes(),
+        *plaintext.finalize().as_bytes(),
+    ))
+}
+
+#[derive(Default)]
+struct C6SubfieldWitnessRecorder {
+    draws: Vec<C6SubfieldWitnessDraw>,
+    draw_by_domain: HashMap<u64, usize>,
+    masks: Vec<Fp>,
+    corrections: Vec<Fp>,
+    tags: Vec<Fp2>,
+    corrections_recorded: Vec<bool>,
+    tags_recorded: Vec<bool>,
+}
+
+impl C6SubfieldWitnessRecorder {
+    fn record_masks(
+        &mut self,
+        base_domain: u64,
+        rows: usize,
+        cols: usize,
+        masks: &[Fp],
+    ) -> Result<(), String> {
+        let expected = rows
+            .checked_mul(cols)
+            .ok_or_else(|| "C6 subfield witness mask geometry overflows".to_owned())?;
+        if masks.len() != expected {
+            return Err("C6 subfield witness mask reservation has wrong length".to_owned());
+        }
+        for row in 0..rows {
+            let domain = base_domain
+                .checked_add(row as u64)
+                .ok_or_else(|| "C6 subfield witness domain overflows".to_owned())?;
+            if self.draw_by_domain.contains_key(&domain) {
+                return Err(format!("duplicate C6 subfield witness domain {domain:#x}"));
+            }
+            let first = row * cols;
+            let end = first + cols;
+            let witness_offset = self.masks.len() as u64;
+            let global_offset = witness_offset;
+            self.masks.extend_from_slice(&masks[first..end]);
+            self.corrections.resize(self.masks.len(), Fp::ZERO);
+            self.tags.resize(self.masks.len(), Fp2::ZERO);
+            let draw_index = self.draws.len();
+            self.draws.push(C6SubfieldWitnessDraw {
+                domain,
+                global_offset,
+                count: cols as u64,
+                witness_offset,
+            });
+            self.draw_by_domain.insert(domain, draw_index);
+            self.corrections_recorded.push(false);
+            self.tags_recorded.push(false);
+        }
+        Ok(())
+    }
+
+    fn draw_range(&self, domain: u64, count: usize) -> Result<(usize, usize, usize), String> {
+        let draw_index = *self
+            .draw_by_domain
+            .get(&domain)
+            .ok_or_else(|| format!("C6 subfield witness has no mask draw at {domain:#x}"))?;
+        let draw = self.draws[draw_index];
+        if draw.count != count as u64 {
+            return Err(format!("C6 subfield witness length mismatch at {domain:#x}"));
+        }
+        let first = draw.witness_offset as usize;
+        Ok((draw_index, first, first + count))
+    }
+
+    fn record_corrections(&mut self, domain: u64, values: &[u64]) -> Result<(), String> {
+        if values.iter().any(|&value| value >= volta_field::P) {
+            return Err(format!("noncanonical C6 subfield correction at {domain:#x}"));
+        }
+        let (draw_index, first, end) = self.draw_range(domain, values.len())?;
+        if self.corrections_recorded[draw_index] {
+            return Err(format!("duplicate C6 subfield corrections at {domain:#x}"));
+        }
+        for (slot, &value) in self.corrections[first..end].iter_mut().zip(values) {
+            *slot = Fp::new(value);
+        }
+        self.corrections_recorded[draw_index] = true;
+        Ok(())
+    }
+
+    fn record_tags(&mut self, domain: u64, values: &[Fp2]) -> Result<(), String> {
+        let (draw_index, first, end) = self.draw_range(domain, values.len())?;
+        if self.tags_recorded[draw_index] {
+            if self.tags[first..end] != *values {
+                return Err(format!("C6 subfield tags changed on replay at {domain:#x}"));
+            }
+            return Ok(());
+        }
+        self.tags[first..end].copy_from_slice(values);
+        self.tags_recorded[draw_index] = true;
+        Ok(())
+    }
+
+    fn missing_tag_draws(&self) -> Result<Vec<(u64, usize)>, String> {
+        self.draws
+            .iter()
+            .zip(&self.tags_recorded)
+            .filter_map(|(draw, &recorded)| (!recorded).then_some(draw))
+            .map(|draw| {
+                usize::try_from(draw.count).map(|count| (draw.domain, count)).map_err(|_| {
+                    format!("C6 subfield witness tag count exceeds usize at {:#x}", draw.domain)
+                })
+            })
+            .collect()
+    }
+
+    fn finish(self, schedule: &CorrScheduleAudit) -> Result<C6SubfieldWitnessAudit, String> {
+        if let Some(index) = self.corrections_recorded.iter().position(|recorded| !recorded) {
+            return Err(format!(
+                "C6 subfield witness draw {} lacks its hidden corrections",
+                self.draws[index].domain
+            ));
+        }
+        if let Some(index) = self.tags_recorded.iter().position(|recorded| !recorded) {
+            return Err(format!(
+                "C6 subfield witness draw {} lacks its prover tags",
+                self.draws[index].domain
+            ));
+        }
+        let (witness_digest, correction_digest, plaintext_digest) =
+            c6_subfield_witness_digests(&self.draws, &self.masks, &self.corrections, &self.tags)?;
+        let audit = C6SubfieldWitnessAudit {
+            draws: self.draws,
+            masks: self.masks,
+            corrections: self.corrections,
+            tags: self.tags,
+            witness_digest,
+            correction_digest,
+            plaintext_digest,
+        };
+        audit.validate_against(schedule)?;
+        Ok(audit)
+    }
+}
+
 #[derive(Default)]
 struct CorrScheduleRecorder {
     draws: Vec<CorrScheduleDraw>,
@@ -614,6 +905,8 @@ pub struct CorrelationStream {
     ledger: DomainLedger,
     pub counters: CorrCounters,
     schedule_audit: Option<CorrScheduleRecorder>,
+    c6_subfield_witness: Option<C6SubfieldWitnessRecorder>,
+    c6_subfield_witness_closed: bool,
 }
 
 impl CorrelationStream {
@@ -623,6 +916,8 @@ impl CorrelationStream {
             ledger: DomainLedger::default(),
             counters: CorrCounters::default(),
             schedule_audit: None,
+            c6_subfield_witness: None,
+            c6_subfield_witness_closed: false,
         }
     }
 
@@ -638,6 +933,8 @@ impl CorrelationStream {
             ledger: DomainLedger::default(),
             counters: CorrCounters::default(),
             schedule_audit: None,
+            c6_subfield_witness: None,
+            c6_subfield_witness_closed: false,
         }
     }
 
@@ -647,6 +944,8 @@ impl CorrelationStream {
             ledger: DomainLedger::default(),
             counters: CorrCounters::default(),
             schedule_audit: None,
+            c6_subfield_witness: None,
+            c6_subfield_witness_closed: false,
         }
     }
 
@@ -659,6 +958,8 @@ impl CorrelationStream {
             ledger: DomainLedger::default(),
             counters: CorrCounters::default(),
             schedule_audit: None,
+            c6_subfield_witness: None,
+            c6_subfield_witness_closed: false,
         }
     }
 
@@ -679,6 +980,70 @@ impl CorrelationStream {
 
     pub fn schedule_audit(&self) -> Option<CorrScheduleAudit> {
         self.schedule_audit.as_ref().map(CorrScheduleRecorder::snapshot)
+    }
+
+    /// Enable the prover-only C6 `(r,d,m)` sidecar before the first draw.
+    ///
+    /// This also enables the public logical schedule audit used to bind its
+    /// order. Existing protocol and benchmark paths never call this method,
+    /// so they retain their historical allocations and data structures.
+    pub fn enable_c6_subfield_witness_collection(&mut self) -> Result<(), &'static str> {
+        if self.counters != CorrCounters::default() {
+            return Err("C6 subfield witness collection must start before the first draw");
+        }
+        if self.c6_subfield_witness.is_some() || self.c6_subfield_witness_closed {
+            return Err("C6 subfield witness collection already enabled or closed");
+        }
+        if self.schedule_audit.is_none() {
+            self.schedule_audit = Some(CorrScheduleRecorder::default());
+        }
+        self.c6_subfield_witness = Some(C6SubfieldWitnessRecorder::default());
+        Ok(())
+    }
+
+    /// Attach canonical hidden corrections to a previously drawn subfield
+    /// domain. It is a no-op unless C6 witness collection was enabled.
+    pub fn record_c6_subfield_corrections(
+        &mut self,
+        domain: u64,
+        corrections: &[u64],
+    ) -> Result<(), String> {
+        if self.c6_subfield_witness_closed {
+            return Err("C6 subfield witness collection is already closed".to_owned());
+        }
+        if let Some(witness) = &mut self.c6_subfield_witness {
+            witness.record_corrections(domain, corrections)?;
+        }
+        Ok(())
+    }
+
+    /// Close and move out the secret sidecar after the last subfield source.
+    ///
+    /// Tags for sources that the historical proof never opens are expanded
+    /// here from their already-consumed correlation ranges. This is opt-in
+    /// witness materialization, not a new correlation draw. Later full-field
+    /// closure draws remain legal; any later subfield draw fails closed
+    /// because it would escape the committed witness.
+    pub fn finish_c6_subfield_witness_collection(
+        &mut self,
+    ) -> Result<C6SubfieldWitnessAudit, String> {
+        let missing_tags = self
+            .c6_subfield_witness
+            .as_ref()
+            .ok_or_else(|| "C6 subfield witness collection is not active".to_owned())?
+            .missing_tag_draws()?;
+        for (domain, count) in missing_tags {
+            let _ = self.draw_sub_tags(domain, count);
+        }
+        let schedule = self
+            .schedule_audit()
+            .ok_or_else(|| "C6 subfield witness lacks its schedule audit".to_owned())?;
+        let witness = self
+            .c6_subfield_witness
+            .take()
+            .ok_or_else(|| "C6 subfield witness collection is not active".to_owned())?;
+        self.c6_subfield_witness_closed = true;
+        witness.finish(&schedule)
     }
 
     pub fn allocation_digest_hex(&self) -> Option<String> {
@@ -751,6 +1116,10 @@ impl CorrelationStream {
         rows: usize,
         cols: usize,
     ) -> SubMaskRowsReservation {
+        assert!(
+            !self.c6_subfield_witness_closed,
+            "subfield draw after the C6 witness sidecar was closed"
+        );
         let total = validate_sub_mask_rows(base_domain, rows, cols);
         if let ProverBackend::Pooled(pooled) = &self.backend {
             pooled.assert_sub_capacity(total);
@@ -790,6 +1159,12 @@ impl CorrelationStream {
                 );
             }
         }
+        if let Some(witness) = &mut self.c6_subfield_witness {
+            let masks = reservation.clone().into_host_masks();
+            witness
+                .record_masks(base_domain, rows, cols, &masks)
+                .expect("C6 subfield witness mask schedule");
+        }
         reservation
     }
 
@@ -811,13 +1186,17 @@ impl CorrelationStream {
     pub fn draw_sub_tags(&mut self, dom: u64, n: usize) -> Vec<Fp2> {
         let drawn = self.ledger.consumed.get(&dom).copied();
         assert_eq!(drawn, Some(n as u64), "tag expansion must match the mask draw at {dom:#x}");
-        match &mut self.backend {
+        let tags = match &mut self.backend {
             ProverBackend::Mock { seed, .. } => {
                 let mut ms = FpStream::domain_separated(*seed, dom | TAG_BIT);
                 (0..n).map(|_| ms.next_fp2()).collect()
             }
             ProverBackend::Pooled(p) => p.draw_sub_tags(dom, n),
+        };
+        if let Some(witness) = &mut self.c6_subfield_witness {
+            witness.record_tags(dom, &tags).expect("C6 subfield witness tag schedule");
         }
+        tags
     }
 
     /// Draw `n` full-field correlations at `dom`. One-shot per domain.
@@ -1409,6 +1788,71 @@ mod tests {
         assert!(!noncanonical.is_canonical());
         assert!(prover.enable_schedule_audit().is_err());
         assert!(verifier.enable_schedule_audit().is_err());
+    }
+
+    #[test]
+    fn c6_subfield_witness_sidecar_is_exact_opt_in_and_fail_closed() {
+        let mut prover = CorrelationStream::new([0xC6; 32]);
+        prover.enable_c6_subfield_witness_collection().unwrap();
+
+        let first = prover.draw_subs(10, 2);
+        let first_corrections = [5, 6];
+        prover.record_c6_subfield_corrections(10, &first_corrections).unwrap();
+        let second_masks = prover.draw_sub_masks(20, 3);
+        let second_corrections = [7, 8, 9];
+        prover.record_c6_subfield_corrections(20, &second_corrections).unwrap();
+        let second_tags = prover.draw_sub_tags(20, 3);
+        assert_eq!(second_tags, prover.draw_sub_tags(20, 3));
+        let _ = prover.draw_fulls(30, 2);
+
+        let schedule = prover.schedule_audit().unwrap();
+        let witness = prover.finish_c6_subfield_witness_collection().unwrap();
+        witness.validate_against(&schedule).unwrap();
+        assert_eq!(witness.len(), 5);
+        assert_eq!(witness.draws().len(), 2);
+        assert_eq!(
+            witness.corrections().iter().map(|value| value.value()).collect::<Vec<_>>(),
+            [5, 6, 7, 8, 9]
+        );
+        assert_eq!(witness.tags()[..2], [first[0].m, first[1].m]);
+        assert_eq!(witness.tags()[2..], second_tags);
+        for index in 0..2 {
+            assert_eq!(
+                witness.plaintext(index),
+                Some(first[index].r + Fp::new(first_corrections[index]))
+            );
+        }
+        for index in 0..3 {
+            assert_eq!(
+                witness.plaintext(2 + index),
+                Some(second_masks[index] + Fp::new(second_corrections[index]))
+            );
+        }
+
+        let mut changed = witness.clone();
+        changed.corrections[0] += Fp::ONE;
+        assert!(changed.validate_against(&schedule).is_err());
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = prover.draw_sub_masks(40, 1);
+        }))
+        .is_err());
+
+        let mut lazy_tags = CorrelationStream::new([0xC7; 32]);
+        lazy_tags.enable_c6_subfield_witness_collection().unwrap();
+        let _ = lazy_tags.draw_sub_masks(50, 1);
+        lazy_tags.record_c6_subfield_corrections(50, &[1]).unwrap();
+        let lazy_witness = lazy_tags.finish_c6_subfield_witness_collection().unwrap();
+        assert_ne!(lazy_witness.tags(), &[Fp2::ZERO]);
+
+        let mut incomplete = CorrelationStream::new([0xC8; 32]);
+        incomplete.enable_c6_subfield_witness_collection().unwrap();
+        let _ = incomplete.draw_sub_masks(51, 1);
+        let error = incomplete.finish_c6_subfield_witness_collection().unwrap_err();
+        assert!(error.contains("lacks its hidden corrections"));
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = incomplete.draw_sub_masks(52, 1);
+        }))
+        .is_err());
     }
 
     #[test]

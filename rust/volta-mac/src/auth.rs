@@ -26,6 +26,7 @@ pub fn auth_prover(
         corr.push((x - s.r).value());
         authed.push(ProverSubAuthed { x, m: s.m });
     }
+    stream.record_c6_subfield_corrections(dom, &corr).expect("C6 auth-prover correction schedule");
     tx.append("auth_corrections", 8 * corr.len() as u64);
     (corr, authed)
 }

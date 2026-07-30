@@ -17,11 +17,11 @@ pub use auth::{
 };
 pub use authed::{ProverAuthed, ProverSubAuthed, VerifierKey};
 pub use corr::{
-    ConnectionCorrelationScope, CorrCounters, CorrIndex, CorrReservationError, CorrScheduleAudit,
-    CorrScheduleDraw, CorrScheduleKind, CorrScheduleRole, CorrelationStream, FullCorr,
-    FullCorrBatchReservation, FullCorrRange, FullKeyBatchReservation, ProductMaskCorr, SubCorr,
-    SubMaskRowsReservation, VerifierCtx, FULL_BIT, LEDGER_SHADOW_BIT, RESERVED_DOMAIN_BITS,
-    TAG_BIT,
+    C6SubfieldWitnessAudit, C6SubfieldWitnessDraw, ConnectionCorrelationScope, CorrCounters,
+    CorrIndex, CorrReservationError, CorrScheduleAudit, CorrScheduleDraw, CorrScheduleKind,
+    CorrScheduleRole, CorrelationStream, FullCorr, FullCorrBatchReservation, FullCorrRange,
+    FullKeyBatchReservation, ProductMaskCorr, SubCorr, SubMaskRowsReservation, VerifierCtx,
+    FULL_BIT, LEDGER_SHADOW_BIT, RESERVED_DOMAIN_BITS, TAG_BIT,
 };
 pub use open::{
     fresh_zero_mask, zero_batch_exchange, zero_batch_prover, zero_batch_verify, zero_mask_key,

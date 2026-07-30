@@ -1219,10 +1219,16 @@ pub(crate) fn auth_matrix_rows_p(
     assert_eq!(x.len(), rows * cols);
     let mut corr = Vec::with_capacity(rows * cols);
     for row in 0..rows {
-        let masks = stream.draw_sub_masks(base_dom + row as u64, cols);
+        let domain = base_dom + row as u64;
+        let masks = stream.draw_sub_masks(domain, cols);
+        let mut row_corrections = Vec::with_capacity(cols);
         for (j, &r) in masks.iter().enumerate() {
-            corr.push((Fp::from_i64(x[row * cols + j] as i64) - r).value());
+            row_corrections.push((Fp::from_i64(x[row * cols + j] as i64) - r).value());
         }
+        stream
+            .record_c6_subfield_corrections(domain, &row_corrections)
+            .expect("C6 matrix-row correction schedule");
+        corr.extend(row_corrections);
     }
     tx.append("auth_corrections", 8 * corr.len() as u64);
     corr
@@ -1442,6 +1448,7 @@ pub(crate) fn auth_fp_vec_p(
 ) -> Vec<u64> {
     let masks = stream.draw_sub_masks(dom, vals.len());
     let corr: Vec<u64> = vals.iter().zip(&masks).map(|(&v, &r)| (v - r).value()).collect();
+    stream.record_c6_subfield_corrections(dom, &corr).expect("C6 field-vector correction schedule");
     tx.append("auth_corrections", 8 * corr.len() as u64);
     corr
 }
@@ -1477,6 +1484,9 @@ pub(crate) fn auth_device_vector_p<T: ResidentBaseElement>(
         (Ok(value), Ok(())) => value,
         (Err(error), _) | (_, Err(error)) => return Err(error),
     };
+    stream
+        .record_c6_subfield_corrections(dom, &corr)
+        .expect("C6 resident-vector correction schedule");
     tx.append("auth_corrections", 8 * corr.len() as u64);
     Ok(corr)
 }
@@ -1549,6 +1559,12 @@ pub(crate) fn auth_matrix_rows_resident_p<T: ResidentBaseElement>(
         (Ok(value), Ok(())) => value,
         (Err(error), _) | (_, Err(error)) => return Err(error),
     };
+    for row in 0..rows {
+        let first = row * cols;
+        stream
+            .record_c6_subfield_corrections(base_dom + row as u64, &corr[first..first + cols])
+            .expect("C6 resident-matrix correction schedule");
+    }
     tx.append("auth_corrections", 8 * corr.len() as u64);
     Ok(corr)
 }

@@ -410,7 +410,7 @@ fn run_protocol(all_equal: bool, tamper: Tamper, with_pcs: bool, seed_tag: u8) -
             let prod_dom = closure_p.take(1);
             if prod_dom == closure_v.take(1) {
                 let mask = stream.draw_product_mask(prod_dom, pout.prod.len());
-                let key = verifier.expand_product_mask_key(prod_dom, vout.kprod.len());
+                let key = verifier.expand_product_mask_verifier_key(prod_dom, vout.kprod.len());
                 let product = prod_batch_prover(&pout.prod, chi, mask, &mut txp);
                 prod_ok = prod_batch_verify(&vout.kprod, key, delta, chi, &product);
             }

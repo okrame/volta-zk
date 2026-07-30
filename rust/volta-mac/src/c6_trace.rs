@@ -13,6 +13,9 @@ pub const C6_OPERATION_PLAN_VERSION: u32 = 1;
 #[cfg(feature = "c6-trace")]
 const C6_OPERATION_NODE_DOMAIN: &str = "volta/proto/c6/operation-plan/nodes/v1";
 #[cfg(feature = "c6-trace")]
+const C6_OPERATION_NODE_BLOCK_DOMAIN: &str =
+    "volta/proto/c6/operation-plan/node-block-diagnostic/v1";
+#[cfg(feature = "c6-trace")]
 const C6_OPERATION_ROOT_DOMAIN: &str = "volta/proto/c6/operation-plan/roots/v1";
 #[cfg(feature = "c6-trace")]
 const C6_OPERATION_PLAN_DOMAIN: &str = "volta/proto/c6/operation-plan/v1";
@@ -42,7 +45,10 @@ pub struct C6TraceToken;
 /// Copyable ghost provenance attached only by a `c6-trace` build.
 #[cfg(feature = "c6-trace")]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub struct C6TraceToken(u32);
+pub struct C6TraceToken {
+    namespace: u32,
+    handle: u32,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum C6TraceNode {
@@ -60,11 +66,14 @@ pub struct C6TraceProductClosure {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6ProverTraceSnapshot {
+    pub namespace: u32,
     pub source_count: u32,
     pub nodes: Vec<C6TraceNode>,
     pub zero_roots: Vec<C6TraceToken>,
     pub products: Vec<C6TraceProductClosure>,
 }
+
+pub type C6VerifierTraceSnapshot = C6ProverTraceSnapshot;
 
 /// Public source identity consumed by the operation-plan normalizer.
 ///
@@ -125,14 +134,45 @@ pub struct C6OperationPlanIdentity {
     pub program_digest: [u8; 32],
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6OperationPlanDiagnostics {
     pub raw_operation_count: u64,
     pub reachable_operation_count: u64,
     pub omitted_operation_count: u64,
+    pub node_digest: [u8; 32],
+    pub root_digest: [u8; 32],
+    /// Diagnostic-only independent hashes over consecutive canonical node
+    /// records. These do not participate in program identity.
+    pub canonical_node_block_digests: Vec<[u8; 32]>,
+    /// Empty unless an explicit diagnostic normalization requested one
+    /// canonical block.
+    pub captured_canonical_nodes: Vec<C6CanonicalNodeDebug>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6CanonicalNodeDebug {
+    pub canonical: u32,
+    pub terminal: Option<C6CanonicalTerminalDebug>,
+    pub node: C6CanonicalNodeDebugKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum C6CanonicalTerminalDebug {
+    ProductOperand { closure: u64, triple: u64, operand: u8 },
+    ProductMask { closure: u64 },
+    ZeroRoot { index: u64 },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum C6CanonicalNodeDebugKind {
+    Source(u32),
+    Public(Fp2),
+    Add { lhs: u32, rhs: u32 },
+    Sub { lhs: u32, rhs: u32 },
+    Scale { value: u32, scalar: Fp2 },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6CanonicalOperationPlan {
     pub identity: C6OperationPlanIdentity,
     pub diagnostics: C6OperationPlanDiagnostics,
@@ -146,9 +186,18 @@ const SOURCE_TOKEN_BIT: u32 = 1 << 31;
 const SOURCE_TOKEN_MASK: u32 = SOURCE_TOKEN_BIT - 1;
 
 #[cfg(feature = "c6-trace")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum C6TraceParty {
+    Prover,
+    Verifier,
+}
+
+#[cfg(feature = "c6-trace")]
 #[derive(Default)]
 struct C6TraceRuntime {
-    active: bool,
+    party: Option<C6TraceParty>,
+    namespace: u32,
+    next_namespace: u32,
     source_count: u32,
     nodes: Vec<C6TraceNode>,
     zero_roots: Vec<C6TraceToken>,
@@ -174,17 +223,7 @@ fn with_runtime<T>(
 pub fn begin_c6_prover_trace() -> Result<(), C6TraceError> {
     #[cfg(feature = "c6-trace")]
     {
-        return with_runtime(|runtime| {
-            if runtime.active {
-                return Err(C6TraceError::new("a C6 prover trace is already active"));
-            }
-            runtime.active = true;
-            runtime.source_count = 0;
-            runtime.nodes.clear();
-            runtime.zero_roots.clear();
-            runtime.products.clear();
-            Ok(())
-        });
+        return begin_c6_trace(C6TraceParty::Prover);
     }
     #[cfg(not(feature = "c6-trace"))]
     {
@@ -195,23 +234,75 @@ pub fn begin_c6_prover_trace() -> Result<(), C6TraceError> {
 pub fn finish_c6_prover_trace() -> Result<C6ProverTraceSnapshot, C6TraceError> {
     #[cfg(feature = "c6-trace")]
     {
-        return with_runtime(|runtime| {
-            if !runtime.active {
-                return Err(C6TraceError::new("no C6 prover trace is active"));
-            }
-            runtime.active = false;
-            Ok(C6ProverTraceSnapshot {
-                source_count: runtime.source_count,
-                nodes: std::mem::take(&mut runtime.nodes),
-                zero_roots: std::mem::take(&mut runtime.zero_roots),
-                products: std::mem::take(&mut runtime.products),
-            })
-        });
+        return finish_c6_trace(C6TraceParty::Prover);
     }
     #[cfg(not(feature = "c6-trace"))]
     {
         Err(C6TraceError::new("C6 prover tracing requires the diagnostic c6-trace feature"))
     }
+}
+
+pub fn begin_c6_verifier_trace() -> Result<(), C6TraceError> {
+    #[cfg(feature = "c6-trace")]
+    {
+        return begin_c6_trace(C6TraceParty::Verifier);
+    }
+    #[cfg(not(feature = "c6-trace"))]
+    {
+        Err(C6TraceError::new("C6 verifier tracing requires the diagnostic c6-trace feature"))
+    }
+}
+
+pub fn finish_c6_verifier_trace() -> Result<C6VerifierTraceSnapshot, C6TraceError> {
+    #[cfg(feature = "c6-trace")]
+    {
+        return finish_c6_trace(C6TraceParty::Verifier);
+    }
+    #[cfg(not(feature = "c6-trace"))]
+    {
+        Err(C6TraceError::new("C6 verifier tracing requires the diagnostic c6-trace feature"))
+    }
+}
+
+#[cfg(feature = "c6-trace")]
+fn begin_c6_trace(party: C6TraceParty) -> Result<(), C6TraceError> {
+    with_runtime(|runtime| {
+        if runtime.party.is_some() {
+            return Err(C6TraceError::new("a C6 operation trace is already active"));
+        }
+        runtime.next_namespace = runtime
+            .next_namespace
+            .checked_add(1)
+            .ok_or_else(|| C6TraceError::new("C6 trace namespace counter exhausted"))?;
+        runtime.party = Some(party);
+        runtime.namespace = runtime.next_namespace;
+        runtime.source_count = 0;
+        runtime.nodes.clear();
+        runtime.zero_roots.clear();
+        runtime.products.clear();
+        Ok(())
+    })
+}
+
+#[cfg(feature = "c6-trace")]
+fn finish_c6_trace(expected_party: C6TraceParty) -> Result<C6ProverTraceSnapshot, C6TraceError> {
+    with_runtime(|runtime| {
+        if runtime.party != Some(expected_party) {
+            return Err(C6TraceError::new(
+                "C6 operation trace finished by the wrong or inactive party",
+            ));
+        }
+        let namespace = runtime.namespace;
+        runtime.party = None;
+        runtime.namespace = 0;
+        Ok(C6ProverTraceSnapshot {
+            namespace,
+            source_count: runtime.source_count,
+            nodes: std::mem::take(&mut runtime.nodes),
+            zero_roots: std::mem::take(&mut runtime.zero_roots),
+            products: std::mem::take(&mut runtime.products),
+        })
+    })
 }
 
 #[cfg(feature = "c6-trace")]
@@ -227,6 +318,22 @@ struct C6TraceNormalizer<'a> {
     canonical_node_count: u32,
     reachable_operation_count: u64,
     node_hasher: blake3::Hasher,
+    node_block_hasher: blake3::Hasher,
+    node_block_len: u32,
+    node_block_digests: Vec<[u8; 32]>,
+    capture_block: Option<u64>,
+    captured_nodes: Vec<C6CanonicalNodeDebug>,
+    current_terminal: Option<C6CanonicalTerminalDebug>,
+}
+
+#[cfg(feature = "c6-trace")]
+const C6_OPERATION_DIAGNOSTIC_BLOCK_NODES: u32 = 64;
+
+#[cfg(feature = "c6-trace")]
+fn new_node_block_hasher(block_index: u64) -> blake3::Hasher {
+    let mut hasher = blake3::Hasher::new_derive_key(C6_OPERATION_NODE_BLOCK_DOMAIN);
+    hasher.update(&block_index.to_le_bytes());
+    hasher
 }
 
 #[cfg(feature = "c6-trace")]
@@ -234,7 +341,11 @@ impl<'a> C6TraceNormalizer<'a> {
     fn new(
         trace: &'a C6ProverTraceSnapshot,
         manifest: &'a C6TraceSourceManifest,
+        capture_block: Option<u64>,
     ) -> Result<Self, C6TraceError> {
+        if trace.namespace == 0 {
+            return Err(C6TraceError::new("C6 trace snapshot has no namespace"));
+        }
         if trace.source_count != manifest.source_count {
             return Err(C6TraceError::new(format!(
                 "C6 trace source count {} differs from manifest {}",
@@ -253,6 +364,12 @@ impl<'a> C6TraceNormalizer<'a> {
             canonical_node_count: 0,
             reachable_operation_count: 0,
             node_hasher: blake3::Hasher::new_derive_key(C6_OPERATION_NODE_DOMAIN),
+            node_block_hasher: new_node_block_hasher(0),
+            node_block_len: 0,
+            node_block_digests: Vec::new(),
+            capture_block,
+            captured_nodes: Vec::new(),
+            current_terminal: None,
         })
     }
 
@@ -260,11 +377,14 @@ impl<'a> C6TraceNormalizer<'a> {
         if token.is_untracked() {
             return Err(C6TraceError::new("C6 canonical terminal lacks provenance"));
         }
+        if !token.belongs_to(self.trace.namespace) {
+            return Err(C6TraceError::new("C6 trace token belongs to a different namespace"));
+        }
         if token == C6TraceToken::public_zero() || token.is_source() {
             return Ok(None);
         }
         let index = token
-            .0
+            .handle
             .checked_sub(2)
             .ok_or_else(|| C6TraceError::new("C6 trace token encoding is invalid"))?
             as usize;
@@ -275,6 +395,9 @@ impl<'a> C6TraceNormalizer<'a> {
     }
 
     fn existing_canonical(&self, token: C6TraceToken) -> Result<Option<u32>, C6TraceError> {
+        if !token.is_untracked() && !token.belongs_to(self.trace.namespace) {
+            return Err(C6TraceError::new("C6 trace token belongs to a different namespace"));
+        }
         if token == C6TraceToken::public_zero() {
             return Ok((self.public_zero_canonical != UNASSIGNED_CANONICAL_NODE)
                 .then_some(self.public_zero_canonical));
@@ -303,9 +426,42 @@ impl<'a> C6TraceNormalizer<'a> {
         Ok(canonical)
     }
 
+    fn hash_node_bytes(&mut self, bytes: &[u8]) {
+        self.node_hasher.update(bytes);
+        self.node_block_hasher.update(bytes);
+    }
+
     fn hash_node_prefix(&mut self, canonical: u32, tag: u8) {
-        self.node_hasher.update(&canonical.to_le_bytes());
-        self.node_hasher.update(&[tag]);
+        self.hash_node_bytes(&canonical.to_le_bytes());
+        self.hash_node_bytes(&[tag]);
+    }
+
+    fn finish_node_record(&mut self) {
+        self.node_block_len += 1;
+        if self.node_block_len == C6_OPERATION_DIAGNOSTIC_BLOCK_NODES {
+            self.node_block_digests.push(*self.node_block_hasher.finalize().as_bytes());
+            self.node_block_len = 0;
+            self.node_block_hasher = new_node_block_hasher(self.node_block_digests.len() as u64);
+        }
+    }
+
+    fn finish_node_blocks(&mut self) {
+        if self.node_block_len != 0 {
+            self.node_block_digests.push(*self.node_block_hasher.finalize().as_bytes());
+            self.node_block_len = 0;
+        }
+    }
+
+    fn capture_node(&mut self, canonical: u32, node: C6CanonicalNodeDebugKind) {
+        if self.capture_block
+            == Some(u64::from(canonical) / u64::from(C6_OPERATION_DIAGNOSTIC_BLOCK_NODES))
+        {
+            self.captured_nodes.push(C6CanonicalNodeDebug {
+                canonical,
+                terminal: self.current_terminal,
+                node,
+            });
+        }
     }
 
     fn assign_leaf(
@@ -317,7 +473,9 @@ impl<'a> C6TraceNormalizer<'a> {
             if self.public_zero_canonical == UNASSIGNED_CANONICAL_NODE {
                 let canonical = self.next_canonical()?;
                 self.hash_node_prefix(canonical, 2);
-                hash_trace_fp2(&mut self.node_hasher, Fp2::ZERO);
+                self.hash_node_fp2(Fp2::ZERO);
+                self.capture_node(canonical, C6CanonicalNodeDebugKind::Public(Fp2::ZERO));
+                self.finish_node_record();
                 self.public_zero_canonical = canonical;
             }
             return Ok(self.public_zero_canonical);
@@ -339,9 +497,16 @@ impl<'a> C6TraceNormalizer<'a> {
         }
         let canonical = self.next_canonical()?;
         self.hash_node_prefix(canonical, 1);
-        self.node_hasher.update(&source.to_le_bytes());
+        self.hash_node_bytes(&source.to_le_bytes());
+        self.capture_node(canonical, C6CanonicalNodeDebugKind::Source(source));
+        self.finish_node_record();
         self.source_to_canonical[source as usize] = canonical;
         Ok(canonical)
+    }
+
+    fn hash_node_fp2(&mut self, value: Fp2) {
+        self.hash_node_bytes(&value.c0.value().to_le_bytes());
+        self.hash_node_bytes(&value.c1.value().to_le_bytes());
     }
 
     fn child_tokens(&self, raw_index: usize) -> Result<[Option<C6TraceToken>; 2], C6TraceError> {
@@ -376,7 +541,8 @@ impl<'a> C6TraceNormalizer<'a> {
         match self.trace.nodes[raw_index] {
             C6TraceNode::Public(value) => {
                 self.hash_node_prefix(canonical, 2);
-                hash_trace_fp2(&mut self.node_hasher, value);
+                self.hash_node_fp2(value);
+                self.capture_node(canonical, C6CanonicalNodeDebugKind::Public(value));
             }
             C6TraceNode::Add { lhs, rhs } => {
                 self.hash_node_prefix(canonical, 3);
@@ -386,8 +552,9 @@ impl<'a> C6TraceNormalizer<'a> {
                 let rhs = self.existing_canonical(rhs)?.ok_or_else(|| {
                     C6TraceError::new("C6 trace Add rhs was not normalized first")
                 })?;
-                self.node_hasher.update(&lhs.to_le_bytes());
-                self.node_hasher.update(&rhs.to_le_bytes());
+                self.hash_node_bytes(&lhs.to_le_bytes());
+                self.hash_node_bytes(&rhs.to_le_bytes());
+                self.capture_node(canonical, C6CanonicalNodeDebugKind::Add { lhs, rhs });
             }
             C6TraceNode::Sub { lhs, rhs } => {
                 self.hash_node_prefix(canonical, 4);
@@ -397,18 +564,21 @@ impl<'a> C6TraceNormalizer<'a> {
                 let rhs = self.existing_canonical(rhs)?.ok_or_else(|| {
                     C6TraceError::new("C6 trace Sub rhs was not normalized first")
                 })?;
-                self.node_hasher.update(&lhs.to_le_bytes());
-                self.node_hasher.update(&rhs.to_le_bytes());
+                self.hash_node_bytes(&lhs.to_le_bytes());
+                self.hash_node_bytes(&rhs.to_le_bytes());
+                self.capture_node(canonical, C6CanonicalNodeDebugKind::Sub { lhs, rhs });
             }
             C6TraceNode::Scale { value, scalar } => {
                 self.hash_node_prefix(canonical, 5);
                 let value = self.existing_canonical(value)?.ok_or_else(|| {
                     C6TraceError::new("C6 trace Scale operand was not normalized first")
                 })?;
-                self.node_hasher.update(&value.to_le_bytes());
-                hash_trace_fp2(&mut self.node_hasher, scalar);
+                self.hash_node_bytes(&value.to_le_bytes());
+                self.hash_node_fp2(scalar);
+                self.capture_node(canonical, C6CanonicalNodeDebugKind::Scale { value, scalar });
             }
         }
+        self.finish_node_record();
         self.raw_to_canonical[raw_index] = canonical;
         self.reachable_operation_count = self
             .reachable_operation_count
@@ -469,12 +639,6 @@ impl<'a> C6TraceNormalizer<'a> {
     }
 }
 
-#[cfg(feature = "c6-trace")]
-fn hash_trace_fp2(hasher: &mut blake3::Hasher, value: Fp2) {
-    hasher.update(&value.c0.value().to_le_bytes());
-    hasher.update(&value.c1.value().to_le_bytes());
-}
-
 /// Normalize one diagnostic trace without consulting authenticated values.
 ///
 /// Product closures precede zero roots exactly as frozen in the C6 design.
@@ -483,6 +647,25 @@ fn hash_trace_fp2(hasher: &mut blake3::Hasher, value: Fp2) {
 pub fn normalize_c6_operation_trace(
     trace: &C6ProverTraceSnapshot,
     manifest: &C6TraceSourceManifest,
+) -> Result<C6CanonicalOperationPlan, C6TraceError> {
+    normalize_c6_operation_trace_impl(trace, manifest, None)
+}
+
+/// Targeted diagnostic twin of [`normalize_c6_operation_trace`]. The
+/// captured block is informative only and cannot affect program identity.
+#[doc(hidden)]
+pub fn normalize_c6_operation_trace_debug_block(
+    trace: &C6ProverTraceSnapshot,
+    manifest: &C6TraceSourceManifest,
+    block: u64,
+) -> Result<C6CanonicalOperationPlan, C6TraceError> {
+    normalize_c6_operation_trace_impl(trace, manifest, Some(block))
+}
+
+fn normalize_c6_operation_trace_impl(
+    trace: &C6ProverTraceSnapshot,
+    manifest: &C6TraceSourceManifest,
+    capture_block: Option<u64>,
 ) -> Result<C6CanonicalOperationPlan, C6TraceError> {
     #[cfg(feature = "c6-trace")]
     {
@@ -496,7 +679,7 @@ pub fn normalize_c6_operation_trace(
         let zero_root_count = u32::try_from(trace.zero_roots.len())
             .map_err(|_| C6TraceError::new("C6 zero-root count exceeds u32"))?;
         let mut product_triple_count = 0u64;
-        let mut normalizer = C6TraceNormalizer::new(trace, manifest)?;
+        let mut normalizer = C6TraceNormalizer::new(trace, manifest, capture_block)?;
         let mut root_hasher = blake3::Hasher::new_derive_key(C6_OPERATION_ROOT_DOMAIN);
         root_hasher.update(&product_closure_count.to_le_bytes());
 
@@ -517,27 +700,38 @@ pub fn normalize_c6_operation_trace(
                 .ok_or_else(|| C6TraceError::new("C6 product triple count overflows"))?;
             root_hasher.update(&(closure_index as u64).to_le_bytes());
             root_hasher.update(&triple_count.to_le_bytes());
-            for triple in &closure.triples {
-                for &operand in triple {
+            for (triple_index, triple) in closure.triples.iter().enumerate() {
+                for (operand_index, &operand) in triple.iter().enumerate() {
+                    normalizer.current_terminal = Some(C6CanonicalTerminalDebug::ProductOperand {
+                        closure: closure_index as u64,
+                        triple: triple_index as u64,
+                        operand: operand_index as u8,
+                    });
                     let canonical = normalizer.normalize_root(operand, true)?;
                     root_hasher.update(&canonical.to_le_bytes());
                 }
             }
+            normalizer.current_terminal =
+                Some(C6CanonicalTerminalDebug::ProductMask { closure: closure_index as u64 });
             let canonical_mask = normalizer.normalize_root(closure.mask, false)?;
             root_hasher.update(&canonical_mask.to_le_bytes());
         }
 
         root_hasher.update(&zero_root_count.to_le_bytes());
-        for &root in &trace.zero_roots {
+        for (index, &root) in trace.zero_roots.iter().enumerate() {
+            normalizer.current_terminal =
+                Some(C6CanonicalTerminalDebug::ZeroRoot { index: index as u64 });
             let canonical = normalizer.normalize_root(root, true)?;
             root_hasher.update(&canonical.to_le_bytes());
         }
+        normalizer.current_terminal = None;
 
         let raw_operation_count = u64::try_from(trace.nodes.len())
             .map_err(|_| C6TraceError::new("C6 raw operation count exceeds u64"))?;
         let omitted_operation_count = raw_operation_count
             .checked_sub(normalizer.reachable_operation_count)
             .ok_or_else(|| C6TraceError::new("C6 reachable operation count exceeds raw count"))?;
+        normalizer.finish_node_blocks();
         let node_digest = *normalizer.node_hasher.finalize().as_bytes();
         let root_digest = *root_hasher.finalize().as_bytes();
         let mut plan_hasher = blake3::Hasher::new_derive_key(C6_OPERATION_PLAN_DOMAIN);
@@ -567,12 +761,16 @@ pub fn normalize_c6_operation_trace(
                 raw_operation_count,
                 reachable_operation_count: normalizer.reachable_operation_count,
                 omitted_operation_count,
+                node_digest,
+                root_digest,
+                canonical_node_block_digests: normalizer.node_block_digests,
+                captured_canonical_nodes: normalizer.captured_nodes,
             },
         });
     }
     #[cfg(not(feature = "c6-trace"))]
     {
-        let _ = (trace, manifest);
+        let _ = (trace, manifest, capture_block);
         Err(C6TraceError::new(
             "C6 operation-plan normalization requires the diagnostic c6-trace feature",
         ))
@@ -583,7 +781,7 @@ impl C6TraceToken {
     pub(crate) const fn untracked() -> Self {
         #[cfg(feature = "c6-trace")]
         {
-            Self(0)
+            Self { namespace: 0, handle: 0 }
         }
         #[cfg(not(feature = "c6-trace"))]
         {
@@ -594,7 +792,7 @@ impl C6TraceToken {
     pub(crate) const fn public_zero() -> Self {
         #[cfg(feature = "c6-trace")]
         {
-            Self(PUBLIC_ZERO_TOKEN)
+            Self { namespace: 0, handle: PUBLIC_ZERO_TOKEN }
         }
         #[cfg(not(feature = "c6-trace"))]
         {
@@ -604,18 +802,23 @@ impl C6TraceToken {
 
     #[cfg(feature = "c6-trace")]
     fn is_untracked(self) -> bool {
-        self.0 == 0
+        self.handle == 0
     }
 
     #[cfg(feature = "c6-trace")]
     fn is_source(self) -> bool {
-        self.0 & SOURCE_TOKEN_BIT != 0
+        self.handle & SOURCE_TOKEN_BIT != 0
+    }
+
+    #[cfg(feature = "c6-trace")]
+    fn belongs_to(self, namespace: u32) -> bool {
+        self == Self::public_zero() || self.namespace == namespace
     }
 
     pub fn source_index(self) -> Option<u32> {
         #[cfg(feature = "c6-trace")]
         {
-            return self.is_source().then_some((self.0 & SOURCE_TOKEN_MASK).checked_sub(1)?);
+            return self.is_source().then_some((self.handle & SOURCE_TOKEN_MASK).checked_sub(1)?);
         }
         #[cfg(not(feature = "c6-trace"))]
         {
@@ -640,7 +843,7 @@ impl C6TraceToken {
             return Err(C6TraceError::new("C6 trace source index exceeds token capacity"));
         }
         with_runtime(|runtime| {
-            if !runtime.active {
+            if runtime.party.is_none() {
                 return Err(C6TraceError::new("C6 trace source allocated without an active trace"));
             }
             if index != runtime.source_count {
@@ -653,7 +856,7 @@ impl C6TraceToken {
                 .source_count
                 .checked_add(1)
                 .ok_or_else(|| C6TraceError::new("C6 trace source count overflows"))?;
-            Ok(Self(SOURCE_TOKEN_BIT | (index + 1)))
+            Ok(Self { namespace: runtime.namespace, handle: SOURCE_TOKEN_BIT | (index + 1) })
         })
     }
 
@@ -718,8 +921,18 @@ fn record_binary(
 #[cfg(feature = "c6-trace")]
 fn record_node(node: C6TraceNode) -> C6TraceToken {
     with_runtime(|runtime| {
-        if !runtime.active {
+        if runtime.party.is_none() {
             return Ok(C6TraceToken::untracked());
+        }
+        let operands = match node {
+            C6TraceNode::Public(_) => [None, None],
+            C6TraceNode::Add { lhs, rhs } | C6TraceNode::Sub { lhs, rhs } => [Some(lhs), Some(rhs)],
+            C6TraceNode::Scale { value, .. } => [Some(value), None],
+        };
+        if operands.into_iter().flatten().any(|token| !token.belongs_to(runtime.namespace)) {
+            return Err(C6TraceError::new(
+                "C6 operation mixes tokens from different trace namespaces",
+            ));
         }
         let index = u32::try_from(runtime.nodes.len())
             .map_err(|_| C6TraceError::new("C6 trace operation count exceeds u32"))?;
@@ -727,7 +940,7 @@ fn record_node(node: C6TraceNode) -> C6TraceToken {
             return Err(C6TraceError::new("C6 trace operation token capacity exhausted"));
         }
         runtime.nodes.push(node);
-        Ok(C6TraceToken(index + 2))
+        Ok(C6TraceToken { namespace: runtime.namespace, handle: index + 2 })
     })
     .unwrap_or_else(|error| panic!("C6 trace node HARD STOP: {error}"))
 }
@@ -737,11 +950,18 @@ pub fn record_c6_zero_roots(values: &[C6TraceToken]) -> Result<(), C6TraceError>
     #[cfg(feature = "c6-trace")]
     {
         return with_runtime(|runtime| {
-            if !runtime.active {
+            if runtime.party.is_none() {
                 return Ok(());
             }
             if let Some(index) = values.iter().position(|token| !token.is_tracked()) {
                 return Err(C6TraceError::new(format!("C6 zero root {index} lacks provenance")));
+            }
+            if let Some(index) =
+                values.iter().position(|token| !token.belongs_to(runtime.namespace))
+            {
+                return Err(C6TraceError::new(format!(
+                    "C6 zero root {index} belongs to a different trace namespace"
+                )));
             }
             runtime.zero_roots.extend_from_slice(values);
             Ok(())
@@ -762,11 +982,16 @@ pub fn record_c6_product_closure(
     #[cfg(feature = "c6-trace")]
     {
         return with_runtime(|runtime| {
-            if !runtime.active {
+            if runtime.party.is_none() {
                 return Ok(());
             }
             if !mask.is_tracked() {
                 return Err(C6TraceError::new("C6 ProductClosure mask lacks provenance"));
+            }
+            if !mask.belongs_to(runtime.namespace) {
+                return Err(C6TraceError::new(
+                    "C6 ProductClosure mask belongs to a different trace namespace",
+                ));
             }
             if mask.source_index().is_none() {
                 return Err(C6TraceError::new(
@@ -777,6 +1002,13 @@ pub fn record_c6_product_closure(
                 if let Some(operand) = triple.iter().position(|token| !token.is_tracked()) {
                     return Err(C6TraceError::new(format!(
                         "C6 ProductClosure triple {triple_index} operand {operand} lacks provenance"
+                    )));
+                }
+                if let Some(operand) =
+                    triple.iter().position(|token| !token.belongs_to(runtime.namespace))
+                {
+                    return Err(C6TraceError::new(format!(
+                        "C6 ProductClosure triple {triple_index} operand {operand} belongs to a different trace namespace"
                     )));
                 }
             }
@@ -796,13 +1028,16 @@ mod tests {
     use super::*;
 
     #[cfg(feature = "c6-trace")]
+    const TEST_NAMESPACE: u32 = 7;
+
+    #[cfg(feature = "c6-trace")]
     fn source(index: u32) -> C6TraceToken {
-        C6TraceToken(SOURCE_TOKEN_BIT | (index + 1))
+        C6TraceToken { namespace: TEST_NAMESPACE, handle: SOURCE_TOKEN_BIT | (index + 1) }
     }
 
     #[cfg(feature = "c6-trace")]
     fn operation(index: u32) -> C6TraceToken {
-        C6TraceToken(index + 2)
+        C6TraceToken { namespace: TEST_NAMESPACE, handle: index + 2 }
     }
 
     #[cfg(feature = "c6-trace")]
@@ -828,6 +1063,7 @@ mod tests {
         });
         let root = operation(offset + 2);
         C6ProverTraceSnapshot {
+            namespace: TEST_NAMESPACE,
             source_count: 3,
             nodes,
             zero_roots: vec![root],
@@ -843,7 +1079,7 @@ mod tests {
         #[cfg(not(feature = "c6-trace"))]
         assert_eq!(std::mem::size_of::<C6TraceToken>(), 0);
         #[cfg(feature = "c6-trace")]
-        assert_eq!(std::mem::size_of::<C6TraceToken>(), 4);
+        assert_eq!(std::mem::size_of::<C6TraceToken>(), 8);
     }
 
     #[cfg(feature = "c6-trace")]
@@ -865,10 +1101,46 @@ mod tests {
 
     #[cfg(feature = "c6-trace")]
     #[test]
+    fn prover_and_verifier_trace_lifecycles_are_sequential_and_independent() {
+        let record = || {
+            let value = C6TraceToken::source(0).unwrap();
+            let mask = C6TraceToken::source(1).unwrap();
+            let public = C6TraceToken::public(Fp2::ONE);
+            let sum = value.add(public);
+            record_c6_product_closure(&[[value, public, sum]], mask).unwrap();
+            record_c6_zero_roots(&[sum]).unwrap();
+        };
+
+        begin_c6_prover_trace().unwrap();
+        assert!(begin_c6_verifier_trace().is_err());
+        record();
+        let prover = finish_c6_prover_trace().unwrap();
+
+        begin_c6_verifier_trace().unwrap();
+        assert!(finish_c6_prover_trace().is_err());
+        let stale = record_c6_zero_roots(&[prover.zero_roots[0]]).unwrap_err();
+        assert!(stale.to_string().contains("different trace namespace"));
+        record();
+        let verifier = finish_c6_verifier_trace().unwrap();
+        assert_ne!(prover.namespace, verifier.namespace);
+
+        let manifest = manifest(2, vec![1]);
+        let prover = normalize_c6_operation_trace(&prover, &manifest).unwrap();
+        let verifier = normalize_c6_operation_trace(&verifier, &manifest).unwrap();
+        assert_eq!(prover.identity, verifier.identity);
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
     fn canonical_plan_ignores_raw_ids_and_unreachable_operations() {
         let manifest = manifest(3, vec![2]);
         let compact = normalize_c6_operation_trace(&allocation_trace(false), &manifest).unwrap();
+        let captured =
+            normalize_c6_operation_trace_debug_block(&allocation_trace(false), &manifest, 0)
+                .unwrap();
         let shifted = normalize_c6_operation_trace(&allocation_trace(true), &manifest).unwrap();
+        assert_eq!(compact.identity, captured.identity);
+        assert!(!captured.diagnostics.captured_canonical_nodes.is_empty());
         assert_eq!(compact.identity, shifted.identity);
         assert_eq!(compact.diagnostics.raw_operation_count, 3);
         assert_eq!(compact.diagnostics.reachable_operation_count, 3);
@@ -905,12 +1177,14 @@ mod tests {
     fn canonical_plan_preserves_declared_graph_sharing() {
         let manifest = manifest(2, vec![]);
         let shared = C6ProverTraceSnapshot {
+            namespace: TEST_NAMESPACE,
             source_count: 2,
             nodes: vec![C6TraceNode::Add { lhs: source(0), rhs: source(1) }],
             zero_roots: vec![operation(0), operation(0)],
             products: vec![],
         };
         let duplicated = C6ProverTraceSnapshot {
+            namespace: TEST_NAMESPACE,
             source_count: 2,
             nodes: vec![
                 C6TraceNode::Add { lhs: source(0), rhs: source(1) },
@@ -949,6 +1223,7 @@ mod tests {
     fn canonical_plan_rejects_invalid_operation_tokens() {
         let manifest = manifest(2, vec![]);
         let future = C6ProverTraceSnapshot {
+            namespace: TEST_NAMESPACE,
             source_count: 2,
             nodes: vec![
                 C6TraceNode::Add { lhs: operation(1), rhs: source(0) },
@@ -961,6 +1236,7 @@ mod tests {
         assert!(error.to_string().contains("future or cyclic"));
 
         let out_of_range = C6ProverTraceSnapshot {
+            namespace: TEST_NAMESPACE,
             source_count: 2,
             nodes: vec![],
             zero_roots: vec![source(2)],
@@ -970,6 +1246,7 @@ mod tests {
         assert!(error.to_string().contains("outside the source manifest"));
 
         let allocated_zero = C6ProverTraceSnapshot {
+            namespace: TEST_NAMESPACE,
             source_count: 2,
             nodes: vec![C6TraceNode::Public(Fp2::ZERO)],
             zero_roots: vec![operation(0)],
@@ -979,6 +1256,7 @@ mod tests {
         assert!(error.to_string().contains("noncanonical allocated public zero"));
 
         let untracked = C6ProverTraceSnapshot {
+            namespace: TEST_NAMESPACE,
             source_count: 2,
             nodes: vec![],
             zero_roots: vec![C6TraceToken::untracked()],
@@ -986,5 +1264,18 @@ mod tests {
         };
         let error = normalize_c6_operation_trace(&untracked, &manifest).unwrap_err();
         assert!(error.to_string().contains("lacks provenance"));
+
+        let mixed_namespace = C6ProverTraceSnapshot {
+            namespace: TEST_NAMESPACE,
+            source_count: 2,
+            nodes: vec![],
+            zero_roots: vec![C6TraceToken {
+                namespace: TEST_NAMESPACE + 1,
+                handle: SOURCE_TOKEN_BIT | 1,
+            }],
+            products: vec![],
+        };
+        let error = normalize_c6_operation_trace(&mixed_namespace, &manifest).unwrap_err();
+        assert!(error.to_string().contains("different namespace"));
     }
 }

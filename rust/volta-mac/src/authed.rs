@@ -33,6 +33,8 @@ pub struct ProverSubAuthed {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct VerifierKey {
     pub k: Fp2,
+    #[cfg(feature = "c6-trace")]
+    trace: C6TraceToken,
 }
 
 impl ProverAuthed {
@@ -142,27 +144,68 @@ impl ProverSubAuthed {
 }
 
 impl VerifierKey {
-    pub const ZERO: VerifierKey = VerifierKey { k: Fp2::ZERO };
+    pub const ZERO: VerifierKey =
+        VerifierKey::from_traced_key(Fp2::ZERO, C6TraceToken::public_zero());
+
+    #[inline]
+    pub const fn new(k: Fp2) -> VerifierKey {
+        Self::from_traced_key(k, C6TraceToken::untracked())
+    }
+
+    #[inline]
+    pub(crate) const fn from_traced_key(k: Fp2, _trace: C6TraceToken) -> VerifierKey {
+        VerifierKey {
+            k,
+            #[cfg(feature = "c6-trace")]
+            trace: _trace,
+        }
+    }
+
+    #[inline]
+    pub fn c6_trace_token(self) -> C6TraceToken {
+        #[cfg(feature = "c6-trace")]
+        {
+            self.trace
+        }
+        #[cfg(not(feature = "c6-trace"))]
+        {
+            C6TraceToken::untracked()
+        }
+    }
+
+    /// Re-centre a direct correlation key while preserving its source token.
+    /// The correction is leaf metadata, not an authenticated-value DAG node.
+    #[doc(hidden)]
+    #[inline]
+    pub fn with_same_c6_trace(self, k: Fp2) -> VerifierKey {
+        VerifierKey::from_traced_key(k, self.c6_trace_token())
+    }
 
     /// Public constant: `k = Δ·c` (tag 0 on the prover side).
     #[inline]
     pub fn from_public(c: Fp2, delta: Fp2) -> VerifierKey {
-        VerifierKey { k: delta * c }
+        VerifierKey::from_traced_key(delta * c, C6TraceToken::public(c))
     }
 
     #[inline]
     pub fn add(self, rhs: VerifierKey) -> VerifierKey {
-        VerifierKey { k: self.k + rhs.k }
+        VerifierKey::from_traced_key(
+            self.k + rhs.k,
+            self.c6_trace_token().add(rhs.c6_trace_token()),
+        )
     }
 
     #[inline]
     pub fn sub(self, rhs: VerifierKey) -> VerifierKey {
-        VerifierKey { k: self.k - rhs.k }
+        VerifierKey::from_traced_key(
+            self.k - rhs.k,
+            self.c6_trace_token().sub(rhs.c6_trace_token()),
+        )
     }
 
     #[inline]
     pub fn scale(self, c: Fp2) -> VerifierKey {
-        VerifierKey { k: self.k * c }
+        VerifierKey::from_traced_key(self.k * c, self.c6_trace_token().scale(c))
     }
 }
 
@@ -207,7 +250,7 @@ mod tests {
     fn rand_authed(rng: &mut impl Rng, delta: Fp2) -> BothSides {
         let x = rand_fp2(rng);
         let m = rand_fp2(rng);
-        BothSides { p: ProverAuthed::new(x, m), k: VerifierKey { k: m + delta * x } }
+        BothSides { p: ProverAuthed::new(x, m), k: VerifierKey::new(m + delta * x) }
     }
 
     #[test]
@@ -237,7 +280,7 @@ mod tests {
         for _ in 0..200 {
             let x = Fp::from_i64(rng.gen_range(-32768i64..32768));
             let m = rand_fp2(&mut rng);
-            let k = VerifierKey { k: m + delta.mul_base(x) };
+            let k = VerifierKey::new(m + delta.mul_base(x));
             let bs = BothSides { p: ProverSubAuthed::new(x, m).embed(), k };
             assert!(bs.valid(delta));
         }

@@ -17,8 +17,10 @@ use volta_gpt2::{
     Gpt2Model, KvCache,
 };
 use volta_mac::{
-    begin_c6_prover_trace, finish_c6_prover_trace, normalize_c6_operation_trace,
-    zero_batch_exchange, CorrelationStream, Transcript, VerifierCtx,
+    begin_c6_prover_trace, begin_c6_verifier_trace, finish_c6_prover_trace,
+    finish_c6_verifier_trace, fresh_zero_mask, normalize_c6_operation_trace,
+    normalize_c6_operation_trace_debug_block, zero_batch_prover, zero_batch_verify, zero_mask_key,
+    CorrelationStream, Transcript, VerifierCtx,
 };
 use volta_proto::logup::Doms;
 use volta_proto::{
@@ -50,6 +52,7 @@ struct Args {
     subfield_witness: bool,
     source_witness: bool,
     operation_trace: bool,
+    operation_trace_debug_block: Option<u64>,
 }
 
 fn args() -> Result<Args, String> {
@@ -59,6 +62,7 @@ fn args() -> Result<Args, String> {
     let mut subfield_witness = false;
     let mut source_witness = false;
     let mut operation_trace = false;
+    let mut operation_trace_debug_block = None;
     let mut values = env::args().skip(1);
     while let Some(argument) = values.next() {
         match argument.as_str() {
@@ -76,6 +80,19 @@ fn args() -> Result<Args, String> {
             "--subfield-witness" => subfield_witness = true,
             "--source-witness" => source_witness = true,
             "--operation-trace" => operation_trace = true,
+            "--operation-trace-debug-block" => {
+                operation_trace_debug_block = Some(
+                    values
+                        .next()
+                        .ok_or_else(|| {
+                            "--operation-trace-debug-block requires an integer".to_owned()
+                        })?
+                        .parse()
+                        .map_err(|_| {
+                            "--operation-trace-debug-block requires a u64 integer".to_owned()
+                        })?,
+                );
+            }
             _ => return Err(format!("unknown argument {argument}")),
         }
     }
@@ -93,13 +110,21 @@ fn args() -> Result<Args, String> {
                 .to_owned(),
         );
     }
-    if operation_trace && !diagnostic {
-        return Err(
-            "--operation-trace is diagnostic-only until independent verifier equality closes"
-                .to_owned(),
-        );
+    if operation_trace_debug_block.is_some() && !operation_trace {
+        return Err("--operation-trace-debug-block requires --operation-trace".to_owned());
     }
-    Ok(Args { weights, output, diagnostic, subfield_witness, source_witness, operation_trace })
+    if operation_trace_debug_block.is_some() && !diagnostic {
+        return Err("--operation-trace-debug-block is diagnostic-only".to_owned());
+    }
+    Ok(Args {
+        weights,
+        output,
+        diagnostic,
+        subfield_witness,
+        source_witness,
+        operation_trace,
+        operation_trace_debug_block,
+    })
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -228,14 +253,16 @@ fn workload(weights: &Path) -> Result<Workload, String> {
     Ok(Workload { model, prefill, band, sequence })
 }
 
-fn reconcile_transcripts(prover: &Transcript, verifier: &mut Transcript) -> Result<(), String> {
+fn reconcile_transcript_ledger(
+    expected: &BTreeMap<&'static str, u64>,
+    verifier: &mut Transcript,
+) -> Result<(), String> {
     for (&label, &verifier_bytes) in verifier.ledger() {
-        if verifier_bytes > prover.ledger().get(label).copied().unwrap_or(0) {
+        if verifier_bytes > expected.get(label).copied().unwrap_or(0) {
             return Err(format!("verifier transcript exceeds prover at {label}"));
         }
     }
-    let missing = prover
-        .ledger()
+    let missing = expected
         .iter()
         .filter_map(|(&label, &prover_bytes)| {
             let verifier_bytes = verifier.ledger().get(label).copied().unwrap_or(0);
@@ -245,7 +272,7 @@ fn reconcile_transcripts(prover: &Transcript, verifier: &mut Transcript) -> Resu
     for (label, bytes) in missing {
         verifier.append(label, bytes);
     }
-    if prover.total_bytes() != verifier.total_bytes() || prover.ledger() != verifier.ledger() {
+    if expected != verifier.ledger() {
         return Err("model transcript replay did not reconcile".to_owned());
     }
     Ok(())
@@ -391,12 +418,16 @@ struct Record {
 struct OperationTraceRow {
     diagnostic_only: bool,
     independent_verifier_trace_pending: bool,
+    program_identity_equal: bool,
     source_count: u64,
-    operation_node_count: u64,
     canonical_plan_version: u32,
     canonical_node_count: u64,
-    reachable_operation_count: u64,
-    omitted_operation_count: u64,
+    prover_raw_operation_count: u64,
+    verifier_raw_operation_count: u64,
+    prover_reachable_operation_count: u64,
+    verifier_reachable_operation_count: u64,
+    prover_omitted_operation_count: u64,
+    verifier_omitted_operation_count: u64,
     product_closures: u64,
     product_triples: u64,
     zero_roots: u64,
@@ -460,9 +491,82 @@ fn run(args: &Args) -> Result<Record, String> {
     let model_sub_correction_bytes = prover_tx.bytes_for("auth_corrections");
     let model_product_message_bytes = prover_tx.bytes_for("prod_check_m0_m1");
     let model_full_correction_bytes = model_full_correction_bytes(&prover_tx)?;
+    let model_transcript_prefix = prover_tx.ledger().clone();
     let model_transcript_ledger =
         prover_tx.ledger().iter().map(|(&label, &bytes)| (label.to_owned(), bytes)).collect();
 
+    if model_allocation_schedule_digest != C6_T1_MODEL_ALLOCATION_SCHEDULE_DIGEST_HEX {
+        return Err(format!(
+            "C6 model allocation schedule digest changed: expected {}, got {}",
+            C6_T1_MODEL_ALLOCATION_SCHEDULE_DIGEST_HEX, model_allocation_schedule_digest
+        ));
+    }
+
+    let mut prover_doms = Doms::new(layer_dom_base(255));
+    let challenge = prover_tx.challenge_fp2();
+    let product_mask_domain = prover_doms.take(1);
+    let product_mask = prover.draw_product_mask(product_mask_domain, prod.len());
+    let product_proof = prod_batch_prover(&prod, challenge, product_mask, &mut prover_tx);
+    let product_triples = prod.len();
+    drop(prod);
+
+    let zero_mask_domain = prover_doms.take(1);
+    let zero_corr = prover.draw_fulls(zero_mask_domain, 1)[0];
+    prover.record_c6_fullfield_plaintexts(zero_mask_domain, &[Fp2::ZERO])?;
+    let (zero_mask, zero_mask_correction) = fresh_zero_mask(zero_corr, &mut prover_tx);
+    let zero_challenge = prover_tx.challenge_fp2();
+    let zero_opened_tag = zero_batch_prover(&zero, &zero_mask, zero_challenge, &mut prover_tx);
+    let zero_closures = zero.len();
+    drop(zero);
+
+    let raw_prover_trace = if args.operation_trace {
+        Some(finish_c6_prover_trace().map_err(|error| error.to_string())?)
+    } else {
+        None
+    };
+
+    let prover_schedule =
+        prover.schedule_audit().ok_or_else(|| "missing closed prover audit".to_owned())?;
+    let expected_census = audit_c6_t1_source_census(C6T1CensusInput {
+        prover_schedule: &prover_schedule,
+        verifier_schedule: &prover_schedule,
+        model_draw_count,
+        model_counters,
+        model_transcript_bytes,
+        model_sub_correction_bytes,
+        model_full_correction_bytes,
+        product_mask_domain,
+        zero_mask_domain,
+        product_triples,
+        zero_closures,
+    })
+    .map_err(|error| error.to_string())?;
+    let trace_manifest = if args.operation_trace {
+        Some(
+            c6_t1_trace_source_manifest(&prover_schedule, &expected_census)
+                .map_err(|error| error.to_string())?,
+        )
+    } else {
+        None
+    };
+    let prover_plan = match raw_prover_trace {
+        Some(trace) => {
+            let manifest =
+                trace_manifest.as_ref().ok_or_else(|| "missing C6 trace manifest".to_owned())?;
+            let plan = match args.operation_trace_debug_block {
+                Some(block) => normalize_c6_operation_trace_debug_block(&trace, manifest, block),
+                None => normalize_c6_operation_trace(&trace, manifest),
+            }
+            .map_err(|error| format!("C6 prover operation-plan normalization: {error}"))?;
+            Some(plan)
+        }
+        None => None,
+    };
+
+    if args.operation_trace {
+        begin_c6_verifier_trace().map_err(|error| error.to_string())?;
+        verifier.enable_c6_operation_trace()?;
+    }
     let (_, kprod, kzero) = verify_response_private_logits(
         &workload.model,
         workload.prefill.t,
@@ -472,65 +576,50 @@ fn run(args: &Args) -> Result<Record, String> {
         &mut verifier_tx,
     )
     .ok_or_else(|| "C6 census model verifier rejected".to_owned())?;
-    reconcile_transcripts(&prover_tx, &mut verifier_tx)?;
-    if prover.schedule_audit() != verifier.schedule_audit() {
+    reconcile_transcript_ledger(&model_transcript_prefix, &mut verifier_tx)?;
+    let verifier_model_schedule = verifier
+        .schedule_audit()
+        .ok_or_else(|| "missing verifier model schedule audit".to_owned())?;
+    if model_schedule != verifier_model_schedule {
         return Err("C6 model prover/verifier schedules differ".to_owned());
     }
-    if model_allocation_schedule_digest != C6_T1_MODEL_ALLOCATION_SCHEDULE_DIGEST_HEX {
-        return Err(format!(
-            "C6 model allocation schedule digest changed: expected {}, got {}",
-            C6_T1_MODEL_ALLOCATION_SCHEDULE_DIGEST_HEX, model_allocation_schedule_digest
-        ));
-    }
 
-    let mut prover_doms = Doms::new(layer_dom_base(255));
     let mut verifier_doms = Doms::new(layer_dom_base(255));
-    let challenge = prover_tx.challenge_fp2();
     if challenge != verifier_tx.challenge_fp2() {
         return Err("C6 closure challenge mismatch".to_owned());
     }
-    let product_mask_domain = prover_doms.take(1);
     if product_mask_domain != verifier_doms.take(1) {
         return Err("C6 product-mask domain mismatch".to_owned());
     }
-    let product_mask = prover.draw_product_mask(product_mask_domain, prod.len());
-    let product_key = verifier.expand_product_mask_key(product_mask_domain, kprod.len());
-    let product_proof = prod_batch_prover(&prod, challenge, product_mask, &mut prover_tx);
+    let product_key = verifier.expand_product_mask_verifier_key(product_mask_domain, kprod.len());
     verifier_tx.append("prod_check_m0_m1", 32);
     if !prod_batch_verify(&kprod, product_key, verifier.delta, challenge, &product_proof) {
         return Err("C6 census ProductClosure rejected".to_owned());
     }
-    let zero_mask_domain = prover_doms.take(1);
     if zero_mask_domain != verifier_doms.take(1) {
         return Err("C6 zero-mask domain mismatch".to_owned());
     }
-    if !zero_batch_exchange(
-        &zero,
-        &kzero,
-        &mut prover,
-        &mut verifier,
-        zero_mask_domain,
-        &mut prover_tx,
-    ) {
+    let zero_full_key = verifier.expand_full_verifier_keys(zero_mask_domain, 1)[0];
+    verifier_tx.append("mask_correction", 16);
+    let zero_key = zero_mask_key(&verifier, zero_full_key, zero_mask_correction);
+    if zero_challenge != verifier_tx.challenge_fp2() {
+        return Err("C6 ZeroBatch challenge mismatch".to_owned());
+    }
+    verifier_tx.append("zero_batch_tag", 16);
+    if !zero_batch_verify(&kzero, zero_key, zero_challenge, zero_opened_tag) {
         return Err("C6 census ZeroBatch rejected".to_owned());
     }
-    verifier_tx.append("mask_correction", 16);
-    let _ = verifier_tx.challenge_fp2();
-    verifier_tx.append("zero_batch_tag", 16);
     if prover_tx.total_bytes() != verifier_tx.total_bytes()
         || prover_tx.ledger() != verifier_tx.ledger()
     {
         return Err("C6 closed transcripts differ".to_owned());
     }
 
-    let raw_operation_trace = if args.operation_trace {
-        Some(finish_c6_prover_trace().map_err(|error| error.to_string())?)
+    let raw_verifier_trace = if args.operation_trace {
+        Some(finish_c6_verifier_trace().map_err(|error| error.to_string())?)
     } else {
         None
     };
-
-    let prover_schedule =
-        prover.schedule_audit().ok_or_else(|| "missing closed prover audit".to_owned())?;
     let verifier_schedule =
         verifier.schedule_audit().ok_or_else(|| "missing closed verifier audit".to_owned())?;
     let census = audit_c6_t1_source_census(C6T1CensusInput {
@@ -543,47 +632,98 @@ fn run(args: &Args) -> Result<Record, String> {
         model_full_correction_bytes,
         product_mask_domain,
         zero_mask_domain,
-        product_triples: prod.len(),
-        zero_closures: zero.len(),
+        product_triples,
+        zero_closures,
     })
     .map_err(|error| error.to_string())?;
+    if census != expected_census {
+        return Err("C6 independent verifier changed the accepted source census".to_owned());
+    }
 
-    let operation_trace = if let Some(trace) = raw_operation_trace {
-        let manifest = c6_t1_trace_source_manifest(&prover_schedule, &census)
-            .map_err(|error| error.to_string())?;
-        let plan = normalize_c6_operation_trace(&trace, &manifest)
-            .map_err(|error| format!("C6 operation-plan normalization: {error}"))?;
-        let identity = plan.identity;
-        if u64::from(identity.source_count) != census.total_leaves
-            || u64::from(identity.product_closure_count) != census.total_product_closures
-            || identity.product_triple_count != census.total_product_triples
-            || u64::from(identity.zero_root_count) != census.zero_closures
-            || identity.source_schedule_digest != census.source_schedule_digest
-        {
-            return Err(format!(
+    let operation_trace = match (prover_plan, raw_verifier_trace) {
+        (Some(prover_plan), Some(verifier_trace)) => {
+            let accepted_manifest = c6_t1_trace_source_manifest(&prover_schedule, &census)
+                .map_err(|error| error.to_string())?;
+            if trace_manifest.as_ref() != Some(&accepted_manifest) {
+                return Err("C6 trace manifest changed after independent verification".to_owned());
+            }
+            let verifier_plan = match args.operation_trace_debug_block {
+                Some(block) => normalize_c6_operation_trace_debug_block(
+                    &verifier_trace,
+                    &accepted_manifest,
+                    block,
+                ),
+                None => normalize_c6_operation_trace(&verifier_trace, &accepted_manifest),
+            }
+            .map_err(|error| format!("C6 verifier operation-plan normalization: {error}"))?;
+            let identity = prover_plan.identity;
+            if identity != verifier_plan.identity {
+                let prover_blocks = &prover_plan.diagnostics.canonical_node_block_digests;
+                let verifier_blocks = &verifier_plan.diagnostics.canonical_node_block_digests;
+                let first_block_mismatch = prover_blocks
+                    .iter()
+                    .zip(verifier_blocks)
+                    .position(|(prover, verifier)| prover != verifier)
+                    .or_else(|| {
+                        (prover_blocks.len() != verifier_blocks.len())
+                            .then_some(prover_blocks.len().min(verifier_blocks.len()))
+                    });
+                return Err(format!(
+                    "C6 prover/verifier canonical program identity differs: prover={}, verifier={}; canonical_nodes={}/{}, raw_ops={}/{}, reachable_ops={}/{}, first_64_node_block_mismatch={:?}, node_digests={}/{}, root_digests={}/{}, captured_prover={:?}, captured_verifier={:?}",
+                    hex(&identity.program_digest),
+                    hex(&verifier_plan.identity.program_digest),
+                    identity.canonical_node_count,
+                    verifier_plan.identity.canonical_node_count,
+                    prover_plan.diagnostics.raw_operation_count,
+                    verifier_plan.diagnostics.raw_operation_count,
+                    prover_plan.diagnostics.reachable_operation_count,
+                    verifier_plan.diagnostics.reachable_operation_count,
+                    first_block_mismatch,
+                    hex(&prover_plan.diagnostics.node_digest),
+                    hex(&verifier_plan.diagnostics.node_digest),
+                    hex(&prover_plan.diagnostics.root_digest),
+                    hex(&verifier_plan.diagnostics.root_digest),
+                    prover_plan.diagnostics.captured_canonical_nodes,
+                    verifier_plan.diagnostics.captured_canonical_nodes,
+                ));
+            }
+            if u64::from(identity.source_count) != census.total_leaves
+                || u64::from(identity.product_closure_count) != census.total_product_closures
+                || identity.product_triple_count != census.total_product_triples
+                || u64::from(identity.zero_root_count) != census.zero_closures
+                || identity.source_schedule_digest != census.source_schedule_digest
+            {
+                return Err(format!(
                 "C6 canonical operation-plan census changed: sources={}, closures={}, triples={}, zero_roots={}",
                 identity.source_count,
                 identity.product_closure_count,
                 identity.product_triple_count,
                 identity.zero_root_count
             ));
+            }
+            Some(OperationTraceRow {
+                diagnostic_only: true,
+                independent_verifier_trace_pending: false,
+                program_identity_equal: true,
+                source_count: u64::from(identity.source_count),
+                canonical_plan_version: identity.version,
+                canonical_node_count: u64::from(identity.canonical_node_count),
+                prover_raw_operation_count: prover_plan.diagnostics.raw_operation_count,
+                verifier_raw_operation_count: verifier_plan.diagnostics.raw_operation_count,
+                prover_reachable_operation_count: prover_plan.diagnostics.reachable_operation_count,
+                verifier_reachable_operation_count: verifier_plan
+                    .diagnostics
+                    .reachable_operation_count,
+                prover_omitted_operation_count: prover_plan.diagnostics.omitted_operation_count,
+                verifier_omitted_operation_count: verifier_plan.diagnostics.omitted_operation_count,
+                product_closures: u64::from(identity.product_closure_count),
+                product_triples: identity.product_triple_count,
+                zero_roots: u64::from(identity.zero_root_count),
+                program_digest: hex(&identity.program_digest),
+            })
         }
-        Some(OperationTraceRow {
-            diagnostic_only: true,
-            independent_verifier_trace_pending: true,
-            source_count: u64::from(identity.source_count),
-            operation_node_count: plan.diagnostics.raw_operation_count,
-            canonical_plan_version: identity.version,
-            canonical_node_count: u64::from(identity.canonical_node_count),
-            reachable_operation_count: plan.diagnostics.reachable_operation_count,
-            omitted_operation_count: plan.diagnostics.omitted_operation_count,
-            product_closures: u64::from(identity.product_closure_count),
-            product_triples: identity.product_triple_count,
-            zero_roots: u64::from(identity.zero_root_count),
-            program_digest: hex(&identity.program_digest),
-        })
-    } else {
-        None
+        (None, None) => None,
+        _ => return Err("C6 prover/verifier trace lifecycle is asymmetric".to_owned()),
     };
 
     let subfield_witness = if args.subfield_witness {
@@ -762,7 +902,7 @@ fn run(args: &Args) -> Result<Record, String> {
     }
     Ok(Record {
         schema: if args.operation_trace {
-            5
+            6
         } else if args.source_witness {
             3
         } else if args.subfield_witness {
@@ -771,7 +911,7 @@ fn run(args: &Args) -> Result<Record, String> {
             1
         },
         milestone: if args.operation_trace {
-            "C6-T1-canonical-prover-operation-plan-diagnostic".to_owned()
+            "C6-T1-independent-operation-plan-equality".to_owned()
         } else if args.source_witness {
             "C6-T1-paired-source-witness-reference".to_owned()
         } else if args.subfield_witness {

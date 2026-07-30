@@ -865,7 +865,7 @@ pub fn verify_open(
     let q_col = eq_vec(&point[..params.col_bits as usize]);
     let q_row = eq_vec(&point[params.col_bits as usize..]);
 
-    let k_s = VerifierKey { k: ctx.expand_full_keys(dom_s, 1)[0] + ctx.delta * proof.corr_s };
+    let k_s = VerifierKey::new(ctx.expand_full_keys(dom_s, 1)[0] + ctx.delta * proof.corr_s);
     let ip = (0..cols).fold(Fp2::ZERO, |a, j| a + proof.u_q[j] * q_col[j]);
 
     let js: Vec<usize> =
@@ -1797,14 +1797,14 @@ pub fn verify_multi_open(
     }
 
     // MAC resolution first (cheap): batched zero check over v_g + s_g − ip_g.
-    let k_fulls = ctx.expand_full_keys(dom_s, n_claims);
+    let k_ss = ctx.correct_full_verifier_keys(dom_s, &proof.corr_ss);
     let mut k_zs = Vec::with_capacity(n_claims);
     for (g, geo) in geoms.iter().enumerate() {
-        let k_s = VerifierKey { k: k_fulls[g] + ctx.delta * proof.corr_ss[g] };
+        let k_s = k_ss[g];
         let ip = (0..cols).fold(Fp2::ZERO, |a, j| a + proof.u_gs[g][j] * geo.q_col[j]);
         k_zs.push(claims[g].1.add(k_s).sub(VerifierKey::from_public(ip, ctx.delta)));
     }
-    let k_zb_full = ctx.expand_full_keys(dom_zb, 1)[0];
+    let k_zb_full = ctx.expand_full_verifier_keys(dom_zb, 1)[0];
     let k_mask = zero_mask_key(ctx, k_zb_full, proof.mask_corr);
     let chi = tx.challenge_fp2();
     if !zero_batch_verify(&k_zs, k_mask, chi, proof.m_z) {

@@ -11,7 +11,7 @@
 //!   value `x ∈ E` from `stream(dom | FULL_BIT).next_fp2()`, tag from
 //!   `stream(dom | FULL_BIT | TAG_BIT).next_fp2()`.
 
-use crate::authed::{ProverAuthed, ProverSubAuthed};
+use crate::authed::{ProverAuthed, ProverSubAuthed, VerifierKey};
 use crate::c6_trace::C6TraceToken;
 use std::collections::HashMap;
 use volta_field::{Fp, Fp2, FpStream};
@@ -1961,6 +1961,14 @@ pub struct VerifierCtx {
     ledger: DomainLedger,
     pub counters: CorrCounters,
     schedule_audit: Option<CorrScheduleRecorder>,
+    #[cfg(feature = "c6-trace")]
+    c6_trace_sources_enabled: bool,
+    #[cfg(feature = "c6-trace")]
+    c6_trace_next_source: u32,
+    #[cfg(feature = "c6-trace")]
+    c6_trace_sub_sources: HashMap<u64, Vec<C6TraceToken>>,
+    #[cfg(feature = "c6-trace")]
+    c6_trace_full_sources: HashMap<u64, Vec<C6TraceToken>>,
 }
 
 impl VerifierCtx {
@@ -1971,6 +1979,14 @@ impl VerifierCtx {
             ledger: DomainLedger::default(),
             counters: CorrCounters::default(),
             schedule_audit: None,
+            #[cfg(feature = "c6-trace")]
+            c6_trace_sources_enabled: false,
+            #[cfg(feature = "c6-trace")]
+            c6_trace_next_source: 0,
+            #[cfg(feature = "c6-trace")]
+            c6_trace_sub_sources: HashMap::new(),
+            #[cfg(feature = "c6-trace")]
+            c6_trace_full_sources: HashMap::new(),
         }
     }
 
@@ -1988,6 +2004,14 @@ impl VerifierCtx {
             ledger: DomainLedger::default(),
             counters: CorrCounters::default(),
             schedule_audit: None,
+            #[cfg(feature = "c6-trace")]
+            c6_trace_sources_enabled: false,
+            #[cfg(feature = "c6-trace")]
+            c6_trace_next_source: 0,
+            #[cfg(feature = "c6-trace")]
+            c6_trace_sub_sources: HashMap::new(),
+            #[cfg(feature = "c6-trace")]
+            c6_trace_full_sources: HashMap::new(),
         }
     }
 
@@ -1998,6 +2022,14 @@ impl VerifierCtx {
             ledger: DomainLedger::default(),
             counters: CorrCounters::default(),
             schedule_audit: None,
+            #[cfg(feature = "c6-trace")]
+            c6_trace_sources_enabled: false,
+            #[cfg(feature = "c6-trace")]
+            c6_trace_next_source: 0,
+            #[cfg(feature = "c6-trace")]
+            c6_trace_sub_sources: HashMap::new(),
+            #[cfg(feature = "c6-trace")]
+            c6_trace_full_sources: HashMap::new(),
         }
     }
 
@@ -2012,7 +2044,101 @@ impl VerifierCtx {
             ledger: DomainLedger::default(),
             counters: CorrCounters::default(),
             schedule_audit: None,
+            #[cfg(feature = "c6-trace")]
+            c6_trace_sources_enabled: false,
+            #[cfg(feature = "c6-trace")]
+            c6_trace_next_source: 0,
+            #[cfg(feature = "c6-trace")]
+            c6_trace_sub_sources: HashMap::new(),
+            #[cfg(feature = "c6-trace")]
+            c6_trace_full_sources: HashMap::new(),
         }
+    }
+
+    /// Enable canonical source-token assignment for one independently
+    /// recorded verifier trace. The verifier must not have consumed a draw.
+    pub fn enable_c6_operation_trace(&mut self) -> Result<(), &'static str> {
+        #[cfg(feature = "c6-trace")]
+        {
+            if self.counters != CorrCounters::default() {
+                return Err("C6 verifier operation tracing must start before the first draw");
+            }
+            if self.c6_trace_sources_enabled {
+                return Err("C6 verifier operation tracing is already enabled");
+            }
+            self.c6_trace_sources_enabled = true;
+            self.c6_trace_next_source = 0;
+            self.c6_trace_sub_sources.clear();
+            self.c6_trace_full_sources.clear();
+            Ok(())
+        }
+        #[cfg(not(feature = "c6-trace"))]
+        {
+            Err("C6 verifier operation tracing requires the diagnostic c6-trace feature")
+        }
+    }
+
+    #[cfg(feature = "c6-trace")]
+    fn allocate_c6_trace_sources(&mut self, count: usize) -> Vec<C6TraceToken> {
+        if !self.c6_trace_sources_enabled {
+            return vec![C6TraceToken::untracked(); count];
+        }
+        let mut tokens = Vec::with_capacity(count);
+        for _ in 0..count {
+            let index = self.c6_trace_next_source;
+            let token = C6TraceToken::source(index)
+                .unwrap_or_else(|error| panic!("C6 verifier source provenance HARD STOP: {error}"));
+            self.c6_trace_next_source =
+                index.checked_add(1).expect("C6 verifier trace source counter overflow");
+            tokens.push(token);
+        }
+        tokens
+    }
+
+    fn trace_subfield_keys(&self, dom: u64, keys: Vec<Fp2>) -> Vec<VerifierKey> {
+        #[cfg(feature = "c6-trace")]
+        {
+            if self.c6_trace_sources_enabled {
+                let tokens = self.c6_trace_sub_sources.get(&dom).unwrap_or_else(|| {
+                    panic!("C6 verifier subfield source domain {dom:#x} lacks provenance")
+                });
+                assert_eq!(
+                    tokens.len(),
+                    keys.len(),
+                    "C6 verifier subfield source count mismatch at {dom:#x}"
+                );
+                return keys
+                    .into_iter()
+                    .zip(tokens)
+                    .map(|(key, &trace)| VerifierKey::from_traced_key(key, trace))
+                    .collect();
+            }
+        }
+        let _ = dom;
+        keys.into_iter().map(VerifierKey::new).collect()
+    }
+
+    fn trace_fullfield_keys(&self, dom: u64, keys: Vec<Fp2>) -> Vec<VerifierKey> {
+        #[cfg(feature = "c6-trace")]
+        {
+            if self.c6_trace_sources_enabled {
+                let tokens = self.c6_trace_full_sources.get(&dom).unwrap_or_else(|| {
+                    panic!("C6 verifier full-field source domain {dom:#x} lacks provenance")
+                });
+                assert_eq!(
+                    tokens.len(),
+                    keys.len(),
+                    "C6 verifier full-field source count mismatch at {dom:#x}"
+                );
+                return keys
+                    .into_iter()
+                    .zip(tokens)
+                    .map(|(key, &trace)| VerifierKey::from_traced_key(key, trace))
+                    .collect();
+            }
+        }
+        let _ = dom;
+        keys.into_iter().map(VerifierKey::new).collect()
     }
 
     pub fn enable_schedule_audit(&mut self) -> Result<(), &'static str> {
@@ -2081,12 +2207,54 @@ impl VerifierCtx {
         if let Some(audit) = &mut self.schedule_audit {
             audit.record(CorrScheduleKind::Subfield, CorrScheduleRole::DirectCorrection, 0, dom, n);
         }
+        #[cfg(feature = "c6-trace")]
+        if self.c6_trace_sources_enabled {
+            let tokens = self.allocate_c6_trace_sources(n);
+            assert!(
+                self.c6_trace_sub_sources.insert(dom, tokens).is_none(),
+                "duplicate C6 verifier subfield provenance domain {dom:#x}"
+            );
+        }
         keys
+    }
+
+    /// Traced verifier-key form of [`Self::expand_sub_keys`].
+    pub fn expand_sub_verifier_keys(&mut self, dom: u64, n: usize) -> Vec<VerifierKey> {
+        let keys = self.expand_sub_keys(dom, n);
+        self.trace_subfield_keys(dom, keys)
     }
 
     /// Keys `k = m + Δ·x` for `n` full-field correlations at `dom`.
     pub fn expand_full_keys(&mut self, dom: u64, n: usize) -> Vec<Fp2> {
         self.expand_full_keys_with_role(dom, n, CorrScheduleRole::DirectCorrection, 0)
+    }
+
+    /// Traced verifier-key form of [`Self::expand_full_keys`].
+    pub fn expand_full_verifier_keys(&mut self, dom: u64, n: usize) -> Vec<VerifierKey> {
+        let keys = self.expand_full_keys(dom, n);
+        self.trace_fullfield_keys(dom, keys)
+    }
+
+    /// Apply canonical full-field corrections while preserving each direct
+    /// source token. Corrections are source metadata, not DAG operations.
+    pub fn correct_full_verifier_keys(
+        &mut self,
+        dom: u64,
+        corrections: &[Fp2],
+    ) -> Vec<VerifierKey> {
+        let delta = self.delta;
+        self.expand_full_verifier_keys(dom, corrections.len())
+            .into_iter()
+            .zip(corrections)
+            .map(|(key, &correction)| key.with_same_c6_trace(key.k + delta * correction))
+            .collect()
+    }
+
+    pub fn correct_full_verifier_key(&mut self, dom: u64, correction: Fp2) -> VerifierKey {
+        self.correct_full_verifier_keys(dom, &[correction])
+            .into_iter()
+            .next()
+            .expect("one corrected full-field verifier key")
     }
 
     /// Expand the verifier key matching one uncorrected ProductClosure mask.
@@ -2096,6 +2264,19 @@ impl VerifierCtx {
             .into_iter()
             .next()
             .expect("one C6 product-mask key")
+    }
+
+    /// Traced verifier-key form of [`Self::expand_product_mask_key`].
+    pub fn expand_product_mask_verifier_key(
+        &mut self,
+        dom: u64,
+        product_triples: usize,
+    ) -> VerifierKey {
+        let key = self.expand_product_mask_key(dom, product_triples);
+        self.trace_fullfield_keys(dom, vec![key])
+            .into_iter()
+            .next()
+            .expect("one traced C6 product-mask key")
     }
 
     fn expand_full_keys_with_role(
@@ -2129,6 +2310,14 @@ impl VerifierCtx {
         };
         if let Some(audit) = &mut self.schedule_audit {
             audit.record(CorrScheduleKind::FullField, role, product_triples, dom, n);
+        }
+        #[cfg(feature = "c6-trace")]
+        if self.c6_trace_sources_enabled {
+            let tokens = self.allocate_c6_trace_sources(n);
+            assert!(
+                self.c6_trace_full_sources.insert(dom, tokens).is_none(),
+                "duplicate C6 verifier full-field provenance domain {dom:#x}"
+            );
         }
         keys
     }
@@ -2226,9 +2415,10 @@ impl FullKeyBatchReservation<'_> {
         self.context.allocation_digest_hex()
     }
 
-    pub fn expand(&mut self, range: usize, row: usize) -> Vec<Fp2> {
+    pub fn expand(&mut self, range: usize, row: usize) -> Vec<VerifierKey> {
         let spec = self.progress.pending(range, row);
-        let values = self.context.expand_full_keys(spec.domain(row), spec.count_per_domain);
+        let values =
+            self.context.expand_full_verifier_keys(spec.domain(row), spec.count_per_domain);
         self.progress.mark_drawn(range, row);
         values
     }
@@ -2906,7 +3096,7 @@ mod tests {
             verifier_reservation.allocation_digest_hex()
         );
         for (full, key) in correlated {
-            assert_eq!(key, full.m + delta * full.x);
+            assert_eq!(key.k, full.m + delta * full.x);
         }
         prover_reservation.finish();
         verifier_reservation.finish();

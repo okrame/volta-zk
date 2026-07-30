@@ -2184,11 +2184,8 @@ pub fn blind_verify_frac_tree(
         return None;
     }
     let kroots = {
-        let ks = ctx.expand_full_keys(doms.take(1), 2);
-        (
-            VerifierKey { k: ks[0] + ctx.delta * proof.root_corrs[0] },
-            VerifierKey { k: ks[1] + ctx.delta * proof.root_corrs[1] },
-        )
+        let ks = ctx.correct_full_verifier_keys(doms.take(1), &proof.root_corrs);
+        (ks[0], ks[1])
     };
     let mut kcp = kroots.0;
     let mut kcq = kroots.1;
@@ -2203,9 +2200,9 @@ pub fn blind_verify_frac_tree(
         let mut cpref = Fp2::ONE;
         let mut rprime = Vec::with_capacity(l);
         for (j, corrs) in layer.round_corrs.iter().enumerate() {
-            let kms = ctx.expand_full_keys(doms.take(1), 2);
-            let kh0 = VerifierKey { k: kms[0] + ctx.delta * corrs[0] };
-            let kh2 = VerifierKey { k: kms[1] + ctx.delta * corrs[1] };
+            let kms = ctx.correct_full_verifier_keys(doms.take(1), corrs);
+            let kh0 = kms[0];
+            let kh2 = kms[1];
             let ptj = point[j];
             if ptj == Fp2::ZERO {
                 return None;
@@ -2220,18 +2217,8 @@ pub fn blind_verify_frac_tree(
             cpref = cpref * (pr + pr - ptj - r + Fp2::ONE);
             rprime.push(r);
         }
-        let kss = ctx.expand_full_keys(doms.take(1), 4);
-        let ksp: Vec<VerifierKey> = kss
-            .iter()
-            .zip(&layer.split_corrs)
-            .map(|(&k, &c)| VerifierKey { k: k + ctx.delta * c })
-            .collect();
-        let kzs = ctx.expand_full_keys(doms.take(1), 3);
-        let kz: Vec<VerifierKey> = kzs
-            .iter()
-            .zip(&layer.z_corrs)
-            .map(|(&k, &c)| VerifierKey { k: k + ctx.delta * c })
-            .collect();
+        let ksp = ctx.correct_full_verifier_keys(doms.take(1), &layer.split_corrs);
+        let kz = ctx.correct_full_verifier_keys(doms.take(1), &layer.z_corrs);
         kprod.push((ksp[0], ksp[3], kz[0]));
         kprod.push((ksp[1], ksp[2], kz[1]));
         kprod.push((ksp[2], ksp[3], kz[2]));
@@ -2273,11 +2260,8 @@ pub fn blind_verify_frac_tree_aux(
         }
     }
     let kroots = {
-        let ks = ctx.expand_full_keys(doms.take(1), 2);
-        (
-            VerifierKey { k: ks[0] + ctx.delta * proof.root_corrs[0] },
-            VerifierKey { k: ks[1] + ctx.delta * proof.root_corrs[1] },
-        )
+        let ks = ctx.correct_full_verifier_keys(doms.take(1), &proof.root_corrs);
+        (ks[0], ks[1])
     };
     let mut kcp = kroots.0;
     let mut kcq = kroots.1;
@@ -2300,12 +2284,7 @@ pub fn blind_verify_frac_tree_aux(
                 ws.push((mu * (Fp2::ONE - p[0]), mu * p[0]));
             }
             for (j, corrs) in aux.rounds3.iter().enumerate() {
-                let kms = ctx.expand_full_keys(doms.take(1), 3);
-                let kg: Vec<VerifierKey> = kms
-                    .iter()
-                    .zip(corrs)
-                    .map(|(&k, &c)| VerifierKey { k: k + ctx.delta * c })
-                    .collect();
+                let kg = ctx.correct_full_verifier_keys(doms.take(1), corrs);
                 let r = tx.challenge_fp2();
                 let kg1 = kclaim.sub(kg[0]);
                 let w = lagrange4(r);
@@ -2324,9 +2303,9 @@ pub fn blind_verify_frac_tree_aux(
                 return None;
             }
             for (j, corrs) in layer.round_corrs.iter().enumerate() {
-                let kms = ctx.expand_full_keys(doms.take(1), 2);
-                let kh0 = VerifierKey { k: kms[0] + ctx.delta * corrs[0] };
-                let kh2 = VerifierKey { k: kms[1] + ctx.delta * corrs[1] };
+                let kms = ctx.correct_full_verifier_keys(doms.take(1), corrs);
+                let kh0 = kms[0];
+                let kh2 = kms[1];
                 let ptj = point[j];
                 if ptj == Fp2::ZERO {
                     return None;
@@ -2342,30 +2321,23 @@ pub fn blind_verify_frac_tree_aux(
                 rprime.push(r);
             }
         }
-        let kss = ctx.expand_full_keys(doms.take(1), 4);
-        let ksp: Vec<VerifierKey> = kss
-            .iter()
-            .zip(&layer.split_corrs)
-            .map(|(&k, &c)| VerifierKey { k: k + ctx.delta * c })
-            .collect();
-        let kzs = ctx.expand_full_keys(doms.take(1), 3);
-        let kz: Vec<VerifierKey> = kzs
-            .iter()
-            .zip(&layer.z_corrs)
-            .map(|(&k, &c)| VerifierKey { k: k + ctx.delta * c })
-            .collect();
+        let ksp = ctx.correct_full_verifier_keys(doms.take(1), &layer.split_corrs);
+        let kz = ctx.correct_full_verifier_keys(doms.take(1), &layer.z_corrs);
         kprod.push((ksp[0], ksp[3], kz[0]));
         kprod.push((ksp[1], ksp[2], kz[1]));
         kprod.push((ksp[2], ksp[3], kz[2]));
         let mut row = kz[0].add(kz[1]).scale(lambda * cpref).add(kz[2].scale(cpref)).sub(kclaim);
         let t;
         if leaf {
-            let kcs = ctx.expand_full_keys(doms.take(1), 2 * n_cols);
+            let kcs = ctx.expand_full_verifier_keys(doms.take(1), 2 * n_cols);
             let kcols: Vec<[VerifierKey; 2]> = (0..n_cols)
                 .map(|ci| {
                     [
-                        VerifierKey { k: kcs[2 * ci] + ctx.delta * aux.col_corrs[ci][0] },
-                        VerifierKey { k: kcs[2 * ci + 1] + ctx.delta * aux.col_corrs[ci][1] },
+                        kcs[2 * ci]
+                            .with_same_c6_trace(kcs[2 * ci].k + ctx.delta * aux.col_corrs[ci][0]),
+                        kcs[2 * ci + 1].with_same_c6_trace(
+                            kcs[2 * ci + 1].k + ctx.delta * aux.col_corrs[ci][1],
+                        ),
                     ]
                 })
                 .collect();
@@ -2435,14 +2407,16 @@ fn cross_verifier(
     kprod: &mut ProdKeyTriples,
     kzero: &mut Vec<VerifierKey>,
 ) {
-    let kms = ctx.expand_full_keys(doms.take(1), 4);
-    let kz: Vec<VerifierKey> =
-        kms.iter().zip(cross_corrs).map(|(&k, &c)| VerifierKey { k: k + ctx.delta * c }).collect();
-    let one_k = VerifierKey::from_public(Fp2::ONE, ctx.delta);
+    let kz = ctx.correct_full_verifier_keys(doms.take(1), cross_corrs);
+    // Mirror the prover's two distinct public-value constructions exactly.
+    // Canonical tracing preserves declared DAG sharing and therefore must
+    // not alias these equal constants into one ghost node.
+    let one_f = VerifierKey::from_public(Fp2::ONE, ctx.delta);
+    let one_t = VerifierKey::from_public(Fp2::ONE, ctx.delta);
     kprod.push((kroots_f.0, kroots_t.1, kz[0]));
     kprod.push((kroots_t.0, kroots_f.1, kz[1]));
-    kprod.push((kroots_f.1, kz[2], one_k));
-    kprod.push((kroots_t.1, kz[3], one_k));
+    kprod.push((kroots_f.1, kz[2], one_f));
+    kprod.push((kroots_t.1, kz[3], one_t));
     kzero.push(kz[0].add(kz[1]));
 }
 
@@ -3007,9 +2981,7 @@ pub fn table_side_verify(
 
     let (mut kpr, mut kqr) = ksites[0];
     for (&(kps, kqs), corrs) in ksites[1..].iter().zip(&proof.agg_corrs) {
-        let kms = ctx.expand_full_keys(doms.take(1), 3);
-        let kz: Vec<VerifierKey> =
-            kms.iter().zip(corrs).map(|(&k, &c)| VerifierKey { k: k + ctx.delta * c }).collect();
+        let kz = ctx.correct_full_verifier_keys(doms.take(1), corrs);
         kprod.push((kpr, kqs, kz[0]));
         kprod.push((kps, kqr, kz[1]));
         kprod.push((kqr, kqs, kz[2]));
@@ -3335,7 +3307,7 @@ mod tests {
         let chi = h.txp.challenge_fp2();
         assert_eq!(chi, h.txv.challenge_fp2());
         let mask = h.ps.draw_product_mask(9000, prod.len());
-        let k_mask = h.vc.expand_product_mask_key(9000, kprod.len());
+        let k_mask = h.vc.expand_product_mask_verifier_key(9000, kprod.len());
         let pp = prod_batch_prover(&prod, chi, mask, &mut h.txp);
         let ok_prod = prod_batch_verify(&kprod, k_mask, h.vc.delta, chi, &pp);
         let ok_zero = zero_batch_exchange(&zero, &kzero, &mut h.ps, &mut h.vc, 9001, &mut h.txp);
@@ -3418,7 +3390,7 @@ mod tests {
         let chi = h.txp.challenge_fp2();
         assert_eq!(chi, h.txv.challenge_fp2());
         let mask = h.ps.draw_product_mask(9000, prod.len());
-        let k_mask = h.vc.expand_product_mask_key(9000, kprod.len());
+        let k_mask = h.vc.expand_product_mask_verifier_key(9000, kprod.len());
         let pp = prod_batch_prover(&prod, chi, mask, &mut h.txp);
         let ok_prod = prod_batch_verify(&kprod, k_mask, h.vc.delta, chi, &pp);
         let ok_zero = zero_batch_exchange(&zero, &kzero, &mut h.ps, &mut h.vc, 9001, &mut h.txp);
@@ -3486,7 +3458,7 @@ mod tests {
     ) -> (ProverAuthed, VerifierKey) {
         let f = ps.draw_fulls(dom, 1)[0];
         let kf = vc.expand_full_keys(dom, 1)[0];
-        (f.authenticate(x), VerifierKey { k: kf + vc.delta * (x - f.x) })
+        (f.authenticate(x), VerifierKey::new(kf + vc.delta * (x - f.x)))
     }
 
     fn rand_point(rng: &mut impl Rng, n: usize) -> Vec<Fp2> {
@@ -3612,7 +3584,7 @@ mod tests {
         let chi = h.txp.challenge_fp2();
         assert_eq!(chi, h.txv.challenge_fp2());
         let mask = h.ps.draw_product_mask(9000, prod.len());
-        let k_mask = h.vc.expand_product_mask_key(9000, kprod.len());
+        let k_mask = h.vc.expand_product_mask_verifier_key(9000, kprod.len());
         let pp = prod_batch_prover(&prod, chi, mask, &mut h.txp);
         let ok_prod = prod_batch_verify(&kprod, k_mask, h.vc.delta, chi, &pp);
         let ok_zero = zero_batch_exchange(&zero, &kzero, &mut h.ps, &mut h.vc, 9001, &mut h.txp);
@@ -3755,7 +3727,7 @@ mod tests {
         let chi = h.txp.challenge_fp2();
         assert_eq!(chi, h.txv.challenge_fp2());
         let mask = h.ps.draw_product_mask(9000, prod.len());
-        let k_mask = h.vc.expand_product_mask_key(9000, kprod.len());
+        let k_mask = h.vc.expand_product_mask_verifier_key(9000, kprod.len());
         let pp = prod_batch_prover(&prod, chi, mask, &mut h.txp);
         assert!(prod_batch_verify(&kprod, k_mask, h.vc.delta, chi, &pp));
         assert!(zero_batch_exchange(&zero, &kzero, &mut h.ps, &mut h.vc, 9001, &mut h.txp));

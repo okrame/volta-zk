@@ -413,7 +413,7 @@ fn run_case(
     .unwrap();
     let weight_keys = authenticated_weights
         .iter()
-        .map(|auth| VerifierKey { k: auth.m + delta * auth.x })
+        .map(|auth| VerifierKey::new(auth.m + delta * auth.x))
         .collect::<Vec<_>>();
     verify_bound_response_zero_batch(
         &weight_keys,

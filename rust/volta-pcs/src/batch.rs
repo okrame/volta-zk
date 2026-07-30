@@ -1008,17 +1008,17 @@ mod tests {
                 let claims = vec![
                     (
                         BlockClaim { offset: 0, point: point(17 + source_index as u8) },
-                        ProverAuthed {
-                            x: Fp2::new(Fp::new(123 + repetition as u64), Fp::new(456)),
-                            m: Fp2::new(Fp::new(789), Fp::new(1_011)),
-                        },
+                        ProverAuthed::new(
+                            Fp2::new(Fp::new(123 + repetition as u64), Fp::new(456)),
+                            Fp2::new(Fp::new(789), Fp::new(1_011)),
+                        ),
                     ),
                     (
                         BlockClaim { offset: 0, point: point(71 + source_index as u8) },
-                        ProverAuthed {
-                            x: Fp2::new(Fp::new(2_013), Fp::new(2_417 + repetition as u64)),
-                            m: Fp2::new(Fp::new(2_819), Fp::new(3_123)),
-                        },
+                        ProverAuthed::new(
+                            Fp2::new(Fp::new(2_013), Fp::new(2_417 + repetition as u64)),
+                            Fp2::new(Fp::new(2_819), Fp::new(3_123)),
+                        ),
                     ),
                 ];
                 let domain = 0xC200_0000 + 64 * repetition as u64 + source_index as u64 * 16;
@@ -1112,20 +1112,20 @@ mod tests {
                     let claims = [
                         (
                             BlockClaim { offset: 0, point: point(0) },
-                            ProverAuthed {
-                                x: Fp2::new(
+                            ProverAuthed::new(
+                                Fp2::new(
                                     Fp::new((response + source_index + 11) as u64),
                                     Fp::new(17),
                                 ),
-                                m: Fp2::new(Fp::new(19), Fp::new(23)),
-                            },
+                                Fp2::new(Fp::new(19), Fp::new(23)),
+                            ),
                         ),
                         (
                             BlockClaim { offset: 0, point: point(1) },
-                            ProverAuthed {
-                                x: Fp2::new(Fp::new(29), Fp::new((response + 31) as u64)),
-                                m: Fp2::new(Fp::new(37), Fp::new((source_index + 41) as u64)),
-                            },
+                            ProverAuthed::new(
+                                Fp2::new(Fp::new(29), Fp::new((response + 31) as u64)),
+                                Fp2::new(Fp::new(37), Fp::new((source_index + 41) as u64)),
+                            ),
                         ),
                     ];
                     let domain = 0xC216_0000 + (response * 51 + source_index) as u64 * 64;

@@ -341,10 +341,10 @@ pub fn hadamard_verify(
     let mut point = Vec::with_capacity(n_vars);
     let mut k_claim = k_claim0;
     for (round, corrs) in proof.round_corrs.iter().enumerate() {
-        let k_masks = ctx.expand_full_keys(doms.round_masks + round as u64, 3);
-        let k_g0 = VerifierKey { k: k_masks[0] + ctx.delta * corrs[0] };
-        let k_g2 = VerifierKey { k: k_masks[1] + ctx.delta * corrs[1] };
-        let k_g3 = VerifierKey { k: k_masks[2] + ctx.delta * corrs[2] };
+        let k_masks = ctx.expand_full_verifier_keys(doms.round_masks + round as u64, 3);
+        let k_g0 = k_masks[0].with_same_c6_trace(k_masks[0].k + ctx.delta * corrs[0]);
+        let k_g2 = k_masks[1].with_same_c6_trace(k_masks[1].k + ctx.delta * corrs[1]);
+        let k_g3 = k_masks[2].with_same_c6_trace(k_masks[2].k + ctx.delta * corrs[2]);
         let k_g1 = k_claim.sub(k_g0);
         let r = tx.challenge_fp2();
         let w = lagrange4(r);
@@ -352,11 +352,9 @@ pub fn hadamard_verify(
             k_g0.scale(w[0]).add(k_g1.scale(w[1])).add(k_g2.scale(w[2])).add(k_g3.scale(w[3]));
         point.push(r);
     }
-    let k_e =
-        VerifierKey { k: ctx.expand_full_keys(doms.e_claim, 1)[0] + ctx.delta * proof.e_corr };
-    let k_r =
-        VerifierKey { k: ctx.expand_full_keys(doms.r_claim, 1)[0] + ctx.delta * proof.r_corr };
-    let k_z = VerifierKey { k: ctx.expand_full_keys(doms.z, 1)[0] + ctx.delta * proof.z_corr };
+    let k_e = ctx.correct_full_verifier_key(doms.e_claim, proof.e_corr);
+    let k_r = ctx.correct_full_verifier_key(doms.r_claim, proof.r_corr);
+    let k_z = ctx.correct_full_verifier_key(doms.z, proof.z_corr);
     prod.push((k_e, k_r, k_z));
     zero.push(k_z.scale(eq_points(rho, &point)).sub(k_claim));
     Some((point, k_e, k_r))
@@ -407,7 +405,7 @@ mod tests {
         let f0 = stream.draw_fulls(1, 1)[0];
         let c0 = total - f0.x;
         let claim0 = f0.authenticate(total);
-        let k0 = VerifierKey { k: ctx.expand_full_keys(1, 1)[0] + delta * c0 };
+        let k0 = VerifierKey::new(ctx.expand_full_keys(1, 1)[0] + delta * c0);
 
         let hd = HadamardDoms::alloc(&mut Doms::new(0x100), n_vars);
         let mut prod_p: ProdTriples = Vec::new();
@@ -451,7 +449,7 @@ mod tests {
 
         // Close the Π_Prod batch (fresh mask, both sides).
         let mask = stream.draw_product_mask(2, prod_p.len());
-        let k_mask = ctx.expand_product_mask_key(2, prod_k.len());
+        let k_mask = ctx.expand_product_mask_verifier_key(2, prod_k.len());
         let chi = tx.challenge_fp2();
         let chi_v = vtx.challenge_fp2();
         let pp = prod_batch_prover(&prod_p, chi, mask, &mut tx);

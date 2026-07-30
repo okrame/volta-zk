@@ -711,7 +711,7 @@ pub struct TableBankV {
     kroots: BTreeMap<TableKey, Vec<(VerifierKey, VerifierKey)>>,
     scheduled_sites: BTreeMap<TableKey, BTreeSet<SiteId>>,
     scheduled_kroots: BTreeMap<(TableKey, SiteId), (VerifierKey, VerifierKey)>,
-    keys: BTreeMap<TableKey, Vec<Fp2>>,
+    keys: BTreeMap<TableKey, Vec<VerifierKey>>,
 }
 
 impl TableBankV {
@@ -1461,35 +1461,40 @@ pub(crate) fn auth_matrix_rows_v(
     corr: &[u64],
     rows: usize,
     cols: usize,
-) -> Vec<Fp2> {
+) -> Vec<VerifierKey> {
     assert_eq!(corr.len(), rows * cols);
     let mut keys = Vec::with_capacity(rows * cols);
     for row in 0..rows {
         let kr = auth_verifier(ctx, base_dom + row as u64, &corr[row * cols..(row + 1) * cols]);
-        keys.extend(kr.into_iter().map(|k| k.k));
+        keys.extend(kr);
     }
     keys
 }
 
 /// Verifier's streamed opening over cached keys.
-pub(crate) fn open_matrix_k(keys: &[Fp2], rows: usize, cols: usize, point: &[Fp2]) -> VerifierKey {
+pub(crate) fn open_matrix_k(
+    keys: &[VerifierKey],
+    rows: usize,
+    cols: usize,
+    point: &[Fp2],
+) -> VerifierKey {
     let cb = pad_bits(cols);
     assert_eq!(point.len(), cb + pad_bits(rows), "matrix opening point split mismatch");
     let eq_c = eq_vec(&point[..cb]);
     let eq_r = eq_vec(&point[cb..]);
-    let mut k = Fp2::ZERO;
+    let mut key = VerifierKey::ZERO;
     for row in 0..rows {
-        let mut acc = Fp2::ZERO;
+        let mut row_key = VerifierKey::ZERO;
         for j in 0..cols {
-            acc += eq_c[j] * keys[row * cols + j];
+            row_key = row_key.add(keys[row * cols + j].scale(eq_c[j]));
         }
-        k += eq_r[row] * acc;
+        key = key.add(row_key.scale(eq_r[row]));
     }
-    VerifierKey { k }
+    key
 }
 
 pub(crate) fn open_matrix_weighted_rows_k(
-    keys: &[Fp2],
+    keys: &[VerifierKey],
     rows: usize,
     cols: usize,
     col_point: &[Fp2],
@@ -1499,13 +1504,13 @@ pub(crate) fn open_matrix_weighted_rows_k(
     assert_eq!(col_point.len(), pad_bits(cols));
     assert_eq!(row_weights.len(), rows);
     let eq_c = eq_vec(col_point);
-    let mut key = Fp2::ZERO;
+    let mut key = VerifierKey::ZERO;
     for row in 0..rows {
-        let row_key =
-            (0..cols).fold(Fp2::ZERO, |sum, col| sum + eq_c[col] * keys[row * cols + col]);
-        key += row_weights[row] * row_key;
+        let row_key = (0..cols)
+            .fold(VerifierKey::ZERO, |sum, col| sum.add(keys[row * cols + col].scale(eq_c[col])));
+        key = key.add(row_key.scale(row_weights[row]));
     }
-    VerifierKey { k: key }
+    key
 }
 
 /// Π_Auth for an `F_p` vector at one domain (LN small vectors, row tables,
@@ -1685,14 +1690,14 @@ pub(crate) fn open_fp_vec_resident_p<T: ResidentMatrixElement>(
     Ok(stream.authenticate_subfield_linear(dom, &eq, value, tag))
 }
 
-pub(crate) fn keys_fp_vec_v(ctx: &mut VerifierCtx, dom: u64, corr: &[u64]) -> Vec<Fp2> {
-    auth_verifier(ctx, dom, corr).into_iter().map(|k| k.k).collect()
+pub(crate) fn keys_fp_vec_v(ctx: &mut VerifierCtx, dom: u64, corr: &[u64]) -> Vec<VerifierKey> {
+    auth_verifier(ctx, dom, corr)
 }
 
-pub(crate) fn open_fp_vec_k(keys: &[Fp2], point: &[Fp2]) -> VerifierKey {
+pub(crate) fn open_fp_vec_k(keys: &[VerifierKey], point: &[Fp2]) -> VerifierKey {
     assert_eq!(keys.len(), 1 << point.len());
     let eq = eq_vec(point);
-    VerifierKey { k: keys.iter().zip(&eq).fold(Fp2::ZERO, |s, (&k, &e)| s + e * k) }
+    keys.iter().zip(&eq).fold(VerifierKey::ZERO, |sum, (&key, &weight)| sum.add(key.scale(weight)))
 }
 
 /// Opening of an authenticated vector with EXPLICIT public weights (used for
@@ -1734,9 +1739,11 @@ pub(crate) fn open_weighted_resident_p<T: ResidentMatrixElement>(
     Ok(stream.authenticate_subfield_linear(dom, weights, value, tag))
 }
 
-pub(crate) fn open_weighted_k(keys: &[Fp2], weights: &[Fp2]) -> VerifierKey {
+pub(crate) fn open_weighted_k(keys: &[VerifierKey], weights: &[Fp2]) -> VerifierKey {
     assert_eq!(keys.len(), weights.len());
-    VerifierKey { k: keys.iter().zip(weights).fold(Fp2::ZERO, |s, (&k, &w)| s + w * k) }
+    keys.iter()
+        .zip(weights)
+        .fold(VerifierKey::ZERO, |sum, (&key, &weight)| sum.add(key.scale(weight)))
 }
 
 /// Fold a row-authenticated matrix over a COLUMN WINDOW `[c0, c0+w)` with
@@ -1778,15 +1785,17 @@ pub(crate) fn fold_cols_window_p(
 }
 
 pub(crate) fn fold_cols_window_k(
-    keys: &[Fp2],
+    keys: &[VerifierKey],
     rows: usize,
     cols: usize,
     wc: &[Fp2],
     c0: usize,
     w: usize,
-) -> Vec<Fp2> {
+) -> Vec<VerifierKey> {
     (0..rows)
-        .map(|row| (0..w).fold(Fp2::ZERO, |s, l| s + wc[l] * keys[row * cols + c0 + l]))
+        .map(|row| {
+            (0..w).fold(VerifierKey::ZERO, |sum, l| sum.add(keys[row * cols + c0 + l].scale(wc[l])))
+        })
         .collect()
 }
 
@@ -1833,17 +1842,18 @@ pub(crate) fn fold_rows_window_p(
 }
 
 pub(crate) fn fold_rows_window_k(
-    keys: &[Fp2],
+    keys: &[VerifierKey],
     rows: usize,
     cols: usize,
     wr: &[Fp2],
     c0: usize,
     w: usize,
-) -> Vec<Fp2> {
-    let mut out = vec![Fp2::ZERO; w];
+) -> Vec<VerifierKey> {
+    let mut out = vec![VerifierKey::ZERO; w];
     for row in 0..rows {
         for l in 0..w {
-            out[l] += wr[row] * keys[row * cols + c0 + l];
+            let term = VerifierKey::ZERO.add(keys[row * cols + c0 + l].scale(wr[row]));
+            out[l] = out[l].add(term);
         }
     }
     out
@@ -1924,7 +1934,7 @@ pub struct CacheSegP<'a> {
 /// Verifier mirror: cached per-element keys of one segment.
 pub struct CacheSegK<'a> {
     pub rows: usize,
-    pub keys: &'a [Fp2],
+    pub keys: &'a [VerifierKey],
 }
 
 /// One earlier phase's authenticated K/V (prover side): the prefill (or a
@@ -1957,8 +1967,8 @@ pub(crate) struct ResidentKvPrefixP {
 /// Verifier mirror of [`KvPrefixP`] (cached keys).
 pub struct KvPrefixK<'a> {
     pub rows: usize,
-    pub k_keys: &'a [Fp2],
-    pub v_keys: &'a [Fp2],
+    pub k_keys: &'a [VerifierKey],
+    pub v_keys: &'a [VerifierKey],
 }
 
 /// Fold a segmented cache over its ROWS (global row index into `wr`),
@@ -1999,13 +2009,18 @@ pub(crate) fn cache_fold_rows_p(
     (vals, tags_out, authenticated)
 }
 
-pub(crate) fn cache_fold_rows_k(segs: &[CacheSegK], wr: &[Fp2], c0: usize, w: usize) -> Vec<Fp2> {
-    let mut out = vec![Fp2::ZERO; w];
+pub(crate) fn cache_fold_rows_k(
+    segs: &[CacheSegK],
+    wr: &[Fp2],
+    c0: usize,
+    w: usize,
+) -> Vec<VerifierKey> {
+    let mut out = vec![VerifierKey::ZERO; w];
     let mut base = 0usize;
     for seg in segs {
         let sv = fold_rows_window_k(seg.keys, seg.rows, D, &wr[base..base + seg.rows], c0, w);
         for l in 0..w {
-            out[l] += sv[l];
+            out[l] = out[l].add(sv[l]);
         }
         base += seg.rows;
     }
@@ -2033,7 +2048,12 @@ pub(crate) fn cache_fold_cols_p(
     (vals, tags, authenticated)
 }
 
-pub(crate) fn cache_fold_cols_k(segs: &[CacheSegK], wc: &[Fp2], c0: usize, w: usize) -> Vec<Fp2> {
+pub(crate) fn cache_fold_cols_k(
+    segs: &[CacheSegK],
+    wc: &[Fp2],
+    c0: usize,
+    w: usize,
+) -> Vec<VerifierKey> {
     let mut out = Vec::new();
     for seg in segs {
         out.extend(fold_cols_window_k(seg.keys, seg.rows, D, wc, c0, w));
@@ -2808,9 +2828,9 @@ pub(crate) fn auth_ln_vecs_resident_p(
 }
 
 pub(crate) struct LnVecsK {
-    mean_keys: Vec<Fp2>,
-    rin_keys: Vec<Fp2>,
-    rout_keys: Vec<Fp2>,
+    mean_keys: Vec<VerifierKey>,
+    rin_keys: Vec<VerifierKey>,
+    rout_keys: Vec<VerifierKey>,
 }
 
 pub(crate) fn expand_ln_vecs_k(cx: &mut BlockCtxV, corrs: &[Vec<u64>; 4]) -> LnVecsK {
@@ -3161,7 +3181,7 @@ pub(crate) fn verify_ln_chain(
     s_ln: u32,
     gain: &[i16],
     bias: &[i16],
-    x_keys: &[Fp2],
+    x_keys: &[VerifierKey],
     lvk: &LnVecsK,
     proof: &LnChainProof,
     wire: &WireKey,
@@ -3190,7 +3210,7 @@ fn verify_ln_chain_impl(
     s_ln: u32,
     gain: &[i16],
     bias: &[i16],
-    x_keys: Option<&[Fp2]>,
+    x_keys: Option<&[VerifierKey]>,
     lvk: &LnVecsK,
     proof: &LnChainProof,
     wire: &WireKey,
@@ -4630,8 +4650,8 @@ pub(crate) fn verify_ffn_before_gelu(
     luts: &Luts,
     proof: &FfnBlockProof,
     cx: &mut BlockCtxV,
-    abo_keys: &[Fp2],
-    fbo_keys: &[Fp2],
+    abo_keys: &[VerifierKey],
+    fbo_keys: &[VerifierKey],
     biases: Option<&GemmBiases>,
 ) -> Option<FfnAfterDownV> {
     if proof.t1_q_corr.is_some() || proof.t1_abo_reduce.is_some() {
@@ -4647,7 +4667,7 @@ pub(crate) fn verify_ffn_before_gelu_thinned(
     proof: &FfnBlockProof,
     cx: &mut BlockCtxV,
     downstream_f: Option<&BoundaryClaimK>,
-    exit_fbo_keys: Option<&[Fp2]>,
+    exit_fbo_keys: Option<&[VerifierKey]>,
     biases: Option<&GemmBiases>,
 ) -> Option<FfnAfterDownV> {
     if proof.t1_abo_reduce.is_none() || (downstream_f.is_some() == exit_fbo_keys.is_some()) {
@@ -4662,9 +4682,9 @@ fn verify_ffn_before_gelu_impl(
     luts: &Luts,
     proof: &FfnBlockProof,
     cx: &mut BlockCtxV,
-    legacy_keys: Option<(&[Fp2], &[Fp2])>,
+    legacy_keys: Option<(&[VerifierKey], &[VerifierKey])>,
     downstream_f: Option<&BoundaryClaimK>,
-    exit_fbo_keys: Option<&[Fp2]>,
+    exit_fbo_keys: Option<&[VerifierKey]>,
     biases: Option<&GemmBiases>,
 ) -> Option<FfnAfterDownV> {
     let rb = pad_bits(t);
@@ -4738,7 +4758,7 @@ pub(crate) fn verify_ffn_after_gelu(
     state: FfnAfterDownV,
     gelu: InstanceOutV,
     cx: &mut BlockCtxV,
-    abo_keys: &[Fp2],
+    abo_keys: &[VerifierKey],
     biases: Option<&GemmBiases>,
 ) -> Option<Vec<(Vec<Fp2>, VerifierKey)>> {
     let (keys, deferred) = verify_ffn_after_gelu_impl(
@@ -4790,7 +4810,7 @@ fn verify_ffn_after_gelu_impl(
     state: FfnAfterDownV,
     gelu: InstanceOutV,
     cx: &mut BlockCtxV,
-    abo_keys: Option<&[Fp2]>,
+    abo_keys: Option<&[VerifierKey]>,
     biases: Option<&GemmBiases>,
 ) -> Option<(Vec<(Vec<Fp2>, VerifierKey)>, Option<(BoundaryClaimK, BoundaryClaimK)>)> {
     let s_up = luts.params.shift_ffn_up;
@@ -4845,8 +4865,8 @@ pub(crate) fn verify_ffn_block(
     proof: &FfnBlockProof,
     lvk: &LnVecsK,
     cx: &mut BlockCtxV,
-    abo_keys: &[Fp2],
-    fbo_keys: &[Fp2],
+    abo_keys: &[VerifierKey],
+    fbo_keys: &[VerifierKey],
     biases: Option<&GemmBiases>,
 ) -> Option<Vec<(Vec<Fp2>, VerifierKey)>> {
     let p = luts.params;
@@ -5306,8 +5326,8 @@ pub(crate) fn close_softmax_recip_resident(
 
 pub(crate) fn close_softmax_recip_verifier(
     instance: &InstanceOutV,
-    rin_keys: &[Fp2],
-    recips_keys: &[Fp2],
+    rin_keys: &[VerifierKey],
+    recips_keys: &[VerifierKey],
     cx: &mut BlockCtxV,
 ) {
     let rin_key = open_fp_vec_k(rin_keys, &instance.point);
@@ -7686,11 +7706,11 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
 /// Attention verifier phase-1 state: cached element-wise keys.
 pub struct AttnV1 {
     lvk1: LnVecsK,
-    denoms_keys: Vec<Fp2>,
-    rin_row_keys: Vec<Fp2>,
-    recips_keys: Vec<Fp2>,
-    above_keys: Vec<Fp2>,
-    rowshift_keys: Option<Vec<Fp2>>,
+    denoms_keys: Vec<VerifierKey>,
+    rin_row_keys: Vec<VerifierKey>,
+    recips_keys: Vec<VerifierKey>,
+    above_keys: Vec<VerifierKey>,
+    rowshift_keys: Option<Vec<VerifierKey>>,
 }
 
 /// Mirror of [`attn_phase1_with_wires`]: length checks + key expansion, in
@@ -7760,10 +7780,10 @@ pub(crate) fn verify_attn_block(
     proof: &AttnBlockProof,
     v1: AttnV1,
     cx: &mut BlockCtxV,
-    xin_keys: &[Fp2],
+    xin_keys: &[VerifierKey],
     k_segs: &[CacheSegK],
     v_segs: &[CacheSegK],
-    abo_keys: &[Fp2],
+    abo_keys: &[VerifierKey],
     biases: Option<&GemmBiases>,
 ) -> Option<Vec<(Vec<Fp2>, VerifierKey)>> {
     if proof.t1_q_corr.is_some() || proof.t1_x_reduce.is_some() {
@@ -7834,10 +7854,10 @@ fn verify_attn_block_impl(
     proof: &AttnBlockProof,
     v1: AttnV1,
     cx: &mut BlockCtxV,
-    xin_keys: Option<&[Fp2]>,
+    xin_keys: Option<&[VerifierKey]>,
     k_segs: &[CacheSegK],
     v_segs: &[CacheSegK],
-    abo_keys: Option<&[Fp2]>,
+    abo_keys: Option<&[VerifierKey]>,
     external_abo: Option<&BoundaryClaimK>,
     biases: Option<&GemmBiases>,
 ) -> Option<(Vec<(Vec<Fp2>, VerifierKey)>, Option<(BoundaryClaimK, BoundaryClaimK)>)> {
@@ -7940,10 +7960,7 @@ fn verify_attn_block_impl(
     // ---- 4: av head split ------------------------------------------------------
     let eqh_av = eq_vec(&pt_av[6..d_cb]);
     let dom_split_av = cx.doms.take(1);
-    let ks_av = cx.ctx.expand_full_keys(dom_split_av, H);
-    let av_keys: Vec<VerifierKey> = (0..H)
-        .map(|h| VerifierKey { k: ks_av[h] + cx.ctx.delta * proof.av_split_corrs[h] })
-        .collect();
+    let av_keys = cx.ctx.correct_full_verifier_keys(dom_split_av, &proof.av_split_corrs);
     let mut krow = VerifierKey::ZERO.sub(k_acc_av);
     for h in 0..H {
         krow = krow.add(av_keys[h].scale(eqh_av[h]));
@@ -7981,9 +7998,8 @@ fn verify_attn_block_impl(
             return None;
         }
         let eq_l = eq_vec(&output.point);
-        let k_b = VerifierKey {
-            k: (0..s_len).fold(Fp2::ZERO, |sum, row| sum + eq_l[row] * vkeys_row[row]),
-        };
+        let k_b =
+            (0..s_len).fold(VerifierKey::ZERO, |sum, row| sum.add(vkeys_row[row].scale(eq_l[row])));
         let (wk, _r_l) = finalize_verify_gemm_act_chained(
             output,
             &pt_av[d_cb..],
@@ -8025,9 +8041,7 @@ fn verify_attn_block_impl(
         return None; // negligible-probability event; redraw/panic acceptable
     }
     let dom_cw = cx.doms.take(1);
-    let k_w_causal = VerifierKey {
-        k: cx.ctx.expand_full_keys(dom_cw, 1)[0] + cx.ctx.delta * proof.causal_w_corr,
-    };
+    let k_w_causal = cx.ctx.correct_full_verifier_key(dom_cw, proof.causal_w_corr);
     cx.kzero.push(k_w_causal.scale(m_eval).sub(k_causal_n));
     aux_sn.push((1, r_c.clone(), k_w_causal));
 
@@ -8057,8 +8071,7 @@ fn verify_attn_block_impl(
     let mut half_pt = vec![half_scalar; sb];
     half_pt.extend_from_slice(&rho);
     let dom_rs = cx.doms.take(1);
-    let k_rs =
-        VerifierKey { k: cx.ctx.expand_full_keys(dom_rs, 1)[0] + cx.ctx.delta * proof.rowsum_corr };
+    let k_rs = cx.ctx.correct_full_verifier_key(dom_rs, proof.rowsum_corr);
     let den_k = open_fp_vec_k(&denoms_keys, &rho);
     let two_sb = Fp2::from_base(Fp::new(1u64 << sb));
     cx.kzero.push(den_k.sub(k_rs.scale(two_sb)));
@@ -8084,9 +8097,7 @@ fn verify_attn_block_impl(
         let mut half_pt2 = vec![half_scalar; sb];
         half_pt2.extend_from_slice(&rho2);
         let dom_rs2 = cx.doms.take(1);
-        let k_rs2 = VerifierKey {
-            k: cx.ctx.expand_full_keys(dom_rs2, 1)[0] + cx.ctx.delta * proof.ismax_rowsum_corr?,
-        };
+        let k_rs2 = cx.ctx.correct_full_verifier_key(dom_rs2, proof.ismax_rowsum_corr?);
         let eq_rho2 = eq_vec(&rho2);
         let mut realmask = Fp2::ZERO;
         for h in 0..H {
@@ -8153,10 +8164,7 @@ fn verify_attn_block_impl(
     // ---- 13: scores head split ---------------------------------------------------
     let eqh_sc = eq_vec(&pt_sc[sb + qb..]);
     let dom_split_sc = cx.doms.take(1);
-    let ks_sc = cx.ctx.expand_full_keys(dom_split_sc, H);
-    let sc_keys: Vec<VerifierKey> = (0..H)
-        .map(|h| VerifierKey { k: ks_sc[h] + cx.ctx.delta * proof.sc_split_corrs[h] })
-        .collect();
+    let sc_keys = cx.ctx.correct_full_verifier_keys(dom_split_sc, &proof.sc_split_corrs);
     let mut krow = VerifierKey::ZERO.sub(k_acc_sc_true);
     for h in 0..H {
         krow = krow.add(sc_keys[h].scale(eqh_sc[h]));
@@ -8188,7 +8196,7 @@ fn verify_attn_block_impl(
             return None;
         }
         let eq_l = eq_vec(&output.point);
-        let k_b = VerifierKey { k: (0..DH).fold(Fp2::ZERO, |sum, l| sum + eq_l[l] * kkeys_col[l]) };
+        let k_b = (0..DH).fold(VerifierKey::ZERO, |sum, l| sum.add(kkeys_col[l].scale(eq_l[l])));
         let (wk, _r_l) = finalize_verify_gemm_act_chained(
             output,
             &pt_sc[sb..sb + qb],
@@ -8330,12 +8338,12 @@ pub struct LayerOutV {
     pub weight_keys: Vec<(Vec<Fp2>, VerifierKey)>,
     /// Cached per-element keys of the `x_in` / `ffn_block_out` boundaries
     /// (P5 model-level seam closures).
-    pub xin_keys: Vec<Fp2>,
+    pub xin_keys: Vec<VerifierKey>,
     /// Cached K/V boundary keys (P6 decode chunks reference the prefill's —
     /// and previous chunks' — cache segments through these).
-    pub k_keys: Vec<Fp2>,
-    pub v_keys: Vec<Fp2>,
-    pub fbo_keys: Vec<Fp2>,
+    pub k_keys: Vec<VerifierKey>,
+    pub v_keys: Vec<VerifierKey>,
+    pub fbo_keys: Vec<VerifierKey>,
 }
 
 /// Per-instance measured lookups for the layer (domain sizes).
@@ -9061,11 +9069,11 @@ pub fn layer_content_keys(luts: &Luts, keys: &mut std::collections::BTreeSet<Tab
 /// Layer verifier phase-1 state (mirror of [`LayerP1`]).
 pub struct LayerV1 {
     pub doms: Doms,
-    pub(crate) xin_keys: Vec<Fp2>,
-    pub(crate) k_keys: Vec<Fp2>,
-    pub(crate) v_keys: Vec<Fp2>,
-    pub(crate) abo_keys: Vec<Fp2>,
-    pub(crate) fbo_keys: Vec<Fp2>,
+    pub(crate) xin_keys: Vec<VerifierKey>,
+    pub(crate) k_keys: Vec<VerifierKey>,
+    pub(crate) v_keys: Vec<VerifierKey>,
+    pub(crate) abo_keys: Vec<VerifierKey>,
+    pub(crate) fbo_keys: Vec<VerifierKey>,
     pub(crate) lvk2: LnVecsK,
     pub(crate) attn: AttnV1,
 }
@@ -9128,7 +9136,7 @@ pub(crate) fn verify_layer_phase1_band_thinned(
     sh: BandShape,
     luts: &Luts,
     proof: &LayerProof,
-    entry_alias_keys: Option<&[Fp2]>,
+    entry_alias_keys: Option<&[VerifierKey]>,
     cx: &mut BlockCtxV,
 ) -> Option<LayerV1> {
     if layer >= L {
@@ -9196,7 +9204,7 @@ fn verify_layer_phase1_band_aliased(
     luts: &Luts,
     proof: &LayerProof,
     cx: &mut BlockCtxV,
-    xin_alias_keys: Option<&[Fp2]>,
+    xin_alias_keys: Option<&[VerifierKey]>,
 ) -> Option<LayerV1> {
     let t = sh.q;
     if match xin_alias_keys {
@@ -9961,7 +9969,7 @@ mod tests {
         let product_domain = prover_batch_doms.take(1);
         assert_eq!(product_domain, verifier_batch_doms.take(1));
         let product_mask = stream.draw_product_mask(product_domain, got.3.len());
-        let product_key = verifier.expand_product_mask_key(product_domain, key_prod.len());
+        let product_key = verifier.expand_product_mask_verifier_key(product_domain, key_prod.len());
         let product_proof = prod_batch_prover(&got.3, challenge, product_mask, &mut tx);
         assert!(prod_batch_verify(&key_prod, product_key, delta, challenge, &product_proof));
         let zero_domain = prover_batch_doms.take(1);
@@ -10226,7 +10234,7 @@ mod tests {
         let product_domain = got.15.take(1);
         assert_eq!(product_domain, verifier_doms.take(1));
         let product_mask = stream.draw_product_mask(product_domain, got.11.len());
-        let product_key = verifier.expand_product_mask_key(product_domain, key_prod.len());
+        let product_key = verifier.expand_product_mask_verifier_key(product_domain, key_prod.len());
         let product_proof = prod_batch_prover(&got.11, challenge, product_mask, &mut tx);
         assert!(prod_batch_verify(&key_prod, product_key, delta, challenge, &product_proof));
         let zero_domain = got.15.take(1);
@@ -10852,7 +10860,7 @@ mod tests {
         let product_domain = prover_batch_doms.take(1);
         assert_eq!(product_domain, verifier_batch_doms.take(1));
         let product_mask = stream.draw_product_mask(product_domain, got.3.len());
-        let product_key = verifier.expand_product_mask_key(product_domain, key_prod.len());
+        let product_key = verifier.expand_product_mask_verifier_key(product_domain, key_prod.len());
         let product_proof = prod_batch_prover(&got.3, challenge, product_mask, &mut tx);
         assert!(prod_batch_verify(&key_prod, product_key, delta, challenge, &product_proof));
         let zero_domain = prover_batch_doms.take(1);
@@ -11179,7 +11187,7 @@ mod tests {
         let md = domsp.take(1);
         assert_eq!(md, domsv.take(1));
         let mask = stream.draw_product_mask(md, prod.len());
-        let k_mask = vc.expand_product_mask_key(md, kprod.len());
+        let k_mask = vc.expand_product_mask_verifier_key(md, kprod.len());
         let pp = prod_batch_prover(&prod, chi, mask, &mut txp);
         let ok_prod = prod_batch_verify(&kprod, k_mask, delta, chi, &pp);
         let mz = domsp.take(1);
@@ -11460,7 +11468,7 @@ mod tests {
         let md = domsp.take(1);
         assert_eq!(md, domsv.take(1));
         let mask = stream.draw_product_mask(md, prod.len());
-        let k_mask = vc.expand_product_mask_key(md, kprod.len());
+        let k_mask = vc.expand_product_mask_verifier_key(md, kprod.len());
         let pp = prod_batch_prover(&prod, chi, mask, &mut txp);
         let ok_prod = prod_batch_verify(&kprod, k_mask, delta, chi, &pp);
         let mz = domsp.take(1);
@@ -11522,7 +11530,7 @@ mod tests {
         let md = domsp.take(1);
         assert_eq!(md, domsv.take(1));
         let mask = stream.draw_product_mask(md, prod.len());
-        let k_mask = vc.expand_product_mask_key(md, kprod.len());
+        let k_mask = vc.expand_product_mask_verifier_key(md, kprod.len());
         let pp = prod_batch_prover(&prod, chi, mask, &mut txp);
         let ok_prod = prod_batch_verify(&kprod, k_mask, delta, chi, &pp);
         let mz = domsp.take(1);
@@ -11588,7 +11596,7 @@ mod tests {
         let md = domsp.take(1);
         assert_eq!(md, domsv.take(1));
         let mask = stream.draw_product_mask(md, prod.len());
-        let k_mask = vc.expand_product_mask_key(md, kprod.len());
+        let k_mask = vc.expand_product_mask_verifier_key(md, kprod.len());
         let pp = prod_batch_prover(&prod, chi, mask, &mut txp);
         let ok_prod = prod_batch_verify(&kprod, k_mask, delta, chi, &pp);
         let mz = domsp.take(1);

@@ -1407,9 +1407,8 @@ mod tests {
 
         let handle = digest(0x52);
         let delta = Fp2::from_base(Fp::new(17));
-        let honest =
-            ProverAuthed { x: Fp2::from_base(Fp::new(23)), m: Fp2::from_base(Fp::new(29)) };
-        let frozen_key = VerifierKey { k: honest.m + delta * honest.x };
+        let honest = ProverAuthed::new(Fp2::from_base(Fp::new(23)), Fp2::from_base(Fp::new(29)));
+        let frozen_key = VerifierKey::new(honest.m + delta * honest.x);
         let mut prover_store = X4dAuthenticatedValueStoreV1::default();
         let mut verifier_store = X4dAuthenticatedValueStoreV1::default();
         prover_store.freeze(handle, honest).unwrap();
@@ -1418,7 +1417,7 @@ mod tests {
         // The handle is write-once. Even if a malicious prover locally
         // reopens its frozen share with a different plaintext while retaining
         // the old tag, the verifier keeps the original Delta-bound key.
-        let substituted = ProverAuthed { x: honest.x + Fp2::ONE, m: honest.m };
+        let substituted = ProverAuthed::new(honest.x + Fp2::ONE, honest.m);
         assert_eq!(prover_store.freeze(handle, substituted), Err(X4dErrorV1::DigestMismatch));
         let prover_residual = substituted.sub(ProverAuthed::from_public(substituted.x));
         let verifier_residual = verifier_store

@@ -135,7 +135,7 @@ pub(crate) struct PrivateArgmaxPreparedP {
 
 pub(crate) struct PrivateArgmaxPreparedV {
     doms: Doms,
-    selected_row_keys: Vec<Fp2>,
+    selected_row_keys: Vec<VerifierKey>,
 }
 
 pub(crate) struct PrivateArgmaxPhaseP {
@@ -555,7 +555,7 @@ fn authenticate_scalar(
 
 fn verify_scalar(correction: Fp2, cx: &mut BlockCtxV<'_>, label: &'static str) -> VerifierKey {
     let domain = cx.doms.take(1);
-    let key = VerifierKey { k: cx.ctx.expand_full_keys(domain, 1)[0] + cx.ctx.delta * correction };
+    let key = cx.ctx.correct_full_verifier_key(domain, correction);
     cx.tx.append(label, 16);
     key
 }

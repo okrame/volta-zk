@@ -50,12 +50,21 @@ pub fn prod_batch_prover(
 /// Verifier: `Σ χ^{t+1}(k_a·k_b − Δ·k_c) + k_mask == M0 + M1·Δ`.
 pub fn prod_batch_verify(
     keys: &[(VerifierKey, VerifierKey, VerifierKey)],
-    k_mask: Fp2,
+    k_mask: VerifierKey,
     delta: Fp2,
     chi: Fp2,
     proof: &ProdProof,
 ) -> bool {
-    let mut acc = k_mask;
+    #[cfg(feature = "c6-trace")]
+    {
+        let trace_triples = keys
+            .iter()
+            .map(|(a, b, c)| [a.c6_trace_token(), b.c6_trace_token(), c.c6_trace_token()])
+            .collect::<Vec<_>>();
+        volta_mac::record_c6_product_closure(&trace_triples, k_mask.c6_trace_token())
+            .unwrap_or_else(|error| panic!("C6 verifier ProductClosure trace HARD STOP: {error}"));
+    }
+    let mut acc = k_mask.k;
     let mut w = Fp2::ONE;
     for (ka, kb, kc) in keys {
         w = w * chi;
@@ -99,7 +108,7 @@ mod tests {
         for ((f, kf), &x) in fulls.iter().zip(&kfulls).zip(xs) {
             let c = x - f.x; // correction transfer, 16 B in production
             pa.push(ProverAuthed::new(x, f.m));
-            ka.push(VerifierKey { k: *kf + vc.delta * c });
+            ka.push(VerifierKey::new(*kf + vc.delta * c));
         }
         (pa, ka)
     }
@@ -119,7 +128,7 @@ mod tests {
         let (pb, kb) = authed_batch(&mut ps, &mut vc, 2, &xb);
         let (pc, kc) = authed_batch(&mut ps, &mut vc, 3, &xc);
         let mask = ps.draw_product_mask(9, t);
-        let k_mask = vc.expand_product_mask_key(9, t);
+        let k_mask = vc.expand_product_mask_verifier_key(9, t);
         let chi = tx.challenge_fp2();
         let triples: Vec<_> = (0..t).map(|i| (pa[i], pb[i], pc[i])).collect();
         let keys: Vec<_> = (0..t).map(|i| (ka[i], kb[i], kc[i])).collect();

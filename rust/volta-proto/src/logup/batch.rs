@@ -1447,8 +1447,8 @@ impl<'a> BatchVerifyState<'a> {
         let draw = self.corr.take(CorrelationScope::LogupRoot)?;
         let keys = correlations.expand(draw.range, draw.row);
         self.roots = (
-            VerifierKey { k: keys[0] + self.delta * self.proof.root_corrs[0] },
-            VerifierKey { k: keys[1] + self.delta * self.proof.root_corrs[1] },
+            keys[0].with_same_c6_trace(keys[0].k + self.delta * self.proof.root_corrs[0]),
+            keys[1].with_same_c6_trace(keys[1].k + self.delta * self.proof.root_corrs[1]),
         );
         self.cp = self.roots.0;
         self.cq = self.roots.1;
@@ -1492,9 +1492,9 @@ impl<'a> BatchVerifyState<'a> {
             let keys = correlations.expand(draw.range, draw.row);
             self.pending_round3 = Some(PendingVerifyRound3 {
                 values: [
-                    VerifierKey { k: keys[0] + self.delta * corrs[0] },
-                    VerifierKey { k: keys[1] + self.delta * corrs[1] },
-                    VerifierKey { k: keys[2] + self.delta * corrs[2] },
+                    keys[0].with_same_c6_trace(keys[0].k + self.delta * corrs[0]),
+                    keys[1].with_same_c6_trace(keys[1].k + self.delta * corrs[1]),
+                    keys[2].with_same_c6_trace(keys[2].k + self.delta * corrs[2]),
                 ],
                 point,
             });
@@ -1507,8 +1507,8 @@ impl<'a> BatchVerifyState<'a> {
             let draw = self.corr.take(CorrelationScope::LogupGeneralRound)?;
             let keys = correlations.expand(draw.range, draw.row);
             self.pending_round2 = Some(PendingVerifyRound2 {
-                h0: VerifierKey { k: keys[0] + self.delta * corrs[0] },
-                h2: VerifierKey { k: keys[1] + self.delta * corrs[1] },
+                h0: keys[0].with_same_c6_trace(keys[0].k + self.delta * corrs[0]),
+                h2: keys[1].with_same_c6_trace(keys[1].k + self.delta * corrs[1]),
                 point,
             });
             tx.append("logup_round_corrections", 32);
@@ -1562,18 +1562,25 @@ impl<'a> BatchVerifyState<'a> {
         let draw = self.corr.take(CorrelationScope::LogupSplit)?;
         let split_masks = correlations.expand(draw.range, draw.row);
         let splits = [
-            VerifierKey { k: split_masks[0] + self.delta * proof_layer.split_corrs[0] },
-            VerifierKey { k: split_masks[1] + self.delta * proof_layer.split_corrs[1] },
-            VerifierKey { k: split_masks[2] + self.delta * proof_layer.split_corrs[2] },
-            VerifierKey { k: split_masks[3] + self.delta * proof_layer.split_corrs[3] },
+            split_masks[0]
+                .with_same_c6_trace(split_masks[0].k + self.delta * proof_layer.split_corrs[0]),
+            split_masks[1]
+                .with_same_c6_trace(split_masks[1].k + self.delta * proof_layer.split_corrs[1]),
+            split_masks[2]
+                .with_same_c6_trace(split_masks[2].k + self.delta * proof_layer.split_corrs[2]),
+            split_masks[3]
+                .with_same_c6_trace(split_masks[3].k + self.delta * proof_layer.split_corrs[3]),
         ];
         tx.append("logup_split_corrections", 64);
         let draw = self.corr.take(CorrelationScope::LogupProduct)?;
         let product_masks = correlations.expand(draw.range, draw.row);
         let products = [
-            VerifierKey { k: product_masks[0] + self.delta * proof_layer.z_corrs[0] },
-            VerifierKey { k: product_masks[1] + self.delta * proof_layer.z_corrs[1] },
-            VerifierKey { k: product_masks[2] + self.delta * proof_layer.z_corrs[2] },
+            product_masks[0]
+                .with_same_c6_trace(product_masks[0].k + self.delta * proof_layer.z_corrs[0]),
+            product_masks[1]
+                .with_same_c6_trace(product_masks[1].k + self.delta * proof_layer.z_corrs[1]),
+            product_masks[2]
+                .with_same_c6_trace(product_masks[2].k + self.delta * proof_layer.z_corrs[2]),
         ];
         tx.append("logup_prod_corrections", 48);
         kprod.push((splits[0], splits[3], products[0]));
@@ -1595,8 +1602,11 @@ impl<'a> BatchVerifyState<'a> {
                 .enumerate()
                 .map(|(index, corrs)| {
                     [
-                        VerifierKey { k: column_masks[2 * index] + self.delta * corrs[0] },
-                        VerifierKey { k: column_masks[2 * index + 1] + self.delta * corrs[1] },
+                        column_masks[2 * index]
+                            .with_same_c6_trace(column_masks[2 * index].k + self.delta * corrs[0]),
+                        column_masks[2 * index + 1].with_same_c6_trace(
+                            column_masks[2 * index + 1].k + self.delta * corrs[1],
+                        ),
                     ]
                 })
                 .collect();
@@ -3120,7 +3130,7 @@ mod tests {
     ) -> (ProverAuthed, VerifierKey) {
         let corr = stream.draw_fulls(domain, 1)[0];
         let key = ctx.expand_full_keys(domain, 1)[0];
-        (corr.authenticate(value), VerifierKey { k: key + ctx.delta * (value - corr.x) })
+        (corr.authenticate(value), VerifierKey::new(key + ctx.delta * (value - corr.x)))
     }
 
     fn raw_d2h_elements(depth: usize, columns: usize) -> usize {

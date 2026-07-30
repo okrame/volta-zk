@@ -222,7 +222,7 @@ struct PreparedP {
 
 struct PreparedV {
     doms: Doms,
-    auth_keys: Vec<Vec<Fp2>>,
+    auth_keys: Vec<Vec<VerifierKey>>,
 }
 
 fn fp_i16(value: i16) -> Fp {
@@ -339,7 +339,7 @@ fn auth_values_v(
     corrections: &[Vec<u64>],
     lengths: &[usize],
     cx: &mut BlockCtxV<'_>,
-) -> Option<Vec<Vec<Fp2>>> {
+) -> Option<Vec<Vec<VerifierKey>>> {
     if corrections.len() != lengths.len()
         || corrections.iter().zip(lengths).any(|(corr, &len)| corr.len() != len)
     {
@@ -392,9 +392,9 @@ fn fresh_eval_p(value: Fp2, label: &'static str, cx: &mut BlockCtxP<'_>) -> (Fp2
 
 fn fresh_eval_k(corr: Fp2, label: &'static str, cx: &mut BlockCtxV<'_>) -> VerifierKey {
     let dom = cx.doms.take(1);
-    let key = cx.ctx.expand_full_keys(dom, 1)[0] + cx.ctx.delta * corr;
+    let key = cx.ctx.correct_full_verifier_key(dom, corr);
     cx.tx.append(label, 16);
-    VerifierKey { k: key }
+    key
 }
 
 fn fresh_split_p(
@@ -412,13 +412,9 @@ fn fresh_split_p(
 
 fn fresh_split_k(corrs: &[Fp2], label: &'static str, cx: &mut BlockCtxV<'_>) -> Vec<VerifierKey> {
     let dom = cx.doms.take(1);
-    let masks = cx.ctx.expand_full_keys(dom, corrs.len());
+    let masks = cx.ctx.correct_full_verifier_keys(dom, corrs);
     cx.tx.append(label, 16 * corrs.len() as u64);
     masks
-        .into_iter()
-        .zip(corrs)
-        .map(|(mask, &corr)| VerifierKey { k: mask + cx.ctx.delta * corr })
-        .collect()
 }
 
 fn eval_i64_matrix(values: &[i64], rows: usize, cols: usize, point: &[Fp2]) -> Fp2 {
@@ -3385,7 +3381,7 @@ mod tests {
             return false;
         }
         let mask = stream.draw_product_mask(prod_dom, pout.prod.len());
-        let key = verifier.expand_product_mask_key(prod_dom, vout.kprod.len());
+        let key = verifier.expand_product_mask_verifier_key(prod_dom, vout.kprod.len());
         let prod_proof = prod_batch_prover(&pout.prod, chi, mask, &mut txp);
         let prod_ok = prod_batch_verify(&vout.kprod, key, delta, chi, &prod_proof);
         let zero_dom = closure_p.take(1);

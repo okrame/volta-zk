@@ -449,11 +449,11 @@ struct PreparedP {
 
 struct PreparedV {
     doms: Doms,
-    score_keys: Vec<Fp2>,
-    theta_keys: Vec<Fp2>,
-    denom_keys: Vec<Fp2>,
-    recip_in_keys: Vec<Fp2>,
-    recips_keys: Vec<Fp2>,
+    score_keys: Vec<VerifierKey>,
+    theta_keys: Vec<VerifierKey>,
+    denom_keys: Vec<VerifierKey>,
+    recip_in_keys: Vec<VerifierKey>,
+    recips_keys: Vec<VerifierKey>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1027,9 +1027,7 @@ fn verify_layer(
     let mut half_point = vec![half; 5];
     half_point.extend_from_slice(&rho_rows);
     let rowsum_dom = cx.doms.take(1);
-    let rowsum_key = VerifierKey {
-        k: cx.ctx.expand_full_keys(rowsum_dom, 1)[0] + cx.ctx.delta * proof.rowsum_corr,
-    };
+    let rowsum_key = cx.ctx.correct_full_verifier_key(rowsum_dom, proof.rowsum_corr);
     cx.kzero.push(
         open_fp_vec_k(&denom_keys, &rho_rows).sub(rowsum_key.scale(Fp2::from_base(Fp::new(32)))),
     );
@@ -1250,7 +1248,7 @@ mod tests {
             return false;
         }
         let mask = stream.draw_product_mask(prod_dom, pout.prod.len());
-        let key = verifier.expand_product_mask_key(prod_dom, vout.kprod.len());
+        let key = verifier.expand_product_mask_verifier_key(prod_dom, vout.kprod.len());
         let prod_proof = prod_batch_prover(&pout.prod, chi, mask, &mut txp);
         let prod_ok = prod_batch_verify(&vout.kprod, key, delta, chi, &prod_proof);
         let zero_dom = closure_p.take(1);

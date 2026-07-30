@@ -141,7 +141,7 @@ pub fn authenticate_pending_aux_verifier(
     );
     Ok(PendingAuxEvalVerifier {
         descriptor_digest: frame.descriptor_digest,
-        key: VerifierKey { k: key },
+        key: VerifierKey::new(key),
     })
 }
 
@@ -496,8 +496,8 @@ fn verify_blind_multi_term_sumcheck(
         let key_two = ctx.expand_full_keys(domains[2 * round + 1], 1)[0]
             + ctx.delta * corrections[2 * round + 1];
         tx.append("x4_auth_output_link_round_corrections", 32);
-        let auth_zero = VerifierKey { k: key_zero };
-        let auth_two = VerifierKey { k: key_two };
+        let auth_zero = VerifierKey::new(key_zero);
+        let auth_two = VerifierKey::new(key_two);
         let auth_one = claim.sub(auth_zero);
         let challenge = tx.challenge_fp2();
         let weights = lagrange3(challenge);
@@ -1147,7 +1147,7 @@ pub fn verify_bound_response_zero_batch(
             weight.add(auxiliary.key).sub(VerifierKey::from_public(*h, ctx.delta))
         })
         .collect();
-    let full_key = ctx.expand_full_keys(mask_domain, 1)[0];
+    let full_key = ctx.expand_full_verifier_keys(mask_domain, 1)[0];
     tx.append("mask_correction", 16);
     let mask_key = zero_mask_key(ctx, full_key, frame.mask_correction_symbol);
     let challenge = tx.challenge_fp2();
@@ -1401,8 +1401,8 @@ mod tests {
         assert_eq!(generated.proof.frame.round_count, 2);
 
         let weight_tag = symbol(700);
-        let weight_auth = ProverAuthed { x: generated.weight_value, m: weight_tag };
-        let weight_key = VerifierKey { k: weight_tag + generated.delta * generated.weight_value };
+        let weight_auth = ProverAuthed::new(generated.weight_value, weight_tag);
+        let weight_key = VerifierKey::new(weight_tag + generated.delta * generated.weight_value);
         let zero_frame = prove_bound_response_zero_batch(
             &[weight_auth],
             &generated.bound_prover,
@@ -1630,8 +1630,8 @@ mod tests {
         )
         .unwrap();
         let weight_tag = symbol(900);
-        let weight_auth = ProverAuthed { x: generated.weight_value, m: weight_tag };
-        let weight_key = VerifierKey { k: weight_tag + generated.delta * generated.weight_value };
+        let weight_auth = ProverAuthed::new(generated.weight_value, weight_tag);
+        let weight_key = VerifierKey::new(weight_tag + generated.delta * generated.weight_value);
         let mut frame = prove_bound_response_zero_batch(
             &[weight_auth],
             &generated.bound_prover,

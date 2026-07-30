@@ -361,8 +361,8 @@ pub fn blind_verify_batch(
             let corrs = state.proof.round_corrs[round];
             messages.push((
                 index,
-                VerifierKey { k: masks[0] + delta * corrs[0] },
-                VerifierKey { k: masks[1] + delta * corrs[1] },
+                masks[0].with_same_c6_trace(masks[0].k + delta * corrs[0]),
+                masks[1].with_same_c6_trace(masks[1].k + delta * corrs[1]),
             ));
         }
         for (index, g0, g2) in messages {
@@ -1120,9 +1120,9 @@ pub fn blind_verify(
     let mut point = Vec::with_capacity(n_vars);
     let mut k_claim = k_claim0;
     for (round, corrs) in proof.round_corrs.iter().enumerate() {
-        let k_masks = ctx.expand_full_keys(mask_dom_base + round as u64, 2);
-        let k_g0 = VerifierKey { k: k_masks[0] + ctx.delta * corrs[0] };
-        let k_g2 = VerifierKey { k: k_masks[1] + ctx.delta * corrs[1] };
+        let k_masks = ctx.expand_full_verifier_keys(mask_dom_base + round as u64, 2);
+        let k_g0 = k_masks[0].with_same_c6_trace(k_masks[0].k + ctx.delta * corrs[0]);
+        let k_g2 = k_masks[1].with_same_c6_trace(k_masks[1].k + ctx.delta * corrs[1]);
         let k_g1 = k_claim.sub(k_g0);
         let r = tx.challenge_fp2();
         let w = lagrange3(r);

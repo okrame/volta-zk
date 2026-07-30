@@ -4306,8 +4306,8 @@ impl X4cArenaRuntimeV4 for X4cCudaArenaRuntimeV4<'_> {
                 corrections.push(at_zero - mask_zero.x);
                 corrections.push(at_two - mask_two.x);
                 tx.append("x4_v4_auth_output_link_round_corrections", 32);
-                let auth_zero = ProverAuthed { x: at_zero, m: mask_zero.m };
-                let auth_two = ProverAuthed { x: at_two, m: mask_two.m };
+                let auth_zero = mask_zero.authenticate(at_zero);
+                let auth_two = mask_two.authenticate(at_two);
                 let auth_one = claim.sub(auth_zero);
                 let challenge = tx.challenge_fp2();
                 let weights = lagrange3(challenge);
@@ -5532,7 +5532,7 @@ mod tests {
                     .zip(equality)
                     .fold(Fp2::ZERO, |term_sum, (value, equality)| term_sum + *value * equality)
         });
-        let initial_claim = ProverAuthed { x: initial_value, m: symbol(30_000) };
+        let initial_claim = ProverAuthed::new(initial_value, symbol(30_000));
         let domains =
             (0..2 * ROUND_COUNT).map(|index| 0xD200_0000 + index as u64).collect::<Vec<_>>();
         let correlation_seed = [0x41; 32];

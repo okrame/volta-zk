@@ -1118,9 +1118,7 @@ mod tests {
     use super::*;
     use crate::ligero::{commit, open_multi_zk, verify_multi_open};
     use volta_field::{Fp, FpStream};
-    use volta_mac::{
-        CorrIndex, CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey,
-    };
+    use volta_mac::{CorrIndex, CorrelationStream, Transcript, VerifierCtx, VerifierKey};
     use volta_proto::mle::eval_mle;
 
     fn test_layout() -> C6HiddenULayout {
@@ -1381,7 +1379,7 @@ mod tests {
             let correlation = prover_stream.draw_fulls(domain(0xE0, claim_index as u32), 1)[0];
             corrections.push(value - correlation.x);
             prover_tx.append("w_claim_correction", 16);
-            claims_p.push((claim, ProverAuthed { x: value, m: correlation.m }));
+            claims_p.push((claim, correlation.authenticate(value)));
         }
         let (proof, _) = open_multi_zk(
             &weights,
@@ -1401,7 +1399,7 @@ mod tests {
             .enumerate()
             .map(|(index, (claim, _))| {
                 let base_key = verifier.expand_full_keys(domain(0xE0, index as u32), 1)[0];
-                (claim.clone(), VerifierKey { k: base_key + delta * corrections[index] })
+                (claim.clone(), VerifierKey::new(base_key + delta * corrections[index]))
             })
             .collect::<Vec<_>>();
         assert!(verify_multi_open(

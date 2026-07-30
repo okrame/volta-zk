@@ -591,6 +591,46 @@ timing credit.  It closes prover-side normalization only: the digest is not a
 program identity of record until an independently instrumented verifier
 normalizes to the same identity.
 
+The independent verifier migration is now locally exact.  The complete
+prover trace is finished and normalized before a fresh verifier trace
+namespace begins; no trace token is copied between parties and both raw DAGs
+are never retained simultaneously.  The diagnostic token carries an explicit
+monotone namespace generation; linear operations, central closure capture and
+normalization reject stale or mixed-namespace tokens.  Verifier correlation
+expansion assigns the same canonical flattened source ordinals from its
+independently audited draw schedule, and typed verifier keys retain provenance
+through the exact public/add/sub/scale tree.  Corrections remain source
+metadata, not artificial DAG operations.
+
+On the frozen `100+50` workload both sides normalize to
+`0b4bb67835d315807e81d2c3457b5c53bcd82036622307d6f91dec2e62f489bf`
+with exactly **4,975,525 sources, 28,845,583 canonical nodes, 673
+ProductClosures, 22,339 triples, 8,170 pre-mask zero roots and 23,874,732
+reachable operations**.  Informative allocation-order diagnostics differ as
+allowed by the frozen rule:
+
+```text
+                                      prover       verifier
+raw operation nodes                23,891,144     23,874,804
+terminal-reachable operations      23,874,732     23,874,732
+omitted compiler garbage               16,412             72
+```
+
+The initial fail-closed comparison exposed one declared-sharing mismatch in
+the final response-wide closure.  Each of 15 LogUp cross-checks creates two
+distinct public `1` nodes on the prover side, but the verifier had reused one
+equal public key between the two triples.  Mirroring the two verifier
+constructions restored exact identity and accounts for all 15 missing
+reachable nodes.  No algebraic rewrite or value-based matching was used;
+values, MAC equations, correlations, corrections, challenge order,
+transcript bytes, schedules and the frozen prover digest remain unchanged.
+
+The successful schema-6 result was dirty and printed to stdout only.  It is
+implementation evidence, not a persisted run-of-record and not a prover-time
+measurement.  Diagnostic block hashes and targeted canonical-node/terminal
+captures used to locate a mismatch are explicitly outside the program
+identity.  A clean append-only record remains pending.
+
 ## 4. Hidden Ligero vectors without an NTT trace
 
 Simply omitting `u_c` or `u_g` is unsound.  C6 commits to them before the

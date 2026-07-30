@@ -130,7 +130,7 @@ pub(crate) fn verify_matrix_eval_claim(
     cx: &mut BlockCtxV<'_>,
 ) -> BoundaryClaimK {
     let domain = cx.doms.take(1);
-    let key = VerifierKey { k: cx.ctx.expand_full_keys(domain, 1)[0] + cx.ctx.delta * correction };
+    let key = cx.ctx.correct_full_verifier_key(domain, correction);
     cx.tx.append("t1_q_bridge_correction", 16);
     BoundaryClaimK { point: point.to_vec(), key }
 }
@@ -358,9 +358,7 @@ pub(crate) fn verify_eq_reduction(
     let doms = EqReductionDoms::alloc_v(cx, n_vars);
     let (point, final_key) =
         blind_verify(n_vars, claim0, &proof.sumcheck, cx.ctx, doms.rounds, cx.tx)?;
-    let terminal_key = VerifierKey {
-        k: cx.ctx.expand_full_keys(doms.terminal, 1)[0] + cx.ctx.delta * proof.terminal_corr,
-    };
+    let terminal_key = cx.ctx.correct_full_verifier_key(doms.terminal, proof.terminal_corr);
     let coefficient = eq_points(&first.point, &point) + beta * eq_points(&second.point, &point);
     cx.kzero.push(terminal_key.scale(coefficient).sub(final_key));
     Some(BoundaryClaimK { point, key: terminal_key })
@@ -407,11 +405,11 @@ mod tests {
         let (second, second_corr) = authed_claim(&table, point_b, &mut stream, 9_001);
         let first_key = BoundaryClaimK {
             point: first.point.clone(),
-            key: VerifierKey { k: verifier.expand_full_keys(9_000, 1)[0] + delta * first_corr },
+            key: VerifierKey::new(verifier.expand_full_keys(9_000, 1)[0] + delta * first_corr),
         };
         let second_key = BoundaryClaimK {
             point: second.point.clone(),
-            key: VerifierKey { k: verifier.expand_full_keys(9_001, 1)[0] + delta * second_corr },
+            key: VerifierKey::new(verifier.expand_full_keys(9_001, 1)[0] + delta * second_corr),
         };
         let mut pbank = TableBankP::new();
         let mut vbank = TableBankV::empty();
@@ -441,15 +439,11 @@ mod tests {
         }
         let forged_first_key = BoundaryClaimK {
             point: first.point.clone(),
-            key: VerifierKey {
-                k: forged_verifier.expand_full_keys(9_000, 1)[0] + delta * first_corr,
-            },
+            key: forged_verifier.correct_full_verifier_key(9_000, first_corr),
         };
         let forged_second_key = BoundaryClaimK {
             point: second.point.clone(),
-            key: VerifierKey {
-                k: forged_verifier.expand_full_keys(9_001, 1)[0] + delta * second_corr,
-            },
+            key: forged_verifier.correct_full_verifier_key(9_001, second_corr),
         };
         let mut forged_bank = TableBankV::empty();
         let mut forged_cx =

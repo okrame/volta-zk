@@ -812,9 +812,9 @@ impl C6CommittedResidualProgram {
         let mut keys: Vec<VerifierKey> = Vec::with_capacity(self.nodes.len());
         for node in &self.nodes {
             let key = match *node {
-                ValueNode::Source(source) => VerifierKey {
-                    k: base_keys[source] + delta * self.sources[source].witness.correction(),
-                },
+                ValueNode::Source(source) => VerifierKey::new(
+                    base_keys[source] + delta * self.sources[source].witness.correction(),
+                ),
                 ValueNode::Public(value) => VerifierKey::from_public(value, delta),
                 ValueNode::Add(lhs, rhs) => keys[lhs.index()].add(keys[rhs.index()]),
                 ValueNode::Sub(lhs, rhs) => keys[lhs.index()].sub(keys[rhs.index()]),
@@ -852,8 +852,7 @@ impl C6CommittedResidualProgram {
                 .map(|[a, b, c]| (keys[a.index()], keys[b.index()], keys[c.index()]))
                 .collect();
             let proof = ProdProof { m0: response.m0, m1: response.m1 };
-            if !prod_batch_verify(&triples, keys[shape.mask.index()].k, delta, response.chi, &proof)
-            {
+            if !prod_batch_verify(&triples, keys[shape.mask.index()], delta, response.chi, &proof) {
                 return Ok(false);
             }
         }

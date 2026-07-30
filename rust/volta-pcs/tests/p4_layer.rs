@@ -9,7 +9,7 @@
 
 use std::time::Instant;
 use volta_field::{Fp, Fp2, FpStream};
-use volta_mac::{CorrIndex, CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey};
+use volta_mac::{CorrIndex, CorrelationStream, Transcript, VerifierCtx, VerifierKey};
 use volta_pcs::{
     commit, layout_gpt2_layer, open_multi_zk, verify_multi_open, LayerWeightLayout, LigeroParams,
     P4_LAYER,
@@ -99,7 +99,7 @@ fn run_layer(
         let fc = ps.draw_fulls(dom(DOM_W_CLAIM, g as u32), 1)[0];
         corr_vs.push(v - fc.x);
         tx.append("w_claim_correction", 16);
-        claims_p.push((layout.block_claim(g, &point), ProverAuthed { x: v, m: fc.m }));
+        claims_p.push((layout.block_claim(g, &point), fc.authenticate(v)));
     }
     assert_eq!(claims_p.len(), 4);
 
@@ -136,9 +136,7 @@ fn run_layer(
     // Verifier (honest): all 4 claim keys bound to C_W.
     let claim_keys = |ctx: &mut VerifierCtx| -> Vec<VerifierKey> {
         (0..4)
-            .map(|g| VerifierKey {
-                k: ctx.expand_full_keys(dom(DOM_W_CLAIM, g as u32), 1)[0] + delta * corr_vs[g],
-            })
+            .map(|g| ctx.correct_full_verifier_key(dom(DOM_W_CLAIM, g as u32), corr_vs[g]))
             .collect()
     };
     let t3 = Instant::now();
@@ -162,7 +160,7 @@ fn run_layer(
     let mut ctx2 = VerifierCtx::new(seed, delta);
     let mut txv2 = Transcript::new(tx_seed);
     let mut keys2 = claim_keys(&mut ctx2);
-    keys2[2] = VerifierKey { k: keys2[2].k + delta * Fp2::ONE };
+    keys2[2] = VerifierKey::new(keys2[2].k + delta * Fp2::ONE);
     let claims_v2: Vec<_> =
         claims_p.iter().zip(&keys2).map(|((c, _), &k)| (c.clone(), k)).collect();
     assert!(!verify_multi_open(

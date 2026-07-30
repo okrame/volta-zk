@@ -699,7 +699,7 @@ fn verify_gemm_in_auth_reservation_order(
     }
     let (point, k_claim_n) = blind_verify(
         pad_bits(data.k),
-        VerifierKey { k: k_y },
+        VerifierKey::new(k_y),
         &proof.proof.sumcheck,
         ctx,
         domains.round_masks,
@@ -712,12 +712,11 @@ fn verify_gemm_in_auth_reservation_order(
             (0..data.k).fold(Fp2::ZERO, |sum, col| sum + eq_l[col] * x_keys[row * data.k + col]);
         k_x += eq_i[row] * row_key;
     }
-    let k_w =
-        VerifierKey { k: ctx.expand_full_keys(weight_dom, 1)[0] + ctx.delta * proof.weight_corr };
-    let k_mask = ctx.expand_full_keys(domains.prod_mask, 1)[0];
+    let k_w = ctx.correct_full_verifier_key(weight_dom, proof.weight_corr);
+    let k_mask = VerifierKey::new(ctx.expand_full_keys(domains.prod_mask, 1)[0]);
     let chi = tx.challenge_fp2();
     if !prod_batch_verify(
-        &[(VerifierKey { k: k_x }, k_w, k_claim_n)],
+        &[(VerifierKey::new(k_x), k_w, k_claim_n)],
         k_mask,
         ctx.delta,
         chi,
@@ -1120,7 +1119,7 @@ mod tests {
             return false;
         }
         let mask = stream.draw_product_mask(prod_dom, pout.prod.len());
-        let key = verifier.expand_product_mask_key(prod_dom, vout.kprod.len());
+        let key = verifier.expand_product_mask_verifier_key(prod_dom, vout.kprod.len());
         let prod_proof = prod_batch_prover(&pout.prod, chi, mask, &mut txp);
         let prod_ok = prod_batch_verify(&vout.kprod, key, delta, chi, &prod_proof);
         let zero_dom = closure_p.take(1);

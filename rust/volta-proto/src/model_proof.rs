@@ -4178,9 +4178,9 @@ fn verify_response_impl(
     let mut kzero: Vec<VerifierKey> = Vec::new();
     let mut weight_keys: Vec<(Vec<Fp2>, VerifierKey)> = Vec::with_capacity(4 * L);
     // (xin_keys, fbo_keys) per layer.
-    let mut boundary_keys: Vec<(Vec<Fp2>, Vec<Fp2>)> = Vec::with_capacity(L);
+    let mut boundary_keys: Vec<(Vec<VerifierKey>, Vec<VerifierKey>)> = Vec::with_capacity(L);
     // Prefill (k_keys, v_keys) per layer — the chunks' first cache segment.
-    let mut boundary_kv_keys: Vec<(Vec<Fp2>, Vec<Fp2>)> = Vec::with_capacity(L);
+    let mut boundary_kv_keys: Vec<(Vec<VerifierKey>, Vec<VerifierKey>)> = Vec::with_capacity(L);
 
     let luts_for = |l: usize| {
         let mut luts_l = model.luts.clone();
@@ -4241,9 +4241,9 @@ fn verify_response_impl(
     struct ChunkV1 {
         layer_v1s: Vec<LayerV1>,
         embed_doms: Doms,
-        out_keys: Vec<Fp2>,
+        out_keys: Vec<VerifierKey>,
         fin_doms: Doms,
-        fin_out_keys: Vec<Fp2>,
+        fin_out_keys: Vec<VerifierKey>,
         fin_lvk: crate::block_proof::LnVecsK,
     }
     let mut chunk_v1s: Vec<ChunkV1> = Vec::with_capacity(chunks.len());
@@ -4479,9 +4479,7 @@ fn verify_response_impl(
         open_matrix_k(&out_keys_f, t_ln, D, &pt_fin)
     };
     let dom_wv = cx.doms.take(1);
-    let k_wte = VerifierKey {
-        k: cx.ctx.expand_full_keys(dom_wv, 1)[0] + cx.ctx.delta * proof.logits.wte_corr,
-    };
+    let k_wte = cx.ctx.correct_full_verifier_key(dom_wv, proof.logits.wte_corr);
     cx.kprod.push((k_fin, k_wte, k_claim_n));
     let mut pt_wte = r_l;
     pt_wte.extend(rho_v.iter().copied());
@@ -4496,17 +4494,13 @@ fn verify_response_impl(
     let r_i = &embed_acc_point[d_cb..];
     let eq_i = eq_vec(r_i);
     let dom_p = cx.doms.take(1);
-    let k_p = VerifierKey {
-        k: cx.ctx.expand_full_keys(dom_p, 1)[0] + cx.ctx.delta * proof.selection.p_corr,
-    };
+    let k_p = cx.ctx.correct_full_verifier_key(dom_p, proof.selection.p_corr);
     let k_claim0 = embed_acc_key.sub(k_p);
     let dom_sel = cx.doms.take(16);
     let (rho_z, k_sel_n) = blind_verify(16, k_claim0, &proof.selection.sc, cx.ctx, dom_sel, cx.tx)?;
     let s_eval = sel_s_eval(&model.p.tokens[..t], &eq_i, &rho_z);
     let dom_wv2 = cx.doms.take(1);
-    let k_wte2 = VerifierKey {
-        k: cx.ctx.expand_full_keys(dom_wv2, 1)[0] + cx.ctx.delta * proof.selection.wte_corr,
-    };
+    let k_wte2 = cx.ctx.correct_full_verifier_key(dom_wv2, proof.selection.wte_corr);
     cx.kzero.push(k_wte2.scale(s_eval).sub(k_sel_n));
     let mut pt_wte2 = r_d.to_vec();
     pt_wte2.extend(rho_z.iter().copied());
@@ -4517,9 +4511,7 @@ fn verify_response_impl(
         blind_verify(10, k_p, &proof.selection.sc_wpe, cx.ctx, dom_wpe_sc, cx.tx)?;
     let g_eval = masked_eq_eval(&eq_i, 0, t, &rho_w);
     let dom_wpe = cx.doms.take(1);
-    let k_wpe = VerifierKey {
-        k: cx.ctx.expand_full_keys(dom_wpe, 1)[0] + cx.ctx.delta * proof.selection.wpe_corr,
-    };
+    let k_wpe = cx.ctx.correct_full_verifier_key(dom_wpe, proof.selection.wpe_corr);
     cx.kzero.push(k_wpe.scale(g_eval).sub(k_wpe_n));
     let mut wpe_pt = r_d.to_vec();
     wpe_pt.extend(rho_w.iter().copied());
@@ -4531,7 +4523,7 @@ fn verify_response_impl(
     // ---- decode chunks, phase 2 mirror (P6) ----------------------------------
     // Prefill boundary keys are the chunks' first cache segment; each proven
     // chunk extends the per-layer segment lists.
-    let mut kv_keys: Vec<Vec<(Vec<Fp2>, Vec<Fp2>)>> = Vec::with_capacity(L);
+    let mut kv_keys: Vec<Vec<(Vec<VerifierKey>, Vec<VerifierKey>)>> = Vec::with_capacity(L);
     for bk in &boundary_kv_keys {
         kv_keys.push(vec![(bk.0.clone(), bk.1.clone())]);
     }
@@ -4544,7 +4536,8 @@ fn verify_response_impl(
             let qb = pad_bits(q);
             let n_vars_qd = d_cb + qb;
             let (_lb, sb_id, _eb, _fb, gb, zb) = chunk_ids(c);
-            let mut band_boundary_keys: Vec<(Vec<Fp2>, Vec<Fp2>)> = Vec::with_capacity(L);
+            let mut band_boundary_keys: Vec<(Vec<VerifierKey>, Vec<VerifierKey>)> =
+                Vec::with_capacity(L);
             // ---- 12 band layers ------------------------------------------------
             let prefixes: Vec<Vec<KvPrefixK<'_>>> = (0..L)
                 .map(|l| {
@@ -4649,9 +4642,7 @@ fn verify_response_impl(
                 open_matrix_k(&v1c.fin_out_keys, q, D, &pt_fin)
             };
             let dom_wv = cx.doms.take(1);
-            let k_wte = VerifierKey {
-                k: cx.ctx.expand_full_keys(dom_wv, 1)[0] + cx.ctx.delta * cp.logits.wte_corr,
-            };
+            let k_wte = cx.ctx.correct_full_verifier_key(dom_wv, cp.logits.wte_corr);
             cx.kprod.push((k_fin, k_wte, k_claim_n));
             let mut pt_wte = r_l;
             pt_wte.extend(rho_v.iter().copied());
@@ -4666,18 +4657,14 @@ fn verify_response_impl(
             let eq_i = eq_vec(r_i);
             let band_tokens = &ch.seq[t0..t0 + q];
             let dom_p = cx.doms.take(1);
-            let k_p = VerifierKey {
-                k: cx.ctx.expand_full_keys(dom_p, 1)[0] + cx.ctx.delta * cp.selection.p_corr,
-            };
+            let k_p = cx.ctx.correct_full_verifier_key(dom_p, cp.selection.p_corr);
             let k_claim0 = embed_acc_key_c.sub(k_p);
             let dom_sel = cx.doms.take(16);
             let (rho_z, k_sel_n) =
                 blind_verify(16, k_claim0, &cp.selection.sc, cx.ctx, dom_sel, cx.tx)?;
             let s_eval = sel_s_eval(band_tokens, &eq_i, &rho_z);
             let dom_wv2 = cx.doms.take(1);
-            let k_wte2 = VerifierKey {
-                k: cx.ctx.expand_full_keys(dom_wv2, 1)[0] + cx.ctx.delta * cp.selection.wte_corr,
-            };
+            let k_wte2 = cx.ctx.correct_full_verifier_key(dom_wv2, cp.selection.wte_corr);
             cx.kzero.push(k_wte2.scale(s_eval).sub(k_sel_n));
             let mut pt_wte2 = r_d.to_vec();
             pt_wte2.extend(rho_z.iter().copied());
@@ -4687,9 +4674,7 @@ fn verify_response_impl(
                 blind_verify(10, k_p, &cp.selection.sc_wpe, cx.ctx, dom_wpe_sc, cx.tx)?;
             let g_eval = masked_eq_eval(&eq_i, t0, q, &rho_w);
             let dom_wpe = cx.doms.take(1);
-            let k_wpe = VerifierKey {
-                k: cx.ctx.expand_full_keys(dom_wpe, 1)[0] + cx.ctx.delta * cp.selection.wpe_corr,
-            };
+            let k_wpe = cx.ctx.correct_full_verifier_key(dom_wpe, cp.selection.wpe_corr);
             cx.kzero.push(k_wpe.scale(g_eval).sub(k_wpe_n));
             let mut wpe_pt = r_d.to_vec();
             wpe_pt.extend(rho_w.iter().copied());
@@ -4952,7 +4937,7 @@ mod tests {
         let md = domsp.take(1);
         assert_eq!(md, domsv.take(1));
         let mask = stream.draw_product_mask(md, prod.len());
-        let k_mask = vc.expand_product_mask_key(md, kprod.len());
+        let k_mask = vc.expand_product_mask_verifier_key(md, kprod.len());
         let pp = prod_batch_prover(&prod, chi, mask, &mut txp);
         let ok_prod = prod_batch_verify(&kprod, k_mask, delta, chi, &pp);
         let mz = domsp.take(1);
@@ -5046,8 +5031,8 @@ mod tests {
         assert_eq!(wrong_product_domain, wrong_verifier_doms.take(1));
         let wrong_product_mask =
             wrong_stream.draw_product_mask(wrong_product_domain, wrong_prod_claims.len());
-        let wrong_product_key =
-            wrong_verifier.expand_product_mask_key(wrong_product_domain, wrong_key_prod.len());
+        let wrong_product_key = wrong_verifier
+            .expand_product_mask_verifier_key(wrong_product_domain, wrong_key_prod.len());
         let wrong_product_proof = prod_batch_prover(
             &wrong_prod_claims,
             wrong_challenge,
@@ -5108,7 +5093,7 @@ mod tests {
         let forged_product_mask =
             forged_stream.draw_product_mask(forged_product_domain, forged_prod_claims.len());
         let forged_product_key = forged_limb_verifier
-            .expand_product_mask_key(forged_product_domain, forged_key_prod.len());
+            .expand_product_mask_verifier_key(forged_product_domain, forged_key_prod.len());
         let forged_product_proof = prod_batch_prover(
             &forged_prod_claims,
             forged_challenge,
@@ -5153,7 +5138,7 @@ mod tests {
         let product_domain = prover_doms.take(1);
         assert_eq!(product_domain, verifier_doms.take(1));
         let product_mask = stream.draw_product_mask(product_domain, prod.len());
-        let product_key = verifier.expand_product_mask_key(product_domain, key_prod.len());
+        let product_key = verifier.expand_product_mask_verifier_key(product_domain, key_prod.len());
         let product_proof = prod_batch_prover(&prod, challenge, product_mask, &mut prover_tx);
         assert!(prod_batch_verify(&key_prod, product_key, delta, challenge, &product_proof));
         let zero_domain = prover_doms.take(1);
@@ -5235,7 +5220,7 @@ mod tests {
             let md = domsp.take(1);
             assert_eq!(md, domsv.take(1));
             let mask = stream.draw_product_mask(md, prod.len());
-            let k_mask = vc.expand_product_mask_key(md, kprod.len());
+            let k_mask = vc.expand_product_mask_verifier_key(md, kprod.len());
             let pp = prod_batch_prover(&prod, chi, mask, &mut txp);
             let _ = prod_batch_verify(&kprod, k_mask, delta, chi, &pp);
             let mz = domsp.take(1);
@@ -5330,7 +5315,7 @@ mod tests {
         let md = domsp.take(1);
         assert_eq!(md, domsv.take(1));
         let mask = stream.draw_product_mask(md, prod.len());
-        let k_mask = vc.expand_product_mask_key(md, kprod.len());
+        let k_mask = vc.expand_product_mask_verifier_key(md, kprod.len());
         let pp = prod_batch_prover(&prod, chi, mask, &mut txp);
         let ok_prod = prod_batch_verify(&kprod, k_mask, delta, chi, &pp);
         let mz = domsp.take(1);
@@ -5419,7 +5404,7 @@ mod tests {
             let md = domsp.take(1);
             assert_eq!(md, domsv.take(1));
             let mask = fault_stream.draw_product_mask(md, fault_prod.len());
-            let k_mask = fault_vc.expand_product_mask_key(md, kprod.len());
+            let k_mask = fault_vc.expand_product_mask_verifier_key(md, kprod.len());
             let pp = prod_batch_prover(&fault_prod, chi, mask, &mut fault_tx);
             let _ = prod_batch_verify(&kprod, k_mask, delta, chi, &pp);
             let mz = domsp.take(1);
@@ -5584,7 +5569,7 @@ mod tests {
         let product_domain = prover_doms.take(1);
         assert_eq!(product_domain, verifier_doms.take(1));
         let product_mask = prover_stream.draw_product_mask(product_domain, prod.len());
-        let product_key = verifier.expand_product_mask_key(product_domain, key_prod.len());
+        let product_key = verifier.expand_product_mask_verifier_key(product_domain, key_prod.len());
         let product_proof = prod_batch_prover(&prod, challenge, product_mask, &mut prover_tx);
         assert!(prod_batch_verify(&key_prod, product_key, delta, challenge, &product_proof));
         let zero_domain = prover_doms.take(1);
@@ -5620,7 +5605,7 @@ mod tests {
             assert_eq!(product_domain, verifier_doms.take(1));
             let product_mask = fault_stream.draw_product_mask(product_domain, prod_reused.len());
             let product_key =
-                fault_verifier.expand_product_mask_key(product_domain, key_prod.len());
+                fault_verifier.expand_product_mask_verifier_key(product_domain, key_prod.len());
             let product_proof =
                 prod_batch_prover(&prod_reused, challenge, product_mask, &mut fault_tx);
             let _ =
@@ -5831,7 +5816,7 @@ mod tests {
         let product_domain = prover_doms.take(1);
         assert_eq!(product_domain, verifier_doms.take(1));
         let product_mask = prover_stream.draw_product_mask(product_domain, prod.len());
-        let product_key = verifier.expand_product_mask_key(product_domain, key_prod.len());
+        let product_key = verifier.expand_product_mask_verifier_key(product_domain, key_prod.len());
         let product_proof = prod_batch_prover(&prod, challenge, product_mask, &mut prover_tx);
         assert!(prod_batch_verify(&key_prod, product_key, delta, challenge, &product_proof));
         let zero_domain = prover_doms.take(1);
@@ -5866,7 +5851,7 @@ mod tests {
             assert_eq!(product_domain, verifier_doms.take(1));
             let product_mask = replay_stream.draw_product_mask(product_domain, replay_prod.len());
             let product_key =
-                replay_verifier.expand_product_mask_key(product_domain, key_prod.len());
+                replay_verifier.expand_product_mask_verifier_key(product_domain, key_prod.len());
             let product_proof =
                 prod_batch_prover(&replay_prod, challenge, product_mask, &mut replay_tx);
             let _ =

@@ -246,10 +246,9 @@ fn main() {
     let mut txv = Transcript::new(tx_seed);
     let mut claims_v = Vec::with_capacity(n_claims);
     for (g, (off, point)) in claim_meta.iter().enumerate() {
-        let kf = ctx.expand_full_keys(dom(T_W_CLAIM, g as u32), 1)[0];
         claims_v.push((
             BlockClaim { offset: *off, point: point.clone() },
-            VerifierKey { k: kf + delta * corr_vs[g] },
+            ctx.correct_full_verifier_key(dom(T_W_CLAIM, g as u32), corr_vs[g]),
         ));
     }
     let red_accepted = match batch_reduce_verifier(
@@ -318,10 +317,9 @@ fn main() {
         .iter()
         .enumerate()
         .map(|(g, (off, point))| {
-            let kf = ctxb.expand_full_keys(dom(T_W_CLAIM, g as u32), 1)[0];
             (
                 BlockClaim { offset: *off, point: point.clone() },
-                VerifierKey { k: kf + delta * corr_vsb[g] },
+                ctxb.correct_full_verifier_key(dom(T_W_CLAIM, g as u32), corr_vsb[g]),
             )
         })
         .collect();

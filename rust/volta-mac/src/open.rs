@@ -36,8 +36,8 @@ pub fn fresh_zero_mask(corr: FullCorr, tx: &mut Transcript) -> (ProverAuthed, Fp
 }
 
 /// Verifier: key of the re-centred mask, `k' = k + Δ·c`.
-pub fn zero_mask_key(ctx: &VerifierCtx, k_full: Fp2, c: Fp2) -> VerifierKey {
-    VerifierKey { k: k_full + ctx.delta * c }
+pub fn zero_mask_key(ctx: &VerifierCtx, k_full: VerifierKey, c: Fp2) -> VerifierKey {
+    k_full.with_same_c6_trace(k_full.k + ctx.delta * c)
 }
 
 /// Prover: batched zero opening. `chi` is the verifier's RLC challenge, drawn
@@ -68,6 +68,12 @@ pub fn zero_batch_prover(
 
 /// Verifier: accept iff `Σ χ^{j+1}·k_j + k_mask == m_z`.
 pub fn zero_batch_verify(keys: &[VerifierKey], k_mask: VerifierKey, chi: Fp2, m_z: Fp2) -> bool {
+    #[cfg(feature = "c6-trace")]
+    {
+        let roots = keys.iter().map(|key| key.c6_trace_token()).collect::<Vec<_>>();
+        crate::c6_trace::record_c6_zero_roots(&roots)
+            .unwrap_or_else(|error| panic!("C6 verifier zero-root trace HARD STOP: {error}"));
+    }
     let mut acc = k_mask.k;
     let mut w = Fp2::ONE;
     for key in keys {
@@ -93,7 +99,7 @@ pub fn zero_batch_exchange(
     p_stream
         .record_c6_fullfield_plaintexts(mask_dom, &[Fp2::ZERO])
         .expect("C6 ZeroBatch mask correction schedule");
-    let k_full = v_ctx.expand_full_keys(mask_dom, 1)[0];
+    let k_full = v_ctx.expand_full_verifier_keys(mask_dom, 1)[0];
     let (mask, c) = fresh_zero_mask(corr, tx);
     let k_mask = zero_mask_key(v_ctx, k_full, c);
     let chi = tx.challenge_fp2();

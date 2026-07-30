@@ -466,37 +466,36 @@ pub fn verify_gemm_blind_committed_at(
     let eq_i = eq_vec(&r_i);
     let eq_j = eq_vec(&r_j);
 
-    let mut k_y = Fp2::ZERO;
+    let mut k_y = VerifierKey::ZERO;
     for row in 0..m {
         let keys = auth_verifier(ctx, doms.dom_y(row), &proof.corr_y[row * n..(row + 1) * n]);
-        let mut acc = Fp2::ZERO;
+        let mut acc = VerifierKey::ZERO;
         for (j, key) in keys.iter().enumerate() {
-            acc += eq_j[j] * key.k;
+            acc = acc.add(key.scale(eq_j[j]));
         }
-        k_y += eq_i[row] * acc;
+        k_y = k_y.add(acc.scale(eq_i[row]));
     }
 
     let n_vars = pad_bits(k);
-    let (point, k_claim_n) =
-        blind_verify(n_vars, VerifierKey { k: k_y }, &proof.sumcheck, ctx, doms.round_masks, tx)?;
+    let (point, k_claim_n) = blind_verify(n_vars, k_y, &proof.sumcheck, ctx, doms.round_masks, tx)?;
 
     let eq_l = eq_vec(&point);
-    let mut k_x = Fp2::ZERO;
+    let mut k_x = VerifierKey::ZERO;
     for row in 0..m {
         let keys = auth_verifier(ctx, doms.dom_x(row), &proof.corr_x[row * k..(row + 1) * k]);
-        let mut acc = Fp2::ZERO;
+        let mut acc = VerifierKey::ZERO;
         for (l, key) in keys.iter().enumerate() {
-            acc += eq_l[l] * key.k;
+            acc = acc.add(key.scale(eq_l[l]));
         }
-        k_x += eq_i[row] * acc;
+        k_x = k_x.add(acc.scale(eq_i[row]));
     }
 
     // Committed W̃ leg: key from the correlation + correction, no cleartext.
-    let k_b = VerifierKey { k: ctx.expand_full_keys(dom_w_claim, 1)[0] + ctx.delta * corr_w };
+    let k_b = ctx.correct_full_verifier_key(dom_w_claim, corr_w);
 
-    let k_mask = ctx.expand_product_mask_key(doms.prod_mask, 1);
+    let k_mask = ctx.expand_product_mask_verifier_key(doms.prod_mask, 1);
     let chi = tx.challenge_fp2();
-    let keys = [(VerifierKey { k: k_x }, k_b, k_claim_n)];
+    let keys = [(k_x, k_b, k_claim_n)];
     if !prod_batch_verify(&keys, k_mask, ctx.delta, chi, &proof.prod) {
         return None;
     }
@@ -539,42 +538,42 @@ pub fn verify_gemm_blind_at(
     let eq_j = eq_vec(&r_j);
 
     // Streamed opening of the authenticated Y at (r_i, r_j).
-    let mut k_y = Fp2::ZERO;
+    let mut k_y = VerifierKey::ZERO;
     for row in 0..m {
         let keys = auth_verifier(ctx, doms.dom_y(row), &proof.corr_y[row * n..(row + 1) * n]);
-        let mut acc = Fp2::ZERO;
+        let mut acc = VerifierKey::ZERO;
         for (j, key) in keys.iter().enumerate() {
-            acc += eq_j[j] * key.k;
+            acc = acc.add(key.scale(eq_j[j]));
         }
-        k_y += eq_i[row] * acc;
+        k_y = k_y.add(acc.scale(eq_i[row]));
     }
 
     let n_vars = pad_bits(k);
     let Some((point, k_claim_n)) =
-        blind_verify(n_vars, VerifierKey { k: k_y }, &proof.sumcheck, ctx, doms.round_masks, tx)
+        blind_verify(n_vars, k_y, &proof.sumcheck, ctx, doms.round_masks, tx)
     else {
         return false;
     };
 
     // Streamed opening of the authenticated X at (r_i, r_l).
     let eq_l = eq_vec(&point);
-    let mut k_x = Fp2::ZERO;
+    let mut k_x = VerifierKey::ZERO;
     for row in 0..m {
         let keys = auth_verifier(ctx, doms.dom_x(row), &proof.corr_x[row * k..(row + 1) * k]);
-        let mut acc = Fp2::ZERO;
+        let mut acc = VerifierKey::ZERO;
         for (l, key) in keys.iter().enumerate() {
-            acc += eq_l[l] * key.k;
+            acc = acc.add(key.scale(eq_l[l]));
         }
-        k_x += eq_i[row] * acc;
+        k_x = k_x.add(acc.scale(eq_i[row]));
     }
 
     // Public W̃(r_l, r_j), recomputed by the verifier itself.
     let b = fold_w(w, k, n, &eq_j);
     let b_final = eval_mle(&b, &point);
 
-    let k_mask = ctx.expand_product_mask_key(doms.prod_mask, 1);
+    let k_mask = ctx.expand_product_mask_verifier_key(doms.prod_mask, 1);
     let chi = tx.challenge_fp2();
-    let keys = [(VerifierKey { k: k_x }, VerifierKey::from_public(b_final, ctx.delta), k_claim_n)];
+    let keys = [(k_x, VerifierKey::from_public(b_final, ctx.delta), k_claim_n)];
     prod_batch_verify(&keys, k_mask, ctx.delta, chi, &proof.prod)
 }
 
@@ -918,10 +917,10 @@ pub fn verify_gemm_committed_chained(
         blind_verify(pad_bits(k), k_claim0, &proof.sumcheck, ctx, doms.round_masks, tx)?;
 
     // Both final legs: keys from fresh correlations + corrections.
-    let k_x = VerifierKey { k: ctx.expand_full_keys(doms.x_claim, 1)[0] + ctx.delta * x_corr };
-    let k_w = VerifierKey { k: ctx.expand_full_keys(doms.w_claim, 1)[0] + ctx.delta * corr_w };
+    let k_x = ctx.correct_full_verifier_key(doms.x_claim, x_corr);
+    let k_w = ctx.correct_full_verifier_key(doms.w_claim, corr_w);
 
-    let k_mask = ctx.expand_product_mask_key(doms.prod_mask, 1);
+    let k_mask = ctx.expand_product_mask_verifier_key(doms.prod_mask, 1);
     let chi = tx.challenge_fp2();
     if !prod_batch_verify(&[(k_x, k_w, k_claim_n)], k_mask, ctx.delta, chi, &proof.prod) {
         return None;
@@ -1184,8 +1183,8 @@ pub(crate) fn finalize_verify_gemm_act_chained(
     ctx: &mut VerifierCtx,
     tx: &mut Transcript,
 ) -> Option<(WireKey, Vec<Fp2>)> {
-    let k_x = VerifierKey { k: ctx.expand_full_keys(doms.x_claim, 1)[0] + ctx.delta * x_corr };
-    let k_mask = ctx.expand_product_mask_key(doms.prod_mask, 1);
+    let k_x = ctx.correct_full_verifier_key(doms.x_claim, x_corr);
+    let k_mask = ctx.expand_product_mask_verifier_key(doms.prod_mask, 1);
     let chi = tx.challenge_fp2();
     if !prod_batch_verify(&[(k_x, k_b, rounds.claim)], k_mask, ctx.delta, chi, &proof.prod) {
         return None;
@@ -1385,7 +1384,7 @@ mod tests {
             n,
             &r_i_v,
             &r_j_v,
-            VerifierKey { k: k0 },
+            VerifierKey::new(k0),
             &proof,
             wire.corr,
             corr_w,
@@ -1781,7 +1780,7 @@ mod tests {
         let open_b_key = move |pt: &[Fp2]| {
             let eq_l = eq_vec(pt);
             let kk = key_rows.iter().enumerate().fold(Fp2::ZERO, |s, (l, &kr)| s + eq_l[l] * kr);
-            VerifierKey { k: kk }
+            VerifierKey::new(kk)
         };
 
         let Some((wk, r_l_v)) = verify_gemm_act_chained(
@@ -1790,7 +1789,7 @@ mod tests {
             n,
             &r_i_v,
             &r_j_v,
-            VerifierKey { k: k0 },
+            VerifierKey::new(k0),
             &proof,
             wire.corr,
             open_b_key,

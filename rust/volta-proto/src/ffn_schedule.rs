@@ -36,7 +36,6 @@ use crate::thaler::pad_bits;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use volta_accel::{AccelError, Backend, BackendKind, DeviceLookupColumns};
-use volta_field::Fp2;
 use volta_gpt2::{
     Gpt2Model, LayerI16Field, LayerWitness, ResidentGpt2Model, ResidentLayerView, D, DFF, H, L,
 };
@@ -909,11 +908,11 @@ pub(crate) fn prove_layers_thinned_scheduled(
 #[allow(dead_code)] // complete frozen C3b verifier state for audit/control comparison
 struct VerifyPending {
     doms: Doms,
-    xin_keys: Vec<Fp2>,
-    k_keys: Vec<Fp2>,
-    v_keys: Vec<Fp2>,
-    abo_keys: Vec<Fp2>,
-    fbo_keys: Vec<Fp2>,
+    xin_keys: Vec<VerifierKey>,
+    k_keys: Vec<VerifierKey>,
+    v_keys: Vec<VerifierKey>,
+    abo_keys: Vec<VerifierKey>,
+    fbo_keys: Vec<VerifierKey>,
     lvk2: crate::block_proof::LnVecsK,
     attn: AttnV1,
     ffn: FfnAfterDownV,

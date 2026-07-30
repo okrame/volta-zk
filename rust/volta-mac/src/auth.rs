@@ -34,10 +34,10 @@ pub fn auth_prover(
 /// Verifier half: keys for a correction batch at `dom`.
 pub fn auth_verifier(ctx: &mut VerifierCtx, dom: u64, corr: &[u64]) -> Vec<VerifierKey> {
     let delta = ctx.delta;
-    ctx.expand_sub_keys(dom, corr.len())
+    ctx.expand_sub_verifier_keys(dom, corr.len())
         .into_iter()
         .zip(corr)
-        .map(|(k_r, &c)| VerifierKey { k: k_r + delta.mul_base(Fp::new(c)) })
+        .map(|(k_r, &c)| k_r.with_same_c6_trace(k_r.k + delta.mul_base(Fp::new(c))))
         .collect()
 }
 

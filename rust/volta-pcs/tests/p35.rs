@@ -88,7 +88,7 @@ fn run_pcs_once(
     let fc = ps.draw_fulls(dom(DOM_W_CLAIM, 0), 1)[0];
     let corr_v = v - fc.x;
     tx.append("w_claim_correction", 16);
-    let v_auth = ProverAuthed { x: v, m: fc.m };
+    let v_auth = fc.authenticate(v);
 
     let claims_p = [(BlockClaim { offset: 0, point: point.clone() }, v_auth)];
     let (bproof, rstar, vstar, _tm) =
@@ -100,9 +100,7 @@ fn run_pcs_once(
     // Verifier chain.
     let mut ctx = VerifierCtx::new(seed, delta);
     let mut txv = Transcript::new(tx_seed);
-    let k_v = volta_mac::VerifierKey {
-        k: ctx.expand_full_keys(dom(DOM_W_CLAIM, 0), 1)[0] + delta * corr_v,
-    };
+    let k_v = ctx.correct_full_verifier_key(dom(DOM_W_CLAIM, 0), corr_v);
     let claims_v = [(BlockClaim { offset: 0, point }, k_v)];
     let Some((rstar_v, k_vstar)) = batch_reduce_verifier(
         n_vars,
@@ -174,7 +172,7 @@ fn ligero_rejects_wrong_committed_weights() {
     let fc = ps.draw_fulls(dom(DOM_W_CLAIM, 0), 1)[0];
     let corr_v = v1 - fc.x;
     tx.append("w_claim_correction", 16);
-    let v_auth = ProverAuthed { x: v1, m: fc.m };
+    let v_auth = fc.authenticate(v1);
 
     let claims_p = [(BlockClaim { offset: 0, point: point.clone() }, v_auth)];
     let (bproof, rstar, vstar, _) =
@@ -182,15 +180,13 @@ fn ligero_rejects_wrong_committed_weights() {
     // Cheating prover: opens C_{W₂} with a locally-consistent value for W₂
     // but the batch tag from the W₁ claim chain.
     let v2_star = eval_mle(&embed(&w2), &rstar);
-    let cheat = ProverAuthed { x: v2_star, m: vstar.m };
+    let cheat = ProverAuthed::new(v2_star, vstar.m);
     let (oproof, _) =
         open_zk(&w2, &pm2, &rstar, cheat, &mut ps, dom(DOM_S, 0), [0x34u8; 32], &mut tx);
 
     let mut ctx = VerifierCtx::new(seed, delta);
     let mut txv = Transcript::new(tx_seed);
-    let k_v = volta_mac::VerifierKey {
-        k: ctx.expand_full_keys(dom(DOM_W_CLAIM, 0), 1)[0] + delta * corr_v,
-    };
+    let k_v = ctx.correct_full_verifier_key(dom(DOM_W_CLAIM, 0), corr_v);
     let claims_v = [(BlockClaim { offset: 0, point }, k_v)];
     let (rstar_v, k_vstar) = batch_reduce_verifier(
         n_vars,
@@ -342,7 +338,7 @@ fn run_multi_once(
         let fc = ps.draw_fulls(dom(DOM_W_CLAIM, g as u32), 1)[0];
         corr_vs.push(v - fc.x);
         tx.append("w_claim_correction", 16);
-        claims_p.push((claim, ProverAuthed { x: v, m: fc.m }));
+        claims_p.push((claim, fc.authenticate(v)));
     }
     let (mut oproof, _tm) = open_multi_zk(
         &w,
@@ -363,7 +359,7 @@ fn run_multi_once(
         .enumerate()
         .map(|(g, (c, _))| {
             let kf = ctx.expand_full_keys(dom(DOM_W_CLAIM, g as u32), 1)[0];
-            (c.clone(), volta_mac::VerifierKey { k: kf + delta * corr_vs[g] })
+            (c.clone(), volta_mac::VerifierKey::new(kf + delta * corr_vs[g]))
         })
         .collect();
     verify_multi_open(
@@ -438,7 +434,7 @@ fn multi_open_supports_non_power_of_two_rows_and_rejects_tail_claims() {
             let corr = prover.draw_fulls(dom(DOM_W_CLAIM, index as u32), 1)[0];
             corrections.push(value - corr.x);
             txp.append("w_claim_correction", 16);
-            (claim.clone(), ProverAuthed { x: value, m: corr.m })
+            (claim.clone(), corr.authenticate(value))
         })
         .collect();
     let (proof, _) = open_multi_zk(
@@ -459,7 +455,7 @@ fn multi_open_supports_non_power_of_two_rows_and_rejects_tail_claims() {
         .enumerate()
         .map(|(index, claim)| {
             let key = verifier.expand_full_keys(dom(DOM_W_CLAIM, index as u32), 1)[0];
-            (claim.clone(), volta_mac::VerifierKey { k: key + delta * corrections[index] })
+            (claim.clone(), volta_mac::VerifierKey::new(key + delta * corrections[index]))
         })
         .collect();
     assert!(verify_multi_open(
@@ -597,7 +593,7 @@ fn leakage_smoke_two_weight_sets() {
         let mut tx = Transcript::new(tx_seed);
         let fc = ps.draw_fulls(dom(DOM_W_CLAIM, 0), 1)[0];
         tx.append("w_claim_correction", 16);
-        let v_auth = ProverAuthed { x: v, m: fc.m };
+        let v_auth = fc.authenticate(v);
         let claims = [(BlockClaim { offset: 0, point }, v_auth)];
         let (_bp, rstar, vstar, _) =
             batch_reduce_prover(&w, n_vars, &claims, &mut ps, dom(DOM_BATCH_MASKS, 0), &mut tx);
@@ -638,7 +634,7 @@ fn leakage_smoke_geometry(params: LigeroParams) {
         let mut transcript = Transcript::new([0x75; 32]);
         let claim_mask = stream.draw_fulls(dom(DOM_W_CLAIM, 0), 1)[0];
         transcript.append("w_claim_correction", 16);
-        let claim = ProverAuthed { x: value, m: claim_mask.m };
+        let claim = claim_mask.authenticate(value);
         let claims = [(BlockClaim { offset: 0, point }, claim)];
         // The batch API consumes the full power-of-two MLE domain; C3's PCS
         // stores only its non-power-of-two physical rows.  The absent rows are

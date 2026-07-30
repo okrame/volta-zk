@@ -625,6 +625,296 @@ impl C6SubfieldWitnessRecorder {
     }
 }
 
+/// One full-field draw in the prover-only C6 witness sidecar.
+///
+/// Direct corrected sources and uncorrected ProductClosure masks share the
+/// same full-field correlation stream, so the role and exact product-triple
+/// census are part of the witness order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6FullfieldWitnessDraw {
+    pub domain: u64,
+    pub global_offset: u64,
+    pub count: u64,
+    pub witness_offset: u64,
+    pub role: CorrScheduleRole,
+    pub product_triples: u64,
+}
+
+/// Prover-only reference witness for all full-field C6 source leaves.
+///
+/// Direct leaves contain their hidden correction. ProductMask leaves are
+/// deliberately uncorrected and therefore have a canonical zero correction.
+/// This value contains secret correlation material and must never be sent to
+/// the client.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6FullfieldWitnessAudit {
+    draws: Vec<C6FullfieldWitnessDraw>,
+    masks: Vec<Fp2>,
+    corrections: Vec<Fp2>,
+    tags: Vec<Fp2>,
+    pub witness_digest: [u8; 32],
+    pub correction_digest: [u8; 32],
+    pub plaintext_digest: [u8; 32],
+}
+
+impl C6FullfieldWitnessAudit {
+    pub fn draws(&self) -> &[C6FullfieldWitnessDraw] {
+        &self.draws
+    }
+
+    pub fn masks(&self) -> &[Fp2] {
+        &self.masks
+    }
+
+    pub fn corrections(&self) -> &[Fp2] {
+        &self.corrections
+    }
+
+    pub fn tags(&self) -> &[Fp2] {
+        &self.tags
+    }
+
+    pub fn len(&self) -> usize {
+        self.masks.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.masks.is_empty()
+    }
+
+    pub fn plaintext(&self, index: usize) -> Option<Fp2> {
+        self.masks
+            .get(index)
+            .zip(self.corrections.get(index))
+            .map(|(&mask, &correction)| mask + correction)
+    }
+
+    pub fn validate_against(&self, schedule: &CorrScheduleAudit) -> Result<(), String> {
+        if !schedule.is_canonical() {
+            return Err("C6 full-field witness received a noncanonical schedule".to_owned());
+        }
+        if self.masks.len() != self.corrections.len() || self.masks.len() != self.tags.len() {
+            return Err("C6 full-field witness flat arrays have different lengths".to_owned());
+        }
+        let schedule_draws =
+            schedule.draws.iter().filter(|draw| draw.kind == CorrScheduleKind::FullField);
+        let mut expected_witness_offset = 0u64;
+        for (witness_draw, schedule_draw) in self.draws.iter().zip(schedule_draws) {
+            if witness_draw.domain != schedule_draw.domain
+                || witness_draw.global_offset != schedule_draw.global_offset
+                || witness_draw.count != schedule_draw.count
+                || witness_draw.witness_offset != expected_witness_offset
+                || witness_draw.role != schedule_draw.role
+                || witness_draw.product_triples != schedule_draw.product_triples
+            {
+                return Err(
+                    "C6 full-field witness draw order differs from the correlation schedule"
+                        .to_owned(),
+                );
+            }
+            expected_witness_offset = expected_witness_offset
+                .checked_add(witness_draw.count)
+                .ok_or_else(|| "C6 full-field witness offset overflows".to_owned())?;
+        }
+        let schedule_full_draw_count =
+            schedule.draws.iter().filter(|draw| draw.kind == CorrScheduleKind::FullField).count();
+        if self.draws.len() != schedule_full_draw_count
+            || expected_witness_offset != self.masks.len() as u64
+            || expected_witness_offset != schedule.counters.full_corrs
+        {
+            return Err("C6 full-field witness count differs from its schedule".to_owned());
+        }
+        for draw in &self.draws {
+            if draw.role == CorrScheduleRole::ProductMask {
+                let first = usize::try_from(draw.witness_offset)
+                    .map_err(|_| "C6 full-field mask offset exceeds usize".to_owned())?;
+                let count = usize::try_from(draw.count)
+                    .map_err(|_| "C6 full-field mask count exceeds usize".to_owned())?;
+                let end = first
+                    .checked_add(count)
+                    .ok_or_else(|| "C6 full-field mask range overflows".to_owned())?;
+                if self.corrections[first..end].iter().any(|&correction| correction != Fp2::ZERO) {
+                    return Err("C6 ProductMask witness has a nonzero correction".to_owned());
+                }
+            }
+        }
+        let (witness_digest, correction_digest, plaintext_digest) =
+            c6_fullfield_witness_digests(&self.draws, &self.masks, &self.corrections, &self.tags)?;
+        if witness_digest != self.witness_digest
+            || correction_digest != self.correction_digest
+            || plaintext_digest != self.plaintext_digest
+        {
+            return Err("C6 full-field witness reference digest mismatch".to_owned());
+        }
+        Ok(())
+    }
+}
+
+fn c6_fullfield_witness_digests(
+    draws: &[C6FullfieldWitnessDraw],
+    masks: &[Fp2],
+    corrections: &[Fp2],
+    tags: &[Fp2],
+) -> Result<([u8; 32], [u8; 32], [u8; 32]), String> {
+    if masks.len() != corrections.len() || masks.len() != tags.len() {
+        return Err("C6 full-field witness digest arrays have different lengths".to_owned());
+    }
+    let mut witness = blake3::Hasher::new_derive_key("volta/mac/c6/full-witness-reference/v1");
+    let mut correction =
+        blake3::Hasher::new_derive_key("volta/mac/c6/full-correction-reference/v1");
+    let mut plaintext = blake3::Hasher::new_derive_key("volta/mac/c6/full-plaintext-reference/v1");
+    for draw in draws {
+        for hasher in [&mut witness, &mut correction, &mut plaintext] {
+            hasher.update(&draw.domain.to_le_bytes());
+            hasher.update(&draw.global_offset.to_le_bytes());
+            hasher.update(&draw.count.to_le_bytes());
+            hasher.update(&draw.witness_offset.to_le_bytes());
+            hasher.update(&[draw.role as u8]);
+            hasher.update(&draw.product_triples.to_le_bytes());
+        }
+        let first = usize::try_from(draw.witness_offset)
+            .map_err(|_| "C6 full-field witness offset exceeds usize".to_owned())?;
+        let count = usize::try_from(draw.count)
+            .map_err(|_| "C6 full-field witness count exceeds usize".to_owned())?;
+        let end = first
+            .checked_add(count)
+            .ok_or_else(|| "C6 full-field witness range overflows".to_owned())?;
+        if end > masks.len() {
+            return Err("C6 full-field witness draw exceeds its flat arrays".to_owned());
+        }
+        for index in first..end {
+            let mask = masks[index];
+            let direct_correction = corrections[index];
+            let tag = tags[index];
+            let value = mask + direct_correction;
+            for component in
+                [mask.c0, mask.c1, direct_correction.c0, direct_correction.c1, tag.c0, tag.c1]
+            {
+                witness.update(&component.value().to_le_bytes());
+            }
+            correction.update(&direct_correction.c0.value().to_le_bytes());
+            correction.update(&direct_correction.c1.value().to_le_bytes());
+            plaintext.update(&value.c0.value().to_le_bytes());
+            plaintext.update(&value.c1.value().to_le_bytes());
+        }
+    }
+    Ok((
+        *witness.finalize().as_bytes(),
+        *correction.finalize().as_bytes(),
+        *plaintext.finalize().as_bytes(),
+    ))
+}
+
+#[derive(Default)]
+struct C6FullfieldWitnessRecorder {
+    draws: Vec<C6FullfieldWitnessDraw>,
+    draw_by_domain: HashMap<u64, usize>,
+    masks: Vec<Fp2>,
+    corrections: Vec<Fp2>,
+    tags: Vec<Fp2>,
+    corrections_recorded: Vec<bool>,
+}
+
+impl C6FullfieldWitnessRecorder {
+    fn record_draw(
+        &mut self,
+        domain: u64,
+        role: CorrScheduleRole,
+        product_triples: usize,
+        correlations: &[FullCorr],
+    ) -> Result<(), String> {
+        if correlations.is_empty() {
+            return Err("empty C6 full-field witness draw".to_owned());
+        }
+        if self.draw_by_domain.contains_key(&domain) {
+            return Err(format!("duplicate C6 full-field witness domain {domain:#x}"));
+        }
+        if (role == CorrScheduleRole::ProductMask)
+            != (correlations.len() == 1 && product_triples > 0)
+        {
+            return Err(format!("malformed C6 full-field witness role at {domain:#x}"));
+        }
+        let witness_offset = self.masks.len() as u64;
+        let global_offset = witness_offset;
+        self.masks.extend(correlations.iter().map(|correlation| correlation.x));
+        self.tags.extend(correlations.iter().map(|correlation| correlation.m));
+        self.corrections.resize(self.masks.len(), Fp2::ZERO);
+        let draw_index = self.draws.len();
+        self.draws.push(C6FullfieldWitnessDraw {
+            domain,
+            global_offset,
+            count: correlations.len() as u64,
+            witness_offset,
+            role,
+            product_triples: product_triples as u64,
+        });
+        self.draw_by_domain.insert(domain, draw_index);
+        self.corrections_recorded.push(role == CorrScheduleRole::ProductMask);
+        Ok(())
+    }
+
+    fn record_corrections(&mut self, domain: u64, values: &[Fp2]) -> Result<(), String> {
+        let draw_index = *self
+            .draw_by_domain
+            .get(&domain)
+            .ok_or_else(|| format!("C6 full-field witness has no mask draw at {domain:#x}"))?;
+        let draw = self.draws[draw_index];
+        if draw.role != CorrScheduleRole::DirectCorrection {
+            return Err(format!("C6 ProductMask at {domain:#x} cannot receive a correction"));
+        }
+        if draw.count != values.len() as u64 {
+            return Err(format!("C6 full-field witness length mismatch at {domain:#x}"));
+        }
+        if self.corrections_recorded[draw_index] {
+            return Err(format!("duplicate C6 full-field corrections at {domain:#x}"));
+        }
+        let first = draw.witness_offset as usize;
+        self.corrections[first..first + values.len()].copy_from_slice(values);
+        self.corrections_recorded[draw_index] = true;
+        Ok(())
+    }
+
+    fn record_plaintexts(&mut self, domain: u64, values: &[Fp2]) -> Result<(), String> {
+        let draw_index = *self
+            .draw_by_domain
+            .get(&domain)
+            .ok_or_else(|| format!("C6 full-field witness has no mask draw at {domain:#x}"))?;
+        let draw = self.draws[draw_index];
+        if draw.count != values.len() as u64 {
+            return Err(format!("C6 full-field witness length mismatch at {domain:#x}"));
+        }
+        let first = draw.witness_offset as usize;
+        let corrections = values
+            .iter()
+            .zip(&self.masks[first..first + values.len()])
+            .map(|(&value, &mask)| value - mask)
+            .collect::<Vec<_>>();
+        self.record_corrections(domain, &corrections)
+    }
+
+    fn finish(self, schedule: &CorrScheduleAudit) -> Result<C6FullfieldWitnessAudit, String> {
+        if let Some(index) = self.corrections_recorded.iter().position(|recorded| !recorded) {
+            return Err(format!(
+                "C6 full-field witness draw {} lacks its hidden corrections",
+                self.draws[index].domain
+            ));
+        }
+        let (witness_digest, correction_digest, plaintext_digest) =
+            c6_fullfield_witness_digests(&self.draws, &self.masks, &self.corrections, &self.tags)?;
+        let audit = C6FullfieldWitnessAudit {
+            draws: self.draws,
+            masks: self.masks,
+            corrections: self.corrections,
+            tags: self.tags,
+            witness_digest,
+            correction_digest,
+            plaintext_digest,
+        };
+        audit.validate_against(schedule)?;
+        Ok(audit)
+    }
+}
+
 #[derive(Default)]
 struct CorrScheduleRecorder {
     draws: Vec<CorrScheduleDraw>,
@@ -907,6 +1197,8 @@ pub struct CorrelationStream {
     schedule_audit: Option<CorrScheduleRecorder>,
     c6_subfield_witness: Option<C6SubfieldWitnessRecorder>,
     c6_subfield_witness_closed: bool,
+    c6_fullfield_witness: Option<C6FullfieldWitnessRecorder>,
+    c6_fullfield_witness_closed: bool,
 }
 
 impl CorrelationStream {
@@ -918,6 +1210,8 @@ impl CorrelationStream {
             schedule_audit: None,
             c6_subfield_witness: None,
             c6_subfield_witness_closed: false,
+            c6_fullfield_witness: None,
+            c6_fullfield_witness_closed: false,
         }
     }
 
@@ -935,6 +1229,8 @@ impl CorrelationStream {
             schedule_audit: None,
             c6_subfield_witness: None,
             c6_subfield_witness_closed: false,
+            c6_fullfield_witness: None,
+            c6_fullfield_witness_closed: false,
         }
     }
 
@@ -946,6 +1242,8 @@ impl CorrelationStream {
             schedule_audit: None,
             c6_subfield_witness: None,
             c6_subfield_witness_closed: false,
+            c6_fullfield_witness: None,
+            c6_fullfield_witness_closed: false,
         }
     }
 
@@ -960,6 +1258,8 @@ impl CorrelationStream {
             schedule_audit: None,
             c6_subfield_witness: None,
             c6_subfield_witness_closed: false,
+            c6_fullfield_witness: None,
+            c6_fullfield_witness_closed: false,
         }
     }
 
@@ -1001,6 +1301,29 @@ impl CorrelationStream {
         Ok(())
     }
 
+    /// Enable both prover-only C6 source sidecars before the first draw.
+    ///
+    /// This is the production-source migration seam.  It remains opt-in and
+    /// also enables the public logical schedule audit.
+    pub fn enable_c6_source_witness_collection(&mut self) -> Result<(), &'static str> {
+        if self.counters != CorrCounters::default() {
+            return Err("C6 source witness collection must start before the first draw");
+        }
+        if self.c6_subfield_witness.is_some()
+            || self.c6_subfield_witness_closed
+            || self.c6_fullfield_witness.is_some()
+            || self.c6_fullfield_witness_closed
+        {
+            return Err("C6 source witness collection already enabled or closed");
+        }
+        if self.schedule_audit.is_none() {
+            self.schedule_audit = Some(CorrScheduleRecorder::default());
+        }
+        self.c6_subfield_witness = Some(C6SubfieldWitnessRecorder::default());
+        self.c6_fullfield_witness = Some(C6FullfieldWitnessRecorder::default());
+        Ok(())
+    }
+
     /// Attach canonical hidden corrections to a previously drawn subfield
     /// domain. It is a no-op unless C6 witness collection was enabled.
     pub fn record_c6_subfield_corrections(
@@ -1013,6 +1336,60 @@ impl CorrelationStream {
         }
         if let Some(witness) = &mut self.c6_subfield_witness {
             witness.record_corrections(domain, corrections)?;
+        }
+        Ok(())
+    }
+
+    /// Attach hidden full-field corrections to a previously drawn direct
+    /// source domain. It is a no-op unless complete C6 source collection was
+    /// enabled. ProductMask domains reject corrections.
+    pub fn record_c6_fullfield_corrections(
+        &mut self,
+        domain: u64,
+        corrections: &[Fp2],
+    ) -> Result<(), String> {
+        if self.c6_fullfield_witness_closed {
+            return Err("C6 full-field witness collection is already closed".to_owned());
+        }
+        if let Some(witness) = &mut self.c6_fullfield_witness {
+            witness.record_corrections(domain, corrections)?;
+        }
+        Ok(())
+    }
+
+    /// Attach direct full-field plaintexts to a previously drawn domain.
+    /// Corrections are derived only when the complete C6 source sidecar is
+    /// active, so the ordinary prover path allocates no extra vector.
+    pub fn record_c6_fullfield_plaintexts(
+        &mut self,
+        domain: u64,
+        plaintexts: &[Fp2],
+    ) -> Result<(), String> {
+        if self.c6_fullfield_witness_closed {
+            return Err("C6 full-field witness collection is already closed".to_owned());
+        }
+        if let Some(witness) = &mut self.c6_fullfield_witness {
+            witness.record_plaintexts(domain, plaintexts)?;
+        }
+        Ok(())
+    }
+
+    /// Iterator twin of [`Self::record_c6_fullfield_plaintexts`]. The
+    /// iterator is not consumed when C6 source collection is disabled.
+    pub fn record_c6_fullfield_plaintexts_iter<I>(
+        &mut self,
+        domain: u64,
+        plaintexts: I,
+    ) -> Result<(), String>
+    where
+        I: IntoIterator<Item = Fp2>,
+    {
+        if self.c6_fullfield_witness_closed {
+            return Err("C6 full-field witness collection is already closed".to_owned());
+        }
+        if let Some(witness) = &mut self.c6_fullfield_witness {
+            let plaintexts = plaintexts.into_iter().collect::<Vec<_>>();
+            witness.record_plaintexts(domain, &plaintexts)?;
         }
         Ok(())
     }
@@ -1046,6 +1423,21 @@ impl CorrelationStream {
         witness.finish(&schedule)
     }
 
+    /// Close and move out the full-field source sidecar after the final
+    /// direct source and ProductClosure mask.
+    pub fn finish_c6_fullfield_witness_collection(
+        &mut self,
+    ) -> Result<C6FullfieldWitnessAudit, String> {
+        let schedule = self
+            .schedule_audit()
+            .ok_or_else(|| "C6 full-field witness lacks its schedule audit".to_owned())?;
+        let witness = self
+            .c6_fullfield_witness
+            .take()
+            .ok_or_else(|| "C6 full-field witness collection is not active".to_owned())?;
+        self.c6_fullfield_witness_closed = true;
+        witness.finish(&schedule)
+    }
     pub fn allocation_digest_hex(&self) -> Option<String> {
         match &self.backend {
             ProverBackend::Mock { allocation, .. } => Some(allocation.digest_hex()),
@@ -1224,6 +1616,10 @@ impl CorrelationStream {
         role: CorrScheduleRole,
         product_triples: usize,
     ) -> Vec<FullCorr> {
+        assert!(
+            !self.c6_fullfield_witness_closed,
+            "full-field draw after the C6 witness sidecar was closed"
+        );
         assert!(dom & RESERVED_DOMAIN_BITS == 0, "reserved correlation domain bits set");
         assert!(
             role != CorrScheduleRole::ProductMask || n == 1,
@@ -1248,6 +1644,11 @@ impl CorrelationStream {
         };
         if let Some(audit) = &mut self.schedule_audit {
             audit.record(CorrScheduleKind::FullField, role, product_triples, dom, n);
+        }
+        if let Some(witness) = &mut self.c6_fullfield_witness {
+            witness
+                .record_draw(dom, role, product_triples, &correlations)
+                .expect("C6 full-field witness draw schedule");
         }
         correlations
     }
@@ -1456,6 +1857,45 @@ impl FullCorrBatchReservation<'_> {
         let values = self.stream.draw_fulls(spec.domain(row), spec.count_per_domain);
         self.progress.mark_drawn(range, row);
         values
+    }
+
+    /// Attach C6 plaintexts to a row drawn from this atomic reservation.
+    pub fn record_c6_fullfield_plaintexts(
+        &mut self,
+        range: usize,
+        row: usize,
+        plaintexts: &[Fp2],
+    ) -> Result<(), String> {
+        let spec = *self
+            .progress
+            .ranges
+            .get(range)
+            .ok_or_else(|| "C6 full-field reservation range is out of bounds".to_owned())?;
+        if row >= spec.rows {
+            return Err("C6 full-field reservation row is out of bounds".to_owned());
+        }
+        self.stream.record_c6_fullfield_plaintexts(spec.domain(row), plaintexts)
+    }
+
+    /// Iterator twin for variable-width C6 reservation rows.
+    pub fn record_c6_fullfield_plaintexts_iter<I>(
+        &mut self,
+        range: usize,
+        row: usize,
+        plaintexts: I,
+    ) -> Result<(), String>
+    where
+        I: IntoIterator<Item = Fp2>,
+    {
+        let spec = *self
+            .progress
+            .ranges
+            .get(range)
+            .ok_or_else(|| "C6 full-field reservation range is out of bounds".to_owned())?;
+        if row >= spec.rows {
+            return Err("C6 full-field reservation row is out of bounds".to_owned());
+        }
+        self.stream.record_c6_fullfield_plaintexts_iter(spec.domain(row), plaintexts)
     }
 
     pub fn finish(mut self) {
@@ -1853,6 +2293,51 @@ mod tests {
             let _ = incomplete.draw_sub_masks(52, 1);
         }))
         .is_err());
+    }
+
+    #[test]
+    fn c6_fullfield_witness_sidecar_types_direct_and_product_sources() {
+        let mut prover = CorrelationStream::new([0xD6; 32]);
+        prover.enable_c6_source_witness_collection().unwrap();
+
+        let sub = prover.draw_subs(10, 1);
+        prover.record_c6_subfield_corrections(10, &[3]).unwrap();
+        let direct = prover.draw_fulls(20, 2);
+        let direct_corrections = [Fp2::from_base(Fp::new(5)), Fp2::from_base(Fp::new(7))];
+        prover.record_c6_fullfield_corrections(20, &direct_corrections).unwrap();
+        let product = prover.draw_product_mask(30, 11);
+        assert!(prover.record_c6_fullfield_corrections(30, &[Fp2::ZERO]).is_err());
+
+        let schedule = prover.schedule_audit().unwrap();
+        let subfield = prover.finish_c6_subfield_witness_collection().unwrap();
+        let fullfield = prover.finish_c6_fullfield_witness_collection().unwrap();
+        subfield.validate_against(&schedule).unwrap();
+        fullfield.validate_against(&schedule).unwrap();
+        assert_eq!(subfield.tags(), &[sub[0].m]);
+        assert_eq!(fullfield.len(), 3);
+        assert_eq!(fullfield.draws().len(), 2);
+        assert_eq!(fullfield.draws()[0].role, CorrScheduleRole::DirectCorrection);
+        assert_eq!(fullfield.draws()[1].role, CorrScheduleRole::ProductMask);
+        assert_eq!(fullfield.draws()[1].product_triples, 11);
+        assert_eq!(fullfield.plaintext(0), Some(direct[0].x + direct_corrections[0]));
+        assert_eq!(fullfield.plaintext(1), Some(direct[1].x + direct_corrections[1]));
+        assert_eq!(fullfield.plaintext(2), Some(product.plaintext()));
+        assert_eq!(fullfield.tags()[2], product.tag());
+        assert_eq!(fullfield.corrections()[2], Fp2::ZERO);
+
+        let mut changed = fullfield.clone();
+        changed.corrections[0] += Fp2::ONE;
+        assert!(changed.validate_against(&schedule).is_err());
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = prover.draw_fulls(40, 1);
+        }))
+        .is_err());
+
+        let mut incomplete = CorrelationStream::new([0xD7; 32]);
+        incomplete.enable_c6_source_witness_collection().unwrap();
+        let _ = incomplete.draw_fulls(50, 1);
+        let error = incomplete.finish_c6_fullfield_witness_collection().unwrap_err();
+        assert!(error.contains("lacks its hidden corrections"));
     }
 
     #[test]

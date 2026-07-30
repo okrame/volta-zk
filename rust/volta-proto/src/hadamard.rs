@@ -114,7 +114,11 @@ pub fn hadamard_prove(
             g3 += q3 * e3 * r3;
         }
         // Three fresh full-field masks for this round's coefficients.
-        let masks = stream.draw_fulls(doms.round_masks + round as u64, 3);
+        let domain = doms.round_masks + round as u64;
+        let masks = stream.draw_fulls(domain, 3);
+        stream
+            .record_c6_fullfield_plaintexts(domain, &[g0, g2, g3])
+            .expect("C6 Hadamard-round correction schedule");
         round_corrs.push([g0 - masks[0].x, g2 - masks[1].x, g3 - masks[2].x]);
         tx.append("hadamard_round_corrections", 48);
         let g0_a = ProverAuthed { x: g0, m: masks[0].m };
@@ -142,6 +146,15 @@ pub fn hadamard_prove(
     let zx = e_final * r_final;
     let fz = stream.draw_fulls(doms.z, 1)[0];
     let z_corr = zx - fz.x;
+    stream
+        .record_c6_fullfield_plaintexts(doms.e_claim, &[e_final])
+        .expect("C6 Hadamard e-claim correction schedule");
+    stream
+        .record_c6_fullfield_plaintexts(doms.r_claim, &[r_final])
+        .expect("C6 Hadamard r-claim correction schedule");
+    stream
+        .record_c6_fullfield_plaintexts(doms.z, &[zx])
+        .expect("C6 Hadamard product correction schedule");
     tx.append("hadamard_claim_corrections", 48);
     let e_a = ProverAuthed { x: e_final, m: fe.m };
     let r_a = ProverAuthed { x: r_final, m: fr.m };
@@ -217,7 +230,11 @@ pub fn hadamard_prove_resident(
                 return Err(error);
             }
         };
-        let masks = stream.draw_fulls(doms.round_masks + round as u64, 3);
+        let domain = doms.round_masks + round as u64;
+        let masks = stream.draw_fulls(domain, 3);
+        stream
+            .record_c6_fullfield_plaintexts(domain, &[g0, g2, g3])
+            .expect("C6 resident Hadamard-round correction schedule");
         round_corrs.push([g0 - masks[0].x, g2 - masks[1].x, g3 - masks[2].x]);
         tx.append("hadamard_round_corrections", 48);
         let g0_a = ProverAuthed { x: g0, m: masks[0].m };
@@ -283,6 +300,15 @@ pub fn hadamard_prove_resident(
     let product = e_final * r_final;
     let fz = stream.draw_fulls(doms.z, 1)[0];
     let z_corr = product - fz.x;
+    stream
+        .record_c6_fullfield_plaintexts(doms.e_claim, &[e_final])
+        .expect("C6 resident Hadamard e-claim correction schedule");
+    stream
+        .record_c6_fullfield_plaintexts(doms.r_claim, &[r_final])
+        .expect("C6 resident Hadamard r-claim correction schedule");
+    stream
+        .record_c6_fullfield_plaintexts(doms.z, &[product])
+        .expect("C6 resident Hadamard product correction schedule");
     tx.append("hadamard_claim_corrections", 48);
     let e_auth = ProverAuthed { x: e_final, m: fe.m };
     let r_auth = ProverAuthed { x: r_final, m: fr.m };

@@ -1807,6 +1807,9 @@ impl Sink for BlindSink<'_> {
     fn root(&mut self, p: Fp2, q: Fp2) {
         let dom = self.doms.take(1);
         let masks = self.stream.draw_fulls(dom, 2);
+        self.stream
+            .record_c6_fullfield_plaintexts(dom, &[p, q])
+            .expect("C6 LogUp-root correction schedule");
         self.root_corrs = [p - masks[0].x, q - masks[1].x];
         self.tx.append("logup_root_corrections", 32);
         self.roots = (ProverAuthed { x: p, m: masks[0].m }, ProverAuthed { x: q, m: masks[1].m });
@@ -1826,6 +1829,9 @@ impl Sink for BlindSink<'_> {
     fn round(&mut self, h: [Fp2; 2], pt_j: Fp2) -> Fp2 {
         let dom = self.doms.take(1);
         let masks = self.stream.draw_fulls(dom, 2);
+        self.stream
+            .record_c6_fullfield_plaintexts(dom, &h)
+            .expect("C6 LogUp-round correction schedule");
         self.rounds_cur.push([h[0] - masks[0].x, h[1] - masks[1].x]);
         self.tx.append("logup_round_corrections", 32);
         let h0 = ProverAuthed { x: h[0], m: masks[0].m };
@@ -1846,6 +1852,9 @@ impl Sink for BlindSink<'_> {
     fn splits(&mut self, s: [Fp2; 4]) -> Fp2 {
         let dom = self.doms.take(1);
         let masks = self.stream.draw_fulls(dom, 4);
+        self.stream
+            .record_c6_fullfield_plaintexts(dom, &s)
+            .expect("C6 LogUp-split correction schedule");
         let split_corrs =
             [s[0] - masks[0].x, s[1] - masks[1].x, s[2] - masks[2].x, s[3] - masks[3].x];
         self.tx.append("logup_split_corrections", 64);
@@ -1857,6 +1866,9 @@ impl Sink for BlindSink<'_> {
         let zx = [s[0] * s[3], s[1] * s[2], s[2] * s[3]];
         let zdom = self.doms.take(1);
         let zmasks = self.stream.draw_fulls(zdom, 3);
+        self.stream
+            .record_c6_fullfield_plaintexts(zdom, &zx)
+            .expect("C6 LogUp-product correction schedule");
         let z_corrs = [zx[0] - zmasks[0].x, zx[1] - zmasks[1].x, zx[2] - zmasks[2].x];
         self.tx.append("logup_prod_corrections", 48);
         let z: Vec<ProverAuthed> =
@@ -1896,6 +1908,9 @@ impl Sink for BlindSink<'_> {
     fn round3(&mut self, g: [Fp2; 3], pt_j: Fp2) -> Fp2 {
         let dom = self.doms.take(1);
         let masks = self.stream.draw_fulls(dom, 3);
+        self.stream
+            .record_c6_fullfield_plaintexts(dom, &g)
+            .expect("C6 LogUp auxiliary-round correction schedule");
         self.rounds3_cur.push([g[0] - masks[0].x, g[1] - masks[1].x, g[2] - masks[2].x]);
         self.tx.append("logup_aux_round_corrections", 48);
         let ga: Vec<ProverAuthed> =
@@ -1915,6 +1930,9 @@ impl Sink for BlindSink<'_> {
     fn splits_aux(&mut self, s: [Fp2; 4], cols: &[[Fp2; 2]], finals: &[AuxFinal]) -> Fp2 {
         let dom = self.doms.take(1);
         let masks = self.stream.draw_fulls(dom, 4);
+        self.stream
+            .record_c6_fullfield_plaintexts(dom, &s)
+            .expect("C6 LogUp auxiliary-split correction schedule");
         let split_corrs =
             [s[0] - masks[0].x, s[1] - masks[1].x, s[2] - masks[2].x, s[3] - masks[3].x];
         self.tx.append("logup_split_corrections", 64);
@@ -1925,6 +1943,9 @@ impl Sink for BlindSink<'_> {
         let zx = [s[0] * s[3], s[1] * s[2], s[2] * s[3]];
         let zdom = self.doms.take(1);
         let zmasks = self.stream.draw_fulls(zdom, 3);
+        self.stream
+            .record_c6_fullfield_plaintexts(zdom, &zx)
+            .expect("C6 LogUp auxiliary-product correction schedule");
         let z_corrs = [zx[0] - zmasks[0].x, zx[1] - zmasks[1].x, zx[2] - zmasks[2].x];
         self.tx.append("logup_prod_corrections", 48);
         let z: Vec<ProverAuthed> =
@@ -1935,6 +1956,12 @@ impl Sink for BlindSink<'_> {
         // Per-col split claims ṽ0, ṽ1.
         let cdom = self.doms.take(1);
         let cmasks = self.stream.draw_fulls(cdom, 2 * cols.len());
+        self.stream
+            .record_c6_fullfield_plaintexts_iter(
+                cdom,
+                cols.iter().flat_map(|column| column.iter().copied()),
+            )
+            .expect("C6 LogUp column correction schedule");
         self.tx.append("logup_col_corrections", 32 * cols.len() as u64);
         let mut cols_a = Vec::with_capacity(cols.len());
         for (ci, c) in cols.iter().enumerate() {
@@ -2384,6 +2411,7 @@ fn cross_prover(
     let zx = [pf.x * qt.x, ptn.x * qf.x, qf.x.inv(), qt.x.inv()];
     let dom = doms.take(1);
     let masks = stream.draw_fulls(dom, 4);
+    stream.record_c6_fullfield_plaintexts(dom, &zx).expect("C6 LogUp cross correction schedule");
     let cross_corrs =
         [zx[0] - masks[0].x, zx[1] - masks[1].x, zx[2] - masks[2].x, zx[3] - masks[3].x];
     tx.append("logup_cross_corrections", 64);
@@ -2932,6 +2960,9 @@ fn finish_table_side_prove(
         let zx = [pr.x * qs.x, ps.x * qr.x, qr.x * qs.x];
         let dom = doms.take(1);
         let masks = stream.draw_fulls(dom, 3);
+        stream
+            .record_c6_fullfield_plaintexts(dom, &zx)
+            .expect("C6 LogUp aggregate correction schedule");
         agg_corrs.push([zx[0] - masks[0].x, zx[1] - masks[1].x, zx[2] - masks[2].x]);
         tx.append("logup_aggregate_corrections", 48);
         let z1 = ProverAuthed { x: zx[0], m: masks[0].m };

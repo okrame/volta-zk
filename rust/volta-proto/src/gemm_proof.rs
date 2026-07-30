@@ -353,6 +353,9 @@ pub fn prove_gemm_blind_committed_at(
     // correlation — never sent in clear (corr_w = b_final − r is uniform).
     let fc = stream.draw_fulls(dom_w_claim, 1)[0];
     let corr_w = b_final - fc.x;
+    stream
+        .record_c6_fullfield_plaintexts(dom_w_claim, &[b_final])
+        .expect("C6 committed-W correction schedule");
     tx.append("w_claim_correction", 16);
     let b_auth = ProverAuthed { x: b_final, m: fc.m };
     debug_assert_eq!(claim_n.x, x_val * b_final, "honest final claim mismatch");
@@ -671,11 +674,17 @@ pub fn prove_gemm_committed_chained(
     // itself with a fresh full correlation (uniform, leaks nothing).
     let fx = stream.draw_fulls(doms.x_claim, 1)[0];
     let corr_x = x_val - fx.x;
+    stream
+        .record_c6_fullfield_plaintexts(doms.x_claim, &[x_val])
+        .expect("C6 chained GEMM x-claim correction schedule");
     tx.append("x_claim_correction", 16);
     let x_auth = ProverAuthed { x: x_val, m: fx.m };
     // Committed-W leg, identical to `prove_gemm_blind_committed`.
     let fw = stream.draw_fulls(doms.w_claim, 1)[0];
     let corr_w = b_final - fw.x;
+    stream
+        .record_c6_fullfield_plaintexts(doms.w_claim, &[b_final])
+        .expect("C6 chained GEMM w-claim correction schedule");
     tx.append("w_claim_correction", 16);
     let b_auth = ProverAuthed { x: b_final, m: fw.m };
     debug_assert_eq!(claim_n.x, x_val * b_final, "honest final claim mismatch");
@@ -803,10 +812,16 @@ pub fn prove_gemm_committed_chained_resident(
     let t4 = Instant::now();
     let fx = stream.draw_fulls(doms.x_claim, 1)[0];
     let corr_x = x_val - fx.x;
+    stream
+        .record_c6_fullfield_plaintexts(doms.x_claim, &[x_val])
+        .expect("C6 resident GEMM x-claim correction schedule");
     tx.append("x_claim_correction", 16);
     let x_auth = ProverAuthed { x: x_val, m: fx.m };
     let fw = stream.draw_fulls(doms.w_claim, 1)[0];
     let corr_w = b_final - fw.x;
+    stream
+        .record_c6_fullfield_plaintexts(doms.w_claim, &[b_final])
+        .expect("C6 resident GEMM w-claim correction schedule");
     tx.append("w_claim_correction", 16);
     let b_auth = ProverAuthed { x: b_final, m: fw.m };
     debug_assert_eq!(claim_n.x, x_val * b_final, "honest final claim mismatch");
@@ -975,6 +990,9 @@ pub(crate) fn finalize_gemm_act_chained(
     let product_started = Instant::now();
     let x_mask = stream.draw_fulls(doms.x_claim, 1)[0];
     let corr_x = rounds.x_final - x_mask.x;
+    stream
+        .record_c6_fullfield_plaintexts(doms.x_claim, &[rounds.x_final])
+        .expect("C6 activation GEMM x-claim correction schedule");
     tx.append("x_claim_correction", 16);
     let x_auth = ProverAuthed { x: rounds.x_final, m: x_mask.m };
     debug_assert_eq!(

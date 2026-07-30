@@ -532,6 +532,9 @@ impl BatchBlindState {
     ) -> Result<(), LogupBatchError> {
         let draw = self.corr.take(CorrelationScope::LogupRoot)?;
         let masks = correlations.draw(draw.range, draw.row);
+        correlations
+            .record_c6_fullfield_plaintexts(draw.range, draw.row, &[p, q])
+            .expect("C6 scheduled LogUp-root correction schedule");
         self.root_corrs = [p - masks[0].x, q - masks[1].x];
         tx.append("logup_root_corrections", 32);
         self.roots = (ProverAuthed { x: p, m: masks[0].m }, ProverAuthed { x: q, m: masks[1].m });
@@ -571,6 +574,9 @@ impl BatchBlindState {
         }
         let draw = self.corr.take(CorrelationScope::LogupGeneralRound)?;
         let masks = correlations.draw(draw.range, draw.row);
+        correlations
+            .record_c6_fullfield_plaintexts(draw.range, draw.row, &h)
+            .expect("C6 scheduled LogUp-round correction schedule");
         self.rounds_cur.push([h[0] - masks[0].x, h[1] - masks[1].x]);
         tx.append("logup_round_corrections", 32);
         self.pending_round2 = Some(PendingRound2 {
@@ -616,6 +622,9 @@ impl BatchBlindState {
         }
         let draw = self.corr.take(CorrelationScope::LogupAuxRound)?;
         let masks = correlations.draw(draw.range, draw.row);
+        correlations
+            .record_c6_fullfield_plaintexts(draw.range, draw.row, &g)
+            .expect("C6 scheduled LogUp auxiliary-round correction schedule");
         self.rounds3_cur.push([g[0] - masks[0].x, g[1] - masks[1].x, g[2] - masks[2].x]);
         tx.append("logup_aux_round_corrections", 48);
         self.pending_round3 = Some(PendingRound3 {
@@ -667,6 +676,9 @@ impl BatchBlindState {
         }
         let draw = self.corr.take(CorrelationScope::LogupSplit)?;
         let masks = correlations.draw(draw.range, draw.row);
+        correlations
+            .record_c6_fullfield_plaintexts(draw.range, draw.row, &splits)
+            .expect("C6 scheduled LogUp-split correction schedule");
         let split_corrs = [
             splits[0] - masks[0].x,
             splits[1] - masks[1].x,
@@ -681,6 +693,9 @@ impl BatchBlindState {
         let zx = [splits[0] * splits[3], splits[1] * splits[2], splits[2] * splits[3]];
         let draw = self.corr.take(CorrelationScope::LogupProduct)?;
         let zmasks = correlations.draw(draw.range, draw.row);
+        correlations
+            .record_c6_fullfield_plaintexts(draw.range, draw.row, &zx)
+            .expect("C6 scheduled LogUp-product correction schedule");
         let z_corrs = [zx[0] - zmasks[0].x, zx[1] - zmasks[1].x, zx[2] - zmasks[2].x];
         tx.append("logup_prod_corrections", 48);
         let z = [
@@ -700,6 +715,13 @@ impl BatchBlindState {
         let columns = if let Some(columns) = columns {
             let draw = self.corr.take(CorrelationScope::LogupAuxColumn)?;
             let cmasks = correlations.draw(draw.range, draw.row);
+            correlations
+                .record_c6_fullfield_plaintexts_iter(
+                    draw.range,
+                    draw.row,
+                    columns.iter().flat_map(|column| column.iter().copied()),
+                )
+                .expect("C6 scheduled LogUp-column correction schedule");
             tx.append("logup_col_corrections", 32 * columns.len() as u64);
             let mut authenticated = Vec::with_capacity(columns.len());
             for (index, column) in columns.iter().enumerate() {

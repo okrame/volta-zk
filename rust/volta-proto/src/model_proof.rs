@@ -1016,6 +1016,9 @@ fn prove_resident_band_logits(
     let claim_domain = cx.doms.take(1);
     let mask = cx.stream.draw_fulls(claim_domain, 1)[0];
     let correction = wte_value - mask.x;
+    cx.stream
+        .record_c6_fullfield_plaintexts(claim_domain, &[wte_value])
+        .expect("C6 logits WTE correction schedule");
     cx.tx.append("logits_wte_correction", 16);
     let wte_auth = ProverAuthed { x: wte_value, m: mask.m };
     cx.prod.push((final_open, wte_auth, claim));
@@ -1126,6 +1129,9 @@ fn prove_resident_band_selection(
     let position_domain = cx.doms.take(1);
     let position_mask = cx.stream.draw_fulls(position_domain, 1)[0];
     let position_correction = position_value - position_mask.x;
+    cx.stream
+        .record_c6_fullfield_plaintexts(position_domain, &[position_value])
+        .expect("C6 selection position correction schedule");
     cx.tx.append("selection_p_correction", 16);
     let position_auth = ProverAuthed { x: position_value, m: position_mask.m };
     let selection_domain = cx.doms.take(16);
@@ -1151,6 +1157,9 @@ fn prove_resident_band_selection(
     let wte_domain = cx.doms.take(1);
     let wte_mask = cx.stream.draw_fulls(wte_domain, 1)[0];
     let wte_correction = wte_value - wte_mask.x;
+    cx.stream
+        .record_c6_fullfield_plaintexts(wte_domain, &[wte_value])
+        .expect("C6 selection WTE correction schedule");
     cx.tx.append("selection_wte_correction", 16);
     let wte_auth = ProverAuthed { x: wte_value, m: wte_mask.m };
     cx.zero.push(wte_auth.scale(selection_eval).sub(selection_claim));
@@ -1183,6 +1192,9 @@ fn prove_resident_band_selection(
     let wpe_claim_domain = cx.doms.take(1);
     let wpe_mask = cx.stream.draw_fulls(wpe_claim_domain, 1)[0];
     let wpe_correction = wpe_value - wpe_mask.x;
+    cx.stream
+        .record_c6_fullfield_plaintexts(wpe_claim_domain, &[wpe_value])
+        .expect("C6 selection WPE correction schedule");
     cx.tx.append("selection_wpe_correction", 16);
     let wpe_auth = ProverAuthed { x: wpe_value, m: wpe_mask.m };
     cx.zero.push(wpe_auth.scale(g_eval).sub(wpe_claim));
@@ -2024,6 +2036,9 @@ fn prove_response_resident_impl<'chunk, 'source>(
             let domain = cx.doms.take(1);
             let mask = cx.stream.draw_fulls(domain, 1)[0];
             let corr = wte_value - mask.x;
+            cx.stream
+                .record_c6_fullfield_plaintexts(domain, &[wte_value])
+                .expect("C6 resident logits WTE correction schedule");
             cx.tx.append("logits_wte_correction", 16);
             let wte_auth = ProverAuthed { x: wte_value, m: mask.m };
             cx.prod.push((final_open, wte_auth, claim));
@@ -2132,6 +2147,9 @@ fn prove_response_resident_impl<'chunk, 'source>(
             let p_domain = cx.doms.take(1);
             let p_mask = cx.stream.draw_fulls(p_domain, 1)[0];
             let p_corr = p_value - p_mask.x;
+            cx.stream
+                .record_c6_fullfield_plaintexts(p_domain, &[p_value])
+                .expect("C6 resident selection position correction schedule");
             cx.tx.append("selection_p_correction", 16);
             let p_auth = ProverAuthed { x: p_value, m: p_mask.m };
             let selection_domain = cx.doms.take(16);
@@ -2157,6 +2175,9 @@ fn prove_response_resident_impl<'chunk, 'source>(
             let wte_domain = cx.doms.take(1);
             let wte_mask = cx.stream.draw_fulls(wte_domain, 1)[0];
             let wte_corr = wte_value - wte_mask.x;
+            cx.stream
+                .record_c6_fullfield_plaintexts(wte_domain, &[wte_value])
+                .expect("C6 resident selection WTE correction schedule");
             cx.tx.append("selection_wte_correction", 16);
             let wte_auth = ProverAuthed { x: wte_value, m: wte_mask.m };
             cx.zero.push(wte_auth.scale(selection_eval).sub(selection_claim));
@@ -2189,6 +2210,9 @@ fn prove_response_resident_impl<'chunk, 'source>(
             let wpe_claim_domain = cx.doms.take(1);
             let wpe_mask = cx.stream.draw_fulls(wpe_claim_domain, 1)[0];
             let wpe_corr = wpe_value - wpe_mask.x;
+            cx.stream
+                .record_c6_fullfield_plaintexts(wpe_claim_domain, &[wpe_value])
+                .expect("C6 resident selection WPE correction schedule");
             cx.tx.append("selection_wpe_correction", 16);
             let wpe_auth = ProverAuthed { x: wpe_value, m: wpe_mask.m };
             cx.zero.push(wpe_auth.scale(g_eval).sub(wpe_claim));
@@ -3270,6 +3294,9 @@ fn prove_response_impl(
     let dom_wv = cx.doms.take(1);
     let mk = cx.stream.draw_fulls(dom_wv, 1)[0];
     let logits_wte_corr = wv - mk.x;
+    cx.stream
+        .record_c6_fullfield_plaintexts(dom_wv, &[wv])
+        .expect("C6 CPU logits WTE correction schedule");
     cx.tx.append("logits_wte_correction", 16);
     let wte_auth = ProverAuthed { x: wv, m: mk.m };
     cx.prod.push((fin_open, wte_auth, lg_claim_n));
@@ -3318,6 +3345,9 @@ fn prove_response_impl(
     let dom_p = cx.doms.take(1);
     let mk_p = cx.stream.draw_fulls(dom_p, 1)[0];
     let sel_p_corr = p_val - mk_p.x;
+    cx.stream
+        .record_c6_fullfield_plaintexts(dom_p, &[p_val])
+        .expect("C6 CPU selection position correction schedule");
     cx.tx.append("selection_p_correction", 16);
     let p_auth = ProverAuthed { x: p_val, m: mk_p.m };
     let claim0 = embed_acc_claim.sub(p_auth);
@@ -3332,6 +3362,9 @@ fn prove_response_impl(
     let dom_wv2 = cx.doms.take(1);
     let mk2 = cx.stream.draw_fulls(dom_wv2, 1)[0];
     let sel_wte_corr = wv2 - mk2.x;
+    cx.stream
+        .record_c6_fullfield_plaintexts(dom_wv2, &[wv2])
+        .expect("C6 CPU selection WTE correction schedule");
     cx.tx.append("selection_wte_correction", 16);
     let wte2_auth = ProverAuthed { x: wv2, m: mk2.m };
     cx.zero.push(wte2_auth.scale(s_eval).sub(sel_claim_n));
@@ -3352,6 +3385,9 @@ fn prove_response_impl(
     let dom_wpe = cx.doms.take(1);
     let mk_wpe = cx.stream.draw_fulls(dom_wpe, 1)[0];
     let sel_wpe_corr = wpe_val - mk_wpe.x;
+    cx.stream
+        .record_c6_fullfield_plaintexts(dom_wpe, &[wpe_val])
+        .expect("C6 CPU selection WPE correction schedule");
     cx.tx.append("selection_wpe_correction", 16);
     let wpe_auth = ProverAuthed { x: wpe_val, m: mk_wpe.m };
     cx.zero.push(wpe_auth.scale(g_eval).sub(wpe_claim_n));
@@ -3645,6 +3681,9 @@ fn prove_response_impl(
         let dom_wv = cx.doms.take(1);
         let mk = cx.stream.draw_fulls(dom_wv, 1)[0];
         let logits_wte_corr = wv - mk.x;
+        cx.stream
+            .record_c6_fullfield_plaintexts(dom_wv, &[wv])
+            .expect("C6 band logits WTE correction schedule");
         cx.tx.append("logits_wte_correction", 16);
         let wte_auth = ProverAuthed { x: wv, m: mk.m };
         cx.prod.push((fin_open, wte_auth, lg_claim_n));
@@ -3684,6 +3723,9 @@ fn prove_response_impl(
         let dom_p = cx.doms.take(1);
         let mk_p = cx.stream.draw_fulls(dom_p, 1)[0];
         let sel_p_corr = p_val - mk_p.x;
+        cx.stream
+            .record_c6_fullfield_plaintexts(dom_p, &[p_val])
+            .expect("C6 band selection position correction schedule");
         cx.tx.append("selection_p_correction", 16);
         let p_auth = ProverAuthed { x: p_val, m: mk_p.m };
         let claim0 = embed_acc_claim_c.sub(p_auth);
@@ -3696,6 +3738,9 @@ fn prove_response_impl(
         let dom_wv2 = cx.doms.take(1);
         let mk2 = cx.stream.draw_fulls(dom_wv2, 1)[0];
         let sel_wte_corr = wv2 - mk2.x;
+        cx.stream
+            .record_c6_fullfield_plaintexts(dom_wv2, &[wv2])
+            .expect("C6 band selection WTE correction schedule");
         cx.tx.append("selection_wte_correction", 16);
         let wte2_auth = ProverAuthed { x: wv2, m: mk2.m };
         cx.zero.push(wte2_auth.scale(s_eval).sub(sel_claim_n));
@@ -3715,6 +3760,9 @@ fn prove_response_impl(
         let dom_wpe = cx.doms.take(1);
         let mk_wpe = cx.stream.draw_fulls(dom_wpe, 1)[0];
         let sel_wpe_corr = wpe_val - mk_wpe.x;
+        cx.stream
+            .record_c6_fullfield_plaintexts(dom_wpe, &[wpe_val])
+            .expect("C6 band selection WPE correction schedule");
         cx.tx.append("selection_wpe_correction", 16);
         let wpe_auth = ProverAuthed { x: wpe_val, m: mk_wpe.m };
         cx.zero.push(wpe_auth.scale(g_eval).sub(wpe_claim_n));

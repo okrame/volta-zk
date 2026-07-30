@@ -20,8 +20,9 @@ use volta_mac::{zero_batch_exchange, CorrelationStream, Transcript, VerifierCtx}
 use volta_proto::logup::Doms;
 use volta_proto::{
     audit_c6_t1_source_census, layer_dom_base, prod_batch_prover, prod_batch_verify,
-    prove_response_private_logits, replay_c6_subfield_coordinate, verify_response_private_logits,
-    C6PairedSubfieldWitness, C6T1CensusInput, ChunkRef, PrivateChunkPub,
+    prove_response_private_logits, replay_c6_source_coordinate, replay_c6_subfield_coordinate,
+    verify_response_private_logits, C6PairedSourceWitness, C6PairedSubfieldWitness,
+    C6SourceCoordinate, C6T1CensusInput, ChunkRef, PrivateChunkPub,
     C6_T1_COMPLETE_ALLOCATION_SCHEDULE_DIGEST_HEX, C6_T1_CORRECTION_SCHEDULE_DIGEST_HEX,
     C6_T1_FINAL_PRODUCT_TRIPLES, C6_T1_FULL_CORRECTION_BYTES,
     C6_T1_MODEL_ALLOCATION_SCHEDULE_DIGEST_HEX, C6_T1_MODEL_LOCAL_PRODUCT_CLOSURES,
@@ -44,6 +45,7 @@ struct Args {
     output: Option<PathBuf>,
     diagnostic: bool,
     subfield_witness: bool,
+    source_witness: bool,
 }
 
 fn args() -> Result<Args, String> {
@@ -51,6 +53,7 @@ fn args() -> Result<Args, String> {
     let mut output = None;
     let mut diagnostic = false;
     let mut subfield_witness = false;
+    let mut source_witness = false;
     let mut values = env::args().skip(1);
     while let Some(argument) = values.next() {
         match argument.as_str() {
@@ -66,13 +69,17 @@ fn args() -> Result<Args, String> {
             }
             "--diagnostic" => diagnostic = true,
             "--subfield-witness" => subfield_witness = true,
+            "--source-witness" => source_witness = true,
             _ => return Err(format!("unknown argument {argument}")),
         }
     }
     if diagnostic == output.is_some() {
         return Err("choose exactly one of --diagnostic or --output PATH".to_owned());
     }
-    Ok(Args { weights, output, diagnostic, subfield_witness })
+    if subfield_witness && source_witness {
+        return Err("--subfield-witness and --source-witness are mutually exclusive".to_owned());
+    }
+    Ok(Args { weights, output, diagnostic, subfield_witness, source_witness })
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -283,6 +290,31 @@ struct SubfieldWitnessRow {
 }
 
 #[derive(Serialize)]
+struct SourceWitnessRow {
+    reference_only: bool,
+    pcg_backend: String,
+    second_coordinate_model_rerun: bool,
+    product_masks_independent_between_coordinates: bool,
+    tape_ids: [String; 2],
+    subfield_leaf_count: u64,
+    direct_fullfield_leaf_count: u64,
+    product_mask_leaf_count: u64,
+    fullfield_leaf_count: u64,
+    hidden_subfield_correction_bytes_per_coordinate: u64,
+    hidden_direct_fullfield_correction_bytes_per_coordinate: u64,
+    secret_subfield_witness_bytes_per_coordinate: u64,
+    secret_fullfield_witness_bytes_per_coordinate: u64,
+    subfield_plaintext_digest: String,
+    direct_fullfield_plaintext_digest: String,
+    coordinate_fullfield_plaintext_digests: [String; 2],
+    coordinate_subfield_witness_digests: [String; 2],
+    coordinate_fullfield_witness_digests: [String; 2],
+    coordinate_subfield_correction_digests: [String; 2],
+    coordinate_fullfield_correction_digests: [String; 2],
+    pair_digest: String,
+}
+
+#[derive(Serialize)]
 struct Record {
     schema: u64,
     milestone: String,
@@ -327,6 +359,8 @@ struct Record {
     residual_capacity: CapacityRow,
     #[serde(skip_serializing_if = "Option::is_none")]
     subfield_witness: Option<SubfieldWitnessRow>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_witness: Option<SourceWitnessRow>,
     source_sha256: BTreeMap<String, String>,
     all_pass: bool,
 }
@@ -356,7 +390,9 @@ fn run(args: &Args) -> Result<Record, String> {
     let mut prover = CorrelationStream::new([0x42; 32]);
     let mut verifier =
         VerifierCtx::new([0x42; 32], Fp2::new(Fp::new(0xD31C_5A17), Fp::new(0x0BAD_CAFE)));
-    if args.subfield_witness {
+    if args.source_witness {
+        prover.enable_c6_source_witness_collection()?;
+    } else if args.subfield_witness {
         prover.enable_c6_subfield_witness_collection()?;
     } else {
         prover.enable_schedule_audit()?;
@@ -501,6 +537,93 @@ fn run(args: &Args) -> Result<Record, String> {
         None
     };
 
+    let source_witness = if args.source_witness {
+        let primary_subfield = prover.finish_c6_subfield_witness_collection()?;
+        let primary_fullfield = prover.finish_c6_fullfield_witness_collection()?;
+        let primary =
+            C6SourceCoordinate::new(primary_subfield, primary_fullfield, &prover_schedule)
+                .map_err(|error| error.to_string())?;
+        let mut secondary_stream = CorrelationStream::new([0x43; 32]);
+        let secondary =
+            replay_c6_source_coordinate(&primary, &prover_schedule, &mut secondary_stream)
+                .map_err(|error| error.to_string())?;
+        let pair = C6PairedSourceWitness::new(
+            [[0xD0; 32], [0xD1; 32]],
+            [primary, secondary],
+            &prover_schedule,
+        )
+        .map_err(|error| error.to_string())?;
+        let subfield_leaf_count = u64::try_from(pair.subfield_leaf_count())
+            .map_err(|_| "C6 source subfield count exceeds u64".to_owned())?;
+        let direct_fullfield_leaf_count = u64::try_from(pair.direct_fullfield_leaf_count())
+            .map_err(|_| "C6 source direct full-field count exceeds u64".to_owned())?;
+        let product_mask_leaf_count = u64::try_from(pair.product_mask_leaf_count())
+            .map_err(|_| "C6 source ProductMask count exceeds u64".to_owned())?;
+        let fullfield_leaf_count = u64::try_from(pair.fullfield_leaf_count())
+            .map_err(|_| "C6 source full-field count exceeds u64".to_owned())?;
+        if subfield_leaf_count != census.direct_subfield_leaves
+            || direct_fullfield_leaf_count != census.direct_fullfield_leaves
+            || product_mask_leaf_count != census.product_mask_leaves
+            || fullfield_leaf_count
+                != census
+                    .direct_fullfield_leaves
+                    .checked_add(census.product_mask_leaves)
+                    .ok_or_else(|| "C6 census full-field count overflows".to_owned())?
+        {
+            return Err("C6 paired source witness leaf census changed".to_owned());
+        }
+        let coordinates = pair.coordinates();
+        let tape_ids = pair.tape_ids();
+        Some(SourceWitnessRow {
+            reference_only: true,
+            pcg_backend: "mock-chacha8-local-only".to_owned(),
+            second_coordinate_model_rerun: false,
+            product_masks_independent_between_coordinates: true,
+            tape_ids: [hex(&tape_ids[0]), hex(&tape_ids[1])],
+            subfield_leaf_count,
+            direct_fullfield_leaf_count,
+            product_mask_leaf_count,
+            fullfield_leaf_count,
+            hidden_subfield_correction_bytes_per_coordinate: subfield_leaf_count
+                .checked_mul(8)
+                .ok_or_else(|| "C6 source subfield correction bytes overflow".to_owned())?,
+            hidden_direct_fullfield_correction_bytes_per_coordinate: direct_fullfield_leaf_count
+                .checked_mul(16)
+                .ok_or_else(|| "C6 source full-field correction bytes overflow".to_owned())?,
+            secret_subfield_witness_bytes_per_coordinate: subfield_leaf_count
+                .checked_mul(32)
+                .ok_or_else(|| "C6 source subfield witness bytes overflow".to_owned())?,
+            secret_fullfield_witness_bytes_per_coordinate: fullfield_leaf_count
+                .checked_mul(48)
+                .ok_or_else(|| "C6 source full-field witness bytes overflow".to_owned())?,
+            subfield_plaintext_digest: hex(&coordinates[0].subfield().plaintext_digest),
+            direct_fullfield_plaintext_digest: hex(&pair.direct_fullfield_plaintext_digest()),
+            coordinate_fullfield_plaintext_digests: [
+                hex(&coordinates[0].fullfield().plaintext_digest),
+                hex(&coordinates[1].fullfield().plaintext_digest),
+            ],
+            coordinate_subfield_witness_digests: [
+                hex(&coordinates[0].subfield().witness_digest),
+                hex(&coordinates[1].subfield().witness_digest),
+            ],
+            coordinate_fullfield_witness_digests: [
+                hex(&coordinates[0].fullfield().witness_digest),
+                hex(&coordinates[1].fullfield().witness_digest),
+            ],
+            coordinate_subfield_correction_digests: [
+                hex(&coordinates[0].subfield().correction_digest),
+                hex(&coordinates[1].subfield().correction_digest),
+            ],
+            coordinate_fullfield_correction_digests: [
+                hex(&coordinates[0].fullfield().correction_digest),
+                hex(&coordinates[1].fullfield().correction_digest),
+            ],
+            pair_digest: hex(&pair.pair_digest()),
+        })
+    } else {
+        None
+    };
+
     if model_product_message_bytes != C6_T1_MODEL_PRODUCT_MESSAGE_BYTES
         || model_sub_correction_bytes != C6_T1_SUB_CORRECTION_BYTES
         || model_full_correction_bytes != C6_T1_FULL_CORRECTION_BYTES
@@ -541,9 +664,21 @@ fn run(args: &Args) -> Result<Record, String> {
     ] {
         source_sha256.insert(relative.to_owned(), sha256(&root.join(relative))?);
     }
+    if args.source_witness {
+        let relative = "rust/volta-proto/src/c6_source.rs";
+        source_sha256.insert(relative.to_owned(), sha256(&root.join(relative))?);
+    }
     Ok(Record {
-        schema: if args.subfield_witness { 2 } else { 1 },
-        milestone: if args.subfield_witness {
+        schema: if args.source_witness {
+            3
+        } else if args.subfield_witness {
+            2
+        } else {
+            1
+        },
+        milestone: if args.source_witness {
+            "C6-T1-paired-source-witness-reference".to_owned()
+        } else if args.subfield_witness {
             "C6-T1-paired-subfield-witness-reference".to_owned()
         } else {
             "C6-T1-production-source-census".to_owned()
@@ -597,6 +732,7 @@ fn run(args: &Args) -> Result<Record, String> {
             padded_headroom: census.residual_capacity.padded_headroom,
         },
         subfield_witness,
+        source_witness,
         source_sha256,
         all_pass: true,
     })

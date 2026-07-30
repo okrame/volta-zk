@@ -84,6 +84,9 @@ pub fn zero_batch_exchange(
 ) -> bool {
     assert_eq!(ys.len(), keys.len());
     let corr = p_stream.draw_fulls(mask_dom, 1)[0];
+    p_stream
+        .record_c6_fullfield_plaintexts(mask_dom, &[Fp2::ZERO])
+        .expect("C6 ZeroBatch mask correction schedule");
     let k_full = v_ctx.expand_full_keys(mask_dom, 1)[0];
     let (mask, c) = fresh_zero_mask(corr, tx);
     let k_mask = zero_mask_key(v_ctx, k_full, c);

@@ -253,6 +253,9 @@ pub fn blind_prove_batch(
             let domain = state.mask_dom_base + round as u64;
             debug_assert_eq!(domain, ranges[index].domain(round));
             let masks = round_masks.draw(index, round);
+            round_masks
+                .record_c6_fullfield_plaintexts(index, round, &[g0, g2])
+                .expect("C6 batched sumcheck correction schedule");
             state.round_corrs.push([g0 - masks[0].x, g2 - masks[1].x]);
             tx.append("blind_round_corrections", 32);
             messages.push((
@@ -781,6 +784,9 @@ pub fn blind_prove_resident_batch(
             let state = &mut states[index];
             debug_assert_eq!(state.mask_dom_base + round as u64, ranges[index].domain(round));
             let masks = round_masks.draw(index, round);
+            round_masks
+                .record_c6_fullfield_plaintexts(index, round, &[g0, g2])
+                .expect("C6 resident batched sumcheck correction schedule");
             state.round_corrs.push([g0 - masks[0].x, g2 - masks[1].x]);
             tx.append("blind_round_corrections", 32);
             messages.push((
@@ -962,7 +968,11 @@ pub(crate) fn blind_prove_resident_labeled(
             }
         };
         let [g0, g2] = round_values;
-        let masks = stream.draw_fulls(mask_dom_base + round as u64, 2);
+        let domain = mask_dom_base + round as u64;
+        let masks = stream.draw_fulls(domain, 2);
+        stream
+            .record_c6_fullfield_plaintexts(domain, &[g0, g2])
+            .expect("C6 resident sumcheck correction schedule");
         round_corrs.push([g0 - masks[0].x, g2 - masks[1].x]);
         tx.append(round_label, 32);
         let g0_a = ProverAuthed { x: g0, m: masks[0].m };
@@ -1078,7 +1088,11 @@ pub(crate) fn blind_prove_with_finals_labeled(
             g2 += (a0 + da + da) * (b0 + db + db);
         }
         // Fresh full-field masks for the two coefficients of this round.
-        let masks = stream.draw_fulls(mask_dom_base + round as u64, 2);
+        let domain = mask_dom_base + round as u64;
+        let masks = stream.draw_fulls(domain, 2);
+        stream
+            .record_c6_fullfield_plaintexts(domain, &[g0, g2])
+            .expect("C6 sumcheck correction schedule");
         let corrs = [g0 - masks[0].x, g2 - masks[1].x];
         tx.append(round_label, 32);
         round_corrs.push(corrs);

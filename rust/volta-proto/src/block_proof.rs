@@ -5945,6 +5945,9 @@ fn prove_attn_block_impl(
     }
     let dom_split_av = cx.doms.take(1);
     let masks_av = cx.stream.draw_fulls(dom_split_av, H);
+    cx.stream
+        .record_c6_fullfield_plaintexts(dom_split_av, &av_vals)
+        .expect("C6 AV head-split correction schedule");
     let mut av_split_corrs = [Fp2::ZERO; H];
     let mut av_auth = Vec::with_capacity(H);
     for h in 0..H {
@@ -6079,6 +6082,9 @@ fn prove_attn_block_impl(
     let dom_cw = cx.doms.take(1);
     let fc = cx.stream.draw_fulls(dom_cw, 1)[0];
     let causal_w_corr = w_eval - fc.x;
+    cx.stream
+        .record_c6_fullfield_plaintexts(dom_cw, &[w_eval])
+        .expect("C6 causal-wire correction schedule");
     cx.tx.append("causal_w_correction", 16);
     let w_auth = ProverAuthed { x: w_eval, m: fc.m };
     // No debug_assert here: this row is exactly where a causal violation
@@ -6125,6 +6131,9 @@ fn prove_attn_block_impl(
     let dom_rs = cx.doms.take(1);
     let fr = cx.stream.draw_fulls(dom_rs, 1)[0];
     let rowsum_corr = rs_val - fr.x;
+    cx.stream
+        .record_c6_fullfield_plaintexts(dom_rs, &[rs_val])
+        .expect("C6 rowsum correction schedule");
     cx.tx.append("rowsum_correction", 16);
     let rs_auth = ProverAuthed { x: rs_val, m: fr.m };
     let den_open = open_fp_vec_p(cx.stream, dom_denoms, &denoms_fp, &rho);
@@ -6171,6 +6180,9 @@ fn prove_attn_block_impl(
         let dom_rs2 = cx.doms.take(1);
         let fr2 = cx.stream.draw_fulls(dom_rs2, 1)[0];
         ismax_rowsum_corr = Some(rs2_val - fr2.x);
+        cx.stream
+            .record_c6_fullfield_plaintexts(dom_rs2, &[rs2_val])
+            .expect("C6 ismax rowsum correction schedule");
         cx.tx.append("ismax_rowsum_correction", 16);
         let rs2_auth = ProverAuthed { x: rs2_val, m: fr2.m };
         let eq_rho2 = eq_vec(&rho2);
@@ -6275,6 +6287,9 @@ fn prove_attn_block_impl(
     }
     let dom_split_sc = cx.doms.take(1);
     let masks_sc = cx.stream.draw_fulls(dom_split_sc, H);
+    cx.stream
+        .record_c6_fullfield_plaintexts(dom_split_sc, &sc_vals)
+        .expect("C6 score head-split correction schedule");
     let mut sc_split_corrs = [Fp2::ZERO; H];
     let mut sc_auth = Vec::with_capacity(H);
     for h in 0..H {
@@ -6740,6 +6755,9 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
         }
         let split_av_dom = cx.doms.take(1);
         let split_av_masks = cx.stream.draw_fulls(split_av_dom, H);
+        cx.stream
+            .record_c6_fullfield_plaintexts(split_av_dom, &av_values)
+            .expect("C6 resident AV head-split correction schedule");
         let mut av_split_corrs = [Fp2::ZERO; H];
         let mut av_auth = Vec::with_capacity(H);
         for head in 0..H {
@@ -6970,6 +6988,9 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
         let causal_wire_dom = cx.doms.take(1);
         let causal_mask = cx.stream.draw_fulls(causal_wire_dom, 1)[0];
         let causal_w_corr = w_value - causal_mask.x;
+        cx.stream
+            .record_c6_fullfield_plaintexts(causal_wire_dom, &[w_value])
+            .expect("C6 resident causal-wire correction schedule");
         cx.tx.append("causal_w_correction", 16);
         let causal_w_auth = ProverAuthed { x: w_value, m: causal_mask.m };
         cx.zero.push(causal_w_auth.scale(mask_value).sub(causal_claim));
@@ -7041,6 +7062,9 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
         let rowsum_dom = cx.doms.take(1);
         let rowsum_mask = cx.stream.draw_fulls(rowsum_dom, 1)[0];
         let rowsum_corr = rowsum_value - rowsum_mask.x;
+        cx.stream
+            .record_c6_fullfield_plaintexts(rowsum_dom, &[rowsum_value])
+            .expect("C6 resident rowsum correction schedule");
         cx.tx.append("rowsum_correction", 16);
         let rowsum_auth = ProverAuthed { x: rowsum_value, m: rowsum_mask.m };
         let denom_open = open_fp_vec_resident_p(
@@ -7109,6 +7133,9 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
             let rowmax_sum_dom = cx.doms.take(1);
             let rowmax_sum_mask = cx.stream.draw_fulls(rowmax_sum_dom, 1)[0];
             ismax_rowsum_corr = Some(rowmax_sum - rowmax_sum_mask.x);
+            cx.stream
+                .record_c6_fullfield_plaintexts(rowmax_sum_dom, &[rowmax_sum])
+                .expect("C6 resident ismax rowsum correction schedule");
             cx.tx.append("ismax_rowsum_correction", 16);
             let rowmax_sum_auth = ProverAuthed { x: rowmax_sum, m: rowmax_sum_mask.m };
             let eq_rho2 = eq_vec(&rho2);
@@ -7246,6 +7273,9 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
         }
         let split_scores_dom = cx.doms.take(1);
         let split_scores_masks = cx.stream.draw_fulls(split_scores_dom, H);
+        cx.stream
+            .record_c6_fullfield_plaintexts(split_scores_dom, &score_values)
+            .expect("C6 resident score head-split correction schedule");
         let mut sc_split_corrs = [Fp2::ZERO; H];
         let mut score_auth = Vec::with_capacity(H);
         for head in 0..H {

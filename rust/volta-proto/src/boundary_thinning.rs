@@ -117,6 +117,9 @@ fn prove_matrix_eval_value(
     let domain = cx.doms.take(1);
     let mask = cx.stream.draw_fulls(domain, 1)[0];
     let correction = value - mask.x;
+    cx.stream
+        .record_c6_fullfield_plaintexts(domain, &[value])
+        .expect("C6 q-bridge correction schedule");
     cx.tx.append("t1_q_bridge_correction", 16);
     (
         correction,
@@ -181,6 +184,9 @@ pub(crate) fn prove_eq_reduction_i16(
 
     let terminal_mask = cx.stream.draw_fulls(doms.terminal, 1)[0];
     let terminal_corr = tensor_final - terminal_mask.x;
+    cx.stream
+        .record_c6_fullfield_plaintexts(doms.terminal, &[tensor_final])
+        .expect("C6 equality-reducer terminal correction schedule");
     cx.tx.append("t1_eq_terminal_correction", 16);
     let terminal = ProverAuthed { x: tensor_final, m: terminal_mask.m };
     let close = terminal.scale(coefficient_final).sub(final_claim);
@@ -324,6 +330,9 @@ pub(crate) fn prove_eq_reduction_resident(
 
     let terminal_mask = cx.stream.draw_fulls(doms.terminal, 1)[0];
     let terminal_corr = tensor_final - terminal_mask.x;
+    cx.stream
+        .record_c6_fullfield_plaintexts(doms.terminal, &[tensor_final])
+        .expect("C6 resident equality-reducer terminal correction schedule");
     cx.tx.append("t1_eq_terminal_correction", 16);
     let terminal = ProverAuthed { x: tensor_final, m: terminal_mask.m };
     cx.zero.push(terminal.scale(coefficient_final).sub(final_claim));

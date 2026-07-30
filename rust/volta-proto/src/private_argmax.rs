@@ -547,6 +547,9 @@ fn authenticate_scalar(
     let domain = cx.doms.take(1);
     let correlation = cx.stream.draw_fulls(domain, 1)[0];
     let correction = value - correlation.x;
+    cx.stream
+        .record_c6_fullfield_plaintexts(domain, &[value])
+        .expect("C6 private-argmax scalar correction schedule");
     cx.tx.append(label, 16);
     (correction, ProverAuthed { x: value, m: correlation.m })
 }

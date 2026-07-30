@@ -6,8 +6,9 @@ CENSUS / PAIRED COMPLETE SOURCE WITNESS / INDEPENDENT EXACT-INSTANCE
 OPERATION DAG GREEN; PARAMETERIZED V2 TWO-SEED IDENTITY GREEN; CANONICAL PLAN
 CODEC + FULL-T1 COMPILED RESIDUAL + DURABLE 17+4 SESSION + HIDDEN-U NATIVE
 SUMCHECK REDUCTION + SCALED DUAL-TAPE C6RSC3 CODEC/DIFFERENTIAL GREEN; FUSED
-T1 EVENT SINK / CACHE ARGUMENT / PACKED PCS / FINAL WRAPPER PENDING; LOCAL
-IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
+T1 EVENT-SINK INTERFACE FROZEN / IMPLEMENTATION NEXT; CACHE ARGUMENT / PACKED
+PCS / FINAL WRAPPER PENDING; LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP
+BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
 accepted C4/T1 `rate=1/4,Q=120` inline profile.  It does not reopen or rewrite
@@ -2287,6 +2288,116 @@ until the common authenticated-output link binds it to the packed opening.
 The next ordered implementation gate is the byte-identical provider/client
 fused T1 event sink; only after that checkpoint may the packed link be
 assembled.
+
+#### 5.1.4 Fused atomic event-sink interface freeze
+
+The fused compiler is a refactor of the exact v3 atomic grammar, not a second
+compiler.  One witness-independent replay owns the atomic-weight stream and
+emits two ordered event kinds:
+
+```text
+Output {
+    proof_repetition,
+    output_ordinal,
+    family,
+    weight,
+    weighted_public_constant
+}
+
+CoefficientWrite {
+    proof_repetition,
+    output_ordinal,
+    family,
+    target,
+    coefficient
+}
+
+target =
+    LeafLinear(table, row)
+  | AuxiliaryLinear(table, row)
+  | AuxiliaryQuadratic(lhs, rhs, row).
+```
+
+`Output` occurs exactly once before every output's writes.  The emitter, not
+the sink, draws `weight` from the frozen
+`C6ResidualAtomicWeightSchedule`.  `output_ordinal`, family and target order
+are canonical and checked; a sink cannot omit, duplicate, reorder or invent a
+weight.  Every row/table/factor index is range-checked before delivery.
+
+The one canonical output order is:
+
+1. source ordinal, then its three SourceGrammar rows;
+2. coordinate 0 then 1, correction then tag Affine rows;
+3. coordinate 0 then 1, plaintext then tag Reverse rows;
+4. product-triple raw copies, then zero-root raw copies, in frozen
+   coordinate/component order;
+5. closure ordinal, coordinate 0 then 1, `Q`, `M0`, `M1`;
+6. coordinate 0 then 1 Zero rows;
+7. leaf tables 0--6 tails, then slot-7 tail;
+8. auxiliary product-lane tails, then zero-lane tails.
+
+The completion record binds compiler/event version, manifest digest,
+relation-challenge digest, linear-form digest, atomic-schedule digest, proof
+repetition, target and exact per-family output/write censuses.  It does not
+hash a materialized coefficient array.  An optional scaled audit sink may
+hash every event for differential testing; that diagnostic hash is not a
+production requirement and cannot add one hash call per production write.
+
+The exact production write formulas per proof repetition remain:
+
+```text
+SourceGrammar   6*direct + 3*ProductMask             29,851,131
+Affine          6*source                             29,853,150
+Reverse         4*source + 12*triples + 4*zero       20,202,848
+RawCopy         2*raw_copy                              601,496
+Product         12*triples + 4*closures                 270,760
+Zero            2*zero                                  16,340
+LeafTail        manifest leaf-tail outputs           31,979,441
+AuxiliaryTail   manifest auxiliary-tail outputs         223,540
+total / repetition                                  112,998,706
+total / two repetitions                            225,997,412.
+```
+
+The semantic emitter takes no witness.  It may compile only one reverse
+terminal form at a time and may stream each alpha coordinate directly; eight
+terminal coefficient vectors and two full alpha vectors may not coexist.
+Provider witness evaluation is a sink concern.  Its live source adapter
+binds the installed leaf, closure and auxiliary witness digests and supplies
+canonical zero padding without allocating padded witness tables.  The client
+uses no witness adapter.
+
+Four consumers are fixed:
+
+1. one provider replay accumulates both complete uncompressed first-family
+   messages directly from the live witness;
+2. after the first leaf challenge, one provider replay builds only the
+   eight half-size leaf coefficient states;
+3. after auxiliary activation, one provider replay builds only the
+   twenty-four half-size auxiliary linear/quadratic states;
+4. one client replay evaluates the exact 8+16+8 terminal coefficient scalars
+   at the fixed leaf/auxiliary points and retains no vector.
+
+At production geometry the largest legal coefficient allocation remains the
+leaf state:
+
+```text
+8 * 2^22 Fp2 = 33,554,432 Fp2 = 536,870,912 B.
+```
+
+Only one proof repetition and one family state may be live.  Allocation
+counters separately report leaf coefficient state, auxiliary coefficient
+state, witness views and codec buffers.  A full `2^23` coefficient table,
+eight simultaneous reverse forms, hidden witness padding, second live
+repetition or response-persistent coefficient vector fails closed.
+
+Implementation must first refactor the scaled reference compiler onto this
+same emitter.  Its materializing/evaluation sink must reproduce the existing
+statements, family residuals and mutation attribution exactly.  A second
+provider-audit sink and witness-free client-audit sink must then produce the
+same event completion and scaled per-event audit digest.  Only after that
+differential is green may first-message, folded-state and terminal sinks be
+connected to `C6RSC3`.  No proof bytes, soundness term, correlation count,
+setup byte or gate changes in this interface freeze.
 
 The wrapper PCS uses rate `1/8`, two independent fold/query chains and
 `s=86` queries per chain.  Under the conservative 64-active-polynomial,

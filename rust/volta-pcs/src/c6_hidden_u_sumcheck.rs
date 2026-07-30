@@ -230,15 +230,20 @@ pub fn prove_hidden_u_sumchecks(
         .collect::<Vec<_>>();
     let mut claims = Vec::with_capacity(layouts.len() * C6_HIDDEN_U_REPETITIONS as usize);
     for repetition in 0..C6_HIDDEN_U_REPETITIONS as usize {
+        let mut states = Vec::with_capacity(layouts.len());
         for (((layout, family), schedule), family_q_cols) in
             layouts.iter().zip(sealed.families()).zip(&schedules).zip(&q_cols)
         {
             let functional = materialize_functional(*layout, schedule, repetition, family_q_cols)?;
             let witness = flatten_witness(*layout, family.vectors())?;
-            let (family_proof, point) = prove_inner_product(*layout, witness, functional, tx)?;
+            states.push(InnerProductProverState::new(*layout, witness, functional)?);
+        }
+        prove_synchronized(&mut states, tx)?;
+        for state in states {
+            let (family_proof, point) = state.finish()?;
             claims.push(C6HiddenUOpeningClaim {
                 repetition: repetition as u8,
-                family: layout.family,
+                family: family_proof.family,
                 point,
                 value: family_proof.terminal_u,
             });
@@ -274,33 +279,67 @@ pub fn reduce_hidden_u_sumchecks(
     let schedules = build_schedules(layouts, prequery, postcommit, q_cols)?;
     let mut claims = Vec::with_capacity(layouts.len() * C6_HIDDEN_U_REPETITIONS as usize);
 
+    let max_rounds = layouts
+        .iter()
+        .map(|layout| layout.padded_entries().ilog2() as usize)
+        .max()
+        .ok_or_else(|| C6HiddenUError::new("empty C6 hidden-u sumcheck schedule"))?;
     for (repetition_index, repetition) in proof.repetitions.iter().enumerate() {
-        for (((layout, family_proof), schedule), family_q_cols) in
-            layouts.iter().zip(&repetition.families).zip(&schedules).zip(q_cols)
-        {
-            let mut claim = schedule.rhs[repetition_index];
-            let mut point = Vec::with_capacity(family_proof.rounds.len());
-            for round in &family_proof.rounds {
-                if round[0] + round[1] != claim {
+        let mut current_claims =
+            schedules.iter().map(|schedule| schedule.rhs[repetition_index]).collect::<Vec<_>>();
+        let mut points = layouts
+            .iter()
+            .map(|layout| Vec::with_capacity(layout.padded_entries().ilog2() as usize))
+            .collect::<Vec<_>>();
+        for global_round in 0..max_rounds {
+            let mut active = Vec::new();
+            for (family_index, (layout, family_proof)) in
+                layouts.iter().zip(&repetition.families).enumerate()
+            {
+                let family_rounds = layout.padded_entries().ilog2() as usize;
+                let start = max_rounds - family_rounds;
+                if global_round < start {
+                    continue;
+                }
+                let round = family_proof.rounds[global_round - start];
+                if round[0] + round[1] != current_claims[family_index] {
                     return Err(C6HiddenUError::new(
                         "C6 hidden-u sumcheck round does not sum to its claim",
                     ));
                 }
-                tx.append("c6_hidden_u_sumcheck_round", ROUND_BYTES);
-                let challenge = tx.challenge_fp2();
-                let weights = lagrange3(challenge);
-                claim = weights[0] * round[0] + weights[1] * round[1] + weights[2] * round[2];
-                point.push(challenge);
+                active.push((family_index, round));
             }
-            let functional_at_point =
-                evaluate_functional(*layout, schedule, repetition_index, family_q_cols, &point)?;
-            if claim != family_proof.terminal_u * functional_at_point {
+            tx.append(
+                "c6_hidden_u_sumcheck_round",
+                ROUND_BYTES
+                    .checked_mul(active.len() as u64)
+                    .ok_or_else(|| C6HiddenUError::new("C6 hidden-u round bytes overflow"))?,
+            );
+            let challenge = tx.challenge_fp2();
+            let weights = lagrange3(challenge);
+            for (family_index, round) in active {
+                current_claims[family_index] =
+                    weights[0] * round[0] + weights[1] * round[1] + weights[2] * round[2];
+                points[family_index].push(challenge);
+            }
+        }
+        for (family_index, (((layout, family_proof), schedule), family_q_cols)) in
+            layouts.iter().zip(&repetition.families).zip(&schedules).zip(q_cols).enumerate()
+        {
+            let functional_at_point = evaluate_functional(
+                *layout,
+                schedule,
+                repetition_index,
+                family_q_cols,
+                &points[family_index],
+            )?;
+            if current_claims[family_index] != family_proof.terminal_u * functional_at_point {
                 return Err(C6HiddenUError::new("C6 hidden-u sumcheck terminal product mismatch"));
             }
             claims.push(C6HiddenUOpeningClaim {
                 repetition: repetition_index as u8,
                 family: layout.family,
-                point,
+                point: points[family_index].clone(),
                 value: family_proof.terminal_u,
             });
         }
@@ -421,46 +460,115 @@ fn materialize_functional(
     Ok(functional)
 }
 
-fn prove_inner_product(
+struct InnerProductProverState {
     layout: C6HiddenULayout,
-    mut witness: Vec<Fp2>,
-    mut functional: Vec<Fp2>,
-    tx: &mut Transcript,
-) -> Result<(C6HiddenUSumcheckFamilyProof, Vec<Fp2>)> {
-    if witness.len() != layout.padded_entries() || functional.len() != witness.len() {
-        return Err(C6HiddenUError::new("C6 hidden-u sumcheck table geometry mismatch"));
+    witness: Vec<Fp2>,
+    functional: Vec<Fp2>,
+    rounds: Vec<[Fp2; 3]>,
+    point: Vec<Fp2>,
+    pending_round: bool,
+}
+
+impl InnerProductProverState {
+    fn new(layout: C6HiddenULayout, witness: Vec<Fp2>, functional: Vec<Fp2>) -> Result<Self> {
+        if witness.len() != layout.padded_entries() || functional.len() != witness.len() {
+            return Err(C6HiddenUError::new("C6 hidden-u sumcheck table geometry mismatch"));
+        }
+        let round_count = witness.len().ilog2() as usize;
+        Ok(Self {
+            layout,
+            witness,
+            functional,
+            rounds: Vec::with_capacity(round_count),
+            point: Vec::with_capacity(round_count),
+            pending_round: false,
+        })
     }
-    let mut point = Vec::with_capacity(witness.len().ilog2() as usize);
-    let mut rounds = Vec::with_capacity(witness.len().ilog2() as usize);
-    while witness.len() > 1 {
-        let half = witness.len() / 2;
+
+    fn round_message(&mut self) -> Result<()> {
+        if self.pending_round || self.witness.len() < 2 {
+            return Err(C6HiddenUError::new("invalid C6 hidden-u prover round state"));
+        }
+        let half = self.witness.len() / 2;
         let mut evaluations = [Fp2::ZERO; 3];
         for pair in 0..half {
-            let u0 = witness[2 * pair];
-            let u1 = witness[2 * pair + 1];
-            let f0 = functional[2 * pair];
-            let f1 = functional[2 * pair + 1];
+            let u0 = self.witness[2 * pair];
+            let u1 = self.witness[2 * pair + 1];
+            let f0 = self.functional[2 * pair];
+            let f1 = self.functional[2 * pair + 1];
             evaluations[0] += u0 * f0;
             evaluations[1] += u1 * f1;
             evaluations[2] += (u1 + u1 - u0) * (f1 + f1 - f0);
         }
-        tx.append("c6_hidden_u_sumcheck_round", ROUND_BYTES);
-        let challenge = tx.challenge_fp2();
-        for pair in 0..half {
-            witness[pair] =
-                witness[2 * pair] + challenge * (witness[2 * pair + 1] - witness[2 * pair]);
-            functional[pair] = functional[2 * pair]
-                + challenge * (functional[2 * pair + 1] - functional[2 * pair]);
-        }
-        witness.truncate(half);
-        functional.truncate(half);
-        rounds.push(evaluations);
-        point.push(challenge);
+        self.rounds.push(evaluations);
+        self.pending_round = true;
+        Ok(())
     }
-    Ok((
-        C6HiddenUSumcheckFamilyProof { family: layout.family, rounds, terminal_u: witness[0] },
-        point,
-    ))
+
+    fn bind_round(&mut self, challenge: Fp2) -> Result<()> {
+        if !self.pending_round || self.witness.len() < 2 {
+            return Err(C6HiddenUError::new("invalid C6 hidden-u challenge state"));
+        }
+        let half = self.witness.len() / 2;
+        for pair in 0..half {
+            self.witness[pair] = self.witness[2 * pair]
+                + challenge * (self.witness[2 * pair + 1] - self.witness[2 * pair]);
+            self.functional[pair] = self.functional[2 * pair]
+                + challenge * (self.functional[2 * pair + 1] - self.functional[2 * pair]);
+        }
+        self.witness.truncate(half);
+        self.functional.truncate(half);
+        self.point.push(challenge);
+        self.pending_round = false;
+        Ok(())
+    }
+
+    fn finish(self) -> Result<(C6HiddenUSumcheckFamilyProof, Vec<Fp2>)> {
+        if self.pending_round
+            || self.witness.len() != 1
+            || self.functional.len() != 1
+            || self.rounds.len() != self.layout.padded_entries().ilog2() as usize
+        {
+            return Err(C6HiddenUError::new("incomplete C6 hidden-u sumcheck state"));
+        }
+        Ok((
+            C6HiddenUSumcheckFamilyProof {
+                family: self.layout.family,
+                rounds: self.rounds,
+                terminal_u: self.witness[0],
+            },
+            self.point,
+        ))
+    }
+}
+
+fn prove_synchronized(states: &mut [InnerProductProverState], tx: &mut Transcript) -> Result<()> {
+    let max_rounds = states
+        .iter()
+        .map(|state| state.layout.padded_entries().ilog2() as usize)
+        .max()
+        .ok_or_else(|| C6HiddenUError::new("empty C6 hidden-u prover schedule"))?;
+    for global_round in 0..max_rounds {
+        let mut active = Vec::new();
+        for (state_index, state) in states.iter_mut().enumerate() {
+            let family_rounds = state.layout.padded_entries().ilog2() as usize;
+            if global_round >= max_rounds - family_rounds {
+                state.round_message()?;
+                active.push(state_index);
+            }
+        }
+        tx.append(
+            "c6_hidden_u_sumcheck_round",
+            ROUND_BYTES
+                .checked_mul(active.len() as u64)
+                .ok_or_else(|| C6HiddenUError::new("C6 hidden-u round bytes overflow"))?,
+        );
+        let challenge = tx.challenge_fp2();
+        for state_index in active {
+            states[state_index].bind_round(challenge)?;
+        }
+    }
+    Ok(())
 }
 
 fn evaluate_functional(
@@ -659,11 +767,12 @@ mod tests {
     }
 
     fn layout(family: C6HiddenUFamily, claims: usize) -> C6HiddenULayout {
+        let vector_capacity = if family == C6HiddenUFamily::Weights { 4 } else { 2 };
         C6HiddenULayout {
             family,
             params: LigeroParams { rows: 8, col_bits: 3, pad: 4, code_bits: 4, n_queries: 4 },
             claim_count: claims,
-            vector_capacity: 4,
+            vector_capacity,
             vector_stride: 16,
         }
     }
@@ -760,7 +869,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(prover_claims, verifier_claims);
-        assert_eq!(prover_tx.total_bytes(), 2 * (6 + 6) * ROUND_BYTES);
+        assert_eq!(prover_tx.total_bytes(), 2 * (6 + 5) * ROUND_BYTES);
         assert_eq!(prover_tx.total_bytes(), verifier_tx.total_bytes());
 
         for claim in &verifier_claims {
@@ -771,6 +880,17 @@ mod tests {
             assert_eq!(eval_mle(&flat, &claim.point), claim.value);
             let wrapper_point = claim.wrapper_point();
             assert_eq!(wrapper_point.last(), Some(&Fp2::ZERO));
+        }
+        for repetition in 0..2 {
+            let weights = &verifier_claims[2 * repetition];
+            let embed = &verifier_claims[2 * repetition + 1];
+            assert_eq!(&weights.point[weights.point.len() - embed.point.len()..], embed.point);
+            let weights_wrapper = weights.wrapper_point();
+            let embed_wrapper = embed.wrapper_point();
+            assert_eq!(
+                &weights_wrapper[weights_wrapper.len() - embed_wrapper.len()..],
+                embed_wrapper,
+            );
         }
     }
 
@@ -784,7 +904,7 @@ mod tests {
                 .unwrap();
         let digest = postcommit.digest(&layouts).unwrap();
         let encoded = proof.encode(&layouts).unwrap();
-        assert_eq!(encoded.len(), 1_316);
+        assert_eq!(encoded.len(), 1_220);
         assert_eq!(hidden_u_sumcheck_encoded_len(&layouts).unwrap(), encoded.len() as u64);
         assert_eq!(C6HiddenUSumcheckProof::decode(&layouts, digest, &encoded).unwrap(), proof);
 
@@ -828,8 +948,10 @@ mod tests {
     fn analytic_functional_evaluation_matches_materialized_table() {
         let (layouts, q_cols, sealed, postcommit) = fixture();
         let schedules = build_schedules(&layouts, sealed.prequery(), &postcommit, &q_cols).unwrap();
-        let point = (0..6).map(|index| fp2(71 + index as u64)).collect::<Vec<_>>();
         for family_index in 0..layouts.len() {
+            let point = (0..layouts[family_index].padded_entries().ilog2())
+                .map(|index| fp2(71 + u64::from(index)))
+                .collect::<Vec<_>>();
             for repetition in 0..2 {
                 let materialized = materialize_functional(
                     layouts[family_index],

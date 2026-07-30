@@ -484,13 +484,39 @@ historical entries remain append-only evidence, not competing definitions.
 
 ## Deviations / decisions log
 
+- **2026-07-29 — C6 different-size sumchecks must be round-synchronized
+  before the packed PCS; sequential family challenges are an isolated
+  arithmetic checkpoint only.**  The post-`f44a4c4` PCS integration audit
+  found that one different-size folding chain can open only points that are
+  suffixes of one response-global point.  The first hidden-`u` reducer ran
+  the 21-round weights and 19-round embedding sumchecks sequentially, so
+  their four terminal points are independently valid but cannot enter the
+  preregistered one-chain-per-repetition opening.
+
+  Reusing the already revealed last 19 weights challenges for a later
+  embedding proof would be unsound: with all points known, the prover can
+  interpolate degree-two round messages backwards.  The admitted repair is
+  a round-synchronous schedule.  At each global round the prover fixes every
+  active instance's complete degree-two message before the client releases
+  one shared challenge.  Weights is active for all 21 hidden-`u` rounds;
+  embedding activates after two leading rounds and uses the final 19, making
+  its terminal point an exact suffix.  The same activation discipline will
+  extend to the `mu=24/23/21/19` wrapper cohorts.
+
+  This changes neither the 80 total hidden-linear round messages nor their
+  **4,004-B** codec, event count, soundness numerator or roofline.  It is an
+  ordering correction before packed-PCS code and production wire credit.
+  No provider/pod was contacted.
+
 - **2026-07-29 — C6 hidden-`u` native sumcheck reduction is locally green;
   four packed-opening obligations remain mandatory.**  The additive
   `c6_hidden_u_sumcheck` backend turns the exact response-wide NTT/`ip`
   functional into two independent degree-two sumcheck repetitions over the
   fixed `2^21` weights and `2^19` embedding layouts.  The two alpha streams
-  remain continuous across the family boundary.  Every round fixes three
-  `Fp2` evaluations before drawing its verifier challenge.
+  remain continuous across the family boundary.  The two families now use
+  the required round-synchronized schedule: all active messages are fixed
+  before one shared challenge, and the embedding terminal point is an exact
+  suffix of the weights point in each repetition.
 
   The verifier reconstructs the public RHS, evaluates each truncated
   geometric NTT functional as aligned dyadic subcubes and evaluates only the
@@ -507,7 +533,7 @@ historical entries remain append-only evidence, not competing definitions.
   and rejection of round, terminal, version, field and trailing-byte
   tampering.  Complete `volta-pcs` is **151 pass / 0 fail / 3 ignored**.
   Source SHA-256 is
-  `8460eaf210cfe0a0177e6c2be125e2e39737e4ae0b3b0b47a1fa6109679840dc`.
+  `a3c1fd7475d6202cfd5d149489207b089ebd2a206ab5089f4a9a1d22bd3c7364`.
   This closes only the hidden-linear reduction: the response-local packed
   PCS, cache argument, correction/product circuit and final certificate
   remain open, and no `u_vector` byte receives production wire credit.  No

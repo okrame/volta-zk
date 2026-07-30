@@ -1110,13 +1110,20 @@ prover fixes and sends the complete degree-two round polynomial
 client returns one fresh Fp2 challenge
 ```
 
-before the next round is formed.  Sending all round challenges together
-with the grand-RLC seed is forbidden: once those points are known, arbitrary
-degree-two messages can be interpolated backwards between a false initial
-claim and the committed terminal opening.  This is the same interactive-DV
-ordering already enforced by `Transcript::append` then
-`Transcript::challenge_fp2`; it is not Fiat--Shamir and adds no statistical
-event or response byte.
+before the next round is formed.  Different-size families are
+**round-synchronized**, not proved sequentially: at one global round the
+prover fixes every active family's round polynomial, then the client releases
+one challenge shared by those active instances.  A `mu=m` family activates
+after `mu_max-m` leading rounds, so all terminal points are suffixes of one
+global point.  In particular, hidden-`u` weights are active for all 21 rounds
+and embedding activates after two rounds for the final 19.  Sending all
+round challenges together with the grand-RLC seed, or starting the smaller
+family after its suffix challenges have already been revealed, is forbidden:
+either ordering lets the prover interpolate arbitrary degree-two messages
+backwards between a false initial claim and the committed terminal opening.
+The synchronized schedule preserves the existing `Transcript::append` then
+`Transcript::challenge_fp2` interactive-DV model; it is not Fiat--Shamir and
+adds no statistical event or response byte.
 
 The native-`Fp2` sumchecks prove the resulting linear functionals and open
 the committed multilinear vectors through one packed response opening.
@@ -1137,10 +1144,12 @@ Both message lengths are `2^n + 512`, so the verifier evaluates each
 truncated geometric functional as exactly two aligned Boolean subcubes.  It
 does not scan an `u` vector.  The `q_col` live interval is a power of two.
 
-The first backend checkpoint now implements this exact reduction.  For each
-of the two response-wide coefficient streams it materializes one functional
-per family, runs the degree-two sumcheck with strict
-message-then-challenge ordering, and returns the four terminal `U(r)` claims.
+The first backend checkpoint implemented the functional construction,
+degree-two round arithmetic, strict codec and terminal reduction.  Its
+initial local driver proved the two families sequentially and remains only
+an isolated arithmetic checkpoint.  The current pre-PCS driver replaces that
+ordering with the round-synchronized schedule above and returns four
+suffix-aligned terminal `U(r)` claims.
 The verifier recomputes the public RHS and evaluates the truncated NTT
 functional analytically; it never receives or reconstructs a hidden
 `u_vector`.  The terminal point is extended by one zero coordinate when it

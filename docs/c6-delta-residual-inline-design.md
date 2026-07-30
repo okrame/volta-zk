@@ -629,7 +629,18 @@ The successful schema-6 result was dirty and printed to stdout only.  It is
 implementation evidence, not a persisted run-of-record and not a prover-time
 measurement.  Diagnostic block hashes and targeted canonical-node/terminal
 captures used to locate a mismatch are explicitly outside the program
-identity.  A clean append-only record remains pending.
+identity.
+
+The clean append-only identity record is
+`benchmarks/results/c6-operation-plan-2026-07-29-28b2a16.json`, SHA-256
+`404f5ab7625678e3c4449137e5eb74fb835f637eb1ced23b0daf56b0dd3c2592`.
+It is bound to clean source commit `28b2a16538c2003b9efcf9f7d2030b09a075d325`,
+records `git_dirty:false`, `pod_contacted:false`, exact prover/verifier
+program identity and all frozen source/transcript/schedule censuses.  The
+pre-existing untracked user note is named explicitly and excluded.  This
+closes independent operation-plan identity only: the record still uses the
+local mock PCG trace compiler and carries no inline-prover, final-byte,
+session, real-PCG or hardware timing verdict.
 
 ## 4. Hidden Ligero vectors without an NTT trace
 

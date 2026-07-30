@@ -1051,6 +1051,34 @@ full-shape residual execution evidence.  It does not close Gate D, the
 ordinary-build timing scope, final wire replacement, real-PCG session or any
 hardware gate.
 
+Before wrapper integration, the paired coefficient seam was strengthened.
+The clean diagnostic above streamed one `alpha_i` and reused it for both MAC
+coordinates.  That proves arithmetic parity, but it does not instantiate
+`c6_base_share_binding_two_vector_sound`: proportional error vectors could
+share one accepting hyperplane.  The production paired fold now
+derives two independent coefficient streams from the already budgeted
+32-byte client batching seed under fixed coordinate-0/coordinate-1 domains.
+For every source and coordinate
+
+```text
+c[b,i] = leaf_linear[i] + alpha[b,i].
+```
+
+The provider and client hash both ordered streams into one combined binding
+digest.  Reusing, swapping or omitting either domain is a hard failure.  This
+changes no setup or response byte count.  The historical records retain
+their structural, arithmetic and timing-evidence scope, but receive no
+base-share amplification or final-wrapper soundness credit.
+
+The provider, client slice adapter and streaming client-key adapter all use
+the same sealed paired expander.  A permanent test observes distinct
+coordinate streams, accepts the honest paired residual, rejects a different
+seed through the binding digest and preserves exact source-schedule failure.
+The complete `volta-proto --features c6-trace` suite is
+**144 pass / 0 fail / 1 ignored** and the workspace all-target check is
+green.  The implementation source SHA-256 is
+`63fddf8e1843987a6019c0dbb9e6197807b7bbf72d8c63db7a9fc4c47bf58c8e`.
+
 ## 4. Hidden Ligero vectors without an NTT trace
 
 Simply omitting `u_c` or `u_g` is unsound.  C6 commits to them before the

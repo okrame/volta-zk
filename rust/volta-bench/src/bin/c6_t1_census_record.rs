@@ -1671,18 +1671,17 @@ fn run(args: &Args) -> Result<Record, String> {
             .as_ref()
             .ok_or_else(|| "C6 compiled residual lacks its paired source witness".to_owned())?;
         let alpha_transcript_seed_byte = args.transcript_seed_byte ^ 0xC6;
-        let mut provider_alpha_transcript = Transcript::new([alpha_transcript_seed_byte; 32]);
+        let alpha_batching_seed = [alpha_transcript_seed_byte; 32];
         let provider_paired_fold_start = Instant::now();
         let response = context
             .provider
-            .respond_paired_sources(sources, &prover_schedule, &mut provider_alpha_transcript)
+            .respond_paired_sources(sources, &prover_schedule, alpha_batching_seed)
             .map_err(|error| format!("C6 full-T1 paired residual response: {error}"))?;
         let provider_paired_fold_seconds = provider_paired_fold_start.elapsed().as_secs_f64();
         let deltas = [verifier.delta, Fp2::new(Fp::new(0xC6D1_0001), Fp::new(0xC6D1_0002))];
         if deltas[0] == deltas[1] {
             return Err("C6 diagnostic residual coordinates reuse one Delta".to_owned());
         }
-        let mut client_alpha_transcript = Transcript::new([alpha_transcript_seed_byte; 32]);
         let client_paired_key_fold_start = Instant::now();
         let client = context
             .verifier
@@ -1690,7 +1689,7 @@ fn run(args: &Args) -> Result<Record, String> {
                 sources,
                 &verifier_schedule,
                 deltas,
-                &mut client_alpha_transcript,
+                alpha_batching_seed,
             )
             .map_err(|error| format!("C6 full-T1 paired client key fold: {error}"))?;
         let client_paired_key_fold_seconds = client_paired_key_fold_start.elapsed().as_secs_f64();

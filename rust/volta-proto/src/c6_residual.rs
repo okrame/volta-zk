@@ -28,7 +28,7 @@ use crate::c6_source::C6PairedSourceWitness;
 use crate::prod_check::{prod_batch_verify, ProdProof};
 use std::collections::BTreeSet;
 use std::fmt;
-use volta_field::{Fp, Fp2};
+use volta_field::{Fp, Fp2, FpStream};
 use volta_mac::{
     C6DecodedInstanceExtractionPlan, C6InstalledOperationKind, C6InstalledOperationPlan,
     C6OperationPlanInstanceIdentity, C6OperationPlanTopologyIdentity, C6RuntimeInstanceValues,
@@ -43,6 +43,9 @@ const PREQUERY_DOMAIN: &[u8] = b"volta-zk/c6/residual-prequery/v1";
 const RESPONSE_DOMAIN: &[u8] = b"volta-zk/c6/residual-response/v1";
 const COMPILED_LINEAR_FORM_DOMAIN: &[u8] = b"volta-zk/c6/compiled-linear-form/v1";
 const COMPILED_COEFFICIENT_DOMAIN: &[u8] = b"volta-zk/c6/compiled-coefficients/v1";
+const PAIRED_COMPILED_COEFFICIENT_DOMAIN: &[u8] = b"volta-zk/c6/paired-compiled-coefficients/v2";
+const PAIRED_COEFFICIENT_STREAM_DOMAINS: [u64; 2] =
+    [0xC6_52_45_53_49_44_01, 0xC6_52_45_53_49_44_02];
 const PAIRED_LEAF_WRAPPER_DOMAIN: &str = "volta-zk/c6/paired-residual-leaf-wrapper/v1";
 const PAIRED_CLOSURE_WRAPPER_DOMAIN: &str = "volta-zk/c6/paired-residual-closure-wrapper/v1";
 
@@ -1177,6 +1180,33 @@ impl C6CompiledLinearResidual {
         Ok(*hasher.finalize().as_bytes())
     }
 
+    fn fold_paired_coefficients(
+        &self,
+        batching_seed: [u8; 32],
+        mut fold: impl FnMut(u32, Fp2, [Fp2; 2], [Fp2; 2]) -> C6ResidualResult<()>,
+    ) -> C6ResidualResult<C6ResidualDigest> {
+        let mut streams = PAIRED_COEFFICIENT_STREAM_DOMAINS
+            .map(|domain| FpStream::domain_separated(batching_seed, domain));
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(PAIRED_COMPILED_COEFFICIENT_DOMAIN);
+        hasher.update(&self.linear_form_digest);
+        hasher.update(&self.topology.source_count.to_le_bytes());
+        hasher.update(&batching_seed);
+        for (source, &linear) in self.leaf_coefficients.iter().enumerate() {
+            let source = source as u32;
+            let alphas = [streams[0].next_fp2(), streams[1].next_fp2()];
+            let coefficients = [linear + alphas[0], linear + alphas[1]];
+            hasher.update(&source.to_le_bytes());
+            for coordinate in 0..2 {
+                hasher.update(&[coordinate as u8]);
+                hash_fp2(&mut hasher, alphas[coordinate]);
+                hash_fp2(&mut hasher, coefficients[coordinate]);
+            }
+            fold(source, linear, alphas, coefficients)?;
+        }
+        Ok(*hasher.finalize().as_bytes())
+    }
+
     fn binding(&self, coefficient_digest: C6ResidualDigest) -> C6CompiledResidualBinding {
         C6CompiledResidualBinding {
             operation_plan_artifact_digest: self.operation_plan_artifact_digest,
@@ -1374,23 +1404,26 @@ impl C6CompiledLinearResidual {
         &self,
         sources: &C6PairedSourceWitness,
         schedule: &CorrScheduleAudit,
-        transcript: &mut Transcript,
+        batching_seed: [u8; 32],
     ) -> C6ResidualResult<C6CompiledPairedResidualPlan> {
         self.validate_paired_source_schedule(sources, schedule)?;
         let mut cursor = C6PairedSourceCursor::new(sources, schedule);
         let mut correction_rlcs = [self.public_plaintext; 2];
         let mut public_tag_rlcs = [Fp2::ZERO; 2];
-        let coefficient_digest =
-            self.fold_coefficients(transcript, |source, linear, alpha, coefficient| {
+        let coefficient_digest = self.fold_paired_coefficients(
+            batching_seed,
+            |source, linear, alphas, coefficients| {
                 let witnesses = cursor.next(source)?;
                 for coordinate in 0..2 {
                     correction_rlcs[coordinate] += linear * witnesses[coordinate].correction();
                     correction_rlcs[coordinate] = correction_rlcs[coordinate]
-                        - alpha * witnesses[coordinate].base_plaintext();
-                    public_tag_rlcs[coordinate] += coefficient * witnesses[coordinate].tag();
+                        - alphas[coordinate] * witnesses[coordinate].base_plaintext();
+                    public_tag_rlcs[coordinate] +=
+                        coefficients[coordinate] * witnesses[coordinate].tag();
                 }
                 Ok(())
-            })?;
+            },
+        )?;
         cursor.finish(self.topology.source_count)?;
         Ok(C6CompiledPairedResidualPlan {
             binding: self.binding(coefficient_digest),
@@ -1437,14 +1470,14 @@ impl C6CompiledLinearResidual {
     pub fn fold_paired_base_keys(
         &self,
         base_keys: [&[Fp2]; 2],
-        transcript: &mut Transcript,
+        batching_seed: [u8; 32],
     ) -> C6ResidualResult<C6CompiledPairedBaseKeyRlc> {
         if base_keys.iter().any(|keys| keys.len() != self.leaf_coefficients.len()) {
             return Err(C6ResidualError::new(
                 "C6 paired verifier base-key vectors differ from installed source census",
             ));
         }
-        self.fold_paired_base_keys_stream(transcript, |source| {
+        self.fold_paired_base_keys_stream(batching_seed, |source| {
             Ok([base_keys[0][source as usize], base_keys[1][source as usize]])
         })
     }
@@ -1453,15 +1486,15 @@ impl C6CompiledLinearResidual {
     /// callback is made per canonical source ordinal.
     pub fn fold_paired_base_keys_stream(
         &self,
-        transcript: &mut Transcript,
+        batching_seed: [u8; 32],
         mut base_keys: impl FnMut(u32) -> C6ResidualResult<[Fp2; 2]>,
     ) -> C6ResidualResult<C6CompiledPairedBaseKeyRlc> {
         let mut base_key_rlcs = [Fp2::ZERO; 2];
         let coefficient_digest =
-            self.fold_coefficients(transcript, |source, _, _, coefficient| {
+            self.fold_paired_coefficients(batching_seed, |source, _, _, coefficients| {
                 let keys = base_keys(source)?;
                 for coordinate in 0..2 {
-                    base_key_rlcs[coordinate] += coefficient * keys[coordinate];
+                    base_key_rlcs[coordinate] += coefficients[coordinate] * keys[coordinate];
                 }
                 Ok(())
             })?;
@@ -1477,11 +1510,11 @@ impl C6CompiledLinearResidual {
         sources: &C6PairedSourceWitness,
         schedule: &CorrScheduleAudit,
         deltas: [Fp2; 2],
-        transcript: &mut Transcript,
+        batching_seed: [u8; 32],
     ) -> C6ResidualResult<C6CompiledPairedBaseKeyRlc> {
         self.validate_paired_source_schedule(sources, schedule)?;
         let mut cursor = C6PairedSourceCursor::new(sources, schedule);
-        let folded = self.fold_paired_base_keys_stream(transcript, |source| {
+        let folded = self.fold_paired_base_keys_stream(batching_seed, |source| {
             let witnesses = cursor.next(source)?;
             Ok([
                 witnesses[0].tag() + deltas[0] * witnesses[0].base_plaintext(),
@@ -2460,26 +2493,34 @@ mod tests {
         cursor.finish(5).unwrap();
 
         let alpha_seed = [0xA8; 32];
-        let mut provider_transcript = Transcript::new(alpha_seed);
-        let response =
-            compiled.respond_paired_sources(&paired, &schedule, &mut provider_transcript).unwrap();
-        let mut client_transcript = Transcript::new(alpha_seed);
+        let mut observed_alphas = [Vec::new(), Vec::new()];
+        let observed_digest = compiled
+            .fold_paired_coefficients(alpha_seed, |_, _, alphas, _| {
+                for coordinate in 0..2 {
+                    observed_alphas[coordinate].push(alphas[coordinate]);
+                }
+                Ok(())
+            })
+            .unwrap();
+        assert!(observed_alphas[0]
+            .iter()
+            .zip(&observed_alphas[1])
+            .any(|(left, right)| left != right));
+        assert_ne!(
+            observed_digest,
+            compiled.fold_paired_coefficients([0xA9; 32], |_, _, _, _| Ok(())).unwrap()
+        );
+
+        let response = compiled.respond_paired_sources(&paired, &schedule, alpha_seed).unwrap();
         let client = compiled
-            .fold_paired_base_keys(
-                [base_keys[0].as_slice(), base_keys[1].as_slice()],
-                &mut client_transcript,
-            )
+            .fold_paired_base_keys([base_keys[0].as_slice(), base_keys[1].as_slice()], alpha_seed)
             .unwrap();
         assert!(response.verify(client, deltas).unwrap());
         assert_eq!(response.binding.source_count, 5);
         assert!(std::mem::size_of_val(&response) <= 288);
 
-        let mut divergent_transcript = Transcript::new([0xA9; 32]);
         let divergent_client = compiled
-            .fold_paired_base_keys(
-                [base_keys[0].as_slice(), base_keys[1].as_slice()],
-                &mut divergent_transcript,
-            )
+            .fold_paired_base_keys([base_keys[0].as_slice(), base_keys[1].as_slice()], [0xA9; 32])
             .unwrap();
         assert!(response.verify(divergent_client, deltas).is_err());
 
@@ -2490,16 +2531,9 @@ mod tests {
             [0xFF; 32],
         )
         .unwrap();
-        let mut wrong_schedule_transcript = Transcript::new(alpha_seed);
-        assert!(
-            compiled
-                .respond_paired_sources(
-                    &wrong_schedule_pair,
-                    &schedule,
-                    &mut wrong_schedule_transcript,
-                )
-                .is_err()
-        );
+        assert!(compiled
+            .respond_paired_sources(&wrong_schedule_pair, &schedule, alpha_seed)
+            .is_err());
     }
 
     #[test]

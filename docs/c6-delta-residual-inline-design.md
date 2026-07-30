@@ -766,6 +766,13 @@ them to be byte-identical.  The cross-seed artifact is also identical, with
 BLAKE3
 `265f874ccf8dae865890a3218b33b0b29dd0f4236678470e093e6da31e51ebac`,
 while the exact/instance digests differ as required.
+The clean append-only records are
+`c6-parameterized-plan-codec-seed24-2026-07-29-e437394.json` (SHA-256
+`af785f987d7ef31cffc2111a607b778634bef5c7bd443220c644d5c1b9ee5580`)
+and `c6-parameterized-plan-codec-seed25-2026-07-29-8006f36.json` (SHA-256
+`6e054a12c8933fd7d20c4665df8edd1c9474d83e11f75af28eb3fcdbe306a861`);
+both have `git_dirty:false`, `diagnostic:false`, `pod_contacted:false` and
+`all_pass:true`.
 
 The installed codec is `VC6PLN2\0`: a `152-B` manifest-bound header followed
 by packed 3-bit opcodes, minimal zig-zag source-delta ULEB, one canonical

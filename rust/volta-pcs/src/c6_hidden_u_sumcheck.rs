@@ -943,6 +943,14 @@ mod tests {
         C6HiddenUBundleWitness, C6HiddenUFamilyPostCommit, C6HiddenUFamilyWitness,
         C6HiddenUQueryClaim,
     };
+    use crate::c6_wrapper_pcs::{
+        fix_test_c6_wrapper_commitments, C6WrapperCohortSpec, C6WrapperCommitment,
+        C6WrapperOracleKind, C6WrapperRoundCoordinator, C6WrapperRoundMessageReceipt,
+        C6_CACHE_COHORT_ID, C6_CACHE_ROUND_PARTICIPANT_ID, C6_DELTA_RESIDUAL_COHORT_ID,
+        C6_DELTA_RESIDUAL_ROUND_PARTICIPANT_ID, C6_HIDDEN_U_EMBED_COHORT_ID,
+        C6_HIDDEN_U_ROUND_PARTICIPANT_ID, C6_HIDDEN_U_WEIGHTS_COHORT_ID,
+        C6_WRAPPER_AUXILIARY_COHORT_ID,
+    };
     use crate::ligero::LigeroParams;
 
     fn fp2(value: u64) -> Fp2 {
@@ -1082,7 +1090,48 @@ mod tests {
         let (layouts, q_cols, sealed, postcommit) = fixture();
         let seed = [0x5a; 32];
         let leading_rounds = 3usize;
+        let wrapper_specs = [
+            C6WrapperCohortSpec {
+                cohort_id: C6_CACHE_COHORT_ID,
+                oracle_kind: C6WrapperOracleKind::Witness,
+                payload_log2: 9,
+                slot_count: 1,
+            },
+            C6WrapperCohortSpec {
+                cohort_id: C6_DELTA_RESIDUAL_COHORT_ID,
+                oracle_kind: C6WrapperOracleKind::Witness,
+                payload_log2: 8,
+                slot_count: 1,
+            },
+            C6WrapperCohortSpec {
+                cohort_id: C6_HIDDEN_U_WEIGHTS_COHORT_ID,
+                oracle_kind: C6WrapperOracleKind::Witness,
+                payload_log2: 6,
+                slot_count: 1,
+            },
+            C6WrapperCohortSpec {
+                cohort_id: C6_HIDDEN_U_EMBED_COHORT_ID,
+                oracle_kind: C6WrapperOracleKind::Witness,
+                payload_log2: 5,
+                slot_count: 1,
+            },
+            C6WrapperCohortSpec {
+                cohort_id: C6_WRAPPER_AUXILIARY_COHORT_ID,
+                oracle_kind: C6WrapperOracleKind::Auxiliary,
+                payload_log2: 3,
+                slot_count: 1,
+            },
+        ];
+        let commitments = wrapper_specs
+            .into_iter()
+            .enumerate()
+            .map(|(index, spec)| {
+                C6WrapperCommitment::from_root([0x5b; 32], spec, [(index + 1) as u8; 32]).unwrap()
+            })
+            .collect::<Vec<_>>();
         let mut prover_tx = Transcript::new(seed);
+        let fixed =
+            fix_test_c6_wrapper_commitments([0x5b; 32], &commitments, &mut prover_tx).unwrap();
         let mut repetitions = Vec::new();
         let mut prover_claims = Vec::new();
         let mut global_points = Vec::new();
@@ -1097,27 +1146,43 @@ mod tests {
             .unwrap();
             assert!(state.bind_challenge(fp2(999)).is_err());
             let total_rounds = leading_rounds + state.round_count();
-            let mut global_point = Vec::with_capacity(total_rounds);
+            let mut coordinator =
+                C6WrapperRoundCoordinator::new_test(&fixed, repetition, total_rounds, 1, 3)
+                    .unwrap();
             for global_round in 0..total_rounds {
-                // Placeholder for already-fixed cache/residual messages.
-                prover_tx.append("c6_test_outer_sumcheck_round", ROUND_BYTES);
-                if global_round >= leading_rounds {
-                    let bytes = state.fix_next_round().unwrap();
-                    if global_round == leading_rounds {
-                        assert!(state.fix_next_round().is_err());
-                    }
-                    prover_tx.append("c6_hidden_u_sumcheck_round", bytes);
+                let ids = coordinator.expected_participant_ids().unwrap();
+                let mut receipts = Vec::with_capacity(ids.len());
+                for participant_id in &ids {
+                    let message_bytes = match *participant_id {
+                        C6_CACHE_ROUND_PARTICIPANT_ID | C6_DELTA_RESIDUAL_ROUND_PARTICIPANT_ID => {
+                            ROUND_BYTES
+                        }
+                        C6_HIDDEN_U_ROUND_PARTICIPANT_ID => {
+                            let bytes = state.fix_next_round().unwrap();
+                            if global_round == leading_rounds {
+                                assert!(state.fix_next_round().is_err());
+                            }
+                            bytes
+                        }
+                        _ => panic!("unexpected scaled C6 participant"),
+                    };
+                    receipts.push(C6WrapperRoundMessageReceipt {
+                        participant_id: *participant_id,
+                        message_bytes,
+                    });
                 }
-                let challenge = prover_tx.challenge_fp2();
-                global_point.push(challenge);
+                let challenge = coordinator
+                    .fix_messages_and_release_challenge(&receipts, &mut prover_tx)
+                    .unwrap();
                 if global_round >= leading_rounds {
                     state.bind_challenge(challenge).unwrap();
                 }
+                coordinator.confirm_participants_bound(&ids).unwrap();
             }
             let (repetition_proof, claims) = state.finish().unwrap();
             repetitions.push(repetition_proof);
             prover_claims.extend(claims);
-            global_points.push(global_point);
+            global_points.push(coordinator.finish().unwrap());
         }
         let proof = C6HiddenUSumcheckProof {
             postcommit_digest: postcommit.digest(&layouts).unwrap(),
@@ -1126,6 +1191,8 @@ mod tests {
         proof.validate_shape(&layouts).unwrap();
 
         let mut verifier_tx = Transcript::new(seed);
+        let verifier_fixed =
+            fix_test_c6_wrapper_commitments([0x5b; 32], &commitments, &mut verifier_tx).unwrap();
         let mut verifier_claims = Vec::new();
         for repetition in 0..C6_HIDDEN_U_REPETITIONS as u8 {
             let mut state = prepare_hidden_u_verifier_round_state(
@@ -1138,30 +1205,55 @@ mod tests {
             )
             .unwrap();
             let total_rounds = leading_rounds + state.round_count();
+            let mut coordinator = C6WrapperRoundCoordinator::new_test(
+                &verifier_fixed,
+                repetition,
+                total_rounds,
+                1,
+                3,
+            )
+            .unwrap();
             for global_round in 0..total_rounds {
-                verifier_tx.append("c6_test_outer_sumcheck_round", ROUND_BYTES);
-                if global_round >= leading_rounds {
-                    let bytes = state.check_next_round().unwrap();
-                    if global_round == leading_rounds {
-                        assert!(state.check_next_round().is_err());
-                    }
-                    verifier_tx.append("c6_hidden_u_sumcheck_round", bytes);
+                let ids = coordinator.expected_participant_ids().unwrap();
+                let mut receipts = Vec::with_capacity(ids.len());
+                for participant_id in &ids {
+                    let message_bytes = match *participant_id {
+                        C6_CACHE_ROUND_PARTICIPANT_ID | C6_DELTA_RESIDUAL_ROUND_PARTICIPANT_ID => {
+                            ROUND_BYTES
+                        }
+                        C6_HIDDEN_U_ROUND_PARTICIPANT_ID => {
+                            let bytes = state.check_next_round().unwrap();
+                            if global_round == leading_rounds {
+                                assert!(state.check_next_round().is_err());
+                            }
+                            bytes
+                        }
+                        _ => panic!("unexpected scaled C6 participant"),
+                    };
+                    receipts.push(C6WrapperRoundMessageReceipt {
+                        participant_id: *participant_id,
+                        message_bytes,
+                    });
                 }
-                let challenge = verifier_tx.challenge_fp2();
+                let challenge = coordinator
+                    .fix_messages_and_release_challenge(&receipts, &mut verifier_tx)
+                    .unwrap();
                 if global_round >= leading_rounds {
                     state.bind_challenge(challenge).unwrap();
                 }
+                coordinator.confirm_participants_bound(&ids).unwrap();
             }
+            let verifier_point = coordinator.finish().unwrap();
+            assert_eq!(verifier_point, global_points[usize::from(repetition)]);
             verifier_claims.extend(state.finish().unwrap());
         }
         assert_eq!(prover_claims, verifier_claims);
         assert_eq!(prover_tx.ledger(), verifier_tx.ledger());
 
         for repetition in 0..C6_HIDDEN_U_REPETITIONS as usize {
-            let mut wrapper_point = global_points[repetition].clone();
-            wrapper_point.push(Fp2::ZERO);
             for claim in &verifier_claims[2 * repetition..2 * repetition + 2] {
                 let claim_point = claim.wrapper_point();
+                let wrapper_point = global_points[repetition].common_point();
                 assert_eq!(claim_point, wrapper_point[wrapper_point.len() - claim_point.len()..]);
             }
         }

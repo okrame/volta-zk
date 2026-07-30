@@ -1405,6 +1405,74 @@ wrapper circuit.  The CPU/in-memory implementation receives no prover-time
 credit; the admitted production path remains the separately gated fused CUDA
 backend.
 
+### 5.3 Global-round and all-slot assembly seam
+
+Before the complete wrapper implementation, C6 fixes one production
+orchestration seam.  The five canonically ordered initial cohort roots are
+fixed once, before either repetition receives a sumcheck challenge.  Each
+repetition then has exactly 24 random rounds with the following participant
+schedule:
+
+```text
+participant          activation   rounds   final global round
+cache                         0       24                   24
+paired residual               1       23                   24
+hidden-u                      3       21                   24
+```
+
+At each global round every active participant fixes its complete message
+before the verifier releases one shared challenge.  The coordinator may not
+advance until every active participant acknowledges binding that challenge.
+It neither accepts a presampled challenge vector nor exposes a challenge
+before the complete active-message set is fixed.  The resulting 24-element
+random point is extended by the one shared fixed zero; every cohort point is
+the exact suffix of that 25-element point.
+
+After both repetitions finish, the all-slot assembler requires exactly one
+typed terminal scalar for every `(repetition, cohort, slot)` in the frozen
+`8+8+8+8+32` registry.  It fixes all **128 Fp2 values = 2,048 B** before
+drawing any same-point reduction weight.  It then derives one fresh
+verifier-owned `Fp2` weight per canonical slot and constructs the five
+aggregate opening claims per repetition locally.  Cohort IDs, slot numbers,
+points, weights and aggregate values are reconstructed; they are not
+authoritative provider-deserialized metadata.  Missing, duplicate, unknown
+or wrong-point claims reject before the first reduction challenge.
+
+The production packed-PCS entry point accepts only this sealed assembled
+type and does not serialize or transcript-charge the ten deterministic
+aggregate scalars a second time.  The earlier raw
+`C6WrapperOpeningClaim` entry point remains a scaled/diagnostic reference
+only.
+
+This seam is now implemented.  `C6FixedWrapperCommitments` can be produced
+publicly only by validating the exact production profile and fixing the five
+roots, charged as **160 B**, before constructing a production coordinator.
+The coordinator rejects missing, duplicate, reordered or empty participant
+receipts, a second round while a challenge is pending, a wrong bind
+acknowledgement and an incomplete finish.  Its completed point is bound to
+the fixed-root digest and cannot be constructed through public fields.
+
+`C6AssembledWrapperClaims` likewise has no public field constructor.  The
+production assembler rejects every non-exact terminal registry before
+charging **2,048 B** or drawing a reduction challenge, derives all 128
+weights itself, and feeds the sealed aggregate directly into both packed PCS
+chains.  A scaled differential verifies the two real packed chains while the
+raw ten-aggregate transcript label remains zero.  A second differential
+drives the actual hidden-`u` prover and verifier step states from a scaled
+global coordinator and recovers identical suffix points and ledgers.
+
+Complete `volta-pcs` is **161 pass / 0 fail / 3 ignored**; workspace tests
+and the all-target `c6-trace` check are green.  Source SHA-256 values are
+`b6a01f24ba44127d29b40acc84df5bf6d146f03c5aeeef0743908f115a2842fa`
+for the packed/coordinator module and
+`e00acca12d38f916a9bb5b64c13fe13b42aa2817c9645233585730edd9f6d82b`
+for the integrated hidden step state.
+
+This closes challenge ownership and canonical assembly only.  It does not
+yet assign real cache/residual/auxiliary sources to every slot, prove
+dummy-slot zero constraints, define the final envelope codec or earn wire,
+timing or production credit.
+
 ## 6. Persistent cache commitment
 
 The cache is a fixed-capacity `1,024`-token authenticated state.  The client

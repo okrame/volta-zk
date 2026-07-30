@@ -46,6 +46,9 @@ pub const C6_HIDDEN_U_EMBED_ACTIVATION_ROUND: usize = 5;
 pub const C6_WRAPPER_AUXILIARY_ACTIVATION_ROUND: usize = 9;
 pub const C6_WRAPPER_ONE_CHAIN_BYTES: u64 = 1_804_912;
 pub const C6_WRAPPER_TWO_CHAIN_BYTES: u64 = 3_609_824;
+pub const C6_CACHE_ROUND_PARTICIPANT_ID: u32 = 0xC6A0_0001;
+pub const C6_DELTA_RESIDUAL_ROUND_PARTICIPANT_ID: u32 = 0xC6A0_0002;
+pub const C6_HIDDEN_U_ROUND_PARTICIPANT_ID: u32 = 0xC6A0_0003;
 pub const C6_CACHE_COHORT_ID: u32 = 0xC601_0001;
 pub const C6_DELTA_RESIDUAL_COHORT_ID: u32 = 0xC601_0002;
 pub const C6_HIDDEN_U_WEIGHTS_COHORT_ID: u32 = 0xC601_0003;
@@ -56,6 +59,10 @@ const C6_WRAPPER_PROFILE_NAME: &[u8] = b"c6-transparent-rate8-s86-p64-two-repeti
 const C6_SLOT_DESCRIPTOR_CONTEXT: &str = "volta-zk/c6/wrapper-slot-descriptor/v1";
 const C6_FOLD_DESCRIPTOR_CONTEXT: &str = "volta-zk/c6/wrapper-fold-descriptor/v1";
 const C6_OPENING_SCHEDULE_CONTEXT: &str = "volta-zk/c6/wrapper-opening-schedule/v1";
+const C6_FIXED_ROOTS_CONTEXT: &str = "volta-zk/c6/wrapper-fixed-roots/v1";
+const C6_INITIAL_ROOTS_LABEL: &str = "c6_wrapper_initial_roots";
+const C6_GLOBAL_ROUND_MESSAGES_LABEL: &str = "c6_wrapper_global_sumcheck_round";
+const C6_SLOT_TERMINAL_VALUES_LABEL: &str = "c6_wrapper_slot_terminal_values";
 const C6_TERMINAL_CLAIMS_LABEL: &str = "c6_wrapper_terminal_claims";
 const C6_FOLD_LINE_LABEL: &str = "c6_wrapper_fold_line";
 const C6_FOLD_POST_CHALLENGE_LABEL: &str = "c6_wrapper_fold_post_challenge";
@@ -216,10 +223,33 @@ pub struct C6WrapperCommitment {
 }
 
 impl C6WrapperCommitment {
+    /// Reconstruct the canonical verifier configuration from the public C6
+    /// profile and one received cohort root.
+    pub fn from_root(
+        statement_digest: C6WrapperDigest,
+        spec: C6WrapperCohortSpec,
+        root: Digest,
+    ) -> Result<Self> {
+        spec.validate()?;
+        if statement_digest == [0; 32] || root == [0; 32] {
+            return Err(C6WrapperPcsError::new("zero C6 wrapper statement/root"));
+        }
+        let commitment = Self {
+            profile_digest: c6_wrapper_profile_digest(),
+            statement_digest,
+            spec,
+            root,
+            config: wrapper_verifier_config(statement_digest, spec)?,
+        };
+        commitment.validate()?;
+        Ok(commitment)
+    }
+
     pub fn validate(&self) -> Result<()> {
         self.spec.validate()?;
         if self.profile_digest != c6_wrapper_profile_digest()
             || self.statement_digest == [0; 32]
+            || self.root == [0; 32]
             || self.config.identity
                 != (CohortIdentityV4 {
                     cohort_id: self.spec.cohort_id,
@@ -247,6 +277,302 @@ impl C6WrapperCommitment {
             }
         }
         Ok(())
+    }
+}
+
+/// Canonically ordered C6 roots after they have been fixed in the
+/// designated-verifier transcript.  Fields are private so a production
+/// round coordinator cannot be started from an unvalidated root list.
+#[derive(Clone, Debug)]
+pub struct C6FixedWrapperCommitments {
+    statement_digest: C6WrapperDigest,
+    binding_digest: C6WrapperDigest,
+    commitments: Vec<C6WrapperCommitment>,
+    production_profile: bool,
+}
+
+impl C6FixedWrapperCommitments {
+    pub fn statement_digest(&self) -> C6WrapperDigest {
+        self.statement_digest
+    }
+
+    pub fn binding_digest(&self) -> C6WrapperDigest {
+        self.binding_digest
+    }
+
+    pub fn commitments(&self) -> &[C6WrapperCommitment] {
+        &self.commitments
+    }
+}
+
+/// Fix the exact five production roots before any response-global sumcheck
+/// challenge is released.
+pub fn fix_production_c6_wrapper_commitments(
+    statement_digest: C6WrapperDigest,
+    commitments: &[C6WrapperCommitment],
+    transcript: &mut Transcript,
+) -> Result<C6FixedWrapperCommitments> {
+    fix_c6_wrapper_commitments_inner(statement_digest, commitments, true, transcript)
+}
+
+#[cfg(test)]
+pub(crate) fn fix_test_c6_wrapper_commitments(
+    statement_digest: C6WrapperDigest,
+    commitments: &[C6WrapperCommitment],
+    transcript: &mut Transcript,
+) -> Result<C6FixedWrapperCommitments> {
+    fix_c6_wrapper_commitments_inner(statement_digest, commitments, false, transcript)
+}
+
+fn fix_c6_wrapper_commitments_inner(
+    statement_digest: C6WrapperDigest,
+    commitments: &[C6WrapperCommitment],
+    require_production: bool,
+    transcript: &mut Transcript,
+) -> Result<C6FixedWrapperCommitments> {
+    validate_commitments(commitments)?;
+    if statement_digest == [0; 32]
+        || commitments.iter().any(|commitment| commitment.statement_digest != statement_digest)
+    {
+        return Err(C6WrapperPcsError::new("C6 fixed-root statement mismatch"));
+    }
+    if require_production {
+        let expected = production_c6_wrapper_specs();
+        if commitments.len() != expected.len()
+            || !commitments.iter().map(|commitment| commitment.spec).eq(expected)
+        {
+            return Err(C6WrapperPcsError::new(
+                "C6 fixed roots do not use the frozen production profile",
+            ));
+        }
+    }
+    let root_bytes = commitments
+        .len()
+        .checked_mul(32)
+        .ok_or_else(|| C6WrapperPcsError::new("C6 initial-root bytes overflow"))?;
+    transcript.append(
+        C6_INITIAL_ROOTS_LABEL,
+        u64::try_from(root_bytes)
+            .map_err(|_| C6WrapperPcsError::new("C6 initial-root bytes exceed u64"))?,
+    );
+    Ok(C6FixedWrapperCommitments {
+        statement_digest,
+        binding_digest: fixed_roots_digest(statement_digest, commitments),
+        commitments: commitments.to_vec(),
+        production_profile: require_production,
+    })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6WrapperRoundMessageReceipt {
+    pub participant_id: u32,
+    pub message_bytes: u64,
+}
+
+#[derive(Clone, Debug)]
+struct PendingC6WrapperRound {
+    participant_ids: Vec<u32>,
+    challenge: Fp2,
+}
+
+/// One production repetition of the response-global 24-round challenge
+/// schedule.  It releases no challenge until the exact active participant
+/// set has fixed its messages, and it refuses the next round until all those
+/// participants acknowledge binding the released challenge.
+#[derive(Clone, Debug)]
+pub struct C6WrapperRoundCoordinator {
+    repetition: u8,
+    fixed_roots_digest: C6WrapperDigest,
+    random_point_len: usize,
+    delta_activation_round: usize,
+    hidden_activation_round: usize,
+    global_round: usize,
+    random_point: Vec<Fp2>,
+    pending: Option<PendingC6WrapperRound>,
+}
+
+impl C6WrapperRoundCoordinator {
+    pub fn new(fixed: &C6FixedWrapperCommitments, repetition: u8) -> Result<Self> {
+        if !fixed.production_profile
+            || usize::from(repetition) >= C6_WRAPPER_REPETITIONS
+            || fixed.commitments.len() != production_c6_wrapper_specs().len()
+        {
+            return Err(C6WrapperPcsError::new(
+                "C6 production round coordinator root/repetition mismatch",
+            ));
+        }
+        Ok(Self {
+            repetition,
+            fixed_roots_digest: fixed.binding_digest,
+            random_point_len: C6_WRAPPER_RANDOM_POINT_LEN,
+            delta_activation_round: C6_DELTA_RESIDUAL_ACTIVATION_ROUND,
+            hidden_activation_round: C6_HIDDEN_U_WEIGHTS_ACTIVATION_ROUND,
+            global_round: 0,
+            random_point: Vec::with_capacity(C6_WRAPPER_RANDOM_POINT_LEN),
+            pending: None,
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_test(
+        fixed: &C6FixedWrapperCommitments,
+        repetition: u8,
+        random_point_len: usize,
+        delta_activation_round: usize,
+        hidden_activation_round: usize,
+    ) -> Result<Self> {
+        if usize::from(repetition) >= C6_WRAPPER_REPETITIONS
+            || random_point_len == 0
+            || delta_activation_round >= random_point_len
+            || hidden_activation_round >= random_point_len
+            || delta_activation_round >= hidden_activation_round
+        {
+            return Err(C6WrapperPcsError::new("invalid scaled C6 coordinator schedule"));
+        }
+        Ok(Self {
+            repetition,
+            fixed_roots_digest: fixed.binding_digest,
+            random_point_len,
+            delta_activation_round,
+            hidden_activation_round,
+            global_round: 0,
+            random_point: Vec::with_capacity(random_point_len),
+            pending: None,
+        })
+    }
+
+    pub fn repetition(&self) -> u8 {
+        self.repetition
+    }
+
+    pub fn round_index(&self) -> usize {
+        self.global_round
+    }
+
+    pub fn expected_participant_ids(&self) -> Result<Vec<u32>> {
+        if self.pending.is_some() || self.global_round >= self.random_point_len {
+            return Err(C6WrapperPcsError::new(
+                "C6 coordinator is not awaiting global-round messages",
+            ));
+        }
+        Ok(c6_active_participant_ids(
+            self.global_round,
+            self.random_point_len,
+            self.delta_activation_round,
+            self.hidden_activation_round,
+        ))
+    }
+
+    /// Fix one complete active-message set and only then draw the shared
+    /// designated-verifier challenge.
+    pub fn fix_messages_and_release_challenge(
+        &mut self,
+        receipts: &[C6WrapperRoundMessageReceipt],
+        transcript: &mut Transcript,
+    ) -> Result<Fp2> {
+        let expected = self.expected_participant_ids()?;
+        if receipts.len() != expected.len()
+            || receipts.iter().map(|receipt| receipt.participant_id).ne(expected.iter().copied())
+            || receipts.iter().any(|receipt| receipt.message_bytes == 0)
+        {
+            return Err(C6WrapperPcsError::new(
+                "C6 global round has a missing, duplicate, reordered or empty participant",
+            ));
+        }
+        let bytes = receipts.iter().try_fold(0u64, |sum, receipt| {
+            sum.checked_add(receipt.message_bytes)
+                .ok_or_else(|| C6WrapperPcsError::new("C6 global-round bytes overflow"))
+        })?;
+        transcript.append(C6_GLOBAL_ROUND_MESSAGES_LABEL, bytes);
+        let challenge = transcript.challenge_fp2();
+        self.pending = Some(PendingC6WrapperRound { participant_ids: expected, challenge });
+        Ok(challenge)
+    }
+
+    /// Confirm that the same exact active set bound the released challenge.
+    /// The concrete participant states perform their own algebraic bind
+    /// before this acknowledgement.
+    pub fn confirm_participants_bound(&mut self, participant_ids: &[u32]) -> Result<()> {
+        let pending = self.pending.take().ok_or_else(|| {
+            C6WrapperPcsError::new("C6 coordinator has no released challenge to bind")
+        })?;
+        if participant_ids != pending.participant_ids.as_slice() {
+            self.pending = Some(pending);
+            return Err(C6WrapperPcsError::new(
+                "C6 global-round bind acknowledgements do not match the active set",
+            ));
+        }
+        self.random_point.push(pending.challenge);
+        self.global_round += 1;
+        Ok(())
+    }
+
+    pub fn finish(self) -> Result<C6WrapperRoundPoint> {
+        if self.pending.is_some()
+            || self.global_round != self.random_point_len
+            || self.random_point.len() != self.random_point_len
+        {
+            return Err(C6WrapperPcsError::new("incomplete C6 global-round coordinator"));
+        }
+        let mut common_point = self.random_point.clone();
+        common_point.push(Fp2::ZERO);
+        Ok(C6WrapperRoundPoint {
+            repetition: self.repetition,
+            fixed_roots_digest: self.fixed_roots_digest,
+            random_point: self.random_point,
+            common_point,
+        })
+    }
+}
+
+fn c6_active_participant_ids(
+    global_round: usize,
+    random_point_len: usize,
+    delta_activation_round: usize,
+    hidden_activation_round: usize,
+) -> Vec<u32> {
+    let mut active = Vec::with_capacity(3);
+    if global_round < random_point_len {
+        active.push(C6_CACHE_ROUND_PARTICIPANT_ID);
+    }
+    if (delta_activation_round..random_point_len).contains(&global_round) {
+        active.push(C6_DELTA_RESIDUAL_ROUND_PARTICIPANT_ID);
+    }
+    if (hidden_activation_round..random_point_len).contains(&global_round) {
+        active.push(C6_HIDDEN_U_ROUND_PARTICIPANT_ID);
+    }
+    active
+}
+
+/// Verifier-owned common point produced only by a completed coordinator.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6WrapperRoundPoint {
+    repetition: u8,
+    fixed_roots_digest: C6WrapperDigest,
+    random_point: Vec<Fp2>,
+    common_point: Vec<Fp2>,
+}
+
+impl C6WrapperRoundPoint {
+    pub fn repetition(&self) -> u8 {
+        self.repetition
+    }
+
+    pub fn random_point(&self) -> &[Fp2] {
+        &self.random_point
+    }
+
+    pub fn common_point(&self) -> &[Fp2] {
+        &self.common_point
+    }
+
+    pub fn cohort_point(&self, spec: C6WrapperCohortSpec) -> Result<Vec<Fp2>> {
+        spec.validate()?;
+        let point_len = usize::from(spec.coefficient_log2()?);
+        if point_len > self.common_point.len() {
+            return Err(C6WrapperPcsError::new("C6 cohort point exceeds the common point"));
+        }
+        Ok(self.common_point[self.common_point.len() - point_len..].to_vec())
     }
 }
 
@@ -340,32 +666,16 @@ pub fn commit_c6_wrapper_cohort(
         coefficients.push(slot_coefficients);
         codewords.push(slot_codeword);
     }
-    let slot_descriptors = (0..spec.slot_count)
-        .map(|slot| Some(slot_descriptor_digest(statement_digest, spec, slot)))
-        .collect::<Vec<_>>();
-    let config = CohortVerifierConfigV4 {
-        identity: CohortIdentityV4 {
-            cohort_id: spec.cohort_id,
-            oracle_kind: spec.oracle_kind.v4(),
-            fold_round: 0,
-        },
-        slot_descriptors,
-        outer_len: spec.encoded_len()?,
-        expected_symbol_count: 1,
-    };
+    let config = wrapper_verifier_config(statement_digest, spec)?;
     let tree = CohortTreeV4::build_flat(
         config.clone(),
         codewords.iter().cloned().map(Some).collect::<Vec<_>>(),
     )
     .map_err(|error| C6WrapperPcsError::frame("C6 initial cohort commitment", error))?;
-    let commitment = C6WrapperCommitment {
-        profile_digest: c6_wrapper_profile_digest(),
-        statement_digest,
-        spec,
-        root: tree.root(),
-        config,
-    };
-    commitment.validate()?;
+    let commitment = C6WrapperCommitment::from_root(statement_digest, spec, tree.root())?;
+    if commitment.config != config {
+        return Err(C6WrapperPcsError::new("C6 wrapper verifier config reconstruction mismatch"));
+    }
     Ok(C6CommittedWrapperCohort { commitment, coefficients, codewords, tree })
 }
 
@@ -456,6 +766,167 @@ pub fn bind_hidden_u_opening_claims_to_wrapper_slots(
         });
     }
     Ok(output)
+}
+
+/// Sealed output of the verifier-owned all-slot reduction.  The slot weights
+/// are private implementation details and cannot be supplied by a provider
+/// through this type.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6AssembledWrapperClaims {
+    statement_digest: C6WrapperDigest,
+    fixed_roots_digest: C6WrapperDigest,
+    slot_terminal_count: usize,
+    claims_by_repetition: Vec<Vec<C6WrapperOpeningClaim>>,
+}
+
+impl C6AssembledWrapperClaims {
+    pub fn slot_terminal_count(&self) -> usize {
+        self.slot_terminal_count
+    }
+
+    pub fn claims_by_repetition(&self) -> &[Vec<C6WrapperOpeningClaim>] {
+        &self.claims_by_repetition
+    }
+}
+
+/// Assemble the exact production registry after both 24-round coordinators
+/// finish.  Every terminal scalar is fixed before the first slot-reduction
+/// challenge is drawn.
+pub fn assemble_production_c6_wrapper_claims(
+    fixed: &C6FixedWrapperCommitments,
+    round_points: &[C6WrapperRoundPoint],
+    slot_claims: &[C6WrapperSlotOpeningClaim],
+    transcript: &mut Transcript,
+) -> Result<C6AssembledWrapperClaims> {
+    assemble_c6_wrapper_claims_inner(fixed, round_points, slot_claims, true, transcript)
+}
+
+fn assemble_c6_wrapper_claims_inner(
+    fixed: &C6FixedWrapperCommitments,
+    round_points: &[C6WrapperRoundPoint],
+    slot_claims: &[C6WrapperSlotOpeningClaim],
+    require_production: bool,
+    transcript: &mut Transcript,
+) -> Result<C6AssembledWrapperClaims> {
+    validate_commitments(&fixed.commitments)?;
+    if require_production && !fixed.production_profile {
+        return Err(C6WrapperPcsError::new(
+            "C6 production slot assembly requires production-fixed roots",
+        ));
+    }
+    if round_points.len() != C6_WRAPPER_REPETITIONS {
+        return Err(C6WrapperPcsError::new("C6 wrapper round-point repetition mismatch"));
+    }
+    let max_point_len = usize::from(fixed.commitments[0].spec.coefficient_log2()?);
+    for (repetition, point) in round_points.iter().enumerate() {
+        if usize::from(point.repetition) != repetition
+            || point.fixed_roots_digest != fixed.binding_digest
+            || point.common_point.len() != max_point_len
+            || point.common_point.last() != Some(&Fp2::ZERO)
+        {
+            return Err(C6WrapperPcsError::new(
+                "C6 wrapper round point does not bind the fixed roots/profile",
+            ));
+        }
+        if require_production
+            && (point.random_point.len() != C6_WRAPPER_RANDOM_POINT_LEN
+                || &point.common_point[..C6_WRAPPER_RANDOM_POINT_LEN]
+                    != point.random_point.as_slice())
+        {
+            return Err(C6WrapperPcsError::new(
+                "C6 production wrapper point is not 24 random coordinates plus zero",
+            ));
+        }
+    }
+
+    let slots_per_repetition = fixed.commitments.iter().try_fold(0usize, |sum, commitment| {
+        sum.checked_add(usize::from(commitment.spec.slot_count))
+            .ok_or_else(|| C6WrapperPcsError::new("C6 wrapper slot count overflows"))
+    })?;
+    let expected_terminal_count = slots_per_repetition
+        .checked_mul(C6_WRAPPER_REPETITIONS)
+        .ok_or_else(|| C6WrapperPcsError::new("C6 wrapper terminal count overflows"))?;
+    if slot_claims.len() != expected_terminal_count
+        || (require_production && slots_per_repetition != C6_WRAPPER_ACTIVE_SLOTS)
+    {
+        return Err(C6WrapperPcsError::new("C6 wrapper terminal-slot census mismatch"));
+    }
+
+    let mut registry = BTreeMap::new();
+    for claim in slot_claims {
+        let repetition = usize::from(claim.repetition);
+        if repetition >= C6_WRAPPER_REPETITIONS {
+            return Err(C6WrapperPcsError::new("C6 terminal claim repetition out of range"));
+        }
+        let commitment = fixed
+            .commitments
+            .iter()
+            .find(|commitment| commitment.spec.cohort_id == claim.cohort_id)
+            .ok_or_else(|| C6WrapperPcsError::new("unknown C6 terminal-claim cohort"))?;
+        if claim.slot >= commitment.spec.slot_count
+            || claim.point != round_points[repetition].cohort_point(commitment.spec)?
+        {
+            return Err(C6WrapperPcsError::new(
+                "C6 terminal claim has a wrong slot or verifier-owned point",
+            ));
+        }
+        if registry.insert((claim.repetition, claim.cohort_id, claim.slot), claim.value).is_some() {
+            return Err(C6WrapperPcsError::new("duplicate C6 terminal slot claim"));
+        }
+    }
+
+    for repetition in 0..C6_WRAPPER_REPETITIONS {
+        for commitment in &fixed.commitments {
+            for slot in 0..commitment.spec.slot_count {
+                if !registry.contains_key(&(repetition as u8, commitment.spec.cohort_id, slot)) {
+                    return Err(C6WrapperPcsError::new("missing C6 terminal slot claim"));
+                }
+            }
+        }
+    }
+
+    let terminal_bytes = expected_terminal_count
+        .checked_mul(16)
+        .ok_or_else(|| C6WrapperPcsError::new("C6 terminal-slot bytes overflow"))?;
+    transcript.append(
+        C6_SLOT_TERMINAL_VALUES_LABEL,
+        u64::try_from(terminal_bytes)
+            .map_err(|_| C6WrapperPcsError::new("C6 terminal-slot bytes exceed u64"))?,
+    );
+
+    let mut claims_by_repetition = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
+    for repetition in 0..C6_WRAPPER_REPETITIONS {
+        let mut repetition_claims = Vec::with_capacity(fixed.commitments.len());
+        for commitment in &fixed.commitments {
+            let mut slot_weights = Vec::with_capacity(usize::from(commitment.spec.slot_count));
+            let mut value = Fp2::ZERO;
+            for slot in 0..commitment.spec.slot_count {
+                let weight = transcript.challenge_fp2();
+                let terminal = registry[&(repetition as u8, commitment.spec.cohort_id, slot)];
+                slot_weights.push(weight);
+                value += weight * terminal;
+            }
+            repetition_claims.push(C6WrapperOpeningClaim {
+                repetition: repetition as u8,
+                cohort_id: commitment.spec.cohort_id,
+                point: round_points[repetition].cohort_point(commitment.spec)?,
+                slot_weights,
+                value,
+            });
+        }
+        claims_by_repetition.push(repetition_claims);
+    }
+    validate_statement_and_claims(
+        fixed.statement_digest,
+        &fixed.commitments,
+        &claims_by_repetition,
+    )?;
+    Ok(C6AssembledWrapperClaims {
+        statement_digest: fixed.statement_digest,
+        fixed_roots_digest: fixed.binding_digest,
+        slot_terminal_count: expected_terminal_count,
+        claims_by_repetition,
+    })
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -569,12 +1040,43 @@ struct SealedChain {
     fold_trees: Vec<CohortTreeV4>,
 }
 
-/// Honest in-memory prover.  Commitments and all terminal claims must already
-/// be fixed before this method derives their batching and folding challenges.
+/// Diagnostic/raw-weight in-memory prover.  Production callers use
+/// [`prove_c6_wrapper_pcs_assembled`], which cannot accept provider-selected
+/// slot weights.
 pub fn prove_c6_wrapper_pcs(
     statement_digest: C6WrapperDigest,
     cohorts: &[C6CommittedWrapperCohort],
     claims_by_repetition: &[Vec<C6WrapperOpeningClaim>],
+    transcript: &mut Transcript,
+) -> Result<C6WrapperPcsProof> {
+    prove_c6_wrapper_pcs_inner(statement_digest, cohorts, claims_by_repetition, true, transcript)
+}
+
+/// Production-safe PCS entry point after verifier-owned all-slot assembly.
+/// The 128 terminal scalars were already charged and the ten deterministic
+/// aggregate values are not serialized a second time.
+pub fn prove_c6_wrapper_pcs_assembled(
+    statement_digest: C6WrapperDigest,
+    cohorts: &[C6CommittedWrapperCohort],
+    assembled: &C6AssembledWrapperClaims,
+    transcript: &mut Transcript,
+) -> Result<C6WrapperPcsProof> {
+    let commitments = cohorts.iter().map(|cohort| cohort.commitment.clone()).collect::<Vec<_>>();
+    validate_assembled_claims(statement_digest, &commitments, assembled)?;
+    prove_c6_wrapper_pcs_inner(
+        statement_digest,
+        cohorts,
+        &assembled.claims_by_repetition,
+        false,
+        transcript,
+    )
+}
+
+fn prove_c6_wrapper_pcs_inner(
+    statement_digest: C6WrapperDigest,
+    cohorts: &[C6CommittedWrapperCohort],
+    claims_by_repetition: &[Vec<C6WrapperOpeningClaim>],
+    append_aggregate_claims: bool,
     transcript: &mut Transcript,
 ) -> Result<C6WrapperPcsProof> {
     let commitments = cohorts.iter().map(|cohort| cohort.commitment.clone()).collect::<Vec<_>>();
@@ -583,7 +1085,9 @@ pub fn prove_c6_wrapper_pcs(
         return Err(C6WrapperPcsError::new("C6 wrapper prover cohort census mismatch"));
     }
 
-    append_terminal_claims(transcript, claims_by_repetition)?;
+    if append_aggregate_claims {
+        append_terminal_claims(transcript, claims_by_repetition)?;
+    }
     let activations = derive_activation_challenges(transcript, commitments.len());
     let mut sealed = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
     for repetition in 0..C6_WRAPPER_REPETITIONS {
@@ -631,7 +1135,7 @@ pub fn prove_c6_wrapper_pcs(
     Ok(C6WrapperPcsProof { chains })
 }
 
-/// Replay the designated-verifier interaction and verify both packed chains.
+/// Diagnostic/raw-weight verifier companion to [`prove_c6_wrapper_pcs`].
 pub fn verify_c6_wrapper_pcs(
     statement_digest: C6WrapperDigest,
     commitments: &[C6WrapperCommitment],
@@ -639,12 +1143,50 @@ pub fn verify_c6_wrapper_pcs(
     proof: &C6WrapperPcsProof,
     transcript: &mut Transcript,
 ) -> Result<()> {
+    verify_c6_wrapper_pcs_inner(
+        statement_digest,
+        commitments,
+        claims_by_repetition,
+        proof,
+        true,
+        transcript,
+    )
+}
+
+pub fn verify_c6_wrapper_pcs_assembled(
+    statement_digest: C6WrapperDigest,
+    commitments: &[C6WrapperCommitment],
+    assembled: &C6AssembledWrapperClaims,
+    proof: &C6WrapperPcsProof,
+    transcript: &mut Transcript,
+) -> Result<()> {
+    validate_assembled_claims(statement_digest, commitments, assembled)?;
+    verify_c6_wrapper_pcs_inner(
+        statement_digest,
+        commitments,
+        &assembled.claims_by_repetition,
+        proof,
+        false,
+        transcript,
+    )
+}
+
+fn verify_c6_wrapper_pcs_inner(
+    statement_digest: C6WrapperDigest,
+    commitments: &[C6WrapperCommitment],
+    claims_by_repetition: &[Vec<C6WrapperOpeningClaim>],
+    proof: &C6WrapperPcsProof,
+    append_aggregate_claims: bool,
+    transcript: &mut Transcript,
+) -> Result<()> {
     validate_statement_and_claims(statement_digest, commitments, claims_by_repetition)?;
     if proof.chains.len() != C6_WRAPPER_REPETITIONS {
         return Err(C6WrapperPcsError::new("C6 wrapper proof repetition mismatch"));
     }
 
-    append_terminal_claims(transcript, claims_by_repetition)?;
+    if append_aggregate_claims {
+        append_terminal_claims(transcript, claims_by_repetition)?;
+    }
     let activations = derive_activation_challenges(transcript, commitments.len());
     let mut fold_challenges = Vec::with_capacity(C6_WRAPPER_REPETITIONS);
     for repetition in 0..C6_WRAPPER_REPETITIONS {
@@ -1287,6 +1829,28 @@ fn derive_activation_challenges(transcript: &mut Transcript, cohort_count: usize
         .collect()
 }
 
+fn validate_assembled_claims(
+    statement_digest: C6WrapperDigest,
+    commitments: &[C6WrapperCommitment],
+    assembled: &C6AssembledWrapperClaims,
+) -> Result<()> {
+    validate_commitments(commitments)?;
+    let slots_per_repetition = commitments.iter().try_fold(0usize, |sum, commitment| {
+        sum.checked_add(usize::from(commitment.spec.slot_count))
+            .ok_or_else(|| C6WrapperPcsError::new("C6 assembled slot count overflows"))
+    })?;
+    let expected_terminal_count = slots_per_repetition
+        .checked_mul(C6_WRAPPER_REPETITIONS)
+        .ok_or_else(|| C6WrapperPcsError::new("C6 assembled terminal count overflows"))?;
+    if assembled.statement_digest != statement_digest
+        || assembled.fixed_roots_digest != fixed_roots_digest(statement_digest, commitments)
+        || assembled.slot_terminal_count != expected_terminal_count
+    {
+        return Err(C6WrapperPcsError::new("C6 assembled claims do not bind the PCS commitments"));
+    }
+    validate_statement_and_claims(statement_digest, commitments, &assembled.claims_by_repetition)
+}
+
 fn validate_statement_and_claims(
     statement_digest: C6WrapperDigest,
     commitments: &[C6WrapperCommitment],
@@ -1431,6 +1995,45 @@ fn slot_descriptor_digest(
     hasher.update(&[spec.oracle_kind as u8, spec.payload_log2]);
     hasher.update(&spec.slot_count.to_le_bytes());
     hasher.update(&slot.to_le_bytes());
+    *hasher.finalize().as_bytes()
+}
+
+fn wrapper_verifier_config(
+    statement_digest: C6WrapperDigest,
+    spec: C6WrapperCohortSpec,
+) -> Result<CohortVerifierConfigV4> {
+    spec.validate()?;
+    if statement_digest == [0; 32] {
+        return Err(C6WrapperPcsError::new("zero C6 wrapper statement"));
+    }
+    Ok(CohortVerifierConfigV4 {
+        identity: CohortIdentityV4 {
+            cohort_id: spec.cohort_id,
+            oracle_kind: spec.oracle_kind.v4(),
+            fold_round: 0,
+        },
+        slot_descriptors: (0..spec.slot_count)
+            .map(|slot| Some(slot_descriptor_digest(statement_digest, spec, slot)))
+            .collect(),
+        outer_len: spec.encoded_len()?,
+        expected_symbol_count: 1,
+    })
+}
+
+fn fixed_roots_digest(
+    statement_digest: C6WrapperDigest,
+    commitments: &[C6WrapperCommitment],
+) -> C6WrapperDigest {
+    let mut hasher = blake3::Hasher::new_derive_key(C6_FIXED_ROOTS_CONTEXT);
+    hasher.update(&c6_wrapper_profile_digest());
+    hasher.update(&statement_digest);
+    hasher.update(&(commitments.len() as u64).to_le_bytes());
+    for commitment in commitments {
+        hasher.update(&commitment.spec.cohort_id.to_le_bytes());
+        hasher.update(&[commitment.spec.oracle_kind as u8, commitment.spec.payload_log2]);
+        hasher.update(&commitment.spec.slot_count.to_le_bytes());
+        hasher.update(&commitment.root);
+    }
     *hasher.finalize().as_bytes()
 }
 
@@ -1729,6 +2332,67 @@ mod tests {
         ]
     }
 
+    fn production_commitments() -> Vec<C6WrapperCommitment> {
+        production_c6_wrapper_specs()
+            .into_iter()
+            .enumerate()
+            .map(|(index, spec)| {
+                C6WrapperCommitment::from_root(statement(), spec, [(index + 1) as u8; 32]).unwrap()
+            })
+            .collect()
+    }
+
+    fn run_production_coordinators(
+        fixed: &C6FixedWrapperCommitments,
+        transcript: &mut Transcript,
+    ) -> Vec<C6WrapperRoundPoint> {
+        (0..C6_WRAPPER_REPETITIONS as u8)
+            .map(|repetition| {
+                let mut coordinator = C6WrapperRoundCoordinator::new(fixed, repetition).unwrap();
+                while coordinator.round_index() < C6_WRAPPER_RANDOM_POINT_LEN {
+                    let ids = coordinator.expected_participant_ids().unwrap();
+                    let receipts = ids
+                        .iter()
+                        .map(|participant_id| C6WrapperRoundMessageReceipt {
+                            participant_id: *participant_id,
+                            message_bytes: 48,
+                        })
+                        .collect::<Vec<_>>();
+                    coordinator.fix_messages_and_release_challenge(&receipts, transcript).unwrap();
+                    coordinator.confirm_participants_bound(&ids).unwrap();
+                }
+                coordinator.finish().unwrap()
+            })
+            .collect()
+    }
+
+    fn production_slot_claims(
+        commitments: &[C6WrapperCommitment],
+        points: &[C6WrapperRoundPoint],
+    ) -> Vec<C6WrapperSlotOpeningClaim> {
+        let mut claims = Vec::with_capacity(2 * C6_WRAPPER_ACTIVE_SLOTS);
+        for (repetition, round_point) in points.iter().enumerate() {
+            for commitment in commitments {
+                let point = round_point.cohort_point(commitment.spec).unwrap();
+                for slot in 0..commitment.spec.slot_count {
+                    claims.push(C6WrapperSlotOpeningClaim {
+                        repetition: repetition as u8,
+                        cohort_id: commitment.spec.cohort_id,
+                        slot,
+                        point: point.clone(),
+                        value: symbol(
+                            100_000
+                                + 10_000 * repetition as u64
+                                + 100 * u64::from(commitment.spec.payload_log2)
+                                + u64::from(slot),
+                        ),
+                    });
+                }
+            }
+        }
+        claims
+    }
+
     fn slots(spec: C6WrapperCohortSpec) -> Vec<C6WrapperSlotWitness> {
         let len = spec.payload_len().unwrap();
         (0..spec.slot_count)
@@ -1809,6 +2473,163 @@ mod tests {
     }
 
     #[test]
+    fn production_coordinator_and_all_slot_assembly_are_verifier_owned() {
+        let commitments = production_commitments();
+        let seed = [0x2a; 32];
+        let mut prover_tx = Transcript::new(seed);
+        let fixed =
+            fix_production_c6_wrapper_commitments(statement(), &commitments, &mut prover_tx)
+                .unwrap();
+        assert_eq!(prover_tx.bytes_for(C6_INITIAL_ROOTS_LABEL), 5 * 32);
+
+        let mut first = C6WrapperRoundCoordinator::new(&fixed, 0).unwrap();
+        assert!(first.confirm_participants_bound(&[]).is_err());
+        assert_eq!(first.expected_participant_ids().unwrap(), vec![C6_CACHE_ROUND_PARTICIPANT_ID]);
+        let first_receipt = [C6WrapperRoundMessageReceipt {
+            participant_id: C6_CACHE_ROUND_PARTICIPANT_ID,
+            message_bytes: 48,
+        }];
+        let first_challenge =
+            first.fix_messages_and_release_challenge(&first_receipt, &mut prover_tx).unwrap();
+        assert_ne!(first_challenge, Fp2::ZERO);
+        assert!(first.fix_messages_and_release_challenge(&first_receipt, &mut prover_tx).is_err());
+        assert!(first
+            .confirm_participants_bound(&[C6_DELTA_RESIDUAL_ROUND_PARTICIPANT_ID])
+            .is_err());
+        first.confirm_participants_bound(&[C6_CACHE_ROUND_PARTICIPANT_ID]).unwrap();
+        assert_eq!(
+            first.expected_participant_ids().unwrap(),
+            vec![C6_CACHE_ROUND_PARTICIPANT_ID, C6_DELTA_RESIDUAL_ROUND_PARTICIPANT_ID]
+        );
+
+        // Complete this first repetition manually, then use the common
+        // helper for an independent verifier replay below.
+        while first.round_index() < C6_WRAPPER_RANDOM_POINT_LEN {
+            let ids = first.expected_participant_ids().unwrap();
+            if first.round_index() == C6_HIDDEN_U_WEIGHTS_ACTIVATION_ROUND {
+                assert_eq!(
+                    ids,
+                    vec![
+                        C6_CACHE_ROUND_PARTICIPANT_ID,
+                        C6_DELTA_RESIDUAL_ROUND_PARTICIPANT_ID,
+                        C6_HIDDEN_U_ROUND_PARTICIPANT_ID,
+                    ]
+                );
+            }
+            let receipts = ids
+                .iter()
+                .map(|participant_id| C6WrapperRoundMessageReceipt {
+                    participant_id: *participant_id,
+                    message_bytes: 48,
+                })
+                .collect::<Vec<_>>();
+            first.fix_messages_and_release_challenge(&receipts, &mut prover_tx).unwrap();
+            first.confirm_participants_bound(&ids).unwrap();
+        }
+        let point_zero = first.finish().unwrap();
+        let mut second = C6WrapperRoundCoordinator::new(&fixed, 1).unwrap();
+        while second.round_index() < C6_WRAPPER_RANDOM_POINT_LEN {
+            let ids = second.expected_participant_ids().unwrap();
+            let receipts = ids
+                .iter()
+                .map(|participant_id| C6WrapperRoundMessageReceipt {
+                    participant_id: *participant_id,
+                    message_bytes: 48,
+                })
+                .collect::<Vec<_>>();
+            second.fix_messages_and_release_challenge(&receipts, &mut prover_tx).unwrap();
+            second.confirm_participants_bound(&ids).unwrap();
+        }
+        let points = vec![point_zero, second.finish().unwrap()];
+        for point in &points {
+            assert_eq!(point.random_point().len(), C6_WRAPPER_RANDOM_POINT_LEN);
+            assert_eq!(point.common_point().len(), C6_WRAPPER_COMMON_POINT_LEN);
+            assert_eq!(point.common_point().last(), Some(&Fp2::ZERO));
+            for commitment in &commitments {
+                let cohort_point = point.cohort_point(commitment.spec).unwrap();
+                assert_eq!(
+                    cohort_point,
+                    point.common_point()[point.common_point().len() - cohort_point.len()..]
+                );
+            }
+        }
+
+        let slot_claims = production_slot_claims(&commitments, &points);
+        let assembled =
+            assemble_production_c6_wrapper_claims(&fixed, &points, &slot_claims, &mut prover_tx)
+                .unwrap();
+        assert_eq!(assembled.slot_terminal_count(), 2 * C6_WRAPPER_ACTIVE_SLOTS);
+        assert_eq!(
+            prover_tx.bytes_for(C6_SLOT_TERMINAL_VALUES_LABEL),
+            (2 * C6_WRAPPER_ACTIVE_SLOTS * 16) as u64
+        );
+        assert_eq!(prover_tx.bytes_for(C6_TERMINAL_CLAIMS_LABEL), 0);
+
+        let mut cursor = 0usize;
+        for repetition in 0..C6_WRAPPER_REPETITIONS {
+            for (commitment, aggregate) in
+                commitments.iter().zip(&assembled.claims_by_repetition()[repetition])
+            {
+                let terminals =
+                    &slot_claims[cursor..cursor + usize::from(commitment.spec.slot_count)];
+                let expected = aggregate
+                    .slot_weights
+                    .iter()
+                    .zip(terminals)
+                    .fold(Fp2::ZERO, |sum, (weight, terminal)| sum + *weight * terminal.value);
+                assert_eq!(aggregate.value, expected);
+                cursor += usize::from(commitment.spec.slot_count);
+            }
+        }
+
+        let mut verifier_tx = Transcript::new(seed);
+        let verifier_fixed =
+            fix_production_c6_wrapper_commitments(statement(), &commitments, &mut verifier_tx)
+                .unwrap();
+        let verifier_points = run_production_coordinators(&verifier_fixed, &mut verifier_tx);
+        let verifier_slot_claims = production_slot_claims(&commitments, &verifier_points);
+        let verifier_assembled = assemble_production_c6_wrapper_claims(
+            &verifier_fixed,
+            &verifier_points,
+            &verifier_slot_claims,
+            &mut verifier_tx,
+        )
+        .unwrap();
+        assert_eq!(points, verifier_points);
+        assert_eq!(assembled, verifier_assembled);
+        assert_eq!(prover_tx.ledger(), verifier_tx.ledger());
+
+        let mut missing = slot_claims.clone();
+        missing.pop();
+        assert!(assemble_production_c6_wrapper_claims(
+            &fixed,
+            &points,
+            &missing,
+            &mut Transcript::new([0x7a; 32]),
+        )
+        .is_err());
+        let mut duplicate = slot_claims.clone();
+        let first_claim = duplicate[0].clone();
+        *duplicate.last_mut().unwrap() = first_claim;
+        assert!(assemble_production_c6_wrapper_claims(
+            &fixed,
+            &points,
+            &duplicate,
+            &mut Transcript::new([0x7b; 32]),
+        )
+        .is_err());
+        let mut wrong_point = slot_claims;
+        wrong_point[0].point[0] += Fp2::ONE;
+        assert!(assemble_production_c6_wrapper_claims(
+            &fixed,
+            &points,
+            &wrong_point,
+            &mut Transcript::new([0x7c; 32]),
+        )
+        .is_err());
+    }
+
+    #[test]
     fn hidden_u_claims_bind_to_registered_slots_without_vector_payloads() {
         let specs = production_c6_wrapper_specs();
         let mut hidden_claims = Vec::new();
@@ -1868,6 +2689,89 @@ mod tests {
             5,
         )
         .is_err());
+    }
+
+    #[test]
+    fn sealed_slot_assembly_feeds_both_packed_chains_without_raw_weights() {
+        let (cohorts, commitments, _) = fixture();
+        let seed = [0x2b; 32];
+        let mut prover_tx = Transcript::new(seed);
+        let fixed =
+            fix_c6_wrapper_commitments_inner(statement(), &commitments, false, &mut prover_tx)
+                .unwrap();
+        let points = (0..C6_WRAPPER_REPETITIONS)
+            .map(|repetition| {
+                let random_point = (0..3)
+                    .map(|index| symbol(300_000 + 100 * repetition as u64 + index))
+                    .collect::<Vec<_>>();
+                let mut common_point = random_point.clone();
+                common_point.push(Fp2::ZERO);
+                C6WrapperRoundPoint {
+                    repetition: repetition as u8,
+                    fixed_roots_digest: fixed.binding_digest,
+                    random_point,
+                    common_point,
+                }
+            })
+            .collect::<Vec<_>>();
+        let mut slot_claims = Vec::new();
+        for (repetition, round_point) in points.iter().enumerate() {
+            for cohort in &cohorts {
+                let point = round_point.cohort_point(cohort.commitment.spec).unwrap();
+                for (slot, coefficients) in cohort.coefficients.iter().enumerate() {
+                    slot_claims.push(C6WrapperSlotOpeningClaim {
+                        repetition: repetition as u8,
+                        cohort_id: cohort.commitment.spec.cohort_id,
+                        slot: slot as u16,
+                        point: point.clone(),
+                        value: evaluate_multilinear_coefficients(coefficients, &point).unwrap(),
+                    });
+                }
+            }
+        }
+        let assembled =
+            assemble_c6_wrapper_claims_inner(&fixed, &points, &slot_claims, false, &mut prover_tx)
+                .unwrap();
+        let proof =
+            prove_c6_wrapper_pcs_assembled(statement(), &cohorts, &assembled, &mut prover_tx)
+                .unwrap();
+        assert_eq!(prover_tx.bytes_for(C6_TERMINAL_CLAIMS_LABEL), 0);
+        assert_eq!(
+            prover_tx.bytes_for(C6_SLOT_TERMINAL_VALUES_LABEL),
+            (slot_claims.len() * 16) as u64
+        );
+
+        let mut verifier_tx = Transcript::new(seed);
+        let verifier_fixed =
+            fix_c6_wrapper_commitments_inner(statement(), &commitments, false, &mut verifier_tx)
+                .unwrap();
+        let verifier_points = points
+            .iter()
+            .map(|point| C6WrapperRoundPoint {
+                repetition: point.repetition,
+                fixed_roots_digest: verifier_fixed.binding_digest,
+                random_point: point.random_point.clone(),
+                common_point: point.common_point.clone(),
+            })
+            .collect::<Vec<_>>();
+        let verifier_assembled = assemble_c6_wrapper_claims_inner(
+            &verifier_fixed,
+            &verifier_points,
+            &slot_claims,
+            false,
+            &mut verifier_tx,
+        )
+        .unwrap();
+        verify_c6_wrapper_pcs_assembled(
+            statement(),
+            &commitments,
+            &verifier_assembled,
+            &proof,
+            &mut verifier_tx,
+        )
+        .unwrap();
+        assert_eq!(assembled, verifier_assembled);
+        assert_eq!(prover_tx.ledger(), verifier_tx.ledger());
     }
 
     #[test]

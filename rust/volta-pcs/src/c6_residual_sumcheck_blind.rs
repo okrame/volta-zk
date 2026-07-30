@@ -30,7 +30,8 @@ use volta_proto::C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS;
 #[cfg(feature = "c6-trace")]
 use volta_proto::{
     compile_c6_residual_fused_first_round, compile_c6_residual_fused_folded_coefficients,
-    C6CompiledLinearResidual, C6ResidualFusedCoefficientArena, C6ResidualFusedCoefficientFamily,
+    compile_c6_residual_fused_terminal_coefficients, C6CompiledLinearResidual,
+    C6ResidualFusedCoefficientArena, C6ResidualFusedCoefficientFamily,
     C6ResidualFusedFoldedCoefficients, C6ResidualFusedWitnessView, C6ResidualRelationChallenges,
 };
 
@@ -1946,6 +1947,27 @@ pub fn verify_c6_blind_residual_sumchecks(
     contexts: &mut [VerifierCtx; MAC_TAPES],
     transcript: &mut Transcript,
 ) -> Result<C6BlindResidualPendingClaimsVerifier> {
+    verify_c6_blind_residual_sumchecks_inner(
+        statements,
+        proof,
+        pending_frame,
+        contexts,
+        transcript,
+        terminal_scalars_from_reference,
+    )
+}
+
+fn verify_c6_blind_residual_sumchecks_inner<T>(
+    statements: &[C6BlindResidualStatement],
+    proof: &C6BlindResidualSumcheckProof,
+    pending_frame: &C6BlindResidualPendingTransferFrame,
+    contexts: &mut [VerifierCtx; MAC_TAPES],
+    transcript: &mut Transcript,
+    mut terminal_compiler: T,
+) -> Result<C6BlindResidualPendingClaimsVerifier>
+where
+    T: FnMut(&C6BlindResidualStatement, &[Fp2], &[Fp2]) -> Result<C6BlindResidualTerminalScalars>,
+{
     proof.validate_shape(statements)?;
     validate_pending_frame_shape(statements, pending_frame)?;
     if contexts[0].delta == contexts[1].delta {
@@ -2052,7 +2074,7 @@ pub fn verify_c6_blind_residual_sumchecks(
             contexts,
             transcript,
         )?;
-        let terminal_scalars = terminal_scalars_from_reference(
+        let terminal_scalars = terminal_compiler(
             statement,
             &local_pending[0].descriptor.point,
             &local_pending[C6_RESIDUAL_LEAF_TABLES_PER_REPETITION].descriptor.point,
@@ -2071,6 +2093,56 @@ pub fn verify_c6_blind_residual_sumchecks(
     }
     transcript.append("c6_residual_blind_framing", 32);
     Ok(C6BlindResidualPendingClaimsVerifier { claims: accepted_pending })
+}
+
+/// Diagnostic designated verifier whose terminal coefficient evaluation is
+/// the witness-free fused atomic replay.  It never reads the materialized
+/// coefficient arrays retained by the scaled C6RSC2 statement.
+#[cfg(feature = "c6-trace")]
+pub fn verify_c6_blind_residual_sumchecks_fused_scaled(
+    statements: &[C6BlindResidualStatement],
+    proof: &C6BlindResidualSumcheckProof,
+    pending_frame: &C6BlindResidualPendingTransferFrame,
+    compiler: C6BlindResidualFusedCompilerContext<'_>,
+    contexts: &mut [VerifierCtx; MAC_TAPES],
+    transcript: &mut Transcript,
+) -> Result<C6BlindResidualPendingClaimsVerifier> {
+    verify_c6_blind_residual_sumchecks_inner(
+        statements,
+        proof,
+        pending_frame,
+        contexts,
+        transcript,
+        |statement, leaf_point, auxiliary_point| {
+            let terminal = compile_c6_residual_fused_terminal_coefficients(
+                compiler.operation_plan,
+                compiler.extraction,
+                compiler.runtime,
+                compiler.linear,
+                compiler.relation,
+                statement.repetition(),
+                leaf_point,
+                auxiliary_point,
+            )
+            .map_err(clear_error)?;
+            if terminal.proof_repetition() != statement.repetition()
+                || terminal.target() != statement.target()
+                || terminal.leaf_point() != leaf_point
+                || terminal.auxiliary_point() != auxiliary_point
+                || terminal.semantic_digest() != statement.semantic_compiler_digest()
+                || terminal.coefficient_writes() == 0
+            {
+                return Err(C6BlindResidualError::new(
+                    "C6RSC3 fused terminal replay differs from its semantic statement",
+                ));
+            }
+            Ok(C6BlindResidualTerminalScalars {
+                leaf_linear: *terminal.leaf_linear(),
+                auxiliary_linear: *terminal.auxiliary_linear(),
+                auxiliary_quadratic: *terminal.auxiliary_quadratic(),
+            })
+        },
+    )
 }
 
 fn authenticate_pending_verifier_claims(
@@ -3022,17 +3094,114 @@ mod tests {
                     .collect::<Vec<_>>()
             );
         }
-        let mut contexts = verifier_contexts();
-        let mut verifier_transcript = Transcript::new(CHALLENGE_SEED);
-        let verified = verify_c6_blind_residual_sumchecks(
+        let mut reference_contexts = verifier_contexts();
+        let mut reference_verifier_transcript = Transcript::new(CHALLENGE_SEED);
+        let reference_verified = verify_c6_blind_residual_sumchecks(
             &statements,
             &fused_proof,
             &fused_frame,
-            &mut contexts,
-            &mut verifier_transcript,
+            &mut reference_contexts,
+            &mut reference_verifier_transcript,
         )
         .unwrap();
-        assert_eq!(verified.len(), C6_RESIDUAL_SUMCHECK_REPETITIONS * 24);
-        assert_eq!(verifier_transcript.ledger(), fused_transcript.ledger());
+        let mut fused_contexts = verifier_contexts();
+        let mut fused_verifier_transcript = Transcript::new(CHALLENGE_SEED);
+        let fused_verified = verify_c6_blind_residual_sumchecks_fused_scaled(
+            &statements,
+            &fused_proof,
+            &fused_frame,
+            compiler,
+            &mut fused_contexts,
+            &mut fused_verifier_transcript,
+        )
+        .unwrap();
+        assert_eq!(fused_verified, reference_verified);
+        assert_eq!(fused_verified.len(), C6_RESIDUAL_SUMCHECK_REPETITIONS * 24);
+        assert_eq!(reference_verifier_transcript.ledger(), fused_transcript.ledger());
+        assert_eq!(fused_verifier_transcript.ledger(), fused_transcript.ledger());
+
+        // The blind statement digest intentionally binds coefficient
+        // semantics, geometry and owners, not the scaled materialized arrays.
+        // Mutating those diagnostic arrays must break only the old reference
+        // terminal evaluator; the fused verifier remains byte-identical.
+        let mut mutated_statements = Vec::with_capacity(statements.len());
+        for (repetition, statement) in statements.iter().enumerate() {
+            let table = reference_trace.claims[repetition]
+                [..C6_RESIDUAL_LEAF_TABLES_PER_REPETITION]
+                .iter()
+                .position(|claim| claim.value != Fp2::ZERO)
+                .expect("scaled fixture has a nonzero leaf terminal claim");
+            let mut leaf_terms = statement.reference.leaf().terms().to_vec();
+            let C6ResidualSumcheckTerm::Linear { coefficients, .. } = &mut leaf_terms[table] else {
+                panic!("canonical leaf term is linear");
+            };
+            for coefficient in coefficients {
+                *coefficient += Fp2::ONE;
+            }
+            let mutated_reference = C6ResidualSumcheckStatement::new_test(
+                statement.repetition(),
+                statement.target(),
+                statement.reference.leaf().rounds(),
+                statement.reference.auxiliary().rounds(),
+                leaf_terms,
+                statement.reference.auxiliary().terms().to_vec(),
+            )
+            .unwrap();
+            let mutated = prepare_c6_blind_residual_statement(
+                mutated_reference,
+                statement.semantic_compiler_digest(),
+            )
+            .unwrap();
+            assert_eq!(mutated.digest(), statement.digest());
+            mutated_statements.push(mutated);
+        }
+        let mut stale_reference_contexts = verifier_contexts();
+        let mut stale_reference_transcript = Transcript::new(CHALLENGE_SEED);
+        assert!(verify_c6_blind_residual_sumchecks(
+            &mutated_statements,
+            &fused_proof,
+            &fused_frame,
+            &mut stale_reference_contexts,
+            &mut stale_reference_transcript,
+        )
+        .is_err());
+        let mut independent_fused_contexts = verifier_contexts();
+        let mut independent_fused_transcript = Transcript::new(CHALLENGE_SEED);
+        let independent_fused = verify_c6_blind_residual_sumchecks_fused_scaled(
+            &mutated_statements,
+            &fused_proof,
+            &fused_frame,
+            compiler,
+            &mut independent_fused_contexts,
+            &mut independent_fused_transcript,
+        )
+        .unwrap();
+        assert_eq!(independent_fused, fused_verified);
+        assert_eq!(independent_fused_transcript.ledger(), fused_transcript.ledger());
+
+        let mut wrong_semantic_statements = statements.clone();
+        wrong_semantic_statements[0].semantic_compiler_digest[0] ^= 1;
+        wrong_semantic_statements[0].digest = semantic_statement_digest(
+            wrong_semantic_statements[0].reference(),
+            wrong_semantic_statements[0].semantic_compiler_digest(),
+        );
+        let mut wrong_semantic_proof = fused_proof.clone();
+        wrong_semantic_proof.repetitions[0].statement_digest =
+            wrong_semantic_statements[0].digest();
+        let mut wrong_semantic_frame = fused_frame.clone();
+        for entry in &mut wrong_semantic_frame.entries[..C6_RESIDUAL_TABLES_PER_REPETITION] {
+            entry.descriptor.statement_digest = wrong_semantic_statements[0].digest();
+        }
+        let mut wrong_semantic_contexts = verifier_contexts();
+        let mut wrong_semantic_transcript = Transcript::new(CHALLENGE_SEED);
+        assert!(verify_c6_blind_residual_sumchecks_fused_scaled(
+            &wrong_semantic_statements,
+            &wrong_semantic_proof,
+            &wrong_semantic_frame,
+            compiler,
+            &mut wrong_semantic_contexts,
+            &mut wrong_semantic_transcript,
+        )
+        .is_err());
     }
 }

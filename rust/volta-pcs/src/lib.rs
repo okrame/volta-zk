@@ -64,6 +64,11 @@ pub use c6_residual_sumcheck_blind::{
     C6_RESIDUAL_BLIND_PENDING_FULL_CORRELATIONS_PER_TAPE, C6_RESIDUAL_BLIND_PROOF_BYTES,
     C6_RESIDUAL_BLIND_ROUND_VALUES_PER_REPETITION,
 };
+#[cfg(feature = "c6-trace")]
+pub use c6_residual_sumcheck_blind::{
+    prove_c6_blind_residual_sumchecks_fused_scaled,
+    verify_c6_blind_residual_sumchecks_fused_scaled, C6BlindResidualFusedCompilerContext,
+};
 pub use c6_wrapper_pcs::{
     assemble_production_c6_wrapper_claims, bind_hidden_u_opening_claims_to_wrapper_slots,
     bind_production_c6_residual_relation_roots, c6_wrapper_profile_digest,

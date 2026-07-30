@@ -8,9 +8,9 @@ CODEC + FULL-T1 COMPILED RESIDUAL + DURABLE 17+4 SESSION + HIDDEN-U NATIVE
 SUMCHECK REDUCTION + SCALED DUAL-TAPE C6RSC3 CODEC/DIFFERENTIAL GREEN; FUSED
 T1 EVENT-SINK + FIRST/FOLDED/TERMINAL SCALED DIFFERENTIAL GREEN;
 ROUND-SYNCHRONOUS SINGLE-BACKING ARENA LOCAL DIFFERENTIAL GREEN; SHARED
-C6RSC3 COORDINATOR + SCALED FUSED PROVER BYTE/TRANSCRIPT/PENDING DIFFERENTIAL
-GREEN / VECTOR-FREE CLIENT TERMINAL CONNECTION NEXT; CACHE ARGUMENT / PACKED
-PCS / FINAL WRAPPER PENDING; LOCAL
+C6RSC3 COORDINATOR + SCALED FUSED PROVER AND VECTOR-FREE CLIENT TERMINAL
+BYTE/TRANSCRIPT/PENDING DIFFERENTIAL GREEN / PACKED AUTHENTICATED-OUTPUT LINK
+NEXT; CACHE ARGUMENT / PACKED PCS / FINAL WRAPPER PENDING; LOCAL
 IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
@@ -2656,6 +2656,33 @@ reference statement at this checkpoint.  Therefore client vector-free replay
 and the complete fused prover/client gate remain pending.  No production
 allocation, response removal, PCS, cache, setup, timing, real-PCG, CUDA or
 hardware credit is earned.
+
+#### 5.1.10 Vector-free fused C6RSC3 verifier checkpoint
+
+The designated-verifier loop now has one private terminal-compiler seam.  Its
+unchanged reference entry point still evaluates the scaled materialized
+arrays.  The feature-gated fused entry point instead executes exactly one
+witness-free terminal replay per proof repetition after the leaf and
+auxiliary points are fixed, validates repetition, target, both points,
+nonzero write census and semantic completion digest, and supplies only the
+**8 + 16 + 8** scalars to the existing terminal ProductClosure/ZeroBatch
+coordinator.  The replay adds no transcript frame or correlation draw.
+
+The fused differential now covers both roles.  Fused and reference verifiers
+return identical pending keys and reproduce the prover transcript ledger.
+As an independence test, the old materialized coefficient values are changed
+while preserving their owner/length geometry and therefore the same semantic
+blind-statement digest: the reference terminal evaluator rejects, while the
+fused verifier still accepts with the original transcript.  Conversely, a
+changed semantic compiler digest is propagated consistently through the
+diagnostic proof/frame owners and the fused verifier rejects it.
+
+All six focused blind tests pass with `c6-trace`.  This closes the scaled
+provider/client event-sink-to-C6RSC3 connection.  It remains diagnostic
+because the statement still carries small reference arrays and the folded
+witness adapter is materialized at scaled geometry.  Production T1
+allocation/execution, packed authenticated-output binding, response removal,
+cache, setup, timing, real-PCG, CUDA and hardware credit remain pending.
 
 The wrapper PCS uses rate `1/8`, two independent fold/query chains and
 `s=86` queries per chain.  Under the conservative 64-active-polynomial,

@@ -5,8 +5,9 @@ IMPLEMENTATION; FORMAL SEAM / ROOFLINE / PAIRED CODEC / PRODUCTION SOURCE
 CENSUS / PAIRED COMPLETE SOURCE WITNESS / INDEPENDENT EXACT-INSTANCE
 OPERATION DAG GREEN; PARAMETERIZED V2 TWO-SEED IDENTITY GREEN; CANONICAL PLAN
 CODEC + FULL-T1 COMPILED RESIDUAL + DURABLE 17+4 SESSION + HIDDEN-U NATIVE
-SUMCHECK REDUCTION GREEN; CACHE ARGUMENT / PACKED PCS / FINAL WRAPPER
-PENDING; LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
+SUMCHECK REDUCTION + SCALED DUAL-TAPE C6RSC3 CODEC/DIFFERENTIAL GREEN; FUSED
+T1 EVENT SINK / CACHE ARGUMENT / PACKED PCS / FINAL WRAPPER PENDING; LOCAL
+IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
 accepted C4/T1 `rate=1/4,Q=120` inline profile.  It does not reopen or rewrite
@@ -2209,10 +2210,83 @@ That additive Lean checkpoint is now green.  The new
 **3,258 jobs**; the derived audit is **303 total / 67 C6** targets, with zero
 `sorry`/`admit` and only `propext`, `Classical.choice` and `Quot.sound`.
 
-The hard stop therefore advances to the scaled dual-tape codec and its
-negative differential.  The fused provider/client event sink follows that
-scaled checkpoint; production packed-link, cache and CUDA work remain later
-gates.  No provider or pod work is authorized by this amendment.
+That formal checkpoint advanced the hard stop to the scaled dual-tape codec
+and its negative differential.  The scaled checkpoint below is now green;
+the hard stop advances in order to the fused provider/client event sink.
+Production packed-link, cache and CUDA work remain later gates.  No provider
+or pod work is authorized by this amendment.
+
+#### 5.1.3 Scaled C6RSC3 checkpoint
+
+The separate Rust module `c6_residual_sumcheck_blind` implements the scaled
+`C6RSC3` statement, strict codec, reference prover and designated verifier.
+Its magic/version and statement/proof domains are distinct from immutable
+`C6RSC2`.  The public statement digest binds the nonzero semantic compiler
+descriptor, topology, target and geometry; it does not bind or expose the
+materialized coefficient-array digest.  The small `C6RSC2` statement remains
+private inside this scaled object solely as an arithmetic oracle.  Production
+must replace that ownership with the fused semantic compiler.
+
+The implementation enforces the amended interaction order:
+
+1. both tapes authenticate the complete first leaf message;
+2. later leaf messages use the compressed grammar;
+3. the complete first auxiliary message and the activation residual are
+   fixed and checked before the common activation challenge;
+4. subsequent leaf and auxiliary challenges remain synchronized;
+5. all 48 terminal table claims transfer into typed pending MAC values;
+6. eight fresh products close through one `ProductClosure` per tape, then the
+   two final rows close through one `ZeroBatch` per tape.
+
+The verifier reconstructs verifier keys only.  It never receives a clear
+round value and returns only pending verifier claims.  The pending frame is a
+separate typed object and contributes exactly
+`48 claims * 2 tapes * 16 B = 1,536 B` of correction wire; it is deliberately
+not included in the 6,900-B sumcheck proof and is not PCS-bound.
+
+The production constants are formulas over the frozen repetitions, table
+count and terminal-product count rather than duplicated literals:
+
+```text
+round scalars / repetition                 93
+core full correlations / tape             206
+pending full correlations / tape           48
+total full correlations / tape            254
+strict proof bytes                       6,900
+```
+
+Every one-time correlation domain includes repetition, tape, purpose and
+index and excludes the reserved domain bits.  The purposes distinguish leaf
+rounds, auxiliary rounds, pending claims, product values, ProductMask and
+ZeroMask.  Equal verifier secrets across the two MAC coordinates reject
+fail-closed.
+
+The non-production differential uses five leaf rounds and three auxiliary
+rounds.  Its proof is exactly **2,292 B**, its separate pending correction
+wire **1,536 B**, and each tape consumes exactly **110** full correlations in
+**24** domains with zero subfield draws.  Prover and verifier transcript
+ledgers are byte-identical; every pending plaintext equals the independently
+verified clear `C6RSC2` terminal claim.  Five permanent tests cover the exact
+production census, strict codec/version/canonicality failures, the clear
+differential, distinct tape behavior, invalid topology and mutations at every
+round/activation/product/zero/pending/owner/tape seam.
+
+The focused suite is **5/5 PASS**; the complete `volta-pcs` group is
+**157 pass / 0 fail / 1 ignored**; and `cargo test --workspace -q`,
+workspace all-target checking, formatting, the executable C6 budget and the
+Lean audit all exit zero.  Repository-wide `clippy -D warnings` remains
+blocked by unrelated historical warnings in dependency and suspended X4
+code, so it is not represented as a green gate.  A crate-local
+`volta-pcs --lib --no-deps` pass with those inherited lint classes explicitly
+isolated exits zero.
+
+This checkpoint remains scaled/reference evidence.  It earns no production
+response-removal, memory, setup, timing, real-PCG, cache, packed-PCS, CUDA or
+hardware credit.  In particular, a pending claim cannot become accepted
+until the common authenticated-output link binds it to the packed opening.
+The next ordered implementation gate is the byte-identical provider/client
+fused T1 event sink; only after that checkpoint may the packed link be
+assembled.
 
 The wrapper PCS uses rate `1/8`, two independent fold/query chains and
 `s=86` queries per chain.  Under the conservative 64-active-polynomial,

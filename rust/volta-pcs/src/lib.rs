@@ -12,6 +12,7 @@ pub mod batch;
 pub mod c6_hidden_u;
 pub mod c6_hidden_u_sumcheck;
 pub mod c6_residual_sumcheck;
+pub mod c6_residual_sumcheck_blind;
 pub mod c6_wrapper_pcs;
 pub mod layer_layout;
 pub mod ligero;
@@ -51,6 +52,17 @@ pub use c6_residual_sumcheck::{
     C6_RESIDUAL_SUMCHECK_PROOF_BYTES, C6_RESIDUAL_SUMCHECK_REPETITIONS,
     C6_RESIDUAL_SUMCHECK_ROUND_BYTES, C6_RESIDUAL_SUMCHECK_ROUND_VALUE_BYTES,
     C6_RESIDUAL_TABLES_PER_REPETITION,
+};
+pub use c6_residual_sumcheck_blind::{
+    blind_residual_sumcheck_encoded_len, prepare_c6_blind_residual_statement,
+    production_c6_blind_residual_sumcheck_encoded_len, prove_c6_blind_residual_sumchecks_reference,
+    verify_c6_blind_residual_sumchecks, C6BlindResidualError, C6BlindResidualPendingClaimsProver,
+    C6BlindResidualPendingClaimsVerifier, C6BlindResidualPendingTransferFrame,
+    C6BlindResidualStatement, C6BlindResidualSumcheckProof,
+    C6_RESIDUAL_BLIND_CORE_FULL_CORRELATIONS_PER_TAPE,
+    C6_RESIDUAL_BLIND_FULL_CORRELATIONS_PER_TAPE,
+    C6_RESIDUAL_BLIND_PENDING_FULL_CORRELATIONS_PER_TAPE, C6_RESIDUAL_BLIND_PROOF_BYTES,
+    C6_RESIDUAL_BLIND_ROUND_VALUES_PER_REPETITION,
 };
 pub use c6_wrapper_pcs::{
     assemble_production_c6_wrapper_claims, bind_hidden_u_opening_claims_to_wrapper_slots,

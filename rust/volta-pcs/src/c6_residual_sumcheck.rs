@@ -331,7 +331,7 @@ impl C6ResidualSumcheckStatement {
     }
 
     #[cfg(test)]
-    fn new_test(
+    pub(crate) fn new_test(
         repetition: u8,
         target: Fp2,
         leaf_rounds: usize,
@@ -781,6 +781,33 @@ impl C6ResidualSumcheckProverRoundState {
         self.global_round += 1;
         self.pending_round = false;
         Ok(())
+    }
+
+    /// Crate-local bridge for the separately versioned C6RSC3 scaled
+    /// differential.  Values are exposed only after `fix_next_round` has
+    /// sealed the complete active message and before its challenge is bound.
+    /// C6RSC2's public API, codec and verification semantics remain
+    /// unchanged.
+    pub(crate) fn pending_round_messages(&self) -> Result<(&[Fp2], Option<&[Fp2]>)> {
+        if !self.pending_round || self.global_round >= self.round_count() {
+            return Err(C6ResidualSumcheckError::new(
+                "C6 residual prover has no fixed pending round",
+            ));
+        }
+        let leaf = self
+            .leaf
+            .messages
+            .last()
+            .map(Vec::as_slice)
+            .ok_or_else(|| C6ResidualSumcheckError::new("missing C6 residual leaf message"))?;
+        let auxiliary = if self.global_round >= self.auxiliary_activation {
+            Some(self.auxiliary.messages.last().map(Vec::as_slice).ok_or_else(|| {
+                C6ResidualSumcheckError::new("missing C6 residual auxiliary message")
+            })?)
+        } else {
+            None
+        };
+        Ok((leaf, auxiliary))
     }
 
     pub fn finish(

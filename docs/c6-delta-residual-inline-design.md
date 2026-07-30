@@ -1631,6 +1631,302 @@ equations, randomized raw-copy, ProductClosure/ZeroBatch equations and
 semantic/padded-tail constraints must still be assembled by the separately
 preregistered T1 compiler.
 
+#### 5.1.1 Atomic T1 residual-relation manifest and challenge order
+
+The compiler is hard-stopped once more before code.  One post-root seed is
+not sufficient if it derives both the coefficients used to form public
+outputs and the random weights later used to batch equations containing
+those outputs.  For example, after seeing one batching row
+`(rho_0,rho_1)`, an adaptive prover can choose nonzero errors
+`(e_0,e_1)=(rho_1,-rho_0)` and make
+`rho_0*e_0+rho_1*e_1=0` identically.  With two proof repetitions and three or
+more adaptive public errors, the two batching rows still have a nontrivial
+kernel.  The registered squared bound therefore requires the public
+`D/M`, `M0/M1` and retained closure claims to be fixed before either complete
+relation repetition receives its batching weights.
+
+C6 freezes the following two-stage post-root order:
+
+1. the PCS orchestrator produces a private fixed-root token binding the five
+   ordered wrapper roots, this manifest, installed plan artifact/topology,
+   source-schedule digest, runtime-instance digest and exact slot/census
+   geometry;
+2. only then does the client release the first fresh 32-byte
+   `base_share_seed`, together with the retained post-root
+   ProductClosure/ZeroBatch challenges in their unchanged protocol order;
+3. the provider fixes one canonical public-claims frame containing all
+   retained challenge/message digests, both coordinates' ordered
+   ProductClosure `M0/M1` values and both compact `(D_corr,M_public)` output
+   pairs; the client validates its manifest, counts and digest;
+4. only after that frame is fixed does the client release an independent
+   32-byte `relation_seed`;
+5. the eight terminal schedules, both complete-relation atomic-weight
+   streams and the two sumcheck statements are derived from the resulting
+   relation context before the first residual round message.
+
+The first seed drives only the existing independent alpha streams
+`0x00C6524553494401` and `0x00C6524553494402`.  It does not drive any
+coefficient that batches a provider public output.  The second seed drives
+the terminal streams and two new atomic streams:
+
+```text
+proof repetition 0 atomic stream  0xC641544F4D000001
+proof repetition 1 atomic stream  0xC641544F4D010001
+```
+
+All ten relation streams are disjoint from the two alpha streams.  Their
+outputs are modeled as independent uniform `Fp2` challenges in the
+information-theoretic analysis; the implementation uses the existing
+domain-separated cryptographic expander and reports that computational
+assumption separately.  The additional `relation_seed` costs exactly **32 B**
+inside the already frozen **800,000-B** non-PCS allocation, so it changes
+neither the **4,409,824-B** `pi_final` roof nor the
+**33,586,456-B** complete-response roof.
+
+The structural manifest is
+`volta-zk/c6/t1-residual-relation-manifest/v1` with magic
+`C6RLM1\0\0`.  It binds all formulas and orders below, the exact factor-tuple
+set, table geometry, installed plan/artifact/topology/source schedule,
+ProductMask ordinals, closure boundaries, triple and zero-root counts, raw
+layout, live/tail cutoffs and every challenge domain.  No coefficient table
+is serialized in setup or in a response.  The post-root implementation must
+use distinct contexts
+
+```text
+volta-zk/c6/residual-base-share-context/v3
+volta-zk/c6/residual-public-claims/v1
+volta-zk/c6/residual-relation-context/v3
+volta-zk/c6/residual-relation-challenges/v3
+volta-zk/c6/residual-atomic-weight-schedule/v1
+```
+
+and v3 terminal-schedule/terminal-linear-form domains.  The current v2
+post-root bundle remains valid diagnostic evidence but cannot be admitted by
+the production T1 compiler.  The `C6RSC2` arithmetic proof codec need not
+change: it already binds the complete-owner statement digest and strict
+decode rejects a different statement.
+
+For the atomic relation, let the residual leaf tables be
+
+```text
+L = [x, r0, m0, d0, r1, m1, d1, raw]
+```
+
+of semantic length `N_L=2^23`.  Let `A[0..15]` be the auxiliary semantic
+halves of length `N_A=2^15`, in the already frozen lane order.  For source
+ordinal `i`, `dir_i` and `pm_i` are the disjoint public Direct/ProductMask
+selectors from the installed source manifest.  Define
+
+```text
+X_b(i) = dir_i*L[0][i] + pm_i*L[1+3*b][i]
+T_b(i) = L[2+3*b][i].
+```
+
+The source grammar consumes three independent atomic weights for every
+source, in source order:
+
+```text
+S_0(i) = dir_i*(L0-L1-L3)[i] + pm_i*L3[i] = 0
+S_1(i) = dir_i*(L0-L4-L6)[i] + pm_i*L6[i] = 0
+S_x(i) = pm_i*L0[i]                              = 0.
+```
+
+Thus a Direct row proves the two exact `x=r_b+d_b` equations, while a
+ProductMask row proves canonical `x=0` and `d_0=d_1=0` without identifying
+its independent `r_0,r_1`.  ProductMask sources must be installed
+full-field leaves, must have zero `leaf_linear` coefficient and must be the
+unique mask of exactly one installed ProductClosure.
+
+Let `zeta_j=chi_zero^(j+1)` be the unchanged response-wide ZeroBatch powers,
+and let the shared installed reverse walk seeded by those powers produce
+`leaf_linear[i]=ell_i` and public term `P`.  The two alpha streams give
+`alpha[b,i]`.  The public compact outputs are constrained, in coordinate
+order, by
+
+```text
+R_D(b) = P + sum_i ell_i*d_b[i]
+           - sum_i alpha[b,i]*r_b[i] - D_corr[b]       = 0
+
+R_M(b) = sum_i (ell_i+alpha[b,i])*m_b[i]
+           - M_public[b]                               = 0.
+```
+
+`ell_i` and `P` are shared between MAC coordinates; the alpha streams are
+not.  This deliberate split is exactly the client coefficient schedule
+
+```text
+K_base[b] = sum_i (ell_i+alpha[b,i])*k0[b,i].
+```
+
+The client reconstructs it locally and later checks
+`K_base[b] + Delta[b]*D_corr[b] = M_public[b]`.
+
+For reverse-DAG binding, schedule `(p,b,Plaintext)` compiles public term
+`P_rev[p,b]` and source coefficients `c_x[p,b,i]`; schedule
+`(p,b,Tag)` compiles zero public term and coefficients `c_m[p,b,i]`.
+Writing its installed triple weights as
+`omega[p,b,kind,t,a/b/c]` and zero-root weights as
+`nu[p,b,kind,z]`, the four scalar reverse relations inside repetition `p`
+are exactly
+
+```text
+R_rev_x(p,b) =
+    P_rev[p,b] + sum_i c_x[p,b,i]*X_b(i)
+    - sum_t (omega_a*A[6b+0][t]
+             +omega_b*A[6b+2][t]
+             +omega_c*A[6b+4][t])
+    - sum_z nu_z*A[12+2b][z]                           = 0
+
+R_rev_m(p,b) =
+    sum_i c_m[p,b,i]*T_b(i)
+    - sum_t (omega_a*A[6b+1][t]
+             +omega_b*A[6b+3][t]
+             +omega_c*A[6b+5][t])
+    - sum_z nu_z*A[13+2b][z]                           = 0.
+```
+
+Each receives one additional independent outer atomic weight so it cannot
+cancel another named relation.
+
+The raw-to-auxiliary transpose is not trusted.  For global installed triple
+ordinal `t`, coordinate `b` and component
+`k=(xa,ma,xb,mb,xc,mc)`,
+
+```text
+raw_pos = 12*t + 6*b + k
+aux     = A[6*b+k][t].
+```
+
+For zero-root ordinal `z`, coordinate `b` and component `k=(x,m)`,
+
+```text
+raw_pos = 12*triples + 4*z + 2*b + k
+aux     = A[12+2*b+k][z].
+```
+
+One fresh atomic weight is consumed per position in exactly this
+triple/coordinate/component order and then zero-root/coordinate/component
+order, proving the sum of `rho_pos*(L7[raw_pos]-aux)` is zero.  Independent
+weights, rather than powers of one scalar, are mandatory.
+
+For ProductClosure `c`, the existing challenge powers reset as
+`w[c,j]=chi[c]^(j+1)` in that closure's triple order.  For both coordinates
+the compiler includes
+
+```text
+R_Q(c,b) =
+  sum_j w[c,j]*(xa[j]*xb[j]-xc[j])                     = 0
+
+R_M0(c,b) =
+  m_mask[c,b] + sum_j w[c,j]*ma[j]*mb[j] - M0[c,b]    = 0
+
+R_M1(c,b) =
+  r_mask[c,b]
+  + sum_j w[c,j]*(xa[j]*mb[j]+ma[j]*xb[j]-mc[j])
+  - M1[c,b]                                            = 0.
+```
+
+The mask values are read from the closure's unique ProductMask source row;
+the operands are read from the corresponding six auxiliary lanes.  Each
+`Q/M0/M1` scalar receives its own outer atomic weight in
+closure/coordinate/`Q,M0,M1` order.  The two coordinate plaintext copies are
+both constrained; neither is accepted merely because the other coordinate's
+`Q` is zero.  The unchanged response-wide zero equations are
+
+```text
+R_Z(b) = sum_z zeta_z*A[12+2*b][z] = 0,  b=0,1,
+```
+
+with one outer atomic weight per coordinate.  Product and zero operands are
+already root-bound before `chi[c]` or `chi_zero`; the inherited M8/M2
+collapse terms remain in the retained T1 soundness accounting.
+
+Every unused semantic coefficient is constrained zero.  Atomic weights are
+consumed row-major for slots `0..6` on
+`[source_count,N_L)`, then for raw slot 7 on
+`[12*triples+4*zero_roots,N_L)`, including the frozen 64-entry footer.
+Auxiliary tails are consumed lane-major: lanes `0..11` on
+`[triples,N_A)` followed by lanes `12..15` on
+`[zero_roots,N_A)`.  The independently random upper `2^15` auxiliary halves
+are excluded from these equations and are selected away by the final zero
+coordinate; they are not silently zero-filled.
+
+Within each proof repetition the atomic stream is consumed in this exact
+order:
+
+```text
+1  source S0,S1,Sx per source
+2  affine R_D,R_M per coordinate
+3  reverse outer R_rev_x,R_rev_m per coordinate
+4  raw-copy positions
+5  ProductClosure Q,M0,M1 per closure and coordinate
+6  ZeroBatch R_Z per coordinate
+7  leaf/raw zero tails
+8  auxiliary zero tails.
+```
+
+At the frozen T1 census this is, per proof repetition,
+
+```text
+source grammar              3 * 4,975,525        14,926,575
+affine outputs              2 * 2                         4
+reverse outer              2 * 2                         4
+raw copy                    12*22,339 + 4*8,170     300,748
+product equations          673 * 2 * 3                4,038
+zero equations             2                             2
+leaf/raw zero tails                                   31,979,441
+auxiliary zero tails                                     223,540
+atomic stream outputs / repetition                    47,434,352
+atomic stream outputs / two repetitions               94,868,704.
+```
+
+The raw zero-tail count starts at `300,748`, so it explicitly includes the
+64-entry footer; the already reported `300,812` slot-7 live layout is
+`300,748` copied values plus that zero footer.
+
+Each listed scalar or cell equation `R_j=C_j+W_j=0` receives its next
+independent atomic weight `eta_j`.  The compiler adds witness terms
+`sum_j eta_j*W_j` to the two sumcheck families and sets the public unsplit
+target to
+
+```text
+target[p] = -sum_j eta_j*C_j.
+```
+
+This fixes every sign: public terms are never inserted as hidden dummy
+tables.  The only legal leaf factor tuples are the eight linear slots.  The
+auxiliary factor tuples are the sixteen linear slots plus exactly
+
+```text
+(0,2) (0,3) (1,2) (1,3)
+(6,8) (6,9) (7,8) (7,9),
+```
+
+corresponding respectively to `xa*xb`, `xa*mb`, `ma*xb`, `ma*mb` in each
+coordinate.  All contributions with the same factor tuple are accumulated
+into one canonical coefficient MLE; duplicate terms or any other quadratic
+tuple reject.
+
+Provider and client must derive byte-identical manifest, public-claims,
+coefficient and statement digests.  The provider may stream/fuse coefficient
+generation, and the client may stream only the statement digest and terminal
+coefficient evaluations; neither side is allowed to serialize or retain a
+response-linear coefficient vector merely to satisfy an API.  A production
+compiler must also prove that its source `x/m` rows are the exact installed
+T1 source IDs and runtime instance, preserving the existing subfield/full-
+field roles; it may not add a witness-trusted source table or infer identity
+from values.
+
+Before compiler Rust, the challenge-order obstruction and ordered repair
+must receive an additive Lean certificate, and the executable budget must
+charge the second 32-byte seed, the two atomic streams and the exact
+constraint census while retaining the 35-MB/20-s gates.  Then a scaled
+reference compiler must differentially evaluate every atomic family,
+reconstruct the target independently, reject every order/selector/tail
+mutation and demonstrate that changing any post-root public claim before the
+relation seed changes both complete statements.  No PCS, timing or response-
+removal credit follows from this preregistration.
+
 The wrapper PCS uses rate `1/8`, two independent fold/query chains and
 `s=86` queries per chain.  Under the conservative 64-active-polynomial,
 `2^28` weight-oracle and `2^19` auxiliary maxima, one repetition has

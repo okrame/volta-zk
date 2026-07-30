@@ -20,6 +20,10 @@
 //! `K_base + Delta * D_corr = M_public`.
 
 use crate::c6::{C6DeltaResidual, C6PairedDeltaResidual};
+use crate::c6_census::{
+    C6_RESIDUAL_CLOSURE_FOOTER_ENTRIES, C6_RESIDUAL_LEAF_ALIGNED_SLOTS, C6_RESIDUAL_SLOT_ENTRIES,
+    C6_RESIDUAL_SLOT_LOG2,
+};
 use crate::c6_source::C6PairedSourceWitness;
 use crate::prod_check::{prod_batch_verify, ProdProof};
 use std::collections::BTreeSet;
@@ -39,6 +43,8 @@ const PREQUERY_DOMAIN: &[u8] = b"volta-zk/c6/residual-prequery/v1";
 const RESPONSE_DOMAIN: &[u8] = b"volta-zk/c6/residual-response/v1";
 const COMPILED_LINEAR_FORM_DOMAIN: &[u8] = b"volta-zk/c6/compiled-linear-form/v1";
 const COMPILED_COEFFICIENT_DOMAIN: &[u8] = b"volta-zk/c6/compiled-coefficients/v1";
+const PAIRED_LEAF_WRAPPER_DOMAIN: &str = "volta-zk/c6/paired-residual-leaf-wrapper/v1";
+const PAIRED_CLOSURE_WRAPPER_DOMAIN: &str = "volta-zk/c6/paired-residual-closure-wrapper/v1";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6ResidualError(String);
@@ -643,6 +649,164 @@ pub struct C6CompiledLinearResidualMemoryCensus {
     pub peak_compile_resident_bytes: u64,
 }
 
+/// Canonical order of the seven leaf-aligned residual witness slots.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum C6ResidualLeafColumn {
+    CommonPlaintext = 0,
+    Coordinate0Mask = 1,
+    Coordinate0Tag = 2,
+    Coordinate0Correction = 3,
+    Coordinate1Mask = 4,
+    Coordinate1Tag = 5,
+    Coordinate1Correction = 6,
+}
+
+impl C6ResidualLeafColumn {
+    pub const ALL: [Self; 7] = [
+        Self::CommonPlaintext,
+        Self::Coordinate0Mask,
+        Self::Coordinate0Tag,
+        Self::Coordinate0Correction,
+        Self::Coordinate1Mask,
+        Self::Coordinate1Tag,
+        Self::Coordinate1Correction,
+    ];
+
+    fn index(self) -> usize {
+        self as usize
+    }
+}
+
+/// Prover-only live prefixes for the seven source-aligned residual slots.
+///
+/// ProductMask rows deliberately place zero in `CommonPlaintext`; their two
+/// independent plaintext masks remain in the coordinate-specific `r`
+/// columns.  This object contains no padded capacity and is never a response
+/// field.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6PairedResidualLeafWitness {
+    source_schedule_digest: C6ResidualDigest,
+    paired_source_digest: C6ResidualDigest,
+    source_count: u32,
+    product_mask_count: u32,
+    columns: [Vec<Fp2>; C6_RESIDUAL_LEAF_ALIGNED_SLOTS as usize],
+    witness_digest: C6ResidualDigest,
+}
+
+impl C6PairedResidualLeafWitness {
+    pub fn source_schedule_digest(&self) -> C6ResidualDigest {
+        self.source_schedule_digest
+    }
+
+    pub fn paired_source_digest(&self) -> C6ResidualDigest {
+        self.paired_source_digest
+    }
+
+    pub fn source_count(&self) -> u32 {
+        self.source_count
+    }
+
+    pub fn product_mask_count(&self) -> u32 {
+        self.product_mask_count
+    }
+
+    pub fn witness_digest(&self) -> C6ResidualDigest {
+        self.witness_digest
+    }
+
+    pub fn column(&self, column: C6ResidualLeafColumn) -> &[Fp2] {
+        &self.columns[column.index()]
+    }
+
+    pub fn live_elements(&self) -> u64 {
+        u64::from(self.source_count) * C6_RESIDUAL_LEAF_ALIGNED_SLOTS
+    }
+
+    /// CPU/reference padding seam.  The production fused backend consumes
+    /// live prefixes directly and must not allocate these eight-million-row
+    /// vectors merely to satisfy an in-memory API.
+    pub fn materialize_padded_columns(
+        &self,
+        slot_log2: u32,
+    ) -> C6ResidualResult<[Vec<Fp2>; C6_RESIDUAL_LEAF_ALIGNED_SLOTS as usize]> {
+        let slot_entries = 1usize
+            .checked_shl(slot_log2)
+            .ok_or_else(|| C6ResidualError::new("C6 residual slot length overflows usize"))?;
+        if slot_entries < self.source_count as usize
+            || (slot_log2 == C6_RESIDUAL_SLOT_LOG2
+                && slot_entries as u64 != C6_RESIDUAL_SLOT_ENTRIES)
+        {
+            return Err(C6ResidualError::new(
+                "C6 residual live source prefix exceeds its padded slot",
+            ));
+        }
+        let mut padded = std::array::from_fn(|_| vec![Fp2::ZERO; slot_entries]);
+        for column in C6ResidualLeafColumn::ALL {
+            padded[column.index()][..self.source_count as usize]
+                .copy_from_slice(self.column(column));
+        }
+        Ok(padded)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6ResidualClosureWitnessCensus {
+    pub product_closures: u32,
+    pub product_triples: u64,
+    pub zero_roots: u32,
+    pub product_operand_values: u64,
+    pub zero_root_values: u64,
+    pub footer_values: u64,
+    pub live_values: u64,
+}
+
+/// Canonical live prefix of residual slot 7.  The footer is currently the
+/// frozen zero reserve; later envelope fields may consume it only through a
+/// separately versioned layout change.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6PairedResidualClosureWitness {
+    program_digest: C6ResidualDigest,
+    census: C6ResidualClosureWitnessCensus,
+    values: Vec<Fp2>,
+    witness_digest: C6ResidualDigest,
+}
+
+impl C6PairedResidualClosureWitness {
+    pub fn program_digest(&self) -> C6ResidualDigest {
+        self.program_digest
+    }
+
+    pub fn census(&self) -> C6ResidualClosureWitnessCensus {
+        self.census
+    }
+
+    pub fn values(&self) -> &[Fp2] {
+        &self.values
+    }
+
+    pub fn witness_digest(&self) -> C6ResidualDigest {
+        self.witness_digest
+    }
+
+    pub fn materialize_padded(&self, slot_log2: u32) -> C6ResidualResult<Vec<Fp2>> {
+        let slot_entries = 1usize
+            .checked_shl(slot_log2)
+            .ok_or_else(|| C6ResidualError::new("C6 closure slot length overflows usize"))?;
+        if slot_entries < self.values.len()
+            || (slot_log2 == C6_RESIDUAL_SLOT_LOG2
+                && slot_entries as u64 != C6_RESIDUAL_SLOT_ENTRIES)
+        {
+            return Err(C6ResidualError::new(
+                "C6 residual closure workspace exceeds its padded slot",
+            ));
+        }
+        let mut padded = vec![Fp2::ZERO; slot_entries];
+        padded[..self.values.len()].copy_from_slice(&self.values);
+        Ok(padded)
+    }
+}
+
 /// Provider output of one compiled affine residual coordinate.
 ///
 /// This is constant-size. `leaf_coefficients` remain private to
@@ -1113,6 +1277,96 @@ impl C6CompiledLinearResidual {
         Ok(())
     }
 
+    /// Build the exact seven live residual source columns from the two
+    /// independently backed tapes.  The installed plan supplies the
+    /// authoritative ProductMask ordinals and source-schedule binding.
+    pub fn build_paired_residual_leaf_witness(
+        &self,
+        sources: &C6PairedSourceWitness,
+        schedule: &CorrScheduleAudit,
+    ) -> C6ResidualResult<C6PairedResidualLeafWitness> {
+        self.validate_paired_source_schedule(sources, schedule)?;
+        if u64::from(self.topology.source_count) > C6_RESIDUAL_SLOT_ENTRIES {
+            return Err(C6ResidualError::new(
+                "C6 paired residual leaves exceed the frozen slot capacity",
+            ));
+        }
+
+        let source_count = self.topology.source_count as usize;
+        let mut columns: [Vec<Fp2>; C6_RESIDUAL_LEAF_ALIGNED_SLOTS as usize] =
+            std::array::from_fn(|_| Vec::new());
+        for column in &mut columns {
+            column
+                .try_reserve_exact(source_count)
+                .map_err(|_| C6ResidualError::new("C6 residual leaf-column allocation failed"))?;
+        }
+
+        let mut hasher = blake3::Hasher::new_derive_key(PAIRED_LEAF_WRAPPER_DOMAIN);
+        hasher.update(&self.topology.source_schedule_digest);
+        hasher.update(&sources.pair_digest());
+        hasher.update(&self.topology.source_count.to_le_bytes());
+        hasher.update(&(self.product_mask_sources.len() as u64).to_le_bytes());
+
+        let mut cursor = C6PairedSourceCursor::new(sources, schedule);
+        for source in 0..self.topology.source_count {
+            let witnesses = cursor.next(source)?;
+            let is_product_mask = self.product_mask_sources.binary_search(&source).is_ok();
+            let x = [
+                witnesses[0].base_plaintext() + witnesses[0].correction(),
+                witnesses[1].base_plaintext() + witnesses[1].correction(),
+            ];
+            let common_plaintext = if is_product_mask {
+                if witnesses.iter().any(|witness| witness.correction() != Fp2::ZERO) {
+                    return Err(C6ResidualError::new(
+                        "C6 ProductMask acquired a correction in the wrapper source bridge",
+                    ));
+                }
+                Fp2::ZERO
+            } else {
+                if x[0] != x[1] {
+                    return Err(C6ResidualError::new(
+                        "C6 direct source plaintext differs across residual coordinates",
+                    ));
+                }
+                x[0]
+            };
+            let row = [
+                common_plaintext,
+                witnesses[0].base_plaintext(),
+                witnesses[0].tag(),
+                witnesses[0].correction(),
+                witnesses[1].base_plaintext(),
+                witnesses[1].tag(),
+                witnesses[1].correction(),
+            ];
+            for (column, value) in columns.iter_mut().zip(row) {
+                column.push(value);
+            }
+            hasher.update(&source.to_le_bytes());
+            hasher.update(&[u8::from(is_product_mask)]);
+            for value in row {
+                hash_fp2(&mut hasher, value);
+            }
+        }
+        cursor.finish(self.topology.source_count)?;
+        if columns.iter().any(|column| column.len() != source_count) {
+            return Err(C6ResidualError::new(
+                "C6 paired residual leaf columns have different lengths",
+            ));
+        }
+
+        let product_mask_count = u32::try_from(self.product_mask_sources.len())
+            .map_err(|_| C6ResidualError::new("C6 ProductMask count exceeds u32"))?;
+        Ok(C6PairedResidualLeafWitness {
+            source_schedule_digest: self.topology.source_schedule_digest,
+            paired_source_digest: sources.pair_digest(),
+            source_count: self.topology.source_count,
+            product_mask_count,
+            columns,
+            witness_digest: *hasher.finalize().as_bytes(),
+        })
+    }
+
     /// Production-shape provider fold over both source coordinates in the
     /// canonical interleaved allocation order. The paired witness remains a
     /// prover-only sidecar and is streamed once.
@@ -1375,6 +1629,128 @@ impl C6CommittedResidualProgram {
 
     pub fn leaf_order(&self) -> Vec<C6LeafId> {
         self.sources.iter().map(|source| source.id).collect()
+    }
+
+    /// Scaled/reference construction of the canonical slot-7 live prefix for
+    /// two independently committed executions of the same typed DAG.
+    ///
+    /// Production uses the installed-plan/capture seam; this method freezes
+    /// its value order against the already-audited reference builder.
+    pub fn build_paired_closure_witness(
+        &self,
+        secondary: &C6CommittedResidualProgram,
+    ) -> C6ResidualResult<C6PairedResidualClosureWitness> {
+        if self.witness_commitment == secondary.witness_commitment
+            || self.census != secondary.census
+            || self.nodes != secondary.nodes
+            || self.zero_closures != secondary.zero_closures
+            || self.products != secondary.products
+            || self.sources.len() != secondary.sources.len()
+            || self.values.len() != secondary.values.len()
+        {
+            return Err(C6ResidualError::new(
+                "C6 paired closure witnesses do not use one DAG and two commitments",
+            ));
+        }
+        for (primary, secondary) in self.sources.iter().zip(&secondary.sources) {
+            if primary.id != secondary.id
+                || primary.role != secondary.role
+                || (primary.role == C6LeafRole::Direct
+                    && primary.witness.prover_value().x != secondary.witness.prover_value().x)
+            {
+                return Err(C6ResidualError::new(
+                    "C6 paired closure source identity/plaintext mismatch",
+                ));
+            }
+        }
+
+        let product_triples = self.products.iter().try_fold(0u64, |total, product| {
+            total
+                .checked_add(product.triples.len() as u64)
+                .ok_or_else(|| C6ResidualError::new("C6 closure triple count overflows"))
+        })?;
+        let product_operand_values = product_triples
+            .checked_mul(12)
+            .ok_or_else(|| C6ResidualError::new("C6 closure product values overflow"))?;
+        let zero_root_values = (self.zero_closures.len() as u64)
+            .checked_mul(4)
+            .ok_or_else(|| C6ResidualError::new("C6 closure zero values overflow"))?;
+        let live_values = product_operand_values
+            .checked_add(zero_root_values)
+            .and_then(|values| values.checked_add(C6_RESIDUAL_CLOSURE_FOOTER_ENTRIES))
+            .ok_or_else(|| C6ResidualError::new("C6 closure live values overflow"))?;
+        if live_values > C6_RESIDUAL_SLOT_ENTRIES {
+            return Err(C6ResidualError::new(
+                "C6 closure live prefix exceeds the frozen residual slot",
+            ));
+        }
+        let mut values = Vec::new();
+        values
+            .try_reserve_exact(
+                usize::try_from(live_values)
+                    .map_err(|_| C6ResidualError::new("C6 closure live values exceed usize"))?,
+            )
+            .map_err(|_| C6ResidualError::new("C6 closure witness allocation failed"))?;
+
+        for product in &self.products {
+            for triple in &product.triples {
+                for coordinate_values in [&self.values, &secondary.values] {
+                    for node in triple {
+                        let value = coordinate_values[node.index()];
+                        values.extend([value.x, value.m]);
+                    }
+                }
+            }
+        }
+        for root in &self.zero_closures {
+            let primary = self.values[root.index()];
+            let secondary = secondary.values[root.index()];
+            if primary.x != secondary.x {
+                return Err(C6ResidualError::new(
+                    "C6 paired zero-root plaintext differs across coordinates",
+                ));
+            }
+            values.extend([primary.x, primary.m, secondary.x, secondary.m]);
+        }
+        values.resize(
+            values
+                .len()
+                .checked_add(C6_RESIDUAL_CLOSURE_FOOTER_ENTRIES as usize)
+                .ok_or_else(|| C6ResidualError::new("C6 closure footer length overflows"))?,
+            Fp2::ZERO,
+        );
+        if values.len() as u64 != live_values {
+            return Err(C6ResidualError::new("C6 closure workspace census mismatch"));
+        }
+
+        let census = C6ResidualClosureWitnessCensus {
+            product_closures: u32::try_from(self.products.len())
+                .map_err(|_| C6ResidualError::new("C6 ProductClosure count exceeds u32"))?,
+            product_triples,
+            zero_roots: u32::try_from(self.zero_closures.len())
+                .map_err(|_| C6ResidualError::new("C6 zero-root count exceeds u32"))?,
+            product_operand_values,
+            zero_root_values,
+            footer_values: C6_RESIDUAL_CLOSURE_FOOTER_ENTRIES,
+            live_values,
+        };
+        let mut hasher = blake3::Hasher::new_derive_key(PAIRED_CLOSURE_WRAPPER_DOMAIN);
+        hasher.update(&self.census.program_digest);
+        hasher.update(&self.witness_commitment);
+        hasher.update(&secondary.witness_commitment);
+        hasher.update(&u64::from(census.product_closures).to_le_bytes());
+        hasher.update(&census.product_triples.to_le_bytes());
+        hasher.update(&u64::from(census.zero_roots).to_le_bytes());
+        hasher.update(&census.live_values.to_le_bytes());
+        for value in &values {
+            hash_fp2(&mut hasher, *value);
+        }
+        Ok(C6PairedResidualClosureWitness {
+            program_digest: self.census.program_digest,
+            census,
+            values,
+            witness_digest: *hasher.finalize().as_bytes(),
+        })
     }
 
     fn compute_product(&self, shape: &ProductShape, chi: Fp2) -> (Fp2, Fp2, Fp2) {
@@ -1903,6 +2279,64 @@ mod tests {
         assert_ne!(plan.response_digest, [0; 32]);
     }
 
+    #[test]
+    fn paired_closure_workspace_has_the_frozen_product_zero_and_footer_order() {
+        let primary_fixture = fixture(Fp2::ZERO, false);
+        let primary_census = primary_fixture.builder.census().unwrap();
+        let primary = primary_fixture.builder.commit([0x71; 32], primary_census).unwrap();
+        let secondary_fixture = fixture(fp2(1), false);
+        let secondary_census = secondary_fixture.builder.census().unwrap();
+        let secondary = secondary_fixture.builder.commit([0x72; 32], secondary_census).unwrap();
+
+        let witness = primary.build_paired_closure_witness(&secondary).unwrap();
+        assert_eq!(witness.program_digest(), primary_census.program_digest);
+        assert_ne!(witness.witness_digest(), [0; 32]);
+        assert_eq!(
+            witness.census(),
+            C6ResidualClosureWitnessCensus {
+                product_closures: 1,
+                product_triples: 2,
+                zero_roots: 2,
+                product_operand_values: 24,
+                zero_root_values: 8,
+                footer_values: 64,
+                live_values: 96,
+            }
+        );
+        assert_eq!(
+            &witness.values()[..12],
+            &[
+                fp2(3),
+                fp2(19),
+                fp2(4),
+                fp2(23),
+                fp2(12),
+                fp2(29),
+                fp2(3),
+                fp2(20),
+                fp2(4),
+                fp2(23),
+                fp2(12),
+                fp2(29),
+            ]
+        );
+        assert_eq!(
+            &witness.values()[24..32],
+            &[Fp2::ZERO, fp2(42), Fp2::ZERO, fp2(43), Fp2::ZERO, fp2(38), Fp2::ZERO, fp2(40),]
+        );
+        assert!(witness.values()[32..].iter().all(|value| *value == Fp2::ZERO));
+        assert!(witness.materialize_padded(6).is_err());
+        let padded = witness.materialize_padded(7).unwrap();
+        assert_eq!(padded.len(), 128);
+        assert_eq!(&padded[..96], witness.values());
+        assert!(padded[96..].iter().all(|value| *value == Fp2::ZERO));
+
+        let changed_fixture = fixture(Fp2::ZERO, true);
+        let changed_census = changed_fixture.builder.census().unwrap();
+        let changed = changed_fixture.builder.commit([0x73; 32], changed_census).unwrap();
+        assert!(primary.build_paired_closure_witness(&changed).is_err());
+    }
+
     #[cfg(feature = "c6-trace")]
     #[test]
     fn installed_reverse_accumulator_matches_reference_without_leaf_vectors_on_wire() {
@@ -1962,12 +2396,63 @@ mod tests {
                 .unwrap();
         assert_eq!(compiled.source_count(), 5);
         assert_eq!(compiled.product_mask_sources(), &[4]);
+        let leaf_witness = compiled.build_paired_residual_leaf_witness(&paired, &schedule).unwrap();
+        assert_eq!(leaf_witness.source_count(), 5);
+        assert_eq!(leaf_witness.product_mask_count(), 1);
+        assert_eq!(leaf_witness.live_elements(), 35);
+        assert_eq!(leaf_witness.source_schedule_digest(), [0x6A; 32]);
+        assert_eq!(leaf_witness.paired_source_digest(), paired.pair_digest());
+        assert_ne!(leaf_witness.witness_digest(), [0; 32]);
+        assert!(leaf_witness.materialize_padded_columns(2).is_err());
+        let padded = leaf_witness.materialize_padded_columns(3).unwrap();
+        assert!(padded.iter().all(|column| column.len() == 8));
+        assert!(padded.iter().all(|column| column[5..] == [Fp2::ZERO; 3]));
 
         let deltas = [fp2(71), fp2(73)];
         let mut cursor = C6PairedSourceCursor::new(&paired, &schedule);
         let mut base_keys = [Vec::with_capacity(5), Vec::with_capacity(5)];
         for source in 0..5 {
             let witnesses = cursor.next(source).unwrap();
+            let is_product_mask = source == 4;
+            let expected_common = if is_product_mask {
+                Fp2::ZERO
+            } else {
+                witnesses[0].base_plaintext() + witnesses[0].correction()
+            };
+            assert_eq!(
+                leaf_witness.column(C6ResidualLeafColumn::CommonPlaintext)[source as usize],
+                expected_common
+            );
+            assert_eq!(
+                leaf_witness.column(C6ResidualLeafColumn::Coordinate0Mask)[source as usize],
+                witnesses[0].base_plaintext()
+            );
+            assert_eq!(
+                leaf_witness.column(C6ResidualLeafColumn::Coordinate0Tag)[source as usize],
+                witnesses[0].tag()
+            );
+            assert_eq!(
+                leaf_witness.column(C6ResidualLeafColumn::Coordinate0Correction)[source as usize],
+                witnesses[0].correction()
+            );
+            assert_eq!(
+                leaf_witness.column(C6ResidualLeafColumn::Coordinate1Mask)[source as usize],
+                witnesses[1].base_plaintext()
+            );
+            assert_eq!(
+                leaf_witness.column(C6ResidualLeafColumn::Coordinate1Tag)[source as usize],
+                witnesses[1].tag()
+            );
+            assert_eq!(
+                leaf_witness.column(C6ResidualLeafColumn::Coordinate1Correction)[source as usize],
+                witnesses[1].correction()
+            );
+            if !is_product_mask {
+                assert_eq!(
+                    expected_common,
+                    witnesses[1].base_plaintext() + witnesses[1].correction()
+                );
+            }
             for coordinate in 0..2 {
                 base_keys[coordinate].push(base_key(witnesses[coordinate], deltas[coordinate]));
             }

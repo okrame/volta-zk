@@ -1288,6 +1288,53 @@ Thus the live upper bound is `35,129,487` entries inside
 This is not yet the complete DAG/auxiliary circuit census and cannot be used
 to waive any later wrapper-capacity gate.
 
+The residual slot order is fixed before its source bridge:
+
+```text
+slot 0   common direct plaintext x; canonical zero at ProductMask leaves
+slot 1   coordinate-0 base mask r
+slot 2   coordinate-0 tag m
+slot 3   coordinate-0 correction d
+slot 4   coordinate-1 base mask r
+slot 5   coordinate-1 tag m
+slot 6   coordinate-1 correction d
+slot 7   closure workspace
+```
+
+At every direct leaf the wrapper must prove
+`x = r[0]+d[0] = r[1]+d[1]`.  At every ProductMask leaf it instead proves
+`d[0]=d[1]=0`, uses the canonical zero in slot 0, and retains the two
+independent mask plaintexts as `r[0]` and `r[1]`; ProductMasks are not falsely
+identified across tapes.
+
+The slot-7 live prefix is likewise canonical: ProductClosures in installed
+plan order, triples in vector order, then coordinate 0 followed by coordinate
+1, with each coordinate storing
+`(x_a,m_a,x_b,m_b,x_c,m_c)`.  Zero roots follow in installed order, each as
+coordinate-0 `(x,m)` then coordinate-1 `(x,m)`, followed by the already
+budgeted 64-element footer reserve.  Remaining capacity padding is zero.
+This freezes the witness grammar only.  Until the reverse-DAG binding,
+product/zero constraints and residual sumcheck are implemented, these tables
+produce PCS opening obligations, not an accepted residual proof.
+
+The local reference source bridge now realizes this grammar without adding a
+response field.  `C6PairedResidualLeafWitness` streams the exact installed
+paired-source schedule into seven live prefixes, rejects a cross-coordinate
+direct-plaintext mismatch or a corrected ProductMask, and exposes padded
+tables only through an explicitly CPU/reference method.  The scaled
+`C6PairedResidualClosureWitness` independently freezes the ProductClosure,
+zero-root and footer order across two distinct witness commitments.  Its live
+census is exactly
+
+```text
+12 * product_triples + 4 * zero_roots + 64.
+```
+
+Neither type is an accepted protocol message, and the production path must
+consume live prefixes without allocating eight full padded host vectors.
+The reverse-DAG/product/zero residual argument and its join to the global
+round coordinator remain the next algebraic gate.
+
 The wrapper PCS uses rate `1/8`, two independent fold/query chains and
 `s=86` queries per chain.  Under the conservative 64-active-polynomial,
 `2^28` weight-oracle and `2^19` auxiliary maxima, one repetition has
@@ -1507,6 +1554,15 @@ The paths, old values and new slab are private wrapper witness.  Certificate
 size is fixed by the maximum profile, not by the current cache length.
 Prover work may grow with the number of cache reads and with attention
 context.
+
+The phrase “algebraic Merkle” is not an implementation license for an
+unspecified hash.  Before cache backend code, C6 must freeze the exact
+Goldilocks/`Fp2` compression permutation, domain separation, arity, round
+constants, security argument and constraint/roofline cost.  Reusing BLAKE3
+inside the algebraic wrapper, treating a host hash as an unconstrained
+oracle, or choosing parameters after timing is forbidden.  Residual and
+hidden-source integration may proceed independently while this cache-hash
+gate remains open.
 
 The formal theorem is conditional on an explicit commitment-binding
 hypothesis.  No Lean theorem may smuggle collision resistance in as a new

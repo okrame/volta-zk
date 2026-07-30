@@ -47,8 +47,8 @@ pub use c6::{
     C6_ROOFLINE_PI_FINAL_MAX_BYTES, C6_SETUP_CAP_BYTES, C6_TERMINAL_ONE_RAW_CAPACITY,
 };
 pub use c6_census::{
-    audit_c6_t1_source_census, C6CensusDigest, C6CensusError, C6CensusLeafRole,
-    C6ResidualCapacityCensus, C6T1CensusInput, C6T1SourceCensus,
+    audit_c6_t1_source_census, c6_t1_trace_source_manifest, C6CensusDigest, C6CensusError,
+    C6CensusLeafRole, C6ResidualCapacityCensus, C6T1CensusInput, C6T1SourceCensus,
     C6_RESIDUAL_CLOSURE_FOOTER_ENTRIES, C6_RESIDUAL_LEAF_ALIGNED_SLOTS, C6_RESIDUAL_SLOT_COUNT,
     C6_RESIDUAL_SLOT_ENTRIES, C6_RESIDUAL_SLOT_LOG2, C6_T1_COMPLETE_ALLOCATION_SCHEDULE_DIGEST_HEX,
     C6_T1_CORRECTION_SCHEDULE_DIGEST_HEX, C6_T1_FINAL_PRODUCT_TRIPLES, C6_T1_FULL_CORRECTION_BYTES,

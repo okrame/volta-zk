@@ -576,6 +576,21 @@ ever installed at the client they count in full against the initial setup
 budget.  The diagnostic trace/compiler remains outside the timed inline
 prover.
 
+The first full prover normalization on the frozen local `100+50` workload is
+green.  It emits program digest
+`0b4bb67835d315807e81d2c3457b5c53bcd82036622307d6f91dec2e62f489bf`
+with **28,845,583 canonical reachable value nodes**.  Of the
+**23,891,144** raw operation nodes, **23,874,732** are terminal-reachable and
+**16,412** are omitted compiler garbage.  The omission rule was frozen above
+before this measurement.  All **4,975,525 / 673 / 22,339 / 8,170** source
+and closure censuses and the frozen transcript/allocation/source digests
+remain unchanged.
+
+This was a dirty, stdout-only diagnostic with no persisted record and no
+timing credit.  It closes prover-side normalization only: the digest is not a
+program identity of record until an independently instrumented verifier
+normalizes to the same identity.
+
 ## 4. Hidden Ligero vectors without an NTT trace
 
 Simply omitting `u_c` or `u_g` is unsound.  C6 commits to them before the

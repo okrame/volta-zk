@@ -18,8 +18,11 @@ pub use auth::{
 };
 pub use authed::{ProverAuthed, ProverSubAuthed, VerifierKey};
 pub use c6_trace::{
-    begin_c6_prover_trace, finish_c6_prover_trace, record_c6_product_closure, record_c6_zero_roots,
-    C6ProverTraceSnapshot, C6TraceError, C6TraceNode, C6TraceProductClosure, C6TraceToken,
+    begin_c6_prover_trace, finish_c6_prover_trace, normalize_c6_operation_trace,
+    record_c6_product_closure, record_c6_zero_roots, C6CanonicalOperationPlan,
+    C6OperationPlanDiagnostics, C6OperationPlanIdentity, C6ProverTraceSnapshot, C6TraceError,
+    C6TraceNode, C6TraceProductClosure, C6TraceSourceManifest, C6TraceToken,
+    C6_OPERATION_PLAN_VERSION,
 };
 pub use corr::{
     C6FullfieldWitnessAudit, C6FullfieldWitnessDraw, C6SubfieldWitnessAudit, C6SubfieldWitnessDraw,

@@ -9,8 +9,8 @@
 
 use std::fmt;
 use volta_mac::{
-    CorrCounters, CorrScheduleAudit, CorrScheduleDraw, CorrScheduleKind, CorrScheduleRole,
-    RESERVED_DOMAIN_BITS,
+    C6TraceSourceManifest, CorrCounters, CorrScheduleAudit, CorrScheduleDraw, CorrScheduleKind,
+    CorrScheduleRole, RESERVED_DOMAIN_BITS,
 };
 
 pub type C6CensusDigest = [u8; 32];
@@ -133,6 +133,53 @@ pub struct C6T1SourceCensus {
     pub correction_schedule_digest: C6CensusDigest,
     pub allocation_schedule_digest: C6CensusDigest,
     pub residual_capacity: C6ResidualCapacityCensus,
+}
+
+/// Derive the compact trace-normalizer manifest from the same canonical draw
+/// schedule already accepted by the T1 source census.
+///
+/// Source ordinals flatten draws in protocol order. Only ProductMask
+/// ordinals need to be repeated explicitly because every other source has
+/// the uniform DirectCorrection role bound by `source_schedule_digest`.
+pub fn c6_t1_trace_source_manifest(
+    schedule: &CorrScheduleAudit,
+    census: &C6T1SourceCensus,
+) -> Result<C6TraceSourceManifest, C6CensusError> {
+    if !schedule.is_canonical()
+        || schedule.digest != census.allocation_schedule_digest
+        || schedule.counters != census.total_counters
+    {
+        return Err(C6CensusError::new(
+            "C6 trace manifest input differs from the accepted allocation schedule",
+        ));
+    }
+    let mut next_source = 0u64;
+    let mut product_mask_sources = Vec::new();
+    for draw in &schedule.draws {
+        if draw.role == CorrScheduleRole::ProductMask {
+            if draw.kind != CorrScheduleKind::FullField || draw.count != 1 {
+                return Err(C6CensusError::new(
+                    "C6 trace manifest has a noncanonical ProductMask draw",
+                ));
+            }
+            product_mask_sources.push(
+                u32::try_from(next_source)
+                    .map_err(|_| C6CensusError::new("C6 ProductMask ordinal exceeds u32"))?,
+            );
+        }
+        next_source = checked_add(next_source, draw.count, "C6 trace source manifest")?;
+    }
+    if next_source != census.total_leaves
+        || product_mask_sources.len() as u64 != census.product_mask_leaves
+    {
+        return Err(C6CensusError::new(
+            "C6 trace manifest census differs from accepted source census",
+        ));
+    }
+    let source_count = u32::try_from(next_source)
+        .map_err(|_| C6CensusError::new("C6 trace source count exceeds u32"))?;
+    C6TraceSourceManifest::new(source_count, census.source_schedule_digest, product_mask_sources)
+        .map_err(|error| C6CensusError::new(error.to_string()))
 }
 
 fn checked_u64(value: usize, label: &str) -> Result<u64, C6CensusError> {
@@ -585,6 +632,13 @@ mod tests {
         assert_eq!(census.residual_capacity.total_live_upper_bound, 35_129_487);
         assert_eq!(census.residual_capacity.total_padded_entries, 67_108_864);
         assert_eq!(census.residual_capacity.padded_headroom, 31_979_377);
+
+        let manifest = c6_t1_trace_source_manifest(&prover, &census).unwrap();
+        assert_eq!(manifest.source_count, 4_975_525);
+        assert_eq!(manifest.source_schedule_digest, census.source_schedule_digest);
+        assert_eq!(manifest.product_mask_sources.len(), 673);
+        assert_eq!(manifest.product_mask_sources[0], 4_974_851);
+        assert_eq!(manifest.product_mask_sources[672], 4_975_523);
     }
 
     #[test]
@@ -632,5 +686,18 @@ mod tests {
         let mut bad_input = input(&prover, &prover, draws, counters, product_domain, zero_domain);
         bad_input.product_triples -= 1;
         assert!(audit_c6_t1_source_census(bad_input).is_err());
+
+        let census = audit_c6_t1_source_census(input(
+            &prover,
+            &prover,
+            draws,
+            counters,
+            product_domain,
+            zero_domain,
+        ))
+        .unwrap();
+        let mut changed_schedule = prover.clone();
+        changed_schedule.digest[0] ^= 1;
+        assert!(c6_t1_trace_source_manifest(&changed_schedule, &census).is_err());
     }
 }

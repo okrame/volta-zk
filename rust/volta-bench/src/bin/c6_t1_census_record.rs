@@ -17,15 +17,15 @@ use volta_gpt2::{
     Gpt2Model, KvCache,
 };
 use volta_mac::{
-    begin_c6_prover_trace, finish_c6_prover_trace, zero_batch_exchange, CorrelationStream,
-    Transcript, VerifierCtx,
+    begin_c6_prover_trace, finish_c6_prover_trace, normalize_c6_operation_trace,
+    zero_batch_exchange, CorrelationStream, Transcript, VerifierCtx,
 };
 use volta_proto::logup::Doms;
 use volta_proto::{
-    audit_c6_t1_source_census, layer_dom_base, prod_batch_prover, prod_batch_verify,
-    prove_response_private_logits, replay_c6_source_coordinate, replay_c6_subfield_coordinate,
-    verify_response_private_logits, C6PairedSourceWitness, C6PairedSubfieldWitness,
-    C6SourceCoordinate, C6T1CensusInput, ChunkRef, PrivateChunkPub,
+    audit_c6_t1_source_census, c6_t1_trace_source_manifest, layer_dom_base, prod_batch_prover,
+    prod_batch_verify, prove_response_private_logits, replay_c6_source_coordinate,
+    replay_c6_subfield_coordinate, verify_response_private_logits, C6PairedSourceWitness,
+    C6PairedSubfieldWitness, C6SourceCoordinate, C6T1CensusInput, ChunkRef, PrivateChunkPub,
     C6_T1_COMPLETE_ALLOCATION_SCHEDULE_DIGEST_HEX, C6_T1_CORRECTION_SCHEDULE_DIGEST_HEX,
     C6_T1_FINAL_PRODUCT_TRIPLES, C6_T1_FULL_CORRECTION_BYTES,
     C6_T1_MODEL_ALLOCATION_SCHEDULE_DIGEST_HEX, C6_T1_MODEL_LOCAL_PRODUCT_CLOSURES,
@@ -95,7 +95,7 @@ fn args() -> Result<Args, String> {
     }
     if operation_trace && !diagnostic {
         return Err(
-            "--operation-trace is diagnostic-only until canonical DAG normalization closes"
+            "--operation-trace is diagnostic-only until independent verifier equality closes"
                 .to_owned(),
         );
     }
@@ -390,11 +390,17 @@ struct Record {
 #[derive(Serialize)]
 struct OperationTraceRow {
     diagnostic_only: bool,
+    independent_verifier_trace_pending: bool,
     source_count: u64,
     operation_node_count: u64,
+    canonical_plan_version: u32,
+    canonical_node_count: u64,
+    reachable_operation_count: u64,
+    omitted_operation_count: u64,
     product_closures: u64,
     product_triples: u64,
     zero_roots: u64,
+    program_digest: String,
 }
 
 fn run(args: &Args) -> Result<Record, String> {
@@ -517,39 +523,8 @@ fn run(args: &Args) -> Result<Record, String> {
         return Err("C6 closed transcripts differ".to_owned());
     }
 
-    let operation_trace = if args.operation_trace {
-        let trace = finish_c6_prover_trace().map_err(|error| error.to_string())?;
-        let product_triples = trace.products.iter().try_fold(0u64, |sum, closure| {
-            sum.checked_add(
-                u64::try_from(closure.triples.len())
-                    .map_err(|_| "C6 operation-trace triple count exceeds u64".to_owned())?,
-            )
-            .ok_or_else(|| "C6 operation-trace triple count overflows".to_owned())
-        })?;
-        let source_count = u64::from(trace.source_count);
-        let operation_node_count = u64::try_from(trace.nodes.len())
-            .map_err(|_| "C6 operation-trace node count exceeds u64".to_owned())?;
-        let product_closures = u64::try_from(trace.products.len())
-            .map_err(|_| "C6 operation-trace closure count exceeds u64".to_owned())?;
-        let zero_roots = u64::try_from(trace.zero_roots.len())
-            .map_err(|_| "C6 operation-trace zero-root count exceeds u64".to_owned())?;
-        if source_count != 4_975_525
-            || product_closures != 673
-            || product_triples != 22_339
-            || zero_roots != 8_170
-        {
-            return Err(format!(
-                "C6 operation-trace census changed: sources={source_count}, closures={product_closures}, triples={product_triples}, zero_roots={zero_roots}"
-            ));
-        }
-        Some(OperationTraceRow {
-            diagnostic_only: true,
-            source_count,
-            operation_node_count,
-            product_closures,
-            product_triples,
-            zero_roots,
-        })
+    let raw_operation_trace = if args.operation_trace {
+        Some(finish_c6_prover_trace().map_err(|error| error.to_string())?)
     } else {
         None
     };
@@ -572,6 +547,44 @@ fn run(args: &Args) -> Result<Record, String> {
         zero_closures: zero.len(),
     })
     .map_err(|error| error.to_string())?;
+
+    let operation_trace = if let Some(trace) = raw_operation_trace {
+        let manifest = c6_t1_trace_source_manifest(&prover_schedule, &census)
+            .map_err(|error| error.to_string())?;
+        let plan = normalize_c6_operation_trace(&trace, &manifest)
+            .map_err(|error| format!("C6 operation-plan normalization: {error}"))?;
+        let identity = plan.identity;
+        if u64::from(identity.source_count) != census.total_leaves
+            || u64::from(identity.product_closure_count) != census.total_product_closures
+            || identity.product_triple_count != census.total_product_triples
+            || u64::from(identity.zero_root_count) != census.zero_closures
+            || identity.source_schedule_digest != census.source_schedule_digest
+        {
+            return Err(format!(
+                "C6 canonical operation-plan census changed: sources={}, closures={}, triples={}, zero_roots={}",
+                identity.source_count,
+                identity.product_closure_count,
+                identity.product_triple_count,
+                identity.zero_root_count
+            ));
+        }
+        Some(OperationTraceRow {
+            diagnostic_only: true,
+            independent_verifier_trace_pending: true,
+            source_count: u64::from(identity.source_count),
+            operation_node_count: plan.diagnostics.raw_operation_count,
+            canonical_plan_version: identity.version,
+            canonical_node_count: u64::from(identity.canonical_node_count),
+            reachable_operation_count: plan.diagnostics.reachable_operation_count,
+            omitted_operation_count: plan.diagnostics.omitted_operation_count,
+            product_closures: u64::from(identity.product_closure_count),
+            product_triples: identity.product_triple_count,
+            zero_roots: u64::from(identity.zero_root_count),
+            program_digest: hex(&identity.program_digest),
+        })
+    } else {
+        None
+    };
 
     let subfield_witness = if args.subfield_witness {
         let primary = prover.finish_c6_subfield_witness_collection()?;
@@ -749,7 +762,7 @@ fn run(args: &Args) -> Result<Record, String> {
     }
     Ok(Record {
         schema: if args.operation_trace {
-            4
+            5
         } else if args.source_witness {
             3
         } else if args.subfield_witness {
@@ -758,7 +771,7 @@ fn run(args: &Args) -> Result<Record, String> {
             1
         },
         milestone: if args.operation_trace {
-            "C6-T1-operation-trace-diagnostic".to_owned()
+            "C6-T1-canonical-prover-operation-plan-diagnostic".to_owned()
         } else if args.source_witness {
             "C6-T1-paired-source-witness-reference".to_owned()
         } else if args.subfield_witness {

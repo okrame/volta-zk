@@ -99,6 +99,11 @@ def test_two_repetition_wire_and_setup_stay_inside_frozen_caps() -> None:
 
     assert wire["two_chain_pcs_bytes"] == 3_609_824
     assert wire["non_pcs_allocation_bytes"] == 800_000
+    assert wire["base_share_seed_bytes"] == 32
+    assert wire["relation_seed_bytes"] == 32
+    assert wire["total_residual_seed_bytes"] == 64
+    assert wire["challenge_order_incremental_bytes"] == 32
+    assert wire["residual_seeds_within_non_pcs_allocation"] is True
     assert wire["pi_final_maximum_bytes"] == 4_409_824
     assert wire["pi_final_headroom_bytes"] == 90_176
     assert wire["complete_response_maximum_bytes"] == 33_586_456
@@ -141,12 +146,70 @@ def test_s86_is_selected_before_benchmark_and_all_events_exceed_128_bits() -> No
     assert ownership["table_slots_per_proof_repetition"] == 24
     assert ownership["table_slot_references_across_proof_repetitions"] == 48
     assert ownership["post_root_terminal_challenge_streams"] == 8
+    assert ownership["base_share_alpha_streams"] == 2
+    assert ownership["atomic_weight_streams"] == 2
+    assert ownership["complete_relation_streams"] == 10
     assert ownership["owner_coefficient_symbols_per_proof_repetition"] == 68_157_440
     assert ownership["split_v1_owner_coefficient_symbols"] == 68_157_440
     assert ownership["complete_v2_owner_coefficient_symbols"] == 136_314_880
     assert ownership["additional_owner_coefficient_symbols"] == 68_157_440
     assert ownership["proof_codec_bytes"] == 4_244
     assert ownership["wire_slot_addition_bytes"] == 0
+
+
+def test_atomic_relation_census_and_claims_before_weights_are_exact() -> None:
+    budget = load_wrapper_budget_module()
+    relation = budget.build_report()["residual_atomic_relation"]
+
+    assert relation["manifest"] == "C6RLM1"
+    assert relation["claims_fixed_before_relation_seed"] is True
+    assert relation["source_count"] == 4_975_525
+    assert relation["direct_source_count"] == 4_974_852
+    assert relation["product_mask_count"] == 673
+    assert relation["product_closure_count"] == 673
+    assert relation["product_triple_count"] == 22_339
+    assert relation["zero_root_count"] == 8_170
+    assert relation["leaf_semantic_entries"] == 2**23
+    assert relation["auxiliary_semantic_entries"] == 2**15
+    assert relation["auxiliary_quadratic_factor_tuples"] == [
+        [0, 2],
+        [0, 3],
+        [1, 2],
+        [1, 3],
+        [6, 8],
+        [6, 9],
+        [7, 8],
+        [7, 9],
+    ]
+    assert relation["atomic_outputs_per_repetition"] == {
+        "source_grammar": 14_926_575,
+        "affine": 4,
+        "reverse_outer": 4,
+        "raw_copy": 300_748,
+        "product": 4_038,
+        "zero": 2,
+        "leaf_raw_tails": 31_979_441,
+        "auxiliary_tails": 223_540,
+        "total": 47_434_352,
+    }
+    assert relation["atomic_outputs_total"] == 94_868_704
+    assert relation["terminal_outputs_per_schedule"] == 75_187
+    assert relation["terminal_schedules_per_repetition"] == 4
+    assert relation["terminal_outputs_per_repetition"] == 300_748
+    assert relation["terminal_outputs_total"] == 601_496
+    assert relation["coefficient_writes_per_repetition"] == {
+        "source_grammar": 29_851_131,
+        "affine": 29_853_150,
+        "reverse": 20_202_848,
+        "raw_copy": 601_496,
+        "product": 270_760,
+        "zero": 16_340,
+        "leaf_raw_tails": 31_979_441,
+        "auxiliary_tails": 223_540,
+        "total": 112_998_706,
+    }
+    assert relation["coefficient_writes_total"] == 225_997_412
+    assert relation["compiler_equivalent_symbols"] == 547_465_024
 
 
 def test_time_screen_rejects_x4c_and_keeps_hardware_verdict_open() -> None:
@@ -158,10 +221,19 @@ def test_time_screen_rejects_x4c_and_keeps_hardware_verdict_open() -> None:
     assert (
         timing["ownership_amendment_additional_coefficient_symbols"] == 68_157_440
     )
-    assert Decimal(timing["sumcheck_effective_equivalent_passes"]) > Decimal("32.3")
-    assert Decimal(timing["sumcheck_effective_equivalent_passes"]) < Decimal("32.31")
+    assert timing["atomic_relation_compiler_equivalent_symbols"] == 547_465_024
+    assert Decimal(timing["sumcheck_effective_equivalent_passes"]) > Decimal(
+        "34.74"
+    )
+    assert Decimal(timing["sumcheck_effective_equivalent_passes"]) < Decimal(
+        "34.75"
+    )
     assert (
         timing["ownership_amendment_timing_credit"]
+        == "none-before-fused-compiler-benchmark"
+    )
+    assert (
+        timing["atomic_relation_compiler_timing_credit"]
         == "none-before-fused-compiler-benchmark"
     )
     assert Decimal(timing["total_kernel_floor_seconds"]) < Decimal("9")

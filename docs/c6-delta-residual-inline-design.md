@@ -1563,24 +1563,26 @@ epsilon_Delta_residual <= 256^2 / |Fp2|^2
 
 This remains one amplified Delta-residual event, not a fifth event.  The
 inherited M2/M8 product-collapse terms remain in the retained T1 accounting.
-The pre-implementation gate is green: the exact budget reports **91**
+The complete-ownership gate is green: the exact budget reports **91**
 degree-round roots, **256** reserved roots per complete proof repetition and
 `2^16/|Fp2|^2 = 239.999999998656...` bits for the complete named event.
-Q=121 complete response soundness is
-`79.472744138609180097...` bits.  All five focused budget tests pass, full
-Lean builds **3,257 jobs**, and the derived audit is **283 total / 47 C6**
-targets with only `propext`, `Classical.choice` and `Quot.sound`.  The
-new obstruction/composition certificates are
+Q=121 complete response soundness is `79.472744138609180097...` bits.  At
+that ownership checkpoint all five focused budget tests passed, full Lean
+built **3,257 jobs**, and the derived audit was **283 total / 47 C6**
+targets with only `propext`, `Classical.choice` and `Quot.sound`.  Its
+obstruction/composition certificates are
 `c6_split_coordinate_accepting_card` and
 `c6_complete_relation_two_repetition_card_le`; the exact integer certificate
 remains `c6_delta_wrapper_event_better_than_239`.  The sharper historical
 theorem continues to describe only the MAC/base-share core.  The executable
-roofline pins **24 owned table slots per proof repetition**, **48** total
-references and **8** post-root challenge streams.  It adds
+ownership screen pins **24 owned table slots per proof repetition**, **48**
+total references and **8** post-root terminal streams.  It adds
 **68,157,440 coefficient symbols** to the informative work screen, raising
 the effective estimate from 32 to **32.3037...** whole-cohort passes and the
 model-plus-wrapper floor to **8.388 s**; this is conservative screening and
-earns no benchmark credit.
+earned no benchmark credit.  The later atomic-relation re-sum below
+supersedes those two timing-screen numbers without changing their
+ownership result.
 
 The first Rust milestone after this freeze is green and intentionally
 narrower than the residual argument.  The versioned witness-only adapter
@@ -1917,15 +1919,35 @@ T1 source IDs and runtime instance, preserving the existing subfield/full-
 field roles; it may not add a witness-trusted source table or infer identity
 from values.
 
-Before compiler Rust, the challenge-order obstruction and ordered repair
-must receive an additive Lean certificate, and the executable budget must
-charge the second 32-byte seed, the two atomic streams and the exact
-constraint census while retaining the 35-MB/20-s gates.  Then a scaled
-reference compiler must differentially evaluate every atomic family,
+The pre-compiler formal and executable gates are now green.  Lean
+constructively exhibits the one-row cancellation in
+`c6_adaptive_two_claim_batch_has_nonzero_kernel`, proves the nonzero
+three-error/two-row kernel by rank-nullity in
+`c6_adaptive_three_claim_two_batch_kernel`, and records the repaired
+fixed-before-weights bounds in `c6_fixed_relation_batching_sound` and
+`c6_fixed_relation_two_repetition_sound`.  The full build remains **3,257
+jobs** and the derived audit is **287 total / 51 C6** targets, zero
+`sorry`/`admit` and only the standard axioms.
+
+The executable report charges both 32-byte seeds, **10 complete-relation
+streams**, **94,868,704 atomic outputs**, **601,496 terminal-expander
+outputs** and **225,997,412 coefficient-accumulation writes**.  Charging one
+read plus one write/multiply-add per accumulation yields a conservative
+**547,465,024 compiler-equivalent symbols**, with explicitly no timing
+credit before a fused-compiler benchmark.  Including the earlier ownership
+amendment gives **7,796,270,912** screened coefficient symbols,
+**34.7434735164...** whole-cohort passes, an **8.450848617...-s**
+model-plus-wrapper floor and **11.549151382... s** to the 20-second ceiling.
+The second seed remains inside the frozen 800,000-B non-PCS allocation:
+`pi_final` stays **4,409,824 B** and the complete response stays
+**33,586,456 B**.  All six focused wrapper-budget tests pass.
+
+This clears only the next local implementation gate.  A scaled reference
+compiler must still differentially evaluate every atomic family,
 reconstruct the target independently, reject every order/selector/tail
 mutation and demonstrate that changing any post-root public claim before the
-relation seed changes both complete statements.  No PCS, timing or response-
-removal credit follows from this preregistration.
+relation seed changes both complete statements.  No PCS, measured timing or
+response-removal credit follows from the formal/budget checkpoint.
 
 The wrapper PCS uses rate `1/8`, two independent fold/query chains and
 `s=86` queries per chain.  Under the conservative 64-active-polynomial,
@@ -2000,20 +2022,22 @@ current X4c response engine is forbidden: proportional scaling of its clean
 `111.552679710-s` seal counter projects approximately `76.825 s` of wrapper
 work, before the `4.104595717-s` model proof.  The only admitted backend route
 is the response-local fused CUDA path backed by the existing P7 A100
-Goldilocks NTT, BLAKE3/Merkle and streaming kernels.  Charging two full
-commit/recompute passes, two fold chains and 32 coefficient-equivalent
-sumcheck passes gives an informative kernel floor of approximately
-`8.380 s` including the model proof.  It leaves approximately `11.620 s` for
-unmodeled cache construction, orchestration and integration under the
-`20.000-s` gate.  This does not turn the P7 microbenchmarks into an end-to-end
-PASS: if the optimized implementation cannot remain below the ceiling, C6
-stops without falling back to the historical multi-minute engine.
+Goldilocks NTT, BLAKE3/Merkle and streaming kernels.  The current screen
+charges two full commit/recompute passes, two fold chains, the 32-pass
+sumcheck base, the complete-owner expansion and the exact atomic compiler
+census above.  It reaches **34.7434735164...** coefficient-equivalent passes
+and an informative **8.450848617...-s** floor including the model proof,
+leaving **11.549151382... s** for unmodeled cache construction,
+orchestration and integration under the `20.000-s` gate.  This does not turn
+the P7 microbenchmarks into an end-to-end PASS: if the optimized
+implementation cannot remain below the ceiling, C6 stops without falling
+back to the historical multi-minute engine.
 
 The executable source of record is `scripts/budget_c6_wrapper.py`; it emits
 the exact rational/integer report with `--json`.  Its permanent tests are in
 `tests/test_budget_c6_wrapper.py`, including exhaustive frontier comparison
 through 16 leaves and selected 32-leaf boundary cases.  At this checkpoint
-the combined base-budget/wrapper suite is `8/8 PASS`.  This local evidence
+the combined base-budget/wrapper suite is `9/9 PASS`.  This local evidence
 closes the roofline milestone only; it is not a production census, backend
 implementation or A100 measurement.
 

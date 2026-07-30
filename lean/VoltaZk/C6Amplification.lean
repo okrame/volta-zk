@@ -18,6 +18,9 @@ particular:
 * independent repetitions live in a product challenge space;
 * the two Δ coordinates may have different provider shares, corrections and
   messages, but each must be false on its own coordinate;
+* provider public claims batched by a relation challenge must be fixed before
+  that challenge; otherwise adaptive errors have a nontrivial kernel even
+  across two batching repetitions;
 * transcript-seed expansion and commitment binding remain explicit
   computational assumptions outside these counting lemmas.
 -/
@@ -95,6 +98,93 @@ theorem c6_complete_relation_two_repetition_card_le
   apply c6_independent_pair_accepting_card_le
   · exact (card_le_card inter_subset_left).trans h₀
   · exact (card_le_card inter_subset_left).trans h₁
+
+/-- One batching equation gives no soundness against claims chosen after its
+weights are known.  For every pair of weights there is a nonzero adaptive
+two-claim error vector whose weighted sum is exactly zero. -/
+theorem c6_adaptive_two_claim_batch_has_nonzero_kernel {F : Type*}
+    [Field F] (rho₀ rho₁ : F) :
+    ∃ e₀ e₁ : F, (e₀ ≠ 0 ∨ e₁ ≠ 0) ∧ rho₀ * e₀ + rho₁ * e₁ = 0 := by
+  by_cases hzero : rho₀ = 0 ∧ rho₁ = 0
+  · exact ⟨1, 0, Or.inl one_ne_zero, by simp [hzero.1, hzero.2]⟩
+  · have hweight : rho₀ ≠ 0 ∨ rho₁ ≠ 0 := by
+      by_cases h₀ : rho₀ = 0
+      · exact Or.inr fun h₁ => hzero ⟨h₀, h₁⟩
+      · exact Or.inl h₀
+    refine ⟨rho₁, -rho₀, ?_, by ring⟩
+    rcases hweight with h₀ | h₁
+    · exact Or.inr (neg_ne_zero.mpr h₀)
+    · exact Or.inl h₁
+
+/-- The two batching rows applied to three provider-adjustable errors. -/
+def c6TwoBatchLinearMap {F : Type*} [Field F]
+    (rho : Fin 2 → Fin 3 → F) : (Fin 3 → F) →ₗ[F] (Fin 2 → F) where
+  toFun := fun error repetition => ∑ claim, rho repetition claim * error claim
+  map_add' := by
+    intro left right
+    funext repetition
+    simp only [Pi.add_apply, mul_add, Finset.sum_add_distrib]
+  map_smul' := by
+    intro scalar error
+    funext repetition
+    simp only [Pi.smul_apply, smul_eq_mul, RingHom.id_apply, Finset.mul_sum]
+    apply Finset.sum_congr rfl
+    intro claim _
+    ring
+
+/-- Two complete batching repetitions still do not repair adaptive public
+claims when at least three error coordinates remain adjustable.  Rank-nullity
+gives a nonzero error vector accepted by both already-known batching rows. -/
+theorem c6_adaptive_three_claim_two_batch_kernel {F : Type*}
+    [Field F] (rho : Fin 2 → Fin 3 → F) :
+    ∃ error : Fin 3 → F, error ≠ 0 ∧
+      ∀ repetition, ∑ claim, rho repetition claim * error claim = 0 := by
+  let batch := c6TwoBatchLinearMap rho
+  have hdim :
+      Module.finrank F (Fin 2 → F) < Module.finrank F (Fin 3 → F) := by
+    simp
+  have hker : LinearMap.ker batch ≠ ⊥ :=
+    LinearMap.ker_ne_bot_of_finrank_lt hdim
+  obtain ⟨error, hmem, hne⟩ := (LinearMap.ker batch).ne_bot_iff.mp hker
+  refine ⟨error, hne, ?_⟩
+  have hmap : batch error = 0 := LinearMap.mem_ker.mp hmem
+  intro repetition
+  exact congrFun hmap repetition
+
+/-- Accepting relation-weight vectors for one error vector that was fixed
+before the verifier sampled the vector. -/
+noncomputable def c6FixedRelationAcceptingWeights {F : Type*}
+    [Field F] [Fintype F] [DecidableEq F] {T : Nat}
+    (error : Fin T → F) : Finset (Fin T → F) := by
+  classical
+  exact univ.filter fun rho => ∑ claim, rho claim * error claim = 0
+
+/-- Once the complete relation errors are fixed before the weights, one
+nonzero atomic error restores the standard independent-vector RLC bound. -/
+theorem c6_fixed_relation_batching_sound {F : Type*}
+    [Field F] [Fintype F] [DecidableEq F] {T : Nat}
+    (error : Fin T → F) {bad : Fin T} (hbad : error bad ≠ 0) :
+    (c6FixedRelationAcceptingWeights error).card
+      ≤ Fintype.card F ^ (T - 1) := by
+  classical
+  unfold c6FixedRelationAcceptingWeights
+  exact card_linearForm_zero_le error hbad
+
+/-- Two independent complete-relation weight vectors square the fixed-error
+RLC bound.  The fixed `error` argument is the formal claims-before-weights
+boundary; replacing it by a function of either challenge is invalid. -/
+theorem c6_fixed_relation_two_repetition_sound {F : Type*}
+    [Field F] [Fintype F] [DecidableEq F] {T : Nat}
+    (error : Fin T → F) {bad : Fin T} (hbad : error bad ≠ 0) :
+    (c6IndependentPairAccepting
+      (c6FixedRelationAcceptingWeights error)
+      (c6FixedRelationAcceptingWeights error)).card
+        ≤ (Fintype.card F ^ (T - 1)) ^ 2 := by
+  exact c6_independent_pair_accepting_card_le
+    (c6FixedRelationAcceptingWeights error)
+    (c6FixedRelationAcceptingWeights error)
+    (c6_fixed_relation_batching_sound error hbad)
+    (c6_fixed_relation_batching_sound error hbad)
 
 /-- Accepting secrets for one fixed C6 Δ-residual coordinate. -/
 noncomputable def c6DeltaResidualAcceptingSecrets {F : Type*}

@@ -46,6 +46,10 @@ NON_PCS_ALLOCATION_BYTES = 800_000
 PI_FINAL_CAP_BYTES = 4_500_000
 RETAINED_RESPONSE_BYTES = 29_176_632
 RESPONSE_CAP_BYTES = 35_000_000
+BASE_SHARE_SEED_BYTES = 32
+RELATION_SEED_BYTES = 32
+RESIDUAL_SEED_BYTES = BASE_SHARE_SEED_BYTES + RELATION_SEED_BYTES
+CHALLENGE_ORDER_INCREMENTAL_BYTES = RELATION_SEED_BYTES
 
 PCG_SETUP_BYTES_PER_TAPE = 38_371_465
 RESIDUAL_MAC_TAPES = 2
@@ -69,6 +73,11 @@ RESIDUAL_POST_ROOT_TERMINAL_STREAMS = (
     * RESIDUAL_MAC_COORDINATES
     * RESIDUAL_TERMINAL_FORM_KINDS
 )
+RESIDUAL_ALPHA_STREAMS = RESIDUAL_MAC_COORDINATES
+RESIDUAL_ATOMIC_WEIGHT_STREAMS = RESIDUAL_PROOF_REPETITIONS
+RESIDUAL_COMPLETE_RELATION_STREAMS = (
+    RESIDUAL_POST_ROOT_TERMINAL_STREAMS + RESIDUAL_ATOMIC_WEIGHT_STREAMS
+)
 RESIDUAL_LEAF_TABLE_LOG2 = 23
 RESIDUAL_AUXILIARY_TABLE_LOG2 = 16
 RESIDUAL_OWNER_COEFFICIENT_SYMBOLS_PER_PROOF_REPETITION = (
@@ -90,6 +99,121 @@ RESIDUAL_SUMCHECK_DEGREE_ROUNDS = 2 * 23 + 3 * 15
 RESIDUAL_SUMCHECK_PROOF_BYTES = 4_244
 DELTA_ROOT_BOUND_PER_COMPLETE_REPETITION = 2**8
 DELTA_EVENT_NUMERATOR = DELTA_ROOT_BOUND_PER_COMPLETE_REPETITION**2
+
+# Frozen T1 atomic-relation census from C6RLM1.  The auxiliary semantic
+# domain is the lower half of each 2^16 table; the independently randomized
+# upper half is selected away rather than constrained to zero.
+T1_SOURCE_COUNT = 4_975_525
+T1_PRODUCT_MASK_COUNT = 673
+T1_PRODUCT_CLOSURE_COUNT = 673
+T1_PRODUCT_TRIPLE_COUNT = 22_339
+T1_ZERO_ROOT_COUNT = 8_170
+RESIDUAL_LEAF_SEMANTIC_ENTRIES = 2**23
+RESIDUAL_AUXILIARY_SEMANTIC_ENTRIES = 2**15
+RESIDUAL_AUXILIARY_QUADRATIC_FACTOR_TUPLES = (
+    (0, 2),
+    (0, 3),
+    (1, 2),
+    (1, 3),
+    (6, 8),
+    (6, 9),
+    (7, 8),
+    (7, 9),
+)
+
+RESIDUAL_SOURCE_ATOMIC_OUTPUTS_PER_REPETITION = 3 * T1_SOURCE_COUNT
+RESIDUAL_AFFINE_ATOMIC_OUTPUTS_PER_REPETITION = 2 * RESIDUAL_MAC_COORDINATES
+RESIDUAL_REVERSE_OUTER_OUTPUTS_PER_REPETITION = (
+    2 * RESIDUAL_MAC_COORDINATES
+)
+RESIDUAL_RAW_COPY_OUTPUTS_PER_REPETITION = (
+    12 * T1_PRODUCT_TRIPLE_COUNT + 4 * T1_ZERO_ROOT_COUNT
+)
+RESIDUAL_PRODUCT_ATOMIC_OUTPUTS_PER_REPETITION = (
+    T1_PRODUCT_CLOSURE_COUNT * RESIDUAL_MAC_COORDINATES * 3
+)
+RESIDUAL_ZERO_ATOMIC_OUTPUTS_PER_REPETITION = RESIDUAL_MAC_COORDINATES
+RESIDUAL_LEAF_TAIL_OUTPUTS_PER_REPETITION = (
+    7 * (RESIDUAL_LEAF_SEMANTIC_ENTRIES - T1_SOURCE_COUNT)
+    + (
+        RESIDUAL_LEAF_SEMANTIC_ENTRIES
+        - RESIDUAL_RAW_COPY_OUTPUTS_PER_REPETITION
+    )
+)
+RESIDUAL_AUXILIARY_TAIL_OUTPUTS_PER_REPETITION = (
+    12 * (RESIDUAL_AUXILIARY_SEMANTIC_ENTRIES - T1_PRODUCT_TRIPLE_COUNT)
+    + 4 * (RESIDUAL_AUXILIARY_SEMANTIC_ENTRIES - T1_ZERO_ROOT_COUNT)
+)
+RESIDUAL_ATOMIC_OUTPUTS_PER_REPETITION = sum(
+    (
+        RESIDUAL_SOURCE_ATOMIC_OUTPUTS_PER_REPETITION,
+        RESIDUAL_AFFINE_ATOMIC_OUTPUTS_PER_REPETITION,
+        RESIDUAL_REVERSE_OUTER_OUTPUTS_PER_REPETITION,
+        RESIDUAL_RAW_COPY_OUTPUTS_PER_REPETITION,
+        RESIDUAL_PRODUCT_ATOMIC_OUTPUTS_PER_REPETITION,
+        RESIDUAL_ZERO_ATOMIC_OUTPUTS_PER_REPETITION,
+        RESIDUAL_LEAF_TAIL_OUTPUTS_PER_REPETITION,
+        RESIDUAL_AUXILIARY_TAIL_OUTPUTS_PER_REPETITION,
+    )
+)
+RESIDUAL_ATOMIC_OUTPUTS_TOTAL = (
+    RESIDUAL_PROOF_REPETITIONS * RESIDUAL_ATOMIC_OUTPUTS_PER_REPETITION
+)
+
+RESIDUAL_TERMINAL_OUTPUTS_PER_SCHEDULE = (
+    3 * T1_PRODUCT_TRIPLE_COUNT + T1_ZERO_ROOT_COUNT
+)
+RESIDUAL_TERMINAL_SCHEDULES_PER_REPETITION = (
+    RESIDUAL_MAC_COORDINATES * RESIDUAL_TERMINAL_FORM_KINDS
+)
+RESIDUAL_TERMINAL_OUTPUTS_PER_REPETITION = (
+    RESIDUAL_TERMINAL_SCHEDULES_PER_REPETITION
+    * RESIDUAL_TERMINAL_OUTPUTS_PER_SCHEDULE
+)
+RESIDUAL_TERMINAL_OUTPUTS_TOTAL = (
+    RESIDUAL_PROOF_REPETITIONS * RESIDUAL_TERMINAL_OUTPUTS_PER_REPETITION
+)
+
+# Exact coefficient-accumulation write census for the frozen atomic grammar.
+# The timing screen later charges one read plus one write/multiply-add for
+# every such update, in addition to every expander output.
+T1_DIRECT_SOURCE_COUNT = T1_SOURCE_COUNT - T1_PRODUCT_MASK_COUNT
+RESIDUAL_SOURCE_COEFFICIENT_WRITES_PER_REPETITION = (
+    6 * T1_DIRECT_SOURCE_COUNT + 3 * T1_PRODUCT_MASK_COUNT
+)
+RESIDUAL_AFFINE_COEFFICIENT_WRITES_PER_REPETITION = 6 * T1_SOURCE_COUNT
+RESIDUAL_REVERSE_COEFFICIENT_WRITES_PER_REPETITION = (
+    4 * T1_SOURCE_COUNT
+    + 12 * T1_PRODUCT_TRIPLE_COUNT
+    + 4 * T1_ZERO_ROOT_COUNT
+)
+RESIDUAL_RAW_COPY_COEFFICIENT_WRITES_PER_REPETITION = (
+    2 * RESIDUAL_RAW_COPY_OUTPUTS_PER_REPETITION
+)
+RESIDUAL_PRODUCT_COEFFICIENT_WRITES_PER_REPETITION = (
+    12 * T1_PRODUCT_TRIPLE_COUNT + 4 * T1_PRODUCT_CLOSURE_COUNT
+)
+RESIDUAL_ZERO_COEFFICIENT_WRITES_PER_REPETITION = 2 * T1_ZERO_ROOT_COUNT
+RESIDUAL_COEFFICIENT_WRITES_PER_REPETITION = sum(
+    (
+        RESIDUAL_SOURCE_COEFFICIENT_WRITES_PER_REPETITION,
+        RESIDUAL_AFFINE_COEFFICIENT_WRITES_PER_REPETITION,
+        RESIDUAL_REVERSE_COEFFICIENT_WRITES_PER_REPETITION,
+        RESIDUAL_RAW_COPY_COEFFICIENT_WRITES_PER_REPETITION,
+        RESIDUAL_PRODUCT_COEFFICIENT_WRITES_PER_REPETITION,
+        RESIDUAL_ZERO_COEFFICIENT_WRITES_PER_REPETITION,
+        RESIDUAL_LEAF_TAIL_OUTPUTS_PER_REPETITION,
+        RESIDUAL_AUXILIARY_TAIL_OUTPUTS_PER_REPETITION,
+    )
+)
+RESIDUAL_COEFFICIENT_WRITES_TOTAL = (
+    RESIDUAL_PROOF_REPETITIONS * RESIDUAL_COEFFICIENT_WRITES_PER_REPETITION
+)
+RESIDUAL_ATOMIC_COMPILER_EQUIVALENT_SYMBOLS = (
+    RESIDUAL_ATOMIC_OUTPUTS_TOTAL
+    + RESIDUAL_TERMINAL_OUTPUTS_TOTAL
+    + 2 * RESIDUAL_COEFFICIENT_WRITES_TOTAL
+)
 
 SUMCHECK_BASE_EQUIVALENT_PASSES = 32
 COMMIT_RECOMPUTE_PASSES = 2
@@ -355,6 +479,7 @@ def build_report() -> dict[str, Any]:
         sumcheck_work_coefficient_symbols = (
             SUMCHECK_BASE_EQUIVALENT_PASSES * coefficient_symbols
             + RESIDUAL_OWNER_ADDITIONAL_COEFFICIENT_SYMBOLS
+            + RESIDUAL_ATOMIC_COMPILER_EQUIVALENT_SYMBOLS
         )
         sumcheck_work_bytes = sumcheck_work_coefficient_symbols * FP2_BYTES
         sumcheck_equivalent_passes = (
@@ -424,6 +549,15 @@ def build_report() -> dict[str, Any]:
             "pcs_repetitions": PCS_REPETITIONS,
             "two_chain_pcs_bytes": pcs_bytes,
             "non_pcs_allocation_bytes": NON_PCS_ALLOCATION_BYTES,
+            "base_share_seed_bytes": BASE_SHARE_SEED_BYTES,
+            "relation_seed_bytes": RELATION_SEED_BYTES,
+            "total_residual_seed_bytes": RESIDUAL_SEED_BYTES,
+            "challenge_order_incremental_bytes": (
+                CHALLENGE_ORDER_INCREMENTAL_BYTES
+            ),
+            "residual_seeds_within_non_pcs_allocation": (
+                RESIDUAL_SEED_BYTES <= NON_PCS_ALLOCATION_BYTES
+            ),
             "pi_final_maximum_bytes": pi_final_maximum,
             "pi_final_cap_bytes": PI_FINAL_CAP_BYTES,
             "pi_final_headroom_bytes": PI_FINAL_CAP_BYTES - pi_final_maximum,
@@ -460,6 +594,9 @@ def build_report() -> dict[str, Any]:
             "post_root_terminal_challenge_streams": (
                 RESIDUAL_POST_ROOT_TERMINAL_STREAMS
             ),
+            "base_share_alpha_streams": RESIDUAL_ALPHA_STREAMS,
+            "atomic_weight_streams": RESIDUAL_ATOMIC_WEIGHT_STREAMS,
+            "complete_relation_streams": RESIDUAL_COMPLETE_RELATION_STREAMS,
             "owner_coefficient_symbols_per_proof_repetition": (
                 RESIDUAL_OWNER_COEFFICIENT_SYMBOLS_PER_PROOF_REPETITION
             ),
@@ -474,6 +611,77 @@ def build_report() -> dict[str, Any]:
             ),
             "proof_codec_bytes": RESIDUAL_SUMCHECK_PROOF_BYTES,
             "wire_slot_addition_bytes": 0,
+        },
+        "residual_atomic_relation": {
+            "manifest": "C6RLM1",
+            "claims_fixed_before_relation_seed": True,
+            "source_count": T1_SOURCE_COUNT,
+            "direct_source_count": T1_DIRECT_SOURCE_COUNT,
+            "product_mask_count": T1_PRODUCT_MASK_COUNT,
+            "product_closure_count": T1_PRODUCT_CLOSURE_COUNT,
+            "product_triple_count": T1_PRODUCT_TRIPLE_COUNT,
+            "zero_root_count": T1_ZERO_ROOT_COUNT,
+            "leaf_semantic_entries": RESIDUAL_LEAF_SEMANTIC_ENTRIES,
+            "auxiliary_semantic_entries": RESIDUAL_AUXILIARY_SEMANTIC_ENTRIES,
+            "auxiliary_quadratic_factor_tuples": [
+                list(pair)
+                for pair in RESIDUAL_AUXILIARY_QUADRATIC_FACTOR_TUPLES
+            ],
+            "atomic_outputs_per_repetition": {
+                "source_grammar": (
+                    RESIDUAL_SOURCE_ATOMIC_OUTPUTS_PER_REPETITION
+                ),
+                "affine": RESIDUAL_AFFINE_ATOMIC_OUTPUTS_PER_REPETITION,
+                "reverse_outer": (
+                    RESIDUAL_REVERSE_OUTER_OUTPUTS_PER_REPETITION
+                ),
+                "raw_copy": RESIDUAL_RAW_COPY_OUTPUTS_PER_REPETITION,
+                "product": RESIDUAL_PRODUCT_ATOMIC_OUTPUTS_PER_REPETITION,
+                "zero": RESIDUAL_ZERO_ATOMIC_OUTPUTS_PER_REPETITION,
+                "leaf_raw_tails": RESIDUAL_LEAF_TAIL_OUTPUTS_PER_REPETITION,
+                "auxiliary_tails": (
+                    RESIDUAL_AUXILIARY_TAIL_OUTPUTS_PER_REPETITION
+                ),
+                "total": RESIDUAL_ATOMIC_OUTPUTS_PER_REPETITION,
+            },
+            "atomic_outputs_total": RESIDUAL_ATOMIC_OUTPUTS_TOTAL,
+            "terminal_outputs_per_schedule": (
+                RESIDUAL_TERMINAL_OUTPUTS_PER_SCHEDULE
+            ),
+            "terminal_schedules_per_repetition": (
+                RESIDUAL_TERMINAL_SCHEDULES_PER_REPETITION
+            ),
+            "terminal_outputs_per_repetition": (
+                RESIDUAL_TERMINAL_OUTPUTS_PER_REPETITION
+            ),
+            "terminal_outputs_total": RESIDUAL_TERMINAL_OUTPUTS_TOTAL,
+            "coefficient_writes_per_repetition": {
+                "source_grammar": (
+                    RESIDUAL_SOURCE_COEFFICIENT_WRITES_PER_REPETITION
+                ),
+                "affine": (
+                    RESIDUAL_AFFINE_COEFFICIENT_WRITES_PER_REPETITION
+                ),
+                "reverse": (
+                    RESIDUAL_REVERSE_COEFFICIENT_WRITES_PER_REPETITION
+                ),
+                "raw_copy": (
+                    RESIDUAL_RAW_COPY_COEFFICIENT_WRITES_PER_REPETITION
+                ),
+                "product": (
+                    RESIDUAL_PRODUCT_COEFFICIENT_WRITES_PER_REPETITION
+                ),
+                "zero": RESIDUAL_ZERO_COEFFICIENT_WRITES_PER_REPETITION,
+                "leaf_raw_tails": RESIDUAL_LEAF_TAIL_OUTPUTS_PER_REPETITION,
+                "auxiliary_tails": (
+                    RESIDUAL_AUXILIARY_TAIL_OUTPUTS_PER_REPETITION
+                ),
+                "total": RESIDUAL_COEFFICIENT_WRITES_PER_REPETITION,
+            },
+            "coefficient_writes_total": RESIDUAL_COEFFICIENT_WRITES_TOTAL,
+            "compiler_equivalent_symbols": (
+                RESIDUAL_ATOMIC_COMPILER_EQUIVALENT_SYMBOLS
+            ),
         },
         "soundness": {
             "fp2_cardinality": str(FP2_CARDINALITY),
@@ -523,6 +731,9 @@ def build_report() -> dict[str, Any]:
             "ownership_amendment_additional_coefficient_symbols": (
                 RESIDUAL_OWNER_ADDITIONAL_COEFFICIENT_SYMBOLS
             ),
+            "atomic_relation_compiler_equivalent_symbols": (
+                RESIDUAL_ATOMIC_COMPILER_EQUIVALENT_SYMBOLS
+            ),
             "sumcheck_work_coefficient_symbols": (
                 sumcheck_work_coefficient_symbols
             ),
@@ -530,6 +741,9 @@ def build_report() -> dict[str, Any]:
                 sumcheck_equivalent_passes
             ),
             "ownership_amendment_timing_credit": (
+                "none-before-fused-compiler-benchmark"
+            ),
+            "atomic_relation_compiler_timing_credit": (
                 "none-before-fused-compiler-benchmark"
             ),
             "base_model_prove_seconds": str(C4_MODEL_PROVE_RESPONSE_SECONDS),
@@ -574,9 +788,36 @@ def build_report() -> dict[str, Any]:
     assert RESIDUAL_TABLE_SLOTS_PER_PROOF_REPETITION == 24
     assert RESIDUAL_TABLE_SLOT_REFERENCES == 48
     assert RESIDUAL_POST_ROOT_TERMINAL_STREAMS == 8
+    assert RESIDUAL_ALPHA_STREAMS == 2
+    assert RESIDUAL_ATOMIC_WEIGHT_STREAMS == 2
+    assert RESIDUAL_COMPLETE_RELATION_STREAMS == 10
     assert RESIDUAL_OWNER_COEFFICIENT_SYMBOLS_PER_PROOF_REPETITION == 68_157_440
     assert RESIDUAL_OWNER_COEFFICIENT_SYMBOLS_COMPLETE_V2 == 136_314_880
     assert RESIDUAL_OWNER_ADDITIONAL_COEFFICIENT_SYMBOLS == 68_157_440
+    assert RESIDUAL_SEED_BYTES == 64
+    assert CHALLENGE_ORDER_INCREMENTAL_BYTES == 32
+    assert RESIDUAL_SOURCE_ATOMIC_OUTPUTS_PER_REPETITION == 14_926_575
+    assert RESIDUAL_AFFINE_ATOMIC_OUTPUTS_PER_REPETITION == 4
+    assert RESIDUAL_REVERSE_OUTER_OUTPUTS_PER_REPETITION == 4
+    assert RESIDUAL_RAW_COPY_OUTPUTS_PER_REPETITION == 300_748
+    assert RESIDUAL_PRODUCT_ATOMIC_OUTPUTS_PER_REPETITION == 4_038
+    assert RESIDUAL_ZERO_ATOMIC_OUTPUTS_PER_REPETITION == 2
+    assert RESIDUAL_LEAF_TAIL_OUTPUTS_PER_REPETITION == 31_979_441
+    assert RESIDUAL_AUXILIARY_TAIL_OUTPUTS_PER_REPETITION == 223_540
+    assert RESIDUAL_ATOMIC_OUTPUTS_PER_REPETITION == 47_434_352
+    assert RESIDUAL_ATOMIC_OUTPUTS_TOTAL == 94_868_704
+    assert RESIDUAL_TERMINAL_OUTPUTS_PER_SCHEDULE == 75_187
+    assert RESIDUAL_TERMINAL_OUTPUTS_PER_REPETITION == 300_748
+    assert RESIDUAL_TERMINAL_OUTPUTS_TOTAL == 601_496
+    assert RESIDUAL_SOURCE_COEFFICIENT_WRITES_PER_REPETITION == 29_851_131
+    assert RESIDUAL_AFFINE_COEFFICIENT_WRITES_PER_REPETITION == 29_853_150
+    assert RESIDUAL_REVERSE_COEFFICIENT_WRITES_PER_REPETITION == 20_202_848
+    assert RESIDUAL_RAW_COPY_COEFFICIENT_WRITES_PER_REPETITION == 601_496
+    assert RESIDUAL_PRODUCT_COEFFICIENT_WRITES_PER_REPETITION == 270_760
+    assert RESIDUAL_ZERO_COEFFICIENT_WRITES_PER_REPETITION == 16_340
+    assert RESIDUAL_COEFFICIENT_WRITES_PER_REPETITION == 112_998_706
+    assert RESIDUAL_COEFFICIENT_WRITES_TOTAL == 225_997_412
+    assert RESIDUAL_ATOMIC_COMPILER_EQUIVALENT_SYMBOLS == 547_465_024
     assert minimum_literal_128_bit_query_count() == 85
     assert section["opened_symbols"] == 14_528
     assert section["inner_siblings"] == 0

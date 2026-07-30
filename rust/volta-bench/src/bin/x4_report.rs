@@ -332,7 +332,7 @@ fn run_case(
     let authenticated_weights = weight_values
         .iter()
         .enumerate()
-        .map(|(slot, value)| ProverAuthed { x: *value, m: symbol(0xA000 + slot as u64 + seed_tag) })
+        .map(|(slot, value)| ProverAuthed::new(*value, symbol(0xA000 + slot as u64 + seed_tag)))
         .collect::<Vec<_>>();
     let zero_frame = prove_bound_response_zero_batch(
         &authenticated_weights,

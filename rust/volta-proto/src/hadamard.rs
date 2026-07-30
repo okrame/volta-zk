@@ -121,9 +121,9 @@ pub fn hadamard_prove(
             .expect("C6 Hadamard-round correction schedule");
         round_corrs.push([g0 - masks[0].x, g2 - masks[1].x, g3 - masks[2].x]);
         tx.append("hadamard_round_corrections", 48);
-        let g0_a = ProverAuthed { x: g0, m: masks[0].m };
-        let g2_a = ProverAuthed { x: g2, m: masks[1].m };
-        let g3_a = ProverAuthed { x: g3, m: masks[2].m };
+        let g0_a = masks[0].authenticate(g0);
+        let g2_a = masks[1].authenticate(g2);
+        let g3_a = masks[2].authenticate(g3);
         let g1_a = claim.sub(g0_a); // g(1) = claim − g(0), authenticated
 
         let r = tx.challenge_fp2();
@@ -156,9 +156,9 @@ pub fn hadamard_prove(
         .record_c6_fullfield_plaintexts(doms.z, &[zx])
         .expect("C6 Hadamard product correction schedule");
     tx.append("hadamard_claim_corrections", 48);
-    let e_a = ProverAuthed { x: e_final, m: fe.m };
-    let r_a = ProverAuthed { x: r_final, m: fr.m };
-    let z_a = ProverAuthed { x: zx, m: fz.m };
+    let e_a = fe.authenticate(e_final);
+    let r_a = fr.authenticate(r_final);
+    let z_a = fz.authenticate(zx);
     prod.push((e_a, r_a, z_a));
     let row = z_a.scale(eq_points(rho, &point)).sub(claim);
     debug_assert_eq!(row.x, Fp2::ZERO, "hadamard closing relation violated");
@@ -237,9 +237,9 @@ pub fn hadamard_prove_resident(
             .expect("C6 resident Hadamard-round correction schedule");
         round_corrs.push([g0 - masks[0].x, g2 - masks[1].x, g3 - masks[2].x]);
         tx.append("hadamard_round_corrections", 48);
-        let g0_a = ProverAuthed { x: g0, m: masks[0].m };
-        let g2_a = ProverAuthed { x: g2, m: masks[1].m };
-        let g3_a = ProverAuthed { x: g3, m: masks[2].m };
+        let g0_a = masks[0].authenticate(g0);
+        let g2_a = masks[1].authenticate(g2);
+        let g3_a = masks[2].authenticate(g3);
         let g1_a = claim.sub(g0_a);
         let challenge = tx.challenge_fp2();
         let weights = lagrange4(challenge);
@@ -310,9 +310,9 @@ pub fn hadamard_prove_resident(
         .record_c6_fullfield_plaintexts(doms.z, &[product])
         .expect("C6 resident Hadamard product correction schedule");
     tx.append("hadamard_claim_corrections", 48);
-    let e_auth = ProverAuthed { x: e_final, m: fe.m };
-    let r_auth = ProverAuthed { x: r_final, m: fr.m };
-    let z_auth = ProverAuthed { x: product, m: fz.m };
+    let e_auth = fe.authenticate(e_final);
+    let r_auth = fr.authenticate(r_final);
+    let z_auth = fz.authenticate(product);
     prod.push((e_auth, r_auth, z_auth));
     let row = z_auth.scale(eq_points(rho, &point)).sub(claim);
     debug_assert_eq!(row.x, Fp2::ZERO, "resident Hadamard closing relation violated");
@@ -406,7 +406,7 @@ mod tests {
             eq.iter().zip(&e).zip(&r_tab).fold(Fp2::ZERO, |s, ((&q, &a), &b)| s + q * a * b);
         let f0 = stream.draw_fulls(1, 1)[0];
         let c0 = total - f0.x;
-        let claim0 = ProverAuthed { x: total, m: f0.m };
+        let claim0 = f0.authenticate(total);
         let k0 = VerifierKey { k: ctx.expand_full_keys(1, 1)[0] + delta * c0 };
 
         let hd = HadamardDoms::alloc(&mut Doms::new(0x100), n_vars);
@@ -515,7 +515,7 @@ mod tests {
             let mut stream = CorrelationStream::new([101; 32]);
             let mut tx = Transcript::new([102; 32]);
             let initial = stream.draw_fulls(1, 1)[0];
-            let claim0 = ProverAuthed { x: total, m: initial.m };
+            let claim0 = initial.authenticate(total);
             let doms = HadamardDoms::alloc(&mut Doms::new(0xA100), n_vars);
             let mut prod = Vec::new();
             let mut zero = Vec::new();
@@ -545,7 +545,7 @@ mod tests {
             let mut stream = CorrelationStream::new([101; 32]);
             let mut tx = Transcript::new([102; 32]);
             let initial = stream.draw_fulls(1, 1)[0];
-            let claim0 = ProverAuthed { x: total, m: initial.m };
+            let claim0 = initial.authenticate(total);
             let doms = HadamardDoms::alloc(&mut Doms::new(0xA100), n_vars);
             let mut prod = Vec::new();
             let mut zero = Vec::new();

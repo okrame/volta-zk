@@ -482,6 +482,33 @@ roots**.  The final response-wide corrected ZeroBatch mask remains a
 base-share-bound direct source used by the retained ZeroBatch seam; it is not
 miscounted as an 8,171st pre-mask zero root.
 
+The prover-side migration checkpoint now reaches the complete frozen
+`100+50` trace:
+
+```text
+canonical interleaved source tokens                    4,975,525
+raw allocation-order linear nodes                     23,891,144
+ProductClosures / product triples                    673 / 22,339
+pre-mask zero roots                                         8,170
+missing/untracked closure operands                              0
+```
+
+This was a dirty local diagnostic printed to stdout, not a run-of-record.
+Golden output, transcript bytes, schedule digests and paired source-witness
+digests remained unchanged.  The two fail-closed migration findings were
+shape/provenance issues only: an MLE opening has 768 real authenticated
+columns despite a 1,024-coefficient padded equality vector, and segmented
+cache K/V folds must retain their sparse source expression across the GEMM
+boundary.  The implementation binds the 768 real prefix and transports the
+typed sparse expression; it does not synthesize padded sources or recover
+identity from `(x,m)`.
+
+The raw `23,891,144` count is explicitly **not** a canonical plan size or
+timing result.  Allocation/scheduling order may change it.  The operation-DAG
+milestone therefore remains open until ordered-root normalization emits a
+compact plan digest and an independently generated verifier trace normalizes
+to the same digest.
+
 ## 4. Hidden Ligero vectors without an NTT trace
 
 Simply omitting `u_c` or `u_g` is unsound.  C6 commits to them before the

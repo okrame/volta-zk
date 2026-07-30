@@ -120,13 +120,7 @@ pub fn authenticate_pending_aux_prover(
         "x4_m9_transfer_frame",
         u64::try_from(bytes).map_err(|_| AuthenticatedOutputError::Overflow)?,
     );
-    Ok((
-        PendingAuxEvalProver {
-            descriptor_digest,
-            auth: ProverAuthed { x: secret, m: correlation.m },
-        },
-        frame,
-    ))
+    Ok((PendingAuxEvalProver { descriptor_digest, auth: correlation.authenticate(secret) }, frame))
 }
 
 /// Mirror one M9 correction into the verifier key.  This still returns only a
@@ -456,8 +450,8 @@ fn prove_blind_multi_term_sumcheck(
         corrections.push(at_two - mask_two.x);
         tx.append("x4_auth_output_link_round_corrections", 32);
 
-        let auth_zero = ProverAuthed { x: at_zero, m: mask_zero.m };
-        let auth_two = ProverAuthed { x: at_two, m: mask_two.m };
+        let auth_zero = mask_zero.authenticate(at_zero);
+        let auth_two = mask_two.authenticate(at_two);
         let auth_one = claim.sub(auth_zero);
         let challenge = tx.challenge_fp2();
         let weights = lagrange3(challenge);

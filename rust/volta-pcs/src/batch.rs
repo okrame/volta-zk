@@ -407,8 +407,8 @@ pub fn batch_reduce_prover_cuda_resident(
         let masks = stream.draw_fulls(mask_dom_base + round as u64, 2);
         round_corrs.push([g0 - masks[0].x, g2 - masks[1].x]);
         tx.append("blind_round_corrections", 32);
-        let auth_zero = ProverAuthed { x: g0, m: masks[0].m };
-        let auth_two = ProverAuthed { x: g2, m: masks[1].m };
+        let auth_zero = masks[0].authenticate(g0);
+        let auth_two = masks[1].authenticate(g2);
         let auth_one = claim.sub(auth_zero);
         let challenge = tx.challenge_fp2();
         let weights = lagrange3(challenge);
@@ -663,8 +663,8 @@ pub fn batch_reduce_prover_cpu_resident(
         let masks = stream.draw_fulls(mask_dom_base + round as u64, 2);
         round_corrs.push([g0 - masks[0].x, g2 - masks[1].x]);
         tx.append("blind_round_corrections", 32);
-        let auth_zero = ProverAuthed { x: g0, m: masks[0].m };
-        let auth_two = ProverAuthed { x: g2, m: masks[1].m };
+        let auth_zero = masks[0].authenticate(g0);
+        let auth_two = masks[1].authenticate(g2);
         let auth_one = claim.sub(auth_zero);
         let challenge = tx.challenge_fp2();
         let weights = lagrange3(challenge);
@@ -798,8 +798,8 @@ fn blind_prove_par(
         let corrs = [g0 - masks[0].x, g2 - masks[1].x];
         tx.append("blind_round_corrections", 32);
         round_corrs.push(corrs);
-        let g0_a = ProverAuthed { x: g0, m: masks[0].m };
-        let g2_a = ProverAuthed { x: g2, m: masks[1].m };
+        let g0_a = masks[0].authenticate(g0);
+        let g2_a = masks[1].authenticate(g2);
         let g1_a = claim.sub(g0_a);
 
         let r = tx.challenge_fp2();

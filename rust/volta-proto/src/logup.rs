@@ -1812,7 +1812,7 @@ impl Sink for BlindSink<'_> {
             .expect("C6 LogUp-root correction schedule");
         self.root_corrs = [p - masks[0].x, q - masks[1].x];
         self.tx.append("logup_root_corrections", 32);
-        self.roots = (ProverAuthed { x: p, m: masks[0].m }, ProverAuthed { x: q, m: masks[1].m });
+        self.roots = (masks[0].authenticate(p), masks[1].authenticate(q));
         self.cp = self.roots.0;
         self.cq = self.roots.1;
     }
@@ -1834,8 +1834,8 @@ impl Sink for BlindSink<'_> {
             .expect("C6 LogUp-round correction schedule");
         self.rounds_cur.push([h[0] - masks[0].x, h[1] - masks[1].x]);
         self.tx.append("logup_round_corrections", 32);
-        let h0 = ProverAuthed { x: h[0], m: masks[0].m };
-        let h2 = ProverAuthed { x: h[1], m: masks[1].m };
+        let h0 = masks[0].authenticate(h[0]);
+        let h2 = masks[1].authenticate(h[1]);
         let r = self.tx.challenge_fp2();
         // h(1) from the claim, then claim' = ℓ(r)·h(r). All-public scalars.
         let ell0 = Fp2::ONE - pt_j;
@@ -1858,10 +1858,10 @@ impl Sink for BlindSink<'_> {
         let split_corrs =
             [s[0] - masks[0].x, s[1] - masks[1].x, s[2] - masks[2].x, s[3] - masks[3].x];
         self.tx.append("logup_split_corrections", 64);
-        let p0 = ProverAuthed { x: s[0], m: masks[0].m };
-        let p1 = ProverAuthed { x: s[1], m: masks[1].m };
-        let q0 = ProverAuthed { x: s[2], m: masks[2].m };
-        let q1 = ProverAuthed { x: s[3], m: masks[3].m };
+        let p0 = masks[0].authenticate(s[0]);
+        let p1 = masks[1].authenticate(s[1]);
+        let q0 = masks[2].authenticate(s[2]);
+        let q1 = masks[3].authenticate(s[3]);
         // z₁ = p0·q1, z₂ = p1·q0, z₃ = q0·q1 as authenticated products.
         let zx = [s[0] * s[3], s[1] * s[2], s[2] * s[3]];
         let zdom = self.doms.take(1);
@@ -1872,7 +1872,7 @@ impl Sink for BlindSink<'_> {
         let z_corrs = [zx[0] - zmasks[0].x, zx[1] - zmasks[1].x, zx[2] - zmasks[2].x];
         self.tx.append("logup_prod_corrections", 48);
         let z: Vec<ProverAuthed> =
-            zx.iter().zip(&zmasks).map(|(&x, mk)| ProverAuthed { x, m: mk.m }).collect();
+            zx.iter().zip(&zmasks).map(|(&x, mask)| mask.authenticate(x)).collect();
         self.prod.push((p0, q1, z[0]));
         self.prod.push((p1, q0, z[1]));
         self.prod.push((q0, q1, z[2]));
@@ -1914,7 +1914,7 @@ impl Sink for BlindSink<'_> {
         self.rounds3_cur.push([g[0] - masks[0].x, g[1] - masks[1].x, g[2] - masks[2].x]);
         self.tx.append("logup_aux_round_corrections", 48);
         let ga: Vec<ProverAuthed> =
-            g.iter().zip(&masks).map(|(&x, mk)| ProverAuthed { x, m: mk.m }).collect();
+            g.iter().zip(&masks).map(|(&x, mask)| mask.authenticate(x)).collect();
         let r = self.tx.challenge_fp2();
         // g(1) = claim − g(0); claim' = g(r) by cubic interpolation.
         let g1 = self.claim.sub(ga[0]);
@@ -1936,10 +1936,10 @@ impl Sink for BlindSink<'_> {
         let split_corrs =
             [s[0] - masks[0].x, s[1] - masks[1].x, s[2] - masks[2].x, s[3] - masks[3].x];
         self.tx.append("logup_split_corrections", 64);
-        let p0 = ProverAuthed { x: s[0], m: masks[0].m };
-        let p1 = ProverAuthed { x: s[1], m: masks[1].m };
-        let q0 = ProverAuthed { x: s[2], m: masks[2].m };
-        let q1 = ProverAuthed { x: s[3], m: masks[3].m };
+        let p0 = masks[0].authenticate(s[0]);
+        let p1 = masks[1].authenticate(s[1]);
+        let q0 = masks[2].authenticate(s[2]);
+        let q1 = masks[3].authenticate(s[3]);
         let zx = [s[0] * s[3], s[1] * s[2], s[2] * s[3]];
         let zdom = self.doms.take(1);
         let zmasks = self.stream.draw_fulls(zdom, 3);
@@ -1949,7 +1949,7 @@ impl Sink for BlindSink<'_> {
         let z_corrs = [zx[0] - zmasks[0].x, zx[1] - zmasks[1].x, zx[2] - zmasks[2].x];
         self.tx.append("logup_prod_corrections", 48);
         let z: Vec<ProverAuthed> =
-            zx.iter().zip(&zmasks).map(|(&x, mk)| ProverAuthed { x, m: mk.m }).collect();
+            zx.iter().zip(&zmasks).map(|(&x, mask)| mask.authenticate(x)).collect();
         self.prod.push((p0, q1, z[0]));
         self.prod.push((p1, q0, z[1]));
         self.prod.push((q0, q1, z[2]));
@@ -1966,10 +1966,7 @@ impl Sink for BlindSink<'_> {
         let mut cols_a = Vec::with_capacity(cols.len());
         for (ci, c) in cols.iter().enumerate() {
             self.col_corrs.push([c[0] - cmasks[2 * ci].x, c[1] - cmasks[2 * ci + 1].x]);
-            cols_a.push([
-                ProverAuthed { x: c[0], m: cmasks[2 * ci].m },
-                ProverAuthed { x: c[1], m: cmasks[2 * ci + 1].m },
-            ]);
+            cols_a.push([cmasks[2 * ci].authenticate(c[0]), cmasks[2 * ci + 1].authenticate(c[1])]);
         }
         // Extended layer-end relation:
         // claim = c_l·(λ(z₁+z₂) + z₃) + Σ_k eq_r·(w0·ṽ0 + w1·ṽ1).
@@ -2415,10 +2412,10 @@ fn cross_prover(
     let cross_corrs =
         [zx[0] - masks[0].x, zx[1] - masks[1].x, zx[2] - masks[2].x, zx[3] - masks[3].x];
     tx.append("logup_cross_corrections", 64);
-    let za = ProverAuthed { x: zx[0], m: masks[0].m };
-    let zb = ProverAuthed { x: zx[1], m: masks[1].m };
-    let inv_f = ProverAuthed { x: zx[2], m: masks[2].m };
-    let inv_t = ProverAuthed { x: zx[3], m: masks[3].m };
+    let za = masks[0].authenticate(zx[0]);
+    let zb = masks[1].authenticate(zx[1]);
+    let inv_f = masks[2].authenticate(zx[2]);
+    let inv_t = masks[3].authenticate(zx[3]);
     prod.push((pf, qt, za));
     prod.push((ptn, qf, zb));
     prod.push((qf, inv_f, ProverAuthed::from_public(Fp2::ONE)));
@@ -2965,9 +2962,9 @@ fn finish_table_side_prove(
             .expect("C6 LogUp aggregate correction schedule");
         agg_corrs.push([zx[0] - masks[0].x, zx[1] - masks[1].x, zx[2] - masks[2].x]);
         tx.append("logup_aggregate_corrections", 48);
-        let z1 = ProverAuthed { x: zx[0], m: masks[0].m };
-        let z2 = ProverAuthed { x: zx[1], m: masks[1].m };
-        let z3 = ProverAuthed { x: zx[2], m: masks[2].m };
+        let z1 = masks[0].authenticate(zx[0]);
+        let z2 = masks[1].authenticate(zx[1]);
+        let z3 = masks[2].authenticate(zx[2]);
         prod.push((pr, qs, z1));
         prod.push((ps, qr, z2));
         prod.push((qr, qs, z3));
@@ -3489,7 +3486,7 @@ mod tests {
     ) -> (ProverAuthed, VerifierKey) {
         let f = ps.draw_fulls(dom, 1)[0];
         let kf = vc.expand_full_keys(dom, 1)[0];
-        (ProverAuthed { x, m: f.m }, VerifierKey { k: kf + vc.delta * (x - f.x) })
+        (f.authenticate(x), VerifierKey { k: kf + vc.delta * (x - f.x) })
     }
 
     fn rand_point(rng: &mut impl Rng, n: usize) -> Vec<Fp2> {
@@ -3814,7 +3811,7 @@ mod tests {
         let output_lifted: Vec<Fp2> = output.iter().copied().map(Fp2::from_base).collect();
         let external_value = crate::mle::eval_mle(&output_lifted, &external_point);
         let external_auth =
-            ProverAuthed { x: external_value, m: Fp2::new(Fp::new(0xfeed), Fp::new(0xcafe)) };
+            ProverAuthed::new(external_value, Fp2::new(Fp::new(0xfeed), Fp::new(0xcafe)));
 
         let make_aux =
             || vec![LeafAuxClaim { col: 1, point: external_point.clone(), value: external_auth }];

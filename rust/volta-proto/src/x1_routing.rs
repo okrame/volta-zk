@@ -803,7 +803,7 @@ fn prove_layer(
     let rowsum_mask = cx.stream.draw_fulls(rowsum_dom, 1)[0];
     let rowsum_corr = rowsum_value - rowsum_mask.x;
     cx.tx.append("x1_rowsum_correction", 16);
-    let rowsum_auth = ProverAuthed { x: rowsum_value, m: rowsum_mask.m };
+    let rowsum_auth = rowsum_mask.authenticate(rowsum_value);
     let denom_open = open_fp_vec_p(cx.stream, denom_dom, &denom_fp, &rho_rows);
     push_honest_zero(
         &mut cx.zero,

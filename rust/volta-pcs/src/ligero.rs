@@ -796,7 +796,7 @@ pub fn open_zk(
     let fc = stream.draw_fulls(dom_s, 1)[0];
     let corr_s = s_val - fc.x;
     tx.append("pcs_s_correction", 16);
-    let s_auth = ProverAuthed { x: s_val, m: fc.m };
+    let s_auth = fc.authenticate(s_val);
     tm.t_ip_s = t2.elapsed().as_secs_f64();
 
     // 5. Column queries (public coins after all prover messages above).
@@ -1425,7 +1425,7 @@ pub fn open_multi_zk_resident(
         let q_col = eq_vec(&claims[g].0.point[..col_bits]);
         let s_val = s_values[g];
         corr_ss.push(s_val - fcs[g].x);
-        let s_auth = ProverAuthed { x: s_val, m: fcs[g].m };
+        let s_auth = fcs[g].authenticate(s_val);
         let ip = (0..cols).fold(Fp2::ZERO, |sum, j| sum + u_gs[g][j] * q_col[j]);
         zs.push(claims[g].1.add(s_auth).sub(ProverAuthed::from_public(ip)));
     }
@@ -1697,7 +1697,7 @@ fn open_multi_zk_impl(
     for (g, geo) in geoms.iter().enumerate() {
         let s_val = (0..cols).fold(Fp2::ZERO, |a, j| a + masks[1 + g][j] * geo.q_col[j]);
         corr_ss.push(s_val - fcs[g].x);
-        let s_auth = ProverAuthed { x: s_val, m: fcs[g].m };
+        let s_auth = fcs[g].authenticate(s_val);
         let ip = (0..cols).fold(Fp2::ZERO, |a, j| a + u_gs[g][j] * geo.q_col[j]);
         zs.push(claims[g].1.add(s_auth).sub(ProverAuthed::from_public(ip)));
     }

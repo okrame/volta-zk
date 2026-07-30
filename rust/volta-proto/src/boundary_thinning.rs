@@ -121,10 +121,7 @@ fn prove_matrix_eval_value(
         .record_c6_fullfield_plaintexts(domain, &[value])
         .expect("C6 q-bridge correction schedule");
     cx.tx.append("t1_q_bridge_correction", 16);
-    (
-        correction,
-        BoundaryClaimP { point: point.to_vec(), value: ProverAuthed { x: value, m: mask.m } },
-    )
+    (correction, BoundaryClaimP { point: point.to_vec(), value: mask.authenticate(value) })
 }
 
 pub(crate) fn verify_matrix_eval_claim(
@@ -188,7 +185,7 @@ pub(crate) fn prove_eq_reduction_i16(
         .record_c6_fullfield_plaintexts(doms.terminal, &[tensor_final])
         .expect("C6 equality-reducer terminal correction schedule");
     cx.tx.append("t1_eq_terminal_correction", 16);
-    let terminal = ProverAuthed { x: tensor_final, m: terminal_mask.m };
+    let terminal = terminal_mask.authenticate(tensor_final);
     let close = terminal.scale(coefficient_final).sub(final_claim);
     debug_assert_eq!(
         coefficient_final,
@@ -334,7 +331,7 @@ pub(crate) fn prove_eq_reduction_resident(
         .record_c6_fullfield_plaintexts(doms.terminal, &[tensor_final])
         .expect("C6 resident equality-reducer terminal correction schedule");
     cx.tx.append("t1_eq_terminal_correction", 16);
-    let terminal = ProverAuthed { x: tensor_final, m: terminal_mask.m };
+    let terminal = terminal_mask.authenticate(tensor_final);
     cx.zero.push(terminal.scale(coefficient_final).sub(final_claim));
     debug_assert_eq!(
         coefficient_final,
@@ -384,7 +381,7 @@ mod tests {
     ) -> (BoundaryClaimP, Fp2) {
         let value = eval_mle(table, &point);
         let mask = stream.draw_fulls(domain, 1)[0];
-        (BoundaryClaimP { point, value: ProverAuthed { x: value, m: mask.m } }, value - mask.x)
+        (BoundaryClaimP { point, value: mask.authenticate(value) }, value - mask.x)
     }
 
     #[test]

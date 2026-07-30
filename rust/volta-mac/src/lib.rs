@@ -8,6 +8,7 @@
 
 pub mod auth;
 pub mod authed;
+pub mod c6_trace;
 pub mod corr;
 pub mod open;
 pub mod transcript;
@@ -16,6 +17,10 @@ pub use auth::{
     auth_prover, auth_verifier, auth_verifier_from_epilogue, prover_tags_from_epilogue,
 };
 pub use authed::{ProverAuthed, ProverSubAuthed, VerifierKey};
+pub use c6_trace::{
+    begin_c6_prover_trace, finish_c6_prover_trace, record_c6_product_closure, record_c6_zero_roots,
+    C6ProverTraceSnapshot, C6TraceError, C6TraceNode, C6TraceProductClosure, C6TraceToken,
+};
 pub use corr::{
     C6FullfieldWitnessAudit, C6FullfieldWitnessDraw, C6SubfieldWitnessAudit, C6SubfieldWitnessDraw,
     ConnectionCorrelationScope, CorrCounters, CorrIndex, CorrReservationError, CorrScheduleAudit,

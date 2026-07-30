@@ -135,7 +135,7 @@ impl C6SourceWitness {
     }
 
     fn prover_value(self) -> ProverAuthed {
-        ProverAuthed { x: self.base_plaintext() + self.correction(), m: self.tag() }
+        ProverAuthed::new(self.base_plaintext() + self.correction(), self.tag())
     }
 
     fn is_uncorrected_full(self) -> bool {

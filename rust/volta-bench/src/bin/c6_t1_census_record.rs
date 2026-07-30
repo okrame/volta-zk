@@ -16,7 +16,10 @@ use volta_gpt2::{
     argmax, band_model_witness, decode_step, forward_model, forward_model_tokens, load_model,
     Gpt2Model, KvCache,
 };
-use volta_mac::{zero_batch_exchange, CorrelationStream, Transcript, VerifierCtx};
+use volta_mac::{
+    begin_c6_prover_trace, finish_c6_prover_trace, zero_batch_exchange, CorrelationStream,
+    Transcript, VerifierCtx,
+};
 use volta_proto::logup::Doms;
 use volta_proto::{
     audit_c6_t1_source_census, layer_dom_base, prod_batch_prover, prod_batch_verify,
@@ -46,6 +49,7 @@ struct Args {
     diagnostic: bool,
     subfield_witness: bool,
     source_witness: bool,
+    operation_trace: bool,
 }
 
 fn args() -> Result<Args, String> {
@@ -54,6 +58,7 @@ fn args() -> Result<Args, String> {
     let mut diagnostic = false;
     let mut subfield_witness = false;
     let mut source_witness = false;
+    let mut operation_trace = false;
     let mut values = env::args().skip(1);
     while let Some(argument) = values.next() {
         match argument.as_str() {
@@ -70,16 +75,31 @@ fn args() -> Result<Args, String> {
             "--diagnostic" => diagnostic = true,
             "--subfield-witness" => subfield_witness = true,
             "--source-witness" => source_witness = true,
+            "--operation-trace" => operation_trace = true,
             _ => return Err(format!("unknown argument {argument}")),
         }
     }
     if diagnostic == output.is_some() {
         return Err("choose exactly one of --diagnostic or --output PATH".to_owned());
     }
-    if subfield_witness && source_witness {
-        return Err("--subfield-witness and --source-witness are mutually exclusive".to_owned());
+    if [subfield_witness, source_witness, operation_trace]
+        .into_iter()
+        .filter(|enabled| *enabled)
+        .count()
+        > 1
+    {
+        return Err(
+            "--subfield-witness, --source-witness and --operation-trace are mutually exclusive"
+                .to_owned(),
+        );
     }
-    Ok(Args { weights, output, diagnostic, subfield_witness, source_witness })
+    if operation_trace && !diagnostic {
+        return Err(
+            "--operation-trace is diagnostic-only until canonical DAG normalization closes"
+                .to_owned(),
+        );
+    }
+    Ok(Args { weights, output, diagnostic, subfield_witness, source_witness, operation_trace })
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -361,8 +381,20 @@ struct Record {
     subfield_witness: Option<SubfieldWitnessRow>,
     #[serde(skip_serializing_if = "Option::is_none")]
     source_witness: Option<SourceWitnessRow>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    operation_trace: Option<OperationTraceRow>,
     source_sha256: BTreeMap<String, String>,
     all_pass: bool,
+}
+
+#[derive(Serialize)]
+struct OperationTraceRow {
+    diagnostic_only: bool,
+    source_count: u64,
+    operation_node_count: u64,
+    product_closures: u64,
+    product_triples: u64,
+    zero_roots: u64,
 }
 
 fn run(args: &Args) -> Result<Record, String> {
@@ -390,7 +422,12 @@ fn run(args: &Args) -> Result<Record, String> {
     let mut prover = CorrelationStream::new([0x42; 32]);
     let mut verifier =
         VerifierCtx::new([0x42; 32], Fp2::new(Fp::new(0xD31C_5A17), Fp::new(0x0BAD_CAFE)));
-    if args.source_witness {
+    let collect_source_witness = args.source_witness || args.operation_trace;
+    if args.operation_trace {
+        begin_c6_prover_trace().map_err(|error| error.to_string())?;
+        prover.enable_c6_operation_trace()?;
+    }
+    if collect_source_witness {
         prover.enable_c6_source_witness_collection()?;
     } else if args.subfield_witness {
         prover.enable_c6_subfield_witness_collection()?;
@@ -480,6 +517,43 @@ fn run(args: &Args) -> Result<Record, String> {
         return Err("C6 closed transcripts differ".to_owned());
     }
 
+    let operation_trace = if args.operation_trace {
+        let trace = finish_c6_prover_trace().map_err(|error| error.to_string())?;
+        let product_triples = trace.products.iter().try_fold(0u64, |sum, closure| {
+            sum.checked_add(
+                u64::try_from(closure.triples.len())
+                    .map_err(|_| "C6 operation-trace triple count exceeds u64".to_owned())?,
+            )
+            .ok_or_else(|| "C6 operation-trace triple count overflows".to_owned())
+        })?;
+        let source_count = u64::from(trace.source_count);
+        let operation_node_count = u64::try_from(trace.nodes.len())
+            .map_err(|_| "C6 operation-trace node count exceeds u64".to_owned())?;
+        let product_closures = u64::try_from(trace.products.len())
+            .map_err(|_| "C6 operation-trace closure count exceeds u64".to_owned())?;
+        let zero_roots = u64::try_from(trace.zero_roots.len())
+            .map_err(|_| "C6 operation-trace zero-root count exceeds u64".to_owned())?;
+        if source_count != 4_975_525
+            || product_closures != 673
+            || product_triples != 22_339
+            || zero_roots != 8_170
+        {
+            return Err(format!(
+                "C6 operation-trace census changed: sources={source_count}, closures={product_closures}, triples={product_triples}, zero_roots={zero_roots}"
+            ));
+        }
+        Some(OperationTraceRow {
+            diagnostic_only: true,
+            source_count,
+            operation_node_count,
+            product_closures,
+            product_triples,
+            zero_roots,
+        })
+    } else {
+        None
+    };
+
     let prover_schedule =
         prover.schedule_audit().ok_or_else(|| "missing closed prover audit".to_owned())?;
     let verifier_schedule =
@@ -537,7 +611,7 @@ fn run(args: &Args) -> Result<Record, String> {
         None
     };
 
-    let source_witness = if args.source_witness {
+    let source_witness = if collect_source_witness {
         let primary_subfield = prover.finish_c6_subfield_witness_collection()?;
         let primary_fullfield = prover.finish_c6_fullfield_witness_collection()?;
         let primary =
@@ -664,19 +738,28 @@ fn run(args: &Args) -> Result<Record, String> {
     ] {
         source_sha256.insert(relative.to_owned(), sha256(&root.join(relative))?);
     }
-    if args.source_witness {
+    if collect_source_witness {
         let relative = "rust/volta-proto/src/c6_source.rs";
         source_sha256.insert(relative.to_owned(), sha256(&root.join(relative))?);
     }
+    if args.operation_trace {
+        for relative in ["rust/volta-mac/src/c6_trace.rs", "rust/volta-mac/src/authed.rs"] {
+            source_sha256.insert(relative.to_owned(), sha256(&root.join(relative))?);
+        }
+    }
     Ok(Record {
-        schema: if args.source_witness {
+        schema: if args.operation_trace {
+            4
+        } else if args.source_witness {
             3
         } else if args.subfield_witness {
             2
         } else {
             1
         },
-        milestone: if args.source_witness {
+        milestone: if args.operation_trace {
+            "C6-T1-operation-trace-diagnostic".to_owned()
+        } else if args.source_witness {
             "C6-T1-paired-source-witness-reference".to_owned()
         } else if args.subfield_witness {
             "C6-T1-paired-subfield-witness-reference".to_owned()
@@ -733,6 +816,7 @@ fn run(args: &Args) -> Result<Record, String> {
         },
         subfield_witness,
         source_witness,
+        operation_trace,
         source_sha256,
         all_pass: true,
     })

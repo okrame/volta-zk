@@ -537,7 +537,7 @@ impl BatchBlindState {
             .expect("C6 scheduled LogUp-root correction schedule");
         self.root_corrs = [p - masks[0].x, q - masks[1].x];
         tx.append("logup_root_corrections", 32);
-        self.roots = (ProverAuthed { x: p, m: masks[0].m }, ProverAuthed { x: q, m: masks[1].m });
+        self.roots = (masks[0].authenticate(p), masks[1].authenticate(q));
         self.cp = self.roots.0;
         self.cq = self.roots.1;
         Ok(())
@@ -580,8 +580,8 @@ impl BatchBlindState {
         self.rounds_cur.push([h[0] - masks[0].x, h[1] - masks[1].x]);
         tx.append("logup_round_corrections", 32);
         self.pending_round2 = Some(PendingRound2 {
-            h0: ProverAuthed { x: h[0], m: masks[0].m },
-            h2: ProverAuthed { x: h[1], m: masks[1].m },
+            h0: masks[0].authenticate(h[0]),
+            h2: masks[1].authenticate(h[1]),
             point,
         });
         Ok(())
@@ -629,9 +629,9 @@ impl BatchBlindState {
         tx.append("logup_aux_round_corrections", 48);
         self.pending_round3 = Some(PendingRound3 {
             values: [
-                ProverAuthed { x: g[0], m: masks[0].m },
-                ProverAuthed { x: g[1], m: masks[1].m },
-                ProverAuthed { x: g[2], m: masks[2].m },
+                masks[0].authenticate(g[0]),
+                masks[1].authenticate(g[1]),
+                masks[2].authenticate(g[2]),
             ],
             point,
         });
@@ -686,10 +686,10 @@ impl BatchBlindState {
             splits[3] - masks[3].x,
         ];
         tx.append("logup_split_corrections", 64);
-        let p0 = ProverAuthed { x: splits[0], m: masks[0].m };
-        let p1 = ProverAuthed { x: splits[1], m: masks[1].m };
-        let q0 = ProverAuthed { x: splits[2], m: masks[2].m };
-        let q1 = ProverAuthed { x: splits[3], m: masks[3].m };
+        let p0 = masks[0].authenticate(splits[0]);
+        let p1 = masks[1].authenticate(splits[1]);
+        let q0 = masks[2].authenticate(splits[2]);
+        let q1 = masks[3].authenticate(splits[3]);
         let zx = [splits[0] * splits[3], splits[1] * splits[2], splits[2] * splits[3]];
         let draw = self.corr.take(CorrelationScope::LogupProduct)?;
         let zmasks = correlations.draw(draw.range, draw.row);
@@ -699,9 +699,9 @@ impl BatchBlindState {
         let z_corrs = [zx[0] - zmasks[0].x, zx[1] - zmasks[1].x, zx[2] - zmasks[2].x];
         tx.append("logup_prod_corrections", 48);
         let z = [
-            ProverAuthed { x: zx[0], m: zmasks[0].m },
-            ProverAuthed { x: zx[1], m: zmasks[1].m },
-            ProverAuthed { x: zx[2], m: zmasks[2].m },
+            zmasks[0].authenticate(zx[0]),
+            zmasks[1].authenticate(zx[1]),
+            zmasks[2].authenticate(zx[2]),
         ];
         prod.push((p0, q1, z[0]));
         prod.push((p1, q0, z[1]));
@@ -728,8 +728,8 @@ impl BatchBlindState {
                 self.col_corrs
                     .push([column[0] - cmasks[2 * index].x, column[1] - cmasks[2 * index + 1].x]);
                 authenticated.push([
-                    ProverAuthed { x: column[0], m: cmasks[2 * index].m },
-                    ProverAuthed { x: column[1], m: cmasks[2 * index + 1].m },
+                    cmasks[2 * index].authenticate(column[0]),
+                    cmasks[2 * index + 1].authenticate(column[1]),
                 ]);
             }
             for final_claim in finals {
@@ -3120,10 +3120,7 @@ mod tests {
     ) -> (ProverAuthed, VerifierKey) {
         let corr = stream.draw_fulls(domain, 1)[0];
         let key = ctx.expand_full_keys(domain, 1)[0];
-        (
-            ProverAuthed { x: value, m: corr.m },
-            VerifierKey { k: key + ctx.delta * (value - corr.x) },
-        )
+        (corr.authenticate(value), VerifierKey { k: key + ctx.delta * (value - corr.x) })
     }
 
     fn raw_d2h_elements(depth: usize, columns: usize) -> usize {
@@ -3581,7 +3578,7 @@ mod tests {
                         aux_claims: vec![LeafAuxClaim {
                             col: 1,
                             point: case.point.clone(),
-                            value: ProverAuthed { x: case.value, m: corr.m },
+                            value: corr.authenticate(case.value),
                         }],
                     }
                 })
@@ -3640,7 +3637,7 @@ mod tests {
                 aux_claims: vec![LeafAuxClaim {
                     col: 1,
                     point: case.point.clone(),
-                    value: ProverAuthed { x: case.value, m: corr.m },
+                    value: corr.authenticate(case.value),
                 }],
             });
         }

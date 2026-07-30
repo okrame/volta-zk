@@ -11,6 +11,8 @@
 //!   value `x ∈ E` from `stream(dom | FULL_BIT).next_fp2()`, tag from
 //!   `stream(dom | FULL_BIT | TAG_BIT).next_fp2()`.
 
+use crate::authed::{ProverAuthed, ProverSubAuthed};
+use crate::c6_trace::C6TraceToken;
 use std::collections::HashMap;
 use volta_field::{Fp, Fp2, FpStream};
 use volta_pcg::{FullVole, ProverPcgPool, SubVole, VerifierPcgPool};
@@ -84,6 +86,8 @@ impl CorrIndex {
 pub struct SubCorr {
     pub r: Fp,
     pub m: Fp2,
+    #[cfg(feature = "c6-trace")]
+    trace: C6TraceToken,
 }
 
 /// Prover half of a full-field correlation (fresh mask): `(x, m)`, `k = m + Δ·x`.
@@ -91,6 +95,70 @@ pub struct SubCorr {
 pub struct FullCorr {
     pub x: Fp2,
     pub m: Fp2,
+    #[cfg(feature = "c6-trace")]
+    trace: C6TraceToken,
+}
+
+impl SubCorr {
+    #[inline]
+    fn new(r: Fp, m: Fp2, _trace: C6TraceToken) -> Self {
+        Self {
+            r,
+            m,
+            #[cfg(feature = "c6-trace")]
+            trace: _trace,
+        }
+    }
+
+    /// Authenticate a corrected plaintext while preserving its canonical
+    /// correlation-source provenance in a diagnostic trace build.
+    #[inline]
+    pub fn authenticate(self, x: Fp) -> ProverSubAuthed {
+        ProverSubAuthed::from_traced_parts(x, self.m, self.c6_trace_token())
+    }
+
+    #[inline]
+    pub fn c6_trace_token(self) -> C6TraceToken {
+        #[cfg(feature = "c6-trace")]
+        {
+            self.trace
+        }
+        #[cfg(not(feature = "c6-trace"))]
+        {
+            C6TraceToken::untracked()
+        }
+    }
+}
+
+impl FullCorr {
+    #[inline]
+    fn new(x: Fp2, m: Fp2, _trace: C6TraceToken) -> Self {
+        Self {
+            x,
+            m,
+            #[cfg(feature = "c6-trace")]
+            trace: _trace,
+        }
+    }
+
+    /// Authenticate a corrected plaintext while preserving its canonical
+    /// correlation-source provenance in a diagnostic trace build.
+    #[inline]
+    pub fn authenticate(self, x: Fp2) -> ProverAuthed {
+        ProverAuthed::from_traced_parts(x, self.m, self.c6_trace_token())
+    }
+
+    #[inline]
+    pub fn c6_trace_token(self) -> C6TraceToken {
+        #[cfg(feature = "c6-trace")]
+        {
+            self.trace
+        }
+        #[cfg(not(feature = "c6-trace"))]
+        {
+            C6TraceToken::untracked()
+        }
+    }
 }
 
 /// Full-field correlation consumed uncorrected as the masking leaf of one
@@ -117,6 +185,10 @@ impl ProductMaskCorr {
 
     pub fn product_triples(&self) -> usize {
         self.product_triples
+    }
+
+    pub fn c6_trace_token(&self) -> C6TraceToken {
+        self.correlation.c6_trace_token()
     }
 }
 
@@ -1199,6 +1271,12 @@ pub struct CorrelationStream {
     c6_subfield_witness_closed: bool,
     c6_fullfield_witness: Option<C6FullfieldWitnessRecorder>,
     c6_fullfield_witness_closed: bool,
+    #[cfg(feature = "c6-trace")]
+    c6_trace_sources_enabled: bool,
+    #[cfg(feature = "c6-trace")]
+    c6_trace_next_source: u32,
+    #[cfg(feature = "c6-trace")]
+    c6_trace_sub_sources: HashMap<u64, Vec<C6TraceToken>>,
 }
 
 impl CorrelationStream {
@@ -1212,6 +1290,12 @@ impl CorrelationStream {
             c6_subfield_witness_closed: false,
             c6_fullfield_witness: None,
             c6_fullfield_witness_closed: false,
+            #[cfg(feature = "c6-trace")]
+            c6_trace_sources_enabled: false,
+            #[cfg(feature = "c6-trace")]
+            c6_trace_next_source: 0,
+            #[cfg(feature = "c6-trace")]
+            c6_trace_sub_sources: HashMap::new(),
         }
     }
 
@@ -1231,6 +1315,12 @@ impl CorrelationStream {
             c6_subfield_witness_closed: false,
             c6_fullfield_witness: None,
             c6_fullfield_witness_closed: false,
+            #[cfg(feature = "c6-trace")]
+            c6_trace_sources_enabled: false,
+            #[cfg(feature = "c6-trace")]
+            c6_trace_next_source: 0,
+            #[cfg(feature = "c6-trace")]
+            c6_trace_sub_sources: HashMap::new(),
         }
     }
 
@@ -1244,6 +1334,12 @@ impl CorrelationStream {
             c6_subfield_witness_closed: false,
             c6_fullfield_witness: None,
             c6_fullfield_witness_closed: false,
+            #[cfg(feature = "c6-trace")]
+            c6_trace_sources_enabled: false,
+            #[cfg(feature = "c6-trace")]
+            c6_trace_next_source: 0,
+            #[cfg(feature = "c6-trace")]
+            c6_trace_sub_sources: HashMap::new(),
         }
     }
 
@@ -1260,7 +1356,164 @@ impl CorrelationStream {
             c6_subfield_witness_closed: false,
             c6_fullfield_witness: None,
             c6_fullfield_witness_closed: false,
+            #[cfg(feature = "c6-trace")]
+            c6_trace_sources_enabled: false,
+            #[cfg(feature = "c6-trace")]
+            c6_trace_next_source: 0,
+            #[cfg(feature = "c6-trace")]
+            c6_trace_sub_sources: HashMap::new(),
         }
+    }
+
+    /// Enable canonical source-token assignment for one diagnostic operation
+    /// trace. The process-local trace must already be active, and the stream
+    /// must not have consumed any correlation.
+    pub fn enable_c6_operation_trace(&mut self) -> Result<(), &'static str> {
+        #[cfg(feature = "c6-trace")]
+        {
+            if self.counters != CorrCounters::default() {
+                return Err("C6 operation tracing must start before the first draw");
+            }
+            if self.c6_trace_sources_enabled {
+                return Err("C6 operation tracing is already enabled");
+            }
+            self.c6_trace_sources_enabled = true;
+            self.c6_trace_next_source = 0;
+            self.c6_trace_sub_sources.clear();
+            Ok(())
+        }
+        #[cfg(not(feature = "c6-trace"))]
+        {
+            Err("C6 operation tracing requires the diagnostic c6-trace feature")
+        }
+    }
+
+    #[cfg(feature = "c6-trace")]
+    fn allocate_c6_trace_sources(&mut self, count: usize) -> Vec<C6TraceToken> {
+        if !self.c6_trace_sources_enabled {
+            return vec![C6TraceToken::untracked(); count];
+        }
+        let mut tokens = Vec::with_capacity(count);
+        for _ in 0..count {
+            let index = self.c6_trace_next_source;
+            let token = C6TraceToken::source(index)
+                .unwrap_or_else(|error| panic!("C6 source provenance HARD STOP: {error}"));
+            self.c6_trace_next_source =
+                index.checked_add(1).expect("C6 trace source counter overflow");
+            tokens.push(token);
+        }
+        tokens
+    }
+
+    /// Reconstruct one authenticated subfield source after lazy tag
+    /// expansion, using the token assigned at the original mask draw.
+    #[inline]
+    pub fn authenticate_subfield_at(
+        &self,
+        domain: u64,
+        index: usize,
+        x: Fp,
+        m: Fp2,
+    ) -> ProverSubAuthed {
+        #[cfg(feature = "c6-trace")]
+        {
+            let trace = if self.c6_trace_sources_enabled {
+                *self
+                    .c6_trace_sub_sources
+                    .get(&domain)
+                    .unwrap_or_else(|| {
+                        panic!("C6 subfield source domain {domain:#x} lacks provenance")
+                    })
+                    .get(index)
+                    .unwrap_or_else(|| {
+                        panic!("C6 subfield source index {index} is out of range at {domain:#x}")
+                    })
+            } else {
+                C6TraceToken::untracked()
+            };
+            return ProverSubAuthed::from_traced_parts(x, m, trace);
+        }
+        #[cfg(not(feature = "c6-trace"))]
+        {
+            let _ = (domain, index);
+            ProverSubAuthed::new(x, m)
+        }
+    }
+
+    /// Authenticate one public linear form over a previously allocated
+    /// subfield source domain. In a trace build, provenance is derived only
+    /// from the canonical source tokens and the supplied public weights.
+    #[inline]
+    pub fn authenticate_subfield_linear(
+        &self,
+        domain: u64,
+        weights: &[Fp2],
+        x: Fp2,
+        m: Fp2,
+    ) -> ProverAuthed {
+        #[cfg(feature = "c6-trace")]
+        {
+            if self.c6_trace_sources_enabled {
+                let sources = self.c6_trace_sub_sources.get(&domain).unwrap_or_else(|| {
+                    panic!("C6 subfield linear domain {domain:#x} lacks provenance")
+                });
+                assert_eq!(
+                    sources.len(),
+                    weights.len(),
+                    "C6 subfield linear weight count mismatch at {domain:#x}"
+                );
+                let trace = sources
+                    .iter()
+                    .zip(weights)
+                    .fold(C6TraceToken::public_zero(), |acc, (&source, &weight)| {
+                        acc.add(source.scale(weight))
+                    });
+                return ProverAuthed::from_traced_parts(x, m, trace);
+            }
+        }
+        let _ = (domain, weights);
+        ProverAuthed::new(x, m)
+    }
+
+    /// Sparse twin of [`Self::authenticate_subfield_linear`]. `source_count`
+    /// binds the complete allocated domain while `terms` names exactly the
+    /// source indices used by the public linear kernel.
+    #[inline]
+    pub fn authenticate_subfield_sparse_linear(
+        &self,
+        domain: u64,
+        source_count: usize,
+        terms: &[(usize, Fp2)],
+        x: Fp2,
+        m: Fp2,
+    ) -> ProverAuthed {
+        #[cfg(feature = "c6-trace")]
+        {
+            if self.c6_trace_sources_enabled {
+                let sources = self.c6_trace_sub_sources.get(&domain).unwrap_or_else(|| {
+                    panic!("C6 sparse subfield domain {domain:#x} lacks provenance")
+                });
+                assert_eq!(
+                    sources.len(),
+                    source_count,
+                    "C6 sparse subfield source count mismatch at {domain:#x}"
+                );
+                let trace = terms.iter().fold(
+                    C6TraceToken::public_zero(),
+                    |acc, &(index, weight)| {
+                        let source = *sources.get(index).unwrap_or_else(|| {
+                            panic!(
+                                "C6 sparse subfield source index {index} is out of range at {domain:#x}"
+                            )
+                        });
+                        acc.add(source.scale(weight))
+                    },
+                );
+                return ProverAuthed::from_traced_parts(x, m, trace);
+            }
+        }
+        let _ = (domain, source_count, terms);
+        ProverAuthed::new(x, m)
     }
 
     /// Enable the diagnostic logical-schedule recorder before the first draw.
@@ -1557,6 +1810,15 @@ impl CorrelationStream {
                 .record_masks(base_domain, rows, cols, &masks)
                 .expect("C6 subfield witness mask schedule");
         }
+        #[cfg(feature = "c6-trace")]
+        if self.c6_trace_sources_enabled {
+            for row in 0..rows {
+                let domain = base_domain + row as u64;
+                let tokens = self.allocate_c6_trace_sources(cols);
+                let previous = self.c6_trace_sub_sources.insert(domain, tokens);
+                assert!(previous.is_none(), "duplicate C6 subfield trace domain {domain:#x}");
+            }
+        }
         reservation
     }
 
@@ -1564,7 +1826,29 @@ impl CorrelationStream {
     pub fn draw_subs(&mut self, dom: u64, n: usize) -> Vec<SubCorr> {
         let masks = self.reserve_sub_mask_rows(dom, 1, n).into_host_masks();
         let tags = self.draw_sub_tags(dom, n);
-        masks.into_iter().zip(tags).map(|(r, m)| SubCorr { r, m }).collect()
+        #[cfg(feature = "c6-trace")]
+        {
+            return masks
+                .into_iter()
+                .zip(tags)
+                .enumerate()
+                .map(|(index, (r, m))| {
+                    SubCorr::new(
+                        r,
+                        m,
+                        self.authenticate_subfield_at(dom, index, r, m).c6_trace_token(),
+                    )
+                })
+                .collect();
+        }
+        #[cfg(not(feature = "c6-trace"))]
+        {
+            masks
+                .into_iter()
+                .zip(tags)
+                .map(|(r, m)| SubCorr::new(r, m, C6TraceToken::untracked()))
+                .collect()
+        }
     }
 
     /// Draw the mask stream only (what the P1 GEMM epilogue consumes); the
@@ -1638,9 +1922,20 @@ impl CorrelationStream {
                 allocation.take_full(dom, n);
                 let mut xs = FpStream::domain_separated(*seed, dom | FULL_BIT);
                 let mut ms = FpStream::domain_separated(*seed, dom | FULL_BIT | TAG_BIT);
-                (0..n).map(|_| FullCorr { x: xs.next_fp2(), m: ms.next_fp2() }).collect()
+                (0..n)
+                    .map(|_| FullCorr::new(xs.next_fp2(), ms.next_fp2(), C6TraceToken::untracked()))
+                    .collect()
             }
             ProverBackend::Pooled(p) => p.draw_fulls(dom, n),
+        };
+        #[cfg(feature = "c6-trace")]
+        let correlations = {
+            let tokens = self.allocate_c6_trace_sources(n);
+            correlations
+                .into_iter()
+                .zip(tokens)
+                .map(|(correlation, trace)| FullCorr::new(correlation.x, correlation.m, trace))
+                .collect::<Vec<_>>()
         };
         if let Some(audit) = &mut self.schedule_audit {
             audit.record(CorrScheduleKind::FullField, role, product_triples, dom, n);
@@ -2054,7 +2349,10 @@ impl PooledProver {
         let off = self.next_full;
         self.next_full += n;
         record_alloc(&mut self.hasher, b"full", dom, off, n);
-        self.fulls[off..off + n].iter().map(|f| FullCorr { x: f.x, m: f.m }).collect()
+        self.fulls[off..off + n]
+            .iter()
+            .map(|f| FullCorr::new(f.x, f.m, C6TraceToken::untracked()))
+            .collect()
     }
 
     fn take_sub_domain(&mut self, dom: u64, n: usize) -> usize {
@@ -2139,6 +2437,37 @@ fn record_alloc(h: &mut blake3::Hasher, kind: &[u8], dom: u64, off: usize, n: us
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(feature = "c6-trace"))]
+    #[test]
+    fn ordinary_correlation_layouts_remain_pinned() {
+        assert_eq!(std::mem::size_of::<SubCorr>(), 24);
+        assert_eq!(std::mem::size_of::<FullCorr>(), 32);
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn operation_trace_sources_follow_interleaved_draw_order() {
+        crate::c6_trace::begin_c6_prover_trace().unwrap();
+        let mut stream = CorrelationStream::new([0xA6; 32]);
+        stream.enable_c6_operation_trace().unwrap();
+        let subs = stream.draw_subs(0x10, 2);
+        let full = stream.draw_fulls(0x20, 1)[0];
+        let product = stream.draw_product_mask(0x30, 1);
+        assert_eq!(subs[0].c6_trace_token().source_index(), Some(0));
+        assert_eq!(subs[1].c6_trace_token().source_index(), Some(1));
+        assert_eq!(full.c6_trace_token().source_index(), Some(2));
+        assert_eq!(product.c6_trace_token().source_index(), Some(3));
+        let value = full.authenticate(Fp2::ONE);
+        crate::c6_trace::record_c6_product_closure(
+            &[[value.c6_trace_token(), value.c6_trace_token(), value.c6_trace_token()]],
+            product.c6_trace_token(),
+        )
+        .unwrap();
+        let snapshot = crate::c6_trace::finish_c6_prover_trace().unwrap();
+        assert_eq!(snapshot.source_count, 4);
+        assert_eq!(snapshot.products.len(), 1);
+    }
 
     #[test]
     fn corr_index_matches_p1_packing() {

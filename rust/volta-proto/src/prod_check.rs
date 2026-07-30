@@ -24,6 +24,15 @@ pub fn prod_batch_prover(
     tx: &mut Transcript,
 ) -> ProdProof {
     assert_eq!(mask.product_triples(), triples.len(), "ProductClosure mask/triple census mismatch");
+    #[cfg(feature = "c6-trace")]
+    {
+        let trace_triples = triples
+            .iter()
+            .map(|(a, b, c)| [a.c6_trace_token(), b.c6_trace_token(), c.c6_trace_token()])
+            .collect::<Vec<_>>();
+        volta_mac::record_c6_product_closure(&trace_triples, mask.c6_trace_token())
+            .unwrap_or_else(|error| panic!("C6 ProductClosure trace HARD STOP: {error}"));
+    }
     let mask = mask.into_inner();
     let mut m0 = mask.m;
     let mut m1 = mask.x;
@@ -89,7 +98,7 @@ mod tests {
         let mut ka = Vec::new();
         for ((f, kf), &x) in fulls.iter().zip(&kfulls).zip(xs) {
             let c = x - f.x; // correction transfer, 16 B in production
-            pa.push(ProverAuthed { x, m: f.m });
+            pa.push(ProverAuthed::new(x, f.m));
             ka.push(VerifierKey { k: *kf + vc.delta * c });
         }
         (pa, ka)

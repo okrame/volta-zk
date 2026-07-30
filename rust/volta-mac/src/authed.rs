@@ -6,6 +6,7 @@
 //! (Mac.lean `Valid.add/smul/neg/sub`), so both halves expose the same
 //! linear-algebra surface and stay in lockstep.
 
+use crate::c6_trace::C6TraceToken;
 use volta_field::{Fp, Fp2};
 
 /// Prover half of a full-field authenticated value: plaintext and tag in `E`.
@@ -14,6 +15,8 @@ use volta_field::{Fp, Fp2};
 pub struct ProverAuthed {
     pub x: Fp2,
     pub m: Fp2,
+    #[cfg(feature = "c6-trace")]
+    trace: C6TraceToken,
 }
 
 /// Prover half of a subfield-authenticated value (M5): plaintext in `F_p`
@@ -22,6 +25,8 @@ pub struct ProverAuthed {
 pub struct ProverSubAuthed {
     pub x: Fp,
     pub m: Fp2,
+    #[cfg(feature = "c6-trace")]
+    trace: C6TraceToken,
 }
 
 /// Verifier half: the MAC key. `Δ` lives in `VerifierCtx`, not here.
@@ -31,36 +36,108 @@ pub struct VerifierKey {
 }
 
 impl ProverAuthed {
-    pub const ZERO: ProverAuthed = ProverAuthed { x: Fp2::ZERO, m: Fp2::ZERO };
+    pub const ZERO: ProverAuthed =
+        ProverAuthed::from_traced_parts(Fp2::ZERO, Fp2::ZERO, C6TraceToken::public_zero());
+
+    #[inline]
+    pub const fn new(x: Fp2, m: Fp2) -> ProverAuthed {
+        Self::from_traced_parts(x, m, C6TraceToken::untracked())
+    }
+
+    #[inline]
+    pub(crate) const fn from_traced_parts(x: Fp2, m: Fp2, _trace: C6TraceToken) -> ProverAuthed {
+        ProverAuthed {
+            x,
+            m,
+            #[cfg(feature = "c6-trace")]
+            trace: _trace,
+        }
+    }
+
+    #[inline]
+    pub fn c6_trace_token(self) -> C6TraceToken {
+        #[cfg(feature = "c6-trace")]
+        {
+            self.trace
+        }
+        #[cfg(not(feature = "c6-trace"))]
+        {
+            C6TraceToken::untracked()
+        }
+    }
+
+    /// Preserve an already-derived diagnostic provenance token while
+    /// attaching the value/tag produced by an equivalent resident or fused
+    /// linear kernel. Ordinary builds have no token and reduce to `new`.
+    #[doc(hidden)]
+    #[inline]
+    pub fn with_same_c6_trace(self, x: Fp2, m: Fp2) -> ProverAuthed {
+        ProverAuthed::from_traced_parts(x, m, self.c6_trace_token())
+    }
 
     /// Public constant: tag 0 (Mac.lean `ofPublic`; verifier side is `Δ·c`).
     #[inline]
     pub fn from_public(c: Fp2) -> ProverAuthed {
-        ProverAuthed { x: c, m: Fp2::ZERO }
+        ProverAuthed::from_traced_parts(c, Fp2::ZERO, C6TraceToken::public(c))
     }
 
     #[inline]
     pub fn add(self, rhs: ProverAuthed) -> ProverAuthed {
-        ProverAuthed { x: self.x + rhs.x, m: self.m + rhs.m }
+        ProverAuthed::from_traced_parts(
+            self.x + rhs.x,
+            self.m + rhs.m,
+            self.c6_trace_token().add(rhs.c6_trace_token()),
+        )
     }
 
     #[inline]
     pub fn sub(self, rhs: ProverAuthed) -> ProverAuthed {
-        ProverAuthed { x: self.x - rhs.x, m: self.m - rhs.m }
+        ProverAuthed::from_traced_parts(
+            self.x - rhs.x,
+            self.m - rhs.m,
+            self.c6_trace_token().sub(rhs.c6_trace_token()),
+        )
     }
 
     /// Scale by a public scalar (Mac.lean `Valid.smul`).
     #[inline]
     pub fn scale(self, c: Fp2) -> ProverAuthed {
-        ProverAuthed { x: self.x * c, m: self.m * c }
+        ProverAuthed::from_traced_parts(self.x * c, self.m * c, self.c6_trace_token().scale(c))
     }
 }
 
 impl ProverSubAuthed {
+    #[inline]
+    pub const fn new(x: Fp, m: Fp2) -> ProverSubAuthed {
+        Self::from_traced_parts(x, m, C6TraceToken::untracked())
+    }
+
+    #[inline]
+    pub(crate) const fn from_traced_parts(x: Fp, m: Fp2, _trace: C6TraceToken) -> ProverSubAuthed {
+        ProverSubAuthed {
+            x,
+            m,
+            #[cfg(feature = "c6-trace")]
+            trace: _trace,
+        }
+    }
+
+    #[inline]
+    pub fn c6_trace_token(self) -> C6TraceToken {
+        #[cfg(feature = "c6-trace")]
+        {
+            self.trace
+        }
+        #[cfg(not(feature = "c6-trace"))]
+        {
+            C6TraceToken::untracked()
+        }
+    }
+
     /// Embed into the full field (Subfield.lean `SubAuthed.toAuthed`).
     #[inline]
     pub fn embed(self) -> ProverAuthed {
-        ProverAuthed { x: Fp2::from_base(self.x), m: self.m }
+        ProverAuthed::from_traced_parts(Fp2::from_base(self.x), self.m, self.c6_trace_token())
     }
 }
 
@@ -119,10 +196,18 @@ mod tests {
         )
     }
 
+    #[cfg(not(feature = "c6-trace"))]
+    #[test]
+    fn ordinary_authenticated_value_layouts_remain_pinned() {
+        assert_eq!(std::mem::size_of::<ProverAuthed>(), 32);
+        assert_eq!(std::mem::size_of::<ProverSubAuthed>(), 24);
+        assert_eq!(std::mem::size_of::<VerifierKey>(), 16);
+    }
+
     fn rand_authed(rng: &mut impl Rng, delta: Fp2) -> BothSides {
         let x = rand_fp2(rng);
         let m = rand_fp2(rng);
-        BothSides { p: ProverAuthed { x, m }, k: VerifierKey { k: m + delta * x } }
+        BothSides { p: ProverAuthed::new(x, m), k: VerifierKey { k: m + delta * x } }
     }
 
     #[test]
@@ -153,7 +238,7 @@ mod tests {
             let x = Fp::from_i64(rng.gen_range(-32768i64..32768));
             let m = rand_fp2(&mut rng);
             let k = VerifierKey { k: m + delta.mul_base(x) };
-            let bs = BothSides { p: ProverSubAuthed { x, m }.embed(), k };
+            let bs = BothSides { p: ProverSubAuthed::new(x, m).embed(), k };
             assert!(bs.valid(delta));
         }
     }

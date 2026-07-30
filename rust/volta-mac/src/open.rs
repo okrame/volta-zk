@@ -32,7 +32,7 @@ pub fn zero_open_verify(key: VerifierKey, m: Fp2) -> bool {
 pub fn fresh_zero_mask(corr: FullCorr, tx: &mut Transcript) -> (ProverAuthed, Fp2) {
     let c = Fp2::ZERO - corr.x;
     tx.append("mask_correction", 16);
-    (ProverAuthed { x: Fp2::ZERO, m: corr.m }, c)
+    (corr.authenticate(Fp2::ZERO), c)
 }
 
 /// Verifier: key of the re-centred mask, `k' = k + Δ·c`.
@@ -49,6 +49,12 @@ pub fn zero_batch_prover(
     chi: Fp2,
     tx: &mut Transcript,
 ) -> Fp2 {
+    #[cfg(feature = "c6-trace")]
+    {
+        let roots = ys.iter().map(|value| value.c6_trace_token()).collect::<Vec<_>>();
+        crate::c6_trace::record_c6_zero_roots(&roots)
+            .unwrap_or_else(|error| panic!("C6 zero-root trace HARD STOP: {error}"));
+    }
     let mut z = *mask;
     let mut w = Fp2::ONE;
     for y in ys {

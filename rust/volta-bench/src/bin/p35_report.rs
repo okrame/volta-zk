@@ -16,7 +16,7 @@ use std::time::Instant;
 use volta_bench::time_median;
 use volta_field::{Fp, Fp2, FpStream};
 use volta_gpt2::gemm_requant;
-use volta_mac::{CorrIndex, CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey};
+use volta_mac::{CorrIndex, CorrelationStream, Transcript, VerifierCtx, VerifierKey};
 use volta_pcs::{
     batch_reduce_prover, batch_reduce_verifier, commit, open_multi_zk, open_zk, verify_multi_open,
     verify_open, BlockClaim, LigeroParams, GPT2_FULL,
@@ -126,7 +126,7 @@ fn leakage_smoke() -> bool {
         let mut tx = Transcript::new([0xC7u8; 32]);
         let fc = ps.draw_fulls(dom(T_W_CLAIM, 0), 1)[0];
         tx.append("w_claim_correction", 16);
-        let claims = [(BlockClaim { offset: 0, point }, ProverAuthed { x: v, m: fc.m })];
+        let claims = [(BlockClaim { offset: 0, point }, fc.authenticate(v))];
         let (_bp, rstar, vstar, _) =
             batch_reduce_prover(&w, params.n_vars(), &claims, &mut ps, dom(T_BATCH, 0), &mut tx);
         let (op, _) =
@@ -216,10 +216,8 @@ fn main() {
         let fc = ps.draw_fulls(dom(T_W_CLAIM, g as u32), 1)[0];
         corr_vs.push(values[g] - fc.x);
         tx.append("w_claim_correction", 16);
-        claims_p.push((
-            BlockClaim { offset: *off, point: point.clone() },
-            ProverAuthed { x: values[g], m: fc.m },
-        ));
+        claims_p
+            .push((BlockClaim { offset: *off, point: point.clone() }, fc.authenticate(values[g])));
     }
 
     eprintln!("batch reduction ({n_claims} claims → 1 point) ...");
@@ -293,10 +291,8 @@ fn main() {
         let fc = psb.draw_fulls(dom(T_W_CLAIM, g as u32), 1)[0];
         corr_vsb.push(values[g] - fc.x);
         txb.append("w_claim_correction", 16);
-        claims_pb.push((
-            BlockClaim { offset: *off, point: point.clone() },
-            ProverAuthed { x: values[g], m: fc.m },
-        ));
+        claims_pb
+            .push((BlockClaim { offset: *off, point: point.clone() }, fc.authenticate(values[g])));
     }
     let t4 = Instant::now();
     let (mproof, mt) = open_multi_zk(

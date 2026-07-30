@@ -387,7 +387,7 @@ fn fresh_eval_p(value: Fp2, label: &'static str, cx: &mut BlockCtxP<'_>) -> (Fp2
     let mask = cx.stream.draw_fulls(dom, 1)[0];
     let corr = value - mask.x;
     cx.tx.append(label, 16);
-    (corr, ProverAuthed { x: value, m: mask.m })
+    (corr, mask.authenticate(value))
 }
 
 fn fresh_eval_k(corr: Fp2, label: &'static str, cx: &mut BlockCtxV<'_>) -> VerifierKey {
@@ -405,7 +405,7 @@ fn fresh_split_p(
     let dom = cx.doms.take(1);
     let masks = cx.stream.draw_fulls(dom, values.len());
     let corrs = values.iter().zip(&masks).map(|(&value, mask)| value - mask.x).collect();
-    let claims = values.iter().zip(masks).map(|(&x, mask)| ProverAuthed { x, m: mask.m }).collect();
+    let claims = values.iter().zip(masks).map(|(&x, mask)| mask.authenticate(x)).collect();
     cx.tx.append(label, 16 * values.len() as u64);
     (corrs, claims)
 }
@@ -1707,9 +1707,11 @@ fn fold_kv_auth_columns_p(
     kv_head: usize,
     col_point: &[Fp2],
     stream: &mut CorrelationStream,
-) -> (Vec<Fp2>, Vec<Fp2>) {
+) -> (Vec<Fp2>, Vec<ProverAuthed>) {
     let eq_col = eq_vec(col_point);
-    let tags = stream.draw_sub_tags(prepared.auth_doms[index], prepared.auth_values[index].len());
+    let domain = prepared.auth_doms[index];
+    let source_count = prepared.auth_values[index].len();
+    let tags = stream.draw_sub_tags(domain, source_count);
     let mut values = vec![Fp2::ZERO; 8];
     let mut folded_tags = vec![Fp2::ZERO; 8];
     for row in 0..8 {
@@ -1719,7 +1721,21 @@ fn fold_kv_auth_columns_p(
             folded_tags[row] += eq_col[lane] * tags[offset];
         }
     }
-    (values, folded_tags)
+    let authenticated = (0..8)
+        .map(|row| {
+            let terms = (0..X2_HEAD_DIM)
+                .map(|lane| (row * 16 + kv_head * X2_HEAD_DIM + lane, eq_col[lane]))
+                .collect::<Vec<_>>();
+            stream.authenticate_subfield_sparse_linear(
+                domain,
+                source_count,
+                &terms,
+                values[row],
+                folded_tags[row],
+            )
+        })
+        .collect();
+    (values, authenticated)
 }
 
 fn fold_k_auth_rows_p(
@@ -1727,9 +1743,11 @@ fn fold_k_auth_rows_p(
     kv_head: usize,
     row_point: &[Fp2],
     stream: &mut CorrelationStream,
-) -> (Vec<Fp2>, Vec<Fp2>) {
+) -> (Vec<Fp2>, Vec<ProverAuthed>) {
     let eq_row = eq_vec(row_point);
-    let tags = stream.draw_sub_tags(prepared.auth_doms[A_K], prepared.auth_values[A_K].len());
+    let domain = prepared.auth_doms[A_K];
+    let source_count = prepared.auth_values[A_K].len();
+    let tags = stream.draw_sub_tags(domain, source_count);
     let mut values = vec![Fp2::ZERO; 8];
     let mut folded_tags = vec![Fp2::ZERO; 8];
     for row in 0..8 {
@@ -1739,15 +1757,33 @@ fn fold_k_auth_rows_p(
             folded_tags[lane] += eq_row[row] * tags[offset];
         }
     }
-    (values, folded_tags)
+    let authenticated = (0..X2_HEAD_DIM)
+        .map(|lane| {
+            let terms = (0..8)
+                .map(|row| (row * 16 + kv_head * X2_HEAD_DIM + lane, eq_row[row]))
+                .collect::<Vec<_>>();
+            stream.authenticate_subfield_sparse_linear(
+                domain,
+                source_count,
+                &terms,
+                values[lane],
+                folded_tags[lane],
+            )
+        })
+        .collect();
+    (values, authenticated)
 }
 
-fn folded_open(values: &[Fp2], tags: &[Fp2], point: &[Fp2]) -> ProverAuthed {
+fn folded_open(values: &[ProverAuthed], point: &[Fp2]) -> ProverAuthed {
     let eq = eq_vec(point);
-    ProverAuthed {
-        x: values.iter().zip(&eq).fold(Fp2::ZERO, |sum, (&value, &weight)| sum + weight * value),
-        m: tags.iter().zip(&eq).fold(Fp2::ZERO, |sum, (&tag, &weight)| sum + weight * tag),
-    }
+    values
+        .iter()
+        .zip(eq)
+        .fold(ProverAuthed::ZERO, |sum, (&value, weight)| sum.add(value.scale(weight)))
+}
+
+fn folded_open_values(values: &[Fp2], point: &[Fp2]) -> Fp2 {
+    values.iter().zip(eq_vec(point)).fold(Fp2::ZERO, |sum, (&value, weight)| sum + weight * value)
 }
 
 fn prove_attention(
@@ -1836,7 +1872,7 @@ fn prove_attention(
     for head in 0..X2_Q_HEADS {
         let kv_head = head / (X2_Q_HEADS / X2_KV_HEADS);
         let w = attention_weight_matrix(layer, head);
-        let (b_folded, b_tags) =
+        let (b_folded, b_authenticated) =
             fold_kv_auth_columns_p(prepared, A_V, kv_head, &av_point[..3], cx.stream);
         debug_assert_eq!(b_folded, fold_kv_columns(&layer.dense.v, kv_head, &av_point[..3]));
         let b_values_for_open = b_folded.clone();
@@ -1850,7 +1886,11 @@ fn prove_attention(
             &av_point[6..],
             &av_point[..3],
             av_claims[head],
-            |point| folded_open(&b_values_for_open, &b_tags, point),
+            |point| {
+                let claim = folded_open(&b_authenticated, point);
+                debug_assert_eq!(claim.x, folded_open_values(&b_values_for_open, point));
+                claim
+            },
             &doms,
             cx.stream,
             cx.tx,
@@ -2013,7 +2053,7 @@ fn prove_attention(
     for head in 0..X2_Q_HEADS {
         let kv_head = head / (X2_Q_HEADS / X2_KV_HEADS);
         let q = q_head(layer, head);
-        let (b_folded, b_tags) =
+        let (b_folded, b_authenticated) =
             fold_k_auth_rows_p(prepared, kv_head, &score_point[..3], cx.stream);
         debug_assert_eq!(b_folded, fold_k_rows(&layer.dense.k, kv_head, &score_point[..3]));
         let b_values_for_open = b_folded.clone();
@@ -2027,7 +2067,11 @@ fn prove_attention(
             &score_point[3..6],
             &score_point[..3],
             score_claims[head],
-            |point| folded_open(&b_values_for_open, &b_tags, point),
+            |point| {
+                let claim = folded_open(&b_authenticated, point);
+                debug_assert_eq!(claim.x, folded_open_values(&b_values_for_open, point));
+                claim
+            },
             &doms,
             cx.stream,
             cx.tx,

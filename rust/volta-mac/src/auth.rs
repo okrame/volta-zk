@@ -24,7 +24,7 @@ pub fn auth_prover(
     for (&xq, s) in xs.iter().zip(&subs) {
         let x = Fp::from_i64(xq as i64);
         corr.push((x - s.r).value());
-        authed.push(ProverSubAuthed { x, m: s.m });
+        authed.push(s.authenticate(x));
     }
     stream.record_c6_subfield_corrections(dom, &corr).expect("C6 auth-prover correction schedule");
     tx.append("auth_corrections", 8 * corr.len() as u64);
@@ -77,7 +77,12 @@ pub fn prover_tags_from_epilogue(
         let _masks = stream.draw_sub_masks(dom, n);
         let tags = stream.draw_sub_tags(dom, n);
         for (j, mt) in tags.into_iter().enumerate() {
-            authed.push(ProverSubAuthed { x: Fp::from_i64(out[row * n + j] as i64), m: mt });
+            authed.push(stream.authenticate_subfield_at(
+                dom,
+                j,
+                Fp::from_i64(out[row * n + j] as i64),
+                mt,
+            ));
         }
     }
     authed

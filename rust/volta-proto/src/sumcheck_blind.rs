@@ -258,11 +258,7 @@ pub fn blind_prove_batch(
                 .expect("C6 batched sumcheck correction schedule");
             state.round_corrs.push([g0 - masks[0].x, g2 - masks[1].x]);
             tx.append("blind_round_corrections", 32);
-            messages.push((
-                index,
-                ProverAuthed { x: g0, m: masks[0].m },
-                ProverAuthed { x: g2, m: masks[1].m },
-            ));
+            messages.push((index, masks[0].authenticate(g0), masks[1].authenticate(g2)));
         }
 
         // Phase B: the epoch is complete.  Draw and apply one independent
@@ -789,11 +785,7 @@ pub fn blind_prove_resident_batch(
                 .expect("C6 resident batched sumcheck correction schedule");
             state.round_corrs.push([g0 - masks[0].x, g2 - masks[1].x]);
             tx.append("blind_round_corrections", 32);
-            messages.push((
-                index,
-                ProverAuthed { x: g0, m: masks[0].m },
-                ProverAuthed { x: g2, m: masks[1].m },
-            ));
+            messages.push((index, masks[0].authenticate(g0), masks[1].authenticate(g2)));
         }
 
         let mut folds = Vec::with_capacity(messages.len());
@@ -975,8 +967,8 @@ pub(crate) fn blind_prove_resident_labeled(
             .expect("C6 resident sumcheck correction schedule");
         round_corrs.push([g0 - masks[0].x, g2 - masks[1].x]);
         tx.append(round_label, 32);
-        let g0_a = ProverAuthed { x: g0, m: masks[0].m };
-        let g2_a = ProverAuthed { x: g2, m: masks[1].m };
+        let g0_a = masks[0].authenticate(g0);
+        let g2_a = masks[1].authenticate(g2);
         let g1_a = claim.sub(g0_a);
         let r = tx.challenge_fp2();
         let w = lagrange3(r);
@@ -1096,8 +1088,8 @@ pub(crate) fn blind_prove_with_finals_labeled(
         let corrs = [g0 - masks[0].x, g2 - masks[1].x];
         tx.append(round_label, 32);
         round_corrs.push(corrs);
-        let g0_a = ProverAuthed { x: g0, m: masks[0].m };
-        let g2_a = ProverAuthed { x: g2, m: masks[1].m };
+        let g0_a = masks[0].authenticate(g0);
+        let g2_a = masks[1].authenticate(g2);
         let g1_a = claim.sub(g0_a); // g(1) = claim − g(0), authenticated
 
         let r = tx.challenge_fp2();
@@ -1197,7 +1189,7 @@ mod tests {
 
         let mut ps = CorrelationStream::new([5u8; 32]);
         let mut tx = Transcript::new(tx_seed);
-        let claim0 = ProverAuthed { x: claim_val, m: rand_fp2(&mut rng) };
+        let claim0 = ProverAuthed::new(claim_val, rand_fp2(&mut rng));
         let (blind, _, final_claim) =
             blind_prove(a.clone(), b.clone(), claim0, &mut ps, 1000, &mut tx);
 
@@ -1613,7 +1605,7 @@ mod tests {
         let a: Vec<Fp2> = (0..128).map(|_| rand_fp2(&mut rng)).collect();
         let b: Vec<Fp2> = (0..128).map(|_| rand_fp2(&mut rng)).collect();
         let total = a.iter().zip(&b).fold(Fp2::ZERO, |sum, (&x, &y)| sum + x * y);
-        let claim0 = ProverAuthed { x: total, m: rand_fp2(&mut rng) };
+        let claim0 = ProverAuthed::new(total, rand_fp2(&mut rng));
         let pcg_seed = [0xA3; 32];
         let tx_seed = [0x6C; 32];
         let mut cpu_stream = CorrelationStream::new(pcg_seed);

@@ -278,9 +278,8 @@ pub(crate) fn build_private_argmax_witness(
     let packed_strict = (0..ARGMAX_PACKED_ENTRIES_PER_LIMB)
         .into_par_iter()
         .map(|index| {
-            let limbs: [ProverAuthed; LIMBS] = std::array::from_fn(|limb| ProverAuthed {
-                x: Fp2::from_base(columns[limb][index]),
-                m: Fp2::ZERO,
+            let limbs: [ProverAuthed; LIMBS] = std::array::from_fn(|limb| {
+                ProverAuthed::new(Fp2::from_base(columns[limb][index]), Fp2::ZERO)
             });
             combine_auth(&limbs).x
         })
@@ -551,7 +550,7 @@ fn authenticate_scalar(
         .record_c6_fullfield_plaintexts(domain, &[value])
         .expect("C6 private-argmax scalar correction schedule");
     cx.tx.append(label, 16);
-    (correction, ProverAuthed { x: value, m: correlation.m })
+    (correction, correlation.authenticate(value))
 }
 
 fn verify_scalar(correction: Fp2, cx: &mut BlockCtxV<'_>, label: &'static str) -> VerifierKey {

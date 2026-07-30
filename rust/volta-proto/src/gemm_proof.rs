@@ -195,16 +195,28 @@ pub fn prove_gemm_blind_at(
     // Y-opening tags: lazy m_r expansion + eq-weighted fold.
     let t1 = Instant::now();
     let mut m_y = Fp2::ZERO;
+    #[cfg(feature = "c6-trace")]
+    let mut claim0_trace = ProverAuthed::ZERO;
     for row in 0..m {
-        let tags = stream.draw_sub_tags(doms.dom_y(row), n);
+        let domain = doms.dom_y(row);
+        let tags = stream.draw_sub_tags(domain, n);
         let mut acc = Fp2::ZERO;
         for (j, t) in tags.into_iter().enumerate() {
             acc += eq_j[j] * t;
         }
         m_y += eq_i[row] * acc;
+        #[cfg(feature = "c6-trace")]
+        {
+            claim0_trace = claim0_trace.add(
+                stream.authenticate_subfield_linear(domain, &eq_j, Fp2::ZERO, acc).scale(eq_i[row]),
+            );
+        }
     }
     tm.t_open_tags_s = t1.elapsed().as_secs_f64();
-    let claim0 = ProverAuthed { x: y_val, m: m_y };
+    #[cfg(feature = "c6-trace")]
+    let claim0 = claim0_trace.with_same_c6_trace(y_val, m_y);
+    #[cfg(not(feature = "c6-trace"))]
+    let claim0 = ProverAuthed::new(y_val, m_y);
 
     let t2 = Instant::now();
     let (sumcheck, point, claim_n) =
@@ -216,19 +228,31 @@ pub fn prove_gemm_blind_at(
     let eq_l = eq_vec(&point);
     let x_val = eval_mle(&a, &point);
     let mut m_x = Fp2::ZERO;
+    #[cfg(feature = "c6-trace")]
+    let mut x_open_trace = ProverAuthed::ZERO;
     for row in 0..m {
-        let tags = stream.draw_sub_tags(doms.dom_x(row), k);
+        let domain = doms.dom_x(row);
+        let tags = stream.draw_sub_tags(domain, k);
         let mut acc = Fp2::ZERO;
         for (l, t) in tags.into_iter().enumerate() {
             acc += eq_l[l] * t;
         }
         m_x += eq_i[row] * acc;
+        #[cfg(feature = "c6-trace")]
+        {
+            x_open_trace = x_open_trace.add(
+                stream.authenticate_subfield_linear(domain, &eq_l, Fp2::ZERO, acc).scale(eq_i[row]),
+            );
+        }
     }
     tm.t_open_tags_s += t3.elapsed().as_secs_f64();
 
     let t4 = Instant::now();
     let b_final = eval_mle(&b, &point);
-    let x_open = ProverAuthed { x: x_val, m: m_x };
+    #[cfg(feature = "c6-trace")]
+    let x_open = x_open_trace.with_same_c6_trace(x_val, m_x);
+    #[cfg(not(feature = "c6-trace"))]
+    let x_open = ProverAuthed::new(x_val, m_x);
     let b_pub = ProverAuthed::from_public(b_final);
     debug_assert_eq!(claim_n.x, x_val * b_final, "honest final claim mismatch");
     let mask = stream.draw_product_mask(doms.prod_mask, 1);
@@ -316,16 +340,28 @@ pub fn prove_gemm_blind_committed_at(
 
     let t1 = Instant::now();
     let mut m_y = Fp2::ZERO;
+    #[cfg(feature = "c6-trace")]
+    let mut claim0_trace = ProverAuthed::ZERO;
     for row in 0..m {
-        let tags = stream.draw_sub_tags(doms.dom_y(row), n);
+        let domain = doms.dom_y(row);
+        let tags = stream.draw_sub_tags(domain, n);
         let mut acc = Fp2::ZERO;
         for (j, t) in tags.into_iter().enumerate() {
             acc += eq_j[j] * t;
         }
         m_y += eq_i[row] * acc;
+        #[cfg(feature = "c6-trace")]
+        {
+            claim0_trace = claim0_trace.add(
+                stream.authenticate_subfield_linear(domain, &eq_j, Fp2::ZERO, acc).scale(eq_i[row]),
+            );
+        }
     }
     tm.t_open_tags_s = t1.elapsed().as_secs_f64();
-    let claim0 = ProverAuthed { x: y_val, m: m_y };
+    #[cfg(feature = "c6-trace")]
+    let claim0 = claim0_trace.with_same_c6_trace(y_val, m_y);
+    #[cfg(not(feature = "c6-trace"))]
+    let claim0 = ProverAuthed::new(y_val, m_y);
 
     let t2 = Instant::now();
     let (sumcheck, point, claim_n) =
@@ -336,19 +372,31 @@ pub fn prove_gemm_blind_committed_at(
     let eq_l = eq_vec(&point);
     let x_val = eval_mle(&a, &point);
     let mut m_x = Fp2::ZERO;
+    #[cfg(feature = "c6-trace")]
+    let mut x_open_trace = ProverAuthed::ZERO;
     for row in 0..m {
-        let tags = stream.draw_sub_tags(doms.dom_x(row), k);
+        let domain = doms.dom_x(row);
+        let tags = stream.draw_sub_tags(domain, k);
         let mut acc = Fp2::ZERO;
         for (l, t) in tags.into_iter().enumerate() {
             acc += eq_l[l] * t;
         }
         m_x += eq_i[row] * acc;
+        #[cfg(feature = "c6-trace")]
+        {
+            x_open_trace = x_open_trace.add(
+                stream.authenticate_subfield_linear(domain, &eq_l, Fp2::ZERO, acc).scale(eq_i[row]),
+            );
+        }
     }
     tm.t_open_tags_s += t3.elapsed().as_secs_f64();
 
     let t4 = Instant::now();
     let b_final = eval_mle(&b, &point);
-    let x_open = ProverAuthed { x: x_val, m: m_x };
+    #[cfg(feature = "c6-trace")]
+    let x_open = x_open_trace.with_same_c6_trace(x_val, m_x);
+    #[cfg(not(feature = "c6-trace"))]
+    let x_open = ProverAuthed::new(x_val, m_x);
     // The committed-W leg: authenticate W̃(r_l, r_j) with a fresh full
     // correlation — never sent in clear (corr_w = b_final − r is uniform).
     let fc = stream.draw_fulls(dom_w_claim, 1)[0];
@@ -357,7 +405,7 @@ pub fn prove_gemm_blind_committed_at(
         .record_c6_fullfield_plaintexts(dom_w_claim, &[b_final])
         .expect("C6 committed-W correction schedule");
     tx.append("w_claim_correction", 16);
-    let b_auth = ProverAuthed { x: b_final, m: fc.m };
+    let b_auth = fc.authenticate(b_final);
     debug_assert_eq!(claim_n.x, x_val * b_final, "honest final claim mismatch");
     let mask = stream.draw_product_mask(doms.prod_mask, 1);
     let chi = tx.challenge_fp2();
@@ -678,7 +726,7 @@ pub fn prove_gemm_committed_chained(
         .record_c6_fullfield_plaintexts(doms.x_claim, &[x_val])
         .expect("C6 chained GEMM x-claim correction schedule");
     tx.append("x_claim_correction", 16);
-    let x_auth = ProverAuthed { x: x_val, m: fx.m };
+    let x_auth = fx.authenticate(x_val);
     // Committed-W leg, identical to `prove_gemm_blind_committed`.
     let fw = stream.draw_fulls(doms.w_claim, 1)[0];
     let corr_w = b_final - fw.x;
@@ -686,7 +734,7 @@ pub fn prove_gemm_committed_chained(
         .record_c6_fullfield_plaintexts(doms.w_claim, &[b_final])
         .expect("C6 chained GEMM w-claim correction schedule");
     tx.append("w_claim_correction", 16);
-    let b_auth = ProverAuthed { x: b_final, m: fw.m };
+    let b_auth = fw.authenticate(b_final);
     debug_assert_eq!(claim_n.x, x_val * b_final, "honest final claim mismatch");
     let mask = stream.draw_product_mask(doms.prod_mask, 1);
     let chi = tx.challenge_fp2();
@@ -816,14 +864,14 @@ pub fn prove_gemm_committed_chained_resident(
         .record_c6_fullfield_plaintexts(doms.x_claim, &[x_val])
         .expect("C6 resident GEMM x-claim correction schedule");
     tx.append("x_claim_correction", 16);
-    let x_auth = ProverAuthed { x: x_val, m: fx.m };
+    let x_auth = fx.authenticate(x_val);
     let fw = stream.draw_fulls(doms.w_claim, 1)[0];
     let corr_w = b_final - fw.x;
     stream
         .record_c6_fullfield_plaintexts(doms.w_claim, &[b_final])
         .expect("C6 resident GEMM w-claim correction schedule");
     tx.append("w_claim_correction", 16);
-    let b_auth = ProverAuthed { x: b_final, m: fw.m };
+    let b_auth = fw.authenticate(b_final);
     debug_assert_eq!(claim_n.x, x_val * b_final, "honest final claim mismatch");
     let mask = stream.draw_product_mask(doms.prod_mask, 1);
     let chi = tx.challenge_fp2();
@@ -994,7 +1042,7 @@ pub(crate) fn finalize_gemm_act_chained(
         .record_c6_fullfield_plaintexts(doms.x_claim, &[rounds.x_final])
         .expect("C6 activation GEMM x-claim correction schedule");
     tx.append("x_claim_correction", 16);
-    let x_auth = ProverAuthed { x: rounds.x_final, m: x_mask.m };
+    let x_auth = x_mask.authenticate(rounds.x_final);
     debug_assert_eq!(
         rounds.claim.x,
         rounds.x_final * rounds.b_final,
@@ -1303,7 +1351,7 @@ mod tests {
         let y_val = fold_y_acc(&yacc, m, n, &eq_i, &eq_j);
         let f0 = stream.draw_fulls(0x9000, 1)[0];
         let c0 = y_val - f0.x;
-        let claim0 = ProverAuthed { x: y_val, m: f0.m };
+        let claim0 = f0.authenticate(y_val);
         let mut k0 = ctx.expand_full_keys(0x9000, 1)[0] + delta * c0;
         if tamper == 2 {
             // Downstream really bound ỹacc − 1; the prover overclaims by 1.
@@ -1397,7 +1445,7 @@ mod tests {
         let (eq_i, eq_j) = (eq_vec(&r_i), eq_vec(&r_j));
         let y_val = fold_y_acc(&yacc, m, n, &eq_i, &eq_j);
         let f0 = stream.draw_fulls(0x9000, 1)[0];
-        let claim0 = ProverAuthed { x: y_val, m: f0.m };
+        let claim0 = f0.authenticate(y_val);
         let before = stream.counters;
         let cd = ChainDoms::alloc(&mut Doms::new(0xA000), k);
         let (_p, _w, _cw, _wc, _tm, after) = prove_gemm_committed_chained(
@@ -1440,10 +1488,10 @@ mod tests {
         let r_j: Vec<Fp2> = (0..pad_bits(n)).map(|_| cpu_tx.challenge_fp2()).collect();
         let eq_i = eq_vec(&r_i);
         let eq_j = eq_vec(&r_j);
-        let claim0 = ProverAuthed {
-            x: fold_y_acc(&yacc, m, n, &eq_i, &eq_j),
-            m: Fp2::new(Fp::new(0x1234), Fp::new(0x5678)),
-        };
+        let claim0 = ProverAuthed::new(
+            fold_y_acc(&yacc, m, n, &eq_i, &eq_j),
+            Fp2::new(Fp::new(0x1234), Fp::new(0x5678)),
+        );
         let doms = ChainDoms::alloc(&mut Doms::new(0xB000), k);
         let mut cpu_stream = CorrelationStream::new(pcg_seed);
         let (cpu_proof, cpu_wire, cpu_corr_w, cpu_weight, _, cpu_counters) =
@@ -1536,10 +1584,10 @@ mod tests {
             .collect();
         let b_for_open = b_folded.clone();
         let tags_for_open = tags.clone();
-        let claim0 = ProverAuthed {
-            x: fold_y_acc(&yacc, m, n, &eq_i, &eq_j),
-            m: Fp2::new(Fp::new(0xAA55), Fp::new(0x55AA)),
-        };
+        let claim0 = ProverAuthed::new(
+            fold_y_acc(&yacc, m, n, &eq_i, &eq_j),
+            Fp2::new(Fp::new(0xAA55), Fp::new(0x55AA)),
+        );
         let doms = ChainDoms::alloc(&mut Doms::new(0xC000), k);
         let mut cpu_stream = CorrelationStream::new(pcg_seed);
         let (cpu_proof, cpu_wire, cpu_point, _, cpu_counters) = prove_gemm_act_chained(
@@ -1553,13 +1601,10 @@ mod tests {
             claim0,
             move |point| {
                 let eq = eq_vec(point);
-                ProverAuthed {
-                    x: eq.iter().zip(&b_for_open).fold(Fp2::ZERO, |sum, (&w, &v)| sum + w * v),
-                    m: eq
-                        .iter()
-                        .zip(&tags_for_open)
-                        .fold(Fp2::ZERO, |sum, (&w, &tag)| sum + w * tag),
-                }
+                ProverAuthed::new(
+                    eq.iter().zip(&b_for_open).fold(Fp2::ZERO, |sum, (&w, &v)| sum + w * v),
+                    eq.iter().zip(&tags_for_open).fold(Fp2::ZERO, |sum, (&w, &tag)| sum + w * tag),
+                )
             },
             &doms,
             &mut cpu_stream,
@@ -1610,13 +1655,12 @@ mod tests {
                 claim0,
                 move |point, value| {
                     let eq = eq_vec(point);
-                    Ok(ProverAuthed {
-                        x: value,
-                        m: eq
-                            .iter()
+                    Ok(ProverAuthed::new(
+                        value,
+                        eq.iter()
                             .zip(&tags_for_open)
                             .fold(Fp2::ZERO, |sum, (&w, &tag)| sum + w * tag),
-                    })
+                    ))
                 },
                 &doms,
                 &mut stream,
@@ -1698,13 +1742,13 @@ mod tests {
                 v += eq_l[l] * b_folded_p[l];
                 mt += eq_l[l] * t;
             }
-            ProverAuthed { x: v, m: mt }
+            ProverAuthed::new(v, mt)
         };
 
         let y_val = fold_y_acc(&yacc, m, n, &eq_i, &eq_j);
         let f0 = stream.draw_fulls(0x9300, 1)[0];
         let c0 = y_val - f0.x;
-        let claim0 = ProverAuthed { x: y_val, m: f0.m };
+        let claim0 = f0.authenticate(y_val);
         let k0 = ctx.expand_full_keys(0x9300, 1)[0] + delta * c0;
 
         let cd = ChainDoms::alloc(&mut Doms::new(0xA100), k);

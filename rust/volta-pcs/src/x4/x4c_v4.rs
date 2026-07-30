@@ -1900,10 +1900,10 @@ pub fn x4d2_delayed_link_diagnostic_case_v4(
                     .fold(Fp2::ZERO, |sum, (value, equality)| sum + *value * equality),
         )
     })?;
-    let initial_claim = ProverAuthed {
-        x: initial_value,
-        m: x4d_diagnostic_symbol_v4(physical_source_slots, round_count, 0xD220_0000),
-    };
+    let initial_claim = ProverAuthed::new(
+        initial_value,
+        x4d_diagnostic_symbol_v4(physical_source_slots, round_count, 0xD220_0000),
+    );
     let domains = (0..2 * round_count).map(|index| 0xD230_0000 + index as u64).collect::<Vec<_>>();
     let correlation_seed = [0xD2; 32];
     let transcript_seed = [0x42; 32];
@@ -2353,8 +2353,8 @@ fn prove_x4d_delayed_link_resident_sequential_v4(
         corrections.push(at_zero - mask_zero.x);
         corrections.push(at_two - mask_two.x);
         tx.append("x4_v4_auth_output_link_round_corrections", 32);
-        let auth_zero = ProverAuthed { x: at_zero, m: mask_zero.m };
-        let auth_two = ProverAuthed { x: at_two, m: mask_two.m };
+        let auth_zero = mask_zero.authenticate(at_zero);
+        let auth_two = mask_two.authenticate(at_two);
         let auth_one = claim.sub(auth_zero);
         let challenge = tx.challenge_fp2();
         let weights = lagrange3(challenge);

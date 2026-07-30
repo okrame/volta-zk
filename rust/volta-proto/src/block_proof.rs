@@ -905,8 +905,8 @@ mod table_bank_schedule_tests {
     fn prover_root(value: u64) -> (ProverAuthed, ProverAuthed) {
         let value = Fp2::from_base(Fp::new(value));
         (
-            ProverAuthed { x: value, m: value + Fp2::ONE },
-            ProverAuthed { x: value + Fp2::ONE, m: value + value },
+            ProverAuthed::new(value, value + Fp2::ONE),
+            ProverAuthed::new(value + Fp2::ONE, value + value),
         )
     }
 
@@ -1252,8 +1252,11 @@ pub(crate) fn open_matrix_p(
     let eq_r = eq_vec(&point[cb..]);
     let mut val = Fp2::ZERO;
     let mut tag = Fp2::ZERO;
+    #[cfg(feature = "c6-trace")]
+    let mut traced = ProverAuthed::ZERO;
     for row in 0..rows {
-        let tags = stream.draw_sub_tags(base_dom + row as u64, cols);
+        let domain = base_dom + row as u64;
+        let tags = stream.draw_sub_tags(domain, cols);
         let mut v = Fp2::ZERO;
         let mut mt = Fp2::ZERO;
         for (j, t) in tags.into_iter().enumerate() {
@@ -1265,8 +1268,21 @@ pub(crate) fn open_matrix_p(
         }
         val += eq_r[row] * v;
         tag += eq_r[row] * mt;
+        #[cfg(feature = "c6-trace")]
+        {
+            traced = traced.add(
+                stream.authenticate_subfield_linear(domain, &eq_c[..cols], v, mt).scale(eq_r[row]),
+            );
+        }
     }
-    ProverAuthed { x: val, m: tag }
+    #[cfg(feature = "c6-trace")]
+    {
+        return traced.with_same_c6_trace(val, tag);
+    }
+    #[cfg(not(feature = "c6-trace"))]
+    {
+        ProverAuthed::new(val, tag)
+    }
 }
 
 /// Opening with an explicit public linear form over matrix rows.
@@ -1285,8 +1301,11 @@ pub(crate) fn open_matrix_weighted_rows_p(
     let eq_c = eq_vec(col_point);
     let mut value = Fp2::ZERO;
     let mut tag = Fp2::ZERO;
+    #[cfg(feature = "c6-trace")]
+    let mut traced = ProverAuthed::ZERO;
     for row in 0..rows {
-        let tags = stream.draw_sub_tags(base_dom + row as u64, cols);
+        let domain = base_dom + row as u64;
+        let tags = stream.draw_sub_tags(domain, cols);
         let mut row_value = Fp2::ZERO;
         let mut row_tag = Fp2::ZERO;
         for col in 0..cols {
@@ -1298,8 +1317,23 @@ pub(crate) fn open_matrix_weighted_rows_p(
         }
         value += row_weights[row] * row_value;
         tag += row_weights[row] * row_tag;
+        #[cfg(feature = "c6-trace")]
+        {
+            traced = traced.add(
+                stream
+                    .authenticate_subfield_linear(domain, &eq_c[..cols], row_value, row_tag)
+                    .scale(row_weights[row]),
+            );
+        }
     }
-    ProverAuthed { x: value, m: tag }
+    #[cfg(feature = "c6-trace")]
+    {
+        return traced.with_same_c6_trace(value, tag);
+    }
+    #[cfg(not(feature = "c6-trace"))]
+    {
+        ProverAuthed::new(value, tag)
+    }
 }
 
 pub(crate) fn open_matrix_resident_p<T: ResidentMatrixElement>(
@@ -1318,13 +1352,24 @@ pub(crate) fn open_matrix_resident_p<T: ResidentMatrixElement>(
     let eq_c = eq_vec(&point[..cb]);
     let eq_r = eq_vec(&point[cb..]);
     let mut tag = Fp2::ZERO;
+    #[cfg(feature = "c6-trace")]
+    let mut traced = ProverAuthed::ZERO;
     for row in 0..rows {
-        let tags = stream.draw_sub_tags(base_dom + row as u64, cols);
+        let domain = base_dom + row as u64;
+        let tags = stream.draw_sub_tags(domain, cols);
         let row_tag = tags
             .into_iter()
             .zip(&eq_c)
             .fold(Fp2::ZERO, |sum, (value, &weight)| sum + weight * value);
         tag += eq_r[row] * row_tag;
+        #[cfg(feature = "c6-trace")]
+        {
+            traced = traced.add(
+                stream
+                    .authenticate_subfield_linear(domain, &eq_c[..cols], Fp2::ZERO, row_tag)
+                    .scale(eq_r[row]),
+            );
+        }
     }
     let value = backend.matrix_mle_eval_device(
         DeviceSlice::new(x.buffer(), x.offset(), rows * cols).expect("validated matrix prefix"),
@@ -1332,7 +1377,14 @@ pub(crate) fn open_matrix_resident_p<T: ResidentMatrixElement>(
         cols,
         point,
     )?;
-    Ok(ProverAuthed { x: value, m: tag })
+    #[cfg(feature = "c6-trace")]
+    {
+        return Ok(traced.with_same_c6_trace(value, tag));
+    }
+    #[cfg(not(feature = "c6-trace"))]
+    {
+        Ok(ProverAuthed::new(value, tag))
+    }
 }
 
 pub(crate) fn open_matrix_weighted_rows_resident_p<T: ResidentMatrixElement>(
@@ -1372,15 +1424,33 @@ pub(crate) fn open_matrix_weighted_rows_resident_p<T: ResidentMatrixElement>(
     };
     let eq_c = eq_vec(col_point);
     let mut tag = Fp2::ZERO;
+    #[cfg(feature = "c6-trace")]
+    let mut traced = ProverAuthed::ZERO;
     for row in 0..rows {
-        let tags = stream.draw_sub_tags(base_dom + row as u64, cols);
+        let domain = base_dom + row as u64;
+        let tags = stream.draw_sub_tags(domain, cols);
         let row_tag = tags
             .into_iter()
             .zip(&eq_c)
             .fold(Fp2::ZERO, |sum, (entry, &weight)| sum + weight * entry);
         tag += row_weights[row] * row_tag;
+        #[cfg(feature = "c6-trace")]
+        {
+            traced = traced.add(
+                stream
+                    .authenticate_subfield_linear(domain, &eq_c[..cols], Fp2::ZERO, row_tag)
+                    .scale(row_weights[row]),
+            );
+        }
     }
-    Ok(ProverAuthed { x: value, m: tag })
+    #[cfg(feature = "c6-trace")]
+    {
+        return Ok(traced.with_same_c6_trace(value, tag));
+    }
+    #[cfg(not(feature = "c6-trace"))]
+    {
+        Ok(ProverAuthed::new(value, tag))
+    }
 }
 
 /// Verifier: expand and CACHE the per-element keys of a row-authenticated
@@ -1588,7 +1658,7 @@ pub(crate) fn open_fp_vec_p(
         }
         tag += eq[i] * t;
     }
-    ProverAuthed { x: val, m: tag }
+    stream.authenticate_subfield_linear(dom, &eq, val, tag)
 }
 
 /// Streamed opening of a resident u32/Fp multiplicity vector. Mock-PCG tags
@@ -1609,9 +1679,10 @@ pub(crate) fn open_fp_vec_resident_p<T: ResidentMatrixElement>(
     }
     let tags = stream.draw_sub_tags(dom, vals.len());
     let eq = eq_vec(point);
-    let tag = tags.into_iter().zip(eq).fold(Fp2::ZERO, |acc, (value, weight)| acc + weight * value);
+    let tag =
+        tags.into_iter().zip(&eq).fold(Fp2::ZERO, |acc, (value, &weight)| acc + weight * value);
     let value = backend.mle_eval_device(vals, point)?;
-    Ok(ProverAuthed { x: value, m: tag })
+    Ok(stream.authenticate_subfield_linear(dom, &eq, value, tag))
 }
 
 pub(crate) fn keys_fp_vec_v(ctx: &mut VerifierCtx, dom: u64, corr: &[u64]) -> Vec<Fp2> {
@@ -1643,7 +1714,7 @@ pub(crate) fn open_weighted_p(
         }
         tag += weights[i] * t;
     }
-    ProverAuthed { x: val, m: tag }
+    stream.authenticate_subfield_linear(dom, weights, val, tag)
 }
 
 pub(crate) fn open_weighted_resident_p<T: ResidentMatrixElement>(
@@ -1660,7 +1731,7 @@ pub(crate) fn open_weighted_resident_p<T: ResidentMatrixElement>(
     let tag =
         tags.into_iter().zip(weights).fold(Fp2::ZERO, |sum, (value, &weight)| sum + weight * value);
     let value = backend.weighted_sum_device(vals, weights)?;
-    Ok(ProverAuthed { x: value, m: tag })
+    Ok(stream.authenticate_subfield_linear(dom, weights, value, tag))
 }
 
 pub(crate) fn open_weighted_k(keys: &[Fp2], weights: &[Fp2]) -> VerifierKey {
@@ -1681,12 +1752,14 @@ pub(crate) fn fold_cols_window_p(
     wc: &[Fp2],
     c0: usize,
     w: usize,
-) -> (Vec<Fp2>, Vec<Fp2>) {
+) -> (Vec<Fp2>, Vec<Fp2>, Vec<ProverAuthed>) {
     assert_eq!(wc.len(), w);
     let mut vals = Vec::with_capacity(rows);
     let mut tags_out = Vec::with_capacity(rows);
+    let mut authenticated = Vec::with_capacity(rows);
     for row in 0..rows {
-        let tags = stream.draw_sub_tags(base_dom + row as u64, cols);
+        let domain = base_dom + row as u64;
+        let tags = stream.draw_sub_tags(domain, cols);
         let mut v = Fp2::ZERO;
         let mut mt = Fp2::ZERO;
         for l in 0..w {
@@ -1698,8 +1771,10 @@ pub(crate) fn fold_cols_window_p(
         }
         vals.push(v);
         tags_out.push(mt);
+        let terms = (0..w).map(|l| (c0 + l, wc[l])).collect::<Vec<_>>();
+        authenticated.push(stream.authenticate_subfield_sparse_linear(domain, cols, &terms, v, mt));
     }
-    (vals, tags_out)
+    (vals, tags_out, authenticated)
 }
 
 pub(crate) fn fold_cols_window_k(
@@ -1729,20 +1804,32 @@ pub(crate) fn fold_rows_window_p(
     wr: &[Fp2],
     c0: usize,
     w: usize,
-) -> (Vec<Fp2>, Vec<Fp2>) {
+) -> (Vec<Fp2>, Vec<Fp2>, Vec<ProverAuthed>) {
     let mut vals = vec![Fp2::ZERO; w];
     let mut tags_out = vec![Fp2::ZERO; w];
+    let mut authenticated = vec![ProverAuthed::ZERO; w];
     for row in 0..rows {
-        let tags = stream.draw_sub_tags(base_dom + row as u64, cols);
+        let domain = base_dom + row as u64;
+        let tags = stream.draw_sub_tags(domain, cols);
         for l in 0..w {
             let xv = x[row * cols + c0 + l];
             if xv != 0 {
                 vals[l] += wr[row].mul_base(Fp::from_i64(xv as i64));
             }
             tags_out[l] += wr[row] * tags[c0 + l];
+            authenticated[l] = authenticated[l].add(stream.authenticate_subfield_sparse_linear(
+                domain,
+                cols,
+                &[(c0 + l, wr[row])],
+                if xv == 0 { Fp2::ZERO } else { wr[row].mul_base(Fp::from_i64(xv as i64)) },
+                wr[row] * tags[c0 + l],
+            ));
         }
     }
-    (vals, tags_out)
+    for l in 0..w {
+        authenticated[l] = authenticated[l].with_same_c6_trace(vals[l], tags_out[l]);
+    }
+    (vals, tags_out, authenticated)
 }
 
 pub(crate) fn fold_rows_window_k(
@@ -1883,12 +1970,13 @@ pub(crate) fn cache_fold_rows_p(
     wr: &[Fp2],
     c0: usize,
     w: usize,
-) -> (Vec<Fp2>, Vec<Fp2>) {
+) -> (Vec<Fp2>, Vec<Fp2>, Vec<ProverAuthed>) {
     let mut vals = vec![Fp2::ZERO; w];
     let mut tags_out = vec![Fp2::ZERO; w];
+    let mut authenticated = vec![ProverAuthed::ZERO; w];
     let mut base = 0usize;
     for seg in segs {
-        let (sv, st) = fold_rows_window_p(
+        let (sv, st, sa) = fold_rows_window_p(
             stream,
             seg.dom,
             seg.data,
@@ -1901,10 +1989,14 @@ pub(crate) fn cache_fold_rows_p(
         for l in 0..w {
             vals[l] += sv[l];
             tags_out[l] += st[l];
+            authenticated[l] = authenticated[l].add(sa[l]);
         }
         base += seg.rows;
     }
-    (vals, tags_out)
+    for l in 0..w {
+        authenticated[l] = authenticated[l].with_same_c6_trace(vals[l], tags_out[l]);
+    }
+    (vals, tags_out, authenticated)
 }
 
 pub(crate) fn cache_fold_rows_k(segs: &[CacheSegK], wr: &[Fp2], c0: usize, w: usize) -> Vec<Fp2> {
@@ -1928,15 +2020,17 @@ pub(crate) fn cache_fold_cols_p(
     wc: &[Fp2],
     c0: usize,
     w: usize,
-) -> (Vec<Fp2>, Vec<Fp2>) {
+) -> (Vec<Fp2>, Vec<Fp2>, Vec<ProverAuthed>) {
     let mut vals = Vec::new();
     let mut tags = Vec::new();
+    let mut authenticated = Vec::new();
     for seg in segs {
-        let (sv, st) = fold_cols_window_p(stream, seg.dom, seg.data, seg.rows, D, wc, c0, w);
+        let (sv, st, sa) = fold_cols_window_p(stream, seg.dom, seg.data, seg.rows, D, wc, c0, w);
         vals.extend(sv);
         tags.extend(st);
+        authenticated.extend(sa);
     }
-    (vals, tags)
+    (vals, tags, authenticated)
 }
 
 pub(crate) fn cache_fold_cols_k(segs: &[CacheSegK], wc: &[Fp2], c0: usize, w: usize) -> Vec<Fp2> {
@@ -5952,7 +6046,7 @@ fn prove_attn_block_impl(
     let mut av_auth = Vec::with_capacity(H);
     for h in 0..H {
         av_split_corrs[h] = av_vals[h] - masks_av[h].x;
-        av_auth.push(ProverAuthed { x: av_vals[h], m: masks_av[h].m });
+        av_auth.push(masks_av[h].authenticate(av_vals[h]));
     }
     cx.tx.append("head_split_corrections", 16 * H as u64);
     let mut row = ProverAuthed::ZERO.sub(acc_av_claim);
@@ -5985,7 +6079,8 @@ fn prove_attn_block_impl(
     let mut wv_timings = Vec::with_capacity(H);
     let mut wv_jobs = Vec::with_capacity(H);
     for h in 0..H {
-        let (bvals, btags) = cache_fold_cols_p(cx.stream, v_segs, &eq_within, h * DH, DH);
+        let (bvals, btags, b_authenticated) =
+            cache_fold_cols_p(cx.stream, v_segs, &eq_within, h * DH, DH);
         let mut b_folded = vec![Fp2::ZERO; s_pad];
         b_folded[..s_len].copy_from_slice(&bvals);
         let x_slice = &wires.w_rect[h * sp2..h * sp2 + t * s_pad];
@@ -6001,13 +6096,13 @@ fn prove_attn_block_impl(
             av_auth[h],
             &wv_doms[h],
         );
-        wv_openings.push((bvals, btags));
+        wv_openings.push((bvals, btags, b_authenticated));
         wv_timings.push(timings);
         wv_jobs.push(job);
     }
     let wv_outputs = blind_prove_batch(&wv_plan, wv_jobs, cx.stream, cx.tx)
         .expect("sealed W·V schedule and jobs must agree");
-    for (h, ((output, (bvals, btags)), mut timings)) in
+    for (h, ((output, (bvals, btags, b_authenticated)), mut timings)) in
         wv_outputs.into_iter().zip(wv_openings).zip(wv_timings).enumerate()
     {
         let rounds: GemmActRoundOutput = output.into();
@@ -6023,11 +6118,16 @@ fn prove_attn_block_impl(
             value += eq_l[row] * bvals[row];
             tag += eq_l[row] * btags[row];
         }
+        let b_open = b_authenticated
+            .iter()
+            .zip(&eq_l)
+            .fold(ProverAuthed::ZERO, |sum, (&entry, &weight)| sum.add(entry.scale(weight)))
+            .with_same_c6_trace(value, tag);
         timings.t_open_tags_s = open_started.elapsed().as_secs_f64();
         let (gp, wire, _r_l, _tm, _cc) = finalize_gemm_act_chained(
             rounds,
             &pt_av[d_cb..],
-            ProverAuthed { x: value, m: tag },
+            b_open,
             &wv_doms[h],
             cx.stream,
             cx.tx,
@@ -6086,7 +6186,7 @@ fn prove_attn_block_impl(
         .record_c6_fullfield_plaintexts(dom_cw, &[w_eval])
         .expect("C6 causal-wire correction schedule");
     cx.tx.append("causal_w_correction", 16);
-    let w_auth = ProverAuthed { x: w_eval, m: fc.m };
+    let w_auth = fc.authenticate(w_eval);
     // No debug_assert here: this row is exactly where a causal violation
     // must land (cheating-prover emulation in the tests).
     cx.zero.push(w_auth.scale(m_eval).sub(causal_claim_n));
@@ -6135,7 +6235,7 @@ fn prove_attn_block_impl(
         .record_c6_fullfield_plaintexts(dom_rs, &[rs_val])
         .expect("C6 rowsum correction schedule");
     cx.tx.append("rowsum_correction", 16);
-    let rs_auth = ProverAuthed { x: rs_val, m: fr.m };
+    let rs_auth = fr.authenticate(rs_val);
     let den_open = open_fp_vec_p(cx.stream, dom_denoms, &denoms_fp, &rho);
     let two_sb = Fp2::from_base(Fp::new(1u64 << sb));
     cx.zero.push(den_open.sub(rs_auth.scale(two_sb)));
@@ -6184,7 +6284,7 @@ fn prove_attn_block_impl(
             .record_c6_fullfield_plaintexts(dom_rs2, &[rs2_val])
             .expect("C6 ismax rowsum correction schedule");
         cx.tx.append("ismax_rowsum_correction", 16);
-        let rs2_auth = ProverAuthed { x: rs2_val, m: fr2.m };
+        let rs2_auth = fr2.authenticate(rs2_val);
         let eq_rho2 = eq_vec(&rho2);
         cx.ctr_other.fp2_mults += 1u64 << (qb + HEAD_BITS);
         let mut realmask = Fp2::ZERO;
@@ -6294,7 +6394,7 @@ fn prove_attn_block_impl(
     let mut sc_auth = Vec::with_capacity(H);
     for h in 0..H {
         sc_split_corrs[h] = sc_vals[h] - masks_sc[h].x;
-        sc_auth.push(ProverAuthed { x: sc_vals[h], m: masks_sc[h].m });
+        sc_auth.push(masks_sc[h].authenticate(sc_vals[h]));
     }
     cx.tx.append("head_split_corrections", 16 * H as u64);
     let mut row = ProverAuthed::ZERO.sub(acc_sc_true);
@@ -6320,7 +6420,8 @@ fn prove_attn_block_impl(
     let mut qk_timings = Vec::with_capacity(H);
     let mut qk_jobs = Vec::with_capacity(H);
     for h in 0..H {
-        let (kvals, ktags) = cache_fold_rows_p(cx.stream, k_segs, &eq_rj_sc, h * DH, DH);
+        let (kvals, ktags, k_authenticated) =
+            cache_fold_rows_p(cx.stream, k_segs, &eq_rj_sc, h * DH, DH);
         let b_folded = kvals.clone();
         let mut qh = vec![0i16; t * DH];
         for i in 0..t {
@@ -6340,13 +6441,13 @@ fn prove_attn_block_impl(
             sc_auth[h],
             &qk_doms[h],
         );
-        qk_openings.push((kvals, ktags));
+        qk_openings.push((kvals, ktags, k_authenticated));
         qk_timings.push(timings);
         qk_jobs.push(job);
     }
     let qk_outputs = blind_prove_batch(&qk_plan, qk_jobs, cx.stream, cx.tx)
         .expect("sealed Q·Kᵀ schedule and jobs must agree");
-    for (h, ((output, (kvals, ktags)), mut timings)) in
+    for (h, ((output, (kvals, ktags, k_authenticated)), mut timings)) in
         qk_outputs.into_iter().zip(qk_openings).zip(qk_timings).enumerate()
     {
         let rounds: GemmActRoundOutput = output.into();
@@ -6362,11 +6463,16 @@ fn prove_attn_block_impl(
             value += eq_l[l] * kvals[l];
             tag += eq_l[l] * ktags[l];
         }
+        let b_open = k_authenticated
+            .iter()
+            .zip(&eq_l)
+            .fold(ProverAuthed::ZERO, |sum, (&entry, &weight)| sum.add(entry.scale(weight)))
+            .with_same_c6_trace(value, tag);
         timings.t_open_tags_s = open_started.elapsed().as_secs_f64();
         let (gp, wire, _r_l, _tm, _cc) = finalize_gemm_act_chained(
             rounds,
             &pt_sc[sb..sb + qb],
-            ProverAuthed { x: value, m: tag },
+            b_open,
             &qk_doms[h],
             cx.stream,
             cx.tx,
@@ -6762,7 +6868,7 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
         let mut av_auth = Vec::with_capacity(H);
         for head in 0..H {
             av_split_corrs[head] = av_values[head] - split_av_masks[head].x;
-            av_auth.push(ProverAuthed { x: av_values[head], m: split_av_masks[head].m });
+            av_auth.push(split_av_masks[head].authenticate(av_values[head]));
         }
         cx.tx.append("head_split_corrections", 16 * H as u64);
         let mut split_row = ProverAuthed::ZERO.sub(av_claim);
@@ -6901,7 +7007,7 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
             let (proof, wire, _, _, _) = finalize_gemm_act_chained(
                 rounds,
                 &av_point[d_cb..],
-                ProverAuthed { x: b_final, m: tag },
+                ProverAuthed::new(b_final, tag),
                 &wv_doms[head],
                 cx.stream,
                 cx.tx,
@@ -6992,7 +7098,7 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
             .record_c6_fullfield_plaintexts(causal_wire_dom, &[w_value])
             .expect("C6 resident causal-wire correction schedule");
         cx.tx.append("causal_w_correction", 16);
-        let causal_w_auth = ProverAuthed { x: w_value, m: causal_mask.m };
+        let causal_w_auth = causal_mask.authenticate(w_value);
         cx.zero.push(causal_w_auth.scale(mask_value).sub(causal_claim));
         aux_sn.push(LeafAuxClaim { col: 1, point: causal_point, value: causal_w_auth });
 
@@ -7066,7 +7172,7 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
             .record_c6_fullfield_plaintexts(rowsum_dom, &[rowsum_value])
             .expect("C6 resident rowsum correction schedule");
         cx.tx.append("rowsum_correction", 16);
-        let rowsum_auth = ProverAuthed { x: rowsum_value, m: rowsum_mask.m };
+        let rowsum_auth = rowsum_mask.authenticate(rowsum_value);
         let denom_open = open_fp_vec_resident_p(
             cx.stream,
             p1.dom_denoms,
@@ -7137,7 +7243,7 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
                 .record_c6_fullfield_plaintexts(rowmax_sum_dom, &[rowmax_sum])
                 .expect("C6 resident ismax rowsum correction schedule");
             cx.tx.append("ismax_rowsum_correction", 16);
-            let rowmax_sum_auth = ProverAuthed { x: rowmax_sum, m: rowmax_sum_mask.m };
+            let rowmax_sum_auth = rowmax_sum_mask.authenticate(rowmax_sum);
             let eq_rho2 = eq_vec(&rho2);
             cx.ctr_other.fp2_mults += 1u64 << (qb + HEAD_BITS);
             let mut real_mask = Fp2::ZERO;
@@ -7280,7 +7386,7 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
         let mut score_auth = Vec::with_capacity(H);
         for head in 0..H {
             sc_split_corrs[head] = score_values[head] - split_scores_masks[head].x;
-            score_auth.push(ProverAuthed { x: score_values[head], m: split_scores_masks[head].m });
+            score_auth.push(split_scores_masks[head].authenticate(score_values[head]));
         }
         cx.tx.append("head_split_corrections", 16 * H as u64);
         let mut score_split_row = ProverAuthed::ZERO.sub(true_score_claim);
@@ -7401,7 +7507,7 @@ fn prove_attn_block_resident_impl<W: ResidentLayerView>(
             let (proof, wire, _, _, _) = finalize_gemm_act_chained(
                 rounds,
                 &score_point[sb..sb + qb],
-                ProverAuthed { x: b_final, m: tag },
+                ProverAuthed::new(b_final, tag),
                 &qk_doms[head],
                 cx.stream,
                 cx.tx,

@@ -5,7 +5,10 @@
 //! process-local, fail-closed prover trace.  This module deliberately does
 //! not infer provenance from plaintexts, tags, keys, or addresses.
 
+use std::cell::RefCell;
 use std::fmt;
+use std::marker::PhantomData;
+use std::rc::Rc;
 use volta_field::Fp2;
 
 pub const C6_OPERATION_PLAN_VERSION: u32 = 2;
@@ -20,9 +23,7 @@ const C6_OPERATION_ROOT_DOMAIN: &str = "volta/proto/c6/operation-plan/roots/v2";
 const C6_OPERATION_PLAN_DOMAIN: &str = "volta/proto/c6/operation-plan/v2";
 const C6_OPERATION_TOPOLOGY_NODE_DOMAIN: &str = "volta/proto/c6/operation-plan/topology-nodes/v2";
 const C6_OPERATION_TOPOLOGY_PLAN_DOMAIN: &str = "volta/proto/c6/operation-plan/topology/v2";
-#[cfg(feature = "c6-trace")]
 const C6_OPERATION_INSTANCE_VALUE_DOMAIN: &str = "volta/proto/c6/operation-plan/instance-values/v2";
-#[cfg(feature = "c6-trace")]
 const C6_OPERATION_INSTANCE_DOMAIN: &str = "volta/proto/c6/operation-plan/instance/v2";
 
 const C6_OPERATION_PLAN_CODEC_MAGIC: &[u8; 8] = b"VC6PLN2\0";
@@ -374,11 +375,351 @@ impl C6InstanceExtractionArtifact {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6DecodedInstanceExtractionPlan {
-    pub role: C6InstanceExtractionRole,
-    pub topology_digest: [u8; 32],
-    pub public_raw_ordinals: Vec<u32>,
-    pub scalar_raw_ordinals: Vec<u32>,
-    pub census: C6InstanceExtractionCensus,
+    role: C6InstanceExtractionRole,
+    topology_digest: [u8; 32],
+    public_raw_ordinals: Vec<u32>,
+    scalar_raw_ordinals: Vec<u32>,
+    census: C6InstanceExtractionCensus,
+}
+
+impl C6DecodedInstanceExtractionPlan {
+    pub fn role(&self) -> C6InstanceExtractionRole {
+        self.role
+    }
+
+    pub fn topology_digest(&self) -> [u8; 32] {
+        self.topology_digest
+    }
+
+    pub fn public_raw_ordinals(&self) -> &[u32] {
+        &self.public_raw_ordinals
+    }
+
+    pub fn scalar_raw_ordinals(&self) -> &[u32] {
+        &self.scalar_raw_ordinals
+    }
+
+    pub fn census(&self) -> C6InstanceExtractionCensus {
+        self.census
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct C6RuntimeInstanceCaptureSpec {
+    role: C6InstanceExtractionRole,
+    topology_digest: [u8; 32],
+    map_digest: [u8; 32],
+    raw_public_input_count: u32,
+    raw_scalar_input_count: u32,
+    canonical_public_input_count: u32,
+    canonical_scalar_input_count: u32,
+}
+
+impl C6RuntimeInstanceCaptureSpec {
+    fn from_extraction(extraction: &C6DecodedInstanceExtractionPlan) -> Self {
+        Self {
+            role: extraction.role,
+            topology_digest: extraction.topology_digest,
+            map_digest: extraction.census.map_digest,
+            raw_public_input_count: extraction.census.raw_public_input_count,
+            raw_scalar_input_count: extraction.census.raw_scalar_input_count,
+            canonical_public_input_count: extraction.census.canonical_public_input_count,
+            canonical_scalar_input_count: extraction.census.canonical_scalar_input_count,
+        }
+    }
+}
+
+struct C6RuntimeInstanceCaptureState {
+    role: C6InstanceExtractionRole,
+    expected_spec: Option<C6RuntimeInstanceCaptureSpec>,
+    public_values: Vec<Fp2>,
+    scalar_values: Vec<Fp2>,
+    public_overflow: bool,
+    scalar_overflow: bool,
+}
+
+thread_local! {
+    static C6_RUNTIME_INSTANCE_CAPTURE: RefCell<Option<C6RuntimeInstanceCaptureState>> =
+        const { RefCell::new(None) };
+}
+
+/// Response-local raw public/scalar recorder.
+///
+/// The guard is deliberately thread-affine. If authenticated-value work
+/// migrates to another thread, that thread has no active recorder and the
+/// exact installed raw census fails at [`Self::finish`].
+pub struct C6RuntimeInstanceCaptureGuard {
+    active: bool,
+    _not_send: PhantomData<Rc<()>>,
+}
+
+impl fmt::Debug for C6RuntimeInstanceCaptureGuard {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("C6RuntimeInstanceCaptureGuard")
+            .field("active", &self.active)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Captured response values in the role's raw construction order.
+///
+/// Canonical slot access always goes through the installed extraction map;
+/// no response-linear value vector is serialized.
+pub struct C6RuntimeInstanceValues {
+    spec: C6RuntimeInstanceCaptureSpec,
+    public_values: Vec<Fp2>,
+    scalar_values: Vec<Fp2>,
+    instance: C6OperationPlanInstanceIdentity,
+}
+
+impl fmt::Debug for C6RuntimeInstanceValues {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("C6RuntimeInstanceValues")
+            .field("role", &self.spec.role)
+            .field("raw_public_values", &self.public_values.len())
+            .field("raw_scalar_values", &self.scalar_values.len())
+            .field("instance", &self.instance)
+            .finish_non_exhaustive()
+    }
+}
+
+impl C6RuntimeInstanceValues {
+    pub fn role(&self) -> C6InstanceExtractionRole {
+        self.spec.role
+    }
+
+    pub fn instance_identity(&self) -> C6OperationPlanInstanceIdentity {
+        self.instance
+    }
+
+    pub fn raw_public_input_count(&self) -> usize {
+        self.public_values.len()
+    }
+
+    pub fn raw_scalar_input_count(&self) -> usize {
+        self.scalar_values.len()
+    }
+
+    fn validate_extraction(
+        &self,
+        extraction: &C6DecodedInstanceExtractionPlan,
+    ) -> Result<(), C6TraceError> {
+        if self.spec != C6RuntimeInstanceCaptureSpec::from_extraction(extraction) {
+            return Err(C6TraceError::new(
+                "C6 runtime instance values differ from the installed extraction map",
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn public_value(
+        &self,
+        extraction: &C6DecodedInstanceExtractionPlan,
+        canonical_slot: u32,
+    ) -> Result<Fp2, C6TraceError> {
+        self.validate_extraction(extraction)?;
+        let raw = *extraction
+            .public_raw_ordinals
+            .get(canonical_slot as usize)
+            .ok_or_else(|| C6TraceError::new("C6 canonical public slot is out of range"))?;
+        self.public_values
+            .get(raw as usize)
+            .copied()
+            .ok_or_else(|| C6TraceError::new("C6 mapped raw public slot is out of range"))
+    }
+
+    pub fn scalar_value(
+        &self,
+        extraction: &C6DecodedInstanceExtractionPlan,
+        canonical_slot: u32,
+    ) -> Result<Fp2, C6TraceError> {
+        self.validate_extraction(extraction)?;
+        let raw = *extraction
+            .scalar_raw_ordinals
+            .get(canonical_slot as usize)
+            .ok_or_else(|| C6TraceError::new("C6 canonical scalar slot is out of range"))?;
+        self.scalar_values
+            .get(raw as usize)
+            .copied()
+            .ok_or_else(|| C6TraceError::new("C6 mapped raw scalar slot is out of range"))
+    }
+}
+
+/// Begin one exact response-local instance capture on the current thread.
+///
+/// The installed role map supplies exact capacities and censuses. Nested
+/// captures on the same thread are rejected.
+pub fn begin_c6_runtime_instance_capture(
+    extraction: &C6DecodedInstanceExtractionPlan,
+) -> Result<C6RuntimeInstanceCaptureGuard, C6TraceError> {
+    let spec = C6RuntimeInstanceCaptureSpec::from_extraction(extraction);
+    let public_capacity = usize::try_from(spec.raw_public_input_count)
+        .map_err(|_| C6TraceError::new("C6 raw public capture count exceeds usize"))?;
+    let scalar_capacity = usize::try_from(spec.raw_scalar_input_count)
+        .map_err(|_| C6TraceError::new("C6 raw scalar capture count exceeds usize"))?;
+    begin_c6_runtime_instance_capture_impl(
+        extraction.role,
+        Some(spec),
+        public_capacity,
+        scalar_capacity,
+    )
+}
+
+/// Diagnostic-only first-pass capture used to validate a newly compiled map.
+///
+/// Production callers must use [`begin_c6_runtime_instance_capture`] with an
+/// already installed and decoded extraction artifact.
+#[doc(hidden)]
+pub fn begin_c6_runtime_instance_capture_diagnostic(
+    role: C6InstanceExtractionRole,
+) -> Result<C6RuntimeInstanceCaptureGuard, C6TraceError> {
+    begin_c6_runtime_instance_capture_impl(role, None, 0, 0)
+}
+
+fn begin_c6_runtime_instance_capture_impl(
+    role: C6InstanceExtractionRole,
+    expected_spec: Option<C6RuntimeInstanceCaptureSpec>,
+    public_capacity: usize,
+    scalar_capacity: usize,
+) -> Result<C6RuntimeInstanceCaptureGuard, C6TraceError> {
+    let mut public_values = Vec::new();
+    public_values
+        .try_reserve_exact(public_capacity)
+        .map_err(|_| C6TraceError::new("C6 raw public capture allocation failed"))?;
+    let mut scalar_values = Vec::new();
+    scalar_values
+        .try_reserve_exact(scalar_capacity)
+        .map_err(|_| C6TraceError::new("C6 raw scalar capture allocation failed"))?;
+
+    C6_RUNTIME_INSTANCE_CAPTURE
+        .try_with(|capture| {
+            let mut capture = capture
+                .try_borrow_mut()
+                .map_err(|_| C6TraceError::new("C6 runtime instance capture is borrowed"))?;
+            if capture.is_some() {
+                return Err(C6TraceError::new(
+                    "a C6 runtime instance capture is already active on this thread",
+                ));
+            }
+            *capture = Some(C6RuntimeInstanceCaptureState {
+                role,
+                expected_spec,
+                public_values,
+                scalar_values,
+                public_overflow: false,
+                scalar_overflow: false,
+            });
+            Ok(())
+        })
+        .map_err(|_| C6TraceError::new("C6 runtime instance TLS is unavailable"))??;
+    Ok(C6RuntimeInstanceCaptureGuard { active: true, _not_send: PhantomData })
+}
+
+impl C6RuntimeInstanceCaptureGuard {
+    pub fn finish(
+        mut self,
+        operation_plan: &C6OperationPlanArtifact,
+        extraction: &C6DecodedInstanceExtractionPlan,
+    ) -> Result<C6RuntimeInstanceValues, C6TraceError> {
+        let result = finish_c6_runtime_instance_capture(operation_plan, extraction);
+        self.active = false;
+        result
+    }
+}
+
+impl Drop for C6RuntimeInstanceCaptureGuard {
+    fn drop(&mut self) {
+        if self.active {
+            let _ = C6_RUNTIME_INSTANCE_CAPTURE.try_with(|capture| {
+                if let Ok(mut capture) = capture.try_borrow_mut() {
+                    *capture = None;
+                }
+            });
+        }
+    }
+}
+
+#[inline]
+fn record_c6_runtime_public(value: Fp2) {
+    let _ = C6_RUNTIME_INSTANCE_CAPTURE.try_with(|capture| {
+        let mut capture = capture.borrow_mut();
+        let Some(capture) = capture.as_mut() else {
+            return;
+        };
+        let limit = capture
+            .expected_spec
+            .map_or(u32::MAX as usize, |spec| spec.raw_public_input_count as usize);
+        if capture.public_values.len() >= limit {
+            capture.public_overflow = true;
+            return;
+        }
+        capture.public_values.push(value);
+    });
+}
+
+#[inline]
+fn record_c6_runtime_scalar(value: Fp2) {
+    let _ = C6_RUNTIME_INSTANCE_CAPTURE.try_with(|capture| {
+        let mut capture = capture.borrow_mut();
+        let Some(capture) = capture.as_mut() else {
+            return;
+        };
+        let limit = capture
+            .expected_spec
+            .map_or(u32::MAX as usize, |spec| spec.raw_scalar_input_count as usize);
+        if capture.scalar_values.len() >= limit {
+            capture.scalar_overflow = true;
+            return;
+        }
+        capture.scalar_values.push(value);
+    });
+}
+
+fn finish_c6_runtime_instance_capture(
+    operation_plan: &C6OperationPlanArtifact,
+    extraction: &C6DecodedInstanceExtractionPlan,
+) -> Result<C6RuntimeInstanceValues, C6TraceError> {
+    let capture = C6_RUNTIME_INSTANCE_CAPTURE
+        .try_with(|capture| {
+            capture
+                .try_borrow_mut()
+                .map_err(|_| C6TraceError::new("C6 runtime instance capture is borrowed"))?
+                .take()
+                .ok_or_else(|| C6TraceError::new("no C6 runtime instance capture is active"))
+        })
+        .map_err(|_| C6TraceError::new("C6 runtime instance TLS is unavailable"))??;
+    let expected_spec = C6RuntimeInstanceCaptureSpec::from_extraction(extraction);
+    if capture.role != expected_spec.role
+        || capture.expected_spec.is_some_and(|spec| spec != expected_spec)
+    {
+        return Err(C6TraceError::new(
+            "C6 runtime instance capture finished against a different extraction map",
+        ));
+    }
+    if capture.public_overflow || capture.scalar_overflow {
+        return Err(C6TraceError::new(
+            "C6 runtime instance stream exceeds the installed raw census",
+        ));
+    }
+    if capture.public_values.len() != expected_spec.raw_public_input_count as usize
+        || capture.scalar_values.len() != expected_spec.raw_scalar_input_count as usize
+    {
+        return Err(C6TraceError::new(
+            "C6 runtime instance stream differs from the installed raw census",
+        ));
+    }
+    let instance = reconstruct_c6_runtime_instance_identity(
+        operation_plan,
+        extraction,
+        &capture.public_values,
+        &capture.scalar_values,
+    )?;
+    Ok(C6RuntimeInstanceValues {
+        spec: expected_spec,
+        public_values: capture.public_values,
+        scalar_values: capture.scalar_values,
+        instance,
+    })
 }
 
 impl fmt::Debug for C6OperationPlanArtifact {
@@ -2223,6 +2564,169 @@ fn decode_c6_instance_extraction_artifact(
     })
 }
 
+fn reconstruct_c6_runtime_instance_identity(
+    operation_plan: &C6OperationPlanArtifact,
+    extraction: &C6DecodedInstanceExtractionPlan,
+    raw_public_values: &[Fp2],
+    raw_scalar_values: &[Fp2],
+) -> Result<C6OperationPlanInstanceIdentity, C6TraceError> {
+    if raw_public_values.len() != extraction.census.raw_public_input_count as usize
+        || raw_scalar_values.len() != extraction.census.raw_scalar_input_count as usize
+    {
+        return Err(C6TraceError::new(
+            "C6 runtime instance values differ from the extraction raw census",
+        ));
+    }
+    let header_len = usize::try_from(C6_OPERATION_PARAMETERIZED_HEADER_BYTES)
+        .map_err(|_| C6TraceError::new("C6 operation-plan header exceeds usize"))?;
+    let header_bytes = operation_plan
+        .bytes
+        .get(..header_len)
+        .ok_or_else(|| C6TraceError::new("truncated C6 operation-plan header"))?;
+    let mut header = C6ByteCursor::new(header_bytes);
+    if header.take(8)? != C6_OPERATION_PLAN_CODEC_MAGIC
+        || header.u32()? != C6_OPERATION_PLAN_CODEC_VERSION
+    {
+        return Err(C6TraceError::new(
+            "C6 runtime instance received the wrong operation-plan codec",
+        ));
+    }
+    let version = header.u32()?;
+    if version != C6_OPERATION_PLAN_VERSION {
+        return Err(C6TraceError::new(
+            "C6 runtime instance received the wrong operation-plan version",
+        ));
+    }
+    let _source_count = header.u32()?;
+    let _source_schedule_digest = header.digest()?;
+    let canonical_node_count = header.u32()?;
+    let public_input_count = header.u32()?;
+    let scalar_input_count = header.u32()?;
+    let _product_closure_count = header.u32()?;
+    let _product_triple_count = header.u64()?;
+    let _zero_root_count = header.u32()?;
+    let topology_digest = header.digest()?;
+    let section_lengths =
+        [header.u64()?, header.u64()?, header.u64()?, header.u64()?, header.u64()?];
+    if header.position != header_len {
+        return Err(C6TraceError::new(
+            "C6 runtime instance operation-plan header has trailing bytes",
+        ));
+    }
+    if topology_digest != extraction.topology_digest
+        || public_input_count != extraction.census.canonical_public_input_count
+        || scalar_input_count != extraction.census.canonical_scalar_input_count
+        || extraction.public_raw_ordinals.len() != public_input_count as usize
+        || extraction.scalar_raw_ordinals.len() != scalar_input_count as usize
+    {
+        return Err(C6TraceError::new(
+            "C6 runtime instance operation plan differs from the extraction map",
+        ));
+    }
+    let expected_opcode_bytes = u64::from(canonical_node_count)
+        .checked_mul(3)
+        .and_then(|bits| bits.checked_add(7))
+        .ok_or_else(|| C6TraceError::new("C6 runtime instance opcode length overflows"))?
+        / 8;
+    if section_lengths[0] != expected_opcode_bytes {
+        return Err(C6TraceError::new(
+            "C6 runtime instance opcode section differs from the node census",
+        ));
+    }
+    let total_bytes = C6_OPERATION_PARAMETERIZED_HEADER_BYTES
+        .checked_add(
+            section_lengths
+                .iter()
+                .try_fold(0u64, |sum, &length| sum.checked_add(length))
+                .ok_or_else(|| {
+                    C6TraceError::new("C6 runtime instance operation-plan lengths overflow")
+                })?,
+        )
+        .ok_or_else(|| {
+            C6TraceError::new("C6 runtime instance operation-plan total length overflows")
+        })?;
+    let artifact_bytes = u64::try_from(operation_plan.bytes.len())
+        .map_err(|_| C6TraceError::new("C6 runtime operation-plan length exceeds u64"))?;
+    if total_bytes != artifact_bytes {
+        return Err(C6TraceError::new(
+            "C6 runtime instance operation-plan length differs from its header",
+        ));
+    }
+    let mut offset = header_len;
+    let opcode_section = c6_section(&operation_plan.bytes, &mut offset, section_lengths[0])?;
+    let mut opcodes = C6BitReader::new(opcode_section);
+    let mut public_slot = 0u32;
+    let mut scalar_slot = 0u32;
+    let mut value_hasher = blake3::Hasher::new_derive_key(C6_OPERATION_INSTANCE_VALUE_DOMAIN);
+    for canonical in 0..canonical_node_count {
+        match opcodes.read(3)? {
+            1 | 2 | 4 | 5 => {}
+            3 => {
+                let raw = *extraction
+                    .public_raw_ordinals
+                    .get(public_slot as usize)
+                    .ok_or_else(|| C6TraceError::new("C6 runtime public slot count overflows"))?;
+                let value = *raw_public_values.get(raw as usize).ok_or_else(|| {
+                    C6TraceError::new("C6 runtime public map points outside the raw stream")
+                })?;
+                value_hasher.update(&canonical.to_le_bytes());
+                value_hasher.update(&[1]);
+                value_hasher.update(&public_slot.to_le_bytes());
+                value_hasher.update(&value.c0.value().to_le_bytes());
+                value_hasher.update(&value.c1.value().to_le_bytes());
+                public_slot = public_slot
+                    .checked_add(1)
+                    .ok_or_else(|| C6TraceError::new("C6 runtime public slot count overflows"))?;
+            }
+            6 => {
+                let raw = *extraction
+                    .scalar_raw_ordinals
+                    .get(scalar_slot as usize)
+                    .ok_or_else(|| C6TraceError::new("C6 runtime scalar slot count overflows"))?;
+                let value = *raw_scalar_values.get(raw as usize).ok_or_else(|| {
+                    C6TraceError::new("C6 runtime scalar map points outside the raw stream")
+                })?;
+                value_hasher.update(&canonical.to_le_bytes());
+                value_hasher.update(&[2]);
+                value_hasher.update(&scalar_slot.to_le_bytes());
+                value_hasher.update(&value.c0.value().to_le_bytes());
+                value_hasher.update(&value.c1.value().to_le_bytes());
+                scalar_slot = scalar_slot
+                    .checked_add(1)
+                    .ok_or_else(|| C6TraceError::new("C6 runtime scalar slot count overflows"))?;
+            }
+            _ => {
+                return Err(C6TraceError::new(
+                    "C6 runtime instance encountered a reserved operation-plan opcode",
+                ));
+            }
+        }
+    }
+    let opcode_bits = u64::from(canonical_node_count)
+        .checked_mul(3)
+        .ok_or_else(|| C6TraceError::new("C6 runtime opcode bit count overflows"))?;
+    opcodes.finish(opcode_bits, "runtime instance opcode")?;
+    if public_slot != public_input_count || scalar_slot != scalar_input_count {
+        return Err(C6TraceError::new(
+            "C6 runtime instance slot counts differ from the operation plan",
+        ));
+    }
+    let instance_value_digest = *value_hasher.finalize().as_bytes();
+    let mut instance_hasher = blake3::Hasher::new_derive_key(C6_OPERATION_INSTANCE_DOMAIN);
+    instance_hasher.update(&version.to_le_bytes());
+    instance_hasher.update(&topology_digest);
+    instance_hasher.update(&public_input_count.to_le_bytes());
+    instance_hasher.update(&scalar_input_count.to_le_bytes());
+    instance_hasher.update(&instance_value_digest);
+    Ok(C6OperationPlanInstanceIdentity {
+        version,
+        topology_digest,
+        public_input_count,
+        scalar_input_count,
+        instance_digest: *instance_hasher.finalize().as_bytes(),
+    })
+}
+
 fn decode_c6_operation_plan_artifact(
     bytes: &[u8],
     manifest: &C6TraceSourceManifest,
@@ -2662,6 +3166,7 @@ impl C6TraceToken {
     }
 
     pub(crate) fn public(value: Fp2) -> Self {
+        record_c6_runtime_public(value);
         #[cfg(feature = "c6-trace")]
         {
             return record_node(C6TraceNode::Public(value));
@@ -2682,6 +3187,7 @@ impl C6TraceToken {
     }
 
     pub(crate) fn scale(self, scalar: Fp2) -> Self {
+        record_c6_runtime_scalar(scalar);
         #[cfg(feature = "c6-trace")]
         {
             if self.is_untracked() {
@@ -2982,6 +3488,19 @@ mod tests {
         assert!(extraction.public_raw_ordinals.is_empty());
         assert!(extraction.scalar_raw_ordinals.is_empty());
         assert_eq!(extraction.census.total_bytes, 122);
+        #[cfg(not(feature = "c6-trace"))]
+        {
+            let capture = begin_c6_runtime_instance_capture(&extraction).unwrap();
+            assert!(begin_c6_runtime_instance_capture(&extraction).is_err());
+            let runtime = capture.finish(&artifact, &extraction).unwrap();
+            assert_eq!(runtime.role(), C6InstanceExtractionRole::Verifier);
+            assert_eq!(runtime.raw_public_input_count(), 0);
+            assert_eq!(runtime.raw_scalar_input_count(), 0);
+
+            let overflow = begin_c6_runtime_instance_capture(&extraction).unwrap();
+            let _unexpected = crate::ProverAuthed::from_public(Fp2::ONE);
+            assert!(overflow.finish(&artifact, &extraction).is_err());
+        }
     }
 
     #[cfg(feature = "c6-trace")]
@@ -3189,6 +3708,27 @@ mod tests {
                 map_digest: extraction.census.map_digest,
             }
         );
+        let capture = begin_c6_runtime_instance_capture(&extraction).unwrap();
+        let public = C6TraceToken::public(Fp2::ONE);
+        let _scaled = public.scale(Fp2::new(volta_field::Fp::new(2), volta_field::Fp::new(3)));
+        let runtime = capture.finish(&compiled.artifact, &extraction).unwrap();
+        assert_eq!(runtime.role(), C6InstanceExtractionRole::Prover);
+        assert_eq!(runtime.raw_public_input_count(), 1);
+        assert_eq!(runtime.raw_scalar_input_count(), 1);
+        assert_eq!(runtime.instance_identity(), compiled.plan.instance);
+        assert_eq!(runtime.public_value(&extraction, 0).unwrap(), Fp2::ONE);
+        assert_eq!(
+            runtime.scalar_value(&extraction, 0).unwrap(),
+            Fp2::new(volta_field::Fp::new(2), volta_field::Fp::new(3))
+        );
+        let migrated = begin_c6_runtime_instance_capture(&extraction).unwrap();
+        std::thread::spawn(|| {
+            let public = C6TraceToken::public(Fp2::ONE);
+            let _scaled = public.scale(Fp2::new(volta_field::Fp::new(2), volta_field::Fp::new(3)));
+        })
+        .join()
+        .unwrap();
+        assert!(migrated.finish(&compiled.artifact, &extraction).is_err());
 
         let shifted = compile_c6_operation_trace(&allocation_trace(true), &manifest).unwrap();
         assert_eq!(compiled.artifact, shifted.artifact);
@@ -3206,10 +3746,13 @@ mod tests {
         .unwrap();
         assert_eq!(compiled.artifact, verifier.artifact);
         assert_ne!(compiled.instance_extraction, verifier.instance_extraction);
-        assert_eq!(
-            verifier.instance_extraction.decode(verifier.plan.topology).unwrap().role,
-            C6InstanceExtractionRole::Verifier
-        );
+        let verifier_extraction =
+            verifier.instance_extraction.decode(verifier.plan.topology).unwrap();
+        assert_eq!(verifier_extraction.role, C6InstanceExtractionRole::Verifier);
+        let wrong_role = begin_c6_runtime_instance_capture(&extraction).unwrap();
+        let public = C6TraceToken::public(Fp2::ONE);
+        let _scaled = public.scale(Fp2::new(volta_field::Fp::new(2), volta_field::Fp::new(3)));
+        assert!(wrong_role.finish(&compiled.artifact, &verifier_extraction).is_err());
 
         let reject = |mut bytes: Vec<u8>, mutate: fn(&mut Vec<u8>)| {
             mutate(&mut bytes);

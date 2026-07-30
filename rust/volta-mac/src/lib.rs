@@ -17,19 +17,22 @@ pub use auth::{
     auth_prover, auth_verifier, auth_verifier_from_epilogue, prover_tags_from_epilogue,
 };
 pub use authed::{ProverAuthed, ProverSubAuthed, VerifierKey};
+#[doc(hidden)]
+pub use c6_trace::begin_c6_runtime_instance_capture_diagnostic;
 pub use c6_trace::{
-    begin_c6_prover_trace, begin_c6_verifier_trace, compile_c6_operation_trace,
-    compile_c6_operation_trace_for_role, finish_c6_prover_trace, finish_c6_verifier_trace,
-    normalize_c6_operation_trace, normalize_c6_operation_trace_debug_block,
-    record_c6_product_closure, record_c6_zero_roots, C6CanonicalNodeDebug,
-    C6CanonicalNodeDebugKind, C6CanonicalNodeKindCensus, C6CanonicalOperationPlan,
-    C6CanonicalTerminalDebug, C6CompiledOperationPlan, C6DecodedInstanceExtractionPlan,
-    C6DecodedOperationPlan, C6InstanceExtractionArtifact, C6InstanceExtractionCensus,
-    C6InstanceExtractionRole, C6OperationPlanArtifact, C6OperationPlanDiagnostics,
-    C6OperationPlanEncodingCensus, C6OperationPlanIdentity, C6OperationPlanInstanceIdentity,
-    C6OperationPlanSpecializedEncodingCensus, C6OperationPlanTopologyIdentity,
-    C6ProverTraceSnapshot, C6TraceError, C6TraceNode, C6TraceProductClosure, C6TraceSourceManifest,
-    C6TraceToken, C6VerifierTraceSnapshot, C6_OPERATION_PLAN_VERSION,
+    begin_c6_prover_trace, begin_c6_runtime_instance_capture, begin_c6_verifier_trace,
+    compile_c6_operation_trace, compile_c6_operation_trace_for_role, finish_c6_prover_trace,
+    finish_c6_verifier_trace, normalize_c6_operation_trace,
+    normalize_c6_operation_trace_debug_block, record_c6_product_closure, record_c6_zero_roots,
+    C6CanonicalNodeDebug, C6CanonicalNodeDebugKind, C6CanonicalNodeKindCensus,
+    C6CanonicalOperationPlan, C6CanonicalTerminalDebug, C6CompiledOperationPlan,
+    C6DecodedInstanceExtractionPlan, C6DecodedOperationPlan, C6InstanceExtractionArtifact,
+    C6InstanceExtractionCensus, C6InstanceExtractionRole, C6OperationPlanArtifact,
+    C6OperationPlanDiagnostics, C6OperationPlanEncodingCensus, C6OperationPlanIdentity,
+    C6OperationPlanInstanceIdentity, C6OperationPlanSpecializedEncodingCensus,
+    C6OperationPlanTopologyIdentity, C6ProverTraceSnapshot, C6RuntimeInstanceCaptureGuard,
+    C6RuntimeInstanceValues, C6TraceError, C6TraceNode, C6TraceProductClosure,
+    C6TraceSourceManifest, C6TraceToken, C6VerifierTraceSnapshot, C6_OPERATION_PLAN_VERSION,
 };
 pub use corr::{
     C6FullfieldWitnessAudit, C6FullfieldWitnessDraw, C6SubfieldWitnessAudit, C6SubfieldWitnessDraw,

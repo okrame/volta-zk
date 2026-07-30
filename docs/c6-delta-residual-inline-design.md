@@ -896,6 +896,24 @@ and `c6-instance-extraction-seed25-2026-07-29-1817975.json` (SHA-256
 Both are `git_dirty:false`, `diagnostic:false`, `pod_contacted:false` and
 `all_pass:true`.
 
+The lightweight recorder now also passes one complete same-response
+seed-24 diagnostic.  It is thread-local, does not add fields to any
+authenticated-value type, and records only the existing `from_public` and
+public-`scale` operands.  The prover capture contains exactly
+`1,466 / 10,837,046` raw public/scalar values and the verifier capture
+`1,466 / 10,828,876`; applying the installed role maps reconstructs
+`7a21189b9580b163500595ca5cca8d1f5184017139f52ab3878e7238345cacaa`
+on both sides.  An event executed on a different thread is absent from the
+owning thread's stream and therefore fails the exact raw census and instance
+digest instead of being silently reordered.  Unit tests cover ordinary-build
+capture, nested activation, overflow, role/map binding and exact scaled
+reconstruction.
+
+This was a dirty stdout-only diagnostic with the full graph trace enabled.
+It establishes seam equality, not production overhead: a bound ordinary
+build with graph tracing disabled and its provider wall delta remain required
+before runtime/timing credit.
+
 ## 4. Hidden Ligero vectors without an NTT trace
 
 Simply omitting `u_c` or `u_g` is unsound.  C6 commits to them before the

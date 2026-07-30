@@ -28,6 +28,11 @@ const C6_OPERATION_INSTANCE_DOMAIN: &str = "volta/proto/c6/operation-plan/instan
 const C6_OPERATION_PLAN_CODEC_MAGIC: &[u8; 8] = b"VC6PLN2\0";
 const C6_OPERATION_PLAN_CODEC_VERSION: u32 = 1;
 const C6_OPERATION_PARAMETERIZED_HEADER_BYTES: u64 = 152;
+const C6_INSTANCE_EXTRACTION_CODEC_MAGIC: &[u8; 8] = b"VC6INS1\0";
+const C6_INSTANCE_EXTRACTION_CODEC_VERSION: u32 = 1;
+const C6_INSTANCE_EXTRACTION_HEADER_BYTES: u64 = 120;
+const C6_INSTANCE_EXTRACTION_MAP_DOMAIN: &str =
+    "volta/proto/c6/operation-plan/instance-extraction-map/v1";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6TraceError(String);
@@ -171,6 +176,38 @@ pub struct C6OperationPlanInstanceIdentity {
     pub instance_digest: [u8; 32],
 }
 
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum C6InstanceExtractionRole {
+    Prover = 1,
+    Verifier = 2,
+}
+
+impl C6InstanceExtractionRole {
+    fn decode(value: u8) -> Result<Self, C6TraceError> {
+        match value {
+            1 => Ok(Self::Prover),
+            2 => Ok(Self::Verifier),
+            _ => Err(C6TraceError::new("unknown C6 instance-extraction role")),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct C6InstanceExtractionCensus {
+    pub raw_public_input_count: u32,
+    pub raw_scalar_input_count: u32,
+    pub canonical_public_input_count: u32,
+    pub canonical_scalar_input_count: u32,
+    pub public_run_count: u32,
+    pub scalar_run_count: u32,
+    pub header_bytes: u64,
+    pub public_map_bytes: u64,
+    pub scalar_map_bytes: u64,
+    pub total_bytes: u64,
+    pub map_digest: [u8; 32],
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct C6CanonicalNodeKindCensus {
     pub source: u64,
@@ -281,11 +318,67 @@ pub struct C6CanonicalOperationPlan {
 pub struct C6CompiledOperationPlan {
     pub plan: C6CanonicalOperationPlan,
     pub artifact: C6OperationPlanArtifact,
+    pub instance_extraction: C6InstanceExtractionArtifact,
 }
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct C6OperationPlanArtifact {
     bytes: Vec<u8>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct C6InstanceExtractionArtifact {
+    bytes: Vec<u8>,
+}
+
+impl fmt::Debug for C6InstanceExtractionArtifact {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("C6InstanceExtractionArtifact")
+            .field("bytes", &self.bytes.len())
+            .finish_non_exhaustive()
+    }
+}
+
+impl C6InstanceExtractionArtifact {
+    pub fn parse(
+        bytes: Vec<u8>,
+        topology: C6OperationPlanTopologyIdentity,
+    ) -> Result<Self, C6TraceError> {
+        decode_c6_instance_extraction_artifact(&bytes, topology)?;
+        Ok(Self { bytes })
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
+    pub fn len(&self) -> usize {
+        self.bytes.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.bytes.is_empty()
+    }
+
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.bytes
+    }
+
+    pub fn decode(
+        &self,
+        topology: C6OperationPlanTopologyIdentity,
+    ) -> Result<C6DecodedInstanceExtractionPlan, C6TraceError> {
+        decode_c6_instance_extraction_artifact(&self.bytes, topology)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6DecodedInstanceExtractionPlan {
+    pub role: C6InstanceExtractionRole,
+    pub topology_digest: [u8; 32],
+    pub public_raw_ordinals: Vec<u32>,
+    pub scalar_raw_ordinals: Vec<u32>,
+    pub census: C6InstanceExtractionCensus,
 }
 
 impl fmt::Debug for C6OperationPlanArtifact {
@@ -719,6 +812,152 @@ impl C6PlanEncodingBuilder {
         }
         Ok(C6OperationPlanArtifact { bytes })
     }
+}
+
+fn c6_instance_extraction_map_digest(
+    role: C6InstanceExtractionRole,
+    topology: C6OperationPlanTopologyIdentity,
+    raw_public_input_count: u32,
+    raw_scalar_input_count: u32,
+    public_raw_ordinals: &[u32],
+    scalar_raw_ordinals: &[u32],
+) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new_derive_key(C6_INSTANCE_EXTRACTION_MAP_DOMAIN);
+    hasher.update(&C6_INSTANCE_EXTRACTION_CODEC_VERSION.to_le_bytes());
+    hasher.update(&C6_OPERATION_PLAN_VERSION.to_le_bytes());
+    hasher.update(&[role as u8]);
+    hasher.update(&topology.topology_digest);
+    hasher.update(&raw_public_input_count.to_le_bytes());
+    hasher.update(&raw_scalar_input_count.to_le_bytes());
+    hasher.update(&topology.public_input_count.to_le_bytes());
+    hasher.update(&topology.scalar_input_count.to_le_bytes());
+    for (kind, ordinals) in [(1u8, public_raw_ordinals), (2u8, scalar_raw_ordinals)] {
+        hasher.update(&[kind]);
+        hasher.update(&(ordinals.len() as u64).to_le_bytes());
+        for (slot, &raw) in ordinals.iter().enumerate() {
+            hasher.update(&(slot as u64).to_le_bytes());
+            hasher.update(&raw.to_le_bytes());
+        }
+    }
+    *hasher.finalize().as_bytes()
+}
+
+#[cfg(feature = "c6-trace")]
+fn c6_instance_map_runs(ordinals: &[u32]) -> Result<Vec<(u32, u32)>, C6TraceError> {
+    let mut runs = Vec::new();
+    let mut index = 0usize;
+    while index < ordinals.len() {
+        let start = ordinals[index];
+        let mut length = 1usize;
+        while index + length < ordinals.len()
+            && ordinals[index + length - 1]
+                .checked_add(1)
+                .is_some_and(|next| next == ordinals[index + length])
+        {
+            length += 1;
+        }
+        runs.push((
+            start,
+            u32::try_from(length)
+                .map_err(|_| C6TraceError::new("C6 instance-extraction run exceeds u32"))?,
+        ));
+        index += length;
+    }
+    Ok(runs)
+}
+
+#[cfg(feature = "c6-trace")]
+fn encode_c6_instance_map_section(ordinals: &[u32]) -> Result<(Vec<u8>, u32), C6TraceError> {
+    let runs = c6_instance_map_runs(ordinals)?;
+    let run_count = u32::try_from(runs.len())
+        .map_err(|_| C6TraceError::new("C6 instance-extraction run count exceeds u32"))?;
+    let mut bytes = Vec::new();
+    C6PlanEncodingBuilder::push_uleb(&mut bytes, u64::from(run_count));
+    let mut expected_next = 0i64;
+    for (start, length) in runs {
+        let delta = i64::from(start) - expected_next;
+        C6PlanEncodingBuilder::push_uleb(&mut bytes, zigzag_i64(delta));
+        C6PlanEncodingBuilder::push_uleb(&mut bytes, u64::from(length - 1));
+        expected_next = i64::from(start)
+            .checked_add(i64::from(length))
+            .ok_or_else(|| C6TraceError::new("C6 instance-extraction run end overflows"))?;
+    }
+    Ok((bytes, run_count))
+}
+
+#[cfg(feature = "c6-trace")]
+fn encode_c6_instance_extraction_artifact(
+    role: C6InstanceExtractionRole,
+    topology: C6OperationPlanTopologyIdentity,
+    raw_public_input_count: u32,
+    raw_scalar_input_count: u32,
+    public_raw_ordinals: &[u32],
+    scalar_raw_ordinals: &[u32],
+) -> Result<(C6InstanceExtractionArtifact, C6InstanceExtractionCensus), C6TraceError> {
+    if public_raw_ordinals.len() != topology.public_input_count as usize
+        || scalar_raw_ordinals.len() != topology.scalar_input_count as usize
+    {
+        return Err(C6TraceError::new(
+            "C6 instance-extraction map differs from canonical slot census",
+        ));
+    }
+    let (public_map, public_run_count) = encode_c6_instance_map_section(public_raw_ordinals)?;
+    let (scalar_map, scalar_run_count) = encode_c6_instance_map_section(scalar_raw_ordinals)?;
+    let map_digest = c6_instance_extraction_map_digest(
+        role,
+        topology,
+        raw_public_input_count,
+        raw_scalar_input_count,
+        public_raw_ordinals,
+        scalar_raw_ordinals,
+    );
+    let public_map_bytes = u64::try_from(public_map.len())
+        .map_err(|_| C6TraceError::new("C6 public instance map exceeds u64"))?;
+    let scalar_map_bytes = u64::try_from(scalar_map.len())
+        .map_err(|_| C6TraceError::new("C6 scalar instance map exceeds u64"))?;
+    let total_bytes = C6_INSTANCE_EXTRACTION_HEADER_BYTES
+        .checked_add(public_map_bytes)
+        .and_then(|bytes| bytes.checked_add(scalar_map_bytes))
+        .ok_or_else(|| C6TraceError::new("C6 instance-extraction artifact length overflows"))?;
+    let capacity = usize::try_from(total_bytes)
+        .map_err(|_| C6TraceError::new("C6 instance-extraction artifact exceeds usize"))?;
+    let mut bytes = Vec::with_capacity(capacity);
+    bytes.extend_from_slice(C6_INSTANCE_EXTRACTION_CODEC_MAGIC);
+    bytes.extend_from_slice(&C6_INSTANCE_EXTRACTION_CODEC_VERSION.to_le_bytes());
+    bytes.extend_from_slice(&C6_OPERATION_PLAN_VERSION.to_le_bytes());
+    bytes.push(role as u8);
+    bytes.extend_from_slice(&[0; 3]);
+    bytes.extend_from_slice(&topology.topology_digest);
+    bytes.extend_from_slice(&raw_public_input_count.to_le_bytes());
+    bytes.extend_from_slice(&raw_scalar_input_count.to_le_bytes());
+    bytes.extend_from_slice(&topology.public_input_count.to_le_bytes());
+    bytes.extend_from_slice(&topology.scalar_input_count.to_le_bytes());
+    bytes.extend_from_slice(&map_digest);
+    bytes.extend_from_slice(&public_map_bytes.to_le_bytes());
+    bytes.extend_from_slice(&scalar_map_bytes.to_le_bytes());
+    bytes.extend_from_slice(&0u32.to_le_bytes());
+    if bytes.len() as u64 != C6_INSTANCE_EXTRACTION_HEADER_BYTES {
+        return Err(C6TraceError::new("C6 instance-extraction header length changed"));
+    }
+    bytes.extend_from_slice(&public_map);
+    bytes.extend_from_slice(&scalar_map);
+    if bytes.len() != capacity {
+        return Err(C6TraceError::new("C6 instance-extraction artifact length changed"));
+    }
+    let census = C6InstanceExtractionCensus {
+        raw_public_input_count,
+        raw_scalar_input_count,
+        canonical_public_input_count: topology.public_input_count,
+        canonical_scalar_input_count: topology.scalar_input_count,
+        public_run_count,
+        scalar_run_count,
+        header_bytes: C6_INSTANCE_EXTRACTION_HEADER_BYTES,
+        public_map_bytes,
+        scalar_map_bytes,
+        total_bytes,
+        map_digest,
+    };
+    Ok((C6InstanceExtractionArtifact { bytes }, census))
 }
 
 #[cfg(feature = "c6-trace")]
@@ -1161,6 +1400,130 @@ impl<'a> C6TraceNormalizer<'a> {
     }
 }
 
+#[cfg(feature = "c6-trace")]
+fn compile_c6_instance_extraction(
+    normalizer: &C6TraceNormalizer<'_>,
+    role: C6InstanceExtractionRole,
+    topology: C6OperationPlanTopologyIdentity,
+    expected_instance: C6OperationPlanInstanceIdentity,
+) -> Result<C6InstanceExtractionArtifact, C6TraceError> {
+    let mut raw_public_values = Vec::new();
+    let mut raw_scalar_values = Vec::new();
+    let mut public_map = Vec::<(u32, u32)>::new();
+    let mut scalar_map = Vec::<(u32, u32)>::new();
+    for (raw_index, node) in normalizer.trace.nodes.iter().enumerate() {
+        let canonical = normalizer.raw_to_canonical[raw_index];
+        match *node {
+            C6TraceNode::Public(value) => {
+                let raw_slot = u32::try_from(raw_public_values.len())
+                    .map_err(|_| C6TraceError::new("C6 raw public slot count exceeds u32"))?;
+                raw_public_values.push(value);
+                if canonical != UNASSIGNED_CANONICAL_NODE {
+                    public_map.push((canonical, raw_slot));
+                }
+            }
+            C6TraceNode::Scale { scalar, .. } => {
+                let raw_slot = u32::try_from(raw_scalar_values.len())
+                    .map_err(|_| C6TraceError::new("C6 raw scalar slot count exceeds u32"))?;
+                raw_scalar_values.push(scalar);
+                if canonical != UNASSIGNED_CANONICAL_NODE {
+                    scalar_map.push((canonical, raw_slot));
+                }
+            }
+            C6TraceNode::Add { .. } | C6TraceNode::Sub { .. } => {}
+        }
+    }
+    public_map.sort_unstable_by_key(|&(canonical, _)| canonical);
+    scalar_map.sort_unstable_by_key(|&(canonical, _)| canonical);
+    if public_map.len() != topology.public_input_count as usize
+        || scalar_map.len() != topology.scalar_input_count as usize
+    {
+        return Err(C6TraceError::new(
+            "C6 reachable raw instance events differ from canonical slot census",
+        ));
+    }
+    if public_map.windows(2).any(|pair| pair[0].0 >= pair[1].0)
+        || scalar_map.windows(2).any(|pair| pair[0].0 >= pair[1].0)
+    {
+        return Err(C6TraceError::new(
+            "C6 canonical instance-node order is duplicate or nonmonotone",
+        ));
+    }
+
+    let mut value_hasher = blake3::Hasher::new_derive_key(C6_OPERATION_INSTANCE_VALUE_DOMAIN);
+    let mut public_index = 0usize;
+    let mut scalar_index = 0usize;
+    while public_index < public_map.len() || scalar_index < scalar_map.len() {
+        let take_public = scalar_index == scalar_map.len()
+            || (public_index < public_map.len()
+                && public_map[public_index].0 < scalar_map[scalar_index].0);
+        if take_public {
+            let (canonical, raw_slot) = public_map[public_index];
+            let value = raw_public_values[raw_slot as usize];
+            value_hasher.update(&canonical.to_le_bytes());
+            value_hasher.update(&[1]);
+            value_hasher.update(&(public_index as u32).to_le_bytes());
+            value_hasher.update(&value.c0.value().to_le_bytes());
+            value_hasher.update(&value.c1.value().to_le_bytes());
+            public_index += 1;
+        } else {
+            let (canonical, raw_slot) = scalar_map[scalar_index];
+            let value = raw_scalar_values[raw_slot as usize];
+            value_hasher.update(&canonical.to_le_bytes());
+            value_hasher.update(&[2]);
+            value_hasher.update(&(scalar_index as u32).to_le_bytes());
+            value_hasher.update(&value.c0.value().to_le_bytes());
+            value_hasher.update(&value.c1.value().to_le_bytes());
+            scalar_index += 1;
+        }
+    }
+    let instance_value_digest = *value_hasher.finalize().as_bytes();
+    let mut instance_hasher = blake3::Hasher::new_derive_key(C6_OPERATION_INSTANCE_DOMAIN);
+    instance_hasher.update(&C6_OPERATION_PLAN_VERSION.to_le_bytes());
+    instance_hasher.update(&topology.topology_digest);
+    instance_hasher.update(&topology.public_input_count.to_le_bytes());
+    instance_hasher.update(&topology.scalar_input_count.to_le_bytes());
+    instance_hasher.update(&instance_value_digest);
+    let reconstructed_instance = C6OperationPlanInstanceIdentity {
+        version: C6_OPERATION_PLAN_VERSION,
+        topology_digest: topology.topology_digest,
+        public_input_count: topology.public_input_count,
+        scalar_input_count: topology.scalar_input_count,
+        instance_digest: *instance_hasher.finalize().as_bytes(),
+    };
+    if reconstructed_instance != expected_instance {
+        return Err(C6TraceError::new(
+            "C6 raw instance extraction does not reconstruct canonical instance identity",
+        ));
+    }
+
+    let public_raw_ordinals: Vec<_> = public_map.iter().map(|&(_, raw)| raw).collect();
+    let scalar_raw_ordinals: Vec<_> = scalar_map.iter().map(|&(_, raw)| raw).collect();
+    let raw_public_input_count = u32::try_from(raw_public_values.len())
+        .map_err(|_| C6TraceError::new("C6 raw public slot count exceeds u32"))?;
+    let raw_scalar_input_count = u32::try_from(raw_scalar_values.len())
+        .map_err(|_| C6TraceError::new("C6 raw scalar slot count exceeds u32"))?;
+    let (artifact, expected_census) = encode_c6_instance_extraction_artifact(
+        role,
+        topology,
+        raw_public_input_count,
+        raw_scalar_input_count,
+        &public_raw_ordinals,
+        &scalar_raw_ordinals,
+    )?;
+    let decoded = artifact.decode(topology)?;
+    if decoded.role != role
+        || decoded.public_raw_ordinals != public_raw_ordinals
+        || decoded.scalar_raw_ordinals != scalar_raw_ordinals
+        || decoded.census != expected_census
+    {
+        return Err(C6TraceError::new(
+            "C6 instance-extraction artifact roundtrip differs from compilation",
+        ));
+    }
+    Ok(artifact)
+}
+
 /// Normalize one diagnostic trace without consulting authenticated values.
 ///
 /// Product closures precede zero roots exactly as frozen in the C6 design.
@@ -1170,7 +1533,7 @@ pub fn normalize_c6_operation_trace(
     trace: &C6ProverTraceSnapshot,
     manifest: &C6TraceSourceManifest,
 ) -> Result<C6CanonicalOperationPlan, C6TraceError> {
-    normalize_c6_operation_trace_impl(trace, manifest, None, false).map(|(plan, _)| plan)
+    normalize_c6_operation_trace_impl(trace, manifest, None, None).map(|(plan, _, _)| plan)
 }
 
 /// Compile one canonical parameterized topology artifact while producing the
@@ -1182,11 +1545,23 @@ pub fn compile_c6_operation_trace(
     trace: &C6ProverTraceSnapshot,
     manifest: &C6TraceSourceManifest,
 ) -> Result<C6CompiledOperationPlan, C6TraceError> {
-    let (plan, artifact) = normalize_c6_operation_trace_impl(trace, manifest, None, true)?;
+    compile_c6_operation_trace_for_role(trace, manifest, C6InstanceExtractionRole::Prover)
+}
+
+pub fn compile_c6_operation_trace_for_role(
+    trace: &C6ProverTraceSnapshot,
+    manifest: &C6TraceSourceManifest,
+    role: C6InstanceExtractionRole,
+) -> Result<C6CompiledOperationPlan, C6TraceError> {
+    let (plan, artifact, instance_extraction) =
+        normalize_c6_operation_trace_impl(trace, manifest, None, Some(role))?;
     Ok(C6CompiledOperationPlan {
         plan,
         artifact: artifact
             .ok_or_else(|| C6TraceError::new("C6 operation-plan compiler emitted no artifact"))?,
+        instance_extraction: instance_extraction.ok_or_else(|| {
+            C6TraceError::new("C6 operation-plan compiler emitted no instance-extraction artifact")
+        })?,
     })
 }
 
@@ -1198,15 +1573,22 @@ pub fn normalize_c6_operation_trace_debug_block(
     manifest: &C6TraceSourceManifest,
     block: u64,
 ) -> Result<C6CanonicalOperationPlan, C6TraceError> {
-    normalize_c6_operation_trace_impl(trace, manifest, Some(block), false).map(|(plan, _)| plan)
+    normalize_c6_operation_trace_impl(trace, manifest, Some(block), None).map(|(plan, _, _)| plan)
 }
 
 fn normalize_c6_operation_trace_impl(
     trace: &C6ProverTraceSnapshot,
     manifest: &C6TraceSourceManifest,
     capture_block: Option<u64>,
-    compile: bool,
-) -> Result<(C6CanonicalOperationPlan, Option<C6OperationPlanArtifact>), C6TraceError> {
+    compile_role: Option<C6InstanceExtractionRole>,
+) -> Result<
+    (
+        C6CanonicalOperationPlan,
+        Option<C6OperationPlanArtifact>,
+        Option<C6InstanceExtractionArtifact>,
+    ),
+    C6TraceError,
+> {
     #[cfg(feature = "c6-trace")]
     {
         if trace.products.len() != manifest.product_mask_sources.len() {
@@ -1220,7 +1602,8 @@ fn normalize_c6_operation_trace_impl(
             .map_err(|_| C6TraceError::new("C6 zero-root count exceeds u32"))?;
         let mut product_triple_count = 0u64;
         let mut terminal_payload_bytes = 0u64;
-        let mut normalizer = C6TraceNormalizer::new(trace, manifest, capture_block, compile)?;
+        let mut normalizer =
+            C6TraceNormalizer::new(trace, manifest, capture_block, compile_role.is_some())?;
         let mut root_hasher = blake3::Hasher::new_derive_key(C6_OPERATION_ROOT_DOMAIN);
         root_hasher.update(&product_closure_count.to_le_bytes());
 
@@ -1398,6 +1781,16 @@ fn normalize_c6_operation_trace_impl(
             zero_root_count,
             topology_digest,
         };
+        let instance = C6OperationPlanInstanceIdentity {
+            version: C6_OPERATION_PLAN_VERSION,
+            topology_digest,
+            public_input_count: normalizer.public_input_count,
+            scalar_input_count: normalizer.scalar_input_count,
+            instance_digest,
+        };
+        let instance_extraction = compile_role
+            .map(|role| compile_c6_instance_extraction(&normalizer, role, topology, instance))
+            .transpose()?;
         let artifact = normalizer
             .encoder
             .take()
@@ -1415,13 +1808,7 @@ fn normalize_c6_operation_trace_impl(
                 program_digest,
             },
             topology,
-            instance: C6OperationPlanInstanceIdentity {
-                version: C6_OPERATION_PLAN_VERSION,
-                topology_digest,
-                public_input_count: normalizer.public_input_count,
-                scalar_input_count: normalizer.scalar_input_count,
-                instance_digest,
-            },
+            instance,
             diagnostics: C6OperationPlanDiagnostics {
                 raw_operation_count,
                 reachable_operation_count: normalizer.reachable_operation_count,
@@ -1438,11 +1825,11 @@ fn normalize_c6_operation_trace_impl(
                 specialized_encoding_projection,
             },
         };
-        return Ok((plan, artifact));
+        return Ok((plan, artifact, instance_extraction));
     }
     #[cfg(not(feature = "c6-trace"))]
     {
-        let _ = (trace, manifest, capture_block, compile);
+        let _ = (trace, manifest, capture_block, compile_role);
         Err(C6TraceError::new(
             "C6 operation-plan normalization requires the diagnostic c6-trace feature",
         ))
@@ -1470,6 +1857,10 @@ impl<'a> C6ByteCursor<'a> {
             .ok_or_else(|| C6TraceError::new("truncated C6 operation-plan artifact"))?;
         self.position = end;
         Ok(value)
+    }
+
+    fn u8(&mut self) -> Result<u8, C6TraceError> {
+        Ok(self.take(1)?[0])
     }
 
     fn u32(&mut self) -> Result<u32, C6TraceError> {
@@ -1643,6 +2034,193 @@ fn c6_section<'a>(
         .ok_or_else(|| C6TraceError::new("truncated C6 operation-plan section"))?;
     *offset = end;
     Ok(section)
+}
+
+fn decode_c6_instance_map_section(
+    bytes: &[u8],
+    raw_count: u32,
+    canonical_count: u32,
+    label: &str,
+) -> Result<(Vec<u32>, u32), C6TraceError> {
+    let mut input = C6UlebReader::new(bytes);
+    let run_count = input.read(label)?;
+    let run_count = u32::try_from(run_count)
+        .map_err(|_| C6TraceError::new(format!("C6 {label} run count exceeds u32")))?;
+    if (canonical_count == 0 && run_count != 0)
+        || (canonical_count != 0 && (run_count == 0 || run_count > canonical_count))
+    {
+        return Err(C6TraceError::new(format!(
+            "C6 {label} run count differs from canonical slot census"
+        )));
+    }
+    let mut ordinals = Vec::with_capacity(canonical_count as usize);
+    let mut seen = vec![0u8; c6_bitset_len(raw_count)?];
+    let mut expected_next = 0i64;
+    for run_index in 0..run_count {
+        let delta = c6_unzigzag(input.read(label)?);
+        if run_index != 0 && delta == 0 {
+            return Err(C6TraceError::new(format!("C6 {label} contains adjacent mergeable runs")));
+        }
+        let start = expected_next
+            .checked_add(delta)
+            .ok_or_else(|| C6TraceError::new(format!("C6 {label} run start overflows")))?;
+        if start < 0 || start >= i64::from(raw_count) {
+            return Err(C6TraceError::new(format!(
+                "C6 {label} run starts outside the raw slot census"
+            )));
+        }
+        let length = input
+            .read(label)?
+            .checked_add(1)
+            .ok_or_else(|| C6TraceError::new(format!("C6 {label} run length overflows")))?;
+        let length = u32::try_from(length)
+            .map_err(|_| C6TraceError::new(format!("C6 {label} run length exceeds u32")))?;
+        let start = start as u32;
+        let end = start
+            .checked_add(length)
+            .ok_or_else(|| C6TraceError::new(format!("C6 {label} run end overflows")))?;
+        if end > raw_count
+            || ordinals
+                .len()
+                .checked_add(length as usize)
+                .is_none_or(|count| count > canonical_count as usize)
+        {
+            return Err(C6TraceError::new(format!(
+                "C6 {label} run exceeds its raw or canonical census"
+            )));
+        }
+        for raw in start..end {
+            if !c6_bitset_insert(&mut seen, raw) {
+                return Err(C6TraceError::new(format!(
+                    "C6 {label} maps one raw slot more than once"
+                )));
+            }
+            ordinals.push(raw);
+        }
+        expected_next = i64::from(end);
+    }
+    input.finish(label)?;
+    if ordinals.len() != canonical_count as usize {
+        return Err(C6TraceError::new(format!("C6 {label} does not cover every canonical slot")));
+    }
+    Ok((ordinals, run_count))
+}
+
+fn decode_c6_instance_extraction_artifact(
+    bytes: &[u8],
+    topology: C6OperationPlanTopologyIdentity,
+) -> Result<C6DecodedInstanceExtractionPlan, C6TraceError> {
+    let header_len = usize::try_from(C6_INSTANCE_EXTRACTION_HEADER_BYTES)
+        .map_err(|_| C6TraceError::new("C6 instance-extraction header exceeds usize"))?;
+    let header_bytes = bytes
+        .get(..header_len)
+        .ok_or_else(|| C6TraceError::new("truncated C6 instance-extraction header"))?;
+    let mut header = C6ByteCursor::new(header_bytes);
+    if header.take(8)? != C6_INSTANCE_EXTRACTION_CODEC_MAGIC {
+        return Err(C6TraceError::new("wrong C6 instance-extraction codec magic"));
+    }
+    if header.u32()? != C6_INSTANCE_EXTRACTION_CODEC_VERSION {
+        return Err(C6TraceError::new("wrong C6 instance-extraction codec version"));
+    }
+    if header.u32()? != C6_OPERATION_PLAN_VERSION || topology.version != C6_OPERATION_PLAN_VERSION {
+        return Err(C6TraceError::new("wrong C6 instance-extraction operation-plan version"));
+    }
+    let role = C6InstanceExtractionRole::decode(header.u8()?)?;
+    if header.take(3)? != [0; 3] {
+        return Err(C6TraceError::new("nonzero C6 instance-extraction reserved header bytes"));
+    }
+    let topology_digest = header.digest()?;
+    let raw_public_input_count = header.u32()?;
+    let raw_scalar_input_count = header.u32()?;
+    let canonical_public_input_count = header.u32()?;
+    let canonical_scalar_input_count = header.u32()?;
+    let claimed_map_digest = header.digest()?;
+    let public_map_bytes = header.u64()?;
+    let scalar_map_bytes = header.u64()?;
+    if header.u32()? != 0 || header.position != header_len {
+        return Err(C6TraceError::new("nonzero or trailing C6 instance-extraction header bytes"));
+    }
+    if topology_digest != topology.topology_digest
+        || canonical_public_input_count != topology.public_input_count
+        || canonical_scalar_input_count != topology.scalar_input_count
+    {
+        return Err(C6TraceError::new(
+            "C6 instance-extraction header differs from topology identity",
+        ));
+    }
+    if raw_public_input_count < canonical_public_input_count
+        || raw_scalar_input_count < canonical_scalar_input_count
+        || raw_public_input_count > topology.canonical_node_count
+        || raw_scalar_input_count > topology.canonical_node_count
+        || raw_public_input_count
+            .checked_add(raw_scalar_input_count)
+            .is_none_or(|count| count > topology.canonical_node_count)
+    {
+        return Err(C6TraceError::new(
+            "C6 instance-extraction raw census is outside topology bounds",
+        ));
+    }
+    let total_bytes = C6_INSTANCE_EXTRACTION_HEADER_BYTES
+        .checked_add(public_map_bytes)
+        .and_then(|value| value.checked_add(scalar_map_bytes))
+        .ok_or_else(|| C6TraceError::new("C6 instance-extraction length overflows"))?;
+    if total_bytes
+        != u64::try_from(bytes.len())
+            .map_err(|_| C6TraceError::new("C6 instance-extraction length exceeds u64"))?
+    {
+        return Err(C6TraceError::new(
+            "C6 instance-extraction header length differs from artifact",
+        ));
+    }
+    let mut offset = header_len;
+    let public_section = c6_section(bytes, &mut offset, public_map_bytes)?;
+    let scalar_section = c6_section(bytes, &mut offset, scalar_map_bytes)?;
+    if offset != bytes.len() {
+        return Err(C6TraceError::new("C6 instance-extraction artifact has trailing bytes"));
+    }
+    let (public_raw_ordinals, public_run_count) = decode_c6_instance_map_section(
+        public_section,
+        raw_public_input_count,
+        canonical_public_input_count,
+        "public instance map",
+    )?;
+    let (scalar_raw_ordinals, scalar_run_count) = decode_c6_instance_map_section(
+        scalar_section,
+        raw_scalar_input_count,
+        canonical_scalar_input_count,
+        "scalar instance map",
+    )?;
+    let map_digest = c6_instance_extraction_map_digest(
+        role,
+        topology,
+        raw_public_input_count,
+        raw_scalar_input_count,
+        &public_raw_ordinals,
+        &scalar_raw_ordinals,
+    );
+    if map_digest != claimed_map_digest {
+        return Err(C6TraceError::new("C6 instance-extraction map digest mismatch"));
+    }
+    let census = C6InstanceExtractionCensus {
+        raw_public_input_count,
+        raw_scalar_input_count,
+        canonical_public_input_count,
+        canonical_scalar_input_count,
+        public_run_count,
+        scalar_run_count,
+        header_bytes: C6_INSTANCE_EXTRACTION_HEADER_BYTES,
+        public_map_bytes,
+        scalar_map_bytes,
+        total_bytes,
+        map_digest,
+    };
+    Ok(C6DecodedInstanceExtractionPlan {
+        role,
+        topology_digest,
+        public_raw_ordinals,
+        scalar_raw_ordinals,
+        census,
+    })
 }
 
 fn decode_c6_operation_plan_artifact(
@@ -2372,6 +2950,38 @@ mod tests {
         assert_eq!(decoded.node_kinds.source, 2);
         assert_eq!(decoded.product_phase_node_count, 2);
         assert_eq!(decoded.encoding.total_bytes, 160);
+
+        let map_digest = c6_instance_extraction_map_digest(
+            C6InstanceExtractionRole::Verifier,
+            decoded.topology,
+            0,
+            0,
+            &[],
+            &[],
+        );
+        let mut extraction = Vec::new();
+        extraction.extend_from_slice(C6_INSTANCE_EXTRACTION_CODEC_MAGIC);
+        extraction.extend_from_slice(&C6_INSTANCE_EXTRACTION_CODEC_VERSION.to_le_bytes());
+        extraction.extend_from_slice(&C6_OPERATION_PLAN_VERSION.to_le_bytes());
+        extraction.push(C6InstanceExtractionRole::Verifier as u8);
+        extraction.extend_from_slice(&[0; 3]);
+        extraction.extend_from_slice(&topology_digest);
+        extraction.extend_from_slice(&0u32.to_le_bytes());
+        extraction.extend_from_slice(&0u32.to_le_bytes());
+        extraction.extend_from_slice(&0u32.to_le_bytes());
+        extraction.extend_from_slice(&0u32.to_le_bytes());
+        extraction.extend_from_slice(&map_digest);
+        extraction.extend_from_slice(&1u64.to_le_bytes());
+        extraction.extend_from_slice(&1u64.to_le_bytes());
+        extraction.extend_from_slice(&0u32.to_le_bytes());
+        extraction.extend_from_slice(&[0, 0]);
+        assert_eq!(extraction.len(), 122);
+        let extraction = C6InstanceExtractionArtifact::parse(extraction, decoded.topology).unwrap();
+        let extraction = extraction.decode(decoded.topology).unwrap();
+        assert_eq!(extraction.role, C6InstanceExtractionRole::Verifier);
+        assert!(extraction.public_raw_ordinals.is_empty());
+        assert!(extraction.scalar_raw_ordinals.is_empty());
+        assert_eq!(extraction.census.total_bytes, 122);
     }
 
     #[cfg(feature = "c6-trace")]
@@ -2508,21 +3118,36 @@ mod tests {
     #[test]
     fn parameterized_plan_separates_topology_from_instance_values() {
         let manifest = manifest(3, vec![2]);
-        let baseline = normalize_c6_operation_trace(&allocation_trace(false), &manifest).unwrap();
-        let mut changed = allocation_trace(false);
-        changed.nodes[0] =
+        let baseline_trace = allocation_trace(false);
+        let baseline = normalize_c6_operation_trace(&baseline_trace, &manifest).unwrap();
+        let baseline_compiled = compile_c6_operation_trace_for_role(
+            &baseline_trace,
+            &manifest,
+            C6InstanceExtractionRole::Verifier,
+        )
+        .unwrap();
+        let mut changed_trace = allocation_trace(false);
+        changed_trace.nodes[0] =
             C6TraceNode::Public(Fp2::new(volta_field::Fp::new(123), volta_field::Fp::new(456)));
-        changed.nodes[2] = C6TraceNode::Scale {
+        changed_trace.nodes[2] = C6TraceNode::Scale {
             value: operation(1),
             scalar: Fp2::new(volta_field::Fp::new(789), volta_field::Fp::new(321)),
         };
-        let changed = normalize_c6_operation_trace(&changed, &manifest).unwrap();
+        let changed = normalize_c6_operation_trace(&changed_trace, &manifest).unwrap();
+        let changed_compiled = compile_c6_operation_trace_for_role(
+            &changed_trace,
+            &manifest,
+            C6InstanceExtractionRole::Verifier,
+        )
+        .unwrap();
 
         assert_ne!(baseline.identity.program_digest, changed.identity.program_digest);
         assert_eq!(baseline.topology, changed.topology);
         assert_ne!(baseline.instance.instance_digest, changed.instance.instance_digest);
         assert_eq!(baseline.instance.topology_digest, baseline.topology.topology_digest);
         assert_eq!(changed.instance.topology_digest, changed.topology.topology_digest);
+        assert_eq!(baseline_compiled.artifact, changed_compiled.artifact);
+        assert_eq!(baseline_compiled.instance_extraction, changed_compiled.instance_extraction);
     }
 
     #[cfg(feature = "c6-trace")]
@@ -2544,9 +3169,47 @@ mod tests {
             normalized.diagnostics.product_phase_node_count
         );
         assert_eq!(decoded.encoding, normalized.diagnostics.specialized_encoding_projection);
+        let extraction = compiled.instance_extraction.decode(normalized.topology).unwrap();
+        assert_eq!(extraction.role, C6InstanceExtractionRole::Prover);
+        assert_eq!(extraction.public_raw_ordinals, vec![0]);
+        assert_eq!(extraction.scalar_raw_ordinals, vec![0]);
+        assert_eq!(
+            extraction.census,
+            C6InstanceExtractionCensus {
+                raw_public_input_count: 1,
+                raw_scalar_input_count: 1,
+                canonical_public_input_count: 1,
+                canonical_scalar_input_count: 1,
+                public_run_count: 1,
+                scalar_run_count: 1,
+                header_bytes: 120,
+                public_map_bytes: 3,
+                scalar_map_bytes: 3,
+                total_bytes: 126,
+                map_digest: extraction.census.map_digest,
+            }
+        );
 
         let shifted = compile_c6_operation_trace(&allocation_trace(true), &manifest).unwrap();
         assert_eq!(compiled.artifact, shifted.artifact);
+        assert_ne!(compiled.instance_extraction, shifted.instance_extraction);
+        let shifted_extraction = shifted.instance_extraction.decode(shifted.plan.topology).unwrap();
+        assert_eq!(shifted_extraction.public_raw_ordinals, vec![1]);
+        assert_eq!(shifted_extraction.scalar_raw_ordinals, vec![0]);
+        assert_eq!(shifted_extraction.census.raw_public_input_count, 2);
+
+        let verifier = compile_c6_operation_trace_for_role(
+            &allocation_trace(false),
+            &manifest,
+            C6InstanceExtractionRole::Verifier,
+        )
+        .unwrap();
+        assert_eq!(compiled.artifact, verifier.artifact);
+        assert_ne!(compiled.instance_extraction, verifier.instance_extraction);
+        assert_eq!(
+            verifier.instance_extraction.decode(verifier.plan.topology).unwrap().role,
+            C6InstanceExtractionRole::Verifier
+        );
 
         let reject = |mut bytes: Vec<u8>, mutate: fn(&mut Vec<u8>)| {
             mutate(&mut bytes);
@@ -2572,6 +3235,32 @@ mod tests {
             C6OperationPlanArtifact::parse(compiled.artifact.as_bytes().to_vec(), &manifest)
                 .unwrap();
         assert_eq!(parsed, compiled.artifact);
+
+        let reject_extraction = |mut bytes: Vec<u8>, mutate: fn(&mut Vec<u8>)| {
+            mutate(&mut bytes);
+            assert!(C6InstanceExtractionArtifact::parse(bytes, compiled.plan.topology).is_err());
+        };
+        reject_extraction(compiled.instance_extraction.as_bytes().to_vec(), |bytes| {
+            bytes[0] ^= 1;
+        });
+        reject_extraction(compiled.instance_extraction.as_bytes().to_vec(), |bytes| {
+            bytes[16] = 3;
+        });
+        reject_extraction(compiled.instance_extraction.as_bytes().to_vec(), |bytes| {
+            bytes[17] = 1;
+        });
+        reject_extraction(compiled.instance_extraction.as_bytes().to_vec(), |bytes| {
+            bytes[68] ^= 1;
+        });
+        reject_extraction(compiled.instance_extraction.as_bytes().to_vec(), |bytes| {
+            let public_len = u64::from_le_bytes(bytes[100..108].try_into().unwrap());
+            bytes[C6_INSTANCE_EXTRACTION_HEADER_BYTES as usize] |= 0x80;
+            bytes.insert(C6_INSTANCE_EXTRACTION_HEADER_BYTES as usize + 1, 0);
+            bytes[100..108].copy_from_slice(&(public_len + 1).to_le_bytes());
+        });
+        reject_extraction(compiled.instance_extraction.as_bytes().to_vec(), |bytes| {
+            bytes.push(0);
+        });
 
         let wrong_manifest = C6TraceSourceManifest::new(3, [0x5A; 32], vec![2]).unwrap();
         assert!(C6OperationPlanArtifact::parse(

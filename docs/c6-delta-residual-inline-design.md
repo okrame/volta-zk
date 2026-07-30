@@ -855,6 +855,39 @@ either role's map changes across the two frozen seeds, C6 hard-stops before
 compiled-residual/runtime work.  No alternative mapping codec is selected
 after seeing that measurement.
 
+The diagnostic implementation passes this gate at both transcript seed
+bytes `24` and `25`.  Each map reconstructs the already recorded canonical
+instance digest, and each role emits byte-identical artifacts across the two
+seeds:
+
+```text
+                                      prover              verifier
+raw public / scalar slots         1,466 / 10,837,046   1,466 / 10,828,876
+canonical public / scalar slots   1,436 / 10,828,852   1,436 / 10,828,852
+public / scalar maximal runs          262 / 2,552,791      262 / 2,552,791
+header / public / scalar bytes        120 / 575 / 5,319,691
+artifact bytes                                 5,320,386
+```
+
+The provider artifact has BLAKE3
+`6506bdd9c0ed1ace474b32361a04adf3b0c6211cc06e9986be22aa38bfaea55f`
+and map digest
+`59a4e370a8904d15ebbd68f6e5afcf0e2458bd877fd7dfa7b0bfeb059b67065f`.
+The verifier artifact has BLAKE3
+`17ed0942429eec51d46ebc3f4bb418fefe55a2ae64f976f045f4e66797183535`
+and map digest
+`7dbc442c5e316de7e6f5e3f377348112c1d29e3d4501ecb04a8bb703b9737c20`.
+Role separation deliberately makes the artifact digests different even
+though their encoded lengths and run censuses coincide.
+
+The client-received topology plus verifier map is `69,315,137 B`.
+Including paired PCG and the existing `437-B` setup envelope gives
+**146,058,504 B <= 150,000,000 B**, leaving **3,941,496 B** for every
+remaining client parameter and setup frame.  This is a diagnostic
+map-codec/setup-fit PASS, not runtime extraction: the lightweight
+response-local recorder and its provider wall overhead remain mandatory
+before compiled-residual credit.
+
 ## 4. Hidden Ligero vectors without an NTT trace
 
 Simply omitting `u_c` or `u_g` is unsound.  C6 commits to them before the

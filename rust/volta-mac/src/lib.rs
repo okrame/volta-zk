@@ -19,11 +19,13 @@ pub use auth::{
 pub use authed::{ProverAuthed, ProverSubAuthed, VerifierKey};
 pub use c6_trace::{
     begin_c6_prover_trace, begin_c6_verifier_trace, compile_c6_operation_trace,
-    finish_c6_prover_trace, finish_c6_verifier_trace, normalize_c6_operation_trace,
-    normalize_c6_operation_trace_debug_block, record_c6_product_closure, record_c6_zero_roots,
-    C6CanonicalNodeDebug, C6CanonicalNodeDebugKind, C6CanonicalNodeKindCensus,
-    C6CanonicalOperationPlan, C6CanonicalTerminalDebug, C6CompiledOperationPlan,
-    C6DecodedOperationPlan, C6OperationPlanArtifact, C6OperationPlanDiagnostics,
+    compile_c6_operation_trace_for_role, finish_c6_prover_trace, finish_c6_verifier_trace,
+    normalize_c6_operation_trace, normalize_c6_operation_trace_debug_block,
+    record_c6_product_closure, record_c6_zero_roots, C6CanonicalNodeDebug,
+    C6CanonicalNodeDebugKind, C6CanonicalNodeKindCensus, C6CanonicalOperationPlan,
+    C6CanonicalTerminalDebug, C6CompiledOperationPlan, C6DecodedInstanceExtractionPlan,
+    C6DecodedOperationPlan, C6InstanceExtractionArtifact, C6InstanceExtractionCensus,
+    C6InstanceExtractionRole, C6OperationPlanArtifact, C6OperationPlanDiagnostics,
     C6OperationPlanEncodingCensus, C6OperationPlanIdentity, C6OperationPlanInstanceIdentity,
     C6OperationPlanSpecializedEncodingCensus, C6OperationPlanTopologyIdentity,
     C6ProverTraceSnapshot, C6TraceError, C6TraceNode, C6TraceProductClosure, C6TraceSourceManifest,

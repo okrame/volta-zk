@@ -17,10 +17,10 @@ use volta_gpt2::{
     Gpt2Model, KvCache,
 };
 use volta_mac::{
-    begin_c6_prover_trace, begin_c6_verifier_trace, compile_c6_operation_trace,
+    begin_c6_prover_trace, begin_c6_verifier_trace, compile_c6_operation_trace_for_role,
     finish_c6_prover_trace, finish_c6_verifier_trace, fresh_zero_mask,
     normalize_c6_operation_trace_debug_block, zero_batch_prover, zero_batch_verify, zero_mask_key,
-    CorrelationStream, Transcript, VerifierCtx,
+    C6InstanceExtractionRole, CorrelationStream, Transcript, VerifierCtx,
 };
 use volta_proto::logup::Doms;
 use volta_proto::{
@@ -454,6 +454,7 @@ struct OperationTraceRow {
     node_kinds: OperationNodeKindRow,
     candidate_encoding: OperationPlanEncodingRow,
     specialized_encoding_projection: OperationPlanSpecializedEncodingRow,
+    instance_extraction: OperationInstanceExtractionRow,
 }
 
 #[derive(Serialize)]
@@ -500,6 +501,36 @@ struct OperationPlanSpecializedEncodingRow {
     source_successor_count: u64,
     operand_count: u64,
     unit_operand_count: u64,
+}
+
+#[derive(Serialize)]
+struct OperationInstanceExtractionRow {
+    materialized_artifacts: bool,
+    ordinary_decoder_implemented: bool,
+    instance_digest_reconstructed: bool,
+    verifier_map_counted_in_client_setup: bool,
+    first_exchange_bytes_with_client_artifacts: u64,
+    first_exchange_cap_bytes: u64,
+    first_exchange_headroom_bytes: u64,
+    prover: OperationInstanceExtractionRoleRow,
+    verifier: OperationInstanceExtractionRoleRow,
+}
+
+#[derive(Serialize)]
+struct OperationInstanceExtractionRoleRow {
+    role: &'static str,
+    artifact_digest: String,
+    raw_public_input_count: u64,
+    raw_scalar_input_count: u64,
+    canonical_public_input_count: u64,
+    canonical_scalar_input_count: u64,
+    public_run_count: u64,
+    scalar_run_count: u64,
+    header_bytes: u64,
+    public_map_bytes: u64,
+    scalar_map_bytes: u64,
+    total_bytes: u64,
+    map_digest: String,
 }
 
 fn run(args: &Args) -> Result<Record, String> {
@@ -617,7 +648,7 @@ fn run(args: &Args) -> Result<Record, String> {
     } else {
         None
     };
-    let (prover_plan, prover_artifact) = match raw_prover_trace {
+    let (prover_plan, prover_artifact, prover_instance_extraction) = match raw_prover_trace {
         Some(trace) => {
             let manifest =
                 trace_manifest.as_ref().ok_or_else(|| "missing C6 trace manifest".to_owned())?;
@@ -627,13 +658,15 @@ fn run(args: &Args) -> Result<Record, String> {
                         .map_err(|error| {
                             format!("C6 prover operation-plan normalization: {error}")
                         })?;
-                    (Some(plan), None)
+                    (Some(plan), None, None)
                 }
                 None => {
-                    let compiled =
-                        compile_c6_operation_trace(&trace, manifest).map_err(|error| {
-                            format!("C6 prover operation-plan compilation: {error}")
-                        })?;
+                    let compiled = compile_c6_operation_trace_for_role(
+                        &trace,
+                        manifest,
+                        C6InstanceExtractionRole::Prover,
+                    )
+                    .map_err(|error| format!("C6 prover operation-plan compilation: {error}"))?;
                     let decoded = compiled
                         .artifact
                         .decode(manifest)
@@ -649,11 +682,24 @@ fn run(args: &Args) -> Result<Record, String> {
                             "C6 prover plan artifact roundtrip differs from compilation".to_owned()
                         );
                     }
-                    (Some(compiled.plan), Some(compiled.artifact))
+                    let extraction = compiled
+                        .instance_extraction
+                        .decode(compiled.plan.topology)
+                        .map_err(|error| {
+                            format!("C6 prover instance-extraction artifact decode: {error}")
+                        })?;
+                    if extraction.role != C6InstanceExtractionRole::Prover {
+                        return Err("C6 prover instance-extraction role changed".to_owned());
+                    }
+                    (
+                        Some(compiled.plan),
+                        Some(compiled.artifact),
+                        Some(compiled.instance_extraction),
+                    )
                 }
             }
         }
-        None => (None, None),
+        None => (None, None, None),
     };
 
     if args.operation_trace {
@@ -733,14 +779,21 @@ fn run(args: &Args) -> Result<Record, String> {
         return Err("C6 independent verifier changed the accepted source census".to_owned());
     }
 
-    let operation_trace = match (prover_plan, prover_artifact, raw_verifier_trace) {
-        (Some(prover_plan), prover_artifact, Some(verifier_trace)) => {
+    let operation_trace = match (
+        prover_plan,
+        prover_artifact,
+        prover_instance_extraction,
+        raw_verifier_trace,
+    ) {
+        (Some(prover_plan), prover_artifact, prover_instance_extraction, Some(verifier_trace)) => {
             let accepted_manifest = c6_t1_trace_source_manifest(&prover_schedule, &census)
                 .map_err(|error| error.to_string())?;
             if trace_manifest.as_ref() != Some(&accepted_manifest) {
                 return Err("C6 trace manifest changed after independent verification".to_owned());
             }
-            let (verifier_plan, verifier_artifact) = match args.operation_trace_debug_block {
+            let (verifier_plan, verifier_artifact, verifier_instance_extraction) = match args
+                .operation_trace_debug_block
+            {
                 Some(block) => {
                     let plan = normalize_c6_operation_trace_debug_block(
                         &verifier_trace,
@@ -750,13 +803,15 @@ fn run(args: &Args) -> Result<Record, String> {
                     .map_err(|error| {
                         format!("C6 verifier operation-plan normalization: {error}")
                     })?;
-                    (plan, None)
+                    (plan, None, None)
                 }
                 None => {
-                    let compiled = compile_c6_operation_trace(&verifier_trace, &accepted_manifest)
-                        .map_err(|error| {
-                            format!("C6 verifier operation-plan compilation: {error}")
-                        })?;
+                    let compiled = compile_c6_operation_trace_for_role(
+                        &verifier_trace,
+                        &accepted_manifest,
+                        C6InstanceExtractionRole::Verifier,
+                    )
+                    .map_err(|error| format!("C6 verifier operation-plan compilation: {error}"))?;
                     let decoded = compiled
                         .artifact
                         .decode(&accepted_manifest)
@@ -771,7 +826,16 @@ fn run(args: &Args) -> Result<Record, String> {
                         return Err("C6 verifier plan artifact roundtrip differs from compilation"
                             .to_owned());
                     }
-                    (compiled.plan, Some(compiled.artifact))
+                    let extraction = compiled
+                        .instance_extraction
+                        .decode(compiled.plan.topology)
+                        .map_err(|error| {
+                            format!("C6 verifier instance-extraction artifact decode: {error}")
+                        })?;
+                    if extraction.role != C6InstanceExtractionRole::Verifier {
+                        return Err("C6 verifier instance-extraction role changed".to_owned());
+                    }
+                    (compiled.plan, Some(compiled.artifact), Some(compiled.instance_extraction))
                 }
             };
             let identity = prover_plan.identity;
@@ -831,9 +895,10 @@ fn run(args: &Args) -> Result<Record, String> {
                 prover_verifier_artifact_equal,
                 decoder_roundtrip,
                 artifact_digest,
+                plan_artifact_bytes,
                 first_exchange_bytes_with_artifact,
                 first_exchange_headroom_bytes,
-            ) = match (prover_artifact, verifier_artifact) {
+            ) = match (prover_artifact.as_ref(), verifier_artifact.as_ref()) {
                 (Some(prover), Some(verifier)) => {
                     if prover != verifier {
                         return Err("C6 prover/verifier canonical plan artifacts differ".to_owned());
@@ -865,16 +930,134 @@ fn run(args: &Args) -> Result<Record, String> {
                         true,
                         true,
                         hex(blake3::hash(prover.as_bytes()).as_bytes()),
+                        artifact_bytes,
                         first_exchange,
                         headroom,
                     )
                 }
                 (None, None) if args.operation_trace_debug_block.is_some() => {
-                    (false, false, false, String::new(), 0, 0)
+                    (false, false, false, String::new(), 0, 0, 0)
                 }
                 _ => {
                     return Err(
                         "C6 prover/verifier plan artifact lifecycle is asymmetric".to_owned()
+                    );
+                }
+            };
+            let instance_extraction = match (
+                prover_instance_extraction.as_ref(),
+                verifier_instance_extraction.as_ref(),
+            ) {
+                (Some(prover), Some(verifier)) => {
+                    let prover_decoded = prover.decode(topology).map_err(|error| {
+                        format!("C6 accepted prover instance-extraction decode: {error}")
+                    })?;
+                    let verifier_decoded = verifier.decode(topology).map_err(|error| {
+                        format!("C6 accepted verifier instance-extraction decode: {error}")
+                    })?;
+                    if prover_decoded.role != C6InstanceExtractionRole::Prover
+                        || verifier_decoded.role != C6InstanceExtractionRole::Verifier
+                        || prover_decoded.topology_digest != topology.topology_digest
+                        || verifier_decoded.topology_digest != topology.topology_digest
+                        || prover_decoded.census.canonical_public_input_count
+                            != topology.public_input_count
+                        || verifier_decoded.census.canonical_public_input_count
+                            != topology.public_input_count
+                        || prover_decoded.census.canonical_scalar_input_count
+                            != topology.scalar_input_count
+                        || verifier_decoded.census.canonical_scalar_input_count
+                            != topology.scalar_input_count
+                    {
+                        return Err(
+                            "C6 accepted instance-extraction artifact differs from topology"
+                                .to_owned(),
+                        );
+                    }
+                    let first_exchange = C6_PAIRED_PCG_SETUP_BYTES
+                        .checked_add(C6_SETUP_MANIFEST_FIXED_BYTES)
+                        .and_then(|bytes| bytes.checked_add(plan_artifact_bytes))
+                        .and_then(|bytes| bytes.checked_add(verifier_decoded.census.total_bytes))
+                        .ok_or_else(|| {
+                            "C6 first exchange with instance extraction overflows".to_owned()
+                        })?;
+                    let headroom =
+                        C6_SETUP_CAP_BYTES.checked_sub(first_exchange).ok_or_else(|| {
+                            format!(
+                                "C6 verifier instance extraction exceeds setup cap: {first_exchange} > {C6_SETUP_CAP_BYTES}"
+                            )
+                        })?;
+                    let role_row = |role: &'static str,
+                                    artifact: &volta_mac::C6InstanceExtractionArtifact,
+                                    decoded: &volta_mac::C6DecodedInstanceExtractionPlan| {
+                        OperationInstanceExtractionRoleRow {
+                            role,
+                            artifact_digest: hex(
+                                blake3::hash(artifact.as_bytes()).as_bytes(),
+                            ),
+                            raw_public_input_count: u64::from(
+                                decoded.census.raw_public_input_count,
+                            ),
+                            raw_scalar_input_count: u64::from(
+                                decoded.census.raw_scalar_input_count,
+                            ),
+                            canonical_public_input_count: u64::from(
+                                decoded.census.canonical_public_input_count,
+                            ),
+                            canonical_scalar_input_count: u64::from(
+                                decoded.census.canonical_scalar_input_count,
+                            ),
+                            public_run_count: u64::from(decoded.census.public_run_count),
+                            scalar_run_count: u64::from(decoded.census.scalar_run_count),
+                            header_bytes: decoded.census.header_bytes,
+                            public_map_bytes: decoded.census.public_map_bytes,
+                            scalar_map_bytes: decoded.census.scalar_map_bytes,
+                            total_bytes: decoded.census.total_bytes,
+                            map_digest: hex(&decoded.census.map_digest),
+                        }
+                    };
+                    OperationInstanceExtractionRow {
+                        materialized_artifacts: true,
+                        ordinary_decoder_implemented: true,
+                        instance_digest_reconstructed: true,
+                        verifier_map_counted_in_client_setup: true,
+                        first_exchange_bytes_with_client_artifacts: first_exchange,
+                        first_exchange_cap_bytes: C6_SETUP_CAP_BYTES,
+                        first_exchange_headroom_bytes: headroom,
+                        prover: role_row("prover", prover, &prover_decoded),
+                        verifier: role_row("verifier", verifier, &verifier_decoded),
+                    }
+                }
+                (None, None) if args.operation_trace_debug_block.is_some() => {
+                    let empty_role = |role| OperationInstanceExtractionRoleRow {
+                        role,
+                        artifact_digest: String::new(),
+                        raw_public_input_count: 0,
+                        raw_scalar_input_count: 0,
+                        canonical_public_input_count: 0,
+                        canonical_scalar_input_count: 0,
+                        public_run_count: 0,
+                        scalar_run_count: 0,
+                        header_bytes: 0,
+                        public_map_bytes: 0,
+                        scalar_map_bytes: 0,
+                        total_bytes: 0,
+                        map_digest: String::new(),
+                    };
+                    OperationInstanceExtractionRow {
+                        materialized_artifacts: false,
+                        ordinary_decoder_implemented: true,
+                        instance_digest_reconstructed: false,
+                        verifier_map_counted_in_client_setup: false,
+                        first_exchange_bytes_with_client_artifacts: 0,
+                        first_exchange_cap_bytes: C6_SETUP_CAP_BYTES,
+                        first_exchange_headroom_bytes: 0,
+                        prover: empty_role("prover"),
+                        verifier: empty_role("verifier"),
+                    }
+                }
+                _ => {
+                    return Err(
+                        "C6 prover/verifier instance-extraction lifecycle is asymmetric".to_owned()
                     );
                 }
             };
@@ -1001,9 +1184,10 @@ fn run(args: &Args) -> Result<Record, String> {
                         .specialized_encoding_projection
                         .unit_operand_count,
                 },
+                instance_extraction,
             })
         }
-        (None, None, None) => None,
+        (None, None, None, None) => None,
         _ => return Err("C6 prover/verifier trace lifecycle is asymmetric".to_owned()),
     };
 
@@ -1183,7 +1367,7 @@ fn run(args: &Args) -> Result<Record, String> {
     }
     Ok(Record {
         schema: if args.operation_trace {
-            8
+            9
         } else if args.source_witness {
             3
         } else if args.subfield_witness {
@@ -1192,7 +1376,7 @@ fn run(args: &Args) -> Result<Record, String> {
             1
         },
         milestone: if args.operation_trace {
-            "C6-T1-canonical-parameterized-operation-plan-codec".to_owned()
+            "C6-T1-role-local-instance-extraction-codec".to_owned()
         } else if args.source_witness {
             "C6-T1-paired-source-witness-reference".to_owned()
         } else if args.subfield_witness {

@@ -625,6 +625,16 @@ impl C6RuntimeInstanceCaptureGuard {
         self.active = false;
         result
     }
+
+    pub fn finish_installed(
+        mut self,
+        operation_plan: &C6InstalledOperationPlan,
+        extraction: &C6DecodedInstanceExtractionPlan,
+    ) -> Result<C6RuntimeInstanceValues, C6TraceError> {
+        let result = finish_c6_runtime_instance_capture_installed(operation_plan, extraction);
+        self.active = false;
+        result
+    }
 }
 
 impl Drop for C6RuntimeInstanceCaptureGuard {
@@ -679,6 +689,32 @@ fn finish_c6_runtime_instance_capture(
     operation_plan: &C6OperationPlanArtifact,
     extraction: &C6DecodedInstanceExtractionPlan,
 ) -> Result<C6RuntimeInstanceValues, C6TraceError> {
+    let (spec, public_values, scalar_values) = take_c6_runtime_instance_capture(extraction)?;
+    let instance = reconstruct_c6_runtime_instance_identity(
+        operation_plan,
+        extraction,
+        &public_values,
+        &scalar_values,
+    )?;
+    Ok(C6RuntimeInstanceValues { spec, public_values, scalar_values, instance })
+}
+
+fn finish_c6_runtime_instance_capture_installed(
+    operation_plan: &C6InstalledOperationPlan,
+    extraction: &C6DecodedInstanceExtractionPlan,
+) -> Result<C6RuntimeInstanceValues, C6TraceError> {
+    let (spec, public_values, scalar_values) = take_c6_runtime_instance_capture(extraction)?;
+    let instance = operation_plan.reconstruct_runtime_instance_identity(
+        extraction,
+        &public_values,
+        &scalar_values,
+    )?;
+    Ok(C6RuntimeInstanceValues { spec, public_values, scalar_values, instance })
+}
+
+fn take_c6_runtime_instance_capture(
+    extraction: &C6DecodedInstanceExtractionPlan,
+) -> Result<(C6RuntimeInstanceCaptureSpec, Vec<Fp2>, Vec<Fp2>), C6TraceError> {
     let capture = C6_RUNTIME_INSTANCE_CAPTURE
         .try_with(|capture| {
             capture
@@ -708,18 +744,7 @@ fn finish_c6_runtime_instance_capture(
             "C6 runtime instance stream differs from the installed raw census",
         ));
     }
-    let instance = reconstruct_c6_runtime_instance_identity(
-        operation_plan,
-        extraction,
-        &capture.public_values,
-        &capture.scalar_values,
-    )?;
-    Ok(C6RuntimeInstanceValues {
-        spec: expected_spec,
-        public_values: capture.public_values,
-        scalar_values: capture.scalar_values,
-        instance,
-    })
+    Ok((expected_spec, capture.public_values, capture.scalar_values))
 }
 
 impl fmt::Debug for C6OperationPlanArtifact {
@@ -760,6 +785,27 @@ impl C6OperationPlanArtifact {
     ) -> Result<C6DecodedOperationPlan, C6TraceError> {
         decode_c6_operation_plan_artifact(&self.bytes, manifest)
     }
+
+    /// Consume one admitted setup artifact and materialize its compact local
+    /// reverse-execution arrays using the same strict decoder.
+    pub fn install(
+        self,
+        manifest: &C6TraceSourceManifest,
+    ) -> Result<C6InstalledOperationPlan, C6TraceError> {
+        let artifact_digest = *blake3::hash(&self.bytes).as_bytes();
+        let (decoded, data) = decode_c6_operation_plan_artifact_impl(&self.bytes, manifest, true)?;
+        let data = data
+            .ok_or_else(|| C6TraceError::new("C6 operation-plan installation emitted no data"))?;
+        Ok(C6InstalledOperationPlan {
+            decoded,
+            artifact_digest,
+            opcodes: data.opcodes,
+            source_ordinals: data.source_ordinals,
+            operands: data.operands,
+            products: data.products,
+            zero_roots: data.zero_roots,
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -768,6 +814,150 @@ pub struct C6DecodedOperationPlan {
     pub node_kinds: C6CanonicalNodeKindCensus,
     pub product_phase_node_count: u64,
     pub encoding: C6OperationPlanSpecializedEncodingCensus,
+}
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum C6InstalledOperationKind {
+    Source = 1,
+    StructuralZero = 2,
+    PublicInput = 3,
+    Add = 4,
+    Sub = 5,
+    Scale = 6,
+}
+
+impl C6InstalledOperationKind {
+    fn decode(value: u8) -> Result<Self, C6TraceError> {
+        match value {
+            1 => Ok(Self::Source),
+            2 => Ok(Self::StructuralZero),
+            3 => Ok(Self::PublicInput),
+            4 => Ok(Self::Add),
+            5 => Ok(Self::Sub),
+            6 => Ok(Self::Scale),
+            _ => Err(C6TraceError::new("unknown installed C6 operation kind")),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6InstalledProductClosure {
+    triples: Vec<[u32; 3]>,
+    mask: u32,
+}
+
+impl C6InstalledProductClosure {
+    pub fn triples(&self) -> &[[u32; 3]] {
+        &self.triples
+    }
+
+    pub fn mask(&self) -> u32 {
+        self.mask
+    }
+}
+
+/// Strictly decoded, response-independent operation plan held in local
+/// session memory.
+///
+/// This is constructed once from the canonical setup artifact. Its vectors
+/// are never serialized as response data.
+pub struct C6InstalledOperationPlan {
+    decoded: C6DecodedOperationPlan,
+    artifact_digest: [u8; 32],
+    opcodes: Vec<C6InstalledOperationKind>,
+    source_ordinals: Vec<u32>,
+    operands: Vec<u32>,
+    products: Vec<C6InstalledProductClosure>,
+    zero_roots: Vec<u32>,
+}
+
+impl fmt::Debug for C6InstalledOperationPlan {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("C6InstalledOperationPlan")
+            .field("topology", &self.decoded.topology)
+            .field("artifact_digest", &self.artifact_digest)
+            .field("opcodes", &self.opcodes.len())
+            .field("source_ordinals", &self.source_ordinals.len())
+            .field("operands", &self.operands.len())
+            .field("products", &self.products.len())
+            .field("zero_roots", &self.zero_roots.len())
+            .finish_non_exhaustive()
+    }
+}
+
+impl C6InstalledOperationPlan {
+    pub fn decoded(&self) -> C6DecodedOperationPlan {
+        self.decoded
+    }
+
+    pub fn topology(&self) -> C6OperationPlanTopologyIdentity {
+        self.decoded.topology
+    }
+
+    pub fn artifact_digest(&self) -> [u8; 32] {
+        self.artifact_digest
+    }
+
+    pub fn operation_kind(&self, canonical: u32) -> Result<C6InstalledOperationKind, C6TraceError> {
+        self.opcodes
+            .get(canonical as usize)
+            .copied()
+            .ok_or_else(|| C6TraceError::new("installed C6 canonical node is out of range"))
+    }
+
+    pub fn operation_kinds(&self) -> &[C6InstalledOperationKind] {
+        &self.opcodes
+    }
+
+    pub fn source_ordinals(&self) -> &[u32] {
+        &self.source_ordinals
+    }
+
+    pub fn operands(&self) -> &[u32] {
+        &self.operands
+    }
+
+    pub fn products(&self) -> &[C6InstalledProductClosure] {
+        &self.products
+    }
+
+    pub fn zero_roots(&self) -> &[u32] {
+        &self.zero_roots
+    }
+
+    fn reconstruct_runtime_instance_identity(
+        &self,
+        extraction: &C6DecodedInstanceExtractionPlan,
+        raw_public_values: &[Fp2],
+        raw_scalar_values: &[Fp2],
+    ) -> Result<C6OperationPlanInstanceIdentity, C6TraceError> {
+        let topology = self.decoded.topology;
+        reconstruct_c6_runtime_instance_identity_from_opcodes(
+            topology.version,
+            topology.topology_digest,
+            topology.canonical_node_count,
+            topology.public_input_count,
+            topology.scalar_input_count,
+            extraction,
+            raw_public_values,
+            raw_scalar_values,
+            |canonical| {
+                self.opcodes
+                    .get(canonical as usize)
+                    .map(|kind| *kind as u8)
+                    .ok_or_else(|| C6TraceError::new("installed C6 opcode is out of range"))
+            },
+        )
+    }
+}
+
+struct C6OperationPlanInstallData {
+    opcodes: Vec<C6InstalledOperationKind>,
+    source_ordinals: Vec<u32>,
+    operands: Vec<u32>,
+    products: Vec<C6InstalledProductClosure>,
+    zero_roots: Vec<u32>,
 }
 
 #[cfg(feature = "c6-trace")]
@@ -2344,6 +2534,16 @@ fn c6_bitset_len(bits: u32) -> Result<usize, C6TraceError> {
     usize::try_from(bytes).map_err(|_| C6TraceError::new("C6 bitset length exceeds usize"))
 }
 
+fn c6_try_vec_with_capacity<T>(capacity: u64, label: &str) -> Result<Vec<T>, C6TraceError> {
+    let capacity = usize::try_from(capacity)
+        .map_err(|_| C6TraceError::new(format!("C6 {label} capacity exceeds usize")))?;
+    let mut values = Vec::new();
+    values
+        .try_reserve_exact(capacity)
+        .map_err(|_| C6TraceError::new(format!("C6 {label} allocation failed")))?;
+    Ok(values)
+}
+
 fn c6_bitset_get(bits: &[u8], index: u32) -> bool {
     bits[index as usize / 8] & (1 << (index % 8)) != 0
 }
@@ -2655,11 +2855,54 @@ fn reconstruct_c6_runtime_instance_identity(
     let mut offset = header_len;
     let opcode_section = c6_section(&operation_plan.bytes, &mut offset, section_lengths[0])?;
     let mut opcodes = C6BitReader::new(opcode_section);
+    let instance = reconstruct_c6_runtime_instance_identity_from_opcodes(
+        version,
+        topology_digest,
+        canonical_node_count,
+        public_input_count,
+        scalar_input_count,
+        extraction,
+        raw_public_values,
+        raw_scalar_values,
+        |_| opcodes.read(3),
+    )?;
+    let opcode_bits = u64::from(canonical_node_count)
+        .checked_mul(3)
+        .ok_or_else(|| C6TraceError::new("C6 runtime opcode bit count overflows"))?;
+    opcodes.finish(opcode_bits, "runtime instance opcode")?;
+    Ok(instance)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn reconstruct_c6_runtime_instance_identity_from_opcodes(
+    version: u32,
+    topology_digest: [u8; 32],
+    canonical_node_count: u32,
+    public_input_count: u32,
+    scalar_input_count: u32,
+    extraction: &C6DecodedInstanceExtractionPlan,
+    raw_public_values: &[Fp2],
+    raw_scalar_values: &[Fp2],
+    mut opcode_at: impl FnMut(u32) -> Result<u8, C6TraceError>,
+) -> Result<C6OperationPlanInstanceIdentity, C6TraceError> {
+    if version != C6_OPERATION_PLAN_VERSION
+        || topology_digest != extraction.topology_digest
+        || public_input_count != extraction.census.canonical_public_input_count
+        || scalar_input_count != extraction.census.canonical_scalar_input_count
+        || extraction.public_raw_ordinals.len() != public_input_count as usize
+        || extraction.scalar_raw_ordinals.len() != scalar_input_count as usize
+        || raw_public_values.len() != extraction.census.raw_public_input_count as usize
+        || raw_scalar_values.len() != extraction.census.raw_scalar_input_count as usize
+    {
+        return Err(C6TraceError::new(
+            "C6 runtime instance inputs differ from the installed plan and extraction map",
+        ));
+    }
     let mut public_slot = 0u32;
     let mut scalar_slot = 0u32;
     let mut value_hasher = blake3::Hasher::new_derive_key(C6_OPERATION_INSTANCE_VALUE_DOMAIN);
     for canonical in 0..canonical_node_count {
-        match opcodes.read(3)? {
+        match opcode_at(canonical)? {
             1 | 2 | 4 | 5 => {}
             3 => {
                 let raw = *extraction
@@ -2702,10 +2945,6 @@ fn reconstruct_c6_runtime_instance_identity(
             }
         }
     }
-    let opcode_bits = u64::from(canonical_node_count)
-        .checked_mul(3)
-        .ok_or_else(|| C6TraceError::new("C6 runtime opcode bit count overflows"))?;
-    opcodes.finish(opcode_bits, "runtime instance opcode")?;
     if public_slot != public_input_count || scalar_slot != scalar_input_count {
         return Err(C6TraceError::new(
             "C6 runtime instance slot counts differ from the operation plan",
@@ -2731,6 +2970,14 @@ fn decode_c6_operation_plan_artifact(
     bytes: &[u8],
     manifest: &C6TraceSourceManifest,
 ) -> Result<C6DecodedOperationPlan, C6TraceError> {
+    decode_c6_operation_plan_artifact_impl(bytes, manifest, false).map(|(decoded, _)| decoded)
+}
+
+fn decode_c6_operation_plan_artifact_impl(
+    bytes: &[u8],
+    manifest: &C6TraceSourceManifest,
+    install: bool,
+) -> Result<(C6DecodedOperationPlan, Option<C6OperationPlanInstallData>), C6TraceError> {
     let header_len = usize::try_from(C6_OPERATION_PARAMETERIZED_HEADER_BYTES)
         .map_err(|_| C6TraceError::new("C6 operation-plan header exceeds usize"))?;
     let header_bytes = bytes
@@ -2824,6 +3071,28 @@ fn decode_c6_operation_plan_artifact(
     let mut decoded_scalar_inputs = 0u32;
     let mut operand_count = 0u64;
     let mut unit_operand_count = 0u64;
+    let mut installed = if install {
+        Some(C6OperationPlanInstallData {
+            opcodes: c6_try_vec_with_capacity(u64::from(canonical_node_count), "installed opcode")?,
+            source_ordinals: c6_try_vec_with_capacity(u64::from(source_count), "installed source")?,
+            operands: c6_try_vec_with_capacity(
+                section_lengths[2]
+                    .checked_mul(8)
+                    .ok_or_else(|| C6TraceError::new("installed operand capacity overflows"))?,
+                "installed operand",
+            )?,
+            products: c6_try_vec_with_capacity(
+                u64::from(product_closure_count),
+                "installed ProductClosure",
+            )?,
+            zero_roots: c6_try_vec_with_capacity(
+                u64::from(zero_root_count),
+                "installed zero root",
+            )?,
+        })
+    } else {
+        None
+    };
 
     let decode_operand = |canonical: u32,
                           operand_flags: &mut C6BitReader<'_>,
@@ -2854,6 +3123,9 @@ fn decode_c6_operation_plan_artifact(
 
     for canonical in 0..canonical_node_count {
         let tag = opcodes.read(3)?;
+        if let Some(installed) = installed.as_mut() {
+            installed.opcodes.push(C6InstalledOperationKind::decode(tag)?);
+        }
         node_hasher.update(&canonical.to_le_bytes());
         node_hasher.update(&[tag]);
         match tag {
@@ -2878,6 +3150,9 @@ fn decode_c6_operation_plan_artifact(
                         })?;
                 }
                 previous_source = i64::from(source);
+                if let Some(installed) = installed.as_mut() {
+                    installed.source_ordinals.push(source);
+                }
                 node_hasher.update(&source.to_le_bytes());
                 node_kinds.source += 1;
                 if let Ok(mask_index) = manifest.product_mask_sources.binary_search(&source) {
@@ -2917,6 +3192,9 @@ fn decode_c6_operation_plan_artifact(
                     &mut operand_count,
                     &mut unit_operand_count,
                 )?;
+                if let Some(installed) = installed.as_mut() {
+                    installed.operands.extend_from_slice(&[lhs, rhs]);
+                }
                 if c6_bitset_get(&node_is_product_mask, lhs)
                     || c6_bitset_get(&node_is_product_mask, rhs)
                 {
@@ -2940,6 +3218,9 @@ fn decode_c6_operation_plan_artifact(
                     &mut operand_count,
                     &mut unit_operand_count,
                 )?;
+                if let Some(installed) = installed.as_mut() {
+                    installed.operands.push(value);
+                }
                 if c6_bitset_get(&node_is_product_mask, value) {
                     return Err(C6TraceError::new("decoded C6 ProductMask reaches a linear scale"));
                 }
@@ -2996,14 +3277,22 @@ fn decode_c6_operation_plan_artifact(
             .ok_or_else(|| C6TraceError::new("decoded C6 product triple count overflows"))?;
         root_hasher.update(&u64::from(closure_index).to_le_bytes());
         root_hasher.update(&triple_count.to_le_bytes());
+        let mut installed_triples = install
+            .then(|| c6_try_vec_with_capacity(triple_count, "installed product triple"))
+            .transpose()?;
         for _ in 0..triple_count {
-            for _ in 0..3 {
+            let mut triple = [0u32; 3];
+            for operand in &mut triple {
                 let node = read_terminal_node(&mut terminals)?;
                 if c6_bitset_get(&node_is_product_mask, node) {
                     return Err(C6TraceError::new("decoded C6 ProductMask is a product operand"));
                 }
+                *operand = node;
                 product_max_node = Some(product_max_node.map_or(node, |value| value.max(node)));
                 root_hasher.update(&node.to_le_bytes());
+            }
+            if let Some(installed_triples) = installed_triples.as_mut() {
+                installed_triples.push(triple);
             }
         }
         let mask_node = read_terminal_node(&mut terminals)?;
@@ -3016,6 +3305,14 @@ fn decode_c6_operation_plan_artifact(
         }
         product_max_node = Some(product_max_node.map_or(mask_node, |value| value.max(mask_node)));
         root_hasher.update(&mask_node.to_le_bytes());
+        if let Some(installed) = installed.as_mut() {
+            installed.products.push(C6InstalledProductClosure {
+                triples: installed_triples.ok_or_else(|| {
+                    C6TraceError::new("installed C6 ProductClosure lost its triples")
+                })?,
+                mask: mask_node,
+            });
+        }
     }
     if decoded_product_triples != product_triple_count {
         return Err(C6TraceError::new("decoded C6 product triple count differs from header"));
@@ -3035,6 +3332,9 @@ fn decode_c6_operation_plan_artifact(
             return Err(C6TraceError::new("decoded C6 ProductMask is a zero root"));
         }
         root_hasher.update(&node.to_le_bytes());
+        if let Some(installed) = installed.as_mut() {
+            installed.zero_roots.push(node);
+        }
     }
     terminals.finish("terminal")?;
     let root_digest = *root_hasher.finalize().as_bytes();
@@ -3079,7 +3379,22 @@ fn decode_c6_operation_plan_artifact(
         operand_count,
         unit_operand_count,
     };
-    Ok(C6DecodedOperationPlan { topology, node_kinds, product_phase_node_count, encoding })
+    if let Some(data) = installed.as_ref() {
+        if data.opcodes.len() != canonical_node_count as usize
+            || data.source_ordinals.len() as u64 != node_kinds.source
+            || data.operands.len() as u64 != operand_count
+            || data.products.len() != product_closure_count as usize
+            || data.zero_roots.len() != zero_root_count as usize
+        {
+            return Err(C6TraceError::new(
+                "installed C6 operation-plan arrays differ from the decoded census",
+            ));
+        }
+    }
+    Ok((
+        C6DecodedOperationPlan { topology, node_kinds, product_phase_node_count, encoding },
+        installed,
+    ))
 }
 
 impl C6TraceToken {
@@ -3456,6 +3771,15 @@ mod tests {
         assert_eq!(decoded.node_kinds.source, 2);
         assert_eq!(decoded.product_phase_node_count, 2);
         assert_eq!(decoded.encoding.total_bytes, 160);
+        let installed = artifact.clone().install(&manifest).unwrap();
+        assert_eq!(installed.topology(), decoded.topology);
+        assert_eq!(installed.source_ordinals(), &[0, 1]);
+        assert!(installed.operands().is_empty());
+        assert_eq!(installed.products().len(), 1);
+        assert_eq!(installed.products()[0].triples(), &[[0, 0, 0]]);
+        assert_eq!(installed.products()[0].mask(), 1);
+        assert!(installed.zero_roots().is_empty());
+        assert_eq!(installed.artifact_digest(), *blake3::hash(artifact.as_bytes()).as_bytes());
 
         let map_digest = c6_instance_extraction_map_digest(
             C6InstanceExtractionRole::Verifier,
@@ -3688,6 +4012,14 @@ mod tests {
             normalized.diagnostics.product_phase_node_count
         );
         assert_eq!(decoded.encoding, normalized.diagnostics.specialized_encoding_projection);
+        let installed = compiled.artifact.clone().install(&manifest).unwrap();
+        assert_eq!(installed.topology(), normalized.topology);
+        assert_eq!(installed.operation_kind(0).unwrap(), C6InstalledOperationKind::Source);
+        assert_eq!(installed.source_ordinals(), &[0, 1, 2]);
+        assert_eq!(installed.operands(), &[0, 1, 2]);
+        assert_eq!(installed.products()[0].triples(), &[[3, 4, 0]]);
+        assert_eq!(installed.products()[0].mask(), 5);
+        assert_eq!(installed.zero_roots(), &[3]);
         let extraction = compiled.instance_extraction.decode(normalized.topology).unwrap();
         assert_eq!(extraction.role, C6InstanceExtractionRole::Prover);
         assert_eq!(extraction.public_raw_ordinals, vec![0]);
@@ -3721,6 +4053,12 @@ mod tests {
             runtime.scalar_value(&extraction, 0).unwrap(),
             Fp2::new(volta_field::Fp::new(2), volta_field::Fp::new(3))
         );
+        let installed_capture = begin_c6_runtime_instance_capture(&extraction).unwrap();
+        let public = C6TraceToken::public(Fp2::ONE);
+        let _scaled = public.scale(Fp2::new(volta_field::Fp::new(2), volta_field::Fp::new(3)));
+        let installed_runtime =
+            installed_capture.finish_installed(&installed, &extraction).unwrap();
+        assert_eq!(installed_runtime.instance_identity(), compiled.plan.instance);
         let migrated = begin_c6_runtime_instance_capture(&extraction).unwrap();
         std::thread::spawn(|| {
             let public = C6TraceToken::public(Fp2::ONE);

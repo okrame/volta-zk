@@ -68,6 +68,7 @@ pub struct C6PairedSourceWitness {
     tape_ids: [C6SourceDigest; 2],
     coordinates: [C6SourceCoordinate; 2],
     schedule_digest: C6SourceDigest,
+    source_schedule_digest: C6SourceDigest,
     direct_fullfield_plaintext_digest: C6SourceDigest,
     pair_digest: C6SourceDigest,
 }
@@ -77,10 +78,16 @@ impl C6PairedSourceWitness {
         tape_ids: [C6SourceDigest; 2],
         coordinates: [C6SourceCoordinate; 2],
         schedule: &CorrScheduleAudit,
+        source_schedule_digest: C6SourceDigest,
     ) -> Result<Self, C6SourceError> {
         if tape_ids[0] == [0; 32] || tape_ids[1] == [0; 32] || tape_ids[0] == tape_ids[1] {
             return Err(C6SourceError::new(
                 "C6 paired source witness requires two distinct nonzero tape identities",
+            ));
+        }
+        if source_schedule_digest == [0; 32] {
+            return Err(C6SourceError::new(
+                "C6 paired source witness requires a nonzero source-schedule digest",
             ));
         }
         for coordinate in &coordinates {
@@ -145,6 +152,7 @@ impl C6PairedSourceWitness {
 
         let mut hasher = blake3::Hasher::new_derive_key("volta/proto/c6/paired-source-witness/v1");
         hasher.update(&schedule.digest);
+        hasher.update(&source_schedule_digest);
         hasher.update(&direct_digests[0]);
         for coordinate in 0..2 {
             hasher.update(&tape_ids[coordinate]);
@@ -160,6 +168,7 @@ impl C6PairedSourceWitness {
             tape_ids,
             coordinates,
             schedule_digest: schedule.digest,
+            source_schedule_digest,
             direct_fullfield_plaintext_digest: direct_digests[0],
             pair_digest,
         })
@@ -203,6 +212,10 @@ impl C6PairedSourceWitness {
 
     pub fn schedule_digest(&self) -> C6SourceDigest {
         self.schedule_digest
+    }
+
+    pub fn source_schedule_digest(&self) -> C6SourceDigest {
+        self.source_schedule_digest
     }
 
     pub fn direct_fullfield_plaintext_digest(&self) -> C6SourceDigest {
@@ -376,9 +389,13 @@ mod tests {
         let mut secondary_stream = CorrelationStream::new([0x82; 32]);
         let secondary =
             replay_c6_source_coordinate(&primary, &schedule, &mut secondary_stream).unwrap();
-        let pair =
-            C6PairedSourceWitness::new([[0x91; 32], [0x92; 32]], [primary, secondary], &schedule)
-                .unwrap();
+        let pair = C6PairedSourceWitness::new(
+            [[0x91; 32], [0x92; 32]],
+            [primary, secondary],
+            &schedule,
+            [0x93; 32],
+        )
+        .unwrap();
 
         assert_eq!(pair.subfield_leaf_count(), 3);
         assert_eq!(pair.direct_fullfield_leaf_count(), 2);
@@ -413,12 +430,18 @@ mod tests {
             [[0xB1; 32], [0xB2; 32]],
             [first.clone(), changed],
             &schedule,
+            [0xB3; 32],
         )
         .is_err());
 
         let mut secondary_stream = CorrelationStream::new([0xA3; 32]);
         let second = replay_c6_source_coordinate(&first, &schedule, &mut secondary_stream).unwrap();
-        assert!(C6PairedSourceWitness::new([[0xB1; 32], [0xB1; 32]], [first, second], &schedule,)
-            .is_err());
+        assert!(C6PairedSourceWitness::new(
+            [[0xB1; 32], [0xB1; 32]],
+            [first, second],
+            &schedule,
+            [0xB3; 32],
+        )
+        .is_err());
     }
 }

@@ -4,7 +4,8 @@ Status: **OWNER REQUIREMENTS FROZEN; Q=121 CONTINGENCY ACTIVATED BEFORE
 IMPLEMENTATION; FORMAL SEAM / ROOFLINE / PAIRED CODEC / PRODUCTION SOURCE
 CENSUS / PAIRED COMPLETE SOURCE WITNESS / INDEPENDENT EXACT-INSTANCE
 OPERATION DAG GREEN; PARAMETERIZED V2 TWO-SEED IDENTITY GREEN; CANONICAL PLAN
-CODEC/CACHE/WRAPPER PENDING; LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE
+CODEC + SCALED COMPILED-RESIDUAL CORE GREEN; FULL-T1 COMPILED RESIDUAL /
+CACHE / WRAPPER PENDING; LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE
 POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
@@ -921,6 +922,69 @@ Both are `git_dirty:false`, `diagnostic:false`, `pod_contacted:false` and
 so they establish seam equality, not production overhead: a bound ordinary
 build with graph tracing disabled and its provider wall delta remain required
 before runtime/timing credit.
+
+### 3.4.4 Installed reverse accumulator and coefficient-stream seam
+
+The first compiled-residual implementation checkpoint is now green in scaled
+scope.  The strict `VC6PLN2` decoder has one consuming installation path that
+materializes local typed arrays for canonical opcodes, source ordinals,
+backward operands, ProductClosure terminals and zero roots.  It is the same
+validating pass used by the ordinary decoder; there is no second permissive
+parser.  These arrays are local provider/client session memory.  They are not
+serialized in setup or in a response, and the original canonical artifact
+remains the only plan byte string counted against setup.
+
+For one response, both roles combine the installed plan with their immutable
+role-local extraction map and exact runtime instance values.  Reverse
+accumulation seeds the `8,170` zero roots, walks the canonical nodes once in
+reverse order, and emits:
+
+```text
+leaf_linear[source]  for every one of source_count schedule entries
+public_plaintext     for public-input contributions
+```
+
+Scheduled leaves absent from the reachable linear graph receive coefficient
+zero but still participate in base-share binding.  ProductMask leaves are
+required to retain coefficient zero and remain full-field, uncorrected
+sources.  Public and Scale values are fetched only through the installed
+role map; topology, instance, cursor or census divergence rejects before any
+residual output.
+
+The post-commit base-share challenges are streamed directly from the existing
+interactive `Transcript` sampler.  For source `i`,
+
+```text
+c_i = leaf_linear[i] + alpha_i
+
+D_corr += leaf_linear[i] * d_i - alpha_i * r_i
+M_public += c_i * m_i
+K_base += c_i * k0_i
+```
+
+Provider and client hash the same streamed `c_i` schedule and compare a
+constant-size binding.  No `Vec<alpha_i>`, `Vec<c_i>`, source-key vector or
+prior-response vector is a wire field.  The production-shaped provider fold
+streams both independent MAC coordinates in the exact interleaved physical
+allocation order; the client seam accepts one local paired-key callback per
+canonical source ordinal.
+
+The paired source witness now binds both the physical allocation-schedule
+digest and the accepted operation plan's `source_schedule_digest`.  This
+extra binding was added before the full-T1 compiled-residual record because
+checking only total leaves and ProductMask ordinals would not uniquely bind a
+reordering of direct draw ranges.  Future paired-witness digests therefore
+include the source-schedule digest; historical clean records remain immutable
+evidence for their earlier extraction scope.
+
+Permanent scaled tests prove exact equality with the historical residual
+builder, paired subfield/full-field/ProductMask interleaving, both affine
+coordinates, and fail-closed behavior for a divergent transcript or source
+schedule.  The complete `volta-proto` `c6-trace` suite is green at
+**138 passed / 0 failed / 1 ignored**.  This checkpoint is source-level
+algebra and lifecycle evidence only.  Full-T1 installed-memory census,
+paired residual execution, ordinary-build overhead, proof bytes, wrapper
+soundness, real-PCG and the `20.000-s` gate remain open.
 
 ## 4. Hidden Ligero vectors without an NTT trace
 

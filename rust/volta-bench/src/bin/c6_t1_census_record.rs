@@ -1372,6 +1372,7 @@ fn run(args: &Args) -> Result<Record, String> {
             [[0xD0; 32], [0xD1; 32]],
             [primary, secondary],
             &prover_schedule,
+            census.source_schedule_digest,
         )
         .map_err(|error| error.to_string())?;
         let subfield_leaf_count = u64::try_from(pair.subfield_leaf_count())

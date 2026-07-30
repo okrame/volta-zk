@@ -61,7 +61,9 @@ pub use c6_census::{
     C6_T1_TOTAL_PRODUCT_TRIPLES, C6_T1_ZERO_CLOSURES,
 };
 pub use c6_residual::{
-    C6CommittedResidualProgram, C6LeafId, C6LeafKind, C6LeafRole, C6ProductPostCommit,
+    C6CommittedResidualProgram, C6CompiledBaseKeyRlc, C6CompiledLinearResidual,
+    C6CompiledPairedBaseKeyRlc, C6CompiledPairedResidualPlan, C6CompiledResidualBinding,
+    C6CompiledResidualPlan, C6LeafId, C6LeafKind, C6LeafRole, C6ProductPostCommit,
     C6ResidualBuilder, C6ResidualCensus, C6ResidualDigest, C6ResidualError, C6ResidualPlan,
     C6ResidualPostCommit, C6SourceWitness, C6ValueId, C6ValueOperation,
 };

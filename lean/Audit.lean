@@ -294,6 +294,8 @@ vector-RLC bounds from being mistaken for implementation bounds.
 #print axioms VoltaZk.c6_independent_pair_accepting_card
 #print axioms VoltaZk.c6_independent_pair_accepting_card_le
 #print axioms VoltaZk.c6_same_secret_repetition_no_amplification
+#print axioms VoltaZk.c6_split_coordinate_accepting_card
+#print axioms VoltaZk.c6_complete_relation_two_repetition_card_le
 #print axioms VoltaZk.c6_delta_residual_accepting_secrets_card_le_one
 #print axioms VoltaZk.c6_delta_residual_two_secret_sound
 #print axioms VoltaZk.c6_base_share_binding_two_vector_sound

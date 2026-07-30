@@ -109,7 +109,9 @@ def test_two_repetition_wire_and_setup_stay_inside_frozen_caps() -> None:
 
 def test_s86_is_selected_before_benchmark_and_all_events_exceed_128_bits() -> None:
     budget = load_wrapper_budget_module()
-    soundness = budget.build_report()["soundness"]
+    report = budget.build_report()
+    soundness = report["soundness"]
+    ownership = report["residual_relation_ownership"]
 
     assert soundness["minimum_literal_128_bit_query_count"] == 85
     assert soundness["selected_query_count"] == 86
@@ -119,13 +121,32 @@ def test_s86_is_selected_before_benchmark_and_all_events_exceed_128_bits() -> No
         "243.35"
     )
     assert Decimal(soundness["event_bits"]["cache_argument"]) > Decimal("191.99")
-    assert soundness["residual_sumcheck_degree_rounds_per_coordinate"] == 91
-    assert soundness["delta_root_bound_per_coordinate"] == 256
+    assert (
+        soundness[
+            "residual_sumcheck_degree_rounds_per_complete_proof_repetition"
+        ]
+        == 91
+    )
+    assert soundness["delta_root_bound_per_complete_proof_repetition"] == 256
     assert soundness["delta_event_numerator"] == 2**16
     assert Decimal(soundness["event_bits"]["delta_residual"]) > Decimal("239.99")
     assert Decimal(soundness["q121_complete_candidate_bits"]) > Decimal(
         "78.80929487391641"
     )
+    assert ownership["proof_repetitions"] == 2
+    assert ownership["mac_coordinates_per_complete_relation"] == 2
+    assert ownership["terminal_form_kinds_per_coordinate"] == 2
+    assert ownership["leaf_table_slots_per_proof_repetition"] == list(range(8))
+    assert ownership["auxiliary_table_slots_per_proof_repetition"] == list(range(16))
+    assert ownership["table_slots_per_proof_repetition"] == 24
+    assert ownership["table_slot_references_across_proof_repetitions"] == 48
+    assert ownership["post_root_terminal_challenge_streams"] == 8
+    assert ownership["owner_coefficient_symbols_per_proof_repetition"] == 68_157_440
+    assert ownership["split_v1_owner_coefficient_symbols"] == 68_157_440
+    assert ownership["complete_v2_owner_coefficient_symbols"] == 136_314_880
+    assert ownership["additional_owner_coefficient_symbols"] == 68_157_440
+    assert ownership["proof_codec_bytes"] == 4_244
+    assert ownership["wire_slot_addition_bytes"] == 0
 
 
 def test_time_screen_rejects_x4c_and_keeps_hardware_verdict_open() -> None:
@@ -133,6 +154,16 @@ def test_time_screen_rejects_x4c_and_keeps_hardware_verdict_open() -> None:
     timing = budget.build_report()["time_screen"]
 
     assert timing["verdict_scope"] == "informative-kernel-roofline-not-end-to-end"
+    assert timing["sumcheck_base_equivalent_passes"] == 32
+    assert (
+        timing["ownership_amendment_additional_coefficient_symbols"] == 68_157_440
+    )
+    assert Decimal(timing["sumcheck_effective_equivalent_passes"]) > Decimal("32.3")
+    assert Decimal(timing["sumcheck_effective_equivalent_passes"]) < Decimal("32.31")
+    assert (
+        timing["ownership_amendment_timing_credit"]
+        == "none-before-fused-compiler-benchmark"
+    )
     assert Decimal(timing["total_kernel_floor_seconds"]) < Decimal("9")
     assert Decimal(timing["integration_budget_to_20_seconds"]) > Decimal("11")
     assert Decimal(timing["legacy_x4c_total_projection_seconds"]) > Decimal("80")

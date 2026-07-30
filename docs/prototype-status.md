@@ -46,9 +46,13 @@ coefficient field: provider/client stream the same transcript coefficients,
 the paired provider fold covers both MAC coordinates, and the paired witness
 additionally binds the accepted source-schedule digest.  The statement-generic
 residual sumcheck arithmetic, installed terminal reverse compiler and
-context-bound four-stream terminal expansion are locally green, but the PCS
-fixed-root typestate join, full T1 statement assembly, cache constraint
-census, wrapper proof, local end-to-end and hardware gates remain pending.
+historical v1 context-bound four-stream terminal expansion are locally green.
+A subsequent ownership audit proved that v1 cannot justify the registered
+squared bound for coordinate-local errors; the complete-relation
+two-repetition repair is now Lean- and budget-green, while its Rust owner map
+and eight-stream post-root bundle remain pending.  The PCS fixed-root
+typestate join, full T1 statement assembly, cache constraint census, wrapper
+proof, local end-to-end and hardware gates remain pending.
 
 Workload of record: **GPT-2 small (124M, L=12, d=768, h=12, d_ff=3072),
 prefill T=100 + 50 deferred decode tokens, causal, C3b PCS Q=120**, on the
@@ -408,7 +412,7 @@ its clean descendant closure.
 | X4d.2 delayed-link diagnosis and repair | **LOCAL ROOT CAUSE CONFIRMED; BYTE IDENTITY GREEN; HARD STOP / NO POD / NO REPLACEMENT PAIR OR GATE VERDICT** (2026-07-27) | Evaluation-only repair: backend-generic sequential resident orchestrator plus one exactly-once scaled product-round message; protocol/transcript/challenge/codec/correlations/terminal semantics unchanged | The extracted `e4e2b14` arithmetic reproduced the obstruction with the initial claim, ledgers, challenges and folds still green: first divergence **term 0 / round 1 / dimension 8 / active_len 256**, captured output SHA-256 `2ac466d9bcfc61fc5ef0a83c59d5bc8b0c2f32434ed17e37de1b7ac5cc925c1f`; all **51/51** production-relative terms are affected at their first real round. Root cause is the missing `virtual_factor` on `fp2_product_round_into_device`. ABI 33 adds `fp2_product_round_scaled_into_device` / `volta_cuda_fp2_product_round_scaled_into_device` / `scale_product_round_message`; scale one is raw-mailbox byte-identical, folds are unscaled, and the real branch alone uses it. Permanent value-mismatch and geometry-not-drained faults are distinct. CPU BackendKind lifecycle and exact message/fold-vector-digest identity pass at the 51/51/102 local multiplicity fixture and `max_mu=20/22/24/26`; the full serialized workspace, 23 report-validator tests and CUDA-feature all-target compilation are green, while real CUDA remains deliberately unexecuted locally. A clean, fail-closed standalone `x4d2_delayed_link_reproducer` is prepared for a future GO; it needs no weights/onboarding/durable tier/connection/settlement. Append-only local record `x4d2-diag-delayed-link-2026-07-27-bc76048.json`, SHA-256 `0bf3ed63b4ec34243a3f42cd1b6fce286c07a5b07f9e09b72bbb2f081f35538a`; diagnostic design SHA-256 `91cc8eb6566122724a75b9f051a75d5245e981b52194c5545b7701ca853b6fe4`. Historical X4d.1 and X4d.2 records/digests/gates remain immutable. |
 | C4 Ligero inline rate reduction | **PAIRED A100 COMPLETE — ANCHOR PASS; RATE-8 EXACT BYTES / PROVER / DEVICE PASS; SESSION 1.050816638x >1.05 AND SYNC 0.155717607 s >0.150 FAIL; OVERALL FAIL; NO RETRY; POD STOPPED** (2026-07-27) | Return to inline T1 weight certification; same-build anchor `rate=1/4,Q=120` versus candidate `rate=1/8,Q=97`; no deferred settlement; frozen gates conjunctive | Clean `e99a1e5` on one A100/13-effective-CPU/eight-Rayon host passed ABI 33 and the full release/CUDA workspace before either producer. Both profiles used the same binary/backend and independent fresh stores, one warmup and three measured repetitions. Anchor PCS/response **43,273,888 / 84,544,352 B**, prove/session **4.104595717 / 5.322725729 s**, all absolute gates PASS. Rate-8 PCS/response **38,296,040 / 79,566,504 B**, exact saving **4,977,848 B**, prove **4.079375688 s / 0.993855661x PASS**, but session **5.593208756 s / 1.050816638x FAIL** and maximum sync **0.155717607 s FAIL**; device peak **30,146,106,356 B PASS**. Pair `c4-ligero-paired-a100-2026-07-27-e99a1e5.json`, SHA-256 `8506de9ccad35bba76f9cd337ef5a4528613fc91894962e597937b63e3ad3e56`, is a coherent **overall FAIL**. No selective retry occurred. SSH-side `runpodctl` stopped pod `mi3dk7ah9jny9b` and an independent connection was refused. The anchor remains the accepted inline profile; all prior records and design pins remain immutable. |
 | C5 Packed16 over Ligero rate-8 | **LOCAL HARD STOP — TYPED-PCG SECURITY/BYTE GATE OBSTRUCTED; NO LEAN/RUST/CUDA IMPLEMENTATION; NO POD / NO VERDICT** (2026-07-28) | Direct authenticated uniform-u16/carry lanes, canonical Packed16 correction wire and exact setup accounting; no deferred settlement or PCS change | The owner-adopted rate-8 base and raw C4 FAIL remain distinct and immutable. Exact Packed16 response remains a conditional **61,292,904-B** projection, but typed setup has only **18,273,600 B / 9.4 bits per five-inventory cell** of headroom. C2's malicious-COT arithmetic lift requires **4,230,144,000 B** at this census; its pinned `0.73-bit/COT` binary core alone is **24,125,040 B** before lift. An exact Goldilocks `p-1` rejection/quotient route from current sVOLE has an optimistic **217,728,000-B** public quotient payload and combined setup **256,099,465 B**, excluding the required malicious range proof, hence fails by at least **199,454,400 B**. Same-characteristic subfield VOLE, dual-domain edaBits, base-only group COT, dealer-keyed PCG/PCF, three-party daBits and bounded-integer VOLE do not instantiate the frozen interface. Local record `c5-typed-pcg-obstruction-2026-07-28-0309320.json`, SHA-256 `9e292301af185093b1cc81d3a1b7bc229fad61e6ded61e294d84af0dd2844e49`; design SHA-256 `30a999044e8f61d6625814b51088871c184e2ae72a9397b5fc2da9e05e9f34fc`; `pod_contacted=false`, `production_pair_started=false`, `gate_verdict=false`. |
-| C6 Δ-residual inline certificate | **LEAN / RESIDUAL-IR / HIDDEN-U / PLAN+EXTRACTION / FULL-T1 COMPILED RESIDUAL / 17+4 DURABLE SESSION / PACKED PCS + 24-ROUND/64-SLOT SEAM / EIGHT-SLOT RESIDUAL WITNESS GRAMMAR + INDEPENDENT PAIRED ALPHAS / RESIDUAL ARITHMETIZATION+SOUNDNESS / 16-LANE AUXILIARY WITNESS / STATEMENT-GENERIC RESIDUAL SUMCHECK ARITHMETIC GREEN; T1 RELATION COMPILER + REAL CACHE PENDING; HARD STOP BEFORE POD** (2026-07-29) | Hide direct `auth_corrections` and Ligero `u_vectors`; one inline native-field wrapper; fixed-capacity committed KV cache; 17 accepts plus retry reserve; no deferred settlement | Retained Q=121 response **29,176,632 B**; new-payload budget **5,823,368 B**; implemented `pi_final` roof **4,409,824 B** under the owner cap **4,500,000 B**; complete response roof **33,586,456 B <=35,000,000 B**.  Q=121 gives **79.472744138609180097... bits**, preserving the **78.80929487391641-bit** floor after four amplified wrapper events.  Two independent tapes each fit **17 accepts + 4 aborts**, and paired PCG setup is **76,742,930 B**.  Lean is **3,257 jobs / 281 total / 45 C6**, zero `sorry`/`admit`; v2 setup/certificate plus v3 durable state/slot codecs give a client-owned two-tape high-water allocator, atomic abort/retry, anti-fork state and idempotent ACK recovery.  A permanent local lifecycle consumes four burned baseline attempts followed by 17 accepted flat-size certificates, ending at epoch **17**, slot **21**, raw offset **109,949,532** on each tape and **969,186** rows remaining.  The native hidden-`u` reducer proves both `21+19`-round repetitions and emits a canonical **4,004-B** sumcheck proof plus four PCS opening obligations.  The response-local packed PCS reference is exactly **3,609,824 B/two chains**.  Its production seam fixes **160 B** of roots before the exact **24-round** `0/1/3` coordinator schedule, fixes **128 terminal Fp2 = 2,048 B** before deriving verifier-owned all-slot weights, and feeds a sealed aggregate into the packed PCS without a second ten-scalar charge.  The exact source census remains **4,975,525 leaves / 673 ProductClosures / 22,339 triples / 8,170 zero closures**.  The new prover-only bridge fills seven source-aligned live prefixes plus the canonical closure workspace, including ProductMask independence and the exact **12·triples + 4·zero-roots + 64** layout; it is deliberately not yet an accepted residual proof.  Residual auxiliaries are frozen as sixteen lane-aligned semantic halves with independent masked upper halves; the implemented scaled adapter transposes slot 7 into their live prefixes, validates **22,339 / 8,170 <= 32,768**, and remains excluded from PCS/proof admission.  Paired `23×degree-2 + 15×degree-3` families contribute **4,128 B** of round values and the complete Delta event is conservatively **2^16/|Fp2|^2 >239 bits**.  The statement-generic step-wise engine realizes that shared-suffix arithmetic with exact terminal owners and a canonical **4,244-B** codec, but remains a materialized-table reference outside PCS admission.  Full seed-24/25 compiled-residual records preserve topology `bcdd169f...c57af344`, emit a **64-B** paired residual, and have informative provider residual subtotals **2.115027772 / 2.031618948 s** with no timing credit.  The paired production seam now derives independent domain-separated `alpha[b,i]` streams from one already-budgeted seed and binds both in one digest; the earlier clean records remain structural/diagnostic evidence only.  The known first exchange remains **146,058,504 B**, leaving **3,941,496 B**.  T1 relation compilation/reverse-DAG/raw-copy binding, sumcheck hiding, real cache/production auxiliary sources, dummy-zero constraints, terminal-to-PCS assembly, final wrapper envelope, fused CUDA, real-PCG session, bound prover wall and hardware verdict remain pending; no production response field is removed yet. |
+| C6 Δ-residual inline certificate | **LEAN / RESIDUAL-IR / HIDDEN-U / PLAN+EXTRACTION / FULL-T1 COMPILED RESIDUAL / 17+4 DURABLE SESSION / PACKED PCS + 24-ROUND/64-SLOT SEAM / EIGHT-SLOT RESIDUAL WITNESS GRAMMAR + INDEPENDENT PAIRED ALPHAS / RESIDUAL ARITHMETIZATION+SOUNDNESS / 16-LANE AUXILIARY WITNESS / STATEMENT-GENERIC RESIDUAL SUMCHECK ARITHMETIC / COMPLETE-RELATION OWNERSHIP REPAIR LEAN+BUDGET GREEN; RUST V2 OWNER MAP + T1 RELATION COMPILER + REAL CACHE PENDING; HARD STOP BEFORE POD** (2026-07-29) | Hide direct `auth_corrections` and Ligero `u_vectors`; one inline native-field wrapper; fixed-capacity committed KV cache; 17 accepts plus retry reserve; no deferred settlement | Retained Q=121 response **29,176,632 B**; new-payload budget **5,823,368 B**; implemented `pi_final` roof **4,409,824 B** under the owner cap **4,500,000 B**; complete response roof **33,586,456 B <=35,000,000 B**.  Q=121 gives **79.472744138609180097... bits**, preserving the **78.80929487391641-bit** floor after four amplified wrapper events.  Two independent tapes each fit **17 accepts + 4 aborts**, and paired PCG setup is **76,742,930 B**.  Lean is **3,257 jobs / 283 total / 47 C6**, zero `sorry`/`admit`; v2 setup/certificate plus v3 durable state/slot codecs give a client-owned two-tape high-water allocator, atomic abort/retry, anti-fork state and idempotent ACK recovery.  A permanent local lifecycle consumes four burned baseline attempts followed by 17 accepted flat-size certificates, ending at epoch **17**, slot **21**, raw offset **109,949,532** on each tape and **969,186** rows remaining.  The native hidden-`u` reducer proves both `21+19`-round repetitions and emits a canonical **4,004-B** sumcheck proof plus four PCS opening obligations.  The response-local packed PCS reference is exactly **3,609,824 B/two chains**.  Its production seam fixes **160 B** of roots before the exact **24-round** `0/1/3` coordinator schedule, fixes **128 terminal Fp2 = 2,048 B** before deriving verifier-owned all-slot weights, and feeds a sealed aggregate into the packed PCS without a second ten-scalar charge.  The exact source census remains **4,975,525 leaves / 673 ProductClosures / 22,339 triples / 8,170 zero closures**.  The new prover-only bridge fills seven source-aligned live prefixes plus the canonical closure workspace, including ProductMask independence and the exact **12·triples + 4·zero-roots + 64** layout; it is deliberately not yet an accepted residual proof.  Residual auxiliaries are frozen as sixteen lane-aligned semantic halves with independent masked upper halves; the implemented scaled adapter transposes slot 7 into their live prefixes, validates **22,339 / 8,170 <= 32,768**, and remains excluded from PCS/proof admission.  Paired `23×degree-2 + 15×degree-3` families contribute **4,128 B** of round values and the complete Delta event is conservatively **2^16/|Fp2|^2 >239 bits**.  The statement-generic step-wise engine realizes that shared-suffix arithmetic with a canonical **4,244-B** codec, but its historical split terminal owners are rejected; the repaired owner map gives all **8 leaf + 16 auxiliary slots** to both repetitions and is Rust-pending.  Full seed-24/25 compiled-residual records preserve topology `bcdd169f...c57af344`, emit a **64-B** paired residual, and have informative provider residual subtotals **2.115027772 / 2.031618948 s** with no timing credit.  The paired production seam now derives independent domain-separated `alpha[b,i]` streams from one already-budgeted seed and binds both in one digest; the earlier clean records remain structural/diagnostic evidence only.  The known first exchange remains **146,058,504 B**, leaving **3,941,496 B**.  T1 relation compilation/reverse-DAG/raw-copy binding, sumcheck hiding, real cache/production auxiliary sources, dummy-zero constraints, terminal-to-PCS assembly, final wrapper envelope, fused CUDA, real-PCG session, bound prover wall and hardware verdict remain pending; no production response field is removed yet. |
 | C6 role-local instance extraction codec | **CLEAN TWO-SEED MAP + RUNTIME PASS; SETUP/SEAM CLOSED; BOUND ORDINARY TIMING PENDING** (2026-07-29) | No response-value vector on wire; role-specific model-global maps; maximal-`+1` run codec fixed before measurement; strict ordinary-build decoder and thread-local value recorder | Clean seed-24/25 runs preserve the verifier map at **5,320,386 B**, **1,466 / 10,828,876 raw public/scalar slots**, **1,436 / 10,828,852 canonical slots**, **262 / 2,552,791 runs** and BLAKE3 `17ed0942...7183535`.  Known first exchange is **146,058,504 B**, leaving **3,941,496 B**.  Runtime records `c6-runtime-instance-recorder-seed24-2026-07-29-3b01789.json` / `c6-runtime-instance-recorder-seed25-2026-07-29-abf081c.json`, SHA-256 `f4ea526e...110681b` / `c1775060...5aff5b`, reproduce the exact prover/verifier raw censuses and reconstruct `7a21189b...45cacaa` / `1bd5aa75...6f734f7` respectively; both are clean PASSes.  Full trace was enabled, so this closes setup/seam correctness but gives no bound ordinary runtime, prover-time, residual or production credit. |
 | C6 parameterized canonical plan codec | **CLEAN TWO-SEED RUN-OF-RECORD PASS; PLAN-CODEC SETUP FIT CLOSED; COMPILED RESIDUAL PENDING** (2026-07-29) | Model-global v2 topology artifact; exact strict ordinary-build decoder; independent prover/verifier compile; response instance values excluded | Both clean `100+50` seed-24/25 records recover topology `bcdd169f...c57af344`, produce distinct instance digests and the same **63,994,751-B** artifact at BLAKE3 `265f874c...e51ebac`.  The actual first exchange subtotal is **140,738,118 B <=150,000,000 B**, leaving **9,261,882 B** for all remaining parameters/framing.  Records `c6-parameterized-plan-codec-seed24-2026-07-29-e437394.json` / `c6-parameterized-plan-codec-seed25-2026-07-29-8006f36.json`, SHA-256 `af785f98...ee5580` / `6e054a12...6a861`, are `git_dirty:false`, `diagnostic:false`, `pod_contacted:false`, `all_pass:true`.  This is not an overall setup, residual, response-byte, timing or production verdict. |
 | C6 installed compiled-residual core | **CLEAN TWO-SEED FULL-T1 PAIRED RECORD PASS; ORDINARY OVERHEAD / WRAPPER PENDING** (2026-07-29) | Consuming strict decoder installation; local reverse workspace; role-map runtime values; transcript-streamed base-share coefficients; paired source/key folds | Clean schema-11 seed-24/25 records at `5f9a7ba` accept both independent Δ coordinates over all **4,975,525** sources with provider/verifier linear-form equality and provider/client coefficient-binding equality; no coefficient vector is serialized.  Topology `bcdd169f...c57af344`, artifact `265f874c...e51ebac` and memory are cross-seed invariant, while instance and coefficient digests change.  The installed plan is **196,741,767 B** resident.  Each role retains **79,611,404 B** and uses a counted **541,141,500-B** residual-only compile peak.  Informative clean provider residual subtotals are **2.115027772 / 2.031618948 s** after **1.637407891 / 1.646412629 s** one-off installs.  The residual output itself is **64 B**, but this is not the final wrapper/certificate and earns no wire or timing credit.  Bound ordinary-build overhead, wrapper, real-PCG session and hardware gates remain pending. |
@@ -487,6 +491,73 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-29 — C6 relation-ownership audit rejects “proof repetition =
+  MAC coordinate” for the registered squared soundness allocation.**
+  The existing `c6_delta_residual_two_secret_sound` theorem deliberately
+  requires both coordinate plaintext residuals to be nonzero.  The shared
+  plaintext DAG and shared affine `leaf_linear` make that premise available
+  for a false plaintext residual, but they do not duplicate a malformed
+  coordinate-local tag, ProductClosure message or raw/aux copy relation.
+  Under the current split owner sets `{0,1,2,3,7}` / `{0,4,5,6,7}` and
+  coordinate-local auxiliary halves, such an error can make exactly one
+  sumcheck repetition false.  Its acceptance set is then
+  `Bad_0 × Omega_1` (or the symmetric case), not `Bad_0 × Bad_1`; the
+  registered `256^2/|Fp2|^2` bound cannot be cited for that branch.
+
+  C6 will not weaken the preregistered literal-128-bit per-event gate.  The
+  local repair keeps two proof repetitions but makes each repetition prove
+  one grand relation containing **both** MAC coordinates.  Therefore every
+  residual leaf repetition owns slots `0..7` and every residual auxiliary
+  repetition owns slots `0..15`; coordinate-local equations remain
+  separately domain-separated inside the grand expression.  The two proof
+  tapes independently batch that same complete relation.  The two MAC
+  coordinates and their alpha streams remain distinct, and the affine
+  `leaf_linear` schedule remains shared so a plaintext error is common.
+
+  This changes neither the `23+15` round schedule nor the **4,244-B** proof
+  codec, and the packed PCS already opens every slot on both chains.  It does
+  change terminal challenge identity from four
+  `(proof-repetition-as-coordinate, kind)` streams to eight
+  `(proof repetition, MAC coordinate, kind)` streams and can increase
+  residual prover arithmetic.  Before any further Rust relation code:
+  (1) an additive Lean theorem/audit must record why split ownership does not
+  square and why complete-relation repetition does; (2) the executable
+  budget must pin **8 leaf + 16 auxiliary = 24 residual terminal tables per
+  repetition**, recheck the unchanged root/byte caps, and retain the
+  20-second gate; (3) only then may the generic owner map and post-root
+  bundle move to v2.  Existing v1 local checkpoints remain reference
+  evidence only.  No provider/pod action is authorized.
+
+  The formal and executable-budget hard stops are now cleared.  Lean adds
+  `c6_split_coordinate_accepting_card`, which exhibits the unsquared
+  `Bad_0 × Omega_1` cardinality, and
+  `c6_complete_relation_two_repetition_card_le`, which permits the square
+  only when both independent tapes check the same complete relation.
+  `lake build` is green at **3,257 jobs**; the derived audit is
+  **283 total / 47 C6** targets, zero `sorry`/`admit`, standard axioms only,
+  with stdout SHA-256
+  `5577a91b97e2abda73e8a1602aa0b179cf46289d77e9850ee95300171d9171f6`.
+
+  The executable roofline now pins **2 proof repetitions × 2 MAC
+  coordinates × 2 terminal form kinds = 8 streams**, leaf owners `0..7`
+  and auxiliary owners `0..15` in each repetition, **24 table slots per
+  repetition / 48 references total**, the unchanged **4,244-B** codec and
+  zero added PCS slots/wire bytes.  The exact ownership expansion adds
+  **68,157,440 coefficient symbols** to the informative time screen:
+  **32.3037...** effective whole-cohort passes, **8.388 s** kernel floor
+  including the model and **11.612 s** integration headroom to 20 s.  This
+  remains a roofline, not measured timing credit.  The focused suite is
+  **5/5 PASS**; wire remains **33,586,456 B** and complete soundness remains
+  **79.472744138609180097... bits**.  Source SHA-256 values are Lean
+  `020d7593155eea7d19be7a41d1fcac72a070414f9b21b3007f4cd7611bb2f7b8`,
+  audit manifest
+  `fc48a424f3495f904cabbc5714e3a2f5ba7df96f6690818bd956205b2e135726`,
+  budget
+  `6d8b4f129f97488247ca0257033d0e734e5d2f6ad2b90e0ee9bebd69ccaec801`
+  and budget test
+  `1a8e1e3ba4978ce0f40b7d86e30532e32eff6318209c9d30bf3330054ee825e6`.
+  Rust v2 remains the next local gate; no pod/provider action occurred.
 
 - **2026-07-29 — C6 context-bound post-root terminal expansion is locally
   green; PCS root-token ownership and relation assembly remain pending.**
@@ -723,8 +794,9 @@ historical entries remain append-only evidence, not competing definitions.
   This is not a full-T1 closure capture, accepted residual proof, PCS source,
   wire reduction or timing result.  No provider/pod is involved.
 
-- **2026-07-29 — C6 residual arithmetization uses sixteen lane-aligned
-  auxiliary slots and widens its named-event bound before code.**  Serial
+- **2026-07-29 — Historical C6 v1 residual arithmetization introduced sixteen
+  lane-aligned auxiliary slots and widened its named-event bound before code;
+  repetition ownership is superseded by the later audit above.**  Serial
   residual slot 7 cannot alone prove a ProductClosure multiplication from
   one terminal opening.  Auxiliary slots **0–5 / 6–11** are therefore the
   two coordinates' `(xa,ma,xb,mb,xc,mc)` product lanes and slots
@@ -734,8 +806,10 @@ historical entries remain append-only evidence, not competing definitions.
 
   Each auxiliary lane has `2^15` semantic rows selected by the shared final
   zero and `2^15` independent ZK-mask coefficients.  Product/zero live
-  prefixes are **22,339 / 8,170**; semantic tails are proved zero.  Wrapper
-  repetition `b` is MAC coordinate `b`.  Its residual leaf/raw family is
+  prefixes are **22,339 / 8,170**; semantic tails are proved zero.  The v1
+  draft made wrapper repetition `b` MAC coordinate `b`; that ownership is
+  rejected and retained here only as decision history.  Its residual
+  leaf/raw family is
   degree 2 for 23 rounds from global round 1, while its auxiliary family is
   degree 3 for 15 rounds from global round 9.  Their round payload is exactly
   **2,064 B/coordinate, 4,128 B/response** before fixed framing.

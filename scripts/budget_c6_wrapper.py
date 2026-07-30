@@ -53,11 +53,45 @@ SETUP_CAP_BYTES = 150_000_000
 
 CACHE_ROOT_BOUND_PER_REPETITION = 2**32
 HIDDEN_LINEAR_NUMERATOR = 1 + 80**2
+RESIDUAL_PROOF_REPETITIONS = 2
+RESIDUAL_MAC_COORDINATES = 2
+RESIDUAL_TERMINAL_FORM_KINDS = 2
+RESIDUAL_LEAF_TABLE_SLOTS = tuple(range(8))
+RESIDUAL_AUXILIARY_TABLE_SLOTS = tuple(range(16))
+RESIDUAL_TABLE_SLOTS_PER_PROOF_REPETITION = (
+    len(RESIDUAL_LEAF_TABLE_SLOTS) + len(RESIDUAL_AUXILIARY_TABLE_SLOTS)
+)
+RESIDUAL_TABLE_SLOT_REFERENCES = (
+    RESIDUAL_PROOF_REPETITIONS * RESIDUAL_TABLE_SLOTS_PER_PROOF_REPETITION
+)
+RESIDUAL_POST_ROOT_TERMINAL_STREAMS = (
+    RESIDUAL_PROOF_REPETITIONS
+    * RESIDUAL_MAC_COORDINATES
+    * RESIDUAL_TERMINAL_FORM_KINDS
+)
+RESIDUAL_LEAF_TABLE_LOG2 = 23
+RESIDUAL_AUXILIARY_TABLE_LOG2 = 16
+RESIDUAL_OWNER_COEFFICIENT_SYMBOLS_PER_PROOF_REPETITION = (
+    len(RESIDUAL_LEAF_TABLE_SLOTS) * 2**RESIDUAL_LEAF_TABLE_LOG2
+    + len(RESIDUAL_AUXILIARY_TABLE_SLOTS) * 2**RESIDUAL_AUXILIARY_TABLE_LOG2
+)
+RESIDUAL_OWNER_COEFFICIENT_SYMBOLS_SPLIT_V1 = (
+    RESIDUAL_OWNER_COEFFICIENT_SYMBOLS_PER_PROOF_REPETITION
+)
+RESIDUAL_OWNER_COEFFICIENT_SYMBOLS_COMPLETE_V2 = (
+    RESIDUAL_PROOF_REPETITIONS
+    * RESIDUAL_OWNER_COEFFICIENT_SYMBOLS_PER_PROOF_REPETITION
+)
+RESIDUAL_OWNER_ADDITIONAL_COEFFICIENT_SYMBOLS = (
+    RESIDUAL_OWNER_COEFFICIENT_SYMBOLS_COMPLETE_V2
+    - RESIDUAL_OWNER_COEFFICIENT_SYMBOLS_SPLIT_V1
+)
 RESIDUAL_SUMCHECK_DEGREE_ROUNDS = 2 * 23 + 3 * 15
-DELTA_ROOT_BOUND_PER_COORDINATE = 2**8
-DELTA_EVENT_NUMERATOR = DELTA_ROOT_BOUND_PER_COORDINATE**2
+RESIDUAL_SUMCHECK_PROOF_BYTES = 4_244
+DELTA_ROOT_BOUND_PER_COMPLETE_REPETITION = 2**8
+DELTA_EVENT_NUMERATOR = DELTA_ROOT_BOUND_PER_COMPLETE_REPETITION**2
 
-SUMCHECK_EQUIVALENT_PASSES = 32
+SUMCHECK_BASE_EQUIVALENT_PASSES = 32
 COMMIT_RECOMPUTE_PASSES = 2
 
 # Immutable informative measurement anchors.  These are copied verbatim from
@@ -318,12 +352,20 @@ def build_report() -> dict[str, Any]:
             + Decimal(initial_encoded_bytes + fold_bytes) / blake3_bytes_per_second
             + Decimal(fold_bytes) / P7_STREAM_BYTES_PER_SECOND
         )
+        sumcheck_work_coefficient_symbols = (
+            SUMCHECK_BASE_EQUIVALENT_PASSES * coefficient_symbols
+            + RESIDUAL_OWNER_ADDITIONAL_COEFFICIENT_SYMBOLS
+        )
+        sumcheck_work_bytes = sumcheck_work_coefficient_symbols * FP2_BYTES
+        sumcheck_equivalent_passes = (
+            Decimal(sumcheck_work_coefficient_symbols)
+            / Decimal(coefficient_symbols)
+        )
         sumcheck_memory_seconds = (
-            Decimal(SUMCHECK_EQUIVALENT_PASSES * coefficient_bytes)
-            / P7_STREAM_BYTES_PER_SECOND
+            Decimal(sumcheck_work_bytes) / P7_STREAM_BYTES_PER_SECOND
         )
         sumcheck_arithmetic_seconds = (
-            Decimal(SUMCHECK_EQUIVALENT_PASSES * coefficient_symbols)
+            Decimal(sumcheck_work_coefficient_symbols)
             / P7_FP2_MULS_PER_SECOND
         )
         sumcheck_floor_seconds = max(
@@ -399,6 +441,40 @@ def build_report() -> dict[str, Any]:
                 SETUP_CAP_BYTES - paired_setup_bytes
             ),
         },
+        "residual_relation_ownership": {
+            "proof_repetitions": RESIDUAL_PROOF_REPETITIONS,
+            "mac_coordinates_per_complete_relation": RESIDUAL_MAC_COORDINATES,
+            "terminal_form_kinds_per_coordinate": RESIDUAL_TERMINAL_FORM_KINDS,
+            "leaf_table_slots_per_proof_repetition": list(
+                RESIDUAL_LEAF_TABLE_SLOTS
+            ),
+            "auxiliary_table_slots_per_proof_repetition": list(
+                RESIDUAL_AUXILIARY_TABLE_SLOTS
+            ),
+            "table_slots_per_proof_repetition": (
+                RESIDUAL_TABLE_SLOTS_PER_PROOF_REPETITION
+            ),
+            "table_slot_references_across_proof_repetitions": (
+                RESIDUAL_TABLE_SLOT_REFERENCES
+            ),
+            "post_root_terminal_challenge_streams": (
+                RESIDUAL_POST_ROOT_TERMINAL_STREAMS
+            ),
+            "owner_coefficient_symbols_per_proof_repetition": (
+                RESIDUAL_OWNER_COEFFICIENT_SYMBOLS_PER_PROOF_REPETITION
+            ),
+            "split_v1_owner_coefficient_symbols": (
+                RESIDUAL_OWNER_COEFFICIENT_SYMBOLS_SPLIT_V1
+            ),
+            "complete_v2_owner_coefficient_symbols": (
+                RESIDUAL_OWNER_COEFFICIENT_SYMBOLS_COMPLETE_V2
+            ),
+            "additional_owner_coefficient_symbols": (
+                RESIDUAL_OWNER_ADDITIONAL_COEFFICIENT_SYMBOLS
+            ),
+            "proof_codec_bytes": RESIDUAL_SUMCHECK_PROOF_BYTES,
+            "wire_slot_addition_bytes": 0,
+        },
         "soundness": {
             "fp2_cardinality": str(FP2_CARDINALITY),
             "minimum_literal_128_bit_query_count": (
@@ -412,10 +488,12 @@ def build_report() -> dict[str, Any]:
                     + (2**MAX_AUX_ORACLE_LOG2 - 1)
                 )
             ),
-            "residual_sumcheck_degree_rounds_per_coordinate": (
+            "residual_sumcheck_degree_rounds_per_complete_proof_repetition": (
                 RESIDUAL_SUMCHECK_DEGREE_ROUNDS
             ),
-            "delta_root_bound_per_coordinate": DELTA_ROOT_BOUND_PER_COORDINATE,
+            "delta_root_bound_per_complete_proof_repetition": (
+                DELTA_ROOT_BOUND_PER_COMPLETE_REPETITION
+            ),
             "delta_event_numerator": DELTA_EVENT_NUMERATOR,
             "event_bits": {
                 "wrapper_pcs": str(soundness_bits(pcs_error)),
@@ -441,7 +519,19 @@ def build_report() -> dict[str, Any]:
             "admitted_backend": "response-local-fused-p7-cuda",
             "forbidden_backend": "historical-x4c-response-engine",
             "commit_recompute_passes": COMMIT_RECOMPUTE_PASSES,
-            "sumcheck_equivalent_passes": SUMCHECK_EQUIVALENT_PASSES,
+            "sumcheck_base_equivalent_passes": SUMCHECK_BASE_EQUIVALENT_PASSES,
+            "ownership_amendment_additional_coefficient_symbols": (
+                RESIDUAL_OWNER_ADDITIONAL_COEFFICIENT_SYMBOLS
+            ),
+            "sumcheck_work_coefficient_symbols": (
+                sumcheck_work_coefficient_symbols
+            ),
+            "sumcheck_effective_equivalent_passes": str(
+                sumcheck_equivalent_passes
+            ),
+            "ownership_amendment_timing_credit": (
+                "none-before-fused-compiler-benchmark"
+            ),
             "base_model_prove_seconds": str(C4_MODEL_PROVE_RESPONSE_SECONDS),
             "one_commit_recompute_pass_seconds": str(one_commit_recompute_pass),
             "sumcheck_memory_floor_seconds": str(sumcheck_memory_seconds),
@@ -480,6 +570,13 @@ def build_report() -> dict[str, Any]:
     }
 
     assert ACTIVE_POLYNOMIALS == sum(cohort.slot_count for cohort in COHORTS)
+    assert RESIDUAL_PROOF_REPETITIONS == PCS_REPETITIONS
+    assert RESIDUAL_TABLE_SLOTS_PER_PROOF_REPETITION == 24
+    assert RESIDUAL_TABLE_SLOT_REFERENCES == 48
+    assert RESIDUAL_POST_ROOT_TERMINAL_STREAMS == 8
+    assert RESIDUAL_OWNER_COEFFICIENT_SYMBOLS_PER_PROOF_REPETITION == 68_157_440
+    assert RESIDUAL_OWNER_COEFFICIENT_SYMBOLS_COMPLETE_V2 == 136_314_880
+    assert RESIDUAL_OWNER_ADDITIONAL_COEFFICIENT_SYMBOLS == 68_157_440
     assert minimum_literal_128_bit_query_count() == 85
     assert section["opened_symbols"] == 14_528
     assert section["inner_siblings"] == 0

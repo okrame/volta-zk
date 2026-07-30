@@ -62,6 +62,40 @@ theorem c6_same_secret_repetition_no_amplification {Omega : Type*}
   ext omega
   simp
 
+/-- If only coordinate zero carries a false relation while coordinate one is
+unconstrained/honest, the accepting set retains the complete second
+challenge space.  This is the formal obstruction to identifying the two
+proof repetitions with two different MAC coordinates and then citing a
+squared bound for every relation error. -/
+theorem c6_split_coordinate_accepting_card {Omega₀ Omega₁ : Type*}
+    [Fintype Omega₁] (accept₀ : Finset Omega₀) :
+    (accept₀.product (univ : Finset Omega₁)).card
+      = accept₀.card * Fintype.card Omega₁ := by
+  classical
+  simp
+
+/-- When each independent proof tape checks the same *complete* relation
+containing both MAC coordinates, accepting that relation entails accepting
+its coordinate-local bad branch.  We model the rest of each complete
+relation by an arbitrary intersected accepting set: the bad-branch bound
+survives each intersection and the two per-tape bounds then multiply.
+
+The Rust owner map must therefore expose all residual leaf and auxiliary
+tables to both proof repetitions; a split-coordinate statement cannot use
+this theorem. -/
+theorem c6_complete_relation_two_repetition_card_le
+    {Omega₀ Omega₁ : Type*}
+    [DecidableEq Omega₀] [DecidableEq Omega₁]
+    (badAccept₀ otherAccept₀ : Finset Omega₀)
+    (badAccept₁ otherAccept₁ : Finset Omega₁) {B : Nat}
+    (h₀ : badAccept₀.card ≤ B) (h₁ : badAccept₁.card ≤ B) :
+    (c6IndependentPairAccepting
+      (badAccept₀ ∩ otherAccept₀)
+      (badAccept₁ ∩ otherAccept₁)).card ≤ B ^ 2 := by
+  apply c6_independent_pair_accepting_card_le
+  · exact (card_le_card inter_subset_left).trans h₀
+  · exact (card_le_card inter_subset_left).trans h₁
+
 /-- Accepting secrets for one fixed C6 Δ-residual coordinate. -/
 noncomputable def c6DeltaResidualAcceptingSecrets {F : Type*}
     [Field F] [Fintype F] [DecidableEq F] {T : Nat}
@@ -164,10 +198,12 @@ theorem c6_delta_event_error_better_than_253 :
   norm_num
 
 /-- Exact integer certificate for the complete residual-wrapper allocation.
-The implemented arithmetization reserves at most `256/|Fp2|` roots in each
-independent coordinate, including its degree-round sumcheck subtotal.  Thus
-`256²/|Fp2|² < 2^-239`.  The sharper theorem above remains the MAC/base-share
-core subterm. -/
+The repaired arithmetization reserves at most `256/|Fp2|` roots in each
+independent *complete proof repetition*, including its degree-round sumcheck
+subtotal and both MAC coordinates.  Thus `256²/|Fp2|² < 2^-239`.  Splitting
+one MAC coordinate into each repetition would not justify this theorem for a
+coordinate-local error.  The sharper theorem above remains the
+MAC/base-share core subterm. -/
 theorem c6_delta_wrapper_event_better_than_239 :
     (2 ^ 16) * 2 ^ 239 < (Fintype.card X4E) ^ 2 := by
   rw [goldilocks_fp2_card]

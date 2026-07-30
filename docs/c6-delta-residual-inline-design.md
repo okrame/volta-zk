@@ -1140,6 +1140,32 @@ later `volta-pcs` orchestrator must source it from the private fixed-root
 typestate before releasing the seed.  Until that join and the complete
 relation compiler exist, this carries no production or resource credit.
 
+The subsequent relation-ownership audit found a soundness obstruction before
+the compiler was written.  Identifying proof repetition `b` with MAC
+coordinate `b` does not square the accepting set of an error confined to one
+coordinate's tag, ProductClosure message or raw/aux copy: the other proof
+repetition can remain honest.  The two-secret Delta theorem already exposes
+this boundary through its two explicit `hbad` premises.  Shared plaintext is
+enough for plaintext residual errors, not for every coordinate-local wrapper
+relation.
+
+The repaired v2 ownership is therefore:
+
+```text
+proof repetition 0: residual leaf slots 0..7; residual aux slots 0..15
+proof repetition 1: residual leaf slots 0..7; residual aux slots 0..15
+```
+
+Each repetition independently batches one complete relation containing both
+MAC coordinates.  MAC-coordinate alpha streams stay distinct; the affine
+`leaf_linear` schedule stays shared.  Terminal challenge identity becomes
+`(proof repetition, MAC coordinate, plaintext-versus-tag)`, yielding eight
+streams.  Sumcheck rounds, maximum degrees and the **4,244-B** codec remain
+unchanged, and no PCS slot or opening is added because both chains already
+open the full registry.  Lean and the executable budget must certify this
+amendment before the generic owner map or bundle v2 is implemented; v1 earns
+no production credit.
+
 ## 4. Hidden Ligero vectors without an NTT trace
 
 Simply omitting `u_c` or `u_g` is unsound.  C6 commits to them before the
@@ -1447,8 +1473,8 @@ padding.  Raw slot 7 remains the canonical interleaved capture stream and a
 post-root randomized copy identity binds it to the sixteen lane-aligned
 views.  Thus the transpose is proved rather than trusted.
 
-Wrapper repetition `b` is exactly MAC coordinate `b`.  It runs two
-round-synchronized sumcheck families:
+Each proof repetition owns one complete relation containing both MAC
+coordinates.  It runs two round-synchronized sumcheck families:
 
 ```text
 family                 rounds   maximum degree   activation
@@ -1467,10 +1493,11 @@ the sumcheck, so a product term has degree three, never four.
 At the first residual round the verifier records the initial leaf/raw claim.
 When the auxiliary family activates, before releasing that round's shared
 challenge, it checks that the two initial claims sum to the public
-coordinate target.  No prover-selected split scalar is serialized.  The
-terminal relations consume all eight residual openings at `r_res || 0` and
-auxiliary slots 0--15 at `r_aux || 0`.  Slots 16--31 remain exclusively
-cache-owned, preventing duplicate terminal ownership.
+complete-relation target.  No prover-selected split scalar is serialized.
+In **each** proof repetition, the terminal relations consume all eight
+residual openings at `r_res || 0` and auxiliary slots 0--15 at
+`r_aux || 0`.  Slots 16--31 remain exclusively cache-owned, preventing
+duplicate terminal ownership.
 
 All ProductClosure operands and zero roots must be committed before the
 existing product/ZeroBatch challenges they use.  The production model path
@@ -1487,15 +1514,17 @@ The residual proof sends, per repetition,
 23 * 3 * 16 + 15 * 4 * 16 = 2,064 B
 ```
 
-of round values, or **4,128 B** across both coordinates before small fixed
-framing.  This fits the frozen non-PCS allocation without changing any cap.
+of round values, or **4,128 B** across both proof repetitions before small
+fixed framing.  This fits the frozen non-PCS allocation without changing any
+cap.
 
 The earlier `4/|Fp2|^2` term covered only the one-root MAC plus base-share
 subterm; it did not include the residual sumcheck and batching roots.  The
-complete named event now reserves a conservative per-coordinate root budget
-of 256.  This covers the exact sumcheck degree-round total
+complete named event now reserves a conservative per-complete-repetition
+root budget of 256.  This covers the exact sumcheck degree-round total
 `2*23 + 3*15 = 91` plus source/tail, reverse-DAG, copy, product and affine
-batching terms.  Two independently domain-separated coordinates give
+batching terms.  Two independently domain-separated proof repetitions,
+each checking both MAC coordinates, give
 
 ```text
 epsilon_Delta_residual <= 256^2 / |Fp2|^2
@@ -1506,15 +1535,23 @@ epsilon_Delta_residual <= 256^2 / |Fp2|^2
 This remains one amplified Delta-residual event, not a fifth event.  The
 inherited M2/M8 product-collapse terms remain in the retained T1 accounting.
 The pre-implementation gate is green: the exact budget reports **91**
-degree-round roots, **256** reserved roots per coordinate and
+degree-round roots, **256** reserved roots per complete proof repetition and
 `2^16/|Fp2|^2 = 239.999999998656...` bits for the complete named event.
 Q=121 complete response soundness is
 `79.472744138609180097...` bits.  All five focused budget tests pass, full
-Lean builds **3,257 jobs**, and the derived audit is **281 total / 45 C6**
+Lean builds **3,257 jobs**, and the derived audit is **283 total / 47 C6**
 targets with only `propext`, `Classical.choice` and `Quot.sound`.  The
-additive certificate is
-`c6_delta_wrapper_event_better_than_239`; the sharper historical theorem
-continues to describe only the MAC/base-share core.
+new obstruction/composition certificates are
+`c6_split_coordinate_accepting_card` and
+`c6_complete_relation_two_repetition_card_le`; the exact integer certificate
+remains `c6_delta_wrapper_event_better_than_239`.  The sharper historical
+theorem continues to describe only the MAC/base-share core.  The executable
+roofline pins **24 owned table slots per proof repetition**, **48** total
+references and **8** post-root challenge streams.  It adds
+**68,157,440 coefficient symbols** to the informative work screen, raising
+the effective estimate from 32 to **32.3037...** whole-cohort passes and the
+model-plus-wrapper floor to **8.388 s**; this is conservative screening and
+earns no benchmark credit.
 
 The first Rust milestone after this freeze is green and intentionally
 narrower than the residual argument.  The versioned witness-only adapter

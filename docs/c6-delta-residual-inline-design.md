@@ -986,6 +986,49 @@ algebra and lifecycle evidence only.  Full-T1 installed-memory census,
 paired residual execution, ordinary-build overhead, proof bytes, wrapper
 soundness, real-PCG and the `20.000-s` gate remain open.
 
+The next local diagnostic executes the same compiler and paired fold on the
+full frozen `100+50` T1 shape.  Both roles accept the exact
+`4,975,525`-source schedule, produce the same linear form and coefficient
+binding, and accept both independent Δ coordinates.  No coefficient vector
+is serialized; the residual response is two `Fp2` affine outputs, exactly
+`64 B`.  This is only the residual output, not `pi_final` or a complete
+certificate.
+
+The measured structural memory census is:
+
+```text
+installed typed plan resident                         196,741,767 B
+temporary reverse node workspace per role             461,530,096 B
+retained compiled coefficients per role                 79,611,404 B
+residual-only compile peak per role                    541,141,500 B
+```
+
+The compile peak is `temporary workspace + retained result`; it is not
+whole-process RSS and excludes model, trace, runtime-value and paired-source
+storage.  Provider and verifier are compiled sequentially in the diagnostic
+harness, so these per-role values must not be summed into a claimed
+deployment peak without a role-specific process measurement.
+
+One dirty local release run reports:
+
+```text
+one-off installed-plan decode/install                   1.644425052 s
+provider reverse compile                                0.507563488 s
+provider paired source fold                             1.540541423 s
+verifier reverse compile                                0.504332932 s
+diagnostic client paired base-key fold                  1.501125329 s
+```
+
+The post-setup provider residual subtotal is
+`0.507563488 + 1.540541423 = 2.048104911 s`.  All timings remain
+`timing_credit:false`: graph tracing and mock source replay are active, the
+unchanged T1 prover wall and runtime-capture overhead are not enclosed in one
+ordinary-build timing scope, and the client side uses a diagnostic
+source-derived key adapter rather than a deployed local key store.  Clean
+cross-seed records are required before this full-shape checkpoint closes.
+The hidden-vector/cache wrapper, final wire size, real-PCG session and
+hardware gates remain open.
+
 ## 4. Hidden Ligero vectors without an NTT trace
 
 Simply omitting `u_c` or `u_g` is unsound.  C6 commits to them before the

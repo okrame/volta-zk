@@ -628,6 +628,21 @@ pub struct C6CompiledResidualBinding {
     pub source_count: u32,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct C6CompiledLinearResidualMemoryCensus {
+    pub node_workspace_elements: u64,
+    pub node_workspace_bytes: u64,
+    pub leaf_coefficient_elements: u64,
+    pub leaf_coefficient_capacity: u64,
+    pub leaf_coefficient_heap_bytes: u64,
+    pub product_mask_elements: u64,
+    pub product_mask_capacity: u64,
+    pub product_mask_heap_bytes: u64,
+    pub inline_bytes: u64,
+    pub retained_resident_bytes: u64,
+    pub peak_compile_resident_bytes: u64,
+}
+
 /// Provider output of one compiled affine residual coordinate.
 ///
 /// This is constant-size. `leaf_coefficients` remain private to
@@ -928,6 +943,54 @@ impl C6CompiledLinearResidual {
 
     pub fn linear_form_digest(&self) -> C6ResidualDigest {
         self.linear_form_digest
+    }
+
+    pub fn memory_census(&self) -> C6ResidualResult<C6CompiledLinearResidualMemoryCensus> {
+        let bytes = |capacity: usize, element_bytes: usize, label: &str| {
+            let capacity = u64::try_from(capacity)
+                .map_err(|_| C6ResidualError::new(format!("{label} capacity exceeds u64")))?;
+            let element_bytes = u64::try_from(element_bytes)
+                .map_err(|_| C6ResidualError::new(format!("{label} element size exceeds u64")))?;
+            let bytes = capacity
+                .checked_mul(element_bytes)
+                .ok_or_else(|| C6ResidualError::new(format!("{label} byte count overflows")))?;
+            Ok((capacity, bytes))
+        };
+        let node_workspace_elements = u64::from(self.topology.canonical_node_count);
+        let node_workspace_bytes = node_workspace_elements
+            .checked_mul(std::mem::size_of::<Fp2>() as u64)
+            .ok_or_else(|| C6ResidualError::new("C6 reverse node workspace bytes overflow"))?;
+        let (leaf_coefficient_capacity, leaf_coefficient_heap_bytes) = bytes(
+            self.leaf_coefficients.capacity(),
+            std::mem::size_of::<Fp2>(),
+            "C6 leaf coefficient",
+        )?;
+        let (product_mask_capacity, product_mask_heap_bytes) = bytes(
+            self.product_mask_sources.capacity(),
+            std::mem::size_of::<u32>(),
+            "C6 ProductMask source",
+        )?;
+        let inline_bytes = std::mem::size_of::<Self>() as u64;
+        let retained_resident_bytes = inline_bytes
+            .checked_add(leaf_coefficient_heap_bytes)
+            .and_then(|total| total.checked_add(product_mask_heap_bytes))
+            .ok_or_else(|| C6ResidualError::new("C6 compiled residual residency overflows"))?;
+        let peak_compile_resident_bytes = retained_resident_bytes
+            .checked_add(node_workspace_bytes)
+            .ok_or_else(|| C6ResidualError::new("C6 compiled residual peak residency overflows"))?;
+        Ok(C6CompiledLinearResidualMemoryCensus {
+            node_workspace_elements,
+            node_workspace_bytes,
+            leaf_coefficient_elements: self.leaf_coefficients.len() as u64,
+            leaf_coefficient_capacity,
+            leaf_coefficient_heap_bytes,
+            product_mask_elements: self.product_mask_sources.len() as u64,
+            product_mask_capacity,
+            product_mask_heap_bytes,
+            inline_bytes,
+            retained_resident_bytes,
+            peak_compile_resident_bytes,
+        })
     }
 
     fn fold_coefficients(
@@ -1865,6 +1928,13 @@ mod tests {
                 .unwrap();
         assert_eq!(compiled.source_count(), witnesses.len());
         assert_eq!(compiled.product_mask_sources(), &[3]);
+        let memory = compiled.memory_census().unwrap();
+        assert_eq!(memory.leaf_coefficient_elements, 4);
+        assert_eq!(memory.product_mask_elements, 1);
+        assert_eq!(
+            memory.peak_compile_resident_bytes,
+            memory.retained_resident_bytes + memory.node_workspace_bytes
+        );
 
         let delta = fp2(61);
         let base_keys =

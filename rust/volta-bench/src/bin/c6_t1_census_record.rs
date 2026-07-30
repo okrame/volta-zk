@@ -10,7 +10,7 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use volta_field::{Fp, Fp2};
 use volta_gpt2::{
     argmax, band_model_witness, decode_step, forward_model, forward_model_tokens, load_model,
@@ -20,16 +20,18 @@ use volta_mac::{
     begin_c6_prover_trace, begin_c6_runtime_instance_capture_diagnostic, begin_c6_verifier_trace,
     compile_c6_operation_trace_for_role, finish_c6_prover_trace, finish_c6_verifier_trace,
     fresh_zero_mask, normalize_c6_operation_trace_debug_block, zero_batch_prover,
-    zero_batch_verify, zero_mask_key, C6InstanceExtractionRole, CorrelationStream, Transcript,
-    VerifierCtx,
+    zero_batch_verify, zero_mask_key, C6DecodedInstanceExtractionPlan,
+    C6InstalledOperationPlanMemoryCensus, C6InstanceExtractionRole, C6RuntimeInstanceValues,
+    CorrelationStream, Transcript, VerifierCtx,
 };
 use volta_proto::logup::Doms;
 use volta_proto::{
     audit_c6_t1_source_census, c6_t1_trace_source_manifest, layer_dom_base, prod_batch_prover,
     prod_batch_verify, prove_response_private_logits, replay_c6_source_coordinate,
-    replay_c6_subfield_coordinate, verify_response_private_logits, C6PairedSourceWitness,
-    C6PairedSubfieldWitness, C6SourceCoordinate, C6T1CensusInput, ChunkRef, PrivateChunkPub,
-    C6_PAIRED_PCG_SETUP_BYTES, C6_SETUP_CAP_BYTES, C6_T1_COMPLETE_ALLOCATION_SCHEDULE_DIGEST_HEX,
+    replay_c6_subfield_coordinate, verify_response_private_logits, C6CompiledLinearResidual,
+    C6CompiledLinearResidualMemoryCensus, C6PairedSourceWitness, C6PairedSubfieldWitness,
+    C6SourceCoordinate, C6T1CensusInput, ChunkRef, PrivateChunkPub, C6_PAIRED_PCG_SETUP_BYTES,
+    C6_SETUP_CAP_BYTES, C6_T1_COMPLETE_ALLOCATION_SCHEDULE_DIGEST_HEX,
     C6_T1_CORRECTION_SCHEDULE_DIGEST_HEX, C6_T1_FINAL_PRODUCT_TRIPLES, C6_T1_FULL_CORRECTION_BYTES,
     C6_T1_MODEL_ALLOCATION_SCHEDULE_DIGEST_HEX, C6_T1_MODEL_LOCAL_PRODUCT_CLOSURES,
     C6_T1_MODEL_LOCAL_PRODUCT_TRIPLES, C6_T1_MODEL_PRODUCT_MESSAGE_BYTES,
@@ -54,6 +56,7 @@ struct Args {
     subfield_witness: bool,
     source_witness: bool,
     operation_trace: bool,
+    compiled_residual: bool,
     operation_trace_debug_block: Option<u64>,
     transcript_seed_byte: u8,
 }
@@ -65,6 +68,7 @@ fn args() -> Result<Args, String> {
     let mut subfield_witness = false;
     let mut source_witness = false;
     let mut operation_trace = false;
+    let mut compiled_residual = false;
     let mut operation_trace_debug_block = None;
     let mut transcript_seed_byte = 0x18;
     let mut values = env::args().skip(1);
@@ -84,6 +88,7 @@ fn args() -> Result<Args, String> {
             "--subfield-witness" => subfield_witness = true,
             "--source-witness" => source_witness = true,
             "--operation-trace" => operation_trace = true,
+            "--compiled-residual" => compiled_residual = true,
             "--operation-trace-debug-block" => {
                 operation_trace_debug_block = Some(
                     values
@@ -110,15 +115,14 @@ fn args() -> Result<Args, String> {
     if diagnostic == output.is_some() {
         return Err("choose exactly one of --diagnostic or --output PATH".to_owned());
     }
-    if [subfield_witness, source_witness, operation_trace]
+    if [subfield_witness, source_witness, operation_trace, compiled_residual]
         .into_iter()
         .filter(|enabled| *enabled)
         .count()
         > 1
     {
         return Err(
-            "--subfield-witness, --source-witness and --operation-trace are mutually exclusive"
-                .to_owned(),
+            "--subfield-witness, --source-witness, --operation-trace and --compiled-residual are mutually exclusive".to_owned(),
         );
     }
     if operation_trace_debug_block.is_some() && !operation_trace {
@@ -134,6 +138,7 @@ fn args() -> Result<Args, String> {
         subfield_witness,
         source_witness,
         operation_trace,
+        compiled_residual,
         operation_trace_debug_block,
         transcript_seed_byte,
     })
@@ -456,6 +461,8 @@ struct OperationTraceRow {
     candidate_encoding: OperationPlanEncodingRow,
     specialized_encoding_projection: OperationPlanSpecializedEncodingRow,
     instance_extraction: OperationInstanceExtractionRow,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    compiled_residual: Option<OperationCompiledResidualRow>,
 }
 
 #[derive(Serialize)]
@@ -552,6 +559,136 @@ struct OperationRuntimeInstanceCaptureRoleRow {
     reconstructed_instance_digest: String,
 }
 
+#[derive(Serialize)]
+struct OperationCompiledResidualRow {
+    diagnostic_only: bool,
+    full_t1_shape: bool,
+    timing_credit: bool,
+    ordinary_install_decoder: bool,
+    source_schedule_bound: bool,
+    coefficient_vectors_on_wire: bool,
+    paired_source_streamed_once: bool,
+    paired_base_keys_streamed_once: bool,
+    provider_verifier_linear_form_equal: bool,
+    provider_client_coefficient_binding_equal: bool,
+    paired_delta_residual_accepts: bool,
+    source_count: u64,
+    zero_weight_count: u64,
+    product_mask_source_count: u64,
+    linear_form_digest: String,
+    coefficient_digest: String,
+    alpha_transcript_seed_byte: u8,
+    paired_residual_public_bytes: u64,
+    install_seconds: f64,
+    provider_compile_seconds: f64,
+    verifier_compile_seconds: f64,
+    provider_paired_fold_seconds: f64,
+    client_paired_key_fold_seconds: f64,
+    installed_plan_memory: InstalledPlanMemoryRow,
+    provider_memory: CompiledResidualMemoryRow,
+    verifier_memory: CompiledResidualMemoryRow,
+}
+
+#[derive(Serialize)]
+struct InstalledPlanMemoryRow {
+    opcode_elements: u64,
+    opcode_capacity: u64,
+    opcode_heap_bytes: u64,
+    source_elements: u64,
+    source_capacity: u64,
+    source_heap_bytes: u64,
+    operand_elements: u64,
+    operand_capacity: u64,
+    operand_heap_bytes: u64,
+    product_closure_elements: u64,
+    product_closure_capacity: u64,
+    product_closure_heap_bytes: u64,
+    product_triple_elements: u64,
+    product_triple_capacity: u64,
+    product_triple_heap_bytes: u64,
+    zero_root_elements: u64,
+    zero_root_capacity: u64,
+    zero_root_heap_bytes: u64,
+    inline_bytes: u64,
+    total_heap_bytes: u64,
+    total_resident_bytes: u64,
+}
+
+impl From<C6InstalledOperationPlanMemoryCensus> for InstalledPlanMemoryRow {
+    fn from(value: C6InstalledOperationPlanMemoryCensus) -> Self {
+        Self {
+            opcode_elements: value.opcode_elements,
+            opcode_capacity: value.opcode_capacity,
+            opcode_heap_bytes: value.opcode_heap_bytes,
+            source_elements: value.source_elements,
+            source_capacity: value.source_capacity,
+            source_heap_bytes: value.source_heap_bytes,
+            operand_elements: value.operand_elements,
+            operand_capacity: value.operand_capacity,
+            operand_heap_bytes: value.operand_heap_bytes,
+            product_closure_elements: value.product_closure_elements,
+            product_closure_capacity: value.product_closure_capacity,
+            product_closure_heap_bytes: value.product_closure_heap_bytes,
+            product_triple_elements: value.product_triple_elements,
+            product_triple_capacity: value.product_triple_capacity,
+            product_triple_heap_bytes: value.product_triple_heap_bytes,
+            zero_root_elements: value.zero_root_elements,
+            zero_root_capacity: value.zero_root_capacity,
+            zero_root_heap_bytes: value.zero_root_heap_bytes,
+            inline_bytes: value.inline_bytes,
+            total_heap_bytes: value.total_heap_bytes,
+            total_resident_bytes: value.total_resident_bytes,
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct CompiledResidualMemoryRow {
+    node_workspace_elements: u64,
+    node_workspace_bytes: u64,
+    leaf_coefficient_elements: u64,
+    leaf_coefficient_capacity: u64,
+    leaf_coefficient_heap_bytes: u64,
+    product_mask_elements: u64,
+    product_mask_capacity: u64,
+    product_mask_heap_bytes: u64,
+    inline_bytes: u64,
+    retained_resident_bytes: u64,
+    peak_compile_resident_bytes: u64,
+}
+
+impl From<C6CompiledLinearResidualMemoryCensus> for CompiledResidualMemoryRow {
+    fn from(value: C6CompiledLinearResidualMemoryCensus) -> Self {
+        Self {
+            node_workspace_elements: value.node_workspace_elements,
+            node_workspace_bytes: value.node_workspace_bytes,
+            leaf_coefficient_elements: value.leaf_coefficient_elements,
+            leaf_coefficient_capacity: value.leaf_coefficient_capacity,
+            leaf_coefficient_heap_bytes: value.leaf_coefficient_heap_bytes,
+            product_mask_elements: value.product_mask_elements,
+            product_mask_capacity: value.product_mask_capacity,
+            product_mask_heap_bytes: value.product_mask_heap_bytes,
+            inline_bytes: value.inline_bytes,
+            retained_resident_bytes: value.retained_resident_bytes,
+            peak_compile_resident_bytes: value.peak_compile_resident_bytes,
+        }
+    }
+}
+
+struct RuntimeInstanceBundle {
+    extraction: C6DecodedInstanceExtractionPlan,
+    values: C6RuntimeInstanceValues,
+}
+
+struct CompiledResidualContext {
+    installed_plan_memory: C6InstalledOperationPlanMemoryCensus,
+    install_seconds: f64,
+    provider_compile_seconds: f64,
+    verifier_compile_seconds: f64,
+    provider: C6CompiledLinearResidual,
+    verifier: C6CompiledLinearResidual,
+}
+
 fn run(args: &Args) -> Result<Record, String> {
     let (git_sha, ignored_user_untracked_paths, git_dirty) = if args.diagnostic {
         let sha = Command::new("git")
@@ -571,14 +708,15 @@ fn run(args: &Args) -> Result<Record, String> {
         (sha, ignored, false)
     };
 
+    let operation_trace_enabled = args.operation_trace || args.compiled_residual;
     let workload = workload(&args.weights)?;
     let chunks = [ChunkRef { band: &workload.band, seq: &workload.sequence }];
     let public = [PrivateChunkPub { q: workload.band.q, seq: &workload.sequence }];
     let mut prover = CorrelationStream::new([0x42; 32]);
     let mut verifier =
         VerifierCtx::new([0x42; 32], Fp2::new(Fp::new(0xD31C_5A17), Fp::new(0x0BAD_CAFE)));
-    let collect_source_witness = args.source_witness || args.operation_trace;
-    let prover_runtime_instance_capture = if args.operation_trace {
+    let collect_source_witness = args.source_witness || operation_trace_enabled;
+    let prover_runtime_instance_capture = if operation_trace_enabled {
         begin_c6_prover_trace().map_err(|error| error.to_string())?;
         prover.enable_c6_operation_trace()?;
         Some(
@@ -643,7 +781,7 @@ fn run(args: &Args) -> Result<Record, String> {
     let zero_closures = zero.len();
     drop(zero);
 
-    let raw_prover_trace = if args.operation_trace {
+    let raw_prover_trace = if operation_trace_enabled {
         Some(finish_c6_prover_trace().map_err(|error| error.to_string())?)
     } else {
         None
@@ -665,7 +803,7 @@ fn run(args: &Args) -> Result<Record, String> {
         zero_closures,
     })
     .map_err(|error| error.to_string())?;
-    let trace_manifest = if args.operation_trace {
+    let trace_manifest = if operation_trace_enabled {
         Some(
             c6_t1_trace_source_manifest(&prover_schedule, &expected_census)
                 .map_err(|error| error.to_string())?,
@@ -673,6 +811,7 @@ fn run(args: &Args) -> Result<Record, String> {
     } else {
         None
     };
+    let mut prover_runtime_bundle = None;
     let (prover_plan, prover_artifact, prover_instance_extraction, prover_runtime_instance) =
         match (raw_prover_trace, prover_runtime_instance_capture) {
             (Some(trace), Some(runtime_capture)) => {
@@ -747,6 +886,8 @@ fn run(args: &Args) -> Result<Record, String> {
                                 .instance_identity()
                                 .instance_digest),
                         };
+                        prover_runtime_bundle =
+                            Some(RuntimeInstanceBundle { extraction, values: runtime });
                         (
                             Some(compiled.plan),
                             Some(compiled.artifact),
@@ -760,7 +901,7 @@ fn run(args: &Args) -> Result<Record, String> {
             _ => return Err("C6 prover trace/runtime-capture lifecycle is asymmetric".to_owned()),
         };
 
-    let verifier_runtime_instance_capture = if args.operation_trace {
+    let verifier_runtime_instance_capture = if operation_trace_enabled {
         begin_c6_verifier_trace().map_err(|error| error.to_string())?;
         verifier.enable_c6_operation_trace()?;
         Some(
@@ -818,11 +959,16 @@ fn run(args: &Args) -> Result<Record, String> {
         return Err("C6 closed transcripts differ".to_owned());
     }
 
-    let raw_verifier_trace = if args.operation_trace {
+    let raw_verifier_trace = if operation_trace_enabled {
         Some(finish_c6_verifier_trace().map_err(|error| error.to_string())?)
     } else {
         None
     };
+    drop(kprod);
+    drop(kzero);
+    drop(proof);
+    drop(output);
+    drop(workload);
     let verifier_schedule =
         verifier.schedule_audit().ok_or_else(|| "missing closed verifier audit".to_owned())?;
     let census = audit_c6_t1_source_census(C6T1CensusInput {
@@ -843,7 +989,9 @@ fn run(args: &Args) -> Result<Record, String> {
         return Err("C6 independent verifier changed the accepted source census".to_owned());
     }
 
-    let operation_trace = match (
+    let mut verifier_runtime_bundle = None;
+    let mut compiled_residual_context = None;
+    let mut operation_trace = match (
         prover_plan,
         prover_artifact,
         prover_instance_extraction,
@@ -936,6 +1084,8 @@ fn run(args: &Args) -> Result<Record, String> {
                             .instance_identity()
                             .instance_digest),
                     };
+                    verifier_runtime_bundle =
+                        Some(RuntimeInstanceBundle { extraction, values: runtime });
                     (
                         compiled.plan,
                         Some(compiled.artifact),
@@ -1190,6 +1340,69 @@ fn run(args: &Args) -> Result<Record, String> {
                     );
                 }
             };
+            if args.compiled_residual {
+                let artifact = prover_artifact
+                    .as_ref()
+                    .ok_or_else(|| "C6 compiled residual lacks its plan artifact".to_owned())?;
+                let install_start = Instant::now();
+                let installed = artifact
+                    .clone()
+                    .install(&accepted_manifest)
+                    .map_err(|error| format!("C6 installed operation plan: {error}"))?;
+                let install_seconds = install_start.elapsed().as_secs_f64();
+                let installed_plan_memory = installed
+                    .memory_census()
+                    .map_err(|error| format!("C6 installed plan memory census: {error}"))?;
+                let prover_runtime = prover_runtime_bundle.as_ref().ok_or_else(|| {
+                    "C6 compiled residual lacks prover runtime instance values".to_owned()
+                })?;
+                let verifier_runtime = verifier_runtime_bundle.as_ref().ok_or_else(|| {
+                    "C6 compiled residual lacks verifier runtime instance values".to_owned()
+                })?;
+                let mut zero_weights = Vec::new();
+                zero_weights
+                    .try_reserve_exact(zero_closures)
+                    .map_err(|_| "C6 zero-weight allocation failed".to_owned())?;
+                let mut weight = Fp2::ONE;
+                for _ in 0..zero_closures {
+                    weight = weight * zero_challenge;
+                    zero_weights.push(weight);
+                }
+                let provider_compile_start = Instant::now();
+                let provider = C6CompiledLinearResidual::compile(
+                    &installed,
+                    &prover_runtime.extraction,
+                    &prover_runtime.values,
+                    &zero_weights,
+                )
+                .map_err(|error| format!("C6 provider compiled residual: {error}"))?;
+                let provider_compile_seconds = provider_compile_start.elapsed().as_secs_f64();
+                let verifier_compile_start = Instant::now();
+                let verifier = C6CompiledLinearResidual::compile(
+                    &installed,
+                    &verifier_runtime.extraction,
+                    &verifier_runtime.values,
+                    &zero_weights,
+                )
+                .map_err(|error| format!("C6 verifier compiled residual: {error}"))?;
+                let verifier_compile_seconds = verifier_compile_start.elapsed().as_secs_f64();
+                if provider.topology() != verifier.topology()
+                    || provider.instance() != verifier.instance()
+                    || provider.linear_form_digest() != verifier.linear_form_digest()
+                    || provider.product_mask_sources() != verifier.product_mask_sources()
+                    || provider.source_count() != verifier.source_count()
+                {
+                    return Err("C6 provider/verifier compiled linear residuals differ".to_owned());
+                }
+                compiled_residual_context = Some(CompiledResidualContext {
+                    installed_plan_memory,
+                    install_seconds,
+                    provider_compile_seconds,
+                    verifier_compile_seconds,
+                    provider,
+                    verifier,
+                });
+            }
             if u64::from(identity.source_count) != census.total_leaves
                 || u64::from(identity.product_closure_count) != census.total_product_closures
                 || identity.product_triple_count != census.total_product_triples
@@ -1314,6 +1527,7 @@ fn run(args: &Args) -> Result<Record, String> {
                         .unit_operand_count,
                 },
                 instance_extraction,
+                compiled_residual: None,
             })
         }
         (None, None, None, None, None, None) => None,
@@ -1358,6 +1572,7 @@ fn run(args: &Args) -> Result<Record, String> {
         None
     };
 
+    let mut paired_source_witness = None;
     let source_witness = if collect_source_witness {
         let primary_subfield = prover.finish_c6_subfield_witness_collection()?;
         let primary_fullfield = prover.finish_c6_fullfield_witness_collection()?;
@@ -1396,7 +1611,7 @@ fn run(args: &Args) -> Result<Record, String> {
         }
         let coordinates = pair.coordinates();
         let tape_ids = pair.tape_ids();
-        Some(SourceWitnessRow {
+        let row = SourceWitnessRow {
             reference_only: true,
             pcg_backend: "mock-chacha8-local-only".to_owned(),
             second_coordinate_model_rerun: false,
@@ -1441,10 +1656,99 @@ fn run(args: &Args) -> Result<Record, String> {
                 hex(&coordinates[1].fullfield().correction_digest),
             ],
             pair_digest: hex(&pair.pair_digest()),
-        })
+        };
+        paired_source_witness = Some(pair);
+        Some(row)
     } else {
         None
     };
+
+    if args.compiled_residual {
+        let context = compiled_residual_context
+            .take()
+            .ok_or_else(|| "C6 compiled residual context was not materialized".to_owned())?;
+        let sources = paired_source_witness
+            .as_ref()
+            .ok_or_else(|| "C6 compiled residual lacks its paired source witness".to_owned())?;
+        let alpha_transcript_seed_byte = args.transcript_seed_byte ^ 0xC6;
+        let mut provider_alpha_transcript = Transcript::new([alpha_transcript_seed_byte; 32]);
+        let provider_paired_fold_start = Instant::now();
+        let response = context
+            .provider
+            .respond_paired_sources(sources, &prover_schedule, &mut provider_alpha_transcript)
+            .map_err(|error| format!("C6 full-T1 paired residual response: {error}"))?;
+        let provider_paired_fold_seconds = provider_paired_fold_start.elapsed().as_secs_f64();
+        let deltas = [verifier.delta, Fp2::new(Fp::new(0xC6D1_0001), Fp::new(0xC6D1_0002))];
+        if deltas[0] == deltas[1] {
+            return Err("C6 diagnostic residual coordinates reuse one Delta".to_owned());
+        }
+        let mut client_alpha_transcript = Transcript::new([alpha_transcript_seed_byte; 32]);
+        let client_paired_key_fold_start = Instant::now();
+        let client = context
+            .verifier
+            .fold_paired_base_keys_from_sources_diagnostic(
+                sources,
+                &verifier_schedule,
+                deltas,
+                &mut client_alpha_transcript,
+            )
+            .map_err(|error| format!("C6 full-T1 paired client key fold: {error}"))?;
+        let client_paired_key_fold_seconds = client_paired_key_fold_start.elapsed().as_secs_f64();
+        let binding_equal = response.binding == client.binding;
+        let accepts = response
+            .verify(client, deltas)
+            .map_err(|error| format!("C6 full-T1 paired residual binding: {error}"))?;
+        if !binding_equal || !accepts {
+            return Err("C6 full-T1 paired Delta residual rejected".to_owned());
+        }
+        let provider_memory = context
+            .provider
+            .memory_census()
+            .map_err(|error| format!("C6 provider residual memory census: {error}"))?;
+        let verifier_memory = context
+            .verifier
+            .memory_census()
+            .map_err(|error| format!("C6 verifier residual memory census: {error}"))?;
+        if provider_memory != verifier_memory
+            || provider_memory.leaf_coefficient_elements != census.total_leaves
+            || provider_memory.product_mask_elements != census.product_mask_leaves
+        {
+            return Err("C6 full-T1 residual memory/source census changed".to_owned());
+        }
+        let row = operation_trace
+            .as_mut()
+            .ok_or_else(|| "C6 compiled residual lacks its operation-trace row".to_owned())?;
+        row.compiled_residual = Some(OperationCompiledResidualRow {
+            diagnostic_only: true,
+            full_t1_shape: true,
+            timing_credit: false,
+            ordinary_install_decoder: true,
+            source_schedule_bound: true,
+            coefficient_vectors_on_wire: false,
+            paired_source_streamed_once: true,
+            paired_base_keys_streamed_once: true,
+            provider_verifier_linear_form_equal: true,
+            provider_client_coefficient_binding_equal: binding_equal,
+            paired_delta_residual_accepts: accepts,
+            source_count: census.total_leaves,
+            zero_weight_count: census.zero_closures,
+            product_mask_source_count: census.product_mask_leaves,
+            linear_form_digest: hex(&response.binding.linear_form_digest),
+            coefficient_digest: hex(&response.binding.coefficient_digest),
+            alpha_transcript_seed_byte,
+            paired_residual_public_bytes: 64,
+            install_seconds: context.install_seconds,
+            provider_compile_seconds: context.provider_compile_seconds,
+            verifier_compile_seconds: context.verifier_compile_seconds,
+            provider_paired_fold_seconds,
+            client_paired_key_fold_seconds,
+            installed_plan_memory: context.installed_plan_memory.into(),
+            provider_memory: provider_memory.into(),
+            verifier_memory: verifier_memory.into(),
+        });
+    } else if compiled_residual_context.is_some() {
+        return Err("C6 compiled residual context appeared without its flag".to_owned());
+    }
 
     if model_product_message_bytes != C6_T1_MODEL_PRODUCT_MESSAGE_BYTES
         || model_sub_correction_bytes != C6_T1_SUB_CORRECTION_BYTES
@@ -1490,13 +1794,19 @@ fn run(args: &Args) -> Result<Record, String> {
         let relative = "rust/volta-proto/src/c6_source.rs";
         source_sha256.insert(relative.to_owned(), sha256(&root.join(relative))?);
     }
-    if args.operation_trace {
+    if operation_trace_enabled {
         for relative in ["rust/volta-mac/src/c6_trace.rs", "rust/volta-mac/src/authed.rs"] {
             source_sha256.insert(relative.to_owned(), sha256(&root.join(relative))?);
         }
     }
+    if args.compiled_residual {
+        let relative = "rust/volta-proto/src/c6_residual.rs";
+        source_sha256.insert(relative.to_owned(), sha256(&root.join(relative))?);
+    }
     Ok(Record {
-        schema: if args.operation_trace {
+        schema: if args.compiled_residual {
+            11
+        } else if args.operation_trace {
             10
         } else if args.source_witness {
             3
@@ -1505,7 +1815,9 @@ fn run(args: &Args) -> Result<Record, String> {
         } else {
             1
         },
-        milestone: if args.operation_trace {
+        milestone: if args.compiled_residual {
+            "C6-T1-compiled-paired-residual".to_owned()
+        } else if args.operation_trace {
             "C6-T1-runtime-instance-recorder".to_owned()
         } else if args.source_witness {
             "C6-T1-paired-source-witness-reference".to_owned()

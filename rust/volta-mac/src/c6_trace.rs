@@ -857,6 +857,31 @@ impl C6InstalledProductClosure {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct C6InstalledOperationPlanMemoryCensus {
+    pub opcode_elements: u64,
+    pub opcode_capacity: u64,
+    pub opcode_heap_bytes: u64,
+    pub source_elements: u64,
+    pub source_capacity: u64,
+    pub source_heap_bytes: u64,
+    pub operand_elements: u64,
+    pub operand_capacity: u64,
+    pub operand_heap_bytes: u64,
+    pub product_closure_elements: u64,
+    pub product_closure_capacity: u64,
+    pub product_closure_heap_bytes: u64,
+    pub product_triple_elements: u64,
+    pub product_triple_capacity: u64,
+    pub product_triple_heap_bytes: u64,
+    pub zero_root_elements: u64,
+    pub zero_root_capacity: u64,
+    pub zero_root_heap_bytes: u64,
+    pub inline_bytes: u64,
+    pub total_heap_bytes: u64,
+    pub total_resident_bytes: u64,
+}
+
 /// Strictly decoded, response-independent operation plan held in local
 /// session memory.
 ///
@@ -924,6 +949,113 @@ impl C6InstalledOperationPlan {
 
     pub fn zero_roots(&self) -> &[u32] {
         &self.zero_roots
+    }
+
+    pub fn memory_census(&self) -> Result<C6InstalledOperationPlanMemoryCensus, C6TraceError> {
+        let allocation = |capacity: usize, element_bytes: usize, label: &str| {
+            let capacity = u64::try_from(capacity)
+                .map_err(|_| C6TraceError::new(format!("C6 {label} capacity exceeds u64")))?;
+            let element_bytes = u64::try_from(element_bytes)
+                .map_err(|_| C6TraceError::new(format!("C6 {label} element size exceeds u64")))?;
+            let bytes = capacity
+                .checked_mul(element_bytes)
+                .ok_or_else(|| C6TraceError::new(format!("C6 {label} allocation overflows")))?;
+            Ok((capacity, bytes))
+        };
+        let elements = |length: usize, label: &str| {
+            u64::try_from(length)
+                .map_err(|_| C6TraceError::new(format!("C6 {label} length exceeds u64")))
+        };
+
+        let (opcode_capacity, opcode_heap_bytes) = allocation(
+            self.opcodes.capacity(),
+            std::mem::size_of::<C6InstalledOperationKind>(),
+            "installed opcode",
+        )?;
+        let (source_capacity, source_heap_bytes) = allocation(
+            self.source_ordinals.capacity(),
+            std::mem::size_of::<u32>(),
+            "installed source",
+        )?;
+        let (operand_capacity, operand_heap_bytes) =
+            allocation(self.operands.capacity(), std::mem::size_of::<u32>(), "installed operand")?;
+        let (product_closure_capacity, product_closure_heap_bytes) = allocation(
+            self.products.capacity(),
+            std::mem::size_of::<C6InstalledProductClosure>(),
+            "installed ProductClosure",
+        )?;
+        let mut product_triple_elements = 0u64;
+        let mut product_triple_capacity = 0u64;
+        let mut product_triple_heap_bytes = 0u64;
+        for product in &self.products {
+            product_triple_elements = product_triple_elements
+                .checked_add(elements(product.triples.len(), "installed ProductClosure triple")?)
+                .ok_or_else(|| {
+                    C6TraceError::new("C6 installed ProductClosure triple count overflows")
+                })?;
+            let (capacity, bytes) = allocation(
+                product.triples.capacity(),
+                std::mem::size_of::<[u32; 3]>(),
+                "installed ProductClosure triple",
+            )?;
+            product_triple_capacity =
+                product_triple_capacity.checked_add(capacity).ok_or_else(|| {
+                    C6TraceError::new("C6 installed ProductClosure triple capacity overflows")
+                })?;
+            product_triple_heap_bytes =
+                product_triple_heap_bytes.checked_add(bytes).ok_or_else(|| {
+                    C6TraceError::new("C6 installed ProductClosure triple bytes overflow")
+                })?;
+        }
+        let (zero_root_capacity, zero_root_heap_bytes) = allocation(
+            self.zero_roots.capacity(),
+            std::mem::size_of::<u32>(),
+            "installed zero root",
+        )?;
+        let total_heap_bytes = [
+            opcode_heap_bytes,
+            source_heap_bytes,
+            operand_heap_bytes,
+            product_closure_heap_bytes,
+            product_triple_heap_bytes,
+            zero_root_heap_bytes,
+        ]
+        .into_iter()
+        .try_fold(0u64, |total, bytes| {
+            total.checked_add(bytes).ok_or_else(|| {
+                C6TraceError::new("C6 installed operation-plan heap census overflows")
+            })
+        })?;
+        let inline_bytes = u64::try_from(std::mem::size_of::<Self>()).map_err(|_| {
+            C6TraceError::new("C6 installed operation-plan inline size exceeds u64")
+        })?;
+        let total_resident_bytes = inline_bytes
+            .checked_add(total_heap_bytes)
+            .ok_or_else(|| C6TraceError::new("C6 installed operation-plan residency overflows"))?;
+
+        Ok(C6InstalledOperationPlanMemoryCensus {
+            opcode_elements: elements(self.opcodes.len(), "installed opcode")?,
+            opcode_capacity,
+            opcode_heap_bytes,
+            source_elements: elements(self.source_ordinals.len(), "installed source")?,
+            source_capacity,
+            source_heap_bytes,
+            operand_elements: elements(self.operands.len(), "installed operand")?,
+            operand_capacity,
+            operand_heap_bytes,
+            product_closure_elements: elements(self.products.len(), "installed ProductClosure")?,
+            product_closure_capacity,
+            product_closure_heap_bytes,
+            product_triple_elements,
+            product_triple_capacity,
+            product_triple_heap_bytes,
+            zero_root_elements: elements(self.zero_roots.len(), "installed zero root")?,
+            zero_root_capacity,
+            zero_root_heap_bytes,
+            inline_bytes,
+            total_heap_bytes,
+            total_resident_bytes,
+        })
     }
 
     fn reconstruct_runtime_instance_identity(
@@ -3780,6 +3912,14 @@ mod tests {
         assert_eq!(installed.products()[0].mask(), 1);
         assert!(installed.zero_roots().is_empty());
         assert_eq!(installed.artifact_digest(), *blake3::hash(artifact.as_bytes()).as_bytes());
+        let memory = installed.memory_census().unwrap();
+        assert_eq!(memory.opcode_elements, 2);
+        assert_eq!(memory.source_elements, 2);
+        assert_eq!(memory.operand_elements, 0);
+        assert_eq!(memory.product_closure_elements, 1);
+        assert_eq!(memory.product_triple_elements, 1);
+        assert_eq!(memory.zero_root_elements, 0);
+        assert_eq!(memory.total_resident_bytes, memory.inline_bytes + memory.total_heap_bytes);
 
         let map_digest = c6_instance_extraction_map_digest(
             C6InstanceExtractionRole::Verifier,
@@ -4020,6 +4160,13 @@ mod tests {
         assert_eq!(installed.products()[0].triples(), &[[3, 4, 0]]);
         assert_eq!(installed.products()[0].mask(), 5);
         assert_eq!(installed.zero_roots(), &[3]);
+        let memory = installed.memory_census().unwrap();
+        assert_eq!(memory.opcode_elements, u64::from(normalized.topology.canonical_node_count));
+        assert_eq!(memory.source_elements, 3);
+        assert_eq!(memory.operand_elements, 3);
+        assert_eq!(memory.product_triple_elements, 1);
+        assert_eq!(memory.zero_root_elements, 1);
+        assert!(memory.total_heap_bytes > 0);
         let extraction = compiled.instance_extraction.decode(normalized.topology).unwrap();
         assert_eq!(extraction.role, C6InstanceExtractionRole::Prover);
         assert_eq!(extraction.public_raw_ordinals, vec![0]);

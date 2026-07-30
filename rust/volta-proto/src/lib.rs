@@ -62,10 +62,10 @@ pub use c6_census::{
 };
 pub use c6_residual::{
     C6CommittedResidualProgram, C6CompiledBaseKeyRlc, C6CompiledLinearResidual,
-    C6CompiledPairedBaseKeyRlc, C6CompiledPairedResidualPlan, C6CompiledResidualBinding,
-    C6CompiledResidualPlan, C6LeafId, C6LeafKind, C6LeafRole, C6ProductPostCommit,
-    C6ResidualBuilder, C6ResidualCensus, C6ResidualDigest, C6ResidualError, C6ResidualPlan,
-    C6ResidualPostCommit, C6SourceWitness, C6ValueId, C6ValueOperation,
+    C6CompiledLinearResidualMemoryCensus, C6CompiledPairedBaseKeyRlc, C6CompiledPairedResidualPlan,
+    C6CompiledResidualBinding, C6CompiledResidualPlan, C6LeafId, C6LeafKind, C6LeafRole,
+    C6ProductPostCommit, C6ResidualBuilder, C6ResidualCensus, C6ResidualDigest, C6ResidualError,
+    C6ResidualPlan, C6ResidualPostCommit, C6SourceWitness, C6ValueId, C6ValueOperation,
 };
 pub use c6_source::{
     replay_c6_source_coordinate, C6PairedSourceWitness, C6SourceCoordinate, C6SourceDigest,

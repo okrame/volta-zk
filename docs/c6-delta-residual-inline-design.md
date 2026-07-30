@@ -896,21 +896,29 @@ and `c6-instance-extraction-seed25-2026-07-29-1817975.json` (SHA-256
 Both are `git_dirty:false`, `diagnostic:false`, `pod_contacted:false` and
 `all_pass:true`.
 
-The lightweight recorder now also passes one complete same-response
-seed-24 diagnostic.  It is thread-local, does not add fields to any
-authenticated-value type, and records only the existing `from_public` and
-public-`scale` operands.  The prover capture contains exactly
-`1,466 / 10,837,046` raw public/scalar values and the verifier capture
-`1,466 / 10,828,876`; applying the installed role maps reconstructs
+The lightweight recorder also passes complete same-response runs at both
+seed bytes.  It is thread-local, does not add fields to any authenticated-
+value type, and records only the existing `from_public` and public-`scale`
+operands.  Each prover capture contains exactly `1,466 / 10,837,046` raw
+public/scalar values and each verifier capture `1,466 / 10,828,876`;
+applying the installed role maps reconstructs
 `7a21189b9580b163500595ca5cca8d1f5184017139f52ab3878e7238345cacaa`
-on both sides.  An event executed on a different thread is absent from the
-owning thread's stream and therefore fails the exact raw census and instance
-digest instead of being silently reordered.  Unit tests cover ordinary-build
-capture, nested activation, overflow, role/map binding and exact scaled
-reconstruction.
+at seed 24 and
+`1bd5aa751772c3f8e9404adbd1b7941a47474c9a5e333114b5fcc38856f734f7`
+at seed 25 on both sides.  An event executed on a different thread is absent
+from the owning thread's stream and therefore fails the exact raw census and
+instance digest instead of being silently reordered.  Unit tests cover
+ordinary-build capture, nested activation, overflow, thread migration,
+role/map binding and exact scaled reconstruction.
 
-This was a dirty stdout-only diagnostic with the full graph trace enabled.
-It establishes seam equality, not production overhead: a bound ordinary
+The clean records are
+`c6-runtime-instance-recorder-seed24-2026-07-29-3b01789.json` (SHA-256
+`f4ea526eabdb7fa3a998d5d6c97a8d84bd3f3e6ba72e5a427da186d79110681b`)
+and `c6-runtime-instance-recorder-seed25-2026-07-29-abf081c.json` (SHA-256
+`c177506031cc31ff63d943bdb5c20d4cf6887f01125007bb2f037b864b5aff5b`).
+Both are `git_dirty:false`, `diagnostic:false`, `pod_contacted:false` and
+`all_pass:true`.  Full graph tracing is enabled in these record producers,
+so they establish seam equality, not production overhead: a bound ordinary
 build with graph tracing disabled and its provider wall delta remain required
 before runtime/timing credit.
 

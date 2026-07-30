@@ -7,9 +7,9 @@ OPERATION DAG GREEN; PARAMETERIZED V2 TWO-SEED IDENTITY GREEN; CANONICAL PLAN
 CODEC + FULL-T1 COMPILED RESIDUAL + DURABLE 17+4 SESSION + HIDDEN-U NATIVE
 SUMCHECK REDUCTION + SCALED DUAL-TAPE C6RSC3 CODEC/DIFFERENTIAL GREEN; FUSED
 T1 EVENT-SINK + FIRST/FOLDED/TERMINAL SCALED DIFFERENTIAL GREEN;
-ROUND-SYNCHRONOUS SINGLE-ARENA AMENDMENT FROZEN / C6RSC3 CONNECTION NEXT;
-CACHE ARGUMENT / PACKED PCS / FINAL WRAPPER PENDING; LOCAL IMPLEMENTATION
-AUTHORIZED; HARD STOP BEFORE POD**.
+ROUND-SYNCHRONOUS SINGLE-BACKING ARENA AMENDMENT FROZEN / C6RSC3 CONNECTION
+NEXT; CACHE ARGUMENT / PACKED PCS / FINAL WRAPPER PENDING; LOCAL
+IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
 accepted C4/T1 `rate=1/4,Q=120` inline profile.  It does not reopen or rewrite
@@ -2520,6 +2520,27 @@ Aggregate arena occupancy, per-family occupancy and peak bytes are checked on
 every admission, fold and release.  Duplicate family admission, an early
 auxiliary admission, a changed repetition, cap overflow, underflow or a
 second arena fails before allocation or transcript progress.
+
+Logical truncation is not physical release: Rust `Vec::truncate` preserves
+capacity and therefore cannot justify the admission figures above.  The
+production arena MUST own one fallibly allocated backing buffer whose
+capacity is exactly the initial leaf state.  Leaf tables are folded in place;
+at auxiliary activation their live prefixes are compacted to the front of
+that same buffer, and the auxiliary replay writes into the reclaimed tail.
+No per-table coefficient `Vec`, `shrink_to_fit`, allocator-dependent
+reallocation or second coefficient backing allocation is admissible.  The
+manifest must additionally prove that the combined activation occupancy fits
+the initial leaf allocation:
+
+```text
+32 * (auxiliary_entries / 2)
+    <= 8 * (leaf_entries / 2).
+```
+
+Reserved backing capacity and logical per-family occupancy are separate
+counters.  Reserved capacity stays at the initial leaf allocation until the
+proof repetition releases the arena; logical occupancy follows every fold.
+The scaled path uses the same rule with its exact smaller initial allocation.
 
 This amendment changes only allocation ownership.  It preserves the
 canonical first-message/activation/shared-suffix transcript, the four atomic

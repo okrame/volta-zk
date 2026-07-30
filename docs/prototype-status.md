@@ -452,6 +452,28 @@ historical entries remain append-only evidence, not competing definitions.
 
 ## Deviations / decisions log
 
+- **2026-07-29 — C6 operation-DAG migration seam frozen before code; no
+  value/tag identity lookup admitted.**  The next local checkpoint uses a
+  separately enabled `c6-trace` build with copyable ghost provenance tokens.
+  The default layouts of `ProverAuthed`, `ProverSubAuthed`, `VerifierKey`,
+  `SubCorr` and `FullCorr` stay pinned at **32/24/16/24/32 B** and the
+  ordinary inline path carries no trace metadata.  Source identity comes
+  only from the canonical interleaved schedule; public/add/sub/scale nodes
+  propagate exact typed operands.  Product operands/masks and zero roots are
+  captured only at their central closure seams, and any untracked value fails
+  closed.
+
+  Trace allocation/execution order is not a program identity: normalization
+  starts from ordered closure roots, and the independently replayed verifier
+  trace must produce the same canonical program digest.  The trace may be
+  migrated family by family, stopping at the first missing provenance.  It
+  may not infer identity from `(x,m)`, tags, pointers or last-writer maps.
+  The emitted plan is diagnostic/compiler input only and receives no prover
+  timing credit.  Targets remain exactly **673 ProductClosures / 22,339
+  triples / 8,170 pre-mask zero roots**; the final corrected ZeroBatch mask
+  is a separate base-share-bound direct source in the retained ZeroBatch
+  seam.  No provider/pod work is authorized or performed by this decision.
+
 - **2026-07-29 — C6 paired complete-source witness extraction and clean
   reference record PASS; source-extraction milestone closed at `b98e453`.**
   The explicitly opt-in prover-only source collector now captures every

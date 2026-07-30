@@ -443,6 +443,45 @@ DAG, identify every operand of the 673 `ProductClosure` nodes, or prove the
 cache/wrapper statement.  It carries no real/AES-PCG, final-byte,
 prover-time, session or hardware verdict.
 
+### 3.4 Operation-DAG migration seam frozen before code
+
+The production DAG migration MUST NOT recover value identity from the
+plaintext/tag pair `(x,m)`, from tag equality, from pointer identity or from
+“most recently seen” values.  Copies, repeated public zeros and equal linear
+expressions make those schemes ambiguous, while a malicious witness must not
+receive collision-based aliasing freedom.
+
+The admitted migration seam is therefore an explicitly separate
+`c6-trace` diagnostic build:
+
+- ordinary `ProverAuthed`, `ProverSubAuthed`, `VerifierKey`, `SubCorr` and
+  `FullCorr` layouts remain byte-for-byte pinned at `32/24/16/24/32 B`;
+- only the diagnostic build adds a copyable ghost provenance token.  The
+  token is assigned from the canonical correlation/source ordinal or from
+  the exact public/add/sub/scale operation that created the value;
+- source tokens use the already-pinned interleaved source schedule.  They do
+  not use a second counter inferred from secret witness values;
+- `ProductClosure` operands/mask are captured only at the central
+  `prod_batch_prover` seam, and zero roots only at the central ZeroBatch
+  seam.  A missing/untracked token, wrong source role, reused mask or
+  nonlinear ordinary node is a hard failure;
+- the trace is normalized from ordered closure roots, so worker scheduling
+  and allocation order cannot change the program digest.  The verifier trace
+  must independently normalize to the same digest before the DAG milestone
+  closes;
+- the trace build emits a compact canonical plan/census artifact.  It is
+  development evidence, not the production prover path and receives no
+  timing credit.  The inline implementation consumes the compiled plan
+  without enlarging authenticated-value objects.
+
+The first trace checkpoint may migrate one value family at a time and stop at
+the first untracked closure.  It may not replace that failure with a
+value-based lookup or silently mark the value public.  Baseline T1 closure
+targets remain exactly **673 ProductClosures / 22,339 triples / 8,170 zero
+roots**.  The final response-wide corrected ZeroBatch mask remains a
+base-share-bound direct source used by the retained ZeroBatch seam; it is not
+miscounted as an 8,171st pre-mask zero root.
+
 ## 4. Hidden Ligero vectors without an NTT trace
 
 Simply omitting `u_c` or `u_g` is unsound.  C6 commits to them before the

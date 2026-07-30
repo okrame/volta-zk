@@ -796,6 +796,65 @@ This is not yet an overall setup or C6 PASS: the client-side generation of
 the ordered instance slot stream, compiled residual execution, all other
 setup parameters, inline timing, cache and wrapper remain open gates.
 
+### 3.4.3 Runtime instance extraction seam frozen before code
+
+The topology artifact deliberately contains no response values.  A second
+response-linear vector of all `1,436 + 10,828,852` public/scalar slots on the
+wire would undo that separation and is forbidden.  C6 instead records only
+the raw public constants and public Scale operands that the existing role
+actually constructs.  Structural zero is not a runtime instance event.
+
+Canonical post-order and raw construction order are not assumed equal.
+Offline compilation therefore produces two model/build-global extraction
+maps:
+
+- the provider map converts the prover's raw public/scalar event streams to
+  canonical slot order; it is provider-preinstalled and its digest/version
+  is included in `params_digest`;
+- the verifier map converts the client's independently observed raw streams
+  to the same canonical order; its exact bytes are included in
+  `client_parameters` and count fully against the first exchange.
+
+Neither map contains a field value.  Each role records its own runtime
+values; the provider may not send an instance-value vector, a source
+coefficient vector or a per-response extraction map.  Applying either map
+must reproduce the certificate-bound `instance_digest`.  A count, kind,
+ordinal or digest mismatch rejects before residual verification.
+
+The extraction codec is fixed before measuring it as `VC6INS1\0`.  Its
+header binds the codec/operation-plan versions, role, topology digest, raw
+and canonical public/scalar counts, map digest and exact section lengths.
+Public and scalar maps are separate sequences of raw ordinals in canonical
+slot order.  Each sequence is encoded as its unique maximal runs of
+successive `+1` ordinals.  A run stores:
+
+```text
+zigzag(start - expected_next_raw) as minimal ULEB
+(run_length - 1)                  as minimal ULEB
+```
+
+where the first `expected_next_raw` is zero and later values are one past
+the preceding run.  The strict decoder rejects nonminimal ULEB, a split
+that could have been merged, zero/overflowing lengths, out-of-range or
+duplicate raw ordinals, wrong canonical counts, nonzero reserved bytes and
+trailing data.  Its recomputed map digest and topology binding must match
+the installed setup manifest.
+
+The first implementation stage is diagnostic compilation from the already
+exact prover/verifier traces.  Two transcript seeds must produce
+byte-identical maps for each role and both maps must reconstruct their
+existing instance digests.  Only then may the response-local lightweight
+value recorder be enabled.  The provider recorder is charged to total
+inline prover wall; it records values only and may not enable the full
+`c6-trace` graph or change ordinary authenticated-value layouts.  Client
+recording and local buffering are verifier work and never wire credit.
+
+If the verifier extraction artifact plus the `63,994,751-B` topology plan,
+the canonical setup envelope and paired PCG exceeds `150,000,000 B`, or if
+either role's map changes across the two frozen seeds, C6 hard-stops before
+compiled-residual/runtime work.  No alternative mapping codec is selected
+after seeing that measurement.
+
 ## 4. Hidden Ligero vectors without an NTT trace
 
 Simply omitting `u_c` or `u_g` is unsound.  C6 commits to them before the

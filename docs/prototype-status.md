@@ -470,6 +470,35 @@ historical entries remain append-only evidence, not competing definitions.
 
 ## Deviations / decisions log
 
+- **2026-07-29 — C6 role-local runtime instance extraction seam frozen
+  before code.**  The `63,994,751-B` topology artifact intentionally omits
+  all response values.  Sending `1,436 + 10,828,852` canonical slot values
+  per response, or provider-generated source coefficients, is forbidden.
+  Instead the exact existing prover and verifier executions each expose a
+  response-local raw stream containing only public constants and public
+  Scale operands.  Two role-specific model/build-global maps select and
+  reorder those streams into the common canonical post-order.  The provider
+  map is preinstalled and certificate-bound; the verifier map is received
+  by the client and counts fully in `client_parameters`.
+
+  Before measuring, the map codec is fixed as `VC6INS1\0`: separate public
+  and scalar ordinal sequences encoded by unique maximal `+1` runs, with
+  minimal zig-zag start deltas and minimal `(length-1)` ULEB payloads.  The
+  strict decoder binds role, v2 topology, raw/canonical censuses and map
+  digest and rejects nonminimal, mergeable, duplicate, out-of-range or
+  trailing encodings.  Both frozen transcript seeds must give byte-identical
+  maps per role and reconstruct the existing instance digests.
+
+  The verifier map plus topology artifact, canonical setup envelope and
+  paired PCG must remain within **150,000,000 B**.  Any overflow or
+  cross-seed map instability is a hard stop; no codec switch is allowed
+  after the measurement.  Runtime recording may store values but may not
+  enable the full graph trace or change ordinary authenticated-value
+  layouts.  Its provider overhead will be included in the eventual
+  **20-s** total-prover gate.  This entry authorizes diagnostic map
+  compilation only; it claims no fit, runtime recorder, residual, timing or
+  production PASS.  No provider/pod contact is authorized.
+
 - **2026-07-29 — C6 canonical parameterized-plan codec materializes exactly;
   clean two-seed run-of-record and component setup-fit PASS.**  Schema-8
   full local runs for transcript seed bytes `24` and `25` each compile both

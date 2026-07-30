@@ -11,6 +11,7 @@
 pub mod batch;
 pub mod c6_hidden_u;
 pub mod c6_hidden_u_sumcheck;
+pub mod c6_wrapper_pcs;
 pub mod layer_layout;
 pub mod ligero;
 pub mod merkle;
@@ -34,6 +35,15 @@ pub use c6_hidden_u_sumcheck::{
     hidden_u_sumcheck_encoded_len, prove_hidden_u_sumchecks, reduce_hidden_u_sumchecks,
     C6HiddenUOpeningClaim, C6HiddenUSumcheckFamilyProof, C6HiddenUSumcheckProof,
     C6HiddenUSumcheckRepetition,
+};
+pub use c6_wrapper_pcs::{
+    c6_wrapper_profile_digest, commit_c6_wrapper_cohort, production_c6_wrapper_codec_reference,
+    production_c6_wrapper_specs, prove_c6_wrapper_pcs, verify_c6_wrapper_pcs,
+    C6CommittedWrapperCohort, C6WrapperChainProof, C6WrapperCohortSpec, C6WrapperCommitment,
+    C6WrapperDigest, C6WrapperOpeningClaim, C6WrapperOracleKind, C6WrapperPcsError,
+    C6WrapperPcsProof, C6WrapperSlotWitness, C6_WRAPPER_ACTIVE_SLOTS, C6_WRAPPER_ONE_CHAIN_BYTES,
+    C6_WRAPPER_QUERY_COUNT, C6_WRAPPER_REPETITIONS, C6_WRAPPER_TERMINAL_LOG2,
+    C6_WRAPPER_TWO_CHAIN_BYTES,
 };
 pub use layer_layout::{
     layout_gpt2_embed, layout_gpt2_embed_c3, layout_gpt2_layer, layout_gpt2_weights_c3,

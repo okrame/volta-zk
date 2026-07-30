@@ -484,6 +484,57 @@ historical entries remain append-only evidence, not competing definitions.
 
 ## Deviations / decisions log
 
+- **2026-07-29 — C6 response-local packed PCS reference is locally green;
+  fused CUDA and complete-wrapper integration remain open.**  The new
+  `c6_wrapper_pcs` module implements two independent interactive chains,
+  `s=86`, rate `1/8`, suffix activation across different-size cohorts, all
+  slots present/touched, a terminal size of eight and C6-domain descriptor,
+  aggregate and schedule digests.  It calls only the admitted NTT/fold,
+  N4-opening and standalone frame primitives; no `GlobalChainDraftV4`, X4
+  schedule validator, manifest or settlement path is reachable from the
+  module.
+
+  Both repetitions' terminal claims are fixed before activation challenges,
+  each line precedes its fold challenge, and both complete root chains
+  precede both 86-draw tapes.  The strict concatenated codec has no hidden
+  outer overhead: the production-shape fixture is exactly **1,802,646 B**
+  packed plus **2,266 B** fold frames = **1,804,912 B/chain**, hence
+  **3,609,824 B** for both chains.  It materializes all **14,528** symbols,
+  **49,052** outer siblings, zero inner siblings and **534 B** packed
+  metadata per chain.
+
+  Five permanent scaled tests cover `r || 0` witness-half selection,
+  different-size suffix activation, collision-heavy 86-draw tapes, canonical
+  roundtrip, every-slot opening, false claims and root/symbol/sibling/fold
+  line/final scalar/claim/point/weight/transcript/codec tampering.  Complete
+  `volta-pcs` is **156 pass / 0 fail / 3 ignored** and the workspace
+  all-target `c6-trace` check is green.  Source SHA-256 is
+  `824183d8c5a2b59c22bccbcd0029c0368aa2aa84d85c38358f16f85326e523e0`.
+
+  Slot-reduction weights remain verifier-owned outputs of the upstream
+  post-commit wrapper schedule; accepting provider-deserialized weights is
+  forbidden.  The five real claim sources, final wrapper envelope/circuit,
+  production-size commitment and fused CUDA path are not yet integrated, so
+  this checkpoint earns no end-to-end acceptance or timing verdict.  No
+  provider/pod was contacted.
+
+- **2026-07-29 — C6 reuses only low-level native folding/N4/codec
+  primitives; the X4 global engine remains forbidden.**  The packed-backend
+  API audit after `db5b101` separated the byte-differential primitives from
+  the historical protocol driver.  C6 may call the multilinear Möbius,
+  rate-`1/8` NTT/fold, N4 cohort opening and standalone schema-4
+  fold/packed-frame codecs.  It may not call `GlobalChainDraftV4`, the X4
+  packed-schedule validator, manifest/settlement code or any path that
+  reinstates the X4 `Q=111`, profile or model-global lifecycle.
+
+  Initial slot descriptors, the aggregate fold descriptor and the opening
+  schedule are new C6-domain digests.  They bind the C6 profile, response
+  statement, cohort geometry/order, repetition, committed roots, fold frames
+  and exact 86-draw tape before a low-level Merkle opening is accepted.
+  Therefore codec/hash implementation reuse creates no cross-protocol
+  acceptance path.  This is a local implementation boundary only; no
+  production wire or timing credit and no provider/pod contact occurred.
+
 - **2026-07-29 — C6 different-size sumchecks must be round-synchronized
   before the packed PCS; sequential family challenges are an isolated
   arithmetic checkpoint only.**  The post-`f44a4c4` PCS integration audit

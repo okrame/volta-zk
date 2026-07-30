@@ -1196,6 +1196,23 @@ oracles whose logical input is the hidden correction/vector/cache-verifier
 witness.  There is no model-global multi-minute settlement and no later
 certificate can change the acceptance status of an earlier response.
 
+The implementation may reuse only the low-level native-field primitives that
+already have byte-level differentials: multilinear Möbius conversion,
+rate-`1/8` NTT/folding, N4 Merkle construction/opening, and the standalone
+schema-4 fold/opening frame codecs.  Reuse of those mathematical and codec
+primitives does **not** admit the X4 response engine.  In particular C6 may
+not call `GlobalChainDraftV4`, the X4 packed-schedule validator, an X4
+manifest/settlement path, or any helper that silently reinstates the X4
+`Q=111`/profile/model-global assumptions.
+
+Every initial slot descriptor is a C6-domain digest of the C6 profile,
+statement, cohort geometry and slot.  Every response-global fold descriptor
+and packed opening schedule is likewise rehashed under a C6 domain and binds
+the response statement, repetition, ordered C6 roots, fold frames and exact
+86-draw tape.  Thus the reused N4 leaf/node hash implementation receives
+C6-separated descriptors and cannot make an X4 root or schedule acceptable
+as a C6 object.
+
 ### 5.1 Pre-backend wrapper roofline
 
 Before backend code, C6 freezes the following capacity profile:
@@ -1327,6 +1344,33 @@ through 16 leaves and selected 32-leaf boundary cases.  At this checkpoint
 the combined base-budget/wrapper suite is `8/8 PASS`.  This local evidence
 closes the roofline milestone only; it is not a production census, backend
 implementation or A100 measurement.
+
+### 5.2 Response-local reference PCS checkpoint
+
+The in-memory `c6_wrapper_pcs` backend now realizes the exact algebra and
+wire grammar behind the roofline without invoking an X4 protocol driver.
+All terminal values for both repetitions are fixed before cohort-activation
+challenges; every fold line is fixed before its challenge; both complete
+root chains are fixed before either exact 86-draw tape; and only then are the
+two packed query sections emitted.  Different-size claims must be suffixes
+of one repetition-global point.  Every capacity slot is present and opened.
+
+The slot-reduction weights carried by a `C6WrapperOpeningClaim` are
+verifier-owned upstream data, not prover-selected metadata.  The final
+wrapper orchestrator must reconstruct them from its certificate-bound
+post-commit challenge schedule and must not deserialize them as authoritative
+provider input.  The reference PCS checks their geometry and binds them in
+the C6 schedule digest; production acceptance remains disabled until that
+upstream seam and all five cohort claim sources are integrated.
+
+The materialized production-shape codec contains 25 fold frames and one
+packed section per repetition and is exactly **1,804,912 B/chain** and
+**3,609,824 B/two chains**, including the standalone schema-4 frame headers
+already charged by the roofline.  This is a codec result, not a
+production-size commitment, timing measurement or proof of the complete
+wrapper circuit.  The CPU/in-memory implementation receives no prover-time
+credit; the admitted production path remains the separately gated fused CUDA
+backend.
 
 ## 6. Persistent cache commitment
 

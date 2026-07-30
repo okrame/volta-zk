@@ -855,10 +855,10 @@ either role's map changes across the two frozen seeds, C6 hard-stops before
 compiled-residual/runtime work.  No alternative mapping codec is selected
 after seeing that measurement.
 
-The diagnostic implementation passes this gate at both transcript seed
-bytes `24` and `25`.  Each map reconstructs the already recorded canonical
-instance digest, and each role emits byte-identical artifacts across the two
-seeds:
+The implementation passes this gate in clean append-only runs at both
+transcript seed bytes `24` and `25`.  Each map reconstructs the already
+recorded canonical instance digest, and each role emits byte-identical
+artifacts across the two seeds:
 
 ```text
                                       prover              verifier
@@ -887,6 +887,14 @@ remaining client parameter and setup frame.  This is a diagnostic
 map-codec/setup-fit PASS, not runtime extraction: the lightweight
 response-local recorder and its provider wall overhead remain mandatory
 before compiled-residual credit.
+
+The clean records are
+`c6-instance-extraction-seed24-2026-07-29-3d8e2ea.json` (SHA-256
+`d641f0bc652d1e76fb1e94d7e546cc56ffab9f6d04c049ce4fce1d049b71921c`)
+and `c6-instance-extraction-seed25-2026-07-29-1817975.json` (SHA-256
+`a4938bdda17a9c48b8470c2102cd26d0418da4904d58d7118e7fa74caa533280`).
+Both are `git_dirty:false`, `diagnostic:false`, `pod_contacted:false` and
+`all_pass:true`.
 
 ## 4. Hidden Ligero vectors without an NTT trace
 

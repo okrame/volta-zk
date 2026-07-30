@@ -2684,6 +2684,29 @@ witness adapter is materialized at scaled geometry.  Production T1
 allocation/execution, packed authenticated-output binding, response removal,
 cache, setup, timing, real-PCG, CUDA and hardware credit remain pending.
 
+#### 5.1.11 Local fused-coordinator gate closure
+
+The complete post-integration local gate is green.  `volta-proto
+--features c6-trace` is **146 pass / 0 fail / 1 ignored**.  The
+`volta-pcs --features c6-trace` library group is **158 / 0 / 1**, with its
+integration groups **14 / 0 / 2** and **2 / 0 / 0**.  The ordinary
+`cargo test --workspace -q`, workspace all-target check, feature all-target
+check and formatting all exit zero.  The exact C6 budget suite is **9/9
+PASS**, and the unchanged Lean audit exits zero.
+
+Repository-wide strict clippy remains a historical non-gate: current Rust
+1.96 reports 21 existing `volta-pcs` findings and 107 existing
+`volta-proto` findings outside this change.  The PCS pass exits zero after
+isolating exactly its inherited lint classes, and a strict short-format
+filter finds no warning in the modified proto residual, fixture or export
+files.  No unrelated warning was edited.
+
+This gate closure remains scaled/local.  It changes no byte, correlation,
+soundness, setup or time formula and earns no production response-removal or
+hardware credit.  The next ordered implementation boundary is the common
+packed authenticated-output link that upgrades pending terminal claims; a
+pending C6RSC3 claim still cannot become an accepted PCS value.
+
 The wrapper PCS uses rate `1/8`, two independent fold/query chains and
 `s=86` queries per chain.  Under the conservative 64-active-polynomial,
 `2^28` weight-oracle and `2^19` auxiliary maxima, one repetition has

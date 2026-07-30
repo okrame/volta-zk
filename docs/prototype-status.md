@@ -86,7 +86,9 @@ to the reference while exercising the one-backing arena.  The fused
 designated verifier now derives only the **8+16+8** terminal scalars through
 one witness-free replay and remains transcript/pending-identical even when
 the stale materialized coefficient values are changed.  Synchronized
-packed-PCS authenticated-output assembly is next.
+packed-PCS authenticated-output assembly is next.  The complete local
+post-integration gate is green: both feature suites, the ordinary workspace,
+all-target checks, format, exact budget and Lean audit pass.
 Cache constraint census, wrapper proof, local end-to-end and hardware gates
 remain pending.
 
@@ -457,6 +459,7 @@ its clean descendant closure.
 | C6 shared blind prover coordinator | **REFERENCE LOOP FACTORED / 5-TEST DIFFERENTIAL GREEN; FUSED ARITHMETIC NEXT; NO POD** (2026-07-29) | One private round-synchronous arithmetic interface under the existing dual-tape transcript/MAC coordinator; materialized reference is the first adapter | The coordinator alone owns round authentication, activation-before-challenge, synchronized challenge binding, pending transfers, terminal ProductClosure/ZeroBatch, proof framing and transcript byte charges.  Arithmetic returns only current messages, terminal opening values and **8+16+8** compact terminal coefficient scalars.  Statement/repetition/target/geometry mismatches reject before transcript progress, while the reference adapter must retain its clear diagnostic proof.  All five existing blind tests remain green, including codec/census, byte/transcript/correlation parity and registered tamper seams.  This is semantic-neutral scaffolding: no fused arena/replay, verifier change, production allocation/timing, response removal, PCS, cache, setup, real-PCG, CUDA or hardware credit. |
 | C6 scaled fused blind prover | **THREE PROVIDER REPLAYS + SINGLE-BACKING C6RSC3 DIFFERENTIAL GREEN; VECTOR-FREE CLIENT NEXT; NO POD** (2026-07-29) | Feature-gated scaled adapter: live first message, leaf replay after challenge 0, auxiliary replay only after the shared activation challenge; direct half-size folded witness construction | Proof object/encoding, pending frame/claims, transcript ledger/bytes, correlation counters and terminal plaintexts are exactly identical to the materialized reference.  Activation folds leaf before auxiliary reuses the reclaimed tail; the scaled arena peaks at **512 Fp2**, returns active/reserved occupancy to zero between repetitions and remains unfaulted.  Six focused blind tests and the independent proto atomic differential pass.  The verifier still reads materialized reference coefficients, and folded witness state is scaled diagnostic only.  No client vector-free, production allocation/timing, response removal, PCS, cache, setup, real-PCG, CUDA or hardware credit. |
 | C6 scaled fused blind verifier | **ONE VECTOR-FREE TERMINAL REPLAY / PROVIDER-CLIENT C6RSC3 DIFFERENTIAL GREEN; PACKED LINK NEXT; NO POD** (2026-07-29) | One private verifier terminal seam; fused path retains only 8 leaf + 16 auxiliary-linear + 8 auxiliary-quadratic scalars and adds no transcript/correlation action | Fused/reference verifier pending keys and transcript ledgers are identical.  Changing only the stale materialized coefficient values while preserving semantic owner/length geometry makes the reference evaluator fail but leaves the fused verifier accepting; changing the semantic compiler digest makes fused verification fail.  All six focused blind tests pass.  This closes only the scaled event-sink-to-C6RSC3 connection: small reference arrays remain in the diagnostic statement and production T1 allocation/execution, packed authenticated-output binding, response removal, cache, setup, timing, real-PCG, CUDA and hardware credit remain pending. |
+| C6 fused coordinator local gate closure | **ALL LOCAL POST-INTEGRATION GATES GREEN; PACKED AUTHENTICATED-OUTPUT LINK NEXT; NO POD** (2026-07-29) | Complete feature suites plus ordinary workspace, all-target, format, exact budget and Lean audit | `volta-proto --features c6-trace` is **146/0/1**; `volta-pcs --features c6-trace` library is **158/0/1**, with integrations **14/0/2** and **2/0/0**.  Workspace tests, ordinary/feature all-target checks and format exit zero; C6 budget is **9/9 PASS** and unchanged Lean audit exits zero.  Strict clippy remains globally blocked by historical out-of-scope findings; the PCS isolated-class pass is green and the modified proto-file filter is empty.  This remains scaled/local and changes no wire/correlation/soundness/setup/time formula; no production response-removal, PCS acceptance, cache, real-PCG, CUDA or hardware credit. |
 | C6 role-local instance extraction codec | **CLEAN TWO-SEED MAP + RUNTIME PASS; SETUP/SEAM CLOSED; BOUND ORDINARY TIMING PENDING** (2026-07-29) | No response-value vector on wire; role-specific model-global maps; maximal-`+1` run codec fixed before measurement; strict ordinary-build decoder and thread-local value recorder | Clean seed-24/25 runs preserve the verifier map at **5,320,386 B**, **1,466 / 10,828,876 raw public/scalar slots**, **1,436 / 10,828,852 canonical slots**, **262 / 2,552,791 runs** and BLAKE3 `17ed0942...7183535`.  Known first exchange is **146,058,504 B**, leaving **3,941,496 B**.  Runtime records `c6-runtime-instance-recorder-seed24-2026-07-29-3b01789.json` / `c6-runtime-instance-recorder-seed25-2026-07-29-abf081c.json`, SHA-256 `f4ea526e...110681b` / `c1775060...5aff5b`, reproduce the exact prover/verifier raw censuses and reconstruct `7a21189b...45cacaa` / `1bd5aa75...6f734f7` respectively; both are clean PASSes.  Full trace was enabled, so this closes setup/seam correctness but gives no bound ordinary runtime, prover-time, residual or production credit. |
 | C6 parameterized canonical plan codec | **CLEAN TWO-SEED RUN-OF-RECORD PASS; PLAN-CODEC SETUP FIT CLOSED; COMPILED RESIDUAL PENDING** (2026-07-29) | Model-global v2 topology artifact; exact strict ordinary-build decoder; independent prover/verifier compile; response instance values excluded | Both clean `100+50` seed-24/25 records recover topology `bcdd169f...c57af344`, produce distinct instance digests and the same **63,994,751-B** artifact at BLAKE3 `265f874c...e51ebac`.  The actual first exchange subtotal is **140,738,118 B <=150,000,000 B**, leaving **9,261,882 B** for all remaining parameters/framing.  Records `c6-parameterized-plan-codec-seed24-2026-07-29-e437394.json` / `c6-parameterized-plan-codec-seed25-2026-07-29-8006f36.json`, SHA-256 `af785f98...ee5580` / `6e054a12...6a861`, are `git_dirty:false`, `diagnostic:false`, `pod_contacted:false`, `all_pass:true`.  This is not an overall setup, residual, response-byte, timing or production verdict. |
 | C6 installed compiled-residual core | **CLEAN TWO-SEED FULL-T1 PAIRED RECORD PASS; ORDINARY OVERHEAD / WRAPPER PENDING** (2026-07-29) | Consuming strict decoder installation; local reverse workspace; role-map runtime values; transcript-streamed base-share coefficients; paired source/key folds | Clean schema-11 seed-24/25 records at `5f9a7ba` accept both independent Δ coordinates over all **4,975,525** sources with provider/verifier linear-form equality and provider/client coefficient-binding equality; no coefficient vector is serialized.  Topology `bcdd169f...c57af344`, artifact `265f874c...e51ebac` and memory are cross-seed invariant, while instance and coefficient digests change.  The installed plan is **196,741,767 B** resident.  Each role retains **79,611,404 B** and uses a counted **541,141,500-B** residual-only compile peak.  Informative clean provider residual subtotals are **2.115027772 / 2.031618948 s** after **1.637407891 / 1.646412629 s** one-off installs.  The residual output itself is **64 B**, but this is not the final wrapper/certificate and earns no wire or timing credit.  Bound ordinary-build overhead, wrapper, real-PCG session and hardware gates remain pending. |
@@ -535,6 +538,39 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-29 — C6 fused coordinator post-integration local gate is
+  complete.**  The feature-complete proto suite is **146 pass / 0 fail / 1
+  ignored**.  The feature-complete PCS library suite is **158 / 0 / 1**;
+  its integration groups are **14 / 0 / 2** and **2 / 0 / 0**.  The
+  ordinary `cargo test --workspace -q`, workspace all-target check,
+  `volta-pcs+c6-trace` all-target check and formatting all exit zero.  The
+  exact C6 budget tests are **9/9 PASS**, and the unchanged Lean audit exits
+  zero.
+
+  Repository-wide strict clippy remains a historical non-gate.  Rust 1.96
+  reports **21** existing `volta-pcs` findings and **107** existing
+  `volta-proto` findings outside the modified C6 files.  The PCS pass exits
+  zero after isolating exactly the inherited lint classes
+  `manual_is_multiple_of`, `result_large_err`, `needless_option_as_deref`,
+  `too_many_arguments`, `needless_range_loop`, `large_enum_variant`,
+  `assign_op_pattern` and `needless_borrow`.  A strict short-format filter
+  produces no warning for `c6_residual.rs`, its fused fixture or the proto
+  export.  No unrelated warning was edited.
+
+  This closes only the scaled/local event-sink-to-C6RSC3 milestone.  It
+  changes no proof byte, correlation count, soundness term, setup byte or
+  timing screen and earns no production response-removal, packed-PCS
+  acceptance, cache, real-PCG, CUDA or hardware credit.  The next ordered
+  gate is the common packed authenticated-output link; residual terminal
+  claims remain typed pending values.  Final design SHA-256 is
+  `e09a5369549626883b59bb0cb21f5f3a55d989bedf82e4f7be4d6a7061e82a0a`;
+  blind coordinator and PCS export SHA-256 values remain
+  `22d9748e44107f3e6f6b4c128b547d0a32ae11773fd3238aeb5d1856dbe6cfa5`
+  and
+  `1c3f4d127c14c74e32fc5281a29ff664827f6e12bbe85e15480dbd949bd9e79b`.
+  No provider or pod was contacted; the pre-existing untracked user note was
+  not read, staged or modified.
 
 - **2026-07-29 — C6 vector-free terminal replay now closes the scaled fused
   provider/client C6RSC3 connection.**  The verifier's dual-tape

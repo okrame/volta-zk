@@ -1363,6 +1363,98 @@ consume live prefixes without allocating eight full padded host vectors.
 The reverse-DAG/product/zero residual argument and its join to the global
 round coordinator remain the next algebraic gate.
 
+The serial slot-7 grammar is not by itself a multiplication
+arithmetization: one opening `W(r)` cannot expose six different lanes of the
+same ProductClosure row.  C6 therefore freezes the following use of the
+already-budgeted auxiliary cohort before implementing the residual
+sumcheck:
+
+```text
+aux  0..5    coordinate-0 product xa,ma,xb,mb,xc,mc
+aux  6..11   coordinate-1 product xa,ma,xb,mb,xc,mc
+aux 12..13   coordinate-0 zero-root x,m
+aux 14..15   coordinate-1 zero-root x,m
+aux 16..31   reserved to the cache argument
+```
+
+Each residual auxiliary lane has `2^15` semantic rows inside its `2^16`
+coefficient vector.  Product lanes use the first 22,339 rows, zero lanes the
+first 8,170 rows, and the remaining semantic rows are constrained zero.  The
+upper `2^15` coefficients are independent ZK masks; the shared final zero
+coordinate selects the semantic half.  They are not unconstrained witness
+padding.  Raw slot 7 remains the canonical interleaved capture stream and a
+post-root randomized copy identity binds it to the sixteen lane-aligned
+views.  Thus the transpose is proved rather than trusted.
+
+Wrapper repetition `b` is exactly MAC coordinate `b`.  It runs two
+round-synchronized sumcheck families:
+
+```text
+family                 rounds   maximum degree   activation
+residual leaf/raw          23                2            1
+residual auxiliaries       15                3            9
+```
+
+The first family proves direct/ProductMask source grammar, the two compiled
+`D_corr`/`M_public` dot products, reverse-DAG leaf terms, raw-copy terms and
+semantic-tail zero constraints.  The auxiliary family proves the matching
+reverse-DAG targets, copied lanes, every zero root and the existing
+QuickSilver `Q/M0/M1` equations.  Public selectors and randomized row
+weights are combined into one public multilinear coefficient table before
+the sumcheck, so a product term has degree three, never four.
+
+At the first residual round the verifier records the initial leaf/raw claim.
+When the auxiliary family activates, before releasing that round's shared
+challenge, it checks that the two initial claims sum to the public
+coordinate target.  No prover-selected split scalar is serialized.  The
+terminal relations consume all eight residual openings at `r_res || 0` and
+auxiliary slots 0--15 at `r_aux || 0`.  Slots 16--31 remain exclusively
+cache-owned, preventing duplicate terminal ownership.
+
+All ProductClosure operands and zero roots must be committed before the
+existing product/ZeroBatch challenges they use.  The production model path
+therefore defers those closing challenges/messages until the five wrapper
+roots are fixed; it may not recommit after seeing `chi`.  Coordinate 0 keeps
+the existing retained ProductClosure messages and one-time masks.
+Coordinate 1 emits one independent masked `(M0,M1)` pair per closure,
+**673 * 32 = 21,536 B**, inside the existing 800,000-B non-PCS allocation.
+No ProductMask is reused for two message pairs.
+
+The residual proof sends, per repetition,
+
+```text
+23 * 3 * 16 + 15 * 4 * 16 = 2,064 B
+```
+
+of round values, or **4,128 B** across both coordinates before small fixed
+framing.  This fits the frozen non-PCS allocation without changing any cap.
+
+The earlier `4/|Fp2|^2` term covered only the one-root MAC plus base-share
+subterm; it did not include the residual sumcheck and batching roots.  The
+complete named event now reserves a conservative per-coordinate root budget
+of 256.  This covers the exact sumcheck degree-round total
+`2*23 + 3*15 = 91` plus source/tail, reverse-DAG, copy, product and affine
+batching terms.  Two independently domain-separated coordinates give
+
+```text
+epsilon_Delta_residual <= 256^2 / |Fp2|^2
+                        = 2^16 / |Fp2|^2
+                        > 239 bits of soundness.
+```
+
+This remains one amplified Delta-residual event, not a fifth event.  The
+inherited M2/M8 product-collapse terms remain in the retained T1 accounting.
+The pre-implementation gate is green: the exact budget reports **91**
+degree-round roots, **256** reserved roots per coordinate and
+`2^16/|Fp2|^2 = 239.999999998656...` bits for the complete named event.
+Q=121 complete response soundness is
+`79.472744138609180097...` bits.  All five focused budget tests pass, full
+Lean builds **3,257 jobs**, and the derived audit is **281 total / 45 C6**
+targets with only `propext`, `Classical.choice` and `Quot.sound`.  The
+additive certificate is
+`c6_delta_wrapper_event_better_than_239`; the sharper historical theorem
+continues to describe only the MAC/base-share core.
+
 The wrapper PCS uses rate `1/8`, two independent fold/query chains and
 `s=86` queries per chain.  Under the conservative 64-active-polynomial,
 `2^28` weight-oracle and `2^19` auxiliary maxima, one repetition has
@@ -1423,7 +1515,7 @@ The remaining event allocations use the exact conservative bounds
 ```text
 hidden-linear    6,401 / |Fp2|^2        >243 bits
 cache argument   2^64 / |Fp2|^2         >191 bits
-Delta residual       4 / |Fp2|^2        >253 bits.
+Delta residual    2^16 / |Fp2|^2        >239 bits.
 ```
 
 The cache numerator is a hard capacity of at most `2^32` field roots per

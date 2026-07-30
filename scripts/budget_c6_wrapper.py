@@ -53,7 +53,9 @@ SETUP_CAP_BYTES = 150_000_000
 
 CACHE_ROOT_BOUND_PER_REPETITION = 2**32
 HIDDEN_LINEAR_NUMERATOR = 1 + 80**2
-DELTA_EVENT_NUMERATOR = 4
+RESIDUAL_SUMCHECK_DEGREE_ROUNDS = 2 * 23 + 3 * 15
+DELTA_ROOT_BOUND_PER_COORDINATE = 2**8
+DELTA_EVENT_NUMERATOR = DELTA_ROOT_BOUND_PER_COORDINATE**2
 
 SUMCHECK_EQUIVALENT_PASSES = 32
 COMMIT_RECOMPUTE_PASSES = 2
@@ -410,6 +412,11 @@ def build_report() -> dict[str, Any]:
                     + (2**MAX_AUX_ORACLE_LOG2 - 1)
                 )
             ),
+            "residual_sumcheck_degree_rounds_per_coordinate": (
+                RESIDUAL_SUMCHECK_DEGREE_ROUNDS
+            ),
+            "delta_root_bound_per_coordinate": DELTA_ROOT_BOUND_PER_COORDINATE,
+            "delta_event_numerator": DELTA_EVENT_NUMERATOR,
             "event_bits": {
                 "wrapper_pcs": str(soundness_bits(pcs_error)),
                 "linear_functional_sumchecks": str(soundness_bits(hidden_error)),

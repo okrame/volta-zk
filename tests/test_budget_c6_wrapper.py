@@ -119,7 +119,10 @@ def test_s86_is_selected_before_benchmark_and_all_events_exceed_128_bits() -> No
         "243.35"
     )
     assert Decimal(soundness["event_bits"]["cache_argument"]) > Decimal("191.99")
-    assert Decimal(soundness["event_bits"]["delta_residual"]) > Decimal("253.99")
+    assert soundness["residual_sumcheck_degree_rounds_per_coordinate"] == 91
+    assert soundness["delta_root_bound_per_coordinate"] == 256
+    assert soundness["delta_event_numerator"] == 2**16
+    assert Decimal(soundness["event_bits"]["delta_residual"]) > Decimal("239.99")
     assert Decimal(soundness["q121_complete_candidate_bits"]) > Decimal(
         "78.80929487391641"
     )

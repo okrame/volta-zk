@@ -163,4 +163,14 @@ theorem c6_delta_event_error_better_than_253 :
   rw [goldilocks_fp2_card]
   norm_num
 
+/-- Exact integer certificate for the complete residual-wrapper allocation.
+The implemented arithmetization reserves at most `256/|Fp2|` roots in each
+independent coordinate, including its degree-round sumcheck subtotal.  Thus
+`256²/|Fp2|² < 2^-239`.  The sharper theorem above remains the MAC/base-share
+core subterm. -/
+theorem c6_delta_wrapper_event_better_than_239 :
+    (2 ^ 16) * 2 ^ 239 < (Fintype.card X4E) ^ 2 := by
+  rw [goldilocks_fp2_card]
+  norm_num
+
 end VoltaZk

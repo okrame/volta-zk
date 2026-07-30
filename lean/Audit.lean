@@ -301,6 +301,7 @@ vector-RLC bounds from being mistaken for implementation bounds.
 #print axioms VoltaZk.two_pow_255_lt_goldilocks_fp2_pair_card
 #print axioms VoltaZk.c6_hidden_linear_error_better_than_243
 #print axioms VoltaZk.c6_delta_event_error_better_than_253
+#print axioms VoltaZk.c6_delta_wrapper_event_better_than_239
 #print axioms VoltaZk.c6_abort_preserves_accepted_state
 #print axioms VoltaZk.c6_atomic_state_is_old_or_new
 #print axioms VoltaZk.c6_false_transition_event_cover

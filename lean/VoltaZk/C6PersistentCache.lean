@@ -13,6 +13,8 @@ state accepted between certificates:
 * acceptance advances epoch/head atomically;
 * abort burns only the attempt slot and leaves the accepted client state
   unchanged;
+* the client-owned two-tape raw high-water mark advances before an attempt is
+  exposed, and a retry starts exactly after every burned range;
 * a produced slot permits only byte-identical retransmission;
 * replay of an already accepted certificate is impossible without rolling
   back the durable client state.
@@ -151,6 +153,101 @@ theorem cache_length_monotone (commit : List Value → Digest)
   omega
 
 end C6CacheTransition
+
+/-- One contiguous raw-correlation interval on a production tape. -/
+structure C6RawRange where
+  start : ℕ
+  count : ℕ
+deriving DecidableEq
+
+namespace C6RawRange
+
+/-- Exclusive end of a raw-correlation interval. -/
+def finish (range : C6RawRange) : ℕ :=
+  range.start + range.count
+
+/-- Two raw intervals do not overlap. -/
+def Disjoint (left right : C6RawRange) : Prop :=
+  left.finish ≤ right.start ∨ right.finish ≤ left.start
+
+end C6RawRange
+
+/-- Durable client-owned high-water offsets for the two independent tapes. -/
+structure C6CorrelationHighWater where
+  offset : Fin 2 → ℕ
+
+/-- One indivisible pair of equal-count ranges derived by the client. -/
+structure C6PairedRawReservation where
+  ranges : Fin 2 → C6RawRange
+
+/-- Reserve `count` rows from both tapes.  The returned state is the durable
+post-reservation high-water state; the range pair is exposed only after that
+state commits. -/
+def c6ReserveRaw (state : C6CorrelationHighWater) (count : ℕ) :
+    C6CorrelationHighWater × C6PairedRawReservation :=
+  let reservation : C6PairedRawReservation := {
+    ranges := fun coordinate => {
+      start := state.offset coordinate
+      count := count
+    }
+  }
+  let next : C6CorrelationHighWater := {
+    offset := fun coordinate => state.offset coordinate + count
+  }
+  (next, reservation)
+
+/-- Every allocated range starts at the previously durable high-water mark. -/
+theorem c6_reserve_starts_at_high_water
+    (state : C6CorrelationHighWater) (count : ℕ) (coordinate : Fin 2) :
+    ((c6ReserveRaw state count).2.ranges coordinate).start =
+      state.offset coordinate := by
+  rfl
+
+/-- Every allocated range ends at the newly durable high-water mark. -/
+theorem c6_reserve_ends_at_new_high_water
+    (state : C6CorrelationHighWater) (count : ℕ) (coordinate : Fin 2) :
+    ((c6ReserveRaw state count).2.ranges coordinate).finish =
+      (c6ReserveRaw state count).1.offset coordinate := by
+  rfl
+
+/-- Both independently keyed tapes consume the same declared raw count. -/
+theorem c6_reserve_counts_match
+    (state : C6CorrelationHighWater) (count : ℕ)
+    (left right : Fin 2) :
+    ((c6ReserveRaw state count).2.ranges left).count =
+      ((c6ReserveRaw state count).2.ranges right).count := by
+  rfl
+
+/-- Capacity is checked before either high-water value is installed. -/
+theorem c6_reserve_preserves_capacity
+    (capacity : ℕ) (state : C6CorrelationHighWater) (count : ℕ)
+    (hfit : ∀ coordinate, state.offset coordinate + count ≤ capacity)
+    (coordinate : Fin 2) :
+    (c6ReserveRaw state count).1.offset coordinate ≤ capacity := by
+  exact hfit coordinate
+
+/-- Burning an attempt never rewinds either already-reserved high-water
+offset. -/
+def c6BurnRawAttempt (reserved : C6CorrelationHighWater) :
+    C6CorrelationHighWater :=
+  reserved
+
+theorem c6_burn_preserves_raw_high_water
+    (reserved : C6CorrelationHighWater) :
+    c6BurnRawAttempt reserved = reserved := rfl
+
+/-- The range derived for a retry after a burn starts at the exclusive end of
+the burned range, hence the two attempts cannot overlap. -/
+theorem c6_retry_after_burn_is_disjoint
+    (state : C6CorrelationHighWater) (burnedCount retryCount : ℕ)
+    (coordinate : Fin 2) :
+    C6RawRange.Disjoint
+      ((c6ReserveRaw state burnedCount).2.ranges coordinate)
+      ((c6ReserveRaw
+        (c6BurnRawAttempt (c6ReserveRaw state burnedCount).1)
+        retryCount).2.ranges coordinate) := by
+  left
+  rfl
 
 /-- Durable lifecycle of one response slot. -/
 inductive C6SlotStatus

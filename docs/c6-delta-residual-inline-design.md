@@ -1390,6 +1390,13 @@ Available -> Reserved -> InFlight -> Produced -> Accepted
   tuple is a terminal fork fault for that connection.
 - `Accepted` is recorded only for the client-ACKed digest.
 
+The durable slot reservation also binds the complete requested workload.
+Binding only `(old_head, nonce, slot, ranges)` would allow proof work after
+the range burn to change prompt/decode/cache geometry.  This field was added
+before wrapper integration and moves only the provider-local slot-journal
+component to codec v3; it does not add a field to the final certificate,
+where the workload was already present.
+
 Unlike the historical connection-terminal-on-any-abort path, C6 burns the
 individual slot fail-closed and keeps the remaining connection credit
 usable.  Malicious PCG/setup/check failure that invalidates the shared
@@ -1402,7 +1409,9 @@ keeps:
 
 ```text
 connection_id, accepted epoch/head, accepted certificate digest,
-used nonce/slot high-water information, params/model/protocol digests,
+used nonce/slot high-water information,
+raw high-water offset for each ordered MAC tape,
+params/model/protocol digests,
 setup-manifest digest binding both tape identities.
 ```
 
@@ -1410,6 +1419,21 @@ Acceptance is a compare-and-swap against the exact old state, implemented as
 write-new-record, file `fsync`, atomic rename, and parent-directory `fsync`.
 Replay, provider-induced rollback and provider-induced fork are rejected by
 the old head, epoch, predecessor digest, nonce and slot bindings.
+
+The raw ranges are client-owned.  Given a declared preflight count `n`, the
+client derives coordinate `b` as
+
+```text
+[raw_high_water[b], raw_high_water[b] + n)
+```
+
+and atomically advances both offsets in the same durable reservation that
+installs the pending attempt.  It never accepts provider-selected starts.
+Abort and acceptance preserve those already advanced offsets.  Overflow of
+either tape rejects before the state write.  A pending state is canonical
+only when both range ends equal the corresponding stored high-water values.
+This rule moves the client-state component to codec v3; setup and final
+certificate wire remain v2 and retain their existing byte budgets.
 
 V1 does not claim protection against restoration of an arbitrary old client
 disk snapshot and does not support concurrent multi-device writers.  Those
@@ -1486,9 +1510,13 @@ client counts in full.
 ### 10.1 Paired codec and durable-state schema
 
 The pre-amplification reference codec is not wire-compatible with the
-two-tape construction.  C6 therefore uses canonical codec schema `v2` and
-rejects the old `v1` magic/version fail-closed; this is a codec/schema bump,
-not a second product protocol.
+two-tape construction.  C6 therefore retains canonical network/setup/final-
+certificate codec schema `v2` and rejects old `v1` magic/version
+fail-closed.  The client-state and provider slot-journal components are v3:
+they add client-owned raw high-water offsets and workload-bound slot
+reservations respectively.  Old v2 durable state/journal bytes reject rather
+than being reinterpreted.  These component bumps do not alter setup or
+certificate wire.
 
 The setup manifest now binds `connection_id`, two distinct ordered tape
 identities, and for each tape its raw capacity, per-baseline count and
@@ -1509,7 +1537,7 @@ The scaled canonical fixtures are:
 
 ```text
 setup manifest     437 B   c3388a149106ea3f...525c2fd833b29d75
-genesis state      292 B   193255528fb5f7e3...066b99c8cc402c51
+genesis state v3   308 B   87f19b92d8e7a137...f234e903798b6d6b
 small certificate  935 B   454a4482ab3329fc...c6322f8465ca8c1
 ```
 
@@ -1518,8 +1546,20 @@ The fixture setup exchange is exactly `76,743,367 B`, including both
 also enforces the preregistered roofline maximum
 `pi_final <=4,409,824 B`, strictly inside the owner hard cap
 `4,500,000 B`; with the retained transcript this is
-`33,586,456 B`.  The paired C6/residual target is `20/20 PASS`; the complete
-`volta-proto` crate is `130 PASS / 1 pre-existing production-size ignore`.
+`33,586,456 B`.  The durable C6 module is **18/18 PASS** and the complete
+`volta-proto --features c6-trace` crate is **143 pass / 0 fail /
+1 pre-existing production-size ignore**.
+
+The complete local lifecycle burns four baseline attempts and then accepts
+17 on one connection.  It ends at cache epoch/length `17/17`, slot
+high-water `21`, and raw high-water `109,949,532` on both tapes, leaving
+`969,186` rows each.  All 17 fixture certificates have equal encoded length,
+and one produced-but-unacknowledged slot is reopened and retransmitted
+byte-identically before acceptance.  The accompanying Lean addendum proves
+range start/end, equal paired counts, capacity preservation, burn
+preservation and retry disjointness.  This is lifecycle and framing
+evidence; the fixture wrapper bytes do not instantiate the cache argument or
+earn final-proof credit.
 
 ## 11. Soundness statement
 

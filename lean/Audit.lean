@@ -282,6 +282,12 @@ vector-RLC bounds from being mistaken for implementation bounds.
 #print axioms VoltaZk.C6CacheTransition.old_cache_unique
 #print axioms VoltaZk.C6CacheTransition.append_only
 #print axioms VoltaZk.C6CacheTransition.cache_length_monotone
+#print axioms VoltaZk.c6_reserve_starts_at_high_water
+#print axioms VoltaZk.c6_reserve_ends_at_new_high_water
+#print axioms VoltaZk.c6_reserve_counts_match
+#print axioms VoltaZk.c6_reserve_preserves_capacity
+#print axioms VoltaZk.c6_burn_preserves_raw_high_water
+#print axioms VoltaZk.c6_retry_after_burn_is_disjoint
 #print axioms VoltaZk.C6Slot.retransmission_digest_unique
 #print axioms VoltaZk.C6Slot.burn_preserves_range
 #print axioms VoltaZk.C6Slot.burn_preserves_attempt_identity

@@ -26,6 +26,8 @@ use volta_field::{Fp, Fp2, P};
 pub type C6Digest = [u8; 32];
 
 pub const C6_CERTIFICATE_VERSION: u16 = 2;
+pub const C6_CLIENT_STATE_VERSION: u16 = 3;
+pub const C6_SLOT_JOURNAL_VERSION: u16 = 3;
 pub const C6_LIGERO_QUERIES: u16 = 121;
 pub const C6_MAX_CONTEXT: u32 = 1_024;
 pub const C6_ACCEPTANCE_CREDITS: u16 = 17;
@@ -47,8 +49,8 @@ pub const C6_RESPONSE_CAP_BYTES: u64 = 35_000_000;
 
 const CERT_MAGIC: &[u8] = b"VOLTA-C6-CERT-v2\0";
 const SETUP_MAGIC: &[u8] = b"VOLTA-C6-SETUP-v2";
-const STATE_MAGIC: &[u8] = b"VOLTA-C6-STATE-v2";
-const SLOT_MAGIC: &[u8] = b"VOLTA-C6-SLOT-v2\0";
+const STATE_MAGIC: &[u8] = b"VOLTA-C6-STATE-v3";
+const SLOT_MAGIC: &[u8] = b"VOLTA-C6-SLOT-v3\0";
 const MAX_CLIENT_PARAMETER_BYTES: usize = (C6_SETUP_CAP_BYTES - C6_PAIRED_PCG_SETUP_BYTES) as usize;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -998,6 +1000,10 @@ pub struct C6ClientState {
     /// reserved, including attempts that later abort, so provider-controlled
     /// replay cannot move the slot high-water mark backwards.
     pub next_slot: u32,
+    /// Client-owned raw high-water offsets for the two ordered MAC tapes.
+    /// Ranges are allocated contiguously and both offsets advance durably
+    /// before an attempt may be exposed to the provider.
+    pub raw_high_water: [u64; C6_MAC_COORDINATES],
     /// At most one response may be in flight for the single-writer V1
     /// client.  This binds acceptance to a client-issued nonce/paired-range/
     /// workload rather than trusting a provider-created certificate request.
@@ -1024,6 +1030,7 @@ impl C6ClientState {
             },
             accepted_certificate_digest: [0; 32],
             next_slot: 0,
+            raw_high_water: [0; C6_MAC_COORDINATES],
             pending_attempt: None,
         };
         state.validate()?;
@@ -1033,7 +1040,7 @@ impl C6ClientState {
     fn encode_unchecked(self) -> Vec<u8> {
         let mut out = Encoder::with_capacity(320);
         out.raw(STATE_MAGIC);
-        out.u16(C6_CERTIFICATE_VERSION);
+        out.u16(C6_CLIENT_STATE_VERSION);
         out.digest(&self.protocol_digest);
         out.digest(&self.model_digest);
         out.digest(&self.params_digest);
@@ -1042,6 +1049,9 @@ impl C6ClientState {
         self.head.encode_into(&mut out);
         out.digest(&self.accepted_certificate_digest);
         out.u32(self.next_slot);
+        for high_water in self.raw_high_water {
+            out.u64(high_water);
+        }
         match self.pending_attempt {
             Some(attempt) => {
                 out.u8(1);
@@ -1060,7 +1070,7 @@ impl C6ClientState {
     pub fn decode(bytes: &[u8]) -> C6Result<Self> {
         let mut input = Decoder::new(bytes);
         input.magic(STATE_MAGIC)?;
-        if input.u16()? != C6_CERTIFICATE_VERSION {
+        if input.u16()? != C6_CLIENT_STATE_VERSION {
             return Err(C6Error::new("wrong C6 client-state version"));
         }
         let state = Self {
@@ -1072,6 +1082,7 @@ impl C6ClientState {
             head: C6CacheHead::decode_from(&mut input)?,
             accepted_certificate_digest: input.digest()?,
             next_slot: input.u32()?,
+            raw_high_water: [input.u64()?, input.u64()?],
             pending_attempt: match input.u8()? {
                 0 => None,
                 1 => Some(C6ClientAttempt::decode_from(&mut input)?),
@@ -1107,11 +1118,25 @@ impl C6ClientState {
         } else if !is_nonzero(&self.accepted_certificate_digest) {
             return Err(C6Error::new("advanced C6 state lacks certificate digest"));
         }
+        if self.head.epoch > u64::from(self.next_slot)
+            || self.raw_high_water.iter().any(|offset| *offset > C6_TERMINAL_ONE_RAW_CAPACITY)
+        {
+            return Err(C6Error::new("invalid C6 client high-water state"));
+        }
         if let Some(attempt) = self.pending_attempt {
             if attempt.slot.checked_add(1) != Some(self.next_slot) {
                 return Err(C6Error::new("C6 pending attempt is not the slot high-water mark"));
             }
             attempt.validate_for(self)?;
+            for coordinate in 0..C6_MAC_COORDINATES {
+                if attempt.correlation_ranges.coordinates[coordinate].end()?
+                    != self.raw_high_water[coordinate]
+                {
+                    return Err(C6Error::new(
+                        "C6 pending range does not end at the durable raw high-water mark",
+                    ));
+                }
+            }
         }
         Ok(())
     }
@@ -1137,7 +1162,7 @@ impl C6ClientState {
         {
             return Err(C6Error::new("C6 certificate is not a child of the durable head"));
         }
-        Ok(Self {
+        let next = Self {
             protocol_digest: self.protocol_digest,
             model_digest: self.model_digest,
             params_digest: self.params_digest,
@@ -1146,21 +1171,26 @@ impl C6ClientState {
             head: certificate.new_head,
             accepted_certificate_digest: certificate.digest()?,
             next_slot: self.next_slot,
+            raw_high_water: self.raw_high_water,
             pending_attempt: None,
-        })
+        };
+        next.validate()?;
+        Ok(next)
     }
 
     pub fn reserve_attempt(
         self,
         nonce_entropy: C6Digest,
-        correlation_ranges: C6PairedCorrelationRanges,
+        raw_correlation_count: u64,
         workload: C6Workload,
     ) -> C6Result<(Self, C6ClientAttempt)> {
         self.validate()?;
         if self.pending_attempt.is_some() {
             return Err(C6Error::new("C6 single-writer client already has a pending attempt"));
         }
-        correlation_ranges.validate()?;
+        if raw_correlation_count == 0 {
+            return Err(C6Error::new("C6 attempt cannot reserve zero raw correlations"));
+        }
         workload.validate()?;
         if workload.old_context != self.head.cache_len {
             return Err(C6Error::new(
@@ -1180,6 +1210,27 @@ impl C6ClientState {
                 &nonce_entropy,
             ],
         );
+        let coordinates = [
+            C6CorrelationRange {
+                stage: 1,
+                start: self.raw_high_water[0],
+                count: raw_correlation_count,
+            },
+            C6CorrelationRange {
+                stage: 1,
+                start: self.raw_high_water[1],
+                count: raw_correlation_count,
+            },
+        ];
+        let mut raw_high_water = self.raw_high_water;
+        for coordinate in 0..C6_MAC_COORDINATES {
+            raw_high_water[coordinate] = coordinates[coordinate].end()?;
+            if raw_high_water[coordinate] > C6_TERMINAL_ONE_RAW_CAPACITY {
+                return Err(C6Error::new("C6 client correlation capacity exhausted"));
+            }
+        }
+        let correlation_ranges = C6PairedCorrelationRanges { coordinates };
+        correlation_ranges.validate()?;
         let attempt = C6ClientAttempt {
             slot: self.next_slot,
             nonce,
@@ -1189,7 +1240,7 @@ impl C6ClientState {
             correlation_ranges,
             workload,
         };
-        let next = Self { next_slot, pending_attempt: Some(attempt), ..self };
+        let next = Self { next_slot, raw_high_water, pending_attempt: Some(attempt), ..self };
         next.validate()?;
         Ok((next, attempt))
     }
@@ -1246,23 +1297,34 @@ fn valid_client_state_transition(current: C6ClientState, next: C6ClientState) ->
         return Err(C6Error::new("C6 atomic state transition changes connection identity"));
     }
 
+    let reserved_ranges_advance_exactly = next.pending_attempt.is_some_and(|attempt| {
+        (0..C6_MAC_COORDINATES).all(|coordinate| {
+            let range = attempt.correlation_ranges.coordinates[coordinate];
+            range.start == current.raw_high_water[coordinate]
+                && range.end().ok() == Some(next.raw_high_water[coordinate])
+        })
+    });
     let reserves_attempt = current.pending_attempt.is_none()
         && next.pending_attempt.is_some()
         && next.head == current.head
         && next.accepted_certificate_digest == current.accepted_certificate_digest
-        && current.next_slot.checked_add(1) == Some(next.next_slot);
+        && current.next_slot.checked_add(1) == Some(next.next_slot)
+        && reserved_ranges_advance_exactly;
     let aborts_attempt = current.pending_attempt.is_some()
         && next.pending_attempt.is_none()
         && next.head == current.head
         && next.accepted_certificate_digest == current.accepted_certificate_digest
-        && next.next_slot == current.next_slot;
+        && next.next_slot == current.next_slot
+        && next.raw_high_water == current.raw_high_water;
     let accepted_workload_end = current.pending_attempt.map(|attempt| attempt.workload.new_context);
     let accepts_certificate = current.pending_attempt.is_some()
         && next.pending_attempt.is_none()
         && next.next_slot == current.next_slot
         && current.head.epoch.checked_add(1).is_some_and(|epoch| next.head.epoch == epoch)
         && accepted_workload_end == Some(next.head.cache_len)
-        && is_nonzero(&next.accepted_certificate_digest);
+        && is_nonzero(&next.accepted_certificate_digest)
+        && next.accepted_certificate_digest != current.accepted_certificate_digest
+        && next.raw_high_water == current.raw_high_water;
     if !reserves_attempt && !aborts_attempt && !accepts_certificate {
         return Err(C6Error::new("invalid C6 atomic client-state transition"));
     }
@@ -1416,17 +1478,34 @@ impl C6ClientStore {
         &self,
         expected: C6ClientState,
         nonce_entropy: C6Digest,
-        correlation_ranges: C6PairedCorrelationRanges,
+        raw_correlation_count: u64,
         workload: C6Workload,
+    ) -> C6Result<(C6ClientState, C6ClientAttempt)> {
+        self.reserve_attempt_with_fault(
+            expected,
+            nonce_entropy,
+            raw_correlation_count,
+            workload,
+            AtomicFault::None,
+        )
+    }
+
+    fn reserve_attempt_with_fault(
+        &self,
+        expected: C6ClientState,
+        nonce_entropy: C6Digest,
+        raw_correlation_count: u64,
+        workload: C6Workload,
+        fault: AtomicFault,
     ) -> C6Result<(C6ClientState, C6ClientAttempt)> {
         let current = self.load()?;
         if current != expected {
             return Err(C6Error::new("C6 client compare-and-swap predecessor mismatch"));
         }
         let (next, attempt) =
-            current.reserve_attempt(nonce_entropy, correlation_ranges, workload)?;
+            current.reserve_attempt(nonce_entropy, raw_correlation_count, workload)?;
         valid_client_state_transition(current, next)?;
-        atomic_replace_state(&self.path, next, AtomicFault::None)?;
+        atomic_replace_state(&self.path, next, fault)?;
         Ok((next, attempt))
     }
 
@@ -1451,9 +1530,28 @@ pub struct C6SlotReservation {
     pub old_head_digest: C6Digest,
     pub predecessor_certificate_digest: C6Digest,
     pub correlation_ranges: C6PairedCorrelationRanges,
+    pub workload: C6Workload,
 }
 
 impl C6SlotReservation {
+    pub fn from_client_attempt(
+        connection_id: C6Digest,
+        attempt: C6ClientAttempt,
+    ) -> C6Result<Self> {
+        let reservation = Self {
+            connection_id,
+            setup_manifest_digest: attempt.setup_manifest_digest,
+            slot: attempt.slot,
+            nonce: attempt.nonce,
+            old_head_digest: attempt.old_head_digest,
+            predecessor_certificate_digest: attempt.predecessor_certificate_digest,
+            correlation_ranges: attempt.correlation_ranges,
+            workload: attempt.workload,
+        };
+        reservation.validate()?;
+        Ok(reservation)
+    }
+
     fn encode_into(self, out: &mut Encoder) {
         out.digest(&self.connection_id);
         out.digest(&self.setup_manifest_digest);
@@ -1462,6 +1560,7 @@ impl C6SlotReservation {
         out.digest(&self.old_head_digest);
         out.digest(&self.predecessor_certificate_digest);
         self.correlation_ranges.encode_into(out);
+        self.workload.encode_into(out);
     }
 
     fn decode_from(input: &mut Decoder<'_>) -> C6Result<Self> {
@@ -1473,6 +1572,7 @@ impl C6SlotReservation {
             old_head_digest: input.digest()?,
             predecessor_certificate_digest: input.digest()?,
             correlation_ranges: C6PairedCorrelationRanges::decode_from(input)?,
+            workload: C6Workload::decode_from(input)?,
         })
     }
 
@@ -1484,7 +1584,8 @@ impl C6SlotReservation {
         {
             return Err(C6Error::new("zero identity in C6 slot reservation"));
         }
-        self.correlation_ranges.validate()
+        self.correlation_ranges.validate()?;
+        self.workload.validate()
     }
 
     pub fn digest(self) -> C6Result<C6Digest> {
@@ -1503,6 +1604,7 @@ impl C6SlotReservation {
             || certificate.old_head.digest() != self.old_head_digest
             || certificate.predecessor_certificate_digest != self.predecessor_certificate_digest
             || certificate.correlation_ranges != self.correlation_ranges
+            || certificate.workload != self.workload
         {
             return Err(C6Error::new("C6 certificate does not match its durable slot reservation"));
         }
@@ -1538,7 +1640,7 @@ fn slot_header(reservation: C6SlotReservation) -> C6Result<(Vec<u8>, C6Digest)> 
     reservation.validate()?;
     let mut encoded = Encoder::with_capacity(192);
     encoded.raw(SLOT_MAGIC);
-    encoded.u16(C6_CERTIFICATE_VERSION);
+    encoded.u16(C6_SLOT_JOURNAL_VERSION);
     reservation.encode_into(&mut encoded);
     let body = encoded.finish();
     let checksum = hash_parts(b"volta-zk/c6/slot-header/v2", &[&body]);
@@ -1573,7 +1675,7 @@ fn slot_transition_bytes(
 fn parse_slot_journal(bytes: &[u8]) -> C6Result<C6SlotRecord> {
     let mut input = Decoder::new(bytes);
     input.magic(SLOT_MAGIC)?;
-    if input.u16()? != C6_CERTIFICATE_VERSION {
+    if input.u16()? != C6_SLOT_JOURNAL_VERSION {
         return Err(C6Error::new("wrong C6 slot-journal version"));
     }
     let reservation = C6SlotReservation::decode_from(&mut input)?;
@@ -2102,6 +2204,7 @@ mod tests {
             old_head_digest: state.head.digest(),
             predecessor_certificate_digest: state.accepted_certificate_digest,
             correlation_ranges,
+            workload: workload(state),
         }
     }
 
@@ -2216,10 +2319,10 @@ mod tests {
             hex_digest(certificate.digest().unwrap()),
             "454a4482ab3329fc5991d127a812f94c1f664348c2872e358c6322f8465ca8c1"
         );
-        assert_eq!(state.encode().unwrap().len(), 292);
+        assert_eq!(state.encode().unwrap().len(), 308);
         assert_eq!(
             hex_digest(state.digest().unwrap()),
-            "193255528fb5f7e31b3d6cbdf2e52b0e00b28fb01bca5869066b99c8cc402c51"
+            "87f19b92d8e7a1370cd2b15c81ac4bccaf426933b0dd6512f234e903798b6d6b"
         );
         assert_eq!(C6FinalCertificate::decode(&bytes).unwrap(), certificate);
 
@@ -2257,7 +2360,7 @@ mod tests {
     fn setup_digest_is_bound_across_client_attempt_slot_and_certificate() {
         let initial = genesis(digest(66));
         let (pending, attempt) =
-            initial.reserve_attempt(digest(67), paired_ranges(0), workload(initial)).unwrap();
+            initial.reserve_attempt(digest(67), 100, workload(initial)).unwrap();
         let mut forged =
             certificate(pending, attempt.slot, attempt.nonce, attempt.correlation_ranges, 32, 32);
         forged.setup_manifest_digest = digest(68);
@@ -2290,6 +2393,7 @@ mod tests {
             },
             accepted_certificate_digest: digest(26),
             next_slot: 16,
+            raw_high_water: [1_600; C6_MAC_COORDINATES],
             pending_attempt: None,
         };
         let late = certificate(late_state, 16, digest(27), paired_ranges(1_600), 256, 512);
@@ -2352,9 +2456,8 @@ mod tests {
         let initial = genesis(digest(30));
         let path = root.join("head.state");
         let store = C6ClientStore::initialize(&path, initial).unwrap();
-        let (pending, attempt) = store
-            .reserve_attempt(initial, digest(31), paired_ranges(0), workload(initial))
-            .unwrap();
+        let (pending, attempt) =
+            store.reserve_attempt(initial, digest(31), 100, workload(initial)).unwrap();
         let first_certificate =
             certificate(pending, attempt.slot, attempt.nonce, attempt.correlation_ranges, 32, 32);
         let next = store.accept(pending, &first_certificate).unwrap();
@@ -2368,7 +2471,7 @@ mod tests {
         let temp_path = temp_root.join("head.state");
         let temp_store = C6ClientStore::initialize(&temp_path, temp_initial).unwrap();
         let (temp_pending, temp_attempt) = temp_store
-            .reserve_attempt(temp_initial, digest(33), paired_ranges(100), workload(temp_initial))
+            .reserve_attempt(temp_initial, digest(33), 100, workload(temp_initial))
             .unwrap();
         let temp_certificate = certificate(
             temp_pending,
@@ -2390,12 +2493,7 @@ mod tests {
         let rename_path = rename_root.join("head.state");
         let rename_store = C6ClientStore::initialize(&rename_path, rename_initial).unwrap();
         let (rename_pending, rename_attempt) = rename_store
-            .reserve_attempt(
-                rename_initial,
-                digest(35),
-                paired_ranges(200),
-                workload(rename_initial),
-            )
+            .reserve_attempt(rename_initial, digest(35), 100, workload(rename_initial))
             .unwrap();
         let rename_certificate = certificate(
             rename_pending,
@@ -2421,20 +2519,20 @@ mod tests {
         let initial = genesis(digest(36));
         let path = root.join("head.state");
         let store = C6ClientStore::initialize(&path, initial).unwrap();
-        let (pending, first_attempt) = store
-            .reserve_attempt(initial, digest(37), paired_ranges(0), workload(initial))
-            .unwrap();
+        let (pending, first_attempt) =
+            store.reserve_attempt(initial, digest(37), 100, workload(initial)).unwrap();
         let after_abort = store.abort_attempt(pending).unwrap();
         assert_eq!(after_abort.head, initial.head);
         assert_eq!(after_abort.accepted_certificate_digest, initial.accepted_certificate_digest);
         assert_eq!(after_abort.next_slot, 1);
+        assert_eq!(after_abort.raw_high_water, [100; C6_MAC_COORDINATES]);
         assert!(after_abort.pending_attempt.is_none());
 
-        let (retry, retry_attempt) = store
-            .reserve_attempt(after_abort, digest(37), paired_ranges(100), workload(after_abort))
-            .unwrap();
+        let (retry, retry_attempt) =
+            store.reserve_attempt(after_abort, digest(37), 100, workload(after_abort)).unwrap();
         assert_eq!(retry_attempt.slot, 1);
         assert_ne!(retry_attempt.nonce, first_attempt.nonce);
+        assert_eq!(retry_attempt.correlation_ranges.coordinates, [range(100), range(100)]);
         assert_eq!(retry.head, initial.head);
         fs::remove_dir_all(root).unwrap();
     }
@@ -2449,12 +2547,7 @@ mod tests {
             let path = root.join("head.state");
             let store = C6ClientStore::initialize(&path, initial).unwrap();
             let (pending, attempt) = store
-                .reserve_attempt(
-                    initial,
-                    digest(72 + ordinal as u8),
-                    paired_ranges(ordinal as u64 * 100),
-                    workload(initial),
-                )
+                .reserve_attempt(initial, digest(72 + ordinal as u8), 100, workload(initial))
                 .unwrap();
             let certificate = certificate(
                 pending,
@@ -2518,7 +2611,7 @@ mod tests {
         let store = C6SlotStore::open(&root).unwrap();
         let initial = genesis(digest(50));
         let (first_pending, first_attempt) =
-            initial.reserve_attempt(digest(51), paired_ranges(0), workload(initial)).unwrap();
+            initial.reserve_attempt(digest(51), 100, workload(initial)).unwrap();
         let first = certificate(
             first_pending,
             first_attempt.slot,
@@ -2530,7 +2623,7 @@ mod tests {
         let next = first_pending.accepts(&first).unwrap();
 
         let (orphan_pending, orphan_attempt) =
-            next.reserve_attempt(digest(52), paired_ranges(100), workload(next)).unwrap();
+            next.reserve_attempt(digest(52), 100, workload(next)).unwrap();
         let mut orphan = store
             .reserve(reservation(
                 orphan_pending,
@@ -2567,6 +2660,212 @@ mod tests {
         let burned = store.open_slot(later.connection_id, 2).unwrap();
         assert_eq!(burned.status(), C6SlotStatus::Burned);
 
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn durable_v3_codecs_reject_v2_state_and_slot_bytes() {
+        let state = genesis(digest(80));
+        let mut old_state = state.encode().unwrap();
+        old_state[b"VOLTA-C6-STATE-v".len()] = b'2';
+        assert!(C6ClientState::decode(&old_state).is_err());
+
+        let reservation = reservation(state, 0, digest(81), paired_ranges(0));
+        let (mut old_slot, _) = slot_header(reservation).unwrap();
+        old_slot[b"VOLTA-C6-SLOT-v".len()] = b'2';
+        assert!(parse_slot_journal(&old_slot).is_err());
+    }
+
+    #[test]
+    fn client_owned_range_allocator_is_monotone_and_capacity_atomic() {
+        let root = test_directory("client-raw-high-water");
+        let initial = genesis(digest(82));
+        let path = root.join("head.state");
+        let store = C6ClientStore::initialize(&path, initial).unwrap();
+        let (pending, attempt) = store
+            .reserve_attempt(initial, digest(83), C6_TERMINAL_ONE_RAW_CAPACITY, workload(initial))
+            .unwrap();
+        assert_eq!(
+            attempt.correlation_ranges.coordinates,
+            [C6CorrelationRange { stage: 1, start: 0, count: C6_TERMINAL_ONE_RAW_CAPACITY };
+                C6_MAC_COORDINATES]
+        );
+        assert_eq!(pending.raw_high_water, [C6_TERMINAL_ONE_RAW_CAPACITY; C6_MAC_COORDINATES]);
+        let burned = store.abort_attempt(pending).unwrap();
+        let before_failed_reservation = store.load().unwrap();
+        assert_eq!(before_failed_reservation, burned);
+        assert!(store.reserve_attempt(burned, digest(84), 1, workload(burned)).is_err());
+        assert_eq!(store.load().unwrap(), before_failed_reservation);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn client_range_high_water_recovers_every_atomic_reservation_boundary() {
+        for (ordinal, fault) in [
+            AtomicFault::AfterTempCreate,
+            AtomicFault::AfterTempWrite,
+            AtomicFault::AfterTempSync,
+            AtomicFault::AfterRename,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let root = test_directory("client-range-crash");
+            let initial = genesis(digest(116 + ordinal as u8));
+            let path = root.join("head.state");
+            let store = C6ClientStore::initialize(&path, initial).unwrap();
+            let entropy = digest(120 + ordinal as u8);
+            let (expected_pending, _) = initial
+                .reserve_attempt(entropy, C6_BASELINE_RAW_CORRELATIONS, workload(initial))
+                .unwrap();
+            assert!(store
+                .reserve_attempt_with_fault(
+                    initial,
+                    entropy,
+                    C6_BASELINE_RAW_CORRELATIONS,
+                    workload(initial),
+                    fault,
+                )
+                .is_err());
+            let recovered = C6ClientStore::open(&path).unwrap().load().unwrap();
+            if fault == AtomicFault::AfterRename {
+                assert_eq!(recovered, expected_pending);
+                assert_eq!(
+                    recovered.raw_high_water,
+                    [C6_BASELINE_RAW_CORRELATIONS; C6_MAC_COORDINATES]
+                );
+            } else {
+                assert_eq!(recovered, initial);
+                assert_eq!(recovered.raw_high_water, [0; C6_MAC_COORDINATES]);
+            }
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn slot_reservation_binds_workload_before_proof_work() {
+        let root = test_directory("slot-workload-binding");
+        let store = C6SlotStore::open(&root).unwrap();
+        let initial = genesis(digest(85));
+        let (pending, attempt) =
+            initial.reserve_attempt(digest(86), 100, workload(initial)).unwrap();
+        let reservation =
+            C6SlotReservation::from_client_attempt(initial.connection_id, attempt).unwrap();
+        let mut slot = store.reserve(reservation).unwrap();
+        slot.start().unwrap();
+
+        let mut changed =
+            certificate(pending, attempt.slot, attempt.nonce, attempt.correlation_ranges, 32, 32);
+        changed.workload.prompt_tokens = 0;
+        changed.workload.decode_tokens = 1;
+        let statement = changed.compute_transition_statement_digest();
+        changed.transition_statement_digest = statement;
+        changed.new_head.producer_transition_digest = statement;
+        assert!(changed.validate().is_ok());
+        assert!(slot.produce(&changed).is_err());
+        assert!(pending.accepts(&changed).is_err());
+        slot.abort().unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn one_session_burns_four_attempts_then_accepts_seventeen_flat_certificates() {
+        let root = test_directory("session-17-plus-4");
+        let client_path = root.join("client").join("head.state");
+        let slot_root = root.join("provider-slots");
+        let initial = genesis(digest(87));
+        let client = C6ClientStore::initialize(&client_path, initial).unwrap();
+        let provider = C6SlotStore::open(&slot_root).unwrap();
+        let mut state = initial;
+
+        for ordinal in 0..C6_ABORT_RETRY_CREDITS {
+            let (pending, attempt) = client
+                .reserve_attempt(
+                    state,
+                    digest(88 + ordinal as u8),
+                    C6_BASELINE_RAW_CORRELATIONS,
+                    workload(state),
+                )
+                .unwrap();
+            let expected_start =
+                u64::from(ordinal).checked_mul(C6_BASELINE_RAW_CORRELATIONS).unwrap();
+            for range in attempt.correlation_ranges.coordinates {
+                assert_eq!(range.start, expected_start);
+                assert_eq!(range.count, C6_BASELINE_RAW_CORRELATIONS);
+            }
+            let reservation =
+                C6SlotReservation::from_client_attempt(state.connection_id, attempt).unwrap();
+            let mut slot = provider.reserve(reservation).unwrap();
+            slot.start().unwrap();
+            slot.abort().unwrap();
+            state = client.abort_attempt(pending).unwrap();
+            assert_eq!(state.head, initial.head);
+            assert_eq!(state.head.epoch, 0);
+        }
+
+        let mut flat_certificate_len = None;
+        for ordinal in 0..C6_ACCEPTANCE_CREDITS {
+            let (pending, attempt) = client
+                .reserve_attempt(
+                    state,
+                    digest(96 + ordinal as u8),
+                    C6_BASELINE_RAW_CORRELATIONS,
+                    workload(state),
+                )
+                .unwrap();
+            let reservation =
+                C6SlotReservation::from_client_attempt(state.connection_id, attempt).unwrap();
+            let mut slot = provider.reserve(reservation).unwrap();
+            slot.start().unwrap();
+            let certificate = certificate(
+                pending,
+                attempt.slot,
+                attempt.nonce,
+                attempt.correlation_ranges,
+                64,
+                96,
+            );
+            let encoded_len = certificate.encoded_len().unwrap();
+            assert_eq!(*flat_certificate_len.get_or_insert(encoded_len), encoded_len);
+            let certificate_digest = slot.produce(&certificate).unwrap();
+
+            if ordinal == 8 {
+                drop(slot);
+                let reopened = provider.open_slot(state.connection_id, attempt.slot).unwrap();
+                assert_eq!(reopened.status(), C6SlotStatus::Produced);
+                assert_eq!(reopened.retransmit().unwrap(), certificate.encode().unwrap());
+                slot = reopened;
+            }
+
+            state = client.accept(pending, &certificate).unwrap();
+            assert!(state.is_idempotent_retransmission(&certificate).unwrap());
+            slot.acknowledge(certificate_digest).unwrap();
+            assert_eq!(slot.status(), C6SlotStatus::Accepted);
+            assert_eq!(state.head.epoch, u64::from(ordinal) + 1);
+            assert_eq!(state.head.cache_len, u32::from(ordinal) + 1);
+            assert_eq!(state.next_slot, u32::from(C6_ABORT_RETRY_CREDITS) + u32::from(ordinal) + 1);
+        }
+
+        let consumed = u64::from(C6_ACCEPTANCE_CREDITS + C6_ABORT_RETRY_CREDITS)
+            .checked_mul(C6_BASELINE_RAW_CORRELATIONS)
+            .unwrap();
+        assert_eq!(consumed, 109_949_532);
+        assert_eq!(state.raw_high_water, [consumed; C6_MAC_COORDINATES]);
+        assert_eq!(C6_TERMINAL_ONE_RAW_CAPACITY - consumed, 969_186);
+        assert_eq!(state.head.epoch, u64::from(C6_ACCEPTANCE_CREDITS));
+        assert_eq!(state.next_slot, u32::from(C6_ACCEPTANCE_CREDITS + C6_ABORT_RETRY_CREDITS));
+        assert!(state.pending_attempt.is_none());
+        assert_eq!(client.load().unwrap(), state);
+
+        for slot_ordinal in 0..u32::from(C6_ACCEPTANCE_CREDITS + C6_ABORT_RETRY_CREDITS) {
+            let slot = provider.open_slot(state.connection_id, slot_ordinal).unwrap();
+            let expected = if slot_ordinal < u32::from(C6_ABORT_RETRY_CREDITS) {
+                C6SlotStatus::Burned
+            } else {
+                C6SlotStatus::Accepted
+            };
+            assert_eq!(slot.status(), expected);
+        }
         fs::remove_dir_all(root).unwrap();
     }
 

@@ -3,8 +3,9 @@
 Status: **OWNER REQUIREMENTS FROZEN; Q=121 CONTINGENCY ACTIVATED BEFORE
 IMPLEMENTATION; FORMAL SEAM / ROOFLINE / PAIRED CODEC / PRODUCTION SOURCE
 CENSUS / PAIRED COMPLETE SOURCE WITNESS / INDEPENDENT EXACT-INSTANCE
-OPERATION DAG GREEN; PARAMETERIZED COMPILED PLAN/CACHE/WRAPPER PENDING; LOCAL
-IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
+OPERATION DAG GREEN; PARAMETERIZED V2 TWO-SEED IDENTITY GREEN; CANONICAL PLAN
+CODEC/CACHE/WRAPPER PENDING; LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE
+POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
 accepted C4/T1 `rate=1/4,Q=120` inline profile.  It does not reopen or rewrite
@@ -705,6 +706,65 @@ diagnostic trace remains outside the timed prover.  If the client cannot
 regenerate the public slot stream or the topology cannot be represented
 within setup without adding response-linear traffic, C6 records the
 obstruction and hard-stops before wrapper benchmarking.
+
+The first parameterized diagnostic checkpoint is green for identities and
+provides a codec target, but does not yet claim a setup artifact.  Two
+complete frozen T1 runs using transcript seed bytes `24` and `25` each
+produce exact prover/verifier equality and the same v2 topology:
+
+```text
+topology digest
+  bcdd169f3f9123bd3afe25a5427d4b4ae2f0859abdfd1e1b8dd20c0fc57af344
+
+seed 24 exact / instance
+  7f0154932ac19cec8448c4cdd7984a36cf7215abf03992eeb559b8e4dbaef81b
+  7a21189b9580b163500595ca5cca8d1f5184017139f52ab3878e7238345cacaa
+seed 25 exact / instance
+  408ddb488524a9a362751a1f9f7e582040ce4f7612f2a5a95d22ff61ce420ab6
+  1bd5aa751772c3f8e9404adbd1b7941a47474c9a5e333114b5fcc38856f734f7
+```
+
+The v2 canonical topology census is:
+
+```text
+source / structural-zero / public-input     4,970,850 / 1 / 1,436
+Add / Sub / Scale                    12,961,295 / 83,197 / 10,828,852
+canonical nodes / reachable operations       28,845,631 / 23,874,780
+public-input / scalar-input slots                  1,436 / 10,828,852
+nodes after ProductClosure terminals                    14,634,330
+```
+
+The additional 48 reachable nodes relative to historical v1 are exactly the
+result of keeping zero-valued public inputs distinct from the single
+structural-zero node.  Prover/verifier informative raw/omitted counts are
+`23,891,222 / 16,442` and `23,874,882 / 102`.  Source, ProductClosure,
+triple, zero-root, transcript and allocation schedules remain unchanged.
+
+An absolute-ULEB source/operand candidate is `88,934,137 B`, which exceeds
+the `73,257,070-B` client-parameter allowance by `15,677,067 B`.  The
+preregistered specialized coding instead uses signed source deltas plus one
+bit per operand to make backward distance one implicit:
+
+```text
+packed 3-bit opcodes                              10,817,112 B
+signed source deltas                               6,400,974 B
+operand unit-distance flags                        4,614,730 B
+non-unit operand payloads                         41,858,132 B
+terminal payload                                     303,651 B
+canonical header                                      152 B
+projection total                                  63,994,751 B
+```
+
+Of `36,917,836` operands, `18,183,230` have unit backward distance; of
+`4,970,850` reachable sources, `3,422,207` immediately follow the previous
+source ordinal.  The projected plan is `9,262,319 B` below the parameter
+allowance and would put the fixture first exchange at `140,738,118 B`
+including the existing `437-B` manifest.  These are diagnostic arithmetic
+figures only: `materialized_artifact:false`,
+`production_decoder_implemented:false` and `setup_fit_credit:false`.
+Canonical encode/decode, mutation rejection and a measured full artifact
+must reproduce the topology digest and exact byte count before any setup
+PASS is recorded.
 
 ## 4. Hidden Ligero vectors without an NTT trace
 

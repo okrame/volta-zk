@@ -53,6 +53,7 @@ struct Args {
     source_witness: bool,
     operation_trace: bool,
     operation_trace_debug_block: Option<u64>,
+    transcript_seed_byte: u8,
 }
 
 fn args() -> Result<Args, String> {
@@ -63,6 +64,7 @@ fn args() -> Result<Args, String> {
     let mut source_witness = false;
     let mut operation_trace = false;
     let mut operation_trace_debug_block = None;
+    let mut transcript_seed_byte = 0x18;
     let mut values = env::args().skip(1);
     while let Some(argument) = values.next() {
         match argument.as_str() {
@@ -92,6 +94,13 @@ fn args() -> Result<Args, String> {
                             "--operation-trace-debug-block requires a u64 integer".to_owned()
                         })?,
                 );
+            }
+            "--transcript-seed-byte" => {
+                transcript_seed_byte = values
+                    .next()
+                    .ok_or_else(|| "--transcript-seed-byte requires an integer".to_owned())?
+                    .parse()
+                    .map_err(|_| "--transcript-seed-byte requires a u8 integer".to_owned())?;
             }
             _ => return Err(format!("unknown argument {argument}")),
         }
@@ -124,6 +133,7 @@ fn args() -> Result<Args, String> {
         source_witness,
         operation_trace,
         operation_trace_debug_block,
+        transcript_seed_byte,
     })
 }
 
@@ -373,6 +383,7 @@ struct Record {
     pod_contacted: bool,
     prompt_tokens: usize,
     decode_tokens: usize,
+    transcript_seed_byte: u8,
     golden_match: bool,
     prover_verifier_schedule_equal: bool,
     model_counters: CounterRow,
@@ -419,6 +430,8 @@ struct OperationTraceRow {
     diagnostic_only: bool,
     independent_verifier_trace_pending: bool,
     program_identity_equal: bool,
+    parameterized_topology_identity_equal: bool,
+    parameterized_instance_identity_equal: bool,
     source_count: u64,
     canonical_plan_version: u32,
     canonical_node_count: u64,
@@ -432,6 +445,54 @@ struct OperationTraceRow {
     product_triples: u64,
     zero_roots: u64,
     program_digest: String,
+    public_input_count: u64,
+    scalar_input_count: u64,
+    topology_digest: String,
+    instance_digest: String,
+    product_phase_node_count: u64,
+    node_kinds: OperationNodeKindRow,
+    candidate_encoding: OperationPlanEncodingRow,
+    specialized_encoding_projection: OperationPlanSpecializedEncodingRow,
+}
+
+#[derive(Serialize)]
+struct OperationNodeKindRow {
+    source: u64,
+    structural_zero: u64,
+    public_input: u64,
+    add: u64,
+    sub: u64,
+    scale: u64,
+}
+
+#[derive(Serialize)]
+struct OperationPlanEncodingRow {
+    materialized_artifact: bool,
+    production_decoder_implemented: bool,
+    setup_fit_credit: bool,
+    header_bytes: u64,
+    packed_opcode_bytes: u64,
+    source_payload_bytes: u64,
+    linear_operand_payload_bytes: u64,
+    terminal_payload_bytes: u64,
+    total_bytes: u64,
+}
+
+#[derive(Serialize)]
+struct OperationPlanSpecializedEncodingRow {
+    materialized_artifact: bool,
+    production_decoder_implemented: bool,
+    setup_fit_credit: bool,
+    header_bytes: u64,
+    packed_opcode_bytes: u64,
+    source_delta_payload_bytes: u64,
+    operand_unit_flag_bytes: u64,
+    nonunit_operand_payload_bytes: u64,
+    terminal_payload_bytes: u64,
+    total_bytes: u64,
+    source_successor_count: u64,
+    operand_count: u64,
+    unit_operand_count: u64,
 }
 
 fn run(args: &Args) -> Result<Record, String> {
@@ -472,8 +533,8 @@ fn run(args: &Args) -> Result<Record, String> {
         prover.enable_schedule_audit()?;
     }
     verifier.enable_schedule_audit()?;
-    let mut prover_tx = Transcript::new([0x18; 32]);
-    let mut verifier_tx = Transcript::new([0x18; 32]);
+    let mut prover_tx = Transcript::new([args.transcript_seed_byte; 32]);
+    let mut verifier_tx = Transcript::new([args.transcript_seed_byte; 32]);
 
     let (proof, output, prod, zero) = prove_response_private_logits(
         &workload.model,
@@ -657,7 +718,12 @@ fn run(args: &Args) -> Result<Record, String> {
             }
             .map_err(|error| format!("C6 verifier operation-plan normalization: {error}"))?;
             let identity = prover_plan.identity;
-            if identity != verifier_plan.identity {
+            let topology = prover_plan.topology;
+            let instance = prover_plan.instance;
+            if identity != verifier_plan.identity
+                || topology != verifier_plan.topology
+                || instance != verifier_plan.instance
+            {
                 let prover_blocks = &prover_plan.diagnostics.canonical_node_block_digests;
                 let verifier_blocks = &verifier_plan.diagnostics.canonical_node_block_digests;
                 let first_block_mismatch = prover_blocks
@@ -669,9 +735,13 @@ fn run(args: &Args) -> Result<Record, String> {
                             .then_some(prover_blocks.len().min(verifier_blocks.len()))
                     });
                 return Err(format!(
-                    "C6 prover/verifier canonical program identity differs: prover={}, verifier={}; canonical_nodes={}/{}, raw_ops={}/{}, reachable_ops={}/{}, first_64_node_block_mismatch={:?}, node_digests={}/{}, root_digests={}/{}, captured_prover={:?}, captured_verifier={:?}",
+                    "C6 prover/verifier canonical program identity differs: exact={}/{}, topology={}/{}, instance={}/{}; canonical_nodes={}/{}, raw_ops={}/{}, reachable_ops={}/{}, first_64_node_block_mismatch={:?}, node_digests={}/{}, root_digests={}/{}, captured_prover={:?}, captured_verifier={:?}",
                     hex(&identity.program_digest),
                     hex(&verifier_plan.identity.program_digest),
+                    hex(&topology.topology_digest),
+                    hex(&verifier_plan.topology.topology_digest),
+                    hex(&instance.instance_digest),
+                    hex(&verifier_plan.instance.instance_digest),
                     identity.canonical_node_count,
                     verifier_plan.identity.canonical_node_count,
                     prover_plan.diagnostics.raw_operation_count,
@@ -686,6 +756,18 @@ fn run(args: &Args) -> Result<Record, String> {
                     prover_plan.diagnostics.captured_canonical_nodes,
                     verifier_plan.diagnostics.captured_canonical_nodes,
                 ));
+            }
+            if prover_plan.diagnostics.node_kinds != verifier_plan.diagnostics.node_kinds
+                || prover_plan.diagnostics.product_phase_node_count
+                    != verifier_plan.diagnostics.product_phase_node_count
+                || prover_plan.diagnostics.candidate_encoding
+                    != verifier_plan.diagnostics.candidate_encoding
+                || prover_plan.diagnostics.specialized_encoding_projection
+                    != verifier_plan.diagnostics.specialized_encoding_projection
+            {
+                return Err(
+                    "C6 prover/verifier parameterized plan census or encoding differs".to_owned()
+                );
             }
             if u64::from(identity.source_count) != census.total_leaves
                 || u64::from(identity.product_closure_count) != census.total_product_closures
@@ -705,6 +787,8 @@ fn run(args: &Args) -> Result<Record, String> {
                 diagnostic_only: true,
                 independent_verifier_trace_pending: false,
                 program_identity_equal: true,
+                parameterized_topology_identity_equal: true,
+                parameterized_instance_identity_equal: true,
                 source_count: u64::from(identity.source_count),
                 canonical_plan_version: identity.version,
                 canonical_node_count: u64::from(identity.canonical_node_count),
@@ -720,6 +804,87 @@ fn run(args: &Args) -> Result<Record, String> {
                 product_triples: identity.product_triple_count,
                 zero_roots: u64::from(identity.zero_root_count),
                 program_digest: hex(&identity.program_digest),
+                public_input_count: u64::from(topology.public_input_count),
+                scalar_input_count: u64::from(topology.scalar_input_count),
+                topology_digest: hex(&topology.topology_digest),
+                instance_digest: hex(&instance.instance_digest),
+                product_phase_node_count: prover_plan.diagnostics.product_phase_node_count,
+                node_kinds: OperationNodeKindRow {
+                    source: prover_plan.diagnostics.node_kinds.source,
+                    structural_zero: prover_plan.diagnostics.node_kinds.structural_zero,
+                    public_input: prover_plan.diagnostics.node_kinds.public_input,
+                    add: prover_plan.diagnostics.node_kinds.add,
+                    sub: prover_plan.diagnostics.node_kinds.sub,
+                    scale: prover_plan.diagnostics.node_kinds.scale,
+                },
+                candidate_encoding: OperationPlanEncodingRow {
+                    materialized_artifact: false,
+                    production_decoder_implemented: false,
+                    setup_fit_credit: false,
+                    header_bytes: prover_plan.diagnostics.candidate_encoding.header_bytes,
+                    packed_opcode_bytes: prover_plan
+                        .diagnostics
+                        .candidate_encoding
+                        .packed_opcode_bytes,
+                    source_payload_bytes: prover_plan
+                        .diagnostics
+                        .candidate_encoding
+                        .source_payload_bytes,
+                    linear_operand_payload_bytes: prover_plan
+                        .diagnostics
+                        .candidate_encoding
+                        .linear_operand_payload_bytes,
+                    terminal_payload_bytes: prover_plan
+                        .diagnostics
+                        .candidate_encoding
+                        .terminal_payload_bytes,
+                    total_bytes: prover_plan.diagnostics.candidate_encoding.total_bytes,
+                },
+                specialized_encoding_projection: OperationPlanSpecializedEncodingRow {
+                    materialized_artifact: false,
+                    production_decoder_implemented: false,
+                    setup_fit_credit: false,
+                    header_bytes: prover_plan
+                        .diagnostics
+                        .specialized_encoding_projection
+                        .header_bytes,
+                    packed_opcode_bytes: prover_plan
+                        .diagnostics
+                        .specialized_encoding_projection
+                        .packed_opcode_bytes,
+                    source_delta_payload_bytes: prover_plan
+                        .diagnostics
+                        .specialized_encoding_projection
+                        .source_delta_payload_bytes,
+                    operand_unit_flag_bytes: prover_plan
+                        .diagnostics
+                        .specialized_encoding_projection
+                        .operand_unit_flag_bytes,
+                    nonunit_operand_payload_bytes: prover_plan
+                        .diagnostics
+                        .specialized_encoding_projection
+                        .nonunit_operand_payload_bytes,
+                    terminal_payload_bytes: prover_plan
+                        .diagnostics
+                        .specialized_encoding_projection
+                        .terminal_payload_bytes,
+                    total_bytes: prover_plan
+                        .diagnostics
+                        .specialized_encoding_projection
+                        .total_bytes,
+                    source_successor_count: prover_plan
+                        .diagnostics
+                        .specialized_encoding_projection
+                        .source_successor_count,
+                    operand_count: prover_plan
+                        .diagnostics
+                        .specialized_encoding_projection
+                        .operand_count,
+                    unit_operand_count: prover_plan
+                        .diagnostics
+                        .specialized_encoding_projection
+                        .unit_operand_count,
+                },
             })
         }
         (None, None) => None,
@@ -902,7 +1067,7 @@ fn run(args: &Args) -> Result<Record, String> {
     }
     Ok(Record {
         schema: if args.operation_trace {
-            6
+            7
         } else if args.source_witness {
             3
         } else if args.subfield_witness {
@@ -911,7 +1076,7 @@ fn run(args: &Args) -> Result<Record, String> {
             1
         },
         milestone: if args.operation_trace {
-            "C6-T1-independent-operation-plan-equality".to_owned()
+            "C6-T1-parameterized-operation-plan".to_owned()
         } else if args.source_witness {
             "C6-T1-paired-source-witness-reference".to_owned()
         } else if args.subfield_witness {
@@ -927,6 +1092,7 @@ fn run(args: &Args) -> Result<Record, String> {
         pod_contacted: false,
         prompt_tokens: GPT2_PROMPT_TOKENS,
         decode_tokens: GPT2_DECODE_TOKENS,
+        transcript_seed_byte: args.transcript_seed_byte,
         golden_match: true,
         prover_verifier_schedule_equal: prover_schedule == verifier_schedule,
         model_counters: census.model_counters.into(),

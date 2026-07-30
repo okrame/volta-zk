@@ -8,17 +8,25 @@
 use std::fmt;
 use volta_field::Fp2;
 
-pub const C6_OPERATION_PLAN_VERSION: u32 = 1;
+pub const C6_OPERATION_PLAN_VERSION: u32 = 2;
 
 #[cfg(feature = "c6-trace")]
-const C6_OPERATION_NODE_DOMAIN: &str = "volta/proto/c6/operation-plan/nodes/v1";
+const C6_OPERATION_NODE_DOMAIN: &str = "volta/proto/c6/operation-plan/nodes/v2";
 #[cfg(feature = "c6-trace")]
 const C6_OPERATION_NODE_BLOCK_DOMAIN: &str =
-    "volta/proto/c6/operation-plan/node-block-diagnostic/v1";
+    "volta/proto/c6/operation-plan/node-block-diagnostic/v2";
 #[cfg(feature = "c6-trace")]
-const C6_OPERATION_ROOT_DOMAIN: &str = "volta/proto/c6/operation-plan/roots/v1";
+const C6_OPERATION_ROOT_DOMAIN: &str = "volta/proto/c6/operation-plan/roots/v2";
 #[cfg(feature = "c6-trace")]
-const C6_OPERATION_PLAN_DOMAIN: &str = "volta/proto/c6/operation-plan/v1";
+const C6_OPERATION_PLAN_DOMAIN: &str = "volta/proto/c6/operation-plan/v2";
+#[cfg(feature = "c6-trace")]
+const C6_OPERATION_TOPOLOGY_NODE_DOMAIN: &str = "volta/proto/c6/operation-plan/topology-nodes/v2";
+#[cfg(feature = "c6-trace")]
+const C6_OPERATION_TOPOLOGY_PLAN_DOMAIN: &str = "volta/proto/c6/operation-plan/topology/v2";
+#[cfg(feature = "c6-trace")]
+const C6_OPERATION_INSTANCE_VALUE_DOMAIN: &str = "volta/proto/c6/operation-plan/instance-values/v2";
+#[cfg(feature = "c6-trace")]
+const C6_OPERATION_INSTANCE_DOMAIN: &str = "volta/proto/c6/operation-plan/instance/v2";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6TraceError(String);
@@ -134,6 +142,85 @@ pub struct C6OperationPlanIdentity {
     pub program_digest: [u8; 32],
 }
 
+/// Response-independent identity of the parameterized authenticated-value
+/// program. Public constants and scale coefficients are canonical input
+/// slots here; their response-specific values are bound separately by
+/// [`C6OperationPlanInstanceIdentity`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6OperationPlanTopologyIdentity {
+    pub version: u32,
+    pub source_count: u32,
+    pub source_schedule_digest: [u8; 32],
+    pub canonical_node_count: u32,
+    pub public_input_count: u32,
+    pub scalar_input_count: u32,
+    pub product_closure_count: u32,
+    pub product_triple_count: u64,
+    pub zero_root_count: u32,
+    pub topology_digest: [u8; 32],
+}
+
+/// Per-response binding of all public-node and scale-scalar slot values.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6OperationPlanInstanceIdentity {
+    pub version: u32,
+    pub topology_digest: [u8; 32],
+    pub public_input_count: u32,
+    pub scalar_input_count: u32,
+    pub instance_digest: [u8; 32],
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct C6CanonicalNodeKindCensus {
+    pub source: u64,
+    pub structural_zero: u64,
+    pub public_input: u64,
+    pub add: u64,
+    pub sub: u64,
+    pub scale: u64,
+}
+
+impl C6CanonicalNodeKindCensus {
+    pub fn total(self) -> u64 {
+        self.source + self.structural_zero + self.public_input + self.add + self.sub + self.scale
+    }
+}
+
+/// Exact byte census for the preregistered uncompressed v2 candidate.
+///
+/// This is not setup credit: no production decoder or materialized artifact
+/// is claimed by the diagnostic normalizer. Nodes use packed 3-bit opcodes;
+/// sources use absolute ULEB128 ordinals; linear operands use positive
+/// backward-distance ULEB128 values; public/scalar slot ordinals are implicit
+/// in canonical order; terminal roots use absolute ULEB128 node ids.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct C6OperationPlanEncodingCensus {
+    pub header_bytes: u64,
+    pub packed_opcode_bytes: u64,
+    pub source_payload_bytes: u64,
+    pub linear_operand_payload_bytes: u64,
+    pub terminal_payload_bytes: u64,
+    pub total_bytes: u64,
+}
+
+/// Exact projection for the specialized canonical v2 operand/source coding.
+///
+/// This remains zero setup credit until an encoder, strict decoder and
+/// materialized full artifact reproduce the same census and topology digest.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct C6OperationPlanSpecializedEncodingCensus {
+    pub header_bytes: u64,
+    pub packed_opcode_bytes: u64,
+    pub source_delta_payload_bytes: u64,
+    pub operand_unit_flag_bytes: u64,
+    pub nonunit_operand_payload_bytes: u64,
+    pub terminal_payload_bytes: u64,
+    pub total_bytes: u64,
+    pub source_successor_count: u64,
+    pub operand_count: u64,
+    pub unit_operand_count: u64,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6OperationPlanDiagnostics {
     pub raw_operation_count: u64,
@@ -147,6 +234,14 @@ pub struct C6OperationPlanDiagnostics {
     /// Empty unless an explicit diagnostic normalization requested one
     /// canonical block.
     pub captured_canonical_nodes: Vec<C6CanonicalNodeDebug>,
+    pub node_kinds: C6CanonicalNodeKindCensus,
+    /// Number of canonical nodes assigned after all ProductClosure terminals
+    /// and before the first ZeroBatch root.
+    pub product_phase_node_count: u64,
+    pub topology_node_digest: [u8; 32],
+    pub instance_value_digest: [u8; 32],
+    pub candidate_encoding: C6OperationPlanEncodingCensus,
+    pub specialized_encoding_projection: C6OperationPlanSpecializedEncodingCensus,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -174,7 +269,10 @@ pub enum C6CanonicalNodeDebugKind {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6CanonicalOperationPlan {
+    /// Exact-instance identity retained as a prover/verifier parity oracle.
     pub identity: C6OperationPlanIdentity,
+    pub topology: C6OperationPlanTopologyIdentity,
+    pub instance: C6OperationPlanInstanceIdentity,
     pub diagnostics: C6OperationPlanDiagnostics,
 }
 
@@ -318,6 +416,19 @@ struct C6TraceNormalizer<'a> {
     canonical_node_count: u32,
     reachable_operation_count: u64,
     node_hasher: blake3::Hasher,
+    topology_node_hasher: blake3::Hasher,
+    instance_value_hasher: blake3::Hasher,
+    public_input_count: u32,
+    scalar_input_count: u32,
+    node_kinds: C6CanonicalNodeKindCensus,
+    source_payload_bytes: u64,
+    source_delta_payload_bytes: u64,
+    previous_source: Option<u32>,
+    source_successor_count: u64,
+    linear_operand_payload_bytes: u64,
+    operand_count: u64,
+    unit_operand_count: u64,
+    nonunit_operand_payload_bytes: u64,
     node_block_hasher: blake3::Hasher,
     node_block_len: u32,
     node_block_digests: Vec<[u8; 32]>,
@@ -328,12 +439,34 @@ struct C6TraceNormalizer<'a> {
 
 #[cfg(feature = "c6-trace")]
 const C6_OPERATION_DIAGNOSTIC_BLOCK_NODES: u32 = 64;
+#[cfg(feature = "c6-trace")]
+const C6_OPERATION_PARAMETERIZED_HEADER_BYTES: u64 = 152;
 
 #[cfg(feature = "c6-trace")]
 fn new_node_block_hasher(block_index: u64) -> blake3::Hasher {
     let mut hasher = blake3::Hasher::new_derive_key(C6_OPERATION_NODE_BLOCK_DOMAIN);
     hasher.update(&block_index.to_le_bytes());
     hasher
+}
+
+#[cfg(feature = "c6-trace")]
+fn uleb128_u32_len(value: u32) -> u64 {
+    uleb128_u64_len(u64::from(value))
+}
+
+#[cfg(feature = "c6-trace")]
+fn uleb128_u64_len(mut value: u64) -> u64 {
+    let mut bytes = 1;
+    while value >= 0x80 {
+        value >>= 7;
+        bytes += 1;
+    }
+    bytes
+}
+
+#[cfg(feature = "c6-trace")]
+fn zigzag_i64(value: i64) -> u64 {
+    ((value << 1) ^ (value >> 63)) as u64
 }
 
 #[cfg(feature = "c6-trace")]
@@ -364,6 +497,21 @@ impl<'a> C6TraceNormalizer<'a> {
             canonical_node_count: 0,
             reachable_operation_count: 0,
             node_hasher: blake3::Hasher::new_derive_key(C6_OPERATION_NODE_DOMAIN),
+            topology_node_hasher: blake3::Hasher::new_derive_key(C6_OPERATION_TOPOLOGY_NODE_DOMAIN),
+            instance_value_hasher: blake3::Hasher::new_derive_key(
+                C6_OPERATION_INSTANCE_VALUE_DOMAIN,
+            ),
+            public_input_count: 0,
+            scalar_input_count: 0,
+            node_kinds: C6CanonicalNodeKindCensus::default(),
+            source_payload_bytes: 0,
+            source_delta_payload_bytes: 0,
+            previous_source: None,
+            source_successor_count: 0,
+            linear_operand_payload_bytes: 0,
+            operand_count: 0,
+            unit_operand_count: 0,
+            nonunit_operand_payload_bytes: 0,
             node_block_hasher: new_node_block_hasher(0),
             node_block_len: 0,
             node_block_digests: Vec::new(),
@@ -436,6 +584,85 @@ impl<'a> C6TraceNormalizer<'a> {
         self.hash_node_bytes(&[tag]);
     }
 
+    fn hash_topology_node_prefix(&mut self, canonical: u32, tag: u8) {
+        self.topology_node_hasher.update(&canonical.to_le_bytes());
+        self.topology_node_hasher.update(&[tag]);
+    }
+
+    fn hash_instance_value(&mut self, canonical: u32, kind: u8, slot: u32, value: Fp2) {
+        self.instance_value_hasher.update(&canonical.to_le_bytes());
+        self.instance_value_hasher.update(&[kind]);
+        self.instance_value_hasher.update(&slot.to_le_bytes());
+        self.instance_value_hasher.update(&value.c0.value().to_le_bytes());
+        self.instance_value_hasher.update(&value.c1.value().to_le_bytes());
+    }
+
+    fn next_public_input(&mut self) -> Result<u32, C6TraceError> {
+        let slot = self.public_input_count;
+        self.public_input_count = slot
+            .checked_add(1)
+            .ok_or_else(|| C6TraceError::new("C6 public-input slot count overflows u32"))?;
+        Ok(slot)
+    }
+
+    fn next_scalar_input(&mut self) -> Result<u32, C6TraceError> {
+        let slot = self.scalar_input_count;
+        self.scalar_input_count = slot
+            .checked_add(1)
+            .ok_or_else(|| C6TraceError::new("C6 scalar-input slot count overflows u32"))?;
+        Ok(slot)
+    }
+
+    fn add_source_payload(&mut self, source: u32) -> Result<(), C6TraceError> {
+        self.source_payload_bytes = self
+            .source_payload_bytes
+            .checked_add(uleb128_u32_len(source))
+            .ok_or_else(|| C6TraceError::new("C6 source encoding byte count overflows"))?;
+        let previous = self.previous_source.map_or(-1, i64::from);
+        let delta = i64::from(source) - previous;
+        self.source_delta_payload_bytes = self
+            .source_delta_payload_bytes
+            .checked_add(uleb128_u64_len(zigzag_i64(delta)))
+            .ok_or_else(|| C6TraceError::new("C6 source-delta byte count overflows"))?;
+        if delta == 1 {
+            self.source_successor_count = self
+                .source_successor_count
+                .checked_add(1)
+                .ok_or_else(|| C6TraceError::new("C6 source-successor count overflows"))?;
+        }
+        self.previous_source = Some(source);
+        Ok(())
+    }
+
+    fn add_operand_payload(&mut self, canonical: u32, operand: u32) -> Result<(), C6TraceError> {
+        let distance = canonical.checked_sub(operand).ok_or_else(|| {
+            C6TraceError::new("C6 parameterized operand is not before its canonical node")
+        })?;
+        if distance == 0 {
+            return Err(C6TraceError::new("C6 parameterized operand has zero backward distance"));
+        }
+        self.linear_operand_payload_bytes = self
+            .linear_operand_payload_bytes
+            .checked_add(uleb128_u32_len(distance))
+            .ok_or_else(|| C6TraceError::new("C6 operand encoding byte count overflows"))?;
+        self.operand_count = self
+            .operand_count
+            .checked_add(1)
+            .ok_or_else(|| C6TraceError::new("C6 operand count overflows"))?;
+        if distance == 1 {
+            self.unit_operand_count = self
+                .unit_operand_count
+                .checked_add(1)
+                .ok_or_else(|| C6TraceError::new("C6 unit-operand count overflows"))?;
+        } else {
+            self.nonunit_operand_payload_bytes = self
+                .nonunit_operand_payload_bytes
+                .checked_add(uleb128_u32_len(distance - 2))
+                .ok_or_else(|| C6TraceError::new("C6 nonunit operand byte count overflows"))?;
+        }
+        Ok(())
+    }
+
     fn finish_node_record(&mut self) {
         self.node_block_len += 1;
         if self.node_block_len == C6_OPERATION_DIAGNOSTIC_BLOCK_NODES {
@@ -474,6 +701,8 @@ impl<'a> C6TraceNormalizer<'a> {
                 let canonical = self.next_canonical()?;
                 self.hash_node_prefix(canonical, 2);
                 self.hash_node_fp2(Fp2::ZERO);
+                self.hash_topology_node_prefix(canonical, 2);
+                self.node_kinds.structural_zero += 1;
                 self.capture_node(canonical, C6CanonicalNodeDebugKind::Public(Fp2::ZERO));
                 self.finish_node_record();
                 self.public_zero_canonical = canonical;
@@ -498,6 +727,10 @@ impl<'a> C6TraceNormalizer<'a> {
         let canonical = self.next_canonical()?;
         self.hash_node_prefix(canonical, 1);
         self.hash_node_bytes(&source.to_le_bytes());
+        self.hash_topology_node_prefix(canonical, 1);
+        self.topology_node_hasher.update(&source.to_le_bytes());
+        self.node_kinds.source += 1;
+        self.add_source_payload(source)?;
         self.capture_node(canonical, C6CanonicalNodeDebugKind::Source(source));
         self.finish_node_record();
         self.source_to_canonical[source as usize] = canonical;
@@ -521,14 +754,7 @@ impl<'a> C6TraceNormalizer<'a> {
             Ok(token)
         };
         match self.trace.nodes[raw_index] {
-            C6TraceNode::Public(value) => {
-                if value == Fp2::ZERO {
-                    return Err(C6TraceError::new(
-                        "C6 trace contains a noncanonical allocated public zero",
-                    ));
-                }
-                Ok([None, None])
-            }
+            C6TraceNode::Public(_) => Ok([None, None]),
             C6TraceNode::Add { lhs, rhs } | C6TraceNode::Sub { lhs, rhs } => {
                 Ok([Some(child(lhs)?), Some(child(rhs)?)])
             }
@@ -542,6 +768,11 @@ impl<'a> C6TraceNormalizer<'a> {
             C6TraceNode::Public(value) => {
                 self.hash_node_prefix(canonical, 2);
                 self.hash_node_fp2(value);
+                let slot = self.next_public_input()?;
+                self.hash_topology_node_prefix(canonical, 3);
+                self.topology_node_hasher.update(&slot.to_le_bytes());
+                self.hash_instance_value(canonical, 1, slot, value);
+                self.node_kinds.public_input += 1;
                 self.capture_node(canonical, C6CanonicalNodeDebugKind::Public(value));
             }
             C6TraceNode::Add { lhs, rhs } => {
@@ -554,6 +785,12 @@ impl<'a> C6TraceNormalizer<'a> {
                 })?;
                 self.hash_node_bytes(&lhs.to_le_bytes());
                 self.hash_node_bytes(&rhs.to_le_bytes());
+                self.hash_topology_node_prefix(canonical, 4);
+                self.topology_node_hasher.update(&lhs.to_le_bytes());
+                self.topology_node_hasher.update(&rhs.to_le_bytes());
+                self.node_kinds.add += 1;
+                self.add_operand_payload(canonical, lhs)?;
+                self.add_operand_payload(canonical, rhs)?;
                 self.capture_node(canonical, C6CanonicalNodeDebugKind::Add { lhs, rhs });
             }
             C6TraceNode::Sub { lhs, rhs } => {
@@ -566,6 +803,12 @@ impl<'a> C6TraceNormalizer<'a> {
                 })?;
                 self.hash_node_bytes(&lhs.to_le_bytes());
                 self.hash_node_bytes(&rhs.to_le_bytes());
+                self.hash_topology_node_prefix(canonical, 5);
+                self.topology_node_hasher.update(&lhs.to_le_bytes());
+                self.topology_node_hasher.update(&rhs.to_le_bytes());
+                self.node_kinds.sub += 1;
+                self.add_operand_payload(canonical, lhs)?;
+                self.add_operand_payload(canonical, rhs)?;
                 self.capture_node(canonical, C6CanonicalNodeDebugKind::Sub { lhs, rhs });
             }
             C6TraceNode::Scale { value, scalar } => {
@@ -575,6 +818,13 @@ impl<'a> C6TraceNormalizer<'a> {
                 })?;
                 self.hash_node_bytes(&value.to_le_bytes());
                 self.hash_node_fp2(scalar);
+                let slot = self.next_scalar_input()?;
+                self.hash_topology_node_prefix(canonical, 6);
+                self.topology_node_hasher.update(&value.to_le_bytes());
+                self.topology_node_hasher.update(&slot.to_le_bytes());
+                self.hash_instance_value(canonical, 2, slot, scalar);
+                self.node_kinds.scale += 1;
+                self.add_operand_payload(canonical, value)?;
                 self.capture_node(canonical, C6CanonicalNodeDebugKind::Scale { value, scalar });
             }
         }
@@ -679,6 +929,7 @@ fn normalize_c6_operation_trace_impl(
         let zero_root_count = u32::try_from(trace.zero_roots.len())
             .map_err(|_| C6TraceError::new("C6 zero-root count exceeds u32"))?;
         let mut product_triple_count = 0u64;
+        let mut terminal_payload_bytes = 0u64;
         let mut normalizer = C6TraceNormalizer::new(trace, manifest, capture_block)?;
         let mut root_hasher = blake3::Hasher::new_derive_key(C6_OPERATION_ROOT_DOMAIN);
         root_hasher.update(&product_closure_count.to_le_bytes());
@@ -698,6 +949,9 @@ fn normalize_c6_operation_trace_impl(
             product_triple_count = product_triple_count
                 .checked_add(triple_count)
                 .ok_or_else(|| C6TraceError::new("C6 product triple count overflows"))?;
+            terminal_payload_bytes = terminal_payload_bytes
+                .checked_add(uleb128_u64_len(triple_count))
+                .ok_or_else(|| C6TraceError::new("C6 terminal encoding byte count overflows"))?;
             root_hasher.update(&(closure_index as u64).to_le_bytes());
             root_hasher.update(&triple_count.to_le_bytes());
             for (triple_index, triple) in closure.triples.iter().enumerate() {
@@ -709,13 +963,21 @@ fn normalize_c6_operation_trace_impl(
                     });
                     let canonical = normalizer.normalize_root(operand, true)?;
                     root_hasher.update(&canonical.to_le_bytes());
+                    terminal_payload_bytes =
+                        terminal_payload_bytes.checked_add(uleb128_u32_len(canonical)).ok_or_else(
+                            || C6TraceError::new("C6 terminal encoding byte count overflows"),
+                        )?;
                 }
             }
             normalizer.current_terminal =
                 Some(C6CanonicalTerminalDebug::ProductMask { closure: closure_index as u64 });
             let canonical_mask = normalizer.normalize_root(closure.mask, false)?;
             root_hasher.update(&canonical_mask.to_le_bytes());
+            terminal_payload_bytes = terminal_payload_bytes
+                .checked_add(uleb128_u32_len(canonical_mask))
+                .ok_or_else(|| C6TraceError::new("C6 terminal encoding byte count overflows"))?;
         }
+        let product_phase_node_count = u64::from(normalizer.canonical_node_count);
 
         root_hasher.update(&zero_root_count.to_le_bytes());
         for (index, &root) in trace.zero_roots.iter().enumerate() {
@@ -723,6 +985,9 @@ fn normalize_c6_operation_trace_impl(
                 Some(C6CanonicalTerminalDebug::ZeroRoot { index: index as u64 });
             let canonical = normalizer.normalize_root(root, true)?;
             root_hasher.update(&canonical.to_le_bytes());
+            terminal_payload_bytes = terminal_payload_bytes
+                .checked_add(uleb128_u32_len(canonical))
+                .ok_or_else(|| C6TraceError::new("C6 terminal encoding byte count overflows"))?;
         }
         normalizer.current_terminal = None;
 
@@ -733,6 +998,8 @@ fn normalize_c6_operation_trace_impl(
             .ok_or_else(|| C6TraceError::new("C6 reachable operation count exceeds raw count"))?;
         normalizer.finish_node_blocks();
         let node_digest = *normalizer.node_hasher.finalize().as_bytes();
+        let topology_node_digest = *normalizer.topology_node_hasher.finalize().as_bytes();
+        let instance_value_digest = *normalizer.instance_value_hasher.finalize().as_bytes();
         let root_digest = *root_hasher.finalize().as_bytes();
         let mut plan_hasher = blake3::Hasher::new_derive_key(C6_OPERATION_PLAN_DOMAIN);
         plan_hasher.update(&C6_OPERATION_PLAN_VERSION.to_le_bytes());
@@ -746,6 +1013,77 @@ fn normalize_c6_operation_trace_impl(
         plan_hasher.update(&root_digest);
         let program_digest = *plan_hasher.finalize().as_bytes();
 
+        if normalizer.node_kinds.total() != u64::from(normalizer.canonical_node_count) {
+            return Err(C6TraceError::new("C6 canonical node-kind census differs from node count"));
+        }
+        let mut topology_hasher = blake3::Hasher::new_derive_key(C6_OPERATION_TOPOLOGY_PLAN_DOMAIN);
+        topology_hasher.update(&C6_OPERATION_PLAN_VERSION.to_le_bytes());
+        topology_hasher.update(&manifest.source_count.to_le_bytes());
+        topology_hasher.update(&manifest.source_schedule_digest);
+        topology_hasher.update(&normalizer.canonical_node_count.to_le_bytes());
+        topology_hasher.update(&normalizer.public_input_count.to_le_bytes());
+        topology_hasher.update(&normalizer.scalar_input_count.to_le_bytes());
+        topology_hasher.update(&product_closure_count.to_le_bytes());
+        topology_hasher.update(&product_triple_count.to_le_bytes());
+        topology_hasher.update(&zero_root_count.to_le_bytes());
+        topology_hasher.update(&topology_node_digest);
+        topology_hasher.update(&root_digest);
+        let topology_digest = *topology_hasher.finalize().as_bytes();
+
+        let mut instance_hasher = blake3::Hasher::new_derive_key(C6_OPERATION_INSTANCE_DOMAIN);
+        instance_hasher.update(&C6_OPERATION_PLAN_VERSION.to_le_bytes());
+        instance_hasher.update(&topology_digest);
+        instance_hasher.update(&normalizer.public_input_count.to_le_bytes());
+        instance_hasher.update(&normalizer.scalar_input_count.to_le_bytes());
+        instance_hasher.update(&instance_value_digest);
+        let instance_digest = *instance_hasher.finalize().as_bytes();
+
+        let packed_opcode_bits = u64::from(normalizer.canonical_node_count)
+            .checked_mul(3)
+            .ok_or_else(|| C6TraceError::new("C6 packed opcode bit count overflows"))?;
+        let packed_opcode_bytes = packed_opcode_bits
+            .checked_add(7)
+            .ok_or_else(|| C6TraceError::new("C6 packed opcode byte count overflows"))?
+            / 8;
+        let candidate_total_bytes = C6_OPERATION_PARAMETERIZED_HEADER_BYTES
+            .checked_add(packed_opcode_bytes)
+            .and_then(|bytes| bytes.checked_add(normalizer.source_payload_bytes))
+            .and_then(|bytes| bytes.checked_add(normalizer.linear_operand_payload_bytes))
+            .and_then(|bytes| bytes.checked_add(terminal_payload_bytes))
+            .ok_or_else(|| C6TraceError::new("C6 candidate plan byte count overflows"))?;
+        let candidate_encoding = C6OperationPlanEncodingCensus {
+            header_bytes: C6_OPERATION_PARAMETERIZED_HEADER_BYTES,
+            packed_opcode_bytes,
+            source_payload_bytes: normalizer.source_payload_bytes,
+            linear_operand_payload_bytes: normalizer.linear_operand_payload_bytes,
+            terminal_payload_bytes,
+            total_bytes: candidate_total_bytes,
+        };
+        let operand_unit_flag_bytes = normalizer
+            .operand_count
+            .checked_add(7)
+            .ok_or_else(|| C6TraceError::new("C6 operand-flag byte count overflows"))?
+            / 8;
+        let specialized_total_bytes = C6_OPERATION_PARAMETERIZED_HEADER_BYTES
+            .checked_add(packed_opcode_bytes)
+            .and_then(|bytes| bytes.checked_add(normalizer.source_delta_payload_bytes))
+            .and_then(|bytes| bytes.checked_add(operand_unit_flag_bytes))
+            .and_then(|bytes| bytes.checked_add(normalizer.nonunit_operand_payload_bytes))
+            .and_then(|bytes| bytes.checked_add(terminal_payload_bytes))
+            .ok_or_else(|| C6TraceError::new("C6 specialized plan byte count overflows"))?;
+        let specialized_encoding_projection = C6OperationPlanSpecializedEncodingCensus {
+            header_bytes: C6_OPERATION_PARAMETERIZED_HEADER_BYTES,
+            packed_opcode_bytes,
+            source_delta_payload_bytes: normalizer.source_delta_payload_bytes,
+            operand_unit_flag_bytes,
+            nonunit_operand_payload_bytes: normalizer.nonunit_operand_payload_bytes,
+            terminal_payload_bytes,
+            total_bytes: specialized_total_bytes,
+            source_successor_count: normalizer.source_successor_count,
+            operand_count: normalizer.operand_count,
+            unit_operand_count: normalizer.unit_operand_count,
+        };
+
         return Ok(C6CanonicalOperationPlan {
             identity: C6OperationPlanIdentity {
                 version: C6_OPERATION_PLAN_VERSION,
@@ -757,6 +1095,25 @@ fn normalize_c6_operation_trace_impl(
                 zero_root_count,
                 program_digest,
             },
+            topology: C6OperationPlanTopologyIdentity {
+                version: C6_OPERATION_PLAN_VERSION,
+                source_count: manifest.source_count,
+                source_schedule_digest: manifest.source_schedule_digest,
+                canonical_node_count: normalizer.canonical_node_count,
+                public_input_count: normalizer.public_input_count,
+                scalar_input_count: normalizer.scalar_input_count,
+                product_closure_count,
+                product_triple_count,
+                zero_root_count,
+                topology_digest,
+            },
+            instance: C6OperationPlanInstanceIdentity {
+                version: C6_OPERATION_PLAN_VERSION,
+                topology_digest,
+                public_input_count: normalizer.public_input_count,
+                scalar_input_count: normalizer.scalar_input_count,
+                instance_digest,
+            },
             diagnostics: C6OperationPlanDiagnostics {
                 raw_operation_count,
                 reachable_operation_count: normalizer.reachable_operation_count,
@@ -765,6 +1122,12 @@ fn normalize_c6_operation_trace_impl(
                 root_digest,
                 canonical_node_block_digests: normalizer.node_block_digests,
                 captured_canonical_nodes: normalizer.captured_nodes,
+                node_kinds: normalizer.node_kinds,
+                product_phase_node_count,
+                topology_node_digest,
+                instance_value_digest,
+                candidate_encoding,
+                specialized_encoding_projection,
             },
         });
     }
@@ -863,9 +1226,6 @@ impl C6TraceToken {
     pub(crate) fn public(value: Fp2) -> Self {
         #[cfg(feature = "c6-trace")]
         {
-            if value == Fp2::ZERO {
-                return Self::public_zero();
-            }
             return record_node(C6TraceNode::Public(value));
         }
         #[cfg(not(feature = "c6-trace"))]
@@ -922,7 +1282,15 @@ fn record_binary(
 fn record_node(node: C6TraceNode) -> C6TraceToken {
     with_runtime(|runtime| {
         if runtime.party.is_none() {
-            return Ok(C6TraceToken::untracked());
+            return Ok(match node {
+                // A fixed zero may be constructed before the response trace
+                // begins and later participate in the authenticated-value
+                // graph. Preserve its explicit structural identity. Any
+                // public zero constructed while a trace is active is instead
+                // allocated as a distinct response-instance input node.
+                C6TraceNode::Public(value) if value == Fp2::ZERO => C6TraceToken::public_zero(),
+                _ => C6TraceToken::untracked(),
+            });
         }
         let operands = match node {
             C6TraceNode::Public(_) => [None, None],
@@ -1128,6 +1496,8 @@ mod tests {
         let prover = normalize_c6_operation_trace(&prover, &manifest).unwrap();
         let verifier = normalize_c6_operation_trace(&verifier, &manifest).unwrap();
         assert_eq!(prover.identity, verifier.identity);
+        assert_eq!(prover.topology, verifier.topology);
+        assert_eq!(prover.instance, verifier.instance);
     }
 
     #[cfg(feature = "c6-trace")]
@@ -1148,6 +1518,43 @@ mod tests {
         assert_eq!(shifted.diagnostics.raw_operation_count, 4);
         assert_eq!(shifted.diagnostics.reachable_operation_count, 3);
         assert_eq!(shifted.diagnostics.omitted_operation_count, 1);
+        assert_eq!(
+            compact.diagnostics.node_kinds,
+            C6CanonicalNodeKindCensus {
+                source: 3,
+                structural_zero: 0,
+                public_input: 1,
+                add: 1,
+                sub: 0,
+                scale: 1,
+            }
+        );
+        assert_eq!(
+            compact.diagnostics.candidate_encoding,
+            C6OperationPlanEncodingCensus {
+                header_bytes: 152,
+                packed_opcode_bytes: 3,
+                source_payload_bytes: 3,
+                linear_operand_payload_bytes: 3,
+                terminal_payload_bytes: 6,
+                total_bytes: 167,
+            }
+        );
+        assert_eq!(
+            compact.diagnostics.specialized_encoding_projection,
+            C6OperationPlanSpecializedEncodingCensus {
+                header_bytes: 152,
+                packed_opcode_bytes: 3,
+                source_delta_payload_bytes: 3,
+                operand_unit_flag_bytes: 1,
+                nonunit_operand_payload_bytes: 1,
+                terminal_payload_bytes: 6,
+                total_bytes: 166,
+                source_successor_count: 3,
+                operand_count: 3,
+                unit_operand_count: 2,
+            }
+        );
     }
 
     #[cfg(feature = "c6-trace")]
@@ -1170,6 +1577,73 @@ mod tests {
         let changed_schedule =
             normalize_c6_operation_trace(&allocation_trace(false), &changed_manifest).unwrap();
         assert_ne!(baseline.identity.program_digest, changed_schedule.identity.program_digest);
+        assert_ne!(baseline.topology.topology_digest, changed_schedule.topology.topology_digest);
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn parameterized_plan_separates_topology_from_instance_values() {
+        let manifest = manifest(3, vec![2]);
+        let baseline = normalize_c6_operation_trace(&allocation_trace(false), &manifest).unwrap();
+        let mut changed = allocation_trace(false);
+        changed.nodes[0] =
+            C6TraceNode::Public(Fp2::new(volta_field::Fp::new(123), volta_field::Fp::new(456)));
+        changed.nodes[2] = C6TraceNode::Scale {
+            value: operation(1),
+            scalar: Fp2::new(volta_field::Fp::new(789), volta_field::Fp::new(321)),
+        };
+        let changed = normalize_c6_operation_trace(&changed, &manifest).unwrap();
+
+        assert_ne!(baseline.identity.program_digest, changed.identity.program_digest);
+        assert_eq!(baseline.topology, changed.topology);
+        assert_ne!(baseline.instance.instance_digest, changed.instance.instance_digest);
+        assert_eq!(baseline.instance.topology_digest, baseline.topology.topology_digest);
+        assert_eq!(changed.instance.topology_digest, changed.topology.topology_digest);
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn zero_public_input_does_not_alias_structural_zero() {
+        let trace = C6ProverTraceSnapshot {
+            namespace: TEST_NAMESPACE,
+            source_count: 0,
+            nodes: vec![C6TraceNode::Public(Fp2::ZERO)],
+            zero_roots: vec![operation(0), C6TraceToken::public_zero()],
+            products: vec![],
+        };
+        let plan = normalize_c6_operation_trace(&trace, &manifest(0, vec![])).unwrap();
+        assert_eq!(plan.identity.canonical_node_count, 2);
+        assert_eq!(plan.topology.public_input_count, 1);
+        assert_eq!(plan.topology.scalar_input_count, 0);
+        assert_eq!(plan.diagnostics.node_kinds.public_input, 1);
+        assert_eq!(plan.diagnostics.node_kinds.structural_zero, 1);
+
+        let aliased = C6ProverTraceSnapshot {
+            namespace: TEST_NAMESPACE,
+            source_count: 0,
+            nodes: vec![],
+            zero_roots: vec![C6TraceToken::public_zero(), C6TraceToken::public_zero()],
+            products: vec![],
+        };
+        let aliased = normalize_c6_operation_trace(&aliased, &manifest(0, vec![])).unwrap();
+        assert_ne!(plan.topology.topology_digest, aliased.topology.topology_digest);
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn public_zero_lifecycle_distinguishes_pretrace_structure_from_active_input() {
+        let structural = C6TraceToken::public(Fp2::ZERO);
+        assert_eq!(structural, C6TraceToken::public_zero());
+
+        begin_c6_prover_trace().unwrap();
+        let input = C6TraceToken::public(Fp2::ZERO);
+        assert_ne!(input, C6TraceToken::public_zero());
+        record_c6_zero_roots(&[input, structural]).unwrap();
+        let snapshot = finish_c6_prover_trace().unwrap();
+        let plan = normalize_c6_operation_trace(&snapshot, &manifest(0, vec![])).unwrap();
+        assert_eq!(plan.topology.public_input_count, 1);
+        assert_eq!(plan.diagnostics.node_kinds.public_input, 1);
+        assert_eq!(plan.diagnostics.node_kinds.structural_zero, 1);
     }
 
     #[cfg(feature = "c6-trace")]
@@ -1252,8 +1726,9 @@ mod tests {
             zero_roots: vec![operation(0)],
             products: vec![],
         };
-        let error = normalize_c6_operation_trace(&allocated_zero, &manifest).unwrap_err();
-        assert!(error.to_string().contains("noncanonical allocated public zero"));
+        let allocated_zero = normalize_c6_operation_trace(&allocated_zero, &manifest).unwrap();
+        assert_eq!(allocated_zero.topology.public_input_count, 1);
+        assert_eq!(allocated_zero.diagnostics.node_kinds.structural_zero, 0);
 
         let untracked = C6ProverTraceSnapshot {
             namespace: TEST_NAMESPACE,

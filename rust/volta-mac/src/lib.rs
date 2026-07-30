@@ -21,8 +21,10 @@ pub use c6_trace::{
     begin_c6_prover_trace, begin_c6_verifier_trace, finish_c6_prover_trace,
     finish_c6_verifier_trace, normalize_c6_operation_trace,
     normalize_c6_operation_trace_debug_block, record_c6_product_closure, record_c6_zero_roots,
-    C6CanonicalNodeDebug, C6CanonicalNodeDebugKind, C6CanonicalOperationPlan,
-    C6CanonicalTerminalDebug, C6OperationPlanDiagnostics, C6OperationPlanIdentity,
+    C6CanonicalNodeDebug, C6CanonicalNodeDebugKind, C6CanonicalNodeKindCensus,
+    C6CanonicalOperationPlan, C6CanonicalTerminalDebug, C6OperationPlanDiagnostics,
+    C6OperationPlanEncodingCensus, C6OperationPlanIdentity, C6OperationPlanInstanceIdentity,
+    C6OperationPlanSpecializedEncodingCensus, C6OperationPlanTopologyIdentity,
     C6ProverTraceSnapshot, C6TraceError, C6TraceNode, C6TraceProductClosure, C6TraceSourceManifest,
     C6TraceToken, C6VerifierTraceSnapshot, C6_OPERATION_PLAN_VERSION,
 };

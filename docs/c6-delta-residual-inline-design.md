@@ -4,9 +4,9 @@ Status: **OWNER REQUIREMENTS FROZEN; Q=121 CONTINGENCY ACTIVATED BEFORE
 IMPLEMENTATION; FORMAL SEAM / ROOFLINE / PAIRED CODEC / PRODUCTION SOURCE
 CENSUS / PAIRED COMPLETE SOURCE WITNESS / INDEPENDENT EXACT-INSTANCE
 OPERATION DAG GREEN; PARAMETERIZED V2 TWO-SEED IDENTITY GREEN; CANONICAL PLAN
-CODEC + SCALED COMPILED-RESIDUAL CORE GREEN; FULL-T1 COMPILED RESIDUAL /
-CACHE / WRAPPER PENDING; LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE
-POD**.
+CODEC + FULL-T1 COMPILED RESIDUAL + DURABLE 17+4 SESSION + HIDDEN-U NATIVE
+SUMCHECK REDUCTION GREEN; CACHE ARGUMENT / PACKED PCS / FINAL WRAPPER
+PENDING; LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
 accepted C4/T1 `rate=1/4,Q=120` inline profile.  It does not reopen or rewrite
@@ -1099,9 +1099,24 @@ epsilon_linear_functional
 This is one amplified instance of the already allocated
 `epsilon_linear_sumchecks`, not a fifth event.  Both repetitions' terminal
 claims are included in the same packed wrapper opening.  A 32-byte
-post-commit client seed may expand both independent coefficient vectors
-through the already declared computational transcript sampler; the two
-domain labels and coefficient order are certificate-bound.
+post-commit client seed may expand both independent **grand-RLC coefficient
+vectors** through the already declared computational transcript sampler; the
+two domain labels and coefficient order are certificate-bound.  It does not
+pre-expand the native sumcheck challenges.  For each family and repetition,
+every sumcheck round is ordered
+
+```text
+prover fixes and sends the complete degree-two round polynomial
+client returns one fresh Fp2 challenge
+```
+
+before the next round is formed.  Sending all round challenges together
+with the grand-RLC seed is forbidden: once those points are known, arbitrary
+degree-two messages can be interpolated backwards between a false initial
+claim and the committed terminal opening.  This is the same interactive-DV
+ordering already enforced by `Transcript::append` then
+`Transcript::challenge_fp2`; it is not Fiat--Shamir and adds no statistical
+event or response byte.
 
 The native-`Fp2` sumchecks prove the resulting linear functionals and open
 the committed multilinear vectors through one packed response opening.
@@ -1121,6 +1136,24 @@ embed U:     8 vectors x 65,536 entries = 2^19 Fp2
 Both message lengths are `2^n + 512`, so the verifier evaluates each
 truncated geometric functional as exactly two aligned Boolean subcubes.  It
 does not scan an `u` vector.  The `q_col` live interval is a power of two.
+
+The first backend checkpoint now implements this exact reduction.  For each
+of the two response-wide coefficient streams it materializes one functional
+per family, runs the degree-two sumcheck with strict
+message-then-challenge ordering, and returns the four terminal `U(r)` claims.
+The verifier recomputes the public RHS and evaluates the truncated NTT
+functional analytically; it never receives or reconstructs a hidden
+`u_vector`.  The terminal point is extended by one zero coordinate when it
+enters the strict-rate wrapper, selecting the witness half rather than the
+random ZK half.
+
+The canonical sumcheck proof is exactly **4,004 B** at the production
+`21+19`-round geometry, including its terminal digest.  This is charged
+inside the existing `800,000-B` non-PCS allocation; it does not change the
+`4,409,824-B` roof.  The reducer intentionally cannot return a production
+acceptance result: its four terminal values remain untrusted until the one
+packed C6 opening binds them to the pre-query roots.  Consequently no
+historical `MultiOpenProof.u_c/u_gs` field is removed or credited yet.
 
 The wrapper root(s), correction-vector root and statement digest are sent
 before any query or batching challenge that they bind.  C6 retains the
@@ -1340,7 +1373,9 @@ The response protocol is ordered:
 3. provider sends commitments to hidden direct corrections, hidden
    `u_vectors`, cache witness and the complete pre-query statement;
 4. client sends the next verifier challenges, including Q=121 Ligero column
-   queries and wrapper batching challenges;
+   queries and wrapper batching challenges; within every hidden-linear,
+   cache and wrapper sumcheck this step is repeated round-by-round as
+   prover-message then fresh client challenge, never as one upfront tape;
 5. provider sends retained T1 fields, queried columns, compact residual
    outputs, `new_head` and `pi_final`;
 6. client verifies the wrapper, streams both `K_base[b]` values, checks both

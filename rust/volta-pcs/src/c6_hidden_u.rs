@@ -57,7 +57,7 @@ pub const C6_HIDDEN_U_BATCH_SEED_BYTES: u64 = 32;
 pub struct C6HiddenUError(String);
 
 impl C6HiddenUError {
-    fn new(message: impl Into<String>) -> Self {
+    pub(crate) fn new(message: impl Into<String>) -> Self {
         Self(message.into())
     }
 }
@@ -70,7 +70,7 @@ impl fmt::Display for C6HiddenUError {
 
 impl std::error::Error for C6HiddenUError {}
 
-type C6HiddenUResult<T> = Result<T, C6HiddenUError>;
+pub(crate) type C6HiddenUResult<T> = Result<T, C6HiddenUError>;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -683,6 +683,14 @@ impl C6HiddenUFamilyWitness {
         self.layout
     }
 
+    pub(crate) fn vectors(&self) -> &[Vec<Fp2>] {
+        &self.vectors
+    }
+
+    pub(crate) fn q_cols(&self) -> &[Vec<Fp2>] {
+        &self.q_cols
+    }
+
     fn public_ips(&self) -> Vec<Fp2> {
         self.q_cols
             .iter()
@@ -811,7 +819,7 @@ pub struct C6HiddenUPostCommit {
 }
 
 impl C6HiddenUPostCommit {
-    fn validate(&self, layouts: &[C6HiddenULayout]) -> C6HiddenUResult<()> {
+    pub(crate) fn validate(&self, layouts: &[C6HiddenULayout]) -> C6HiddenUResult<()> {
         if self.families.len() != layouts.len() {
             return Err(C6HiddenUError::new("C6 hidden-u postcommit family count mismatch"));
         }
@@ -896,13 +904,14 @@ impl C6SealedHiddenUBundle {
         &self.witness_digests
     }
 
-    /// Audit the exact hidden-u relation against an explicitly claimed
-    /// pre-query frame and post-commit challenge set.
-    pub fn audit_reference(
+    pub(crate) fn families(&self) -> &[C6HiddenUFamilyWitness] {
+        &self.families
+    }
+
+    pub(crate) fn validate_prequery_binding(
         &self,
         claimed_prequery: &C6HiddenUPrequery,
-        postcommit: &C6HiddenUPostCommit,
-    ) -> C6HiddenUResult<C6HiddenUReferenceAudit> {
+    ) -> C6HiddenUResult<Vec<C6HiddenULayout>> {
         let layouts: Vec<_> = self.families.iter().map(C6HiddenUFamilyWitness::layout).collect();
         if claimed_prequery.context_digest != self.context_digest
             || claimed_prequery.families.len() != self.families.len()
@@ -925,6 +934,17 @@ impl C6SealedHiddenUBundle {
         if claimed_prequery.encode().is_err() {
             return Err(C6HiddenUError::new("noncanonical C6 hidden-u claimed prequery"));
         }
+        Ok(layouts)
+    }
+
+    /// Audit the exact hidden-u relation against an explicitly claimed
+    /// pre-query frame and post-commit challenge set.
+    pub fn audit_reference(
+        &self,
+        claimed_prequery: &C6HiddenUPrequery,
+        postcommit: &C6HiddenUPostCommit,
+    ) -> C6HiddenUResult<C6HiddenUReferenceAudit> {
+        let layouts = self.validate_prequery_binding(claimed_prequery)?;
         if postcommit.prequery_digest != claimed_prequery.digest {
             return Err(C6HiddenUError::new("C6 hidden-u postcommit/prequery digest mismatch"));
         }
@@ -1002,7 +1022,7 @@ impl C6SealedHiddenUBundle {
     }
 }
 
-fn encode_fp2_ntt(plan: &NttPlan, vector: &[Fp2]) -> Vec<Fp2> {
+pub(crate) fn encode_fp2_ntt(plan: &NttPlan, vector: &[Fp2]) -> Vec<Fp2> {
     let c0 = vector.iter().map(|value| value.c0).collect::<Vec<_>>();
     let c1 = vector.iter().map(|value| value.c1).collect::<Vec<_>>();
     plan.encode(&c0).into_iter().zip(plan.encode(&c1)).map(|(a, b)| Fp2::new(a, b)).collect()

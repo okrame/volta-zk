@@ -10,6 +10,7 @@
 
 pub mod batch;
 pub mod c6_hidden_u;
+pub mod c6_hidden_u_sumcheck;
 pub mod layer_layout;
 pub mod ligero;
 pub mod merkle;
@@ -28,6 +29,11 @@ pub use c6_hidden_u::{
     C6HiddenUFamilyWitness, C6HiddenULayout, C6HiddenUPostCommit, C6HiddenUPrequery,
     C6HiddenUQueryClaim, C6HiddenUReferenceAudit, C6HiddenUReferenceBudget, C6SealedHiddenUBundle,
     C6_EMBED_Q121, C6_HIDDEN_U_BATCH_SEED_BYTES, C6_HIDDEN_U_REPETITIONS, C6_WEIGHTS_Q121,
+};
+pub use c6_hidden_u_sumcheck::{
+    hidden_u_sumcheck_encoded_len, prove_hidden_u_sumchecks, reduce_hidden_u_sumchecks,
+    C6HiddenUOpeningClaim, C6HiddenUSumcheckFamilyProof, C6HiddenUSumcheckProof,
+    C6HiddenUSumcheckRepetition,
 };
 pub use layer_layout::{
     layout_gpt2_embed, layout_gpt2_embed_c3, layout_gpt2_layer, layout_gpt2_weights_c3,

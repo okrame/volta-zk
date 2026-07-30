@@ -6,9 +6,10 @@ CENSUS / PAIRED COMPLETE SOURCE WITNESS / INDEPENDENT EXACT-INSTANCE
 OPERATION DAG GREEN; PARAMETERIZED V2 TWO-SEED IDENTITY GREEN; CANONICAL PLAN
 CODEC + FULL-T1 COMPILED RESIDUAL + DURABLE 17+4 SESSION + HIDDEN-U NATIVE
 SUMCHECK REDUCTION + SCALED DUAL-TAPE C6RSC3 CODEC/DIFFERENTIAL GREEN; FUSED
-T1 EVENT-SINK + FIRST/FOLDED/TERMINAL SCALED DIFFERENTIAL GREEN / C6RSC3
-CONNECTION NEXT; CACHE ARGUMENT / PACKED PCS / FINAL WRAPPER PENDING; LOCAL
-IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
+T1 EVENT-SINK + FIRST/FOLDED/TERMINAL SCALED DIFFERENTIAL GREEN;
+ROUND-SYNCHRONOUS SINGLE-ARENA AMENDMENT FROZEN / C6RSC3 CONNECTION NEXT;
+CACHE ARGUMENT / PACKED PCS / FINAL WRAPPER PENDING; LOCAL IMPLEMENTATION
+AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
 accepted C4/T1 `rate=1/4,Q=120` inline profile.  It does not reopen or rewrite
@@ -2470,6 +2471,62 @@ exercised as a T1 prover, and no C6RSC3 proof, packed opening, response-byte
 removal, setup/correlation change, cache argument, real-PCG, CUDA, timing or
 hardware credit is earned.  The next ordered gate is to feed these sinks into
 the already-versioned `C6RSC3` coordinator.
+
+#### 5.1.6 Round-synchronous single-arena amendment
+
+The first integration audit found one lifetime obstruction in the frozen
+sentence “only one proof repetition and one family state may be live.”
+`C6RSC3` does not run the two family sumchecks serially: the auxiliary first
+message is fixed at global round 8, before challenge 8, and every later leaf
+and auxiliary message pair must be fixed before the same shared challenge.
+After challenge 8 the prover therefore needs both folded family states until
+the auxiliary suffix completes.  Completing the leaf family first would
+reveal suffix challenges before the corresponding auxiliary messages and is
+forbidden.
+
+The corrected invariant is one response-local coefficient arena and one
+proof repetition, with late admission of the auxiliary family into that same
+arena.  It does not permit a second arena, a second live repetition, a full
+coefficient table, a response-persistent vector or an early auxiliary state.
+The exact production lifecycle is:
+
+1. after leaf challenge 0, admit the eight half-size leaf tables:
+
+   ```text
+   8 * 2^22 = 33,554,432 Fp2 = 536,870,912 B;
+   ```
+
+2. fold only the leaf state through challenges 1--7; before challenge 8 the
+   auxiliary family retains only its sealed four-scalar first message;
+3. fix the global-round-8 leaf message, auxiliary first message and
+   activation check before challenge 8;
+4. after challenge 8, fold leaf to eight `2^14` tables and admit the
+   first-fold auxiliary state as twenty-four `2^14` tables:
+
+   ```text
+   leaf        8 * 2^14 = 131,072 Fp2 = 2,097,152 B
+   auxiliary  24 * 2^14 = 393,216 Fp2 = 6,291,456 B
+   combined   32 * 2^14 = 524,288 Fp2 = 8,388,608 B;
+   ```
+
+5. fold both states after each remaining shared challenge, release each
+   family at completion, and begin the next proof repetition only after the
+   arena is empty.
+
+At arbitrary scaled geometry, auxiliary admission is legal only after the
+leaf state has exactly `8 * (auxiliary_entries / 2)` elements; the admitted
+auxiliary state has exactly `24 * (auxiliary_entries / 2)` elements.
+Aggregate arena occupancy, per-family occupancy and peak bytes are checked on
+every admission, fold and release.  Duplicate family admission, an early
+auxiliary admission, a changed repetition, cap overflow, underflow or a
+second arena fails before allocation or transcript progress.
+
+This amendment changes only allocation ownership.  It preserves the
+canonical first-message/activation/shared-suffix transcript, the four atomic
+replays, proof codec and bytes, correlation domains and counts, terminal
+claims, soundness re-sum and the **536,870,912-B** maximum.  The earlier
+single-family tracker is intentionally superseded before it is connected to
+`C6RSC3`; no production or timing credit is earned by this freeze.
 
 The wrapper PCS uses rate `1/8`, two independent fold/query chains and
 `s=86` queries per chain.  Under the conservative 64-active-polynomial,

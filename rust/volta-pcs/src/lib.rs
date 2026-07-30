@@ -11,6 +11,7 @@
 pub mod batch;
 pub mod c6_hidden_u;
 pub mod c6_hidden_u_sumcheck;
+pub mod c6_residual_sumcheck;
 pub mod c6_wrapper_pcs;
 pub mod layer_layout;
 pub mod ligero;
@@ -36,6 +37,18 @@ pub use c6_hidden_u_sumcheck::{
     prepare_hidden_u_verifier_round_state, prove_hidden_u_sumchecks, reduce_hidden_u_sumchecks,
     C6HiddenUOpeningClaim, C6HiddenUProverRoundState, C6HiddenUSumcheckFamilyProof,
     C6HiddenUSumcheckProof, C6HiddenUSumcheckRepetition, C6HiddenUVerifierRoundState,
+};
+pub use c6_residual_sumcheck::{
+    prepare_residual_sumcheck_prover_round_state, prepare_residual_sumcheck_verifier_round_state,
+    production_c6_residual_sumcheck_encoded_len, production_c6_residual_sumcheck_round_bytes,
+    residual_sumcheck_encoded_len, C6ResidualOpeningClaim, C6ResidualSumcheckError,
+    C6ResidualSumcheckFamily, C6ResidualSumcheckFamilyStatement, C6ResidualSumcheckProof,
+    C6ResidualSumcheckProverRoundState, C6ResidualSumcheckRepetitionProof,
+    C6ResidualSumcheckStatement, C6ResidualSumcheckTerm, C6ResidualSumcheckVerifierRoundState,
+    C6ResidualSumcheckWitness, C6ResidualTableRef, C6_RESIDUAL_AUXILIARY_LOCAL_ACTIVATION,
+    C6_RESIDUAL_AUXILIARY_ROUNDS, C6_RESIDUAL_LEAF_ROUNDS, C6_RESIDUAL_SUMCHECK_PROOF_BYTES,
+    C6_RESIDUAL_SUMCHECK_REPETITIONS, C6_RESIDUAL_SUMCHECK_ROUND_BYTES,
+    C6_RESIDUAL_SUMCHECK_ROUND_VALUE_BYTES,
 };
 pub use c6_wrapper_pcs::{
     assemble_production_c6_wrapper_claims, bind_hidden_u_opening_claims_to_wrapper_slots,

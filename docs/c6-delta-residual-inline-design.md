@@ -1471,6 +1471,28 @@ a proof field or any accepted obligation.  Admission into the wrapper
 remains blocked on production installed-plan capture, the randomized
 raw-copy identity and synchronized residual sumcheck.
 
+The residual sumcheck implementation is split once more before the T1
+relation compiler.  Its first checkpoint is a statement-generic arithmetic
+engine over precombined public coefficient MLEs and exact wrapper slot
+owners.  It enforces the frozen degree-2/degree-3 schedule, shared suffix
+challenges, the activation-time public-target equality and PCS-bound
+terminal-factor interface.  It does not by itself certify that those public
+tables encode the source grammar, reverse DAG, raw transpose,
+ProductClosure or ZeroBatch equations.  Materialized public tables are a
+scaled/reference seam only.  Production memory/timing and any
+round-transcript hiding claim remain blocked on separately reviewed
+compiler/blinding paths.
+
+The local arithmetic checkpoint implements that boundary with a strict
+two-repetition codec of **4,244 B**: **4,128 B** of round values and
+**116 B** of fixed framing.  Its scaled differential independently replays
+the response-global coordinator, verifies the activation-time unsplit target,
+checks every terminal against the source MLE and confirms the two exact
+common-point suffixes.  This measured codec result still earns no
+production-response removal: the materialized coefficient tables are not the
+T1 relation compiler, the round messages have no implemented hiding layer,
+and the terminal factors have not yet entered the packed PCS assembly.
+
 The wrapper PCS uses rate `1/8`, two independent fold/query chains and
 `s=86` queries per chain.  Under the conservative 64-active-polynomial,
 `2^28` weight-oracle and `2^19` auxiliary maxima, one repetition has

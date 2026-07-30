@@ -56,10 +56,15 @@ RESIDUAL_MAC_TAPES = 2
 SETUP_CAP_BYTES = 150_000_000
 
 CACHE_ROOT_BOUND_PER_REPETITION = 2**32
-HIDDEN_LINEAR_NUMERATOR = 1 + 80**2
+# The hidden-u reducers and the pending-output -> packed-PCS authenticated
+# link remain one named linear-functional event.  The v3 hiding amendment
+# reserves 256 roots per independent repetition for their union.
+LINEAR_LINK_ROOT_BOUND_PER_REPETITION = 2**8
+HIDDEN_LINEAR_NUMERATOR = LINEAR_LINK_ROOT_BOUND_PER_REPETITION**2
 RESIDUAL_PROOF_REPETITIONS = 2
 RESIDUAL_MAC_COORDINATES = 2
 RESIDUAL_TERMINAL_FORM_KINDS = 2
+RESIDUAL_AUXILIARY_QUADRATIC_FACTOR_COUNT = 8
 RESIDUAL_LEAF_TABLE_SLOTS = tuple(range(8))
 RESIDUAL_AUXILIARY_TABLE_SLOTS = tuple(range(16))
 RESIDUAL_TABLE_SLOTS_PER_PROOF_REPETITION = (
@@ -96,9 +101,63 @@ RESIDUAL_OWNER_ADDITIONAL_COEFFICIENT_SYMBOLS = (
     - RESIDUAL_OWNER_COEFFICIENT_SYMBOLS_SPLIT_V1
 )
 RESIDUAL_SUMCHECK_DEGREE_ROUNDS = 2 * 23 + 3 * 15
-RESIDUAL_SUMCHECK_PROOF_BYTES = 4_244
+RESIDUAL_ACTIVATION_ZERO_OPEN_ROOTS = 1
+# Rust's ProductClosure uses the scalar-power weights chi^(j+1), so the
+# implementation theorem charges T+2 roots for T terminal products.
+RESIDUAL_TERMINAL_PRODUCT_ROOTS = (
+    RESIDUAL_AUXILIARY_QUADRATIC_FACTOR_COUNT + 2
+)
+RESIDUAL_TERMINAL_ZERO_ROWS = 2
+# The scalar-power ZeroBatch implementation theorem charges T+1 roots.
+RESIDUAL_TERMINAL_ZERO_BATCH_ROOTS = RESIDUAL_TERMINAL_ZERO_ROWS + 1
+RESIDUAL_BLIND_TRANSCRIPT_ROOTS_PER_COMPLETE_PROOF_REPETITION = (
+    RESIDUAL_SUMCHECK_DEGREE_ROUNDS
+    + RESIDUAL_ACTIVATION_ZERO_OPEN_ROOTS
+    + RESIDUAL_TERMINAL_PRODUCT_ROOTS
+    + RESIDUAL_TERMINAL_ZERO_BATCH_ROOTS
+)
+RESIDUAL_CLEAR_SUMCHECK_PROOF_BYTES = 4_244
+RESIDUAL_BLIND_FIRST_ROUND_VALUES_PER_REPETITION = (3 + 2 * 22) + (4 + 3 * 14)
+RESIDUAL_BLIND_CORE_FULL_CORRELATIONS_PER_TAPE = (
+    RESIDUAL_PROOF_REPETITIONS
+    * (
+        RESIDUAL_BLIND_FIRST_ROUND_VALUES_PER_REPETITION
+        + RESIDUAL_AUXILIARY_QUADRATIC_FACTOR_COUNT
+        + 1  # one ProductMaskCorr for the eight terminal products
+        + 1  # one terminal ZeroBatch mask
+    )
+)
+RESIDUAL_PENDING_SLOT_FULL_CORRELATIONS_PER_TAPE = (
+    RESIDUAL_TABLE_SLOT_REFERENCES
+)
+RESIDUAL_BLIND_FULL_CORRELATIONS_PER_TAPE = (
+    RESIDUAL_BLIND_CORE_FULL_CORRELATIONS_PER_TAPE
+    + RESIDUAL_PENDING_SLOT_FULL_CORRELATIONS_PER_TAPE
+)
+HISTORICAL_PCS_FULL_CORRELATION_RESERVE_PER_TAPE = 39_116
+
+# C6RSC3: dual-tape corrections for 93 round values/repetition, one
+# activation-time split ZeroOpen tag/tape, eight terminal product-value
+# corrections/tape, one two-symbol ProductClosure/tape and one
+# correction+tag ZeroBatch/tape, plus the unchanged 116-byte strict framing.
+RESIDUAL_SUMCHECK_PROOF_BYTES = (
+    RESIDUAL_PROOF_REPETITIONS
+    * RESIDUAL_BLIND_FIRST_ROUND_VALUES_PER_REPETITION
+    * RESIDUAL_MAC_TAPES
+    * FP2_BYTES
+    + RESIDUAL_PROOF_REPETITIONS * RESIDUAL_MAC_TAPES * FP2_BYTES
+    + RESIDUAL_PROOF_REPETITIONS
+    * RESIDUAL_AUXILIARY_QUADRATIC_FACTOR_COUNT
+    * RESIDUAL_MAC_TAPES
+    * FP2_BYTES
+    + RESIDUAL_PROOF_REPETITIONS * RESIDUAL_MAC_TAPES * 2 * FP2_BYTES
+    + RESIDUAL_PROOF_REPETITIONS * RESIDUAL_MAC_TAPES * 2 * FP2_BYTES
+    + 116
+)
 DELTA_ROOT_BOUND_PER_COMPLETE_REPETITION = 2**8
-DELTA_EVENT_NUMERATOR = DELTA_ROOT_BOUND_PER_COMPLETE_REPETITION**2
+# The clear complete-relation event and the dual-tape blind-transcript
+# closure are two named bad branches inside the same Delta-residual event.
+DELTA_EVENT_NUMERATOR = 2 * DELTA_ROOT_BOUND_PER_COMPLETE_REPETITION**2
 
 # Frozen T1 atomic-relation census from C6RLM1.  The auxiliary semantic
 # domain is the lower half of each 2^16 table; the independently randomized
@@ -209,10 +268,34 @@ RESIDUAL_COEFFICIENT_WRITES_PER_REPETITION = sum(
 RESIDUAL_COEFFICIENT_WRITES_TOTAL = (
     RESIDUAL_PROOF_REPETITIONS * RESIDUAL_COEFFICIENT_WRITES_PER_REPETITION
 )
-RESIDUAL_ATOMIC_COMPILER_EQUIVALENT_SYMBOLS = (
+RESIDUAL_ATOMIC_REFERENCE_COMPILER_EQUIVALENT_SYMBOLS = (
     RESIDUAL_ATOMIC_OUTPUTS_TOTAL
     + RESIDUAL_TERMINAL_OUTPUTS_TOTAL
     + 2 * RESIDUAL_COEFFICIENT_WRITES_TOTAL
+)
+
+# Production-safe two-pass/fused screen.  Per repetition the provider:
+# (1) replays once to fix both first messages before any challenge,
+# (2) replays after the first leaf challenge to build only the half-size
+#     folded leaf coefficient state, and
+# (3) replays after auxiliary activation to build only its half-size state.
+# The client replays once at the terminal point and retains no coefficient
+# vector.  The factor 10 charges at most three first-message accumulations
+# (read+write each), one folded-state accumulation and one client-terminal
+# accumulation for every coefficient contribution.
+RESIDUAL_FUSED_ATOMIC_REPLAYS = 4
+RESIDUAL_FUSED_ACCUMULATION_SYMBOLS_PER_WRITE = 10
+RESIDUAL_FUSED_COMPILER_EQUIVALENT_SYMBOLS = (
+    RESIDUAL_FUSED_ATOMIC_REPLAYS * RESIDUAL_ATOMIC_OUTPUTS_TOTAL
+    + RESIDUAL_TERMINAL_OUTPUTS_TOTAL
+    + RESIDUAL_FUSED_ACCUMULATION_SYMBOLS_PER_WRITE
+    * RESIDUAL_COEFFICIENT_WRITES_TOTAL
+)
+RESIDUAL_MAX_FOLDED_COEFFICIENT_ELEMENTS = (
+    len(RESIDUAL_LEAF_TABLE_SLOTS) * 2 ** (23 - 1)
+)
+RESIDUAL_MAX_FOLDED_COEFFICIENT_BYTES = (
+    RESIDUAL_MAX_FOLDED_COEFFICIENT_ELEMENTS * FP2_BYTES
 )
 
 SUMCHECK_BASE_EQUIVALENT_PASSES = 32
@@ -479,7 +562,7 @@ def build_report() -> dict[str, Any]:
         sumcheck_work_coefficient_symbols = (
             SUMCHECK_BASE_EQUIVALENT_PASSES * coefficient_symbols
             + RESIDUAL_OWNER_ADDITIONAL_COEFFICIENT_SYMBOLS
-            + RESIDUAL_ATOMIC_COMPILER_EQUIVALENT_SYMBOLS
+            + RESIDUAL_FUSED_COMPILER_EQUIVALENT_SYMBOLS
         )
         sumcheck_work_bytes = sumcheck_work_coefficient_symbols * FP2_BYTES
         sumcheck_equivalent_passes = (
@@ -610,6 +693,32 @@ def build_report() -> dict[str, Any]:
                 RESIDUAL_OWNER_ADDITIONAL_COEFFICIENT_SYMBOLS
             ),
             "proof_codec_bytes": RESIDUAL_SUMCHECK_PROOF_BYTES,
+            "superseded_clear_proof_codec_bytes": (
+                RESIDUAL_CLEAR_SUMCHECK_PROOF_BYTES
+            ),
+            "wire_delta_from_clear_codec_bytes": (
+                RESIDUAL_SUMCHECK_PROOF_BYTES
+                - RESIDUAL_CLEAR_SUMCHECK_PROOF_BYTES
+            ),
+            "blind_round_values_per_repetition": (
+                RESIDUAL_BLIND_FIRST_ROUND_VALUES_PER_REPETITION
+            ),
+            "blind_core_full_correlations_per_tape": (
+                RESIDUAL_BLIND_CORE_FULL_CORRELATIONS_PER_TAPE
+            ),
+            "pending_slot_full_correlations_per_tape": (
+                RESIDUAL_PENDING_SLOT_FULL_CORRELATIONS_PER_TAPE
+            ),
+            "blind_full_correlations_per_tape": (
+                RESIDUAL_BLIND_FULL_CORRELATIONS_PER_TAPE
+            ),
+            "historical_pcs_full_correlation_reserve_per_tape": (
+                HISTORICAL_PCS_FULL_CORRELATION_RESERVE_PER_TAPE
+            ),
+            "historical_pcs_full_correlation_headroom_after_residual": (
+                HISTORICAL_PCS_FULL_CORRELATION_RESERVE_PER_TAPE
+                - RESIDUAL_BLIND_FULL_CORRELATIONS_PER_TAPE
+            ),
             "wire_slot_addition_bytes": 0,
         },
         "residual_atomic_relation": {
@@ -679,8 +788,21 @@ def build_report() -> dict[str, Any]:
                 "total": RESIDUAL_COEFFICIENT_WRITES_PER_REPETITION,
             },
             "coefficient_writes_total": RESIDUAL_COEFFICIENT_WRITES_TOTAL,
-            "compiler_equivalent_symbols": (
-                RESIDUAL_ATOMIC_COMPILER_EQUIVALENT_SYMBOLS
+            "reference_compiler_equivalent_symbols": (
+                RESIDUAL_ATOMIC_REFERENCE_COMPILER_EQUIVALENT_SYMBOLS
+            ),
+            "fused_atomic_replays": RESIDUAL_FUSED_ATOMIC_REPLAYS,
+            "fused_accumulation_symbols_per_write": (
+                RESIDUAL_FUSED_ACCUMULATION_SYMBOLS_PER_WRITE
+            ),
+            "fused_compiler_equivalent_symbols": (
+                RESIDUAL_FUSED_COMPILER_EQUIVALENT_SYMBOLS
+            ),
+            "maximum_folded_coefficient_elements": (
+                RESIDUAL_MAX_FOLDED_COEFFICIENT_ELEMENTS
+            ),
+            "maximum_folded_coefficient_bytes": (
+                RESIDUAL_MAX_FOLDED_COEFFICIENT_BYTES
             ),
         },
         "soundness": {
@@ -699,6 +821,17 @@ def build_report() -> dict[str, Any]:
             "residual_sumcheck_degree_rounds_per_complete_proof_repetition": (
                 RESIDUAL_SUMCHECK_DEGREE_ROUNDS
             ),
+            "residual_blind_transcript_roots_per_complete_proof_repetition": (
+                RESIDUAL_BLIND_TRANSCRIPT_ROOTS_PER_COMPLETE_PROOF_REPETITION
+            ),
+            "residual_blind_transcript_root_components": {
+                "sumcheck_degree_rounds": RESIDUAL_SUMCHECK_DEGREE_ROUNDS,
+                "activation_zero_open": RESIDUAL_ACTIVATION_ZERO_OPEN_ROOTS,
+                "terminal_product_scalar_power": RESIDUAL_TERMINAL_PRODUCT_ROOTS,
+                "terminal_zero_batch_scalar_power": (
+                    RESIDUAL_TERMINAL_ZERO_BATCH_ROOTS
+                ),
+            },
             "delta_root_bound_per_complete_proof_repetition": (
                 DELTA_ROOT_BOUND_PER_COMPLETE_REPETITION
             ),
@@ -731,8 +864,11 @@ def build_report() -> dict[str, Any]:
             "ownership_amendment_additional_coefficient_symbols": (
                 RESIDUAL_OWNER_ADDITIONAL_COEFFICIENT_SYMBOLS
             ),
-            "atomic_relation_compiler_equivalent_symbols": (
-                RESIDUAL_ATOMIC_COMPILER_EQUIVALENT_SYMBOLS
+            "atomic_relation_reference_compiler_equivalent_symbols": (
+                RESIDUAL_ATOMIC_REFERENCE_COMPILER_EQUIVALENT_SYMBOLS
+            ),
+            "atomic_relation_fused_compiler_equivalent_symbols": (
+                RESIDUAL_FUSED_COMPILER_EQUIVALENT_SYMBOLS
             ),
             "sumcheck_work_coefficient_symbols": (
                 sumcheck_work_coefficient_symbols
@@ -791,6 +927,10 @@ def build_report() -> dict[str, Any]:
     assert RESIDUAL_ALPHA_STREAMS == 2
     assert RESIDUAL_ATOMIC_WEIGHT_STREAMS == 2
     assert RESIDUAL_COMPLETE_RELATION_STREAMS == 10
+    assert (
+        len(RESIDUAL_AUXILIARY_QUADRATIC_FACTOR_TUPLES)
+        == RESIDUAL_AUXILIARY_QUADRATIC_FACTOR_COUNT
+    )
     assert RESIDUAL_OWNER_COEFFICIENT_SYMBOLS_PER_PROOF_REPETITION == 68_157_440
     assert RESIDUAL_OWNER_COEFFICIENT_SYMBOLS_COMPLETE_V2 == 136_314_880
     assert RESIDUAL_OWNER_ADDITIONAL_COEFFICIENT_SYMBOLS == 68_157_440
@@ -817,7 +957,26 @@ def build_report() -> dict[str, Any]:
     assert RESIDUAL_ZERO_COEFFICIENT_WRITES_PER_REPETITION == 16_340
     assert RESIDUAL_COEFFICIENT_WRITES_PER_REPETITION == 112_998_706
     assert RESIDUAL_COEFFICIENT_WRITES_TOTAL == 225_997_412
-    assert RESIDUAL_ATOMIC_COMPILER_EQUIVALENT_SYMBOLS == 547_465_024
+    assert RESIDUAL_ATOMIC_REFERENCE_COMPILER_EQUIVALENT_SYMBOLS == 547_465_024
+    assert RESIDUAL_FUSED_ATOMIC_REPLAYS == 4
+    assert RESIDUAL_FUSED_ACCUMULATION_SYMBOLS_PER_WRITE == 10
+    assert RESIDUAL_FUSED_COMPILER_EQUIVALENT_SYMBOLS == 2_640_050_432
+    assert RESIDUAL_MAX_FOLDED_COEFFICIENT_ELEMENTS == 33_554_432
+    assert RESIDUAL_MAX_FOLDED_COEFFICIENT_BYTES == 536_870_912
+    assert RESIDUAL_BLIND_FIRST_ROUND_VALUES_PER_REPETITION == 93
+    assert RESIDUAL_BLIND_CORE_FULL_CORRELATIONS_PER_TAPE == 206
+    assert RESIDUAL_PENDING_SLOT_FULL_CORRELATIONS_PER_TAPE == 48
+    assert RESIDUAL_BLIND_FULL_CORRELATIONS_PER_TAPE == 254
+    assert RESIDUAL_SUMCHECK_PROOF_BYTES == 6_900
+    assert RESIDUAL_TERMINAL_PRODUCT_ROOTS == 10
+    assert RESIDUAL_TERMINAL_ZERO_BATCH_ROOTS == 3
+    assert RESIDUAL_BLIND_TRANSCRIPT_ROOTS_PER_COMPLETE_PROOF_REPETITION == 105
+    assert (
+        RESIDUAL_BLIND_TRANSCRIPT_ROOTS_PER_COMPLETE_PROOF_REPETITION
+        <= DELTA_ROOT_BOUND_PER_COMPLETE_REPETITION
+    )
+    assert HIDDEN_LINEAR_NUMERATOR == 2**16
+    assert DELTA_EVENT_NUMERATOR == 2**17
     assert minimum_literal_128_bit_query_count() == 85
     assert section["opened_symbols"] == 14_528
     assert section["inner_siblings"] == 0

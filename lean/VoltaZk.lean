@@ -27,3 +27,4 @@ import VoltaZk.C6DeltaResidual
 import VoltaZk.C6ProductClosure
 import VoltaZk.C6PersistentCache
 import VoltaZk.C6Amplification
+import VoltaZk.C6BlindTranscript

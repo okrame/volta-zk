@@ -2000,6 +2000,220 @@ serializing response-linear vectors.  Sumcheck-message hiding, production
 auxiliary/upper-half sources, cache constraints and the final certificate
 envelope remain pending.
 
+#### 5.1.2 Dual-tape blind transcript and fused-state amendment
+
+The post-`C6RSC2` implementation audit found three obstructions that must be
+closed before a production-shaped fused compiler is admissible:
+
+1. `C6RSC2` sends all degree-2/degree-3 round evaluations in clear.  Masking
+   those evaluations on only one of the two C6 tapes introduces a
+   one-field-secret forgery branch and would reduce the complete residual
+   event to approximately 128 bits.
+2. The generic prover and verifier retain every public coefficient MLE.
+   Because the atomic weights are independent, an exact multilinear
+   sumcheck cannot both discard all folded coefficient state and avoid
+   replaying the complete atomic stream on every round.
+3. A packed PCS claim at `r || 0` is still a clear MLE evaluation.  The
+   independently random upper half hides the query/fold views, but it does
+   not hide the claimed lower-half evaluation itself.  Production acceptance
+   therefore requires the existing M9 pattern: correction-created pending
+   authenticated claims followed by a blind link to the same packed PCS.
+
+`C6RSC2` and its **4,244-B** codec remain immutable diagnostic/reference
+objects.  The production candidate is versioned separately as `C6RSC3`.
+Every hidden scalar in `C6RSC3` is authenticated on **both** independent
+connection tapes.  For one proof repetition:
+
+```text
+leaf first round                         g(0),g(1),g(2)       3
+leaf later rounds                    22 * [g(0),g(2)]        44
+auxiliary first round              g(0),g(1),g(2),g(3)       4
+auxiliary later rounds        14 * [g(0),g(2),g(3)]          42
+round scalars / repetition                                     93
+```
+
+The first round of each family is deliberately uncompressed: it derives the
+authenticated initial family claim as `g(0)+g(1)` without serializing a
+provider-selected split.  Once that claim is live, subsequent rounds use the
+existing M3/M11 compressed grammar.  The auxiliary first message may be
+computed and sealed locally with the leaf first message, but it enters the
+transcript only at the frozen activation round.  At that boundary, on each
+tape, the prover ZeroOpens
+
+```text
+leaf_initial + auxiliary_initial - public_target.
+```
+
+The tag is uniformly masked by the fresh first-round correlations, so this
+preserves the required check-before-challenge ordering without another
+correlation draw.
+
+The terminal interface accepts exactly 24 pending M9 claims per repetition
+and per tape, in the frozen eight-leaf/sixteen-auxiliary owner order.  It
+forms the two linear terminal expressions locally.  For the exact eight
+quadratic tuples, it authenticates eight product values with fresh full
+correlations, closes them in one eight-triple `ProductClosure` per tape, and
+places the leaf and auxiliary terminal residuals into one two-row
+`ZeroBatch` per tape.  A pending slot claim is not PCS-bound and cannot be
+returned as an accepted value.  The later packed authenticated-output link
+is the only constructor that may upgrade it to a bound claim.
+
+The strict `C6RSC3` payload is:
+
+```text
+dual-tape round corrections       2*93*2*16              5,952 B
+activation ZeroOpen tags          2*2*16                    64 B
+eight product-value corrections   2*8*2*16                 512 B
+two ProductClosure messages       2*2 tapes*32              128 B
+two ZeroBatch correction/tags     2*2 tapes*32              128 B
+strict headers/digests                                      116 B
+total                                                       6,900 B.
+```
+
+The core consumes, on each tape, exactly
+
+```text
+round masks                 2 repetitions * 93              186
+terminal product values     2 repetitions * 8                16
+terminal ProductMasks       2 repetitions * 1                 2
+terminal ZeroBatch masks    2 repetitions * 1                 2
+blind core / tape                                             206 full correlations.
+```
+
+The 48 residual pending-slot transfers add 48 full correlations per tape,
+for a residual subtotal of **254 full correlations/tape**.  This is an
+allocation inside the already frozen **39,116-full** historical PCS reserve,
+not an addition to the **5,235,692-raw** per-attempt reservation.  The
+complete wrapper census must still account for hidden-u, cache and the common
+authenticated-output link before any reserve is released or reduced.
+
+The packed-PCS repair follows the already-proved M9/X4 authenticated-output
+shape but is C6-domain-separated.  All 64 slot claims in a repetition are
+first pending and dual-authenticated.  One degree-2 blind linear-functional
+link batches their exact, fixed target points and moves them to a fresh
+25-coordinate PCS point.  Its final ZK coordinate is protocol-checked
+nonzero.  The existing packed fold/query chain opens only at that new point,
+where every witness/auxiliary upper half one-time-pads the clear global
+opening.  The two-chain PCS query payload and its **3,609,824-B** roof are
+unchanged; the packed pending/link framing remains part of the 800,000-B
+non-PCS allocation and must be frozen before integration.  A target-point
+clear scalar, a verifier-supplied zero ZK coordinate or an unlinked pending
+claim is a hard failure.
+
+The production statement no longer hashes materialized coefficient arrays.
+`C6RSC3` binds a semantic compiler descriptor containing the root token,
+`C6RLM1` manifest, installed artifact/topology/source schedule, runtime
+instance, canonical public-claims frame, relation context, both exact atomic
+stream descriptors, target, owner registry, factor tuples and all censuses.
+Those fields determine every coefficient uniquely.  The provider and client
+derive the same descriptor before the first round; a coefficient-array digest
+is retained only by the scaled `C6RSC2` differential.  This is a versioned
+binding change, never a reinterpretation of a v2 digest.
+
+The fused provider is allowed one bounded, ephemeral post-challenge
+coefficient workspace because independent random coefficient MLEs cannot be
+folded in sublinear state without either changing the batching distribution
+or replaying the full stream every round.  This is sumcheck state, not a
+serialized or cross-response retained vector.  The exact schedule is:
+
+1. replay the atomic stream once to fix both first-family messages;
+2. after the first leaf challenge, replay it once and accumulate directly
+   into the half-size folded leaf coefficient state;
+3. at auxiliary activation, reuse the already sealed first auxiliary
+   message; after its first challenge, replay once into its half-size folded
+   state;
+4. fold those states normally, free each at family completion, and execute
+   the two proof repetitions sequentially;
+5. the client never allocates a coefficient vector: after the common
+   terminal point is fixed it replays once and accumulates only the 32
+   terminal coefficient scalars, then checks them against the semantic
+   descriptor that both roles fixed before the first round.
+
+No full `2^23` coefficient table may exist on host or device.  The largest
+legal folded coefficient state is exactly
+
+```text
+8 * 2^22 = 33,554,432 Fp2 = 536,870,912 B.
+```
+
+Allocation counters must distinguish coefficient state, witness state and
+codec buffers; a hidden clone, host spill, second live repetition or
+response-persistent coefficient allocation fails the memory gate.
+
+The conservative work screen charges four atomic expansions across provider
+and client and ten read/write-equivalent operations per coefficient
+contribution.  It therefore replaces the reference-only
+**547,465,024-symbol** compiler charge with **2,640,050,432 symbols**.  The
+effective screen becomes **44.0689172477...** whole-cohort passes and the
+model-plus-wrapper floor **8.6911235221... s**, leaving
+**11.3088764778... s** to the 20-second ceiling.  This is still an
+informative preregistration and earns no timing credit.
+
+Soundness is amended without adding a fifth wrapper event.  The original
+fixed-relation branch remains bounded by `256^2/|Fp2|^2`.  Across both proof
+repetitions, every complete relation is authenticated on both MAC tapes; the
+dual checks cannot weaken the conservative single-tape root bound.  One
+complete proof repetition charges exactly
+
+```text
+degree-round challenges                 2*23 + 3*15          91
+activation ZeroOpen                                           1
+eight-product scalar-power closure                      8+2 = 10
+two-row scalar-power terminal ZeroBatch                  2+1 = 3
+blind-transcript subtotal                                      105 <= 256.
+```
+
+The `8+2` and `2+1` terms are the existing Rust scalar-power M8/M3
+implementation theorems, not the sharper independent-vector bounds.  The two
+independently domain-separated **proof repetitions**, each checking both MAC
+coordinates, therefore bound the blind-transcript branch by another
+`256^2/|Fp2|^2`.  Their union gives
+
+```text
+epsilon_Delta_residual <= 2 * 256^2 / |Fp2|^2
+                       = 2^17 / |Fp2|^2
+                       > 238 bits.
+```
+
+The hidden-u reducers and the common pending-output link stay inside the
+existing `linear_functional_sumchecks` event, now conservatively reserved as
+`256^2/|Fp2|^2 >239 bits`.  Q=121 complete soundness remains
+`79.472744138609180097...` bits; the proof and complete-response roofs remain
+**4,409,824 B / 33,586,456 B** because both are allocation caps.
+
+This amendment reinstates a Lean-first hard stop before `C6RSC3` Rust.  The
+required additive statements are:
+
+- the full-first-round claim and activation ZeroOpen close the same
+  degree-2/degree-3 sumcheck relation as the compressed M3/M11 recursion;
+- the eight terminal products plus two-row terminal ZeroBatch close the
+  generic terminal expression;
+- two independent proof-repetition bad sets of cardinality at most 256
+  square, and the
+  union of clear-relation and blind-transcript branches has numerator
+  `2^17`;
+- the exact Goldilocks-`Fp2` certificate proves that event better than
+  238 bits.
+
+That additive Lean checkpoint is now green.  The new
+`C6BlindTranscript.lean` module proves
+`C6FullFirstRoundWire.compressedRoundPoly_initialClaim`,
+`c6_full_first_round_activation_closes`,
+`c6_terminal_eight_products_two_zero_rows_close`,
+`c6_eight_product_closure_sound_scalar`,
+`c6_two_terminal_rows_zeroBatch_sound_scalar`,
+`c6_blind_transcript_root_census_le_256`,
+`c6_blind_two_repetition_card_le_256`,
+`c6_clear_blind_union_card_le_2_pow_17` and
+`c6_delta_blind_wrapper_event_better_than_238`.  The full project builds
+**3,258 jobs**; the derived audit is **303 total / 67 C6** targets, with zero
+`sorry`/`admit` and only `propext`, `Classical.choice` and `Quot.sound`.
+
+The hard stop therefore advances to the scaled dual-tape codec and its
+negative differential.  The fused provider/client event sink follows that
+scaled checkpoint; production packed-link, cache and CUDA work remain later
+gates.  No provider or pod work is authorized by this amendment.
+
 The wrapper PCS uses rate `1/8`, two independent fold/query chains and
 `s=86` queries per chain.  Under the conservative 64-active-polynomial,
 `2^28` weight-oracle and `2^19` auxiliary maxima, one repetition has

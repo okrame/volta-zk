@@ -3608,6 +3608,37 @@ ordinary and `c6-trace` `volta-pcs` suites remain green at **172/0/1** and
 **173/0/1**, plus **14/0/2** integration and **2/0/0** layer tests in each
 mode.
 
+The next additive runtime checkpoint closes that observation gap on the host
+T1 path.  Feature-only `c6_cache_fold` records the final bilinear cache
+functional handed to each chained GEMM, after both folds: exact row and
+64-column coefficient vectors, public band/section/layer/head geometry,
+segment rows and the opaque authenticated target provenance.  It records no
+plaintext cache cells or verifier keys.  Capture is same-thread guarded and
+fail-closed on invalid section/head/window/coverage, duplicate semantic
+identity, a missing K/V family or any cohort that does not contain exactly
+all 12 heads.  The topology digest is sequence-sensitive and excludes
+challenge values; the instance digest binds all coefficients in canonical
+row-then-column order.  Opaque target tokens are deliberately excluded from
+cross-role digest equality because prover and verifier operation traces use
+different namespaces.
+
+The real one-layer attention path at `T=4` produces exactly **24 folds / 6,144
+coefficient applications**.  For two independent transcript/PCG seeds,
+prover and verifier records and both identities are equal within each run;
+the topology identity is equal across seeds while the instance identity
+changes.  The existing frozen-artifact response E2E at prefill `12` plus one
+offset band of `4` observes exactly **576 folds / 516,096 coefficient
+applications**.  Both roles agree record-for-record; prefill segments are
+`[12]`, continuation segments are `[12,4]`, and the scheduled sections
+normalize from `0..11` and `16..27` to the same model layers `0..11`.
+
+This diagnostic does not yet replace `CacheSegK`, make the recorded target a
+packed-link pending claim, instrument the resident provider fold, or prove
+the predecessor/current-slab split inside the 24-round cache relation.  It
+changes no transcript, correlation, proof-size, setup or timing formula.
+Those replacements remain the next gate; no stand-in or response-byte credit
+is earned here.
+
 ## 7. Certificate and challenge grammar
 
 All integers are unsigned little-endian and all field elements use their

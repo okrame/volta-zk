@@ -6,6 +6,8 @@
 pub mod block_proof;
 pub(crate) mod boundary_thinning;
 pub mod c6;
+#[cfg(feature = "c6-trace")]
+pub mod c6_cache_fold;
 pub mod c6_census;
 pub mod c6_residual;
 pub mod c6_source;

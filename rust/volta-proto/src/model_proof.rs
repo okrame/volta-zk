@@ -4836,8 +4836,16 @@ mod tests {
         let mut txv = Transcript::new(tx_seed);
 
         let chunks_p = [ChunkRef { band: &band, seq: &seq }];
+        #[cfg(feature = "c6-trace")]
+        let prover_cache_fold_guard = crate::c6_cache_fold::begin_c6_cache_fold_trace(
+            crate::c6_cache_fold::C6CacheFoldParty::Prover,
+        )
+        .expect("start response prover cache-fold trace");
         let (mut proof, out, prod, mut zero) =
             prove_response(&model, &wit0, &chunks_p, &mut stream, &mut txp);
+        #[cfg(feature = "c6-trace")]
+        let prover_cache_fold_trace =
+            prover_cache_fold_guard.finish().expect("finish response prover cache-fold trace");
 
         let chunks_v = [ChunkPub { q: n_gen, logits: &band.logits, seq: &seq }];
 
@@ -4892,9 +4900,49 @@ mod tests {
             "a rejected malformed call must leave hidden challenge/correlation state reusable"
         );
 
+        #[cfg(feature = "c6-trace")]
+        let verifier_cache_fold_guard = crate::c6_cache_fold::begin_c6_cache_fold_trace(
+            crate::c6_cache_fold::C6CacheFoldParty::Verifier,
+        )
+        .expect("start response verifier cache-fold trace");
         let (outv, kprod, mut kzero) =
             verify_response(&model, t, &wit0.logits, &chunks_v, &proof, &mut vc, &mut txv)
                 .expect("response proof must verify");
+        #[cfg(feature = "c6-trace")]
+        let verifier_cache_fold_trace =
+            verifier_cache_fold_guard.finish().expect("finish response verifier cache-fold trace");
+        #[cfg(feature = "c6-trace")]
+        {
+            assert_eq!(prover_cache_fold_trace.identity, verifier_cache_fold_trace.identity);
+            assert_eq!(prover_cache_fold_trace.records, verifier_cache_fold_trace.records);
+            assert_eq!(prover_cache_fold_trace.identity.fold_count, 2 * L as u32 * 2 * H as u32);
+            let expected_applications =
+                2 * H as u64 * L as u64 * (t as u64 + (t + n_gen) as u64) * (D / H) as u64;
+            assert_eq!(
+                prover_cache_fold_trace.identity.coefficient_applications,
+                expected_applications
+            );
+            let mut prefill_records = 0;
+            let mut continuation_records = 0;
+            for record in &prover_cache_fold_trace.records {
+                if record.t0 == 0 {
+                    prefill_records += 1;
+                    assert_eq!((record.q, record.total_rows), (t as u32, t as u32));
+                    assert_eq!(record.segment_rows, vec![t as u32]);
+                    assert_eq!(record.schedule_section, record.model_layer);
+                } else {
+                    continuation_records += 1;
+                    assert_eq!(
+                        (record.t0, record.q, record.total_rows),
+                        (t as u32, n_gen as u32, (t + n_gen) as u32)
+                    );
+                    assert_eq!(record.segment_rows, vec![t as u32, n_gen as u32]);
+                    assert_eq!(record.schedule_section, 16 + record.model_layer);
+                }
+            }
+            assert_eq!(prefill_records, L * 2 * H);
+            assert_eq!(continuation_records, L * 2 * H);
+        }
 
         // Stacked weight claims: 48 prefill + 48 chunk, layer-major.
         assert_eq!(out.weight_claims.len(), 8 * L, "expected 96 stacked weight claims");

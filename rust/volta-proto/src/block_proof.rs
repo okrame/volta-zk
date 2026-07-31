@@ -6143,6 +6143,20 @@ fn prove_attn_block_impl(
             .zip(&eq_l)
             .fold(ProverAuthed::ZERO, |sum, (&entry, &weight)| sum.add(entry.scale(weight)))
             .with_same_c6_trace(value, tag);
+        #[cfg(feature = "c6-trace")]
+        crate::c6_cache_fold::record_c6_cache_fold_if_active(
+            crate::c6_cache_fold::C6CacheFoldKind::ValueColumns,
+            layer,
+            sh.t0,
+            sh.q,
+            &v_segs.iter().map(|segment| segment.rows).collect::<Vec<_>>(),
+            h,
+            h * DH,
+            &eq_l[..s_len],
+            &eq_within,
+            b_open.c6_trace_token(),
+        )
+        .expect("C6 W·V cache-fold trace must be canonical");
         timings.t_open_tags_s = open_started.elapsed().as_secs_f64();
         let (gp, wire, _r_l, _tm, _cc) = finalize_gemm_act_chained(
             rounds,
@@ -6488,6 +6502,20 @@ fn prove_attn_block_impl(
             .zip(&eq_l)
             .fold(ProverAuthed::ZERO, |sum, (&entry, &weight)| sum.add(entry.scale(weight)))
             .with_same_c6_trace(value, tag);
+        #[cfg(feature = "c6-trace")]
+        crate::c6_cache_fold::record_c6_cache_fold_if_active(
+            crate::c6_cache_fold::C6CacheFoldKind::KeyRows,
+            layer,
+            sh.t0,
+            sh.q,
+            &k_segs.iter().map(|segment| segment.rows).collect::<Vec<_>>(),
+            h,
+            h * DH,
+            &eq_rj_sc[..s_len],
+            &eq_l[..DH],
+            b_open.c6_trace_token(),
+        )
+        .expect("C6 Q·K^T cache-fold trace must be canonical");
         timings.t_open_tags_s = open_started.elapsed().as_secs_f64();
         let (gp, wire, _r_l, _tm, _cc) = finalize_gemm_act_chained(
             rounds,
@@ -8000,6 +8028,20 @@ fn verify_attn_block_impl(
         let eq_l = eq_vec(&output.point);
         let k_b =
             (0..s_len).fold(VerifierKey::ZERO, |sum, row| sum.add(vkeys_row[row].scale(eq_l[row])));
+        #[cfg(feature = "c6-trace")]
+        crate::c6_cache_fold::record_c6_cache_fold_if_active(
+            crate::c6_cache_fold::C6CacheFoldKind::ValueColumns,
+            layer,
+            sh.t0,
+            sh.q,
+            &v_segs.iter().map(|segment| segment.rows).collect::<Vec<_>>(),
+            h,
+            h * DH,
+            &eq_l[..s_len],
+            &eq_within,
+            k_b.c6_trace_token(),
+        )
+        .expect("C6 verifier W·V cache-fold trace must be canonical");
         let (wk, _r_l) = finalize_verify_gemm_act_chained(
             output,
             &pt_av[d_cb..],
@@ -8197,6 +8239,20 @@ fn verify_attn_block_impl(
         }
         let eq_l = eq_vec(&output.point);
         let k_b = (0..DH).fold(VerifierKey::ZERO, |sum, l| sum.add(kkeys_col[l].scale(eq_l[l])));
+        #[cfg(feature = "c6-trace")]
+        crate::c6_cache_fold::record_c6_cache_fold_if_active(
+            crate::c6_cache_fold::C6CacheFoldKind::KeyRows,
+            layer,
+            sh.t0,
+            sh.q,
+            &k_segs.iter().map(|segment| segment.rows).collect::<Vec<_>>(),
+            h,
+            h * DH,
+            &eq_rj_sc[..s_len],
+            &eq_l[..DH],
+            k_b.c6_trace_token(),
+        )
+        .expect("C6 verifier Q·K^T cache-fold trace must be canonical");
         let (wk, _r_l) = finalize_verify_gemm_act_chained(
             output,
             &pt_sc[sb..sb + qb],
@@ -11126,12 +11182,26 @@ mod tests {
     /// Π_ZeroBatch over ALL accumulated rows. Witness/wires tampers run the
     /// honest prover on bad data: nonzero zero-row values are cleared before
     /// the batch (cheating-prover emulation — the MAC keys keep the truth).
-    fn run_layer_case(
+    #[derive(Default)]
+    struct LayerCacheFoldTraceControl {
+        #[cfg(feature = "c6-trace")]
+        enabled: bool,
+        #[cfg(feature = "c6-trace")]
+        captured: Option<(
+            crate::c6_cache_fold::C6CacheFoldTraceSnapshot,
+            crate::c6_cache_fold::C6CacheFoldTraceSnapshot,
+        )>,
+    }
+
+    fn run_layer_case_impl(
         seed: u8,
         tamper_wit: impl FnOnce(&mut LayerWitness, &LayerWeights, &Luts),
         tamper_wires: impl FnOnce(&mut AttnWires),
         tamper_proof: impl FnOnce(&mut LayerProof),
+        trace_control: &mut LayerCacheFoldTraceControl,
     ) -> bool {
+        #[cfg(not(feature = "c6-trace"))]
+        let _ = trace_control;
         let (luts, w, wit0) = fixture();
         let mut wit = wit0.clone();
         tamper_wit(&mut wit, w, luts);
@@ -11150,13 +11220,39 @@ mod tests {
 
         let mut wires = build_attn_wires(&wit, luts);
         tamper_wires(&mut wires);
+        #[cfg(feature = "c6-trace")]
+        let prover_cache_fold_guard = trace_control.enabled.then(|| {
+            crate::c6_cache_fold::begin_c6_cache_fold_trace(
+                crate::c6_cache_fold::C6CacheFoldParty::Prover,
+            )
+            .expect("start prover cache-fold trace")
+        });
         let (mut proof, out, tables, prod, mut zero, mut domsp) =
             prove_layer_test(&wit, w, luts, Some(wires), &mut stream, &mut txp, None);
+        #[cfg(feature = "c6-trace")]
+        let prover_cache_fold_trace = prover_cache_fold_guard
+            .map(|guard| guard.finish().expect("finish prover cache-fold trace"));
         tamper_proof(&mut proof);
 
-        let Some((outv, kprod, mut kzero, mut domsv)) =
-            verify_layer_test(w, luts, &proof, &tables, &mut vc, &mut txv, None)
-        else {
+        #[cfg(feature = "c6-trace")]
+        let verifier_cache_fold_guard = trace_control.enabled.then(|| {
+            crate::c6_cache_fold::begin_c6_cache_fold_trace(
+                crate::c6_cache_fold::C6CacheFoldParty::Verifier,
+            )
+            .expect("start verifier cache-fold trace")
+        });
+        let verified = verify_layer_test(w, luts, &proof, &tables, &mut vc, &mut txv, None);
+        #[cfg(feature = "c6-trace")]
+        let verifier_cache_fold_trace = verifier_cache_fold_guard
+            .map(|guard| guard.finish().expect("finish verifier cache-fold trace"));
+        #[cfg(feature = "c6-trace")]
+        if trace_control.enabled {
+            trace_control.captured = Some((
+                prover_cache_fold_trace.expect("enabled prover cache-fold trace"),
+                verifier_cache_fold_trace.expect("enabled verifier cache-fold trace"),
+            ));
+        }
+        let Some((outv, kprod, mut kzero, mut domsv)) = verified else {
             return false;
         };
 
@@ -11196,9 +11292,83 @@ mod tests {
         ok_prod && ok_zero
     }
 
+    fn run_layer_case(
+        seed: u8,
+        tamper_wit: impl FnOnce(&mut LayerWitness, &LayerWeights, &Luts),
+        tamper_wires: impl FnOnce(&mut AttnWires),
+        tamper_proof: impl FnOnce(&mut LayerProof),
+    ) -> bool {
+        run_layer_case_impl(
+            seed,
+            tamper_wit,
+            tamper_wires,
+            tamper_proof,
+            &mut LayerCacheFoldTraceControl::default(),
+        )
+    }
+
     #[test]
     fn attn_block_e2e() {
         assert!(run_layer_case(21, |_, _, _| {}, |_| {}, |_| {}), "honest full layer rejected");
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn c6_cache_fold_runtime_matches_roles_and_separates_instance_from_topology() {
+        fn capture(
+            seed: u8,
+        ) -> (
+            crate::c6_cache_fold::C6CacheFoldTraceSnapshot,
+            crate::c6_cache_fold::C6CacheFoldTraceSnapshot,
+        ) {
+            let mut control = LayerCacheFoldTraceControl { enabled: true, captured: None };
+            assert!(
+                run_layer_case_impl(seed, |_, _, _| {}, |_| {}, |_| {}, &mut control),
+                "honest traced layer rejected"
+            );
+            control.captured.expect("traced layer did not return cache-fold captures")
+        }
+
+        let (prover_a, verifier_a) = capture(31);
+        let (prover_b, verifier_b) = capture(32);
+        for (prover, verifier) in [(&prover_a, &verifier_a), (&prover_b, &verifier_b)] {
+            assert_eq!(prover.identity, verifier.identity);
+            assert_eq!(prover.records, verifier.records);
+            assert_eq!(prover.identity.fold_count, 24);
+            assert_eq!(prover.identity.coefficient_applications, 24 * T as u64 * DH as u64);
+            assert_eq!(prover.targets.len(), 24);
+            assert_eq!(verifier.targets.len(), 24);
+            for (ordinal, record) in prover.records.iter().enumerate() {
+                assert_eq!(record.ordinal as usize, ordinal);
+                assert_eq!(record.schedule_section, 0);
+                assert_eq!(record.model_layer, 0);
+                assert_eq!((record.t0, record.q, record.total_rows), (0, T as u32, T as u32));
+                assert_eq!(record.segment_rows, vec![T as u32]);
+                assert_eq!(record.head as usize, ordinal % H);
+                assert_eq!(record.column_offset as usize, (ordinal % H) * DH);
+                assert_eq!(record.column_width as usize, DH);
+                assert_eq!(record.row_weight_count as usize, T);
+                assert_eq!(record.column_weight_count as usize, DH);
+                let expected_kind = if ordinal < H {
+                    crate::c6_cache_fold::C6CacheFoldKind::ValueColumns
+                } else {
+                    crate::c6_cache_fold::C6CacheFoldKind::KeyRows
+                };
+                assert_eq!(record.kind, expected_kind);
+            }
+        }
+        assert_eq!(prover_a.identity.topology_digest, prover_b.identity.topology_digest);
+        assert_eq!(verifier_a.identity.topology_digest, verifier_b.identity.topology_digest);
+        assert_ne!(prover_a.identity.instance_digest, prover_b.identity.instance_digest);
+        assert_ne!(verifier_a.identity.instance_digest, verifier_b.identity.instance_digest);
+        assert!(
+            prover_a
+                .records
+                .iter()
+                .zip(&prover_b.records)
+                .any(|(left, right)| left.coefficient_digest != right.coefficient_digest),
+            "changing the transcript seed did not change any cache functional"
+        );
     }
 
     /// Nonzero softmax weight above the diagonal in the prover's causal-B

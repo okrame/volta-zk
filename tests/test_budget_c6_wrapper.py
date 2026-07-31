@@ -99,6 +99,7 @@ def test_two_repetition_wire_and_setup_stay_inside_frozen_caps() -> None:
     report = budget.build_report()
     wire = report["wire"]
     setup = report["setup"]
+    target = report["cache_fold_target_bootstrap"]
 
     assert wire["two_chain_pcs_bytes"] == 3_879_466
     assert wire["non_pcs_allocation_bytes"] == 600_000
@@ -113,6 +114,19 @@ def test_two_repetition_wire_and_setup_stay_inside_frozen_caps() -> None:
     assert wire["response_headroom_bytes"] == 1_343_902
     assert setup["paired_pcg_setup_bytes"] == 76_742_930
     assert setup["client_params_and_framing_budget_bytes"] == 73_257_070
+    assert target == {
+        "magic": "C6FT1",
+        "target_capacity": 576,
+        "mac_tapes": 2,
+        "header_bytes": 48,
+        "correction_bytes": 18_432,
+        "frame_bytes": 18_480,
+        "fresh_full_correlations_per_tape": 0,
+        "non_pcs_allocation_remaining_after_frame_bytes": 581_520,
+        "registered_wrapper_full_correlations_per_tape": 622,
+        "historical_full_correlation_reserve_per_tape": 39_116,
+        "registered_full_correlation_headroom_per_tape": 38_494,
+    }
 
 
 def test_s86_is_selected_before_benchmark_and_all_events_exceed_128_bits() -> None:

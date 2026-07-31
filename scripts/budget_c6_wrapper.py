@@ -154,6 +154,34 @@ RESIDUAL_BLIND_FULL_CORRELATIONS_PER_TAPE = (
 )
 HISTORICAL_PCS_FULL_CORRELATION_RESERVE_PER_TAPE = 39_116
 
+# C6FT1: one response-fixed correction for every canonical runtime cache
+# target on both MAC tapes.  These are linear aggregates of correlations
+# already consumed by the model, not fresh authentications.  The fixed tail
+# is canonical zero when fewer than the two phase slots are live.
+CACHE_FOLD_TARGET_CAPACITY = 576
+CACHE_FOLD_TARGET_TAPES = 2
+CACHE_FOLD_TARGET_HEADER_BYTES = 48
+CACHE_FOLD_TARGET_CORRECTION_BYTES = (
+    CACHE_FOLD_TARGET_CAPACITY * CACHE_FOLD_TARGET_TAPES * FP2_BYTES
+)
+CACHE_FOLD_TARGET_FRAME_BYTES = (
+    CACHE_FOLD_TARGET_HEADER_BYTES + CACHE_FOLD_TARGET_CORRECTION_BYTES
+)
+CACHE_FOLD_TARGET_FRESH_CORRELATIONS_PER_TAPE = 0
+
+# Exact registered wrapper consumers of the historical PCS full-correlation
+# reserve.  C6FT1 does not increase this subtotal.
+HIDDEN_U_FULL_CORRELATIONS_PER_TAPE = 164
+AUTHENTICATED_OUTPUT_LINK_FULL_CORRELATIONS_PER_TAPE = 100
+CACHE_BLIND_FULL_CORRELATIONS_PER_TAPE = 104
+REGISTERED_WRAPPER_FULL_CORRELATIONS_PER_TAPE = (
+    RESIDUAL_BLIND_FULL_CORRELATIONS_PER_TAPE
+    + HIDDEN_U_FULL_CORRELATIONS_PER_TAPE
+    + AUTHENTICATED_OUTPUT_LINK_FULL_CORRELATIONS_PER_TAPE
+    + CACHE_BLIND_FULL_CORRELATIONS_PER_TAPE
+    + CACHE_FOLD_TARGET_FRESH_CORRELATIONS_PER_TAPE
+)
+
 # C6RSC3: dual-tape corrections for 93 round values/repetition, one
 # activation-time split ZeroOpen tag/tape, eight terminal product-value
 # corrections/tape, one two-symbol ProductClosure/tape and one
@@ -677,6 +705,30 @@ def build_report() -> dict[str, Any]:
                 SETUP_CAP_BYTES - paired_setup_bytes
             ),
         },
+        "cache_fold_target_bootstrap": {
+            "magic": "C6FT1",
+            "target_capacity": CACHE_FOLD_TARGET_CAPACITY,
+            "mac_tapes": CACHE_FOLD_TARGET_TAPES,
+            "header_bytes": CACHE_FOLD_TARGET_HEADER_BYTES,
+            "correction_bytes": CACHE_FOLD_TARGET_CORRECTION_BYTES,
+            "frame_bytes": CACHE_FOLD_TARGET_FRAME_BYTES,
+            "fresh_full_correlations_per_tape": (
+                CACHE_FOLD_TARGET_FRESH_CORRELATIONS_PER_TAPE
+            ),
+            "non_pcs_allocation_remaining_after_frame_bytes": (
+                NON_PCS_ALLOCATION_BYTES - CACHE_FOLD_TARGET_FRAME_BYTES
+            ),
+            "registered_wrapper_full_correlations_per_tape": (
+                REGISTERED_WRAPPER_FULL_CORRELATIONS_PER_TAPE
+            ),
+            "historical_full_correlation_reserve_per_tape": (
+                HISTORICAL_PCS_FULL_CORRELATION_RESERVE_PER_TAPE
+            ),
+            "registered_full_correlation_headroom_per_tape": (
+                HISTORICAL_PCS_FULL_CORRELATION_RESERVE_PER_TAPE
+                - REGISTERED_WRAPPER_FULL_CORRELATIONS_PER_TAPE
+            ),
+        },
         "residual_relation_ownership": {
             "proof_repetitions": RESIDUAL_PROOF_REPETITIONS,
             "mac_coordinates_per_complete_relation": RESIDUAL_MAC_COORDINATES,
@@ -1006,6 +1058,16 @@ def build_report() -> dict[str, Any]:
     assert RESIDUAL_BLIND_CORE_FULL_CORRELATIONS_PER_TAPE == 206
     assert RESIDUAL_PENDING_SLOT_FULL_CORRELATIONS_PER_TAPE == 48
     assert RESIDUAL_BLIND_FULL_CORRELATIONS_PER_TAPE == 254
+    assert CACHE_FOLD_TARGET_CORRECTION_BYTES == 18_432
+    assert CACHE_FOLD_TARGET_FRAME_BYTES == 18_480
+    assert CACHE_FOLD_TARGET_FRESH_CORRELATIONS_PER_TAPE == 0
+    assert REGISTERED_WRAPPER_FULL_CORRELATIONS_PER_TAPE == 622
+    assert (
+        HISTORICAL_PCS_FULL_CORRELATION_RESERVE_PER_TAPE
+        - REGISTERED_WRAPPER_FULL_CORRELATIONS_PER_TAPE
+        == 38_494
+    )
+    assert CACHE_FOLD_TARGET_FRAME_BYTES <= NON_PCS_ALLOCATION_BYTES
     assert RESIDUAL_SUMCHECK_PROOF_BYTES == 6_900
     assert RESIDUAL_TERMINAL_PRODUCT_ROOTS == 10
     assert RESIDUAL_TERMINAL_ZERO_BATCH_ROOTS == 3

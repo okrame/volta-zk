@@ -16,7 +16,7 @@ POINTWISE C6PC2 AND SOURCE-BOUND C6PS1 -> C6PC2 -> C6LNK2 -> PAIRED PCS
 SCALED PATH GREEN WITH ZERO CACHE STAND-INS; FACTORIZED RUNTIME FOLD-BATCH
 COMPILER + 653-ROOT FORMAL REPAIR + STRICT C6PS1 V2 TRANSCRIPT MIGRATION GREEN;
 ROLE-TYPED RUNTIME TARGETS + STEP-WISE 24-ROUND CACHE PARTICIPANT SCALED
-GREEN; `CacheSegK` REMOVAL /
+GREEN; INDIVIDUAL TARGET `C6FT1` BOOTSTRAP PREREGISTERED; `CacheSegK` REMOVAL /
 BACKEND / FINAL ENVELOPE PENDING;
 LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
@@ -3951,6 +3951,95 @@ model verifier are still the values obtained after folding `CacheSegK` and
 are consumed immediately by the existing product check.  Therefore
 `CacheSegK` remains live, the 24-round test remains scaled, and no response,
 setup, correlation, prover-time or hardware credit is earned yet.
+
+#### 6.2.2 Individual target-key bootstrap before `CacheSegK` removal
+
+The typed-target checkpoint exposes a stricter ordering obstruction than the
+post-`rho` `C6PS1` aggregate alone can solve.  Every attention boundary
+target is consumed immediately by the retained ΠProd tail in
+`finalize_verify_gemm_act_chained`.  Its individual verifier key must
+therefore exist before that ΠProd challenge; a key reconstructed only after
+all targets and the successor scalar root is too late.  Deleting
+`CacheSegK`, accepting a provider-authored key, or moving ΠProd after the
+24-round cache proof is forbidden.
+
+C6 resolves this with individual **linear aggregate corrections**, not
+fresh reauthentication.  For canonical target `j`, source coefficients
+`c[j,i]` and MAC tape `b`, define
+
+```text
+r[j,b] = sum_i c[j,i] * r[i,b]
+m[j,b] = sum_i c[j,i] * m[i,b]
+d[j,b] = sum_i c[j,i] * d[i,b] = x[j] - r[j,b]
+k[j,b] = sum_i c[j,i] * k0[i,b] + Delta[b] * d[j,b]
+       = m[j,b] + Delta[b] * x[j].
+```
+
+These are the same direct K/V source correlations and the same linear target
+already present in the frozen T1 operation DAG.  No new authenticated source,
+ProductClosure operand, source ordinal or correlation draw is introduced.
+In particular, drawing 576 fresh full correlations here is rejected: it
+would change the exact T1 source census and would require a new residual-DAG
+owner.  Tape 0's corrected target key is handed to the existing ΠProd tail;
+both tape keys are retained only as the bounded response-local target array
+and enter the cache relation.  The prover tape-0 target is byte-for-byte the
+existing operation-DAG value; tape 1 is reconstructed from the independently
+replayed source coordinate without rerunning model inference.
+
+The strict response frame is `C6FT1`:
+
+```text
+magic/version/tapes/count/capacity/statement digest                 48 B
+576 target slots * 2 tapes * one Fp2 correction                 18,432 B
+total                                                           18,480 B.
+```
+
+Targets are in the already frozen global fold ordinal order.  The public
+workload fixes `live_count <=576`; every inactive tail correction is
+canonical zero and consumes no correlation.  Thus prompt/decode shape changes
+neither frame length nor certificate size.  For each live target, both tape
+corrections are fixed before that target's ΠProd challenge.  The header is
+fixed before the first target and the canonical zero tail is fixed before
+either successor root `rho`.  Wrong count/capacity, nonzero padding,
+reorder, K/V-kind mismatch, source-map mismatch or a correction reused for a
+different target fails closed.
+
+After `rho_p` is sampled, strict `C6PS1` v2 remains exactly 304 B and must
+check, before accepting its fold correction, the deterministic identities
+
+```text
+C6PS1.fold[p,kind,b]
+  = sum_(j of kind) rho_p^(j+1) * C6FT1.correction[j,b].
+```
+
+The provider and client derive the same value from the fixed `C6FT1` frame;
+no second correction witness is authoritative.  This preserves the existing
+post-root transcript order and avoids another codec migration.
+
+`C6FT1` consumes **zero fresh full correlations**.  The exact registered
+wrapper subtotal remains
+
+```text
+residual 254 + hidden-u 164 + link 100 + cache core 104 = 622/tape,
+39,116 - 622 = 38,494 full correlations/tape of reserve headroom.
+```
+
+Its 18,480 B are reserved inside the already frozen 600,000-B non-PCS
+allocation.  Therefore `pi_final <=4,479,466 B`, complete response
+`<=33,656,098 B`, setup `146,058,504 B` known components and the 17+4 raw
+attempt reservation do not change.  The executable budget records 581,520 B
+of the non-PCS allocation after reserving this frame; this is allocation
+remainder, not a claim that every other frame is absent.
+
+This amendment adds no statistical event.  The per-target equation is the
+same aggregate-correction identity already used by `C6PS1`; using that exact
+key in ΠProd and both cache tapes is deterministic composition.  The next
+ordered gates are: an explicit two-stage aggregate theorem/audit; strict
+`C6FT1` codec and scaled differential including ΠProd plus `C6PS1`; then a
+single-pass provider/client source-ordinal streamer that accumulates at most
+576 response-local keys/masks without retaining any per-element `CacheSegK`
+or rereading a one-time correlation as a new draw.  No wire, response-field
+removal, production-time or hardware credit is earned before those gates.
 
 ## 7. Certificate and challenge grammar
 

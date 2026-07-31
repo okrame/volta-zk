@@ -310,6 +310,34 @@ impl C6CacheFoldTargetSchedule {
     pub fn kinds(&self) -> impl Iterator<Item = C6CacheFoldKind> + '_ {
         self.kinds.iter().copied()
     }
+
+    pub fn public_schedule(&self) -> C6CacheFoldTargetPublicSchedule {
+        C6CacheFoldTargetPublicSchedule { kinds: self.kinds.clone() }
+    }
+}
+
+/// Statement/workload-derived part of the C6FT1 target schedule.  Unlike a
+/// complete runtime trace identity, this is available before the first
+/// attention challenge and is therefore the only schedule accepted by the
+/// production online start seam.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6CacheFoldTargetPublicSchedule {
+    kinds: Vec<C6CacheFoldKind>,
+}
+
+impl C6CacheFoldTargetPublicSchedule {
+    pub fn new(kinds: Vec<C6CacheFoldKind>) -> Result<Self, C6CacheFoldTraceError> {
+        validate_target_count(kinds.len())?;
+        Ok(Self { kinds })
+    }
+
+    pub fn live_count(&self) -> usize {
+        self.kinds.len()
+    }
+
+    pub fn kinds(&self) -> impl Iterator<Item = C6CacheFoldKind> + '_ {
+        self.kinds.iter().copied()
+    }
 }
 
 /// Provider-side inline builder.  It accepts only the next public ordinal,
@@ -318,7 +346,8 @@ impl C6CacheFoldTargetSchedule {
 /// required to advance it.
 pub struct C6CacheFoldTargetInlineProver {
     statement_digest: [u8; 32],
-    schedule: C6CacheFoldTargetSchedule,
+    schedule: C6CacheFoldTargetPublicSchedule,
+    expected_identity: Option<C6CacheFoldTraceIdentity>,
     corrections: Vec<[Fp2; C6_CACHE_FOLD_TARGET_TAPES]>,
 }
 
@@ -330,11 +359,35 @@ impl C6CacheFoldTargetInlineProver {
     ) -> Result<Self, C6CacheFoldTraceError> {
         validate_statement_digest(statement_digest)?;
         validate_target_identity(schedule.identity, schedule.kinds.len())?;
+        let identity = schedule.identity;
+        Self::start_inner(statement_digest, schedule.public_schedule(), Some(identity), transcript)
+    }
+
+    /// Start the online C6FT1 stream before challenge-dependent row/column
+    /// factors exist.  The complete runtime identity must be supplied to the
+    /// matching `finish_*_with_identity` transition before a successor root.
+    pub fn start_public(
+        statement_digest: [u8; 32],
+        schedule: C6CacheFoldTargetPublicSchedule,
+        transcript: &mut Transcript,
+    ) -> Result<Self, C6CacheFoldTraceError> {
+        validate_statement_digest(statement_digest)?;
+        Self::start_inner(statement_digest, schedule, None, transcript)
+    }
+
+    fn start_inner(
+        statement_digest: [u8; 32],
+        schedule: C6CacheFoldTargetPublicSchedule,
+        expected_identity: Option<C6CacheFoldTraceIdentity>,
+        transcript: &mut Transcript,
+    ) -> Result<Self, C6CacheFoldTraceError> {
+        validate_target_count(schedule.kinds.len())?;
         transcript.append(C6_CACHE_FOLD_TARGET_HEADER_LABEL, C6_CACHE_FOLD_TARGET_HEADER_BYTES);
         Ok(Self {
             statement_digest,
             corrections: Vec::with_capacity(schedule.kinds.len()),
             schedule,
+            expected_identity,
         })
     }
 
@@ -366,19 +419,40 @@ impl C6CacheFoldTargetInlineProver {
         (C6CacheFoldTargetCorrectionFrame, C6CacheFoldTargetFixedCorrections),
         C6CacheFoldTraceError,
     > {
+        let identity = self.expected_identity.ok_or_else(|| {
+            C6CacheFoldTraceError::new(
+                "C6FT1 public-start prover requires runtime identity at finish",
+            )
+        })?;
+        self.finish_before_successor_root_with_identity(identity, transcript)
+    }
+
+    pub fn finish_before_successor_root_with_identity(
+        self,
+        identity: C6CacheFoldTraceIdentity,
+        transcript: &mut Transcript,
+    ) -> Result<
+        (C6CacheFoldTargetCorrectionFrame, C6CacheFoldTargetFixedCorrections),
+        C6CacheFoldTraceError,
+    > {
         if self.corrections.len() != self.schedule.kinds.len() {
             return Err(C6CacheFoldTraceError::new(
                 "C6FT1 inline prover did not exhaust live targets",
             ));
         }
         charge_target_padding(self.corrections.len(), transcript);
+        validate_online_runtime_identity(
+            identity,
+            self.expected_identity,
+            self.schedule.kinds.len(),
+        )?;
         let frame = C6CacheFoldTargetCorrectionFrame {
             statement_digest: self.statement_digest,
-            identity: self.schedule.identity,
+            identity,
             corrections: self.corrections.clone(),
         };
         let fixed = C6CacheFoldTargetFixedCorrections {
-            identity: self.schedule.identity,
+            identity,
             kinds: self.schedule.kinds,
             corrections: self.corrections,
         };
@@ -392,7 +466,8 @@ impl C6CacheFoldTargetInlineProver {
 /// challenge.
 pub struct C6CacheFoldTargetInlineVerifier<'a> {
     frame: &'a C6CacheFoldTargetCorrectionFrame,
-    schedule: C6CacheFoldTargetSchedule,
+    schedule: C6CacheFoldTargetPublicSchedule,
+    expected_identity: Option<C6CacheFoldTraceIdentity>,
     deltas: [Fp2; C6_CACHE_FOLD_TARGET_TAPES],
     next: usize,
 }
@@ -410,8 +485,35 @@ impl<'a> C6CacheFoldTargetInlineVerifier<'a> {
         if deltas[0] == deltas[1] {
             return Err(C6CacheFoldTraceError::new("C6FT1 MAC tapes are not independent"));
         }
+        let identity = schedule.identity;
+        Self::start_inner(frame, schedule.public_schedule(), Some(identity), deltas, transcript)
+    }
+
+    pub fn start_public(
+        frame: &'a C6CacheFoldTargetCorrectionFrame,
+        schedule: C6CacheFoldTargetPublicSchedule,
+        deltas: [Fp2; C6_CACHE_FOLD_TARGET_TAPES],
+        transcript: &mut Transcript,
+    ) -> Result<Self, C6CacheFoldTraceError> {
+        if schedule.kinds.len() != frame.corrections.len() {
+            return Err(C6CacheFoldTraceError::new("C6FT1 inline verifier schedule mismatch"));
+        }
+        if deltas[0] == deltas[1] {
+            return Err(C6CacheFoldTraceError::new("C6FT1 MAC tapes are not independent"));
+        }
+        Self::start_inner(frame, schedule, None, deltas, transcript)
+    }
+
+    fn start_inner(
+        frame: &'a C6CacheFoldTargetCorrectionFrame,
+        schedule: C6CacheFoldTargetPublicSchedule,
+        expected_identity: Option<C6CacheFoldTraceIdentity>,
+        deltas: [Fp2; C6_CACHE_FOLD_TARGET_TAPES],
+        transcript: &mut Transcript,
+    ) -> Result<Self, C6CacheFoldTraceError> {
+        validate_target_count(schedule.kinds.len())?;
         transcript.append(C6_CACHE_FOLD_TARGET_HEADER_LABEL, C6_CACHE_FOLD_TARGET_HEADER_BYTES);
-        Ok(Self { frame, schedule, deltas, next: 0 })
+        Ok(Self { frame, schedule, expected_identity, deltas, next: 0 })
     }
 
     pub fn correct_next_before_product(
@@ -435,14 +537,37 @@ impl<'a> C6CacheFoldTargetInlineVerifier<'a> {
         self,
         transcript: &mut Transcript,
     ) -> Result<C6CacheFoldTargetFixedCorrections, C6CacheFoldTraceError> {
+        let identity = self.expected_identity.ok_or_else(|| {
+            C6CacheFoldTraceError::new(
+                "C6FT1 public-start verifier requires runtime identity at finish",
+            )
+        })?;
+        self.finish_before_successor_root_with_identity(identity, transcript)
+    }
+
+    pub fn finish_before_successor_root_with_identity(
+        self,
+        identity: C6CacheFoldTraceIdentity,
+        transcript: &mut Transcript,
+    ) -> Result<C6CacheFoldTargetFixedCorrections, C6CacheFoldTraceError> {
         if self.next != self.schedule.kinds.len() {
             return Err(C6CacheFoldTraceError::new(
                 "C6FT1 inline verifier did not exhaust live targets",
             ));
         }
         charge_target_padding(self.frame.corrections.len(), transcript);
+        validate_online_runtime_identity(
+            identity,
+            self.expected_identity,
+            self.schedule.kinds.len(),
+        )?;
+        if identity != self.frame.identity {
+            return Err(C6CacheFoldTraceError::new(
+                "C6FT1 verifier runtime identity differs from decoded frame binding",
+            ));
+        }
         Ok(C6CacheFoldTargetFixedCorrections {
-            identity: self.schedule.identity,
+            identity,
             kinds: self.schedule.kinds,
             corrections: self.frame.corrections.clone(),
         })
@@ -754,6 +879,20 @@ fn validate_target_identity(
         || identity.instance_digest == [0; 32]
     {
         return Err(C6CacheFoldTraceError::new("C6FT1 target identity mismatch"));
+    }
+    Ok(())
+}
+
+fn validate_online_runtime_identity(
+    identity: C6CacheFoldTraceIdentity,
+    expected_identity: Option<C6CacheFoldTraceIdentity>,
+    count: usize,
+) -> Result<(), C6CacheFoldTraceError> {
+    validate_target_identity(identity, count)?;
+    if expected_identity.is_some_and(|expected| expected != identity) {
+        return Err(C6CacheFoldTraceError::new(
+            "C6FT1 runtime identity differs from its post-hoc schedule",
+        ));
     }
     Ok(())
 }
@@ -2233,6 +2372,75 @@ mod tests {
             &encoded[..encoded.len() - 1],
         )
         .is_err());
+    }
+
+    #[test]
+    fn c6ft1_online_start_defers_runtime_identity_until_before_root() {
+        let (prover, masks, verifier, deltas) = c6ft1_fixture();
+        let statement_digest = [0xBA; 32];
+        let full_schedule = C6CacheFoldTargetSchedule::from_prover_targets(&prover).unwrap();
+        let public_schedule =
+            C6CacheFoldTargetPublicSchedule::new(full_schedule.kinds().collect::<Vec<_>>())
+                .unwrap();
+        let mut prover_tx = Transcript::new([0xBB; 32]);
+        let mut online = C6CacheFoldTargetInlineProver::start_public(
+            statement_digest,
+            public_schedule.clone(),
+            &mut prover_tx,
+        )
+        .unwrap();
+        for (ordinal, (kind, targets)) in prover.terms().enumerate() {
+            online
+                .push_target_before_product(kind, targets, masks[ordinal], &mut prover_tx)
+                .unwrap();
+            let _ = prover_tx.challenge_fp2();
+        }
+        let (frame, fixed) = online
+            .finish_before_successor_root_with_identity(prover.identity, &mut prover_tx)
+            .unwrap();
+        assert_eq!(fixed.identity(), prover.identity);
+        assert_eq!(prover_tx.total_bytes(), C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES);
+
+        let verifier_terms = verifier.terms().collect::<Vec<_>>();
+        let run_verifier = |identity: C6CacheFoldTraceIdentity| {
+            let mut tx = Transcript::new([0xBB; 32]);
+            let mut online = C6CacheFoldTargetInlineVerifier::start_public(
+                &frame,
+                public_schedule.clone(),
+                deltas,
+                &mut tx,
+            )
+            .unwrap();
+            for &(kind, base) in &verifier_terms {
+                online.correct_next_before_product(kind, base, &mut tx).unwrap();
+                let _ = tx.challenge_fp2();
+            }
+            let result = online.finish_before_successor_root_with_identity(identity, &mut tx);
+            (result, tx)
+        };
+        let (accepted, accepted_tx) = run_verifier(prover.identity);
+        assert!(accepted.is_ok());
+        assert_eq!(accepted_tx.total_bytes(), C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES);
+        assert_eq!(accepted_tx.ledger(), prover_tx.ledger());
+
+        let mut wrong = prover.identity;
+        wrong.instance_digest[0] ^= 1;
+        let (rejected, rejected_tx) = run_verifier(wrong);
+        assert!(rejected.is_err());
+        assert_eq!(rejected_tx.total_bytes(), C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES);
+
+        let mut early_tx = Transcript::new([0xBC; 32]);
+        let early = C6CacheFoldTargetInlineVerifier::start_public(
+            &frame,
+            public_schedule,
+            deltas,
+            &mut early_tx,
+        )
+        .unwrap();
+        assert!(early
+            .finish_before_successor_root_with_identity(prover.identity, &mut early_tx)
+            .is_err());
+        assert_eq!(early_tx.total_bytes(), C6_CACHE_FOLD_TARGET_HEADER_BYTES);
     }
 
     #[test]

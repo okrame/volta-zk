@@ -19,7 +19,7 @@ ROLE-TYPED RUNTIME TARGETS + STEP-WISE 24-ROUND CACHE PARTICIPANT SCALED
 GREEN; INDIVIDUAL TARGET `C6FT1` BOOTSTRAP FORMAL + STRICT CODEC + INLINE
 ΠPROD/C6PS1 SCALED DIFFERENTIAL GREEN; SOURCE-ORDINAL BASE-MASK/KEY
 STREAMER + PHASE-1 POOLED-PCG RESERVATION/REPLAY DIFFERENTIAL GREEN;
-INLINE RUNTIME-IDENTITY ORDERING REPAIR PREREGISTERED; `CacheSegK` REMOVAL /
+INLINE RUNTIME-IDENTITY ORDERING REPAIR GREEN; `CacheSegK` REMOVAL /
 BACKEND / FINAL ENVELOPE PENDING;
 LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
@@ -4138,6 +4138,14 @@ no challenge, no correlation and no bad event.  The existing post-hoc
 full-identity constructor/decoder remains available as a stricter replay
 check; only the online typestate is split into public start and runtime
 finish.
+
+The split typestate and its negative differential are now implemented.  A
+public start created only from the 24 scaled K/V kinds accepts every slot
+before its corresponding challenge, charges the same fixed **18,480 B**, and
+accepts the complete runtime identity only at finalization.  Early finish
+stops after the 48-B header, and a changed final `instance_digest` rejects
+after all fixed slots/padding but before any successor-root transition.  The
+post-hoc full-identity API and strict decoder remain green and byte-identical.
 before that gate.
 
 ## 7. Certificate and challenge grammar

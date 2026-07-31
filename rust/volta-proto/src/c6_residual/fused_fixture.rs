@@ -188,6 +188,8 @@ fn build_relation(
     installed: &C6InstalledOperationPlan,
     linear: &C6CompiledLinearResidual,
     manifest: C6ResidualRelationManifest,
+    leaf: &C6PairedResidualLeafWitness,
+    auxiliary: &C6PairedResidualAuxiliaryWitness,
     reference: &C6ResidualRelationReferenceWitness,
     chi: Fp2,
 ) -> C6ResidualResult<C6ResidualRelationChallenges> {
@@ -277,6 +279,10 @@ fn build_relation(
             "C6 scaled fixture product triple census differs from its manifest",
         ));
     }
+    let live_relation = base
+        .clone()
+        .commit_public_claims_from_live(installed, linear, leaf, auxiliary)?
+        .release_relation_seed(installed, [0xD4; 32])?;
     let relation = base
         .commit_public_claims(
             linear.linear_form_digest(),
@@ -284,6 +290,11 @@ fn build_relation(
             C6PairedDeltaResidual { coordinates: residuals },
         )?
         .release_relation_seed(installed, [0xD4; 32])?;
+    if live_relation != relation {
+        return Err(C6ResidualError::new(
+            "C6 live public-claim compiler differs from the materialized oracle",
+        ));
+    }
     Ok(relation)
 }
 
@@ -320,7 +331,8 @@ pub fn build_c6_residual_fused_scaled_fixture() -> C6ResidualResult<C6ResidualFu
     let auxiliary = closure.transpose_auxiliary_lanes()?;
     let reference =
         C6ResidualRelationReferenceWitness::from_live(&manifest, &leaf, &closure, &auxiliary)?;
-    let relation = build_relation(&operation_plan, &linear, manifest, &reference, chi)?;
+    let relation =
+        build_relation(&operation_plan, &linear, manifest, &leaf, &auxiliary, &reference, chi)?;
     let compilation = compile_c6_residual_atomic_relation_reference(
         &operation_plan,
         &extraction,

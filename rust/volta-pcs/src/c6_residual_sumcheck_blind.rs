@@ -2872,7 +2872,10 @@ mod tests {
     };
     use volta_mac::CorrCounters;
     #[cfg(feature = "c6-trace")]
-    use volta_proto::{build_c6_residual_fused_scaled_fixture, C6ResidualFusedCoefficientArena};
+    use volta_proto::{
+        build_c6_residual_fused_scaled_fixture, build_c6_response_residual_fixture,
+        C6ResidualFusedCoefficientArena,
+    };
 
     const LEAF_ROUNDS: usize = 5;
     const AUXILIARY_ROUNDS: usize = 3;
@@ -3482,5 +3485,103 @@ mod tests {
             &mut wrong_semantic_transcript,
         )
         .is_err());
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    #[ignore = "artifact-gated complete T=4,Q=2 CPU response and sealed residual gate"]
+    fn response_wide_installed_witness_enters_compact_sealed_coordinator() {
+        let gate_start = std::time::Instant::now();
+        let Some(mut fixture) = build_c6_response_residual_fixture().unwrap() else {
+            eprintln!("skipping C6 response-wide sealed gate: GPT-2 artifact not present");
+            return;
+        };
+        let census = fixture.census();
+        assert_eq!(census.source_groups, 48);
+        assert_eq!(census.corrected_targets, 576);
+        assert_eq!(census.source_cells, 184_320);
+        assert_eq!(census.verifier_linear_auxiliary_source_cells, 110_592);
+        assert_eq!(census.scheduled_sources, 593_876);
+        assert_eq!(census.product_closures, 673);
+        assert_eq!(census.product_triples, 14_653);
+        assert_eq!(census.zero_roots, 5_590);
+
+        let arena = C6ResidualFusedCoefficientArena::new(fixture.manifest());
+        let residual_prover_start = std::time::Instant::now();
+        let (statements, proof, frame, prover_pending_len, encoded_len) = {
+            let provider = fixture.provider_inputs().unwrap();
+            let compiler = C6BlindResidualFusedCompilerContext::new(
+                provider.operation_plan,
+                provider.extraction,
+                provider.runtime,
+                provider.linear,
+                provider.relation,
+            );
+            let statements = (0..C6_RESIDUAL_SUMCHECK_REPETITIONS)
+                .map(|repetition| {
+                    prepare_c6_blind_residual_statement_fused(compiler, repetition as u8)
+                })
+                .collect::<Result<Vec<_>>>()
+                .unwrap();
+            let (proof, frame, pending) = prove_c6_blind_residual_sumchecks_fused(
+                &statements,
+                compiler,
+                provider.witness,
+                &arena,
+                provider.streams,
+                provider.transcript,
+            )
+            .unwrap();
+            let encoded_len = proof.encoded_len(&statements).unwrap();
+            (statements, proof, frame, pending.len(), encoded_len)
+        };
+        let residual_prover_wall = residual_prover_start.elapsed();
+        assert_eq!(prover_pending_len, 48);
+        assert_eq!(arena.active_repetition(), None);
+        assert_eq!(arena.active_elements(), 0);
+        assert_eq!(arena.reserved_elements(), 0);
+        assert_eq!(arena.peak_elements(), 4_194_304);
+        assert_eq!(arena.peak_reserved_elements(), 4_194_304);
+        assert_eq!(arena.peak_bytes(), 67_108_864);
+        assert!(!arena.is_faulted());
+
+        let residual_verifier_start = std::time::Instant::now();
+        let verifier_pending_len = {
+            let verifier = fixture.verifier_inputs();
+            let compiler = C6BlindResidualFusedCompilerContext::new(
+                verifier.operation_plan,
+                verifier.extraction,
+                verifier.runtime,
+                verifier.linear,
+                verifier.relation,
+            );
+            verify_c6_blind_residual_sumchecks_fused(
+                &statements,
+                &proof,
+                &frame,
+                compiler,
+                verifier.contexts,
+                verifier.transcript,
+            )
+            .unwrap()
+            .len()
+        };
+        let residual_verifier_wall = residual_verifier_start.elapsed();
+        assert_eq!(verifier_pending_len, 48);
+        assert!(fixture.continued_protocol_states_match());
+        let closure_memory = fixture.closure_memory_census();
+        let timing = fixture.timing();
+        assert_eq!(closure_memory.canonical_nodes, 2_501_849);
+        assert_eq!(closure_memory.peak_live_node_values, 149_074);
+        eprintln!(
+            "C6 response sealed gate: proof_bytes={encoded_len} coefficient_peak_bytes={} closure_working_heap_bytes={} provider_response_residual_s={:.6} residual_prover_s={:.6} verifier_response_residual_s={:.6} residual_verifier_s={:.6} complete_gate_s={:.6}",
+            arena.peak_bytes(),
+            closure_memory.peak_working_heap_bytes,
+            timing.provider_response_and_residual_ns as f64 / 1e9,
+            residual_prover_wall.as_secs_f64(),
+            timing.verifier_response_and_residual_ns as f64 / 1e9,
+            residual_verifier_wall.as_secs_f64(),
+            gate_start.elapsed().as_secs_f64(),
+        );
     }
 }

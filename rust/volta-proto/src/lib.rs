@@ -10,6 +10,8 @@ pub mod c6;
 pub mod c6_cache_fold;
 pub mod c6_census;
 pub mod c6_residual;
+#[cfg(feature = "c6-trace")]
+pub mod c6_response_fixture;
 pub mod c6_source;
 pub mod c6_subfield;
 pub(crate) mod ffn_schedule;
@@ -95,6 +97,11 @@ pub use c6_residual::{
     C6_RESIDUAL_FUSED_MAX_COEFFICIENT_STATE_ELEMENTS, C6_RESIDUAL_MAC_COORDINATES,
     C6_RESIDUAL_POST_ROOT_TERMINAL_STREAMS, C6_RESIDUAL_PROOF_REPETITIONS,
     C6_RESIDUAL_RELATION_LEAF_TABLES, C6_RESIDUAL_TERMINAL_FORM_KINDS,
+};
+#[cfg(feature = "c6-trace")]
+pub use c6_response_fixture::{
+    build_c6_response_residual_fixture, C6ResponseResidualCensus, C6ResponseResidualFixture,
+    C6ResponseResidualProviderInputs, C6ResponseResidualTiming, C6ResponseResidualVerifierInputs,
 };
 pub use c6_source::{
     replay_c6_source_coordinate, C6PairedSourceWitness, C6SourceCoordinate, C6SourceDigest,

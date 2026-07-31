@@ -179,11 +179,20 @@ directly from the installed live-prefix witness view after the first
 challenge.  The canonical fused API no longer accepts padded witness tables or
 reference coefficient arrays.  On the installed scaled fixture it remains
 digest-, byte-, transcript-, correlation-, pending-claim- and verifier-
-identical to the historical oracle.  Ordinary/trace PCS are now **180/0/1**
-and **182/0/1**.  The full
+identical to the historical oracle.  Ordinary/trace PCS are **179/0/1** and
+**181/0/1** at that checkpoint.  The full
 `T=4,Q=2` response-owned execution, remaining half-size-state memory census,
 response-field removal and timing gates are still pending; no production
 credit is claimed.
+The complete artifact-gated `T=4,Q=2` response now also enters that compact
+coordinator using independently reconstructed provider/verifier compilers and
+separately reserved residual-only tapes.  At honest diagnostic geometry
+`leaf=20/aux=15`, release walls are **4.689536 s** for provider response plus
+installed residual and **10.096918 s** for C6RSC3, or **14.786454 s** inline;
+the C6RSC3 proof is **6,516 B** and the coefficient arena peaks at
+**67,108,864 B**.  This is a local complete-response seam PASS, not a
+production timing/memory verdict: `leaf=23/aux=16`, response-field removal,
+strict envelope and resident backend remain pending.
 
 Workload of record: **GPT-2 small (124M, L=12, d=768, h=12, d_ff=3072),
 prefill T=100 + 50 deferred decode tokens, causal, C3b PCS Q=120**, on the
@@ -636,6 +645,45 @@ historical entries remain append-only evidence, not competing definitions.
 
 ## Deviations / decisions log
 
+- **2026-07-31 — Complete T=4,Q=2 response enters compact sealed C6RSC3 at
+  diagnostic geometry.**  A new artifact-gated fixture executes all 12
+  prefill and 12 stacked-decode layers, independently reconstructs provider
+  and verifier installed plans/runtime/linear forms, compiles public relation
+  claims directly from live leaf/auxiliary prefixes, and continues the same
+  interactive transcript through compact C6RSC3.  The live public-claim
+  compiler is exactly equal to the materialized scaled oracle.
+
+  Two full-run failures closed real ownership seams.  The **593,728** reachable
+  Source opcodes form an artifact-ordered unique in-range subset of the full
+  **593,876** scheduled/leaf-bound sources; they are neither numerically sorted
+  nor equal in census.  Also, once model source-witness collection closes its
+  sidecar, those response tapes reject all later draws.  C6RSC3 now correctly
+  uses its independent residual-only tape pair; it does not reopen or reuse
+  response correlations.
+
+  The exact workload census is **48 source groups / 576 targets / 184,320
+  provider source cells / 110,592 verifier-only auxiliary cells / 673
+  ProductClosures / 14,653 product triples / 5,590 zero roots**.  The last two
+  are workload-specific and are not the larger historical T1 census.
+
+  The release record at the smallest complete-response geometry
+  `leaf_log2=20, auxiliary_log2=15` is **6,516-B C6RSC3**, **67,108,864-B
+  coefficient-arena peak**, another **67,108,864 B** of logical first-fold
+  witness state and **41,322,560-B** installed-closure working heap.  Timing is
+  **4.689536 s provider response+residual + 10.096918 s C6RSC3 = 14.786454 s
+  diagnostic inline**; verifier components are **1.291597 + 2.649641 s**, and
+  the complete gate is **19.154727 s**.  Both roles accept the same 48 pending
+  claims and end with equal residual counters/C6RSC3 wire ledgers and a fully
+  released arena.  Standard trace PCS is **181/0/2**; the new artifact-gated
+  ignored test was run explicitly in release mode and passed.
+
+  This is a complete-response seam PASS but no production verdict.  Frozen
+  `leaf=23/aux=16` implies a 512-MiB first-fold coefficient state plus a
+  separate 512-MiB witness state before backend optimization.  Direct
+  corrections and `u_vectors` remain on the response; strict envelope,
+  resident/CUDA and all production byte/timing/memory/hardware credit remain
+  pending.  No provider or pod was contacted.
+
 - **2026-07-31 — Compact C6RSC3 statement and direct live-view folding remove
   the response-geometry materialization obstruction.**  The fused statement
   now retains only repetition, target, round geometry, canonical table owners
@@ -656,7 +704,7 @@ historical entries remain append-only evidence, not competing definitions.
   On the installed scaled fixture, compact and materialized paths have equal
   proof bytes, transcript ledger/byte count, correlation counters,
   pending-transfer frame, all **48** authenticated pending claims and fused
-  verifier output.  `volta-pcs --features c6-trace` is **182/0/1**.  This
+  verifier output.  `volta-pcs --features c6-trace` is **181/0/1**.  This
   closes neither the complete `T=4,Q=2` response gate nor the production
   memory/timing envelope: the remaining half-size folded states must still be
   measured, direct corrections and `u_vectors` remain on the response, and no

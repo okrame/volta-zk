@@ -1,0 +1,540 @@
+//! Feature-only complete-response fixture for the sealed C6 residual path.
+//!
+//! This module deliberately keeps the historical model proof on both roles
+//! while exporting only the installed residual compiler state, live witness
+//! prefixes and continued correlation/transcript state needed by C6RSC3.
+
+use std::path::PathBuf;
+use std::time::Instant;
+
+use volta_field::{Fp, Fp2};
+use volta_gpt2::{
+    band_model_witness, forward_model, forward_model_tokens, generate, load_model, KvCache, D, H, L,
+};
+use volta_mac::{
+    begin_c6_prover_trace, begin_c6_verifier_trace, compile_c6_operation_trace_for_role,
+    derive_c6_runtime_instance_from_trace_diagnostic, finish_c6_prover_trace,
+    finish_c6_verifier_trace, C6DecodedInstanceExtractionPlan, C6InstalledOperationPlan,
+    C6InstanceExtractionRole, C6RuntimeInstanceValues, C6TraceSourceManifest, CorrScheduleRole,
+    CorrelationStream, Transcript, VerifierCtx,
+};
+
+use crate::block_proof::layer_dom_base;
+use crate::c6_cache_fold::{
+    begin_c6_cache_fold_trace, C6CacheFoldKind, C6CacheFoldParty, C6CacheFoldTargetInlineProver,
+    C6CacheFoldTargetInlineVerifier, C6CacheFoldTargetPublicSchedule,
+    C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES,
+};
+use crate::c6_residual::{
+    C6CompiledLinearResidual, C6InstalledClosureEvaluationMemoryCensus,
+    C6PairedResidualAuxiliaryWitness, C6PairedResidualClosureWitness, C6PairedResidualLeafWitness,
+    C6ResidualError, C6ResidualFusedWitnessView, C6ResidualRelationChallenges,
+    C6ResidualRelationManifest, C6ResidualRelationRootBound, C6ResidualRetainedChallenges,
+    C6_RESIDUAL_TRACE_FIXTURE_LOCK,
+};
+use crate::c6_source::{
+    C6PairedSourceWitness, C6SourceCoordinate, C6SourceScheduleProverFollower,
+    C6SourceScheduleVerifierFollower,
+};
+use crate::logup::Doms;
+use crate::model_proof::{
+    prove_response_c6_cache_inline, verify_response_c6_cache_inline, ChunkPub, ChunkRef,
+};
+use crate::prod_check::{prod_batch_prover, prod_batch_verify};
+
+const RESPONSE_T: usize = 4;
+const RESPONSE_Q: usize = 2;
+const RESPONSE_LEAF_LOG2: u8 = 20;
+const RESPONSE_AUXILIARY_LOG2: u8 = 15;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6ResponseResidualCensus {
+    pub source_groups: u64,
+    pub corrected_targets: u64,
+    pub source_cells: u64,
+    pub verifier_linear_auxiliary_source_cells: u64,
+    pub scheduled_sources: u32,
+    pub product_closures: u32,
+    pub product_triples: u64,
+    pub zero_roots: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6ResponseResidualTiming {
+    pub provider_response_and_residual_ns: u64,
+    pub verifier_response_and_residual_ns: u64,
+}
+
+pub struct C6ResponseResidualFixture {
+    provider_operation_plan: C6InstalledOperationPlan,
+    provider_extraction: C6DecodedInstanceExtractionPlan,
+    provider_runtime: C6RuntimeInstanceValues,
+    provider_linear: C6CompiledLinearResidual,
+    verifier_operation_plan: C6InstalledOperationPlan,
+    verifier_extraction: C6DecodedInstanceExtractionPlan,
+    verifier_runtime: C6RuntimeInstanceValues,
+    verifier_linear: C6CompiledLinearResidual,
+    relation: C6ResidualRelationChallenges,
+    leaf: C6PairedResidualLeafWitness,
+    closure: C6PairedResidualClosureWitness,
+    auxiliary: C6PairedResidualAuxiliaryWitness,
+    provider_streams: [CorrelationStream; 2],
+    verifier_contexts: [VerifierCtx; 2],
+    provider_transcript: Transcript,
+    verifier_transcript: Transcript,
+    closure_memory: C6InstalledClosureEvaluationMemoryCensus,
+    census: C6ResponseResidualCensus,
+    timing: C6ResponseResidualTiming,
+}
+
+pub struct C6ResponseResidualProviderInputs<'a> {
+    pub operation_plan: &'a C6InstalledOperationPlan,
+    pub extraction: &'a C6DecodedInstanceExtractionPlan,
+    pub runtime: &'a C6RuntimeInstanceValues,
+    pub linear: &'a C6CompiledLinearResidual,
+    pub relation: &'a C6ResidualRelationChallenges,
+    pub witness: C6ResidualFusedWitnessView<'a>,
+    pub streams: &'a mut [CorrelationStream; 2],
+    pub transcript: &'a mut Transcript,
+}
+
+pub struct C6ResponseResidualVerifierInputs<'a> {
+    pub operation_plan: &'a C6InstalledOperationPlan,
+    pub extraction: &'a C6DecodedInstanceExtractionPlan,
+    pub runtime: &'a C6RuntimeInstanceValues,
+    pub linear: &'a C6CompiledLinearResidual,
+    pub relation: &'a C6ResidualRelationChallenges,
+    pub contexts: &'a mut [VerifierCtx; 2],
+    pub transcript: &'a mut Transcript,
+}
+
+impl C6ResponseResidualFixture {
+    pub fn manifest(&self) -> &C6ResidualRelationManifest {
+        self.relation.manifest()
+    }
+
+    pub fn closure_memory_census(&self) -> C6InstalledClosureEvaluationMemoryCensus {
+        self.closure_memory
+    }
+
+    pub fn census(&self) -> C6ResponseResidualCensus {
+        self.census
+    }
+
+    pub fn timing(&self) -> C6ResponseResidualTiming {
+        self.timing
+    }
+
+    pub fn provider_inputs(
+        &mut self,
+    ) -> Result<C6ResponseResidualProviderInputs<'_>, C6ResidualError> {
+        let witness = C6ResidualFusedWitnessView::new(
+            self.relation.manifest(),
+            &self.leaf,
+            &self.closure,
+            &self.auxiliary,
+        )?;
+        Ok(C6ResponseResidualProviderInputs {
+            operation_plan: &self.provider_operation_plan,
+            extraction: &self.provider_extraction,
+            runtime: &self.provider_runtime,
+            linear: &self.provider_linear,
+            relation: &self.relation,
+            witness,
+            streams: &mut self.provider_streams,
+            transcript: &mut self.provider_transcript,
+        })
+    }
+
+    pub fn verifier_inputs(&mut self) -> C6ResponseResidualVerifierInputs<'_> {
+        C6ResponseResidualVerifierInputs {
+            operation_plan: &self.verifier_operation_plan,
+            extraction: &self.verifier_extraction,
+            runtime: &self.verifier_runtime,
+            linear: &self.verifier_linear,
+            relation: &self.relation,
+            contexts: &mut self.verifier_contexts,
+            transcript: &mut self.verifier_transcript,
+        }
+    }
+
+    pub fn continued_protocol_states_match(&self) -> bool {
+        const SEALED_LABELS: [&str; 4] = [
+            "c6_residual_blind_framing",
+            "c6_residual_blind_round_corrections",
+            "c6_residual_pending_transfers",
+            "c6_residual_product_corrections",
+        ];
+        self.provider_streams
+            .iter()
+            .zip(&self.verifier_contexts)
+            .all(|(stream, context)| stream.counters == context.counters)
+            && SEALED_LABELS.iter().all(|label| {
+                self.provider_transcript.bytes_for(label)
+                    == self.verifier_transcript.bytes_for(label)
+            })
+    }
+}
+
+/// Build the complete `T=4,Q=2` CPU response and return the independently
+/// compiled provider/verifier residual inputs.  `None` means the generated
+/// GPT-2 weight artifact is not installed locally.
+pub fn build_c6_response_residual_fixture(
+) -> Result<Option<C6ResponseResidualFixture>, C6ResidualError> {
+    let _fixture_guard = C6_RESIDUAL_TRACE_FIXTURE_LOCK
+        .lock()
+        .map_err(|_| C6ResidualError::new("C6 response fixture lock is poisoned"))?;
+    let weights = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../benchmarks/weights");
+    if !weights.join("gpt2s-q.bin").exists() {
+        return Ok(None);
+    }
+    let model = load_model(&weights).map_err(trace_error)?;
+    let prefill = forward_model(&model, RESPONSE_T);
+    let kv = prefill
+        .layers
+        .iter()
+        .map(|layer| (layer.k.as_slice(), layer.v.as_slice()))
+        .collect::<Vec<_>>();
+    let mut cache = KvCache::from_prefill(&kv, RESPONSE_T);
+    let (generated, _) = generate(&model, &mut cache, &prefill.logits, RESPONSE_T, RESPONSE_Q);
+    let mut sequence = model.p.tokens[..RESPONSE_T].to_vec();
+    sequence.extend_from_slice(&generated);
+    let full = forward_model_tokens(&model, &sequence);
+    let band = band_model_witness(&model, &full, RESPONSE_T);
+    let chunks_p = [ChunkRef { band: &band, seq: &sequence }];
+    let chunks_v = [ChunkPub { q: RESPONSE_Q, logits: &band.logits, seq: &sequence }];
+
+    let primary_seed = [0x61; 32];
+    let secondary_seed = [0x62; 32];
+    let transcript_seed = [0x63; 32];
+    let statement_digest = [0x64; 32];
+    let deltas =
+        [Fp2::new(Fp::new(0x6101), Fp::new(0x6102)), Fp2::new(Fp::new(0x6201), Fp::new(0x6202))];
+    let public_schedule = C6CacheFoldTargetPublicSchedule::new(
+        (0..2 * L)
+            .flat_map(|_| {
+                std::iter::repeat_n(C6CacheFoldKind::ValueColumns, H)
+                    .chain(std::iter::repeat_n(C6CacheFoldKind::KeyRows, H))
+            })
+            .collect(),
+    )
+    .map_err(trace_error)?;
+
+    let provider_start = Instant::now();
+    let mut primary_stream = CorrelationStream::new(primary_seed);
+    begin_c6_prover_trace().map_err(trace_error)?;
+    primary_stream.enable_c6_operation_trace().map_err(trace_error)?;
+    primary_stream.enable_c6_source_witness_collection().map_err(trace_error)?;
+    let mut secondary_stream = CorrelationStream::new(secondary_seed);
+    let mut prover_follower =
+        C6SourceScheduleProverFollower::start(&mut secondary_stream).map_err(trace_error)?;
+    let mut prover_tx = Transcript::new(transcript_seed);
+    let mut target_builder = C6CacheFoldTargetInlineProver::start_public(
+        statement_digest,
+        public_schedule.clone(),
+        &mut prover_tx,
+    )
+    .map_err(trace_error)?;
+    let prover_trace_guard =
+        begin_c6_cache_fold_trace(C6CacheFoldParty::Prover).map_err(trace_error)?;
+    let (proof, prover_out, products, grand_residual_roots, prover_metrics) =
+        prove_response_c6_cache_inline(
+            &model,
+            &prefill,
+            &chunks_p,
+            &mut primary_stream,
+            &mut secondary_stream,
+            &mut prover_follower,
+            &mut target_builder,
+            &mut prover_tx,
+        );
+    let prover_trace = prover_trace_guard.finish().map_err(trace_error)?;
+    let (target_frame, prover_fixed) = target_builder
+        .finish_before_successor_root_with_identity(prover_trace.identity, &mut prover_tx)
+        .map_err(trace_error)?;
+
+    let mut product_doms_p = Doms::new(layer_dom_base(255));
+    let chi = prover_tx.challenge_fp2();
+    let product_domain = product_doms_p.take(1);
+    let product_mask = primary_stream.draw_product_mask(product_domain, products.len());
+    let product_proof = prod_batch_prover(&products, chi, product_mask, &mut prover_tx);
+    grand_residual_roots.record_operation_trace_ownership().map_err(trace_error)?;
+    let zero_challenge = prover_tx.challenge_fp2();
+    let prover_operation_trace = finish_c6_prover_trace().map_err(trace_error)?;
+
+    prover_follower.sync_primary(&primary_stream, &mut secondary_stream).map_err(trace_error)?;
+    let primary_schedule = primary_stream
+        .schedule_audit()
+        .ok_or_else(|| C6ResidualError::new("C6 response primary schedule audit is absent"))?;
+    let primary_coordinate = C6SourceCoordinate::new(
+        primary_stream.finish_c6_subfield_witness_collection().map_err(trace_error)?,
+        primary_stream.finish_c6_fullfield_witness_collection().map_err(trace_error)?,
+        &primary_schedule,
+    )
+    .map_err(trace_error)?;
+    let secondary_coordinate = prover_follower
+        .finish_coordinate(&primary_coordinate, &primary_schedule, &mut secondary_stream)
+        .map_err(trace_error)?;
+    let paired_sources = C6PairedSourceWitness::new(
+        [[0x65; 32], [0x66; 32]],
+        [primary_coordinate, secondary_coordinate],
+        &primary_schedule,
+        primary_schedule.digest,
+    )
+    .map_err(trace_error)?;
+    let mut next_source = 0u64;
+    let mut product_mask_sources = Vec::new();
+    for draw in &primary_schedule.draws {
+        if draw.role == CorrScheduleRole::ProductMask {
+            product_mask_sources.push(
+                u32::try_from(next_source)
+                    .map_err(|_| C6ResidualError::new("C6 response product mask exceeds u32"))?,
+            );
+        }
+        next_source = next_source
+            .checked_add(draw.count)
+            .ok_or_else(|| C6ResidualError::new("C6 response source census overflows"))?;
+    }
+    let source_manifest = C6TraceSourceManifest::new(
+        u32::try_from(next_source)
+            .map_err(|_| C6ResidualError::new("C6 response source census exceeds u32"))?,
+        primary_schedule.digest,
+        product_mask_sources,
+    )
+    .map_err(trace_error)?;
+    let prover_compiled = compile_c6_operation_trace_for_role(
+        &prover_operation_trace,
+        &source_manifest,
+        C6InstanceExtractionRole::Prover,
+    )
+    .map_err(trace_error)?;
+    let provider_extraction = prover_compiled
+        .instance_extraction
+        .decode(prover_compiled.plan.topology)
+        .map_err(trace_error)?;
+    let provider_runtime = derive_c6_runtime_instance_from_trace_diagnostic(
+        &prover_operation_trace,
+        &prover_compiled.artifact,
+        &provider_extraction,
+        prover_compiled.plan.instance,
+    )
+    .map_err(trace_error)?;
+    let provider_operation_plan =
+        prover_compiled.artifact.install(&source_manifest).map_err(trace_error)?;
+    let manifest = C6ResidualRelationManifest::new_with_geometry(
+        &provider_operation_plan,
+        &provider_extraction,
+        &provider_runtime,
+        RESPONSE_LEAF_LOG2,
+        RESPONSE_AUXILIARY_LOG2,
+        false,
+    )?;
+    let retained = C6ResidualRetainedChallenges::new(
+        &manifest,
+        vec![chi; provider_operation_plan.products().len()],
+        zero_challenge,
+    )?;
+    let zero_weights = retained.zero_weights(provider_operation_plan.zero_roots().len());
+    let provider_linear = C6CompiledLinearResidual::compile(
+        &provider_operation_plan,
+        &provider_extraction,
+        &provider_runtime,
+        &zero_weights,
+    )?;
+    let leaf =
+        provider_linear.build_paired_residual_leaf_witness(&paired_sources, &primary_schedule)?;
+    let closure_evaluation = provider_linear.evaluate_installed_paired_closure(
+        &provider_operation_plan,
+        &provider_extraction,
+        &provider_runtime,
+        &paired_sources,
+        &primary_schedule,
+    )?;
+    let closure_memory = closure_evaluation.memory_census();
+    let closure = closure_evaluation.into_closure();
+    let auxiliary = closure.transpose_auxiliary_lanes()?;
+    let relation = C6ResidualRelationRootBound::bind_fixed_roots(manifest, [0x71; 32], [0x72; 32])?
+        .release_base_share_seed(retained, [0x73; 32])?
+        .commit_public_claims_from_live(
+            &provider_operation_plan,
+            &provider_linear,
+            &leaf,
+            &auxiliary,
+        )?
+        .release_relation_seed(&provider_operation_plan, [0x74; 32])?;
+    let provider_response_and_residual_ns = u64::try_from(provider_start.elapsed().as_nanos())
+        .map_err(|_| C6ResidualError::new("C6 provider diagnostic wall exceeds u64 ns"))?;
+
+    let verifier_start = Instant::now();
+    let mut primary_verifier = VerifierCtx::new(primary_seed, deltas[0]);
+    begin_c6_verifier_trace().map_err(trace_error)?;
+    primary_verifier.enable_c6_operation_trace().map_err(trace_error)?;
+    primary_verifier.enable_schedule_audit().map_err(trace_error)?;
+    let mut secondary_verifier = VerifierCtx::new(secondary_seed, deltas[1]);
+    let mut verifier_follower =
+        C6SourceScheduleVerifierFollower::start(&mut secondary_verifier).map_err(trace_error)?;
+    let mut verifier_tx = Transcript::new(transcript_seed);
+    let mut target_cursor = C6CacheFoldTargetInlineVerifier::start_public(
+        &target_frame,
+        public_schedule,
+        deltas,
+        &mut verifier_tx,
+    )
+    .map_err(trace_error)?;
+    let verifier_trace_guard =
+        begin_c6_cache_fold_trace(C6CacheFoldParty::Verifier).map_err(trace_error)?;
+    let (verifier_out, product_keys, verifier_residual_roots, verifier_metrics) =
+        verify_response_c6_cache_inline(
+            &model,
+            RESPONSE_T,
+            &prefill.logits,
+            &chunks_v,
+            &proof,
+            &mut primary_verifier,
+            &mut secondary_verifier,
+            &mut verifier_follower,
+            &mut target_cursor,
+            &mut verifier_tx,
+        )
+        .ok_or_else(|| C6ResidualError::new("C6 response-wide model proof did not verify"))?;
+    let verifier_trace = verifier_trace_guard.finish().map_err(trace_error)?;
+    let verifier_fixed = target_cursor
+        .finish_before_successor_root_with_identity(verifier_trace.identity, &mut verifier_tx)
+        .map_err(trace_error)?;
+    let mut product_doms_v = Doms::new(layer_dom_base(255));
+    if chi != verifier_tx.challenge_fp2()
+        || product_domain != product_doms_v.take(1)
+        || !prod_batch_verify(
+            &product_keys,
+            primary_verifier.expand_product_mask_verifier_key(product_domain, product_keys.len()),
+            deltas[0],
+            chi,
+            &product_proof,
+        )
+    {
+        return Err(C6ResidualError::new("C6 response ProductClosure batch differs across roles"));
+    }
+    verifier_residual_roots.record_operation_trace_ownership().map_err(trace_error)?;
+    if zero_challenge != verifier_tx.challenge_fp2() {
+        return Err(C6ResidualError::new("C6 response zero challenge differs across roles"));
+    }
+    let verifier_operation_trace = finish_c6_verifier_trace().map_err(trace_error)?;
+    let verifier_compiled = compile_c6_operation_trace_for_role(
+        &verifier_operation_trace,
+        &source_manifest,
+        C6InstanceExtractionRole::Verifier,
+    )
+    .map_err(trace_error)?;
+    let verifier_extraction = verifier_compiled
+        .instance_extraction
+        .decode(verifier_compiled.plan.topology)
+        .map_err(trace_error)?;
+    let verifier_runtime = derive_c6_runtime_instance_from_trace_diagnostic(
+        &verifier_operation_trace,
+        &verifier_compiled.artifact,
+        &verifier_extraction,
+        verifier_compiled.plan.instance,
+    )
+    .map_err(trace_error)?;
+    let verifier_operation_plan =
+        verifier_compiled.artifact.install(&source_manifest).map_err(trace_error)?;
+    let verifier_linear = C6CompiledLinearResidual::compile(
+        &verifier_operation_plan,
+        &verifier_extraction,
+        &verifier_runtime,
+        &zero_weights,
+    )?;
+    let verifier_response_and_residual_ns = u64::try_from(verifier_start.elapsed().as_nanos())
+        .map_err(|_| C6ResidualError::new("C6 verifier diagnostic wall exceeds u64 ns"))?;
+
+    let expected_source_cells = (2 * L * (2 * RESPONSE_T + RESPONSE_Q) * D) as u64;
+    let expected_auxiliary_cells = (2 * L * (RESPONSE_T + RESPONSE_Q) * D) as u64;
+    if prover_trace.identity != verifier_trace.identity
+        || prover_trace.records != verifier_trace.records
+        || prover_trace.factors != verifier_trace.factors
+        || prover_trace.identity.fold_count != 576
+        || prover_fixed != verifier_fixed
+        || target_frame.encode().map_err(trace_error)?.len() as u64
+            != C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES
+        || prover_out.weight_claims.len() != 8 * L
+        || verifier_out.weight_keys.len() != 8 * L
+        || products.len() != product_keys.len()
+        || grand_residual_roots.len() != verifier_residual_roots.len()
+        || prover_compiled.plan.identity != verifier_compiled.plan.identity
+        || prover_compiled.plan.topology != verifier_compiled.plan.topology
+        || prover_compiled.plan.instance != verifier_compiled.plan.instance
+        || provider_linear.linear_form_digest() != verifier_linear.linear_form_digest()
+        || prover_metrics.source_groups != (2 * 2 * L) as u64
+        || prover_metrics.corrected_targets != 576
+        || prover_metrics.source_cells != expected_source_cells
+        || prover_metrics.coefficient_applications != expected_source_cells
+        || prover_metrics.linear_auxiliary_source_cells != 0
+        || verifier_metrics.source_groups != prover_metrics.source_groups
+        || verifier_metrics.corrected_targets != prover_metrics.corrected_targets
+        || verifier_metrics.source_cells != expected_source_cells
+        || verifier_metrics.coefficient_applications != expected_source_cells
+        || verifier_metrics.linear_auxiliary_source_cells != expected_auxiliary_cells
+    {
+        return Err(C6ResidualError::new(
+            "C6 complete response residual fixture failed its role/census differential",
+        ));
+    }
+    verifier_follower
+        .sync_primary(&primary_verifier, &mut secondary_verifier)
+        .map_err(trace_error)?;
+    if primary_verifier.schedule_audit() != Some(primary_schedule)
+        || secondary_stream.schedule_audit() != secondary_verifier.schedule_audit()
+        || primary_stream.counters != primary_verifier.counters
+        || secondary_stream.counters != secondary_verifier.counters
+        || prover_tx.challenge_fp2() != verifier_tx.challenge_fp2()
+    {
+        return Err(C6ResidualError::new(
+            "C6 complete response continuation state differs across roles",
+        ));
+    }
+
+    let topology = provider_operation_plan.topology();
+    let residual_seeds = [[0x81; 32], [0x82; 32]];
+    let residual_deltas =
+        [Fp2::new(Fp::new(0x8101), Fp::new(0x8102)), Fp2::new(Fp::new(0x8201), Fp::new(0x8202))];
+    Ok(Some(C6ResponseResidualFixture {
+        provider_operation_plan,
+        provider_extraction,
+        provider_runtime,
+        provider_linear,
+        verifier_operation_plan,
+        verifier_extraction,
+        verifier_runtime,
+        verifier_linear,
+        relation,
+        leaf,
+        closure,
+        auxiliary,
+        provider_streams: residual_seeds.map(CorrelationStream::new),
+        verifier_contexts: [
+            VerifierCtx::new(residual_seeds[0], residual_deltas[0]),
+            VerifierCtx::new(residual_seeds[1], residual_deltas[1]),
+        ],
+        provider_transcript: prover_tx,
+        verifier_transcript: verifier_tx,
+        closure_memory,
+        census: C6ResponseResidualCensus {
+            source_groups: prover_metrics.source_groups,
+            corrected_targets: prover_metrics.corrected_targets,
+            source_cells: prover_metrics.source_cells,
+            verifier_linear_auxiliary_source_cells: verifier_metrics.linear_auxiliary_source_cells,
+            scheduled_sources: topology.source_count,
+            product_closures: topology.product_closure_count,
+            product_triples: topology.product_triple_count,
+            zero_roots: topology.zero_root_count,
+        },
+        timing: C6ResponseResidualTiming {
+            provider_response_and_residual_ns,
+            verifier_response_and_residual_ns,
+        },
+    }))
+}
+
+fn trace_error(error: impl std::fmt::Display) -> C6ResidualError {
+    C6ResidualError::new(error.to_string())
+}

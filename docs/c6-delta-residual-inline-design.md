@@ -4404,7 +4404,7 @@ On the installed scaled fixture, compact and historical paths are exactly
 identical in proof bytes, transcript ledger and byte count, correlation
 counters, pending-transfer frame, all 48 authenticated pending claims and
 fused-verifier result. The coefficient arena releases cleanly after both
-repetitions. The complete `volta-pcs --features c6-trace` suite is **182 pass /
+repetitions. The complete `volta-pcs --features c6-trace` suite is **181 pass /
 0 fail / 1 ignored**.
 
 This removes the materialized-statement and full-padded-witness obstruction;
@@ -4413,6 +4413,66 @@ folded states at production geometry. The next gate remains the complete
 `T=4,Q=2` response-owned run through this compact coordinator. No response
 field is removed yet, no production byte/timing/memory credit is earned, and
 no provider or pod was contacted.
+
+#### 6.2.9 Complete T=4,Q=2 response enters compact sealed C6RSC3
+
+The artifact-gated CPU fixture now runs the complete 12-layer prefill plus
+12-layer stacked-decode response, reconstructs the provider and designated-
+verifier operation plans independently, and carries the resulting installed
+witness into compact C6RSC3. The relation's public claims are compiled
+directly from the seven live leaf columns and sixteen live auxiliary lanes;
+the new compiler is exactly equal to the materialized scaled oracle and does
+not allocate padded reference tables.
+
+The first full run exposed two ownership assumptions and closed them
+fail-closed. First, the installed DAG contains 593,728 reachable `Source`
+opcodes out of 593,876 scheduled sources. Their source ordinals are an
+artifact-ordered, unique, in-range subset; they are not numerically sorted and
+must not be forced to equal the complete schedule census. All 593,876 sources
+remain leaf/base-share bound. Second, closing the response source-witness
+sidecar intentionally forbids later correlation draws on those model tapes.
+C6RSC3 therefore consumes its separately reserved pair of residual-only tapes
+and continues the same interactive response transcript; it never reopens or
+reuses response correlations.
+
+For this exact `T=4,Q=2` workload the installed plan has **48 source groups,
+576 corrected targets, 184,320 provider source cells, 110,592 verifier-only
+linear auxiliary cells, 593,876 scheduled sources, 673 ProductClosures,
+14,653 product triples and 5,590 zero roots**. The last two counts are
+workload-specific and must not be replaced by the larger historical T1
+census.
+
+The local release gate uses the smallest honest polynomial geometry that fits
+this complete response, `leaf_log2=20` and `auxiliary_log2=15`. It passes with:
+
+```text
+C6RSC3 proof bytes                                      6,516 B
+coefficient arena peak                             67,108,864 B
+logical first-fold witness peak                    67,108,864 B
+installed closure working heap                     41,322,560 B
+provider response + installed residual wall          4.689536 s
+compact C6RSC3 prover wall                           10.096918 s
+diagnostic inline subtotal                           14.786454 s
+verifier response + residual wall                     1.291597 s
+fused C6RSC3 verifier wall                            2.649641 s
+complete provider + verifier gate wall               19.154727 s
+```
+
+Provider and verifier accept the same 48 pending claims, residual-tape
+counters agree, the four C6RSC3 wire ledgers agree, and both coefficient
+repetitions release the arena to zero live/reserved elements. The proof is
+intentionally **6,516 B**, rather than the production `6,900 B`, because its
+round geometry is smaller. The standard trace PCS suite is **181 pass / 0
+fail / 2 ignored**; the new artifact-gated ignored test was then run explicitly
+in release mode and passed with the measurements above.
+
+This is the first complete-response sealed-coordinator PASS and places the
+local CPU subtotal inside the owner's ideal 12--15-second band. It is not the
+production verdict: `leaf_log2=23/auxiliary_log2=16` raises the first-fold
+coefficient and witness states to 512 MiB each before backend optimization.
+No final-response field is removed on the strength of this diagnostic alone,
+and no production byte, memory, timing or hardware credit is earned. No
+provider or pod was contacted.
 
 ## 7. Certificate and challenge grammar
 

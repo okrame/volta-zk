@@ -121,7 +121,7 @@ pub const C6_RESIDUAL_FUSED_MAX_COEFFICIENT_STATE_BYTES: u64 =
 pub struct C6ResidualError(String);
 
 impl C6ResidualError {
-    fn new(message: impl Into<String>) -> Self {
+    pub(crate) fn new(message: impl Into<String>) -> Self {
         Self(message.into())
     }
 }
@@ -134,7 +134,7 @@ impl fmt::Display for C6ResidualError {
 
 impl std::error::Error for C6ResidualError {}
 
-type C6ResidualResult<T> = Result<T, C6ResidualError>;
+pub(crate) type C6ResidualResult<T> = Result<T, C6ResidualError>;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -678,20 +678,30 @@ fn installed_product_mask_sources(
 ) -> C6ResidualResult<Vec<u32>> {
     let mut source_cursor = 0usize;
     let mut source_by_node = BTreeMap::new();
+    let mut source_ordinals_seen = BTreeSet::new();
     for (canonical, kind) in operation_plan.operation_kinds().iter().copied().enumerate() {
         if kind == C6InstalledOperationKind::Source {
             let source = *operation_plan.source_ordinals().get(source_cursor).ok_or_else(|| {
                 C6ResidualError::new("C6 installed source-ordinal stream is truncated")
             })?;
+            if !source_ordinals_seen.insert(source) {
+                return Err(C6ResidualError::new(
+                    "C6 installed source-ordinal subset contains a duplicate",
+                ));
+            }
             source_cursor += 1;
             source_by_node.insert(canonical as u32, source);
         }
     }
     if source_cursor != operation_plan.source_ordinals().len()
-        || source_cursor != operation_plan.topology().source_count as usize
+        || source_cursor > operation_plan.topology().source_count as usize
+        || operation_plan
+            .source_ordinals()
+            .iter()
+            .any(|source| *source >= operation_plan.topology().source_count)
     {
         return Err(C6ResidualError::new(
-            "C6 installed source-ordinal stream differs from topology",
+            "C6 installed source-ordinal stream is not a canonical topology subset",
         ));
     }
 
@@ -792,7 +802,7 @@ impl C6ResidualRelationManifest {
         )
     }
 
-    fn new_with_geometry(
+    pub(crate) fn new_with_geometry(
         operation_plan: &C6InstalledOperationPlan,
         extraction: &C6DecodedInstanceExtractionPlan,
         runtime: &C6RuntimeInstanceValues,
@@ -1214,6 +1224,150 @@ impl C6ResidualBaseShareContext {
         };
         frame.digest = public_claims_digest(&frame);
         Ok(C6ResidualClaimsBoundContext { base: self, claims: frame })
+    }
+
+    /// Compile the provider public outputs directly from the installed live
+    /// witness prefixes.  This is algebraically identical to
+    /// `commit_public_claims`, but never materializes the padded residual
+    /// tables used by the scaled reference oracle.
+    pub fn commit_public_claims_from_live(
+        self,
+        operation_plan: &C6InstalledOperationPlan,
+        linear: &C6CompiledLinearResidual,
+        leaf: &C6PairedResidualLeafWitness,
+        auxiliary: &C6PairedResidualAuxiliaryWitness,
+    ) -> C6ResidualResult<C6ResidualClaimsBoundContext> {
+        self.manifest().validate(operation_plan)?;
+        let manifest = self.manifest();
+        let source_count = usize::try_from(manifest.topology.source_count)
+            .map_err(|_| C6ResidualError::new("C6 live public-claim source count exceeds usize"))?;
+        if linear.operation_plan_artifact_digest() != operation_plan.artifact_digest()
+            || linear.topology() != manifest.topology
+            || linear.instance() != manifest.instance
+            || linear.source_count() != source_count
+            || linear.product_mask_sources() != manifest.product_mask_sources()
+            || leaf.source_schedule_digest() != manifest.topology.source_schedule_digest
+            || usize::try_from(leaf.source_count()).ok() != Some(source_count)
+            || usize::try_from(leaf.product_mask_count()).ok()
+                != Some(manifest.product_mask_sources().len())
+            || C6ResidualLeafColumn::ALL
+                .iter()
+                .any(|column| leaf.column(*column).len() != source_count)
+            || auxiliary.program_digest() != operation_plan.artifact_digest()
+            || auxiliary.census().product_rows != manifest.topology.product_triple_count
+            || auxiliary.census().zero_rows != u64::from(manifest.topology.zero_root_count)
+            || auxiliary.closure_census().product_closures
+                != manifest.topology.product_closure_count
+            || auxiliary.closure_census().product_triples != manifest.topology.product_triple_count
+            || auxiliary.closure_census().zero_roots != manifest.topology.zero_root_count
+        {
+            return Err(C6ResidualError::new(
+                "C6 live public-claim witness differs from its installed manifest",
+            ));
+        }
+
+        let coordinate_columns = [
+            (
+                C6ResidualLeafColumn::Coordinate0Mask,
+                C6ResidualLeafColumn::Coordinate0Tag,
+                C6ResidualLeafColumn::Coordinate0Correction,
+            ),
+            (
+                C6ResidualLeafColumn::Coordinate1Mask,
+                C6ResidualLeafColumn::Coordinate1Tag,
+                C6ResidualLeafColumn::Coordinate1Correction,
+            ),
+        ];
+        let mut residuals =
+            [C6DeltaResidual { correction_rlc: Fp2::ZERO, public_tag_rlc: Fp2::ZERO }; 2];
+        for (coordinate, ((mask, tag, correction), residual)) in
+            coordinate_columns.iter().copied().zip(&mut residuals).enumerate()
+        {
+            let mut alpha = self.alpha_stream(coordinate as u8)?;
+            let mut correction_rlc = linear.public_plaintext();
+            let mut public_tag_rlc = Fp2::ZERO;
+            for source in 0..source_count {
+                let alpha = alpha.next_fp2();
+                let coefficient = linear.leaf_coefficients()[source];
+                correction_rlc += coefficient * leaf.column(correction)[source]
+                    - alpha * leaf.column(mask)[source];
+                public_tag_rlc += (coefficient + alpha) * leaf.column(tag)[source];
+            }
+            *residual = C6DeltaResidual { correction_rlc, public_tag_rlc };
+        }
+
+        let mut product_claims = Vec::with_capacity(operation_plan.products().len());
+        let mut triple_cursor = 0usize;
+        for (closure_index, product) in operation_plan.products().iter().enumerate() {
+            let chi =
+                *self.retained().product_challenges().get(closure_index).ok_or_else(|| {
+                    C6ResidualError::new("C6 live ProductClosure challenge is missing")
+                })?;
+            let mask_source =
+                usize::try_from(*manifest.product_mask_sources().get(closure_index).ok_or_else(
+                    || C6ResidualError::new("C6 live product mask source is missing"),
+                )?)
+                .map_err(|_| C6ResidualError::new("C6 live product mask source exceeds usize"))?;
+            if mask_source >= source_count {
+                return Err(C6ResidualError::new(
+                    "C6 live product mask source is outside the leaf prefix",
+                ));
+            }
+            let mut messages = [[Fp2::ZERO; 2]; 2];
+            for (coordinate, message) in messages.iter_mut().enumerate() {
+                let lane = 6 * coordinate;
+                let (mask, tag, _) = coordinate_columns[coordinate];
+                let mut q = Fp2::ZERO;
+                let mut m0 = leaf.column(tag)[mask_source];
+                let mut m1 = leaf.column(mask)[mask_source];
+                let mut power = Fp2::ONE;
+                for triple in 0..product.triples().len() {
+                    power = power * chi;
+                    let row = triple_cursor.checked_add(triple).ok_or_else(|| {
+                        C6ResidualError::new("C6 live ProductClosure row overflows")
+                    })?;
+                    let value = |offset: usize| {
+                        auxiliary
+                            .lane(C6ResidualAuxiliaryLane::ALL[lane + offset])
+                            .get(row)
+                            .copied()
+                            .ok_or_else(|| {
+                                C6ResidualError::new(
+                                    "C6 live ProductClosure row exceeds its auxiliary lane",
+                                )
+                            })
+                    };
+                    let (xa, ma, xb, mb, xc, mc) =
+                        (value(0)?, value(1)?, value(2)?, value(3)?, value(4)?, value(5)?);
+                    q += power * (xa * xb - xc);
+                    m0 += power * ma * mb;
+                    m1 += power * (xa * mb + ma * xb - mc);
+                }
+                if q != Fp2::ZERO {
+                    return Err(C6ResidualError::new(
+                        "C6 live ProductClosure witness does not satisfy its plaintext product",
+                    ));
+                }
+                *message = [m0, m1];
+            }
+            triple_cursor = triple_cursor
+                .checked_add(product.triples().len())
+                .ok_or_else(|| C6ResidualError::new("C6 live product triple cursor overflows"))?;
+            product_claims.push(C6ResidualProductPublicClaim { messages });
+        }
+        if triple_cursor
+            != usize::try_from(manifest.topology.product_triple_count)
+                .map_err(|_| C6ResidualError::new("C6 live product triple count exceeds usize"))?
+        {
+            return Err(C6ResidualError::new(
+                "C6 live product triple census differs from its manifest",
+            ));
+        }
+        self.commit_public_claims(
+            linear.linear_form_digest(),
+            product_claims,
+            C6PairedDeltaResidual { coordinates: residuals },
+        )
     }
 }
 

@@ -24,7 +24,7 @@ use volta_mac::{
 #[cfg(feature = "c6-trace")]
 use volta_proto::c6_cache_fold::{
     C6CacheFoldKind, C6CacheFoldPairedProverTargets, C6CacheFoldPairedVerifierTargets,
-    C6CacheFoldTraceIdentity,
+    C6CacheFoldTargetFixedCorrections, C6CacheFoldTraceIdentity,
 };
 use volta_proto::mle::{eq_vec, lagrange3};
 
@@ -258,6 +258,25 @@ impl C6PersistentCacheSourceBootstrapFrame {
             2 => self.fold_corrections[repetition][kv][tape],
             _ => unreachable!(),
         })
+    }
+
+    /// The post-root C6PS1 fold has no independent correction authority: it
+    /// must be the scalar-power fold of the already fixed C6FT1 slots.
+    #[cfg(feature = "c6-trace")]
+    pub(crate) fn validate_c6ft1_fold_corrections(
+        &self,
+        repetition: usize,
+        scalar_root: Fp2,
+        fixed: &C6CacheFoldTargetFixedCorrections,
+    ) -> Result<()> {
+        if repetition >= C6_WRAPPER_REPETITIONS
+            || self.fold_corrections[repetition] != fixed.fold_corrections(scalar_root)
+        {
+            return Err(C6PersistentCacheBlindError::new(
+                "C6PS1 fold corrections are not derived from fixed C6FT1 slots",
+            ));
+        }
+        Ok(())
     }
 
     fn correct_base_keys(

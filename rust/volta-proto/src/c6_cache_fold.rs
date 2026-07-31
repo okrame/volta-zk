@@ -12,14 +12,21 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::marker::PhantomData;
 use std::rc::Rc;
-use volta_field::Fp2;
-use volta_mac::{C6TraceToken, ProverAuthed, VerifierKey};
+use volta_field::{Fp, Fp2, P};
+use volta_mac::{C6TraceToken, ProverAuthed, Transcript, VerifierKey};
 
 pub const C6_CACHE_FOLD_TRACE_VERSION: u32 = 1;
 pub const C6_CACHE_FOLD_SCALAR_BATCH_VERSION: u32 = 1;
 pub const C6_CACHE_FOLD_MAX_RECORDS: usize = 576;
 pub const C6_CACHE_FOLD_MAX_FACTOR_VALUES: u64 =
     C6_CACHE_FOLD_MAX_RECORDS as u64 * (C6_CACHE_MAX_CONTEXT as u64 + C6_CACHE_HEAD_WIDTH as u64);
+pub const C6_CACHE_FOLD_TARGET_MAGIC: [u8; 8] = *b"C6FT1\0\0\0";
+pub const C6_CACHE_FOLD_TARGET_VERSION: u16 = 1;
+pub const C6_CACHE_FOLD_TARGET_TAPES: usize = 2;
+pub const C6_CACHE_FOLD_TARGET_HEADER_BYTES: u64 = 48;
+pub const C6_CACHE_FOLD_TARGET_SLOT_BYTES: u64 = 32;
+pub const C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES: u64 = C6_CACHE_FOLD_TARGET_HEADER_BYTES
+    + C6_CACHE_FOLD_MAX_RECORDS as u64 * C6_CACHE_FOLD_TARGET_SLOT_BYTES;
 
 const C6_CACHE_HEADS: usize = 12;
 const C6_CACHE_HEAD_WIDTH: usize = 64;
@@ -33,6 +40,9 @@ const C6_CACHE_FOLD_RECORD_INSTANCE_DOMAIN: &str = "volta/proto/c6/cache-fold-re
 const C6_CACHE_FOLD_TOPOLOGY_DOMAIN: &str = "volta/proto/c6/cache-fold-topology/v1";
 const C6_CACHE_FOLD_INSTANCE_DOMAIN: &str = "volta/proto/c6/cache-fold-instance/v1";
 const C6_CACHE_FOLD_SCALAR_BATCH_DOMAIN: &str = "volta/proto/c6/cache-fold-scalar-batch/v1";
+const C6_CACHE_FOLD_TARGET_HEADER_LABEL: &str = "c6_cache_fold_target_header";
+const C6_CACHE_FOLD_TARGET_SLOT_LABEL: &str = "c6_cache_fold_target_corrections";
+const C6_CACHE_FOLD_TARGET_PADDING_LABEL: &str = "c6_cache_fold_target_zero_padding";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6CacheFoldTraceError(String);
@@ -240,6 +250,584 @@ fn validate_paired_schedules(
         ));
     }
     Ok(())
+}
+
+/// Verifier-side aggregate base keys for the same canonical target schedule.
+/// These are the linear folds of the direct source correlations before the
+/// response-local `x-r` correction.  They deliberately cannot be obtained
+/// from a corrected `CacheSegK` vector.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6CacheFoldPairedVerifierBaseTargets {
+    pub identity: C6CacheFoldTraceIdentity,
+    terms: Vec<(C6CacheFoldKind, [VerifierKey; C6_CACHE_FOLD_TARGET_TAPES])>,
+}
+
+impl C6CacheFoldPairedVerifierBaseTargets {
+    pub fn new(
+        identity: C6CacheFoldTraceIdentity,
+        terms: Vec<(C6CacheFoldKind, [VerifierKey; C6_CACHE_FOLD_TARGET_TAPES])>,
+    ) -> Result<Self, C6CacheFoldTraceError> {
+        validate_target_identity(identity, terms.len())?;
+        Ok(Self { identity, terms })
+    }
+
+    pub fn terms(
+        &self,
+    ) -> impl Iterator<Item = (C6CacheFoldKind, [VerifierKey; C6_CACHE_FOLD_TARGET_TAPES])> + '_
+    {
+        self.terms.iter().copied()
+    }
+}
+
+/// Canonical target ordinals known from the public response schedule.  The
+/// trace identity is bound by the certificate statement; K/V kinds are kept
+/// explicitly so an inline producer cannot silently reorder the fold.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6CacheFoldTargetSchedule {
+    pub identity: C6CacheFoldTraceIdentity,
+    kinds: Vec<C6CacheFoldKind>,
+}
+
+impl C6CacheFoldTargetSchedule {
+    pub fn new(
+        identity: C6CacheFoldTraceIdentity,
+        kinds: Vec<C6CacheFoldKind>,
+    ) -> Result<Self, C6CacheFoldTraceError> {
+        validate_target_identity(identity, kinds.len())?;
+        Ok(Self { identity, kinds })
+    }
+
+    pub fn from_prover_targets(
+        targets: &C6CacheFoldPairedProverTargets,
+    ) -> Result<Self, C6CacheFoldTraceError> {
+        Self::new(targets.identity, targets.terms.iter().map(|(kind, _)| *kind).collect())
+    }
+
+    pub fn live_count(&self) -> usize {
+        self.kinds.len()
+    }
+
+    pub fn kinds(&self) -> impl Iterator<Item = C6CacheFoldKind> + '_ {
+        self.kinds.iter().copied()
+    }
+}
+
+/// Provider-side inline builder.  It accepts only the next public ordinal,
+/// emits its two corrections immediately, and returns the same authenticated
+/// target for the caller's ProductClosure.  No future target or root is
+/// required to advance it.
+pub struct C6CacheFoldTargetInlineProver {
+    statement_digest: [u8; 32],
+    schedule: C6CacheFoldTargetSchedule,
+    corrections: Vec<[Fp2; C6_CACHE_FOLD_TARGET_TAPES]>,
+}
+
+impl C6CacheFoldTargetInlineProver {
+    pub fn start(
+        statement_digest: [u8; 32],
+        schedule: C6CacheFoldTargetSchedule,
+        transcript: &mut Transcript,
+    ) -> Result<Self, C6CacheFoldTraceError> {
+        validate_statement_digest(statement_digest)?;
+        validate_target_identity(schedule.identity, schedule.kinds.len())?;
+        transcript.append(C6_CACHE_FOLD_TARGET_HEADER_LABEL, C6_CACHE_FOLD_TARGET_HEADER_BYTES);
+        Ok(Self {
+            statement_digest,
+            corrections: Vec::with_capacity(schedule.kinds.len()),
+            schedule,
+        })
+    }
+
+    pub fn push_target_before_product(
+        &mut self,
+        kind: C6CacheFoldKind,
+        target: [ProverAuthed; C6_CACHE_FOLD_TARGET_TAPES],
+        base_mask: [Fp2; C6_CACHE_FOLD_TARGET_TAPES],
+        transcript: &mut Transcript,
+    ) -> Result<[ProverAuthed; C6_CACHE_FOLD_TARGET_TAPES], C6CacheFoldTraceError> {
+        let ordinal = self.corrections.len();
+        if self.schedule.kinds.get(ordinal).copied() != Some(kind) {
+            return Err(C6CacheFoldTraceError::new("C6FT1 inline prover target order mismatch"));
+        }
+        if target[0].x != target[1].x {
+            return Err(C6CacheFoldTraceError::new(
+                "C6FT1 inline prover tapes disagree on plaintext",
+            ));
+        }
+        self.corrections.push([target[0].x - base_mask[0], target[1].x - base_mask[1]]);
+        transcript.append(C6_CACHE_FOLD_TARGET_SLOT_LABEL, C6_CACHE_FOLD_TARGET_SLOT_BYTES);
+        Ok(target)
+    }
+
+    pub fn finish_before_successor_root(
+        self,
+        transcript: &mut Transcript,
+    ) -> Result<
+        (C6CacheFoldTargetCorrectionFrame, C6CacheFoldTargetFixedCorrections),
+        C6CacheFoldTraceError,
+    > {
+        if self.corrections.len() != self.schedule.kinds.len() {
+            return Err(C6CacheFoldTraceError::new(
+                "C6FT1 inline prover did not exhaust live targets",
+            ));
+        }
+        charge_target_padding(self.corrections.len(), transcript);
+        let frame = C6CacheFoldTargetCorrectionFrame {
+            statement_digest: self.statement_digest,
+            identity: self.schedule.identity,
+            corrections: self.corrections.clone(),
+        };
+        let fixed = C6CacheFoldTargetFixedCorrections {
+            identity: self.schedule.identity,
+            kinds: self.schedule.kinds,
+            corrections: self.corrections,
+        };
+        Ok((frame, fixed))
+    }
+}
+
+/// Client-side inline cursor over a decoded fixed frame.  A base target key
+/// is corrected only when its canonical ordinal is reached; callers receive
+/// it after the correction message and before sampling the ProductClosure
+/// challenge.
+pub struct C6CacheFoldTargetInlineVerifier<'a> {
+    frame: &'a C6CacheFoldTargetCorrectionFrame,
+    schedule: C6CacheFoldTargetSchedule,
+    deltas: [Fp2; C6_CACHE_FOLD_TARGET_TAPES],
+    next: usize,
+}
+
+impl<'a> C6CacheFoldTargetInlineVerifier<'a> {
+    pub fn start(
+        frame: &'a C6CacheFoldTargetCorrectionFrame,
+        schedule: C6CacheFoldTargetSchedule,
+        deltas: [Fp2; C6_CACHE_FOLD_TARGET_TAPES],
+        transcript: &mut Transcript,
+    ) -> Result<Self, C6CacheFoldTraceError> {
+        if schedule.identity != frame.identity || schedule.kinds.len() != frame.corrections.len() {
+            return Err(C6CacheFoldTraceError::new("C6FT1 inline verifier schedule mismatch"));
+        }
+        if deltas[0] == deltas[1] {
+            return Err(C6CacheFoldTraceError::new("C6FT1 MAC tapes are not independent"));
+        }
+        transcript.append(C6_CACHE_FOLD_TARGET_HEADER_LABEL, C6_CACHE_FOLD_TARGET_HEADER_BYTES);
+        Ok(Self { frame, schedule, deltas, next: 0 })
+    }
+
+    pub fn correct_next_before_product(
+        &mut self,
+        kind: C6CacheFoldKind,
+        base: [VerifierKey; C6_CACHE_FOLD_TARGET_TAPES],
+        transcript: &mut Transcript,
+    ) -> Result<[VerifierKey; C6_CACHE_FOLD_TARGET_TAPES], C6CacheFoldTraceError> {
+        if self.schedule.kinds.get(self.next).copied() != Some(kind) {
+            return Err(C6CacheFoldTraceError::new("C6FT1 inline verifier target order mismatch"));
+        }
+        let correction = self.frame.corrections[self.next];
+        self.next += 1;
+        transcript.append(C6_CACHE_FOLD_TARGET_SLOT_LABEL, C6_CACHE_FOLD_TARGET_SLOT_BYTES);
+        Ok(std::array::from_fn(|tape| {
+            base[tape].with_same_c6_trace(base[tape].k + self.deltas[tape] * correction[tape])
+        }))
+    }
+
+    pub fn finish_before_successor_root(
+        self,
+        transcript: &mut Transcript,
+    ) -> Result<C6CacheFoldTargetFixedCorrections, C6CacheFoldTraceError> {
+        if self.next != self.schedule.kinds.len() {
+            return Err(C6CacheFoldTraceError::new(
+                "C6FT1 inline verifier did not exhaust live targets",
+            ));
+        }
+        charge_target_padding(self.frame.corrections.len(), transcript);
+        Ok(C6CacheFoldTargetFixedCorrections {
+            identity: self.schedule.identity,
+            kinds: self.schedule.kinds,
+            corrections: self.frame.corrections.clone(),
+        })
+    }
+}
+
+/// Fixed-capacity `C6FT1` correction frame.  Only the live prefix is retained
+/// in memory; encoding writes the entire 576-slot frame and requires the tail
+/// to be canonical zero.  The corrections reuse existing direct source
+/// correlations and therefore consume no fresh full-field correlation.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6CacheFoldTargetCorrectionFrame {
+    statement_digest: [u8; 32],
+    identity: C6CacheFoldTraceIdentity,
+    corrections: Vec<[Fp2; C6_CACHE_FOLD_TARGET_TAPES]>,
+}
+
+impl C6CacheFoldTargetCorrectionFrame {
+    pub fn from_prover_targets(
+        statement_digest: [u8; 32],
+        targets: &C6CacheFoldPairedProverTargets,
+        base_masks: &[[Fp2; C6_CACHE_FOLD_TARGET_TAPES]],
+    ) -> Result<Self, C6CacheFoldTraceError> {
+        validate_statement_digest(statement_digest)?;
+        validate_target_identity(targets.identity, targets.terms.len())?;
+        if base_masks.len() != targets.terms.len() {
+            return Err(C6CacheFoldTraceError::new("C6FT1 prover target/mask census mismatch"));
+        }
+        let corrections = targets
+            .terms
+            .iter()
+            .zip(base_masks)
+            .map(|((_, target), mask)| [target[0].x - mask[0], target[1].x - mask[1]])
+            .collect();
+        Ok(Self { statement_digest, identity: targets.identity, corrections })
+    }
+
+    pub fn statement_digest(&self) -> [u8; 32] {
+        self.statement_digest
+    }
+
+    pub fn live_count(&self) -> usize {
+        self.corrections.len()
+    }
+
+    pub fn identity(&self) -> C6CacheFoldTraceIdentity {
+        self.identity
+    }
+
+    pub fn encode(&self) -> Result<Vec<u8>, C6CacheFoldTraceError> {
+        validate_statement_digest(self.statement_digest)?;
+        validate_target_identity(self.identity, self.corrections.len())?;
+        let live_count = u16::try_from(self.corrections.len())
+            .map_err(|_| C6CacheFoldTraceError::new("C6FT1 live count exceeds u16"))?;
+        let capacity = u16::try_from(C6_CACHE_FOLD_MAX_RECORDS)
+            .map_err(|_| C6CacheFoldTraceError::new("C6FT1 capacity exceeds u16"))?;
+        let mut bytes = Vec::with_capacity(C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES as usize);
+        bytes.extend_from_slice(&C6_CACHE_FOLD_TARGET_MAGIC);
+        bytes.extend_from_slice(&C6_CACHE_FOLD_TARGET_VERSION.to_le_bytes());
+        bytes.push(C6_CACHE_FOLD_TARGET_TAPES as u8);
+        bytes.push(2); // canonical Fp2 limb count
+        bytes.extend_from_slice(&live_count.to_le_bytes());
+        bytes.extend_from_slice(&capacity.to_le_bytes());
+        bytes.extend_from_slice(&self.statement_digest);
+        for correction in &self.corrections {
+            for value in correction {
+                encode_target_fp2(&mut bytes, *value);
+            }
+        }
+        bytes.resize(C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES as usize, 0);
+        if bytes.len() as u64 != C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES {
+            return Err(C6CacheFoldTraceError::new("C6FT1 encoded length changed"));
+        }
+        Ok(bytes)
+    }
+
+    pub fn decode(
+        expected_statement_digest: [u8; 32],
+        expected_identity: C6CacheFoldTraceIdentity,
+        bytes: &[u8],
+    ) -> Result<Self, C6CacheFoldTraceError> {
+        validate_statement_digest(expected_statement_digest)?;
+        if bytes.len() as u64 != C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES {
+            return Err(C6CacheFoldTraceError::new("C6FT1 encoded length mismatch"));
+        }
+        let mut cursor = C6CacheFoldTargetDecodeCursor::new(bytes);
+        if cursor.take(8)? != C6_CACHE_FOLD_TARGET_MAGIC
+            || cursor.u16()? != C6_CACHE_FOLD_TARGET_VERSION
+            || cursor.u8()? as usize != C6_CACHE_FOLD_TARGET_TAPES
+            || cursor.u8()? != 2
+        {
+            return Err(C6CacheFoldTraceError::new("C6FT1 header census mismatch"));
+        }
+        let live_count = usize::from(cursor.u16()?);
+        if usize::from(cursor.u16()?) != C6_CACHE_FOLD_MAX_RECORDS {
+            return Err(C6CacheFoldTraceError::new("C6FT1 capacity mismatch"));
+        }
+        validate_target_count(live_count)?;
+        validate_target_identity(expected_identity, live_count)?;
+        let statement_digest = cursor.digest()?;
+        if statement_digest != expected_statement_digest {
+            return Err(C6CacheFoldTraceError::new("C6FT1 statement digest mismatch"));
+        }
+        let mut corrections = Vec::with_capacity(live_count);
+        for _ in 0..live_count {
+            corrections.push([cursor.fp2()?, cursor.fp2()?]);
+        }
+        if cursor.remaining().iter().any(|&byte| byte != 0) {
+            return Err(C6CacheFoldTraceError::new("C6FT1 nonzero inactive tail"));
+        }
+        Ok(Self { statement_digest, identity: expected_identity, corrections })
+    }
+
+    /// Start the provider-side target-ordered stream.  Each `next` call
+    /// charges exactly one two-tape correction before its caller may derive
+    /// the corresponding ProductClosure challenge.
+    pub fn start_prover_stream<'a>(
+        &'a self,
+        targets: &'a C6CacheFoldPairedProverTargets,
+        base_masks: &'a [[Fp2; C6_CACHE_FOLD_TARGET_TAPES]],
+        transcript: &mut Transcript,
+    ) -> Result<C6CacheFoldTargetProverStream<'a>, C6CacheFoldTraceError> {
+        let expected = Self::from_prover_targets(self.statement_digest, targets, base_masks)?;
+        if expected != *self {
+            return Err(C6CacheFoldTraceError::new(
+                "C6FT1 frame is not the canonical prover target correction",
+            ));
+        }
+        transcript.append(C6_CACHE_FOLD_TARGET_HEADER_LABEL, C6_CACHE_FOLD_TARGET_HEADER_BYTES);
+        Ok(C6CacheFoldTargetProverStream { frame: self, targets, next: 0 })
+    }
+
+    /// Start the verifier-side base-key stream.  The returned keys are the
+    /// only corrected target keys admitted to the immediate ProductClosure.
+    pub fn start_verifier_stream<'a>(
+        &'a self,
+        base_targets: &'a C6CacheFoldPairedVerifierBaseTargets,
+        deltas: [Fp2; C6_CACHE_FOLD_TARGET_TAPES],
+        transcript: &mut Transcript,
+    ) -> Result<C6CacheFoldTargetVerifierStream<'a>, C6CacheFoldTraceError> {
+        validate_target_identity(base_targets.identity, base_targets.terms.len())?;
+        if base_targets.identity != self.identity
+            || base_targets.terms.len() != self.corrections.len()
+        {
+            return Err(C6CacheFoldTraceError::new("C6FT1 verifier target census mismatch"));
+        }
+        if deltas[0] == deltas[1] {
+            return Err(C6CacheFoldTraceError::new("C6FT1 MAC tapes are not independent"));
+        }
+        transcript.append(C6_CACHE_FOLD_TARGET_HEADER_LABEL, C6_CACHE_FOLD_TARGET_HEADER_BYTES);
+        Ok(C6CacheFoldTargetVerifierStream { frame: self, base_targets, deltas, next: 0 })
+    }
+}
+
+/// Frame view available only after every live correction and the canonical
+/// zero tail have been placed before the successor scalar root.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6CacheFoldTargetFixedCorrections {
+    identity: C6CacheFoldTraceIdentity,
+    kinds: Vec<C6CacheFoldKind>,
+    corrections: Vec<[Fp2; C6_CACHE_FOLD_TARGET_TAPES]>,
+}
+
+impl C6CacheFoldTargetFixedCorrections {
+    pub fn identity(&self) -> C6CacheFoldTraceIdentity {
+        self.identity
+    }
+
+    /// Deterministic `C6PS1` successor fold in K/V order, per MAC tape.
+    pub fn fold_corrections(&self, scalar_root: Fp2) -> [[Fp2; C6_CACHE_FOLD_TARGET_TAPES]; 2] {
+        let mut result = [[Fp2::ZERO; C6_CACHE_FOLD_TARGET_TAPES]; 2];
+        let mut weight = scalar_root;
+        for (kind, correction) in self.kinds.iter().zip(&self.corrections) {
+            let kv = match kind {
+                C6CacheFoldKind::KeyRows => 0,
+                C6CacheFoldKind::ValueColumns => 1,
+            };
+            for tape in 0..C6_CACHE_FOLD_TARGET_TAPES {
+                result[kv][tape] += weight * correction[tape];
+            }
+            weight = weight * scalar_root;
+        }
+        result
+    }
+}
+
+pub struct C6CacheFoldTargetProverStream<'a> {
+    frame: &'a C6CacheFoldTargetCorrectionFrame,
+    targets: &'a C6CacheFoldPairedProverTargets,
+    next: usize,
+}
+
+impl<'a> C6CacheFoldTargetProverStream<'a> {
+    pub fn next_target(
+        &mut self,
+        transcript: &mut Transcript,
+    ) -> Result<(C6CacheFoldKind, [ProverAuthed; C6_CACHE_FOLD_TARGET_TAPES]), C6CacheFoldTraceError>
+    {
+        let term =
+            self.targets.terms.get(self.next).copied().ok_or_else(|| {
+                C6CacheFoldTraceError::new("C6FT1 prover target stream exhausted")
+            })?;
+        transcript.append(C6_CACHE_FOLD_TARGET_SLOT_LABEL, C6_CACHE_FOLD_TARGET_SLOT_BYTES);
+        self.next += 1;
+        Ok(term)
+    }
+
+    pub fn finish_before_successor_root(
+        self,
+        transcript: &mut Transcript,
+    ) -> Result<C6CacheFoldTargetFixedCorrections, C6CacheFoldTraceError> {
+        finish_target_stream(
+            self.frame,
+            self.targets.identity,
+            &self.targets.terms,
+            self.next,
+            transcript,
+        )
+    }
+}
+
+pub struct C6CacheFoldTargetVerifierStream<'a> {
+    frame: &'a C6CacheFoldTargetCorrectionFrame,
+    base_targets: &'a C6CacheFoldPairedVerifierBaseTargets,
+    deltas: [Fp2; C6_CACHE_FOLD_TARGET_TAPES],
+    next: usize,
+}
+
+impl<'a> C6CacheFoldTargetVerifierStream<'a> {
+    pub fn next_target(
+        &mut self,
+        transcript: &mut Transcript,
+    ) -> Result<(C6CacheFoldKind, [VerifierKey; C6_CACHE_FOLD_TARGET_TAPES]), C6CacheFoldTraceError>
+    {
+        let (kind, base) =
+            self.base_targets.terms.get(self.next).copied().ok_or_else(|| {
+                C6CacheFoldTraceError::new("C6FT1 verifier target stream exhausted")
+            })?;
+        let correction = self.frame.corrections[self.next];
+        transcript.append(C6_CACHE_FOLD_TARGET_SLOT_LABEL, C6_CACHE_FOLD_TARGET_SLOT_BYTES);
+        self.next += 1;
+        Ok((
+            kind,
+            std::array::from_fn(|tape| {
+                base[tape].with_same_c6_trace(base[tape].k + self.deltas[tape] * correction[tape])
+            }),
+        ))
+    }
+
+    pub fn finish_before_successor_root(
+        self,
+        transcript: &mut Transcript,
+    ) -> Result<C6CacheFoldTargetFixedCorrections, C6CacheFoldTraceError> {
+        finish_target_stream(
+            self.frame,
+            self.base_targets.identity,
+            &self.base_targets.terms,
+            self.next,
+            transcript,
+        )
+    }
+}
+
+fn finish_target_stream<T: Copy>(
+    frame: &C6CacheFoldTargetCorrectionFrame,
+    identity: C6CacheFoldTraceIdentity,
+    terms: &[(C6CacheFoldKind, [T; C6_CACHE_FOLD_TARGET_TAPES])],
+    next: usize,
+    transcript: &mut Transcript,
+) -> Result<C6CacheFoldTargetFixedCorrections, C6CacheFoldTraceError> {
+    if next != frame.corrections.len() || terms.len() != frame.corrections.len() {
+        return Err(C6CacheFoldTraceError::new(
+            "C6FT1 live targets were not exhausted before successor root",
+        ));
+    }
+    charge_target_padding(frame.corrections.len(), transcript);
+    Ok(C6CacheFoldTargetFixedCorrections {
+        identity,
+        kinds: terms.iter().map(|(kind, _)| *kind).collect(),
+        corrections: frame.corrections.clone(),
+    })
+}
+
+fn charge_target_padding(live_count: usize, transcript: &mut Transcript) {
+    let padding_slots = C6_CACHE_FOLD_MAX_RECORDS - live_count;
+    if padding_slots != 0 {
+        transcript.append(
+            C6_CACHE_FOLD_TARGET_PADDING_LABEL,
+            padding_slots as u64 * C6_CACHE_FOLD_TARGET_SLOT_BYTES,
+        );
+    }
+}
+
+fn validate_statement_digest(statement_digest: [u8; 32]) -> Result<(), C6CacheFoldTraceError> {
+    if statement_digest == [0; 32] {
+        return Err(C6CacheFoldTraceError::new("zero C6FT1 statement digest"));
+    }
+    Ok(())
+}
+
+fn validate_target_identity(
+    identity: C6CacheFoldTraceIdentity,
+    count: usize,
+) -> Result<(), C6CacheFoldTraceError> {
+    validate_target_count(count)?;
+    if identity.version != C6_CACHE_FOLD_TRACE_VERSION
+        || identity.fold_count as usize != count
+        || identity.topology_digest == [0; 32]
+        || identity.instance_digest == [0; 32]
+    {
+        return Err(C6CacheFoldTraceError::new("C6FT1 target identity mismatch"));
+    }
+    Ok(())
+}
+
+fn validate_target_count(count: usize) -> Result<(), C6CacheFoldTraceError> {
+    if count == 0 || count > C6_CACHE_FOLD_MAX_RECORDS {
+        return Err(C6CacheFoldTraceError::new("C6FT1 live target count is outside capacity"));
+    }
+    Ok(())
+}
+
+fn encode_target_fp2(bytes: &mut Vec<u8>, value: Fp2) {
+    bytes.extend_from_slice(&value.c0.value().to_le_bytes());
+    bytes.extend_from_slice(&value.c1.value().to_le_bytes());
+}
+
+struct C6CacheFoldTargetDecodeCursor<'a> {
+    bytes: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> C6CacheFoldTargetDecodeCursor<'a> {
+    fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes, offset: 0 }
+    }
+
+    fn take(&mut self, len: usize) -> Result<&'a [u8], C6CacheFoldTraceError> {
+        let end = self
+            .offset
+            .checked_add(len)
+            .ok_or_else(|| C6CacheFoldTraceError::new("C6FT1 cursor overflow"))?;
+        let value = self
+            .bytes
+            .get(self.offset..end)
+            .ok_or_else(|| C6CacheFoldTraceError::new("truncated C6FT1 frame"))?;
+        self.offset = end;
+        Ok(value)
+    }
+
+    fn u8(&mut self) -> Result<u8, C6CacheFoldTraceError> {
+        Ok(self.take(1)?[0])
+    }
+
+    fn u16(&mut self) -> Result<u16, C6CacheFoldTraceError> {
+        let mut bytes = [0u8; 2];
+        bytes.copy_from_slice(self.take(2)?);
+        Ok(u16::from_le_bytes(bytes))
+    }
+
+    fn digest(&mut self) -> Result<[u8; 32], C6CacheFoldTraceError> {
+        let mut digest = [0u8; 32];
+        digest.copy_from_slice(self.take(32)?);
+        Ok(digest)
+    }
+
+    fn fp2(&mut self) -> Result<Fp2, C6CacheFoldTraceError> {
+        let c0 = self.u64_canonical()?;
+        let c1 = self.u64_canonical()?;
+        Ok(Fp2::new(Fp::new(c0), Fp::new(c1)))
+    }
+
+    fn u64_canonical(&mut self) -> Result<u64, C6CacheFoldTraceError> {
+        let mut bytes = [0u8; 8];
+        bytes.copy_from_slice(self.take(8)?);
+        let value = u64::from_le_bytes(bytes);
+        if value >= P {
+            return Err(C6CacheFoldTraceError::new("noncanonical C6FT1 field limb"));
+        }
+        Ok(value)
+    }
+
+    fn remaining(&self) -> &'a [u8] {
+        &self.bytes[self.offset..]
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -932,8 +1520,9 @@ fn hash_fp2(hasher: &mut blake3::Hasher, value: Fp2) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::prod_check::{prod_batch_prover, prod_batch_verify};
     use volta_field::Fp;
-    use volta_mac::{ProverAuthed, VerifierKey};
+    use volta_mac::{CorrelationStream, ProverAuthed, VerifierCtx, VerifierKey};
 
     fn weights(length: usize, seed: u64) -> Vec<Fp2> {
         (0..length)
@@ -1034,6 +1623,308 @@ mod tests {
         assert_eq!(verifier_pair.identity, paired.identity);
         assert_eq!(verifier_pair.terms().count(), 24);
         assert!(C6CacheFoldPairedVerifierTargets::pair([&left, &right]).is_err());
+    }
+
+    fn c6ft1_fixture() -> (
+        C6CacheFoldPairedProverTargets,
+        Vec<[Fp2; C6_CACHE_FOLD_TARGET_TAPES]>,
+        C6CacheFoldPairedVerifierBaseTargets,
+        [Fp2; C6_CACHE_FOLD_TARGET_TAPES],
+    ) {
+        let mut left = capture(true);
+        let mut right = left.clone();
+        let deltas =
+            [Fp2::new(Fp::new(0xD1), Fp::new(0xD2)), Fp2::new(Fp::new(0xE1), Fp::new(0xE2))];
+        let mut masks = Vec::with_capacity(left.targets.len());
+        for (ordinal, (left_target, right_target)) in
+            left.targets.iter_mut().zip(&mut right.targets).enumerate()
+        {
+            let x = Fp2::new(Fp::new(1_000 + ordinal as u64), Fp::new(2_000 + ordinal as u64));
+            let tags = [
+                Fp2::new(Fp::new(3_000 + ordinal as u64), Fp::new(4_000 + ordinal as u64)),
+                Fp2::new(Fp::new(5_000 + ordinal as u64), Fp::new(6_000 + ordinal as u64)),
+            ];
+            let target_masks = [
+                Fp2::new(Fp::new(7_000 + ordinal as u64), Fp::new(8_000 + ordinal as u64)),
+                Fp2::new(Fp::new(9_000 + ordinal as u64), Fp::new(10_000 + ordinal as u64)),
+            ];
+            *left_target = C6CacheFoldAuthenticatedTarget::Prover(ProverAuthed::new(x, tags[0]));
+            *right_target = C6CacheFoldAuthenticatedTarget::Prover(ProverAuthed::new(x, tags[1]));
+            masks.push(target_masks);
+        }
+        let prover = C6CacheFoldPairedProverTargets::pair([&left, &right]).unwrap();
+        let base_terms = prover
+            .terms()
+            .zip(&masks)
+            .map(|((kind, targets), masks)| {
+                (
+                    kind,
+                    std::array::from_fn(|tape| {
+                        VerifierKey::new(targets[tape].m + deltas[tape] * masks[tape])
+                    }),
+                )
+            })
+            .collect();
+        let verifier =
+            C6CacheFoldPairedVerifierBaseTargets::new(prover.identity, base_terms).unwrap();
+        (prover, masks, verifier, deltas)
+    }
+
+    #[test]
+    fn c6ft1_codec_is_fixed_canonical_and_fail_closed() {
+        let (prover, masks, _, _) = c6ft1_fixture();
+        let statement_digest = [0xA6; 32];
+        let frame = C6CacheFoldTargetCorrectionFrame::from_prover_targets(
+            statement_digest,
+            &prover,
+            &masks,
+        )
+        .unwrap();
+        let encoded = frame.encode().unwrap();
+        assert_eq!(encoded.len() as u64, C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES);
+        assert_eq!(C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES, 18_480);
+        assert_eq!(frame.live_count(), 24);
+        assert_eq!(
+            C6CacheFoldTargetCorrectionFrame::decode(statement_digest, prover.identity, &encoded)
+                .unwrap(),
+            frame
+        );
+        let live_end = C6_CACHE_FOLD_TARGET_HEADER_BYTES as usize
+            + frame.live_count() * C6_CACHE_FOLD_TARGET_SLOT_BYTES as usize;
+        assert!(encoded[live_end..].iter().all(|&byte| byte == 0));
+
+        let mut nonzero_tail = encoded.clone();
+        *nonzero_tail.last_mut().unwrap() = 1;
+        assert!(C6CacheFoldTargetCorrectionFrame::decode(
+            statement_digest,
+            prover.identity,
+            &nonzero_tail,
+        )
+        .is_err());
+        let mut noncanonical = encoded.clone();
+        noncanonical[C6_CACHE_FOLD_TARGET_HEADER_BYTES as usize
+            ..C6_CACHE_FOLD_TARGET_HEADER_BYTES as usize + 8]
+            .copy_from_slice(&P.to_le_bytes());
+        assert!(C6CacheFoldTargetCorrectionFrame::decode(
+            statement_digest,
+            prover.identity,
+            &noncanonical,
+        )
+        .is_err());
+        let mut wrong_capacity = encoded.clone();
+        wrong_capacity[14..16].copy_from_slice(&575u16.to_le_bytes());
+        assert!(C6CacheFoldTargetCorrectionFrame::decode(
+            statement_digest,
+            prover.identity,
+            &wrong_capacity,
+        )
+        .is_err());
+        assert!(C6CacheFoldTargetCorrectionFrame::decode([0xB6; 32], prover.identity, &encoded,)
+            .is_err());
+        let mut wrong_identity = prover.identity;
+        wrong_identity.instance_digest[0] ^= 1;
+        let wrong_base_targets = C6CacheFoldPairedVerifierBaseTargets::new(
+            wrong_identity,
+            prover
+                .terms()
+                .map(|(kind, _)| (kind, [VerifierKey::ZERO; C6_CACHE_FOLD_TARGET_TAPES]))
+                .collect(),
+        )
+        .unwrap();
+        let mut transcript = Transcript::new([0xB7; 32]);
+        assert!(frame
+            .start_verifier_stream(
+                &wrong_base_targets,
+                [Fp2::ONE, Fp2::new(Fp::new(2), Fp::ZERO)],
+                &mut transcript,
+            )
+            .is_err());
+        let schedule = C6CacheFoldTargetSchedule::from_prover_targets(&prover).unwrap();
+        let mut early_tx = Transcript::new([0xB8; 32]);
+        let early = C6CacheFoldTargetInlineProver::start(statement_digest, schedule, &mut early_tx)
+            .unwrap();
+        assert!(early.finish_before_successor_root(&mut early_tx).is_err());
+        assert!(C6CacheFoldTargetCorrectionFrame::decode(
+            statement_digest,
+            prover.identity,
+            &encoded[..encoded.len() - 1],
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn c6ft1_stream_feeds_product_closure_and_exact_c6ps1_fold() {
+        let (prover, masks, verifier, deltas) = c6ft1_fixture();
+        let statement_digest = [0xC6; 32];
+        let frame = C6CacheFoldTargetCorrectionFrame::from_prover_targets(
+            statement_digest,
+            &prover,
+            &masks,
+        )
+        .unwrap();
+        let decoded = C6CacheFoldTargetCorrectionFrame::decode(
+            statement_digest,
+            prover.identity,
+            &frame.encode().unwrap(),
+        )
+        .unwrap();
+        let mut prover_tx = Transcript::new([0x31; 32]);
+        let mut verifier_tx = Transcript::new([0x31; 32]);
+        let schedule = C6CacheFoldTargetSchedule::from_prover_targets(&prover).unwrap();
+        let mut prover_stream = C6CacheFoldTargetInlineProver::start(
+            statement_digest,
+            schedule.clone(),
+            &mut prover_tx,
+        )
+        .unwrap();
+        let mut verifier_stream =
+            C6CacheFoldTargetInlineVerifier::start(&decoded, schedule, deltas, &mut verifier_tx)
+                .unwrap();
+        let seeds = [[0x41; 32], [0x42; 32]];
+        let mut correlation_streams =
+            [CorrelationStream::new(seeds[0]), CorrelationStream::new(seeds[1])];
+        let mut contexts =
+            [VerifierCtx::new(seeds[0], deltas[0]), VerifierCtx::new(seeds[1], deltas[1])];
+        let prover_terms = prover.terms().collect::<Vec<_>>();
+        let verifier_terms = verifier.terms().collect::<Vec<_>>();
+        for ordinal in 0..prover_terms.len() {
+            let (prover_kind, raw_targets) = prover_terms[ordinal];
+            let targets = prover_stream
+                .push_target_before_product(
+                    prover_kind,
+                    raw_targets,
+                    masks[ordinal],
+                    &mut prover_tx,
+                )
+                .unwrap();
+            let (verifier_kind, base_keys) = verifier_terms[ordinal];
+            let corrected_keys = verifier_stream
+                .correct_next_before_product(verifier_kind, base_keys, &mut verifier_tx)
+                .unwrap();
+            assert_eq!(prover_kind, verifier_kind);
+            for tape in 0..C6_CACHE_FOLD_TARGET_TAPES {
+                assert_eq!(
+                    corrected_keys[tape].k,
+                    targets[tape].m + deltas[tape] * targets[tape].x
+                );
+            }
+            let chi = prover_tx.challenge_fp2();
+            assert_eq!(chi, verifier_tx.challenge_fp2());
+            for tape in 0..C6_CACHE_FOLD_TARGET_TAPES {
+                let multiplier = Fp2::from_base(Fp::new(17 + ordinal as u64));
+                let output = targets[tape].scale(multiplier);
+                let output_key = VerifierKey::new(output.m + deltas[tape] * output.x);
+                let mask = correlation_streams[tape].draw_product_mask(0x6000 + ordinal as u64, 1);
+                let key_mask =
+                    contexts[tape].expand_product_mask_verifier_key(0x6000 + ordinal as u64, 1);
+                let proof = prod_batch_prover(
+                    &[(ProverAuthed::from_public(multiplier), targets[tape], output)],
+                    chi,
+                    mask,
+                    &mut prover_tx,
+                );
+                assert!(prod_batch_verify(
+                    &[(
+                        VerifierKey::from_public(multiplier, deltas[tape]),
+                        corrected_keys[tape],
+                        output_key,
+                    )],
+                    key_mask,
+                    deltas[tape],
+                    chi,
+                    &proof,
+                ));
+                verifier_tx.append("prod_check_m0_m1", 32);
+            }
+        }
+        let (streamed_frame, prover_fixed) =
+            prover_stream.finish_before_successor_root(&mut prover_tx).unwrap();
+        assert_eq!(streamed_frame, frame);
+        let verifier_fixed =
+            verifier_stream.finish_before_successor_root(&mut verifier_tx).unwrap();
+        assert_eq!(prover_tx.total_bytes(), C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES + 24 * 64);
+        assert_eq!(prover_tx.total_bytes(), verifier_tx.total_bytes());
+        assert_eq!(
+            prover_tx.bytes_for(C6_CACHE_FOLD_TARGET_HEADER_LABEL),
+            C6_CACHE_FOLD_TARGET_HEADER_BYTES
+        );
+        assert_eq!(
+            prover_tx.bytes_for(C6_CACHE_FOLD_TARGET_SLOT_LABEL),
+            24 * C6_CACHE_FOLD_TARGET_SLOT_BYTES
+        );
+        assert_eq!(
+            prover_tx.bytes_for(C6_CACHE_FOLD_TARGET_PADDING_LABEL),
+            (C6_CACHE_FOLD_MAX_RECORDS as u64 - 24) * C6_CACHE_FOLD_TARGET_SLOT_BYTES
+        );
+        let scalar_root = prover_tx.challenge_fp2();
+        assert_eq!(scalar_root, verifier_tx.challenge_fp2());
+        let folded = prover_fixed.fold_corrections(scalar_root);
+        assert_eq!(folded, verifier_fixed.fold_corrections(scalar_root));
+        let mut direct = [[Fp2::ZERO; C6_CACHE_FOLD_TARGET_TAPES]; 2];
+        let mut weight = scalar_root;
+        for (((kind, targets), masks), correction) in
+            prover_terms.iter().zip(&masks).zip(&frame.corrections)
+        {
+            let kv = match kind {
+                C6CacheFoldKind::KeyRows => 0,
+                C6CacheFoldKind::ValueColumns => 1,
+            };
+            for tape in 0..C6_CACHE_FOLD_TARGET_TAPES {
+                assert_eq!(correction[tape], targets[tape].x - masks[tape]);
+                direct[kv][tape] += weight * (targets[tape].x - masks[tape]);
+            }
+            weight = weight * scalar_root;
+        }
+        assert_eq!(folded, direct);
+    }
+
+    #[test]
+    fn c6ft1_tamper_is_rejected_by_independent_product_target_key() {
+        let (prover, masks, verifier, deltas) = c6ft1_fixture();
+        let statement_digest = [0xD6; 32];
+        let honest = C6CacheFoldTargetCorrectionFrame::from_prover_targets(
+            statement_digest,
+            &prover,
+            &masks,
+        )
+        .unwrap();
+        let mut tampered_bytes = honest.encode().unwrap();
+        tampered_bytes[C6_CACHE_FOLD_TARGET_HEADER_BYTES as usize] ^= 1;
+        let tampered = C6CacheFoldTargetCorrectionFrame::decode(
+            statement_digest,
+            prover.identity,
+            &tampered_bytes,
+        )
+        .unwrap();
+        let mut prover_tx = Transcript::new([0x51; 32]);
+        let mut verifier_tx = Transcript::new([0x51; 32]);
+        let mut prover_stream =
+            honest.start_prover_stream(&prover, &masks, &mut prover_tx).unwrap();
+        let mut verifier_stream =
+            tampered.start_verifier_stream(&verifier, deltas, &mut verifier_tx).unwrap();
+        let (_, targets) = prover_stream.next_target(&mut prover_tx).unwrap();
+        let (_, corrected_keys) = verifier_stream.next_target(&mut verifier_tx).unwrap();
+        let chi = prover_tx.challenge_fp2();
+        assert_eq!(chi, verifier_tx.challenge_fp2());
+        let multiplier = Fp2::from_base(Fp::new(19));
+        let output = targets[0].scale(multiplier);
+        let output_key = VerifierKey::new(output.m + deltas[0] * output.x);
+        let seed = [0x61; 32];
+        let mut correlation_stream = CorrelationStream::new(seed);
+        let mut context = VerifierCtx::new(seed, deltas[0]);
+        let proof = prod_batch_prover(
+            &[(ProverAuthed::from_public(multiplier), targets[0], output)],
+            chi,
+            correlation_stream.draw_product_mask(0x7000, 1),
+            &mut prover_tx,
+        );
+        assert!(!prod_batch_verify(
+            &[(VerifierKey::from_public(multiplier, deltas[0]), corrected_keys[0], output_key,)],
+            context.expand_product_mask_verifier_key(0x7000, 1),
+            deltas[0],
+            chi,
+            &proof,
+        ));
     }
 
     fn fp2_power(base: Fp2, exponent: usize) -> Fp2 {

@@ -16,8 +16,8 @@ POINTWISE C6PC2 AND SOURCE-BOUND C6PS1 -> C6PC2 -> C6LNK2 -> PAIRED PCS
 SCALED PATH GREEN WITH ZERO CACHE STAND-INS; FACTORIZED RUNTIME FOLD-BATCH
 COMPILER + 653-ROOT FORMAL REPAIR + STRICT C6PS1 V2 TRANSCRIPT MIGRATION GREEN;
 ROLE-TYPED RUNTIME TARGETS + STEP-WISE 24-ROUND CACHE PARTICIPANT SCALED
-GREEN; INDIVIDUAL TARGET `C6FT1` BOOTSTRAP FORMAL GATE GREEN; STRICT CODEC /
-`CacheSegK` REMOVAL /
+GREEN; INDIVIDUAL TARGET `C6FT1` BOOTSTRAP FORMAL + STRICT CODEC + INLINE
+ΠPROD/C6PS1 SCALED DIFFERENTIAL GREEN; SOURCE-ORDINAL STREAMER / `CacheSegK` REMOVAL /
 BACKEND / FINAL ENVELOPE PENDING;
 LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
@@ -4044,12 +4044,36 @@ builds **3,261 jobs**; the audit is **347 total /108 C6** named targets,
 standard axioms only, stdout SHA-256
 `df0e4a4e7278c1f7a4f5be6ffc57d392c2aec332df80fe761fe8688ef07ada29`.
 
-The next ordered gate is the strict `C6FT1` codec and a scaled differential
-including ΠProd plus `C6PS1`, followed by a single-pass provider/client
-source-ordinal streamer that accumulates at most 576 response-local
-keys/masks without retaining any per-element `CacheSegK` or rereading a
-one-time correlation as a new draw.  No wire, response-field removal,
-production-time or hardware credit is earned before those gates.
+The strict codec and inline scaled differential are now green.  The Rust
+`C6FT1` frame is exactly **18,480 B** for every live count from 1 through
+576: a 48-B header, a live target-major/tape-major canonical-Fp2 prefix and
+an all-zero inactive tail.  Its decoder rejects wrong magic/version/tape or
+limb census, wrong capacity, zero/wrong statement digest, noncanonical field
+limbs, truncation and any nonzero tail.  The expected runtime trace identity
+and live count are checked out of band against the statement-bound target
+schedule.
+
+The provider inline builder accepts only the next scheduled K/V ordinal,
+requires equal plaintext on both MAC tapes, fixes its two `x-r` corrections
+and returns the authenticated target only after charging that slot.  The
+client cursor analogously returns `k_base + Delta_b*(x-r_b)` only after that
+slot.  Neither side can finish before all live targets; finish adds the fixed
+zero padding before releasing the successor root.  A scaled differential
+then feeds every resulting key into an immediate independent ΠProd, derives
+the later K/V `C6PS1` folds from the fixed slots, and matches a direct
+two-stage source oracle.  A canonical correction tamper is rejected by the
+independently authenticated ΠProd output key.  `C6PS1` now exposes a
+fail-closed equality check against those derived folds rather than admitting
+a second correction authority.
+
+All **155 non-ignored** `volta-proto --features c6-trace` tests pass, with one
+production-size test ignored; the 13 focused persistent-cache PCS tests also
+pass.  This is still a scaled/replay and typed inline-seam gate.  The next
+ordered gate is a single-pass provider/client source-ordinal streamer that
+accumulates at most 576 response-local keys/masks without retaining any
+per-element `CacheSegK` or rereading a one-time correlation as a new draw.
+No response-field removal, production-time or hardware credit is earned
+before that gate.
 
 ## 7. Certificate and challenge grammar
 

@@ -20,6 +20,7 @@ use volta_proto::{C6ResidualRelationManifest, C6ResidualRelationRootBound};
 
 use crate::c6_hidden_u::C6HiddenUFamily;
 use crate::c6_hidden_u_sumcheck::C6HiddenUOpeningClaim;
+use crate::c6_persistent_cache::{C6PersistentCacheStaticProfile, C6_PERSISTENT_CACHE_SLOTS};
 use crate::x4::accounting::projected_query_indices;
 use crate::x4::frame::Digest;
 use crate::x4::frame_v4::{
@@ -38,29 +39,31 @@ use crate::x4::ntt::{
 pub const C6_WRAPPER_QUERY_COUNT: usize = 86;
 pub const C6_WRAPPER_REPETITIONS: usize = 2;
 pub const C6_WRAPPER_TERMINAL_LOG2: u8 = 3;
-pub const C6_WRAPPER_ACTIVE_SLOTS: usize = 64;
+pub const C6_WRAPPER_ACTIVE_SLOTS: usize = 72;
 pub const C6_WRAPPER_RANDOM_POINT_LEN: usize = 24;
 pub const C6_WRAPPER_COMMON_POINT_LEN: usize = 25;
 pub const C6_DELTA_RESIDUAL_ACTIVATION_ROUND: usize = 1;
 pub const C6_HIDDEN_U_WEIGHTS_ACTIVATION_ROUND: usize = 3;
 pub const C6_HIDDEN_U_EMBED_ACTIVATION_ROUND: usize = 5;
 pub const C6_WRAPPER_AUXILIARY_ACTIVATION_ROUND: usize = 9;
-pub const C6_WRAPPER_ONE_CHAIN_BYTES: u64 = 1_804_912;
-pub const C6_WRAPPER_TWO_CHAIN_BYTES: u64 = 3_609_824;
+pub const C6_WRAPPER_ONE_CHAIN_BYTES: u64 = 1_939_733;
+pub const C6_WRAPPER_TWO_CHAIN_BYTES: u64 = 3_879_466;
 pub const C6_CACHE_ROUND_PARTICIPANT_ID: u32 = 0xC6A0_0001;
 pub const C6_DELTA_RESIDUAL_ROUND_PARTICIPANT_ID: u32 = 0xC6A0_0002;
 pub const C6_HIDDEN_U_ROUND_PARTICIPANT_ID: u32 = 0xC6A0_0003;
-pub const C6_CACHE_COHORT_ID: u32 = 0xC601_0001;
-pub const C6_DELTA_RESIDUAL_COHORT_ID: u32 = 0xC601_0002;
-pub const C6_HIDDEN_U_WEIGHTS_COHORT_ID: u32 = 0xC601_0003;
-pub const C6_HIDDEN_U_EMBED_COHORT_ID: u32 = 0xC601_0004;
-pub const C6_WRAPPER_AUXILIARY_COHORT_ID: u32 = 0xC601_0005;
+pub const C6_PREDECESSOR_CACHE_COHORT_ID: u32 = 0xC601_0001;
+pub const C6_SUCCESSOR_CACHE_COHORT_ID: u32 = 0xC601_0002;
+pub const C6_CACHE_STATE_MERKLE_COHORT_ID: u32 = 0xC6C0_0001;
+pub const C6_DELTA_RESIDUAL_COHORT_ID: u32 = 0xC601_0003;
+pub const C6_HIDDEN_U_WEIGHTS_COHORT_ID: u32 = 0xC601_0004;
+pub const C6_HIDDEN_U_EMBED_COHORT_ID: u32 = 0xC601_0005;
+pub const C6_WRAPPER_AUXILIARY_COHORT_ID: u32 = 0xC601_0006;
 
-const C6_WRAPPER_PROFILE_NAME: &[u8] = b"c6-transparent-rate8-s86-p64-two-repetition-v1";
-const C6_SLOT_DESCRIPTOR_CONTEXT: &str = "volta-zk/c6/wrapper-slot-descriptor/v1";
-const C6_FOLD_DESCRIPTOR_CONTEXT: &str = "volta-zk/c6/wrapper-fold-descriptor/v1";
-const C6_OPENING_SCHEDULE_CONTEXT: &str = "volta-zk/c6/wrapper-opening-schedule/v1";
-const C6_FIXED_ROOTS_CONTEXT: &str = "volta-zk/c6/wrapper-fixed-roots/v1";
+const C6_WRAPPER_PROFILE_NAME: &[u8] = b"c6-transparent-rate8-s86-p72-persistent-cache-v2";
+const C6_SLOT_DESCRIPTOR_CONTEXT: &str = "volta-zk/c6/wrapper-slot-descriptor/v2";
+const C6_FOLD_DESCRIPTOR_CONTEXT: &str = "volta-zk/c6/wrapper-fold-descriptor/v2";
+const C6_OPENING_SCHEDULE_CONTEXT: &str = "volta-zk/c6/wrapper-opening-schedule/v2";
+const C6_FIXED_ROOTS_CONTEXT: &str = "volta-zk/c6/wrapper-fixed-roots/v2";
 const C6_INITIAL_ROOTS_LABEL: &str = "c6_wrapper_initial_roots";
 const C6_GLOBAL_ROUND_MESSAGES_LABEL: &str = "c6_wrapper_global_sumcheck_round";
 #[cfg(test)]
@@ -94,6 +97,40 @@ impl fmt::Display for C6WrapperPcsError {
 }
 
 impl std::error::Error for C6WrapperPcsError {}
+
+/// Model-global cache-state descriptors installed during session setup.
+/// Both cache roles use this exact set and the same Merkle identity; the
+/// response statement binds only their ordered predecessor/successor roles.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6CacheStateDescriptors {
+    slots: [Digest; C6_PERSISTENT_CACHE_SLOTS],
+}
+
+impl C6CacheStateDescriptors {
+    pub fn from_persistent_profile(profile: &C6PersistentCacheStaticProfile) -> Result<Self> {
+        if profile.wrapper_profile_digest != c6_wrapper_profile_digest() {
+            return Err(C6WrapperPcsError::new(
+                "C6 cache descriptors use a different wrapper profile",
+            ));
+        }
+        let slots = profile
+            .slot_descriptors()
+            .map_err(|error| C6WrapperPcsError::new(error.to_string()))?;
+        Self::from_slots(slots)
+    }
+
+    pub(crate) fn from_slots(slots: [Digest; C6_PERSISTENT_CACHE_SLOTS]) -> Result<Self> {
+        let unique = slots.iter().copied().collect::<BTreeSet<_>>();
+        if slots.contains(&[0; 32]) || unique.len() != slots.len() {
+            return Err(C6WrapperPcsError::new("invalid C6 cache-state descriptor set"));
+        }
+        Ok(Self { slots })
+    }
+
+    pub fn slots(&self) -> &[Digest; C6_PERSISTENT_CACHE_SLOTS] {
+        &self.slots
+    }
+}
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -162,11 +199,20 @@ impl C6WrapperCohortSpec {
     }
 }
 
-/// Frozen production capacity profile, in canonical descending-domain order.
-pub fn production_c6_wrapper_specs() -> [C6WrapperCohortSpec; 5] {
+/// Frozen persistent-cache production profile, in canonical role order and
+/// then descending-domain order.  The two equal-geometry cache roots remain
+/// distinct cohorts so the outer statement can bind predecessor and
+/// successor roles without changing either reusable static descriptor.
+pub fn production_c6_wrapper_specs() -> [C6WrapperCohortSpec; 6] {
     [
         C6WrapperCohortSpec {
-            cohort_id: C6_CACHE_COHORT_ID,
+            cohort_id: C6_PREDECESSOR_CACHE_COHORT_ID,
+            oracle_kind: C6WrapperOracleKind::Witness,
+            payload_log2: 24,
+            slot_count: 8,
+        },
+        C6WrapperCohortSpec {
+            cohort_id: C6_SUCCESSOR_CACHE_COHORT_ID,
             oracle_kind: C6WrapperOracleKind::Witness,
             payload_log2: 24,
             slot_count: 8,
@@ -222,6 +268,7 @@ pub struct C6WrapperCommitment {
     pub spec: C6WrapperCohortSpec,
     pub root: Digest,
     pub config: CohortVerifierConfigV4,
+    cache_descriptors: Option<C6CacheStateDescriptors>,
 }
 
 impl C6WrapperCommitment {
@@ -232,6 +279,34 @@ impl C6WrapperCommitment {
         spec: C6WrapperCohortSpec,
         root: Digest,
     ) -> Result<Self> {
+        if is_cache_state_role(spec.cohort_id) {
+            return Err(C6WrapperPcsError::new(
+                "C6 cache root requires installed static descriptors",
+            ));
+        }
+        Self::from_root_inner(statement_digest, spec, root, None)
+    }
+
+    pub fn from_cache_root(
+        statement_digest: C6WrapperDigest,
+        spec: C6WrapperCohortSpec,
+        root: Digest,
+        cache_descriptors: &C6CacheStateDescriptors,
+    ) -> Result<Self> {
+        if !is_cache_state_role(spec.cohort_id) {
+            return Err(C6WrapperPcsError::new(
+                "non-cache C6 root received cache-state descriptors",
+            ));
+        }
+        Self::from_root_inner(statement_digest, spec, root, Some(cache_descriptors.clone()))
+    }
+
+    fn from_root_inner(
+        statement_digest: C6WrapperDigest,
+        spec: C6WrapperCohortSpec,
+        root: Digest,
+        cache_descriptors: Option<C6CacheStateDescriptors>,
+    ) -> Result<Self> {
         spec.validate()?;
         if statement_digest == [0; 32] || root == [0; 32] {
             return Err(C6WrapperPcsError::new("zero C6 wrapper statement/root"));
@@ -241,7 +316,8 @@ impl C6WrapperCommitment {
             statement_digest,
             spec,
             root,
-            config: wrapper_verifier_config(statement_digest, spec)?,
+            config: wrapper_verifier_config(statement_digest, spec, cache_descriptors.as_ref())?,
+            cache_descriptors,
         };
         commitment.validate()?;
         Ok(commitment)
@@ -252,32 +328,18 @@ impl C6WrapperCommitment {
         if self.profile_digest != c6_wrapper_profile_digest()
             || self.statement_digest == [0; 32]
             || self.root == [0; 32]
-            || self.config.identity
-                != (CohortIdentityV4 {
-                    cohort_id: self.spec.cohort_id,
-                    oracle_kind: self.spec.oracle_kind.v4(),
-                    fold_round: 0,
-                })
-            || self.config.outer_len != self.spec.encoded_len()?
-            || self.config.expected_symbol_count != 1
-            || self.config.slot_descriptors.len() != usize::from(self.spec.slot_count)
+            || self.config
+                != wrapper_verifier_config(
+                    self.statement_digest,
+                    self.spec,
+                    self.cache_descriptors.as_ref(),
+                )?
         {
             return Err(C6WrapperPcsError::new("C6 wrapper commitment geometry mismatch"));
         }
         self.config
             .validate()
             .map_err(|error| C6WrapperPcsError::frame("C6 wrapper commitment config", error))?;
-        for (slot, descriptor) in self.config.slot_descriptors.iter().enumerate() {
-            let expected = slot_descriptor_digest(
-                self.statement_digest,
-                self.spec,
-                u16::try_from(slot)
-                    .map_err(|_| C6WrapperPcsError::new("C6 descriptor slot overflows"))?,
-            );
-            if *descriptor != Some(expected) {
-                return Err(C6WrapperPcsError::new("C6 wrapper slot descriptor mismatch"));
-            }
-        }
         Ok(())
     }
 }
@@ -331,14 +393,21 @@ pub fn bind_production_c6_residual_relation_roots(
     .map_err(|error| C6WrapperPcsError::new(error.to_string()))
 }
 
-/// Fix the exact five production roots before any response-global sumcheck
+/// Fix the exact six production roots before any response-global sumcheck
 /// challenge is released.
 pub fn fix_production_c6_wrapper_commitments(
     statement_digest: C6WrapperDigest,
+    cache_descriptors: &C6CacheStateDescriptors,
     commitments: &[C6WrapperCommitment],
     transcript: &mut Transcript,
 ) -> Result<C6FixedWrapperCommitments> {
-    fix_c6_wrapper_commitments_inner(statement_digest, commitments, true, transcript)
+    fix_c6_wrapper_commitments_inner(
+        statement_digest,
+        Some(cache_descriptors),
+        commitments,
+        true,
+        transcript,
+    )
 }
 
 #[cfg(test)]
@@ -347,11 +416,12 @@ pub(crate) fn fix_test_c6_wrapper_commitments(
     commitments: &[C6WrapperCommitment],
     transcript: &mut Transcript,
 ) -> Result<C6FixedWrapperCommitments> {
-    fix_c6_wrapper_commitments_inner(statement_digest, commitments, false, transcript)
+    fix_c6_wrapper_commitments_inner(statement_digest, None, commitments, false, transcript)
 }
 
 fn fix_c6_wrapper_commitments_inner(
     statement_digest: C6WrapperDigest,
+    required_cache_descriptors: Option<&C6CacheStateDescriptors>,
     commitments: &[C6WrapperCommitment],
     require_production: bool,
     transcript: &mut Transcript,
@@ -363,9 +433,18 @@ fn fix_c6_wrapper_commitments_inner(
         return Err(C6WrapperPcsError::new("C6 fixed-root statement mismatch"));
     }
     if require_production {
+        let required_cache_descriptors = required_cache_descriptors.ok_or_else(|| {
+            C6WrapperPcsError::new("C6 production roots require installed cache descriptors")
+        })?;
         let expected = production_c6_wrapper_specs();
         if commitments.len() != expected.len()
             || !commitments.iter().map(|commitment| commitment.spec).eq(expected)
+            || commitments
+                .iter()
+                .filter(|commitment| is_cache_state_role(commitment.spec.cohort_id))
+                .any(|commitment| {
+                    commitment.cache_descriptors.as_ref() != Some(required_cache_descriptors)
+                })
         {
             return Err(C6WrapperPcsError::new(
                 "C6 fixed roots do not use the frozen production profile",
@@ -653,6 +732,32 @@ pub fn commit_c6_wrapper_cohort(
     spec: C6WrapperCohortSpec,
     slots: Vec<C6WrapperSlotWitness>,
 ) -> Result<C6CommittedWrapperCohort> {
+    if is_cache_state_role(spec.cohort_id) {
+        return Err(C6WrapperPcsError::new(
+            "C6 cache cohort requires installed static descriptors",
+        ));
+    }
+    commit_c6_wrapper_cohort_inner(statement_digest, spec, slots, None)
+}
+
+pub fn commit_c6_cache_state_cohort(
+    statement_digest: C6WrapperDigest,
+    spec: C6WrapperCohortSpec,
+    slots: Vec<C6WrapperSlotWitness>,
+    cache_descriptors: &C6CacheStateDescriptors,
+) -> Result<C6CommittedWrapperCohort> {
+    if !is_cache_state_role(spec.cohort_id) {
+        return Err(C6WrapperPcsError::new("non-cache C6 cohort received cache-state descriptors"));
+    }
+    commit_c6_wrapper_cohort_inner(statement_digest, spec, slots, Some(cache_descriptors))
+}
+
+fn commit_c6_wrapper_cohort_inner(
+    statement_digest: C6WrapperDigest,
+    spec: C6WrapperCohortSpec,
+    slots: Vec<C6WrapperSlotWitness>,
+    cache_descriptors: Option<&C6CacheStateDescriptors>,
+) -> Result<C6CommittedWrapperCohort> {
     spec.validate()?;
     if statement_digest == [0; 32] || slots.len() != usize::from(spec.slot_count) {
         return Err(C6WrapperPcsError::new("C6 wrapper slot census mismatch"));
@@ -692,13 +797,17 @@ pub fn commit_c6_wrapper_cohort(
         coefficients.push(slot_coefficients);
         codewords.push(slot_codeword);
     }
-    let config = wrapper_verifier_config(statement_digest, spec)?;
+    let config = wrapper_verifier_config(statement_digest, spec, cache_descriptors)?;
     let tree = CohortTreeV4::build_flat(
         config.clone(),
         codewords.iter().cloned().map(Some).collect::<Vec<_>>(),
     )
     .map_err(|error| C6WrapperPcsError::frame("C6 initial cohort commitment", error))?;
-    let commitment = C6WrapperCommitment::from_root(statement_digest, spec, tree.root())?;
+    let commitment = if let Some(descriptors) = cache_descriptors {
+        C6WrapperCommitment::from_cache_root(statement_digest, spec, tree.root(), descriptors)?
+    } else {
+        C6WrapperCommitment::from_root(statement_digest, spec, tree.root())?
+    };
     if commitment.config != config {
         return Err(C6WrapperPcsError::new("C6 wrapper verifier config reconstruction mismatch"));
     }
@@ -1463,12 +1572,15 @@ fn issue_chain_openings(
     let mut initial_groups = Vec::with_capacity(cohorts.len());
     for cohort in cohorts {
         let touched = all_slots(cohort.commitment.spec.slot_count);
-        initial_groups.push(
-            cohort
-                .tree
-                .open_initial(query_draws, &touched)
-                .map_err(|error| C6WrapperPcsError::frame("C6 initial packed opening", error))?,
-        );
+        let mut opening = cohort
+            .tree
+            .open_initial(query_draws, &touched)
+            .map_err(|error| C6WrapperPcsError::frame("C6 initial packed opening", error))?;
+        // The N4 root uses one response-independent cache-state identity.
+        // The packed envelope uses distinct outer role IDs so predecessor and
+        // successor remain canonically ordered and statement-bound.
+        opening.cohort_id = cohort.commitment.spec.cohort_id;
+        initial_groups.push(opening);
     }
     let fold_rounds = sealed
         .fold_trees
@@ -1627,12 +1739,14 @@ fn verify_chain_openings(
         {
             return Err(C6WrapperPcsError::new("C6 initial opening schedule mismatch"));
         }
+        let mut merkle_opening = opening.clone();
+        merkle_opening.cohort_id = commitment.config.identity.cohort_id;
         verify_initial_packed_opening_v4(
             commitment.root,
             &commitment.config,
             query_draws,
             &touched,
-            opening,
+            &merkle_opening,
         )
         .map_err(|error| C6WrapperPcsError::frame("C6 initial Merkle opening", error))?;
     }
@@ -2080,23 +2194,50 @@ fn slot_descriptor_digest(
     *hasher.finalize().as_bytes()
 }
 
+fn is_cache_state_role(cohort_id: u32) -> bool {
+    matches!(cohort_id, C6_PREDECESSOR_CACHE_COHORT_ID | C6_SUCCESSOR_CACHE_COHORT_ID)
+}
+
+fn merkle_cohort_id(cohort_id: u32) -> u32 {
+    if is_cache_state_role(cohort_id) {
+        C6_CACHE_STATE_MERKLE_COHORT_ID
+    } else {
+        cohort_id
+    }
+}
+
 fn wrapper_verifier_config(
     statement_digest: C6WrapperDigest,
     spec: C6WrapperCohortSpec,
+    cache_descriptors: Option<&C6CacheStateDescriptors>,
 ) -> Result<CohortVerifierConfigV4> {
     spec.validate()?;
     if statement_digest == [0; 32] {
         return Err(C6WrapperPcsError::new("zero C6 wrapper statement"));
     }
+    let slot_descriptors = if is_cache_state_role(spec.cohort_id) {
+        let descriptors = cache_descriptors.ok_or_else(|| {
+            C6WrapperPcsError::new("C6 cache config is missing static descriptors")
+        })?;
+        if usize::from(spec.slot_count) != C6_PERSISTENT_CACHE_SLOTS {
+            return Err(C6WrapperPcsError::new("C6 cache config has a wrong slot census"));
+        }
+        descriptors.slots().iter().copied().map(Some).collect()
+    } else {
+        if cache_descriptors.is_some() {
+            return Err(C6WrapperPcsError::new("non-cache C6 config received cache descriptors"));
+        }
+        (0..spec.slot_count)
+            .map(|slot| Some(slot_descriptor_digest(statement_digest, spec, slot)))
+            .collect()
+    };
     Ok(CohortVerifierConfigV4 {
         identity: CohortIdentityV4 {
-            cohort_id: spec.cohort_id,
+            cohort_id: merkle_cohort_id(spec.cohort_id),
             oracle_kind: spec.oracle_kind.v4(),
             fold_round: 0,
         },
-        slot_descriptors: (0..spec.slot_count)
-            .map(|slot| Some(slot_descriptor_digest(statement_digest, spec, slot)))
-            .collect(),
+        slot_descriptors,
         outer_len: spec.encoded_len()?,
         expected_symbol_count: 1,
     })
@@ -2381,6 +2522,8 @@ fn max_merkle_frontier(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::array;
+
     use crate::x4::ntt::evaluate_multilinear_table;
 
     fn symbol(value: u64) -> Fp2 {
@@ -2389,6 +2532,16 @@ mod tests {
 
     fn statement() -> C6WrapperDigest {
         [0x6c; 32]
+    }
+
+    fn cache_descriptors() -> C6CacheStateDescriptors {
+        C6CacheStateDescriptors::from_persistent_profile(&C6PersistentCacheStaticProfile {
+            protocol_digest: [0x11; 32],
+            model_digest: [0x22; 32],
+            params_digest: [0x33; 32],
+            wrapper_profile_digest: c6_wrapper_profile_digest(),
+        })
+        .unwrap()
     }
 
     fn scaled_specs() -> [C6WrapperCohortSpec; 3] {
@@ -2415,11 +2568,23 @@ mod tests {
     }
 
     fn production_commitments() -> Vec<C6WrapperCommitment> {
+        let cache_descriptors = cache_descriptors();
         production_c6_wrapper_specs()
             .into_iter()
             .enumerate()
             .map(|(index, spec)| {
-                C6WrapperCommitment::from_root(statement(), spec, [(index + 1) as u8; 32]).unwrap()
+                let root = [(index + 1) as u8; 32];
+                if is_cache_state_role(spec.cohort_id) {
+                    C6WrapperCommitment::from_cache_root(
+                        statement(),
+                        spec,
+                        root,
+                        &cache_descriptors,
+                    )
+                    .unwrap()
+                } else {
+                    C6WrapperCommitment::from_root(statement(), spec, root).unwrap()
+                }
             })
             .collect()
     }
@@ -2559,10 +2724,24 @@ mod tests {
         let commitments = production_commitments();
         let seed = [0x2a; 32];
         let mut prover_tx = Transcript::new(seed);
-        let fixed =
-            fix_production_c6_wrapper_commitments(statement(), &commitments, &mut prover_tx)
+        let fixed = fix_production_c6_wrapper_commitments(
+            statement(),
+            &cache_descriptors(),
+            &commitments,
+            &mut prover_tx,
+        )
+        .unwrap();
+        assert_eq!(prover_tx.bytes_for(C6_INITIAL_ROOTS_LABEL), 6 * 32);
+        let wrong_descriptors =
+            C6CacheStateDescriptors::from_slots(array::from_fn(|slot| [(slot + 0x61) as u8; 32]))
                 .unwrap();
-        assert_eq!(prover_tx.bytes_for(C6_INITIAL_ROOTS_LABEL), 5 * 32);
+        assert!(fix_production_c6_wrapper_commitments(
+            statement(),
+            &wrong_descriptors,
+            &commitments,
+            &mut Transcript::new([0x29; 32]),
+        )
+        .is_err());
 
         let mut first = C6WrapperRoundCoordinator::new(&fixed, 0).unwrap();
         assert!(first.confirm_participants_bound(&[]).is_err());
@@ -2665,9 +2844,13 @@ mod tests {
         }
 
         let mut verifier_tx = Transcript::new(seed);
-        let verifier_fixed =
-            fix_production_c6_wrapper_commitments(statement(), &commitments, &mut verifier_tx)
-                .unwrap();
+        let verifier_fixed = fix_production_c6_wrapper_commitments(
+            statement(),
+            &cache_descriptors(),
+            &commitments,
+            &mut verifier_tx,
+        )
+        .unwrap();
         let verifier_points = run_production_coordinators(&verifier_fixed, &mut verifier_tx);
         let verifier_slot_claims = production_slot_claims(&commitments, &verifier_points);
         let verifier_assembled = assemble_production_c6_wrapper_claims(
@@ -2737,7 +2920,7 @@ mod tests {
             common_points.push(common);
         }
         let slots =
-            bind_hidden_u_opening_claims_to_wrapper_slots(&hidden_claims, specs[2], 2, specs[3], 5)
+            bind_hidden_u_opening_claims_to_wrapper_slots(&hidden_claims, specs[3], 2, specs[4], 5)
                 .unwrap();
         assert_eq!(slots.len(), 4);
         for repetition in 0..C6_WRAPPER_REPETITIONS {
@@ -2761,13 +2944,13 @@ mod tests {
         let mut bad = hidden_claims.clone();
         bad[1].point[0] += Fp2::ONE;
         assert!(
-            bind_hidden_u_opening_claims_to_wrapper_slots(&bad, specs[2], 2, specs[3], 5).is_err()
+            bind_hidden_u_opening_claims_to_wrapper_slots(&bad, specs[3], 2, specs[4], 5).is_err()
         );
         assert!(bind_hidden_u_opening_claims_to_wrapper_slots(
             &hidden_claims,
-            specs[2],
-            specs[2].slot_count,
             specs[3],
+            specs[3].slot_count,
+            specs[4],
             5,
         )
         .is_err());
@@ -2778,9 +2961,14 @@ mod tests {
         let (cohorts, commitments, _) = fixture();
         let seed = [0x2b; 32];
         let mut prover_tx = Transcript::new(seed);
-        let fixed =
-            fix_c6_wrapper_commitments_inner(statement(), &commitments, false, &mut prover_tx)
-                .unwrap();
+        let fixed = fix_c6_wrapper_commitments_inner(
+            statement(),
+            None,
+            &commitments,
+            false,
+            &mut prover_tx,
+        )
+        .unwrap();
         let points = (0..C6_WRAPPER_REPETITIONS)
             .map(|repetition| {
                 let random_point = (0..3)
@@ -2831,9 +3019,14 @@ mod tests {
         );
 
         let mut verifier_tx = Transcript::new(seed);
-        let verifier_fixed =
-            fix_c6_wrapper_commitments_inner(statement(), &commitments, false, &mut verifier_tx)
-                .unwrap();
+        let verifier_fixed = fix_c6_wrapper_commitments_inner(
+            statement(),
+            None,
+            &commitments,
+            false,
+            &mut verifier_tx,
+        )
+        .unwrap();
         let verifier_points = points
             .iter()
             .map(|point| C6WrapperRoundPoint {
@@ -2876,7 +3069,7 @@ mod tests {
     fn mapped_hidden_u_slot_claims_enter_the_two_packed_chains() {
         let specs = [
             C6WrapperCohortSpec {
-                cohort_id: C6_CACHE_COHORT_ID,
+                cohort_id: 0xC6EE_0001,
                 oracle_kind: C6WrapperOracleKind::Witness,
                 payload_log2: 8,
                 slot_count: 1,
@@ -3026,6 +3219,84 @@ mod tests {
     }
 
     #[test]
+    fn cache_state_root_is_role_and_response_independent_but_profile_bound() {
+        let predecessor_spec = C6WrapperCohortSpec {
+            cohort_id: C6_PREDECESSOR_CACHE_COHORT_ID,
+            oracle_kind: C6WrapperOracleKind::Witness,
+            payload_log2: 3,
+            slot_count: 8,
+        };
+        let successor_spec =
+            C6WrapperCohortSpec { cohort_id: C6_SUCCESSOR_CACHE_COHORT_ID, ..predecessor_spec };
+        let state_slots = (0..predecessor_spec.slot_count)
+            .map(|slot| C6WrapperSlotWitness::Witness {
+                witness: (0..8)
+                    .map(|index| symbol(1_100_000 + 100 * u64::from(slot) + index))
+                    .collect(),
+                zk_mask: (0..8)
+                    .map(|index| symbol(1_200_000 + 100 * u64::from(slot) + index))
+                    .collect(),
+            })
+            .collect::<Vec<_>>();
+        let descriptors = cache_descriptors();
+        let predecessor = commit_c6_cache_state_cohort(
+            [0x41; 32],
+            predecessor_spec,
+            state_slots.clone(),
+            &descriptors,
+        )
+        .unwrap();
+        let successor = commit_c6_cache_state_cohort(
+            [0x42; 32],
+            successor_spec,
+            state_slots.clone(),
+            &descriptors,
+        )
+        .unwrap();
+        assert_eq!(predecessor.commitment.root, successor.commitment.root);
+        assert_eq!(
+            predecessor.commitment.config.identity.cohort_id,
+            C6_CACHE_STATE_MERKLE_COHORT_ID
+        );
+        assert_eq!(predecessor.commitment.config, successor.commitment.config);
+        assert_ne!(predecessor.commitment.spec.cohort_id, successor.commitment.spec.cohort_id);
+
+        let reused = C6WrapperCommitment::from_cache_root(
+            [0x43; 32],
+            predecessor_spec,
+            successor.commitment.root,
+            &descriptors,
+        )
+        .unwrap();
+        assert_eq!(reused.root, successor.commitment.root);
+        assert_eq!(reused.config, successor.commitment.config);
+
+        let other_descriptors =
+            C6CacheStateDescriptors::from_slots(array::from_fn(|slot| [(slot + 0x41) as u8; 32]))
+                .unwrap();
+        let other = commit_c6_cache_state_cohort(
+            [0x42; 32],
+            successor_spec,
+            state_slots,
+            &other_descriptors,
+        )
+        .unwrap();
+        assert_ne!(successor.commitment.root, other.commitment.root);
+        assert!(commit_c6_wrapper_cohort(
+            [0x42; 32],
+            successor_spec,
+            vec![
+                C6WrapperSlotWitness::Witness {
+                    witness: vec![Fp2::ZERO; 8],
+                    zk_mask: vec![Fp2::ZERO; 8],
+                };
+                8
+            ],
+        )
+        .is_err());
+    }
+
+    #[test]
     fn two_response_local_chains_open_all_slots_and_roundtrip() {
         let (cohorts, commitments, claims) = fixture();
         let seed = [0x37; 32];
@@ -3039,7 +3310,7 @@ mod tests {
             {
                 assert_eq!(group.touched_slots, all_slots(commitment.spec.slot_count));
             }
-            // 86 draws into only 64 first-round +/- bases necessarily
+            // 86 draws into the scaled first-round +/- bases necessarily
             // collide; the canonical wire retains only the projected set.
             assert!(
                 chain.packed_opening.initial_groups[0].opened_symbols.len()
@@ -3151,24 +3422,24 @@ mod tests {
         );
         assert_eq!(
             specs.iter().map(|spec| spec.encoded_domain_log2().unwrap()).collect::<Vec<_>>(),
-            vec![28, 27, 25, 23, 19]
+            vec![28, 28, 27, 25, 23, 19]
         );
         let maximum_point = usize::from(specs[0].coefficient_log2().unwrap());
         assert_eq!(maximum_point, C6_WRAPPER_COMMON_POINT_LEN);
         assert_eq!(
-            maximum_point - usize::from(specs[1].coefficient_log2().unwrap()),
+            maximum_point - usize::from(specs[2].coefficient_log2().unwrap()),
             C6_DELTA_RESIDUAL_ACTIVATION_ROUND
         );
         assert_eq!(
-            maximum_point - usize::from(specs[2].coefficient_log2().unwrap()),
+            maximum_point - usize::from(specs[3].coefficient_log2().unwrap()),
             C6_HIDDEN_U_WEIGHTS_ACTIVATION_ROUND
         );
         assert_eq!(
-            maximum_point - usize::from(specs[3].coefficient_log2().unwrap()),
+            maximum_point - usize::from(specs[4].coefficient_log2().unwrap()),
             C6_HIDDEN_U_EMBED_ACTIVATION_ROUND
         );
         assert_eq!(
-            maximum_point - usize::from(specs[4].coefficient_log2().unwrap()),
+            maximum_point - usize::from(specs[5].coefficient_log2().unwrap()),
             C6_WRAPPER_AUXILIARY_ACTIVATION_ROUND
         );
         for spec in specs {
@@ -3185,11 +3456,11 @@ mod tests {
                 .sum::<u64>();
             assert_eq!(fold_bytes, 2_266);
             let components = chain.packed_opening.byte_components().unwrap();
-            assert_eq!(components.opened_symbols, 14_528);
+            assert_eq!(components.opened_symbols, 15_904);
             assert_eq!(components.initial_inner_siblings, 0);
-            assert_eq!(components.initial_outer_siblings + components.fold_outer_siblings, 49_052);
-            assert_eq!(components.metadata_bytes, 534);
-            assert_eq!(components.serialized_bytes, 1_802_646);
+            assert_eq!(components.initial_outer_siblings + components.fold_outer_siblings, 52_576);
+            assert_eq!(components.metadata_bytes, 571);
+            assert_eq!(components.serialized_bytes, 1_937_467);
             assert_eq!(fold_bytes + components.serialized_bytes, C6_WRAPPER_ONE_CHAIN_BYTES);
         }
     }

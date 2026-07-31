@@ -1576,8 +1576,8 @@ mod tests {
     use crate::c6_wrapper_pcs::{
         fix_test_c6_wrapper_commitments, C6WrapperCohortSpec, C6WrapperCommitment,
         C6WrapperOracleKind, C6WrapperRoundCoordinator, C6WrapperRoundMessageReceipt,
-        C6_CACHE_COHORT_ID, C6_CACHE_ROUND_PARTICIPANT_ID, C6_DELTA_RESIDUAL_ROUND_PARTICIPANT_ID,
-        C6_HIDDEN_U_ROUND_PARTICIPANT_ID,
+        C6_CACHE_ROUND_PARTICIPANT_ID, C6_DELTA_RESIDUAL_ROUND_PARTICIPANT_ID,
+        C6_HIDDEN_U_ROUND_PARTICIPANT_ID, C6_PREDECESSOR_CACHE_COHORT_ID,
     };
     use volta_mac::Transcript;
 
@@ -1791,7 +1791,7 @@ mod tests {
     fn scaled_wrapper_specs() -> [C6WrapperCohortSpec; 3] {
         [
             C6WrapperCohortSpec {
-                cohort_id: C6_CACHE_COHORT_ID,
+                cohort_id: 0xC6EE_0001,
                 oracle_kind: C6WrapperOracleKind::Witness,
                 payload_log2: 6,
                 slot_count: 2,
@@ -2094,7 +2094,8 @@ mod tests {
         .is_err());
 
         let mut wrong_leaf_owners = expected_tables(0, C6ResidualSumcheckFamily::LeafRaw).unwrap();
-        wrong_leaf_owners[0] = C6ResidualTableRef { cohort_id: C6_CACHE_COHORT_ID, slot: 0 };
+        wrong_leaf_owners[0] =
+            C6ResidualTableRef { cohort_id: C6_PREDECESSOR_CACHE_COHORT_ID, slot: 0 };
         assert!(C6ResidualSumcheckStatement::build(
             0,
             Fp2::ZERO,

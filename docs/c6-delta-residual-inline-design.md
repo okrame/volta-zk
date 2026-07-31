@@ -11,9 +11,10 @@ ROUND-SYNCHRONOUS SINGLE-BACKING ARENA LOCAL DIFFERENTIAL GREEN; SHARED
 C6RSC3 COORDINATOR + SCALED FUSED PROVER AND VECTOR-FREE CLIENT TERMINAL
 BYTE/TRANSCRIPT/PENDING DIFFERENTIAL GREEN; PACKED AUTHENTICATED-OUTPUT LINK
 AND BLIND HIDDEN-U SOURCE ADAPTER GREEN; PCS-NATIVE DUAL-ROOT PERSISTENT-CACHE
-AMENDMENT AND EXACT 72-SLOT ROOFLINE FROZEN; 48 CACHE/CACHE-AUXILIARY
-STAND-INS REMAIN; CACHE SOURCE MAP / ARGUMENT / PRODUCTION BACKEND / FINAL
-WRAPPER PENDING;
+AMENDMENT, EXACT 72-SLOT ROOFLINE AND SIX-GROUP C6LNK2 PACKED WRAPPER GREEN;
+64 TRANSITIONAL CACHE/CACHE-AUXILIARY STAND-INS REMAIN IN THE MIGRATED
+FIXTURE; CACHE PENDING ADAPTER / ARGUMENT / PRODUCTION BACKEND / FINAL
+ENVELOPE PENDING;
 LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
@@ -3498,9 +3499,8 @@ relation.  It must be generated independently by the client from the static
 layout and public workload, consume no historical cache key vector, and
 leave all cache terminal values pending until the authenticated-output link
 and packed PCS accept.  Until that exact map, its pending-MAC adapter and the
-production 24-round coordinator are green, the 48 cache/cache-auxiliary
-stand-ins remain stand-ins and no response-removal or prover-time credit is
-earned.
+production 24-round coordinator are green, no cache/cache-auxiliary stand-in
+may be reclassified and no response-removal or prover-time credit is earned.
 
 The additive formal and first scaled-reference gates are now green.  The new
 `C6PersistentCachePCS.lean` descendant proves the exact live/padded capacity,
@@ -3527,10 +3527,30 @@ censuses add two focused tests, bringing this module to **7/7 PASS**.
 This direct checker is not yet the blind cache proof.  It consumes an
 expected public read map and typed append-source values, but the production
 GPT-2 operation plan has not yet generated that exact map and the values have
-not yet entered pending MAC containers.  It does not construct production
-PCS roots, change the historical 64-slot wrapper implementation, instantiate
-the 24-round sumcheck or replace any of the 48 stand-ins.  Those are the next
-ordered gates.
+not yet entered pending MAC containers.  It does not instantiate the
+24-round sumcheck or replace any stand-in.
+
+The subsequent packed-wrapper checkpoint has now migrated the production
+profile from the historical five-group/64-slot `C6LNK1` reference to the
+six-group/72-slot persistent-cache `C6LNK2` descendant.  The two cache roles
+have distinct outer packed IDs but one shared N4 cache-state Merkle identity
+and the exact same eight model-global descriptors.  Thus the outer fixed-root
+digest binds ordered predecessor/successor roles while a successor root is
+byte-identical when reconstructed as the next response's predecessor.  A
+scaled differential proves this reuse across different response statements,
+and a different static descriptor set changes the root; production root
+fixing also rejects a descriptor set other than the installed one.
+
+The strict production codec matches the executable roofline exactly at
+`1,939,733 B` per chain and `3,879,466 B` for two chains.  `C6LNK2` has 72
+relations, six aggregates per repetition, `3,570 B` of link overhead and
+`3,883,036 B` combined link-plus-PCS bytes.  The migrated scaled integration
+still uses stand-ins for both 8-slot cache cohorts and the remaining 16
+cache-owned auxiliary slots in each repetition: **32 per repetition / 64
+total**.  The increase from the historical 48 is solely the newly materialized
+predecessor cohort; it earns no protocol credit.  Replacing all 64 with the
+blind cache transition's typed outputs, then removing `CacheSegK`, remains the
+next ordered gate.
 
 ### 6.2 Continuation-prefill and cache-fold source-map seam
 
@@ -3634,10 +3654,10 @@ normalize from `0..11` and `16..27` to the same model layers `0..11`.
 
 This diagnostic does not yet replace `CacheSegK`, make the recorded target a
 packed-link pending claim, instrument the resident provider fold, or prove
-the predecessor/current-slab split inside the 24-round cache relation.  It
-changes no transcript, correlation, proof-size, setup or timing formula.
-Those replacements remain the next gate; no stand-in or response-byte credit
-is earned here.
+the predecessor/current-slab split inside the 24-round cache relation.  The
+later C6LNK2 migration changes only the packed profile/codec described above;
+it does not close any of these runtime seams.  Those replacements remain the
+next gate, and no stand-in or response-byte credit is earned here.
 
 ## 7. Certificate and challenge grammar
 

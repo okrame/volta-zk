@@ -1,6 +1,7 @@
 //! C6 packed authenticated-output link.
 //!
-//! This is the in-memory, scaled/reference byte oracle for the C6LNK1
+//! This is the in-memory, scaled/reference byte oracle for the persistent-cache
+//! C6LNK2
 //! construction.  It deliberately refuses production-fixed roots: production
 //! acceptance remains gated on the separately preregistered fused backend.
 //! Pending MAC values stay opaque and the old target evaluations never enter
@@ -33,24 +34,25 @@ use crate::c6_wrapper_pcs::{
     prove_c6_wrapper_pcs_assembled, seal_authenticated_link_c6_wrapper_claims,
     verify_c6_wrapper_pcs_assembled, C6CommittedWrapperCohort, C6FixedWrapperCommitments,
     C6WrapperDigest, C6WrapperOpeningClaim, C6WrapperOracleKind, C6WrapperPcsError,
-    C6WrapperPcsProof, C6_CACHE_COHORT_ID, C6_DELTA_RESIDUAL_COHORT_ID,
-    C6_HIDDEN_U_EMBED_COHORT_ID, C6_HIDDEN_U_WEIGHTS_COHORT_ID, C6_WRAPPER_ACTIVE_SLOTS,
-    C6_WRAPPER_AUXILIARY_COHORT_ID, C6_WRAPPER_REPETITIONS, C6_WRAPPER_TWO_CHAIN_BYTES,
+    C6WrapperPcsProof, C6_DELTA_RESIDUAL_COHORT_ID, C6_HIDDEN_U_EMBED_COHORT_ID,
+    C6_HIDDEN_U_WEIGHTS_COHORT_ID, C6_PREDECESSOR_CACHE_COHORT_ID, C6_SUCCESSOR_CACHE_COHORT_ID,
+    C6_WRAPPER_ACTIVE_SLOTS, C6_WRAPPER_AUXILIARY_COHORT_ID, C6_WRAPPER_REPETITIONS,
+    C6_WRAPPER_TWO_CHAIN_BYTES,
 };
 use crate::x4::ntt::evaluate_multilinear_table;
 
-pub const C6_AUTHENTICATED_OUTPUT_LINK_MAGIC: [u8; 8] = *b"C6LNK1\0\0";
-pub const C6_AUTHENTICATED_OUTPUT_LINK_VERSION: u16 = 1;
+pub const C6_AUTHENTICATED_OUTPUT_LINK_MAGIC: [u8; 8] = *b"C6LNK2\0\0";
+pub const C6_AUTHENTICATED_OUTPUT_LINK_VERSION: u16 = 2;
 pub const C6_AUTHENTICATED_OUTPUT_LINK_TAPES: usize = 2;
-pub const C6_AUTHENTICATED_OUTPUT_LINK_COHORTS: usize = 5;
-pub const C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_RELATIONS: usize = 64;
+pub const C6_AUTHENTICATED_OUTPUT_LINK_COHORTS: usize = 6;
+pub const C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_RELATIONS: usize = 72;
 pub const C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_ROUNDS: usize = 25;
 pub const C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_CORRELATIONS_PER_TAPE: u64 = 100;
-pub const C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_OVERHEAD_BYTES: u64 = 3_538;
-pub const C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_BYTES: u64 = 3_613_362;
+pub const C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_OVERHEAD_BYTES: u64 = 3_570;
+pub const C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_BYTES: u64 = 3_883_036;
 
-const LINK_PROOF_CONTEXT: &str = "volta-zk/c6/authenticated-output-link-proof/v1";
-const LINK_SCHEDULE_CONTEXT: &str = "volta-zk/c6/authenticated-output-link-schedule/v1";
+const LINK_PROOF_CONTEXT: &str = "volta-zk/c6/authenticated-output-link-proof/v2";
+const LINK_SCHEDULE_CONTEXT: &str = "volta-zk/c6/authenticated-output-link-schedule/v2";
 const LINK_PREFIX_LABEL: &str = "c6_authenticated_output_link_prefix";
 const LINK_ROUND_LABEL: &str = "c6_authenticated_output_link_round_corrections";
 const LINK_AGGREGATES_LABEL: &str = "c6_authenticated_output_link_aggregates";
@@ -58,7 +60,7 @@ const LINK_DIGEST_LABEL: &str = "c6_authenticated_output_link_digest";
 const LINK_HEADER_BYTES: u64 = 16;
 const LINK_REPETITION_PREFIX_BYTES: u64 = 33;
 const LINK_ROUND_BYTES: u64 = 64;
-const LINK_AGGREGATE_BYTES: u64 = 80;
+const LINK_AGGREGATE_BYTES: u64 = 96;
 const LINK_TERMINAL_TAG_BYTES: u64 = 64;
 const LINK_DIGEST_BYTES: u64 = 32;
 const LINK_CORRELATION_BASE: u64 = 0x0C64_0000_0000_0000;
@@ -574,7 +576,7 @@ fn expected_slot_dimensions(fixed: &C6FixedWrapperCommitments) -> Result<BTreeMa
         || cohorts != C6_AUTHENTICATED_OUTPUT_LINK_COHORTS
     {
         return Err(C6AuthenticatedOutputLinkError::new(
-            "C6 link requires the exact five-cohort 64-slot census",
+            "C6 link requires the exact six-cohort 72-slot census",
         ));
     }
     let mut dimensions = BTreeMap::new();
@@ -1520,7 +1522,8 @@ fn link_geometry(fixed: &C6FixedWrapperCommitments) -> Result<(usize, usize, usi
         commitment.validate()?;
     }
     let expected_cohorts = [
-        (C6_CACHE_COHORT_ID, C6WrapperOracleKind::Witness, 8u16),
+        (C6_PREDECESSOR_CACHE_COHORT_ID, C6WrapperOracleKind::Witness, 8u16),
+        (C6_SUCCESSOR_CACHE_COHORT_ID, C6WrapperOracleKind::Witness, 8u16),
         (C6_DELTA_RESIDUAL_COHORT_ID, C6WrapperOracleKind::Witness, 8),
         (C6_HIDDEN_U_WEIGHTS_COHORT_ID, C6WrapperOracleKind::Witness, 8),
         (C6_HIDDEN_U_EMBED_COHORT_ID, C6WrapperOracleKind::Witness, 8),
@@ -1757,9 +1760,10 @@ mod tests {
         C6BlindResidualStatement, C6BlindResidualSumcheckProof,
     };
     use crate::c6_wrapper_pcs::{
-        commit_c6_wrapper_cohort, fix_test_c6_wrapper_commitments, C6WrapperCohortSpec,
-        C6WrapperCommitment, C6WrapperOracleKind, C6WrapperSlotWitness, C6_CACHE_COHORT_ID,
-        C6_HIDDEN_U_EMBED_COHORT_ID, C6_HIDDEN_U_WEIGHTS_COHORT_ID,
+        commit_c6_cache_state_cohort, commit_c6_wrapper_cohort, fix_test_c6_wrapper_commitments,
+        C6CacheStateDescriptors, C6WrapperCohortSpec, C6WrapperCommitment, C6WrapperOracleKind,
+        C6WrapperSlotWitness, C6_HIDDEN_U_EMBED_COHORT_ID, C6_HIDDEN_U_WEIGHTS_COHORT_ID,
+        C6_PREDECESSOR_CACHE_COHORT_ID, C6_SUCCESSOR_CACHE_COHORT_ID,
     };
     use crate::ligero::LigeroParams;
     use crate::ntt::NttPlan;
@@ -1805,7 +1809,13 @@ mod tests {
     fn scaled_specs() -> [C6WrapperCohortSpec; C6_AUTHENTICATED_OUTPUT_LINK_COHORTS] {
         [
             C6WrapperCohortSpec {
-                cohort_id: C6_CACHE_COHORT_ID,
+                cohort_id: C6_PREDECESSOR_CACHE_COHORT_ID,
+                oracle_kind: C6WrapperOracleKind::Witness,
+                payload_log2: 6,
+                slot_count: 8,
+            },
+            C6WrapperCohortSpec {
+                cohort_id: C6_SUCCESSOR_CACHE_COHORT_ID,
                 oracle_kind: C6WrapperOracleKind::Witness,
                 payload_log2: 6,
                 slot_count: 8,
@@ -1835,6 +1845,10 @@ mod tests {
                 slot_count: 32,
             },
         ]
+    }
+
+    fn scaled_cache_descriptors() -> C6CacheStateDescriptors {
+        C6CacheStateDescriptors::from_slots(array::from_fn(|slot| [(slot + 1) as u8; 32])).unwrap()
     }
 
     struct ScaledInputs {
@@ -2058,7 +2072,20 @@ mod tests {
                         }
                     })
                     .collect();
-                commit_c6_wrapper_cohort([0xC6; 32], spec, slots).unwrap()
+                if matches!(
+                    spec.cohort_id,
+                    C6_PREDECESSOR_CACHE_COHORT_ID | C6_SUCCESSOR_CACHE_COHORT_ID
+                ) {
+                    commit_c6_cache_state_cohort(
+                        [0xC6; 32],
+                        spec,
+                        slots,
+                        &scaled_cache_descriptors(),
+                    )
+                    .unwrap()
+                } else {
+                    commit_c6_wrapper_cohort([0xC6; 32], spec, slots).unwrap()
+                }
             })
             .collect::<Vec<_>>();
         let commitments = cohorts.iter().map(|cohort| cohort.commitment().clone()).collect();
@@ -2193,7 +2220,7 @@ mod tests {
                     ordinal += 1;
                 }
             }
-            assert_eq!(ordinal, 24);
+            assert_eq!(ordinal, 32);
         }
         transcript.append(
             SOURCE_TRANSFER_LABEL,
@@ -2376,8 +2403,8 @@ mod tests {
     #[test]
     fn production_constants_and_domain_census_are_exact() {
         assert_eq!(C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_CORRELATIONS_PER_TAPE, 100);
-        assert_eq!(C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_OVERHEAD_BYTES, 3_538);
-        assert_eq!(C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_BYTES, 3_613_362);
+        assert_eq!(C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_OVERHEAD_BYTES, 3_570);
+        assert_eq!(C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_BYTES, 3_883_036);
         for repetition in 0..C6_WRAPPER_REPETITIONS as u8 {
             for tape in 0..C6_AUTHENTICATED_OUTPUT_LINK_TAPES {
                 let domains = (0..C6_AUTHENTICATED_OUTPUT_LINK_PRODUCTION_ROUNDS)
@@ -2397,12 +2424,12 @@ mod tests {
     #[test]
     fn actual_residual_and_hidden_pending_values_close_through_packed_link_and_pcs() {
         let fixture = prove_integrated_fixture();
-        assert_eq!(fixture.transfers.len(), 48);
+        assert_eq!(fixture.transfers.len(), 64);
         assert_eq!(
             fixture.hidden_proof.encode(&fixture.inputs.hidden_layouts).unwrap().len(),
             1_320
         );
-        assert_eq!(fixture.metrics.relations_per_repetition, 64);
+        assert_eq!(fixture.metrics.relations_per_repetition, 72);
         assert_eq!(fixture.metrics.rounds_per_repetition, GLOBAL_ROUNDS as u64);
         assert_eq!(fixture.metrics.full_correlations_per_tape, 28);
         assert_eq!(fixture.prover_link_counter_delta, [28, 28]);
@@ -2462,7 +2489,7 @@ mod tests {
             LINK_HEADER_BYTES + 2 * LINK_REPETITION_PREFIX_BYTES
         );
         assert_eq!(transcript.bytes_for(LINK_ROUND_LABEL), 2 * 7 * 64);
-        assert_eq!(transcript.bytes_for(LINK_AGGREGATES_LABEL), 160);
+        assert_eq!(transcript.bytes_for(LINK_AGGREGATES_LABEL), 192);
         // C6RSC3 contributes 64 B, blind hidden-u contributes another 64 B,
         // and the packed link contributes the final four 16-B tags.
         assert_eq!(transcript.bytes_for("zero_open_tag"), 192);
@@ -2479,7 +2506,7 @@ mod tests {
         assert!(C6AuthenticatedOutputLinkProof::decode(&fixture.fixed, &wrong_magic).is_err());
 
         let mut wrong_version = fixture.encoded.clone();
-        wrong_version[8..10].copy_from_slice(&2u16.to_le_bytes());
+        wrong_version[8..10].copy_from_slice(&1u16.to_le_bytes());
         rewrite_digest(&mut wrong_version);
         assert!(C6AuthenticatedOutputLinkProof::decode(&fixture.fixed, &wrong_version).is_err());
 

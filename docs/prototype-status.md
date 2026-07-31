@@ -99,15 +99,20 @@ formatting are green.  The cache-hash checkpoint has since adopted the
 PCS-native dual-root descendant: its exact 72-polynomial roofline is
 **33,656,098 B**, its conservative kernel floor is **11.1793342101 s**, and
 its additive formal/scaled-static-reference gate is green at **3,261 Lean
-jobs / 331 audited targets / 7 focused Rust tests**.  This does not migrate
-the old 64-slot wrapper or replace its 48 stand-ins.  The exact host T1 cache
+jobs / 331 audited targets / 7 focused Rust tests**.  The packed wrapper has
+now migrated to the six-group/72-slot `C6LNK2` profile: exact PCS wire is
+**1,939,733 B/chain / 3,879,466 B paired**, link overhead is **3,570 B**, and
+the two cache roles share one response-independent N4 identity plus the same
+installed model-global descriptors while remaining outer-role bound.  The
+migrated diagnostic fixture has 64 cache/cache-auxiliary stand-ins; none is
+reclassified.  The exact host T1 cache
 functional recorder is now also green: its two-seed one-layer differential
 separates fixed topology from challenge-dependent coefficients, and the
 frozen-artifact `12+4` response captures **576 folds / 516,096 coefficient
 applications** with exact prover/verifier and offset-band segment identity.
 Typed pending-target replacement, the resident provider path, the 24-round
-transition, 72-slot packed integration, envelope/backend, local end-to-end
-and hardware gates remain pending.
+transition, envelope/backend, local end-to-end and hardware gates remain
+pending.
 
 Workload of record: **GPT-2 small (124M, L=12, d=768, h=12, d_ff=3072),
 prefill T=100 + 50 deferred decode tokens, causal, C3b PCS Q=120**, on the
@@ -467,7 +472,7 @@ its clean descendant closure.
 | X4d.2 delayed-link diagnosis and repair | **LOCAL ROOT CAUSE CONFIRMED; BYTE IDENTITY GREEN; HARD STOP / NO POD / NO REPLACEMENT PAIR OR GATE VERDICT** (2026-07-27) | Evaluation-only repair: backend-generic sequential resident orchestrator plus one exactly-once scaled product-round message; protocol/transcript/challenge/codec/correlations/terminal semantics unchanged | The extracted `e4e2b14` arithmetic reproduced the obstruction with the initial claim, ledgers, challenges and folds still green: first divergence **term 0 / round 1 / dimension 8 / active_len 256**, captured output SHA-256 `2ac466d9bcfc61fc5ef0a83c59d5bc8b0c2f32434ed17e37de1b7ac5cc925c1f`; all **51/51** production-relative terms are affected at their first real round. Root cause is the missing `virtual_factor` on `fp2_product_round_into_device`. ABI 33 adds `fp2_product_round_scaled_into_device` / `volta_cuda_fp2_product_round_scaled_into_device` / `scale_product_round_message`; scale one is raw-mailbox byte-identical, folds are unscaled, and the real branch alone uses it. Permanent value-mismatch and geometry-not-drained faults are distinct. CPU BackendKind lifecycle and exact message/fold-vector-digest identity pass at the 51/51/102 local multiplicity fixture and `max_mu=20/22/24/26`; the full serialized workspace, 23 report-validator tests and CUDA-feature all-target compilation are green, while real CUDA remains deliberately unexecuted locally. A clean, fail-closed standalone `x4d2_delayed_link_reproducer` is prepared for a future GO; it needs no weights/onboarding/durable tier/connection/settlement. Append-only local record `x4d2-diag-delayed-link-2026-07-27-bc76048.json`, SHA-256 `0bf3ed63b4ec34243a3f42cd1b6fce286c07a5b07f9e09b72bbb2f081f35538a`; diagnostic design SHA-256 `91cc8eb6566122724a75b9f051a75d5245e981b52194c5545b7701ca853b6fe4`. Historical X4d.1 and X4d.2 records/digests/gates remain immutable. |
 | C4 Ligero inline rate reduction | **PAIRED A100 COMPLETE — ANCHOR PASS; RATE-8 EXACT BYTES / PROVER / DEVICE PASS; SESSION 1.050816638x >1.05 AND SYNC 0.155717607 s >0.150 FAIL; OVERALL FAIL; NO RETRY; POD STOPPED** (2026-07-27) | Return to inline T1 weight certification; same-build anchor `rate=1/4,Q=120` versus candidate `rate=1/8,Q=97`; no deferred settlement; frozen gates conjunctive | Clean `e99a1e5` on one A100/13-effective-CPU/eight-Rayon host passed ABI 33 and the full release/CUDA workspace before either producer. Both profiles used the same binary/backend and independent fresh stores, one warmup and three measured repetitions. Anchor PCS/response **43,273,888 / 84,544,352 B**, prove/session **4.104595717 / 5.322725729 s**, all absolute gates PASS. Rate-8 PCS/response **38,296,040 / 79,566,504 B**, exact saving **4,977,848 B**, prove **4.079375688 s / 0.993855661x PASS**, but session **5.593208756 s / 1.050816638x FAIL** and maximum sync **0.155717607 s FAIL**; device peak **30,146,106,356 B PASS**. Pair `c4-ligero-paired-a100-2026-07-27-e99a1e5.json`, SHA-256 `8506de9ccad35bba76f9cd337ef5a4528613fc91894962e597937b63e3ad3e56`, is a coherent **overall FAIL**. No selective retry occurred. SSH-side `runpodctl` stopped pod `mi3dk7ah9jny9b` and an independent connection was refused. The anchor remains the accepted inline profile; all prior records and design pins remain immutable. |
 | C5 Packed16 over Ligero rate-8 | **LOCAL HARD STOP — TYPED-PCG SECURITY/BYTE GATE OBSTRUCTED; NO LEAN/RUST/CUDA IMPLEMENTATION; NO POD / NO VERDICT** (2026-07-28) | Direct authenticated uniform-u16/carry lanes, canonical Packed16 correction wire and exact setup accounting; no deferred settlement or PCS change | The owner-adopted rate-8 base and raw C4 FAIL remain distinct and immutable. Exact Packed16 response remains a conditional **61,292,904-B** projection, but typed setup has only **18,273,600 B / 9.4 bits per five-inventory cell** of headroom. C2's malicious-COT arithmetic lift requires **4,230,144,000 B** at this census; its pinned `0.73-bit/COT` binary core alone is **24,125,040 B** before lift. An exact Goldilocks `p-1` rejection/quotient route from current sVOLE has an optimistic **217,728,000-B** public quotient payload and combined setup **256,099,465 B**, excluding the required malicious range proof, hence fails by at least **199,454,400 B**. Same-characteristic subfield VOLE, dual-domain edaBits, base-only group COT, dealer-keyed PCG/PCF, three-party daBits and bounded-integer VOLE do not instantiate the frozen interface. Local record `c5-typed-pcg-obstruction-2026-07-28-0309320.json`, SHA-256 `9e292301af185093b1cc81d3a1b7bc229fad61e6ded61e294d84af0dd2844e49`; design SHA-256 `30a999044e8f61d6625814b51088871c184e2ae72a9397b5fc2da9e05e9f34fc`; `pod_contacted=false`, `production_pair_started=false`, `gate_verdict=false`. |
-| C6 Δ-residual inline certificate | **DUAL-ROOT PCS CACHE + HOST RUNTIME FOLD MAP GREEN; PENDING-TARGET REPLACEMENT NEXT; NO POD** (2026-07-31) | Hide direct `auth_corrections` and Ligero `u_vectors`; one inline native-field wrapper; fixed-capacity committed KV cache; 17 accepts plus retry reserve; no deferred settlement | Q=121 keeps complete soundness at **79.472744138609180097... bits**.  The 72-polynomial descendant has **pi_final 4,479,466 B** and complete response **33,656,098 B <=35,000,000 B**; known first exchange remains **146,058,504 B**.  Two PCS cache-state roots and a 53-root transition event move the packed link to **149 roots** and the blind-hidden/link numerator to **6,725+149²=28,926<2^15**.  The conservative pre-backend kernel floor is **11.1793342101 s**.  Lean is **3,261 jobs / 331 audited targets**.  The host runtime map is exact at **576 folds / 516,096 applications** for the frozen `12+4` E2E.  The remaining 48 cache/cache-auxiliary slots are still stand-ins; no response field is removed and resident/pending/transition/packed/backend/time/hardware gates remain pending. |
+| C6 Δ-residual inline certificate | **72-SLOT C6LNK2 PACKED WRAPPER + DUAL-ROOT REUSE + HOST RUNTIME FOLD MAP GREEN; PENDING-TARGET REPLACEMENT NEXT; NO POD** (2026-07-31) | Hide direct `auth_corrections` and Ligero `u_vectors`; one inline native-field wrapper; fixed-capacity committed KV cache; 17 accepts plus retry reserve; no deferred settlement | Q=121 keeps complete soundness at **79.472744138609180097... bits**.  The descendant has **pi_final 4,479,466 B** and complete response **33,656,098 B <=35,000,000 B**; known first exchange remains **146,058,504 B**.  `C6LNK2` is exact at **72 relations / six groups / 1,939,733 B per chain / 3,879,466 B paired PCS / 3,570 B link overhead**.  Predecessor and successor have distinct outer roles but one static N4 identity and installed descriptor set, so a successor root is byte-identical as the next predecessor.  The 53-root transition event gives a 149-root link and **6,725+149²=28,926<2^15**.  The conservative pre-backend kernel floor remains **11.1793342101 s**.  Lean remains **3,261 jobs / 331 audited targets**.  The host runtime map is exact at **576 folds / 516,096 applications** for the frozen `12+4` E2E.  The migrated diagnostic fixture has **64** cache/cache-auxiliary stand-ins; no response field is removed and resident/pending/transition/backend/time/hardware gates remain pending. |
 | C6 runtime cache-fold source map | **HOST TWO-SEED + OFFSET-BAND E2E IDENTITY GREEN; CACHESEGK REPLACEMENT NEXT; NO POD** (2026-07-31) | Feature-only final-functional recorder; exact public coefficients and segment geometry; opaque authenticated targets; no key/plaintext vector and no ordinary-build path change | The real `T=4` layer emits **24 folds / 6,144 applications**; prover/verifier identities and records match for seeds 31 and 32, topology remains invariant and instance digests differ.  The existing frozen-artifact `12+4` response emits **576 / 516,096**, with `[12]` prefill and `[12,4]` continuation segments and exact section normalization `0..11` / `16..27`.  Missing/duplicate/reordered/wrong-axis-equivalent geometry is digest-bound or rejected, and every live K/V cohort requires all 12 heads.  This closes only the host runtime observation gate: the verifier still stores `CacheSegK`, the target is not yet pending, resident provider parity and the 24-round/72-slot packed integration remain pending, and no bytes/time/setup credit is claimed. |
 | C6 dual-tape blind/fused amendment | **LEAN PACKAGE + EXECUTABLE RE-SUM GREEN; HARD STOP MOVED TO SCALED C6RSC3 CODEC; NO POD** (2026-07-29) | Post-`d18e187` obstruction audit: one-tape masking loses the >239-bit residual claim; generic coefficient MLE retention is inadmissible; clear `r||0` terminal values do not discharge M9 | `C6RSC3` authenticates all 93 round scalars/repetition on both tapes, derives the initial split from the uncompressed first rounds, and closes eight terminal products plus two terminal zero rows per repetition.  Exact strict payload is **6,900 B** versus immutable clear `C6RSC2` **4,244 B**.  The exact blind root census is **91 + 1 + (8+2) + (2+1) = 105 <=256 per complete proof repetition**; the `T+2` ProductClosure and `T+1` ZeroBatch charges use the scalar-power Rust theorems, and both proof repetitions check both MAC coordinates.  `C6BlindTranscript.lean` ties the full first round to compressed M3/M11, closes activation and terminal rows, specializes the scalar Product/ZeroBatch bounds, proves the two-repetition square and unions the clear/blind branches at `2^17`; exact `Fp2` soundness is **238.9999999986... bits**.  Full Lean is **3,258 jobs** and the audit **303 total / 67 C6**, zero `sorry`/`admit`, standard axioms only.  The blind core consumes **206 full correlations/tape**; 48 residual pending-slot transfers make **254/tape**, inside the frozen **39,116-full** PCS reserve and therefore do not change the **5,235,692-raw** attempt reservation.  A common M9-style link must move all pending terminal claims to a fresh PCS point with a checked nonzero ZK coordinate; the two-chain **3,609,824-B** PCS roof is unchanged.  The fused schedule uses three provider atomic replays and one client terminal replay, never materializes full coefficient MLEs, and caps live folded coefficient state at **33,554,432 Fp2 / 536,870,912 B**.  Conservative compiler charge becomes **2,640,050,432 symbols**; the screen is **44.0689172477... passes / 8.6911235221... s**, leaving **11.3088764778... s** to 20 s.  The unchanged four-event inventory yields Q=121 complete **79.472744138609180097... bits**.  Required next order: scaled dual-tape codec and negatives → fused provider/client event sink → packed authenticated-output link. |
 | C6 scaled dual-tape `C6RSC3` | **LOCAL STRICT CODEC / PROVER / VERIFIER / NEGATIVE DIFFERENTIAL GREEN; FUSED T1 EVENT SINK NEXT; NO POD** (2026-07-29) | Separate v3 magic/domains and semantic compiler binding; dual-tape authenticated round compression; activation-before-challenge; ProductClosure and terminal ZeroBatch; terminal claims remain pending | Production constants are derived from frozen geometry: **93** round scalars/repetition, **206** core plus **48** pending full correlations/tape, and a strict **6,900-B** proof.  The non-production 5/3-round fixture is **2,292 B** plus **1,536 B** of explicitly separate pending corrections, consumes **110** full correlations/tape across **24** domains, and is byte/transcript-identical across prover/verifier while matching clear `C6RSC2` terminal values.  Five focused tests cover the census, strict old/noncanonical/corrupt codec rejection, the clear differential, both distinct MAC coordinates, malformed topology and tampering of every round/activation/product/zero/pending/owner/tape seam.  `volta-pcs` is **157 pass / 0 fail / 1 ignored** and `cargo test --workspace -q` exits 0; all-target check, formatting, exact budget and Lean audit are green.  This is scaled/reference evidence only: the statement still owns small C6RSC2 arrays as an arithmetic oracle, pending values cannot become accepted PCS values, and no production compiler/memory/time/response-removal/real-PCG/cache/CUDA/hardware credit is claimed. |
@@ -559,6 +564,59 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-31 — C6 migrates the packed wrapper to the exact six-group,
+  72-slot persistent-cache profile without breaking root reuse.**  A direct
+  first migration attempt exposed a load-bearing identity seam before any
+  checkpoint: schema-4 N4 roots hash their `cohort_id`, while the historical
+  wrapper also derived every slot descriptor from the response statement.
+  Merely assigning distinct predecessor/successor IDs would therefore have
+  made the successor root unusable as the next predecessor despite matching
+  the analytic byte count.
+
+  The implemented `C6LNK2` descendant separates the two namespaces without
+  adding wire.  The packed envelope has distinct, canonically ordered
+  predecessor/successor role IDs, but both cache trees hash under one static
+  cache-state Merkle ID and the same eight descriptors derived from the
+  installed protocol/model/params/profile.  Production root fixing requires
+  that installed descriptor set.  The outer fixed-root/statement digest
+  continues to bind the ordered roles and roots.  A scaled differential
+  proves that identical state values have a byte-identical root across both
+  roles and three response statements, while changing the descriptor set
+  changes the root; the wrong installed set rejects before coordination.
+
+  The production profile is now exactly **six groups / 72 relations**.
+  Codec maxima match the preregistered executable budget at **15,904 opened
+  symbols / 52,576 outer siblings / 571 metadata B / 1,937,467 packed B +
+  2,266 fold B = 1,939,733 B per chain**, hence **3,879,466 B** paired PCS.
+  Six aggregates per repetition move only the typed-link overhead from the
+  historical `3,538 B` to **3,570 B**; complete link plus PCS is
+  **3,883,036 B**.  The 25 rounds and **100 full correlations/tape** are
+  unchanged.
+
+  The migrated scaled packed-link fixture is green with the existing real
+  48 residual and 32 hidden pending entries.  Because both cache roots are
+  now present before the cache adapter, it temporarily contains **32
+  cache/cache-auxiliary stand-ins per repetition / 64 total**: 16 more than
+  the historical 64-slot fixture, exactly the new predecessor cohort.  None
+  is reclassified, and no response-byte, prover-time, transition or
+  `CacheSegK`-removal credit is earned.
+
+  Full ordinary workspace tests pass, including the frozen golden,
+  response and KV-replay E2E; `volta-pcs` is **173/0/1** and
+  `volta-proto` is **143/0/1**.  `volta-pcs --features c6-trace` is
+  **174/0/1**, with integration **14/0/2** and layer **2/0/0**.  Ordinary and
+  trace workspace all-target checks, formatting, `git diff --check`, and the
+  exact budget tests (**6/6**) are green.  Clippy emits only the documented
+  historical workspace warnings and none in the migrated wrapper/link
+  modules.  Lean is unchanged at its prior green **3,261 jobs / 331 audited
+  targets**.  Design, wrapper, link and executable-budget SHA-256 values are
+  `7b1e7eaa3a24ca32ec443ffc7b93472e56d2b1d28381a039e0214fb4439ecc4d`,
+  `4aa1973a5b1a52a79eef5835fc7a51a18f6a5dc5555696615fae2335bb0f401c`,
+  `bac93d074e1ae87073880f8e1661cf7a3bd3821059a0f5227e0d920177eaff9b`
+  and `b7b62a103abc5e9a05561658097a44bda74943f1b5ba8e3050b883af21a7bcd0`.
+  No provider or pod was contacted; the user-owned AGENTS edit and untracked
+  conversation note remain excluded.
 
 - **2026-07-31 — C6 observes the exact runtime cache functionals before
   replacing historical verifier key vectors.**  The feature-only

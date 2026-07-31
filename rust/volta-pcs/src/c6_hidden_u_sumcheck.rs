@@ -993,7 +993,7 @@ mod tests {
     use crate::c6_wrapper_pcs::{
         fix_test_c6_wrapper_commitments, C6WrapperCohortSpec, C6WrapperCommitment,
         C6WrapperOracleKind, C6WrapperRoundCoordinator, C6WrapperRoundMessageReceipt,
-        C6_CACHE_COHORT_ID, C6_CACHE_ROUND_PARTICIPANT_ID, C6_DELTA_RESIDUAL_COHORT_ID,
+        C6_CACHE_ROUND_PARTICIPANT_ID, C6_DELTA_RESIDUAL_COHORT_ID,
         C6_DELTA_RESIDUAL_ROUND_PARTICIPANT_ID, C6_HIDDEN_U_EMBED_COHORT_ID,
         C6_HIDDEN_U_ROUND_PARTICIPANT_ID, C6_HIDDEN_U_WEIGHTS_COHORT_ID,
         C6_WRAPPER_AUXILIARY_COHORT_ID,
@@ -1139,7 +1139,7 @@ mod tests {
         let leading_rounds = 3usize;
         let wrapper_specs = [
             C6WrapperCohortSpec {
-                cohort_id: C6_CACHE_COHORT_ID,
+                cohort_id: 0xC6EE_0001,
                 oracle_kind: C6WrapperOracleKind::Witness,
                 payload_log2: 9,
                 slot_count: 1,

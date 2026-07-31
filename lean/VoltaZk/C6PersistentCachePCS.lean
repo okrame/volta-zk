@@ -113,6 +113,22 @@ theorem c6_pcs_cache_transition_refines_append
     transition.newCache = transition.oldCache ++ transition.newSlab := by
   exact C6CacheTransition.append_only commit oldHead newHead transition h.1
 
+/-- A model target checked as a functional of the accepted successor cache is
+also, transitively, a functional of the accepted predecessor and the current
+response slab.  No separately authenticated predecessor/current target split
+is needed. -/
+theorem c6_pcs_successor_functional_refines_append
+    {Value Digest Target : Type*}
+    (commit : List Value → Digest)
+    (oldHead newHead : C6CacheHead Digest)
+    (transition : C6CacheTransition Value)
+    (eval : List Value → Target) (target : Target)
+    (htransition : C6PcsCacheTransitionValid commit oldHead newHead transition)
+    (htarget : target = eval transition.newCache) :
+    target = eval (transition.oldCache ++ transition.newSlab) := by
+  rw [htarget, c6_pcs_cache_transition_refines_append commit oldHead newHead
+    transition htransition]
+
 theorem c6_pcs_cache_transition_respects_context_cap
     {Value Digest : Type*}
     (commit : List Value → Digest)
@@ -229,6 +245,76 @@ theorem c6_persistent_cache_blind_two_repetition_card_le
     (c6IndependentPairAccepting bad0 bad1).card
       ≤ c6PersistentCacheBlindTwoRepetitionNumerator := by
   simpa [c6PersistentCacheBlindTwoRepetitionNumerator] using
+    (c6_independent_pair_accepting_card_le bad0 bad1 h0 h1)
+
+/-!
+The production runtime exposes at most 576 individually authenticated cache
+fold targets.  The successor-owner challenge batches them in canonical
+scalar-power order.  Its old linear root is therefore replaced by degree
+`576 + 1`: 576 roots for the target batch and one further multiplication by
+the same owner root in the complete successor relation.  The two cache
+repetitions retain independent owner roots.
+-/
+
+def c6PersistentCacheFoldRecords : Nat := 576
+
+def c6PersistentCacheSuccessorOwnerRoots : Nat :=
+  c6PersistentCacheFoldRecords + 1
+
+def c6PersistentCacheStreamingRoots : Nat :=
+  c6PersistentCacheBlindRoots - c6PersistentCacheKvBatchRoots
+    + c6PersistentCacheSuccessorOwnerRoots
+
+def c6PersistentCacheStreamingTwoRepetitionNumerator : Nat :=
+  c6PersistentCacheStreamingRoots ^ 2
+
+theorem c6_persistent_cache_fold_scalar_batch_card_le
+    {F : Type*} [Field F] [Fintype F] [DecidableEq F]
+    (error : Fin c6PersistentCacheFoldRecords → F)
+    {j₀ : Fin c6PersistentCacheFoldRecords} (herror : error j₀ ≠ 0) :
+    (univ.filter fun rho : F =>
+      ∑ j, rho ^ (j.val + 1) * error j = 0).card
+      ≤ c6PersistentCacheFoldRecords := by
+  exact card_scalarRlc_zero_le error herror
+
+theorem c6_persistent_cache_successor_owner_root_census :
+    c6PersistentCacheSuccessorOwnerRoots = 577 := by
+  norm_num [c6PersistentCacheSuccessorOwnerRoots,
+    c6PersistentCacheFoldRecords]
+
+theorem c6_persistent_cache_streaming_root_census :
+    c6PersistentCacheStreamingRoots = 653 := by
+  norm_num [c6PersistentCacheStreamingRoots,
+    c6PersistentCacheBlindRoots, c6PersistentCacheRelationPointRoots,
+    c6PersistentCacheRoots, c6PersistentCacheDegree,
+    c6PersistentCacheRounds, c6PersistentCacheRelationRoots,
+    c6PersistentCacheKvBatchRoots, c6PersistentCacheTerminalRoots,
+    c6PersistentCacheSuccessorOwnerRoots, c6PersistentCacheFoldRecords]
+
+theorem c6_persistent_cache_streaming_root_census_le_conservative :
+    c6PersistentCacheStreamingRoots ≤ 2 ^ 32 := by
+  rw [c6_persistent_cache_streaming_root_census]
+  norm_num
+
+theorem c6_persistent_cache_streaming_two_repetition_numerator :
+    c6PersistentCacheStreamingTwoRepetitionNumerator = 426409 := by
+  norm_num [c6PersistentCacheStreamingTwoRepetitionNumerator,
+    c6_persistent_cache_streaming_root_census]
+
+theorem c6_persistent_cache_streaming_two_repetition_numerator_lt_2_pow_19 :
+    c6PersistentCacheStreamingTwoRepetitionNumerator < 2 ^ 19 := by
+  rw [c6_persistent_cache_streaming_two_repetition_numerator]
+  norm_num
+
+theorem c6_persistent_cache_streaming_two_repetition_card_le
+    {Omega0 Omega1 : Type*}
+    [DecidableEq Omega0] [DecidableEq Omega1]
+    (bad0 : Finset Omega0) (bad1 : Finset Omega1)
+    (h0 : bad0.card ≤ c6PersistentCacheStreamingRoots)
+    (h1 : bad1.card ≤ c6PersistentCacheStreamingRoots) :
+    (c6IndependentPairAccepting bad0 bad1).card
+      ≤ c6PersistentCacheStreamingTwoRepetitionNumerator := by
+  simpa [c6PersistentCacheStreamingTwoRepetitionNumerator] using
     (c6_independent_pair_accepting_card_le bad0 bad1 h0 h1)
 
 /-- The two cache-transition repetitions use independent complete challenge

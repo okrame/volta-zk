@@ -11334,6 +11334,7 @@ mod tests {
         for (prover, verifier) in [(&prover_a, &verifier_a), (&prover_b, &verifier_b)] {
             assert_eq!(prover.identity, verifier.identity);
             assert_eq!(prover.records, verifier.records);
+            assert_eq!(prover.factors, verifier.factors);
             assert_eq!(prover.identity.fold_count, 24);
             assert_eq!(prover.identity.coefficient_applications, 24 * T as u64 * DH as u64);
             assert_eq!(prover.targets.len(), 24);
@@ -11356,6 +11357,15 @@ mod tests {
                 };
                 assert_eq!(record.kind, expected_kind);
             }
+            let scalar_root = Fp2::new(Fp::new(3), Fp::new(5));
+            let prover_batch =
+                crate::c6_cache_fold::compile_c6_cache_fold_scalar_batch(prover, scalar_root)
+                    .expect("compile prover cache-fold scalar batch");
+            let verifier_batch =
+                crate::c6_cache_fold::compile_c6_cache_fold_scalar_batch(verifier, scalar_root)
+                    .expect("compile verifier cache-fold scalar batch");
+            assert_eq!(prover_batch.identity, verifier_batch.identity);
+            assert_eq!(prover_batch.identity.factor_values, 24 * (T as u64 + DH as u64));
         }
         assert_eq!(prover_a.identity.topology_digest, prover_b.identity.topology_digest);
         assert_eq!(verifier_a.identity.topology_digest, verifier_b.identity.topology_digest);

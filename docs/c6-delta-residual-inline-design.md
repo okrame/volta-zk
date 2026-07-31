@@ -13,8 +13,9 @@ BYTE/TRANSCRIPT/PENDING DIFFERENTIAL GREEN; PACKED AUTHENTICATED-OUTPUT LINK
 AND BLIND HIDDEN-U SOURCE ADAPTER GREEN; PCS-NATIVE DUAL-ROOT PERSISTENT-CACHE
 AMENDMENT, EXACT 72-SLOT ROOFLINE AND SIX-GROUP C6LNK2 PACKED WRAPPER GREEN;
 POINTWISE C6PC2 AND SOURCE-BOUND C6PS1 -> C6PC2 -> C6LNK2 -> PAIRED PCS
-SCALED PATH GREEN WITH ZERO CACHE STAND-INS; PRODUCTION STREAMING COMPILER /
-`CacheSegK` REMOVAL / BACKEND / FINAL ENVELOPE PENDING;
+SCALED PATH GREEN WITH ZERO CACHE STAND-INS; FACTORIZED RUNTIME FOLD-BATCH
+COMPILER + 653-ROOT FORMAL REPAIR GREEN; C6PS1 STRICT MIGRATION / 24-ROUND
+CACHE INTEGRATION / `CacheSegK` REMOVAL / BACKEND / FINAL ENVELOPE PENDING;
 LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
@@ -3812,12 +3813,98 @@ applications**.  Both roles agree record-for-record; prefill segments are
 `[12]`, continuation segments are `[12,4]`, and the scheduled sections
 normalize from `0..11` and `16..27` to the same model layers `0..11`.
 
-This diagnostic does not yet replace `CacheSegK`, make the recorded target a
-packed-link pending claim, instrument the resident provider fold, or prove
-the predecessor/current-slab split inside the 24-round cache relation.  The
-later C6LNK2 migration changes only the packed profile/codec described above;
-it does not close any of these runtime seams.  Those replacements remain the
-next gate, and no stand-in or response-byte credit is earned here.
+At this checkpoint the diagnostic did not yet replace `CacheSegK`, make the
+recorded target a packed-link pending claim or instrument the resident
+provider fold.  The successor-functional amendment below subsequently
+removed the need for a separately authenticated predecessor/current-slab
+target split, but it does not by itself close those runtime seams.  No
+stand-in or response-byte credit is earned here.
+
+#### 6.2.1 Runtime fold-batching amendment
+
+The production-compiler audit found that the earlier `C6PS1` wording cannot
+be used literally.  There are up to 576 authenticated attention targets, and
+a fixed linear sum would permit cancellation.  Moreover, any sound random
+batch differs between the two complete cache repetitions, so its correction
+cannot be one of four response-fixed values.  Splitting each target into a
+predecessor part and a current-slab part would also require an additional
+authenticated equality tying their sum back to the target consumed by the
+model proof.  Omitting that equality is unsound.
+
+C6 instead batches the complete model targets and checks them directly
+against the successor cache.  For canonical fold record `j`, let `t_j` be
+the authenticated target and `C_j` its factorized row-by-column cache
+functional.  In repetition `b`, the existing successor-owner root
+`rho_b` is used in scalar-power order:
+
+```text
+t_K,b = sum_{j of kind K} rho_b^(j+1) * t_j
+C_K,b = sum_{j of kind K} rho_b^(j+1) * C_j
+t_V,b = sum_{j of kind V} rho_b^(j+1) * t_j
+C_V,b = sum_{j of kind V} rho_b^(j+1) * C_j.
+```
+
+The successor-functional relation proves `t_K,b=C_K,b(new_cache)` and
+`t_V,b=C_V,b(new_cache)`.  The pointwise append transition already proves
+`new_cache=old_cache || response_slab`; therefore the model target is bound
+to the accepted predecessor prefix and the current response output without
+an unauthenticated split target.  The predecessor-functional owner is
+canonical zero in this descendant; it may not carry provider-selected data.
+
+No new challenge is introduced: `rho_b` was already sampled independently
+in each repetition after every individual model target and coefficient
+schedule was fixed.  Reusing it for 576 scalar powers raises that owner's
+univariate degree from one to at most 577.  The complete cache census becomes
+
+```text
+77 - 1 + 577 = 653 roots per repetition,
+two independent repetitions: 653^2 = 426,409 < 2^19,
+epsilon_cache <= 426,409 / |Fp2|^2 = 237.298... bits.
+```
+
+This remains stronger than the frozen conservative cache allocation and
+does not change Q=121 or any response/setup cap.  `C6PS1` keeps its exact
+304-B size but advances to a new strict version and ordering:
+
+```text
+header + statement                                                 48 B
+2 repetitions * (fold K/V + append K/V) * 2 tapes * 16 B          256 B
+total                                                              304 B.
+```
+
+For each repetition, the fold K/V corrections are sent after `rho_b` and
+before the 24-coordinate relation point; append K/V corrections remain
+after that point and before the first sumcheck round.  The source-bound
+package therefore remains **3,810 B / 104 full correlations per tape**, the
+response roof remains **33,656,098 B**, and no historical corrected key
+vector returns.
+
+The preregistered compiler gate is now locally green.  The trace snapshot
+retains each record's exact row/column factors and compiles global canonical
+powers `rho^(j+1)` without a dense cache-coefficient field.  Compilation
+recomputes individual and aggregate digests, row/column/application censuses,
+section-to-layer normalization, segment coverage, ordinal uniqueness and
+complete 12-head K/V cohorts.  It rejects changed factors, records, aggregate
+identity and incomplete families.
+
+At scaled `T=4`, an independent dense `4 x 768` oracle agrees on every K and V
+cell: **24 folds / 1,632 retained factor values / 6,144 coefficient
+applications**.  The real frozen-artifact `12+4` response compiles both role
+traces under two distinct roots with identical per-root batch identities and
+distinct cross-root digests: **576 folds / 44,928 retained factor values /
+516,096 applications**.  The fixed fail-closed cap is **576 records /
+626,688 factor values**, about 10.03 MB at 16 B per `Fp2`, versus a forbidden
+`2^24` dense field.
+
+Lean proves the scalar-power bad-root count at 576, the successor-functional
+append transitivity and exact **653 / 426,409 <2^19** census.  Full build is
+3,261 jobs; the audit is **345 total / 106 C6** named targets with stdout
+SHA-256
+`007a24a1d31f9dde8a7484905803155298eaf00dc5d47e45e776ed3ff27881e6`.
+This closes only factorized compilation.  The next ordered gate is the new
+strict `C6PS1` transcript placement plus typed pending-target integration in
+the 24-round cache coordinator, followed by `CacheSegK` removal.  No response,
+setup, correlation, prover-time or hardware credit is earned yet.
 
 ## 7. Certificate and challenge grammar
 

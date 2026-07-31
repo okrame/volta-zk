@@ -16,6 +16,10 @@ use volta_field::Fp2;
 use volta_mac::C6TraceToken;
 
 pub const C6_CACHE_FOLD_TRACE_VERSION: u32 = 1;
+pub const C6_CACHE_FOLD_SCALAR_BATCH_VERSION: u32 = 1;
+pub const C6_CACHE_FOLD_MAX_RECORDS: usize = 576;
+pub const C6_CACHE_FOLD_MAX_FACTOR_VALUES: u64 =
+    C6_CACHE_FOLD_MAX_RECORDS as u64 * (C6_CACHE_MAX_CONTEXT as u64 + C6_CACHE_HEAD_WIDTH as u64);
 
 const C6_CACHE_HEADS: usize = 12;
 const C6_CACHE_HEAD_WIDTH: usize = 64;
@@ -28,6 +32,7 @@ const C6_CACHE_FOLD_RECORD_TOPOLOGY_DOMAIN: &str = "volta/proto/c6/cache-fold-re
 const C6_CACHE_FOLD_RECORD_INSTANCE_DOMAIN: &str = "volta/proto/c6/cache-fold-record-instance/v1";
 const C6_CACHE_FOLD_TOPOLOGY_DOMAIN: &str = "volta/proto/c6/cache-fold-topology/v1";
 const C6_CACHE_FOLD_INSTANCE_DOMAIN: &str = "volta/proto/c6/cache-fold-instance/v1";
+const C6_CACHE_FOLD_SCALAR_BATCH_DOMAIN: &str = "volta/proto/c6/cache-fold-scalar-batch/v1";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6CacheFoldTraceError(String);
@@ -93,6 +98,15 @@ pub struct C6CacheFoldTraceIdentity {
     pub instance_digest: [u8; 32],
 }
 
+/// Factorized public coefficient table for one observed cache functional.
+/// Its outer product is embedded only in the record's layer/head window; no
+/// `2^24` cache coefficient table is allocated.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6CacheFoldFactors {
+    row_weights: Vec<Fp2>,
+    column_weights: Vec<Fp2>,
+}
+
 /// Completed role-local capture. Targets remain opaque provenance handles;
 /// they do not participate in prover/verifier digest equality because the
 /// two operation traces use distinct namespaces.
@@ -102,6 +116,86 @@ pub struct C6CacheFoldTraceSnapshot {
     pub identity: C6CacheFoldTraceIdentity,
     pub records: Vec<C6CacheFoldRecord>,
     pub targets: Vec<C6TraceToken>,
+    pub factors: Vec<C6CacheFoldFactors>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6CacheFoldScalarBatchIdentity {
+    pub version: u32,
+    pub fold_count: u32,
+    pub factor_values: u64,
+    pub coefficient_applications: u64,
+    pub scalar_root: Fp2,
+    pub topology_digest: [u8; 32],
+    pub instance_digest: [u8; 32],
+    pub batch_digest: [u8; 32],
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct C6CacheFoldScalarBatchTerm {
+    record: C6CacheFoldRecord,
+    target: C6TraceToken,
+    factors: C6CacheFoldFactors,
+    scalar_weight: Fp2,
+}
+
+/// One repetition's scalar-power batch over the exact runtime fold order.
+/// The plan retains only row/column factors and opaque authenticated target
+/// provenance.  It deliberately has no dense cache-coefficient field.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6CacheFoldScalarBatchPlan {
+    pub party: C6CacheFoldParty,
+    pub identity: C6CacheFoldScalarBatchIdentity,
+    terms: Vec<C6CacheFoldScalarBatchTerm>,
+}
+
+impl C6CacheFoldScalarBatchPlan {
+    /// Evaluate the factorized coefficient of one live GPT-2 cache cell.
+    /// This is a local reference query, not a materialization API.
+    pub fn coefficient(
+        &self,
+        kind: C6CacheFoldKind,
+        model_layer: usize,
+        position: usize,
+        channel: usize,
+    ) -> Result<Fp2, C6CacheFoldTraceError> {
+        if model_layer >= usize::from(C6_CACHE_MODEL_LAYERS)
+            || position >= C6_CACHE_MAX_CONTEXT
+            || channel >= C6_CACHE_HEADS * C6_CACHE_HEAD_WIDTH
+        {
+            return Err(C6CacheFoldTraceError::new(
+                "C6 factorized coefficient query is outside live cache geometry",
+            ));
+        }
+        Ok(self
+            .terms
+            .iter()
+            .filter(|term| {
+                term.record.kind == kind && usize::from(term.record.model_layer) == model_layer
+            })
+            .fold(Fp2::ZERO, |sum, term| {
+                let column_start = term.record.column_offset as usize;
+                if position >= term.factors.row_weights.len()
+                    || channel < column_start
+                    || channel >= column_start + term.factors.column_weights.len()
+                {
+                    return sum;
+                }
+                sum + term.scalar_weight
+                    * term.factors.row_weights[position]
+                    * term.factors.column_weights[channel - column_start]
+            }))
+    }
+
+    pub fn target_terms(
+        &self,
+        kind: C6CacheFoldKind,
+    ) -> impl Iterator<Item = (C6TraceToken, Fp2)> + '_ {
+        self.terms
+            .iter()
+            .filter(move |term| term.record.kind == kind)
+            .map(|term| (term.target, term.scalar_weight))
+    }
 }
 
 #[derive(Debug)]
@@ -110,6 +204,7 @@ struct C6CacheFoldTraceRuntime {
     party: C6CacheFoldParty,
     records: Vec<C6CacheFoldRecord>,
     targets: Vec<C6TraceToken>,
+    factors: Vec<C6CacheFoldFactors>,
     semantic_keys: BTreeSet<(u16, u32, u32, C6CacheFoldKind, u16)>,
 }
 
@@ -176,6 +271,7 @@ pub fn begin_c6_cache_fold_trace(
             party,
             records: Vec::new(),
             targets: Vec::new(),
+            factors: Vec::new(),
             semantic_keys: BTreeSet::new(),
         });
         Ok(C6CacheFoldTraceGuard { capture_id, party, finished: false, _not_send: PhantomData })
@@ -302,6 +398,10 @@ pub(crate) fn record_c6_cache_fold_if_active(
             coefficient_digest,
         });
         runtime.targets.push(target);
+        runtime.factors.push(C6CacheFoldFactors {
+            row_weights: row_weights.to_vec(),
+            column_weights: column_weights.to_vec(),
+        });
         Ok(())
     })
 }
@@ -343,9 +443,28 @@ fn take_runtime(
 fn finish_runtime(
     runtime: C6CacheFoldTraceRuntime,
 ) -> Result<C6CacheFoldTraceSnapshot, C6CacheFoldTraceError> {
-    if runtime.records.is_empty() || runtime.records.len() != runtime.targets.len() {
+    if runtime.records.is_empty()
+        || runtime.records.len() != runtime.targets.len()
+        || runtime.records.len() != runtime.factors.len()
+        || runtime.records.len() > C6_CACHE_FOLD_MAX_RECORDS
+    {
         return Err(C6CacheFoldTraceError::new(
-            "C6 cache-fold trace is empty or has a target-count mismatch",
+            "C6 cache-fold trace is empty, oversized or has a sidecar-count mismatch",
+        ));
+    }
+    let factor_values = runtime.factors.iter().try_fold(0u64, |sum, factors| {
+        let count = factors
+            .row_weights
+            .len()
+            .checked_add(factors.column_weights.len())
+            .and_then(|value| u64::try_from(value).ok())
+            .ok_or_else(|| C6CacheFoldTraceError::new("C6 cache-fold factor census overflows"))?;
+        sum.checked_add(count)
+            .ok_or_else(|| C6CacheFoldTraceError::new("C6 cache-fold factor census overflows"))
+    })?;
+    if factor_values > C6_CACHE_FOLD_MAX_FACTOR_VALUES {
+        return Err(C6CacheFoldTraceError::new(
+            "C6 cache-fold factor census exceeds the fixed two-band cap",
         ));
     }
     let mut head_masks: BTreeMap<(u16, u32, u32, C6CacheFoldKind), u16> = BTreeMap::new();
@@ -401,6 +520,176 @@ fn finish_runtime(
         },
         records: runtime.records,
         targets: runtime.targets,
+        factors: runtime.factors,
+    })
+}
+
+/// Compile one independently challenged cache repetition without expanding a
+/// dense coefficient table.  Powers use the global canonical record ordinal,
+/// so K/V records cannot be reordered or independently renumbered.
+pub fn compile_c6_cache_fold_scalar_batch(
+    snapshot: &C6CacheFoldTraceSnapshot,
+    scalar_root: Fp2,
+) -> Result<C6CacheFoldScalarBatchPlan, C6CacheFoldTraceError> {
+    let count = snapshot.records.len();
+    if snapshot.identity.version != C6_CACHE_FOLD_TRACE_VERSION
+        || count == 0
+        || count > C6_CACHE_FOLD_MAX_RECORDS
+        || count != snapshot.targets.len()
+        || count != snapshot.factors.len()
+        || snapshot.identity.fold_count as usize != count
+    {
+        return Err(C6CacheFoldTraceError::new(
+            "C6 scalar batch input has a noncanonical sidecar census",
+        ));
+    }
+    let mut factor_values = 0u64;
+    let mut coefficient_applications = 0u64;
+    let mut semantic_keys = BTreeSet::new();
+    let mut head_masks: BTreeMap<(u16, u32, u32, C6CacheFoldKind), u16> = BTreeMap::new();
+    let mut kind_masks: BTreeMap<(u16, u32, u32), u8> = BTreeMap::new();
+    let mut topology_hasher = blake3::Hasher::new_derive_key(C6_CACHE_FOLD_TOPOLOGY_DOMAIN);
+    topology_hasher.update(&C6_CACHE_FOLD_TRACE_VERSION.to_le_bytes());
+    topology_hasher.update(&snapshot.identity.fold_count.to_le_bytes());
+    topology_hasher.update(&snapshot.identity.coefficient_applications.to_le_bytes());
+    let mut instance_hasher = blake3::Hasher::new_derive_key(C6_CACHE_FOLD_INSTANCE_DOMAIN);
+    let mut power = scalar_root;
+    let mut terms = Vec::with_capacity(count);
+    let mut hasher = blake3::Hasher::new_derive_key(C6_CACHE_FOLD_SCALAR_BATCH_DOMAIN);
+    hasher.update(&C6_CACHE_FOLD_SCALAR_BATCH_VERSION.to_le_bytes());
+    hasher.update(&snapshot.identity.fold_count.to_le_bytes());
+    hasher.update(&snapshot.identity.coefficient_applications.to_le_bytes());
+    hasher.update(&snapshot.identity.topology_digest);
+    hasher.update(&snapshot.identity.instance_digest);
+    hash_fp2(&mut hasher, scalar_root);
+    for (index, ((record, &target), factors)) in
+        snapshot.records.iter().zip(&snapshot.targets).zip(&snapshot.factors).enumerate()
+    {
+        let expected_layer = model_layer(record.schedule_section)?;
+        let expected_total_rows = record
+            .t0
+            .checked_add(record.q)
+            .ok_or_else(|| C6CacheFoldTraceError::new("C6 scalar batch row geometry overflows"))?;
+        let covered_rows = record.segment_rows.iter().try_fold(0u32, |sum, &rows| {
+            if rows == 0 {
+                return Err(C6CacheFoldTraceError::new(
+                    "C6 scalar batch has an empty cache segment",
+                ));
+            }
+            sum.checked_add(rows)
+                .ok_or_else(|| C6CacheFoldTraceError::new("C6 scalar batch segment sum overflows"))
+        })?;
+        let semantic_key = (record.schedule_section, record.t0, record.q, record.kind, record.head);
+        if record.ordinal as usize != index
+            || expected_layer != record.model_layer
+            || record.q == 0
+            || expected_total_rows != record.total_rows
+            || record.total_rows as usize > C6_CACHE_MAX_CONTEXT
+            || covered_rows != record.total_rows
+            || usize::from(record.head) >= C6_CACHE_HEADS
+            || record.column_offset as usize != usize::from(record.head) * C6_CACHE_HEAD_WIDTH
+            || record.column_width as usize != C6_CACHE_HEAD_WIDTH
+            || record.row_weight_count != record.total_rows
+            || record.column_weight_count as usize != C6_CACHE_HEAD_WIDTH
+            || record.row_weight_count as usize != factors.row_weights.len()
+            || record.column_weight_count as usize != factors.column_weights.len()
+            || record.coefficient_applications
+                != u64::from(record.row_weight_count) * u64::from(record.column_weight_count)
+            || !semantic_keys.insert(semantic_key)
+            || record_topology_digest(
+                record.ordinal,
+                record.kind,
+                record.schedule_section,
+                record.model_layer,
+                record.t0,
+                record.q,
+                record.total_rows,
+                record.head,
+                record.column_offset,
+                &record.segment_rows,
+                record.row_weight_count,
+                record.column_weight_count,
+                record.coefficient_applications,
+            ) != record.topology_digest
+            || record_coefficient_digest(
+                record.topology_digest,
+                &factors.row_weights,
+                &factors.column_weights,
+            ) != record.coefficient_digest
+        {
+            return Err(C6CacheFoldTraceError::new(
+                "C6 scalar batch record or factor binding is noncanonical",
+            ));
+        }
+        let head_bit = 1u16 << record.head;
+        let mask = head_masks
+            .entry((record.schedule_section, record.t0, record.q, record.kind))
+            .or_default();
+        if *mask & head_bit != 0 {
+            return Err(C6CacheFoldTraceError::new("C6 scalar batch repeats a cache-fold head"));
+        }
+        *mask |= head_bit;
+        *kind_masks.entry((record.schedule_section, record.t0, record.q)).or_default() |=
+            record.kind as u8;
+        let values = u64::from(record.row_weight_count)
+            .checked_add(u64::from(record.column_weight_count))
+            .ok_or_else(|| C6CacheFoldTraceError::new("C6 scalar batch factor census overflows"))?;
+        factor_values = factor_values
+            .checked_add(values)
+            .ok_or_else(|| C6CacheFoldTraceError::new("C6 scalar batch factor census overflows"))?;
+        coefficient_applications =
+            coefficient_applications.checked_add(record.coefficient_applications).ok_or_else(
+                || C6CacheFoldTraceError::new("C6 scalar batch coefficient census overflows"),
+            )?;
+        topology_hasher.update(&record.topology_digest);
+        hasher.update(&record.topology_digest);
+        hasher.update(&record.coefficient_digest);
+        hash_fp2(&mut hasher, power);
+        terms.push(C6CacheFoldScalarBatchTerm {
+            record: record.clone(),
+            target,
+            factors: factors.clone(),
+            scalar_weight: power,
+        });
+        power = power * scalar_root;
+    }
+    if head_masks.values().any(|&mask| mask != C6_CACHE_HEAD_MASK)
+        || kind_masks.values().any(|&mask| mask != 3)
+        || factor_values > C6_CACHE_FOLD_MAX_FACTOR_VALUES
+        || coefficient_applications != snapshot.identity.coefficient_applications
+    {
+        return Err(C6CacheFoldTraceError::new(
+            "C6 scalar batch family or aggregate census is noncanonical",
+        ));
+    }
+    let topology_digest = *topology_hasher.finalize().as_bytes();
+    instance_hasher.update(&C6_CACHE_FOLD_TRACE_VERSION.to_le_bytes());
+    instance_hasher.update(&topology_digest);
+    for record in &snapshot.records {
+        instance_hasher.update(&record.coefficient_digest);
+    }
+    let instance_digest = *instance_hasher.finalize().as_bytes();
+    if topology_digest != snapshot.identity.topology_digest
+        || instance_digest != snapshot.identity.instance_digest
+    {
+        return Err(C6CacheFoldTraceError::new(
+            "C6 scalar batch aggregate identity is noncanonical",
+        ));
+    }
+    let batch_digest = *hasher.finalize().as_bytes();
+    Ok(C6CacheFoldScalarBatchPlan {
+        party: snapshot.party,
+        identity: C6CacheFoldScalarBatchIdentity {
+            version: C6_CACHE_FOLD_SCALAR_BATCH_VERSION,
+            fold_count: snapshot.identity.fold_count,
+            factor_values,
+            coefficient_applications: snapshot.identity.coefficient_applications,
+            scalar_root,
+            topology_digest: snapshot.identity.topology_digest,
+            instance_digest: snapshot.identity.instance_digest,
+            batch_digest,
+        },
+        terms,
     })
 }
 
@@ -462,6 +751,11 @@ fn hash_fp2_slice(hasher: &mut blake3::Hasher, values: &[Fp2]) {
     }
 }
 
+fn hash_fp2(hasher: &mut blake3::Hasher, value: Fp2) {
+    hasher.update(&value.c0.value().to_le_bytes());
+    hasher.update(&value.c1.value().to_le_bytes());
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -518,6 +812,96 @@ mod tests {
         assert_ne!(canonical.identity.instance_digest, reordered.identity.instance_digest);
     }
 
+    fn fp2_power(base: Fp2, exponent: usize) -> Fp2 {
+        (0..exponent).fold(Fp2::ONE, |power, _| power * base)
+    }
+
+    #[test]
+    fn scalar_batch_matches_independent_dense_oracle_without_dense_plan() {
+        let snapshot = capture(true);
+        let scalar_root = Fp2::new(Fp::new(3), Fp::new(5));
+        let plan = compile_c6_cache_fold_scalar_batch(&snapshot, scalar_root).unwrap();
+        assert_eq!(plan.identity.version, C6_CACHE_FOLD_SCALAR_BATCH_VERSION);
+        assert_eq!(plan.identity.fold_count, 24);
+        assert_eq!(plan.identity.factor_values, 24 * (4 + 64));
+        assert_eq!(plan.identity.coefficient_applications, 24 * 4 * 64);
+        assert_eq!(plan.identity.scalar_root, scalar_root);
+
+        let value_rows = weights(4, 1);
+        let value_columns = weights(C6_CACHE_HEAD_WIDTH, 101);
+        let key_rows = weights(4, 2);
+        let key_columns = weights(C6_CACHE_HEAD_WIDTH, 102);
+        let mut dense_value = vec![Fp2::ZERO; 4 * C6_CACHE_HEADS * C6_CACHE_HEAD_WIDTH];
+        let mut dense_key = vec![Fp2::ZERO; dense_value.len()];
+        for head in 0..C6_CACHE_HEADS {
+            let value_power = fp2_power(scalar_root, head + 1);
+            let key_power = fp2_power(scalar_root, C6_CACHE_HEADS + head + 1);
+            for row in 0..4 {
+                for column in 0..C6_CACHE_HEAD_WIDTH {
+                    let dense_index = row * C6_CACHE_HEADS * C6_CACHE_HEAD_WIDTH
+                        + head * C6_CACHE_HEAD_WIDTH
+                        + column;
+                    dense_value[dense_index] =
+                        value_power * value_rows[row] * value_columns[column];
+                    dense_key[dense_index] = key_power * key_rows[row] * key_columns[column];
+                }
+            }
+        }
+        for row in 0..4 {
+            for channel in 0..C6_CACHE_HEADS * C6_CACHE_HEAD_WIDTH {
+                let dense_index = row * C6_CACHE_HEADS * C6_CACHE_HEAD_WIDTH + channel;
+                assert_eq!(
+                    plan.coefficient(C6CacheFoldKind::ValueColumns, 0, row, channel).unwrap(),
+                    dense_value[dense_index]
+                );
+                assert_eq!(
+                    plan.coefficient(C6CacheFoldKind::KeyRows, 0, row, channel).unwrap(),
+                    dense_key[dense_index]
+                );
+            }
+        }
+        assert_eq!(plan.coefficient(C6CacheFoldKind::ValueColumns, 0, 4, 0).unwrap(), Fp2::ZERO);
+        assert_eq!(plan.coefficient(C6CacheFoldKind::ValueColumns, 1, 0, 0).unwrap(), Fp2::ZERO);
+        assert!(plan.coefficient(C6CacheFoldKind::ValueColumns, 12, 0, 0).is_err());
+        assert!(plan
+            .coefficient(C6CacheFoldKind::ValueColumns, 0, C6_CACHE_MAX_CONTEXT, 0)
+            .is_err());
+        assert!(plan
+            .coefficient(C6CacheFoldKind::ValueColumns, 0, 0, C6_CACHE_HEADS * C6_CACHE_HEAD_WIDTH,)
+            .is_err());
+
+        let value_terms: Vec<_> = plan.target_terms(C6CacheFoldKind::ValueColumns).collect();
+        let key_terms: Vec<_> = plan.target_terms(C6CacheFoldKind::KeyRows).collect();
+        assert_eq!(value_terms.len(), C6_CACHE_HEADS);
+        assert_eq!(key_terms.len(), C6_CACHE_HEADS);
+        for (head, (_, weight)) in value_terms.iter().enumerate() {
+            assert_eq!(*weight, fp2_power(scalar_root, head + 1));
+        }
+        for (head, (_, weight)) in key_terms.iter().enumerate() {
+            assert_eq!(*weight, fp2_power(scalar_root, C6_CACHE_HEADS + head + 1));
+        }
+
+        let reordered = compile_c6_cache_fold_scalar_batch(&capture(false), scalar_root).unwrap();
+        assert_ne!(plan.identity.batch_digest, reordered.identity.batch_digest);
+    }
+
+    #[test]
+    fn scalar_batch_rejects_mutated_factor_record_and_aggregate_identity() {
+        let scalar_root = Fp2::new(Fp::new(7), Fp::new(11));
+
+        let mut bad_factor = capture(true);
+        bad_factor.factors[0].row_weights[0] += Fp2::ONE;
+        assert!(compile_c6_cache_fold_scalar_batch(&bad_factor, scalar_root).is_err());
+
+        let mut bad_record = capture(true);
+        bad_record.records[0].ordinal = 1;
+        assert!(compile_c6_cache_fold_scalar_batch(&bad_record, scalar_root).is_err());
+
+        let mut bad_identity = capture(true);
+        bad_identity.identity.instance_digest[0] ^= 1;
+        assert!(compile_c6_cache_fold_scalar_batch(&bad_identity, scalar_root).is_err());
+    }
+
     #[test]
     fn malformed_geometry_and_nested_capture_fail_closed() {
         let guard = begin_c6_cache_fold_trace(C6CacheFoldParty::Verifier).unwrap();
@@ -539,5 +923,9 @@ mod tests {
         drop(guard);
         let next = begin_c6_cache_fold_trace(C6CacheFoldParty::Prover).unwrap();
         drop(next);
+
+        let incomplete = begin_c6_cache_fold_trace(C6CacheFoldParty::Prover).unwrap();
+        record_family(C6CacheFoldKind::ValueColumns, 1);
+        assert!(incomplete.finish().is_err());
     }
 }

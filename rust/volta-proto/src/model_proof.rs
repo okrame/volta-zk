@@ -4915,6 +4915,7 @@ mod tests {
         {
             assert_eq!(prover_cache_fold_trace.identity, verifier_cache_fold_trace.identity);
             assert_eq!(prover_cache_fold_trace.records, verifier_cache_fold_trace.records);
+            assert_eq!(prover_cache_fold_trace.factors, verifier_cache_fold_trace.factors);
             assert_eq!(prover_cache_fold_trace.identity.fold_count, 2 * L as u32 * 2 * H as u32);
             let expected_applications =
                 2 * H as u64 * L as u64 * (t as u64 + (t + n_gen) as u64) * (D / H) as u64;
@@ -4942,6 +4943,28 @@ mod tests {
             }
             assert_eq!(prefill_records, L * 2 * H);
             assert_eq!(continuation_records, L * 2 * H);
+
+            let scalar_roots =
+                [Fp2::new(Fp::new(3), Fp::new(5)), Fp2::new(Fp::new(7), Fp::new(11))];
+            let mut batch_digests = Vec::new();
+            for scalar_root in scalar_roots {
+                let prover_batch = crate::c6_cache_fold::compile_c6_cache_fold_scalar_batch(
+                    &prover_cache_fold_trace,
+                    scalar_root,
+                )
+                .expect("compile response prover cache-fold scalar batch");
+                let verifier_batch = crate::c6_cache_fold::compile_c6_cache_fold_scalar_batch(
+                    &verifier_cache_fold_trace,
+                    scalar_root,
+                )
+                .expect("compile response verifier cache-fold scalar batch");
+                assert_eq!(prover_batch.identity, verifier_batch.identity);
+                assert_eq!(prover_batch.identity.fold_count, 576);
+                assert_eq!(prover_batch.identity.factor_values, 44_928);
+                assert_eq!(prover_batch.identity.coefficient_applications, expected_applications);
+                batch_digests.push(prover_batch.identity.batch_digest);
+            }
+            assert_ne!(batch_digests[0], batch_digests[1]);
         }
 
         // Stacked weight claims: 48 prefill + 48 chunk, layer-major.

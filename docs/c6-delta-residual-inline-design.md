@@ -4373,6 +4373,47 @@ correction and `u_vectors` response fields be deleted and the strict envelope
 remeasured. Resident/CUDA and the 12--20-second bound remain pending. No
 provider or pod was contacted.
 
+#### 6.2.8 Compact C6RSC3 statement and live-view witness folding
+
+The scaled integration exposed two response-geometry allocations that were
+still hidden behind the fused arithmetic adapter: `C6BlindResidualStatement`
+owned the complete materialized reference coefficient arrays, and the prover
+accepted eight padded leaf plus sixteen padded auxiliary witness tables merely
+to create its first folded state. At the frozen production geometry those
+objects would defeat the response-owned path before any useful timing gate.
+
+The fused path now has a compact semantic statement containing only the
+repetition, target, round geometry, canonical table owners, compiler digest
+and statement digest. Its constructor obtains the target and compiler digest
+by replaying the installed atomic event stream into the audit sink; it neither
+builds nor retains reference coefficient arrays. The semantic digest hashes
+the same canonical family/term topology and coefficient lengths as the
+historical statement. The permanent scaled differential proves exact digest
+and encoded-proof identity between the compact and materialized forms.
+
+The canonical fused prover API no longer accepts a
+`C6ResidualSumcheckWitness`. After the first verifier challenge it reads
+logical leaf or auxiliary values directly from
+`C6ResidualFusedWitnessView`, including canonical zero padding, and writes
+only the required half-size folded state. Later rounds continue folding that
+state in place. The historical scaled entry point remains solely as a
+differential wrapper: it checks the oracle witness census but fused arithmetic
+does not read those tables.
+
+On the installed scaled fixture, compact and historical paths are exactly
+identical in proof bytes, transcript ledger and byte count, correlation
+counters, pending-transfer frame, all 48 authenticated pending claims and
+fused-verifier result. The coefficient arena releases cleanly after both
+repetitions. The complete `volta-pcs --features c6-trace` suite is **182 pass /
+0 fail / 1 ignored**.
+
+This removes the materialized-statement and full-padded-witness obstruction;
+it does not yet establish the memory or wall cost of the remaining half-size
+folded states at production geometry. The next gate remains the complete
+`T=4,Q=2` response-owned run through this compact coordinator. No response
+field is removed yet, no production byte/timing/memory credit is earned, and
+no provider or pod was contacted.
+
 ## 7. Certificate and challenge grammar
 
 All integers are unsigned little-endian and all field elements use their

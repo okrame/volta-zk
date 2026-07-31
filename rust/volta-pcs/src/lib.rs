@@ -111,7 +111,8 @@ pub use c6_residual_sumcheck_blind::{
 };
 #[cfg(feature = "c6-trace")]
 pub use c6_residual_sumcheck_blind::{
-    prove_c6_blind_residual_sumchecks_fused_scaled,
+    prepare_c6_blind_residual_statement_fused, prove_c6_blind_residual_sumchecks_fused,
+    prove_c6_blind_residual_sumchecks_fused_scaled, verify_c6_blind_residual_sumchecks_fused,
     verify_c6_blind_residual_sumchecks_fused_scaled, C6BlindResidualFusedCompilerContext,
 };
 pub use c6_wrapper_pcs::{

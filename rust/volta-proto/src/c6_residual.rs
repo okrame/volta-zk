@@ -4027,7 +4027,12 @@ impl<'a> C6ResidualFusedWitnessView<'a> {
         self.digest
     }
 
-    fn leaf_value(&self, table: usize, row: usize) -> C6ResidualResult<Fp2> {
+    /// Return one logical leaf-table value, including canonical zero padding.
+    ///
+    /// This is intentionally a scalar provider interface: fused consumers may
+    /// fold the installed witness directly without materializing the padded
+    /// semantic tables.
+    pub fn leaf_value(&self, table: usize, row: usize) -> C6ResidualResult<Fp2> {
         match table {
             0..=6 => Ok(self
                 .leaf
@@ -4041,7 +4046,9 @@ impl<'a> C6ResidualFusedWitnessView<'a> {
         }
     }
 
-    fn auxiliary_value(&self, table: usize, row: usize) -> C6ResidualResult<Fp2> {
+    /// Return one logical auxiliary-table value, including canonical zero
+    /// padding, without allocating the semantic table.
+    pub fn auxiliary_value(&self, table: usize, row: usize) -> C6ResidualResult<Fp2> {
         self.auxiliary
             .lanes
             .get(table)

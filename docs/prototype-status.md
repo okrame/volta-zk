@@ -173,6 +173,17 @@ link rounds, 32 link full correlations/tape, 1,394-B link overhead and
 418,708-B combined scaled link/PCS.  Persistent prefixes, the response-owned
 sealed coordinator, resident provider path, response-field removal,
 envelope/backend, complete local end-to-end and hardware gates remain pending.
+The fused coordinator has since removed two response-geometry materialization
+hazards: its semantic statement is compact and its prover folds logical values
+directly from the installed live-prefix witness view after the first
+challenge.  The canonical fused API no longer accepts padded witness tables or
+reference coefficient arrays.  On the installed scaled fixture it remains
+digest-, byte-, transcript-, correlation-, pending-claim- and verifier-
+identical to the historical oracle.  Ordinary/trace PCS are now **180/0/1**
+and **182/0/1**.  The full
+`T=4,Q=2` response-owned execution, remaining half-size-state memory census,
+response-field removal and timing gates are still pending; no production
+credit is claimed.
 
 Workload of record: **GPT-2 small (124M, L=12, d=768, h=12, d_ff=3072),
 prefill T=100 + 50 deferred decode tokens, causal, C3b PCS Q=120**, on the
@@ -624,6 +635,33 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-31 — Compact C6RSC3 statement and direct live-view folding remove
+  the response-geometry materialization obstruction.**  The fused statement
+  now retains only repetition, target, round geometry, canonical table owners
+  and the semantic/statement digests.  Its installed constructor replays the
+  atomic event stream into the audit sink to derive the target and compiler
+  digest without allocating reference coefficient arrays.  Its semantic hash
+  reconstructs the same canonical term topology and lengths as the historical
+  reference; the permanent differential proves exact digest and proof-codec
+  identity.
+
+  The canonical fused prover no longer accepts a materialized
+  `C6ResidualSumcheckWitness`.  At the first challenge it reads logical values,
+  including zero padding, directly from `C6ResidualFusedWitnessView` and
+  constructs only the half-size folded state; later rounds fold in place.  The
+  scaled compatibility entry point retains its witness argument only to audit
+  the old oracle census and does not expose it to fused arithmetic.
+
+  On the installed scaled fixture, compact and materialized paths have equal
+  proof bytes, transcript ledger/byte count, correlation counters,
+  pending-transfer frame, all **48** authenticated pending claims and fused
+  verifier output.  `volta-pcs --features c6-trace` is **182/0/1**.  This
+  closes neither the complete `T=4,Q=2` response gate nor the production
+  memory/timing envelope: the remaining half-size folded states must still be
+  measured, direct corrections and `u_vectors` remain on the response, and no
+  production byte/setup/soundness/correlation/timing credit is earned.  No
+  provider or pod was contacted.
 
 - **2026-07-31 — Installed residual witness reaches sealed C6RSC3, the
   authenticated-output link and paired PCS at scaled geometry.**  The

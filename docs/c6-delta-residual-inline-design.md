@@ -17,8 +17,9 @@ SCALED PATH GREEN WITH ZERO CACHE STAND-INS; FACTORIZED RUNTIME FOLD-BATCH
 COMPILER + 653-ROOT FORMAL REPAIR + STRICT C6PS1 V2 TRANSCRIPT MIGRATION GREEN;
 ROLE-TYPED RUNTIME TARGETS + STEP-WISE 24-ROUND CACHE PARTICIPANT SCALED
 GREEN; INDIVIDUAL TARGET `C6FT1` BOOTSTRAP FORMAL + STRICT CODEC + INLINE
-ΠPROD/C6PS1 SCALED DIFFERENTIAL GREEN; SOURCE-ORDINAL STREAMER / `CacheSegK` REMOVAL /
-BACKEND / FINAL ENVELOPE PENDING;
+ΠPROD/C6PS1 SCALED DIFFERENTIAL GREEN; SOURCE-ORDINAL BASE-MASK/KEY
+STREAMER + PHASE-1 POOLED-PCG RESERVATION/REPLAY DIFFERENTIAL GREEN;
+`CacheSegK` REMOVAL / BACKEND / FINAL ENVELOPE PENDING;
 LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
@@ -4073,6 +4074,34 @@ ordered gate is a single-pass provider/client source-ordinal streamer that
 accumulates at most 576 response-local keys/masks without retaining any
 per-element `CacheSegK` or rereading a one-time correlation as a new draw.
 No response-field removal, production-time or hardware credit is earned
+yet.
+
+That source-ordinal gate is now locally green.  The factorized compiler
+groups the canonical direct K/V sources by `(model layer, KeyRows before
+ValueColumns)` and visits each `(source row, channel)` once while retaining
+only the at-most-576 target accumulators and the already accepted
+row/column factors.  At scaled `T=4` it consumes **two groups / 6,144 unique
+source cells / 6,144 coefficient applications / 24 target accumulators** and
+matches an independent dense oracle for both MAC tapes before feeding every
+corrected key to strict `C6FT1` and its immediate ΠProd.
+
+One-time-use accounting is preserved by a split PCG seam.  The provider
+replays only the masks of direct sources it already consumed; the client
+reserves the matching base-key rows in the original phase-1 global
+allocation order and later replays them for the fold.  Replay changes no
+correlation counter, audit schedule, pooled cursor or allocation digest.  A
+pooled differential with an interleaved later allocation is byte-identical
+to eager key expansion, and mock/pooled negative tests reject missing,
+wrong-length, reordered, truncated and overflowing source ranges.
+
+This checkpoint deliberately does not claim production replacement.  The
+historical attention verifier still constructs corrected `CacheSegK` and
+also uses its own K/V segment keys for auxiliary openings.  The next ordered
+gate is therefore a C6-specific inline source cursor that reserves these
+direct sources during phase 1, supplies each corrected target before its
+ΠProd, and migrates the remaining own-segment auxiliary claims without
+ever constructing `CacheSegK`.  There are still zero new response bytes,
+correlations, setup bytes or timing credit at this checkpoint.
 before that gate.
 
 ## 7. Certificate and challenge grammar

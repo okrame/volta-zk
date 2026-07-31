@@ -1875,6 +1875,23 @@ impl CorrelationStream {
         tags
     }
 
+    /// Re-read the mask coordinates of an already consumed subfield source
+    /// without opening a domain, advancing a pool cursor, or changing any
+    /// correlation counter.  C6 uses this only to stream linear functionals
+    /// of the same authenticated cache source after its direct correction was
+    /// emitted.  This is source access, not a second correlation draw.
+    pub fn replay_consumed_sub_masks(&mut self, dom: u64, n: usize) -> Vec<Fp> {
+        let drawn = self.ledger.consumed.get(&dom).copied();
+        assert_eq!(drawn, Some(n as u64), "mask replay must match the consumed source at {dom:#x}");
+        match &mut self.backend {
+            ProverBackend::Mock { seed, .. } => {
+                let mut masks = FpStream::domain_separated(*seed, dom);
+                (0..n).map(|_| masks.next_fp()).collect()
+            }
+            ProverBackend::Pooled(pooled) => pooled.replay_sub_masks(dom, n),
+        }
+    }
+
     /// Draw `n` full-field correlations at `dom`. One-shot per domain.
     pub fn draw_fulls(&mut self, dom: u64, n: usize) -> Vec<FullCorr> {
         self.draw_fulls_with_role(dom, n, CorrScheduleRole::DirectCorrection, 0)
@@ -2189,38 +2206,88 @@ impl VerifierCtx {
         Ok(FullKeyBatchReservation { context: self, progress, active: true })
     }
 
-    /// Keys `k_r = m_r + Δ·r` for `n` subfield correlations at `dom`.
-    pub fn expand_sub_keys(&mut self, dom: u64, n: usize) -> Vec<Fp2> {
-        assert!(dom & RESERVED_DOMAIN_BITS == 0, "reserved correlation domain bits set");
-        self.ledger.open(dom, n);
-        self.counters.sub_corrs += n as u64;
-        self.counters.domains += 1;
-        let keys = match &mut self.backend {
-            VerifierBackend::Mock { seed, allocation } => {
-                allocation.take_sub(dom, n);
+    /// Reserve consecutive subfield base-key sources in canonical allocation
+    /// order without materializing their keys.  C6 uses this in phase 1 so
+    /// later source-ordinal folds do not perturb the pooled PCG cursor.
+    pub fn reserve_sub_key_rows(&mut self, base_domain: u64, rows: usize, cols: usize) {
+        let total = validate_sub_mask_rows(base_domain, rows, cols);
+        if let VerifierBackend::Pooled(pooled) = &self.backend {
+            pooled.assert_sub_capacity(total);
+        }
+        self.ledger.open_sub_rows(base_domain, rows, cols);
+        self.counters.sub_corrs = self
+            .counters
+            .sub_corrs
+            .checked_add(u64::try_from(total).expect("validated sub-key count exceeds u64"))
+            .expect("sub-key counter overflow");
+        self.counters.domains = self
+            .counters
+            .domains
+            .checked_add(u64::try_from(rows).expect("validated sub-key rows exceed u64"))
+            .expect("sub-key domain counter overflow");
+        match &mut self.backend {
+            VerifierBackend::Mock { allocation, .. } => {
+                for row in 0..rows {
+                    allocation.take_sub(base_domain + row as u64, cols);
+                }
+            }
+            VerifierBackend::Pooled(pooled) => {
+                pooled.reserve_sub_key_rows(base_domain, rows, cols);
+            }
+        }
+        if let Some(audit) = &mut self.schedule_audit {
+            for row in 0..rows {
+                audit.record(
+                    CorrScheduleKind::Subfield,
+                    CorrScheduleRole::DirectCorrection,
+                    0,
+                    base_domain + row as u64,
+                    cols,
+                );
+            }
+        }
+        #[cfg(feature = "c6-trace")]
+        if self.c6_trace_sources_enabled {
+            for row in 0..rows {
+                let domain = base_domain + row as u64;
+                let tokens = self.allocate_c6_trace_sources(cols);
+                assert!(
+                    self.c6_trace_sub_sources.insert(domain, tokens).is_none(),
+                    "duplicate C6 verifier subfield provenance domain {domain:#x}"
+                );
+            }
+        }
+    }
+
+    /// Re-read reserved/consumed subfield base keys without changing the PCG
+    /// cursor, counters, schedule audit, or allocation digest.
+    pub fn replay_consumed_sub_keys(&mut self, dom: u64, n: usize) -> Vec<Fp2> {
+        let drawn = self.ledger.consumed.get(&dom).copied();
+        assert_eq!(drawn, Some(n as u64), "key replay must match the consumed source at {dom:#x}");
+        match &mut self.backend {
+            VerifierBackend::Mock { seed, .. } => {
                 let mut rs = FpStream::domain_separated(*seed, dom);
                 let mut ms = FpStream::domain_separated(*seed, dom | TAG_BIT);
                 (0..n).map(|_| ms.next_fp2() + self.delta.mul_base(rs.next_fp())).collect()
             }
-            VerifierBackend::Pooled(v) => v.expand_sub_keys(dom, n),
-        };
-        if let Some(audit) = &mut self.schedule_audit {
-            audit.record(CorrScheduleKind::Subfield, CorrScheduleRole::DirectCorrection, 0, dom, n);
+            VerifierBackend::Pooled(pooled) => pooled.replay_sub_keys(dom, n),
         }
-        #[cfg(feature = "c6-trace")]
-        if self.c6_trace_sources_enabled {
-            let tokens = self.allocate_c6_trace_sources(n);
-            assert!(
-                self.c6_trace_sub_sources.insert(dom, tokens).is_none(),
-                "duplicate C6 verifier subfield provenance domain {dom:#x}"
-            );
-        }
-        keys
+    }
+
+    /// Keys `k_r = m_r + Δ·r` for `n` subfield correlations at `dom`.
+    pub fn expand_sub_keys(&mut self, dom: u64, n: usize) -> Vec<Fp2> {
+        self.reserve_sub_key_rows(dom, 1, n);
+        self.replay_consumed_sub_keys(dom, n)
     }
 
     /// Traced verifier-key form of [`Self::expand_sub_keys`].
     pub fn expand_sub_verifier_keys(&mut self, dom: u64, n: usize) -> Vec<VerifierKey> {
         let keys = self.expand_sub_keys(dom, n);
+        self.trace_subfield_keys(dom, keys)
+    }
+
+    pub fn replay_consumed_sub_verifier_keys(&mut self, dom: u64, n: usize) -> Vec<VerifierKey> {
+        let keys = self.replay_consumed_sub_keys(dom, n);
         self.trace_subfield_keys(dom, keys)
     }
 
@@ -2534,6 +2601,14 @@ impl PooledProver {
         self.subs[off..off + n].iter().map(|s| s.m).collect()
     }
 
+    fn replay_sub_masks(&self, dom: u64, n: usize) -> Vec<Fp> {
+        let Some((off, drawn)) = self.sub_domains.get(&dom).copied() else {
+            panic!("pooled mask replay before source consumption at {dom:#x}");
+        };
+        assert_eq!(drawn, n, "pooled mask replay length mismatch at {dom:#x}");
+        self.subs[off..off + n].iter().map(|sub| sub.r).collect()
+    }
+
     fn draw_fulls(&mut self, dom: u64, n: usize) -> Vec<FullCorr> {
         self.assert_full_capacity(n);
         let off = self.next_full;
@@ -2573,6 +2648,7 @@ struct PooledVerifier {
     full_keys: Vec<Fp2>,
     next_sub: usize,
     next_full: usize,
+    sub_domains: HashMap<u64, (usize, usize)>,
     hasher: blake3::Hasher,
 }
 
@@ -2584,15 +2660,33 @@ impl PooledVerifier {
             full_keys: pool.full_keys,
             next_sub: 0,
             next_full: 0,
+            sub_domains: HashMap::new(),
             hasher,
         }
     }
 
-    fn expand_sub_keys(&mut self, dom: u64, n: usize) -> Vec<Fp2> {
-        assert!(self.next_sub + n <= self.sub_keys.len(), "pooled sub-key underflow");
-        let off = self.next_sub;
-        self.next_sub += n;
-        record_alloc(&mut self.hasher, b"sub", dom, off, n);
+    fn assert_sub_capacity(&self, n: usize) {
+        assert!(n <= self.sub_keys.len().saturating_sub(self.next_sub), "pooled sub-key underflow");
+    }
+
+    fn reserve_sub_key_rows(&mut self, base_domain: u64, rows: usize, cols: usize) {
+        let total = rows.checked_mul(cols).expect("validated pooled sub-key geometry overflow");
+        self.assert_sub_capacity(total);
+        for row in 0..rows {
+            let domain = base_domain + row as u64;
+            let off = self.next_sub;
+            self.next_sub += cols;
+            let previous = self.sub_domains.insert(domain, (off, cols));
+            assert!(previous.is_none(), "pooled verifier sub domain {domain:#x} allocated twice");
+            record_alloc(&mut self.hasher, b"sub", domain, off, cols);
+        }
+    }
+
+    fn replay_sub_keys(&self, dom: u64, n: usize) -> Vec<Fp2> {
+        let Some((off, drawn)) = self.sub_domains.get(&dom).copied() else {
+            panic!("pooled key replay before source reservation at {dom:#x}");
+        };
+        assert_eq!(drawn, n, "pooled key replay length mismatch at {dom:#x}");
         self.sub_keys[off..off + n].to_vec()
     }
 
@@ -2937,6 +3031,81 @@ mod tests {
     }
 
     #[test]
+    fn consumed_mask_replay_is_byte_exact_and_counter_neutral() {
+        let mut stream = CorrelationStream::new([0x35; 32]);
+        stream.enable_schedule_audit().unwrap();
+        let masks = stream.draw_sub_masks(0x3500, 17);
+        let counters = stream.counters;
+        let schedule = stream.schedule_audit().unwrap();
+        let allocation = stream.allocation_digest_hex();
+        assert_eq!(stream.replay_consumed_sub_masks(0x3500, 17), masks);
+        assert_eq!(stream.replay_consumed_sub_masks(0x3500, 17), masks);
+        assert_eq!(stream.counters, counters);
+        assert_eq!(stream.schedule_audit().unwrap(), schedule);
+        assert_eq!(stream.allocation_digest_hex(), allocation);
+
+        let delta = Fp2::new(Fp::new(0x351), Fp::new(0x352));
+        let mut verifier = VerifierCtx::new([0x35; 32], delta);
+        verifier.enable_schedule_audit().unwrap();
+        verifier.reserve_sub_key_rows(0x3500, 1, 17);
+        let verifier_counters = verifier.counters;
+        let verifier_schedule = verifier.schedule_audit().unwrap();
+        let verifier_allocation = verifier.allocation_digest_hex();
+        let keys = verifier.replay_consumed_sub_keys(0x3500, 17);
+        assert_eq!(verifier.replay_consumed_sub_keys(0x3500, 17), keys);
+        assert_eq!(verifier.counters, verifier_counters);
+        assert_eq!(verifier.schedule_audit().unwrap(), verifier_schedule);
+        assert_eq!(verifier.allocation_digest_hex(), verifier_allocation);
+    }
+
+    #[test]
+    fn pooled_reserved_key_rows_preserve_eager_allocation_order() {
+        let seed = [0x36; 32];
+        let delta = Fp2::new(Fp::new(0x361), Fp::new(0x362));
+        let (base_domain, rows, cols) = (0x3600, 2usize, 3usize);
+        let later_domain = 0x3700;
+        let later_count = 4usize;
+        let total = rows * cols + later_count;
+        let params = volta_pcg::PhaseAParams::tiny_for_test(total);
+        let eager_pool = volta_pcg::expand_phase_a(seed, delta, total, 0, params.clone());
+        let reserved_pool = volta_pcg::expand_phase_a(seed, delta, total, 0, params);
+        let mut eager = VerifierCtx::from_pcg_pool(delta, eager_pool.verifier);
+        let mut reserved = VerifierCtx::from_pcg_pool(delta, reserved_pool.verifier);
+        eager.enable_schedule_audit().unwrap();
+        reserved.enable_schedule_audit().unwrap();
+
+        let eager_rows = (0..rows)
+            .map(|row| eager.expand_sub_keys(base_domain + row as u64, cols))
+            .collect::<Vec<_>>();
+        let eager_later = eager.expand_sub_keys(later_domain, later_count);
+
+        reserved.reserve_sub_key_rows(base_domain, rows, cols);
+        let reserved_later = reserved.expand_sub_keys(later_domain, later_count);
+        let before_replay = (
+            reserved.counters,
+            reserved.schedule_audit().unwrap(),
+            reserved.allocation_digest_hex(),
+        );
+        let reserved_rows = (0..rows)
+            .map(|row| reserved.replay_consumed_sub_keys(base_domain + row as u64, cols))
+            .collect::<Vec<_>>();
+
+        assert_eq!(reserved_rows, eager_rows);
+        assert_eq!(reserved_later, eager_later);
+        assert_eq!(reserved.counters, eager.counters);
+        assert_eq!(reserved.schedule_audit().unwrap(), eager.schedule_audit().unwrap());
+        assert_eq!(reserved.allocation_digest_hex(), eager.allocation_digest_hex());
+        assert_eq!(
+            (
+                reserved.counters,
+                reserved.schedule_audit().unwrap(),
+                reserved.allocation_digest_hex(),
+            ),
+            before_replay,
+        );
+    }
+
+    #[test]
     fn mock_sub_mask_rows_match_host_draws_and_keep_lazy_tags() {
         let seed = [0xA5; 32];
         let (base_domain, rows, cols) = (0x1234_5000, 3usize, 11usize);
@@ -2989,9 +3158,24 @@ mod tests {
                 panic!("pooled correlations exposed a mock ChaCha8 seed")
             }
         };
+        let counters = prover.counters;
+        let allocation = prover.allocation_digest_hex();
+        for row in 0..rows {
+            assert_eq!(
+                prover.replay_consumed_sub_masks(base_domain + row as u64, cols),
+                masks[row * cols..(row + 1) * cols],
+            );
+        }
+        assert_eq!(prover.counters, counters);
+        assert_eq!(prover.allocation_digest_hex(), allocation);
         for row in 0..rows {
             let tags = prover.draw_sub_tags(base_domain + row as u64, cols);
             let keys = verifier.expand_sub_keys(base_domain + row as u64, cols);
+            let counters = verifier.counters;
+            let allocation = verifier.allocation_digest_hex();
+            assert_eq!(verifier.replay_consumed_sub_keys(base_domain + row as u64, cols), keys);
+            assert_eq!(verifier.counters, counters);
+            assert_eq!(verifier.allocation_digest_hex(), allocation);
             for i in 0..cols {
                 let mask = masks[row * cols + i];
                 assert_eq!(keys[i], tags[i] + delta.mul_base(mask));

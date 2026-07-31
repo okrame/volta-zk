@@ -953,6 +953,489 @@ impl C6CacheFoldScalarBatchPlan {
     }
 }
 
+const C6_CACHE_FOLD_SOURCE_COLUMNS: usize = C6_CACHE_HEADS * C6_CACHE_HEAD_WIDTH;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6CacheFoldDirectSourceSegment {
+    pub base_domain: u64,
+    pub rows: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6CacheFoldSourceOrdinalMetrics {
+    pub groups: u64,
+    pub source_cells: u64,
+    pub coefficient_applications: u64,
+    pub target_accumulators: u64,
+}
+
+#[derive(Clone, Debug)]
+struct C6CacheFoldSourceTarget {
+    kind: C6CacheFoldKind,
+    model_layer: u16,
+    column_offset: usize,
+    row_weights: Vec<Fp2>,
+    column_weights: Vec<Fp2>,
+}
+
+#[derive(Clone, Debug)]
+struct C6CacheFoldSourceGroup {
+    kind: C6CacheFoldKind,
+    model_layer: u16,
+    rows: usize,
+    target_ordinals: Vec<usize>,
+}
+
+/// Factorized source-ordinal compiler for C6FT1 base masks/keys.  It retains
+/// at most the registered 576 target accumulators and the already accepted
+/// row/column factors; no cache-sized key, mask or dense coefficient vector
+/// is part of this type.
+#[derive(Clone, Debug)]
+pub struct C6CacheFoldSourceOrdinalPlan {
+    pub identity: C6CacheFoldTraceIdentity,
+    targets: Vec<C6CacheFoldSourceTarget>,
+    groups: Vec<C6CacheFoldSourceGroup>,
+    metrics: C6CacheFoldSourceOrdinalMetrics,
+}
+
+impl C6CacheFoldSourceOrdinalPlan {
+    pub fn compile(snapshot: &C6CacheFoldTraceSnapshot) -> Result<Self, C6CacheFoldTraceError> {
+        // Reuse the complete geometry/digest/family validator.  The root is
+        // irrelevant here; source coefficients remain unfused per target.
+        let validated = compile_c6_cache_fold_scalar_batch(snapshot, Fp2::ONE)?;
+        let targets = validated
+            .terms
+            .iter()
+            .map(|term| C6CacheFoldSourceTarget {
+                kind: term.record.kind,
+                model_layer: term.record.model_layer,
+                column_offset: term.record.column_offset as usize,
+                row_weights: term.factors.row_weights.clone(),
+                column_weights: term.factors.column_weights.clone(),
+            })
+            .collect::<Vec<_>>();
+        let mut groups = Vec::new();
+        let mut source_cells = 0u64;
+        for model_layer in 0..C6_CACHE_MODEL_LAYERS {
+            for kind in [C6CacheFoldKind::KeyRows, C6CacheFoldKind::ValueColumns] {
+                let target_ordinals = targets
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(ordinal, target)| {
+                        (target.model_layer == model_layer && target.kind == kind)
+                            .then_some(ordinal)
+                    })
+                    .collect::<Vec<_>>();
+                if target_ordinals.is_empty() {
+                    continue;
+                }
+                let rows = target_ordinals
+                    .iter()
+                    .map(|&ordinal| targets[ordinal].row_weights.len())
+                    .max()
+                    .expect("nonempty C6 source group");
+                let group_cells = rows
+                    .checked_mul(C6_CACHE_FOLD_SOURCE_COLUMNS)
+                    .ok_or_else(|| C6CacheFoldTraceError::new("C6 source group cells overflow"))?;
+                source_cells = source_cells
+                    .checked_add(group_cells as u64)
+                    .ok_or_else(|| C6CacheFoldTraceError::new("C6 source cell census overflow"))?;
+                groups.push(C6CacheFoldSourceGroup { kind, model_layer, rows, target_ordinals });
+            }
+        }
+        if groups.is_empty() || targets.len() != snapshot.identity.fold_count as usize {
+            return Err(C6CacheFoldTraceError::new(
+                "C6 source-ordinal plan is empty or incomplete",
+            ));
+        }
+        let metrics = C6CacheFoldSourceOrdinalMetrics {
+            groups: groups.len() as u64,
+            source_cells,
+            coefficient_applications: snapshot.identity.coefficient_applications,
+            target_accumulators: targets.len() as u64,
+        };
+        Ok(Self { identity: snapshot.identity, targets, groups, metrics })
+    }
+
+    pub fn metrics(&self) -> C6CacheFoldSourceOrdinalMetrics {
+        self.metrics
+    }
+
+    pub fn schedule(&self) -> Result<C6CacheFoldTargetSchedule, C6CacheFoldTraceError> {
+        C6CacheFoldTargetSchedule::new(
+            self.identity,
+            self.targets.iter().map(|target| target.kind).collect(),
+        )
+    }
+
+    pub fn start_prover(&self) -> C6CacheFoldSourceOrdinalProver<'_> {
+        C6CacheFoldSourceOrdinalProver {
+            plan: self,
+            aggregates: vec![[Fp2::ZERO; C6_CACHE_FOLD_TARGET_TAPES]; self.targets.len()],
+            next_group: 0,
+            applications: 0,
+            poisoned: false,
+        }
+    }
+
+    pub fn start_verifier(&self) -> C6CacheFoldSourceOrdinalVerifier<'_> {
+        C6CacheFoldSourceOrdinalVerifier {
+            plan: self,
+            aggregates: vec![[VerifierKey::ZERO; C6_CACHE_FOLD_TARGET_TAPES]; self.targets.len()],
+            next_group: 0,
+            applications: 0,
+            poisoned: false,
+        }
+    }
+}
+
+pub struct C6CacheFoldSourceOrdinalProver<'a> {
+    plan: &'a C6CacheFoldSourceOrdinalPlan,
+    aggregates: Vec<[Fp2; C6_CACHE_FOLD_TARGET_TAPES]>,
+    next_group: usize,
+    applications: u64,
+    poisoned: bool,
+}
+
+impl C6CacheFoldSourceOrdinalProver<'_> {
+    /// Replay already consumed direct-source masks in segment/global-row
+    /// order. Replays are counter-neutral and each source cell visits this
+    /// compiler exactly once.
+    pub fn absorb_consumed_subfield_segments(
+        &mut self,
+        model_layer: u16,
+        kind: C6CacheFoldKind,
+        segments: &[C6CacheFoldDirectSourceSegment],
+        streams: &mut [volta_mac::CorrelationStream; C6_CACHE_FOLD_TARGET_TAPES],
+    ) -> Result<(), C6CacheFoldTraceError> {
+        let group = self.begin_group(model_layer, kind, segments)?;
+        let counters = [streams[0].counters, streams[1].counters];
+        let allocations = [streams[0].allocation_digest_hex(), streams[1].allocation_digest_hex()];
+        let mut global_row = 0usize;
+        for segment in segments {
+            for local_row in 0..segment.rows {
+                let domain =
+                    segment.base_domain.checked_add(local_row as u64).ok_or_else(|| {
+                        self.poisoned = true;
+                        C6CacheFoldTraceError::new("C6 prover source domain range overflow")
+                    })?;
+                let left =
+                    streams[0].replay_consumed_sub_masks(domain, C6_CACHE_FOLD_SOURCE_COLUMNS);
+                let right =
+                    streams[1].replay_consumed_sub_masks(domain, C6_CACHE_FOLD_SOURCE_COLUMNS);
+                for channel in 0..C6_CACHE_FOLD_SOURCE_COLUMNS {
+                    self.accumulate_cell(
+                        group,
+                        global_row,
+                        channel,
+                        [Fp2::from_base(left[channel]), Fp2::from_base(right[channel])],
+                    );
+                }
+                global_row += 1;
+            }
+        }
+        if [streams[0].counters, streams[1].counters] != counters
+            || [streams[0].allocation_digest_hex(), streams[1].allocation_digest_hex()]
+                != allocations
+        {
+            self.poisoned = true;
+            return Err(C6CacheFoldTraceError::new(
+                "C6 source mask replay changed correlation state",
+            ));
+        }
+        self.end_group(group);
+        Ok(())
+    }
+
+    pub fn absorb_group<I>(
+        &mut self,
+        model_layer: u16,
+        kind: C6CacheFoldKind,
+        rows: usize,
+        values: I,
+    ) -> Result<(), C6CacheFoldTraceError>
+    where
+        I: IntoIterator<Item = [Fp2; C6_CACHE_FOLD_TARGET_TAPES]>,
+    {
+        let synthetic = [C6CacheFoldDirectSourceSegment { base_domain: 0, rows }];
+        let group = self.begin_group(model_layer, kind, &synthetic)?;
+        let mut values = values.into_iter();
+        let cells = rows.checked_mul(C6_CACHE_FOLD_SOURCE_COLUMNS).ok_or_else(|| {
+            self.poisoned = true;
+            C6CacheFoldTraceError::new("C6 prover source group cells overflow")
+        })?;
+        for index in 0..cells {
+            let Some(value) = values.next() else {
+                self.poisoned = true;
+                return Err(C6CacheFoldTraceError::new("truncated C6 prover source group"));
+            };
+            self.accumulate_cell(
+                group,
+                index / C6_CACHE_FOLD_SOURCE_COLUMNS,
+                index % C6_CACHE_FOLD_SOURCE_COLUMNS,
+                value,
+            );
+        }
+        if values.next().is_some() {
+            self.poisoned = true;
+            return Err(C6CacheFoldTraceError::new("trailing C6 prover source cells"));
+        }
+        self.end_group(group);
+        Ok(())
+    }
+
+    pub fn finish(
+        self,
+    ) -> Result<
+        (Vec<[Fp2; C6_CACHE_FOLD_TARGET_TAPES]>, C6CacheFoldSourceOrdinalMetrics),
+        C6CacheFoldTraceError,
+    > {
+        self.validate_finish()?;
+        Ok((self.aggregates, self.plan.metrics))
+    }
+
+    fn begin_group(
+        &mut self,
+        model_layer: u16,
+        kind: C6CacheFoldKind,
+        segments: &[C6CacheFoldDirectSourceSegment],
+    ) -> Result<usize, C6CacheFoldTraceError> {
+        if self.poisoned {
+            return Err(C6CacheFoldTraceError::new("poisoned C6 prover source compiler"));
+        }
+        let group = self
+            .plan
+            .groups
+            .get(self.next_group)
+            .ok_or_else(|| C6CacheFoldTraceError::new("trailing C6 prover source group"))?;
+        let rows = segments.iter().try_fold(0usize, |sum, segment| {
+            if segment.rows == 0 {
+                return Err(C6CacheFoldTraceError::new("empty C6 direct-source segment"));
+            }
+            sum.checked_add(segment.rows)
+                .ok_or_else(|| C6CacheFoldTraceError::new("C6 direct-source rows overflow"))
+        })?;
+        if group.model_layer != model_layer || group.kind != kind || group.rows != rows {
+            self.poisoned = true;
+            return Err(C6CacheFoldTraceError::new("C6 prover source group order mismatch"));
+        }
+        Ok(self.next_group)
+    }
+
+    fn accumulate_cell(
+        &mut self,
+        group: usize,
+        row: usize,
+        channel: usize,
+        value: [Fp2; C6_CACHE_FOLD_TARGET_TAPES],
+    ) {
+        for &ordinal in &self.plan.groups[group].target_ordinals {
+            if let Some(coefficient) =
+                source_target_coefficient(&self.plan.targets[ordinal], row, channel)
+            {
+                for tape in 0..C6_CACHE_FOLD_TARGET_TAPES {
+                    self.aggregates[ordinal][tape] += coefficient * value[tape];
+                }
+                self.applications += 1;
+            }
+        }
+    }
+
+    fn end_group(&mut self, group: usize) {
+        debug_assert_eq!(group, self.next_group);
+        self.next_group += 1;
+    }
+
+    fn validate_finish(&self) -> Result<(), C6CacheFoldTraceError> {
+        if self.poisoned
+            || self.next_group != self.plan.groups.len()
+            || self.applications != self.plan.metrics.coefficient_applications
+        {
+            return Err(C6CacheFoldTraceError::new("incomplete C6 prover source compiler"));
+        }
+        Ok(())
+    }
+}
+
+pub struct C6CacheFoldSourceOrdinalVerifier<'a> {
+    plan: &'a C6CacheFoldSourceOrdinalPlan,
+    aggregates: Vec<[VerifierKey; C6_CACHE_FOLD_TARGET_TAPES]>,
+    next_group: usize,
+    applications: u64,
+    poisoned: bool,
+}
+
+impl C6CacheFoldSourceOrdinalVerifier<'_> {
+    /// Replay each already-reserved direct base-key source exactly once.  A
+    /// C6 verifier reserves in phase-1 allocation order, then chooses this
+    /// path instead of materializing corrected CacheSegK.
+    pub fn absorb_reserved_subfield_segments(
+        &mut self,
+        model_layer: u16,
+        kind: C6CacheFoldKind,
+        segments: &[C6CacheFoldDirectSourceSegment],
+        contexts: &mut [volta_mac::VerifierCtx; C6_CACHE_FOLD_TARGET_TAPES],
+    ) -> Result<(), C6CacheFoldTraceError> {
+        if contexts[0].delta == contexts[1].delta {
+            self.poisoned = true;
+            return Err(C6CacheFoldTraceError::new("C6 source MAC tapes are not independent"));
+        }
+        let group = self.begin_group(model_layer, kind, segments)?;
+        let mut global_row = 0usize;
+        for segment in segments {
+            for local_row in 0..segment.rows {
+                let domain =
+                    segment.base_domain.checked_add(local_row as u64).ok_or_else(|| {
+                        self.poisoned = true;
+                        C6CacheFoldTraceError::new("C6 verifier source domain range overflow")
+                    })?;
+                let left = contexts[0]
+                    .replay_consumed_sub_verifier_keys(domain, C6_CACHE_FOLD_SOURCE_COLUMNS);
+                let right = contexts[1]
+                    .replay_consumed_sub_verifier_keys(domain, C6_CACHE_FOLD_SOURCE_COLUMNS);
+                for channel in 0..C6_CACHE_FOLD_SOURCE_COLUMNS {
+                    self.accumulate_cell(
+                        group,
+                        global_row,
+                        channel,
+                        [left[channel], right[channel]],
+                    );
+                }
+                global_row += 1;
+            }
+        }
+        self.end_group(group);
+        Ok(())
+    }
+
+    pub fn absorb_group<I>(
+        &mut self,
+        model_layer: u16,
+        kind: C6CacheFoldKind,
+        rows: usize,
+        values: I,
+    ) -> Result<(), C6CacheFoldTraceError>
+    where
+        I: IntoIterator<Item = [VerifierKey; C6_CACHE_FOLD_TARGET_TAPES]>,
+    {
+        let synthetic = [C6CacheFoldDirectSourceSegment { base_domain: 0, rows }];
+        let group = self.begin_group(model_layer, kind, &synthetic)?;
+        let mut values = values.into_iter();
+        let cells = rows.checked_mul(C6_CACHE_FOLD_SOURCE_COLUMNS).ok_or_else(|| {
+            self.poisoned = true;
+            C6CacheFoldTraceError::new("C6 verifier source group cells overflow")
+        })?;
+        for index in 0..cells {
+            let Some(value) = values.next() else {
+                self.poisoned = true;
+                return Err(C6CacheFoldTraceError::new("truncated C6 verifier source group"));
+            };
+            self.accumulate_cell(
+                group,
+                index / C6_CACHE_FOLD_SOURCE_COLUMNS,
+                index % C6_CACHE_FOLD_SOURCE_COLUMNS,
+                value,
+            );
+        }
+        if values.next().is_some() {
+            self.poisoned = true;
+            return Err(C6CacheFoldTraceError::new("trailing C6 verifier source cells"));
+        }
+        self.end_group(group);
+        Ok(())
+    }
+
+    pub fn finish(
+        self,
+    ) -> Result<
+        (C6CacheFoldPairedVerifierBaseTargets, C6CacheFoldSourceOrdinalMetrics),
+        C6CacheFoldTraceError,
+    > {
+        self.validate_finish()?;
+        let terms =
+            self.plan.targets.iter().map(|target| target.kind).zip(self.aggregates).collect();
+        Ok((
+            C6CacheFoldPairedVerifierBaseTargets::new(self.plan.identity, terms)?,
+            self.plan.metrics,
+        ))
+    }
+
+    fn begin_group(
+        &mut self,
+        model_layer: u16,
+        kind: C6CacheFoldKind,
+        segments: &[C6CacheFoldDirectSourceSegment],
+    ) -> Result<usize, C6CacheFoldTraceError> {
+        if self.poisoned {
+            return Err(C6CacheFoldTraceError::new("poisoned C6 verifier source compiler"));
+        }
+        let group = self
+            .plan
+            .groups
+            .get(self.next_group)
+            .ok_or_else(|| C6CacheFoldTraceError::new("trailing C6 verifier source group"))?;
+        let rows = segments.iter().try_fold(0usize, |sum, segment| {
+            if segment.rows == 0 {
+                return Err(C6CacheFoldTraceError::new("empty C6 direct-source segment"));
+            }
+            sum.checked_add(segment.rows)
+                .ok_or_else(|| C6CacheFoldTraceError::new("C6 direct-source rows overflow"))
+        })?;
+        if group.model_layer != model_layer || group.kind != kind || group.rows != rows {
+            self.poisoned = true;
+            return Err(C6CacheFoldTraceError::new("C6 verifier source group order mismatch"));
+        }
+        Ok(self.next_group)
+    }
+
+    fn accumulate_cell(
+        &mut self,
+        group: usize,
+        row: usize,
+        channel: usize,
+        value: [VerifierKey; C6_CACHE_FOLD_TARGET_TAPES],
+    ) {
+        for &ordinal in &self.plan.groups[group].target_ordinals {
+            if let Some(coefficient) =
+                source_target_coefficient(&self.plan.targets[ordinal], row, channel)
+            {
+                for tape in 0..C6_CACHE_FOLD_TARGET_TAPES {
+                    self.aggregates[ordinal][tape] =
+                        self.aggregates[ordinal][tape].add(value[tape].scale(coefficient));
+                }
+                self.applications += 1;
+            }
+        }
+    }
+
+    fn end_group(&mut self, group: usize) {
+        debug_assert_eq!(group, self.next_group);
+        self.next_group += 1;
+    }
+
+    fn validate_finish(&self) -> Result<(), C6CacheFoldTraceError> {
+        if self.poisoned
+            || self.next_group != self.plan.groups.len()
+            || self.applications != self.plan.metrics.coefficient_applications
+        {
+            return Err(C6CacheFoldTraceError::new("incomplete C6 verifier source compiler"));
+        }
+        Ok(())
+    }
+}
+
+fn source_target_coefficient(
+    target: &C6CacheFoldSourceTarget,
+    row: usize,
+    channel: usize,
+) -> Option<Fp2> {
+    let column = channel.checked_sub(target.column_offset)?;
+    if row >= target.row_weights.len() || column >= target.column_weights.len() {
+        return None;
+    }
+    Some(target.row_weights[row] * target.column_weights[column])
+}
+
 #[derive(Debug)]
 struct C6CacheFoldTraceRuntime {
     capture_id: u64,
@@ -1925,6 +2408,176 @@ mod tests {
             chi,
             &proof,
         ));
+    }
+
+    fn dense_source_fold(target: &C6CacheFoldSourceTarget, source: &[Fp2]) -> Fp2 {
+        let mut result = Fp2::ZERO;
+        for (row, &row_weight) in target.row_weights.iter().enumerate() {
+            for (column, &column_weight) in target.column_weights.iter().enumerate() {
+                result += row_weight
+                    * column_weight
+                    * source[row * C6_CACHE_FOLD_SOURCE_COLUMNS + target.column_offset + column];
+            }
+        }
+        result
+    }
+
+    #[test]
+    fn source_ordinal_stream_replaces_dense_cache_keys_and_feeds_c6ft1() {
+        let mut left = capture(true);
+        let mut right = left.clone();
+        let plan = C6CacheFoldSourceOrdinalPlan::compile(&left).unwrap();
+        assert_eq!(
+            plan.metrics(),
+            C6CacheFoldSourceOrdinalMetrics {
+                groups: 2,
+                source_cells: 2 * 4 * C6_CACHE_FOLD_SOURCE_COLUMNS as u64,
+                coefficient_applications: 24 * 4 * C6_CACHE_HEAD_WIDTH as u64,
+                target_accumulators: 24,
+            }
+        );
+        let seeds = [[0x71; 32], [0x72; 32]];
+        let deltas =
+            [Fp2::new(Fp::new(0x711), Fp::new(0x712)), Fp2::new(Fp::new(0x721), Fp::new(0x722))];
+        let mut streams = [CorrelationStream::new(seeds[0]), CorrelationStream::new(seeds[1])];
+        let mut contexts =
+            [VerifierCtx::new(seeds[0], deltas[0]), VerifierCtx::new(seeds[1], deltas[1])];
+        let groups =
+            [(C6CacheFoldKind::KeyRows, 0x7100u64), (C6CacheFoldKind::ValueColumns, 0x7200u64)];
+        let mut plaintexts = Vec::new();
+        let mut source_masks: [Vec<Vec<Fp2>>; C6_CACHE_FOLD_TARGET_TAPES] =
+            std::array::from_fn(|_| Vec::new());
+        let mut source_tags: [Vec<Vec<Fp2>>; C6_CACHE_FOLD_TARGET_TAPES] =
+            std::array::from_fn(|_| Vec::new());
+        for (group_index, (_, base_domain)) in groups.iter().enumerate() {
+            let values = (0..4 * C6_CACHE_FOLD_SOURCE_COLUMNS)
+                .map(|index| {
+                    Fp2::from_base(Fp::new(1 + group_index as u64 * 10_000 + index as u64))
+                })
+                .collect::<Vec<_>>();
+            plaintexts.push(values);
+            for tape in 0..C6_CACHE_FOLD_TARGET_TAPES {
+                let mut masks = Vec::new();
+                let mut tags = Vec::new();
+                for row in 0..4 {
+                    masks.extend(
+                        streams[tape]
+                            .draw_sub_masks(base_domain + row as u64, C6_CACHE_FOLD_SOURCE_COLUMNS)
+                            .into_iter()
+                            .map(Fp2::from_base),
+                    );
+                    tags.extend(
+                        streams[tape]
+                            .draw_sub_tags(base_domain + row as u64, C6_CACHE_FOLD_SOURCE_COLUMNS),
+                    );
+                }
+                source_masks[tape].push(masks);
+                source_tags[tape].push(tags);
+                contexts[tape].reserve_sub_key_rows(*base_domain, 4, C6_CACHE_FOLD_SOURCE_COLUMNS);
+            }
+        }
+        for (ordinal, target) in plan.targets.iter().enumerate() {
+            let group = match target.kind {
+                C6CacheFoldKind::KeyRows => 0,
+                C6CacheFoldKind::ValueColumns => 1,
+            };
+            let x = dense_source_fold(target, &plaintexts[group]);
+            let tags: [Fp2; C6_CACHE_FOLD_TARGET_TAPES] =
+                std::array::from_fn(|tape| dense_source_fold(target, &source_tags[tape][group]));
+            left.targets[ordinal] =
+                C6CacheFoldAuthenticatedTarget::Prover(ProverAuthed::new(x, tags[0]));
+            right.targets[ordinal] =
+                C6CacheFoldAuthenticatedTarget::Prover(ProverAuthed::new(x, tags[1]));
+        }
+        let paired = C6CacheFoldPairedProverTargets::pair([&left, &right]).unwrap();
+        let prover_counters = [streams[0].counters, streams[1].counters];
+        let mut prover_compiler = plan.start_prover();
+        for &(kind, base_domain) in &groups {
+            prover_compiler
+                .absorb_consumed_subfield_segments(
+                    0,
+                    kind,
+                    &[C6CacheFoldDirectSourceSegment { base_domain, rows: 4 }],
+                    &mut streams,
+                )
+                .unwrap();
+        }
+        let (target_masks, prover_metrics) = prover_compiler.finish().unwrap();
+        assert_eq!(prover_metrics, plan.metrics());
+        assert_eq!([streams[0].counters, streams[1].counters], prover_counters);
+
+        let mut verifier_compiler = plan.start_verifier();
+        for &(kind, base_domain) in &groups {
+            verifier_compiler
+                .absorb_reserved_subfield_segments(
+                    0,
+                    kind,
+                    &[C6CacheFoldDirectSourceSegment { base_domain, rows: 4 }],
+                    &mut contexts,
+                )
+                .unwrap();
+        }
+        let (base_targets, verifier_metrics) = verifier_compiler.finish().unwrap();
+        assert_eq!(verifier_metrics, plan.metrics());
+        assert_eq!(contexts[0].counters, streams[0].counters);
+        assert_eq!(contexts[1].counters, streams[1].counters);
+
+        for (ordinal, target) in plan.targets.iter().enumerate() {
+            let group = match target.kind {
+                C6CacheFoldKind::KeyRows => 0,
+                C6CacheFoldKind::ValueColumns => 1,
+            };
+            for tape in 0..C6_CACHE_FOLD_TARGET_TAPES {
+                assert_eq!(
+                    target_masks[ordinal][tape],
+                    dense_source_fold(target, &source_masks[tape][group])
+                );
+            }
+        }
+
+        let statement_digest = [0x73; 32];
+        let frame = C6CacheFoldTargetCorrectionFrame::from_prover_targets(
+            statement_digest,
+            &paired,
+            &target_masks,
+        )
+        .unwrap();
+        let schedule = plan.schedule().unwrap();
+        let mut transcript = Transcript::new([0x74; 32]);
+        let mut verifier_stream =
+            C6CacheFoldTargetInlineVerifier::start(&frame, schedule, deltas, &mut transcript)
+                .unwrap();
+        for ((kind, targets), (base_kind, base)) in paired.terms().zip(base_targets.terms()) {
+            assert_eq!(kind, base_kind);
+            let corrected =
+                verifier_stream.correct_next_before_product(kind, base, &mut transcript).unwrap();
+            for tape in 0..C6_CACHE_FOLD_TARGET_TAPES {
+                assert_eq!(corrected[tape].k, targets[tape].m + deltas[tape] * targets[tape].x);
+            }
+        }
+        let _ = verifier_stream.finish_before_successor_root(&mut transcript).unwrap();
+        assert_eq!(transcript.total_bytes(), C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES);
+
+        let mut reordered = plan.start_prover();
+        assert!(reordered
+            .absorb_group(
+                0,
+                C6CacheFoldKind::ValueColumns,
+                4,
+                std::iter::repeat_n([Fp2::ZERO; 2], 4 * C6_CACHE_FOLD_SOURCE_COLUMNS),
+            )
+            .is_err());
+        assert!(reordered.finish().is_err());
+        let mut truncated = plan.start_prover();
+        assert!(truncated
+            .absorb_group(
+                0,
+                C6CacheFoldKind::KeyRows,
+                4,
+                std::iter::repeat_n([Fp2::ZERO; 2], 4 * C6_CACHE_FOLD_SOURCE_COLUMNS - 1,),
+            )
+            .is_err());
+        assert!(truncated.finish().is_err());
     }
 
     fn fp2_power(base: Fp2, exponent: usize) -> Fp2 {

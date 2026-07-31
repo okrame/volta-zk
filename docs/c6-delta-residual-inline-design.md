@@ -19,7 +19,8 @@ ROLE-TYPED RUNTIME TARGETS + STEP-WISE 24-ROUND CACHE PARTICIPANT SCALED
 GREEN; INDIVIDUAL TARGET `C6FT1` BOOTSTRAP FORMAL + STRICT CODEC + INLINE
 ΠPROD/C6PS1 SCALED DIFFERENTIAL GREEN; SOURCE-ORDINAL BASE-MASK/KEY
 STREAMER + PHASE-1 POOLED-PCG RESERVATION/REPLAY DIFFERENTIAL GREEN;
-`CacheSegK` REMOVAL / BACKEND / FINAL ENVELOPE PENDING;
+INLINE RUNTIME-IDENTITY ORDERING REPAIR PREREGISTERED; `CacheSegK` REMOVAL /
+BACKEND / FINAL ENVELOPE PENDING;
 LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
@@ -4102,6 +4103,41 @@ direct sources during phase 1, supplies each corrected target before its
 ΠProd, and migrates the remaining own-segment auxiliary claims without
 ever constructing `CacheSegK`.  There are still zero new response bytes,
 correlations, setup bytes or timing credit at this checkpoint.
+
+#### 6.2.3 Runtime identity is sealed after the last target, before `rho`
+
+The first attempted block-verifier injection exposed one further ordering
+obstruction before implementation.  `C6FT1` target coefficients contain the
+attention sumcheck points, so the response-specific fold `instance_digest`
+does not exist when the fixed header and first target slot must be sent.  The
+post-hoc scaled API incorrectly required that final identity at
+`C6FT1::start`.  Precomputing it would either predict verifier challenges or
+replay the proof, and is forbidden.
+
+The strict online descendant separates two schedules without changing the
+wire grammar:
+
+1. before the first slot, the client derives the statement-bound live count
+   and canonical K/V kind order from the public workload;
+2. for every live ordinal, both parties absorb the runtime record and its
+   challenge-derived row/column factors, then fix/check that ordinal's two
+   correction slots before its ΠProd challenge;
+3. after the last live slot and fixed zero padding, both parties finalize the
+   complete runtime trace identity and compare it to the independently
+   accumulated records/factors;
+4. only then may either successor scalar root `rho` be sampled.  The same
+   final identity remains bound into the cache source-schedule digest and
+   the later `C6PS1` fold.
+
+The 48-B header already carries statement digest, live count and fixed
+capacity; the response-specific runtime identity was never serialized in
+`C6FT1`.  Structural decoding therefore continues to reject bad header,
+count, limbs and padding, while semantic finalization rejects wrong topology,
+record/factor digest or incomplete target order.  This repair adds **0 B**,
+no challenge, no correlation and no bad event.  The existing post-hoc
+full-identity constructor/decoder remains available as a stricter replay
+check; only the online typestate is split into public start and runtime
+finish.
 before that gate.
 
 ## 7. Certificate and challenge grammar

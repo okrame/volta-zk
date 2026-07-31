@@ -2885,6 +2885,20 @@ generic different-point theorem to `(64,25)`, prove the `141` census and the
 `26,282 < 2^16` composition.  It may not edit the frozen M9/X4 theorems or
 add an axiom.  Until that audit is green, implementation is hard-stopped.
 
+That gate is now green in the additive
+`C6AuthenticatedOutputLink.lean` module.  It proves
+`c6_packed_link_root_census`,
+`c6_packed_authenticated_output_link_sound`,
+`c6_packed_link_two_repetition_card_le`,
+`c6_hidden_linear_plus_link_numerator` and
+`c6_hidden_linear_plus_link_numerator_le_2_pow_16`.  The complete build is
+**3,259 jobs** and the derived audit is **308 total / 72 C6** targets, with
+zero `sorry`/`admit` and only `propext`, `Classical.choice` and
+`Quot.sound`.  The hard stop therefore advances to the scaled strict
+combined codec, opaque pending/bound typestate and prover/verifier
+differential; production memory, response removal and timing remain later
+gates.
+
 The wrapper PCS uses rate `1/8`, two independent fold/query chains and
 `s=86` queries per chain.  Under the conservative 64-active-polynomial,
 `2^28` weight-oracle and `2^19` auxiliary maxima, one repetition has

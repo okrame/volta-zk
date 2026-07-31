@@ -6154,7 +6154,7 @@ fn prove_attn_block_impl(
             h * DH,
             &eq_l[..s_len],
             &eq_within,
-            b_open.c6_trace_token(),
+            crate::c6_cache_fold::C6CacheFoldAuthenticatedTarget::Prover(b_open),
         )
         .expect("C6 W·V cache-fold trace must be canonical");
         timings.t_open_tags_s = open_started.elapsed().as_secs_f64();
@@ -6513,7 +6513,7 @@ fn prove_attn_block_impl(
             h * DH,
             &eq_rj_sc[..s_len],
             &eq_l[..DH],
-            b_open.c6_trace_token(),
+            crate::c6_cache_fold::C6CacheFoldAuthenticatedTarget::Prover(b_open),
         )
         .expect("C6 Q·K^T cache-fold trace must be canonical");
         timings.t_open_tags_s = open_started.elapsed().as_secs_f64();
@@ -8039,7 +8039,7 @@ fn verify_attn_block_impl(
             h * DH,
             &eq_l[..s_len],
             &eq_within,
-            k_b.c6_trace_token(),
+            crate::c6_cache_fold::C6CacheFoldAuthenticatedTarget::Verifier(k_b),
         )
         .expect("C6 verifier W·V cache-fold trace must be canonical");
         let (wk, _r_l) = finalize_verify_gemm_act_chained(
@@ -8250,7 +8250,7 @@ fn verify_attn_block_impl(
             h * DH,
             &eq_rj_sc[..s_len],
             &eq_l[..DH],
-            k_b.c6_trace_token(),
+            crate::c6_cache_fold::C6CacheFoldAuthenticatedTarget::Verifier(k_b),
         )
         .expect("C6 verifier Q·K^T cache-fold trace must be canonical");
         let (wk, _r_l) = finalize_verify_gemm_act_chained(

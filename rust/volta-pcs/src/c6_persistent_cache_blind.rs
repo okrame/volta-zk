@@ -21,6 +21,11 @@ use volta_mac::{
     zero_open_prover, zero_open_verify, CorrelationStream, ProverAuthed, Transcript, VerifierCtx,
     VerifierKey, RESERVED_DOMAIN_BITS,
 };
+#[cfg(feature = "c6-trace")]
+use volta_proto::c6_cache_fold::{
+    C6CacheFoldKind, C6CacheFoldPairedProverTargets, C6CacheFoldPairedVerifierTargets,
+    C6CacheFoldTraceIdentity,
+};
 use volta_proto::mle::{eq_vec, lagrange3};
 
 use crate::c6_persistent_cache::C6_PERSISTENT_CACHE_FOLD_CAPACITY;
@@ -63,6 +68,8 @@ const SOURCE_BOOTSTRAP_HEADER_BYTES: u64 = 48;
 const SOURCE_BOOTSTRAP_FOLD_BYTES: u64 = 64;
 const SOURCE_BOOTSTRAP_APPEND_BYTES: u64 = 64;
 const CORRELATION_BASE: u64 = 0x0C66_0000_0000_0000;
+#[cfg(feature = "c6-trace")]
+const RUNTIME_FOLD_SOURCE_SCHEDULE_DOMAIN: &str = "volta-zk/c6/runtime-fold-source-schedule/v1";
 
 const SOURCE_OWNER_COUNT: usize = 3;
 const SOURCE_KV_COUNT: usize = 2;
@@ -556,6 +563,22 @@ impl C6PersistentCacheSourcesProver {
         Ok(sources)
     }
 
+    #[cfg(feature = "c6-trace")]
+    pub(crate) fn new_with_runtime_fold_targets(
+        plan: &C6PersistentCacheRelationPlan,
+        transition_append: [Vec<[ProverAuthed; C6_PERSISTENT_CACHE_BLIND_TAPES]>; 2],
+        base_source_schedule_digest: C6WrapperDigest,
+        runtime: &C6CacheFoldPairedProverTargets,
+    ) -> Result<Self> {
+        validate_runtime_fold_binding(
+            plan,
+            base_source_schedule_digest,
+            runtime.identity,
+            runtime.terms().map(|(kind, _)| kind),
+        )?;
+        Self::new(plan, transition_append, runtime.terms().map(|(_, targets)| targets).collect())
+    }
+
     fn validate(&self, plan: &C6PersistentCacheRelationPlan) -> Result<()> {
         if self.source_schedule_digest != plan.source_schedule_digest
             || self.transition_append.iter().any(|values| values.len() != plan.append_len)
@@ -623,6 +646,22 @@ impl C6PersistentCacheSourcesVerifier {
         Ok(sources)
     }
 
+    #[cfg(feature = "c6-trace")]
+    pub(crate) fn new_with_runtime_fold_targets(
+        plan: &C6PersistentCacheRelationPlan,
+        transition_append: [Vec<[VerifierKey; C6_PERSISTENT_CACHE_BLIND_TAPES]>; 2],
+        base_source_schedule_digest: C6WrapperDigest,
+        runtime: &C6CacheFoldPairedVerifierTargets,
+    ) -> Result<Self> {
+        validate_runtime_fold_binding(
+            plan,
+            base_source_schedule_digest,
+            runtime.identity,
+            runtime.terms().map(|(kind, _)| kind),
+        )?;
+        Self::new(plan, transition_append, runtime.terms().map(|(_, targets)| targets).collect())
+    }
+
     fn append_values(
         &self,
         plan: &C6PersistentCacheRelationPlan,
@@ -656,6 +695,55 @@ impl C6PersistentCacheSourcesVerifier {
         }
         values
     }
+}
+
+#[cfg(feature = "c6-trace")]
+pub(crate) fn c6_runtime_fold_source_schedule_digest(
+    base_source_schedule_digest: C6WrapperDigest,
+    identity: C6CacheFoldTraceIdentity,
+) -> Result<C6WrapperDigest> {
+    if base_source_schedule_digest == [0; 32]
+        || identity.fold_count == 0
+        || u64::from(identity.fold_count) > C6_PERSISTENT_CACHE_FOLD_CAPACITY
+    {
+        return Err(C6PersistentCacheBlindError::new(
+            "invalid C6 runtime-fold source-schedule binding",
+        ));
+    }
+    let mut hasher = blake3::Hasher::new_derive_key(RUNTIME_FOLD_SOURCE_SCHEDULE_DOMAIN);
+    hasher.update(&base_source_schedule_digest);
+    hasher.update(&identity.version.to_le_bytes());
+    hasher.update(&identity.fold_count.to_le_bytes());
+    hasher.update(&identity.coefficient_applications.to_le_bytes());
+    hasher.update(&identity.topology_digest);
+    hasher.update(&identity.instance_digest);
+    Ok(*hasher.finalize().as_bytes())
+}
+
+#[cfg(feature = "c6-trace")]
+fn validate_runtime_fold_binding(
+    plan: &C6PersistentCacheRelationPlan,
+    base_source_schedule_digest: C6WrapperDigest,
+    identity: C6CacheFoldTraceIdentity,
+    kinds: impl Iterator<Item = C6CacheFoldKind>,
+) -> Result<()> {
+    let expected_schedule =
+        c6_runtime_fold_source_schedule_digest(base_source_schedule_digest, identity)?;
+    if plan.source_schedule_digest != expected_schedule
+        || identity.fold_count as usize != plan.successor_fold_functionals.len()
+        || kinds.zip(&plan.successor_fold_functionals).any(|(kind, functional)| {
+            usize::from(functional.kv)
+                != match kind {
+                    C6CacheFoldKind::KeyRows => 0,
+                    C6CacheFoldKind::ValueColumns => 1,
+                }
+        })
+    {
+        return Err(C6PersistentCacheBlindError::new(
+            "C6 runtime fold targets do not match the cache statement",
+        ));
+    }
+    Ok(())
 }
 
 impl C6PersistentCacheSourceMasksProver {
@@ -945,6 +1033,183 @@ pub struct C6PersistentCachePendingClaimsVerifier {
     entries: Vec<PendingVerifierEntry>,
 }
 
+struct C6PersistentCacheProverRoundState {
+    repetition: u8,
+    round: usize,
+    rounds: usize,
+    current: [ProverAuthed; C6_PERSISTENT_CACHE_BLIND_TAPES],
+    coefficient_tables: [Vec<Fp2>; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS],
+    witness_tables: [Vec<Fp2>; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS],
+    point: Vec<Fp2>,
+    pending_nodes: Option<[[ProverAuthed; 3]; C6_PERSISTENT_CACHE_BLIND_TAPES]>,
+}
+
+impl C6PersistentCacheProverRoundState {
+    fn new(
+        repetition: u8,
+        current: [ProverAuthed; C6_PERSISTENT_CACHE_BLIND_TAPES],
+        compiled: &CompiledRelation,
+        witness: &C6PersistentCacheBlindWitness,
+        rounds: usize,
+    ) -> Self {
+        Self {
+            repetition,
+            round: 0,
+            rounds,
+            current,
+            coefficient_tables: compiled.coefficients.clone(),
+            witness_tables: witness.tables.clone(),
+            point: Vec::with_capacity(rounds),
+            pending_nodes: None,
+        }
+    }
+
+    fn fix_next_round(
+        &mut self,
+        streams: &mut [CorrelationStream; C6_PERSISTENT_CACHE_BLIND_TAPES],
+    ) -> Result<[[Fp2; 2]; C6_PERSISTENT_CACHE_BLIND_TAPES]> {
+        if self.pending_nodes.is_some() || self.round >= self.rounds {
+            return Err(C6PersistentCacheBlindError::new(
+                "C6PC2 prover round state is not awaiting a message",
+            ));
+        }
+        let evaluations =
+            sumcheck_round_evaluations(&self.coefficient_tables, &self.witness_tables)?;
+        if evaluations[0] + evaluations[1] != self.current[0].x
+            || evaluations[0] + evaluations[1] != self.current[1].x
+        {
+            return Err(C6PersistentCacheBlindError::new(
+                "C6PC2 clear relation diverges from authenticated source",
+            ));
+        }
+        let mut corrections = [[Fp2::ZERO; 2]; C6_PERSISTENT_CACHE_BLIND_TAPES];
+        let mut nodes = [[ProverAuthed::ZERO; 3]; C6_PERSISTENT_CACHE_BLIND_TAPES];
+        for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
+            let sent0 = authenticate_one(
+                &mut streams[tape],
+                correlation_domain(
+                    self.repetition,
+                    tape,
+                    CorrelationPurpose::Round,
+                    self.round * 2,
+                )?,
+                evaluations[0],
+            )?;
+            let sent2 = authenticate_one(
+                &mut streams[tape],
+                correlation_domain(
+                    self.repetition,
+                    tape,
+                    CorrelationPurpose::Round,
+                    self.round * 2 + 1,
+                )?,
+                evaluations[2],
+            )?;
+            corrections[tape] = [sent0.0, sent2.0];
+            nodes[tape] = [sent0.1, self.current[tape].sub(sent0.1), sent2.1];
+            if nodes[tape][1].x != evaluations[1] {
+                return Err(C6PersistentCacheBlindError::new("C6PC2 compressed node-one mismatch"));
+            }
+        }
+        self.pending_nodes = Some(nodes);
+        Ok(corrections)
+    }
+
+    fn bind_challenge(&mut self, challenge: Fp2) -> Result<()> {
+        let nodes = self.pending_nodes.take().ok_or_else(|| {
+            C6PersistentCacheBlindError::new("C6PC2 prover challenge precedes round message")
+        })?;
+        let weights = lagrange3(challenge);
+        self.point.push(challenge);
+        for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
+            self.current[tape] = interpolate_prover(nodes[tape], weights);
+        }
+        fold_tables(&mut self.coefficient_tables, challenge)?;
+        fold_tables(&mut self.witness_tables, challenge)?;
+        self.round += 1;
+        Ok(())
+    }
+}
+
+struct C6PersistentCacheVerifierRoundState {
+    repetition: u8,
+    round: usize,
+    rounds: usize,
+    current: [VerifierKey; C6_PERSISTENT_CACHE_BLIND_TAPES],
+    coefficient_tables: [Vec<Fp2>; C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS],
+    point: Vec<Fp2>,
+    pending_nodes: Option<[[VerifierKey; 3]; C6_PERSISTENT_CACHE_BLIND_TAPES]>,
+}
+
+impl C6PersistentCacheVerifierRoundState {
+    fn new(
+        repetition: u8,
+        current: [VerifierKey; C6_PERSISTENT_CACHE_BLIND_TAPES],
+        compiled: CompiledRelation,
+        rounds: usize,
+    ) -> Self {
+        Self {
+            repetition,
+            round: 0,
+            rounds,
+            current,
+            coefficient_tables: compiled.coefficients,
+            point: Vec::with_capacity(rounds),
+            pending_nodes: None,
+        }
+    }
+
+    fn check_next_round(
+        &mut self,
+        corrections: [[Fp2; 2]; C6_PERSISTENT_CACHE_BLIND_TAPES],
+        contexts: &mut [VerifierCtx; C6_PERSISTENT_CACHE_BLIND_TAPES],
+    ) -> Result<()> {
+        if self.pending_nodes.is_some() || self.round >= self.rounds {
+            return Err(C6PersistentCacheBlindError::new(
+                "C6PC2 verifier round state is not awaiting a message",
+            ));
+        }
+        let mut nodes = [[VerifierKey::ZERO; 3]; C6_PERSISTENT_CACHE_BLIND_TAPES];
+        for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
+            let sent0 = contexts[tape].correct_full_verifier_keys(
+                correlation_domain(
+                    self.repetition,
+                    tape,
+                    CorrelationPurpose::Round,
+                    self.round * 2,
+                )?,
+                &[corrections[tape][0]],
+            )[0];
+            let sent2 = contexts[tape].correct_full_verifier_keys(
+                correlation_domain(
+                    self.repetition,
+                    tape,
+                    CorrelationPurpose::Round,
+                    self.round * 2 + 1,
+                )?,
+                &[corrections[tape][1]],
+            )[0];
+            nodes[tape] = [sent0, self.current[tape].sub(sent0), sent2];
+        }
+        self.pending_nodes = Some(nodes);
+        Ok(())
+    }
+
+    fn bind_challenge(&mut self, challenge: Fp2) -> Result<()> {
+        let nodes = self.pending_nodes.take().ok_or_else(|| {
+            C6PersistentCacheBlindError::new("C6PC2 verifier challenge precedes round message")
+        })?;
+        let weights = lagrange3(challenge);
+        self.point.push(challenge);
+        for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
+            self.current[tape] = interpolate_verifier(nodes[tape], weights);
+        }
+        fold_tables(&mut self.coefficient_tables, challenge)?;
+        self.round += 1;
+        Ok(())
+    }
+}
+
 impl C6PersistentCachePendingClaimsProver {
     pub fn len(&self) -> usize {
         self.entries.len()
@@ -1073,52 +1338,22 @@ pub(crate) fn prove_c6_persistent_cache_blind_reference(
         let source_aggregates =
             assemble_source_aggregates(append_values, fold_values, ProverAuthed::ZERO);
         transcript.append(REPETITION_LABEL, REPETITION_PREFIX_BYTES);
-        let mut current = array::from_fn::<_, C6_PERSISTENT_CACHE_BLIND_TAPES, _>(|tape| {
+        let current = array::from_fn::<_, C6_PERSISTENT_CACHE_BLIND_TAPES, _>(|tape| {
             combine_source_aggregates_prover(&source_aggregates, relation_roots, kv_root, tape)
         });
-        let mut coefficient_tables = compiled.coefficients.clone();
-        let mut witness_tables = witness.tables.clone();
-        let mut point = Vec::with_capacity(plan.rounds);
+        let mut round_state = C6PersistentCacheProverRoundState::new(
+            repetition,
+            current,
+            &compiled,
+            witness,
+            plan.rounds,
+        );
         let mut round_corrections = Vec::with_capacity(plan.rounds);
-        for round in 0..plan.rounds {
-            let evaluations = sumcheck_round_evaluations(&coefficient_tables, &witness_tables)?;
-            if evaluations[0] + evaluations[1] != current[0].x
-                || evaluations[0] + evaluations[1] != current[1].x
-            {
-                return Err(C6PersistentCacheBlindError::new(
-                    "C6PC2 clear relation diverges from authenticated source",
-                ));
-            }
-            let mut corrections = [[Fp2::ZERO; 2]; C6_PERSISTENT_CACHE_BLIND_TAPES];
-            let mut nodes = [[ProverAuthed::ZERO; 3]; C6_PERSISTENT_CACHE_BLIND_TAPES];
-            for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
-                let sent0 = authenticate_one(
-                    &mut streams[tape],
-                    correlation_domain(repetition, tape, CorrelationPurpose::Round, round * 2)?,
-                    evaluations[0],
-                )?;
-                let sent2 = authenticate_one(
-                    &mut streams[tape],
-                    correlation_domain(repetition, tape, CorrelationPurpose::Round, round * 2 + 1)?,
-                    evaluations[2],
-                )?;
-                corrections[tape] = [sent0.0, sent2.0];
-                nodes[tape] = [sent0.1, current[tape].sub(sent0.1), sent2.1];
-                if nodes[tape][1].x != evaluations[1] {
-                    return Err(C6PersistentCacheBlindError::new(
-                        "C6PC2 compressed node-one mismatch",
-                    ));
-                }
-            }
+        for _ in 0..plan.rounds {
+            let corrections = round_state.fix_next_round(streams)?;
             transcript.append(ROUND_LABEL, ROUND_BYTES);
             let challenge = transcript.challenge_fp2();
-            point.push(challenge);
-            let weights = lagrange3(challenge);
-            for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
-                current[tape] = interpolate_prover(nodes[tape], weights);
-            }
-            fold_tables(&mut coefficient_tables, challenge)?;
-            fold_tables(&mut witness_tables, challenge)?;
+            round_state.bind_challenge(challenge)?;
             round_corrections.push(corrections);
         }
         let mut terminal_corrections = [[Fp2::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES];
@@ -1132,7 +1367,7 @@ pub(crate) fn prove_c6_persistent_cache_blind_reference(
                 let (correction, auth) = authenticate_one(
                     &mut streams[tape],
                     correlation_domain(repetition, tape, CorrelationPurpose::Terminal, terminal)?,
-                    witness_tables[terminal][0],
+                    round_state.witness_tables[terminal][0],
                 )?;
                 correction_values[tape] = correction;
                 terminal_auths[tape] = auth;
@@ -1144,13 +1379,22 @@ pub(crate) fn prove_c6_persistent_cache_blind_reference(
             let expected = (0..C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS).fold(
                 ProverAuthed::ZERO,
                 |sum, terminal| {
-                    sum.add(terminals[terminal][tape].scale(coefficient_tables[terminal][0]))
+                    sum.add(
+                        terminals[terminal][tape]
+                            .scale(round_state.coefficient_tables[terminal][0]),
+                    )
                 },
             );
-            let residual = current[tape].sub(expected).scale(terminal_root);
+            let residual = round_state.current[tape].sub(expected).scale(terminal_root);
             zero_open_prover(&residual, transcript)
         });
-        append_pending_prover(&mut pending_entries, plan, repetition, &point, terminals);
+        append_pending_prover(
+            &mut pending_entries,
+            plan,
+            repetition,
+            &round_state.point,
+            terminals,
+        );
         repetitions.push(C6PersistentCacheBlindRepetitionProof {
             schedule_digest: compiled.schedule_digest,
             round_corrections,
@@ -1242,33 +1486,16 @@ pub(crate) fn verify_c6_persistent_cache_blind(
             &source_base_aggregates,
             [contexts[0].delta, contexts[1].delta],
         )?;
-        let mut current = array::from_fn::<_, C6_PERSISTENT_CACHE_BLIND_TAPES, _>(|tape| {
+        let current = array::from_fn::<_, C6_PERSISTENT_CACHE_BLIND_TAPES, _>(|tape| {
             combine_source_aggregates_verifier(&source_aggregates, relation_roots, kv_root, tape)
         });
-        let mut coefficient_tables = compiled.coefficients;
-        let mut point = Vec::with_capacity(plan.rounds);
+        let mut round_state =
+            C6PersistentCacheVerifierRoundState::new(repetition, current, compiled, plan.rounds);
         for round in 0..plan.rounds {
-            let mut nodes = [[VerifierKey::ZERO; 3]; C6_PERSISTENT_CACHE_BLIND_TAPES];
-            for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
-                let corrections = repetition_proof.round_corrections[round][tape];
-                let sent0 = contexts[tape].correct_full_verifier_keys(
-                    correlation_domain(repetition, tape, CorrelationPurpose::Round, round * 2)?,
-                    &[corrections[0]],
-                )[0];
-                let sent2 = contexts[tape].correct_full_verifier_keys(
-                    correlation_domain(repetition, tape, CorrelationPurpose::Round, round * 2 + 1)?,
-                    &[corrections[1]],
-                )[0];
-                nodes[tape] = [sent0, current[tape].sub(sent0), sent2];
-            }
+            round_state.check_next_round(repetition_proof.round_corrections[round], contexts)?;
             transcript.append(ROUND_LABEL, ROUND_BYTES);
             let challenge = transcript.challenge_fp2();
-            point.push(challenge);
-            let weights = lagrange3(challenge);
-            for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
-                current[tape] = interpolate_verifier(nodes[tape], weights);
-            }
-            fold_tables(&mut coefficient_tables, challenge)?;
+            round_state.bind_challenge(challenge)?;
         }
         let mut terminals = [[VerifierKey::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES];
             C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS];
@@ -1286,16 +1513,25 @@ pub(crate) fn verify_c6_persistent_cache_blind(
             let expected = (0..C6_PERSISTENT_CACHE_BLIND_LIVE_TERMINALS).fold(
                 VerifierKey::ZERO,
                 |sum, terminal| {
-                    sum.add(terminals[terminal][tape].scale(coefficient_tables[terminal][0]))
+                    sum.add(
+                        terminals[terminal][tape]
+                            .scale(round_state.coefficient_tables[terminal][0]),
+                    )
                 },
             );
-            let residual = current[tape].sub(expected).scale(terminal_root);
+            let residual = round_state.current[tape].sub(expected).scale(terminal_root);
             transcript.append("zero_open_tag", FP2_BYTES);
             if !zero_open_verify(residual, repetition_proof.terminal_tags[tape]) {
                 return Err(C6PersistentCacheBlindError::new("C6PC2 terminal ZeroOpen failed"));
             }
         }
-        append_pending_verifier(&mut pending_entries, plan, repetition, &point, terminals);
+        append_pending_verifier(
+            &mut pending_entries,
+            plan,
+            repetition,
+            &round_state.point,
+            terminals,
+        );
     }
     Ok(C6PersistentCachePendingClaimsVerifier { entries: pending_entries })
 }
@@ -1948,6 +2184,102 @@ mod tests {
             }
         }
         assert_ne!(frame.fold_corrections[0], frame.fold_corrections[1]);
+    }
+
+    #[test]
+    fn stepwise_cache_state_binds_only_challenges_released_by_global_coordinator() {
+        use crate::c6_wrapper_pcs::{
+            fix_test_c6_wrapper_commitments, C6WrapperCohortSpec, C6WrapperCommitment,
+            C6WrapperOracleKind, C6WrapperRoundCoordinator, C6WrapperRoundMessageReceipt,
+            C6_CACHE_ROUND_PARTICIPANT_ID,
+        };
+
+        let (plan, witness, sources, _, _) = fixture();
+        let relation_roots = [symbol(501), symbol(502), symbol(503)];
+        let kv_root = symbol(504);
+        let relation_point =
+            (0..ROUNDS).map(|index| symbol(510 + index as u64)).collect::<Vec<_>>();
+        let fold_weights = plan.fold_weights(relation_roots[2]);
+        let compiled =
+            plan.compile(0, &relation_point, relation_roots, kv_root, &fold_weights).unwrap();
+        let aggregates = assemble_source_aggregates(
+            sources.append_values(&plan, &compiled),
+            sources.fold_values(&plan, &fold_weights),
+            ProverAuthed::ZERO,
+        );
+        let current = array::from_fn(|tape| {
+            combine_source_aggregates_prover(&aggregates, relation_roots, kv_root, tape)
+        });
+        let mut state =
+            C6PersistentCacheProverRoundState::new(0, current, &compiled, &witness, ROUNDS);
+        assert!(state.bind_challenge(symbol(599)).is_err());
+
+        let specs = [
+            C6WrapperCohortSpec {
+                cohort_id: 11,
+                oracle_kind: C6WrapperOracleKind::Witness,
+                payload_log2: 3,
+                slot_count: 2,
+            },
+            C6WrapperCohortSpec {
+                cohort_id: 12,
+                oracle_kind: C6WrapperOracleKind::Witness,
+                payload_log2: 2,
+                slot_count: 2,
+            },
+            C6WrapperCohortSpec {
+                cohort_id: 13,
+                oracle_kind: C6WrapperOracleKind::Auxiliary,
+                payload_log2: 2,
+                slot_count: 4,
+            },
+        ];
+        let statement = [0xA5; 32];
+        let commitments = specs
+            .into_iter()
+            .enumerate()
+            .map(|(index, spec)| {
+                C6WrapperCommitment::from_root(statement, spec, [(index + 1) as u8; 32]).unwrap()
+            })
+            .collect::<Vec<_>>();
+        let mut transcript = Transcript::new([0xB6; 32]);
+        let fixed =
+            fix_test_c6_wrapper_commitments(statement, &commitments, &mut transcript).unwrap();
+        let mut coordinator = C6WrapperRoundCoordinator::new_test(&fixed, 0, ROUNDS, 2, 3).unwrap();
+        let mut streams = array::from_fn(|tape| CorrelationStream::new(TAPE_SEEDS[tape]));
+        let mut corrections = Vec::with_capacity(ROUNDS);
+        while coordinator.round_index() < ROUNDS {
+            let round_corrections = state.fix_next_round(&mut streams).unwrap();
+            assert!(state.fix_next_round(&mut streams).is_err());
+            let ids = coordinator.expected_participant_ids().unwrap();
+            assert_eq!(ids[0], C6_CACHE_ROUND_PARTICIPANT_ID);
+            let receipts = ids
+                .iter()
+                .map(|&participant_id| C6WrapperRoundMessageReceipt {
+                    participant_id,
+                    message_bytes: if participant_id == C6_CACHE_ROUND_PARTICIPANT_ID {
+                        ROUND_BYTES
+                    } else {
+                        1
+                    },
+                })
+                .collect::<Vec<_>>();
+            let challenge =
+                coordinator.fix_messages_and_release_challenge(&receipts, &mut transcript).unwrap();
+            state.bind_challenge(challenge).unwrap();
+            coordinator.confirm_participants_bound(&ids).unwrap();
+            corrections.push(round_corrections);
+        }
+        let point = coordinator.finish().unwrap();
+        assert_eq!(state.point, point.random_point());
+        let mut expected_cache_point = state.point.clone();
+        expected_cache_point.push(Fp2::ZERO);
+        assert_eq!(expected_cache_point, point.common_point());
+        assert_eq!(corrections.len(), ROUNDS);
+        assert_eq!(
+            transcript.bytes_for("c6_wrapper_global_sumcheck_round"),
+            ROUNDS as u64 * ROUND_BYTES + 3
+        );
     }
 
     #[test]

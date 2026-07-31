@@ -15,7 +15,8 @@ AMENDMENT, EXACT 72-SLOT ROOFLINE AND SIX-GROUP C6LNK2 PACKED WRAPPER GREEN;
 POINTWISE C6PC2 AND SOURCE-BOUND C6PS1 -> C6PC2 -> C6LNK2 -> PAIRED PCS
 SCALED PATH GREEN WITH ZERO CACHE STAND-INS; FACTORIZED RUNTIME FOLD-BATCH
 COMPILER + 653-ROOT FORMAL REPAIR + STRICT C6PS1 V2 TRANSCRIPT MIGRATION GREEN;
-TYPED PENDING-TARGET / 24-ROUND CACHE INTEGRATION / `CacheSegK` REMOVAL /
+ROLE-TYPED RUNTIME TARGETS + STEP-WISE 24-ROUND CACHE PARTICIPANT SCALED
+GREEN; `CacheSegK` REMOVAL /
 BACKEND / FINAL ENVELOPE PENDING;
 LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
@@ -3925,10 +3926,31 @@ reference census and the current 653-root streaming census are now separate
 executable constants, preventing historical metrics from silently claiming
 the scalar-batch repair.
 
-This closes strict `C6PS1` placement only.  Typed runtime targets still have
-to replace the scaled fold-source fixture and enter the step-wise 24-round
-cache participant; `CacheSegK` remains live.  No response, setup,
-correlation, prover-time or hardware credit is earned yet.
+The next scaled integration sub-gate is also locally green.  The runtime
+recorder now owns role-typed authenticated targets (`ProverAuthed` or
+`VerifierKey`) rather than provenance-only tokens.  Pairing two tapes checks
+the complete record/factor/instance identity; prover pairing additionally
+requires identical target plaintexts.  The scalar compiler exposes the
+canonical ordered targets and computes K/V authenticated aggregates without
+materializing a dense cache field.  Role substitution, plaintext mismatch,
+schedule mismatch and a mixed-role snapshot fail closed.
+
+`C6PersistentCache{Prover,Verifier}RoundState` now exposes the cache
+sumcheck one round at a time.  A round message must be fixed/checked before
+the response-global coordinator releases its challenge; duplicate messages,
+challenge-before-message and schedule mismatches reject.  A 24-round scaled
+differential drives the cache state only through
+`C6WrapperRoundCoordinator`, obtains the same global random point and checks
+the exact message ledger.  The source adapter accepts only paired typed
+runtime targets and binds the fold trace identity into its source-schedule
+digest before importing K/V targets.
+
+This closes target typing and the step-wise orchestration seam, not the
+production transition.  The targets currently observed in the historical
+model verifier are still the values obtained after folding `CacheSegK` and
+are consumed immediately by the existing product check.  Therefore
+`CacheSegK` remains live, the 24-round test remains scaled, and no response,
+setup, correlation, prover-time or hardware credit is earned yet.
 
 ## 7. Certificate and challenge grammar
 

@@ -13,7 +13,7 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use volta_field::Fp2;
-use volta_mac::C6TraceToken;
+use volta_mac::{C6TraceToken, ProverAuthed, VerifierKey};
 
 pub const C6_CACHE_FOLD_TRACE_VERSION: u32 = 1;
 pub const C6_CACHE_FOLD_SCALAR_BATCH_VERSION: u32 = 1;
@@ -63,6 +63,46 @@ pub enum C6CacheFoldParty {
 pub enum C6CacheFoldKind {
     ValueColumns = 1,
     KeyRows = 2,
+}
+
+/// Role-typed authenticated target handed from the model proof to the cache
+/// relation.  The scalar-batch identity deliberately excludes its MAC
+/// payload; prover and verifier bind the same coefficient schedule while
+/// retaining their different authenticated representations.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum C6CacheFoldAuthenticatedTarget {
+    Prover(ProverAuthed),
+    Verifier(VerifierKey),
+}
+
+impl C6CacheFoldAuthenticatedTarget {
+    pub fn party(self) -> C6CacheFoldParty {
+        match self {
+            Self::Prover(_) => C6CacheFoldParty::Prover,
+            Self::Verifier(_) => C6CacheFoldParty::Verifier,
+        }
+    }
+
+    pub fn trace_token(self) -> C6TraceToken {
+        match self {
+            Self::Prover(value) => value.c6_trace_token(),
+            Self::Verifier(key) => key.c6_trace_token(),
+        }
+    }
+
+    pub fn prover(self) -> Option<ProverAuthed> {
+        match self {
+            Self::Prover(value) => Some(value),
+            Self::Verifier(_) => None,
+        }
+    }
+
+    pub fn verifier(self) -> Option<VerifierKey> {
+        match self {
+            Self::Verifier(key) => Some(key),
+            Self::Prover(_) => None,
+        }
+    }
 }
 
 /// Response-specific descriptor of one final cache functional.
@@ -115,8 +155,91 @@ pub struct C6CacheFoldTraceSnapshot {
     pub party: C6CacheFoldParty,
     pub identity: C6CacheFoldTraceIdentity,
     pub records: Vec<C6CacheFoldRecord>,
-    pub targets: Vec<C6TraceToken>,
+    pub targets: Vec<C6CacheFoldAuthenticatedTarget>,
     pub factors: Vec<C6CacheFoldFactors>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6CacheFoldPairedProverTargets {
+    pub identity: C6CacheFoldTraceIdentity,
+    terms: Vec<(C6CacheFoldKind, [ProverAuthed; 2])>,
+}
+
+impl C6CacheFoldPairedProverTargets {
+    pub fn pair(tapes: [&C6CacheFoldTraceSnapshot; 2]) -> Result<Self, C6CacheFoldTraceError> {
+        validate_paired_schedules(tapes, C6CacheFoldParty::Prover)?;
+        let mut terms = Vec::with_capacity(tapes[0].targets.len());
+        for ((record, &left), &right) in
+            tapes[0].records.iter().zip(&tapes[0].targets).zip(&tapes[1].targets)
+        {
+            let left = left.prover().ok_or_else(|| {
+                C6CacheFoldTraceError::new("C6 paired prover target has verifier role")
+            })?;
+            let right = right.prover().ok_or_else(|| {
+                C6CacheFoldTraceError::new("C6 paired prover target has verifier role")
+            })?;
+            if left.x != right.x {
+                return Err(C6CacheFoldTraceError::new(
+                    "C6 paired prover targets disagree on plaintext",
+                ));
+            }
+            terms.push((record.kind, [left, right]));
+        }
+        Ok(Self { identity: tapes[0].identity, terms })
+    }
+
+    pub fn terms(&self) -> impl Iterator<Item = (C6CacheFoldKind, [ProverAuthed; 2])> + '_ {
+        self.terms.iter().copied()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6CacheFoldPairedVerifierTargets {
+    pub identity: C6CacheFoldTraceIdentity,
+    terms: Vec<(C6CacheFoldKind, [VerifierKey; 2])>,
+}
+
+impl C6CacheFoldPairedVerifierTargets {
+    pub fn pair(tapes: [&C6CacheFoldTraceSnapshot; 2]) -> Result<Self, C6CacheFoldTraceError> {
+        validate_paired_schedules(tapes, C6CacheFoldParty::Verifier)?;
+        let mut terms = Vec::with_capacity(tapes[0].targets.len());
+        for ((record, &left), &right) in
+            tapes[0].records.iter().zip(&tapes[0].targets).zip(&tapes[1].targets)
+        {
+            let left = left.verifier().ok_or_else(|| {
+                C6CacheFoldTraceError::new("C6 paired verifier target has prover role")
+            })?;
+            let right = right.verifier().ok_or_else(|| {
+                C6CacheFoldTraceError::new("C6 paired verifier target has prover role")
+            })?;
+            terms.push((record.kind, [left, right]));
+        }
+        Ok(Self { identity: tapes[0].identity, terms })
+    }
+
+    pub fn terms(&self) -> impl Iterator<Item = (C6CacheFoldKind, [VerifierKey; 2])> + '_ {
+        self.terms.iter().copied()
+    }
+}
+
+fn validate_paired_schedules(
+    tapes: [&C6CacheFoldTraceSnapshot; 2],
+    expected_party: C6CacheFoldParty,
+) -> Result<(), C6CacheFoldTraceError> {
+    if tapes.iter().any(|snapshot| snapshot.party != expected_party)
+        || tapes[0].identity != tapes[1].identity
+        || tapes[0].records != tapes[1].records
+        || tapes[0].factors != tapes[1].factors
+        || tapes.iter().any(|snapshot| {
+            snapshot.records.len() != snapshot.targets.len()
+                || snapshot.targets.iter().any(|target| target.party() != expected_party)
+        })
+    {
+        return Err(C6CacheFoldTraceError::new(
+            "C6 paired target tapes have different roles or public schedules",
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -134,7 +257,7 @@ pub struct C6CacheFoldScalarBatchIdentity {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct C6CacheFoldScalarBatchTerm {
     record: C6CacheFoldRecord,
-    target: C6TraceToken,
+    target: C6CacheFoldAuthenticatedTarget,
     factors: C6CacheFoldFactors,
     scalar_weight: Fp2,
 }
@@ -190,11 +313,55 @@ impl C6CacheFoldScalarBatchPlan {
     pub fn target_terms(
         &self,
         kind: C6CacheFoldKind,
-    ) -> impl Iterator<Item = (C6TraceToken, Fp2)> + '_ {
+    ) -> impl Iterator<Item = (C6CacheFoldAuthenticatedTarget, Fp2)> + '_ {
         self.terms
             .iter()
             .filter(move |term| term.record.kind == kind)
             .map(|term| (term.target, term.scalar_weight))
+    }
+
+    /// Canonical global target order used by the successor scalar powers.
+    pub fn ordered_target_terms(
+        &self,
+    ) -> impl Iterator<Item = (u32, C6CacheFoldKind, C6CacheFoldAuthenticatedTarget, Fp2)> + '_
+    {
+        self.terms
+            .iter()
+            .map(|term| (term.record.ordinal, term.record.kind, term.target, term.scalar_weight))
+    }
+
+    pub fn prover_target_aggregate(
+        &self,
+        kind: C6CacheFoldKind,
+    ) -> Result<ProverAuthed, C6CacheFoldTraceError> {
+        if self.party != C6CacheFoldParty::Prover {
+            return Err(C6CacheFoldTraceError::new(
+                "C6 scalar batch does not contain prover targets",
+            ));
+        }
+        self.target_terms(kind).try_fold(ProverAuthed::ZERO, |sum, (target, weight)| {
+            let value = target
+                .prover()
+                .ok_or_else(|| C6CacheFoldTraceError::new("C6 scalar batch mixed target roles"))?;
+            Ok(sum.add(value.scale(weight)))
+        })
+    }
+
+    pub fn verifier_target_aggregate(
+        &self,
+        kind: C6CacheFoldKind,
+    ) -> Result<VerifierKey, C6CacheFoldTraceError> {
+        if self.party != C6CacheFoldParty::Verifier {
+            return Err(C6CacheFoldTraceError::new(
+                "C6 scalar batch does not contain verifier targets",
+            ));
+        }
+        self.target_terms(kind).try_fold(VerifierKey::ZERO, |sum, (target, weight)| {
+            let key = target
+                .verifier()
+                .ok_or_else(|| C6CacheFoldTraceError::new("C6 scalar batch mixed target roles"))?;
+            Ok(sum.add(key.scale(weight)))
+        })
     }
 }
 
@@ -203,7 +370,7 @@ struct C6CacheFoldTraceRuntime {
     capture_id: u64,
     party: C6CacheFoldParty,
     records: Vec<C6CacheFoldRecord>,
-    targets: Vec<C6TraceToken>,
+    targets: Vec<C6CacheFoldAuthenticatedTarget>,
     factors: Vec<C6CacheFoldFactors>,
     semantic_keys: BTreeSet<(u16, u32, u32, C6CacheFoldKind, u16)>,
 }
@@ -289,7 +456,7 @@ pub(crate) fn record_c6_cache_fold_if_active(
     column_offset: usize,
     row_weights: &[Fp2],
     column_weights: &[Fp2],
-    target: C6TraceToken,
+    target: C6CacheFoldAuthenticatedTarget,
 ) -> Result<(), C6CacheFoldTraceError> {
     C6_CACHE_FOLD_TRACE_RUNTIME.with(|cell| {
         let mut slot = cell
@@ -298,6 +465,11 @@ pub(crate) fn record_c6_cache_fold_if_active(
         let Some(runtime) = slot.as_mut() else {
             return Ok(());
         };
+        if target.party() != runtime.party {
+            return Err(C6CacheFoldTraceError::new(
+                "C6 cache-fold target role does not match the active capture",
+            ));
+        }
         let total_rows = t0
             .checked_add(q)
             .ok_or_else(|| C6CacheFoldTraceError::new("C6 cache-fold row geometry overflows"))?;
@@ -538,6 +710,7 @@ pub fn compile_c6_cache_fold_scalar_batch(
         || count != snapshot.targets.len()
         || count != snapshot.factors.len()
         || snapshot.identity.fold_count as usize != count
+        || snapshot.targets.iter().any(|target| target.party() != snapshot.party)
     {
         return Err(C6CacheFoldTraceError::new(
             "C6 scalar batch input has a noncanonical sidecar census",
@@ -760,7 +933,7 @@ fn hash_fp2(hasher: &mut blake3::Hasher, value: Fp2) {
 mod tests {
     use super::*;
     use volta_field::Fp;
-    use volta_mac::ProverAuthed;
+    use volta_mac::{ProverAuthed, VerifierKey};
 
     fn weights(length: usize, seed: u64) -> Vec<Fp2> {
         (0..length)
@@ -784,7 +957,7 @@ mod tests {
                 head * C6_CACHE_HEAD_WIDTH,
                 &rows,
                 &columns,
-                ProverAuthed::ZERO.c6_trace_token(),
+                C6CacheFoldAuthenticatedTarget::Prover(ProverAuthed::ZERO),
             )
             .unwrap();
         }
@@ -812,13 +985,69 @@ mod tests {
         assert_ne!(canonical.identity.instance_digest, reordered.identity.instance_digest);
     }
 
+    #[test]
+    fn paired_targets_are_role_typed_plaintext_consistent_and_schedule_bound() {
+        let mut left = capture(true);
+        let mut right = left.clone();
+        for (ordinal, (left_target, right_target)) in
+            left.targets.iter_mut().zip(&mut right.targets).enumerate()
+        {
+            let value = Fp2::from_base(Fp::new(ordinal as u64 + 1));
+            *left_target = C6CacheFoldAuthenticatedTarget::Prover(ProverAuthed::new(
+                value,
+                Fp2::from_base(Fp::new(10_000 + ordinal as u64)),
+            ));
+            *right_target = C6CacheFoldAuthenticatedTarget::Prover(ProverAuthed::new(
+                value,
+                Fp2::from_base(Fp::new(20_000 + ordinal as u64)),
+            ));
+        }
+        let paired = C6CacheFoldPairedProverTargets::pair([&left, &right]).unwrap();
+        assert_eq!(paired.identity, left.identity);
+        assert_eq!(paired.terms().count(), 24);
+        assert!(paired.terms().all(|(_, targets)| targets[0].x == targets[1].x));
+
+        let mut wrong_plaintext = right.clone();
+        let value = wrong_plaintext.targets[0].prover().unwrap();
+        wrong_plaintext.targets[0] =
+            C6CacheFoldAuthenticatedTarget::Prover(ProverAuthed::new(value.x + Fp2::ONE, value.m));
+        assert!(C6CacheFoldPairedProverTargets::pair([&left, &wrong_plaintext]).is_err());
+        let reordered = capture(false);
+        assert!(C6CacheFoldPairedProverTargets::pair([&left, &reordered]).is_err());
+
+        let mut verifier_left = left.clone();
+        let mut verifier_right = right.clone();
+        verifier_left.party = C6CacheFoldParty::Verifier;
+        verifier_right.party = C6CacheFoldParty::Verifier;
+        for (ordinal, (left_target, right_target)) in
+            verifier_left.targets.iter_mut().zip(&mut verifier_right.targets).enumerate()
+        {
+            *left_target = C6CacheFoldAuthenticatedTarget::Verifier(VerifierKey::new(
+                Fp2::from_base(Fp::new(30_000 + ordinal as u64)),
+            ));
+            *right_target = C6CacheFoldAuthenticatedTarget::Verifier(VerifierKey::new(
+                Fp2::from_base(Fp::new(40_000 + ordinal as u64)),
+            ));
+        }
+        let verifier_pair =
+            C6CacheFoldPairedVerifierTargets::pair([&verifier_left, &verifier_right]).unwrap();
+        assert_eq!(verifier_pair.identity, paired.identity);
+        assert_eq!(verifier_pair.terms().count(), 24);
+        assert!(C6CacheFoldPairedVerifierTargets::pair([&left, &right]).is_err());
+    }
+
     fn fp2_power(base: Fp2, exponent: usize) -> Fp2 {
         (0..exponent).fold(Fp2::ONE, |power, _| power * base)
     }
 
     #[test]
     fn scalar_batch_matches_independent_dense_oracle_without_dense_plan() {
-        let snapshot = capture(true);
+        let mut snapshot = capture(true);
+        for (ordinal, target) in snapshot.targets.iter_mut().enumerate() {
+            *target = C6CacheFoldAuthenticatedTarget::Prover(ProverAuthed::from_public(
+                Fp2::from_base(Fp::new(ordinal as u64 + 1)),
+            ));
+        }
         let scalar_root = Fp2::new(Fp::new(3), Fp::new(5));
         let plan = compile_c6_cache_fold_scalar_batch(&snapshot, scalar_root).unwrap();
         assert_eq!(plan.identity.version, C6_CACHE_FOLD_SCALAR_BATCH_VERSION);
@@ -880,6 +1109,38 @@ mod tests {
         for (head, (_, weight)) in key_terms.iter().enumerate() {
             assert_eq!(*weight, fp2_power(scalar_root, C6_CACHE_HEADS + head + 1));
         }
+        let expected_values = (0..C6_CACHE_HEADS).fold(ProverAuthed::ZERO, |sum, ordinal| {
+            sum.add(
+                ProverAuthed::from_public(Fp2::from_base(Fp::new(ordinal as u64 + 1)))
+                    .scale(fp2_power(scalar_root, ordinal + 1)),
+            )
+        });
+        assert_eq!(
+            plan.prover_target_aggregate(C6CacheFoldKind::ValueColumns).unwrap(),
+            expected_values
+        );
+        assert!(plan.verifier_target_aggregate(C6CacheFoldKind::ValueColumns).is_err());
+        assert!(plan
+            .ordered_target_terms()
+            .enumerate()
+            .all(|(ordinal, term)| term.0 as usize == ordinal));
+
+        let mut verifier_snapshot = snapshot.clone();
+        verifier_snapshot.party = C6CacheFoldParty::Verifier;
+        let delta = Fp2::new(Fp::new(7), Fp::new(11));
+        for (ordinal, target) in verifier_snapshot.targets.iter_mut().enumerate() {
+            *target = C6CacheFoldAuthenticatedTarget::Verifier(VerifierKey::new(
+                delta * Fp2::from_base(Fp::new(ordinal as u64 + 1)),
+            ));
+        }
+        let verifier_plan =
+            compile_c6_cache_fold_scalar_batch(&verifier_snapshot, scalar_root).unwrap();
+        assert_eq!(plan.identity, verifier_plan.identity);
+        assert_eq!(
+            verifier_plan.verifier_target_aggregate(C6CacheFoldKind::ValueColumns).unwrap().k,
+            delta * expected_values.x
+        );
+        assert!(verifier_plan.prover_target_aggregate(C6CacheFoldKind::ValueColumns).is_err());
 
         let reordered = compile_c6_cache_fold_scalar_batch(&capture(false), scalar_root).unwrap();
         assert_ne!(plan.identity.batch_digest, reordered.identity.batch_digest);
@@ -906,6 +1167,20 @@ mod tests {
     fn malformed_geometry_and_nested_capture_fail_closed() {
         let guard = begin_c6_cache_fold_trace(C6CacheFoldParty::Verifier).unwrap();
         assert!(begin_c6_cache_fold_trace(C6CacheFoldParty::Prover).is_err());
+        let role_error = record_c6_cache_fold_if_active(
+            C6CacheFoldKind::KeyRows,
+            16,
+            4,
+            2,
+            &[4, 2],
+            0,
+            0,
+            &weights(6, 1),
+            &weights(64, 2),
+            C6CacheFoldAuthenticatedTarget::Prover(ProverAuthed::ZERO),
+        )
+        .unwrap_err();
+        assert!(role_error.to_string().contains("target role"));
         let error = record_c6_cache_fold_if_active(
             C6CacheFoldKind::KeyRows,
             16,
@@ -916,7 +1191,7 @@ mod tests {
             0,
             &weights(6, 1),
             &weights(64, 2),
-            ProverAuthed::ZERO.c6_trace_token(),
+            C6CacheFoldAuthenticatedTarget::Verifier(VerifierKey::ZERO),
         )
         .unwrap_err();
         assert!(error.to_string().contains("do not cover"));

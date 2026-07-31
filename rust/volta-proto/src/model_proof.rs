@@ -58,12 +58,22 @@ use crate::block_proof::{
     LnChainProof, ResidentKvPrefixP, ResidentLayerP1, ResidentLnVecsP, TableBankP, TableBankV,
     TableCloseProof,
 };
+#[cfg(feature = "c6-trace")]
+use crate::block_proof::{verify_layer_phase1_band_thinned_c6, C6KvPrefixSource};
+#[cfg(feature = "c6-trace")]
+use crate::c6_cache_fold::{
+    C6CacheFoldOnlineLayerMetrics, C6CacheFoldTargetInlineProver, C6CacheFoldTargetInlineVerifier,
+};
+#[cfg(feature = "c6-trace")]
+use crate::c6_source::{C6SourceScheduleProverFollower, C6SourceScheduleVerifierFollower};
 use crate::ffn_schedule::{
     preflight_cpu_gelu_sources, preflight_gelu_plan, preflight_gelu_plan_thinned,
     preflight_gelu_proofs, preflight_resident_gelu_sources, prove_layers_resident_scheduled,
     prove_layers_scheduled, prove_layers_thinned_scheduled, register_gelu_manifest_p,
     register_gelu_manifest_v, verify_layers_thinned_scheduled,
 };
+#[cfg(feature = "c6-trace")]
+use crate::ffn_schedule::{prove_layers_thinned_scheduled_c6, verify_layers_thinned_scheduled_c6};
 use crate::gemm_proof::{WeightClaimP, WireKey, WireOut};
 use crate::logup::{eval_mle_counted, Counters, ProdKeyTriples, ProdTriples};
 use crate::logup::{Doms, TableKey};
@@ -102,6 +112,88 @@ fn add_bytes(a: &mut LayerBytes, b: &LayerBytes) {
     a.ln_vectors += b.ln_vectors;
     a.attn_vectors += b.attn_vectors;
     a.rounds_claims += b.rounds_claims;
+}
+
+/// C6 response zero roots are inputs to the fused grand residual, not to the
+/// historical clear `ZeroBatch`.  Keeping them behind a role-specific type
+/// makes that ownership distinction impossible to erase accidentally at the
+/// response seam.
+#[cfg(feature = "c6-trace")]
+#[allow(dead_code)]
+pub(crate) struct C6GrandResidualProverRoots(Vec<ProverAuthed>);
+
+#[cfg(feature = "c6-trace")]
+#[allow(dead_code)]
+impl C6GrandResidualProverRoots {
+    fn new(roots: Vec<ProverAuthed>) -> Self {
+        Self(roots)
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub(crate) fn record_operation_trace_ownership(&self) -> Result<(), volta_mac::C6TraceError> {
+        let roots = self.0.iter().copied().map(ProverAuthed::c6_trace_token).collect::<Vec<_>>();
+        volta_mac::record_c6_zero_roots(&roots)
+    }
+}
+
+#[cfg(feature = "c6-trace")]
+#[allow(dead_code)]
+pub(crate) struct C6GrandResidualVerifierRoots(Vec<VerifierKey>);
+
+#[cfg(feature = "c6-trace")]
+#[allow(dead_code)]
+impl C6GrandResidualVerifierRoots {
+    fn new(roots: Vec<VerifierKey>) -> Self {
+        Self(roots)
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub(crate) fn record_operation_trace_ownership(&self) -> Result<(), volta_mac::C6TraceError> {
+        let roots = self.0.iter().copied().map(VerifierKey::c6_trace_token).collect::<Vec<_>>();
+        volta_mac::record_c6_zero_roots(&roots)
+    }
+}
+
+enum ResponseProverCacheMode<'a, 'frame> {
+    Legacy(std::marker::PhantomData<(&'a mut (), &'frame mut ())>),
+    #[cfg(feature = "c6-trace")]
+    #[allow(dead_code)]
+    C6 {
+        secondary: &'a mut CorrelationStream,
+        schedule_follower: &'a mut C6SourceScheduleProverFollower,
+        target_builder: &'frame mut C6CacheFoldTargetInlineProver,
+        metrics: C6CacheFoldOnlineLayerMetrics,
+    },
+}
+
+enum ResponseVerifierCacheMode<'a, 'frame> {
+    Legacy(std::marker::PhantomData<(&'a mut (), &'frame mut ())>),
+    #[cfg(feature = "c6-trace")]
+    #[allow(dead_code)]
+    C6 {
+        secondary: &'a mut VerifierCtx,
+        schedule_follower: &'a mut C6SourceScheduleVerifierFollower,
+        target_cursor: &'a mut C6CacheFoldTargetInlineVerifier<'frame>,
+        metrics: C6CacheFoldOnlineLayerMetrics,
+    },
+}
+
+#[cfg(feature = "c6-trace")]
+fn add_c6_response_metrics(
+    total: &mut C6CacheFoldOnlineLayerMetrics,
+    phase: C6CacheFoldOnlineLayerMetrics,
+) {
+    total.source_groups += phase.source_groups;
+    total.source_cells += phase.source_cells;
+    total.coefficient_applications += phase.coefficient_applications;
+    total.corrected_targets += phase.corrected_targets;
+    total.linear_auxiliary_source_cells += phase.linear_auxiliary_source_cells;
 }
 
 fn add_counters(a: &mut Counters, b: &Counters) {
@@ -2596,7 +2688,8 @@ pub fn prove_response(
     stream: &mut CorrelationStream,
     tx: &mut Transcript,
 ) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
-    prove_response_impl(model, wit, chunks, stream, tx, None, false, true)
+    let mut cache_mode = ResponseProverCacheMode::Legacy(std::marker::PhantomData);
+    prove_response_impl(model, wit, chunks, stream, tx, None, false, true, &mut cache_mode)
 }
 
 /// C3 response prover. Logits remain prover-private and are replaced on the
@@ -2608,7 +2701,39 @@ pub fn prove_response_private_logits(
     stream: &mut CorrelationStream,
     tx: &mut Transcript,
 ) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
-    prove_response_impl(model, wit, chunks, stream, tx, None, true, true)
+    let mut cache_mode = ResponseProverCacheMode::Legacy(std::marker::PhantomData);
+    prove_response_impl(model, wit, chunks, stream, tx, None, true, true, &mut cache_mode)
+}
+
+/// C6 response-wide CPU entry point.  It leaves the historical proof object
+/// intact for the differential gate, but all attention cache folds use the
+/// dual-tape inline target stream and the exact primary-schedule follower.
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments, dead_code)]
+pub(crate) fn prove_response_c6_cache_inline(
+    model: &Gpt2Model,
+    wit: &ModelWitness,
+    chunks: &[ChunkRef],
+    stream: &mut CorrelationStream,
+    secondary: &mut CorrelationStream,
+    schedule_follower: &mut C6SourceScheduleProverFollower,
+    target_builder: &mut C6CacheFoldTargetInlineProver,
+    tx: &mut Transcript,
+) -> (ModelProof, ModelOut, ProdTriples, C6GrandResidualProverRoots, C6CacheFoldOnlineLayerMetrics)
+{
+    assert_eq!(chunks.len(), 1, "C6 v1 requires one stacked decode phase");
+    let mut cache_mode = ResponseProverCacheMode::C6 {
+        secondary,
+        schedule_follower,
+        target_builder,
+        metrics: C6CacheFoldOnlineLayerMetrics::default(),
+    };
+    let (proof, out, prod, zero) =
+        prove_response_impl(model, wit, chunks, stream, tx, None, false, true, &mut cache_mode);
+    let ResponseProverCacheMode::C6 { metrics, .. } = cache_mode else {
+        unreachable!("C6 response provider mode changed during execution")
+    };
+    (proof, out, prod, C6GrandResidualProverRoots::new(zero), metrics)
 }
 
 /// Historical C3b control arm retained solely for the preregistered T1/C3b
@@ -2622,7 +2747,8 @@ pub fn prove_response_private_logits_c3b_baseline(
     stream: &mut CorrelationStream,
     tx: &mut Transcript,
 ) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
-    prove_response_impl(model, wit, chunks, stream, tx, None, true, false)
+    let mut cache_mode = ResponseProverCacheMode::Legacy(std::marker::PhantomData);
+    prove_response_impl(model, wit, chunks, stream, tx, None, true, false, &mut cache_mode)
 }
 
 pub fn prove_response_with_backend(
@@ -2638,7 +2764,8 @@ pub fn prove_response_with_backend(
         BackendKind::CudaHybrid,
         "host ModelWitness proving is the hybrid gate; resident proving requires a device witness"
     );
-    prove_response_impl(model, wit, chunks, stream, tx, Some(backend), false, true)
+    let mut cache_mode = ResponseProverCacheMode::Legacy(std::marker::PhantomData);
+    prove_response_impl(model, wit, chunks, stream, tx, Some(backend), false, true, &mut cache_mode)
 }
 
 pub fn prove_response_private_logits_with_backend(
@@ -2650,9 +2777,11 @@ pub fn prove_response_private_logits_with_backend(
     backend: &mut Backend,
 ) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
     assert_eq!(backend.kind(), BackendKind::CudaHybrid);
-    prove_response_impl(model, wit, chunks, stream, tx, Some(backend), true, true)
+    let mut cache_mode = ResponseProverCacheMode::Legacy(std::marker::PhantomData);
+    prove_response_impl(model, wit, chunks, stream, tx, Some(backend), true, true, &mut cache_mode)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn prove_response_impl(
     model: &Gpt2Model,
     wit: &ModelWitness,
@@ -2662,6 +2791,7 @@ fn prove_response_impl(
     mut backend: Option<&mut Backend>,
     private_logits: bool,
     boundary_thinning: bool,
+    cache_mode: &mut ResponseProverCacheMode<'_, '_>,
 ) -> (ModelProof, ModelOut, ProdTriples, Vec<ProverAuthed>) {
     assert!(
         model.config.binding == ConfigBinding::LegacyImplicit
@@ -3053,19 +3183,47 @@ fn prove_response_impl(
     // includes every later decode cohort under the same TableKey::Gelu.
     let prefill_prefixes: Vec<Vec<KvPrefixP<'_>>> = (0..L).map(|_| Vec::new()).collect();
     let (scheduled_layers, mut seams): (Vec<_>, Vec<Option<SeamProof>>) = if boundary_thinning {
-        let scheduled = prove_layers_thinned_scheduled(
-            model,
-            &wit.layers,
-            layer_p1s,
-            &prefill_prefixes,
-            &gelu_manifest[0],
-            200,
-            stream,
-            tx,
-            &mut bank,
-            backend.as_deref_mut(),
-        )
-        .unwrap_or_else(|error| panic!("invalid public prefill FFN schedule: {error}"));
+        let scheduled = match cache_mode {
+            ResponseProverCacheMode::Legacy(_) => prove_layers_thinned_scheduled(
+                model,
+                &wit.layers,
+                layer_p1s,
+                &prefill_prefixes,
+                &gelu_manifest[0],
+                200,
+                stream,
+                tx,
+                &mut bank,
+                backend.as_deref_mut(),
+            )
+            .unwrap_or_else(|error| panic!("invalid public prefill FFN schedule: {error}")),
+            #[cfg(feature = "c6-trace")]
+            ResponseProverCacheMode::C6 {
+                secondary,
+                schedule_follower,
+                target_builder,
+                metrics,
+            } => {
+                let (scheduled, phase_metrics) = prove_layers_thinned_scheduled_c6(
+                    model,
+                    &wit.layers,
+                    layer_p1s,
+                    &prefill_prefixes,
+                    &gelu_manifest[0],
+                    200,
+                    stream,
+                    secondary,
+                    schedule_follower,
+                    target_builder,
+                    tx,
+                    &mut bank,
+                    backend.as_deref_mut(),
+                )
+                .unwrap_or_else(|error| panic!("invalid C6 prefill FFN schedule: {error}"));
+                add_c6_response_metrics(metrics, phase_metrics);
+                scheduled
+            }
+        };
         let seams = scheduled
             .seam_instances
             .into_iter()
@@ -3448,19 +3606,47 @@ fn prove_response_impl(
             .collect();
         let (scheduled_layers, mut seams_c): (Vec<_>, Vec<Option<SeamProof>>) = if boundary_thinning
         {
-            let scheduled = prove_layers_thinned_scheduled(
-                model,
-                &bw.layers,
-                p1c.layer_p1s,
-                &prefixes,
-                &gelu_manifest[c + 1],
-                sb_id,
-                stream,
-                tx,
-                &mut bank,
-                backend.as_deref_mut(),
-            )
-            .unwrap_or_else(|error| panic!("invalid public decode FFN schedule: {error}"));
+            let scheduled = match cache_mode {
+                ResponseProverCacheMode::Legacy(_) => prove_layers_thinned_scheduled(
+                    model,
+                    &bw.layers,
+                    p1c.layer_p1s,
+                    &prefixes,
+                    &gelu_manifest[c + 1],
+                    sb_id,
+                    stream,
+                    tx,
+                    &mut bank,
+                    backend.as_deref_mut(),
+                )
+                .unwrap_or_else(|error| panic!("invalid public decode FFN schedule: {error}")),
+                #[cfg(feature = "c6-trace")]
+                ResponseProverCacheMode::C6 {
+                    secondary,
+                    schedule_follower,
+                    target_builder,
+                    metrics,
+                } => {
+                    let (scheduled, phase_metrics) = prove_layers_thinned_scheduled_c6(
+                        model,
+                        &bw.layers,
+                        p1c.layer_p1s,
+                        &prefixes,
+                        &gelu_manifest[c + 1],
+                        sb_id,
+                        stream,
+                        secondary,
+                        schedule_follower,
+                        target_builder,
+                        tx,
+                        &mut bank,
+                        backend.as_deref_mut(),
+                    )
+                    .unwrap_or_else(|error| panic!("invalid C6 decode FFN schedule: {error}"));
+                    add_c6_response_metrics(metrics, phase_metrics);
+                    scheduled
+                }
+            };
             let seams = scheduled
                 .seam_instances
                 .into_iter()
@@ -4142,7 +4328,8 @@ pub fn verify_response(
     vc: &mut VerifierCtx,
     tx: &mut Transcript,
 ) -> Option<(ModelOutV, ProdKeyTriples, Vec<VerifierKey>)> {
-    verify_response_impl(model, t, logits, chunks, proof, vc, tx, false)
+    let mut cache_mode = ResponseVerifierCacheMode::Legacy(std::marker::PhantomData);
+    verify_response_impl(model, t, logits, chunks, proof, vc, tx, false, &mut cache_mode)
 }
 
 pub fn verify_response_private_logits(
@@ -4155,7 +4342,40 @@ pub fn verify_response_private_logits(
 ) -> Option<(ModelOutV, ProdKeyTriples, Vec<VerifierKey>)> {
     let views: Vec<ChunkPub<'_>> =
         chunks.iter().map(|chunk| ChunkPub { q: chunk.q, logits: &[], seq: chunk.seq }).collect();
-    verify_response_impl(model, t, &[], &views, proof, vc, tx, true)
+    let mut cache_mode = ResponseVerifierCacheMode::Legacy(std::marker::PhantomData);
+    verify_response_impl(model, t, &[], &views, proof, vc, tx, true, &mut cache_mode)
+}
+
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments, dead_code)]
+pub(crate) fn verify_response_c6_cache_inline(
+    model: &Gpt2Model,
+    t: usize,
+    logits: &[i64],
+    chunks: &[ChunkPub],
+    proof: &ModelProof,
+    vc: &mut VerifierCtx,
+    secondary: &mut VerifierCtx,
+    schedule_follower: &mut C6SourceScheduleVerifierFollower,
+    target_cursor: &mut C6CacheFoldTargetInlineVerifier<'_>,
+    tx: &mut Transcript,
+) -> Option<(ModelOutV, ProdKeyTriples, C6GrandResidualVerifierRoots, C6CacheFoldOnlineLayerMetrics)>
+{
+    if chunks.len() != 1 {
+        return None;
+    }
+    let mut cache_mode = ResponseVerifierCacheMode::C6 {
+        secondary,
+        schedule_follower,
+        target_cursor,
+        metrics: C6CacheFoldOnlineLayerMetrics::default(),
+    };
+    let (out, prod, zero) =
+        verify_response_impl(model, t, logits, chunks, proof, vc, tx, false, &mut cache_mode)?;
+    let ResponseVerifierCacheMode::C6 { metrics, .. } = cache_mode else {
+        unreachable!("C6 response verifier mode changed during execution")
+    };
+    Some((out, prod, C6GrandResidualVerifierRoots::new(zero), metrics))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -4168,6 +4388,7 @@ fn verify_response_impl(
     vc: &mut VerifierCtx,
     tx: &mut Transcript,
     private_logits: bool,
+    cache_mode: &mut ResponseVerifierCacheMode<'_, '_>,
 ) -> Option<(ModelOutV, ProdKeyTriples, Vec<VerifierKey>)> {
     preflight_verify_response_public(model, t, logits, chunks, proof, private_logits)?;
     let d_cb = pad_bits(D);
@@ -4181,6 +4402,8 @@ fn verify_response_impl(
     let mut boundary_keys: Vec<(Vec<VerifierKey>, Vec<VerifierKey>)> = Vec::with_capacity(L);
     // Prefill (k_keys, v_keys) per layer — the chunks' first cache segment.
     let mut boundary_kv_keys: Vec<(Vec<VerifierKey>, Vec<VerifierKey>)> = Vec::with_capacity(L);
+    #[cfg(feature = "c6-trace")]
+    let mut boundary_kv_sources: Vec<(u64, u64)> = Vec::with_capacity(L);
 
     let luts_for = |l: usize| {
         let mut luts_l = model.luts.clone();
@@ -4196,14 +4419,25 @@ fn verify_response_impl(
         let luts_l = luts_for(l);
         let mut cx = BlockCtxV::new(vc, tx, l as u8, &mut pre_bank);
         let entry_alias = (matches!(l, 4 | 8)).then(|| layer_v1s[l - 1].fbo_keys.as_slice());
-        let v1 = verify_layer_phase1_band_thinned(
-            l,
-            BandShape::square(t),
-            &luts_l,
-            &proof.layers[l],
-            entry_alias,
-            &mut cx,
-        )?;
+        let v1 = match cache_mode {
+            ResponseVerifierCacheMode::Legacy(_) => verify_layer_phase1_band_thinned(
+                l,
+                BandShape::square(t),
+                &luts_l,
+                &proof.layers[l],
+                entry_alias,
+                &mut cx,
+            )?,
+            #[cfg(feature = "c6-trace")]
+            ResponseVerifierCacheMode::C6 { .. } => verify_layer_phase1_band_thinned_c6(
+                l,
+                BandShape::square(t),
+                &luts_l,
+                &proof.layers[l],
+                entry_alias,
+                &mut cx,
+            )?,
+        };
         layer_v1s.push(v1);
     }
     let s_emb = model.p.shift_embed;
@@ -4260,14 +4494,25 @@ fn verify_response_impl(
                 let mut cx = BlockCtxV::new(vc, tx, lb + l as u8, &mut pre_bank);
                 let entry_alias =
                     (matches!(l, 4 | 8)).then(|| layer_v1s[l - 1].fbo_keys.as_slice());
-                let v1 = verify_layer_phase1_band_thinned(
-                    l,
-                    sh_c,
-                    &luts_l,
-                    &cp.layers[l],
-                    entry_alias,
-                    &mut cx,
-                )?;
+                let v1 = match cache_mode {
+                    ResponseVerifierCacheMode::Legacy(_) => verify_layer_phase1_band_thinned(
+                        l,
+                        sh_c,
+                        &luts_l,
+                        &cp.layers[l],
+                        entry_alias,
+                        &mut cx,
+                    )?,
+                    #[cfg(feature = "c6-trace")]
+                    ResponseVerifierCacheMode::C6 { .. } => verify_layer_phase1_band_thinned_c6(
+                        l,
+                        sh_c,
+                        &luts_l,
+                        &cp.layers[l],
+                        entry_alias,
+                        &mut cx,
+                    )?,
+                };
                 layer_v1s.push(v1);
             }
             let (embed_doms, out_keys) = {
@@ -4381,24 +4626,49 @@ fn verify_response_impl(
     let prefill_prefixes: Vec<Vec<KvPrefixK<'_>>> = (0..L).map(|_| Vec::new()).collect();
     let seam_instances: Vec<_> =
         proof.seams.iter().map(|seam| seam.as_ref().map(|seam| &seam.inst)).collect();
-    let scheduled = verify_layers_thinned_scheduled(
-        model,
-        &proof.layers,
-        &seam_instances,
-        layer_v1s,
-        &prefill_prefixes,
-        &gelu_manifest[0],
-        200,
-        vc,
-        tx,
-        &mut bank,
-    )?;
+    let scheduled = match cache_mode {
+        ResponseVerifierCacheMode::Legacy(_) => verify_layers_thinned_scheduled(
+            model,
+            &proof.layers,
+            &seam_instances,
+            layer_v1s,
+            &prefill_prefixes,
+            &gelu_manifest[0],
+            200,
+            vc,
+            tx,
+            &mut bank,
+        )?,
+        #[cfg(feature = "c6-trace")]
+        ResponseVerifierCacheMode::C6 { secondary, schedule_follower, target_cursor, metrics } => {
+            let c6_prefixes: Vec<Vec<C6KvPrefixSource>> = (0..L).map(|_| Vec::new()).collect();
+            let (scheduled, phase_metrics) = verify_layers_thinned_scheduled_c6(
+                model,
+                &proof.layers,
+                &seam_instances,
+                layer_v1s,
+                &c6_prefixes,
+                &gelu_manifest[0],
+                200,
+                vc,
+                secondary,
+                schedule_follower,
+                target_cursor,
+                tx,
+                &mut bank,
+            )?;
+            add_c6_response_metrics(metrics, phase_metrics);
+            scheduled
+        }
+    };
     for layer in scheduled.layers {
         let out = layer.out;
         kprod.extend(layer.prod);
         kzero.extend(layer.zero);
         weight_keys.extend(out.weight_keys);
         boundary_keys.push((out.xin_keys, out.fbo_keys));
+        #[cfg(feature = "c6-trace")]
+        boundary_kv_sources.push((out.dom_k, out.dom_v));
         boundary_kv_keys.push((out.k_keys, out.v_keys));
     }
 
@@ -4527,6 +4797,9 @@ fn verify_response_impl(
     for bk in &boundary_kv_keys {
         kv_keys.push(vec![(bk.0.clone(), bk.1.clone())]);
     }
+    #[cfg(feature = "c6-trace")]
+    let mut kv_sources: Vec<Vec<(usize, u64, u64)>> =
+        boundary_kv_sources.iter().map(|&(dom_k, dom_v)| vec![(t, dom_k, dom_v)]).collect();
     {
         let mut t0 = t;
         for (c, (ch, (cp, v1c))) in
@@ -4549,24 +4822,66 @@ fn verify_response_impl(
                 .collect();
             let seam_instances: Vec<_> =
                 cp.seams.iter().map(|seam| seam.as_ref().map(|seam| &seam.inst)).collect();
-            let scheduled = verify_layers_thinned_scheduled(
-                model,
-                &cp.layers,
-                &seam_instances,
-                v1c.layer_v1s,
-                &prefixes,
-                &gelu_manifest[c + 1],
-                sb_id,
-                vc,
-                tx,
-                &mut bank,
-            )?;
+            let scheduled = match cache_mode {
+                ResponseVerifierCacheMode::Legacy(_) => verify_layers_thinned_scheduled(
+                    model,
+                    &cp.layers,
+                    &seam_instances,
+                    v1c.layer_v1s,
+                    &prefixes,
+                    &gelu_manifest[c + 1],
+                    sb_id,
+                    vc,
+                    tx,
+                    &mut bank,
+                )?,
+                #[cfg(feature = "c6-trace")]
+                ResponseVerifierCacheMode::C6 {
+                    secondary,
+                    schedule_follower,
+                    target_cursor,
+                    metrics,
+                } => {
+                    let c6_prefixes = kv_sources
+                        .iter()
+                        .map(|segments| {
+                            segments
+                                .iter()
+                                .map(|&(rows, dom_k, dom_v)| C6KvPrefixSource {
+                                    rows,
+                                    dom_k,
+                                    dom_v,
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .collect::<Vec<_>>();
+                    let (scheduled, phase_metrics) = verify_layers_thinned_scheduled_c6(
+                        model,
+                        &cp.layers,
+                        &seam_instances,
+                        v1c.layer_v1s,
+                        &c6_prefixes,
+                        &gelu_manifest[c + 1],
+                        sb_id,
+                        vc,
+                        secondary,
+                        schedule_follower,
+                        target_cursor,
+                        tx,
+                        &mut bank,
+                    )?;
+                    add_c6_response_metrics(metrics, phase_metrics);
+                    scheduled
+                }
+            };
             for (l, layer) in scheduled.layers.into_iter().enumerate() {
                 let out = layer.out;
                 kprod.extend(layer.prod);
                 kzero.extend(layer.zero);
                 weight_keys.extend(out.weight_keys);
                 band_boundary_keys.push((out.xin_keys, out.fbo_keys));
+                #[cfg(feature = "c6-trace")]
+                kv_sources[l].push((q, out.dom_k, out.dom_v));
                 kv_keys[l].push((out.k_keys, out.v_keys));
             }
             // ---- band embedding -------------------------------------------------
@@ -4796,6 +5111,251 @@ mod tests {
         // The proof carries no source identity: once the public seam selects
         // reuse, the verifier derives the only legal source (same session,
         // phase/chunk and rows, immediately preceding layer) itself.
+    }
+
+    /// Production-shaped C6 cache seam: all 12 prefill layers and all 12
+    /// stacked-decode layers emit the fixed 576-target C6FT1 stream inline.
+    /// The historical zero batch is deliberately not closed here: its
+    /// base-only K/V auxiliary rows belong to the pending grand residual.
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn c6_response_wide_cache_targets_follow_the_complete_pooled_schedule() {
+        use crate::c6_cache_fold::{
+            begin_c6_cache_fold_trace, C6CacheFoldKind, C6CacheFoldParty,
+            C6CacheFoldTargetInlineProver, C6CacheFoldTargetInlineVerifier,
+            C6CacheFoldTargetPublicSchedule, C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES,
+        };
+        use crate::c6_residual::C6_RESIDUAL_TRACE_FIXTURE_LOCK;
+        use crate::c6_source::{
+            C6PairedSourceWitness, C6SourceCoordinate, C6SourceScheduleProverFollower,
+            C6SourceScheduleVerifierFollower,
+        };
+        use volta_mac::{
+            begin_c6_prover_trace, begin_c6_verifier_trace, compile_c6_operation_trace_for_role,
+            finish_c6_prover_trace, finish_c6_verifier_trace, C6InstanceExtractionRole,
+            C6TraceSourceManifest, CorrScheduleRole,
+        };
+
+        let _fixture_guard = C6_RESIDUAL_TRACE_FIXTURE_LOCK.lock().unwrap();
+        let dir = weights_dir();
+        if !dir.join("gpt2s-q.bin").exists() {
+            eprintln!("skipping C6 response-wide cache gate: artifact not present");
+            return;
+        }
+        let model = load_model(&dir).unwrap();
+        let (t, q) = (4usize, 2usize);
+        let prefill = volta_gpt2::forward_model(&model, t);
+        let kv = prefill
+            .layers
+            .iter()
+            .map(|layer| (layer.k.as_slice(), layer.v.as_slice()))
+            .collect::<Vec<_>>();
+        let mut cache = volta_gpt2::KvCache::from_prefill(&kv, t);
+        let (generated, _) = volta_gpt2::generate(&model, &mut cache, &prefill.logits, t, q);
+        let mut sequence = model.p.tokens[..t].to_vec();
+        sequence.extend_from_slice(&generated);
+        let full = volta_gpt2::forward_model_tokens(&model, &sequence);
+        let band = volta_gpt2::band_model_witness(&model, &full, t);
+        let chunks_p = [ChunkRef { band: &band, seq: &sequence }];
+        let chunks_v = [ChunkPub { q, logits: &band.logits, seq: &sequence }];
+
+        let primary_seed = [0x61; 32];
+        let secondary_seed = [0x62; 32];
+        let transcript_seed = [0x63; 32];
+        let statement_digest = [0x64; 32];
+        let deltas = [
+            Fp2::new(Fp::new(0x6101), Fp::new(0x6102)),
+            Fp2::new(Fp::new(0x6201), Fp::new(0x6202)),
+        ];
+        let public_schedule = C6CacheFoldTargetPublicSchedule::new(
+            (0..2 * L)
+                .flat_map(|_| {
+                    std::iter::repeat_n(C6CacheFoldKind::ValueColumns, H)
+                        .chain(std::iter::repeat_n(C6CacheFoldKind::KeyRows, H))
+                })
+                .collect(),
+        )
+        .unwrap();
+
+        let mut primary_stream = CorrelationStream::new(primary_seed);
+        begin_c6_prover_trace().unwrap();
+        primary_stream.enable_c6_operation_trace().unwrap();
+        primary_stream.enable_c6_source_witness_collection().unwrap();
+        let mut secondary_stream = CorrelationStream::new(secondary_seed);
+        let mut prover_follower =
+            C6SourceScheduleProverFollower::start(&mut secondary_stream).unwrap();
+        let mut prover_tx = Transcript::new(transcript_seed);
+        let mut target_builder = C6CacheFoldTargetInlineProver::start_public(
+            statement_digest,
+            public_schedule.clone(),
+            &mut prover_tx,
+        )
+        .unwrap();
+        let prover_trace_guard = begin_c6_cache_fold_trace(C6CacheFoldParty::Prover).unwrap();
+        let (proof, prover_out, products, grand_residual_roots, prover_metrics) =
+            prove_response_c6_cache_inline(
+                &model,
+                &prefill,
+                &chunks_p,
+                &mut primary_stream,
+                &mut secondary_stream,
+                &mut prover_follower,
+                &mut target_builder,
+                &mut prover_tx,
+            );
+        let prover_trace = prover_trace_guard.finish().unwrap();
+        let (target_frame, prover_fixed) = target_builder
+            .finish_before_successor_root_with_identity(prover_trace.identity, &mut prover_tx)
+            .unwrap();
+
+        let mut product_doms_p = Doms::new(layer_dom_base(255));
+        let chi = prover_tx.challenge_fp2();
+        let product_domain = product_doms_p.take(1);
+        let product_mask = primary_stream.draw_product_mask(product_domain, products.len());
+        let product_proof = prod_batch_prover(&products, chi, product_mask, &mut prover_tx);
+        grand_residual_roots.record_operation_trace_ownership().unwrap();
+        let prover_operation_trace = finish_c6_prover_trace().unwrap();
+
+        prover_follower.sync_primary(&primary_stream, &mut secondary_stream).unwrap();
+        let primary_schedule = primary_stream.schedule_audit().unwrap();
+        let primary_coordinate = C6SourceCoordinate::new(
+            primary_stream.finish_c6_subfield_witness_collection().unwrap(),
+            primary_stream.finish_c6_fullfield_witness_collection().unwrap(),
+            &primary_schedule,
+        )
+        .unwrap();
+        let secondary_coordinate = prover_follower
+            .finish_coordinate(&primary_coordinate, &primary_schedule, &mut secondary_stream)
+            .unwrap();
+        let paired_sources = C6PairedSourceWitness::new(
+            [[0x65; 32], [0x66; 32]],
+            [primary_coordinate, secondary_coordinate],
+            &primary_schedule,
+            primary_schedule.digest,
+        )
+        .unwrap();
+        let mut next_source = 0u64;
+        let mut product_mask_sources = Vec::new();
+        for draw in &primary_schedule.draws {
+            if draw.role == CorrScheduleRole::ProductMask {
+                product_mask_sources.push(u32::try_from(next_source).unwrap());
+            }
+            next_source += draw.count;
+        }
+        let source_manifest = C6TraceSourceManifest::new(
+            u32::try_from(next_source).unwrap(),
+            primary_schedule.digest,
+            product_mask_sources,
+        )
+        .unwrap();
+        assert_eq!(
+            paired_sources.subfield_leaf_count() as u64,
+            primary_schedule.counters.sub_corrs,
+        );
+        assert_eq!(
+            paired_sources.fullfield_leaf_count() as u64,
+            primary_schedule.counters.full_corrs,
+        );
+        let prover_compiled = compile_c6_operation_trace_for_role(
+            &prover_operation_trace,
+            &source_manifest,
+            C6InstanceExtractionRole::Prover,
+        )
+        .unwrap();
+
+        let mut primary_verifier = VerifierCtx::new(primary_seed, deltas[0]);
+        begin_c6_verifier_trace().unwrap();
+        primary_verifier.enable_c6_operation_trace().unwrap();
+        primary_verifier.enable_schedule_audit().unwrap();
+        let mut secondary_verifier = VerifierCtx::new(secondary_seed, deltas[1]);
+        let mut verifier_follower =
+            C6SourceScheduleVerifierFollower::start(&mut secondary_verifier).unwrap();
+        let mut verifier_tx = Transcript::new(transcript_seed);
+        let mut target_cursor = C6CacheFoldTargetInlineVerifier::start_public(
+            &target_frame,
+            public_schedule,
+            deltas,
+            &mut verifier_tx,
+        )
+        .unwrap();
+        let verifier_trace_guard = begin_c6_cache_fold_trace(C6CacheFoldParty::Verifier).unwrap();
+        let (verifier_out, product_keys, verifier_residual_roots, verifier_metrics) =
+            verify_response_c6_cache_inline(
+                &model,
+                t,
+                &prefill.logits,
+                &chunks_v,
+                &proof,
+                &mut primary_verifier,
+                &mut secondary_verifier,
+                &mut verifier_follower,
+                &mut target_cursor,
+                &mut verifier_tx,
+            )
+            .expect("C6 response-wide cache proof verifies");
+        let verifier_trace = verifier_trace_guard.finish().unwrap();
+        let verifier_fixed = target_cursor
+            .finish_before_successor_root_with_identity(verifier_trace.identity, &mut verifier_tx)
+            .unwrap();
+
+        let mut product_doms_v = Doms::new(layer_dom_base(255));
+        assert_eq!(chi, verifier_tx.challenge_fp2());
+        assert_eq!(product_domain, product_doms_v.take(1));
+        let product_mask_key =
+            primary_verifier.expand_product_mask_verifier_key(product_domain, product_keys.len());
+        assert!(
+            prod_batch_verify(&product_keys, product_mask_key, deltas[0], chi, &product_proof,)
+        );
+        verifier_residual_roots.record_operation_trace_ownership().unwrap();
+        let verifier_operation_trace = finish_c6_verifier_trace().unwrap();
+        let verifier_compiled = compile_c6_operation_trace_for_role(
+            &verifier_operation_trace,
+            &source_manifest,
+            C6InstanceExtractionRole::Verifier,
+        )
+        .unwrap();
+
+        assert_eq!(prover_trace.identity, verifier_trace.identity);
+        assert_eq!(prover_trace.records, verifier_trace.records);
+        assert_eq!(prover_trace.factors, verifier_trace.factors);
+        assert_eq!(prover_trace.identity.fold_count, 576);
+        assert_eq!(prover_fixed, verifier_fixed);
+        assert_eq!(
+            target_frame.encode().unwrap().len() as u64,
+            C6_CACHE_FOLD_TARGET_PRODUCTION_BYTES
+        );
+        assert_eq!(prover_out.weight_claims.len(), 8 * L);
+        assert_eq!(verifier_out.weight_keys.len(), 8 * L);
+        assert_eq!(products.len(), product_keys.len());
+        assert_eq!(grand_residual_roots.len(), verifier_residual_roots.len());
+        assert_eq!(prover_compiled.plan.identity, verifier_compiled.plan.identity);
+        assert_eq!(prover_compiled.plan.topology, verifier_compiled.plan.topology);
+        assert_eq!(prover_compiled.plan.instance, verifier_compiled.plan.instance);
+        assert_eq!(
+            prover_compiled.plan.topology.zero_root_count as usize,
+            grand_residual_roots.len(),
+        );
+
+        let expected_source_cells = (2 * L * (2 * t + q) * D) as u64;
+        let expected_auxiliary_cells = (2 * L * (t + q) * D) as u64;
+        assert_eq!(prover_metrics.source_groups, (2 * 2 * L) as u64);
+        assert_eq!(prover_metrics.corrected_targets, 576);
+        assert_eq!(prover_metrics.source_cells, expected_source_cells);
+        assert_eq!(prover_metrics.coefficient_applications, expected_source_cells);
+        assert_eq!(prover_metrics.linear_auxiliary_source_cells, 0);
+        assert_eq!(verifier_metrics.source_groups, prover_metrics.source_groups);
+        assert_eq!(verifier_metrics.corrected_targets, prover_metrics.corrected_targets);
+        assert_eq!(verifier_metrics.source_cells, expected_source_cells);
+        assert_eq!(verifier_metrics.coefficient_applications, expected_source_cells);
+        assert_eq!(verifier_metrics.linear_auxiliary_source_cells, expected_auxiliary_cells);
+
+        verifier_follower.sync_primary(&primary_verifier, &mut secondary_verifier).unwrap();
+        assert_eq!(Some(primary_schedule), primary_verifier.schedule_audit());
+        assert_eq!(secondary_stream.schedule_audit(), secondary_verifier.schedule_audit());
+        assert_eq!(
+            verifier_tx.ledger().get("c6_cache_fold_target_corrections"),
+            prover_tx.ledger().get("c6_cache_fold_target_corrections"),
+        );
     }
 
     /// P6 response e2e: prefill (t=12) + ONE decode chunk (q=4) proven in one

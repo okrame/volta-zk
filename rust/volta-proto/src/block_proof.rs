@@ -2057,6 +2057,17 @@ pub struct KvPrefixK<'a> {
     pub v_keys: &'a [VerifierKey],
 }
 
+/// C6 verifier prefix descriptor.  Historical corrected K/V vectors are not
+/// retained; only their already-reserved direct-source domains cross from one
+/// response band to the next.
+#[cfg(feature = "c6-trace")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct C6KvPrefixSource {
+    pub rows: usize,
+    pub dom_k: u64,
+    pub dom_v: u64,
+}
+
 /// Fold a segmented cache over its ROWS (global row index into `wr`),
 /// restricted to the column window `[c0, c0+w)` — segment-general
 /// [`fold_rows_window_p`].
@@ -6024,6 +6035,37 @@ pub(crate) fn prove_attn_block_c6(
     (proof, claims)
 }
 
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments, dead_code)]
+pub(crate) fn prove_attn_block_thinned_c6(
+    wit: &LayerWitness,
+    weights: &LayerWeights,
+    luts: &Luts,
+    p1: AttnP1,
+    cx: &mut BlockCtxP,
+    k_segs: &[CacheSegP],
+    v_segs: &[CacheSegP],
+    abo_claim: &BoundaryClaimP,
+    c6_cache: &mut dyn C6AttentionProverCache,
+    biases: Option<&GemmBiases>,
+) -> (AttnBlockProof, Vec<WeightClaimP>, (BoundaryClaimP, BoundaryClaimP)) {
+    let (proof, claims, deferred) = prove_attn_block_impl(
+        wit,
+        weights,
+        luts,
+        p1,
+        cx,
+        None,
+        k_segs,
+        v_segs,
+        None,
+        Some(abo_claim),
+        AttentionProverCacheMode::C6(c6_cache),
+        biases,
+    );
+    (proof, claims, deferred.expect("T1 C6 attention must return both X claims"))
+}
+
 #[allow(clippy::too_many_arguments, unused_mut, unused_variables)]
 fn prove_attn_block_impl(
     wit: &LayerWitness,
@@ -8088,6 +8130,40 @@ pub(crate) fn verify_attn_block_c6(
     Some(keys)
 }
 
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments, dead_code)]
+pub(crate) fn verify_attn_block_thinned_c6(
+    sh: BandShape,
+    ln1_gain: &[i16],
+    ln1_bias: &[i16],
+    luts: &Luts,
+    proof: &AttnBlockProof,
+    v1: AttnV1,
+    cx: &mut BlockCtxV,
+    c6_cache: &mut dyn C6AttentionVerifierCache,
+    abo_claim: &BoundaryClaimK,
+    biases: Option<&GemmBiases>,
+) -> Option<(Vec<(Vec<Fp2>, VerifierKey)>, (BoundaryClaimK, BoundaryClaimK))> {
+    if proof.t1_q_corr.is_none() {
+        return None;
+    }
+    let (keys, deferred) = verify_attn_block_impl(
+        sh,
+        ln1_gain,
+        ln1_bias,
+        luts,
+        proof,
+        v1,
+        cx,
+        None,
+        AttentionVerifierCacheMode::C6(c6_cache),
+        None,
+        Some(abo_claim),
+        biases,
+    )?;
+    Some((keys, deferred?))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn verify_attn_block_impl(
     sh: BandShape,
@@ -8715,6 +8791,10 @@ pub struct LayerOutV {
     pub k_keys: Vec<VerifierKey>,
     pub v_keys: Vec<VerifierKey>,
     pub fbo_keys: Vec<VerifierKey>,
+    /// Direct K/V source domains.  Legacy callers retain the materialized
+    /// vectors above; C6 callers carry only these domains across bands.
+    pub dom_k: u64,
+    pub dom_v: u64,
 }
 
 /// Per-instance measured lookups for the layer (domain sizes).
@@ -9440,6 +9520,8 @@ pub fn layer_content_keys(luts: &Luts, keys: &mut std::collections::BTreeSet<Tab
 /// Layer verifier phase-1 state (mirror of [`LayerP1`]).
 pub struct LayerV1 {
     pub doms: Doms,
+    pub(crate) dom_k: u64,
+    pub(crate) dom_v: u64,
     pub(crate) xin_keys: Vec<VerifierKey>,
     pub(crate) k_keys: Vec<VerifierKey>,
     pub(crate) v_keys: Vec<VerifierKey>,
@@ -9510,6 +9592,35 @@ pub(crate) fn verify_layer_phase1_band_thinned(
     entry_alias_keys: Option<&[VerifierKey]>,
     cx: &mut BlockCtxV,
 ) -> Option<LayerV1> {
+    verify_layer_phase1_band_thinned_impl(layer, sh, luts, proof, entry_alias_keys, cx, false)
+}
+
+/// C6 phase-1 mirror: consume the identical public domain/allocation order,
+/// but reserve K/V base keys without applying or retaining their direct
+/// correction vectors.  The hidden corrections remain grand-residual
+/// witness and the later attention adapter replays only these base sources.
+#[cfg(feature = "c6-trace")]
+pub(crate) fn verify_layer_phase1_band_thinned_c6(
+    layer: usize,
+    sh: BandShape,
+    luts: &Luts,
+    proof: &LayerProof,
+    entry_alias_keys: Option<&[VerifierKey]>,
+    cx: &mut BlockCtxV,
+) -> Option<LayerV1> {
+    verify_layer_phase1_band_thinned_impl(layer, sh, luts, proof, entry_alias_keys, cx, true)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_layer_phase1_band_thinned_impl(
+    layer: usize,
+    sh: BandShape,
+    luts: &Luts,
+    proof: &LayerProof,
+    entry_alias_keys: Option<&[VerifierKey]>,
+    cx: &mut BlockCtxV,
+    reserve_kv_only: bool,
+) -> Option<LayerV1> {
     if layer >= L {
         return None;
     }
@@ -9543,9 +9654,19 @@ pub(crate) fn verify_layer_phase1_band_thinned(
         None => Vec::new(),
     };
     let dom_k = cx.doms.take(t as u64);
-    let k_keys = auth_matrix_rows_v(cx.ctx, dom_k, &proof.k_corr, t, D);
+    let k_keys = if reserve_kv_only {
+        cx.ctx.reserve_sub_key_rows(dom_k, t, D);
+        Vec::new()
+    } else {
+        auth_matrix_rows_v(cx.ctx, dom_k, &proof.k_corr, t, D)
+    };
     let dom_v = cx.doms.take(t as u64);
-    let v_keys = auth_matrix_rows_v(cx.ctx, dom_v, &proof.v_corr, t, D);
+    let v_keys = if reserve_kv_only {
+        cx.ctx.reserve_sub_key_rows(dom_v, t, D);
+        Vec::new()
+    } else {
+        auth_matrix_rows_v(cx.ctx, dom_v, &proof.v_corr, t, D)
+    };
     let _dom_abo = cx.doms.take(t as u64);
     let dom_fbo = cx.doms.take(t as u64);
     let fbo_keys = if group_pos == 3 {
@@ -9557,6 +9678,8 @@ pub(crate) fn verify_layer_phase1_band_thinned(
     let attn = verify_attn_phase1(sh, luts, &proof.attn, cx)?;
     Some(LayerV1 {
         doms: cx.doms,
+        dom_k,
+        dom_v,
         xin_keys,
         k_keys,
         v_keys,
@@ -9612,7 +9735,18 @@ fn verify_layer_phase1_band_aliased(
     let lvk2 = expand_ln_vecs_k(cx, &proof.ffn.ln_vec_corrs);
     let attn = verify_attn_phase1(sh, luts, &proof.attn, cx)?;
 
-    Some(LayerV1 { doms: cx.doms, xin_keys, k_keys, v_keys, abo_keys, fbo_keys, lvk2, attn })
+    Some(LayerV1 {
+        doms: cx.doms,
+        dom_k,
+        dom_v,
+        xin_keys,
+        k_keys,
+        v_keys,
+        abo_keys,
+        fbo_keys,
+        lvk2,
+        attn,
+    })
 }
 
 /// Verify one full layer (phase 2, after `TableBankV::finalize`). On success
@@ -9663,7 +9797,8 @@ pub fn verify_layer_phase2_band(
     biases: Option<&GemmBiases>,
 ) -> Option<LayerOutV> {
     let t = sh.q;
-    let LayerV1 { doms: _, xin_keys, k_keys, v_keys, abo_keys, fbo_keys, lvk2, attn } = v1;
+    let LayerV1 { doms: _, dom_k, dom_v, xin_keys, k_keys, v_keys, abo_keys, fbo_keys, lvk2, attn } =
+        v1;
 
     let mut w_ffn = verify_ffn_block(
         t, ln2_gain, ln2_bias, luts, &proof.ffn, &lvk2, cx, &abo_keys, &fbo_keys, biases,
@@ -9702,6 +9837,8 @@ pub fn verify_layer_phase2_band(
         k_keys,
         v_keys,
         fbo_keys,
+        dom_k,
+        dom_v,
     })
 }
 

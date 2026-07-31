@@ -1119,6 +1119,11 @@ enum C6TraceParty {
 #[derive(Default)]
 struct C6TraceRuntime {
     party: Option<C6TraceParty>,
+    /// Product/zero terminal calls are response-coordinator actions.  The
+    /// owner lets an active diagnostic trace coexist with unrelated Rust
+    /// tests on other harness threads without accepting an untracked
+    /// terminal from the traced response itself.
+    owner_thread: Option<std::thread::ThreadId>,
     namespace: u32,
     next_namespace: u32,
     source_count: u32,
@@ -1198,6 +1203,7 @@ fn begin_c6_trace(party: C6TraceParty) -> Result<(), C6TraceError> {
             .checked_add(1)
             .ok_or_else(|| C6TraceError::new("C6 trace namespace counter exhausted"))?;
         runtime.party = Some(party);
+        runtime.owner_thread = Some(std::thread::current().id());
         runtime.namespace = runtime.next_namespace;
         runtime.source_count = 0;
         runtime.nodes.clear();
@@ -1210,13 +1216,16 @@ fn begin_c6_trace(party: C6TraceParty) -> Result<(), C6TraceError> {
 #[cfg(feature = "c6-trace")]
 fn finish_c6_trace(expected_party: C6TraceParty) -> Result<C6ProverTraceSnapshot, C6TraceError> {
     with_runtime(|runtime| {
-        if runtime.party != Some(expected_party) {
+        if runtime.party != Some(expected_party)
+            || runtime.owner_thread != Some(std::thread::current().id())
+        {
             return Err(C6TraceError::new(
                 "C6 operation trace finished by the wrong or inactive party",
             ));
         }
         let namespace = runtime.namespace;
         runtime.party = None;
+        runtime.owner_thread = None;
         runtime.namespace = 0;
         Ok(C6ProverTraceSnapshot {
             namespace,
@@ -3721,6 +3730,14 @@ pub fn record_c6_zero_roots(values: &[C6TraceToken]) -> Result<(), C6TraceError>
             if runtime.party.is_none() {
                 return Ok(());
             }
+            // The operation recorder is process-global because C6 linear
+            // arithmetic may run on Rayon workers.  ZeroBatch terminals,
+            // however, are coordinator-thread actions.  Ignore an unrelated
+            // test's terminal while preserving the strict provenance checks
+            // on the response thread that owns this trace.
+            if runtime.owner_thread != Some(std::thread::current().id()) {
+                return Ok(());
+            }
             if let Some(index) = values.iter().position(|token| !token.is_tracked()) {
                 return Err(C6TraceError::new(format!("C6 zero root {index} lacks provenance")));
             }
@@ -3751,6 +3768,18 @@ pub fn record_c6_product_closure(
     {
         return with_runtime(|runtime| {
             if runtime.party.is_none() {
+                return Ok(());
+            }
+            // See `record_c6_zero_roots`: ProductClosure terminals are also
+            // coordinator-thread actions.  A tracked mask on another thread
+            // is still a traced-response bug; an untracked mask belongs to
+            // unrelated concurrent harness work and is ignored.
+            if runtime.owner_thread != Some(std::thread::current().id()) {
+                if mask.is_tracked() && mask.belongs_to(runtime.namespace) {
+                    return Err(C6TraceError::new(
+                        "C6 ProductClosure terminal emitted outside the trace owner thread",
+                    ));
+                }
                 return Ok(());
             }
             if !mask.is_tracked() {
@@ -3979,6 +4008,7 @@ mod tests {
     #[cfg(feature = "c6-trace")]
     #[test]
     fn trace_rejects_missing_provenance_and_censuses_sources() {
+        let _trace_guard = crate::C6_OPERATION_TRACE_TEST_LOCK.lock().unwrap();
         begin_c6_prover_trace().unwrap();
         let source = C6TraceToken::source(0).unwrap();
         let public = C6TraceToken::public(Fp2::ONE);
@@ -3995,7 +4025,29 @@ mod tests {
 
     #[cfg(feature = "c6-trace")]
     #[test]
+    fn trace_ignores_untracked_terminals_from_unrelated_harness_threads() {
+        let _trace_guard = crate::C6_OPERATION_TRACE_TEST_LOCK.lock().unwrap();
+        begin_c6_prover_trace().unwrap();
+        std::thread::spawn(|| {
+            let untracked = C6TraceToken::untracked();
+            record_c6_product_closure(&[[untracked; 3]], untracked).unwrap();
+            record_c6_zero_roots(&[untracked]).unwrap();
+        })
+        .join()
+        .unwrap();
+
+        let untracked = C6TraceToken::untracked();
+        assert!(record_c6_product_closure(&[[untracked; 3]], untracked).is_err());
+        assert!(record_c6_zero_roots(&[untracked]).is_err());
+        let snapshot = finish_c6_prover_trace().unwrap();
+        assert!(snapshot.products.is_empty());
+        assert!(snapshot.zero_roots.is_empty());
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
     fn prover_and_verifier_trace_lifecycles_are_sequential_and_independent() {
+        let _trace_guard = crate::C6_OPERATION_TRACE_TEST_LOCK.lock().unwrap();
         let record = || {
             let value = C6TraceToken::source(0).unwrap();
             let mask = C6TraceToken::source(1).unwrap();
@@ -4338,6 +4390,7 @@ mod tests {
     #[cfg(feature = "c6-trace")]
     #[test]
     fn public_zero_lifecycle_distinguishes_pretrace_structure_from_active_input() {
+        let _trace_guard = crate::C6_OPERATION_TRACE_TEST_LOCK.lock().unwrap();
         let structural = C6TraceToken::public(Fp2::ZERO);
         assert_eq!(structural, C6TraceToken::public_zero());
 

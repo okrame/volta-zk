@@ -43,7 +43,7 @@ mod fused_fixture;
 pub use fused_fixture::{build_c6_residual_fused_scaled_fixture, C6ResidualFusedScaledFixture};
 
 #[cfg(feature = "c6-trace")]
-static C6_RESIDUAL_TRACE_FIXTURE_LOCK: Mutex<()> = Mutex::new(());
+pub(crate) static C6_RESIDUAL_TRACE_FIXTURE_LOCK: Mutex<()> = Mutex::new(());
 
 pub type C6ResidualDigest = [u8; 32];
 

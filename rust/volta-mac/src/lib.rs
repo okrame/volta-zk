@@ -13,6 +13,9 @@ pub mod corr;
 pub mod open;
 pub mod transcript;
 
+#[cfg(all(test, feature = "c6-trace"))]
+pub(crate) static C6_OPERATION_TRACE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 pub use auth::{
     auth_prover, auth_verifier, auth_verifier_from_epilogue, prover_tags_from_epilogue,
 };

@@ -19,3 +19,4 @@ blake3 = { workspace = true }
 
 [dev-dependencies]
 rand = { workspace = true }
+volta-pcg = { workspace = true }

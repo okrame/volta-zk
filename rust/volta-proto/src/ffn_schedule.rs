@@ -41,6 +41,18 @@ use volta_gpt2::{
 };
 use volta_mac::{CorrelationStream, ProverAuthed, Transcript, VerifierCtx, VerifierKey};
 
+#[cfg(feature = "c6-trace")]
+use crate::block_proof::{
+    prove_attn_block_thinned_c6, verify_attn_block_thinned_c6, C6KvPrefixSource,
+};
+#[cfg(feature = "c6-trace")]
+use crate::c6_cache_fold::{
+    C6CacheFoldDirectSourceSegment, C6CacheFoldOnlineLayerMetrics, C6CacheFoldOnlineLayerProver,
+    C6CacheFoldOnlineLayerVerifier, C6CacheFoldTargetInlineProver, C6CacheFoldTargetInlineVerifier,
+};
+#[cfg(feature = "c6-trace")]
+use crate::c6_source::{C6SourceScheduleProverFollower, C6SourceScheduleVerifierFollower};
+
 const GELU_SHIFTS: [Option<u32>; 2] = [Some(0), Some(16)];
 const H_PAD: usize = 16;
 
@@ -105,6 +117,44 @@ pub(crate) struct ThinnedScheduledP {
 
 pub(crate) struct ThinnedScheduledV {
     pub layers: Vec<ScheduledLayerV>,
+}
+
+enum ThinnedProverCacheMode<'a, 'b> {
+    Legacy(std::marker::PhantomData<(&'a mut CorrelationStream, &'b mut Transcript)>),
+    #[cfg(feature = "c6-trace")]
+    C6 {
+        secondary: &'a mut CorrelationStream,
+        schedule_follower: &'a mut C6SourceScheduleProverFollower,
+        target_builder: &'b mut C6CacheFoldTargetInlineProver,
+        metrics: C6CacheFoldOnlineLayerMetrics,
+    },
+}
+
+enum ThinnedVerifierCacheMode<'prefix, 'keys, 'state, 'frame> {
+    Legacy {
+        prefixes: &'prefix [Vec<KvPrefixK<'keys>>],
+        _marker: std::marker::PhantomData<(&'state mut VerifierCtx, &'frame ())>,
+    },
+    #[cfg(feature = "c6-trace")]
+    C6 {
+        prefixes: &'prefix [Vec<C6KvPrefixSource>],
+        secondary: &'state mut VerifierCtx,
+        schedule_follower: &'state mut C6SourceScheduleVerifierFollower,
+        target_cursor: &'state mut C6CacheFoldTargetInlineVerifier<'frame>,
+        metrics: C6CacheFoldOnlineLayerMetrics,
+    },
+}
+
+#[cfg(feature = "c6-trace")]
+fn add_c6_online_metrics(
+    total: &mut C6CacheFoldOnlineLayerMetrics,
+    layer: C6CacheFoldOnlineLayerMetrics,
+) {
+    total.source_groups += layer.source_groups;
+    total.source_cells += layer.source_cells;
+    total.coefficient_applications += layer.coefficient_applications;
+    total.corrected_targets += layer.corrected_targets;
+    total.linear_auxiliary_source_cells += layer.linear_auxiliary_source_cells;
 }
 
 fn add_counter(target: &mut Counters, source: &Counters) {
@@ -579,7 +629,79 @@ pub(crate) fn prove_layers_thinned_scheduled(
     stream: &mut CorrelationStream,
     tx: &mut Transcript,
     bank: &mut TableBankP,
+    backend: Option<&mut Backend>,
+) -> Result<ThinnedScheduledP, FfnScheduleError> {
+    let mut cache_mode = ThinnedProverCacheMode::Legacy(std::marker::PhantomData);
+    prove_layers_thinned_scheduled_impl(
+        model,
+        layers,
+        p1s,
+        prefixes,
+        plan,
+        seam_base,
+        stream,
+        tx,
+        bank,
+        backend,
+        &mut cache_mode,
+    )
+}
+
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prove_layers_thinned_scheduled_c6(
+    model: &Gpt2Model,
+    layers: &[LayerWitness],
+    p1s: Vec<LayerP1>,
+    prefixes: &[Vec<KvPrefixP<'_>>],
+    plan: &GeluCohortPlan,
+    seam_base: u8,
+    stream: &mut CorrelationStream,
+    secondary: &mut CorrelationStream,
+    schedule_follower: &mut C6SourceScheduleProverFollower,
+    target_builder: &mut C6CacheFoldTargetInlineProver,
+    tx: &mut Transcript,
+    bank: &mut TableBankP,
+    backend: Option<&mut Backend>,
+) -> Result<(ThinnedScheduledP, C6CacheFoldOnlineLayerMetrics), FfnScheduleError> {
+    let mut cache_mode = ThinnedProverCacheMode::C6 {
+        secondary,
+        schedule_follower,
+        target_builder,
+        metrics: C6CacheFoldOnlineLayerMetrics::default(),
+    };
+    let scheduled = prove_layers_thinned_scheduled_impl(
+        model,
+        layers,
+        p1s,
+        prefixes,
+        plan,
+        seam_base,
+        stream,
+        tx,
+        bank,
+        backend,
+        &mut cache_mode,
+    )?;
+    let ThinnedProverCacheMode::C6 { metrics, .. } = cache_mode else {
+        unreachable!("C6 scheduled provider mode changed during execution")
+    };
+    Ok((scheduled, metrics))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_layers_thinned_scheduled_impl(
+    model: &Gpt2Model,
+    layers: &[LayerWitness],
+    p1s: Vec<LayerP1>,
+    prefixes: &[Vec<KvPrefixP<'_>>],
+    plan: &GeluCohortPlan,
+    seam_base: u8,
+    stream: &mut CorrelationStream,
+    tx: &mut Transcript,
+    bank: &mut TableBankP,
     mut backend: Option<&mut Backend>,
+    cache_mode: &mut ThinnedProverCacheMode<'_, '_>,
 ) -> Result<ThinnedScheduledP, FfnScheduleError> {
     preflight_cpu_gelu_sources(layers, plan)?;
     let t = plan.shape.q;
@@ -788,17 +910,66 @@ pub(crate) fn prove_layers_thinned_scheduled(
                 })
                 .collect();
             v_segments.push(CacheSegP { dom: state.dom_v, rows: t, data: &layers[layer].v });
-            let (mut attn, mut attn_claims, (x_residual, x_ln)) = prove_attn_block_thinned(
-                &layers[layer],
-                &model.layers[layer].0,
-                &luts_for(layer),
-                state.attn,
-                &mut cx,
-                &k_segments,
-                &v_segments,
-                &abo_claim,
-                Some(&model.layers[layer].1),
-            );
+            let (mut attn, mut attn_claims, (x_residual, x_ln)) = match cache_mode {
+                ThinnedProverCacheMode::Legacy(_) => prove_attn_block_thinned(
+                    &layers[layer],
+                    &model.layers[layer].0,
+                    &luts_for(layer),
+                    state.attn,
+                    &mut cx,
+                    &k_segments,
+                    &v_segments,
+                    &abo_claim,
+                    Some(&model.layers[layer].1),
+                ),
+                #[cfg(feature = "c6-trace")]
+                ThinnedProverCacheMode::C6 {
+                    secondary,
+                    schedule_follower,
+                    target_builder,
+                    metrics,
+                } => {
+                    schedule_follower.sync_primary(cx.stream, secondary).map_err(|_| {
+                        FfnScheduleError::Public("C6 provider secondary schedule prefix diverged")
+                    })?;
+                    let key_sources = k_segments
+                        .iter()
+                        .map(|segment| C6CacheFoldDirectSourceSegment {
+                            base_domain: segment.dom,
+                            rows: segment.rows,
+                        })
+                        .collect();
+                    let value_sources = v_segments
+                        .iter()
+                        .map(|segment| C6CacheFoldDirectSourceSegment {
+                            base_domain: segment.dom,
+                            rows: segment.rows,
+                        })
+                        .collect();
+                    let mut online = C6CacheFoldOnlineLayerProver::new(
+                        layer as u16,
+                        key_sources,
+                        value_sources,
+                        secondary,
+                        target_builder,
+                    )
+                    .map_err(|_| FfnScheduleError::Public("invalid C6 provider cache source"))?;
+                    let result = prove_attn_block_thinned_c6(
+                        &layers[layer],
+                        &model.layers[layer].0,
+                        &luts_for(layer),
+                        state.attn,
+                        &mut cx,
+                        &k_segments,
+                        &v_segments,
+                        &abo_claim,
+                        &mut online,
+                        Some(&model.layers[layer].1),
+                    );
+                    add_c6_online_metrics(metrics, online.metrics());
+                    result
+                }
+            };
 
             if wave == 0 {
                 for claim in [&x_residual, &x_ln] {
@@ -908,6 +1079,8 @@ pub(crate) fn prove_layers_thinned_scheduled(
 #[allow(dead_code)] // complete frozen C3b verifier state for audit/control comparison
 struct VerifyPending {
     doms: Doms,
+    dom_k: u64,
+    dom_v: u64,
     xin_keys: Vec<VerifierKey>,
     k_keys: Vec<VerifierKey>,
     v_keys: Vec<VerifierKey>,
@@ -984,7 +1157,18 @@ pub(crate) fn verify_layers_scheduled(
     let depth = pad_bits(t) + pad_bits(DFF);
     let mut pending = Vec::with_capacity(L);
     for (layer, v1) in v1s.into_iter().enumerate() {
-        let LayerV1 { doms, xin_keys, k_keys, v_keys, abo_keys, fbo_keys, lvk2, attn } = v1;
+        let LayerV1 {
+            doms,
+            dom_k,
+            dom_v,
+            xin_keys,
+            k_keys,
+            v_keys,
+            abo_keys,
+            fbo_keys,
+            lvk2,
+            attn,
+        } = v1;
         let mut cx = BlockCtxV::with_doms(ctx, tx, doms, bank);
         let ffn = verify_ffn_before_gelu(
             t,
@@ -1001,6 +1185,8 @@ pub(crate) fn verify_layers_scheduled(
         }
         pending.push(VerifyPending {
             doms: cx.doms,
+            dom_k,
+            dom_v,
             xin_keys,
             k_keys,
             v_keys,
@@ -1104,6 +1290,8 @@ pub(crate) fn verify_layers_scheduled(
                 k_keys: state.k_keys,
                 v_keys: state.v_keys,
                 fbo_keys: state.fbo_keys,
+                dom_k: state.dom_k,
+                dom_v: state.dom_v,
             },
             prod: cx.kprod,
             zero: cx.kzero,
@@ -1125,19 +1313,101 @@ pub(crate) fn verify_layers_thinned_scheduled(
     tx: &mut Transcript,
     bank: &mut TableBankV,
 ) -> Option<ThinnedScheduledV> {
+    let mut cache_mode =
+        ThinnedVerifierCacheMode::Legacy { prefixes, _marker: std::marker::PhantomData };
+    verify_layers_thinned_scheduled_impl(
+        model,
+        proofs,
+        seam_instances,
+        v1s,
+        plan,
+        seam_base,
+        ctx,
+        tx,
+        bank,
+        &mut cache_mode,
+    )
+}
+
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn verify_layers_thinned_scheduled_c6(
+    model: &Gpt2Model,
+    proofs: &[LayerProof],
+    seam_instances: &[Option<&BlindInstance>],
+    v1s: Vec<LayerV1>,
+    prefixes: &[Vec<C6KvPrefixSource>],
+    plan: &GeluCohortPlan,
+    seam_base: u8,
+    ctx: &mut VerifierCtx,
+    secondary: &mut VerifierCtx,
+    schedule_follower: &mut C6SourceScheduleVerifierFollower,
+    target_cursor: &mut C6CacheFoldTargetInlineVerifier<'_>,
+    tx: &mut Transcript,
+    bank: &mut TableBankV,
+) -> Option<(ThinnedScheduledV, C6CacheFoldOnlineLayerMetrics)> {
+    let mut cache_mode = ThinnedVerifierCacheMode::C6 {
+        prefixes,
+        secondary,
+        schedule_follower,
+        target_cursor,
+        metrics: C6CacheFoldOnlineLayerMetrics::default(),
+    };
+    let scheduled = verify_layers_thinned_scheduled_impl(
+        model,
+        proofs,
+        seam_instances,
+        v1s,
+        plan,
+        seam_base,
+        ctx,
+        tx,
+        bank,
+        &mut cache_mode,
+    )?;
+    let ThinnedVerifierCacheMode::C6 { metrics, .. } = cache_mode else {
+        unreachable!("C6 scheduled verifier mode changed during execution")
+    };
+    Some((scheduled, metrics))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_layers_thinned_scheduled_impl(
+    model: &Gpt2Model,
+    proofs: &[LayerProof],
+    seam_instances: &[Option<&BlindInstance>],
+    v1s: Vec<LayerV1>,
+    plan: &GeluCohortPlan,
+    seam_base: u8,
+    ctx: &mut VerifierCtx,
+    tx: &mut Transcript,
+    bank: &mut TableBankV,
+    cache_mode: &mut ThinnedVerifierCacheMode<'_, '_, '_, '_>,
+) -> Option<ThinnedScheduledV> {
     preflight_gelu_proofs(proofs, plan).ok()?;
     let t = plan.shape.q;
     if t < 2
         || proofs.len() != L
         || seam_instances.len() != L - 1
         || v1s.len() != L
-        || prefixes.len() != L
+        || match &*cache_mode {
+            ThinnedVerifierCacheMode::Legacy { prefixes, .. } => prefixes.len() != L,
+            #[cfg(feature = "c6-trace")]
+            ThinnedVerifierCacheMode::C6 { prefixes, .. } => prefixes.len() != L,
+        }
     {
         return None;
     }
-    if prefixes.iter().any(|prefix| {
-        prefix.iter().map(|segment| segment.rows).sum::<usize>() + t != plan.shape.s()
-    }) {
+    let bad_prefix_geometry = match &*cache_mode {
+        ThinnedVerifierCacheMode::Legacy { prefixes, .. } => prefixes.iter().any(|prefix| {
+            prefix.iter().map(|segment| segment.rows).sum::<usize>() + t != plan.shape.s()
+        }),
+        #[cfg(feature = "c6-trace")]
+        ThinnedVerifierCacheMode::C6 { prefixes, .. } => prefixes.iter().any(|prefix| {
+            prefix.iter().map(|segment| segment.rows).sum::<usize>() + t != plan.shape.s()
+        }),
+    };
+    if bad_prefix_geometry {
         return None;
     }
     bank.preflight_scheduled_kroots(TableKey::Gelu, plan.sites().iter().map(|site| site.id))
@@ -1160,7 +1430,18 @@ pub(crate) fn verify_layers_thinned_scheduled(
         let mut pending = Vec::with_capacity(3);
         for &layer in &wave_layers {
             let v1 = states[layer].take()?;
-            let LayerV1 { doms, xin_keys, k_keys, v_keys, abo_keys, fbo_keys, lvk2, attn } = v1;
+            let LayerV1 {
+                doms,
+                dom_k,
+                dom_v,
+                xin_keys,
+                k_keys,
+                v_keys,
+                abo_keys,
+                fbo_keys,
+                lvk2,
+                attn,
+            } = v1;
             if !abo_keys.is_empty() {
                 return None;
             }
@@ -1189,6 +1470,8 @@ pub(crate) fn verify_layers_thinned_scheduled(
                 layer,
                 VerifyPending {
                     doms: cx.doms,
+                    dom_k,
+                    dom_v,
                     xin_keys,
                     k_keys,
                     v_keys,
@@ -1268,29 +1551,86 @@ pub(crate) fn verify_layers_thinned_scheduled(
                 &mut cx,
             )?;
 
-            let mut k_segments: Vec<_> = prefixes[layer]
-                .iter()
-                .map(|segment| CacheSegK { rows: segment.rows, keys: segment.k_keys })
-                .collect();
-            k_segments.push(CacheSegK { rows: t, keys: &state.k_keys });
-            let mut v_segments: Vec<_> = prefixes[layer]
-                .iter()
-                .map(|segment| CacheSegK { rows: segment.rows, keys: segment.v_keys })
-                .collect();
-            v_segments.push(CacheSegK { rows: t, keys: &state.v_keys });
-            let (mut attn_keys, (x_residual, x_ln)) = verify_attn_block_thinned(
-                plan.shape,
-                &weights.ln1_gain,
-                &weights.ln1_bias,
-                &luts_for(layer),
-                &proofs[layer].attn,
-                state.attn,
-                &mut cx,
-                &k_segments,
-                &v_segments,
-                &abo_claim,
-                Some(&model.layers[layer].1),
-            )?;
+            let (mut attn_keys, (x_residual, x_ln)) = match cache_mode {
+                ThinnedVerifierCacheMode::Legacy { prefixes, .. } => {
+                    let mut k_segments: Vec<_> = prefixes[layer]
+                        .iter()
+                        .map(|segment| CacheSegK { rows: segment.rows, keys: segment.k_keys })
+                        .collect();
+                    k_segments.push(CacheSegK { rows: t, keys: &state.k_keys });
+                    let mut v_segments: Vec<_> = prefixes[layer]
+                        .iter()
+                        .map(|segment| CacheSegK { rows: segment.rows, keys: segment.v_keys })
+                        .collect();
+                    v_segments.push(CacheSegK { rows: t, keys: &state.v_keys });
+                    verify_attn_block_thinned(
+                        plan.shape,
+                        &weights.ln1_gain,
+                        &weights.ln1_bias,
+                        &luts_for(layer),
+                        &proofs[layer].attn,
+                        state.attn,
+                        &mut cx,
+                        &k_segments,
+                        &v_segments,
+                        &abo_claim,
+                        Some(&model.layers[layer].1),
+                    )?
+                }
+                #[cfg(feature = "c6-trace")]
+                ThinnedVerifierCacheMode::C6 {
+                    prefixes,
+                    secondary,
+                    schedule_follower,
+                    target_cursor,
+                    metrics,
+                } => {
+                    if !state.k_keys.is_empty() || !state.v_keys.is_empty() {
+                        return None;
+                    }
+                    schedule_follower.sync_primary(cx.ctx, secondary).ok()?;
+                    let mut key_sources = prefixes[layer]
+                        .iter()
+                        .map(|segment| C6CacheFoldDirectSourceSegment {
+                            base_domain: segment.dom_k,
+                            rows: segment.rows,
+                        })
+                        .collect::<Vec<_>>();
+                    key_sources
+                        .push(C6CacheFoldDirectSourceSegment { base_domain: state.dom_k, rows: t });
+                    let mut value_sources = prefixes[layer]
+                        .iter()
+                        .map(|segment| C6CacheFoldDirectSourceSegment {
+                            base_domain: segment.dom_v,
+                            rows: segment.rows,
+                        })
+                        .collect::<Vec<_>>();
+                    value_sources
+                        .push(C6CacheFoldDirectSourceSegment { base_domain: state.dom_v, rows: t });
+                    let mut online = C6CacheFoldOnlineLayerVerifier::new(
+                        layer as u16,
+                        key_sources,
+                        value_sources,
+                        secondary,
+                        target_cursor,
+                    )
+                    .ok()?;
+                    let result = verify_attn_block_thinned_c6(
+                        plan.shape,
+                        &weights.ln1_gain,
+                        &weights.ln1_bias,
+                        &luts_for(layer),
+                        &proofs[layer].attn,
+                        state.attn,
+                        &mut cx,
+                        &mut online,
+                        &abo_claim,
+                        Some(&model.layers[layer].1),
+                    )?;
+                    add_c6_online_metrics(metrics, online.metrics());
+                    result
+                }
+            };
 
             if wave == 0 {
                 if proofs[layer].attn.t1_x_reduce.is_some() || state.xin_keys.len() != t * D {
@@ -1343,6 +1683,8 @@ pub(crate) fn verify_layers_thinned_scheduled(
                     k_keys: state.k_keys,
                     v_keys: state.v_keys,
                     fbo_keys: state.fbo_keys,
+                    dom_k: state.dom_k,
+                    dom_v: state.dom_v,
                 },
                 prod: cx.kprod,
                 zero: cx.kzero,

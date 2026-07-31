@@ -1390,24 +1390,102 @@ impl<'a, 'b, 'frame> C6CacheFoldOnlineLayerVerifier<'a, 'b, 'frame> {
         let before_secondary = verifier_context_state(self.secondary);
         let mut aggregates = [[VerifierKey::ZERO; C6_CACHE_FOLD_TARGET_TAPES]; C6_CACHE_HEADS];
         let mut global_row = 0usize;
-        for segment in &segments {
-            for local_row in 0..segment.rows {
-                let domain = checked_source_domain(segment.base_domain, local_row)?;
-                let keys = [
-                    primary.replay_consumed_sub_verifier_keys(domain, C6_CACHE_FOLD_SOURCE_COLUMNS),
-                    self.secondary
-                        .replay_consumed_sub_verifier_keys(domain, C6_CACHE_FOLD_SOURCE_COLUMNS),
-                ];
-                for channel in 0..C6_CACHE_FOLD_SOURCE_COLUMNS {
-                    let head = channel / C6_CACHE_HEAD_WIDTH;
-                    let within = channel % C6_CACHE_HEAD_WIDTH;
-                    let coefficient = row_weights[head][global_row] * column_weights[head][within];
-                    for tape in 0..C6_CACHE_FOLD_TARGET_TAPES {
-                        aggregates[head][tape] =
-                            aggregates[head][tape].add(keys[tape][channel].scale(coefficient));
+        match kind {
+            // Match `cache_fold_cols_k`: fold each 64-column head window
+            // inside one row, then fold the global row vector.  Only the
+            // bounded row key survives each inner fold.
+            C6CacheFoldKind::ValueColumns => {
+                for segment in &segments {
+                    for local_row in 0..segment.rows {
+                        let domain = checked_source_domain(segment.base_domain, local_row)?;
+                        let keys = [
+                            primary.replay_consumed_sub_verifier_keys(
+                                domain,
+                                C6_CACHE_FOLD_SOURCE_COLUMNS,
+                            ),
+                            self.secondary.replay_consumed_sub_verifier_keys(
+                                domain,
+                                C6_CACHE_FOLD_SOURCE_COLUMNS,
+                            ),
+                        ];
+                        for head in 0..C6_CACHE_HEADS {
+                            for tape in 0..C6_CACHE_FOLD_TARGET_TAPES {
+                                let row_key = (0..C6_CACHE_HEAD_WIDTH).fold(
+                                    VerifierKey::ZERO,
+                                    |sum, within| {
+                                        let channel = head * C6_CACHE_HEAD_WIDTH + within;
+                                        sum.add(
+                                            keys[tape][channel].scale(column_weights[head][within]),
+                                        )
+                                    },
+                                );
+                                aggregates[head][tape] = aggregates[head][tape]
+                                    .add(row_key.scale(row_weights[head][global_row]));
+                            }
+                        }
+                        global_row += 1;
                     }
                 }
-                global_row += 1;
+            }
+            // Match `cache_fold_rows_k`: retain a 64-column accumulator per
+            // segment/head, join segments column-wise, then fold columns.
+            // The state is fixed 12*64*2 regardless of cache length.
+            C6CacheFoldKind::KeyRows => {
+                let mut columns: [[[VerifierKey; C6_CACHE_HEAD_WIDTH]; C6_CACHE_FOLD_TARGET_TAPES];
+                    C6_CACHE_HEADS] = [[[VerifierKey::ZERO; C6_CACHE_HEAD_WIDTH];
+                    C6_CACHE_FOLD_TARGET_TAPES];
+                    C6_CACHE_HEADS];
+                for segment in &segments {
+                    let mut segment_columns: [[[VerifierKey; C6_CACHE_HEAD_WIDTH];
+                        C6_CACHE_FOLD_TARGET_TAPES];
+                        C6_CACHE_HEADS] = [[[VerifierKey::ZERO; C6_CACHE_HEAD_WIDTH];
+                        C6_CACHE_FOLD_TARGET_TAPES];
+                        C6_CACHE_HEADS];
+                    for local_row in 0..segment.rows {
+                        let domain = checked_source_domain(segment.base_domain, local_row)?;
+                        let keys = [
+                            primary.replay_consumed_sub_verifier_keys(
+                                domain,
+                                C6_CACHE_FOLD_SOURCE_COLUMNS,
+                            ),
+                            self.secondary.replay_consumed_sub_verifier_keys(
+                                domain,
+                                C6_CACHE_FOLD_SOURCE_COLUMNS,
+                            ),
+                        ];
+                        for head in 0..C6_CACHE_HEADS {
+                            for tape in 0..C6_CACHE_FOLD_TARGET_TAPES {
+                                for within in 0..C6_CACHE_HEAD_WIDTH {
+                                    let channel = head * C6_CACHE_HEAD_WIDTH + within;
+                                    let term = VerifierKey::ZERO.add(
+                                        keys[tape][channel].scale(row_weights[head][global_row]),
+                                    );
+                                    segment_columns[head][tape][within] =
+                                        segment_columns[head][tape][within].add(term);
+                                }
+                            }
+                        }
+                        global_row += 1;
+                    }
+                    for head in 0..C6_CACHE_HEADS {
+                        for tape in 0..C6_CACHE_FOLD_TARGET_TAPES {
+                            for within in 0..C6_CACHE_HEAD_WIDTH {
+                                columns[head][tape][within] = columns[head][tape][within]
+                                    .add(segment_columns[head][tape][within]);
+                            }
+                        }
+                    }
+                }
+                for head in 0..C6_CACHE_HEADS {
+                    for tape in 0..C6_CACHE_FOLD_TARGET_TAPES {
+                        aggregates[head][tape] =
+                            (0..C6_CACHE_HEAD_WIDTH).fold(VerifierKey::ZERO, |sum, within| {
+                                sum.add(
+                                    columns[head][tape][within].scale(column_weights[head][within]),
+                                )
+                            });
+                    }
+                }
             }
         }
         if verifier_context_state(primary) != before_primary

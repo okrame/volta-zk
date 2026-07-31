@@ -20,8 +20,10 @@ GREEN; INDIVIDUAL TARGET `C6FT1` BOOTSTRAP FORMAL + STRICT CODEC + INLINE
 ΠPROD/C6PS1 SCALED DIFFERENTIAL GREEN; SOURCE-ORDINAL BASE-MASK/KEY
 STREAMER + PHASE-1 POOLED-PCG RESERVATION/REPLAY DIFFERENTIAL GREEN;
 INLINE RUNTIME-IDENTITY ORDERING REPAIR GREEN; ONE-LAYER CPU ATTENTION
-`CacheSegK` BYPASS + INLINE PRODUCT-CLOSURE DIFFERENTIAL GREEN; MODEL/BAND
-ORCHESTRATION / GRAND-RESIDUAL SINK / BACKEND / FINAL ENVELOPE PENDING;
+`CacheSegK` BYPASS + INLINE PRODUCT-CLOSURE DIFFERENTIAL GREEN; RESPONSE-WIDE
+CPU MODEL/BAND ORCHESTRATION + COMPLETE POOLED-SCHEDULE FOLLOWER + TYPED
+GRAND-RESIDUAL OPERATION-PLAN OWNERSHIP GREEN; SEALED GRAND-RESIDUAL
+EXECUTION / RESIDENT BACKEND / RESPONSE-FIELD REMOVAL / FINAL ENVELOPE PENDING;
 LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
@@ -4198,6 +4200,58 @@ response-field removal and timing/backend gates remain pending.  No response,
 setup, correlation or timing credit is earned at this checkpoint.  The next
 ordered local gate is the production-shaped multi-layer/band C6 orchestration
 with the auxiliary residual ownership made explicit end to end.
+
+#### 6.2.5 Response-wide CPU orchestration and auxiliary ownership are green
+
+The production-shaped CPU seam now routes all 12 prefill layers and all 12
+stacked-decode layers through the C6 attention scheduler.  A secondary-tape
+schedule follower mirrors every already-consumed primary prefix, including
+interleaved subfield, full-field and ProductMask draws; it does not assume
+that K/V allocations are adjacent.  Provider and verifier therefore replay
+the direct K/V sources counter-neutrally while preserving the complete
+primary allocation order, counters, audit digest and paired source witness.
+
+The permanent artifact-gated differential uses `T=4,Q=2`, both real pooled
+PCG coordinates and the complete model proof schedule.  It reaches the fixed
+production target capacity and the following exact runtime census:
+
+```text
+prefill plus stacked-decode model layers                  24
+source families / corrected C6FT1 targets            48 / 576
+provider/client target source cells per tape            184,320
+client base-only auxiliary source cells per tape        110,592
+C6FT1 response frame                                     18,480 B
+fresh correlations for replay / C6FT1                         0.
+```
+
+The first complete operation-plan comparison rejected despite equal source,
+product and zero censuses.  The verifier had flattened cache cells directly
+into each target, while the prover's canonical program folded cells into
+head rows or columns before the target.  Equal field values are insufficient:
+the installed residual program binds canonical topology.  The verifier now
+preserves the exact bounded intermediate structure for both families:
+64-channel head windows followed by row folding for `ValueColumns`, and
+64-channel segment accumulators followed by segment join and column folding
+for `KeyRows`.  Provider and verifier subsequently compile to identical
+exact-instance identity, topology and instance values over the full schedule.
+
+The response-specific C6 entry points no longer expose the linear zero roots
+as the legacy `Vec` accepted by `ZeroBatch`.  Role-specific
+`C6GrandResidual*Roots` values can only register their operation-plan
+ownership at this seam.  Thus every base-only K/V auxiliary term is reachable
+from the same grand-residual program as the nonlinear target corrections,
+without pretending that its missing `Delta*d` term has already been checked.
+
+This closes response-wide CPU orchestration and operation-plan ownership, not
+the certificate.  The fused grand-residual prover/verifier still has to
+consume these typed roots under its sealed transcript, after which the old
+direct-correction and `u_vectors` response fields may be removed and the
+strict byte envelope remeasured.  Resident provider/CUDA work and bound
+prover timing also remain pending.  The approximately 75-second debug test
+runtime includes two full model roles plus multi-million-node diagnostic
+normalization and is explicitly not an inline-prover measurement.  This
+checkpoint earns no response, setup, soundness, correlation or timing credit
+and contacted no provider or pod.
 
 ## 7. Certificate and challenge grammar
 

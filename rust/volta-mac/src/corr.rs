@@ -2732,6 +2732,7 @@ mod tests {
     #[cfg(feature = "c6-trace")]
     #[test]
     fn operation_trace_sources_follow_interleaved_draw_order() {
+        let _trace_guard = crate::C6_OPERATION_TRACE_TEST_LOCK.lock().unwrap();
         crate::c6_trace::begin_c6_prover_trace().unwrap();
         let mut stream = CorrelationStream::new([0xA6; 32]);
         stream.enable_c6_operation_trace().unwrap();

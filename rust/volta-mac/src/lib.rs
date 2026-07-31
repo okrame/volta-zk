@@ -22,6 +22,8 @@ pub use auth::{
 pub use authed::{ProverAuthed, ProverSubAuthed, VerifierKey};
 #[doc(hidden)]
 pub use c6_trace::begin_c6_runtime_instance_capture_diagnostic;
+#[doc(hidden)]
+pub use c6_trace::derive_c6_runtime_instance_from_trace_diagnostic;
 pub use c6_trace::{
     begin_c6_prover_trace, begin_c6_runtime_instance_capture, begin_c6_verifier_trace,
     compile_c6_operation_trace, compile_c6_operation_trace_for_role, finish_c6_prover_trace,

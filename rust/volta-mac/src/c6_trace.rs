@@ -585,6 +585,70 @@ pub fn begin_c6_runtime_instance_capture_diagnostic(
     begin_c6_runtime_instance_capture_impl(role, None, 0, 0)
 }
 
+/// Reconstruct response-instance values from the immutable diagnostic trace.
+///
+/// This is the first-pass companion to operation-plan compilation.  It is
+/// intentionally unavailable as a production capture seam: deployed callers
+/// use an installed extraction map and [`begin_c6_runtime_instance_capture`].
+/// Reading the snapshot is nevertheless necessary for parallel test harnesses
+/// because the process-global operation recorder may contain dead nodes from
+/// unrelated threads, while a thread-local first-pass capture correctly does
+/// not.  The extraction map selects only canonical reachable values and the
+/// expected instance identity binds their exact positions.
+#[doc(hidden)]
+pub fn derive_c6_runtime_instance_from_trace_diagnostic(
+    snapshot: &C6ProverTraceSnapshot,
+    operation_plan: &C6OperationPlanArtifact,
+    extraction: &C6DecodedInstanceExtractionPlan,
+    expected_instance: C6OperationPlanInstanceIdentity,
+) -> Result<C6RuntimeInstanceValues, C6TraceError> {
+    #[cfg(feature = "c6-trace")]
+    {
+        let spec = C6RuntimeInstanceCaptureSpec::from_extraction(extraction);
+        let mut public_values = Vec::new();
+        public_values
+            .try_reserve_exact(spec.raw_public_input_count as usize)
+            .map_err(|_| C6TraceError::new("C6 diagnostic public-value allocation failed"))?;
+        let mut scalar_values = Vec::new();
+        scalar_values
+            .try_reserve_exact(spec.raw_scalar_input_count as usize)
+            .map_err(|_| C6TraceError::new("C6 diagnostic scalar-value allocation failed"))?;
+        for node in &snapshot.nodes {
+            match *node {
+                C6TraceNode::Public(value) => public_values.push(value),
+                C6TraceNode::Scale { scalar, .. } => scalar_values.push(scalar),
+                C6TraceNode::Add { .. } | C6TraceNode::Sub { .. } => {}
+            }
+        }
+        if public_values.len() != spec.raw_public_input_count as usize
+            || scalar_values.len() != spec.raw_scalar_input_count as usize
+        {
+            return Err(C6TraceError::new(
+                "C6 diagnostic trace values differ from the extraction raw census",
+            ));
+        }
+        let instance = reconstruct_c6_runtime_instance_identity(
+            operation_plan,
+            extraction,
+            &public_values,
+            &scalar_values,
+        )?;
+        if instance != expected_instance {
+            return Err(C6TraceError::new(
+                "C6 diagnostic trace values differ from the compiled instance identity",
+            ));
+        }
+        Ok(C6RuntimeInstanceValues { spec, public_values, scalar_values, instance })
+    }
+    #[cfg(not(feature = "c6-trace"))]
+    {
+        let _ = (snapshot, operation_plan, extraction, expected_instance);
+        Err(C6TraceError::new(
+            "C6 trace-derived runtime instances require the diagnostic c6-trace feature",
+        ))
+    }
+}
+
 fn begin_c6_runtime_instance_capture_impl(
     role: C6InstanceExtractionRole,
     expected_spec: Option<C6RuntimeInstanceCaptureSpec>,
@@ -4198,8 +4262,9 @@ mod tests {
     #[test]
     fn parameterized_plan_codec_roundtrips_and_rejects_noncanonical_mutations() {
         let manifest = manifest(3, vec![2]);
-        let normalized = normalize_c6_operation_trace(&allocation_trace(false), &manifest).unwrap();
-        let compiled = compile_c6_operation_trace(&allocation_trace(false), &manifest).unwrap();
+        let trace = allocation_trace(false);
+        let normalized = normalize_c6_operation_trace(&trace, &manifest).unwrap();
+        let compiled = compile_c6_operation_trace(&trace, &manifest).unwrap();
         assert_eq!(compiled.plan, normalized);
         assert_eq!(
             compiled.artifact.len() as u64,
@@ -4229,6 +4294,14 @@ mod tests {
         assert_eq!(memory.zero_root_elements, 1);
         assert!(memory.total_heap_bytes > 0);
         let extraction = compiled.instance_extraction.decode(normalized.topology).unwrap();
+        let trace_runtime = derive_c6_runtime_instance_from_trace_diagnostic(
+            &trace,
+            &compiled.artifact,
+            &extraction,
+            compiled.plan.instance,
+        )
+        .unwrap();
+        assert_eq!(trace_runtime.instance_identity(), compiled.plan.instance);
         assert_eq!(extraction.role, C6InstanceExtractionRole::Prover);
         assert_eq!(extraction.public_raw_ordinals, vec![0]);
         assert_eq!(extraction.scalar_raw_ordinals, vec![0]);
@@ -4276,13 +4349,22 @@ mod tests {
         .unwrap();
         assert!(migrated.finish(&compiled.artifact, &extraction).is_err());
 
-        let shifted = compile_c6_operation_trace(&allocation_trace(true), &manifest).unwrap();
+        let shifted_trace = allocation_trace(true);
+        let shifted = compile_c6_operation_trace(&shifted_trace, &manifest).unwrap();
         assert_eq!(compiled.artifact, shifted.artifact);
         assert_ne!(compiled.instance_extraction, shifted.instance_extraction);
         let shifted_extraction = shifted.instance_extraction.decode(shifted.plan.topology).unwrap();
         assert_eq!(shifted_extraction.public_raw_ordinals, vec![1]);
         assert_eq!(shifted_extraction.scalar_raw_ordinals, vec![0]);
         assert_eq!(shifted_extraction.census.raw_public_input_count, 2);
+        let shifted_runtime = derive_c6_runtime_instance_from_trace_diagnostic(
+            &shifted_trace,
+            &shifted.artifact,
+            &shifted_extraction,
+            shifted.plan.instance,
+        )
+        .unwrap();
+        assert_eq!(shifted_runtime.instance_identity(), shifted.plan.instance);
 
         let verifier = compile_c6_operation_trace_for_role(
             &allocation_trace(false),

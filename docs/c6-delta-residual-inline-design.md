@@ -22,8 +22,9 @@ STREAMER + PHASE-1 POOLED-PCG RESERVATION/REPLAY DIFFERENTIAL GREEN;
 INLINE RUNTIME-IDENTITY ORDERING REPAIR GREEN; ONE-LAYER CPU ATTENTION
 `CacheSegK` BYPASS + INLINE PRODUCT-CLOSURE DIFFERENTIAL GREEN; RESPONSE-WIDE
 CPU MODEL/BAND ORCHESTRATION + COMPLETE POOLED-SCHEDULE FOLLOWER + TYPED
-GRAND-RESIDUAL OPERATION-PLAN OWNERSHIP GREEN; SEALED GRAND-RESIDUAL
-EXECUTION / RESIDENT BACKEND / RESPONSE-FIELD REMOVAL / FINAL ENVELOPE PENDING;
+GRAND-RESIDUAL OPERATION-PLAN OWNERSHIP GREEN; INSTALLED TERMINAL WITNESS
+BRIDGE + LIVENESS CENSUS GREEN; SEALED C6RSC3 EXECUTION /
+RESIDENT BACKEND / RESPONSE-FIELD REMOVAL / FINAL ENVELOPE PENDING;
 LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
@@ -4252,6 +4253,78 @@ runtime includes two full model roles plus multi-million-node diagnostic
 normalization and is explicitly not an inline-prover measurement.  This
 checkpoint earns no response, setup, soundness, correlation or timing credit
 and contacted no provider or pod.
+
+#### 6.2.6 Installed terminal witness bridge is liveness-bounded and locally green
+
+The typed grand-residual roots now have a concrete provider-local consumer.
+Given one installed operation plan, its decoded response-instance map and the
+two paired source tapes, the bridge evaluates the canonical add/sub/public-
+scale DAG and retains only the exact `ProductClosure` operands and zero roots.
+It emits the already frozen slot-7 order, then deterministically transposes
+that live prefix into the sixteen auxiliary semantic lanes accepted by the
+fused residual witness view. No source, node workspace, terminal vector or
+auxiliary lane is added to setup or response wire.
+
+A dense evaluation would retain two `(x,m)` authenticated coordinates for
+every canonical node. The installed evaluator instead performs two passes:
+
+1. count every later operation and terminal use into one `u32` reference
+   count per node;
+2. evaluate forward with one `u32` node-to-slot map and a reusable paired-
+   value arena, releasing a slot immediately after its final use.
+
+The output digest binds the installed artifact, topology, response-instance
+identity, complete correlation schedule, paired-tape identity, exact terminal
+census and every slot-7 value. Public values and scalars are read only
+through the decoded extraction map. Source lookup follows the flattened
+schedule ordinal but indexes the subfield/full-field sidecars through their
+kind-local offsets, so interleaved allocation order is preserved. A changed
+source-schedule digest or noncanonical allocation digest rejects before
+evaluation. The fused view also rejects a changed installed binding, and
+production geometry refuses the historical unbound reference closure.
+
+The full `T=4,Q=2` response artifact measures:
+
+```text
+canonical operation nodes                         2,501,849
+scheduled sources / reachable Source opcodes 593,876 / 593,728
+scheduled but terminal-unreachable sources              148
+peak live paired node values                         149,074
+measured evaluator working heap                   41,322,560 B
+dense paired-node baseline                       160,118,336 B
+slot-7 live values                                   198,260 Fp2
+slot-7 live bytes                                  3,172,160 B.
+```
+
+The 148 non-reachable sources are not deleted or silently renumbered. The
+leaf/base-share relation still binds the complete `593,876`-source schedule;
+only the normalized operation DAG omits nodes that feed no product operand or
+zero root. Treating topology `source_count` as the number of reachable
+`Source` opcodes was the first fail-closed diagnostic and is now a permanent
+subset invariant.
+
+The process-global diagnostic operation recorder may also contain dead
+public/scalar nodes created by unrelated parallel harness threads. A
+thread-local first-pass capture cannot reproduce that raw diagnostic census.
+Feature fixtures therefore reconstruct first-pass public/scalar streams from
+the immutable trace, apply the compiled extraction map and require the exact
+compiled instance identity. Production remains unchanged: it uses the
+preinstalled extraction map with the strict thread-local runtime capture.
+This distinction is covered by dead-node and parallel full-suite tests.
+
+The complete parallel feature suite is **164 pass / 0 fail / 1 ignored**;
+MAC trace is **36/0/0** plus **5/0/0** integration, and the ordinary workspace
+remains green with proto **146/0/1**. The isolated debug response gate is
+approximately **91 s** and includes model execution, trace compilation,
+leaf construction, terminal evaluation and auxiliary transposition. It is
+not an inline-prover timing measurement and earns no 12--20-second credit.
+
+This closes typed-root-to-witness ownership only. The next ordered gate must
+feed this installed leaf/slot-7/auxiliary view through the sealed C6RSC3
+transcript and authenticated-output link. Direct correction and `u_vectors`
+response fields may be removed only after that end-to-end acceptance is
+green; resident/CUDA, strict envelope and bound timing remain pending. No
+provider or pod was contacted.
 
 ## 7. Certificate and challenge grammar
 

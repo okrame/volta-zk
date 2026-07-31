@@ -5132,8 +5132,9 @@ mod tests {
         };
         use volta_mac::{
             begin_c6_prover_trace, begin_c6_verifier_trace, compile_c6_operation_trace_for_role,
-            finish_c6_prover_trace, finish_c6_verifier_trace, C6InstanceExtractionRole,
-            C6TraceSourceManifest, CorrScheduleRole,
+            derive_c6_runtime_instance_from_trace_diagnostic, finish_c6_prover_trace,
+            finish_c6_verifier_trace, C6InstanceExtractionRole, C6TraceSourceManifest,
+            CorrScheduleRole,
         };
 
         let _fixture_guard = C6_RESIDUAL_TRACE_FIXTURE_LOCK.lock().unwrap();
@@ -5262,6 +5263,37 @@ mod tests {
             C6InstanceExtractionRole::Prover,
         )
         .unwrap();
+        let prover_extraction =
+            prover_compiled.instance_extraction.decode(prover_compiled.plan.topology).unwrap();
+        let prover_runtime = derive_c6_runtime_instance_from_trace_diagnostic(
+            &prover_operation_trace,
+            &prover_compiled.artifact,
+            &prover_extraction,
+            prover_compiled.plan.instance,
+        )
+        .unwrap();
+        let prover_installed = prover_compiled.artifact.install(&source_manifest).unwrap();
+        let zero_weights = vec![Fp2::ONE; prover_installed.zero_roots().len()];
+        let linear = crate::c6_residual::C6CompiledLinearResidual::compile(
+            &prover_installed,
+            &prover_extraction,
+            &prover_runtime,
+            &zero_weights,
+        )
+        .unwrap();
+        let leaf_witness =
+            linear.build_paired_residual_leaf_witness(&paired_sources, &primary_schedule).unwrap();
+        let closure_evaluation = linear
+            .evaluate_installed_paired_closure(
+                &prover_installed,
+                &prover_extraction,
+                &prover_runtime,
+                &paired_sources,
+                &primary_schedule,
+            )
+            .unwrap();
+        let closure_witness = closure_evaluation.closure();
+        let auxiliary_witness = closure_witness.transpose_auxiliary_lanes().unwrap();
 
         let mut primary_verifier = VerifierCtx::new(primary_seed, deltas[0]);
         begin_c6_verifier_trace().unwrap();
@@ -5334,6 +5366,43 @@ mod tests {
         assert_eq!(
             prover_compiled.plan.topology.zero_root_count as usize,
             grand_residual_roots.len(),
+        );
+        assert_eq!(leaf_witness.source_count(), prover_compiled.plan.topology.source_count);
+        assert_eq!(
+            closure_witness.census().product_closures,
+            prover_compiled.plan.topology.product_closure_count,
+        );
+        assert_eq!(
+            closure_witness.census().product_triples,
+            prover_compiled.plan.topology.product_triple_count,
+        );
+        assert_eq!(
+            closure_witness.census().zero_roots,
+            prover_compiled.plan.topology.zero_root_count,
+        );
+        assert_eq!(closure_witness.program_digest(), prover_installed.artifact_digest());
+        assert_eq!(
+            auxiliary_witness.census().product_rows,
+            prover_compiled.plan.topology.product_triple_count,
+        );
+        assert_eq!(
+            auxiliary_witness.census().zero_rows,
+            u64::from(prover_compiled.plan.topology.zero_root_count),
+        );
+        let closure_memory = closure_evaluation.memory_census();
+        assert_eq!(
+            closure_memory.canonical_nodes,
+            u64::from(prover_compiled.plan.topology.canonical_node_count),
+        );
+        assert!(closure_memory.peak_live_node_values > 0);
+        assert!(closure_memory.node_value_capacity >= closure_memory.peak_live_node_values);
+        eprintln!(
+            "C6 installed closure census: canonical_nodes={} peak_live={} working_heap_bytes={} dense_pair_bytes={} closure_values={}",
+            closure_memory.canonical_nodes,
+            closure_memory.peak_live_node_values,
+            closure_memory.peak_working_heap_bytes,
+            closure_memory.dense_paired_node_baseline_bytes,
+            closure_witness.census().live_values,
         );
 
         let expected_source_cells = (2 * L * (2 * t + q) * D) as u64;

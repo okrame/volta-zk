@@ -6,9 +6,10 @@
 
 use super::*;
 use volta_mac::{
-    begin_c6_prover_trace, begin_c6_runtime_instance_capture, compile_c6_operation_trace_for_role,
-    finish_c6_prover_trace, record_c6_product_closure, record_c6_zero_roots,
-    C6InstanceExtractionRole, C6TraceSourceManifest, CorrelationStream,
+    begin_c6_prover_trace, compile_c6_operation_trace_for_role,
+    derive_c6_runtime_instance_from_trace_diagnostic, finish_c6_prover_trace,
+    record_c6_product_closure, record_c6_zero_roots, C6InstanceExtractionRole,
+    C6TraceSourceManifest, CorrelationStream,
 };
 
 pub struct C6ResidualFusedScaledFixture {
@@ -135,7 +136,7 @@ fn program_fixture(tag_delta: Fp2) -> C6ResidualResult<ProgramFixture> {
 }
 
 fn installed_fixture(
-    witnesses: &[C6SourceWitness],
+    _witnesses: &[C6SourceWitness],
 ) -> C6ResidualResult<(
     C6InstalledOperationPlan,
     C6DecodedInstanceExtractionPlan,
@@ -174,22 +175,14 @@ fn installed_fixture(
     .map_err(trace_error)?;
     let extraction =
         compiled.instance_extraction.decode(compiled.plan.topology).map_err(trace_error)?;
+    let runtime = derive_c6_runtime_instance_from_trace_diagnostic(
+        &snapshot,
+        &compiled.artifact,
+        &extraction,
+        compiled.plan.instance,
+    )
+    .map_err(trace_error)?;
     let installed = compiled.artifact.install(&source_manifest).map_err(trace_error)?;
-
-    let capture = begin_c6_runtime_instance_capture(&extraction).map_err(trace_error)?;
-    let a = witnesses
-        .first()
-        .ok_or_else(|| C6ResidualError::new("C6 scaled fixture lacks source a"))?
-        .prover_value();
-    let b = witnesses
-        .get(1)
-        .ok_or_else(|| C6ResidualError::new("C6 scaled fixture lacks source b"))?
-        .prover_value();
-    let seven = ProverAuthed::from_public(fp2(7));
-    let _zero = a.add(b).sub(seven);
-    let six = ProverAuthed::from_public(fp2(6));
-    let _scaled_zero = a.scale(fp2(2)).sub(six);
-    let runtime = capture.finish_installed(&installed, &extraction).map_err(trace_error)?;
     Ok((installed, extraction, runtime))
 }
 

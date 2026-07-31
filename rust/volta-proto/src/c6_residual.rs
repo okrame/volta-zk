@@ -58,6 +58,8 @@ const PAIRED_COEFFICIENT_STREAM_DOMAINS: [u64; 2] =
     [0xC6_52_45_53_49_44_01, 0xC6_52_45_53_49_44_02];
 const PAIRED_LEAF_WRAPPER_DOMAIN: &str = "volta-zk/c6/paired-residual-leaf-wrapper/v1";
 const PAIRED_CLOSURE_WRAPPER_DOMAIN: &str = "volta-zk/c6/paired-residual-closure-wrapper/v1";
+const PAIRED_INSTALLED_CLOSURE_WRAPPER_DOMAIN: &str =
+    "volta-zk/c6/paired-installed-residual-closure-wrapper/v1";
 const PAIRED_AUXILIARY_WRAPPER_DOMAIN: &str = "volta-zk/c6/paired-residual-auxiliary-wrapper/v1";
 const TERMINAL_WEIGHT_SCHEDULE_DOMAIN_V2: &str = "volta-zk/c6/residual-terminal-weight-schedule/v2";
 const TERMINAL_WEIGHT_SCHEDULE_DOMAIN_V3: &str = "volta-zk/c6/residual-terminal-weight-schedule/v3";
@@ -3567,12 +3569,66 @@ pub struct C6ResidualClosureWitnessCensus {
     pub live_values: u64,
 }
 
+/// Exact heap census for installed-plan terminal evaluation.
+///
+/// The two `u32` node arrays replace a dense pair of authenticated values for
+/// every canonical node.  `peak_live_node_values` is measured by the
+/// evaluator; it is deliberately not projected from topology alone.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct C6InstalledClosureEvaluationMemoryCensus {
+    pub canonical_nodes: u64,
+    pub reference_count_heap_bytes: u64,
+    pub node_slot_heap_bytes: u64,
+    pub source_draw_index_heap_bytes: u64,
+    pub peak_live_node_values: u64,
+    pub node_value_capacity: u64,
+    pub node_value_heap_bytes: u64,
+    pub free_slot_heap_bytes: u64,
+    pub closure_value_heap_bytes: u64,
+    pub peak_working_heap_bytes: u64,
+    pub dense_paired_node_baseline_bytes: u64,
+}
+
+/// Result of evaluating only installed terminal ownership on both MAC tapes.
+///
+/// The evaluation and its census are provider-local.  Neither is a response
+/// object; the closure live prefix is consumed by the sealed residual PCS.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct C6InstalledPairedClosureEvaluation {
+    closure: C6PairedResidualClosureWitness,
+    memory_census: C6InstalledClosureEvaluationMemoryCensus,
+}
+
+impl C6InstalledPairedClosureEvaluation {
+    pub fn closure(&self) -> &C6PairedResidualClosureWitness {
+        &self.closure
+    }
+
+    pub fn into_closure(self) -> C6PairedResidualClosureWitness {
+        self.closure
+    }
+
+    pub fn memory_census(&self) -> C6InstalledClosureEvaluationMemoryCensus {
+        self.memory_census
+    }
+}
+
 /// Canonical live prefix of residual slot 7.  The footer is currently the
 /// frozen zero reserve; later envelope fields may consume it only through a
 /// separately versioned layout change.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct C6InstalledClosureBinding {
+    operation_plan_artifact_digest: C6ResidualDigest,
+    topology_digest: C6ResidualDigest,
+    instance_digest: C6ResidualDigest,
+    source_schedule_digest: C6ResidualDigest,
+    paired_source_digest: C6ResidualDigest,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6PairedResidualClosureWitness {
     program_digest: C6ResidualDigest,
+    installed_binding: Option<C6InstalledClosureBinding>,
     census: C6ResidualClosureWitnessCensus,
     values: Vec<Fp2>,
     witness_digest: C6ResidualDigest,
@@ -3922,6 +3978,27 @@ impl<'a> C6ResidualFusedWitnessView<'a> {
             return Err(C6ResidualError::new(
                 "C6 fused witness view differs from C6RLM1 ownership",
             ));
+        }
+        match closure.installed_binding {
+            Some(binding)
+                if binding.operation_plan_artifact_digest
+                    == manifest.operation_plan_artifact_digest
+                    && binding.topology_digest == manifest.topology.topology_digest
+                    && binding.instance_digest == manifest.instance.instance_digest
+                    && binding.source_schedule_digest == leaf.source_schedule_digest
+                    && binding.paired_source_digest == leaf.paired_source_digest
+                    && closure.program_digest == manifest.operation_plan_artifact_digest => {}
+            Some(_) => {
+                return Err(C6ResidualError::new(
+                    "C6 installed closure binding differs from C6RLM1/leaf ownership",
+                ));
+            }
+            None if manifest.production_geometry => {
+                return Err(C6ResidualError::new(
+                    "C6 production fused witness requires an installed closure binding",
+                ));
+            }
+            None => {}
         }
         let mut hasher =
             blake3::Hasher::new_derive_key("volta-zk/c6/residual-fused-witness-view/v1");
@@ -6690,6 +6767,39 @@ impl C6CompiledLinearResidual {
         })
     }
 
+    /// Evaluate the installed response DAG on both authenticated source
+    /// tapes and retain only ProductClosure operands and zero roots.
+    ///
+    /// Node values are released after their last operation/terminal use.  A
+    /// dense pair of authenticated values for every canonical node is never
+    /// allocated.  This is the production-shape bridge from typed response
+    /// roots to residual slot 7; it remains provider-local and serializes
+    /// neither the operation plan nor its scratch state.
+    pub fn evaluate_installed_paired_closure(
+        &self,
+        operation_plan: &C6InstalledOperationPlan,
+        extraction: &C6DecodedInstanceExtractionPlan,
+        runtime: &C6RuntimeInstanceValues,
+        sources: &C6PairedSourceWitness,
+        schedule: &CorrScheduleAudit,
+    ) -> C6ResidualResult<C6InstalledPairedClosureEvaluation> {
+        self.validate_paired_source_schedule(sources, schedule)?;
+        runtime
+            .validate_extraction_binding(extraction)
+            .map_err(|error| C6ResidualError::new(error.to_string()))?;
+        if self.operation_plan_artifact_digest != operation_plan.artifact_digest()
+            || self.topology != operation_plan.topology()
+            || self.instance != runtime.instance_identity()
+            || extraction.topology_digest() != self.topology.topology_digest
+            || runtime.role() != extraction.role()
+        {
+            return Err(C6ResidualError::new(
+                "C6 installed closure inputs differ from the compiled response identity",
+            ));
+        }
+        evaluate_installed_paired_closure(operation_plan, extraction, runtime, sources, schedule)
+    }
+
     /// Production-shape provider fold over both source coordinates in the
     /// canonical interleaved allocation order. The paired witness remains a
     /// prover-only sidecar and is streamed once.
@@ -6958,6 +7068,669 @@ impl<'a> C6PairedSourceCursor<'a> {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct C6PairedInstalledNodeValue {
+    x: [Fp2; 2],
+    m: [Fp2; 2],
+}
+
+impl C6PairedInstalledNodeValue {
+    fn from_sources(sources: [C6SourceWitness; 2]) -> Self {
+        Self {
+            x: sources.map(C6SourceWitness::prover_value).map(|value| value.x),
+            m: sources.map(C6SourceWitness::prover_value).map(|value| value.m),
+        }
+    }
+
+    fn public(value: Fp2) -> Self {
+        Self { x: [value; 2], m: [Fp2::ZERO; 2] }
+    }
+
+    fn add(self, rhs: Self) -> Self {
+        Self {
+            x: [self.x[0] + rhs.x[0], self.x[1] + rhs.x[1]],
+            m: [self.m[0] + rhs.m[0], self.m[1] + rhs.m[1]],
+        }
+    }
+
+    fn sub(self, rhs: Self) -> Self {
+        Self {
+            x: [self.x[0] - rhs.x[0], self.x[1] - rhs.x[1]],
+            m: [self.m[0] - rhs.m[0], self.m[1] - rhs.m[1]],
+        }
+    }
+
+    fn scale(self, scalar: Fp2) -> Self {
+        Self {
+            x: [self.x[0] * scalar, self.x[1] * scalar],
+            m: [self.m[0] * scalar, self.m[1] * scalar],
+        }
+    }
+}
+
+struct C6PairedSourceLookup<'a> {
+    sources: &'a C6PairedSourceWitness,
+    schedule: &'a CorrScheduleAudit,
+    flattened_draw_starts: Vec<u64>,
+    source_count: u64,
+}
+
+impl<'a> C6PairedSourceLookup<'a> {
+    fn new(
+        sources: &'a C6PairedSourceWitness,
+        schedule: &'a CorrScheduleAudit,
+    ) -> C6ResidualResult<Self> {
+        let mut flattened_draw_starts = Vec::new();
+        flattened_draw_starts
+            .try_reserve_exact(schedule.draws.len())
+            .map_err(|_| C6ResidualError::new("C6 source draw index allocation failed"))?;
+        let mut source_count = 0u64;
+        for draw in &schedule.draws {
+            flattened_draw_starts.push(source_count);
+            source_count = source_count
+                .checked_add(draw.count)
+                .ok_or_else(|| C6ResidualError::new("C6 flattened source count overflows"))?;
+        }
+        Ok(Self { sources, schedule, flattened_draw_starts, source_count })
+    }
+
+    fn source_count(&self) -> u64 {
+        self.source_count
+    }
+
+    fn draw_index_heap_bytes(&self) -> C6ResidualResult<u64> {
+        u64::try_from(self.flattened_draw_starts.capacity())
+            .ok()
+            .and_then(|capacity| capacity.checked_mul(std::mem::size_of::<u64>() as u64))
+            .ok_or_else(|| C6ResidualError::new("C6 source draw index byte count overflows"))
+    }
+
+    fn get(&self, source: u32) -> C6ResidualResult<[C6SourceWitness; 2]> {
+        let source = u64::from(source);
+        if source >= self.source_count {
+            return Err(C6ResidualError::new(
+                "C6 installed source ordinal exceeds the paired schedule",
+            ));
+        }
+        let draw_index = self
+            .flattened_draw_starts
+            .partition_point(|&start| start <= source)
+            .checked_sub(1)
+            .ok_or_else(|| C6ResidualError::new("C6 paired source draw lookup underflows"))?;
+        let draw = *self
+            .schedule
+            .draws
+            .get(draw_index)
+            .ok_or_else(|| C6ResidualError::new("C6 paired source draw lookup is missing"))?;
+        let draw_offset = source
+            .checked_sub(self.flattened_draw_starts[draw_index])
+            .ok_or_else(|| C6ResidualError::new("C6 paired source draw offset underflows"))?;
+        if draw_offset >= draw.count {
+            return Err(C6ResidualError::new(
+                "C6 paired source ordinal crossed its canonical draw",
+            ));
+        }
+        let witness_index = draw
+            .global_offset
+            .checked_add(draw_offset)
+            .and_then(|index| usize::try_from(index).ok())
+            .ok_or_else(|| C6ResidualError::new("C6 paired witness offset exceeds usize"))?;
+        let mut witnesses =
+            [C6SourceWitness::FullField { r: Fp2::ZERO, correction: Fp2::ZERO, tag: Fp2::ZERO }; 2];
+        for (coordinate, output) in witnesses.iter_mut().enumerate() {
+            *output = match draw.kind {
+                CorrScheduleKind::Subfield => {
+                    if draw.role != CorrScheduleRole::DirectCorrection {
+                        return Err(C6ResidualError::new(
+                            "C6 subfield installed source cannot be a ProductMask",
+                        ));
+                    }
+                    let audit = self.sources.coordinates()[coordinate].subfield();
+                    C6SourceWitness::Subfield {
+                        r: *audit.masks().get(witness_index).ok_or_else(|| {
+                            C6ResidualError::new("C6 installed subfield source mask is missing")
+                        })?,
+                        correction: *audit.corrections().get(witness_index).ok_or_else(|| {
+                            C6ResidualError::new(
+                                "C6 installed subfield source correction is missing",
+                            )
+                        })?,
+                        tag: *audit.tags().get(witness_index).ok_or_else(|| {
+                            C6ResidualError::new("C6 installed subfield source tag is missing")
+                        })?,
+                    }
+                }
+                CorrScheduleKind::FullField => {
+                    let audit = self.sources.coordinates()[coordinate].fullfield();
+                    let correction = *audit.corrections().get(witness_index).ok_or_else(|| {
+                        C6ResidualError::new("C6 installed full-field correction is missing")
+                    })?;
+                    if draw.role == CorrScheduleRole::ProductMask && correction != Fp2::ZERO {
+                        return Err(C6ResidualError::new(
+                            "C6 installed ProductMask source has a correction",
+                        ));
+                    }
+                    C6SourceWitness::FullField {
+                        r: *audit.masks().get(witness_index).ok_or_else(|| {
+                            C6ResidualError::new("C6 installed full-field mask is missing")
+                        })?,
+                        correction,
+                        tag: *audit.tags().get(witness_index).ok_or_else(|| {
+                            C6ResidualError::new("C6 installed full-field tag is missing")
+                        })?,
+                    }
+                }
+            };
+        }
+        Ok(witnesses)
+    }
+}
+
+const C6_UNUSED_NODE_SLOT: u32 = u32::MAX;
+
+fn try_filled_u32_vec(length: usize, value: u32, label: &str) -> C6ResidualResult<Vec<u32>> {
+    let mut values = Vec::new();
+    values
+        .try_reserve_exact(length)
+        .map_err(|_| C6ResidualError::new(format!("{label} allocation failed")))?;
+    values.resize(length, value);
+    Ok(values)
+}
+
+fn increment_installed_node_use(
+    use_counts: &mut [u32],
+    node: u32,
+    upper_bound: u32,
+    label: &str,
+) -> C6ResidualResult<()> {
+    if node >= upper_bound {
+        return Err(C6ResidualError::new(format!(
+            "{label} is outside the installed topological prefix"
+        )));
+    }
+    let count = use_counts
+        .get_mut(node as usize)
+        .ok_or_else(|| C6ResidualError::new(format!("{label} is outside the installed plan")))?;
+    *count = count
+        .checked_add(1)
+        .ok_or_else(|| C6ResidualError::new(format!("{label} reference count overflows")))?;
+    Ok(())
+}
+
+fn installed_closure_census(
+    operation_plan: &C6InstalledOperationPlan,
+) -> C6ResidualResult<C6ResidualClosureWitnessCensus> {
+    let product_triples = installed_product_triple_count(operation_plan)?;
+    let product_operand_values = product_triples
+        .checked_mul(12)
+        .ok_or_else(|| C6ResidualError::new("C6 installed closure product values overflow"))?;
+    let zero_roots = u32::try_from(operation_plan.zero_roots().len())
+        .map_err(|_| C6ResidualError::new("C6 installed zero-root count exceeds u32"))?;
+    let zero_root_values = u64::from(zero_roots)
+        .checked_mul(4)
+        .ok_or_else(|| C6ResidualError::new("C6 installed closure zero values overflow"))?;
+    let live_values = product_operand_values
+        .checked_add(zero_root_values)
+        .and_then(|values| values.checked_add(C6_RESIDUAL_CLOSURE_FOOTER_ENTRIES))
+        .ok_or_else(|| C6ResidualError::new("C6 installed closure live values overflow"))?;
+    if live_values > C6_RESIDUAL_SLOT_ENTRIES {
+        return Err(C6ResidualError::new(
+            "C6 installed closure live prefix exceeds the frozen residual slot",
+        ));
+    }
+    Ok(C6ResidualClosureWitnessCensus {
+        product_closures: u32::try_from(operation_plan.products().len())
+            .map_err(|_| C6ResidualError::new("C6 installed ProductClosure count exceeds u32"))?,
+        product_triples,
+        zero_roots,
+        product_operand_values,
+        zero_root_values,
+        footer_values: C6_RESIDUAL_CLOSURE_FOOTER_ENTRIES,
+        live_values,
+    })
+}
+
+fn installed_node_value(
+    node: u32,
+    node_slots: &[u32],
+    node_values: &[C6PairedInstalledNodeValue],
+) -> C6ResidualResult<C6PairedInstalledNodeValue> {
+    let slot = *node_slots
+        .get(node as usize)
+        .ok_or_else(|| C6ResidualError::new("C6 installed live node is outside the slot map"))?;
+    if slot == C6_UNUSED_NODE_SLOT {
+        return Err(C6ResidualError::new("C6 installed node was released before its final use"));
+    }
+    node_values
+        .get(slot as usize)
+        .copied()
+        .ok_or_else(|| C6ResidualError::new("C6 installed node slot is outside the value arena"))
+}
+
+fn retain_installed_node_value(
+    canonical: u32,
+    value: C6PairedInstalledNodeValue,
+    use_counts: &[u32],
+    node_slots: &mut [u32],
+    node_values: &mut Vec<C6PairedInstalledNodeValue>,
+    free_slots: &mut Vec<u32>,
+    active_values: &mut u64,
+    peak_live_values: &mut u64,
+) -> C6ResidualResult<()> {
+    if use_counts[canonical as usize] == 0 {
+        return Ok(());
+    }
+    if node_slots[canonical as usize] != C6_UNUSED_NODE_SLOT {
+        return Err(C6ResidualError::new("C6 installed node slot was assigned twice"));
+    }
+    let slot = if let Some(slot) = free_slots.pop() {
+        *node_values
+            .get_mut(slot as usize)
+            .ok_or_else(|| C6ResidualError::new("C6 installed free slot is out of range"))? = value;
+        slot
+    } else {
+        node_values
+            .try_reserve(1)
+            .map_err(|_| C6ResidualError::new("C6 installed node-value arena growth failed"))?;
+        let slot = u32::try_from(node_values.len())
+            .map_err(|_| C6ResidualError::new("C6 installed node-value slot exceeds u32"))?;
+        node_values.push(value);
+        slot
+    };
+    node_slots[canonical as usize] = slot;
+    *active_values = active_values
+        .checked_add(1)
+        .ok_or_else(|| C6ResidualError::new("C6 installed active-value census overflows"))?;
+    *peak_live_values = (*peak_live_values).max(*active_values);
+    Ok(())
+}
+
+fn release_installed_node_use(
+    node: u32,
+    use_counts: &mut [u32],
+    node_slots: &mut [u32],
+    free_slots: &mut Vec<u32>,
+    active_values: &mut u64,
+) -> C6ResidualResult<()> {
+    let count = use_counts
+        .get_mut(node as usize)
+        .ok_or_else(|| C6ResidualError::new("C6 released installed node is out of range"))?;
+    if *count == 0 {
+        return Err(C6ResidualError::new("C6 installed node reference count underflows"));
+    }
+    *count -= 1;
+    if *count != 0 {
+        return Ok(());
+    }
+    let slot = std::mem::replace(
+        node_slots
+            .get_mut(node as usize)
+            .ok_or_else(|| C6ResidualError::new("C6 released node lacks a slot-map entry"))?,
+        C6_UNUSED_NODE_SLOT,
+    );
+    if slot == C6_UNUSED_NODE_SLOT {
+        return Err(C6ResidualError::new("C6 installed node has no live slot to release"));
+    }
+    free_slots
+        .try_reserve(1)
+        .map_err(|_| C6ResidualError::new("C6 installed free-slot arena growth failed"))?;
+    free_slots.push(slot);
+    *active_values = active_values
+        .checked_sub(1)
+        .ok_or_else(|| C6ResidualError::new("C6 installed active-value census underflows"))?;
+    Ok(())
+}
+
+fn evaluate_installed_paired_closure(
+    operation_plan: &C6InstalledOperationPlan,
+    extraction: &C6DecodedInstanceExtractionPlan,
+    runtime: &C6RuntimeInstanceValues,
+    sources: &C6PairedSourceWitness,
+    schedule: &CorrScheduleAudit,
+) -> C6ResidualResult<C6InstalledPairedClosureEvaluation> {
+    let topology = operation_plan.topology();
+    let canonical_nodes = usize::try_from(topology.canonical_node_count)
+        .map_err(|_| C6ResidualError::new("C6 canonical node count exceeds usize"))?;
+    if operation_plan.operation_kinds().len() != canonical_nodes {
+        return Err(C6ResidualError::new(
+            "C6 installed opcode count differs from canonical topology",
+        ));
+    }
+    let source_lookup = C6PairedSourceLookup::new(sources, schedule)?;
+    if source_lookup.source_count() != u64::from(topology.source_count) {
+        return Err(C6ResidualError::new(
+            "C6 installed paired source lookup differs from topology",
+        ));
+    }
+    let census = installed_closure_census(operation_plan)?;
+
+    let mut use_counts = try_filled_u32_vec(canonical_nodes, 0, "C6 node reference-count")?;
+    let mut operand_cursor = 0usize;
+    let mut source_nodes = 0usize;
+    let mut public_nodes = 0usize;
+    let mut scalar_nodes = 0usize;
+    for (canonical, &kind) in operation_plan.operation_kinds().iter().enumerate() {
+        let canonical = u32::try_from(canonical)
+            .map_err(|_| C6ResidualError::new("C6 canonical node ordinal exceeds u32"))?;
+        match kind {
+            C6InstalledOperationKind::Source => source_nodes += 1,
+            C6InstalledOperationKind::StructuralZero => {}
+            C6InstalledOperationKind::PublicInput => public_nodes += 1,
+            C6InstalledOperationKind::Add | C6InstalledOperationKind::Sub => {
+                let operands =
+                    operation_plan.operands().get(operand_cursor..operand_cursor + 2).ok_or_else(
+                        || C6ResidualError::new("C6 installed binary operands are truncated"),
+                    )?;
+                increment_installed_node_use(
+                    &mut use_counts,
+                    operands[0],
+                    canonical,
+                    "C6 installed binary lhs",
+                )?;
+                increment_installed_node_use(
+                    &mut use_counts,
+                    operands[1],
+                    canonical,
+                    "C6 installed binary rhs",
+                )?;
+                operand_cursor += 2;
+            }
+            C6InstalledOperationKind::Scale => {
+                let input = *operation_plan.operands().get(operand_cursor).ok_or_else(|| {
+                    C6ResidualError::new("C6 installed scale operand is truncated")
+                })?;
+                increment_installed_node_use(
+                    &mut use_counts,
+                    input,
+                    canonical,
+                    "C6 installed scale input",
+                )?;
+                operand_cursor += 1;
+                scalar_nodes += 1;
+            }
+        }
+    }
+    if operand_cursor != operation_plan.operands().len()
+        || source_nodes != operation_plan.source_ordinals().len()
+        || source_nodes > topology.source_count as usize
+        || public_nodes != topology.public_input_count as usize
+        || scalar_nodes != topology.scalar_input_count as usize
+    {
+        return Err(C6ResidualError::new(format!(
+            "C6 installed operation streams differ from topology: operands {operand_cursor}/{}, sources {source_nodes}/{}/{}, public {public_nodes}/{}, scalar {scalar_nodes}/{}",
+            operation_plan.operands().len(),
+            operation_plan.source_ordinals().len(),
+            topology.source_count,
+            topology.public_input_count,
+            topology.scalar_input_count,
+        )));
+    }
+    let canonical_limit = topology.canonical_node_count;
+    let mut product_triples = 0u64;
+    for product in operation_plan.products() {
+        product_triples = product_triples
+            .checked_add(product.triples().len() as u64)
+            .ok_or_else(|| C6ResidualError::new("C6 installed terminal triple count overflows"))?;
+        for triple in product.triples() {
+            for &node in triple {
+                increment_installed_node_use(
+                    &mut use_counts,
+                    node,
+                    canonical_limit,
+                    "C6 installed ProductClosure operand",
+                )?;
+            }
+        }
+    }
+    for &root in operation_plan.zero_roots() {
+        increment_installed_node_use(
+            &mut use_counts,
+            root,
+            canonical_limit,
+            "C6 installed zero root",
+        )?;
+    }
+    if product_triples != census.product_triples
+        || operation_plan.products().len() != census.product_closures as usize
+        || operation_plan.zero_roots().len() != census.zero_roots as usize
+    {
+        return Err(C6ResidualError::new(
+            "C6 installed terminal references differ from closure census",
+        ));
+    }
+
+    let mut node_slots =
+        try_filled_u32_vec(canonical_nodes, C6_UNUSED_NODE_SLOT, "C6 node-slot map")?;
+    let mut node_values = Vec::<C6PairedInstalledNodeValue>::new();
+    let mut free_slots = Vec::<u32>::new();
+    let mut active_values = 0u64;
+    let mut peak_live_values = 0u64;
+    operand_cursor = 0;
+    let mut source_cursor = 0usize;
+    let mut public_cursor = 0u32;
+    let mut scalar_cursor = 0u32;
+    for (canonical, &kind) in operation_plan.operation_kinds().iter().enumerate() {
+        let canonical_u32 = canonical as u32;
+        let value = match kind {
+            C6InstalledOperationKind::Source => {
+                let source =
+                    *operation_plan.source_ordinals().get(source_cursor).ok_or_else(|| {
+                        C6ResidualError::new("C6 installed source-ordinal stream is truncated")
+                    })?;
+                source_cursor += 1;
+                C6PairedInstalledNodeValue::from_sources(source_lookup.get(source)?)
+            }
+            C6InstalledOperationKind::StructuralZero => C6PairedInstalledNodeValue::default(),
+            C6InstalledOperationKind::PublicInput => {
+                let public = runtime
+                    .public_value(extraction, public_cursor)
+                    .map_err(|error| C6ResidualError::new(error.to_string()))?;
+                public_cursor = public_cursor.checked_add(1).ok_or_else(|| {
+                    C6ResidualError::new("C6 installed public-input cursor overflows")
+                })?;
+                C6PairedInstalledNodeValue::public(public)
+            }
+            C6InstalledOperationKind::Add | C6InstalledOperationKind::Sub => {
+                let operands =
+                    operation_plan.operands().get(operand_cursor..operand_cursor + 2).ok_or_else(
+                        || C6ResidualError::new("C6 installed binary operands are truncated"),
+                    )?;
+                let lhs = installed_node_value(operands[0], &node_slots, &node_values)?;
+                let rhs = installed_node_value(operands[1], &node_slots, &node_values)?;
+                let value =
+                    if kind == C6InstalledOperationKind::Add { lhs.add(rhs) } else { lhs.sub(rhs) };
+                release_installed_node_use(
+                    operands[0],
+                    &mut use_counts,
+                    &mut node_slots,
+                    &mut free_slots,
+                    &mut active_values,
+                )?;
+                release_installed_node_use(
+                    operands[1],
+                    &mut use_counts,
+                    &mut node_slots,
+                    &mut free_slots,
+                    &mut active_values,
+                )?;
+                operand_cursor += 2;
+                value
+            }
+            C6InstalledOperationKind::Scale => {
+                let input = *operation_plan.operands().get(operand_cursor).ok_or_else(|| {
+                    C6ResidualError::new("C6 installed scale operand is truncated")
+                })?;
+                let scalar = runtime
+                    .scalar_value(extraction, scalar_cursor)
+                    .map_err(|error| C6ResidualError::new(error.to_string()))?;
+                scalar_cursor = scalar_cursor.checked_add(1).ok_or_else(|| {
+                    C6ResidualError::new("C6 installed scalar-input cursor overflows")
+                })?;
+                let value = installed_node_value(input, &node_slots, &node_values)?.scale(scalar);
+                release_installed_node_use(
+                    input,
+                    &mut use_counts,
+                    &mut node_slots,
+                    &mut free_slots,
+                    &mut active_values,
+                )?;
+                operand_cursor += 1;
+                value
+            }
+        };
+        retain_installed_node_value(
+            canonical_u32,
+            value,
+            &use_counts,
+            &mut node_slots,
+            &mut node_values,
+            &mut free_slots,
+            &mut active_values,
+            &mut peak_live_values,
+        )?;
+    }
+    if operand_cursor != operation_plan.operands().len()
+        || source_cursor != operation_plan.source_ordinals().len()
+        || public_cursor != topology.public_input_count
+        || scalar_cursor != topology.scalar_input_count
+    {
+        return Err(C6ResidualError::new(
+            "C6 installed forward cursors differ from their exact census",
+        ));
+    }
+
+    let live_values = usize::try_from(census.live_values)
+        .map_err(|_| C6ResidualError::new("C6 installed closure length exceeds usize"))?;
+    let mut values = Vec::new();
+    values
+        .try_reserve_exact(live_values)
+        .map_err(|_| C6ResidualError::new("C6 installed closure allocation failed"))?;
+    for product in operation_plan.products() {
+        for triple in product.triples() {
+            for coordinate in 0..2 {
+                for &node in triple {
+                    let value = installed_node_value(node, &node_slots, &node_values)?;
+                    values.extend([value.x[coordinate], value.m[coordinate]]);
+                }
+            }
+            for &node in triple {
+                release_installed_node_use(
+                    node,
+                    &mut use_counts,
+                    &mut node_slots,
+                    &mut free_slots,
+                    &mut active_values,
+                )?;
+            }
+        }
+    }
+    for &root in operation_plan.zero_roots() {
+        let value = installed_node_value(root, &node_slots, &node_values)?;
+        if value.x[0] != value.x[1] {
+            return Err(C6ResidualError::new(
+                "C6 installed zero-root plaintext differs across coordinates",
+            ));
+        }
+        values.extend([value.x[0], value.m[0], value.x[1], value.m[1]]);
+        release_installed_node_use(
+            root,
+            &mut use_counts,
+            &mut node_slots,
+            &mut free_slots,
+            &mut active_values,
+        )?;
+    }
+    values.resize(live_values, Fp2::ZERO);
+    if active_values != 0
+        || use_counts.iter().any(|&count| count != 0)
+        || node_slots.iter().any(|&slot| slot != C6_UNUSED_NODE_SLOT)
+        || values.len() as u64 != census.live_values
+    {
+        return Err(C6ResidualError::new(
+            "C6 installed closure evaluation left a live or unconsumed node",
+        ));
+    }
+
+    let capacity_bytes = |capacity: usize, element_bytes: usize, label: &str| {
+        u64::try_from(capacity)
+            .ok()
+            .and_then(|capacity| capacity.checked_mul(element_bytes as u64))
+            .ok_or_else(|| C6ResidualError::new(format!("{label} byte count overflows")))
+    };
+    let reference_count_heap_bytes =
+        capacity_bytes(use_counts.capacity(), std::mem::size_of::<u32>(), "C6 reference-count")?;
+    let node_slot_heap_bytes =
+        capacity_bytes(node_slots.capacity(), std::mem::size_of::<u32>(), "C6 node-slot")?;
+    let source_draw_index_heap_bytes = source_lookup.draw_index_heap_bytes()?;
+    let node_value_heap_bytes = capacity_bytes(
+        node_values.capacity(),
+        std::mem::size_of::<C6PairedInstalledNodeValue>(),
+        "C6 node-value arena",
+    )?;
+    let free_slot_heap_bytes =
+        capacity_bytes(free_slots.capacity(), std::mem::size_of::<u32>(), "C6 free-slot arena")?;
+    let closure_value_heap_bytes =
+        capacity_bytes(values.capacity(), std::mem::size_of::<Fp2>(), "C6 closure value")?;
+    let peak_working_heap_bytes = [
+        reference_count_heap_bytes,
+        node_slot_heap_bytes,
+        source_draw_index_heap_bytes,
+        node_value_heap_bytes,
+        free_slot_heap_bytes,
+        closure_value_heap_bytes,
+    ]
+    .into_iter()
+    .try_fold(0u64, |total, bytes| {
+        total
+            .checked_add(bytes)
+            .ok_or_else(|| C6ResidualError::new("C6 installed working heap census overflows"))
+    })?;
+    let dense_paired_node_baseline_bytes = (topology.canonical_node_count as u64)
+        .checked_mul(std::mem::size_of::<C6PairedInstalledNodeValue>() as u64)
+        .ok_or_else(|| C6ResidualError::new("C6 dense node baseline bytes overflow"))?;
+    let memory_census = C6InstalledClosureEvaluationMemoryCensus {
+        canonical_nodes: topology.canonical_node_count as u64,
+        reference_count_heap_bytes,
+        node_slot_heap_bytes,
+        source_draw_index_heap_bytes,
+        peak_live_node_values: peak_live_values,
+        node_value_capacity: node_values.capacity() as u64,
+        node_value_heap_bytes,
+        free_slot_heap_bytes,
+        closure_value_heap_bytes,
+        peak_working_heap_bytes,
+        dense_paired_node_baseline_bytes,
+    };
+
+    let mut hasher = blake3::Hasher::new_derive_key(PAIRED_INSTALLED_CLOSURE_WRAPPER_DOMAIN);
+    hasher.update(&operation_plan.artifact_digest());
+    hasher.update(&topology.topology_digest);
+    hasher.update(&runtime.instance_identity().instance_digest);
+    hasher.update(&schedule.digest);
+    hasher.update(&sources.pair_digest());
+    hasher.update(&u64::from(census.product_closures).to_le_bytes());
+    hasher.update(&census.product_triples.to_le_bytes());
+    hasher.update(&u64::from(census.zero_roots).to_le_bytes());
+    hasher.update(&census.live_values.to_le_bytes());
+    for value in &values {
+        hash_fp2(&mut hasher, *value);
+    }
+    let closure = C6PairedResidualClosureWitness {
+        program_digest: operation_plan.artifact_digest(),
+        installed_binding: Some(C6InstalledClosureBinding {
+            operation_plan_artifact_digest: operation_plan.artifact_digest(),
+            topology_digest: topology.topology_digest,
+            instance_digest: runtime.instance_identity().instance_digest,
+            source_schedule_digest: topology.source_schedule_digest,
+            paired_source_digest: sources.pair_digest(),
+        }),
+        census,
+        values,
+        witness_digest: *hasher.finalize().as_bytes(),
+    };
+    Ok(C6InstalledPairedClosureEvaluation { closure, memory_census })
+}
+
 fn try_zeroed_fp2_vec(length: usize, label: &str) -> C6ResidualResult<Vec<Fp2>> {
     let mut values = Vec::new();
     values
@@ -7111,6 +7884,7 @@ impl C6CommittedResidualProgram {
         }
         Ok(C6PairedResidualClosureWitness {
             program_digest: self.census.program_digest,
+            installed_binding: None,
             census,
             values,
             witness_digest: *hasher.finalize().as_bytes(),
@@ -7379,9 +8153,10 @@ mod tests {
     use crate::c6_source::{replay_c6_source_coordinate, C6SourceCoordinate};
     #[cfg(feature = "c6-trace")]
     use volta_mac::{
-        begin_c6_prover_trace, begin_c6_runtime_instance_capture,
-        compile_c6_operation_trace_for_role, finish_c6_prover_trace, record_c6_product_closure,
-        record_c6_zero_roots, C6InstanceExtractionRole, C6TraceSourceManifest, CorrelationStream,
+        begin_c6_prover_trace, compile_c6_operation_trace_for_role,
+        derive_c6_runtime_instance_from_trace_diagnostic, finish_c6_prover_trace,
+        record_c6_product_closure, record_c6_zero_roots, C6InstanceExtractionRole,
+        C6TraceSourceManifest, CorrelationStream,
     };
 
     fn fp(value: u64) -> Fp {
@@ -7479,7 +8254,7 @@ mod tests {
 
     #[cfg(feature = "c6-trace")]
     fn installed_fixture(
-        witnesses: &[C6SourceWitness],
+        _witnesses: &[C6SourceWitness],
     ) -> (C6InstalledOperationPlan, C6DecodedInstanceExtractionPlan, C6RuntimeInstanceValues) {
         begin_c6_prover_trace().unwrap();
         let mut correlations = CorrelationStream::new([0xC6; 32]);
@@ -7513,16 +8288,14 @@ mod tests {
         )
         .unwrap();
         let extraction = compiled.instance_extraction.decode(compiled.plan.topology).unwrap();
+        let runtime = derive_c6_runtime_instance_from_trace_diagnostic(
+            &snapshot,
+            &compiled.artifact,
+            &extraction,
+            compiled.plan.instance,
+        )
+        .unwrap();
         let installed = compiled.artifact.install(&manifest).unwrap();
-
-        let capture = begin_c6_runtime_instance_capture(&extraction).unwrap();
-        let a = witnesses[0].prover_value();
-        let b = witnesses[1].prover_value();
-        let seven = ProverAuthed::from_public(fp2(7));
-        let _zero = a.add(b).sub(seven);
-        let six = ProverAuthed::from_public(fp2(6));
-        let _scaled_zero = a.scale(fp2(2)).sub(six);
-        let runtime = capture.finish_installed(&installed, &extraction).unwrap();
         (installed, extraction, runtime)
     }
 
@@ -7649,19 +8422,14 @@ mod tests {
         )
         .unwrap();
         let extraction = compiled.instance_extraction.decode(compiled.plan.topology).unwrap();
+        let runtime = derive_c6_runtime_instance_from_trace_diagnostic(
+            &snapshot,
+            &compiled.artifact,
+            &extraction,
+            compiled.plan.instance,
+        )
+        .unwrap();
         let installed = compiled.artifact.install(&manifest).unwrap();
-
-        let capture = begin_c6_runtime_instance_capture(&extraction).unwrap();
-        let sub = ProverAuthed::new(fp2(9), fp2(101));
-        let a = ProverAuthed::new(fp2(3), fp2(103));
-        let b = ProverAuthed::new(fp2(4), fp2(107));
-        let seven = ProverAuthed::from_public(fp2(7));
-        let _zero = a.add(b).sub(seven);
-        let six = ProverAuthed::from_public(fp2(6));
-        let _scaled_zero = a.scale(fp2(2)).sub(six);
-        let nine = ProverAuthed::from_public(fp2(9));
-        let _sub_zero = sub.sub(nine);
-        let runtime = capture.finish_installed(&installed, &extraction).unwrap();
 
         (installed, extraction, runtime, schedule, paired)
     }
@@ -8442,6 +9210,15 @@ mod tests {
             );
             assert_eq!(statement.evaluate(&reference).unwrap(), statement.target());
         }
+        let mut production_requires_installed = manifest.clone();
+        production_requires_installed.production_geometry = true;
+        assert!(C6ResidualFusedWitnessView::new(
+            &production_requires_installed,
+            &leaf,
+            &closure,
+            &auxiliary,
+        )
+        .is_err());
         let fused_witness =
             C6ResidualFusedWitnessView::new(&manifest, &leaf, &closure, &auxiliary).unwrap();
         assert_eq!(fused_witness.manifest_digest(), manifest.digest());
@@ -9287,6 +10064,133 @@ mod tests {
         .unwrap();
         assert!(compiled
             .respond_paired_sources(&wrong_schedule_pair, &schedule, alpha_seed)
+            .is_err());
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn installed_paired_closure_is_liveness_bounded_and_fused_view_ready() {
+        let _fixture_guard = C6_RESIDUAL_TRACE_FIXTURE_LOCK.lock().unwrap();
+        let (installed, extraction, runtime, schedule, paired) = installed_paired_fixture();
+        let zero_weights = [fp2(59), fp2(61), fp2(67)];
+        let compiled =
+            C6CompiledLinearResidual::compile(&installed, &extraction, &runtime, &zero_weights)
+                .unwrap();
+        let leaf = compiled.build_paired_residual_leaf_witness(&paired, &schedule).unwrap();
+        let evaluation = compiled
+            .evaluate_installed_paired_closure(
+                &installed,
+                &extraction,
+                &runtime,
+                &paired,
+                &schedule,
+            )
+            .unwrap();
+        let closure = evaluation.closure();
+        assert_eq!(closure.program_digest(), installed.artifact_digest());
+        assert_eq!(closure.census().product_closures, 1);
+        assert_eq!(closure.census().product_triples, 2);
+        assert_eq!(closure.census().zero_roots, 3);
+        assert_eq!(closure.census().product_operand_values, 24);
+        assert_eq!(closure.census().zero_root_values, 12);
+        assert_eq!(closure.census().live_values, 100);
+        assert_ne!(closure.witness_digest(), [0; 32]);
+
+        let mut cursor = C6PairedSourceCursor::new(&paired, &schedule);
+        let sources: Vec<_> = (0..5).map(|source| cursor.next(source).unwrap()).collect();
+        cursor.finish(5).unwrap();
+        let a = sources[1].map(C6SourceWitness::prover_value);
+        let b = sources[2].map(C6SourceWitness::prover_value);
+        let c = sources[3].map(C6SourceWitness::prover_value);
+        let triples = [[a, b, c], [b, a, c]];
+        let mut expected = Vec::new();
+        for triple in triples {
+            for coordinate in 0..2 {
+                for node in triple {
+                    expected.extend([node[coordinate].x, node[coordinate].m]);
+                }
+            }
+        }
+        let sub = sources[0].map(C6SourceWitness::prover_value);
+        for coordinate in 0..2 {
+            let zero = a[coordinate].add(b[coordinate]).sub(ProverAuthed::from_public(fp2(7)));
+            expected.extend([zero.x, zero.m]);
+        }
+        for coordinate in 0..2 {
+            let zero = a[coordinate].scale(fp2(2)).sub(ProverAuthed::from_public(fp2(6)));
+            expected.extend([zero.x, zero.m]);
+        }
+        for coordinate in 0..2 {
+            let zero = sub[coordinate].sub(ProverAuthed::from_public(fp2(9)));
+            expected.extend([zero.x, zero.m]);
+        }
+        assert_eq!(&closure.values()[..expected.len()], expected);
+        assert!(closure.values()[expected.len()..].iter().all(|value| *value == Fp2::ZERO));
+        for zero in closure.values()[24..36].chunks_exact(4) {
+            assert_eq!(zero[0], Fp2::ZERO);
+            assert_eq!(zero[2], Fp2::ZERO);
+        }
+
+        let memory = evaluation.memory_census();
+        assert_eq!(memory.canonical_nodes, installed.topology().canonical_node_count as u64);
+        assert!(memory.peak_live_node_values > 0);
+        assert!(memory.peak_live_node_values < memory.canonical_nodes);
+        assert!(memory.node_value_capacity >= memory.peak_live_node_values);
+        assert_eq!(
+            memory.dense_paired_node_baseline_bytes,
+            memory.canonical_nodes * std::mem::size_of::<C6PairedInstalledNodeValue>() as u64
+        );
+        assert!(memory.peak_working_heap_bytes > memory.closure_value_heap_bytes);
+
+        let auxiliary = closure.transpose_auxiliary_lanes().unwrap();
+        let manifest = C6ResidualRelationManifest::new_with_geometry(
+            &installed,
+            &extraction,
+            &runtime,
+            7,
+            2,
+            false,
+        )
+        .unwrap();
+        let view = C6ResidualFusedWitnessView::new(&manifest, &leaf, closure, &auxiliary).unwrap();
+        assert_eq!(view.manifest_digest(), manifest.digest());
+        assert_ne!(view.digest(), [0; 32]);
+        let mut wrong_installed_binding = closure.clone();
+        wrong_installed_binding.installed_binding.as_mut().unwrap().paired_source_digest[0] ^= 1;
+        assert!(C6ResidualFusedWitnessView::new(
+            &manifest,
+            &leaf,
+            &wrong_installed_binding,
+            &auxiliary,
+        )
+        .is_err());
+
+        let wrong_source_schedule = C6PairedSourceWitness::new(
+            paired.tape_ids(),
+            paired.coordinates().clone(),
+            &schedule,
+            [0xFF; 32],
+        )
+        .unwrap();
+        assert!(compiled
+            .evaluate_installed_paired_closure(
+                &installed,
+                &extraction,
+                &runtime,
+                &wrong_source_schedule,
+                &schedule,
+            )
+            .is_err());
+        let mut noncanonical_schedule = schedule.clone();
+        noncanonical_schedule.digest[0] ^= 1;
+        assert!(compiled
+            .evaluate_installed_paired_closure(
+                &installed,
+                &extraction,
+                &runtime,
+                &paired,
+                &noncanonical_schedule,
+            )
             .is_err());
     }
 

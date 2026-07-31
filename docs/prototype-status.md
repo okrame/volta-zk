@@ -164,9 +164,15 @@ operands and zero roots, then supplies the frozen slot-7 and auxiliary
 witness views.  On 2,501,849 canonical nodes it peaks at 149,074 paired live
 values and 41,322,560 B of counted working heap, versus a 160,118,336-B dense
 paired-node baseline.  This closes witness ownership, not sealed C6RSC3
-execution.  Persistent prefixes, the resident provider path, response-field
-removal, envelope/backend, complete local end-to-end and hardware gates
-remain pending.
+execution at response geometry.  The scaled cross-crate fixture now derives
+that same installed witness shape from real paired source collection/replay,
+drives both the fused C6RSC3 prover and witness-free fused verifier, and carries
+all 48 residual pending claims through the complete authenticated-output link
+and both PCS chains.  Its separate diagnostic profile is 72 relations, eight
+link rounds, 32 link full correlations/tape, 1,394-B link overhead and
+418,708-B combined scaled link/PCS.  Persistent prefixes, the response-owned
+sealed coordinator, resident provider path, response-field removal,
+envelope/backend, complete local end-to-end and hardware gates remain pending.
 
 Workload of record: **GPT-2 small (124M, L=12, d=768, h=12, d_ff=3072),
 prefill T=100 + 50 deferred decode tokens, causal, C3b PCS Q=120**, on the
@@ -618,6 +624,32 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-31 — Installed residual witness reaches sealed C6RSC3, the
+  authenticated-output link and paired PCS at scaled geometry.**  The
+  cross-crate residual fixture now collects/replays two real MAC source
+  coordinates, evaluates the installed DAG with the liveness-bounded terminal
+  bridge, and refuses regression to the historical unbound closure.  The
+  shared blind coordinator remains byte-, transcript-, correlation- and
+  48-pending-claim-identical to its materialized arithmetic oracle; the
+  witness-free fused verifier accepts the same proof.
+
+  A second feature-only gate combines those 48 residual claims with real
+  hidden-`u` and cache pending claims, fills all 72 slots, and reaches Bound
+  only after the packed link and both PCS chains.  Its exact diagnostic link
+  profile is **72 relations / 8 rounds / 32 full correlations per tape /
+  1,394-B overhead / 418,708-B combined link+PCS**.  The installed slot-7
+  fixture requires `2^7`, so this new diagnostic alone pads the older `2^6`
+  scaled cache to `2^7` to preserve canonical descending cohort order.
+  Production is unchanged: its cache `2^24` already exceeds the residual
+  `2^23` cohort.
+
+  Ordinary/trace PCS are **179/0/1** and **181/0/1**; trace proto remains
+  **164/0/1**.  This closes only the scaled installed-witness seam and earns
+  no production byte, setup, soundness, correlation, memory or timing credit.
+  The full `T=4,Q=2` response-owned view must still enter the sealed
+  coordinator before direct corrections or `u_vectors` can leave the
+  response.  No provider or pod was contacted.
 
 - **2026-07-31 — C6 installed terminal witness bridge consumes the typed
   grand-residual roots with bounded liveness; sealed C6RSC3 remains next.**

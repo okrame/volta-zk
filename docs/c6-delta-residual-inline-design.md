@@ -23,7 +23,8 @@ INLINE RUNTIME-IDENTITY ORDERING REPAIR GREEN; ONE-LAYER CPU ATTENTION
 `CacheSegK` BYPASS + INLINE PRODUCT-CLOSURE DIFFERENTIAL GREEN; RESPONSE-WIDE
 CPU MODEL/BAND ORCHESTRATION + COMPLETE POOLED-SCHEDULE FOLLOWER + TYPED
 GRAND-RESIDUAL OPERATION-PLAN OWNERSHIP GREEN; INSTALLED TERMINAL WITNESS
-BRIDGE + LIVENESS CENSUS GREEN; SEALED C6RSC3 EXECUTION /
+BRIDGE + LIVENESS CENSUS GREEN; INSTALLED-WITNESS SCALED C6RSC3 ->
+AUTHENTICATED LINK -> PAIRED PCS GREEN; RESPONSE-OWNED SEALED EXECUTION /
 RESIDENT BACKEND / RESPONSE-FIELD REMOVAL / FINAL ENVELOPE PENDING;
 LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
@@ -4319,11 +4320,57 @@ approximately **91 s** and includes model execution, trace compilation,
 leaf construction, terminal evaluation and auxiliary transposition. It is
 not an inline-prover timing measurement and earns no 12--20-second credit.
 
-This closes typed-root-to-witness ownership only. The next ordered gate must
-feed this installed leaf/slot-7/auxiliary view through the sealed C6RSC3
-transcript and authenticated-output link. Direct correction and `u_vectors`
-response fields may be removed only after that end-to-end acceptance is
-green; resident/CUDA, strict envelope and bound timing remain pending. No
+This closes typed-root-to-witness ownership only. Direct correction and
+`u_vectors` response fields may be removed only after the full-T1 sealed
+path accepts end to end; resident/CUDA, strict envelope and bound timing
+remain pending. No provider or pod was contacted.
+
+#### 6.2.7 Installed witness reaches sealed C6RSC3 and the packed link at scaled geometry
+
+The cross-crate fused fixture no longer fabricates its seven leaf columns and
+slot-7 terminal values from the historical materialized residual program. It
+now collects a primary source coordinate from the MAC stream, replays the
+complete allocation schedule onto an independent second tape, installs the
+canonical operation artifact and invokes the same liveness-bounded terminal
+evaluator used by the response-wide bridge. The fused witness view therefore
+binds the installed artifact/topology/instance, complete source schedule and
+paired source digest before it enters the blind prover.
+
+The existing C6RSC3 differential now proves a stronger statement: this
+installed view drives the shared round-synchronous prover coordinator and is
+still byte-, transcript-, correlation- and pending-claim-identical to the
+materialized arithmetic oracle. The witness-free fused designated verifier
+accepts the same proof and 48 authenticated residual terminal claims.
+
+A second feature-only integration carries those claims through the complete
+72-slot registry together with real blind hidden-`u` and persistent-cache
+claims, then through the packed authenticated-output link and both PCS
+chains. Prover and fused verifier transcript ledgers match exactly and the
+only Pending-to-Bound transition occurs after the PCS and terminal MAC
+checks. The exact diagnostic profile is:
+
+```text
+installed C6RSC3 residual pending claims                 48
+packed-link relations / rounds                    72 / 8
+packed-link full correlations per tape                  32
+packed-link overhead                                  1,394 B
+combined scaled link plus paired PCS                 418,708 B.
+```
+
+The older generic scaled cache used `2^6` entries, while the installed
+slot-7 fixture necessarily needs `2^7` because its frozen 64-entry footer is
+retained. The new integration pads only that diagnostic cache to `2^7` so
+cohorts remain in canonical descending-domain order. This is not a production
+amendment: the frozen production cache is already `2^24`, above the
+`2^23` residual cohort, and none of its rounds, bytes or correlations change.
+
+This closes installed-witness -> sealed C6RSC3 -> authenticated-output link ->
+paired PCS only at scaled geometry. It earns no production byte, setup,
+soundness, correlation, memory or timing credit. The next gate is to make the
+full `T=4,Q=2` response-owned view enter the sealed coordinator without a
+materialized reference witness; only after that gate may the direct
+correction and `u_vectors` response fields be deleted and the strict envelope
+remeasured. Resident/CUDA and the 12--20-second bound remain pending. No
 provider or pod was contacted.
 
 ## 7. Certificate and challenge grammar

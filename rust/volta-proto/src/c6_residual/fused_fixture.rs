@@ -5,6 +5,7 @@
 //! production memory, timing, or response-removal credit.
 
 use super::*;
+use crate::c6_source::{replay_c6_source_coordinate, C6SourceCoordinate};
 use volta_mac::{
     begin_c6_prover_trace, compile_c6_operation_trace_for_role,
     derive_c6_runtime_instance_from_trace_diagnostic, finish_c6_prover_trace,
@@ -21,6 +22,7 @@ pub struct C6ResidualFusedScaledFixture {
     leaf: C6PairedResidualLeafWitness,
     closure: C6PairedResidualClosureWitness,
     auxiliary: C6PairedResidualAuxiliaryWitness,
+    closure_memory_census: C6InstalledClosureEvaluationMemoryCensus,
     reference: C6ResidualRelationReferenceWitness,
     compilation: C6ResidualAtomicReferenceCompilation,
     semantic_compiler_digests: [C6ResidualDigest; C6_RESIDUAL_PROOF_REPETITIONS as usize],
@@ -77,74 +79,64 @@ impl C6ResidualFusedScaledFixture {
             &self.auxiliary,
         )
     }
-}
 
-struct ProgramFixture {
-    builder: C6ResidualBuilder,
-    witnesses: Vec<C6SourceWitness>,
-    chi: Fp2,
+    pub fn closure_memory_census(&self) -> C6InstalledClosureEvaluationMemoryCensus {
+        self.closure_memory_census
+    }
+
+    pub fn uses_installed_terminal_witness(&self) -> bool {
+        self.closure.installed_binding.is_some()
+    }
 }
 
 fn fp2(value: u64) -> Fp2 {
     Fp2::from_base(Fp::new(value))
 }
 
-fn leaf(index: u32, domain: u64, kind: C6LeafKind) -> C6LeafId {
-    C6LeafId { schedule_index: index, stage: 1, domain, offset: 0, kind }
-}
-
-fn source_full(r: u64, x: u64, tag: u64) -> C6SourceWitness {
-    C6SourceWitness::FullField { r: fp2(r), correction: fp2(x) - fp2(r), tag: fp2(tag) }
-}
-
-fn program_fixture(tag_delta: Fp2) -> C6ResidualResult<ProgramFixture> {
-    let mut builder = C6ResidualBuilder::new();
-    let a_witness = match source_full(1, 3, 19) {
-        C6SourceWitness::FullField { r, correction, tag } => {
-            C6SourceWitness::FullField { r, correction, tag: tag + tag_delta }
-        }
-        C6SourceWitness::Subfield { .. } => unreachable!("fixture source is full-field"),
-    };
-    let b_witness = source_full(2, 4, 23);
-    let c_witness = source_full(5, 12, 29);
-    let mask_witness =
-        C6SourceWitness::FullField { r: fp2(7), correction: Fp2::ZERO, tag: fp2(31) };
-    let witnesses = vec![a_witness, b_witness, c_witness, mask_witness];
-
-    let a =
-        builder.add_source(leaf(0, 0x100, C6LeafKind::FullField), C6LeafRole::Direct, a_witness)?;
-    let b =
-        builder.add_source(leaf(1, 0x200, C6LeafKind::FullField), C6LeafRole::Direct, b_witness)?;
-    let c =
-        builder.add_source(leaf(2, 0x300, C6LeafKind::FullField), C6LeafRole::Direct, c_witness)?;
-    let mask = builder.add_source(
-        leaf(3, 0x400, C6LeafKind::FullField),
-        C6LeafRole::ProductMask,
-        mask_witness,
-    )?;
-
-    let seven = builder.add_public(fp2(7))?;
-    let sum = builder.add(a, b)?;
-    let zero = builder.sub(sum, seven)?;
-    builder.add_zero_closure(zero)?;
-    let six = builder.add_public(fp2(6))?;
-    let twice_a = builder.scale(a, fp2(2))?;
-    let scaled_zero = builder.sub(twice_a, six)?;
-    builder.add_zero_closure(scaled_zero)?;
-    builder.add_product_closure(vec![[a, b, c], [b, a, c]], mask)?;
-    Ok(ProgramFixture { builder, witnesses, chi: fp2(37) })
-}
-
-fn installed_fixture(
-    _witnesses: &[C6SourceWitness],
-) -> C6ResidualResult<(
+fn installed_fixture() -> C6ResidualResult<(
     C6InstalledOperationPlan,
     C6DecodedInstanceExtractionPlan,
     C6RuntimeInstanceValues,
+    CorrScheduleAudit,
+    C6PairedSourceWitness,
 )> {
+    let source_schedule_digest = [0x5A; 32];
+
+    let mut primary_stream = CorrelationStream::new([0xB0; 32]);
+    primary_stream.enable_c6_source_witness_collection().map_err(trace_error)?;
+    let sub = primary_stream.draw_subs(0x90, 1);
+    primary_stream
+        .record_c6_subfield_corrections(0x90, &[(Fp::new(9) - sub[0].r).value()])
+        .map_err(trace_error)?;
+    let _direct = primary_stream.draw_fulls(0x100, 3);
+    primary_stream
+        .record_c6_fullfield_plaintexts(0x100, &[fp2(3), fp2(4), fp2(12)])
+        .map_err(trace_error)?;
+    let _mask = primary_stream.draw_product_mask(0x200, 2);
+    let schedule = primary_stream
+        .schedule_audit()
+        .ok_or_else(|| C6ResidualError::new("C6 scaled fixture omitted its source schedule"))?;
+    let primary = C6SourceCoordinate::new(
+        primary_stream.finish_c6_subfield_witness_collection().map_err(trace_error)?,
+        primary_stream.finish_c6_fullfield_witness_collection().map_err(trace_error)?,
+        &schedule,
+    )
+    .map_err(trace_error)?;
+    let mut secondary_stream = CorrelationStream::new([0xB1; 32]);
+    let secondary = replay_c6_source_coordinate(&primary, &schedule, &mut secondary_stream)
+        .map_err(trace_error)?;
+    let paired = C6PairedSourceWitness::new(
+        [[0xE0; 32], [0xE1; 32]],
+        [primary, secondary],
+        &schedule,
+        source_schedule_digest,
+    )
+    .map_err(trace_error)?;
+
     begin_c6_prover_trace().map_err(trace_error)?;
     let mut correlations = CorrelationStream::new([0xC6; 32]);
     correlations.enable_c6_operation_trace().map_err(trace_error)?;
+    let sub = correlations.draw_subs(0x90, 1)[0].authenticate(Fp::new(9)).embed();
     let direct = correlations.draw_fulls(0x100, 3);
     let mask = correlations.draw_product_mask(0x200, 2);
     let a = direct[0].authenticate(fp2(3));
@@ -154,8 +146,14 @@ fn installed_fixture(
     let zero = a.add(b).sub(seven);
     let six = ProverAuthed::from_public(fp2(6));
     let scaled_zero = a.scale(fp2(2)).sub(six);
-    record_c6_zero_roots(&[zero.c6_trace_token(), scaled_zero.c6_trace_token()])
-        .map_err(trace_error)?;
+    let nine = ProverAuthed::from_public(fp2(9));
+    let sub_zero = sub.sub(nine);
+    record_c6_zero_roots(&[
+        zero.c6_trace_token(),
+        scaled_zero.c6_trace_token(),
+        sub_zero.c6_trace_token(),
+    ])
+    .map_err(trace_error)?;
     record_c6_product_closure(
         &[
             [a.c6_trace_token(), b.c6_trace_token(), c.c6_trace_token()],
@@ -166,7 +164,7 @@ fn installed_fixture(
     .map_err(trace_error)?;
     let snapshot = finish_c6_prover_trace().map_err(trace_error)?;
     let source_manifest =
-        C6TraceSourceManifest::new(4, [0x5A; 32], vec![3]).map_err(trace_error)?;
+        C6TraceSourceManifest::new(5, source_schedule_digest, vec![4]).map_err(trace_error)?;
     let compiled = compile_c6_operation_trace_for_role(
         &snapshot,
         &source_manifest,
@@ -183,82 +181,17 @@ fn installed_fixture(
     )
     .map_err(trace_error)?;
     let installed = compiled.artifact.install(&source_manifest).map_err(trace_error)?;
-    Ok((installed, extraction, runtime))
-}
-
-fn paired_leaf_witness_from_programs(
-    primary: &C6CommittedResidualProgram,
-    secondary: &C6CommittedResidualProgram,
-    source_schedule_digest: C6ResidualDigest,
-) -> C6ResidualResult<C6PairedResidualLeafWitness> {
-    if primary.sources.len() != secondary.sources.len() {
-        return Err(C6ResidualError::new("C6 scaled fixture coordinate source counts differ"));
-    }
-    let mut columns: [Vec<Fp2>; C6_RESIDUAL_LEAF_ALIGNED_SLOTS as usize] =
-        std::array::from_fn(|_| Vec::with_capacity(primary.sources.len()));
-    let mut product_mask_count = 0u32;
-    for (left, right) in primary.sources.iter().zip(&secondary.sources) {
-        if left.id != right.id || left.role != right.role {
-            return Err(C6ResidualError::new(
-                "C6 scaled fixture coordinate source schedules differ",
-            ));
-        }
-        let is_mask = left.role == C6LeafRole::ProductMask;
-        if is_mask {
-            product_mask_count = product_mask_count
-                .checked_add(1)
-                .ok_or_else(|| C6ResidualError::new("C6 scaled mask census overflows"))?;
-            if left.witness.correction() != Fp2::ZERO || right.witness.correction() != Fp2::ZERO {
-                return Err(C6ResidualError::new("C6 scaled product mask has a correction"));
-            }
-        }
-        let common = if is_mask {
-            Fp2::ZERO
-        } else {
-            let left_x = left.witness.base_plaintext() + left.witness.correction();
-            let right_x = right.witness.base_plaintext() + right.witness.correction();
-            if left_x != right_x {
-                return Err(C6ResidualError::new(
-                    "C6 scaled coordinates authenticate different plaintexts",
-                ));
-            }
-            left_x
-        };
-        let row = [
-            common,
-            left.witness.base_plaintext(),
-            left.witness.tag(),
-            left.witness.correction(),
-            right.witness.base_plaintext(),
-            right.witness.tag(),
-            right.witness.correction(),
-        ];
-        for (column, value) in columns.iter_mut().zip(row) {
-            column.push(value);
-        }
-    }
-    Ok(C6PairedResidualLeafWitness {
-        source_schedule_digest,
-        paired_source_digest: [0xA1; 32],
-        source_count: u32::try_from(primary.sources.len())
-            .map_err(|_| C6ResidualError::new("C6 scaled source count exceeds u32"))?,
-        product_mask_count,
-        columns,
-        witness_digest: [0xA2; 32],
-    })
+    Ok((installed, extraction, runtime, schedule, paired))
 }
 
 fn build_relation(
     installed: &C6InstalledOperationPlan,
-    extraction: &C6DecodedInstanceExtractionPlan,
-    runtime: &C6RuntimeInstanceValues,
+    linear: &C6CompiledLinearResidual,
     manifest: C6ResidualRelationManifest,
     reference: &C6ResidualRelationReferenceWitness,
     chi: Fp2,
-) -> C6ResidualResult<(C6CompiledLinearResidual, C6ResidualRelationChallenges)> {
+) -> C6ResidualResult<C6ResidualRelationChallenges> {
     let retained = C6ResidualRetainedChallenges::new(&manifest, vec![chi], fp2(79))?;
-    let zero_weights = retained.zero_weights(installed.zero_roots().len());
-    let linear = C6CompiledLinearResidual::compile(installed, extraction, runtime, &zero_weights)?;
     let root = C6ResidualRelationRootBound::bind_fixed_roots(manifest, [0xD1; 32], [0xD2; 32])?;
     let base = root.release_base_share_seed(retained, [0xD3; 32])?;
 
@@ -351,7 +284,7 @@ fn build_relation(
             C6PairedDeltaResidual { coordinates: residuals },
         )?
         .release_relation_seed(installed, [0xD4; 32])?;
-    Ok((linear, relation))
+    Ok(relation)
 }
 
 pub fn build_c6_residual_fused_scaled_fixture() -> C6ResidualResult<C6ResidualFusedScaledFixture> {
@@ -359,19 +292,9 @@ pub fn build_c6_residual_fused_scaled_fixture() -> C6ResidualResult<C6ResidualFu
         .lock()
         .map_err(|_| C6ResidualError::new("C6 scaled fixture lock is poisoned"))?;
 
-    let primary_fixture = program_fixture(Fp2::ZERO)?;
-    let installed_witnesses = primary_fixture.witnesses.clone();
-    let chi = primary_fixture.chi;
-    let primary_census = primary_fixture.builder.census()?;
-    let primary = primary_fixture.builder.commit([0xC1; 32], primary_census)?;
-    let secondary_fixture = program_fixture(fp2(1))?;
-    let secondary_census = secondary_fixture.builder.census()?;
-    let secondary = secondary_fixture.builder.commit([0xC2; 32], secondary_census)?;
-    let leaf = paired_leaf_witness_from_programs(&primary, &secondary, [0x5A; 32])?;
-    let closure = primary.build_paired_closure_witness(&secondary)?;
-    let auxiliary = closure.transpose_auxiliary_lanes()?;
-
-    let (operation_plan, extraction, runtime) = installed_fixture(&installed_witnesses)?;
+    let chi = fp2(37);
+    let (operation_plan, extraction, runtime, source_schedule, paired_sources) =
+        installed_fixture()?;
     let manifest = C6ResidualRelationManifest::new_with_geometry(
         &operation_plan,
         &extraction,
@@ -380,10 +303,24 @@ pub fn build_c6_residual_fused_scaled_fixture() -> C6ResidualResult<C6ResidualFu
         2,
         false,
     )?;
+    let retained = C6ResidualRetainedChallenges::new(&manifest, vec![chi], fp2(79))?;
+    let zero_weights = retained.zero_weights(operation_plan.zero_roots().len());
+    let linear =
+        C6CompiledLinearResidual::compile(&operation_plan, &extraction, &runtime, &zero_weights)?;
+    let leaf = linear.build_paired_residual_leaf_witness(&paired_sources, &source_schedule)?;
+    let closure_evaluation = linear.evaluate_installed_paired_closure(
+        &operation_plan,
+        &extraction,
+        &runtime,
+        &paired_sources,
+        &source_schedule,
+    )?;
+    let closure_memory_census = closure_evaluation.memory_census();
+    let closure = closure_evaluation.into_closure();
+    let auxiliary = closure.transpose_auxiliary_lanes()?;
     let reference =
         C6ResidualRelationReferenceWitness::from_live(&manifest, &leaf, &closure, &auxiliary)?;
-    let (linear, relation) =
-        build_relation(&operation_plan, &extraction, &runtime, manifest, &reference, chi)?;
+    let relation = build_relation(&operation_plan, &linear, manifest, &reference, chi)?;
     let compilation = compile_c6_residual_atomic_relation_reference(
         &operation_plan,
         &extraction,
@@ -420,6 +357,7 @@ pub fn build_c6_residual_fused_scaled_fixture() -> C6ResidualResult<C6ResidualFu
         leaf,
         closure,
         auxiliary,
+        closure_memory_census,
         reference,
         compilation,
         semantic_compiler_digests,

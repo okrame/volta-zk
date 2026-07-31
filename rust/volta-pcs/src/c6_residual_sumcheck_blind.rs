@@ -3034,6 +3034,11 @@ mod tests {
     #[test]
     fn fused_scaled_prover_is_byte_transcript_and_pending_identical() {
         let fused_fixture = build_c6_residual_fused_scaled_fixture().unwrap();
+        assert!(fused_fixture.uses_installed_terminal_witness());
+        let closure_memory = fused_fixture.closure_memory_census();
+        assert!(closure_memory.peak_live_node_values > 0);
+        assert!(closure_memory.peak_live_node_values < closure_memory.canonical_nodes);
+        assert!(closure_memory.closure_value_heap_bytes > 0);
         let mut statements = Vec::with_capacity(C6_RESIDUAL_SUMCHECK_REPETITIONS);
         let mut witnesses = Vec::with_capacity(C6_RESIDUAL_SUMCHECK_REPETITIONS);
         for atomic in fused_fixture.compilation().statements() {

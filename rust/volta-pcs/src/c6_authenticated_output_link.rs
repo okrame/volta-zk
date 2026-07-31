@@ -1827,6 +1827,11 @@ mod tests {
         verify_c6_blind_residual_sumchecks, C6BlindResidualPendingTransferFrame,
         C6BlindResidualStatement, C6BlindResidualSumcheckProof,
     };
+    #[cfg(feature = "c6-trace")]
+    use crate::c6_residual_sumcheck_blind::{
+        prove_c6_blind_residual_sumchecks_fused_scaled,
+        verify_c6_blind_residual_sumchecks_fused_scaled, C6BlindResidualFusedCompilerContext,
+    };
     use crate::c6_wrapper_pcs::{
         commit_c6_cache_state_cohort, commit_c6_wrapper_cohort, fix_test_c6_wrapper_commitments,
         C6CacheStateDescriptors, C6WrapperCohortSpec, C6WrapperCommitment, C6WrapperOracleKind,
@@ -1836,6 +1841,11 @@ mod tests {
     use crate::ligero::LigeroParams;
     use crate::ntt::NttPlan;
     use volta_proto::C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS;
+    #[cfg(feature = "c6-trace")]
+    use volta_proto::{
+        build_c6_residual_fused_scaled_fixture, C6ResidualFusedCoefficientArena,
+        C6ResidualFusedScaledFixture,
+    };
 
     const LEAF_ROUNDS: usize = 5;
     const AUXILIARY_ROUNDS: usize = 3;
@@ -1914,11 +1924,23 @@ mod tests {
         ]
     }
 
+    #[cfg(feature = "c6-trace")]
+    fn installed_residual_scaled_specs(
+    ) -> [C6WrapperCohortSpec; C6_AUTHENTICATED_OUTPUT_LINK_COHORTS] {
+        let mut specs = scaled_specs();
+        specs[0].payload_log2 = 7;
+        specs[1].payload_log2 = 7;
+        specs[2].payload_log2 = 7;
+        specs[5].payload_log2 = 3;
+        specs
+    }
+
     fn scaled_cache_descriptors() -> C6CacheStateDescriptors {
         C6CacheStateDescriptors::from_slots(array::from_fn(|slot| [(slot + 1) as u8; 32])).unwrap()
     }
 
     struct ScaledInputs {
+        specs: [C6WrapperCohortSpec; C6_AUTHENTICATED_OUTPUT_LINK_COHORTS],
         statements: Vec<C6BlindResidualStatement>,
         witnesses: Vec<C6ResidualSumcheckWitness>,
         hidden_layouts: Vec<C6HiddenULayout>,
@@ -1928,6 +1950,10 @@ mod tests {
         cohorts: Vec<C6CommittedWrapperCohort>,
         commitments: Vec<C6WrapperCommitment>,
         tables: BTreeMap<(u32, u16), Vec<Fp2>>,
+        cache_rounds: usize,
+        cache_old_len: usize,
+        cache_append_len: usize,
+        cache_auxiliary_target: Vec<Fp2>,
         cache_witness: C6PersistentCacheBlindWitness,
         cache_fold_functionals: Vec<C6PersistentCacheScaledFoldFunctional>,
         cache_append_values: [Vec<Fp2>; 2],
@@ -2202,7 +2228,8 @@ mod tests {
             ],
         )
         .unwrap();
-        for spec in scaled_specs() {
+        let specs = scaled_specs();
+        for spec in specs {
             for slot in 0..spec.slot_count {
                 if tables.contains_key(&(spec.cohort_id, slot)) {
                     continue;
@@ -2219,8 +2246,42 @@ mod tests {
                 );
             }
         }
-        let cohorts = scaled_specs()
-            .into_iter()
+        let cohorts = commit_scaled_cohorts(&specs, &tables);
+        let commitments = cohorts.iter().map(|cohort| cohort.commitment().clone()).collect();
+        ScaledInputs {
+            specs,
+            statements,
+            witnesses,
+            hidden_layouts,
+            hidden_q_cols,
+            hidden_sealed,
+            hidden_postcommit,
+            cohorts,
+            commitments,
+            tables,
+            cache_rounds: CACHE_ROUNDS,
+            cache_old_len: CACHE_OLD_LEN,
+            cache_append_len: CACHE_APPEND_LEN,
+            cache_auxiliary_target: vec![
+                symbol(490_001),
+                symbol(490_002),
+                symbol(490_003),
+                Fp2::ZERO,
+            ],
+            cache_witness,
+            cache_fold_functionals,
+            cache_append_values,
+            cache_fold_targets,
+        }
+    }
+
+    fn commit_scaled_cohorts(
+        specs: &[C6WrapperCohortSpec; C6_AUTHENTICATED_OUTPUT_LINK_COHORTS],
+        tables: &BTreeMap<(u32, u16), Vec<Fp2>>,
+    ) -> Vec<C6CommittedWrapperCohort> {
+        specs
+            .iter()
+            .copied()
             .map(|spec| {
                 let slots = (0..spec.slot_count)
                     .map(|slot| {
@@ -2254,29 +2315,155 @@ mod tests {
                     commit_c6_wrapper_cohort([0xC6; 32], spec, slots).unwrap()
                 }
             })
-            .collect::<Vec<_>>();
-        let commitments = cohorts.iter().map(|cohort| cohort.commitment().clone()).collect();
-        ScaledInputs {
-            statements,
-            witnesses,
-            hidden_layouts,
-            hidden_q_cols,
-            hidden_sealed,
-            hidden_postcommit,
-            cohorts,
-            commitments,
-            tables,
-            cache_witness,
-            cache_fold_functionals,
-            cache_append_values,
-            cache_fold_targets,
+            .collect()
+    }
+
+    #[cfg(feature = "c6-trace")]
+    fn installed_residual_scaled_inputs() -> (ScaledInputs, C6ResidualFusedScaledFixture) {
+        let fused = build_c6_residual_fused_scaled_fixture().unwrap();
+        assert!(fused.uses_installed_terminal_witness());
+        let mut inputs = scaled_inputs();
+        inputs.specs = installed_residual_scaled_specs();
+        inputs.statements.clear();
+        inputs.witnesses.clear();
+        for atomic in fused.compilation().statements() {
+            let reference =
+                C6ResidualSumcheckStatement::from_atomic_relation_reference(atomic).unwrap();
+            inputs.witnesses.push(
+                C6ResidualSumcheckWitness::new(
+                    &reference,
+                    fused.reference().leaf_tables().to_vec(),
+                    fused.reference().auxiliary_tables().to_vec(),
+                )
+                .unwrap(),
+            );
+            let semantic = fused.semantic_compiler_digest(atomic.proof_repetition()).unwrap();
+            inputs
+                .statements
+                .push(prepare_c6_blind_residual_statement(reference, semantic).unwrap());
         }
+
+        for (slot, lower) in fused.reference().leaf_tables().iter().enumerate() {
+            let mut evaluations = lower.clone();
+            evaluations.extend(table(7, 610_000 + 100 * slot as u64));
+            inputs.tables.insert((C6_DELTA_RESIDUAL_COHORT_ID, slot as u16), evaluations);
+        }
+        for (slot, lower) in fused.reference().auxiliary_tables().iter().enumerate() {
+            let mut evaluations = lower.clone();
+            evaluations.extend(table(2, 620_000 + 100 * slot as u64));
+            inputs.tables.insert((C6_WRAPPER_AUXILIARY_COHORT_ID, slot as u16), evaluations);
+        }
+        for slot in 16..32u16 {
+            inputs.tables.insert((C6_WRAPPER_AUXILIARY_COHORT_ID, slot), vec![Fp2::ZERO; 1 << 3]);
+        }
+
+        const CACHE_ROUNDS: usize = 7;
+        const CACHE_OLD_LEN: usize = 12;
+        const CACHE_APPEND_LEN: usize = 4;
+        let cache_len = 1usize << CACHE_ROUNDS;
+        let cache_predecessor: [Vec<Fp2>; 2] = array::from_fn(|kv| {
+            (0..cache_len)
+                .map(|index| {
+                    if index < CACHE_OLD_LEN {
+                        symbol(400_000 + kv as u64 * 10_000 + index as u64)
+                    } else {
+                        Fp2::ZERO
+                    }
+                })
+                .collect()
+        });
+        inputs.cache_append_values = array::from_fn(|kv| {
+            (0..CACHE_APPEND_LEN)
+                .map(|index| symbol(430_000 + kv as u64 * 10_000 + index as u64))
+                .collect()
+        });
+        let cache_successor: [Vec<Fp2>; 2] = array::from_fn(|kv| {
+            (0..cache_len)
+                .map(|index| {
+                    if index < CACHE_OLD_LEN {
+                        cache_predecessor[kv][index]
+                    } else if index < CACHE_OLD_LEN + CACHE_APPEND_LEN {
+                        inputs.cache_append_values[kv][index - CACHE_OLD_LEN]
+                    } else {
+                        Fp2::ZERO
+                    }
+                })
+                .collect()
+        });
+        inputs.cache_fold_functionals = (0..4)
+            .map(|ordinal| {
+                C6PersistentCacheScaledFoldFunctional::new(
+                    ordinal,
+                    ordinal / 2,
+                    table(CACHE_ROUNDS, 460_000 + ordinal as u64 * 10_000),
+                )
+                .unwrap()
+            })
+            .collect();
+        inputs.cache_fold_targets = inputs
+            .cache_fold_functionals
+            .iter()
+            .map(|functional| {
+                functional
+                    .coefficients()
+                    .iter()
+                    .zip(&cache_successor[functional.kv()])
+                    .fold(Fp2::ZERO, |sum, (&coefficient, &value)| sum + coefficient * value)
+            })
+            .collect();
+        inputs.cache_auxiliary_target = vec![symbol(490_001), symbol(490_002), Fp2::ZERO];
+        let placeholder_cache_plan = C6PersistentCacheRelationPlan::new_scaled_client_derived(
+            CACHE_ROUNDS,
+            CACHE_OLD_LEN,
+            CACHE_APPEND_LEN,
+            [0xC1; 32],
+            [0xC2; 32],
+            [0xC3; 32],
+            inputs.cache_fold_functionals.clone(),
+            inputs.cache_auxiliary_target.clone(),
+        )
+        .unwrap();
+        inputs.cache_witness = C6PersistentCacheBlindWitness::new(
+            &placeholder_cache_plan,
+            [
+                cache_predecessor[0].clone(),
+                cache_predecessor[1].clone(),
+                cache_successor[0].clone(),
+                cache_successor[1].clone(),
+            ],
+        )
+        .unwrap();
+        inputs.cache_rounds = CACHE_ROUNDS;
+        inputs.cache_old_len = CACHE_OLD_LEN;
+        inputs.cache_append_len = CACHE_APPEND_LEN;
+        for kv in 0..2 {
+            let mut predecessor = cache_predecessor[kv].clone();
+            predecessor.extend(table(CACHE_ROUNDS, 500_000 + kv as u64 * 10_000));
+            inputs.tables.insert((C6_PREDECESSOR_CACHE_COHORT_ID, kv as u16), predecessor);
+            let mut successor = cache_successor[kv].clone();
+            successor.extend(table(CACHE_ROUNDS, 520_000 + kv as u64 * 10_000));
+            inputs.tables.insert((C6_SUCCESSOR_CACHE_COHORT_ID, kv as u16), successor);
+        }
+        for cohort_id in [C6_PREDECESSOR_CACHE_COHORT_ID, C6_SUCCESSOR_CACHE_COHORT_ID] {
+            for slot in 2..8u16 {
+                let mut zero = vec![Fp2::ZERO; cache_len];
+                zero.extend(table(
+                    CACHE_ROUNDS,
+                    540_000 + u64::from(cohort_id & 0xff) * 10_000 + u64::from(slot) * 100,
+                ));
+                inputs.tables.insert((cohort_id, slot), zero);
+            }
+        }
+        inputs.cohorts = commit_scaled_cohorts(&inputs.specs, &inputs.tables);
+        inputs.commitments =
+            inputs.cohorts.iter().map(|cohort| cohort.commitment().clone()).collect();
+        (inputs, fused)
     }
 
     fn polynomial_views<'a>(inputs: &'a ScaledInputs) -> Vec<C6LinkSlotPolynomial<'a>> {
         let mut polynomials = Vec::with_capacity(C6_WRAPPER_REPETITIONS * C6_WRAPPER_ACTIVE_SLOTS);
         for repetition in 0..C6_WRAPPER_REPETITIONS {
-            for spec in scaled_specs() {
+            for spec in inputs.specs {
                 for slot in 0..spec.slot_count {
                     polynomials.push(C6LinkSlotPolynomial {
                         repetition: repetition as u8,
@@ -2311,14 +2498,14 @@ mod tests {
         inputs: &ScaledInputs,
     ) -> C6PersistentCacheRelationPlan {
         C6PersistentCacheRelationPlan::new_scaled_client_derived(
-            6,
-            12,
-            4,
+            inputs.cache_rounds,
+            inputs.cache_old_len,
+            inputs.cache_append_len,
             fixed.binding_digest(),
             [0xC2; 32],
             [0xC3; 32],
             inputs.cache_fold_functionals.clone(),
-            vec![symbol(490_001), symbol(490_002), symbol(490_003), Fp2::ZERO],
+            inputs.cache_auxiliary_target.clone(),
         )
         .unwrap()
     }
@@ -2428,19 +2615,66 @@ mod tests {
 
     fn prove_integrated_fixture() -> IntegratedFixture {
         let inputs = scaled_inputs();
+        prove_integrated_fixture_with(inputs, |inputs, streams, transcript| {
+            prove_c6_blind_residual_sumchecks_reference(
+                &inputs.statements,
+                &inputs.witnesses,
+                streams,
+                transcript,
+            )
+            .unwrap()
+        })
+    }
+
+    #[cfg(feature = "c6-trace")]
+    fn prove_installed_residual_integrated_fixture(
+    ) -> (IntegratedFixture, C6ResidualFusedScaledFixture) {
+        let (inputs, fused) = installed_residual_scaled_inputs();
+        let compiler = C6BlindResidualFusedCompilerContext::new(
+            fused.operation_plan(),
+            fused.extraction(),
+            fused.runtime(),
+            fused.linear(),
+            fused.relation(),
+        );
+        let arena = C6ResidualFusedCoefficientArena::new(fused.manifest());
+        let integrated = prove_integrated_fixture_with(inputs, |inputs, streams, transcript| {
+            prove_c6_blind_residual_sumchecks_fused_scaled(
+                &inputs.statements,
+                &inputs.witnesses,
+                compiler,
+                fused.witness_view().unwrap(),
+                &arena,
+                streams,
+                transcript,
+            )
+            .unwrap()
+        });
+        assert_eq!(arena.active_repetition(), None);
+        assert_eq!(arena.active_elements(), 0);
+        assert!(!arena.is_faulted());
+        (integrated, fused)
+    }
+
+    fn prove_integrated_fixture_with(
+        inputs: ScaledInputs,
+        prove_residual: impl FnOnce(
+            &ScaledInputs,
+            &mut [CorrelationStream; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
+            &mut Transcript,
+        ) -> (
+            C6BlindResidualSumcheckProof,
+            C6BlindResidualPendingTransferFrame,
+            C6BlindResidualPendingClaimsProver,
+        ),
+    ) -> IntegratedFixture {
         let mut streams = array::from_fn(|tape| CorrelationStream::new(TAPE_SEEDS[tape]));
         let mut transcript = Transcript::new(CHALLENGE_SEED);
         let fixed =
             fix_test_c6_wrapper_commitments([0xC6; 32], &inputs.commitments, &mut transcript)
                 .unwrap();
         let (residual_proof, residual_frame, residual_pending) =
-            prove_c6_blind_residual_sumchecks_reference(
-                &inputs.statements,
-                &inputs.witnesses,
-                &mut streams,
-                &mut transcript,
-            )
-            .unwrap();
+            prove_residual(&inputs, &mut streams, &mut transcript);
         let (hidden_proof, hidden_pending) = prove_c6_blind_hidden_u_sumchecks_reference(
             &inputs.hidden_sealed,
             inputs.hidden_sealed.prequery(),
@@ -2513,6 +2747,63 @@ mod tests {
         Transcript,
         [u64; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
     ) {
+        verifier_prefix_with(fixture, |fixture, contexts, transcript| {
+            verify_c6_blind_residual_sumchecks(
+                &fixture.inputs.statements,
+                &fixture.residual_proof,
+                &fixture.residual_frame,
+                contexts,
+                transcript,
+            )
+            .unwrap()
+        })
+    }
+
+    #[cfg(feature = "c6-trace")]
+    fn verifier_prefix_installed(
+        fixture: &IntegratedFixture,
+        fused: &C6ResidualFusedScaledFixture,
+    ) -> (
+        C6FixedWrapperCommitments,
+        C6PendingSlotRegistryVerifier,
+        [VerifierCtx; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
+        Transcript,
+        [u64; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
+    ) {
+        let compiler = C6BlindResidualFusedCompilerContext::new(
+            fused.operation_plan(),
+            fused.extraction(),
+            fused.runtime(),
+            fused.linear(),
+            fused.relation(),
+        );
+        verifier_prefix_with(fixture, |fixture, contexts, transcript| {
+            verify_c6_blind_residual_sumchecks_fused_scaled(
+                &fixture.inputs.statements,
+                &fixture.residual_proof,
+                &fixture.residual_frame,
+                compiler,
+                contexts,
+                transcript,
+            )
+            .unwrap()
+        })
+    }
+
+    fn verifier_prefix_with(
+        fixture: &IntegratedFixture,
+        verify_residual: impl FnOnce(
+            &IntegratedFixture,
+            &mut [VerifierCtx; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
+            &mut Transcript,
+        ) -> C6BlindResidualPendingClaimsVerifier,
+    ) -> (
+        C6FixedWrapperCommitments,
+        C6PendingSlotRegistryVerifier,
+        [VerifierCtx; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
+        Transcript,
+        [u64; C6_AUTHENTICATED_OUTPUT_LINK_TAPES],
+    ) {
         let mut contexts = [
             VerifierCtx::new(TAPE_SEEDS[0], symbol(0xD1)),
             VerifierCtx::new(TAPE_SEEDS[1], symbol(0xE2)),
@@ -2524,14 +2815,7 @@ mod tests {
             &mut transcript,
         )
         .unwrap();
-        let residual_pending = verify_c6_blind_residual_sumchecks(
-            &fixture.inputs.statements,
-            &fixture.residual_proof,
-            &fixture.residual_frame,
-            &mut contexts,
-            &mut transcript,
-        )
-        .unwrap();
+        let residual_pending = verify_residual(fixture, &mut contexts, &mut transcript);
         let hidden_pending = verify_c6_blind_hidden_u_sumchecks(
             &fixture.inputs.hidden_layouts,
             &fixture.inputs.hidden_q_cols,
@@ -2668,6 +2952,42 @@ mod tests {
         // 64 B each, and the packed link contributes the final four tags.
         assert_eq!(transcript.bytes_for("zero_open_tag"), 256);
         assert_eq!(transcript.bytes_for(LINK_DIGEST_LABEL), 32);
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
+    fn installed_residual_fused_prover_and_verifier_close_through_packed_link_and_pcs() {
+        let (fixture, fused) = prove_installed_residual_integrated_fixture();
+        assert!(fused.uses_installed_terminal_witness());
+        assert_eq!(fixture.metrics.relations_per_repetition, 72);
+        assert_eq!(fixture.metrics.rounds_per_repetition, 8);
+        assert_eq!(fixture.metrics.full_correlations_per_tape, 32);
+        assert_eq!(fixture.metrics.link_overhead_bytes, 1_394);
+        assert_eq!(fixture.metrics.combined_proof_bytes, 418_708);
+        assert_eq!(fixture.encoded.len(), 418_708);
+        assert_eq!(fixture.prover_link_counter_delta, [32, 32]);
+
+        let (fixed, pending, mut contexts, mut transcript, before) =
+            verifier_prefix_installed(&fixture, &fused);
+        assert_eq!(pending.len(), 2 * C6_WRAPPER_ACTIVE_SLOTS);
+        let bound = verify_c6_authenticated_output_link_reference(
+            &fixed,
+            pending,
+            &fixture.proof,
+            &mut contexts,
+            &mut transcript,
+        )
+        .unwrap();
+        assert_eq!(bound.len(), 2 * C6_WRAPPER_ACTIVE_SLOTS);
+        assert_eq!(
+            array::from_fn::<_, C6_AUTHENTICATED_OUTPUT_LINK_TAPES, _>(|tape| {
+                contexts[tape].counters.full_corrs - before[tape]
+            }),
+            [32, 32]
+        );
+        assert_eq!(fixture.prover_ledger, *transcript.ledger());
+        assert_eq!(fixture.prover_total, transcript.total_bytes());
+        assert_eq!(transcript.bytes_for(LINK_ROUND_LABEL), 2 * 8 * 64);
     }
 
     #[test]

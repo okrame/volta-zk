@@ -14,8 +14,9 @@ AND BLIND HIDDEN-U SOURCE ADAPTER GREEN; PCS-NATIVE DUAL-ROOT PERSISTENT-CACHE
 AMENDMENT, EXACT 72-SLOT ROOFLINE AND SIX-GROUP C6LNK2 PACKED WRAPPER GREEN;
 POINTWISE C6PC2 AND SOURCE-BOUND C6PS1 -> C6PC2 -> C6LNK2 -> PAIRED PCS
 SCALED PATH GREEN WITH ZERO CACHE STAND-INS; FACTORIZED RUNTIME FOLD-BATCH
-COMPILER + 653-ROOT FORMAL REPAIR GREEN; C6PS1 STRICT MIGRATION / 24-ROUND
-CACHE INTEGRATION / `CacheSegK` REMOVAL / BACKEND / FINAL ENVELOPE PENDING;
+COMPILER + 653-ROOT FORMAL REPAIR + STRICT C6PS1 V2 TRANSCRIPT MIGRATION GREEN;
+TYPED PENDING-TARGET / 24-ROUND CACHE INTEGRATION / `CacheSegK` REMOVAL /
+BACKEND / FINAL ENVELOPE PENDING;
 LOCAL IMPLEMENTATION AUTHORIZED; HARD STOP BEFORE POD**.
 
 This document is the C6 plan of record.  It is a new descendant of the
@@ -3901,10 +3902,33 @@ append transitivity and exact **653 / 426,409 <2^19** census.  Full build is
 3,261 jobs; the audit is **345 total / 106 C6** named targets with stdout
 SHA-256
 `007a24a1d31f9dde8a7484905803155298eaf00dc5d47e45e776ed3ff27881e6`.
-This closes only factorized compilation.  The next ordered gate is the new
-strict `C6PS1` transcript placement plus typed pending-target integration in
-the 24-round cache coordinator, followed by `CacheSegK` removal.  No response,
-setup, correlation, prover-time or hardware credit is earned yet.
+The subsequent strict transcript sub-gate is also locally green. `C6PS1`
+advances from version 1 to version 2 while remaining exactly **304 B**.  Its
+former four response-fixed corrections are gone.  In each repetition the
+successor-owner root first defines canonical global powers
+`rho^(ordinal+1)` over every individual model fold; the two K/V fold
+corrections are then transcript-bound before the 24-coordinate relation
+point.  The two K/V append corrections are bound only after that point and
+before the first cache sumcheck round.  The predecessor-functional owner is
+constructed as authenticated canonical zero and has no source constructor
+or correction field.
+
+The scaled relation now consumes an arbitrary ordered fold inventory (capped
+at 576), checks each individual successor functional, and derives its two
+repetition-local K/V aggregates from the exact scalar powers.  The strict v1
+decoder, wrong fold/append frames, changed coefficient inventories, wrong
+points and every former binding seam reject.  The existing source-bound
+6-round path still closes through `C6PC2 -> C6LNK2 ->` both packed PCS chains
+at **1,506 B / 32 full correlations per tape / 64 pending claims**;
+production remains **3,810 B / 104 per tape**.  The direct 77-root pointwise
+reference census and the current 653-root streaming census are now separate
+executable constants, preventing historical metrics from silently claiming
+the scalar-batch repair.
+
+This closes strict `C6PS1` placement only.  Typed runtime targets still have
+to replace the scaled fold-source fixture and enter the step-wise 24-round
+cache participant; `CacheSegK` remains live.  No response, setup,
+correlation, prover-time or hardware credit is earned yet.
 
 ## 7. Certificate and challenge grammar
 

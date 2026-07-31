@@ -3,7 +3,8 @@
 //! The reference path is deliberately scaled: production geometry must use a
 //! streaming client compiler and is rejected here.  The transition owner is
 //! weighted by `eq(a, x)` at a verifier-owned relation point; the remaining
-//! two owners bind predecessor attention and current-slab/output functionals.
+//! predecessor owner is canonical zero and the successor owner binds a
+//! verifier-root scalar batch of every model cache functional.
 //! Four live terminal evaluations and 28 canonical zero claims per repetition
 //! remain pending until `C6LNK2` and both packed PCS chains accept. Aggregate
 //! source keys are authenticated inputs to this sumcheck, not PCS outputs.
@@ -22,6 +23,7 @@ use volta_mac::{
 };
 use volta_proto::mle::{eq_vec, lagrange3};
 
+use crate::c6_persistent_cache::C6_PERSISTENT_CACHE_FOLD_CAPACITY;
 use crate::c6_wrapper_pcs::{
     C6WrapperDigest, C6_PREDECESSOR_CACHE_COHORT_ID, C6_SUCCESSOR_CACHE_COHORT_ID,
     C6_WRAPPER_AUXILIARY_COHORT_ID, C6_WRAPPER_REPETITIONS,
@@ -37,7 +39,7 @@ pub const C6_PERSISTENT_CACHE_BLIND_PRODUCTION_ROUNDS: usize = 24;
 pub const C6_PERSISTENT_CACHE_BLIND_PRODUCTION_BYTES: u64 = 3_506;
 pub const C6_PERSISTENT_CACHE_BLIND_PRODUCTION_CORRELATIONS_PER_TAPE: u64 = 104;
 pub const C6_PERSISTENT_CACHE_SOURCE_BOOTSTRAP_MAGIC: [u8; 8] = *b"C6PS1\0\0\0";
-pub const C6_PERSISTENT_CACHE_SOURCE_BOOTSTRAP_VERSION: u16 = 1;
+pub const C6_PERSISTENT_CACHE_SOURCE_BOOTSTRAP_VERSION: u16 = 2;
 pub const C6_PERSISTENT_CACHE_SOURCE_BOOTSTRAP_BYTES: u64 = 304;
 pub const C6_PERSISTENT_CACHE_SOURCE_BOUND_PRODUCTION_BYTES: u64 =
     C6_PERSISTENT_CACHE_BLIND_PRODUCTION_BYTES + C6_PERSISTENT_CACHE_SOURCE_BOOTSTRAP_BYTES;
@@ -50,16 +52,16 @@ const REPETITION_LABEL: &str = "c6_persistent_cache_blind_repetition";
 const ROUND_LABEL: &str = "c6_persistent_cache_blind_round_corrections";
 const TERMINAL_LABEL: &str = "c6_persistent_cache_blind_terminal_corrections";
 const SOURCE_BOOTSTRAP_HEADER_LABEL: &str = "c6_persistent_cache_source_bootstrap_header";
-const SOURCE_BOOTSTRAP_FIXED_LABEL: &str = "c6_persistent_cache_source_bootstrap_fixed";
-const SOURCE_BOOTSTRAP_TRANSITION_LABEL: &str = "c6_persistent_cache_source_bootstrap_transition";
+const SOURCE_BOOTSTRAP_FOLD_LABEL: &str = "c6_persistent_cache_source_bootstrap_fold";
+const SOURCE_BOOTSTRAP_APPEND_LABEL: &str = "c6_persistent_cache_source_bootstrap_append";
 const HEADER_AND_STATEMENT_BYTES: u64 = 48;
 const REPETITION_PREFIX_BYTES: u64 = 33;
 const ROUND_BYTES: u64 = 64;
 const TERMINAL_BYTES: u64 = 128;
 const FP2_BYTES: u64 = 16;
 const SOURCE_BOOTSTRAP_HEADER_BYTES: u64 = 48;
-const SOURCE_BOOTSTRAP_FIXED_BYTES: u64 = 128;
-const SOURCE_BOOTSTRAP_TRANSITION_BYTES: u64 = 64;
+const SOURCE_BOOTSTRAP_FOLD_BYTES: u64 = 64;
+const SOURCE_BOOTSTRAP_APPEND_BYTES: u64 = 64;
 const CORRELATION_BASE: u64 = 0x0C66_0000_0000_0000;
 
 const SOURCE_OWNER_COUNT: usize = 3;
@@ -95,34 +97,37 @@ impl std::error::Error for C6PersistentCacheBlindError {}
 #[repr(u8)]
 pub enum C6PersistentCacheRelationOwner {
     AppendTransition = 0,
-    PredecessorAttention = 1,
-    CurrentSlabOutput = 2,
+    CanonicalPredecessorZero = 1,
+    SuccessorModelFolds = 2,
 }
 
 impl C6PersistentCacheRelationOwner {
     const ALL: [Self; 3] =
-        [Self::AppendTransition, Self::PredecessorAttention, Self::CurrentSlabOutput];
+        [Self::AppendTransition, Self::CanonicalPredecessorZero, Self::SuccessorModelFolds];
 }
 
 /// Strict aggregate-correction frame that bootstraps the six C6PC2 source
-/// keys without exposing any historical corrected key vector.  The four
-/// fold aggregates are response-fixed; the two append aggregates depend on
-/// each repetition's verifier-owned equality point.
+/// keys without exposing any historical corrected key vector.  Fold
+/// corrections are repetition-local and committed only after the successor
+/// batching root; append corrections follow the verifier-owned equality
+/// point.  The canonical predecessor owner has value and correction zero.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct C6PersistentCacheSourceBootstrapFrame {
     statement_digest: C6WrapperDigest,
-    /// predecessor K/V, current-slab K/V; then tape.
-    fixed_corrections: [[[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT]; 2],
-    /// repetition, K/V, tape.
-    transition_corrections:
+    /// repetition, K/V, tape; sampled after the successor batching root.
+    fold_corrections:
+        [[[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT]; C6_WRAPPER_REPETITIONS],
+    /// repetition, K/V, tape; sampled after the relation point.
+    append_corrections:
         [[[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT]; C6_WRAPPER_REPETITIONS],
 }
 
 impl C6PersistentCacheSourceBootstrapFrame {
     fn new(
         statement_digest: C6WrapperDigest,
-        fixed_corrections: [[[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT]; 2],
-        transition_corrections: [[[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT];
+        fold_corrections: [[[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT];
+            C6_WRAPPER_REPETITIONS],
+        append_corrections: [[[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT];
             C6_WRAPPER_REPETITIONS],
     ) -> Result<Self> {
         if statement_digest == [0; 32] {
@@ -130,7 +135,7 @@ impl C6PersistentCacheSourceBootstrapFrame {
                 "zero C6PS1 source-bootstrap statement digest",
             ));
         }
-        Ok(Self { statement_digest, fixed_corrections, transition_corrections })
+        Ok(Self { statement_digest, fold_corrections, append_corrections })
     }
 
     pub fn statement_digest(&self) -> C6WrapperDigest {
@@ -143,18 +148,18 @@ impl C6PersistentCacheSourceBootstrapFrame {
         bytes.extend_from_slice(&C6_PERSISTENT_CACHE_SOURCE_BOOTSTRAP_VERSION.to_le_bytes());
         bytes.push(C6_WRAPPER_REPETITIONS as u8);
         bytes.push(C6_PERSISTENT_CACHE_BLIND_TAPES as u8);
-        bytes.push(4);
+        bytes.push(2);
         bytes.push(2);
         bytes.extend_from_slice(&0u16.to_le_bytes());
         bytes.extend_from_slice(&self.statement_digest);
-        for owner in &self.fixed_corrections {
-            for kv in owner {
+        for repetition in &self.fold_corrections {
+            for kv in repetition {
                 for correction in kv {
                     encode_fp2(&mut bytes, *correction);
                 }
             }
         }
-        for repetition in &self.transition_corrections {
+        for repetition in &self.append_corrections {
             for kv in repetition {
                 for correction in kv {
                     encode_fp2(&mut bytes, *correction);
@@ -176,7 +181,7 @@ impl C6PersistentCacheSourceBootstrapFrame {
             || cursor.u16()? != C6_PERSISTENT_CACHE_SOURCE_BOOTSTRAP_VERSION
             || cursor.u8()? as usize != C6_WRAPPER_REPETITIONS
             || cursor.u8()? as usize != C6_PERSISTENT_CACHE_BLIND_TAPES
-            || cursor.u8()? != 4
+            || cursor.u8()? != 2
             || cursor.u8()? != 2
             || cursor.u16()? != 0
         {
@@ -186,18 +191,18 @@ impl C6PersistentCacheSourceBootstrapFrame {
         if statement_digest != expected_statement_digest || statement_digest == [0; 32] {
             return Err(C6PersistentCacheBlindError::new("C6PS1 statement digest mismatch"));
         }
-        let mut fixed_corrections =
-            [[[Fp2::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT]; 2];
-        for owner in &mut fixed_corrections {
-            for kv in owner {
+        let mut fold_corrections = [[[Fp2::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT];
+            C6_WRAPPER_REPETITIONS];
+        for repetition in &mut fold_corrections {
+            for kv in repetition {
                 for correction in kv {
                     *correction = cursor.fp2()?;
                 }
             }
         }
-        let mut transition_corrections = [[[Fp2::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES];
+        let mut append_corrections = [[[Fp2::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES];
             SOURCE_KV_COUNT]; C6_WRAPPER_REPETITIONS];
-        for repetition in &mut transition_corrections {
+        for repetition in &mut append_corrections {
             for kv in repetition {
                 for correction in kv {
                     *correction = cursor.fp2()?;
@@ -207,21 +212,28 @@ impl C6PersistentCacheSourceBootstrapFrame {
         if !cursor.is_eof() {
             return Err(C6PersistentCacheBlindError::new("trailing C6PS1 bytes"));
         }
-        Self::new(statement_digest, fixed_corrections, transition_corrections)
+        Self::new(statement_digest, fold_corrections, append_corrections)
     }
 
-    fn charge_header_and_fixed(&self, transcript: &mut Transcript) {
+    fn charge_header(&self, transcript: &mut Transcript) {
         transcript.append(SOURCE_BOOTSTRAP_HEADER_LABEL, SOURCE_BOOTSTRAP_HEADER_BYTES);
-        transcript.append(SOURCE_BOOTSTRAP_FIXED_LABEL, SOURCE_BOOTSTRAP_FIXED_BYTES);
     }
 
-    fn charge_transition(&self, repetition: usize, transcript: &mut Transcript) -> Result<()> {
+    fn charge_fold(&self, repetition: usize, transcript: &mut Transcript) -> Result<()> {
+        if repetition >= C6_WRAPPER_REPETITIONS {
+            return Err(C6PersistentCacheBlindError::new("C6PS1 fold repetition is out of range"));
+        }
+        transcript.append(SOURCE_BOOTSTRAP_FOLD_LABEL, SOURCE_BOOTSTRAP_FOLD_BYTES);
+        Ok(())
+    }
+
+    fn charge_append(&self, repetition: usize, transcript: &mut Transcript) -> Result<()> {
         if repetition >= C6_WRAPPER_REPETITIONS {
             return Err(C6PersistentCacheBlindError::new(
-                "C6PS1 transition repetition is out of range",
+                "C6PS1 append repetition is out of range",
             ));
         }
-        transcript.append(SOURCE_BOOTSTRAP_TRANSITION_LABEL, SOURCE_BOOTSTRAP_TRANSITION_BYTES);
+        transcript.append(SOURCE_BOOTSTRAP_APPEND_LABEL, SOURCE_BOOTSTRAP_APPEND_BYTES);
         Ok(())
     }
 
@@ -234,8 +246,9 @@ impl C6PersistentCacheSourceBootstrapFrame {
             return Err(C6PersistentCacheBlindError::new("C6PS1 source index is out of range"));
         }
         Ok(match owner {
-            0 => self.transition_corrections[repetition][kv][tape],
-            1 | 2 => self.fixed_corrections[owner - 1][kv][tape],
+            0 => self.append_corrections[repetition][kv][tape],
+            1 => Fp2::ZERO,
+            2 => self.fold_corrections[repetition][kv][tape],
             _ => unreachable!(),
         })
     }
@@ -273,6 +286,31 @@ impl C6PersistentCacheSourceBootstrapFrame {
 /// on purpose: accepting 24-round materialized coefficient tables here would
 /// violate the registered streaming-memory seam.
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct C6PersistentCacheScaledFoldFunctional {
+    ordinal: u16,
+    kv: u8,
+    coefficients: Vec<Fp2>,
+}
+
+impl C6PersistentCacheScaledFoldFunctional {
+    pub(crate) fn new(ordinal: usize, kv: usize, coefficients: Vec<Fp2>) -> Result<Self> {
+        let ordinal = u16::try_from(ordinal)
+            .map_err(|_| C6PersistentCacheBlindError::new("C6PC2 fold ordinal overflow"))?;
+        let kv = u8::try_from(kv)
+            .map_err(|_| C6PersistentCacheBlindError::new("C6PC2 fold K/V index overflow"))?;
+        Ok(Self { ordinal, kv, coefficients })
+    }
+
+    pub(crate) fn kv(&self) -> usize {
+        usize::from(self.kv)
+    }
+
+    pub(crate) fn coefficients(&self) -> &[Fp2] {
+        &self.coefficients
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct C6PersistentCacheRelationPlan {
     rounds: usize,
     old_len: usize,
@@ -280,8 +318,7 @@ pub(crate) struct C6PersistentCacheRelationPlan {
     root_binding_digest: C6WrapperDigest,
     workload_digest: C6WrapperDigest,
     source_schedule_digest: C6WrapperDigest,
-    predecessor_coefficients: [Vec<Fp2>; 2],
-    current_coefficients: [Vec<Fp2>; 2],
+    successor_fold_functionals: Vec<C6PersistentCacheScaledFoldFunctional>,
     auxiliary_target_point: Vec<Fp2>,
     statement_digest: C6WrapperDigest,
 }
@@ -295,8 +332,7 @@ impl C6PersistentCacheRelationPlan {
         root_binding_digest: C6WrapperDigest,
         workload_digest: C6WrapperDigest,
         source_schedule_digest: C6WrapperDigest,
-        predecessor_coefficients: [Vec<Fp2>; 2],
-        current_coefficients: [Vec<Fp2>; 2],
+        successor_fold_functionals: Vec<C6PersistentCacheScaledFoldFunctional>,
         auxiliary_target_point: Vec<Fp2>,
     ) -> Result<Self> {
         if rounds == 0 || rounds > REFERENCE_MAX_ROUNDS {
@@ -312,8 +348,18 @@ impl C6PersistentCacheRelationPlan {
             || root_binding_digest == [0; 32]
             || workload_digest == [0; 32]
             || source_schedule_digest == [0; 32]
-            || predecessor_coefficients.iter().any(|values| values.len() != len)
-            || current_coefficients.iter().any(|values| values.len() != len)
+            || successor_fold_functionals.is_empty()
+            || successor_fold_functionals.len() as u64 > C6_PERSISTENT_CACHE_FOLD_CAPACITY
+            || successor_fold_functionals.iter().enumerate().any(|(ordinal, functional)| {
+                usize::from(functional.ordinal) != ordinal
+                    || usize::from(functional.kv) >= SOURCE_KV_COUNT
+                    || functional.coefficients.len() != len
+            })
+            || (0..SOURCE_KV_COUNT).any(|kv| {
+                !successor_fold_functionals
+                    .iter()
+                    .any(|functional| usize::from(functional.kv) == kv)
+            })
             || auxiliary_target_point.is_empty()
             || auxiliary_target_point.last() != Some(&Fp2::ZERO)
         {
@@ -328,8 +374,7 @@ impl C6PersistentCacheRelationPlan {
             root_binding_digest,
             workload_digest,
             source_schedule_digest,
-            predecessor_coefficients,
-            current_coefficients,
+            successor_fold_functionals,
             auxiliary_target_point,
             statement_digest: [0; 32],
         };
@@ -343,6 +388,10 @@ impl C6PersistentCacheRelationPlan {
 
     pub(crate) fn statement_digest(&self) -> C6WrapperDigest {
         self.statement_digest
+    }
+
+    pub(crate) fn fold_count(&self) -> usize {
+        self.successor_fold_functionals.len()
     }
 
     fn len(&self) -> usize {
@@ -360,8 +409,11 @@ impl C6PersistentCacheRelationPlan {
         for owner in C6PersistentCacheRelationOwner::ALL {
             hasher.update(&[owner as u8]);
         }
-        for coefficients in self.predecessor_coefficients.iter().chain(&self.current_coefficients) {
-            hash_fp2_slice(&mut hasher, coefficients);
+        hasher.update(&(self.successor_fold_functionals.len() as u64).to_le_bytes());
+        for functional in &self.successor_fold_functionals {
+            hasher.update(&functional.ordinal.to_le_bytes());
+            hasher.update(&[functional.kv]);
+            hash_fp2_slice(&mut hasher, &functional.coefficients);
         }
         hash_fp2_slice(&mut hasher, &self.auxiliary_target_point);
         *hasher.finalize().as_bytes()
@@ -373,9 +425,15 @@ impl C6PersistentCacheRelationPlan {
         relation_point: &[Fp2],
         relation_roots: [Fp2; 3],
         kv_root: Fp2,
+        fold_weights: &[Fp2],
     ) -> Result<CompiledRelation> {
         if relation_point.len() != self.rounds {
             return Err(C6PersistentCacheBlindError::new("C6PC2 relation-point width mismatch"));
+        }
+        if fold_weights != self.fold_weights(relation_roots[2]) {
+            return Err(C6PersistentCacheBlindError::new(
+                "C6PC2 successor fold weights do not match verifier root",
+            ));
         }
         let equality = eq_vec(relation_point);
         if equality.len() != self.len() {
@@ -391,13 +449,16 @@ impl C6PersistentCacheRelationPlan {
             }
             coefficients[2][index] += transition;
             coefficients[3][index] += transition * kv_root;
-
-            coefficients[0][index] += self.predecessor_coefficients[0][index] * relation_roots[1];
-            coefficients[1][index] +=
-                self.predecessor_coefficients[1][index] * relation_roots[1] * kv_root;
-            coefficients[2][index] += self.current_coefficients[0][index] * relation_roots[2];
-            coefficients[3][index] +=
-                self.current_coefficients[1][index] * relation_roots[2] * kv_root;
+        }
+        for (functional, &weight) in self.successor_fold_functionals.iter().zip(fold_weights) {
+            let kv = usize::from(functional.kv);
+            let terminal = 2 + kv;
+            let factor = relation_roots[2] * weight * if kv == 0 { Fp2::ONE } else { kv_root };
+            for (coefficient, &functional_coefficient) in
+                coefficients[terminal].iter_mut().zip(&functional.coefficients)
+            {
+                *coefficient += functional_coefficient * factor;
+            }
         }
         let mut hasher = blake3::Hasher::new_derive_key(SCHEDULE_DOMAIN);
         hasher.update(&self.statement_digest);
@@ -416,6 +477,18 @@ impl C6PersistentCacheRelationPlan {
             coefficients,
             schedule_digest: *hasher.finalize().as_bytes(),
         })
+    }
+
+    fn fold_weights(&self, rho: Fp2) -> Vec<Fp2> {
+        let mut power = rho;
+        self.successor_fold_functionals
+            .iter()
+            .map(|_| {
+                let weight = power;
+                power = power * rho;
+                weight
+            })
+            .collect()
     }
 }
 
@@ -448,16 +521,14 @@ impl C6PersistentCacheBlindWitness {
 pub(crate) struct C6PersistentCacheSourcesProver {
     source_schedule_digest: C6WrapperDigest,
     transition_append: [Vec<[ProverAuthed; C6_PERSISTENT_CACHE_BLIND_TAPES]>; 2],
-    predecessor_targets: [[ProverAuthed; C6_PERSISTENT_CACHE_BLIND_TAPES]; 2],
-    current_targets: [[ProverAuthed; C6_PERSISTENT_CACHE_BLIND_TAPES]; 2],
+    fold_targets: Vec<[ProverAuthed; C6_PERSISTENT_CACHE_BLIND_TAPES]>,
 }
 
 #[derive(Clone)]
 pub(crate) struct C6PersistentCacheSourcesVerifier {
     source_schedule_digest: C6WrapperDigest,
     transition_append: [Vec<[VerifierKey; C6_PERSISTENT_CACHE_BLIND_TAPES]>; 2],
-    predecessor_targets: [[VerifierKey; C6_PERSISTENT_CACHE_BLIND_TAPES]; 2],
-    current_targets: [[VerifierKey; C6_PERSISTENT_CACHE_BLIND_TAPES]; 2],
+    fold_targets: Vec<[VerifierKey; C6_PERSISTENT_CACHE_BLIND_TAPES]>,
 }
 
 /// Provider-side base masks matching every already-authenticated append or
@@ -467,22 +538,19 @@ pub(crate) struct C6PersistentCacheSourcesVerifier {
 pub(crate) struct C6PersistentCacheSourceMasksProver {
     source_schedule_digest: C6WrapperDigest,
     transition_append: [Vec<[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]>; 2],
-    predecessor_targets: [[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]; 2],
-    current_targets: [[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]; 2],
+    fold_targets: Vec<[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]>,
 }
 
 impl C6PersistentCacheSourcesProver {
     pub(crate) fn new(
         plan: &C6PersistentCacheRelationPlan,
         transition_append: [Vec<[ProverAuthed; C6_PERSISTENT_CACHE_BLIND_TAPES]>; 2],
-        predecessor_targets: [[ProverAuthed; C6_PERSISTENT_CACHE_BLIND_TAPES]; 2],
-        current_targets: [[ProverAuthed; C6_PERSISTENT_CACHE_BLIND_TAPES]; 2],
+        fold_targets: Vec<[ProverAuthed; C6_PERSISTENT_CACHE_BLIND_TAPES]>,
     ) -> Result<Self> {
         let sources = Self {
             source_schedule_digest: plan.source_schedule_digest,
             transition_append,
-            predecessor_targets,
-            current_targets,
+            fold_targets,
         };
         sources.validate(plan)?;
         Ok(sources)
@@ -492,34 +560,46 @@ impl C6PersistentCacheSourcesProver {
         if self.source_schedule_digest != plan.source_schedule_digest
             || self.transition_append.iter().any(|values| values.len() != plan.append_len)
             || self.transition_append.iter().flatten().any(|value| value[0].x != value[1].x)
-            || self.predecessor_targets.iter().any(|value| value[0].x != value[1].x)
-            || self.current_targets.iter().any(|value| value[0].x != value[1].x)
+            || self.fold_targets.len() != plan.successor_fold_functionals.len()
+            || self.fold_targets.iter().any(|value| value[0].x != value[1].x)
         {
             return Err(C6PersistentCacheBlindError::new("C6PC2 prover source binding mismatch"));
         }
         Ok(())
     }
 
-    fn owner_values(
+    fn append_values(
         &self,
         plan: &C6PersistentCacheRelationPlan,
         compiled: &CompiledRelation,
-    ) -> SourceAggregatesProver {
-        array::from_fn(|owner| {
-            array::from_fn(|kv| {
-                array::from_fn(|tape| match owner {
-                    0 => self.transition_append[kv].iter().enumerate().fold(
-                        ProverAuthed::ZERO,
-                        |sum, (offset, value)| {
-                            sum.add(value[tape].scale(compiled.equality[plan.old_len + offset]))
-                        },
-                    ),
-                    1 => self.predecessor_targets[kv][tape],
-                    2 => self.current_targets[kv][tape],
-                    _ => unreachable!(),
-                })
+    ) -> [[ProverAuthed; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT] {
+        array::from_fn(|kv| {
+            array::from_fn(|tape| {
+                self.transition_append[kv].iter().enumerate().fold(
+                    ProverAuthed::ZERO,
+                    |sum, (offset, value)| {
+                        sum.add(value[tape].scale(compiled.equality[plan.old_len + offset]))
+                    },
+                )
             })
         })
+    }
+
+    fn fold_values(
+        &self,
+        plan: &C6PersistentCacheRelationPlan,
+        fold_weights: &[Fp2],
+    ) -> [[ProverAuthed; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT] {
+        let mut values = [[ProverAuthed::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT];
+        for ((functional, target), &weight) in
+            plan.successor_fold_functionals.iter().zip(&self.fold_targets).zip(fold_weights)
+        {
+            let kv = usize::from(functional.kv);
+            for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
+                values[kv][tape] = values[kv][tape].add(target[tape].scale(weight));
+            }
+        }
+        values
     }
 }
 
@@ -527,43 +607,54 @@ impl C6PersistentCacheSourcesVerifier {
     pub(crate) fn new(
         plan: &C6PersistentCacheRelationPlan,
         transition_append: [Vec<[VerifierKey; C6_PERSISTENT_CACHE_BLIND_TAPES]>; 2],
-        predecessor_targets: [[VerifierKey; C6_PERSISTENT_CACHE_BLIND_TAPES]; 2],
-        current_targets: [[VerifierKey; C6_PERSISTENT_CACHE_BLIND_TAPES]; 2],
+        fold_targets: Vec<[VerifierKey; C6_PERSISTENT_CACHE_BLIND_TAPES]>,
     ) -> Result<Self> {
         let sources = Self {
             source_schedule_digest: plan.source_schedule_digest,
             transition_append,
-            predecessor_targets,
-            current_targets,
+            fold_targets,
         };
         if sources.source_schedule_digest != plan.source_schedule_digest
             || sources.transition_append.iter().any(|values| values.len() != plan.append_len)
+            || sources.fold_targets.len() != plan.successor_fold_functionals.len()
         {
             return Err(C6PersistentCacheBlindError::new("C6PC2 verifier source binding mismatch"));
         }
         Ok(sources)
     }
 
-    fn owner_values(
+    fn append_values(
         &self,
         plan: &C6PersistentCacheRelationPlan,
         compiled: &CompiledRelation,
-    ) -> SourceAggregatesVerifier {
-        array::from_fn(|owner| {
-            array::from_fn(|kv| {
-                array::from_fn(|tape| match owner {
-                    0 => self.transition_append[kv].iter().enumerate().fold(
-                        VerifierKey::ZERO,
-                        |sum, (offset, value)| {
-                            sum.add(value[tape].scale(compiled.equality[plan.old_len + offset]))
-                        },
-                    ),
-                    1 => self.predecessor_targets[kv][tape],
-                    2 => self.current_targets[kv][tape],
-                    _ => unreachable!(),
-                })
+    ) -> [[VerifierKey; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT] {
+        array::from_fn(|kv| {
+            array::from_fn(|tape| {
+                self.transition_append[kv].iter().enumerate().fold(
+                    VerifierKey::ZERO,
+                    |sum, (offset, value)| {
+                        sum.add(value[tape].scale(compiled.equality[plan.old_len + offset]))
+                    },
+                )
             })
         })
+    }
+
+    fn fold_values(
+        &self,
+        plan: &C6PersistentCacheRelationPlan,
+        fold_weights: &[Fp2],
+    ) -> [[VerifierKey; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT] {
+        let mut values = [[VerifierKey::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT];
+        for ((functional, target), &weight) in
+            plan.successor_fold_functionals.iter().zip(&self.fold_targets).zip(fold_weights)
+        {
+            let kv = usize::from(functional.kv);
+            for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
+                values[kv][tape] = values[kv][tape].add(target[tape].scale(weight));
+            }
+        }
+        values
     }
 }
 
@@ -571,44 +662,68 @@ impl C6PersistentCacheSourceMasksProver {
     pub(crate) fn new(
         plan: &C6PersistentCacheRelationPlan,
         transition_append: [Vec<[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]>; 2],
-        predecessor_targets: [[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]; 2],
-        current_targets: [[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]; 2],
+        fold_targets: Vec<[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]>,
     ) -> Result<Self> {
         let masks = Self {
             source_schedule_digest: plan.source_schedule_digest,
             transition_append,
-            predecessor_targets,
-            current_targets,
+            fold_targets,
         };
-        if masks.source_schedule_digest != plan.source_schedule_digest
-            || masks.transition_append.iter().any(|values| values.len() != plan.append_len)
-        {
-            return Err(C6PersistentCacheBlindError::new("C6PS1 prover mask binding mismatch"));
-        }
+        masks.validate(plan)?;
         Ok(masks)
     }
 
-    fn owner_values(
+    fn validate(&self, plan: &C6PersistentCacheRelationPlan) -> Result<()> {
+        if self.source_schedule_digest != plan.source_schedule_digest
+            || self.transition_append.iter().any(|values| values.len() != plan.append_len)
+            || self.fold_targets.len() != plan.successor_fold_functionals.len()
+        {
+            return Err(C6PersistentCacheBlindError::new("C6PS1 prover mask binding mismatch"));
+        }
+        Ok(())
+    }
+
+    fn append_values(
         &self,
         plan: &C6PersistentCacheRelationPlan,
         compiled: &CompiledRelation,
-    ) -> SourceAggregateMasks {
-        array::from_fn(|owner| {
-            array::from_fn(|kv| {
-                array::from_fn(|tape| match owner {
-                    0 => self.transition_append[kv].iter().enumerate().fold(
-                        Fp2::ZERO,
-                        |sum, (offset, value)| {
-                            sum + value[tape] * compiled.equality[plan.old_len + offset]
-                        },
-                    ),
-                    1 => self.predecessor_targets[kv][tape],
-                    2 => self.current_targets[kv][tape],
-                    _ => unreachable!(),
-                })
+    ) -> [[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT] {
+        array::from_fn(|kv| {
+            array::from_fn(|tape| {
+                self.transition_append[kv].iter().enumerate().fold(
+                    Fp2::ZERO,
+                    |sum, (offset, value)| {
+                        sum + value[tape] * compiled.equality[plan.old_len + offset]
+                    },
+                )
             })
         })
     }
+
+    fn fold_values(
+        &self,
+        plan: &C6PersistentCacheRelationPlan,
+        fold_weights: &[Fp2],
+    ) -> [[Fp2; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT] {
+        let mut values = [[Fp2::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT];
+        for ((functional, target), &weight) in
+            plan.successor_fold_functionals.iter().zip(&self.fold_targets).zip(fold_weights)
+        {
+            let kv = usize::from(functional.kv);
+            for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
+                values[kv][tape] += target[tape] * weight;
+            }
+        }
+        values
+    }
+}
+
+fn assemble_source_aggregates<T: Copy>(
+    append: [[T; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT],
+    fold: [[T; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT],
+    zero: T,
+) -> [[[T; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT]; SOURCE_OWNER_COUNT] {
+    [append, [[zero; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT], fold]
 }
 
 fn combine_source_aggregates_prover(
@@ -912,38 +1027,16 @@ pub(crate) fn prove_c6_persistent_cache_blind_reference(
     C6PersistentCacheBlindMetrics,
 )> {
     sources.validate(plan)?;
-    if source_masks.source_schedule_digest != plan.source_schedule_digest {
-        return Err(C6PersistentCacheBlindError::new("C6PS1 prover statement mismatch"));
-    }
+    source_masks.validate(plan)?;
     if witness.tables.iter().any(|table| table.len() != plan.len()) {
         return Err(C6PersistentCacheBlindError::new("C6PC2 witness geometry changed"));
     }
-    // These four corrections are fixed by already-authenticated fold sources
-    // before the transcript emits either relation point.  Keeping their
-    // construction here, ahead of the framing charge, makes the
-    // commit-before-challenge dependency executable rather than documentary.
-    let fixed_corrections = array::from_fn(|fixed_owner| {
-        array::from_fn(|kv| {
-            array::from_fn(|tape| {
-                let (source, mask) = match fixed_owner {
-                    0 => (
-                        sources.predecessor_targets[kv][tape],
-                        source_masks.predecessor_targets[kv][tape],
-                    ),
-                    1 => {
-                        (sources.current_targets[kv][tape], source_masks.current_targets[kv][tape])
-                    }
-                    _ => unreachable!(),
-                };
-                source.x - mask
-            })
-        })
-    });
-    let mut transition_corrections =
+    let mut fold_corrections =
+        [[[Fp2::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT]; C6_WRAPPER_REPETITIONS];
+    let mut append_corrections =
         [[[Fp2::ZERO; C6_PERSISTENT_CACHE_BLIND_TAPES]; SOURCE_KV_COUNT]; C6_WRAPPER_REPETITIONS];
     transcript.append(FRAMING_LABEL, HEADER_AND_STATEMENT_BYTES);
     transcript.append(SOURCE_BOOTSTRAP_HEADER_LABEL, SOURCE_BOOTSTRAP_HEADER_BYTES);
-    transcript.append(SOURCE_BOOTSTRAP_FIXED_LABEL, SOURCE_BOOTSTRAP_FIXED_BYTES);
     let before = array::from_fn::<_, C6_PERSISTENT_CACHE_BLIND_TAPES, _>(|tape| {
         streams[tape].counters.full_corrs
     });
@@ -952,20 +1045,33 @@ pub(crate) fn prove_c6_persistent_cache_blind_reference(
         C6_WRAPPER_REPETITIONS * C6_PERSISTENT_CACHE_BLIND_PENDING_PER_REPETITION,
     );
     for repetition in 0..C6_WRAPPER_REPETITIONS as u8 {
-        let relation_point =
-            (0..plan.rounds).map(|_| transcript.challenge_fp2()).collect::<Vec<_>>();
         let relation_roots = array::from_fn(|_| transcript.challenge_fp2());
         let kv_root = transcript.challenge_fp2();
-        let compiled = plan.compile(repetition, &relation_point, relation_roots, kv_root)?;
-        let source_aggregates = sources.owner_values(plan, &compiled);
-        let aggregate_masks = source_masks.owner_values(plan, &compiled);
+        let fold_weights = plan.fold_weights(relation_roots[2]);
+        let fold_values = sources.fold_values(plan, &fold_weights);
+        let fold_masks = source_masks.fold_values(plan, &fold_weights);
         for kv in 0..SOURCE_KV_COUNT {
             for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
-                transition_corrections[usize::from(repetition)][kv][tape] =
-                    source_aggregates[0][kv][tape].x - aggregate_masks[0][kv][tape];
+                fold_corrections[usize::from(repetition)][kv][tape] =
+                    fold_values[kv][tape].x - fold_masks[kv][tape];
             }
         }
-        transcript.append(SOURCE_BOOTSTRAP_TRANSITION_LABEL, SOURCE_BOOTSTRAP_TRANSITION_BYTES);
+        transcript.append(SOURCE_BOOTSTRAP_FOLD_LABEL, SOURCE_BOOTSTRAP_FOLD_BYTES);
+        let relation_point =
+            (0..plan.rounds).map(|_| transcript.challenge_fp2()).collect::<Vec<_>>();
+        let compiled =
+            plan.compile(repetition, &relation_point, relation_roots, kv_root, &fold_weights)?;
+        let append_values = sources.append_values(plan, &compiled);
+        let append_masks = source_masks.append_values(plan, &compiled);
+        for kv in 0..SOURCE_KV_COUNT {
+            for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
+                append_corrections[usize::from(repetition)][kv][tape] =
+                    append_values[kv][tape].x - append_masks[kv][tape];
+            }
+        }
+        transcript.append(SOURCE_BOOTSTRAP_APPEND_LABEL, SOURCE_BOOTSTRAP_APPEND_BYTES);
+        let source_aggregates =
+            assemble_source_aggregates(append_values, fold_values, ProverAuthed::ZERO);
         transcript.append(REPETITION_LABEL, REPETITION_PREFIX_BYTES);
         let mut current = array::from_fn::<_, C6_PERSISTENT_CACHE_BLIND_TAPES, _>(|tape| {
             combine_source_aggregates_prover(&source_aggregates, relation_roots, kv_root, tape)
@@ -1060,8 +1166,8 @@ pub(crate) fn prove_c6_persistent_cache_blind_reference(
     proof.validate_shape()?;
     let source_frame = C6PersistentCacheSourceBootstrapFrame::new(
         plan.statement_digest,
-        fixed_corrections,
-        transition_corrections,
+        fold_corrections,
+        append_corrections,
     )?;
     let full_correlations_per_tape = streams[0].counters.full_corrs - before[0];
     if (1..C6_PERSISTENT_CACHE_BLIND_TAPES)
@@ -1108,23 +1214,29 @@ pub(crate) fn verify_c6_persistent_cache_blind(
     }
     proof.validate_shape()?;
     transcript.append(FRAMING_LABEL, HEADER_AND_STATEMENT_BYTES);
-    source_frame.charge_header_and_fixed(transcript);
+    source_frame.charge_header(transcript);
     let mut pending_entries = Vec::with_capacity(
         C6_WRAPPER_REPETITIONS * C6_PERSISTENT_CACHE_BLIND_PENDING_PER_REPETITION,
     );
     for repetition in 0..C6_WRAPPER_REPETITIONS as u8 {
-        let relation_point =
-            (0..plan.rounds).map(|_| transcript.challenge_fp2()).collect::<Vec<_>>();
         let relation_roots = array::from_fn(|_| transcript.challenge_fp2());
         let kv_root = transcript.challenge_fp2();
-        let compiled = plan.compile(repetition, &relation_point, relation_roots, kv_root)?;
-        source_frame.charge_transition(usize::from(repetition), transcript)?;
+        let fold_weights = plan.fold_weights(relation_roots[2]);
+        let fold_values = source_base_keys.fold_values(plan, &fold_weights);
+        source_frame.charge_fold(usize::from(repetition), transcript)?;
+        let relation_point =
+            (0..plan.rounds).map(|_| transcript.challenge_fp2()).collect::<Vec<_>>();
+        let compiled =
+            plan.compile(repetition, &relation_point, relation_roots, kv_root, &fold_weights)?;
+        let append_values = source_base_keys.append_values(plan, &compiled);
+        source_frame.charge_append(usize::from(repetition), transcript)?;
         let repetition_proof = &proof.repetitions[usize::from(repetition)];
         if repetition_proof.schedule_digest != compiled.schedule_digest {
             return Err(C6PersistentCacheBlindError::new("C6PC2 compiled schedule mismatch"));
         }
         transcript.append(REPETITION_LABEL, REPETITION_PREFIX_BYTES);
-        let source_base_aggregates = source_base_keys.owner_values(plan, &compiled);
+        let source_base_aggregates =
+            assemble_source_aggregates(append_values, fold_values, VerifierKey::ZERO);
         let source_aggregates = source_frame.correct_base_keys(
             usize::from(repetition),
             &source_base_aggregates,
@@ -1449,8 +1561,8 @@ impl<'a> Cursor<'a> {
 const _: () = {
     assert!(
         SOURCE_BOOTSTRAP_HEADER_BYTES
-            + SOURCE_BOOTSTRAP_FIXED_BYTES
-            + C6_WRAPPER_REPETITIONS as u64 * SOURCE_BOOTSTRAP_TRANSITION_BYTES
+            + C6_WRAPPER_REPETITIONS as u64
+                * (SOURCE_BOOTSTRAP_FOLD_BYTES + SOURCE_BOOTSTRAP_APPEND_BYTES)
             == C6_PERSISTENT_CACHE_SOURCE_BOOTSTRAP_BYTES
     );
     assert!(
@@ -1504,12 +1616,19 @@ mod tests {
         C6PersistentCacheSourcesVerifier,
     ) {
         let len = 1usize << ROUNDS;
-        let predecessor_coefficients = array::from_fn(|kv| {
-            (0..len).map(|index| symbol(1_000 + kv as u64 * 100 + index as u64)).collect::<Vec<_>>()
-        });
-        let current_coefficients = array::from_fn(|kv| {
-            (0..len).map(|index| symbol(2_000 + kv as u64 * 100 + index as u64)).collect::<Vec<_>>()
-        });
+        let fold_functionals = (0..4)
+            .map(|ordinal| {
+                let kv = ordinal / 2;
+                C6PersistentCacheScaledFoldFunctional::new(
+                    ordinal,
+                    kv,
+                    (0..len)
+                        .map(|index| symbol(1_000 + ordinal as u64 * 100 + index as u64))
+                        .collect(),
+                )
+                .unwrap()
+            })
+            .collect::<Vec<_>>();
         let plan = C6PersistentCacheRelationPlan::new_scaled_client_derived(
             ROUNDS,
             OLD_LEN,
@@ -1517,8 +1636,7 @@ mod tests {
             [0x11; 32],
             [0x22; 32],
             [0x33; 32],
-            predecessor_coefficients.clone(),
-            current_coefficients.clone(),
+            fold_functionals,
             vec![symbol(9), symbol(10), symbol(11), Fp2::ZERO],
         )
         .unwrap();
@@ -1565,15 +1683,15 @@ mod tests {
                 .map(|&value| [ProverAuthed::from_public(value); 2])
                 .collect::<Vec<_>>()
         });
-        let predecessor_values: [Fp2; 2] =
-            array::from_fn(|kv| dot(&predecessor_coefficients[kv], &predecessor[kv]));
-        let current_values: [Fp2; 2] =
-            array::from_fn(|kv| dot(&current_coefficients[kv], &successor[kv]));
+        let fold_values = plan
+            .successor_fold_functionals
+            .iter()
+            .map(|functional| dot(&functional.coefficients, &successor[usize::from(functional.kv)]))
+            .collect::<Vec<_>>();
         let prover_sources = C6PersistentCacheSourcesProver::new(
             &plan,
             transition_prover,
-            array::from_fn(|kv| [ProverAuthed::from_public(predecessor_values[kv]); 2]),
-            array::from_fn(|kv| [ProverAuthed::from_public(current_values[kv]); 2]),
+            fold_values.iter().map(|&value| [ProverAuthed::from_public(value); 2]).collect(),
         )
         .unwrap();
         let transition_masks = array::from_fn(|kv| {
@@ -1585,17 +1703,15 @@ mod tests {
                 })
                 .collect::<Vec<_>>()
         });
-        let predecessor_masks = array::from_fn(|kv| {
-            array::from_fn(|tape| symbol(40_000 + kv as u64 * 100 + tape as u64))
-        });
-        let current_masks = array::from_fn(|kv| {
-            array::from_fn(|tape| symbol(50_000 + kv as u64 * 100 + tape as u64))
-        });
+        let fold_masks = (0..plan.successor_fold_functionals.len())
+            .map(|ordinal| {
+                array::from_fn(|tape| symbol(40_000 + ordinal as u64 * 100 + tape as u64))
+            })
+            .collect::<Vec<_>>();
         let source_masks = C6PersistentCacheSourceMasksProver::new(
             &plan,
             transition_masks.clone(),
-            predecessor_masks,
-            current_masks,
+            fold_masks.clone(),
         )
         .unwrap();
         let deltas = [symbol(0xD1), symbol(0xE2)];
@@ -1608,12 +1724,10 @@ mod tests {
         let verifier_sources = C6PersistentCacheSourcesVerifier::new(
             &plan,
             transition_verifier,
-            array::from_fn(|kv| {
-                array::from_fn(|tape| VerifierKey::new(deltas[tape] * predecessor_masks[kv][tape]))
-            }),
-            array::from_fn(|kv| {
-                array::from_fn(|tape| VerifierKey::new(deltas[tape] * current_masks[kv][tape]))
-            }),
+            fold_masks
+                .iter()
+                .map(|masks| array::from_fn(|tape| VerifierKey::new(deltas[tape] * masks[tape])))
+                .collect(),
         )
         .unwrap();
         (plan, witness, prover_sources, source_masks, verifier_sources)
@@ -1726,8 +1840,7 @@ mod tests {
             [1; 32],
             [2; 32],
             [3; 32],
-            [vec![], vec![]],
-            [vec![], vec![]],
+            vec![],
             vec![Fp2::ZERO],
         );
         assert!(production.is_err());
@@ -1763,6 +1876,78 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(prover_descriptors, verifier_descriptors);
         assert_eq!(transcript.total_bytes(), metrics.proof_bytes);
+        assert_eq!(transcript.bytes_for(SOURCE_BOOTSTRAP_HEADER_LABEL), 48);
+        assert_eq!(transcript.bytes_for(SOURCE_BOOTSTRAP_FOLD_LABEL), 128);
+        assert_eq!(transcript.bytes_for(SOURCE_BOOTSTRAP_APPEND_LABEL), 128);
+        assert_eq!(transcript.bytes_for("c6_persistent_cache_source_bootstrap_fixed"), 0);
+        assert_eq!(transcript.bytes_for("c6_persistent_cache_source_bootstrap_transition"), 0);
+    }
+
+    #[test]
+    fn post_rho_fold_batch_and_post_point_append_corrections_are_exact_and_separate() {
+        let (plan, witness, sources, masks, _) = fixture();
+        let mut streams = array::from_fn(|tape| CorrelationStream::new(TAPE_SEEDS[tape]));
+        let mut prover_transcript = Transcript::new(TRANSCRIPT_SEED);
+        let (_, frame, _, _) = prove_c6_persistent_cache_blind_reference(
+            &plan,
+            &witness,
+            &sources,
+            &masks,
+            &mut streams,
+            &mut prover_transcript,
+        )
+        .unwrap();
+
+        let mut oracle = Transcript::new(TRANSCRIPT_SEED);
+        for repetition in 0..C6_WRAPPER_REPETITIONS as u8 {
+            let relation_roots = array::from_fn(|_| oracle.challenge_fp2());
+            let kv_root = oracle.challenge_fp2();
+            let fold_weights = plan.fold_weights(relation_roots[2]);
+            assert_eq!(fold_weights[0], relation_roots[2]);
+            assert_eq!(fold_weights[1], relation_roots[2] * relation_roots[2]);
+            let fold_values = sources.fold_values(&plan, &fold_weights);
+            let fold_masks = masks.fold_values(&plan, &fold_weights);
+            for kv in 0..SOURCE_KV_COUNT {
+                for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
+                    assert_eq!(
+                        frame.fold_corrections[usize::from(repetition)][kv][tape],
+                        fold_values[kv][tape].x - fold_masks[kv][tape]
+                    );
+                    assert_eq!(
+                        frame.correction(usize::from(repetition), 1, kv, tape).unwrap(),
+                        Fp2::ZERO
+                    );
+                }
+            }
+            oracle.append(SOURCE_BOOTSTRAP_FOLD_LABEL, SOURCE_BOOTSTRAP_FOLD_BYTES);
+            let relation_point =
+                (0..plan.rounds).map(|_| oracle.challenge_fp2()).collect::<Vec<_>>();
+            let compiled = plan
+                .compile(repetition, &relation_point, relation_roots, kv_root, &fold_weights)
+                .unwrap();
+            let append_values = sources.append_values(&plan, &compiled);
+            let append_masks = masks.append_values(&plan, &compiled);
+            for kv in 0..SOURCE_KV_COUNT {
+                for tape in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
+                    assert_eq!(
+                        frame.append_corrections[usize::from(repetition)][kv][tape],
+                        append_values[kv][tape].x - append_masks[kv][tape]
+                    );
+                }
+            }
+            oracle.append(SOURCE_BOOTSTRAP_APPEND_LABEL, SOURCE_BOOTSTRAP_APPEND_BYTES);
+            oracle.append(REPETITION_LABEL, REPETITION_PREFIX_BYTES);
+            for _ in 0..plan.rounds {
+                oracle.append(ROUND_LABEL, ROUND_BYTES);
+                let _ = oracle.challenge_fp2();
+            }
+            oracle.append(TERMINAL_LABEL, TERMINAL_BYTES);
+            let _ = oracle.challenge_fp2();
+            for _ in 0..C6_PERSISTENT_CACHE_BLIND_TAPES {
+                oracle.append("zero_open_tag", FP2_BYTES);
+            }
+        }
+        assert_ne!(frame.fold_corrections[0], frame.fold_corrections[1]);
     }
 
     #[test]
@@ -1817,6 +2002,13 @@ mod tests {
             .is_err());
 
         let source_encoded = source_frame.encode().unwrap();
+        let mut legacy_source_version = source_encoded.clone();
+        legacy_source_version[8..10].copy_from_slice(&1u16.to_le_bytes());
+        assert!(C6PersistentCacheSourceBootstrapFrame::decode(
+            plan.statement_digest(),
+            &legacy_source_version,
+        )
+        .is_err());
         let mut bad_source_magic = source_encoded.clone();
         bad_source_magic[0] ^= 1;
         assert!(C6PersistentCacheSourceBootstrapFrame::decode(
@@ -1841,11 +2033,11 @@ mod tests {
         )
         .is_err());
 
-        let mut bad_transition_source = source_frame.clone();
-        bad_transition_source.transition_corrections[0][0][1] += Fp2::ONE;
-        let mut bad_fixed_source = source_frame.clone();
-        bad_fixed_source.fixed_corrections[1][1][0] += Fp2::ONE;
-        for bad_source_frame in [bad_transition_source, bad_fixed_source] {
+        let mut bad_append_source = source_frame.clone();
+        bad_append_source.append_corrections[0][0][1] += Fp2::ONE;
+        let mut bad_fold_source = source_frame.clone();
+        bad_fold_source.fold_corrections[1][1][0] += Fp2::ONE;
+        for bad_source_frame in [bad_append_source, bad_fold_source] {
             let mut contexts = [
                 VerifierCtx::new(TAPE_SEEDS[0], symbol(0xD1)),
                 VerifierCtx::new(TAPE_SEEDS[1], symbol(0xE2)),
@@ -1924,8 +2116,8 @@ mod tests {
         )
         .is_err());
 
-        let mut wrong_owner_coefficients = plan.predecessor_coefficients.clone();
-        wrong_owner_coefficients[0][0] += Fp2::ONE;
+        let mut wrong_fold_functionals = plan.successor_fold_functionals.clone();
+        wrong_fold_functionals[0].coefficients[0] += Fp2::ONE;
         let wrong_owner = C6PersistentCacheRelationPlan::new_scaled_client_derived(
             ROUNDS,
             OLD_LEN,
@@ -1933,8 +2125,7 @@ mod tests {
             plan.root_binding_digest,
             plan.workload_digest,
             plan.source_schedule_digest,
-            wrong_owner_coefficients,
-            plan.current_coefficients.clone(),
+            wrong_fold_functionals,
             plan.auxiliary_target_point.clone(),
         )
         .unwrap();

@@ -31,8 +31,10 @@ pub const C6_PERSISTENT_CACHE_SLOT_CAPACITY: u64 = 1 << 24;
 pub const C6_PERSISTENT_CACHE_ROUNDS: u8 = 24;
 pub const C6_PERSISTENT_CACHE_DEGREE: u8 = 2;
 pub const C6_PERSISTENT_CACHE_RELATION_POINT_ROOTS: u64 = 24;
-pub const C6_PERSISTENT_CACHE_ROOTS_PER_REPETITION: u64 = 77;
-pub const C6_PERSISTENT_CACHE_EVENT_NUMERATOR: u64 = 5_929;
+pub const C6_PERSISTENT_CACHE_POINTWISE_ROOTS_PER_REPETITION: u64 = 77;
+pub const C6_PERSISTENT_CACHE_POINTWISE_EVENT_NUMERATOR: u64 = 5_929;
+pub const C6_PERSISTENT_CACHE_ROOTS_PER_REPETITION: u64 = 653;
+pub const C6_PERSISTENT_CACHE_EVENT_NUMERATOR: u64 = 426_409;
 pub const C6_PERSISTENT_LINK_RELATIONS: u64 = 72;
 pub const C6_PERSISTENT_LINK_ROOTS_PER_REPETITION: u64 = 149;
 pub const C6_BLIND_HIDDEN_PLUS_PERSISTENT_LINK_NUMERATOR: u64 = 28_926;
@@ -777,7 +779,7 @@ pub fn validate_c6_persistent_cache_transition_reference(
         pointwise_relation_rows: C6_PERSISTENT_CACHE_LIVE_SLOTS
             .checked_mul(padded_entries)
             .ok_or_else(|| C6PersistentCacheError::new("C6 relation rows overflow"))?,
-        roots_per_repetition: C6_PERSISTENT_CACHE_ROOTS_PER_REPETITION,
+        roots_per_repetition: C6_PERSISTENT_CACHE_POINTWISE_ROOTS_PER_REPETITION,
     })
 }
 
@@ -935,8 +937,10 @@ mod tests {
                 <= C6_PERSISTENT_CACHE_SLOT_CAPACITY
         );
         assert_eq!(C6_PERSISTENT_CACHE_RELATION_POINT_ROOTS, 24);
-        assert_eq!(C6_PERSISTENT_CACHE_ROOTS_PER_REPETITION, 77);
-        assert_eq!(C6_PERSISTENT_CACHE_EVENT_NUMERATOR, 77 * 77);
+        assert_eq!(C6_PERSISTENT_CACHE_POINTWISE_ROOTS_PER_REPETITION, 77);
+        assert_eq!(C6_PERSISTENT_CACHE_POINTWISE_EVENT_NUMERATOR, 77 * 77);
+        assert_eq!(C6_PERSISTENT_CACHE_ROOTS_PER_REPETITION, 653);
+        assert_eq!(C6_PERSISTENT_CACHE_EVENT_NUMERATOR, 653 * 653);
         assert_eq!(C6_PERSISTENT_LINK_RELATIONS + 3 * 25 + 2, 149);
         assert_eq!(C6_BLIND_HIDDEN_PLUS_PERSISTENT_LINK_NUMERATOR, 6_725 + 149 * 149);
         assert!(std::hint::black_box(C6_BLIND_HIDDEN_PLUS_PERSISTENT_LINK_NUMERATOR) < 1 << 15);

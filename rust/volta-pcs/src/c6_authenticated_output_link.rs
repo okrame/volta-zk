@@ -1814,8 +1814,9 @@ mod tests {
     use crate::c6_persistent_cache_blind::{
         prove_c6_persistent_cache_blind_reference, verify_c6_persistent_cache_blind,
         C6PersistentCacheBlindProof, C6PersistentCacheBlindWitness, C6PersistentCacheRelationPlan,
-        C6PersistentCacheSourceBootstrapFrame, C6PersistentCacheSourceMasksProver,
-        C6PersistentCacheSourcesProver, C6PersistentCacheSourcesVerifier,
+        C6PersistentCacheScaledFoldFunctional, C6PersistentCacheSourceBootstrapFrame,
+        C6PersistentCacheSourceMasksProver, C6PersistentCacheSourcesProver,
+        C6PersistentCacheSourcesVerifier,
     };
     use crate::c6_residual_sumcheck::{
         C6ResidualSumcheckStatement, C6ResidualSumcheckTerm, C6ResidualSumcheckWitness,
@@ -1928,11 +1929,9 @@ mod tests {
         commitments: Vec<C6WrapperCommitment>,
         tables: BTreeMap<(u32, u16), Vec<Fp2>>,
         cache_witness: C6PersistentCacheBlindWitness,
-        cache_predecessor_coefficients: [Vec<Fp2>; 2],
-        cache_current_coefficients: [Vec<Fp2>; 2],
+        cache_fold_functionals: Vec<C6PersistentCacheScaledFoldFunctional>,
         cache_append_values: [Vec<Fp2>; 2],
-        cache_predecessor_targets: [Fp2; 2],
-        cache_current_targets: [Fp2; 2],
+        cache_fold_targets: Vec<Fp2>,
     }
 
     fn scaled_hidden_inputs(
@@ -2141,22 +2140,26 @@ mod tests {
                 })
                 .collect()
         });
-        let cache_predecessor_coefficients: [Vec<Fp2>; 2] =
-            array::from_fn(|kv| table(CACHE_ROUNDS, 460_000 + kv as u64 * 10_000));
-        let cache_current_coefficients: [Vec<Fp2>; 2] =
-            array::from_fn(|kv| table(CACHE_ROUNDS, 480_000 + kv as u64 * 10_000));
-        let cache_predecessor_targets: [Fp2; 2] = array::from_fn(|kv| {
-            cache_predecessor_coefficients[kv]
-                .iter()
-                .zip(&cache_predecessor[kv])
-                .fold(Fp2::ZERO, |sum, (&coefficient, &value)| sum + coefficient * value)
-        });
-        let cache_current_targets: [Fp2; 2] = array::from_fn(|kv| {
-            cache_current_coefficients[kv]
-                .iter()
-                .zip(&cache_successor[kv])
-                .fold(Fp2::ZERO, |sum, (&coefficient, &value)| sum + coefficient * value)
-        });
+        let cache_fold_functionals = (0..4)
+            .map(|ordinal| {
+                C6PersistentCacheScaledFoldFunctional::new(
+                    ordinal,
+                    ordinal / 2,
+                    table(CACHE_ROUNDS, 460_000 + ordinal as u64 * 10_000),
+                )
+                .unwrap()
+            })
+            .collect::<Vec<_>>();
+        let cache_fold_targets = cache_fold_functionals
+            .iter()
+            .map(|functional| {
+                functional
+                    .coefficients()
+                    .iter()
+                    .zip(&cache_successor[functional.kv()])
+                    .fold(Fp2::ZERO, |sum, (&coefficient, &value)| sum + coefficient * value)
+            })
+            .collect::<Vec<_>>();
         for kv in 0..2 {
             let mut predecessor = cache_predecessor[kv].clone();
             predecessor.extend(table(CACHE_ROUNDS, 500_000 + kv as u64 * 10_000));
@@ -2185,8 +2188,7 @@ mod tests {
             [0xC1; 32],
             [0xC2; 32],
             [0xC3; 32],
-            cache_predecessor_coefficients.clone(),
-            cache_current_coefficients.clone(),
+            cache_fold_functionals.clone(),
             vec![symbol(490_001), symbol(490_002), symbol(490_003), Fp2::ZERO],
         )
         .unwrap();
@@ -2265,11 +2267,9 @@ mod tests {
             commitments,
             tables,
             cache_witness,
-            cache_predecessor_coefficients,
-            cache_current_coefficients,
+            cache_fold_functionals,
             cache_append_values,
-            cache_predecessor_targets,
-            cache_current_targets,
+            cache_fold_targets,
         }
     }
 
@@ -2317,8 +2317,7 @@ mod tests {
             fixed.binding_digest(),
             [0xC2; 32],
             [0xC3; 32],
-            inputs.cache_predecessor_coefficients.clone(),
-            inputs.cache_current_coefficients.clone(),
+            inputs.cache_fold_functionals.clone(),
             vec![symbol(490_001), symbol(490_002), symbol(490_003), Fp2::ZERO],
         )
         .unwrap()
@@ -2366,36 +2365,18 @@ mod tests {
                 ordinal += 1;
             }
         }
-        let mut predecessor_auth = [[ProverAuthed::ZERO; 2]; 2];
-        let mut predecessor_masks = [[Fp2::ZERO; 2]; 2];
-        for kv in 0..2 {
-            (predecessor_auth[kv], predecessor_masks[kv]) =
-                authenticate_cache_source(streams, ordinal, inputs.cache_predecessor_targets[kv]);
-            ordinal += 1;
-        }
-        let mut current_auth = [[ProverAuthed::ZERO; 2]; 2];
-        let mut current_masks = [[Fp2::ZERO; 2]; 2];
-        for kv in 0..2 {
-            (current_auth[kv], current_masks[kv]) =
-                authenticate_cache_source(streams, ordinal, inputs.cache_current_targets[kv]);
+        let mut fold_auth = Vec::with_capacity(inputs.cache_fold_targets.len());
+        let mut fold_masks = Vec::with_capacity(inputs.cache_fold_targets.len());
+        for &target in &inputs.cache_fold_targets {
+            let (auth, masks) = authenticate_cache_source(streams, ordinal, target);
+            fold_auth.push(auth);
+            fold_masks.push(masks);
             ordinal += 1;
         }
         assert_eq!(ordinal, 12);
         (
-            C6PersistentCacheSourcesProver::new(
-                plan,
-                transition_auth,
-                predecessor_auth,
-                current_auth,
-            )
-            .unwrap(),
-            C6PersistentCacheSourceMasksProver::new(
-                plan,
-                transition_masks,
-                predecessor_masks,
-                current_masks,
-            )
-            .unwrap(),
+            C6PersistentCacheSourcesProver::new(plan, transition_auth, fold_auth).unwrap(),
+            C6PersistentCacheSourceMasksProver::new(plan, transition_masks, fold_masks).unwrap(),
         )
     }
 
@@ -2414,23 +2395,15 @@ mod tests {
                 ordinal += 1;
             }
         }
-        let mut predecessor_keys = [[VerifierKey::ZERO; 2]; 2];
-        for keys in &mut predecessor_keys {
-            *keys = array::from_fn(|tape| {
+        let mut fold_keys = Vec::with_capacity(plan.fold_count());
+        for _ in 0..plan.fold_count() {
+            fold_keys.push(array::from_fn(|tape| {
                 contexts[tape].expand_full_verifier_keys(cache_source_domain(tape, ordinal), 1)[0]
-            });
-            ordinal += 1;
-        }
-        let mut current_keys = [[VerifierKey::ZERO; 2]; 2];
-        for keys in &mut current_keys {
-            *keys = array::from_fn(|tape| {
-                contexts[tape].expand_full_verifier_keys(cache_source_domain(tape, ordinal), 1)[0]
-            });
+            }));
             ordinal += 1;
         }
         assert_eq!(ordinal, 12);
-        C6PersistentCacheSourcesVerifier::new(plan, transition_keys, predecessor_keys, current_keys)
-            .unwrap()
+        C6PersistentCacheSourcesVerifier::new(plan, transition_keys, fold_keys).unwrap()
     }
 
     struct IntegratedFixture {

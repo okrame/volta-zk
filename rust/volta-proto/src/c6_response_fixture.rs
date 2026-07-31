@@ -46,6 +46,8 @@ const RESPONSE_T: usize = 4;
 const RESPONSE_Q: usize = 2;
 const RESPONSE_LEAF_LOG2: u8 = 20;
 const RESPONSE_AUXILIARY_LOG2: u8 = 15;
+const RESPONSE_PRODUCTION_LEAF_LOG2: u8 = 23;
+const RESPONSE_PRODUCTION_AUXILIARY_LOG2: u8 = 15;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct C6ResponseResidualCensus {
@@ -185,6 +187,24 @@ impl C6ResponseResidualFixture {
 /// compiled provider/verifier residual inputs.  `None` means the generated
 /// GPT-2 weight artifact is not installed locally.
 pub fn build_c6_response_residual_fixture(
+) -> Result<Option<C6ResponseResidualFixture>, C6ResidualError> {
+    build_c6_response_residual_fixture_with_geometry(RESPONSE_LEAF_LOG2, RESPONSE_AUXILIARY_LOG2)
+}
+
+/// Build the same complete response with the frozen final C6RSC3 polynomial
+/// capacities. This is a local CPU gate: it does not claim the production T1
+/// topology flag or any provider/hardware credit.
+pub fn build_c6_response_residual_fixture_production_geometry(
+) -> Result<Option<C6ResponseResidualFixture>, C6ResidualError> {
+    build_c6_response_residual_fixture_with_geometry(
+        RESPONSE_PRODUCTION_LEAF_LOG2,
+        RESPONSE_PRODUCTION_AUXILIARY_LOG2,
+    )
+}
+
+fn build_c6_response_residual_fixture_with_geometry(
+    leaf_log2: u8,
+    auxiliary_log2: u8,
 ) -> Result<Option<C6ResponseResidualFixture>, C6ResidualError> {
     let _fixture_guard = C6_RESIDUAL_TRACE_FIXTURE_LOCK
         .lock()
@@ -330,8 +350,8 @@ pub fn build_c6_response_residual_fixture(
         &provider_operation_plan,
         &provider_extraction,
         &provider_runtime,
-        RESPONSE_LEAF_LOG2,
-        RESPONSE_AUXILIARY_LOG2,
+        leaf_log2,
+        auxiliary_log2,
         false,
     )?;
     let retained = C6ResidualRetainedChallenges::new(

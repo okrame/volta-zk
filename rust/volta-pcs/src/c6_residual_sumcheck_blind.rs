@@ -13,6 +13,8 @@
 
 use std::{array, fmt};
 
+#[cfg(feature = "c6-trace")]
+use rayon::prelude::*;
 use volta_field::{Fp, Fp2, P};
 use volta_mac::{
     fresh_zero_mask, zero_batch_prover, zero_batch_verify, zero_mask_key, zero_open_prover,
@@ -32,7 +34,7 @@ use volta_proto::{
     compile_c6_residual_fused_first_round, compile_c6_residual_fused_folded_coefficients,
     compile_c6_residual_fused_terminal_coefficients, replay_c6_residual_atomic_events,
     C6CompiledLinearResidual, C6ResidualAtomicEventAuditSink, C6ResidualFusedCoefficientArena,
-    C6ResidualFusedCoefficientFamily, C6ResidualFusedFoldedCoefficients,
+    C6ResidualFusedCoefficientFamily, C6ResidualFusedFirstRound, C6ResidualFusedFoldedCoefficients,
     C6ResidualFusedWitnessView, C6ResidualRelationChallenges,
 };
 
@@ -243,6 +245,16 @@ pub fn prepare_c6_blind_residual_statement_fused(
         &mut audit,
     )
     .map_err(clear_error)?;
+    fused_statement_from_summary(compiler, repetition, summary.target(), summary.semantic_digest())
+}
+
+#[cfg(feature = "c6-trace")]
+fn fused_statement_from_summary(
+    compiler: C6BlindResidualFusedCompilerContext<'_>,
+    repetition: u8,
+    target: Fp2,
+    semantic_compiler_digest: [u8; 32],
+) -> Result<C6BlindResidualStatement> {
     let manifest = compiler.relation.manifest();
     let leaf_tables = std::array::from_fn(|slot| C6ResidualTableRef {
         cohort_id: crate::c6_wrapper_pcs::C6_DELTA_RESIDUAL_COHORT_ID,
@@ -255,17 +267,66 @@ pub fn prepare_c6_blind_residual_statement_fused(
     let mut statement = C6BlindResidualStatement {
         reference: None,
         repetition,
-        target: summary.target(),
+        target,
         leaf_rounds: usize::from(manifest.leaf_log2()),
         auxiliary_rounds: usize::from(manifest.auxiliary_log2()),
         leaf_tables,
         auxiliary_tables,
-        semantic_compiler_digest: summary.semantic_digest(),
+        semantic_compiler_digest,
         digest: [0; 32],
     };
     statement.digest = semantic_statement_digest(&statement, statement.semantic_compiler_digest);
     statement.validate()?;
     Ok(statement)
+}
+
+/// One replay supplies both the compact statement and the sealed first-round
+/// message. The latter precedes every verifier challenge, so preparing it
+/// here does not alter Fiat-Shamir or interactive transcript order.
+#[cfg(feature = "c6-trace")]
+#[derive(Clone)]
+pub struct C6BlindResidualFusedPreparedRepetition {
+    statement: C6BlindResidualStatement,
+    first_round: C6ResidualFusedFirstRound,
+}
+
+#[cfg(feature = "c6-trace")]
+impl C6BlindResidualFusedPreparedRepetition {
+    pub fn statement(&self) -> &C6BlindResidualStatement {
+        &self.statement
+    }
+}
+
+#[cfg(feature = "c6-trace")]
+pub fn prepare_c6_blind_residual_prover_repetition_fused(
+    compiler: C6BlindResidualFusedCompilerContext<'_>,
+    fused_witness: C6ResidualFusedWitnessView<'_>,
+    repetition: u8,
+) -> Result<C6BlindResidualFusedPreparedRepetition> {
+    let first_round = compile_c6_residual_fused_first_round(
+        compiler.operation_plan,
+        compiler.extraction,
+        compiler.runtime,
+        compiler.linear,
+        compiler.relation,
+        repetition,
+        fused_witness,
+    )
+    .map_err(clear_error)?;
+    let statement = fused_statement_from_summary(
+        compiler,
+        repetition,
+        first_round.target(),
+        first_round.semantic_digest(),
+    )?;
+    if first_round.proof_repetition() != repetition
+        || first_round.witness_view_digest() != fused_witness.digest()
+    {
+        return Err(C6BlindResidualError::new(
+            "C6RSC3 prepared first round differs from its witness/repetition",
+        ));
+    }
+    Ok(C6BlindResidualFusedPreparedRepetition { statement, first_round })
 }
 
 fn validate_statement_shape(statement: &C6BlindResidualStatement) -> Result<()> {
@@ -1185,6 +1246,7 @@ impl<'a> C6BlindResidualFusedArithmetic<'a> {
         compiler: C6BlindResidualFusedCompilerContext<'a>,
         fused_witness: C6ResidualFusedWitnessView<'a>,
         arena: &'a C6ResidualFusedCoefficientArena,
+        prepared_first_round: Option<&C6ResidualFusedFirstRound>,
     ) -> Result<Self> {
         let manifest = compiler.relation.manifest();
         let leaf_entries = usize::try_from(manifest.leaf_entries())
@@ -1203,19 +1265,24 @@ impl<'a> C6BlindResidualFusedArithmetic<'a> {
                 "C6RSC3 fused compiler/witness/arena geometry mismatch",
             ));
         }
-        let first = compile_c6_residual_fused_first_round(
-            compiler.operation_plan,
-            compiler.extraction,
-            compiler.runtime,
-            compiler.linear,
-            compiler.relation,
-            statement.repetition(),
-            fused_witness,
-        )
-        .map_err(clear_error)?;
+        let first = if let Some(first) = prepared_first_round {
+            first.clone()
+        } else {
+            compile_c6_residual_fused_first_round(
+                compiler.operation_plan,
+                compiler.extraction,
+                compiler.runtime,
+                compiler.linear,
+                compiler.relation,
+                statement.repetition(),
+                fused_witness,
+            )
+            .map_err(clear_error)?
+        };
         if first.proof_repetition() != statement.repetition()
             || first.target() != statement.target()
             || first.semantic_digest() != statement.semantic_compiler_digest()
+            || first.witness_view_digest() != fused_witness.digest()
             || first.leaf_message()[0]
                 + first.leaf_message()[1]
                 + first.auxiliary_message()[0]
@@ -1318,6 +1385,7 @@ impl<'a> C6BlindResidualFusedArithmetic<'a> {
             1usize << self.statement.leaf_rounds(),
             challenge,
             "leaf",
+            |table| self.fused_witness.leaf_live_entries(table).map_err(clear_error),
             |table, row| self.fused_witness.leaf_value(table, row).map_err(clear_error),
         )?;
         self.leaf_coefficients = Some(coefficients);
@@ -1326,15 +1394,19 @@ impl<'a> C6BlindResidualFusedArithmetic<'a> {
     }
 
     fn bind_leaf_challenge(&mut self, challenge: Fp2) -> Result<()> {
-        self.leaf_coefficients
+        let coefficients = self
+            .leaf_coefficients
             .as_mut()
-            .ok_or_else(|| C6BlindResidualError::new("C6RSC3 fused leaf state is absent"))?
-            .fold_next(challenge)
-            .map_err(clear_error)?;
+            .ok_or_else(|| C6BlindResidualError::new("C6RSC3 fused leaf state is absent"))?;
+        let logical_entries = usize::try_from(coefficients.entries_per_table()).map_err(|_| {
+            C6BlindResidualError::new("C6RSC3 fused leaf logical length exceeds usize")
+        })?;
+        coefficients.fold_next(challenge).map_err(clear_error)?;
         fold_witness_tables_in_place(
             self.leaf_witness
                 .as_mut()
                 .ok_or_else(|| C6BlindResidualError::new("C6RSC3 fused leaf witness is absent"))?,
+            logical_entries,
             challenge,
             "leaf",
         )
@@ -1363,6 +1435,7 @@ impl<'a> C6BlindResidualFusedArithmetic<'a> {
             1usize << self.statement.auxiliary_rounds(),
             challenge,
             "auxiliary",
+            |table| self.fused_witness.auxiliary_live_entries(table).map_err(clear_error),
             |table, row| self.fused_witness.auxiliary_value(table, row).map_err(clear_error),
         )?;
         self.auxiliary_coefficients = Some(coefficients);
@@ -1371,15 +1444,19 @@ impl<'a> C6BlindResidualFusedArithmetic<'a> {
     }
 
     fn bind_auxiliary_challenge(&mut self, challenge: Fp2) -> Result<()> {
-        self.auxiliary_coefficients
+        let coefficients = self
+            .auxiliary_coefficients
             .as_mut()
-            .ok_or_else(|| C6BlindResidualError::new("C6RSC3 fused auxiliary state is absent"))?
-            .fold_next(challenge)
-            .map_err(clear_error)?;
+            .ok_or_else(|| C6BlindResidualError::new("C6RSC3 fused auxiliary state is absent"))?;
+        let logical_entries = usize::try_from(coefficients.entries_per_table()).map_err(|_| {
+            C6BlindResidualError::new("C6RSC3 fused auxiliary logical length exceeds usize")
+        })?;
+        coefficients.fold_next(challenge).map_err(clear_error)?;
         fold_witness_tables_in_place(
             self.auxiliary_witness.as_mut().ok_or_else(|| {
                 C6BlindResidualError::new("C6RSC3 fused auxiliary witness is absent")
             })?,
+            logical_entries,
             challenge,
             "auxiliary",
         )
@@ -1466,8 +1543,8 @@ impl C6BlindResidualProverArithmetic for C6BlindResidualFusedArithmetic<'_> {
         })?;
         if !leaf_coefficients.is_terminal()
             || !auxiliary_coefficients.is_terminal()
-            || leaf_witness.iter().any(|table| table.len() != 1)
-            || auxiliary_witness.iter().any(|table| table.len() != 1)
+            || leaf_witness.iter().any(|table| table.len() > 1)
+            || auxiliary_witness.iter().any(|table| table.len() > 1)
         {
             return Err(C6BlindResidualError::new("C6RSC3 fused terminal geometry is incomplete"));
         }
@@ -1514,7 +1591,7 @@ impl C6BlindResidualProverArithmetic for C6BlindResidualFusedArithmetic<'_> {
                 family: C6ResidualSumcheckFamily::LeafRaw,
                 table: *table,
                 point: leaf_point.clone(),
-                value: witness[0],
+                value: witness.first().copied().unwrap_or(Fp2::ZERO),
             });
         }
         for (table, witness) in this.statement.auxiliary_tables().iter().zip(&auxiliary_witness) {
@@ -1523,7 +1600,7 @@ impl C6BlindResidualProverArithmetic for C6BlindResidualFusedArithmetic<'_> {
                 family: C6ResidualSumcheckFamily::Auxiliary,
                 table: *table,
                 point: auxiliary_point.clone(),
-                value: witness[0],
+                value: witness.first().copied().unwrap_or(Fp2::ZERO),
             });
         }
         if opening_claims.len() != C6_RESIDUAL_TABLES_PER_REPETITION {
@@ -1545,65 +1622,80 @@ impl C6BlindResidualProverArithmetic for C6BlindResidualFusedArithmetic<'_> {
 }
 
 #[cfg(feature = "c6-trace")]
-fn fold_fused_witness_view<V>(
+fn fold_fused_witness_view<L, V>(
     table_count: usize,
-    entries: usize,
+    logical_entries: usize,
     challenge: Fp2,
     family: &str,
-    mut value: V,
+    live_entries: L,
+    value: V,
 ) -> Result<Vec<Vec<Fp2>>>
 where
-    V: FnMut(usize, usize) -> Result<Fp2>,
+    L: Fn(usize) -> Result<usize> + Sync,
+    V: Fn(usize, usize) -> Result<Fp2> + Sync,
 {
-    if table_count == 0 || entries < 2 || entries & 1 != 0 {
+    if table_count == 0 || logical_entries < 2 || logical_entries & 1 != 0 {
         return Err(C6BlindResidualError::new(format!(
             "C6RSC3 fused {family} source witness geometry diverged"
         )));
     }
-    let folded_entries = entries / 2;
-    let mut folded = Vec::new();
-    folded.try_reserve_exact(table_count).map_err(|_| {
-        C6BlindResidualError::new(format!("C6RSC3 fused {family} witness table allocation failed"))
-    })?;
-    for table in 0..table_count {
-        let mut values = Vec::new();
-        values.try_reserve_exact(folded_entries).map_err(|_| {
-            C6BlindResidualError::new(format!(
-                "C6RSC3 fused {family} witness row allocation failed"
-            ))
-        })?;
-        for row in 0..folded_entries {
-            let low = value(table, 2 * row)?;
-            let high = value(table, 2 * row + 1)?;
-            values.push(low + (high - low) * challenge);
-        }
-        folded.push(values);
-    }
-    Ok(folded)
+    (0..table_count)
+        .into_par_iter()
+        .map(|table| {
+            let live_entries = live_entries(table)?;
+            if live_entries > logical_entries {
+                return Err(C6BlindResidualError::new(format!(
+                    "C6RSC3 fused {family} live prefix exceeds its logical table"
+                )));
+            }
+            let folded_entries = live_entries.div_ceil(2);
+            let mut values = Vec::new();
+            values.try_reserve_exact(folded_entries).map_err(|_| {
+                C6BlindResidualError::new(format!(
+                    "C6RSC3 fused {family} witness row allocation failed"
+                ))
+            })?;
+            if values.capacity() != folded_entries {
+                return Err(C6BlindResidualError::new(format!(
+                    "C6RSC3 fused {family} witness reservation is not exact"
+                )));
+            }
+            for row in 0..folded_entries {
+                let low = value(table, 2 * row)?;
+                let high =
+                    if 2 * row + 1 < live_entries { value(table, 2 * row + 1)? } else { Fp2::ZERO };
+                values.push(low + (high - low) * challenge);
+            }
+            Ok(values)
+        })
+        .collect()
 }
 
 #[cfg(feature = "c6-trace")]
 fn fold_witness_tables_in_place(
     tables: &mut [Vec<Fp2>],
+    logical_entries: usize,
     challenge: Fp2,
     family: &str,
 ) -> Result<()> {
     if tables.is_empty()
-        || tables.iter().any(|table| table.len() < 2 || table.len() & 1 != 0)
-        || tables.iter().any(|table| table.len() != tables[0].len())
+        || logical_entries < 2
+        || logical_entries & 1 != 0
+        || tables.iter().any(|table| table.len() > logical_entries)
     {
         return Err(C6BlindResidualError::new(format!(
             "C6RSC3 fused {family} folded witness geometry diverged"
         )));
     }
-    let next = tables[0].len() / 2;
-    for table in tables {
+    tables.par_iter_mut().for_each(|table| {
+        let next = table.len().div_ceil(2);
         for row in 0..next {
             let low = table[2 * row];
-            table[row] = low + (table[2 * row + 1] - low) * challenge;
+            let high = table.get(2 * row + 1).copied().unwrap_or(Fp2::ZERO);
+            table[row] = low + (high - low) * challenge;
         }
         table.truncate(next);
-    }
+    });
     Ok(())
 }
 
@@ -1618,18 +1710,29 @@ fn fused_leaf_round_message(
         || witness
             .iter()
             .zip(coefficients)
-            .any(|(values, coefficients)| values.len() != coefficients.len())
+            .any(|(values, coefficients)| values.len() > coefficients.len())
     {
         return Err(C6BlindResidualError::new("C6RSC3 fused leaf round geometry diverged"));
     }
-    let mut message = [Fp2::ZERO; 3];
-    for (coefficients, witness) in coefficients.iter().zip(witness) {
-        for pair in 0..coefficients.len() / 2 {
-            for (node, evaluation) in message.iter_mut().enumerate() {
-                let at = Fp2::from_base(Fp::new(node as u64));
-                *evaluation += fused_affine_pair(coefficients, pair, at)
-                    * fused_affine_pair(witness, pair, at);
+    let table_messages = coefficients
+        .par_iter()
+        .zip(witness.par_iter())
+        .map(|(coefficients, witness)| {
+            let mut table_message = [Fp2::ZERO; 3];
+            for pair in 0..witness.len().div_ceil(2) {
+                for (node, evaluation) in table_message.iter_mut().enumerate() {
+                    let at = Fp2::from_base(Fp::new(node as u64));
+                    *evaluation += fused_affine_pair(coefficients, pair, at)
+                        * fused_compact_affine_pair(witness, pair, at);
+                }
             }
+            table_message
+        })
+        .collect::<Vec<_>>();
+    let mut message = [Fp2::ZERO; 3];
+    for table_message in table_messages {
+        for (evaluation, contribution) in message.iter_mut().zip(table_message) {
+            *evaluation += contribution;
         }
     }
     Ok(message.to_vec())
@@ -1648,31 +1751,48 @@ fn fused_auxiliary_round_message(
         || witness
             .iter()
             .zip(linear)
-            .any(|(values, coefficients)| values.len() != coefficients.len())
+            .any(|(values, coefficients)| values.len() > coefficients.len())
     {
         return Err(C6BlindResidualError::new("C6RSC3 fused auxiliary round geometry diverged"));
     }
+    let linear_messages = linear
+        .par_iter()
+        .zip(witness.par_iter())
+        .map(|(coefficients, witness)| {
+            let mut table_message = [Fp2::ZERO; 4];
+            for pair in 0..witness.len().div_ceil(2) {
+                for (node, evaluation) in table_message.iter_mut().enumerate() {
+                    let at = Fp2::from_base(Fp::new(node as u64));
+                    *evaluation += fused_affine_pair(coefficients, pair, at)
+                        * fused_compact_affine_pair(witness, pair, at);
+                }
+            }
+            table_message
+        })
+        .collect::<Vec<_>>();
+    let quadratic_messages = C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS
+        .par_iter()
+        .zip(quadratic.par_iter())
+        .map(|((lhs, rhs), coefficients)| {
+            let lhs = &witness[usize::from(*lhs)];
+            let rhs = &witness[usize::from(*rhs)];
+            let live_pairs = lhs.len().div_ceil(2).min(rhs.len().div_ceil(2));
+            let mut table_message = [Fp2::ZERO; 4];
+            for pair in 0..live_pairs {
+                for (node, evaluation) in table_message.iter_mut().enumerate() {
+                    let at = Fp2::from_base(Fp::new(node as u64));
+                    *evaluation += fused_affine_pair(coefficients, pair, at)
+                        * fused_compact_affine_pair(lhs, pair, at)
+                        * fused_compact_affine_pair(rhs, pair, at);
+                }
+            }
+            table_message
+        })
+        .collect::<Vec<_>>();
     let mut message = [Fp2::ZERO; 4];
-    for (coefficients, witness) in linear.iter().zip(witness) {
-        for pair in 0..coefficients.len() / 2 {
-            for (node, evaluation) in message.iter_mut().enumerate() {
-                let at = Fp2::from_base(Fp::new(node as u64));
-                *evaluation += fused_affine_pair(coefficients, pair, at)
-                    * fused_affine_pair(witness, pair, at);
-            }
-        }
-    }
-    for ((lhs, rhs), coefficients) in C6_RESIDUAL_AUXILIARY_QUADRATIC_FACTORS.iter().zip(quadratic)
-    {
-        let lhs = &witness[usize::from(*lhs)];
-        let rhs = &witness[usize::from(*rhs)];
-        for pair in 0..coefficients.len() / 2 {
-            for (node, evaluation) in message.iter_mut().enumerate() {
-                let at = Fp2::from_base(Fp::new(node as u64));
-                *evaluation += fused_affine_pair(coefficients, pair, at)
-                    * fused_affine_pair(lhs, pair, at)
-                    * fused_affine_pair(rhs, pair, at);
-            }
+    for table_message in linear_messages.into_iter().chain(quadratic_messages) {
+        for (evaluation, contribution) in message.iter_mut().zip(table_message) {
+            *evaluation += contribution;
         }
     }
     Ok(message.to_vec())
@@ -1682,6 +1802,13 @@ fn fused_auxiliary_round_message(
 fn fused_affine_pair(values: &[Fp2], pair: usize, at: Fp2) -> Fp2 {
     let low = values[2 * pair];
     low + at * (values[2 * pair + 1] - low)
+}
+
+#[cfg(feature = "c6-trace")]
+fn fused_compact_affine_pair(values: &[Fp2], pair: usize, at: Fp2) -> Fp2 {
+    let low = values[2 * pair];
+    let high = values.get(2 * pair + 1).copied().unwrap_or(Fp2::ZERO);
+    low + at * (high - low)
 }
 
 struct C6BlindResidualProverRepetitionOutput {
@@ -1873,7 +2000,71 @@ pub fn prove_c6_blind_residual_sumchecks_fused(
     C6BlindResidualPendingTransferFrame,
     C6BlindResidualPendingClaimsProver,
 )> {
+    prove_c6_blind_residual_sumchecks_fused_inner(
+        statements,
+        None,
+        compiler,
+        fused_witness,
+        arena,
+        streams,
+        transcript,
+    )
+}
+
+/// Prover entry point that reuses the first-round messages which already
+/// supplied the compact statements. No response bytes, challenges or
+/// correlations differ from [`prove_c6_blind_residual_sumchecks_fused`].
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+pub fn prove_c6_blind_residual_sumchecks_fused_prepared(
+    prepared: &[C6BlindResidualFusedPreparedRepetition],
+    compiler: C6BlindResidualFusedCompilerContext<'_>,
+    fused_witness: C6ResidualFusedWitnessView<'_>,
+    arena: &C6ResidualFusedCoefficientArena,
+    streams: &mut [CorrelationStream; MAC_TAPES],
+    transcript: &mut Transcript,
+) -> Result<(
+    Vec<C6BlindResidualStatement>,
+    C6BlindResidualSumcheckProof,
+    C6BlindResidualPendingTransferFrame,
+    C6BlindResidualPendingClaimsProver,
+)> {
+    if prepared.len() != C6_RESIDUAL_SUMCHECK_REPETITIONS {
+        return Err(C6BlindResidualError::new("C6RSC3 prepared repetition census mismatch"));
+    }
+    let statements = prepared.iter().map(|item| item.statement.clone()).collect::<Vec<_>>();
+    let first_rounds = prepared.iter().map(|item| item.first_round.clone()).collect::<Vec<_>>();
+    let (proof, frame, pending) = prove_c6_blind_residual_sumchecks_fused_inner(
+        &statements,
+        Some(&first_rounds),
+        compiler,
+        fused_witness,
+        arena,
+        streams,
+        transcript,
+    )?;
+    Ok((statements, proof, frame, pending))
+}
+
+#[cfg(feature = "c6-trace")]
+#[allow(clippy::too_many_arguments)]
+fn prove_c6_blind_residual_sumchecks_fused_inner(
+    statements: &[C6BlindResidualStatement],
+    first_rounds: Option<&[C6ResidualFusedFirstRound]>,
+    compiler: C6BlindResidualFusedCompilerContext<'_>,
+    fused_witness: C6ResidualFusedWitnessView<'_>,
+    arena: &C6ResidualFusedCoefficientArena,
+    streams: &mut [CorrelationStream; MAC_TAPES],
+    transcript: &mut Transcript,
+) -> Result<(
+    C6BlindResidualSumcheckProof,
+    C6BlindResidualPendingTransferFrame,
+    C6BlindResidualPendingClaimsProver,
+)> {
     validate_statement_pair(statements)?;
+    if first_rounds.is_some_and(|rounds| rounds.len() != statements.len()) {
+        return Err(C6BlindResidualError::new("C6RSC3 prepared first-round census mismatch"));
+    }
     if arena.active_repetition().is_some() || arena.is_faulted() {
         return Err(C6BlindResidualError::new(
             "C6RSC3 fused prover starts from invalid coefficient-arena state",
@@ -1885,12 +2076,13 @@ pub fn prove_c6_blind_residual_sumchecks_fused(
         Vec::with_capacity(C6_RESIDUAL_SUMCHECK_REPETITIONS * C6_RESIDUAL_TABLES_PER_REPETITION);
     let mut pending_claims =
         Vec::with_capacity(C6_RESIDUAL_SUMCHECK_REPETITIONS * C6_RESIDUAL_TABLES_PER_REPETITION);
-    for statement in statements {
+    for (index, statement) in statements.iter().enumerate() {
         let arithmetic = Box::new(C6BlindResidualFusedArithmetic::new(
             statement,
             compiler,
             fused_witness,
             arena,
+            first_rounds.map(|rounds| &rounds[index]),
         )?);
         let output =
             prove_c6_blind_residual_repetition(statement, arithmetic, streams, transcript)?;
@@ -2905,8 +3097,9 @@ mod tests {
     use volta_mac::CorrCounters;
     #[cfg(feature = "c6-trace")]
     use volta_proto::{
-        build_c6_residual_fused_scaled_fixture, build_c6_response_residual_fixture,
-        C6ResidualFusedCoefficientArena, C6ResponseProofEnvelope, C6_RESPONSE_CACHE_SOURCE_BYTES,
+        build_c6_residual_fused_scaled_fixture,
+        build_c6_response_residual_fixture_production_geometry, C6ResidualFusedCoefficientArena,
+        C6ResponseProofEnvelope, C6_RESPONSE_CACHE_SOURCE_BYTES,
     };
 
     const LEAF_ROUNDS: usize = 5;
@@ -3277,6 +3470,67 @@ mod tests {
 
     #[cfg(feature = "c6-trace")]
     #[test]
+    fn compact_fused_witness_folds_odd_and_empty_zero_tails() {
+        let challenge_0 = Fp2::new(Fp::new(7), Fp::new(11));
+        let challenge_1 = Fp2::new(Fp::new(13), Fp::new(17));
+        let challenge_2 = Fp2::new(Fp::new(19), Fp::new(23));
+        let source = [
+            vec![
+                Fp2::from_base(Fp::new(1)),
+                Fp2::from_base(Fp::new(2)),
+                Fp2::from_base(Fp::new(3)),
+                Fp2::from_base(Fp::new(4)),
+                Fp2::from_base(Fp::new(5)),
+            ],
+            vec![Fp2::from_base(Fp::new(29))],
+            Vec::new(),
+        ];
+        let mut compact = fold_fused_witness_view(
+            source.len(),
+            8,
+            challenge_0,
+            "test",
+            |table| Ok(source[table].len()),
+            |table, row| Ok(source[table][row]),
+        )
+        .unwrap();
+        let mut padded = source.map(|values| {
+            let mut padded = values;
+            padded.resize(8, Fp2::ZERO);
+            padded
+        });
+        let fold_full = |tables: &mut [Vec<Fp2>], challenge: Fp2| {
+            for table in tables {
+                let next = table.len() / 2;
+                for row in 0..next {
+                    let low = table[2 * row];
+                    table[row] = low + (table[2 * row + 1] - low) * challenge;
+                }
+                table.truncate(next);
+            }
+        };
+        fold_full(&mut padded, challenge_0);
+        assert_eq!(compact[0], padded[0][..3]);
+        assert_eq!(compact[1], padded[1][..1]);
+        assert!(compact[2].is_empty());
+
+        fold_witness_tables_in_place(&mut compact, 4, challenge_1, "test").unwrap();
+        fold_full(&mut padded, challenge_1);
+        assert_eq!(compact[0], padded[0][..2]);
+        assert_eq!(compact[1], padded[1][..1]);
+        assert!(compact[2].is_empty());
+
+        fold_witness_tables_in_place(&mut compact, 2, challenge_2, "test").unwrap();
+        fold_full(&mut padded, challenge_2);
+        assert_eq!(compact[0], padded[0][..1]);
+        assert_eq!(compact[1], padded[1][..1]);
+        assert!(compact[2].is_empty());
+        assert_eq!(compact[0][0], padded[0][0]);
+        assert_eq!(compact[1][0], padded[1][0]);
+    }
+
+    #[cfg(feature = "c6-trace")]
+    #[test]
     fn fused_scaled_prover_is_byte_transcript_and_pending_identical() {
         let fused_fixture = build_c6_residual_fused_scaled_fixture().unwrap();
         assert!(fused_fixture.uses_installed_terminal_witness());
@@ -3392,6 +3646,43 @@ mod tests {
         assert_eq!(compact_arena.active_repetition(), None);
         assert_eq!(compact_arena.active_elements(), 0);
         assert!(!compact_arena.is_faulted());
+
+        let prepared = (0..C6_RESIDUAL_SUMCHECK_REPETITIONS)
+            .map(|repetition| {
+                prepare_c6_blind_residual_prover_repetition_fused(
+                    compiler,
+                    fused_fixture.witness_view().unwrap(),
+                    repetition as u8,
+                )
+            })
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        let prepared_arena = C6ResidualFusedCoefficientArena::new(fused_fixture.manifest());
+        let mut prepared_streams = prover_streams();
+        let mut prepared_transcript = Transcript::new(CHALLENGE_SEED);
+        let (prepared_statements, prepared_proof, prepared_frame, prepared_pending) =
+            prove_c6_blind_residual_sumchecks_fused_prepared(
+                &prepared,
+                compiler,
+                fused_fixture.witness_view().unwrap(),
+                &prepared_arena,
+                &mut prepared_streams,
+                &mut prepared_transcript,
+            )
+            .unwrap();
+        assert_eq!(prepared_statements, compact_statements);
+        assert_eq!(prepared_proof, compact_proof);
+        assert_eq!(prepared_frame, compact_frame);
+        assert_eq!(prepared_pending, compact_pending);
+        assert_eq!(prepared_transcript.ledger(), compact_transcript.ledger());
+        assert_eq!(prepared_transcript.total_bytes(), compact_transcript.total_bytes());
+        assert_eq!(
+            array::from_fn::<_, MAC_TAPES, _>(|tape| prepared_streams[tape].counters),
+            array::from_fn::<_, MAC_TAPES, _>(|tape| compact_streams[tape].counters),
+        );
+        assert_eq!(prepared_arena.active_repetition(), None);
+        assert_eq!(prepared_arena.active_elements(), 0);
+        assert!(!prepared_arena.is_faulted());
 
         for repetition in 0..C6_RESIDUAL_SUMCHECK_REPETITIONS {
             assert_eq!(
@@ -3534,7 +3825,8 @@ mod tests {
     #[ignore = "artifact-gated complete T=4,Q=2 CPU response and sealed residual gate"]
     fn response_wide_installed_witness_enters_compact_sealed_coordinator() {
         let gate_start = std::time::Instant::now();
-        let Some(mut fixture) = build_c6_response_residual_fixture().unwrap() else {
+        let Some(mut fixture) = build_c6_response_residual_fixture_production_geometry().unwrap()
+        else {
             eprintln!("skipping C6 response-wide sealed gate: GPT-2 artifact not present");
             return;
         };
@@ -3550,8 +3842,10 @@ mod tests {
 
         let arena = C6ResidualFusedCoefficientArena::new(fixture.manifest());
         let residual_prover_start = std::time::Instant::now();
-        let (statements, proof, frame, prover_pending_len, encoded_len) = {
+        let (statements, proof, frame, prover_pending_len, encoded_len, witness_memory) = {
             let provider = fixture.provider_inputs().unwrap();
+            let witness_memory =
+                provider.witness.memory_census(provider.relation.manifest()).unwrap();
             let compiler = C6BlindResidualFusedCompilerContext::new(
                 provider.operation_plan,
                 provider.extraction,
@@ -3559,32 +3853,51 @@ mod tests {
                 provider.linear,
                 provider.relation,
             );
-            let statements = (0..C6_RESIDUAL_SUMCHECK_REPETITIONS)
+            let prepared = (0..C6_RESIDUAL_SUMCHECK_REPETITIONS)
                 .map(|repetition| {
-                    prepare_c6_blind_residual_statement_fused(compiler, repetition as u8)
+                    prepare_c6_blind_residual_prover_repetition_fused(
+                        compiler,
+                        provider.witness,
+                        repetition as u8,
+                    )
                 })
                 .collect::<Result<Vec<_>>>()
                 .unwrap();
-            let (proof, frame, pending) = prove_c6_blind_residual_sumchecks_fused(
-                &statements,
-                compiler,
-                provider.witness,
-                &arena,
-                provider.streams,
-                provider.transcript,
-            )
-            .unwrap();
+            let (statements, proof, frame, pending) =
+                prove_c6_blind_residual_sumchecks_fused_prepared(
+                    &prepared,
+                    compiler,
+                    provider.witness,
+                    &arena,
+                    provider.streams,
+                    provider.transcript,
+                )
+                .unwrap();
             let encoded_len = proof.encoded_len(&statements).unwrap();
-            (statements, proof, frame, pending.len(), encoded_len)
+            (statements, proof, frame, pending.len(), encoded_len, witness_memory)
         };
         let residual_prover_wall = residual_prover_start.elapsed();
+        eprintln!(
+            "C6 production-geometry provider checkpoint: proof_bytes={encoded_len} provider_response_residual_s={:.6} residual_prover_s={:.6} inline_subtotal_s={:.6}",
+            fixture.timing().provider_response_and_residual_ns as f64 / 1e9,
+            residual_prover_wall.as_secs_f64(),
+            fixture.timing().provider_response_and_residual_ns as f64 / 1e9
+                + residual_prover_wall.as_secs_f64(),
+        );
         assert_eq!(prover_pending_len, 48);
         assert_eq!(arena.active_repetition(), None);
         assert_eq!(arena.active_elements(), 0);
         assert_eq!(arena.reserved_elements(), 0);
-        assert_eq!(arena.peak_elements(), 4_194_304);
-        assert_eq!(arena.peak_reserved_elements(), 4_194_304);
-        assert_eq!(arena.peak_bytes(), 67_108_864);
+        assert_eq!(arena.peak_elements(), 33_554_432);
+        assert_eq!(arena.peak_reserved_elements(), 33_554_432);
+        assert_eq!(arena.peak_bytes(), 536_870_912);
+        assert_eq!(witness_memory.input_live_elements, 4_553_588);
+        assert_eq!(witness_memory.leaf_first_fold_elements, 2_177_696);
+        assert_eq!(witness_memory.leaf_at_auxiliary_activation_elements, 8_508);
+        assert_eq!(witness_memory.auxiliary_first_fold_elements, 99_104);
+        assert_eq!(witness_memory.activation_logical_elements, 107_612);
+        assert_eq!(witness_memory.peak_logical_bytes, 34_843_136);
+        assert_eq!(witness_memory.peak_reserved_bytes, 36_428_800);
         assert!(!arena.is_faulted());
 
         let response_envelope = C6ResponseProofEnvelope::new(
@@ -3645,8 +3958,11 @@ mod tests {
         assert_eq!(closure_memory.canonical_nodes, 2_501_849);
         assert_eq!(closure_memory.peak_live_node_values, 149_074);
         eprintln!(
-            "C6 response sealed gate: proof_bytes={encoded_len} coefficient_peak_bytes={} closure_working_heap_bytes={} provider_response_residual_s={:.6} residual_prover_s={:.6} verifier_response_residual_s={:.6} residual_verifier_s={:.6} complete_gate_s={:.6}",
+            "C6 response sealed gate: proof_bytes={encoded_len} coefficient_peak_bytes={} compact_witness_logical_peak_bytes={} compact_witness_reserved_peak_bytes={} combined_coefficient_witness_reserved_peak_bytes={} closure_working_heap_bytes={} provider_response_residual_s={:.6} residual_prover_s={:.6} verifier_response_residual_s={:.6} residual_verifier_s={:.6} complete_gate_s={:.6}",
             arena.peak_bytes(),
+            witness_memory.peak_logical_bytes,
+            witness_memory.peak_reserved_bytes,
+            arena.peak_reserved_bytes() + witness_memory.peak_reserved_bytes,
             closure_memory.peak_working_heap_bytes,
             timing.provider_response_and_residual_ns as f64 / 1e9,
             residual_prover_wall.as_secs_f64(),

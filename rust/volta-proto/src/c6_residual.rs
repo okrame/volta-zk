@@ -27,6 +27,7 @@ use crate::c6_census::{
 };
 use crate::c6_source::C6PairedSourceWitness;
 use crate::prod_check::{prod_batch_verify, ProdProof};
+use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::sync::{Arc, Mutex};
@@ -4105,6 +4106,25 @@ pub struct C6ResidualFusedWitnessView<'a> {
     digest: C6ResidualDigest,
 }
 
+/// Exact Fp2-state census for the compact live-prefix witness strategy.
+///
+/// Logical occupancy shrinks after every challenge. Physical reservations do
+/// not: the leaf vectors retain their first-fold capacities until the
+/// repetition ends, and the auxiliary first-fold vectors join them at the
+/// shared suffix.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct C6ResidualFusedWitnessMemoryCensus {
+    pub input_live_elements: u64,
+    pub leaf_first_fold_elements: u64,
+    pub leaf_at_auxiliary_activation_elements: u64,
+    pub auxiliary_first_fold_elements: u64,
+    pub activation_logical_elements: u64,
+    pub peak_logical_elements: u64,
+    pub peak_reserved_elements: u64,
+    pub peak_logical_bytes: u64,
+    pub peak_reserved_bytes: u64,
+}
+
 impl<'a> C6ResidualFusedWitnessView<'a> {
     pub fn new(
         manifest: &C6ResidualRelationManifest,
@@ -4179,6 +4199,111 @@ impl<'a> C6ResidualFusedWitnessView<'a> {
 
     pub fn digest(&self) -> C6ResidualDigest {
         self.digest
+    }
+
+    /// Number of non-padding values in one logical leaf table.
+    ///
+    /// Every value after this prefix is fixed to zero by the witness
+    /// contract, so a folded prover may retain only the image of this prefix
+    /// instead of the complete padded table.
+    pub fn leaf_live_entries(&self, table: usize) -> C6ResidualResult<usize> {
+        match table {
+            0..=6 => Ok(self.leaf.columns[table].len()),
+            7 => Ok(self.closure.values.len()),
+            _ => Err(C6ResidualError::new("C6 fused witness leaf table is out of range")),
+        }
+    }
+
+    /// Number of non-padding values in one logical auxiliary table.
+    pub fn auxiliary_live_entries(&self, table: usize) -> C6ResidualResult<usize> {
+        self.auxiliary
+            .lanes
+            .get(table)
+            .map(Vec::len)
+            .ok_or_else(|| C6ResidualError::new("C6 fused witness auxiliary table is out of range"))
+    }
+
+    /// Census the ragged first-fold state without allocating padded tables.
+    pub fn memory_census(
+        &self,
+        manifest: &C6ResidualRelationManifest,
+    ) -> C6ResidualResult<C6ResidualFusedWitnessMemoryCensus> {
+        if self.manifest_digest != manifest.digest {
+            return Err(C6ResidualError::new("C6 fused witness census uses a different manifest"));
+        }
+        let activation_round = manifest
+            .leaf_log2
+            .checked_sub(manifest.auxiliary_log2)
+            .ok_or_else(|| C6ResidualError::new("C6 fused witness activation underflows"))?;
+        let activation_folds = u32::from(activation_round)
+            .checked_add(1)
+            .ok_or_else(|| C6ResidualError::new("C6 fused witness activation overflows"))?;
+        let folded_prefix = |entries: usize, folds: u32| -> C6ResidualResult<u64> {
+            let entries = u64::try_from(entries)
+                .map_err(|_| C6ResidualError::new("C6 fused witness prefix exceeds u64"))?;
+            if entries == 0 {
+                return Ok(0);
+            }
+            let divisor = 1u64
+                .checked_shl(folds)
+                .ok_or_else(|| C6ResidualError::new("C6 fused witness fold count overflows"))?;
+            Ok((entries - 1) / divisor + 1)
+        };
+        let mut input_live_elements = 0u64;
+        let mut leaf_first_fold_elements = 0u64;
+        let mut leaf_at_auxiliary_activation_elements = 0u64;
+        for table in 0..C6_RESIDUAL_RELATION_LEAF_TABLES {
+            let live = self.leaf_live_entries(table)?;
+            input_live_elements = input_live_elements
+                .checked_add(u64::try_from(live).map_err(|_| {
+                    C6ResidualError::new("C6 fused leaf witness prefix exceeds u64")
+                })?)
+                .ok_or_else(|| C6ResidualError::new("C6 fused witness census overflows"))?;
+            leaf_first_fold_elements = leaf_first_fold_elements
+                .checked_add(folded_prefix(live, 1)?)
+                .ok_or_else(|| C6ResidualError::new("C6 fused witness census overflows"))?;
+            leaf_at_auxiliary_activation_elements = leaf_at_auxiliary_activation_elements
+                .checked_add(folded_prefix(live, activation_folds)?)
+                .ok_or_else(|| C6ResidualError::new("C6 fused witness census overflows"))?;
+        }
+        let mut auxiliary_first_fold_elements = 0u64;
+        for table in 0..C6_RESIDUAL_AUXILIARY_LANES as usize {
+            let live = self.auxiliary_live_entries(table)?;
+            input_live_elements = input_live_elements
+                .checked_add(u64::try_from(live).map_err(|_| {
+                    C6ResidualError::new("C6 fused auxiliary witness prefix exceeds u64")
+                })?)
+                .ok_or_else(|| C6ResidualError::new("C6 fused witness census overflows"))?;
+            auxiliary_first_fold_elements = auxiliary_first_fold_elements
+                .checked_add(folded_prefix(live, 1)?)
+                .ok_or_else(|| C6ResidualError::new("C6 fused witness census overflows"))?;
+        }
+        let activation_logical_elements = leaf_at_auxiliary_activation_elements
+            .checked_add(auxiliary_first_fold_elements)
+            .ok_or_else(|| C6ResidualError::new("C6 fused activation census overflows"))?;
+        let peak_logical_elements = leaf_first_fold_elements.max(activation_logical_elements);
+        let peak_reserved_elements = leaf_first_fold_elements
+            .checked_add(auxiliary_first_fold_elements)
+            .ok_or_else(|| C6ResidualError::new("C6 fused reservation census overflows"))?;
+        let element_bytes = u64::try_from(std::mem::size_of::<Fp2>())
+            .map_err(|_| C6ResidualError::new("C6 Fp2 size exceeds u64"))?;
+        let peak_logical_bytes = peak_logical_elements
+            .checked_mul(element_bytes)
+            .ok_or_else(|| C6ResidualError::new("C6 fused witness byte census overflows"))?;
+        let peak_reserved_bytes = peak_reserved_elements
+            .checked_mul(element_bytes)
+            .ok_or_else(|| C6ResidualError::new("C6 fused witness byte census overflows"))?;
+        Ok(C6ResidualFusedWitnessMemoryCensus {
+            input_live_elements,
+            leaf_first_fold_elements,
+            leaf_at_auxiliary_activation_elements,
+            auxiliary_first_fold_elements,
+            activation_logical_elements,
+            peak_logical_elements,
+            peak_reserved_elements,
+            peak_logical_bytes,
+            peak_reserved_bytes,
+        })
     }
 
     /// Return one logical leaf-table value, including canonical zero padding.
@@ -4312,6 +4437,9 @@ impl C6ResidualAtomicEventSink for C6ResidualFusedFirstRoundSink<'_> {
         match event.target {
             C6ResidualAtomicCoefficientTarget::LeafLinear { table, row } => {
                 let row = row as usize;
+                if row & !1 >= self.witness.leaf_live_entries(usize::from(table))? {
+                    return Ok(());
+                }
                 for index in 0..self.leaf_message.len() {
                     let point = Self::interpolation_point(index);
                     let selector = Self::selector(row & 1, point);
@@ -4321,6 +4449,9 @@ impl C6ResidualAtomicEventSink for C6ResidualFusedFirstRoundSink<'_> {
             }
             C6ResidualAtomicCoefficientTarget::AuxiliaryLinear { table, row } => {
                 let row = row as usize;
+                if row & !1 >= self.witness.auxiliary_live_entries(usize::from(table))? {
+                    return Ok(());
+                }
                 for index in 0..self.auxiliary_message.len() {
                     let point = Self::interpolation_point(index);
                     let selector = Self::selector(row & 1, point);
@@ -4330,6 +4461,11 @@ impl C6ResidualAtomicEventSink for C6ResidualFusedFirstRoundSink<'_> {
             }
             C6ResidualAtomicCoefficientTarget::AuxiliaryQuadratic { lhs, rhs, row } => {
                 let row = row as usize;
+                if row & !1 >= self.witness.auxiliary_live_entries(usize::from(lhs))?
+                    || row & !1 >= self.witness.auxiliary_live_entries(usize::from(rhs))?
+                {
+                    return Ok(());
+                }
                 for index in 0..self.auxiliary_message.len() {
                     let point = Self::interpolation_point(index);
                     let selector = Self::selector(row & 1, point);
@@ -4601,19 +4737,26 @@ impl C6ResidualFusedCoefficientArenaState {
             ));
         }
         let next_entries = layout.entries_per_table / 2;
-        for table in 0..layout.tables {
-            let range = layout.table_range(table)?;
-            if range.end > self.backing.len() {
-                return Err(C6ResidualError::new(
-                    "C6 fused coefficient table exceeds its single backing allocation",
-                ));
-            }
-            for row in 0..next_entries {
-                let even = self.backing[range.start + 2 * row];
-                let odd = self.backing[range.start + 2 * row + 1];
-                self.backing[range.start + row] = even + (odd - even) * challenge;
-            }
+        let arena_end = layout
+            .table_stride
+            .checked_mul(layout.tables)
+            .and_then(|elements| layout.offset.checked_add(elements))
+            .ok_or_else(|| C6ResidualError::new("C6 fused coefficient arena end overflows"))?;
+        if arena_end > self.backing.len() {
+            return Err(C6ResidualError::new(
+                "C6 fused coefficient tables exceed their single backing allocation",
+            ));
         }
+        self.backing[layout.offset..arena_end]
+            .par_chunks_mut(layout.table_stride)
+            .take(layout.tables)
+            .for_each(|table| {
+                for row in 0..next_entries {
+                    let even = table[2 * row];
+                    let odd = table[2 * row + 1];
+                    table[row] = even + (odd - even) * challenge;
+                }
+            });
         let mut next = layout;
         next.entries_per_table = next_entries;
         *self.layout_mut(family) = Some(next);

@@ -4469,7 +4469,7 @@ in release mode and passed with the measurements above.
 
 This is the first complete-response sealed-coordinator PASS and places the
 local CPU subtotal inside the owner's ideal 12--15-second band. It is not the
-production verdict: `leaf_log2=23/auxiliary_log2=16` raises the first-fold
+production verdict: `leaf_log2=23/auxiliary_log2=15` raises the first-fold
 coefficient and witness states to 512 MiB each before backend optimization.
 No final-response field is removed on the strength of this diagnostic alone,
 and no production byte, memory, timing or hardware credit is earned. No
@@ -4541,6 +4541,83 @@ provider-plus-verifier gate is **19.279345 s**. These remain diagnostic
 `leaf=20/aux=15` measurements. Frozen production geometry, resident provider
 memory/backend work and a bound production timing verdict remain pending; no
 provider or pod was contacted.
+
+#### 6.2.11 Production-capacity live-prefix state and local inline gate
+
+The response-owned gate now uses the frozen C6RSC3 capacities
+`leaf_log2=23, auxiliary_log2=15`. The earlier `auxiliary_log2=16` sentence
+in §6.2.9 was a clerical inconsistency: the protocol constants, 93-scalar
+round census, 6,900-B proof formula and single-arena design have always used
+fifteen auxiliary rounds. A first diagnostic run at 23/16 correctly failed
+the strict envelope because the extra auxiliary round exceeded the 6,900-B
+component cap. No cap was widened.
+
+The second 512-MiB state was eliminated without changing the sumcheck
+polynomial. Each installed witness table is a live prefix followed by
+canonical zeros. After the first challenge the prover stores only
+`ceil(live_entries/2)` values per table and keeps ragged prefix lengths through
+later in-place folds. A missing odd partner is evaluated as zero; an entirely
+zero lane remains empty and opens to zero. Coefficient tables retain their
+full logical geometry because their tail can affect off-cube evaluations.
+
+For the complete T=4,Q=2 response the exact witness census is:
+
+```text
+input live witness                              4,553,588 Fp2
+leaf first-fold logical                         2,177,696 Fp2 / 34,843,136 B
+leaf at auxiliary activation                        8,508 Fp2
+auxiliary first-fold                               99,104 Fp2
+activation logical                                107,612 Fp2
+leaf+auxiliary reserved peak                    2,276,800 Fp2 / 36,428,800 B
+coefficient arena reserved peak                33,554,432 Fp2 / 536,870,912 B
+combined coefficient+witness reserved peak                    573,299,712 B.
+```
+
+Every per-table allocation is fallible and exact-capacity. Physical leaf
+reservations remain until the repetition ends; the census includes the
+auxiliary reservation joining them and does not mistake `Vec::truncate` for
+memory release. This replaces the former 1,073,741,824-B pair of dense
+first-fold states. The installed-closure working heap remains independently
+counted at **41,322,560 B**. Whole-process RSS was not measured because the
+local image lacks GNU `time`; it is not inferred from component counts.
+
+Two replay optimizations are semantic-neutral. First, one pre-challenge
+atomic replay now produces both the compact statement `(target, semantic
+digest)` and its sealed first-round messages; the coordinator consumes that
+prepared message instead of replaying the same grammar again. Second, the
+first-round sink skips only coefficient/witness pairs wholly beyond a live
+prefix. For an odd prefix it retains the unique boundary pair, since its
+off-Boolean interpolation is not zero. All atomic outputs and weights still
+advance, all family/write censuses and semantic digests remain unchanged, and
+the leaf/auxiliary coefficient replays after their challenges are untouched.
+
+The permanent scaled differential makes the prepared and legacy fused paths
+identical in statements, proof object and bytes, transcript ledger/bytes,
+correlation counters, pending corrections/claims and verifier result. It also
+covers odd and empty prefixes through terminal folding. Parallel work is
+limited to disjoint tables; message contributions are collected in table
+order before the canonical field sum.
+
+The local release history is intentionally retained:
+
+```text
+23/15 dense witness / duplicate statement replay       52.577666 s inline FAIL
+ragged witness + prepared first round                   23.091754 s inline FAIL
+ragged/prepared + zero-pair first-round bypass          17.401844 s inline PASS
+```
+
+The final run is exact at **6,900 B** C6RSC3,
+**4.698793 s** provider response+installed residual and **12.703051 s**
+C6RSC3, hence **17.401844 s <20 s** provider inline. The designated-verifier
+side is reported separately at **1.292475 + 14.002651 s**; complete local
+provider-plus-verifier wall is **33.012188 s**. Strict response accounting is
+unchanged at **3,920,359-B pi_final / 33,096,991-B complete response**.
+
+Ordinary/trace proto are **149/0/1** and **167/0/1**; ordinary/trace PCS are
+**179/0/1** and **182/0/2**, with integrations **14/0/2** and **2/0/0**.
+Both workspace all-target checks, formatting, diff-check and the exact C6
+budget **9/9** pass. This is a local CPU capacity/timing gate, not a CUDA,
+provider, whole-RSS, real-PCG or hardware verdict. No pod was contacted.
 
 ## 7. Certificate and challenge grammar
 

@@ -191,7 +191,7 @@ separately reserved residual-only tapes.  At honest diagnostic geometry
 installed residual and **10.096918 s** for C6RSC3, or **14.786454 s** inline;
 the C6RSC3 proof is **6,516 B** and the coefficient arena peaks at
 **67,108,864 B**.  This is a local complete-response seam PASS, not a
-production timing/memory verdict: `leaf=23/aux=16`, response-field removal,
+production timing/memory verdict: `leaf=23/aux=15`, response-field removal,
 strict envelope and resident backend remain pending.
 The response-field/envelope checkpoint is now locally closed. `C6PIF1` has
 exactly seven typed components, no generic/legacy kind, **324 B** of framing
@@ -202,8 +202,16 @@ strict `pi_final <=3,920,359 B` and complete response
 roofline. Residual pending transfer wire is now exactly **1,536 B** of
 corrections; the verifier reconstructs all 48 owners and points from the
 bound statements and transcript rather than accepting prover metadata.
-Resident backend, frozen production geometry and a production timing/memory
-verdict remain pending; no provider or pod was contacted.
+The local production-capacity `leaf=23/aux=15` gate is now closed. Ragged
+live-prefix witness folds reduce the second first-fold reservation from
+512 MiB to **36,428,800 B**, for **573,299,712 B** combined with the unchanged
+**536,870,912-B** coefficient arena. One pre-challenge replay supplies both
+the compact statement and first message, and the first-round sink skips only
+pairs wholly beyond a canonical-zero prefix while retaining odd boundary
+pairs. The exact proof is **6,900 B** and final provider inline is
+**4.698793 + 12.703051 = 17.401844 s <20 s**. Strict response bytes remain
+**33,096,991 B**. This is a local CPU capacity/timing PASS, not a whole-RSS,
+CUDA/provider/real-PCG or hardware verdict; no provider or pod was contacted.
 
 Workload of record: **GPT-2 small (124M, L=12, d=768, h=12, d_ff=3072),
 prefill T=100 + 50 deferred decode tokens, causal, C3b PCS Q=120**, on the
@@ -589,6 +597,7 @@ its clean descendant closure.
 | C6 installed terminal reverse compiler | **LOCAL DIFFERENTIAL PASS; SHARED WALKER CLOSED; CHALLENGE EXPANSION / FULL STATEMENT PENDING** (2026-07-29) | Exact installed **22,339 triple / 8,170 zero-root** terminal schedule; plaintext/tag roles; no second DAG formula; reference-only vectors | The versioned schedule binds plan artifact, topology, repetition, role and all positional weights.  Both forms use the historical compiled-residual walker; zero-product weights reproduce every accepted historical coefficient/public term, nontrivial plaintext/tag terminal evaluations match independent source-side evaluation, ProductMask coefficients remain zero and extraction binding is unconditional.  Focused tests are **11/11**, the complete feature suite is **145/0/1**, and the workspace is green.  Terminal weights are not yet transcript-derived and no statement, proof, memory, wire, soundness, timing, PCS, cache or production credit is claimed; no pod contacted. |
 | C6 post-root residual challenge bundle | **LOCAL FOUR-STREAM EXPANSION PASS; ROOT/SEED/PLAN BINDING GREEN; PCS TYPESTATE JOIN / RELATION COMPILER PENDING** (2026-07-29) | One already-budgeted 32-byte client seed; context-bound paired alpha and terminal domains; exact **22,339 triple / 8,170 zero-root** expansion | The immutable bundle binds fixed-root digest, installed artifact/topology, raw-seed commitment and four complete schedule digests.  Post-root terminal forms and paired provider/client folds consume it; replay is deterministic and changed root/seed, swapped roles or mutated weights reject.  Feature suite **145/0/1**, workspace green.  Schedules remain materialized reference state and `volta-pcs` must still source the digest from its private fixed-root token before seed release; no statement, resource, proof or production credit and no pod contact. |
 | C6 strict final response envelope | **C6PIF1 RESPONSE-FIELD REMOVAL + CORRECTION-ONLY RESIDUAL TRANSFER GREEN; RESIDENT BACKEND / PRODUCTION GEOMETRY AND TIMING PENDING; NO POD** (2026-07-31) | Closed seven-kind final-proof grammar; no direct `auth_corrections`, `u_vectors`, generic or legacy component; verifier-derived residual owners/points | Exact maximum is **3,919,502-B envelope / 3,920,359-B pi_final / 33,096,991-B complete response**, leaving **1,903,009 B** under 35 MB and **559,107 B** under the conservative allocation roofline. Residual pending wire is exactly **1,536 B**. Ordinary/trace proto are **149/0/1 / 167/0/1**; PCS are **179/0/1 / 181/0/2**; workspace all-target checks and budget are green. Explicit diagnostic response rerun is **14.833702-s provider inline / 19.279345-s complete**, still at `leaf=20/aux=15`, so no production timing/memory verdict is claimed. |
+| C6 production-capacity compact residual | **LOCAL CPU CAPACITY/TIMING PASS — 6,900-B C6RSC3; 17.401844-s INLINE <20 s; STRICT 33,096,991-B RESPONSE UNCHANGED; NO POD** (2026-07-31) | Frozen `leaf=23/aux=15`; live-prefix witness state; prepared statement/first message; zero-pair first-round bypass; transcript/proof/correlation semantics unchanged | Exact complete-response witness census is **4,553,588 Fp2 live input**, **34,843,136 B** first-fold logical and **36,428,800 B** peak reserved. Together with the single **536,870,912-B** coefficient arena, combined reserved peak is **573,299,712 B**, replacing the former two 512-MiB states; closure working heap remains **41,322,560 B**. One pre-challenge replay supplies both compact statement and sealed first message. The first-round sink omits only pairs wholly in canonical-zero padding and retains odd live/tail boundary pairs; later coefficient tails are unchanged. Prepared/legacy scaled proofs are byte-, transcript-, counter-, pending- and verifier-identical, with odd/empty-prefix coverage. Final release is **4.698793 + 12.703051 = 17.401844 s inline PASS**; verifier is separately **1.292475 + 14.002651 s**, complete wall **33.012188 s**. Intermediate **52.577666 s** and **23.091754 s** inline runs remain FAILs. Proto ordinary/trace **149/0/1, 167/0/1**; PCS **179/0/1, 182/0/2**, integrations **14/0/2, 2/0/0**; all-target, format, diff-check and budget **9/9** green. Earlier 23/16 text was corrected to frozen 23/15 after strict-envelope rejection. Whole RSS unmeasured; no CUDA/provider/real-PCG/hardware credit or pod contact. |
 
 Formal side note: **M9 (opening-into-MAC) proved 2026-07-04** —
 `VoltaZk/OpeningMac.lean` (`opening_mac_sound`, error ≤ εΩ/|Ω| + 1/|F|,
@@ -656,6 +665,43 @@ historical entries remain append-only evidence, not competing definitions.
   78.809294874-bit response-wide proximity figure.
 
 ## Deviations / decisions log
+
+- **2026-07-31 — C6 production-capacity residual passes the local inline
+  ceiling after live-prefix and replay de-duplication.** The frozen gate is
+  `leaf=23/aux=15`; prior 23/16 prose was inconsistent with the existing
+  15-round auxiliary constant, 93-scalar census and 6,900-B proof formula.
+  A 23/16 diagnostic correctly failed the strict envelope, and no cap was
+  widened.
+
+  Witness tables now retain only ragged first-fold images of their canonical
+  live prefixes. Odd boundary pairs keep their missing high value as zero;
+  empty prefixes remain empty and terminal-open to zero. Exact T=4,Q=2 input
+  is **4,553,588 Fp2**; the leaf logical peak is **34,843,136 B**, physical
+  leaf+auxiliary reservations peak at **36,428,800 B**, and the unchanged
+  coefficient arena is **536,870,912 B**, for **573,299,712 B combined**.
+  This replaces two simultaneous 512-MiB first-fold states. Whole-process RSS
+  is explicitly unmeasured because GNU `time` is absent locally.
+
+  One pre-challenge replay now supplies both compact statement and first
+  message. The first-round sink skips only pairs wholly beyond a zero prefix;
+  it retains the odd live/tail boundary needed at off-Boolean evaluations.
+  Atomic stream/censuses, challenged coefficient replays, transcript,
+  correlations, proof grammar and bytes are unchanged. A permanent scaled
+  differential proves prepared/legacy equality for statements, proof bytes,
+  transcript, counters, pending claims and verifier output and covers odd and
+  empty prefixes.
+
+  The measured sequence is preserved: dense/duplicated **52.577666 s FAIL**,
+  ragged+prepared **23.091754 s FAIL**, and final zero-pair bypass
+  **17.401844 s PASS**. The final split is **4.698793 s** provider
+  response+installed residual plus **12.703051 s** C6RSC3. Proof is exactly
+  **6,900 B** and strict response remains **33,096,991 B**. Verifier is
+  separately **1.292475 + 14.002651 s**; complete local wall is
+  **33.012188 s**. Proto ordinary/trace are **149/0/1, 167/0/1**; PCS are
+  **179/0/1, 182/0/2** with integrations **14/0/2, 2/0/0**. Both workspace
+  checks, format, diff-check and C6 budget **9/9** pass. This is local CPU
+  capacity/timing evidence only: no CUDA/provider/real-PCG/hardware credit and
+  no pod contact.
 
 - **2026-07-31 — C6 closes response-field removal with the strict `C6PIF1`
   envelope and verifier-derived residual pending owners.**  The final C6
@@ -726,7 +772,7 @@ historical entries remain append-only evidence, not competing definitions.
   ignored test was run explicitly in release mode and passed.
 
   This is a complete-response seam PASS but no production verdict.  Frozen
-  `leaf=23/aux=16` implies a 512-MiB first-fold coefficient state plus a
+  `leaf=23/aux=15` implies a 512-MiB first-fold coefficient state plus a
   separate 512-MiB witness state before backend optimization.  Direct
   corrections and `u_vectors` remain on the response; strict envelope,
   resident/CUDA and all production byte/timing/memory/hardware credit remain
